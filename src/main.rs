@@ -20,6 +20,7 @@ fn main() {
                 let mut buf = Vec::with_capacity(512);
 
                 let _ = stream.read(&mut buf).unwrap();
+                buf.shrink_to_fit();
 
                 let command = commands::Command::try_from(&buf[..]);
                 match command {
