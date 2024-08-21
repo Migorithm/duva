@@ -7,7 +7,10 @@ impl TryFrom<&[u8]> for Command {
     fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
         match value {
             b"*1\r\n$4\r\nPING\r\n" => Ok(Command::Ping),
-            _ => Err(Self::Error::UnrecognizedCommand),
+            e => {
+                eprintln!("Unrecognized command: {:?}", e);
+                Err(Self::Error::UnrecognizedCommand)
+            }
         }
     }
 

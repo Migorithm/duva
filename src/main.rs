@@ -26,9 +26,7 @@ fn main() {
                     Ok(commands::Command::Ping) => {
                         stream.write_all(b"+PONG\r\n").unwrap();
                     }
-                    Err(e) => {
-                        println!("error: {:?}", e);
-                    }
+                    Err(_err) => {}
                 }
             }
             Err(e) => {
