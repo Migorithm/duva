@@ -2,7 +2,7 @@ pub mod commands;
 pub mod error;
 
 use std::{
-    io::{Read, Write},
+    io::{BufRead, Read, Write},
     net::TcpListener,
 };
 
@@ -16,12 +16,14 @@ fn main() {
         match stream {
             Ok(mut stream) => {
                 println!("accepted new connection");
+                // buffered reader
+                let mut reader = std::io::BufReader::new(&stream);
 
-                let mut buf = [0; 14];
+                let mut buf = String::new();
 
-                let _ = stream.read(&mut buf).unwrap();
+                let _ = reader.read_line(&mut buf).unwrap();
 
-                let command = commands::Command::try_from(&buf[..]);
+                let command = commands::Command::try_from(buf.as_bytes());
                 match command {
                     Ok(commands::Command::Ping) => {
                         stream.write_all(b"+PONG\r\n").unwrap();
