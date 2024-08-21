@@ -1,16 +1,15 @@
-use std::str::FromStr;
+use crate::error::Error;
 
 pub(crate) enum Command {
     Ping,
 }
-
-impl FromStr for Command {
-    type Err = crate::error::Error;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.trim().to_uppercase().as_str() {
-            "*1\r\n$4\r\nPING\r\n" => Ok(Command::Ping),
-            _ => Err(Self::Err::UnrecognizedCommand),
+impl TryFrom<&[u8]> for Command {
+    fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
+        match value {
+            b"*1\r\n$4\r\nPING\r\n" => Ok(Command::Ping),
+            _ => Err(Self::Error::UnrecognizedCommand),
         }
     }
+
+    type Error = Error;
 }

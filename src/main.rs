@@ -21,7 +21,15 @@ fn main() {
 
                 let _ = stream.read(&mut buf).unwrap();
 
-                stream.write_all(b"+PONG\r\n").unwrap();
+                let command = commands::Command::try_from(&buf[..]);
+                match command {
+                    Ok(commands::Command::Ping) => {
+                        stream.write_all(b"+PONG\r\n").unwrap();
+                    }
+                    Err(e) => {
+                        println!("error: {:?}", e);
+                    }
+                }
             }
             Err(e) => {
                 println!("error: {}", e);
