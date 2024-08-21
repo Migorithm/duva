@@ -9,7 +9,7 @@ impl FromStr for Command {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.trim().to_uppercase().as_str() {
-            "PING" => Ok(Command::Ping),
+            "*1\r\n$4\r\nPING\r\n" => Ok(Command::Ping),
             _ => Err(Self::Err::UnrecognizedCommand),
         }
     }
