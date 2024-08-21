@@ -17,7 +17,7 @@ fn main() {
             Ok(mut stream) => {
                 println!("accepted new connection");
 
-                let mut buf = [0; 14];
+                let mut buf = Vec::with_capacity(512);
 
                 let _ = stream.read(&mut buf).unwrap();
 
