@@ -2,7 +2,7 @@ pub mod commands;
 pub mod error;
 
 use std::{
-    io::{BufRead, BufReader, Read, Write},
+    io::{BufRead, BufReader, Write},
     net::TcpListener,
     str::FromStr,
 };
@@ -25,7 +25,7 @@ fn main() {
 
                 match FromStr::from_str(&buf).unwrap() {
                     Command::Ping => {
-                        stream.write_all(b"PONG\r\n").unwrap();
+                        stream.write_all(b"+PONG\r\n").unwrap();
                     }
                 }
             }
