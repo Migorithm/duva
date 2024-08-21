@@ -17,9 +17,9 @@ fn main() {
             Ok(mut stream) => {
                 println!("accepted new connection");
 
-                let mut buf = vec![];
+                let mut buf = [0; 1024];
 
-                let _ = stream.read_to_end(&mut buf).unwrap();
+                let _ = stream.read(&mut buf).unwrap();
 
                 let command = commands::Command::try_from(&buf[..]);
                 match command {
