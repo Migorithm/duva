@@ -18,6 +18,7 @@ fn main() {
     for stream in listener.incoming() {
         match stream {
             Ok(mut stream) => {
+                println!("accepted new connection");
                 let mut reader = BufReader::new(&mut stream);
                 let mut buf = String::new();
 
