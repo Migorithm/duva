@@ -19,56 +19,10 @@ fn main() {
                 // buffered reader
                 let mut reader = std::io::BufReader::new(&stream);
 
-                loop {
-                    let mut buf = String::new();
-
-                    // Read the next line
-                    match reader.read_line(&mut buf) {
-                        Ok(0) => {
-                            // Connection was closed by the client
-                            println!("Client disconnected");
-                            break;
-                        }
-                        Ok(_) => {
-                            // Process the command
-                            let cmd_str = buf
-                                .trim_start_matches(r#"*1\r\n$4\r\n"#)
-                                .trim()
-                                .trim_end_matches(r#"\r\n"#);
-                            if cmd_str.is_empty() {
-                                continue;
-                            }
-
-                            let command = commands::Command::try_from(cmd_str);
-                            match command {
-                                Ok(commands::Command::Ping) => {
-                                    if let Err(e) = (&stream).write_all(b"+PONG\r\n") {
-                                        println!("Error writing to client: {}", e);
-                                        break;
-                                    }
-                                }
-                                Err(err) => {
-                                    println!("Invalid command: {:?}", err);
-                                    // Optionally send an error response to the client
-                                    if let Err(e) = (&stream).write_all(b"-ERR Invalid command\r\n")
-                                    {
-                                        println!("Error writing to client: {}", e);
-                                        break;
-                                    }
-                                }
-                            }
-                        }
-                        Err(e) => {
-                            println!("Error reading from client: {}", e);
-                            break;
-                        }
-                    }
-
-                    // Ensure the response is sent immediately
-                    if let Err(e) = (&stream).flush() {
-                        println!("Error flushing stream: {}", e);
-                        break;
-                    }
+                let mut lines = reader.lines();
+                while let Some(Ok(line)) = lines.next() {
+                    println!("Received {:?}", line);
+                    (&stream).write_all(b"+PONG\r\n").unwrap();
                 }
             }
             Err(e) => {
