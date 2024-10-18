@@ -24,9 +24,22 @@ fn main() {
                 let _ = reader.read_line(&mut buf).unwrap();
 
                 let commands = buf
+                    .trim_start_matches(r#"*1\r\n$4\r\n"#)
+                    .trim_end_matches("\r\n")
                     .split("\\n")
-                    .into_iter()
-                    .map(|cmd_str| commands::Command::try_from(cmd_str.trim()).unwrap())
+                    .flat_map(|st| {
+                        let cmd_str = st.trim_start_matches("\\r").trim_end_matches("\\r");
+                        if !cmd_str.is_empty() {
+                            Some(
+                                commands::Command::try_from(
+                                    st.trim_start_matches("\\r").trim_end_matches("\\r"),
+                                )
+                                .unwrap(),
+                            )
+                        } else {
+                            None
+                        }
+                    })
                     .collect::<Vec<_>>();
 
                 for cmd in commands {
