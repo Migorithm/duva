@@ -2,7 +2,7 @@ pub mod commands;
 pub mod error;
 
 use std::{
-    io::{BufRead, Read, Write},
+    io::{BufRead, Write},
     net::TcpListener,
 };
 
@@ -23,13 +23,16 @@ fn main() {
 
                 let _ = reader.read_line(&mut buf).unwrap();
 
-                let command = commands::Command::try_from(buf.as_bytes());
-                match command {
-                    Ok(commands::Command::Ping) => {
-                        stream.write_all(b"+PONG\r\n").unwrap();
-                    }
-                    Err(_err) => {
-                        println!("arrived?")
+                for cmd_str in buf.split("\\n") {
+                    println!("received command: {:?}", cmd_str);
+                    let command = commands::Command::try_from(cmd_str.trim());
+                    match command {
+                        Ok(commands::Command::Ping) => {
+                            let _ = stream.write_all(b"+PONG\r\n");
+                        }
+                        Err(_err) => {
+                            println!("arrived?")
+                        }
                     }
                 }
             }
