@@ -23,15 +23,16 @@ fn main() {
 
                 let _ = reader.read_line(&mut buf).unwrap();
 
-                for cmd_str in buf.split("\\n") {
-                    println!("received command: {:?}", cmd_str);
-                    let command = commands::Command::try_from(cmd_str.trim());
-                    match command {
-                        Ok(commands::Command::Ping) => {
+                let commands = buf
+                    .split("\\n")
+                    .into_iter()
+                    .map(|cmd_str| commands::Command::try_from(cmd_str.trim()).unwrap())
+                    .collect::<Vec<_>>();
+
+                for cmd in commands {
+                    match cmd {
+                        commands::Command::Ping => {
                             let _ = stream.write_all(b"+PONG\r\n");
-                        }
-                        Err(_err) => {
-                            println!("arrived?")
                         }
                     }
                 }
