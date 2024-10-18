@@ -22,7 +22,15 @@ fn main() {
                 let mut lines = reader.lines();
                 while let Some(Ok(line)) = lines.next() {
                     println!("Received {:?}", line);
-                    (&stream).write_all(b"+PONG\r\n").unwrap();
+                    match commands::Command::try_from(line.as_str()) {
+                        Ok(commands::Command::Ping) => {
+                            (&stream).write_all(b"+PONG\r\n").unwrap();
+                        }
+                        Err(e) => {
+                            println!("error: {:?}", e);
+                            continue;
+                        }
+                    }
                 }
             }
             Err(e) => {
