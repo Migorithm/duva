@@ -19,10 +19,6 @@ fn main() {
                 // buffered reader
                 let mut reader = std::io::BufReader::new(&stream);
 
-                let mut buf = String::new();
-
-                let _ = reader.read_line(&mut buf).unwrap();
-
                 loop {
                     let mut buf = String::new();
 
@@ -35,8 +31,15 @@ fn main() {
                         }
                         Ok(_) => {
                             // Process the command
-                            let cmd_str = buf.trim_start_matches("");
-                            let command = commands::Command::try_from(buf.as_str());
+                            let cmd_str = buf
+                                .trim_start_matches(r#"*1\r\n$4\r\n"#)
+                                .trim()
+                                .trim_end_matches(r#"\r\n"#);
+                            if cmd_str.is_empty() {
+                                continue;
+                            }
+
+                            let command = commands::Command::try_from(cmd_str);
                             match command {
                                 Ok(commands::Command::Ping) => {
                                     if let Err(e) = (&stream).write_all(b"+PONG\r\n") {

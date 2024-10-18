@@ -5,7 +5,6 @@ pub(crate) enum Command {
 }
 impl TryFrom<&str> for Command {
     fn try_from(value: &str) -> Result<Self, Self::Error> {
-        println!("value: {:?}", value);
         match value {
             "PING" => Ok(Command::Ping),
             e => {
