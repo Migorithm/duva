@@ -14,10 +14,15 @@ async fn main() {
     let listener = TcpListener::bind("127.0.0.1:6379").await.unwrap();
 
     loop {
-        let (socket, _) = listener.accept().await.unwrap();
-        tokio::spawn(async move {
-            process(socket).await;
-        });
+        match listener.accept().await {
+            Ok((socket, _)) => {
+                // Spawn a new task to handle the connection without blocking the main thread.
+                tokio::spawn(async move {
+                    process(socket).await;
+                });
+            }
+            Err(e) => eprintln!("Failed to accept connection: {:?}", e),
+        }
     }
 }
 
@@ -35,6 +40,12 @@ async fn process(stream: TcpStream) {
         match commands::Command::try_from(line.as_str()) {
             Ok(commands::Command::Ping) => {
                 writer.write(b"+PONG\r\n").await.unwrap();
+            }
+            Ok(commands::Command::Echo(message)) => {
+                writer
+                    .write(format!("+{}\r\n", message).as_bytes())
+                    .await
+                    .unwrap();
             }
             Err(e) => {
                 println!("error: {:?}", e);
