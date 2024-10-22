@@ -1,10 +1,7 @@
-use std::collections::HashMap;
-
-use std::sync::OnceLock;
-
-use tokio::sync::RwLock;
-
 use crate::interface::Database;
+use std::collections::HashMap;
+use std::sync::OnceLock;
+use tokio::sync::RwLock;
 
 static DB: OnceLock<RwLock<HashMap<String, String>>> = OnceLock::new();
 
