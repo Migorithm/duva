@@ -1,10 +1,7 @@
-use tokio::{
-    io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
-    net::{TcpListener, TcpStream},
-};
-
-pub mod commands;
-pub mod error;
+use resp::Value;
+use tokio::net::{TcpListener, TcpStream};
+mod resp;
+use anyhow::Result;
 
 #[tokio::main]
 async fn main() {
@@ -27,30 +24,40 @@ async fn main() {
 }
 
 async fn process(stream: TcpStream) {
-    println!("accepted new connection");
-    // buffered reader
-    let (read_half, mut writer) = stream.into_split();
+    let mut handler = resp::RespHandler::new(stream);
 
-    let reader = BufReader::new(read_half);
+    loop {
+        let value = handler.read_operation().await.unwrap();
+        let Some(v) = value else {
+            break;
+        };
 
-    let mut lines = reader.lines();
+        let (command, args) = extract_command(v).unwrap();
 
-    while let Ok(Some(line)) = lines.next_line().await {
-        println!("Received {:?}", line);
-        match commands::Command::try_from(line.as_str()) {
-            Ok(commands::Command::Ping) => {
-                writer.write(b"+PONG\r\n").await.unwrap();
-            }
-            Ok(commands::Command::Echo(message)) => {
-                writer
-                    .write(format!("+{}\r\n", message).as_bytes())
-                    .await
-                    .unwrap();
-            }
-            Err(e) => {
-                println!("error: {:?}", e);
-                continue;
-            }
-        }
+        let response = match command.as_str() {
+            "ping" => Value::SimpleString("PONG".to_string()),
+            "echo" => args.first().unwrap().clone(),
+            // modify we have to add a new command
+            c => panic!("Cannot handle command {}", c),
+        };
+        println!("Response: {:?}", response);
+        handler.write_value(response).await.unwrap();
+    }
+}
+
+fn extract_command(value: Value) -> Result<(String, Vec<Value>)> {
+    match value {
+        Value::Array(a) => Ok((
+            unpack_bulk_str(a.first().unwrap().clone())?,
+            a.into_iter().skip(1).collect(),
+        )),
+        _ => Err(anyhow::anyhow!("Unexpected command format")),
+    }
+}
+
+fn unpack_bulk_str(value: Value) -> Result<String> {
+    match value {
+        Value::BulkString(s) => Ok(s.to_lowercase()),
+        _ => Err(anyhow::anyhow!("Expected command to be a bulk string")),
     }
 }
