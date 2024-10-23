@@ -73,7 +73,7 @@ use std::time::UNIX_EPOCH;
 fn calculate_expire_at(expire_in: &str) -> Result<(u64, u32)> {
     let expire_in = expire_in.parse::<u64>().unwrap();
     let now = SystemTime::now();
-    let expire_at = now + Duration::from_secs(expire_in);
+    let expire_at = now + Duration::from_millis(expire_in);
 
     let duration = expire_at.duration_since(UNIX_EPOCH)?;
     Ok((duration.as_secs(), duration.subsec_nanos()))
