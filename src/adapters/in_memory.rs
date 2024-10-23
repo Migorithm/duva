@@ -44,18 +44,8 @@ impl Database for InMemoryDb {
                 if expiry == NO_EXPIRY {
                     return Some(value.to_string());
                 }
-
                 // get system time from expiry_in_sec and expiry_in_nanos
-                let (secs, nanos) = expiry.split_at(10);
-                let expiry_in_sec = secs.parse::<u64>().unwrap();
-                let expiry_in_nanos = nanos.parse::<u32>().unwrap();
-                let expire_at = Duration::new(expiry_in_sec, expiry_in_nanos);
-
-                // get current time
-                let now = SystemTime::now();
-                let now = now.duration_since(UNIX_EPOCH).unwrap();
-
-                if now > expire_at {
+                if check_if_expired(expiry) {
                     return None;
                 }
                 Some(value.to_string())
@@ -87,4 +77,30 @@ fn calculate_expire_at(expire_in: &str) -> Result<(u64, u32)> {
 
     let duration = expire_at.duration_since(UNIX_EPOCH)?;
     Ok((duration.as_secs(), duration.subsec_nanos()))
+}
+
+fn check_if_expired(expiry: &str) -> bool {
+    // get system time from expiry_in_sec and expiry_in_nanos
+    let (secs, nanos) = expiry.split_at(10);
+    // when taking nanos, skip the first character ':'
+    let nanos = &nanos[1..];
+
+    let expiry_in_sec = secs.parse::<u64>().unwrap();
+    let expiry_in_nanos = nanos.parse::<u32>().unwrap();
+    let expire_at = Duration::new(expiry_in_sec, expiry_in_nanos);
+
+    // get current time
+    let now = SystemTime::now();
+    let now = now.duration_since(UNIX_EPOCH).unwrap();
+
+    now > expire_at
+}
+
+#[test]
+fn test_check_if_expired() {
+    let expire_in = "100";
+    let (secs, nanos) = calculate_expire_at(expire_in).unwrap();
+
+    let expiry = format!("{:10}:{:09}", secs, nanos);
+    assert_eq!(check_if_expired(&expiry), false);
 }
