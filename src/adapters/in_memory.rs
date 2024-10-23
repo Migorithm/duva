@@ -45,13 +45,17 @@ impl Database for InMemoryDb {
                     return Some(value.to_string());
                 }
 
-                let (secs, _) = expiry.split_at(10);
-
+                // get system time from expiry_in_sec and expiry_in_nanos
+                let (secs, nanos) = expiry.split_at(10);
                 let expiry_in_sec = secs.parse::<u64>().unwrap();
-                let now = SystemTime::now();
-                let now = now.duration_since(UNIX_EPOCH).unwrap().as_secs();
+                let expiry_in_nanos = nanos.parse::<u32>().unwrap();
+                let expire_at = Duration::new(expiry_in_sec, expiry_in_nanos);
 
-                if now > expiry_in_sec {
+                // get current time
+                let now = SystemTime::now();
+                let now = now.duration_since(UNIX_EPOCH).unwrap();
+
+                if now > expire_at {
                     return None;
                 }
                 Some(value.to_string())
