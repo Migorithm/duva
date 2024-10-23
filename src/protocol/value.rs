@@ -3,6 +3,7 @@ pub enum Value {
     SimpleString(String),
     BulkString(String),
     Array(Vec<Value>),
+    Null,
 }
 impl Value {
     pub fn serialize(&self) -> String {
@@ -16,6 +17,7 @@ impl Value {
                 }
                 result
             }
+            Value::Null => "$-1\r\n".to_string(),
         }
     }
 }

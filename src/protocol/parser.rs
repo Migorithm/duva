@@ -66,7 +66,7 @@ fn parse_bulk_string(buffer: BytesMut) -> Result<(Value, usize)> {
     ))
 }
 
-struct ConversionWrapper<T>(T);
+pub struct ConversionWrapper<T>(pub(crate) T);
 impl TryFrom<ConversionWrapper<&[u8]>> for usize {
     type Error = anyhow::Error;
 
