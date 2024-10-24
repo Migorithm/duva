@@ -14,6 +14,7 @@ fn db() -> &'static RwLock<HashMap<String, String>> {
 
 const NO_EXPIRY: &str = "0000000000:000000000";
 
+#[derive(Clone)]
 pub struct InMemoryDb;
 
 impl Database for InMemoryDb {

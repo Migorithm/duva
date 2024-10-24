@@ -4,24 +4,25 @@ pub mod command;
 pub mod parser;
 pub mod value;
 use parser::parse;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use value::Value;
 
-pub struct RespHandler {
-    stream: tokio::net::TcpStream,
+use crate::interface::{TRead, TWriteBuf};
+
+pub struct MessageParser<T: TWriteBuf + TRead> {
+    stream: T,
     buffer: BytesMut,
 }
 
-impl RespHandler {
-    pub fn new(stream: tokio::net::TcpStream) -> Self {
-        RespHandler {
+impl<T: TWriteBuf + TRead> MessageParser<T> {
+    pub fn new(stream: T) -> Self {
+        MessageParser {
             stream,
             buffer: BytesMut::with_capacity(512),
         }
     }
 
     pub async fn read_operation(&mut self) -> Result<Option<Value>> {
-        let bytes_read = self.stream.read_buf(&mut self.buffer).await?;
+        let bytes_read = self.stream.read(&mut self.buffer).await?;
         if bytes_read == 0 {
             return Ok(None);
         }
@@ -31,7 +32,7 @@ impl RespHandler {
     }
 
     pub async fn write_value(&mut self, value: Value) -> Result<()> {
-        self.stream.write(value.serialize().as_bytes()).await?;
+        self.stream.write_buf(value.serialize().as_bytes()).await?;
         Ok(())
     }
 }
