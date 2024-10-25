@@ -2,13 +2,9 @@ pub mod adapters;
 pub mod handlers;
 pub mod interface;
 pub mod protocol;
-
-use adapters::in_memory::InMemoryDb;
-use handlers::Handler;
-use protocol::{command::Args, value::Value, MessageParser};
-use tokio::net::{TcpListener, TcpStream};
-
 use anyhow::Result;
+use handlers::Handler;
+use tokio::net::{TcpListener, TcpStream};
 
 #[cfg(test)]
 mod test;
