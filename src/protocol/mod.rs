@@ -9,7 +9,7 @@ use value::Value;
 use crate::interface::{TRead, TWriteBuf};
 
 pub struct MessageParser<T: TWriteBuf + TRead> {
-    stream: T,
+    pub(crate) stream: T,
     buffer: BytesMut,
 }
 

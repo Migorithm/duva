@@ -1,14 +1,22 @@
+use std::sync::Arc;
+
 use crate::{
     adapters::in_memory::InMemoryDb,
+    config::Config,
     interface::{Database, TRead, TWriteBuf},
     protocol::{command::Args, value::Value, MessageParser},
 };
 use anyhow::Result;
 
-pub struct Handler;
+pub(crate) struct Handler {
+    pub(crate) conf: Arc<Config>,
+}
 
 impl Handler {
-    pub async fn handle<T: TWriteBuf + TRead>(resp_handler: &mut MessageParser<T>) -> Result<()> {
+    pub async fn handle<T: TWriteBuf + TRead>(
+        &mut self,
+        resp_handler: &mut MessageParser<T>,
+    ) -> Result<()> {
         let Some(v) = resp_handler.read_operation().await? else {
             return Err(anyhow::anyhow!("Connection closed"));
         };
@@ -21,6 +29,7 @@ impl Handler {
             "set" => Handler::handle_set(&args, InMemoryDb).await?,
             "get" => Handler::handle_get(&args, InMemoryDb).await?,
             // modify we have to add a new command
+            "config" => self.handle_config(&args)?,
             c => panic!("Cannot handle command {}", c),
         };
         println!("Response: {:?}", response);
@@ -54,6 +63,37 @@ impl Handler {
         match db.get(&key).await {
             Some(v) => Ok(Value::BulkString(v)),
             None => Ok(Value::Null),
+        }
+    }
+
+    // perhaps, set operation is needed
+    pub fn handle_config(&mut self, args: &Args) -> Result<Value> {
+        let sub_command = args.first()?;
+        let args = &args.0[1..];
+        let (Value::BulkString(sub_command), [Value::BulkString(key), Value::BulkString(value)]) =
+            (sub_command, args)
+        else {
+            return Err(anyhow::anyhow!("Invalid arguments"));
+        };
+
+        match (sub_command.as_str(), key.as_str()) {
+            ("get", "dir") => Ok(Value::Array(vec![
+                Value::BulkString("dir".to_string()),
+                self.conf
+                    .dir
+                    .clone()
+                    .map(|v| Value::BulkString(v))
+                    .unwrap_or(Value::Null),
+            ])),
+            ("get", "dbfilename") => Ok(Value::Array(vec![
+                Value::BulkString("dbfilename".to_string()),
+                self.conf
+                    .db_filename
+                    .clone()
+                    .map(|v| Value::BulkString(v))
+                    .unwrap_or(Value::Null),
+            ])),
+            _ => Err(anyhow::anyhow!("Invalid arguments")),
         }
     }
 }
