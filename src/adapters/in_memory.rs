@@ -25,6 +25,7 @@ struct StoredValue {
     expiry: Expiry
 }
 
+#[derive(Clone)]
 pub struct InMemoryDb;
 
 impl Database for InMemoryDb {

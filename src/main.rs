@@ -5,10 +5,13 @@ pub mod protocol;
 
 use adapters::in_memory::InMemoryDb;
 use handlers::Handler;
-use protocol::{command::Args, value::Value};
+use protocol::{command::Args, value::Value, MessageParser};
 use tokio::net::{TcpListener, TcpStream};
 
 use anyhow::Result;
+
+#[cfg(test)]
+mod test;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -33,24 +36,9 @@ async fn main() -> Result<()> {
 }
 
 async fn process(stream: TcpStream) -> Result<()> {
-    let mut handler = protocol::RespHandler::new(stream);
+    let mut handler = protocol::MessageParser::new(stream);
 
     loop {
-        let Some(v) = handler.read_operation().await? else {
-            break Err(anyhow::anyhow!("Connection closed"));
-        };
-
-        let (command, args) = Args::extract_command(v)?;
-
-        let response = match command.as_str() {
-            "ping" => Value::SimpleString("PONG".to_string()),
-            "echo" => args.first()?,
-            "set" => Handler::handle_set(&args, InMemoryDb).await?,
-            "get" => Handler::handle_get(&args, InMemoryDb).await?,
-            // modify we have to add a new command
-            c => panic!("Cannot handle command {}", c),
-        };
-        println!("Response: {:?}", response);
-        handler.write_value(response).await?;
+        Handler::handle(&mut handler).await?;
     }
 }
