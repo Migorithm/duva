@@ -6,49 +6,56 @@ use std::sync::OnceLock;
 use std::time::{Duration, SystemTime};
 use tokio::sync::RwLock;
 
-static DB: OnceLock<RwLock<HashMap<String, String>>> = OnceLock::new();
+static DB: OnceLock<RwLock<HashMap<String, StoredValue>>> = OnceLock::new();
 
-fn db() -> &'static RwLock<HashMap<String, String>> {
+fn db() -> &'static RwLock<HashMap<String, StoredValue>> {
     DB.get_or_init(|| RwLock::new(HashMap::new()))
 }
 
-const NO_EXPIRY: &str = "0000000000:000000000";
+const NO_EXPIRY: Expiry = Expiry{expiry_seconds:0,expiry_nanos:0};// 20 bytes
+
+#[derive(Debug,PartialEq)]
+struct Expiry {
+    expiry_seconds: u64,
+    expiry_nanos: u32
+}
+
+struct StoredValue {
+    value : String,
+    expiry: Expiry
+}
 
 pub struct InMemoryDb;
 
 impl Database for InMemoryDb {
     async fn set(&self, key: String, value: String) {
         let mut guard = db().write().await;
-        guard.insert(key, value + NO_EXPIRY);
+        guard.insert(key, StoredValue{ value, expiry: Expiry { expiry_seconds:0, expiry_nanos:0} });
     }
 
-    async fn set_with_expiration(&self, key: String, mut value: String, expiry: &Value) {
+    async fn set_with_expiration(&self, key: String, value: String, expiry: &Value) {
         // get expiry
         let Value::BulkString(expiry) = expiry else {
             //TODO implement the following
             unimplemented!();
         };
         let (secs, nanos) = calculate_expire_at(&expiry).unwrap();
-        let stringified = format!("{:10}:{:09}", secs, nanos);
-        value.push_str(&stringified);
-
         let mut guard = db().write().await;
-        guard.insert(key, value);
+        guard.insert(key, StoredValue { value, expiry:Expiry {expiry_seconds:secs, expiry_nanos:nanos} });
     }
 
     // Get a value
     async fn get(&self, key: &str) -> Option<String> {
         match db().read().await.get(key) {
             Some(value) => {
-                let (value, expiry) = value.split_at(value.len() - 20);
-                if expiry == NO_EXPIRY {
-                    return Some(value.to_string());
+                if value.expiry == NO_EXPIRY {
+                    return Some(value.value.to_string());
                 }
                 // get system time from expiry_in_sec and expiry_in_nanos
-                if check_if_expired(expiry) {
+                if check_if_expired(&value.expiry) {
                     return None;
                 }
-                Some(value.to_string())
+                Some(value.value.to_string())
             }
             None => None,
         }
@@ -79,14 +86,9 @@ fn calculate_expire_at(expire_in: &str) -> Result<(u64, u32)> {
     Ok((duration.as_secs(), duration.subsec_nanos()))
 }
 
-fn check_if_expired(expiry: &str) -> bool {
-    // get system time from expiry_in_sec and expiry_in_nanos
-    let (secs, nanos) = expiry.split_at(10);
-    // when taking nanos, skip the first character ':'
-    let nanos = &nanos[1..];
-
-    let expiry_in_sec = secs.parse::<u64>().unwrap();
-    let expiry_in_nanos = nanos.parse::<u32>().unwrap();
+fn check_if_expired(expiry: &Expiry) -> bool {
+    let expiry_in_sec = expiry.expiry_seconds;
+    let expiry_in_nanos = expiry.expiry_nanos;
     let expire_at = Duration::new(expiry_in_sec, expiry_in_nanos);
 
     // get current time
@@ -101,6 +103,14 @@ fn test_check_if_expired() {
     let expire_in = "100";
     let (secs, nanos) = calculate_expire_at(expire_in).unwrap();
 
-    let expiry = format!("{:10}:{:09}", secs, nanos);
+    let expiry = Expiry { expiry_seconds: secs, expiry_nanos: nanos };
     assert_eq!(check_if_expired(&expiry), false);
+}
+
+#[test]
+fn test_value_equality() {
+    let expiry1 = Expiry { expiry_seconds: 0, expiry_nanos: 0 };
+    let expiry2 = Expiry { expiry_seconds: 0, expiry_nanos: 0 };
+
+    assert_eq!(expiry1,expiry2);
 }
