@@ -32,7 +32,7 @@ impl Handler {
             "config" => self.handle_config(&args)?,
             c => panic!("Cannot handle command {}", c),
         };
-        println!("Response: {:?}", response);
+
         resp_handler.write_value(response).await?;
         Ok(())
     }
@@ -70,14 +70,16 @@ impl Handler {
     pub fn handle_config(&mut self, args: &Args) -> Result<Value> {
         let sub_command = args.first()?;
         let args = &args.0[1..];
-        let (Value::BulkString(sub_command), [Value::BulkString(key), Value::BulkString(value)]) =
-            (sub_command, args)
+
+        let (Value::BulkString(command), [Value::BulkString(key), ..]) = (&sub_command, args)
         else {
+            println!("subcommand {:?}", sub_command);
+            println!("dddd {args:?}");
             return Err(anyhow::anyhow!("Invalid arguments"));
         };
 
-        match (sub_command.as_str(), key.as_str()) {
-            ("get", "dir") => Ok(Value::Array(vec![
+        match (command.as_str(), key.as_str()) {
+            ("get" | "GET", "dir") => Ok(Value::Array(vec![
                 Value::BulkString("dir".to_string()),
                 self.conf
                     .dir
@@ -85,7 +87,7 @@ impl Handler {
                     .map(|v| Value::BulkString(v))
                     .unwrap_or(Value::Null),
             ])),
-            ("get", "dbfilename") => Ok(Value::Array(vec![
+            ("get" | "GET", "dbfilename") => Ok(Value::Array(vec![
                 Value::BulkString("dbfilename".to_string()),
                 self.conf
                     .db_filename
