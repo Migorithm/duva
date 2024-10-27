@@ -1,13 +1,13 @@
 pub mod adapters;
 mod config;
-pub mod handlers;
-pub mod interface;
-pub mod protocol;
-use std::sync::Arc;
-
+pub mod services;
+use adapters::in_memory::InMemoryDb;
 use anyhow::Result;
 use config::Config;
-use handlers::Handler;
+use services::{
+    config_handler::ConfigHandler, parser::MessageParser, persistence_handler::PersistenceHandler,
+};
+use std::sync::Arc;
 use tokio::net::{TcpListener, TcpStream};
 
 #[cfg(test)]
@@ -41,8 +41,12 @@ async fn main() -> Result<()> {
 }
 
 async fn process(stream: TcpStream, conf: Arc<Config>) -> Result<()> {
-    let mut parser = protocol::MessageParser::new(stream);
-    let mut handler = Handler { conf };
+    let mut parser = MessageParser::new(stream);
+    let mut handler = services::ServiceFacade::new(
+        ConfigHandler::new(Arc::clone(&conf)),
+        PersistenceHandler::new(InMemoryDb),
+    );
+
     loop {
         handler.handle(&mut parser).await?;
     }
