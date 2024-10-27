@@ -56,7 +56,13 @@ impl Database for InMemoryDb {
         let value = guard.get(key)?;
 
         match value.expiry {
-            Some(expire_at) if check_if_expired(&expire_at) => None,
+            Some(expire_at) if check_if_expired(&expire_at) => {
+                // release lock
+                drop(guard);
+                // Remove value in the key has expired
+                InMemoryDb.delete(key).await;
+                None
+            },
             _ => Some(value.value.to_string()),
         }
     }
@@ -72,6 +78,10 @@ impl InMemoryDb {
     // Get all keys (for debugging/monitoring)
     pub async fn get_keys(&self) -> Vec<String> {
         db().read().await.keys().cloned().collect()
+    }
+
+    pub async fn size(&self) -> usize {
+        db().read().await.len()
     }
 }
 
