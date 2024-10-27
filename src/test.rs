@@ -5,9 +5,13 @@ use bytes::BytesMut;
 use crate::{
     adapters::in_memory::InMemoryDb,
     config::Config,
-    handlers::Handler,
-    interface::{Database, TRead, TWriteBuf},
-    protocol::{self},
+    services::{
+        config_handler::ConfigHandler,
+        interface::{Database, TRead, TWriteBuf},
+        parser::MessageParser,
+        persistence_handler::PersistenceHandler,
+        ServiceFacade,
+    },
 };
 
 // Fake Stream to test the write_value function
@@ -24,6 +28,7 @@ impl TRead for FakeStream {
 
 impl TWriteBuf for FakeStream {
     async fn write_buf(&mut self, buf: &[u8]) -> Result<(), std::io::Error> {
+        self.written.clear();
         self.written.extend_from_slice(buf);
         Ok(())
     }
@@ -43,10 +48,12 @@ async fn test_set() {
             .as_bytes()
             .to_vec(),
     };
-    let mut parser = protocol::MessageParser::new(stream);
-    let mut handler = Handler {
-        conf: Arc::new(Config::new()),
-    };
+    let mut parser = MessageParser::new(stream);
+
+    let mut handler = ServiceFacade::new(
+        ConfigHandler::new(Arc::new(Config::new())),
+        PersistenceHandler::new(InMemoryDb),
+    );
 
     // WHEN
     handler.handle(&mut parser).await.unwrap();
@@ -67,10 +74,11 @@ async fn test_set_with_expiry() {
             .as_bytes()
             .to_vec(),
     };
-    let mut parser = protocol::MessageParser::new(stream);
-    let mut handler = Handler {
-        conf: Arc::new(Config::new()),
-    };
+    let mut parser = MessageParser::new(stream);
+    let mut handler = ServiceFacade::new(
+        ConfigHandler::new(Arc::new(Config::new())),
+        PersistenceHandler::new(InMemoryDb),
+    );
     // WHEN
 
     handler.handle(&mut parser).await.unwrap();
@@ -95,10 +103,11 @@ async fn test_set_with_expire_should_expire_within_100ms() {
             .as_bytes()
             .to_vec(),
     };
-    let mut parser = protocol::MessageParser::new(stream);
-    let mut handler = Handler {
-        conf: Arc::new(Config::new()),
-    };
+    let mut parser = MessageParser::new(stream);
+    let mut handler = ServiceFacade::new(
+        ConfigHandler::new(Arc::new(Config::new())),
+        PersistenceHandler::new(InMemoryDb),
+    );
 
     // WHEN
     handler.handle(&mut parser).await.unwrap();
@@ -132,19 +141,16 @@ async fn test_config_get_dir() {
             .as_bytes()
             .to_vec(),
     };
-    let mut parser = protocol::MessageParser::new(stream);
-
-    let mut handler = Handler {
-        conf: Arc::new(conf),
-    };
+    let mut parser = MessageParser::new(stream);
+    let mut handler = ServiceFacade::new(
+        ConfigHandler::new(Arc::new(conf)),
+        PersistenceHandler::new(InMemoryDb),
+    );
     // WHEN
     handler.handle(&mut parser).await.unwrap();
 
     // THEN
     let res = "*2\r\n$3\r\ndir\r\n$4\r\n/tmp\r\n";
-    let written = String::from_utf8(
-        parser.stream.written[parser.stream.written.len() - res.len()..].to_vec(),
-    )
-    .unwrap();
+    let written = String::from_utf8(parser.stream.written.to_vec()).unwrap();
     assert_eq!(written, res.to_string());
 }
