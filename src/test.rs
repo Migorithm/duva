@@ -148,3 +148,44 @@ async fn test_config_get_dir() {
     .unwrap();
     assert_eq!(written, res.to_string());
 }
+
+
+
+#[tokio::test]
+async fn test_set_with_expire_when_data_expired_should_db_have_no_data() {
+    let stream = FakeStream {
+        written: "*5\r\n$3\r\nSET\r\n$3\r\nfoo\r\n$3\r\nbar\r\n$2\r\npx\r\n$2\r\n10\r\n"
+            .as_bytes()
+            .to_vec(),
+    };
+    let mut parser = protocol::MessageParser::new(stream);
+    let mut conf = Config::new();
+    conf.dir = Some("/tmp".to_string());
+
+    let mut handler = Handler {
+        conf: Arc::new(conf),
+    };
+
+    // WHEN
+    handler.handle(&mut parser).await.unwrap();
+
+    let value = InMemoryDb.get("foo").await.unwrap();
+
+    // THEN
+    assert_eq!(value, "bar");
+
+    // WHEN2 - wait for 100ms
+    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+    let value = InMemoryDb.get("foo").await;
+
+    //THEN
+    assert_eq!(value, None);
+
+    // WHEN3 - wait for 100ms
+    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+    let value = InMemoryDb.get("foo").await;
+
+    //THEN
+    assert_eq!(value, None);
+    assert_eq!(InMemoryDb.size().await,0);
+}
