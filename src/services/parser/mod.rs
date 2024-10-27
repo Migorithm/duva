@@ -1,12 +1,9 @@
 use anyhow::Result;
 use bytes::BytesMut;
 pub mod command;
-
 pub mod value;
-
-use value::Value;
-
 use crate::services::interface::{TRead, TWriteBuf};
+use value::Value;
 
 pub struct MessageParser<T: TWriteBuf + TRead> {
     pub(crate) stream: T,

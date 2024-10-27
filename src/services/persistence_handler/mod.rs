@@ -1,16 +1,21 @@
 use super::{
     interface::Database,
-    parser::{command::Args, value::Value},
+    parser::{
+        command::Args,
+        value::{TtlCommand, Value},
+    },
 };
 use anyhow::Result;
+use tokio::sync::mpsc::Sender;
 
 pub(crate) struct PersistenceHandler<DB: Database> {
     pub(crate) db: DB,
+    pub(crate) ttl_sender: Sender<TtlCommand>,
 }
 
 impl<DB: Database> PersistenceHandler<DB> {
-    pub fn new(db: DB) -> Self {
-        PersistenceHandler { db }
+    pub fn new(db: DB, ttl_sender: Sender<TtlCommand>) -> Self {
+        PersistenceHandler { db, ttl_sender }
     }
 
     pub async fn handle_set(&self, args: &Args) -> Result<Value> {
@@ -18,9 +23,14 @@ impl<DB: Database> PersistenceHandler<DB> {
 
         match (key, value, expiry) {
             (Value::BulkString(key), Value::BulkString(value), Some(expiry)) => {
-                self.db
-                    .set_with_expiration(key.clone(), value.clone(), expiry)
-                    .await;
+                self.db.set(key.clone(), value.clone()).await;
+
+                self.ttl_sender
+                    .send(TtlCommand::Expiry {
+                        expiry: expiry.extract_expiry()?,
+                        key: key.clone(),
+                    })
+                    .await?;
             }
             (Value::BulkString(key), Value::BulkString(value), None) => {
                 self.db.set(key.clone(), value.clone()).await;

@@ -14,6 +14,8 @@ pub trait Database {
     ) -> impl std::future::Future<Output = ()> + Send;
 
     fn get(&self, key: &str) -> impl std::future::Future<Output = Option<String>> + Send;
+
+    fn delete(&self, key: &str) -> impl std::future::Future<Output = ()> + Send;
 }
 
 pub trait TRead {
