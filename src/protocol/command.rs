@@ -1,6 +1,7 @@
 use super::value::Value;
 use anyhow::Result;
 
+#[derive(Debug)]
 pub struct Args(pub(crate) Vec<Value>);
 impl Args {
     pub(crate) fn extract_command(value: Value) -> Result<(String, Self)> {

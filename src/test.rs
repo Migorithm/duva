@@ -1,7 +1,10 @@
+use std::sync::Arc;
+
 use bytes::BytesMut;
 
 use crate::{
     adapters::in_memory::InMemoryDb,
+    config::Config,
     handlers::Handler,
     interface::{Database, TRead, TWriteBuf},
     protocol::{self},
@@ -41,9 +44,12 @@ async fn test_set() {
             .to_vec(),
     };
     let mut parser = protocol::MessageParser::new(stream);
+    let mut handler = Handler {
+        conf: Arc::new(Config::new()),
+    };
 
     // WHEN
-    Handler::handle(&mut parser).await.unwrap();
+    handler.handle(&mut parser).await.unwrap();
 
     let value = InMemoryDb.get("key").await.unwrap();
 
@@ -62,9 +68,12 @@ async fn test_set_with_expiry() {
             .to_vec(),
     };
     let mut parser = protocol::MessageParser::new(stream);
-
+    let mut handler = Handler {
+        conf: Arc::new(Config::new()),
+    };
     // WHEN
-    Handler::handle(&mut parser).await.unwrap();
+
+    handler.handle(&mut parser).await.unwrap();
 
     let value = InMemoryDb.get("foo").await.unwrap();
 
@@ -87,9 +96,12 @@ async fn test_set_with_expire_should_expire_within_100ms() {
             .to_vec(),
     };
     let mut parser = protocol::MessageParser::new(stream);
+    let mut handler = Handler {
+        conf: Arc::new(Config::new()),
+    };
 
     // WHEN
-    Handler::handle(&mut parser).await.unwrap();
+    handler.handle(&mut parser).await.unwrap();
 
     let value = InMemoryDb.get("foo").await.unwrap();
 
@@ -102,4 +114,37 @@ async fn test_set_with_expire_should_expire_within_100ms() {
 
     //THEN
     assert_eq!(value, None);
+}
+
+/// Cache config should be injected to the handler!
+/// This is to enable client to configure things dynamically.
+///
+/// if the value of dir is /tmp, then the expected response to CONFIG GET dir is:
+/// *2\r\n$3\r\ndir\r\n$4\r\n/tmp\r\n
+#[tokio::test]
+async fn test_config_get_dir() {
+    //GIVEN
+    let mut conf = Config::new();
+    conf.dir = Some("/tmp".to_string());
+
+    let stream = FakeStream {
+        written: "*3\r\n$6\r\nCONFIG\r\n$3\r\nGET\r\n$3\r\ndir\r\n"
+            .as_bytes()
+            .to_vec(),
+    };
+    let mut parser = protocol::MessageParser::new(stream);
+
+    let mut handler = Handler {
+        conf: Arc::new(conf),
+    };
+    // WHEN
+    handler.handle(&mut parser).await.unwrap();
+
+    // THEN
+    let res = "*2\r\n$3\r\ndir\r\n$4\r\n/tmp\r\n";
+    let written = String::from_utf8(
+        parser.stream.written[parser.stream.written.len() - res.len()..].to_vec(),
+    )
+    .unwrap();
+    assert_eq!(written, res.to_string());
 }
