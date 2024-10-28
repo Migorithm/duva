@@ -3,19 +3,24 @@ use std::{
     time::{Duration, SystemTime},
 };
 
-use crate::services::interface::Database;
+use crate::services::{hasher::get_hash, persistence::PersistEnum};
 use anyhow::Result;
-use tokio::time::interval;
+use tokio::{sync::mpsc::Sender, time::interval};
 
 use super::pr_queue;
-pub async fn delete_actor(db: impl Database) -> Result<()> {
+pub async fn delete_actor(senders_to_persistent_actors: Vec<Sender<PersistEnum>>) -> Result<()> {
+    //TODO interval period should be configurable
     let mut cleanup_interval = interval(Duration::from_millis(1));
     loop {
         cleanup_interval.tick().await;
         let mut queue = pr_queue().write().await;
         while let Some((Reverse(expiry), key)) = queue.peek() {
             if expiry <= &SystemTime::now() {
-                db.delete(key).await;
+                let shard_key = get_hash(key).shard_key(senders_to_persistent_actors.len());
+
+                let db = &senders_to_persistent_actors[shard_key];
+                db.send(PersistEnum::Delete(key.clone())).await?;
+
                 queue.pop();
             } else {
                 break;

@@ -1,8 +1,6 @@
-pub mod adapters;
-
 mod config;
 pub mod services;
-use adapters::in_memory::InMemoryDb;
+
 use anyhow::Result;
 use config::Config;
 use services::{
@@ -29,17 +27,17 @@ async fn main() -> Result<()> {
     // You can use print statements as follows for debugging, they'll be visible when running tests.
     println!("Logs from your program will appear here!");
 
-    tokio::spawn(delete_actor(InMemoryDb));
-
     let (tx, rx) = tokio::sync::mpsc::channel(100);
     tokio::spawn(set_ttl_actor(rx));
 
     let mut persistence_senders = Vec::with_capacity(NUM_OF_PERSISTENCE);
+
     (0..NUM_OF_PERSISTENCE).for_each(|_| {
         let (tx, rx) = tokio::sync::mpsc::channel(100);
         tokio::spawn(persist_actor(rx));
         persistence_senders.push(tx);
     });
+    tokio::spawn(delete_actor(persistence_senders.clone()));
 
     let config = Arc::new(Config::new());
     let listener = TcpListener::bind(config.bind_addr()).await?;

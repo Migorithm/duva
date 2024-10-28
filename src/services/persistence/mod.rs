@@ -1,5 +1,5 @@
 use super::query_manager::{
-    command::Args,
+    query::Args,
     value::{TtlCommand, Value},
 };
 use anyhow::Result;
@@ -13,6 +13,7 @@ use tokio::sync::{
 pub enum PersistEnum {
     Set(Args, mpsc::Sender<TtlCommand>),
     Get(Args, oneshot::Sender<Value>),
+    Delete(String),
     StopSentinel,
 }
 
@@ -53,6 +54,10 @@ impl CacheDb {
         };
         let _ = sender.send(self.get(&key).cloned().into());
     }
+
+    fn handle_delete(&mut self, key: &str) {
+        self.remove(key);
+    }
 }
 
 pub async fn persist_actor(mut recv: Receiver<PersistEnum>) -> Result<()> {
@@ -70,6 +75,7 @@ pub async fn persist_actor(mut recv: Receiver<PersistEnum>) -> Result<()> {
             PersistEnum::Get(args, sender) => {
                 db.handle_get(&args, sender);
             }
+            PersistEnum::Delete(key) => db.handle_delete(&key),
         }
     }
     Ok(())

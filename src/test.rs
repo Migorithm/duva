@@ -4,14 +4,13 @@ use bytes::BytesMut;
 use tokio::sync::mpsc::Sender;
 
 use crate::{
-    adapters::in_memory::InMemoryDb,
     config::Config,
     services::{
         config_handler::ConfigHandler,
-        interface::{Database, TRead, TWriteBuf},
+        interface::{TRead, TWriteBuf},
         persistence::{persist_actor, PersistEnum},
         query_manager::{
-            command::Args,
+            query::Args,
             value::{TtlCommand, Value},
             MessageParser,
         },
@@ -50,10 +49,10 @@ fn run_persistent_actors() -> Vec<Sender<PersistEnum>> {
     senders_to_persistent_actors
 }
 
-fn run_ttl_actors() -> Sender<TtlCommand> {
+fn run_ttl_actors(senders_to_handlers: &[Sender<PersistEnum>]) -> Sender<TtlCommand> {
     let (tx, rx) = tokio::sync::mpsc::channel(100);
     let _ = tokio::spawn(set_ttl_actor(rx));
-    let _ = tokio::spawn(delete_actor(InMemoryDb));
+    let _ = tokio::spawn(delete_actor(senders_to_handlers.to_vec()));
     tx
 }
 
@@ -84,10 +83,10 @@ async fn test_set() {
             .as_bytes()
             .to_vec(),
     };
-    let ttl_sender = run_ttl_actors();
+    let persistence_handlers = run_persistent_actors();
+    let ttl_sender = run_ttl_actors(&persistence_handlers);
     let mut parser = MessageParser::new(stream);
     let mut handler = ServiceFacade::new(ConfigHandler::new(Arc::new(Config::new())), ttl_sender);
-    let persistence_handlers = run_persistent_actors();
 
     // WHEN
     handler
@@ -112,10 +111,10 @@ async fn test_set_with_expiry() {
             .as_bytes()
             .to_vec(),
     };
-    let ttl_sender = run_ttl_actors();
+    let senders_to_persistent_actors: Vec<Sender<PersistEnum>> = run_persistent_actors();
+    let ttl_sender = run_ttl_actors(&senders_to_persistent_actors);
     let mut parser = MessageParser::new(stream);
     let mut handler = ServiceFacade::new(ConfigHandler::new(Arc::new(Config::new())), ttl_sender);
-    let senders_to_persistent_actors: Vec<Sender<PersistEnum>> = run_persistent_actors();
     // WHEN
 
     handler
@@ -123,17 +122,17 @@ async fn test_set_with_expiry() {
         .await
         .unwrap();
 
-    let value = InMemoryDb.get("foo").await.unwrap();
+    let value = get_key("foo", &senders_to_persistent_actors).await;
 
     // THEN
-    assert_eq!(value, "bar");
+    assert_eq!(value, Value::BulkString("bar".to_string()));
 
     // WHEN2 - wait for 5ms
     tokio::time::sleep(tokio::time::Duration::from_millis(5)).await;
-    let value = InMemoryDb.get("foo").await.unwrap();
+    let value = get_key("foo", &senders_to_persistent_actors).await;
 
     //THEN
-    assert_eq!(value, "bar");
+    assert_eq!(value, Value::BulkString("bar".to_string()));
 }
 
 #[tokio::test]
@@ -143,10 +142,10 @@ async fn test_set_with_expire_should_expire_within_100ms() {
             .as_bytes()
             .to_vec(),
     };
-    let ttl_sender = run_ttl_actors();
+    let senders_to_persistent_actors: Vec<Sender<PersistEnum>> = run_persistent_actors();
+    let ttl_sender = run_ttl_actors(&senders_to_persistent_actors);
     let mut parser = MessageParser::new(stream);
     let mut handler = ServiceFacade::new(ConfigHandler::new(Arc::new(Config::new())), ttl_sender);
-    let senders_to_persistent_actors: Vec<Sender<PersistEnum>> = run_persistent_actors();
 
     // WHEN
     handler
@@ -154,17 +153,17 @@ async fn test_set_with_expire_should_expire_within_100ms() {
         .await
         .unwrap();
 
-    let value = InMemoryDb.get("foo").await.unwrap();
+    let value = get_key("foo", &senders_to_persistent_actors).await;
 
     // THEN
-    assert_eq!(value, "bar");
+    assert_eq!(value, Value::BulkString("bar".to_string()));
 
     // WHEN2 - wait for 100ms
     tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-    let value = InMemoryDb.get("foo").await;
+    let value = get_key("foo", &senders_to_persistent_actors).await;
 
     //THEN
-    assert_eq!(value, None);
+    assert_eq!(value, Value::Null);
 }
 
 /// Cache config should be injected to the handler!
@@ -183,10 +182,10 @@ async fn test_config_get_dir() {
             .as_bytes()
             .to_vec(),
     };
-    let ttl_sender = run_ttl_actors();
+    let senders_to_persistent_actors: Vec<Sender<PersistEnum>> = run_persistent_actors();
+    let ttl_sender = run_ttl_actors(&senders_to_persistent_actors);
     let mut parser = MessageParser::new(stream);
     let mut handler = ServiceFacade::new(ConfigHandler::new(Arc::new(conf)), ttl_sender);
-    let senders_to_persistent_actors: Vec<Sender<PersistEnum>> = run_persistent_actors();
 
     // WHEN
     handler

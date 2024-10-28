@@ -2,6 +2,7 @@ pub mod config_handler;
 pub mod interface;
 pub mod persistence;
 
+pub mod hasher;
 pub mod query_manager;
 pub mod ttl_handlers;
 
@@ -11,7 +12,7 @@ use interface::{TRead, TWriteBuf};
 use persistence::PersistEnum;
 
 use query_manager::{
-    command::Args,
+    query::Args,
     value::{TtlCommand, Value},
     MessageParser,
 };
@@ -40,7 +41,7 @@ impl ServiceFacade {
             return Err(anyhow::anyhow!("Connection closed"));
         };
 
-        let (command, args) = Args::extract_command(v)?;
+        let (command, args) = Args::extract_query(v)?;
 
         // TODO if it is persistence operation, get the key and hash, take the appropriate sender, send it;
         let response = match command.as_str() {
