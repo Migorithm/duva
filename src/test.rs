@@ -57,6 +57,19 @@ fn run_ttl_actors() -> Sender<TtlCommand> {
     tx
 }
 
+async fn get_key(key: &str, senders_to_handlers: &[Sender<PersistEnum>]) -> Value {
+    let args = Args(vec![Value::BulkString(key.to_string())]);
+
+    let shard_key = args.take_shard_key(senders_to_handlers.len()).unwrap();
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    senders_to_handlers[shard_key]
+        .send(PersistEnum::Get(args.clone(), tx))
+        .await
+        .unwrap();
+
+    rx.await.unwrap()
+}
+
 /// The following is to test out the set operation with no expiry
 /// FakeStream should be used to create RespHandler.
 /// `read_operation`` should be called on the handler to get the command.
@@ -84,16 +97,7 @@ async fn test_set() {
 
     // parser.stream.written = "*2\r\n$3\r\nGET\r\n$3\r\nkey\r\n".as_bytes().to_vec();
 
-    let args = Args(vec![Value::BulkString("key".to_string())]);
-
-    let shard_key = args.take_shard_key(persistence_handlers.len()).unwrap();
-    let (tx, rx) = tokio::sync::oneshot::channel();
-    persistence_handlers[shard_key]
-        .send(PersistEnum::Get(args.clone(), tx))
-        .await
-        .unwrap();
-
-    let value = rx.await.unwrap();
+    let value = get_key("key", &persistence_handlers).await;
     // THEN
     assert_eq!(value, Value::BulkString("value".to_string()),);
 }
