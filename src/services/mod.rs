@@ -1,6 +1,7 @@
 pub mod config_handler;
 pub mod interface;
 pub mod parser;
+pub mod persistence;
 pub mod persistence_handler;
 pub mod ttl_handlers;
 use anyhow::Result;
