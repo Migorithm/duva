@@ -2,6 +2,7 @@ pub mod config_handler;
 pub mod interface;
 pub mod parser;
 pub mod persistence_handler;
+pub mod ttl_handlers;
 use anyhow::Result;
 use config_handler::ConfigHandler;
 use interface::{Database, TRead, TWriteBuf};

@@ -1,5 +1,5 @@
 pub mod adapters;
-mod backgrounds;
+
 mod config;
 pub mod services;
 use adapters::in_memory::InMemoryDb;
@@ -9,8 +9,9 @@ use services::{
     config_handler::ConfigHandler,
     parser::{value::TtlCommand, MessageParser},
     persistence_handler::PersistenceHandler,
+    ttl_handlers::{delete::delete_actor, set::set_ttl_actor},
 };
-use std::{sync::Arc, time::SystemTime};
+use std::sync::Arc;
 use tokio::{
     net::{TcpListener, TcpStream},
     sync::mpsc::Sender,
@@ -26,10 +27,10 @@ async fn main() -> Result<()> {
     // You can use print statements as follows for debugging, they'll be visible when running tests.
     println!("Logs from your program will appear here!");
 
-    tokio::spawn(backgrounds::delete_actor(InMemoryDb));
+    tokio::spawn(delete_actor(InMemoryDb));
 
     let (tx, rx) = tokio::sync::mpsc::channel(100);
-    tokio::spawn(backgrounds::set_ttl_actor(rx));
+    tokio::spawn(set_ttl_actor(rx));
 
     let config = Arc::new(Config::new());
     let listener = TcpListener::bind(config.bind_addr()).await?;
