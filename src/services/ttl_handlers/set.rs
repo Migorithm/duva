@@ -5,7 +5,7 @@ use std::{
 
 use tokio::sync::mpsc::Receiver;
 
-use crate::services::parser::value::TtlCommand;
+use crate::services::query_manager::value::TtlCommand;
 use anyhow::Result;
 
 use super::pr_queue;

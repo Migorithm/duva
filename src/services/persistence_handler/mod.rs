@@ -1,6 +1,6 @@
 use super::{
     interface::Database,
-    parser::{
+    query_manager::{
         command::Args,
         value::{TtlCommand, Value},
     },

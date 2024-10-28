@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use crate::config::Config;
 
-use super::parser::{command::Args, value::Value};
+use super::query_manager::{command::Args, value::Value};
 use anyhow::Result;
 pub(crate) struct ConfigHandler {
     pub(crate) conf: Arc<Config>,

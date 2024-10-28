@@ -8,8 +8,8 @@ use crate::{
     services::{
         config_handler::ConfigHandler,
         interface::{Database, TRead, TWriteBuf},
-        parser::MessageParser,
         persistence_handler::PersistenceHandler,
+        query_manager::MessageParser,
         ttl_handlers::{delete::delete_actor, set::set_ttl_actor},
         ServiceFacade,
     },
