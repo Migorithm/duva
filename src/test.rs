@@ -4,6 +4,7 @@ use bytes::BytesMut;
 
 use crate::{
     adapters::in_memory::InMemoryDb,
+    backgrounds::{delete_actor, set_ttl_actor},
     config::Config,
     services::{
         config_handler::ConfigHandler,
@@ -48,11 +49,11 @@ async fn test_set() {
             .as_bytes()
             .to_vec(),
     };
+    let (tx, _) = tokio::sync::mpsc::channel(100);
     let mut parser = MessageParser::new(stream);
-
     let mut handler = ServiceFacade::new(
         ConfigHandler::new(Arc::new(Config::new())),
-        PersistenceHandler::new(InMemoryDb),
+        PersistenceHandler::new(InMemoryDb, tx),
     );
 
     // WHEN
@@ -74,12 +75,16 @@ async fn test_set_with_expiry() {
             .as_bytes()
             .to_vec(),
     };
+    let (tx, rx) = tokio::sync::mpsc::channel(100);
     let mut parser = MessageParser::new(stream);
     let mut handler = ServiceFacade::new(
         ConfigHandler::new(Arc::new(Config::new())),
-        PersistenceHandler::new(InMemoryDb),
+        PersistenceHandler::new(InMemoryDb, tx),
     );
+
     // WHEN
+    let _ = tokio::spawn(set_ttl_actor(rx));
+    let _ = tokio::spawn(delete_actor(InMemoryDb));
 
     handler.handle(&mut parser).await.unwrap();
 
@@ -103,11 +108,15 @@ async fn test_set_with_expire_should_expire_within_100ms() {
             .as_bytes()
             .to_vec(),
     };
+    let (tx, rx) = tokio::sync::mpsc::channel(100);
     let mut parser = MessageParser::new(stream);
     let mut handler = ServiceFacade::new(
         ConfigHandler::new(Arc::new(Config::new())),
-        PersistenceHandler::new(InMemoryDb),
+        PersistenceHandler::new(InMemoryDb, tx),
     );
+
+    let _ = tokio::spawn(set_ttl_actor(rx));
+    let _ = tokio::spawn(delete_actor(InMemoryDb));
 
     // WHEN
     handler.handle(&mut parser).await.unwrap();
@@ -141,10 +150,11 @@ async fn test_config_get_dir() {
             .as_bytes()
             .to_vec(),
     };
+    let (tx, _) = tokio::sync::mpsc::channel(100);
     let mut parser = MessageParser::new(stream);
     let mut handler = ServiceFacade::new(
         ConfigHandler::new(Arc::new(conf)),
-        PersistenceHandler::new(InMemoryDb),
+        PersistenceHandler::new(InMemoryDb, tx),
     );
     // WHEN
     handler.handle(&mut parser).await.unwrap();

@@ -20,4 +20,16 @@ impl Value {
             Value::Null => "$-1\r\n".to_string(),
         }
     }
+    pub fn extract_expiry(&self) -> anyhow::Result<u64> {
+        match self {
+            Value::BulkString(expiry) => Ok(expiry.parse::<u64>()?),
+            _ => Err(anyhow::anyhow!("Invalid expiry")),
+        }
+    }
+}
+
+//TODO move to a separate file
+pub enum TtlCommand {
+    Expiry { expiry: u64, key: String },
+    StopSentinel,
 }
