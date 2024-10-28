@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use bytes::BytesMut;
+use tokio::sync::mpsc::Sender;
 
 use crate::{
     adapters::in_memory::InMemoryDb,
@@ -8,8 +9,12 @@ use crate::{
     services::{
         config_handler::ConfigHandler,
         interface::{Database, TRead, TWriteBuf},
-        persistence_handler::PersistenceHandler,
-        query_manager::MessageParser,
+        persistence::{persist_actor, PersistEnum},
+        query_manager::{
+            command::Args,
+            value::{TtlCommand, Value},
+            MessageParser,
+        },
         ttl_handlers::{delete::delete_actor, set::set_ttl_actor},
         ServiceFacade,
     },
@@ -35,6 +40,23 @@ impl TWriteBuf for FakeStream {
     }
 }
 
+fn run_persistent_actors() -> Vec<Sender<PersistEnum>> {
+    let mut senders_to_persistent_actors: Vec<Sender<PersistEnum>> = Vec::new();
+    (0..3).for_each(|_| {
+        let (tx, rx) = tokio::sync::mpsc::channel(100);
+        tokio::spawn(persist_actor(rx));
+        senders_to_persistent_actors.push(tx);
+    });
+    senders_to_persistent_actors
+}
+
+fn run_ttl_actors() -> Sender<TtlCommand> {
+    let (tx, rx) = tokio::sync::mpsc::channel(100);
+    let _ = tokio::spawn(set_ttl_actor(rx));
+    let _ = tokio::spawn(delete_actor(InMemoryDb));
+    tx
+}
+
 /// The following is to test out the set operation with no expiry
 /// FakeStream should be used to create RespHandler.
 /// `read_operation`` should be called on the handler to get the command.
@@ -49,20 +71,31 @@ async fn test_set() {
             .as_bytes()
             .to_vec(),
     };
-    let (tx, _) = tokio::sync::mpsc::channel(100);
+    let ttl_sender = run_ttl_actors();
     let mut parser = MessageParser::new(stream);
-    let mut handler = ServiceFacade::new(
-        ConfigHandler::new(Arc::new(Config::new())),
-        PersistenceHandler::new(InMemoryDb, tx),
-    );
+    let mut handler = ServiceFacade::new(ConfigHandler::new(Arc::new(Config::new())), ttl_sender);
+    let persistence_handlers = run_persistent_actors();
 
     // WHEN
-    handler.handle(&mut parser).await.unwrap();
+    handler
+        .handle(&mut parser, &persistence_handlers)
+        .await
+        .unwrap();
 
-    let value = InMemoryDb.get("key").await.unwrap();
+    // parser.stream.written = "*2\r\n$3\r\nGET\r\n$3\r\nkey\r\n".as_bytes().to_vec();
 
+    let args = Args(vec![Value::BulkString("key".to_string())]);
+
+    let shard_key = args.take_shard_key(persistence_handlers.len()).unwrap();
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    persistence_handlers[shard_key]
+        .send(PersistEnum::Get(args.clone(), tx))
+        .await
+        .unwrap();
+
+    let value = rx.await.unwrap();
     // THEN
-    assert_eq!(value, "value");
+    assert_eq!(value, Value::BulkString("value".to_string()),);
 }
 
 /// The following is to test out the set operation with expiry
@@ -75,18 +108,16 @@ async fn test_set_with_expiry() {
             .as_bytes()
             .to_vec(),
     };
-    let (tx, rx) = tokio::sync::mpsc::channel(100);
+    let ttl_sender = run_ttl_actors();
     let mut parser = MessageParser::new(stream);
-    let mut handler = ServiceFacade::new(
-        ConfigHandler::new(Arc::new(Config::new())),
-        PersistenceHandler::new(InMemoryDb, tx),
-    );
-
+    let mut handler = ServiceFacade::new(ConfigHandler::new(Arc::new(Config::new())), ttl_sender);
+    let senders_to_persistent_actors: Vec<Sender<PersistEnum>> = run_persistent_actors();
     // WHEN
-    let _ = tokio::spawn(set_ttl_actor(rx));
-    let _ = tokio::spawn(delete_actor(InMemoryDb));
 
-    handler.handle(&mut parser).await.unwrap();
+    handler
+        .handle(&mut parser, &senders_to_persistent_actors)
+        .await
+        .unwrap();
 
     let value = InMemoryDb.get("foo").await.unwrap();
 
@@ -108,18 +139,16 @@ async fn test_set_with_expire_should_expire_within_100ms() {
             .as_bytes()
             .to_vec(),
     };
-    let (tx, rx) = tokio::sync::mpsc::channel(100);
+    let ttl_sender = run_ttl_actors();
     let mut parser = MessageParser::new(stream);
-    let mut handler = ServiceFacade::new(
-        ConfigHandler::new(Arc::new(Config::new())),
-        PersistenceHandler::new(InMemoryDb, tx),
-    );
-
-    let _ = tokio::spawn(set_ttl_actor(rx));
-    let _ = tokio::spawn(delete_actor(InMemoryDb));
+    let mut handler = ServiceFacade::new(ConfigHandler::new(Arc::new(Config::new())), ttl_sender);
+    let senders_to_persistent_actors: Vec<Sender<PersistEnum>> = run_persistent_actors();
 
     // WHEN
-    handler.handle(&mut parser).await.unwrap();
+    handler
+        .handle(&mut parser, &senders_to_persistent_actors)
+        .await
+        .unwrap();
 
     let value = InMemoryDb.get("foo").await.unwrap();
 
@@ -150,14 +179,16 @@ async fn test_config_get_dir() {
             .as_bytes()
             .to_vec(),
     };
-    let (tx, _) = tokio::sync::mpsc::channel(100);
+    let ttl_sender = run_ttl_actors();
     let mut parser = MessageParser::new(stream);
-    let mut handler = ServiceFacade::new(
-        ConfigHandler::new(Arc::new(conf)),
-        PersistenceHandler::new(InMemoryDb, tx),
-    );
+    let mut handler = ServiceFacade::new(ConfigHandler::new(Arc::new(conf)), ttl_sender);
+    let senders_to_persistent_actors: Vec<Sender<PersistEnum>> = run_persistent_actors();
+
     // WHEN
-    handler.handle(&mut parser).await.unwrap();
+    handler
+        .handle(&mut parser, &senders_to_persistent_actors)
+        .await
+        .unwrap();
 
     // THEN
     let res = "*2\r\n$3\r\ndir\r\n$4\r\n/tmp\r\n";

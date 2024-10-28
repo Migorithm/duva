@@ -19,7 +19,8 @@ impl Value {
                 result
             }
             Value::Null => "$-1\r\n".to_string(),
-            Value::Err(e) => format!("-{}\r\n", e),
+
+            Value::Err(s) => format!("-{}\r\n", s),
         }
     }
     pub fn extract_expiry(&self) -> anyhow::Result<u64> {

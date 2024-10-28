@@ -1,7 +1,4 @@
-use std::{
-    collections::hash_map,
-    hash::{Hash, Hasher},
-};
+use std::hash::{DefaultHasher, Hash, Hasher};
 
 use super::value::Value;
 use anyhow::Result;
@@ -18,21 +15,19 @@ impl Args {
             _ => Err(anyhow::anyhow!("Unexpected command format")),
         }
     }
-    pub(crate) fn first(&self) -> Result<Value> {
-        self.0.first().cloned().ok_or(anyhow::anyhow!("No value"))
-    }
 
     pub(crate) fn take_shard_key(&self, num_shards: usize) -> Result<usize> {
-        let key = self.first()?;
-
-        match key {
-            Value::BulkString(key) => {
-                let mut hasher = hash_map::DefaultHasher::new();
-                key.hash(&mut hasher);
-                Ok(hasher.finish() as usize % num_shards)
-            }
-            _ => Err(anyhow::anyhow!("Expected key to be a bulk string")),
-        }
+        let Value::BulkString(key) = self.first()? else {
+            return Err(anyhow::anyhow!("Invalid arguments"));
+        };
+        // hasher
+        let mut hasher = DefaultHasher::new();
+        key.hash(&mut hasher);
+        let hash_result = hasher.finish() as usize;
+        Ok(hash_result % num_shards)
+    }
+    pub(crate) fn first(&self) -> Result<Value> {
+        self.0.first().cloned().ok_or(anyhow::anyhow!("No value"))
     }
 
     pub(crate) fn take_set_args(&self) -> Result<(Value, &Value, Option<&Value>)> {

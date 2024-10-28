@@ -8,7 +8,6 @@ use config::Config;
 use services::{
     config_handler::ConfigHandler,
     persistence::{persist_actor, PersistEnum},
-    persistence_handler::{self, PersistenceHandler},
     query_manager::{value::TtlCommand, MessageParser},
     ttl_handlers::{delete::delete_actor, set::set_ttl_actor},
 };
@@ -70,10 +69,8 @@ async fn process(
     persistence_senders: Vec<Sender<PersistEnum>>,
 ) -> Result<()> {
     let mut parser = MessageParser::new(stream);
-    let mut handler = services::ServiceFacade::new(
-        ConfigHandler::new(Arc::clone(&conf)),
-        PersistenceHandler::new(InMemoryDb, ttl_sender),
-    );
+    let mut handler =
+        services::ServiceFacade::new(ConfigHandler::new(Arc::clone(&conf)), ttl_sender);
 
     loop {
         handler.handle(&mut parser, &persistence_senders).await?;
