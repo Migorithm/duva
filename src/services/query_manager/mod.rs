@@ -1,6 +1,6 @@
 use anyhow::Result;
 use bytes::BytesMut;
-pub mod command;
+pub mod query;
 pub mod value;
 use crate::services::interface::{TRead, TWriteBuf};
 use value::Value;

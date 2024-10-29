@@ -4,6 +4,7 @@ pub enum Value {
     BulkString(String),
     Array(Vec<Value>),
     Null,
+    Err(String),
 }
 impl Value {
     pub fn serialize(&self) -> String {
@@ -18,6 +19,7 @@ impl Value {
                 result
             }
             Value::Null => "$-1\r\n".to_string(),
+            Value::Err(e) => format!("-{}\r\n", e),
         }
     }
     pub fn extract_expiry(&self) -> anyhow::Result<u64> {

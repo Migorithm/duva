@@ -1,10 +1,12 @@
+use crate::services::hasher::get_hash;
+
 use super::value::Value;
 use anyhow::Result;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Args(pub(crate) Vec<Value>);
 impl Args {
-    pub(crate) fn extract_command(value: Value) -> Result<(String, Self)> {
+    pub(crate) fn extract_query(value: Value) -> Result<(String, Self)> {
         match value {
             Value::Array(a) => Ok((
                 unpack_bulk_str(a.first().unwrap().clone())?,
@@ -15,6 +17,15 @@ impl Args {
     }
     pub(crate) fn first(&self) -> Result<Value> {
         self.0.first().cloned().ok_or(anyhow::anyhow!("No value"))
+    }
+
+    pub(crate) fn take_shard_key(&self, num_shards: usize) -> Result<usize> {
+        let key = self.first()?;
+
+        match key {
+            Value::BulkString(key) => Ok(get_hash(&key).shard_key(num_shards)),
+            _ => Err(anyhow::anyhow!("Expected key to be a bulk string")),
+        }
     }
 
     pub(crate) fn take_set_args(&self) -> Result<(Value, &Value, Option<&Value>)> {
