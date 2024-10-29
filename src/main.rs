@@ -5,6 +5,7 @@ use anyhow::Result;
 use config::Config;
 use services::{
     config_handler::ConfigHandler,
+    controller::UserRequestController,
     persistence::{
         router::{run_persistent_actors, PersistenceRouter},
         ttl_handlers::{
@@ -12,7 +13,6 @@ use services::{
             set::{run_set_ttl_actor, TtlSetter},
         },
     },
-    query_manager::MessageParser,
 };
 use std::sync::Arc;
 use tokio::net::{TcpListener, TcpStream};
@@ -56,12 +56,16 @@ fn process(
     persistence_router: PersistenceRouter,
 ) {
     tokio::spawn(async move {
-        let mut parser = MessageParser::new(stream);
-        let mut handler =
+        let mut user_request_controller = UserRequestController::new(stream);
+
+        let mut service_facade =
             services::ServiceFacade::new(ConfigHandler::new(Arc::clone(&conf)), ttl_sender);
 
         loop {
-            match handler.handle(&mut parser, &persistence_router).await {
+            match service_facade
+                .handle(&mut user_request_controller, &persistence_router)
+                .await
+            {
                 Ok(_) => println!("Connection closed"),
                 Err(e) => eprintln!("Error: {:?}", e),
             }

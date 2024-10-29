@@ -1,8 +1,8 @@
-use super::{super::query_manager::value::Value, ttl_handlers::set::TtlSetter};
+use super::{super::controller::value::Value, ttl_handlers::set::TtlSetter};
 
 use tokio::sync::oneshot;
 
-use super::super::query_manager::query::Args;
+use super::super::controller::query::Args;
 
 pub enum PersistCommand {
     Set(Args, TtlSetter),

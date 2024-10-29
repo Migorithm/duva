@@ -2,14 +2,14 @@ pub mod config_handler;
 pub mod interface;
 pub mod persistence;
 
-pub mod query_manager;
+pub mod controller;
 
 use anyhow::Result;
 use config_handler::ConfigHandler;
 use interface::{TRead, TWriteBuf};
 use persistence::{router::PersistenceRouter, ttl_handlers::set::TtlSetter};
 
-use query_manager::{query::Args, value::Value, MessageParser};
+use controller::{query::Args, value::Value, UserRequestController};
 
 // Facade for the service layer
 // This struct will be used to handle the incoming requests and send the response back to the client.
@@ -27,10 +27,10 @@ impl ServiceFacade {
 
     pub async fn handle<U: TWriteBuf + TRead>(
         &mut self,
-        resp_handler: &mut MessageParser<U>,
+        user_request_controller: &mut UserRequestController<U>,
         persistence_router: &PersistenceRouter,
     ) -> Result<()> {
-        let Some(v) = resp_handler.read_value().await? else {
+        let Some(v) = user_request_controller.read_value().await? else {
             return Err(anyhow::anyhow!("Connection closed"));
         };
 
@@ -52,7 +52,7 @@ impl ServiceFacade {
             c => panic!("Cannot handle command {}", c),
         };
 
-        resp_handler.write_value(response).await?;
+        user_request_controller.write_value(response).await?;
         Ok(())
     }
 }

@@ -1,6 +1,6 @@
 use std::hash::Hasher;
 
-use crate::services::query_manager::{query::Args, value::Value};
+use crate::services::controller::{query::Args, value::Value};
 
 use super::{command::PersistCommand, ttl_handlers::set::TtlSetter, CacheDb};
 use anyhow::Result;

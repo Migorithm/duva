@@ -5,14 +5,15 @@ pub mod value;
 use crate::services::interface::{TRead, TWriteBuf};
 use value::Value;
 
-pub struct MessageParser<T: TWriteBuf + TRead> {
+/// UserRequestController is a struct that will be used to read and write values to the client.
+pub struct UserRequestController<T: TWriteBuf + TRead> {
     pub(crate) stream: T,
     buffer: BytesMut,
 }
 
-impl<T: TWriteBuf + TRead> MessageParser<T> {
+impl<T: TWriteBuf + TRead> UserRequestController<T> {
     pub fn new(stream: T) -> Self {
-        MessageParser {
+        UserRequestController {
             stream,
             buffer: BytesMut::with_capacity(512),
         }

@@ -2,6 +2,7 @@ use crate::{
     config::Config,
     services::{
         config_handler::ConfigHandler,
+        controller::{query::Args, value::Value, UserRequestController},
         interface::{TRead, TWriteBuf},
         persistence::{
             router::{run_persistent_actors, PersistenceRouter},
@@ -10,7 +11,6 @@ use crate::{
                 set::{run_set_ttl_actor, TtlSetter},
             },
         },
-        query_manager::{query::Args, value::Value, MessageParser},
         ServiceFacade,
     },
 };
@@ -63,7 +63,7 @@ async fn test_set() {
     };
     let persistence_handlers = run_persistent_actors(3);
     let ttl_sender = run_ttl_actors(&persistence_handlers);
-    let mut parser = MessageParser::new(stream);
+    let mut parser = UserRequestController::new(stream);
     let mut handler = ServiceFacade::new(ConfigHandler::new(Arc::new(Config::new())), ttl_sender);
 
     // WHEN
@@ -91,7 +91,7 @@ async fn test_set_with_expiry() {
     };
     let senders_to_persistent_actors = run_persistent_actors(3);
     let ttl_sender = run_ttl_actors(&senders_to_persistent_actors);
-    let mut parser = MessageParser::new(stream);
+    let mut parser = UserRequestController::new(stream);
     let mut handler = ServiceFacade::new(ConfigHandler::new(Arc::new(Config::new())), ttl_sender);
     // WHEN
 
@@ -122,7 +122,7 @@ async fn test_set_with_expire_should_expire_within_100ms() {
     };
     let senders_to_persistent_actors = run_persistent_actors(3);
     let ttl_sender = run_ttl_actors(&senders_to_persistent_actors);
-    let mut parser = MessageParser::new(stream);
+    let mut parser = UserRequestController::new(stream);
     let mut handler = ServiceFacade::new(ConfigHandler::new(Arc::new(Config::new())), ttl_sender);
 
     // WHEN
@@ -162,7 +162,7 @@ async fn test_config_get_dir() {
     };
     let senders_to_persistent_actors = run_persistent_actors(3);
     let ttl_sender = run_ttl_actors(&senders_to_persistent_actors);
-    let mut parser = MessageParser::new(stream);
+    let mut parser = UserRequestController::new(stream);
     let mut handler = ServiceFacade::new(ConfigHandler::new(Arc::new(conf)), ttl_sender);
 
     // WHEN

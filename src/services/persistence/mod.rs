@@ -3,7 +3,7 @@ pub mod command;
 pub mod router;
 pub mod ttl_handlers;
 
-use super::query_manager::{query::Args, value::Value};
+use super::controller::{query::Args, value::Value};
 use anyhow::Result;
 use std::collections::HashMap;
 use tokio::sync::oneshot;
