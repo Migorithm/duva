@@ -7,9 +7,7 @@ pub mod query_manager;
 use anyhow::Result;
 use config_handler::ConfigHandler;
 use interface::{TRead, TWriteBuf};
-use persistence::{
-    command::PersistCommand, router::PersistenceRouter, ttl_handlers::set::TtlSetter,
-};
+use persistence::{router::PersistenceRouter, ttl_handlers::set::TtlSetter};
 
 use query_manager::{query::Args, value::Value, MessageParser};
 

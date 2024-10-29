@@ -4,7 +4,6 @@ use crate::{
         config_handler::ConfigHandler,
         interface::{TRead, TWriteBuf},
         persistence::{
-            command::PersistCommand,
             router::{run_persistent_actors, PersistenceRouter},
             ttl_handlers::{
                 delete::run_delete_expired_key_actor,
