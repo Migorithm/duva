@@ -5,7 +5,7 @@ use std::str::FromStr;
 
 use anyhow::Result;
 use bytes::BytesMut;
-use command::ControllerCommand;
+use command::ControllerCommand::{self, *};
 use interface::{TRead, TWriteBuf};
 
 use crate::services::{
@@ -33,18 +33,17 @@ impl<U: TWriteBuf + TRead> Controller<U> {
 
         // TODO if it is persistence operation, get the key and hash, take the appropriate sender, send it;
         let response = match cmd {
-            ControllerCommand::Ping => Value::SimpleString("PONG".to_string()),
-            ControllerCommand::Echo => args.first()?,
-            ControllerCommand::Set => {
+            Ping => Value::SimpleString("PONG".to_string()),
+            Echo => args.first()?,
+            Set => {
                 persistence_router
                     .route_set(&args, ttl_sender.clone())
-                    .await?;
-                Value::SimpleString("OK".to_string())
+                    .await?
             }
-            ControllerCommand::Get => persistence_router.route_get(&args).await?,
+            Get => persistence_router.route_get(&args).await?,
             // modify we have to add a new command
-            ControllerCommand::Config => config_handler.handle_config(&args)?,
-            ControllerCommand::Delete => panic!("Not implemented"),
+            Config => config_handler.handle_config(&args)?,
+            Delete => panic!("Not implemented"),
         };
 
         self.write_value(response).await?;

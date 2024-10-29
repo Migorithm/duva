@@ -20,11 +20,11 @@ impl PersistenceRouter {
         Ok(rx.await?)
     }
 
-    pub(crate) async fn route_set(&self, args: &Values, ttl_sender: TtlSetter) -> Result<()> {
+    pub(crate) async fn route_set(&self, args: &Values, ttl_sender: TtlSetter) -> Result<Value> {
         self.select_shard(&args)?
             .send(PersistCommand::Set(args.clone(), ttl_sender.clone()))
             .await?;
-        Ok(())
+        Ok(Value::SimpleString("OK".to_string()))
     }
 
     fn select_shard(&self, args: &Values) -> Result<&tokio::sync::mpsc::Sender<PersistCommand>> {
