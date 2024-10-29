@@ -42,9 +42,9 @@ impl Values {
     }
     pub(crate) fn extract_query(value: Value) -> Result<(String, Self)> {
         match value {
-            Value::Array(a) => Ok((
-                unpack_bulk_str(a.first().unwrap().clone())?,
-                Self(a.into_iter().skip(1).collect()),
+            Value::Array(value_array) => Ok((
+                unpack_bulk_str(value_array.first().unwrap().clone())?,
+                Self(value_array.into_iter().skip(1).collect()),
             )),
             _ => Err(anyhow::anyhow!("Unexpected command format")),
         }
