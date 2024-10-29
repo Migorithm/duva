@@ -1,6 +1,9 @@
-use super::query_manager::{
-    query::Args,
-    value::{TtlCommand, Value},
+use super::{
+    hasher::get_hash,
+    query_manager::{
+        query::Args,
+        value::{TtlCommand, Value},
+    },
 };
 use anyhow::Result;
 use std::collections::HashMap;
@@ -83,6 +86,17 @@ async fn persist_actor(mut recv: Receiver<PersistEnum>) -> Result<()> {
 
 #[derive(Clone)]
 pub struct PersistenceRouter(Vec<mpsc::Sender<PersistEnum>>);
+
+impl PersistenceRouter {
+    pub(crate) fn take_shard_key(&self, args: &Args) -> Result<usize> {
+        let key = args.first()?;
+
+        match key {
+            Value::BulkString(key) => Ok(get_hash(&key).shard_key(self.len())),
+            _ => Err(anyhow::anyhow!("Expected key to be a bulk string")),
+        }
+    }
+}
 
 pub fn run_persistent_actors(num_of_actors: usize) -> PersistenceRouter {
     let mut persistence_senders = PersistenceRouter(Vec::with_capacity(num_of_actors));

@@ -5,7 +5,7 @@ use anyhow::Result;
 use config::Config;
 use services::{
     config_handler::ConfigHandler,
-    persistence::{run_persistent_actors, PersistEnum, PersistenceRouter},
+    persistence::{run_persistent_actors, PersistenceRouter},
     query_manager::{value::TtlCommand, MessageParser},
     ttl_handlers::{delete::run_delete_expired_key_actor, set::run_set_ttl_actor},
 };

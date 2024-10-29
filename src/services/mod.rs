@@ -48,7 +48,7 @@ impl ServiceFacade {
             "ping" => Value::SimpleString("PONG".to_string()),
             "echo" => args.first()?,
             "set" => {
-                let shard_key = args.take_shard_key(persistence_handlers.len())?;
+                let shard_key = persistence_handlers.take_shard_key(&args)?;
                 persistence_handlers[shard_key as usize]
                     .send(PersistEnum::Set(args.clone(), self.ttl_sender.clone()))
                     .await?;
