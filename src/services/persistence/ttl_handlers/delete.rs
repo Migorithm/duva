@@ -3,15 +3,12 @@ use std::{
     time::{Duration, SystemTime},
 };
 
-use crate::services::{
-    hasher::get_hash,
-    persistence::{PersistEnum, PersistenceRouter},
-};
+use crate::services::persistence::{hasher::get_hash, router::PersistenceRouter, PersistEnum};
 use anyhow::Result;
 use tokio::time::interval;
 
 use super::pr_queue;
-async fn delete_actor(senders_to_persistent_actors: PersistenceRouter) -> Result<()> {
+async fn delete_actor(persistence_router: PersistenceRouter) -> Result<()> {
     //TODO interval period should be configurable
     let mut cleanup_interval = interval(Duration::from_millis(1));
     loop {
@@ -19,9 +16,9 @@ async fn delete_actor(senders_to_persistent_actors: PersistenceRouter) -> Result
         let mut queue = pr_queue().write().await;
         while let Some((Reverse(expiry), key)) = queue.peek() {
             if expiry <= &SystemTime::now() {
-                let shard_key = get_hash(key).shard_key(senders_to_persistent_actors.len());
+                let shard_key = get_hash(key).shard_key(persistence_router.len());
 
-                let db = &senders_to_persistent_actors[shard_key];
+                let db = &persistence_router[shard_key];
                 db.send(PersistEnum::Delete(key.clone())).await?;
 
                 queue.pop();

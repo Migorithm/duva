@@ -5,10 +5,9 @@ use std::{
 
 use tokio::sync::mpsc::Receiver;
 
-use crate::services::query_manager::value::TtlCommand;
 use anyhow::Result;
 
-use super::pr_queue;
+use super::{command::TtlCommand, pr_queue};
 
 async fn set_ttl_actor(mut recv: Receiver<TtlCommand>) -> Result<()> {
     while let Some(command) = recv.recv().await {

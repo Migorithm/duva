@@ -2,20 +2,14 @@ pub mod config_handler;
 pub mod interface;
 pub mod persistence;
 
-pub mod hasher;
 pub mod query_manager;
-pub mod ttl_handlers;
 
 use anyhow::Result;
 use config_handler::ConfigHandler;
 use interface::{TRead, TWriteBuf};
-use persistence::{PersistEnum, PersistenceRouter};
+use persistence::{router::PersistenceRouter, ttl_handlers::command::TtlCommand, PersistEnum};
 
-use query_manager::{
-    query::Args,
-    value::{TtlCommand, Value},
-    MessageParser,
-};
+use query_manager::{query::Args, value::Value, MessageParser};
 use tokio::sync::mpsc::Sender;
 
 // Facade for the service layer
