@@ -1,3 +1,5 @@
+use anyhow::Result;
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum Value {
     SimpleString(String),
@@ -22,16 +24,17 @@ impl Value {
             Value::Err(e) => format!("-{}\r\n", e),
         }
     }
+
+    pub fn unpack_bulk_str(self) -> Result<String> {
+        match self {
+            Value::BulkString(s) => Ok(s.to_lowercase()),
+            _ => Err(anyhow::anyhow!("Expected command to be a bulk string")),
+        }
+    }
     pub fn extract_expiry(&self) -> anyhow::Result<u64> {
         match self {
             Value::BulkString(expiry) => Ok(expiry.parse::<u64>()?),
             _ => Err(anyhow::anyhow!("Invalid expiry")),
         }
     }
-}
-
-//TODO move to a separate file
-pub enum TtlCommand {
-    Expiry { expiry: u64, key: String },
-    StopSentinel,
 }

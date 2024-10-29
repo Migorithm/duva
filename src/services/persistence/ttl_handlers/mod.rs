@@ -2,6 +2,7 @@ use std::{cmp::Reverse, collections::BinaryHeap, sync::OnceLock, time::SystemTim
 
 use tokio::sync::RwLock;
 
+pub mod command;
 pub mod delete;
 pub mod set;
 

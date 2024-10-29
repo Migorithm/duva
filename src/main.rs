@@ -1,19 +1,23 @@
 mod config;
+pub mod controller;
+pub mod macros;
 pub mod services;
 
 use anyhow::Result;
 use config::Config;
+use controller::Controller;
 use services::{
     config_handler::ConfigHandler,
-    persistence::{persist_actor, PersistEnum},
-    query_manager::{value::TtlCommand, MessageParser},
-    ttl_handlers::{delete::delete_actor, set::set_ttl_actor},
+    persistence::{
+        router::{run_persistent_actors, PersistenceRouter},
+        ttl_handlers::{
+            delete::run_delete_expired_key_actor,
+            set::{run_set_ttl_actor, TtlSetter},
+        },
+    },
 };
 use std::sync::Arc;
-use tokio::{
-    net::{TcpListener, TcpStream},
-    sync::mpsc::Sender,
-};
+use tokio::net::{TcpListener, TcpStream};
 
 #[cfg(test)]
 mod test;
@@ -27,50 +31,49 @@ async fn main() -> Result<()> {
     // You can use print statements as follows for debugging, they'll be visible when running tests.
     println!("Logs from your program will appear here!");
 
-    let (tx, rx) = tokio::sync::mpsc::channel(100);
-    tokio::spawn(set_ttl_actor(rx));
-
-    let mut persistence_senders = Vec::with_capacity(NUM_OF_PERSISTENCE);
-
-    (0..NUM_OF_PERSISTENCE).for_each(|_| {
-        let (tx, rx) = tokio::sync::mpsc::channel(100);
-        tokio::spawn(persist_actor(rx));
-        persistence_senders.push(tx);
-    });
-    tokio::spawn(delete_actor(persistence_senders.clone()));
+    let persistence_senders = run_persistent_actors(NUM_OF_PERSISTENCE);
+    run_delete_expired_key_actor(persistence_senders.clone());
+    let ttl_sender = run_set_ttl_actor();
 
     let config = Arc::new(Config::new());
     let listener = TcpListener::bind(config.bind_addr()).await?;
     loop {
         let conf = Arc::clone(&config);
-        let ttl_sender = tx.clone();
+        let t_sender = ttl_sender.clone();
         let ph = persistence_senders.clone();
         match listener.accept().await {
             Ok((socket, _)) => {
                 // Spawn a new task to handle the connection without blocking the main thread.
-                tokio::spawn(async move {
-                    match process(socket, conf, ttl_sender, ph).await {
-                        Ok(_) => println!("Connection closed"),
-                        Err(e) => eprintln!("Error: {:?}", e),
-                    };
-                });
+                process(socket, conf, t_sender, ph)
             }
             Err(e) => eprintln!("Failed to accept connection: {:?}", e),
         }
     }
 }
 
-async fn process(
+fn process(
     stream: TcpStream,
     conf: Arc<Config>,
-    ttl_sender: Sender<TtlCommand>,
-    persistence_senders: Vec<Sender<PersistEnum>>,
-) -> Result<()> {
-    let mut parser = MessageParser::new(stream);
-    let mut handler =
-        services::ServiceFacade::new(ConfigHandler::new(Arc::clone(&conf)), ttl_sender);
+    ttl_sender: TtlSetter,
+    persistence_router: PersistenceRouter,
+) {
+    tokio::spawn(async move {
+        let mut io_controller = Controller::new(stream);
 
-    loop {
-        handler.handle(&mut parser, &persistence_senders).await?;
-    }
+        let config_handler = ConfigHandler::new(Arc::clone(&conf));
+
+        loop {
+            match io_controller
+                .handle(
+                    &persistence_router,
+                    ttl_sender.clone(),
+                    config_handler.clone(),
+                )
+                .await
+            {
+                Ok(_) => println!("Connection closed"),
+                Err(e) => eprintln!("Error: {:?}", e),
+            }
+        }
+    });
 }
