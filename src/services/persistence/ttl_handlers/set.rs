@@ -1,11 +1,10 @@
-use std::{
-    cmp::Reverse,
-    ops::{Deref, DerefMut},
-};
+use std::cmp::Reverse;
 
 use tokio::sync::mpsc::Receiver;
 
 use anyhow::Result;
+
+use crate::make_smart_pointer;
 
 use super::{command::TtlCommand, pr_queue};
 
@@ -40,16 +39,4 @@ impl TtlSetter {
     }
 }
 
-impl Deref for TtlSetter {
-    type Target = tokio::sync::mpsc::Sender<TtlCommand>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl DerefMut for TtlSetter {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
-    }
-}
+make_smart_pointer!(TtlSetter, tokio::sync::mpsc::Sender<TtlCommand>);

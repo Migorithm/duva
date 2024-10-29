@@ -2,19 +2,55 @@ use anyhow::Result;
 use bytes::BytesMut;
 
 use crate::services::{
+    config_handler::ConfigHandler,
     interface::{TRead, TWriteBuf},
-    value::Value,
+    persistence::{router::PersistenceRouter, ttl_handlers::set::TtlSetter},
+    value::{Value, Values},
 };
 
-/// IOController is a struct that will be used to read and write values to the client.
-pub struct IOController<T: TWriteBuf + TRead> {
+/// Controller is a struct that will be used to read and write values to the client.
+pub struct Controller<T: TWriteBuf + TRead> {
     pub(crate) stream: T,
     buffer: BytesMut,
 }
 
-impl<T: TWriteBuf + TRead> IOController<T> {
+impl<U: TWriteBuf + TRead> Controller<U> {
+    pub(crate) async fn handle(
+        &mut self,
+        persistence_router: &PersistenceRouter,
+        ttl_sender: TtlSetter,
+        mut config_handler: ConfigHandler,
+    ) -> Result<()> {
+        let Some(v) = self.read_value().await? else {
+            return Err(anyhow::anyhow!("Connection closed"));
+        };
+
+        let (cmd_str, args) = Values::extract_query(v)?;
+
+        // TODO if it is persistence operation, get the key and hash, take the appropriate sender, send it;
+        let response = match cmd_str.as_str() {
+            "ping" => Value::SimpleString("PONG".to_string()),
+            "echo" => args.first()?,
+            "set" => {
+                persistence_router
+                    .route_set(&args, ttl_sender.clone())
+                    .await?;
+                Value::SimpleString("OK".to_string())
+            }
+            "get" => persistence_router.route_get(&args).await?,
+            // modify we have to add a new command
+            "config" => config_handler.handle_config(&args)?,
+            c => panic!("Cannot handle command {}", c),
+        };
+
+        self.write_value(response).await?;
+        Ok(())
+    }
+}
+
+impl<T: TWriteBuf + TRead> Controller<T> {
     pub fn new(stream: T) -> Self {
-        IOController {
+        Controller {
             stream,
             buffer: BytesMut::with_capacity(512),
         }

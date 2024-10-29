@@ -1,6 +1,6 @@
 use crate::{
     config::Config,
-    controller::IOController,
+    controller::Controller,
     services::{
         config_handler::ConfigHandler,
         interface::{TRead, TWriteBuf},
@@ -63,7 +63,7 @@ async fn test_set() {
     };
     let persistence_handlers = run_persistent_actors(3);
     let ttl_sender = run_ttl_actors(&persistence_handlers);
-    let mut controller = IOController::new(stream);
+    let mut controller = Controller::new(stream);
     let config_handler = ConfigHandler::new(Arc::new(Config::new()));
 
     // WHEN
@@ -91,7 +91,7 @@ async fn test_set_with_expiry() {
     };
     let persistence_router = run_persistent_actors(3);
     let ttl_sender = run_ttl_actors(&persistence_router);
-    let mut controller = IOController::new(stream);
+    let mut controller = Controller::new(stream);
     let config_handler = ConfigHandler::new(Arc::new(Config::new()));
 
     // WHEN
@@ -123,7 +123,7 @@ async fn test_set_with_expire_should_expire_within_100ms() {
     let persistence_router = run_persistent_actors(3);
     let ttl_sender = run_ttl_actors(&persistence_router);
 
-    let mut controller = IOController::new(stream);
+    let mut controller = Controller::new(stream);
     let config_handler = ConfigHandler::new(Arc::new(Config::new()));
 
     // WHEN
@@ -164,7 +164,7 @@ async fn test_config_get_dir() {
     let persistence_router = run_persistent_actors(3);
     let ttl_sender = run_ttl_actors(&persistence_router);
 
-    let mut controller = IOController::new(stream);
+    let mut controller = Controller::new(stream);
     let config_handler = ConfigHandler::new(Arc::new(conf));
 
     // WHEN

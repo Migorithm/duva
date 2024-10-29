@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use tokio::sync::oneshot;
 use ttl_handlers::set::TtlSetter;
 
-use crate::services::value::Values;
+use crate::{make_smart_pointer, services::value::Values};
 
 use super::value::Value;
 
@@ -57,15 +57,4 @@ impl From<Option<String>> for Value {
     }
 }
 
-impl std::ops::Deref for CacheDb {
-    type Target = HashMap<String, String>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-impl std::ops::DerefMut for CacheDb {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
-    }
-}
+make_smart_pointer!(CacheDb, HashMap<String, String>);

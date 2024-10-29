@@ -1,5 +1,7 @@
 use anyhow::Result;
 
+use crate::make_smart_pointer;
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum Value {
     SimpleString(String),
@@ -75,15 +77,4 @@ fn unpack_bulk_str(value: Value) -> Result<String> {
     }
 }
 
-impl std::ops::Deref for Values {
-    type Target = Vec<Value>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-impl std::ops::DerefMut for Values {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
-    }
-}
+make_smart_pointer!(Values, Vec<Value>);

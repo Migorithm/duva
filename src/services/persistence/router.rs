@@ -1,6 +1,9 @@
 use std::hash::Hasher;
 
-use crate::{services::value::Value, services::value::Values};
+use crate::{
+    make_smart_pointer,
+    services::value::{Value, Values},
+};
 
 use super::{command::PersistCommand, ttl_handlers::set::TtlSetter, CacheDb};
 use anyhow::Result;
@@ -76,15 +79,7 @@ pub fn run_persistent_actors(num_of_actors: usize) -> PersistenceRouter {
     persistence_senders
 }
 
-impl std::ops::Deref for PersistenceRouter {
-    type Target = Vec<tokio::sync::mpsc::Sender<PersistCommand>>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-impl std::ops::DerefMut for PersistenceRouter {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
-    }
-}
+make_smart_pointer!(
+    PersistenceRouter,
+    Vec<tokio::sync::mpsc::Sender<PersistCommand>>
+);

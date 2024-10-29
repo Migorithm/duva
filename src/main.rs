@@ -1,10 +1,11 @@
 mod config;
 pub mod controller;
+pub mod macros;
 pub mod services;
 
 use anyhow::Result;
 use config::Config;
-use controller::IOController;
+use controller::Controller;
 use services::{
     config_handler::ConfigHandler,
     persistence::{
@@ -57,7 +58,7 @@ fn process(
     persistence_router: PersistenceRouter,
 ) {
     tokio::spawn(async move {
-        let mut io_controller = IOController::new(stream);
+        let mut io_controller = Controller::new(stream);
 
         let config_handler = ConfigHandler::new(Arc::clone(&conf));
 
