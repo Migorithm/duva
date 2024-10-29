@@ -7,7 +7,9 @@ pub mod query_manager;
 use anyhow::Result;
 use config_handler::ConfigHandler;
 use interface::{TRead, TWriteBuf};
-use persistence::{router::PersistenceRouter, ttl_handlers::command::TtlCommand, PersistEnum};
+use persistence::{
+    command::PersistCommand, router::PersistenceRouter, ttl_handlers::command::TtlCommand,
+};
 
 use query_manager::{query::Args, value::Value, MessageParser};
 use tokio::sync::mpsc::Sender;
@@ -42,19 +44,19 @@ impl ServiceFacade {
             "ping" => Value::SimpleString("PONG".to_string()),
             "echo" => args.first()?,
             "set" => {
-                let shard_key = persistence_router.take_shard_key(&args)?;
+                let shard_key = persistence_router.take_shard_key_from_args(&args)?;
                 persistence_router[shard_key as usize]
-                    .send(PersistEnum::Set(args.clone(), self.ttl_sender.clone()))
+                    .send(PersistCommand::Set(args.clone(), self.ttl_sender.clone()))
                     .await?;
 
                 Value::SimpleString("OK".to_string())
             }
             "get" => {
-                let shard_key = persistence_router.take_shard_key(&args)?;
+                let shard_key = persistence_router.take_shard_key_from_args(&args)?;
                 let (tx, rx) = tokio::sync::oneshot::channel();
 
                 persistence_router[shard_key as usize]
-                    .send(PersistEnum::Get(args.clone(), tx))
+                    .send(PersistCommand::Get(args.clone(), tx))
                     .await?;
 
                 rx.await?

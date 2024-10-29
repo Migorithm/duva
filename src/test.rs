@@ -4,11 +4,11 @@ use crate::{
         config_handler::ConfigHandler,
         interface::{TRead, TWriteBuf},
         persistence::{
+            command::PersistCommand,
             router::{run_persistent_actors, PersistenceRouter},
             ttl_handlers::{
                 command::TtlCommand, delete::run_delete_expired_key_actor, set::run_set_ttl_actor,
             },
-            PersistEnum,
         },
         query_manager::{query::Args, value::Value, MessageParser},
         ServiceFacade,
@@ -46,10 +46,10 @@ fn run_ttl_actors(persistence_router: &PersistenceRouter) -> Sender<TtlCommand> 
 async fn get_key(key: &str, persistence_router: &PersistenceRouter) -> Value {
     let args = Args(vec![Value::BulkString(key.to_string())]);
 
-    let shard_key = persistence_router.take_shard_key(&args).unwrap();
+    let shard_key = persistence_router.take_shard_key_from_args(&args).unwrap();
     let (tx, rx) = tokio::sync::oneshot::channel();
     persistence_router[shard_key]
-        .send(PersistEnum::Get(args.clone(), tx))
+        .send(PersistCommand::Get(args.clone(), tx))
         .await
         .unwrap();
 

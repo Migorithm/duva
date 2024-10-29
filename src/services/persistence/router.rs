@@ -1,37 +1,45 @@
+use std::hash::Hasher;
+
 use crate::services::query_manager::{query::Args, value::Value};
 
-use super::{hasher::get_hash, CacheDb, PersistEnum};
+use super::{command::PersistCommand, CacheDb};
 use anyhow::Result;
 #[derive(Clone)]
-pub struct PersistenceRouter(Vec<tokio::sync::mpsc::Sender<PersistEnum>>);
+pub struct PersistenceRouter(Vec<tokio::sync::mpsc::Sender<PersistCommand>>);
 
 impl PersistenceRouter {
-    pub(crate) fn take_shard_key(&self, args: &Args) -> Result<usize> {
+    pub(crate) fn take_shard_key_from_args(&self, args: &Args) -> Result<usize> {
         let key = args.first()?;
 
         match key {
-            Value::BulkString(key) => Ok(get_hash(&key).shard_key(self.len())),
+            Value::BulkString(key) => Ok(self.take_shard_key_from_str(&key)),
             _ => Err(anyhow::anyhow!("Expected key to be a bulk string")),
         }
     }
+
+    pub(crate) fn take_shard_key_from_str(&self, s: &str) -> usize {
+        let mut hasher = std::hash::DefaultHasher::new();
+        std::hash::Hash::hash(&s, &mut hasher);
+        hasher.finish() as usize % self.len()
+    }
 }
 
-async fn persist_actor(mut recv: tokio::sync::mpsc::Receiver<PersistEnum>) -> Result<()> {
+async fn persist_actor(mut recv: tokio::sync::mpsc::Receiver<PersistCommand>) -> Result<()> {
     // inner state
     let mut db = CacheDb::default();
 
     while let Some(command) = recv.recv().await {
         match command {
-            PersistEnum::StopSentinel => break,
-            PersistEnum::Set(args, sender) => {
+            PersistCommand::StopSentinel => break,
+            PersistCommand::Set(args, sender) => {
                 // Maybe you have to pass sender?
 
                 let _ = db.handle_set(&args, sender).await;
             }
-            PersistEnum::Get(args, sender) => {
+            PersistCommand::Get(args, sender) => {
                 db.handle_get(&args, sender);
             }
-            PersistEnum::Delete(key) => db.handle_delete(&key),
+            PersistCommand::Delete(key) => db.handle_delete(&key),
         }
     }
     Ok(())
@@ -48,7 +56,7 @@ pub fn run_persistent_actors(num_of_actors: usize) -> PersistenceRouter {
 }
 
 impl std::ops::Deref for PersistenceRouter {
-    type Target = Vec<tokio::sync::mpsc::Sender<PersistEnum>>;
+    type Target = Vec<tokio::sync::mpsc::Sender<PersistCommand>>;
 
     fn deref(&self) -> &Self::Target {
         &self.0

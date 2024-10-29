@@ -1,4 +1,5 @@
-mod hasher;
+pub mod command;
+
 pub mod router;
 pub mod ttl_handlers;
 
@@ -10,14 +11,6 @@ use tokio::sync::{
     oneshot,
 };
 use ttl_handlers::command::TtlCommand;
-
-#[derive(Debug)]
-pub enum PersistEnum {
-    Set(Args, mpsc::Sender<TtlCommand>),
-    Get(Args, oneshot::Sender<Value>),
-    Delete(String),
-    StopSentinel,
-}
 
 #[derive(Default)]
 struct CacheDb(HashMap<String, String>);
