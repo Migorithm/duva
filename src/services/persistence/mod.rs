@@ -6,21 +6,14 @@ pub mod ttl_handlers;
 use super::query_manager::{query::Args, value::Value};
 use anyhow::Result;
 use std::collections::HashMap;
-use tokio::sync::{
-    mpsc::{self},
-    oneshot,
-};
-use ttl_handlers::command::TtlCommand;
+use tokio::sync::oneshot;
+use ttl_handlers::{command::TtlCommand, set::TtlSetter};
 
 #[derive(Default)]
 struct CacheDb(HashMap<String, String>);
 
 impl CacheDb {
-    pub async fn handle_set(
-        &mut self,
-        args: &Args,
-        ttl_sender: mpsc::Sender<TtlCommand>,
-    ) -> Result<Value> {
+    pub async fn handle_set(&mut self, args: &Args, ttl_sender: TtlSetter) -> Result<Value> {
         let (key, value, expiry) = args.take_set_args()?;
 
         match (key, value, expiry) {

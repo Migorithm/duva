@@ -1,4 +1,7 @@
-use std::cmp::Reverse;
+use std::{
+    cmp::Reverse,
+    ops::{Deref, DerefMut},
+};
 
 use tokio::sync::mpsc::Receiver;
 
@@ -17,8 +20,25 @@ async fn set_ttl_actor(mut recv: Receiver<TtlCommand>) -> Result<()> {
     Ok(())
 }
 
-pub fn run_set_ttl_actor() -> tokio::sync::mpsc::Sender<TtlCommand> {
+pub fn run_set_ttl_actor() -> TtlSetter {
     let (tx, rx) = tokio::sync::mpsc::channel(100);
     tokio::spawn(set_ttl_actor(rx));
-    tx
+    TtlSetter(tx)
+}
+
+#[derive(Clone)]
+pub struct TtlSetter(tokio::sync::mpsc::Sender<TtlCommand>);
+
+impl Deref for TtlSetter {
+    type Target = tokio::sync::mpsc::Sender<TtlCommand>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl DerefMut for TtlSetter {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
 }

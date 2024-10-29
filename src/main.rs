@@ -8,16 +8,14 @@ use services::{
     persistence::{
         router::{run_persistent_actors, PersistenceRouter},
         ttl_handlers::{
-            command::TtlCommand, delete::run_delete_expired_key_actor, set::run_set_ttl_actor,
+            delete::run_delete_expired_key_actor,
+            set::{run_set_ttl_actor, TtlSetter},
         },
     },
     query_manager::MessageParser,
 };
 use std::sync::Arc;
-use tokio::{
-    net::{TcpListener, TcpStream},
-    sync::mpsc::Sender,
-};
+use tokio::net::{TcpListener, TcpStream};
 
 #[cfg(test)]
 mod test;
@@ -54,7 +52,7 @@ async fn main() -> Result<()> {
 fn process(
     stream: TcpStream,
     conf: Arc<Config>,
-    ttl_sender: Sender<TtlCommand>,
+    ttl_sender: TtlSetter,
     persistence_router: PersistenceRouter,
 ) {
     tokio::spawn(async move {

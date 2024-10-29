@@ -8,20 +8,19 @@ use anyhow::Result;
 use config_handler::ConfigHandler;
 use interface::{TRead, TWriteBuf};
 use persistence::{
-    command::PersistCommand, router::PersistenceRouter, ttl_handlers::command::TtlCommand,
+    command::PersistCommand, router::PersistenceRouter, ttl_handlers::set::TtlSetter,
 };
 
 use query_manager::{query::Args, value::Value, MessageParser};
-use tokio::sync::mpsc::Sender;
 
 // Facade for the service layer
 // This struct will be used to handle the incoming requests and send the response back to the client.
 pub(crate) struct ServiceFacade {
     pub(crate) config_handler: config_handler::ConfigHandler,
-    pub(crate) ttl_sender: Sender<TtlCommand>,
+    pub(crate) ttl_sender: TtlSetter,
 }
 impl ServiceFacade {
-    pub fn new(config_handler: ConfigHandler, ttl_sender: Sender<TtlCommand>) -> Self {
+    pub fn new(config_handler: ConfigHandler, ttl_sender: TtlSetter) -> Self {
         ServiceFacade {
             config_handler: config_handler,
             ttl_sender: ttl_sender,

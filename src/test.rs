@@ -7,7 +7,8 @@ use crate::{
             command::PersistCommand,
             router::{run_persistent_actors, PersistenceRouter},
             ttl_handlers::{
-                command::TtlCommand, delete::run_delete_expired_key_actor, set::run_set_ttl_actor,
+                delete::run_delete_expired_key_actor,
+                set::{run_set_ttl_actor, TtlSetter},
             },
         },
         query_manager::{query::Args, value::Value, MessageParser},
@@ -16,7 +17,6 @@ use crate::{
 };
 use bytes::BytesMut;
 use std::sync::Arc;
-use tokio::sync::mpsc::Sender;
 
 // Fake Stream to test the write_value function
 struct FakeStream {
@@ -38,7 +38,7 @@ impl TWriteBuf for FakeStream {
     }
 }
 
-fn run_ttl_actors(persistence_router: &PersistenceRouter) -> Sender<TtlCommand> {
+fn run_ttl_actors(persistence_router: &PersistenceRouter) -> TtlSetter {
     run_delete_expired_key_actor(persistence_router.clone());
     run_set_ttl_actor()
 }

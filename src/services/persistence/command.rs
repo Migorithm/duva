@@ -1,13 +1,11 @@
-use super::{super::query_manager::value::Value, ttl_handlers};
+use super::{super::query_manager::value::Value, ttl_handlers::set::TtlSetter};
 
-use tokio::sync::{mpsc, oneshot};
-use ttl_handlers::command::TtlCommand;
+use tokio::sync::oneshot;
 
 use super::super::query_manager::query::Args;
 
-#[derive(Debug)]
 pub enum PersistCommand {
-    Set(Args, mpsc::Sender<TtlCommand>),
+    Set(Args, TtlSetter),
     Get(Args, oneshot::Sender<Value>),
     Delete(String),
     StopSentinel,
