@@ -7,7 +7,7 @@ use services::{
     config_handler::ConfigHandler,
     persistence::{run_persistent_actors, PersistEnum},
     query_manager::{value::TtlCommand, MessageParser},
-    ttl_handlers::{delete::delete_actor, set::run_set_ttl_actor},
+    ttl_handlers::{delete::run_delete_expired_key_actor, set::run_set_ttl_actor},
 };
 use std::sync::Arc;
 use tokio::{
@@ -27,10 +27,9 @@ async fn main() -> Result<()> {
     // You can use print statements as follows for debugging, they'll be visible when running tests.
     println!("Logs from your program will appear here!");
 
-    let ttl_sender = run_set_ttl_actor();
-
     let persistence_senders = run_persistent_actors(NUM_OF_PERSISTENCE);
-    tokio::spawn(delete_actor(persistence_senders.clone()));
+    run_delete_expired_key_actor(persistence_senders.clone());
+    let ttl_sender = run_set_ttl_actor();
 
     let config = Arc::new(Config::new());
     let listener = TcpListener::bind(config.bind_addr()).await?;

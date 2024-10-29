@@ -14,7 +14,7 @@ use crate::{
             value::{TtlCommand, Value},
             MessageParser,
         },
-        ttl_handlers::{delete::delete_actor, set::run_set_ttl_actor},
+        ttl_handlers::{delete::run_delete_expired_key_actor, set::run_set_ttl_actor},
         ServiceFacade,
     },
 };
@@ -40,7 +40,7 @@ impl TWriteBuf for FakeStream {
 }
 
 fn run_ttl_actors(senders_to_handlers: &[Sender<PersistEnum>]) -> Sender<TtlCommand> {
-    let _ = tokio::spawn(delete_actor(senders_to_handlers.to_vec()));
+    run_delete_expired_key_actor(senders_to_handlers.to_vec());
     run_set_ttl_actor()
 }
 
@@ -99,7 +99,7 @@ async fn test_set_with_expiry() {
             .as_bytes()
             .to_vec(),
     };
-    let senders_to_persistent_actors: Vec<Sender<PersistEnum>> = run_persistent_actors(3);
+    let senders_to_persistent_actors = run_persistent_actors(3);
     let ttl_sender = run_ttl_actors(&senders_to_persistent_actors);
     let mut parser = MessageParser::new(stream);
     let mut handler = ServiceFacade::new(ConfigHandler::new(Arc::new(Config::new())), ttl_sender);
@@ -130,7 +130,7 @@ async fn test_set_with_expire_should_expire_within_100ms() {
             .as_bytes()
             .to_vec(),
     };
-    let senders_to_persistent_actors: Vec<Sender<PersistEnum>> = run_persistent_actors(3);
+    let senders_to_persistent_actors = run_persistent_actors(3);
     let ttl_sender = run_ttl_actors(&senders_to_persistent_actors);
     let mut parser = MessageParser::new(stream);
     let mut handler = ServiceFacade::new(ConfigHandler::new(Arc::new(Config::new())), ttl_sender);
@@ -170,7 +170,7 @@ async fn test_config_get_dir() {
             .as_bytes()
             .to_vec(),
     };
-    let senders_to_persistent_actors: Vec<Sender<PersistEnum>> = run_persistent_actors(3);
+    let senders_to_persistent_actors = run_persistent_actors(3);
     let ttl_sender = run_ttl_actors(&senders_to_persistent_actors);
     let mut parser = MessageParser::new(stream);
     let mut handler = ServiceFacade::new(ConfigHandler::new(Arc::new(conf)), ttl_sender);

@@ -81,8 +81,10 @@ async fn persist_actor(mut recv: Receiver<PersistEnum>) -> Result<()> {
     Ok(())
 }
 
-pub fn run_persistent_actors(num_of_actors: usize) -> Vec<mpsc::Sender<PersistEnum>> {
-    let mut persistence_senders: Vec<mpsc::Sender<PersistEnum>> = Vec::with_capacity(num_of_actors);
+pub struct PersistenceRouter(Vec<mpsc::Sender<PersistEnum>>);
+
+pub fn run_persistent_actors(num_of_actors: usize) -> PersistenceRouter {
+    let mut persistence_senders = PersistenceRouter(Vec::with_capacity(num_of_actors));
 
     (0..num_of_actors).for_each(|_| {
         let (tx, rx) = tokio::sync::mpsc::channel(100);
@@ -109,6 +111,19 @@ impl std::ops::Deref for CacheDb {
     }
 }
 impl std::ops::DerefMut for CacheDb {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+impl std::ops::Deref for PersistenceRouter {
+    type Target = Vec<mpsc::Sender<PersistEnum>>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+impl std::ops::DerefMut for PersistenceRouter {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
     }

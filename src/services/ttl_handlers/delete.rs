@@ -8,7 +8,7 @@ use anyhow::Result;
 use tokio::{sync::mpsc::Sender, time::interval};
 
 use super::pr_queue;
-pub async fn delete_actor(senders_to_persistent_actors: Vec<Sender<PersistEnum>>) -> Result<()> {
+async fn delete_actor(senders_to_persistent_actors: Vec<Sender<PersistEnum>>) -> Result<()> {
     //TODO interval period should be configurable
     let mut cleanup_interval = interval(Duration::from_millis(1));
     loop {
@@ -27,4 +27,10 @@ pub async fn delete_actor(senders_to_persistent_actors: Vec<Sender<PersistEnum>>
             }
         }
     }
+}
+
+pub fn run_delete_expired_key_actor(senders_to_persistent_actors: Vec<Sender<PersistEnum>>) {
+    tokio::spawn(async move {
+        delete_actor(senders_to_persistent_actors).await.unwrap();
+    });
 }
