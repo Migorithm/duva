@@ -8,7 +8,7 @@ use crate::{
     services::{
         config_handler::ConfigHandler,
         interface::{TRead, TWriteBuf},
-        persistence::{run_persistent_actors, PersistEnum},
+        persistence::{run_persistent_actors, PersistEnum, PersistenceRouter},
         query_manager::{
             query::Args,
             value::{TtlCommand, Value},
@@ -39,8 +39,8 @@ impl TWriteBuf for FakeStream {
     }
 }
 
-fn run_ttl_actors(senders_to_handlers: &[Sender<PersistEnum>]) -> Sender<TtlCommand> {
-    run_delete_expired_key_actor(senders_to_handlers.to_vec());
+fn run_ttl_actors(senders_to_handlers: &PersistenceRouter) -> Sender<TtlCommand> {
+    run_delete_expired_key_actor(senders_to_handlers.clone());
     run_set_ttl_actor()
 }
 

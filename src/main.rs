@@ -5,7 +5,7 @@ use anyhow::Result;
 use config::Config;
 use services::{
     config_handler::ConfigHandler,
-    persistence::{run_persistent_actors, PersistEnum},
+    persistence::{run_persistent_actors, PersistEnum, PersistenceRouter},
     query_manager::{value::TtlCommand, MessageParser},
     ttl_handlers::{delete::run_delete_expired_key_actor, set::run_set_ttl_actor},
 };
@@ -51,7 +51,7 @@ fn process(
     stream: TcpStream,
     conf: Arc<Config>,
     ttl_sender: Sender<TtlCommand>,
-    persistence_senders: Vec<Sender<PersistEnum>>,
+    persistence_router: PersistenceRouter,
 ) {
     tokio::spawn(async move {
         let mut parser = MessageParser::new(stream);
@@ -59,7 +59,7 @@ fn process(
             services::ServiceFacade::new(ConfigHandler::new(Arc::clone(&conf)), ttl_sender);
 
         loop {
-            match handler.handle(&mut parser, &persistence_senders).await {
+            match handler.handle(&mut parser, &persistence_router).await {
                 Ok(_) => println!("Connection closed"),
                 Err(e) => eprintln!("Error: {:?}", e),
             }

@@ -81,6 +81,7 @@ async fn persist_actor(mut recv: Receiver<PersistEnum>) -> Result<()> {
     Ok(())
 }
 
+#[derive(Clone)]
 pub struct PersistenceRouter(Vec<mpsc::Sender<PersistEnum>>);
 
 pub fn run_persistent_actors(num_of_actors: usize) -> PersistenceRouter {

@@ -9,7 +9,7 @@ pub mod ttl_handlers;
 use anyhow::Result;
 use config_handler::ConfigHandler;
 use interface::{TRead, TWriteBuf};
-use persistence::PersistEnum;
+use persistence::{PersistEnum, PersistenceRouter};
 
 use query_manager::{
     query::Args,
@@ -35,7 +35,7 @@ impl ServiceFacade {
     pub async fn handle<U: TWriteBuf + TRead>(
         &mut self,
         resp_handler: &mut MessageParser<U>,
-        persistence_handlers: &[Sender<PersistEnum>],
+        persistence_handlers: &PersistenceRouter,
     ) -> Result<()> {
         let Some(v) = resp_handler.read_value().await? else {
             return Err(anyhow::anyhow!("Connection closed"));
