@@ -35,7 +35,7 @@ impl ServiceFacade {
     pub async fn handle<U: TWriteBuf + TRead>(
         &mut self,
         resp_handler: &mut MessageParser<U>,
-        persistence_handlers: &PersistenceRouter,
+        persistence_router: &PersistenceRouter,
     ) -> Result<()> {
         let Some(v) = resp_handler.read_value().await? else {
             return Err(anyhow::anyhow!("Connection closed"));
@@ -48,18 +48,18 @@ impl ServiceFacade {
             "ping" => Value::SimpleString("PONG".to_string()),
             "echo" => args.first()?,
             "set" => {
-                let shard_key = persistence_handlers.take_shard_key(&args)?;
-                persistence_handlers[shard_key as usize]
+                let shard_key = persistence_router.take_shard_key(&args)?;
+                persistence_router[shard_key as usize]
                     .send(PersistEnum::Set(args.clone(), self.ttl_sender.clone()))
                     .await?;
 
                 Value::SimpleString("OK".to_string())
             }
             "get" => {
-                let shard_key = args.take_shard_key(persistence_handlers.len())?;
+                let shard_key = persistence_router.take_shard_key(&args)?;
                 let (tx, rx) = tokio::sync::oneshot::channel();
 
-                persistence_handlers[shard_key as usize]
+                persistence_router[shard_key as usize]
                     .send(PersistEnum::Get(args.clone(), tx))
                     .await?;
 

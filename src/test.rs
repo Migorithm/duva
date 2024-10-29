@@ -39,17 +39,17 @@ impl TWriteBuf for FakeStream {
     }
 }
 
-fn run_ttl_actors(senders_to_handlers: &PersistenceRouter) -> Sender<TtlCommand> {
-    run_delete_expired_key_actor(senders_to_handlers.clone());
+fn run_ttl_actors(persistence_router: &PersistenceRouter) -> Sender<TtlCommand> {
+    run_delete_expired_key_actor(persistence_router.clone());
     run_set_ttl_actor()
 }
 
-async fn get_key(key: &str, senders_to_handlers: &[Sender<PersistEnum>]) -> Value {
+async fn get_key(key: &str, persistence_router: &PersistenceRouter) -> Value {
     let args = Args(vec![Value::BulkString(key.to_string())]);
 
-    let shard_key = args.take_shard_key(senders_to_handlers.len()).unwrap();
+    let shard_key = persistence_router.take_shard_key(&args).unwrap();
     let (tx, rx) = tokio::sync::oneshot::channel();
-    senders_to_handlers[shard_key]
+    persistence_router[shard_key]
         .send(PersistEnum::Get(args.clone(), tx))
         .await
         .unwrap();
