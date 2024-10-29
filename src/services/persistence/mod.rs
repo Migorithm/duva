@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use tokio::sync::oneshot;
 use ttl_handlers::set::TtlSetter;
 
-use crate::{make_smart_pointer, services::value::Values};
+use crate::make_smart_pointer;
 
 use super::value::Value;
 
@@ -16,30 +16,26 @@ use super::value::Value;
 struct CacheDb(HashMap<String, String>);
 
 impl CacheDb {
-    pub async fn handle_set(&mut self, args: &Values, ttl_sender: TtlSetter) -> Result<Value> {
-        let (key, value, expiry) = args.take_set_args()?;
-
-        match (key, value, expiry) {
-            (Value::BulkString(key), Value::BulkString(value), Some(expiry)) => {
+    pub async fn handle_set(
+        &mut self,
+        key: String,
+        value: String,
+        expiry: Option<u64>,
+        ttl_sender: TtlSetter,
+    ) -> Result<Value> {
+        match expiry {
+            Some(expiry) => {
                 self.insert(key.clone(), value.clone());
-                // TODO set ttl
-                ttl_sender
-                    .set_ttl(key.clone(), expiry.extract_expiry()?)
-                    .await;
+                ttl_sender.set_ttl(key.clone(), expiry).await;
             }
-            (Value::BulkString(key), Value::BulkString(value), None) => {
+            None => {
                 self.insert(key.clone(), value.clone());
             }
-            _ => return Err(anyhow::anyhow!("Invalid arguments")),
         }
         Ok(Value::SimpleString("OK".to_string()))
     }
 
-    pub fn handle_get(&self, args: &Values, sender: oneshot::Sender<Value>) {
-        let Ok(Value::BulkString(key)) = args.first() else {
-            let _ = sender.send(Value::Err("NotFound".to_string()));
-            return;
-        };
+    pub fn handle_get(&self, key: String, sender: oneshot::Sender<Value>) {
         let _ = sender.send(self.get(&key).cloned().into());
     }
 

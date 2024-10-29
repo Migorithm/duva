@@ -26,6 +26,13 @@ impl Value {
             Value::Err(e) => format!("-{}\r\n", e),
         }
     }
+
+    pub fn unpack_bulk_str(self) -> Result<String> {
+        match self {
+            Value::BulkString(s) => Ok(s.to_lowercase()),
+            _ => Err(anyhow::anyhow!("Expected command to be a bulk string")),
+        }
+    }
     pub fn extract_expiry(&self) -> anyhow::Result<u64> {
         match self {
             Value::BulkString(expiry) => Ok(expiry.parse::<u64>()?),
@@ -40,40 +47,37 @@ impl Values {
     pub fn new(values: Vec<Value>) -> Self {
         Self(values)
     }
-    pub(crate) fn extract_query(value: Value) -> Result<(String, Self)> {
-        match value {
-            Value::Array(value_array) => Ok((
-                unpack_bulk_str(value_array.first().unwrap().clone())?,
-                Self(value_array.into_iter().skip(1).collect()),
-            )),
-            _ => Err(anyhow::anyhow!("Unexpected command format")),
-        }
-    }
+
     pub(crate) fn first(&self) -> Result<Value> {
         self.0.first().cloned().ok_or(anyhow::anyhow!("No value"))
     }
 
-    pub(crate) fn take_set_args(&self) -> Result<(Value, &Value, Option<&Value>)> {
-        let key = self.first()?;
-        let value = self.0.get(1).ok_or(anyhow::anyhow!("No value"))?;
+    pub(crate) fn take_get_args(&self) -> Result<String> {
+        let Value::BulkString(key) = self.first()? else {
+            return Err(anyhow::anyhow!("Invalid arguments"));
+        };
+        Ok(key)
+    }
+    pub(crate) fn take_set_args(&self) -> Result<(String, String, Option<u64>)> {
+        let Value::BulkString(key) = self.first()? else {
+            return Err(anyhow::anyhow!("Invalid arguments"));
+        };
+
+        let Value::BulkString(value) = self.0.get(1).ok_or(anyhow::anyhow!("No value"))? else {
+            return Err(anyhow::anyhow!("Invalid arguments"));
+        };
+
         //expire sig must be px or PX
         match (self.0.get(2), self.0.get(3)) {
             (Some(Value::BulkString(sig)), Some(expiry)) => {
                 if sig.to_lowercase() != "px" {
                     return Err(anyhow::anyhow!("Invalid arguments"));
                 }
-                Ok((key, value, Some(expiry)))
+                Ok((key, value.to_string(), Some(expiry.extract_expiry()?)))
             }
-            (None, _) => Ok((key, value, None)),
+            (None, _) => Ok((key, value.to_string(), None)),
             _ => Err(anyhow::anyhow!("Invalid arguments")),
         }
-    }
-}
-
-fn unpack_bulk_str(value: Value) -> Result<String> {
-    match value {
-        Value::BulkString(s) => Ok(s.to_lowercase()),
-        _ => Err(anyhow::anyhow!("Expected command to be a bulk string")),
     }
 }
 

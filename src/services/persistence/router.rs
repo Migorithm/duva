@@ -1,44 +1,42 @@
+use super::{command::PersistCommand, ttl_handlers::set::TtlSetter, CacheDb};
+use crate::{make_smart_pointer, services::value::Value};
+use anyhow::Result;
 use std::hash::Hasher;
 
-use crate::{
-    make_smart_pointer,
-    services::value::{Value, Values},
-};
-
-use super::{command::PersistCommand, ttl_handlers::set::TtlSetter, CacheDb};
-use anyhow::Result;
 #[derive(Clone)]
 pub struct PersistenceRouter(Vec<tokio::sync::mpsc::Sender<PersistCommand>>);
 
 impl PersistenceRouter {
-    pub(crate) async fn route_get(&self, args: &Values) -> Result<Value> {
+    pub(crate) async fn route_get(&self, key: String) -> Result<Value> {
         let (tx, rx) = tokio::sync::oneshot::channel();
-        self.select_shard(&args)?
-            .send(PersistCommand::Get(args.clone(), tx))
+        self.select_shard(&key)?
+            .send(PersistCommand::Get { key, sender: tx })
             .await?;
 
         Ok(rx.await?)
     }
 
-    pub(crate) async fn route_set(&self, args: &Values, ttl_sender: TtlSetter) -> Result<Value> {
-        self.select_shard(&args)?
-            .send(PersistCommand::Set(args.clone(), ttl_sender.clone()))
+    pub(crate) async fn route_set(
+        &self,
+        key: String,
+        value: String,
+        expiry: Option<u64>,
+        ttl_sender: TtlSetter,
+    ) -> Result<Value> {
+        self.select_shard(&key)?
+            .send(PersistCommand::Set {
+                key,
+                value,
+                expiry,
+                ttl_sender,
+            })
             .await?;
         Ok(Value::SimpleString("OK".to_string()))
     }
 
-    fn select_shard(&self, args: &Values) -> Result<&tokio::sync::mpsc::Sender<PersistCommand>> {
-        let shard_key = self.take_shard_key_from_args(&args)?;
+    fn select_shard(&self, key: &str) -> Result<&tokio::sync::mpsc::Sender<PersistCommand>> {
+        let shard_key = self.take_shard_key_from_str(&key);
         Ok(&self[shard_key as usize])
-    }
-
-    fn take_shard_key_from_args(&self, args: &Values) -> Result<usize> {
-        let key = args.first()?;
-
-        match key {
-            Value::BulkString(key) => Ok(self.take_shard_key_from_str(&key)),
-            _ => Err(anyhow::anyhow!("Expected key to be a bulk string")),
-        }
     }
 
     pub(crate) fn take_shard_key_from_str(&self, s: &str) -> usize {
@@ -55,13 +53,18 @@ async fn persist_actor(mut recv: tokio::sync::mpsc::Receiver<PersistCommand>) ->
     while let Some(command) = recv.recv().await {
         match command {
             PersistCommand::StopSentinel => break,
-            PersistCommand::Set(args, sender) => {
+            PersistCommand::Set {
+                key,
+                value,
+                expiry,
+                ttl_sender,
+            } => {
                 // Maybe you have to pass sender?
 
-                let _ = db.handle_set(&args, sender).await;
+                let _ = db.handle_set(key, value, expiry, ttl_sender).await;
             }
-            PersistCommand::Get(args, sender) => {
-                db.handle_get(&args, sender);
+            PersistCommand::Get { key, sender } => {
+                db.handle_get(key, sender);
             }
             PersistCommand::Delete(key) => db.handle_delete(&key),
         }

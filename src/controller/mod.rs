@@ -36,11 +36,15 @@ impl<U: TWriteBuf + TRead> Controller<U> {
             Ping => Value::SimpleString("PONG".to_string()),
             Echo => args.first()?,
             Set => {
+                let (key, value, expiry) = args.take_set_args()?;
                 persistence_router
-                    .route_set(&args, ttl_sender.clone())
+                    .route_set(key, value, expiry, ttl_sender)
                     .await?
             }
-            Get => persistence_router.route_get(&args).await?,
+            Get => {
+                let key = args.take_get_args()?;
+                persistence_router.route_get(key).await?
+            }
             // modify we have to add a new command
             Config => config_handler.handle_config(&args)?,
             Delete => panic!("Not implemented"),
@@ -66,13 +70,23 @@ impl<T: TWriteBuf + TRead> Controller<T> {
         }
         let (v, _) = parse(self.buffer.split())?;
 
-        let (str_cmd, values) = Values::extract_query(v)?;
+        let (str_cmd, values) = Self::extract_query(v)?;
         Ok(Some((FromStr::from_str(&str_cmd)?, values)))
     }
 
     pub async fn write_value(&mut self, value: Value) -> Result<()> {
         self.stream.write_buf(value.serialize().as_bytes()).await?;
         Ok(())
+    }
+
+    pub(crate) fn extract_query(value: Value) -> Result<(String, Values)> {
+        match value {
+            Value::Array(value_array) => Ok((
+                value_array.first().unwrap().clone().unpack_bulk_str()?,
+                Values::new(value_array.into_iter().skip(1).collect()),
+            )),
+            _ => Err(anyhow::anyhow!("Unexpected command format")),
+        }
     }
 }
 

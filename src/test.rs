@@ -13,7 +13,7 @@ use crate::{
                 set::{run_set_ttl_actor, TtlSetter},
             },
         },
-        value::{Value, Values},
+        value::Value,
     },
 };
 use bytes::BytesMut;
@@ -45,8 +45,7 @@ fn run_ttl_actors(persistence_router: &PersistenceRouter) -> TtlSetter {
 }
 
 async fn get_key(key: &str, persistence_router: &PersistenceRouter) -> Value {
-    let args = Values::new(vec![Value::BulkString(key.to_string())]);
-    persistence_router.route_get(&args).await.unwrap()
+    persistence_router.route_get(key.to_string()).await.unwrap()
 }
 
 /// The following is to test out the set operation with no expiry
