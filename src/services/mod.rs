@@ -36,30 +36,19 @@ impl ServiceFacade {
             return Err(anyhow::anyhow!("Connection closed"));
         };
 
-        let (command, args) = Args::extract_query(v)?;
+        let (cmd_str, args) = Args::extract_query(v)?;
 
         // TODO if it is persistence operation, get the key and hash, take the appropriate sender, send it;
-        let response = match command.as_str() {
+        let response = match cmd_str.as_str() {
             "ping" => Value::SimpleString("PONG".to_string()),
             "echo" => args.first()?,
             "set" => {
-                let shard_key = persistence_router.take_shard_key_from_args(&args)?;
-                persistence_router[shard_key as usize]
-                    .send(PersistCommand::Set(args.clone(), self.ttl_sender.clone()))
+                persistence_router
+                    .route_set(&args, self.ttl_sender.clone())
                     .await?;
-
                 Value::SimpleString("OK".to_string())
             }
-            "get" => {
-                let shard_key = persistence_router.take_shard_key_from_args(&args)?;
-                let (tx, rx) = tokio::sync::oneshot::channel();
-
-                persistence_router[shard_key as usize]
-                    .send(PersistCommand::Get(args.clone(), tx))
-                    .await?;
-
-                rx.await?
-            }
+            "get" => persistence_router.route_get(&args).await?,
             // modify we have to add a new command
             "config" => self.config_handler.handle_config(&args)?,
             c => panic!("Cannot handle command {}", c),
