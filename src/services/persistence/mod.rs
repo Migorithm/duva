@@ -60,7 +60,7 @@ impl CacheDb {
     }
 }
 
-pub async fn persist_actor(mut recv: Receiver<PersistEnum>) -> Result<()> {
+async fn persist_actor(mut recv: Receiver<PersistEnum>) -> Result<()> {
     // inner state
     let mut db = CacheDb::default();
 
@@ -79,6 +79,17 @@ pub async fn persist_actor(mut recv: Receiver<PersistEnum>) -> Result<()> {
         }
     }
     Ok(())
+}
+
+pub fn run_persistent_actors(num_of_actors: usize) -> Vec<mpsc::Sender<PersistEnum>> {
+    let mut persistence_senders: Vec<mpsc::Sender<PersistEnum>> = Vec::with_capacity(num_of_actors);
+
+    (0..num_of_actors).for_each(|_| {
+        let (tx, rx) = tokio::sync::mpsc::channel(100);
+        tokio::spawn(persist_actor(rx));
+        persistence_senders.push(tx);
+    });
+    persistence_senders
 }
 
 impl From<Option<String>> for Value {

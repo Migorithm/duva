@@ -8,13 +8,13 @@ use crate::{
     services::{
         config_handler::ConfigHandler,
         interface::{TRead, TWriteBuf},
-        persistence::{persist_actor, PersistEnum},
+        persistence::{run_persistent_actors, PersistEnum},
         query_manager::{
             query::Args,
             value::{TtlCommand, Value},
             MessageParser,
         },
-        ttl_handlers::{delete::delete_actor, set::set_ttl_actor},
+        ttl_handlers::{delete::delete_actor, set::run_set_ttl_actor},
         ServiceFacade,
     },
 };
@@ -39,21 +39,9 @@ impl TWriteBuf for FakeStream {
     }
 }
 
-fn run_persistent_actors() -> Vec<Sender<PersistEnum>> {
-    let mut senders_to_persistent_actors: Vec<Sender<PersistEnum>> = Vec::new();
-    (0..3).for_each(|_| {
-        let (tx, rx) = tokio::sync::mpsc::channel(100);
-        tokio::spawn(persist_actor(rx));
-        senders_to_persistent_actors.push(tx);
-    });
-    senders_to_persistent_actors
-}
-
 fn run_ttl_actors(senders_to_handlers: &[Sender<PersistEnum>]) -> Sender<TtlCommand> {
-    let (tx, rx) = tokio::sync::mpsc::channel(100);
-    let _ = tokio::spawn(set_ttl_actor(rx));
     let _ = tokio::spawn(delete_actor(senders_to_handlers.to_vec()));
-    tx
+    run_set_ttl_actor()
 }
 
 async fn get_key(key: &str, senders_to_handlers: &[Sender<PersistEnum>]) -> Value {
@@ -83,7 +71,7 @@ async fn test_set() {
             .as_bytes()
             .to_vec(),
     };
-    let persistence_handlers = run_persistent_actors();
+    let persistence_handlers = run_persistent_actors(3);
     let ttl_sender = run_ttl_actors(&persistence_handlers);
     let mut parser = MessageParser::new(stream);
     let mut handler = ServiceFacade::new(ConfigHandler::new(Arc::new(Config::new())), ttl_sender);
@@ -111,7 +99,7 @@ async fn test_set_with_expiry() {
             .as_bytes()
             .to_vec(),
     };
-    let senders_to_persistent_actors: Vec<Sender<PersistEnum>> = run_persistent_actors();
+    let senders_to_persistent_actors: Vec<Sender<PersistEnum>> = run_persistent_actors(3);
     let ttl_sender = run_ttl_actors(&senders_to_persistent_actors);
     let mut parser = MessageParser::new(stream);
     let mut handler = ServiceFacade::new(ConfigHandler::new(Arc::new(Config::new())), ttl_sender);
@@ -142,7 +130,7 @@ async fn test_set_with_expire_should_expire_within_100ms() {
             .as_bytes()
             .to_vec(),
     };
-    let senders_to_persistent_actors: Vec<Sender<PersistEnum>> = run_persistent_actors();
+    let senders_to_persistent_actors: Vec<Sender<PersistEnum>> = run_persistent_actors(3);
     let ttl_sender = run_ttl_actors(&senders_to_persistent_actors);
     let mut parser = MessageParser::new(stream);
     let mut handler = ServiceFacade::new(ConfigHandler::new(Arc::new(Config::new())), ttl_sender);
@@ -182,7 +170,7 @@ async fn test_config_get_dir() {
             .as_bytes()
             .to_vec(),
     };
-    let senders_to_persistent_actors: Vec<Sender<PersistEnum>> = run_persistent_actors();
+    let senders_to_persistent_actors: Vec<Sender<PersistEnum>> = run_persistent_actors(3);
     let ttl_sender = run_ttl_actors(&senders_to_persistent_actors);
     let mut parser = MessageParser::new(stream);
     let mut handler = ServiceFacade::new(ConfigHandler::new(Arc::new(conf)), ttl_sender);
