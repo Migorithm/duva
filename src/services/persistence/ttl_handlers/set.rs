@@ -29,6 +29,17 @@ pub fn run_set_ttl_actor() -> TtlSetter {
 #[derive(Clone)]
 pub struct TtlSetter(tokio::sync::mpsc::Sender<TtlCommand>);
 
+impl TtlSetter {
+    pub async fn set_ttl(&self, key: String, expiry: u64) {
+        let _ = self
+            .send(TtlCommand::Expiry {
+                key,
+                expiry: expiry,
+            })
+            .await;
+    }
+}
+
 impl Deref for TtlSetter {
     type Target = tokio::sync::mpsc::Sender<TtlCommand>;
 

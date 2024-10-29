@@ -7,7 +7,7 @@ use super::query_manager::{query::Args, value::Value};
 use anyhow::Result;
 use std::collections::HashMap;
 use tokio::sync::oneshot;
-use ttl_handlers::{command::TtlCommand, set::TtlSetter};
+use ttl_handlers::set::TtlSetter;
 
 #[derive(Default)]
 struct CacheDb(HashMap<String, String>);
@@ -21,11 +21,8 @@ impl CacheDb {
                 self.insert(key.clone(), value.clone());
                 // TODO set ttl
                 ttl_sender
-                    .send(TtlCommand::Expiry {
-                        expiry: expiry.extract_expiry()?,
-                        key: key.clone(),
-                    })
-                    .await?;
+                    .set_ttl(key.clone(), expiry.extract_expiry()?)
+                    .await;
             }
             (Value::BulkString(key), Value::BulkString(value), None) => {
                 self.insert(key.clone(), value.clone());
