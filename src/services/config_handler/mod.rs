@@ -1,8 +1,9 @@
+pub mod command;
+use crate::config::Config;
 use std::sync::Arc;
 
-use crate::{config::Config, services::value::Values};
-
 use anyhow::Result;
+use command::{ConfigCommand, ConfigResource};
 
 use super::value::Value;
 
@@ -17,17 +18,9 @@ impl ConfigHandler {
     }
 
     // perhaps, set operation is needed
-    pub fn handle_config(&mut self, args: &Values) -> Result<Value> {
-        let sub_command = args.first()?;
-        let args = &args[1..];
-
-        let (Value::BulkString(command), [Value::BulkString(key), ..]) = (&sub_command, args)
-        else {
-            return Err(anyhow::anyhow!("Invalid arguments"));
-        };
-
-        match (command.as_str(), key.as_str()) {
-            ("get" | "GET", "dir") => Ok(Value::Array(vec![
+    pub fn handle_config(&mut self, cmd: ConfigCommand) -> Result<Value> {
+        match cmd {
+            ConfigCommand::Get(ConfigResource::Dir) => Ok(Value::Array(vec![
                 Value::BulkString("dir".to_string()),
                 self.conf
                     .dir
@@ -35,7 +28,7 @@ impl ConfigHandler {
                     .map(|v| Value::BulkString(v))
                     .unwrap_or(Value::Null),
             ])),
-            ("get" | "GET", "dbfilename") => Ok(Value::Array(vec![
+            ConfigCommand::Get(ConfigResource::DbFileName) => Ok(Value::Array(vec![
                 Value::BulkString("dbfilename".to_string()),
                 self.conf
                     .db_filename
@@ -43,7 +36,6 @@ impl ConfigHandler {
                     .map(|v| Value::BulkString(v))
                     .unwrap_or(Value::Null),
             ])),
-            _ => Err(anyhow::anyhow!("Invalid arguments")),
         }
     }
 }

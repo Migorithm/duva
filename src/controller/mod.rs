@@ -8,10 +8,13 @@ use bytes::BytesMut;
 use interface::{TRead, TWriteBuf};
 use request::UserRequest::{self, *};
 
-use crate::services::{
-    config_handler::ConfigHandler,
-    persistence::{router::PersistenceRouter, ttl_handlers::set::TtlSetter},
-    value::{Value, Values},
+use crate::{
+    make_smart_pointer,
+    services::{
+        config_handler::{command::ConfigCommand, ConfigHandler},
+        persistence::{router::PersistenceRouter, ttl_handlers::set::TtlSetter},
+        value::Value,
+    },
 };
 
 /// Controller is a struct that will be used to read and write values to the client.
@@ -34,7 +37,7 @@ impl<U: TWriteBuf + TRead> Controller<U> {
         // TODO if it is persistence operation, get the key and hash, take the appropriate sender, send it;
         let response = match cmd {
             Ping => Value::SimpleString("PONG".to_string()),
-            Echo => args.first()?,
+            Echo => args.first().ok_or(anyhow::anyhow!("Not exists"))?.clone(),
             Set => {
                 let (key, value, expiry) = args.take_set_args()?;
                 persistence_router
@@ -46,7 +49,11 @@ impl<U: TWriteBuf + TRead> Controller<U> {
                 persistence_router.route_get(key).await?
             }
             // modify we have to add a new command
-            Config => config_handler.handle_config(&args)?,
+            Config => {
+                let cmd = args.take_config_args()?;
+                config_handler.handle_config(cmd)?
+            }
+
             Delete => panic!("Not implemented"),
         };
 
@@ -63,7 +70,7 @@ impl<T: TWriteBuf + TRead> Controller<T> {
         }
     }
 
-    pub async fn read_value(&mut self) -> Result<Option<(UserRequest, Values)>> {
+    pub async fn read_value(&mut self) -> Result<Option<(UserRequest, InputValues)>> {
         let bytes_read = self.stream.read(&mut self.buffer).await?;
         if bytes_read == 0 {
             return Ok(None);
@@ -71,6 +78,7 @@ impl<T: TWriteBuf + TRead> Controller<T> {
         let (v, _) = parse(self.buffer.split())?;
 
         let (str_cmd, values) = Self::extract_query(v)?;
+
         Ok(Some((FromStr::from_str(&str_cmd)?, values)))
     }
 
@@ -79,11 +87,11 @@ impl<T: TWriteBuf + TRead> Controller<T> {
         Ok(())
     }
 
-    pub(crate) fn extract_query(value: Value) -> Result<(String, Values)> {
+    pub(crate) fn extract_query(value: Value) -> Result<(String, InputValues)> {
         match value {
             Value::Array(value_array) => Ok((
                 value_array.first().unwrap().clone().unpack_bulk_str()?,
-                Values::new(value_array.into_iter().skip(1).collect()),
+                InputValues::new(value_array.into_iter().skip(1).collect()),
             )),
             _ => Err(anyhow::anyhow!("Unexpected command format")),
         }
@@ -153,6 +161,58 @@ fn parse_bulk_string(buffer: BytesMut) -> Result<(Value, usize)> {
         len + bulk_str_len + 2, // to account for crlf, add 2
     ))
 }
+
+#[derive(Debug, Clone)]
+pub struct InputValues(Vec<Value>);
+impl InputValues {
+    pub fn new(values: Vec<Value>) -> Self {
+        Self(values)
+    }
+
+    pub(crate) fn take_get_args(&self) -> Result<String> {
+        let Value::BulkString(key) = self.first().ok_or(anyhow::anyhow!("Not exists"))? else {
+            return Err(anyhow::anyhow!("Invalid arguments"));
+        };
+        Ok(key.to_string())
+    }
+    pub(crate) fn take_set_args(&self) -> Result<(String, String, Option<u64>)> {
+        let Value::BulkString(key) = self.first().ok_or(anyhow::anyhow!("Not exists"))? else {
+            return Err(anyhow::anyhow!("Invalid arguments"));
+        };
+
+        let Value::BulkString(value) = self.get(1).ok_or(anyhow::anyhow!("No value"))? else {
+            return Err(anyhow::anyhow!("Invalid arguments"));
+        };
+
+        //expire sig must be px or PX
+        match (self.0.get(2), self.0.get(3)) {
+            (Some(Value::BulkString(sig)), Some(expiry)) => {
+                if sig.to_lowercase() != "px" {
+                    return Err(anyhow::anyhow!("Invalid arguments"));
+                }
+                Ok((
+                    key.to_owned(),
+                    value.to_string(),
+                    Some(expiry.extract_expiry()?),
+                ))
+            }
+            (None, _) => Ok((key.to_owned(), value.to_string(), None)),
+            _ => Err(anyhow::anyhow!("Invalid arguments")),
+        }
+    }
+
+    fn take_config_args(&self) -> Result<ConfigCommand> {
+        let sub_command = self.first().ok_or(anyhow::anyhow!("Not exists"))?;
+        let args = &self[1..];
+
+        let (Value::BulkString(command), [Value::BulkString(key), ..]) = (&sub_command, args)
+        else {
+            return Err(anyhow::anyhow!("Invalid arguments"));
+        };
+        Ok((command.as_str(), key.as_str()).try_into()?)
+    }
+}
+make_smart_pointer!(InputValues, Vec<Value>);
 
 pub struct ConversionWrapper<T>(pub(crate) T);
 impl TryFrom<ConversionWrapper<&[u8]>> for usize {
