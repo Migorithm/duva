@@ -45,15 +45,7 @@ fn run_ttl_actors(persistence_router: &PersistenceRouter) -> TtlSetter {
 
 async fn get_key(key: &str, persistence_router: &PersistenceRouter) -> Value {
     let args = Args(vec![Value::BulkString(key.to_string())]);
-
-    let shard_key = persistence_router.take_shard_key_from_args(&args).unwrap();
-    let (tx, rx) = tokio::sync::oneshot::channel();
-    persistence_router[shard_key]
-        .send(PersistCommand::Get(args.clone(), tx))
-        .await
-        .unwrap();
-
-    rx.await.unwrap()
+    persistence_router.route_get(&args).await.unwrap()
 }
 
 /// The following is to test out the set operation with no expiry
