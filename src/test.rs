@@ -1,9 +1,11 @@
 use crate::{
     config::Config,
-    controller::Controller,
+    controller::{
+        interface::{TRead, TWriteBuf},
+        Controller,
+    },
     services::{
         config_handler::ConfigHandler,
-        interface::{TRead, TWriteBuf},
         persistence::{
             router::{run_persistent_actors, PersistenceRouter},
             ttl_handlers::{

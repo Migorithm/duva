@@ -1,9 +1,15 @@
+pub mod command;
+pub mod interface;
+
+use std::str::FromStr;
+
 use anyhow::Result;
 use bytes::BytesMut;
+use command::ControllerCommand;
+use interface::{TRead, TWriteBuf};
 
 use crate::services::{
     config_handler::ConfigHandler,
-    interface::{TRead, TWriteBuf},
     persistence::{router::PersistenceRouter, ttl_handlers::set::TtlSetter},
     value::{Value, Values},
 };
@@ -21,26 +27,24 @@ impl<U: TWriteBuf + TRead> Controller<U> {
         ttl_sender: TtlSetter,
         mut config_handler: ConfigHandler,
     ) -> Result<()> {
-        let Some(v) = self.read_value().await? else {
+        let Some((cmd, args)) = self.read_value().await? else {
             return Err(anyhow::anyhow!("Connection closed"));
         };
 
-        let (cmd_str, args) = Values::extract_query(v)?;
-
         // TODO if it is persistence operation, get the key and hash, take the appropriate sender, send it;
-        let response = match cmd_str.as_str() {
-            "ping" => Value::SimpleString("PONG".to_string()),
-            "echo" => args.first()?,
-            "set" => {
+        let response = match cmd {
+            ControllerCommand::Ping => Value::SimpleString("PONG".to_string()),
+            ControllerCommand::Echo => args.first()?,
+            ControllerCommand::Set => {
                 persistence_router
                     .route_set(&args, ttl_sender.clone())
                     .await?;
                 Value::SimpleString("OK".to_string())
             }
-            "get" => persistence_router.route_get(&args).await?,
+            ControllerCommand::Get => persistence_router.route_get(&args).await?,
             // modify we have to add a new command
-            "config" => config_handler.handle_config(&args)?,
-            c => panic!("Cannot handle command {}", c),
+            ControllerCommand::Config => config_handler.handle_config(&args)?,
+            ControllerCommand::Delete => panic!("Not implemented"),
         };
 
         self.write_value(response).await?;
@@ -56,14 +60,15 @@ impl<T: TWriteBuf + TRead> Controller<T> {
         }
     }
 
-    pub async fn read_value(&mut self) -> Result<Option<Value>> {
+    pub async fn read_value(&mut self) -> Result<Option<(ControllerCommand, Values)>> {
         let bytes_read = self.stream.read(&mut self.buffer).await?;
         if bytes_read == 0 {
             return Ok(None);
         }
         let (v, _) = parse(self.buffer.split())?;
 
-        Ok(Some(v))
+        let (str_cmd, values) = Values::extract_query(v)?;
+        Ok(Some((FromStr::from_str(&str_cmd)?, values)))
     }
 
     pub async fn write_value(&mut self, value: Value) -> Result<()> {
