@@ -1,12 +1,12 @@
-pub mod command;
 pub mod interface;
+pub mod request;
 
 use std::str::FromStr;
 
 use anyhow::Result;
 use bytes::BytesMut;
-use command::ControllerCommand::{self, *};
 use interface::{TRead, TWriteBuf};
+use request::UserRequest::{self, *};
 
 use crate::services::{
     config_handler::ConfigHandler,
@@ -59,7 +59,7 @@ impl<T: TWriteBuf + TRead> Controller<T> {
         }
     }
 
-    pub async fn read_value(&mut self) -> Result<Option<(ControllerCommand, Values)>> {
+    pub async fn read_value(&mut self) -> Result<Option<(UserRequest, Values)>> {
         let bytes_read = self.stream.read(&mut self.buffer).await?;
         if bytes_read == 0 {
             return Ok(None);
