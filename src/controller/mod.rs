@@ -1,19 +1,20 @@
 use anyhow::Result;
 use bytes::BytesMut;
-pub mod query;
-pub mod value;
-use crate::services::interface::{TRead, TWriteBuf};
-use value::Value;
 
-/// UserRequestController is a struct that will be used to read and write values to the client.
-pub struct UserRequestController<T: TWriteBuf + TRead> {
+use crate::services::{
+    interface::{TRead, TWriteBuf},
+    value::Value,
+};
+
+/// IOController is a struct that will be used to read and write values to the client.
+pub struct IOController<T: TWriteBuf + TRead> {
     pub(crate) stream: T,
     buffer: BytesMut,
 }
 
-impl<T: TWriteBuf + TRead> UserRequestController<T> {
+impl<T: TWriteBuf + TRead> IOController<T> {
     pub fn new(stream: T) -> Self {
-        UserRequestController {
+        IOController {
             stream,
             buffer: BytesMut::with_capacity(512),
         }

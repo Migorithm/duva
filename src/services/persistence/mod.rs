@@ -3,17 +3,20 @@ pub mod command;
 pub mod router;
 pub mod ttl_handlers;
 
-use super::controller::{query::Args, value::Value};
 use anyhow::Result;
 use std::collections::HashMap;
 use tokio::sync::oneshot;
 use ttl_handlers::set::TtlSetter;
 
+use crate::services::value::Values;
+
+use super::value::Value;
+
 #[derive(Default)]
 struct CacheDb(HashMap<String, String>);
 
 impl CacheDb {
-    pub async fn handle_set(&mut self, args: &Args, ttl_sender: TtlSetter) -> Result<Value> {
+    pub async fn handle_set(&mut self, args: &Values, ttl_sender: TtlSetter) -> Result<Value> {
         let (key, value, expiry) = args.take_set_args()?;
 
         match (key, value, expiry) {
@@ -32,7 +35,7 @@ impl CacheDb {
         Ok(Value::SimpleString("OK".to_string()))
     }
 
-    pub fn handle_get(&self, args: &Args, sender: oneshot::Sender<Value>) {
+    pub fn handle_get(&self, args: &Values, sender: oneshot::Sender<Value>) {
         let Ok(Value::BulkString(key)) = args.first() else {
             let _ = sender.send(Value::Err("NotFound".to_string()));
             return;

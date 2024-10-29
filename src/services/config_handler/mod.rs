@@ -1,9 +1,12 @@
 use std::sync::Arc;
 
-use crate::config::Config;
+use crate::{config::Config, services::value::Values};
 
-use super::controller::{query::Args, value::Value};
 use anyhow::Result;
+
+use super::value::Value;
+
+#[derive(Clone)]
 pub(crate) struct ConfigHandler {
     pub(crate) conf: Arc<Config>,
 }
@@ -14,9 +17,9 @@ impl ConfigHandler {
     }
 
     // perhaps, set operation is needed
-    pub fn handle_config(&mut self, args: &Args) -> Result<Value> {
+    pub fn handle_config(&mut self, args: &Values) -> Result<Value> {
         let sub_command = args.first()?;
-        let args = &args.0[1..];
+        let args = &args[1..];
 
         let (Value::BulkString(command), [Value::BulkString(key), ..]) = (&sub_command, args)
         else {

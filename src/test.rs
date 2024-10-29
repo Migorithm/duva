@@ -1,8 +1,8 @@
 use crate::{
     config::Config,
+    controller::IOController,
     services::{
         config_handler::ConfigHandler,
-        controller::{query::Args, value::Value, UserRequestController},
         interface::{TRead, TWriteBuf},
         persistence::{
             router::{run_persistent_actors, PersistenceRouter},
@@ -11,7 +11,7 @@ use crate::{
                 set::{run_set_ttl_actor, TtlSetter},
             },
         },
-        ServiceFacade,
+        value::{Value, Values},
     },
 };
 use bytes::BytesMut;
@@ -43,7 +43,7 @@ fn run_ttl_actors(persistence_router: &PersistenceRouter) -> TtlSetter {
 }
 
 async fn get_key(key: &str, persistence_router: &PersistenceRouter) -> Value {
-    let args = Args(vec![Value::BulkString(key.to_string())]);
+    let args = Values::new(vec![Value::BulkString(key.to_string())]);
     persistence_router.route_get(&args).await.unwrap()
 }
 
@@ -63,12 +63,12 @@ async fn test_set() {
     };
     let persistence_handlers = run_persistent_actors(3);
     let ttl_sender = run_ttl_actors(&persistence_handlers);
-    let mut parser = UserRequestController::new(stream);
-    let mut handler = ServiceFacade::new(ConfigHandler::new(Arc::new(Config::new())), ttl_sender);
+    let mut controller = IOController::new(stream);
+    let config_handler = ConfigHandler::new(Arc::new(Config::new()));
 
     // WHEN
-    handler
-        .handle(&mut parser, &persistence_handlers)
+    controller
+        .handle(&persistence_handlers, ttl_sender, config_handler)
         .await
         .unwrap();
 
@@ -89,25 +89,25 @@ async fn test_set_with_expiry() {
             .as_bytes()
             .to_vec(),
     };
-    let senders_to_persistent_actors = run_persistent_actors(3);
-    let ttl_sender = run_ttl_actors(&senders_to_persistent_actors);
-    let mut parser = UserRequestController::new(stream);
-    let mut handler = ServiceFacade::new(ConfigHandler::new(Arc::new(Config::new())), ttl_sender);
-    // WHEN
+    let persistence_router = run_persistent_actors(3);
+    let ttl_sender = run_ttl_actors(&persistence_router);
+    let mut controller = IOController::new(stream);
+    let config_handler = ConfigHandler::new(Arc::new(Config::new()));
 
-    handler
-        .handle(&mut parser, &senders_to_persistent_actors)
+    // WHEN
+    controller
+        .handle(&persistence_router, ttl_sender, config_handler)
         .await
         .unwrap();
 
-    let value = get_key("foo", &senders_to_persistent_actors).await;
+    let value = get_key("foo", &persistence_router).await;
 
     // THEN
     assert_eq!(value, Value::BulkString("bar".to_string()));
 
     // WHEN2 - wait for 5ms
     tokio::time::sleep(tokio::time::Duration::from_millis(5)).await;
-    let value = get_key("foo", &senders_to_persistent_actors).await;
+    let value = get_key("foo", &persistence_router).await;
 
     //THEN
     assert_eq!(value, Value::BulkString("bar".to_string()));
@@ -120,25 +120,26 @@ async fn test_set_with_expire_should_expire_within_100ms() {
             .as_bytes()
             .to_vec(),
     };
-    let senders_to_persistent_actors = run_persistent_actors(3);
-    let ttl_sender = run_ttl_actors(&senders_to_persistent_actors);
-    let mut parser = UserRequestController::new(stream);
-    let mut handler = ServiceFacade::new(ConfigHandler::new(Arc::new(Config::new())), ttl_sender);
+    let persistence_router = run_persistent_actors(3);
+    let ttl_sender = run_ttl_actors(&persistence_router);
+
+    let mut controller = IOController::new(stream);
+    let config_handler = ConfigHandler::new(Arc::new(Config::new()));
 
     // WHEN
-    handler
-        .handle(&mut parser, &senders_to_persistent_actors)
+    controller
+        .handle(&persistence_router, ttl_sender, config_handler)
         .await
         .unwrap();
 
-    let value = get_key("foo", &senders_to_persistent_actors).await;
+    let value = get_key("foo", &persistence_router).await;
 
     // THEN
     assert_eq!(value, Value::BulkString("bar".to_string()));
 
     // WHEN2 - wait for 100ms
     tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-    let value = get_key("foo", &senders_to_persistent_actors).await;
+    let value = get_key("foo", &persistence_router).await;
 
     //THEN
     assert_eq!(value, Value::Null);
@@ -160,19 +161,20 @@ async fn test_config_get_dir() {
             .as_bytes()
             .to_vec(),
     };
-    let senders_to_persistent_actors = run_persistent_actors(3);
-    let ttl_sender = run_ttl_actors(&senders_to_persistent_actors);
-    let mut parser = UserRequestController::new(stream);
-    let mut handler = ServiceFacade::new(ConfigHandler::new(Arc::new(conf)), ttl_sender);
+    let persistence_router = run_persistent_actors(3);
+    let ttl_sender = run_ttl_actors(&persistence_router);
+
+    let mut controller = IOController::new(stream);
+    let config_handler = ConfigHandler::new(Arc::new(conf));
 
     // WHEN
-    handler
-        .handle(&mut parser, &senders_to_persistent_actors)
+    controller
+        .handle(&persistence_router, ttl_sender, config_handler)
         .await
         .unwrap();
 
     // THEN
     let res = "*2\r\n$3\r\ndir\r\n$4\r\n/tmp\r\n";
-    let written = String::from_utf8(parser.stream.written.to_vec()).unwrap();
+    let written = String::from_utf8(controller.stream.written.to_vec()).unwrap();
     assert_eq!(written, res.to_string());
 }

@@ -1,9 +1,43 @@
-use super::value::Value;
 use anyhow::Result;
 
+#[derive(Clone, Debug, PartialEq)]
+pub enum Value {
+    SimpleString(String),
+    BulkString(String),
+    Array(Vec<Value>),
+    Null,
+    Err(String),
+}
+impl Value {
+    pub fn serialize(&self) -> String {
+        match self {
+            Value::SimpleString(s) => format!("+{}\r\n", s),
+            Value::BulkString(s) => format!("${}\r\n{}\r\n", s.len(), s),
+            Value::Array(a) => {
+                let mut result = format!("*{}\r\n", a.len());
+                for v in a {
+                    result.push_str(&v.serialize());
+                }
+                result
+            }
+            Value::Null => "$-1\r\n".to_string(),
+            Value::Err(e) => format!("-{}\r\n", e),
+        }
+    }
+    pub fn extract_expiry(&self) -> anyhow::Result<u64> {
+        match self {
+            Value::BulkString(expiry) => Ok(expiry.parse::<u64>()?),
+            _ => Err(anyhow::anyhow!("Invalid expiry")),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
-pub struct Args(pub(crate) Vec<Value>);
-impl Args {
+pub struct Values(Vec<Value>);
+impl Values {
+    pub fn new(values: Vec<Value>) -> Self {
+        Self(values)
+    }
     pub(crate) fn extract_query(value: Value) -> Result<(String, Self)> {
         match value {
             Value::Array(a) => Ok((
@@ -38,5 +72,18 @@ fn unpack_bulk_str(value: Value) -> Result<String> {
     match value {
         Value::BulkString(s) => Ok(s.to_lowercase()),
         _ => Err(anyhow::anyhow!("Expected command to be a bulk string")),
+    }
+}
+
+impl std::ops::Deref for Values {
+    type Target = Vec<Value>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+impl std::ops::DerefMut for Values {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
     }
 }

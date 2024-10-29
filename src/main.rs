@@ -1,11 +1,12 @@
 mod config;
+pub mod controller;
 pub mod services;
 
 use anyhow::Result;
 use config::Config;
+use controller::IOController;
 use services::{
     config_handler::ConfigHandler,
-    controller::UserRequestController,
     persistence::{
         router::{run_persistent_actors, PersistenceRouter},
         ttl_handlers::{
@@ -56,14 +57,17 @@ fn process(
     persistence_router: PersistenceRouter,
 ) {
     tokio::spawn(async move {
-        let mut user_request_controller = UserRequestController::new(stream);
+        let mut io_controller = IOController::new(stream);
 
-        let mut service_facade =
-            services::ServiceFacade::new(ConfigHandler::new(Arc::clone(&conf)), ttl_sender);
+        let config_handler = ConfigHandler::new(Arc::clone(&conf));
 
         loop {
-            match service_facade
-                .handle(&mut user_request_controller, &persistence_router)
+            match io_controller
+                .handle(
+                    &persistence_router,
+                    ttl_sender.clone(),
+                    config_handler.clone(),
+                )
                 .await
             {
                 Ok(_) => println!("Connection closed"),

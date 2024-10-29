@@ -1,6 +1,6 @@
 use std::hash::Hasher;
 
-use crate::services::controller::{query::Args, value::Value};
+use crate::{services::value::Value, services::value::Values};
 
 use super::{command::PersistCommand, ttl_handlers::set::TtlSetter, CacheDb};
 use anyhow::Result;
@@ -8,7 +8,7 @@ use anyhow::Result;
 pub struct PersistenceRouter(Vec<tokio::sync::mpsc::Sender<PersistCommand>>);
 
 impl PersistenceRouter {
-    pub(crate) async fn route_get(&self, args: &Args) -> Result<Value> {
+    pub(crate) async fn route_get(&self, args: &Values) -> Result<Value> {
         let (tx, rx) = tokio::sync::oneshot::channel();
         self.select_shard(&args)?
             .send(PersistCommand::Get(args.clone(), tx))
@@ -17,19 +17,19 @@ impl PersistenceRouter {
         Ok(rx.await?)
     }
 
-    pub(crate) async fn route_set(&self, args: &Args, ttl_sender: TtlSetter) -> Result<()> {
+    pub(crate) async fn route_set(&self, args: &Values, ttl_sender: TtlSetter) -> Result<()> {
         self.select_shard(&args)?
             .send(PersistCommand::Set(args.clone(), ttl_sender.clone()))
             .await?;
         Ok(())
     }
 
-    fn select_shard(&self, args: &Args) -> Result<&tokio::sync::mpsc::Sender<PersistCommand>> {
+    fn select_shard(&self, args: &Values) -> Result<&tokio::sync::mpsc::Sender<PersistCommand>> {
         let shard_key = self.take_shard_key_from_args(&args)?;
         Ok(&self[shard_key as usize])
     }
 
-    fn take_shard_key_from_args(&self, args: &Args) -> Result<usize> {
+    fn take_shard_key_from_args(&self, args: &Values) -> Result<usize> {
         let key = args.first()?;
 
         match key {
