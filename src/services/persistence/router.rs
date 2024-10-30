@@ -3,6 +3,10 @@ use crate::{make_smart_pointer, services::value::Value};
 use anyhow::Result;
 use std::hash::Hasher;
 
+type OneShotSender<T> = tokio::sync::oneshot::Sender<T>;
+type OneShotReceiverJoinHandle<T> =
+    tokio::task::JoinHandle<std::result::Result<T, tokio::sync::oneshot::error::RecvError>>;
+
 #[derive(Clone)]
 pub struct PersistenceRouter(Vec<tokio::sync::mpsc::Sender<PersistCommand>>);
 
@@ -34,36 +38,57 @@ impl PersistenceRouter {
         Ok(Value::SimpleString("OK".to_string()))
     }
 
+    // stateless function to create oneshot channels that maps to the number of shards
+    fn ontshot_channels<T: Send + Sync + 'static>(
+        &self,
+    ) -> (Vec<OneShotSender<T>>, Vec<OneShotReceiverJoinHandle<T>>) {
+        let mut senders = Vec::with_capacity(self.len());
+        let mut receivers = Vec::with_capacity(self.len());
+        (0..self.len()).for_each(|_| {
+            let (tx, rx) = tokio::sync::oneshot::channel();
+            senders.push(tx);
+            receivers.push(rx);
+        });
+
+        // Fire listeners first before sending
+        let mut receiver_handles = Vec::new();
+        for recv in receivers {
+            receiver_handles.push(tokio::spawn(recv))
+        }
+        (senders, receiver_handles)
+    }
+
     pub(crate) async fn route_keys(&self, pattern: Option<String>) -> Result<Value> {
-        let listeners = self.broadcast_keys(pattern).await?;
+        let (senders, receiver_handles) = self.ontshot_channels();
+
+        // send keys to shards
+        for (shard, tx) in self.iter().zip(senders.into_iter()) {
+            tokio::spawn(Self::send_keys_to_shard(shard.clone(), pattern.clone(), tx));
+        }
+
         let mut keys = Vec::new();
-        //TODO join all
-        for l in listeners {
-            match l.await? {
-                Value::Array(v) => keys.extend(v),
-                _ => {}
+        for v in receiver_handles {
+            match v.await {
+                Ok(Ok(Value::Array(v))) => keys.extend(v),
+                _ => continue,
             }
         }
+
         Ok(Value::Array(keys))
     }
 
-    async fn broadcast_keys(
-        &self,
+    // stateless function to send keys
+    async fn send_keys_to_shard(
+        shard: tokio::sync::mpsc::Sender<PersistCommand>,
         pattern: Option<String>,
-    ) -> Result<Vec<tokio::sync::oneshot::Receiver<Value>>> {
-        let mut listeners = Vec::with_capacity(self.len());
-
-        for shard in self.iter() {
-            let (tx, rx) = tokio::sync::oneshot::channel();
-            shard
-                .send(PersistCommand::Keys {
-                    pattern: pattern.clone(),
-                    sender: tx,
-                })
-                .await?;
-            listeners.push(rx);
-        }
-        Ok(listeners)
+        tx: OneShotSender<Value>,
+    ) -> Result<()> {
+        Ok(shard
+            .send(PersistCommand::Keys {
+                pattern: pattern.clone(),
+                sender: tx,
+            })
+            .await?)
     }
 
     fn select_shard(&self, key: &str) -> Result<&tokio::sync::mpsc::Sender<PersistCommand>> {
