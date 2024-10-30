@@ -34,6 +34,38 @@ impl PersistenceRouter {
         Ok(Value::SimpleString("OK".to_string()))
     }
 
+    pub(crate) async fn route_keys(&self, pattern: Option<String>) -> Result<Value> {
+        let listeners = self.broadcast_keys(pattern).await?;
+        let mut keys = Vec::new();
+        //TODO join all
+        for l in listeners {
+            match l.await? {
+                Value::Array(v) => keys.extend(v),
+                _ => {}
+            }
+        }
+        Ok(Value::Array(keys))
+    }
+
+    async fn broadcast_keys(
+        &self,
+        pattern: Option<String>,
+    ) -> Result<Vec<tokio::sync::oneshot::Receiver<Value>>> {
+        let mut listeners = Vec::with_capacity(self.len());
+
+        for shard in self.iter() {
+            let (tx, rx) = tokio::sync::oneshot::channel();
+            shard
+                .send(PersistCommand::Keys {
+                    pattern: pattern.clone(),
+                    sender: tx,
+                })
+                .await?;
+            listeners.push(rx);
+        }
+        Ok(listeners)
+    }
+
     fn select_shard(&self, key: &str) -> Result<&tokio::sync::mpsc::Sender<PersistCommand>> {
         let shard_key = self.take_shard_key_from_str(&key);
         Ok(&self[shard_key as usize])
@@ -60,11 +92,13 @@ async fn persist_actor(mut recv: tokio::sync::mpsc::Receiver<PersistCommand>) ->
                 ttl_sender,
             } => {
                 // Maybe you have to pass sender?
-
                 let _ = db.handle_set(key, value, expiry, ttl_sender).await;
             }
             PersistCommand::Get { key, sender } => {
                 db.handle_get(key, sender);
+            }
+            PersistCommand::Keys { pattern, sender } => {
+                db.handle_keys(pattern, sender);
             }
             PersistCommand::Delete(key) => db.handle_delete(&key),
         }

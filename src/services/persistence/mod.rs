@@ -42,6 +42,19 @@ impl CacheDb {
     fn handle_delete(&mut self, key: &str) {
         self.remove(key);
     }
+
+    fn handle_keys(&self, pattern: Option<String>, sender: oneshot::Sender<Value>) {
+        let ks = self
+            .keys()
+            .filter(|k| match &pattern {
+                // TODO better way to to matching?
+                Some(pattern) => k.contains(pattern),
+                None => true,
+            })
+            .map(|k| Value::BulkString(k.clone()))
+            .collect::<Vec<_>>();
+        sender.send(Value::Array(ks)).unwrap();
+    }
 }
 
 impl From<Option<String>> for Value {
