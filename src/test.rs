@@ -1,12 +1,12 @@
 use crate::{
-    config::Config,
-    controller::{
+    adapters::controller::{
         interface::{TRead, TWriteBuf},
         Controller,
     },
+    config::Config,
     services::{
         config_handler::ConfigHandler,
-        persistence::{
+        statefuls::{
             router::{run_persistent_actors, PersistenceRouter},
             ttl_handlers::{
                 delete::run_delete_expired_key_actor,

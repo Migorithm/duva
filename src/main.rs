@@ -1,14 +1,15 @@
+pub mod adapters;
 mod config;
-pub mod controller;
+
 pub mod macros;
 pub mod services;
 
+use adapters::controller::Controller;
 use anyhow::Result;
 use config::Config;
-use controller::Controller;
 use services::{
     config_handler::ConfigHandler,
-    persistence::{
+    statefuls::{
         router::{run_persistent_actors, PersistenceRouter},
         ttl_handlers::{
             delete::run_delete_expired_key_actor,
