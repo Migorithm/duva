@@ -6,9 +6,9 @@ RDB (Redis Database) files are used by Redis to persist data on disk. This docum
 
 An RDB file is composed of the following sections, in order:
 
-1. **Header Section**
-2. **Metadata Section**
-3. **Database Section**
+1. **Header Section** (9 letters in hex, reading 2digits at a time)
+2. **Metadata Section** (FA - Indicates the start of a metadata subsection.)
+3. **Database Section** (FE - Indicates the start of a database subsection.)
 4. **End of File Section**
 
 RDB files utilize special encodings to store different types of data. The relevant encodings for this overview are "size encoding" and "string encoding." These are explained towards the end of this document.

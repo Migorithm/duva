@@ -3,7 +3,7 @@ use std::{
     time::{Duration, SystemTime},
 };
 
-use crate::services::persistence::{command::PersistCommand, router::PersistenceRouter};
+use crate::services::statefuls::{command::PersistCommand, router::PersistenceRouter};
 use anyhow::Result;
 use tokio::time::interval;
 
