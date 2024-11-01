@@ -29,7 +29,6 @@ const NUM_OF_PERSISTENCE: usize = 10;
 #[tokio::main]
 async fn main() -> Result<()> {
     // You can use print statements as follows for debugging, they'll be visible when running tests.
-    println!("Logs from your program will appear here!");
 
     let persistence_senders = run_persistent_actors(NUM_OF_PERSISTENCE);
     run_delete_expired_key_actor(persistence_senders.clone());

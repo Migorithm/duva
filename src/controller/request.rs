@@ -5,6 +5,7 @@ pub enum UserRequest {
     Config,
     Get,
     Set,
+    Keys,
     Delete,
 }
 
@@ -19,6 +20,7 @@ impl FromStr for UserRequest {
             "delete" => Ok(UserRequest::Delete),
             "echo" => Ok(UserRequest::Echo),
             "config" => Ok(UserRequest::Config),
+            "keys" => Ok(UserRequest::Keys),
             _ => Err(anyhow::anyhow!("Invalid command")),
         }
     }

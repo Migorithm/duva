@@ -48,6 +48,10 @@ impl<U: TWriteBuf + TRead> Controller<U> {
                 let key = args.take_get_args()?;
                 persistence_router.route_get(key).await?
             }
+            Keys => {
+                let pattern = args.take_keys_pattern()?;
+                persistence_router.route_keys(pattern).await?
+            }
             // modify we have to add a new command
             Config => {
                 let cmd = args.take_config_args()?;
@@ -210,6 +214,20 @@ impl InputValues {
             return Err(anyhow::anyhow!("Invalid arguments"));
         };
         Ok((command.as_str(), key.as_str()).try_into()?)
+    }
+
+    // Pattern is passed with escape characters \" wrapping the pattern in question.
+    fn take_keys_pattern(&self) -> Result<Option<String>> {
+        let Value::BulkString(pattern) = self.first().ok_or(anyhow::anyhow!("Not exists"))? else {
+            return Err(anyhow::anyhow!("Invalid arguments"));
+        };
+
+        let pattern = pattern.trim_matches('\"');
+        match pattern {
+            pattern if pattern == "*" => Ok(None),
+            pattern if pattern.is_empty() => Err(anyhow::anyhow!("Invalid pattern")),
+            pattern => Ok(Some(pattern.to_string())),
+        }
     }
 }
 make_smart_pointer!(InputValues, Vec<Value>);

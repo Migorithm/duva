@@ -48,6 +48,19 @@ async fn get_key(key: &str, persistence_router: &PersistenceRouter) -> Value {
     persistence_router.route_get(key.to_string()).await.unwrap()
 }
 
+async fn set_key(
+    key: &str,
+    value: &str,
+    expiry: Option<u64>,
+    ttl_sender: TtlSetter,
+    persistence_router: &PersistenceRouter,
+) -> Value {
+    persistence_router
+        .route_set(key.to_string(), value.to_string(), expiry, ttl_sender)
+        .await
+        .unwrap()
+}
+
 /// The following is to test out the set operation with no expiry
 /// FakeStream should be used to create RespHandler.
 /// `read_operation`` should be called on the handler to get the command.
@@ -57,15 +70,16 @@ async fn get_key(key: &str, persistence_router: &PersistenceRouter) -> Value {
 /// OUTPUT(when get method is invoked on the key) : "value"
 #[tokio::test]
 async fn test_set() {
+    let persistence_handlers = run_persistent_actors(3);
+    let ttl_sender = run_ttl_actors(&persistence_handlers);
+    let config_handler = ConfigHandler::new(Arc::new(Config::new()));
+
     let stream = FakeStream {
         written: "*3\r\n$3\r\nSET\r\n$3\r\nkey\r\n$5\r\nvalue\r\n"
             .as_bytes()
             .to_vec(),
     };
-    let persistence_handlers = run_persistent_actors(3);
-    let ttl_sender = run_ttl_actors(&persistence_handlers);
     let mut controller = Controller::new(stream);
-    let config_handler = ConfigHandler::new(Arc::new(Config::new()));
 
     // WHEN
     controller
@@ -178,4 +192,58 @@ async fn test_config_get_dir() {
     let res = "*2\r\n$3\r\ndir\r\n$4\r\n/tmp\r\n";
     let written = String::from_utf8(controller.stream.written.to_vec()).unwrap();
     assert_eq!(written, res.to_string());
+}
+
+#[tokio::test]
+async fn test_keys() {
+    //GIVEN
+    let persistence_router = run_persistent_actors(3);
+    let ttl_sender = run_ttl_actors(&persistence_router);
+
+    set_key(
+        "key",
+        "value",
+        None,
+        ttl_sender.clone(),
+        &persistence_router,
+    )
+    .await;
+
+    set_key(
+        "key2",
+        "value",
+        None,
+        ttl_sender.clone(),
+        &persistence_router,
+    )
+    .await;
+
+    // Input will be given like : redis-cli KEYS "*"
+    let stream = FakeStream {
+        written: "*2\r\n$4\r\nKEYS\r\n$3\r\n\"*\"\r\n".as_bytes().to_vec(),
+    };
+
+    let mut controller = Controller::new(stream);
+
+    // WHEN
+    controller
+        .handle(
+            &persistence_router,
+            ttl_sender,
+            ConfigHandler::new(Arc::new(Config::new())),
+        )
+        .await
+        .unwrap();
+
+    //THEN string comparison
+
+    assert!([
+        "*2\r\n$3\r\nkey\r\n$4\r\nkey2\r\n",
+        "*2\r\n$4\r\nkey2\r\n$3\r\nkey\r\n"
+    ]
+    .contains(
+        &String::from_utf8(controller.stream.written.to_vec())
+            .unwrap()
+            .as_str()
+    ));
 }

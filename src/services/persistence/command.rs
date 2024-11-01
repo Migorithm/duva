@@ -15,6 +15,10 @@ pub enum PersistCommand {
         key: String,
         sender: oneshot::Sender<Value>,
     },
+    Keys {
+        pattern: Option<String>,
+        sender: oneshot::Sender<Value>,
+    },
     Delete(String),
     StopSentinel,
 }
