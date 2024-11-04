@@ -215,3 +215,24 @@ fn test_size_encode_too_large() {
     let encoded = size_encode(size, data);
     assert!(encoded.is_none(), "Encoding should fail for too large size");
 }
+
+#[test]
+fn test_long_string() {
+    // Create a string of length 30000
+    let long_string = "A".repeat(30000);
+    let data = long_string.as_bytes();
+
+    let encoded = size_encode(30000, data).unwrap();
+
+    // Let's examine the encoding:
+    assert_eq!(encoded[0] >> 6, 0b10); // First two bits should be 0b10
+
+    // Next 4 bytes contain the size 30000 in big-endian
+    let size_bytes = [encoded[1], encoded[2], encoded[3], encoded[4]];
+    let decoded_size = u32::from_be_bytes(size_bytes);
+
+    println!("Size in bytes: {}", decoded_size); // Should be 30000
+
+    // Data starts from index 5
+    assert_eq!(&encoded[5..], data);
+}
