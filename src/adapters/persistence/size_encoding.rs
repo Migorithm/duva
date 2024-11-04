@@ -1,35 +1,63 @@
-// SIZE ENCODING
-// Size-encoded values specify the size of something. Here are some examples:
-// The database indexes and hash table sizes are size encoded.
-// String encoding begins with a size-encoded value that specifies the number of characters in the string.
-// List encoding begins with a size-encoded value that specifies the number of elements in the list.
-// The first two bits of a size-encoded value indicate how the value should be parsed. Here's a guide (bits are shown in both hexadecimal and binary):
-/*
-    If the first two bits are 0b00:
-    The size is the remaining 6 bits of the byte.
-    In this example, the size is 10:
-    0A
-    00001010
-
-    If the first two bits are 0b01:
-    The size is the next 14 bits
-    (remaining 6 bits in the first byte, combined with the next byte),
-    in big-endian (read left-to-right).
-    In this example, the size is 700:
-    42 BC
-    01000010 10111100
-
-    If the first two bits are 0b10:
-    Ignore the remaining 6 bits of the first byte.
-    The size is the next 4 bytes, in big-endian (read left-to-right).
-    In this example, the size is 17000:
-    80 00 00 42 68
-    10000000 00000000 00000000 01000010 01101000
-
-    If the first two bits are 0b11:
-    The remaining 6 bits specify a type of string encoding.
-    See string encoding section.
-*/
+//! A module providing variable-length size encoding followed by arbitrary data.
+//!
+//! This module implements an encoding scheme that can encode a size value using a variable
+//! number of bytes based on the magnitude of the size, followed by arbitrary data bytes.
+//! The size encoding uses a prefix to indicate how many bytes are used to represent the size:
+//!
+//! # Size Encoding Format
+//!
+//! The size value is encoded using one of three formats, chosen based on the value's magnitude:
+//!
+//! * 6-bit (1 byte total):  `00xxxxxx`
+//!   - First 2 bits are `00`
+//!   - Next 6 bits contain size value
+//!   - Can encode sizes 0-63
+//!
+//! * 14-bit (2 bytes total): `01xxxxxx yyyyyyyy`
+//!   - First 2 bits are `01`
+//!   - Next 14 bits contain size value in big-endian order
+//!   - Can encode sizes 64-16383
+//!
+//! * 32-bit (5 bytes total): `10000000 xxxxxxxx xxxxxxxx xxxxxxxx xxxxxxxx`
+//!   - First 2 bits are `10`
+//!   - Next 4 bytes contain size value in big-endian order
+//!   - Can encode sizes 16384-4294967295
+//!
+//! After the size encoding, the arbitrary data bytes follow immediately.
+//!
+//! # Examples
+//!
+//! Basic usage:
+//! ```
+//! # fn main() -> Option<()> {
+//! let data = "Hello".as_bytes();
+//! let size = 42;
+//!
+//! // Encode size 42 (fits in 6 bits) followed by "Hello"
+//! let encoded = size_encode(size, data)?;
+//!
+//! // First byte should be 00101010 (0b00 prefix + 42)
+//! assert_eq!(encoded[0], 0b00101010);
+//!
+//! // Remaining bytes should be "Hello"
+//! assert_eq!(&encoded[1..], b"Hello");
+//! # Some(())
+//! # }
+//! ```
+//!
+//! The benefit is that size_encode allows you to encode any size value independently of the data length. This is useful when:
+//!
+//! 1. You're sending a header for a larger message:
+//! ```rust,text
+//! // First message part
+//! let header = size_encode(1000, b"start").unwrap();
+//! send(header);  // Sends: size=1000 + data="start"
+//! // Later messages
+//! send(b"more data");  // Just data
+//! send(b"final part"); // Just data
+//! ```
+//!
+//! It's primarily about communication/protocol rather than efficiency.
 
 // Decode a size-encoded value based on the first two bits and return the decoded value as a string.
 fn size_decode(encoded: &[u8]) -> Option<String> {
@@ -80,20 +108,37 @@ fn size_decode(encoded: &[u8]) -> Option<String> {
     }
 }
 
-// Encode a size as a size-encoded byte vector.
+/// # Notes
+///
+/// * The size value does not need to match the length of the data. This allows for:
+///   - Streaming scenarios where the size represents total expected bytes
+///   - Protocol-specific uses where size might have different meaning
+///   - Partial message transmission
+
+/// * Size values larger than 2^32 - 1 cannot be encoded and will return None
+///
+/// # Limitations
+///
+/// * Maximum encodable size is 2^32 - 1
+/// * No error correction or detection mechanisms
+/// * Size encoding overhead varies from 1 to 5 bytes
 fn size_encode(value: usize, data: &[u8]) -> Option<Vec<u8>> {
     let mut result = Vec::new();
 
+    // if value is representable with 6bits : 0b00 -> Use the remaining 6 bits to represent the size.
     if value < (1 << 6) {
-        // 0b00: Use the remaining 6 bits to represent the size.
         result.push((0b00 << 6) | (value as u8));
-    } else if value < (1 << 14) {
-        // 0b01: Use the next 14 bits (6 bits in the first byte + the next byte).
+    }
+    // if value is representable with 14bits : 0b01 -> Use the next 14 bits (6 bits in the first byte + the next byte).
+    else if value < (1 << 14) {
+        // Big endian
         result.push((0b01 << 6) | ((value >> 8) as u8 & 0x3F));
         result.push(value as u8);
-    } else if value < (1 << 32) {
-        // 0b10: Use the next 4 bytes.
+    }
+    // if value is representable with 32bits : 0b10 -> Use the next 4 bytes.
+    else if value < (1 << 32) {
         result.push(0b10 << 6);
+        //`to_be_bytes` returns big endian
         result.extend_from_slice(&(value as u32).to_be_bytes());
     } else {
         // Size too large to encode within the supported format.

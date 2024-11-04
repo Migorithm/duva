@@ -1,13 +1,12 @@
+use super::pr_queue;
+use crate::services::statefuls::{command::PersistCommand, router::PersistenceRouter};
+use anyhow::Result;
 use std::{
     cmp::Reverse,
     time::{Duration, SystemTime},
 };
-
-use crate::services::statefuls::{command::PersistCommand, router::PersistenceRouter};
-use anyhow::Result;
 use tokio::time::interval;
 
-use super::pr_queue;
 async fn delete_actor(persistence_router: PersistenceRouter) -> Result<()> {
     //TODO interval period should be configurable
     let mut cleanup_interval = interval(Duration::from_millis(1));
@@ -17,7 +16,6 @@ async fn delete_actor(persistence_router: PersistenceRouter) -> Result<()> {
         while let Some((Reverse(expiry), key)) = queue.peek() {
             if expiry <= &SystemTime::now() {
                 let shard_key = persistence_router.take_shard_key_from_str(key);
-
                 let db = &persistence_router[shard_key];
                 db.send(PersistCommand::Delete(key.clone())).await?;
 
