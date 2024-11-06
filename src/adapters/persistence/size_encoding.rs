@@ -118,13 +118,13 @@ fn integer_decode(encoded: &[u8]) -> Option<String> {
                 }
             }
             0xC1 => {
-                if encoded.len() >= 3 {
+                if encoded.len() == 3 {
                     let value = u16::from_le_bytes([encoded[1], encoded[2]]);
                     return Some(value.to_string());
                 }
             }
             0xC2 => {
-                if encoded.len() >= 5 {
+                if encoded.len() == 5 {
                     let value = u32::from_le_bytes([encoded[1], encoded[2], encoded[3], encoded[4]]);
                     return Some(value.to_string());
                 }
@@ -330,7 +330,7 @@ fn test_32_bit_integer_decode(){
     let data = "1234567";
     let size = data.len();
     let encoded = data_encode(size, data).unwrap();
-    assert_eq!(data_decode(&encoded), Some("100000".to_string()));
+    assert_eq!(data_decode(&encoded), Some("1234567".to_string()));
 }
 
 #[test]
