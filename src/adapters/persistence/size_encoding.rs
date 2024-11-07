@@ -28,7 +28,7 @@
 //! # Examples
 //!
 //! Basic usage:
-//! ```
+//! ```rust
 //! # fn main() -> Option<()> {
 //! let data = "Hello".as_bytes();
 //! let size = 42;
@@ -58,6 +58,7 @@
 //! ```
 //!
 //! It's primarily about communication/protocol rather than efficiency.
+use std::ops::RangeInclusive;
 
 // Decode a size-encoded value based on the first two bits and return the decoded value as a string.
 fn data_decode(encoded: &[u8]) -> Option<String> {
@@ -109,23 +110,24 @@ fn data_decode(encoded: &[u8]) -> Option<String> {
     }
 }
 
+fn extract_range<const N: usize>(encoded: &[u8], range: RangeInclusive<usize>) -> Option<[u8; N]> {
+    TryInto::<[u8; N]>::try_into(encoded.get(range)?).ok()
+}
+
 fn integer_decode(encoded: &[u8]) -> Option<String> {
     if let Some(first_byte) = encoded.get(0) {
         match first_byte {
-            0xC0 => {
-                if let Some(value) = encoded.get(1) {
-                    return Some(value.to_string());
-                }
-            }
+            // 0b11000000: 8-bit integer
+            0xC0 => return Some(encoded.get(1)?.to_string()),
             0xC1 => {
                 if encoded.len() == 3 {
-                    let value = u16::from_le_bytes([encoded[1], encoded[2]]);
+                    let value = u16::from_le_bytes(extract_range(encoded, 1..=2)?);
                     return Some(value.to_string());
                 }
             }
             0xC2 => {
                 if encoded.len() == 5 {
-                    let value = u32::from_le_bytes([encoded[1], encoded[2], encoded[3], encoded[4]]);
+                    let value = u32::from_le_bytes(extract_range(encoded, 1..=4)?);
                     return Some(value.to_string());
                 }
             }
@@ -159,7 +161,6 @@ fn data_encode(size: usize, data: &str) -> Option<Vec<u8>> {
             result.push(value as u8);
             return Some(result);
         } else if value <= 0xFFFF {
-            println!("value: {}", value);
             result.push(0xC1);
             let value = value as u16;
             result.extend_from_slice(&value.to_le_bytes());
@@ -292,7 +293,7 @@ fn test_8_bit_integer_encode() {
 }
 
 #[test]
-fn test_8_bit_integer_decode(){
+fn test_8_bit_integer_decode() {
     let data = "123";
     let size = data.len();
     let encoded = data_encode(size, data).unwrap();
@@ -309,7 +310,7 @@ fn test_16_bit_integer() {
 }
 
 #[test]
-fn test_16_bit_integer_decode(){
+fn test_16_bit_integer_decode() {
     let data = "12345";
     let size = data.len();
     let encoded = data_encode(size, data).unwrap();
@@ -326,7 +327,7 @@ fn test_32_bit_integer() {
 }
 
 #[test]
-fn test_32_bit_integer_decode(){
+fn test_32_bit_integer_decode() {
     let data = "1234567";
     let size = data.len();
     let encoded = data_encode(size, data).unwrap();
