@@ -61,16 +61,16 @@
 use anyhow::Result;
 use std::ops::RangeInclusive;
 
-use crate::services::statefuls::router::PersistenceRouter;
+use crate::services::statefuls::router::CacheDbMessageRouter;
 
 use super::RdbFile;
 
-struct SizeEndec<'a> {
+struct SizeDecoder<'a> {
     size: usize,
     encoded: &'a [u8],
 }
 
-impl<'a> SizeEndec<'a> {
+impl<'a> SizeDecoder<'a> {
     pub fn new(size: usize, encoded: &'a [u8]) -> Self {
         Self { size, encoded }
     }
@@ -159,7 +159,7 @@ impl<'a> SizeEndec<'a> {
         todo!()
     }
 
-    fn send_rdb_file(&self, persistence_router: &PersistenceRouter) -> Result<()> {
+    fn send_rdb_file(&self, persistence_router: &CacheDbMessageRouter) -> Result<()> {
         todo!()
     }
 }
@@ -230,7 +230,7 @@ fn test_decoding_success_case() {
     let example1 = vec![
         0x0D, 0x48, 0x65, 0x6C, 0x6C, 0x6F, 0x2C, 0x20, 0x57, 0x6F, 0x72, 0x6C, 0x64, 0x21,
     ];
-    let endec1 = SizeEndec {
+    let endec1 = SizeDecoder {
         size: 13,
         encoded: &example1,
     };
@@ -244,7 +244,7 @@ fn test_decoding_success_case() {
 fn test_decoding_fail_case() {
     // "Test", with size 10 (although more bytes needed)
     let example2 = vec![0x42, 0x0A, 0x54, 0x65, 0x73, 0x74];
-    let endec = SizeEndec {
+    let endec = SizeDecoder {
         size: 13,
         encoded: &example2,
     };
@@ -336,7 +336,7 @@ fn test_8_bit_integer_decode() {
     let data = "123";
     let size = data.len();
     let encoded = data_encode(size, data).unwrap();
-    let endec = SizeEndec::new(size, &encoded);
+    let endec = SizeDecoder::new(size, &encoded);
     assert_eq!(endec.data_decode(), Some("123".to_string()));
 }
 
@@ -354,7 +354,7 @@ fn test_16_bit_integer_decode() {
     let data = "12345";
     let size = data.len();
     let encoded = data_encode(size, data).unwrap();
-    let endec = SizeEndec::new(size, &encoded);
+    let endec = SizeDecoder::new(size, &encoded);
     assert_eq!(endec.data_decode(), Some("12345".to_string()));
 }
 
@@ -372,7 +372,7 @@ fn test_32_bit_integer_decode() {
     let data = "1234567";
     let size = data.len();
     let encoded = data_encode(size, data).unwrap();
-    let endec = SizeEndec::new(size, &encoded);
+    let endec = SizeDecoder::new(size, &encoded);
     assert_eq!(endec.data_decode(), Some("1234567".to_string()));
 }
 
@@ -381,18 +381,18 @@ fn test_integer_decoding() {
     let data = "42";
     let size = data.len();
     let encoded = data_encode(size, data).unwrap();
-    let endec = SizeEndec::new(size, &encoded);
+    let endec = SizeDecoder::new(size, &encoded);
     assert_eq!(endec.data_decode(), Some("42".to_string()));
 
     let data = "1000";
     let size = data.len();
     let encoded = data_encode(size, data).unwrap();
-    let endec = SizeEndec::new(size, &encoded);
+    let endec = SizeDecoder::new(size, &encoded);
     assert_eq!(endec.data_decode(), Some("1000".to_string()));
 
     let data = "100000";
     let size = data.len();
     let encoded = data_encode(size, data).unwrap();
-    let endec = SizeEndec::new(size, &encoded);
+    let endec = SizeDecoder::new(size, &encoded);
     assert_eq!(endec.data_decode(), Some("100000".to_string()));
 }

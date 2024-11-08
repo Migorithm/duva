@@ -10,7 +10,7 @@ use config::Config;
 use services::{
     config_handler::ConfigHandler,
     statefuls::{
-        router::{run_persistent_actors, PersistenceRouter},
+        router::{run_persistent_actors, CacheDbMessageRouter},
         ttl_handlers::{
             delete::run_delete_expired_key_actor,
             set::{run_set_ttl_actor, TtlSetter},
@@ -55,7 +55,7 @@ fn process(
     stream: TcpStream,
     conf: Arc<Config>,
     ttl_sender: TtlSetter,
-    persistence_router: PersistenceRouter,
+    persistence_router: CacheDbMessageRouter,
 ) {
     tokio::spawn(async move {
         let mut io_controller = Controller::new(stream);

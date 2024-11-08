@@ -1,5 +1,5 @@
 use super::pr_queue;
-use crate::services::statefuls::{command::PersistCommand, router::PersistenceRouter};
+use crate::services::statefuls::{command::PersistCommand, router::CacheDbMessageRouter};
 use anyhow::Result;
 use std::{
     cmp::Reverse,
@@ -7,7 +7,7 @@ use std::{
 };
 use tokio::time::interval;
 
-async fn delete_actor(persistence_router: PersistenceRouter) -> Result<()> {
+async fn delete_actor(persistence_router: CacheDbMessageRouter) -> Result<()> {
     //TODO interval period should be configurable
     let mut cleanup_interval = interval(Duration::from_millis(1));
     loop {
@@ -27,7 +27,7 @@ async fn delete_actor(persistence_router: PersistenceRouter) -> Result<()> {
     }
 }
 
-pub fn run_delete_expired_key_actor(senders_to_persistent_actors: PersistenceRouter) {
+pub fn run_delete_expired_key_actor(senders_to_persistent_actors: CacheDbMessageRouter) {
     tokio::spawn(async move {
         delete_actor(senders_to_persistent_actors).await.unwrap();
     });
