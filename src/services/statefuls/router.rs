@@ -109,6 +109,7 @@ async fn persist_actor(mut recv: tokio::sync::mpsc::Receiver<PersistCommand>) ->
 
     while let Some(command) = recv.recv().await {
         match command {
+            PersistCommand::StartUp(cache_db) => db = cache_db,
             PersistCommand::StopSentinel => break,
             PersistCommand::Set {
                 key,
@@ -138,6 +139,7 @@ pub fn run_persistent_actors(num_of_actors: usize) -> PersistenceRouter {
         tokio::spawn(persist_actor(rx));
         persistence_senders.push(tx);
     });
+
     persistence_senders
 }
 

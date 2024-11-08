@@ -13,7 +13,7 @@ use crate::make_smart_pointer;
 use super::value::Value;
 
 #[derive(Default)]
-struct CacheDb(HashMap<String, String>);
+pub struct CacheDb(HashMap<String, String>);
 
 impl CacheDb {
     pub async fn handle_set(
