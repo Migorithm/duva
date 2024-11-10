@@ -60,8 +60,22 @@
 //! It's primarily about communication/protocol rather than efficiency.
 use std::ops::RangeInclusive;
 
+#[derive(Debug, PartialEq)]
+struct DecodedData {
+    size: usize,
+    data: String
+}
+impl From<String> for DecodedData {
+    fn from(data: String) -> Self {
+        DecodedData {
+            size: data.len(),
+            data
+        }
+    }
+}
+
 // Decode a size-encoded value based on the first two bits and return the decoded value as a string.
-pub fn data_decode(encoded: &[u8]) -> Option<String> {
+pub fn data_decode(encoded: &[u8]) -> Option<DecodedData> {
     // Ensure we have at least one byte to read.
     if encoded.is_empty() {
         return None;
@@ -105,26 +119,26 @@ pub fn data_decode(encoded: &[u8]) -> Option<String> {
 
     // Convert the size-specified bytes into a UTF-8 string.
     match String::from_utf8(encoded[1..=size].to_vec()) {
-        Ok(result) => Some(result),
+        Ok(result) => Some(result.into()),
         Err(_) => None, // Handle non-UTF-8 encoded data.
     }
 }
 
-fn integer_decode(encoded: &[u8]) -> Option<String> {
+fn integer_decode(encoded: &[u8]) -> Option<DecodedData> {
     if let Some(first_byte) = encoded.get(0) {
         match first_byte {
             // 0b11000000: 8-bit integer
-            0xC0 => return Some(encoded.get(1)?.to_string()),
+            0xC0 => return Some(u8::from_le_bytes([encoded[1]]).to_string().into()),
             0xC1 => {
                 if encoded.len() == 3 {
                     let value = u16::from_le_bytes(extract_range(encoded, 1..=2)?);
-                    return Some(value.to_string());
+                    return Some(value.to_string().into());
                 }
             }
             0xC2 => {
                 if encoded.len() == 5 {
                     let value = u32::from_le_bytes(extract_range(encoded, 1..=4)?);
-                    return Some(value.to_string());
+                    return Some(value.to_string().into());
                 }
             }
             _ => return None,
@@ -156,19 +170,19 @@ pub fn data_encode(size: usize, data: &str) -> Option<Vec<u8>> {
 
     // if data can be parsed as an integer as u32
     if let Ok(value) = data.parse::<u32>() {
-        if value <= 0xFF {
+        return if value <= 0xFF {
             result.push(0xC0);
             result.push(value as u8);
-            return Some(result);
+            Some(result)
         } else if value <= 0xFFFF {
             result.push(0xC1);
             let value = value as u16;
             result.extend_from_slice(&value.to_le_bytes());
-            return Some(result);
+            Some(result)
         } else {
             result.push(0xC2);
             result.extend_from_slice(&value.to_le_bytes());
-            return Some(result);
+            Some(result)
         }
     }
 
@@ -209,7 +223,7 @@ fn test_decoding() {
 
     assert!(data_decode(&example1).is_some());
     assert!(data_decode(&example2).is_none()); // due to insufficient bytes
-    assert_eq!(data_decode(&example1), Some("Hello, World!".to_string()));
+    assert_eq!(data_decode(&example1), Some("Hello, World!".to_string().into()));
 }
 
 #[test]
@@ -297,7 +311,7 @@ fn test_8_bit_integer_decode() {
     let data = "123";
     let size = data.len();
     let encoded = data_encode(size, data).unwrap();
-    assert_eq!(data_decode(&encoded), Some("123".to_string()));
+    assert_eq!(data_decode(&encoded), Some("123".to_string().into()));
 }
 
 #[test]
@@ -314,7 +328,7 @@ fn test_16_bit_integer_decode() {
     let data = "12345";
     let size = data.len();
     let encoded = data_encode(size, data).unwrap();
-    assert_eq!(data_decode(&encoded), Some("12345".to_string()));
+    assert_eq!(data_decode(&encoded), Some("12345".to_string().into()));
 }
 
 #[test]
@@ -331,7 +345,7 @@ fn test_32_bit_integer_decode() {
     let data = "1234567";
     let size = data.len();
     let encoded = data_encode(size, data).unwrap();
-    assert_eq!(data_decode(&encoded), Some("1234567".to_string()));
+    assert_eq!(data_decode(&encoded), Some("1234567".to_string().into()));
 }
 
 #[test]
@@ -339,15 +353,15 @@ fn test_integer_decoding() {
     let data = "42";
     let size = data.len();
     let encoded = data_encode(size, data).unwrap();
-    assert_eq!(data_decode(&encoded), Some("42".to_string()));
+    assert_eq!(data_decode(&encoded), Some("42".to_string().into()));
 
     let data = "1000";
     let size = data.len();
     let encoded = data_encode(size, data).unwrap();
-    assert_eq!(data_decode(&encoded), Some("1000".to_string()));
+    assert_eq!(data_decode(&encoded), Some("1000".to_string().into()));
 
     let data = "100000";
     let size = data.len();
     let encoded = data_encode(size, data).unwrap();
-    assert_eq!(data_decode(&encoded), Some("100000".to_string()));
+    assert_eq!(data_decode(&encoded), Some("100000".to_string().into()));
 }
