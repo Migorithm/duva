@@ -1,20 +1,29 @@
-use super::{command::PersistCommand, ttl_handlers::set::TtlSetter, CacheDb};
-use crate::{make_smart_pointer, services::value::Value};
+use super::aof_router::aof_actor;
+use crate::{
+    make_smart_pointer,
+    services::{
+        statefuls::{
+            command::{AOFCommand, CacheCommand},
+            ttl_handlers::set::TtlSetter,
+            CacheDb,
+        },
+        value::Value,
+    },
+};
 use anyhow::Result;
 use std::hash::Hasher;
-
 type OneShotSender<T> = tokio::sync::oneshot::Sender<T>;
 type OneShotReceiverJoinHandle<T> =
     tokio::task::JoinHandle<std::result::Result<T, tokio::sync::oneshot::error::RecvError>>;
 
 #[derive(Clone)]
-pub struct CacheDbMessageRouter(Vec<tokio::sync::mpsc::Sender<PersistCommand>>);
+pub struct CacheDbMessageRouter(Vec<tokio::sync::mpsc::Sender<CacheCommand>>);
 
 impl CacheDbMessageRouter {
     pub(crate) async fn route_get(&self, key: String) -> Result<Value> {
         let (tx, rx) = tokio::sync::oneshot::channel();
         self.select_shard(&key)?
-            .send(PersistCommand::Get { key, sender: tx })
+            .send(CacheCommand::Get { key, sender: tx })
             .await?;
 
         Ok(rx.await?)
@@ -28,7 +37,7 @@ impl CacheDbMessageRouter {
         ttl_sender: TtlSetter,
     ) -> Result<Value> {
         self.select_shard(&key)?
-            .send(PersistCommand::Set {
+            .send(CacheCommand::Set {
                 key,
                 value,
                 expiry,
@@ -79,19 +88,19 @@ impl CacheDbMessageRouter {
 
     // stateless function to send keys
     async fn send_keys_to_shard(
-        shard: tokio::sync::mpsc::Sender<PersistCommand>,
+        shard: tokio::sync::mpsc::Sender<CacheCommand>,
         pattern: Option<String>,
         tx: OneShotSender<Value>,
     ) -> Result<()> {
         Ok(shard
-            .send(PersistCommand::Keys {
+            .send(CacheCommand::Keys {
                 pattern: pattern.clone(),
                 sender: tx,
             })
             .await?)
     }
 
-    fn select_shard(&self, key: &str) -> Result<&tokio::sync::mpsc::Sender<PersistCommand>> {
+    fn select_shard(&self, key: &str) -> Result<&tokio::sync::mpsc::Sender<CacheCommand>> {
         let shard_key = self.take_shard_key_from_str(&key);
         Ok(&self[shard_key as usize])
     }
@@ -103,47 +112,61 @@ impl CacheDbMessageRouter {
     }
 }
 
-async fn persist_actor(mut recv: tokio::sync::mpsc::Receiver<PersistCommand>) -> Result<()> {
+async fn cache_actor(
+    mut recv: tokio::sync::mpsc::Receiver<CacheCommand>,
+    actor_id: usize,
+) -> Result<()> {
     // inner state
     let mut db = CacheDb::default();
+    let (tx, rx) = tokio::sync::mpsc::channel(100);
+    tokio::spawn(aof_actor(rx, actor_id));
 
     while let Some(command) = recv.recv().await {
         match command {
-            PersistCommand::StartUp(cache_db) => db = cache_db,
-            PersistCommand::StopSentinel => break,
-            PersistCommand::Set {
+            CacheCommand::StartUp(cache_db) => db = cache_db,
+            CacheCommand::StopSentinel => break,
+            CacheCommand::Set {
                 key,
                 value,
                 expiry,
                 ttl_sender,
             } => {
                 // Maybe you have to pass sender?
-                let _ = db.handle_set(key, value, expiry, ttl_sender).await;
+
+                let _ = tokio::join!(
+                    db.handle_set(key.clone(), value.clone(), expiry, ttl_sender.clone()),
+                    tx.send(AOFCommand::Set {
+                        key: key.clone(),
+                        value: value.clone(),
+                        expiry,
+                    })
+                );
             }
-            PersistCommand::Get { key, sender } => {
+            CacheCommand::Get { key, sender } => {
                 db.handle_get(key, sender);
             }
-            PersistCommand::Keys { pattern, sender } => {
+            CacheCommand::Keys { pattern, sender } => {
                 db.handle_keys(pattern, sender);
             }
-            PersistCommand::Delete(key) => db.handle_delete(&key),
+            CacheCommand::Delete(key) => db.handle_delete(&key),
         }
     }
     Ok(())
 }
-pub fn run_persistent_actors(num_of_actors: usize) -> CacheDbMessageRouter {
-    let mut persistence_senders = CacheDbMessageRouter(Vec::with_capacity(num_of_actors));
 
-    (0..num_of_actors).for_each(|_| {
+pub fn run_cache_actors(num_of_actors: usize) -> CacheDbMessageRouter {
+    let mut cache_senders = CacheDbMessageRouter(Vec::with_capacity(num_of_actors));
+
+    (0..num_of_actors).for_each(|actor_id| {
         let (tx, rx) = tokio::sync::mpsc::channel(100);
-        tokio::spawn(persist_actor(rx));
-        persistence_senders.push(tx);
+        tokio::spawn(cache_actor(rx, actor_id));
+        cache_senders.push(tx);
     });
 
-    persistence_senders
+    cache_senders
 }
 
 make_smart_pointer!(
     CacheDbMessageRouter,
-    Vec<tokio::sync::mpsc::Sender<PersistCommand>>
+    Vec<tokio::sync::mpsc::Sender<CacheCommand>>
 );

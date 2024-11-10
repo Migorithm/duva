@@ -4,7 +4,7 @@ use super::{ttl_handlers::set::TtlSetter, CacheDb};
 
 use tokio::sync::oneshot;
 
-pub enum PersistCommand {
+pub enum CacheCommand {
     Set {
         key: String,
         value: String,
@@ -22,4 +22,13 @@ pub enum PersistCommand {
     Delete(String),
     StartUp(CacheDb),
     StopSentinel,
+}
+
+pub enum AOFCommand {
+    Set {
+        key: String,
+        value: String,
+        expiry: Option<u64>,
+    },
+    Delete(String),
 }

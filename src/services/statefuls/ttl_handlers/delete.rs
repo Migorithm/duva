@@ -1,5 +1,7 @@
 use super::pr_queue;
-use crate::services::statefuls::{command::PersistCommand, router::CacheDbMessageRouter};
+use crate::services::statefuls::{
+    command::CacheCommand, routers::inmemory_router::CacheDbMessageRouter,
+};
 use anyhow::Result;
 use std::{
     cmp::Reverse,
@@ -17,7 +19,7 @@ async fn delete_actor(persistence_router: CacheDbMessageRouter) -> Result<()> {
             if expiry <= &SystemTime::now() {
                 let shard_key = persistence_router.take_shard_key_from_str(key);
                 let db = &persistence_router[shard_key];
-                db.send(PersistCommand::Delete(key.clone())).await?;
+                db.send(CacheCommand::Delete(key.clone())).await?;
 
                 queue.pop();
             } else {

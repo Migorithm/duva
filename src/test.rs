@@ -7,7 +7,7 @@ use crate::{
     services::{
         config_handler::ConfigHandler,
         statefuls::{
-            router::{run_persistent_actors, CacheDbMessageRouter},
+            routers::inmemory_router::{run_cache_actors, CacheDbMessageRouter},
             ttl_handlers::{
                 delete::run_delete_expired_key_actor,
                 set::{run_set_ttl_actor, TtlSetter},
@@ -70,7 +70,7 @@ async fn set_key(
 /// OUTPUT(when get method is invoked on the key) : "value"
 #[tokio::test]
 async fn test_set() {
-    let persistence_handlers = run_persistent_actors(3);
+    let persistence_handlers = run_cache_actors(3);
     let ttl_sender = run_ttl_actors(&persistence_handlers);
     let config_handler = ConfigHandler::new(Arc::new(Config::new()));
 
@@ -104,7 +104,7 @@ async fn test_set_with_expiry() {
             .as_bytes()
             .to_vec(),
     };
-    let persistence_router = run_persistent_actors(3);
+    let persistence_router = run_cache_actors(3);
     let ttl_sender = run_ttl_actors(&persistence_router);
     let mut controller = Controller::new(stream);
     let config_handler = ConfigHandler::new(Arc::new(Config::new()));
@@ -135,7 +135,7 @@ async fn test_set_with_expire_should_expire_within_100ms() {
             .as_bytes()
             .to_vec(),
     };
-    let persistence_router = run_persistent_actors(3);
+    let persistence_router = run_cache_actors(3);
     let ttl_sender = run_ttl_actors(&persistence_router);
 
     let mut controller = Controller::new(stream);
@@ -176,7 +176,7 @@ async fn test_config_get_dir() {
             .as_bytes()
             .to_vec(),
     };
-    let persistence_router = run_persistent_actors(3);
+    let persistence_router = run_cache_actors(3);
     let ttl_sender = run_ttl_actors(&persistence_router);
 
     let mut controller = Controller::new(stream);
@@ -197,7 +197,7 @@ async fn test_config_get_dir() {
 #[tokio::test]
 async fn test_keys() {
     //GIVEN
-    let persistence_router = run_persistent_actors(3);
+    let persistence_router = run_cache_actors(3);
     let ttl_sender = run_ttl_actors(&persistence_router);
 
     set_key(

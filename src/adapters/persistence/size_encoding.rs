@@ -61,7 +61,7 @@
 use anyhow::Result;
 use std::ops::RangeInclusive;
 
-use crate::services::statefuls::router::CacheDbMessageRouter;
+use crate::services::statefuls::routers::inmemory_router::CacheDbMessageRouter;
 
 use super::RdbFile;
 
