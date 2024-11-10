@@ -12,7 +12,7 @@ use crate::{
     make_smart_pointer,
     services::{
         config_handler::{command::ConfigCommand, ConfigHandler},
-        statefuls::{router::CacheDbMessageRouter, ttl_handlers::set::TtlSetter},
+        statefuls::{routers::inmemory_router::CacheDbMessageRouter, ttl_handlers::set::TtlSetter},
         value::Value,
     },
 };
