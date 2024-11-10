@@ -1,6 +1,6 @@
 use crate::services::value::Value;
 
-use super::ttl_handlers::set::TtlSetter;
+use super::{ttl_handlers::set::TtlSetter, CacheDb};
 
 use tokio::sync::oneshot;
 
@@ -20,5 +20,6 @@ pub enum PersistCommand {
         sender: oneshot::Sender<Value>,
     },
     Delete(String),
+    StartUp(CacheDb),
     StopSentinel,
 }

@@ -58,83 +58,110 @@
 //! ```
 //!
 //! It's primarily about communication/protocol rather than efficiency.
+use anyhow::Result;
 use std::ops::RangeInclusive;
 
-// Decode a size-encoded value based on the first two bits and return the decoded value as a string.
-fn data_decode(encoded: &[u8]) -> Option<String> {
-    // Ensure we have at least one byte to read.
-    if encoded.is_empty() {
-        return None;
-    }
+use crate::services::statefuls::router::CacheDbMessageRouter;
 
-    let first_byte = encoded[0];
-    let size = match first_byte >> 6 {
-        // 0b00: The size is the remaining 6 bits of the byte.
-        0b00 => (first_byte & 0x3F) as usize,
+use super::RdbFile;
 
-        // 0b01: The size is in the next 14 bits (6 bits of the first byte + next byte).
-        0b01 => {
-            if encoded.len() < 2 {
-                return None;
-            }
-            (((first_byte & 0x3F) as usize) << 8) | (encoded[1] as usize)
-        }
-
-        // 0b10: The size is in the next 4 bytes (ignoring the remaining 6 bits of the first byte).
-        0b10 => {
-            if encoded.len() < 5 {
-                return None;
-            }
-            ((encoded[1] as usize) << 24)
-                | ((encoded[2] as usize) << 16)
-                | ((encoded[3] as usize) << 8)
-                | (encoded[4] as usize)
-        }
-
-        // 0b11: The remaining 6 bits specify a type of string encoding.
-        0b11 => {
-            return integer_decode(encoded);
-        }
-        _ => return None, // Fallback for unexpected cases.
-    };
-
-    // Ensure we have enough bytes in `encoded` for the decoded string.
-    if encoded.len() < size + 1 {
-        return None;
-    }
-
-    // Convert the size-specified bytes into a UTF-8 string.
-    match String::from_utf8(encoded[1..=size].to_vec()) {
-        Ok(result) => Some(result),
-        Err(_) => None, // Handle non-UTF-8 encoded data.
-    }
+struct SizeDecoder<'a> {
+    size: usize,
+    encoded: &'a [u8],
 }
 
-fn extract_range<const N: usize>(encoded: &[u8], range: RangeInclusive<usize>) -> Option<[u8; N]> {
-    TryInto::<[u8; N]>::try_into(encoded.get(range)?).ok()
-}
+impl<'a> SizeDecoder<'a> {
+    pub fn new(size: usize, encoded: &'a [u8]) -> Self {
+        Self { size, encoded }
+    }
 
-fn integer_decode(encoded: &[u8]) -> Option<String> {
-    if let Some(first_byte) = encoded.get(0) {
-        match first_byte {
-            // 0b11000000: 8-bit integer
-            0xC0 => return Some(encoded.get(1)?.to_string()),
-            0xC1 => {
-                if encoded.len() == 3 {
-                    let value = u16::from_le_bytes(extract_range(encoded, 1..=2)?);
-                    return Some(value.to_string());
+    // Decode a size-encoded value based on the first two bits and return the decoded value as a string.
+    fn data_decode(&self) -> Option<String> {
+        // Ensure we have at least one byte to read.
+        if self.encoded.is_empty() {
+            return None;
+        }
+
+        let first_byte = self.encoded[0];
+        let size = match first_byte >> 6 {
+            // 0b00: The size is the remaining 6 bits of the byte.
+            0b00 => (first_byte & 0x3F) as usize,
+
+            // 0b01: The size is in the next 14 bits (6 bits of the first byte + next byte).
+            0b01 => {
+                if self.encoded.len() < 2 {
+                    return None;
                 }
+                (((first_byte & 0x3F) as usize) << 8) | (self.encoded[1] as usize)
             }
-            0xC2 => {
-                if encoded.len() == 5 {
-                    let value = u32::from_le_bytes(extract_range(encoded, 1..=4)?);
-                    return Some(value.to_string());
+
+            // 0b10: The size is in the next 4 bytes (ignoring the remaining 6 bits of the first byte).
+            0b10 => {
+                if self.encoded.len() < 5 {
+                    return None;
                 }
+                ((self.encoded[1] as usize) << 24)
+                    | ((self.encoded[2] as usize) << 16)
+                    | ((self.encoded[3] as usize) << 8)
+                    | (self.encoded[4] as usize)
             }
-            _ => return None,
+
+            // 0b11: The remaining 6 bits specify a type of string encoding.
+            0b11 => {
+                return self.integer_decode();
+            }
+            _ => return None, // Fallback for unexpected cases.
+        };
+
+        // Ensure we have enough bytes in `encoded` for the decoded string.
+        if self.encoded.len() < size + 1 {
+            return None;
+        }
+
+        // Convert the size-specified bytes into a UTF-8 string.
+        match String::from_utf8(self.encoded[1..=size].to_vec()) {
+            Ok(result) => Some(result),
+            Err(_) => None, // Handle non-UTF-8 encoded data.
         }
     }
-    None
+
+    fn extract_range<const N: usize>(&self, range: RangeInclusive<usize>) -> Option<[u8; N]> {
+        TryInto::<[u8; N]>::try_into(self.encoded.get(range)?).ok()
+    }
+
+    fn integer_decode(&self) -> Option<String> {
+        if let Some(first_byte) = self.encoded.get(0) {
+            match first_byte {
+                // 0b11000000: 8-bit integer
+                0xC0 => return Some(self.encoded.get(1)?.to_string()),
+                0xC1 => {
+                    if self.encoded.len() == 3 {
+                        let value = u16::from_le_bytes(self.extract_range(1..=2)?);
+                        return Some(value.to_string());
+                    }
+                }
+                0xC2 => {
+                    if self.encoded.len() == 5 {
+                        let value = u32::from_le_bytes(self.extract_range(1..=4)?);
+                        return Some(value.to_string());
+                    }
+                }
+                _ => return None,
+            }
+        }
+        None
+    }
+
+    // ! having read_header + read_metadata + read_databases... separately would likely introduce
+    // ! a lot of bugs and control issues. The following will encapsulate RdbFile generating logics
+    // ! and send the result to the persistence_senders.
+    fn create_rdb_file(&self) -> Result<RdbFile> {
+        todo!()
+    }
+
+    fn send_rdb_file(&self, persistence_router: &CacheDbMessageRouter) -> Result<()> {
+        todo!()
+    }
 }
 
 /// # Notes
@@ -198,18 +225,30 @@ fn data_encode(size: usize, data: &str) -> Option<Vec<u8>> {
 }
 
 #[test]
-fn test_decoding() {
+fn test_decoding_success_case() {
     // "Hello, World!"
     let example1 = vec![
         0x0D, 0x48, 0x65, 0x6C, 0x6C, 0x6F, 0x2C, 0x20, 0x57, 0x6F, 0x72, 0x6C, 0x64, 0x21,
     ];
+    let endec1 = SizeDecoder {
+        size: 13,
+        encoded: &example1,
+    };
 
+    assert!(endec1.data_decode().is_some());
+
+    assert_eq!(endec1.data_decode(), Some("Hello, World!".to_string()));
+}
+
+#[test]
+fn test_decoding_fail_case() {
     // "Test", with size 10 (although more bytes needed)
     let example2 = vec![0x42, 0x0A, 0x54, 0x65, 0x73, 0x74];
-
-    assert!(data_decode(&example1).is_some());
-    assert!(data_decode(&example2).is_none()); // due to insufficient bytes
-    assert_eq!(data_decode(&example1), Some("Hello, World!".to_string()));
+    let endec = SizeDecoder {
+        size: 13,
+        encoded: &example2,
+    };
+    assert!(endec.data_decode().is_none()); // due to insufficient bytes
 }
 
 #[test]
@@ -297,7 +336,8 @@ fn test_8_bit_integer_decode() {
     let data = "123";
     let size = data.len();
     let encoded = data_encode(size, data).unwrap();
-    assert_eq!(data_decode(&encoded), Some("123".to_string()));
+    let endec = SizeDecoder::new(size, &encoded);
+    assert_eq!(endec.data_decode(), Some("123".to_string()));
 }
 
 #[test]
@@ -314,7 +354,8 @@ fn test_16_bit_integer_decode() {
     let data = "12345";
     let size = data.len();
     let encoded = data_encode(size, data).unwrap();
-    assert_eq!(data_decode(&encoded), Some("12345".to_string()));
+    let endec = SizeDecoder::new(size, &encoded);
+    assert_eq!(endec.data_decode(), Some("12345".to_string()));
 }
 
 #[test]
@@ -331,7 +372,8 @@ fn test_32_bit_integer_decode() {
     let data = "1234567";
     let size = data.len();
     let encoded = data_encode(size, data).unwrap();
-    assert_eq!(data_decode(&encoded), Some("1234567".to_string()));
+    let endec = SizeDecoder::new(size, &encoded);
+    assert_eq!(endec.data_decode(), Some("1234567".to_string()));
 }
 
 #[test]
@@ -339,15 +381,18 @@ fn test_integer_decoding() {
     let data = "42";
     let size = data.len();
     let encoded = data_encode(size, data).unwrap();
-    assert_eq!(data_decode(&encoded), Some("42".to_string()));
+    let endec = SizeDecoder::new(size, &encoded);
+    assert_eq!(endec.data_decode(), Some("42".to_string()));
 
     let data = "1000";
     let size = data.len();
     let encoded = data_encode(size, data).unwrap();
-    assert_eq!(data_decode(&encoded), Some("1000".to_string()));
+    let endec = SizeDecoder::new(size, &encoded);
+    assert_eq!(endec.data_decode(), Some("1000".to_string()));
 
     let data = "100000";
     let size = data.len();
     let encoded = data_encode(size, data).unwrap();
-    assert_eq!(data_decode(&encoded), Some("100000".to_string()));
+    let endec = SizeDecoder::new(size, &encoded);
+    assert_eq!(endec.data_decode(), Some("100000".to_string()));
 }

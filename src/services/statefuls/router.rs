@@ -8,9 +8,9 @@ type OneShotReceiverJoinHandle<T> =
     tokio::task::JoinHandle<std::result::Result<T, tokio::sync::oneshot::error::RecvError>>;
 
 #[derive(Clone)]
-pub struct PersistenceRouter(Vec<tokio::sync::mpsc::Sender<PersistCommand>>);
+pub struct CacheDbMessageRouter(Vec<tokio::sync::mpsc::Sender<PersistCommand>>);
 
-impl PersistenceRouter {
+impl CacheDbMessageRouter {
     pub(crate) async fn route_get(&self, key: String) -> Result<Value> {
         let (tx, rx) = tokio::sync::oneshot::channel();
         self.select_shard(&key)?
@@ -109,6 +109,7 @@ async fn persist_actor(mut recv: tokio::sync::mpsc::Receiver<PersistCommand>) ->
 
     while let Some(command) = recv.recv().await {
         match command {
+            PersistCommand::StartUp(cache_db) => db = cache_db,
             PersistCommand::StopSentinel => break,
             PersistCommand::Set {
                 key,
@@ -130,18 +131,19 @@ async fn persist_actor(mut recv: tokio::sync::mpsc::Receiver<PersistCommand>) ->
     }
     Ok(())
 }
-pub fn run_persistent_actors(num_of_actors: usize) -> PersistenceRouter {
-    let mut persistence_senders = PersistenceRouter(Vec::with_capacity(num_of_actors));
+pub fn run_persistent_actors(num_of_actors: usize) -> CacheDbMessageRouter {
+    let mut persistence_senders = CacheDbMessageRouter(Vec::with_capacity(num_of_actors));
 
     (0..num_of_actors).for_each(|_| {
         let (tx, rx) = tokio::sync::mpsc::channel(100);
         tokio::spawn(persist_actor(rx));
         persistence_senders.push(tx);
     });
+
     persistence_senders
 }
 
 make_smart_pointer!(
-    PersistenceRouter,
+    CacheDbMessageRouter,
     Vec<tokio::sync::mpsc::Sender<PersistCommand>>
 );
