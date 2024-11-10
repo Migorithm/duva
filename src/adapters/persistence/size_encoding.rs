@@ -61,7 +61,7 @@
 use std::ops::RangeInclusive;
 
 // Decode a size-encoded value based on the first two bits and return the decoded value as a string.
-fn data_decode(encoded: &[u8]) -> Option<String> {
+pub fn data_decode(encoded: &[u8]) -> Option<String> {
     // Ensure we have at least one byte to read.
     if encoded.is_empty() {
         return None;
@@ -110,10 +110,6 @@ fn data_decode(encoded: &[u8]) -> Option<String> {
     }
 }
 
-fn extract_range<const N: usize>(encoded: &[u8], range: RangeInclusive<usize>) -> Option<[u8; N]> {
-    TryInto::<[u8; N]>::try_into(encoded.get(range)?).ok()
-}
-
 fn integer_decode(encoded: &[u8]) -> Option<String> {
     if let Some(first_byte) = encoded.get(0) {
         match first_byte {
@@ -137,6 +133,10 @@ fn integer_decode(encoded: &[u8]) -> Option<String> {
     None
 }
 
+fn extract_range<const N: usize>(encoded: &[u8], range: RangeInclusive<usize>) -> Option<[u8; N]> {
+    TryInto::<[u8; N]>::try_into(encoded.get(range)?).ok()
+}
+
 /// # Notes
 ///
 /// * The size value does not need to match the length of the data. This allows for:
@@ -151,7 +151,7 @@ fn integer_decode(encoded: &[u8]) -> Option<String> {
 /// * Maximum encodable size is 2^32 - 1
 /// * No error correction or detection mechanisms
 /// * Size encoding overhead varies from 1 to 5 bytes
-fn data_encode(size: usize, data: &str) -> Option<Vec<u8>> {
+pub fn data_encode(size: usize, data: &str) -> Option<Vec<u8>> {
     let mut result = Vec::new();
 
     // if data can be parsed as an integer as u32
