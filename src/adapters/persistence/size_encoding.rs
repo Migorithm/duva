@@ -65,6 +65,12 @@ pub struct DecodedData {
     pub size: usize,
     pub data: String,
 }
+
+impl DecodedData {
+    pub fn next_position(&self) -> usize {
+        self.size + 1
+    }
+}
 impl From<String> for DecodedData {
     fn from(data: String) -> Self {
         DecodedData {
@@ -360,4 +366,15 @@ fn test_integer_decoding() {
     let size = data.len();
     let encoded = data_encode(size, data).unwrap();
     assert_eq!(data_decode(&encoded), Some("100000".to_string().into()));
+}
+
+#[test]
+fn test_decode_multiple_strings(){
+    // "abc" and "def"
+    let encoded = vec![0x03, 0x61, 0x62, 0x63, 0x03, 0x64, 0x65, 0x66];
+    let decoded = data_decode(&encoded).unwrap();
+    assert_eq!(decoded, DecodedData { size: 3, data: "abc".to_string() });
+    let encoded = &encoded[decoded.next_position()..];
+    let decoded = data_decode(encoded).unwrap();
+    assert_eq!(decoded, DecodedData { size: 3, data: "def".to_string() });
 }
