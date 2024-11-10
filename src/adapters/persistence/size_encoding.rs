@@ -61,15 +61,15 @@
 use std::ops::RangeInclusive;
 
 #[derive(Debug, PartialEq)]
-struct DecodedData {
-    size: usize,
-    data: String
+pub struct DecodedData {
+    pub size: usize,
+    pub data: String,
 }
 impl From<String> for DecodedData {
     fn from(data: String) -> Self {
         DecodedData {
             size: data.len(),
-            data
+            data,
         }
     }
 }
@@ -111,17 +111,13 @@ pub fn data_decode(encoded: &[u8]) -> Option<DecodedData> {
         }
         _ => return None, // Fallback for unexpected cases.
     };
-
-    // Ensure we have enough bytes in `encoded` for the decoded string.
-    if encoded.len() < size + 1 {
+    
+    if size > encoded.len() - 1 {
         return None;
     }
-
-    // Convert the size-specified bytes into a UTF-8 string.
-    match String::from_utf8(encoded[1..=size].to_vec()) {
-        Ok(result) => Some(result.into()),
-        Err(_) => None, // Handle non-UTF-8 encoded data.
-    }
+    
+    let data = String::from_utf8(encoded[1..=size].to_vec()).ok()?;
+    Some(DecodedData { size, data })
 }
 
 fn integer_decode(encoded: &[u8]) -> Option<DecodedData> {
@@ -183,7 +179,7 @@ pub fn data_encode(size: usize, data: &str) -> Option<Vec<u8>> {
             result.push(0xC2);
             result.extend_from_slice(&value.to_le_bytes());
             Some(result)
-        }
+        };
     }
 
     // if value is representable with 6bits : 0b00 -> Use the remaining 6 bits to represent the size.
