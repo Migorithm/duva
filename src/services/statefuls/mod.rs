@@ -5,7 +5,7 @@ pub mod ttl_handlers;
 
 use anyhow::Result;
 use std::collections::HashMap;
-use tokio::{sync::oneshot, time};
+use tokio::sync::oneshot;
 use ttl_handlers::set::TtlSetter;
 
 use crate::make_smart_pointer;

@@ -7,7 +7,7 @@ pub struct AOFBuffer {
     pub buffer: CacheDb,
 }
 
-pub async fn aof_actor(mut recv: tokio::sync::mpsc::Receiver<AOFCommand>, actor_id: usize) {
+pub async fn run_aof_actor(mut recv: tokio::sync::mpsc::Receiver<AOFCommand>, actor_id: usize) {
     tokio::spawn(async move {
         let mut dump_internal = interval(time::Duration::from_secs(1));
         loop {

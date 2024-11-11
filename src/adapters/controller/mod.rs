@@ -1,12 +1,10 @@
 pub mod interface;
 pub mod request;
-
-use std::str::FromStr;
-
 use anyhow::Result;
 use bytes::BytesMut;
 use interface::{TRead, TWriteBuf};
 use request::UserRequest::{self, *};
+use std::str::FromStr;
 
 use crate::{
     make_smart_pointer,

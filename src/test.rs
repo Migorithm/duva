@@ -7,7 +7,7 @@ use crate::{
     services::{
         config_handler::ConfigHandler,
         statefuls::{
-            routers::inmemory_router::{run_cache_actors, CacheDbMessageRouter},
+            routers::{cache_actor::run_cache_actors, inmemory_router::CacheDbMessageRouter},
             ttl_handlers::{
                 delete::run_delete_expired_key_actor,
                 set::{run_set_ttl_actor, TtlSetter},
