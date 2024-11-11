@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::services::statefuls::CacheDb;
+use crate::services::statefuls::routers::cache_actor::CacheDb;
 
 pub mod size_encoding;
 
