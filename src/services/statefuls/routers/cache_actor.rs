@@ -1,13 +1,67 @@
-use crate::services::statefuls::{
-    command::{AOFCommand, CacheCommand},
-    CacheDb,
+use super::{aof_actor::AOFActor, inmemory_router::CacheDbMessageRouter};
+use crate::{
+    make_smart_pointer,
+    services::{
+        statefuls::{
+            command::{AOFCommand, CacheCommand},
+            ttl_handlers::set::TtlSetter,
+        },
+        value::Value,
+    },
 };
 use anyhow::Result;
+use std::collections::HashMap;
+use tokio::sync::oneshot;
 
-use super::{aof_actor::run_aof_actor, inmemory_router::CacheDbMessageRouter};
+#[derive(Default)]
+pub struct CacheDb(HashMap<String, String>);
 
-struct CacheActor {
-    db: CacheDb,
+impl CacheDb {
+    pub async fn handle_set(
+        &mut self,
+        key: String,
+        value: String,
+        expiry: Option<u64>,
+        ttl_sender: TtlSetter,
+    ) -> Result<Value> {
+        match expiry {
+            Some(expiry) => {
+                self.insert(key.clone(), value.clone());
+                ttl_sender.set_ttl(key.clone(), expiry).await;
+            }
+            None => {
+                self.insert(key.clone(), value.clone());
+            }
+        }
+        Ok(Value::SimpleString("OK".to_string()))
+    }
+
+    pub fn handle_get(&self, key: String, sender: oneshot::Sender<Value>) {
+        let _ = sender.send(self.get(&key).cloned().into());
+    }
+
+    fn handle_delete(&mut self, key: &str) {
+        self.remove(key);
+    }
+
+    fn handle_keys(&self, pattern: Option<String>, sender: oneshot::Sender<Value>) {
+        let ks = self
+            .keys()
+            .filter(|k| match &pattern {
+                // TODO better way to to matching?
+                Some(pattern) => k.contains(pattern),
+                None => true,
+            })
+            .map(|k| Value::BulkString(k.clone()))
+            .collect::<Vec<_>>();
+        sender.send(Value::Array(ks)).unwrap();
+    }
+}
+
+make_smart_pointer!(CacheDb, HashMap<String, String>);
+
+pub struct CacheActor {
+    cache: CacheDb,
     actor_id: usize,
     inbox: tokio::sync::mpsc::Receiver<CacheCommand>,
     outbox: tokio::sync::mpsc::Sender<AOFCommand>,
@@ -15,27 +69,25 @@ struct CacheActor {
 impl CacheActor {
     // Create a new CacheActor with inner state
     fn run(actor_id: usize) -> tokio::sync::mpsc::Sender<CacheCommand> {
-        let (outbox, aof_actor_inbox) = tokio::sync::mpsc::channel(100);
-        tokio::spawn(run_aof_actor(aof_actor_inbox, actor_id));
+        let outbox = AOFActor::run(actor_id);
 
         let (tx, cache_actor_inbox) = tokio::sync::mpsc::channel(100);
         tokio::spawn(
             Self {
-                db: Default::default(),
+                cache: Default::default(),
                 inbox: cache_actor_inbox,
                 actor_id,
                 outbox,
             }
-            .start(),
+            .handle(),
         );
-
         tx
     }
 
-    async fn start(mut self) -> Result<()> {
+    async fn handle(mut self) -> Result<()> {
         while let Some(command) = self.inbox.recv().await {
             match command {
-                CacheCommand::StartUp(cache_db) => self.db = cache_db,
+                CacheCommand::StartUp(cache_db) => self.cache = cache_db,
                 CacheCommand::StopSentinel => break,
                 CacheCommand::Set {
                     key,
@@ -46,35 +98,31 @@ impl CacheActor {
                     // Maybe you have to pass sender?
 
                     let _ = tokio::join!(
-                        self.db
-                            .handle_set(key.clone(), value.clone(), expiry, ttl_sender.clone()),
-                        self.outbox.send(AOFCommand::Set {
-                            key: key.clone(),
-                            value: value.clone(),
-                            expiry,
-                        })
+                        self.cache
+                            .handle_set(key.clone(), value.clone(), expiry, ttl_sender),
+                        self.outbox.send(AOFCommand::Set { key, value, expiry })
                     );
                 }
                 CacheCommand::Get { key, sender } => {
-                    self.db.handle_get(key, sender);
+                    self.cache.handle_get(key, sender);
                 }
                 CacheCommand::Keys { pattern, sender } => {
-                    self.db.handle_keys(pattern, sender);
+                    self.cache.handle_keys(pattern, sender);
                 }
-                CacheCommand::Delete(key) => self.db.handle_delete(&key),
+                CacheCommand::Delete(key) => self.cache.handle_delete(&key),
             }
         }
         Ok(())
     }
-}
 
-pub fn run_cache_actors(num_of_actors: usize) -> CacheDbMessageRouter {
-    let mut cache_senders = CacheDbMessageRouter::new(num_of_actors);
+    pub fn run_multiple(num_of_actors: usize) -> CacheDbMessageRouter {
+        let mut cache_senders = CacheDbMessageRouter::new(num_of_actors);
 
-    (0..num_of_actors).for_each(|actor_id| {
-        let sender = CacheActor::run(actor_id);
-        cache_senders.push(sender);
-    });
+        (0..num_of_actors).for_each(|actor_id| {
+            let sender = CacheActor::run(actor_id);
+            cache_senders.push(sender);
+        });
 
-    cache_senders
+        cache_senders
+    }
 }

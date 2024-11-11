@@ -10,7 +10,7 @@ use config::Config;
 use services::{
     config_handler::ConfigHandler,
     statefuls::{
-        routers::{cache_actor::run_cache_actors, inmemory_router::CacheDbMessageRouter},
+        routers::{cache_actor::CacheActor, inmemory_router::CacheDbMessageRouter},
         ttl_handlers::{
             delete::run_delete_expired_key_actor,
             set::{run_set_ttl_actor, TtlSetter},
@@ -31,7 +31,7 @@ const NUM_OF_PERSISTENCE: usize = 10;
 async fn main() -> Result<()> {
     // You can use print statements as follows for debugging, they'll be visible when running tests.
 
-    let persistence_senders = run_cache_actors(NUM_OF_PERSISTENCE);
+    let persistence_senders = CacheActor::run_multiple(NUM_OF_PERSISTENCE);
     run_delete_expired_key_actor(persistence_senders.clone());
     let ttl_sender = run_set_ttl_actor();
 
