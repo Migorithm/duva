@@ -11,7 +11,7 @@ use services::{
     config_handler::ConfigHandler,
     statefuls::{
         routers::{cache_actor::CacheActor, inmemory_router::CacheDispatcher},
-        ttl_handlers::{run_ttl_actors, set::TtlSetter},
+        ttl_handlers::{run_ttl_actors, set::TtlHandler},
     },
 };
 use std::sync::Arc;
@@ -51,7 +51,7 @@ async fn main() -> Result<()> {
 fn process(
     stream: TcpStream,
     conf: Arc<Config>,
-    ttl_sender: TtlSetter,
+    ttl_sender: TtlHandler,
     persistence_router: CacheDispatcher,
 ) {
     tokio::spawn(async move {

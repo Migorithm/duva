@@ -10,7 +10,7 @@ use crate::{
     make_smart_pointer,
     services::{
         config_handler::{command::ConfigCommand, ConfigHandler},
-        statefuls::{routers::inmemory_router::CacheDispatcher, ttl_handlers::set::TtlSetter},
+        statefuls::{routers::inmemory_router::CacheDispatcher, ttl_handlers::set::TtlHandler},
         value::Value,
     },
 };
@@ -25,7 +25,7 @@ impl<U: TWriteBuf + TRead> Controller<U> {
     pub(crate) async fn handle(
         &mut self,
         persistence_router: &CacheDispatcher,
-        ttl_sender: TtlSetter,
+        ttl_sender: TtlHandler,
         mut config_handler: ConfigHandler,
     ) -> Result<()> {
         let Some((cmd, args)) = self.read_value().await? else {

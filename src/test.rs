@@ -8,7 +8,7 @@ use crate::{
         config_handler::ConfigHandler,
         statefuls::{
             routers::{cache_actor::CacheActor, inmemory_router::CacheDispatcher},
-            ttl_handlers::{run_ttl_actors, set::TtlSetter},
+            ttl_handlers::{run_ttl_actors, set::TtlHandler},
         },
         value::Value,
     },
@@ -44,7 +44,7 @@ async fn set_key(
     key: &str,
     value: &str,
     expiry: Option<u64>,
-    ttl_sender: TtlSetter,
+    ttl_sender: TtlHandler,
     persistence_router: &CacheDispatcher,
 ) -> Value {
     persistence_router
