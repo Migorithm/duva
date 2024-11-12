@@ -1,4 +1,4 @@
-use super::{aof_actor::AOFActor, inmemory_router::CacheDbMessageRouter};
+use super::{aof_actor::AOFActor, inmemory_router::CacheDispatcher};
 use crate::{
     make_smart_pointer,
     services::{
@@ -115,8 +115,8 @@ impl CacheActor {
         Ok(())
     }
 
-    pub fn run_multiple(num_of_actors: usize) -> CacheDbMessageRouter {
-        let mut cache_senders = CacheDbMessageRouter::new(num_of_actors);
+    pub fn run_multiple(num_of_actors: usize) -> CacheDispatcher {
+        let mut cache_senders = CacheDispatcher::new(num_of_actors);
 
         (0..num_of_actors).for_each(|actor_id| {
             let sender = CacheActor::run(actor_id);

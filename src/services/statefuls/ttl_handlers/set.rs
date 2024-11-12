@@ -2,27 +2,29 @@ use std::cmp::Reverse;
 
 use tokio::sync::mpsc::Receiver;
 
-use anyhow::Result;
-
 use crate::make_smart_pointer;
 
 use super::{command::TtlCommand, pr_queue};
 
-async fn set_ttl_actor(mut recv: Receiver<TtlCommand>) -> Result<()> {
-    while let Some(command) = recv.recv().await {
-        let mut queue = pr_queue().write().await;
-        let Some((expire_at, key)) = command.get_expiration() else {
-            break;
-        };
-        queue.push((Reverse(expire_at), key));
-    }
-    Ok(())
+pub struct TtlSetActor {
+    pub inbox: Receiver<TtlCommand>,
 }
+impl TtlSetActor {
+    pub fn run() -> TtlSetter {
+        let (tx, inbox) = tokio::sync::mpsc::channel(100);
+        tokio::spawn(Self { inbox }.handle());
+        TtlSetter(tx)
+    }
 
-pub fn run_set_ttl_actor() -> TtlSetter {
-    let (tx, rx) = tokio::sync::mpsc::channel(100);
-    tokio::spawn(set_ttl_actor(rx));
-    TtlSetter(tx)
+    async fn handle(mut self) {
+        while let Some(command) = self.inbox.recv().await {
+            let mut queue = pr_queue().write().await;
+            let Some((expire_at, key)) = command.get_expiration() else {
+                break;
+            };
+            queue.push((Reverse(expire_at), key));
+        }
+    }
 }
 
 #[derive(Clone)]

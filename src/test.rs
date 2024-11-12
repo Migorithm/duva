@@ -7,11 +7,8 @@ use crate::{
     services::{
         config_handler::ConfigHandler,
         statefuls::{
-            routers::{cache_actor::CacheActor, inmemory_router::CacheDbMessageRouter},
-            ttl_handlers::{
-                delete::run_delete_expired_key_actor,
-                set::{run_set_ttl_actor, TtlSetter},
-            },
+            routers::{cache_actor::CacheActor, inmemory_router::CacheDispatcher},
+            ttl_handlers::{run_ttl_actors, set::TtlSetter},
         },
         value::Value,
     },
@@ -39,12 +36,7 @@ impl TWriteBuf for FakeStream {
     }
 }
 
-fn run_ttl_actors(persistence_router: &CacheDbMessageRouter) -> TtlSetter {
-    run_delete_expired_key_actor(persistence_router.clone());
-    run_set_ttl_actor()
-}
-
-async fn get_key(key: &str, persistence_router: &CacheDbMessageRouter) -> Value {
+async fn get_key(key: &str, persistence_router: &CacheDispatcher) -> Value {
     persistence_router.route_get(key.to_string()).await.unwrap()
 }
 
@@ -53,7 +45,7 @@ async fn set_key(
     value: &str,
     expiry: Option<u64>,
     ttl_sender: TtlSetter,
-    persistence_router: &CacheDbMessageRouter,
+    persistence_router: &CacheDispatcher,
 ) -> Value {
     persistence_router
         .route_set(key.to_string(), value.to_string(), expiry, ttl_sender)

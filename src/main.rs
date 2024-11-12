@@ -10,11 +10,8 @@ use config::Config;
 use services::{
     config_handler::ConfigHandler,
     statefuls::{
-        routers::{cache_actor::CacheActor, inmemory_router::CacheDbMessageRouter},
-        ttl_handlers::{
-            delete::run_delete_expired_key_actor,
-            set::{run_set_ttl_actor, TtlSetter},
-        },
+        routers::{cache_actor::CacheActor, inmemory_router::CacheDispatcher},
+        ttl_handlers::{run_ttl_actors, set::TtlSetter},
     },
 };
 use std::sync::Arc;
@@ -32,14 +29,14 @@ async fn main() -> Result<()> {
     // You can use print statements as follows for debugging, they'll be visible when running tests.
 
     let persistence_senders = CacheActor::run_multiple(NUM_OF_PERSISTENCE);
-    run_delete_expired_key_actor(persistence_senders.clone());
-    let ttl_sender = run_set_ttl_actor();
+    let ttl_setter = run_ttl_actors(&persistence_senders);
 
     let config = Arc::new(Config::new());
+
     let listener = TcpListener::bind(config.bind_addr()).await?;
     loop {
         let conf = Arc::clone(&config);
-        let t_sender = ttl_sender.clone();
+        let t_sender = ttl_setter.clone();
         let ph = persistence_senders.clone();
         match listener.accept().await {
             Ok((socket, _)) => {
@@ -55,7 +52,7 @@ fn process(
     stream: TcpStream,
     conf: Arc<Config>,
     ttl_sender: TtlSetter,
-    persistence_router: CacheDbMessageRouter,
+    persistence_router: CacheDispatcher,
 ) {
     tokio::spawn(async move {
         let mut io_controller = Controller::new(stream);
