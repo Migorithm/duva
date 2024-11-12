@@ -1,7 +1,13 @@
 use crate::{
-    make_smart_pointer,
+    from_to, make_smart_pointer,
     services::{
-        statefuls::{command::CacheCommand, ttl_handlers::set::TtlHandler},
+        statefuls::{
+            command::CacheCommand,
+            ttl_handlers::{
+                delete_actor::TtlDeleteActor,
+                set::{TtlInbox, TtlSetActor},
+            },
+        },
         value::Value,
     },
 };
@@ -9,13 +15,13 @@ use anyhow::Result;
 use std::{hash::Hasher, iter::Zip};
 use tokio::sync::oneshot::Sender;
 
-use super::cache_actor::CacheHandler;
+use super::cache_actor::{CacheActor, CacheMessageInbox};
 type OneShotSender<T> = tokio::sync::oneshot::Sender<T>;
 type OneShotReceiverJoinHandle<T> =
     tokio::task::JoinHandle<std::result::Result<T, tokio::sync::oneshot::error::RecvError>>;
 
 #[derive(Clone)]
-pub struct CacheDispatcher(pub Vec<CacheHandler>);
+pub struct CacheDispatcher(pub Vec<CacheMessageInbox>);
 
 impl CacheDispatcher {
     pub(crate) async fn route_get(&self, key: String) -> Result<Value> {
@@ -32,7 +38,7 @@ impl CacheDispatcher {
         key: String,
         value: String,
         expiry: Option<u64>,
-        ttl_sender: TtlHandler,
+        ttl_sender: TtlInbox,
     ) -> Result<Value> {
         self.select_shard(&key)?
             .send(CacheCommand::Set {
@@ -84,13 +90,13 @@ impl CacheDispatcher {
     fn chain<T>(
         &self,
         senders: Vec<Sender<T>>,
-    ) -> Zip<std::slice::Iter<'_, CacheHandler>, std::vec::IntoIter<Sender<T>>> {
+    ) -> Zip<std::slice::Iter<'_, CacheMessageInbox>, std::vec::IntoIter<Sender<T>>> {
         self.iter().zip(senders.into_iter())
     }
 
     // stateless function to send keys
     async fn send_keys_to_shard(
-        shard: CacheHandler,
+        shard: CacheMessageInbox,
         pattern: Option<String>,
         tx: OneShotSender<Value>,
     ) -> Result<()> {
@@ -102,7 +108,7 @@ impl CacheDispatcher {
             .await?)
     }
 
-    fn select_shard(&self, key: &str) -> Result<&CacheHandler> {
+    fn select_shard(&self, key: &str) -> Result<&CacheMessageInbox> {
         let shard_key = self.take_shard_key_from_str(&key);
         Ok(&self[shard_key as usize])
     }
@@ -112,12 +118,24 @@ impl CacheDispatcher {
         std::hash::Hash::hash(&s, &mut hasher);
         hasher.finish() as usize % self.len()
     }
-}
 
-make_smart_pointer!(CacheDispatcher, Vec<CacheHandler>);
+    pub fn run_cache_actors(num_of_actors: usize) -> (CacheDispatcher, TtlInbox) {
+        let cache_dispatcher: CacheDispatcher = (0..num_of_actors)
+            .into_iter()
+            .map(|actor_id| CacheActor::run(actor_id))
+            .collect::<Vec<_>>()
+            .into();
 
-impl From<Vec<CacheHandler>> for CacheDispatcher {
-    fn from(handlers: Vec<CacheHandler>) -> Self {
-        Self(handlers)
+        let ttl_inbox = cache_dispatcher.run_ttl_actors();
+        (cache_dispatcher, ttl_inbox)
+    }
+
+    fn run_ttl_actors(&self) -> TtlInbox {
+        TtlDeleteActor::run(self);
+        let ttl_setter = TtlSetActor::run();
+        ttl_setter
     }
 }
+
+make_smart_pointer!(CacheDispatcher, Vec<CacheMessageInbox>);
+from_to!(Vec<CacheMessageInbox>, CacheDispatcher);
