@@ -10,10 +10,10 @@ pub struct TtlSetActor {
     pub inbox: Receiver<TtlCommand>,
 }
 impl TtlSetActor {
-    pub fn run() -> TtlSetter {
+    pub fn run() -> TtlHandler {
         let (tx, inbox) = tokio::sync::mpsc::channel(100);
         tokio::spawn(Self { inbox }.handle());
-        TtlSetter(tx)
+        TtlHandler(tx)
     }
 
     async fn handle(mut self) {
@@ -28,9 +28,9 @@ impl TtlSetActor {
 }
 
 #[derive(Clone)]
-pub struct TtlSetter(tokio::sync::mpsc::Sender<TtlCommand>);
+pub struct TtlHandler(tokio::sync::mpsc::Sender<TtlCommand>);
 
-impl TtlSetter {
+impl TtlHandler {
     pub async fn set_ttl(&self, key: String, expiry: u64) {
         let _ = self
             .send(TtlCommand::Expiry {
@@ -41,4 +41,4 @@ impl TtlSetter {
     }
 }
 
-make_smart_pointer!(TtlSetter, tokio::sync::mpsc::Sender<TtlCommand>);
+make_smart_pointer!(TtlHandler, tokio::sync::mpsc::Sender<TtlCommand>);

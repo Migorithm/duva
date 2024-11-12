@@ -4,7 +4,7 @@ use crate::{
     services::{
         statefuls::{
             command::{AOFCommand, CacheCommand},
-            ttl_handlers::set::TtlSetter,
+            ttl_handlers::set::TtlHandler,
         },
         value::Value,
     },
@@ -22,15 +22,15 @@ impl CacheDb {
         key: String,
         value: String,
         expiry: Option<u64>,
-        ttl_sender: TtlSetter,
+        ttl_sender: TtlHandler,
     ) -> Result<Value> {
         match expiry {
             Some(expiry) => {
-                self.insert(key.clone(), value.clone());
-                ttl_sender.set_ttl(key.clone(), expiry).await;
+                self.insert(key.clone(), value);
+                ttl_sender.set_ttl(key, expiry).await;
             }
             None => {
-                self.insert(key.clone(), value.clone());
+                self.insert(key, value);
             }
         }
         Ok(Value::SimpleString("OK".to_string()))
@@ -47,13 +47,14 @@ impl CacheDb {
     fn handle_keys(&self, pattern: Option<String>, sender: oneshot::Sender<Value>) {
         let ks = self
             .keys()
-            .filter(|k| match &pattern {
-                // TODO better way to to matching?
-                Some(pattern) => k.contains(pattern),
-                None => true,
+            .filter_map(|k| {
+                if pattern.as_ref().map_or(true, |p| k.contains(p)) {
+                    Some(Value::BulkString(k.clone()))
+                } else {
+                    None
+                }
             })
-            .map(|k| Value::BulkString(k.clone()))
-            .collect::<Vec<_>>();
+            .collect();
         sender.send(Value::Array(ks)).unwrap();
     }
 }
@@ -68,7 +69,7 @@ pub struct CacheActor {
 }
 impl CacheActor {
     // Create a new CacheActor with inner state
-    fn run(actor_id: usize) -> tokio::sync::mpsc::Sender<CacheCommand> {
+    fn run(actor_id: usize) -> CacheHandler {
         let outbox = AOFActor::run(actor_id);
 
         let (tx, cache_actor_inbox) = tokio::sync::mpsc::channel(100);
@@ -81,7 +82,7 @@ impl CacheActor {
             }
             .handle(),
         );
-        tx
+        CacheHandler(tx)
     }
 
     async fn handle(mut self) -> Result<()> {
@@ -116,13 +117,15 @@ impl CacheActor {
     }
 
     pub fn run_multiple(num_of_actors: usize) -> CacheDispatcher {
-        let mut cache_senders = CacheDispatcher::new(num_of_actors);
-
-        (0..num_of_actors).for_each(|actor_id| {
-            let sender = CacheActor::run(actor_id);
-            cache_senders.push(sender);
-        });
-
-        cache_senders
+        (0..num_of_actors)
+            .into_iter()
+            .map(|actor_id| CacheActor::run(actor_id))
+            .collect::<Vec<_>>()
+            .into()
     }
 }
+
+#[derive(Clone)]
+pub struct CacheHandler(tokio::sync::mpsc::Sender<CacheCommand>);
+
+make_smart_pointer!(CacheHandler, tokio::sync::mpsc::Sender<CacheCommand>);

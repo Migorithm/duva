@@ -1,23 +1,23 @@
 use crate::{
     make_smart_pointer,
     services::{
-        statefuls::{command::CacheCommand, ttl_handlers::set::TtlSetter},
+        statefuls::{command::CacheCommand, ttl_handlers::set::TtlHandler},
         value::Value,
     },
 };
 use anyhow::Result;
-use std::hash::Hasher;
+use std::{hash::Hasher, iter::Zip};
+use tokio::sync::oneshot::Sender;
+
+use super::cache_actor::CacheHandler;
 type OneShotSender<T> = tokio::sync::oneshot::Sender<T>;
 type OneShotReceiverJoinHandle<T> =
     tokio::task::JoinHandle<std::result::Result<T, tokio::sync::oneshot::error::RecvError>>;
 
 #[derive(Clone)]
-pub struct CacheDispatcher(Vec<tokio::sync::mpsc::Sender<CacheCommand>>);
+pub struct CacheDispatcher(pub Vec<CacheHandler>);
 
 impl CacheDispatcher {
-    pub(crate) fn new(num_of_actors: usize) -> Self {
-        CacheDispatcher(Vec::with_capacity(num_of_actors))
-    }
     pub(crate) async fn route_get(&self, key: String) -> Result<Value> {
         let (tx, rx) = tokio::sync::oneshot::channel();
         self.select_shard(&key)?
@@ -32,7 +32,7 @@ impl CacheDispatcher {
         key: String,
         value: String,
         expiry: Option<u64>,
-        ttl_sender: TtlSetter,
+        ttl_sender: TtlHandler,
     ) -> Result<Value> {
         self.select_shard(&key)?
             .send(CacheCommand::Set {
@@ -45,36 +45,33 @@ impl CacheDispatcher {
         Ok(Value::SimpleString("OK".to_string()))
     }
 
-    // stateless function to create oneshot channels that maps to the number of shards
+    // Send recv handler firstly to the background and return senders and join handlers for receivers
     fn ontshot_channels<T: Send + Sync + 'static>(
         &self,
     ) -> (Vec<OneShotSender<T>>, Vec<OneShotReceiverJoinHandle<T>>) {
-        let mut senders = Vec::with_capacity(self.len());
-        let mut receivers = Vec::with_capacity(self.len());
-        (0..self.len()).for_each(|_| {
-            let (tx, rx) = tokio::sync::oneshot::channel();
-            senders.push(tx);
-            receivers.push(rx);
-        });
-
-        // Fire listeners first before sending
-        let mut receiver_handles = Vec::new();
-        for recv in receivers {
-            receiver_handles.push(tokio::spawn(recv))
-        }
-        (senders, receiver_handles)
+        (0..self.len())
+            .map(|_| {
+                let (sender, recv) = tokio::sync::oneshot::channel();
+                let recv_handler = tokio::spawn(recv);
+                (sender, recv_handler)
+            })
+            .unzip()
     }
 
     pub(crate) async fn route_keys(&self, pattern: Option<String>) -> Result<Value> {
-        let (senders, receiver_handles) = self.ontshot_channels();
+        let (senders, receivers) = self.ontshot_channels();
 
         // send keys to shards
-        for (shard, tx) in self.iter().zip(senders.into_iter()) {
-            tokio::spawn(Self::send_keys_to_shard(shard.clone(), pattern.clone(), tx));
-        }
+        self.chain(senders).for_each(|(shard, sender)| {
+            tokio::spawn(Self::send_keys_to_shard(
+                shard.clone(),
+                pattern.clone(),
+                sender,
+            ));
+        });
 
         let mut keys = Vec::new();
-        for v in receiver_handles {
+        for v in receivers {
             match v.await {
                 Ok(Ok(Value::Array(v))) => keys.extend(v),
                 _ => continue,
@@ -84,9 +81,16 @@ impl CacheDispatcher {
         Ok(Value::Array(keys))
     }
 
+    fn chain<T>(
+        &self,
+        senders: Vec<Sender<T>>,
+    ) -> Zip<std::slice::Iter<'_, CacheHandler>, std::vec::IntoIter<Sender<T>>> {
+        self.iter().zip(senders.into_iter())
+    }
+
     // stateless function to send keys
     async fn send_keys_to_shard(
-        shard: tokio::sync::mpsc::Sender<CacheCommand>,
+        shard: CacheHandler,
         pattern: Option<String>,
         tx: OneShotSender<Value>,
     ) -> Result<()> {
@@ -98,7 +102,7 @@ impl CacheDispatcher {
             .await?)
     }
 
-    fn select_shard(&self, key: &str) -> Result<&tokio::sync::mpsc::Sender<CacheCommand>> {
+    fn select_shard(&self, key: &str) -> Result<&CacheHandler> {
         let shard_key = self.take_shard_key_from_str(&key);
         Ok(&self[shard_key as usize])
     }
@@ -110,7 +114,10 @@ impl CacheDispatcher {
     }
 }
 
-make_smart_pointer!(
-    CacheDispatcher,
-    Vec<tokio::sync::mpsc::Sender<CacheCommand>>
-);
+make_smart_pointer!(CacheDispatcher, Vec<CacheHandler>);
+
+impl From<Vec<CacheHandler>> for CacheDispatcher {
+    fn from(handlers: Vec<CacheHandler>) -> Self {
+        Self(handlers)
+    }
+}
