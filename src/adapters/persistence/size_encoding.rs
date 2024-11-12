@@ -61,7 +61,7 @@
 use anyhow::Result;
 use std::ops::RangeInclusive;
 
-use crate::services::statefuls::routers::inmemory_router::CacheDbMessageRouter;
+use crate::services::statefuls::routers::inmemory_router::CacheDispatcher;
 
 use super::RdbFile;
 
@@ -159,7 +159,7 @@ impl<'a> SizeDecoder<'a> {
         todo!()
     }
 
-    fn send_rdb_file(&self, persistence_router: &CacheDbMessageRouter) -> Result<()> {
+    fn send_rdb_file(&self, persistence_router: &CacheDispatcher) -> Result<()> {
         todo!()
     }
 }

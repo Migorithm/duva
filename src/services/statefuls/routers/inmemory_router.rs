@@ -12,11 +12,11 @@ type OneShotReceiverJoinHandle<T> =
     tokio::task::JoinHandle<std::result::Result<T, tokio::sync::oneshot::error::RecvError>>;
 
 #[derive(Clone)]
-pub struct CacheDbMessageRouter(Vec<tokio::sync::mpsc::Sender<CacheCommand>>);
+pub struct CacheDispatcher(Vec<tokio::sync::mpsc::Sender<CacheCommand>>);
 
-impl CacheDbMessageRouter {
+impl CacheDispatcher {
     pub(crate) fn new(num_of_actors: usize) -> Self {
-        CacheDbMessageRouter(Vec::with_capacity(num_of_actors))
+        CacheDispatcher(Vec::with_capacity(num_of_actors))
     }
     pub(crate) async fn route_get(&self, key: String) -> Result<Value> {
         let (tx, rx) = tokio::sync::oneshot::channel();
@@ -111,6 +111,6 @@ impl CacheDbMessageRouter {
 }
 
 make_smart_pointer!(
-    CacheDbMessageRouter,
+    CacheDispatcher,
     Vec<tokio::sync::mpsc::Sender<CacheCommand>>
 );

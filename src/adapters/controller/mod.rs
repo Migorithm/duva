@@ -10,7 +10,7 @@ use crate::{
     make_smart_pointer,
     services::{
         config_handler::{command::ConfigCommand, ConfigHandler},
-        statefuls::{routers::inmemory_router::CacheDbMessageRouter, ttl_handlers::set::TtlSetter},
+        statefuls::{routers::inmemory_router::CacheDispatcher, ttl_handlers::set::TtlSetter},
         value::Value,
     },
 };
@@ -24,7 +24,7 @@ pub struct Controller<T: TWriteBuf + TRead> {
 impl<U: TWriteBuf + TRead> Controller<U> {
     pub(crate) async fn handle(
         &mut self,
-        persistence_router: &CacheDbMessageRouter,
+        persistence_router: &CacheDispatcher,
         ttl_sender: TtlSetter,
         mut config_handler: ConfigHandler,
     ) -> Result<()> {
