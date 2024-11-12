@@ -1,10 +1,10 @@
-use super::{aof_actor::AOFActor, inmemory_router::CacheDispatcher};
+use super::aof_actor::AOFActor;
 use crate::{
     make_smart_pointer,
     services::{
         statefuls::{
             command::{AOFCommand, CacheCommand},
-            ttl_handlers::set::TtlHandler,
+            ttl_handlers::set::TtlInbox,
         },
         value::Value,
     },
@@ -22,7 +22,7 @@ impl CacheDb {
         key: String,
         value: String,
         expiry: Option<u64>,
-        ttl_sender: TtlHandler,
+        ttl_sender: TtlInbox,
     ) -> Result<Value> {
         match expiry {
             Some(expiry) => {
@@ -69,7 +69,7 @@ pub struct CacheActor {
 }
 impl CacheActor {
     // Create a new CacheActor with inner state
-    fn run(actor_id: usize) -> CacheHandler {
+    pub fn run(actor_id: usize) -> CacheMessageInbox {
         let outbox = AOFActor::run(actor_id);
 
         let (tx, cache_actor_inbox) = tokio::sync::mpsc::channel(100);
@@ -82,7 +82,7 @@ impl CacheActor {
             }
             .handle(),
         );
-        CacheHandler(tx)
+        CacheMessageInbox(tx)
     }
 
     async fn handle(mut self) -> Result<()> {
@@ -115,17 +115,9 @@ impl CacheActor {
         }
         Ok(())
     }
-
-    pub fn run_multiple(num_of_actors: usize) -> CacheDispatcher {
-        (0..num_of_actors)
-            .into_iter()
-            .map(|actor_id| CacheActor::run(actor_id))
-            .collect::<Vec<_>>()
-            .into()
-    }
 }
 
 #[derive(Clone)]
-pub struct CacheHandler(tokio::sync::mpsc::Sender<CacheCommand>);
+pub struct CacheMessageInbox(tokio::sync::mpsc::Sender<CacheCommand>);
 
-make_smart_pointer!(CacheHandler, tokio::sync::mpsc::Sender<CacheCommand>);
+make_smart_pointer!(CacheMessageInbox, tokio::sync::mpsc::Sender<CacheCommand>);

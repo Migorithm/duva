@@ -14,8 +14,13 @@ pub struct TtlDeleteActor {
 }
 
 impl TtlDeleteActor {
-    pub fn run(cache_dispatcher: CacheDispatcher) {
-        tokio::spawn(Self { cache_dispatcher }.handle());
+    pub fn run(cache_dispatcher: &CacheDispatcher) {
+        tokio::spawn(
+            Self {
+                cache_dispatcher: cache_dispatcher.clone(),
+            }
+            .handle(),
+        );
     }
 
     async fn handle(self) -> Result<()> {

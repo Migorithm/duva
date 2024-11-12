@@ -10,7 +10,7 @@ use crate::{
     make_smart_pointer,
     services::{
         config_handler::{command::ConfigCommand, ConfigHandler},
-        statefuls::{routers::inmemory_router::CacheDispatcher, ttl_handlers::set::TtlHandler},
+        statefuls::{routers::inmemory_router::CacheDispatcher, ttl_handlers::set::TtlInbox},
         value::Value,
     },
 };
@@ -25,7 +25,7 @@ impl<U: TWriteBuf + TRead> Controller<U> {
     pub(crate) async fn handle(
         &mut self,
         persistence_router: &CacheDispatcher,
-        ttl_sender: TtlHandler,
+        ttl_sender: TtlInbox,
         mut config_handler: ConfigHandler,
     ) -> Result<()> {
         let Some((cmd, args)) = self.read_value().await? else {
@@ -175,11 +175,10 @@ impl InputValues {
         Ok(key.to_string())
     }
     pub(crate) fn take_set_args(&self) -> Result<(String, String, Option<u64>)> {
-        let Value::BulkString(key) = self.first().ok_or(anyhow::anyhow!("Not exists"))? else {
-            return Err(anyhow::anyhow!("Invalid arguments"));
-        };
-
-        let Value::BulkString(value) = self.get(1).ok_or(anyhow::anyhow!("No value"))? else {
+        let (Value::BulkString(key), Value::BulkString(value)) = (
+            self.first().ok_or(anyhow::anyhow!("Not exists"))?,
+            self.get(1).ok_or(anyhow::anyhow!("No value"))?,
+        ) else {
             return Err(anyhow::anyhow!("Invalid arguments"));
         };
 
