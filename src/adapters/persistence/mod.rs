@@ -1,9 +1,7 @@
 use crate::adapters::persistence::size_encoding::size_decode;
 use crate::{from_to, make_smart_pointer, services::statefuls::routers::cache_actor::CacheDb};
 use anyhow::Result;
-use key_value_storage_extractor::{
-    extract_expiry_time_in_milliseconds, extract_expiry_time_in_seconds, KeyValue,
-};
+use key_value_storage_extractor::KeyValue;
 use size_encoding::string_decode;
 use std::collections::HashMap;
 mod database_extractor;
@@ -40,15 +38,16 @@ impl Data {
         checksum
     }
 
-    pub fn when_0xFC(&mut self) -> Result<u64> {
+    fn when_0xFC(&mut self) -> Result<u64> {
         self.remove(0);
-        extract_expiry_time_in_milliseconds(self)
+        self.extract_expiry_time_in_milliseconds()
     }
-    pub fn when_0xFD(&mut self) -> Result<u64> {
+    fn when_0xFD(&mut self) -> Result<u64> {
         self.remove(0);
-        extract_expiry_time_in_seconds(self)
+        self.extract_expiry_time_in_seconds()
     }
-    pub fn when_0x00(&mut self, mut key_value: KeyValue) -> Result<KeyValue> {
+
+    fn when_0x00(&mut self, mut key_value: KeyValue) -> Result<KeyValue> {
         self.remove(0);
         let key_data: size_encoding::DecodedData =
             string_decode(self).ok_or(anyhow::anyhow!("key decode fail"))?;
@@ -56,6 +55,25 @@ impl Data {
         let value_data = string_decode(self).ok_or(anyhow::anyhow!("value decode fail"))?;
         key_value.value = value_data.data;
         Ok(key_value)
+    }
+
+    // ! SAFETY
+    fn extract_expiry_time_in_seconds(&mut self) -> Result<u64> {
+        let end_pos = 4;
+        let slice: &[u8] = &self[..end_pos];
+        let result = u32::from_le_bytes(slice.try_into()?);
+        self.drain(..end_pos);
+
+        Ok(result as u64)
+    }
+
+    // ! SAFETY
+    fn extract_expiry_time_in_milliseconds(&mut self) -> Result<u64> {
+        let end_pos = 8;
+        let slice: &[u8] = &self[..end_pos];
+        let result = u64::from_le_bytes(slice.try_into()?);
+        self.drain(..end_pos);
+        Ok(result)
     }
 }
 make_smart_pointer!(Data, Vec<u8>);

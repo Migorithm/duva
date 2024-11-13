@@ -51,23 +51,6 @@ impl KeyValue {
     }
 }
 
-pub fn extract_expiry_time_in_seconds(data: &mut Vec<u8>) -> Result<u64> {
-    let end_pos = 4;
-    let slice: &[u8] = &data[..end_pos];
-    let result = u32::from_le_bytes(slice.try_into()?);
-    data.drain(..end_pos);
-
-    Ok(result as u64)
-}
-
-pub fn extract_expiry_time_in_milliseconds(data: &mut Vec<u8>) -> Result<u64> {
-    let end_pos = 8;
-    let slice: &[u8] = &data[..end_pos];
-    let result = u64::from_le_bytes(slice.try_into()?);
-    data.drain(..end_pos);
-    Ok(result)
-}
-
 #[test]
 fn test_non_expiry_key_value_pair() {
     let mut data = vec![0x00, 0x03, 0x62, 0x61, 0x7A, 0x03, 0x71, 0x75, 0x78].into();
