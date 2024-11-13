@@ -1,6 +1,5 @@
-use super::Data;
+use super::BytesHandler;
 use anyhow::Result;
-use std::panic;
 /// # Extract Key-Value Pair Storage
 /// Extract key-value pair from the data buffer and remove the extracted data from the buffer.
 ///
@@ -30,10 +29,10 @@ pub struct KeyValue {
 }
 
 impl KeyValue {
-    pub fn new(data: &mut Data) -> Result<Self> {
+    pub fn new(data: &mut BytesHandler) -> Result<Self> {
         KeyValue::default().extract_key_value_expiry(data)
     }
-    pub fn extract_key_value_expiry(mut self, data: &mut Data) -> Result<Self> {
+    pub fn extract_key_value_expiry(mut self, data: &mut BytesHandler) -> Result<Self> {
         while data.len() > 0 {
             match data[0] {
                 //0b11111100

@@ -1,19 +1,19 @@
 use anyhow::Result;
 
-use super::{Data, KeyValue};
+use super::{BytesHandler, KeyValue};
 
 struct DatabaseSection<'a> {
     index: usize,
     storage: Vec<KeyValue>,
     checksum: Vec<u8>,
-    data: &'a mut Data,
+    data: &'a mut BytesHandler,
 
     key_value_table_size: usize,
     expires_table_size: usize,
 }
 
 impl<'a> DatabaseSection<'a> {
-    pub fn new(data: &'a mut Data) -> Result<Self> {
+    pub fn new(data: &'a mut BytesHandler) -> Result<Self> {
         let section = Self {
             data,
             index: Default::default(),
