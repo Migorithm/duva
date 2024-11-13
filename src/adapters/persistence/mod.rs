@@ -98,9 +98,9 @@ impl BytesHandler {
             self.size_decode().ok_or(err_mt())?,
         ))
     }
-    fn when_0xFF(&mut self) -> Vec<u8> {
+    fn when_0xFF(&mut self) -> Option<Vec<u8>> {
         self.remove(0);
-        let checksum = self[0..8].to_vec();
+        let checksum = try_extract_range(self, 0..=7).map(|f: [u8; 8]| f.to_vec());
         self.drain(..8);
         checksum
     }
@@ -128,22 +128,23 @@ impl BytesHandler {
         Ok(key_value)
     }
 
-    // ! SAFETY
     fn extract_expiry_time_in_seconds(&mut self) -> Result<u64> {
-        let end_pos = 4;
-        let slice: &[u8] = &self[..end_pos];
-        let result = u32::from_le_bytes(slice.try_into()?);
-        self.drain(..end_pos);
+        let range = 0..=3;
+        let result = u32::from_le_bytes(
+            try_extract_range(self, range.clone())
+                .ok_or(anyhow::anyhow!("Failed to extract expiry time in seconds"))?,
+        );
+        self.drain(range);
 
         Ok(result as u64)
     }
 
-    // ! SAFETY
     fn extract_expiry_time_in_milliseconds(&mut self) -> Result<u64> {
-        let end_pos = 8;
-        let slice: &[u8] = &self[..end_pos];
-        let result = u64::from_le_bytes(slice.try_into()?);
-        self.drain(..end_pos);
+        let range = 0..=7;
+        let result = u64::from_le_bytes(try_extract_range(self, range.clone()).ok_or(
+            anyhow::anyhow!("Failed to extract expiry time in milliseconds"),
+        )?);
+        self.drain(range);
         Ok(result)
     }
 
@@ -158,7 +159,6 @@ impl BytesHandler {
             if size > self.len() {
                 return None;
             }
-            // ! SAFETY
             let data = String::from_utf8(self.drain(0..size).collect()).unwrap();
             Some(DecodedData { data })
         } else {

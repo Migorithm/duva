@@ -39,7 +39,10 @@ impl<'a> DatabaseSection<'a> {
                 }
                 //0b11111111
                 0xFF => {
-                    self.checksum = self.data.when_0xFF();
+                    self.checksum = self
+                        .data
+                        .when_0xFF()
+                        .ok_or(anyhow::anyhow!("checksum fail"))?;
                 }
                 _ => {
                     if self.is_key_value_extractable() {
