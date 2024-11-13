@@ -14,17 +14,45 @@ struct DatabaseSection<'a> {
 }
 
 impl<'a> DatabaseSection<'a> {
-    pub fn new(data: &'a mut Data) -> Self {
-        Self {
+    pub fn new(data: &'a mut Data) -> Result<Self> {
+        let section = Self {
             data,
             index: Default::default(),
             storage: Default::default(),
             checksum: Default::default(),
             key_value_table_size: Default::default(),
             expires_table_size: Default::default(),
-        }
+        };
+        section.create_section()
     }
 
+    fn create_section(mut self) -> Result<Self> {
+        while self.data.len() > 0 {
+            match self.data[0] {
+                // 0b11111110
+                0xFE => {
+                    self.when_0xFE();
+                }
+
+                //0b11111011
+                0xFB => self.when_0xFB()?,
+                //0b11111111
+                0xFF => {
+                    self.when_0xFF();
+                }
+                _ => {
+                    if self.is_key_value_extractable() {
+                        self.extract_key_value()?;
+                    } else {
+                        break;
+                    }
+                }
+            }
+        }
+        Ok(self)
+    }
+
+    // ! as long as key_value_table_size is not 0 key value is extractable?
     fn is_key_value_extractable(&self) -> bool {
         self.key_value_table_size > 0
     }
@@ -33,10 +61,10 @@ impl<'a> DatabaseSection<'a> {
         let (key, value, expiry_time) = extract_key_value_expiry(self.data)
             .ok_or(anyhow::anyhow!("extract_key_value_expiry fail"))?;
         self.storage.push((key, value, expiry_time));
-        println!("storage {:?}", self.storage);
+
         if expiry_time.is_some() {
-            if self.expires_table_size > 0 {
-                self.expires_table_size -= 1;
+            if let Some(existing_minus_one) = self.expires_table_size.checked_sub(1) {
+                self.expires_table_size = existing_minus_one;
             } else {
                 return Err(anyhow::anyhow!("expires_table_size is 0"));
             }
@@ -72,34 +100,6 @@ struct Data(Vec<u8>);
 make_smart_pointer!(Data, Vec<u8>);
 from_to!(Vec<u8>, Data);
 
-fn database_section_extractor(data: &mut Data) -> Result<DatabaseSection> {
-    let mut section = DatabaseSection::new(data);
-
-    while section.data.len() > 0 {
-        match section.data[0] {
-            // 0b11111110
-            0xFE => {
-                section.when_0xFE();
-            }
-
-            //0b11111011
-            0xFB => section.when_0xFB()?,
-            //0b11111111
-            0xFF => {
-                section.when_0xFF();
-            }
-            _ => {
-                if section.is_key_value_extractable() {
-                    section.extract_key_value()?;
-                } else {
-                    break;
-                }
-            }
-        }
-    }
-    Ok(section)
-}
-
 #[test]
 fn test_database_section_extractor() {
     let mut data = vec![
@@ -111,8 +111,7 @@ fn test_database_section_extractor() {
     ]
     .into();
 
-    let mut_data = &mut data;
-    let db_section = database_section_extractor(mut_data).unwrap();
+    let db_section = DatabaseSection::new(&mut data).unwrap();
     assert_eq!(db_section.index, 0);
     assert_eq!(db_section.storage.len(), 3);
     assert_eq!(db_section.checksum.len(), 8);
