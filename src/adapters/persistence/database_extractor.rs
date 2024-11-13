@@ -1,11 +1,10 @@
-use crate::adapters::persistence::key_value_storage_extractor::extract_key_value_expiry;
 use anyhow::Result;
 
-use super::Data;
+use super::{Data, KeyValue};
 
 struct DatabaseSection<'a> {
     index: usize,
-    storage: Vec<(String, String, Option<u64>)>,
+    storage: Vec<KeyValue>,
     checksum: Vec<u8>,
     data: &'a mut Data,
 
@@ -60,17 +59,18 @@ impl<'a> DatabaseSection<'a> {
     }
 
     fn extract_key_value(&mut self) -> Result<()> {
-        let (key, value, expiry_time) = extract_key_value_expiry(self.data)
-            .ok_or(anyhow::anyhow!("extract_key_value_expiry fail"))?;
-        self.storage.push((key, value, expiry_time));
+        let key_value = KeyValue::default().extract_key_value_expiry(self.data)?;
 
-        if expiry_time.is_some() {
+        if key_value.expiry.is_some() {
             if let Some(existing_minus_one) = self.expires_table_size.checked_sub(1) {
                 self.expires_table_size = existing_minus_one;
             } else {
                 return Err(anyhow::anyhow!("expires_table_size is 0"));
             }
         }
+
+        self.storage.push(key_value);
+
         self.key_value_table_size -= 1;
         Ok(())
     }
