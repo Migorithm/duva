@@ -63,13 +63,9 @@ pub fn extract_expiry_time_in_seconds(data: &mut Vec<u8>) -> Result<u64> {
 pub fn extract_expiry_time_in_milliseconds(data: &mut Vec<u8>) -> Result<u64> {
     let end_pos = 8;
     let slice: &[u8] = &data[..end_pos];
-    if let Ok(result) = panic::catch_unwind(|| u64::from_le_bytes(slice.try_into().unwrap()).into())
-    {
-        data.drain(..end_pos);
-        Ok(result)
-    } else {
-        Err(anyhow::anyhow!("Invalid expiry time in milliseconds"))
-    }
+    let result = u64::from_le_bytes(slice.try_into()?);
+    data.drain(..end_pos);
+    Ok(result)
 }
 
 #[test]
