@@ -8,10 +8,20 @@ macro_rules! make_smart_pointer {
                 &self.0
             }
         }
-
         impl std::ops::DerefMut for $name {
             fn deref_mut(&mut self) -> &mut Self::Target {
                 &mut self.0
+            }
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! from_to {
+    ($from:ty, $to:ty) => {
+        impl From<$from> for $to {
+            fn from(value: $from) -> Self {
+                Self(value)
             }
         }
     };

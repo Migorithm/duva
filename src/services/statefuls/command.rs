@@ -1,6 +1,6 @@
 use crate::services::value::Value;
 
-use super::{ttl_handlers::set::TtlSetter, CacheDb};
+use super::{routers::cache_actor::CacheDb, ttl_handlers::set::TtlInbox};
 
 use tokio::sync::oneshot;
 
@@ -9,7 +9,7 @@ pub enum CacheCommand {
         key: String,
         value: String,
         expiry: Option<u64>,
-        ttl_sender: TtlSetter,
+        ttl_sender: TtlInbox,
     },
     Get {
         key: String,

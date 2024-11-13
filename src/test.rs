@@ -6,13 +6,7 @@ use crate::{
     config::Config,
     services::{
         config_handler::ConfigHandler,
-        statefuls::{
-            routers::inmemory_router::{run_cache_actors, CacheDbMessageRouter},
-            ttl_handlers::{
-                delete::run_delete_expired_key_actor,
-                set::{run_set_ttl_actor, TtlSetter},
-            },
-        },
+        statefuls::{routers::inmemory_router::CacheDispatcher, ttl_handlers::set::TtlInbox},
         value::Value,
     },
 };
@@ -39,12 +33,7 @@ impl TWriteBuf for FakeStream {
     }
 }
 
-fn run_ttl_actors(persistence_router: &CacheDbMessageRouter) -> TtlSetter {
-    run_delete_expired_key_actor(persistence_router.clone());
-    run_set_ttl_actor()
-}
-
-async fn get_key(key: &str, persistence_router: &CacheDbMessageRouter) -> Value {
+async fn get_key(key: &str, persistence_router: &CacheDispatcher) -> Value {
     persistence_router.route_get(key.to_string()).await.unwrap()
 }
 
@@ -52,8 +41,8 @@ async fn set_key(
     key: &str,
     value: &str,
     expiry: Option<u64>,
-    ttl_sender: TtlSetter,
-    persistence_router: &CacheDbMessageRouter,
+    ttl_sender: TtlInbox,
+    persistence_router: &CacheDispatcher,
 ) -> Value {
     persistence_router
         .route_set(key.to_string(), value.to_string(), expiry, ttl_sender)
@@ -70,8 +59,8 @@ async fn set_key(
 /// OUTPUT(when get method is invoked on the key) : "value"
 #[tokio::test]
 async fn test_set() {
-    let persistence_handlers = run_cache_actors(3);
-    let ttl_sender = run_ttl_actors(&persistence_handlers);
+    let (persistence_handlers, ttl_inbox) = CacheDispatcher::run_cache_actors(3);
+
     let config_handler = ConfigHandler::new(Arc::new(Config::new()));
 
     let stream = FakeStream {
@@ -83,7 +72,7 @@ async fn test_set() {
 
     // WHEN
     controller
-        .handle(&persistence_handlers, ttl_sender, config_handler)
+        .handle(&persistence_handlers, ttl_inbox, config_handler)
         .await
         .unwrap();
 
@@ -104,25 +93,26 @@ async fn test_set_with_expiry() {
             .as_bytes()
             .to_vec(),
     };
-    let persistence_router = run_cache_actors(3);
-    let ttl_sender = run_ttl_actors(&persistence_router);
+
+    let (cache_dispatcher, ttl_inbox) = CacheDispatcher::run_cache_actors(3);
+
     let mut controller = Controller::new(stream);
     let config_handler = ConfigHandler::new(Arc::new(Config::new()));
 
     // WHEN
     controller
-        .handle(&persistence_router, ttl_sender, config_handler)
+        .handle(&cache_dispatcher, ttl_inbox, config_handler)
         .await
         .unwrap();
 
-    let value = get_key("foo", &persistence_router).await;
+    let value = get_key("foo", &cache_dispatcher).await;
 
     // THEN
     assert_eq!(value, Value::BulkString("bar".to_string()));
 
     // WHEN2 - wait for 5ms
     tokio::time::sleep(tokio::time::Duration::from_millis(5)).await;
-    let value = get_key("foo", &persistence_router).await;
+    let value = get_key("foo", &cache_dispatcher).await;
 
     //THEN
     assert_eq!(value, Value::BulkString("bar".to_string()));
@@ -135,26 +125,25 @@ async fn test_set_with_expire_should_expire_within_100ms() {
             .as_bytes()
             .to_vec(),
     };
-    let persistence_router = run_cache_actors(3);
-    let ttl_sender = run_ttl_actors(&persistence_router);
+    let (cache_dispatcher, ttl_inbox) = CacheDispatcher::run_cache_actors(3);
 
     let mut controller = Controller::new(stream);
     let config_handler = ConfigHandler::new(Arc::new(Config::new()));
 
     // WHEN
     controller
-        .handle(&persistence_router, ttl_sender, config_handler)
+        .handle(&cache_dispatcher, ttl_inbox, config_handler)
         .await
         .unwrap();
 
-    let value = get_key("foo", &persistence_router).await;
+    let value = get_key("foo", &cache_dispatcher).await;
 
     // THEN
     assert_eq!(value, Value::BulkString("bar".to_string()));
 
     // WHEN2 - wait for 100ms
     tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-    let value = get_key("foo", &persistence_router).await;
+    let value = get_key("foo", &cache_dispatcher).await;
 
     //THEN
     assert_eq!(value, Value::Null);
@@ -176,15 +165,14 @@ async fn test_config_get_dir() {
             .as_bytes()
             .to_vec(),
     };
-    let persistence_router = run_cache_actors(3);
-    let ttl_sender = run_ttl_actors(&persistence_router);
+    let (cache_dispatcher, ttl_inbox) = CacheDispatcher::run_cache_actors(3);
 
     let mut controller = Controller::new(stream);
     let config_handler = ConfigHandler::new(Arc::new(conf));
 
     // WHEN
     controller
-        .handle(&persistence_router, ttl_sender, config_handler)
+        .handle(&cache_dispatcher, ttl_inbox, config_handler)
         .await
         .unwrap();
 
@@ -197,26 +185,11 @@ async fn test_config_get_dir() {
 #[tokio::test]
 async fn test_keys() {
     //GIVEN
-    let persistence_router = run_cache_actors(3);
-    let ttl_sender = run_ttl_actors(&persistence_router);
+    let (cache_dispatcher, ttl_inbox) = CacheDispatcher::run_cache_actors(3);
 
-    set_key(
-        "key",
-        "value",
-        None,
-        ttl_sender.clone(),
-        &persistence_router,
-    )
-    .await;
+    set_key("key", "value", None, ttl_inbox.clone(), &cache_dispatcher).await;
 
-    set_key(
-        "key2",
-        "value",
-        None,
-        ttl_sender.clone(),
-        &persistence_router,
-    )
-    .await;
+    set_key("key2", "value", None, ttl_inbox.clone(), &cache_dispatcher).await;
 
     // Input will be given like : redis-cli KEYS "*"
     let stream = FakeStream {
@@ -228,8 +201,8 @@ async fn test_keys() {
     // WHEN
     controller
         .handle(
-            &persistence_router,
-            ttl_sender,
+            &cache_dispatcher,
+            ttl_inbox,
             ConfigHandler::new(Arc::new(Config::new())),
         )
         .await

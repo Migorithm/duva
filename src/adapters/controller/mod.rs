@@ -1,18 +1,16 @@
 pub mod interface;
 pub mod request;
-
-use std::str::FromStr;
-
 use anyhow::Result;
 use bytes::BytesMut;
 use interface::{TRead, TWriteBuf};
 use request::UserRequest::{self, *};
+use std::str::FromStr;
 
 use crate::{
     make_smart_pointer,
     services::{
         config_handler::{command::ConfigCommand, ConfigHandler},
-        statefuls::{routers::inmemory_router::CacheDbMessageRouter, ttl_handlers::set::TtlSetter},
+        statefuls::{routers::inmemory_router::CacheDispatcher, ttl_handlers::set::TtlInbox},
         value::Value,
     },
 };
@@ -26,8 +24,8 @@ pub struct Controller<T: TWriteBuf + TRead> {
 impl<U: TWriteBuf + TRead> Controller<U> {
     pub(crate) async fn handle(
         &mut self,
-        persistence_router: &CacheDbMessageRouter,
-        ttl_sender: TtlSetter,
+        persistence_router: &CacheDispatcher,
+        ttl_sender: TtlInbox,
         mut config_handler: ConfigHandler,
     ) -> Result<()> {
         let Some((cmd, args)) = self.read_value().await? else {
@@ -123,18 +121,15 @@ fn read_until_crlf(buffer: &[u8]) -> Option<(&[u8], usize)> {
 
 // +PING\r\n
 pub(crate) fn parse_simple_string(buffer: BytesMut) -> Result<(Value, usize)> {
-    if let Some((line, len)) = read_until_crlf(&buffer[1..]) {
-        let string = String::from_utf8(line.to_vec())?;
-        Ok((Value::SimpleString(string), len + 1))
-    } else {
-        Err(anyhow::anyhow!("Invalid simple string"))
-    }
+    let (line, len) =
+        read_until_crlf(&buffer[1..]).ok_or(anyhow::anyhow!("Invalid simple string"))?;
+    let string = String::from_utf8(line.to_vec())?;
+    Ok((Value::SimpleString(string), len + 1))
 }
 
 fn parse_array(buffer: BytesMut) -> Result<(Value, usize)> {
-    let Some((line, mut len)) = read_until_crlf(&buffer[1..]) else {
-        return Err(anyhow::anyhow!("Invalid bulk string"));
-    };
+    let (line, mut len) =
+        read_until_crlf(&buffer[1..]).ok_or(anyhow::anyhow!("Invalid bulk string"))?;
 
     len += 1;
 
@@ -151,20 +146,19 @@ fn parse_array(buffer: BytesMut) -> Result<(Value, usize)> {
 }
 
 fn parse_bulk_string(buffer: BytesMut) -> Result<(Value, usize)> {
-    let Some((line, mut len)) = read_until_crlf(&buffer[1..]) else {
-        return Err(anyhow::anyhow!("Invalid bulk string"));
-    };
+    let (line, mut len) =
+        read_until_crlf(&buffer[1..]).ok_or(anyhow::anyhow!("Invalid bulk string"))?;
 
-    // add 1 to len to account for the first line
+    // Adjust `len` to include the initial line and calculate `bulk_str_len`
     len += 1;
+    let bulk_str_len = usize::try_from(ConversionWrapper(line))?;
 
-    let bulk_str_len = TryInto::<usize>::try_into(ConversionWrapper(line))?;
+    // Extract the bulk string from the buffer
+    let bulk_str = &buffer[len..len + bulk_str_len];
+    let bulk_string_value = String::from_utf8(bulk_str.to_vec())?;
 
-    let bulk_str = &buffer[len..bulk_str_len + len];
-    Ok((
-        Value::BulkString(String::from_utf8(bulk_str.to_vec())?),
-        len + bulk_str_len + 2, // to account for crlf, add 2
-    ))
+    // Return the bulk string value and adjusted length to account for CRLF
+    Ok((Value::BulkString(bulk_string_value), len + bulk_str_len + 2))
 }
 
 #[derive(Debug, Clone)]
@@ -181,11 +175,10 @@ impl InputValues {
         Ok(key.to_string())
     }
     pub(crate) fn take_set_args(&self) -> Result<(String, String, Option<u64>)> {
-        let Value::BulkString(key) = self.first().ok_or(anyhow::anyhow!("Not exists"))? else {
-            return Err(anyhow::anyhow!("Invalid arguments"));
-        };
-
-        let Value::BulkString(value) = self.get(1).ok_or(anyhow::anyhow!("No value"))? else {
+        let (Value::BulkString(key), Value::BulkString(value)) = (
+            self.first().ok_or(anyhow::anyhow!("Not exists"))?,
+            self.get(1).ok_or(anyhow::anyhow!("No value"))?,
+        ) else {
             return Err(anyhow::anyhow!("Invalid arguments"));
         };
 

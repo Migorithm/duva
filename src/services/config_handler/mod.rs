@@ -22,20 +22,28 @@ impl ConfigHandler {
         match cmd {
             ConfigCommand::Get(ConfigResource::Dir) => Ok(Value::Array(vec![
                 Value::BulkString("dir".to_string()),
-                self.conf
-                    .dir
-                    .clone()
-                    .map(|v| Value::BulkString(v))
-                    .unwrap_or(Value::Null),
+                self.get_dir(),
             ])),
             ConfigCommand::Get(ConfigResource::DbFileName) => Ok(Value::Array(vec![
                 Value::BulkString("dbfilename".to_string()),
-                self.conf
-                    .db_filename
-                    .clone()
-                    .map(|v| Value::BulkString(v))
-                    .unwrap_or(Value::Null),
+                self.get_db_filename(),
             ])),
         }
+    }
+
+    fn get_dir(&self) -> Value {
+        self.conf
+            .dir
+            .clone()
+            .map(|v| Value::BulkString(v))
+            .unwrap_or(Value::Null)
+    }
+
+    fn get_db_filename(&self) -> Value {
+        self.conf
+            .db_filename
+            .clone()
+            .map(|v| Value::BulkString(v))
+            .unwrap_or(Value::Null)
     }
 }
