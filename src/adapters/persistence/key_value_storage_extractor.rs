@@ -68,7 +68,6 @@ pub fn extract_key_value_expiry(data : &mut Vec<u8>) -> Option<(String, String, 
     let mut value = String::new();
     let mut expiry_time = None;
     while data.len() > 0 {
-        println!("{}", data[0]);
         match data[0] {
             0xFC => {
                 data.remove(0);
@@ -84,13 +83,14 @@ pub fn extract_key_value_expiry(data : &mut Vec<u8>) -> Option<(String, String, 
                 key = key_data.data;
                 let value_data = string_decode(data)?;
                 value = value_data.data;
+                return Some((key, value, expiry_time));
             }
             _ => {
                 return None;
             }
         }
     }
-    Some((key, value, expiry_time))
+    None
 }
 
 fn extract_expiry_time_in_seconds(data: &mut Vec<u8>) -> Option<u64>{
