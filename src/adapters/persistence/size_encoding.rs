@@ -18,26 +18,12 @@ use super::BytesHandler;
 /// * No error correction or detection mechanisms
 /// * Size encoding overhead varies from 1 to 5 bytes
 fn data_encode(size: usize, data: &str) -> Option<BytesHandler> {
-    let mut result = BytesHandler::default();
-
     // if data can be parsed as an integer as u32
     if let Ok(value) = data.parse::<u32>() {
-        return if value <= 0xFF {
-            result.push(0xC0);
-            result.push(value as u8);
-            Some(result)
-        } else if value <= 0xFFFF {
-            result.push(0xC1);
-            let value = value as u16;
-            result.extend_from_slice(&value.to_le_bytes());
-            Some(result)
-        } else {
-            result.push(0xC2);
-            result.extend_from_slice(&value.to_le_bytes());
-            Some(result)
-        };
+        return Some(BytesHandler::from_u32(value));
     }
 
+    let mut result = BytesHandler::default();
     // if value is representable with 6bits : 0b00 -> Use the remaining 6 bits to represent the size.
     if size < (1 << 6) {
         result.push((0b00 << 6) | (size as u8));

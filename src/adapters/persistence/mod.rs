@@ -83,6 +83,23 @@ pub struct DecodedData {
 pub struct BytesHandler(Vec<u8>);
 
 impl BytesHandler {
+    // TODO subject to refactor
+    fn from_u32(value: u32) -> Self {
+        let mut result = BytesHandler::default();
+        if value <= 0xFF {
+            result.push(0xC0);
+            result.push(value as u8);
+        } else if value <= 0xFFFF {
+            result.push(0xC1);
+            let value = value as u16;
+            result.extend_from_slice(&value.to_le_bytes());
+        } else {
+            result.push(0xC2);
+            result.extend_from_slice(&value.to_le_bytes());
+        }
+        result
+    }
+
     fn remove_identifier(&mut self) {
         self.remove(0);
     }
