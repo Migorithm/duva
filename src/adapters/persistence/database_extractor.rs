@@ -14,6 +14,37 @@ struct DatabaseSection<'a> {
 }
 
 impl<'a> DatabaseSection<'a> {
+    pub fn new(data: &'a mut Data) -> Self {
+        Self {
+            data,
+            index: 0,
+            storage: Vec::new(),
+            checksum: Vec::new(),
+            key_value_table_size: 0,
+            expires_table_size: 0,
+        }
+    }
+
+    fn is_key_value_extractable(&self) -> bool {
+        self.key_value_table_size > 0
+    }
+
+    fn extract_key_value(&mut self) -> Result<()> {
+        let (key, value, expiry_time) = extract_key_value_expiry(self.data)
+            .ok_or(anyhow::anyhow!("extract_key_value_expiry fail"))?;
+        self.storage.push((key, value, expiry_time));
+        println!("storage {:?}", self.storage);
+        if expiry_time.is_some() {
+            if self.expires_table_size > 0 {
+                self.expires_table_size -= 1;
+            } else {
+                return Err(anyhow::anyhow!("expires_table_size is 0"));
+            }
+        }
+        self.key_value_table_size -= 1;
+        Ok(())
+    }
+
     fn when_0xFE(&mut self) -> usize {
         self.data.remove(0);
         size_decode(self.data).unwrap()
@@ -42,14 +73,7 @@ make_smart_pointer!(Data, Vec<u8>);
 from_to!(Vec<u8>, Data);
 
 fn database_section_extractor(data: &mut Data) -> Result<DatabaseSection> {
-    let mut section = DatabaseSection {
-        index: 0,
-        storage: Vec::new(),
-        checksum: Vec::new(),
-        data,
-        key_value_table_size: 0,
-        expires_table_size: 0,
-    };
+    let mut section = DatabaseSection::new(data);
 
     while section.data.len() > 0 {
         match section.data[0] {
@@ -65,19 +89,8 @@ fn database_section_extractor(data: &mut Data) -> Result<DatabaseSection> {
                 section.when_0xFF();
             }
             _ => {
-                if section.key_value_table_size > 0 {
-                    let (key, value, expiry_time) = extract_key_value_expiry(section.data)
-                        .ok_or(anyhow::anyhow!("extract_key_value_expiry fail"))?;
-                    section.storage.push((key, value, expiry_time));
-                    println!("storage {:?}", section.storage);
-                    if expiry_time.is_some() {
-                        if section.expires_table_size > 0 {
-                            section.expires_table_size -= 1;
-                        } else {
-                            return Err(anyhow::anyhow!("expires_table_size is 0"));
-                        }
-                    }
-                    section.key_value_table_size -= 1;
+                if section.is_key_value_extractable() {
+                    section.extract_key_value()?;
                 } else {
                     break;
                 }
