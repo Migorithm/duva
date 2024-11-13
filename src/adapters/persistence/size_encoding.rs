@@ -68,56 +68,53 @@ pub struct DecodedData {
 }
 
 // Decode a size-encoded value based on the first two bits and return the decoded value as a string.
-pub fn data_decode(encoded: &[u8]) -> Option<DecodedData> {
+pub fn string_decode(encoded: &[u8]) -> Option<DecodedData> {
     // Ensure we have at least one byte to read.
     if encoded.is_empty() {
         return None;
     }
 
-    let first_byte = encoded[0];
-    let mut length_of_size_bytes = 0;
-    let size = match first_byte >> 6 {
-        // 0b00: The size is the remaining 6 bits of the byte.
-        0b00 => {
-            length_of_size_bytes = 1;
-            (first_byte & 0x3F) as usize
+    if let Some((size,length_of_size_bytes)) = size_decode(encoded){
+        if size > encoded.len() - 1 {
+            return None;
         }
-
-        // 0b01: The size is in the next 14 bits (6 bits of the first byte + next byte).
-        0b01 => {
-            if encoded.len() < 2 {
-                return None;
-            }
-            length_of_size_bytes = 2;
-            (((first_byte & 0x3F) as usize) << 8) | (encoded[1] as usize)
-        }
-
-        // 0b10: The size is in the next 4 bytes (ignoring the remaining 6 bits of the first byte).
-        0b10 => {
-            if encoded.len() < 5 {
-                return None;
-            }
-            length_of_size_bytes = 5;
-            ((encoded[1] as usize) << 24)
-                | ((encoded[2] as usize) << 16)
-                | ((encoded[3] as usize) << 8)
-                | (encoded[4] as usize)
-        }
-
-        // 0b11: The remaining 6 bits specify a type of string encoding.
-        0b11 => {
-            return integer_decode(encoded);
-        }
-        _ => return None, // Fallback for unexpected cases.
-    };
-
-    if size > encoded.len() - 1 {
-        return None;
+        let data = String::from_utf8(encoded[1..=size].to_vec()).ok()?;
+        let length = length_of_size_bytes + size;
+        Some(DecodedData { byte_length: length, data })
+    } else {
+        integer_decode(encoded)
     }
+}
 
-    let data = String::from_utf8(encoded[1..=size].to_vec()).ok()?;
-    let length = length_of_size_bytes + size;
-    Some(DecodedData { byte_length: length, data })
+pub fn size_decode(encoded: &[u8]) -> Option<(usize,usize)> {
+    if let Some(first_byte) = encoded.get(0) {
+        match first_byte >> 6 {
+            0b00 => {
+                let size = (first_byte & 0x3F) as usize;
+                Some((size, 1 ))
+            },
+            0b01 => {
+                if encoded.len() < 2 {
+                    return None;
+                }
+                let size = (((first_byte & 0x3F) as usize) << 8) | (encoded[1] as usize);
+                Some((size, 2))
+            }
+            0b10 => {
+                if encoded.len() < 5 {
+                    return None;
+                }
+                let size = ((encoded[1] as usize) << 24)
+                    | ((encoded[2] as usize) << 16)
+                    | ((encoded[3] as usize) << 8)
+                    | (encoded[4] as usize);
+                Some((size,5))
+            }
+            _ => None,
+        }
+    } else {
+        None
+    }
 }
 
 fn integer_decode(encoded: &[u8]) -> Option<DecodedData> {
@@ -220,9 +217,9 @@ fn test_decoding() {
     // "Test", with size 10 (although more bytes needed)
     let example2 = vec![0x42, 0x0A, 0x54, 0x65, 0x73, 0x74];
 
-    assert!(data_decode(&example1).is_some());
-    assert!(data_decode(&example2).is_none()); // due to insufficient bytes
-    assert_eq!(data_decode(&example1), Some(DecodedData { byte_length: 14, data: "Hello, World!".to_string() }));
+    assert!(string_decode(&example1).is_some());
+    assert!(string_decode(&example2).is_none()); // due to insufficient bytes
+    assert_eq!(string_decode(&example1), Some(DecodedData { byte_length: 14, data: "Hello, World!".to_string() }));
 }
 
 #[test]
@@ -310,7 +307,7 @@ fn test_8_bit_integer_decode() {
     let data = "123";
     let size = data.len();
     let encoded = data_encode(size, data).unwrap();
-    assert_eq!(data_decode(&encoded), Some(DecodedData { byte_length: 2, data: "123".to_string() }));
+    assert_eq!(string_decode(&encoded), Some(DecodedData { byte_length: 2, data: "123".to_string() }));
 }
 
 #[test]
@@ -327,7 +324,7 @@ fn test_16_bit_integer_decode() {
     let data = "12345";
     let size = data.len();
     let encoded = data_encode(size, data).unwrap();
-    assert_eq!(data_decode(&encoded), Some(DecodedData { byte_length: 3, data: "12345".to_string() }));
+    assert_eq!(string_decode(&encoded), Some(DecodedData { byte_length: 3, data: "12345".to_string() }));
 }
 
 #[test]
@@ -344,7 +341,7 @@ fn test_32_bit_integer_decode() {
     let data = "1234567";
     let size = data.len();
     let encoded = data_encode(size, data).unwrap();
-    assert_eq!(data_decode(&encoded), Some(DecodedData { byte_length: 5, data: "1234567".to_string() }));
+    assert_eq!(string_decode(&encoded), Some(DecodedData { byte_length: 5, data: "1234567".to_string() }));
 }
 
 #[test]
@@ -352,25 +349,25 @@ fn test_integer_decoding() {
     let data = "42";
     let size = data.len();
     let encoded = data_encode(size, data).unwrap();
-    assert_eq!(data_decode(&encoded), Some(DecodedData { byte_length: 2, data: "42".to_string() }));
+    assert_eq!(string_decode(&encoded), Some(DecodedData { byte_length: 2, data: "42".to_string() }));
 
     let data = "1000";
     let size = data.len();
     let encoded = data_encode(size, data).unwrap();
-    assert_eq!(data_decode(&encoded), Some(DecodedData { byte_length: 3, data: "1000".to_string() }));
+    assert_eq!(string_decode(&encoded), Some(DecodedData { byte_length: 3, data: "1000".to_string() }));
 
     let data = "100000";
     let size = data.len();
     let encoded = data_encode(size, data).unwrap();
-    assert_eq!(data_decode(&encoded), Some(DecodedData { byte_length: 5, data: "100000".to_string() }));
+    assert_eq!(string_decode(&encoded), Some(DecodedData { byte_length: 5, data: "100000".to_string() }));
 }
 
 #[test]
 fn test_decode_multiple_strings() {
     // "abc" and "def"
     let encoded = vec![0x03, 0x61, 0x62, 0x63, 0x03, 0x64, 0x65, 0x66];
-    let decoded = data_decode(&encoded).unwrap();
+    let decoded = string_decode(&encoded).unwrap();
     assert_eq!(decoded, DecodedData { byte_length: 4, data: "abc".to_string() });
-    let decoded = data_decode(&encoded[4..]).unwrap();
+    let decoded = string_decode(&encoded[4..]).unwrap();
     assert_eq!(decoded, DecodedData { byte_length: 4, data: "def".to_string() });
 }
