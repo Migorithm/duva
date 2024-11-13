@@ -73,8 +73,8 @@ pub fn string_decode(encoded: &mut Vec<u8>) -> Option<DecodedData> {
         return None;
     }
 
-    if let Some(size) = size_decode(encoded){
-        if size > encoded.len()  {
+    if let Some(size) = size_decode(encoded) {
+        if size > encoded.len() {
             return None;
         }
         let data = String::from_utf8(encoded.drain(0..size).collect()).unwrap();
@@ -92,7 +92,7 @@ pub fn size_decode(encoded: &mut Vec<u8>) -> Option<usize> {
                 let size = (first_byte & 0x3F) as usize;
                 encoded.drain(0..1);
                 Some(size)
-            },
+            }
             0b01 => {
                 if encoded.len() < 2 {
                     return None;
@@ -119,27 +119,29 @@ pub fn size_decode(encoded: &mut Vec<u8>) -> Option<usize> {
     }
 }
 
-fn integer_decode(encoded:  &mut Vec<u8>) -> Option<DecodedData> {
+fn integer_decode(encoded: &mut Vec<u8>) -> Option<DecodedData> {
     if let Some(first_byte) = encoded.get(0) {
         match first_byte {
             // 0b11000000: 8-bit integer
             0xC0 => {
                 let value = u8::from_le_bytes([encoded[1]]).to_string();
                 encoded.drain(0..2);
-                return Some(DecodedData{ data: value});
+                return Some(DecodedData { data: value });
             }
             0xC1 => {
                 if encoded.len() == 3 {
                     let value = u16::from_le_bytes(extract_range(encoded, 1..=2)?).to_string();
                     encoded.drain(0..3);
-                    return Some(DecodedData{ data: value});
+                    return Some(DecodedData { data: value });
                 }
             }
             0xC2 => {
                 if encoded.len() == 5 {
                     let value = u32::from_le_bytes(extract_range(encoded, 1..=4)?);
                     encoded.drain(0..5);
-                    return Some(DecodedData{ data: value.to_string()});
+                    return Some(DecodedData {
+                        data: value.to_string(),
+                    });
                 }
             }
             _ => return None,
@@ -311,7 +313,12 @@ fn test_8_bit_integer_decode() {
     let data = "123";
     let size = data.len();
     let mut encoded = data_encode(size, data).unwrap();
-    assert_eq!(string_decode(&mut encoded), Some(DecodedData { data: "123".to_string() }));
+    assert_eq!(
+        string_decode(&mut encoded),
+        Some(DecodedData {
+            data: "123".to_string()
+        })
+    );
 }
 
 #[test]
@@ -328,7 +335,12 @@ fn test_16_bit_integer_decode() {
     let data = "12345";
     let size = data.len();
     let mut encoded = data_encode(size, data).unwrap();
-    assert_eq!(string_decode(&mut encoded), Some(DecodedData { data: "12345".to_string() }));
+    assert_eq!(
+        string_decode(&mut encoded),
+        Some(DecodedData {
+            data: "12345".to_string()
+        })
+    );
 }
 
 #[test]
@@ -345,7 +357,12 @@ fn test_32_bit_integer_decode() {
     let data = "1234567";
     let size = data.len();
     let mut encoded = data_encode(size, data).unwrap();
-    assert_eq!(string_decode(&mut encoded), Some(DecodedData { data: "1234567".to_string() }));
+    assert_eq!(
+        string_decode(&mut encoded),
+        Some(DecodedData {
+            data: "1234567".to_string()
+        })
+    );
 }
 
 #[test]
@@ -353,17 +370,32 @@ fn test_integer_decoding() {
     let data = "42";
     let size = data.len();
     let mut encoded = data_encode(size, data).unwrap();
-    assert_eq!(string_decode(&mut encoded), Some(DecodedData { data: "42".to_string() }));
+    assert_eq!(
+        string_decode(&mut encoded),
+        Some(DecodedData {
+            data: "42".to_string()
+        })
+    );
 
     let data = "1000";
     let size = data.len();
     let mut encoded = data_encode(size, data).unwrap();
-    assert_eq!(string_decode(&mut encoded), Some(DecodedData { data: "1000".to_string() }));
+    assert_eq!(
+        string_decode(&mut encoded),
+        Some(DecodedData {
+            data: "1000".to_string()
+        })
+    );
 
     let data = "100000";
     let size = data.len();
     let mut encoded = data_encode(size, data).unwrap();
-    assert_eq!(string_decode(&mut encoded), Some(DecodedData { data: "100000".to_string() }));
+    assert_eq!(
+        string_decode(&mut encoded),
+        Some(DecodedData {
+            data: "100000".to_string()
+        })
+    );
 }
 
 #[test]
@@ -371,7 +403,17 @@ fn test_decode_multiple_strings() {
     // "abc" and "def"
     let mut encoded = vec![0x03, 0x61, 0x62, 0x63, 0x03, 0x64, 0x65, 0x66];
     let decoded = string_decode(&mut encoded).unwrap();
-    assert_eq!(decoded, DecodedData { data: "abc".to_string() });
+    assert_eq!(
+        decoded,
+        DecodedData {
+            data: "abc".to_string()
+        }
+    );
     let decoded = string_decode(&mut encoded).unwrap();
-    assert_eq!(decoded, DecodedData { data: "def".to_string() });
+    assert_eq!(
+        decoded,
+        DecodedData {
+            data: "def".to_string()
+        }
+    );
 }

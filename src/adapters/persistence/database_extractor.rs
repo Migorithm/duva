@@ -1,7 +1,7 @@
 use crate::adapters::persistence::key_value_storage_extractor::extract_key_value_expiry;
-use crate::adapters::persistence::size_encoding::size_decode;
-use crate::{from_to, make_smart_pointer};
 use anyhow::Result;
+
+use super::Data;
 
 struct DatabaseSection<'a> {
     index: usize,
@@ -31,14 +31,16 @@ impl<'a> DatabaseSection<'a> {
             match self.data[0] {
                 // 0b11111110
                 0xFE => {
-                    self.when_0xFE();
+                    let _ = self.data.when_0xFE();
                 }
 
                 //0b11111011
-                0xFB => self.when_0xFB()?,
+                0xFB => {
+                    (self.key_value_table_size, self.expires_table_size) = self.data.when_0xFB()?
+                }
                 //0b11111111
                 0xFF => {
-                    self.when_0xFF();
+                    self.checksum = self.data.when_0xFF();
                 }
                 _ => {
                     if self.is_key_value_extractable() {
@@ -72,33 +74,7 @@ impl<'a> DatabaseSection<'a> {
         self.key_value_table_size -= 1;
         Ok(())
     }
-
-    fn when_0xFE(&mut self) -> usize {
-        self.data.remove(0);
-        size_decode(self.data).unwrap()
-    }
-    fn when_0xFB(&mut self) -> Result<()> {
-        self.data.remove(0);
-
-        let err_mt = || anyhow::anyhow!("size decode fail");
-        (self.key_value_table_size, self.expires_table_size) = (
-            size_decode(self.data).ok_or(err_mt())?,
-            size_decode(self.data).ok_or(err_mt())?,
-        );
-        Ok(())
-    }
-
-    fn when_0xFF(&mut self) {
-        self.data.remove(0);
-        self.checksum = self.data[0..8].to_vec();
-        self.data.drain(..8);
-    }
 }
-
-// TODO rename it
-struct Data(Vec<u8>);
-make_smart_pointer!(Data, Vec<u8>);
-from_to!(Vec<u8>, Data);
 
 #[test]
 fn test_database_section_extractor() {
