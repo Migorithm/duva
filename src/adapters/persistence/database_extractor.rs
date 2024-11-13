@@ -17,11 +17,11 @@ impl<'a> DatabaseSection<'a> {
     pub fn new(data: &'a mut Data) -> Self {
         Self {
             data,
-            index: 0,
-            storage: Vec::new(),
-            checksum: Vec::new(),
-            key_value_table_size: 0,
-            expires_table_size: 0,
+            index: Default::default(),
+            storage: Default::default(),
+            checksum: Default::default(),
+            key_value_table_size: Default::default(),
+            expires_table_size: Default::default(),
         }
     }
 
