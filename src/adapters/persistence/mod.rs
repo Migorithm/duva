@@ -83,55 +83,52 @@ pub struct DecodedData {
 pub struct BytesHandler(Vec<u8>);
 
 impl BytesHandler {
-    fn when_0xFE(&mut self) -> Result<usize> {
+    fn remove_identifier(&mut self) {
         self.remove(0);
-        self.size_decode()
-            .ok_or(anyhow::anyhow!("size decode fail"))
     }
-    fn when_0xFB(&mut self) -> Result<(usize, usize)> {
-        self.remove(0);
 
-        let err_mt = || anyhow::anyhow!("size decode fail");
-        Ok((
-            // ??
-            self.size_decode().ok_or(err_mt())?,
-            self.size_decode().ok_or(err_mt())?,
-        ))
+    fn try_when_0xFE(&mut self) -> Result<usize> {
+        self.remove_identifier();
+        self.try_size_decode()
+    }
+    fn try_when_0xFB(&mut self) -> Result<(usize, usize)> {
+        self.remove_identifier();
+
+        Ok((self.try_size_decode()?, self.try_size_decode()?))
     }
     fn when_0xFF(&mut self) -> Option<Vec<u8>> {
-        self.remove(0);
-        let checksum = try_extract_range(self, 0..=7).map(|f: [u8; 8]| f.to_vec());
+        self.remove_identifier();
+        let checksum = extract_range(self, 0..=7).map(|f: [u8; 8]| f.to_vec());
         self.drain(..8);
         checksum
     }
 
-    fn when_0xFC(&mut self) -> Result<u64> {
-        self.remove(0);
-        self.extract_expiry_time_in_milliseconds()
+    fn try_when_0xFC(&mut self) -> Result<u64> {
+        self.remove_identifier();
+        self.try_extract_expiry_time_in_milliseconds()
     }
-    fn when_0xFD(&mut self) -> Result<u64> {
-        self.remove(0);
-        self.extract_expiry_time_in_seconds()
+    fn try_when_0xFD(&mut self) -> Result<u64> {
+        self.remove_identifier();
+        self.try_extract_expiry_time_in_seconds()
     }
 
-    fn when_0x00(&mut self, mut key_value: KeyValue) -> Result<KeyValue> {
-        self.remove(0);
+    fn try_when_0x00(&mut self) -> Result<(String, String)> {
+        self.remove_identifier();
         let key_data = self
             .string_decode()
             .ok_or(anyhow::anyhow!("key decode fail"))?;
 
-        key_value.key = key_data.data;
         let value_data = self
             .string_decode()
             .ok_or(anyhow::anyhow!("value decode fail"))?;
-        key_value.value = value_data.data;
-        Ok(key_value)
+
+        Ok((key_data.data, value_data.data))
     }
 
-    fn extract_expiry_time_in_seconds(&mut self) -> Result<u64> {
+    fn try_extract_expiry_time_in_seconds(&mut self) -> Result<u64> {
         let range = 0..=3;
         let result = u32::from_le_bytes(
-            try_extract_range(self, range.clone())
+            extract_range(self, range.clone())
                 .ok_or(anyhow::anyhow!("Failed to extract expiry time in seconds"))?,
         );
         self.drain(range);
@@ -139,15 +136,19 @@ impl BytesHandler {
         Ok(result as u64)
     }
 
-    fn extract_expiry_time_in_milliseconds(&mut self) -> Result<u64> {
+    fn try_extract_expiry_time_in_milliseconds(&mut self) -> Result<u64> {
         let range = 0..=7;
-        let result = u64::from_le_bytes(try_extract_range(self, range.clone()).ok_or(
+        let result = u64::from_le_bytes(extract_range(self, range.clone()).ok_or(
             anyhow::anyhow!("Failed to extract expiry time in milliseconds"),
         )?);
         self.drain(range);
         Ok(result)
     }
 
+    fn try_size_decode(&mut self) -> Result<usize> {
+        self.size_decode()
+            .ok_or(anyhow::anyhow!("size decode fail"))
+    }
     // Decode a size-encoded value based on the first two bits and return the decoded value as a string.
     pub fn string_decode(&mut self) -> Option<DecodedData> {
         // Ensure we have at least one byte to read.
@@ -211,14 +212,14 @@ impl BytesHandler {
                 }
                 0xC1 => {
                     if self.len() == 3 {
-                        let value = u16::from_le_bytes(try_extract_range(self, 1..=2)?).to_string();
+                        let value = u16::from_le_bytes(extract_range(self, 1..=2)?).to_string();
                         self.drain(0..3);
                         return Some(DecodedData { data: value });
                     }
                 }
                 0xC2 => {
                     if self.len() == 5 {
-                        let value = u32::from_le_bytes(try_extract_range(self, 1..=4)?);
+                        let value = u32::from_le_bytes(extract_range(self, 1..=4)?);
                         self.drain(0..5);
                         return Some(DecodedData {
                             data: value.to_string(),
@@ -235,10 +236,7 @@ make_smart_pointer!(BytesHandler, Vec<u8>);
 from_to!(Vec<u8>, BytesHandler);
 
 // Safe conversion from a slice to an array of a specific size.
-fn try_extract_range<const N: usize>(
-    encoded: &[u8],
-    range: RangeInclusive<usize>,
-) -> Option<[u8; N]> {
+fn extract_range<const N: usize>(encoded: &[u8], range: RangeInclusive<usize>) -> Option<[u8; N]> {
     TryInto::<[u8; N]>::try_into(encoded.get(range)?).ok()
 }
 

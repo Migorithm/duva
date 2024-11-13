@@ -30,12 +30,13 @@ impl<'a> DatabaseSection<'a> {
             match self.data[0] {
                 // 0b11111110
                 0xFE => {
-                    let _ = self.data.when_0xFE();
+                    let _ = self.data.try_when_0xFE();
                 }
 
                 //0b11111011
                 0xFB => {
-                    (self.key_value_table_size, self.expires_table_size) = self.data.when_0xFB()?
+                    (self.key_value_table_size, self.expires_table_size) =
+                        self.data.try_when_0xFB()?
                 }
                 //0b11111111
                 0xFF => {
@@ -62,7 +63,7 @@ impl<'a> DatabaseSection<'a> {
     }
 
     fn extract_key_value(&mut self) -> Result<()> {
-        let key_value = KeyValue::default().extract_key_value_expiry(self.data)?;
+        let key_value = KeyValue::default().try_extract_key_value_expiry(self.data)?;
 
         if key_value.expiry.is_some() {
             if let Some(existing_minus_one) = self.expires_table_size.checked_sub(1) {

@@ -30,17 +30,20 @@ pub struct KeyValue {
 
 impl KeyValue {
     pub fn new(data: &mut BytesHandler) -> Result<Self> {
-        KeyValue::default().extract_key_value_expiry(data)
+        KeyValue::default().try_extract_key_value_expiry(data)
     }
-    pub fn extract_key_value_expiry(mut self, data: &mut BytesHandler) -> Result<Self> {
+    pub fn try_extract_key_value_expiry(mut self, data: &mut BytesHandler) -> Result<Self> {
         while data.len() > 0 {
             match data[0] {
                 //0b11111100
-                0xFC => self.expiry = Some(data.when_0xFC()?),
+                0xFC => self.expiry = Some(data.try_when_0xFC()?),
                 //0b11111101
-                0xFD => self.expiry = Some(data.when_0xFD()?),
+                0xFD => self.expiry = Some(data.try_when_0xFD()?),
                 //0b11111110
-                0x00 => return data.when_0x00(self),
+                0x00 => {
+                    (self.key, self.value) = data.try_when_0x00()?;
+                    return Ok(self);
+                }
                 _ => {
                     return Err(anyhow::anyhow!("Invalid key value pair"));
                 }
@@ -55,7 +58,7 @@ fn test_non_expiry_key_value_pair() {
     let mut data = vec![0x00, 0x03, 0x62, 0x61, 0x7A, 0x03, 0x71, 0x75, 0x78].into();
 
     let key_value = KeyValue::default()
-        .extract_key_value_expiry(&mut data)
+        .try_extract_key_value_expiry(&mut data)
         .expect("Failed to extract key value expiry");
     assert_eq!(key_value.key, "baz");
     assert_eq!(key_value.value, "qux");
