@@ -91,7 +91,7 @@ pub fn extract_key_value_expiry(data : &mut Vec<u8>) -> Option<(String, String, 
                 i += value_data.byte_length;
             }
             _ => {
-                break;
+                return None;
             }
         }
     }
@@ -142,4 +142,13 @@ fn test_with_seconds_expiry_key_value_pair() {
     assert_eq!(string, "qux");
     assert!(expiry_time.is_some());
     assert_eq!(data.len(), 0);
+}
+
+#[test]
+fn test_invalid_expiry_key_value_pair() {
+    let mut data:Vec<u8> = vec![0xFF, 0x52, 0xED, 0x2A, 0x66, 0x00, 0x03, 0x62, 0x61, 0x7A, 0x03, 0x71, 0x75, 0x78];
+    let mut_data = &mut data;
+    let result = extract_key_value_expiry(mut_data);
+    assert!(result.is_none());
+    assert_eq!(data.len(), 14);
 }
