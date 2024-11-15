@@ -1,47 +1,61 @@
+use std::ops::DerefMut;
+
 use anyhow::Result;
+
+use crate::make_smart_pointer;
 
 use super::{BytesHandler, KeyValue};
 
-struct DatabaseSection<'a> {
+pub struct Unset;
+pub struct Initialized<'a>(pub &'a mut BytesHandler);
+make_smart_pointer!(Initialized<'a>, BytesHandler);
+
+struct DatabaseSection {
     index: usize,
     storage: Vec<KeyValue>,
     checksum: Vec<u8>,
-    data: &'a mut BytesHandler,
+}
 
+struct DatabaseSectionBuilder<T> {
+    index: usize,
+    storage: Vec<KeyValue>,
+    checksum: Vec<u8>,
+    state: T,
     key_value_table_size: usize,
     expires_table_size: usize,
 }
 
-impl<'a> DatabaseSection<'a> {
-    pub fn new(data: &'a mut BytesHandler) -> Result<Self> {
-        let section = Self {
-            data,
+impl DatabaseSectionBuilder<Unset> {
+    pub fn new(data: &mut BytesHandler) -> DatabaseSectionBuilder<Initialized<'_>> {
+        DatabaseSectionBuilder {
+            state: Initialized(data),
             index: Default::default(),
             storage: Default::default(),
             checksum: Default::default(),
             key_value_table_size: Default::default(),
             expires_table_size: Default::default(),
-        };
-        section.create_section()
+        }
     }
+}
 
-    fn create_section(mut self) -> Result<Self> {
-        while self.data.len() > 0 {
-            match self.data[0] {
+impl DatabaseSectionBuilder<Initialized<'_>> {
+    fn create_section(mut self) -> Result<DatabaseSection> {
+        while self.state.len() > 0 {
+            match self.state[0] {
                 // 0b11111110
                 0xFE => {
-                    let _ = self.data.try_when_0xFE();
+                    let _ = self.state.try_when_0xFE();
                 }
 
                 //0b11111011
                 0xFB => {
                     (self.key_value_table_size, self.expires_table_size) =
-                        self.data.try_when_0xFB()?
+                        self.state.try_when_0xFB()?
                 }
                 //0b11111111
                 0xFF => {
                     self.checksum = self
-                        .data
+                        .state
                         .when_0xFF()
                         .ok_or(anyhow::anyhow!("checksum fail"))?;
                 }
@@ -54,7 +68,11 @@ impl<'a> DatabaseSection<'a> {
                 }
             }
         }
-        Ok(self)
+        Ok(DatabaseSection {
+            index: self.index,
+            storage: self.storage,
+            checksum: self.checksum,
+        })
     }
 
     // ! as long as key_value_table_size is not 0 key value is extractable?
@@ -63,7 +81,7 @@ impl<'a> DatabaseSection<'a> {
     }
 
     fn extract_key_value(&mut self) -> Result<()> {
-        let key_value = KeyValue::default().try_extract_key_value_expiry(self.data)?;
+        let key_value = KeyValue::default().try_extract_key_value_expiry(self.state.0)?;
 
         if key_value.expiry.is_some() {
             if let Some(existing_minus_one) = self.expires_table_size.checked_sub(1) {
@@ -91,7 +109,9 @@ fn test_database_section_extractor() {
     ]
     .into();
 
-    let db_section = DatabaseSection::new(&mut data).unwrap();
+    let db_section: DatabaseSection = DatabaseSectionBuilder::new(&mut data)
+        .create_section()
+        .unwrap();
     assert_eq!(db_section.index, 0);
     assert_eq!(db_section.storage.len(), 3);
     assert_eq!(db_section.checksum.len(), 8);
