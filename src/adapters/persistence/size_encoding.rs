@@ -1,168 +1,7 @@
-//! A module providing variable-length size encoding followed by arbitrary data.
-//!
-//! This module implements an encoding scheme that can encode a size value using a variable
-//! number of bytes based on the magnitude of the size, followed by arbitrary data bytes.
-//! The size encoding uses a prefix to indicate how many bytes are used to represent the size:
-//!
-//! # Size Encoding Format
-//!
-//! The size value is encoded using one of three formats, chosen based on the value's magnitude:
-//!
-//! * 6-bit (1 byte total):  `00xxxxxx`
-//!   - First 2 bits are `00`
-//!   - Next 6 bits contain size value
-//!   - Can encode sizes 0-63
-//!
-//! * 14-bit (2 bytes total): `01xxxxxx yyyyyyyy`
-//!   - First 2 bits are `01`
-//!   - Next 14 bits contain size value in big-endian order
-//!   - Can encode sizes 64-16383
-//!
-//! * 32-bit (5 bytes total): `10000000 xxxxxxxx xxxxxxxx xxxxxxxx xxxxxxxx`
-//!   - First 2 bits are `10`
-//!   - Next 4 bytes contain size value in big-endian order
-//!   - Can encode sizes 16384-4294967295
-//!
-//! After the size encoding, the arbitrary data bytes follow immediately.
-//!
-//! # Examples
-//!
-//! Basic usage:
-//! ```rust
-//! # fn main() -> Option<()> {
-//! let data = "Hello".as_bytes();
-//! let size = 42;
-//!
-//! // Encode size 42 (fits in 6 bits) followed by "Hello"
-//! let encoded = size_encode(size, data)?;
-//!
-//! // First byte should be 00101010 (0b00 prefix + 42)
-//! assert_eq!(encoded[0], 0b00101010);
-//!
-//! // Remaining bytes should be "Hello"
-//! assert_eq!(&encoded[1..], b"Hello");
-//! # Some(())
-//! # }
-//! ```
-//!
-//! The benefit is that size_encode allows you to encode any size value independently of the data length. This is useful when:
-//!
-//! 1. You're sending a header for a larger message:
-//! ```rust,text
-//! // First message part
-//! let header = size_encode(1000, b"start").unwrap();
-//! send(header);  // Sends: size=1000 + data="start"
-//! // Later messages
-//! send(b"more data");  // Just data
-//! send(b"final part"); // Just data
-//! ```
-//!
-//! It's primarily about communication/protocol rather than efficiency.
-use anyhow::Result;
-use std::ops::RangeInclusive;
+#[cfg(test)]
+use crate::adapters::persistence::DecodedData;
 
-use crate::services::statefuls::routers::inmemory_router::CacheDispatcher;
-
-use super::RdbFile;
-
-struct SizeDecoder<'a> {
-    size: usize,
-    encoded: &'a [u8],
-}
-
-impl<'a> SizeDecoder<'a> {
-    pub fn new(size: usize, encoded: &'a [u8]) -> Self {
-        Self { size, encoded }
-    }
-
-    // Decode a size-encoded value based on the first two bits and return the decoded value as a string.
-    fn data_decode(&self) -> Option<String> {
-        // Ensure we have at least one byte to read.
-        if self.encoded.is_empty() {
-            return None;
-        }
-
-        let first_byte = self.encoded[0];
-        let size = match first_byte >> 6 {
-            // 0b00: The size is the remaining 6 bits of the byte.
-            0b00 => (first_byte & 0x3F) as usize,
-
-            // 0b01: The size is in the next 14 bits (6 bits of the first byte + next byte).
-            0b01 => {
-                if self.encoded.len() < 2 {
-                    return None;
-                }
-                (((first_byte & 0x3F) as usize) << 8) | (self.encoded[1] as usize)
-            }
-
-            // 0b10: The size is in the next 4 bytes (ignoring the remaining 6 bits of the first byte).
-            0b10 => {
-                if self.encoded.len() < 5 {
-                    return None;
-                }
-                ((self.encoded[1] as usize) << 24)
-                    | ((self.encoded[2] as usize) << 16)
-                    | ((self.encoded[3] as usize) << 8)
-                    | (self.encoded[4] as usize)
-            }
-
-            // 0b11: The remaining 6 bits specify a type of string encoding.
-            0b11 => {
-                return self.integer_decode();
-            }
-            _ => return None, // Fallback for unexpected cases.
-        };
-
-        // Ensure we have enough bytes in `encoded` for the decoded string.
-        if self.encoded.len() < size + 1 {
-            return None;
-        }
-
-        // Convert the size-specified bytes into a UTF-8 string.
-        match String::from_utf8(self.encoded[1..=size].to_vec()) {
-            Ok(result) => Some(result),
-            Err(_) => None, // Handle non-UTF-8 encoded data.
-        }
-    }
-
-    fn extract_range<const N: usize>(&self, range: RangeInclusive<usize>) -> Option<[u8; N]> {
-        TryInto::<[u8; N]>::try_into(self.encoded.get(range)?).ok()
-    }
-
-    fn integer_decode(&self) -> Option<String> {
-        if let Some(first_byte) = self.encoded.get(0) {
-            match first_byte {
-                // 0b11000000: 8-bit integer
-                0xC0 => return Some(self.encoded.get(1)?.to_string()),
-                0xC1 => {
-                    if self.encoded.len() == 3 {
-                        let value = u16::from_le_bytes(self.extract_range(1..=2)?);
-                        return Some(value.to_string());
-                    }
-                }
-                0xC2 => {
-                    if self.encoded.len() == 5 {
-                        let value = u32::from_le_bytes(self.extract_range(1..=4)?);
-                        return Some(value.to_string());
-                    }
-                }
-                _ => return None,
-            }
-        }
-        None
-    }
-
-    // ! having read_header + read_metadata + read_databases... separately would likely introduce
-    // ! a lot of bugs and control issues. The following will encapsulate RdbFile generating logics
-    // ! and send the result to the persistence_senders.
-    fn create_rdb_file(&self) -> Result<RdbFile> {
-        todo!()
-    }
-
-    fn send_rdb_file(&self, persistence_router: &CacheDispatcher) -> Result<()> {
-        todo!()
-    }
-}
+use super::BytesHandler;
 
 /// # Notes
 ///
@@ -178,27 +17,13 @@ impl<'a> SizeDecoder<'a> {
 /// * Maximum encodable size is 2^32 - 1
 /// * No error correction or detection mechanisms
 /// * Size encoding overhead varies from 1 to 5 bytes
-fn data_encode(size: usize, data: &str) -> Option<Vec<u8>> {
-    let mut result = Vec::new();
-
+fn data_encode(size: usize, data: &str) -> Option<BytesHandler> {
     // if data can be parsed as an integer as u32
     if let Ok(value) = data.parse::<u32>() {
-        if value <= 0xFF {
-            result.push(0xC0);
-            result.push(value as u8);
-            return Some(result);
-        } else if value <= 0xFFFF {
-            result.push(0xC1);
-            let value = value as u16;
-            result.extend_from_slice(&value.to_le_bytes());
-            return Some(result);
-        } else {
-            result.push(0xC2);
-            result.extend_from_slice(&value.to_le_bytes());
-            return Some(result);
-        }
+        return Some(BytesHandler::from_u32(value));
     }
 
+    let mut result = BytesHandler::default();
     // if value is representable with 6bits : 0b00 -> Use the remaining 6 bits to represent the size.
     if size < (1 << 6) {
         result.push((0b00 << 6) | (size as u8));
@@ -222,33 +47,6 @@ fn data_encode(size: usize, data: &str) -> Option<Vec<u8>> {
     // Append the data to be encoded as a string after the size.
     result.extend_from_slice(data.as_bytes());
     Some(result)
-}
-
-#[test]
-fn test_decoding_success_case() {
-    // "Hello, World!"
-    let example1 = vec![
-        0x0D, 0x48, 0x65, 0x6C, 0x6C, 0x6F, 0x2C, 0x20, 0x57, 0x6F, 0x72, 0x6C, 0x64, 0x21,
-    ];
-    let endec1 = SizeDecoder {
-        size: 13,
-        encoded: &example1,
-    };
-
-    assert!(endec1.data_decode().is_some());
-
-    assert_eq!(endec1.data_decode(), Some("Hello, World!".to_string()));
-}
-
-#[test]
-fn test_decoding_fail_case() {
-    // "Test", with size 10 (although more bytes needed)
-    let example2 = vec![0x42, 0x0A, 0x54, 0x65, 0x73, 0x74];
-    let endec = SizeDecoder {
-        size: 13,
-        encoded: &example2,
-    };
-    assert!(endec.data_decode().is_none()); // due to insufficient bytes
 }
 
 #[test]
@@ -335,9 +133,13 @@ fn test_8_bit_integer_encode() {
 fn test_8_bit_integer_decode() {
     let data = "123";
     let size = data.len();
-    let encoded = data_encode(size, data).unwrap();
-    let endec = SizeDecoder::new(size, &encoded);
-    assert_eq!(endec.data_decode(), Some("123".to_string()));
+    let mut encoded: BytesHandler = data_encode(size, data).unwrap();
+    assert_eq!(
+        encoded.string_decode(),
+        Some(DecodedData {
+            data: "123".to_string()
+        })
+    );
 }
 
 #[test]
@@ -353,9 +155,13 @@ fn test_16_bit_integer() {
 fn test_16_bit_integer_decode() {
     let data = "12345";
     let size = data.len();
-    let encoded = data_encode(size, data).unwrap();
-    let endec = SizeDecoder::new(size, &encoded);
-    assert_eq!(endec.data_decode(), Some("12345".to_string()));
+    let mut encoded: BytesHandler = data_encode(size, data).unwrap();
+    assert_eq!(
+        encoded.string_decode(),
+        Some(DecodedData {
+            data: "12345".to_string()
+        })
+    );
 }
 
 #[test]
@@ -371,28 +177,44 @@ fn test_32_bit_integer() {
 fn test_32_bit_integer_decode() {
     let data = "1234567";
     let size = data.len();
-    let encoded = data_encode(size, data).unwrap();
-    let endec = SizeDecoder::new(size, &encoded);
-    assert_eq!(endec.data_decode(), Some("1234567".to_string()));
+    let mut encoded = data_encode(size, data).unwrap();
+    assert_eq!(
+        encoded.string_decode(),
+        Some(DecodedData {
+            data: "1234567".to_string()
+        })
+    );
 }
 
 #[test]
 fn test_integer_decoding() {
     let data = "42";
     let size = data.len();
-    let encoded = data_encode(size, data).unwrap();
-    let endec = SizeDecoder::new(size, &encoded);
-    assert_eq!(endec.data_decode(), Some("42".to_string()));
+    let mut encoded = data_encode(size, data).unwrap();
+    assert_eq!(
+        encoded.string_decode(),
+        Some(DecodedData {
+            data: "42".to_string()
+        })
+    );
 
     let data = "1000";
     let size = data.len();
-    let encoded = data_encode(size, data).unwrap();
-    let endec = SizeDecoder::new(size, &encoded);
-    assert_eq!(endec.data_decode(), Some("1000".to_string()));
+    let mut encoded = data_encode(size, data).unwrap();
+    assert_eq!(
+        encoded.string_decode(),
+        Some(DecodedData {
+            data: "1000".to_string()
+        })
+    );
 
     let data = "100000";
     let size = data.len();
-    let encoded = data_encode(size, data).unwrap();
-    let endec = SizeDecoder::new(size, &encoded);
-    assert_eq!(endec.data_decode(), Some("100000".to_string()));
+    let mut encoded = data_encode(size, data).unwrap();
+    assert_eq!(
+        encoded.string_decode(),
+        Some(DecodedData {
+            data: "100000".to_string()
+        })
+    );
 }
