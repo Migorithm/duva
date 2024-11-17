@@ -1,10 +1,8 @@
-use std::ops::DerefMut;
-
 use anyhow::{Error, Result};
-
+use crate::adapters::persistence::bytes_handler::BytesHandler;
 use crate::make_smart_pointer;
 
-use super::{extract_range, BytesHandler, KeyValueStorage};
+use super::{extract_range, KeyValueStorage};
 
 pub struct Unset;
 pub struct Initialized<'a>(pub &'a mut BytesHandler);

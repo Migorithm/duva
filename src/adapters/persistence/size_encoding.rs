@@ -1,7 +1,7 @@
 #[cfg(test)]
 use crate::adapters::persistence::DecodedData;
 
-use super::BytesHandler;
+use crate::adapters::persistence::bytes_handler::BytesHandler;
 
 /// # Notes
 ///
