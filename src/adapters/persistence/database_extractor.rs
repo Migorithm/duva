@@ -9,8 +9,8 @@ pub struct Initialized<'a>(pub &'a mut BytesHandler);
 make_smart_pointer!(Initialized<'a>, BytesHandler);
 
 pub struct DatabaseSection {
-    index: usize,
-    storage: Vec<KeyValueStorage>,
+    pub index: usize,
+    pub storage: Vec<KeyValueStorage>,
     checksum: Vec<u8>,
 }
 

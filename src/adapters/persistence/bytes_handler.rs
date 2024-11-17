@@ -1,5 +1,8 @@
 use crate::adapters::persistence;
+use crate::{from_to, make_smart_pointer};
 
+make_smart_pointer!(BytesHandler, Vec<u8>);
+from_to!(Vec<u8>, BytesHandler);
 #[derive(Default)]
 pub struct BytesHandler(pub Vec<u8>);
 
