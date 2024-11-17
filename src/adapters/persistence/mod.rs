@@ -83,7 +83,7 @@ pub struct DecodedData {
 
 #[derive(Default)]
 struct RdbFileLoader<T=HeaderLoading> {
-    data: Vec<u8>,
+    data: BytesHandler,
     state: T,
     header: Option<String>,
     metadata: Option<HashMap<String, String>>,
@@ -96,7 +96,7 @@ struct DatabaseSectionLoading;
 impl RdbFileLoader {
     fn new(data: Vec<u8>) -> Self {
         Self {
-            data,
+            data: BytesHandler(data),
             state: HeaderLoading,
             header: None,
             metadata: None,
