@@ -65,7 +65,7 @@ use crate::adapters::persistence::database_extractor::DatabaseSection;
 
 mod database_extractor;
 mod key_value_storage_extractor;
-pub mod size_encoding;
+pub mod data_encoder;
 mod bytes_handler;
 mod rdb_file_loader;
 
