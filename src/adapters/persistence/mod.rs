@@ -271,15 +271,6 @@ impl BytesHandler {
         self.remove(0);
     }
 
-    fn try_when_0xFC(&mut self) -> Result<u64> {
-        self.remove_identifier();
-        self.try_extract_expiry_time_in_milliseconds()
-    }
-    fn try_when_0xFD(&mut self) -> Result<u64> {
-        self.remove_identifier();
-        self.try_extract_expiry_time_in_seconds()
-    }
-
     fn try_extract_key_value(&mut self) -> Result<(String, String)> {
         self.remove_identifier();
         let key_data = self

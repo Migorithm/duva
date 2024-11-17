@@ -36,9 +36,13 @@ impl KeyValueStorage {
         while data.len() > 0 {
             match data[0] {
                 //0b11111100
-                0xFC => self.expiry = Some(data.try_when_0xFC()?),
+                0xFC => {
+                    self.try_set_milliseconds_expiry_time(data)?;
+                },
                 //0b11111101
-                0xFD => self.expiry = Some(data.try_when_0xFD()?),
+                0xFD => {
+                    self.try_set_seconds_expiry_time(data)?;
+                },
                 //0b11111110
                 0x00 => {
                     (self.key, self.value) = data.try_extract_key_value()?;
@@ -49,7 +53,20 @@ impl KeyValueStorage {
                 }
             }
         }
-        return Err(anyhow::anyhow!("Invalid key value pair"));
+        Err(anyhow::anyhow!("Invalid key value pair"))
+    }
+
+    fn try_set_milliseconds_expiry_time(&mut self, data: &mut BytesHandler) -> Result<()> {
+        data.remove_identifier();
+        self.expiry = Some(data.try_extract_expiry_time_in_milliseconds()?);
+        Ok(())
+    }
+
+    fn try_set_seconds_expiry_time(&mut self, data: &mut BytesHandler) -> Result<()> {
+        data.remove_identifier();
+        self.expiry = Some(data.try_extract_expiry_time_in_seconds()?);
+        Ok(())
+        
     }
 }
 
