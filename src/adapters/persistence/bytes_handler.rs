@@ -6,7 +6,7 @@ pub struct BytesHandler(pub Vec<u8>);
 
 impl BytesHandler {
     // TODO subject to refactor
-    fn from_u32(value: u32) -> Self {
+    pub fn from_u32(value: u32) -> Self {
         let mut result = BytesHandler::default();
         if value <= 0xFF {
             result.push(0xC0);
