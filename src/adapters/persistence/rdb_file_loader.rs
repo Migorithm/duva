@@ -41,8 +41,11 @@ impl RdbFileLoader {
         if header != RDB_HEADER_MAGIC_STRING {
             return Err(create_error_while_loading("header loading", "header is not REDIS"));
         }
-        let version = String::from_utf8(self.data.drain(0..4).collect())?;
-        self.header = Some(format!("{}{}", header, version));
+        let version = String::from_utf8(self.data.drain(0..4).collect());
+        if version.is_err() {
+            return Err(create_error_while_loading("header loading", "version is not valid"));
+        }
+        self.header = Some(format!("{}{}", header, version?));
         Ok(RdbFileLoader {
             data: self.data,
             state: MetadataSectionLoading,
@@ -57,7 +60,11 @@ impl RdbFileLoader<MetadataSectionLoading> {
     fn load_metadata(mut self) -> anyhow::Result<RdbFileLoader<DatabaseSectionLoading>> {
         let mut metadata = HashMap::new();
         while self.is_metadata_section() {
-            let (key, value) = self.data.try_extract_key_value()?;
+            let result = self.data.try_extract_key_value();
+            if result.is_err(){
+                return Err(create_error_while_loading("metadata loading", "key value extraction failed"));
+            }
+            let (key, value) = result?;
             metadata.insert(key, value);
         }
         self.metadata = Some(metadata);
@@ -80,8 +87,11 @@ impl RdbFileLoader<DatabaseSectionLoading> {
         let mut database = Vec::new();
         while self.is_database_section() {
             let section = DatabaseSectionBuilder::new(&mut self.data);
-            let section = section.extract_section()?;
-            database.push(section);
+            let section = section.extract_section();
+            if section.is_err() {
+                return Err(create_error_while_loading("database loading", "section extraction failed"));
+            }
+            database.push(section?);
         }
         Ok(RdbFile {
             header: self.header.unwrap(),
