@@ -59,13 +59,15 @@
 //!
 //! It's primarily about communication/protocol rather than efficiency.\
 use crate::{from_to, make_smart_pointer, services::statefuls::routers::cache_actor::CacheDb};
-use anyhow::Result;
+use anyhow::{Error, Result};
 use key_value_storage_extractor::KeyValue;
 use std::collections::HashMap;
 use std::ops::RangeInclusive;
 mod database_extractor;
 mod key_value_storage_extractor;
 pub mod size_encoding;
+
+const RDB_HEADER_MAGIC_STRING: &str = "REDIS";
 
 pub struct RdbFile {
     header: String,
@@ -78,6 +80,79 @@ pub struct DecodedData {
     // length of the data in bytes (including the size encoding)
     pub data: String,
 }
+
+#[derive(Default)]
+struct RdbFileLoader<T=HeaderLoading> {
+    data: Vec<u8>,
+    state: T,
+    header: Option<String>,
+    metadata: Option<HashMap<String, String>>,
+    database: Option<Vec<CacheDb>>,
+}
+struct HeaderLoading;
+struct MetadataSectionLoading;
+struct DatabaseSectionLoading;
+
+impl RdbFileLoader {
+    fn new(data: Vec<u8>) -> Self {
+        Self {
+            data,
+            state: HeaderLoading,
+            header: None,
+            metadata: None,
+            database: None,
+        }
+    }
+    // read data and check first 5 ascii code convertable hex bytes are equal to "REDIS"
+    // then read 4 digit Header version (like 0011) and return RdbFileLoader<MetadataSectionLoading> with header value as "REDIS" + 4 digit version
+    fn load(mut self) -> Result<RdbFileLoader<MetadataSectionLoading>> {
+        if self.data.len() < 9 {
+            return Err(create_error_while_loading("header loading", "data length is less than 9"));
+        }
+        let header = String::from_utf8(self.data.drain(0..5).collect())?;
+        if header != RDB_HEADER_MAGIC_STRING {
+            return Err(create_error_while_loading("header loading", "header is not REDIS"));
+        }
+        let version = String::from_utf8(self.data.drain(0..4).collect())?;
+        self.header = Some(format!("{}{}", header, version));
+        Ok(RdbFileLoader {
+            data: self.data,
+            state: MetadataSectionLoading,
+            header: self.header,
+            metadata: None,
+            database: None,
+        })
+    }
+}
+
+fn create_error_while_loading(state: &str, message:&str) -> Error {
+    (anyhow::anyhow!("Error occurred while {}:{}", state, message))
+}
+
+#[test]
+fn test_header_loading() {
+    let data = vec![0x52, 0x45, 0x44, 0x49, 0x53, 0x30, 0x30, 0x30, 0x31];
+    let loader = RdbFileLoader::new(data);
+    let loader = loader.load().unwrap();
+    assert_eq!(loader.header, Some("REDIS0001".to_string()));
+}
+
+#[test]
+fn test_header_loading_data_length_error() {
+    let data = vec![0x52, 0x45, 0x44, 0x49, 0x53];
+    let loader = RdbFileLoader::new(data);
+    let result = loader.load();
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_header_loading_header_error() {
+    let data = vec![0x52, 0x45, 0x44, 0x49, 0x54, 0x30, 0x30, 0x30, 0x31];
+    let loader = RdbFileLoader::new(data);
+    let result = loader.load();
+    assert!(result.is_err());
+}
+
 // TODO rename it
 #[derive(Default)]
 pub struct BytesHandler(Vec<u8>);
