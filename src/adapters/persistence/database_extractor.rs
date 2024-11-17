@@ -1,24 +1,24 @@
 use std::ops::DerefMut;
 
-use anyhow::Result;
+use anyhow::{Error, Result};
 
 use crate::make_smart_pointer;
 
-use super::{BytesHandler, KeyValue};
+use super::{extract_range, BytesHandler, KeyValueStorage};
 
 pub struct Unset;
 pub struct Initialized<'a>(pub &'a mut BytesHandler);
 make_smart_pointer!(Initialized<'a>, BytesHandler);
 
-struct DatabaseSection {
+pub struct DatabaseSection {
     index: usize,
-    storage: Vec<KeyValue>,
+    storage: Vec<KeyValueStorage>,
     checksum: Vec<u8>,
 }
 
-struct DatabaseSectionBuilder<T> {
+pub struct DatabaseSectionBuilder<T=Unset> {
     index: usize,
-    storage: Vec<KeyValue>,
+    storage: Vec<KeyValueStorage>,
     checksum: Vec<u8>,
     state: T,
     key_value_table_size: usize,
@@ -39,29 +39,24 @@ impl DatabaseSectionBuilder<Unset> {
 }
 
 impl DatabaseSectionBuilder<Initialized<'_>> {
-    fn create_section(mut self) -> Result<DatabaseSection> {
+    pub fn extract_section(mut self) -> Result<DatabaseSection> {
         while self.state.len() > 0 {
             match self.state[0] {
                 // 0b11111110
                 0xFE => {
-                    let _ = self.state.try_when_0xFE();
+                    self.try_set_index()?;
                 }
-
                 //0b11111011
                 0xFB => {
-                    (self.key_value_table_size, self.expires_table_size) =
-                        self.state.try_when_0xFB()?
+                    self.try_set_table_sizes()?;
                 }
                 //0b11111111
                 0xFF => {
-                    self.checksum = self
-                        .state
-                        .when_0xFF()
-                        .ok_or(anyhow::anyhow!("checksum fail"))?;
+                    self.try_get_checksum()?;
                 }
                 _ => {
                     if self.is_key_value_extractable() {
-                        self.extract_key_value()?;
+                        self.save_key_value_expiry_time_in_storage()?;
                     } else {
                         break;
                     }
@@ -75,13 +70,36 @@ impl DatabaseSectionBuilder<Initialized<'_>> {
         })
     }
 
+    fn try_set_index(&mut self) -> Result<()> {
+        self.state.remove_identifier();
+        self.index = self.state.try_size_decode()?;
+        Ok(())
+    }
+
+    fn try_set_table_sizes(&mut self) -> Result<()> {
+        self.state.remove_identifier();
+        self.key_value_table_size = self.state.try_size_decode()?;
+        self.expires_table_size = self.state.try_size_decode()?;
+        Ok(())
+    }
+
+    fn try_get_checksum(&mut self) -> Result<()> {
+        self.state.remove_identifier();
+        let checksum = extract_range(self.state.0, 0..=7)
+            .map(|f: [u8; 8]| f.to_vec())
+            .ok_or(Error::msg("failed to extract checksum"))?;
+        self.state.drain(..8);
+        self.checksum = checksum;
+        Ok(())
+    }
+
     // ! as long as key_value_table_size is not 0 key value is extractable?
     fn is_key_value_extractable(&self) -> bool {
         self.key_value_table_size > 0
     }
 
-    fn extract_key_value(&mut self) -> Result<()> {
-        let key_value = KeyValue::default().try_extract_key_value_expiry(self.state.0)?;
+    fn save_key_value_expiry_time_in_storage(&mut self) -> Result<()> {
+        let key_value = KeyValueStorage::default().try_extract_key_value_expiry(self.state.0)?;
 
         if key_value.expiry.is_some() {
             if let Some(existing_minus_one) = self.expires_table_size.checked_sub(1) {
@@ -90,9 +108,7 @@ impl DatabaseSectionBuilder<Initialized<'_>> {
                 return Err(anyhow::anyhow!("expires_table_size is 0"));
             }
         }
-
         self.storage.push(key_value);
-
         self.key_value_table_size -= 1;
         Ok(())
     }
@@ -110,7 +126,7 @@ fn test_database_section_extractor() {
     .into();
 
     let db_section: DatabaseSection = DatabaseSectionBuilder::new(&mut data)
-        .create_section()
+        .extract_section()
         .unwrap();
     assert_eq!(db_section.index, 0);
     assert_eq!(db_section.storage.len(), 3);

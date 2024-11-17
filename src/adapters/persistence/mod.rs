@@ -60,9 +60,11 @@
 //! It's primarily about communication/protocol rather than efficiency.\
 use crate::{from_to, make_smart_pointer, services::statefuls::routers::cache_actor::CacheDb};
 use anyhow::{Error, Result};
-use key_value_storage_extractor::KeyValue;
+use key_value_storage_extractor::KeyValueStorage;
 use std::collections::HashMap;
 use std::ops::RangeInclusive;
+use crate::adapters::persistence::database_extractor::{DatabaseSection, DatabaseSectionBuilder};
+
 mod database_extractor;
 mod key_value_storage_extractor;
 pub mod size_encoding;
@@ -72,7 +74,7 @@ const RDB_HEADER_MAGIC_STRING: &str = "REDIS";
 pub struct RdbFile {
     header: String,
     metadata: HashMap<String, String>,
-    database: Vec<CacheDb>,
+    database: Vec<DatabaseSection>,
 }
 
 #[derive(Debug, PartialEq)]
@@ -87,7 +89,7 @@ struct RdbFileLoader<T=HeaderLoading> {
     state: T,
     header: Option<String>,
     metadata: Option<HashMap<String, String>>,
-    database: Option<Vec<CacheDb>>,
+    database: Option<Vec<DatabaseSection>>,
 }
 struct HeaderLoading;
 struct MetadataSectionLoading;
@@ -223,6 +225,26 @@ fn test_metadata_loading_no_metadata() {
     assert_eq!(loader.metadata, Some(HashMap::new()));
 }
 
+impl RdbFileLoader<DatabaseSectionLoading> {
+    fn is_database_section(&self) -> bool {
+        let identifier = self.data.get(0);
+        identifier == Some(&0xFE)
+    }
+    fn load_database(mut self) -> Result<RdbFile> {
+        let mut database = Vec::new();
+        while self.is_database_section() {
+            let section = DatabaseSectionBuilder::new(&mut self.data);
+            let section = section.extract_section()?;
+            database.push(section);
+        }
+        Ok(RdbFile {
+            header: self.header.unwrap(),
+            metadata: self.metadata.unwrap(),
+            database,
+        })
+    }
+}
+
 // TODO rename it
 #[derive(Default)]
 pub struct BytesHandler(Vec<u8>);
@@ -247,22 +269,6 @@ impl BytesHandler {
 
     fn remove_identifier(&mut self) {
         self.remove(0);
-    }
-
-    fn try_when_0xFE(&mut self) -> Result<usize> {
-        self.remove_identifier();
-        self.try_size_decode()
-    }
-    fn try_when_0xFB(&mut self) -> Result<(usize, usize)> {
-        self.remove_identifier();
-
-        Ok((self.try_size_decode()?, self.try_size_decode()?))
-    }
-    fn when_0xFF(&mut self) -> Option<Vec<u8>> {
-        self.remove_identifier();
-        let checksum = extract_range(self, 0..=7).map(|f: [u8; 8]| f.to_vec());
-        self.drain(..8);
-        checksum
     }
 
     fn try_when_0xFC(&mut self) -> Result<u64> {
@@ -306,7 +312,6 @@ impl BytesHandler {
         self.drain(range);
         Ok(result)
     }
-
     fn try_size_decode(&mut self) -> Result<usize> {
         self.size_decode()
             .ok_or(anyhow::anyhow!("size decode fail"))
@@ -328,7 +333,6 @@ impl BytesHandler {
             self.integer_decode()
         }
     }
-
     pub fn size_decode(&mut self) -> Option<usize> {
         if let Some(first_byte) = self.get(0) {
             match first_byte >> 6 {

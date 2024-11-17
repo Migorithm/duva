@@ -22,15 +22,15 @@ use anyhow::Result;
 ///
 
 #[derive(Default)]
-pub struct KeyValue {
+pub struct KeyValueStorage {
     pub key: String,
     pub value: String,
     pub expiry: Option<u64>,
 }
 
-impl KeyValue {
+impl KeyValueStorage {
     pub fn new(data: &mut BytesHandler) -> Result<Self> {
-        KeyValue::default().try_extract_key_value_expiry(data)
+        KeyValueStorage::default().try_extract_key_value_expiry(data)
     }
     pub fn try_extract_key_value_expiry(mut self, data: &mut BytesHandler) -> Result<Self> {
         while data.len() > 0 {
@@ -57,7 +57,7 @@ impl KeyValue {
 fn test_non_expiry_key_value_pair() {
     let mut data = vec![0x00, 0x03, 0x62, 0x61, 0x7A, 0x03, 0x71, 0x75, 0x78].into();
 
-    let key_value = KeyValue::default()
+    let key_value = KeyValueStorage::default()
         .try_extract_key_value_expiry(&mut data)
         .expect("Failed to extract key value expiry");
     assert_eq!(key_value.key, "baz");
@@ -74,7 +74,7 @@ fn test_with_milliseconds_expiry_key_value_pair() {
     ]
     .into();
 
-    let key_value = KeyValue::new(&mut data).unwrap();
+    let key_value = KeyValueStorage::new(&mut data).unwrap();
 
     assert_eq!(key_value.key, "baz");
     assert_eq!(key_value.value, "qux");
@@ -89,7 +89,7 @@ fn test_with_seconds_expiry_key_value_pair() {
     ]
     .into();
 
-    let key_value = KeyValue::new(&mut data).unwrap();
+    let key_value = KeyValueStorage::new(&mut data).unwrap();
     assert_eq!(key_value.key, "baz");
     assert_eq!(key_value.value, "qux");
     assert!(key_value.expiry.is_some());
@@ -103,7 +103,7 @@ fn test_invalid_expiry_key_value_pair() {
     ]
     .into();
 
-    let result = KeyValue::new(&mut data);
+    let result = KeyValueStorage::new(&mut data);
     assert!(result.is_err());
     assert_eq!(data.len(), 14);
 }
