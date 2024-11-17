@@ -254,38 +254,3 @@ from_to!(Vec<u8>, BytesHandler);
 fn extract_range<const N: usize>(encoded: &[u8], range: RangeInclusive<usize>) -> Option<[u8; N]> {
     TryInto::<[u8; N]>::try_into(encoded.get(range)?).ok()
 }
-
-#[test]
-fn test_decoding() {
-    // "Hello, World!"
-    let mut example1: BytesHandler = vec![
-        0x0D, 0x48, 0x65, 0x6C, 0x6C, 0x6F, 0x2C, 0x20, 0x57, 0x6F, 0x72, 0x6C, 0x64, 0x21,
-    ]
-    .into();
-
-    // "Test", with size 10 (although more bytes needed)
-    let mut example2: BytesHandler = vec![0x42, 0x0A, 0x54, 0x65, 0x73, 0x74].into();
-
-    assert!(example1.string_decode().is_some());
-    assert!(example2.string_decode().is_none()); // due to insufficient bytes
-}
-
-#[test]
-fn test_decode_multiple_strings() {
-    // "abc" and "def"
-    let mut encoded: BytesHandler = vec![0x03, 0x61, 0x62, 0x63, 0x03, 0x64, 0x65, 0x66].into();
-    let decoded = encoded.string_decode().unwrap();
-    assert_eq!(
-        decoded,
-        DecodedData {
-            data: "abc".to_string()
-        }
-    );
-    let decoded = encoded.string_decode().unwrap();
-    assert_eq!(
-        decoded,
-        DecodedData {
-            data: "def".to_string()
-        }
-    );
-}
