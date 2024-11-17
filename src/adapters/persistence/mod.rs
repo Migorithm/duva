@@ -105,7 +105,7 @@ impl RdbFileLoader {
     }
     // read data and check first 5 ascii code convertable hex bytes are equal to "REDIS"
     // then read 4 digit Header version (like 0011) and return RdbFileLoader<MetadataSectionLoading> with header value as "REDIS" + 4 digit version
-    fn load(mut self) -> Result<RdbFileLoader<MetadataSectionLoading>> {
+    fn load_header(mut self) -> Result<RdbFileLoader<MetadataSectionLoading>> {
         if self.data.len() < 9 {
             return Err(create_error_while_loading("header loading", "data length is less than 9"));
         }
@@ -133,7 +133,7 @@ fn create_error_while_loading(state: &str, message:&str) -> Error {
 fn test_header_loading() {
     let data = vec![0x52, 0x45, 0x44, 0x49, 0x53, 0x30, 0x30, 0x30, 0x31];
     let loader = RdbFileLoader::new(data);
-    let loader = loader.load().unwrap();
+    let loader = loader.load_header().unwrap();
     assert_eq!(loader.header, Some("REDIS0001".to_string()));
 }
 
@@ -141,7 +141,7 @@ fn test_header_loading() {
 fn test_header_loading_data_length_error() {
     let data = vec![0x52, 0x45, 0x44, 0x49, 0x53];
     let loader = RdbFileLoader::new(data);
-    let result = loader.load();
+    let result = loader.load_header();
     assert!(result.is_err());
 }
 
@@ -149,8 +149,78 @@ fn test_header_loading_data_length_error() {
 fn test_header_loading_header_error() {
     let data = vec![0x52, 0x45, 0x44, 0x49, 0x54, 0x30, 0x30, 0x30, 0x31];
     let loader = RdbFileLoader::new(data);
-    let result = loader.load();
+    let result = loader.load_header();
     assert!(result.is_err());
+}
+
+impl RdbFileLoader<MetadataSectionLoading>{
+    fn is_metadata_section(&self) -> bool {
+        let identifier = self.data.get(0);
+        identifier == Some(&0xFA)
+    }
+    fn load_metadata(mut self) -> Result<RdbFileLoader<DatabaseSectionLoading>> {
+        let mut metadata = HashMap::new();
+        while self.is_metadata_section() {
+            let (key,value) = self.data.try_extract_key_value()?;
+            metadata.insert(key, value);
+        }
+        self.metadata = Some(metadata);
+        Ok(RdbFileLoader {
+            data: self.data,
+            state: DatabaseSectionLoading,
+            header: self.header,
+            metadata: self.metadata,
+            database: None,
+        })
+    }
+}
+
+#[test]
+fn test_metadata_loading() {
+    let data = vec![0xFA, 0x03, 0x61, 0x62, 0x63, 0x03, 0x64, 0x65, 0x66];
+    let loader = RdbFileLoader {
+        data: BytesHandler(data),
+        state: MetadataSectionLoading,
+        header: Some("REDIS0001".to_string()),
+        metadata: None,
+        database: None,
+    };
+    let loader = loader.load_metadata().unwrap();
+    let metadata = loader.metadata.unwrap();
+    assert_eq!(metadata.get("abc"), Some(&"def".to_string()));
+}
+
+#[test]
+fn test_metadata_loading_multiple() {
+    let data = vec![
+        0xFA, 0x03, 0x61, 0x62, 0x63, 0x03, 0x64, 0x65, 0x66, 0xFA, 0x03, 0x67, 0x68, 0x69,
+        0x03, 0x6A, 0x6B, 0x6C,
+    ];
+    let loader = RdbFileLoader {
+        data: BytesHandler(data),
+        state: MetadataSectionLoading,
+        header: Some("REDIS0001".to_string()),
+        metadata: None,
+        database: None,
+    };
+    let loader = loader.load_metadata().unwrap();
+    let metadata = loader.metadata.unwrap();
+    assert_eq!(metadata.get("abc"), Some(&"def".to_string()));
+    assert_eq!(metadata.get("ghi"), Some(&"jkl".to_string()));
+}
+
+#[test]
+fn test_metadata_loading_no_metadata() {
+    let data = vec![0xFE, 0x00, 0xFB, 0x03, 0x02, 0x00, 0x06, 0x66, 0x6F, 0x6F, 0x62, 0x61, 0x72, 0x06, 0x62, 0x61, 0x7A, 0x03, 0x71, 0x75, 0x78];
+    let loader = RdbFileLoader {
+        data: BytesHandler(data),
+        state: MetadataSectionLoading,
+        header: Some("REDIS0001".to_string()),
+        metadata: None,
+        database: None,
+    };
+    let loader = loader.load_metadata().unwrap();
+    assert_eq!(loader.metadata, Some(HashMap::new()));
 }
 
 // TODO rename it
@@ -204,7 +274,7 @@ impl BytesHandler {
         self.try_extract_expiry_time_in_seconds()
     }
 
-    fn try_when_0x00(&mut self) -> Result<(String, String)> {
+    fn try_extract_key_value(&mut self) -> Result<(String, String)> {
         self.remove_identifier();
         let key_data = self
             .string_decode()

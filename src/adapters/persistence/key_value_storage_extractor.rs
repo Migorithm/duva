@@ -41,7 +41,7 @@ impl KeyValue {
                 0xFD => self.expiry = Some(data.try_when_0xFD()?),
                 //0b11111110
                 0x00 => {
-                    (self.key, self.value) = data.try_when_0x00()?;
+                    (self.key, self.value) = data.try_extract_key_value()?;
                     return Ok(self);
                 }
                 _ => {
