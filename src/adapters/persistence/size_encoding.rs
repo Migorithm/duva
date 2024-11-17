@@ -1,6 +1,3 @@
-#[cfg(test)]
-use crate::adapters::persistence::DecodedData;
-
 use crate::adapters::persistence::bytes_handler::BytesHandler;
 
 /// # Notes
@@ -136,9 +133,7 @@ fn test_8_bit_integer_decode() {
     let mut encoded: BytesHandler = data_encode(size, data).unwrap();
     assert_eq!(
         encoded.string_decode(),
-        Some(DecodedData {
-            data: "123".to_string()
-        })
+        Some("123".to_string())
     );
 }
 
@@ -158,9 +153,7 @@ fn test_16_bit_integer_decode() {
     let mut encoded: BytesHandler = data_encode(size, data).unwrap();
     assert_eq!(
         encoded.string_decode(),
-        Some(DecodedData {
-            data: "12345".to_string()
-        })
+        Some("12345".to_string())
     );
 }
 
@@ -180,9 +173,7 @@ fn test_32_bit_integer_decode() {
     let mut encoded = data_encode(size, data).unwrap();
     assert_eq!(
         encoded.string_decode(),
-        Some(DecodedData {
-            data: "1234567".to_string()
-        })
+        Some("1234567".to_string())
     );
 }
 
@@ -193,9 +184,7 @@ fn test_integer_decoding() {
     let mut encoded = data_encode(size, data).unwrap();
     assert_eq!(
         encoded.string_decode(),
-        Some(DecodedData {
-            data: "42".to_string()
-        })
+        Some("42".to_string())
     );
 
     let data = "1000";
@@ -203,9 +192,7 @@ fn test_integer_decoding() {
     let mut encoded = data_encode(size, data).unwrap();
     assert_eq!(
         encoded.string_decode(),
-        Some(DecodedData {
-            data: "1000".to_string()
-        })
+        Some("1000".to_string())
     );
 
     let data = "100000";
@@ -213,8 +200,6 @@ fn test_integer_decoding() {
     let mut encoded = data_encode(size, data).unwrap();
     assert_eq!(
         encoded.string_decode(),
-        Some(DecodedData {
-            data: "100000".to_string()
-        })
+        Some("100000".to_string())
     );
 }

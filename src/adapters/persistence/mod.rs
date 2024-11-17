@@ -79,12 +79,6 @@ pub struct RdbFile {
     database: Vec<DatabaseSection>,
 }
 
-#[derive(Debug, PartialEq)]
-pub struct DecodedData {
-    // length of the data in bytes (including the size encoding)
-    pub data: String,
-}
-
 #[derive(Default)]
 struct RdbFileLoader<T=HeaderLoading> {
     data: BytesHandler,

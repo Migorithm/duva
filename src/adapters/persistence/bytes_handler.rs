@@ -1,5 +1,4 @@
 use crate::adapters::persistence;
-use crate::adapters::persistence::DecodedData;
 
 #[derive(Default)]
 pub struct BytesHandler(pub Vec<u8>);
@@ -36,7 +35,7 @@ impl BytesHandler {
             .string_decode()
             .ok_or(anyhow::anyhow!("value decode fail"))?;
 
-        Ok((key_data.data, value_data.data))
+        Ok((key_data, value_data))
     }
 
     pub fn try_extract_expiry_time_in_seconds(&mut self) -> anyhow::Result<u64> {
@@ -63,7 +62,7 @@ impl BytesHandler {
             .ok_or(anyhow::anyhow!("size decode fail"))
     }
     // Decode a size-encoded value based on the first two bits and return the decoded value as a string.
-    pub fn string_decode(&mut self) -> Option<DecodedData> {
+    pub fn string_decode(&mut self) -> Option<String> {
         // Ensure we have at least one byte to read.
         if self.is_empty() {
             return None;
@@ -74,7 +73,7 @@ impl BytesHandler {
                 return None;
             }
             let data = String::from_utf8(self.drain(0..size).collect()).unwrap();
-            Some(DecodedData { data })
+            Some(data)
         } else {
             self.integer_decode()
         }
@@ -113,29 +112,27 @@ impl BytesHandler {
         }
     }
 
-    fn integer_decode(&mut self) -> Option<DecodedData> {
+    fn integer_decode(&mut self) -> Option<String> {
         if let Some(first_byte) = self.get(0) {
             match first_byte {
                 // 0b11000000: 8-bit integer
                 0xC0 => {
                     let value = u8::from_le_bytes([self[1]]).to_string();
                     self.drain(0..2);
-                    return Some(DecodedData { data: value });
+                    return Some(value);
                 }
                 0xC1 => {
                     if self.len() == 3 {
                         let value = u16::from_le_bytes(persistence::extract_range(self, 1..=2)?).to_string();
                         self.drain(0..3);
-                        return Some(DecodedData { data: value });
+                        return Some(value);
                     }
                 }
                 0xC2 => {
                     if self.len() == 5 {
-                        let value = u32::from_le_bytes(persistence::extract_range(self, 1..=4)?);
+                        let value = u32::from_le_bytes(persistence::extract_range(self, 1..=4)?).to_string();
                         self.drain(0..5);
-                        return Some(DecodedData {
-                            data: value.to_string(),
-                        });
+                        return Some(value);
                     }
                 }
                 _ => return None,
@@ -166,21 +163,15 @@ fn test_integer_decoding() {
 
     assert_eq!(
         example1.integer_decode(),
-        Some(DecodedData {
-            data: "10".to_string()
-        })
+        Some("10".to_string())
     );
     assert_eq!(
         example2.integer_decode(),
-        Some(DecodedData {
-            data: "12345".to_string()
-        })
+        Some( "12345".to_string())
     );
     assert_eq!(
         example3.integer_decode(),
-        Some(DecodedData {
-            data: "1234567".to_string()
-        })
+        Some("1234567".to_string())
     );
 }
 
@@ -191,9 +182,7 @@ fn test_string_decoding() {
 
     assert_eq!(
         example1.string_decode(),
-        Some(DecodedData {
-            data: "Hello, World!".to_string()
-        })
+        Some("Hello, World!".to_string())
     );
     assert_eq!(example2.string_decode(), None);
 }
@@ -217,18 +206,14 @@ fn test_decoding() {
 fn test_decode_multiple_strings() {
     // "abc" and "def"
     let mut encoded: BytesHandler = vec![0x03, 0x61, 0x62, 0x63, 0x03, 0x64, 0x65, 0x66].into();
-    let decoded = encoded.string_decode().unwrap();
+    let decoded = encoded.string_decode();
     assert_eq!(
         decoded,
-        DecodedData {
-            data: "abc".to_string()
-        }
+        Some("abc".to_string())
     );
-    let decoded = encoded.string_decode().unwrap();
+    let decoded = encoded.string_decode();
     assert_eq!(
         decoded,
-        DecodedData {
-            data: "def".to_string()
-        }
+        Some("def".to_string())
     );
 }
