@@ -7,7 +7,7 @@ use anyhow::Error;
 use std::collections::HashMap;
 use std::marker::PhantomData;
 
-use super::{extract_range, DatabaseSection};
+use super::extract_range;
 
 #[derive(Default)]
 pub(super) struct HeaderLoading;
@@ -22,8 +22,6 @@ pub(super) struct RdbFileLoader<T> {
     state: PhantomData<T>,
     header: Option<String>,
     metadata: Option<HashMap<String, String>>,
-    database: Option<Vec<DatabaseSection>>,
-    checksum: Vec<u8>,
 }
 
 impl RdbFileLoader<HeaderLoading> {
@@ -175,8 +173,6 @@ fn test_metadata_loading() {
         state: PhantomData::<MetadataSectionLoading>,
         header: Some("REDIS0001".to_string()),
         metadata: None,
-        database: None,
-        checksum: Default::default(),
     };
     let loader = loader.load_metadata().unwrap();
     let metadata = loader.metadata.unwrap();
@@ -194,8 +190,6 @@ fn test_metadata_loading_multiple() {
         state: PhantomData::<MetadataSectionLoading>,
         header: Some("REDIS0001".to_string()),
         metadata: None,
-        database: None,
-        checksum: Default::default(),
     };
     let loader = loader.load_metadata().unwrap();
     let metadata = loader.metadata.unwrap();
@@ -214,8 +208,6 @@ fn test_metadata_loading_no_metadata() {
         state: PhantomData::<MetadataSectionLoading>,
         header: Some("REDIS0001".to_string()),
         metadata: None,
-        database: None,
-        checksum: Default::default(),
     };
     let loader = loader.load_metadata().unwrap();
     assert_eq!(loader.metadata, Some(HashMap::new()));
@@ -235,8 +227,6 @@ fn test_database_loading() {
         state: PhantomData::<DatabaseSectionLoading>,
         header: Some("REDIS0001".to_string()),
         metadata: Some(HashMap::new()),
-        database: None,
-        checksum: Default::default(),
     };
     let rdb_file = loader.load_database().unwrap();
     assert_eq!(rdb_file.header, "REDIS0001");
