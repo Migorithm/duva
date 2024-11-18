@@ -58,8 +58,7 @@
 //! ```
 //!
 //! It's primarily about communication/protocol rather than efficiency.\
-
-use bytes_handler::BytesEndec;
+use anyhow::Result;
 use key_value_storage_extractor::KeyValueStorage;
 use rdb_file_loader::RdbFileLoader;
 use std::collections::HashMap;
@@ -79,19 +78,12 @@ pub struct RdbFile {
 }
 
 impl RdbFile {
-    pub fn new(data: Vec<u8>) -> Self {
+    pub fn new(data: Vec<u8>) -> Result<Self> {
         let loader = RdbFileLoader::new(data);
-        //TODO Safety!
-        let rdb_file = loader
-            .load_header()
-            .unwrap()
-            .load_metadata()
-            .unwrap()
-            .load_database()
-            .unwrap();
-        rdb_file
+        loader.load_header()?.load_metadata()?.load_database()
     }
 
+    // TODO : subject to refactor
     pub fn key_values(&self) -> Vec<(String, String)> {
         self.database
             .iter()

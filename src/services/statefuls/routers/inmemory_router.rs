@@ -34,7 +34,7 @@ impl CacheDispatcher {
         };
 
         let data = tokio::fs::read(filepath).await?;
-        let database = RdbFile::new(data);
+        let database = RdbFile::new(data)?;
 
         for (key, value) in database.key_values() {
             self.route_set(key, value, None, ttl_inbox.clone()).await?;
