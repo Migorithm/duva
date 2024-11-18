@@ -88,8 +88,7 @@ impl RdbFileLoader<MetadataSectionLoading> {
         })
     }
     fn is_metadata_section(&self) -> bool {
-        let identifier = self.data.get(0);
-        identifier == Some(&0xFA)
+        matches!(self.data.get(0), Some(0xFA))
     }
 }
 
