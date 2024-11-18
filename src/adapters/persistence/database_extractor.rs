@@ -79,7 +79,7 @@ impl DatabaseSectionBuilder<Initialized<'_>> {
     }
 
     fn save_key_value_expiry_time_in_storage(&mut self) -> Result<()> {
-        let key_value = KeyValueStorage::default().try_extract_key_value_expiry(self.state.0)?;
+        let key_value = KeyValueStorage::new(self.state.0)?;
 
         if key_value.expiry.is_some() {
             if let Some(existing_minus_one) = self.expires_table_size.checked_sub(1) {
