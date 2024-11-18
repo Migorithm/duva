@@ -1,8 +1,8 @@
 use crate::adapters::persistence::bytes_handler::BytesHandler;
 use crate::make_smart_pointer;
-use anyhow::{Error, Result};
+use anyhow::Result;
 
-use super::{extract_range, KeyValueStorage};
+use super::KeyValueStorage;
 
 pub struct Unset;
 pub struct Initialized<'a>(pub &'a mut BytesHandler);
@@ -11,13 +11,11 @@ make_smart_pointer!(Initialized<'a>, BytesHandler);
 pub struct DatabaseSection {
     pub index: usize,
     pub storage: Vec<KeyValueStorage>,
-    checksum: Vec<u8>,
 }
 
-pub struct DatabaseSectionBuilder<T = Unset> {
+pub struct DatabaseSectionBuilder<T> {
     index: usize,
     storage: Vec<KeyValueStorage>,
-    checksum: Vec<u8>,
     state: T,
     key_value_table_size: usize,
     expires_table_size: usize,
@@ -29,7 +27,6 @@ impl DatabaseSectionBuilder<Unset> {
             state: Initialized(data),
             index: Default::default(),
             storage: Default::default(),
-            checksum: Default::default(),
             key_value_table_size: Default::default(),
             expires_table_size: Default::default(),
         }
@@ -48,10 +45,6 @@ impl DatabaseSectionBuilder<Initialized<'_>> {
                 0xFB => {
                     self.try_set_table_sizes()?;
                 }
-                //0b11111111
-                0xFF => {
-                    self.try_get_checksum()?;
-                }
                 _ => {
                     if self.is_key_value_extractable() {
                         self.save_key_value_expiry_time_in_storage()?;
@@ -64,7 +57,6 @@ impl DatabaseSectionBuilder<Initialized<'_>> {
         Ok(DatabaseSection {
             index: self.index,
             storage: self.storage,
-            checksum: self.checksum,
         })
     }
 
@@ -78,16 +70,6 @@ impl DatabaseSectionBuilder<Initialized<'_>> {
         self.state.remove_identifier();
         self.key_value_table_size = self.state.try_size_decode()?;
         self.expires_table_size = self.state.try_size_decode()?;
-        Ok(())
-    }
-
-    fn try_get_checksum(&mut self) -> Result<()> {
-        self.state.remove_identifier();
-        let checksum = extract_range(self.state.0, 0..=7)
-            .map(|f: [u8; 8]| f.to_vec())
-            .ok_or(Error::msg("failed to extract checksum"))?;
-        self.state.drain(..8);
-        self.checksum = checksum;
         Ok(())
     }
 
@@ -118,8 +100,7 @@ fn test_database_section_extractor() {
         0xFE, 0x00, 0xFB, 0x03, 0x02, 0x00, 0x06, 0x66, 0x6F, 0x6F, 0x62, 0x61, 0x72, 0x06, 0x62,
         0x61, 0x7A, 0x71, 0x75, 0x78, 0xFC, 0x15, 0x72, 0xE7, 0x07, 0x8F, 0x01, 0x00, 0x00, 0x00,
         0x03, 0x66, 0x6F, 0x6F, 0x03, 0x62, 0x61, 0x72, 0xFD, 0x52, 0xED, 0x2A, 0x66, 0x00, 0x03,
-        0x62, 0x61, 0x7A, 0x03, 0x71, 0x75, 0x78, 0xFF, 0x89, 0x3B, 0xB7, 0x4E, 0xF8, 0x0F, 0x77,
-        0x19,
+        0x62, 0x61, 0x7A, 0x03, 0x71, 0x75, 0x78,
     ]
     .into();
 
@@ -128,6 +109,6 @@ fn test_database_section_extractor() {
         .unwrap();
     assert_eq!(db_section.index, 0);
     assert_eq!(db_section.storage.len(), 3);
-    assert_eq!(db_section.checksum.len(), 8);
+
     assert_eq!(data.len(), 0);
 }

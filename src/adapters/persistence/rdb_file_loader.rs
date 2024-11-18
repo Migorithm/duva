@@ -4,6 +4,8 @@ use crate::adapters::persistence::RdbFile;
 use anyhow::Error;
 use std::collections::HashMap;
 
+use super::extract_range;
+
 struct HeaderLoading;
 struct MetadataSectionLoading;
 struct DatabaseSectionLoading;
@@ -15,6 +17,7 @@ struct RdbFileLoader<T = HeaderLoading> {
     header: Option<String>,
     metadata: Option<HashMap<String, String>>,
     database: Option<Vec<DatabaseSection>>,
+    checksum: Vec<u8>,
 }
 
 impl RdbFileLoader {
@@ -25,6 +28,7 @@ impl RdbFileLoader {
             header: None,
             metadata: None,
             database: None,
+            checksum: Vec::new(),
         }
     }
     // read data and check first 5 ascii code convertable hex bytes are equal to "REDIS"
@@ -53,6 +57,7 @@ impl RdbFileLoader {
             header: self.header,
             metadata: None,
             database: None,
+            checksum: Vec::new(),
         })
     }
 }
@@ -79,6 +84,7 @@ impl RdbFileLoader<MetadataSectionLoading> {
             header: self.header,
             metadata: self.metadata,
             database: None,
+            checksum: self.checksum,
         })
     }
 }
@@ -100,6 +106,7 @@ impl RdbFileLoader<DatabaseSectionLoading> {
             database.push(section?);
         }
 
+        let checksum = self.try_get_checksum()?;
         Ok(RdbFile {
             header: self
                 .header
@@ -108,7 +115,17 @@ impl RdbFileLoader<DatabaseSectionLoading> {
                 .metadata
                 .ok_or(LoadingError::new("invalid operation", "metadata is none"))?,
             database,
+            checksum: checksum,
         })
+    }
+
+    fn try_get_checksum(&mut self) -> anyhow::Result<Vec<u8>> {
+        self.data.remove_identifier();
+        let checksum = extract_range(&self.data, 0..=7)
+            .map(|f: [u8; 8]| f.to_vec())
+            .ok_or(Error::msg("failed to extract checksum"))?;
+        self.data.drain(..8);
+        Ok(checksum)
     }
 }
 
@@ -160,6 +177,7 @@ fn test_metadata_loading() {
         header: Some("REDIS0001".to_string()),
         metadata: None,
         database: None,
+        checksum: Default::default(),
     };
     let loader = loader.load_metadata().unwrap();
     let metadata = loader.metadata.unwrap();
@@ -178,6 +196,7 @@ fn test_metadata_loading_multiple() {
         header: Some("REDIS0001".to_string()),
         metadata: None,
         database: None,
+        checksum: Default::default(),
     };
     let loader = loader.load_metadata().unwrap();
     let metadata = loader.metadata.unwrap();
@@ -197,6 +216,7 @@ fn test_metadata_loading_no_metadata() {
         header: Some("REDIS0001".to_string()),
         metadata: None,
         database: None,
+        checksum: Default::default(),
     };
     let loader = loader.load_metadata().unwrap();
     assert_eq!(loader.metadata, Some(HashMap::new()));
@@ -217,6 +237,7 @@ fn test_database_loading() {
         header: Some("REDIS0001".to_string()),
         metadata: Some(HashMap::new()),
         database: None,
+        checksum: Default::default(),
     };
     let rdb_file = loader.load_database().unwrap();
     assert_eq!(rdb_file.header, "REDIS0001");

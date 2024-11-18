@@ -73,6 +73,7 @@ pub struct RdbFile {
     header: String,
     metadata: HashMap<String, String>,
     database: Vec<DatabaseSection>,
+    checksum: Vec<u8>,
 }
 
 // Safe conversion from a slice to an array of a specific size.
