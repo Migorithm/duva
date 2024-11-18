@@ -58,14 +58,14 @@
 //! ```
 //!
 //! It's primarily about communication/protocol rather than efficiency.\
-use crate::adapters::persistence::database_extractor::DatabaseSection;
+
 use key_value_storage_extractor::KeyValueStorage;
 use std::collections::HashMap;
 use std::ops::RangeInclusive;
 
 mod bytes_handler;
 pub mod data_encoder;
-mod database_extractor;
+mod database_subsection_builder;
 mod key_value_storage_extractor;
 mod rdb_file_loader;
 
@@ -74,6 +74,11 @@ pub struct RdbFile {
     metadata: HashMap<String, String>,
     database: Vec<DatabaseSection>,
     checksum: Vec<u8>,
+}
+
+pub struct DatabaseSection {
+    pub index: usize,
+    pub storage: Vec<KeyValueStorage>,
 }
 
 // Safe conversion from a slice to an array of a specific size.

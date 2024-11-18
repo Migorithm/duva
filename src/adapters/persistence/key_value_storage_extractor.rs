@@ -1,4 +1,4 @@
-use crate::adapters::persistence::bytes_handler::BytesHandler;
+use crate::adapters::persistence::bytes_handler::BytesEndec;
 use anyhow::Result;
 /// # Extract Key-Value Pair Storage
 /// Extract key-value pair from the data buffer and remove the extracted data from the buffer.
@@ -29,10 +29,10 @@ pub struct KeyValueStorage {
 }
 
 impl KeyValueStorage {
-    pub fn new(data: &mut BytesHandler) -> Result<Self> {
+    pub fn new(data: &mut BytesEndec) -> Result<Self> {
         KeyValueStorage::default().try_extract_key_value_expiry(data)
     }
-    pub fn try_extract_key_value_expiry(mut self, data: &mut BytesHandler) -> Result<Self> {
+    pub fn try_extract_key_value_expiry(mut self, data: &mut BytesEndec) -> Result<Self> {
         while data.len() > 0 {
             match data[0] {
                 //0b11111100
@@ -56,13 +56,13 @@ impl KeyValueStorage {
         Err(anyhow::anyhow!("Invalid key value pair"))
     }
 
-    fn try_set_milliseconds_expiry_time(&mut self, data: &mut BytesHandler) -> Result<()> {
+    fn try_set_milliseconds_expiry_time(&mut self, data: &mut BytesEndec) -> Result<()> {
         data.remove_identifier();
         self.expiry = Some(data.try_extract_expiry_time_in_milliseconds()?);
         Ok(())
     }
 
-    fn try_set_seconds_expiry_time(&mut self, data: &mut BytesHandler) -> Result<()> {
+    fn try_set_seconds_expiry_time(&mut self, data: &mut BytesEndec) -> Result<()> {
         data.remove_identifier();
         self.expiry = Some(data.try_extract_expiry_time_in_seconds()?);
         Ok(())

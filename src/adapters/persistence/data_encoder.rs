@@ -1,4 +1,6 @@
-use crate::adapters::persistence::bytes_handler::BytesHandler;
+use crate::{from_to, make_smart_pointer};
+
+use super::bytes_handler::BytesEndec;
 
 /// # Notes
 ///
@@ -14,13 +16,35 @@ use crate::adapters::persistence::bytes_handler::BytesHandler;
 /// * Maximum encodable size is 2^32 - 1
 /// * No error correction or detection mechanisms
 /// * Size encoding overhead varies from 1 to 5 bytes
-fn data_encode(size: usize, data: &str) -> Option<BytesHandler> {
+///
+///
+
+impl BytesEndec {
+    // TODO subject to refactor
+    pub fn from_u32(value: u32) -> Self {
+        let mut result = BytesEndec::default();
+        if value <= 0xFF {
+            result.push(0xC0);
+            result.push(value as u8);
+        } else if value <= 0xFFFF {
+            result.push(0xC1);
+            let value = value as u16;
+            result.extend_from_slice(&value.to_le_bytes());
+        } else {
+            result.push(0xC2);
+            result.extend_from_slice(&value.to_le_bytes());
+        }
+        result
+    }
+}
+
+fn data_encode(size: usize, data: &str) -> Option<BytesEndec> {
     // if data can be parsed as an integer as u32
     if let Ok(value) = data.parse::<u32>() {
-        return Some(BytesHandler::from_u32(value));
+        return Some(BytesEndec::from_u32(value));
     }
 
-    let mut result = BytesHandler::default();
+    let mut result = BytesEndec::default();
     // if value is representable with 6bits : 0b00 -> Use the remaining 6 bits to represent the size.
     if size < (1 << 6) {
         result.push((0b00 << 6) | (size as u8));
@@ -130,11 +154,8 @@ fn test_8_bit_integer_encode() {
 fn test_8_bit_integer_decode() {
     let data = "123";
     let size = data.len();
-    let mut encoded: BytesHandler = data_encode(size, data).unwrap();
-    assert_eq!(
-        encoded.string_decode(),
-        Some("123".to_string())
-    );
+    let mut encoded: BytesEndec = data_encode(size, data).unwrap();
+    assert_eq!(encoded.string_decode(), Some("123".to_string()));
 }
 
 #[test]
@@ -150,11 +171,8 @@ fn test_16_bit_integer() {
 fn test_16_bit_integer_decode() {
     let data = "12345";
     let size = data.len();
-    let mut encoded: BytesHandler = data_encode(size, data).unwrap();
-    assert_eq!(
-        encoded.string_decode(),
-        Some("12345".to_string())
-    );
+    let mut encoded: BytesEndec = data_encode(size, data).unwrap();
+    assert_eq!(encoded.string_decode(), Some("12345".to_string()));
 }
 
 #[test]
@@ -171,10 +189,7 @@ fn test_32_bit_integer_decode() {
     let data = "1234567";
     let size = data.len();
     let mut encoded = data_encode(size, data).unwrap();
-    assert_eq!(
-        encoded.string_decode(),
-        Some("1234567".to_string())
-    );
+    assert_eq!(encoded.string_decode(), Some("1234567".to_string()));
 }
 
 #[test]
@@ -182,24 +197,15 @@ fn test_integer_decoding() {
     let data = "42";
     let size = data.len();
     let mut encoded = data_encode(size, data).unwrap();
-    assert_eq!(
-        encoded.string_decode(),
-        Some("42".to_string())
-    );
+    assert_eq!(encoded.string_decode(), Some("42".to_string()));
 
     let data = "1000";
     let size = data.len();
     let mut encoded = data_encode(size, data).unwrap();
-    assert_eq!(
-        encoded.string_decode(),
-        Some("1000".to_string())
-    );
+    assert_eq!(encoded.string_decode(), Some("1000".to_string()));
 
     let data = "100000";
     let size = data.len();
     let mut encoded = data_encode(size, data).unwrap();
-    assert_eq!(
-        encoded.string_decode(),
-        Some("100000".to_string())
-    );
+    assert_eq!(encoded.string_decode(), Some("100000".to_string()));
 }

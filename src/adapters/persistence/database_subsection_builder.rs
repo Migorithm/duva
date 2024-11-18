@@ -1,17 +1,12 @@
-use crate::adapters::persistence::bytes_handler::BytesHandler;
+use crate::adapters::persistence::bytes_handler::BytesEndec;
 use crate::make_smart_pointer;
 use anyhow::Result;
 
-use super::KeyValueStorage;
+use super::{DatabaseSection, KeyValueStorage};
 
 pub struct Unset;
-pub struct Initialized<'a>(pub &'a mut BytesHandler);
-make_smart_pointer!(Initialized<'a>, BytesHandler);
-
-pub struct DatabaseSection {
-    pub index: usize,
-    pub storage: Vec<KeyValueStorage>,
-}
+pub struct Initialized<'a>(pub &'a mut BytesEndec);
+make_smart_pointer!(Initialized<'a>, BytesEndec);
 
 pub struct DatabaseSectionBuilder<T> {
     index: usize,
@@ -22,7 +17,7 @@ pub struct DatabaseSectionBuilder<T> {
 }
 
 impl DatabaseSectionBuilder<Unset> {
-    pub fn new(data: &mut BytesHandler) -> DatabaseSectionBuilder<Initialized<'_>> {
+    pub fn new(data: &mut BytesEndec) -> DatabaseSectionBuilder<Initialized<'_>> {
         DatabaseSectionBuilder {
             state: Initialized(data),
             index: Default::default(),

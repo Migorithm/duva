@@ -1,10 +1,12 @@
-use crate::adapters::persistence::bytes_handler::BytesHandler;
-use crate::adapters::persistence::database_extractor::{DatabaseSection, DatabaseSectionBuilder};
+use crate::adapters::persistence::{
+    bytes_handler::BytesEndec, database_subsection_builder::DatabaseSectionBuilder,
+};
+
 use crate::adapters::persistence::RdbFile;
 use anyhow::Error;
 use std::collections::HashMap;
 
-use super::extract_range;
+use super::{extract_range, DatabaseSection};
 
 struct HeaderLoading;
 struct MetadataSectionLoading;
@@ -12,7 +14,7 @@ struct DatabaseSectionLoading;
 
 #[derive(Default)]
 struct RdbFileLoader<T = HeaderLoading> {
-    data: BytesHandler,
+    data: BytesEndec,
     state: T,
     header: Option<String>,
     metadata: Option<HashMap<String, String>>,
@@ -23,7 +25,7 @@ struct RdbFileLoader<T = HeaderLoading> {
 impl RdbFileLoader {
     fn new(data: Vec<u8>) -> Self {
         Self {
-            data: BytesHandler(data),
+            data: BytesEndec(data),
             state: HeaderLoading,
             header: None,
             metadata: None,
@@ -172,7 +174,7 @@ fn test_header_loading_header_error() {
 fn test_metadata_loading() {
     let data = vec![0xFA, 0x03, 0x61, 0x62, 0x63, 0x03, 0x64, 0x65, 0x66];
     let loader = RdbFileLoader {
-        data: BytesHandler(data),
+        data: BytesEndec(data),
         state: MetadataSectionLoading,
         header: Some("REDIS0001".to_string()),
         metadata: None,
@@ -191,7 +193,7 @@ fn test_metadata_loading_multiple() {
         0x6A, 0x6B, 0x6C,
     ];
     let loader = RdbFileLoader {
-        data: BytesHandler(data),
+        data: BytesEndec(data),
         state: MetadataSectionLoading,
         header: Some("REDIS0001".to_string()),
         metadata: None,
@@ -211,7 +213,7 @@ fn test_metadata_loading_no_metadata() {
         0x61, 0x7A, 0x03, 0x71, 0x75, 0x78,
     ];
     let loader = RdbFileLoader {
-        data: BytesHandler(data),
+        data: BytesEndec(data),
         state: MetadataSectionLoading,
         header: Some("REDIS0001".to_string()),
         metadata: None,
@@ -232,7 +234,7 @@ fn test_database_loading() {
         0x19,
     ];
     let loader = RdbFileLoader {
-        data: BytesHandler(data),
+        data: BytesEndec(data),
         state: DatabaseSectionLoading,
         header: Some("REDIS0001".to_string()),
         metadata: Some(HashMap::new()),
