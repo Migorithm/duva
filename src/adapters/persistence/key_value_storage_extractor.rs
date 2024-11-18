@@ -38,11 +38,11 @@ impl KeyValueStorage {
                 //0b11111100
                 0xFC => {
                     self.try_set_milliseconds_expiry_time(data)?;
-                },
+                }
                 //0b11111101
                 0xFD => {
                     self.try_set_seconds_expiry_time(data)?;
-                },
+                }
                 //0b11111110
                 0x00 => {
                     (self.key, self.value) = data.try_extract_key_value()?;
@@ -66,7 +66,6 @@ impl KeyValueStorage {
         data.remove_identifier();
         self.expiry = Some(data.try_extract_expiry_time_in_seconds()?);
         Ok(())
-        
     }
 }
 
