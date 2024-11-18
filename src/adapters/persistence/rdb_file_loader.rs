@@ -67,8 +67,10 @@ impl RdbFileLoader {
 
 impl RdbFileLoader<MetadataSectionLoading> {
     fn load_metadata(mut self) -> anyhow::Result<RdbFileLoader<DatabaseSectionLoading>> {
+        const METADATA_SECTION_IDENTIFIER: u8 = 0xFA;
+
         let mut metadata = HashMap::new();
-        while self.is_metadata_section() {
+        while self.data.check_identifier(METADATA_SECTION_IDENTIFIER) {
             let Ok((key, value)) = self.data.try_extract_key_value() else {
                 return Err(create_error_while_loading(
                     "metadata loading",
@@ -87,15 +89,14 @@ impl RdbFileLoader<MetadataSectionLoading> {
             database: None,
         })
     }
-    fn is_metadata_section(&self) -> bool {
-        matches!(self.data.get(0), Some(0xFA))
-    }
 }
 
 impl RdbFileLoader<DatabaseSectionLoading> {
     fn load_database(mut self) -> anyhow::Result<RdbFile> {
+        const DATABASE_SECTION_IDENTIFIER: u8 = 0xFE;
+
         let mut database = Vec::new();
-        while self.is_database_section() {
+        while self.data.check_identifier(DATABASE_SECTION_IDENTIFIER) {
             let section = DatabaseSectionBuilder::new(&mut self.data);
             let section = section.extract_section();
             if section.is_err() {
@@ -111,10 +112,6 @@ impl RdbFileLoader<DatabaseSectionLoading> {
             metadata: self.metadata.unwrap(),
             database,
         })
-    }
-    fn is_database_section(&self) -> bool {
-        let identifier = self.data.get(0);
-        identifier == Some(&0xFE)
     }
 }
 

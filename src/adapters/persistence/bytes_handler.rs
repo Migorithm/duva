@@ -126,14 +126,16 @@ impl BytesHandler {
                 }
                 0xC1 => {
                     if self.len() == 3 {
-                        let value = u16::from_le_bytes(persistence::extract_range(self, 1..=2)?).to_string();
+                        let value = u16::from_le_bytes(persistence::extract_range(self, 1..=2)?)
+                            .to_string();
                         self.drain(0..3);
                         return Some(value);
                     }
                 }
                 0xC2 => {
                     if self.len() == 5 {
-                        let value = u32::from_le_bytes(persistence::extract_range(self, 1..=4)?).to_string();
+                        let value = u32::from_le_bytes(persistence::extract_range(self, 1..=4)?)
+                            .to_string();
                         self.drain(0..5);
                         return Some(value);
                     }
@@ -142,6 +144,10 @@ impl BytesHandler {
             }
         }
         None
+    }
+
+    pub(crate) fn check_identifier(&self, iden: u8) -> bool {
+        self.get(0) == Some(&iden)
     }
 }
 
@@ -164,29 +170,20 @@ fn test_integer_decoding() {
     let mut example2: BytesHandler = vec![0xC1, 0x39, 0x30].into();
     let mut example3: BytesHandler = vec![0xC2, 0x87, 0xD6, 0x12, 0x00].into();
 
-    assert_eq!(
-        example1.integer_decode(),
-        Some("10".to_string())
-    );
-    assert_eq!(
-        example2.integer_decode(),
-        Some( "12345".to_string())
-    );
-    assert_eq!(
-        example3.integer_decode(),
-        Some("1234567".to_string())
-    );
+    assert_eq!(example1.integer_decode(), Some("10".to_string()));
+    assert_eq!(example2.integer_decode(), Some("12345".to_string()));
+    assert_eq!(example3.integer_decode(), Some("1234567".to_string()));
 }
 
 #[test]
 fn test_string_decoding() {
-    let mut example1: BytesHandler = vec![0x0D, 0x48, 0x65, 0x6C, 0x6C, 0x6F, 0x2C, 0x20, 0x57, 0x6F, 0x72, 0x6C, 0x64, 0x21].into();
+    let mut example1: BytesHandler = vec![
+        0x0D, 0x48, 0x65, 0x6C, 0x6C, 0x6F, 0x2C, 0x20, 0x57, 0x6F, 0x72, 0x6C, 0x64, 0x21,
+    ]
+    .into();
     let mut example2: BytesHandler = vec![0x42, 0x0A, 0x54, 0x65, 0x73, 0x74].into();
 
-    assert_eq!(
-        example1.string_decode(),
-        Some("Hello, World!".to_string())
-    );
+    assert_eq!(example1.string_decode(), Some("Hello, World!".to_string()));
     assert_eq!(example2.string_decode(), None);
 }
 
@@ -196,7 +193,7 @@ fn test_decoding() {
     let mut example1: BytesHandler = vec![
         0x0D, 0x48, 0x65, 0x6C, 0x6C, 0x6F, 0x2C, 0x20, 0x57, 0x6F, 0x72, 0x6C, 0x64, 0x21,
     ]
-        .into();
+    .into();
 
     // "Test", with size 10 (although more bytes needed)
     let mut example2: BytesHandler = vec![0x42, 0x0A, 0x54, 0x65, 0x73, 0x74].into();
@@ -210,13 +207,7 @@ fn test_decode_multiple_strings() {
     // "abc" and "def"
     let mut encoded: BytesHandler = vec![0x03, 0x61, 0x62, 0x63, 0x03, 0x64, 0x65, 0x66].into();
     let decoded = encoded.string_decode();
-    assert_eq!(
-        decoded,
-        Some("abc".to_string())
-    );
+    assert_eq!(decoded, Some("abc".to_string()));
     let decoded = encoded.string_decode();
-    assert_eq!(
-        decoded,
-        Some("def".to_string())
-    );
+    assert_eq!(decoded, Some("def".to_string()));
 }
