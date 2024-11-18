@@ -4,7 +4,9 @@ use crate::adapters::persistence::RdbFile;
 use anyhow::Error;
 use std::collections::HashMap;
 
-const RDB_HEADER_MAGIC_STRING: &str = "REDIS";
+struct HeaderLoading;
+struct MetadataSectionLoading;
+struct DatabaseSectionLoading;
 
 #[derive(Default)]
 struct RdbFileLoader<T = HeaderLoading> {
@@ -14,12 +16,6 @@ struct RdbFileLoader<T = HeaderLoading> {
     metadata: Option<HashMap<String, String>>,
     database: Option<Vec<DatabaseSection>>,
 }
-
-struct HeaderLoading;
-
-struct MetadataSectionLoading;
-
-struct DatabaseSectionLoading;
 
 impl RdbFileLoader {
     fn new(data: Vec<u8>) -> Self {
@@ -34,25 +30,21 @@ impl RdbFileLoader {
     // read data and check first 5 ascii code convertable hex bytes are equal to "REDIS"
     // then read 4 digit Header version (like 0011) and return RdbFileLoader<MetadataSectionLoading> with header value as "REDIS" + 4 digit version
     fn load_header(mut self) -> anyhow::Result<RdbFileLoader<MetadataSectionLoading>> {
+        const RDB_HEADER_MAGIC_STRING: &str = "REDIS";
+
         if self.data.len() < 9 {
-            return Err(create_error_while_loading(
+            return Err(LoadingError::new(
                 "header loading",
                 "data length is less than 9",
-            ));
+            ))?;
         }
         let header = String::from_utf8(self.data.drain(0..5).collect())?;
         if header != RDB_HEADER_MAGIC_STRING {
-            return Err(create_error_while_loading(
-                "header loading",
-                "header is not REDIS",
-            ));
+            return Err(LoadingError::new("header loading", "header is not REDIS"))?;
         }
         let version = String::from_utf8(self.data.drain(0..4).collect());
         if version.is_err() {
-            return Err(create_error_while_loading(
-                "header loading",
-                "version is not valid",
-            ));
+            return Err(LoadingError::new("header loading", "version is not valid"))?;
         }
         self.header = Some(format!("{}{}", header, version?));
         Ok(RdbFileLoader {
@@ -72,10 +64,10 @@ impl RdbFileLoader<MetadataSectionLoading> {
         let mut metadata = HashMap::new();
         while self.data.check_identifier(METADATA_SECTION_IDENTIFIER) {
             let Ok((key, value)) = self.data.try_extract_key_value() else {
-                return Err(create_error_while_loading(
+                return Err(LoadingError::new(
                     "metadata loading",
                     "key value extraction failed",
-                ));
+                ))?;
             };
             metadata.insert(key, value);
         }
@@ -100,23 +92,39 @@ impl RdbFileLoader<DatabaseSectionLoading> {
             let section = DatabaseSectionBuilder::new(&mut self.data);
             let section = section.extract_section();
             if section.is_err() {
-                return Err(create_error_while_loading(
+                return Err(LoadingError::new(
                     "database loading",
                     "section extraction failed",
-                ));
+                ))?;
             }
             database.push(section?);
         }
+
         Ok(RdbFile {
-            header: self.header.unwrap(),
-            metadata: self.metadata.unwrap(),
+            header: self
+                .header
+                .ok_or(LoadingError::new("invalid operation", "header is none"))?,
+            metadata: self
+                .metadata
+                .ok_or(LoadingError::new("invalid operation", "metadata is none"))?,
             database,
         })
     }
 }
 
-fn create_error_while_loading(state: &str, message: &str) -> Error {
-    (anyhow::anyhow!("Error occurred while {}:{}", state, message))
+struct LoadingError<'a> {
+    state: &'a str,
+    message: &'a str,
+}
+impl<'a> LoadingError<'a> {
+    fn new(state: &'a str, message: &'a str) -> Self {
+        Self { state, message }
+    }
+}
+impl<'a> From<LoadingError<'a>> for Error {
+    fn from(error: LoadingError) -> Self {
+        anyhow::anyhow!("Error occurred while {}:{}", error.state, error.message)
+    }
 }
 
 #[test]
