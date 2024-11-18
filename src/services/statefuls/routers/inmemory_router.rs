@@ -1,5 +1,6 @@
 use crate::{
-    from_to, make_smart_pointer,
+    adapters::persistence::RdbFile,
+    config::Config,
     services::{
         statefuls::{
             command::CacheCommand,
@@ -12,7 +13,7 @@ use crate::{
     },
 };
 use anyhow::Result;
-use std::{hash::Hasher, iter::Zip};
+use std::{hash::Hasher, iter::Zip, sync::Arc};
 use tokio::sync::oneshot::Sender;
 
 use super::cache_actor::{CacheActor, CacheMessageInbox};
@@ -21,9 +22,27 @@ type OneShotReceiverJoinHandle<T> =
     tokio::task::JoinHandle<std::result::Result<T, tokio::sync::oneshot::error::RecvError>>;
 
 #[derive(Clone)]
-pub struct CacheDispatcher(pub Vec<CacheMessageInbox>);
+pub(crate) struct CacheDispatcher {
+    pub(crate) inboxes: Vec<CacheMessageInbox>,
+    pub(crate) config: Arc<Config>,
+}
 
 impl CacheDispatcher {
+    pub(crate) async fn load_data(&self, ttl_inbox: TtlInbox) -> Result<()> {
+        let Ok(filepath) = self.config.parse_filepath().await else {
+            return Ok(());
+        };
+
+        let data = tokio::fs::read(filepath).await?;
+        let database = RdbFile::new(data);
+
+        for (key, value) in database.key_values() {
+            self.route_set(key, value, None, ttl_inbox.clone()).await?;
+        }
+
+        Ok(())
+    }
+
     pub(crate) async fn route_get(&self, key: String) -> Result<Value> {
         let (tx, rx) = tokio::sync::oneshot::channel();
         self.select_shard(&key)?
@@ -55,7 +74,7 @@ impl CacheDispatcher {
     fn ontshot_channels<T: Send + Sync + 'static>(
         &self,
     ) -> (Vec<OneShotSender<T>>, Vec<OneShotReceiverJoinHandle<T>>) {
-        (0..self.len())
+        (0..self.inboxes.len())
             .map(|_| {
                 let (sender, recv) = tokio::sync::oneshot::channel();
                 let recv_handler = tokio::spawn(recv);
@@ -91,7 +110,7 @@ impl CacheDispatcher {
         &self,
         senders: Vec<Sender<T>>,
     ) -> Zip<std::slice::Iter<'_, CacheMessageInbox>, std::vec::IntoIter<Sender<T>>> {
-        self.iter().zip(senders.into_iter())
+        self.inboxes.iter().zip(senders.into_iter())
     }
 
     // stateless function to send keys
@@ -110,21 +129,27 @@ impl CacheDispatcher {
 
     fn select_shard(&self, key: &str) -> Result<&CacheMessageInbox> {
         let shard_key = self.take_shard_key_from_str(&key);
-        Ok(&self[shard_key as usize])
+        Ok(&self.inboxes[shard_key as usize])
     }
 
     pub(crate) fn take_shard_key_from_str(&self, s: &str) -> usize {
         let mut hasher = std::hash::DefaultHasher::new();
         std::hash::Hash::hash(&s, &mut hasher);
-        hasher.finish() as usize % self.len()
+        hasher.finish() as usize % self.inboxes.len()
     }
 
-    pub fn run_cache_actors(num_of_actors: usize) -> (CacheDispatcher, TtlInbox) {
-        let cache_dispatcher: CacheDispatcher = (0..num_of_actors)
-            .into_iter()
-            .map(|actor_id| CacheActor::run(actor_id))
-            .collect::<Vec<_>>()
-            .into();
+    pub fn run_cache_actors(
+        num_of_actors: usize,
+        config: Arc<Config>,
+    ) -> (CacheDispatcher, TtlInbox) {
+        let cache_dispatcher = CacheDispatcher {
+            inboxes: (0..num_of_actors)
+                .into_iter()
+                .map(|actor_id| CacheActor::run(actor_id))
+                .collect::<Vec<_>>()
+                .into(),
+            config,
+        };
 
         let ttl_inbox = cache_dispatcher.run_ttl_actors();
         (cache_dispatcher, ttl_inbox)
@@ -136,6 +161,3 @@ impl CacheDispatcher {
         ttl_setter
     }
 }
-
-make_smart_pointer!(CacheDispatcher, Vec<CacheMessageInbox>);
-from_to!(Vec<CacheMessageInbox>, CacheDispatcher);

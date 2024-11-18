@@ -50,6 +50,12 @@ async fn set_key(
         .unwrap()
 }
 
+fn config_helper() -> Arc<Config> {
+    let mut conf = Config::new();
+    conf.dir = Some("/tmp".to_string());
+    conf.into()
+}
+
 /// The following is to test out the set operation with no expiry
 /// FakeStream should be used to create RespHandler.
 /// `read_operation`` should be called on the handler to get the command.
@@ -59,7 +65,7 @@ async fn set_key(
 /// OUTPUT(when get method is invoked on the key) : "value"
 #[tokio::test]
 async fn test_set() {
-    let (persistence_handlers, ttl_inbox) = CacheDispatcher::run_cache_actors(3);
+    let (persistence_handlers, ttl_inbox) = CacheDispatcher::run_cache_actors(3, config_helper());
 
     let config_handler = ConfigHandler::new(Arc::new(Config::new()));
 
@@ -94,7 +100,7 @@ async fn test_set_with_expiry() {
             .to_vec(),
     };
 
-    let (cache_dispatcher, ttl_inbox) = CacheDispatcher::run_cache_actors(3);
+    let (cache_dispatcher, ttl_inbox) = CacheDispatcher::run_cache_actors(3, config_helper());
 
     let mut controller = Controller::new(stream);
     let config_handler = ConfigHandler::new(Arc::new(Config::new()));
@@ -125,7 +131,7 @@ async fn test_set_with_expire_should_expire_within_100ms() {
             .as_bytes()
             .to_vec(),
     };
-    let (cache_dispatcher, ttl_inbox) = CacheDispatcher::run_cache_actors(3);
+    let (cache_dispatcher, ttl_inbox) = CacheDispatcher::run_cache_actors(3, config_helper());
 
     let mut controller = Controller::new(stream);
     let config_handler = ConfigHandler::new(Arc::new(Config::new()));
@@ -165,7 +171,7 @@ async fn test_config_get_dir() {
             .as_bytes()
             .to_vec(),
     };
-    let (cache_dispatcher, ttl_inbox) = CacheDispatcher::run_cache_actors(3);
+    let (cache_dispatcher, ttl_inbox) = CacheDispatcher::run_cache_actors(3, config_helper());
 
     let mut controller = Controller::new(stream);
     let config_handler = ConfigHandler::new(Arc::new(conf));
@@ -185,7 +191,7 @@ async fn test_config_get_dir() {
 #[tokio::test]
 async fn test_keys() {
     //GIVEN
-    let (cache_dispatcher, ttl_inbox) = CacheDispatcher::run_cache_actors(3);
+    let (cache_dispatcher, ttl_inbox) = CacheDispatcher::run_cache_actors(3, config_helper());
 
     set_key("key", "value", None, ttl_inbox.clone(), &cache_dispatcher).await;
 

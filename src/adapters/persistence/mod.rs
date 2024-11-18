@@ -59,11 +59,13 @@
 //!
 //! It's primarily about communication/protocol rather than efficiency.\
 
+use bytes_handler::BytesEndec;
 use key_value_storage_extractor::KeyValueStorage;
+use rdb_file_loader::RdbFileLoader;
 use std::collections::HashMap;
 use std::ops::RangeInclusive;
 
-mod bytes_handler;
+pub mod bytes_handler;
 pub mod data_encoder;
 mod database_subsection_builder;
 mod key_value_storage_extractor;
@@ -74,6 +76,33 @@ pub struct RdbFile {
     metadata: HashMap<String, String>,
     database: Vec<DatabaseSection>,
     checksum: Vec<u8>,
+}
+
+impl RdbFile {
+    pub fn new(data: Vec<u8>) -> Self {
+        let loader = RdbFileLoader::new(data);
+        //TODO Safety!
+        let rdb_file = loader
+            .load_header()
+            .unwrap()
+            .load_metadata()
+            .unwrap()
+            .load_database()
+            .unwrap();
+        rdb_file
+    }
+
+    pub fn key_values(&self) -> Vec<(String, String)> {
+        self.database
+            .iter()
+            .flat_map(|section| {
+                section
+                    .storage
+                    .iter()
+                    .map(|storage| (storage.key.clone(), storage.value.clone()))
+            })
+            .collect()
+    }
 }
 
 pub struct DatabaseSection {
