@@ -58,15 +58,15 @@
 //! ```
 //!
 //! It's primarily about communication/protocol rather than efficiency.\
+use crate::adapters::persistence::database_extractor::DatabaseSection;
 use key_value_storage_extractor::KeyValueStorage;
 use std::collections::HashMap;
 use std::ops::RangeInclusive;
-use crate::adapters::persistence::database_extractor::DatabaseSection;
 
+mod bytes_handler;
+pub mod data_encoder;
 mod database_extractor;
 mod key_value_storage_extractor;
-pub mod data_encoder;
-mod bytes_handler;
 mod rdb_file_loader;
 
 pub struct RdbFile {

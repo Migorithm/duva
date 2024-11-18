@@ -1,8 +1,8 @@
-use std::collections::HashMap;
-use anyhow::Error;
 use crate::adapters::persistence::bytes_handler::BytesHandler;
 use crate::adapters::persistence::database_extractor::{DatabaseSection, DatabaseSectionBuilder};
 use crate::adapters::persistence::RdbFile;
+use anyhow::Error;
+use std::collections::HashMap;
 
 const RDB_HEADER_MAGIC_STRING: &str = "REDIS";
 
@@ -35,15 +35,24 @@ impl RdbFileLoader {
     // then read 4 digit Header version (like 0011) and return RdbFileLoader<MetadataSectionLoading> with header value as "REDIS" + 4 digit version
     fn load_header(mut self) -> anyhow::Result<RdbFileLoader<MetadataSectionLoading>> {
         if self.data.len() < 9 {
-            return Err(create_error_while_loading("header loading", "data length is less than 9"));
+            return Err(create_error_while_loading(
+                "header loading",
+                "data length is less than 9",
+            ));
         }
         let header = String::from_utf8(self.data.drain(0..5).collect())?;
         if header != RDB_HEADER_MAGIC_STRING {
-            return Err(create_error_while_loading("header loading", "header is not REDIS"));
+            return Err(create_error_while_loading(
+                "header loading",
+                "header is not REDIS",
+            ));
         }
         let version = String::from_utf8(self.data.drain(0..4).collect());
         if version.is_err() {
-            return Err(create_error_while_loading("header loading", "version is not valid"));
+            return Err(create_error_while_loading(
+                "header loading",
+                "version is not valid",
+            ));
         }
         self.header = Some(format!("{}{}", header, version?));
         Ok(RdbFileLoader {
@@ -60,13 +69,15 @@ impl RdbFileLoader<MetadataSectionLoading> {
     fn load_metadata(mut self) -> anyhow::Result<RdbFileLoader<DatabaseSectionLoading>> {
         let mut metadata = HashMap::new();
         while self.is_metadata_section() {
-            let result = self.data.try_extract_key_value();
-            if result.is_err(){
-                return Err(create_error_while_loading("metadata loading", "key value extraction failed"));
-            }
-            let (key, value) = result?;
+            let Ok((key, value)) = self.data.try_extract_key_value() else {
+                return Err(create_error_while_loading(
+                    "metadata loading",
+                    "key value extraction failed",
+                ));
+            };
             metadata.insert(key, value);
         }
+
         self.metadata = Some(metadata);
         Ok(RdbFileLoader {
             data: self.data,
@@ -89,7 +100,10 @@ impl RdbFileLoader<DatabaseSectionLoading> {
             let section = DatabaseSectionBuilder::new(&mut self.data);
             let section = section.extract_section();
             if section.is_err() {
-                return Err(create_error_while_loading("database loading", "section extraction failed"));
+                return Err(create_error_while_loading(
+                    "database loading",
+                    "section extraction failed",
+                ));
             }
             database.push(section?);
         }
@@ -151,8 +165,8 @@ fn test_metadata_loading() {
 #[test]
 fn test_metadata_loading_multiple() {
     let data = vec![
-        0xFA, 0x03, 0x61, 0x62, 0x63, 0x03, 0x64, 0x65, 0x66, 0xFA, 0x03, 0x67, 0x68, 0x69,
-        0x03, 0x6A, 0x6B, 0x6C,
+        0xFA, 0x03, 0x61, 0x62, 0x63, 0x03, 0x64, 0x65, 0x66, 0xFA, 0x03, 0x67, 0x68, 0x69, 0x03,
+        0x6A, 0x6B, 0x6C,
     ];
     let loader = RdbFileLoader {
         data: BytesHandler(data),
@@ -169,7 +183,10 @@ fn test_metadata_loading_multiple() {
 
 #[test]
 fn test_metadata_loading_no_metadata() {
-    let data = vec![0xFE, 0x00, 0xFB, 0x03, 0x02, 0x00, 0x06, 0x66, 0x6F, 0x6F, 0x62, 0x61, 0x72, 0x06, 0x62, 0x61, 0x7A, 0x03, 0x71, 0x75, 0x78];
+    let data = vec![
+        0xFE, 0x00, 0xFB, 0x03, 0x02, 0x00, 0x06, 0x66, 0x6F, 0x6F, 0x62, 0x61, 0x72, 0x06, 0x62,
+        0x61, 0x7A, 0x03, 0x71, 0x75, 0x78,
+    ];
     let loader = RdbFileLoader {
         data: BytesHandler(data),
         state: MetadataSectionLoading,

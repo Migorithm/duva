@@ -1,6 +1,6 @@
-use anyhow::{Error, Result};
 use crate::adapters::persistence::bytes_handler::BytesHandler;
 use crate::make_smart_pointer;
+use anyhow::{Error, Result};
 
 use super::{extract_range, KeyValueStorage};
 
@@ -14,7 +14,7 @@ pub struct DatabaseSection {
     checksum: Vec<u8>,
 }
 
-pub struct DatabaseSectionBuilder<T=Unset> {
+pub struct DatabaseSectionBuilder<T = Unset> {
     index: usize,
     storage: Vec<KeyValueStorage>,
     checksum: Vec<u8>,
