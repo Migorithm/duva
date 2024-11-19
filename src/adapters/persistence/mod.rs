@@ -115,19 +115,23 @@ impl DatabaseSectionBuilder<'_> {
         }
     }
     pub fn extract_section(mut self) -> Result<DatabaseSection> {
+        const SECTION_INDEX_IDENTIFIER: u8 = 0xFE; // 0b11111110
+        const TABLE_SIZE_IDENTIFIER: u8 = 0xFB; //0b11111011
+
         while self.data.len() > 0 {
             match self.data[0] {
-                // 0b11111110
-                0xFE => {
+                SECTION_INDEX_IDENTIFIER => {
                     self.try_set_index()?;
                 }
-                //0b11111011
-                0xFB => {
+
+                TABLE_SIZE_IDENTIFIER => {
                     self.try_set_table_sizes()?;
                 }
                 _ => {
-                    if self.is_key_value_extractable() {
+                    // ! as long as key_value_table_size is not 0 key value is extractable?
+                    if self.key_value_table_size > 0 {
                         self.save_key_value_expiry_time_in_storage()?;
+                        self.key_value_table_size -= 1;
                     } else {
                         break;
                     }
@@ -153,14 +157,10 @@ impl DatabaseSectionBuilder<'_> {
         Ok(())
     }
 
-    // ! as long as key_value_table_size is not 0 key value is extractable?
-    fn is_key_value_extractable(&self) -> bool {
-        self.key_value_table_size > 0
-    }
-
     fn save_key_value_expiry_time_in_storage(&mut self) -> Result<()> {
         let key_value = KeyValueStorage::try_from(&mut *self.data)?;
 
+        // ? How is expiry related to expired_table_size
         if key_value.expiry.is_some() {
             if let Some(existing_minus_one) = self.expires_table_size.checked_sub(1) {
                 self.expires_table_size = existing_minus_one;
@@ -169,7 +169,7 @@ impl DatabaseSectionBuilder<'_> {
             }
         }
         self.storage.push(key_value);
-        self.key_value_table_size -= 1;
+
         Ok(())
     }
 }
