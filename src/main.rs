@@ -25,9 +25,13 @@ const NUM_OF_PERSISTENCE: usize = 10;
 async fn main() -> Result<()> {
     // You can use print statements as follows for debugging, they'll be visible when running tests.
 
-    let (cache_dispatcher, ttl_inbox) = CacheDispatcher::run_cache_actors(NUM_OF_PERSISTENCE);
-
     let config = Arc::new(Config::new());
+    let (cache_dispatcher, ttl_inbox) =
+        CacheDispatcher::run_cache_actors(NUM_OF_PERSISTENCE, config.clone());
+
+    // Load data from the file if --dir and --dbfilename are provided
+    cache_dispatcher.load_data(ttl_inbox.clone()).await?;
+
     let listener = TcpListener::bind(config.bind_addr()).await?;
     loop {
         match listener.accept().await {
@@ -60,7 +64,10 @@ fn process(
                 .await
             {
                 Ok(_) => println!("Connection closed"),
-                Err(e) => eprintln!("Error: {:?}", e),
+                Err(e) => {
+                    eprintln!("Error: {:?}", e);
+                    break;
+                }
             }
         }
     });

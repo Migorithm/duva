@@ -9,7 +9,7 @@ use std::{
 };
 use tokio::time::interval;
 
-pub struct TtlDeleteActor {
+pub(crate) struct TtlDeleteActor {
     pub cache_dispatcher: CacheDispatcher,
 }
 
@@ -32,7 +32,7 @@ impl TtlDeleteActor {
             while let Some((Reverse(expiry), key)) = queue.peek() {
                 if expiry <= &SystemTime::now() {
                     let shard_key = self.cache_dispatcher.take_shard_key_from_str(key);
-                    let db = &self.cache_dispatcher[shard_key];
+                    let db = &self.cache_dispatcher.inboxes[shard_key];
                     db.send(CacheCommand::Delete(key.clone())).await?;
 
                     queue.pop();

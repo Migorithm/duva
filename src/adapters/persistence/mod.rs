@@ -58,16 +58,22 @@
 //! ```
 //!
 //! It's primarily about communication/protocol rather than efficiency.\
-
-use key_value_storage_extractor::KeyValueStorage;
 use std::collections::HashMap;
 use std::ops::RangeInclusive;
 
-mod bytes_handler;
 pub mod data_encoder;
-mod database_subsection_builder;
-mod key_value_storage_extractor;
-mod rdb_file_loader;
+
+pub mod bytes_h;
+
+#[derive(Default)]
+pub struct Init;
+#[derive(Default, PartialEq, Eq, Debug)]
+pub struct HeaderReady(String);
+#[derive(Default)]
+pub struct MetadataReady {
+    metadata: HashMap<String, String>,
+    header: String,
+}
 
 pub struct RdbFile {
     header: String,
@@ -76,9 +82,72 @@ pub struct RdbFile {
     checksum: Vec<u8>,
 }
 
+impl RdbFile {
+    pub fn new(
+        header: String,
+        metadata: HashMap<String, String>,
+        database: Vec<DatabaseSection>,
+        checksum: Vec<u8>,
+    ) -> Self {
+        Self {
+            header,
+            metadata,
+            database,
+            checksum,
+        }
+    }
+    pub fn key_values(self) -> Vec<KeyValueStorage> {
+        self.database
+            .into_iter()
+            .flat_map(|section| section.storage.into_iter())
+            .collect()
+    }
+}
+
 pub struct DatabaseSection {
     pub index: usize,
     pub storage: Vec<KeyValueStorage>,
+}
+
+#[derive(Default)]
+pub struct DatabaseSectionBuilder {
+    index: usize,
+    storage: Vec<KeyValueStorage>,
+    key_value_table_size: usize,
+    expires_table_size: usize,
+}
+impl DatabaseSectionBuilder {
+    pub fn build(self) -> DatabaseSection {
+        DatabaseSection {
+            index: self.index,
+            storage: self.storage,
+        }
+    }
+}
+
+/// # Extract Key-Value Pair Storage
+/// Extract key-value pair from the data buffer and remove the extracted data from the buffer.
+///
+/// Each key-value pair is stored as follows:
+///
+/// 1. Optional Expire Information:
+/// - **Timestamp in Seconds:**
+/// ```
+/// FD
+/// Expire timestamp in seconds (4-byte unsigned integer)
+/// ```
+/// - **Timestamp in Milliseconds:**
+/// ```
+/// FC
+/// Expire timestamp in milliseconds (8-byte unsigned long)
+/// ```
+/// 2. **Value Type:** 1-byte flag indicating the type and encoding of the value.
+/// 3. **Key:** String encoded.
+/// 4. **Value:** Encoding depends on the value type.
+pub struct KeyValueStorage {
+    pub key: String,
+    pub value: String,
+    pub expiry: Option<u64>,
 }
 
 // Safe conversion from a slice to an array of a specific size.
