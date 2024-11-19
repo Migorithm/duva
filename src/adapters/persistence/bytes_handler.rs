@@ -25,6 +25,7 @@ impl BytesEndec {
     }
 
     pub fn try_extract_expiry_time_in_seconds(&mut self) -> anyhow::Result<u64> {
+        self.remove_identifier();
         let range = 0..=3;
         let result = u32::from_le_bytes(
             persistence::extract_range(self, range.clone())
@@ -36,6 +37,7 @@ impl BytesEndec {
     }
 
     pub fn try_extract_expiry_time_in_milliseconds(&mut self) -> anyhow::Result<u64> {
+        self.remove_identifier();
         let range = 0..=7;
         let result = u64::from_le_bytes(persistence::extract_range(self, range.clone()).ok_or(
             anyhow::anyhow!("Failed to extract expiry time in milliseconds"),
@@ -43,6 +45,7 @@ impl BytesEndec {
         self.drain(range);
         Ok(result)
     }
+
     pub fn try_size_decode(&mut self) -> anyhow::Result<usize> {
         self.size_decode()
             .ok_or(anyhow::anyhow!("size decode fail"))
