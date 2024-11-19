@@ -84,15 +84,10 @@ impl RdbFile {
     }
 
     // TODO : subject to refactor
-    pub fn key_values(&self) -> Vec<(String, String)> {
+    pub fn key_values(self) -> Vec<KeyValueStorage> {
         self.database
-            .iter()
-            .flat_map(|section| {
-                section
-                    .storage
-                    .iter()
-                    .map(|storage| (storage.key.clone(), storage.value.clone()))
-            })
+            .into_iter()
+            .flat_map(|section| section.storage.into_iter())
             .collect()
     }
 }
