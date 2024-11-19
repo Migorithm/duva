@@ -83,7 +83,6 @@ impl RdbFile {
         loader.load_header()?.load_metadata()?.load_database()
     }
 
-    // TODO : subject to refactor
     pub fn key_values(self) -> Vec<KeyValueStorage> {
         self.database
             .into_iter()
