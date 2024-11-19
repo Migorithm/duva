@@ -63,7 +63,7 @@ use std::ops::RangeInclusive;
 
 pub mod data_encoder;
 
-pub mod bytes_h;
+pub mod bytes_handler;
 
 #[derive(Default)]
 pub struct Init;

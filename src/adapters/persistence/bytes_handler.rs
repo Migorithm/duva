@@ -1,6 +1,6 @@
 use super::{extract_range, DatabaseSection, Init, KeyValueStorage, MetadataReady, RdbFile};
 use crate::adapters::persistence::{self, DatabaseSectionBuilder, HeaderReady};
-use anyhow::Result;
+use anyhow::{Context, Result};
 use std::{
     collections::HashMap,
     ops::{Deref, DerefMut},
@@ -29,7 +29,7 @@ impl<T> BytesEndec<T> {
             if size > self.len() {
                 return None;
             }
-            let data = String::from_utf8(self.drain(0..size).collect()).unwrap();
+            let data = String::from_utf8(self.drain(0..size).collect()).ok()?;
             Some(data)
         } else {
             self.integer_decode()
@@ -112,18 +112,17 @@ impl BytesEndec<Init> {
         const RDB_HEADER_MAGIC_STRING: &str = "REDIS";
 
         if self.len() < 9 {
-            return Err(LoadingError::new(
-                "header loading",
-                "data length is less than 9",
+            return Err(anyhow::Error::msg(
+                "header loading: data length is less than 9",
             ))?;
         }
         let header = String::from_utf8(self.drain(0..5).collect())?;
         if header != RDB_HEADER_MAGIC_STRING {
-            return Err(LoadingError::new("header loading", "header is not REDIS"))?;
+            return Err(anyhow::Error::msg("header loading: header is not REDIS"))?;
         }
         let version = String::from_utf8(self.drain(0..4).collect());
         if version.is_err() {
-            return Err(LoadingError::new("header loading", "version is not valid"))?;
+            return Err(anyhow::Error::msg("header loading: version is not valid"))?;
         }
         Ok(BytesEndec {
             data: self.data,
@@ -138,12 +137,9 @@ impl BytesEndec<HeaderReady> {
 
         let mut metadata = HashMap::new();
         while self.check_identifier(METADATA_SECTION_IDENTIFIER) {
-            let Ok((key, value)) = self.try_extract_metadata_key_value() else {
-                return Err(LoadingError::new(
-                    "metadata loading",
-                    "key value extraction failed",
-                ))?;
-            };
+            let (key, value) = self
+                .try_extract_metadata_key_value()
+                .context("metadata loading: key value extraction failed")?;
             metadata.insert(key, value);
         }
         Ok(BytesEndec {
@@ -156,13 +152,8 @@ impl BytesEndec<HeaderReady> {
     }
     pub fn try_extract_metadata_key_value(&mut self) -> anyhow::Result<(String, String)> {
         self.remove_identifier();
-        let key_data = self
-            .string_decode()
-            .ok_or(anyhow::anyhow!("key decode fail"))?;
-
-        let value_data = self
-            .string_decode()
-            .ok_or(anyhow::anyhow!("value decode fail"))?;
+        let key_data = self.string_decode().context("key decode fail")?;
+        let value_data = self.string_decode().context("value decode fail")?;
 
         Ok((key_data, value_data))
     }
@@ -172,14 +163,10 @@ impl BytesEndec<MetadataReady> {
         const DATABASE_SECTION_IDENTIFIER: u8 = 0xFE;
         let mut database = Vec::new();
         while self.check_identifier(DATABASE_SECTION_IDENTIFIER) {
-            let section = self.extract_section();
-            if section.is_err() {
-                return Err(LoadingError::new(
-                    "database loading",
-                    "section extraction failed",
-                ))?;
-            }
-            database.push(section?);
+            let section = self
+                .extract_section()
+                .context("database loading: section extraction failed")?;
+            database.push(section);
         }
 
         let checksum = self.try_get_checksum()?;
@@ -228,7 +215,7 @@ impl BytesEndec<MetadataReady> {
             builder.expires_table_size = builder
                 .expires_table_size
                 .checked_sub(1)
-                .ok_or_else(|| anyhow::anyhow!("expires_table_size is 0"))?;
+                .context("expires_table_size is 0")?;
         }
         builder.storage.push(key_value);
         builder.key_value_table_size -= 1;
@@ -237,19 +224,15 @@ impl BytesEndec<MetadataReady> {
 
     fn try_set_index(&mut self, builder: &mut DatabaseSectionBuilder) -> Result<()> {
         self.remove_identifier();
-        builder.index = self
-            .size_decode()
-            .ok_or(anyhow::anyhow!("size decode fail"))?;
+        builder.index = self.size_decode().context("size decode fail")?;
         Ok(())
     }
 
     fn try_set_table_sizes(&mut self, builder: &mut DatabaseSectionBuilder) -> Result<()> {
         self.remove_identifier();
         (builder.key_value_table_size, builder.expires_table_size) = (
-            self.size_decode()
-                .ok_or(anyhow::anyhow!("size decode fail"))?,
-            self.size_decode()
-                .ok_or(anyhow::anyhow!("size decode fail"))?,
+            self.size_decode().context("size decode fail")?,
+            self.size_decode().context("size decode fail")?,
         );
         Ok(())
     }
@@ -279,63 +262,44 @@ impl BytesEndec<MetadataReady> {
         Err(anyhow::anyhow!("Invalid key value pair"))
     }
 
-    pub fn try_extract_expiry_time_in_seconds(&mut self) -> anyhow::Result<u64> {
+    pub fn try_extract_expiry_time_in_seconds(&mut self) -> Result<u64> {
         self.remove_identifier();
         let range = 0..=3;
         let result = u32::from_le_bytes(
             persistence::extract_range(self, range.clone())
-                .ok_or(anyhow::anyhow!("Failed to extract expiry time in seconds"))?,
+                .context("Failed to extract expiry time in seconds")?,
         );
         self.drain(range);
 
         Ok(result as u64)
     }
 
-    pub fn try_extract_expiry_time_in_milliseconds(&mut self) -> anyhow::Result<u64> {
+    pub fn try_extract_expiry_time_in_milliseconds(&mut self) -> Result<u64> {
         self.remove_identifier();
         let range = 0..=7;
-        let result = u64::from_le_bytes(persistence::extract_range(self, range.clone()).ok_or(
-            anyhow::anyhow!("Failed to extract expiry time in milliseconds"),
-        )?);
+        let result = u64::from_le_bytes(
+            persistence::extract_range(self, range.clone())
+                .context("Failed to extract expiry time in milliseconds")?,
+        );
         self.drain(range);
         Ok(result)
     }
 
-    pub fn try_extract_key_value(&mut self) -> anyhow::Result<(String, String)> {
+    pub fn try_extract_key_value(&mut self) -> Result<(String, String)> {
         self.remove_identifier();
-        let key_data = self
-            .string_decode()
-            .ok_or(anyhow::anyhow!("key decode fail"))?;
-
-        let value_data = self
-            .string_decode()
-            .ok_or(anyhow::anyhow!("value decode fail"))?;
+        let key_data = self.string_decode().context("key decode fail")?;
+        let value_data = self.string_decode().context("value decode fail")?;
 
         Ok((key_data, value_data))
     }
 
-    pub fn try_get_checksum(&mut self) -> anyhow::Result<Vec<u8>> {
+    pub fn try_get_checksum(&mut self) -> Result<Vec<u8>> {
         self.remove_identifier();
         let checksum = extract_range(&self.data, 0..=7)
             .map(|f: [u8; 8]| f.to_vec())
-            .ok_or(anyhow::Error::msg("failed to extract checksum"))?;
+            .context("failed to extract checksum")?;
         self.data.drain(..8);
         Ok(checksum)
-    }
-}
-
-struct LoadingError<'a> {
-    state: &'a str,
-    message: &'a str,
-}
-impl<'a> LoadingError<'a> {
-    fn new(state: &'a str, message: &'a str) -> Self {
-        Self { state, message }
-    }
-}
-impl<'a> From<LoadingError<'a>> for anyhow::Error {
-    fn from(error: LoadingError) -> Self {
-        anyhow::anyhow!("Error occurred while {}:{}", error.state, error.message)
     }
 }
 

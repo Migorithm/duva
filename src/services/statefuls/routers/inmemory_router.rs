@@ -1,5 +1,5 @@
 use crate::{
-    adapters::persistence::{bytes_h::BytesEndec, Init},
+    adapters::persistence::{bytes_handler::BytesEndec, Init},
     config::Config,
     services::{
         statefuls::{
