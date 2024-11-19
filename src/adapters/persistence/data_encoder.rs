@@ -1,4 +1,5 @@
-use super::bytes_handler::BytesEndec;
+use super::{bytes_h::BytesEndec, Init};
+
 /// # Notes
 ///
 /// * The size value does not need to match the length of the data. This allows for:
@@ -15,7 +16,7 @@ use super::bytes_handler::BytesEndec;
 /// * Size encoding overhead varies from 1 to 5 bytes
 ///
 ///
-impl BytesEndec {
+impl BytesEndec<Init> {
     // TODO subject to refactor
     pub fn from_u32(value: u32) -> Self {
         let mut result = BytesEndec::default();
@@ -34,7 +35,7 @@ impl BytesEndec {
     }
 }
 
-fn data_encode(size: usize, data: &str) -> Option<BytesEndec> {
+fn data_encode(size: usize, data: &str) -> Option<BytesEndec<Init>> {
     // if data can be parsed as an integer as u32
     if let Ok(value) = data.parse::<u32>() {
         return Some(BytesEndec::from_u32(value));
@@ -150,7 +151,7 @@ fn test_8_bit_integer_encode() {
 fn test_8_bit_integer_decode() {
     let data = "123";
     let size = data.len();
-    let mut encoded: BytesEndec = data_encode(size, data).unwrap();
+    let mut encoded: BytesEndec<Init> = data_encode(size, data).unwrap();
     assert_eq!(encoded.string_decode(), Some("123".to_string()));
 }
 
@@ -167,7 +168,7 @@ fn test_16_bit_integer() {
 fn test_16_bit_integer_decode() {
     let data = "12345";
     let size = data.len();
-    let mut encoded: BytesEndec = data_encode(size, data).unwrap();
+    let mut encoded: BytesEndec<Init> = data_encode(size, data).unwrap();
     assert_eq!(encoded.string_decode(), Some("12345".to_string()));
 }
 

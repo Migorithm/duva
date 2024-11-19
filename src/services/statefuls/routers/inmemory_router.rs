@@ -1,5 +1,5 @@
 use crate::{
-    adapters::persistence::RdbFile,
+    adapters::persistence::{bytes_h::BytesEndec, Init},
     config::Config,
     services::{
         statefuls::{
@@ -33,8 +33,8 @@ impl CacheDispatcher {
             return Ok(());
         };
 
-        let data = tokio::fs::read(filepath).await?;
-        let database = RdbFile::new(data)?;
+        let data: BytesEndec<Init> = tokio::fs::read(filepath).await?.into();
+        let database = data.load_header()?.load_metadata()?.load_database()?;
 
         for kvs in database.key_values() {
             self.route_set(kvs.key, kvs.value, kvs.expiry, ttl_inbox.clone())

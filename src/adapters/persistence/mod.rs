@@ -58,17 +58,22 @@
 //! ```
 //!
 //! It's primarily about communication/protocol rather than efficiency.\
-
-use crate::adapters::persistence::bytes_handler::BytesEndec;
-use anyhow::Result;
-
-use rdb_file_loader::RdbFileLoader;
 use std::collections::HashMap;
 use std::ops::RangeInclusive;
-pub mod bytes_handler;
+
 pub mod data_encoder;
 
-mod rdb_file_loader;
+pub mod bytes_h;
+
+#[derive(Default)]
+pub struct Init;
+#[derive(Default, PartialEq, Eq, Debug)]
+pub struct HeaderReady(String);
+#[derive(Default)]
+pub struct MetadataReady {
+    metadata: HashMap<String, String>,
+    header: String,
+}
 
 pub struct RdbFile {
     header: String,
@@ -78,11 +83,19 @@ pub struct RdbFile {
 }
 
 impl RdbFile {
-    pub fn new(data: Vec<u8>) -> Result<Self> {
-        let loader = RdbFileLoader::new(data);
-        loader.load_header()?.load_metadata()?.load_database()
+    pub fn new(
+        header: String,
+        metadata: HashMap<String, String>,
+        database: Vec<DatabaseSection>,
+        checksum: Vec<u8>,
+    ) -> Self {
+        Self {
+            header,
+            metadata,
+            database,
+            checksum,
+        }
     }
-
     pub fn key_values(self) -> Vec<KeyValueStorage> {
         self.database
             .into_iter()
@@ -96,81 +109,19 @@ pub struct DatabaseSection {
     pub storage: Vec<KeyValueStorage>,
 }
 
-pub struct DatabaseSectionBuilder<'a> {
+#[derive(Default)]
+pub struct DatabaseSectionBuilder {
     index: usize,
     storage: Vec<KeyValueStorage>,
-    data: &'a mut BytesEndec,
     key_value_table_size: usize,
     expires_table_size: usize,
 }
-
-impl DatabaseSectionBuilder<'_> {
-    pub fn new(data: &mut BytesEndec) -> DatabaseSectionBuilder {
-        DatabaseSectionBuilder {
-            data,
-            index: Default::default(),
-            storage: Default::default(),
-            key_value_table_size: Default::default(),
-            expires_table_size: Default::default(),
-        }
-    }
-    pub fn extract_section(mut self) -> Result<DatabaseSection> {
-        const SECTION_INDEX_IDENTIFIER: u8 = 0xFE; // 0b11111110
-        const TABLE_SIZE_IDENTIFIER: u8 = 0xFB; //0b11111011
-
-        while self.data.len() > 0 {
-            match self.data[0] {
-                SECTION_INDEX_IDENTIFIER => {
-                    self.try_set_index()?;
-                }
-
-                TABLE_SIZE_IDENTIFIER => {
-                    self.try_set_table_sizes()?;
-                }
-                _ => {
-                    // ! as long as key_value_table_size is not 0 key value is extractable?
-                    if self.key_value_table_size > 0 {
-                        self.save_key_value_expiry_time_in_storage()?;
-                        self.key_value_table_size -= 1;
-                    } else {
-                        break;
-                    }
-                }
-            }
-        }
-        Ok(DatabaseSection {
+impl DatabaseSectionBuilder {
+    pub fn build(self) -> DatabaseSection {
+        DatabaseSection {
             index: self.index,
             storage: self.storage,
-        })
-    }
-
-    fn try_set_index(&mut self) -> Result<()> {
-        self.data.remove_identifier();
-        self.index = self.data.try_size_decode()?;
-        Ok(())
-    }
-
-    fn try_set_table_sizes(&mut self) -> Result<()> {
-        self.data.remove_identifier();
-        self.key_value_table_size = self.data.try_size_decode()?;
-        self.expires_table_size = self.data.try_size_decode()?;
-        Ok(())
-    }
-
-    fn save_key_value_expiry_time_in_storage(&mut self) -> Result<()> {
-        let key_value = KeyValueStorage::try_from(&mut *self.data)?;
-
-        // ? How is expiry related to expired_table_size
-        if key_value.expiry.is_some() {
-            if let Some(existing_minus_one) = self.expires_table_size.checked_sub(1) {
-                self.expires_table_size = existing_minus_one;
-            } else {
-                return Err(anyhow::anyhow!("expires_table_size is 0"));
-            }
         }
-        self.storage.push(key_value);
-
-        Ok(())
     }
 }
 
@@ -199,108 +150,7 @@ pub struct KeyValueStorage {
     pub expiry: Option<u64>,
 }
 
-impl TryFrom<&mut BytesEndec> for KeyValueStorage {
-    type Error = anyhow::Error;
-    fn try_from(data: &mut BytesEndec) -> Result<Self> {
-        let mut expiry: Option<u64> = None;
-        while data.len() > 0 {
-            match data[0] {
-                //0b11111100
-                0xFC => {
-                    expiry = Some(data.try_extract_expiry_time_in_milliseconds()?);
-                }
-                //0b11111101
-                0xFD => {
-                    expiry = Some(data.try_extract_expiry_time_in_seconds()?);
-                }
-                //0b11111110
-                0x00 => {
-                    let (key, value) = data.try_extract_key_value()?;
-                    return Ok(KeyValueStorage { key, value, expiry });
-                }
-                _ => {
-                    return Err(anyhow::anyhow!("Invalid key value pair"));
-                }
-            }
-        }
-        Err(anyhow::anyhow!("Invalid key value pair"))
-    }
-}
-
 // Safe conversion from a slice to an array of a specific size.
 fn extract_range<const N: usize>(encoded: &[u8], range: RangeInclusive<usize>) -> Option<[u8; N]> {
     TryInto::<[u8; N]>::try_into(encoded.get(range)?).ok()
-}
-
-#[test]
-fn test_database_section_extractor() {
-    let mut data = vec![
-        0xFE, 0x00, 0xFB, 0x03, 0x02, 0x00, 0x06, 0x66, 0x6F, 0x6F, 0x62, 0x61, 0x72, 0x06, 0x62,
-        0x61, 0x7A, 0x71, 0x75, 0x78, 0xFC, 0x15, 0x72, 0xE7, 0x07, 0x8F, 0x01, 0x00, 0x00, 0x00,
-        0x03, 0x66, 0x6F, 0x6F, 0x03, 0x62, 0x61, 0x72, 0xFD, 0x52, 0xED, 0x2A, 0x66, 0x00, 0x03,
-        0x62, 0x61, 0x7A, 0x03, 0x71, 0x75, 0x78,
-    ]
-    .into();
-
-    let db_section: DatabaseSection = DatabaseSectionBuilder::new(&mut data)
-        .extract_section()
-        .unwrap();
-    assert_eq!(db_section.index, 0);
-    assert_eq!(db_section.storage.len(), 3);
-
-    assert_eq!(data.len(), 0);
-}
-
-#[test]
-fn test_non_expiry_key_value_pair() {
-    let mut data = vec![0x00, 0x03, 0x62, 0x61, 0x7A, 0x03, 0x71, 0x75, 0x78].into();
-
-    let key_value =
-        KeyValueStorage::try_from(&mut data).expect("Failed to extract key value expiry");
-    assert_eq!(key_value.key, "baz");
-    assert_eq!(key_value.value, "qux");
-    assert_eq!(key_value.expiry, None);
-    assert_eq!(data.len(), 0);
-}
-
-#[test]
-fn test_with_milliseconds_expiry_key_value_pair() {
-    let mut data = vec![
-        0xFC, 0x15, 0x72, 0xE7, 0x07, 0x8F, 0x01, 0x00, 0x00, 0x00, 0x03, 0x62, 0x61, 0x7A, 0x03,
-        0x71, 0x75, 0x78,
-    ]
-    .into();
-
-    let key_value = KeyValueStorage::try_from(&mut data).unwrap();
-
-    assert_eq!(key_value.key, "baz");
-    assert_eq!(key_value.value, "qux");
-    assert!(key_value.expiry.is_some());
-    assert_eq!(data.len(), 0);
-}
-
-#[test]
-fn test_with_seconds_expiry_key_value_pair() {
-    let mut data = vec![
-        0xFD, 0x52, 0xED, 0x2A, 0x66, 0x00, 0x03, 0x62, 0x61, 0x7A, 0x03, 0x71, 0x75, 0x78,
-    ]
-    .into();
-
-    let key_value = KeyValueStorage::try_from(&mut data).unwrap();
-    assert_eq!(key_value.key, "baz");
-    assert_eq!(key_value.value, "qux");
-    assert!(key_value.expiry.is_some());
-    assert_eq!(data.len(), 0);
-}
-
-#[test]
-fn test_invalid_expiry_key_value_pair() {
-    let mut data = vec![
-        0xFF, 0x52, 0xED, 0x2A, 0x66, 0x00, 0x03, 0x62, 0x61, 0x7A, 0x03, 0x71, 0x75, 0x78,
-    ]
-    .into();
-
-    let result = KeyValueStorage::try_from(&mut data);
-    assert!(result.is_err());
-    assert_eq!(data.len(), 14);
 }
