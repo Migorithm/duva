@@ -1,16 +1,11 @@
-use crate::adapters::persistence::bytes_handler::BytesEndec;
-use crate::make_smart_pointer;
-use anyhow::Result;
-
 use super::{DatabaseSection, KeyValueStorage};
-
-pub struct Initialized<'a>(pub &'a mut BytesEndec);
-make_smart_pointer!(Initialized<'a>, BytesEndec);
+use crate::adapters::persistence::bytes_handler::BytesEndec;
+use anyhow::Result;
 
 pub struct DatabaseSectionBuilder<'a> {
     index: usize,
     storage: Vec<KeyValueStorage>,
-    state: &'a mut BytesEndec,
+    data: &'a mut BytesEndec,
     key_value_table_size: usize,
     expires_table_size: usize,
 }
@@ -18,7 +13,7 @@ pub struct DatabaseSectionBuilder<'a> {
 impl DatabaseSectionBuilder<'_> {
     pub fn new(data: &mut BytesEndec) -> DatabaseSectionBuilder {
         DatabaseSectionBuilder {
-            state: data,
+            data,
             index: Default::default(),
             storage: Default::default(),
             key_value_table_size: Default::default(),
@@ -26,8 +21,8 @@ impl DatabaseSectionBuilder<'_> {
         }
     }
     pub fn extract_section(mut self) -> Result<DatabaseSection> {
-        while self.state.len() > 0 {
-            match self.state[0] {
+        while self.data.len() > 0 {
+            match self.data[0] {
                 // 0b11111110
                 0xFE => {
                     self.try_set_index()?;
@@ -52,15 +47,15 @@ impl DatabaseSectionBuilder<'_> {
     }
 
     fn try_set_index(&mut self) -> Result<()> {
-        self.state.remove_identifier();
-        self.index = self.state.try_size_decode()?;
+        self.data.remove_identifier();
+        self.index = self.data.try_size_decode()?;
         Ok(())
     }
 
     fn try_set_table_sizes(&mut self) -> Result<()> {
-        self.state.remove_identifier();
-        self.key_value_table_size = self.state.try_size_decode()?;
-        self.expires_table_size = self.state.try_size_decode()?;
+        self.data.remove_identifier();
+        self.key_value_table_size = self.data.try_size_decode()?;
+        self.expires_table_size = self.data.try_size_decode()?;
         Ok(())
     }
 
@@ -70,7 +65,7 @@ impl DatabaseSectionBuilder<'_> {
     }
 
     fn save_key_value_expiry_time_in_storage(&mut self) -> Result<()> {
-        let key_value = KeyValueStorage::new(self.state)?;
+        let key_value = KeyValueStorage::new(self.data)?;
 
         if key_value.expiry.is_some() {
             if let Some(existing_minus_one) = self.expires_table_size.checked_sub(1) {
