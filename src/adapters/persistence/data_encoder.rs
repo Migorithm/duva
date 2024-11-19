@@ -1,5 +1,4 @@
 use super::bytes_handler::BytesEndec;
-
 /// # Notes
 ///
 /// * The size value does not need to match the length of the data. This allows for:
@@ -16,7 +15,6 @@ use super::bytes_handler::BytesEndec;
 /// * Size encoding overhead varies from 1 to 5 bytes
 ///
 ///
-
 impl BytesEndec {
     // TODO subject to refactor
     pub fn from_u32(value: u32) -> Self {

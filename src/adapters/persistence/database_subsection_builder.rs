@@ -4,31 +4,27 @@ use anyhow::Result;
 
 use super::{DatabaseSection, KeyValueStorage};
 
-pub struct Unset;
 pub struct Initialized<'a>(pub &'a mut BytesEndec);
 make_smart_pointer!(Initialized<'a>, BytesEndec);
 
-pub struct DatabaseSectionBuilder<T> {
+pub struct DatabaseSectionBuilder<'a> {
     index: usize,
     storage: Vec<KeyValueStorage>,
-    state: T,
+    state: &'a mut BytesEndec,
     key_value_table_size: usize,
     expires_table_size: usize,
 }
 
-impl DatabaseSectionBuilder<Unset> {
-    pub fn new(data: &mut BytesEndec) -> DatabaseSectionBuilder<Initialized<'_>> {
+impl DatabaseSectionBuilder<'_> {
+    pub fn new(data: &mut BytesEndec) -> DatabaseSectionBuilder {
         DatabaseSectionBuilder {
-            state: Initialized(data),
+            state: data,
             index: Default::default(),
             storage: Default::default(),
             key_value_table_size: Default::default(),
             expires_table_size: Default::default(),
         }
     }
-}
-
-impl DatabaseSectionBuilder<Initialized<'_>> {
     pub fn extract_section(mut self) -> Result<DatabaseSection> {
         while self.state.len() > 0 {
             match self.state[0] {
@@ -74,7 +70,7 @@ impl DatabaseSectionBuilder<Initialized<'_>> {
     }
 
     fn save_key_value_expiry_time_in_storage(&mut self) -> Result<()> {
-        let key_value = KeyValueStorage::new(self.state.0)?;
+        let key_value = KeyValueStorage::new(self.state)?;
 
         if key_value.expiry.is_some() {
             if let Some(existing_minus_one) = self.expires_table_size.checked_sub(1) {
