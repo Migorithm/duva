@@ -1,5 +1,5 @@
 use super::{extract_range, DatabaseSection, Init, KeyValueStorage, MetadataReady, RdbFile};
-use crate::adapters::persistence::{self, DatabaseSectionBuilder, HeaderReady};
+use crate::adapters::persistence::{DatabaseSectionBuilder, HeaderReady};
 use anyhow::{Context, Result};
 use std::{
     collections::HashMap,
@@ -117,8 +117,6 @@ impl<'a> BytesEndec<'a, Init> {
     // read data and check first 5 ascii code convertable hex bytes are equal to "REDIS"
     // then read 4 digit Header version (like 0011) and return RdbFileLoader<MetadataSectionLoading> with header value as "REDIS" + 4 digit version
     pub fn load_header(mut self) -> Result<BytesEndec<'a, HeaderReady>> {
-        const RDB_HEADER_MAGIC_STRING: &str = "REDIS";
-
         if self.len() < 9 {
             return Err(anyhow::Error::msg(
                 "header loading: data length is less than 9",
