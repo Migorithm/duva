@@ -419,7 +419,7 @@ fn test_decode_multiple_strings() {
 
 #[test]
 fn test_database_section_extractor() {
-    static DATA: [u8; 52] = [
+    let data = &[
         0xFE, 0x00, 0xFB, 0x03, 0x02, 0x00, 0x06, 0x66, 0x6F, 0x6F, 0x62, 0x61, 0x72, 0x06, 0x62,
         0x61, 0x7A, 0x71, 0x75, 0x78, 0xFC, 0x15, 0x72, 0xE7, 0x07, 0x8F, 0x01, 0x00, 0x00, 0x00,
         0x03, 0x66, 0x6F, 0x6F, 0x03, 0x62, 0x61, 0x72, 0xFD, 0x52, 0xED, 0x2A, 0x66, 0x00, 0x03,
@@ -427,7 +427,7 @@ fn test_database_section_extractor() {
     ];
 
     let mut bytes_handler = BytesDecoder::<MetadataReady> {
-        data: (&DATA as &'static [u8]),
+        data,
         state: Default::default(),
     };
 
@@ -444,10 +444,8 @@ fn test_database_section_extractor() {
 
 #[test]
 fn test_non_expiry_key_value_pair() {
-    static DATA: [u8; 9] = [0x00, 0x03, 0x62, 0x61, 0x7A, 0x03, 0x71, 0x75, 0x78];
-
     let mut bytes_handler = BytesDecoder::<MetadataReady> {
-        data: (&DATA as &'static [u8]),
+        data: &[0x00, 0x03, 0x62, 0x61, 0x7A, 0x03, 0x71, 0x75, 0x78],
         state: Default::default(),
     };
 
@@ -462,12 +460,11 @@ fn test_non_expiry_key_value_pair() {
 
 #[test]
 fn test_with_milliseconds_expiry_key_value_pair() {
-    static DATA: [u8; 18] = [
-        0xFC, 0x15, 0x72, 0xE7, 0x07, 0x8F, 0x01, 0x00, 0x00, 0x00, 0x03, 0x62, 0x61, 0x7A, 0x03,
-        0x71, 0x75, 0x78,
-    ];
     let mut bytes_handler = BytesDecoder::<MetadataReady> {
-        data: (&DATA as &'static [u8]),
+        data: &[
+            0xFC, 0x15, 0x72, 0xE7, 0x07, 0x8F, 0x01, 0x00, 0x00, 0x00, 0x03, 0x62, 0x61, 0x7A,
+            0x03, 0x71, 0x75, 0x78,
+        ],
         state: Default::default(),
     };
 
@@ -481,11 +478,10 @@ fn test_with_milliseconds_expiry_key_value_pair() {
 
 #[test]
 fn test_with_seconds_expiry_key_value_pair() {
-    static DATA: [u8; 14] = [
-        0xFD, 0x52, 0xED, 0x2A, 0x66, 0x00, 0x03, 0x62, 0x61, 0x7A, 0x03, 0x71, 0x75, 0x78,
-    ];
     let mut bytes_handler = BytesDecoder::<MetadataReady> {
-        data: (&DATA as &'static [u8]),
+        data: &[
+            0xFD, 0x52, 0xED, 0x2A, 0x66, 0x00, 0x03, 0x62, 0x61, 0x7A, 0x03, 0x71, 0x75, 0x78,
+        ],
         state: Default::default(),
     };
 
@@ -497,11 +493,10 @@ fn test_with_seconds_expiry_key_value_pair() {
 
 #[test]
 fn test_invalid_expiry_key_value_pair() {
-    static DATA: [u8; 14] = [
-        0xFF, 0x52, 0xED, 0x2A, 0x66, 0x00, 0x03, 0x62, 0x61, 0x7A, 0x03, 0x71, 0x75, 0x78,
-    ];
     let mut bytes_handler = BytesDecoder::<MetadataReady> {
-        data: (&DATA as &'static [u8]),
+        data: &[
+            0xFF, 0x52, 0xED, 0x2A, 0x66, 0x00, 0x03, 0x62, 0x61, 0x7A, 0x03, 0x71, 0x75, 0x78,
+        ],
         state: Default::default(),
     };
 
@@ -512,18 +507,19 @@ fn test_invalid_expiry_key_value_pair() {
 
 #[test]
 fn test_header_loading() {
-    static DATA: [u8; 9] = [0x52, 0x45, 0x44, 0x49, 0x53, 0x30, 0x30, 0x30, 0x31];
-    let header = Into::<BytesDecoder<_>>::into(&DATA as &'static [u8])
-        .load_header()
-        .unwrap();
+    let decoder = BytesDecoder::<Init> {
+        data: &[0x52, 0x45, 0x44, 0x49, 0x53, 0x30, 0x30, 0x30, 0x31],
+        state: Default::default(),
+    };
+    let header = decoder.load_header().unwrap();
 
     assert_eq!(header.state, HeaderReady("REDIS0001".to_string()));
 }
 
 #[test]
 fn test_header_loading_data_length_error() {
-    static DATA: [u8; 5] = [0x52, 0x45, 0x44, 0x49, 0x53];
-    let data: BytesDecoder<Init> = (&DATA as &'static [u8]).into();
+    let data = vec![0x52, 0x45, 0x44, 0x49, 0x53];
+    let data: BytesDecoder<Init> = data.as_slice().into();
 
     let result = data.load_header();
     assert!(result.is_err());
@@ -547,12 +543,12 @@ fn test_metadata_loading() {
 
 #[test]
 fn test_metadata_loading_multiple() {
-    static DATA: [u8; 18] = [
+    let data = vec![
         0xFA, 0x03, 0x61, 0x62, 0x63, 0x03, 0x64, 0x65, 0x66, 0xFA, 0x03, 0x67, 0x68, 0x69, 0x03,
         0x6A, 0x6B, 0x6C,
     ];
     let bytes_handler = BytesDecoder::<HeaderReady> {
-        data: (&DATA as &'static [u8]),
+        data: data.as_slice().into(),
         state: Default::default(),
     };
 
@@ -564,12 +560,12 @@ fn test_metadata_loading_multiple() {
 
 #[test]
 fn test_metadata_loading_no_metadata() {
-    static DATA: [u8; 21] = [
+    let data = vec![
         0xFE, 0x00, 0xFB, 0x03, 0x02, 0x00, 0x06, 0x66, 0x6F, 0x6F, 0x62, 0x61, 0x72, 0x06, 0x62,
         0x61, 0x7A, 0x03, 0x71, 0x75, 0x78,
     ];
     let bytes_handler = BytesDecoder::<HeaderReady> {
-        data: (&DATA as &'static [u8]),
+        data: data.as_slice().into(),
         state: Default::default(),
     };
 
@@ -579,7 +575,7 @@ fn test_metadata_loading_no_metadata() {
 
 #[test]
 fn test_database_loading() {
-    static DATA: [u8; 61] = [
+    let data = vec![
         0xFE, 0x00, 0xFB, 0x03, 0x02, 0x00, 0x06, 0x66, 0x6F, 0x6F, 0x62, 0x61, 0x72, 0x06, 0x62,
         0x61, 0x7A, 0x71, 0x75, 0x78, 0xFC, 0x15, 0x72, 0xE7, 0x07, 0x8F, 0x01, 0x00, 0x00, 0x00,
         0x03, 0x66, 0x6F, 0x6F, 0x03, 0x62, 0x61, 0x72, 0xFD, 0x52, 0xED, 0x2A, 0x66, 0x00, 0x03,
@@ -587,7 +583,7 @@ fn test_database_loading() {
         0x19,
     ];
     let bytes_handler = BytesDecoder::<MetadataReady> {
-        data: (&DATA as &'static [u8]),
+        data: data.as_slice().into(),
         state: Default::default(),
     };
 
@@ -604,7 +600,7 @@ fn test_database_loading() {
 // ! Most important test for the BytesEndec implementation in decoding path.
 #[test]
 fn test_loading_all() {
-    static data: [u8; 113] = [
+    let data = vec![
         // Header
         0x52, 0x45, 0x44, 0x49, 0x53, 0x30, 0x30, 0x31, 0x31, // Metadata
         0xFA, 0x09, 0x72, 0x65, 0x64, 0x69, 0x73, 0x2D, 0x76, 0x65, 0x72, 0x05, 0x37, 0x2E, 0x32,
@@ -617,7 +613,7 @@ fn test_loading_all() {
         0xFB, 0x2E, 0x7F, 0xEB,
     ];
     let bytes_handler = BytesDecoder::<Init> {
-        data: (&data as &'static [u8]),
+        data: data.as_slice().into(),
         state: Default::default(),
     };
 
