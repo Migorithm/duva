@@ -1,5 +1,5 @@
 use super::{extract_range, DatabaseSection, Init, KeyValueStorage, MetadataReady, RdbFile};
-use crate::adapters::persistence::{self, DatabaseSectionBuilder, HeaderReady};
+use crate::adapters::persistence::{DatabaseSectionBuilder, HeaderReady};
 use anyhow::{Context, Result};
 use std::{
     collections::HashMap,
@@ -7,15 +7,25 @@ use std::{
 };
 
 #[derive(Default)]
-pub struct BytesEndec<T> {
-    pub data: Vec<u8>,
+pub struct BytesDecoder<'a, T> {
+    pub data: &'a [u8],
     pub state: T,
 }
 
 /// General purpose BytesEndec implementation
-impl<T> BytesEndec<T> {
+impl<T> BytesDecoder<'_, T> {
+    fn skip(&mut self, n: usize) {
+        self.data = &self.data[n..];
+    }
+
+    fn take_string(&mut self, n: usize) -> Result<String> {
+        let data = String::from_utf8(self[0..n].to_vec())?;
+        self.skip(n);
+        Ok(data)
+    }
+
     pub fn remove_identifier(&mut self) {
-        self.data.remove(0);
+        self.skip(1);
     }
 
     // Decode a size-encoded value based on the first two bits and return the decoded value as a string.
@@ -29,8 +39,7 @@ impl<T> BytesEndec<T> {
             if size > self.len() {
                 return None;
             }
-            let data = String::from_utf8(self.drain(0..size).collect()).ok()?;
-            Some(data)
+            Some(self.take_string(size).ok()?)
         } else {
             self.integer_decode()
         }
@@ -40,7 +49,7 @@ impl<T> BytesEndec<T> {
             match first_byte >> 6 {
                 0b00 => {
                     let size = (first_byte & 0x3F) as usize;
-                    self.drain(0..1);
+                    self.skip(1);
                     Some(size)
                 }
                 0b01 => {
@@ -48,7 +57,7 @@ impl<T> BytesEndec<T> {
                         return None;
                     }
                     let size = (((first_byte & 0x3F) as usize) << 8) | (self[1] as usize);
-                    self.drain(0..2);
+                    self.skip(2);
                     Some(size)
                 }
                 0b10 => {
@@ -59,7 +68,8 @@ impl<T> BytesEndec<T> {
                         | ((self[2] as usize) << 16)
                         | ((self[3] as usize) << 8)
                         | (self[4] as usize);
-                    self.drain(0..5);
+
+                    self.skip(5);
                     Some(size)
                 }
                 _ => None,
@@ -75,22 +85,20 @@ impl<T> BytesEndec<T> {
                 // 0b11000000: 8-bit integer
                 0xC0 => {
                     let value = i8::from_le_bytes([self[1]]).to_string();
-                    self.drain(0..2);
+                    self.skip(2);
                     return Some(value);
                 }
                 0xC1 => {
                     if self.len() >= 3 {
-                        let value = i16::from_le_bytes(persistence::extract_range(self, 1..=2)?)
-                            .to_string();
-                        self.drain(0..3);
+                        let value = i16::from_le_bytes(extract_range(self, 1..=2)?).to_string();
+                        self.skip(3);
                         return Some(value);
                     }
                 }
                 0xC2 => {
                     if self.len() >= 5 {
-                        let value = i32::from_le_bytes(persistence::extract_range(self, 1..=4)?)
-                            .to_string();
-                        self.drain(0..5);
+                        let value = i32::from_le_bytes(extract_range(self, 1..=4)?).to_string();
+                        self.skip(5);
                         return Some(value);
                     }
                 }
@@ -105,34 +113,40 @@ impl<T> BytesEndec<T> {
     }
 }
 
-impl BytesEndec<Init> {
+impl<'a> BytesDecoder<'a, Init> {
     // read data and check first 5 ascii code convertable hex bytes are equal to "REDIS"
     // then read 4 digit Header version (like 0011) and return RdbFileLoader<MetadataSectionLoading> with header value as "REDIS" + 4 digit version
-    pub fn load_header(mut self) -> Result<BytesEndec<HeaderReady>> {
-        const RDB_HEADER_MAGIC_STRING: &str = "REDIS";
-
+    pub fn load_header(mut self) -> Result<BytesDecoder<'a, HeaderReady>> {
         if self.len() < 9 {
             return Err(anyhow::Error::msg(
                 "header loading: data length is less than 9",
             ))?;
         }
-        let header = String::from_utf8(self.drain(0..5).collect())?;
+
+        let header = self.take_header()?;
+        let version = self.take_version()?;
+
+        Ok(BytesDecoder {
+            data: self.data,
+            state: HeaderReady(format!("{}{}", header, version)),
+        })
+    }
+    fn take_header(&mut self) -> Result<String> {
+        const RDB_HEADER_MAGIC_STRING: &str = "REDIS";
+        let header = self.take_string(5)?;
         if header != RDB_HEADER_MAGIC_STRING {
             return Err(anyhow::Error::msg("header loading: header is not REDIS"))?;
         }
-        let version = String::from_utf8(self.drain(0..4).collect());
-        if version.is_err() {
-            return Err(anyhow::Error::msg("header loading: version is not valid"))?;
-        }
-        Ok(BytesEndec {
-            data: self.data,
-            state: HeaderReady(format!("{}{}", header, version?)),
-        })
+        Ok(header)
+    }
+    fn take_version(&mut self) -> Result<String> {
+        self.take_string(4)
+            .context("header loading: version decode fail")
     }
 }
 
-impl BytesEndec<HeaderReady> {
-    pub fn load_metadata(mut self) -> Result<BytesEndec<MetadataReady>> {
+impl<'a> BytesDecoder<'a, HeaderReady> {
+    pub fn load_metadata(mut self) -> Result<BytesDecoder<'a, MetadataReady>> {
         const METADATA_SECTION_IDENTIFIER: u8 = 0xFA;
 
         let mut metadata = HashMap::new();
@@ -142,7 +156,7 @@ impl BytesEndec<HeaderReady> {
                 .context("metadata loading: key value extraction failed")?;
             metadata.insert(key, value);
         }
-        Ok(BytesEndec {
+        Ok(BytesDecoder {
             data: self.data,
             state: MetadataReady {
                 metadata,
@@ -158,7 +172,7 @@ impl BytesEndec<HeaderReady> {
         Ok((key_data, value_data))
     }
 }
-impl BytesEndec<MetadataReady> {
+impl BytesDecoder<'_, MetadataReady> {
     pub fn load_database(mut self) -> Result<RdbFile> {
         const DATABASE_SECTION_IDENTIFIER: u8 = 0xFE;
         let mut database = Vec::new();
@@ -266,10 +280,10 @@ impl BytesEndec<MetadataReady> {
         self.remove_identifier();
         let range = 0..=3;
         let result = u32::from_le_bytes(
-            persistence::extract_range(self, range.clone())
+            extract_range(self, range.clone())
                 .context("Failed to extract expiry time in seconds")?,
         );
-        self.drain(range);
+        self.skip(4);
 
         Ok(result as u64)
     }
@@ -278,10 +292,11 @@ impl BytesEndec<MetadataReady> {
         self.remove_identifier();
         let range = 0..=7;
         let result = u64::from_le_bytes(
-            persistence::extract_range(self, range.clone())
+            extract_range(self, range.clone())
                 .context("Failed to extract expiry time in milliseconds")?,
         );
-        self.drain(range);
+        self.skip(8);
+
         Ok(result)
     }
 
@@ -298,25 +313,29 @@ impl BytesEndec<MetadataReady> {
         let checksum = extract_range(&self.data, 0..=7)
             .map(|f: [u8; 8]| f.to_vec())
             .context("failed to extract checksum")?;
-        self.data.drain(..8);
+        self.skip(8);
+
         Ok(checksum)
     }
 }
 
-impl From<Vec<u8>> for BytesEndec<Init> {
-    fn from(data: Vec<u8>) -> Self {
-        Self { data, state: Init }
+impl<'a> From<&'a [u8]> for BytesDecoder<'a, Init> {
+    fn from(data: &'a [u8]) -> Self {
+        Self {
+            data: &data,
+            state: Init,
+        }
     }
 }
 
-impl<T> Deref for BytesEndec<T> {
-    type Target = Vec<u8>;
+impl<'a, T> Deref for BytesDecoder<'a, T> {
+    type Target = &'a [u8];
 
     fn deref(&self) -> &Self::Target {
         &self.data
     }
 }
-impl<T> DerefMut for BytesEndec<T> {
+impl<'a, T> DerefMut for BytesDecoder<'a, T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.data
     }
@@ -324,10 +343,15 @@ impl<T> DerefMut for BytesEndec<T> {
 
 #[test]
 fn test_size_decoding() {
-    let mut example1: BytesEndec<Init> = vec![0x0D].into();
-    let mut example2: BytesEndec<Init> = vec![0x42, 0xBC].into();
-    let mut example3: BytesEndec<Init> = vec![0x80, 0x00, 0x00, 0x42, 0x68].into();
-    let mut example4: BytesEndec<Init> = vec![0xC0, 0x0A].into();
+    static V1: [u8; 1] = [0x0D];
+    static V2: [u8; 2] = [0x42, 0xBC];
+    static V3: [u8; 5] = [0x80, 0x00, 0x00, 0x42, 0x68];
+    static V4: [u8; 2] = [0xC0, 0x0A];
+
+    let mut example1: BytesDecoder<Init> = (&V1 as &'static [u8]).into();
+    let mut example2: BytesDecoder<Init> = (&V2 as &'static [u8]).into();
+    let mut example3: BytesDecoder<Init> = (&V3 as &'static [u8]).into();
+    let mut example4: BytesDecoder<Init> = (&V4 as &'static [u8]).into();
 
     assert_eq!(example1.size_decode(), Some(13));
     assert_eq!(example2.size_decode(), Some(700));
@@ -337,9 +361,13 @@ fn test_size_decoding() {
 
 #[test]
 fn test_integer_decoding() {
-    let mut example1: BytesEndec<Init> = vec![0xC0, 0x0A].into();
-    let mut example2: BytesEndec<Init> = vec![0xC1, 0x39, 0x30].into();
-    let mut example3: BytesEndec<Init> = vec![0xC2, 0xEA, 0x17, 0x3E, 0x67].into();
+    static V1: [u8; 2] = [0xC0, 0x0A];
+    static V2: [u8; 3] = [0xC1, 0x39, 0x30];
+    static V3: [u8; 5] = [0xC2, 0xEA, 0x17, 0x3E, 0x67];
+
+    let mut example1: BytesDecoder<Init> = (&V1 as &'static [u8]).into();
+    let mut example2: BytesDecoder<Init> = (&V2 as &'static [u8]).into();
+    let mut example3: BytesDecoder<Init> = (&V3 as &'static [u8]).into();
 
     assert_eq!(example1.integer_decode(), Some("10".to_string()));
     assert_eq!(example2.integer_decode(), Some("12345".to_string()));
@@ -348,11 +376,13 @@ fn test_integer_decoding() {
 
 #[test]
 fn test_string_decoding() {
-    let mut example1: BytesEndec<Init> = vec![
+    static V1: [u8; 14] = [
         0x0D, 0x48, 0x65, 0x6C, 0x6C, 0x6F, 0x2C, 0x20, 0x57, 0x6F, 0x72, 0x6C, 0x64, 0x21,
-    ]
-    .into();
-    let mut example2: BytesEndec<Init> = vec![0x42, 0x0A, 0x54, 0x65, 0x73, 0x74].into();
+    ];
+    let mut example1: BytesDecoder<Init> = (&V1 as &'static [u8]).into();
+
+    static V2: [u8; 6] = [0x42, 0x0A, 0x54, 0x65, 0x73, 0x74];
+    let mut example2: BytesDecoder<Init> = (&V2 as &'static [u8]).into();
 
     assert_eq!(example1.string_decode(), Some("Hello, World!".to_string()));
     assert_eq!(example2.string_decode(), None);
@@ -361,13 +391,15 @@ fn test_string_decoding() {
 #[test]
 fn test_decoding() {
     // "Hello, World!"
-    let mut example1: BytesEndec<Init> = vec![
+    static V1: [u8; 14] = [
         0x0D, 0x48, 0x65, 0x6C, 0x6C, 0x6F, 0x2C, 0x20, 0x57, 0x6F, 0x72, 0x6C, 0x64, 0x21,
-    ]
-    .into();
+    ];
 
+    let mut example1: BytesDecoder<Init> = (&V1 as &'static [u8]).into();
+
+    static V2: [u8; 6] = [0x42, 0x0A, 0x54, 0x65, 0x73, 0x74];
     // "Test", with size 10 (although more bytes needed)
-    let mut example2: BytesEndec<Init> = vec![0x42, 0x0A, 0x54, 0x65, 0x73, 0x74].into();
+    let mut example2: BytesDecoder<Init> = (&V2 as &'static [u8]).into();
 
     assert!(example1.string_decode().is_some());
     assert!(example2.string_decode().is_none()); // due to insufficient bytes
@@ -376,7 +408,9 @@ fn test_decoding() {
 #[test]
 fn test_decode_multiple_strings() {
     // "abc" and "def"
-    let mut encoded: BytesEndec<Init> = vec![0x03, 0x61, 0x62, 0x63, 0x03, 0x64, 0x65, 0x66].into();
+    static V1: [u8; 8] = [0x03, 0x61, 0x62, 0x63, 0x03, 0x64, 0x65, 0x66];
+
+    let mut encoded: BytesDecoder<Init> = (&V1 as &'static [u8]).into();
     let decoded = encoded.string_decode();
     assert_eq!(decoded, Some("abc".to_string()));
     let decoded = encoded.string_decode();
@@ -385,15 +419,14 @@ fn test_decode_multiple_strings() {
 
 #[test]
 fn test_database_section_extractor() {
-    let data = vec![
+    let data = &[
         0xFE, 0x00, 0xFB, 0x03, 0x02, 0x00, 0x06, 0x66, 0x6F, 0x6F, 0x62, 0x61, 0x72, 0x06, 0x62,
         0x61, 0x7A, 0x71, 0x75, 0x78, 0xFC, 0x15, 0x72, 0xE7, 0x07, 0x8F, 0x01, 0x00, 0x00, 0x00,
         0x03, 0x66, 0x6F, 0x6F, 0x03, 0x62, 0x61, 0x72, 0xFD, 0x52, 0xED, 0x2A, 0x66, 0x00, 0x03,
         0x62, 0x61, 0x7A, 0x03, 0x71, 0x75, 0x78,
-    ]
-    .into();
+    ];
 
-    let mut bytes_handler = BytesEndec::<MetadataReady> {
+    let mut bytes_handler = BytesDecoder::<MetadataReady> {
         data,
         state: Default::default(),
     };
@@ -411,9 +444,8 @@ fn test_database_section_extractor() {
 
 #[test]
 fn test_non_expiry_key_value_pair() {
-    let data = vec![0x00, 0x03, 0x62, 0x61, 0x7A, 0x03, 0x71, 0x75, 0x78];
-    let mut bytes_handler = BytesEndec::<MetadataReady> {
-        data,
+    let mut bytes_handler = BytesDecoder::<MetadataReady> {
+        data: &[0x00, 0x03, 0x62, 0x61, 0x7A, 0x03, 0x71, 0x75, 0x78],
         state: Default::default(),
     };
 
@@ -428,12 +460,11 @@ fn test_non_expiry_key_value_pair() {
 
 #[test]
 fn test_with_milliseconds_expiry_key_value_pair() {
-    let data = vec![
-        0xFC, 0x15, 0x72, 0xE7, 0x07, 0x8F, 0x01, 0x00, 0x00, 0x00, 0x03, 0x62, 0x61, 0x7A, 0x03,
-        0x71, 0x75, 0x78,
-    ];
-    let mut bytes_handler = BytesEndec::<MetadataReady> {
-        data,
+    let mut bytes_handler = BytesDecoder::<MetadataReady> {
+        data: &[
+            0xFC, 0x15, 0x72, 0xE7, 0x07, 0x8F, 0x01, 0x00, 0x00, 0x00, 0x03, 0x62, 0x61, 0x7A,
+            0x03, 0x71, 0x75, 0x78,
+        ],
         state: Default::default(),
     };
 
@@ -447,11 +478,10 @@ fn test_with_milliseconds_expiry_key_value_pair() {
 
 #[test]
 fn test_with_seconds_expiry_key_value_pair() {
-    let data = vec![
-        0xFD, 0x52, 0xED, 0x2A, 0x66, 0x00, 0x03, 0x62, 0x61, 0x7A, 0x03, 0x71, 0x75, 0x78,
-    ];
-    let mut bytes_handler = BytesEndec::<MetadataReady> {
-        data,
+    let mut bytes_handler = BytesDecoder::<MetadataReady> {
+        data: &[
+            0xFD, 0x52, 0xED, 0x2A, 0x66, 0x00, 0x03, 0x62, 0x61, 0x7A, 0x03, 0x71, 0x75, 0x78,
+        ],
         state: Default::default(),
     };
 
@@ -463,11 +493,10 @@ fn test_with_seconds_expiry_key_value_pair() {
 
 #[test]
 fn test_invalid_expiry_key_value_pair() {
-    let data = vec![
-        0xFF, 0x52, 0xED, 0x2A, 0x66, 0x00, 0x03, 0x62, 0x61, 0x7A, 0x03, 0x71, 0x75, 0x78,
-    ];
-    let mut bytes_handler = BytesEndec::<MetadataReady> {
-        data,
+    let mut bytes_handler = BytesDecoder::<MetadataReady> {
+        data: &[
+            0xFF, 0x52, 0xED, 0x2A, 0x66, 0x00, 0x03, 0x62, 0x61, 0x7A, 0x03, 0x71, 0x75, 0x78,
+        ],
         state: Default::default(),
     };
 
@@ -478,23 +507,19 @@ fn test_invalid_expiry_key_value_pair() {
 
 #[test]
 fn test_header_loading() {
-    let data: BytesEndec<Init> = vec![0x52, 0x45, 0x44, 0x49, 0x53, 0x30, 0x30, 0x30, 0x31].into();
-    let header = data.load_header().unwrap();
+    let decoder = BytesDecoder::<Init> {
+        data: &[0x52, 0x45, 0x44, 0x49, 0x53, 0x30, 0x30, 0x30, 0x31],
+        state: Default::default(),
+    };
+    let header = decoder.load_header().unwrap();
 
     assert_eq!(header.state, HeaderReady("REDIS0001".to_string()));
 }
 
 #[test]
 fn test_header_loading_data_length_error() {
-    let data: BytesEndec<Init> = vec![0x52, 0x45, 0x44, 0x49, 0x53].into();
-
-    let result = data.load_header();
-    assert!(result.is_err());
-}
-
-#[test]
-fn test_header_loading_header_error() {
-    let data: BytesEndec<Init> = vec![0x52, 0x45, 0x44, 0x49, 0x54, 0x30, 0x30, 0x30, 0x31].into();
+    let data = vec![0x52, 0x45, 0x44, 0x49, 0x53];
+    let data: BytesDecoder<Init> = data.as_slice().into();
 
     let result = data.load_header();
     assert!(result.is_err());
@@ -502,9 +527,10 @@ fn test_header_loading_header_error() {
 
 #[test]
 fn test_metadata_loading() {
-    let data = vec![0xFA, 0x03, 0x61, 0x62, 0x63, 0x03, 0x64, 0x65, 0x66];
-    let bytes_handler = BytesEndec::<HeaderReady> {
-        data,
+    static DATA: [u8; 9] = [0xFA, 0x03, 0x61, 0x62, 0x63, 0x03, 0x64, 0x65, 0x66];
+
+    let bytes_handler = BytesDecoder::<HeaderReady> {
+        data: (&DATA as &'static [u8]),
         state: HeaderReady("REDIS0001".to_string()),
     };
 
@@ -521,8 +547,8 @@ fn test_metadata_loading_multiple() {
         0xFA, 0x03, 0x61, 0x62, 0x63, 0x03, 0x64, 0x65, 0x66, 0xFA, 0x03, 0x67, 0x68, 0x69, 0x03,
         0x6A, 0x6B, 0x6C,
     ];
-    let bytes_handler = BytesEndec::<HeaderReady> {
-        data,
+    let bytes_handler = BytesDecoder::<HeaderReady> {
+        data: data.as_slice().into(),
         state: Default::default(),
     };
 
@@ -538,8 +564,8 @@ fn test_metadata_loading_no_metadata() {
         0xFE, 0x00, 0xFB, 0x03, 0x02, 0x00, 0x06, 0x66, 0x6F, 0x6F, 0x62, 0x61, 0x72, 0x06, 0x62,
         0x61, 0x7A, 0x03, 0x71, 0x75, 0x78,
     ];
-    let bytes_handler = BytesEndec::<HeaderReady> {
-        data,
+    let bytes_handler = BytesDecoder::<HeaderReady> {
+        data: data.as_slice().into(),
         state: Default::default(),
     };
 
@@ -556,8 +582,8 @@ fn test_database_loading() {
         0x62, 0x61, 0x7A, 0x03, 0x71, 0x75, 0x78, 0xFF, 0x89, 0x3B, 0xB7, 0x4E, 0xF8, 0x0F, 0x77,
         0x19,
     ];
-    let bytes_handler = BytesEndec::<MetadataReady> {
-        data,
+    let bytes_handler = BytesDecoder::<MetadataReady> {
+        data: data.as_slice().into(),
         state: Default::default(),
     };
 
@@ -586,8 +612,8 @@ fn test_loading_all() {
         0x32, 0x00, 0x03, 0x66, 0x6F, 0x6F, 0x03, 0x62, 0x61, 0x72, 0xFF, 0x60, 0x82, 0x9C, 0xF8,
         0xFB, 0x2E, 0x7F, 0xEB,
     ];
-    let bytes_handler = BytesEndec::<Init> {
-        data,
+    let bytes_handler = BytesDecoder::<Init> {
+        data: data.as_slice().into(),
         state: Default::default(),
     };
 

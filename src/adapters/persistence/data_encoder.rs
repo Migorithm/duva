@@ -1,4 +1,3 @@
-use super::{bytes_handler::BytesEndec, Init};
 /// # Notes
 ///
 /// * The size value does not need to match the length of the data. This allows for:
@@ -13,12 +12,16 @@ use super::{bytes_handler::BytesEndec, Init};
 /// * Maximum encodable size is 2^32 - 1
 /// * No error correction or detection mechanisms
 /// * Size encoding overhead varies from 1 to 5 bytes
-///
-///
-impl BytesEndec<Init> {
+use crate::make_smart_pointer;
+#[derive(Debug, Default)]
+struct BytesEncoder(Vec<u8>);
+
+make_smart_pointer!(BytesEncoder, Vec<u8>);
+
+impl BytesEncoder {
     // TODO subject to refactor
     pub fn from_u32(value: u32) -> Self {
-        let mut result = BytesEndec::default();
+        let mut result = BytesEncoder(Vec::new());
         if value <= 0xFF {
             result.push(0xC0);
             result.push(value as u8);
@@ -34,13 +37,13 @@ impl BytesEndec<Init> {
     }
 }
 
-fn data_encode(size: usize, data: &str) -> Option<BytesEndec<Init>> {
+fn data_encode(size: usize, data: &str) -> Option<BytesEncoder> {
     // if data can be parsed as an integer as u32
     if let Ok(value) = data.parse::<u32>() {
-        return Some(BytesEndec::from_u32(value));
+        return Some(BytesEncoder::from_u32(value));
     }
 
-    let mut result = BytesEndec::default();
+    let mut result = BytesEncoder::default();
     // if value is representable with 6bits : 0b00 -> Use the remaining 6 bits to represent the size.
     if size < (1 << 6) {
         result.push((0b00 << 6) | (size as u8));
@@ -65,6 +68,9 @@ fn data_encode(size: usize, data: &str) -> Option<BytesEndec<Init>> {
     result.extend_from_slice(data.as_bytes());
     Some(result)
 }
+
+#[cfg(test)]
+use super::{bytes_handler::BytesDecoder, Init};
 
 #[test]
 fn test_size_encode_6_bit() {
@@ -150,8 +156,12 @@ fn test_8_bit_integer_encode() {
 fn test_8_bit_integer_decode() {
     let data = "123";
     let size = data.len();
-    let mut encoded: BytesEndec<Init> = data_encode(size, data).unwrap();
-    assert_eq!(encoded.string_decode(), Some("123".to_string()));
+    let encoded: BytesEncoder = data_encode(size, data).unwrap();
+    let mut decoder = BytesDecoder {
+        data: &encoded.0,
+        state: Init,
+    };
+    assert_eq!(decoder.string_decode(), Some("123".to_string()));
 }
 
 #[test]
@@ -167,8 +177,12 @@ fn test_16_bit_integer() {
 fn test_16_bit_integer_decode() {
     let data = "12345";
     let size = data.len();
-    let mut encoded: BytesEndec<Init> = data_encode(size, data).unwrap();
-    assert_eq!(encoded.string_decode(), Some("12345".to_string()));
+    let mut encoded: BytesEncoder = data_encode(size, data).unwrap();
+    let mut decoder = BytesDecoder {
+        data: &encoded.0,
+        state: Init,
+    };
+    assert_eq!(decoder.string_decode(), Some("12345".to_string()));
 }
 
 #[test]
@@ -185,23 +199,45 @@ fn test_32_bit_integer_decode() {
     let data = "1234567";
     let size = data.len();
     let mut encoded = data_encode(size, data).unwrap();
-    assert_eq!(encoded.string_decode(), Some("1234567".to_string()));
+    let mut decoder = BytesDecoder {
+        data: &encoded.0,
+        state: Init,
+    };
+    assert_eq!(decoder.string_decode(), Some("1234567".to_string()));
 }
 
 #[test]
-fn test_integer_decoding() {
+fn test_integer_decoding1() {
     let data = "42";
     let size = data.len();
     let mut encoded = data_encode(size, data).unwrap();
-    assert_eq!(encoded.string_decode(), Some("42".to_string()));
+    let mut decoder = BytesDecoder {
+        data: &encoded.0,
+        state: Init,
+    };
+    assert_eq!(decoder.string_decode(), Some("42".to_string()));
+}
 
+#[test]
+fn test_integer_decoding2() {
     let data = "1000";
     let size = data.len();
     let mut encoded = data_encode(size, data).unwrap();
-    assert_eq!(encoded.string_decode(), Some("1000".to_string()));
+    let mut decoder = BytesDecoder {
+        data: &encoded.0,
+        state: Init,
+    };
+    assert_eq!(decoder.string_decode(), Some("1000".to_string()));
+}
 
+#[test]
+fn test_integer_decoding3() {
     let data = "100000";
     let size = data.len();
     let mut encoded = data_encode(size, data).unwrap();
-    assert_eq!(encoded.string_decode(), Some("100000".to_string()));
+    let mut decoder = BytesDecoder {
+        data: &encoded.0,
+        state: Init,
+    };
+    assert_eq!(decoder.string_decode(), Some("100000".to_string()));
 }
