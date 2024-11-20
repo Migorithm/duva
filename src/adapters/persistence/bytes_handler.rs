@@ -177,7 +177,7 @@ impl BytesEndec<MetadataReady> {
             checksum,
         })
     }
-    pub fn extract_section(&mut self) -> Result<DatabaseSection> {
+    fn extract_section(&mut self) -> Result<DatabaseSection> {
         const SECTION_INDEX_IDENTIFIER: u8 = 0xFE; // 0b11111110
         const TABLE_SIZE_IDENTIFIER: u8 = 0xFB; //0b11111011
 
@@ -547,7 +547,6 @@ fn test_metadata_loading_no_metadata() {
     assert_eq!(metadata.state.metadata, HashMap::new());
 }
 
-/// The following tests are for the database loading process
 #[test]
 fn test_database_loading() {
     let data = vec![
@@ -563,6 +562,43 @@ fn test_database_loading() {
     };
 
     let rdb_file = bytes_handler.load_database().unwrap();
+    assert_eq!(rdb_file.database.len(), 1);
+    assert_eq!(rdb_file.database[0].index, 0);
+    assert_eq!(rdb_file.database[0].storage.len(), 3);
+    assert_eq!(
+        rdb_file.checksum,
+        vec![0x89, 0x3B, 0xB7, 0x4E, 0xF8, 0x0F, 0x77, 0x19]
+    );
+}
+
+// ! Most important test for the BytesEndec implementation in decoding path.
+#[test]
+fn test_loading_all() {
+    let data = vec![
+        0x52, 0x45, 0x44, 0x49, 0x53, 0x30, 0x30, 0x30, 0x31, // Header
+        0xFA, 0x03, 0x61, 0x62, 0x63, 0x03, 0x64, 0x65, 0x66, 0xFA, 0x03, 0x67, 0x68, 0x69, 0x03,
+        0x6A, 0x6B, 0x6C, // Metadata
+        0xFE, 0x00, 0xFB, 0x03, 0x02, 0x00, 0x06, 0x66, 0x6F, 0x6F, 0x62, 0x61, 0x72, 0x06, 0x62,
+        0x61, 0x7A, 0x71, 0x75, 0x78, 0xFC, 0x15, 0x72, 0xE7, 0x07, 0x8F, 0x01, 0x00, 0x00, 0x00,
+        0x03, 0x66, 0x6F, 0x6F, 0x03, 0x62, 0x61, 0x72, 0xFD, 0x52, 0xED, 0x2A, 0x66, 0x00, 0x03,
+        0x62, 0x61, 0x7A, 0x03, 0x71, 0x75, 0x78, 0xFF, 0x89, 0x3B, 0xB7, 0x4E, 0xF8, 0x0F, 0x77,
+        0x19, // Database
+    ];
+    let bytes_handler = BytesEndec::<Init> {
+        data,
+        state: Default::default(),
+    };
+
+    let rdb_file = bytes_handler
+        .load_header()
+        .unwrap()
+        .load_metadata()
+        .unwrap()
+        .load_database()
+        .unwrap();
+
+    assert_eq!(rdb_file.header, "REDIS0001");
+    assert_eq!(rdb_file.metadata.get("abc"), Some(&"def".to_string()));
     assert_eq!(rdb_file.database.len(), 1);
     assert_eq!(rdb_file.database[0].index, 0);
     assert_eq!(rdb_file.database[0].storage.len(), 3);
