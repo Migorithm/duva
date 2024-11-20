@@ -74,21 +74,21 @@ impl<T> BytesEndec<T> {
             match first_byte {
                 // 0b11000000: 8-bit integer
                 0xC0 => {
-                    let value = u8::from_le_bytes([self[1]]).to_string();
+                    let value = i8::from_le_bytes([self[1]]).to_string();
                     self.drain(0..2);
                     return Some(value);
                 }
                 0xC1 => {
-                    if self.len() == 3 {
-                        let value = u16::from_le_bytes(persistence::extract_range(self, 1..=2)?)
+                    if self.len() >= 3 {
+                        let value = i16::from_le_bytes(persistence::extract_range(self, 1..=2)?)
                             .to_string();
                         self.drain(0..3);
                         return Some(value);
                     }
                 }
                 0xC2 => {
-                    if self.len() == 5 {
-                        let value = u32::from_le_bytes(persistence::extract_range(self, 1..=4)?)
+                    if self.len() >= 5 {
+                        let value = i32::from_le_bytes(persistence::extract_range(self, 1..=4)?)
                             .to_string();
                         self.drain(0..5);
                         return Some(value);
@@ -177,7 +177,7 @@ impl BytesEndec<MetadataReady> {
             checksum,
         })
     }
-    pub fn extract_section(&mut self) -> Result<DatabaseSection> {
+    fn extract_section(&mut self) -> Result<DatabaseSection> {
         const SECTION_INDEX_IDENTIFIER: u8 = 0xFE; // 0b11111110
         const TABLE_SIZE_IDENTIFIER: u8 = 0xFB; //0b11111011
 
@@ -339,11 +339,11 @@ fn test_size_decoding() {
 fn test_integer_decoding() {
     let mut example1: BytesEndec<Init> = vec![0xC0, 0x0A].into();
     let mut example2: BytesEndec<Init> = vec![0xC1, 0x39, 0x30].into();
-    let mut example3: BytesEndec<Init> = vec![0xC2, 0x87, 0xD6, 0x12, 0x00].into();
+    let mut example3: BytesEndec<Init> = vec![0xC2, 0xEA, 0x17, 0x3E, 0x67].into();
 
     assert_eq!(example1.integer_decode(), Some("10".to_string()));
     assert_eq!(example2.integer_decode(), Some("12345".to_string()));
-    assert_eq!(example3.integer_decode(), Some("1234567".to_string()));
+    assert_eq!(example3.integer_decode(), Some("1732122602".to_string()));
 }
 
 #[test]
@@ -547,7 +547,6 @@ fn test_metadata_loading_no_metadata() {
     assert_eq!(metadata.state.metadata, HashMap::new());
 }
 
-/// The following tests are for the database loading process
 #[test]
 fn test_database_loading() {
     let data = vec![
@@ -569,5 +568,47 @@ fn test_database_loading() {
     assert_eq!(
         rdb_file.checksum,
         vec![0x89, 0x3B, 0xB7, 0x4E, 0xF8, 0x0F, 0x77, 0x19]
+    );
+}
+
+// ! Most important test for the BytesEndec implementation in decoding path.
+#[test]
+fn test_loading_all() {
+    let data = vec![
+        // Header
+        0x52, 0x45, 0x44, 0x49, 0x53, 0x30, 0x30, 0x31, 0x31, // Metadata
+        0xFA, 0x09, 0x72, 0x65, 0x64, 0x69, 0x73, 0x2D, 0x76, 0x65, 0x72, 0x05, 0x37, 0x2E, 0x32,
+        0x2E, 0x36, 0xFA, 0x0A, 0x72, 0x65, 0x64, 0x69, 0x73, 0x2D, 0x62, 0x69, 0x74, 0x73, 0xC0,
+        0x40, 0xFA, 0x05, 0x63, 0x74, 0x69, 0x6D, 0x65, 0xC2, 0xEA, 0x17, 0x3E, 0x67, 0xFA, 0x08,
+        0x75, 0x73, 0x65, 0x64, 0x2D, 0x6D, 0x65, 0x6D, 0xC2, 0x30, 0xD1, 0x11, 0x00, 0xFA, 0x08,
+        0x61, 0x6F, 0x66, 0x2D, 0x62, 0x61, 0x73, 0x65, 0xC0, 0x00, // Database
+        0xFE, 0x00, 0xFB, 0x02, 0x00, 0x00, 0x04, 0x66, 0x6F, 0x6F, 0x32, 0x04, 0x62, 0x61, 0x72,
+        0x32, 0x00, 0x03, 0x66, 0x6F, 0x6F, 0x03, 0x62, 0x61, 0x72, 0xFF, 0x60, 0x82, 0x9C, 0xF8,
+        0xFB, 0x2E, 0x7F, 0xEB,
+    ];
+    let bytes_handler = BytesEndec::<Init> {
+        data,
+        state: Default::default(),
+    };
+
+    let rdb_file = bytes_handler
+        .load_header()
+        .unwrap()
+        .load_metadata()
+        .unwrap()
+        .load_database()
+        .unwrap();
+
+    assert_eq!(rdb_file.header, "REDIS0011");
+    assert_eq!(rdb_file.database.len(), 1);
+    assert_eq!(rdb_file.database[0].index, 0);
+    assert_eq!(rdb_file.database[0].storage.len(), 2);
+    assert_eq!(rdb_file.database[0].storage[0].key, "foo2");
+    assert_eq!(rdb_file.database[0].storage[0].value, "bar2");
+    assert_eq!(rdb_file.database[0].storage[1].key, "foo");
+    assert_eq!(rdb_file.database[0].storage[1].value, "bar");
+    assert_eq!(
+        rdb_file.checksum,
+        vec![0x60, 0x82, 0x9C, 0xF8, 0xFB, 0x2E, 0x7F, 0xEB]
     );
 }
