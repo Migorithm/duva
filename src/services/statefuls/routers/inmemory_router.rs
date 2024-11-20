@@ -1,5 +1,5 @@
 use crate::{
-    adapters::persistence::{bytes_handler::BytesEndec, Init},
+    adapters::persistence::{bytes_handler::BytesDecoder, Init},
     config::Config,
     services::{
         statefuls::{
@@ -34,8 +34,8 @@ impl CacheDispatcher {
         };
 
         let data = tokio::fs::read(filepath).await?;
-        let data: BytesEndec<Init> = data.as_slice().into();
-        let database = data.load_header()?.load_metadata()?.load_database()?;
+        let decoder: BytesDecoder<Init> = data.as_slice().into();
+        let database = decoder.load_header()?.load_metadata()?.load_database()?;
 
         for kvs in database.key_values() {
             self.route_set(kvs.key, kvs.value, kvs.expiry, ttl_inbox.clone())

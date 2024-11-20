@@ -70,7 +70,7 @@ fn data_encode(size: usize, data: &str) -> Option<BytesEncoder> {
 }
 
 #[cfg(test)]
-use super::{bytes_handler::BytesEndec, Init};
+use super::{bytes_handler::BytesDecoder, Init};
 
 #[test]
 fn test_size_encode_6_bit() {
@@ -157,7 +157,7 @@ fn test_8_bit_integer_decode() {
     let data = "123";
     let size = data.len();
     let encoded: BytesEncoder = data_encode(size, data).unwrap();
-    let mut decoder = BytesEndec {
+    let mut decoder = BytesDecoder {
         data: &encoded.0,
         state: Init,
     };
@@ -178,7 +178,7 @@ fn test_16_bit_integer_decode() {
     let data = "12345";
     let size = data.len();
     let mut encoded: BytesEncoder = data_encode(size, data).unwrap();
-    let mut decoder = BytesEndec {
+    let mut decoder = BytesDecoder {
         data: &encoded.0,
         state: Init,
     };
@@ -199,7 +199,7 @@ fn test_32_bit_integer_decode() {
     let data = "1234567";
     let size = data.len();
     let mut encoded = data_encode(size, data).unwrap();
-    let mut decoder = BytesEndec {
+    let mut decoder = BytesDecoder {
         data: &encoded.0,
         state: Init,
     };
@@ -211,7 +211,7 @@ fn test_integer_decoding1() {
     let data = "42";
     let size = data.len();
     let mut encoded = data_encode(size, data).unwrap();
-    let mut decoder = BytesEndec {
+    let mut decoder = BytesDecoder {
         data: &encoded.0,
         state: Init,
     };
@@ -223,7 +223,7 @@ fn test_integer_decoding2() {
     let data = "1000";
     let size = data.len();
     let mut encoded = data_encode(size, data).unwrap();
-    let mut decoder = BytesEndec {
+    let mut decoder = BytesDecoder {
         data: &encoded.0,
         state: Init,
     };
@@ -235,7 +235,7 @@ fn test_integer_decoding3() {
     let data = "100000";
     let size = data.len();
     let mut encoded = data_encode(size, data).unwrap();
-    let mut decoder = BytesEndec {
+    let mut decoder = BytesDecoder {
         data: &encoded.0,
         state: Init,
     };
