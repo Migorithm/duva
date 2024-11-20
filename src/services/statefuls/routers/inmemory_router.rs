@@ -33,7 +33,8 @@ impl CacheDispatcher {
             return Ok(());
         };
 
-        let data: BytesEndec<Init> = tokio::fs::read(filepath).await?.into();
+        let data = tokio::fs::read(filepath).await?;
+        let data: BytesEndec<Init> = data.as_slice().into();
         let database = data.load_header()?.load_metadata()?.load_database()?;
 
         for kvs in database.key_values() {
