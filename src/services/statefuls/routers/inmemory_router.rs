@@ -29,7 +29,7 @@ pub(crate) struct CacheDispatcher {
 
 impl CacheDispatcher {
     pub(crate) async fn load_data(&self, ttl_inbox: TtlInbox) -> Result<()> {
-        let Ok(filepath) = self.config.parse_filepath().await else {
+        let Ok(Some(filepath)) = self.config.parse_filepath().await else {
             return Ok(());
         };
 
