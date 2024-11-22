@@ -24,7 +24,6 @@ impl TtlDeleteActor {
     }
 
     async fn handle(self) -> Result<()> {
-        //TODO interval period should be configurable
         let mut cleanup_interval = interval(Duration::from_millis(1));
         loop {
             cleanup_interval.tick().await;
