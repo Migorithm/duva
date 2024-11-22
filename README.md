@@ -1,5 +1,5 @@
 ## Duva
-This project is aimed at distributed cache server using Actor models, designed for efficient and scalable key-value store operations.
+Duva is a distributed cache server aimed at efficient and scalable key-value store operations using Actor models, written in Rust
 
 ### Features
 The following features have been implemented so far:
@@ -14,7 +14,11 @@ The following features have been implemented so far:
     - Auto Deletion: Automatically remove expired keys.
     - Local Sharding: Efficiently manage data distribution across local actors.
     - Configuration Settings: Customize server behavior with adjustable configurations.
-    - Persistence: Dump data into an rdb file (similar to Redis’ dump.rdb).
+    - Persistence:
+        - Dump data into an rdb file (similar to Redis’ dump.rdb).
+        - Append Only File
+        - <img width="1520" alt="Screenshot 2024-11-23 at 12 02 05 AM" src="https://github.com/user-attachments/assets/0d8b75f6-7a40-4854-9da2-ba98c0ecc3de">
+
 
 - Protocol Support
     - RESP Protocol: Fully implemented for parsing client requests, ensuring compatibility with Redis-like commands.
