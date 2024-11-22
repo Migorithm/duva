@@ -1,4 +1,6 @@
-use super::{extract_range, DatabaseSection, Init, KeyValueStorage, MetadataReady, RdbFile};
+use super::{
+    extract_range, DatabaseSection, Expiry, Init, KeyValueStorage, MetadataReady, RdbFile,
+};
 use crate::adapters::persistence::{DatabaseSectionBuilder, HeaderReady};
 use anyhow::{Context, Result};
 use std::{
@@ -252,7 +254,7 @@ impl BytesDecoder<'_, MetadataReady> {
     }
 
     fn try_key_value(&mut self) -> Result<KeyValueStorage> {
-        let mut expiry: Option<u64> = None;
+        let mut expiry: Option<Expiry> = None;
         while self.len() > 0 {
             match self[0] {
                 //0b11111100
@@ -276,7 +278,7 @@ impl BytesDecoder<'_, MetadataReady> {
         Err(anyhow::anyhow!("Invalid key value pair"))
     }
 
-    pub fn try_extract_expiry_time_in_seconds(&mut self) -> Result<u64> {
+    pub fn try_extract_expiry_time_in_seconds(&mut self) -> Result<Expiry> {
         self.remove_identifier();
         let range = 0..=3;
         let result = u32::from_le_bytes(
@@ -285,10 +287,10 @@ impl BytesDecoder<'_, MetadataReady> {
         );
         self.skip(4);
 
-        Ok(result as u64)
+        Ok(Expiry::Seconds(result))
     }
 
-    pub fn try_extract_expiry_time_in_milliseconds(&mut self) -> Result<u64> {
+    pub fn try_extract_expiry_time_in_milliseconds(&mut self) -> Result<Expiry> {
         self.remove_identifier();
         let range = 0..=7;
         let result = u64::from_le_bytes(
@@ -297,7 +299,7 @@ impl BytesDecoder<'_, MetadataReady> {
         );
         self.skip(8);
 
-        Ok(result)
+        Ok(Expiry::Milliseconds(result))
     }
 
     pub fn try_extract_key_value(&mut self) -> Result<(String, String)> {
@@ -439,7 +441,10 @@ fn test_database_section_extractor() {
     assert_eq!(db_section.storage[0].expiry, None);
     assert_eq!(db_section.storage[1].key, "foo");
     assert_eq!(db_section.storage[1].value, "bar");
-    assert_eq!(db_section.storage[1].expiry, Some(1713824559637));
+    assert_eq!(
+        db_section.storage[1].expiry,
+        Some(Expiry::Milliseconds(1713824559637))
+    );
 }
 
 #[test]

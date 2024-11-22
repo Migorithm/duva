@@ -1,10 +1,8 @@
-use tokio::{
-    sync::mpsc::Sender,
-    time::{self, interval},
-};
-
 use super::cache_actor::CacheDb;
 use crate::services::statefuls::command::AOFCommand;
+use tokio::sync::mpsc::Sender;
+use tokio::time;
+use tokio::time::interval;
 
 #[derive(Default)]
 pub struct AOFBuffer {

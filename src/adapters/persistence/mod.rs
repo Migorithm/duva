@@ -60,10 +60,10 @@
 //! It's primarily about communication/protocol rather than efficiency.\
 use std::collections::HashMap;
 use std::ops::RangeInclusive;
-
-pub mod byte_encoder;
+use std::time::SystemTime;
 
 pub mod byte_decoder;
+pub mod byte_encoder;
 
 #[derive(Default)]
 pub struct Init;
@@ -144,10 +144,47 @@ impl DatabaseSectionBuilder {
 /// 2. **Value Type:** 1-byte flag indicating the type and encoding of the value.
 /// 3. **Key:** String encoded.
 /// 4. **Value:** Encoding depends on the value type.
+
 pub struct KeyValueStorage {
     pub key: String,
     pub value: String,
-    pub expiry: Option<u64>,
+    pub expiry: Option<Expiry>,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum Expiry {
+    Seconds(u32),
+    Milliseconds(u64),
+}
+impl Expiry {
+    pub fn to_systemtime(&self) -> SystemTime {
+        match self {
+            Expiry::Seconds(secs) => {
+                SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(*secs as u64)
+            }
+            Expiry::Milliseconds(millis) => {
+                SystemTime::UNIX_EPOCH + std::time::Duration::from_millis(*millis)
+            }
+        }
+    }
+    pub fn to_u64(&self) -> u64 {
+        match self {
+            Expiry::Seconds(secs) => *secs as u64,
+            Expiry::Milliseconds(millis) => *millis,
+        }
+    }
+}
+
+impl KeyValueStorage {
+    pub fn is_valid(&self, current_systime: &SystemTime) -> bool {
+        match &self.expiry {
+            Some(expiry) => {
+                let expiry = expiry.to_systemtime();
+                expiry > *current_systime
+            }
+            None => true,
+        }
+    }
 }
 
 // Safe conversion from a slice to an array of a specific size.

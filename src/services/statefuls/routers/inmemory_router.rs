@@ -1,22 +1,13 @@
-use crate::{
-    adapters::persistence::{byte_decoder::BytesDecoder, Init},
-    config::Config,
-    services::{
-        statefuls::{
-            command::CacheCommand,
-            ttl_handlers::{
-                delete_actor::TtlDeleteActor,
-                set::{TtlInbox, TtlSetActor},
-            },
-        },
-        value::Value,
-    },
-};
+use super::cache_actor::{CacheActor, CacheMessageInbox};
+use crate::adapters::persistence::{byte_decoder::BytesDecoder, Init};
+use crate::config::Config;
+use crate::services::statefuls::ttl_handlers::delete_actor::TtlDeleteActor;
+use crate::services::statefuls::ttl_handlers::set::{TtlInbox, TtlSetActor};
+use crate::services::{statefuls::command::CacheCommand, value::Value};
 use anyhow::Result;
-use std::{hash::Hasher, iter::Zip, sync::Arc};
+use std::{hash::Hasher, iter::Zip, sync::Arc, time::SystemTime};
 use tokio::sync::oneshot::Sender;
 
-use super::cache_actor::{CacheActor, CacheMessageInbox};
 type OneShotSender<T> = tokio::sync::oneshot::Sender<T>;
 type OneShotReceiverJoinHandle<T> =
     tokio::task::JoinHandle<std::result::Result<T, tokio::sync::oneshot::error::RecvError>>;
@@ -28,7 +19,11 @@ pub(crate) struct CacheDispatcher {
 }
 
 impl CacheDispatcher {
-    pub(crate) async fn load_data(&self, ttl_inbox: TtlInbox) -> Result<()> {
+    pub(crate) async fn load_data(
+        &self,
+        ttl_inbox: TtlInbox,
+        current_system_time: SystemTime,
+    ) -> Result<()> {
         let Ok(Some(filepath)) = self.config.parse_filepath().await else {
             return Ok(());
         };
@@ -37,9 +32,18 @@ impl CacheDispatcher {
         let decoder: BytesDecoder<Init> = data.as_slice().into();
         let database = decoder.load_header()?.load_metadata()?.load_database()?;
 
-        for kvs in database.key_values() {
-            self.route_set(kvs.key, kvs.value, kvs.expiry, ttl_inbox.clone())
-                .await?;
+        for kvs in database
+            .key_values()
+            .into_iter()
+            .filter(|kvs| kvs.is_valid(&current_system_time))
+        {
+            self.route_set(
+                kvs.key,
+                kvs.value,
+                kvs.expiry.map(|x| x.to_u64()),
+                ttl_inbox.clone(),
+            )
+            .await?;
         }
 
         Ok(())
