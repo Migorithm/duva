@@ -11,7 +11,7 @@ use services::{
     config_handler::ConfigHandler,
     statefuls::{routers::inmemory_router::CacheDispatcher, ttl_handlers::set::TtlInbox},
 };
-use std::sync::Arc;
+use std::{sync::Arc, time::SystemTime};
 use tokio::net::{TcpListener, TcpStream};
 
 #[cfg(test)]
@@ -30,7 +30,9 @@ async fn main() -> Result<()> {
         CacheDispatcher::run_cache_actors(NUM_OF_PERSISTENCE, config.clone());
 
     // Load data from the file if --dir and --dbfilename are provided
-    cache_dispatcher.load_data(ttl_inbox.clone()).await?;
+    cache_dispatcher
+        .load_data(ttl_inbox.clone(), SystemTime::now())
+        .await?;
 
     let listener = TcpListener::bind(config.bind_addr()).await?;
     loop {

@@ -13,7 +13,13 @@ use crate::{
     },
 };
 use anyhow::Result;
-use std::{hash::Hasher, iter::Zip, sync::Arc};
+use std::{
+    alloc::System,
+    hash::Hasher,
+    iter::Zip,
+    sync::Arc,
+    time::{SystemTime, UNIX_EPOCH},
+};
 use tokio::sync::oneshot::Sender;
 
 use super::cache_actor::{CacheActor, CacheMessageInbox};
@@ -28,7 +34,11 @@ pub(crate) struct CacheDispatcher {
 }
 
 impl CacheDispatcher {
-    pub(crate) async fn load_data(&self, ttl_inbox: TtlInbox) -> Result<()> {
+    pub(crate) async fn load_data(
+        &self,
+        ttl_inbox: TtlInbox,
+        current_system_time: SystemTime,
+    ) -> Result<()> {
         let Ok(Some(filepath)) = self.config.parse_filepath().await else {
             return Ok(());
         };
@@ -37,9 +47,18 @@ impl CacheDispatcher {
         let decoder: BytesDecoder<Init> = data.as_slice().into();
         let database = decoder.load_header()?.load_metadata()?.load_database()?;
 
-        for kvs in database.key_values() {
-            self.route_set(kvs.key, kvs.value, kvs.expiry, ttl_inbox.clone())
-                .await?;
+        for kvs in database
+            .key_values()
+            .into_iter()
+            .filter(|kvs| kvs.is_valid(&current_system_time))
+        {
+            self.route_set(
+                kvs.key,
+                kvs.value,
+                kvs.expiry.map(|x| x.to_u64()),
+                ttl_inbox.clone(),
+            )
+            .await?;
         }
 
         Ok(())

@@ -12,7 +12,6 @@ impl TtlCommand {
             TtlCommand::Expiry { expiry, key } => (expiry, key),
             TtlCommand::StopSentinel => return None,
         };
-
         let expire_at = SystemTime::now() + Duration::from_millis(expire_in_mills);
         Some((expire_at, key))
     }
