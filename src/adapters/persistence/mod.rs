@@ -61,9 +61,9 @@
 use std::collections::HashMap;
 use std::ops::RangeInclusive;
 
-pub mod data_encoder;
+pub mod byte_encoder;
 
-pub mod bytes_handler;
+pub mod byte_decoder;
 
 #[derive(Default)]
 pub struct Init;
