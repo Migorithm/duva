@@ -42,16 +42,17 @@ impl Config {
         format!("{}:{}", self.host, self.port)
     }
 
-    pub async fn parse_filepath(&self) -> Result<String> {
+    pub async fn parse_filepath(&self) -> Result<Option<String>> {
         match (&self.dir, &self.db_filename) {
             (Some(dir), Some(db_filename)) => {
                 let file_path = format!("{}/{}", dir, db_filename);
                 if try_exists(&file_path).await? {
                     println!("The file exists.");
+                    Ok(Some(file_path))
                 } else {
-                    println!("The file does not exist.");
+                    println!("The file does NOT exist.");
+                    Ok(None)
                 }
-                Ok(file_path)
             }
             _ => Err(anyhow::anyhow!("dir and db_filename not given")),
         }
