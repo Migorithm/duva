@@ -62,9 +62,8 @@ use std::collections::HashMap;
 use std::ops::RangeInclusive;
 use std::time::SystemTime;
 
-pub mod byte_encoder;
-
 pub mod byte_decoder;
+pub mod byte_encoder;
 
 #[derive(Default)]
 pub struct Init;

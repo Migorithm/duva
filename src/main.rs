@@ -1,9 +1,7 @@
 pub mod adapters;
 mod config;
-
 pub mod macros;
 pub mod services;
-
 use adapters::controller::Controller;
 use anyhow::Result;
 use config::Config;
