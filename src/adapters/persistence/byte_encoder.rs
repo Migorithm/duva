@@ -70,7 +70,7 @@ fn data_encode(size: usize, data: &str) -> Option<BytesEncoder> {
 }
 
 #[cfg(test)]
-use super::{bytes_handler::BytesDecoder, Init};
+use super::{byte_decoder::BytesDecoder, Init};
 
 #[test]
 fn test_size_encode_6_bit() {
