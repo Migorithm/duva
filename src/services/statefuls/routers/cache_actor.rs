@@ -27,7 +27,6 @@ pub enum CacheCommand {
         sender: oneshot::Sender<Value>,
     },
     Delete(String),
-    StartUp(CacheDb),
     StopSentinel,
 }
 
@@ -80,7 +79,6 @@ impl CacheDb {
 make_smart_pointer!(CacheDb, HashMap<String, String>);
 
 pub struct CacheActor {
-    cache: CacheDb,
     inbox: tokio::sync::mpsc::Receiver<CacheCommand>,
 }
 impl CacheActor {
@@ -89,7 +87,6 @@ impl CacheActor {
         let (tx, cache_actor_inbox) = tokio::sync::mpsc::channel(100);
         tokio::spawn(
             Self {
-                cache: Default::default(),
                 inbox: cache_actor_inbox,
             }
             .handle(),
@@ -98,9 +95,10 @@ impl CacheActor {
     }
 
     async fn handle(mut self) -> Result<()> {
+        let mut cache = CacheDb::default();
+
         while let Some(command) = self.inbox.recv().await {
             match command {
-                CacheCommand::StartUp(cache_db) => self.cache = cache_db,
                 CacheCommand::StopSentinel => break,
                 CacheCommand::Set {
                     key,
@@ -109,20 +107,19 @@ impl CacheActor {
                     ttl_sender,
                 } => {
                     // Maybe you have to pass sender?
-                    let _ = self
-                        .cache
+                    let _ = cache
                         .handle_set(key.clone(), value.clone(), expiry, ttl_sender)
                         .await;
                 }
                 CacheCommand::Get { key, sender } => {
-                    self.cache.handle_get(key, sender);
+                    cache.handle_get(key, sender);
                 }
                 CacheCommand::Keys { pattern, sender } => {
-                    self.cache.handle_keys(pattern, sender);
+                    cache.handle_keys(pattern, sender);
                 }
-                CacheCommand::Delete(key) => self.cache.handle_delete(&key),
+                CacheCommand::Delete(key) => cache.handle_delete(&key),
                 CacheCommand::Save { outbox } => {
-                    for chunk in self.cache.iter().collect::<Vec<_>>().chunks(10) {
+                    for chunk in cache.iter().collect::<Vec<_>>().chunks(10) {
                         outbox
                             .send(SaveActorCommand::SaveChunk(
                                 chunk
