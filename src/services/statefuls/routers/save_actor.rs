@@ -1,20 +1,10 @@
 use tokio::sync::mpsc::Sender;
 
+use super::cache_actor::CacheChunk;
+
 pub enum SaveActorCommand {
     SaveChunk(CacheChunk),
     StopSentinel,
-}
-
-pub struct CacheChunk(pub Vec<(String, String)>);
-impl CacheChunk {
-    pub fn new<'a>(chunk: &'a [(&'a String, &'a String)]) -> Self {
-        Self(
-            chunk
-                .iter()
-                .map(|(k, v)| (k.to_string(), v.to_string()))
-                .collect::<Vec<(String, String)>>(),
-        )
-    }
 }
 
 pub struct SaveActor {

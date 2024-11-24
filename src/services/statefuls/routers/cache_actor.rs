@@ -6,7 +6,7 @@ use anyhow::Result;
 use std::collections::HashMap;
 use tokio::sync::{mpsc, oneshot};
 
-use super::save_actor::{CacheChunk, SaveActorCommand};
+use super::save_actor::SaveActorCommand;
 
 pub enum CacheCommand {
     Set {
@@ -44,8 +44,17 @@ impl CacheDb {
         })
     }
 }
-
-make_smart_pointer!(CacheDb, HashMap<String, String>);
+pub struct CacheChunk(pub Vec<(String, String)>);
+impl CacheChunk {
+    pub fn new<'a>(chunk: &'a [(&'a String, &'a String)]) -> Self {
+        Self(
+            chunk
+                .iter()
+                .map(|(k, v)| (k.to_string(), v.to_string()))
+                .collect::<Vec<(String, String)>>(),
+        )
+    }
+}
 
 pub struct CacheActor {
     inbox: tokio::sync::mpsc::Receiver<CacheCommand>,
@@ -91,7 +100,6 @@ impl CacheActor {
                 }
                 CacheCommand::Keys { pattern, sender } => {
                     let ks = cache.keys_stream(pattern).collect();
-
                     sender
                         .send(Value::Array(ks))
                         .map_err(|_| anyhow::anyhow!("Error sending keys"))?;
@@ -117,4 +125,5 @@ impl CacheActor {
 #[derive(Clone)]
 pub struct CacheMessageInbox(tokio::sync::mpsc::Sender<CacheCommand>);
 
+make_smart_pointer!(CacheDb, HashMap<String, String>);
 make_smart_pointer!(CacheMessageInbox, tokio::sync::mpsc::Sender<CacheCommand>);
