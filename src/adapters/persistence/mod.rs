@@ -65,6 +65,7 @@ use crate::services::CacheEntry;
 
 pub mod byte_decoder;
 pub mod byte_encoder;
+mod const_indicators;
 
 #[derive(Default)]
 pub struct Init;

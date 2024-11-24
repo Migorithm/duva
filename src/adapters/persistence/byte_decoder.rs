@@ -8,6 +8,7 @@ use std::{
     collections::HashMap,
     ops::{Deref, DerefMut},
 };
+use crate::adapters::persistence::const_indicators::{DATABASE_SECTION_INDICATOR, METADATA_SECTION_INDICATOR, HEADER_MAGIC_STRING, DATABASE_TABLE_SIZE_INDICATOR};
 
 #[derive(Default)]
 pub struct BytesDecoder<'a, T> {
@@ -111,7 +112,7 @@ impl<T> BytesDecoder<'_, T> {
         None
     }
 
-    pub(crate) fn check_identifier(&self, iden: u8) -> bool {
+    pub(crate) fn check_indicator(&self, iden: u8) -> bool {
         self.get(0) == Some(&iden)
     }
 }
@@ -135,9 +136,8 @@ impl<'a> BytesDecoder<'a, Init> {
         })
     }
     fn take_header(&mut self) -> Result<String> {
-        const RDB_HEADER_MAGIC_STRING: &str = "REDIS";
         let header = self.take_string(5)?;
-        if header != RDB_HEADER_MAGIC_STRING {
+        if header != HEADER_MAGIC_STRING {
             return Err(anyhow::Error::msg("header loading: header is not REDIS"))?;
         }
         Ok(header)
@@ -150,10 +150,8 @@ impl<'a> BytesDecoder<'a, Init> {
 
 impl<'a> BytesDecoder<'a, HeaderReady> {
     pub fn load_metadata(mut self) -> Result<BytesDecoder<'a, MetadataReady>> {
-        const METADATA_SECTION_IDENTIFIER: u8 = 0xFA;
-
         let mut metadata = HashMap::new();
-        while self.check_identifier(METADATA_SECTION_IDENTIFIER) {
+        while self.check_indicator(METADATA_SECTION_INDICATOR) {
             let (key, value) = self
                 .try_extract_metadata_key_value()
                 .context("metadata loading: key value extraction failed")?;
@@ -177,9 +175,8 @@ impl<'a> BytesDecoder<'a, HeaderReady> {
 }
 impl BytesDecoder<'_, MetadataReady> {
     pub fn load_database(mut self) -> Result<RdbFile> {
-        const DATABASE_SECTION_IDENTIFIER: u8 = 0xFE;
         let mut database = Vec::new();
-        while self.check_identifier(DATABASE_SECTION_IDENTIFIER) {
+        while self.check_indicator(DATABASE_SECTION_INDICATOR) {
             let section = self
                 .extract_section()
                 .context("database loading: section extraction failed")?;
@@ -195,18 +192,14 @@ impl BytesDecoder<'_, MetadataReady> {
         })
     }
     fn extract_section(&mut self) -> Result<DatabaseSection> {
-        const SECTION_INDEX_IDENTIFIER: u8 = 0xFE; // 0b11111110
-        const TABLE_SIZE_IDENTIFIER: u8 = 0xFB; //0b11111011
-
         let mut builder: DatabaseSectionBuilder = DatabaseSectionBuilder::default();
 
         while let Some(identifier) = self.first() {
             match *identifier {
-                SECTION_INDEX_IDENTIFIER => {
+                DATABASE_SECTION_INDICATOR => {
                     self.try_set_index(&mut builder)?;
                 }
-
-                TABLE_SIZE_IDENTIFIER => {
+                DATABASE_TABLE_SIZE_INDICATOR => {
                     self.try_set_table_sizes(&mut builder)?;
                 }
                 _ => {
