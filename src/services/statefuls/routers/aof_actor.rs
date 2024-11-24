@@ -9,7 +9,9 @@ pub struct AOFBuffer {
     pub buffer: CacheDb,
 }
 
-pub enum SaveActorCommand {}
+pub enum SaveActorCommand {
+    SaveChunk(Vec<(String, String)>),
+}
 
 pub struct SaveActor {
     pub aof_buffer: AOFBuffer,

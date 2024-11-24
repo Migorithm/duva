@@ -9,6 +9,8 @@ use anyhow::Result;
 use std::collections::HashMap;
 use tokio::sync::oneshot;
 
+use super::aof_actor::SaveActorCommand;
+
 #[derive(Default)]
 pub struct CacheDb(HashMap<String, String>);
 
@@ -101,7 +103,19 @@ impl CacheActor {
                     self.cache.handle_keys(pattern, sender);
                 }
                 CacheCommand::Delete(key) => self.cache.handle_delete(&key),
-                CacheCommand::Save { outbox } => todo!(),
+                CacheCommand::Save { outbox } => {
+                    // TODO buffer?
+                    for chunk in self.cache.iter().collect::<Vec<_>>().chunks(10) {
+                        let _ = outbox
+                            .send(SaveActorCommand::SaveChunk(
+                                chunk
+                                    .iter()
+                                    .map(|(k, v)| ((*k).clone(), (*v).clone()))
+                                    .collect::<Vec<(String, String)>>(),
+                            ))
+                            .await;
+                    }
+                }
             }
         }
         Ok(())
