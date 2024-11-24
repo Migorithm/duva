@@ -7,7 +7,7 @@ use tokio::sync::mpsc::Receiver;
 
 use crate::make_smart_pointer;
 
-use super::pr_queue;
+use super::ttl_queue;
 
 pub struct TtlSetActor {
     pub inbox: Receiver<TtlCommand>,
@@ -21,7 +21,7 @@ impl TtlSetActor {
 
     async fn handle(mut self) {
         while let Some(command) = self.inbox.recv().await {
-            let mut queue = pr_queue().write().await;
+            let mut queue = ttl_queue().write().await;
             let Some((expire_at, key)) = command.get_expiration() else {
                 break;
             };

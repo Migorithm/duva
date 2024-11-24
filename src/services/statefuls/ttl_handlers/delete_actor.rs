@@ -1,4 +1,4 @@
-use super::pr_queue;
+use super::ttl_queue;
 use crate::services::statefuls::{
     command::CacheCommand, routers::cache_dispatcher::CacheDispatcher,
 };
@@ -27,7 +27,7 @@ impl TtlDeleteActor {
         let mut cleanup_interval = interval(Duration::from_millis(1));
         loop {
             cleanup_interval.tick().await;
-            let mut queue = pr_queue().write().await;
+            let mut queue = ttl_queue().write().await;
             while let Some((Reverse(expiry), key)) = queue.peek() {
                 if expiry <= &SystemTime::now() {
                     let shard_key = self.cache_dispatcher.take_shard_key_from_str(key);
