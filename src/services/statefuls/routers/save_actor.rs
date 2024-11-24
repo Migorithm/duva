@@ -1,7 +1,9 @@
 use tokio::sync::mpsc::Sender;
 
+use super::cache_actor::CacheChunk;
+
 pub enum SaveActorCommand {
-    SaveChunk(Vec<(String, String)>),
+    SaveChunk(CacheChunk),
     StopSentinel,
 }
 
@@ -27,8 +29,8 @@ impl SaveActor {
         while let Some(command) = self.inbox.recv().await {
             match command {
                 SaveActorCommand::SaveChunk(chunk) => {
-                    for (k, v) in chunk {
-                        // TODO SAVE operation
+                    for (k, v) in chunk.0 {
+                        //SAVE operation
                     }
                 }
                 SaveActorCommand::StopSentinel => {

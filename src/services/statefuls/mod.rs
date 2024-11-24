@@ -1,5 +1,3 @@
-pub mod command;
-
 pub mod routers;
 pub mod ttl_handlers;
 

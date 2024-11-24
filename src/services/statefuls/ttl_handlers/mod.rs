@@ -2,13 +2,11 @@ use std::{cmp::Reverse, collections::BinaryHeap, sync::OnceLock, time::SystemTim
 
 use tokio::sync::RwLock;
 
-pub mod command;
 pub mod delete_actor;
 pub mod set;
 
-static PRIORITY_QUEUE: OnceLock<RwLock<BinaryHeap<(Reverse<SystemTime>, String)>>> =
-    OnceLock::new();
+static TTL_QUEUE: OnceLock<RwLock<BinaryHeap<(Reverse<SystemTime>, String)>>> = OnceLock::new();
 
-fn pr_queue() -> &'static RwLock<BinaryHeap<(Reverse<SystemTime>, String)>> {
-    PRIORITY_QUEUE.get_or_init(|| RwLock::new(BinaryHeap::new()))
+fn ttl_queue() -> &'static RwLock<BinaryHeap<(Reverse<SystemTime>, String)>> {
+    TTL_QUEUE.get_or_init(|| RwLock::new(BinaryHeap::new()))
 }
