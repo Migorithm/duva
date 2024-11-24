@@ -9,7 +9,7 @@ pub struct AOFBuffer {
     pub buffer: CacheDb,
 }
 
-enum SaveActorCommand {}
+pub enum SaveActorCommand {}
 
 pub struct SaveActor {
     pub aof_buffer: AOFBuffer,
