@@ -1,11 +1,7 @@
-use super::aof_actor::AOFActor;
 use crate::{
     make_smart_pointer,
     services::{
-        statefuls::{
-            command::{AOFCommand, CacheCommand},
-            ttl_handlers::set::TtlInbox,
-        },
+        statefuls::{command::CacheCommand, ttl_handlers::set::TtlInbox},
         value::Value,
     },
 };
@@ -65,20 +61,16 @@ pub struct CacheActor {
     cache: CacheDb,
     actor_id: usize,
     inbox: tokio::sync::mpsc::Receiver<CacheCommand>,
-    outbox: tokio::sync::mpsc::Sender<AOFCommand>,
 }
 impl CacheActor {
     // Create a new CacheActor with inner state
     pub fn run(actor_id: usize) -> CacheMessageInbox {
-        let outbox = AOFActor::run(actor_id);
-
         let (tx, cache_actor_inbox) = tokio::sync::mpsc::channel(100);
         tokio::spawn(
             Self {
                 cache: Default::default(),
                 inbox: cache_actor_inbox,
                 actor_id,
-                outbox,
             }
             .handle(),
         );
@@ -97,12 +89,10 @@ impl CacheActor {
                     ttl_sender,
                 } => {
                     // Maybe you have to pass sender?
-
-                    let _ = tokio::join!(
-                        self.cache
-                            .handle_set(key.clone(), value.clone(), expiry, ttl_sender),
-                        self.outbox.send(AOFCommand::Set { key, value, expiry })
-                    );
+                    let _ = self
+                        .cache
+                        .handle_set(key.clone(), value.clone(), expiry, ttl_sender)
+                        .await;
                 }
                 CacheCommand::Get { key, sender } => {
                     self.cache.handle_get(key, sender);

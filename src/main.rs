@@ -2,7 +2,7 @@ pub mod adapters;
 mod config;
 pub mod macros;
 pub mod services;
-use adapters::controller::Controller;
+use adapters::controller::QueryManager;
 use anyhow::Result;
 use config::Config;
 use services::{
@@ -56,7 +56,7 @@ fn process(
     cache_dispatcher: CacheDispatcher,
 ) {
     tokio::spawn(async move {
-        let mut io_controller = Controller::new(stream);
+        let mut io_controller = QueryManager::new(stream);
         let config_handler = ConfigHandler::new(conf);
         loop {
             match io_controller

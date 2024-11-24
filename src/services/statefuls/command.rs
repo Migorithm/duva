@@ -23,12 +23,3 @@ pub enum CacheCommand {
     StartUp(CacheDb),
     StopSentinel,
 }
-
-pub enum AOFCommand {
-    Set {
-        key: String,
-        value: String,
-        expiry: Option<u64>,
-    },
-    Delete(String),
-}

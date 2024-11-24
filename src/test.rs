@@ -1,7 +1,7 @@
 use crate::{
     adapters::controller::{
         interface::{TRead, TWriteBuf},
-        Controller,
+        QueryManager,
     },
     config::Config,
     services::{
@@ -74,7 +74,7 @@ async fn test_set() {
             .as_bytes()
             .to_vec(),
     };
-    let mut controller = Controller::new(stream);
+    let mut controller = QueryManager::new(stream);
 
     // WHEN
     controller
@@ -102,7 +102,7 @@ async fn test_set_with_expiry() {
 
     let (cache_dispatcher, ttl_inbox) = CacheDispatcher::run_cache_actors(3, config_helper());
 
-    let mut controller = Controller::new(stream);
+    let mut controller = QueryManager::new(stream);
     let config_handler = ConfigHandler::new(Arc::new(Config::new()));
 
     // WHEN
@@ -133,7 +133,7 @@ async fn test_set_with_expire_should_expire_within_100ms() {
     };
     let (cache_dispatcher, ttl_inbox) = CacheDispatcher::run_cache_actors(3, config_helper());
 
-    let mut controller = Controller::new(stream);
+    let mut controller = QueryManager::new(stream);
     let config_handler = ConfigHandler::new(Arc::new(Config::new()));
 
     // WHEN
@@ -173,7 +173,7 @@ async fn test_config_get_dir() {
     };
     let (cache_dispatcher, ttl_inbox) = CacheDispatcher::run_cache_actors(3, config_helper());
 
-    let mut controller = Controller::new(stream);
+    let mut controller = QueryManager::new(stream);
     let config_handler = ConfigHandler::new(Arc::new(conf));
 
     // WHEN
@@ -202,7 +202,7 @@ async fn test_keys() {
         written: "*2\r\n$4\r\nKEYS\r\n$3\r\n\"*\"\r\n".as_bytes().to_vec(),
     };
 
-    let mut controller = Controller::new(stream);
+    let mut controller = QueryManager::new(stream);
 
     // WHEN
     controller

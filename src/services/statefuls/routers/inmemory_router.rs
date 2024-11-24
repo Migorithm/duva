@@ -24,7 +24,7 @@ impl CacheDispatcher {
         ttl_inbox: TtlInbox,
         current_system_time: SystemTime,
     ) -> Result<()> {
-        let Ok(Some(filepath)) = self.config.parse_filepath().await else {
+        let Ok(Some(filepath)) = self.config.try_filepath().await else {
             return Ok(());
         };
 
@@ -165,5 +165,9 @@ impl CacheDispatcher {
         TtlDeleteActor::run(self);
         let ttl_setter = TtlSetActor::run();
         ttl_setter
+    }
+
+    pub fn run_save_actor(&self, db_filepath: Option<String>) {
+        let filepath = db_filepath.unwrap_or_else(|| "dump.rdb".to_string());
     }
 }
