@@ -34,26 +34,6 @@ pub enum CacheCommand {
 #[derive(Default)]
 pub struct CacheDb(HashMap<String, String>);
 
-impl CacheDb {
-    fn handle_delete(&mut self, key: &str) {
-        self.remove(key);
-    }
-
-    fn handle_keys(&self, pattern: Option<String>, sender: oneshot::Sender<Value>) {
-        let ks = self
-            .keys()
-            .filter_map(|k| {
-                if pattern.as_ref().map_or(true, |p| k.contains(p)) {
-                    Some(Value::BulkString(k.clone()))
-                } else {
-                    None
-                }
-            })
-            .collect();
-        sender.send(Value::Array(ks)).unwrap();
-    }
-}
-
 make_smart_pointer!(CacheDb, HashMap<String, String>);
 
 pub struct CacheActor {
@@ -74,10 +54,10 @@ impl CacheActor {
 
     async fn handle(mut self) -> Result<()> {
         let mut cache = CacheDb::default();
-
         while let Some(command) = self.inbox.recv().await {
             match command {
                 CacheCommand::StopSentinel => break,
+
                 CacheCommand::Set {
                     key,
                     value,
@@ -99,9 +79,24 @@ impl CacheActor {
                     let _ = sender.send(cache.get(&key).cloned().into());
                 }
                 CacheCommand::Keys { pattern, sender } => {
-                    cache.handle_keys(pattern, sender);
+                    let ks = cache
+                        .keys()
+                        .filter_map(|k| {
+                            if pattern.as_ref().map_or(true, |p| k.contains(p)) {
+                                Some(Value::BulkString(k.clone()))
+                            } else {
+                                None
+                            }
+                        })
+                        .collect();
+
+                    sender
+                        .send(Value::Array(ks))
+                        .map_err(|_| anyhow::anyhow!("Error sending keys"))?;
                 }
-                CacheCommand::Delete(key) => cache.handle_delete(&key),
+                CacheCommand::Delete(key) => {
+                    cache.remove(&key);
+                }
                 CacheCommand::Save { outbox } => {
                     for chunk in cache.iter().collect::<Vec<_>>().chunks(10) {
                         outbox
