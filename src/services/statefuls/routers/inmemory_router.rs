@@ -1,3 +1,4 @@
+use super::aof_actor::SaveActor;
 use super::cache_actor::{CacheActor, CacheMessageInbox};
 use crate::adapters::persistence::{byte_decoder::BytesDecoder, Init};
 use crate::config::Config;
@@ -169,5 +170,10 @@ impl CacheDispatcher {
 
     pub fn run_save_actor(&self, db_filepath: Option<String>) {
         let filepath = db_filepath.unwrap_or_else(|| "dump.rdb".to_string());
+        let outbox = SaveActor::run();
+
+        // get all the handlers to cache actors
+        // send save command to all the cache actors
+        todo!()
     }
 }

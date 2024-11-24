@@ -101,6 +101,7 @@ impl CacheActor {
                     self.cache.handle_keys(pattern, sender);
                 }
                 CacheCommand::Delete(key) => self.cache.handle_delete(&key),
+                CacheCommand::Save { outbox } => todo!(),
             }
         }
         Ok(())
