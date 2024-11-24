@@ -1,15 +1,35 @@
 use crate::{
     make_smart_pointer,
-    services::{
-        statefuls::{command::CacheCommand, ttl_handlers::set::TtlInbox},
-        value::Value,
-    },
+    services::{statefuls::ttl_handlers::set::TtlInbox, value::Value},
 };
 use anyhow::Result;
 use std::collections::HashMap;
-use tokio::sync::oneshot;
+use tokio::sync::{mpsc, oneshot};
 
 use super::save_actor::SaveActorCommand;
+
+pub enum CacheCommand {
+    Set {
+        key: String,
+        value: String,
+        expiry: Option<u64>,
+        ttl_sender: TtlInbox,
+    },
+    Save {
+        outbox: mpsc::Sender<SaveActorCommand>,
+    },
+    Get {
+        key: String,
+        sender: oneshot::Sender<Value>,
+    },
+    Keys {
+        pattern: Option<String>,
+        sender: oneshot::Sender<Value>,
+    },
+    Delete(String),
+    StartUp(CacheDb),
+    StopSentinel,
+}
 
 #[derive(Default)]
 pub struct CacheDb(HashMap<String, String>);

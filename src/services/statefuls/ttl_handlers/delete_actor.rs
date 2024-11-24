@@ -1,6 +1,6 @@
 use super::ttl_queue;
-use crate::services::statefuls::{
-    command::CacheCommand, routers::cache_dispatcher::CacheDispatcher,
+use crate::services::statefuls::routers::{
+    cache_actor::CacheCommand, cache_dispatcher::CacheDispatcher,
 };
 use anyhow::Result;
 use std::{
