@@ -27,6 +27,7 @@ pub enum CacheCommand {
         sender: oneshot::Sender<Value>,
     },
     Delete(String),
+
     StopSentinel,
 }
 
@@ -34,29 +35,6 @@ pub enum CacheCommand {
 pub struct CacheDb(HashMap<String, String>);
 
 impl CacheDb {
-    pub async fn handle_set(
-        &mut self,
-        key: String,
-        value: String,
-        expiry: Option<u64>,
-        ttl_sender: TtlInbox,
-    ) -> Result<Value> {
-        match expiry {
-            Some(expiry) => {
-                self.insert(key.clone(), value);
-                ttl_sender.set_ttl(key, expiry).await;
-            }
-            None => {
-                self.insert(key, value);
-            }
-        }
-        Ok(Value::SimpleString("OK".to_string()))
-    }
-
-    pub fn handle_get(&self, key: String, sender: oneshot::Sender<Value>) {
-        let _ = sender.send(self.get(&key).cloned().into());
-    }
-
     fn handle_delete(&mut self, key: &str) {
         self.remove(key);
     }
@@ -107,12 +85,18 @@ impl CacheActor {
                     ttl_sender,
                 } => {
                     // Maybe you have to pass sender?
-                    let _ = cache
-                        .handle_set(key.clone(), value.clone(), expiry, ttl_sender)
-                        .await;
+                    match expiry {
+                        Some(expiry) => {
+                            cache.insert(key.clone(), value);
+                            ttl_sender.set_ttl(key, expiry).await;
+                        }
+                        None => {
+                            cache.insert(key, value);
+                        }
+                    }
                 }
                 CacheCommand::Get { key, sender } => {
-                    cache.handle_get(key, sender);
+                    let _ = sender.send(cache.get(&key).cloned().into());
                 }
                 CacheCommand::Keys { pattern, sender } => {
                     cache.handle_keys(pattern, sender);
