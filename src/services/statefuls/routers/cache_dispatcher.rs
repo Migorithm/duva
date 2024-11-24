@@ -176,7 +176,7 @@ impl CacheDispatcher {
         for inbox in self.inboxes.iter().map(Clone::clone) {
             let outbox = outbox.clone();
             tokio::spawn(async move {
-                let _ = inbox.send(CacheCommand::Save { outbox: outbox }).await;
+                let _ = inbox.send(CacheCommand::Save { outbox }).await;
             });
         }
     }
