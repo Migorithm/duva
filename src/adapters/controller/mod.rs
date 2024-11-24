@@ -10,18 +10,18 @@ use crate::{
     make_smart_pointer,
     services::{
         config_handler::{command::ConfigCommand, ConfigHandler},
-        statefuls::{routers::inmemory_router::CacheDispatcher, ttl_handlers::set::TtlInbox},
+        statefuls::{routers::cache_dispatcher::CacheDispatcher, ttl_handlers::set::TtlInbox},
         value::Value,
     },
 };
 
 /// Controller is a struct that will be used to read and write values to the client.
-pub struct Controller<T: TWriteBuf + TRead> {
+pub struct QueryManager<T: TWriteBuf + TRead> {
     pub(crate) stream: T,
     buffer: BytesMut,
 }
 
-impl<U: TWriteBuf + TRead> Controller<U> {
+impl<U: TWriteBuf + TRead> QueryManager<U> {
     pub(crate) async fn handle(
         &mut self,
         persistence_router: &CacheDispatcher,
@@ -41,6 +41,12 @@ impl<U: TWriteBuf + TRead> Controller<U> {
                 persistence_router
                     .route_set(key, value, expiry, ttl_sender)
                     .await?
+            }
+            Save => {
+                // spawn save actor
+                persistence_router.run_save_actor(config_handler.conf.get_filepath());
+                // TODO Set return type
+                Value::Null
             }
             Get => {
                 let key = args.take_get_args()?;
@@ -64,9 +70,9 @@ impl<U: TWriteBuf + TRead> Controller<U> {
     }
 }
 
-impl<T: TWriteBuf + TRead> Controller<T> {
+impl<T: TWriteBuf + TRead> QueryManager<T> {
     pub fn new(stream: T) -> Self {
-        Controller {
+        QueryManager {
             stream,
             buffer: BytesMut::with_capacity(512),
         }

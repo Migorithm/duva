@@ -2,21 +2,19 @@ pub mod adapters;
 mod config;
 pub mod macros;
 pub mod services;
-use adapters::controller::Controller;
+use adapters::controller::QueryManager;
 use anyhow::Result;
 use config::Config;
 use services::{
     config_handler::ConfigHandler,
-    statefuls::{routers::inmemory_router::CacheDispatcher, ttl_handlers::set::TtlInbox},
+    statefuls::{routers::cache_dispatcher::CacheDispatcher, ttl_handlers::set::TtlInbox},
 };
 use std::{sync::Arc, time::SystemTime};
 use tokio::net::{TcpListener, TcpStream};
-
 #[cfg(test)]
 mod test;
 
 /// dir, dbfilename is given as follows: ./your_program.sh --dir /tmp/redis-files --dbfilename dump.rdb
-
 const NUM_OF_PERSISTENCE: usize = 10;
 
 #[tokio::main]
@@ -56,10 +54,10 @@ fn process(
     cache_dispatcher: CacheDispatcher,
 ) {
     tokio::spawn(async move {
-        let mut io_controller = Controller::new(stream);
+        let mut query_manager = QueryManager::new(stream);
         let config_handler = ConfigHandler::new(conf);
         loop {
-            match io_controller
+            match query_manager
                 .handle(&cache_dispatcher, ttl_inbox.clone(), config_handler.clone())
                 .await
             {

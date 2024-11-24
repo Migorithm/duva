@@ -42,7 +42,8 @@ impl Config {
         format!("{}:{}", self.host, self.port)
     }
 
-    pub async fn parse_filepath(&self) -> Result<Option<String>> {
+    // The following is used on startup and check if the file exists
+    pub async fn try_filepath(&self) -> Result<Option<String>> {
         match (&self.dir, &self.db_filename) {
             (Some(dir), Some(db_filename)) => {
                 let file_path = format!("{}/{}", dir, db_filename);
@@ -55,6 +56,15 @@ impl Config {
                 }
             }
             _ => Err(anyhow::anyhow!("dir and db_filename not given")),
+        }
+    }
+    pub fn get_filepath(&self) -> Option<String> {
+        match (&self.dir, &self.db_filename) {
+            (Some(dir), Some(db_filename)) => {
+                let file_path = format!("{}/{}", dir, db_filename);
+                Some(file_path)
+            }
+            _ => None,
         }
     }
 }

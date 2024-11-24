@@ -1,4 +1,5 @@
 use super::cache_actor::{CacheActor, CacheMessageInbox};
+use super::save_actor::SaveActor;
 use crate::adapters::persistence::{byte_decoder::BytesDecoder, Init};
 use crate::config::Config;
 use crate::services::statefuls::ttl_handlers::delete_actor::TtlDeleteActor;
@@ -24,7 +25,7 @@ impl CacheDispatcher {
         ttl_inbox: TtlInbox,
         current_system_time: SystemTime,
     ) -> Result<()> {
-        let Ok(Some(filepath)) = self.config.parse_filepath().await else {
+        let Ok(Some(filepath)) = self.config.try_filepath().await else {
             return Ok(());
         };
 
@@ -151,7 +152,7 @@ impl CacheDispatcher {
         let cache_dispatcher = CacheDispatcher {
             inboxes: (0..num_of_actors)
                 .into_iter()
-                .map(|actor_id| CacheActor::run(actor_id))
+                .map(|_| CacheActor::run())
                 .collect::<Vec<_>>()
                 .into(),
             config,
@@ -165,5 +166,18 @@ impl CacheDispatcher {
         TtlDeleteActor::run(self);
         let ttl_setter = TtlSetActor::run();
         ttl_setter
+    }
+
+    pub fn run_save_actor(&self, db_filepath: Option<String>) {
+        let filepath: String = db_filepath.unwrap_or_else(|| "dump.rdb".to_string());
+        let outbox = SaveActor::run(filepath, self.inboxes.len());
+
+        // get all the handlers to cache actors
+        for inbox in self.inboxes.iter().map(Clone::clone) {
+            let outbox = outbox.clone();
+            tokio::spawn(async move {
+                let _ = inbox.send(CacheCommand::Save { outbox }).await;
+            });
+        }
     }
 }
