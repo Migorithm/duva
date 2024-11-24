@@ -6,7 +6,7 @@ use anyhow::Result;
 use std::collections::HashMap;
 use tokio::sync::{mpsc, oneshot};
 
-use super::save_actor::SaveActorCommand;
+use super::save_actor::{CacheChunk, SaveActorCommand};
 
 pub enum CacheCommand {
     Set {
@@ -33,6 +33,17 @@ pub enum CacheCommand {
 
 #[derive(Default)]
 pub struct CacheDb(HashMap<String, String>);
+impl CacheDb {
+    fn keys_stream(&self, pattern: Option<String>) -> impl Iterator<Item = Value> + '_ {
+        self.keys().filter_map(move |k| {
+            if pattern.as_ref().map_or(true, |p| k.contains(p)) {
+                Some(Value::BulkString(k.to_string()))
+            } else {
+                None
+            }
+        })
+    }
+}
 
 make_smart_pointer!(CacheDb, HashMap<String, String>);
 
@@ -79,16 +90,7 @@ impl CacheActor {
                     let _ = sender.send(cache.get(&key).cloned().into());
                 }
                 CacheCommand::Keys { pattern, sender } => {
-                    let ks = cache
-                        .keys()
-                        .filter_map(|k| {
-                            if pattern.as_ref().map_or(true, |p| k.contains(p)) {
-                                Some(Value::BulkString(k.clone()))
-                            } else {
-                                None
-                            }
-                        })
-                        .collect();
+                    let ks = cache.keys_stream(pattern).collect();
 
                     sender
                         .send(Value::Array(ks))
@@ -100,14 +102,10 @@ impl CacheActor {
                 CacheCommand::Save { outbox } => {
                     for chunk in cache.iter().collect::<Vec<_>>().chunks(10) {
                         outbox
-                            .send(SaveActorCommand::SaveChunk(
-                                chunk
-                                    .iter()
-                                    .map(|(k, v)| ((*k).clone(), (*v).clone()))
-                                    .collect::<Vec<(String, String)>>(),
-                            ))
+                            .send(SaveActorCommand::SaveChunk(CacheChunk::new(chunk)))
                             .await?;
                     }
+                    // finalize the save operation
                     outbox.send(SaveActorCommand::StopSentinel).await?;
                 }
             }

@@ -1,8 +1,20 @@
 use tokio::sync::mpsc::Sender;
 
 pub enum SaveActorCommand {
-    SaveChunk(Vec<(String, String)>),
+    SaveChunk(CacheChunk),
     StopSentinel,
+}
+
+pub struct CacheChunk(pub Vec<(String, String)>);
+impl CacheChunk {
+    pub fn new<'a>(chunk: &'a [(&'a String, &'a String)]) -> Self {
+        Self(
+            chunk
+                .iter()
+                .map(|(k, v)| (k.to_string(), v.to_string()))
+                .collect::<Vec<(String, String)>>(),
+        )
+    }
 }
 
 pub struct SaveActor {
@@ -27,8 +39,8 @@ impl SaveActor {
         while let Some(command) = self.inbox.recv().await {
             match command {
                 SaveActorCommand::SaveChunk(chunk) => {
-                    for (k, v) in chunk {
-                        // TODO SAVE operation
+                    for (k, v) in chunk.0 {
+                        //SAVE operation
                     }
                 }
                 SaveActorCommand::StopSentinel => {
