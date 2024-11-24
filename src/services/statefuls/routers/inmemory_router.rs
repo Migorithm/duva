@@ -170,9 +170,10 @@ impl CacheDispatcher {
 
     pub fn run_save_actor(&self, db_filepath: Option<String>) {
         let filepath = db_filepath.unwrap_or_else(|| "dump.rdb".to_string());
-        let outbox = SaveActor::run();
+        let outbox = SaveActor::run(self.inboxes.len());
 
         // get all the handlers to cache actors
+
         // send save command to all the cache actors
         todo!()
     }
