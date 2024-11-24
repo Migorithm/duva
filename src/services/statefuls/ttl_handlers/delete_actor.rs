@@ -1,6 +1,6 @@
 use super::pr_queue;
 use crate::services::statefuls::{
-    command::CacheCommand, routers::inmemory_router::CacheDispatcher,
+    command::CacheCommand, routers::cache_dispatcher::CacheDispatcher,
 };
 use anyhow::Result;
 use std::{

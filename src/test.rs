@@ -6,7 +6,7 @@ use crate::{
     config::Config,
     services::{
         config_handler::ConfigHandler,
-        statefuls::{routers::inmemory_router::CacheDispatcher, ttl_handlers::set::TtlInbox},
+        statefuls::{routers::cache_dispatcher::CacheDispatcher, ttl_handlers::set::TtlInbox},
         value::Value,
     },
 };

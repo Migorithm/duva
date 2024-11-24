@@ -9,7 +9,7 @@ use anyhow::Result;
 use std::collections::HashMap;
 use tokio::sync::oneshot;
 
-use super::aof_actor::SaveActorCommand;
+use super::save_actor::SaveActorCommand;
 
 #[derive(Default)]
 pub struct CacheDb(HashMap<String, String>);
@@ -61,18 +61,16 @@ make_smart_pointer!(CacheDb, HashMap<String, String>);
 
 pub struct CacheActor {
     cache: CacheDb,
-    actor_id: usize,
     inbox: tokio::sync::mpsc::Receiver<CacheCommand>,
 }
 impl CacheActor {
     // Create a new CacheActor with inner state
-    pub fn run(actor_id: usize) -> CacheMessageInbox {
+    pub fn run() -> CacheMessageInbox {
         let (tx, cache_actor_inbox) = tokio::sync::mpsc::channel(100);
         tokio::spawn(
             Self {
                 cache: Default::default(),
                 inbox: cache_actor_inbox,
-                actor_id,
             }
             .handle(),
         );
@@ -104,17 +102,17 @@ impl CacheActor {
                 }
                 CacheCommand::Delete(key) => self.cache.handle_delete(&key),
                 CacheCommand::Save { outbox } => {
-                    // TODO buffer?
                     for chunk in self.cache.iter().collect::<Vec<_>>().chunks(10) {
-                        let _ = outbox
+                        outbox
                             .send(SaveActorCommand::SaveChunk(
                                 chunk
                                     .iter()
                                     .map(|(k, v)| ((*k).clone(), (*v).clone()))
                                     .collect::<Vec<(String, String)>>(),
                             ))
-                            .await;
+                            .await?;
                     }
+                    outbox.send(SaveActorCommand::StopSentinel).await?;
                 }
             }
         }

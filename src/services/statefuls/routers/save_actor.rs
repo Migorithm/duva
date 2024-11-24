@@ -1,8 +1,4 @@
-use super::cache_actor::CacheDb;
-
 use tokio::sync::mpsc::Sender;
-use tokio::time;
-use tokio::time::interval;
 
 pub enum SaveActorCommand {
     SaveChunk(Vec<(String, String)>),
@@ -10,14 +6,16 @@ pub enum SaveActorCommand {
 }
 
 pub struct SaveActor {
+    filepath: String,
     pub num_of_cache_actors: usize,
     pub inbox: tokio::sync::mpsc::Receiver<SaveActorCommand>,
 }
 
 impl SaveActor {
-    pub fn run(num_of_cache_actors: usize) -> Sender<SaveActorCommand> {
+    pub fn run(filepath: String, num_of_cache_actors: usize) -> Sender<SaveActorCommand> {
         let (outbox, inbox) = tokio::sync::mpsc::channel(100);
         let actor = Self {
+            filepath,
             inbox,
             num_of_cache_actors,
         };

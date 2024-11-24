@@ -7,7 +7,7 @@ use anyhow::Result;
 use config::Config;
 use services::{
     config_handler::ConfigHandler,
-    statefuls::{routers::inmemory_router::CacheDispatcher, ttl_handlers::set::TtlInbox},
+    statefuls::{routers::cache_dispatcher::CacheDispatcher, ttl_handlers::set::TtlInbox},
 };
 use std::{sync::Arc, time::SystemTime};
 use tokio::net::{TcpListener, TcpStream};
