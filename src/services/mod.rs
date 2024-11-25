@@ -1,17 +1,17 @@
 use std::time::SystemTime;
 
-use value::Value;
+use query_io::QueryIO;
 
 pub mod config_handler;
 
+pub mod query_io;
 pub mod statefuls;
-pub mod value;
 
-impl From<Option<String>> for Value {
+impl From<Option<String>> for QueryIO {
     fn from(v: Option<String>) -> Self {
         match v {
-            Some(v) => Value::BulkString(v),
-            None => Value::Null,
+            Some(v) => QueryIO::BulkString(v),
+            None => QueryIO::Null,
         }
     }
 }

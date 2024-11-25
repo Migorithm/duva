@@ -5,7 +5,7 @@ use std::sync::Arc;
 use anyhow::Result;
 use command::{ConfigCommand, ConfigResource};
 
-use super::value::Value;
+use super::query_io::QueryIO;
 
 #[derive(Clone)]
 pub(crate) struct ConfigHandler {
@@ -18,32 +18,32 @@ impl ConfigHandler {
     }
 
     // perhaps, set operation is needed
-    pub fn handle_config(&mut self, cmd: ConfigCommand) -> Result<Value> {
+    pub fn handle_config(&mut self, cmd: ConfigCommand) -> Result<QueryIO> {
         match cmd {
-            ConfigCommand::Get(ConfigResource::Dir) => Ok(Value::Array(vec![
-                Value::BulkString("dir".to_string()),
+            ConfigCommand::Get(ConfigResource::Dir) => Ok(QueryIO::Array(vec![
+                QueryIO::BulkString("dir".to_string()),
                 self.get_dir(),
             ])),
-            ConfigCommand::Get(ConfigResource::DbFileName) => Ok(Value::Array(vec![
-                Value::BulkString("dbfilename".to_string()),
+            ConfigCommand::Get(ConfigResource::DbFileName) => Ok(QueryIO::Array(vec![
+                QueryIO::BulkString("dbfilename".to_string()),
                 self.get_db_filename(),
             ])),
         }
     }
 
-    fn get_dir(&self) -> Value {
+    fn get_dir(&self) -> QueryIO {
         self.conf
             .dir
             .clone()
-            .map(|v| Value::BulkString(v))
-            .unwrap_or(Value::Null)
+            .map(|v| QueryIO::BulkString(v))
+            .unwrap_or(QueryIO::Null)
     }
 
-    fn get_db_filename(&self) -> Value {
+    fn get_db_filename(&self) -> QueryIO {
         self.conf
             .db_filename
             .clone()
-            .map(|v| Value::BulkString(v))
-            .unwrap_or(Value::Null)
+            .map(|v| QueryIO::BulkString(v))
+            .unwrap_or(QueryIO::Null)
     }
 }

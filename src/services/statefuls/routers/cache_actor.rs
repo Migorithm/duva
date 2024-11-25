@@ -1,6 +1,6 @@
 use crate::{
     make_smart_pointer,
-    services::{value::Value, CacheEntry},
+    services::{query_io::QueryIO, CacheEntry},
 };
 use anyhow::Result;
 use std::collections::HashMap;
@@ -18,11 +18,11 @@ pub enum CacheCommand {
     },
     Get {
         key: String,
-        sender: oneshot::Sender<Value>,
+        sender: oneshot::Sender<QueryIO>,
     },
     Keys {
         pattern: Option<String>,
-        sender: oneshot::Sender<Value>,
+        sender: oneshot::Sender<QueryIO>,
     },
     Delete(String),
 
@@ -32,10 +32,10 @@ pub enum CacheCommand {
 #[derive(Default)]
 pub struct CacheDb(HashMap<String, String>);
 impl CacheDb {
-    fn keys_stream(&self, pattern: Option<String>) -> impl Iterator<Item = Value> + '_ {
+    fn keys_stream(&self, pattern: Option<String>) -> impl Iterator<Item = QueryIO> + '_ {
         self.keys().filter_map(move |k| {
             if pattern.as_ref().map_or(true, |p| k.contains(p)) {
-                Some(Value::BulkString(k.to_string()))
+                Some(QueryIO::BulkString(k.to_string()))
             } else {
                 None
             }
@@ -98,7 +98,7 @@ impl CacheActor {
                 CacheCommand::Keys { pattern, sender } => {
                     let ks = cache.keys_stream(pattern).collect();
                     sender
-                        .send(Value::Array(ks))
+                        .send(QueryIO::Array(ks))
                         .map_err(|_| anyhow::anyhow!("Error sending keys"))?;
                 }
                 CacheCommand::Delete(key) => {
