@@ -31,7 +31,7 @@ impl TtlActor {
 
     // Background actor keeps sending peek command to the scheduler actor to check if there is any key to delete.
     async fn background_delete_actor(
-        cache_dispatcher: CacheManager,
+        cache_manager: CacheManager,
         outbox: mpsc::Sender<TtlCommand>,
     ) -> anyhow::Result<()> {
         let mut cleanup_interval = interval(Duration::from_millis(1));
@@ -43,9 +43,10 @@ impl TtlActor {
             let Ok(Some(key)) = rx.await else {
                 continue;
             };
-            let shard_key = cache_dispatcher.take_shard_key_from_str(&key);
-            let db = &cache_dispatcher.inboxes[shard_key];
-            db.send(CacheCommand::Delete(key)).await?;
+            cache_manager
+                .select_shard(&key)
+                .send(CacheCommand::Delete(key))
+                .await?;
         }
     }
 
