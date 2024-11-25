@@ -6,8 +6,9 @@ use crate::{
     config::Config,
     services::{
         config_handler::ConfigHandler,
-        statefuls::{routers::cache_dispatcher::CacheDispatcher, ttl_handlers::set::TtlInbox},
-        value::Value,
+        query_io::QueryIO,
+        statefuls::routers::{cache_dispatcher::CacheDispatcher, ttl_actor::TtlInbox},
+        CacheEntry,
     },
 };
 use bytes::BytesMut;
@@ -33,19 +34,22 @@ impl TWriteBuf for FakeStream {
     }
 }
 
-async fn get_key(key: &str, persistence_router: &CacheDispatcher) -> Value {
+async fn get_key(key: &str, persistence_router: &CacheDispatcher) -> QueryIO {
     persistence_router.route_get(key.to_string()).await.unwrap()
 }
 
-async fn set_key(
+async fn set_key_with_no_expiry(
     key: &str,
     value: &str,
-    expiry: Option<u64>,
+
     ttl_sender: TtlInbox,
     persistence_router: &CacheDispatcher,
-) -> Value {
+) -> QueryIO {
     persistence_router
-        .route_set(key.to_string(), value.to_string(), expiry, ttl_sender)
+        .route_set(
+            CacheEntry::KeyValue(key.to_string(), value.to_string()),
+            ttl_sender,
+        )
         .await
         .unwrap()
 }
@@ -86,7 +90,7 @@ async fn test_set() {
 
     let value = get_key("key", &persistence_handlers).await;
     // THEN
-    assert_eq!(value, Value::BulkString("value".to_string()),);
+    assert_eq!(value, QueryIO::BulkString("value".to_string()),);
 }
 
 /// The following is to test out the set operation with expiry
@@ -114,14 +118,14 @@ async fn test_set_with_expiry() {
     let value = get_key("foo", &cache_dispatcher).await;
 
     // THEN
-    assert_eq!(value, Value::BulkString("bar".to_string()));
+    assert_eq!(value, QueryIO::BulkString("bar".to_string()));
 
     // WHEN2 - wait for 5ms
     tokio::time::sleep(tokio::time::Duration::from_millis(5)).await;
     let value = get_key("foo", &cache_dispatcher).await;
 
     //THEN
-    assert_eq!(value, Value::BulkString("bar".to_string()));
+    assert_eq!(value, QueryIO::BulkString("bar".to_string()));
 }
 
 #[tokio::test]
@@ -145,14 +149,14 @@ async fn test_set_with_expire_should_expire_within_100ms() {
     let value = get_key("foo", &cache_dispatcher).await;
 
     // THEN
-    assert_eq!(value, Value::BulkString("bar".to_string()));
+    assert_eq!(value, QueryIO::BulkString("bar".to_string()));
 
     // WHEN2 - wait for 100ms
     tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
     let value = get_key("foo", &cache_dispatcher).await;
 
     //THEN
-    assert_eq!(value, Value::Null);
+    assert_eq!(value, QueryIO::Null);
 }
 
 /// Cache config should be injected to the handler!
@@ -193,9 +197,9 @@ async fn test_keys() {
     //GIVEN
     let (cache_dispatcher, ttl_inbox) = CacheDispatcher::run_cache_actors(3, config_helper());
 
-    set_key("key", "value", None, ttl_inbox.clone(), &cache_dispatcher).await;
+    set_key_with_no_expiry("key", "value", ttl_inbox.clone(), &cache_dispatcher).await;
 
-    set_key("key2", "value", None, ttl_inbox.clone(), &cache_dispatcher).await;
+    set_key_with_no_expiry("key2", "value", ttl_inbox.clone(), &cache_dispatcher).await;
 
     // Input will be given like : redis-cli KEYS "*"
     let stream = FakeStream {

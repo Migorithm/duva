@@ -1,18 +1,16 @@
 use crate::{
     make_smart_pointer,
-    services::{statefuls::ttl_handlers::set::TtlInbox, value::Value},
+    services::{query_io::QueryIO, CacheEntry, CacheValue},
 };
 use anyhow::Result;
 use std::collections::HashMap;
 use tokio::sync::{mpsc, oneshot};
 
-use super::save_actor::SaveActorCommand;
+use super::{save_actor::SaveActorCommand, ttl_actor::TtlInbox};
 
 pub enum CacheCommand {
     Set {
-        key: String,
-        value: String,
-        expiry: Option<u64>,
+        cache_entry: CacheEntry,
         ttl_sender: TtlInbox,
     },
     Save {
@@ -20,11 +18,11 @@ pub enum CacheCommand {
     },
     Get {
         key: String,
-        sender: oneshot::Sender<Value>,
+        sender: oneshot::Sender<QueryIO>,
     },
     Keys {
         pattern: Option<String>,
-        sender: oneshot::Sender<Value>,
+        sender: oneshot::Sender<QueryIO>,
     },
     Delete(String),
 
@@ -32,12 +30,12 @@ pub enum CacheCommand {
 }
 
 #[derive(Default)]
-pub struct CacheDb(HashMap<String, String>);
+pub struct CacheDb(HashMap<String, CacheValue>);
 impl CacheDb {
-    fn keys_stream(&self, pattern: Option<String>) -> impl Iterator<Item = Value> + '_ {
+    fn keys_stream(&self, pattern: Option<String>) -> impl Iterator<Item = QueryIO> + '_ {
         self.keys().filter_map(move |k| {
             if pattern.as_ref().map_or(true, |p| k.contains(p)) {
-                Some(Value::BulkString(k.to_string()))
+                Some(QueryIO::BulkString(k.to_string()))
             } else {
                 None
             }
@@ -46,11 +44,11 @@ impl CacheDb {
 }
 pub struct CacheChunk(pub Vec<(String, String)>);
 impl CacheChunk {
-    pub fn new<'a>(chunk: &'a [(&'a String, &'a String)]) -> Self {
+    pub fn new<'a>(chunk: &'a [(&'a String, &'a CacheValue)]) -> Self {
         Self(
             chunk
                 .iter()
-                .map(|(k, v)| (k.to_string(), v.to_string()))
+                .map(|(k, v)| (k.to_string(), v.value().to_string()))
                 .collect::<Vec<(String, String)>>(),
         )
     }
@@ -79,29 +77,27 @@ impl CacheActor {
                 CacheCommand::StopSentinel => break,
 
                 CacheCommand::Set {
-                    key,
-                    value,
-                    expiry,
+                    cache_entry,
                     ttl_sender,
-                } => {
-                    // Maybe you have to pass sender?
-                    match expiry {
-                        Some(expiry) => {
-                            cache.insert(key.clone(), value);
-                            ttl_sender.set_ttl(key, expiry).await;
-                        }
-                        None => {
-                            cache.insert(key, value);
-                        }
+                } => match cache_entry {
+                    CacheEntry::KeyValue(key, value) => {
+                        cache.insert(key, CacheValue::Value(value));
                     }
-                }
+                    CacheEntry::KeyValueExpiry(key, value, expiry) => {
+                        cache.insert(
+                            key.clone(),
+                            CacheValue::ValueWithExpiry(value, expiry.clone()),
+                        );
+                        ttl_sender.set_ttl(key, expiry.to_u64()).await;
+                    }
+                },
                 CacheCommand::Get { key, sender } => {
                     let _ = sender.send(cache.get(&key).cloned().into());
                 }
                 CacheCommand::Keys { pattern, sender } => {
                     let ks = cache.keys_stream(pattern).collect();
                     sender
-                        .send(Value::Array(ks))
+                        .send(QueryIO::Array(ks))
                         .map_err(|_| anyhow::anyhow!("Error sending keys"))?;
                 }
                 CacheCommand::Delete(key) => {
@@ -125,5 +121,5 @@ impl CacheActor {
 #[derive(Clone)]
 pub struct CacheMessageInbox(tokio::sync::mpsc::Sender<CacheCommand>);
 
-make_smart_pointer!(CacheDb, HashMap<String, String>);
+make_smart_pointer!(CacheDb, HashMap<String, CacheValue>);
 make_smart_pointer!(CacheMessageInbox, tokio::sync::mpsc::Sender<CacheCommand>);

@@ -1,7 +1,8 @@
-use super::{
-    extract_range, DatabaseSection, Expiry, Init, KeyValueStorage, MetadataReady, RdbFile,
+use super::{extract_range, CacheEntry, DatabaseSection, Init, MetadataReady, RdbFile};
+use crate::{
+    adapters::persistence::{DatabaseSectionBuilder, HeaderReady},
+    services::Expiry,
 };
-use crate::adapters::persistence::{DatabaseSectionBuilder, HeaderReady};
 use anyhow::{Context, Result};
 use std::{
     collections::HashMap,
@@ -227,7 +228,7 @@ impl BytesDecoder<'_, MetadataReady> {
             return Ok(true); // No more keys to extract
         }
         let key_value = self.try_key_value()?;
-        if key_value.expiry.is_some() {
+        if key_value.is_with_expiry() {
             builder.expires_table_size = builder
                 .expires_table_size
                 .checked_sub(1)
@@ -253,7 +254,7 @@ impl BytesDecoder<'_, MetadataReady> {
         Ok(())
     }
 
-    fn try_key_value(&mut self) -> Result<KeyValueStorage> {
+    fn try_key_value(&mut self) -> Result<CacheEntry> {
         let mut expiry: Option<Expiry> = None;
         while self.len() > 0 {
             match self[0] {
@@ -268,7 +269,15 @@ impl BytesDecoder<'_, MetadataReady> {
                 //0b11111110
                 0x00 => {
                     let (key, value) = self.try_extract_key_value()?;
-                    return Ok(KeyValueStorage { key, value, expiry });
+
+                    match expiry {
+                        Some(expiry) => {
+                            return Ok(CacheEntry::KeyValueExpiry(key, value, expiry));
+                        }
+                        None => {
+                            return Ok(CacheEntry::KeyValue(key, value));
+                        }
+                    }
                 }
                 _ => {
                     return Err(anyhow::anyhow!("Invalid key value pair"));
@@ -436,15 +445,23 @@ fn test_database_section_extractor() {
     let db_section: DatabaseSection = bytes_handler.extract_section().unwrap();
     assert_eq!(db_section.index, 0);
     assert_eq!(db_section.storage.len(), 3);
-    assert_eq!(db_section.storage[0].key, "foobar");
-    assert_eq!(db_section.storage[0].value, "bazqux");
-    assert_eq!(db_section.storage[0].expiry, None);
-    assert_eq!(db_section.storage[1].key, "foo");
-    assert_eq!(db_section.storage[1].value, "bar");
-    assert_eq!(
-        db_section.storage[1].expiry,
-        Some(Expiry::Milliseconds(1713824559637))
-    );
+
+    match &db_section.storage[0] {
+        CacheEntry::KeyValue(key, value) => {
+            assert_eq!(key, "foobar");
+            assert_eq!(value, "bazqux");
+        }
+        _ => panic!("Expected KeyValueExpiry"),
+    }
+
+    match &db_section.storage[1] {
+        CacheEntry::KeyValueExpiry(key, value, expiry) => {
+            assert_eq!(key, "foo");
+            assert_eq!(value, "bar");
+            assert_eq!(expiry, &Expiry::Milliseconds(1713824559637));
+        }
+        _ => panic!("Expected KeyValueExpiry"),
+    }
 }
 
 #[test]
@@ -457,9 +474,15 @@ fn test_non_expiry_key_value_pair() {
     let key_value = bytes_handler
         .try_key_value()
         .expect("Failed to extract key value expiry");
-    assert_eq!(key_value.key, "baz");
-    assert_eq!(key_value.value, "qux");
-    assert_eq!(key_value.expiry, None);
+
+    match key_value {
+        CacheEntry::KeyValue(key, value) => {
+            assert_eq!(key, "baz");
+            assert_eq!(value, "qux");
+        }
+        _ => panic!("Expected KeyValue"),
+    }
+
     assert!(bytes_handler.data.is_empty());
 }
 
@@ -475,9 +498,9 @@ fn test_with_milliseconds_expiry_key_value_pair() {
 
     let key_value = bytes_handler.try_key_value().unwrap();
 
-    assert_eq!(key_value.key, "baz");
-    assert_eq!(key_value.value, "qux");
-    assert!(key_value.expiry.is_some());
+    assert_eq!(key_value.key(), "baz");
+    assert_eq!(key_value.value(), "qux");
+    assert!(key_value.is_with_expiry());
     assert!(bytes_handler.data.is_empty());
 }
 
@@ -491,9 +514,9 @@ fn test_with_seconds_expiry_key_value_pair() {
     };
 
     let key_value = bytes_handler.try_key_value().unwrap();
-    assert_eq!(key_value.key, "baz");
-    assert_eq!(key_value.value, "qux");
-    assert!(key_value.expiry.is_some());
+    assert_eq!(key_value.key(), "baz");
+    assert_eq!(key_value.value(), "qux");
+    assert!(key_value.is_with_expiry());
 }
 
 #[test]
@@ -634,10 +657,21 @@ fn test_loading_all() {
     assert_eq!(rdb_file.database.len(), 1);
     assert_eq!(rdb_file.database[0].index, 0);
     assert_eq!(rdb_file.database[0].storage.len(), 2);
-    assert_eq!(rdb_file.database[0].storage[0].key, "foo2");
-    assert_eq!(rdb_file.database[0].storage[0].value, "bar2");
-    assert_eq!(rdb_file.database[0].storage[1].key, "foo");
-    assert_eq!(rdb_file.database[0].storage[1].value, "bar");
+    match rdb_file.database[0].storage[0] {
+        CacheEntry::KeyValue(ref key, ref value) => {
+            assert_eq!(key, "foo2");
+            assert_eq!(value, "bar2");
+        }
+        _ => panic!("Expected KeyValue"),
+    }
+    match rdb_file.database[0].storage[1] {
+        CacheEntry::KeyValue(ref key, ref value) => {
+            assert_eq!(key, "foo");
+            assert_eq!(value, "bar");
+        }
+        _ => panic!("Expected KeyValue"),
+    }
+
     assert_eq!(
         rdb_file.checksum,
         vec![0x60, 0x82, 0x9C, 0xF8, 0xFB, 0x2E, 0x7F, 0xEB]
