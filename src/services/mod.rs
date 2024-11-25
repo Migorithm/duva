@@ -1,21 +1,8 @@
 use std::time::SystemTime;
-
-use query_io::QueryIO;
-
 pub mod config_handler;
-
-pub mod query_io;
+pub mod query_manager;
 pub mod statefuls;
 
-impl From<Option<CacheValue>> for QueryIO {
-    fn from(v: Option<CacheValue>) -> Self {
-        match v {
-            Some(CacheValue::Value(v)) => QueryIO::BulkString(v),
-            Some(CacheValue::ValueWithExpiry(v, _exp)) => QueryIO::BulkString(v),
-            None => QueryIO::Null,
-        }
-    }
-}
 pub enum CacheEntry {
     KeyValue(String, String),
     KeyValueExpiry(String, String, Expiry),

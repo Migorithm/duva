@@ -4,7 +4,7 @@ use super::ttl_actor::{TtlActor, TtlInbox};
 use crate::adapters::persistence::{byte_decoder::BytesDecoder, Init};
 use crate::config::Config;
 
-use crate::services::query_io::QueryIO;
+use crate::services::query_manager::query_io::QueryIO;
 use crate::services::CacheEntry;
 use anyhow::Result;
 use std::{hash::Hasher, iter::Zip, sync::Arc, time::SystemTime};

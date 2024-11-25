@@ -1,12 +1,12 @@
 use crate::{
-    adapters::controller::{
-        interface::{TRead, TWriteBuf},
-        QueryManager,
-    },
     config::Config,
     services::{
         config_handler::ConfigHandler,
-        query_io::QueryIO,
+        query_manager::{
+            interface::{TRead, TWriteBuf},
+            query_io::QueryIO,
+            QueryManager,
+        },
         statefuls::routers::{cache_dispatcher::CacheDispatcher, ttl_actor::TtlInbox},
         CacheEntry,
     },

@@ -1,8 +1,10 @@
 pub mod interface;
+pub mod query_io;
 pub mod request;
 use anyhow::Result;
 use bytes::BytesMut;
 use interface::{TRead, TWriteBuf};
+use query_io::QueryIO;
 use request::UserRequest::{self, *};
 use std::str::FromStr;
 
@@ -10,7 +12,6 @@ use crate::{
     make_smart_pointer,
     services::{
         config_handler::{command::ConfigCommand, ConfigHandler},
-        query_io::QueryIO,
         statefuls::routers::{cache_dispatcher::CacheDispatcher, ttl_actor::TtlInbox},
         CacheEntry, Expiry,
     },

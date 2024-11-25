@@ -1,5 +1,7 @@
 use anyhow::Result;
 
+use crate::services::CacheValue;
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum QueryIO {
     SimpleString(String),
@@ -35,6 +37,16 @@ impl QueryIO {
         match self {
             QueryIO::BulkString(expiry) => Ok(expiry.parse::<u64>()?),
             _ => Err(anyhow::anyhow!("Invalid expiry")),
+        }
+    }
+}
+
+impl From<Option<CacheValue>> for QueryIO {
+    fn from(v: Option<CacheValue>) -> Self {
+        match v {
+            Some(CacheValue::Value(v)) => QueryIO::BulkString(v),
+            Some(CacheValue::ValueWithExpiry(v, _exp)) => QueryIO::BulkString(v),
+            None => QueryIO::Null,
         }
     }
 }
