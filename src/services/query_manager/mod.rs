@@ -12,7 +12,7 @@ use crate::{
     make_smart_pointer,
     services::{
         config_handler::{command::ConfigCommand, ConfigHandler},
-        statefuls::routers::{cache_dispatcher::CacheDispatcher, ttl_actor::TtlInbox},
+        statefuls::routers::{cache_manager::CacheManager, ttl_manager::TtlSchedulerInbox},
         CacheEntry, Expiry,
     },
 };
@@ -26,8 +26,8 @@ pub struct QueryManager<T: TWriteBuf + TRead> {
 impl<U: TWriteBuf + TRead> QueryManager<U> {
     pub(crate) async fn handle(
         &mut self,
-        persistence_router: &CacheDispatcher,
-        ttl_sender: TtlInbox,
+        persistence_router: &CacheManager,
+        ttl_sender: TtlSchedulerInbox,
         mut config_handler: ConfigHandler,
     ) -> Result<()> {
         let Some((cmd, args)) = self.read_value().await? else {

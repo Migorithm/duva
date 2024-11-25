@@ -6,12 +6,12 @@ use anyhow::Result;
 use std::collections::HashMap;
 use tokio::sync::{mpsc, oneshot};
 
-use super::{save_actor::SaveActorCommand, ttl_actor::TtlInbox};
+use super::{save_actor::SaveActorCommand, ttl_manager::TtlSchedulerInbox};
 
 pub enum CacheCommand {
     Set {
         cache_entry: CacheEntry,
-        ttl_sender: TtlInbox,
+        ttl_sender: TtlSchedulerInbox,
     },
     Save {
         outbox: mpsc::Sender<SaveActorCommand>,
@@ -59,7 +59,7 @@ pub struct CacheActor {
 }
 impl CacheActor {
     // Create a new CacheActor with inner state
-    pub fn run() -> CacheMessageInbox {
+    pub fn run() -> CacheActors {
         let (tx, cache_actor_inbox) = tokio::sync::mpsc::channel(100);
         tokio::spawn(
             Self {
@@ -67,7 +67,7 @@ impl CacheActor {
             }
             .handle(),
         );
-        CacheMessageInbox(tx)
+        CacheActors(tx)
     }
 
     async fn handle(mut self) -> Result<()> {
@@ -119,7 +119,7 @@ impl CacheActor {
 }
 
 #[derive(Clone)]
-pub struct CacheMessageInbox(tokio::sync::mpsc::Sender<CacheCommand>);
+pub struct CacheActors(tokio::sync::mpsc::Sender<CacheCommand>);
 
 make_smart_pointer!(CacheDb, HashMap<String, CacheValue>);
-make_smart_pointer!(CacheMessageInbox, tokio::sync::mpsc::Sender<CacheCommand>);
+make_smart_pointer!(CacheActors, tokio::sync::mpsc::Sender<CacheCommand>);

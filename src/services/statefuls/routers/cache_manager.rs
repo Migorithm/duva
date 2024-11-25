@@ -1,6 +1,6 @@
-use super::cache_actor::{CacheActor, CacheCommand, CacheMessageInbox};
+use super::cache_actor::{CacheActor, CacheActors, CacheCommand};
 use super::save_actor::SaveActor;
-use super::ttl_actor::{TtlActor, TtlInbox};
+use super::ttl_manager::{TtlActor, TtlSchedulerInbox};
 use crate::adapters::persistence::{byte_decoder::BytesDecoder, Init};
 use crate::config::Config;
 
@@ -15,15 +15,15 @@ type OneShotReceiverJoinHandle<T> =
     tokio::task::JoinHandle<std::result::Result<T, tokio::sync::oneshot::error::RecvError>>;
 
 #[derive(Clone)]
-pub(crate) struct CacheDispatcher {
-    pub(crate) inboxes: Vec<CacheMessageInbox>,
+pub(crate) struct CacheManager {
+    pub(crate) inboxes: Vec<CacheActors>,
     pub(crate) config: Arc<Config>,
 }
 
-impl CacheDispatcher {
+impl CacheManager {
     pub(crate) async fn load_data(
         &self,
-        ttl_inbox: TtlInbox,
+        ttl_inbox: TtlSchedulerInbox,
         current_system_time: SystemTime,
     ) -> Result<()> {
         let Ok(Some(filepath)) = self.config.try_filepath().await else {
@@ -54,7 +54,11 @@ impl CacheDispatcher {
         Ok(rx.await?)
     }
 
-    pub(crate) async fn route_set(&self, kvs: CacheEntry, ttl_sender: TtlInbox) -> Result<QueryIO> {
+    pub(crate) async fn route_set(
+        &self,
+        kvs: CacheEntry,
+        ttl_sender: TtlSchedulerInbox,
+    ) -> Result<QueryIO> {
         self.select_shard(kvs.key())?
             .send(CacheCommand::Set {
                 cache_entry: kvs,
@@ -103,13 +107,13 @@ impl CacheDispatcher {
     fn chain<T>(
         &self,
         senders: Vec<Sender<T>>,
-    ) -> Zip<std::slice::Iter<'_, CacheMessageInbox>, std::vec::IntoIter<Sender<T>>> {
+    ) -> Zip<std::slice::Iter<'_, CacheActors>, std::vec::IntoIter<Sender<T>>> {
         self.inboxes.iter().zip(senders.into_iter())
     }
 
     // stateless function to send keys
     async fn send_keys_to_shard(
-        shard: CacheMessageInbox,
+        shard: CacheActors,
         pattern: Option<String>,
         tx: OneShotSender<QueryIO>,
     ) -> Result<()> {
@@ -121,7 +125,7 @@ impl CacheDispatcher {
             .await?)
     }
 
-    fn select_shard(&self, key: &str) -> Result<&CacheMessageInbox> {
+    fn select_shard(&self, key: &str) -> Result<&CacheActors> {
         let shard_key = self.take_shard_key_from_str(&key);
         Ok(&self.inboxes[shard_key as usize])
     }
@@ -135,8 +139,8 @@ impl CacheDispatcher {
     pub fn run_cache_actors(
         num_of_actors: usize,
         config: Arc<Config>,
-    ) -> (CacheDispatcher, TtlInbox) {
-        let cache_dispatcher = CacheDispatcher {
+    ) -> (CacheManager, TtlSchedulerInbox) {
+        let cache_dispatcher = CacheManager {
             inboxes: (0..num_of_actors)
                 .into_iter()
                 .map(|_| CacheActor::run())
@@ -149,7 +153,7 @@ impl CacheDispatcher {
         (cache_dispatcher, ttl_inbox)
     }
 
-    fn run_ttl_actors(&self) -> TtlInbox {
+    fn run_ttl_actors(&self) -> TtlSchedulerInbox {
         let ttl_actor = TtlActor::run(self.clone());
         ttl_actor
     }

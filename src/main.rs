@@ -8,7 +8,7 @@ use config::Config;
 use services::{
     config_handler::ConfigHandler,
     query_manager::QueryManager,
-    statefuls::routers::{cache_dispatcher::CacheDispatcher, ttl_actor::TtlInbox},
+    statefuls::routers::{cache_manager::CacheManager, ttl_manager::TtlSchedulerInbox},
 };
 use std::{sync::Arc, time::SystemTime};
 use tokio::net::{TcpListener, TcpStream};
@@ -24,7 +24,7 @@ async fn main() -> Result<()> {
 
     let config = Arc::new(Config::new());
     let (cache_dispatcher, ttl_inbox) =
-        CacheDispatcher::run_cache_actors(NUM_OF_PERSISTENCE, config.clone());
+        CacheManager::run_cache_actors(NUM_OF_PERSISTENCE, config.clone());
 
     // Load data from the file if --dir and --dbfilename are provided
     cache_dispatcher
@@ -52,8 +52,8 @@ async fn main() -> Result<()> {
 fn process(
     stream: TcpStream,
     conf: Arc<Config>,
-    ttl_inbox: TtlInbox,
-    cache_dispatcher: CacheDispatcher,
+    ttl_inbox: TtlSchedulerInbox,
+    cache_dispatcher: CacheManager,
 ) {
     tokio::spawn(async move {
         let mut query_manager = QueryManager::new(stream);

@@ -1,4 +1,4 @@
 pub mod cache_actor;
-pub mod cache_dispatcher;
+pub mod cache_manager;
 pub mod save_actor;
-pub mod ttl_actor;
+pub mod ttl_manager;
