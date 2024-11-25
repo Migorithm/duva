@@ -7,10 +7,11 @@ pub mod config_handler;
 pub mod query_io;
 pub mod statefuls;
 
-impl From<Option<String>> for QueryIO {
-    fn from(v: Option<String>) -> Self {
+impl From<Option<CacheValue>> for QueryIO {
+    fn from(v: Option<CacheValue>) -> Self {
         match v {
-            Some(v) => QueryIO::BulkString(v),
+            Some(CacheValue::Value(v)) => QueryIO::BulkString(v),
+            Some(CacheValue::ValueWithExpiry(v, _exp)) => QueryIO::BulkString(v),
             None => QueryIO::Null,
         }
     }
@@ -50,7 +51,21 @@ impl CacheEntry {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub enum CacheValue {
+    Value(String),
+    ValueWithExpiry(String, Expiry),
+}
+impl CacheValue {
+    pub fn value(&self) -> &str {
+        match self {
+            CacheValue::Value(v) => v,
+            CacheValue::ValueWithExpiry(v, _) => v,
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Expiry {
     Seconds(u32),
     Milliseconds(u64),

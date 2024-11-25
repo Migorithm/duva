@@ -1,6 +1,6 @@
 use crate::{
     make_smart_pointer,
-    services::{query_io::QueryIO, CacheEntry},
+    services::{query_io::QueryIO, CacheEntry, CacheValue},
 };
 use anyhow::Result;
 use std::collections::HashMap;
@@ -30,7 +30,7 @@ pub enum CacheCommand {
 }
 
 #[derive(Default)]
-pub struct CacheDb(HashMap<String, String>);
+pub struct CacheDb(HashMap<String, CacheValue>);
 impl CacheDb {
     fn keys_stream(&self, pattern: Option<String>) -> impl Iterator<Item = QueryIO> + '_ {
         self.keys().filter_map(move |k| {
@@ -44,11 +44,11 @@ impl CacheDb {
 }
 pub struct CacheChunk(pub Vec<(String, String)>);
 impl CacheChunk {
-    pub fn new<'a>(chunk: &'a [(&'a String, &'a String)]) -> Self {
+    pub fn new<'a>(chunk: &'a [(&'a String, &'a CacheValue)]) -> Self {
         Self(
             chunk
                 .iter()
-                .map(|(k, v)| (k.to_string(), v.to_string()))
+                .map(|(k, v)| (k.to_string(), v.value().to_string()))
                 .collect::<Vec<(String, String)>>(),
         )
     }
@@ -79,19 +79,18 @@ impl CacheActor {
                 CacheCommand::Set {
                     cache_entry,
                     ttl_sender,
-                } => {
-                    // Maybe you have to pass sender?
-
-                    match cache_entry {
-                        CacheEntry::KeyValue(key, value) => {
-                            cache.insert(key, value);
-                        }
-                        CacheEntry::KeyValueExpiry(key, value, expiry) => {
-                            cache.insert(key.clone(), value);
-                            ttl_sender.set_ttl(key, expiry.to_u64()).await;
-                        }
+                } => match cache_entry {
+                    CacheEntry::KeyValue(key, value) => {
+                        cache.insert(key, CacheValue::Value(value));
                     }
-                }
+                    CacheEntry::KeyValueExpiry(key, value, expiry) => {
+                        cache.insert(
+                            key.clone(),
+                            CacheValue::ValueWithExpiry(value, expiry.clone()),
+                        );
+                        ttl_sender.set_ttl(key, expiry.to_u64()).await;
+                    }
+                },
                 CacheCommand::Get { key, sender } => {
                     let _ = sender.send(cache.get(&key).cloned().into());
                 }
@@ -122,5 +121,5 @@ impl CacheActor {
 #[derive(Clone)]
 pub struct CacheMessageInbox(tokio::sync::mpsc::Sender<CacheCommand>);
 
-make_smart_pointer!(CacheDb, HashMap<String, String>);
+make_smart_pointer!(CacheDb, HashMap<String, CacheValue>);
 make_smart_pointer!(CacheMessageInbox, tokio::sync::mpsc::Sender<CacheCommand>);
