@@ -2,11 +2,12 @@ pub mod adapters;
 mod config;
 pub mod macros;
 pub mod services;
-use adapters::controller::QueryManager;
+
 use anyhow::Result;
 use config::Config;
 use services::{
     config_handler::ConfigHandler,
+    query_manager::QueryManager,
     statefuls::routers::{cache_dispatcher::CacheDispatcher, ttl_actor::TtlInbox},
 };
 use std::{sync::Arc, time::SystemTime};

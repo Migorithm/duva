@@ -5,7 +5,7 @@ use std::sync::Arc;
 use anyhow::Result;
 use command::{ConfigCommand, ConfigResource};
 
-use super::query_io::QueryIO;
+use super::query_manager::query_io::QueryIO;
 
 #[derive(Clone)]
 pub(crate) struct ConfigHandler {

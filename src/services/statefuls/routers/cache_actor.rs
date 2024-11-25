@@ -1,6 +1,6 @@
 use crate::{
     make_smart_pointer,
-    services::{query_io::QueryIO, CacheEntry, CacheValue},
+    services::{query_manager::query_io::QueryIO, CacheEntry, CacheValue},
 };
 use anyhow::Result;
 use std::collections::HashMap;
