@@ -7,7 +7,7 @@ use crate::{
             query_io::QueryIO,
             QueryManager,
         },
-        statefuls::routers::{cache_dispatcher::CacheDispatcher, ttl_actor::TtlInbox},
+        statefuls::routers::{cache_manager::CacheManager, ttl_manager::TtlSchedulerInbox},
         CacheEntry,
     },
 };
@@ -34,7 +34,7 @@ impl TWriteBuf for FakeStream {
     }
 }
 
-async fn get_key(key: &str, persistence_router: &CacheDispatcher) -> QueryIO {
+async fn get_key(key: &str, persistence_router: &CacheManager) -> QueryIO {
     persistence_router.route_get(key.to_string()).await.unwrap()
 }
 
@@ -42,8 +42,8 @@ async fn set_key_with_no_expiry(
     key: &str,
     value: &str,
 
-    ttl_sender: TtlInbox,
-    persistence_router: &CacheDispatcher,
+    ttl_sender: TtlSchedulerInbox,
+    persistence_router: &CacheManager,
 ) -> QueryIO {
     persistence_router
         .route_set(
@@ -69,7 +69,7 @@ fn config_helper() -> Arc<Config> {
 /// OUTPUT(when get method is invoked on the key) : "value"
 #[tokio::test]
 async fn test_set() {
-    let (persistence_handlers, ttl_inbox) = CacheDispatcher::run_cache_actors(3, config_helper());
+    let (persistence_handlers, ttl_inbox) = CacheManager::run_cache_actors(3, config_helper());
 
     let config_handler = ConfigHandler::new(Arc::new(Config::new()));
 
@@ -104,7 +104,7 @@ async fn test_set_with_expiry() {
             .to_vec(),
     };
 
-    let (cache_dispatcher, ttl_inbox) = CacheDispatcher::run_cache_actors(3, config_helper());
+    let (cache_dispatcher, ttl_inbox) = CacheManager::run_cache_actors(3, config_helper());
 
     let mut controller = QueryManager::new(stream);
     let config_handler = ConfigHandler::new(Arc::new(Config::new()));
@@ -135,7 +135,7 @@ async fn test_set_with_expire_should_expire_within_100ms() {
             .as_bytes()
             .to_vec(),
     };
-    let (cache_dispatcher, ttl_inbox) = CacheDispatcher::run_cache_actors(3, config_helper());
+    let (cache_dispatcher, ttl_inbox) = CacheManager::run_cache_actors(3, config_helper());
 
     let mut controller = QueryManager::new(stream);
     let config_handler = ConfigHandler::new(Arc::new(Config::new()));
@@ -175,7 +175,7 @@ async fn test_config_get_dir() {
             .as_bytes()
             .to_vec(),
     };
-    let (cache_dispatcher, ttl_inbox) = CacheDispatcher::run_cache_actors(3, config_helper());
+    let (cache_dispatcher, ttl_inbox) = CacheManager::run_cache_actors(3, config_helper());
 
     let mut controller = QueryManager::new(stream);
     let config_handler = ConfigHandler::new(Arc::new(conf));
@@ -195,7 +195,7 @@ async fn test_config_get_dir() {
 #[tokio::test]
 async fn test_keys() {
     //GIVEN
-    let (cache_dispatcher, ttl_inbox) = CacheDispatcher::run_cache_actors(3, config_helper());
+    let (cache_dispatcher, ttl_inbox) = CacheManager::run_cache_actors(3, config_helper());
 
     set_key_with_no_expiry("key", "value", ttl_inbox.clone(), &cache_dispatcher).await;
 
