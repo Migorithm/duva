@@ -2,8 +2,8 @@ use super::cache_actor::{CacheActor, CacheCommand, CacheMessageInbox};
 use super::save_actor::SaveActor;
 use crate::adapters::persistence::{byte_decoder::BytesDecoder, Init};
 use crate::config::Config;
-use crate::services::statefuls::ttl_handlers::delete_actor::TtlDeleteActor;
-use crate::services::statefuls::ttl_handlers::set::{TtlInbox, TtlSetActor};
+
+use crate::services::statefuls::ttl_handlers::set::{TtlActor, TtlInbox};
 use crate::services::value::Value;
 use anyhow::Result;
 use std::{hash::Hasher, iter::Zip, sync::Arc, time::SystemTime};
@@ -163,9 +163,8 @@ impl CacheDispatcher {
     }
 
     fn run_ttl_actors(&self) -> TtlInbox {
-        TtlDeleteActor::run(self);
-        let ttl_setter = TtlSetActor::run();
-        ttl_setter
+        let ttl_actor = TtlActor::run(self.clone());
+        ttl_actor
     }
 
     pub fn run_save_actor(&self, db_filepath: Option<String>) {

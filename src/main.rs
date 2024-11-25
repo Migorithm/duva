@@ -33,8 +33,9 @@ async fn main() -> Result<()> {
     let listener = TcpListener::bind(config.bind_addr()).await?;
     loop {
         match listener.accept().await {
-            Ok((socket, _)) => {
-                // Spawn a new task to handle the connection without blocking the main thread.
+            Ok((socket, _)) =>
+            // Spawn a new task to handle the connection without blocking the main thread.
+            {
                 process(
                     socket,
                     Arc::clone(&config),
