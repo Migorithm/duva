@@ -1,5 +1,5 @@
 use anyhow::Result;
-use tokio::fs::{read, try_exists};
+use tokio::fs::try_exists;
 pub(crate) struct Config {
     pub(crate) port: u16,
     pub(crate) host: &'static str,

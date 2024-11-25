@@ -1,10 +1,11 @@
 use super::cache_actor::{CacheActor, CacheCommand, CacheMessageInbox};
 use super::save_actor::SaveActor;
+use super::ttl_actor::{TtlActor, TtlInbox};
 use crate::adapters::persistence::{byte_decoder::BytesDecoder, Init};
 use crate::config::Config;
 
-use crate::services::statefuls::ttl_handlers::set::{TtlActor, TtlInbox};
 use crate::services::value::Value;
+use crate::services::CacheEntry;
 use anyhow::Result;
 use std::{hash::Hasher, iter::Zip, sync::Arc, time::SystemTime};
 use tokio::sync::oneshot::Sender;
@@ -38,13 +39,7 @@ impl CacheDispatcher {
             .into_iter()
             .filter(|kvs| kvs.is_valid(&current_system_time))
         {
-            self.route_set(
-                kvs.key,
-                kvs.value,
-                kvs.expiry.map(|x| x.to_u64()),
-                ttl_inbox.clone(),
-            )
-            .await?;
+            self.route_set(kvs, ttl_inbox.clone()).await?;
         }
 
         Ok(())
@@ -59,18 +54,10 @@ impl CacheDispatcher {
         Ok(rx.await?)
     }
 
-    pub(crate) async fn route_set(
-        &self,
-        key: String,
-        value: String,
-        expiry: Option<u64>,
-        ttl_sender: TtlInbox,
-    ) -> Result<Value> {
-        self.select_shard(&key)?
+    pub(crate) async fn route_set(&self, kvs: CacheEntry, ttl_sender: TtlInbox) -> Result<Value> {
+        self.select_shard(kvs.key())?
             .send(CacheCommand::Set {
-                key,
-                value,
-                expiry,
+                cache_entry: kvs,
                 ttl_sender,
             })
             .await?;

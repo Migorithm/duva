@@ -10,8 +10,9 @@ use crate::{
     make_smart_pointer,
     services::{
         config_handler::{command::ConfigCommand, ConfigHandler},
-        statefuls::{routers::cache_dispatcher::CacheDispatcher, ttl_handlers::set::TtlInbox},
+        statefuls::routers::{cache_dispatcher::CacheDispatcher, ttl_actor::TtlInbox},
         value::Value,
+        CacheEntry, Expiry,
     },
 };
 
@@ -37,9 +38,9 @@ impl<U: TWriteBuf + TRead> QueryManager<U> {
             Ping => Value::SimpleString("PONG".to_string()),
             Echo => args.first().ok_or(anyhow::anyhow!("Not exists"))?.clone(),
             Set => {
-                let (key, value, expiry) = args.take_set_args()?;
+                let cache_entry = args.take_set_args()?;
                 persistence_router
-                    .route_set(key, value, expiry, ttl_sender)
+                    .route_set(cache_entry, ttl_sender)
                     .await?
             }
             Save => {
@@ -180,7 +181,7 @@ impl InputValues {
         };
         Ok(key.to_string())
     }
-    pub(crate) fn take_set_args(&self) -> Result<(String, String, Option<u64>)> {
+    pub(crate) fn take_set_args(&self) -> Result<CacheEntry> {
         let (Value::BulkString(key), Value::BulkString(value)) = (
             self.first().ok_or(anyhow::anyhow!("Not exists"))?,
             self.get(1).ok_or(anyhow::anyhow!("No value"))?,
@@ -194,13 +195,13 @@ impl InputValues {
                 if sig.to_lowercase() != "px" {
                     return Err(anyhow::anyhow!("Invalid arguments"));
                 }
-                Ok((
-                    key.to_owned(),
+                Ok(CacheEntry::KeyValueExpiry(
+                    key.to_string(),
                     value.to_string(),
-                    Some(expiry.extract_expiry()?),
+                    Expiry::Milliseconds(expiry.extract_expiry()?),
                 ))
             }
-            (None, _) => Ok((key.to_owned(), value.to_string(), None)),
+            (None, _) => Ok(CacheEntry::KeyValue(key.to_owned(), value.to_string())),
             _ => Err(anyhow::anyhow!("Invalid arguments")),
         }
     }

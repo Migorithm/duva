@@ -6,8 +6,9 @@ use crate::{
     config::Config,
     services::{
         config_handler::ConfigHandler,
-        statefuls::{routers::cache_dispatcher::CacheDispatcher, ttl_handlers::set::TtlInbox},
+        statefuls::routers::{cache_dispatcher::CacheDispatcher, ttl_actor::TtlInbox},
         value::Value,
+        CacheEntry,
     },
 };
 use bytes::BytesMut;
@@ -37,15 +38,18 @@ async fn get_key(key: &str, persistence_router: &CacheDispatcher) -> Value {
     persistence_router.route_get(key.to_string()).await.unwrap()
 }
 
-async fn set_key(
+async fn set_key_with_no_expiry(
     key: &str,
     value: &str,
-    expiry: Option<u64>,
+
     ttl_sender: TtlInbox,
     persistence_router: &CacheDispatcher,
 ) -> Value {
     persistence_router
-        .route_set(key.to_string(), value.to_string(), expiry, ttl_sender)
+        .route_set(
+            CacheEntry::KeyValue(key.to_string(), value.to_string()),
+            ttl_sender,
+        )
         .await
         .unwrap()
 }
@@ -193,9 +197,9 @@ async fn test_keys() {
     //GIVEN
     let (cache_dispatcher, ttl_inbox) = CacheDispatcher::run_cache_actors(3, config_helper());
 
-    set_key("key", "value", None, ttl_inbox.clone(), &cache_dispatcher).await;
+    set_key_with_no_expiry("key", "value", ttl_inbox.clone(), &cache_dispatcher).await;
 
-    set_key("key2", "value", None, ttl_inbox.clone(), &cache_dispatcher).await;
+    set_key_with_no_expiry("key2", "value", ttl_inbox.clone(), &cache_dispatcher).await;
 
     // Input will be given like : redis-cli KEYS "*"
     let stream = FakeStream {

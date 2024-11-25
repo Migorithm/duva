@@ -1,18 +1,16 @@
 use crate::{
     make_smart_pointer,
-    services::{statefuls::ttl_handlers::set::TtlInbox, value::Value},
+    services::{value::Value, CacheEntry},
 };
 use anyhow::Result;
 use std::collections::HashMap;
 use tokio::sync::{mpsc, oneshot};
 
-use super::save_actor::SaveActorCommand;
+use super::{save_actor::SaveActorCommand, ttl_actor::TtlInbox};
 
 pub enum CacheCommand {
     Set {
-        key: String,
-        value: String,
-        expiry: Option<u64>,
+        cache_entry: CacheEntry,
         ttl_sender: TtlInbox,
     },
     Save {
@@ -79,19 +77,18 @@ impl CacheActor {
                 CacheCommand::StopSentinel => break,
 
                 CacheCommand::Set {
-                    key,
-                    value,
-                    expiry,
+                    cache_entry,
                     ttl_sender,
                 } => {
                     // Maybe you have to pass sender?
-                    match expiry {
-                        Some(expiry) => {
-                            cache.insert(key.clone(), value);
-                            ttl_sender.set_ttl(key, expiry).await;
-                        }
-                        None => {
+
+                    match cache_entry {
+                        CacheEntry::KeyValue(key, value) => {
                             cache.insert(key, value);
+                        }
+                        CacheEntry::KeyValueExpiry(key, value, expiry) => {
+                            cache.insert(key.clone(), value);
+                            ttl_sender.set_ttl(key, expiry.to_u64()).await;
                         }
                     }
                 }

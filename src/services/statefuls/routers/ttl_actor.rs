@@ -1,18 +1,16 @@
+use crate::{
+    make_smart_pointer,
+    services::statefuls::routers::{cache_actor::CacheCommand, cache_dispatcher::CacheDispatcher},
+};
 use std::{
     cmp::Reverse,
     collections::BinaryHeap,
     sync::Arc,
     time::{Duration, SystemTime},
 };
-
 use tokio::{
     sync::{mpsc::Receiver, RwLock},
     time::interval,
-};
-
-use crate::{
-    make_smart_pointer,
-    services::statefuls::routers::{cache_actor::CacheCommand, cache_dispatcher::CacheDispatcher},
 };
 
 pub struct TtlActor {
