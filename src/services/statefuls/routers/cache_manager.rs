@@ -1,4 +1,4 @@
-use super::cache_actor::{CacheActor, CacheActors, CacheCommand};
+use super::cache_actor::{CacheActor, CacheCommand, CacheCommandSender};
 use super::save_actor::SaveActor;
 use super::ttl_manager::{TtlActor, TtlSchedulerInbox};
 use crate::adapters::persistence::{byte_decoder::BytesDecoder, Init};
@@ -16,7 +16,7 @@ type OneShotReceiverJoinHandle<T> =
 
 #[derive(Clone)]
 pub(crate) struct CacheManager {
-    pub(crate) inboxes: Vec<CacheActors>,
+    pub(crate) inboxes: Vec<CacheCommandSender>,
     pub(crate) config: Arc<Config>,
 }
 
@@ -47,7 +47,7 @@ impl CacheManager {
 
     pub(crate) async fn route_get(&self, key: String) -> Result<QueryIO> {
         let (tx, rx) = tokio::sync::oneshot::channel();
-        self.select_shard(&key)?
+        self.select_shard(&key)
             .send(CacheCommand::Get { key, sender: tx })
             .await?;
 
@@ -59,7 +59,7 @@ impl CacheManager {
         kvs: CacheEntry,
         ttl_sender: TtlSchedulerInbox,
     ) -> Result<QueryIO> {
-        self.select_shard(kvs.key())?
+        self.select_shard(kvs.key())
             .send(CacheCommand::Set {
                 cache_entry: kvs,
                 ttl_sender,
@@ -107,13 +107,13 @@ impl CacheManager {
     fn chain<T>(
         &self,
         senders: Vec<Sender<T>>,
-    ) -> Zip<std::slice::Iter<'_, CacheActors>, std::vec::IntoIter<Sender<T>>> {
+    ) -> Zip<std::slice::Iter<'_, CacheCommandSender>, std::vec::IntoIter<Sender<T>>> {
         self.inboxes.iter().zip(senders.into_iter())
     }
 
     // stateless function to send keys
     async fn send_keys_to_shard(
-        shard: CacheActors,
+        shard: CacheCommandSender,
         pattern: Option<String>,
         tx: OneShotSender<QueryIO>,
     ) -> Result<()> {
@@ -125,12 +125,12 @@ impl CacheManager {
             .await?)
     }
 
-    fn select_shard(&self, key: &str) -> Result<&CacheActors> {
+    pub(crate) fn select_shard(&self, key: &str) -> &CacheCommandSender {
         let shard_key = self.take_shard_key_from_str(&key);
-        Ok(&self.inboxes[shard_key as usize])
+        &self.inboxes[shard_key as usize]
     }
 
-    pub(crate) fn take_shard_key_from_str(&self, s: &str) -> usize {
+    fn take_shard_key_from_str(&self, s: &str) -> usize {
         let mut hasher = std::hash::DefaultHasher::new();
         std::hash::Hash::hash(&s, &mut hasher);
         hasher.finish() as usize % self.inboxes.len()

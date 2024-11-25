@@ -59,7 +59,7 @@ pub struct CacheActor {
 }
 impl CacheActor {
     // Create a new CacheActor with inner state
-    pub fn run() -> CacheActors {
+    pub fn run() -> CacheCommandSender {
         let (tx, cache_actor_inbox) = tokio::sync::mpsc::channel(100);
         tokio::spawn(
             Self {
@@ -67,7 +67,7 @@ impl CacheActor {
             }
             .handle(),
         );
-        CacheActors(tx)
+        CacheCommandSender(tx)
     }
 
     async fn handle(mut self) -> Result<()> {
@@ -119,7 +119,7 @@ impl CacheActor {
 }
 
 #[derive(Clone)]
-pub struct CacheActors(tokio::sync::mpsc::Sender<CacheCommand>);
+pub struct CacheCommandSender(tokio::sync::mpsc::Sender<CacheCommand>);
 
 make_smart_pointer!(CacheDb, HashMap<String, CacheValue>);
-make_smart_pointer!(CacheActors, tokio::sync::mpsc::Sender<CacheCommand>);
+make_smart_pointer!(CacheCommandSender, tokio::sync::mpsc::Sender<CacheCommand>);
