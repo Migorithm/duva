@@ -51,8 +51,8 @@ impl From<Option<CacheValue>> for QueryIO {
     }
 }
 
-impl From<Vec<String>> for QueryIO {
-    fn from(v: Vec<String>) -> Self {
-        QueryIO::Array(v.into_iter().map(QueryIO::BulkString).collect())
+impl From<String> for QueryIO {
+    fn from(v: String) -> Self {
+        QueryIO::BulkString(v)
     }
 }

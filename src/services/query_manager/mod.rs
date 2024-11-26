@@ -70,7 +70,7 @@ impl<U: TWriteBuf + TRead> QueryManager<U> {
             }
             Delete => panic!("Not implemented"),
 
-            Info => config().replication_info().into(),
+            Info => config().replication_role().into(),
         };
 
         self.write_value(response).await?;
