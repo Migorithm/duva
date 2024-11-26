@@ -2,14 +2,12 @@ pub mod adapters;
 mod config;
 pub mod macros;
 pub mod services;
-
 use anyhow::Result;
-use config::Config;
 use services::{
     query_manager::QueryManager,
     statefuls::routers::{cache_manager::CacheManager, ttl_manager::TtlSchedulerInbox},
 };
-use std::{sync::Arc, time::SystemTime};
+use std::time::SystemTime;
 use tokio::net::{TcpListener, TcpStream};
 #[cfg(test)]
 mod test;

@@ -9,10 +9,9 @@ use request::UserRequest::{self, *};
 use std::str::FromStr;
 
 use crate::{
-    config::config,
+    config::{config, ConfigCommand},
     make_smart_pointer,
     services::{
-        config_manager::command::ConfigCommand,
         statefuls::routers::{cache_manager::CacheManager, ttl_manager::TtlSchedulerInbox},
         CacheEntry, Expiry,
     },

@@ -1,17 +1,11 @@
-use crate::{
-    config::{config, Config},
-    services::{
-        query_manager::{
-            interface::{TRead, TWriteBuf},
-            query_io::QueryIO,
-            QueryManager,
-        },
-        statefuls::routers::{cache_manager::CacheManager, ttl_manager::TtlSchedulerInbox},
-        CacheEntry,
-    },
-};
+use crate::services::query_manager::interface::TRead;
+use crate::services::query_manager::interface::TWriteBuf;
+use crate::services::query_manager::query_io::QueryIO;
+use crate::services::query_manager::QueryManager;
+use crate::services::statefuls::routers::cache_manager::CacheManager;
+use crate::services::statefuls::routers::ttl_manager::TtlSchedulerInbox;
+use crate::services::CacheEntry;
 use bytes::BytesMut;
-use std::sync::Arc;
 
 // Fake Stream to test the write_value function
 struct FakeStream {
@@ -51,12 +45,6 @@ async fn set_key_with_no_expiry(
         )
         .await
         .unwrap()
-}
-
-fn config_helper() -> Arc<Config> {
-    let mut conf = Config::new();
-    conf.dir = Some("/tmp".to_string());
-    conf.into()
 }
 
 /// The following is to test out the set operation with no expiry
