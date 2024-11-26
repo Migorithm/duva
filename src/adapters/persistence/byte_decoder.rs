@@ -8,7 +8,7 @@ use std::{
     collections::HashMap,
     ops::{Deref, DerefMut},
 };
-use crate::adapters::persistence::const_indicators::{DATABASE_SECTION_INDICATOR, METADATA_SECTION_INDICATOR, HEADER_MAGIC_STRING, DATABASE_TABLE_SIZE_INDICATOR};
+use crate::adapters::persistence::const_indicators::{DATABASE_SECTION_INDICATOR, METADATA_SECTION_INDICATOR, HEADER_MAGIC_STRING, DATABASE_TABLE_SIZE_INDICATOR, EXPIRY_TIME_IN_MILLISECONDS_INDICATOR, EXPIRY_TIME_IN_SECONDS_INDICATOR, STRING_VALUE_TYPE_INDICATOR};
 
 #[derive(Default)]
 pub struct BytesDecoder<'a, T> {
@@ -252,23 +252,22 @@ impl BytesDecoder<'_, MetadataReady> {
         while self.len() > 0 {
             match self[0] {
                 //0b11111100
-                0xFC => {
+                EXPIRY_TIME_IN_MILLISECONDS_INDICATOR => {
                     expiry = Some(self.try_extract_expiry_time_in_milliseconds()?);
                 }
                 //0b11111101
-                0xFD => {
+                EXPIRY_TIME_IN_SECONDS_INDICATOR => {
                     expiry = Some(self.try_extract_expiry_time_in_seconds()?);
                 }
                 //0b11111110
-                0x00 => {
+                STRING_VALUE_TYPE_INDICATOR => {
                     let (key, value) = self.try_extract_key_value()?;
-
-                    match expiry {
+                    return match expiry {
                         Some(expiry) => {
-                            return Ok(CacheEntry::KeyValueExpiry(key, value, expiry));
+                            Ok(CacheEntry::KeyValueExpiry(key, value, expiry))
                         }
                         None => {
-                            return Ok(CacheEntry::KeyValue(key, value));
+                            Ok(CacheEntry::KeyValue(key, value))
                         }
                     }
                 }
