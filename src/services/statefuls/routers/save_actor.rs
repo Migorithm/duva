@@ -1,6 +1,5 @@
-use tokio::sync::mpsc::Sender;
-
 use super::cache_actor::CacheChunk;
+use tokio::sync::mpsc::Sender;
 
 pub enum SaveActorCommand {
     SaveChunk(CacheChunk),

@@ -9,9 +9,9 @@ use request::UserRequest::{self, *};
 use std::str::FromStr;
 
 use crate::{
+    config::{config, ConfigCommand},
     make_smart_pointer,
     services::{
-        config_handler::{command::ConfigCommand, ConfigHandler},
         statefuls::routers::{cache_manager::CacheManager, ttl_manager::TtlSchedulerInbox},
         CacheEntry, Expiry,
     },
@@ -28,7 +28,6 @@ impl<U: TWriteBuf + TRead> QueryManager<U> {
         &mut self,
         persistence_router: &CacheManager,
         ttl_sender: TtlSchedulerInbox,
-        mut config_handler: ConfigHandler,
     ) -> Result<()> {
         let Some((cmd, args)) = self.read_value().await? else {
             return Err(anyhow::anyhow!("Connection closed"));
@@ -46,7 +45,7 @@ impl<U: TWriteBuf + TRead> QueryManager<U> {
             }
             Save => {
                 // spawn save actor
-                persistence_router.run_save_actor(config_handler.conf.get_filepath());
+                persistence_router.run_save_actor(config().get_filepath());
                 // TODO Set return type
                 QueryIO::Null
             }
@@ -61,9 +60,14 @@ impl<U: TWriteBuf + TRead> QueryManager<U> {
             // modify we have to add a new command
             Config => {
                 let cmd = args.take_config_args()?;
-                config_handler.handle_config(cmd)?
+                match config().handle_config(cmd) {
+                    Some(value) => QueryIO::Array(vec![
+                        QueryIO::BulkString("dir".to_string()),
+                        QueryIO::BulkString(value),
+                    ]),
+                    None => QueryIO::Null,
+                }
             }
-
             Delete => panic!("Not implemented"),
         };
 
