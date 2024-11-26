@@ -53,17 +53,17 @@ macro_rules! env_var {
         while let Some(arg) = args.next(){
             match arg.as_str(){
                 $(
-                    stringify!(-- $env_name) => {
+                    concat!("--", stringify!($env_name)) => {
                     if let Some(value) = args.next(){
                         $env_name = Some(value.parse().unwrap());
                     }
                 })*
                 $(
                     $(
-                    stringify!(-- $default) => {
-                    if let Some(value) = args.next(){
-                        $default = value.parse().expect("Default value must be given");
-                    }
+                        concat!("--", stringify!($default)) => {
+                        if let Some(value) = args.next(){
+                            $default = value.parse().expect("Default value must be given");
+                        }
                     })*
                 )?
 
