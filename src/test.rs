@@ -207,3 +207,29 @@ async fn test_keys() {
             .as_str()
     ));
 }
+
+#[tokio::test]
+async fn test_replication_info() {
+    //GIVEN
+    let (cache_dispatcher, ttl_inbox) = CacheManager::run_cache_actors(3);
+
+    let stream = FakeStream {
+        written: "*2\r\n$4\r\nINFO\r\n$11\r\nreplication\r\n"
+            .as_bytes()
+            .to_vec(),
+    };
+    let mut controller = QueryManager::new(stream);
+    // WHEN
+    controller
+        .handle(&cache_dispatcher, ttl_inbox)
+        .await
+        .unwrap();
+
+    // THEN
+    let res = String::from_utf8(controller.stream.written.to_vec()).unwrap();
+
+    assert_eq!(
+        "*8\r\n$11\r\nrole:master\r\n$18\r\nconnected_slaves:0\r\n$54\r\nmaster_replid:8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb\r\n$20\r\nmaster_repl_offset:0\r\n$21\r\nsecond_repl_offset:-1\r\n$21\r\nrepl_backlog_active:0\r\n$25\r\nrepl_backlog_size:1048576\r\n$32\r\nrepl_backlog_first_byte_offset:0\r\n",
+        res
+    );
+}

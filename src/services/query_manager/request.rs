@@ -8,6 +8,7 @@ pub enum UserRequest {
     Keys,
     Delete,
     Save,
+    Info,
 }
 
 impl FromStr for UserRequest {
@@ -23,6 +24,7 @@ impl FromStr for UserRequest {
             "config" => Ok(UserRequest::Config),
             "keys" => Ok(UserRequest::Keys),
             "save" => Ok(UserRequest::Save),
+            "info" => Ok(UserRequest::Info),
             _ => Err(anyhow::anyhow!("Invalid command")),
         }
     }

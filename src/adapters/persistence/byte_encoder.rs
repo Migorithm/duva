@@ -177,7 +177,7 @@ fn test_16_bit_integer() {
 fn test_16_bit_integer_decode() {
     let data = "12345";
     let size = data.len();
-    let mut encoded: BytesEncoder = data_encode(size, data).unwrap();
+    let encoded: BytesEncoder = data_encode(size, data).unwrap();
     let mut decoder = BytesDecoder {
         data: &encoded.0,
         state: Init,
@@ -198,7 +198,7 @@ fn test_32_bit_integer() {
 fn test_32_bit_integer_decode() {
     let data = "1234567";
     let size = data.len();
-    let mut encoded = data_encode(size, data).unwrap();
+    let encoded = data_encode(size, data).unwrap();
     let mut decoder = BytesDecoder {
         data: &encoded.0,
         state: Init,
@@ -210,7 +210,7 @@ fn test_32_bit_integer_decode() {
 fn test_integer_decoding1() {
     let data = "42";
     let size = data.len();
-    let mut encoded = data_encode(size, data).unwrap();
+    let encoded = data_encode(size, data).unwrap();
     let mut decoder = BytesDecoder {
         data: &encoded.0,
         state: Init,
@@ -234,7 +234,7 @@ fn test_integer_decoding2() {
 fn test_integer_decoding3() {
     let data = "100000";
     let size = data.len();
-    let mut encoded = data_encode(size, data).unwrap();
+    let encoded = data_encode(size, data).unwrap();
     let mut decoder = BytesDecoder {
         data: &encoded.0,
         state: Init,
