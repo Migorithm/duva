@@ -144,6 +144,9 @@ impl Config {
     pub fn replication_info(&self) -> Vec<String> {
         self.replication.info()
     }
+    pub fn replication_role(&self) -> String {
+        self.replication.role()
+    }
 }
 
 #[derive(Debug, Clone, Default)]
@@ -172,7 +175,7 @@ impl Replication {
     }
     pub fn info(&self) -> Vec<String> {
         vec![
-            format!("role:{}", self.role),
+            self.role(),
             format!("connected_slaves:{}", self.connected_slaves),
             format!("master_replid:{}", self.master_replid),
             format!("master_repl_offset:{}", self.master_repl_offset),
@@ -184,6 +187,9 @@ impl Replication {
                 self.repl_backlog_first_byte_offset
             ),
         ]
+    }
+    pub fn role(&self) -> String {
+        "role:".to_string() + &self.role
     }
 }
 
