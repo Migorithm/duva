@@ -14,11 +14,26 @@
 /// * Size encoding overhead varies from 1 to 5 bytes
 use crate::make_smart_pointer;
 use anyhow::Result;
+use crate::adapters::persistence::const_indicators::EXPIRY_TIME_IN_SECONDS_INDICATOR;
+use crate::services::{CacheEntry, Expiry};
 
-#[derive(Debug, Default)]
-struct BytesEncoder(Vec<u8>);
-
-make_smart_pointer!(BytesEncoder, Vec<u8>);
+impl Expiry {
+    fn encode(&self) -> Result<Vec<u8>> {
+        let mut result = Vec::new();
+        match self {
+            Expiry::Seconds(value) => {
+                result.push(EXPIRY_TIME_IN_SECONDS_INDICATOR);
+                result.extend_from_slice(&value.to_le_bytes());
+                Ok(result)
+            }
+            Expiry::Milliseconds(value) => {
+                result.push(EXPIRY_TIME_IN_SECONDS_INDICATOR);
+                result.extend_from_slice(&value.to_le_bytes());
+                Ok(result)
+            }
+        }
+    }
+}
 
 fn encode_integer(value: u32) -> Result<Vec<u8>> {
     let mut result = Vec::new();
@@ -242,4 +257,18 @@ fn test_integer_decoding3() {
         state: Init,
     };
     assert_eq!(decoder.string_decode(), Some("100000".to_string()));
+}
+
+fn test_expiry_encode_seconds() {
+    let expiry = Expiry::Seconds(1714089298);
+    let encoded = expiry.encode().unwrap();
+    assert_eq!(encoded[0], EXPIRY_TIME_IN_SECONDS_INDICATOR);
+    assert_eq!(encoded[1..], [0x52, 0xED, 0x2A, 0x66]);
+}
+
+fn test_expiry_encode_milliseconds() {
+    let expiry = Expiry::Milliseconds(1713824559637);
+    let encoded = expiry.encode().unwrap();
+    assert_eq!(encoded[0], EXPIRY_TIME_IN_SECONDS_INDICATOR);
+    assert_eq!(encoded[1..], [0x15, 0x72, 0xE7, 0x07, 0x8F, 0x01, 0x00, 0x00]);
 }
