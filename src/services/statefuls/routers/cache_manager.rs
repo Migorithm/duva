@@ -107,7 +107,7 @@ impl CacheManager {
         &self,
         senders: Vec<Sender<T>>,
     ) -> Zip<std::slice::Iter<'_, CacheCommandSender>, std::vec::IntoIter<Sender<T>>> {
-        self.inboxes.iter().zip(senders.into_iter())
+        self.inboxes.iter().zip(senders)
     }
 
     // stateless function to send keys
@@ -125,8 +125,8 @@ impl CacheManager {
     }
 
     pub(crate) fn select_shard(&self, key: &str) -> &CacheCommandSender {
-        let shard_key = self.take_shard_key_from_str(&key);
-        &self.inboxes[shard_key as usize]
+        let shard_key = self.take_shard_key_from_str(key);
+        &self.inboxes[shard_key]
     }
 
     fn take_shard_key_from_str(&self, s: &str) -> usize {
@@ -138,10 +138,8 @@ impl CacheManager {
     pub fn run_cache_actors(num_of_actors: usize) -> (CacheManager, TtlSchedulerInbox) {
         let cache_dispatcher = CacheManager {
             inboxes: (0..num_of_actors)
-                .into_iter()
                 .map(|_| CacheActor::run())
-                .collect::<Vec<_>>()
-                .into(),
+                .collect::<Vec<_>>(),
         };
 
         let ttl_inbox = cache_dispatcher.run_ttl_actors();
@@ -149,8 +147,7 @@ impl CacheManager {
     }
 
     fn run_ttl_actors(&self) -> TtlSchedulerInbox {
-        let ttl_actor = TtlActor::run(self.clone());
-        ttl_actor
+        TtlActor::run(self.clone())
     }
 
     pub fn run_save_actor(&self, db_filepath: Option<String>) {

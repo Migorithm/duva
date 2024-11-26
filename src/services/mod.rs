@@ -18,10 +18,7 @@ impl CacheEntry {
         }
     }
     pub fn is_with_expiry(&self) -> bool {
-        match &self {
-            CacheEntry::KeyValueExpiry(_, _, _) => true,
-            _ => false,
-        }
+        matches!(self, CacheEntry::KeyValueExpiry(_, _, _))
     }
 
     pub fn key(&self) -> &str {

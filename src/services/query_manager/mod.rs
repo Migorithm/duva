@@ -69,6 +69,8 @@ impl<U: TWriteBuf + TRead> QueryManager<U> {
                 }
             }
             Delete => panic!("Not implemented"),
+
+            Info => config().replication_info().into(),
         };
 
         self.write_value(response).await?;
@@ -222,7 +224,7 @@ impl InputValues {
         else {
             return Err(anyhow::anyhow!("Invalid arguments"));
         };
-        Ok((command.as_str(), key.as_str()).try_into()?)
+        (command.as_str(), key.as_str()).try_into()
     }
 
     // Pattern is passed with escape characters \" wrapping the pattern in question.
@@ -234,8 +236,8 @@ impl InputValues {
 
         let pattern = pattern.trim_matches('\"');
         match pattern {
-            pattern if pattern == "*" => Ok(None),
-            pattern if pattern.is_empty() => Err(anyhow::anyhow!("Invalid pattern")),
+            "*" => Ok(None),
+            "" => Err(anyhow::anyhow!("Invalid pattern")),
             pattern => Ok(Some(pattern.to_string())),
         }
     }
