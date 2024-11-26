@@ -1,7 +1,6 @@
 use crate::{
-    config::Config,
+    config::{config, Config},
     services::{
-        config_handler::ConfigHandler,
         query_manager::{
             interface::{TRead, TWriteBuf},
             query_io::QueryIO,
@@ -69,9 +68,7 @@ fn config_helper() -> Arc<Config> {
 /// OUTPUT(when get method is invoked on the key) : "value"
 #[tokio::test]
 async fn test_set() {
-    let (persistence_handlers, ttl_inbox) = CacheManager::run_cache_actors(3, config_helper());
-
-    let config_handler = ConfigHandler::new(Arc::new(Config::new()));
+    let (persistence_handlers, ttl_inbox) = CacheManager::run_cache_actors(3);
 
     let stream = FakeStream {
         written: "*3\r\n$3\r\nSET\r\n$3\r\nkey\r\n$5\r\nvalue\r\n"
@@ -82,7 +79,7 @@ async fn test_set() {
 
     // WHEN
     controller
-        .handle(&persistence_handlers, ttl_inbox, config_handler)
+        .handle(&persistence_handlers, ttl_inbox)
         .await
         .unwrap();
 
@@ -104,14 +101,13 @@ async fn test_set_with_expiry() {
             .to_vec(),
     };
 
-    let (cache_dispatcher, ttl_inbox) = CacheManager::run_cache_actors(3, config_helper());
+    let (cache_dispatcher, ttl_inbox) = CacheManager::run_cache_actors(3);
 
     let mut controller = QueryManager::new(stream);
-    let config_handler = ConfigHandler::new(Arc::new(Config::new()));
 
     // WHEN
     controller
-        .handle(&cache_dispatcher, ttl_inbox, config_handler)
+        .handle(&cache_dispatcher, ttl_inbox)
         .await
         .unwrap();
 
@@ -135,14 +131,13 @@ async fn test_set_with_expire_should_expire_within_100ms() {
             .as_bytes()
             .to_vec(),
     };
-    let (cache_dispatcher, ttl_inbox) = CacheManager::run_cache_actors(3, config_helper());
+    let (cache_dispatcher, ttl_inbox) = CacheManager::run_cache_actors(3);
 
     let mut controller = QueryManager::new(stream);
-    let config_handler = ConfigHandler::new(Arc::new(Config::new()));
 
     // WHEN
     controller
-        .handle(&cache_dispatcher, ttl_inbox, config_handler)
+        .handle(&cache_dispatcher, ttl_inbox)
         .await
         .unwrap();
 
@@ -167,22 +162,20 @@ async fn test_set_with_expire_should_expire_within_100ms() {
 #[tokio::test]
 async fn test_config_get_dir() {
     //GIVEN
-    let mut conf = Config::new();
-    conf.dir = Some("/tmp".to_string());
+    std::env::set_var("dir", "/tmp");
 
     let stream = FakeStream {
         written: "*3\r\n$6\r\nCONFIG\r\n$3\r\nGET\r\n$3\r\ndir\r\n"
             .as_bytes()
             .to_vec(),
     };
-    let (cache_dispatcher, ttl_inbox) = CacheManager::run_cache_actors(3, config_helper());
+    let (cache_dispatcher, ttl_inbox) = CacheManager::run_cache_actors(3);
 
     let mut controller = QueryManager::new(stream);
-    let config_handler = ConfigHandler::new(Arc::new(conf));
 
     // WHEN
     controller
-        .handle(&cache_dispatcher, ttl_inbox, config_handler)
+        .handle(&cache_dispatcher, ttl_inbox)
         .await
         .unwrap();
 
@@ -195,7 +188,7 @@ async fn test_config_get_dir() {
 #[tokio::test]
 async fn test_keys() {
     //GIVEN
-    let (cache_dispatcher, ttl_inbox) = CacheManager::run_cache_actors(3, config_helper());
+    let (cache_dispatcher, ttl_inbox) = CacheManager::run_cache_actors(3);
 
     set_key_with_no_expiry("key", "value", ttl_inbox.clone(), &cache_dispatcher).await;
 
@@ -210,11 +203,7 @@ async fn test_keys() {
 
     // WHEN
     controller
-        .handle(
-            &cache_dispatcher,
-            ttl_inbox,
-            ConfigHandler::new(Arc::new(Config::new())),
-        )
+        .handle(&cache_dispatcher, ttl_inbox)
         .await
         .unwrap();
 

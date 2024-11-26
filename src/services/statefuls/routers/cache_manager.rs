@@ -2,12 +2,12 @@ use super::cache_actor::{CacheActor, CacheCommand, CacheCommandSender};
 use super::save_actor::SaveActor;
 use super::ttl_manager::{TtlActor, TtlSchedulerInbox};
 use crate::adapters::persistence::{byte_decoder::BytesDecoder, Init};
-use crate::config::Config;
+use crate::config::config;
 
 use crate::services::query_manager::query_io::QueryIO;
 use crate::services::CacheEntry;
 use anyhow::Result;
-use std::{hash::Hasher, iter::Zip, sync::Arc, time::SystemTime};
+use std::{hash::Hasher, iter::Zip, time::SystemTime};
 use tokio::sync::oneshot::Sender;
 
 type OneShotSender<T> = tokio::sync::oneshot::Sender<T>;
@@ -17,7 +17,6 @@ type OneShotReceiverJoinHandle<T> =
 #[derive(Clone)]
 pub(crate) struct CacheManager {
     pub(crate) inboxes: Vec<CacheCommandSender>,
-    pub(crate) config: Arc<Config>,
 }
 
 impl CacheManager {
@@ -26,7 +25,7 @@ impl CacheManager {
         ttl_inbox: TtlSchedulerInbox,
         current_system_time: SystemTime,
     ) -> Result<()> {
-        let Ok(Some(filepath)) = self.config.try_filepath().await else {
+        let Ok(Some(filepath)) = config().try_filepath().await else {
             return Ok(());
         };
 
@@ -136,17 +135,13 @@ impl CacheManager {
         hasher.finish() as usize % self.inboxes.len()
     }
 
-    pub fn run_cache_actors(
-        num_of_actors: usize,
-        config: Arc<Config>,
-    ) -> (CacheManager, TtlSchedulerInbox) {
+    pub fn run_cache_actors(num_of_actors: usize) -> (CacheManager, TtlSchedulerInbox) {
         let cache_dispatcher = CacheManager {
             inboxes: (0..num_of_actors)
                 .into_iter()
                 .map(|_| CacheActor::run())
                 .collect::<Vec<_>>()
                 .into(),
-            config,
         };
 
         let ttl_inbox = cache_dispatcher.run_ttl_actors();

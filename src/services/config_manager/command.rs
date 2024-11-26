@@ -1,5 +1,6 @@
 pub enum ConfigCommand {
     Get(ConfigResource),
+    FilePath,
 }
 pub enum ConfigResource {
     Dir,
