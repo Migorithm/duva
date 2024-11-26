@@ -24,24 +24,50 @@ impl TryFrom<(&str, &str)> for ConfigCommand {
 
 pub(crate) struct Config {
     pub(crate) port: u16,
-    pub(crate) host: &'static str,
+    pub(crate) host: String,
     pub(crate) dir: Option<String>,
     pub(crate) dbfilename: Option<String>,
 }
 
 macro_rules! env_var {
-    ($($env_name:ident),*) => {
-        $(let mut $env_name =  std::env::var(stringify!($env_name)).ok();)*
+    (
+        {
+            $($env_name:ident),*
+        }
+        $({
+            $($default:ident = $default_value:expr),*
+        })?
 
-        let mut args = std::env::args().skip(1); // Skip the program name
+    ) => {
+        $(
+            // Initialize the variable with the environment variable or the default value.
+            let mut $env_name = std::env::var(stringify!($env_name))
+                .ok();
+        )*
+
+        let mut args = std::env::args().skip(1);
+        $(
+            $(let mut $default = $default_value;)*
+        )?
+
         while let Some(arg) = args.next(){
             match arg.as_str(){
                 $(
                     stringify!(-- $env_name) => {
                     if let Some(value) = args.next(){
-                        $env_name = Some(value);
+                        $env_name = Some(value.parse().unwrap());
                     }
                 })*
+                $(
+                    $(
+                    stringify!(-- $default) => {
+                    if let Some(value) = args.next(){
+                        $default = value.parse().expect("Default value must be given");
+                    }
+                    })*
+                )?
+
+
                 _ => {
                     eprintln!("Unexpected argument: {}", arg);
                 }
@@ -52,11 +78,20 @@ macro_rules! env_var {
 
 impl Config {
     pub fn new() -> Self {
-        env_var!(dir, dbfilename);
+        env_var!(
+            {
+                dir,
+                dbfilename
+            }
+            {
+                port = 6379,
+                host = "localhost".to_string()
+            }
+        );
 
         Config {
-            port: 6379,
-            host: "localhost",
+            port,
+            host,
             dir,
             dbfilename,
         }
