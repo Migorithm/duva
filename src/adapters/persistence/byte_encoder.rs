@@ -17,6 +17,35 @@ use anyhow::Result;
 use crate::adapters::persistence::const_indicators::EXPIRY_TIME_IN_SECONDS_INDICATOR;
 use crate::services::{CacheEntry, Expiry};
 
+impl CacheEntry {
+    fn encode(&self) -> Result<Vec<u8>> {
+        let mut result = Vec::new();
+        match self {
+            CacheEntry::KeyValue(key, value) => {
+                let key_value = Self::encode_key_value(key, value)?;
+                result.extend_from_slice(&key_value);
+                Ok(result)
+            }
+            CacheEntry::KeyValueExpiry(key, value, expiry) => {
+                let key_value = Self::encode_key_value(key, value)?;
+                let expiry = expiry.encode()?;
+                result.extend_from_slice(&key_value);
+                result.extend_from_slice(&expiry);
+                Ok(result)
+            }
+        }
+    }
+
+    fn encode_key_value(key: &String, value: &String) -> Result<Vec<u8>> {
+        let mut result = Vec::new();
+        result.extend_from_slice(&encode_size(key.len())?);
+        result.extend_from_slice(key.as_bytes());
+        result.extend_from_slice(&encode_size(value.len())?);
+        result.extend_from_slice(value.as_bytes());
+        Ok(result)
+    }
+}
+
 impl Expiry {
     fn encode(&self) -> Result<Vec<u8>> {
         let mut result = Vec::new();
