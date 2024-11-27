@@ -49,7 +49,7 @@ impl<T> BytesDecoder<'_, T> {
         }
     }
     pub fn size_decode(&mut self) -> Option<usize> {
-        if let Some(first_byte) = self.get(0) {
+        if let Some(first_byte) = self.first() {
             match first_byte >> 6 {
                 0b00 => {
                     let size = (first_byte & 0x3F) as usize;
@@ -84,7 +84,7 @@ impl<T> BytesDecoder<'_, T> {
     }
 
     fn integer_decode(&mut self) -> Option<String> {
-        if let Some(first_byte) = self.get(0) {
+        if let Some(first_byte) = self.first() {
             match first_byte {
                 // 0b11000000: 8-bit integer
                 0xC0 => {
@@ -113,7 +113,7 @@ impl<T> BytesDecoder<'_, T> {
     }
 
     pub(crate) fn check_indicator(&self, iden: u8) -> bool {
-        self.get(0) == Some(&iden)
+        self.first() == Some(&iden)
     }
 }
 

@@ -50,3 +50,9 @@ impl From<Option<CacheValue>> for QueryIO {
         }
     }
 }
+
+impl From<String> for QueryIO {
+    fn from(v: String) -> Self {
+        QueryIO::BulkString(v)
+    }
+}

@@ -207,3 +207,27 @@ async fn test_keys() {
             .as_str()
     ));
 }
+
+// TODO currently, info replication only returns role information with BulkString QueryIO
+#[tokio::test]
+async fn test_replication_info() {
+    //GIVEN
+    let (cache_dispatcher, ttl_inbox) = CacheManager::run_cache_actors(3);
+
+    let stream = FakeStream {
+        written: "*2\r\n$4\r\nINFO\r\n$11\r\nreplication\r\n"
+            .as_bytes()
+            .to_vec(),
+    };
+    let mut controller = QueryManager::new(stream);
+    // WHEN
+    controller
+        .handle(&cache_dispatcher, ttl_inbox)
+        .await
+        .unwrap();
+
+    // THEN
+    let res = String::from_utf8(controller.stream.written.to_vec()).unwrap();
+
+    assert_eq!("$11\r\nrole:master\r\n".to_string(), res);
+}

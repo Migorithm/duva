@@ -69,6 +69,8 @@ impl<U: TWriteBuf + TRead> QueryManager<U> {
                 }
             }
             Delete => panic!("Not implemented"),
+
+            Info => config().replication_role().into(),
         };
 
         self.write_value(response).await?;
@@ -128,7 +130,7 @@ fn read_until_crlf(buffer: &[u8]) -> Option<(&[u8], usize)> {
             return Some((&buffer[0..(i - 1)], i + 1));
         }
     }
-    return None;
+    None
 }
 
 // +PING\r\n
@@ -154,7 +156,7 @@ fn parse_array(buffer: BytesMut) -> Result<(QueryIO, usize)> {
         len += l;
     }
 
-    return Ok((QueryIO::Array(bulk_strings), len));
+    Ok((QueryIO::Array(bulk_strings), len))
 }
 
 fn parse_bulk_string(buffer: BytesMut) -> Result<(QueryIO, usize)> {
@@ -222,7 +224,7 @@ impl InputValues {
         else {
             return Err(anyhow::anyhow!("Invalid arguments"));
         };
-        Ok((command.as_str(), key.as_str()).try_into()?)
+        (command.as_str(), key.as_str()).try_into()
     }
 
     // Pattern is passed with escape characters \" wrapping the pattern in question.
@@ -234,8 +236,8 @@ impl InputValues {
 
         let pattern = pattern.trim_matches('\"');
         match pattern {
-            pattern if pattern == "*" => Ok(None),
-            pattern if pattern.is_empty() => Err(anyhow::anyhow!("Invalid pattern")),
+            "*" => Ok(None),
+            "" => Err(anyhow::anyhow!("Invalid pattern")),
             pattern => Ok(Some(pattern.to_string())),
         }
     }

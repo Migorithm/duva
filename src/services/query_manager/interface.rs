@@ -24,7 +24,6 @@ impl TRead for tokio::net::TcpStream {
 impl TWriteBuf for tokio::net::TcpStream {
     async fn write_buf(&mut self, buf: &[u8]) -> Result<(), std::io::Error> {
         let stream = self as &mut tokio::net::TcpStream;
-        stream.write(buf).await?;
-        Ok(())
+        stream.write_all(buf).await
     }
 }

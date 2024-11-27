@@ -76,7 +76,7 @@ fn encode_size(size: usize) -> Result<Vec<u8>> {
     let mut result = Vec::new();
     // if value is representable with 6bits : 0b00 -> Use the remaining 6 bits to represent the size.
     if size < (1 << 6) {
-        result.push((0b00 << 6) | (size as u8));
+        result.push(size as u8);
     }
     // if value is representable with 14bits : 0b01 -> Use the next 14 bits (6 bits in the first byte + the next byte).
     else if size < (1 << 14) {
