@@ -39,6 +39,7 @@ impl SaveActor {
             .open(&self.filepath)
             .await?;
 
+        // TODO move to adapter logic as it pertains to IO
         let meta = [
             encode_header("0011")?,
             encode_metadata(Vec::from([("redis-ver", "6.0.16")]))?,
