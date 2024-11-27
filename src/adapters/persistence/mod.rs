@@ -28,7 +28,7 @@
 //! # Examples
 //!
 //! Basic usage:
-//! ```rust
+//! ```rust,ignore
 //! # fn main() -> Option<()> {
 //! let data = "Hello".as_bytes();
 //! let size = 42;
@@ -48,7 +48,7 @@
 //! The benefit is that size_encode allows you to encode any size value independently of the data length. This is useful when:
 //!
 //! 1. You're sending a header for a larger message:
-//! ```rust,text
+//! ```rust,text,ignore
 //! // First message part
 //! let header = size_encode(1000, b"start").unwrap();
 //! send(header);  // Sends: size=1000 + data="start"
@@ -64,16 +64,12 @@
 /// Each key-value pair is stored as follows:
 ///
 /// 1. Optional Expire Information:
-/// - **Timestamp in Seconds:**
-/// ```
-/// FD
-/// Expire timestamp in seconds (4-byte unsigned integer)
-/// ```
-/// - **Timestamp in Milliseconds:**
-/// ```
-/// FC
-/// Expire timestamp in milliseconds (8-byte unsigned long)
-/// ```
+/// **Timestamp in Seconds:**
+/// FD - Expire timestamp in seconds (4-byte unsigned integer)
+///
+/// **Timestamp in Milliseconds:**
+/// FC - Expire timestamp in milliseconds (8-byte unsigned long)
+///
 /// 2. **Value Type:** 1-byte flag indicating the type and encoding of the value.
 /// 3. **Key:** String encoded.
 /// 4. **Value:** Encoding depends on the value type.

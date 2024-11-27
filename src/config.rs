@@ -68,7 +68,7 @@ impl TryFrom<(&str, &str)> for ConfigCommand {
     }
 }
 
-pub(crate) struct Config {
+pub struct Config {
     pub(crate) port: u16,
     pub(crate) host: String,
     pub(crate) dir: String,
