@@ -9,6 +9,7 @@ The following features have been implemented so far:
         - Expiration: Set a time-to-live (TTL) for keys.
     - GET: Retrieve the value associated with a key.
     - KEYS (with pattern matching): Retrieve keys matching specific patterns.
+    - SAVE : dump data to desinated file path
 
 - Advanced Features
     - Auto Deletion: Automatically remove expired keys.
