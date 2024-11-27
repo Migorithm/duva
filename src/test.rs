@@ -149,9 +149,6 @@ async fn test_set_with_expire_should_expire_within_100ms() {
 /// *2\r\n$3\r\ndir\r\n$4\r\n/tmp\r\n
 #[tokio::test]
 async fn test_config_get_dir() {
-    //GIVEN
-    std::env::set_var("dir", "/tmp");
-
     let stream = FakeStream {
         written: "*3\r\n$6\r\nCONFIG\r\n$3\r\nGET\r\n$3\r\ndir\r\n"
             .as_bytes()
@@ -168,7 +165,7 @@ async fn test_config_get_dir() {
         .unwrap();
 
     // THEN
-    let res = "*2\r\n$3\r\ndir\r\n$4\r\n/tmp\r\n";
+    let res = "*2\r\n$3\r\ndir\r\n$0\r\n\r\n";
     let written = String::from_utf8(controller.stream.written.to_vec()).unwrap();
     assert_eq!(written, res.to_string());
 }

@@ -71,7 +71,7 @@ impl TryFrom<(&str, &str)> for ConfigCommand {
 pub(crate) struct Config {
     pub(crate) port: u16,
     pub(crate) host: String,
-    pub(crate) dir: Option<String>,
+    pub(crate) dir: String,
     pub(crate) dbfilename: Option<String>,
     pub(crate) replication: Replication,
 }
@@ -80,11 +80,11 @@ impl Config {
     pub fn new() -> Self {
         env_var!(
             {
-                dir,
                 dbfilename,
                 replicaof
             }
             {
+                dir = "".to_string(),
                 port = 6379,
                 host = "localhost".to_string()
             }
@@ -109,7 +109,7 @@ impl Config {
     // The following is used on startup and check if the file exists
     pub async fn try_filepath(&self) -> Result<Option<String>> {
         match (&self.dir, &self.dbfilename) {
-            (Some(dir), Some(db_filename)) => {
+            (dir, Some(db_filename)) => {
                 let file_path = format!("{}/{}", dir, db_filename);
                 if try_exists(&file_path).await? {
                     println!("The file exists.");
@@ -124,7 +124,7 @@ impl Config {
     }
     pub fn get_filepath(&self) -> Option<String> {
         match (&self.dir, &self.dbfilename) {
-            (Some(dir), Some(db_filename)) => {
+            (dir, Some(db_filename)) => {
                 let file_path = format!("{}/{}", dir, db_filename);
                 Some(file_path)
             }
@@ -134,12 +134,12 @@ impl Config {
     // perhaps, set operation is needed
     pub fn handle_config(&self, cmd: ConfigCommand) -> Option<String> {
         match cmd {
-            ConfigCommand::Dir => self.get_dir(),
+            ConfigCommand::Dir => Some(self.get_dir().to_string()),
             ConfigCommand::DbFileName => self.get_db_filename(),
         }
     }
-    fn get_dir(&self) -> Option<String> {
-        self.dir.clone()
+    fn get_dir(&self) -> &str {
+        self.dir.as_str()
     }
 
     fn get_db_filename(&self) -> Option<String> {

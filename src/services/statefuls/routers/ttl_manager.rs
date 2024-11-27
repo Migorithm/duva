@@ -56,8 +56,7 @@ impl TtlActor {
         while let Some(cmd) = inbox.recv().await {
             match cmd {
                 TtlCommand::ScheduleTtl { expiry, key } => {
-                    let expire_at = SystemTime::now() + Duration::from_millis(expiry);
-                    priority_queue.push((Reverse(expire_at), key));
+                    priority_queue.push((Reverse(expiry), key));
                 }
 
                 TtlCommand::Peek(sender) => match priority_queue.peek() {
@@ -83,7 +82,7 @@ impl TtlActor {
 }
 
 pub enum TtlCommand {
-    ScheduleTtl { expiry: u64, key: String },
+    ScheduleTtl { expiry: SystemTime, key: String },
     Peek(oneshot::Sender<Option<String>>),
     StopSentinel,
 }
@@ -94,8 +93,8 @@ impl TtlCommand {
             TtlCommand::ScheduleTtl { expiry, key } => (expiry, key),
             _ => return None,
         };
-        let expire_at = SystemTime::now() + Duration::from_millis(expire_in_mills);
-        Some((expire_at, key))
+
+        Some((expire_in_mills, key))
     }
 }
 
@@ -103,7 +102,7 @@ impl TtlCommand {
 pub struct TtlSchedulerInbox(tokio::sync::mpsc::Sender<TtlCommand>);
 
 impl TtlSchedulerInbox {
-    pub async fn set_ttl(&self, key: String, expiry: u64) {
+    pub async fn set_ttl(&self, key: String, expiry: SystemTime) {
         let _ = self.send(TtlCommand::ScheduleTtl { key, expiry }).await;
     }
 }

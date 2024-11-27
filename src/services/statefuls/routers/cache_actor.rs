@@ -41,26 +41,30 @@ impl CacheDb {
             }
         })
     }
+
+    fn get_expires_table_size(&self) -> usize {
+        self.iter().filter(|(_, v)| v.has_expiry()).count()
+    }
 }
-pub struct CacheChunk(pub Vec<(String, String)>);
+pub struct CacheChunk(pub Vec<(String, CacheValue)>);
 impl CacheChunk {
-    pub fn new<'a>(chunk: &'a [(&'a String, &'a CacheValue)]) -> Self {
+    pub fn new(chunk: &[(&String, &CacheValue)]) -> Self {
         Self(
             chunk
                 .iter()
-                .map(|(k, v)| (k.to_string(), v.value().to_string()))
-                .collect::<Vec<(String, String)>>(),
+                .map(|(k, v)| (k.to_string(), (*v).clone()))
+                .collect::<Vec<(String, CacheValue)>>(),
         )
     }
 }
 
 pub struct CacheActor {
-    inbox: tokio::sync::mpsc::Receiver<CacheCommand>,
+    inbox: mpsc::Receiver<CacheCommand>,
 }
 impl CacheActor {
     // Create a new CacheActor with inner state
     pub fn run() -> CacheCommandSender {
-        let (tx, cache_actor_inbox) = tokio::sync::mpsc::channel(100);
+        let (tx, cache_actor_inbox) = mpsc::channel(100);
         tokio::spawn(
             Self {
                 inbox: cache_actor_inbox,
@@ -84,11 +88,8 @@ impl CacheActor {
                         cache.insert(key, CacheValue::Value(value));
                     }
                     CacheEntry::KeyValueExpiry(key, value, expiry) => {
-                        cache.insert(
-                            key.clone(),
-                            CacheValue::ValueWithExpiry(value, expiry.clone()),
-                        );
-                        ttl_sender.set_ttl(key, expiry.to_u64()).await;
+                        cache.insert(key.clone(), CacheValue::ValueWithExpiry(value, expiry));
+                        ttl_sender.set_ttl(key, expiry).await;
                     }
                 },
                 CacheCommand::Get { key, sender } => {
@@ -104,6 +105,14 @@ impl CacheActor {
                     cache.remove(&key);
                 }
                 CacheCommand::Save { outbox } => {
+                    let table_size = cache.len();
+                    let expires_table_size = cache.get_expires_table_size();
+                    outbox
+                        .send(SaveActorCommand::SaveTableSize(
+                            table_size,
+                            expires_table_size,
+                        ))
+                        .await?;
                     for chunk in cache.iter().collect::<Vec<_>>().chunks(10) {
                         outbox
                             .send(SaveActorCommand::SaveChunk(CacheChunk::new(chunk)))
@@ -119,7 +128,7 @@ impl CacheActor {
 }
 
 #[derive(Clone)]
-pub struct CacheCommandSender(tokio::sync::mpsc::Sender<CacheCommand>);
+pub struct CacheCommandSender(mpsc::Sender<CacheCommand>);
 
 make_smart_pointer!(CacheDb, HashMap<String, CacheValue>);
-make_smart_pointer!(CacheCommandSender, tokio::sync::mpsc::Sender<CacheCommand>);
+make_smart_pointer!(CacheCommandSender, mpsc::Sender<CacheCommand>);

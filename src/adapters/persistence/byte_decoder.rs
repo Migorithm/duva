@@ -1,12 +1,22 @@
-use super::{extract_range, CacheEntry, DatabaseSection, Init, MetadataReady, RdbFile};
-use crate::{
-    adapters::persistence::{DatabaseSectionBuilder, HeaderReady},
-    services::Expiry,
+use super::extract_range;
+use super::CacheEntry;
+use super::DatabaseSection;
+use super::Init;
+use super::MetadataReady;
+use super::RdbFile;
+use super::StoredDuration;
+use crate::adapters::persistence::{DatabaseSectionBuilder, HeaderReady};
+use crate::adapters::persistence::{
+    DATABASE_SECTION_INDICATOR, DATABASE_TABLE_SIZE_INDICATOR,
+    EXPIRY_TIME_IN_MILLISECONDS_INDICATOR, EXPIRY_TIME_IN_SECONDS_INDICATOR, HEADER_MAGIC_STRING,
+    METADATA_SECTION_INDICATOR, STRING_VALUE_TYPE_INDICATOR,
 };
 use anyhow::{Context, Result};
+
 use std::{
     collections::HashMap,
     ops::{Deref, DerefMut},
+    time::SystemTime,
 };
 
 #[derive(Default)]
@@ -111,7 +121,7 @@ impl<T> BytesDecoder<'_, T> {
         None
     }
 
-    pub(crate) fn check_identifier(&self, iden: u8) -> bool {
+    pub(crate) fn check_indicator(&self, iden: u8) -> bool {
         self.first() == Some(&iden)
     }
 }
@@ -135,9 +145,8 @@ impl<'a> BytesDecoder<'a, Init> {
         })
     }
     fn take_header(&mut self) -> Result<String> {
-        const RDB_HEADER_MAGIC_STRING: &str = "REDIS";
         let header = self.take_string(5)?;
-        if header != RDB_HEADER_MAGIC_STRING {
+        if header != HEADER_MAGIC_STRING {
             return Err(anyhow::Error::msg("header loading: header is not REDIS"))?;
         }
         Ok(header)
@@ -150,10 +159,8 @@ impl<'a> BytesDecoder<'a, Init> {
 
 impl<'a> BytesDecoder<'a, HeaderReady> {
     pub fn load_metadata(mut self) -> Result<BytesDecoder<'a, MetadataReady>> {
-        const METADATA_SECTION_IDENTIFIER: u8 = 0xFA;
-
         let mut metadata = HashMap::new();
-        while self.check_identifier(METADATA_SECTION_IDENTIFIER) {
+        while self.check_indicator(METADATA_SECTION_INDICATOR) {
             let (key, value) = self
                 .try_extract_metadata_key_value()
                 .context("metadata loading: key value extraction failed")?;
@@ -177,9 +184,8 @@ impl<'a> BytesDecoder<'a, HeaderReady> {
 }
 impl BytesDecoder<'_, MetadataReady> {
     pub fn load_database(mut self) -> Result<RdbFile> {
-        const DATABASE_SECTION_IDENTIFIER: u8 = 0xFE;
         let mut database = Vec::new();
-        while self.check_identifier(DATABASE_SECTION_IDENTIFIER) {
+        while self.check_indicator(DATABASE_SECTION_INDICATOR) {
             let section = self
                 .extract_section()
                 .context("database loading: section extraction failed")?;
@@ -195,18 +201,14 @@ impl BytesDecoder<'_, MetadataReady> {
         })
     }
     fn extract_section(&mut self) -> Result<DatabaseSection> {
-        const SECTION_INDEX_IDENTIFIER: u8 = 0xFE; // 0b11111110
-        const TABLE_SIZE_IDENTIFIER: u8 = 0xFB; //0b11111011
-
         let mut builder: DatabaseSectionBuilder = DatabaseSectionBuilder::default();
 
         while let Some(identifier) = self.first() {
             match *identifier {
-                SECTION_INDEX_IDENTIFIER => {
+                DATABASE_SECTION_INDICATOR => {
                     self.try_set_index(&mut builder)?;
                 }
-
-                TABLE_SIZE_IDENTIFIER => {
+                DATABASE_TABLE_SIZE_INDICATOR => {
                     self.try_set_table_sizes(&mut builder)?;
                 }
                 _ => {
@@ -255,29 +257,27 @@ impl BytesDecoder<'_, MetadataReady> {
     }
 
     fn try_key_value(&mut self) -> Result<CacheEntry> {
-        let mut expiry: Option<Expiry> = None;
+        let mut expiry: Option<SystemTime> = None;
         while self.len() > 0 {
             match self[0] {
                 //0b11111100
-                0xFC => {
-                    expiry = Some(self.try_extract_expiry_time_in_milliseconds()?);
+                EXPIRY_TIME_IN_MILLISECONDS_INDICATOR => {
+                    expiry = Some(
+                        self.try_extract_expiry_time_in_milliseconds()?
+                            .to_systemtime(),
+                    );
                 }
                 //0b11111101
-                0xFD => {
-                    expiry = Some(self.try_extract_expiry_time_in_seconds()?);
+                EXPIRY_TIME_IN_SECONDS_INDICATOR => {
+                    expiry = Some(self.try_extract_expiry_time_in_seconds()?.to_systemtime());
                 }
                 //0b11111110
-                0x00 => {
+                STRING_VALUE_TYPE_INDICATOR => {
                     let (key, value) = self.try_extract_key_value()?;
-
-                    match expiry {
-                        Some(expiry) => {
-                            return Ok(CacheEntry::KeyValueExpiry(key, value, expiry));
-                        }
-                        None => {
-                            return Ok(CacheEntry::KeyValue(key, value));
-                        }
-                    }
+                    return match expiry {
+                        Some(expiry) => Ok(CacheEntry::KeyValueExpiry(key, value, expiry)),
+                        None => Ok(CacheEntry::KeyValue(key, value)),
+                    };
                 }
                 _ => {
                     return Err(anyhow::anyhow!("Invalid key value pair"));
@@ -287,7 +287,7 @@ impl BytesDecoder<'_, MetadataReady> {
         Err(anyhow::anyhow!("Invalid key value pair"))
     }
 
-    pub fn try_extract_expiry_time_in_seconds(&mut self) -> Result<Expiry> {
+    pub fn try_extract_expiry_time_in_seconds(&mut self) -> Result<StoredDuration> {
         self.remove_identifier();
         let range = 0..=3;
         let result = u32::from_le_bytes(
@@ -296,10 +296,10 @@ impl BytesDecoder<'_, MetadataReady> {
         );
         self.skip(4);
 
-        Ok(Expiry::Seconds(result))
+        Ok(StoredDuration::Seconds(result))
     }
 
-    pub fn try_extract_expiry_time_in_milliseconds(&mut self) -> Result<Expiry> {
+    pub fn try_extract_expiry_time_in_milliseconds(&mut self) -> Result<StoredDuration> {
         self.remove_identifier();
         let range = 0..=7;
         let result = u64::from_le_bytes(
@@ -308,7 +308,7 @@ impl BytesDecoder<'_, MetadataReady> {
         );
         self.skip(8);
 
-        Ok(Expiry::Milliseconds(result))
+        Ok(StoredDuration::Milliseconds(result))
     }
 
     pub fn try_extract_key_value(&mut self) -> Result<(String, String)> {
@@ -321,7 +321,7 @@ impl BytesDecoder<'_, MetadataReady> {
 
     pub fn try_get_checksum(&mut self) -> Result<Vec<u8>> {
         self.remove_identifier();
-        let checksum = extract_range(self.data, 0..=7)
+        let checksum = extract_range(&self.data, 0..=7)
             .map(|f: [u8; 8]| f.to_vec())
             .context("failed to extract checksum")?;
         self.skip(8);
@@ -332,7 +332,10 @@ impl BytesDecoder<'_, MetadataReady> {
 
 impl<'a> From<&'a [u8]> for BytesDecoder<'a, Init> {
     fn from(data: &'a [u8]) -> Self {
-        Self { data, state: Init }
+        Self {
+            data: &data,
+            state: Init,
+        }
     }
 }
 
@@ -455,7 +458,10 @@ fn test_database_section_extractor() {
         CacheEntry::KeyValueExpiry(key, value, expiry) => {
             assert_eq!(key, "foo");
             assert_eq!(value, "bar");
-            assert_eq!(expiry, &Expiry::Milliseconds(1713824559637));
+            assert_eq!(
+                expiry,
+                &StoredDuration::Milliseconds(1713824559637).to_systemtime()
+            );
         }
         _ => panic!("Expected KeyValueExpiry"),
     }
