@@ -1,49 +1,22 @@
-/// # Notes
-///
-/// * The size value does not need to match the length of the data. This allows for:
-///   - Streaming scenarios where the size represents total expected bytes
-///   - Protocol-specific uses where size might have different meaning
-///   - Partial message transmission
-
-/// * Size values larger than 2^32 - 1 cannot be encoded and will return None
-///
-/// # Limitations
-///
-/// * Maximum encodable size is 2^32 - 1
-/// * No error correction or detection mechanisms
-/// * Size encoding overhead varies from 1 to 5 bytes
-use crate::make_smart_pointer;
-use anyhow::Result;
 use crate::adapters::persistence::const_indicators::EXPIRY_TIME_IN_SECONDS_INDICATOR;
-use crate::services::{CacheEntry, Expiry};
+use crate::services::{CacheValue, Expiry};
+use anyhow::Result;
 
-impl CacheEntry {
-    fn encode(&self) -> Result<Vec<u8>> {
+impl CacheValue {
+    fn encode_with_key(&self, key:&str) -> Result<Vec<u8>> {
         let mut result = Vec::new();
         match self {
-            CacheEntry::KeyValue(key, value) => {
-                let key_value = Self::encode_key_value(key, value)?;
-                result.extend_from_slice(&key_value);
-                Ok(result)
+            CacheValue::Value(value) => {
+                result.extend_from_slice(encode_key_value(key, value)?.as_slice());
             }
-            CacheEntry::KeyValueExpiry(key, value, expiry) => {
-                let key_value = Self::encode_key_value(key, value)?;
-                let expiry = expiry.encode()?;
-                result.extend_from_slice(&key_value);
-                result.extend_from_slice(&expiry);
-                Ok(result)
+            CacheValue::ValueWithExpiry(value, expiry) => {
+                result.extend_from_slice(encode_key_value(key, value)?.as_slice());
+                result.extend_from_slice(&expiry.encode()?);
             }
         }
-    }
-
-    fn encode_key_value(key: &String, value: &String) -> Result<Vec<u8>> {
-        let mut result = Vec::new();
-        result.extend_from_slice(&encode_size(key.len())?);
-        result.extend_from_slice(key.as_bytes());
-        result.extend_from_slice(&encode_size(value.len())?);
-        result.extend_from_slice(value.as_bytes());
         Ok(result)
     }
+
 }
 
 impl Expiry {
@@ -62,6 +35,15 @@ impl Expiry {
             }
         }
     }
+}
+
+fn encode_key_value(key: &str, value: &str) -> Result<Vec<u8>> {
+    let mut result = Vec::new();
+    result.extend_from_slice(&encode_size(key.len())?);
+    result.extend_from_slice(key.as_bytes());
+    result.extend_from_slice(&encode_size(value.len())?);
+    result.extend_from_slice(value.as_bytes());
+    Ok(result)
 }
 
 fn encode_integer(value: u32) -> Result<Vec<u8>> {
@@ -287,17 +269,36 @@ fn test_integer_decoding3() {
     };
     assert_eq!(decoder.string_decode(), Some("100000".to_string()));
 }
-
+#[test]
 fn test_expiry_encode_seconds() {
     let expiry = Expiry::Seconds(1714089298);
     let encoded = expiry.encode().unwrap();
     assert_eq!(encoded[0], EXPIRY_TIME_IN_SECONDS_INDICATOR);
     assert_eq!(encoded[1..], [0x52, 0xED, 0x2A, 0x66]);
 }
-
+#[test]
 fn test_expiry_encode_milliseconds() {
     let expiry = Expiry::Milliseconds(1713824559637);
     let encoded = expiry.encode().unwrap();
     assert_eq!(encoded[0], EXPIRY_TIME_IN_SECONDS_INDICATOR);
     assert_eq!(encoded[1..], [0x15, 0x72, 0xE7, 0x07, 0x8F, 0x01, 0x00, 0x00]);
+}
+
+#[test]
+fn test_cache_value_encode() {
+    let value = CacheValue::Value("value".to_string());
+    let encoded = value.encode_with_key("key").unwrap();
+    let expected = vec![
+        0x03, b'k', b'e', b'y', 0x05, b'v', b'a', b'l', b'u', b'e'
+    ];
+    assert_eq!(encoded, expected);
+}
+
+#[test]
+fn test_cache_value_with_expiry(){
+    let value = CacheValue::ValueWithExpiry("value".to_string(), Expiry::Seconds(1714089298));
+    let encoded = value.encode_with_key("key").unwrap();
+    let expected = vec![
+        0x03, b'k', b'e', b'y', 0x05, b'v', b'a', b'l', b'u', b'e', 0x01, 0x52, 0xED, 0x2A, 0x66
+    ];
 }

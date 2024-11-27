@@ -32,7 +32,7 @@ pub enum CacheCommand {
 #[derive(Default)]
 pub struct CacheDb(HashMap<String, CacheValue>);
 impl CacheDb {
-    fn keys_stream(&self, pattern: Option<String>) -> impl Iterator<Item = QueryIO> + '_ {
+    fn keys_stream(&self, pattern: Option<String>) -> impl Iterator<Item=QueryIO> + '_ {
         self.keys().filter_map(move |k| {
             if pattern.as_ref().map_or(true, |p| k.contains(p)) {
                 Some(QueryIO::BulkString(k.to_string()))
@@ -42,14 +42,14 @@ impl CacheDb {
         })
     }
 }
-pub struct CacheChunk(pub Vec<(String, String)>);
+pub struct CacheChunk(pub Vec<(String, CacheValue)>);
 impl CacheChunk {
-    pub fn new<'a>(chunk: &'a [(&'a String, &'a CacheValue)]) -> Self {
+    pub fn new(chunk: &[(&String, &CacheValue)]) -> Self {
         Self(
             chunk
                 .iter()
-                .map(|(k, v)| (k.to_string(), v.value().to_string()))
-                .collect::<Vec<(String, String)>>(),
+                .map(|(k, v)| (k.to_string(), (*v).clone()))
+                .collect::<Vec<(String,CacheValue)>>()
         )
     }
 }
@@ -65,7 +65,7 @@ impl CacheActor {
             Self {
                 inbox: cache_actor_inbox,
             }
-            .handle(),
+                .handle(),
         );
         CacheCommandSender(tx)
     }
@@ -119,7 +119,7 @@ impl CacheActor {
 }
 
 #[derive(Clone)]
-pub struct CacheCommandSender(tokio::sync::mpsc::Sender<CacheCommand>);
+pub struct CacheCommandSender(mpsc::Sender<CacheCommand>);
 
 make_smart_pointer!(CacheDb, HashMap<String, CacheValue>);
-make_smart_pointer!(CacheCommandSender, tokio::sync::mpsc::Sender<CacheCommand>);
+make_smart_pointer!(CacheCommandSender, mpsc::Sender<CacheCommand>);
