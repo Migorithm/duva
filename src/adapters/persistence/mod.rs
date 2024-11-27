@@ -80,6 +80,9 @@
 // Safe conversion from a slice to an array of a specific size.
 use std::ops::RangeInclusive;
 use std::time::SystemTime;
+pub mod decoder;
+pub mod encoder;
+pub use encoder::byte_encoder;
 
 const HEADER_MAGIC_STRING: &str = "REDIS";
 const METADATA_SECTION_INDICATOR: u8 = 0xFA;
@@ -89,9 +92,6 @@ const EXPIRY_TIME_IN_MILLISECONDS_INDICATOR: u8 = 0xFC;
 const EXPIRY_TIME_IN_SECONDS_INDICATOR: u8 = 0xFD;
 const STRING_VALUE_TYPE_INDICATOR: u8 = 0x00;
 const CHECKSUM_INDICATOR: u8 = 0xFF;
-
-pub mod byte_encoder;
-pub mod decoder;
 
 fn extract_range<const N: usize>(encoded: &[u8], range: RangeInclusive<usize>) -> Option<[u8; N]> {
     TryInto::<[u8; N]>::try_into(encoded.get(range)?).ok()

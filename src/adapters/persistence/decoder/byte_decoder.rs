@@ -319,7 +319,7 @@ impl BytesDecoder<'_, MetadataReady> {
 
     pub fn try_get_checksum(&mut self) -> Result<Vec<u8>> {
         self.remove_identifier();
-        let checksum = extract_range(&self.data, 0..=7)
+        let checksum = extract_range(self.data, 0..=7)
             .map(|f: [u8; 8]| f.to_vec())
             .context("failed to extract checksum")?;
         self.skip(8);
@@ -331,7 +331,7 @@ impl BytesDecoder<'_, MetadataReady> {
 impl<'a> From<&'a [u8]> for BytesDecoder<'a, DecoderInit> {
     fn from(data: &'a [u8]) -> Self {
         Self {
-            data: &data,
+            data,
             state: DecoderInit,
         }
     }

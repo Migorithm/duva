@@ -1,11 +1,10 @@
 use crate::adapters::persistence::{
     CHECKSUM_INDICATOR, DATABASE_SECTION_INDICATOR, DATABASE_TABLE_SIZE_INDICATOR,
-    EXPIRY_TIME_IN_MILLISECONDS_INDICATOR, EXPIRY_TIME_IN_SECONDS_INDICATOR, HEADER_MAGIC_STRING,
-    METADATA_SECTION_INDICATOR, STRING_VALUE_TYPE_INDICATOR,
+    EXPIRY_TIME_IN_MILLISECONDS_INDICATOR, HEADER_MAGIC_STRING, METADATA_SECTION_INDICATOR,
+    STRING_VALUE_TYPE_INDICATOR,
 };
 use crate::services::CacheValue;
 use anyhow::Result;
-
 use std::time::UNIX_EPOCH;
 
 impl CacheValue {
@@ -34,8 +33,7 @@ pub fn encode_header(version: &str) -> Result<Vec<u8>> {
         return Err(anyhow::anyhow!("Invalid version string"));
     }
     let mut result = Vec::new();
-    let header = HEADER_MAGIC_STRING.as_bytes();
-    result.extend_from_slice(&header);
+    result.extend_from_slice(HEADER_MAGIC_STRING.as_bytes());
     result.extend_from_slice(version.as_bytes());
     Ok(result)
 }
