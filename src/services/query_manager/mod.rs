@@ -130,7 +130,7 @@ fn read_until_crlf(buffer: &[u8]) -> Option<(&[u8], usize)> {
             return Some((&buffer[0..(i - 1)], i + 1));
         }
     }
-    return None;
+    None
 }
 
 // +PING\r\n
@@ -156,7 +156,7 @@ fn parse_array(buffer: BytesMut) -> Result<(QueryIO, usize)> {
         len += l;
     }
 
-    return Ok((QueryIO::Array(bulk_strings), len));
+    Ok((QueryIO::Array(bulk_strings), len))
 }
 
 fn parse_bulk_string(buffer: BytesMut) -> Result<(QueryIO, usize)> {

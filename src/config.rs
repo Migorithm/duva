@@ -196,5 +196,5 @@ impl Replication {
 static CONFIG: OnceLock<Config> = OnceLock::new();
 
 pub fn config() -> &'static Config {
-    CONFIG.get_or_init(|| Config::new())
+    CONFIG.get_or_init(Config::new)
 }
