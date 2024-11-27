@@ -2,6 +2,7 @@ pub mod adapters;
 mod config;
 pub mod macros;
 pub mod services;
+use adapters::persistence::decoder::Decoder;
 use anyhow::Result;
 use services::{
     query_manager::QueryManager,
@@ -17,9 +18,7 @@ const NUM_OF_PERSISTENCE: usize = 10;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // You can use print statements as follows for debugging, they'll be visible when running tests.
-
-    let (cache_dispatcher, ttl_inbox) = CacheManager::run_cache_actors(NUM_OF_PERSISTENCE);
+    let (cache_dispatcher, ttl_inbox) = CacheManager::run_cache_actors(NUM_OF_PERSISTENCE, Decoder);
 
     // Load data from the file if --dir and --dbfilename are provided
     cache_dispatcher
@@ -39,7 +38,11 @@ async fn main() -> Result<()> {
     }
 }
 
-fn process(stream: TcpStream, ttl_inbox: TtlSchedulerInbox, cache_dispatcher: CacheManager) {
+fn process(
+    stream: TcpStream,
+    ttl_inbox: TtlSchedulerInbox,
+    cache_dispatcher: CacheManager<Decoder>,
+) {
     tokio::spawn(async move {
         let mut query_manager = QueryManager::new(stream);
 

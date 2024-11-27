@@ -58,7 +58,6 @@
 //! ```
 //!
 //! It's primarily about communication/protocol rather than efficiency.\
-
 /// # Extract Key-Value Pair Storage
 /// Extract key-value pair from the data buffer and remove the extracted data from the buffer.
 ///
@@ -79,8 +78,6 @@
 /// 3. **Key:** String encoded.
 /// 4. **Value:** Encoding depends on the value type.
 // Safe conversion from a slice to an array of a specific size.
-use crate::services::CacheEntry;
-use std::collections::HashMap;
 use std::ops::RangeInclusive;
 use std::time::SystemTime;
 
@@ -93,68 +90,8 @@ const EXPIRY_TIME_IN_SECONDS_INDICATOR: u8 = 0xFD;
 const STRING_VALUE_TYPE_INDICATOR: u8 = 0x00;
 const CHECKSUM_INDICATOR: u8 = 0xFF;
 
-pub mod byte_decoder;
 pub mod byte_encoder;
-
-#[derive(Default)]
-pub struct Init;
-#[derive(Default, PartialEq, Eq, Debug)]
-pub struct HeaderReady(String);
-#[derive(Default)]
-pub struct MetadataReady {
-    metadata: HashMap<String, String>,
-    header: String,
-}
-
-pub struct RdbFile {
-    header: String,
-    metadata: HashMap<String, String>,
-    database: Vec<DatabaseSection>,
-    checksum: Vec<u8>,
-}
-
-impl RdbFile {
-    pub fn new(
-        header: String,
-        metadata: HashMap<String, String>,
-        database: Vec<DatabaseSection>,
-        checksum: Vec<u8>,
-    ) -> Self {
-        Self {
-            header,
-            metadata,
-            database,
-            checksum,
-        }
-    }
-    pub fn key_values(self) -> Vec<CacheEntry> {
-        self.database
-            .into_iter()
-            .flat_map(|section| section.storage.into_iter())
-            .collect()
-    }
-}
-
-pub struct DatabaseSection {
-    pub index: usize,
-    pub storage: Vec<CacheEntry>,
-}
-
-#[derive(Default)]
-pub struct DatabaseSectionBuilder {
-    index: usize,
-    storage: Vec<CacheEntry>,
-    key_value_table_size: usize,
-    expires_table_size: usize,
-}
-impl DatabaseSectionBuilder {
-    pub fn build(self) -> DatabaseSection {
-        DatabaseSection {
-            index: self.index,
-            storage: self.storage,
-        }
-    }
-}
+pub mod decoder;
 
 fn extract_range<const N: usize>(encoded: &[u8], range: RangeInclusive<usize>) -> Option<[u8; N]> {
     TryInto::<[u8; N]>::try_into(encoded.get(range)?).ok()

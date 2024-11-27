@@ -48,9 +48,9 @@ impl SaveActor {
 
         file.write_all(&meta.concat()).await?;
 
+        let mut num_of_saved_table_size_actor = self.num_of_cache_actors;
         let mut total_key_value_table_size = 0;
         let mut total_expires_table_size = 0;
-        let mut num_of_saved_table_size_actor = self.num_of_cache_actors;
         let mut chunk_queue = VecDeque::new();
 
         while let Some(command) = self.inbox.recv().await {
