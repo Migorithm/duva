@@ -41,6 +41,13 @@ impl CacheDb {
             }
         })
     }
+
+    fn get_expires_table_size(&self) -> usize {
+        self
+            .iter()
+            .filter(|(_, v)| v.has_expiry())
+            .count()
+    }
 }
 pub struct CacheChunk(pub Vec<(String, CacheValue)>);
 impl CacheChunk {
@@ -55,12 +62,12 @@ impl CacheChunk {
 }
 
 pub struct CacheActor {
-    inbox: tokio::sync::mpsc::Receiver<CacheCommand>,
+    inbox: mpsc::Receiver<CacheCommand>,
 }
 impl CacheActor {
     // Create a new CacheActor with inner state
     pub fn run() -> CacheCommandSender {
-        let (tx, cache_actor_inbox) = tokio::sync::mpsc::channel(100);
+        let (tx, cache_actor_inbox) = mpsc::channel(100);
         tokio::spawn(
             Self {
                 inbox: cache_actor_inbox,
@@ -104,6 +111,12 @@ impl CacheActor {
                     cache.remove(&key);
                 }
                 CacheCommand::Save { outbox } => {
+                    println!("Saving cache data");
+                    let table_size = cache.len();
+                    let expires_table_size = cache.get_expires_table_size();
+                    outbox
+                        .send(SaveActorCommand::SaveTableSize(table_size, expires_table_size))
+                        .await?;
                     for chunk in cache.iter().collect::<Vec<_>>().chunks(10) {
                         outbox
                             .send(SaveActorCommand::SaveChunk(CacheChunk::new(chunk)))

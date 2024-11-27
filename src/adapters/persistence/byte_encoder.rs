@@ -1,23 +1,24 @@
-use crate::adapters::persistence::const_indicators::{DATABASE_TABLE_SIZE_INDICATOR, EXPIRY_TIME_IN_SECONDS_INDICATOR, HEADER_MAGIC_STRING, METADATA_SECTION_INDICATOR};
+use crate::adapters::persistence::const_indicators::{CHECKSUM_INDICATOR, DATABASE_SECTION_INDICATOR, DATABASE_TABLE_SIZE_INDICATOR, EXPIRY_TIME_IN_MILLISECONDS_INDICATOR, EXPIRY_TIME_IN_SECONDS_INDICATOR, HEADER_MAGIC_STRING, METADATA_SECTION_INDICATOR, STRING_VALUE_TYPE_INDICATOR};
 use crate::services::{CacheValue, Expiry};
 use anyhow::Result;
 use std::collections::HashMap;
 
 impl CacheValue {
-    fn encode_with_key(&self, key:&str) -> Result<Vec<u8>> {
+    pub fn encode_with_key(&self, key: &str) -> Result<Vec<u8>> {
         let mut result = Vec::new();
         match self {
             CacheValue::Value(value) => {
+                result.push(STRING_VALUE_TYPE_INDICATOR);
                 result.extend_from_slice(&encode_key_value(key, value)?);
             }
             CacheValue::ValueWithExpiry(value, expiry) => {
                 result.extend_from_slice(&expiry.encode()?);
+                result.push(STRING_VALUE_TYPE_INDICATOR);
                 result.extend_from_slice(&encode_key_value(key, value)?);
             }
         }
         Ok(result)
     }
-
 }
 
 impl Expiry {
@@ -30,7 +31,7 @@ impl Expiry {
                 Ok(result)
             }
             Expiry::Milliseconds(value) => {
-                result.push(EXPIRY_TIME_IN_SECONDS_INDICATOR);
+                result.push(EXPIRY_TIME_IN_MILLISECONDS_INDICATOR);
                 result.extend_from_slice(&value.to_le_bytes());
                 Ok(result)
             }
@@ -38,7 +39,7 @@ impl Expiry {
     }
 }
 
-fn encode_header(version: &str) -> Result<Vec<u8>> {
+pub fn encode_header(version: &str) -> Result<Vec<u8>> {
     if version.len() != 4 {
         return Err(anyhow::anyhow!("Invalid version string"));
     }
@@ -49,7 +50,7 @@ fn encode_header(version: &str) -> Result<Vec<u8>> {
     Ok(result)
 }
 
-fn encode_metadata(metadata: HashMap<String, String>) -> Result<Vec<u8>> {
+pub fn encode_metadata(metadata: HashMap<&str, &str>) -> Result<Vec<u8>> {
     let mut result = Vec::new();
     for (key, value) in metadata.iter() {
         result.push(METADATA_SECTION_INDICATOR);
@@ -57,15 +58,25 @@ fn encode_metadata(metadata: HashMap<String, String>) -> Result<Vec<u8>> {
     }
     Ok(result)
 }
-
-fn encode_database_table_size(table_size: usize, expires_table_size: usize) -> Result<Vec<u8>> {
+pub fn encode_database_info(index: usize) -> Result<Vec<u8>> {
+    let mut result = Vec::new();
+    result.push(DATABASE_SECTION_INDICATOR);
+    result.extend_from_slice(&encode_size(index)?);
+    Ok(result)
+}
+pub fn encode_database_table_size(table_size: usize, expires_table_size: usize) -> Result<Vec<u8>> {
     let mut result = Vec::new();
     result.push(DATABASE_TABLE_SIZE_INDICATOR);
     result.extend_from_slice(&encode_size(table_size)?);
     result.extend_from_slice(&encode_size(expires_table_size)?);
     Ok(result)
 }
-
+pub fn encode_checksum(checksum: &[u8]) -> Result<Vec<u8>> {
+    let mut result = Vec::new();
+    result.push(CHECKSUM_INDICATOR);
+    result.extend_from_slice(checksum);
+    Ok(result)
+}
 fn encode_key_value(key: &str, value: &str) -> Result<Vec<u8>> {
     let mut result = Vec::new();
     result.extend_from_slice(&encode_size(key.len())?);
@@ -318,17 +329,27 @@ fn test_cache_value_encode() {
     let value = CacheValue::Value("value".to_string());
     let encoded = value.encode_with_key("key").unwrap();
     let expected = vec![
-        0x03, b'k', b'e', b'y', 0x05, b'v', b'a', b'l', b'u', b'e'
+        STRING_VALUE_TYPE_INDICATOR, 0x03, b'k', b'e', b'y', 0x05, b'v', b'a', b'l', b'u', b'e'
     ];
     assert_eq!(encoded, expected);
 }
 
 #[test]
-fn test_cache_value_with_expiry(){
+fn test_cache_value_with_expiry_seconds() {
     let value = CacheValue::ValueWithExpiry("value".to_string(), Expiry::Seconds(1714089298));
     let encoded = value.encode_with_key("key").unwrap();
     let expected = vec![
-        EXPIRY_TIME_IN_SECONDS_INDICATOR, 0x52, 0xED, 0x2A, 0x66, 0x03, b'k', b'e', b'y', 0x05, b'v', b'a', b'l', b'u', b'e'
+        STRING_VALUE_TYPE_INDICATOR, EXPIRY_TIME_IN_SECONDS_INDICATOR, 0x52, 0xED, 0x2A, 0x66, 0x03, b'k', b'e', b'y', 0x05, b'v', b'a', b'l', b'u', b'e'
+    ];
+    assert_eq!(encoded, expected);
+}
+
+#[test]
+fn test_cache_value_with_expiry_milliseconds() {
+    let value = CacheValue::ValueWithExpiry("value".to_string(), Expiry::Milliseconds(1713824559637));
+    let encoded = value.encode_with_key("key").unwrap();
+    let expected = vec![
+        STRING_VALUE_TYPE_INDICATOR, EXPIRY_TIME_IN_MILLISECONDS_INDICATOR, 0x15, 0x72, 0xE7, 0x07, 0x8F, 0x01, 0x00, 0x00, 0x03, b'k', b'e', b'y', 0x05, b'v', b'a', b'l', b'u', b'e'
     ];
     assert_eq!(encoded, expected);
 }
@@ -344,8 +365,8 @@ fn test_encode_header() {
 #[test]
 fn test_encode_metadata() {
     let mut metadata = HashMap::new();
-    metadata.insert("key1".to_string(), "value1".to_string());
-    metadata.insert("key2".to_string(), "value2".to_string());
+    metadata.insert("key1", "value1");
+    metadata.insert("key2", "value2");
     let encoded = encode_metadata(metadata).unwrap();
     let expected = vec![
         METADATA_SECTION_INDICATOR, 0x04, b'k', b'e', b'y', b'1', 0x06, b'v', b'a', b'l', b'u', b'e', b'1',

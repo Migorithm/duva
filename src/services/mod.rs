@@ -47,6 +47,9 @@ impl CacheValue {
             CacheValue::ValueWithExpiry(v, _) => v,
         }
     }
+    pub fn has_expiry(&self) -> bool {
+        matches!(self, CacheValue::ValueWithExpiry(_, _))
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
