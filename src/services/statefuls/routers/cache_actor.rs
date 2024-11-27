@@ -32,7 +32,7 @@ pub enum CacheCommand {
 #[derive(Default)]
 pub struct CacheDb(HashMap<String, CacheValue>);
 impl CacheDb {
-    fn keys_stream(&self, pattern: Option<String>) -> impl Iterator<Item=QueryIO> + '_ {
+    fn keys_stream(&self, pattern: Option<String>) -> impl Iterator<Item = QueryIO> + '_ {
         self.keys().filter_map(move |k| {
             if pattern.as_ref().map_or(true, |p| k.contains(p)) {
                 Some(QueryIO::BulkString(k.to_string()))
@@ -43,10 +43,7 @@ impl CacheDb {
     }
 
     fn get_expires_table_size(&self) -> usize {
-        self
-            .iter()
-            .filter(|(_, v)| v.has_expiry())
-            .count()
+        self.iter().filter(|(_, v)| v.has_expiry()).count()
     }
 }
 pub struct CacheChunk(pub Vec<(String, CacheValue)>);
@@ -56,7 +53,7 @@ impl CacheChunk {
             chunk
                 .iter()
                 .map(|(k, v)| (k.to_string(), (*v).clone()))
-                .collect::<Vec<(String,CacheValue)>>()
+                .collect::<Vec<(String, CacheValue)>>(),
         )
     }
 }
@@ -72,7 +69,7 @@ impl CacheActor {
             Self {
                 inbox: cache_actor_inbox,
             }
-                .handle(),
+            .handle(),
         );
         CacheCommandSender(tx)
     }
@@ -91,11 +88,8 @@ impl CacheActor {
                         cache.insert(key, CacheValue::Value(value));
                     }
                     CacheEntry::KeyValueExpiry(key, value, expiry) => {
-                        cache.insert(
-                            key.clone(),
-                            CacheValue::ValueWithExpiry(value, expiry.clone()),
-                        );
-                        ttl_sender.set_ttl(key, expiry.to_u64()).await;
+                        cache.insert(key.clone(), CacheValue::ValueWithExpiry(value, expiry));
+                        ttl_sender.set_ttl(key, expiry).await;
                     }
                 },
                 CacheCommand::Get { key, sender } => {
@@ -115,7 +109,10 @@ impl CacheActor {
                     let table_size = cache.len();
                     let expires_table_size = cache.get_expires_table_size();
                     outbox
-                        .send(SaveActorCommand::SaveTableSize(table_size, expires_table_size))
+                        .send(SaveActorCommand::SaveTableSize(
+                            table_size,
+                            expires_table_size,
+                        ))
                         .await?;
                     for chunk in cache.iter().collect::<Vec<_>>().chunks(10) {
                         outbox

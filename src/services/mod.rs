@@ -5,15 +5,12 @@ pub mod statefuls;
 
 pub enum CacheEntry {
     KeyValue(String, String),
-    KeyValueExpiry(String, String, Expiry),
+    KeyValueExpiry(String, String, SystemTime),
 }
 impl CacheEntry {
     pub fn is_valid(&self, current_systime: &SystemTime) -> bool {
         match &self {
-            CacheEntry::KeyValueExpiry(_, _, expiry) => {
-                let expiry = expiry.to_systemtime();
-                expiry > *current_systime
-            }
+            CacheEntry::KeyValueExpiry(_, _, expiry) => *expiry > *current_systime,
             _ => true,
         }
     }
@@ -38,7 +35,7 @@ impl CacheEntry {
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum CacheValue {
     Value(String),
-    ValueWithExpiry(String, Expiry),
+    ValueWithExpiry(String, SystemTime),
 }
 impl CacheValue {
     pub fn value(&self) -> &str {

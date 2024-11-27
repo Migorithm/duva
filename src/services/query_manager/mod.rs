@@ -208,7 +208,7 @@ impl InputValues {
                 Ok(CacheEntry::KeyValueExpiry(
                     key.to_string(),
                     value.to_string(),
-                    Expiry::Milliseconds(expiry.extract_expiry()?),
+                    expiry.extract_expiry()?,
                 ))
             }
             (None, _) => Ok(CacheEntry::KeyValue(key.to_owned(), value.to_string())),

@@ -1,7 +1,10 @@
 use super::cache_actor::CacheChunk;
-use crate::adapters::persistence::byte_encoder::{encode_checksum, encode_database_info, encode_database_table_size, encode_header, encode_metadata};
+use crate::adapters::persistence::byte_encoder::{
+    encode_checksum, encode_database_info, encode_database_table_size, encode_header,
+    encode_metadata,
+};
 use std::collections::{HashMap, VecDeque};
-use std::io::Write;
+
 use tokio::io::AsyncWriteExt;
 use tokio::sync::mpsc::Sender;
 
@@ -39,7 +42,7 @@ impl SaveActor {
 
         let header = encode_header("0011").unwrap();
         file.write_all(&header).await.unwrap();
-        let metadata = encode_metadata(HashMap::from([("redis-ver", "6.0.16")])).unwrap();
+        let metadata = encode_metadata(Vec::from([("redis-ver", "6.0.16")])).unwrap();
         file.write_all(&metadata).await.unwrap();
         let database_info = encode_database_info(0).unwrap();
         file.write_all(&database_info).await.unwrap();
@@ -52,11 +55,22 @@ impl SaveActor {
         while let Some(command) = self.inbox.recv().await {
             match command {
                 SaveActorCommand::SaveTableSize(key_value_table_size, expires_table_size) => {
-                    println!("key_value_table_size: {}, expires_table_size: {}", key_value_table_size, expires_table_size);
+                    println!(
+                        "key_value_table_size: {}, expires_table_size: {}",
+                        key_value_table_size, expires_table_size
+                    );
                     num_of_saved_table_size_actor -= 1;
                     if num_of_saved_table_size_actor == 0 {
                         println!("writing table_size");
-                        file.write_all(&encode_database_table_size(total_key_value_table_size, total_expires_table_size).unwrap()).await.unwrap();
+                        file.write_all(
+                            &encode_database_table_size(
+                                total_key_value_table_size,
+                                total_expires_table_size,
+                            )
+                            .unwrap(),
+                        )
+                        .await
+                        .unwrap();
                     } else {
                         total_key_value_table_size += key_value_table_size;
                         total_expires_table_size += expires_table_size;

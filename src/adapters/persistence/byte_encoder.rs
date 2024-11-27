@@ -1,7 +1,12 @@
-use crate::adapters::persistence::const_indicators::{CHECKSUM_INDICATOR, DATABASE_SECTION_INDICATOR, DATABASE_TABLE_SIZE_INDICATOR, EXPIRY_TIME_IN_MILLISECONDS_INDICATOR, EXPIRY_TIME_IN_SECONDS_INDICATOR, HEADER_MAGIC_STRING, METADATA_SECTION_INDICATOR, STRING_VALUE_TYPE_INDICATOR};
+use crate::adapters::persistence::const_indicators::{
+    CHECKSUM_INDICATOR, DATABASE_SECTION_INDICATOR, DATABASE_TABLE_SIZE_INDICATOR,
+    EXPIRY_TIME_IN_MILLISECONDS_INDICATOR, EXPIRY_TIME_IN_SECONDS_INDICATOR, HEADER_MAGIC_STRING,
+    METADATA_SECTION_INDICATOR, STRING_VALUE_TYPE_INDICATOR,
+};
 use crate::services::{CacheValue, Expiry};
 use anyhow::Result;
-use std::collections::HashMap;
+
+use std::time::UNIX_EPOCH;
 
 impl CacheValue {
     pub fn encode_with_key(&self, key: &str) -> Result<Vec<u8>> {
@@ -12,30 +17,15 @@ impl CacheValue {
                 result.extend_from_slice(&encode_key_value(key, value)?);
             }
             CacheValue::ValueWithExpiry(value, expiry) => {
-                result.extend_from_slice(&expiry.encode()?);
+                let secs = (expiry.duration_since(UNIX_EPOCH)?.as_millis()) as u64;
+                result.push(EXPIRY_TIME_IN_MILLISECONDS_INDICATOR);
+                result.extend_from_slice(&secs.to_le_bytes());
+
                 result.push(STRING_VALUE_TYPE_INDICATOR);
                 result.extend_from_slice(&encode_key_value(key, value)?);
             }
         }
         Ok(result)
-    }
-}
-
-impl Expiry {
-    fn encode(&self) -> Result<Vec<u8>> {
-        let mut result = Vec::new();
-        match self {
-            Expiry::Seconds(value) => {
-                result.push(EXPIRY_TIME_IN_SECONDS_INDICATOR);
-                result.extend_from_slice(&value.to_le_bytes());
-                Ok(result)
-            }
-            Expiry::Milliseconds(value) => {
-                result.push(EXPIRY_TIME_IN_MILLISECONDS_INDICATOR);
-                result.extend_from_slice(&value.to_le_bytes());
-                Ok(result)
-            }
-        }
     }
 }
 
@@ -50,7 +40,7 @@ pub fn encode_header(version: &str) -> Result<Vec<u8>> {
     Ok(result)
 }
 
-pub fn encode_metadata(metadata: HashMap<&str, &str>) -> Result<Vec<u8>> {
+pub fn encode_metadata(metadata: Vec<(&str, &str)>) -> Result<Vec<u8>> {
     let mut result = Vec::new();
     for (key, value) in metadata.iter() {
         result.push(METADATA_SECTION_INDICATOR);
@@ -131,11 +121,12 @@ fn encode_size(size: usize) -> Result<Vec<u8>> {
         result.extend_from_slice(&(size as u32).to_be_bytes());
     } else {
         // Size too large to encode within the supported format.
-        return Err(anyhow::anyhow!("Size too large to encode within the supported format."));
+        return Err(anyhow::anyhow!(
+            "Size too large to encode within the supported format."
+        ));
     }
     Ok(result)
 }
-
 
 #[cfg(test)]
 use super::{byte_decoder::BytesDecoder, Init};
@@ -309,47 +300,55 @@ fn test_integer_decoding3() {
     };
     assert_eq!(decoder.string_decode(), Some("100000".to_string()));
 }
-#[test]
-fn test_expiry_encode_seconds() {
-    let expiry = Expiry::Seconds(1714089298);
-    let encoded = expiry.encode().unwrap();
-    assert_eq!(encoded[0], EXPIRY_TIME_IN_SECONDS_INDICATOR);
-    assert_eq!(encoded[1..], [0x52, 0xED, 0x2A, 0x66]);
-}
-#[test]
-fn test_expiry_encode_milliseconds() {
-    let expiry = Expiry::Milliseconds(1713824559637);
-    let encoded = expiry.encode().unwrap();
-    assert_eq!(encoded[0], EXPIRY_TIME_IN_MILLISECONDS_INDICATOR);
-    assert_eq!(encoded[1..], [0x15, 0x72, 0xE7, 0x07, 0x8F, 0x01, 0x00, 0x00]);
-}
 
 #[test]
 fn test_cache_value_encode() {
     let value = CacheValue::Value("value".to_string());
     let encoded = value.encode_with_key("key").unwrap();
     let expected = vec![
-        STRING_VALUE_TYPE_INDICATOR, 0x03, b'k', b'e', b'y', 0x05, b'v', b'a', b'l', b'u', b'e'
-    ];
-    assert_eq!(encoded, expected);
-}
-
-#[test]
-fn test_cache_value_with_expiry_seconds() {
-    let value = CacheValue::ValueWithExpiry("value".to_string(), Expiry::Seconds(1714089298));
-    let encoded = value.encode_with_key("key").unwrap();
-    let expected = vec![
-        EXPIRY_TIME_IN_SECONDS_INDICATOR, 0x52, 0xED, 0x2A, 0x66, STRING_VALUE_TYPE_INDICATOR, 0x03, b'k', b'e', b'y', 0x05, b'v', b'a', b'l', b'u', b'e'
+        STRING_VALUE_TYPE_INDICATOR,
+        0x03,
+        b'k',
+        b'e',
+        b'y',
+        0x05,
+        b'v',
+        b'a',
+        b'l',
+        b'u',
+        b'e',
     ];
     assert_eq!(encoded, expected);
 }
 
 #[test]
 fn test_cache_value_with_expiry_milliseconds() {
-    let value = CacheValue::ValueWithExpiry("value".to_string(), Expiry::Milliseconds(1713824559637));
+    let value = CacheValue::ValueWithExpiry(
+        "value".to_string(),
+        Expiry::Milliseconds(1713824559637).to_systemtime(),
+    );
     let encoded = value.encode_with_key("key").unwrap();
     let expected = vec![
-        EXPIRY_TIME_IN_MILLISECONDS_INDICATOR, 0x15, 0x72, 0xE7, 0x07, 0x8F, 0x01, 0x00, 0x00, STRING_VALUE_TYPE_INDICATOR, 0x03,  b'k', b'e', b'y', 0x05, b'v', b'a', b'l', b'u', b'e'
+        EXPIRY_TIME_IN_MILLISECONDS_INDICATOR,
+        0x15,
+        0x72,
+        0xE7,
+        0x07,
+        0x8F,
+        0x01,
+        0x00,
+        0x00,
+        STRING_VALUE_TYPE_INDICATOR,
+        0x03,
+        b'k',
+        b'e',
+        b'y',
+        0x05,
+        b'v',
+        b'a',
+        b'l',
+        b'u',
+        b'e',
     ];
     assert_eq!(encoded, expected);
 }
@@ -364,13 +363,37 @@ fn test_encode_header() {
 
 #[test]
 fn test_encode_metadata() {
-    let mut metadata = HashMap::new();
-    metadata.insert("key1", "value1");
-    metadata.insert("key2", "value2");
+    let mut metadata = Vec::new();
+    metadata.push(("key1", "value1"));
+    metadata.push(("key2", "value2"));
     let encoded = encode_metadata(metadata).unwrap();
     let expected = vec![
-        METADATA_SECTION_INDICATOR, 0x04, b'k', b'e', b'y', b'1', 0x06, b'v', b'a', b'l', b'u', b'e', b'1',
-        METADATA_SECTION_INDICATOR, 0x04, b'k', b'e', b'y', b'2', 0x06, b'v', b'a', b'l', b'u', b'e', b'2'
+        METADATA_SECTION_INDICATOR,
+        0x04,
+        b'k',
+        b'e',
+        b'y',
+        b'1',
+        0x06,
+        b'v',
+        b'a',
+        b'l',
+        b'u',
+        b'e',
+        b'1',
+        METADATA_SECTION_INDICATOR,
+        0x04,
+        b'k',
+        b'e',
+        b'y',
+        b'2',
+        0x06,
+        b'v',
+        b'a',
+        b'l',
+        b'u',
+        b'e',
+        b'2',
     ];
     assert_eq!(encoded, expected);
 }

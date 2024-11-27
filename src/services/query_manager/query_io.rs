@@ -1,3 +1,5 @@
+use std::time::SystemTime;
+
 use anyhow::Result;
 
 use crate::services::CacheValue;
@@ -33,9 +35,13 @@ impl QueryIO {
             _ => Err(anyhow::anyhow!("Expected command to be a bulk string")),
         }
     }
-    pub fn extract_expiry(&self) -> anyhow::Result<u64> {
+    pub fn extract_expiry(&self) -> anyhow::Result<SystemTime> {
         match self {
-            QueryIO::BulkString(expiry) => Ok(expiry.parse::<u64>()?),
+            QueryIO::BulkString(expiry) => {
+                let systime = std::time::SystemTime::now()
+                    + std::time::Duration::from_millis(expiry.parse::<u64>()?);
+                Ok(systime)
+            }
             _ => Err(anyhow::anyhow!("Invalid expiry")),
         }
     }
