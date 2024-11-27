@@ -58,14 +58,22 @@
 //! ```
 //!
 //! It's primarily about communication/protocol rather than efficiency.\
+use crate::services::CacheEntry;
 use std::collections::HashMap;
 use std::ops::RangeInclusive;
+use std::time::SystemTime;
 
-use crate::services::CacheEntry;
+const HEADER_MAGIC_STRING: &str = "REDIS";
+const METADATA_SECTION_INDICATOR: u8 = 0xFA;
+const DATABASE_SECTION_INDICATOR: u8 = 0xFE;
+const DATABASE_TABLE_SIZE_INDICATOR: u8 = 0xFB;
+const EXPIRY_TIME_IN_MILLISECONDS_INDICATOR: u8 = 0xFC;
+const EXPIRY_TIME_IN_SECONDS_INDICATOR: u8 = 0xFD;
+const STRING_VALUE_TYPE_INDICATOR: u8 = 0x00;
+const CHECKSUM_INDICATOR: u8 = 0xFF;
 
 pub mod byte_decoder;
 pub mod byte_encoder;
-mod const_indicators;
 
 #[derive(Default)]
 pub struct Init;
@@ -150,4 +158,23 @@ impl DatabaseSectionBuilder {
 // Safe conversion from a slice to an array of a specific size.
 fn extract_range<const N: usize>(encoded: &[u8], range: RangeInclusive<usize>) -> Option<[u8; N]> {
     TryInto::<[u8; N]>::try_into(encoded.get(range)?).ok()
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub enum StoredDuration {
+    Seconds(u32),
+    Milliseconds(u64),
+}
+
+impl StoredDuration {
+    pub fn to_systemtime(&self) -> SystemTime {
+        match self {
+            StoredDuration::Seconds(secs) => {
+                SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(*secs as u64)
+            }
+            StoredDuration::Milliseconds(millis) => {
+                SystemTime::UNIX_EPOCH + std::time::Duration::from_millis(*millis)
+            }
+        }
+    }
 }

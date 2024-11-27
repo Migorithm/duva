@@ -13,7 +13,7 @@ use crate::{
     make_smart_pointer,
     services::{
         statefuls::routers::{cache_manager::CacheManager, ttl_manager::TtlSchedulerInbox},
-        CacheEntry, Expiry,
+        CacheEntry,
     },
 };
 

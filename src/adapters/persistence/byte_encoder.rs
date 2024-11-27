@@ -1,9 +1,10 @@
-use crate::adapters::persistence::const_indicators::{
+use crate::adapters::persistence::StoredDuration;
+use crate::adapters::persistence::{
     CHECKSUM_INDICATOR, DATABASE_SECTION_INDICATOR, DATABASE_TABLE_SIZE_INDICATOR,
     EXPIRY_TIME_IN_MILLISECONDS_INDICATOR, EXPIRY_TIME_IN_SECONDS_INDICATOR, HEADER_MAGIC_STRING,
     METADATA_SECTION_INDICATOR, STRING_VALUE_TYPE_INDICATOR,
 };
-use crate::services::{CacheValue, Expiry};
+use crate::services::CacheValue;
 use anyhow::Result;
 
 use std::time::UNIX_EPOCH;
@@ -325,7 +326,7 @@ fn test_cache_value_encode() {
 fn test_cache_value_with_expiry_milliseconds() {
     let value = CacheValue::ValueWithExpiry(
         "value".to_string(),
-        Expiry::Milliseconds(1713824559637).to_systemtime(),
+        StoredDuration::Milliseconds(1713824559637).to_systemtime(),
     );
     let encoded = value.encode_with_key("key").unwrap();
     let expected = vec![

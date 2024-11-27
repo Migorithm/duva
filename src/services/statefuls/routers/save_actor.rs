@@ -3,7 +3,7 @@ use crate::adapters::persistence::byte_encoder::{
     encode_checksum, encode_database_info, encode_database_table_size, encode_header,
     encode_metadata,
 };
-use std::collections::{HashMap, VecDeque};
+use std::collections::VecDeque;
 
 use tokio::io::AsyncWriteExt;
 use tokio::sync::mpsc::Sender;

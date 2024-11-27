@@ -1,19 +1,22 @@
-use super::{extract_range, CacheEntry, DatabaseSection, Init, MetadataReady, RdbFile};
-use crate::adapters::persistence::const_indicators::{
+use super::extract_range;
+use super::CacheEntry;
+use super::DatabaseSection;
+use super::Init;
+use super::MetadataReady;
+use super::RdbFile;
+use super::StoredDuration;
+use crate::adapters::persistence::{DatabaseSectionBuilder, HeaderReady};
+use crate::adapters::persistence::{
     DATABASE_SECTION_INDICATOR, DATABASE_TABLE_SIZE_INDICATOR,
     EXPIRY_TIME_IN_MILLISECONDS_INDICATOR, EXPIRY_TIME_IN_SECONDS_INDICATOR, HEADER_MAGIC_STRING,
     METADATA_SECTION_INDICATOR, STRING_VALUE_TYPE_INDICATOR,
 };
-use crate::{
-    adapters::persistence::{DatabaseSectionBuilder, HeaderReady},
-    services::Expiry,
-};
 use anyhow::{Context, Result};
-use std::time::Duration;
+
 use std::{
     collections::HashMap,
     ops::{Deref, DerefMut},
-    time::{SystemTime, UNIX_EPOCH},
+    time::SystemTime,
 };
 
 #[derive(Default)]
@@ -284,7 +287,7 @@ impl BytesDecoder<'_, MetadataReady> {
         Err(anyhow::anyhow!("Invalid key value pair"))
     }
 
-    pub fn try_extract_expiry_time_in_seconds(&mut self) -> Result<Expiry> {
+    pub fn try_extract_expiry_time_in_seconds(&mut self) -> Result<StoredDuration> {
         self.remove_identifier();
         let range = 0..=3;
         let result = u32::from_le_bytes(
@@ -293,10 +296,10 @@ impl BytesDecoder<'_, MetadataReady> {
         );
         self.skip(4);
 
-        Ok(Expiry::Seconds(result))
+        Ok(StoredDuration::Seconds(result))
     }
 
-    pub fn try_extract_expiry_time_in_milliseconds(&mut self) -> Result<Expiry> {
+    pub fn try_extract_expiry_time_in_milliseconds(&mut self) -> Result<StoredDuration> {
         self.remove_identifier();
         let range = 0..=7;
         let result = u64::from_le_bytes(
@@ -305,7 +308,7 @@ impl BytesDecoder<'_, MetadataReady> {
         );
         self.skip(8);
 
-        Ok(Expiry::Milliseconds(result))
+        Ok(StoredDuration::Milliseconds(result))
     }
 
     pub fn try_extract_key_value(&mut self) -> Result<(String, String)> {
@@ -455,7 +458,10 @@ fn test_database_section_extractor() {
         CacheEntry::KeyValueExpiry(key, value, expiry) => {
             assert_eq!(key, "foo");
             assert_eq!(value, "bar");
-            assert_eq!(expiry, &Expiry::Milliseconds(1713824559637).to_systemtime());
+            assert_eq!(
+                expiry,
+                &StoredDuration::Milliseconds(1713824559637).to_systemtime()
+            );
         }
         _ => panic!("Expected KeyValueExpiry"),
     }

@@ -48,28 +48,3 @@ impl CacheValue {
         matches!(self, CacheValue::ValueWithExpiry(_, _))
     }
 }
-
-#[derive(Debug, PartialEq, Eq, Clone)]
-pub enum Expiry {
-    Seconds(u32),
-    Milliseconds(u64),
-}
-
-impl Expiry {
-    pub fn to_systemtime(&self) -> SystemTime {
-        match self {
-            Expiry::Seconds(secs) => {
-                SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(*secs as u64)
-            }
-            Expiry::Milliseconds(millis) => {
-                SystemTime::UNIX_EPOCH + std::time::Duration::from_millis(*millis)
-            }
-        }
-    }
-    pub fn to_u64(&self) -> u64 {
-        match self {
-            Expiry::Seconds(secs) => *secs as u64,
-            Expiry::Milliseconds(millis) => *millis,
-        }
-    }
-}
