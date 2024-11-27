@@ -3,6 +3,7 @@ use std::time::SystemTime;
 pub mod query_manager;
 pub mod statefuls;
 
+#[derive(Debug)]
 pub enum CacheEntry {
     KeyValue(String, String),
     KeyValueExpiry(String, String, SystemTime),

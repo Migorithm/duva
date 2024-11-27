@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use crate::services::CacheEntry;
 
+#[derive(Debug)]
 pub struct RdbFile {
     pub(crate) header: String,
     pub(crate) metadata: HashMap<String, String>,
@@ -31,6 +32,7 @@ impl RdbFile {
     }
 }
 
+#[derive(Debug)]
 pub struct DatabaseSection {
     pub index: usize,
     pub storage: Vec<CacheEntry>,

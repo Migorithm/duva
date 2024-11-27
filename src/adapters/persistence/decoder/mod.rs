@@ -7,7 +7,7 @@ mod builder;
 pub mod byte_decoder;
 pub mod states;
 
-#[derive(Default, Clone)]
+#[derive(Default, Debug, Clone)]
 pub struct Decoder;
 
 impl TDecodeData for Decoder {
@@ -16,6 +16,8 @@ impl TDecodeData for Decoder {
         bytes: Vec<u8>,
     ) -> anyhow::Result<crate::services::statefuls::persistence_models::RdbFile> {
         let decoder: BytesDecoder<DecoderInit> = bytes.as_slice().into();
-        decoder.load_header()?.load_metadata()?.load_database()
+        let database = decoder.load_header()?.load_metadata()?.load_database()?;
+        print!("database: {:?}", database);
+        Ok(database)
     }
 }

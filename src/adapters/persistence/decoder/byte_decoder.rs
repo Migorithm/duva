@@ -187,6 +187,7 @@ impl BytesDecoder<'_, MetadataReady> {
             let section = self
                 .extract_section()
                 .context("database loading: section extraction failed")?;
+
             database.push(section);
         }
 
@@ -272,6 +273,7 @@ impl BytesDecoder<'_, MetadataReady> {
                 //0b11111110
                 STRING_VALUE_TYPE_INDICATOR => {
                     let (key, value) = self.try_extract_key_value()?;
+
                     return match expiry {
                         Some(expiry) => Ok(CacheEntry::KeyValueExpiry(key, value, expiry)),
                         None => Ok(CacheEntry::KeyValue(key, value)),

@@ -114,6 +114,7 @@ impl CacheActor {
                         ))
                         .await?;
                     for chunk in cache.iter().collect::<Vec<_>>().chunks(10) {
+                        println!("{:?}", chunk);
                         outbox
                             .send(SaveActorCommand::SaveChunk(CacheChunk::new(chunk)))
                             .await?;
