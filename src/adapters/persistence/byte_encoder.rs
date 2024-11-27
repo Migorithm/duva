@@ -46,7 +46,7 @@ fn data_encode(size: usize, data: &str) -> Option<BytesEncoder> {
     let mut result = BytesEncoder::default();
     // if value is representable with 6bits : 0b00 -> Use the remaining 6 bits to represent the size.
     if size < (1 << 6) {
-        result.push((0b00 << 6) | (size as u8));
+        result.push(size as u8);
     }
     // if value is representable with 14bits : 0b01 -> Use the next 14 bits (6 bits in the first byte + the next byte).
     else if size < (1 << 14) {
@@ -222,7 +222,7 @@ fn test_integer_decoding1() {
 fn test_integer_decoding2() {
     let data = "1000";
     let size = data.len();
-    let mut encoded = data_encode(size, data).unwrap();
+    let encoded = data_encode(size, data).unwrap();
     let mut decoder = BytesDecoder {
         data: &encoded.0,
         state: Init,

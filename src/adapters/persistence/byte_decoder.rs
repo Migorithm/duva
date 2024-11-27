@@ -48,7 +48,7 @@ impl<T> BytesDecoder<'_, T> {
         }
     }
     pub fn size_decode(&mut self) -> Option<usize> {
-        if let Some(first_byte) = self.get(0) {
+        if let Some(first_byte) = self.first() {
             match first_byte >> 6 {
                 0b00 => {
                     let size = (first_byte & 0x3F) as usize;
@@ -83,7 +83,7 @@ impl<T> BytesDecoder<'_, T> {
     }
 
     fn integer_decode(&mut self) -> Option<String> {
-        if let Some(first_byte) = self.get(0) {
+        if let Some(first_byte) = self.first() {
             match first_byte {
                 // 0b11000000: 8-bit integer
                 0xC0 => {
@@ -112,7 +112,7 @@ impl<T> BytesDecoder<'_, T> {
     }
 
     pub(crate) fn check_identifier(&self, iden: u8) -> bool {
-        self.get(0) == Some(&iden)
+        self.first() == Some(&iden)
     }
 }
 
@@ -321,7 +321,7 @@ impl BytesDecoder<'_, MetadataReady> {
 
     pub fn try_get_checksum(&mut self) -> Result<Vec<u8>> {
         self.remove_identifier();
-        let checksum = extract_range(&self.data, 0..=7)
+        let checksum = extract_range(self.data, 0..=7)
             .map(|f: [u8; 8]| f.to_vec())
             .context("failed to extract checksum")?;
         self.skip(8);
@@ -332,10 +332,7 @@ impl BytesDecoder<'_, MetadataReady> {
 
 impl<'a> From<&'a [u8]> for BytesDecoder<'a, Init> {
     fn from(data: &'a [u8]) -> Self {
-        Self {
-            data: &data,
-            state: Init,
-        }
+        Self { data, state: Init }
     }
 }
 

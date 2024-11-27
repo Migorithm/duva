@@ -104,12 +104,7 @@ pub struct TtlSchedulerInbox(tokio::sync::mpsc::Sender<TtlCommand>);
 
 impl TtlSchedulerInbox {
     pub async fn set_ttl(&self, key: String, expiry: u64) {
-        let _ = self
-            .send(TtlCommand::ScheduleTtl {
-                key,
-                expiry: expiry,
-            })
-            .await;
+        let _ = self.send(TtlCommand::ScheduleTtl { key, expiry }).await;
     }
 }
 
