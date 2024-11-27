@@ -81,7 +81,8 @@ impl Config {
         env_var!(
             {
                 dir,
-                dbfilename
+                dbfilename,
+                replicaof
             }
             {
                 port = 6379,
@@ -89,12 +90,16 @@ impl Config {
             }
         );
 
+        let role = replicaof
+            .map(|_| "slave".to_string())
+            .unwrap_or("master".to_string());
+
         Config {
             port,
             host,
             dir,
             dbfilename,
-            replication: Replication::new(),
+            replication: Replication::new(role),
         }
     }
     pub fn bind_addr(&self) -> String {
@@ -161,9 +166,9 @@ pub(crate) struct Replication {
     repl_backlog_first_byte_offset: usize, // 0
 }
 impl Replication {
-    pub fn new() -> Self {
+    pub fn new(role: String) -> Self {
         Replication {
-            role: "master".to_string(),
+            role,
             connected_slaves: 0,
             master_replid: "8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb".to_string(),
             master_repl_offset: 0,
