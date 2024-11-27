@@ -320,7 +320,7 @@ fn test_expiry_encode_seconds() {
 fn test_expiry_encode_milliseconds() {
     let expiry = Expiry::Milliseconds(1713824559637);
     let encoded = expiry.encode().unwrap();
-    assert_eq!(encoded[0], EXPIRY_TIME_IN_SECONDS_INDICATOR);
+    assert_eq!(encoded[0], EXPIRY_TIME_IN_MILLISECONDS_INDICATOR);
     assert_eq!(encoded[1..], [0x15, 0x72, 0xE7, 0x07, 0x8F, 0x01, 0x00, 0x00]);
 }
 
@@ -339,7 +339,7 @@ fn test_cache_value_with_expiry_seconds() {
     let value = CacheValue::ValueWithExpiry("value".to_string(), Expiry::Seconds(1714089298));
     let encoded = value.encode_with_key("key").unwrap();
     let expected = vec![
-        STRING_VALUE_TYPE_INDICATOR, EXPIRY_TIME_IN_SECONDS_INDICATOR, 0x52, 0xED, 0x2A, 0x66, 0x03, b'k', b'e', b'y', 0x05, b'v', b'a', b'l', b'u', b'e'
+        EXPIRY_TIME_IN_SECONDS_INDICATOR, 0x52, 0xED, 0x2A, 0x66, STRING_VALUE_TYPE_INDICATOR, 0x03, b'k', b'e', b'y', 0x05, b'v', b'a', b'l', b'u', b'e'
     ];
     assert_eq!(encoded, expected);
 }
@@ -349,7 +349,7 @@ fn test_cache_value_with_expiry_milliseconds() {
     let value = CacheValue::ValueWithExpiry("value".to_string(), Expiry::Milliseconds(1713824559637));
     let encoded = value.encode_with_key("key").unwrap();
     let expected = vec![
-        STRING_VALUE_TYPE_INDICATOR, EXPIRY_TIME_IN_MILLISECONDS_INDICATOR, 0x15, 0x72, 0xE7, 0x07, 0x8F, 0x01, 0x00, 0x00, 0x03, b'k', b'e', b'y', 0x05, b'v', b'a', b'l', b'u', b'e'
+        EXPIRY_TIME_IN_MILLISECONDS_INDICATOR, 0x15, 0x72, 0xE7, 0x07, 0x8F, 0x01, 0x00, 0x00, STRING_VALUE_TYPE_INDICATOR, 0x03,  b'k', b'e', b'y', 0x05, b'v', b'a', b'l', b'u', b'e'
     ];
     assert_eq!(encoded, expected);
 }
