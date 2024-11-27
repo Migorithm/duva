@@ -1,4 +1,3 @@
-use crate::adapters::persistence::StoredDuration;
 use crate::adapters::persistence::{
     CHECKSUM_INDICATOR, DATABASE_SECTION_INDICATOR, DATABASE_TABLE_SIZE_INDICATOR,
     EXPIRY_TIME_IN_MILLISECONDS_INDICATOR, EXPIRY_TIME_IN_SECONDS_INDICATOR, HEADER_MAGIC_STRING,
@@ -324,6 +323,7 @@ fn test_cache_value_encode() {
 
 #[test]
 fn test_cache_value_with_expiry_milliseconds() {
+    use crate::adapters::persistence::StoredDuration;
     let value = CacheValue::ValueWithExpiry(
         "value".to_string(),
         StoredDuration::Milliseconds(1713824559637).to_systemtime(),

@@ -58,6 +58,27 @@
 //! ```
 //!
 //! It's primarily about communication/protocol rather than efficiency.\
+
+/// # Extract Key-Value Pair Storage
+/// Extract key-value pair from the data buffer and remove the extracted data from the buffer.
+///
+/// Each key-value pair is stored as follows:
+///
+/// 1. Optional Expire Information:
+/// - **Timestamp in Seconds:**
+/// ```
+/// FD
+/// Expire timestamp in seconds (4-byte unsigned integer)
+/// ```
+/// - **Timestamp in Milliseconds:**
+/// ```
+/// FC
+/// Expire timestamp in milliseconds (8-byte unsigned long)
+/// ```
+/// 2. **Value Type:** 1-byte flag indicating the type and encoding of the value.
+/// 3. **Key:** String encoded.
+/// 4. **Value:** Encoding depends on the value type.
+// Safe conversion from a slice to an array of a specific size.
 use crate::services::CacheEntry;
 use std::collections::HashMap;
 use std::ops::RangeInclusive;
@@ -135,27 +156,6 @@ impl DatabaseSectionBuilder {
     }
 }
 
-/// # Extract Key-Value Pair Storage
-/// Extract key-value pair from the data buffer and remove the extracted data from the buffer.
-///
-/// Each key-value pair is stored as follows:
-///
-/// 1. Optional Expire Information:
-/// - **Timestamp in Seconds:**
-/// ```
-/// FD
-/// Expire timestamp in seconds (4-byte unsigned integer)
-/// ```
-/// - **Timestamp in Milliseconds:**
-/// ```
-/// FC
-/// Expire timestamp in milliseconds (8-byte unsigned long)
-/// ```
-/// 2. **Value Type:** 1-byte flag indicating the type and encoding of the value.
-/// 3. **Key:** String encoded.
-/// 4. **Value:** Encoding depends on the value type.
-
-// Safe conversion from a slice to an array of a specific size.
 fn extract_range<const N: usize>(encoded: &[u8], range: RangeInclusive<usize>) -> Option<[u8; N]> {
     TryInto::<[u8; N]>::try_into(encoded.get(range)?).ok()
 }
