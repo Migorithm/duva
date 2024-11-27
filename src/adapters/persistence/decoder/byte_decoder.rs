@@ -1,16 +1,11 @@
-use super::extract_range;
-use super::CacheEntry;
-use super::DatabaseSection;
-use super::Init;
-use super::MetadataReady;
-use super::RdbFile;
-use super::StoredDuration;
-use crate::adapters::persistence::{DatabaseSectionBuilder, HeaderReady};
 use crate::adapters::persistence::{
-    DATABASE_SECTION_INDICATOR, DATABASE_TABLE_SIZE_INDICATOR,
+    extract_range, StoredDuration, DATABASE_SECTION_INDICATOR, DATABASE_TABLE_SIZE_INDICATOR,
     EXPIRY_TIME_IN_MILLISECONDS_INDICATOR, EXPIRY_TIME_IN_SECONDS_INDICATOR, HEADER_MAGIC_STRING,
     METADATA_SECTION_INDICATOR, STRING_VALUE_TYPE_INDICATOR,
 };
+use crate::services::statefuls::persistence_models::{DatabaseSection, RdbFile};
+use crate::services::CacheEntry;
+
 use anyhow::{Context, Result};
 
 use std::{
@@ -18,6 +13,9 @@ use std::{
     ops::{Deref, DerefMut},
     time::SystemTime,
 };
+
+use super::builder::DatabaseSectionBuilder;
+use super::states::{DecoderInit, HeaderReady, MetadataReady};
 
 #[derive(Default)]
 pub struct BytesDecoder<'a, T> {
@@ -126,7 +124,7 @@ impl<T> BytesDecoder<'_, T> {
     }
 }
 
-impl<'a> BytesDecoder<'a, Init> {
+impl<'a> BytesDecoder<'a, DecoderInit> {
     // read data and check first 5 ascii code convertable hex bytes are equal to "REDIS"
     // then read 4 digit Header version (like 0011) and return RdbFileLoader<MetadataSectionLoading> with header value as "REDIS" + 4 digit version
     pub fn load_header(mut self) -> Result<BytesDecoder<'a, HeaderReady>> {
@@ -321,7 +319,7 @@ impl BytesDecoder<'_, MetadataReady> {
 
     pub fn try_get_checksum(&mut self) -> Result<Vec<u8>> {
         self.remove_identifier();
-        let checksum = extract_range(&self.data, 0..=7)
+        let checksum = extract_range(self.data, 0..=7)
             .map(|f: [u8; 8]| f.to_vec())
             .context("failed to extract checksum")?;
         self.skip(8);
@@ -330,11 +328,11 @@ impl BytesDecoder<'_, MetadataReady> {
     }
 }
 
-impl<'a> From<&'a [u8]> for BytesDecoder<'a, Init> {
+impl<'a> From<&'a [u8]> for BytesDecoder<'a, DecoderInit> {
     fn from(data: &'a [u8]) -> Self {
         Self {
-            data: &data,
-            state: Init,
+            data,
+            state: DecoderInit,
         }
     }
 }
@@ -359,10 +357,10 @@ fn test_size_decoding() {
     static V3: [u8; 5] = [0x80, 0x00, 0x00, 0x42, 0x68];
     static V4: [u8; 2] = [0xC0, 0x0A];
 
-    let mut example1: BytesDecoder<Init> = (&V1 as &'static [u8]).into();
-    let mut example2: BytesDecoder<Init> = (&V2 as &'static [u8]).into();
-    let mut example3: BytesDecoder<Init> = (&V3 as &'static [u8]).into();
-    let mut example4: BytesDecoder<Init> = (&V4 as &'static [u8]).into();
+    let mut example1: BytesDecoder<DecoderInit> = (&V1 as &'static [u8]).into();
+    let mut example2: BytesDecoder<DecoderInit> = (&V2 as &'static [u8]).into();
+    let mut example3: BytesDecoder<DecoderInit> = (&V3 as &'static [u8]).into();
+    let mut example4: BytesDecoder<DecoderInit> = (&V4 as &'static [u8]).into();
 
     assert_eq!(example1.size_decode(), Some(13));
     assert_eq!(example2.size_decode(), Some(700));
@@ -376,9 +374,9 @@ fn test_integer_decoding() {
     static V2: [u8; 3] = [0xC1, 0x39, 0x30];
     static V3: [u8; 5] = [0xC2, 0xEA, 0x17, 0x3E, 0x67];
 
-    let mut example1: BytesDecoder<Init> = (&V1 as &'static [u8]).into();
-    let mut example2: BytesDecoder<Init> = (&V2 as &'static [u8]).into();
-    let mut example3: BytesDecoder<Init> = (&V3 as &'static [u8]).into();
+    let mut example1: BytesDecoder<DecoderInit> = (&V1 as &'static [u8]).into();
+    let mut example2: BytesDecoder<DecoderInit> = (&V2 as &'static [u8]).into();
+    let mut example3: BytesDecoder<DecoderInit> = (&V3 as &'static [u8]).into();
 
     assert_eq!(example1.integer_decode(), Some("10".to_string()));
     assert_eq!(example2.integer_decode(), Some("12345".to_string()));
@@ -390,10 +388,10 @@ fn test_string_decoding() {
     static V1: [u8; 14] = [
         0x0D, 0x48, 0x65, 0x6C, 0x6C, 0x6F, 0x2C, 0x20, 0x57, 0x6F, 0x72, 0x6C, 0x64, 0x21,
     ];
-    let mut example1: BytesDecoder<Init> = (&V1 as &'static [u8]).into();
+    let mut example1: BytesDecoder<DecoderInit> = (&V1 as &'static [u8]).into();
 
     static V2: [u8; 6] = [0x42, 0x0A, 0x54, 0x65, 0x73, 0x74];
-    let mut example2: BytesDecoder<Init> = (&V2 as &'static [u8]).into();
+    let mut example2: BytesDecoder<DecoderInit> = (&V2 as &'static [u8]).into();
 
     assert_eq!(example1.string_decode(), Some("Hello, World!".to_string()));
     assert_eq!(example2.string_decode(), None);
@@ -406,11 +404,11 @@ fn test_decoding() {
         0x0D, 0x48, 0x65, 0x6C, 0x6C, 0x6F, 0x2C, 0x20, 0x57, 0x6F, 0x72, 0x6C, 0x64, 0x21,
     ];
 
-    let mut example1: BytesDecoder<Init> = (&V1 as &'static [u8]).into();
+    let mut example1: BytesDecoder<DecoderInit> = (&V1 as &'static [u8]).into();
 
     static V2: [u8; 6] = [0x42, 0x0A, 0x54, 0x65, 0x73, 0x74];
     // "Test", with size 10 (although more bytes needed)
-    let mut example2: BytesDecoder<Init> = (&V2 as &'static [u8]).into();
+    let mut example2: BytesDecoder<DecoderInit> = (&V2 as &'static [u8]).into();
 
     assert!(example1.string_decode().is_some());
     assert!(example2.string_decode().is_none()); // due to insufficient bytes
@@ -421,7 +419,7 @@ fn test_decode_multiple_strings() {
     // "abc" and "def"
     static V1: [u8; 8] = [0x03, 0x61, 0x62, 0x63, 0x03, 0x64, 0x65, 0x66];
 
-    let mut encoded: BytesDecoder<Init> = (&V1 as &'static [u8]).into();
+    let mut encoded: BytesDecoder<DecoderInit> = (&V1 as &'static [u8]).into();
     let decoded = encoded.string_decode();
     assert_eq!(decoded, Some("abc".to_string()));
     let decoded = encoded.string_decode();
@@ -538,7 +536,7 @@ fn test_invalid_expiry_key_value_pair() {
 
 #[test]
 fn test_header_loading() {
-    let decoder = BytesDecoder::<Init> {
+    let decoder = BytesDecoder::<DecoderInit> {
         data: &[0x52, 0x45, 0x44, 0x49, 0x53, 0x30, 0x30, 0x30, 0x31],
         state: Default::default(),
     };
@@ -550,7 +548,7 @@ fn test_header_loading() {
 #[test]
 fn test_header_loading_data_length_error() {
     let data = vec![0x52, 0x45, 0x44, 0x49, 0x53];
-    let data: BytesDecoder<Init> = data.as_slice().into();
+    let data: BytesDecoder<DecoderInit> = data.as_slice().into();
 
     let result = data.load_header();
     assert!(result.is_err());
@@ -643,7 +641,7 @@ fn test_loading_all() {
         0x32, 0x00, 0x03, 0x66, 0x6F, 0x6F, 0x03, 0x62, 0x61, 0x72, 0xFF, 0x60, 0x82, 0x9C, 0xF8,
         0xFB, 0x2E, 0x7F, 0xEB,
     ];
-    let bytes_handler = BytesDecoder::<Init> {
+    let bytes_handler = BytesDecoder::<DecoderInit> {
         data: data.as_slice().into(),
         state: Default::default(),
     };

@@ -1,13 +1,6 @@
 pub mod interface;
 pub mod query_io;
 pub mod request;
-use anyhow::Result;
-use bytes::BytesMut;
-use interface::{TRead, TWriteBuf};
-use query_io::QueryIO;
-use request::UserRequest::{self, *};
-use std::str::FromStr;
-
 use crate::{
     config::{config, ConfigCommand},
     make_smart_pointer,
@@ -16,6 +9,14 @@ use crate::{
         CacheEntry,
     },
 };
+use anyhow::Result;
+use bytes::BytesMut;
+use interface::{TRead, TWriteBuf};
+use query_io::QueryIO;
+use request::UserRequest::{self, *};
+use std::str::FromStr;
+
+use super::statefuls::routers::interfaces::TDecodeData;
 
 /// Controller is a struct that will be used to read and write values to the client.
 pub struct QueryManager<T: TWriteBuf + TRead> {
@@ -24,9 +25,9 @@ pub struct QueryManager<T: TWriteBuf + TRead> {
 }
 
 impl<U: TWriteBuf + TRead> QueryManager<U> {
-    pub(crate) async fn handle(
+    pub(crate) async fn handle<D: TDecodeData>(
         &mut self,
-        persistence_router: &CacheManager,
+        persistence_router: &CacheManager<D>,
         ttl_sender: TtlSchedulerInbox,
     ) -> Result<()> {
         let Some((cmd, args)) = self.read_value().await? else {

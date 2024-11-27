@@ -1,7 +1,8 @@
 use super::cache_actor::{CacheActor, CacheCommand, CacheCommandSender};
+use super::interfaces::TDecodeData;
 use super::save_actor::SaveActor;
 use super::ttl_manager::{TtlActor, TtlSchedulerInbox};
-use crate::adapters::persistence::{byte_decoder::BytesDecoder, Init};
+
 use crate::config::config;
 
 use crate::services::query_manager::query_io::QueryIO;
@@ -15,11 +16,12 @@ type OneShotReceiverJoinHandle<T> =
     tokio::task::JoinHandle<std::result::Result<T, tokio::sync::oneshot::error::RecvError>>;
 
 #[derive(Clone)]
-pub(crate) struct CacheManager {
+pub(crate) struct CacheManager<Dec> {
     pub(crate) inboxes: Vec<CacheCommandSender>,
+    pub(crate) decoder: Dec,
 }
 
-impl CacheManager {
+impl<Dec: TDecodeData> CacheManager<Dec> {
     pub(crate) async fn load_data(
         &self,
         ttl_inbox: TtlSchedulerInbox,
@@ -31,8 +33,7 @@ impl CacheManager {
 
         let data = tokio::fs::read(filepath).await?;
 
-        let decoder: BytesDecoder<Init> = data.as_slice().into();
-        let database = decoder.load_header()?.load_metadata()?.load_database()?;
+        let database = self.decoder.decode_data(data)?;
 
         for kvs in database
             .key_values()
@@ -136,11 +137,15 @@ impl CacheManager {
         hasher.finish() as usize % self.inboxes.len()
     }
 
-    pub fn run_cache_actors(num_of_actors: usize) -> (CacheManager, TtlSchedulerInbox) {
+    pub fn run_cache_actors(
+        num_of_actors: usize,
+        decoder: Dec,
+    ) -> (CacheManager<Dec>, TtlSchedulerInbox) {
         let cache_dispatcher = CacheManager {
             inboxes: (0..num_of_actors)
                 .map(|_| CacheActor::run())
                 .collect::<Vec<_>>(),
+            decoder,
         };
 
         let ttl_inbox = cache_dispatcher.run_ttl_actors();
