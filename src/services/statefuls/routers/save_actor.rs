@@ -55,13 +55,8 @@ impl SaveActor {
         while let Some(command) = self.inbox.recv().await {
             match command {
                 SaveActorCommand::SaveTableSize(key_value_table_size, expires_table_size) => {
-                    println!(
-                        "key_value_table_size: {}, expires_table_size: {}",
-                        key_value_table_size, expires_table_size
-                    );
                     num_of_saved_table_size_actor -= 1;
                     if num_of_saved_table_size_actor == 0 {
-                        println!("writing table_size");
                         file.write_all(
                             &encode_database_table_size(
                                 total_key_value_table_size,
@@ -77,13 +72,11 @@ impl SaveActor {
                     }
                 }
                 SaveActorCommand::SaveChunk(chunk) => {
-                    println!("Received chunk");
                     if num_of_saved_table_size_actor != 0 {
                         chunk_queue.push_back(chunk);
                     } else {
                         chunk_queue.push_back(chunk);
                         while let Some(chunk) = chunk_queue.pop_front() {
-                            println!("Writing chunk");
                             let chunk = chunk.0;
                             for (key, value) in chunk {
                                 let encoded_chunk = value.encode_with_key(&key).unwrap();
@@ -95,16 +88,13 @@ impl SaveActor {
                 SaveActorCommand::StopSentinel => {
                     self.num_of_cache_actors -= 1;
                     if self.num_of_cache_actors == 0 {
-                        println!("Writing left chunk");
                         while let Some(chunk) = chunk_queue.pop_front() {
-                            println!("Writing chunk");
                             let chunk = chunk.0;
                             for (key, value) in chunk {
                                 let encoded_chunk = value.encode_with_key(&key).unwrap();
                                 file.write_all(&encoded_chunk).await.unwrap();
                             }
                         }
-                        println!("Writing checksum");
                         let checksum = encode_checksum(&[0; 8]).unwrap();
                         file.write_all(&checksum).await.unwrap();
                         break;

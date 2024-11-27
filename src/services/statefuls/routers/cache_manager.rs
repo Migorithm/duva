@@ -30,8 +30,7 @@ impl CacheManager {
         };
 
         let data = tokio::fs::read(filepath).await?;
-        //print datas in hex
-        println!("{:x?}", data);
+
         let decoder: BytesDecoder<Init> = data.as_slice().into();
         let database = decoder.load_header()?.load_metadata()?.load_database()?;
 

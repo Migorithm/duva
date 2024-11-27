@@ -105,7 +105,6 @@ impl CacheActor {
                     cache.remove(&key);
                 }
                 CacheCommand::Save { outbox } => {
-                    println!("Saving cache data");
                     let table_size = cache.len();
                     let expires_table_size = cache.get_expires_table_size();
                     outbox
