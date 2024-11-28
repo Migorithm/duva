@@ -1,7 +1,7 @@
 use crate::{
     make_smart_pointer,
     services::{
-        interfaces::endec::TDecodeData,
+        interfaces::endec::{TDecodeData, TEncodeData},
         statefuls::routers::{cache_actor::CacheCommand, cache_manager::CacheManager},
     },
 };
@@ -21,7 +21,9 @@ use tokio::{
 pub struct TtlActor;
 
 impl TtlActor {
-    pub(crate) fn run<T: TDecodeData>(cache_dispatcher: CacheManager<T>) -> TtlSchedulerInbox {
+    pub(crate) fn run<T: TDecodeData + TEncodeData>(
+        cache_dispatcher: CacheManager<T>,
+    ) -> TtlSchedulerInbox {
         let (scheduler_outbox, inbox) = tokio::sync::mpsc::channel(100);
         tokio::spawn(Self::ttl_schedule_actor(inbox));
         tokio::spawn(Self::background_delete_actor(
@@ -33,7 +35,7 @@ impl TtlActor {
     }
 
     // Background actor keeps sending peek command to the scheduler actor to check if there is any key to delete.
-    async fn background_delete_actor<T: TDecodeData>(
+    async fn background_delete_actor<T: TDecodeData + TEncodeData>(
         cache_manager: CacheManager<T>,
         outbox: mpsc::Sender<TtlCommand>,
     ) -> anyhow::Result<()> {

@@ -4,7 +4,7 @@ use super::save_actor::SaveActor;
 use super::ttl_manager::{TtlActor, TtlSchedulerInbox};
 
 use crate::config::Config;
-use crate::services::interfaces::endec::TDecodeData;
+use crate::services::interfaces::endec::{TDecodeData, TEncodeData};
 use crate::services::query_manager::query_io::QueryIO;
 use crate::services::CacheEntry;
 use anyhow::Result;
@@ -21,7 +21,7 @@ pub(crate) struct CacheManager<Dec> {
     pub(crate) decoder: Dec,
 }
 
-impl<Dec: TDecodeData> CacheManager<Dec> {
+impl<EnDec: TDecodeData + TEncodeData> CacheManager<EnDec> {
     pub(crate) async fn load_data(
         &self,
         ttl_inbox: TtlSchedulerInbox,
@@ -140,8 +140,8 @@ impl<Dec: TDecodeData> CacheManager<Dec> {
 
     pub fn run_cache_actors(
         num_of_actors: usize,
-        decoder: Dec,
-    ) -> (CacheManager<Dec>, TtlSchedulerInbox) {
+        decoder: EnDec,
+    ) -> (CacheManager<EnDec>, TtlSchedulerInbox) {
         let cache_dispatcher = CacheManager {
             inboxes: (0..num_of_actors)
                 .map(|_| CacheActor::run())
@@ -157,9 +157,9 @@ impl<Dec: TDecodeData> CacheManager<Dec> {
         TtlActor::run(self.clone())
     }
 
-    pub fn run_save_actor(&self, db_filepath: Option<String>) {
+    pub fn run_save_actor(&self, db_filepath: Option<String>, encoder: EnDec) {
         let filepath: String = db_filepath.unwrap_or_else(|| "dump.rdb".to_string());
-        let outbox = SaveActor::run(filepath, self.inboxes.len());
+        let outbox = SaveActor::run(filepath, self.inboxes.len(), encoder);
 
         // get all the handlers to cache actors
         for inbox in self.inboxes.iter().map(Clone::clone) {

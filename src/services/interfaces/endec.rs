@@ -11,31 +11,37 @@ pub trait TDecodeData: ThreadSafeCloneable {
 }
 
 pub trait TEncodeData: ThreadSafeCloneable {
-    // template method
-    async fn encode_data(
+    /// ** Template method pattern
+    ///    `create_on_path` and its return will determine where the file will be saved
+    fn encode_data(
         &self,
         filepath: &str,
         inbox: &mut Receiver<SaveActorCommand>,
         number_of_cache_actors: usize,
-    ) -> anyhow::Result<()> {
-        let mut processor = Self::create_on_path(filepath, number_of_cache_actors).await?;
-        processor.add_meta().await?;
-        while let Some(command) = inbox.recv().await {
-            match processor.handle_cmd(command).await {
-                Ok(should_break) => {
-                    if should_break {
-                        break;
+    ) -> impl std::future::Future<Output = anyhow::Result<()>> + Send {
+        async move {
+            let mut processor = self
+                .create_on_path(filepath, number_of_cache_actors)
+                .await?;
+            processor.add_meta().await?;
+            while let Some(command) = inbox.recv().await {
+                match processor.handle_cmd(command).await {
+                    Ok(should_break) => {
+                        if should_break {
+                            break;
+                        }
+                    }
+                    Err(err) => {
+                        eprintln!("error while encoding: {:?}", err);
+                        return Err(err);
                     }
                 }
-                Err(err) => {
-                    eprintln!("error while encoding: {:?}", err);
-                    return Err(err);
-                }
             }
+            Ok(())
         }
-        Ok(())
     }
     fn create_on_path(
+        &self,
         filepath: &str,
         number_of_cache_actors: usize,
     ) -> impl std::future::Future<Output = anyhow::Result<impl Processable>> + Send;
