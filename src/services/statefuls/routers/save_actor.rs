@@ -33,6 +33,10 @@ impl SaveActor {
     }
 
     pub async fn handle(mut self) -> anyhow::Result<()> {
+        // TODO -  eunchan
+        // USE `TEncodeData` by injecting dependency - eunchan
+        // Fire TEncodeData::encode_data(&instance,filepath, &mut self.inbox,self.number_of_actors).await?;
+
         let mut file = tokio::fs::OpenOptions::new()
             .write(true)
             .create(true)
