@@ -3,8 +3,7 @@ use super::interfaces::TDecodeData;
 use super::save_actor::SaveActor;
 use super::ttl_manager::{TtlActor, TtlSchedulerInbox};
 
-use crate::config::config;
-
+use crate::config::Config;
 use crate::services::query_manager::query_io::QueryIO;
 use crate::services::CacheEntry;
 use anyhow::Result;
@@ -26,8 +25,9 @@ impl<Dec: TDecodeData> CacheManager<Dec> {
         &self,
         ttl_inbox: TtlSchedulerInbox,
         current_system_time: SystemTime,
+        config: &'static Config,
     ) -> Result<()> {
-        let Ok(Some(filepath)) = config().try_filepath().await else {
+        let Ok(Some(filepath)) = config.try_filepath().await else {
             return Ok(());
         };
 

@@ -1,5 +1,3 @@
-use std::sync::OnceLock;
-
 use anyhow::Result;
 use tokio::fs::try_exists;
 
@@ -69,15 +67,15 @@ impl TryFrom<(&str, &str)> for ConfigCommand {
 }
 
 pub struct Config {
-    pub(crate) port: u16,
-    pub(crate) host: String,
+    pub port: u16,
+    pub host: String,
     pub(crate) dir: String,
     pub(crate) dbfilename: Option<String>,
     pub(crate) replication: Replication,
 }
 
-impl Config {
-    pub fn new() -> Self {
+impl Default for Config {
+    fn default() -> Self {
         env_var!(
             {
                 dbfilename,
@@ -102,10 +100,36 @@ impl Config {
             replication: Replication::new(role),
         }
     }
+}
+
+impl Config {
+    pub fn set_port(mut self, port: u16) -> Self {
+        self.port = port;
+        self
+    }
+    pub fn set_host(mut self, host: String) -> Self {
+        self.host = host;
+        self
+    }
+    fn get_dir(&self) -> &str {
+        self.dir.as_str()
+    }
+    pub fn set_dir(mut self, dir: String) -> Self {
+        self.dir = dir;
+        self
+    }
+
+    fn get_db_filename(&self) -> Option<String> {
+        self.dbfilename.clone()
+    }
+    pub fn set_dbfilename(mut self, dbfilename: Option<String>) -> Self {
+        self.dbfilename = dbfilename;
+        self
+    }
+
     pub fn bind_addr(&self) -> String {
         format!("{}:{}", self.host, self.port)
     }
-
     // The following is used on startup and check if the file exists
     pub async fn try_filepath(&self) -> Result<Option<String>> {
         match (&self.dir, &self.dbfilename) {
@@ -137,13 +161,6 @@ impl Config {
             ConfigCommand::Dir => Some(self.get_dir().to_string()),
             ConfigCommand::DbFileName => self.get_db_filename(),
         }
-    }
-    fn get_dir(&self) -> &str {
-        self.dir.as_str()
-    }
-
-    fn get_db_filename(&self) -> Option<String> {
-        self.dbfilename.clone()
     }
 
     pub fn replication_info(&self) -> Vec<String> {
@@ -196,10 +213,4 @@ impl Replication {
     pub fn role(&self) -> String {
         "role:".to_string() + &self.role
     }
-}
-
-static CONFIG: OnceLock<Config> = OnceLock::new();
-
-pub fn config() -> &'static Config {
-    CONFIG.get_or_init(Config::new)
 }
