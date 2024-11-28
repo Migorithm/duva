@@ -145,7 +145,7 @@ impl TEncodeData for EnDecoder {
             .await?;
         Ok(EncodingProcessor {
             file,
-            encoding_meta: EncodingMeta::new(num_of_cache_actors),
+            meta: EncodingMeta::new(num_of_cache_actors),
         })
     }
 }
