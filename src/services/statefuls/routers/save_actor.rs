@@ -36,7 +36,6 @@ impl<T: TEncodeData> SaveActor<T> {
         self.encoder
             .encode_data(&self.filepath, &mut self.inbox, self.num_of_cache_actors)
             .await?;
-
         Ok(())
     }
 }

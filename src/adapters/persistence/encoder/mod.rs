@@ -2,6 +2,7 @@ use crate::services::{
     interfaces::endec::Processable,
     statefuls::routers::{cache_actor::CacheChunk, save_actor::SaveActorCommand},
 };
+use anyhow::Result;
 use byte_encoder::{
     encode_checksum, encode_database_info, encode_database_table_size, encode_header,
     encode_metadata,
@@ -36,7 +37,7 @@ impl EncodingMeta {
 }
 
 impl Processable for EncodingProcessor {
-    async fn add_meta(&mut self) -> anyhow::Result<()> {
+    async fn add_meta(&mut self) -> Result<()> {
         let meta = [
             encode_header("0011")?,
             encode_metadata(Vec::from([("redis-ver", "6.0.16")]))?,
@@ -46,7 +47,7 @@ impl Processable for EncodingProcessor {
         self.file.write_all(&meta.concat()).await?;
         Ok(())
     }
-    async fn handle_cmd(&mut self, cmd: SaveActorCommand) -> anyhow::Result<bool> {
+    async fn handle_cmd(&mut self, cmd: SaveActorCommand) -> Result<bool> {
         match cmd {
             SaveActorCommand::SaveTableSize(key_value_table_size, expires_table_size) => {
                 self.meta.num_of_saved_table_size_actor -= 1;
@@ -67,25 +68,13 @@ impl Processable for EncodingProcessor {
                     self.meta.chunk_queue.push_back(chunk);
                 } else {
                     self.meta.chunk_queue.push_back(chunk);
-                    while let Some(chunk) = self.meta.chunk_queue.pop_front() {
-                        let chunk = chunk.0;
-                        for (key, value) in chunk {
-                            let encoded_chunk = value.encode_with_key(&key)?;
-                            self.file.write_all(&encoded_chunk).await?;
-                        }
-                    }
+                    self.encode_chunk_queue().await?;
                 }
             }
             SaveActorCommand::StopSentinel => {
                 self.meta.num_of_cache_actors -= 1;
                 if self.meta.num_of_cache_actors == 0 {
-                    while let Some(chunk) = self.meta.chunk_queue.pop_front() {
-                        let chunk = chunk.0;
-                        for (key, value) in chunk {
-                            let encoded_chunk = value.encode_with_key(&key)?;
-                            self.file.write_all(&encoded_chunk).await?;
-                        }
-                    }
+                    self.encode_chunk_queue().await?;
                     let checksum = encode_checksum(&[0; 8])?;
                     self.file.write_all(&checksum).await?;
                     return Ok(true);
@@ -93,5 +82,18 @@ impl Processable for EncodingProcessor {
             }
         }
         Ok(false)
+    }
+}
+
+impl EncodingProcessor {
+    async fn encode_chunk_queue(&mut self) -> Result<()> {
+        while let Some(chunk) = self.meta.chunk_queue.pop_front() {
+            let chunk = chunk.0;
+            for (key, value) in chunk {
+                let encoded_chunk = value.encode_with_key(&key)?;
+                self.file.write_all(&encoded_chunk).await?;
+            }
+        }
+        Ok(())
     }
 }
