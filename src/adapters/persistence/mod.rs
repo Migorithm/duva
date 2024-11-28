@@ -64,11 +64,10 @@
 /// Each key-value pair is stored as follows:
 ///
 /// 1. Optional Expire Information:
-/// **Timestamp in Seconds:**
-/// FD - Expire timestamp in seconds (4-byte unsigned integer)
-///
-/// **Timestamp in Milliseconds:**
-/// FC - Expire timestamp in milliseconds (8-byte unsigned long)
+///     **Timestamp in Seconds:**
+///     FD - Expire timestamp in seconds (4-byte unsigned integer)
+///     **Timestamp in Milliseconds:**
+///     FC - Expire timestamp in milliseconds (8-byte unsigned long)
 ///
 /// 2. **Value Type:** 1-byte flag indicating the type and encoding of the value.
 /// 3. **Key:** String encoded.
@@ -81,8 +80,9 @@ pub mod encoder;
 use decoder::byte_decoder::BytesDecoder;
 use decoder::states::DecoderInit;
 pub use encoder::byte_encoder;
+use encoder::{EncodingMeta, EncodingProcessor};
 
-use crate::services::interfaces::endec::TDecodeData;
+use crate::services::interfaces::endec::{TDecodeData, TEncodeData};
 
 const HEADER_MAGIC_STRING: &str = "REDIS";
 const METADATA_SECTION_INDICATOR: u8 = 0xFA;
@@ -128,5 +128,24 @@ impl TDecodeData for EnDecoder {
         let database = decoder.load_header()?.load_metadata()?.load_database()?;
         print!("database: {:?}", database);
         Ok(database)
+    }
+}
+
+#[allow(refining_impl_trait)]
+impl TEncodeData for EnDecoder {
+    async fn create_on_path(
+        &self,
+        filepath: &str,
+        num_of_cache_actors: usize,
+    ) -> anyhow::Result<EncodingProcessor> {
+        let file = tokio::fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .open(filepath)
+            .await?;
+        Ok(EncodingProcessor {
+            file,
+            encoding_meta: EncodingMeta::new(num_of_cache_actors),
+        })
     }
 }

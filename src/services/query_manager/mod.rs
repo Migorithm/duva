@@ -17,19 +17,28 @@ use request::UserRequest;
 
 use std::str::FromStr;
 
-use super::interfaces::endec::TDecodeData;
+use super::interfaces::endec::{TDecodeData, TEncodeData};
 
 /// Controller is a struct that will be used to read and write values to the client.
-pub struct QueryManager<T: TWriteBuf + TRead> {
+pub struct QueryManager<T, EnDec>
+where
+    T: TWriteBuf + TRead,
+    EnDec: TDecodeData + TEncodeData,
+{
     pub(crate) stream: T,
     buffer: BytesMut,
     config: &'static Config,
+    endec: EnDec,
 }
 
-impl<U: TWriteBuf + TRead> QueryManager<U> {
-    pub(crate) async fn handle<D: TDecodeData>(
+impl<T, EnDec> QueryManager<T, EnDec>
+where
+    T: TWriteBuf + TRead,
+    EnDec: TDecodeData + TEncodeData,
+{
+    pub(crate) async fn handle(
         &mut self,
-        persistence_router: &CacheManager<D>,
+        persistence_router: &CacheManager<EnDec>,
         ttl_sender: TtlSchedulerInbox,
     ) -> Result<()> {
         let Some((cmd, args)) = self.read_value().await? else {
@@ -48,7 +57,7 @@ impl<U: TWriteBuf + TRead> QueryManager<U> {
             }
             UserRequest::Save => {
                 // spawn save actor
-                persistence_router.run_save_actor(self.config.get_filepath());
+                persistence_router.run_save_actor(self.config.get_filepath(), self.endec.clone());
                 // TODO Set return type
                 QueryIO::Null
             }
@@ -81,12 +90,17 @@ impl<U: TWriteBuf + TRead> QueryManager<U> {
     }
 }
 
-impl<T: TWriteBuf + TRead> QueryManager<T> {
-    pub fn new(stream: T, config: &'static Config) -> Self {
+impl<T, EnDec> QueryManager<T, EnDec>
+where
+    T: TWriteBuf + TRead,
+    EnDec: TDecodeData + TEncodeData,
+{
+    pub fn new(stream: T, config: &'static Config, endec: EnDec) -> Self {
         QueryManager {
             stream,
             buffer: BytesMut::with_capacity(512),
             config,
+            endec,
         }
     }
 

@@ -7,7 +7,7 @@ pub mod services;
 use anyhow::Result;
 use config::Config;
 use services::{
-    interfaces::endec::TDecodeData,
+    interfaces::endec::{TDecodeData, TEncodeData},
     query_manager::QueryManager,
     statefuls::routers::{cache_manager::CacheManager, ttl_manager::TtlSchedulerInbox},
 };
@@ -21,10 +21,10 @@ mod test;
 pub async fn start_up(
     config: &'static Config,
     number_of_cache_actors: usize,
-    endec: impl TDecodeData,
+    endec: impl TDecodeData + TEncodeData,
 ) -> Result<()> {
     let (cache_dispatcher, ttl_inbox) =
-        CacheManager::run_cache_actors(number_of_cache_actors, endec);
+        CacheManager::run_cache_actors(number_of_cache_actors, endec.clone());
 
     // Load data from the file if --dir and --dbfilename are provided
     cache_dispatcher
@@ -37,7 +37,7 @@ pub async fn start_up(
             Ok((socket, _)) =>
             // Spawn a new task to handle the connection without blocking the main thread.
             {
-                let query_manager = QueryManager::new(socket, config);
+                let query_manager = QueryManager::new(socket, config, endec.clone());
                 process_socket(query_manager, ttl_inbox.clone(), cache_dispatcher.clone())
             }
             Err(e) => eprintln!("Failed to accept connection: {:?}", e),
@@ -45,10 +45,10 @@ pub async fn start_up(
     }
 }
 
-fn process_socket(
-    mut query_manager: QueryManager<TcpStream>,
+fn process_socket<T: TDecodeData + TEncodeData>(
+    mut query_manager: QueryManager<TcpStream, T>,
     ttl_inbox: TtlSchedulerInbox,
-    cache_dispatcher: CacheManager<impl TDecodeData>,
+    cache_dispatcher: CacheManager<T>,
 ) {
     tokio::spawn(async move {
         loop {
