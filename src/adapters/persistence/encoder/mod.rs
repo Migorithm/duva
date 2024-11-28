@@ -13,7 +13,7 @@ pub mod byte_encoder;
 
 pub struct EncodingProcessor {
     pub(super) file: tokio::fs::File,
-    pub(super) encoding_meta: EncodingMeta,
+    pub(super) meta: EncodingMeta,
 }
 
 pub(super) struct EncodingMeta {
@@ -49,25 +49,25 @@ impl Processable for EncodingProcessor {
     async fn handle_cmd(&mut self, cmd: SaveActorCommand) -> anyhow::Result<bool> {
         match cmd {
             SaveActorCommand::SaveTableSize(key_value_table_size, expires_table_size) => {
-                self.encoding_meta.num_of_saved_table_size_actor -= 1;
-                if self.encoding_meta.num_of_saved_table_size_actor == 0 {
+                self.meta.num_of_saved_table_size_actor -= 1;
+                if self.meta.num_of_saved_table_size_actor == 0 {
                     self.file
                         .write_all(&encode_database_table_size(
-                            self.encoding_meta.total_key_value_table_size,
-                            self.encoding_meta.total_expires_table_size,
+                            self.meta.total_key_value_table_size,
+                            self.meta.total_expires_table_size,
                         )?)
                         .await?;
                 } else {
-                    self.encoding_meta.total_key_value_table_size += key_value_table_size;
-                    self.encoding_meta.total_expires_table_size += expires_table_size;
+                    self.meta.total_key_value_table_size += key_value_table_size;
+                    self.meta.total_expires_table_size += expires_table_size;
                 }
             }
             SaveActorCommand::SaveChunk(chunk) => {
-                if self.encoding_meta.num_of_saved_table_size_actor != 0 {
-                    self.encoding_meta.chunk_queue.push_back(chunk);
+                if self.meta.num_of_saved_table_size_actor != 0 {
+                    self.meta.chunk_queue.push_back(chunk);
                 } else {
-                    self.encoding_meta.chunk_queue.push_back(chunk);
-                    while let Some(chunk) = self.encoding_meta.chunk_queue.pop_front() {
+                    self.meta.chunk_queue.push_back(chunk);
+                    while let Some(chunk) = self.meta.chunk_queue.pop_front() {
                         let chunk = chunk.0;
                         for (key, value) in chunk {
                             let encoded_chunk = value.encode_with_key(&key)?;
@@ -77,9 +77,9 @@ impl Processable for EncodingProcessor {
                 }
             }
             SaveActorCommand::StopSentinel => {
-                self.encoding_meta.num_of_cache_actors -= 1;
-                if self.encoding_meta.num_of_cache_actors == 0 {
-                    while let Some(chunk) = self.encoding_meta.chunk_queue.pop_front() {
+                self.meta.num_of_cache_actors -= 1;
+                if self.meta.num_of_cache_actors == 0 {
+                    while let Some(chunk) = self.meta.chunk_queue.pop_front() {
                         let chunk = chunk.0;
                         for (key, value) in chunk {
                             let encoded_chunk = value.encode_with_key(&key)?;
