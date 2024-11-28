@@ -46,6 +46,7 @@ impl CacheDb {
         self.iter().filter(|(_, v)| v.has_expiry()).count()
     }
 }
+#[derive(Debug, Clone)]
 pub struct CacheChunk(pub Vec<(String, CacheValue)>);
 impl CacheChunk {
     pub fn new(chunk: &[(&String, &CacheValue)]) -> Self {
