@@ -17,7 +17,7 @@ use request::UserRequest;
 
 use std::str::FromStr;
 
-use super::statefuls::routers::interfaces::TDecodeData;
+use super::interfaces::endec::TDecodeData;
 
 /// Controller is a struct that will be used to read and write values to the client.
 pub struct QueryManager<T: TWriteBuf + TRead> {
