@@ -1,6 +1,9 @@
 use crate::{
     make_smart_pointer,
-    services::statefuls::routers::{cache_actor::CacheCommand, cache_manager::CacheManager},
+    services::{
+        interfaces::endec::TDecodeData,
+        statefuls::routers::{cache_actor::CacheCommand, cache_manager::CacheManager},
+    },
 };
 use std::{
     cmp::Reverse,
@@ -14,8 +17,6 @@ use tokio::{
     },
     time::interval,
 };
-
-use super::interfaces::TDecodeData;
 
 pub struct TtlActor;
 

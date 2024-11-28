@@ -82,7 +82,7 @@ use decoder::byte_decoder::BytesDecoder;
 use decoder::states::DecoderInit;
 pub use encoder::byte_encoder;
 
-use crate::services::statefuls::routers::interfaces::TDecodeData;
+use crate::services::interfaces::endec::TDecodeData;
 
 const HEADER_MAGIC_STRING: &str = "REDIS";
 const METADATA_SECTION_INDICATOR: u8 = 0xFA;

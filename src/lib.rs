@@ -7,10 +7,9 @@ pub mod services;
 use anyhow::Result;
 use config::Config;
 use services::{
+    interfaces::endec::TDecodeData,
     query_manager::QueryManager,
-    statefuls::routers::{
-        cache_manager::CacheManager, interfaces::TDecodeData, ttl_manager::TtlSchedulerInbox,
-    },
+    statefuls::routers::{cache_manager::CacheManager, ttl_manager::TtlSchedulerInbox},
 };
 use std::time::SystemTime;
 use tokio::net::{TcpListener, TcpStream};
