@@ -1,6 +1,6 @@
 mod common;
 use common::TestStreamHandler;
-use redis_starter_rust::{adapters::persistence::decoder::Decoder, config::Config, start_up};
+use redis_starter_rust::{adapters::persistence::EnDecoder, config::Config, start_up};
 use std::sync::OnceLock;
 use tokio::net::TcpStream;
 
@@ -14,7 +14,7 @@ async fn test_get_set() {
     // GIVEN
     let config = integration_test_config(11111);
 
-    tokio::spawn(start_up(config, 3, Decoder));
+    tokio::spawn(start_up(config, 3, EnDecoder));
     //warm up time
     tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
     let mut stream = TcpStream::connect(config.bind_addr()).await.unwrap();

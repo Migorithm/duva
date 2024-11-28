@@ -78,7 +78,11 @@ use std::ops::RangeInclusive;
 use std::time::SystemTime;
 pub mod decoder;
 pub mod encoder;
+use decoder::byte_decoder::BytesDecoder;
+use decoder::states::DecoderInit;
 pub use encoder::byte_encoder;
+
+use crate::services::statefuls::routers::interfaces::TDecodeData;
 
 const HEADER_MAGIC_STRING: &str = "REDIS";
 const METADATA_SECTION_INDICATOR: u8 = 0xFA;
@@ -109,5 +113,20 @@ impl StoredDuration {
                 SystemTime::UNIX_EPOCH + std::time::Duration::from_millis(*millis)
             }
         }
+    }
+}
+
+#[derive(Default, Debug, Clone)]
+pub struct EnDecoder;
+
+impl TDecodeData for EnDecoder {
+    fn decode_data(
+        &self,
+        bytes: Vec<u8>,
+    ) -> anyhow::Result<crate::services::statefuls::persistence_models::RdbFile> {
+        let decoder: BytesDecoder<DecoderInit> = bytes.as_slice().into();
+        let database = decoder.load_header()?.load_metadata()?.load_database()?;
+        print!("database: {:?}", database);
+        Ok(database)
     }
 }

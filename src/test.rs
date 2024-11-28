@@ -1,6 +1,6 @@
 use std::sync::OnceLock;
 
-use crate::adapters::persistence::decoder::Decoder;
+use crate::adapters::persistence::EnDecoder;
 use crate::config::Config;
 use crate::services::query_manager::interface::TRead;
 use crate::services::query_manager::interface::TWriteBuf;
@@ -36,7 +36,7 @@ impl TWriteBuf for FakeStream {
     }
 }
 
-async fn get_key(key: &str, persistence_router: &CacheManager<Decoder>) -> QueryIO {
+async fn get_key(key: &str, persistence_router: &CacheManager<EnDecoder>) -> QueryIO {
     persistence_router.route_get(key.to_string()).await.unwrap()
 }
 
@@ -45,7 +45,7 @@ async fn set_key_with_no_expiry(
     value: &str,
 
     ttl_sender: TtlSchedulerInbox,
-    persistence_router: &CacheManager<Decoder>,
+    persistence_router: &CacheManager<EnDecoder>,
 ) -> QueryIO {
     persistence_router
         .route_set(
@@ -65,7 +65,7 @@ async fn set_key_with_no_expiry(
 /// OUTPUT(when get method is invoked on the key) : "value"
 #[tokio::test]
 async fn test_set() {
-    let (persistence_handlers, ttl_inbox) = CacheManager::run_cache_actors(3, Decoder);
+    let (persistence_handlers, ttl_inbox) = CacheManager::run_cache_actors(3, EnDecoder);
 
     let stream = FakeStream {
         written: "*3\r\n$3\r\nSET\r\n$3\r\nkey\r\n$5\r\nvalue\r\n"
@@ -98,7 +98,7 @@ async fn test_set_with_expiry() {
             .to_vec(),
     };
 
-    let (cache_dispatcher, ttl_inbox) = CacheManager::run_cache_actors(3, Decoder);
+    let (cache_dispatcher, ttl_inbox) = CacheManager::run_cache_actors(3, EnDecoder);
 
     let mut controller = QueryManager::new(stream, test_config());
 
@@ -128,7 +128,7 @@ async fn test_set_with_expire_should_expire_within_100ms() {
             .as_bytes()
             .to_vec(),
     };
-    let (cache_dispatcher, ttl_inbox) = CacheManager::run_cache_actors(3, Decoder);
+    let (cache_dispatcher, ttl_inbox) = CacheManager::run_cache_actors(3, EnDecoder);
 
     let mut controller = QueryManager::new(stream, test_config());
 
@@ -163,7 +163,7 @@ async fn test_config_get_dir() {
             .as_bytes()
             .to_vec(),
     };
-    let (cache_dispatcher, ttl_inbox) = CacheManager::run_cache_actors(3, Decoder);
+    let (cache_dispatcher, ttl_inbox) = CacheManager::run_cache_actors(3, EnDecoder);
 
     let mut controller = QueryManager::new(stream, test_config());
 
@@ -182,7 +182,7 @@ async fn test_config_get_dir() {
 #[tokio::test]
 async fn test_keys() {
     //GIVEN
-    let (cache_dispatcher, ttl_inbox) = CacheManager::run_cache_actors(3, Decoder);
+    let (cache_dispatcher, ttl_inbox) = CacheManager::run_cache_actors(3, EnDecoder);
 
     set_key_with_no_expiry("key", "value", ttl_inbox.clone(), &cache_dispatcher).await;
 
@@ -218,7 +218,7 @@ async fn test_keys() {
 #[tokio::test]
 async fn test_replication_info() {
     //GIVEN
-    let (cache_dispatcher, ttl_inbox) = CacheManager::run_cache_actors(3, Decoder);
+    let (cache_dispatcher, ttl_inbox) = CacheManager::run_cache_actors(3, EnDecoder);
 
     let stream = FakeStream {
         written: "*2\r\n$4\r\nINFO\r\n$11\r\nreplication\r\n"

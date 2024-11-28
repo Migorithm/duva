@@ -1,12 +1,12 @@
 use std::sync::OnceLock;
 
-use redis_starter_rust::{adapters::persistence::decoder::Decoder, config::Config, start_up};
+use redis_starter_rust::{adapters::persistence::EnDecoder, config::Config, start_up};
 
 const NUM_OF_PERSISTENCE: usize = 10;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    start_up(config(), NUM_OF_PERSISTENCE, Decoder).await
+    start_up(config(), NUM_OF_PERSISTENCE, EnDecoder).await
 }
 
 static CONFIG: OnceLock<Config> = OnceLock::new();
