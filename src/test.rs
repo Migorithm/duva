@@ -1,4 +1,7 @@
+use std::sync::OnceLock;
+
 use crate::adapters::persistence::decoder::Decoder;
+use crate::config::Config;
 use crate::services::query_manager::interface::TRead;
 use crate::services::query_manager::interface::TWriteBuf;
 use crate::services::query_manager::query_io::QueryIO;
@@ -7,6 +10,11 @@ use crate::services::statefuls::routers::cache_manager::CacheManager;
 use crate::services::statefuls::routers::ttl_manager::TtlSchedulerInbox;
 use crate::services::CacheEntry;
 use bytes::BytesMut;
+
+static CONFIG: OnceLock<Config> = OnceLock::new();
+pub fn test_config() -> &'static Config {
+    CONFIG.get_or_init(Config::default)
+}
 
 // Fake Stream to test the write_value function
 struct FakeStream {
@@ -64,7 +72,7 @@ async fn test_set() {
             .as_bytes()
             .to_vec(),
     };
-    let mut controller = QueryManager::new(stream);
+    let mut controller = QueryManager::new(stream, test_config());
 
     // WHEN
     controller
@@ -92,7 +100,7 @@ async fn test_set_with_expiry() {
 
     let (cache_dispatcher, ttl_inbox) = CacheManager::run_cache_actors(3, Decoder);
 
-    let mut controller = QueryManager::new(stream);
+    let mut controller = QueryManager::new(stream, test_config());
 
     // WHEN
     controller
@@ -122,7 +130,7 @@ async fn test_set_with_expire_should_expire_within_100ms() {
     };
     let (cache_dispatcher, ttl_inbox) = CacheManager::run_cache_actors(3, Decoder);
 
-    let mut controller = QueryManager::new(stream);
+    let mut controller = QueryManager::new(stream, test_config());
 
     // WHEN
     controller
@@ -157,7 +165,7 @@ async fn test_config_get_dir() {
     };
     let (cache_dispatcher, ttl_inbox) = CacheManager::run_cache_actors(3, Decoder);
 
-    let mut controller = QueryManager::new(stream);
+    let mut controller = QueryManager::new(stream, test_config());
 
     // WHEN
     controller
@@ -185,7 +193,7 @@ async fn test_keys() {
         written: "*2\r\n$4\r\nKEYS\r\n$3\r\n\"*\"\r\n".as_bytes().to_vec(),
     };
 
-    let mut controller = QueryManager::new(stream);
+    let mut controller = QueryManager::new(stream, test_config());
 
     // WHEN
     controller
@@ -217,7 +225,7 @@ async fn test_replication_info() {
             .as_bytes()
             .to_vec(),
     };
-    let mut controller = QueryManager::new(stream);
+    let mut controller = QueryManager::new(stream, test_config());
     // WHEN
     controller
         .handle(&cache_dispatcher, ttl_inbox)

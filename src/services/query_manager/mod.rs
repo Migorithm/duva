@@ -2,7 +2,7 @@ pub mod interface;
 pub mod query_io;
 pub mod request;
 use crate::{
-    config::{config, ConfigCommand},
+    config::{Config, ConfigCommand},
     make_smart_pointer,
     services::{
         statefuls::routers::{cache_manager::CacheManager, ttl_manager::TtlSchedulerInbox},
@@ -13,7 +13,8 @@ use anyhow::Result;
 use bytes::BytesMut;
 use interface::{TRead, TWriteBuf};
 use query_io::QueryIO;
-use request::UserRequest::{self, *};
+use request::UserRequest;
+
 use std::str::FromStr;
 
 use super::statefuls::routers::interfaces::TDecodeData;
@@ -22,6 +23,7 @@ use super::statefuls::routers::interfaces::TDecodeData;
 pub struct QueryManager<T: TWriteBuf + TRead> {
     pub(crate) stream: T,
     buffer: BytesMut,
+    config: &'static Config,
 }
 
 impl<U: TWriteBuf + TRead> QueryManager<U> {
@@ -36,32 +38,32 @@ impl<U: TWriteBuf + TRead> QueryManager<U> {
 
         // TODO if it is persistence operation, get the key and hash, take the appropriate sender, send it;
         let response = match cmd {
-            Ping => QueryIO::SimpleString("PONG".to_string()),
-            Echo => args.first().ok_or(anyhow::anyhow!("Not exists"))?.clone(),
-            Set => {
+            UserRequest::Ping => QueryIO::SimpleString("PONG".to_string()),
+            UserRequest::Echo => args.first().ok_or(anyhow::anyhow!("Not exists"))?.clone(),
+            UserRequest::Set => {
                 let cache_entry = args.take_set_args()?;
                 persistence_router
                     .route_set(cache_entry, ttl_sender)
                     .await?
             }
-            Save => {
+            UserRequest::Save => {
                 // spawn save actor
-                persistence_router.run_save_actor(config().get_filepath());
+                persistence_router.run_save_actor(self.config.get_filepath());
                 // TODO Set return type
                 QueryIO::Null
             }
-            Get => {
+            UserRequest::Get => {
                 let key = args.take_get_args()?;
                 persistence_router.route_get(key).await?
             }
-            Keys => {
+            UserRequest::Keys => {
                 let pattern = args.take_keys_pattern()?;
                 persistence_router.route_keys(pattern).await?
             }
             // modify we have to add a new command
-            Config => {
+            UserRequest::Config => {
                 let cmd = args.take_config_args()?;
-                match config().handle_config(cmd) {
+                match self.config.handle_config(cmd) {
                     Some(value) => QueryIO::Array(vec![
                         QueryIO::BulkString("dir".to_string()),
                         QueryIO::BulkString(value),
@@ -69,9 +71,9 @@ impl<U: TWriteBuf + TRead> QueryManager<U> {
                     None => QueryIO::Null,
                 }
             }
-            Delete => panic!("Not implemented"),
+            UserRequest::Delete => panic!("Not implemented"),
 
-            Info => config().replication_role().into(),
+            UserRequest::Info => self.config.replication_role().into(),
         };
 
         self.write_value(response).await?;
@@ -80,10 +82,11 @@ impl<U: TWriteBuf + TRead> QueryManager<U> {
 }
 
 impl<T: TWriteBuf + TRead> QueryManager<T> {
-    pub fn new(stream: T) -> Self {
+    pub fn new(stream: T, config: &'static Config) -> Self {
         QueryManager {
             stream,
             buffer: BytesMut::with_capacity(512),
+            config,
         }
     }
 

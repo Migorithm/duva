@@ -3,12 +3,24 @@ use tokio::{
     net::tcp::{ReadHalf, WriteHalf},
 };
 
-pub async fn send_operation(write: &mut WriteHalf<'_>, operation: &[u8]) {
-    write.write_all(operation).await.unwrap();
+pub struct TestStreamHandler<'a> {
+    pub read: ReadHalf<'a>,
+    pub write: WriteHalf<'a>,
+}
+impl<'a> From<(ReadHalf<'a>, WriteHalf<'a>)> for TestStreamHandler<'a> {
+    fn from((read, write): (ReadHalf<'a>, WriteHalf<'a>)) -> Self {
+        Self { read, write }
+    }
 }
 
-pub async fn read_response(read: &mut ReadHalf<'_>) -> String {
-    let mut buffer = [0; 1024];
-    let n = read.read(&mut buffer).await.unwrap();
-    String::from_utf8(buffer[0..n].to_vec()).unwrap()
+impl<'a> TestStreamHandler<'a> {
+    pub async fn send(&mut self, operation: &[u8]) {
+        self.write.write_all(operation).await.unwrap();
+    }
+
+    pub async fn get_response(&mut self) -> String {
+        let mut buffer = [0; 1024];
+        let n = self.read.read(&mut buffer).await.unwrap();
+        String::from_utf8(buffer[0..n].to_vec()).unwrap()
+    }
 }
