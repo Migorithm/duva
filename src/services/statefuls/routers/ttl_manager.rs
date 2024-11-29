@@ -104,7 +104,7 @@ impl TtlCommand {
 }
 
 #[derive(Clone)]
-pub struct TtlSchedulerInbox(tokio::sync::mpsc::Sender<TtlCommand>);
+pub struct TtlSchedulerInbox(pub(crate) tokio::sync::mpsc::Sender<TtlCommand>);
 
 impl TtlSchedulerInbox {
     pub async fn set_ttl(&self, key: String, expiry: SystemTime) {

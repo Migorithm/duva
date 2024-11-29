@@ -48,9 +48,12 @@ impl Processable for EncodingProcessor {
     }
     async fn handle_cmd(&mut self, cmd: SaveActorCommand) -> anyhow::Result<bool> {
         match cmd {
-            SaveActorCommand::SaveTableSize(key_value_table_size, expires_table_size) => {
-                self.meta.total_key_value_table_size += key_value_table_size;
-                self.meta.total_expires_table_size += expires_table_size;
+            SaveActorCommand::LocalShardSize {
+                total_size,
+                expiry_size,
+            } => {
+                self.meta.total_key_value_table_size += total_size;
+                self.meta.total_expires_table_size += expiry_size;
                 self.meta.num_of_saved_table_size_actor -= 1;
                 if self.meta.num_of_saved_table_size_actor == 0 {
                     self.file

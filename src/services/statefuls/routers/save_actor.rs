@@ -3,7 +3,10 @@ use crate::services::interfaces::endec::TEncodeData;
 use tokio::sync::mpsc::Sender;
 
 pub enum SaveActorCommand {
-    SaveTableSize(usize, usize),
+    LocalShardSize {
+        total_size: usize,
+        expiry_size: usize,
+    },
     SaveChunk(CacheChunk),
     StopSentinel,
 }
