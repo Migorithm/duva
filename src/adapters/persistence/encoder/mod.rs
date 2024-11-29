@@ -71,8 +71,8 @@ impl Processable for EncodingProcessor {
                     self.meta.chunk_queue.push_back(chunk);
                     while let Some(chunk) = self.meta.chunk_queue.pop_front() {
                         let chunk = chunk.0;
-                        for (key, value) in chunk {
-                            let encoded_chunk = value.encode_with_key(&key)?;
+                        for kvs in chunk {
+                            let encoded_chunk = kvs.encode_with_key()?;
                             self.file.write_all(&encoded_chunk).await?;
                         }
                     }
@@ -83,8 +83,8 @@ impl Processable for EncodingProcessor {
                 if self.meta.num_of_cache_actors == 0 {
                     while let Some(chunk) = self.meta.chunk_queue.pop_front() {
                         let chunk = chunk.0;
-                        for (key, value) in chunk {
-                            let encoded_chunk = value.encode_with_key(&key)?;
+                        for kvs in chunk {
+                            let encoded_chunk = kvs.encode_with_key()?;
                             self.file.write_all(&encoded_chunk).await?;
                         }
                     }

@@ -62,14 +62,14 @@ impl CacheDb {
 }
 
 #[derive(Debug, Clone)]
-pub struct CacheChunk(pub Vec<(String, CacheValue)>);
+pub struct CacheChunk(pub Vec<CacheEntry>);
 impl CacheChunk {
     pub fn new(chunk: &[(&String, &CacheValue)]) -> Self {
         Self(
             chunk
                 .iter()
-                .map(|(k, v)| (k.to_string(), (*v).clone()))
-                .collect::<Vec<(String, CacheValue)>>(),
+                .map(|(k, v)| v.to_cache_entry(k))
+                .collect::<Vec<CacheEntry>>(),
         )
     }
 }
