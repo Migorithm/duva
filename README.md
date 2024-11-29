@@ -1,6 +1,17 @@
 ## Duva
 Duva is a distributed cache server aimed at efficient and scalable key-value store operations using Actor models, written in Rust
 
+
+
+### Why the Actor model?
+Designed to handle concurrent, distributed, and scalable systems, it models independent units of computation (actors) that communicate solely via message passing. 
+It offers several advantages, and the following is a non-exhaustive list of pros
+- High concurrency: Systems requiring thousands or millions of lightweight concurrent entities.
+- Event-driven architecture: Applications that rely on asynchronous event processing.
+- Distributed systems: Systems spanning multiple servers or nodes.
+- Fault tolerance: Systems where reliability and recovery from failure are critical.
+
+
 ### Features
 The following features have been implemented so far:
 
@@ -9,7 +20,7 @@ The following features have been implemented so far:
         - Expiration: Set a time-to-live (TTL) for keys.
     - GET: Retrieve the value associated with a key.
     - KEYS (with pattern matching): Retrieve keys matching specific patterns.
-    - SAVE : dump data to desinated file path
+    - SAVE: dump data to the designated file path
 
 - Advanced Features
     - Auto Deletion: Automatically remove expired keys.
@@ -36,7 +47,7 @@ Build the project:
 cargo run
 ```
 
-If you have dump file, and load up on start up,
+If you have dump file, and you can load them up on start-up,
 ```sh
 cargo run -- --dir directory-path --dbfilename filename
 ```
