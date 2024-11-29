@@ -1,6 +1,7 @@
 mod common;
 use common::TestStreamHandler;
-use redis_starter_rust::{adapters::persistence::EnDecoder, config::Config, start_up};
+use redis_starter_rust::adapters::persistence::endecoder::EnDecoder;
+use redis_starter_rust::{config::Config, start_up};
 use std::sync::OnceLock;
 use tokio::net::TcpStream;
 

@@ -1,6 +1,7 @@
 use std::sync::OnceLock;
 
-use redis_starter_rust::{adapters::persistence::EnDecoder, config::Config, start_up};
+use redis_starter_rust::adapters::persistence::endecoder::EnDecoder;
+use redis_starter_rust::{config::Config, start_up};
 
 const NUM_OF_PERSISTENCE: usize = 10;
 

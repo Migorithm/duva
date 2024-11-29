@@ -1,6 +1,6 @@
 use std::sync::OnceLock;
 
-use crate::adapters::persistence::EnDecoder;
+use crate::adapters::persistence::endecoder::EnDecoder;
 use crate::config::Config;
 use crate::services::query_manager::interface::TRead;
 use crate::services::query_manager::interface::TWriteBuf;

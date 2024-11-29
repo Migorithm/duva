@@ -75,14 +75,12 @@
 // Safe conversion from a slice to an array of a specific size.
 use std::ops::RangeInclusive;
 use std::time::SystemTime;
-pub mod decoder;
-pub mod encoder;
-use decoder::byte_decoder::BytesDecoder;
-use decoder::states::DecoderInit;
-pub use encoder::byte_encoder;
-use encoder::{EncodingMeta, EncodingProcessor};
 
-use crate::services::interfaces::endec::{TDecodeData, TEncodeData};
+pub(crate) mod decoder;
+pub(crate) mod encoder;
+pub mod endecoder;
+
+pub use encoder::byte_encoder;
 
 const HEADER_MAGIC_STRING: &str = "REDIS";
 const METADATA_SECTION_INDICATOR: u8 = 0xFA;
@@ -116,36 +114,3 @@ impl StoredDuration {
     }
 }
 
-#[derive(Default, Debug, Clone)]
-pub struct EnDecoder;
-
-impl TDecodeData for EnDecoder {
-    fn decode_data(
-        &self,
-        bytes: Vec<u8>,
-    ) -> anyhow::Result<crate::services::statefuls::persistence_models::RdbFile> {
-        let decoder: BytesDecoder<DecoderInit> = bytes.as_slice().into();
-        let database = decoder.load_header()?.load_metadata()?.load_database()?;
-        print!("database: {:?}", database);
-        Ok(database)
-    }
-}
-
-#[allow(refining_impl_trait)]
-impl TEncodeData for EnDecoder {
-    async fn create_on_path(
-        &self,
-        filepath: &str,
-        num_of_cache_actors: usize,
-    ) -> anyhow::Result<EncodingProcessor> {
-        let file = tokio::fs::OpenOptions::new()
-            .write(true)
-            .create(true)
-            .open(filepath)
-            .await?;
-        Ok(EncodingProcessor {
-            file,
-            meta: EncodingMeta::new(num_of_cache_actors),
-        })
-    }
-}
