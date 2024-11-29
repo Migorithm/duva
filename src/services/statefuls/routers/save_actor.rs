@@ -1,5 +1,4 @@
-use super::cache_actor::CacheChunk;
-use crate::services::interfaces::endec::TEncodeData;
+use crate::services::{interfaces::endec::TEncodeData, CacheEntry};
 use tokio::sync::mpsc::Sender;
 
 pub enum SaveActorCommand {
@@ -7,7 +6,7 @@ pub enum SaveActorCommand {
         total_size: usize,
         expiry_size: usize,
     },
-    SaveChunk(CacheChunk),
+    SaveChunk(Vec<CacheEntry>),
     StopSentinel,
 }
 

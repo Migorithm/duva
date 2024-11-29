@@ -2,7 +2,7 @@ use crate::{
     make_smart_pointer,
     services::{query_manager::query_io::QueryIO, CacheEntry, CacheValue},
 };
-use anyhow::Result;
+use anyhow::{Context, Result};
 use std::collections::HashMap;
 use tokio::sync::{mpsc, oneshot};
 
@@ -25,7 +25,6 @@ pub enum CacheCommand {
         sender: oneshot::Sender<QueryIO>,
     },
     Delete(String),
-
     StopSentinel,
 }
 
@@ -34,44 +33,6 @@ pub struct CacheDb {
     inner: HashMap<String, CacheValue>,
     // OPTIMIZATION: Add a counter to keep track of the number of keys with expiry
     pub(crate) keys_with_expiry: usize,
-}
-impl CacheDb {
-    fn keys_stream(&self, pattern: Option<String>) -> impl Iterator<Item = QueryIO> + '_ {
-        self.keys().filter_map(move |k| {
-            if pattern.as_ref().map_or(true, |p| k.contains(p)) {
-                Some(QueryIO::BulkString(k.to_string()))
-            } else {
-                None
-            }
-        })
-    }
-
-    fn set(&mut self, key: String, value: CacheValue) {
-        if let CacheValue::ValueWithExpiry(_, _) = value {
-            self.keys_with_expiry += 1;
-        }
-        self.insert(key, value);
-    }
-    fn delete(&mut self, key: &str) {
-        if let Some(value) = self.remove(key) {
-            if value.has_expiry() {
-                self.keys_with_expiry -= 1;
-            }
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct CacheChunk(pub Vec<CacheEntry>);
-impl CacheChunk {
-    pub fn new(chunk: &[(&String, &CacheValue)]) -> Self {
-        Self(
-            chunk
-                .iter()
-                .map(|(k, v)| v.to_cache_entry(k))
-                .collect::<Vec<CacheEntry>>(),
-        )
-    }
 }
 
 pub struct CacheActor {
@@ -100,38 +61,34 @@ impl CacheActor {
                 CacheCommand::Set {
                     cache_entry,
                     ttl_sender,
-                } => match cache_entry {
-                    CacheEntry::KeyValue(key, value) => {
-                        self.cache.set(key, CacheValue::Value(value));
-                    }
-                    CacheEntry::KeyValueExpiry(key, value, expiry) => {
-                        self.cache
-                            .set(key.clone(), CacheValue::ValueWithExpiry(value, expiry));
-                        ttl_sender.set_ttl(key, expiry).await;
-                    }
-                },
+                } => {
+                    let _ = self
+                        .try_send_ttl(cache_entry.key(), cache_entry.expiry(), ttl_sender.clone())
+                        .await;
+                    self.set(cache_entry);
+                }
                 CacheCommand::Get { key, sender } => {
-                    let _ = sender.send(self.cache.get(&key).cloned().into());
+                    let _ = sender.send(self.get(&key).into());
                 }
                 CacheCommand::Keys { pattern, sender } => {
-                    let ks = self.cache.keys_stream(pattern).collect();
+                    let ks = self.keys_stream(pattern).collect();
                     sender
                         .send(QueryIO::Array(ks))
                         .map_err(|_| anyhow::anyhow!("Error sending keys"))?;
                 }
                 CacheCommand::Delete(key) => {
-                    self.cache.delete(&key);
+                    self.delete(&key);
                 }
                 CacheCommand::Save { outbox } => {
                     outbox
                         .send(SaveActorCommand::LocalShardSize {
-                            total_size: self.cache.len(),
-                            expiry_size: self.cache.keys_with_expiry,
+                            total_size: self.len(),
+                            expiry_size: self.keys_with_expiry(),
                         })
                         .await?;
                     for chunk in self.cache.iter().collect::<Vec<_>>().chunks(10) {
                         outbox
-                            .send(SaveActorCommand::SaveChunk(CacheChunk::new(chunk)))
+                            .send(SaveActorCommand::SaveChunk(CacheEntry::new(chunk)))
                             .await?;
                     }
                     // finalize the save operation
@@ -141,23 +98,65 @@ impl CacheActor {
         }
         Ok(self)
     }
+
+    fn len(&self) -> usize {
+        self.cache.len()
+    }
+    fn keys_with_expiry(&self) -> usize {
+        self.cache.keys_with_expiry
+    }
+
+    fn keys_stream(&self, pattern: Option<String>) -> impl Iterator<Item = QueryIO> + '_ {
+        self.cache.keys().filter_map(move |k| {
+            if pattern.as_ref().map_or(true, |p| k.contains(p)) {
+                Some(QueryIO::BulkString(k.to_string()))
+            } else {
+                None
+            }
+        })
+    }
+    fn delete(&mut self, key: &str) {
+        if let Some(value) = self.cache.remove(key) {
+            if value.has_expiry() {
+                self.cache.keys_with_expiry -= 1;
+            }
+        }
+    }
+    fn get(&self, key: &str) -> Option<CacheValue> {
+        self.cache.get(key).cloned()
+    }
+
+    fn set(&mut self, cache_entry: CacheEntry) {
+        match cache_entry {
+            CacheEntry::KeyValue(key, value) => {
+                self.cache.insert(key, CacheValue::Value(value));
+            }
+            CacheEntry::KeyValueExpiry(key, value, expiry) => {
+                self.cache.keys_with_expiry += 1;
+                self.cache
+                    .insert(key.clone(), CacheValue::ValueWithExpiry(value, expiry));
+            }
+        }
+    }
+
+    async fn try_send_ttl(
+        &self,
+        key: &str,
+        expiry: Option<std::time::SystemTime>,
+        ttl_sender: TtlSchedulerInbox,
+    ) -> Result<()> {
+        ttl_sender
+            .set_ttl(key.to_string(), expiry.context("Expiry not found")?)
+            .await;
+        Ok(())
+    }
 }
 
 #[derive(Clone)]
 pub struct CacheCommandSender(mpsc::Sender<CacheCommand>);
 
 make_smart_pointer!(CacheCommandSender, mpsc::Sender<CacheCommand>);
-impl std::ops::Deref for CacheDb {
-    type Target = HashMap<String, CacheValue>;
-    fn deref(&self) -> &Self::Target {
-        &self.inner
-    }
-}
-impl std::ops::DerefMut for CacheDb {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.inner
-    }
-}
+make_smart_pointer!(CacheDb, HashMap<String, CacheValue> => inner);
 
 #[tokio::test]
 async fn test_set_and_delete_inc_dec_keys_with_expiry() {

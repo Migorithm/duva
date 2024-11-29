@@ -1,6 +1,5 @@
 use crate::services::{
-    interfaces::endec::Processable,
-    statefuls::routers::{cache_actor::CacheChunk, save_actor::SaveActorCommand},
+    interfaces::endec::Processable, statefuls::routers::save_actor::SaveActorCommand, CacheEntry,
 };
 use byte_encoder::{
     encode_checksum, encode_database_info, encode_database_table_size, encode_header,
@@ -20,7 +19,7 @@ pub(super) struct EncodingMeta {
     num_of_saved_table_size_actor: usize,
     total_key_value_table_size: usize,
     total_expires_table_size: usize,
-    chunk_queue: VecDeque<CacheChunk>,
+    chunk_queue: VecDeque<Vec<CacheEntry>>,
     num_of_cache_actors: usize,
 }
 impl EncodingMeta {
@@ -70,7 +69,6 @@ impl Processable for EncodingProcessor {
                 } else {
                     self.meta.chunk_queue.push_back(chunk);
                     while let Some(chunk) = self.meta.chunk_queue.pop_front() {
-                        let chunk = chunk.0;
                         for kvs in chunk {
                             let encoded_chunk = kvs.encode_with_key()?;
                             self.file.write_all(&encoded_chunk).await?;
@@ -82,7 +80,6 @@ impl Processable for EncodingProcessor {
                 self.meta.num_of_cache_actors -= 1;
                 if self.meta.num_of_cache_actors == 0 {
                     while let Some(chunk) = self.meta.chunk_queue.pop_front() {
-                        let chunk = chunk.0;
                         for kvs in chunk {
                             let encoded_chunk = kvs.encode_with_key()?;
                             self.file.write_all(&encoded_chunk).await?;

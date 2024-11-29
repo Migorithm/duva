@@ -16,8 +16,12 @@ impl CacheEntry {
             _ => true,
         }
     }
-    pub fn is_with_expiry(&self) -> bool {
-        matches!(self, CacheEntry::KeyValueExpiry(_, _, _))
+
+    pub fn expiry(&self) -> Option<SystemTime> {
+        match &self {
+            CacheEntry::KeyValueExpiry(_, _, expiry) => Some(*expiry),
+            _ => None,
+        }
     }
 
     pub fn key(&self) -> &str {
@@ -31,6 +35,13 @@ impl CacheEntry {
             CacheEntry::KeyValue(_, value) => value,
             CacheEntry::KeyValueExpiry(_, value, _) => value,
         }
+    }
+
+    pub fn new(chunk: &[(&String, &CacheValue)]) -> Vec<Self> {
+        chunk
+            .iter()
+            .map(|(k, v)| v.to_cache_entry(k))
+            .collect::<Vec<CacheEntry>>()
     }
 }
 

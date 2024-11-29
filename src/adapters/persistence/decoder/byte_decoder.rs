@@ -229,7 +229,7 @@ impl BytesDecoder<'_, MetadataReady> {
             return Ok(true); // No more keys to extract
         }
         let key_value = self.try_key_value()?;
-        if key_value.is_with_expiry() {
+        if key_value.expiry().is_some() {
             builder.expires_table_size = builder
                 .expires_table_size
                 .checked_sub(1)
@@ -503,7 +503,7 @@ fn test_with_milliseconds_expiry_key_value_pair() {
 
     assert_eq!(key_value.key(), "baz");
     assert_eq!(key_value.value(), "qux");
-    assert!(key_value.is_with_expiry());
+    assert!(key_value.expiry().is_some());
     assert!(bytes_handler.data.is_empty());
 }
 
@@ -519,7 +519,7 @@ fn test_with_seconds_expiry_key_value_pair() {
     let key_value = bytes_handler.try_key_value().unwrap();
     assert_eq!(key_value.key(), "baz");
     assert_eq!(key_value.value(), "qux");
-    assert!(key_value.is_with_expiry());
+    assert!(key_value.expiry().is_some());
 }
 
 #[test]
