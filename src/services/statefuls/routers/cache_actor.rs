@@ -46,10 +46,6 @@ impl CacheDb {
         })
     }
 
-    fn count_values_with_expiry(&self) -> usize {
-        self.values().filter(|v| v.has_expiry()).count()
-    }
-
     fn set(&mut self, key: String, value: CacheValue) {
         if let CacheValue::ValueWithExpiry(_, _) = value {
             self.keys_with_expiry += 1;
@@ -130,7 +126,7 @@ impl CacheActor {
                     outbox
                         .send(SaveActorCommand::LocalShardSize {
                             total_size: self.cache.len(),
-                            expiry_size: self.cache.count_values_with_expiry(),
+                            expiry_size: self.cache.keys_with_expiry,
                         })
                         .await?;
                     for chunk in self.cache.iter().collect::<Vec<_>>().chunks(10) {
@@ -181,7 +177,6 @@ async fn test_set_and_delete_inc_dec_keys_with_expiry() {
     // WHEN
     let handler = tokio::spawn(actor.handle());
 
-    
     for i in 0..100 {
         let key = format!("key{}", i);
         let value = format!("value{}", i);
