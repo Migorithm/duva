@@ -42,8 +42,8 @@ impl CacheDb {
         })
     }
 
-    fn get_expires_table_size(&self) -> usize {
-        self.iter().filter(|(_, v)| v.has_expiry()).count()
+    fn count_values_with_expiry(&self) -> usize {
+        self.values().filter(|v| v.has_expiry()).count()
     }
 }
 #[derive(Debug, Clone)]
@@ -106,11 +106,10 @@ impl CacheActor {
                     cache.remove(&key);
                 }
                 CacheCommand::Save { outbox } => {
-                    let table_size = cache.len();
-                    let expires_table_size = cache.get_expires_table_size();
+                    let expires_table_size = cache.count_values_with_expiry();
                     outbox
                         .send(SaveActorCommand::SaveTableSize(
-                            table_size,
+                            cache.len(),
                             expires_table_size,
                         ))
                         .await?;
