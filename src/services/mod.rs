@@ -4,7 +4,7 @@ pub mod interfaces;
 pub mod query_manager;
 pub mod statefuls;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum CacheEntry {
     KeyValue(String, String),
     KeyValueExpiry(String, String, SystemTime),
@@ -16,8 +16,12 @@ impl CacheEntry {
             _ => true,
         }
     }
-    pub fn is_with_expiry(&self) -> bool {
-        matches!(self, CacheEntry::KeyValueExpiry(_, _, _))
+
+    pub fn expiry(&self) -> Option<SystemTime> {
+        match &self {
+            CacheEntry::KeyValueExpiry(_, _, expiry) => Some(*expiry),
+            _ => None,
+        }
     }
 
     pub fn key(&self) -> &str {
@@ -31,6 +35,13 @@ impl CacheEntry {
             CacheEntry::KeyValue(_, value) => value,
             CacheEntry::KeyValueExpiry(_, value, _) => value,
         }
+    }
+
+    pub fn new(chunk: &[(&String, &CacheValue)]) -> Vec<Self> {
+        chunk
+            .iter()
+            .map(|(k, v)| v.to_cache_entry(k))
+            .collect::<Vec<CacheEntry>>()
     }
 }
 
@@ -48,5 +59,14 @@ impl CacheValue {
     }
     pub fn has_expiry(&self) -> bool {
         matches!(self, CacheValue::ValueWithExpiry(_, _))
+    }
+
+    pub fn to_cache_entry(&self, key: &str) -> CacheEntry {
+        match self {
+            CacheValue::Value(v) => CacheEntry::KeyValue(key.to_string(), v.clone()),
+            CacheValue::ValueWithExpiry(v, expiry) => {
+                CacheEntry::KeyValueExpiry(key.to_string(), v.clone(), *expiry)
+            }
+        }
     }
 }

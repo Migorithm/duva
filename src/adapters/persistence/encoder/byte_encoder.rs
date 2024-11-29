@@ -3,19 +3,20 @@ use crate::adapters::persistence::{
     EXPIRY_TIME_IN_MILLISECONDS_INDICATOR, HEADER_MAGIC_STRING, METADATA_SECTION_INDICATOR,
     STRING_VALUE_TYPE_INDICATOR,
 };
-use crate::services::CacheValue;
+use crate::services::CacheEntry;
 use anyhow::Result;
 use std::time::UNIX_EPOCH;
 
-impl CacheValue {
-    pub fn encode_with_key(&self, key: &str) -> Result<Vec<u8>> {
+// TODO subject refactor
+impl CacheEntry {
+    pub fn encode_with_key(&self) -> Result<Vec<u8>> {
         let mut result = Vec::new();
         match self {
-            CacheValue::Value(value) => {
+            CacheEntry::KeyValue(key, value) => {
                 result.push(STRING_VALUE_TYPE_INDICATOR);
                 result.extend_from_slice(&encode_key_value(key, value)?);
             }
-            CacheValue::ValueWithExpiry(value, expiry) => {
+            CacheEntry::KeyValueExpiry(key, value, expiry) => {
                 let secs = (expiry.duration_since(UNIX_EPOCH)?.as_millis()) as u64;
                 result.push(EXPIRY_TIME_IN_MILLISECONDS_INDICATOR);
                 result.extend_from_slice(&secs.to_le_bytes());
@@ -303,8 +304,8 @@ mod test {
 
     #[test]
     fn test_cache_value_encode() {
-        let value = CacheValue::Value("value".to_string());
-        let encoded = value.encode_with_key("key").unwrap();
+        let value = CacheEntry::KeyValue("key".to_string(), "value".to_string());
+        let encoded = value.encode_with_key().unwrap();
         let expected = vec![
             STRING_VALUE_TYPE_INDICATOR,
             0x03,
@@ -324,11 +325,13 @@ mod test {
     #[test]
     fn test_cache_value_with_expiry_milliseconds() {
         use crate::adapters::persistence::StoredDuration;
-        let value = CacheValue::ValueWithExpiry(
+        let kvs = CacheEntry::KeyValueExpiry(
+            "key".to_string(),
             "value".to_string(),
             StoredDuration::Milliseconds(1713824559637).to_systemtime(),
         );
-        let encoded = value.encode_with_key("key").unwrap();
+
+        let encoded = kvs.encode_with_key().unwrap();
         let expected = vec![
             EXPIRY_TIME_IN_MILLISECONDS_INDICATOR,
             0x15,

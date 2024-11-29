@@ -126,7 +126,6 @@ impl TDecodeData for EnDecoder {
     ) -> anyhow::Result<crate::services::statefuls::persistence_models::RdbFile> {
         let decoder: BytesDecoder<DecoderInit> = bytes.as_slice().into();
         let database = decoder.load_header()?.load_metadata()?.load_database()?;
-        print!("database: {:?}", database);
         Ok(database)
     }
 }
