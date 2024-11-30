@@ -24,7 +24,7 @@ pub async fn start_up(
     endec: impl TDecodeData + TEncodeData,
 ) -> Result<()> {
     let (cache_dispatcher, ttl_inbox) =
-        CacheManager::run_cache_actors(number_of_cache_actors, endec.clone());
+        CacheManager::run_cache_actors(number_of_cache_actors, endec);
 
     // Load data from the file if --dir and --dbfilename are provided
     cache_dispatcher
@@ -37,7 +37,7 @@ pub async fn start_up(
             Ok((socket, _)) =>
             // Spawn a new task to handle the connection without blocking the main thread.
             {
-                let query_manager = QueryManager::new(socket, config, endec.clone());
+                let query_manager = QueryManager::new(socket, config);
                 process_socket(query_manager, ttl_inbox.clone(), cache_dispatcher.clone())
             }
             Err(e) => eprintln!("Failed to accept connection: {:?}", e),
@@ -46,7 +46,7 @@ pub async fn start_up(
 }
 
 fn process_socket<T: TDecodeData + TEncodeData>(
-    mut query_manager: QueryManager<TcpStream, T>,
+    mut query_manager: QueryManager<TcpStream>,
     ttl_inbox: TtlSchedulerInbox,
     cache_dispatcher: CacheManager<T>,
 ) {

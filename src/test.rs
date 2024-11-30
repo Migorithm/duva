@@ -72,7 +72,7 @@ async fn test_set() {
             .as_bytes()
             .to_vec(),
     };
-    let mut controller = QueryManager::new(stream, test_config(), EnDecoder);
+    let mut controller = QueryManager::new(stream, test_config());
 
     // WHEN
     controller
@@ -100,7 +100,7 @@ async fn test_set_with_expiry() {
 
     let (cache_dispatcher, ttl_inbox) = CacheManager::run_cache_actors(3, EnDecoder);
 
-    let mut controller = QueryManager::new(stream, test_config(), EnDecoder);
+    let mut controller = QueryManager::new(stream, test_config());
 
     // WHEN
     controller
@@ -130,7 +130,7 @@ async fn test_set_with_expire_should_expire_within_100ms() {
     };
     let (cache_dispatcher, ttl_inbox) = CacheManager::run_cache_actors(3, EnDecoder);
 
-    let mut controller = QueryManager::new(stream, test_config(), EnDecoder);
+    let mut controller = QueryManager::new(stream, test_config());
 
     // WHEN
     controller
@@ -165,7 +165,7 @@ async fn test_config_get_dir() {
     };
     let (cache_dispatcher, ttl_inbox) = CacheManager::run_cache_actors(3, EnDecoder);
 
-    let mut controller = QueryManager::new(stream, test_config(), EnDecoder);
+    let mut controller = QueryManager::new(stream, test_config());
 
     // WHEN
     controller
@@ -193,7 +193,7 @@ async fn test_keys() {
         written: "*2\r\n$4\r\nKEYS\r\n$3\r\n\"*\"\r\n".as_bytes().to_vec(),
     };
 
-    let mut controller = QueryManager::new(stream, test_config(), EnDecoder);
+    let mut controller = QueryManager::new(stream, test_config());
 
     // WHEN
     controller
@@ -225,7 +225,7 @@ async fn test_replication_info() {
             .as_bytes()
             .to_vec(),
     };
-    let mut controller = QueryManager::new(stream, test_config(), EnDecoder);
+    let mut controller = QueryManager::new(stream, test_config());
     // WHEN
     controller
         .handle(&cache_dispatcher, ttl_inbox)
