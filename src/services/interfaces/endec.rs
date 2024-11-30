@@ -6,6 +6,8 @@ use crate::services::statefuls::{
 
 use super::ThreadSafeCloneable;
 
+pub trait TEnDecoder: TDecodeData + TEncodeData {}
+impl<T: TDecodeData + TEncodeData> TEnDecoder for T {}
 pub trait TDecodeData: ThreadSafeCloneable {
     fn decode_data(&self, bytes: Vec<u8>) -> anyhow::Result<RdbFile>;
 }

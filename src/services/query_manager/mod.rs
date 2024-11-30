@@ -15,9 +15,9 @@ use interface::{TRead, TWriteBuf};
 use query_io::QueryIO;
 use request::UserRequest;
 
-use std::str::FromStr;
+use std::{str::FromStr, sync::Arc};
 
-use super::interfaces::endec::{TDecodeData, TEncodeData};
+use super::interfaces::endec::TEnDecoder;
 
 /// Controller is a struct that will be used to read and write values to the client.
 pub struct QueryManager<T>
@@ -33,7 +33,7 @@ impl<T> QueryManager<T>
 where
     T: TWriteBuf + TRead,
 {
-    pub(crate) async fn handle<EnDec: TEncodeData + TDecodeData>(
+    pub(crate) async fn handle<EnDec: TEnDecoder>(
         &mut self,
         persistence_router: &CacheManager<EnDec>,
         ttl_sender: TtlSchedulerInbox,

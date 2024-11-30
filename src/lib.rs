@@ -1,13 +1,11 @@
 pub mod adapters;
 pub mod config;
 pub mod macros;
-
 pub mod services;
-
 use anyhow::Result;
 use config::Config;
 use services::{
-    interfaces::endec::{TDecodeData, TEncodeData},
+    interfaces::endec::TEnDecoder,
     query_manager::QueryManager,
     statefuls::routers::{cache_manager::CacheManager, ttl_manager::TtlSchedulerInbox},
 };
@@ -21,7 +19,7 @@ mod test;
 pub async fn start_up(
     config: &'static Config,
     number_of_cache_actors: usize,
-    endec: impl TDecodeData + TEncodeData,
+    endec: impl TEnDecoder,
 ) -> Result<()> {
     let (cache_dispatcher, ttl_inbox) =
         CacheManager::run_cache_actors(number_of_cache_actors, endec);
@@ -45,7 +43,7 @@ pub async fn start_up(
     }
 }
 
-fn process_socket<T: TDecodeData + TEncodeData>(
+fn process_socket<T: TEnDecoder>(
     mut query_manager: QueryManager<TcpStream>,
     ttl_inbox: TtlSchedulerInbox,
     cache_dispatcher: CacheManager<T>,

@@ -4,7 +4,7 @@ use super::save_actor::SaveActor;
 use super::ttl_manager::{TtlActor, TtlSchedulerInbox};
 
 use crate::config::Config;
-use crate::services::interfaces::endec::{TDecodeData, TEncodeData};
+use crate::services::interfaces::endec::TEnDecoder;
 use crate::services::query_manager::query_io::QueryIO;
 use crate::services::CacheEntry;
 use anyhow::Result;
@@ -21,7 +21,7 @@ pub(crate) struct CacheManager<EnDec> {
     pub(crate) endecoder: EnDec,
 }
 
-impl<EnDec: TDecodeData + TEncodeData> CacheManager<EnDec> {
+impl<EnDec: TEnDecoder> CacheManager<EnDec> {
     pub(crate) async fn load_data(
         &self,
         ttl_inbox: TtlSchedulerInbox,
