@@ -157,9 +157,9 @@ impl<EnDec: TDecodeData + TEncodeData> CacheManager<EnDec> {
         TtlActor::run(self.clone())
     }
 
-    pub fn run_save_actor(&self, db_filepath: Option<String>, encoder: EnDec) {
+    pub fn run_save_actor(&self, db_filepath: Option<String>) {
         let filepath: String = db_filepath.unwrap_or_else(|| "dump.rdb".to_string());
-        let outbox = SaveActor::run(filepath, self.inboxes.len(), encoder);
+        let outbox = SaveActor::run(filepath, self.inboxes.len(), self.decoder.clone());
 
         // get all the handlers to cache actors
         for inbox in self.inboxes.iter().map(Clone::clone) {
