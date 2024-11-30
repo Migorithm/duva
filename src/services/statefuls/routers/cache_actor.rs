@@ -1,3 +1,4 @@
+use super::{save_actor::SaveActorCommand, ttl_manager::TtlSchedulerInbox};
 use crate::{
     make_smart_pointer,
     services::{query_manager::query_io::QueryIO, CacheEntry, CacheValue},
@@ -5,8 +6,6 @@ use crate::{
 use anyhow::{Context, Result};
 use std::collections::HashMap;
 use tokio::sync::{mpsc, oneshot};
-
-use super::{save_actor::SaveActorCommand, ttl_manager::TtlSchedulerInbox};
 
 pub enum CacheCommand {
     Set {
