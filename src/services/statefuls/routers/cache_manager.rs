@@ -16,9 +16,9 @@ type OneShotReceiverJoinHandle<T> =
     tokio::task::JoinHandle<std::result::Result<T, tokio::sync::oneshot::error::RecvError>>;
 
 #[derive(Clone)]
-pub(crate) struct CacheManager<Dec> {
+pub(crate) struct CacheManager<EnDec> {
     pub(crate) inboxes: Vec<CacheCommandSender>,
-    pub(crate) decoder: Dec,
+    pub(crate) endecoder: EnDec,
 }
 
 impl<EnDec: TDecodeData + TEncodeData> CacheManager<EnDec> {
@@ -34,7 +34,7 @@ impl<EnDec: TDecodeData + TEncodeData> CacheManager<EnDec> {
 
         let data = tokio::fs::read(filepath).await?;
 
-        let database = self.decoder.decode_data(data)?;
+        let database = self.endecoder.decode_data(data)?;
 
         for kvs in database
             .key_values()
@@ -146,7 +146,7 @@ impl<EnDec: TDecodeData + TEncodeData> CacheManager<EnDec> {
             inboxes: (0..num_of_actors)
                 .map(|_| CacheActor::run())
                 .collect::<Vec<_>>(),
-            decoder,
+            endecoder: decoder,
         };
 
         let ttl_inbox = cache_dispatcher.run_ttl_actors();
@@ -159,7 +159,7 @@ impl<EnDec: TDecodeData + TEncodeData> CacheManager<EnDec> {
 
     pub fn run_save_actor(&self, db_filepath: Option<String>) {
         let filepath: String = db_filepath.unwrap_or_else(|| "dump.rdb".to_string());
-        let outbox = SaveActor::run(filepath, self.inboxes.len(), self.decoder.clone());
+        let outbox = SaveActor::run(filepath, self.inboxes.len(), self.endecoder.clone());
 
         // get all the handlers to cache actors
         for inbox in self.inboxes.iter().map(Clone::clone) {
