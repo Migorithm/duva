@@ -1,14 +1,14 @@
 mod common;
-use common::{integration_test_config, TestStreamHandler};
-use redis_starter_rust::{adapters::persistence::EnDecoder, start_up};
+use common::{integration_test_config, start_test_server, TestStreamHandler};
 use tokio::net::TcpStream;
 
 #[tokio::test]
 async fn test() {
     // GIVEN
     let config = integration_test_config().await;
-    tokio::spawn(start_up(config, 3, EnDecoder));
-    tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+
+    let _ = start_test_server(config).await;
+
     let mut stream = TcpStream::connect(config.bind_addr()).await.unwrap();
     let mut h: TestStreamHandler = stream.split().into();
     let num_of_keys = 500;
