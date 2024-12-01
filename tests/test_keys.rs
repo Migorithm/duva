@@ -6,7 +6,7 @@ use tokio::net::TcpStream;
 #[tokio::test]
 async fn test() {
     // GIVEN
-    let config = integration_test_config(11112);
+    let config = integration_test_config().await;
     tokio::spawn(start_up(config, 3, EnDecoder));
     tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
     let mut stream = TcpStream::connect(config.bind_addr()).await.unwrap();

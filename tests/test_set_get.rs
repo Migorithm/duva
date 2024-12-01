@@ -11,7 +11,7 @@ use tokio::net::TcpStream;
 #[tokio::test]
 async fn test() {
     // GIVEN
-    let config = integration_test_config(11111);
+    let config = integration_test_config().await;
 
     tokio::spawn(start_up(config, 3, EnDecoder));
     //warm up time

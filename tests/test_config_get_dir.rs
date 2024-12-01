@@ -13,7 +13,7 @@ use tokio::net::TcpStream;
 async fn test() {
     // GIVEN
     //TODO test config should be dynamically configured
-    let config = integration_test_config(11113);
+    let config = integration_test_config().await;
 
     tokio::spawn(start_up(config, 3, EnDecoder));
     //warm up time
