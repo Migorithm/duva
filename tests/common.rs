@@ -2,7 +2,10 @@ use redis_starter_rust::config::Config;
 use std::sync::OnceLock;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
-    net::tcp::{ReadHalf, WriteHalf},
+    net::{
+        tcp::{ReadHalf, WriteHalf},
+        TcpListener,
+    },
 };
 
 pub struct TestStreamHandler<'a> {
@@ -28,6 +31,22 @@ impl<'a> TestStreamHandler<'a> {
 }
 
 static CONFIG: OnceLock<Config> = OnceLock::new();
-pub fn integration_test_config(port: u16) -> &'static Config {
-    CONFIG.get_or_init(|| Config::default().set_port(port))
+
+pub async fn integration_test_config() -> &'static Config {
+    let port = find_free_port_in_range(49152, 65535).await;
+
+    CONFIG.get_or_init(|| Config::default().set_port(port.unwrap()))
+}
+
+// scan for available port
+async fn find_free_port_in_range(start: u16, end: u16) -> Option<u16> {
+    for port in start..=end {
+        if TcpListener::bind(format!("127.0.0.1:{}", port))
+            .await
+            .is_ok()
+        {
+            return Some(port);
+        }
+    }
+    None
 }
