@@ -9,11 +9,9 @@ use services::{
     query_manager::QueryManager,
     statefuls::routers::{cache_manager::CacheManager, ttl_manager::TtlSchedulerInbox},
 };
-use std::time::SystemTime;
 use tokio::net::{TcpListener, TcpStream};
 
-/// dir, dbfilename is given as follows: ./your_program.sh --dir /tmp/redis-files --dbfilename dump.rdb
-
+// facade for the start_up function
 pub async fn start_up(
     config: &'static Config,
     number_of_cache_actors: usize,
@@ -23,13 +21,23 @@ pub async fn start_up(
     let (cache_dispatcher, ttl_inbox) =
         CacheManager::run_cache_actors(number_of_cache_actors, endec);
 
-    // Load data from the file if --dir and --dbfilename are provided
     cache_dispatcher
-        .load_data(ttl_inbox.clone(), SystemTime::now(), config)
+        .load_data(ttl_inbox.clone(), config)
         .await?;
 
     let listener = TcpListener::bind(config.bind_addr()).await?;
+
     startup_notifier.notify_startup();
+
+    start_accepting_connections(listener, config, ttl_inbox, cache_dispatcher).await
+}
+
+async fn start_accepting_connections(
+    listener: TcpListener,
+    config: &'static Config,
+    ttl_inbox: TtlSchedulerInbox,
+    cache_dispatcher: CacheManager<impl TEnDecoder>,
+) -> Result<()> {
     loop {
         match listener.accept().await {
             Ok((socket, _)) =>
