@@ -6,7 +6,7 @@ const NUM_OF_PERSISTENCE: usize = 10;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    start_up(config(), NUM_OF_PERSISTENCE, EnDecoder).await
+    start_up(config(), NUM_OF_PERSISTENCE, EnDecoder, ()).await
 }
 
 static CONFIG: OnceLock<Config> = OnceLock::new();

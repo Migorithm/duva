@@ -18,6 +18,7 @@ pub async fn start_up(
     config: &'static Config,
     number_of_cache_actors: usize,
     endec: impl TEnDecoder,
+    startup_notifier: impl TNotifyStartUp,
 ) -> Result<()> {
     let (cache_dispatcher, ttl_inbox) =
         CacheManager::run_cache_actors(number_of_cache_actors, endec);
@@ -28,6 +29,7 @@ pub async fn start_up(
         .await?;
 
     let listener = TcpListener::bind(config.bind_addr()).await?;
+    startup_notifier.notify_startup();
     loop {
         match listener.accept().await {
             Ok((socket, _)) =>
@@ -58,4 +60,11 @@ fn process_socket<T: TEnDecoder>(
             }
         }
     });
+}
+
+pub trait TNotifyStartUp {
+    fn notify_startup(&self);
+}
+impl TNotifyStartUp for () {
+    fn notify_startup(&self) {}
 }
