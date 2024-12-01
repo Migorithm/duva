@@ -1,3 +1,5 @@
+use std::time::SystemTime;
+
 use anyhow::Result;
 use tokio::fs::try_exists;
 
@@ -72,6 +74,7 @@ pub struct Config {
     pub(crate) dir: String,
     pub(crate) dbfilename: Option<String>,
     pub(crate) replication: Replication,
+    startup_time: SystemTime,
 }
 
 impl Default for Config {
@@ -98,6 +101,7 @@ impl Default for Config {
             dir,
             dbfilename,
             replication: Replication::new(role),
+            startup_time: SystemTime::now(),
         }
     }
 }
@@ -168,6 +172,10 @@ impl Config {
     }
     pub fn replication_role(&self) -> String {
         self.replication.role()
+    }
+
+    pub(crate) fn startup_time(&self) -> &std::time::SystemTime {
+        &self.startup_time
     }
 }
 
