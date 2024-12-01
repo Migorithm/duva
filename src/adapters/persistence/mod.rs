@@ -75,14 +75,15 @@
 // Safe conversion from a slice to an array of a specific size.
 use std::ops::RangeInclusive;
 use std::time::SystemTime;
+
 pub mod decoder;
 pub mod encoder;
+use crate::services::interfaces::endec::{TDecodeData, TEncodeData};
 use decoder::byte_decoder::BytesDecoder;
 use decoder::states::DecoderInit;
 pub use encoder::byte_encoder;
-use encoder::{EncodingMeta, EncodingProcessor};
-
-use crate::services::interfaces::endec::{TDecodeData, TEncodeData};
+use encoder::encoding_processor::EncodingMeta;
+use encoder::encoding_processor::EncodingProcessor;
 
 const HEADER_MAGIC_STRING: &str = "REDIS";
 const METADATA_SECTION_INDICATOR: u8 = 0xFA;
