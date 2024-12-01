@@ -1,4 +1,4 @@
-use redis_starter_rust::{config::Config, TNotifyStartUpWatier};
+use redis_starter_rust::{config::Config, TNotifyStartUp};
 use std::sync::{Arc, OnceLock};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
@@ -53,8 +53,8 @@ async fn find_free_port_in_range(start: u16, end: u16) -> Option<u16> {
 
 pub struct StartFlag(pub Arc<tokio::sync::Notify>);
 
-impl TNotifyStartUpWatier for StartFlag {
-    fn notify_startup_waiter(&self) {
+impl TNotifyStartUp for StartFlag {
+    fn notify_startup(&self) {
         self.0.notify_one();
     }
 }
