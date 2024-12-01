@@ -11,8 +11,6 @@ use services::{
 };
 use std::time::SystemTime;
 use tokio::net::{TcpListener, TcpStream};
-#[cfg(test)]
-mod test;
 
 /// dir, dbfilename is given as follows: ./your_program.sh --dir /tmp/redis-files --dbfilename dump.rdb
 
@@ -50,15 +48,13 @@ fn process_socket<T: TEnDecoder>(
 ) {
     tokio::spawn(async move {
         loop {
-            match query_manager
+            if let Err(e) = query_manager
                 .handle(&cache_dispatcher, ttl_inbox.clone())
                 .await
             {
-                Ok(_) => println!("Connection closed"),
-                Err(e) => {
-                    eprintln!("Error: {:?}", e);
-                    break;
-                }
+                eprintln!("Error: {:?}", e);
+                println!("Connection closed");
+                break;
             }
         }
     });

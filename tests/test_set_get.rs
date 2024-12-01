@@ -1,27 +1,26 @@
+/// The following is to test out the set operation with expiry
+/// Firstly, we set a key with a value and an expiry of 300ms
+/// Then we get the key and check if the value is returned
+/// After 300ms, we get the key again and check if the value is not returned (-1)
 mod common;
-use common::TestStreamHandler;
-use redis_starter_rust::{adapters::persistence::EnDecoder, config::Config, start_up};
-use std::sync::OnceLock;
+use common::{integration_test_config, TestStreamHandler};
+use redis_starter_rust::{adapters::persistence::EnDecoder, start_up};
+
 use tokio::net::TcpStream;
 
-static CONFIG: OnceLock<Config> = OnceLock::new();
-pub fn integration_test_config(port: u16) -> &'static Config {
-    CONFIG.get_or_init(|| Config::default().set_port(port))
-}
-
 #[tokio::test]
-async fn test_get_set() {
+async fn test() {
     // GIVEN
     let config = integration_test_config(11111);
 
     tokio::spawn(start_up(config, 3, EnDecoder));
     //warm up time
     tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
-    let mut stream = TcpStream::connect(config.bind_addr()).await.unwrap();
-    let mut h: TestStreamHandler = stream.split().into();
+    let mut client_stream = TcpStream::connect(config.bind_addr()).await.unwrap();
+    let mut h: TestStreamHandler = client_stream.split().into();
 
     // WHEN
-    h.send(b"*5\r\n$3\r\nSET\r\n$10\r\nsomanyrand\r\n$3\r\nbar\r\n$2\r\npx\r\n$5\r\n30000\r\n")
+    h.send(b"*5\r\n$3\r\nSET\r\n$10\r\nsomanyrand\r\n$3\r\nbar\r\n$2\r\npx\r\n$3\r\n300\r\n")
         .await;
 
     // THEN
@@ -33,4 +32,12 @@ async fn test_get_set() {
     // THEN
     let res = h.get_response().await;
     assert_eq!(res, "$3\r\nbar\r\n");
+
+    // WHEN - wait for 300ms
+    tokio::time::sleep(tokio::time::Duration::from_millis(300)).await;
+    h.send(b"*2\r\n$3\r\nGET\r\n$10\r\nsomanyrand\r\n").await;
+
+    // THEN
+    let res = h.get_response().await;
+    assert_eq!(res, "$-1\r\n");
 }
