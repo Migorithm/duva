@@ -1,3 +1,5 @@
+use redis_starter_rust::config::Config;
+use std::sync::OnceLock;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::tcp::{ReadHalf, WriteHalf},
@@ -23,4 +25,9 @@ impl<'a> TestStreamHandler<'a> {
         let n = self.read.read(&mut buffer).await.unwrap();
         String::from_utf8(buffer[0..n].to_vec()).unwrap()
     }
+}
+
+static CONFIG: OnceLock<Config> = OnceLock::new();
+pub fn integration_test_config(port: u16) -> &'static Config {
+    CONFIG.get_or_init(|| Config::default().set_port(port))
 }

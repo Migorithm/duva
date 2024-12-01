@@ -1,0 +1,35 @@
+mod common;
+use common::{integration_test_config, TestStreamHandler};
+use redis_starter_rust::{adapters::persistence::EnDecoder, start_up};
+use tokio::net::TcpStream;
+
+#[tokio::test]
+async fn test() {
+    // GIVEN
+    let config = integration_test_config(11112);
+    tokio::spawn(start_up(config, 3, EnDecoder));
+    tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+    let mut stream = TcpStream::connect(config.bind_addr()).await.unwrap();
+    let mut h: TestStreamHandler = stream.split().into();
+    let num_of_keys = 500;
+
+    // WHEN set 100000 keys
+    for i in 0..500 {
+        h.send(
+            format!(
+                "*3\r\n$3\r\nSET\r\n${}\r\n{}\r\n$3\r\nbar\r\n",
+                i.to_string().len(),
+                i
+            )
+            .as_bytes(),
+        )
+        .await;
+        assert_eq!(h.get_response().await, "+OK\r\n");
+    }
+
+    // Fire keys command
+    h.send(b"*2\r\n$4\r\nKEYS\r\n$3\r\n\"*\"\r\n").await;
+    let res = h.get_response().await;
+
+    assert!(res.starts_with(format!("*{}\r\n", num_of_keys).as_str()));
+}

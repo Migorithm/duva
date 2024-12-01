@@ -15,7 +15,7 @@ use interface::{TRead, TWriteBuf};
 use query_io::QueryIO;
 use request::UserRequest;
 
-use std::{str::FromStr, sync::Arc};
+use std::str::FromStr;
 
 use super::interfaces::endec::TEnDecoder;
 
@@ -25,7 +25,7 @@ where
     T: TWriteBuf + TRead,
 {
     pub(crate) stream: T,
-    buffer: BytesMut,
+
     config: &'static Config,
 }
 
@@ -92,22 +92,17 @@ where
     T: TWriteBuf + TRead,
 {
     pub fn new(stream: T, config: &'static Config) -> Self {
-        QueryManager {
-            stream,
-            buffer: BytesMut::with_capacity(512),
-            config,
-        }
+        QueryManager { stream, config }
     }
 
     // crlf
     pub async fn read_value(&mut self) -> Result<Option<(UserRequest, InputValues)>> {
-        let bytes_read = self.stream.read(&mut self.buffer).await?;
-        if bytes_read == 0 {
-            return Ok(None);
-        }
-        let (v, _) = parse(self.buffer.split())?;
+        let mut buffer = BytesMut::with_capacity(512);
+        self.stream.read_bytes(&mut buffer).await?;
 
-        let (str_cmd, values) = Self::extract_query(v)?;
+        let (user_request, _) = parse(buffer)?;
+
+        let (str_cmd, values) = Self::extract_query(user_request)?;
 
         Ok(Some((FromStr::from_str(&str_cmd)?, values)))
     }
