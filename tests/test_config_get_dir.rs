@@ -25,5 +25,5 @@ async fn test() {
         .await;
 
     // THEN
-    assert_eq!(h.get_response().await, "*2\r\n$3\r\ndir\r\n$0\r\n\r\n");
+    assert_eq!(h.get_response().await, "*2\r\n$3\r\ndir\r\n$1\r\n.\r\n");
 }
