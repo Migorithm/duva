@@ -5,6 +5,8 @@
 /// *2\r\n$3\r\ndir\r\n$4\r\n/tmp\r\n
 mod common;
 use common::{integration_test_config, start_test_server, TestStreamHandler};
+
+use redis_starter_rust::adapters::cancellation_token::CancellationToken;
 use tokio::net::TcpStream;
 
 #[tokio::test]
@@ -13,7 +15,7 @@ async fn test() {
     //TODO test config should be dynamically configured
     let config = integration_test_config().await;
 
-    let _ = start_test_server(config).await;
+    start_test_server::<CancellationToken>(config).await;
 
     let mut client_stream = TcpStream::connect(config.bind_addr()).await.unwrap();
     let mut h: TestStreamHandler = client_stream.split().into();

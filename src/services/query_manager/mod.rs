@@ -20,27 +20,35 @@ use std::str::FromStr;
 use super::interfaces::endec::TEnDecoder;
 
 /// Controller is a struct that will be used to read and write values to the client.
-pub struct QueryManager<T>
+pub struct QueryManager<T, U>
 where
     T: TWriteBuf + TRead,
+    U: TEnDecoder,
 {
     pub(crate) stream: T,
-
     config: &'static Config,
+    cache_manager: &'static CacheManager<U>,
+    ttl_manager: TtlSchedulerInbox,
 }
 
-impl<T> QueryManager<T>
+impl<T, U> QueryManager<T, U>
 where
     T: TWriteBuf + TRead,
+    U: TEnDecoder,
 {
-    pub(crate) async fn handle<EnDec: TEnDecoder>(
+    pub(crate) async fn handle(
         &mut self,
-        persistence_router: &CacheManager<EnDec>,
-        ttl_sender: TtlSchedulerInbox,
+        mut cancellation_token: impl interface::TCancellationWatcher,
+        cmd: UserRequest,
+        args: InputValues,
     ) -> Result<()> {
-        let Some((cmd, args)) = self.read_value().await? else {
-            return Err(anyhow::anyhow!("Connection closed"));
-        };
+        if cancellation_token.watch() {
+            self.write_value(QueryIO::Err(
+                "Error opertation cancelled due to timeout".to_string(),
+            ))
+            .await?;
+            return Ok(());
+        }
 
         // TODO if it is persistence operation, get the key and hash, take the appropriate sender, send it;
         let response = match cmd {
@@ -48,23 +56,24 @@ where
             UserRequest::Echo => args.first().ok_or(anyhow::anyhow!("Not exists"))?.clone(),
             UserRequest::Set => {
                 let cache_entry = args.take_set_args()?;
-                persistence_router
-                    .route_set(cache_entry, ttl_sender)
+                self.cache_manager
+                    .route_set(cache_entry, self.ttl_manager.clone())
                     .await?
             }
             UserRequest::Save => {
                 // spawn save actor
-                persistence_router.run_save_actor(self.config.get_filepath());
+                self.cache_manager
+                    .run_save_actor(self.config.get_filepath());
                 // TODO Set return type
                 QueryIO::Null
             }
             UserRequest::Get => {
                 let key = args.take_get_args()?;
-                persistence_router.route_get(key).await?
+                self.cache_manager.route_get(key).await?
             }
             UserRequest::Keys => {
                 let pattern = args.take_keys_pattern()?;
-                persistence_router.route_keys(pattern).await?
+                self.cache_manager.route_keys(pattern).await?
             }
             // modify we have to add a new command
             UserRequest::Config => {
@@ -87,12 +96,23 @@ where
     }
 }
 
-impl<T> QueryManager<T>
+impl<T, U> QueryManager<T, U>
 where
     T: TWriteBuf + TRead,
+    U: TEnDecoder,
 {
-    pub fn new(stream: T, config: &'static Config) -> Self {
-        QueryManager { stream, config }
+    pub(crate) fn new(
+        stream: T,
+        config: &'static Config,
+        cache_manager: &'static CacheManager<U>,
+        ttl_manager: TtlSchedulerInbox,
+    ) -> Self {
+        QueryManager {
+            stream,
+            config,
+            cache_manager,
+            ttl_manager,
+        }
     }
 
     // crlf
