@@ -1,9 +1,5 @@
 use redis_starter_rust::{
-    config::Config,
-    services::query_manager::interface::{
-        TCancelNotifier, TCancellationTokenFactory, TCancellationWatcher,
-    },
-    TNotifyStartUp,
+    config::Config, services::query_manager::interface::TCancellationTokenFactory, TNotifyStartUp,
 };
 use std::sync::{Arc, OnceLock};
 use tokio::{

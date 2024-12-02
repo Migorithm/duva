@@ -5,7 +5,8 @@
 /// *2\r\n$3\r\ndir\r\n$4\r\n/tmp\r\n
 mod common;
 use common::{integration_test_config, start_test_server, TestStreamHandler};
-use redis_starter_rust::services::query_manager::interface::CancellationToken;
+
+use redis_starter_rust::adapters::cancellation_token::CancellationToken;
 use tokio::net::TcpStream;
 
 #[tokio::test]

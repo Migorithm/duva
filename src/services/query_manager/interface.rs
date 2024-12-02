@@ -1,8 +1,6 @@
 use bytes::BytesMut;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
-use crate::services::interfaces::ThreadSafeCloneable;
-
 pub trait TRead {
     fn read_bytes(
         &mut self,
@@ -57,40 +55,12 @@ impl TWriteBuf for tokio::net::TcpStream {
 
 pub trait TCancellationTokenFactory: Send + Sync + 'static {
     fn create() -> Self;
-    fn split(self) -> (impl TCancelNotifier, impl TCancellationWatcher);
+    fn split(self) -> (impl TCancellationNotifier, impl TCancellationWatcher);
 }
 
-pub trait TCancelNotifier: Send + Sync + 'static {
-    fn notify(self);
+pub trait TCancellationNotifier {
+    fn notify(self, millis: u64);
 }
-pub trait TCancellationWatcher: Send + Sync + 'static {
+pub trait TCancellationWatcher: Send {
     fn watch(&mut self) -> bool;
-}
-impl TCancelNotifier for tokio::sync::oneshot::Sender<()> {
-    fn notify(self) {
-        let _ = self.send(());
-    }
-}
-
-pub struct CancellationToken {
-    sender: tokio::sync::oneshot::Sender<()>,
-    receiver: tokio::sync::oneshot::Receiver<()>,
-}
-impl TCancellationTokenFactory for CancellationToken {
-    fn create() -> Self {
-        let (tx, rx) = tokio::sync::oneshot::channel();
-        Self {
-            sender: tx,
-            receiver: rx,
-        }
-    }
-    fn split(self) -> (impl TCancelNotifier, impl TCancellationWatcher) {
-        (self.sender, self.receiver)
-    }
-}
-
-impl TCancellationWatcher for tokio::sync::oneshot::Receiver<()> {
-    fn watch(&mut self) -> bool {
-        self.try_recv().is_ok()
-    }
 }

@@ -1,8 +1,9 @@
 use std::sync::OnceLock;
 
 use redis_starter_rust::{
-    adapters::persistence::EnDecoder, config::Config,
-    services::query_manager::interface::CancellationToken, start_up,
+    adapters::{cancellation_token::CancellationToken, persistence::EnDecoder},
+    config::Config,
+    start_up,
 };
 
 const NUM_OF_PERSISTENCE: usize = 10;
