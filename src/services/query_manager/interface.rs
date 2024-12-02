@@ -58,13 +58,6 @@ impl TWriteBuf for tokio::net::TcpStream {
     }
 }
 
-pub struct CancelNotifier {
-    notifier: Option<tokio::sync::oneshot::Sender<()>>,
-}
-pub struct CancellationWatcher {
-    receiver: tokio::sync::oneshot::Receiver<()>,
-}
-
 pub trait TCancellationTokenFactory<T, U>
 where
     T: TCancelNotifier,
