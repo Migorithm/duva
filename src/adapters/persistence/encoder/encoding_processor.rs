@@ -49,10 +49,8 @@ impl Processable for EncodingProcessor {
                 }
             }
             SaveActorCommand::SaveChunk(chunk) => {
-                if self.meta.num_of_saved_table_size_actor != 0 {
-                    self.meta.chunk_queue.push_back(chunk);
-                } else {
-                    self.meta.chunk_queue.push_back(chunk);
+                self.meta.chunk_queue.push_back(chunk);
+                if self.meta.num_of_saved_table_size_actor == 0 {
                     self.encode_chunk_queue().await?;
                 }
             }
