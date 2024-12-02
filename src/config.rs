@@ -85,7 +85,7 @@ impl Default for Config {
                 replicaof
             }
             {
-                dir = "".to_string(),
+                dir = ".".to_string(),
                 port = 6379,
                 host = "localhost".to_string()
             }
