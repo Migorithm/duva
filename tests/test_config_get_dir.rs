@@ -6,6 +6,7 @@
 mod common;
 use common::{integration_test_config, start_test_server, TestStreamHandler};
 
+use crate::common::{array, config_command};
 use tokio::net::TcpStream;
 
 #[tokio::test]
@@ -21,9 +22,9 @@ async fn test() {
     let mut h: TestStreamHandler = client_stream.split().into();
 
     // WHEN
-    h.send(b"*3\r\n$6\r\nCONFIG\r\n$3\r\nGET\r\n$3\r\ndir\r\n")
+    h.send(config_command("GET", "dir").as_slice())
         .await;
 
     // THEN
-    assert_eq!(h.get_response().await, "*2\r\n$3\r\ndir\r\n$1\r\n.\r\n");
+    assert_eq!(h.get_response().await, array(vec!["dir", "."]));
 }

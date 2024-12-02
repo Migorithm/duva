@@ -4,7 +4,7 @@
 /// if the value of dir is /tmp, then the expected response to CONFIG GET dir is:
 /// *2\r\n$3\r\ndir\r\n$4\r\n/tmp\r\n
 mod common;
-use crate::common::start_test_server;
+use crate::common::{array, keys_command, null_response, ok_response, save_command, set_command, set_command_with_expiry, start_test_server};
 use common::{integration_test_config, TestStreamHandler};
 use std::env;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -24,19 +24,20 @@ async fn test() {
 
     // WHEN
     // set without expiry time
-    h.send(b"*3\r\n$3\r\nSET\r\n$3\r\nfoo\r\n$3\r\nbar\r\n").await;
-    assert_eq!(h.get_response().await, "+OK\r\n");
+    h.send(set_command("foo", "bar").as_slice()).await;
+    assert_eq!(h.get_response().await, ok_response());
     // set with expiry time
-    h.send(b"*5\r\n$3\r\nSET\r\n$4\r\nfoo2\r\n$4\r\nbar2\r\n$2\r\npx\r\n$10\r\n9999999999\r\n'").await;
-    assert_eq!(h.get_response().await, "+OK\r\n");
+    // h.send(b"*5\r\n$3\r\nSET\r\n$4\r\nfoo2\r\n$4\r\nbar2\r\n$2\r\npx\r\n$10\r\n9999999999\r\n'").await;
+    h.send(set_command_with_expiry("foo2", "bar2", 9999999999).as_slice()).await;
+    assert_eq!(h.get_response().await, ok_response());
     // check keys
-    h.send(b"*2\r\n$4\r\nKEYS\r\n$3\r\n\"*\"\r\n").await;
-    assert_eq!(h.get_response().await, "*2\r\n$3\r\nfoo\r\n$4\r\nfoo2\r\n");
+    h.send(keys_command().as_slice()).await;
+    assert_eq!(h.get_response().await, array(vec!["foo", "foo2"]));
     // save
-    h.send(b"*1\r\n$4\r\nSAVE\r\n").await;
+    h.send(save_command().as_slice()).await;
 
     // THEN
-    assert_eq!(h.get_response().await, "$-1\r\n");
+    assert_eq!(h.get_response().await, null_response());
 
     // wait for the file to be created
     tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
@@ -49,8 +50,8 @@ async fn test() {
     let mut h: TestStreamHandler = client_stream.split().into();
 
     // keys
-    h.send(b"*2\r\n$4\r\nKEYS\r\n$3\r\n\"*\"\r\n").await;
-    assert_eq!(h.get_response().await, "*2\r\n$3\r\nfoo\r\n$4\r\nfoo2\r\n");
+    h.send(keys_command().as_slice()).await;
+    assert_eq!(h.get_response().await, array(vec!["foo", "foo2"]));
 
     // remove file
     std::fs::remove_file(&test_file_name).unwrap();
