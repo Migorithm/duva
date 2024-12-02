@@ -7,7 +7,7 @@ use config::Config;
 use services::{
     interfaces::endec::TEnDecoder,
     query_manager::{
-        interface::{TCancelNotifier, TCancellationTokenFactory, TCancellationWatcher},
+        interface::{TCancelNotifier, TCancellationTokenFactory},
         QueryManager,
     },
     statefuls::routers::{cache_manager::CacheManager, ttl_manager::TtlSchedulerInbox},
@@ -22,10 +22,7 @@ pub async fn start_up<T: TCancellationTokenFactory>(
     number_of_cache_actors: usize,
     endec: impl TEnDecoder,
     startup_notifier: impl TNotifyStartUp,
-) -> Result<()>
-where
-    T: TCancellationTokenFactory,
-{
+) -> Result<()> {
     let (cache_dispatcher, ttl_inbox) =
         CacheManager::run_cache_actors(number_of_cache_actors, endec);
 
