@@ -8,7 +8,7 @@ use crate::services::interfaces::endec::TEnDecoder;
 use crate::services::query_manager::query_io::QueryIO;
 use crate::services::CacheEntry;
 use anyhow::Result;
-use std::{hash::Hasher, iter::Zip, time::SystemTime};
+use std::{hash::Hasher, iter::Zip};
 use tokio::sync::oneshot::Sender;
 
 type OneShotSender<T> = tokio::sync::oneshot::Sender<T>;
@@ -25,21 +25,20 @@ impl<EnDec: TEnDecoder> CacheManager<EnDec> {
     pub(crate) async fn load_data(
         &self,
         ttl_inbox: TtlSchedulerInbox,
-        current_system_time: SystemTime,
         config: &'static Config,
     ) -> Result<()> {
         let Ok(Some(filepath)) = config.try_filepath().await else {
             return Ok(());
         };
 
-        let data = tokio::fs::read(filepath).await?;
+        let bytes = tokio::fs::read(filepath).await?;
+        let database = self.endecoder.decode_data(bytes)?;
 
-        let database = self.endecoder.decode_data(data)?;
-
+        let startup_time = config.startup_time();
         for kvs in database
             .key_values()
             .into_iter()
-            .filter(|kvs| kvs.is_valid(&current_system_time))
+            .filter(|kvs| kvs.is_valid(startup_time))
         {
             self.route_set(kvs, ttl_inbox.clone()).await?;
         }

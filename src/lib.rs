@@ -12,7 +12,6 @@ use services::{
     },
     statefuls::routers::{cache_manager::CacheManager, ttl_manager::TtlSchedulerInbox},
 };
-use std::time::SystemTime;
 use tokio::net::{TcpListener, TcpStream};
 
 /// dir, dbfilename is given as follows: ./your_program.sh --dir /tmp/redis-files --dbfilename dump.rdb
@@ -24,22 +23,31 @@ pub async fn start_up<T: TCancellationTokenFactory>(
     startup_notifier: impl TNotifyStartUp,
 ) -> Result<()> {
     let (cache_manager, ttl_inbox) = CacheManager::run_cache_actors(number_of_cache_actors, endec);
-    cache_manager
-        .load_data(ttl_inbox.clone(), SystemTime::now(), config)
-        .await?;
+    cache_manager.load_data(ttl_inbox.clone(), config).await?;
 
     // Leak the cache_dispatcher to make it static - this is safe because the cache_dispatcher
     // will live for the entire duration of the program.
     let cache_manager = Box::leak(Box::new(cache_manager));
 
     let listener = TcpListener::bind(config.bind_addr()).await?;
+
     startup_notifier.notify_startup();
+
+    start_accepting_connections::<T>(listener, config, ttl_inbox, cache_manager).await
+}
+
+async fn start_accepting_connections<T: TCancellationTokenFactory>(
+    listener: TcpListener,
+    config: &'static Config,
+    ttl_inbox: TtlSchedulerInbox,
+    cache_dispatcher: &'static CacheManager<impl TEnDecoder>,
+) -> Result<()> {
     loop {
         match listener.accept().await {
             Ok((stream, _)) =>
             // Spawn a new task to handle the connection without blocking the main thread.
             {
-                process_socket::<_, T>(stream, ttl_inbox.clone(), cache_manager, config);
+                process_socket::<_, T>(stream, ttl_inbox.clone(), cache_dispatcher, config);
             }
             Err(e) => eprintln!("Failed to accept connection: {:?}", e),
         }
