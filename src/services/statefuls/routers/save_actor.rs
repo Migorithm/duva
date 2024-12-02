@@ -3,7 +3,7 @@ use tokio::sync::mpsc::Sender;
 
 pub enum SaveActorCommand {
     LocalShardSize {
-        total_size: usize,
+        table_size: usize,
         expiry_size: usize,
     },
     SaveChunk(Vec<CacheEntry>),

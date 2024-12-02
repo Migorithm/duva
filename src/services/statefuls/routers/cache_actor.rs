@@ -81,7 +81,7 @@ impl CacheActor {
                 CacheCommand::Save { outbox } => {
                     outbox
                         .send(SaveActorCommand::LocalShardSize {
-                            total_size: self.len(),
+                            table_size: self.len(),
                             expiry_size: self.keys_with_expiry(),
                         })
                         .await?;
