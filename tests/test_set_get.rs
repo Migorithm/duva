@@ -4,6 +4,7 @@
 /// After 300ms, we get the key again and check if the value is not returned (-1)
 mod common;
 use common::{integration_test_config, start_test_server, TestStreamHandler};
+use redis_starter_rust::services::query_manager::interface::CancellationToken;
 use tokio::net::TcpStream;
 
 #[tokio::test]
@@ -11,15 +12,7 @@ async fn test() {
     // GIVEN
     let config = integration_test_config().await;
 
-    let _ = start_test_server::<
-        (
-            tokio::sync::oneshot::Sender<()>,
-            tokio::sync::oneshot::Receiver<()>,
-        ),
-        tokio::sync::oneshot::Sender<()>,
-        tokio::sync::oneshot::Receiver<()>,
-    >(config)
-    .await;
+    let _ = start_test_server::<CancellationToken>(config).await;
 
     let mut client_stream = TcpStream::connect(config.bind_addr()).await.unwrap();
     let mut h: TestStreamHandler = client_stream.split().into();

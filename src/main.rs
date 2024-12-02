@@ -1,20 +1,15 @@
 use std::sync::OnceLock;
 
-use redis_starter_rust::{adapters::persistence::EnDecoder, config::Config, start_up};
+use redis_starter_rust::{
+    adapters::persistence::EnDecoder, config::Config,
+    services::query_manager::interface::CancellationToken, start_up,
+};
 
 const NUM_OF_PERSISTENCE: usize = 10;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    start_up::<
-        (
-            tokio::sync::oneshot::Sender<()>,
-            tokio::sync::oneshot::Receiver<()>,
-        ),
-        tokio::sync::oneshot::Sender<()>,
-        tokio::sync::oneshot::Receiver<()>,
-    >(config(), NUM_OF_PERSISTENCE, EnDecoder, ())
-    .await
+    start_up::<CancellationToken>(config(), NUM_OF_PERSISTENCE, EnDecoder, ()).await
 }
 
 static CONFIG: OnceLock<Config> = OnceLock::new();

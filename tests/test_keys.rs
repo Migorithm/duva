@@ -1,5 +1,6 @@
 mod common;
 use common::{integration_test_config, start_test_server, TestStreamHandler};
+use redis_starter_rust::services::query_manager::interface::CancellationToken;
 use tokio::net::TcpStream;
 
 #[tokio::test]
@@ -7,15 +8,7 @@ async fn test() {
     // GIVEN
     let config = integration_test_config().await;
 
-    let _ = start_test_server::<
-        (
-            tokio::sync::oneshot::Sender<()>,
-            tokio::sync::oneshot::Receiver<()>,
-        ),
-        tokio::sync::oneshot::Sender<()>,
-        tokio::sync::oneshot::Receiver<()>,
-    >(config)
-    .await;
+    let _ = start_test_server::<CancellationToken>(config).await;
 
     let mut stream = TcpStream::connect(config.bind_addr()).await.unwrap();
     let mut h: TestStreamHandler = stream.split().into();

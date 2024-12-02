@@ -17,16 +17,14 @@ use tokio::net::{TcpListener, TcpStream};
 
 /// dir, dbfilename is given as follows: ./your_program.sh --dir /tmp/redis-files --dbfilename dump.rdb
 
-pub async fn start_up<T: TCancellationTokenFactory<N, W>, N, W>(
+pub async fn start_up<T: TCancellationTokenFactory>(
     config: &'static Config,
     number_of_cache_actors: usize,
     endec: impl TEnDecoder,
     startup_notifier: impl TNotifyStartUp,
 ) -> Result<()>
 where
-    T: TCancellationTokenFactory<N, W>,
-    N: TCancelNotifier,
-    W: TCancellationWatcher,
+    T: TCancellationTokenFactory,
 {
     let (cache_dispatcher, ttl_inbox) =
         CacheManager::run_cache_actors(number_of_cache_actors, endec);
@@ -44,29 +42,21 @@ where
             // Spawn a new task to handle the connection without blocking the main thread.
             {
                 let query_manager = QueryManager::new(socket, config);
-                process_socket::<_, T, N, W>(
-                    query_manager,
-                    ttl_inbox.clone(),
-                    cache_dispatcher.clone(),
-                );
+                process_socket::<_, T>(query_manager, ttl_inbox.clone(), cache_dispatcher.clone());
             }
             Err(e) => eprintln!("Failed to accept connection: {:?}", e),
         }
     }
 }
 
-fn process_socket<T: TEnDecoder, U: TCancellationTokenFactory<N, W>, N, W>(
+fn process_socket<T: TEnDecoder, U: TCancellationTokenFactory>(
     mut query_manager: QueryManager<TcpStream>,
     ttl_inbox: TtlSchedulerInbox,
     cache_dispatcher: CacheManager<T>,
-) where
-    U: TCancellationTokenFactory<N, W>,
-    N: TCancelNotifier,
-    W: TCancellationWatcher,
-{
+) {
     tokio::spawn(async move {
         loop {
-            let (tx, rx) = U::create();
+            let (tx, rx) = U::create().split();
             tokio::spawn(async move {
                 tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
                 tx.notify();

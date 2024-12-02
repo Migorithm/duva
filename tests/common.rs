@@ -65,18 +65,13 @@ impl TNotifyStartUp for StartFlag {
     }
 }
 
-pub async fn start_test_server<T: TCancellationTokenFactory<N, W>, N, W>(
+pub async fn start_test_server<T: TCancellationTokenFactory>(
     config: &'static Config,
-) -> tokio::task::JoinHandle<Result<(), anyhow::Error>>
-where
-    T: TCancellationTokenFactory<N, W>,
-    N: TCancelNotifier,
-    W: TCancellationWatcher,
-{
+) -> tokio::task::JoinHandle<Result<(), anyhow::Error>> {
     // GIVEN
     let notify = Arc::new(tokio::sync::Notify::new());
     let start_flag = StartFlag(notify.clone());
-    let h = tokio::spawn(redis_starter_rust::start_up::<T, N, W>(
+    let h = tokio::spawn(redis_starter_rust::start_up::<T>(
         config,
         3,
         redis_starter_rust::adapters::persistence::EnDecoder,
