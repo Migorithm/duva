@@ -1,4 +1,10 @@
-use redis_starter_rust::{config::Config, TNotifyStartUp};
+use redis_starter_rust::{
+    config::Config,
+    services::query_manager::interface::{
+        TCancelNotifier, TCancellationTokenFactory, TCancellationWatcher,
+    },
+    TNotifyStartUp,
+};
 use std::sync::{Arc, OnceLock};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
@@ -59,13 +65,18 @@ impl TNotifyStartUp for StartFlag {
     }
 }
 
-pub async fn start_test_server(
+pub async fn start_test_server<T: TCancellationTokenFactory<N, W>, N, W>(
     config: &'static Config,
-) -> tokio::task::JoinHandle<Result<(), anyhow::Error>> {
+) -> tokio::task::JoinHandle<Result<(), anyhow::Error>>
+where
+    T: TCancellationTokenFactory<N, W>,
+    N: TCancelNotifier,
+    W: TCancellationWatcher,
+{
     // GIVEN
     let notify = Arc::new(tokio::sync::Notify::new());
     let start_flag = StartFlag(notify.clone());
-    let h = tokio::spawn(redis_starter_rust::start_up(
+    let h = tokio::spawn(redis_starter_rust::start_up::<T, N, W>(
         config,
         3,
         redis_starter_rust::adapters::persistence::EnDecoder,

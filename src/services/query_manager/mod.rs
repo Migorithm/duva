@@ -37,10 +37,15 @@ where
         &mut self,
         persistence_router: &CacheManager<EnDec>,
         ttl_sender: TtlSchedulerInbox,
+        mut cancellation_token: impl interface::TCancellationWatcher,
     ) -> Result<()> {
         let Some((cmd, args)) = self.read_value().await? else {
             return Err(anyhow::anyhow!("Connection closed"));
         };
+
+        if cancellation_token.watch() {
+            return Err(anyhow::anyhow!("Cancellation token activated"));
+        }
 
         // TODO if it is persistence operation, get the key and hash, take the appropriate sender, send it;
         let response = match cmd {

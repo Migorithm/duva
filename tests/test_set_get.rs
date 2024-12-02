@@ -11,7 +11,15 @@ async fn test() {
     // GIVEN
     let config = integration_test_config().await;
 
-    let _ = start_test_server(config).await;
+    let _ = start_test_server::<
+        (
+            tokio::sync::oneshot::Sender<()>,
+            tokio::sync::oneshot::Receiver<()>,
+        ),
+        tokio::sync::oneshot::Sender<()>,
+        tokio::sync::oneshot::Receiver<()>,
+    >(config)
+    .await;
 
     let mut client_stream = TcpStream::connect(config.bind_addr()).await.unwrap();
     let mut h: TestStreamHandler = client_stream.split().into();
