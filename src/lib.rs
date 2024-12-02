@@ -40,28 +40,25 @@ async fn start_accepting_connections<T: TCancellationTokenFactory>(
     listener: TcpListener,
     config: &'static Config,
     ttl_inbox: TtlSchedulerInbox,
-    cache_dispatcher: &'static CacheManager<impl TEnDecoder>,
+    cache_manager: &'static CacheManager<impl TEnDecoder>,
 ) -> Result<()> {
     loop {
         match listener.accept().await {
             Ok((stream, _)) =>
             // Spawn a new task to handle the connection without blocking the main thread.
             {
-                process_socket::<_, T>(stream, ttl_inbox.clone(), cache_dispatcher, config);
+                let query_manager =
+                    QueryManager::new(stream, config, &cache_manager, ttl_inbox.clone());
+                handle_single_user_stream::<T>(query_manager);
             }
             Err(e) => eprintln!("Failed to accept connection: {:?}", e),
         }
     }
 }
 
-fn process_socket<T: TEnDecoder, U: TCancellationTokenFactory>(
-    socket: TcpStream,
-    ttl_inbox: TtlSchedulerInbox,
-    cache_manager: &'static CacheManager<T>,
-    config: &'static Config,
+fn handle_single_user_stream<U: TCancellationTokenFactory>(
+    mut query_manager: QueryManager<TcpStream, impl TEnDecoder>,
 ) {
-    let mut query_manager = QueryManager::new(socket, config, &cache_manager);
-
     tokio::spawn(async move {
         loop {
             let Ok(Some((cmd, args))) = query_manager.read_value().await else {
@@ -75,10 +72,7 @@ fn process_socket<T: TEnDecoder, U: TCancellationTokenFactory>(
             // Notify the cancellation notifier to cancel the query after 100 milliseconds.
             cancellation_notifier.notify(100);
 
-            if let Err(e) = query_manager
-                .handle(ttl_inbox.clone(), cancellation_watcher, cmd, args)
-                .await
-            {
+            if let Err(e) = query_manager.handle(cancellation_watcher, cmd, args).await {
                 eprintln!("Error: {:?}", e);
                 println!("Connection closed");
                 break;

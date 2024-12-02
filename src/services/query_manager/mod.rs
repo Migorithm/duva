@@ -28,6 +28,7 @@ where
     pub(crate) stream: T,
     config: &'static Config,
     cache_manager: &'static CacheManager<U>,
+    ttl_manager: TtlSchedulerInbox,
 }
 
 impl<T, U> QueryManager<T, U>
@@ -37,8 +38,6 @@ where
 {
     pub(crate) async fn handle(
         &mut self,
-
-        ttl_sender: TtlSchedulerInbox,
         mut cancellation_token: impl interface::TCancellationWatcher,
         cmd: UserRequest,
         args: InputValues,
@@ -58,7 +57,7 @@ where
             UserRequest::Set => {
                 let cache_entry = args.take_set_args()?;
                 self.cache_manager
-                    .route_set(cache_entry, ttl_sender)
+                    .route_set(cache_entry, self.ttl_manager.clone())
                     .await?
             }
             UserRequest::Save => {
@@ -106,11 +105,13 @@ where
         stream: T,
         config: &'static Config,
         cache_manager: &'static CacheManager<U>,
+        ttl_manager: TtlSchedulerInbox,
     ) -> Self {
         QueryManager {
             stream,
             config,
             cache_manager,
+            ttl_manager,
         }
     }
 

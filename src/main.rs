@@ -10,6 +10,7 @@ const NUM_OF_PERSISTENCE: usize = 10;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    // bootstrap dependencies
     start_up::<CancellationToken>(config(), NUM_OF_PERSISTENCE, EnDecoder, ()).await
 }
 
