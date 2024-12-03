@@ -83,7 +83,7 @@ use crate::services::interfaces::endec::{TDecodeData, TEncodeData};
 use decoder::byte_decoder::BytesDecoder;
 use decoder::states::DecoderInit;
 pub use encoder::byte_encoder;
-use encoder::encoding_processor::{EncodingMeta, FileEncodingProcessor};
+use encoder::encoding_processor::{EncodingMeta, EncodingProcessor};
 
 const HEADER_MAGIC_STRING: &str = "REDIS";
 const METADATA_SECTION_INDICATOR: u8 = 0xFA;
@@ -143,7 +143,7 @@ impl TEncodeData for EnDecoder {
             .open(filepath)
             .await?;
 
-        Ok(FileEncodingProcessor::new(
+        Ok(EncodingProcessor::new(
             file,
             EncodingMeta::new(num_of_cache_actors),
         ))

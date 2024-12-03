@@ -1,7 +1,7 @@
 use std::sync::OnceLock;
 
 use redis_starter_rust::{
-    adapters::{cancellation_token::CancellationToken, persistence::EnDecoder},
+    adapters::{cancellation_token::CancellationToken, endec::EnDecoder},
     config::Config,
     start_up,
 };

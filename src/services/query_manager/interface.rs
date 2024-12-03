@@ -7,7 +7,7 @@ pub trait TRead {
     ) -> impl std::future::Future<Output = Result<(), std::io::Error>> + Send;
 }
 
-pub trait TWrite {
+pub trait TWrite: Send + Sync {
     fn write_all(
         &mut self,
         buf: &[u8],
