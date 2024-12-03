@@ -1,17 +1,20 @@
-use crate::adapters::persistence::byte_encoder::{encode_checksum, encode_database_info, encode_database_table_size, encode_header, encode_metadata};
-use crate::services::interfaces::endec::Processable;
+use crate::adapters::persistence::byte_encoder::{
+    encode_checksum, encode_database_info, encode_database_table_size, encode_header,
+    encode_metadata,
+};
+use crate::services::interfaces::endec::TEncodingProcessor;
 use crate::services::statefuls::routers::save_actor::SaveActorCommand;
 use crate::services::CacheEntry;
 use anyhow::Result;
 use std::collections::VecDeque;
 use tokio::io::AsyncWriteExt;
 
-pub struct EncodingProcessor {
-    pub(in crate::adapters::persistence) file: tokio::fs::File,
-    pub(in crate::adapters::persistence) meta: EncodingMeta,
+pub struct FileEncodingProcessor {
+    pub(super) file: tokio::fs::File,
+    pub(super) meta: EncodingMeta,
 }
 
-pub(in crate::adapters::persistence) struct EncodingMeta {
+pub(crate) struct EncodingMeta {
     num_of_saved_table_size_actor: usize,
     total_key_value_table_size: usize,
     total_expires_table_size: usize,
@@ -19,7 +22,7 @@ pub(in crate::adapters::persistence) struct EncodingMeta {
     num_of_cache_actors: usize,
 }
 
-impl Processable for EncodingProcessor {
+impl TEncodingProcessor for FileEncodingProcessor {
     async fn add_meta(&mut self) -> Result<()> {
         let meta = [
             encode_header("0011")?,
@@ -68,7 +71,11 @@ impl Processable for EncodingProcessor {
     }
 }
 
-impl EncodingProcessor {
+impl FileEncodingProcessor {
+    pub fn new(file: tokio::fs::File, meta: EncodingMeta) -> Self {
+        Self { file, meta }
+    }
+
     async fn encode_chunk_queue(&mut self) -> Result<()> {
         while let Some(chunk) = self.meta.chunk_queue.pop_front() {
             for kvs in chunk {

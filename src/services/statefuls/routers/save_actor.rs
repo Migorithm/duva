@@ -19,11 +19,11 @@ impl SaveActor {
         // TODO encoder seems to work as actual save actor.
         encoder: T,
     ) -> Sender<SaveActorCommand> {
-        let (outbox, mut inbox) = tokio::sync::mpsc::channel(100);
+        let (outbox, inbox) = tokio::sync::mpsc::channel(100);
 
         tokio::spawn(async move {
             encoder
-                .encode_data(&filepath, &mut inbox, num_of_cache_actors)
+                .encode_data(&filepath, inbox, num_of_cache_actors)
                 .await
         });
         outbox

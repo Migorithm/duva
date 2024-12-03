@@ -11,7 +11,7 @@ use crate::{
 };
 use anyhow::Result;
 use bytes::BytesMut;
-use interface::{TRead, TWriteBuf};
+use interface::{TRead, TWrite};
 use query_io::QueryIO;
 use request::UserRequest;
 
@@ -22,7 +22,7 @@ use super::interfaces::endec::TEnDecoder;
 /// Controller is a struct that will be used to read and write values to the client.
 pub struct QueryManager<T, U>
 where
-    T: TWriteBuf + TRead,
+    T: TWrite + TRead,
     U: TEnDecoder,
 {
     pub(crate) stream: T,
@@ -33,7 +33,7 @@ where
 
 impl<T, U> QueryManager<T, U>
 where
-    T: TWriteBuf + TRead,
+    T: TWrite + TRead,
     U: TEnDecoder,
 {
     pub(crate) async fn handle(
@@ -98,7 +98,7 @@ where
 
 impl<T, U> QueryManager<T, U>
 where
-    T: TWriteBuf + TRead,
+    T: TWrite + TRead,
     U: TEnDecoder,
 {
     pub(crate) fn new(
@@ -128,7 +128,7 @@ where
     }
 
     pub async fn write_value(&mut self, value: QueryIO) -> Result<()> {
-        self.stream.write_buf(value.serialize().as_bytes()).await?;
+        self.stream.write_all(value.serialize().as_bytes()).await?;
         Ok(())
     }
 
