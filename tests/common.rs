@@ -1,8 +1,7 @@
+use redis_starter_rust::services::query_manager::query_io::QueryIO;
 use redis_starter_rust::{
     config::Config, services::query_manager::interface::TCancellationTokenFactory, TNotifyStartUp,
 };
-use redis_starter_rust::services::query_manager::query_io::QueryIO;
-use redis_starter_rust::{config::Config, TNotifyStartUp};
 use std::sync::{Arc, OnceLock};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},

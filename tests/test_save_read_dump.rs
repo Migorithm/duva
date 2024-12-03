@@ -6,6 +6,7 @@
 mod common;
 use crate::common::{array, keys_command, null_response, ok_response, save_command, set_command, set_command_with_expiry, start_test_server};
 use common::{integration_test_config, TestStreamHandler};
+use redis_starter_rust::adapters::cancellation_token::CancellationToken;
 use std::env;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::net::TcpStream;
@@ -17,7 +18,7 @@ async fn test() {
     env::set_var("dbfilename", &test_file_name);
 
     let config = integration_test_config().await;
-    let _ = start_test_server(config).await;
+    let _ = start_test_server::<CancellationToken>(config).await;
 
     let mut client_stream = TcpStream::connect(config.bind_addr()).await.unwrap();
     let mut h: TestStreamHandler = client_stream.split().into();
@@ -43,7 +44,7 @@ async fn test() {
 
     // start another instance
     let config = integration_test_config().await;
-    let _ = start_test_server(config).await;
+    let _ = start_test_server::<CancellationToken>(config).await;
 
     let mut client_stream = TcpStream::connect(config.bind_addr()).await.unwrap();
     let mut h: TestStreamHandler = client_stream.split().into();
