@@ -66,15 +66,15 @@ fn handle_single_user_stream<U: TCancellationTokenFactory>(
                 break;
             };
 
-            let (cancellation_notifier, cancellation_watcher) = U::create().split();
+            const TIMEOUT: u64 = 100;
+            let (cancellation_notifier, cancellation_watcher) = U::create(TIMEOUT).split();
 
             // TODO subject to change - more to dynamic
             // Notify the cancellation notifier to cancel the query after 100 milliseconds.
-            cancellation_notifier.notify(100);
+            cancellation_notifier.notify();
 
             if let Err(e) = query_manager.handle(cancellation_watcher, cmd, args).await {
                 eprintln!("Error: {:?}", e);
-                println!("Connection closed");
                 break;
             }
         }

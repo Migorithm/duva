@@ -42,7 +42,9 @@ pub async fn integration_test_config() -> &'static Config {
 }
 
 pub async fn integration_test_config_with_dbfilename(dbfilename: &str) -> &'static Config {
-    let config = init_config_with_free_port().await.set_dbfilename(Some(dbfilename.to_string()));
+    let config = init_config_with_free_port()
+        .await
+        .set_dbfilename(Some(dbfilename.to_string()));
 
     CONFIG.get_or_init(|| config)
 }
@@ -91,10 +93,12 @@ pub async fn start_test_server<T: TCancellationTokenFactory>(
 }
 
 pub fn array(arr: Vec<&str>) -> String {
-    QueryIO::Array(arr.iter()
-        .map(|s| QueryIO::BulkString(s.to_string()))
-        .collect())
-        .serialize()
+    QueryIO::Array(
+        arr.iter()
+            .map(|s| QueryIO::BulkString(s.to_string()))
+            .collect(),
+    )
+    .serialize()
 }
 
 pub fn bulk_string(s: &str) -> String {

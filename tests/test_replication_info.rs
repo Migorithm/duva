@@ -11,7 +11,7 @@ use redis_starter_rust::adapters::cancellation_token::CancellationToken;
 use tokio::net::TcpStream;
 
 #[tokio::test]
-async fn test() {
+async fn test_replication_info() {
     // GIVEN
     //TODO test config should be dynamically configured
     let config = integration_test_config().await;
