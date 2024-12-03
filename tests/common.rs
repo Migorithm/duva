@@ -36,9 +36,19 @@ impl<'a> TestStreamHandler<'a> {
 static CONFIG: OnceLock<Config> = OnceLock::new();
 
 pub async fn integration_test_config() -> &'static Config {
-    let port = find_free_port_in_range(49152, 65535).await;
+    let config = init_config_with_free_port().await;
 
-    CONFIG.get_or_init(|| Config::default().set_port(port.unwrap()))
+    CONFIG.get_or_init(|| config)
+}
+
+pub async fn integration_test_config_with_dbfilename(dbfilename: &str) -> &'static Config {
+    let config = init_config_with_free_port().await.set_dbfilename(Some(dbfilename.to_string()));
+
+    CONFIG.get_or_init(|| config)
+}
+
+async fn init_config_with_free_port() -> Config {
+    Config::default().set_port(find_free_port_in_range(49152, 65535).await.unwrap())
 }
 
 // scan for available port
