@@ -35,7 +35,7 @@ pub struct TestCancellationToken {
     receiver: tokio::sync::oneshot::Receiver<()>,
 }
 impl TCancellationTokenFactory for TestCancellationToken {
-    fn create() -> Self {
+    fn create(_timeout: u64) -> Self {
         let (tx, rx) = tokio::sync::oneshot::channel();
         Self {
             sender: TestNotifier(tx),
@@ -49,8 +49,7 @@ impl TCancellationTokenFactory for TestCancellationToken {
 
 struct TestNotifier(tokio::sync::oneshot::Sender<()>);
 impl TCancellationNotifier for TestNotifier {
-    async fn notify(self, _millis: u64) -> anyhow::Result<()> {
+    fn notify(self) {
         let _ = self.0.send(());
-        Ok(())
     }
 }

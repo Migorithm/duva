@@ -6,7 +6,7 @@ use redis_starter_rust::adapters::cancellation_token::CancellationToken;
 use tokio::net::TcpStream;
 
 #[tokio::test]
-async fn test() {
+async fn test_keys() {
     // GIVEN
     let config = integration_test_config().await;
 

@@ -3,14 +3,17 @@ use crate::services::query_manager::interface::{
 };
 
 pub struct CancellationToken {
-    sender: tokio::sync::oneshot::Sender<()>,
+    sender: CancellationNotifier,
     receiver: tokio::sync::oneshot::Receiver<()>,
 }
 impl TCancellationTokenFactory for CancellationToken {
-    fn create() -> Self {
+    fn create(timeout: u64) -> Self {
         let (tx, rx) = tokio::sync::oneshot::channel();
         Self {
-            sender: tx,
+            sender: CancellationNotifier {
+                sender: tx,
+                timeout,
+            },
             receiver: rx,
         }
     }
@@ -24,14 +27,17 @@ impl TCancellationWatcher for tokio::sync::oneshot::Receiver<()> {
         self.try_recv().is_ok()
     }
 }
-impl TCancellationNotifier for tokio::sync::oneshot::Sender<()> {
-    async fn notify(self, millis: u64) -> anyhow::Result<()> {
+impl TCancellationNotifier for CancellationNotifier {
+    fn notify(self) {
         let local_set = tokio::task::LocalSet::new();
         local_set.spawn_local(async move {
-            tokio::time::sleep(tokio::time::Duration::from_millis(millis)).await;
-            let _ = self.send(());
+            tokio::time::sleep(tokio::time::Duration::from_millis(self.timeout)).await;
+            let _ = self.sender.send(());
         });
-
-        Ok(())
     }
+}
+
+struct CancellationNotifier {
+    sender: tokio::sync::oneshot::Sender<()>,
+    timeout: u64,
 }

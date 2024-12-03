@@ -6,12 +6,12 @@
 mod common;
 use common::{integration_test_config, start_test_server, TestStreamHandler};
 
-use redis_starter_rust::adapters::cancellation_token::CancellationToken;
 use crate::common::{array, config_command};
+use redis_starter_rust::adapters::cancellation_token::CancellationToken;
 use tokio::net::TcpStream;
 
 #[tokio::test]
-async fn test() {
+async fn test_config_get_dir() {
     // GIVEN
     //TODO test config should be dynamically configured
     let config = integration_test_config().await;
@@ -23,8 +23,7 @@ async fn test() {
     let mut h: TestStreamHandler = client_stream.split().into();
 
     // WHEN
-    h.send(config_command("GET", "dir").as_slice())
-        .await;
+    h.send(config_command("GET", "dir").as_slice()).await;
 
     // THEN
     assert_eq!(h.get_response().await, array(vec!["dir", "."]));
