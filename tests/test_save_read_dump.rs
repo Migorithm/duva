@@ -27,11 +27,10 @@ async fn test() {
     h.send(set_command("foo", "bar").as_slice()).await;
     assert_eq!(h.get_response().await, ok_response());
     // set with expiry time
-    // h.send(b"*5\r\n$3\r\nSET\r\n$4\r\nfoo2\r\n$4\r\nbar2\r\n$2\r\npx\r\n$10\r\n9999999999\r\n'").await;
     h.send(set_command_with_expiry("foo2", "bar2", 9999999999).as_slice()).await;
     assert_eq!(h.get_response().await, ok_response());
     // check keys
-    h.send(keys_command().as_slice()).await;
+    h.send(keys_command("*").as_slice()).await;
     assert_eq!(h.get_response().await, array(vec!["foo", "foo2"]));
     // save
     h.send(save_command().as_slice()).await;
@@ -50,7 +49,7 @@ async fn test() {
     let mut h: TestStreamHandler = client_stream.split().into();
 
     // keys
-    h.send(keys_command().as_slice()).await;
+    h.send(keys_command("*").as_slice()).await;
     assert_eq!(h.get_response().await, array(vec!["foo", "foo2"]));
 
     // remove file

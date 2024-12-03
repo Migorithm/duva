@@ -21,7 +21,7 @@ async fn test() {
     }
 
     // Fire keys command
-    h.send(keys_command().as_slice()).await;
+    h.send(keys_command("*").as_slice()).await;
     let res = h.get_response().await;
 
     assert!(res.starts_with(format!("*{}\r\n", num_of_keys).as_str()));

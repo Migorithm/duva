@@ -97,8 +97,8 @@ pub fn null_response() -> String {
     QueryIO::Null.serialize()
 }
 
-pub fn keys_command() -> Vec<u8> {
-    array(vec!["KEYS", "*"]).into_bytes()
+pub fn keys_command(pattern: &str) -> Vec<u8> {
+    array(vec!["KEYS", pattern]).into_bytes()
 }
 
 pub fn config_command(command: &str, key: &str) -> Vec<u8> {
