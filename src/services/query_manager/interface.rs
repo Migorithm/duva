@@ -58,8 +58,8 @@ pub trait TCancellationTokenFactory: Send + Sync + 'static {
     fn split(self) -> (impl TCancellationNotifier, impl TCancellationWatcher);
 }
 
-pub trait TCancellationNotifier {
-    fn notify(self, millis: u64);
+pub trait TCancellationNotifier: Send {
+    fn notify(self, millis: u64) -> impl std::future::Future<Output = anyhow::Result<()>> + Send;
 }
 pub trait TCancellationWatcher: Send {
     fn watch(&mut self) -> bool;

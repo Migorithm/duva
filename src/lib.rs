@@ -70,9 +70,10 @@ fn handle_single_user_stream<U: TCancellationTokenFactory>(
 
             // TODO subject to change - more to dynamic
             // Notify the cancellation notifier to cancel the query after 100 milliseconds.
-            cancellation_notifier.notify(100);
-
-            if let Err(e) = query_manager.handle(cancellation_watcher, cmd, args).await {
+            if let Err(e) = tokio::try_join!(
+                cancellation_notifier.notify(100),
+                query_manager.handle(cancellation_watcher, cmd, args),
+            ) {
                 eprintln!("Error: {:?}", e);
                 println!("Connection closed");
                 break;

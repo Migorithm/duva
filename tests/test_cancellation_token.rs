@@ -49,7 +49,8 @@ impl TCancellationTokenFactory for TestCancellationToken {
 
 struct TestNotifier(tokio::sync::oneshot::Sender<()>);
 impl TCancellationNotifier for TestNotifier {
-    fn notify(self, _millis: u64) {
+    async fn notify(self, _millis: u64) -> anyhow::Result<()> {
         let _ = self.0.send(());
+        Ok(())
     }
 }

@@ -25,10 +25,13 @@ impl TCancellationWatcher for tokio::sync::oneshot::Receiver<()> {
     }
 }
 impl TCancellationNotifier for tokio::sync::oneshot::Sender<()> {
-    fn notify(self, millis: u64) {
-        tokio::spawn(async move {
+    async fn notify(self, millis: u64) -> anyhow::Result<()> {
+        let local_set = tokio::task::LocalSet::new();
+        local_set.spawn_local(async move {
             tokio::time::sleep(tokio::time::Duration::from_millis(millis)).await;
             let _ = self.send(());
         });
+
+        Ok(())
     }
 }
