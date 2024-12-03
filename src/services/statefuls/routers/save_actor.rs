@@ -10,35 +10,22 @@ pub enum SaveActorCommand {
     StopSentinel,
 }
 
-pub struct SaveActor<T: TEncodeData> {
-    filepath: String,
-    pub num_of_cache_actors: usize,
-    pub inbox: tokio::sync::mpsc::Receiver<SaveActorCommand>,
-    encoder: T,
-}
+pub struct SaveActor;
 
-impl<T: TEncodeData> SaveActor<T> {
-    pub fn run(
+impl SaveActor {
+    pub fn run<T: TEncodeData>(
         filepath: String,
         num_of_cache_actors: usize,
+        // TODO encoder seems to work as actual save actor.
         encoder: T,
     ) -> Sender<SaveActorCommand> {
-        let (outbox, inbox) = tokio::sync::mpsc::channel(100);
-        let actor = Self {
-            filepath,
-            inbox,
-            num_of_cache_actors,
-            encoder,
-        };
-        tokio::spawn(actor.handle());
+        let (outbox, mut inbox) = tokio::sync::mpsc::channel(100);
+
+        tokio::spawn(async move {
+            encoder
+                .encode_data(&filepath, &mut inbox, num_of_cache_actors)
+                .await
+        });
         outbox
-    }
-
-    pub async fn handle(mut self) -> anyhow::Result<()> {
-        self.encoder
-            .encode_data(&self.filepath, &mut self.inbox, self.num_of_cache_actors)
-            .await?;
-
-        Ok(())
     }
 }
