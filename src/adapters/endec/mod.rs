@@ -78,12 +78,12 @@ use std::time::SystemTime;
 
 pub mod decoder;
 pub mod encoder;
+use crate::services::interfaces::endec::TEncodingProcessor;
 use crate::services::interfaces::endec::{TDecodeData, TEncodeData};
 use decoder::byte_decoder::BytesDecoder;
 use decoder::states::DecoderInit;
 pub use encoder::byte_encoder;
-use encoder::encoding_processor::EncodingMeta;
-use encoder::encoding_processor::EncodingProcessor;
+use encoder::encoding_processor::{EncodingMeta, EncodingProcessor};
 
 const HEADER_MAGIC_STRING: &str = "REDIS";
 const METADATA_SECTION_INDICATOR: u8 = 0xFA;
@@ -131,21 +131,21 @@ impl TDecodeData for EnDecoder {
     }
 }
 
-#[allow(refining_impl_trait)]
 impl TEncodeData for EnDecoder {
-    async fn create_on_path(
+    async fn create_encoding_processor(
         &self,
         filepath: &str,
         num_of_cache_actors: usize,
-    ) -> anyhow::Result<EncodingProcessor> {
+    ) -> anyhow::Result<impl TEncodingProcessor> {
         let file = tokio::fs::OpenOptions::new()
             .write(true)
             .create(true)
             .open(filepath)
             .await?;
-        Ok(EncodingProcessor {
+
+        Ok(EncodingProcessor::new(
             file,
-            meta: EncodingMeta::new(num_of_cache_actors),
-        })
+            EncodingMeta::new(num_of_cache_actors),
+        ))
     }
 }

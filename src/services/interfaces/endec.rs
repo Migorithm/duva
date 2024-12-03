@@ -18,13 +18,14 @@ pub trait TEncodeData: ThreadSafeCloneable {
     fn encode_data(
         &self,
         filepath: &str,
-        inbox: &mut Receiver<SaveActorCommand>,
+        mut inbox: Receiver<SaveActorCommand>,
         number_of_cache_actors: usize,
     ) -> impl std::future::Future<Output = anyhow::Result<()>> + Send {
         async move {
             let mut processor = self
-                .create_on_path(filepath, number_of_cache_actors)
+                .create_encoding_processor(filepath, number_of_cache_actors)
                 .await?;
+
             processor.add_meta().await?;
             while let Some(command) = inbox.recv().await {
                 match processor.handle_cmd(command).await {
@@ -42,14 +43,14 @@ pub trait TEncodeData: ThreadSafeCloneable {
             Ok(())
         }
     }
-    fn create_on_path(
+    fn create_encoding_processor(
         &self,
         filepath: &str,
         number_of_cache_actors: usize,
-    ) -> impl std::future::Future<Output = anyhow::Result<impl Processable>> + Send;
+    ) -> impl std::future::Future<Output = anyhow::Result<impl TEncodingProcessor>> + Send;
 }
 
-pub trait Processable: Send + Sync {
+pub trait TEncodingProcessor: Send + Sync {
     fn add_meta(&mut self) -> impl std::future::Future<Output = anyhow::Result<()>> + Send;
     fn handle_cmd(
         &mut self,
