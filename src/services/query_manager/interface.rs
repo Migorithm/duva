@@ -52,3 +52,15 @@ impl TWriteBuf for tokio::net::TcpStream {
         stream.write_all(buf).await
     }
 }
+
+pub trait TCancellationTokenFactory: Send + Sync + 'static {
+    fn create() -> Self;
+    fn split(self) -> (impl TCancellationNotifier, impl TCancellationWatcher);
+}
+
+pub trait TCancellationNotifier {
+    fn notify(self, millis: u64);
+}
+pub trait TCancellationWatcher: Send {
+    fn watch(&mut self) -> bool;
+}
