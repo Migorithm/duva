@@ -1,3 +1,4 @@
+use redis_starter_rust::services::query_manager::query_io::QueryIO;
 use redis_starter_rust::{
     config::Config, services::query_manager::interface::TCancellationTokenFactory, TNotifyStartUp,
 };
@@ -35,9 +36,19 @@ impl<'a> TestStreamHandler<'a> {
 static CONFIG: OnceLock<Config> = OnceLock::new();
 
 pub async fn integration_test_config() -> &'static Config {
-    let port = find_free_port_in_range(49152, 65535).await;
+    let config = init_config_with_free_port().await;
 
-    CONFIG.get_or_init(|| Config::default().set_port(port.unwrap()))
+    CONFIG.get_or_init(|| config)
+}
+
+pub async fn integration_test_config_with_dbfilename(dbfilename: &str) -> &'static Config {
+    let config = init_config_with_free_port().await.set_dbfilename(Some(dbfilename.to_string()));
+
+    CONFIG.get_or_init(|| config)
+}
+
+async fn init_config_with_free_port() -> Config {
+    Config::default().set_port(find_free_port_in_range(49152, 65535).await.unwrap())
 }
 
 // scan for available port
@@ -77,4 +88,51 @@ pub async fn start_test_server<T: TCancellationTokenFactory>(
     //warm up time
     notify.notified().await;
     h
+}
+
+pub fn array(arr: Vec<&str>) -> String {
+    QueryIO::Array(arr.iter()
+        .map(|s| QueryIO::BulkString(s.to_string()))
+        .collect())
+        .serialize()
+}
+
+pub fn bulk_string(s: &str) -> String {
+    QueryIO::BulkString(s.to_string()).serialize()
+}
+
+pub fn ok_response() -> String {
+    QueryIO::SimpleString("OK".to_string()).serialize()
+}
+
+pub fn null_response() -> String {
+    QueryIO::Null.serialize()
+}
+
+pub fn keys_command(pattern: &str) -> Vec<u8> {
+    array(vec!["KEYS", pattern]).into_bytes()
+}
+
+pub fn config_command(command: &str, key: &str) -> Vec<u8> {
+    array(vec!["CONFIG", command, key]).into_bytes()
+}
+
+pub fn info_command(key: &str) -> Vec<u8> {
+    array(vec!["INFO", key]).into_bytes()
+}
+
+pub fn set_command_with_expiry(key: &str, value: &str, expiry: i64) -> Vec<u8> {
+    array(vec!["SET", key, value, "PX", &expiry.to_string()]).into_bytes()
+}
+
+pub fn set_command(key: &str, value: &str) -> Vec<u8> {
+    array(vec!["SET", key, value]).into_bytes()
+}
+
+pub fn get_command(key: &str) -> Vec<u8> {
+    array(vec!["GET", key]).into_bytes()
+}
+
+pub fn save_command() -> Vec<u8> {
+    array(vec!["SAVE"]).into_bytes()
 }

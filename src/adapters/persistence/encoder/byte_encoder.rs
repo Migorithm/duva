@@ -68,10 +68,10 @@ pub fn encode_checksum(checksum: &[u8]) -> Result<Vec<u8>> {
 }
 fn encode_key_value(key: &str, value: &str) -> Result<Vec<u8>> {
     let mut result = Vec::new();
-    result.extend_from_slice(&encode_size(key.len())?);
-    result.extend_from_slice(key.as_bytes());
-    result.extend_from_slice(&encode_size(value.len())?);
-    result.extend_from_slice(value.as_bytes());
+    let key = encode_string(key.len(), key)?;
+    let value = encode_string(value.len(), value)?;
+    result.extend_from_slice(&key);
+    result.extend_from_slice(&value);
     Ok(result)
 }
 

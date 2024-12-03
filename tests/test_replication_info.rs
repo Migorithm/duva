@@ -4,6 +4,7 @@
 /// if the value of dir is /tmp, then the expected response to CONFIG GET dir is:
 /// *2\r\n$3\r\ndir\r\n$4\r\n/tmp\r\n
 mod common;
+use crate::common::{bulk_string, info_command};
 use common::{integration_test_config, start_test_server, TestStreamHandler};
 
 use redis_starter_rust::adapters::cancellation_token::CancellationToken;
@@ -21,8 +22,8 @@ async fn test() {
     let mut h: TestStreamHandler = client_stream.split().into();
 
     // WHEN
-    h.send(b"*2\r\n$4\r\nINFO\r\n$11\r\nreplication\r\n").await;
+    h.send(info_command("replication").as_slice()).await;
 
     // THEN
-    assert_eq!(h.get_response().await, "$11\r\nrole:master\r\n");
+    assert_eq!(h.get_response().await, bulk_string("role:master"));
 }
