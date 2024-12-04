@@ -4,10 +4,7 @@ pub mod request;
 use crate::{
     config::{Config, ConfigCommand},
     make_smart_pointer,
-    services::{
-        statefuls::cache::{cache_manager::CacheManager, ttl_manager::TtlSchedulerInbox},
-        CacheEntry,
-    },
+    services::statefuls::cache::{cache_manager::CacheManager, ttl_manager::TtlSchedulerInbox},
 };
 use anyhow::Result;
 use bytes::BytesMut;
@@ -17,7 +14,10 @@ use request::UserRequest;
 
 use std::str::FromStr;
 
-use super::statefuls::persist::{endec::TEnDecoder, save_actor::SaveActor};
+use super::statefuls::{
+    cache::CacheEntry,
+    persist::{endec::TEnDecoder, save_actor::SaveActor},
+};
 
 /// Controller is a struct that will be used to read and write values to the client.
 pub struct QueryManager<T, U>

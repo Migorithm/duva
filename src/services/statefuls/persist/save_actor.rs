@@ -1,4 +1,4 @@
-use crate::services::{statefuls::persist::endec::TEncodingProcessor, CacheEntry};
+use crate::services::statefuls::{cache::CacheEntry, persist::endec::TEncodingProcessor};
 use tokio::sync::mpsc::{Receiver, Sender};
 
 use super::endec::TEncodeData;
