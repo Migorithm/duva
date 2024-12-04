@@ -1,7 +1,6 @@
-use std::time::SystemTime;
-
 use anyhow::Result;
-use tokio::fs::try_exists;
+use std::{sync::Arc, time::SystemTime};
+use tokio::{fs::try_exists, sync::RwLock};
 
 pub enum ConfigCommand {
     Dir,
@@ -73,7 +72,7 @@ pub struct Config {
     pub host: String,
     pub(crate) dir: String,
     pub(crate) dbfilename: Option<String>,
-    pub(crate) replication: Replication,
+    pub replication: Arc<RwLock<Replication>>,
     startup_time: SystemTime,
 }
 
@@ -91,16 +90,20 @@ impl Default for Config {
             }
         );
 
-        let role = replicaof
-            .map(|_| "slave".to_string())
-            .unwrap_or("master".to_string());
+        let replicaof = replicaof.map(|host_port| {
+            host_port
+                .split_once(' ')
+                .map(|(a, b)| (a.to_string(), b.to_string()))
+                .into_iter()
+                .collect::<(_, _)>()
+        });
 
         Config {
             port,
             host,
             dir,
             dbfilename,
-            replication: Replication::new(role),
+            replication: Arc::new(RwLock::new(Replication::new(replicaof))),
             startup_time: SystemTime::now(),
         }
     }
@@ -167,11 +170,8 @@ impl Config {
         }
     }
 
-    pub fn replication_info(&self) -> Vec<String> {
-        self.replication.info()
-    }
-    pub fn replication_role(&self) -> String {
-        self.replication.role()
+    pub async fn replication_info(&self) -> Vec<String> {
+        self.replication.read().await.info()
     }
 
     pub(crate) fn startup_time(&self) -> &std::time::SystemTime {
@@ -180,27 +180,31 @@ impl Config {
 }
 
 #[derive(Debug, Clone, Default)]
-pub(crate) struct Replication {
-    role: String,                          // The role of the server (master or slave)
-    connected_slaves: u16,                 // The number of connected replicas
+pub struct Replication {
+    pub connected_slaves: u16,             // The number of connected replicas
     master_replid: String, // The replication ID of the master example: 8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb
     master_repl_offset: u64, // The replication offset of the master example: 0
     second_repl_offset: i16, // -1
     repl_backlog_active: usize, // 0
     repl_backlog_size: usize, // 1048576
     repl_backlog_first_byte_offset: usize, // 0
+
+    pub master_host: Option<String>,
+    pub master_port: Option<u16>,
 }
 impl Replication {
-    pub fn new(role: String) -> Self {
+    pub fn new(replicaof: Option<(String, String)>) -> Self {
         Replication {
-            role,
-            connected_slaves: 0,
+            connected_slaves: 0, // dynamically configurable
             master_replid: "8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb".to_string(),
             master_repl_offset: 0,
             second_repl_offset: -1,
             repl_backlog_active: 0,
             repl_backlog_size: 1048576,
             repl_backlog_first_byte_offset: 0,
+            master_host: replicaof.as_ref().cloned().map(|(host, _)| host),
+            master_port: replicaof
+                .map(|(_, port)| port.parse().expect("Invalid port number of given")),
         }
     }
     pub fn info(&self) -> Vec<String> {
@@ -219,6 +223,24 @@ impl Replication {
         ]
     }
     pub fn role(&self) -> String {
-        "role:".to_string() + &self.role
+        self.master_host
+            .is_some()
+            .then(|| "role:slave")
+            .unwrap_or("role:master")
+            .to_string()
     }
+}
+
+#[test]
+fn feature() {
+    let replicaof: Option<String> = None;
+    let replicaof: Option<(String, String)> = replicaof.map(|host_port| {
+        host_port
+            .split_once(' ')
+            .map(|(a, b)| (a.to_string(), b.to_string()))
+            .into_iter()
+            .collect::<(_, _)>()
+    });
+
+    println!("{:?}", replicaof);
 }

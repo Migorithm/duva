@@ -93,7 +93,9 @@ where
             }
             UserRequest::Delete => panic!("Not implemented"),
 
-            UserRequest::Info => QueryIO::BulkString(self.config.replication_info().join("\r\n")),
+            UserRequest::Info => {
+                QueryIO::BulkString(self.config.replication_info().await.join("\r\n"))
+            }
         };
 
         self.write_value(response).await?;
