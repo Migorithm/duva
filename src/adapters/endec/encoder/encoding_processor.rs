@@ -4,7 +4,8 @@ use crate::adapters::endec::byte_encoder::{
 };
 use crate::services::interfaces::endec::TEncodingProcessor;
 use crate::services::query_manager::interface::TWrite;
-use crate::services::statefuls::routers::save_actor::SaveActorCommand;
+
+use crate::services::statefuls::persist::save_actor::SaveActorCommand;
 use crate::services::CacheEntry;
 use anyhow::Result;
 use std::collections::VecDeque;

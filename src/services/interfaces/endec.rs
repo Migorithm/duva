@@ -1,8 +1,6 @@
 use tokio::sync::mpsc::Receiver;
 
-use crate::services::statefuls::{
-    persistence_models::RdbFile, routers::save_actor::SaveActorCommand,
-};
+use crate::services::statefuls::persist::{save_actor::SaveActorCommand, RdbFile};
 
 use super::ThreadSafeCloneable;
 

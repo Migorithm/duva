@@ -13,11 +13,11 @@ pub enum SaveActorCommand {
 pub struct SaveActor;
 
 impl SaveActor {
-    pub fn run<T: TEncodeData>(
+    pub fn run(
         filepath: String,
         num_of_cache_actors: usize,
         // TODO encoder seems to work as actual save actor.
-        encoder: T,
+        encoder: impl TEncodeData,
     ) -> Sender<SaveActorCommand> {
         let (outbox, inbox) = tokio::sync::mpsc::channel(100);
 

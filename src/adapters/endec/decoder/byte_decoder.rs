@@ -3,7 +3,7 @@ use crate::adapters::endec::{
     EXPIRY_TIME_IN_MILLISECONDS_INDICATOR, EXPIRY_TIME_IN_SECONDS_INDICATOR, HEADER_MAGIC_STRING,
     METADATA_SECTION_INDICATOR, STRING_VALUE_TYPE_INDICATOR,
 };
-use crate::services::statefuls::persistence_models::{DatabaseSection, RdbFile};
+use crate::services::statefuls::persist::{DatabaseSection, RdbFile};
 use crate::services::CacheEntry;
 
 use anyhow::{Context, Result};

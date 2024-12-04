@@ -10,7 +10,7 @@ use services::{
         interface::{TCancellationNotifier, TCancellationTokenFactory},
         QueryManager,
     },
-    statefuls::routers::{cache_manager::CacheManager, ttl_manager::TtlSchedulerInbox},
+    statefuls::cache::{cache_manager::CacheManager, ttl_manager::TtlSchedulerInbox},
 };
 use tokio::net::{TcpListener, TcpStream};
 
