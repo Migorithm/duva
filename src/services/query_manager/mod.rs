@@ -5,7 +5,7 @@ use crate::{
     config::{Config, ConfigCommand},
     make_smart_pointer,
     services::{
-        statefuls::routers::{cache_manager::CacheManager, ttl_manager::TtlSchedulerInbox},
+        statefuls::cache::{cache_manager::CacheManager, ttl_manager::TtlSchedulerInbox},
         CacheEntry,
     },
 };
@@ -17,7 +17,7 @@ use request::UserRequest;
 
 use std::str::FromStr;
 
-use super::interfaces::endec::TEnDecoder;
+use super::statefuls::persist::{endec::TEnDecoder, save_actor::SaveActor};
 
 /// Controller is a struct that will be used to read and write values to the client.
 pub struct QueryManager<T, U>
@@ -62,9 +62,14 @@ where
             }
             UserRequest::Save => {
                 // spawn save actor
-                self.cache_manager
-                    .run_save_actor(self.config.get_filepath());
-                // TODO Set return type
+                let outbox = SaveActor::run(
+                    self.config.get_filepath().unwrap_or("dump.rdb".into()),
+                    self.cache_manager.inboxes.len(),
+                    self.cache_manager.endecoder.clone(),
+                );
+
+                self.cache_manager.route_save(outbox).await;
+
                 QueryIO::Null
             }
             UserRequest::Get => {

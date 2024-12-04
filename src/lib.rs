@@ -5,12 +5,14 @@ pub mod services;
 use anyhow::Result;
 use config::Config;
 use services::{
-    interfaces::endec::TEnDecoder,
     query_manager::{
         interface::{TCancellationNotifier, TCancellationTokenFactory},
         QueryManager,
     },
-    statefuls::routers::{cache_manager::CacheManager, ttl_manager::TtlSchedulerInbox},
+    statefuls::{
+        cache::{cache_manager::CacheManager, ttl_manager::TtlSchedulerInbox},
+        persist::endec::TEnDecoder,
+    },
 };
 use tokio::net::{TcpListener, TcpStream};
 

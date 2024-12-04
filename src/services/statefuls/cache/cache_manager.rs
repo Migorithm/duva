@@ -1,14 +1,16 @@
 use super::cache_actor::{CacheActor, CacheCommand, CacheCommandSender};
 
-use super::save_actor::SaveActor;
 use super::ttl_manager::{TtlActor, TtlSchedulerInbox};
 
 use crate::config::Config;
-use crate::services::interfaces::endec::TEnDecoder;
+
 use crate::services::query_manager::query_io::QueryIO;
+use crate::services::statefuls::persist::endec::TEnDecoder;
+use crate::services::statefuls::persist::save_actor::SaveActorCommand;
 use crate::services::CacheEntry;
 use anyhow::Result;
 use std::{hash::Hasher, iter::Zip};
+use tokio::sync::mpsc;
 use tokio::sync::oneshot::Sender;
 
 type OneShotSender<T> = tokio::sync::oneshot::Sender<T>;
@@ -67,6 +69,16 @@ impl<EnDec: TEnDecoder> CacheManager<EnDec> {
             })
             .await?;
         Ok(QueryIO::SimpleString("OK".to_string()))
+    }
+
+    pub(crate) async fn route_save(&self, outbox: mpsc::Sender<SaveActorCommand>) {
+        // get all the handlers to cache actors
+        for inbox in self.inboxes.iter().map(Clone::clone) {
+            let outbox = outbox.clone();
+            tokio::spawn(async move {
+                let _ = inbox.send(CacheCommand::Save { outbox }).await;
+            });
+        }
     }
 
     // Send recv handler firstly to the background and return senders and join handlers for receivers
@@ -154,18 +166,5 @@ impl<EnDec: TEnDecoder> CacheManager<EnDec> {
 
     fn run_ttl_actors(&self) -> TtlSchedulerInbox {
         TtlActor::run(self.clone())
-    }
-
-    pub fn run_save_actor(&self, db_filepath: Option<String>) {
-        let filepath: String = db_filepath.unwrap_or_else(|| "dump.rdb".to_string());
-        let outbox = SaveActor::run(filepath, self.inboxes.len(), self.endecoder.clone());
-
-        // get all the handlers to cache actors
-        for inbox in self.inboxes.iter().map(Clone::clone) {
-            let outbox = outbox.clone();
-            tokio::spawn(async move {
-                let _ = inbox.send(CacheCommand::Save { outbox }).await;
-            });
-        }
     }
 }

@@ -1,8 +1,8 @@
 use crate::{
     make_smart_pointer,
-    services::{
-        interfaces::endec::TEnDecoder,
-        statefuls::routers::{cache_actor::CacheCommand, cache_manager::CacheManager},
+    services::statefuls::{
+        cache::{cache_actor::CacheCommand, cache_manager::CacheManager},
+        persist::endec::TEnDecoder,
     },
 };
 use std::{
