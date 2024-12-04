@@ -1,13 +1,13 @@
 use bytes::BytesMut;
 
-pub trait TRead {
+pub trait TRead: Send + Sync + 'static {
     fn read_bytes(
         &mut self,
         buf: &mut BytesMut,
     ) -> impl std::future::Future<Output = Result<(), std::io::Error>> + Send;
 }
 
-pub trait TWrite: Send + Sync {
+pub trait TWrite: Send + Sync + 'static {
     fn write_all(
         &mut self,
         buf: &[u8],

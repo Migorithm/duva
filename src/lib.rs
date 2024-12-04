@@ -6,7 +6,7 @@ use anyhow::Result;
 use config::Config;
 use services::{
     query_manager::{
-        interface::{TCancellationNotifier, TCancellationTokenFactory},
+        interface::{TCancellationNotifier, TCancellationTokenFactory, TRead, TWrite},
         QueryManager,
     },
     statefuls::{
@@ -14,7 +14,6 @@ use services::{
         persist::endec::TEnDecoder,
     },
 };
-use tokio::net::{TcpListener, TcpStream};
 
 /// dir, dbfilename is given as follows: ./your_program.sh --dir /tmp/redis-files --dbfilename dump.rdb
 
@@ -23,6 +22,7 @@ pub async fn start_up<T: TCancellationTokenFactory>(
     number_of_cache_actors: usize,
     endec: impl TEnDecoder,
     startup_notifier: impl TNotifyStartUp,
+    listener: impl TSocketListener,
 ) -> Result<()> {
     let (cache_manager, ttl_inbox) = CacheManager::run_cache_actors(number_of_cache_actors, endec);
     cache_manager.load_data(ttl_inbox.clone(), config).await?;
@@ -31,15 +31,13 @@ pub async fn start_up<T: TCancellationTokenFactory>(
     // will live for the entire duration of the program.
     let cache_manager = Box::leak(Box::new(cache_manager));
 
-    let listener = TcpListener::bind(config.bind_addr()).await?;
-
     startup_notifier.notify_startup();
 
     start_accepting_connections::<T>(listener, config, ttl_inbox, cache_manager).await
 }
 
 async fn start_accepting_connections<T: TCancellationTokenFactory>(
-    listener: TcpListener,
+    listener: impl TSocketListener,
     config: &'static Config,
     ttl_inbox: TtlSchedulerInbox,
     cache_manager: &'static CacheManager<impl TEnDecoder>,
@@ -59,7 +57,7 @@ async fn start_accepting_connections<T: TCancellationTokenFactory>(
 }
 
 fn handle_single_user_stream<U: TCancellationTokenFactory>(
-    mut query_manager: QueryManager<TcpStream, impl TEnDecoder>,
+    mut query_manager: QueryManager<impl TWrite + TRead, impl TEnDecoder>,
 ) {
     tokio::spawn(async move {
         loop {
@@ -89,4 +87,10 @@ pub trait TNotifyStartUp {
 
 impl TNotifyStartUp for () {
     fn notify_startup(&self) {}
+}
+
+pub trait TSocketListener {
+    fn accept(
+        &self,
+    ) -> impl std::future::Future<Output = Result<(impl TWrite + TRead, std::net::SocketAddr)>>;
 }
