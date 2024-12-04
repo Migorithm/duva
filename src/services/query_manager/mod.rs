@@ -93,7 +93,7 @@ where
             }
             UserRequest::Delete => panic!("Not implemented"),
 
-            UserRequest::Info => self.config.replication_role().into(),
+            UserRequest::Info => QueryIO::BulkString(self.config.replication_info().join("\r\n")),
         };
 
         self.write_value(response).await?;
