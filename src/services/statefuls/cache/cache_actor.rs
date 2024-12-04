@@ -1,13 +1,11 @@
 use super::ttl_manager::TtlSchedulerInbox;
 use super::CacheEntry;
 use super::CacheValue;
-use crate::{
-    make_smart_pointer,
-    services::{
-        query_manager::query_io::QueryIO, statefuls::persist::save_actor::SaveActorCommand,
-    },
-};
-use anyhow::{Context, Result};
+use crate::make_smart_pointer;
+use crate::services::query_manager::query_io::QueryIO;
+use crate::services::statefuls::persist::save_actor::SaveActorCommand;
+use anyhow::Context;
+use anyhow::Result;
 use std::collections::HashMap;
 use tokio::sync::{mpsc, oneshot};
 
