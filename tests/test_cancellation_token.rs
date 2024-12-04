@@ -3,7 +3,9 @@
 /// Then we get the key and check if the value is returned
 /// After 300ms, we get the key again and check if the value is not returned (-1)
 mod common;
-use common::{integration_test_config, start_test_server, TestStreamHandler};
+use common::{
+    init_config_with_free_port, integration_test_config, start_test_server, TestStreamHandler,
+};
 use redis_starter_rust::services::query_manager::interface::{
     TCancellationNotifier, TCancellationTokenFactory, TCancellationWatcher,
 };
@@ -12,7 +14,7 @@ use tokio::net::TcpStream;
 #[tokio::test]
 async fn test_cancellation_token() {
     // GIVEN
-    let config = integration_test_config().await;
+    let config = integration_test_config(init_config_with_free_port().await);
 
     let _ = start_test_server::<TestCancellationToken>(config).await;
 

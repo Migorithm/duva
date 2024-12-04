@@ -126,8 +126,8 @@ impl Config {
     fn get_db_filename(&self) -> Option<String> {
         self.dbfilename.clone()
     }
-    pub fn set_dbfilename(mut self, dbfilename: Option<String>) -> Self {
-        self.dbfilename = dbfilename;
+    pub fn set_dbfilename(mut self, dbfilename: String) -> Self {
+        self.dbfilename = Some(dbfilename);
         self
     }
 
