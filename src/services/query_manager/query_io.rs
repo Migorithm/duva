@@ -2,7 +2,7 @@ use std::time::SystemTime;
 
 use anyhow::Result;
 
-use crate::services::CacheValue;
+use crate::services::statefuls::cache::CacheValue;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum QueryIO {

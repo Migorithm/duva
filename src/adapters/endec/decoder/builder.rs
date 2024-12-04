@@ -1,4 +1,4 @@
-use crate::services::{statefuls::persist::DatabaseSection, CacheEntry};
+use crate::services::statefuls::{cache::CacheEntry, persist::DatabaseSection};
 
 #[derive(Default)]
 pub struct DatabaseSectionBuilder {

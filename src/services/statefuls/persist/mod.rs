@@ -3,7 +3,7 @@ pub mod save_actor;
 
 use std::collections::HashMap;
 
-use crate::services::CacheEntry;
+use super::cache::CacheEntry;
 
 #[derive(Debug)]
 pub struct RdbFile {
