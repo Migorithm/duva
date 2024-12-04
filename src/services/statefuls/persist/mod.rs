@@ -1,3 +1,4 @@
+pub mod endec;
 pub mod save_actor;
 
 use std::collections::HashMap;

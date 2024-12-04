@@ -1,5 +1,7 @@
-use crate::services::{interfaces::endec::TEncodeData, CacheEntry};
+use crate::services::CacheEntry;
 use tokio::sync::mpsc::Sender;
+
+use super::endec::TEncodeData;
 
 pub enum SaveActorCommand {
     LocalShardSize {

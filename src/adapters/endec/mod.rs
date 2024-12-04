@@ -78,12 +78,13 @@ use std::time::SystemTime;
 
 pub mod decoder;
 pub mod encoder;
-use crate::services::interfaces::endec::TEncodingProcessor;
-use crate::services::interfaces::endec::{TDecodeData, TEncodeData};
+
 use decoder::byte_decoder::BytesDecoder;
 use decoder::states::DecoderInit;
 pub use encoder::byte_encoder;
 use encoder::encoding_processor::{EncodingMeta, EncodingProcessor};
+
+use crate::services::statefuls::persist::endec::{TDecodeData, TEncodeData, TEncodingProcessor};
 
 const HEADER_MAGIC_STRING: &str = "REDIS";
 const METADATA_SECTION_INDICATOR: u8 = 0xFA;

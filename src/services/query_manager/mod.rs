@@ -17,7 +17,7 @@ use request::UserRequest;
 
 use std::str::FromStr;
 
-use super::{interfaces::endec::TEnDecoder, statefuls::persist::save_actor::SaveActor};
+use super::statefuls::persist::{endec::TEnDecoder, save_actor::SaveActor};
 
 /// Controller is a struct that will be used to read and write values to the client.
 pub struct QueryManager<T, U>

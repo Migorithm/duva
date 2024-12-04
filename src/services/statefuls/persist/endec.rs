@@ -1,8 +1,9 @@
 use tokio::sync::mpsc::Receiver;
 
-use crate::services::statefuls::persist::{save_actor::SaveActorCommand, RdbFile};
-
-use super::ThreadSafeCloneable;
+use crate::services::{
+    interfaces::ThreadSafeCloneable,
+    statefuls::persist::{save_actor::SaveActorCommand, RdbFile},
+};
 
 pub trait TEnDecoder: TDecodeData + TEncodeData {}
 impl<T: TDecodeData + TEncodeData> TEnDecoder for T {}
