@@ -1,5 +1,3 @@
-use tokio::sync::mpsc::Receiver;
-
 use crate::services::{
     interfaces::ThreadSafeCloneable,
     statefuls::persist::{save_actor::SaveActorCommand, RdbFile},
