@@ -1,7 +1,6 @@
+use crate::services::query_manager::interface::{TRead, TWrite};
 use bytes::BytesMut;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-
-use crate::services::query_manager::interface::{TRead, TWrite};
 
 impl TRead for tokio::net::TcpStream {
     // TCP doesn't inherently delimit messages.
@@ -14,8 +13,7 @@ impl TRead for tokio::net::TcpStream {
         loop {
             let bytes_read = self.read(&mut temp_buffer).await?;
 
-            // If no bytes are read, it suggests that the no more data will be received
-            // for this message.
+            // If no bytes are read, it suggests that the no more data will be received for this message.
             if bytes_read == 0 {
                 break;
             }
