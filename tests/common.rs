@@ -1,8 +1,9 @@
+use redis_starter_rust::services::config::config_actor::Config;
 use redis_starter_rust::services::query_manager::interface::{TRead, TWrite};
 use redis_starter_rust::services::query_manager::query_io::QueryIO;
 use redis_starter_rust::TSocketListener;
 use redis_starter_rust::{
-    config::Config, services::query_manager::interface::TCancellationTokenFactory, TNotifyStartUp,
+    services::query_manager::interface::TCancellationTokenFactory, TNotifyStartUp,
 };
 use std::sync::{Arc, OnceLock};
 use tokio::{
@@ -35,16 +36,19 @@ impl<'a> TestStreamHandler<'a> {
     }
 }
 
-static CONFIG: OnceLock<Config> = OnceLock::new();
-
-pub fn integration_test_config(config: Config) -> &'static Config {
-    CONFIG.get_or_init(|| config)
-}
-
 pub async fn init_config_with_free_port() -> Config {
-    Config::default().set_port(find_free_port_in_range(49152, 65535).await.unwrap())
+    let mut config = Config::default();
+    config.port = find_free_port_in_range(49152, 65535).await.unwrap();
+    config
 }
 
+pub async fn init_slave_config_with_free_port(master_port: u16) -> Config {
+    let mut config: Config = Config::default();
+    config.port = find_free_port_in_range(49152, 65535).await.unwrap();
+    config.replication.master_host = Some("localhost".to_string());
+    config.replication.master_port = Some(master_port);
+    config
+}
 // scan for available port
 async fn find_free_port_in_range(start: u16, end: u16) -> Option<u16> {
     for port in start..=end {
@@ -80,7 +84,7 @@ async fn test_listener(bind_addr: String) -> TestStreamListener {
 }
 
 pub async fn start_test_server<T: TCancellationTokenFactory>(
-    config: &'static Config,
+    config: Config,
 ) -> tokio::task::JoinHandle<Result<(), anyhow::Error>> {
     let listener = test_listener(config.bind_addr()).await;
 

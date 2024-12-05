@@ -1,14 +1,11 @@
 use super::cache_actor::{CacheActor, CacheCommand, CacheCommandSender};
-
 use super::ttl_manager::{TtlActor, TtlSchedulerInbox};
-
-use crate::config::Config;
-
 use super::CacheEntry;
 use crate::services::query_manager::query_io::QueryIO;
 use crate::services::statefuls::persist::endec::TEnDecoder;
 use crate::services::statefuls::persist::save_actor::SaveActorCommand;
 use anyhow::Result;
+use std::time::SystemTime;
 use std::{hash::Hasher, iter::Zip};
 use tokio::sync::mpsc;
 use tokio::sync::oneshot::Sender;
@@ -27,16 +24,16 @@ impl<EnDec: TEnDecoder> CacheManager<EnDec> {
     pub(crate) async fn load_data(
         &self,
         ttl_inbox: TtlSchedulerInbox,
-        config: &'static Config,
+        filepath: Option<String>,
+        startup_time: SystemTime,
     ) -> Result<()> {
-        let Ok(Some(filepath)) = config.try_filepath().await else {
+        let Some(filepath) = filepath else {
             return Ok(());
         };
-
         let bytes = tokio::fs::read(filepath).await?;
         let database = self.endecoder.decode_data(bytes)?;
 
-        let startup_time = config.startup_time();
+        let startup_time = &startup_time;
         for kvs in database
             .key_values()
             .into_iter()
