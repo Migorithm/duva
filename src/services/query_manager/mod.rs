@@ -14,7 +14,7 @@ use request::UserRequest;
 use std::str::FromStr;
 
 use super::{
-    config::{config_actor::Config, ConfigCommand},
+    config::{config_manager::ConfigManager, ConfigResponse},
     statefuls::{
         cache::CacheEntry,
         persist::{endec::TEnDecoder, save_actor::SaveActor},
@@ -28,7 +28,7 @@ where
     U: TEnDecoder,
 {
     pub(crate) stream: T,
-    config: &'static Config,
+    config_manager: ConfigManager,
     cache_manager: &'static CacheManager<U>,
     ttl_manager: TtlSchedulerInbox,
 }
@@ -65,7 +65,7 @@ where
             UserRequest::Save => {
                 // spawn save actor
                 let outbox = SaveActor::run(
-                    self.config.get_filepath().unwrap_or("dump.rdb".into()),
+                    self.config_manager.get_filepath().await?,
                     self.cache_manager.inboxes.len(),
                     self.cache_manager.endecoder.clone(),
                 );
@@ -85,17 +85,25 @@ where
             // modify we have to add a new command
             UserRequest::Config => {
                 let cmd = args.take_config_args()?;
-                match self.config.handle_config(cmd) {
-                    Some(value) => QueryIO::Array(vec![
-                        QueryIO::BulkString("dir".to_string()),
+                let rx = self.config_manager.route_get(cmd).await?;
+
+                match rx.await? {
+                    ConfigResponse::Dir(value) => QueryIO::Array(vec![
+                        QueryIO::BulkString("dir".into()),
                         QueryIO::BulkString(value),
                     ]),
-                    None => QueryIO::Null,
+                    ConfigResponse::DbFileName(value) => match value {
+                        Some(value) => QueryIO::BulkString(value),
+                        None => QueryIO::Null,
+                    },
+                    _ => QueryIO::Err("Invalid operation".into()),
                 }
             }
             UserRequest::Delete => panic!("Not implemented"),
 
-            UserRequest::Info => QueryIO::BulkString(self.config.replication.info().join("\r\n")),
+            UserRequest::Info => {
+                QueryIO::BulkString(self.config_manager.replication_info().await?.join("\r\n"))
+            }
         };
 
         self.write_value(response).await?;
@@ -110,13 +118,13 @@ where
 {
     pub(crate) fn new(
         stream: T,
-        config: &'static Config,
+        config_manager: ConfigManager,
         cache_manager: &'static CacheManager<U>,
         ttl_manager: TtlSchedulerInbox,
     ) -> Self {
         QueryManager {
             stream,
-            config,
+            config_manager,
             cache_manager,
             ttl_manager,
         }
@@ -251,7 +259,7 @@ impl InputValues {
         }
     }
 
-    fn take_config_args(&self) -> Result<ConfigCommand> {
+    fn take_config_args(&self) -> Result<(String, String)> {
         let sub_command = self.first().ok_or(anyhow::anyhow!("Not exists"))?;
         let args = &self[1..];
 
@@ -259,7 +267,7 @@ impl InputValues {
         else {
             return Err(anyhow::anyhow!("Invalid arguments"));
         };
-        (command.as_str(), key.as_str()).try_into()
+        Ok((command.into(), key.into()))
     }
 
     // Pattern is passed with escape characters \" wrapping the pattern in question.

@@ -1,99 +1,157 @@
+use super::command::{ConfigQuery, ConfigResource, ConfigResponse};
+use crate::services::config::replication::Replication;
 use std::time::SystemTime;
+use tokio::{fs::try_exists, sync::mpsc::Receiver};
 
-use tokio::sync::mpsc::{Receiver, Sender};
-
-use super::command::ConfigCommand;
-
+#[derive(Clone)]
 pub struct Config {
     pub port: u16,
     pub host: String,
     pub(crate) dir: String,
-    pub(crate) dbfilename: Option<String>,
+    pub dbfilename: Option<String>,
     pub replication: Replication,
     pub(crate) startup_time: SystemTime,
 }
 
 impl Config {
-    // perhaps, set operation is needed
-    pub fn handle_config(&self, cmd: ConfigCommand) -> Option<String> {
-        match cmd {
-            ConfigCommand::Dir => Some(self.get_dir().to_string()),
-            ConfigCommand::DbFileName => self.get_db_filename(),
+    pub async fn handle(self, mut inbox: Receiver<ConfigQuery>) {
+        // inner state
+
+        while let Some(cmd) = inbox.recv().await {
+            match cmd.resource {
+                ConfigResource::Dir => {
+                    let _ = cmd.callback.send(ConfigResponse::Dir(self.dir.clone()));
+                }
+                ConfigResource::DbFileName => {
+                    let _ = cmd
+                        .callback
+                        .send(ConfigResponse::DbFileName(self.dbfilename.clone()));
+                }
+                ConfigResource::FilePath => {
+                    let _ = cmd
+                        .callback
+                        .send(ConfigResponse::FilePath(self.get_filepath()));
+                }
+                ConfigResource::ReplicationInfo => {
+                    let _ = cmd
+                        .callback
+                        .send(ConfigResponse::ReplicationInfo(self.replication.info()));
+                }
+            }
         }
     }
 
-    pub fn run() -> Sender<ConfigCommand> {
-        let config = Config::default();
-        let (tx, inbox) = tokio::sync::mpsc::channel(20);
-        tokio::spawn(config.handle(inbox));
-
-        tx
+    pub fn bind_addr(&self) -> String {
+        format!("{}:{}", self.host, self.port)
     }
-    pub async fn handle(self, inbox: Receiver<ConfigCommand>) {}
-}
+    // The following is used on startup and check if the file exists
+    pub async fn try_filepath(&self) -> Option<String> {
+        match (&self.dir, &self.dbfilename) {
+            (dir, Some(db_filename)) => {
+                let file_path = format!("{}/{}", dir, db_filename);
 
-#[derive(Debug, Clone, Default)]
-pub struct Replication {
-    pub connected_slaves: u16,             // The number of connected replicas
-    master_replid: String, // The replication ID of the master example: 8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb
-    master_repl_offset: u64, // The replication offset of the master example: 0
-    second_repl_offset: i16, // -1
-    repl_backlog_active: usize, // 0
-    repl_backlog_size: usize, // 1048576
-    repl_backlog_first_byte_offset: usize, // 0
-
-    pub master_host: Option<String>,
-    pub master_port: Option<u16>,
-}
-impl Replication {
-    pub fn new(replicaof: Option<(String, String)>) -> Self {
-        Replication {
-            connected_slaves: 0, // dynamically configurable
-            master_replid: "8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb".to_string(),
-            master_repl_offset: 0,
-            second_repl_offset: -1,
-            repl_backlog_active: 0,
-            repl_backlog_size: 1048576,
-            repl_backlog_first_byte_offset: 0,
-            master_host: replicaof.as_ref().cloned().map(|(host, _)| host),
-            master_port: replicaof
-                .map(|(_, port)| port.parse().expect("Invalid port number of given")),
+                match try_exists(&file_path).await {
+                    Ok(true) => Some(file_path),
+                    Ok(false) => {
+                        println!("File does not exist");
+                        None
+                    }
+                    Err(_) => {
+                        println!("Error in try_filepath");
+                        None
+                    }
+                }
+            }
+            // Not given a dbfilename
+            _ => None,
         }
     }
-    pub fn info(&self) -> Vec<String> {
-        vec![
-            self.role(),
-            format!("connected_slaves:{}", self.connected_slaves),
-            format!("master_replid:{}", self.master_replid),
-            format!("master_repl_offset:{}", self.master_repl_offset),
-            format!("second_repl_offset:{}", self.second_repl_offset),
-            format!("repl_backlog_active:{}", self.repl_backlog_active),
-            format!("repl_backlog_size:{}", self.repl_backlog_size),
-            format!(
-                "repl_backlog_first_byte_offset:{}",
-                self.repl_backlog_first_byte_offset
-            ),
-        ]
-    }
-    pub fn role(&self) -> String {
-        self.master_host
-            .is_some()
-            .then(|| "role:slave")
-            .unwrap_or("role:master")
-            .to_string()
+    pub fn get_filepath(&self) -> Option<String> {
+        match (&self.dir, &self.dbfilename) {
+            (dir, Some(db_filename)) => {
+                let file_path = format!("{}/{}", dir, db_filename);
+                Some(file_path)
+            }
+            _ => None,
+        }
     }
 }
 
-#[test]
-fn feature() {
-    let replicaof: Option<String> = None;
-    let replicaof: Option<(String, String)> = replicaof.map(|host_port| {
-        host_port
-            .split_once(' ')
-            .map(|(a, b)| (a.to_string(), b.to_string()))
-            .into_iter()
-            .collect::<(_, _)>()
-    });
+macro_rules! env_var {
+    (
+        {
+            $($env_name:ident),*
+        }
+        $({
+            $($default:ident = $default_value:expr),*
+        })?
+    ) => {
+        $(
+            // Initialize the variable with the environment variable or the default value.
+            let mut $env_name = std::env::var(stringify!($env_name))
+                .ok();
+        )*
 
-    println!("{:?}", replicaof);
+        let mut args = std::env::args().skip(1);
+        $(
+            $(let mut $default = $default_value;)*
+        )?
+
+        while let Some(arg) = args.next(){
+            match arg.as_str(){
+                $(
+                    concat!("--", stringify!($env_name)) => {
+                    if let Some(value) = args.next(){
+                        $env_name = Some(value.parse().unwrap());
+                    }
+                })*
+                $(
+                    $(
+                        concat!("--", stringify!($default)) => {
+                        if let Some(value) = args.next(){
+                            $default = value.parse().expect("Default value must be given");
+                        }
+                    })*
+                )?
+
+
+                _ => {
+                    eprintln!("Unexpected argument: {}", arg);
+                }
+            }
+        }
+    };
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        env_var!(
+            {
+                dbfilename,
+                replicaof
+            }
+            {
+                dir = ".".to_string(),
+                port = 6379,
+                host = "localhost".to_string()
+            }
+        );
+
+        let replicaof = replicaof.map(|host_port| {
+            host_port
+                .split_once(' ')
+                .map(|(a, b)| (a.to_string(), b.to_string()))
+                .into_iter()
+                .collect::<(_, _)>()
+        });
+
+        Config {
+            port,
+            host,
+            dir,
+            dbfilename,
+            replication: Replication::new(replicaof),
+            startup_time: SystemTime::now(),
+        }
+    }
 }

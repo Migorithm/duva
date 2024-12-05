@@ -7,8 +7,8 @@ async fn test_replication_info() {
     // GIVEN
     //TODO test config should be dynamically configured
 
-    let master_config = Box::leak(Box::new(init_config_with_free_port().await));
-    start_test_server::<CancellationToken>(master_config).await;
+    let master_config = init_config_with_free_port().await;
+    start_test_server::<CancellationToken>(master_config.clone()).await;
 
     let slave_config = init_slave_config_with_free_port(master_config.port).await;
     start_test_server::<CancellationToken>(slave_config).await;
