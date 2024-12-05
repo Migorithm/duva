@@ -1,9 +1,10 @@
 pub mod interface;
 pub mod query_io;
 pub mod request;
+mod query_arguments;
+
 use crate::{
-    config::{Config, ConfigCommand},
-    make_smart_pointer,
+    config::Config,
     services::statefuls::cache::{cache_manager::CacheManager, ttl_manager::TtlSchedulerInbox},
 };
 use anyhow::Result;
@@ -12,12 +13,9 @@ use interface::{TRead, TWrite};
 use query_io::QueryIO;
 use request::UserRequest;
 
+use super::statefuls::persist::{endec::TEnDecoder, save_actor::SaveActor};
+use query_arguments::QueryArguments;
 use std::str::FromStr;
-
-use super::statefuls::{
-    cache::CacheEntry,
-    persist::{endec::TEnDecoder, save_actor::SaveActor},
-};
 
 /// Controller is a struct that will be used to read and write values to the client.
 pub struct QueryManager<T, U>
@@ -40,7 +38,7 @@ where
         &mut self,
         mut cancellation_token: impl interface::TCancellationWatcher,
         cmd: UserRequest,
-        args: InputValues,
+        args: QueryArguments,
     ) -> Result<()> {
         if cancellation_token.watch() {
             self.write_value(QueryIO::Err(
@@ -123,7 +121,7 @@ where
     }
 
     // crlf
-    pub async fn read_value(&mut self) -> Result<Option<(UserRequest, InputValues)>> {
+    pub async fn read_value(&mut self) -> Result<Option<(UserRequest, QueryArguments)>> {
         let mut buffer = BytesMut::with_capacity(512);
         self.stream.read_bytes(&mut buffer).await?;
 
@@ -139,11 +137,11 @@ where
         Ok(())
     }
 
-    pub(crate) fn extract_query(value: QueryIO) -> Result<(String, InputValues)> {
+    pub(crate) fn extract_query(value: QueryIO) -> Result<(String, QueryArguments)> {
         match value {
             QueryIO::Array(value_array) => Ok((
                 value_array.first().unwrap().clone().unpack_bulk_str()?,
-                InputValues::new(value_array.into_iter().skip(1).collect()),
+                QueryArguments::new(value_array.into_iter().skip(1).collect()),
             )),
             _ => Err(anyhow::anyhow!("Unexpected command format")),
         }
@@ -212,72 +210,6 @@ fn parse_bulk_string(buffer: BytesMut) -> Result<(QueryIO, usize)> {
         len + bulk_str_len + 2,
     ))
 }
-
-#[derive(Debug, Clone)]
-pub struct InputValues(Vec<QueryIO>);
-impl InputValues {
-    pub fn new(values: Vec<QueryIO>) -> Self {
-        Self(values)
-    }
-
-    pub(crate) fn take_get_args(&self) -> Result<String> {
-        let QueryIO::BulkString(key) = self.first().ok_or(anyhow::anyhow!("Not exists"))? else {
-            return Err(anyhow::anyhow!("Invalid arguments"));
-        };
-        Ok(key.to_string())
-    }
-    pub(crate) fn take_set_args(&self) -> Result<CacheEntry> {
-        let (QueryIO::BulkString(key), QueryIO::BulkString(value)) = (
-            self.first().ok_or(anyhow::anyhow!("Not exists"))?,
-            self.get(1).ok_or(anyhow::anyhow!("No value"))?,
-        ) else {
-            return Err(anyhow::anyhow!("Invalid arguments"));
-        };
-
-        //expire sig must be px or PX
-        match (self.0.get(2), self.0.get(3)) {
-            (Some(QueryIO::BulkString(sig)), Some(expiry)) => {
-                if sig.to_lowercase() != "px" {
-                    return Err(anyhow::anyhow!("Invalid arguments"));
-                }
-                Ok(CacheEntry::KeyValueExpiry(
-                    key.to_string(),
-                    value.to_string(),
-                    expiry.extract_expiry()?,
-                ))
-            }
-            (None, _) => Ok(CacheEntry::KeyValue(key.to_owned(), value.to_string())),
-            _ => Err(anyhow::anyhow!("Invalid arguments")),
-        }
-    }
-
-    fn take_config_args(&self) -> Result<ConfigCommand> {
-        let sub_command = self.first().ok_or(anyhow::anyhow!("Not exists"))?;
-        let args = &self[1..];
-
-        let (QueryIO::BulkString(command), [QueryIO::BulkString(key), ..]) = (&sub_command, args)
-        else {
-            return Err(anyhow::anyhow!("Invalid arguments"));
-        };
-        (command.as_str(), key.as_str()).try_into()
-    }
-
-    // Pattern is passed with escape characters \" wrapping the pattern in question.
-    fn take_keys_pattern(&self) -> Result<Option<String>> {
-        let QueryIO::BulkString(pattern) = self.first().ok_or(anyhow::anyhow!("Not exists"))?
-        else {
-            return Err(anyhow::anyhow!("Invalid arguments"));
-        };
-
-        let pattern = pattern.trim_matches('\"');
-        match pattern {
-            "*" => Ok(None),
-            "" => Err(anyhow::anyhow!("Invalid pattern")),
-            pattern => Ok(Some(pattern.to_string())),
-        }
-    }
-}
-make_smart_pointer!(InputValues, Vec<QueryIO>);
 
 pub struct ConversionWrapper<T>(pub(crate) T);
 impl TryFrom<ConversionWrapper<&[u8]>> for usize {
