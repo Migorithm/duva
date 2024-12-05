@@ -169,10 +169,6 @@ impl Config {
             ConfigCommand::DbFileName => self.get_db_filename(),
         }
     }
-
-    pub fn replication_info(&self) -> Vec<String> {
-        self.replication.info()
-    }
 }
 
 #[derive(Debug, Clone, Default)]

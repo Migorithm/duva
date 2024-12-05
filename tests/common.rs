@@ -1,8 +1,9 @@
+use redis_starter_rust::services::config::config_actor::Config;
 use redis_starter_rust::services::query_manager::interface::{TRead, TWrite};
 use redis_starter_rust::services::query_manager::query_io::QueryIO;
 use redis_starter_rust::TSocketListener;
 use redis_starter_rust::{
-    config::Config, services::query_manager::interface::TCancellationTokenFactory, TNotifyStartUp,
+    services::query_manager::interface::TCancellationTokenFactory, TNotifyStartUp,
 };
 use std::sync::{Arc, OnceLock};
 use tokio::{

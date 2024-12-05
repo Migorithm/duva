@@ -2,8 +2,10 @@ use std::sync::OnceLock;
 
 use redis_starter_rust::{
     adapters::{cancellation_token::CancellationToken, endec::EnDecoder},
-    config::Config,
-    services::query_manager::interface::{TRead, TWrite},
+    services::{
+        config::config_actor::Config,
+        query_manager::interface::{TRead, TWrite},
+    },
     start_up, TSocketListener,
 };
 use tokio::net::TcpListener;

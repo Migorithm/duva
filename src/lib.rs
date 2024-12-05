@@ -1,10 +1,11 @@
 pub mod adapters;
-pub mod config;
+
 pub mod macros;
 pub mod services;
 use anyhow::Result;
-use config::Config;
+
 use services::{
+    config::config_actor::Config,
     query_manager::{
         interface::{TCancellationNotifier, TCancellationTokenFactory, TRead, TWrite},
         QueryManager,

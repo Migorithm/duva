@@ -2,7 +2,6 @@ pub mod interface;
 pub mod query_io;
 pub mod request;
 use crate::{
-    config::{Config, ConfigCommand},
     make_smart_pointer,
     services::statefuls::cache::{cache_manager::CacheManager, ttl_manager::TtlSchedulerInbox},
 };
@@ -14,9 +13,12 @@ use request::UserRequest;
 
 use std::str::FromStr;
 
-use super::statefuls::{
-    cache::CacheEntry,
-    persist::{endec::TEnDecoder, save_actor::SaveActor},
+use super::{
+    config::config_actor::{Config, ConfigCommand},
+    statefuls::{
+        cache::CacheEntry,
+        persist::{endec::TEnDecoder, save_actor::SaveActor},
+    },
 };
 
 /// Controller is a struct that will be used to read and write values to the client.
@@ -93,7 +95,7 @@ where
             }
             UserRequest::Delete => panic!("Not implemented"),
 
-            UserRequest::Info => QueryIO::BulkString(self.config.replication_info().join("\r\n")),
+            UserRequest::Info => QueryIO::BulkString(self.config.replication.info().join("\r\n")),
         };
 
         self.write_value(response).await?;
