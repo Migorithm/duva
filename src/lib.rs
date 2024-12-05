@@ -3,9 +3,9 @@ pub mod config;
 pub mod macros;
 pub mod services;
 
-use crate::services::query_manager::UserRequestHandler;
 use anyhow::Result;
 use config::Config;
+use services::query_manager::user_request_handler::UserRequestHandler;
 use services::{
     query_manager::{
         interface::{TCancellationNotifier, TCancellationTokenFactory, TRead, TWrite},
