@@ -36,7 +36,7 @@ impl<EnDec: TEnDecoder> CacheManager<EnDec> {
         let bytes = tokio::fs::read(filepath).await?;
         let database = self.endecoder.decode_data(bytes)?;
 
-        let startup_time = config.startup_time();
+        let startup_time = &config.startup_time;
         for kvs in database
             .key_values()
             .into_iter()

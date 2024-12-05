@@ -1,6 +1,6 @@
 use anyhow::Result;
-use std::{sync::Arc, time::SystemTime};
-use tokio::{fs::try_exists, sync::RwLock};
+use std::time::SystemTime;
+use tokio::fs::try_exists;
 
 pub enum ConfigCommand {
     Dir,
@@ -72,8 +72,8 @@ pub struct Config {
     pub host: String,
     pub(crate) dir: String,
     pub(crate) dbfilename: Option<String>,
-    pub replication: Arc<RwLock<Replication>>,
-    startup_time: SystemTime,
+    pub replication: Replication,
+    pub(crate) startup_time: SystemTime,
 }
 
 impl Default for Config {
@@ -103,7 +103,7 @@ impl Default for Config {
             host,
             dir,
             dbfilename,
-            replication: Arc::new(RwLock::new(Replication::new(replicaof))),
+            replication: Replication::new(replicaof),
             startup_time: SystemTime::now(),
         }
     }
@@ -170,12 +170,8 @@ impl Config {
         }
     }
 
-    pub async fn replication_info(&self) -> Vec<String> {
-        self.replication.read().await.info()
-    }
-
-    pub(crate) fn startup_time(&self) -> &std::time::SystemTime {
-        &self.startup_time
+    pub fn replication_info(&self) -> Vec<String> {
+        self.replication.info()
     }
 }
 

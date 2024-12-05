@@ -1,4 +1,4 @@
-use common::{init_config_with_free_port, start_test_server};
+use common::{init_config_with_free_port, init_slave_config_with_free_port, start_test_server};
 use redis_starter_rust::adapters::cancellation_token::CancellationToken;
 mod common;
 
@@ -10,17 +10,18 @@ async fn test_replication_info() {
     let master_config = Box::leak(Box::new(init_config_with_free_port().await));
     start_test_server::<CancellationToken>(master_config).await;
 
-    let slave_config = init_config_with_free_port().await;
+    let slave_config = init_slave_config_with_free_port(master_config.port).await;
+    start_test_server::<CancellationToken>(slave_config).await;
 
-    // WHEN - firing slave node
-    slave_config.replication.write().await.master_host = Some("localhost".to_string());
-    slave_config.replication.write().await.master_port = Some(master_config.port);
-    let slave_config = Box::leak(Box::new(slave_config));
+    let slave_config = init_slave_config_with_free_port(master_config.port).await;
     start_test_server::<CancellationToken>(slave_config).await;
+
+    let slave_config = init_slave_config_with_free_port(master_config.port).await;
     start_test_server::<CancellationToken>(slave_config).await;
-    start_test_server::<CancellationToken>(slave_config).await;
+
+    let slave_config = init_slave_config_with_free_port(master_config.port).await;
     start_test_server::<CancellationToken>(slave_config).await;
 
     // THEN
-    assert_eq!(master_config.replication.read().await.connected_slaves, 4);
+    assert_eq!(master_config.replication.connected_slaves, 4);
 }
