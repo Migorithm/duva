@@ -1,4 +1,4 @@
-use crate::config::Config;
+use crate::services::config::config_manager::ConfigManager;
 use crate::services::query_manager::cluster_request::ClusterRequest;
 use crate::services::query_manager::interface::TCancellationWatcher;
 use crate::services::query_manager::query_arguments::QueryArguments;
@@ -12,7 +12,7 @@ where
     U: TEnDecoder,
 {
     // Maybe not all of these fields are needed
-    config: &'static Config,
+    config_manager: ConfigManager,
     cache_manager: &'static CacheManager<U>,
     ttl_manager: TtlSchedulerInbox,
 }
@@ -22,12 +22,12 @@ where
     U: TEnDecoder,
 {
     pub(crate) fn new(
-        config: &'static Config,
+        config_manager: ConfigManager,
         cache_manager: &'static CacheManager<U>,
         ttl_manager: TtlSchedulerInbox,
     ) -> Self {
         ClusterHandler {
-            config,
+            config_manager,
             cache_manager,
             ttl_manager,
         }

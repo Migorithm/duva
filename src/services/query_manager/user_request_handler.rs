@@ -1,4 +1,5 @@
-use crate::config::Config;
+use crate::services::config::config_manager::ConfigManager;
+use crate::services::config::ConfigResponse;
 use crate::services::query_manager::interface::TCancellationWatcher;
 use crate::services::query_manager::query_arguments::QueryArguments;
 use crate::services::query_manager::query_io::QueryIO;
@@ -12,7 +13,7 @@ pub struct UserRequestHandler<U>
 where
     U: TEnDecoder,
 {
-    config: &'static Config,
+    config_manager: ConfigManager,
     cache_manager: &'static CacheManager<U>,
     ttl_manager: TtlSchedulerInbox,
 }
@@ -22,12 +23,12 @@ where
     U: TEnDecoder,
 {
     pub(crate) fn new(
-        config: &'static Config,
+        config_manager: ConfigManager,
         cache_manager: &'static CacheManager<U>,
         ttl_manager: TtlSchedulerInbox,
     ) -> Self {
         UserRequestHandler {
-            config,
+            config_manager,
             cache_manager,
             ttl_manager,
         }
@@ -59,7 +60,7 @@ where
             UserRequest::Save => {
                 // spawn save actor
                 let outbox = SaveActor::run(
-                    self.config.get_filepath().unwrap_or("dump.rdb".into()),
+                    self.config_manager.get_filepath().await?,
                     self.cache_manager.inboxes.len(),
                     self.cache_manager.endecoder.clone(),
                 );
@@ -79,18 +80,24 @@ where
             // modify we have to add a new command
             UserRequest::Config => {
                 let cmd = args.take_config_args()?;
-                match self.config.handle_config(cmd) {
-                    Some(value) => QueryIO::Array(vec![
-                        QueryIO::BulkString("dir".to_string()),
+                let rx = self.config_manager.route_get(cmd).await?;
+
+                match rx.await? {
+                    ConfigResponse::Dir(value) => QueryIO::Array(vec![
+                        QueryIO::BulkString("dir".into()),
                         QueryIO::BulkString(value),
                     ]),
-                    None => QueryIO::Null,
+                    ConfigResponse::DbFileName(value) => match value {
+                        Some(value) => QueryIO::BulkString(value),
+                        None => QueryIO::Null,
+                    },
+                    _ => QueryIO::Err("Invalid operation".into()),
                 }
             }
             UserRequest::Delete => panic!("Not implemented"),
 
             UserRequest::Info => {
-                QueryIO::BulkString(self.config.replication_info().await.join("\r\n"))
+                QueryIO::BulkString(self.config_manager.replication_info().await?.join("\r\n"))
             }
         };
         Ok(response)

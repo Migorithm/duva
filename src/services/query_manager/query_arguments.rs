@@ -1,7 +1,7 @@
-use crate::config::ConfigCommand;
 use crate::make_smart_pointer;
 use crate::services::query_manager::query_io::QueryIO;
 use crate::services::statefuls::cache::CacheEntry;
+use anyhow::Result;
 
 #[derive(Debug, Clone)]
 pub struct QueryArguments(Vec<QueryIO>);
@@ -44,7 +44,7 @@ impl QueryArguments {
         }
     }
 
-    pub(crate) fn take_config_args(&self) -> anyhow::Result<ConfigCommand> {
+    pub(crate) fn take_config_args(&self) -> Result<(String, String)> {
         let sub_command = self.first().ok_or(anyhow::anyhow!("Not exists"))?;
         let args = &self[1..];
 
@@ -52,7 +52,7 @@ impl QueryArguments {
         else {
             return Err(anyhow::anyhow!("Invalid arguments"));
         };
-        (command.as_str(), key.as_str()).try_into()
+        Ok((command.into(), key.into()))
     }
 
     // Pattern is passed with escape characters \" wrapping the pattern in question.

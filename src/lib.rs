@@ -1,8 +1,8 @@
 pub mod adapters;
 pub mod macros;
 pub mod services;
+use crate::services::query_manager::user_request_handler::UserRequestHandler;
 use anyhow::Result;
-use config::Config;
 use services::{
     config::{config_actor::Config, config_manager::ConfigManager},
     query_manager::{
