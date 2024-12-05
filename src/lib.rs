@@ -1,10 +1,11 @@
 pub mod adapters;
-pub mod config;
+
 pub mod macros;
 pub mod services;
 use anyhow::Result;
-use config::Config;
+
 use services::{
+    config::{config_actor::Config, config_manager::ConfigManager},
     query_manager::{
         interface::{TCancellationNotifier, TCancellationTokenFactory, TRead, TWrite},
         QueryManager,
@@ -18,14 +19,22 @@ use services::{
 /// dir, dbfilename is given as follows: ./your_program.sh --dir /tmp/redis-files --dbfilename dump.rdb
 
 pub async fn start_up<T: TCancellationTokenFactory>(
-    config: &'static Config,
+    config: Config,
     number_of_cache_actors: usize,
     endec: impl TEnDecoder,
     startup_notifier: impl TNotifyStartUp,
     listener: impl TSocketListener,
 ) -> Result<()> {
     let (cache_manager, ttl_inbox) = CacheManager::run_cache_actors(number_of_cache_actors, endec);
-    cache_manager.load_data(ttl_inbox.clone(), config).await?;
+    cache_manager
+        .load_data(
+            ttl_inbox.clone(),
+            config.try_filepath().await,
+            config.startup_time,
+        )
+        .await?;
+
+    let config_manager = ConfigManager::run_with_config(config);
 
     // Leak the cache_dispatcher to make it static - this is safe because the cache_dispatcher
     // will live for the entire duration of the program.
@@ -33,12 +42,12 @@ pub async fn start_up<T: TCancellationTokenFactory>(
 
     startup_notifier.notify_startup();
 
-    start_accepting_connections::<T>(listener, config, ttl_inbox, cache_manager).await
+    start_accepting_connections::<T>(listener, config_manager, ttl_inbox, cache_manager).await
 }
 
 async fn start_accepting_connections<T: TCancellationTokenFactory>(
     listener: impl TSocketListener,
-    config: &'static Config,
+    config_manager: ConfigManager,
     ttl_inbox: TtlSchedulerInbox,
     cache_manager: &'static CacheManager<impl TEnDecoder>,
 ) -> Result<()> {
@@ -47,8 +56,12 @@ async fn start_accepting_connections<T: TCancellationTokenFactory>(
             Ok((stream, _)) =>
             // Spawn a new task to handle the connection without blocking the main thread.
             {
-                let query_manager =
-                    QueryManager::new(stream, config, &cache_manager, ttl_inbox.clone());
+                let query_manager = QueryManager::new(
+                    stream,
+                    config_manager.clone(),
+                    &cache_manager,
+                    ttl_inbox.clone(),
+                );
                 handle_single_user_stream::<T>(query_manager);
             }
             Err(e) => eprintln!("Failed to accept connection: {:?}", e),
