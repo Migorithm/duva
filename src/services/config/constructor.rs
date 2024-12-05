@@ -1,7 +1,7 @@
-use std::time::SystemTime;
-
 use crate::services::config::config_actor::{Config, Replication};
-
+use anyhow::Result;
+use std::time::SystemTime;
+use tokio::fs::try_exists;
 macro_rules! env_var {
     (
         {
@@ -97,5 +97,42 @@ impl Config {
     pub fn set_dbfilename(mut self, dbfilename: String) -> Self {
         self.dbfilename = Some(dbfilename);
         self
+    }
+
+    pub(super) fn get_dir(&self) -> &str {
+        self.dir.as_str()
+    }
+
+    pub(super) fn get_db_filename(&self) -> Option<String> {
+        self.dbfilename.clone()
+    }
+
+    pub fn bind_addr(&self) -> String {
+        format!("{}:{}", self.host, self.port)
+    }
+    // The following is used on startup and check if the file exists
+    pub async fn try_filepath(&self) -> Result<Option<String>> {
+        match (&self.dir, &self.dbfilename) {
+            (dir, Some(db_filename)) => {
+                let file_path = format!("{}/{}", dir, db_filename);
+                if try_exists(&file_path).await? {
+                    println!("The file exists.");
+                    Ok(Some(file_path))
+                } else {
+                    println!("The file does NOT exist.");
+                    Ok(None)
+                }
+            }
+            _ => Err(anyhow::anyhow!("dir and db_filename not given")),
+        }
+    }
+    pub fn get_filepath(&self) -> Option<String> {
+        match (&self.dir, &self.dbfilename) {
+            (dir, Some(db_filename)) => {
+                let file_path = format!("{}/{}", dir, db_filename);
+                Some(file_path)
+            }
+            _ => None,
+        }
     }
 }

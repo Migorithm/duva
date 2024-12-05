@@ -1,25 +1,6 @@
-use anyhow::Result;
 use std::time::SystemTime;
-use tokio::fs::try_exists;
 
-pub enum ConfigCommand {
-    Dir,
-    DbFileName,
-}
-
-impl TryFrom<(&str, &str)> for ConfigCommand {
-    type Error = anyhow::Error;
-    fn try_from((cmd, resource): (&str, &str)) -> anyhow::Result<Self> {
-        match (
-            cmd.to_lowercase().as_str(),
-            resource.to_lowercase().as_str(),
-        ) {
-            ("get", "dir") => Ok(ConfigCommand::Dir),
-            ("get", "dbfilename") => Ok(ConfigCommand::DbFileName),
-            _ => Err(anyhow::anyhow!("Invalid arguments")),
-        }
-    }
-}
+use super::command::ConfigCommand;
 
 pub struct Config {
     pub port: u16,
@@ -31,42 +12,6 @@ pub struct Config {
 }
 
 impl Config {
-    fn get_dir(&self) -> &str {
-        self.dir.as_str()
-    }
-
-    fn get_db_filename(&self) -> Option<String> {
-        self.dbfilename.clone()
-    }
-
-    pub fn bind_addr(&self) -> String {
-        format!("{}:{}", self.host, self.port)
-    }
-    // The following is used on startup and check if the file exists
-    pub async fn try_filepath(&self) -> Result<Option<String>> {
-        match (&self.dir, &self.dbfilename) {
-            (dir, Some(db_filename)) => {
-                let file_path = format!("{}/{}", dir, db_filename);
-                if try_exists(&file_path).await? {
-                    println!("The file exists.");
-                    Ok(Some(file_path))
-                } else {
-                    println!("The file does NOT exist.");
-                    Ok(None)
-                }
-            }
-            _ => Err(anyhow::anyhow!("dir and db_filename not given")),
-        }
-    }
-    pub fn get_filepath(&self) -> Option<String> {
-        match (&self.dir, &self.dbfilename) {
-            (dir, Some(db_filename)) => {
-                let file_path = format!("{}/{}", dir, db_filename);
-                Some(file_path)
-            }
-            _ => None,
-        }
-    }
     // perhaps, set operation is needed
     pub fn handle_config(&self, cmd: ConfigCommand) -> Option<String> {
         match cmd {

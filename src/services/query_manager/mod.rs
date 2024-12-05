@@ -14,7 +14,7 @@ use request::UserRequest;
 use std::str::FromStr;
 
 use super::{
-    config::config_actor::{Config, ConfigCommand},
+    config::{config_actor::Config, ConfigCommand},
     statefuls::{
         cache::CacheEntry,
         persist::{endec::TEnDecoder, save_actor::SaveActor},
