@@ -1,5 +1,7 @@
 use std::time::SystemTime;
 
+use tokio::sync::mpsc::{Receiver, Sender};
+
 use super::command::ConfigCommand;
 
 pub struct Config {
@@ -19,6 +21,15 @@ impl Config {
             ConfigCommand::DbFileName => self.get_db_filename(),
         }
     }
+
+    pub fn run() -> Sender<ConfigCommand> {
+        let config = Config::default();
+        let (tx, inbox) = tokio::sync::mpsc::channel(20);
+        tokio::spawn(config.handle(inbox));
+
+        tx
+    }
+    pub async fn handle(self, inbox: Receiver<ConfigCommand>) {}
 }
 
 #[derive(Debug, Clone, Default)]
