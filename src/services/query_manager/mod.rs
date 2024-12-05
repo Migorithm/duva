@@ -1,6 +1,6 @@
 pub mod interface;
 pub mod query_io;
-pub mod request;
+pub mod user_request;
 mod query_arguments;
 
 use crate::{
@@ -11,7 +11,7 @@ use anyhow::Result;
 use bytes::BytesMut;
 use interface::{TRead, TWrite};
 use query_io::QueryIO;
-use request::UserRequest;
+use user_request::UserRequest;
 
 use super::statefuls::persist::{endec::TEnDecoder, save_actor::SaveActor};
 use query_arguments::QueryArguments;
