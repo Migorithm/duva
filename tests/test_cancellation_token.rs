@@ -28,7 +28,7 @@ async fn test_cancellation_token() {
     // THEN
     assert_eq!(
         h.get_response().await,
-        "-Error opertation cancelled due to timeout\r\n"
+        "-Error operation cancelled due to timeout\r\n"
     );
 }
 
