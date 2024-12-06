@@ -10,10 +10,7 @@ use services::{
         interface::{TCancellationNotifier, TCancellationTokenFactory, TRead, TWrite},
         QueryManager,
     },
-    statefuls::{
-        cache::cache_manager::CacheManager,
-        persist::endec::TEnDecoder,
-    },
+    statefuls::{cache::cache_manager::CacheManager, persist::endec::TEnDecoder},
 };
 use std::io::ErrorKind;
 
@@ -35,7 +32,7 @@ pub async fn start_up<T: TCancellationTokenFactory>(
         )
         .await?;
 
-    let config_manager = ConfigManager::run_with_config(config);
+    let config_manager = ConfigManager::run_actor(config);
 
     // Leak the cache_dispatcher to make it static - this is safe because the cache_dispatcher
     // will live for the entire duration of the program.
@@ -43,11 +40,7 @@ pub async fn start_up<T: TCancellationTokenFactory>(
 
     startup_notifier.notify_startup();
 
-    let request_handler = ClientRequestController::new(
-        config_manager,
-        cache_manager,
-        ttl_inbox,
-    );
+    let request_handler = ClientRequestController::new(config_manager, cache_manager, ttl_inbox);
     start_accepting_connections::<T>(listener, request_handler).await
 }
 
@@ -69,7 +62,10 @@ async fn start_accepting_connections<T: TCancellationTokenFactory>(
 }
 
 fn handle_single_user_stream<U: TCancellationTokenFactory>(
-    mut query_manager: QueryManager<impl TWrite + TRead, &'static ClientRequestController<impl TEnDecoder>>,
+    mut query_manager: QueryManager<
+        impl TWrite + TRead,
+        &'static ClientRequestController<impl TEnDecoder>,
+    >,
 ) {
     tokio::spawn(async move {
         loop {
@@ -85,17 +81,17 @@ fn handle_single_user_stream<U: TCancellationTokenFactory>(
             // Notify the cancellation notifier to cancel the query after 100 milliseconds.
             cancellation_notifier.notify();
 
-            let result = query_manager.handle(cancellation_watcher, request, args).await;
+            let result = query_manager
+                .handle(cancellation_watcher, request, args)
+                .await;
             if let Err(e) = result {
                 match e.kind() {
-                    ErrorKind::ConnectionRefused |
-                    ErrorKind::ConnectionReset |
-                    ErrorKind::NetworkUnreachable |
-                    ErrorKind::ConnectionAborted |
-                    ErrorKind::NotConnected |
-                    ErrorKind::NetworkDown |
-                    ErrorKind::BrokenPipe |
-                    ErrorKind::TimedOut => {
+                    ErrorKind::ConnectionRefused
+                    | ErrorKind::ConnectionReset
+                    | ErrorKind::ConnectionAborted
+                    | ErrorKind::NotConnected
+                    | ErrorKind::BrokenPipe
+                    | ErrorKind::TimedOut => {
                         eprintln!("network error: connection closed");
                         break;
                     }

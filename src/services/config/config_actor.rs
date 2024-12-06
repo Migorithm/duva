@@ -6,9 +6,9 @@ use tokio::{fs::try_exists, sync::mpsc::Receiver};
 #[derive(Clone)]
 pub struct Config {
     pub port: u16,
-    pub host: String,
-    pub(crate) dir: String,
-    pub dbfilename: Option<String>,
+    pub host: &'static str,
+    pub(crate) dir: &'static str,
+    pub dbfilename: &'static str,
     pub replication: Replication,
     pub(crate) startup_time: SystemTime,
 }
@@ -20,12 +20,12 @@ impl Config {
         while let Some(cmd) = inbox.recv().await {
             match cmd.resource {
                 ConfigResource::Dir => {
-                    let _ = cmd.callback.send(ConfigResponse::Dir(self.dir.clone()));
+                    let _ = cmd.callback.send(ConfigResponse::Dir(self.dir.into()));
                 }
                 ConfigResource::DbFileName => {
                     let _ = cmd
                         .callback
-                        .send(ConfigResponse::DbFileName(self.dbfilename.clone()));
+                        .send(ConfigResponse::DbFileName(self.dbfilename.into()));
                 }
                 ConfigResource::FilePath => {
                     let _ = cmd
@@ -44,36 +44,33 @@ impl Config {
     pub fn bind_addr(&self) -> String {
         format!("{}:{}", self.host, self.port)
     }
-    // The following is used on startup and check if the file exists
-    pub async fn try_filepath(&self) -> Option<String> {
-        match (&self.dir, &self.dbfilename) {
-            (dir, Some(db_filename)) => {
-                let file_path = format!("{}/{}", dir, db_filename);
 
-                match try_exists(&file_path).await {
-                    Ok(true) => Some(file_path),
-                    Ok(false) => {
-                        println!("File does not exist");
-                        None
-                    }
-                    Err(_) => {
-                        println!("Error in try_filepath");
-                        None
-                    }
-                }
-            }
-            // Not given a dbfilename
-            _ => None,
+    pub fn set_dir(&mut self, dir: &str) {
+        unsafe {
+            // Get the pointer to the str
+            let ptr: *const str = self.dir;
+            // Recreate the Box from the pointer and drop it
+            let _reclaimed_box: Box<str> = Box::from_raw(ptr as *mut str);
+            self.dir = Box::leak(dir.into());
         }
     }
-    pub fn get_filepath(&self) -> Option<String> {
-        match (&self.dir, &self.dbfilename) {
-            (dir, Some(db_filename)) => {
-                let file_path = format!("{}/{}", dir, db_filename);
-                Some(file_path)
+    // The following is used on startup and check if the file exists
+    pub async fn try_filepath(&self) -> Option<String> {
+        let file_path = self.get_filepath();
+        match try_exists(&file_path).await {
+            Ok(true) => Some(file_path),
+            Ok(false) => {
+                println!("File does not exist");
+                None
             }
-            _ => None,
+            Err(_) => {
+                println!("Error in try_filepath");
+                None
+            } // Not given a dbfilename
         }
+    }
+    pub fn get_filepath(&self) -> String {
+        format!("{}/{}", self.dir, self.dbfilename)
     }
 }
 
@@ -127,11 +124,11 @@ impl Default for Config {
     fn default() -> Self {
         env_var!(
             {
-                dbfilename,
                 replicaof
             }
             {
                 dir = ".".to_string(),
+                dbfilename = "dump.rdb".to_string(),
                 port = 6379,
                 host = "localhost".to_string()
             }
@@ -147,11 +144,20 @@ impl Default for Config {
 
         Config {
             port,
-            host,
-            dir,
-            dbfilename,
+            host: Box::leak(host.into_boxed_str()),
+            dir: Box::leak(dir.into_boxed_str()),
+            dbfilename: Box::leak(dbfilename.into_boxed_str()),
             replication: Replication::new(replicaof),
             startup_time: SystemTime::now(),
         }
     }
+}
+
+#[test]
+fn test_set_dir() {
+    let mut config = Config::default();
+    config.set_dir("test");
+    assert_eq!(config.dir, "test");
+    config.set_dir("test2");
+    assert_eq!(config.dir, "test2");
 }

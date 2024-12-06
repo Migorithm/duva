@@ -18,7 +18,13 @@ async fn test_save_read_dump() {
     // GIVEN
     let test_file_name = create_unique_file_name("test_save_dump");
     let mut config = init_config_with_free_port().await;
-    config.dbfilename = Some(test_file_name.clone());
+    let old_ref = config.dbfilename;
+
+    config.dbfilename = Box::leak(Box::new(test_file_name.clone()));
+    unsafe {
+        let ptr: *const str = old_ref;
+        let _ = Box::from_raw(ptr as *mut str);
+    }
 
     let _ = start_test_server::<CancellationToken>(config.clone()).await;
 

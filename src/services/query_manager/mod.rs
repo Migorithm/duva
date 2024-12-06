@@ -1,7 +1,7 @@
-pub mod interface;
-pub mod query_io;
 pub mod client_request_controllers;
+pub mod interface;
 mod query_arguments;
+pub mod query_io;
 
 use crate::services::query_manager::client_request_controllers::client_request::ClientRequest;
 use crate::services::query_manager::client_request_controllers::ClientRequestController;
@@ -19,21 +19,15 @@ where
     T: TWrite + TRead,
 {
     pub(crate) stream: T,
-    pub(crate) controller: U
+    pub(crate) controller: U,
 }
 
 impl<T, U> QueryManager<T, U>
 where
     T: TWrite + TRead,
 {
-    pub(crate) fn new(
-        stream: T,
-        controller: U,
-    ) -> Self {
-        QueryManager {
-            stream,
-            controller
-        }
+    pub(crate) fn new(stream: T, controller: U) -> Self {
+        QueryManager { stream, controller }
     }
 
     // crlf
@@ -60,7 +54,12 @@ where
         let query_io = self.read_value().await?;
         match query_io {
             QueryIO::Array(value_array) => Ok((
-                value_array.first().context("request not given")?.clone().unpack_bulk_str()?.try_into()?,
+                value_array
+                    .first()
+                    .context("request not given")?
+                    .clone()
+                    .unpack_bulk_str()?
+                    .try_into()?,
                 QueryArguments::new(value_array.into_iter().skip(1).collect()),
             )),
             _ => Err(anyhow::anyhow!("Unexpected command format")),
