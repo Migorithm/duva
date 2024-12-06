@@ -1,8 +1,6 @@
 pub mod interface;
 pub mod query_io;
 mod query_arguments;
-mod cluster_request_handler;
-mod cluster_request;
 mod client_request_controllers;
 
 use anyhow::Result;
