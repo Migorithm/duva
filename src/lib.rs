@@ -1,9 +1,8 @@
 pub mod adapters;
-
 pub mod macros;
 pub mod services;
+use crate::services::query_manager::user_request_handler::UserRequestHandler;
 use anyhow::Result;
-
 use services::{
     config::{config_actor::Config, config_manager::ConfigManager},
     query_manager::{
@@ -15,6 +14,7 @@ use services::{
         persist::endec::TEnDecoder,
     },
 };
+use std::str::FromStr;
 
 /// dir, dbfilename is given as follows: ./your_program.sh --dir /tmp/redis-files --dbfilename dump.rdb
 
@@ -56,13 +56,13 @@ async fn start_accepting_connections<T: TCancellationTokenFactory>(
             Ok((stream, _)) =>
             // Spawn a new task to handle the connection without blocking the main thread.
             {
-                let query_manager = QueryManager::new(
-                    stream,
-                    config_manager.clone(),
-                    &cache_manager,
-                    ttl_inbox.clone(),
-                );
-                handle_single_user_stream::<T>(query_manager);
+                let query_manager = QueryManager::new(stream);
+                let request_handler = UserRequestHandler::new(
+                        config_manager.clone(),
+                        &cache_manager,
+                        ttl_inbox.clone(),
+                    );
+                handle_single_user_stream::<T>(query_manager, request_handler);
             }
             Err(e) => eprintln!("Failed to accept connection: {:?}", e),
         }
@@ -70,7 +70,8 @@ async fn start_accepting_connections<T: TCancellationTokenFactory>(
 }
 
 fn handle_single_user_stream<U: TCancellationTokenFactory>(
-    mut query_manager: QueryManager<impl TWrite + TRead, impl TEnDecoder>,
+    mut query_manager: QueryManager<impl TWrite + TRead>,
+    mut request_handler: UserRequestHandler<impl TEnDecoder>
 ) {
     tokio::spawn(async move {
         loop {
@@ -79,6 +80,8 @@ fn handle_single_user_stream<U: TCancellationTokenFactory>(
                 break;
             };
 
+            let user_request = FromStr::from_str(&cmd).unwrap();
+
             const TIMEOUT: u64 = 100;
             let (cancellation_notifier, cancellation_watcher) = U::create(TIMEOUT).split();
 
@@ -86,9 +89,16 @@ fn handle_single_user_stream<U: TCancellationTokenFactory>(
             // Notify the cancellation notifier to cancel the query after 100 milliseconds.
             cancellation_notifier.notify();
 
-            if let Err(e) = query_manager.handle(cancellation_watcher, cmd, args).await {
-                eprintln!("Error: {:?}", e);
-                break;
+            let result = request_handler.handle(cancellation_watcher, user_request, args).await;
+            // TODO: refactoring needed
+            match result {
+                Ok(response) => {
+                    query_manager.write_value(response).await.unwrap();
+                }
+                Err(e) => {
+                    eprintln!("Error: {:?}", e);
+                    break;
+                }
             }
         }
     });
