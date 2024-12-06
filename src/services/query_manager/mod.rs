@@ -45,7 +45,7 @@ where
         Ok(query_io)
     }
 
-    pub async fn write_value(&mut self, value: QueryIO) -> Result<()> {
+    pub async fn write_value(&mut self, value: QueryIO) -> Result<(), std::io::Error> {
         self.stream.write_all(value.serialize().as_bytes()).await?;
         Ok(())
     }
@@ -68,11 +68,16 @@ where
     }
 
     pub(crate) async fn handle(
-        &self,
+        &mut self,
         cancellation_token: impl TCancellationWatcher,
         cmd: ClientRequest,
         args: QueryArguments,
-    ) -> Result<QueryIO> {
-        self.controller.handle(cancellation_token, cmd, args).await
+    ) -> Result<(), std::io::Error> {
+        let result = self.controller.handle(cancellation_token, cmd, args).await;
+        match result {
+            Ok(response) => self.write_value(response).await?,
+            Err(e) => self.write_value(QueryIO::Err(e.to_string())).await?,
+        }
+        Ok(())
     }
 }

@@ -1,6 +1,7 @@
 pub mod adapters;
 pub mod macros;
 pub mod services;
+
 use crate::services::query_manager::client_request_controllers::ClientRequestController;
 use anyhow::Result;
 use services::{
@@ -14,6 +15,7 @@ use services::{
         persist::endec::TEnDecoder,
     },
 };
+use std::io::ErrorKind;
 
 /// dir, dbfilename is given as follows: ./your_program.sh --dir /tmp/redis-files --dbfilename dump.rdb
 
@@ -84,14 +86,20 @@ fn handle_single_user_stream<U: TCancellationTokenFactory>(
             cancellation_notifier.notify();
 
             let result = query_manager.handle(cancellation_watcher, request, args).await;
-            // TODO: refactoring needed
-            match result {
-                Ok(response) => {
-                    query_manager.write_value(response).await.unwrap();
-                }
-                Err(e) => {
-                    eprintln!("Error: {:?}", e);
-                    break;
+            if let Err(e) = result {
+                match e.kind() {
+                    ErrorKind::ConnectionRefused |
+                    ErrorKind::ConnectionReset |
+                    ErrorKind::NetworkUnreachable |
+                    ErrorKind::ConnectionAborted |
+                    ErrorKind::NotConnected |
+                    ErrorKind::NetworkDown |
+                    ErrorKind::BrokenPipe |
+                    ErrorKind::TimedOut => {
+                        eprintln!("network error: connection closed");
+                        break;
+                    }
+                    _ => {}
                 }
             }
         }
