@@ -1,9 +1,13 @@
 pub mod interface;
 pub mod query_io;
+pub mod client_request_controllers;
 mod query_arguments;
-mod client_request_controllers;
 
-use anyhow::Result;
+use crate::services::query_manager::client_request_controllers::client_request::ClientRequest;
+use crate::services::query_manager::client_request_controllers::ClientRequestController;
+use crate::services::query_manager::interface::TCancellationWatcher;
+use crate::services::statefuls::persist::endec::TEnDecoder;
+use anyhow::{Context, Result};
 use bytes::BytesMut;
 use interface::{TRead, TWrite};
 use query_arguments::QueryArguments;
@@ -15,7 +19,7 @@ where
     T: TWrite + TRead,
 {
     pub(crate) stream: T,
-    pub(crate) handler: U
+    pub(crate) controller: U
 }
 
 impl<T, U> QueryManager<T, U>
@@ -24,36 +28,51 @@ where
 {
     pub(crate) fn new(
         stream: T,
-        handler: U,
+        controller: U,
     ) -> Self {
         QueryManager {
             stream,
-            handler
+            controller
         }
     }
 
     // crlf
-    pub async fn read_value(&mut self) -> Result<Option<(String, QueryArguments)>> {
+    pub async fn read_value(&mut self) -> Result<QueryIO> {
         let mut buffer = BytesMut::with_capacity(512);
         self.stream.read_bytes(&mut buffer).await?;
 
-        let (user_request, _) = query_io::parse(buffer)?;
-        Ok(Some(Self::extract_query(user_request)?))
+        let (query_io, _) = query_io::parse(buffer)?;
+        Ok(query_io)
     }
 
     pub async fn write_value(&mut self, value: QueryIO) -> Result<()> {
         self.stream.write_all(value.serialize().as_bytes()).await?;
         Ok(())
     }
+}
 
-    fn extract_query(value: QueryIO) -> Result<(String, QueryArguments)> {
-        match value {
+impl<T, U> QueryManager<T, &'static ClientRequestController<U>>
+where
+    T: TWrite + TRead,
+    U: TEnDecoder,
+{
+    pub(crate) async fn extract_query(&mut self) -> Result<(ClientRequest, QueryArguments)> {
+        let query_io = self.read_value().await?;
+        match query_io {
             QueryIO::Array(value_array) => Ok((
-                value_array.first().unwrap().clone().unpack_bulk_str()?,
+                value_array.first().context("request not given")?.clone().unpack_bulk_str()?.try_into()?,
                 QueryArguments::new(value_array.into_iter().skip(1).collect()),
             )),
             _ => Err(anyhow::anyhow!("Unexpected command format")),
         }
     }
-}
 
+    pub(crate) async fn handle(
+        &self,
+        cancellation_token: impl TCancellationWatcher,
+        cmd: ClientRequest,
+        args: QueryArguments,
+    ) -> Result<QueryIO> {
+        self.controller.handle(cancellation_token, cmd, args).await
+    }
+}

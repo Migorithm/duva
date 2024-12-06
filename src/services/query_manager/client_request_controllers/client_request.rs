@@ -1,4 +1,3 @@
-use std::str::FromStr;
 pub enum ClientRequest {
     Ping,
     Echo,
@@ -11,11 +10,10 @@ pub enum ClientRequest {
     Info,
 }
 
-impl FromStr for ClientRequest {
-    type Err = anyhow::Error;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_lowercase().as_str() {
+impl TryFrom<String> for ClientRequest {
+    type Error = anyhow::Error;
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        match value.to_lowercase().as_str() {
             "ping" => Ok(ClientRequest::Ping),
             "get" => Ok(ClientRequest::Get),
             "set" => Ok(ClientRequest::Set),
