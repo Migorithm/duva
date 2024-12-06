@@ -13,21 +13,21 @@ use query_arguments::QueryArguments;
 use query_io::QueryIO;
 
 /// Controller is a struct that will be used to read and write values to the client.
-pub struct QueryManager<T>
+pub struct SocketController<T>
 where
     T: TWrite + TRead,
 {
     pub(crate) stream: T,
 }
 
-impl<T> QueryManager<T>
+impl<T> SocketController<T>
 where
     T: TWrite + TRead,
 {
     pub(crate) fn new(
         stream: T,
     ) -> Self {
-        QueryManager {
+        SocketController {
             stream,
         }
     }

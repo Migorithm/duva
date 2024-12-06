@@ -26,16 +26,16 @@ where
         config_manager: ConfigManager,
         cache_manager: &'static CacheManager<U>,
         ttl_manager: TtlSchedulerInbox,
-    ) -> Self {
-        UserRequestHandler {
+    ) -> &'static Self {
+        Box::leak(UserRequestHandler {
             config_manager,
             cache_manager,
             ttl_manager,
-        }
+        }.into())
     }
 
     pub(crate) async fn handle(
-        &mut self,
+        &self,
         mut cancellation_token: impl TCancellationWatcher,
         cmd: UserRequest,
         args: QueryArguments,

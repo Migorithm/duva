@@ -7,10 +7,10 @@ use services::{
     config::{config_actor::Config, config_manager::ConfigManager},
     query_manager::{
         interface::{TCancellationNotifier, TCancellationTokenFactory, TRead, TWrite},
-        QueryManager,
+        SocketController,
     },
     statefuls::{
-        cache::{cache_manager::CacheManager, ttl_manager::TtlSchedulerInbox},
+        cache::cache_manager::CacheManager,
         persist::endec::TEnDecoder,
     },
 };
@@ -38,31 +38,29 @@ pub async fn start_up<T: TCancellationTokenFactory>(
 
     // Leak the cache_dispatcher to make it static - this is safe because the cache_dispatcher
     // will live for the entire duration of the program.
-    let cache_manager = Box::leak(Box::new(cache_manager));
+    let cache_manager: &'static CacheManager<_> = Box::leak(Box::new(cache_manager));
 
     startup_notifier.notify_startup();
 
-    start_accepting_connections::<T>(listener, config_manager, ttl_inbox, cache_manager).await
+    let request_handler = UserRequestHandler::new(
+        config_manager,
+        cache_manager,
+        ttl_inbox,
+    );
+    start_accepting_connections::<T>(listener, request_handler).await
 }
 
 async fn start_accepting_connections<T: TCancellationTokenFactory>(
     listener: impl TSocketListener,
-    config_manager: ConfigManager,
-    ttl_inbox: TtlSchedulerInbox,
-    cache_manager: &'static CacheManager<impl TEnDecoder>,
+    handler: &'static UserRequestHandler<impl TEnDecoder + Sized>,
 ) -> Result<()> {
     loop {
         match listener.accept().await {
             Ok((stream, _)) =>
             // Spawn a new task to handle the connection without blocking the main thread.
             {
-                let query_manager = QueryManager::new(stream);
-                let request_handler = UserRequestHandler::new(
-                        config_manager.clone(),
-                        &cache_manager,
-                        ttl_inbox.clone(),
-                    );
-                handle_single_user_stream::<T>(query_manager, request_handler);
+                let query_manager = SocketController::new(stream);
+                handle_single_user_stream::<T>(query_manager, handler);
             }
             Err(e) => eprintln!("Failed to accept connection: {:?}", e),
         }
@@ -70,8 +68,8 @@ async fn start_accepting_connections<T: TCancellationTokenFactory>(
 }
 
 fn handle_single_user_stream<U: TCancellationTokenFactory>(
-    mut query_manager: QueryManager<impl TWrite + TRead>,
-    mut request_handler: UserRequestHandler<impl TEnDecoder>
+    mut query_manager: SocketController<impl TWrite + TRead>,
+    request_handler: &'static UserRequestHandler<impl TEnDecoder>
 ) {
     tokio::spawn(async move {
         loop {
