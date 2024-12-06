@@ -105,11 +105,12 @@ impl<EnDec: TEnDecoder> CacheManager<EnDec> {
 
         let mut keys = Vec::new();
         for v in receivers {
-            match v.await {
-                Ok(Ok(QueryIO::Array(v))) => keys.extend(v),
-                _ => continue,
+            if let Ok(QueryIO::Array(v)) = v.await? {
+                keys.extend(v)
             }
         }
+
+        eprintln!("keys.len() = {:?}", keys.len());
 
         Ok(QueryIO::Array(keys))
     }

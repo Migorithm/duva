@@ -44,6 +44,10 @@ impl Config {
     pub fn bind_addr(&self) -> String {
         format!("{}:{}", self.host, self.port)
     }
+    pub fn replication_bind_addr(&self) -> String {
+        // TODO basic validation required for port number so it doesn't go over 65535
+        format!("{}:{}", self.host, self.port + 10000)
+    }
 
     pub fn set_dir(&mut self, dir: &str) {
         unsafe {
@@ -71,6 +75,10 @@ impl Config {
     }
     pub fn get_filepath(&self) -> String {
         format!("{}/{}", self.dir, self.dbfilename)
+    }
+
+    pub(crate) fn is_replica(&self) -> bool {
+        self.replication.role() == "slave"
     }
 }
 
