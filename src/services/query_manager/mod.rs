@@ -1,10 +1,9 @@
 pub mod interface;
 pub mod query_io;
-pub mod user_request;
 mod query_arguments;
-pub(crate) mod user_request_handler;
 mod cluster_request_handler;
 mod cluster_request;
+mod client_request_controllers;
 
 use anyhow::Result;
 use bytes::BytesMut;
@@ -13,22 +12,25 @@ use query_arguments::QueryArguments;
 use query_io::QueryIO;
 
 /// Controller is a struct that will be used to read and write values to the client.
-pub struct SocketController<T>
+pub struct QueryManager<T, U>
 where
     T: TWrite + TRead,
 {
     pub(crate) stream: T,
+    pub(crate) handler: U
 }
 
-impl<T> SocketController<T>
+impl<T, U> QueryManager<T, U>
 where
     T: TWrite + TRead,
 {
     pub(crate) fn new(
         stream: T,
+        handler: U,
     ) -> Self {
-        SocketController {
+        QueryManager {
             stream,
+            handler
         }
     }
 
