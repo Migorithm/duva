@@ -1,7 +1,8 @@
 pub mod adapters;
 pub mod macros;
 pub mod services;
-use crate::services::query_manager::user_request_handler::UserRequestHandler;
+
+use crate::services::query_manager::client_request_controllers::ClientRequestController;
 use anyhow::Result;
 use services::{
     config::{config_actor::Config, config_manager::ConfigManager},
@@ -10,11 +11,11 @@ use services::{
         QueryManager,
     },
     statefuls::{
-        cache::{cache_manager::CacheManager, ttl_manager::TtlSchedulerInbox},
+        cache::cache_manager::CacheManager,
         persist::endec::TEnDecoder,
     },
 };
-use std::str::FromStr;
+use std::io::ErrorKind;
 
 /// dir, dbfilename is given as follows: ./your_program.sh --dir /tmp/redis-files --dbfilename dump.rdb
 
@@ -38,31 +39,29 @@ pub async fn start_up<T: TCancellationTokenFactory>(
 
     // Leak the cache_dispatcher to make it static - this is safe because the cache_dispatcher
     // will live for the entire duration of the program.
-    let cache_manager = Box::leak(Box::new(cache_manager));
+    let cache_manager: &'static CacheManager<_> = Box::leak(Box::new(cache_manager));
 
     startup_notifier.notify_startup();
 
-    start_accepting_connections::<T>(listener, config_manager, ttl_inbox, cache_manager).await
+    let request_handler = ClientRequestController::new(
+        config_manager,
+        cache_manager,
+        ttl_inbox,
+    );
+    start_accepting_connections::<T>(listener, request_handler).await
 }
 
 async fn start_accepting_connections<T: TCancellationTokenFactory>(
     listener: impl TSocketListener,
-    config_manager: ConfigManager,
-    ttl_inbox: TtlSchedulerInbox,
-    cache_manager: &'static CacheManager<impl TEnDecoder>,
+    handler: &'static ClientRequestController<impl TEnDecoder + Sized>,
 ) -> Result<()> {
     loop {
         match listener.accept().await {
             Ok((stream, _)) =>
             // Spawn a new task to handle the connection without blocking the main thread.
             {
-                let query_manager = QueryManager::new(stream);
-                let request_handler = UserRequestHandler::new(
-                        config_manager.clone(),
-                        &cache_manager,
-                        ttl_inbox.clone(),
-                    );
-                handle_single_user_stream::<T>(query_manager, request_handler);
+                let query_manager = QueryManager::new(stream, handler);
+                handle_single_user_stream::<T>(query_manager);
             }
             Err(e) => eprintln!("Failed to accept connection: {:?}", e),
         }
@@ -70,17 +69,14 @@ async fn start_accepting_connections<T: TCancellationTokenFactory>(
 }
 
 fn handle_single_user_stream<U: TCancellationTokenFactory>(
-    mut query_manager: QueryManager<impl TWrite + TRead>,
-    mut request_handler: UserRequestHandler<impl TEnDecoder>
+    mut query_manager: QueryManager<impl TWrite + TRead, &'static ClientRequestController<impl TEnDecoder>>,
 ) {
     tokio::spawn(async move {
         loop {
-            let Ok(Some((cmd, args))) = query_manager.read_value().await else {
-                eprintln!("invalid value given!");
-                break;
+            let Ok((request, args)) = query_manager.extract_query().await else {
+                eprintln!("invalid user request");
+                continue;
             };
-
-            let user_request = FromStr::from_str(&cmd).unwrap();
 
             const TIMEOUT: u64 = 100;
             let (cancellation_notifier, cancellation_watcher) = U::create(TIMEOUT).split();
@@ -89,15 +85,21 @@ fn handle_single_user_stream<U: TCancellationTokenFactory>(
             // Notify the cancellation notifier to cancel the query after 100 milliseconds.
             cancellation_notifier.notify();
 
-            let result = request_handler.handle(cancellation_watcher, user_request, args).await;
-            // TODO: refactoring needed
-            match result {
-                Ok(response) => {
-                    query_manager.write_value(response).await.unwrap();
-                }
-                Err(e) => {
-                    eprintln!("Error: {:?}", e);
-                    break;
+            let result = query_manager.handle(cancellation_watcher, request, args).await;
+            if let Err(e) = result {
+                match e.kind() {
+                    ErrorKind::ConnectionRefused |
+                    ErrorKind::ConnectionReset |
+                    ErrorKind::NetworkUnreachable |
+                    ErrorKind::ConnectionAborted |
+                    ErrorKind::NotConnected |
+                    ErrorKind::NetworkDown |
+                    ErrorKind::BrokenPipe |
+                    ErrorKind::TimedOut => {
+                        eprintln!("network error: connection closed");
+                        break;
+                    }
+                    _ => {}
                 }
             }
         }
