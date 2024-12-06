@@ -18,7 +18,7 @@ pub enum ConfigResource {
 
 pub enum ConfigResponse {
     Dir(String),
-    DbFileName(Option<String>),
-    FilePath(Option<String>),
+    DbFileName(String),
+    FilePath(String),
     ReplicationInfo(Vec<String>),
 }

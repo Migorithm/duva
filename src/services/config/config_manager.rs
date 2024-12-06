@@ -13,17 +13,12 @@ pub struct ConfigManager(Sender<ConfigQuery>);
 make_smart_pointer!(ConfigManager, Sender<ConfigQuery>);
 
 impl ConfigManager {
-    pub fn run_with_default() -> Self {
-        let config = Config::default();
+    pub fn run_actor(config: Config) -> Self {
         let (tx, inbox) = tokio::sync::mpsc::channel(20);
         tokio::spawn(config.handle(inbox));
         Self(tx)
     }
-    pub fn run_with_config(config: Config) -> Self {
-        let (tx, inbox) = tokio::sync::mpsc::channel(20);
-        tokio::spawn(config.handle(inbox));
-        Self(tx)
-    }
+
     pub async fn route_get(
         &self,
         cmd: (String, String),
@@ -42,7 +37,7 @@ impl ConfigManager {
         let ConfigResponse::FilePath(file_path) = rx.await? else {
             return Err(anyhow::anyhow!("Failed to get file path"));
         };
-        Ok(file_path.unwrap_or("dump.rdb".into()))
+        Ok(file_path)
     }
 
     pub async fn replication_info(&self) -> anyhow::Result<Vec<String>> {

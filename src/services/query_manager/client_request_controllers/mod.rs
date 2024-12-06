@@ -29,11 +29,14 @@ where
         cache_manager: &'static CacheManager<U>,
         ttl_manager: TtlSchedulerInbox,
     ) -> &'static Self {
-        Box::leak(ClientRequestController {
-            config_manager,
-            cache_manager,
-            ttl_manager,
-        }.into())
+        Box::leak(
+            ClientRequestController {
+                config_manager,
+                cache_manager,
+                ttl_manager,
+            }
+            .into(),
+        )
     }
 
     pub(crate) async fn handle(
@@ -43,9 +46,7 @@ where
         args: QueryArguments,
     ) -> anyhow::Result<QueryIO> {
         if cancellation_token.watch() {
-            let err = QueryIO::Err(
-                "Error operation cancelled due to timeout".to_string(),
-            );
+            let err = QueryIO::Err("Error operation cancelled due to timeout".to_string());
             return Ok(err);
         }
 
@@ -89,10 +90,7 @@ where
                         QueryIO::BulkString("dir".into()),
                         QueryIO::BulkString(value),
                     ]),
-                    ConfigResponse::DbFileName(value) => match value {
-                        Some(value) => QueryIO::BulkString(value),
-                        None => QueryIO::Null,
-                    },
+                    ConfigResponse::DbFileName(value) => QueryIO::BulkString(value),
                     _ => QueryIO::Err("Invalid operation".into()),
                 }
             }
