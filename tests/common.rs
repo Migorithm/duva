@@ -1,10 +1,9 @@
 use redis_starter_rust::services::config::config_actor::Config;
-use redis_starter_rust::services::query_manager::interface::{TRead, TWrite};
+use redis_starter_rust::{adapters::io::tokio_stream::AppStreamListener, TNotifyStartUp};
+
+use redis_starter_rust::services::query_manager::interface::TCancellationTokenFactory;
 use redis_starter_rust::services::query_manager::query_io::QueryIO;
-use redis_starter_rust::{
-    services::query_manager::interface::TCancellationTokenFactory, TNotifyStartUp,
-};
-use redis_starter_rust::{TSocketListener, TSocketListenerFactory};
+
 use std::sync::Arc;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
@@ -71,26 +70,13 @@ impl TNotifyStartUp for StartFlag {
     }
 }
 
-struct TestStreamListener(TcpListener);
-
-impl TSocketListener for TestStreamListener {
-    async fn accept(&self) -> anyhow::Result<(impl TWrite + TRead, std::net::SocketAddr)> {
-        self.0.accept().await.map_err(Into::into)
-    }
-}
-impl TSocketListenerFactory for TestStreamListener {
-    async fn create_listner(bind_addr: String) -> impl TSocketListener {
-        TestStreamListener(TcpListener::bind(bind_addr).await.unwrap())
-    }
-}
-
 pub async fn start_test_server<T: TCancellationTokenFactory>(
     config: Config,
 ) -> tokio::task::JoinHandle<Result<(), anyhow::Error>> {
     let notify = Arc::new(tokio::sync::Notify::new());
     let start_flag = StartFlag(notify.clone());
 
-    let h = tokio::spawn(redis_starter_rust::start_up::<T, TestStreamListener>(
+    let h = tokio::spawn(redis_starter_rust::start_up::<T, AppStreamListener>(
         config,
         3,
         redis_starter_rust::adapters::endec::EnDecoder,

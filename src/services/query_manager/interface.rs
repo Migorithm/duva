@@ -1,5 +1,7 @@
 use bytes::BytesMut;
 
+use super::error::IoError;
+
 pub trait TRead: Send + Sync + 'static {
     fn read_bytes(
         &mut self,
@@ -11,7 +13,7 @@ pub trait TWrite: Send + Sync + 'static {
     fn write_all(
         &mut self,
         buf: &[u8],
-    ) -> impl std::future::Future<Output = Result<(), std::io::Error>> + Send;
+    ) -> impl std::future::Future<Output = Result<(), IoError>> + Send;
 }
 
 pub trait TCancellationTokenFactory: Send + Sync + 'static {
@@ -24,4 +26,18 @@ pub trait TCancellationNotifier: Send {
 }
 pub trait TCancellationWatcher: Send {
     fn watch(&mut self) -> bool;
+}
+
+pub trait TSocketListener: Sync + Send + 'static {
+    fn accept(
+        &self,
+    ) -> impl std::future::Future<
+        Output = std::result::Result<(impl TWrite + TRead, std::net::SocketAddr), IoError>,
+    > + Send;
+}
+
+pub trait TSocketListenerFactory: Sync + Send + 'static {
+    fn create_listner(
+        bind_addr: String,
+    ) -> impl std::future::Future<Output = impl TSocketListener> + Send;
 }

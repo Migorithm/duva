@@ -2,14 +2,12 @@ use crate::adapters::endec::byte_encoder::{
     encode_checksum, encode_database_info, encode_database_table_size, encode_header,
     encode_metadata,
 };
-
 use crate::services::query_manager::interface::TWrite;
-
 use crate::services::statefuls::cache::CacheEntry;
 use crate::services::statefuls::persist::endec::TEncodingProcessor;
 use crate::services::statefuls::persist::save_actor::SaveActorCommand;
-
 use anyhow::Result;
+
 use std::collections::VecDeque;
 
 pub struct EncodingProcessor<T: TWrite> {
@@ -32,7 +30,6 @@ impl<T: TWrite> TEncodingProcessor for EncodingProcessor<T> {
             encode_metadata(Vec::from([("redis-ver", "6.0.16")]))?,
             encode_database_info(0)?,
         ];
-
         self.writer.write_all(&meta.concat()).await?;
         Ok(())
     }
