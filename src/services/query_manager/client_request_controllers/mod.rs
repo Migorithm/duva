@@ -1,14 +1,16 @@
 use crate::services::config::config_manager::ConfigManager;
 use crate::services::config::ConfigResponse;
 use crate::services::query_manager::interface::TCancellationWatcher;
-use crate::services::query_manager::query_arguments::QueryArguments;
+
 use crate::services::query_manager::query_io::QueryIO;
 use crate::services::statefuls::cache::cache_manager::CacheManager;
 use crate::services::statefuls::cache::ttl_manager::TtlSchedulerInbox;
 use crate::services::statefuls::persist::endec::TEnDecoder;
 use crate::services::statefuls::persist::save_actor::SaveActor;
+use arguments::Arguments;
 use client_request::ClientRequest;
 
+pub mod arguments;
 pub mod client_request;
 
 pub struct ClientRequestController<U>
@@ -28,22 +30,19 @@ where
         config_manager: ConfigManager,
         cache_manager: &'static CacheManager<U>,
         ttl_manager: TtlSchedulerInbox,
-    ) -> &'static Self {
-        Box::leak(
-            ClientRequestController {
-                config_manager,
-                cache_manager,
-                ttl_manager,
-            }
-            .into(),
-        )
+    ) -> Self {
+        ClientRequestController {
+            config_manager,
+            cache_manager,
+            ttl_manager,
+        }
     }
 
     pub(crate) async fn handle(
         &self,
         mut cancellation_token: impl TCancellationWatcher,
         cmd: ClientRequest,
-        args: QueryArguments,
+        args: Arguments,
     ) -> anyhow::Result<QueryIO> {
         if cancellation_token.watch() {
             let err = QueryIO::Err("Error operation cancelled due to timeout".to_string());

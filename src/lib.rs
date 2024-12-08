@@ -1,20 +1,19 @@
 pub mod adapters;
 pub mod macros;
 pub mod services;
-
 use crate::services::query_manager::client_request_controllers::ClientRequestController;
 use anyhow::Result;
-use services::{
-    config::{config_actor::Config, config_manager::ConfigManager},
-    query_manager::{
-        interface::{TCancellationNotifier, TCancellationTokenFactory, TRead, TWrite},
-        QueryManager,
-    },
-    statefuls::{cache::cache_manager::CacheManager, persist::endec::TEnDecoder},
-};
-use std::io::ErrorKind;
+use services::config::config_actor::Config;
+use services::config::config_manager::ConfigManager;
 
-/// dir, dbfilename is given as follows: ./your_program.sh --dir /tmp/redis-files --dbfilename dump.rdb
+use services::query_manager::interface::{
+    TCancellationTokenFactory, TSocketListener, TSocketListenerFactory,
+};
+use services::query_manager::replication_request_controllers::ReplicationRequestController;
+use services::query_manager::QueryManager;
+use services::statefuls::cache::cache_manager::CacheManager;
+use services::statefuls::cache::ttl_manager::TtlSchedulerInbox;
+use services::statefuls::persist::endec::TEnDecoder;
 
 pub async fn start_up<T: TCancellationTokenFactory, U: TSocketListenerFactory>(
     config: Config,
@@ -41,88 +40,68 @@ pub async fn start_up<T: TCancellationTokenFactory, U: TSocketListenerFactory>(
     // will live for the entire duration of the program.
     let cache_manager: &'static CacheManager<_> = Box::leak(Box::new(cache_manager));
 
-    tokio::spawn(start_accepting_cluster_connections(
+    tokio::spawn(start_accepting_replication_connections(
         replication_listener,
         config_manager.clone(),
     ));
-
     startup_notifier.notify_startup();
 
-    start_accepting_client_connections::<T>(
-        listener,
-        ClientRequestController::new(config_manager, cache_manager, ttl_inbox),
-    )
-    .await
+    start_accepting_client_connections::<T>(listener, cache_manager, ttl_inbox, config_manager)
+        .await;
+    Ok(())
 }
 
-async fn start_accepting_cluster_connections(
+async fn start_accepting_replication_connections(
     replication_listener: impl TSocketListener,
     config_manager: ConfigManager,
 ) {
     loop {
         match replication_listener.accept().await {
-            Ok(_) => todo!(),
-            Err(_) => todo!(),
+            Ok((stream, _)) => {
+                let query_manager = QueryManager::new(
+                    stream,
+                    ReplicationRequestController::new(config_manager.clone()),
+                );
+                tokio::spawn(query_manager.handle_replica_stream());
+            }
+
+            Err(err) => {
+                if err.should_break() {
+                    break;
+                }
+            }
         }
     }
 }
 
-async fn start_accepting_client_connections<T: TCancellationTokenFactory>(
+async fn start_accepting_client_connections<C: TCancellationTokenFactory>(
     listener: impl TSocketListener,
-    handler: &'static ClientRequestController<impl TEnDecoder + Sized>,
-) -> Result<()> {
+    cache_manager: &'static CacheManager<impl TEnDecoder>,
+    ttl_inbox: TtlSchedulerInbox,
+    config_manager: ConfigManager,
+) {
+    // SAFETY: The client_request_controller is leaked to make it static.
+    // This is safe because the client_request_controller will live for the entire duration of the program.
+    let client_request_controller: &'static ClientRequestController<_> =
+        Box::leak(ClientRequestController::new(config_manager, cache_manager, ttl_inbox).into());
+
     loop {
         match listener.accept().await {
             Ok((stream, _)) =>
             // Spawn a new task to handle the connection without blocking the main thread.
             {
-                let query_manager = QueryManager::new(stream, handler);
-                handle_single_client_stream::<T>(query_manager);
+                tokio::spawn(QueryManager::handle_single_client_stream::<C>(
+                    stream,
+                    client_request_controller,
+                ));
             }
-            Err(e) => eprintln!("Failed to accept connection: {:?}", e),
-        }
-    }
-}
-
-fn handle_single_client_stream<U: TCancellationTokenFactory>(
-    mut query_manager: QueryManager<
-        impl TWrite + TRead,
-        &'static ClientRequestController<impl TEnDecoder>,
-    >,
-) {
-    tokio::spawn(async move {
-        loop {
-            let Ok((request, args)) = query_manager.extract_query().await else {
-                eprintln!("invalid user request");
-                continue;
-            };
-
-            const TIMEOUT: u64 = 100;
-            let (cancellation_notifier, cancellation_watcher) = U::create(TIMEOUT).split();
-
-            // TODO subject to change - more to dynamic
-            // Notify the cancellation notifier to cancel the query after 100 milliseconds.
-            cancellation_notifier.notify();
-
-            let result = query_manager
-                .handle(cancellation_watcher, request, args)
-                .await;
-            if let Err(e) = result {
-                match e.kind() {
-                    ErrorKind::ConnectionRefused
-                    | ErrorKind::ConnectionReset
-                    | ErrorKind::ConnectionAborted
-                    | ErrorKind::NotConnected
-                    | ErrorKind::BrokenPipe
-                    | ErrorKind::TimedOut => {
-                        eprintln!("network error: connection closed");
-                        break;
-                    }
-                    _ => {}
+            Err(e) => {
+                if e.should_break() {
+                    break;
                 }
             }
         }
-    });
+    }
 }
 
 pub trait TNotifyStartUp {
@@ -131,16 +110,4 @@ pub trait TNotifyStartUp {
 
 impl TNotifyStartUp for () {
     fn notify_startup(&self) {}
-}
-
-pub trait TSocketListener: Sync + Send + 'static {
-    fn accept(
-        &self,
-    ) -> impl std::future::Future<Output = Result<(impl TWrite + TRead, std::net::SocketAddr)>> + Send;
-}
-
-pub trait TSocketListenerFactory: Sync + Send + 'static {
-    fn create_listner(
-        bind_addr: String,
-    ) -> impl std::future::Future<Output = impl TSocketListener> + Send;
 }
