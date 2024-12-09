@@ -147,12 +147,11 @@ impl<EnDec: TEnDecoder> CacheManager<EnDec> {
         hasher.finish() as usize % self.inboxes.len()
     }
 
-    pub fn run_cache_actors(
-        num_of_actors: usize,
-        decoder: EnDec,
-    ) -> (CacheManager<EnDec>, TtlSchedulerInbox) {
+    pub fn run_cache_actors(decoder: EnDec) -> (CacheManager<EnDec>, TtlSchedulerInbox) {
+        const NUM_OF_PERSISTENCE: usize = 10;
+
         let cache_dispatcher = CacheManager {
-            inboxes: (0..num_of_actors)
+            inboxes: (0..NUM_OF_PERSISTENCE)
                 .map(|_| CacheActor::run())
                 .collect::<Vec<_>>(),
             endecoder: decoder,

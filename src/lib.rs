@@ -17,14 +17,14 @@ use services::statefuls::persist::endec::TEnDecoder;
 
 pub async fn start_up<T: TCancellationTokenFactory, U: TSocketListenerFactory>(
     config: Config,
-    number_of_cache_actors: usize,
+
     endec: impl TEnDecoder,
     startup_notifier: impl TNotifyStartUp,
 ) -> Result<()> {
     let replication_listener = U::create_listner(config.replication_bind_addr()).await;
     let listener = U::create_listner(config.bind_addr()).await;
 
-    let (cache_manager, ttl_inbox) = CacheManager::run_cache_actors(number_of_cache_actors, endec);
+    let (cache_manager, ttl_inbox) = CacheManager::run_cache_actors(endec);
     cache_manager
         .load_data(
             ttl_inbox.clone(),
