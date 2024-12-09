@@ -13,16 +13,12 @@ impl TWrite for tokio::fs::File {
 }
 
 impl TWriterFactory for tokio::fs::File {
-    fn create_writer(
-        filepath: String,
-    ) -> impl std::future::Future<Output = anyhow::Result<tokio::fs::File>> + Send {
-        async move {
-            tokio::fs::OpenOptions::new()
-                .write(true)
-                .create(true)
-                .open(filepath)
-                .await
-                .map_err(|e| e.into())
-        }
+    async fn create_writer(filepath: String) -> anyhow::Result<tokio::fs::File> {
+        tokio::fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .open(filepath)
+            .await
+            .map_err(|e| e.into())
     }
 }
