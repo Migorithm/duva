@@ -1,7 +1,3 @@
-use crate::adapters::endec::byte_encoder::{
-    encode_checksum, encode_database_info, encode_database_table_size, encode_header,
-    encode_metadata,
-};
 use crate::services::query_manager::interface::TWrite;
 use crate::services::statefuls::cache::CacheEntry;
 use crate::services::statefuls::persist::endec::TEncodingProcessor;
@@ -9,6 +5,11 @@ use crate::services::statefuls::persist::save_actor::SaveActorCommand;
 use anyhow::Result;
 
 use std::collections::VecDeque;
+
+use super::byte_encoder::{
+    encode_checksum, encode_database_info, encode_database_table_size, encode_header,
+    encode_metadata,
+};
 
 pub struct EncodingProcessor<T: TWrite> {
     pub(super) writer: T,
@@ -88,7 +89,7 @@ impl<T: TWrite> EncodingProcessor<T> {
 }
 
 impl EncodingMeta {
-    pub(in crate::adapters::endec) fn new(num_of_cache_actors: usize) -> Self {
+    pub(crate) fn new(num_of_cache_actors: usize) -> Self {
         Self {
             num_of_saved_table_size_actor: num_of_cache_actors,
             total_key_value_table_size: 0,

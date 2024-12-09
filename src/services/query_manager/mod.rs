@@ -1,13 +1,11 @@
 pub mod client_request_controllers;
 pub mod error;
 pub mod interface;
-
 pub mod query_io;
 pub mod replication_request_controllers;
-
 use crate::services::query_manager::client_request_controllers::client_request::ClientRequest;
 use crate::services::query_manager::client_request_controllers::ClientRequestController;
-use crate::services::statefuls::persist::endec::TEnDecoder;
+
 use anyhow::Context;
 use bytes::BytesMut;
 use client_request_controllers::arguments::Arguments;
@@ -49,10 +47,9 @@ where
     }
 }
 
-impl<T, U> QueryManager<T, &'static ClientRequestController<U>>
+impl<T> QueryManager<T, &'static ClientRequestController>
 where
     T: TWrite + TRead,
-    U: TEnDecoder,
 {
     async fn extract_query(&mut self) -> anyhow::Result<(ClientRequest, Arguments)> {
         let query_io = self.read_value().await?;
@@ -73,7 +70,7 @@ where
 
     pub async fn handle_single_client_stream<C: TCancellationTokenFactory>(
         stream: T,
-        controller: &'static ClientRequestController<U>,
+        controller: &'static ClientRequestController,
     ) {
         const TIMEOUT: u64 = 100;
         let mut query_manager = QueryManager::new(stream, controller);

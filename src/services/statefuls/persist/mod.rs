@@ -6,14 +6,14 @@ use std::collections::HashMap;
 use super::cache::CacheEntry;
 
 #[derive(Debug)]
-pub struct RdbFile {
+pub struct DumpFile {
     pub(crate) header: String,
     pub(crate) metadata: HashMap<String, String>,
     pub(crate) database: Vec<DatabaseSection>,
     pub(crate) checksum: Vec<u8>,
 }
 
-impl RdbFile {
+impl DumpFile {
     pub fn new(
         header: String,
         metadata: HashMap<String, String>,
@@ -39,4 +39,20 @@ impl RdbFile {
 pub struct DatabaseSection {
     pub index: usize,
     pub storage: Vec<CacheEntry>,
+}
+
+#[derive(Default)]
+pub(crate) struct DatabaseSectionBuilder {
+    pub(crate) index: usize,
+    pub(crate) storage: Vec<CacheEntry>,
+    pub(crate) key_value_table_size: usize,
+    pub(crate) expires_table_size: usize,
+}
+impl DatabaseSectionBuilder {
+    pub fn build(self) -> DatabaseSection {
+        DatabaseSection {
+            index: self.index,
+            storage: self.storage,
+        }
+    }
 }
