@@ -10,7 +10,7 @@ use anyhow::Context;
 use bytes::BytesMut;
 use client_request_controllers::arguments::Arguments;
 use error::IoError;
-use interface::{TCancellationNotifier, TCancellationTokenFactory, TRead, TWrite};
+use interface::{TCancellationNotifier, TCancellationTokenFactory, TStream, TWriterFactory};
 
 use query_io::QueryIO;
 use replication_request_controllers::ReplicationRequestController;
@@ -18,7 +18,7 @@ use replication_request_controllers::ReplicationRequestController;
 /// Controller is a struct that will be used to read and write values to the client.
 pub struct QueryManager<T, U>
 where
-    T: TWrite + TRead,
+    T: TStream,
 {
     pub(crate) stream: T,
     pub(crate) controller: U,
@@ -26,7 +26,7 @@ where
 
 impl<T, U> QueryManager<T, U>
 where
-    T: TWrite + TRead,
+    T: TStream,
 {
     pub(crate) fn new(stream: T, controller: U) -> Self {
         QueryManager { stream, controller }
@@ -49,7 +49,7 @@ where
 
 impl<T> QueryManager<T, &'static ClientRequestController>
 where
-    T: TWrite + TRead,
+    T: TStream,
 {
     async fn extract_query(&mut self) -> anyhow::Result<(ClientRequest, Arguments)> {
         let query_io = self.read_value().await?;
@@ -68,7 +68,7 @@ where
         }
     }
 
-    pub async fn handle_single_client_stream<C: TCancellationTokenFactory>(
+    pub async fn handle_single_client_stream<C: TCancellationTokenFactory, F: TWriterFactory>(
         stream: T,
         controller: &'static ClientRequestController,
     ) {
@@ -89,7 +89,7 @@ where
 
             let res = match query_manager
                 .controller
-                .handle(cancellation_token, request, query_args)
+                .handle::<F>(cancellation_token, request, query_args)
                 .await
             {
                 Ok(response) => query_manager.write_value(response).await,
@@ -107,7 +107,7 @@ where
 
 impl<T> QueryManager<T, ReplicationRequestController>
 where
-    T: TWrite + TRead,
+    T: TStream,
 {
     pub(crate) async fn handle_replica_stream(self) -> Result<(), std::io::Error> {
         Ok(())

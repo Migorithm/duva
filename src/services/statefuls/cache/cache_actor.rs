@@ -74,7 +74,6 @@ impl CacheActor {
                 CacheCommand::Keys { pattern, sender } => {
                     let ks: Vec<_> = self.keys_stream(pattern).collect();
 
-                    eprintln!("ks.len() = {:?}", ks.len());
                     sender
                         .send(QueryIO::Array(ks))
                         .map_err(|_| anyhow::anyhow!("Error sending keys"))?;

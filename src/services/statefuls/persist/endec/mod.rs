@@ -58,10 +58,7 @@
 //! ```
 //!
 //! It's primarily about communication/protocol rather than efficiency.\
-use crate::services::{
-    interfaces::ThreadSafeCloneable,
-    statefuls::persist::{save_actor::SaveActorCommand, DumpFile},
-};
+use crate::services::statefuls::persist::save_actor::SaveActorCommand;
 /// # Extract Key-Value Pair Storage
 /// Extract key-value pair from the data buffer and remove the extracted data from the buffer.
 ///
@@ -77,7 +74,6 @@ use crate::services::{
 /// 3. **Key:** String encoded.
 /// 4. **Value:** Encoding depends on the value type.
 // Safe conversion from a slice to an array of a specific size.
-use encoder::encoding_processor::{EncodingMeta, EncodingProcessor};
 use std::ops::RangeInclusive;
 use std::time::SystemTime;
 
@@ -123,6 +119,3 @@ impl StoredDuration {
         }
     }
 }
-
-#[derive(Default, Debug, Clone)]
-pub struct EnDecoder;

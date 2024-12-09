@@ -15,13 +15,13 @@ use services::statefuls::cache::cache_manager::CacheManager;
 use services::statefuls::cache::ttl_manager::TtlSchedulerInbox;
 use services::statefuls::persist::save_actor::PersistActor;
 
-pub async fn start_up<T: TCancellationTokenFactory, U: TSocketListenerFactory>(
+pub async fn start_up<C: TCancellationTokenFactory, S: TSocketListenerFactory>(
     config: Config,
 
     startup_notifier: impl TNotifyStartUp,
 ) -> Result<()> {
-    let replication_listener = U::create_listner(config.replication_bind_addr()).await;
-    let listener = U::create_listner(config.bind_addr()).await;
+    let replication_listener = S::create_listner(config.replication_bind_addr()).await;
+    let listener = S::create_listner(config.bind_addr()).await;
 
     let (cache_manager, ttl_inbox) = CacheManager::run_cache_actors();
 
@@ -45,7 +45,7 @@ pub async fn start_up<T: TCancellationTokenFactory, U: TSocketListenerFactory>(
     ));
     startup_notifier.notify_startup();
 
-    start_accepting_client_connections::<T>(listener, cache_manager, ttl_inbox, config_manager)
+    start_accepting_client_connections::<C>(listener, cache_manager, ttl_inbox, config_manager)
         .await;
     Ok(())
 }
@@ -89,10 +89,10 @@ async fn start_accepting_client_connections<C: TCancellationTokenFactory>(
             Ok((stream, _)) =>
             // Spawn a new task to handle the connection without blocking the main thread.
             {
-                tokio::spawn(QueryManager::handle_single_client_stream::<C>(
-                    stream,
-                    client_request_controller,
-                ));
+                tokio::spawn(QueryManager::handle_single_client_stream::<
+                    C,
+                    tokio::fs::File,
+                >(stream, client_request_controller));
             }
             Err(e) => {
                 if e.should_break() {

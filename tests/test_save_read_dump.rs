@@ -13,14 +13,22 @@ use redis_starter_rust::adapters::cancellation_token::CancellationToken;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::net::TcpStream;
 
+struct FileName(String);
+impl Drop for FileName {
+    fn drop(&mut self) {
+        std::fs::remove_file(&self.0).unwrap();
+    }
+}
+
+// TODO response cannot be deterministic!
 #[tokio::test]
 async fn test_save_read_dump() {
     // GIVEN
-    let test_file_name = create_unique_file_name("test_save_dump");
+    let test_file_name = FileName(create_unique_file_name("test_save_dump"));
     let mut config = init_config_with_free_port().await;
     let old_ref = config.dbfilename;
 
-    config.dbfilename = Box::leak(Box::new(test_file_name.clone()));
+    config.dbfilename = Box::leak(Box::new(test_file_name.0.clone()));
     unsafe {
         let ptr: *const str = old_ref;
         let _ = Box::from_raw(ptr as *mut str);
@@ -41,7 +49,7 @@ async fn test_save_read_dump() {
     assert_eq!(h.get_response().await, ok_response());
     // check keys
     h.send(keys_command("*").as_slice()).await;
-    assert_eq!(h.get_response().await, array(vec!["foo", "foo2"]));
+    assert_eq!(h.get_response().await, array(vec!["foo2", "foo"]));
     // save
     h.send(save_command().as_slice()).await;
 
@@ -59,10 +67,7 @@ async fn test_save_read_dump() {
 
     // keys
     h.send(keys_command("*").as_slice()).await;
-    assert_eq!(h.get_response().await, array(vec!["foo", "foo2"]));
-
-    // remove file
-    std::fs::remove_file(&test_file_name).unwrap();
+    assert_eq!(h.get_response().await, array(vec!["foo2", "foo"]));
 }
 
 fn create_unique_file_name(function_name: &str) -> String {

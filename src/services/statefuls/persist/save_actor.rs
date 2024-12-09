@@ -1,13 +1,12 @@
-use crate::services::statefuls::{cache::CacheEntry, persist::endec::TEncodingProcessor};
+use super::endec::decoder::byte_decoder::BytesDecoder;
+use super::endec::decoder::states::DecoderInit;
+use super::endec::encoder::encoding_processor::EncodingMeta;
+use super::endec::encoder::encoding_processor::EncodingProcessor;
+use super::DumpFile;
+use crate::services::query_manager::interface::TWriterFactory;
+use crate::services::statefuls::cache::CacheEntry;
+use crate::services::statefuls::persist::endec::TEncodingProcessor;
 use tokio::sync::mpsc::{Receiver, Sender};
-
-use super::{
-    endec::{
-        decoder::{byte_decoder::BytesDecoder, states::DecoderInit},
-        encoder::encoding_processor::{EncodingMeta, EncodingProcessor},
-    },
-    DumpFile,
-};
 
 pub enum SaveActorCommand {
     LocalShardSize {
@@ -20,9 +19,11 @@ pub enum SaveActorCommand {
 
 pub struct Load;
 pub struct Save;
-pub struct PersistActor;
+pub struct PersistActor<T> {
+    processor: T,
+}
 
-impl PersistActor {
+impl PersistActor<Load> {
     pub(crate) async fn dump(filepath: String) -> anyhow::Result<DumpFile> {
         let bytes = tokio::fs::read(filepath).await?;
 
@@ -30,32 +31,33 @@ impl PersistActor {
         let database = decoder.load_header()?.load_metadata()?.load_database()?;
         Ok(database)
     }
-    pub fn run_save(
+}
+
+impl<T> PersistActor<EncodingProcessor<T>>
+where
+    T: TWriterFactory,
+{
+    pub async fn run(
         filepath: String,
         num_of_cache_actors: usize,
-        // TODO encoder seems to work as actual save actor.
-    ) -> Sender<SaveActorCommand> {
+    ) -> anyhow::Result<Sender<SaveActorCommand>> {
+        // * Propagate error to caller before sending it to the background
+        let file = T::create_writer(filepath).await?;
+
+        let processor = EncodingProcessor::new(file, EncodingMeta::new(num_of_cache_actors));
+
+        let actor = Self { processor };
+
         let (outbox, inbox) = tokio::sync::mpsc::channel(100);
 
-        tokio::spawn(Self::save(filepath, num_of_cache_actors, inbox));
-        outbox
+        tokio::spawn(actor.save(inbox));
+        Ok(outbox)
     }
 
-    async fn save(
-        filepath: String,
-        number_of_cache_actors: usize,
-        mut inbox: Receiver<SaveActorCommand>,
-    ) -> anyhow::Result<()> {
-        let file = tokio::fs::OpenOptions::new()
-            .write(true)
-            .create(true)
-            .open(filepath)
-            .await?;
-        let mut processor = EncodingProcessor::new(file, EncodingMeta::new(number_of_cache_actors));
-
-        processor.add_meta().await?;
+    async fn save(mut self, mut inbox: Receiver<SaveActorCommand>) -> anyhow::Result<()> {
+        self.processor.add_meta().await?;
         while let Some(command) = inbox.recv().await {
-            match processor.handle_cmd(command).await {
+            match self.processor.handle_cmd(command).await {
                 Ok(should_break) => {
                     if should_break {
                         break;

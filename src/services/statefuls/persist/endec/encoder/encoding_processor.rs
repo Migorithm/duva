@@ -16,7 +16,7 @@ pub struct EncodingProcessor<T: TWrite> {
     pub(super) meta: EncodingMeta,
 }
 
-pub(crate) struct EncodingMeta {
+pub struct EncodingMeta {
     num_of_saved_table_size_actor: usize,
     total_key_value_table_size: usize,
     total_expires_table_size: usize,
@@ -89,7 +89,7 @@ impl<T: TWrite> EncodingProcessor<T> {
 }
 
 impl EncodingMeta {
-    pub(crate) fn new(num_of_cache_actors: usize) -> Self {
+    pub fn new(num_of_cache_actors: usize) -> Self {
         Self {
             num_of_saved_table_size_actor: num_of_cache_actors,
             total_key_value_table_size: 0,

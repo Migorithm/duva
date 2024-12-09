@@ -96,16 +96,12 @@ impl CacheManager {
                 sender,
             ));
         });
-
         let mut keys = Vec::new();
         for v in receivers {
             if let Ok(QueryIO::Array(v)) = v.await? {
                 keys.extend(v)
             }
         }
-
-        eprintln!("keys.len() = {:?}", keys.len());
-
         Ok(QueryIO::Array(keys))
     }
 

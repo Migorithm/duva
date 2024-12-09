@@ -4,9 +4,12 @@ use crate::services::query_manager::interface::TCancellationWatcher;
 use crate::services::query_manager::query_io::QueryIO;
 use crate::services::statefuls::cache::cache_manager::CacheManager;
 use crate::services::statefuls::cache::ttl_manager::TtlSchedulerInbox;
+use crate::services::statefuls::persist::endec::encoder::encoding_processor::EncodingProcessor;
 use crate::services::statefuls::persist::save_actor::PersistActor;
 use arguments::Arguments;
 use client_request::ClientRequest;
+
+use super::interface::TWriterFactory;
 
 pub mod arguments;
 pub mod client_request;
@@ -30,7 +33,7 @@ impl ClientRequestController {
         }
     }
 
-    pub(crate) async fn handle(
+    pub(crate) async fn handle<T: TWriterFactory>(
         &self,
         mut cancellation_token: impl TCancellationWatcher,
         cmd: ClientRequest,
@@ -53,10 +56,11 @@ impl ClientRequestController {
             }
             ClientRequest::Save => {
                 // spawn save actor
-                let outbox = PersistActor::run_save(
+                let outbox = PersistActor::<EncodingProcessor<T>>::run(
                     self.config_manager.get_filepath().await?,
                     self.cache_manager.inboxes.len(),
-                );
+                )
+                .await?;
 
                 self.cache_manager.route_save(outbox).await;
 

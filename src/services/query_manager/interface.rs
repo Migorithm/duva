@@ -2,6 +2,8 @@ use bytes::BytesMut;
 
 use super::error::IoError;
 
+pub trait TStream: TRead + TWrite {}
+impl<T> TStream for T where T: TRead + TWrite {}
 pub trait TRead: Send + Sync + 'static {
     fn read_bytes(
         &mut self,
@@ -14,6 +16,11 @@ pub trait TWrite: Send + Sync + 'static {
         &mut self,
         buf: &[u8],
     ) -> impl std::future::Future<Output = Result<(), IoError>> + Send;
+}
+pub trait TWriterFactory: TWrite + Send + Sync + 'static + Sized {
+    fn create_writer(
+        filepath: String,
+    ) -> impl std::future::Future<Output = anyhow::Result<Self>> + Send;
 }
 
 pub trait TCancellationTokenFactory: Send + Sync + 'static {
