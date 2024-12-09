@@ -13,32 +13,31 @@ use services::query_manager::replication_request_controllers::ReplicationRequest
 use services::query_manager::QueryManager;
 use services::statefuls::cache::cache_manager::CacheManager;
 use services::statefuls::cache::ttl_manager::TtlSchedulerInbox;
-use services::statefuls::persist::endec::TEnDecoder;
+use services::statefuls::persist::persist_actor::PersistActor;
 
-pub async fn start_up<T: TCancellationTokenFactory, U: TSocketListenerFactory>(
+pub async fn start_up<C: TCancellationTokenFactory, S: TSocketListenerFactory>(
     config: Config,
 
-    endec: impl TEnDecoder,
     startup_notifier: impl TNotifyStartUp,
 ) -> Result<()> {
-    let replication_listener = U::create_listner(config.replication_bind_addr()).await;
-    let listener = U::create_listner(config.bind_addr()).await;
+    let replication_listener = S::create_listner(config.replication_bind_addr()).await;
+    let listener = S::create_listner(config.bind_addr()).await;
 
-    let (cache_manager, ttl_inbox) = CacheManager::run_cache_actors(endec);
-    cache_manager
-        .load_data(
-            ttl_inbox.clone(),
-            config.try_filepath().await,
-            config.startup_time,
-        )
-        .await?;
+    let (cache_manager, ttl_inbox) = CacheManager::run_cache_actors();
+
+    if let Some(filepath) = config.try_filepath().await {
+        let dump = PersistActor::dump(filepath).await?;
+        cache_manager
+            .dump_cache(dump, ttl_inbox.clone(), config.startup_time)
+            .await?;
+    }
 
     // Run Replication manager
     let config_manager = ConfigManager::run_actor(config);
 
     // Leak the cache_dispatcher to make it static - this is safe because the cache_dispatcher
     // will live for the entire duration of the program.
-    let cache_manager: &'static CacheManager<_> = Box::leak(Box::new(cache_manager));
+    let cache_manager: &'static CacheManager = Box::leak(Box::new(cache_manager));
 
     tokio::spawn(start_accepting_replication_connections(
         replication_listener,
@@ -46,7 +45,7 @@ pub async fn start_up<T: TCancellationTokenFactory, U: TSocketListenerFactory>(
     ));
     startup_notifier.notify_startup();
 
-    start_accepting_client_connections::<T>(listener, cache_manager, ttl_inbox, config_manager)
+    start_accepting_client_connections::<C>(listener, cache_manager, ttl_inbox, config_manager)
         .await;
     Ok(())
 }
@@ -76,13 +75,13 @@ async fn start_accepting_replication_connections(
 
 async fn start_accepting_client_connections<C: TCancellationTokenFactory>(
     listener: impl TSocketListener,
-    cache_manager: &'static CacheManager<impl TEnDecoder>,
+    cache_manager: &'static CacheManager,
     ttl_inbox: TtlSchedulerInbox,
     config_manager: ConfigManager,
 ) {
     // SAFETY: The client_request_controller is leaked to make it static.
     // This is safe because the client_request_controller will live for the entire duration of the program.
-    let client_request_controller: &'static ClientRequestController<_> =
+    let client_request_controller: &'static ClientRequestController =
         Box::leak(ClientRequestController::new(config_manager, cache_manager, ttl_inbox).into());
 
     loop {
@@ -90,10 +89,10 @@ async fn start_accepting_client_connections<C: TCancellationTokenFactory>(
             Ok((stream, _)) =>
             // Spawn a new task to handle the connection without blocking the main thread.
             {
-                tokio::spawn(QueryManager::handle_single_client_stream::<C>(
-                    stream,
-                    client_request_controller,
-                ));
+                tokio::spawn(QueryManager::handle_single_client_stream::<
+                    C,
+                    tokio::fs::File,
+                >(stream, client_request_controller));
             }
             Err(e) => {
                 if e.should_break() {

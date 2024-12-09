@@ -1,9 +1,6 @@
 use crate::{
     make_smart_pointer,
-    services::statefuls::{
-        cache::{cache_actor::CacheCommand, cache_manager::CacheManager},
-        persist::endec::TEnDecoder,
-    },
+    services::statefuls::cache::{cache_actor::CacheCommand, cache_manager::CacheManager},
 };
 use std::{
     cmp::Reverse,
@@ -21,7 +18,7 @@ use tokio::{
 pub struct TtlActor;
 
 impl TtlActor {
-    pub(crate) fn run<T: TEnDecoder>(cache_dispatcher: CacheManager<T>) -> TtlSchedulerInbox {
+    pub(crate) fn run(cache_dispatcher: CacheManager) -> TtlSchedulerInbox {
         let (scheduler_outbox, inbox) = tokio::sync::mpsc::channel(100);
         tokio::spawn(Self::ttl_schedule_actor(inbox));
         tokio::spawn(Self::background_delete_actor(
@@ -33,8 +30,8 @@ impl TtlActor {
     }
 
     // Background actor keeps sending peek command to the scheduler actor to check if there is any key to delete.
-    async fn background_delete_actor<T: TEnDecoder>(
-        cache_manager: CacheManager<T>,
+    async fn background_delete_actor(
+        cache_manager: CacheManager,
         outbox: mpsc::Sender<TtlCommand>,
     ) -> anyhow::Result<()> {
         let mut cleanup_interval = interval(Duration::from_millis(1));

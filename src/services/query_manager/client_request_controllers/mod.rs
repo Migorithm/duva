@@ -1,34 +1,29 @@
 use crate::services::config::config_manager::ConfigManager;
 use crate::services::config::ConfigResponse;
 use crate::services::query_manager::interface::TCancellationWatcher;
-
 use crate::services::query_manager::query_io::QueryIO;
 use crate::services::statefuls::cache::cache_manager::CacheManager;
 use crate::services::statefuls::cache::ttl_manager::TtlSchedulerInbox;
-use crate::services::statefuls::persist::endec::TEnDecoder;
-use crate::services::statefuls::persist::save_actor::SaveActor;
+use crate::services::statefuls::persist::endec::encoder::encoding_processor::SavingProcessor;
+use crate::services::statefuls::persist::persist_actor::PersistActor;
 use arguments::Arguments;
 use client_request::ClientRequest;
+
+use super::interface::TWriterFactory;
 
 pub mod arguments;
 pub mod client_request;
 
-pub struct ClientRequestController<U>
-where
-    U: TEnDecoder,
-{
+pub struct ClientRequestController {
     config_manager: ConfigManager,
-    cache_manager: &'static CacheManager<U>,
+    cache_manager: &'static CacheManager,
     ttl_manager: TtlSchedulerInbox,
 }
 
-impl<U> ClientRequestController<U>
-where
-    U: TEnDecoder,
-{
+impl ClientRequestController {
     pub(crate) fn new(
         config_manager: ConfigManager,
-        cache_manager: &'static CacheManager<U>,
+        cache_manager: &'static CacheManager,
         ttl_manager: TtlSchedulerInbox,
     ) -> Self {
         ClientRequestController {
@@ -38,7 +33,7 @@ where
         }
     }
 
-    pub(crate) async fn handle(
+    pub(crate) async fn handle<T: TWriterFactory>(
         &self,
         mut cancellation_token: impl TCancellationWatcher,
         cmd: ClientRequest,
@@ -61,11 +56,11 @@ where
             }
             ClientRequest::Save => {
                 // spawn save actor
-                let outbox = SaveActor::run(
+                let outbox = PersistActor::<SavingProcessor<T>>::run(
                     self.config_manager.get_filepath().await?,
                     self.cache_manager.inboxes.len(),
-                    self.cache_manager.endecoder.clone(),
-                );
+                )
+                .await?;
 
                 self.cache_manager.route_save(outbox).await;
 

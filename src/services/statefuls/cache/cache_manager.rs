@@ -2,8 +2,9 @@ use super::cache_actor::{CacheActor, CacheCommand, CacheCommandSender};
 use super::ttl_manager::{TtlActor, TtlSchedulerInbox};
 use super::CacheEntry;
 use crate::services::query_manager::query_io::QueryIO;
-use crate::services::statefuls::persist::endec::TEnDecoder;
-use crate::services::statefuls::persist::save_actor::SaveActorCommand;
+
+use crate::services::statefuls::persist::persist_actor::SaveCommand;
+use crate::services::statefuls::persist::DumpFile;
 use anyhow::Result;
 use std::time::SystemTime;
 use std::{hash::Hasher, iter::Zip};
@@ -15,26 +16,19 @@ type OneShotReceiverJoinHandle<T> =
     tokio::task::JoinHandle<std::result::Result<T, tokio::sync::oneshot::error::RecvError>>;
 
 #[derive(Clone)]
-pub(crate) struct CacheManager<EnDec> {
+pub(crate) struct CacheManager {
     pub(crate) inboxes: Vec<CacheCommandSender>,
-    pub(crate) endecoder: EnDec,
 }
 
-impl<EnDec: TEnDecoder> CacheManager<EnDec> {
-    pub(crate) async fn load_data(
+impl CacheManager {
+    pub(crate) async fn dump_cache(
         &self,
+        dump: DumpFile,
         ttl_inbox: TtlSchedulerInbox,
-        filepath: Option<String>,
         startup_time: SystemTime,
     ) -> Result<()> {
-        let Some(filepath) = filepath else {
-            return Ok(());
-        };
-        let bytes = tokio::fs::read(filepath).await?;
-        let database = self.endecoder.decode_data(bytes)?;
-
         let startup_time = &startup_time;
-        for kvs in database
+        for kvs in dump
             .key_values()
             .into_iter()
             .filter(|kvs| kvs.is_valid(startup_time))
@@ -68,7 +62,7 @@ impl<EnDec: TEnDecoder> CacheManager<EnDec> {
         Ok(QueryIO::SimpleString("OK".to_string()))
     }
 
-    pub(crate) async fn route_save(&self, outbox: mpsc::Sender<SaveActorCommand>) {
+    pub(crate) async fn route_save(&self, outbox: mpsc::Sender<SaveCommand>) {
         // get all the handlers to cache actors
         for inbox in self.inboxes.iter().map(Clone::clone) {
             let outbox = outbox.clone();
@@ -102,16 +96,12 @@ impl<EnDec: TEnDecoder> CacheManager<EnDec> {
                 sender,
             ));
         });
-
         let mut keys = Vec::new();
         for v in receivers {
             if let Ok(QueryIO::Array(v)) = v.await? {
                 keys.extend(v)
             }
         }
-
-        eprintln!("keys.len() = {:?}", keys.len());
-
         Ok(QueryIO::Array(keys))
     }
 
@@ -147,14 +137,13 @@ impl<EnDec: TEnDecoder> CacheManager<EnDec> {
         hasher.finish() as usize % self.inboxes.len()
     }
 
-    pub fn run_cache_actors(decoder: EnDec) -> (CacheManager<EnDec>, TtlSchedulerInbox) {
+    pub fn run_cache_actors() -> (CacheManager, TtlSchedulerInbox) {
         const NUM_OF_PERSISTENCE: usize = 10;
 
         let cache_dispatcher = CacheManager {
             inboxes: (0..NUM_OF_PERSISTENCE)
                 .map(|_| CacheActor::run())
                 .collect::<Vec<_>>(),
-            endecoder: decoder,
         };
 
         let ttl_inbox = cache_dispatcher.run_ttl_actors();

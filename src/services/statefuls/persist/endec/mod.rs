@@ -79,13 +79,6 @@ use std::time::SystemTime;
 pub mod decoder;
 pub mod encoder;
 
-use decoder::byte_decoder::BytesDecoder;
-use decoder::states::DecoderInit;
-pub use encoder::byte_encoder;
-use encoder::encoding_processor::{EncodingMeta, EncodingProcessor};
-
-use crate::services::statefuls::persist::endec::{TDecodeData, TEncodeData, TEncodingProcessor};
-
 const HEADER_MAGIC_STRING: &str = "REDIS";
 const METADATA_SECTION_INDICATOR: u8 = 0xFA;
 const DATABASE_SECTION_INDICATOR: u8 = 0xFE;
@@ -115,38 +108,5 @@ impl StoredDuration {
                 SystemTime::UNIX_EPOCH + std::time::Duration::from_millis(*millis)
             }
         }
-    }
-}
-
-#[derive(Default, Debug, Clone)]
-pub struct EnDecoder;
-
-impl TDecodeData for EnDecoder {
-    fn decode_data(
-        &self,
-        bytes: Vec<u8>,
-    ) -> anyhow::Result<crate::services::statefuls::persist::RdbFile> {
-        let decoder: BytesDecoder<DecoderInit> = bytes.as_slice().into();
-        let database = decoder.load_header()?.load_metadata()?.load_database()?;
-        Ok(database)
-    }
-}
-
-impl TEncodeData for EnDecoder {
-    async fn create_encoding_processor(
-        &self,
-        filepath: &str,
-        num_of_cache_actors: usize,
-    ) -> anyhow::Result<impl TEncodingProcessor> {
-        let file = tokio::fs::OpenOptions::new()
-            .write(true)
-            .create(true)
-            .open(filepath)
-            .await?;
-
-        Ok(EncodingProcessor::new(
-            file,
-            EncodingMeta::new(num_of_cache_actors),
-        ))
     }
 }

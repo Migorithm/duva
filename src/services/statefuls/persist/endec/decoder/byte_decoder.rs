@@ -1,10 +1,10 @@
-use crate::adapters::endec::{
+use crate::services::statefuls::cache::CacheEntry;
+use crate::services::statefuls::persist::endec::{
     extract_range, StoredDuration, DATABASE_SECTION_INDICATOR, DATABASE_TABLE_SIZE_INDICATOR,
     EXPIRY_TIME_IN_MILLISECONDS_INDICATOR, EXPIRY_TIME_IN_SECONDS_INDICATOR, HEADER_MAGIC_STRING,
     METADATA_SECTION_INDICATOR, STRING_VALUE_TYPE_INDICATOR,
 };
-use crate::services::statefuls::cache::CacheEntry;
-use crate::services::statefuls::persist::{DatabaseSection, RdbFile};
+use crate::services::statefuls::persist::{DatabaseSection, DatabaseSectionBuilder, DumpFile};
 
 use anyhow::{Context, Result};
 
@@ -14,7 +14,6 @@ use std::{
     time::SystemTime,
 };
 
-use super::builder::DatabaseSectionBuilder;
 use super::states::{DecoderInit, HeaderReady, MetadataReady};
 
 #[derive(Default)]
@@ -181,7 +180,7 @@ impl<'a> BytesDecoder<'a, HeaderReady> {
     }
 }
 impl BytesDecoder<'_, MetadataReady> {
-    pub fn load_database(mut self) -> Result<RdbFile> {
+    pub fn load_database(mut self) -> Result<DumpFile> {
         let mut database = Vec::new();
         while self.check_indicator(DATABASE_SECTION_INDICATOR) {
             let section = self
@@ -192,7 +191,7 @@ impl BytesDecoder<'_, MetadataReady> {
         }
 
         let checksum = self.try_get_checksum()?;
-        Ok(RdbFile {
+        Ok(DumpFile {
             header: self.state.header,
             metadata: self.state.metadata,
             database,

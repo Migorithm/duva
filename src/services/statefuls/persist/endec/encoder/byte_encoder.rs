@@ -1,10 +1,10 @@
-use crate::{
-    adapters::endec::{
+use crate::services::statefuls::{
+    cache::CacheEntry,
+    persist::endec::{
         CHECKSUM_INDICATOR, DATABASE_SECTION_INDICATOR, DATABASE_TABLE_SIZE_INDICATOR,
         EXPIRY_TIME_IN_MILLISECONDS_INDICATOR, HEADER_MAGIC_STRING, METADATA_SECTION_INDICATOR,
         STRING_VALUE_TYPE_INDICATOR,
     },
-    services::statefuls::cache::CacheEntry,
 };
 
 use anyhow::Result;
@@ -132,9 +132,12 @@ fn encode_size(size: usize) -> Result<Vec<u8>> {
 
 #[cfg(test)]
 mod test {
+    use crate::services::statefuls::persist::endec::{
+        decoder::{byte_decoder::BytesDecoder, states::DecoderInit},
+        StoredDuration,
+    };
+
     use super::*;
-    use crate::adapters::endec::decoder::byte_decoder::BytesDecoder;
-    use crate::adapters::endec::decoder::states::DecoderInit;
 
     #[test]
     fn test_size_encode_6_bit() {
@@ -327,7 +330,6 @@ mod test {
 
     #[test]
     fn test_cache_value_with_expiry_milliseconds() {
-        use crate::adapters::endec::StoredDuration;
         let kvs = CacheEntry::KeyValueExpiry(
             "key".to_string(),
             "value".to_string(),
