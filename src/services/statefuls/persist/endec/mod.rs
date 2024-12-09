@@ -58,7 +58,6 @@
 //! ```
 //!
 //! It's primarily about communication/protocol rather than efficiency.\
-use crate::services::statefuls::persist::save_actor::SaveActorCommand;
 /// # Extract Key-Value Pair Storage
 /// Extract key-value pair from the data buffer and remove the extracted data from the buffer.
 ///
@@ -79,14 +78,6 @@ use std::time::SystemTime;
 
 pub mod decoder;
 pub mod encoder;
-
-pub trait TEncodingProcessor: Send + Sync {
-    fn add_meta(&mut self) -> impl std::future::Future<Output = anyhow::Result<()>> + Send;
-    fn handle_cmd(
-        &mut self,
-        cmd: SaveActorCommand,
-    ) -> impl std::future::Future<Output = anyhow::Result<bool>> + Send;
-}
 
 const HEADER_MAGIC_STRING: &str = "REDIS";
 const METADATA_SECTION_INDICATOR: u8 = 0xFA;

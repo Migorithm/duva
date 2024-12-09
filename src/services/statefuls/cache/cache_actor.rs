@@ -3,7 +3,7 @@ use super::CacheEntry;
 use super::CacheValue;
 use crate::make_smart_pointer;
 use crate::services::query_manager::query_io::QueryIO;
-use crate::services::statefuls::persist::save_actor::SaveActorCommand;
+use crate::services::statefuls::persist::persist_actor::SaveCommand;
 use anyhow::Context;
 use anyhow::Result;
 use std::collections::HashMap;
@@ -15,7 +15,7 @@ pub enum CacheCommand {
         ttl_sender: TtlSchedulerInbox,
     },
     Save {
-        outbox: mpsc::Sender<SaveActorCommand>,
+        outbox: mpsc::Sender<SaveCommand>,
     },
     Get {
         key: String,
@@ -83,18 +83,18 @@ impl CacheActor {
                 }
                 CacheCommand::Save { outbox } => {
                     outbox
-                        .send(SaveActorCommand::LocalShardSize {
+                        .send(SaveCommand::LocalShardSize {
                             table_size: self.len(),
                             expiry_size: self.keys_with_expiry(),
                         })
                         .await?;
                     for chunk in self.cache.iter().collect::<Vec<_>>().chunks(10) {
                         outbox
-                            .send(SaveActorCommand::SaveChunk(CacheEntry::new(chunk)))
+                            .send(SaveCommand::SaveChunk(CacheEntry::new(chunk)))
                             .await?;
                     }
                     // finalize the save operation
-                    outbox.send(SaveActorCommand::StopSentinel).await?;
+                    outbox.send(SaveCommand::StopSentinel).await?;
                 }
             }
         }

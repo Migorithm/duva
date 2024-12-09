@@ -13,7 +13,7 @@ use services::query_manager::replication_request_controllers::ReplicationRequest
 use services::query_manager::QueryManager;
 use services::statefuls::cache::cache_manager::CacheManager;
 use services::statefuls::cache::ttl_manager::TtlSchedulerInbox;
-use services::statefuls::persist::save_actor::PersistActor;
+use services::statefuls::persist::persist_actor::PersistActor;
 
 pub async fn start_up<C: TCancellationTokenFactory, S: TSocketListenerFactory>(
     config: Config,

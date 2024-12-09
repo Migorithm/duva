@@ -4,8 +4,8 @@ use crate::services::query_manager::interface::TCancellationWatcher;
 use crate::services::query_manager::query_io::QueryIO;
 use crate::services::statefuls::cache::cache_manager::CacheManager;
 use crate::services::statefuls::cache::ttl_manager::TtlSchedulerInbox;
-use crate::services::statefuls::persist::endec::encoder::encoding_processor::EncodingProcessor;
-use crate::services::statefuls::persist::save_actor::PersistActor;
+use crate::services::statefuls::persist::endec::encoder::encoding_processor::SavingProcessor;
+use crate::services::statefuls::persist::persist_actor::PersistActor;
 use arguments::Arguments;
 use client_request::ClientRequest;
 
@@ -56,7 +56,7 @@ impl ClientRequestController {
             }
             ClientRequest::Save => {
                 // spawn save actor
-                let outbox = PersistActor::<EncodingProcessor<T>>::run(
+                let outbox = PersistActor::<SavingProcessor<T>>::run(
                     self.config_manager.get_filepath().await?,
                     self.cache_manager.inboxes.len(),
                 )

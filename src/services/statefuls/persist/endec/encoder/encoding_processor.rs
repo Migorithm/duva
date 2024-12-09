@@ -1,7 +1,7 @@
 use crate::services::query_manager::interface::TWrite;
 use crate::services::statefuls::cache::CacheEntry;
-use crate::services::statefuls::persist::endec::TEncodingProcessor;
-use crate::services::statefuls::persist::save_actor::SaveActorCommand;
+
+use crate::services::statefuls::persist::persist_actor::SaveCommand;
 use anyhow::Result;
 
 use std::collections::VecDeque;
@@ -11,21 +11,17 @@ use super::byte_encoder::{
     encode_metadata,
 };
 
-pub struct EncodingProcessor<T: TWrite> {
+pub struct SavingProcessor<T: TWrite> {
     pub(super) writer: T,
-    pub(super) meta: EncodingMeta,
+    pub(super) meta: SaveMeta,
 }
 
-pub struct EncodingMeta {
-    num_of_saved_table_size_actor: usize,
-    total_key_value_table_size: usize,
-    total_expires_table_size: usize,
-    chunk_queue: VecDeque<Vec<CacheEntry>>,
-    num_of_cache_actors: usize,
-}
+impl<T: TWrite> SavingProcessor<T> {
+    pub fn new(file: T, meta: SaveMeta) -> Self {
+        Self { writer: file, meta }
+    }
 
-impl<T: TWrite> TEncodingProcessor for EncodingProcessor<T> {
-    async fn add_meta(&mut self) -> Result<()> {
+    pub async fn add_meta(&mut self) -> Result<()> {
         let meta = [
             encode_header("0011")?,
             encode_metadata(Vec::from([("redis-ver", "6.0.16")]))?,
@@ -34,9 +30,9 @@ impl<T: TWrite> TEncodingProcessor for EncodingProcessor<T> {
         self.writer.write_all(&meta.concat()).await?;
         Ok(())
     }
-    async fn handle_cmd(&mut self, cmd: SaveActorCommand) -> Result<bool> {
+    pub async fn handle_cmd(&mut self, cmd: SaveCommand) -> Result<bool> {
         match cmd {
-            SaveActorCommand::LocalShardSize {
+            SaveCommand::LocalShardSize {
                 table_size,
                 expiry_size,
             } => {
@@ -52,13 +48,13 @@ impl<T: TWrite> TEncodingProcessor for EncodingProcessor<T> {
                         .await?;
                 }
             }
-            SaveActorCommand::SaveChunk(chunk) => {
+            SaveCommand::SaveChunk(chunk) => {
                 self.meta.chunk_queue.push_back(chunk);
                 if self.meta.num_of_saved_table_size_actor == 0 {
                     self.encode_chunk_queue().await?;
                 }
             }
-            SaveActorCommand::StopSentinel => {
+            SaveCommand::StopSentinel => {
                 self.meta.num_of_cache_actors -= 1;
                 if self.meta.num_of_cache_actors == 0 {
                     self.encode_chunk_queue().await?;
@@ -69,12 +65,6 @@ impl<T: TWrite> TEncodingProcessor for EncodingProcessor<T> {
             }
         }
         Ok(false)
-    }
-}
-
-impl<T: TWrite> EncodingProcessor<T> {
-    pub fn new(file: T, meta: EncodingMeta) -> Self {
-        Self { writer: file, meta }
     }
 
     async fn encode_chunk_queue(&mut self) -> Result<()> {
@@ -88,7 +78,15 @@ impl<T: TWrite> EncodingProcessor<T> {
     }
 }
 
-impl EncodingMeta {
+pub struct SaveMeta {
+    num_of_saved_table_size_actor: usize,
+    total_key_value_table_size: usize,
+    total_expires_table_size: usize,
+    chunk_queue: VecDeque<Vec<CacheEntry>>,
+    num_of_cache_actors: usize,
+}
+
+impl SaveMeta {
     pub fn new(num_of_cache_actors: usize) -> Self {
         Self {
             num_of_saved_table_size_actor: num_of_cache_actors,

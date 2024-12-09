@@ -3,7 +3,7 @@ use super::ttl_manager::{TtlActor, TtlSchedulerInbox};
 use super::CacheEntry;
 use crate::services::query_manager::query_io::QueryIO;
 
-use crate::services::statefuls::persist::save_actor::SaveActorCommand;
+use crate::services::statefuls::persist::persist_actor::SaveCommand;
 use crate::services::statefuls::persist::DumpFile;
 use anyhow::Result;
 use std::time::SystemTime;
@@ -62,7 +62,7 @@ impl CacheManager {
         Ok(QueryIO::SimpleString("OK".to_string()))
     }
 
-    pub(crate) async fn route_save(&self, outbox: mpsc::Sender<SaveActorCommand>) {
+    pub(crate) async fn route_save(&self, outbox: mpsc::Sender<SaveCommand>) {
         // get all the handlers to cache actors
         for inbox in self.inboxes.iter().map(Clone::clone) {
             let outbox = outbox.clone();

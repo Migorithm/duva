@@ -1,5 +1,5 @@
 pub mod endec;
-pub mod save_actor;
+pub mod persist_actor;
 
 use std::collections::HashMap;
 
