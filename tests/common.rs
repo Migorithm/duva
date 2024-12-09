@@ -78,7 +78,6 @@ pub async fn start_test_server<T: TCancellationTokenFactory>(
 
     let h = tokio::spawn(redis_starter_rust::start_up::<T, AppStreamListener>(
         config,
-        3,
         redis_starter_rust::adapters::endec::EnDecoder,
         start_flag,
     ));
