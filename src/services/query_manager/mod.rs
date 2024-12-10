@@ -16,20 +16,19 @@ use query_io::QueryIO;
 use replication_request_controllers::ReplicationRequestController;
 
 /// Controller is a struct that will be used to read and write values to the client.
-pub struct QueryManager<T, U>
+pub struct QueryManager<T>
 where
     T: TStream,
 {
     pub(crate) stream: T,
-    pub(crate) controller: U,
 }
 
-impl<T, U> QueryManager<T, U>
+impl<T> QueryManager<T>
 where
     T: TStream,
 {
-    pub(crate) fn new(stream: T, controller: U) -> Self {
-        QueryManager { stream, controller }
+    pub(crate) fn new(stream: T) -> Self {
+        QueryManager { stream }
     }
 
     // crlf
@@ -47,7 +46,7 @@ where
     }
 }
 
-impl<T> QueryManager<T, &'static ClientRequestController>
+impl<T> QueryManager<T>
 where
     T: TStream,
 {
@@ -73,7 +72,7 @@ where
         controller: &'static ClientRequestController,
     ) {
         const TIMEOUT: u64 = 100;
-        let mut query_manager = QueryManager::new(stream, controller);
+        let mut query_manager = QueryManager::new(stream);
 
         loop {
             let Ok((request, query_args)) = query_manager.extract_query().await else {
@@ -87,8 +86,7 @@ where
             // Notify the cancellation notifier to cancel the query after 100 milliseconds.
             cancellation_notifier.notify();
 
-            let res = match query_manager
-                .controller
+            let res = match controller
                 .handle::<F>(cancellation_token, request, query_args)
                 .await
             {
@@ -105,11 +103,14 @@ where
     }
 }
 
-impl<T> QueryManager<T, ReplicationRequestController>
+impl<T> QueryManager<T>
 where
     T: TStream,
 {
-    pub(crate) async fn handle_replica_stream(self) -> Result<(), std::io::Error> {
+    pub(crate) async fn handle_replica_stream(
+        stream: T,
+        controller: &'static ReplicationRequestController,
+    ) -> Result<(), std::io::Error> {
         Ok(())
     }
 }
