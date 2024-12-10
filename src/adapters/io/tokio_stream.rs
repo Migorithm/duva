@@ -3,7 +3,7 @@ use std::io::ErrorKind;
 use crate::{
     services::query_manager::{
         error::IoError,
-        interface::{TRead, TWrite},
+        interface::{TGetPeerIp, TRead, TStream, TWrite},
     },
     TSocketListener, TSocketListenerFactory,
 };
@@ -51,6 +51,15 @@ impl TWrite for tokio::net::TcpStream {
             .map_err(|e| e.kind().into())
     }
 }
+impl TGetPeerIp for tokio::net::TcpStream {
+    fn get_peer_ip(&self) -> Result<String, IoError> {
+        let addr = self.peer_addr().map_err(|error| {
+            eprintln!("error = {:?}", error);
+            IoError::NotConnected
+        })?;
+        Ok(addr.ip().to_string())
+    }
+}
 
 pub struct AppStreamListener(TcpListener);
 impl AppStreamListener {
@@ -60,9 +69,7 @@ impl AppStreamListener {
 }
 
 impl TSocketListener for AppStreamListener {
-    async fn accept(
-        &self,
-    ) -> std::result::Result<(impl TWrite + TRead, std::net::SocketAddr), IoError> {
+    async fn accept(&self) -> std::result::Result<(impl TStream, std::net::SocketAddr), IoError> {
         match self.0.accept().await {
             Ok(val) => Ok((val.0, val.1)),
             Err(err) => Err(err.kind().into()),
@@ -90,4 +97,14 @@ impl From<ErrorKind> for IoError {
             }
         }
     }
+}
+
+#[test]
+fn test_socket_to_string() {
+    use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+    //WHEN
+    let socket = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
+
+    //THEN
+    assert_eq!(socket.ip().to_string(), "127.0.0.1")
 }

@@ -1,4 +1,7 @@
-use super::command::{ConfigQuery, ConfigResource, ConfigResponse};
+use super::{
+    command::{ConfigMessage, ConfigResource, ConfigResponse},
+    ConfigCommand,
+};
 use crate::services::config::replication::Replication;
 use std::time::SystemTime;
 use tokio::{fs::try_exists, sync::mpsc::Receiver};
@@ -14,29 +17,37 @@ pub struct Config {
 }
 
 impl Config {
-    pub async fn handle(self, mut inbox: Receiver<ConfigQuery>) {
+    pub async fn handle(mut self, mut inbox: Receiver<ConfigMessage>) {
         // inner state
 
-        while let Some(cmd) = inbox.recv().await {
-            match cmd.resource {
-                ConfigResource::Dir => {
-                    let _ = cmd.callback.send(ConfigResponse::Dir(self.dir.into()));
-                }
-                ConfigResource::DbFileName => {
-                    let _ = cmd
-                        .callback
-                        .send(ConfigResponse::DbFileName(self.dbfilename.into()));
-                }
-                ConfigResource::FilePath => {
-                    let _ = cmd
-                        .callback
-                        .send(ConfigResponse::FilePath(self.get_filepath()));
-                }
-                ConfigResource::ReplicationInfo => {
-                    let _ = cmd
-                        .callback
-                        .send(ConfigResponse::ReplicationInfo(self.replication.info()));
-                }
+        while let Some(msg) = inbox.recv().await {
+            match msg {
+                ConfigMessage::Query(query) => match query.resource {
+                    ConfigResource::Dir => {
+                        let _ = query.callback.send(ConfigResponse::Dir(self.dir.into()));
+                    }
+                    ConfigResource::DbFileName => {
+                        let _ = query
+                            .callback
+                            .send(ConfigResponse::DbFileName(self.dbfilename.into()));
+                    }
+                    ConfigResource::FilePath => {
+                        let _ = query
+                            .callback
+                            .send(ConfigResponse::FilePath(self.get_filepath()));
+                    }
+                    ConfigResource::ReplicationInfo => {
+                        let _ = query
+                            .callback
+                            .send(ConfigResponse::ReplicationInfo(self.replication.info()));
+                    }
+                },
+                ConfigMessage::Command(config_command) => match config_command {
+                    ConfigCommand::ReplicaPing => {
+                        // ! Deprecated
+                        self.replication.connected_slaves += 1;
+                    }
+                },
             }
         }
     }

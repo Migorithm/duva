@@ -17,7 +17,6 @@ use services::statefuls::persist::persist_actor::PersistActor;
 
 pub async fn start_up<C: TCancellationTokenFactory, S: TSocketListenerFactory>(
     config: Config,
-
     startup_notifier: impl TNotifyStartUp,
 ) -> Result<()> {
     let replication_listener = S::create_listner(config.replication_bind_addr()).await;
@@ -39,7 +38,7 @@ pub async fn start_up<C: TCancellationTokenFactory, S: TSocketListenerFactory>(
     // will live for the entire duration of the program.
     let cache_manager: &'static CacheManager = Box::leak(Box::new(cache_manager));
 
-    tokio::spawn(start_accepting_replication_connections(
+    tokio::spawn(start_accepting_peer_connections(
         replication_listener,
         config_manager.clone(),
     ));
@@ -50,18 +49,21 @@ pub async fn start_up<C: TCancellationTokenFactory, S: TSocketListenerFactory>(
     Ok(())
 }
 
-async fn start_accepting_replication_connections(
+// TODO should replica be able to receive replica traffics directly?
+async fn start_accepting_peer_connections(
     replication_listener: impl TSocketListener,
     config_manager: ConfigManager,
 ) {
+    let replication_request_controller: &'static ReplicationRequestController =
+        Box::leak(ReplicationRequestController::new(config_manager.clone()).into());
+
     loop {
         match replication_listener.accept().await {
-            Ok((stream, _)) => {
-                let query_manager = QueryManager::new(
-                    stream,
-                    ReplicationRequestController::new(config_manager.clone()),
-                );
-                tokio::spawn(query_manager.handle_replica_stream());
+            Ok((peer_stream, _)) => {
+                tokio::spawn(QueryManager::handle_peer_stream(
+                    peer_stream,
+                    replication_request_controller,
+                ));
             }
 
             Err(err) => {
@@ -73,6 +75,7 @@ async fn start_accepting_replication_connections(
     }
 }
 
+// TODO should replica be able to receive client traffics directly?
 async fn start_accepting_client_connections<C: TCancellationTokenFactory>(
     listener: impl TSocketListener,
     cache_manager: &'static CacheManager,

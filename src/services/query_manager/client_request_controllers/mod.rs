@@ -6,7 +6,7 @@ use crate::services::statefuls::cache::cache_manager::CacheManager;
 use crate::services::statefuls::cache::ttl_manager::TtlSchedulerInbox;
 use crate::services::statefuls::persist::endec::encoder::encoding_processor::SavingProcessor;
 use crate::services::statefuls::persist::persist_actor::PersistActor;
-use arguments::Arguments;
+use arguments::ClientRequestArguments;
 use client_request::ClientRequest;
 
 use super::interface::TWriterFactory;
@@ -37,7 +37,7 @@ impl ClientRequestController {
         &self,
         mut cancellation_token: impl TCancellationWatcher,
         cmd: ClientRequest,
-        args: Arguments,
+        args: ClientRequestArguments,
     ) -> anyhow::Result<QueryIO> {
         if cancellation_token.watch() {
             let err = QueryIO::Err("Error operation cancelled due to timeout".to_string());

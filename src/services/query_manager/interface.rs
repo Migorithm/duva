@@ -2,8 +2,8 @@ use bytes::BytesMut;
 
 use super::error::IoError;
 
-pub trait TStream: TRead + TWrite {}
-impl<T> TStream for T where T: TRead + TWrite {}
+pub trait TStream: TRead + TWrite + TGetPeerIp {}
+impl<T> TStream for T where T: TRead + TWrite + TGetPeerIp {}
 pub trait TRead: Send + Sync + 'static {
     fn read_bytes(
         &mut self,
@@ -39,8 +39,12 @@ pub trait TSocketListener: Sync + Send + 'static {
     fn accept(
         &self,
     ) -> impl std::future::Future<
-        Output = std::result::Result<(impl TWrite + TRead, std::net::SocketAddr), IoError>,
+        Output = std::result::Result<(impl TStream, std::net::SocketAddr), IoError>,
     > + Send;
+}
+
+pub trait TGetPeerIp: Send + Sync + 'static {
+    fn get_peer_ip(&self) -> Result<String, IoError>;
 }
 
 pub trait TSocketListenerFactory: Sync + Send + 'static {

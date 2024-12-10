@@ -4,11 +4,11 @@ use crate::services::statefuls::cache::CacheEntry;
 use anyhow::Result;
 
 #[derive(Debug, Clone)]
-pub struct Arguments(Vec<QueryIO>);
+pub struct ClientRequestArguments(Vec<QueryIO>);
 
-make_smart_pointer!(Arguments, Vec<QueryIO>);
+make_smart_pointer!(ClientRequestArguments, Vec<QueryIO>);
 
-impl Arguments {
+impl ClientRequestArguments {
     pub fn new(values: Vec<QueryIO>) -> Self {
         Self(values)
     }
