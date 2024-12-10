@@ -1,3 +1,5 @@
+use super::command::ConfigCommand;
+use super::command::ConfigMessage;
 use super::command::ConfigQuery;
 use super::config_actor::Config;
 use super::ConfigResource;
@@ -8,9 +10,9 @@ use tokio::sync::oneshot;
 use tokio::sync::oneshot::Receiver;
 
 #[derive(Clone)]
-pub struct ConfigManager(Sender<ConfigQuery>);
+pub struct ConfigManager(Sender<ConfigMessage>);
 
-make_smart_pointer!(ConfigManager, Sender<ConfigQuery>);
+make_smart_pointer!(ConfigManager, Sender<ConfigMessage>);
 
 impl ConfigManager {
     pub fn run_actor(config: Config) -> Self {
@@ -28,11 +30,11 @@ impl ConfigManager {
             ("get", "dbfilename") => ConfigResource::DbFileName,
             _ => Err(anyhow::anyhow!("Invalid command"))?,
         };
-        let rx = self.route(resource).await?;
+        let rx = self.route_query(resource).await?;
         Ok(rx)
     }
     pub async fn get_filepath(&self) -> anyhow::Result<String> {
-        let rx = self.route(ConfigResource::FilePath).await?;
+        let rx = self.route_query(ConfigResource::FilePath).await?;
 
         let ConfigResponse::FilePath(file_path) = rx.await? else {
             return Err(anyhow::anyhow!("Failed to get file path"));
@@ -41,7 +43,7 @@ impl ConfigManager {
     }
 
     pub async fn replication_info(&self) -> anyhow::Result<Vec<String>> {
-        let rx = self.route(ConfigResource::ReplicationInfo).await?;
+        let rx = self.route_query(ConfigResource::ReplicationInfo).await?;
 
         let ConfigResponse::ReplicationInfo(info) = rx.await? else {
             return Err(anyhow::anyhow!("Failed to get replication info"));
@@ -49,12 +51,17 @@ impl ConfigManager {
         Ok(info)
     }
 
-    async fn route(
+    pub async fn route_query(
         &self,
         resource: ConfigResource,
     ) -> anyhow::Result<oneshot::Receiver<ConfigResponse>> {
         let (callback, rx) = oneshot::channel();
-        self.send(ConfigQuery::new(callback, resource)).await?;
+        self.send(ConfigMessage::Query(ConfigQuery::new(callback, resource)))
+            .await?;
         Ok(rx)
+    }
+    pub async fn route_command(&self, command: ConfigCommand) -> anyhow::Result<()> {
+        self.send(ConfigMessage::Command(command)).await?;
+        Ok(())
     }
 }

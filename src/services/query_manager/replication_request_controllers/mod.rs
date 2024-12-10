@@ -1,7 +1,7 @@
 use arguments::ReplicationRequestArguments;
 use replication_request::ReplicationRequest;
 
-use crate::services::config::config_manager::ConfigManager;
+use crate::services::config::{config_manager::ConfigManager, ConfigCommand, ConfigQuery};
 
 use super::query_io::QueryIO;
 
@@ -22,6 +22,15 @@ impl ReplicationRequestController {
         args: ReplicationRequestArguments,
     ) -> anyhow::Result<QueryIO> {
         // handle replication request
-        Ok(QueryIO::Null)
+        let response = match request {
+            ReplicationRequest::Ping => {
+                // ! HACK to test out if ping was given from replica
+                self.config_manager
+                    .route_command(ConfigCommand::ReplicaPing)
+                    .await?;
+                QueryIO::SimpleString("PONG".to_string())
+            }
+        };
+        Ok(response)
     }
 }

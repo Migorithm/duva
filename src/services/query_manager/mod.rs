@@ -134,19 +134,18 @@ where
     pub(crate) async fn handle_replica_stream(
         stream: T,
         controller: &'static ReplicationRequestController,
-    ) -> Result<(), std::io::Error> {
+    ) -> anyhow::Result<()> {
         let mut query_manager = QueryManager::new(stream, controller);
-        loop {
-            let Ok((request, query_args)) = query_manager.extract_query().await else {
-                eprintln!("invalid user request");
-                continue;
-            };
 
-            let res = match query_manager.controller.handle(request, query_args).await {
+        // Following infinite loop may need to be changed once replica information is given
+        loop {
+            let (request, query_args) = query_manager.extract_query().await?;
+
+            // * Having error from the following will not a concern as liveness concern is on cluster manager
+            let _ = match query_manager.controller.handle(request, query_args).await {
                 Ok(response) => query_manager.write_value(response).await,
                 Err(e) => query_manager.write_value(QueryIO::Err(e.to_string())).await,
             };
         }
-        Ok(())
     }
 }
