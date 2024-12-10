@@ -108,6 +108,7 @@ where
     }
 }
 
+struct PeerAddr(String);
 impl<T> QueryManager<T, &'static ReplicationRequestController>
 where
     T: TStream,
@@ -131,11 +132,28 @@ where
         }
     }
 
-    pub(crate) async fn handle_cluster_stream(
-        stream: T,
+    async fn establish_threeway_handshake(&self) -> anyhow::Result<PeerAddr> {
+        //TODO replace the following
+        let peer_port = todo!();
+        let peer_addr = self.get_peer_addr(peer_port)?;
+        Ok(peer_addr)
+    }
+
+    fn get_peer_addr(&self, port: i16) -> anyhow::Result<PeerAddr> {
+        Ok(PeerAddr(format!("{}:{}", self.stream.get_peer_ip()?, port)))
+    }
+
+    pub(crate) async fn handle_peer_stream(
+        in_stream: T,
         controller: &'static ReplicationRequestController,
     ) -> anyhow::Result<()> {
-        let mut query_manager = QueryManager::new(stream, controller);
+        let mut query_manager = QueryManager::new(in_stream, controller);
+
+        // TODO Three way handshake
+        let peer_addr = query_manager.establish_threeway_handshake().await?;
+
+        // TODO Stream factory DI - p3
+        let out_stream = tokio::net::TcpStream::connect(peer_addr.0).await?;
 
         // Following infinite loop may need to be changed once replica information is given
         loop {

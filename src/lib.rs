@@ -38,7 +38,7 @@ pub async fn start_up<C: TCancellationTokenFactory, S: TSocketListenerFactory>(
     // will live for the entire duration of the program.
     let cache_manager: &'static CacheManager = Box::leak(Box::new(cache_manager));
 
-    tokio::spawn(start_accepting_replication_connections(
+    tokio::spawn(start_accepting_peer_connections(
         replication_listener,
         config_manager.clone(),
     ));
@@ -50,7 +50,7 @@ pub async fn start_up<C: TCancellationTokenFactory, S: TSocketListenerFactory>(
 }
 
 // TODO should replica be able to receive replica traffics directly?
-async fn start_accepting_replication_connections(
+async fn start_accepting_peer_connections(
     replication_listener: impl TSocketListener,
     config_manager: ConfigManager,
 ) {
@@ -59,9 +59,9 @@ async fn start_accepting_replication_connections(
 
     loop {
         match replication_listener.accept().await {
-            Ok((stream, _)) => {
-                tokio::spawn(QueryManager::handle_cluster_stream(
-                    stream,
+            Ok((peer_stream, _)) => {
+                tokio::spawn(QueryManager::handle_peer_stream(
+                    peer_stream,
                     replication_request_controller,
                 ));
             }
