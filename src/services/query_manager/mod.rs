@@ -8,27 +8,31 @@ use crate::services::query_manager::client_request_controllers::ClientRequestCon
 
 use anyhow::Context;
 use bytes::BytesMut;
-use client_request_controllers::arguments::Arguments;
+use client_request_controllers::arguments::ClientRequestArguments;
 use error::IoError;
 use interface::{TCancellationNotifier, TCancellationTokenFactory, TStream, TWriterFactory};
 
 use query_io::QueryIO;
-use replication_request_controllers::ReplicationRequestController;
+use replication_request_controllers::{
+    arguments::ReplicationRequestArguments, replication_request::ReplicationRequest,
+    ReplicationRequestController,
+};
 
 /// Controller is a struct that will be used to read and write values to the client.
-pub struct QueryManager<T>
+pub struct QueryManager<T, U>
 where
     T: TStream,
 {
     pub(crate) stream: T,
+    pub(crate) controller: U,
 }
 
-impl<T> QueryManager<T>
+impl<T, U> QueryManager<T, U>
 where
     T: TStream,
 {
-    pub(crate) fn new(stream: T) -> Self {
-        QueryManager { stream }
+    pub(crate) fn new(stream: T, controller: U) -> Self {
+        QueryManager { stream, controller }
     }
 
     // crlf
@@ -46,11 +50,11 @@ where
     }
 }
 
-impl<T> QueryManager<T>
+impl<T> QueryManager<T, &'static ClientRequestController>
 where
     T: TStream,
 {
-    async fn extract_query(&mut self) -> anyhow::Result<(ClientRequest, Arguments)> {
+    async fn extract_query(&mut self) -> anyhow::Result<(ClientRequest, ClientRequestArguments)> {
         let query_io = self.read_value().await?;
         match query_io {
             // TODO refactor
@@ -61,7 +65,7 @@ where
                     .clone()
                     .unpack_bulk_str()?
                     .try_into()?,
-                Arguments::new(value_array.into_iter().skip(1).collect()),
+                ClientRequestArguments::new(value_array.into_iter().skip(1).collect()),
             )),
             _ => Err(anyhow::anyhow!("Unexpected command format")),
         }
@@ -72,7 +76,7 @@ where
         controller: &'static ClientRequestController,
     ) {
         const TIMEOUT: u64 = 100;
-        let mut query_manager = QueryManager::new(stream);
+        let mut query_manager = QueryManager::new(stream, controller);
 
         loop {
             let Ok((request, query_args)) = query_manager.extract_query().await else {
@@ -86,7 +90,8 @@ where
             // Notify the cancellation notifier to cancel the query after 100 milliseconds.
             cancellation_notifier.notify();
 
-            let res = match controller
+            let res = match query_manager
+                .controller
                 .handle::<F>(cancellation_token, request, query_args)
                 .await
             {
@@ -103,14 +108,45 @@ where
     }
 }
 
-impl<T> QueryManager<T>
+impl<T> QueryManager<T, &'static ReplicationRequestController>
 where
     T: TStream,
 {
+    async fn extract_query(
+        &mut self,
+    ) -> anyhow::Result<(ReplicationRequest, ReplicationRequestArguments)> {
+        let query_io = self.read_value().await?;
+        match query_io {
+            // TODO refactor
+            QueryIO::Array(value_array) => Ok((
+                value_array
+                    .first()
+                    .context("request not given")?
+                    .clone()
+                    .unpack_bulk_str()?
+                    .try_into()?,
+                ReplicationRequestArguments::new(value_array.into_iter().skip(1).collect()),
+            )),
+            _ => Err(anyhow::anyhow!("Unexpected command format")),
+        }
+    }
+
     pub(crate) async fn handle_replica_stream(
         stream: T,
         controller: &'static ReplicationRequestController,
     ) -> Result<(), std::io::Error> {
+        let mut query_manager = QueryManager::new(stream, controller);
+        loop {
+            let Ok((request, query_args)) = query_manager.extract_query().await else {
+                eprintln!("invalid user request");
+                continue;
+            };
+
+            let res = match query_manager.controller.handle(request, query_args).await {
+                Ok(response) => query_manager.write_value(response).await,
+                Err(e) => query_manager.write_value(QueryIO::Err(e.to_string())).await,
+            };
+        }
         Ok(())
     }
 }
