@@ -49,6 +49,7 @@ pub async fn start_up<C: TCancellationTokenFactory, S: TSocketListenerFactory>(
     Ok(())
 }
 
+// TODO should replica be able to receive replica traffics directly?
 async fn start_accepting_replication_connections(
     replication_listener: impl TSocketListener,
     config_manager: ConfigManager,
@@ -59,7 +60,7 @@ async fn start_accepting_replication_connections(
     loop {
         match replication_listener.accept().await {
             Ok((stream, _)) => {
-                tokio::spawn(QueryManager::handle_replica_stream(
+                tokio::spawn(QueryManager::handle_cluster_stream(
                     stream,
                     replication_request_controller,
                 ));
@@ -74,6 +75,7 @@ async fn start_accepting_replication_connections(
     }
 }
 
+// TODO should replica be able to receive client traffics directly?
 async fn start_accepting_client_connections<C: TCancellationTokenFactory>(
     listener: impl TSocketListener,
     cache_manager: &'static CacheManager,

@@ -131,7 +131,7 @@ where
         }
     }
 
-    pub(crate) async fn handle_replica_stream(
+    pub(crate) async fn handle_cluster_stream(
         stream: T,
         controller: &'static ReplicationRequestController,
     ) -> anyhow::Result<()> {

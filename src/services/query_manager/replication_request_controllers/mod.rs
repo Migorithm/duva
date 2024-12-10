@@ -30,6 +30,16 @@ impl ReplicationRequestController {
                     .await?;
                 QueryIO::SimpleString("PONG".to_string())
             }
+            ReplicationRequest::ReplConf => {
+                // args will be:
+                // "listening-port" "port" OR
+                // "capa" "eof" "capa" "psync2"
+                QueryIO::BulkString("OK".to_string())
+            }
+
+            ReplicationRequest::Psync => QueryIO::BulkString(
+                "FULLRESYNC 8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb 0".to_string(),
+            ),
         };
         Ok(response)
     }
