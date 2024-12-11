@@ -86,7 +86,7 @@ where
                 continue;
             };
 
-            let (cancellation_notifier, cancellation_token) = C::create(TIMEOUT).split();
+            let (cancellation_notifier, cancellation_token) = C::create(TIMEOUT);
 
             // TODO subject to change - more to dynamic
             // Notify the cancellation notifier to cancel the query after 100 milliseconds.

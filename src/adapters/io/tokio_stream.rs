@@ -11,7 +11,7 @@ use crate::{
 use bytes::BytesMut;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
-    net::{TcpListener, ToSocketAddrs},
+    net::TcpListener,
 };
 
 impl TRead for tokio::net::TcpStream {

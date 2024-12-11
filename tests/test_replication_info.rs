@@ -7,7 +7,7 @@ mod common;
 use crate::common::{bulk_string, info_command};
 use common::{init_config_with_free_port, start_test_server, TestStreamHandler};
 
-use redis_starter_rust::adapters::cancellation_token::CancellationToken;
+use redis_starter_rust::adapters::cancellation_token::CancellationTokenFactory;
 use tokio::net::TcpStream;
 
 #[tokio::test]
@@ -16,7 +16,7 @@ async fn test_replication_info() {
     //TODO test config should be dynamically configured
     let config = init_config_with_free_port().await;
 
-    start_test_server::<CancellationToken>(config.clone()).await;
+    start_test_server::<CancellationTokenFactory>(config.clone()).await;
 
     let mut client_stream = TcpStream::connect(config.bind_addr()).await.unwrap();
     let mut h: TestStreamHandler = client_stream.split().into();

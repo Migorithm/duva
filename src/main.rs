@@ -1,5 +1,5 @@
 use redis_starter_rust::{
-    adapters::{cancellation_token::CancellationToken, io::tokio_stream::AppStream},
+    adapters::{cancellation_token::CancellationTokenFactory, io::tokio_stream::AppStream},
     services::config::config_actor::Config,
     start_up,
 };
@@ -8,5 +8,5 @@ use redis_starter_rust::{
 async fn main() -> anyhow::Result<()> {
     // bootstrap dependencies
     let config = Config::default();
-    start_up::<CancellationToken, AppStream, tokio::net::TcpStream>(config, ()).await
+    start_up::<CancellationTokenFactory, AppStream, tokio::net::TcpStream>(config, ()).await
 }

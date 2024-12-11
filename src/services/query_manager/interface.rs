@@ -25,8 +25,7 @@ pub trait TWriterFactory: TWrite + Send + Sync + 'static + Sized {
 }
 
 pub trait TCancellationTokenFactory: Send + Sync + 'static {
-    fn create(timeout: u64) -> Self;
-    fn split(self) -> (impl TCancellationNotifier, impl TCancellationWatcher);
+    fn create(timeout: u64) -> (impl TCancellationNotifier, impl TCancellationWatcher);
 }
 
 pub trait TCancellationNotifier: Send {
