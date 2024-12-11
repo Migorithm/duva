@@ -7,7 +7,7 @@ use services::config::config_actor::Config;
 use services::config::config_manager::ConfigManager;
 
 use services::query_manager::interface::{
-    TCancellationTokenFactory, TSocketListener, TSocketListenerFactory,
+    TCancellationTokenFactory, TConnectStream, TCreateStreamListener, TListenStream,
 };
 use services::query_manager::replication_request_controllers::ReplicationRequestController;
 use services::query_manager::QueryManager;
@@ -15,12 +15,12 @@ use services::statefuls::cache::cache_manager::CacheManager;
 use services::statefuls::cache::ttl_manager::TtlSchedulerInbox;
 use services::statefuls::persist::persist_actor::PersistActor;
 
-pub async fn start_up<C: TCancellationTokenFactory, S: TSocketListenerFactory>(
+pub async fn start_up<T: TCancellationTokenFactory, L: TCreateStreamListener, C: TConnectStream>(
     config: Config,
     startup_notifier: impl TNotifyStartUp,
 ) -> Result<()> {
-    let replication_listener = S::create_listner(config.replication_bind_addr()).await;
-    let listener = S::create_listner(config.bind_addr()).await;
+    let replication_stream_listener = L::create_listner(config.replication_bind_addr()).await;
+    let client_stream_listener = L::create_listner(config.bind_addr()).await;
 
     let (cache_manager, ttl_inbox) = CacheManager::run_cache_actors();
 
@@ -38,20 +38,25 @@ pub async fn start_up<C: TCancellationTokenFactory, S: TSocketListenerFactory>(
     // will live for the entire duration of the program.
     let cache_manager: &'static CacheManager = Box::leak(Box::new(cache_manager));
 
-    tokio::spawn(start_accepting_peer_connections(
-        replication_listener,
+    tokio::spawn(start_accepting_peer_connections::<C>(
+        replication_stream_listener,
         config_manager.clone(),
     ));
     startup_notifier.notify_startup();
 
-    start_accepting_client_connections::<C>(listener, cache_manager, ttl_inbox, config_manager)
-        .await;
+    start_accepting_client_connections::<T>(
+        client_stream_listener,
+        cache_manager,
+        ttl_inbox,
+        config_manager,
+    )
+    .await;
     Ok(())
 }
 
 // TODO should replica be able to receive replica traffics directly?
-async fn start_accepting_peer_connections(
-    replication_listener: impl TSocketListener,
+async fn start_accepting_peer_connections<C: TConnectStream>(
+    replication_listener: impl TListenStream,
     config_manager: ConfigManager,
 ) {
     let replication_request_controller: &'static ReplicationRequestController =
@@ -60,7 +65,7 @@ async fn start_accepting_peer_connections(
     loop {
         match replication_listener.accept().await {
             Ok((peer_stream, _)) => {
-                tokio::spawn(QueryManager::handle_peer_stream(
+                tokio::spawn(QueryManager::handle_peer_stream::<C>(
                     peer_stream,
                     replication_request_controller,
                 ));
@@ -76,8 +81,8 @@ async fn start_accepting_peer_connections(
 }
 
 // TODO should replica be able to receive client traffics directly?
-async fn start_accepting_client_connections<C: TCancellationTokenFactory>(
-    listener: impl TSocketListener,
+async fn start_accepting_client_connections<T: TCancellationTokenFactory>(
+    client_stream_listener: impl TListenStream,
     cache_manager: &'static CacheManager,
     ttl_inbox: TtlSchedulerInbox,
     config_manager: ConfigManager,
@@ -88,12 +93,12 @@ async fn start_accepting_client_connections<C: TCancellationTokenFactory>(
         Box::leak(ClientRequestController::new(config_manager, cache_manager, ttl_inbox).into());
 
     loop {
-        match listener.accept().await {
+        match client_stream_listener.accept().await {
             Ok((stream, _)) =>
             // Spawn a new task to handle the connection without blocking the main thread.
             {
                 tokio::spawn(QueryManager::handle_single_client_stream::<
-                    C,
+                    T,
                     tokio::fs::File,
                 >(stream, client_request_controller));
             }

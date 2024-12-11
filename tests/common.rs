@@ -1,8 +1,7 @@
 use redis_starter_rust::services::config::config_actor::Config;
-use redis_starter_rust::{adapters::io::tokio_stream::AppStreamListener, TNotifyStartUp};
-
 use redis_starter_rust::services::query_manager::interface::TCancellationTokenFactory;
 use redis_starter_rust::services::query_manager::query_io::QueryIO;
+use redis_starter_rust::{adapters::io::tokio_stream::AppStream, TNotifyStartUp};
 
 use std::sync::Arc;
 use tokio::{
@@ -76,9 +75,11 @@ pub async fn start_test_server<T: TCancellationTokenFactory>(
     let notify = Arc::new(tokio::sync::Notify::new());
     let start_flag = StartFlag(notify.clone());
 
-    let h = tokio::spawn(redis_starter_rust::start_up::<T, AppStreamListener>(
-        config, start_flag,
-    ));
+    let h = tokio::spawn(redis_starter_rust::start_up::<
+        T,
+        AppStream,
+        tokio::net::TcpStream,
+    >(config, start_flag));
 
     //warm up time
     notify.notified().await;

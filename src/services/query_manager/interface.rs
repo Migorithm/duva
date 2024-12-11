@@ -1,9 +1,10 @@
 use bytes::BytesMut;
 
-use super::error::IoError;
+use super::{error::IoError, PeerAddr};
 
 pub trait TStream: TRead + TWrite + TGetPeerIp {}
 impl<T> TStream for T where T: TRead + TWrite + TGetPeerIp {}
+
 pub trait TRead: Send + Sync + 'static {
     fn read_bytes(
         &mut self,
@@ -35,7 +36,7 @@ pub trait TCancellationWatcher: Send {
     fn watch(&mut self) -> bool;
 }
 
-pub trait TSocketListener: Sync + Send + 'static {
+pub trait TListenStream: Sync + Send + 'static {
     fn accept(
         &self,
     ) -> impl std::future::Future<
@@ -47,8 +48,14 @@ pub trait TGetPeerIp: Send + Sync + 'static {
     fn get_peer_ip(&self) -> Result<String, IoError>;
 }
 
-pub trait TSocketListenerFactory: Sync + Send + 'static {
+pub trait TCreateStreamListener: Sync + Send + 'static {
     fn create_listner(
         bind_addr: String,
-    ) -> impl std::future::Future<Output = impl TSocketListener> + Send;
+    ) -> impl std::future::Future<Output = impl TListenStream> + Send;
+}
+
+pub trait TConnectStream: Sync + Send + 'static {
+    fn connect(
+        addr: PeerAddr,
+    ) -> impl std::future::Future<Output = Result<impl TStream, IoError>> + Send;
 }
