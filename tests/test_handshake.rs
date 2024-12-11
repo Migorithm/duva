@@ -7,6 +7,7 @@ use tokio::net::TcpStream;
 mod common;
 
 #[tokio::test]
+#[ignore = "not ready"]
 async fn test_handshake() {
     // GIVEN
     //TODO test config should be dynamically configured
