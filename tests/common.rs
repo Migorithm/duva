@@ -83,12 +83,11 @@ pub async fn start_test_server(
         TokioConnectStreamFactory,
         TokioStreamListenerFactory,
         cancellation_token_factory,
-        config,
-        start_flag,
+        config.clone(),
     );
 
     let h = tokio::spawn(async move {
-        start_up_facade.run().await?;
+        start_up_facade.run(start_flag, config).await?;
         Ok(())
     });
 

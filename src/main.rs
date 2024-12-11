@@ -16,8 +16,7 @@ async fn main() -> anyhow::Result<()> {
         TokioConnectStreamFactory,
         TokioStreamListenerFactory,
         CancellationTokenFactory,
-        config,
-        (),
+        config.clone(),
     );
-    start_up_runner.run().await
+    start_up_runner.run((), config).await
 }
