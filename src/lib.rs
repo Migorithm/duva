@@ -15,52 +15,6 @@ use services::statefuls::cache::cache_manager::CacheManager;
 use services::statefuls::cache::ttl_manager::TtlSchedulerInbox;
 use services::statefuls::persist::persist_actor::PersistActor;
 
-pub async fn start_up(
-    connect_stream_factory: impl TConnectStreamFactory,
-    stream_listener: impl TStreamListenerFactory,
-    cancellation_factory: impl TCancellationTokenFactory,
-    config: Config,
-    startup_notifier: impl TNotifyStartUp,
-) -> Result<()> {
-    let replication_stream_listener = stream_listener
-        .create_listner(config.replication_bind_addr())
-        .await;
-    let client_stream_listener = stream_listener.create_listner(config.bind_addr()).await;
-
-    let (cache_manager, ttl_inbox) = CacheManager::run_cache_actors();
-
-    if let Some(filepath) = config.try_filepath().await {
-        let dump = PersistActor::dump(filepath).await?;
-        cache_manager
-            .dump_cache(dump, ttl_inbox.clone(), config.startup_time)
-            .await?;
-    }
-
-    // Run Replication manager
-    let config_manager = ConfigManager::run_actor(config);
-
-    // Leak the cache_dispatcher to make it static - this is safe because the cache_dispatcher
-    // will live for the entire duration of the program.
-    let cache_manager: &'static CacheManager = Box::leak(Box::new(cache_manager));
-
-    tokio::spawn(start_accepting_peer_connections(
-        connect_stream_factory,
-        replication_stream_listener,
-        config_manager.clone(),
-    ));
-    startup_notifier.notify_startup();
-
-    start_accepting_client_connections(
-        cancellation_factory,
-        client_stream_listener,
-        cache_manager,
-        ttl_inbox,
-        config_manager,
-    )
-    .await;
-    Ok(())
-}
-
 // TODO should replica be able to receive replica traffics directly?
 async fn start_accepting_peer_connections(
     connect_stream_factory: impl TConnectStreamFactory,
@@ -121,6 +75,82 @@ async fn start_accepting_client_connections(
                 }
             }
         }
+    }
+}
+
+pub struct StartUpFacade<T, U, V, K> {
+    connect_stream_factory: T,
+    stream_listener: U,
+    cancellation_factory: V,
+    config: Config,
+    startup_notifier: K,
+}
+
+impl<T, U, V, K> StartUpFacade<T, U, V, K>
+where
+    T: TConnectStreamFactory,
+    U: TStreamListenerFactory,
+    V: TCancellationTokenFactory,
+    K: TNotifyStartUp,
+{
+    pub fn new(
+        connect_stream_factory: T,
+        stream_listener: U,
+        cancellation_factory: V,
+        config: Config,
+        startup_notifier: K,
+    ) -> Self {
+        StartUpFacade {
+            connect_stream_factory,
+            stream_listener,
+            cancellation_factory,
+            config,
+            startup_notifier,
+        }
+    }
+
+    pub async fn run(&self) -> Result<()> {
+        let replication_stream_listener = self
+            .stream_listener
+            .create_listner(self.config.replication_bind_addr())
+            .await;
+        let client_stream_listener = self
+            .stream_listener
+            .create_listner(self.config.bind_addr())
+            .await;
+
+        let (cache_manager, ttl_inbox) = CacheManager::run_cache_actors();
+
+        if let Some(filepath) = self.config.try_filepath().await {
+            let dump = PersistActor::dump(filepath).await?;
+            cache_manager
+                .dump_cache(dump, ttl_inbox.clone(), self.config.startup_time)
+                .await?;
+        }
+
+        // Run Replication manager
+        let config_manager = ConfigManager::run_actor(self.config.clone());
+
+        // Leak the cache_dispatcher to make it static - this is safe because the cache_dispatcher
+        // will live for the entire duration of the program.
+        let cache_manager: &'static CacheManager = Box::leak(Box::new(cache_manager));
+
+        tokio::spawn(start_accepting_peer_connections(
+            self.connect_stream_factory,
+            replication_stream_listener,
+            config_manager.clone(),
+        ));
+        self.startup_notifier.notify_startup();
+
+        start_accepting_client_connections(
+            self.cancellation_factory,
+            client_stream_listener,
+            cache_manager,
+            ttl_inbox,
+            config_manager,
+        )
+        .await;
+        Ok(())
     }
 }
 

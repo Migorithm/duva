@@ -4,19 +4,20 @@ use redis_starter_rust::{
         io::tokio_stream::{TokioConnectStreamFactory, TokioStreamListenerFactory},
     },
     services::config::config_actor::Config,
-    start_up,
+    StartUpFacade,
 };
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     // bootstrap dependencies
     let config = Config::default();
-    start_up(
+
+    let start_up_runner = StartUpFacade::new(
         TokioConnectStreamFactory,
         TokioStreamListenerFactory,
         CancellationTokenFactory,
         config,
         (),
-    )
-    .await
+    );
+    start_up_runner.run().await
 }
