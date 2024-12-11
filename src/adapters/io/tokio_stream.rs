@@ -3,10 +3,10 @@ use std::io::ErrorKind;
 use crate::{
     services::query_manager::{
         error::IoError,
-        interface::{TConnectStream, TGetPeerIp, TRead, TStream, TWrite},
+        interface::{TConnectStreamFactory, TGetPeerIp, TRead, TStream, TWrite},
         PeerAddr,
     },
-    TCreateStreamListener, TListenStream,
+    TStreamListener, TStreamListenerFactory,
 };
 use bytes::BytesMut;
 use tokio::{
@@ -62,29 +62,26 @@ impl TGetPeerIp for tokio::net::TcpStream {
     }
 }
 
-pub struct AppStream(TcpListener);
-impl AppStream {
-    async fn new(bind_addr: String) -> Self {
-        AppStream(TcpListener::bind(bind_addr).await.expect("failed to bind"))
-    }
-}
-
-impl TListenStream for AppStream {
-    async fn accept(&self) -> std::result::Result<(impl TStream, std::net::SocketAddr), IoError> {
-        match self.0.accept().await {
+impl TStreamListener for TcpListener {
+    async fn listen(&self) -> std::result::Result<(impl TStream, std::net::SocketAddr), IoError> {
+        match self.accept().await {
             Ok(val) => Ok((val.0, val.1)),
             Err(err) => Err(err.kind().into()),
         }
     }
 }
-impl TCreateStreamListener for AppStream {
-    async fn create_listner(bind_addr: String) -> impl TListenStream {
-        AppStream::new(bind_addr).await
+
+pub struct TokioStreamListenerFactory;
+impl TStreamListenerFactory for TokioStreamListenerFactory {
+    async fn create_listner(&self, bind_addr: String) -> impl TStreamListener {
+        TcpListener::bind(bind_addr).await.expect("failed to bind")
     }
 }
 
-impl TConnectStream for tokio::net::TcpStream {
-    async fn connect(addr: PeerAddr) -> Result<impl TStream, IoError> {
+#[derive(Clone, Copy)]
+pub struct TokioConnectStreamFactory;
+impl TConnectStreamFactory for TokioConnectStreamFactory {
+    async fn connect(&self, addr: PeerAddr) -> Result<impl TStream, IoError> {
         match tokio::net::TcpStream::connect(addr.0).await {
             Ok(stream) => Ok(stream),
             Err(err) => Err(err.kind().into()),

@@ -11,7 +11,8 @@ use bytes::BytesMut;
 use client_request_controllers::arguments::ClientRequestArguments;
 use error::IoError;
 use interface::{
-    TCancellationNotifier, TCancellationTokenFactory, TConnectStream, TStream, TWriterFactory,
+    TCancellationNotifier, TCancellationTokenFactory, TConnectStreamFactory, TStream,
+    TWriterFactory,
 };
 
 use query_io::QueryIO;
@@ -147,7 +148,8 @@ where
         Ok(PeerAddr(format!("{}:{}", self.stream.get_peer_ip()?, port)))
     }
 
-    pub(crate) async fn handle_peer_stream<C: TConnectStream>(
+    pub(crate) async fn handle_peer_stream(
+        connect_stream_factory: impl TConnectStreamFactory,
         in_stream: T,
         controller: &'static ReplicationRequestController,
     ) -> anyhow::Result<()> {
@@ -157,7 +159,7 @@ where
         let peer_addr = query_manager.establish_threeway_handshake().await?;
 
         // TODO Stream factory DI - p3
-        let out_stream = C::connect(peer_addr).await?;
+        let out_stream = connect_stream_factory.connect(peer_addr).await?;
 
         // Following infinite loop may need to be changed once replica information is given
         loop {
