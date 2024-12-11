@@ -69,17 +69,17 @@ impl TNotifyStartUp for StartFlag {
     }
 }
 
-pub async fn start_test_server<T: TCancellationTokenFactory>(
+pub async fn start_test_server(
+    cancellation_token_factory: impl TCancellationTokenFactory,
     config: Config,
 ) -> tokio::task::JoinHandle<Result<(), anyhow::Error>> {
     let notify = Arc::new(tokio::sync::Notify::new());
     let start_flag = StartFlag(notify.clone());
 
     let h = tokio::spawn(redis_starter_rust::start_up::<
-        T,
         AppStream,
         tokio::net::TcpStream,
-    >(config, start_flag));
+    >(cancellation_token_factory, config, start_flag));
 
     //warm up time
     notify.notified().await;

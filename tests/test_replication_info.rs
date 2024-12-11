@@ -16,7 +16,7 @@ async fn test_replication_info() {
     //TODO test config should be dynamically configured
     let config = init_config_with_free_port().await;
 
-    start_test_server::<CancellationTokenFactory>(config.clone()).await;
+    start_test_server(CancellationTokenFactory, config.clone()).await;
 
     let mut client_stream = TcpStream::connect(config.bind_addr()).await.unwrap();
     let mut h: TestStreamHandler = client_stream.split().into();

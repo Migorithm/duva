@@ -14,7 +14,7 @@ async fn test_cancellation_token() {
     // GIVEN
     let config = init_config_with_free_port().await;
 
-    let _ = start_test_server::<TestCancellationTokenFactory>(config.clone()).await;
+    let _ = start_test_server(TestCancellationTokenFactory, config.clone()).await;
 
     let mut client_stream = TcpStream::connect(config.bind_addr()).await.unwrap();
     let mut h: TestStreamHandler = client_stream.split().into();
@@ -30,9 +30,10 @@ async fn test_cancellation_token() {
     );
 }
 
+#[derive(Clone, Copy)]
 pub struct TestCancellationTokenFactory;
 impl TCancellationTokenFactory for TestCancellationTokenFactory {
-    fn create(_timeout: u64) -> (impl TCancellationNotifier, impl TCancellationWatcher) {
+    fn create(&self, _timeout: u64) -> (impl TCancellationNotifier, impl TCancellationWatcher) {
         let (tx, rx) = tokio::sync::oneshot::channel();
 
         (TestNotifier(tx), rx)

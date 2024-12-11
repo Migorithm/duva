@@ -12,13 +12,13 @@ async fn test_handshake() {
     //TODO test config should be dynamically configured
 
     let master_config = init_config_with_free_port().await;
-    start_test_server::<CancellationTokenFactory>(master_config.clone()).await;
+    start_test_server(CancellationTokenFactory, master_config.clone()).await;
 
     let slave_config = init_slave_config_with_free_port(master_config.port).await;
-    start_test_server::<CancellationTokenFactory>(slave_config).await;
+    start_test_server(CancellationTokenFactory, slave_config).await;
 
     let slave_config = init_slave_config_with_free_port(master_config.port).await;
-    start_test_server::<CancellationTokenFactory>(slave_config).await;
+    start_test_server(CancellationTokenFactory, slave_config).await;
 
     let mut client_stream = TcpStream::connect(master_config.bind_addr()).await.unwrap();
     let mut h: TestStreamHandler = client_stream.split().into();

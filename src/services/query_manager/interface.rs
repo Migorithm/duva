@@ -24,8 +24,8 @@ pub trait TWriterFactory: TWrite + Send + Sync + 'static + Sized {
     ) -> impl std::future::Future<Output = anyhow::Result<Self>> + Send;
 }
 
-pub trait TCancellationTokenFactory: Send + Sync + 'static {
-    fn create(timeout: u64) -> (impl TCancellationNotifier, impl TCancellationWatcher);
+pub trait TCancellationTokenFactory: Send + Sync + Copy + 'static {
+    fn create(&self, timeout: u64) -> (impl TCancellationNotifier, impl TCancellationWatcher);
 }
 
 pub trait TCancellationNotifier: Send {

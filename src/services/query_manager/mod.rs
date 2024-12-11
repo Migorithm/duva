@@ -73,7 +73,8 @@ where
         }
     }
 
-    pub async fn handle_single_client_stream<C: TCancellationTokenFactory, F: TWriterFactory>(
+    pub async fn handle_single_client_stream<F: TWriterFactory>(
+        cancellation_token_factory: impl TCancellationTokenFactory,
         stream: T,
         controller: &'static ClientRequestController,
     ) {
@@ -86,7 +87,8 @@ where
                 continue;
             };
 
-            let (cancellation_notifier, cancellation_token) = C::create(TIMEOUT);
+            let (cancellation_notifier, cancellation_token) =
+                cancellation_token_factory.create(TIMEOUT);
 
             // TODO subject to change - more to dynamic
             // Notify the cancellation notifier to cancel the query after 100 milliseconds.

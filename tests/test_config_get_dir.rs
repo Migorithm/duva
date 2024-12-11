@@ -16,7 +16,7 @@ async fn test_config_get_dir() {
     //TODO test config should be dynamically configured
     let config = init_config_with_free_port().await;
 
-    let _ = start_test_server::<CancellationTokenFactory>(config.clone()).await;
+    let _ = start_test_server(CancellationTokenFactory, config.clone()).await;
 
     let mut client_stream = TcpStream::connect(config.bind_addr()).await.unwrap();
 

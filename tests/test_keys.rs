@@ -10,7 +10,7 @@ async fn test_keys() {
     // GIVEN
     let config = init_config_with_free_port().await;
 
-    let _ = start_test_server::<CancellationTokenFactory>(config.clone()).await;
+    let _ = start_test_server(CancellationTokenFactory, config.clone()).await;
 
     let mut stream = TcpStream::connect(config.bind_addr()).await.unwrap();
     let mut h: TestStreamHandler = stream.split().into();

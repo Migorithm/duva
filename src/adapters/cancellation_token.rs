@@ -2,10 +2,11 @@ use crate::services::query_manager::interface::{
     TCancellationNotifier, TCancellationTokenFactory, TCancellationWatcher,
 };
 
+#[derive(Copy, Clone)]
 pub struct CancellationTokenFactory;
 
 impl TCancellationTokenFactory for CancellationTokenFactory {
-    fn create(timeout: u64) -> (impl TCancellationNotifier, impl TCancellationWatcher) {
+    fn create(&self, timeout: u64) -> (impl TCancellationNotifier, impl TCancellationWatcher) {
         let (tx, rx) = tokio::sync::oneshot::channel();
         (
             CancellationNotifier {
