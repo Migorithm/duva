@@ -3,14 +3,15 @@ use std::io::ErrorKind;
 use crate::{
     services::query_manager::{
         error::IoError,
-        interface::{TGetPeerIp, TRead, TStream, TWrite},
+        interface::{TConnectStream, TGetPeerIp, TRead, TStream, TWrite},
+        PeerAddr,
     },
-    TSocketListener, TSocketListenerFactory,
+    TCreateStreamListener, TListenStream,
 };
 use bytes::BytesMut;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
-    net::TcpListener,
+    net::{TcpListener, ToSocketAddrs},
 };
 
 impl TRead for tokio::net::TcpStream {
@@ -61,14 +62,14 @@ impl TGetPeerIp for tokio::net::TcpStream {
     }
 }
 
-pub struct AppStreamListener(TcpListener);
-impl AppStreamListener {
+pub struct AppStream(TcpListener);
+impl AppStream {
     async fn new(bind_addr: String) -> Self {
-        AppStreamListener(TcpListener::bind(bind_addr).await.expect("failed to bind"))
+        AppStream(TcpListener::bind(bind_addr).await.expect("failed to bind"))
     }
 }
 
-impl TSocketListener for AppStreamListener {
+impl TListenStream for AppStream {
     async fn accept(&self) -> std::result::Result<(impl TStream, std::net::SocketAddr), IoError> {
         match self.0.accept().await {
             Ok(val) => Ok((val.0, val.1)),
@@ -76,9 +77,18 @@ impl TSocketListener for AppStreamListener {
         }
     }
 }
-impl TSocketListenerFactory for AppStreamListener {
-    async fn create_listner(bind_addr: String) -> impl TSocketListener {
-        AppStreamListener::new(bind_addr).await
+impl TCreateStreamListener for AppStream {
+    async fn create_listner(bind_addr: String) -> impl TListenStream {
+        AppStream::new(bind_addr).await
+    }
+}
+
+impl TConnectStream for tokio::net::TcpStream {
+    async fn connect(addr: PeerAddr) -> Result<impl TStream, IoError> {
+        match tokio::net::TcpStream::connect(addr.0).await {
+            Ok(stream) => Ok(stream),
+            Err(err) => Err(err.kind().into()),
+        }
     }
 }
 

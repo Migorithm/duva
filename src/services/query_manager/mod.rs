@@ -10,7 +10,9 @@ use anyhow::Context;
 use bytes::BytesMut;
 use client_request_controllers::arguments::ClientRequestArguments;
 use error::IoError;
-use interface::{TCancellationNotifier, TCancellationTokenFactory, TStream, TWriterFactory};
+use interface::{
+    TCancellationNotifier, TCancellationTokenFactory, TConnectStream, TStream, TWriterFactory,
+};
 
 use query_io::QueryIO;
 use replication_request_controllers::{
@@ -108,7 +110,7 @@ where
     }
 }
 
-struct PeerAddr(String);
+pub struct PeerAddr(pub String);
 impl<T> QueryManager<T, &'static ReplicationRequestController>
 where
     T: TStream,
@@ -143,7 +145,7 @@ where
         Ok(PeerAddr(format!("{}:{}", self.stream.get_peer_ip()?, port)))
     }
 
-    pub(crate) async fn handle_peer_stream(
+    pub(crate) async fn handle_peer_stream<C: TConnectStream>(
         in_stream: T,
         controller: &'static ReplicationRequestController,
     ) -> anyhow::Result<()> {
@@ -153,7 +155,7 @@ where
         let peer_addr = query_manager.establish_threeway_handshake().await?;
 
         // TODO Stream factory DI - p3
-        let out_stream = tokio::net::TcpStream::connect(peer_addr.0).await?;
+        let out_stream = C::connect(peer_addr).await?;
 
         // Following infinite loop may need to be changed once replica information is given
         loop {
