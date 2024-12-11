@@ -7,7 +7,7 @@ use services::config::config_actor::Config;
 use services::config::config_manager::ConfigManager;
 
 use services::query_manager::interface::{
-    TCancellationTokenFactory, TConnectStream, TCreateStreamListener, TListenStream,
+    TCancellationTokenFactory, TConnectStreamFactory, TStreamListener, TStreamListenerFactory,
 };
 use services::query_manager::replication_request_controllers::ReplicationRequestController;
 use services::query_manager::QueryManager;
@@ -15,13 +15,17 @@ use services::statefuls::cache::cache_manager::CacheManager;
 use services::statefuls::cache::ttl_manager::TtlSchedulerInbox;
 use services::statefuls::persist::persist_actor::PersistActor;
 
-pub async fn start_up<L: TCreateStreamListener, C: TConnectStream>(
+pub async fn start_up(
+    connect_stream_factory: impl TConnectStreamFactory,
+    stream_listener: impl TStreamListenerFactory,
     cancellation_factory: impl TCancellationTokenFactory,
     config: Config,
     startup_notifier: impl TNotifyStartUp,
 ) -> Result<()> {
-    let replication_stream_listener = L::create_listner(config.replication_bind_addr()).await;
-    let client_stream_listener = L::create_listner(config.bind_addr()).await;
+    let replication_stream_listener = stream_listener
+        .create_listner(config.replication_bind_addr())
+        .await;
+    let client_stream_listener = stream_listener.create_listner(config.bind_addr()).await;
 
     let (cache_manager, ttl_inbox) = CacheManager::run_cache_actors();
 
@@ -39,7 +43,8 @@ pub async fn start_up<L: TCreateStreamListener, C: TConnectStream>(
     // will live for the entire duration of the program.
     let cache_manager: &'static CacheManager = Box::leak(Box::new(cache_manager));
 
-    tokio::spawn(start_accepting_peer_connections::<C>(
+    tokio::spawn(start_accepting_peer_connections(
+        connect_stream_factory,
         replication_stream_listener,
         config_manager.clone(),
     ));
@@ -57,17 +62,19 @@ pub async fn start_up<L: TCreateStreamListener, C: TConnectStream>(
 }
 
 // TODO should replica be able to receive replica traffics directly?
-async fn start_accepting_peer_connections<C: TConnectStream>(
-    replication_listener: impl TListenStream,
+async fn start_accepting_peer_connections(
+    connect_stream_factory: impl TConnectStreamFactory,
+    replication_listener: impl TStreamListener,
     config_manager: ConfigManager,
 ) {
     let replication_request_controller: &'static ReplicationRequestController =
         Box::leak(ReplicationRequestController::new(config_manager.clone()).into());
 
     loop {
-        match replication_listener.accept().await {
+        match replication_listener.listen().await {
             Ok((peer_stream, _)) => {
-                tokio::spawn(QueryManager::handle_peer_stream::<C>(
+                tokio::spawn(QueryManager::handle_peer_stream(
+                    connect_stream_factory,
                     peer_stream,
                     replication_request_controller,
                 ));
@@ -85,7 +92,7 @@ async fn start_accepting_peer_connections<C: TConnectStream>(
 // TODO should replica be able to receive client traffics directly?
 async fn start_accepting_client_connections(
     cancellation_factory: impl TCancellationTokenFactory,
-    client_stream_listener: impl TListenStream,
+    client_stream_listener: impl TStreamListener,
     cache_manager: &'static CacheManager,
     ttl_inbox: TtlSchedulerInbox,
     config_manager: ConfigManager,
@@ -96,7 +103,7 @@ async fn start_accepting_client_connections(
         Box::leak(ClientRequestController::new(config_manager, cache_manager, ttl_inbox).into());
 
     loop {
-        match client_stream_listener.accept().await {
+        match client_stream_listener.listen().await {
             Ok((stream, _)) =>
             // Spawn a new task to handle the connection without blocking the main thread.
             {

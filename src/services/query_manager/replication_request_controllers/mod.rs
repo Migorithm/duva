@@ -1,7 +1,7 @@
 use arguments::ReplicationRequestArguments;
 use replication_request::ReplicationRequest;
 
-use crate::services::config::{config_manager::ConfigManager, ConfigCommand, ConfigQuery};
+use crate::services::config::{config_manager::ConfigManager, ConfigCommand};
 
 use super::query_io::QueryIO;
 

@@ -35,8 +35,8 @@ pub trait TCancellationWatcher: Send {
     fn watch(&mut self) -> bool;
 }
 
-pub trait TListenStream: Sync + Send + 'static {
-    fn accept(
+pub trait TStreamListener: Sync + Send + 'static {
+    fn listen(
         &self,
     ) -> impl std::future::Future<
         Output = std::result::Result<(impl TStream, std::net::SocketAddr), IoError>,
@@ -47,14 +47,16 @@ pub trait TGetPeerIp: Send + Sync + 'static {
     fn get_peer_ip(&self) -> Result<String, IoError>;
 }
 
-pub trait TCreateStreamListener: Sync + Send + 'static {
+pub trait TStreamListenerFactory: Sync + Send + 'static {
     fn create_listner(
+        &self,
         bind_addr: String,
-    ) -> impl std::future::Future<Output = impl TListenStream> + Send;
+    ) -> impl std::future::Future<Output = impl TStreamListener> + Send;
 }
 
-pub trait TConnectStream: Sync + Send + 'static {
+pub trait TConnectStreamFactory: Sync + Send + Copy + 'static {
     fn connect(
+        &self,
         addr: PeerAddr,
     ) -> impl std::future::Future<Output = Result<impl TStream, IoError>> + Send;
 }
