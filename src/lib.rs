@@ -15,7 +15,8 @@ use services::statefuls::cache::cache_manager::CacheManager;
 use services::statefuls::cache::ttl_manager::TtlSchedulerInbox;
 use services::statefuls::persist::persist_actor::PersistActor;
 
-pub async fn start_up<T: TCancellationTokenFactory, L: TCreateStreamListener, C: TConnectStream>(
+pub async fn start_up<L: TCreateStreamListener, C: TConnectStream>(
+    cancellation_factory: impl TCancellationTokenFactory,
     config: Config,
     startup_notifier: impl TNotifyStartUp,
 ) -> Result<()> {
@@ -44,7 +45,8 @@ pub async fn start_up<T: TCancellationTokenFactory, L: TCreateStreamListener, C:
     ));
     startup_notifier.notify_startup();
 
-    start_accepting_client_connections::<T>(
+    start_accepting_client_connections(
+        cancellation_factory,
         client_stream_listener,
         cache_manager,
         ttl_inbox,
@@ -81,7 +83,8 @@ async fn start_accepting_peer_connections<C: TConnectStream>(
 }
 
 // TODO should replica be able to receive client traffics directly?
-async fn start_accepting_client_connections<T: TCancellationTokenFactory>(
+async fn start_accepting_client_connections(
+    cancellation_factory: impl TCancellationTokenFactory,
     client_stream_listener: impl TListenStream,
     cache_manager: &'static CacheManager,
     ttl_inbox: TtlSchedulerInbox,
@@ -97,10 +100,13 @@ async fn start_accepting_client_connections<T: TCancellationTokenFactory>(
             Ok((stream, _)) =>
             // Spawn a new task to handle the connection without blocking the main thread.
             {
-                tokio::spawn(QueryManager::handle_single_client_stream::<
-                    T,
-                    tokio::fs::File,
-                >(stream, client_request_controller));
+                tokio::spawn(
+                    QueryManager::handle_single_client_stream::<tokio::fs::File>(
+                        cancellation_factory,
+                        stream,
+                        client_request_controller,
+                    ),
+                );
             }
             Err(e) => {
                 if e.should_break() {

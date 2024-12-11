@@ -9,7 +9,7 @@ use crate::common::{
     set_command_with_expiry, start_test_server,
 };
 use common::{init_config_with_free_port, TestStreamHandler};
-use redis_starter_rust::adapters::cancellation_token::CancellationToken;
+use redis_starter_rust::adapters::cancellation_token::CancellationTokenFactory;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::net::TcpStream;
 
@@ -34,7 +34,7 @@ async fn test_save_read_dump() {
         let _ = Box::from_raw(ptr as *mut str);
     }
 
-    let _ = start_test_server::<CancellationToken>(config.clone()).await;
+    let _ = start_test_server(CancellationTokenFactory, config.clone()).await;
 
     let mut client_stream = TcpStream::connect(config.bind_addr()).await.unwrap();
     let mut h: TestStreamHandler = client_stream.split().into();
@@ -60,7 +60,7 @@ async fn test_save_read_dump() {
     tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
 
     // start another instance
-    let _ = start_test_server::<CancellationToken>(config.clone()).await;
+    let _ = start_test_server(CancellationTokenFactory, config.clone()).await;
 
     let mut client_stream = TcpStream::connect(config.bind_addr()).await.unwrap();
     let mut h: TestStreamHandler = client_stream.split().into();
