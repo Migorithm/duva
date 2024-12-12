@@ -3,8 +3,8 @@ pub mod error;
 pub mod interface;
 pub mod query_io;
 pub mod replication_request_controllers;
-use crate::services::query_manager::client_request_controllers::client_request::ClientRequest;
-use crate::services::query_manager::client_request_controllers::ClientRequestController;
+use crate::services::stream_manager::client_request_controllers::client_request::ClientRequest;
+use crate::services::stream_manager::client_request_controllers::ClientRequestController;
 
 use anyhow::Context;
 use bytes::BytesMut;
@@ -17,12 +17,12 @@ use interface::{
 
 use query_io::QueryIO;
 use replication_request_controllers::{
-    arguments::ReplicationRequestArguments, replication_request::ReplicationRequest,
+    arguments::PeerRequestArguments, replication_request::HandShakeRequest,
     ReplicationRequestController,
 };
 
 /// Controller is a struct that will be used to read and write values to the client.
-pub struct QueryManager<T, U>
+pub struct StreamManager<T, U>
 where
     T: TStream,
 {
@@ -30,12 +30,12 @@ where
     pub(crate) controller: U,
 }
 
-impl<T, U> QueryManager<T, U>
+impl<T, U> StreamManager<T, U>
 where
     T: TStream,
 {
     pub(crate) fn new(stream: T, controller: U) -> Self {
-        QueryManager { stream, controller }
+        StreamManager { stream, controller }
     }
 
     // crlf
@@ -53,7 +53,7 @@ where
     }
 }
 
-impl<T> QueryManager<T, &'static ClientRequestController>
+impl<T> StreamManager<T, &'static ClientRequestController>
 where
     T: TStream,
 {
@@ -112,13 +112,15 @@ where
 }
 
 pub struct PeerAddr(pub String);
-impl<T> QueryManager<T, &'static ReplicationRequestController>
+impl<T> StreamManager<T, &'static ReplicationRequestController>
 where
     T: TStream,
 {
-    async fn extract_query(
-        &mut self,
-    ) -> anyhow::Result<(ReplicationRequest, ReplicationRequestArguments)> {
+    async fn extract_query<R>(&mut self) -> anyhow::Result<(R, PeerRequestArguments)>
+    where
+        R: TryFrom<String>,
+        anyhow::Error: From<R::Error>,
+    {
         let query_io = self.read_value().await?;
         match query_io {
             // TODO refactor
@@ -129,7 +131,7 @@ where
                     .clone()
                     .unpack_bulk_str()?
                     .try_into()?,
-                ReplicationRequestArguments::new(value_array.into_iter().skip(1).collect()),
+                PeerRequestArguments::new(value_array.into_iter().skip(1).collect()),
             )),
             _ => Err(anyhow::anyhow!("Unexpected command format")),
         }
@@ -139,16 +141,31 @@ where
             .await
     }
 
+    // Temporal coupling: each handling functions inside the following method must be in order
     async fn establish_threeway_handshake(&mut self) -> anyhow::Result<PeerAddr> {
-        let (ReplicationRequest::Ping, _) = self.extract_query().await? else {
+        self.handle_ping().await?;
+        let port = self.handle_replconf_listening_port().await?;
+
+        // TODO find use of capa?
+        let _capa_val_vec = self.handle_replconf_capa().await?;
+
+        // TODO find use of psync info?
+        let (_repl_id, _offset) = self.handle_psync().await?;
+
+        Ok(PeerAddr(format!("{}:{}", self.stream.get_peer_ip()?, port)))
+    }
+
+    async fn handle_ping(&mut self) -> anyhow::Result<()> {
+        let (HandShakeRequest::Ping, _) = self.extract_query().await? else {
             return Err(anyhow::anyhow!("Ping not given"));
         };
         self.send_simple_string("PONG").await?;
-
-        let (ReplicationRequest::ReplConf, query_args) = self.extract_query().await? else {
+        Ok(())
+    }
+    async fn handle_replconf_listening_port(&mut self) -> anyhow::Result<i16> {
+        let (HandShakeRequest::ReplConf, query_args) = self.extract_query().await? else {
             return Err(anyhow::anyhow!("ReplConf not given during handshake"));
         };
-
         let port = if query_args.first() == Some(&QueryIO::BulkString("listening-port".to_string()))
         {
             query_args.take_replica_port()?
@@ -157,37 +174,36 @@ where
         };
         self.send_simple_string("OK").await?;
 
-        let (ReplicationRequest::ReplConf, query_args) = self.extract_query().await? else {
+        Ok(port.parse::<i16>()?)
+    }
+
+    async fn handle_replconf_capa(&mut self) -> anyhow::Result<Vec<(String, String)>> {
+        let (HandShakeRequest::ReplConf, query_args) = self.extract_query().await? else {
             return Err(anyhow::anyhow!("ReplConf not given during handshake"));
         };
-        // TODO find use of capa?
-        let _capa_val_vec = query_args.take_capabilities()?;
+        let capa_val_vec = query_args.take_capabilities()?;
         self.send_simple_string("OK").await?;
 
-        let (ReplicationRequest::Psync, query_args) = self.extract_query().await? else {
+        Ok(capa_val_vec)
+    }
+    async fn handle_psync(&mut self) -> anyhow::Result<(String, i64)> {
+        let (HandShakeRequest::Psync, query_args) = self.extract_query().await? else {
             return Err(anyhow::anyhow!("Psync not given during handshake"));
         };
-
-        // TODO find use of psync info?
-        let (_repl_id, _offset) = query_args.take_psync()?;
+        let (repl_id, offset) = query_args.take_psync()?;
         self.send_simple_string("FULLRESYNC 8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb 0")
             .await?;
 
-        self.get_peer_addr(port.parse::<i16>()?)
-    }
-
-    fn get_peer_addr(&self, port: i16) -> anyhow::Result<PeerAddr> {
-        Ok(PeerAddr(format!("{}:{}", self.stream.get_peer_ip()?, port)))
+        Ok((repl_id, offset))
     }
 
     pub(crate) async fn handle_peer_stream(
         mut self,
         connect_stream_factory: impl TConnectStreamFactory,
     ) -> anyhow::Result<()> {
-        // TODO Three way handshake
         let peer_addr = self.establish_threeway_handshake().await?;
 
-        // TODO Stream factory DI - p3
+        // TODO the following may be skipped if connection has already been made
         let out_stream = connect_stream_factory.connect(peer_addr).await?;
 
         // Following infinite loop may need to be changed once replica information is given

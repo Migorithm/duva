@@ -88,10 +88,6 @@ impl Config {
     pub fn get_filepath(&self) -> String {
         format!("{}/{}", self.dir, self.dbfilename)
     }
-
-    pub(crate) fn is_replica(&self) -> bool {
-        self.replication.role() == "slave"
-    }
 }
 
 macro_rules! env_var {

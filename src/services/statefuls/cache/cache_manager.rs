@@ -1,7 +1,7 @@
 use super::cache_actor::{CacheActor, CacheCommand, CacheCommandSender};
 use super::ttl_manager::{TtlActor, TtlSchedulerInbox};
 use super::CacheEntry;
-use crate::services::query_manager::query_io::QueryIO;
+use crate::services::stream_manager::query_io::QueryIO;
 
 use crate::services::statefuls::persist::persist_actor::SaveCommand;
 use crate::services::statefuls::persist::DumpFile;

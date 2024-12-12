@@ -1,19 +1,19 @@
 pub mod adapters;
 pub mod macros;
 pub mod services;
-use crate::services::query_manager::client_request_controllers::ClientRequestController;
+use crate::services::stream_manager::client_request_controllers::ClientRequestController;
 use anyhow::Result;
 use services::config::config_actor::Config;
 use services::config::config_manager::ConfigManager;
 
-use services::query_manager::interface::{
-    TCancellationTokenFactory, TConnectStreamFactory, TStreamListener, TStreamListenerFactory,
-};
-use services::query_manager::replication_request_controllers::ReplicationRequestController;
-use services::query_manager::{self, QueryManager};
 use services::statefuls::cache::cache_manager::CacheManager;
 use services::statefuls::cache::ttl_manager::TtlSchedulerInbox;
 use services::statefuls::persist::persist_actor::PersistActor;
+use services::stream_manager::interface::{
+    TCancellationTokenFactory, TConnectStreamFactory, TStreamListener, TStreamListenerFactory,
+};
+use services::stream_manager::replication_request_controllers::ReplicationRequestController;
+use services::stream_manager::StreamManager;
 
 // * StartUp Facade that manages invokes subsystems
 pub struct StartUpFacade<T, U, V> {
@@ -92,7 +92,7 @@ where
                 match replication_listener.listen().await {
                     Ok((peer_stream, _)) => {
                         let query_manager =
-                            QueryManager::new(peer_stream, replication_request_controller);
+                            StreamManager::new(peer_stream, replication_request_controller);
 
                         tokio::spawn(query_manager.handle_peer_stream(connect_stream_factory));
                     }
@@ -121,7 +121,7 @@ where
                 Ok((stream, _)) =>
                 // Spawn a new task to handle the connection without blocking the main thread.
                 {
-                    let query_manager = QueryManager::new(stream, self.client_request_controller);
+                    let query_manager = StreamManager::new(stream, self.client_request_controller);
                     tokio::spawn(
                         query_manager.handle_single_client_stream::<tokio::fs::File>(
                             self.cancellation_factory,

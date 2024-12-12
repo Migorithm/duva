@@ -3,8 +3,8 @@ use super::endec::decoder::states::DecoderInit;
 use super::endec::encoder::encoding_processor::SaveMeta;
 use super::endec::encoder::encoding_processor::SavingProcessor;
 use super::DumpFile;
-use crate::services::query_manager::interface::TWriterFactory;
 use crate::services::statefuls::cache::CacheEntry;
+use crate::services::stream_manager::interface::TWriterFactory;
 use tokio::sync::mpsc::{Receiver, Sender};
 
 pub enum SaveCommand {

@@ -1,7 +1,7 @@
 use std::io::ErrorKind;
 
 use crate::{
-    services::query_manager::{
+    services::stream_manager::{
         error::IoError,
         interface::{TConnectStreamFactory, TGetPeerIp, TRead, TStream, TWrite},
         PeerAddr,
