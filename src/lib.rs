@@ -10,7 +10,7 @@ use services::query_manager::interface::{
     TCancellationTokenFactory, TConnectStreamFactory, TStreamListener, TStreamListenerFactory,
 };
 use services::query_manager::replication_request_controllers::ReplicationRequestController;
-use services::query_manager::QueryManager;
+use services::query_manager::{self, QueryManager};
 use services::statefuls::cache::cache_manager::CacheManager;
 use services::statefuls::cache::ttl_manager::TtlSchedulerInbox;
 use services::statefuls::persist::persist_actor::PersistActor;
@@ -91,11 +91,10 @@ where
             loop {
                 match replication_listener.listen().await {
                     Ok((peer_stream, _)) => {
-                        tokio::spawn(QueryManager::handle_peer_stream(
-                            connect_stream_factory,
-                            peer_stream,
-                            replication_request_controller,
-                        ));
+                        let query_manager =
+                            QueryManager::new(peer_stream, replication_request_controller);
+
+                        tokio::spawn(query_manager.handle_peer_stream(connect_stream_factory));
                     }
 
                     Err(err) => {
@@ -122,11 +121,10 @@ where
                 Ok((stream, _)) =>
                 // Spawn a new task to handle the connection without blocking the main thread.
                 {
+                    let query_manager = QueryManager::new(stream, self.client_request_controller);
                     tokio::spawn(
-                        QueryManager::handle_single_client_stream::<tokio::fs::File>(
+                        query_manager.handle_single_client_stream::<tokio::fs::File>(
                             self.cancellation_factory,
-                            stream,
-                            self.client_request_controller,
                         ),
                     );
                 }
