@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use tokio::sync::oneshot;
 
 /// ConfigMessage is a message that can be sent to the ConfigManager.
@@ -23,6 +24,7 @@ pub enum ConfigResource {
     DbFileName,
     FilePath,
     ReplicationInfo,
+    SingleReplicaInfo(String),
 }
 
 pub enum ConfigResponse {
@@ -30,8 +32,10 @@ pub enum ConfigResponse {
     DbFileName(String),
     FilePath(String),
     ReplicationInfo(Vec<String>),
+    SingleReplicaInfo(HashMap<String, String>),
 }
 
 pub enum ConfigCommand {
     ReplicaPing,
+    ReplicaConf(String, String, String),
 }

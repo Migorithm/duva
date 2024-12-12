@@ -18,8 +18,9 @@ impl ReplicationRequestController {
     }
     pub async fn handle(
         &self,
-        request: ReplicationRequest,
+        request: &ReplicationRequest,
         args: ReplicationRequestArguments,
+        replica_id: String,
     ) -> anyhow::Result<QueryIO> {
         // handle replication request
         let response = match request {
@@ -34,6 +35,12 @@ impl ReplicationRequestController {
                 // args will be:
                 // "listening-port" "port" OR
                 // "capa" "eof" "capa" "psync2"
+                if args.first() == Some(&QueryIO::BulkString("listening-port".to_string())) {
+                    let port = args.take_replica_port()?;
+                    self.config_manager
+                        .route_command(ConfigCommand::ReplicaConf(replica_id.to_string(), "listening-port".to_string(), port))
+                        .await?;
+                }
                 QueryIO::BulkString("OK".to_string())
             }
 
@@ -42,5 +49,10 @@ impl ReplicationRequestController {
             ),
         };
         Ok(response)
+    }
+
+    pub async fn get_replica_port(&self, replica_id: String) -> anyhow::Result<String> {
+        let single_replica_info = self.config_manager.single_replica_info(replica_id).await?;
+        single_replica_info.get("listening-port").cloned().ok_or(anyhow::anyhow!("No port found"))
     }
 }

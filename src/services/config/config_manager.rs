@@ -5,6 +5,7 @@ use super::config_actor::Config;
 use super::ConfigResource;
 use super::ConfigResponse;
 use crate::make_smart_pointer;
+use std::collections::HashMap;
 use tokio::sync::mpsc::Sender;
 use tokio::sync::oneshot;
 use tokio::sync::oneshot::Receiver;
@@ -47,6 +48,15 @@ impl ConfigManager {
 
         let ConfigResponse::ReplicationInfo(info) = rx.await? else {
             return Err(anyhow::anyhow!("Failed to get replication info"));
+        };
+        Ok(info)
+    }
+
+    pub async fn single_replica_info(&self, id: String) -> anyhow::Result<HashMap<String, String>> {
+        let rx = self.route_query(ConfigResource::SingleReplicaInfo(id)).await?;
+
+        let ConfigResponse::SingleReplicaInfo(info) = rx.await? else {
+            return Err(anyhow::anyhow!("Failed to get single replica info"));
         };
         Ok(info)
     }

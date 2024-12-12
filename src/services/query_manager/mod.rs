@@ -137,11 +137,19 @@ where
         }
     }
 
-    async fn establish_threeway_handshake(&self) -> anyhow::Result<PeerAddr> {
-        //TODO replace the following
-        let peer_port = todo!();
-        let peer_addr = self.get_peer_addr(peer_port)?;
-        Ok(peer_addr)
+    async fn establish_threeway_handshake(&mut self) -> anyhow::Result<PeerAddr> {
+        let mut port: String = "".to_string();
+        loop {
+            let (request, query_args) = self.extract_query().await?;
+            self.controller.handle(&request, query_args, "some_id".to_string()).await?;
+            if let ReplicationRequest::ReplConf = request {
+                port = self.controller.get_replica_port("some_id".to_string()).await?.to_string();
+            }
+            if let ReplicationRequest::Psync = request {
+                break;
+            }
+        }
+        self.get_peer_addr(port.parse::<i16>()?)
     }
 
     fn get_peer_addr(&self, port: i16) -> anyhow::Result<PeerAddr> {
@@ -160,16 +168,17 @@ where
 
         // TODO Stream factory DI - p3
         let out_stream = connect_stream_factory.connect(peer_addr).await?;
+        Ok(())
 
         // Following infinite loop may need to be changed once replica information is given
-        loop {
-            let (request, query_args) = query_manager.extract_query().await?;
-
-            // * Having error from the following will not a concern as liveness concern is on cluster manager
-            let _ = match query_manager.controller.handle(request, query_args).await {
-                Ok(response) => query_manager.write_value(response).await,
-                Err(e) => query_manager.write_value(QueryIO::Err(e.to_string())).await,
-            };
-        }
+        // loop {
+        //     let (request, query_args) = query_manager.extract_query().await?;
+        //
+        //     // * Having error from the following will not a concern as liveness concern is on cluster manager
+        //     let _ = match query_manager.controller.handle(request, query_args, "some_id").await {
+        //         Ok(response) => query_manager.write_value(response).await,
+        //         Err(e) => query_manager.write_value(QueryIO::Err(e.to_string())).await,
+        //     };
+        // }
     }
 }

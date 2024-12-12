@@ -41,11 +41,21 @@ impl Config {
                             .callback
                             .send(ConfigResponse::ReplicationInfo(self.replication.info()));
                     }
+                    ConfigResource::SingleReplicaInfo(id) => {
+                        let _ = query
+                            .callback
+                            .send(ConfigResponse::SingleReplicaInfo(
+                                self.replication.get_single_replica_info(&id),
+                            ));
+                    }
                 },
                 ConfigMessage::Command(config_command) => match config_command {
                     ConfigCommand::ReplicaPing => {
                         // ! Deprecated
                         self.replication.connected_slaves += 1;
+                    }
+                    ConfigCommand::ReplicaConf(id, key, resource) => {
+                        self.replication.set_replica_info(id, key, resource);
                     }
                 },
             }
