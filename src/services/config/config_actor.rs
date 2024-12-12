@@ -62,11 +62,12 @@ impl Config {
         }
     }
 
+    //TODO this is immutable! Should be moved to manager
     pub fn bind_addr(&self) -> String {
         format!("{}:{}", self.host, self.port)
     }
-    pub fn replication_bind_addr(&self) -> String {
-        // TODO basic validation required for port number so it doesn't go over 65535
+    //TODO this is immutable! Should be moved to manager
+    pub fn peer_bind_addr(&self) -> String {
         format!("{}:{}", self.host, self.port + 10000)
     }
 

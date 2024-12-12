@@ -1,10 +1,10 @@
 use redis_starter_rust::adapters::io::tokio_stream::TokioConnectStreamFactory;
 use redis_starter_rust::services::query_manager::interface::TCancellationTokenFactory;
 use redis_starter_rust::services::query_manager::query_io::QueryIO;
-use redis_starter_rust::TNotifyStartUp;
 use redis_starter_rust::{
     adapters::io::tokio_stream::TokioStreamListenerFactory, services::config::config_actor::Config,
 };
+use redis_starter_rust::{StartUpFacade, TNotifyStartUp};
 
 use std::sync::Arc;
 use tokio::{
@@ -79,13 +79,17 @@ pub async fn start_test_server(
     let notify = Arc::new(tokio::sync::Notify::new());
     let start_flag = StartFlag(notify.clone());
 
-    let h = tokio::spawn(redis_starter_rust::start_up(
+    let start_up_facade = StartUpFacade::new(
         TokioConnectStreamFactory,
         TokioStreamListenerFactory,
         cancellation_token_factory,
-        config,
-        start_flag,
-    ));
+        config.clone(),
+    );
+
+    let h = tokio::spawn(async move {
+        start_up_facade.run(start_flag, config).await?;
+        Ok(())
+    });
 
     //warm up time
     notify.notified().await;
