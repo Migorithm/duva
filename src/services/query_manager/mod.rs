@@ -75,15 +75,13 @@ where
     }
 
     pub async fn handle_single_client_stream<F: TWriterFactory>(
+        mut self,
         cancellation_token_factory: impl TCancellationTokenFactory,
-        stream: T,
-        controller: &'static ClientRequestController,
     ) {
         const TIMEOUT: u64 = 100;
-        let mut query_manager = QueryManager::new(stream, controller);
 
         loop {
-            let Ok((request, query_args)) = query_manager.extract_query().await else {
+            let Ok((request, query_args)) = self.extract_query().await else {
                 eprintln!("invalid user request");
                 continue;
             };
@@ -95,13 +93,13 @@ where
             // Notify the cancellation notifier to cancel the query after 100 milliseconds.
             cancellation_notifier.notify();
 
-            let res = match query_manager
+            let res = match self
                 .controller
                 .handle::<F>(cancellation_token, request, query_args)
                 .await
             {
-                Ok(response) => query_manager.write_value(response).await,
-                Err(e) => query_manager.write_value(QueryIO::Err(e.to_string())).await,
+                Ok(response) => self.write_value(response).await,
+                Err(e) => self.write_value(QueryIO::Err(e.to_string())).await,
             };
 
             if let Err(e) = res {
@@ -136,12 +134,46 @@ where
             _ => Err(anyhow::anyhow!("Unexpected command format")),
         }
     }
+    async fn send_simple_string(&mut self, value: &str) -> Result<(), IoError> {
+        self.write_value(QueryIO::SimpleString(value.to_string()))
+            .await
+    }
 
-    async fn establish_threeway_handshake(&self) -> anyhow::Result<PeerAddr> {
-        //TODO replace the following
-        let peer_port = todo!();
-        let peer_addr = self.get_peer_addr(peer_port)?;
-        Ok(peer_addr)
+    async fn establish_threeway_handshake(&mut self) -> anyhow::Result<PeerAddr> {
+        let (ReplicationRequest::Ping, _) = self.extract_query().await? else {
+            return Err(anyhow::anyhow!("Ping not given"));
+        };
+        self.send_simple_string("PONG").await?;
+
+        let (ReplicationRequest::ReplConf, query_args) = self.extract_query().await? else {
+            return Err(anyhow::anyhow!("ReplConf not given during handshake"));
+        };
+
+        let port = if query_args.first() == Some(&QueryIO::BulkString("listening-port".to_string()))
+        {
+            query_args.take_replica_port()?
+        } else {
+            return Err(anyhow::anyhow!("Invalid listening-port given"));
+        };
+        self.send_simple_string("OK").await?;
+
+        let (ReplicationRequest::ReplConf, query_args) = self.extract_query().await? else {
+            return Err(anyhow::anyhow!("ReplConf not given during handshake"));
+        };
+        // TODO find use of capa?
+        let _capa_val_vec = query_args.take_capabilities()?;
+        self.send_simple_string("OK").await?;
+
+        let (ReplicationRequest::Psync, query_args) = self.extract_query().await? else {
+            return Err(anyhow::anyhow!("Psync not given during handshake"));
+        };
+
+        // TODO find use of psync info?
+        let (_repl_id, _offset) = query_args.take_psync()?;
+        self.send_simple_string("FULLRESYNC 8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb 0")
+            .await?;
+
+        self.get_peer_addr(port.parse::<i16>()?)
     }
 
     fn get_peer_addr(&self, port: i16) -> anyhow::Result<PeerAddr> {
@@ -149,26 +181,23 @@ where
     }
 
     pub(crate) async fn handle_peer_stream(
+        mut self,
         connect_stream_factory: impl TConnectStreamFactory,
-        in_stream: T,
-        controller: &'static ReplicationRequestController,
     ) -> anyhow::Result<()> {
-        let mut query_manager = QueryManager::new(in_stream, controller);
-
         // TODO Three way handshake
-        let peer_addr = query_manager.establish_threeway_handshake().await?;
+        let peer_addr = self.establish_threeway_handshake().await?;
 
         // TODO Stream factory DI - p3
         let out_stream = connect_stream_factory.connect(peer_addr).await?;
 
         // Following infinite loop may need to be changed once replica information is given
         loop {
-            let (request, query_args) = query_manager.extract_query().await?;
+            let (request, query_args) = self.extract_query().await?;
 
             // * Having error from the following will not a concern as liveness concern is on cluster manager
-            let _ = match query_manager.controller.handle(request, query_args).await {
-                Ok(response) => query_manager.write_value(response).await,
-                Err(e) => query_manager.write_value(QueryIO::Err(e.to_string())).await,
+            let _ = match self.controller.handle(request, query_args).await {
+                Ok(response) => self.write_value(response).await,
+                Err(e) => self.write_value(QueryIO::Err(e.to_string())).await,
             };
         }
     }
