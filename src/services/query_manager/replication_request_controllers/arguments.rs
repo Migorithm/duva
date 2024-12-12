@@ -15,8 +15,7 @@ impl ReplicationRequestArguments {
     pub(crate) fn take_replica_port(self) -> anyhow::Result<String> {
         let port = self.get(1).ok_or(anyhow::anyhow!("No value"))?;
 
-        let (QueryIO::BulkString(port)) = port
-        else {
+        let (QueryIO::BulkString(port)) = port else {
             return Err(anyhow::anyhow!("Invalid arguments"));
         };
         Ok(port.to_string())
@@ -46,8 +45,14 @@ impl ReplicationRequestArguments {
         Ok(capabilities)
     }
     pub(crate) fn take_psync(self) -> anyhow::Result<(String, i64)> {
-        let replica_id = self.get(0).map(|v| v.clone().unpack_bulk_str()).ok_or(anyhow::anyhow!("No replica id"))??;
-        let offset = self.get(1).map(|v| v.clone().unpack_bulk_str().map(|s| s.parse::<i64>())).ok_or(anyhow::anyhow!("No offset"))???;
+        let replica_id = self
+            .get(0)
+            .map(|v| v.clone().unpack_bulk_str())
+            .ok_or(anyhow::anyhow!("No replica id"))??;
+        let offset = self
+            .get(1)
+            .map(|v| v.clone().unpack_bulk_str().map(|s| s.parse::<i64>()))
+            .ok_or(anyhow::anyhow!("No offset"))???;
         Ok((replica_id, offset))
     }
 }

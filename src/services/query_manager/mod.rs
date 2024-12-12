@@ -138,37 +138,44 @@ where
     }
 
     async fn establish_threeway_handshake(&mut self) -> anyhow::Result<PeerAddr> {
-        let mut port: String = "".to_string();
-        let (request, query_args) = self.extract_query().await?;
-        let ReplicationRequest::Ping = request else {
+        let (ReplicationRequest::Ping, _) = self.extract_query().await? else {
             return Err(anyhow::anyhow!("Ping not given"));
         };
         self.write_value(QueryIO::SimpleString("PONG".to_string()))
             .await?;
-        let (request, query_args) = self.extract_query().await?;
-        if let ReplicationRequest::ReplConf = request {
-            if query_args.first() == Some(&QueryIO::BulkString("listening-port".to_string())) {
-                port = query_args.take_replica_port()?;
-            } else {
-                return Err(anyhow::anyhow!("Invalid listening-port given"));
-            }
+
+        let (ReplicationRequest::ReplConf, query_args) = self.extract_query().await? else {
+            return Err(anyhow::anyhow!("ReplConf not given during handshake"));
+        };
+
+        let port = if query_args.first() == Some(&QueryIO::BulkString("listening-port".to_string()))
+        {
+            query_args.take_replica_port()?
+        } else {
+            return Err(anyhow::anyhow!("Invalid listening-port given"));
         };
         self.write_value(QueryIO::SimpleString("OK".to_string()))
             .await?;
-        let (request, query_args) = self.extract_query().await?;
-        if let ReplicationRequest::ReplConf = request {
-            query_args.take_capabilities()?;
+
+        let (ReplicationRequest::ReplConf, query_args) = self.extract_query().await? else {
+            return Err(anyhow::anyhow!("ReplConf not given during handshake"));
         };
+        // TODO find use of capa?
+        let _capa_val_vec = query_args.take_capabilities()?;
         self.write_value(QueryIO::SimpleString("OK".to_string()))
             .await?;
-        let (request, query_args) = self.extract_query().await?;
-        if let ReplicationRequest::Psync = request {
-            query_args.take_psync()?;
+
+        let (ReplicationRequest::Psync, query_args) = self.extract_query().await? else {
+            return Err(anyhow::anyhow!("Psync not given during handshake"));
         };
+
+        // TODO find use of psync info?
+        let (_repl_id, _offset) = query_args.take_psync()?;
         self.write_value(QueryIO::SimpleString(
             "FULLRESYNC 8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb 0".to_string(),
         ))
         .await?;
+
         self.get_peer_addr(port.parse::<i16>()?)
     }
 
