@@ -137,11 +137,34 @@ where
         }
     }
 
-    async fn establish_threeway_handshake(&self) -> anyhow::Result<PeerAddr> {
-        //TODO replace the following
-        let peer_port = todo!();
-        let peer_addr = self.get_peer_addr(peer_port)?;
-        Ok(peer_addr)
+    async fn establish_threeway_handshake(&mut self) -> anyhow::Result<PeerAddr> {
+        let mut port: String = "".to_string();
+        let (request, query_args) = self.extract_query().await?;
+        let ReplicationRequest::Ping = request else {
+            return Err(anyhow::anyhow!("Ping not given"));
+        };
+        self.write_value(QueryIO::SimpleString("PONG".to_string())).await?;
+        let (request, query_args) = self.extract_query().await?;
+        if let ReplicationRequest::ReplConf = request {
+            if query_args.first() == Some(&QueryIO::BulkString("listening-port".to_string())) {
+                port = query_args.take_replica_port()?;
+            } else {
+                return Err(anyhow::anyhow!("Invalid listening-port given"));
+            }
+        };
+        self.write_value(QueryIO::SimpleString("OK".to_string())).await?;
+        let (request, query_args) = self.extract_query().await?;
+        if let ReplicationRequest::ReplConf = request {
+            query_args.take_capabilities()?;
+        };
+        self.write_value(QueryIO::SimpleString("OK".to_string())).await?;
+        let (request, query_args) = self.extract_query().await?;
+        if let ReplicationRequest::Psync = request {
+            query_args.take_psync()?;
+        };
+        self.write_value(QueryIO::SimpleString("FULLRESYNC 8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb 0".to_string()))
+            .await?;
+        self.get_peer_addr(port.parse::<i16>()?)
     }
 
     fn get_peer_addr(&self, port: i16) -> anyhow::Result<PeerAddr> {
