@@ -1,6 +1,6 @@
 use redis_starter_rust::adapters::io::tokio_stream::TokioConnectStreamFactory;
-use redis_starter_rust::services::query_manager::interface::TCancellationTokenFactory;
-use redis_starter_rust::services::query_manager::query_io::QueryIO;
+use redis_starter_rust::services::stream_manager::interface::TCancellationTokenFactory;
+use redis_starter_rust::services::stream_manager::query_io::QueryIO;
 use redis_starter_rust::{
     adapters::io::tokio_stream::TokioStreamListenerFactory, services::config::config_actor::Config,
 };

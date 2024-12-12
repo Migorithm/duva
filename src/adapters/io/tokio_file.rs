@@ -1,4 +1,4 @@
-use crate::services::query_manager::{
+use crate::services::stream_manager::{
     error::IoError,
     interface::{TWrite, TWriterFactory},
 };

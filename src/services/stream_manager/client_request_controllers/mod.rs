@@ -1,11 +1,11 @@
 use crate::services::config::config_manager::ConfigManager;
 use crate::services::config::ConfigResponse;
-use crate::services::query_manager::interface::TCancellationWatcher;
-use crate::services::query_manager::query_io::QueryIO;
 use crate::services::statefuls::cache::cache_manager::CacheManager;
 use crate::services::statefuls::cache::ttl_manager::TtlSchedulerInbox;
 use crate::services::statefuls::persist::endec::encoder::encoding_processor::SavingProcessor;
 use crate::services::statefuls::persist::persist_actor::PersistActor;
+use crate::services::stream_manager::interface::TCancellationWatcher;
+use crate::services::stream_manager::query_io::QueryIO;
 use arguments::ClientRequestArguments;
 use client_request::ClientRequest;
 

@@ -1,6 +1,6 @@
 use crate::make_smart_pointer;
-use crate::services::query_manager::query_io::QueryIO;
 use crate::services::statefuls::cache::CacheEntry;
+use crate::services::stream_manager::query_io::QueryIO;
 use anyhow::Result;
 
 #[derive(Debug, Clone)]

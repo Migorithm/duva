@@ -4,7 +4,7 @@
 /// After 300ms, we get the key again and check if the value is not returned (-1)
 mod common;
 use common::{init_config_with_free_port, start_test_server, TestStreamHandler};
-use redis_starter_rust::services::query_manager::interface::{
+use redis_starter_rust::services::stream_manager::interface::{
     TCancellationNotifier, TCancellationTokenFactory, TCancellationWatcher,
 };
 use tokio::net::TcpStream;
