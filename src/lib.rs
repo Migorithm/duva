@@ -3,7 +3,6 @@ pub mod macros;
 pub mod services;
 use crate::services::stream_manager::client_request_controllers::ClientRequestController;
 use anyhow::Result;
-use services::config::config_actor::Config;
 use services::config::config_manager::ConfigManager;
 
 use services::statefuls::cache::cache_manager::CacheManager;
@@ -24,6 +23,7 @@ pub struct StartUpFacade<T, U, V> {
     cache_manager: &'static CacheManager,
     client_request_controller: &'static ClientRequestController,
     replication_request_controller: &'static ReplicationRequestController,
+    config_manager: ConfigManager,
 }
 
 impl<T, U, V> StartUpFacade<T, U, V>
@@ -36,10 +36,9 @@ where
         connect_stream_factory: T,
         stream_listener: U,
         cancellation_factory: V,
-        config: Config,
+        config_manager: ConfigManager,
     ) -> Self {
         let (cache_manager, ttl_inbox) = CacheManager::run_cache_actors();
-        let config_manager = ConfigManager::run_actor(config.clone());
 
         // Leak the cache_dispatcher to make it static - this is safe because the cache_dispatcher
         // will live for the entire duration of the program.
@@ -59,22 +58,27 @@ where
             ttl_inbox,
             client_request_controller,
             replication_request_controller,
+            config_manager,
         }
     }
 
     // TODO: remove input config and use config manager
-    pub async fn run(&self, startup_notifier: impl TNotifyStartUp, config: Config) -> Result<()> {
-        if let Some(filepath) = config.try_filepath().await {
+    pub async fn run(&self, startup_notifier: impl TNotifyStartUp) -> Result<()> {
+        if let Some(filepath) = self.config_manager.try_filepath().await? {
             let dump = PersistActor::dump(filepath).await?;
             self.cache_manager
-                .dump_cache(dump, self.ttl_inbox.clone(), config.startup_time)
+                .dump_cache(
+                    dump,
+                    self.ttl_inbox.clone(),
+                    self.config_manager.startup_time,
+                )
                 .await?;
         }
 
-        self.start_accepting_peer_connections(config.peer_bind_addr())
+        self.start_accepting_peer_connections(self.config_manager.peer_bind_addr())
             .await;
 
-        self.start_accepting_client_connections(config.bind_addr(), startup_notifier)
+        self.start_accepting_client_connections(self.config_manager.bind_addr(), startup_notifier)
             .await;
         Ok(())
     }

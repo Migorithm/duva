@@ -1,6 +1,7 @@
 mod command;
 pub mod config_actor;
 pub mod config_manager;
+pub mod macros;
 pub mod replication;
 
 pub use command::ConfigCommand;

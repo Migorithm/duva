@@ -2,18 +2,15 @@ use super::{
     command::{ConfigMessage, ConfigResource, ConfigResponse},
     ConfigCommand,
 };
-use crate::services::config::replication::Replication;
-use std::time::SystemTime;
-use tokio::{fs::try_exists, sync::mpsc::Receiver};
+use crate::{env_var, services::config::replication::Replication};
+
+use tokio::sync::mpsc::Receiver;
 
 #[derive(Clone)]
 pub struct Config {
-    pub port: u16,
-    pub host: &'static str,
     pub(crate) dir: &'static str,
     pub dbfilename: &'static str,
     pub replication: Replication,
-    pub(crate) startup_time: SystemTime,
 }
 
 impl Config {
@@ -47,18 +44,12 @@ impl Config {
                         // ! Deprecated
                         self.replication.connected_slaves += 1;
                     }
+                    ConfigCommand::SetDbFileName(new_file_name) => {
+                        self.set_dbfilename(&new_file_name);
+                    }
                 },
             }
         }
-    }
-
-    //TODO this is immutable! Should be moved to manager
-    pub fn bind_addr(&self) -> String {
-        format!("{}:{}", self.host, self.port)
-    }
-    //TODO this is immutable! Should be moved to manager
-    pub fn peer_bind_addr(&self) -> String {
-        format!("{}:{}", self.host, self.port + 10000)
     }
 
     pub fn set_dir(&mut self, dir: &str) {
@@ -70,70 +61,19 @@ impl Config {
             self.dir = Box::leak(dir.into());
         }
     }
-    // The following is used on startup and check if the file exists
-    pub async fn try_filepath(&self) -> Option<String> {
-        let file_path = self.get_filepath();
-        match try_exists(&file_path).await {
-            Ok(true) => Some(file_path),
-            Ok(false) => {
-                println!("File does not exist");
-                None
-            }
-            Err(_) => {
-                println!("Error in try_filepath");
-                None
-            } // Not given a dbfilename
+    pub fn set_dbfilename(&mut self, dbfilename: &str) {
+        unsafe {
+            // Get the pointer to the str
+            let ptr: *const str = self.dbfilename;
+            // Recreate the Box from the pointer and drop it
+            let _reclaimed_box: Box<str> = Box::from_raw(ptr as *mut str);
+            self.dbfilename = Box::leak(dbfilename.into());
         }
     }
+
     pub fn get_filepath(&self) -> String {
         format!("{}/{}", self.dir, self.dbfilename)
     }
-}
-
-macro_rules! env_var {
-    (
-        {
-            $($env_name:ident),*
-        }
-        $({
-            $($default:ident = $default_value:expr),*
-        })?
-    ) => {
-        $(
-            // Initialize the variable with the environment variable or the default value.
-            let mut $env_name = std::env::var(stringify!($env_name))
-                .ok();
-        )*
-
-        let mut args = std::env::args().skip(1);
-        $(
-            $(let mut $default = $default_value;)*
-        )?
-
-        while let Some(arg) = args.next(){
-            match arg.as_str(){
-                $(
-                    concat!("--", stringify!($env_name)) => {
-                    if let Some(value) = args.next(){
-                        $env_name = Some(value.parse().unwrap());
-                    }
-                })*
-                $(
-                    $(
-                        concat!("--", stringify!($default)) => {
-                        if let Some(value) = args.next(){
-                            $default = value.parse().expect("Default value must be given");
-                        }
-                    })*
-                )?
-
-
-                _ => {
-                    eprintln!("Unexpected argument: {}", arg);
-                }
-            }
-        }
-    };
 }
 
 impl Default for Config {
@@ -144,9 +84,7 @@ impl Default for Config {
             }
             {
                 dir = ".".to_string(),
-                dbfilename = "dump.rdb".to_string(),
-                port = 6379,
-                host = "localhost".to_string()
+                dbfilename = "dump.rdb".to_string()
             }
         );
 
@@ -159,12 +97,9 @@ impl Default for Config {
         });
 
         Config {
-            port,
-            host: Box::leak(host.into_boxed_str()),
             dir: Box::leak(dir.into_boxed_str()),
             dbfilename: Box::leak(dbfilename.into_boxed_str()),
             replication: Replication::new(replicaof),
-            startup_time: SystemTime::now(),
         }
     }
 }

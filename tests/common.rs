@@ -1,4 +1,5 @@
 use redis_starter_rust::adapters::io::tokio_stream::TokioConnectStreamFactory;
+use redis_starter_rust::services::config::config_manager::ConfigManager;
 use redis_starter_rust::services::stream_manager::interface::TCancellationTokenFactory;
 use redis_starter_rust::services::stream_manager::query_io::QueryIO;
 use redis_starter_rust::{
@@ -38,18 +39,22 @@ impl<'a> TestStreamHandler<'a> {
     }
 }
 
-pub async fn init_config_with_free_port() -> Config {
-    let mut config = Config::default();
-    config.port = find_free_port_in_range(49152, 65535).await.unwrap();
-    config
+pub async fn init_config_with_free_port() -> ConfigManager {
+    let config = Config::default();
+    let mut manager = ConfigManager::new(config);
+
+    manager.port = find_free_port_in_range(49152, 65535).await.unwrap();
+    manager
 }
 
-pub async fn init_slave_config_with_free_port(master_port: u16) -> Config {
-    let mut config: Config = Config::default();
-    config.port = find_free_port_in_range(49152, 65535).await.unwrap();
+pub async fn init_slave_config_with_free_port(master_port: u16) -> ConfigManager {
+    let mut config = Config::default();
     config.replication.master_host = Some("localhost".to_string());
     config.replication.master_port = Some(master_port);
-    config
+    let mut manager = ConfigManager::new(config);
+    manager.port = find_free_port_in_range(49152, 65535).await.unwrap();
+
+    manager
 }
 // scan for available port
 async fn find_free_port_in_range(start: u16, end: u16) -> Option<u16> {
@@ -74,7 +79,7 @@ impl TNotifyStartUp for StartFlag {
 
 pub async fn start_test_server(
     cancellation_token_factory: impl TCancellationTokenFactory,
-    config: Config,
+    config: ConfigManager,
 ) -> tokio::task::JoinHandle<Result<(), anyhow::Error>> {
     let notify = Arc::new(tokio::sync::Notify::new());
     let start_flag = StartFlag(notify.clone());
@@ -83,11 +88,11 @@ pub async fn start_test_server(
         TokioConnectStreamFactory,
         TokioStreamListenerFactory,
         cancellation_token_factory,
-        config.clone(),
+        config,
     );
 
     let h = tokio::spawn(async move {
-        start_up_facade.run(start_flag, config).await?;
+        start_up_facade.run(start_flag).await?;
         Ok(())
     });
 
