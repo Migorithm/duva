@@ -34,4 +34,5 @@ pub enum ConfigResponse {
 
 pub enum ConfigCommand {
     ReplicaPing,
+    SetDbFileName(String),
 }

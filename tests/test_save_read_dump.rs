@@ -9,7 +9,10 @@ use crate::common::{
     set_command_with_expiry, start_test_server,
 };
 use common::{init_config_with_free_port, TestStreamHandler};
-use redis_starter_rust::adapters::cancellation_token::CancellationTokenFactory;
+use redis_starter_rust::{
+    adapters::cancellation_token::CancellationTokenFactory,
+    services::config::{ConfigCommand, ConfigMessage},
+};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::net::TcpStream;
 
@@ -25,14 +28,13 @@ impl Drop for FileName {
 async fn test_save_read_dump() {
     // GIVEN
     let test_file_name = FileName(create_unique_file_name("test_save_dump"));
-    let mut config = init_config_with_free_port().await;
-    let old_ref = config.dbfilename;
-
-    config.dbfilename = Box::leak(Box::new(test_file_name.0.clone()));
-    unsafe {
-        let ptr: *const str = old_ref;
-        let _ = Box::from_raw(ptr as *mut str);
-    }
+    let config = init_config_with_free_port().await;
+    config
+        .send(ConfigMessage::Command(ConfigCommand::SetDbFileName(
+            test_file_name.0.clone(),
+        )))
+        .await
+        .unwrap();
 
     let _ = start_test_server(CancellationTokenFactory, config.clone()).await;
 
