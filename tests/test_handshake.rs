@@ -1,32 +1,101 @@
-use common::{
-    bulk_string, info_command, init_config_with_free_port, init_slave_config_with_free_port,
-    start_test_server, TestStreamHandler,
+/// Three-way handshake test
+/// 1. Client sends PING command
+/// 2. Client sends REPLCONF listening-port command as follows:
+///    *3\r\n$8\r\nREPLCONF\r\n$14\r\nlistening-port\r\n{len-of-client-port}\r\n{client-port}\r\n
+/// 3. Client sends REPLCONF capa command as follows:
+///    *3\r\n$8\r\nREPLCONF\r\n$4\r\ncapa\r\n$6\r\npsync2\r\n
+/// 4. Client send PSYNC command as follows:
+///    *3\r\n$5\r\nPSYNC\r\n$1\r\n?\r\n$2\r\n-1\r\n
+///
+///
+use common::{find_free_port_in_range, start_test_server, TestStreamHandler};
+use redis_starter_rust::{
+    adapters::cancellation_token::CancellationTokenFactory,
+    services::config::{config_actor::Config, config_manager::ConfigManager},
 };
-use redis_starter_rust::adapters::cancellation_token::CancellationTokenFactory;
 use tokio::net::TcpStream;
 mod common;
 
 #[tokio::test]
-#[ignore = "not ready"]
-async fn test_handshake() {
-    // GIVEN
-    //TODO test config should be dynamically configured
+async fn test_threeway_handshake() {
+    // GIVEN - master server configuration
+    let config = Config::default();
+    let mut manager = ConfigManager::new(config);
 
-    let master_config = init_config_with_free_port().await;
-    start_test_server(CancellationTokenFactory, master_config.clone()).await;
-
-    let slave_config = init_slave_config_with_free_port(master_config.port).await;
-    start_test_server(CancellationTokenFactory, slave_config).await;
-
-    let slave_config = init_slave_config_with_free_port(master_config.port).await;
-    start_test_server(CancellationTokenFactory, slave_config).await;
-
-    let mut client_stream = TcpStream::connect(master_config.bind_addr()).await.unwrap();
+    // ! `peer_bind_addr` is bind_addr dedicated for peer connections
+    manager.port = find_free_port_in_range(6000, 6553).await.unwrap();
+    let master_cluster_bind_addr = manager.peer_bind_addr();
+    let _ = start_test_server(CancellationTokenFactory, manager).await;
+    let mut client_stream = TcpStream::connect(master_cluster_bind_addr).await.unwrap();
     let mut h: TestStreamHandler = client_stream.split().into();
-    h.send(info_command("replication").as_slice()).await;
+
+    // WHEN - client sends PING command
+    h.send(b"*1\r\n$4\r\nPING\r\n").await;
 
     // THEN
-    assert_eq!(h.get_response().await, bulk_string(
-        "role:master\r\nconnected_slaves:2\r\nmaster_replid:8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb\r\nmaster_repl_offset:0\r\nsecond_repl_offset:-1\r\nrepl_backlog_active:0\r\nrepl_backlog_size:1048576\r\nrepl_backlog_first_byte_offset:0"
-    ));
+    assert_eq!(h.get_response().await, "+PONG\r\n");
+
+    // WHEN - client sends REPLCONF listening-port command
+    let client_fake_port = 6778;
+    h.send(
+        format!(
+            "*3\r\n$8\r\nREPLCONF\r\n$14\r\nlistening-port\r\n$4\r\n{}\r\n",
+            client_fake_port
+        )
+        .as_bytes(),
+    )
+    .await;
+
+    // THEN
+    assert_eq!(h.get_response().await, "+OK\r\n");
+
+    // WHEN - client sends REPLCONF capa command
+    h.send(b"*3\r\n$8\r\nREPLCONF\r\n$4\r\ncapa\r\n$6\r\npsync2\r\n")
+        .await;
+
+    // THEN - client receives OK
+    assert_eq!(h.get_response().await, "+OK\r\n");
+
+    // WHEN - client sends PSYNC command
+    h.send(b"*3\r\n$5\r\nPSYNC\r\n$1\r\n?\r\n$2\r\n-1\r\n")
+        .await;
+
+    // THEN - client receives FULLRESYNC - this is a dummy response
+    assert_eq!(
+        h.get_response().await,
+        "+FULLRESYNC 8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb 0\r\n"
+    );
+}
+
+pub async fn make_threeway_handshake(stream_handler: &mut TestStreamHandler<'_>, client_port: u16) {
+    // client sends PING command
+    stream_handler.send(b"*1\r\n$4\r\nPING\r\n").await;
+    stream_handler.get_response().await;
+
+    // client sends REPLCONF listening-port command
+    stream_handler
+        .send(
+            format!(
+                "*3\r\n$8\r\nREPLCONF\r\n$14\r\nlistening-port\r\n$4\r\n{}\r\n",
+                client_port
+            )
+            .as_bytes(),
+        )
+        .await;
+
+    stream_handler.get_response().await;
+
+    // client sends REPLCONF capa command
+    stream_handler
+        .send(b"*3\r\n$8\r\nREPLCONF\r\n$4\r\ncapa\r\n$6\r\npsync2\r\n")
+        .await;
+
+    // THEN - client receives OK
+    stream_handler.get_response().await;
+    // client sends PSYNC command
+    stream_handler
+        .send(b"*3\r\n$5\r\nPSYNC\r\n$1\r\n?\r\n$2\r\n-1\r\n")
+        .await;
+
+    stream_handler.get_response().await;
 }

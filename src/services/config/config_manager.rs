@@ -118,4 +118,13 @@ impl ConfigManager {
         self.send(ConfigMessage::Command(command)).await?;
         Ok(())
     }
+
+    pub(crate) async fn get_peers(&self) -> anyhow::Result<Vec<String>> {
+        let rx = self.route_query(ConfigResource::Peers).await?;
+        let ConfigResponse::Peers(peers) = rx.await? else {
+            return Err(anyhow::anyhow!("Failed to get peers"));
+        };
+
+        Ok(peers)
+    }
 }

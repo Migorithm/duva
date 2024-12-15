@@ -39,7 +39,7 @@ impl<'a> TestStreamHandler<'a> {
     }
 }
 
-pub async fn init_config_with_free_port() -> ConfigManager {
+pub async fn init_config_manager_with_free_port() -> ConfigManager {
     let config = Config::default();
     let mut manager = ConfigManager::new(config);
 
@@ -47,7 +47,7 @@ pub async fn init_config_with_free_port() -> ConfigManager {
     manager
 }
 
-pub async fn init_slave_config_with_free_port(master_port: u16) -> ConfigManager {
+pub async fn init_slave_config_manager_with_free_port(master_port: u16) -> ConfigManager {
     let mut config = Config::default();
     config.replication.master_host = Some("localhost".to_string());
     config.replication.master_port = Some(master_port);
@@ -57,7 +57,7 @@ pub async fn init_slave_config_with_free_port(master_port: u16) -> ConfigManager
     manager
 }
 // scan for available port
-async fn find_free_port_in_range(start: u16, end: u16) -> Option<u16> {
+pub async fn find_free_port_in_range(start: u16, end: u16) -> Option<u16> {
     for port in start..=end {
         if TcpListener::bind(format!("127.0.0.1:{}", port))
             .await

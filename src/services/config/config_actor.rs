@@ -11,6 +11,8 @@ pub struct Config {
     pub(crate) dir: &'static str,
     pub dbfilename: &'static str,
     pub replication: Replication,
+    // TODO further implementation
+    pub peers: Vec<String>,
 }
 
 impl Config {
@@ -21,22 +23,21 @@ impl Config {
             match msg {
                 ConfigMessage::Query(query) => match query.resource {
                     ConfigResource::Dir => {
-                        let _ = query.callback.send(ConfigResponse::Dir(self.dir.into()));
+                        let _ = query.respond_with(ConfigResponse::Dir(self.dir.into()));
                     }
                     ConfigResource::DbFileName => {
-                        let _ = query
-                            .callback
-                            .send(ConfigResponse::DbFileName(self.dbfilename.into()));
+                        let _ =
+                            query.respond_with(ConfigResponse::DbFileName(self.dbfilename.into()));
                     }
                     ConfigResource::FilePath => {
-                        let _ = query
-                            .callback
-                            .send(ConfigResponse::FilePath(self.get_filepath()));
+                        let _ = query.respond_with(ConfigResponse::FilePath(self.get_filepath()));
                     }
                     ConfigResource::ReplicationInfo => {
                         let _ = query
-                            .callback
-                            .send(ConfigResponse::ReplicationInfo(self.replication.info()));
+                            .respond_with(ConfigResponse::ReplicationInfo(self.replication.info()));
+                    }
+                    ConfigResource::Peers => {
+                        let _ = query.respond_with(ConfigResponse::Peers(self.peers.clone()));
                     }
                 },
                 ConfigMessage::Command(config_command) => match config_command {
@@ -100,6 +101,7 @@ impl Default for Config {
             dir: Box::leak(dir.into_boxed_str()),
             dbfilename: Box::leak(dbfilename.into_boxed_str()),
             replication: Replication::new(replicaof),
+            peers: vec![],
         }
     }
 }
