@@ -22,15 +22,7 @@ impl ReplicationRequestController {
         _args: PeerRequestArguments,
     ) -> anyhow::Result<QueryIO> {
         // handle replication request
-        let response = match request {
-            ReplicationRequest::Ping => {
-                // ! HACK to test out if ping was given from replica
-                self.config_manager
-                    .route_command(ConfigCommand::ReplicaPing)
-                    .await?;
-                QueryIO::SimpleString("PONG".to_string())
-            }
-        };
+        let response = match request {};
         Ok(response)
     }
 }

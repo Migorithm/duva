@@ -1,11 +1,12 @@
 use redis_starter_rust::adapters::io::tokio_stream::TokioConnectStreamFactory;
 use redis_starter_rust::services::config::config_manager::ConfigManager;
-use redis_starter_rust::services::stream_manager::interface::TCancellationTokenFactory;
+use redis_starter_rust::services::stream_manager::interface::{TCancellationTokenFactory, TStream};
 use redis_starter_rust::services::stream_manager::query_io::QueryIO;
 use redis_starter_rust::{
     adapters::io::tokio_stream::TokioStreamListenerFactory, services::config::config_actor::Config,
 };
 use redis_starter_rust::{StartUpFacade, TNotifyStartUp};
+use tokio::net::TcpStream;
 
 use std::sync::Arc;
 use tokio::{
@@ -30,12 +31,26 @@ impl<'a> From<(ReadHalf<'a>, WriteHalf<'a>)> for TestStreamHandler<'a> {
 impl<'a> TestStreamHandler<'a> {
     pub async fn send(&mut self, operation: &[u8]) {
         self.write.write_all(operation).await.unwrap();
+        self.write.flush().await.unwrap();
     }
 
+    // read response from the server
     pub async fn get_response(&mut self) -> String {
-        let mut buffer = [0; 1024];
-        let n = self.read.read(&mut buffer).await.unwrap();
-        String::from_utf8(buffer[0..n].to_vec()).unwrap()
+        let mut buffer = Vec::new();
+        let mut temp_buffer = [0; 1024];
+
+        loop {
+            let bytes_read = self.read.read(&mut temp_buffer).await.unwrap();
+            if bytes_read == 0 {
+                break;
+            }
+            buffer.extend_from_slice(&temp_buffer[..bytes_read]);
+            if bytes_read < temp_buffer.len() {
+                break;
+            }
+        }
+
+        String::from_utf8_lossy(&buffer).into_owned()
     }
 }
 
@@ -148,4 +163,52 @@ pub fn get_command(key: &str) -> Vec<u8> {
 
 pub fn save_command() -> Vec<u8> {
     array(vec!["SAVE"]).into_bytes()
+}
+
+pub async fn threeway_handshake_helper(stream_handler: &mut TcpStream, client_port: u16) {
+    // client sends PING command
+    stream_handler
+        .write_all(b"*1\r\n$4\r\nPING\r\n")
+        .await
+        .unwrap();
+
+    let val = stream_handler.read_values().await.unwrap()[0].clone();
+    assert_eq!(val.serialize(), "+PONG\r\n");
+
+    // client sends REPLCONF listening-port command
+    stream_handler
+        .write_all(
+            format!(
+                "*3\r\n$8\r\nREPLCONF\r\n$14\r\nlistening-port\r\n$4\r\n{}\r\n",
+                client_port
+            )
+            .as_bytes(),
+        )
+        .await
+        .unwrap();
+    let val = stream_handler.read_values().await.unwrap()[0].clone();
+    assert_eq!(val.serialize(), "+OK\r\n");
+
+    // client sends REPLCONF capa command
+    stream_handler
+        .write_all(b"*3\r\n$8\r\nREPLCONF\r\n$4\r\ncapa\r\n$6\r\npsync2\r\n")
+        .await
+        .unwrap();
+    let val = stream_handler.read_values().await.unwrap()[0].clone();
+    assert_eq!(val.serialize(), "+OK\r\n");
+
+    // THEN - client receives OK
+
+    // client sends PSYNC command
+    stream_handler
+        .write_all(b"*3\r\n$5\r\nPSYNC\r\n$1\r\n?\r\n$2\r\n-1\r\n")
+        .await
+        .unwrap();
+    let values = stream_handler.read_values().await.unwrap();
+
+    assert_eq!(
+        values[0].serialize(),
+        "+FULLRESYNC 8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb 0\r\n"
+    );
+    assert_eq!(values.len(), 1);
 }

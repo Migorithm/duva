@@ -7,7 +7,6 @@ use crate::services::stream_manager::client_request_controllers::client_request:
 use crate::services::stream_manager::client_request_controllers::ClientRequestController;
 
 use anyhow::Context;
-use bytes::BytesMut;
 use client_request_controllers::arguments::ClientRequestArguments;
 use error::IoError;
 use interface::{
@@ -20,6 +19,7 @@ use replication_request_controllers::{
     arguments::PeerRequestArguments, replication_request::HandShakeRequest,
     ReplicationRequestController,
 };
+use tokio::task::yield_now;
 
 /// Controller is a struct that will be used to read and write values to the client.
 pub struct StreamManager<T, U>
@@ -38,18 +38,8 @@ where
         StreamManager { stream, controller }
     }
 
-    // crlf
-    pub async fn read_value(&mut self) -> anyhow::Result<QueryIO> {
-        let mut buffer = BytesMut::with_capacity(512);
-        self.stream.read_bytes(&mut buffer).await?;
-
-        let (query_io, _) = query_io::parse(buffer)?;
-        Ok(query_io)
-    }
-
-    pub async fn write_value(&mut self, value: QueryIO) -> Result<(), IoError> {
-        self.stream.write_all(value.serialize().as_bytes()).await?;
-        Ok(())
+    pub async fn send(&mut self, value: QueryIO) -> Result<(), IoError> {
+        self.stream.write(value).await
     }
 }
 
@@ -58,9 +48,8 @@ where
     T: TStream,
 {
     async fn extract_query(&mut self) -> anyhow::Result<(ClientRequest, ClientRequestArguments)> {
-        let query_io = self.read_value().await?;
+        let query_io = self.stream.read_value().await?;
         match query_io {
-            // TODO refactor
             QueryIO::Array(value_array) => Ok((
                 value_array
                     .first()
@@ -98,8 +87,8 @@ where
                 .handle::<F>(cancellation_token, request, query_args)
                 .await
             {
-                Ok(response) => self.write_value(response).await,
-                Err(e) => self.write_value(QueryIO::Err(e.to_string())).await,
+                Ok(response) => self.send(response).await,
+                Err(e) => self.send(QueryIO::Err(e.to_string())).await,
             };
 
             if let Err(e) = res {
@@ -111,6 +100,7 @@ where
     }
 }
 
+#[derive(Debug)]
 pub struct PeerAddr(pub String);
 impl<T> StreamManager<T, &'static ReplicationRequestController>
 where
@@ -121,7 +111,7 @@ where
         R: TryFrom<String>,
         anyhow::Error: From<R::Error>,
     {
-        let query_io = self.read_value().await?;
+        let query_io = self.stream.read_value().await?;
         match query_io {
             // TODO refactor
             QueryIO::Array(value_array) => Ok((
@@ -137,12 +127,11 @@ where
         }
     }
     async fn send_simple_string(&mut self, value: &str) -> Result<(), IoError> {
-        self.write_value(QueryIO::SimpleString(value.to_string()))
-            .await
+        self.send(QueryIO::SimpleString(value.to_string())).await
     }
 
     // Temporal coupling: each handling functions inside the following method must be in order
-    async fn establish_threeway_handshake(&mut self) -> anyhow::Result<PeerAddr> {
+    pub async fn establish_threeway_handshake(&mut self) -> anyhow::Result<PeerAddr> {
         self.handle_ping().await?;
 
         let port = self.handle_replconf_listening_port().await?;
@@ -154,6 +143,10 @@ where
         // TODO find use of psync info?
         let (_repl_id, _offset) = self.handle_psync().await?;
 
+        // ! TODO: STRANGE BEHAVIOUR
+        // if not for the following, message is sent with the previosly sent message
+        // even with this, it shows flaking behaviour
+        yield_now().await;
         Ok(PeerAddr(format!("{}:{}", self.stream.get_peer_ip()?, port)))
     }
 
@@ -203,11 +196,12 @@ where
         let peers = self.controller.config_manager.get_peers().await?;
         Ok(peers)
     }
-    async fn disseminate_peers(&mut self) -> anyhow::Result<()> {
+    pub async fn disseminate_peers(&mut self) -> anyhow::Result<()> {
         let peers = self.get_peers().await?;
         if peers.is_empty() {
             return Ok(());
         }
+
         self.send_simple_string(
             format!(
                 "PEERS {}",
@@ -240,11 +234,12 @@ where
         mut self,
         connect_stream_factory: impl TConnectStreamFactory,
     ) -> anyhow::Result<()> {
-        let peer_addr = self.establish_threeway_handshake().await?;
+        let peer_addr = self.establish_threeway_handshake().await.unwrap();
 
-        self.disseminate_peers().await?;
-        // TODO the following may be skipped if connection has already been made
-        let out_stream = connect_stream_factory.connect(peer_addr).await?;
+        // Send the peer address to the query manager to be used for replication.
+        self.disseminate_peers().await.unwrap();
+
+        let out_stream = connect_stream_factory.connect(peer_addr).await;
 
         // Following infinite loop may need to be changed once replica information is given
         loop {
@@ -252,8 +247,8 @@ where
 
             // * Having error from the following will not a concern as liveness concern is on cluster manager
             let _ = match self.controller.handle(request, query_args).await {
-                Ok(response) => self.write_value(response).await,
-                Err(e) => self.write_value(QueryIO::Err(e.to_string())).await,
+                Ok(response) => self.send(response).await,
+                Err(e) => self.send(QueryIO::Err(e.to_string())).await,
             };
         }
     }

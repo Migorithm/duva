@@ -27,7 +27,7 @@ impl<T: TWrite> SavingProcessor<T> {
             encode_metadata(Vec::from([("redis-ver", "6.0.16")]))?,
             encode_database_info(0)?,
         ];
-        self.writer.write_all(&meta.concat()).await?;
+        self.writer.write(&meta.concat()).await?;
         Ok(())
     }
     pub async fn handle_cmd(&mut self, cmd: SaveCommand) -> Result<bool> {
@@ -41,7 +41,7 @@ impl<T: TWrite> SavingProcessor<T> {
                 self.meta.num_of_saved_table_size_actor -= 1;
                 if self.meta.num_of_saved_table_size_actor == 0 {
                     self.writer
-                        .write_all(&encode_database_table_size(
+                        .write(&encode_database_table_size(
                             self.meta.total_key_value_table_size,
                             self.meta.total_expires_table_size,
                         )?)
@@ -59,7 +59,7 @@ impl<T: TWrite> SavingProcessor<T> {
                 if self.meta.num_of_cache_actors == 0 {
                     self.encode_chunk_queue().await?;
                     let checksum = encode_checksum(&[0; 8])?;
-                    self.writer.write_all(&checksum).await?;
+                    self.writer.write(&checksum).await?;
                     return Ok(true);
                 }
             }
@@ -71,7 +71,7 @@ impl<T: TWrite> SavingProcessor<T> {
         while let Some(chunk) = self.meta.chunk_queue.pop_front() {
             for kvs in chunk {
                 let encoded_chunk = kvs.encode_with_key()?;
-                self.writer.write_all(&encoded_chunk).await?;
+                self.writer.write(&encoded_chunk).await?;
             }
         }
         Ok(())

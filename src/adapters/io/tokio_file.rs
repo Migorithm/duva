@@ -5,7 +5,7 @@ use crate::services::stream_manager::{
 use tokio::io::AsyncWriteExt;
 
 impl TWrite for tokio::fs::File {
-    async fn write_all(&mut self, buf: &[u8]) -> Result<(), IoError> {
+    async fn write(&mut self, buf: &[u8]) -> Result<(), IoError> {
         AsyncWriteExt::write_all(&mut (self as &mut tokio::fs::File), buf)
             .await
             .map_err(|e| e.kind().into())
