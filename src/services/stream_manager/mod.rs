@@ -144,9 +144,11 @@ where
     // Temporal coupling: each handling functions inside the following method must be in order
     async fn establish_threeway_handshake(&mut self) -> anyhow::Result<PeerAddr> {
         self.handle_ping().await?;
+
         let port = self.handle_replconf_listening_port().await?;
 
         // TODO find use of capa?
+
         let _capa_val_vec = self.handle_replconf_capa().await?;
 
         // TODO find use of psync info?
@@ -197,12 +199,50 @@ where
         Ok((repl_id, offset))
     }
 
+    async fn get_peers(&self) -> anyhow::Result<Vec<String>> {
+        let peers = self.controller.config_manager.get_peers().await?;
+        Ok(peers)
+    }
+    async fn disseminate_peers(&mut self) -> anyhow::Result<()> {
+        let peers = self.get_peers().await?;
+        if peers.is_empty() {
+            return Ok(());
+        }
+        self.send_simple_string(
+            format!(
+                "PEERS {}",
+                peers
+                    .iter()
+                    .map(|peer| peer.to_string())
+                    .collect::<Vec<String>>()
+                    .join(" ")
+            )
+            .as_str(),
+        )
+        .await?;
+
+        Ok(())
+    }
+
+    // Incoming connection is either replica or cluster peer stream.
+    // 1) If the incoming connection is a replica peer stream, the system will do the following:
+    // - establish a three-way handshake
+    // - establish a primary-replica relationship
+    // - let the requesting peer know the other peers so they can connect
+    // - start the replication process
+    //
+    // 2) If the incoming connection is a cluster peer stream, the system will do the following:
+    // - establish a three-way handshake
+    // - Check if the process already has a connection with the requesting peer
+    // - If not, establish a connection with the requesting peer
+    // - Let the requesting peer know the other peers so they can connect
     pub(crate) async fn handle_peer_stream(
         mut self,
         connect_stream_factory: impl TConnectStreamFactory,
     ) -> anyhow::Result<()> {
         let peer_addr = self.establish_threeway_handshake().await?;
 
+        self.disseminate_peers().await?;
         // TODO the following may be skipped if connection has already been made
         let out_stream = connect_stream_factory.connect(peer_addr).await?;
 

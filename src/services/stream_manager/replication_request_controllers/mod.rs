@@ -9,7 +9,7 @@ pub mod arguments;
 pub mod replication_request;
 
 pub struct ReplicationRequestController {
-    config_manager: ConfigManager,
+    pub(crate) config_manager: ConfigManager,
 }
 
 impl ReplicationRequestController {

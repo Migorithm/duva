@@ -17,12 +17,17 @@ impl ConfigQuery {
     pub(crate) fn new(callback: oneshot::Sender<ConfigResponse>, resource: ConfigResource) -> Self {
         Self { callback, resource }
     }
+
+    pub(crate) fn respond_with(self, res: ConfigResponse) {
+        let _ = self.callback.send(res);
+    }
 }
 pub enum ConfigResource {
     Dir,
     DbFileName,
     FilePath,
     ReplicationInfo,
+    Peers,
 }
 
 pub enum ConfigResponse {
@@ -30,6 +35,7 @@ pub enum ConfigResponse {
     DbFileName(String),
     FilePath(String),
     ReplicationInfo(Vec<String>),
+    Peers(Vec<String>),
 }
 
 pub enum ConfigCommand {

@@ -8,7 +8,7 @@ use crate::common::{
     array, keys_command, null_response, ok_response, save_command, set_command,
     set_command_with_expiry, start_test_server,
 };
-use common::{init_config_with_free_port, TestStreamHandler};
+use common::{init_config_manager_with_free_port, TestStreamHandler};
 use redis_starter_rust::{
     adapters::cancellation_token::CancellationTokenFactory,
     services::config::{ConfigCommand, ConfigMessage},
@@ -28,7 +28,7 @@ impl Drop for FileName {
 async fn test_save_read_dump() {
     // GIVEN
     let test_file_name = FileName(create_unique_file_name("test_save_dump"));
-    let config = init_config_with_free_port().await;
+    let config = init_config_manager_with_free_port().await;
     config
         .send(ConfigMessage::Command(ConfigCommand::SetDbFileName(
             test_file_name.0.clone(),

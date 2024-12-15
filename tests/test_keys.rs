@@ -1,6 +1,6 @@
 mod common;
 use crate::common::{keys_command, ok_response, set_command};
-use common::{init_config_with_free_port, start_test_server, TestStreamHandler};
+use common::{init_config_manager_with_free_port, start_test_server, TestStreamHandler};
 
 use redis_starter_rust::adapters::cancellation_token::CancellationTokenFactory;
 use tokio::net::TcpStream;
@@ -8,7 +8,7 @@ use tokio::net::TcpStream;
 #[tokio::test]
 async fn test_keys() {
     // GIVEN
-    let config = init_config_with_free_port().await;
+    let config = init_config_manager_with_free_port().await;
 
     let _ = start_test_server(CancellationTokenFactory, config.clone()).await;
 
