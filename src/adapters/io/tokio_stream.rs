@@ -49,7 +49,10 @@ impl TWrite for tokio::net::TcpStream {
         let mut stream = self as &mut tokio::net::TcpStream;
         AsyncWriteExt::write_all(&mut stream, buf)
             .await
-            .map_err(|e| e.kind().into())
+            .map_err(|e| {
+                eprintln!("error = {:?}", e);
+                e.kind().into()
+            })
     }
 }
 impl TGetPeerIp for tokio::net::TcpStream {

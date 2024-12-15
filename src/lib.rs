@@ -94,7 +94,7 @@ where
         tokio::spawn(async move {
             loop {
                 match replication_listener.listen().await {
-                    Ok((peer_stream, _)) => {
+                    Ok((peer_stream, _socket_addr)) => {
                         let query_manager =
                             StreamManager::new(peer_stream, replication_request_controller);
 

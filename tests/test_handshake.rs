@@ -66,36 +66,3 @@ async fn test_threeway_handshake() {
         "+FULLRESYNC 8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb 0\r\n"
     );
 }
-
-pub async fn make_threeway_handshake(stream_handler: &mut TestStreamHandler<'_>, client_port: u16) {
-    // client sends PING command
-    stream_handler.send(b"*1\r\n$4\r\nPING\r\n").await;
-    stream_handler.get_response().await;
-
-    // client sends REPLCONF listening-port command
-    stream_handler
-        .send(
-            format!(
-                "*3\r\n$8\r\nREPLCONF\r\n$14\r\nlistening-port\r\n$4\r\n{}\r\n",
-                client_port
-            )
-            .as_bytes(),
-        )
-        .await;
-
-    stream_handler.get_response().await;
-
-    // client sends REPLCONF capa command
-    stream_handler
-        .send(b"*3\r\n$8\r\nREPLCONF\r\n$4\r\ncapa\r\n$6\r\npsync2\r\n")
-        .await;
-
-    // THEN - client receives OK
-    stream_handler.get_response().await;
-    // client sends PSYNC command
-    stream_handler
-        .send(b"*3\r\n$5\r\nPSYNC\r\n$1\r\n?\r\n$2\r\n-1\r\n")
-        .await;
-
-    stream_handler.get_response().await;
-}

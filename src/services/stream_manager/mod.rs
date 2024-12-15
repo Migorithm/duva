@@ -48,8 +48,7 @@ where
     }
 
     pub async fn write_value(&mut self, value: QueryIO) -> Result<(), IoError> {
-        self.stream.write_all(value.serialize().as_bytes()).await?;
-        Ok(())
+        self.stream.write_all(value.serialize().as_bytes()).await
     }
 }
 
@@ -111,6 +110,7 @@ where
     }
 }
 
+#[derive(Debug)]
 pub struct PeerAddr(pub String);
 impl<T> StreamManager<T, &'static ReplicationRequestController>
 where
@@ -142,7 +142,7 @@ where
     }
 
     // Temporal coupling: each handling functions inside the following method must be in order
-    async fn establish_threeway_handshake(&mut self) -> anyhow::Result<PeerAddr> {
+    pub async fn establish_threeway_handshake(&mut self) -> anyhow::Result<PeerAddr> {
         self.handle_ping().await?;
 
         let port = self.handle_replconf_listening_port().await?;
@@ -203,11 +203,16 @@ where
         let peers = self.controller.config_manager.get_peers().await?;
         Ok(peers)
     }
-    async fn disseminate_peers(&mut self) -> anyhow::Result<()> {
+    pub async fn disseminate_peers(&mut self) -> anyhow::Result<()> {
         let peers = self.get_peers().await?;
         if peers.is_empty() {
             return Ok(());
         }
+        println!("peer: {:?}", peers);
+        let (HandShakeRequest::Ping, _) = self.extract_query().await.unwrap() else {
+            return Err(anyhow::anyhow!("Ping not given"));
+        };
+
         self.send_simple_string(
             format!(
                 "PEERS {}",
@@ -240,11 +245,12 @@ where
         mut self,
         connect_stream_factory: impl TConnectStreamFactory,
     ) -> anyhow::Result<()> {
-        let peer_addr = self.establish_threeway_handshake().await?;
+        let peer_addr = self.establish_threeway_handshake().await.unwrap();
 
-        self.disseminate_peers().await?;
-        // TODO the following may be skipped if connection has already been made
-        let out_stream = connect_stream_factory.connect(peer_addr).await?;
+        // Send the peer address to the query manager to be used for replication.
+        self.disseminate_peers().await.unwrap();
+
+        let out_stream = connect_stream_factory.connect(peer_addr).await;
 
         // Following infinite loop may need to be changed once replica information is given
         loop {
