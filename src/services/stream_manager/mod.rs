@@ -197,6 +197,18 @@ where
         Ok((repl_id, offset))
     }
 
+    // Incoming connection is either replica or cluster peer stream.
+    // 1) If the incoming connection is a replica peer stream, the system will do the following:
+    // - establish a three-way handshake
+    // - establish a primary-replica relationship
+    // - let the requesting peer know the other peers so they can connect
+    // - start the replication process
+    //
+    // 2) If the incoming connection is a cluster peer stream, the system will do the following:
+    // - establish a three-way handshake
+    // - Check if the process already has a connection with the requesting peer
+    // - If not, establish a connection with the requesting peer
+    // - Let the requesting peer know the other peers so they can connect
     pub(crate) async fn handle_peer_stream(
         mut self,
         connect_stream_factory: impl TConnectStreamFactory,
