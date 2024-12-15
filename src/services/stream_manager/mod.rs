@@ -19,6 +19,7 @@ use replication_request_controllers::{
     arguments::PeerRequestArguments, replication_request::HandShakeRequest,
     ReplicationRequestController,
 };
+use tokio::task::yield_now;
 
 /// Controller is a struct that will be used to read and write values to the client.
 pub struct StreamManager<T, U>
@@ -142,6 +143,10 @@ where
         // TODO find use of psync info?
         let (_repl_id, _offset) = self.handle_psync().await?;
 
+        // ! TODO: STRANGE BEHAVIOUR
+        // if not for the following, message is sent with the previosly sent message
+        // even with this, it shows flaking behaviour
+        yield_now().await;
         Ok(PeerAddr(format!("{}:{}", self.stream.get_peer_ip()?, port)))
     }
 
@@ -197,9 +202,6 @@ where
             return Ok(());
         }
 
-        // ! TODO Remove the following. Currently, if not for the following,
-        // ! message is sent with the previous message
-        tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
         self.send_simple_string(
             format!(
                 "PEERS {}",

@@ -3,7 +3,7 @@ use std::io::ErrorKind;
 use crate::{
     services::stream_manager::{
         error::IoError,
-        interface::{TConnectStreamFactory, TGetPeerIp, TRead, TStream, TWrite},
+        interface::{TConnectStreamFactory, TGetPeerIp, TRead, TStream},
         query_io::{parse, QueryIO},
         PeerAddr,
     },
@@ -35,7 +35,7 @@ impl TStream for tokio::net::TcpStream {
                 Ok((query_io, consumed)) => {
                     parsed_values.push(query_io);
 
-                    // Remove the parsed portion from the buffer
+                    // * Remove the parsed portion from the buffer
                     remaining_buffer = remaining_buffer.split_off(consumed);
                 }
                 Err(e) => {
@@ -88,18 +88,6 @@ impl TRead for tokio::net::TcpStream {
     }
 }
 
-impl TWrite for tokio::net::TcpStream {
-    async fn write(&mut self, buf: &[u8]) -> Result<(), IoError> {
-        self.write_all(buf).await.map_err(|e| {
-            eprintln!("error = {:?}", e);
-            Into::<IoError>::into(e.kind())
-        })?;
-        self.flush().await.map_err(|e| {
-            eprintln!("error = {:?}", e);
-            Into::<IoError>::into(e.kind())
-        })
-    }
-}
 impl TGetPeerIp for tokio::net::TcpStream {
     fn get_peer_ip(&self) -> Result<String, IoError> {
         let addr = self.peer_addr().map_err(|error| {
@@ -162,4 +150,33 @@ fn test_socket_to_string() {
 
     //THEN
     assert_eq!(socket.ip().to_string(), "127.0.0.1")
+}
+
+#[tokio::test]
+async fn test_read_values() {
+    let mut buffer = BytesMut::with_capacity(512);
+    // add a simple string to buffer
+    buffer.extend_from_slice(b"+FULLRESYNC 8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb 0\r\n");
+    buffer.extend_from_slice(b"+PEERS localhost:6378\r\n");
+    // add an integer to buffer
+
+    let mut parsed_values = vec![];
+    while !buffer.is_empty() {
+        if let Ok((query_io, consumed)) = parse(buffer.clone()) {
+            parsed_values.push(query_io);
+
+            // * Remove the parsed portion from the buffer
+            buffer = buffer.split_off(consumed);
+        }
+    }
+
+    assert_eq!(parsed_values.len(), 2);
+    assert_eq!(
+        parsed_values[0],
+        QueryIO::SimpleString("FULLRESYNC 8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb 0".to_string())
+    );
+    assert_eq!(
+        parsed_values[1],
+        QueryIO::SimpleString("PEERS localhost:6378".to_string())
+    );
 }

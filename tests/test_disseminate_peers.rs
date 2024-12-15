@@ -5,10 +5,14 @@ use common::{
 };
 use redis_starter_rust::{
     adapters::cancellation_token::CancellationTokenFactory,
-    services::config::{config_actor::Config, config_manager::ConfigManager},
+    services::{
+        config::{config_actor::Config, config_manager::ConfigManager},
+        stream_manager::interface::TStream,
+    },
 };
 use tokio::net::TcpStream;
 
+// TODO Flaky!
 #[tokio::test]
 async fn test_disseminate_peers() {
     // GIVEN - master server configuration
@@ -25,14 +29,10 @@ async fn test_disseminate_peers() {
 
     let mut client_stream = TcpStream::connect(master_cluster_bind_addr).await.unwrap();
 
-    let mut h: TestStreamHandler = client_stream.split().into();
-
     let client_fake_port = 6889;
-    threeway_handshake_helper(&mut h, client_fake_port).await;
+    threeway_handshake_helper(&mut client_stream, client_fake_port).await;
 
     //THEN
-    assert_eq!(
-        h.get_response().await,
-        format!("+PEERS {peer_address_to_test}\r\n")
-    );
+    let values = client_stream.read_value().await.unwrap();
+    assert_eq!(values.serialize(), "+PEERS localhost:6378\r\n");
 }
