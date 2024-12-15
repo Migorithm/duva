@@ -24,16 +24,13 @@ async fn test_disseminate_peers() {
     let _ = start_test_server(CancellationTokenFactory, manager).await;
 
     let mut client_stream = TcpStream::connect(master_cluster_bind_addr).await.unwrap();
+
     let mut h: TestStreamHandler = client_stream.split().into();
 
     let client_fake_port = 6889;
     threeway_handshake_helper(&mut h, client_fake_port).await;
 
-    // TODO how can I get response without the following line?
-    // ! Solving this issue is critical
-    h.send(b"*1\r\n$4\r\nPING\r\n").await;
-
-    // THEN
+    //THEN
     assert_eq!(
         h.get_response().await,
         format!("+PEERS {peer_address_to_test}\r\n")

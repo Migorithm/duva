@@ -33,6 +33,7 @@ impl<'a> TestStreamHandler<'a> {
         self.write.flush().await.unwrap();
     }
 
+    // read response from the server
     pub async fn get_response(&mut self) -> String {
         let mut buffer = Vec::new();
         let mut temp_buffer = [0; 1024];
@@ -47,6 +48,7 @@ impl<'a> TestStreamHandler<'a> {
                 break;
             }
         }
+
         String::from_utf8_lossy(&buffer).into_owned()
     }
 }
@@ -195,5 +197,6 @@ pub async fn threeway_handshake_helper(
         .send(b"*3\r\n$5\r\nPSYNC\r\n$1\r\n?\r\n$2\r\n-1\r\n")
         .await;
 
-    stream_handler.get_response().await;
+    let res = stream_handler.get_response().await;
+    println!("Response: {}", res);
 }

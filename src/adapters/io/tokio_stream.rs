@@ -4,6 +4,7 @@ use crate::{
     services::stream_manager::{
         error::IoError,
         interface::{TConnectStreamFactory, TGetPeerIp, TRead, TStream, TWrite},
+        query_io::{parse, QueryIO},
         PeerAddr,
     },
     TStreamListener, TStreamListenerFactory,
@@ -13,6 +14,49 @@ use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::TcpListener,
 };
+
+impl TStream for tokio::net::TcpStream {
+    async fn read_value(&mut self) -> anyhow::Result<QueryIO> {
+        let mut buffer = BytesMut::with_capacity(512);
+        self.read_bytes(&mut buffer).await?;
+
+        let (query_io, _) = parse(buffer)?;
+        Ok(query_io)
+    }
+    async fn read_values(&mut self) -> anyhow::Result<Vec<QueryIO>> {
+        let mut buffer = BytesMut::with_capacity(512);
+        self.read_bytes(&mut buffer).await?;
+
+        let mut parsed_values = Vec::new();
+        let mut remaining_buffer = buffer;
+
+        while !remaining_buffer.is_empty() {
+            match parse(remaining_buffer.clone()) {
+                Ok((query_io, consumed)) => {
+                    parsed_values.push(query_io);
+
+                    // Remove the parsed portion from the buffer
+                    remaining_buffer = remaining_buffer.split_off(consumed);
+                }
+                Err(e) => {
+                    // Handle parsing errors
+                    // You might want to log the error or handle it differently based on your use case
+                    return Err(anyhow::anyhow!("Parsing error: {:?}", e));
+                }
+            }
+        }
+        Ok(parsed_values)
+    }
+
+    async fn write(&mut self, value: QueryIO) -> Result<(), IoError> {
+        self.write_all(value.serialize().as_bytes())
+            .await
+            .map_err(|e| {
+                eprintln!("error = {:?}", e);
+                Into::<IoError>::into(e.kind())
+            })
+    }
+}
 
 impl TRead for tokio::net::TcpStream {
     // TCP doesn't inherently delimit messages.
@@ -45,14 +89,15 @@ impl TRead for tokio::net::TcpStream {
 }
 
 impl TWrite for tokio::net::TcpStream {
-    async fn write_all(&mut self, buf: &[u8]) -> Result<(), IoError> {
-        let mut stream = self as &mut tokio::net::TcpStream;
-        AsyncWriteExt::write_all(&mut stream, buf)
-            .await
-            .map_err(|e| {
-                eprintln!("error = {:?}", e);
-                e.kind().into()
-            })
+    async fn write(&mut self, buf: &[u8]) -> Result<(), IoError> {
+        self.write_all(buf).await.map_err(|e| {
+            eprintln!("error = {:?}", e);
+            Into::<IoError>::into(e.kind())
+        })?;
+        self.flush().await.map_err(|e| {
+            eprintln!("error = {:?}", e);
+            Into::<IoError>::into(e.kind())
+        })
     }
 }
 impl TGetPeerIp for tokio::net::TcpStream {

@@ -63,7 +63,7 @@ impl From<String> for QueryIO {
     }
 }
 
-pub(in crate::services) fn parse(buffer: BytesMut) -> Result<(QueryIO, usize)> {
+pub fn parse(buffer: BytesMut) -> Result<(QueryIO, usize)> {
     match buffer[0] as char {
         '+' => parse_simple_string(buffer),
         '*' => parse_array(buffer),

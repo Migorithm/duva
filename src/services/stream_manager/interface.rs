@@ -1,19 +1,26 @@
 use bytes::BytesMut;
 
-use super::{error::IoError, PeerAddr};
+use super::{error::IoError, query_io::QueryIO, PeerAddr};
 
-pub trait TStream: TRead + TWrite + TGetPeerIp {}
-impl<T> TStream for T where T: TRead + TWrite + TGetPeerIp {}
+pub trait TStream: TGetPeerIp + Send + Sync + 'static {
+    // TODO deprecated
+    fn read_value(&mut self) -> impl std::future::Future<Output = anyhow::Result<QueryIO>> + Send;
+    fn read_values(&mut self) -> impl std::future::Future<Output = anyhow::Result<Vec<QueryIO>>>;
+    fn write(
+        &mut self,
+        value: QueryIO,
+    ) -> impl std::future::Future<Output = Result<(), IoError>> + Send;
+}
 
-pub trait TRead: Send + Sync + 'static {
+pub trait TRead {
     fn read_bytes(
         &mut self,
         buf: &mut BytesMut,
     ) -> impl std::future::Future<Output = Result<(), std::io::Error>> + Send;
 }
 
-pub trait TWrite: Send + Sync + 'static {
-    fn write_all(
+pub trait TWrite {
+    fn write(
         &mut self,
         buf: &[u8],
     ) -> impl std::future::Future<Output = Result<(), IoError>> + Send;
@@ -43,7 +50,7 @@ pub trait TStreamListener: Sync + Send + 'static {
     > + Send;
 }
 
-pub trait TGetPeerIp: Send + Sync + 'static {
+pub trait TGetPeerIp {
     fn get_peer_ip(&self) -> Result<String, IoError>;
 }
 

@@ -7,7 +7,6 @@ use crate::services::stream_manager::client_request_controllers::client_request:
 use crate::services::stream_manager::client_request_controllers::ClientRequestController;
 
 use anyhow::Context;
-use bytes::BytesMut;
 use client_request_controllers::arguments::ClientRequestArguments;
 use error::IoError;
 use interface::{
@@ -38,17 +37,8 @@ where
         StreamManager { stream, controller }
     }
 
-    // crlf
-    pub async fn read_value(&mut self) -> anyhow::Result<QueryIO> {
-        let mut buffer = BytesMut::with_capacity(512);
-        self.stream.read_bytes(&mut buffer).await?;
-
-        let (query_io, _) = query_io::parse(buffer)?;
-        Ok(query_io)
-    }
-
-    pub async fn write_value(&mut self, value: QueryIO) -> Result<(), IoError> {
-        self.stream.write_all(value.serialize().as_bytes()).await
+    pub async fn send(&mut self, value: QueryIO) -> Result<(), IoError> {
+        self.stream.write(value).await
     }
 }
 
@@ -57,9 +47,8 @@ where
     T: TStream,
 {
     async fn extract_query(&mut self) -> anyhow::Result<(ClientRequest, ClientRequestArguments)> {
-        let query_io = self.read_value().await?;
+        let query_io = self.stream.read_value().await?;
         match query_io {
-            // TODO refactor
             QueryIO::Array(value_array) => Ok((
                 value_array
                     .first()
@@ -97,8 +86,8 @@ where
                 .handle::<F>(cancellation_token, request, query_args)
                 .await
             {
-                Ok(response) => self.write_value(response).await,
-                Err(e) => self.write_value(QueryIO::Err(e.to_string())).await,
+                Ok(response) => self.send(response).await,
+                Err(e) => self.send(QueryIO::Err(e.to_string())).await,
             };
 
             if let Err(e) = res {
@@ -121,7 +110,7 @@ where
         R: TryFrom<String>,
         anyhow::Error: From<R::Error>,
     {
-        let query_io = self.read_value().await?;
+        let query_io = self.stream.read_value().await?;
         match query_io {
             // TODO refactor
             QueryIO::Array(value_array) => Ok((
@@ -137,8 +126,7 @@ where
         }
     }
     async fn send_simple_string(&mut self, value: &str) -> Result<(), IoError> {
-        self.write_value(QueryIO::SimpleString(value.to_string()))
-            .await
+        self.send(QueryIO::SimpleString(value.to_string())).await
     }
 
     // Temporal coupling: each handling functions inside the following method must be in order
@@ -208,11 +196,10 @@ where
         if peers.is_empty() {
             return Ok(());
         }
-        println!("peer: {:?}", peers);
-        let (HandShakeRequest::Ping, _) = self.extract_query().await.unwrap() else {
-            return Err(anyhow::anyhow!("Ping not given"));
-        };
 
+        // ! TODO Remove the following. Currently, if not for the following,
+        // ! message is sent with the previous message
+        tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
         self.send_simple_string(
             format!(
                 "PEERS {}",
@@ -258,8 +245,8 @@ where
 
             // * Having error from the following will not a concern as liveness concern is on cluster manager
             let _ = match self.controller.handle(request, query_args).await {
-                Ok(response) => self.write_value(response).await,
-                Err(e) => self.write_value(QueryIO::Err(e.to_string())).await,
+                Ok(response) => self.send(response).await,
+                Err(e) => self.send(QueryIO::Err(e.to_string())).await,
             };
         }
     }
