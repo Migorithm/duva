@@ -165,7 +165,10 @@ pub fn save_command() -> Vec<u8> {
     array(vec!["SAVE"]).into_bytes()
 }
 
-pub async fn threeway_handshake_helper(stream_handler: &mut TcpStream, client_port: u16) {
+pub async fn threeway_handshake_helper(
+    stream_handler: &mut TcpStream,
+    client_port: u16,
+) -> Option<QueryIO> {
     // client sends PING command
     stream_handler
         .write_all(b"*1\r\n$4\r\nPING\r\n")
@@ -210,5 +213,6 @@ pub async fn threeway_handshake_helper(stream_handler: &mut TcpStream, client_po
         values[0].serialize(),
         "+FULLRESYNC 8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb 0\r\n"
     );
-    assert_eq!(values.len(), 1);
+
+    values.get(1).cloned()
 }
