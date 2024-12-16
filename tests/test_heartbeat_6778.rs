@@ -1,6 +1,10 @@
-/// After three-way handshake, client will receive peers from the master server
+//! This file contains tests for heartbeat between server and client
+//! Any interconnected system should have a heartbeat mechanism to ensure that the connection is still alive
+//! In this case, the server will send PING message to the client and the client will respond with PONG message
+//! The following test simulate the replica server with the use of TcpStream.
+//! Actual implementation will be standalone replica server that will be connected to the master server
+
 mod common;
-use std::time::Duration;
 
 use common::{find_free_port_in_range, start_test_server, threeway_handshake_helper};
 use redis_starter_rust::{
@@ -10,7 +14,7 @@ use redis_starter_rust::{
         stream_manager::interface::TStream,
     },
 };
-use tokio::{net::TcpStream, time::timeout};
+use tokio::net::TcpStream;
 
 #[tokio::test]
 async fn test_heartbeat() {
@@ -23,8 +27,7 @@ async fn test_heartbeat() {
     let _ = start_test_server(CancellationTokenFactory, manager).await;
 
     // run the slave stream on a random port
-    let slave_port = 6788;
-    // find_free_port_in_range(6000, 6553).await.unwrap();
+    let slave_port = 6778;
 
     // run the client bind stream on a random port so it can later get connection request from server
     let handler = tokio::spawn(async move {
@@ -32,10 +35,7 @@ async fn test_heartbeat() {
         let listener = tokio::net::TcpListener::bind(&slave_cluster_bind_addr)
             .await
             .unwrap();
-        while let Ok((mut stream, _)) = timeout(Duration::from_secs(2), listener.accept())
-            .await
-            .unwrap()
-        {
+        while let Ok((mut stream, _)) = listener.accept().await {
             let mut count = 0;
             while count < 5 {
                 let values = stream.read_value().await.unwrap();
