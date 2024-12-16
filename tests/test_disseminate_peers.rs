@@ -30,9 +30,15 @@ async fn test_disseminate_peers() {
     let mut client_stream = TcpStream::connect(master_cluster_bind_addr).await.unwrap();
 
     let client_fake_port = 6889;
-    threeway_handshake_helper(&mut client_stream, client_fake_port).await;
+    let message = threeway_handshake_helper(&mut client_stream, client_fake_port).await;
+
+    let expected = format!("+PEERS {}\r\n", peer_address_to_test);
+    if let Some(combined) = message {
+        assert_eq!(combined.serialize(), expected);
+    } else {
+        let values = client_stream.read_value().await.unwrap();
+        assert_eq!(values.serialize(), expected);
+    }
 
     //THEN
-    let values = client_stream.read_value().await.unwrap();
-    assert_eq!(values.serialize(), "+PEERS localhost:6378\r\n");
 }
