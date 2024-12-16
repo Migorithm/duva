@@ -1,8 +1,6 @@
 /// After three-way handshake, client will receive peers from the master server
 mod common;
-use common::{
-    find_free_port_in_range, start_test_server, threeway_handshake_helper, TestStreamHandler,
-};
+use common::{find_free_port_in_range, start_test_server, threeway_handshake_helper};
 use redis_starter_rust::{
     adapters::cancellation_token::CancellationTokenFactory,
     services::{
@@ -12,7 +10,6 @@ use redis_starter_rust::{
 };
 use tokio::net::TcpStream;
 
-// TODO Flaky!
 #[tokio::test]
 async fn test_disseminate_peers() {
     // GIVEN - master server configuration

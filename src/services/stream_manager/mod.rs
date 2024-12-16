@@ -3,6 +3,8 @@ pub mod error;
 pub mod interface;
 pub mod query_io;
 pub mod replication_request_controllers;
+use std::time::Duration;
+
 use crate::services::stream_manager::client_request_controllers::client_request::ClientRequest;
 use crate::services::stream_manager::client_request_controllers::ClientRequestController;
 
@@ -19,7 +21,7 @@ use replication_request_controllers::{
     arguments::PeerRequestArguments, replication_request::HandShakeRequest,
     ReplicationRequestController,
 };
-use tokio::task::yield_now;
+use tokio::{task::yield_now, time::interval};
 
 /// Controller is a struct that will be used to read and write values to the client.
 pub struct StreamManager<T, U>
@@ -137,7 +139,6 @@ where
         let port = self.handle_replconf_listening_port().await?;
 
         // TODO find use of capa?
-
         let _capa_val_vec = self.handle_replconf_capa().await?;
 
         // TODO find use of psync info?
@@ -147,7 +148,12 @@ where
         // if not for the following, message is sent with the previosly sent message
         // even with this, it shows flaking behaviour
         yield_now().await;
-        Ok(PeerAddr(format!("{}:{}", self.stream.get_peer_ip()?, port)))
+
+        Ok(PeerAddr(format!(
+            "{}:{}",
+            self.stream.get_peer_ip()?,
+            port + 10000
+        )))
     }
 
     async fn handle_ping(&mut self) -> anyhow::Result<()> {
@@ -239,7 +245,8 @@ where
         // Send the peer address to the query manager to be used for replication.
         self.disseminate_peers().await.unwrap();
 
-        let out_stream = connect_stream_factory.connect(peer_addr).await;
+        self.schedule_heartbeat(connect_stream_factory, peer_addr)
+            .await?;
 
         // Following infinite loop may need to be changed once replica information is given
         loop {
@@ -251,5 +258,28 @@ where
                 Err(e) => self.send(QueryIO::Err(e.to_string())).await,
             };
         }
+    }
+
+    async fn schedule_heartbeat(
+        &mut self,
+        connect_stream_factory: impl TConnectStreamFactory,
+        peer_addr: PeerAddr,
+    ) -> anyhow::Result<()> {
+        let mut stream = connect_stream_factory.connect(peer_addr).await?;
+        let mut interval = interval(Duration::from_millis(200));
+        tokio::spawn(async move {
+            loop {
+                interval.tick().await;
+                if let Err(err) = stream
+                    .write(QueryIO::SimpleString("PING".to_string()))
+                    .await
+                {
+                    eprintln!("Error sending heartbeat: {:?}", err);
+                    // TODO add more logic
+                    break;
+                }
+            }
+        });
+        Ok(())
     }
 }

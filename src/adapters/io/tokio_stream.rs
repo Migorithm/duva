@@ -19,7 +19,6 @@ impl TStream for tokio::net::TcpStream {
     async fn read_value(&mut self) -> anyhow::Result<QueryIO> {
         let mut buffer = BytesMut::with_capacity(512);
         self.read_bytes(&mut buffer).await?;
-
         let (query_io, _) = parse(buffer)?;
         Ok(query_io)
     }
