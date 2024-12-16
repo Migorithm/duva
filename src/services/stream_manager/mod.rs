@@ -265,8 +265,10 @@ where
         connect_stream_factory: impl TConnectStreamFactory,
         peer_addr: PeerAddr,
     ) -> anyhow::Result<()> {
+        // 1000 mills just because that's default for Redis.
+        const HEARTBEAT_INTERVAL: u64 = 1000;
         let mut stream = connect_stream_factory.connect(peer_addr).await?;
-        let mut interval = interval(Duration::from_millis(200));
+        let mut interval = interval(Duration::from_millis(HEARTBEAT_INTERVAL));
         tokio::spawn(async move {
             loop {
                 interval.tick().await;
