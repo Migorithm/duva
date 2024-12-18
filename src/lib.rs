@@ -31,7 +31,7 @@ where
     client_request_controller: &'static ClientRequestController,
     replication_request_controller: &'static ReplicationRequestController,
     config_manager: ConfigManager,
-    cluster_manager: ClusterManager<S>,
+    cluster_manager: &'static ClusterManager<S>,
 }
 
 impl<T, U, V, S> StartUpFacade<T, U, V, S>
@@ -48,11 +48,11 @@ where
         config_manager: ConfigManager,
     ) -> Self {
         let (cache_manager, ttl_inbox) = CacheManager::run_cache_actors();
-        let cluster_manager = ClusterManager::run();
+        let cluster_manager: &'static ClusterManager<S> = Box::leak(ClusterManager::run().into());
 
         // Leak the cache_dispatcher to make it static - this is safe because the cache_dispatcher
         // will live for the entire duration of the program.
-        let cache_manager: &'static CacheManager = Box::leak(Box::new(cache_manager));
+        let cache_manager: &'static CacheManager = Box::leak(cache_manager.into());
         let client_request_controller: &'static ClientRequestController = Box::leak(
             ClientRequestController::new(config_manager.clone(), cache_manager, ttl_inbox.clone())
                 .into(),
