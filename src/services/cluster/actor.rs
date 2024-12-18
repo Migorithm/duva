@@ -4,10 +4,26 @@ use tokio::sync::mpsc::Receiver;
 
 use crate::services::stream_manager::interface::TStream;
 
-use super::{ClusterCommand, Connected, PeerAddr};
+pub enum ClusterCommand<T: TStream> {
+    AddPeer(PeerAddr, T),
+    RemovePeer(PeerAddr),
+    GetPeer(PeerAddr),
+}
 
 pub struct ClusterActor<T: TStream> {
     peers: BTreeMap<PeerAddr, Connected<T>>,
+}
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct PeerAddr(pub String);
+
+pub enum Connected<T: TStream> {
+    Replica {
+        peer_stream: T,
+        replication_stream: T,
+    },
+    ClusterMemeber {
+        peer_stream: T,
+    },
 }
 
 impl<T: TStream> ClusterActor<T> {
@@ -16,9 +32,10 @@ impl<T: TStream> ClusterActor<T> {
             peers: BTreeMap::new(),
         }
     }
-    pub fn add_peer(&mut self, peer_addr: PeerAddr, connected: Connected<T>) {
-        self.peers.insert(peer_addr, connected);
-    }
+    // * Add peer to the cluster
+    // * This function is called when a new peer is connected to peer listener
+    // * Some are replicas and some are cluster members
+    pub fn add_peer(&mut self, peer_addr: PeerAddr, stream: T) {}
 
     pub fn remove_peer(&mut self, peer_addr: PeerAddr) {
         self.peers.remove(&peer_addr);

@@ -1,6 +1,6 @@
 use crate::{
     services::{
-        cluster::PeerAddr,
+        cluster::actor::PeerAddr,
         stream_manager::{
             error::IoError,
             interface::{TConnectStreamFactory, TGetPeerIp, TRead, TStream},
