@@ -1,7 +1,8 @@
-use tokio::sync::mpsc::{Receiver, Sender};
+pub mod actor;
+use actor::ClusterActor;
+use tokio::sync::mpsc::Sender;
 
 use super::stream_manager::interface::TStream;
-use std::collections::BTreeMap;
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct PeerAddr(pub String);
@@ -21,48 +22,13 @@ pub enum ClusterCommand<T: TStream> {
     GetPeer(PeerAddr),
 }
 
-pub struct ClusterManager<T: TStream> {
-    peers: BTreeMap<PeerAddr, Connected<T>>,
-}
+pub struct ClusterManager<T: TStream>(Sender<ClusterCommand<T>>);
 
 impl<T: TStream> ClusterManager<T> {
-    pub fn new() -> Self {
-        Self {
-            peers: BTreeMap::new(),
-        }
-    }
-    pub fn add_peer(&mut self, peer_addr: PeerAddr, connected: Connected<T>) {
-        self.peers.insert(peer_addr, connected);
-    }
-
-    pub fn remove_peer(&mut self, peer_addr: PeerAddr) {
-        self.peers.remove(&peer_addr);
-    }
-
-    pub fn get_peer(&self, peer_addr: &PeerAddr) -> Option<&Connected<T>> {
-        self.peers.get(peer_addr)
-    }
-
-    pub fn run() -> Sender<ClusterCommand<T>> {
+    pub fn run() -> Self {
         let (tx, rx) = tokio::sync::mpsc::channel(100);
-        let cluster_manager = ClusterManager::new();
+        let cluster_manager = ClusterActor::new();
         tokio::spawn(cluster_manager.handle(rx));
-        tx
-    }
-
-    pub async fn handle(mut self, mut recv: Receiver<ClusterCommand<T>>) {
-        while let Some(command) = recv.recv().await {
-            match command {
-                ClusterCommand::AddPeer(peer_addr, connected) => {
-                    self.add_peer(peer_addr, connected);
-                }
-                ClusterCommand::RemovePeer(peer_addr) => {
-                    self.remove_peer(peer_addr);
-                }
-                ClusterCommand::GetPeer(peer_addr) => {
-                    self.get_peer(&peer_addr);
-                }
-            }
-        }
+        Self(tx)
     }
 }

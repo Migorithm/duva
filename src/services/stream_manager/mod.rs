@@ -238,7 +238,7 @@ where
     // - Let the requesting peer know the other peers so they can connect
     pub(crate) async fn handle_peer_stream(
         mut self,
-        connect_stream_factory: impl TConnectStreamFactory,
+        connect_stream_factory: impl TConnectStreamFactory<T>,
     ) -> anyhow::Result<()> {
         let peer_addr = self.establish_threeway_handshake().await.unwrap();
 
@@ -262,7 +262,7 @@ where
 
     async fn schedule_heartbeat(
         &mut self,
-        connect_stream_factory: impl TConnectStreamFactory,
+        connect_stream_factory: impl TConnectStreamFactory<T>,
         peer_addr: PeerAddr,
     ) -> anyhow::Result<()> {
         // 1000 mills just because that's default for Redis.

@@ -3,19 +3,26 @@ pub mod macros;
 pub mod services;
 use crate::services::stream_manager::client_request_controllers::ClientRequestController;
 use anyhow::Result;
+use services::cluster::ClusterManager;
 use services::config::config_manager::ConfigManager;
 
 use services::statefuls::cache::cache_manager::CacheManager;
 use services::statefuls::cache::ttl_manager::TtlSchedulerInbox;
 use services::statefuls::persist::persist_actor::PersistActor;
 use services::stream_manager::interface::{
-    TCancellationTokenFactory, TConnectStreamFactory, TStreamListener, TStreamListenerFactory,
+    TCancellationTokenFactory, TConnectStreamFactory, TStream, TStreamListener,
+    TStreamListenerFactory,
 };
 use services::stream_manager::replication_request_controllers::ReplicationRequestController;
 use services::stream_manager::StreamManager;
 
 // * StartUp Facade that manages invokes subsystems
-pub struct StartUpFacade<T, U, V> {
+pub struct StartUpFacade<T, U, V, S>
+where
+    U: TStreamListenerFactory<S>,
+    V: TCancellationTokenFactory,
+    S: TStream,
+{
     connect_stream_factory: T,
     stream_listener: U,
     cancellation_factory: V,
@@ -24,13 +31,15 @@ pub struct StartUpFacade<T, U, V> {
     client_request_controller: &'static ClientRequestController,
     replication_request_controller: &'static ReplicationRequestController,
     config_manager: ConfigManager,
+    cluster_manager: ClusterManager<S>,
 }
 
-impl<T, U, V> StartUpFacade<T, U, V>
+impl<T, U, V, S> StartUpFacade<T, U, V, S>
 where
-    T: TConnectStreamFactory,
-    U: TStreamListenerFactory,
+    T: TConnectStreamFactory<S>,
+    U: TStreamListenerFactory<S>,
     V: TCancellationTokenFactory,
+    S: TStream,
 {
     pub fn new(
         connect_stream_factory: T,
@@ -39,6 +48,7 @@ where
         config_manager: ConfigManager,
     ) -> Self {
         let (cache_manager, ttl_inbox) = CacheManager::run_cache_actors();
+        let cluster_manager = ClusterManager::run();
 
         // Leak the cache_dispatcher to make it static - this is safe because the cache_dispatcher
         // will live for the entire duration of the program.
@@ -59,6 +69,7 @@ where
             client_request_controller,
             replication_request_controller,
             config_manager,
+            cluster_manager,
         }
     }
 

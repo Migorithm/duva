@@ -13,7 +13,7 @@ use bytes::BytesMut;
 use std::io::ErrorKind;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
-    net::TcpListener,
+    net::{TcpListener, TcpStream},
 };
 
 impl TStream for tokio::net::TcpStream {
@@ -98,8 +98,8 @@ impl TGetPeerIp for tokio::net::TcpStream {
     }
 }
 
-impl TStreamListener for TcpListener {
-    async fn listen(&self) -> std::result::Result<(impl TStream, std::net::SocketAddr), IoError> {
+impl TStreamListener<TcpStream> for TcpListener {
+    async fn listen(&self) -> std::result::Result<(TcpStream, std::net::SocketAddr), IoError> {
         match self.accept().await {
             Ok(val) => Ok((val.0, val.1)),
             Err(err) => Err(err.kind().into()),
@@ -108,16 +108,16 @@ impl TStreamListener for TcpListener {
 }
 
 pub struct TokioStreamListenerFactory;
-impl TStreamListenerFactory for TokioStreamListenerFactory {
-    async fn create_listner(&self, bind_addr: String) -> impl TStreamListener {
+impl TStreamListenerFactory<TcpStream> for TokioStreamListenerFactory {
+    async fn create_listner(&self, bind_addr: String) -> impl TStreamListener<TcpStream> {
         TcpListener::bind(bind_addr).await.expect("failed to bind")
     }
 }
 
 #[derive(Clone, Copy)]
 pub struct TokioConnectStreamFactory;
-impl TConnectStreamFactory for TokioConnectStreamFactory {
-    async fn connect(&self, addr: PeerAddr) -> Result<impl TStream, IoError> {
+impl TConnectStreamFactory<TcpStream> for TokioConnectStreamFactory {
+    async fn connect(&self, addr: PeerAddr) -> Result<TcpStream, IoError> {
         match tokio::net::TcpStream::connect(addr.0).await {
             Ok(stream) => Ok(stream),
             Err(err) => Err(err.kind().into()),
