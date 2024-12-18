@@ -15,6 +15,8 @@ use services::stream_manager::interface::{
     TCancellationTokenFactory, TConnectStreamFactory, TExtractQuery, TStream, TStreamListener,
     TStreamListenerFactory,
 };
+use services::stream_manager::replication_request_controllers::arguments::PeerRequestArguments;
+use services::stream_manager::replication_request_controllers::replication_request::HandShakeRequest;
 use services::stream_manager::replication_request_controllers::ReplicationRequestController;
 use services::stream_manager::StreamManager;
 
@@ -41,7 +43,9 @@ where
     T: TConnectStreamFactory<S>,
     U: TStreamListenerFactory<S>,
     V: TCancellationTokenFactory,
-    S: TStream + TExtractQuery<ClientRequest, ClientRequestArguments>,
+    S: TStream
+        + TExtractQuery<ClientRequest, ClientRequestArguments>
+        + TExtractQuery<HandShakeRequest, PeerRequestArguments>,
 {
     pub fn new(
         connect_stream_factory: T,

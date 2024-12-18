@@ -7,7 +7,10 @@ use crate::{
             },
             error::IoError,
             interface::{TConnectStreamFactory, TExtractQuery, TGetPeerIp, TRead, TStream},
-            query_io::{self, parse, QueryIO},
+            query_io::{parse, QueryIO},
+            replication_request_controllers::{
+                arguments::PeerRequestArguments, replication_request::HandShakeRequest,
+            },
         },
     },
     TStreamListener, TStreamListenerFactory,
@@ -74,6 +77,25 @@ impl TExtractQuery<ClientRequest, ClientRequestArguments> for TcpStream {
                     .unpack_bulk_str()?
                     .try_into()?,
                 ClientRequestArguments::new(value_array.into_iter().skip(1).collect()),
+            )),
+            _ => Err(anyhow::anyhow!("Unexpected command format")),
+        }
+    }
+}
+
+impl TExtractQuery<HandShakeRequest, PeerRequestArguments> for TcpStream {
+    async fn extract_query(&mut self) -> anyhow::Result<(HandShakeRequest, PeerRequestArguments)> {
+        let query_io = self.read_value().await?;
+        match query_io {
+            // TODO refactor
+            QueryIO::Array(value_array) => Ok((
+                value_array
+                    .first()
+                    .context("request not given")?
+                    .clone()
+                    .unpack_bulk_str()?
+                    .try_into()?,
+                PeerRequestArguments::new(value_array.into_iter().skip(1).collect()),
             )),
             _ => Err(anyhow::anyhow!("Unexpected command format")),
         }
