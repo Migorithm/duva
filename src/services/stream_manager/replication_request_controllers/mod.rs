@@ -1,7 +1,7 @@
 use arguments::PeerRequestArguments;
 use replication_request::ReplicationRequest;
 
-use crate::services::config::{config_manager::ConfigManager, ConfigCommand};
+use crate::services::config::config_manager::ConfigManager;
 
 use super::query_io::QueryIO;
 

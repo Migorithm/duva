@@ -1,15 +1,16 @@
-use std::io::ErrorKind;
-
 use crate::{
-    services::stream_manager::{
-        error::IoError,
-        interface::{TConnectStreamFactory, TGetPeerIp, TRead, TStream},
-        query_io::{parse, QueryIO},
-        PeerAddr,
+    services::{
+        cluster::PeerAddr,
+        stream_manager::{
+            error::IoError,
+            interface::{TConnectStreamFactory, TGetPeerIp, TRead, TStream},
+            query_io::{parse, QueryIO},
+        },
     },
     TStreamListener, TStreamListenerFactory,
 };
 use bytes::BytesMut;
+use std::io::ErrorKind;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::TcpListener,

@@ -23,6 +23,8 @@ use replication_request_controllers::{
 };
 use tokio::{task::yield_now, time::interval};
 
+use super::cluster::PeerAddr;
+
 /// Controller is a struct that will be used to read and write values to the client.
 pub struct StreamManager<T, U>
 where
@@ -102,8 +104,6 @@ where
     }
 }
 
-#[derive(Debug)]
-pub struct PeerAddr(pub String);
 impl<T> StreamManager<T, &'static ReplicationRequestController>
 where
     T: TStream,

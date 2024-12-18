@@ -55,7 +55,6 @@ async fn test_heartbeat_sent_to_multiple_replicas() {
         let _ = start_test_server(CancellationTokenFactory, manager).await;
     }
 
-
     // WHEN target replica connects to master
     let mut repl1_connecting_to_master = TcpStream::connect(master_cluster_bind_addr.clone())
         .await
@@ -64,5 +63,8 @@ async fn test_heartbeat_sent_to_multiple_replicas() {
 
     // THEN target replica sends 5 PING messages to fake replica
     // TODO: remove timeout when we implement the actual cluster heartbeat
-    timeout(std::time::Duration::from_secs(10), handler).await.unwrap().unwrap();
+    timeout(std::time::Duration::from_secs(10), handler)
+        .await
+        .unwrap()
+        .unwrap();
 }
