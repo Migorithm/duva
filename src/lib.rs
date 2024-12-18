@@ -94,11 +94,8 @@ where
         Ok(())
     }
 
-    async fn start_accepting_peer_connections(&self, replication_bind_addr: String) {
-        let replication_listener = self
-            .stream_listener
-            .create_listner(replication_bind_addr)
-            .await;
+    async fn start_accepting_peer_connections(&self, peer_bind_addr: String) {
+        let replication_listener = self.stream_listener.create_listner(peer_bind_addr).await;
         let connect_stream_factory = self.connect_stream_factory;
         let replication_request_controller = self.replication_request_controller;
 
