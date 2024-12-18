@@ -11,8 +11,6 @@ pub struct Config {
     pub(crate) dir: &'static str,
     pub dbfilename: &'static str,
     pub replication: Replication,
-    // TODO further implementation
-    pub peers: Vec<String>,
 }
 
 impl Config {
@@ -35,9 +33,6 @@ impl Config {
                     ConfigResource::ReplicationInfo => {
                         let _ = query
                             .respond_with(ConfigResponse::ReplicationInfo(self.replication.info()));
-                    }
-                    ConfigResource::Peers => {
-                        let _ = query.respond_with(ConfigResponse::Peers(self.peers.clone()));
                     }
                 },
                 ConfigMessage::Command(config_command) => match config_command {
@@ -101,7 +96,6 @@ impl Default for Config {
             dir: Box::leak(dir.into_boxed_str()),
             dbfilename: Box::leak(dbfilename.into_boxed_str()),
             replication: Replication::new(replicaof),
-            peers: vec![],
         }
     }
 }

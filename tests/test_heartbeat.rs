@@ -10,6 +10,7 @@ use common::{find_free_port_in_range, start_test_server, threeway_handshake_help
 use redis_starter_rust::{
     adapters::cancellation_token::CancellationTokenFactory,
     services::{
+        cluster::actor::ClusterActor,
         config::{config_actor::Config, config_manager::ConfigManager},
         stream_manager::interface::TStream,
     },
@@ -42,7 +43,7 @@ async fn test_heartbeat() {
     let mut manager = ConfigManager::new(config);
     manager.port = find_free_port_in_range(6000, 6553).await.unwrap();
     let master_cluster_bind_addr = manager.peer_bind_addr();
-    let _ = start_test_server(CancellationTokenFactory, manager).await;
+    let _ = start_test_server(CancellationTokenFactory, manager, ClusterActor::new()).await;
 
     // run the slave stream on a random port
     let slave_port = 6778;
@@ -66,7 +67,7 @@ async fn test_heartbeat_sent_to_multiple_replicas() {
     let mut manager = ConfigManager::new(config);
     manager.port = find_free_port_in_range(6000, 6553).await.unwrap();
     let master_cluster_bind_addr = manager.peer_bind_addr();
-    let _ = start_test_server(CancellationTokenFactory, manager).await;
+    let _ = start_test_server(CancellationTokenFactory, manager, ClusterActor::new()).await;
 
     // run the slave stream on a random port
     let repl_port1 = 6779;

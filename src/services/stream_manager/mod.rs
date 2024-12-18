@@ -3,24 +3,23 @@ pub mod error;
 pub mod interface;
 pub mod query_io;
 pub mod replication_request_controllers;
-use std::time::Duration;
-
+use super::cluster::actor::PeerAddr;
+use super::cluster::ClusterManager;
 use crate::services::stream_manager::client_request_controllers::client_request::ClientRequest;
 use crate::services::stream_manager::client_request_controllers::ClientRequestController;
-
-use anyhow::Context;
 use client_request_controllers::arguments::ClientRequestArguments;
 use error::IoError;
-use interface::{
-    TCancellationNotifier, TCancellationTokenFactory, TConnectStreamFactory, TStream,
-    TWriterFactory,
-};
-
+use interface::TCancellationNotifier;
+use interface::TCancellationTokenFactory;
+use interface::TConnectStreamFactory;
+use interface::TExtractQuery;
+use interface::TStream;
+use interface::TWriterFactory;
 use query_io::QueryIO;
-use replication_request_controllers::{
-    arguments::PeerRequestArguments, replication_request::HandShakeRequest,
-    ReplicationRequestController,
-};
+use replication_request_controllers::arguments::PeerRequestArguments;
+use replication_request_controllers::replication_request::HandShakeRequest;
+
+use std::time::Duration;
 use tokio::{task::yield_now, time::interval};
 
 /// Controller is a struct that will be used to read and write values to the client.
@@ -47,24 +46,8 @@ where
 
 impl<T> StreamManager<T, &'static ClientRequestController>
 where
-    T: TStream,
+    T: TStream + TExtractQuery<ClientRequest, ClientRequestArguments>,
 {
-    async fn extract_query(&mut self) -> anyhow::Result<(ClientRequest, ClientRequestArguments)> {
-        let query_io = self.stream.read_value().await?;
-        match query_io {
-            QueryIO::Array(value_array) => Ok((
-                value_array
-                    .first()
-                    .context("request not given")?
-                    .clone()
-                    .unpack_bulk_str()?
-                    .try_into()?,
-                ClientRequestArguments::new(value_array.into_iter().skip(1).collect()),
-            )),
-            _ => Err(anyhow::anyhow!("Unexpected command format")),
-        }
-    }
-
     pub async fn handle_single_client_stream<F: TWriterFactory>(
         mut self,
         cancellation_token_factory: impl TCancellationTokenFactory,
@@ -72,7 +55,7 @@ where
         const TIMEOUT: u64 = 100;
 
         loop {
-            let Ok((request, query_args)) = self.extract_query().await else {
+            let Ok((request, query_args)) = self.stream.extract_query().await else {
                 eprintln!("invalid user request");
                 continue;
             };
@@ -102,32 +85,10 @@ where
     }
 }
 
-#[derive(Debug)]
-pub struct PeerAddr(pub String);
-impl<T> StreamManager<T, &'static ReplicationRequestController>
+impl<T> StreamManager<T, &'static ClusterManager>
 where
-    T: TStream,
+    T: TStream + TExtractQuery<HandShakeRequest, PeerRequestArguments>,
 {
-    async fn extract_query<R>(&mut self) -> anyhow::Result<(R, PeerRequestArguments)>
-    where
-        R: TryFrom<String>,
-        anyhow::Error: From<R::Error>,
-    {
-        let query_io = self.stream.read_value().await?;
-        match query_io {
-            // TODO refactor
-            QueryIO::Array(value_array) => Ok((
-                value_array
-                    .first()
-                    .context("request not given")?
-                    .clone()
-                    .unpack_bulk_str()?
-                    .try_into()?,
-                PeerRequestArguments::new(value_array.into_iter().skip(1).collect()),
-            )),
-            _ => Err(anyhow::anyhow!("Unexpected command format")),
-        }
-    }
     async fn send_simple_string(&mut self, value: &str) -> Result<(), IoError> {
         self.send(QueryIO::SimpleString(value.to_string())).await
     }
@@ -157,14 +118,15 @@ where
     }
 
     async fn handle_ping(&mut self) -> anyhow::Result<()> {
-        let (HandShakeRequest::Ping, _) = self.extract_query().await? else {
+        let Ok((HandShakeRequest::Ping, _)) = self.stream.extract_query().await else {
             return Err(anyhow::anyhow!("Ping not given"));
         };
+
         self.send_simple_string("PONG").await?;
         Ok(())
     }
     async fn handle_replconf_listening_port(&mut self) -> anyhow::Result<i16> {
-        let (HandShakeRequest::ReplConf, query_args) = self.extract_query().await? else {
+        let (HandShakeRequest::ReplConf, query_args) = self.stream.extract_query().await? else {
             return Err(anyhow::anyhow!("ReplConf not given during handshake"));
         };
         let port = if query_args.first() == Some(&QueryIO::BulkString("listening-port".to_string()))
@@ -179,7 +141,7 @@ where
     }
 
     async fn handle_replconf_capa(&mut self) -> anyhow::Result<Vec<(String, String)>> {
-        let (HandShakeRequest::ReplConf, query_args) = self.extract_query().await? else {
+        let (HandShakeRequest::ReplConf, query_args) = self.stream.extract_query().await? else {
             return Err(anyhow::anyhow!("ReplConf not given during handshake"));
         };
         let capa_val_vec = query_args.take_capabilities()?;
@@ -188,7 +150,7 @@ where
         Ok(capa_val_vec)
     }
     async fn handle_psync(&mut self) -> anyhow::Result<(String, i64)> {
-        let (HandShakeRequest::Psync, query_args) = self.extract_query().await? else {
+        let (HandShakeRequest::Psync, query_args) = self.stream.extract_query().await? else {
             return Err(anyhow::anyhow!("Psync not given during handshake"));
         };
         let (repl_id, offset) = query_args.take_psync()?;
@@ -198,12 +160,8 @@ where
         Ok((repl_id, offset))
     }
 
-    async fn get_peers(&self) -> anyhow::Result<Vec<String>> {
-        let peers = self.controller.config_manager.get_peers().await?;
-        Ok(peers)
-    }
     pub async fn disseminate_peers(&mut self) -> anyhow::Result<()> {
-        let peers = self.get_peers().await?;
+        let peers = self.controller.get_peers().await?;
         if peers.is_empty() {
             return Ok(());
         }
@@ -213,8 +171,8 @@ where
                 "PEERS {}",
                 peers
                     .iter()
-                    .map(|peer| peer.to_string())
-                    .collect::<Vec<String>>()
+                    .map(|x| x.to_string())
+                    .collect::<Vec<_>>()
                     .join(" ")
             )
             .as_str(),
@@ -238,7 +196,7 @@ where
     // - Let the requesting peer know the other peers so they can connect
     pub(crate) async fn handle_peer_stream(
         mut self,
-        connect_stream_factory: impl TConnectStreamFactory,
+        connect_stream_factory: impl TConnectStreamFactory<T>,
     ) -> anyhow::Result<()> {
         let peer_addr = self.establish_threeway_handshake().await.unwrap();
 
@@ -250,19 +208,19 @@ where
 
         // Following infinite loop may need to be changed once replica information is given
         loop {
-            let (request, query_args) = self.extract_query().await?;
+            let (request, query_args) = self.stream.extract_query().await?;
 
             // * Having error from the following will not a concern as liveness concern is on cluster manager
-            let _ = match self.controller.handle(request, query_args).await {
-                Ok(response) => self.send(response).await,
-                Err(e) => self.send(QueryIO::Err(e.to_string())).await,
-            };
+            // let _ = match self.controller.handle(request, query_args).await {
+            //     Ok(response) => self.send(response).await,
+            //     Err(e) => self.send(QueryIO::Err(e.to_string())).await,
+            // };
         }
     }
 
     async fn schedule_heartbeat(
         &mut self,
-        connect_stream_factory: impl TConnectStreamFactory,
+        connect_stream_factory: impl TConnectStreamFactory<T>,
         peer_addr: PeerAddr,
     ) -> anyhow::Result<()> {
         // 1000 mills just because that's default for Redis.

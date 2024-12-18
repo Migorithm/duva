@@ -12,6 +12,11 @@ pub trait TStream: TGetPeerIp + Send + Sync + 'static {
     ) -> impl std::future::Future<Output = Result<(), IoError>> + Send;
 }
 
+pub trait TExtractQuery<R, A> {
+    fn extract_query(&mut self)
+        -> impl std::future::Future<Output = anyhow::Result<(R, A)>> + Send;
+}
+
 pub trait TRead {
     fn read_bytes(
         &mut self,
@@ -42,28 +47,16 @@ pub trait TCancellationWatcher: Send {
     fn watch(&mut self) -> bool;
 }
 
-pub trait TStreamListener: Sync + Send + 'static {
-    fn listen(
-        &self,
-    ) -> impl std::future::Future<
-        Output = std::result::Result<(impl TStream, std::net::SocketAddr), IoError>,
-    > + Send;
-}
-
 pub trait TGetPeerIp {
     fn get_peer_ip(&self) -> Result<String, IoError>;
 }
 
-pub trait TStreamListenerFactory: Sync + Send + 'static {
-    fn create_listner(
-        &self,
-        bind_addr: String,
-    ) -> impl std::future::Future<Output = impl TStreamListener> + Send;
-}
-
-pub trait TConnectStreamFactory: Sync + Send + Copy + 'static {
+pub trait TConnectStreamFactory<T>: Sync + Send + Copy + 'static
+where
+    T: TStream,
+{
     fn connect(
         &self,
         addr: PeerAddr,
-    ) -> impl std::future::Future<Output = Result<impl TStream, IoError>> + Send;
+    ) -> impl std::future::Future<Output = Result<T, IoError>> + Send;
 }

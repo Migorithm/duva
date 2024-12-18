@@ -1,18 +1,23 @@
-use std::io::ErrorKind;
-
-use crate::{
-    services::stream_manager::{
+use crate::services::{
+    cluster::actor::PeerAddr,
+    stream_manager::{
+        client_request_controllers::{
+            arguments::ClientRequestArguments, client_request::ClientRequest,
+        },
         error::IoError,
-        interface::{TConnectStreamFactory, TGetPeerIp, TRead, TStream},
+        interface::{TConnectStreamFactory, TExtractQuery, TGetPeerIp, TRead, TStream},
         query_io::{parse, QueryIO},
-        PeerAddr,
+        replication_request_controllers::{
+            arguments::PeerRequestArguments, replication_request::HandShakeRequest,
+        },
     },
-    TStreamListener, TStreamListenerFactory,
 };
+use anyhow::Context;
 use bytes::BytesMut;
+use std::io::ErrorKind;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
-    net::TcpListener,
+    net::{TcpListener, TcpStream},
 };
 
 impl TStream for tokio::net::TcpStream {
@@ -57,6 +62,43 @@ impl TStream for tokio::net::TcpStream {
     }
 }
 
+impl TExtractQuery<ClientRequest, ClientRequestArguments> for TcpStream {
+    async fn extract_query(&mut self) -> anyhow::Result<(ClientRequest, ClientRequestArguments)> {
+        let query_io = self.read_value().await?;
+        match query_io {
+            QueryIO::Array(value_array) => Ok((
+                value_array
+                    .first()
+                    .context("request not given")?
+                    .clone()
+                    .unpack_bulk_str()?
+                    .try_into()?,
+                ClientRequestArguments::new(value_array.into_iter().skip(1).collect()),
+            )),
+            _ => Err(anyhow::anyhow!("Unexpected command format")),
+        }
+    }
+}
+
+impl TExtractQuery<HandShakeRequest, PeerRequestArguments> for TcpStream {
+    async fn extract_query(&mut self) -> anyhow::Result<(HandShakeRequest, PeerRequestArguments)> {
+        let query_io = self.read_value().await?;
+        match query_io {
+            // TODO refactor
+            QueryIO::Array(value_array) => Ok((
+                value_array
+                    .first()
+                    .context("request not given")?
+                    .clone()
+                    .unpack_bulk_str()?
+                    .try_into()?,
+                PeerRequestArguments::new(value_array.into_iter().skip(1).collect()),
+            )),
+            _ => Err(anyhow::anyhow!("Unexpected command format")),
+        }
+    }
+}
+
 impl TRead for tokio::net::TcpStream {
     // TCP doesn't inherently delimit messages.
     // The data arrives in a continuous stream of bytes. And
@@ -97,26 +139,17 @@ impl TGetPeerIp for tokio::net::TcpStream {
     }
 }
 
-impl TStreamListener for TcpListener {
-    async fn listen(&self) -> std::result::Result<(impl TStream, std::net::SocketAddr), IoError> {
-        match self.accept().await {
-            Ok(val) => Ok((val.0, val.1)),
-            Err(err) => Err(err.kind().into()),
-        }
-    }
-}
-
 pub struct TokioStreamListenerFactory;
-impl TStreamListenerFactory for TokioStreamListenerFactory {
-    async fn create_listner(&self, bind_addr: String) -> impl TStreamListener {
+impl TokioStreamListenerFactory {
+    pub async fn create_listner(&self, bind_addr: String) -> TcpListener {
         TcpListener::bind(bind_addr).await.expect("failed to bind")
     }
 }
 
 #[derive(Clone, Copy)]
 pub struct TokioConnectStreamFactory;
-impl TConnectStreamFactory for TokioConnectStreamFactory {
-    async fn connect(&self, addr: PeerAddr) -> Result<impl TStream, IoError> {
+impl TConnectStreamFactory<TcpStream> for TokioConnectStreamFactory {
+    async fn connect(&self, addr: PeerAddr) -> Result<TcpStream, IoError> {
         match tokio::net::TcpStream::connect(addr.0).await {
             Ok(stream) => Ok(stream),
             Err(err) => Err(err.kind().into()),
