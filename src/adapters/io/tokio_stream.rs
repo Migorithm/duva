@@ -2,13 +2,17 @@ use crate::{
     services::{
         cluster::actor::PeerAddr,
         stream_manager::{
+            client_request_controllers::{
+                arguments::ClientRequestArguments, client_request::ClientRequest,
+            },
             error::IoError,
-            interface::{TConnectStreamFactory, TGetPeerIp, TRead, TStream},
-            query_io::{parse, QueryIO},
+            interface::{TConnectStreamFactory, TExtractQuery, TGetPeerIp, TRead, TStream},
+            query_io::{self, parse, QueryIO},
         },
     },
     TStreamListener, TStreamListenerFactory,
 };
+use anyhow::Context;
 use bytes::BytesMut;
 use std::io::ErrorKind;
 use tokio::{
@@ -55,6 +59,24 @@ impl TStream for tokio::net::TcpStream {
                 eprintln!("error = {:?}", e);
                 Into::<IoError>::into(e.kind())
             })
+    }
+}
+
+impl TExtractQuery<ClientRequest, ClientRequestArguments> for TcpStream {
+    async fn extract_query(&mut self) -> anyhow::Result<(ClientRequest, ClientRequestArguments)> {
+        let query_io = self.read_value().await?;
+        match query_io {
+            QueryIO::Array(value_array) => Ok((
+                value_array
+                    .first()
+                    .context("request not given")?
+                    .clone()
+                    .unpack_bulk_str()?
+                    .try_into()?,
+                ClientRequestArguments::new(value_array.into_iter().skip(1).collect()),
+            )),
+            _ => Err(anyhow::anyhow!("Unexpected command format")),
+        }
     }
 }
 

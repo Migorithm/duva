@@ -9,8 +9,10 @@ use services::config::config_manager::ConfigManager;
 use services::statefuls::cache::cache_manager::CacheManager;
 use services::statefuls::cache::ttl_manager::TtlSchedulerInbox;
 use services::statefuls::persist::persist_actor::PersistActor;
+use services::stream_manager::client_request_controllers::arguments::ClientRequestArguments;
+use services::stream_manager::client_request_controllers::client_request::ClientRequest;
 use services::stream_manager::interface::{
-    TCancellationTokenFactory, TConnectStreamFactory, TStream, TStreamListener,
+    TCancellationTokenFactory, TConnectStreamFactory, TExtractQuery, TStream, TStreamListener,
     TStreamListenerFactory,
 };
 use services::stream_manager::replication_request_controllers::ReplicationRequestController;
@@ -21,7 +23,7 @@ pub struct StartUpFacade<T, U, V, S>
 where
     U: TStreamListenerFactory<S>,
     V: TCancellationTokenFactory,
-    S: TStream,
+    S: TStream + TExtractQuery<ClientRequest, ClientRequestArguments>,
 {
     connect_stream_factory: T,
     stream_listener: U,
@@ -39,7 +41,7 @@ where
     T: TConnectStreamFactory<S>,
     U: TStreamListenerFactory<S>,
     V: TCancellationTokenFactory,
-    S: TStream,
+    S: TStream + TExtractQuery<ClientRequest, ClientRequestArguments>,
 {
     pub fn new(
         connect_stream_factory: T,
@@ -95,13 +97,14 @@ where
     }
 
     async fn start_accepting_peer_connections(&self, peer_bind_addr: String) {
-        let replication_listener = self.stream_listener.create_listner(peer_bind_addr).await;
+        let peer_listener = self.stream_listener.create_listner(peer_bind_addr).await;
         let connect_stream_factory = self.connect_stream_factory;
         let replication_request_controller = self.replication_request_controller;
 
         tokio::spawn(async move {
             loop {
-                match replication_listener.listen().await {
+                match peer_listener.listen().await {
+                    // ? how do we know if incoming connection is from a peer or replica?
                     Ok((peer_stream, _socket_addr)) => {
                         let query_manager =
                             StreamManager::new(peer_stream, replication_request_controller);

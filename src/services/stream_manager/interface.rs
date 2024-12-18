@@ -1,6 +1,13 @@
 use bytes::BytesMut;
 
-use super::{error::IoError, query_io::QueryIO, PeerAddr};
+use super::{
+    client_request_controllers::{
+        arguments::ClientRequestArguments, client_request::ClientRequest,
+    },
+    error::IoError,
+    query_io::QueryIO,
+    PeerAddr,
+};
 
 pub trait TStream: TGetPeerIp + Send + Sync + 'static {
     // TODO deprecated
@@ -10,6 +17,11 @@ pub trait TStream: TGetPeerIp + Send + Sync + 'static {
         &mut self,
         value: QueryIO,
     ) -> impl std::future::Future<Output = Result<(), IoError>> + Send;
+}
+
+pub trait TExtractQuery<R, A> {
+    fn extract_query(&mut self)
+        -> impl std::future::Future<Output = anyhow::Result<(R, A)>> + Send;
 }
 
 pub trait TRead {
@@ -44,7 +56,7 @@ pub trait TCancellationWatcher: Send {
 
 pub trait TStreamListener<T>: Sync + Send + 'static
 where
-    T: TStream,
+    T: TStream + TExtractQuery<ClientRequest, ClientRequestArguments>,
 {
     fn listen(
         &self,
@@ -57,7 +69,7 @@ pub trait TGetPeerIp {
 
 pub trait TStreamListenerFactory<T>: Sync + Send + 'static
 where
-    T: TStream,
+    T: TStream + TExtractQuery<ClientRequest, ClientRequestArguments>,
 {
     fn create_listner(
         &self,

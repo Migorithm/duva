@@ -12,8 +12,8 @@ use anyhow::Context;
 use client_request_controllers::arguments::ClientRequestArguments;
 use error::IoError;
 use interface::{
-    TCancellationNotifier, TCancellationTokenFactory, TConnectStreamFactory, TStream,
-    TWriterFactory,
+    TCancellationNotifier, TCancellationTokenFactory, TConnectStreamFactory, TExtractQuery,
+    TStream, TWriterFactory,
 };
 
 use query_io::QueryIO;
@@ -49,24 +49,8 @@ where
 
 impl<T> StreamManager<T, &'static ClientRequestController>
 where
-    T: TStream,
+    T: TStream + TExtractQuery<ClientRequest, ClientRequestArguments>,
 {
-    async fn extract_query(&mut self) -> anyhow::Result<(ClientRequest, ClientRequestArguments)> {
-        let query_io = self.stream.read_value().await?;
-        match query_io {
-            QueryIO::Array(value_array) => Ok((
-                value_array
-                    .first()
-                    .context("request not given")?
-                    .clone()
-                    .unpack_bulk_str()?
-                    .try_into()?,
-                ClientRequestArguments::new(value_array.into_iter().skip(1).collect()),
-            )),
-            _ => Err(anyhow::anyhow!("Unexpected command format")),
-        }
-    }
-
     pub async fn handle_single_client_stream<F: TWriterFactory>(
         mut self,
         cancellation_token_factory: impl TCancellationTokenFactory,
@@ -74,7 +58,7 @@ where
         const TIMEOUT: u64 = 100;
 
         loop {
-            let Ok((request, query_args)) = self.extract_query().await else {
+            let Ok((request, query_args)) = self.stream.extract_query().await else {
                 eprintln!("invalid user request");
                 continue;
             };
