@@ -11,7 +11,10 @@
 use common::{find_free_port_in_range, start_test_server, TestStreamHandler};
 use redis_starter_rust::{
     adapters::cancellation_token::CancellationTokenFactory,
-    services::config::{config_actor::Config, config_manager::ConfigManager},
+    services::{
+        cluster::actor::ClusterActor,
+        config::{config_actor::Config, config_manager::ConfigManager},
+    },
 };
 use tokio::net::TcpStream;
 mod common;
@@ -25,7 +28,9 @@ async fn test_threeway_handshake() {
     // ! `peer_bind_addr` is bind_addr dedicated for peer connections
     manager.port = find_free_port_in_range(6000, 6553).await.unwrap();
     let master_cluster_bind_addr = manager.peer_bind_addr();
-    let _ = start_test_server(CancellationTokenFactory, manager).await;
+    let cluster_actor: ClusterActor = ClusterActor::new();
+
+    let _ = start_test_server(CancellationTokenFactory, manager, cluster_actor).await;
     let mut client_stream = TcpStream::connect(master_cluster_bind_addr).await.unwrap();
     let mut h: TestStreamHandler = client_stream.split().into();
 

@@ -1,19 +1,16 @@
-use crate::{
-    services::{
-        cluster::actor::PeerAddr,
-        stream_manager::{
-            client_request_controllers::{
-                arguments::ClientRequestArguments, client_request::ClientRequest,
-            },
-            error::IoError,
-            interface::{TConnectStreamFactory, TExtractQuery, TGetPeerIp, TRead, TStream},
-            query_io::{parse, QueryIO},
-            replication_request_controllers::{
-                arguments::PeerRequestArguments, replication_request::HandShakeRequest,
-            },
+use crate::services::{
+    cluster::actor::PeerAddr,
+    stream_manager::{
+        client_request_controllers::{
+            arguments::ClientRequestArguments, client_request::ClientRequest,
+        },
+        error::IoError,
+        interface::{TConnectStreamFactory, TExtractQuery, TGetPeerIp, TRead, TStream},
+        query_io::{parse, QueryIO},
+        replication_request_controllers::{
+            arguments::PeerRequestArguments, replication_request::HandShakeRequest,
         },
     },
-    TStreamListener, TStreamListenerFactory,
 };
 use anyhow::Context;
 use bytes::BytesMut;
@@ -142,18 +139,9 @@ impl TGetPeerIp for tokio::net::TcpStream {
     }
 }
 
-impl TStreamListener<TcpStream> for TcpListener {
-    async fn listen(&self) -> std::result::Result<(TcpStream, std::net::SocketAddr), IoError> {
-        match self.accept().await {
-            Ok(val) => Ok((val.0, val.1)),
-            Err(err) => Err(err.kind().into()),
-        }
-    }
-}
-
 pub struct TokioStreamListenerFactory;
-impl TStreamListenerFactory<TcpStream> for TokioStreamListenerFactory {
-    async fn create_listner(&self, bind_addr: String) -> impl TStreamListener<TcpStream> {
+impl TokioStreamListenerFactory {
+    pub async fn create_listner(&self, bind_addr: String) -> TcpListener {
         TcpListener::bind(bind_addr).await.expect("failed to bind")
     }
 }

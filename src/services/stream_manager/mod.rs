@@ -3,27 +3,24 @@ pub mod error;
 pub mod interface;
 pub mod query_io;
 pub mod replication_request_controllers;
-use std::time::Duration;
-
+use super::cluster::actor::PeerAddr;
+use super::cluster::ClusterManager;
 use crate::services::stream_manager::client_request_controllers::client_request::ClientRequest;
 use crate::services::stream_manager::client_request_controllers::ClientRequestController;
-
-use anyhow::Context;
 use client_request_controllers::arguments::ClientRequestArguments;
 use error::IoError;
-use interface::{
-    TCancellationNotifier, TCancellationTokenFactory, TConnectStreamFactory, TExtractQuery,
-    TStream, TWriterFactory,
-};
-
+use interface::TCancellationNotifier;
+use interface::TCancellationTokenFactory;
+use interface::TConnectStreamFactory;
+use interface::TExtractQuery;
+use interface::TStream;
+use interface::TWriterFactory;
 use query_io::QueryIO;
-use replication_request_controllers::{
-    arguments::PeerRequestArguments, replication_request::HandShakeRequest,
-    ReplicationRequestController,
-};
-use tokio::{task::yield_now, time::interval};
+use replication_request_controllers::arguments::PeerRequestArguments;
+use replication_request_controllers::replication_request::HandShakeRequest;
 
-use super::cluster::actor::PeerAddr;
+use std::time::Duration;
+use tokio::{task::yield_now, time::interval};
 
 /// Controller is a struct that will be used to read and write values to the client.
 pub struct StreamManager<T, U>
@@ -88,7 +85,7 @@ where
     }
 }
 
-impl<T> StreamManager<T, &'static ReplicationRequestController>
+impl<T> StreamManager<T, &'static ClusterManager>
 where
     T: TStream + TExtractQuery<HandShakeRequest, PeerRequestArguments>,
 {
@@ -163,12 +160,8 @@ where
         Ok((repl_id, offset))
     }
 
-    async fn get_peers(&self) -> anyhow::Result<Vec<String>> {
-        let peers = self.controller.config_manager.get_peers().await?;
-        Ok(peers)
-    }
     pub async fn disseminate_peers(&mut self) -> anyhow::Result<()> {
-        let peers = self.get_peers().await?;
+        let peers = self.controller.get_peers().await?;
         if peers.is_empty() {
             return Ok(());
         }
@@ -178,8 +171,8 @@ where
                 "PEERS {}",
                 peers
                     .iter()
-                    .map(|peer| peer.to_string())
-                    .collect::<Vec<String>>()
+                    .map(|x| x.to_string())
+                    .collect::<Vec<_>>()
                     .join(" ")
             )
             .as_str(),

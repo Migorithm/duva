@@ -1,10 +1,8 @@
-use redis_starter_rust::adapters::io::tokio_stream::TokioConnectStreamFactory;
+use redis_starter_rust::services::cluster::actor::{ClusterActor, Connected, PeerAddr};
+use redis_starter_rust::services::config::config_actor::Config;
 use redis_starter_rust::services::config::config_manager::ConfigManager;
 use redis_starter_rust::services::stream_manager::interface::{TCancellationTokenFactory, TStream};
 use redis_starter_rust::services::stream_manager::query_io::QueryIO;
-use redis_starter_rust::{
-    adapters::io::tokio_stream::TokioStreamListenerFactory, services::config::config_actor::Config,
-};
 use redis_starter_rust::{StartUpFacade, TNotifyStartUp};
 use tokio::net::TcpStream;
 
@@ -95,16 +93,12 @@ impl TNotifyStartUp for StartFlag {
 pub async fn start_test_server(
     cancellation_token_factory: impl TCancellationTokenFactory,
     config: ConfigManager,
+    cluster_actor: ClusterActor,
 ) -> tokio::task::JoinHandle<Result<(), anyhow::Error>> {
     let notify = Arc::new(tokio::sync::Notify::new());
     let start_flag = StartFlag(notify.clone());
 
-    let start_up_facade = StartUpFacade::new(
-        TokioConnectStreamFactory,
-        TokioStreamListenerFactory,
-        cancellation_token_factory,
-        config,
-    );
+    let start_up_facade = StartUpFacade::new(cancellation_token_factory, config, cluster_actor);
 
     let h = tokio::spawn(async move {
         start_up_facade.run(start_flag).await?;
@@ -215,4 +209,12 @@ pub async fn threeway_handshake_helper(
     );
 
     values.get(1).cloned()
+}
+
+pub fn create_cluster_actor_with_peers(peers: Vec<String>) -> ClusterActor {
+    let mut cluster_actor = ClusterActor::new();
+    for peer in peers {
+        cluster_actor.peers.insert(PeerAddr(peer), Connected::None);
+    }
+    cluster_actor
 }

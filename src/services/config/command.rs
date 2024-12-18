@@ -27,7 +27,6 @@ pub enum ConfigResource {
     DbFileName,
     FilePath,
     ReplicationInfo,
-    Peers,
 }
 
 pub enum ConfigResponse {
@@ -35,7 +34,6 @@ pub enum ConfigResponse {
     DbFileName(String),
     FilePath(String),
     ReplicationInfo(Vec<String>),
-    Peers(Vec<String>),
 }
 
 pub enum ConfigCommand {

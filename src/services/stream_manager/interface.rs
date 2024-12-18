@@ -1,13 +1,6 @@
 use bytes::BytesMut;
 
-use super::{
-    client_request_controllers::{
-        arguments::ClientRequestArguments, client_request::ClientRequest,
-    },
-    error::IoError,
-    query_io::QueryIO,
-    PeerAddr,
-};
+use super::{error::IoError, query_io::QueryIO, PeerAddr};
 
 pub trait TStream: TGetPeerIp + Send + Sync + 'static {
     // TODO deprecated
@@ -54,27 +47,8 @@ pub trait TCancellationWatcher: Send {
     fn watch(&mut self) -> bool;
 }
 
-pub trait TStreamListener<T>: Sync + Send + 'static
-where
-    T: TStream + TExtractQuery<ClientRequest, ClientRequestArguments>,
-{
-    fn listen(
-        &self,
-    ) -> impl std::future::Future<Output = std::result::Result<(T, std::net::SocketAddr), IoError>> + Send;
-}
-
 pub trait TGetPeerIp {
     fn get_peer_ip(&self) -> Result<String, IoError>;
-}
-
-pub trait TStreamListenerFactory<T>: Sync + Send + 'static
-where
-    T: TStream + TExtractQuery<ClientRequest, ClientRequestArguments>,
-{
-    fn create_listner(
-        &self,
-        bind_addr: String,
-    ) -> impl std::future::Future<Output = impl TStreamListener<T>> + Send;
 }
 
 pub trait TConnectStreamFactory<T>: Sync + Send + Copy + 'static

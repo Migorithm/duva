@@ -4,8 +4,11 @@
 /// After 300ms, we get the key again and check if the value is not returned (-1)
 mod common;
 use common::{init_config_manager_with_free_port, start_test_server, TestStreamHandler};
-use redis_starter_rust::services::stream_manager::interface::{
-    TCancellationNotifier, TCancellationTokenFactory, TCancellationWatcher,
+use redis_starter_rust::services::{
+    cluster::actor::ClusterActor,
+    stream_manager::interface::{
+        TCancellationNotifier, TCancellationTokenFactory, TCancellationWatcher,
+    },
 };
 use tokio::net::TcpStream;
 
@@ -13,8 +16,8 @@ use tokio::net::TcpStream;
 async fn test_cancellation_token() {
     // GIVEN
     let config = init_config_manager_with_free_port().await;
-
-    let _ = start_test_server(TestCancellationTokenFactory, config.clone()).await;
+    let cluster_actor = ClusterActor::new();
+    let _ = start_test_server(TestCancellationTokenFactory, config.clone(), cluster_actor).await;
 
     let mut client_stream = TcpStream::connect(config.bind_addr()).await.unwrap();
     let mut h: TestStreamHandler = client_stream.split().into();
