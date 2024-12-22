@@ -53,29 +53,28 @@ async fn test_heartbeat_sent_to_multiple_replicas() {
     // run the fake replica server in advance
     let handler = tokio::spawn(replica_server_helper(fake_repl_port + 10000));
 
-    // run target replica server on specific port
-    let target_repl = 6782;
+    // WHEN - new replica is connecting to master
     {
+        let connecting_replica_port = 6782;
         let mut config = Config::default();
         config.replication.master_port = Some(manager.port);
         config.replication.master_host = Some("localhost".to_string());
         let mut manager = ConfigManager::new(config);
-        manager.port = target_repl;
+        manager.port = connecting_replica_port;
         let _ = start_test_server(
             CancellationTokenFactory,
             manager,
             create_cluster_actor_with_peers(vec![fake_repl_address.clone()]),
         )
         .await;
+        // WHEN target replica connects to master
+        let mut repl1_connecting_to_master = TcpStream::connect(master_cluster_bind_addr.clone())
+            .await
+            .unwrap();
+        threeway_handshake_helper(&mut repl1_connecting_to_master, connecting_replica_port).await;
     }
 
-    // WHEN target replica connects to master
-    let mut repl1_connecting_to_master = TcpStream::connect(master_cluster_bind_addr.clone())
-        .await
-        .unwrap();
-    threeway_handshake_helper(&mut repl1_connecting_to_master, target_repl).await;
-
-    // THEN target replica sends 5 PING messages to fake replica
+    // THEN newly connected replica sends PINGs to fake replica
     // TODO: remove timeout when we implement the actual cluster heartbeat
     timeout(std::time::Duration::from_secs(10), handler)
         .await
