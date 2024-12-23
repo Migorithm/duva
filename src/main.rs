@@ -2,7 +2,7 @@ use redis_starter_rust::{
     adapters::cancellation_token::CancellationTokenFactory,
     services::{
         cluster::actor::ClusterActor,
-        config::{config_actor::Config, config_manager::ConfigManager},
+        config::{actor::Config, manager::ConfigManager},
     },
     StartUpFacade,
 };

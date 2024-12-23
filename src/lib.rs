@@ -6,7 +6,7 @@ use adapters::io::tokio_stream::{TokioConnectStreamFactory, TokioStreamListenerF
 use anyhow::Result;
 use services::cluster::actor::ClusterActor;
 use services::cluster::manager::ClusterManager;
-use services::config::config_manager::ConfigManager;
+use services::config::manager::ConfigManager;
 
 use services::statefuls::cache::cache_manager::CacheManager;
 use services::statefuls::cache::ttl_manager::TtlSchedulerInbox;

@@ -1,4 +1,4 @@
-use crate::services::config::config_manager::ConfigManager;
+use crate::services::config::manager::ConfigManager;
 use crate::services::config::ConfigResponse;
 use crate::services::statefuls::cache::cache_manager::CacheManager;
 use crate::services::statefuls::cache::ttl_manager::TtlSchedulerInbox;

@@ -5,7 +5,7 @@ use crate::env_var;
 use super::command::ConfigCommand;
 use super::command::ConfigMessage;
 use super::command::ConfigQuery;
-use super::config_actor::Config;
+use super::actor::Config;
 use super::ConfigResource;
 use super::ConfigResponse;
 

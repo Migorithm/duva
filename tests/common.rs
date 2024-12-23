@@ -1,6 +1,6 @@
 use redis_starter_rust::services::cluster::actor::{ClusterActor, Connected, PeerAddr};
-use redis_starter_rust::services::config::config_actor::Config;
-use redis_starter_rust::services::config::config_manager::ConfigManager;
+use redis_starter_rust::services::config::actor::Config;
+use redis_starter_rust::services::config::manager::ConfigManager;
 use redis_starter_rust::services::stream_manager::interface::{TCancellationTokenFactory, TStream};
 use redis_starter_rust::services::stream_manager::query_io::QueryIO;
 use redis_starter_rust::{StartUpFacade, TNotifyStartUp};

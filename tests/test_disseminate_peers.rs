@@ -7,7 +7,7 @@ use common::{
 use redis_starter_rust::{
     adapters::cancellation_token::CancellationTokenFactory,
     services::{
-        config::{config_actor::Config, config_manager::ConfigManager},
+        config::{actor::Config, manager::ConfigManager},
         stream_manager::interface::TStream,
     },
 };
