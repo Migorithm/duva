@@ -18,7 +18,7 @@ pub enum Connected {
         peer_stream: TcpStream,
         replication_stream: TcpStream,
     },
-    ClusterMemeber {
+    ClusterMember {
         peer_stream: TcpStream,
     },
     None,
