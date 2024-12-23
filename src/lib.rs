@@ -5,7 +5,7 @@ use crate::services::stream_manager::client_request_controllers::ClientRequestCo
 use adapters::io::tokio_stream::{TokioConnectStreamFactory, TokioStreamListenerFactory};
 use anyhow::Result;
 use services::cluster::actor::ClusterActor;
-use services::cluster::ClusterManager;
+use services::cluster::manager::ClusterManager;
 use services::config::config_manager::ConfigManager;
 
 use services::statefuls::cache::cache_manager::CacheManager;

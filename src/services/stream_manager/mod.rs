@@ -4,7 +4,7 @@ pub mod interface;
 pub mod query_io;
 pub mod replication_request_controllers;
 use super::cluster::actor::PeerAddr;
-use super::cluster::ClusterManager;
+use crate::services::cluster::manager::ClusterManager;
 use crate::services::stream_manager::client_request_controllers::client_request::ClientRequest;
 use crate::services::stream_manager::client_request_controllers::ClientRequestController;
 use client_request_controllers::arguments::ClientRequestArguments;
