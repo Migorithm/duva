@@ -1,6 +1,9 @@
 pub mod actor;
-use actor::{ClusterActor, ClusterCommand, PeerAddr};
+mod command;
+
+use actor::{ClusterActor, PeerAddr};
 use tokio::sync::mpsc::Sender;
+use command::ClusterCommand;
 
 #[derive(Clone)]
 pub struct ClusterManager(Sender<ClusterCommand>);
