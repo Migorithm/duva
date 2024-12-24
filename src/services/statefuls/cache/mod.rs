@@ -1,9 +1,9 @@
 use std::time::SystemTime;
 
-pub mod cache_actor;
-pub mod cache_manager;
+pub mod actor;
+pub mod manager;
 
-pub mod ttl_manager;
+pub mod ttl;
 
 #[derive(Debug, Clone)]
 pub enum CacheEntry {
