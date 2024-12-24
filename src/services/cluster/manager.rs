@@ -1,20 +1,13 @@
-use std::time::Duration;
-
-use crate::adapters::io::tokio_stream::TokioConnectStreamFactory;
 use crate::make_smart_pointer;
 use crate::services::cluster::actor::{ClusterActor, PeerAddr};
-
 use crate::services::cluster::command::ClusterCommand;
-use crate::services::stream_manager::interface::{TConnectStreamFactory, TExtractQuery, TStream};
+use crate::services::stream_manager::interface::{TExtractQuery, TStream};
 use crate::services::stream_manager::query_io::QueryIO;
 use crate::services::stream_manager::request_controller::replica::arguments::PeerRequestArguments;
-use crate::services::stream_manager::request_controller::replica::replication_request::{
-    HandShakeRequest, ReplicationRequest,
-};
+use crate::services::stream_manager::request_controller::replica::replication_request::HandShakeRequest;
 use tokio::net::TcpStream;
 use tokio::sync::mpsc::Sender;
 use tokio::task::yield_now;
-use tokio::time::interval;
 
 #[derive(Clone)]
 pub struct ClusterManager(Sender<ClusterCommand>);
