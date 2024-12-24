@@ -9,9 +9,9 @@ use services::cluster::actor::ClusterActor;
 use services::cluster::manager::ClusterManager;
 use services::config::manager::ConfigManager;
 
-use services::statefuls::cache::cache_manager::CacheManager;
-use services::statefuls::cache::ttl_manager::TtlSchedulerInbox;
-use services::statefuls::persist::persist_actor::PersistActor;
+use services::statefuls::cache::manager::CacheManager;
+use services::statefuls::cache::ttl::manager::TtlSchedulerInbox;
+use services::statefuls::persist::actor::PersistActor;
 
 use services::stream_manager::error::IoError;
 use services::stream_manager::interface::TCancellationTokenFactory;
