@@ -40,7 +40,7 @@ impl<T> StreamManager<T, &'static ClientRequestController>
 where
     T: TStream + TExtractQuery<ClientRequest, ClientRequestArguments>,
 {
-    pub async fn handle_single_client_stream<F: TWriterFactory>(
+    pub(crate) async fn handle_single_client_stream<F: TWriterFactory>(
         mut self,
         cancellation_token_factory: impl TCancellationTokenFactory,
     ) {

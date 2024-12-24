@@ -4,9 +4,7 @@ use crate::adapters::io::tokio_stream::TokioConnectStreamFactory;
 use crate::services::cluster::actor::{ClusterActor, PeerAddr};
 
 use crate::services::cluster::command::ClusterCommand;
-use crate::services::stream_manager::interface::{
-    TConnectStreamFactory, TExtractQuery, TGetPeerIp, TStream,
-};
+use crate::services::stream_manager::interface::{TConnectStreamFactory, TExtractQuery, TStream};
 use crate::services::stream_manager::query_io::QueryIO;
 use crate::services::stream_manager::request_controller::replica::arguments::PeerRequestArguments;
 use crate::services::stream_manager::request_controller::replica::replication_request::{
@@ -72,8 +70,7 @@ impl ClusterManager {
         stream: &mut (impl TExtractQuery<ReplicationRequest, PeerRequestArguments> + TStream),
     ) -> anyhow::Result<()> {
         loop {
-            let Ok((ReplicationRequest::Ping, PeerRequestArguments(args))) =
-                stream.extract_query().await
+            let Ok((ReplicationRequest, PeerRequestArguments(args))) = stream.extract_query().await
             else {
                 eprintln!("invalid user request");
                 continue;

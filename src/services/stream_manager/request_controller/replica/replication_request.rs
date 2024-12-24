@@ -1,6 +1,4 @@
-pub enum ReplicationRequest {
-    Ping,
-}
+pub enum ReplicationRequest {}
 
 pub enum HandShakeRequest {
     Ping,

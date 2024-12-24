@@ -2,8 +2,8 @@ use crate::services::config::manager::ConfigManager;
 use crate::services::config::ConfigResponse;
 use crate::services::statefuls::cache::manager::CacheManager;
 use crate::services::statefuls::cache::ttl::manager::TtlSchedulerInbox;
-use crate::services::statefuls::persist::endec::encoder::encoding_processor::SavingProcessor;
 use crate::services::statefuls::persist::actor::PersistActor;
+use crate::services::statefuls::persist::endec::encoder::encoding_processor::SavingProcessor;
 use crate::services::stream_manager::interface::TCancellationWatcher;
 use crate::services::stream_manager::query_io::QueryIO;
 use arguments::ClientRequestArguments;
@@ -14,7 +14,7 @@ use crate::services::stream_manager::interface::TWriterFactory;
 pub mod arguments;
 pub mod client_request;
 
-pub struct ClientRequestController {
+pub(crate) struct ClientRequestController {
     config_manager: ConfigManager,
     cache_manager: &'static CacheManager,
     ttl_manager: TtlSchedulerInbox,

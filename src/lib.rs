@@ -1,7 +1,6 @@
 pub mod adapters;
 pub mod macros;
 pub mod services;
-use crate::adapters::io::tokio_stream::TokioConnectStreamFactory;
 use crate::adapters::io::tokio_stream::TokioStreamListenerFactory;
 use anyhow::Result;
 use services::cluster::actor::ClusterActor;
