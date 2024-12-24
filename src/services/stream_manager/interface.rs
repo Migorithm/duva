@@ -12,25 +12,25 @@ pub trait TStream: TGetPeerIp + Send + Sync + 'static {
     ) -> impl std::future::Future<Output = Result<(), IoError>> + Send;
 }
 
-pub trait TExtractQuery<R, A> {
+pub(crate) trait TExtractQuery<R, A> {
     fn extract_query(&mut self)
         -> impl std::future::Future<Output = anyhow::Result<(R, A)>> + Send;
 }
 
-pub trait TRead {
+pub(crate) trait TRead {
     fn read_bytes(
         &mut self,
         buf: &mut BytesMut,
     ) -> impl std::future::Future<Output = Result<(), std::io::Error>> + Send;
 }
 
-pub trait TWrite {
+pub(crate) trait TWrite {
     fn write(
         &mut self,
         buf: &[u8],
     ) -> impl std::future::Future<Output = Result<(), IoError>> + Send;
 }
-pub trait TWriterFactory: TWrite + Send + Sync + 'static + Sized {
+pub(crate) trait TWriterFactory: TWrite + Send + Sync + 'static + Sized {
     fn create_writer(
         filepath: String,
     ) -> impl std::future::Future<Output = anyhow::Result<Self>> + Send;
@@ -51,7 +51,7 @@ pub trait TGetPeerIp {
     fn get_peer_ip(&self) -> Result<String, IoError>;
 }
 
-pub trait TConnectStreamFactory<T>: Sync + Send + Copy + 'static
+pub(crate) trait TConnectStreamFactory<T>: Sync + Send + Copy + 'static
 where
     T: TStream,
 {

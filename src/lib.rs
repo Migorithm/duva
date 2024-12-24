@@ -1,13 +1,12 @@
 pub mod adapters;
 pub mod macros;
 pub mod services;
-use crate::adapters::io::tokio_stream::TokioConnectStreamFactory;
 use crate::adapters::io::tokio_stream::TokioStreamListenerFactory;
-use services::stream_manager::request_controller::client::ClientRequestController;
 use anyhow::Result;
 use services::cluster::actor::ClusterActor;
 use services::cluster::manager::ClusterManager;
 use services::config::manager::ConfigManager;
+use services::stream_manager::request_controller::client::ClientRequestController;
 
 use services::statefuls::cache::manager::CacheManager;
 use services::statefuls::cache::ttl::manager::TtlSchedulerInbox;
@@ -95,9 +94,7 @@ where
             match peer_listener.accept().await {
                 // ? how do we know if incoming connection is from a peer or replica?
                 Ok((peer_stream, _socket_addr)) => {
-                    let query_manager = StreamManager::new(peer_stream, cluster_manager);
-
-                    tokio::spawn(query_manager.handle_peer_stream(TokioConnectStreamFactory));
+                    tokio::spawn(cluster_manager.accept_peer(peer_stream));
                 }
 
                 Err(err) => {
