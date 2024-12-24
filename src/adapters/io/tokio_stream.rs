@@ -1,3 +1,4 @@
+use crate::services::stream_manager::interface::TWrite;
 use crate::services::stream_manager::request_controller::client::{
     arguments::ClientRequestArguments, client_request::ClientRequest,
 };
@@ -9,13 +10,14 @@ use crate::services::{
     cluster::actor::PeerAddr,
     stream_manager::{
         error::IoError,
-        interface::{TConnectStreamFactory, TExtractQuery, TGetPeerIp, TRead, TStream},
+        interface::{TExtractQuery, TGetPeerIp, TRead, TStream},
         query_io::{parse, QueryIO},
     },
 };
 use anyhow::Context;
 use bytes::BytesMut;
 use std::io::ErrorKind;
+use tokio::net::tcp::{OwnedWriteHalf, WriteHalf};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::{TcpListener, TcpStream},
@@ -60,6 +62,14 @@ impl TStream for tokio::net::TcpStream {
                 eprintln!("error = {:?}", e);
                 Into::<IoError>::into(e.kind())
             })
+    }
+}
+
+impl TWrite for OwnedWriteHalf {
+    async fn write(&mut self, buf: &[u8]) -> Result<(), IoError> {
+        self.write_all(buf)
+            .await
+            .map_err(|e| Into::<IoError>::into(e.kind()))
     }
 }
 
@@ -152,17 +162,6 @@ pub struct TokioStreamListenerFactory;
 impl TokioStreamListenerFactory {
     pub async fn create_listner(&self, bind_addr: String) -> TcpListener {
         TcpListener::bind(bind_addr).await.expect("failed to bind")
-    }
-}
-
-#[derive(Clone, Copy)]
-pub struct TokioConnectStreamFactory;
-impl TConnectStreamFactory<TcpStream> for TokioConnectStreamFactory {
-    async fn connect(&self, addr: PeerAddr) -> Result<TcpStream, IoError> {
-        match tokio::net::TcpStream::connect(addr.0).await {
-            Ok(stream) => Ok(stream),
-            Err(err) => Err(err.kind().into()),
-        }
     }
 }
 

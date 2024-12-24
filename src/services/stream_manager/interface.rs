@@ -50,13 +50,3 @@ pub trait TCancellationWatcher: Send {
 pub trait TGetPeerIp {
     fn get_peer_ip(&self) -> Result<String, IoError>;
 }
-
-pub(crate) trait TConnectStreamFactory<T>: Sync + Send + Copy + 'static
-where
-    T: TStream,
-{
-    fn connect(
-        &self,
-        addr: PeerAddr,
-    ) -> impl std::future::Future<Output = Result<T, IoError>> + Send;
-}

@@ -1,4 +1,4 @@
-use redis_starter_rust::services::cluster::actor::{ClusterActor, Connected, PeerAddr};
+use redis_starter_rust::services::cluster::actor::{ClusterActor, ClusterWriteConnected, PeerAddr};
 use redis_starter_rust::services::config::actor::ConfigActor;
 use redis_starter_rust::services::config::manager::ConfigManager;
 use redis_starter_rust::services::stream_manager::interface::{TCancellationTokenFactory, TStream};
@@ -214,7 +214,7 @@ pub async fn threeway_handshake_helper(
 pub fn create_cluster_actor_with_peers(peers: Vec<String>) -> ClusterActor {
     let mut cluster_actor = ClusterActor::new();
     for peer in peers {
-        cluster_actor.peers.insert(PeerAddr(peer), Connected::None);
+        cluster_actor.peers.insert(PeerAddr(peer));
     }
     cluster_actor
 }
