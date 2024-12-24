@@ -1,6 +1,6 @@
 mod command;
-pub mod config_actor;
-pub mod config_manager;
+pub mod actor;
+pub mod manager;
 pub mod macros;
 pub mod replication;
 

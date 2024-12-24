@@ -13,7 +13,7 @@ use redis_starter_rust::{
     adapters::cancellation_token::CancellationTokenFactory,
     services::{
         cluster::actor::ClusterActor,
-        config::{config_actor::Config, config_manager::ConfigManager},
+        config::{actor::ConfigActor, manager::ConfigManager},
     },
 };
 use tokio::net::TcpStream;
@@ -22,7 +22,7 @@ mod common;
 #[tokio::test]
 async fn test_threeway_handshake() {
     // GIVEN - master server configuration
-    let config = Config::default();
+    let config = ConfigActor::default();
     let mut manager = ConfigManager::new(config);
 
     // ! `peer_bind_addr` is bind_addr dedicated for peer connections

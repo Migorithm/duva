@@ -1,8 +1,8 @@
-use super::ttl_manager::TtlSchedulerInbox;
+use crate::services::statefuls::cache::ttl::manager::TtlSchedulerInbox;
 use super::CacheEntry;
 use super::CacheValue;
 use crate::make_smart_pointer;
-use crate::services::statefuls::persist::persist_actor::SaveCommand;
+use crate::services::statefuls::persist::save_command::SaveCommand;
 use crate::services::stream_manager::query_io::QueryIO;
 use anyhow::Context;
 use anyhow::Result;

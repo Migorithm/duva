@@ -1,15 +1,9 @@
 use crate::services::{
     cluster::actor::PeerAddr,
     stream_manager::{
-        client_request_controllers::{
-            arguments::ClientRequestArguments, client_request::ClientRequest,
-        },
         error::IoError,
         interface::{TConnectStreamFactory, TExtractQuery, TGetPeerIp, TRead, TStream},
         query_io::{parse, QueryIO},
-        replication_request_controllers::{
-            arguments::PeerRequestArguments, replication_request::HandShakeRequest,
-        },
     },
 };
 use anyhow::Context;
@@ -18,6 +12,12 @@ use std::io::ErrorKind;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::{TcpListener, TcpStream},
+};
+use crate::services::stream_manager::request_controller::client::{
+    arguments::ClientRequestArguments, client_request::ClientRequest,
+};
+use crate::services::stream_manager::request_controller::replica::{
+    arguments::PeerRequestArguments, replication_request::HandShakeRequest,
 };
 
 impl TStream for tokio::net::TcpStream {

@@ -3,18 +3,9 @@ use super::endec::decoder::states::DecoderInit;
 use super::endec::encoder::encoding_processor::SaveMeta;
 use super::endec::encoder::encoding_processor::SavingProcessor;
 use super::DumpFile;
-use crate::services::statefuls::cache::CacheEntry;
 use crate::services::stream_manager::interface::TWriterFactory;
 use tokio::sync::mpsc::{Receiver, Sender};
-
-pub enum SaveCommand {
-    LocalShardSize {
-        table_size: usize,
-        expiry_size: usize,
-    },
-    SaveChunk(Vec<CacheEntry>),
-    StopSentinel,
-}
+use crate::services::statefuls::persist::save_command::SaveCommand;
 
 pub struct Load;
 

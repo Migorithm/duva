@@ -5,7 +5,7 @@ use crate::env_var;
 use super::command::ConfigCommand;
 use super::command::ConfigMessage;
 use super::command::ConfigQuery;
-use super::config_actor::Config;
+use super::actor::ConfigActor;
 use super::ConfigResource;
 use super::ConfigResponse;
 
@@ -31,7 +31,7 @@ impl std::ops::Deref for ConfigManager {
 }
 
 impl ConfigManager {
-    pub fn new(config: Config) -> Self {
+    pub fn new(config: ConfigActor) -> Self {
         let (tx, inbox) = tokio::sync::mpsc::channel(20);
         tokio::spawn(config.handle(inbox));
 

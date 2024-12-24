@@ -1,16 +1,17 @@
 pub mod adapters;
 pub mod macros;
 pub mod services;
-use crate::services::stream_manager::client_request_controllers::ClientRequestController;
-use adapters::io::tokio_stream::{TokioConnectStreamFactory, TokioStreamListenerFactory};
+use crate::adapters::io::tokio_stream::TokioConnectStreamFactory;
+use crate::adapters::io::tokio_stream::TokioStreamListenerFactory;
+use services::stream_manager::request_controller::client::ClientRequestController;
 use anyhow::Result;
 use services::cluster::actor::ClusterActor;
-use services::cluster::ClusterManager;
-use services::config::config_manager::ConfigManager;
+use services::cluster::manager::ClusterManager;
+use services::config::manager::ConfigManager;
 
-use services::statefuls::cache::cache_manager::CacheManager;
-use services::statefuls::cache::ttl_manager::TtlSchedulerInbox;
-use services::statefuls::persist::persist_actor::PersistActor;
+use services::statefuls::cache::manager::CacheManager;
+use services::statefuls::cache::ttl::manager::TtlSchedulerInbox;
+use services::statefuls::persist::actor::PersistActor;
 
 use services::stream_manager::error::IoError;
 use services::stream_manager::interface::TCancellationTokenFactory;

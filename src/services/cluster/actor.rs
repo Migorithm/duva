@@ -3,13 +3,7 @@ use std::collections::BTreeMap;
 use tokio::{net::TcpStream, sync::mpsc::Receiver};
 
 use crate::make_smart_pointer;
-
-pub enum ClusterCommand {
-    AddPeer(PeerAddr, TcpStream),
-    RemovePeer(PeerAddr),
-    GetPeer(PeerAddr),
-    GetPeers(tokio::sync::oneshot::Sender<Vec<PeerAddr>>),
-}
+use crate::services::cluster::command::ClusterCommand;
 
 pub struct ClusterActor {
     pub peers: BTreeMap<PeerAddr, Connected>,
@@ -24,7 +18,7 @@ pub enum Connected {
         peer_stream: TcpStream,
         replication_stream: TcpStream,
     },
-    ClusterMemeber {
+    ClusterMember {
         peer_stream: TcpStream,
     },
     None,

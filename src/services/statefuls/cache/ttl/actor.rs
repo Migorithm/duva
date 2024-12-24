@@ -1,19 +1,13 @@
-use crate::{
-    make_smart_pointer,
-    services::statefuls::cache::{cache_actor::CacheCommand, cache_manager::CacheManager},
-};
-use std::{
-    cmp::Reverse,
-    collections::BinaryHeap,
-    time::{Duration, SystemTime},
-};
-use tokio::{
-    sync::{
-        mpsc::{self, Receiver},
-        oneshot,
-    },
-    time::interval,
-};
+use tokio::sync::mpsc;
+use tokio::time::interval;
+use std::time::{Duration, SystemTime};
+use tokio::sync::mpsc::Receiver;
+use std::collections::BinaryHeap;
+use std::cmp::Reverse;
+use crate::services::statefuls::cache::actor::CacheCommand;
+use crate::services::statefuls::cache::manager::CacheManager;
+use crate::services::statefuls::cache::ttl::command::TtlCommand;
+use crate::services::statefuls::cache::ttl::manager::TtlSchedulerInbox;
 
 pub struct TtlActor;
 
@@ -80,31 +74,3 @@ impl TtlActor {
         Ok(())
     }
 }
-
-pub enum TtlCommand {
-    ScheduleTtl { expiry: SystemTime, key: String },
-    Peek(oneshot::Sender<Option<String>>),
-    StopSentinel,
-}
-
-impl TtlCommand {
-    pub fn get_expiration(self) -> Option<(SystemTime, String)> {
-        let (expire_in_mills, key) = match self {
-            TtlCommand::ScheduleTtl { expiry, key } => (expiry, key),
-            _ => return None,
-        };
-
-        Some((expire_in_mills, key))
-    }
-}
-
-#[derive(Clone)]
-pub struct TtlSchedulerInbox(pub(crate) tokio::sync::mpsc::Sender<TtlCommand>);
-
-impl TtlSchedulerInbox {
-    pub async fn set_ttl(&self, key: String, expiry: SystemTime) {
-        let _ = self.send(TtlCommand::ScheduleTtl { key, expiry }).await;
-    }
-}
-
-make_smart_pointer!(TtlSchedulerInbox, tokio::sync::mpsc::Sender<TtlCommand>);

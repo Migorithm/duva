@@ -11,7 +11,7 @@ use redis_starter_rust::{
     adapters::cancellation_token::CancellationTokenFactory,
     services::{
         cluster::actor::ClusterActor,
-        config::{config_actor::Config, config_manager::ConfigManager},
+        config::{actor::ConfigActor, manager::ConfigManager},
         stream_manager::interface::TStream,
     },
 };
@@ -39,7 +39,7 @@ async fn replica_server_helper(replica_port: u16) {
 async fn test_heartbeat() {
     // GIVEN
     // run the random server on a random port
-    let config = Config::default();
+    let config = ConfigActor::default();
     let mut manager = ConfigManager::new(config);
     manager.port = find_free_port_in_range(6000, 6553).await.unwrap();
     let master_cluster_bind_addr = manager.peer_bind_addr();
@@ -63,7 +63,7 @@ async fn test_heartbeat() {
 async fn test_heartbeat_sent_to_multiple_replicas() {
     // GIVEN
     // run the random server on a random port
-    let config = Config::default();
+    let config = ConfigActor::default();
     let mut manager = ConfigManager::new(config);
     manager.port = find_free_port_in_range(6000, 6553).await.unwrap();
     let master_cluster_bind_addr = manager.peer_bind_addr();
