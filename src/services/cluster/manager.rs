@@ -62,26 +62,6 @@ impl ClusterManager {
         //     .unwrap();
     }
 
-    // TODO subject to change! naming is not quite right
-    async fn handle_replication_request(
-        &self,
-        stream: &mut (impl TExtractQuery<ReplicationRequest, PeerRequestArguments> + TStream),
-    ) -> anyhow::Result<()> {
-        loop {
-            let Ok((ReplicationRequest, PeerRequestArguments(args))) = stream.extract_query().await
-            else {
-                eprintln!("invalid user request");
-                continue;
-            };
-
-            // * Having error from the following will not a concern as liveness concern is on cluster manager
-            // let _ = match self.controller.handle(request, query_args).await {
-            //     Ok(response) => self.send(response).await,
-            //     Err(e) => self.send(QueryIO::Err(e.to_string())).await,
-            // };
-        }
-    }
-
     async fn establish_threeway_handshake(
         &self,
         stream: &mut (impl TExtractQuery<HandShakeRequest, PeerRequestArguments> + TStream),
@@ -191,27 +171,6 @@ impl ClusterManager {
                     .join(" ")
             )))
             .await?;
-        Ok(())
-    }
-
-    async fn schedule_heartbeat(&self, peer_addr: PeerAddr) -> anyhow::Result<()> {
-        // 1000 mills just because that's default for Redis.
-        const HEARTBEAT_INTERVAL: u64 = 1000;
-        let mut stream = TokioConnectStreamFactory.connect(peer_addr).await?;
-        let mut interval = interval(Duration::from_millis(HEARTBEAT_INTERVAL));
-        tokio::spawn(async move {
-            loop {
-                interval.tick().await;
-                if let Err(err) = stream
-                    .write(QueryIO::SimpleString("PING".to_string()))
-                    .await
-                {
-                    eprintln!("Error sending heartbeat: {:?}", err);
-                    // TODO add more logic
-                    break;
-                }
-            }
-        });
         Ok(())
     }
 }
