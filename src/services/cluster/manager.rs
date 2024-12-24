@@ -1,22 +1,17 @@
-use std::time::Duration;
-
-use crate::adapters::io::tokio_stream::TokioConnectStreamFactory;
+use crate::make_smart_pointer;
 use crate::services::cluster::actor::{ClusterActor, PeerAddr};
-
 use crate::services::cluster::command::ClusterCommand;
-use crate::services::stream_manager::interface::{TConnectStreamFactory, TExtractQuery, TStream};
+use crate::services::stream_manager::interface::{TExtractQuery, TStream};
 use crate::services::stream_manager::query_io::QueryIO;
 use crate::services::stream_manager::request_controller::replica::arguments::PeerRequestArguments;
-use crate::services::stream_manager::request_controller::replica::replication_request::{
-    HandShakeRequest, ReplicationRequest,
-};
+use crate::services::stream_manager::request_controller::replica::replication_request::HandShakeRequest;
 use tokio::net::TcpStream;
 use tokio::sync::mpsc::Sender;
 use tokio::task::yield_now;
-use tokio::time::interval;
 
 #[derive(Clone)]
 pub struct ClusterManager(Sender<ClusterCommand>);
+make_smart_pointer!(ClusterManager, Sender<ClusterCommand>);
 
 impl ClusterManager {
     pub fn run(actor: ClusterActor) -> Self {
@@ -27,23 +22,11 @@ impl ClusterManager {
 
     pub(crate) async fn get_peers(&self) -> anyhow::Result<Vec<PeerAddr>> {
         let (tx, rx) = tokio::sync::oneshot::channel();
-        self.0.send(ClusterCommand::GetPeers(tx)).await?;
+        self.send(ClusterCommand::GetPeers(tx)).await?;
         let peers = rx.await?;
         Ok(peers)
     }
 
-    // Incoming connection is either replica or cluster peer stream.
-    // 1) If the incoming connection is a replica peer stream, the system will do the following:
-    // - establish a three-way handshake
-    // - establish a primary-replica relationship
-    // - let the requesting peer know the other peers so they can connect
-    // - start the replication process
-    //
-    // 2) If the incoming connection is a cluster peer stream, the system will do the following:
-    // - establish a three-way handshake
-    // - Check if the process already has a connection with the requesting peer
-    // - If not, establish a connection with the requesting peer
-    // - Let the requesting peer know the other peers so they can connect
     pub(crate) async fn accept_peer(&self, mut peer_stream: TcpStream) {
         let (peer_addr, is_slave) = self
             .establish_threeway_handshake(&mut peer_stream)
@@ -55,14 +38,13 @@ impl ClusterManager {
 
         // TODO At this point again, slave tries to connect to other nodes as peer in the cluster
 
-        self.0
-            .send(ClusterCommand::AddPeer {
-                peer_addr,
-                stream: peer_stream,
-                is_slave,
-            })
-            .await
-            .unwrap();
+        self.send(ClusterCommand::AddPeer {
+            peer_addr,
+            stream: peer_stream,
+            is_slave,
+        })
+        .await
+        .unwrap();
 
         // TODO Bidirectional communication should be established
         // self.schedule_heartbeat(peer_addr).await.unwrap();
@@ -71,26 +53,6 @@ impl ClusterManager {
         // self.handle_replication_request(&mut peer_stream)
         //     .await
         //     .unwrap();
-    }
-
-    // TODO subject to change! naming is not quite right
-    async fn handle_replication_request(
-        &self,
-        stream: &mut (impl TExtractQuery<ReplicationRequest, PeerRequestArguments> + TStream),
-    ) -> anyhow::Result<()> {
-        loop {
-            let Ok((ReplicationRequest, PeerRequestArguments(args))) = stream.extract_query().await
-            else {
-                eprintln!("invalid user request");
-                continue;
-            };
-
-            // * Having error from the following will not a concern as liveness concern is on cluster manager
-            // let _ = match self.controller.handle(request, query_args).await {
-            //     Ok(response) => self.send(response).await,
-            //     Err(e) => self.send(QueryIO::Err(e.to_string())).await,
-            // };
-        }
     }
 
     async fn establish_threeway_handshake(
@@ -202,27 +164,6 @@ impl ClusterManager {
                     .join(" ")
             )))
             .await?;
-        Ok(())
-    }
-
-    async fn schedule_heartbeat(&self, peer_addr: PeerAddr) -> anyhow::Result<()> {
-        // 1000 mills just because that's default for Redis.
-        const HEARTBEAT_INTERVAL: u64 = 1000;
-        let mut stream = TokioConnectStreamFactory.connect(peer_addr).await?;
-        let mut interval = interval(Duration::from_millis(HEARTBEAT_INTERVAL));
-        tokio::spawn(async move {
-            loop {
-                interval.tick().await;
-                if let Err(err) = stream
-                    .write(QueryIO::SimpleString("PING".to_string()))
-                    .await
-                {
-                    eprintln!("Error sending heartbeat: {:?}", err);
-                    // TODO add more logic
-                    break;
-                }
-            }
-        });
         Ok(())
     }
 }

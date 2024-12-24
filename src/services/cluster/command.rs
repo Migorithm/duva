@@ -8,6 +8,6 @@ pub enum ClusterCommand {
         is_slave: bool,
     },
     RemovePeer(PeerAddr),
-    GetPeer(PeerAddr),
+
     GetPeers(tokio::sync::oneshot::Sender<Vec<PeerAddr>>),
 }
