@@ -3,7 +3,7 @@ use crate::services::statefuls::cache::ttl::manager::TtlSchedulerInbox;
 use super::CacheEntry;
 use crate::services::stream_manager::query_io::QueryIO;
 
-use crate::services::statefuls::persist::actor::SaveCommand;
+use crate::services::statefuls::persist::save_command::SaveCommand;
 use crate::services::statefuls::persist::DumpFile;
 use anyhow::Result;
 use std::time::SystemTime;
