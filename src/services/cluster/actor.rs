@@ -1,11 +1,13 @@
 use std::collections::BTreeMap;
 use std::time::Duration;
 
+use tokio::select;
 use tokio::time::interval;
 use tokio::{net::TcpStream, sync::mpsc::Receiver};
 
 use crate::make_smart_pointer;
 use crate::services::cluster::command::ClusterCommand;
+use crate::services::stream_manager::error::IoError;
 use crate::services::stream_manager::interface::TStream;
 use crate::services::stream_manager::query_io::QueryIO;
 
@@ -22,6 +24,15 @@ pub enum Connected {
     ClusterMember { stream: TcpStream },
     None,
 }
+impl Connected {
+    async fn write(&mut self, to_string: QueryIO) -> Result<(), IoError> {
+        match self {
+            Connected::Replica { stream } => stream.write(to_string).await,
+            Connected::ClusterMember { stream } => stream.write(to_string).await,
+            Connected::None => Ok(()),
+        }
+    }
+}
 
 impl ClusterActor {
     pub fn new() -> Self {
@@ -33,7 +44,9 @@ impl ClusterActor {
     // * Add peer to the cluster
     // * This function is called when a new peer is connected to peer listener
     // * Some are replicas and some are cluster members
-    pub fn add_peer(&mut self, peer_addr: PeerAddr, stream: TcpStream, is_slave: bool) {}
+    pub fn add_peer(&mut self, peer_addr: PeerAddr, mut stream: TcpStream, is_slave: bool) {
+        let (r, w) = stream.split();
+    }
 
     pub fn remove_peer(&mut self, peer_addr: PeerAddr) {
         self.peers.remove(&peer_addr);
@@ -59,8 +72,7 @@ impl ClusterActor {
                     self.get_peer(&peer_addr);
                 }
                 ClusterCommand::GetPeers(callback) => {
-                    // send
-                    callback.send(self.peers.keys().cloned().collect());
+                    let _ = callback.send(self.peers.keys().cloned().collect());
                 }
             }
         }
@@ -75,23 +87,18 @@ impl ClusterActor {
 
         let mut interval = interval(Duration::from_millis(HEARTBEAT_INTERVAL));
 
+        // broadcast PING to all peers
         loop {
             interval.tick().await;
 
-            for (peer_addr, connected) in self.peers.iter_mut() {
-                match connected {
-                    Connected::Replica { stream } | Connected::ClusterMember { stream } => {
-                        stream
-                            .write(QueryIO::SimpleString("PING".to_string()))
-                            .await
-                            .unwrap();
-                    }
-
-                    Connected::None => todo!(),
+            for connected in self.peers.values_mut() {
+                if let Connected::None = connected {
+                    continue;
                 }
+                connected
+                    .write(QueryIO::SimpleString("PING".to_string()))
+                    .await?;
             }
         }
-
-        Ok(())
     }
 }
