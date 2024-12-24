@@ -10,6 +10,7 @@ use crate::services::stream_manager::request_controller::replica::arguments::Pee
 use crate::services::stream_manager::request_controller::replica::replication_request::{
     HandShakeRequest, ReplicationRequest,
 };
+use tokio::net::TcpStream;
 use tokio::sync::mpsc::Sender;
 use tokio::task::yield_now;
 use tokio::time::interval;
@@ -43,25 +44,33 @@ impl ClusterManager {
     // - Check if the process already has a connection with the requesting peer
     // - If not, establish a connection with the requesting peer
     // - Let the requesting peer know the other peers so they can connect
-    pub(crate) async fn accept_peer(
-        &self,
-        mut peer_stream: impl TExtractQuery<HandShakeRequest, PeerRequestArguments>
-            + TExtractQuery<ReplicationRequest, PeerRequestArguments>
-            + TStream,
-    ) {
-        let peer_addr = self
+    pub(crate) async fn accept_peer(&self, mut peer_stream: TcpStream) {
+        let (peer_addr, is_slave) = self
             .establish_threeway_handshake(&mut peer_stream)
             .await
             .unwrap();
-        // Send the peer address to the query manager to be used for replication.
+
+        // TODO At this point, slave stream must write master_replid so that other nodes can tell where it belongs
         self.disseminate_peers(&mut peer_stream).await.unwrap();
 
-        self.schedule_heartbeat(peer_addr).await.unwrap();
+        // TODO At this point again, slave tries to connect to other nodes as peer in the cluster
 
-        // Following infinite loop may need to be changed once replica information is given
-        self.handle_replication_request(&mut peer_stream)
+        self.0
+            .send(ClusterCommand::AddPeer {
+                peer_addr,
+                stream: peer_stream,
+                is_slave,
+            })
             .await
             .unwrap();
+
+        // TODO Bidirectional communication should be established
+        // self.schedule_heartbeat(peer_addr).await.unwrap();
+
+        // TODO Following should be moved to actor and infinite loop will not be needed for replication
+        // self.handle_replication_request(&mut peer_stream)
+        //     .await
+        //     .unwrap();
     }
 
     // TODO subject to change! naming is not quite right
@@ -87,7 +96,7 @@ impl ClusterManager {
     async fn establish_threeway_handshake(
         &self,
         stream: &mut (impl TExtractQuery<HandShakeRequest, PeerRequestArguments> + TStream),
-    ) -> anyhow::Result<PeerAddr> {
+    ) -> anyhow::Result<(PeerAddr, bool)> {
         self.handle_ping(stream).await?;
 
         let port = self.handle_replconf_listening_port(stream).await?;
@@ -95,7 +104,7 @@ impl ClusterManager {
         // TODO find use of capa?
         let _capa_val_vec = self.handle_replconf_capa(stream).await?;
 
-        // TODO find use of psync info?
+        // TODO check repl_id is '?' or of mine. If not, consider incoming as peer
         let (_repl_id, _offset) = self.handle_psync(stream).await?;
 
         // ! TODO: STRANGE BEHAVIOUR
@@ -103,11 +112,10 @@ impl ClusterManager {
         // even with this, it shows flaking behaviour
         yield_now().await;
 
-        Ok(PeerAddr(format!(
-            "{}:{}",
-            stream.get_peer_ip()?,
-            port + 10000
-        )))
+        Ok((
+            PeerAddr(format!("{}:{}", stream.get_peer_ip()?, port + 10000)),
+            _repl_id == "?", // if repl_id is '?' or of mine, it's slave, otherwise it's a peer.
+        ))
     }
     async fn handle_ping(
         &self,
@@ -163,7 +171,9 @@ impl ClusterManager {
         let (HandShakeRequest::Psync, query_args) = stream.extract_query().await? else {
             return Err(anyhow::anyhow!("Psync not given during handshake"));
         };
+
         let (repl_id, offset) = query_args.take_psync()?;
+
         stream
             .write(QueryIO::SimpleString(
                 "FULLRESYNC 8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb 0".to_string(),
@@ -173,7 +183,7 @@ impl ClusterManager {
         Ok((repl_id, offset))
     }
 
-    pub async fn disseminate_peers(
+    async fn disseminate_peers(
         &self,
         stream: &mut (impl TExtractQuery<HandShakeRequest, PeerRequestArguments> + TStream),
     ) -> anyhow::Result<()> {

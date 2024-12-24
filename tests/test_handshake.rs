@@ -62,6 +62,8 @@ async fn test_threeway_handshake() {
     assert_eq!(h.get_response().await, "+OK\r\n");
 
     // WHEN - client sends PSYNC command
+    // ! The first argument is the replication ID of the master
+    // ! Since this is the first time the replica is connecting to the master, the replication ID will be ? (a question mark)
     h.send(b"*3\r\n$5\r\nPSYNC\r\n$1\r\n?\r\n$2\r\n-1\r\n")
         .await;
 

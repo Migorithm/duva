@@ -6,6 +6,8 @@
 
 mod common;
 
+use std::time::Duration;
+
 use common::{find_free_port_in_range, start_test_server, threeway_handshake_helper};
 use redis_starter_rust::{
     adapters::cancellation_token::CancellationTokenFactory,
@@ -15,7 +17,7 @@ use redis_starter_rust::{
         stream_manager::interface::TStream,
     },
 };
-use tokio::net::TcpStream;
+use tokio::{net::TcpStream, time::timeout};
 
 // The following simulate the replica server by creating a TcpStream that will be connected by the master server
 async fn replica_server_helper(replica_port: u16) {
@@ -56,7 +58,10 @@ async fn test_heartbeat() {
     threeway_handshake_helper(&mut client_stream, slave_port).await;
 
     //WHEN we await on handler, it will receive 5 PING messages
-    handler.await.unwrap();
+    timeout(Duration::from_secs(5), handler)
+        .await
+        .unwrap()
+        .unwrap();
 }
 
 #[tokio::test]
