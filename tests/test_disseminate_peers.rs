@@ -7,7 +7,7 @@ use common::{
 use redis_starter_rust::{
     adapters::cancellation_token::CancellationTokenFactory,
     services::{
-        config::{actor::Config, manager::ConfigManager},
+        config::{actor::ConfigActor, manager::ConfigManager},
         stream_manager::interface::TStream,
     },
 };
@@ -16,7 +16,7 @@ use tokio::net::TcpStream;
 #[tokio::test]
 async fn test_disseminate_peers() {
     // GIVEN - master server configuration
-    let config = Config::default();
+    let config = ConfigActor::default();
     let peer_address_to_test = "localhost:6378";
 
     let mut manager = ConfigManager::new(config);

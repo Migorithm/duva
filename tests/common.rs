@@ -1,5 +1,5 @@
 use redis_starter_rust::services::cluster::actor::{ClusterActor, Connected, PeerAddr};
-use redis_starter_rust::services::config::actor::Config;
+use redis_starter_rust::services::config::actor::ConfigActor;
 use redis_starter_rust::services::config::manager::ConfigManager;
 use redis_starter_rust::services::stream_manager::interface::{TCancellationTokenFactory, TStream};
 use redis_starter_rust::services::stream_manager::query_io::QueryIO;
@@ -53,7 +53,7 @@ impl<'a> TestStreamHandler<'a> {
 }
 
 pub async fn init_config_manager_with_free_port() -> ConfigManager {
-    let config = Config::default();
+    let config = ConfigActor::default();
     let mut manager = ConfigManager::new(config);
 
     manager.port = find_free_port_in_range(49152, 65535).await.unwrap();
@@ -61,7 +61,7 @@ pub async fn init_config_manager_with_free_port() -> ConfigManager {
 }
 
 pub async fn init_slave_config_manager_with_free_port(master_port: u16) -> ConfigManager {
-    let mut config = Config::default();
+    let mut config = ConfigActor::default();
     config.replication.master_host = Some("localhost".to_string());
     config.replication.master_port = Some(master_port);
     let mut manager = ConfigManager::new(config);

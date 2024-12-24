@@ -7,7 +7,7 @@ use common::{
 use redis_starter_rust::{
     adapters::cancellation_token::CancellationTokenFactory,
     services::{
-        config::{actor::Config, manager::ConfigManager},
+        config::{actor::ConfigActor, manager::ConfigManager},
         stream_manager::interface::TStream,
     },
 };
@@ -39,7 +39,7 @@ async fn test_heartbeat_sent_to_multiple_replicas() {
     let fake_repl_port = 6781;
     let fake_repl_address = "localhost:".to_string() + &fake_repl_port.to_string();
     // create master server with fake replica address as peers
-    let config = Config::default();
+    let config = ConfigActor::default();
     let mut manager = ConfigManager::new(config);
 
     manager.port = find_free_port_in_range(6000, 6553).await.unwrap();
@@ -56,7 +56,7 @@ async fn test_heartbeat_sent_to_multiple_replicas() {
     // WHEN - new replica is connecting to master
     {
         let connecting_replica_port = 6782;
-        let mut config = Config::default();
+        let mut config = ConfigActor::default();
         config.replication.master_port = Some(manager.port);
         config.replication.master_host = Some("localhost".to_string());
         let mut manager = ConfigManager::new(config);

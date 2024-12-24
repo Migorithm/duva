@@ -7,13 +7,13 @@ use crate::{env_var, services::config::replication::Replication};
 use tokio::sync::mpsc::Receiver;
 
 #[derive(Clone)]
-pub struct Config {
+pub struct ConfigActor {
     pub(crate) dir: &'static str,
     pub dbfilename: &'static str,
     pub replication: Replication,
 }
 
-impl Config {
+impl ConfigActor {
     pub async fn handle(mut self, mut inbox: Receiver<ConfigMessage>) {
         // inner state
 
@@ -72,7 +72,7 @@ impl Config {
     }
 }
 
-impl Default for Config {
+impl Default for ConfigActor {
     fn default() -> Self {
         env_var!(
             {
@@ -92,7 +92,7 @@ impl Default for Config {
                 .collect::<(_, _)>()
         });
 
-        Config {
+        ConfigActor {
             dir: Box::leak(dir.into_boxed_str()),
             dbfilename: Box::leak(dbfilename.into_boxed_str()),
             replication: Replication::new(replicaof),
@@ -102,7 +102,7 @@ impl Default for Config {
 
 #[test]
 fn test_set_dir() {
-    let mut config = Config::default();
+    let mut config = ConfigActor::default();
     config.set_dir("test");
     assert_eq!(config.dir, "test");
     config.set_dir("test2");
