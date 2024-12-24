@@ -45,14 +45,13 @@ impl ClusterManager {
 
         // TODO At this point again, slave tries to connect to other nodes as peer in the cluster
 
-        self.0
-            .send(ClusterCommand::AddPeer {
-                peer_addr,
-                stream: peer_stream,
-                is_slave,
-            })
-            .await
-            .unwrap();
+        self.send(ClusterCommand::AddPeer {
+            peer_addr,
+            stream: peer_stream,
+            is_slave,
+        })
+        .await
+        .unwrap();
 
         // TODO Bidirectional communication should be established
         // self.schedule_heartbeat(peer_addr).await.unwrap();
