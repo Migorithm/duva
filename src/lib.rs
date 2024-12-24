@@ -3,11 +3,11 @@ pub mod macros;
 pub mod services;
 use crate::adapters::io::tokio_stream::TokioConnectStreamFactory;
 use crate::adapters::io::tokio_stream::TokioStreamListenerFactory;
-use services::stream_manager::request_controller::client::ClientRequestController;
 use anyhow::Result;
 use services::cluster::actor::ClusterActor;
 use services::cluster::manager::ClusterManager;
 use services::config::manager::ConfigManager;
+use services::stream_manager::request_controller::client::ClientRequestController;
 
 use services::statefuls::cache::manager::CacheManager;
 use services::statefuls::cache::ttl::manager::TtlSchedulerInbox;

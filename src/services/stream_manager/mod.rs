@@ -5,9 +5,6 @@ pub(crate) mod request_controller;
 
 use super::cluster::actor::PeerAddr;
 use crate::services::cluster::manager::ClusterManager;
-use request_controller::client::client_request::ClientRequest;
-use request_controller::client::ClientRequestController;
-use request_controller::client::arguments::ClientRequestArguments;
 use error::IoError;
 use interface::TCancellationNotifier;
 use interface::TCancellationTokenFactory;
@@ -16,6 +13,9 @@ use interface::TExtractQuery;
 use interface::TStream;
 use interface::TWriterFactory;
 use query_io::QueryIO;
+use request_controller::client::arguments::ClientRequestArguments;
+use request_controller::client::client_request::ClientRequest;
+use request_controller::client::ClientRequestController;
 use request_controller::replica::arguments::PeerRequestArguments;
 use request_controller::replica::replication_request::HandShakeRequest;
 
@@ -89,10 +89,6 @@ impl<T> StreamManager<T, &'static ClusterManager>
 where
     T: TStream + TExtractQuery<HandShakeRequest, PeerRequestArguments>,
 {
-    async fn send_simple_string(&mut self, value: &str) -> Result<(), IoError> {
-        self.send(QueryIO::SimpleString(value.to_string())).await
-    }
-
     // Temporal coupling: each handling functions inside the following method must be in order
     pub async fn establish_threeway_handshake(&mut self) -> anyhow::Result<PeerAddr> {
         self.handle_ping().await?;
@@ -121,8 +117,7 @@ where
         let Ok((HandShakeRequest::Ping, _)) = self.stream.extract_query().await else {
             return Err(anyhow::anyhow!("Ping not given"));
         };
-
-        self.send_simple_string("PONG").await?;
+        self.send(QueryIO::SimpleString("PONG".to_string())).await?;
         Ok(())
     }
     async fn handle_replconf_listening_port(&mut self) -> anyhow::Result<i16> {
@@ -135,7 +130,7 @@ where
         } else {
             return Err(anyhow::anyhow!("Invalid listening-port given"));
         };
-        self.send_simple_string("OK").await?;
+        self.send(QueryIO::SimpleString("OK".to_string())).await?;
 
         Ok(port.parse::<i16>()?)
     }
@@ -145,7 +140,7 @@ where
             return Err(anyhow::anyhow!("ReplConf not given during handshake"));
         };
         let capa_val_vec = query_args.take_capabilities()?;
-        self.send_simple_string("OK").await?;
+        self.send(QueryIO::SimpleString("OK".to_string())).await?;
 
         Ok(capa_val_vec)
     }
@@ -154,8 +149,10 @@ where
             return Err(anyhow::anyhow!("Psync not given during handshake"));
         };
         let (repl_id, offset) = query_args.take_psync()?;
-        self.send_simple_string("FULLRESYNC 8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb 0")
-            .await?;
+        self.send(QueryIO::SimpleString(
+            "FULLRESYNC 8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb 0".to_string(),
+        ))
+        .await?;
 
         Ok((repl_id, offset))
     }
@@ -166,19 +163,15 @@ where
             return Ok(());
         }
 
-        self.send_simple_string(
-            format!(
-                "PEERS {}",
-                peers
-                    .iter()
-                    .map(|x| x.to_string())
-                    .collect::<Vec<_>>()
-                    .join(" ")
-            )
-            .as_str(),
-        )
+        self.send(QueryIO::SimpleString(format!(
+            "PEERS {}",
+            peers
+                .iter()
+                .map(|x| x.to_string())
+                .collect::<Vec<_>>()
+                .join(" ")
+        )))
         .await?;
-
         Ok(())
     }
 

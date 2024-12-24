@@ -1,6 +1,6 @@
-use tokio::sync::mpsc::Sender;
 use crate::services::cluster::actor::{ClusterActor, PeerAddr};
 use crate::services::cluster::command::ClusterCommand;
+use tokio::sync::mpsc::Sender;
 
 #[derive(Clone)]
 pub struct ClusterManager(Sender<ClusterCommand>);
