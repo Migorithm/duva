@@ -1,13 +1,13 @@
-pub mod client_request_controllers;
 pub mod error;
 pub mod interface;
 pub mod query_io;
-pub mod replication_request_controllers;
+pub(crate) mod request_controller;
+
 use super::cluster::actor::PeerAddr;
 use crate::services::cluster::manager::ClusterManager;
-use crate::services::stream_manager::client_request_controllers::client_request::ClientRequest;
-use crate::services::stream_manager::client_request_controllers::ClientRequestController;
-use client_request_controllers::arguments::ClientRequestArguments;
+use request_controller::client::client_request::ClientRequest;
+use request_controller::client::ClientRequestController;
+use request_controller::client::arguments::ClientRequestArguments;
 use error::IoError;
 use interface::TCancellationNotifier;
 use interface::TCancellationTokenFactory;
@@ -16,8 +16,8 @@ use interface::TExtractQuery;
 use interface::TStream;
 use interface::TWriterFactory;
 use query_io::QueryIO;
-use replication_request_controllers::arguments::PeerRequestArguments;
-use replication_request_controllers::replication_request::HandShakeRequest;
+use request_controller::replica::arguments::PeerRequestArguments;
+use request_controller::replica::replication_request::HandShakeRequest;
 
 use std::time::Duration;
 use tokio::{task::yield_now, time::interval};

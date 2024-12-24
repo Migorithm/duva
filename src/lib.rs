@@ -1,8 +1,9 @@
 pub mod adapters;
 pub mod macros;
 pub mod services;
-use crate::services::stream_manager::client_request_controllers::ClientRequestController;
-use adapters::io::tokio_stream::{TokioConnectStreamFactory, TokioStreamListenerFactory};
+use crate::adapters::io::tokio_stream::TokioConnectStreamFactory;
+use crate::adapters::io::tokio_stream::TokioStreamListenerFactory;
+use services::stream_manager::request_controller::client::ClientRequestController;
 use anyhow::Result;
 use services::cluster::actor::ClusterActor;
 use services::cluster::manager::ClusterManager;

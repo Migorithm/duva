@@ -9,7 +9,7 @@ use crate::services::stream_manager::query_io::QueryIO;
 use arguments::ClientRequestArguments;
 use client_request::ClientRequest;
 
-use super::interface::TWriterFactory;
+use crate::services::stream_manager::interface::TWriterFactory;
 
 pub mod arguments;
 pub mod client_request;
