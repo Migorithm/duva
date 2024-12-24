@@ -2,7 +2,7 @@ use crate::make_smart_pointer;
 use crate::services::stream_manager::query_io::QueryIO;
 
 #[derive(Debug, Clone)]
-pub struct PeerRequestArguments(Vec<QueryIO>);
+pub struct PeerRequestArguments(pub Vec<QueryIO>);
 
 make_smart_pointer!(PeerRequestArguments, Vec<QueryIO>);
 

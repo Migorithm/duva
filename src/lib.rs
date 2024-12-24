@@ -95,9 +95,7 @@ where
             match peer_listener.accept().await {
                 // ? how do we know if incoming connection is from a peer or replica?
                 Ok((peer_stream, _socket_addr)) => {
-                    let query_manager = StreamManager::new(peer_stream, cluster_manager);
-
-                    tokio::spawn(query_manager.handle_peer_stream(TokioConnectStreamFactory));
+                    tokio::spawn(cluster_manager.accept_peer(peer_stream));
                 }
 
                 Err(err) => {

@@ -1,3 +1,10 @@
+use crate::services::stream_manager::request_controller::client::{
+    arguments::ClientRequestArguments, client_request::ClientRequest,
+};
+use crate::services::stream_manager::request_controller::replica::replication_request::ReplicationRequest;
+use crate::services::stream_manager::request_controller::replica::{
+    arguments::PeerRequestArguments, replication_request::HandShakeRequest,
+};
 use crate::services::{
     cluster::actor::PeerAddr,
     stream_manager::{
@@ -12,12 +19,6 @@ use std::io::ErrorKind;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::{TcpListener, TcpStream},
-};
-use crate::services::stream_manager::request_controller::client::{
-    arguments::ClientRequestArguments, client_request::ClientRequest,
-};
-use crate::services::stream_manager::request_controller::replica::{
-    arguments::PeerRequestArguments, replication_request::HandShakeRequest,
 };
 
 impl TStream for tokio::net::TcpStream {
@@ -96,6 +97,14 @@ impl TExtractQuery<HandShakeRequest, PeerRequestArguments> for TcpStream {
             )),
             _ => Err(anyhow::anyhow!("Unexpected command format")),
         }
+    }
+}
+
+impl TExtractQuery<ReplicationRequest, PeerRequestArguments> for TcpStream {
+    async fn extract_query(
+        &mut self,
+    ) -> anyhow::Result<(ReplicationRequest, PeerRequestArguments)> {
+        todo!()
     }
 }
 
