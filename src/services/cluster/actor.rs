@@ -141,8 +141,6 @@ impl ClusterWriteActor {
                         // do something
                     }
                     ClusterWriteCommand::Ping => {
-                        println!("ping received");
-
                         actor.heartbeat().await;
                     }
                     ClusterWriteCommand::Join {

@@ -1,4 +1,4 @@
-use redis_starter_rust::services::cluster::actor::{ClusterActor, PeerAddr};
+use redis_starter_rust::services::cluster::actor::{ClusterActor, ClusterWriteConnected, PeerAddr};
 use redis_starter_rust::services::config::actor::ConfigActor;
 use redis_starter_rust::services::config::manager::ConfigManager;
 use redis_starter_rust::services::stream_manager::interface::{TCancellationTokenFactory, TStream};
