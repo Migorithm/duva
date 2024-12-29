@@ -26,7 +26,7 @@ async fn receive_server_ping_from_replica_stream(
     let mut stream_handler = TcpStream::connect(master_cluster_bind_addr.clone())
         .await
         .unwrap();
-    fake_threeway_handshake_helper(&mut stream_handler).await;
+    fake_threeway_handshake_helper(&mut stream_handler, None).await;
 
     tokio::spawn(async move {
         let mut count = 0;

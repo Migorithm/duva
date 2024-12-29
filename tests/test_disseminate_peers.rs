@@ -34,7 +34,7 @@ async fn test_disseminate_peers() {
 
     let mut client_stream = TcpStream::connect(master_cluster_bind_addr).await.unwrap();
 
-    let message = fake_threeway_handshake_helper(&mut client_stream).await;
+    let message = fake_threeway_handshake_helper(&mut client_stream, None).await;
 
     let expected = format!("+PEERS {}\r\n", peer_address_to_test);
     if let Some(combined) = message {
