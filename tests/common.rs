@@ -1,4 +1,4 @@
-use redis_starter_rust::services::cluster::actor::{ClusterActor, ClusterWriteConnected, PeerAddr};
+use redis_starter_rust::services::cluster::actor::{ClusterActor, PeerAddr};
 use redis_starter_rust::services::config::actor::ConfigActor;
 use redis_starter_rust::services::config::manager::ConfigManager;
 use redis_starter_rust::services::stream_manager::interface::{TCancellationTokenFactory, TStream};
@@ -159,10 +159,14 @@ pub fn save_command() -> Vec<u8> {
     array(vec!["SAVE"]).into_bytes()
 }
 
-pub async fn threeway_handshake_helper(
-    stream_handler: &mut TcpStream,
-    client_port: u16,
-) -> Option<QueryIO> {
+pub async fn fake_threeway_handshake_helper(stream_handler: &mut TcpStream) -> Option<QueryIO> {
+    let stream_port = stream_handler.local_addr().unwrap().port();
+    let port_string = if stream_port > 10000 {
+        format!("$5\r\n{}", stream_port)
+    } else {
+        format!("$4\r\n{}", stream_port)
+    };
+
     // client sends PING command
     stream_handler
         .write_all(b"*1\r\n$4\r\nPING\r\n")
@@ -176,8 +180,8 @@ pub async fn threeway_handshake_helper(
     stream_handler
         .write_all(
             format!(
-                "*3\r\n$8\r\nREPLCONF\r\n$14\r\nlistening-port\r\n$4\r\n{}\r\n",
-                client_port
+                "*3\r\n$8\r\nREPLCONF\r\n$14\r\nlistening-port\r\n{}\r\n",
+                port_string
             )
             .as_bytes(),
         )

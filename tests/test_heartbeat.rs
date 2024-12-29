@@ -8,7 +8,7 @@ mod common;
 
 use std::time::Duration;
 
-use common::{find_free_port_in_range, start_test_server, threeway_handshake_helper};
+use common::{fake_threeway_handshake_helper, find_free_port_in_range, start_test_server};
 use redis_starter_rust::{
     adapters::cancellation_token::CancellationTokenFactory,
     services::{
@@ -21,13 +21,12 @@ use tokio::{net::TcpStream, task::JoinHandle, time::timeout};
 
 // The following simulate the replica server by creating a TcpStream that will be connected by the master server
 async fn receive_server_ping_from_replica_stream(
-    replica_server_port: u16,
     master_cluster_bind_addr: String,
 ) -> JoinHandle<()> {
     let mut stream_handler = TcpStream::connect(master_cluster_bind_addr.clone())
         .await
         .unwrap();
-    threeway_handshake_helper(&mut stream_handler, replica_server_port).await;
+    fake_threeway_handshake_helper(&mut stream_handler).await;
 
     tokio::spawn(async move {
         let mut count = 0;
@@ -53,8 +52,7 @@ async fn test_heartbeat() {
     let _ = start_test_server(CancellationTokenFactory, manager, ClusterActor::new()).await;
 
     // run the client bind stream on a random port so it can later get connection request from server
-    let handler =
-        receive_server_ping_from_replica_stream(6778, master_cluster_bind_addr.clone()).await;
+    let handler = receive_server_ping_from_replica_stream(master_cluster_bind_addr.clone()).await;
 
     //WHEN we await on handler, it will receive 5 PING messages
     timeout(Duration::from_secs(6), handler)
@@ -75,9 +73,9 @@ async fn test_heartbeat_sent_to_multiple_replicas() {
 
     // run the client bind stream on a random port so it can later get connection request from server
     let repl1_handler =
-        receive_server_ping_from_replica_stream(6779, master_cluster_bind_addr.clone()).await;
+        receive_server_ping_from_replica_stream(master_cluster_bind_addr.clone()).await;
     let repl2_handler =
-        receive_server_ping_from_replica_stream(6780, master_cluster_bind_addr.clone()).await;
+        receive_server_ping_from_replica_stream(master_cluster_bind_addr.clone()).await;
 
     //WHEN we await on handler, it will receive 5 PING messages
     let _ = tokio::join!(repl1_handler, repl2_handler);
