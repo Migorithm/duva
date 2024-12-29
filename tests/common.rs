@@ -159,8 +159,11 @@ pub fn save_command() -> Vec<u8> {
     array(vec!["SAVE"]).into_bytes()
 }
 
-pub async fn fake_threeway_handshake_helper(stream_handler: &mut TcpStream) -> Option<QueryIO> {
-    let stream_port = stream_handler.local_addr().unwrap().port();
+pub async fn fake_threeway_handshake_helper(
+    stream_handler: &mut TcpStream,
+    replica_server_port: Option<u16>,
+) -> Option<QueryIO> {
+    let stream_port = replica_server_port.unwrap_or(stream_handler.local_addr().unwrap().port());
     let port_string = if stream_port > 10000 {
         format!("$5\r\n{}", stream_port)
     } else {
