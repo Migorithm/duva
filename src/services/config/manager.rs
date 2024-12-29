@@ -2,10 +2,10 @@ use std::time::SystemTime;
 
 use crate::env_var;
 
+use super::actor::ConfigActor;
 use super::command::ConfigCommand;
 use super::command::ConfigMessage;
 use super::command::ConfigQuery;
-use super::actor::ConfigActor;
 use super::ConfigResource;
 use super::ConfigResponse;
 

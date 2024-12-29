@@ -1,8 +1,7 @@
 mod common;
-
 use common::{
-    create_cluster_actor_with_peers, find_free_port_in_range, start_test_server,
-    threeway_handshake_helper,
+    create_cluster_actor_with_peers, fake_threeway_handshake_helper, find_free_port_in_range,
+    start_test_server,
 };
 use redis_starter_rust::{
     adapters::cancellation_token::CancellationTokenFactory,
@@ -14,8 +13,9 @@ use redis_starter_rust::{
 use tokio::net::TcpStream;
 use tokio::time::timeout;
 
+// TODO remove the following
 async fn replica_server_helper(replica_port: u16) {
-    let slave_cluster_bind_addr = format!("localhost:{}", replica_port + 10000); // note we add 10000 this is convention
+    let slave_cluster_bind_addr = format!("localhost:{}", replica_port); // note we add 10000 this is convention
     let listener = tokio::net::TcpListener::bind(&slave_cluster_bind_addr)
         .await
         .unwrap();
@@ -71,7 +71,7 @@ async fn test_heartbeat_sent_to_multiple_replicas() {
         let mut repl1_connecting_to_master = TcpStream::connect(master_cluster_bind_addr.clone())
             .await
             .unwrap();
-        threeway_handshake_helper(&mut repl1_connecting_to_master, connecting_replica_port).await;
+        fake_threeway_handshake_helper(&mut repl1_connecting_to_master).await;
     }
 
     // THEN newly connected replica sends PINGs to fake replica

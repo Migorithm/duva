@@ -6,18 +6,15 @@ use crate::services::stream_manager::request_controller::replica::replication_re
 use crate::services::stream_manager::request_controller::replica::{
     arguments::PeerRequestArguments, replication_request::HandShakeRequest,
 };
-use crate::services::{
-    cluster::actor::PeerAddr,
-    stream_manager::{
-        error::IoError,
-        interface::{TExtractQuery, TGetPeerIp, TRead, TStream},
-        query_io::{parse, QueryIO},
-    },
+use crate::services::stream_manager::{
+    error::IoError,
+    interface::{TExtractQuery, TGetPeerIp, TRead, TStream},
+    query_io::{parse, QueryIO},
 };
 use anyhow::Context;
 use bytes::BytesMut;
 use std::io::ErrorKind;
-use tokio::net::tcp::{OwnedWriteHalf, WriteHalf};
+use tokio::net::tcp::OwnedWriteHalf;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::{TcpListener, TcpStream},

@@ -1,6 +1,5 @@
+use super::{error::IoError, query_io::QueryIO};
 use bytes::BytesMut;
-
-use super::{error::IoError, query_io::QueryIO, PeerAddr};
 
 pub trait TStream: TGetPeerIp + Send + Sync + 'static {
     // TODO deprecated

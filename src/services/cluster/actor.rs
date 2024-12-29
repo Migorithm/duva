@@ -10,6 +10,7 @@ use tokio::time::interval;
 use tokio::{net::TcpStream, sync::mpsc::Receiver};
 
 pub struct ClusterActor {
+    // TODO change PeerAddr to PeerIdentifier
     pub peers: HashSet<PeerAddr>,
 }
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Hash)]
@@ -95,7 +96,7 @@ async fn run_cluster_read_actor(mut sr: Receiver<ClusterReadCommand>) {
     while let Some(command) = sr.recv().await {
         match command {
             ClusterReadCommand::Ping => {
-                // do something
+                // do something - failure detection!
             }
             ClusterReadCommand::Join { addr, buffer } => {
                 members.entry(addr).or_insert(buffer);

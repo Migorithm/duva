@@ -75,7 +75,7 @@ impl ClusterManager {
         yield_now().await;
 
         Ok((
-            PeerAddr(format!("{}:{}", stream.get_peer_ip()?, port + 10000)),
+            PeerAddr(format!("{}:{}", stream.get_peer_ip()?, port)),
             _repl_id == "?", // if repl_id is '?' or of mine, it's slave, otherwise it's a peer.
         ))
     }
@@ -95,7 +95,7 @@ impl ClusterManager {
     async fn handle_replconf_listening_port(
         &self,
         stream: &mut (impl TExtractQuery<HandShakeRequest, PeerRequestArguments> + TStream),
-    ) -> anyhow::Result<i16> {
+    ) -> anyhow::Result<u16> {
         let (HandShakeRequest::ReplConf, query_args) = stream.extract_query().await? else {
             return Err(anyhow::anyhow!("ReplConf not given during handshake"));
         };
@@ -109,7 +109,7 @@ impl ClusterManager {
             .write(QueryIO::SimpleString("OK".to_string()))
             .await?;
 
-        Ok(port.parse::<i16>()?)
+        Ok(port.parse::<u16>()?)
     }
 
     async fn handle_replconf_capa(
