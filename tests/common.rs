@@ -83,7 +83,7 @@ pub struct StartFlag(pub Arc<tokio::sync::Notify>);
 
 impl TNotifyStartUp for StartFlag {
     fn notify_startup(&self) {
-        self.0.notify_one();
+        self.0.notify_waiters();
     }
 }
 

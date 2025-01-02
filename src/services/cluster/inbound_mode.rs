@@ -1,35 +1,30 @@
-use tokio::{net::TcpStream, task::yield_now};
-
-use crate::{
-    make_smart_pointer,
-    services::stream_manager::{
-        interface::{TExtractQuery, TGetPeerIp, TStream},
-        query_io::QueryIO,
-        request_controller::replica::{
-            arguments::PeerRequestArguments, replication_request::HandShakeRequest,
-        },
-    },
-};
-
 use super::actor::PeerAddr;
+use crate::make_smart_pointer;
+use crate::services::stream_manager::interface::{TExtractQuery, TGetPeerIp, TStream};
+use crate::services::stream_manager::query_io::QueryIO;
+use crate::services::stream_manager::request_controller::replica::arguments::PeerRequestArguments;
+use crate::services::stream_manager::request_controller::replica::replication_request::HandShakeRequest;
+use tokio::net::TcpStream;
+use tokio::task::yield_now;
 
-pub(crate) struct MasterStream(pub TcpStream)
+// The following is used only when the node is in master mode
+pub(crate) struct InboundStream(pub TcpStream)
 where
     TcpStream: TExtractQuery<HandShakeRequest, PeerRequestArguments> + TStream;
 
-make_smart_pointer!(MasterStream, TcpStream);
+make_smart_pointer!(InboundStream, TcpStream);
 
-impl MasterStream {
-    pub async fn establish_threeway_handshake(&mut self) -> anyhow::Result<(PeerAddr, bool)> {
-        self.handle_ping().await?;
+impl InboundStream {
+    pub async fn recv_threeway_handshake(&mut self) -> anyhow::Result<(PeerAddr, bool)> {
+        self.recv_ping().await?;
 
-        let port = self.handle_replconf_listening_port().await?;
+        let port = self.recv_replconf_listening_port().await?;
 
         // TODO find use of capa?
-        let _capa_val_vec = self.handle_replconf_capa().await?;
+        let _capa_val_vec = self.recv_replconf_capa().await?;
 
         // TODO check repl_id is '?' or of mine. If not, consider incoming as peer
-        let (_repl_id, _offset) = self.handle_psync().await?;
+        let (_repl_id, _offset) = self.recv_psync().await?;
 
         // ! TODO: STRANGE BEHAVIOUR
         // if not for the following, message is sent with the previosly sent message
@@ -42,7 +37,7 @@ impl MasterStream {
         ))
     }
 
-    async fn handle_ping(&mut self) -> anyhow::Result<()> {
+    async fn recv_ping(&mut self) -> anyhow::Result<()> {
         let (HandShakeRequest::Ping, _) = <tokio::net::TcpStream as TExtractQuery<
             HandShakeRequest,
             PeerRequestArguments,
@@ -56,7 +51,7 @@ impl MasterStream {
         Ok(())
     }
 
-    async fn handle_replconf_listening_port(&mut self) -> anyhow::Result<u16> {
+    async fn recv_replconf_listening_port(&mut self) -> anyhow::Result<u16> {
         let (HandShakeRequest::ReplConf, query_args) = <tokio::net::TcpStream as TExtractQuery<
             HandShakeRequest,
             PeerRequestArguments,
@@ -76,7 +71,7 @@ impl MasterStream {
         Ok(port.parse::<u16>()?)
     }
 
-    async fn handle_replconf_capa(&mut self) -> anyhow::Result<Vec<(String, String)>> {
+    async fn recv_replconf_capa(&mut self) -> anyhow::Result<Vec<(String, String)>> {
         let (HandShakeRequest::ReplConf, query_args) = <tokio::net::TcpStream as TExtractQuery<
             HandShakeRequest,
             PeerRequestArguments,
@@ -90,7 +85,7 @@ impl MasterStream {
 
         Ok(capa_val_vec)
     }
-    async fn handle_psync(&mut self) -> anyhow::Result<(String, i64)> {
+    async fn recv_psync(&mut self) -> anyhow::Result<(String, i64)> {
         let (HandShakeRequest::Psync, query_args) = <tokio::net::TcpStream as TExtractQuery<
             HandShakeRequest,
             PeerRequestArguments,

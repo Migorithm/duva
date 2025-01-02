@@ -23,7 +23,10 @@ impl TryFrom<String> for HandShakeRequest {
             "replconf" => Ok(HandShakeRequest::ReplConf),
             "psync" => Ok(HandShakeRequest::Psync),
 
-            _ => Err(anyhow::anyhow!("Invalid command")),
+            invalid_value => {
+                eprintln!("Invalid command,{}", invalid_value);
+                Err(anyhow::anyhow!("Invalid command"))
+            }
         }
     }
 }

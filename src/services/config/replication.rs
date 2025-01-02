@@ -53,7 +53,7 @@ impl Replication {
         format!(
             "{}:{}",
             self.master_host.as_ref().unwrap(),
-            self.master_port.unwrap()
+            self.master_port.unwrap() + 10000
         )
     }
 }

@@ -1,21 +1,21 @@
 pub mod adapters;
 pub mod macros;
 pub mod services;
-use std::hint;
 
 use crate::adapters::io::tokio_stream::TokioStreamListenerFactory;
 use anyhow::Result;
 use services::cluster::actor::ClusterActor;
+use services::cluster::inbound_mode::InboundStream;
 use services::cluster::manager::ClusterManager;
-use services::cluster::master_mode::MasterStream;
+use services::cluster::outbound_mode::OutboundStream;
 use services::config::manager::{ConfigManager, IS_MASTER_MODE};
-use services::config::replication::Replication;
+
 use services::config::{ConfigResource, ConfigResponse};
 use services::statefuls::cache::manager::CacheManager;
 use services::statefuls::cache::ttl::manager::TtlSchedulerInbox;
 use services::statefuls::persist::actor::PersistActor;
 use services::stream_manager::error::IoError;
-use services::stream_manager::interface::{TCancellationTokenFactory, TStream};
+use services::stream_manager::interface::TCancellationTokenFactory;
 use services::stream_manager::request_controller::client::ClientRequestController;
 use services::stream_manager::StreamManager;
 use tokio::net::TcpStream;
@@ -76,7 +76,8 @@ where
                 )
                 .await?;
         }
-
+        println!("Starting to accept peer connections");
+        println!("listening on {}...", self.config_manager.peer_bind_addr());
         tokio::spawn(Self::start_accepting_peer_connections(
             self.config_manager.peer_bind_addr(),
             self.cluster_manager,
@@ -88,16 +89,26 @@ where
             .route_query(ConfigResource::ReplicationInfo)
             .await?;
 
-        match repl_info_receiver.await {
-            Ok(ConfigResponse::ReplicationInfo(repl_info)) => {
-                if IS_MASTER_MODE.load(std::sync::atomic::Ordering::Acquire) {
+        match repl_info_receiver.await? {
+            ConfigResponse::ReplicationInfo(repl_info) => {
+                if IS_MASTER_MODE.load(std::sync::atomic::Ordering::Relaxed) {
+                    println!("master mode");
                     self.start_accepting_client_connections(
                         self.config_manager.bind_addr(),
                         startup_notifier,
                     )
                     .await;
                 } else {
-                    self.connect_to_master(self.cluster_manager, repl_info)
+                    println!("slave_mode");
+                    self.cluster_manager
+                        .join_peer(
+                            OutboundStream(
+                                TcpStream::connect(repl_info.master_cluster_bind_addr()).await?,
+                            ),
+                            repl_info,
+                            self.config_manager.port,
+                            startup_notifier,
+                        )
                         .await;
                 }
             }
@@ -118,7 +129,7 @@ where
             match peer_listener.accept().await {
                 // ? how do we know if incoming connection is from a peer or replica?
                 Ok((peer_stream, _socket_addr)) => {
-                    tokio::spawn(cluster_manager.accept_peer(MasterStream(peer_stream)));
+                    tokio::spawn(cluster_manager.accept_peer(InboundStream(peer_stream)));
                 }
 
                 Err(err) => {
@@ -137,7 +148,6 @@ where
     ) {
         // SAFETY: The client_request_controller is leaked to make it static.
         // This is safe because the client_request_controller will live for the entire duration of the program.
-
         let client_stream_listener = TokioStreamListenerFactory.create_listner(bind_addr).await;
         let mut conn_handlers: Vec<tokio::task::JoinHandle<()>> = Vec::with_capacity(100);
         startup_notifier.notify_startup();
@@ -160,16 +170,6 @@ where
                 }
             }
         }
-    }
-
-    async fn connect_to_master(
-        &self,
-        cluster_manager: &'static ClusterManager,
-        repl_info: Replication,
-    ) {
-        let mut master_stream = TcpStream::connect(repl_info.master_cluster_bind_addr())
-            .await
-            .unwrap();
     }
 }
 

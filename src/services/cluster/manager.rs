@@ -1,15 +1,14 @@
-use crate::make_smart_pointer;
 use crate::services::cluster::actor::{ClusterActor, PeerAddr};
 use crate::services::cluster::command::ClusterCommand;
-use crate::services::stream_manager::interface::{TExtractQuery, TStream};
+use crate::services::config::replication::Replication;
+use crate::services::stream_manager::interface::TStream;
 use crate::services::stream_manager::query_io::QueryIO;
-use crate::services::stream_manager::request_controller::replica::arguments::PeerRequestArguments;
-use crate::services::stream_manager::request_controller::replica::replication_request::HandShakeRequest;
+use crate::{make_smart_pointer, TNotifyStartUp};
 use tokio::net::TcpStream;
 use tokio::sync::mpsc::Sender;
-use tokio::task::yield_now;
 
-use super::master_mode::MasterStream;
+use super::inbound_mode::InboundStream;
+use super::outbound_mode::OutboundStream;
 
 #[derive(Clone)]
 pub struct ClusterManager(Sender<ClusterCommand>);
@@ -29,8 +28,8 @@ impl ClusterManager {
         Ok(peers)
     }
 
-    pub(crate) async fn accept_peer(&self, mut peer_stream: MasterStream) {
-        let (peer_addr, is_slave) = peer_stream.establish_threeway_handshake().await.unwrap();
+    pub(crate) async fn accept_peer(&self, mut peer_stream: InboundStream) {
+        let (peer_addr, is_slave) = peer_stream.recv_threeway_handshake().await.unwrap();
 
         // TODO At this point, slave stream must write master_replid so that other nodes can tell where it belongs
         self.disseminate_peers(&mut peer_stream).await.unwrap();
@@ -71,5 +70,19 @@ impl ClusterManager {
             )))
             .await?;
         Ok(())
+    }
+
+    pub(crate) async fn join_peer(
+        &self,
+        mut stream: OutboundStream,
+        repl_info: Replication,
+        self_port: u16,
+        start_up_notifier: impl TNotifyStartUp,
+    ) {
+        stream
+            .estabilish_handshake(repl_info, self_port)
+            .await
+            .unwrap();
+        start_up_notifier.notify_startup();
     }
 }
