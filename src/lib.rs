@@ -76,8 +76,7 @@ where
                 )
                 .await?;
         }
-        println!("Starting to accept peer connections");
-        println!("listening on {}...", self.config_manager.peer_bind_addr());
+
         tokio::spawn(Self::start_accepting_peer_connections(
             self.config_manager.peer_bind_addr(),
             self.cluster_manager,
@@ -92,14 +91,12 @@ where
         match repl_info_receiver.await? {
             ConfigResponse::ReplicationInfo(repl_info) => {
                 if IS_MASTER_MODE.load(std::sync::atomic::Ordering::Relaxed) {
-                    println!("master mode");
                     self.start_accepting_client_connections(
                         self.config_manager.bind_addr(),
                         startup_notifier,
                     )
                     .await;
                 } else {
-                    println!("slave_mode");
                     self.cluster_manager
                         .join_peer(
                             OutboundStream(
@@ -123,8 +120,11 @@ where
         cluster_manager: &'static ClusterManager,
     ) {
         let peer_listener = TokioStreamListenerFactory
-            .create_listner(peer_bind_addr)
+            .create_listner(&peer_bind_addr)
             .await;
+        println!("Starting to accept peer connections");
+        println!("listening on {}...", peer_bind_addr);
+
         loop {
             match peer_listener.accept().await {
                 // ? how do we know if incoming connection is from a peer or replica?
@@ -148,7 +148,7 @@ where
     ) {
         // SAFETY: The client_request_controller is leaked to make it static.
         // This is safe because the client_request_controller will live for the entire duration of the program.
-        let client_stream_listener = TokioStreamListenerFactory.create_listner(bind_addr).await;
+        let client_stream_listener = TokioStreamListenerFactory.create_listner(&bind_addr).await;
         let mut conn_handlers: Vec<tokio::task::JoinHandle<()>> = Vec::with_capacity(100);
         startup_notifier.notify_startup();
         loop {

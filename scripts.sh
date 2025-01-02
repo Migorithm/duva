@@ -21,3 +21,7 @@
 
 # config
 (printf '*3\r\n$6\r\nCONFIG\r\n$3\r\nGET\r\n$3\r\nDir\r\n') | nc localhost 6379
+
+
+# replication connect
+cargo run -- --port 6000  & cargo run -- --port 6001 --replicaof localhost:6000               

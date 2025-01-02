@@ -157,7 +157,7 @@ impl TGetPeerIp for tokio::net::TcpStream {
 
 pub struct TokioStreamListenerFactory;
 impl TokioStreamListenerFactory {
-    pub async fn create_listner(&self, bind_addr: String) -> TcpListener {
+    pub async fn create_listner(&self, bind_addr: &str) -> TcpListener {
         TcpListener::bind(bind_addr).await.expect("failed to bind")
     }
 }
