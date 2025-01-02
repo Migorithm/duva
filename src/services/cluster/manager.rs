@@ -9,6 +9,8 @@ use tokio::net::TcpStream;
 use tokio::sync::mpsc::Sender;
 use tokio::task::yield_now;
 
+use super::master_mode::MasterStream;
+
 #[derive(Clone)]
 pub struct ClusterManager(Sender<ClusterCommand>);
 make_smart_pointer!(ClusterManager, Sender<ClusterCommand>);
@@ -27,11 +29,8 @@ impl ClusterManager {
         Ok(peers)
     }
 
-    pub(crate) async fn accept_peer(&self, mut peer_stream: TcpStream) {
-        let (peer_addr, is_slave) = self
-            .establish_threeway_handshake(&mut peer_stream)
-            .await
-            .unwrap();
+    pub(crate) async fn accept_peer(&self, mut peer_stream: MasterStream) {
+        let (peer_addr, is_slave) = peer_stream.establish_threeway_handshake().await.unwrap();
 
         // TODO At this point, slave stream must write master_replid so that other nodes can tell where it belongs
         self.disseminate_peers(&mut peer_stream).await.unwrap();
@@ -40,7 +39,7 @@ impl ClusterManager {
 
         self.send(ClusterCommand::AddPeer {
             peer_addr,
-            stream: peer_stream,
+            stream: peer_stream.0,
             is_slave,
         })
         .await
@@ -55,100 +54,7 @@ impl ClusterManager {
         //     .unwrap();
     }
 
-    async fn establish_threeway_handshake(
-        &self,
-        stream: &mut (impl TExtractQuery<HandShakeRequest, PeerRequestArguments> + TStream),
-    ) -> anyhow::Result<(PeerAddr, bool)> {
-        self.handle_ping(stream).await?;
-
-        let port = self.handle_replconf_listening_port(stream).await?;
-
-        // TODO find use of capa?
-        let _capa_val_vec = self.handle_replconf_capa(stream).await?;
-
-        // TODO check repl_id is '?' or of mine. If not, consider incoming as peer
-        let (_repl_id, _offset) = self.handle_psync(stream).await?;
-
-        // ! TODO: STRANGE BEHAVIOUR
-        // if not for the following, message is sent with the previosly sent message
-        // even with this, it shows flaking behaviour
-        yield_now().await;
-
-        Ok((
-            PeerAddr(format!("{}:{}", stream.get_peer_ip()?, port)),
-            _repl_id == "?", // if repl_id is '?' or of mine, it's slave, otherwise it's a peer.
-        ))
-    }
-    async fn handle_ping(
-        &self,
-        stream: &mut (impl TExtractQuery<HandShakeRequest, PeerRequestArguments> + TStream),
-    ) -> anyhow::Result<()> {
-        let Ok((HandShakeRequest::Ping, _)) = stream.extract_query().await else {
-            return Err(anyhow::anyhow!("Ping not given"));
-        };
-        stream
-            .write(QueryIO::SimpleString("PONG".to_string()))
-            .await?;
-        Ok(())
-    }
-
-    async fn handle_replconf_listening_port(
-        &self,
-        stream: &mut (impl TExtractQuery<HandShakeRequest, PeerRequestArguments> + TStream),
-    ) -> anyhow::Result<u16> {
-        let (HandShakeRequest::ReplConf, query_args) = stream.extract_query().await? else {
-            return Err(anyhow::anyhow!("ReplConf not given during handshake"));
-        };
-        let port = if query_args.first() == Some(&QueryIO::BulkString("listening-port".to_string()))
-        {
-            query_args.take_replica_port()?
-        } else {
-            return Err(anyhow::anyhow!("Invalid listening-port given"));
-        };
-        stream
-            .write(QueryIO::SimpleString("OK".to_string()))
-            .await?;
-
-        Ok(port.parse::<u16>()?)
-    }
-
-    async fn handle_replconf_capa(
-        &self,
-        stream: &mut (impl TExtractQuery<HandShakeRequest, PeerRequestArguments> + TStream),
-    ) -> anyhow::Result<Vec<(String, String)>> {
-        let (HandShakeRequest::ReplConf, query_args) = stream.extract_query().await? else {
-            return Err(anyhow::anyhow!("ReplConf not given during handshake"));
-        };
-        let capa_val_vec = query_args.take_capabilities()?;
-        stream
-            .write(QueryIO::SimpleString("OK".to_string()))
-            .await?;
-
-        Ok(capa_val_vec)
-    }
-    async fn handle_psync(
-        &self,
-        stream: &mut (impl TExtractQuery<HandShakeRequest, PeerRequestArguments> + TStream),
-    ) -> anyhow::Result<(String, i64)> {
-        let (HandShakeRequest::Psync, query_args) = stream.extract_query().await? else {
-            return Err(anyhow::anyhow!("Psync not given during handshake"));
-        };
-
-        let (repl_id, offset) = query_args.take_psync()?;
-
-        stream
-            .write(QueryIO::SimpleString(
-                "FULLRESYNC 8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb 0".to_string(),
-            ))
-            .await?;
-
-        Ok((repl_id, offset))
-    }
-
-    async fn disseminate_peers(
-        &self,
-        stream: &mut (impl TExtractQuery<HandShakeRequest, PeerRequestArguments> + TStream),
-    ) -> anyhow::Result<()> {
+    async fn disseminate_peers(&self, stream: &mut TcpStream) -> anyhow::Result<()> {
         let peers = self.get_peers().await?;
         if peers.is_empty() {
             return Ok(());

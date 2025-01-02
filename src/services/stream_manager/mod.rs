@@ -2,7 +2,6 @@ pub mod error;
 pub mod interface;
 pub mod query_io;
 pub(crate) mod request_controller;
-use super::cluster::actor::PeerAddr;
 use error::IoError;
 use interface::TCancellationNotifier;
 use interface::TCancellationTokenFactory;

@@ -39,7 +39,7 @@ impl ConfigManager {
 
         // Set the initial state of the master mode
         IS_MASTER_MODE.store(
-            config.replication.is_master(),
+            config.replication.master_host.is_none(),
             std::sync::atomic::Ordering::Release,
         );
 

@@ -7,6 +7,7 @@ use crate::adapters::io::tokio_stream::TokioStreamListenerFactory;
 use anyhow::Result;
 use services::cluster::actor::ClusterActor;
 use services::cluster::manager::ClusterManager;
+use services::cluster::master_mode::MasterStream;
 use services::config::manager::{ConfigManager, IS_MASTER_MODE};
 use services::config::replication::Replication;
 use services::config::{ConfigResource, ConfigResponse};
@@ -14,9 +15,10 @@ use services::statefuls::cache::manager::CacheManager;
 use services::statefuls::cache::ttl::manager::TtlSchedulerInbox;
 use services::statefuls::persist::actor::PersistActor;
 use services::stream_manager::error::IoError;
-use services::stream_manager::interface::TCancellationTokenFactory;
+use services::stream_manager::interface::{TCancellationTokenFactory, TStream};
 use services::stream_manager::request_controller::client::ClientRequestController;
 use services::stream_manager::StreamManager;
+use tokio::net::TcpStream;
 
 // * StartUp Facade that manages invokes subsystems
 pub struct StartUpFacade<V>
@@ -95,7 +97,8 @@ where
                     )
                     .await;
                 } else {
-                    self.connect_to_master(repl_info).await;
+                    self.connect_to_master(self.cluster_manager, repl_info)
+                        .await;
                 }
             }
             _ => unreachable!(),
@@ -115,7 +118,7 @@ where
             match peer_listener.accept().await {
                 // ? how do we know if incoming connection is from a peer or replica?
                 Ok((peer_stream, _socket_addr)) => {
-                    tokio::spawn(cluster_manager.accept_peer(peer_stream));
+                    tokio::spawn(cluster_manager.accept_peer(MasterStream(peer_stream)));
                 }
 
                 Err(err) => {
@@ -159,10 +162,14 @@ where
         }
     }
 
-    async fn connect_to_master(&self, repl_info: Replication) {
-        loop {
-            hint::spin_loop();
-        }
+    async fn connect_to_master(
+        &self,
+        cluster_manager: &'static ClusterManager,
+        repl_info: Replication,
+    ) {
+        let mut master_stream = TcpStream::connect(repl_info.master_cluster_bind_addr())
+            .await
+            .unwrap();
     }
 }
 
