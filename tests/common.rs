@@ -4,16 +4,13 @@ use redis_starter_rust::services::config::manager::ConfigManager;
 use redis_starter_rust::services::stream_manager::interface::{TCancellationTokenFactory, TStream};
 use redis_starter_rust::services::stream_manager::query_io::QueryIO;
 use redis_starter_rust::{StartUpFacade, TNotifyStartUp};
-use tokio::net::TcpStream;
-
 use std::sync::Arc;
-use tokio::{
-    io::{AsyncReadExt, AsyncWriteExt},
-    net::{
-        tcp::{ReadHalf, WriteHalf},
-        TcpListener,
-    },
-};
+use tokio::io::AsyncReadExt;
+use tokio::io::AsyncWriteExt;
+use tokio::net::tcp::ReadHalf;
+use tokio::net::tcp::WriteHalf;
+use tokio::net::TcpListener;
+use tokio::net::TcpStream;
 
 pub struct TestStreamHandler<'a> {
     pub read: ReadHalf<'a>,

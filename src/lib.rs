@@ -1,11 +1,15 @@
 pub mod adapters;
 pub mod macros;
 pub mod services;
+use std::hint;
+
 use crate::adapters::io::tokio_stream::TokioStreamListenerFactory;
 use anyhow::Result;
 use services::cluster::actor::ClusterActor;
 use services::cluster::manager::ClusterManager;
-use services::config::manager::ConfigManager;
+use services::config::manager::{ConfigManager, IS_MASTER_MODE};
+use services::config::replication::Replication;
+use services::config::{ConfigResource, ConfigResponse};
 use services::statefuls::cache::manager::CacheManager;
 use services::statefuls::cache::ttl::manager::TtlSchedulerInbox;
 use services::statefuls::persist::actor::PersistActor;
@@ -76,8 +80,27 @@ where
             self.cluster_manager,
         ));
 
-        self.start_accepting_client_connections(self.config_manager.bind_addr(), startup_notifier)
-            .await;
+        // depending on master-slave state, we may need to start accepting client connections
+        let repl_info_receiver = self
+            .config_manager
+            .route_query(ConfigResource::ReplicationInfo)
+            .await?;
+
+        match repl_info_receiver.await {
+            Ok(ConfigResponse::ReplicationInfo(repl_info)) => {
+                if IS_MASTER_MODE.load(std::sync::atomic::Ordering::Acquire) {
+                    self.start_accepting_client_connections(
+                        self.config_manager.bind_addr(),
+                        startup_notifier,
+                    )
+                    .await;
+                } else {
+                    self.connect_to_master(repl_info).await;
+                }
+            }
+            _ => unreachable!(),
+        }
+
         Ok(())
     }
 
@@ -113,7 +136,7 @@ where
         // This is safe because the client_request_controller will live for the entire duration of the program.
 
         let client_stream_listener = TokioStreamListenerFactory.create_listner(bind_addr).await;
-
+        let mut conn_handlers: Vec<tokio::task::JoinHandle<()>> = Vec::with_capacity(100);
         startup_notifier.notify_startup();
         loop {
             match client_stream_listener.accept().await {
@@ -121,11 +144,11 @@ where
                 // Spawn a new task to handle the connection without blocking the main thread.
                 {
                     let query_manager = StreamManager::new(stream, self.client_request_controller);
-                    tokio::spawn(
+                    conn_handlers.push(tokio::spawn(
                         query_manager.handle_single_client_stream::<tokio::fs::File>(
                             self.cancellation_factory,
                         ),
-                    );
+                    ));
                 }
                 Err(e) => {
                     if Into::<IoError>::into(e.kind()).should_break() {
@@ -133,6 +156,12 @@ where
                     }
                 }
             }
+        }
+    }
+
+    async fn connect_to_master(&self, repl_info: Replication) {
+        loop {
+            hint::spin_loop();
         }
     }
 }

@@ -1,3 +1,4 @@
+use std::sync::atomic::AtomicBool;
 use std::time::SystemTime;
 
 use crate::env_var;
@@ -6,6 +7,7 @@ use super::actor::ConfigActor;
 use super::command::ConfigCommand;
 use super::command::ConfigMessage;
 use super::command::ConfigQuery;
+use super::replication::Replication;
 use super::ConfigResource;
 use super::ConfigResponse;
 
@@ -13,6 +15,7 @@ use tokio::fs::try_exists;
 use tokio::sync::mpsc::Sender;
 use tokio::sync::oneshot;
 use tokio::sync::oneshot::Receiver;
+pub static IS_MASTER_MODE: AtomicBool = AtomicBool::new(true);
 
 #[derive(Clone)]
 pub struct ConfigManager {
@@ -33,6 +36,13 @@ impl std::ops::Deref for ConfigManager {
 impl ConfigManager {
     pub fn new(config: ConfigActor) -> Self {
         let (tx, inbox) = tokio::sync::mpsc::channel(20);
+
+        // Set the initial state of the master mode
+        IS_MASTER_MODE.store(
+            config.replication.is_master(),
+            std::sync::atomic::Ordering::Release,
+        );
+
         tokio::spawn(config.handle(inbox));
 
         env_var!({}{
@@ -96,7 +106,7 @@ impl ConfigManager {
         Ok(file_path)
     }
 
-    pub async fn replication_info(&self) -> anyhow::Result<Vec<String>> {
+    pub async fn replication_info(&self) -> anyhow::Result<Replication> {
         let rx = self.route_query(ConfigResource::ReplicationInfo).await?;
 
         let ConfigResponse::ReplicationInfo(info) = rx.await? else {

@@ -20,7 +20,7 @@ use tokio::net::TcpStream;
 mod common;
 
 #[tokio::test]
-async fn test_threeway_handshake() {
+async fn test_master_threeway_handshake() {
     // GIVEN - master server configuration
     let config = ConfigActor::default();
     let mut manager = ConfigManager::new(config);
@@ -72,4 +72,22 @@ async fn test_threeway_handshake() {
         h.get_response().await,
         "+FULLRESYNC 8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb 0\r\n"
     );
+}
+
+#[tokio::test]
+async fn test_slave_threeway_handshake() {
+    // GIVEN - master server configuration
+    let config = ConfigActor::default();
+    let mut manager = ConfigManager::new(config);
+    let master_port = find_free_port_in_range(6000, 6553).await.unwrap();
+    manager.port = master_port;
+    let cluster_actor: ClusterActor = ClusterActor::new();
+    let _ = start_test_server(CancellationTokenFactory, manager, cluster_actor).await;
+
+    // run replica
+    let mut replica_config = ConfigActor::default();
+    replica_config.replication.master_port = Some(master_port);
+    let replica_manager = ConfigManager::new(replica_config);
+    let cluster_actor = ClusterActor::new();
+    let _ = start_test_server(CancellationTokenFactory, replica_manager, cluster_actor).await;
 }

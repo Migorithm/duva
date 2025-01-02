@@ -90,9 +90,13 @@ impl ClientRequestController {
             }
             ClientRequest::Delete => panic!("Not implemented"),
 
-            ClientRequest::Info => {
-                QueryIO::BulkString(self.config_manager.replication_info().await?.join("\r\n"))
-            }
+            ClientRequest::Info => QueryIO::BulkString(
+                self.config_manager
+                    .replication_info()
+                    .await?
+                    .vectorize()
+                    .join("\r\n"),
+            ),
         };
         Ok(response)
     }
