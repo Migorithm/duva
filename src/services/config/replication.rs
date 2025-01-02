@@ -49,7 +49,11 @@ impl Replication {
             .to_string()
     }
 
-    pub fn is_master(&self) -> bool {
-        self.master_host.is_none()
+    pub fn master_cluster_bind_addr(&self) -> String {
+        format!(
+            "{}:{}",
+            self.master_host.as_ref().unwrap(),
+            self.master_port.unwrap() + 10000
+        )
     }
 }

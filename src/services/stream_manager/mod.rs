@@ -2,33 +2,33 @@ pub mod error;
 pub mod interface;
 pub mod query_io;
 pub(crate) mod request_controller;
-use super::cluster::actor::PeerAddr;
+use anyhow::Context;
 use error::IoError;
 use interface::TCancellationNotifier;
 use interface::TCancellationTokenFactory;
-use interface::TExtractQuery;
+
 use interface::TStream;
 use interface::TWriterFactory;
 use query_io::QueryIO;
 use request_controller::client::arguments::ClientRequestArguments;
 use request_controller::client::client_request::ClientRequest;
 use request_controller::client::ClientRequestController;
+use tokio::net::TcpStream;
+
+use crate::make_smart_pointer;
 
 /// Controller is a struct that will be used to read and write values to the client.
-pub struct StreamManager<T, U>
-where
-    T: TStream,
-{
-    pub(crate) stream: T,
+pub struct ClientStreamManager<U> {
+    pub(crate) stream: ClientStream,
     pub(crate) controller: U,
 }
 
-impl<T, U> StreamManager<T, U>
-where
-    T: TStream,
-{
-    pub(crate) fn new(stream: T, controller: U) -> Self {
-        StreamManager { stream, controller }
+pub struct ClientStream(pub(crate) TcpStream);
+make_smart_pointer!(ClientStream, TcpStream);
+
+impl<U> ClientStreamManager<U> {
+    pub(crate) fn new(stream: ClientStream, controller: U) -> Self {
+        ClientStreamManager { stream, controller }
     }
 
     pub async fn send(&mut self, value: QueryIO) -> Result<(), IoError> {
@@ -36,10 +36,7 @@ where
     }
 }
 
-impl<T> StreamManager<T, &'static ClientRequestController>
-where
-    T: TStream + TExtractQuery<ClientRequest, ClientRequestArguments>,
-{
+impl ClientStreamManager<&'static ClientRequestController> {
     pub(crate) async fn handle_single_client_stream<F: TWriterFactory>(
         mut self,
         cancellation_token_factory: impl TCancellationTokenFactory,
@@ -47,7 +44,7 @@ where
         const TIMEOUT: u64 = 100;
 
         loop {
-            let Ok((request, query_args)) = self.stream.extract_query().await else {
+            let Ok((request, query_args)) = self.extract_query().await else {
                 eprintln!("invalid user request");
                 continue;
             };
@@ -73,6 +70,22 @@ where
                     break;
                 }
             }
+        }
+    }
+
+    async fn extract_query(&mut self) -> anyhow::Result<(ClientRequest, ClientRequestArguments)> {
+        let query_io = self.stream.read_value().await?;
+        match query_io {
+            QueryIO::Array(value_array) => Ok((
+                value_array
+                    .first()
+                    .context("request not given")?
+                    .clone()
+                    .unpack_bulk_str()?
+                    .try_into()?,
+                ClientRequestArguments::new(value_array.into_iter().skip(1).collect()),
+            )),
+            _ => Err(anyhow::anyhow!("Unexpected command format")),
         }
     }
 }

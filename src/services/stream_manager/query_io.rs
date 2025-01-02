@@ -12,6 +12,14 @@ pub enum QueryIO {
     Null,
     Err(String),
 }
+
+#[macro_export]
+macro_rules! write_array {
+    ($($x:expr),*) => {
+        QueryIO::Array(vec![$(QueryIO::BulkString($x.into())),*])
+    };
+}
+
 impl QueryIO {
     pub fn serialize(&self) -> String {
         match self {

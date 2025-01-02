@@ -87,7 +87,7 @@ impl Default for ConfigActor {
 
         let replicaof = replicaof.map(|host_port| {
             host_port
-                .split_once(' ')
+                .split_once(':')
                 .map(|(a, b)| (a.to_string(), b.to_string()))
                 .into_iter()
                 .collect::<(_, _)>()

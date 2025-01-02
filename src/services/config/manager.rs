@@ -39,8 +39,8 @@ impl ConfigManager {
 
         // Set the initial state of the master mode
         IS_MASTER_MODE.store(
-            config.replication.is_master(),
-            std::sync::atomic::Ordering::Release,
+            config.replication.master_port.is_none(),
+            std::sync::atomic::Ordering::Relaxed,
         );
 
         tokio::spawn(config.handle(inbox));
