@@ -3,13 +3,13 @@ use super::endec::decoder::states::DecoderInit;
 use super::endec::encoder::encoding_processor::SaveMeta;
 use super::endec::encoder::encoding_processor::SavingProcessor;
 use super::DumpFile;
+use crate::services::statefuls::persist::save_command::SaveCommand;
 use crate::services::stream_manager::interface::TWriterFactory;
 use tokio::sync::mpsc::{Receiver, Sender};
-use crate::services::statefuls::persist::save_command::SaveCommand;
 
 pub struct Load;
 
-pub struct PersistActor<T> {
+pub(crate) struct PersistActor<T> {
     processor: T,
 }
 
