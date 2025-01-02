@@ -1,3 +1,4 @@
+use crate::services::cluster::inbound_mode::InboundStream;
 use crate::services::stream_manager::interface::TWrite;
 use crate::services::stream_manager::request_controller::client::{
     arguments::ClientRequestArguments, client_request::ClientRequest,
@@ -88,7 +89,7 @@ impl TExtractQuery<ClientRequest, ClientRequestArguments> for TcpStream {
     }
 }
 
-impl TExtractQuery<HandShakeRequest, PeerRequestArguments> for TcpStream {
+impl TExtractQuery<HandShakeRequest, PeerRequestArguments> for InboundStream {
     async fn extract_query(&mut self) -> anyhow::Result<(HandShakeRequest, PeerRequestArguments)> {
         let query_io = self.read_value().await?;
         match query_io {

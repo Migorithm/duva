@@ -20,7 +20,6 @@ impl OutboundStream {
         self.send_replconf_listening_port(self_port).await?;
         self.send_replconf_capa(&replication).await?;
         self.send_psync(&replication).await?;
-
         Ok("".to_string())
     }
 

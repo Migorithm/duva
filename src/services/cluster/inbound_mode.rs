@@ -2,15 +2,12 @@ use super::actor::PeerAddr;
 use crate::make_smart_pointer;
 use crate::services::stream_manager::interface::{TExtractQuery, TGetPeerIp, TStream};
 use crate::services::stream_manager::query_io::QueryIO;
-use crate::services::stream_manager::request_controller::replica::arguments::PeerRequestArguments;
 use crate::services::stream_manager::request_controller::replica::replication_request::HandShakeRequest;
 use tokio::net::TcpStream;
 use tokio::task::yield_now;
 
 // The following is used only when the node is in master mode
-pub(crate) struct InboundStream(pub TcpStream)
-where
-    TcpStream: TExtractQuery<HandShakeRequest, PeerRequestArguments> + TStream;
+pub(crate) struct InboundStream(pub TcpStream);
 
 make_smart_pointer!(InboundStream, TcpStream);
 
@@ -38,12 +35,7 @@ impl InboundStream {
     }
 
     async fn recv_ping(&mut self) -> anyhow::Result<()> {
-        let (HandShakeRequest::Ping, _) = <tokio::net::TcpStream as TExtractQuery<
-            HandShakeRequest,
-            PeerRequestArguments,
-        >>::extract_query(self)
-        .await?
-        else {
+        let (HandShakeRequest::Ping, _) = self.extract_query().await? else {
             return Err(anyhow::anyhow!("Ping not given during handshake"));
         };
         self.write(QueryIO::SimpleString("PONG".to_string()))
@@ -52,12 +44,7 @@ impl InboundStream {
     }
 
     async fn recv_replconf_listening_port(&mut self) -> anyhow::Result<u16> {
-        let (HandShakeRequest::ReplConf, query_args) = <tokio::net::TcpStream as TExtractQuery<
-            HandShakeRequest,
-            PeerRequestArguments,
-        >>::extract_query(self)
-        .await?
-        else {
+        let (HandShakeRequest::ReplConf, query_args) = self.extract_query().await? else {
             return Err(anyhow::anyhow!("ReplConf not given during handshake"));
         };
         let port = if query_args.first() == Some(&QueryIO::BulkString("listening-port".to_string()))
@@ -72,12 +59,7 @@ impl InboundStream {
     }
 
     async fn recv_replconf_capa(&mut self) -> anyhow::Result<Vec<(String, String)>> {
-        let (HandShakeRequest::ReplConf, query_args) = <tokio::net::TcpStream as TExtractQuery<
-            HandShakeRequest,
-            PeerRequestArguments,
-        >>::extract_query(self)
-        .await?
-        else {
+        let (HandShakeRequest::ReplConf, query_args) = self.extract_query().await? else {
             return Err(anyhow::anyhow!("ReplConf not given during handshake"));
         };
         let capa_val_vec = query_args.take_capabilities()?;
@@ -86,12 +68,7 @@ impl InboundStream {
         Ok(capa_val_vec)
     }
     async fn recv_psync(&mut self) -> anyhow::Result<(String, i64)> {
-        let (HandShakeRequest::Psync, query_args) = <tokio::net::TcpStream as TExtractQuery<
-            HandShakeRequest,
-            PeerRequestArguments,
-        >>::extract_query(self)
-        .await?
-        else {
+        let (HandShakeRequest::Psync, query_args) = self.extract_query().await? else {
             return Err(anyhow::anyhow!("Psync not given during handshake"));
         };
         let (repl_id, offset) = query_args.take_psync()?;
