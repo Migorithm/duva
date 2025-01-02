@@ -26,7 +26,7 @@ impl Replication {
                 .map(|(_, port)| port.parse().expect("Invalid port number of given")),
         }
     }
-    pub fn info(&self) -> Vec<String> {
+    pub fn vectorize(&self) -> Vec<String> {
         vec![
             self.role(),
             format!("connected_slaves:{}", self.connected_slaves),
@@ -41,11 +41,15 @@ impl Replication {
             ),
         ]
     }
-    pub fn role(&self) -> String {
+    fn role(&self) -> String {
         self.master_host
             .is_some()
             .then(|| "role:slave")
             .unwrap_or("role:master")
             .to_string()
+    }
+
+    pub fn is_master(&self) -> bool {
+        self.master_host.is_none()
     }
 }

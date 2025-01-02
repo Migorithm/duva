@@ -95,6 +95,7 @@ async fn run_cluster_read_actor(mut sr: Receiver<ClusterReadCommand>) {
 
     while let Some(command) = sr.recv().await {
         match command {
+            // TODO PING(heartbeat) must come with some metadata to identify the sender
             ClusterReadCommand::Ping => {
                 // do something - failure detection!
             }

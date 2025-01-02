@@ -31,8 +31,9 @@ impl ConfigActor {
                         let _ = query.respond_with(ConfigResponse::FilePath(self.get_filepath()));
                     }
                     ConfigResource::ReplicationInfo => {
-                        let _ = query
-                            .respond_with(ConfigResponse::ReplicationInfo(self.replication.info()));
+                        let _ = query.respond_with(ConfigResponse::ReplicationInfo(
+                            self.replication.clone(),
+                        ));
                     }
                 },
                 ConfigMessage::Command(config_command) => match config_command {
