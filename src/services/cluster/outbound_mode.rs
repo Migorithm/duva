@@ -1,9 +1,8 @@
-use crate::make_smart_pointer;
 use crate::services::config::replication::Replication;
 use crate::services::stream_manager::interface::TStream;
 use crate::services::stream_manager::query_io::QueryIO;
 use crate::services::stream_manager::request_controller::replica::replication_request::HandShakeResponse;
-
+use crate::{make_smart_pointer, write_array};
 use tokio::net::TcpStream;
 
 // The following is used only when the node is in slave mode
@@ -26,10 +25,7 @@ impl OutboundStream {
     }
 
     async fn send_ping(&mut self) -> anyhow::Result<()> {
-        self.write(QueryIO::Array(vec![QueryIO::BulkString(
-            "PING".to_string(),
-        )]))
-        .await?;
+        self.write(write_array!("PING")).await?;
 
         let HandShakeResponse::PONG = self.extract_response().await? else {
             let err_msg = "PONG not received";
@@ -41,11 +37,11 @@ impl OutboundStream {
     }
 
     async fn send_replconf_listening_port(&mut self, self_port: u16) -> anyhow::Result<()> {
-        self.write(QueryIO::Array(vec![
-            QueryIO::BulkString("REPLCONF".to_string()),
-            QueryIO::BulkString("listening-port".to_string()),
-            QueryIO::BulkString(self_port.to_string()),
-        ]))
+        self.write(write_array!(
+            "REPLCONF",
+            "listening-port",
+            self_port.to_string()
+        ))
         .await?;
 
         let HandShakeResponse::OK = self.extract_response().await? else {
@@ -58,12 +54,8 @@ impl OutboundStream {
     }
 
     async fn send_replconf_capa(&mut self, repl_info: &Replication) -> anyhow::Result<()> {
-        self.write(QueryIO::Array(vec![
-            QueryIO::BulkString("REPLCONF".to_string()),
-            QueryIO::BulkString("capa".to_string()),
-            QueryIO::BulkString("psync2".to_string()),
-        ]))
-        .await?;
+        self.write(write_array!("REPLCONF", "capa", "psync2"))
+            .await?;
 
         let HandShakeResponse::OK = self.extract_response().await? else {
             let err_msg = "Ok expected, but not received";
@@ -74,14 +66,9 @@ impl OutboundStream {
     }
 
     async fn send_psync(&mut self, repl_info: &Replication) -> anyhow::Result<(String, i64)> {
-        self.write(QueryIO::Array(vec![
-            QueryIO::BulkString("PSYNC".to_string()),
-            QueryIO::BulkString("?".to_string()),
-            QueryIO::BulkString("-1".to_string()),
-        ]))
-        .await?;
+        self.write(write_array!("PSYNC", "?", "-1")).await?;
 
-        let (HandShakeResponse::FULLRESYNC { repl_id, offset }) = self.extract_response().await?
+        let HandShakeResponse::FULLRESYNC { repl_id, offset } = self.extract_response().await?
         else {
             let err_msg = "FULLRESYNC not received";
             eprintln!("{}", err_msg);
