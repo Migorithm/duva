@@ -17,7 +17,7 @@ use services::statefuls::persist::actor::PersistActor;
 use services::stream_manager::error::IoError;
 use services::stream_manager::interface::TCancellationTokenFactory;
 use services::stream_manager::request_controller::client::ClientRequestController;
-use services::stream_manager::StreamManager;
+use services::stream_manager::{ClientStream, ClientStreamManager};
 use tokio::net::TcpStream;
 
 // * StartUp Facade that manages invokes subsystems
@@ -156,7 +156,10 @@ where
                 Ok((stream, _)) =>
                 // Spawn a new task to handle the connection without blocking the main thread.
                 {
-                    let query_manager = StreamManager::new(stream, self.client_request_controller);
+                    let query_manager = ClientStreamManager::new(
+                        ClientStream(stream),
+                        self.client_request_controller,
+                    );
                     conn_handlers.push(tokio::spawn(
                         query_manager.handle_single_client_stream::<tokio::fs::File>(
                             self.cancellation_factory,

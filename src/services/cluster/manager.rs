@@ -82,7 +82,7 @@ impl ClusterManager {
         stream
             .estabilish_handshake(repl_info, self_port)
             .await
-            .unwrap();
+            .expect("joining handshake failed");
         start_up_notifier.notify_startup();
     }
 }

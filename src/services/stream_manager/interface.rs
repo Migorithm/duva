@@ -11,11 +11,6 @@ pub trait TStream: TGetPeerIp + Send + Sync + 'static {
     ) -> impl std::future::Future<Output = Result<(), IoError>> + Send;
 }
 
-pub(crate) trait TExtractQuery<R, A> {
-    fn extract_query(&mut self)
-        -> impl std::future::Future<Output = anyhow::Result<(R, A)>> + Send;
-}
-
 pub(crate) trait TRead {
     fn read_bytes(
         &mut self,

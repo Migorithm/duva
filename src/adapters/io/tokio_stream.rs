@@ -1,24 +1,15 @@
-use crate::services::cluster::inbound_mode::InboundStream;
 use crate::services::stream_manager::interface::TWrite;
-use crate::services::stream_manager::request_controller::client::{
-    arguments::ClientRequestArguments, client_request::ClientRequest,
-};
-use crate::services::stream_manager::request_controller::replica::replication_request::ReplicationRequest;
-use crate::services::stream_manager::request_controller::replica::{
-    arguments::PeerRequestArguments, replication_request::HandShakeRequest,
-};
 use crate::services::stream_manager::{
     error::IoError,
-    interface::{TExtractQuery, TGetPeerIp, TRead, TStream},
+    interface::{TGetPeerIp, TRead, TStream},
     query_io::{parse, QueryIO},
 };
-use anyhow::Context;
 use bytes::BytesMut;
 use std::io::ErrorKind;
 use tokio::net::tcp::OwnedWriteHalf;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
-    net::{TcpListener, TcpStream},
+    net::TcpListener,
 };
 
 impl TStream for tokio::net::TcpStream {
@@ -68,51 +59,6 @@ impl TWrite for OwnedWriteHalf {
         self.write_all(buf)
             .await
             .map_err(|e| Into::<IoError>::into(e.kind()))
-    }
-}
-
-impl TExtractQuery<ClientRequest, ClientRequestArguments> for TcpStream {
-    async fn extract_query(&mut self) -> anyhow::Result<(ClientRequest, ClientRequestArguments)> {
-        let query_io = self.read_value().await?;
-        match query_io {
-            QueryIO::Array(value_array) => Ok((
-                value_array
-                    .first()
-                    .context("request not given")?
-                    .clone()
-                    .unpack_bulk_str()?
-                    .try_into()?,
-                ClientRequestArguments::new(value_array.into_iter().skip(1).collect()),
-            )),
-            _ => Err(anyhow::anyhow!("Unexpected command format")),
-        }
-    }
-}
-
-impl TExtractQuery<HandShakeRequest, PeerRequestArguments> for InboundStream {
-    async fn extract_query(&mut self) -> anyhow::Result<(HandShakeRequest, PeerRequestArguments)> {
-        let query_io = self.read_value().await?;
-        match query_io {
-            // TODO refactor
-            QueryIO::Array(value_array) => Ok((
-                value_array
-                    .first()
-                    .context("request not given")?
-                    .clone()
-                    .unpack_bulk_str()?
-                    .try_into()?,
-                PeerRequestArguments::new(value_array.into_iter().skip(1).collect()),
-            )),
-            _ => Err(anyhow::anyhow!("Unexpected command format")),
-        }
-    }
-}
-
-impl TExtractQuery<ReplicationRequest, PeerRequestArguments> for TcpStream {
-    async fn extract_query(
-        &mut self,
-    ) -> anyhow::Result<(ReplicationRequest, PeerRequestArguments)> {
-        todo!()
     }
 }
 

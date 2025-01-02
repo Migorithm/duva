@@ -1,8 +1,10 @@
 use super::actor::PeerAddr;
 use crate::make_smart_pointer;
-use crate::services::stream_manager::interface::{TExtractQuery, TGetPeerIp, TStream};
+use crate::services::stream_manager::interface::{TGetPeerIp, TStream};
 use crate::services::stream_manager::query_io::QueryIO;
+use crate::services::stream_manager::request_controller::replica::arguments::QueryArguments;
 use crate::services::stream_manager::request_controller::replica::replication_request::HandShakeRequest;
+use anyhow::Context;
 use tokio::net::TcpStream;
 use tokio::task::yield_now;
 
@@ -79,5 +81,22 @@ impl InboundStream {
         .await?;
 
         Ok((repl_id, offset))
+    }
+
+    async fn extract_query(&mut self) -> anyhow::Result<(HandShakeRequest, QueryArguments)> {
+        let query_io = self.read_value().await?;
+        match query_io {
+            // TODO refactor
+            QueryIO::Array(value_array) => Ok((
+                value_array
+                    .first()
+                    .context("request not given")?
+                    .clone()
+                    .unpack_bulk_str()?
+                    .try_into()?,
+                QueryArguments::new(value_array.into_iter().skip(1).collect()),
+            )),
+            _ => Err(anyhow::anyhow!("Unexpected command format")),
+        }
     }
 }

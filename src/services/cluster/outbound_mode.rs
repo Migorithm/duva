@@ -1,11 +1,9 @@
-use crate::{
-    make_smart_pointer,
-    services::{
-        config::replication::Replication,
-        stream_manager::{interface::TStream, query_io::QueryIO},
-    },
-};
-use anyhow::Context;
+use crate::make_smart_pointer;
+use crate::services::config::replication::Replication;
+use crate::services::stream_manager::interface::TStream;
+use crate::services::stream_manager::query_io::QueryIO;
+use crate::services::stream_manager::request_controller::replica::replication_request::HandShakeResponse;
+
 use tokio::net::TcpStream;
 
 // The following is used only when the node is in slave mode
@@ -17,10 +15,14 @@ impl OutboundStream {
         self_port: u16,
     ) -> anyhow::Result<String> {
         self.send_ping().await?;
+
         self.send_replconf_listening_port(self_port).await?;
+
         self.send_replconf_capa(&replication).await?;
-        self.send_psync(&replication).await?;
-        Ok("".to_string())
+
+        let (repl_id, _offset) = self.send_psync(&replication).await?;
+
+        Ok(repl_id)
     }
 
     async fn send_ping(&mut self) -> anyhow::Result<()> {
@@ -29,10 +31,12 @@ impl OutboundStream {
         )]))
         .await?;
 
-        let QueryIO::SimpleString(val) = self.read_value().await? else {
-            return Err(anyhow::anyhow!("PONG not received"));
+        let HandShakeResponse::PONG = self.extract_query().await? else {
+            let err_msg = "PONG not received";
+            eprintln!("{}", err_msg);
+            return Err(anyhow::anyhow!(err_msg));
         };
-        assert_eq!(val, "PONG");
+
         Ok(())
     }
 
@@ -44,11 +48,12 @@ impl OutboundStream {
         ]))
         .await?;
 
-        let QueryIO::SimpleString(val) = self.read_value().await? else {
-            return Err(anyhow::anyhow!("REPLCONF OK not received"));
+        let HandShakeResponse::OK = self.extract_query().await? else {
+            let err_msg = "Ok expected, but not received";
+            eprintln!("{}", err_msg);
+            return Err(anyhow::anyhow!(err_msg));
         };
 
-        assert_eq!(val, "OK");
         Ok(())
     }
 
@@ -60,10 +65,11 @@ impl OutboundStream {
         ]))
         .await?;
 
-        let QueryIO::SimpleString(val) = self.read_value().await? else {
-            return Err(anyhow::anyhow!("REPLCONF capa not received"));
+        let HandShakeResponse::OK = self.extract_query().await? else {
+            let err_msg = "Ok expected, but not received";
+            eprintln!("{}", err_msg);
+            return Err(anyhow::anyhow!(err_msg));
         };
-        assert_eq!(val, "OK");
         Ok(())
     }
 
@@ -75,20 +81,23 @@ impl OutboundStream {
         ]))
         .await?;
 
-        let QueryIO::SimpleString(val) = self.read_value().await? else {
-            return Err(anyhow::anyhow!("PSYNC not received"));
+        let (HandShakeResponse::FULLRESYNC { repl_id, offset }) = self.extract_query().await?
+        else {
+            let err_msg = "FULLRESYNC not received";
+            eprintln!("{}", err_msg);
+            return Err(anyhow::anyhow!(err_msg));
         };
 
-        let mut iter = val.split_whitespace().skip(1);
-        let repl_id = iter
-            .next()
-            .context("replication_id must be given")?
-            .to_string();
-
-        let offset = iter.next().unwrap().parse::<i64>()?;
-
-        assert_eq!(val, format!("FULLRESYNC {} {}", repl_id, offset));
         Ok((repl_id, offset))
+    }
+
+    async fn extract_query(&mut self) -> anyhow::Result<HandShakeResponse> {
+        let query_io = self.read_value().await?;
+        match query_io {
+            QueryIO::SimpleString(value_array) => Ok(value_array.try_into()?),
+
+            _ => Err(anyhow::anyhow!("Unexpected command format")),
+        }
     }
 }
 
