@@ -31,7 +31,7 @@ impl OutboundStream {
         )]))
         .await?;
 
-        let HandShakeResponse::PONG = self.extract_query().await? else {
+        let HandShakeResponse::PONG = self.extract_response().await? else {
             let err_msg = "PONG not received";
             eprintln!("{}", err_msg);
             return Err(anyhow::anyhow!(err_msg));
@@ -48,7 +48,7 @@ impl OutboundStream {
         ]))
         .await?;
 
-        let HandShakeResponse::OK = self.extract_query().await? else {
+        let HandShakeResponse::OK = self.extract_response().await? else {
             let err_msg = "Ok expected, but not received";
             eprintln!("{}", err_msg);
             return Err(anyhow::anyhow!(err_msg));
@@ -65,7 +65,7 @@ impl OutboundStream {
         ]))
         .await?;
 
-        let HandShakeResponse::OK = self.extract_query().await? else {
+        let HandShakeResponse::OK = self.extract_response().await? else {
             let err_msg = "Ok expected, but not received";
             eprintln!("{}", err_msg);
             return Err(anyhow::anyhow!(err_msg));
@@ -81,7 +81,7 @@ impl OutboundStream {
         ]))
         .await?;
 
-        let (HandShakeResponse::FULLRESYNC { repl_id, offset }) = self.extract_query().await?
+        let (HandShakeResponse::FULLRESYNC { repl_id, offset }) = self.extract_response().await?
         else {
             let err_msg = "FULLRESYNC not received";
             eprintln!("{}", err_msg);
@@ -91,7 +91,7 @@ impl OutboundStream {
         Ok((repl_id, offset))
     }
 
-    async fn extract_query(&mut self) -> anyhow::Result<HandShakeResponse> {
+    async fn extract_response(&mut self) -> anyhow::Result<HandShakeResponse> {
         let query_io = self.read_value().await?;
         match query_io {
             QueryIO::SimpleString(value_array) => Ok(value_array.try_into()?),
