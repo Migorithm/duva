@@ -36,6 +36,7 @@ async fn test_disseminate_peers() {
 
     let message = threeway_handshake_helper(&mut client_stream, None).await;
 
+    //THEN
     let expected = format!("+PEERS {}\r\n", peer_address_to_test);
     if let Some(combined) = message {
         assert_eq!(combined.serialize(), expected);
@@ -43,6 +44,4 @@ async fn test_disseminate_peers() {
         let value = client_stream.read_value().await.unwrap();
         assert_eq!(value.serialize(), expected);
     }
-
-    //THEN
 }
