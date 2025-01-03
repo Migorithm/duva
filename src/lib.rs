@@ -83,12 +83,12 @@ where
         ));
 
         // depending on master-slave state, we may need to start accepting client connections
-        let repl_info_receiver = self
+        let repl = self
             .config_manager
             .route_query(ConfigResource::ReplicationInfo)
             .await?;
 
-        match repl_info_receiver.await? {
+        match repl {
             ConfigResponse::ReplicationInfo(repl_info) => {
                 if IS_MASTER_MODE.load(std::sync::atomic::Ordering::Relaxed) {
                     self.start_accepting_client_connections(

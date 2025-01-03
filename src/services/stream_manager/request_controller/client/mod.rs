@@ -77,9 +77,9 @@ impl ClientRequestController {
             // modify we have to add a new command
             ClientRequest::Config => {
                 let cmd = args.take_config_args()?;
-                let rx = self.config_manager.route_get(cmd).await?;
+                let res = self.config_manager.route_get(cmd).await?;
 
-                match rx.await? {
+                match res {
                     ConfigResponse::Dir(value) => QueryIO::Array(vec![
                         QueryIO::BulkString("dir".into()),
                         QueryIO::BulkString(value),
