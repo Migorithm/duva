@@ -1,10 +1,13 @@
+use std::sync::atomic::{AtomicBool, Ordering};
+
 use super::{
     command::{ConfigMessage, ConfigResource, ConfigResponse},
     ConfigCommand,
 };
 use crate::{env_var, services::config::replication::Replication};
-
 use tokio::sync::mpsc::Receiver;
+
+pub static IS_MASTER_MODE: AtomicBool = AtomicBool::new(true);
 
 #[derive(Clone)]
 pub struct ConfigActor {
@@ -14,39 +17,50 @@ pub struct ConfigActor {
 }
 
 impl ConfigActor {
-    pub async fn handle(mut self, mut inbox: Receiver<ConfigMessage>) {
+    pub fn handle(
+        mut self,
+        mut inbox: Receiver<ConfigMessage>,
+    ) -> tokio::sync::watch::Receiver<bool> {
         // inner state
+        let (notifier, watcher) =
+            tokio::sync::watch::channel(IS_MASTER_MODE.load(Ordering::Relaxed));
 
-        while let Some(msg) = inbox.recv().await {
-            match msg {
-                ConfigMessage::Query(query) => match query.resource {
-                    ConfigResource::Dir => {
-                        let _ = query.respond_with(ConfigResponse::Dir(self.dir.into()));
-                    }
-                    ConfigResource::DbFileName => {
-                        let _ =
-                            query.respond_with(ConfigResponse::DbFileName(self.dbfilename.into()));
-                    }
-                    ConfigResource::FilePath => {
-                        let _ = query.respond_with(ConfigResponse::FilePath(self.get_filepath()));
-                    }
-                    ConfigResource::ReplicationInfo => {
-                        let _ = query.respond_with(ConfigResponse::ReplicationInfo(
-                            self.replication.clone(),
-                        ));
-                    }
-                },
-                ConfigMessage::Command(config_command) => match config_command {
-                    ConfigCommand::ReplicaPing => {
-                        // ! Deprecated
-                        self.replication.connected_slaves += 1;
-                    }
-                    ConfigCommand::SetDbFileName(new_file_name) => {
-                        self.set_dbfilename(&new_file_name);
-                    }
-                },
+        tokio::spawn(async move {
+            let notifier = notifier;
+
+            while let Some(msg) = inbox.recv().await {
+                match msg {
+                    ConfigMessage::Query(query) => match query.resource {
+                        ConfigResource::Dir => {
+                            let _ = query.respond_with(ConfigResponse::Dir(self.dir.into()));
+                        }
+                        ConfigResource::DbFileName => {
+                            let _ = query
+                                .respond_with(ConfigResponse::DbFileName(self.dbfilename.into()));
+                        }
+                        ConfigResource::FilePath => {
+                            let _ =
+                                query.respond_with(ConfigResponse::FilePath(self.get_filepath()));
+                        }
+                        ConfigResource::ReplicationInfo => {
+                            let _ = query.respond_with(ConfigResponse::ReplicationInfo(
+                                self.replication.clone(),
+                            ));
+                        }
+                    },
+                    ConfigMessage::Command(config_command) => match config_command {
+                        ConfigCommand::ReplicaPing => {
+                            // ! Deprecated
+                            self.replication.connected_slaves += 1;
+                        }
+                        ConfigCommand::SetDbFileName(new_file_name) => {
+                            self.set_dbfilename(&new_file_name);
+                        }
+                    },
+                }
             }
-        }
+        });
+        watcher
     }
 
     pub fn set_dir(&mut self, dir: &str) {
@@ -93,10 +107,17 @@ impl Default for ConfigActor {
                 .collect::<(_, _)>()
         });
 
+        let replication = Replication::new(replicaof);
+
+        IS_MASTER_MODE.store(
+            replication.master_port.is_none(),
+            std::sync::atomic::Ordering::Relaxed,
+        );
+
         ConfigActor {
             dir: Box::leak(dir.into_boxed_str()),
             dbfilename: Box::leak(dbfilename.into_boxed_str()),
-            replication: Replication::new(replicaof),
+            replication,
         }
     }
 }

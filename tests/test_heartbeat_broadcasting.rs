@@ -1,7 +1,7 @@
 mod common;
 use common::{
-    create_cluster_actor_with_peers, fake_threeway_handshake_helper, find_free_port_in_range,
-    start_test_server,
+    create_cluster_actor_with_peers, find_free_port_in_range, start_test_server,
+    threeway_handshake_helper,
 };
 use redis_starter_rust::{
     adapters::cancellation_token::CancellationTokenFactory,
@@ -23,7 +23,7 @@ async fn receive_server_ping_from_replica_stream(
     let mut replica_stream = TcpStream::connect(master_cluster_bind_addr.clone())
         .await
         .unwrap();
-    fake_threeway_handshake_helper(&mut replica_stream, Some(replica_port)).await;
+    threeway_handshake_helper(&mut replica_stream, Some(replica_port)).await;
 
     let listener = TcpListener::bind(format!("localhost:{}", replica_port))
         .await

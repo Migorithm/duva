@@ -1,9 +1,9 @@
+use crate::make_smart_pointer;
 use crate::services::cluster::actor::{ClusterActor, PeerAddr};
 use crate::services::cluster::command::ClusterCommand;
 use crate::services::config::replication::Replication;
 use crate::services::stream_manager::interface::TStream;
 use crate::services::stream_manager::query_io::QueryIO;
-use crate::{make_smart_pointer, TNotifyStartUp};
 use tokio::net::TcpStream;
 use tokio::sync::mpsc::Sender;
 
@@ -77,12 +77,10 @@ impl ClusterManager {
         mut stream: OutboundStream,
         repl_info: Replication,
         self_port: u16,
-        start_up_notifier: impl TNotifyStartUp,
     ) {
         stream
             .estabilish_handshake(repl_info, self_port)
             .await
             .expect("joining handshake failed");
-        start_up_notifier.notify_startup();
     }
 }
