@@ -95,7 +95,7 @@ pub async fn start_test_server(
     let notify = Arc::new(tokio::sync::Notify::new());
     let start_flag = StartFlag(notify.clone());
 
-    let start_up_facade = StartUpFacade::new(cancellation_token_factory, config, cluster_actor);
+    let mut start_up_facade = StartUpFacade::new(cancellation_token_factory, config, cluster_actor);
 
     let h = tokio::spawn(async move {
         start_up_facade.run(start_flag).await?;
@@ -156,7 +156,7 @@ pub fn save_command() -> Vec<u8> {
     array(vec!["SAVE"]).into_bytes()
 }
 
-pub async fn fake_threeway_handshake_helper(
+pub async fn threeway_handshake_helper(
     stream_handler: &mut TcpStream,
     replica_server_port: Option<u16>,
 ) -> Option<QueryIO> {

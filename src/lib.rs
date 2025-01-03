@@ -2,13 +2,15 @@ pub mod adapters;
 pub mod macros;
 pub mod services;
 
+use std::time::Duration;
+
 use crate::adapters::io::tokio_stream::TokioStreamListenerFactory;
 use anyhow::Result;
 use services::cluster::actor::ClusterActor;
 use services::cluster::inbound_mode::InboundStream;
 use services::cluster::manager::ClusterManager;
 use services::cluster::outbound_mode::OutboundStream;
-use services::config::manager::{ConfigManager, IS_MASTER_MODE};
+use services::config::manager::ConfigManager;
 
 use services::config::{ConfigResource, ConfigResponse};
 use services::statefuls::cache::manager::CacheManager;
@@ -65,7 +67,7 @@ where
     }
 
     // TODO: remove input config and use config manager
-    pub async fn run(&self, startup_notifier: impl TNotifyStartUp) -> Result<()> {
+    pub async fn run(&mut self, startup_notifier: impl TNotifyStartUp) -> Result<()> {
         if let Some(filepath) = self.config_manager.try_filepath().await? {
             let dump = PersistActor::dump(filepath).await?;
             self.cache_manager
@@ -81,38 +83,11 @@ where
             self.config_manager.peer_bind_addr(),
             self.cluster_manager,
         ));
-
-        // depending on master-slave state, we may need to start accepting client connections
-        let repl = self
-            .config_manager
-            .route_query(ConfigResource::ReplicationInfo)
-            .await?;
-
-        match repl {
-            ConfigResponse::ReplicationInfo(repl_info) => {
-                if IS_MASTER_MODE.load(std::sync::atomic::Ordering::Relaxed) {
-                    self.start_accepting_client_connections(
-                        self.config_manager.bind_addr(),
-                        startup_notifier,
-                    )
-                    .await;
-                } else {
-                    self.cluster_manager
-                        .join_peer(
-                            OutboundStream(
-                                TcpStream::connect(repl_info.master_cluster_bind_addr()).await?,
-                            ),
-                            repl_info,
-                            self.config_manager.port,
-                            startup_notifier,
-                        )
-                        .await;
-                }
-            }
-            _ => unreachable!(),
-        }
-
-        Ok(())
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_secs(1)).await;
+            startup_notifier.notify_startup()
+        });
+        self.start_mode_specific_connection_handling().await
     }
 
     async fn start_accepting_peer_connections(
@@ -141,16 +116,12 @@ where
         }
     }
 
-    async fn start_accepting_client_connections(
-        &self,
-        bind_addr: String,
-        startup_notifier: impl TNotifyStartUp,
-    ) {
+    async fn start_accepting_client_connections(&self, bind_addr: String) {
         // SAFETY: The client_request_controller is leaked to make it static.
         // This is safe because the client_request_controller will live for the entire duration of the program.
         let client_stream_listener = TokioStreamListenerFactory.create_listner(&bind_addr).await;
         let mut conn_handlers: Vec<tokio::task::JoinHandle<()>> = Vec::with_capacity(100);
-        startup_notifier.notify_startup();
+
         loop {
             match client_stream_listener.accept().await {
                 Ok((stream, _)) =>
@@ -174,9 +145,37 @@ where
             }
         }
     }
+
+    async fn start_mode_specific_connection_handling(&mut self) -> anyhow::Result<()> {
+        loop {
+            // TODO Following must be changed
+            let is_master_mode = *self.config_manager.cluster_mode_watcher.borrow_and_update();
+            if is_master_mode {
+                self.start_accepting_client_connections(self.config_manager.bind_addr())
+                    .await;
+            } else {
+                let ConfigResponse::ReplicationInfo(repl_info) = self
+                    .config_manager
+                    .route_query(ConfigResource::ReplicationInfo)
+                    .await?
+                else {
+                    unreachable!()
+                };
+                self.cluster_manager
+                    .join_peer(
+                        OutboundStream(
+                            TcpStream::connect(repl_info.master_cluster_bind_addr()).await?,
+                        ),
+                        repl_info,
+                        self.config_manager.port,
+                    )
+                    .await;
+            }
+        }
+    }
 }
 
-pub trait TNotifyStartUp {
+pub trait TNotifyStartUp: Send + 'static {
     fn notify_startup(&self);
 }
 
