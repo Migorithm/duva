@@ -14,7 +14,6 @@ use super::ConfigResponse;
 use tokio::fs::try_exists;
 use tokio::sync::mpsc::Sender;
 use tokio::sync::oneshot;
-use tokio::sync::oneshot::Receiver;
 pub static IS_MASTER_MODE: AtomicBool = AtomicBool::new(true);
 
 #[derive(Clone)]
@@ -60,8 +59,8 @@ impl ConfigManager {
 
     // The following is used on startup and check if the file exists
     pub async fn try_filepath(&self) -> anyhow::Result<Option<String>> {
-        let rx = self.route_query(ConfigResource::FilePath).await?;
-        let ConfigResponse::FilePath(file_path) = rx.await? else {
+        let res = self.route_query(ConfigResource::FilePath).await?;
+        let ConfigResponse::FilePath(file_path) = res else {
             return Ok(None);
         };
         match try_exists(&file_path).await {
@@ -85,44 +84,38 @@ impl ConfigManager {
         format!("{}:{}", self.host, self.port + 10000)
     }
 
-    pub async fn route_get(
-        &self,
-        cmd: (String, String),
-    ) -> anyhow::Result<Receiver<ConfigResponse>> {
+    pub async fn route_get(&self, cmd: (String, String)) -> anyhow::Result<ConfigResponse> {
         let resource = match (cmd.0.to_lowercase().as_str(), cmd.1.to_lowercase().as_str()) {
             ("get", "dir") => ConfigResource::Dir,
             ("get", "dbfilename") => ConfigResource::DbFileName,
             _ => Err(anyhow::anyhow!("Invalid command"))?,
         };
-        let rx = self.route_query(resource).await?;
-        Ok(rx)
+        let res = self.route_query(resource).await?;
+        Ok(res)
     }
     pub async fn get_filepath(&self) -> anyhow::Result<String> {
-        let rx = self.route_query(ConfigResource::FilePath).await?;
+        let res = self.route_query(ConfigResource::FilePath).await?;
 
-        let ConfigResponse::FilePath(file_path) = rx.await? else {
+        let ConfigResponse::FilePath(file_path) = res else {
             return Err(anyhow::anyhow!("Failed to get file path"));
         };
         Ok(file_path)
     }
 
     pub async fn replication_info(&self) -> anyhow::Result<Replication> {
-        let rx = self.route_query(ConfigResource::ReplicationInfo).await?;
+        let res = self.route_query(ConfigResource::ReplicationInfo).await?;
 
-        let ConfigResponse::ReplicationInfo(info) = rx.await? else {
+        let ConfigResponse::ReplicationInfo(info) = res else {
             return Err(anyhow::anyhow!("Failed to get replication info"));
         };
         Ok(info)
     }
 
-    pub async fn route_query(
-        &self,
-        resource: ConfigResource,
-    ) -> anyhow::Result<oneshot::Receiver<ConfigResponse>> {
+    pub async fn route_query(&self, resource: ConfigResource) -> anyhow::Result<ConfigResponse> {
         let (callback, rx) = oneshot::channel();
         self.send(ConfigMessage::Query(ConfigQuery::new(callback, resource)))
             .await?;
-        Ok(rx)
+        Ok(rx.await?)
     }
     pub async fn route_command(&self, command: ConfigCommand) -> anyhow::Result<()> {
         self.send(ConfigMessage::Command(command)).await?;
