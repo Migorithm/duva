@@ -4,6 +4,7 @@ use redis_starter_rust::services::config::manager::ConfigManager;
 use redis_starter_rust::services::stream_manager::interface::{TCancellationTokenFactory, TStream};
 use redis_starter_rust::services::stream_manager::query_io::QueryIO;
 use redis_starter_rust::{StartUpFacade, TNotifyStartUp};
+use std::process::{Child, Command, Stdio};
 use std::sync::Arc;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
@@ -105,6 +106,21 @@ pub async fn start_test_server(
     //warm up time
     notify.notified().await;
     h
+}
+
+pub fn run_server_process(port: u16, replicaof: Option<String>) -> Child {
+    let mut command = Command::new("cargo");
+    command.args(["run", "--", "--port", &port.to_string()]);
+
+    if let Some(replicaof) = replicaof {
+        command.args(["--replicaof", &replicaof]);
+    }
+
+    command
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("Failed to start server process")
 }
 
 pub fn array(arr: Vec<&str>) -> String {
