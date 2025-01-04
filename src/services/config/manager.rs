@@ -1,8 +1,3 @@
-use std::sync::atomic::AtomicBool;
-use std::time::SystemTime;
-
-use crate::env_var;
-
 use super::actor::ConfigActor;
 use super::command::ConfigCommand;
 use super::command::ConfigMessage;
@@ -10,11 +5,12 @@ use super::command::ConfigQuery;
 use super::replication::Replication;
 use super::ConfigResource;
 use super::ConfigResponse;
+use crate::env_var;
+use std::time::SystemTime;
 
 use tokio::fs::try_exists;
 use tokio::sync::mpsc::Sender;
 use tokio::sync::oneshot;
-pub static IS_MASTER_MODE: AtomicBool = AtomicBool::new(true);
 
 #[derive(Clone)]
 pub struct ConfigManager {
@@ -22,6 +18,7 @@ pub struct ConfigManager {
     pub(crate) startup_time: SystemTime,
     pub port: u16,
     pub(crate) host: &'static str,
+    pub(crate) cluster_mode_watcher: tokio::sync::watch::Receiver<bool>,
 }
 
 impl std::ops::Deref for ConfigManager {
@@ -36,13 +33,7 @@ impl ConfigManager {
     pub fn new(config: ConfigActor) -> Self {
         let (tx, inbox) = tokio::sync::mpsc::channel(20);
 
-        // Set the initial state of the master mode
-        IS_MASTER_MODE.store(
-            config.replication.master_port.is_none(),
-            std::sync::atomic::Ordering::Relaxed,
-        );
-
-        tokio::spawn(config.handle(inbox));
+        let cluster_mode_watcher = config.handle(inbox);
 
         env_var!({}{
             port = 6379,
@@ -54,6 +45,7 @@ impl ConfigManager {
             startup_time: SystemTime::now(),
             port,
             host: Box::leak(host.into_boxed_str()),
+            cluster_mode_watcher,
         }
     }
 

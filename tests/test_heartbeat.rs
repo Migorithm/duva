@@ -8,7 +8,7 @@ mod common;
 
 use std::time::Duration;
 
-use common::{fake_threeway_handshake_helper, find_free_port_in_range, start_test_server};
+use common::{find_free_port_in_range, start_test_server, threeway_handshake_helper};
 use redis_starter_rust::{
     adapters::cancellation_token::CancellationTokenFactory,
     services::{
@@ -26,7 +26,7 @@ async fn receive_server_ping_from_replica_stream(
     let mut stream_handler = TcpStream::connect(master_cluster_bind_addr.clone())
         .await
         .unwrap();
-    fake_threeway_handshake_helper(&mut stream_handler, None).await;
+    threeway_handshake_helper(&mut stream_handler, None).await;
 
     tokio::spawn(async move {
         let mut count = 0;

@@ -1,8 +1,8 @@
 /// After three-way handshake, client will receive peers from the master server
 mod common;
 use common::{
-    create_cluster_actor_with_peers, fake_threeway_handshake_helper, find_free_port_in_range,
-    start_test_server,
+    create_cluster_actor_with_peers, find_free_port_in_range, start_test_server,
+    threeway_handshake_helper,
 };
 use redis_starter_rust::{
     adapters::cancellation_token::CancellationTokenFactory,
@@ -34,15 +34,14 @@ async fn test_disseminate_peers() {
 
     let mut client_stream = TcpStream::connect(master_cluster_bind_addr).await.unwrap();
 
-    let message = fake_threeway_handshake_helper(&mut client_stream, None).await;
+    let message = threeway_handshake_helper(&mut client_stream, None).await;
 
+    //THEN
     let expected = format!("+PEERS {}\r\n", peer_address_to_test);
     if let Some(combined) = message {
         assert_eq!(combined.serialize(), expected);
     } else {
-        let values = client_stream.read_value().await.unwrap();
-        assert_eq!(values.serialize(), expected);
+        let value = client_stream.read_value().await.unwrap();
+        assert_eq!(value.serialize(), expected);
     }
-
-    //THEN
 }

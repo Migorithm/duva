@@ -14,10 +14,10 @@ impl OutboundStream {
         self_port: u16,
     ) -> anyhow::Result<String> {
         self.send_ping().await?;
-
         self.send_replconf_listening_port(self_port).await?;
-
         self.send_replconf_capa(&replication).await?;
+
+        println!("[INFO] Three-way handshake completed");
 
         let (repl_id, _offset) = self.send_psync(&replication).await?;
 

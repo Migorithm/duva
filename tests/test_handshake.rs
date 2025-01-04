@@ -1,3 +1,10 @@
+use std::{
+    io::{BufRead, BufReader},
+    process::Stdio,
+    thread::sleep,
+    time::Duration,
+};
+
 /// Three-way handshake test
 /// 1. Client sends PING command
 /// 2. Client sends REPLCONF listening-port command as follows:
@@ -8,15 +15,15 @@
 ///    *3\r\n$5\r\nPSYNC\r\n$1\r\n?\r\n$2\r\n-1\r\n
 ///
 ///
-use common::{find_free_port_in_range, start_test_server, TestStreamHandler};
+use common::{find_free_port_in_range, run_server_process, start_test_server, TestStreamHandler};
 use redis_starter_rust::{
     adapters::cancellation_token::CancellationTokenFactory,
     services::{
         cluster::actor::ClusterActor,
-        config::{actor::ConfigActor, manager::ConfigManager, replication::Replication},
+        config::{actor::ConfigActor, manager::ConfigManager},
     },
 };
-use tokio::net::TcpStream;
+use tokio::{io::AsyncBufReadExt, net::TcpStream};
 mod common;
 
 #[tokio::test]
@@ -75,31 +82,31 @@ async fn test_master_threeway_handshake() {
 }
 
 #[tokio::test]
-#[ignore = "This hangs. When running on terminal, it works. Need to investigate"]
 async fn test_slave_threeway_handshake() {
     // GIVEN - master server configuration
-    let config = ConfigActor::default();
-    let mut manager = ConfigManager::new(config);
+    // Find free ports for the master and replica
     let master_port = find_free_port_in_range(6000, 6553).await.unwrap();
-    manager.port = master_port;
-    let cluster_actor: ClusterActor = ClusterActor::new();
-    let _ = start_test_server(CancellationTokenFactory, manager, cluster_actor)
-        .await
-        .await;
+    let replica_port = find_free_port_in_range(6001, 6553).await.unwrap();
 
-    // run replica
-    let mut replica_config = ConfigActor::default();
-    replica_config.replication =
-        Replication::new(Some(("localhost".to_string(), master_port.to_string())));
+    // Start the master server as a child process
+    let mut master_process = run_server_process(master_port, None);
 
-    let mut replica_manager = ConfigManager::new(replica_config);
-    let replica_port = 6001;
-    replica_manager.port = replica_port;
+    // WHEN run replica
+    let mut replica_process =
+        run_server_process(replica_port, Some(format!("localhost:{}", master_port)));
 
-    let _ = start_test_server(
-        CancellationTokenFactory,
-        replica_manager,
-        ClusterActor::new(),
-    )
-    .await;
+    // Read stdout from the replica process
+    let stdout = replica_process.stdout.take();
+    let mut stdout_reader = BufReader::new(stdout.expect("failed to take stdout")).lines();
+
+    // THEN - wait for the handshake to complete
+    while let Some(Ok(line)) = stdout_reader.next() {
+        if line == "[INFO] Three-way handshake completed" {
+            break;
+        }
+    }
+
+    // Clean up processes
+    let _ = master_process.kill();
+    let _ = replica_process.kill();
 }
