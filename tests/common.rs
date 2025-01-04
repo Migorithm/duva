@@ -3,7 +3,7 @@ use redis_starter_rust::services::config::actor::ConfigActor;
 use redis_starter_rust::services::config::manager::ConfigManager;
 use redis_starter_rust::services::stream_manager::interface::{TCancellationTokenFactory, TStream};
 use redis_starter_rust::services::stream_manager::query_io::QueryIO;
-use redis_starter_rust::{StartUpFacade, TNotifyStartUp};
+use redis_starter_rust::{make_smart_pointer, StartUpFacade, TNotifyStartUp};
 use std::process::{Child, Command, Stdio};
 use std::sync::Arc;
 use tokio::io::AsyncReadExt;
@@ -108,7 +108,15 @@ pub async fn start_test_server(
     h
 }
 
-pub fn run_server_process(port: u16, replicaof: Option<String>) -> Child {
+pub struct TestProcessChild(pub Child);
+impl Drop for TestProcessChild {
+    fn drop(&mut self) {
+        self.0.kill().unwrap();
+    }
+}
+make_smart_pointer!(TestProcessChild, Child);
+
+pub fn run_server_process(port: u16, replicaof: Option<String>) -> TestProcessChild {
     let mut command = Command::new("cargo");
     command.args(["run", "--", "--port", &port.to_string()]);
 
@@ -116,11 +124,16 @@ pub fn run_server_process(port: u16, replicaof: Option<String>) -> Child {
         command.args(["--replicaof", &replicaof]);
     }
 
-    command
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .expect("Failed to start server process")
+    // To enable integration test
+    command.env("RUSTFLAGS", "--cfg integration");
+
+    TestProcessChild(
+        command
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .expect("Failed to start server process"),
+    )
 }
 
 pub fn array(arr: Vec<&str>) -> String {

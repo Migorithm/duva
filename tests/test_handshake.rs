@@ -89,7 +89,7 @@ async fn test_slave_threeway_handshake() {
     let replica_port = find_free_port_in_range(6001, 6553).await.unwrap();
 
     // Start the master server as a child process
-    let mut master_process = run_server_process(master_port, None);
+    let _ = run_server_process(master_port, None);
 
     // WHEN run replica
     let mut replica_process =
@@ -105,8 +105,4 @@ async fn test_slave_threeway_handshake() {
             break;
         }
     }
-
-    // Clean up processes
-    let _ = master_process.kill();
-    let _ = replica_process.kill();
 }

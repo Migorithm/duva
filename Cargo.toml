@@ -14,5 +14,5 @@ thiserror = "1.0.32"                                # error handling
 tokio = { version = "1.23.0", features = ["full"] } # async networking
 
 
-# [build]
-# rustflags = ["--cfg", "debug_mode"]
+[build]
+rustflags = ["--cfg", "integration"]
