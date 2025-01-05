@@ -113,7 +113,7 @@ where
     }
 
     async fn start_mode_specific_connection_handling(&mut self) -> anyhow::Result<()> {
-        let mut is_master_mode = *self.config_manager.cluster_mode_watcher.borrow();
+        let mut is_master_mode = self.config_manager.cluster_mode();
         loop {
             let (stop_sentinel_tx, stop_sentinel_recv) = tokio::sync::oneshot::channel::<()>();
 
@@ -144,10 +144,10 @@ where
                     self.config_manager.port,
                 ));
             }
-
-            // Park the task until the cluster mode changes - error means notifier has been dropped
-            self.config_manager.cluster_mode_watcher.changed().await?;
-            is_master_mode = *self.config_manager.cluster_mode_watcher.borrow_and_update();
+            self.config_manager
+                .wait_until_cluster_mode_changed()
+                .await?;
+            is_master_mode = self.config_manager.cluster_mode();
         }
     }
 }
