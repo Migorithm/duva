@@ -113,13 +113,11 @@ where
     }
 
     async fn start_mode_specific_connection_handling(&mut self) -> anyhow::Result<()> {
-        let mut is_master_mode = *self.config_manager.cluster_mode_watcher.borrow_and_update();
+        let mut is_master_mode = *self.config_manager.cluster_mode_watcher.borrow();
         loop {
             let (stop_sentinel_tx, stop_sentinel_recv) = tokio::sync::oneshot::channel::<()>();
 
             if is_master_mode {
-                // If master mode, start accepting client connections
-
                 tokio::spawn(
                     self.client_request_controller
                         .run_client_connection_handling_actor(
@@ -147,9 +145,8 @@ where
                 ));
             }
 
-            // Park the task until the cluster mode changes
+            // Park the task until the cluster mode changes - error means notifier has been dropped
             self.config_manager.cluster_mode_watcher.changed().await?;
-
             is_master_mode = *self.config_manager.cluster_mode_watcher.borrow_and_update();
         }
     }
