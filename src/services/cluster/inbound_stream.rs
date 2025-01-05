@@ -1,9 +1,9 @@
 use super::actor::PeerAddr;
+use super::establishment::inbound::{HandShakeRequest, HandShakeRequestEnum};
 use crate::make_smart_pointer;
-use crate::services::connection_manager::establishment::inbound::HandShakeRequest;
-use crate::services::connection_manager::establishment::inbound::HandShakeRequestEnum;
-use crate::services::connection_manager::interface::{TGetPeerIp, TStream};
-use crate::services::connection_manager::query_io::QueryIO;
+
+use crate::services::query_io::QueryIO;
+use crate::services::interface::{TGetPeerIp, TStream};
 use tokio::net::TcpStream;
 
 // The following is used only when the node is in master mode

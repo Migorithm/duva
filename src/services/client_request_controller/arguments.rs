@@ -1,5 +1,5 @@
 use crate::make_smart_pointer;
-use crate::services::connection_manager::query_io::QueryIO;
+use crate::services::query_io::QueryIO;
 use crate::services::statefuls::cache::CacheEntry;
 use anyhow::Result;
 

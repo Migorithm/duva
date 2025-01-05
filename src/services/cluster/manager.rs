@@ -2,13 +2,13 @@ use crate::make_smart_pointer;
 use crate::services::cluster::actor::{ClusterActor, PeerAddr};
 use crate::services::cluster::command::ClusterCommand;
 use crate::services::config::replication::Replication;
-use crate::services::connection_manager::interface::TStream;
-use crate::services::connection_manager::query_io::QueryIO;
+use crate::services::interface::TStream;
+use crate::services::query_io::QueryIO;
 use tokio::net::TcpStream;
 use tokio::sync::mpsc::Sender;
 
-use super::inbound_mode::InboundStream;
-use super::outbound_mode::OutboundStream;
+use super::inbound_stream::InboundStream;
+use super::outbound_stream::OutboundStream;
 
 #[derive(Clone)]
 pub struct ClusterManager(Sender<ClusterCommand>);

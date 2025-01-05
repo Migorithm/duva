@@ -70,7 +70,7 @@ impl From<String> for QueryIO {
         QueryIO::BulkString(v)
     }
 }
-
+//
 pub fn parse(buffer: BytesMut) -> Result<(QueryIO, usize)> {
     match buffer[0] as char {
         '+' => parse_simple_string(buffer),

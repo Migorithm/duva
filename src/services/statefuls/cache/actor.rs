@@ -1,7 +1,7 @@
 use super::CacheEntry;
 use super::CacheValue;
 use crate::make_smart_pointer;
-use crate::services::connection_manager::query_io::QueryIO;
+use crate::services::query_io::QueryIO;
 use crate::services::statefuls::cache::ttl::manager::TtlSchedulerInbox;
 use crate::services::statefuls::persist::save_command::SaveCommand;
 use anyhow::Context;

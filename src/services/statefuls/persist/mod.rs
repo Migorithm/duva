@@ -1,10 +1,8 @@
-pub mod endec;
 pub mod actor;
+pub mod endec;
 pub mod save_command;
-
-use std::collections::HashMap;
-
 use super::cache::CacheEntry;
+use std::collections::HashMap;
 
 #[derive(Debug)]
 pub struct DumpFile {

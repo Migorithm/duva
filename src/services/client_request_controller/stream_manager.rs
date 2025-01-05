@@ -1,22 +1,19 @@
-pub mod error;
-pub mod establishment;
-pub mod interface;
-pub mod query_io;
-pub(crate) mod request_controller;
+use crate::{
+    make_smart_pointer,
+    services::{
+        error::IoError,
+        interface::{TCancellationNotifier, TCancellationTokenFactory, TStream},
+        query_io::QueryIO,
+    },
+};
 use anyhow::Context;
-use error::IoError;
-use interface::TCancellationNotifier;
-use interface::TCancellationTokenFactory;
 
-use interface::TStream;
-use interface::TWriterFactory;
-use query_io::QueryIO;
-use request_controller::client::arguments::ClientRequestArguments;
-use request_controller::client::client_request::ClientRequest;
-use request_controller::client::ClientRequestController;
 use tokio::net::TcpStream;
 
-use crate::make_smart_pointer;
+use super::{
+    arguments::ClientRequestArguments, request::ClientRequest, ClientRequestController,
+    TWriterFactory,
+};
 
 /// Controller is a struct that will be used to read and write values to the client.
 pub struct ClientStreamManager<U> {

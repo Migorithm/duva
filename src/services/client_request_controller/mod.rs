@@ -1,23 +1,23 @@
 use crate::adapters::io::tokio_stream::TokioStreamListenerFactory;
 use crate::services::config::manager::ConfigManager;
 use crate::services::config::ConfigResponse;
-use crate::services::connection_manager::interface::{
-    TCancellationTokenFactory, TCancellationWatcher,
-};
-use crate::services::connection_manager::query_io::QueryIO;
-use crate::services::connection_manager::{ClientStream, ClientStreamManager};
+
+use crate::services::interface::TWriterFactory;
+use crate::services::interface::{TCancellationTokenFactory, TCancellationWatcher};
+use crate::services::query_io::QueryIO;
 use crate::services::statefuls::cache::manager::CacheManager;
 use crate::services::statefuls::cache::ttl::manager::TtlSchedulerInbox;
 use crate::services::statefuls::persist::actor::PersistActor;
 use crate::services::statefuls::persist::endec::encoder::encoding_processor::SavingProcessor;
+
 use arguments::ClientRequestArguments;
-use client_request::ClientRequest;
+use request::ClientRequest;
+use stream_manager::{ClientStream, ClientStreamManager};
 use tokio::select;
 
-use crate::services::connection_manager::interface::TWriterFactory;
-
 pub mod arguments;
-pub mod client_request;
+pub mod request;
+pub mod stream_manager;
 
 pub(crate) struct ClientRequestController {
     config_manager: ConfigManager,

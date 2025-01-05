@@ -1,6 +1,6 @@
 use super::actor::{CacheActor, CacheCommand, CacheCommandSender};
 use super::CacheEntry;
-use crate::services::connection_manager::query_io::QueryIO;
+use crate::services::query_io::QueryIO;
 use crate::services::statefuls::cache::ttl::manager::TtlSchedulerInbox;
 
 use crate::services::statefuls::cache::ttl::actor::TtlActor;

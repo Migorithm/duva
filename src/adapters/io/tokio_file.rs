@@ -1,4 +1,4 @@
-use crate::services::connection_manager::{
+use crate::services::{
     error::IoError,
     interface::{TWrite, TWriterFactory},
 };

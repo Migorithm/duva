@@ -1,5 +1,4 @@
-use crate::services::connection_manager::interface::TWrite;
-use crate::services::statefuls::cache::CacheEntry;
+use crate::services::{interface::TWrite, statefuls::cache::CacheEntry};
 
 use crate::services::statefuls::persist::save_command::SaveCommand;
 use anyhow::Result;

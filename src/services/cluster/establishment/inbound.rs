@@ -1,8 +1,6 @@
-use anyhow::Context;
-
-use crate::services::connection_manager::query_io::QueryIO;
-
 use super::arguments::QueryArguments;
+use crate::services::query_io::QueryIO;
+use anyhow::Context;
 
 pub(crate) struct HandShakeRequest {
     pub(crate) command: HandShakeRequestEnum,

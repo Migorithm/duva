@@ -8,7 +8,7 @@ use redis_starter_rust::{
     services::{
         cluster::actor::ClusterActor,
         config::{actor::ConfigActor, manager::ConfigManager},
-        connection_manager::interface::TStream,
+        interface::TStream,
     },
 };
 use std::collections::HashMap;
