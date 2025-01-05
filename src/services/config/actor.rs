@@ -7,7 +7,7 @@ use super::{
 use crate::{env_var, services::config::replication::Replication};
 use tokio::sync::mpsc::Receiver;
 
-pub static IS_MASTER_MODE: AtomicBool = AtomicBool::new(true);
+pub static IS_LEADER_MODE: AtomicBool = AtomicBool::new(true);
 
 #[derive(Clone)]
 pub struct ConfigActor {
@@ -23,7 +23,7 @@ impl ConfigActor {
     ) -> tokio::sync::watch::Receiver<bool> {
         // inner state
         let (notifier, watcher) =
-            tokio::sync::watch::channel(IS_MASTER_MODE.load(Ordering::Relaxed));
+            tokio::sync::watch::channel(IS_LEADER_MODE.load(Ordering::Relaxed));
 
         tokio::spawn(async move {
             let notifier = notifier;
@@ -109,7 +109,7 @@ impl Default for ConfigActor {
 
         let replication = Replication::new(replicaof);
 
-        IS_MASTER_MODE.store(
+        IS_LEADER_MODE.store(
             replication.master_port.is_none(),
             std::sync::atomic::Ordering::Relaxed,
         );

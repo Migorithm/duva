@@ -35,7 +35,6 @@ impl ClusterManager {
         self.disseminate_peers(&mut peer_stream).await.unwrap();
 
         // TODO At this point again, slave tries to connect to other nodes as peer in the cluster
-
         self.send(ClusterCommand::AddPeer {
             peer_addr,
             stream: peer_stream.0,
@@ -43,14 +42,6 @@ impl ClusterManager {
         })
         .await
         .unwrap();
-
-        // TODO Bidirectional communication should be established
-        // self.schedule_heartbeat(peer_addr).await.unwrap();
-
-        // TODO Following should be moved to actor and infinite loop will not be needed for replication
-        // self.handle_replication_request(&mut peer_stream)
-        //     .await
-        //     .unwrap();
     }
 
     async fn disseminate_peers(&self, stream: &mut TcpStream) -> anyhow::Result<()> {

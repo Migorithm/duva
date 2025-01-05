@@ -62,7 +62,6 @@ where
         }
     }
 
-    // TODO: remove input config and use config manager
     pub async fn run(&mut self, startup_notifier: impl TNotifyStartUp) -> Result<()> {
         if let Some(filepath) = self.config_manager.try_filepath().await? {
             let dump = PersistActor::dump(filepath).await?;
@@ -113,11 +112,11 @@ where
     }
 
     async fn start_mode_specific_connection_handling(&mut self) -> anyhow::Result<()> {
-        let mut is_master_mode = self.config_manager.cluster_mode();
+        let mut is_leader_mode = self.config_manager.cluster_mode();
         loop {
             let (stop_sentinel_tx, stop_sentinel_recv) = tokio::sync::oneshot::channel::<()>();
 
-            if is_master_mode {
+            if is_leader_mode {
                 tokio::spawn(
                     self.client_request_controller
                         .run_client_connection_handling_actor(
@@ -147,7 +146,7 @@ where
             self.config_manager
                 .wait_until_cluster_mode_changed()
                 .await?;
-            is_master_mode = self.config_manager.cluster_mode();
+            is_leader_mode = self.config_manager.cluster_mode();
         }
     }
 }
