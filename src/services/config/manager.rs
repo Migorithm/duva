@@ -76,11 +76,11 @@ impl ConfigManager {
             } // Not given a dbfilename
         }
     }
-    //TODO this is immutable! Should be moved to manager
+
     pub fn bind_addr(&self) -> String {
         format!("{}:{}", self.host, self.port)
     }
-    //TODO this is immutable! Should be moved to manager
+
     pub fn peer_bind_addr(&self) -> String {
         format!("{}:{}", self.host, self.port + 10000)
     }

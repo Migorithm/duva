@@ -8,7 +8,7 @@ use redis_starter_rust::{
     adapters::cancellation_token::CancellationTokenFactory,
     services::{
         config::{actor::ConfigActor, manager::ConfigManager},
-        stream_manager::interface::TStream,
+        interface::TStream,
     },
 };
 use tokio::net::TcpStream;

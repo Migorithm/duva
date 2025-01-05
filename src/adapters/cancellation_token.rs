@@ -1,4 +1,4 @@
-use crate::services::stream_manager::interface::{
+use crate::services::interface::{
     TCancellationNotifier, TCancellationTokenFactory, TCancellationWatcher,
 };
 

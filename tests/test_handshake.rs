@@ -1,9 +1,4 @@
-use std::{
-    io::{BufRead, BufReader},
-    process::Stdio,
-    thread::sleep,
-    time::Duration,
-};
+use std::io::{BufRead, BufReader};
 
 /// Three-way handshake test
 /// 1. Client sends PING command
@@ -23,7 +18,7 @@ use redis_starter_rust::{
         config::{actor::ConfigActor, manager::ConfigManager},
     },
 };
-use tokio::{io::AsyncBufReadExt, net::TcpStream};
+use tokio::net::TcpStream;
 mod common;
 
 #[tokio::test]

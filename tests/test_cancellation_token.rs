@@ -6,9 +6,7 @@ mod common;
 use common::{init_config_manager_with_free_port, start_test_server, TestStreamHandler};
 use redis_starter_rust::services::{
     cluster::actor::ClusterActor,
-    stream_manager::interface::{
-        TCancellationNotifier, TCancellationTokenFactory, TCancellationWatcher,
-    },
+    interface::{TCancellationNotifier, TCancellationTokenFactory, TCancellationWatcher},
 };
 use tokio::net::TcpStream;
 

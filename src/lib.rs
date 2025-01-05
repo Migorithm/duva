@@ -4,17 +4,18 @@ pub mod services;
 use crate::adapters::io::tokio_stream::TokioStreamListenerFactory;
 use anyhow::Result;
 use services::cluster::actor::ClusterActor;
-use services::cluster::inbound_mode::InboundStream;
+use services::cluster::inbound_stream::InboundStream;
 use services::cluster::manager::ClusterManager;
-use services::cluster::outbound_mode::OutboundStream;
+use services::cluster::outbound_stream::OutboundStream;
 use services::config::manager::ConfigManager;
 use services::config::{ConfigResource, ConfigResponse};
+
+use services::client_request_controller::ClientRequestController;
+use services::error::IoError;
+use services::interface::TCancellationTokenFactory;
 use services::statefuls::cache::manager::CacheManager;
 use services::statefuls::cache::ttl::manager::TtlSchedulerInbox;
 use services::statefuls::persist::actor::PersistActor;
-use services::stream_manager::error::IoError;
-use services::stream_manager::interface::TCancellationTokenFactory;
-use services::stream_manager::request_controller::client::ClientRequestController;
 use std::time::Duration;
 use tokio::net::TcpStream;
 
@@ -62,7 +63,6 @@ where
         }
     }
 
-    // TODO: remove input config and use config manager
     pub async fn run(&mut self, startup_notifier: impl TNotifyStartUp) -> Result<()> {
         if let Some(filepath) = self.config_manager.try_filepath().await? {
             let dump = PersistActor::dump(filepath).await?;

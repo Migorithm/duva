@@ -1,5 +1,8 @@
-use super::{error::IoError, query_io::QueryIO};
+use crate::services::error::IoError;
+
 use bytes::BytesMut;
+
+use super::query_io::QueryIO;
 
 pub trait TStream: TGetPeerIp + Send + Sync + 'static {
     // TODO deprecated

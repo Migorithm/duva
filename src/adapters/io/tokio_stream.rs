@@ -1,9 +1,6 @@
-use crate::services::stream_manager::interface::TWrite;
-use crate::services::stream_manager::{
-    error::IoError,
-    interface::{TGetPeerIp, TRead, TStream},
-    query_io::{parse, QueryIO},
-};
+use crate::services::error::IoError;
+use crate::services::interface::{TGetPeerIp, TRead, TStream, TWrite};
+use crate::services::query_io::{parse, QueryIO};
 use bytes::BytesMut;
 use std::io::ErrorKind;
 use tokio::net::tcp::OwnedWriteHalf;

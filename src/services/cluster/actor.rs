@@ -1,7 +1,8 @@
 use crate::make_smart_pointer;
 use crate::services::cluster::command::ClusterCommand;
-use crate::services::stream_manager::interface::TWrite;
-use crate::services::stream_manager::query_io::QueryIO;
+
+use crate::services::interface::TWrite;
+use crate::services::query_io::QueryIO;
 use std::collections::{BTreeMap, HashSet};
 use std::time::Duration;
 use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
