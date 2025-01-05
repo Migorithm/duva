@@ -49,6 +49,15 @@ impl ConfigManager {
         }
     }
 
+    // Park the task until the cluster mode changes - error means notifier has been dropped
+    pub(crate) async fn wait_until_cluster_mode_changed(&mut self) -> anyhow::Result<()> {
+        self.cluster_mode_watcher.changed().await?;
+        Ok(())
+    }
+    pub(crate) fn cluster_mode(&mut self) -> bool {
+        *self.cluster_mode_watcher.borrow_and_update()
+    }
+
     // The following is used on startup and check if the file exists
     pub async fn try_filepath(&self) -> anyhow::Result<Option<String>> {
         let res = self.route_query(ConfigResource::FilePath).await?;

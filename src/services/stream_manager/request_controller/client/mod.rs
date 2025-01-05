@@ -1,13 +1,16 @@
+use crate::adapters::io::tokio_stream::TokioStreamListenerFactory;
 use crate::services::config::manager::ConfigManager;
 use crate::services::config::ConfigResponse;
 use crate::services::statefuls::cache::manager::CacheManager;
 use crate::services::statefuls::cache::ttl::manager::TtlSchedulerInbox;
 use crate::services::statefuls::persist::actor::PersistActor;
 use crate::services::statefuls::persist::endec::encoder::encoding_processor::SavingProcessor;
-use crate::services::stream_manager::interface::TCancellationWatcher;
+use crate::services::stream_manager::interface::{TCancellationTokenFactory, TCancellationWatcher};
 use crate::services::stream_manager::query_io::QueryIO;
+use crate::services::stream_manager::{ClientStream, ClientStreamManager};
 use arguments::ClientRequestArguments;
 use client_request::ClientRequest;
+use tokio::select;
 
 use crate::services::stream_manager::interface::TWriterFactory;
 
@@ -99,5 +102,36 @@ impl ClientRequestController {
             ),
         };
         Ok(response)
+    }
+
+    pub async fn run_client_connection_handling_actor(
+        &'static self,
+        bind_addr: String,
+        cancellation_factory: impl TCancellationTokenFactory,
+        stop_sentinel_recv: tokio::sync::oneshot::Receiver<()>,
+    ) {
+        let client_stream_listener = TokioStreamListenerFactory.create_listner(&bind_addr).await;
+        let mut conn_handlers: Vec<tokio::task::JoinHandle<()>> = Vec::with_capacity(100);
+        select! {
+            _ = stop_sentinel_recv => {
+                // Reconnection logic should be implemented by client?
+                conn_handlers.iter().for_each(|handle| handle.abort());
+            },
+            _ = async {
+                    while let Ok((stream, _)) = client_stream_listener.accept().await {
+                        // TODO refactoring
+                        let query_manager = ClientStreamManager::new(
+                            ClientStream(stream),
+                            self,
+                        );
+
+                        conn_handlers.push(tokio::spawn(
+                            query_manager.handle_single_client_stream::<tokio::fs::File>(
+                                cancellation_factory.clone()
+                            ),
+                        ));
+                    }
+                } =>{}
+        };
     }
 }
