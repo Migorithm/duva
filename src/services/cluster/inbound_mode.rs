@@ -1,13 +1,9 @@
 use super::actor::PeerAddr;
 use crate::make_smart_pointer;
-use crate::services::connection_manager::establishment::arguments::QueryArguments;
-use crate::services::connection_manager::establishment::inbound::{
-    HandShakeRequest, HandShakeRequestEnum,
-};
+use crate::services::connection_manager::establishment::inbound::HandShakeRequest;
+use crate::services::connection_manager::establishment::inbound::HandShakeRequestEnum;
 use crate::services::connection_manager::interface::{TGetPeerIp, TStream};
 use crate::services::connection_manager::query_io::QueryIO;
-
-use anyhow::Context;
 use tokio::net::TcpStream;
 
 // The following is used only when the node is in master mode
@@ -34,7 +30,7 @@ impl InboundStream {
     }
 
     async fn recv_ping(&mut self) -> anyhow::Result<()> {
-        let cmd = self.extract_query().await?;
+        let cmd = self.extract_cmd().await?;
         cmd.match_query(HandShakeRequestEnum::Ping)?;
 
         self.write(QueryIO::SimpleString("PONG".to_string()))
@@ -43,20 +39,20 @@ impl InboundStream {
     }
 
     async fn recv_replconf_listening_port(&mut self) -> anyhow::Result<u16> {
-        let mut cmd = self.extract_query().await?;
+        let mut cmd = self.extract_cmd().await?;
         let port = cmd.extract_listening_port()?;
         self.write(QueryIO::SimpleString("OK".to_string())).await?;
         Ok(port)
     }
 
     async fn recv_replconf_capa(&mut self) -> anyhow::Result<Vec<(String, String)>> {
-        let mut cmd = self.extract_query().await?;
+        let mut cmd = self.extract_cmd().await?;
         let capa_val_vec = cmd.extract_capa()?;
         self.write(QueryIO::SimpleString("OK".to_string())).await?;
         Ok(capa_val_vec)
     }
     async fn recv_psync(&mut self) -> anyhow::Result<(String, i64)> {
-        let mut cmd = self.extract_query().await?;
+        let mut cmd = self.extract_cmd().await?;
         let (repl_id, offset) = cmd.extract_psync()?;
 
         self.write(QueryIO::SimpleString(
@@ -67,20 +63,8 @@ impl InboundStream {
         Ok((repl_id, offset))
     }
 
-    async fn extract_query(&mut self) -> anyhow::Result<HandShakeRequest> {
+    async fn extract_cmd(&mut self) -> anyhow::Result<HandShakeRequest> {
         let query_io = self.read_value().await?;
-        match query_io {
-            // TODO refactor
-            QueryIO::Array(value_array) => Ok(HandShakeRequest::new(
-                value_array
-                    .first()
-                    .context("request not given")?
-                    .clone()
-                    .unpack_bulk_str()?
-                    .try_into()?,
-                QueryArguments::new(value_array.into_iter().skip(1).collect()),
-            )),
-            _ => Err(anyhow::anyhow!("Unexpected command format")),
-        }
+        HandShakeRequest::new(query_io)
     }
 }

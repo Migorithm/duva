@@ -10,9 +10,21 @@ pub(crate) struct HandShakeRequest {
 }
 
 impl HandShakeRequest {
-    pub(crate) fn new(command: HandShakeRequestEnum, args: QueryArguments) -> Self {
-        HandShakeRequest { command, args }
+    pub(crate) fn new(query_io: QueryIO) -> anyhow::Result<Self> {
+        match query_io {
+            QueryIO::Array(value_array) => Ok(Self {
+                command: value_array
+                    .first()
+                    .context("request not given")?
+                    .clone()
+                    .unpack_bulk_str()?
+                    .try_into()?,
+                args: QueryArguments::new(value_array.into_iter().skip(1).collect()),
+            }),
+            _ => Err(anyhow::anyhow!("Unexpected command format")),
+        }
     }
+
     pub(crate) fn match_query(&self, request: HandShakeRequestEnum) -> anyhow::Result<()> {
         if self.command == request {
             Ok(())
