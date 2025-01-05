@@ -119,6 +119,7 @@ impl ClientRequestController {
             },
             _ = async {
                     while let Ok((stream, _)) = client_stream_listener.accept().await {
+                        // TODO refactoring
                         let query_manager = ClientStreamManager::new(
                             ClientStream(stream),
                             self,
