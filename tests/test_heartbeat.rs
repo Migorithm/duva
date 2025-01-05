@@ -14,7 +14,7 @@ use redis_starter_rust::{
     services::{
         cluster::actor::ClusterActor,
         config::{actor::ConfigActor, manager::ConfigManager},
-        stream_manager::interface::TStream,
+        connection_manager::interface::TStream,
     },
 };
 use tokio::{net::TcpStream, task::JoinHandle, time::timeout};

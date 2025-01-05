@@ -9,12 +9,12 @@ use services::cluster::manager::ClusterManager;
 use services::cluster::outbound_mode::OutboundStream;
 use services::config::manager::ConfigManager;
 use services::config::{ConfigResource, ConfigResponse};
+use services::connection_manager::error::IoError;
+use services::connection_manager::interface::TCancellationTokenFactory;
+use services::connection_manager::request_controller::client::ClientRequestController;
 use services::statefuls::cache::manager::CacheManager;
 use services::statefuls::cache::ttl::manager::TtlSchedulerInbox;
 use services::statefuls::persist::actor::PersistActor;
-use services::stream_manager::error::IoError;
-use services::stream_manager::interface::TCancellationTokenFactory;
-use services::stream_manager::request_controller::client::ClientRequestController;
 use std::time::Duration;
 use tokio::net::TcpStream;
 
@@ -112,11 +112,11 @@ where
     }
 
     async fn start_mode_specific_connection_handling(&mut self) -> anyhow::Result<()> {
-        let mut is_leader_mode = self.config_manager.cluster_mode();
+        let mut is_master_mode = self.config_manager.cluster_mode();
         loop {
             let (stop_sentinel_tx, stop_sentinel_recv) = tokio::sync::oneshot::channel::<()>();
 
-            if is_leader_mode {
+            if is_master_mode {
                 tokio::spawn(
                     self.client_request_controller
                         .run_client_connection_handling_actor(
@@ -146,7 +146,7 @@ where
             self.config_manager
                 .wait_until_cluster_mode_changed()
                 .await?;
-            is_leader_mode = self.config_manager.cluster_mode();
+            is_master_mode = self.config_manager.cluster_mode();
         }
     }
 }

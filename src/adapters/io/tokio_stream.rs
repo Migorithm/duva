@@ -1,5 +1,5 @@
-use crate::services::stream_manager::interface::TWrite;
-use crate::services::stream_manager::{
+use crate::services::connection_manager::interface::TWrite;
+use crate::services::connection_manager::{
     error::IoError,
     interface::{TGetPeerIp, TRead, TStream},
     query_io::{parse, QueryIO},

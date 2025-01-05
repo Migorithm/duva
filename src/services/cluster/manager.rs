@@ -2,8 +2,8 @@ use crate::make_smart_pointer;
 use crate::services::cluster::actor::{ClusterActor, PeerAddr};
 use crate::services::cluster::command::ClusterCommand;
 use crate::services::config::replication::Replication;
-use crate::services::stream_manager::interface::TStream;
-use crate::services::stream_manager::query_io::QueryIO;
+use crate::services::connection_manager::interface::TStream;
+use crate::services::connection_manager::query_io::QueryIO;
 use tokio::net::TcpStream;
 use tokio::sync::mpsc::Sender;
 

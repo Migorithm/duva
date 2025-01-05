@@ -1,21 +1,19 @@
 use anyhow::Context;
 
-use crate::services::stream_manager::query_io::QueryIO;
+use crate::services::connection_manager::query_io::QueryIO;
 
 use super::arguments::QueryArguments;
 
-pub enum ReplicationRequest {}
-
-pub(crate) struct HandShakeCommand {
-    pub(crate) command: HandShakeRequest,
+pub(crate) struct HandShakeRequest {
+    pub(crate) command: HandShakeRequestEnum,
     pub(crate) args: QueryArguments,
 }
 
-impl HandShakeCommand {
-    pub(crate) fn new(command: HandShakeRequest, args: QueryArguments) -> Self {
-        HandShakeCommand { command, args }
+impl HandShakeRequest {
+    pub(crate) fn new(command: HandShakeRequestEnum, args: QueryArguments) -> Self {
+        HandShakeRequest { command, args }
     }
-    pub(crate) fn match_query(&self, request: HandShakeRequest) -> anyhow::Result<()> {
+    pub(crate) fn match_query(&self, request: HandShakeRequestEnum) -> anyhow::Result<()> {
         if self.command == request {
             Ok(())
         } else {
@@ -24,7 +22,7 @@ impl HandShakeCommand {
     }
 
     pub(crate) fn extract_listening_port(&mut self) -> anyhow::Result<u16> {
-        self.match_query(HandShakeRequest::ReplConf)?;
+        self.match_query(HandShakeRequestEnum::ReplConf)?;
 
         if self.args.len() < 2 {
             return Err(anyhow::anyhow!("Not enough arguments"));
@@ -41,7 +39,7 @@ impl HandShakeCommand {
     }
 
     pub(crate) fn extract_capa(&mut self) -> anyhow::Result<Vec<(String, String)>> {
-        self.match_query(HandShakeRequest::ReplConf)?;
+        self.match_query(HandShakeRequestEnum::ReplConf)?;
         if self.args.is_empty() || self.args.len() % 2 != 0 {
             return Err(anyhow::anyhow!("Invalid number of arguments"));
         }
@@ -67,7 +65,7 @@ impl HandShakeCommand {
         Ok(capabilities)
     }
     pub(crate) fn extract_psync(&mut self) -> anyhow::Result<(String, i64)> {
-        self.match_query(HandShakeRequest::Psync)?;
+        self.match_query(HandShakeRequestEnum::Psync)?;
 
         let replica_id = self
             .args
@@ -84,63 +82,19 @@ impl HandShakeCommand {
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub enum HandShakeRequest {
+pub enum HandShakeRequestEnum {
     Ping,
     ReplConf,
     Psync,
 }
 
-impl TryFrom<String> for ReplicationRequest {
+impl TryFrom<String> for HandShakeRequestEnum {
     type Error = anyhow::Error;
     fn try_from(value: String) -> Result<Self, Self::Error> {
         match value.to_lowercase().as_str() {
-            _ => Err(anyhow::anyhow!("Invalid command")),
-        }
-    }
-}
-
-impl TryFrom<String> for HandShakeRequest {
-    type Error = anyhow::Error;
-    fn try_from(value: String) -> Result<Self, Self::Error> {
-        match value.to_lowercase().as_str() {
-            "ping" => Ok(HandShakeRequest::Ping),
-            "replconf" => Ok(HandShakeRequest::ReplConf),
-            "psync" => Ok(HandShakeRequest::Psync),
-
-            invalid_value => {
-                eprintln!("Invalid command,{}", invalid_value);
-                Err(anyhow::anyhow!("Invalid command"))
-            }
-        }
-    }
-}
-
-pub enum HandShakeResponse {
-    PONG,
-    OK,
-    FULLRESYNC { repl_id: String, offset: i64 },
-}
-
-impl TryFrom<String> for HandShakeResponse {
-    type Error = anyhow::Error;
-    fn try_from(value: String) -> Result<Self, Self::Error> {
-        match value.to_lowercase().as_str() {
-            "pong" => Ok(HandShakeResponse::PONG),
-            "ok" => Ok(HandShakeResponse::OK),
-
-            var if var.starts_with("fullresync") => {
-                let mut iter = var.split_whitespace();
-                let _ = iter.next();
-                let repl_id = iter
-                    .next()
-                    .context("replication_id must be given")?
-                    .to_string();
-                let offset = iter
-                    .next()
-                    .context("offset must be given")?
-                    .parse::<i64>()?;
-                Ok(HandShakeResponse::FULLRESYNC { repl_id, offset })
-            }
+            "ping" => Ok(HandShakeRequestEnum::Ping),
+            "replconf" => Ok(HandShakeRequestEnum::ReplConf),
+            "psync" => Ok(HandShakeRequestEnum::Psync),
 
             invalid_value => {
                 eprintln!("Invalid command,{}", invalid_value);

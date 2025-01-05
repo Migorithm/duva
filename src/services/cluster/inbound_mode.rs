@@ -1,11 +1,12 @@
 use super::actor::PeerAddr;
 use crate::make_smart_pointer;
-use crate::services::stream_manager::interface::{TGetPeerIp, TStream};
-use crate::services::stream_manager::query_io::QueryIO;
-use crate::services::stream_manager::request_controller::replica::arguments::QueryArguments;
-use crate::services::stream_manager::request_controller::replica::replication_request::{
-    HandShakeCommand, HandShakeRequest,
+use crate::services::connection_manager::establishment::arguments::QueryArguments;
+use crate::services::connection_manager::establishment::inbound::{
+    HandShakeRequest, HandShakeRequestEnum,
 };
+use crate::services::connection_manager::interface::{TGetPeerIp, TStream};
+use crate::services::connection_manager::query_io::QueryIO;
+
 use anyhow::Context;
 use tokio::net::TcpStream;
 
@@ -34,7 +35,7 @@ impl InboundStream {
 
     async fn recv_ping(&mut self) -> anyhow::Result<()> {
         let cmd = self.extract_query().await?;
-        cmd.match_query(HandShakeRequest::Ping)?;
+        cmd.match_query(HandShakeRequestEnum::Ping)?;
 
         self.write(QueryIO::SimpleString("PONG".to_string()))
             .await?;
@@ -66,11 +67,11 @@ impl InboundStream {
         Ok((repl_id, offset))
     }
 
-    async fn extract_query(&mut self) -> anyhow::Result<HandShakeCommand> {
+    async fn extract_query(&mut self) -> anyhow::Result<HandShakeRequest> {
         let query_io = self.read_value().await?;
         match query_io {
             // TODO refactor
-            QueryIO::Array(value_array) => Ok(HandShakeCommand::new(
+            QueryIO::Array(value_array) => Ok(HandShakeRequest::new(
                 value_array
                     .first()
                     .context("request not given")?

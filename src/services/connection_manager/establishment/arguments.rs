@@ -1,5 +1,5 @@
 use crate::make_smart_pointer;
-use crate::services::stream_manager::query_io::QueryIO;
+use crate::services::connection_manager::query_io::QueryIO;
 
 #[derive(Debug, Clone)]
 pub struct QueryArguments(pub Vec<QueryIO>);
