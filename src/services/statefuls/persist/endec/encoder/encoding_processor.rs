@@ -10,13 +10,13 @@ use super::byte_encoder::{
     encode_metadata,
 };
 
-pub struct SavingProcessor<T: TWrite> {
-    pub(super) writer: T,
+pub struct SavingProcessor {
+    pub(super) writer: tokio::fs::File,
     pub(super) meta: SaveMeta,
 }
 
-impl<T: TWrite> SavingProcessor<T> {
-    pub fn new(file: T, meta: SaveMeta) -> Self {
+impl SavingProcessor {
+    pub fn new(file: tokio::fs::File, meta: SaveMeta) -> Self {
         Self { writer: file, meta }
     }
 

@@ -23,16 +23,13 @@ impl PersistActor<Load> {
     }
 }
 
-impl<T> PersistActor<SavingProcessor<T>>
-where
-    T: TWriterFactory,
-{
+impl PersistActor<SavingProcessor> {
     pub async fn run(
         filepath: String,
         num_of_cache_actors: usize,
     ) -> anyhow::Result<Sender<SaveCommand>> {
         // * Propagate error to caller before sending it to the background
-        let file = T::create_writer(filepath).await?;
+        let file = tokio::fs::File::create_writer(filepath).await?;
 
         let processor = SavingProcessor::new(file, SaveMeta::new(num_of_cache_actors));
 

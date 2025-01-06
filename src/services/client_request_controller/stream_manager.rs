@@ -1,7 +1,6 @@
 use crate::{
     make_smart_pointer,
     services::{
-        error::IoError,
         interface::{TCancellationNotifier, TCancellationTokenFactory, TStream},
         query_io::QueryIO,
     },
@@ -10,34 +9,32 @@ use anyhow::Context;
 
 use tokio::net::TcpStream;
 
-use super::{
-    arguments::ClientRequestArguments, request::ClientRequest, ClientRequestController,
-    TWriterFactory,
-};
-
-/// Controller is a struct that will be used to read and write values to the client.
-pub struct ClientStreamManager<U> {
-    pub(crate) stream: ClientStream,
-    pub(crate) controller: U,
-}
+use super::{arguments::ClientRequestArguments, request::ClientRequest, ClientRequestController};
 
 pub struct ClientStream(pub(crate) TcpStream);
 make_smart_pointer!(ClientStream, TcpStream);
 
-impl<U> ClientStreamManager<U> {
-    pub(crate) fn new(stream: ClientStream, controller: U) -> Self {
-        ClientStreamManager { stream, controller }
+impl ClientStream {
+    async fn extract_query(&mut self) -> anyhow::Result<(ClientRequest, ClientRequestArguments)> {
+        let query_io = self.read_value().await?;
+        match query_io {
+            QueryIO::Array(value_array) => Ok((
+                value_array
+                    .first()
+                    .context("request not given")?
+                    .clone()
+                    .unpack_bulk_str()?
+                    .try_into()?,
+                ClientRequestArguments::new(value_array.into_iter().skip(1).collect()),
+            )),
+            _ => Err(anyhow::anyhow!("Unexpected command format")),
+        }
     }
 
-    pub async fn send(&mut self, value: QueryIO) -> Result<(), IoError> {
-        self.stream.write(value).await
-    }
-}
-
-impl ClientStreamManager<&'static ClientRequestController> {
-    pub(crate) async fn handle_single_client_stream<F: TWriterFactory>(
+    pub(crate) async fn handle_single_client_stream(
         mut self,
         cancellation_token_factory: impl TCancellationTokenFactory,
+        controller: &'static ClientRequestController,
     ) {
         const TIMEOUT: u64 = 100;
 
@@ -54,13 +51,12 @@ impl ClientStreamManager<&'static ClientRequestController> {
             // Notify the cancellation notifier to cancel the query after 100 milliseconds.
             cancellation_notifier.notify();
 
-            let res = match self
-                .controller
-                .handle::<F>(cancellation_token, request, query_args)
+            let res = match controller
+                .handle(cancellation_token, request, query_args)
                 .await
             {
-                Ok(response) => self.send(response).await,
-                Err(e) => self.send(QueryIO::Err(e.to_string())).await,
+                Ok(response) => self.write(response).await,
+                Err(e) => self.write(QueryIO::Err(e.to_string())).await,
             };
 
             if let Err(e) = res {
@@ -68,22 +64,6 @@ impl ClientStreamManager<&'static ClientRequestController> {
                     break;
                 }
             }
-        }
-    }
-
-    async fn extract_query(&mut self) -> anyhow::Result<(ClientRequest, ClientRequestArguments)> {
-        let query_io = self.stream.read_value().await?;
-        match query_io {
-            QueryIO::Array(value_array) => Ok((
-                value_array
-                    .first()
-                    .context("request not given")?
-                    .clone()
-                    .unpack_bulk_str()?
-                    .try_into()?,
-                ClientRequestArguments::new(value_array.into_iter().skip(1).collect()),
-            )),
-            _ => Err(anyhow::anyhow!("Unexpected command format")),
         }
     }
 }

@@ -1,18 +1,15 @@
 use crate::adapters::io::tokio_stream::TokioStreamListenerFactory;
 use crate::services::config::manager::ConfigManager;
 use crate::services::config::ConfigResponse;
-
-use crate::services::interface::TWriterFactory;
 use crate::services::interface::{TCancellationTokenFactory, TCancellationWatcher};
 use crate::services::query_io::QueryIO;
 use crate::services::statefuls::cache::manager::CacheManager;
 use crate::services::statefuls::cache::ttl::manager::TtlSchedulerInbox;
 use crate::services::statefuls::persist::actor::PersistActor;
 use crate::services::statefuls::persist::endec::encoder::encoding_processor::SavingProcessor;
-
 use arguments::ClientRequestArguments;
 use request::ClientRequest;
-use stream_manager::{ClientStream, ClientStreamManager};
+use stream_manager::ClientStream;
 use tokio::select;
 
 pub mod arguments;
@@ -38,7 +35,7 @@ impl ClientRequestController {
         }
     }
 
-    pub(crate) async fn handle<T: TWriterFactory>(
+    pub(crate) async fn handle(
         &self,
         mut cancellation_token: impl TCancellationWatcher,
         cmd: ClientRequest,
@@ -61,7 +58,7 @@ impl ClientRequestController {
             }
             ClientRequest::Save => {
                 // spawn save actor
-                let outbox = PersistActor::<SavingProcessor<T>>::run(
+                let outbox = PersistActor::<SavingProcessor>::run(
                     self.config_manager.get_filepath().await?,
                     self.cache_manager.inboxes.len(),
                 )
@@ -121,15 +118,12 @@ impl ClientRequestController {
             },
             _ = async {
                     while let Ok((stream, _)) = client_stream_listener.accept().await {
-                        // TODO refactoring
-                        let query_manager = ClientStreamManager::new(
-                            ClientStream(stream),
-                            self,
-                        );
 
+                        let stream = ClientStream(stream);
                         conn_handlers.push(tokio::spawn(
-                            query_manager.handle_single_client_stream::<tokio::fs::File>(
-                                cancellation_factory.clone()
+                            stream.handle_single_client_stream(
+                                cancellation_factory.clone(),
+                                self
                             ),
                         ));
                     }
