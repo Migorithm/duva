@@ -1,7 +1,9 @@
 use crate::adapters::io::tokio_stream::TokioStreamListenerFactory;
 use crate::services::config::manager::ConfigManager;
 use crate::services::config::ConfigResponse;
-use crate::services::interface::{TCancellationTokenFactory, TCancellationWatcher};
+use crate::services::interface::{
+    TCancellationNotifier, TCancellationTokenFactory, TCancellationWatcher, TStream,
+};
 use crate::services::query_io::QueryIO;
 use crate::services::statefuls::cache::manager::CacheManager;
 use crate::services::statefuls::cache::ttl::manager::TtlSchedulerInbox;
@@ -9,12 +11,12 @@ use crate::services::statefuls::persist::actor::PersistActor;
 use crate::services::statefuls::persist::endec::encoder::encoding_processor::SavingProcessor;
 use arguments::ClientRequestArguments;
 use request::ClientRequest;
-use stream_manager::ClientStream;
+use stream::ClientStream;
 use tokio::select;
 
 pub mod arguments;
 pub mod request;
-pub mod stream_manager;
+pub mod stream;
 
 pub(crate) struct ClientRequestController {
     config_manager: ConfigManager,
@@ -119,16 +121,47 @@ impl ClientRequestController {
             },
             _ = async {
                     while let Ok((stream, _)) = client_stream_listener.accept().await {
-
-                        let stream = ClientStream(stream);
                         conn_handlers.push(tokio::spawn(
-                            stream.handle_single_client_stream(
-                                cancellation_factory.clone(),
-                                self
+                            self.handle_single_client_stream(
+                                ClientStream(stream),
+                                cancellation_factory.clone()
                             ),
                         ));
                     }
                 } =>{}
         };
+    }
+
+    pub(crate) async fn handle_single_client_stream(
+        &'static self,
+        mut stream: ClientStream,
+        cancellation_token_factory: impl TCancellationTokenFactory,
+    ) {
+        const TIMEOUT: u64 = 100;
+
+        loop {
+            let Ok((request, query_args)) = stream.extract_query().await else {
+                eprintln!("invalid user request");
+                continue;
+            };
+
+            let (cancellation_notifier, cancellation_token) =
+                cancellation_token_factory.create(TIMEOUT);
+
+            // TODO subject to change - more to dynamic
+            // Notify the cancellation notifier to cancel the query after 100 milliseconds.
+            cancellation_notifier.notify();
+
+            let res = match self.handle(cancellation_token, request, query_args).await {
+                Ok(response) => stream.write(response).await,
+                Err(e) => stream.write(QueryIO::Err(e.to_string())).await,
+            };
+
+            if let Err(e) = res {
+                if e.should_break() {
+                    break;
+                }
+            }
+        }
     }
 }
