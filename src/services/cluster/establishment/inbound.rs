@@ -79,7 +79,7 @@ impl HandShakeRequest {
 
         let replica_id = self
             .args
-            .get(0)
+            .first()
             .map(|v| v.clone().unpack_bulk_str())
             .ok_or(anyhow::anyhow!("No replica id"))??;
         let offset = self

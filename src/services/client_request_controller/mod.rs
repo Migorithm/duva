@@ -1,23 +1,22 @@
-use crate::adapters::io::tokio_stream::TokioStreamListenerFactory;
 use crate::services::config::manager::ConfigManager;
 use crate::services::config::ConfigResponse;
-
-use crate::services::interface::TWriterFactory;
-use crate::services::interface::{TCancellationTokenFactory, TCancellationWatcher};
+use crate::services::interface::{
+    TCancellationNotifier, TCancellationTokenFactory, TCancellationWatcher, TStream,
+};
 use crate::services::query_io::QueryIO;
 use crate::services::statefuls::cache::manager::CacheManager;
 use crate::services::statefuls::cache::ttl::manager::TtlSchedulerInbox;
 use crate::services::statefuls::persist::actor::PersistActor;
 use crate::services::statefuls::persist::endec::encoder::encoding_processor::SavingProcessor;
-
 use arguments::ClientRequestArguments;
 use request::ClientRequest;
-use stream_manager::{ClientStream, ClientStreamManager};
+use stream::ClientStream;
+use tokio::net::TcpListener;
 use tokio::select;
 
 pub mod arguments;
 pub mod request;
-pub mod stream_manager;
+pub mod stream;
 
 pub(crate) struct ClientRequestController {
     config_manager: ConfigManager,
@@ -38,7 +37,7 @@ impl ClientRequestController {
         }
     }
 
-    pub(crate) async fn handle<T: TWriterFactory>(
+    pub(crate) async fn handle(
         &self,
         mut cancellation_token: impl TCancellationWatcher,
         cmd: ClientRequest,
@@ -61,7 +60,7 @@ impl ClientRequestController {
             }
             ClientRequest::Save => {
                 // spawn save actor
-                let outbox = PersistActor::<SavingProcessor<T>>::run(
+                let outbox = PersistActor::<SavingProcessor>::run(
                     self.config_manager.get_filepath().await?,
                     self.cache_manager.inboxes.len(),
                 )
@@ -106,34 +105,58 @@ impl ClientRequestController {
         Ok(response)
     }
 
-    pub async fn run_client_connection_handling_actor(
+    pub async fn receive_clients(
         &'static self,
-        bind_addr: String,
         cancellation_factory: impl TCancellationTokenFactory,
         stop_sentinel_recv: tokio::sync::oneshot::Receiver<()>,
+        client_stream_listener: TcpListener,
     ) {
-        let client_stream_listener = TokioStreamListenerFactory.create_listner(&bind_addr).await;
         let mut conn_handlers: Vec<tokio::task::JoinHandle<()>> = Vec::with_capacity(100);
+
         select! {
-            _ = stop_sentinel_recv => {
-                // Reconnection logic should be implemented by client?
-                conn_handlers.iter().for_each(|handle| handle.abort());
-            },
+            // The following closure doesn't take the ownership of the `conn_handlers` which enables us to abort the tasks
+            // when the sentinel is received.
             _ = async {
                     while let Ok((stream, _)) = client_stream_listener.accept().await {
-                        // TODO refactoring
-                        let query_manager = ClientStreamManager::new(
-                            ClientStream(stream),
-                            self,
-                        );
-
                         conn_handlers.push(tokio::spawn(
-                            query_manager.handle_single_client_stream::<tokio::fs::File>(
-                                cancellation_factory.clone()
-                            ),
+                           async move{
+                                const TIMEOUT: u64 = 100;
+                                let mut stream =  ClientStream(stream);
+                                loop {
+                                    let Ok((request, query_args)) = stream.extract_query().await else {
+                                        eprintln!("invalid user request");
+                                        continue;
+                                    };
+
+                                    let (cancellation_notifier, cancellation_token) =
+                                        cancellation_factory.create(TIMEOUT);
+
+                                    // TODO subject to change - more to dynamic
+                                    // Notify the cancellation notifier to cancel the query after 100 milliseconds.
+                                    cancellation_notifier.notify();
+
+                                    let res = match self.handle(cancellation_token, request, query_args).await {
+                                        Ok(response) => stream.write(response).await,
+                                        Err(e) => stream.write(QueryIO::Err(e.to_string())).await,
+                                    };
+
+                                    if let Err(e) = res {
+                                        if e.should_break() {
+                                            break;
+                                        }
+                                    }
+                                }
+                           }
                         ));
                     }
                 } =>{}
+
+
+            _ = stop_sentinel_recv => {
+                // Reconnection logic should be implemented by client?
+                conn_handlers.iter().for_each(|handle| handle.abort());
+                },
+
         };
     }
 }

@@ -63,15 +63,17 @@ impl ClusterManager {
         Ok(())
     }
 
-    pub(crate) async fn join_peer(
-        &self,
-        mut stream: OutboundStream,
+    pub async fn join_master(
+        &'static self,
         repl_info: Replication,
         self_port: u16,
-    ) {
-        stream
+    ) -> anyhow::Result<()> {
+        let mut outbound_stream =
+            OutboundStream(TcpStream::connect(repl_info.master_cluster_bind_addr()).await?);
+        outbound_stream
             .estabilish_handshake(repl_info, self_port)
-            .await
-            .expect("joining handshake failed");
+            .await?;
+
+        Ok(())
     }
 }

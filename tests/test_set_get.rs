@@ -21,7 +21,7 @@ async fn test_set_get() {
     let _ = start_test_server(
         CancellationTokenFactory,
         config.clone(),
-        ClusterActor::new(),
+        ClusterActor::default(),
     )
     .await;
 

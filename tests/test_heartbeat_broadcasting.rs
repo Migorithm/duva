@@ -87,7 +87,7 @@ async fn test_heartbeat_sent_to_multiple_replicas() {
         config.replication.master_host = Some("localhost".to_string());
         let mut manager = ConfigManager::new(config);
         manager.port = connecting_replica_port;
-        let _ = start_test_server(CancellationTokenFactory, manager, ClusterActor::new()).await;
+        let _ = start_test_server(CancellationTokenFactory, manager, ClusterActor::default()).await;
     }
 
     // THEN

@@ -14,7 +14,7 @@ use tokio::net::TcpStream;
 async fn test_cancellation_token() {
     // GIVEN
     let config = init_config_manager_with_free_port().await;
-    let cluster_actor = ClusterActor::new();
+    let cluster_actor = ClusterActor::default();
     let _ = start_test_server(TestCancellationTokenFactory, config.clone(), cluster_actor).await;
 
     let mut client_stream = TcpStream::connect(config.bind_addr()).await.unwrap();

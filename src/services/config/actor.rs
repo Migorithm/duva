@@ -32,18 +32,16 @@ impl ConfigActor {
                 match msg {
                     ConfigMessage::Query(query) => match query.resource {
                         ConfigResource::Dir => {
-                            let _ = query.respond_with(ConfigResponse::Dir(self.dir.into()));
+                            query.respond_with(ConfigResponse::Dir(self.dir.into()));
                         }
                         ConfigResource::DbFileName => {
-                            let _ = query
-                                .respond_with(ConfigResponse::DbFileName(self.dbfilename.into()));
+                            query.respond_with(ConfigResponse::DbFileName(self.dbfilename.into()));
                         }
                         ConfigResource::FilePath => {
-                            let _ =
-                                query.respond_with(ConfigResponse::FilePath(self.get_filepath()));
+                            query.respond_with(ConfigResponse::FilePath(self.get_filepath()));
                         }
                         ConfigResource::ReplicationInfo => {
-                            let _ = query.respond_with(ConfigResponse::ReplicationInfo(
+                            query.respond_with(ConfigResponse::ReplicationInfo(
                                 self.replication.clone(),
                             ));
                         }

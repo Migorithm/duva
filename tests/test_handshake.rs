@@ -30,7 +30,7 @@ async fn test_master_threeway_handshake() {
     // ! `peer_bind_addr` is bind_addr dedicated for peer connections
     manager.port = find_free_port_in_range(6000, 6553).await.unwrap();
     let master_cluster_bind_addr = manager.peer_bind_addr();
-    let cluster_actor: ClusterActor = ClusterActor::new();
+    let cluster_actor: ClusterActor = ClusterActor::default();
 
     let _ = start_test_server(CancellationTokenFactory, manager, cluster_actor).await;
     let mut client_stream = TcpStream::connect(master_cluster_bind_addr).await.unwrap();

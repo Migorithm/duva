@@ -3,11 +3,8 @@ use crate::services::interface::{TGetPeerIp, TRead, TStream, TWrite};
 use crate::services::query_io::{parse, QueryIO};
 use bytes::BytesMut;
 use std::io::ErrorKind;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::tcp::OwnedWriteHalf;
-use tokio::{
-    io::{AsyncReadExt, AsyncWriteExt},
-    net::TcpListener,
-};
 
 impl TStream for tokio::net::TcpStream {
     async fn read_value(&mut self) -> anyhow::Result<QueryIO> {
@@ -96,13 +93,6 @@ impl TGetPeerIp for tokio::net::TcpStream {
             IoError::NotConnected
         })?;
         Ok(addr.ip().to_string())
-    }
-}
-
-pub struct TokioStreamListenerFactory;
-impl TokioStreamListenerFactory {
-    pub async fn create_listner(&self, bind_addr: &str) -> TcpListener {
-        TcpListener::bind(bind_addr).await.expect("failed to bind")
     }
 }
 

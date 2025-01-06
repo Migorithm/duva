@@ -42,7 +42,7 @@ async fn test_save_read_dump() {
     let _ = start_test_server(
         CancellationTokenFactory,
         config.clone(),
-        ClusterActor::new(),
+        ClusterActor::default(),
     )
     .await;
 
@@ -73,7 +73,7 @@ async fn test_save_read_dump() {
     let _ = start_test_server(
         CancellationTokenFactory,
         config.clone(),
-        ClusterActor::new(),
+        ClusterActor::default(),
     )
     .await;
 

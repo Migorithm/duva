@@ -1,7 +1,7 @@
 use super::establishment::outbound::HandShakeResponse;
 use crate::services::config::replication::Replication;
-use crate::services::query_io::QueryIO;
 use crate::services::interface::TStream;
+use crate::services::query_io::QueryIO;
 use crate::{make_smart_pointer, write_array};
 use tokio::net::TcpStream;
 
