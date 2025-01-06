@@ -11,15 +11,15 @@ pub enum IoError {
 
 impl IoError {
     pub fn should_break(self) -> bool {
-        match self {
+        matches!(
+            self,
             IoError::ConnectionRefused
-            | IoError::ConnectionReset
-            | IoError::ConnectionAborted
-            | IoError::NotConnected
-            | IoError::BrokenPipe
-            | IoError::TimedOut => true,
-            _ => false,
-        }
+                | IoError::ConnectionReset
+                | IoError::ConnectionAborted
+                | IoError::NotConnected
+                | IoError::BrokenPipe
+                | IoError::TimedOut
+        )
     }
 }
 

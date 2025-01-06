@@ -1,22 +1,19 @@
 pub mod adapters;
 pub mod macros;
 pub mod services;
-use crate::adapters::io::tokio_stream::TokioStreamListenerFactory;
 use anyhow::Result;
 use services::client_request_controller::ClientRequestController;
 use services::cluster::actor::ClusterActor;
 use services::cluster::inbound_stream::InboundStream;
 use services::cluster::manager::ClusterManager;
-use services::cluster::outbound_stream::OutboundStream;
 use services::config::manager::ConfigManager;
-use services::config::{ConfigResource, ConfigResponse};
 use services::error::IoError;
 use services::interface::TCancellationTokenFactory;
 use services::statefuls::cache::manager::CacheManager;
 use services::statefuls::cache::ttl::manager::TtlSchedulerInbox;
 use services::statefuls::persist::actor::PersistActor;
 use std::time::Duration;
-use tokio::net::TcpStream;
+use tokio::net::TcpListener;
 
 // * StartUp Facade that manages invokes subsystems
 pub struct StartUpFacade<V>
@@ -89,9 +86,10 @@ where
         peer_bind_addr: String,
         cluster_manager: &'static ClusterManager,
     ) {
-        let peer_listener = TokioStreamListenerFactory
-            .create_listner(&peer_bind_addr)
-            .await;
+        let peer_listener = TcpListener::bind(&peer_bind_addr)
+            .await
+            .expect("[ERROR] Failed to bind to peer address for listening");
+
         println!("Starting to accept peer connections");
         println!("listening on {}...", peer_bind_addr);
 
@@ -111,42 +109,29 @@ where
         }
     }
 
-    async fn operate_on_slave_mode(
-        &self,
-        stop_sentinel_tx: tokio::sync::oneshot::Sender<()>,
-    ) -> anyhow::Result<()> {
-        stop_sentinel_tx.send(()).unwrap();
-        let ConfigResponse::ReplicationInfo(repl_info) = self
-            .config_manager
-            .route_query(ConfigResource::ReplicationInfo)
-            .await?
-        else {
-            unreachable!()
-        };
-
-        tokio::spawn(self.cluster_manager.join_peer(
-            OutboundStream(TcpStream::connect(repl_info.master_cluster_bind_addr()).await?),
-            repl_info,
-            self.config_manager.port,
-        ));
-
-        Ok(())
-    }
-
     async fn start_mode_specific_connection_handling(&mut self) -> anyhow::Result<()> {
         let mut is_master_mode = self.config_manager.cluster_mode();
         loop {
             let (stop_sentinel_tx, stop_sentinel_recv) = tokio::sync::oneshot::channel::<()>();
 
             if is_master_mode {
-                tokio::spawn(
-                    self.client_request_controller
-                        .run_master_mode(self.cancellation_factory, stop_sentinel_recv),
-                );
+                let client_stream_listener =
+                    TcpListener::bind(&self.config_manager.bind_addr()).await?;
+                tokio::spawn(self.client_request_controller.receive_clients(
+                    self.cancellation_factory,
+                    stop_sentinel_recv,
+                    client_stream_listener,
+                ));
             } else {
                 // Cancel all client connections only IF the cluster mode has changes to slave
-                self.operate_on_slave_mode(stop_sentinel_tx).await?;
+                let _ = stop_sentinel_tx.send(());
+                let repl_info = self.config_manager.replication_info().await?;
+                tokio::spawn(
+                    self.cluster_manager
+                        .join_master(repl_info, self.config_manager.port),
+                );
             }
+
             self.config_manager
                 .wait_until_cluster_mode_changed()
                 .await?;

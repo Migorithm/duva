@@ -21,7 +21,7 @@ async fn test_replication_info() {
     start_test_server(
         CancellationTokenFactory,
         config.clone(),
-        ClusterActor::new(),
+        ClusterActor::default(),
     )
     .await;
 

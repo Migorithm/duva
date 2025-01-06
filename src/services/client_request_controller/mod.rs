@@ -1,4 +1,3 @@
-use crate::adapters::io::tokio_stream::TokioStreamListenerFactory;
 use crate::services::config::manager::ConfigManager;
 use crate::services::config::ConfigResponse;
 use crate::services::interface::{
@@ -12,6 +11,7 @@ use crate::services::statefuls::persist::endec::encoder::encoding_processor::Sav
 use arguments::ClientRequestArguments;
 use request::ClientRequest;
 use stream::ClientStream;
+use tokio::net::TcpListener;
 use tokio::select;
 
 pub mod arguments;
@@ -105,63 +105,58 @@ impl ClientRequestController {
         Ok(response)
     }
 
-    pub async fn run_master_mode(
+    pub async fn receive_clients(
         &'static self,
         cancellation_factory: impl TCancellationTokenFactory,
         stop_sentinel_recv: tokio::sync::oneshot::Receiver<()>,
+        client_stream_listener: TcpListener,
     ) {
-        let client_stream_listener = TokioStreamListenerFactory
-            .create_listner(&self.config_manager.bind_addr())
-            .await;
         let mut conn_handlers: Vec<tokio::task::JoinHandle<()>> = Vec::with_capacity(100);
+
         select! {
-            _ = stop_sentinel_recv => {
-                // Reconnection logic should be implemented by client?
-                conn_handlers.iter().for_each(|handle| handle.abort());
-            },
+            // The following closure doesn't take the ownership of the `conn_handlers` which enables us to abort the tasks
+            // when the sentinel is received.
             _ = async {
                     while let Ok((stream, _)) = client_stream_listener.accept().await {
                         conn_handlers.push(tokio::spawn(
-                            self.handle_single_client_stream(
-                                ClientStream(stream),
-                                cancellation_factory.clone()
-                            ),
+                           async move{
+                                const TIMEOUT: u64 = 100;
+                                let mut stream =  ClientStream(stream);
+                                loop {
+                                    let Ok((request, query_args)) = stream.extract_query().await else {
+                                        eprintln!("invalid user request");
+                                        continue;
+                                    };
+
+                                    let (cancellation_notifier, cancellation_token) =
+                                        cancellation_factory.create(TIMEOUT);
+
+                                    // TODO subject to change - more to dynamic
+                                    // Notify the cancellation notifier to cancel the query after 100 milliseconds.
+                                    cancellation_notifier.notify();
+
+                                    let res = match self.handle(cancellation_token, request, query_args).await {
+                                        Ok(response) => stream.write(response).await,
+                                        Err(e) => stream.write(QueryIO::Err(e.to_string())).await,
+                                    };
+
+                                    if let Err(e) = res {
+                                        if e.should_break() {
+                                            break;
+                                        }
+                                    }
+                                }
+                           }
                         ));
                     }
                 } =>{}
+
+
+            _ = stop_sentinel_recv => {
+                // Reconnection logic should be implemented by client?
+                conn_handlers.iter().for_each(|handle| handle.abort());
+                },
+
         };
-    }
-
-    pub(crate) async fn handle_single_client_stream(
-        &'static self,
-        mut stream: ClientStream,
-        cancellation_token_factory: impl TCancellationTokenFactory,
-    ) {
-        const TIMEOUT: u64 = 100;
-
-        loop {
-            let Ok((request, query_args)) = stream.extract_query().await else {
-                eprintln!("invalid user request");
-                continue;
-            };
-
-            let (cancellation_notifier, cancellation_token) =
-                cancellation_token_factory.create(TIMEOUT);
-
-            // TODO subject to change - more to dynamic
-            // Notify the cancellation notifier to cancel the query after 100 milliseconds.
-            cancellation_notifier.notify();
-
-            let res = match self.handle(cancellation_token, request, query_args).await {
-                Ok(response) => stream.write(response).await,
-                Err(e) => stream.write(QueryIO::Err(e.to_string())).await,
-            };
-
-            if let Err(e) = res {
-                if e.should_break() {
-                    break;
-                }
-            }
-        }
     }
 }

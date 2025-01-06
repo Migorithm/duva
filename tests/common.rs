@@ -1,8 +1,8 @@
 use redis_starter_rust::services::cluster::actor::{ClusterActor, PeerAddr};
 use redis_starter_rust::services::config::actor::ConfigActor;
 use redis_starter_rust::services::config::manager::ConfigManager;
-use redis_starter_rust::services::query_io::QueryIO;
 use redis_starter_rust::services::interface::{TCancellationTokenFactory, TStream};
+use redis_starter_rust::services::query_io::QueryIO;
 use redis_starter_rust::{make_smart_pointer, StartUpFacade, TNotifyStartUp};
 use std::process::{Child, Command, Stdio};
 use std::sync::Arc;
@@ -245,7 +245,7 @@ pub async fn threeway_handshake_helper(
 }
 
 pub fn create_cluster_actor_with_peers(peers: Vec<String>) -> ClusterActor {
-    let mut cluster_actor = ClusterActor::new();
+    let mut cluster_actor = ClusterActor::default();
     for peer in peers {
         cluster_actor.peers.insert(PeerAddr(peer));
     }

@@ -11,7 +11,7 @@ use redis_starter_rust::{
 async fn main() -> anyhow::Result<()> {
     // bootstrap dependencies
     let config_manager = ConfigManager::new(ConfigActor::default());
-    let cluster_actor = ClusterActor::new();
+    let cluster_actor = ClusterActor::default();
     let mut start_up_runner =
         StartUpFacade::new(CancellationTokenFactory, config_manager, cluster_actor);
     start_up_runner.run(()).await

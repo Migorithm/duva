@@ -10,6 +10,7 @@ use tokio::sync::mpsc::Sender;
 use tokio::time::interval;
 use tokio::{net::TcpStream, sync::mpsc::Receiver};
 
+#[derive(Debug, Default)]
 pub struct ClusterActor {
     // TODO change PeerAddr to PeerIdentifier
     pub peers: HashSet<PeerAddr>,
@@ -19,12 +20,6 @@ pub struct PeerAddr(pub String);
 make_smart_pointer!(PeerAddr, String);
 
 impl ClusterActor {
-    pub fn new() -> Self {
-        Self {
-            peers: HashSet::new(),
-        }
-    }
-
     // * Add peer to the cluster
     // * This function is called when a new peer is connected to peer listener
     // * Some are replicas and some are cluster members

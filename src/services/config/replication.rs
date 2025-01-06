@@ -42,11 +42,11 @@ impl Replication {
         ]
     }
     fn role(&self) -> String {
-        self.master_host
-            .is_some()
-            .then(|| "role:slave")
-            .unwrap_or("role:master")
-            .to_string()
+        if self.master_host.is_some() {
+            "role:slave".into()
+        } else {
+            "role:master".into()
+        }
     }
 
     pub fn master_cluster_bind_addr(&self) -> String {
