@@ -18,6 +18,7 @@ use services::statefuls::cache::ttl::manager::TtlSchedulerInbox;
 use services::statefuls::persist::actor::PersistActor;
 use std::time::Duration;
 use tokio::net::TcpStream;
+use tokio::sync::oneshot::Receiver;
 
 // * StartUp Facade that manages invokes subsystems
 pub struct StartUpFacade<V>
@@ -111,6 +112,38 @@ where
             }
         }
     }
+    fn operate_on_master_mode(&self, stop_sentinel_recv: Receiver<()>) {
+        tokio::spawn(
+            self.client_request_controller
+                .run_client_connection_handling_actor(
+                    self.config_manager.bind_addr(),
+                    self.cancellation_factory,
+                    stop_sentinel_recv,
+                ),
+        );
+    }
+
+    async fn operate_on_slave_mode(
+        &self,
+        stop_sentinel_tx: tokio::sync::oneshot::Sender<()>,
+    ) -> anyhow::Result<()> {
+        stop_sentinel_tx.send(()).unwrap();
+        let ConfigResponse::ReplicationInfo(repl_info) = self
+            .config_manager
+            .route_query(ConfigResource::ReplicationInfo)
+            .await?
+        else {
+            unreachable!()
+        };
+
+        tokio::spawn(self.cluster_manager.join_peer(
+            OutboundStream(TcpStream::connect(repl_info.master_cluster_bind_addr()).await?),
+            repl_info,
+            self.config_manager.port,
+        ));
+
+        Ok(())
+    }
 
     async fn start_mode_specific_connection_handling(&mut self) -> anyhow::Result<()> {
         let mut is_master_mode = self.config_manager.cluster_mode();
@@ -118,31 +151,10 @@ where
             let (stop_sentinel_tx, stop_sentinel_recv) = tokio::sync::oneshot::channel::<()>();
 
             if is_master_mode {
-                tokio::spawn(
-                    self.client_request_controller
-                        .run_client_connection_handling_actor(
-                            self.config_manager.bind_addr(),
-                            self.cancellation_factory,
-                            stop_sentinel_recv,
-                        ),
-                );
+                self.operate_on_master_mode(stop_sentinel_recv);
             } else {
                 // Cancel all client connections only IF the cluster mode has changes to slave
-                stop_sentinel_tx.send(()).unwrap();
-
-                let ConfigResponse::ReplicationInfo(repl_info) = self
-                    .config_manager
-                    .route_query(ConfigResource::ReplicationInfo)
-                    .await?
-                else {
-                    unreachable!()
-                };
-
-                tokio::spawn(self.cluster_manager.join_peer(
-                    OutboundStream(TcpStream::connect(repl_info.master_cluster_bind_addr()).await?),
-                    repl_info,
-                    self.config_manager.port,
-                ));
+                self.operate_on_slave_mode(stop_sentinel_tx).await?;
             }
             self.config_manager
                 .wait_until_cluster_mode_changed()
