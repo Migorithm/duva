@@ -112,16 +112,6 @@ where
             }
         }
     }
-    fn operate_on_master_mode(&self, stop_sentinel_recv: Receiver<()>) {
-        tokio::spawn(
-            self.client_request_controller
-                .run_client_connection_handling_actor(
-                    self.config_manager.bind_addr(),
-                    self.cancellation_factory,
-                    stop_sentinel_recv,
-                ),
-        );
-    }
 
     async fn operate_on_slave_mode(
         &self,
@@ -151,7 +141,10 @@ where
             let (stop_sentinel_tx, stop_sentinel_recv) = tokio::sync::oneshot::channel::<()>();
 
             if is_master_mode {
-                self.operate_on_master_mode(stop_sentinel_recv);
+                tokio::spawn(
+                    self.client_request_controller
+                        .run_master_mode(self.cancellation_factory, stop_sentinel_recv),
+                );
             } else {
                 // Cancel all client connections only IF the cluster mode has changes to slave
                 self.operate_on_slave_mode(stop_sentinel_tx).await?;

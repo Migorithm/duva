@@ -103,13 +103,14 @@ impl ClientRequestController {
         Ok(response)
     }
 
-    pub async fn run_client_connection_handling_actor(
+    pub async fn run_master_mode(
         &'static self,
-        bind_addr: String,
         cancellation_factory: impl TCancellationTokenFactory,
         stop_sentinel_recv: tokio::sync::oneshot::Receiver<()>,
     ) {
-        let client_stream_listener = TokioStreamListenerFactory.create_listner(&bind_addr).await;
+        let client_stream_listener = TokioStreamListenerFactory
+            .create_listner(&self.config_manager.bind_addr())
+            .await;
         let mut conn_handlers: Vec<tokio::task::JoinHandle<()>> = Vec::with_capacity(100);
         select! {
             _ = stop_sentinel_recv => {
