@@ -35,6 +35,95 @@ The following features have been implemented so far:
 - Protocol Support
     - RESP Protocol: Fully implemented for parsing client requests, ensuring compatibility with Redis-like commands.
 
+
+
+### Diagrams
+#### Client request control
+```mermaid
+sequenceDiagram
+    actor C as Client
+    participant CC as ClientRequestController
+    participant Stream
+    participant CA as CacheActor
+    participant Config as ConfigManager
+    
+    
+    loop wait for connection
+        activate CC
+        C ->> CC: Make Stream
+        CC --) Stream : Spawn Stream
+        deactivate CC    
+    end
+
+    loop 
+        Stream --)+ Stream: wait & receive request
+        rect rgb(108, 161, 166)    
+            alt cache
+                Stream -) CA: route request
+                CA -) Stream: return response
+            else config
+                Stream -) Config: route request
+                Config -) Stream: return response
+            end
+                Stream -)- Stream: send response
+            
+        end
+    end
+
+```
+
+#### Clustering
+```mermaid
+
+sequenceDiagram
+    participant s as MasterServer
+    
+    
+    actor Cache
+    actor Config
+    actor Cluster
+    actor peer_listener
+    
+    actor client_listener
+    participant SlaveServer
+    actor slave_peer_listener
+
+    par 
+        s-->>Cache: spawn
+    and 
+        s-->>Config: spawn
+    and 
+        s-->>Cluster: spawn
+        Cluster --> Cluster : send heartbeat
+        Note right of Cluster : Cluster periodically sends heartbeat to peers 
+    and
+        s -->>client_listener:spawn
+        
+    and 
+        SlaveServer -->> slave_peer_listener: spawn 
+        Note right of SlaveServer : SlaveServer also listens for incoming peer connections
+    and 
+    
+
+        
+        s-->>peer_listener: spawn
+        
+        loop 
+        
+            SlaveServer -->>+ peer_listener: bind 
+            peer_listener -->- SlaveServer: threeway handshake
+            peer_listener -->> SlaveServer : disseminate peer infomation
+            peer_listener -->>+ Cluster : pass stream
+            Cluster -->>- Cluster : add peer
+
+        
+        end
+        
+  
+    end
+
+```
+
 ### Getting Started
 #### Prerequisites
 - Rust (latest stable version)
