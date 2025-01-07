@@ -109,14 +109,14 @@ sequenceDiagram
         s-->>peer_listener: spawn
         
         loop 
-            rect rgb(230, 229, 216)
-                SlaveServer -->>+ peer_listener: bind 
-                peer_listener -->- SlaveServer: threeway handshake
-                peer_listener -->> SlaveServer : disseminate peer infomation
-                peer_listener -->>+ Cluster : pass stream
-                Cluster -->>- Cluster : add peer
+        
+            SlaveServer -->>+ peer_listener: bind 
+            peer_listener -->- SlaveServer: threeway handshake
+            peer_listener -->> SlaveServer : disseminate peer infomation
+            peer_listener -->>+ Cluster : pass stream
+            Cluster -->>- Cluster : add peer
 
-            end
+        
         end
         
   
