@@ -35,6 +35,43 @@ The following features have been implemented so far:
 - Protocol Support
     - RESP Protocol: Fully implemented for parsing client requests, ensuring compatibility with Redis-like commands.
 
+
+
+### Diagrams
+#### Client request control
+```mermaid
+sequenceDiagram
+    actor C as Client
+    participant CC as ClientRequestController
+    participant Stream
+    participant CA as CacheActor
+    participant Config as ConfigManager
+    
+    
+    loop wait for connection
+        activate CC
+        C ->> CC: Make Stream
+        CC --) Stream : Spawn Stream
+        deactivate CC    
+    end
+
+    loop 
+        Stream --)+ Stream: wait & receive request
+        rect rgb(108, 161, 166)    
+            alt cache
+                Stream -) CA: route request
+                CA -) Stream: return response
+            else config
+                Stream -) Config: route request
+                Config -) Stream: return response
+            end
+                Stream -)- Stream: send response
+            
+        end
+    end
+
+```
+
 ### Getting Started
 #### Prerequisites
 - Rust (latest stable version)
