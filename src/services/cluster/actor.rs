@@ -33,7 +33,7 @@ impl ClusterActor {
     ) {
         let (r, w) = stream.into_split();
         let _ = write_sender
-            .send(ClusterWriteCommand::Join {
+            .send(ClusterWriteCommand::Add {
                 addr: peer_addr.clone(),
                 buffer: w,
                 peer_kind,
@@ -41,7 +41,7 @@ impl ClusterActor {
             .await;
 
         let _ = read_sender
-            .send(ClusterReadCommand::Join {
+            .send(ClusterReadCommand::Add {
                 addr: peer_addr.clone(),
                 buffer: r,
             })
@@ -95,7 +95,7 @@ async fn run_cluster_read_actor(mut sr: Receiver<ClusterReadCommand>) {
             ClusterReadCommand::Ping => {
                 // do something - failure detection!
             }
-            ClusterReadCommand::Join { addr, buffer } => {
+            ClusterReadCommand::Add { addr, buffer } => {
                 members.entry(addr).or_insert(buffer);
             }
         }
@@ -140,7 +140,7 @@ impl ClusterWriteActor {
                     ClusterWriteCommand::Ping => {
                         actor.heartbeat().await;
                     }
-                    ClusterWriteCommand::Join {
+                    ClusterWriteCommand::Add {
                         addr,
                         buffer,
                         peer_kind,
@@ -193,7 +193,7 @@ pub enum ClusterWriteCommand {
         query: QueryIO,
     },
     Ping,
-    Join {
+    Add {
         addr: PeerAddr,
         buffer: OwnedWriteHalf,
         peer_kind: PeerKind,
@@ -202,7 +202,7 @@ pub enum ClusterWriteCommand {
 
 pub enum ClusterReadCommand {
     Ping,
-    Join {
+    Add {
         addr: PeerAddr,
         buffer: OwnedReadHalf,
     },
