@@ -34,7 +34,7 @@ impl ClusterManager {
         // TODO Need to decide which point to send file data
         // TODO At this point, slave stream must write master_replid so that other nodes can tell where it belongs
         // TODO Remove this sleep
-        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+
         self.disseminate_peers(&mut peer_stream).await.unwrap();
 
         // TODO At this point again, slave tries to connect to other nodes as peer in the cluster
@@ -43,8 +43,8 @@ impl ClusterManager {
             stream: peer_stream.0,
             peer_kind: PeerKind::peer_kind(&self_repl_id, &repl_id),
         })
-            .await
-            .unwrap();
+        .await
+        .unwrap();
     }
 
     async fn disseminate_peers(&self, stream: &mut TcpStream) -> anyhow::Result<()> {
@@ -68,8 +68,7 @@ impl ClusterManager {
         self_port: u16,
     ) -> anyhow::Result<()> {
         let master_bind_addr = repl_info.master_cluster_bind_addr();
-        let mut outbound_stream =
-            OutboundStream(TcpStream::connect(&master_bind_addr).await?);
+        let mut outbound_stream = OutboundStream(TcpStream::connect(&master_bind_addr).await?);
 
         //TODO: use repl_id and offset
         let (repl_id, offset) = outbound_stream
@@ -82,7 +81,8 @@ impl ClusterManager {
             peer_addr: PeerAddr(master_bind_addr),
             stream: outbound_stream.0,
             peer_kind: PeerKind::Master,
-        }).await?;
+        })
+        .await?;
 
         for peer in peer_list {
             let mut peer_stream = OutboundStream(TcpStream::connect(peer).await?);

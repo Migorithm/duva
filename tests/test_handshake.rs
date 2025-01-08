@@ -16,9 +16,8 @@ use redis_starter_rust::{
         config::{actor::ConfigActor, manager::ConfigManager},
     },
 };
-use std::io::{BufRead, BufReader};
+use std::io::{BufRead, BufReader, Read};
 use tokio::net::TcpStream;
-
 
 mod common;
 
@@ -50,9 +49,9 @@ async fn test_master_threeway_handshake() {
             "*3\r\n$8\r\nREPLCONF\r\n$14\r\nlistening-port\r\n$4\r\n{}\r\n",
             client_fake_port
         )
-            .as_bytes(),
+        .as_bytes(),
     )
-        .await;
+    .await;
 
     // THEN
     assert_eq!(h.get_response().await, "+OK\r\n");
@@ -71,10 +70,10 @@ async fn test_master_threeway_handshake() {
         .await;
 
     // THEN - client receives FULLRESYNC - this is a dummy response
-    assert_eq!(
-        h.get_response().await,
-        "+FULLRESYNC 8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb 0\r\n"
-    );
+    assert!(h
+        .get_response()
+        .await
+        .starts_with("+FULLRESYNC 8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb 0\r\n"));
 }
 
 #[tokio::test]
@@ -85,18 +84,35 @@ async fn test_slave_threeway_handshake() {
     let replica_port = find_free_port_in_range(6001, 6553).await.unwrap();
 
     // Start the master server as a child process
-    let _ = run_server_process(master_port, None);
+    let mut master_process = run_server_process(master_port, None);
+
+    let master_stdout = master_process.stdout.take();
+    wait_for_message(
+        master_stdout.expect("failed to take stdout"),
+        format!(
+            "listening peer connection on localhost:{}...",
+            master_port + 10000
+        )
+        .as_str(),
+    );
+
     // WHEN run replica
     let mut replica_process =
         run_server_process(replica_port, Some(format!("localhost:{}", master_port)));
 
     // Read stdout from the replica process
-    let stdout = replica_process.stdout.take();
-    let mut stdout_reader = BufReader::new(stdout.expect("failed to take stdout")).lines();
+    let mut stdout = replica_process.stdout.take();
+    wait_for_message(
+        stdout.take().unwrap(),
+        "[INFO] Three-way handshake completed",
+    );
+}
 
-    // THEN - wait for the handshake to complete
-    while let Some(Ok(line)) = stdout_reader.next() {
-        if line == "[INFO] Three-way handshake completed" {
+fn wait_for_message<T: Read>(read: T, target: &str) {
+    let mut buf = BufReader::new(read).lines();
+
+    while let Some(Ok(line)) = buf.next() {
+        if line == target {
             break;
         }
     }

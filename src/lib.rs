@@ -87,24 +87,27 @@ where
         peer_bind_addr: String,
         cluster_manager: &'static ClusterManager,
         config_manager: ConfigManager,
-    ) {
+    ) -> Result<()> {
         let peer_listener = TcpListener::bind(&peer_bind_addr)
             .await
             .expect("[ERROR] Failed to bind to peer address for listening");
 
         println!("Starting to accept peer connections");
-        println!("listening on {}...", peer_bind_addr);
+        println!("listening peer connection on {}...", peer_bind_addr);
 
         loop {
             match peer_listener.accept().await {
                 // ? how do we know if incoming connection is from a peer or replica?
                 Ok((peer_stream, _socket_addr)) => {
-                    tokio::spawn(cluster_manager.accept_peer(InboundStream(peer_stream), config_manager.replication_info().await.unwrap().master_replid));
+                    tokio::spawn(cluster_manager.accept_peer(
+                        InboundStream(peer_stream),
+                        config_manager.replication_info().await?.master_replid,
+                    ));
                 }
 
                 Err(err) => {
                     if Into::<IoError>::into(err.kind()).should_break() {
-                        break;
+                        break Ok(());
                     }
                 }
             }

@@ -71,7 +71,7 @@ impl ClusterActor {
                         write_sender.clone(),
                         read_sender.clone(),
                     )
-                        .await;
+                    .await;
                 }
                 ClusterCommand::RemovePeer(peer_addr) => {
                     self.remove_peer(peer_addr);
@@ -143,13 +143,12 @@ impl ClusterWriteActor {
                     ClusterWriteCommand::Join {
                         addr,
                         buffer,
-                        peer_kind
+                        peer_kind,
                     } => {
-                        actor.members.entry(addr)
-                            .or_insert(ClusterWriteConnected::new(
-                                buffer,
-                                peer_kind,
-                            ));
+                        actor
+                            .members
+                            .entry(addr)
+                            .or_insert(ClusterWriteConnected::new(buffer, peer_kind));
                     }
                 }
             }

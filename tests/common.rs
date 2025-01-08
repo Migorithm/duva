@@ -124,9 +124,6 @@ pub fn run_server_process(port: u16, replicaof: Option<String>) -> TestProcessCh
         command.args(["--replicaof", &replicaof]);
     }
 
-    // To enable integration test
-    command.env("RUSTFLAGS", "--cfg integration");
-
     TestProcessChild(
         command
             .stdout(Stdio::piped())

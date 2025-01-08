@@ -17,7 +17,6 @@ impl OutboundStream {
         self.send_replconf_listening_port(self_port).await?;
         self.send_replconf_capa(&replication).await?;
 
-        #[cfg(integration)]
         println!("[INFO] Three-way handshake completed");
 
         let (repl_id, _offset) = self.send_psync(&replication).await?;
@@ -42,7 +41,7 @@ impl OutboundStream {
             "listening-port",
             self_port.to_string()
         ))
-            .await?;
+        .await?;
 
         let HandShakeResponse::OK = self.extract_response().await? else {
             let err_msg = "Ok expected, but not received";
