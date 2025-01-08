@@ -40,8 +40,8 @@ impl ClusterManager {
             stream: peer_stream.0,
             is_slave,
         })
-        .await
-        .unwrap();
+            .await
+            .unwrap();
     }
 
     async fn disseminate_peers(&self, stream: &mut TcpStream) -> anyhow::Result<()> {
@@ -70,9 +70,13 @@ impl ClusterManager {
     ) -> anyhow::Result<()> {
         let mut outbound_stream =
             OutboundStream(TcpStream::connect(repl_info.master_cluster_bind_addr()).await?);
-        outbound_stream
+
+        //TODO: use repl_id and offset
+        let (repl_id, offset) = outbound_stream
             .estabilish_handshake(repl_info, self_port)
             .await?;
+
+        //TODO: wait to receive file from master
 
         Ok(())
     }

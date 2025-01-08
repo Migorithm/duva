@@ -12,7 +12,7 @@ impl OutboundStream {
         &mut self,
         replication: Replication,
         self_port: u16,
-    ) -> anyhow::Result<String> {
+    ) -> anyhow::Result<(String, i64)> {
         self.send_ping().await?;
         self.send_replconf_listening_port(self_port).await?;
         self.send_replconf_capa(&replication).await?;
@@ -22,7 +22,7 @@ impl OutboundStream {
 
         let (repl_id, _offset) = self.send_psync(&replication).await?;
 
-        Ok(repl_id)
+        Ok((repl_id, _offset))
     }
 
     async fn send_ping(&mut self) -> anyhow::Result<()> {
@@ -43,7 +43,7 @@ impl OutboundStream {
             "listening-port",
             self_port.to_string()
         ))
-        .await?;
+            .await?;
 
         let HandShakeResponse::OK = self.extract_response().await? else {
             let err_msg = "Ok expected, but not received";
