@@ -15,6 +15,7 @@ sequenceDiagram
     actor client_listener
     participant SlaveServer
     actor slave_peer_listener
+    participant SlaveServer2
 
     par 
         s-->>Cache: spawn
@@ -39,12 +40,24 @@ sequenceDiagram
         loop 
             SlaveServer -->>+ peer_listener: bind 
             peer_listener -->- SlaveServer: threeway handshake
-            peer_listener -->> SlaveServer : disseminate peer infomation
-            peer_listener -->>+ Cluster : pass stream
-            Cluster -->>- Cluster : add peer
+            peer_listener -->> SlaveServer : disseminate peer infomation            
 
+            par 
+                peer_listener -->>+ Cluster : pass stream
+                Cluster -->>- Cluster : add peer
         
+            and
+                SlaveServer --> SlaveServer :try connect to other peers  
+            end
+            
         end
+
+        SlaveServer2 -->>+ peer_listener: bind 
+        peer_listener -->- SlaveServer2: threeway handshake
+        peer_listener -->> SlaveServer2 : disseminate peer infomation  
+        peer_listener -->>+ Cluster : pass stream
+        SlaveServer2 -->+ slave_peer_listener : bind
+        slave_peer_listener -->- SlaveServer2: threeway-handshake
         
   
     end
