@@ -74,6 +74,7 @@ where
         tokio::spawn(Self::start_accepting_peer_connections(
             self.config_manager.peer_bind_addr(),
             self.cluster_manager,
+            self.config_manager.clone(),
         ));
         tokio::spawn(async move {
             tokio::time::sleep(Duration::from_secs(1)).await;
@@ -85,6 +86,7 @@ where
     async fn start_accepting_peer_connections(
         peer_bind_addr: String,
         cluster_manager: &'static ClusterManager,
+        config_manager: ConfigManager,
     ) {
         let peer_listener = TcpListener::bind(&peer_bind_addr)
             .await
@@ -97,7 +99,7 @@ where
             match peer_listener.accept().await {
                 // ? how do we know if incoming connection is from a peer or replica?
                 Ok((peer_stream, _socket_addr)) => {
-                    tokio::spawn(cluster_manager.accept_peer(InboundStream(peer_stream)));
+                    tokio::spawn(cluster_manager.accept_peer(InboundStream(peer_stream), config_manager.replication_info().await.unwrap().master_replid));
                 }
 
                 Err(err) => {

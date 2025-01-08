@@ -1,6 +1,6 @@
 use crate::make_smart_pointer;
 use crate::services::cluster::actor::{ClusterActor, PeerAddr};
-use crate::services::cluster::command::ClusterCommand;
+use crate::services::cluster::command::{ClusterCommand, PeerKind};
 use crate::services::config::replication::Replication;
 use crate::services::interface::TStream;
 use crate::services::query_io::QueryIO;
@@ -28,8 +28,8 @@ impl ClusterManager {
         Ok(peers)
     }
 
-    pub(crate) async fn accept_peer(&self, mut peer_stream: InboundStream) {
-        let (peer_addr, is_slave) = peer_stream.recv_threeway_handshake().await.unwrap();
+    pub(crate) async fn accept_peer(&self, mut peer_stream: InboundStream, self_repl_id: String) {
+        let (peer_addr, repl_id) = peer_stream.recv_threeway_handshake().await.unwrap();
 
         // TODO Need to decide which point to send file data
         // TODO At this point, slave stream must write master_replid so that other nodes can tell where it belongs
@@ -41,7 +41,7 @@ impl ClusterManager {
         self.send(ClusterCommand::AddPeer {
             peer_addr,
             stream: peer_stream.0,
-            is_slave,
+            peer_kind: PeerKind::peer_kind(&self_repl_id, &repl_id),
         })
             .await
             .unwrap();
@@ -77,10 +77,11 @@ impl ClusterManager {
             .await?;
 
         let peer_list = outbound_stream.recv_peer_list().await?;
+
         self.send(ClusterCommand::AddPeer {
             peer_addr: PeerAddr(master_bind_addr),
             stream: outbound_stream.0,
-            is_slave: false,
+            peer_kind: PeerKind::Master,
         }).await?;
 
         for peer in peer_list {

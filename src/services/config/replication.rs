@@ -1,7 +1,7 @@
 #[derive(Debug, Clone, Default)]
 pub struct Replication {
     pub connected_slaves: u16,             // The number of connected replicas
-    master_replid: String, // The replication ID of the master example: 8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb
+    pub master_replid: String, // The replication ID of the master example: 8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb
     master_repl_offset: u64, // The replication offset of the master example: 0
     second_repl_offset: i16, // -1
     repl_backlog_active: usize, // 0

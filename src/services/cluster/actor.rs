@@ -1,5 +1,5 @@
 use crate::make_smart_pointer;
-use crate::services::cluster::command::ClusterCommand;
+use crate::services::cluster::command::{ClusterCommand, PeerKind};
 
 use crate::services::interface::TWrite;
 use crate::services::query_io::QueryIO;
@@ -27,7 +27,7 @@ impl ClusterActor {
         &mut self,
         peer_addr: PeerAddr,
         stream: TcpStream,
-        is_slave: bool,
+        peer_kind: PeerKind,
         write_sender: Sender<ClusterWriteCommand>,
         read_sender: Sender<ClusterReadCommand>,
     ) {
@@ -36,7 +36,7 @@ impl ClusterActor {
             .send(ClusterWriteCommand::Join {
                 addr: peer_addr.clone(),
                 buffer: w,
-                is_slave,
+                peer_kind,
             })
             .await;
 
@@ -62,16 +62,16 @@ impl ClusterActor {
                 ClusterCommand::AddPeer {
                     peer_addr,
                     stream,
-                    is_slave,
+                    peer_kind,
                 } => {
                     self.add_peer(
                         peer_addr,
                         stream,
-                        is_slave,
+                        peer_kind,
                         write_sender.clone(),
                         read_sender.clone(),
                     )
-                    .await;
+                        .await;
                 }
                 ClusterCommand::RemovePeer(peer_addr) => {
                     self.remove_peer(peer_addr);
@@ -143,14 +143,13 @@ impl ClusterWriteActor {
                     ClusterWriteCommand::Join {
                         addr,
                         buffer,
-                        is_slave,
+                        peer_kind
                     } => {
-                        let connected_type = if is_slave {
-                            ClusterWriteConnected::Replica { stream: buffer }
-                        } else {
-                            ClusterWriteConnected::ClusterMember { stream: buffer }
-                        };
-                        actor.members.entry(addr).or_insert(connected_type);
+                        actor.members.entry(addr)
+                            .or_insert(ClusterWriteConnected::new(
+                                buffer,
+                                peer_kind,
+                            ));
                     }
                 }
             }
@@ -162,9 +161,17 @@ impl ClusterWriteActor {
 #[derive(Debug)]
 pub enum ClusterWriteConnected {
     Replica { stream: OwnedWriteHalf },
-    ClusterMember { stream: OwnedWriteHalf },
+    Peer { stream: OwnedWriteHalf },
+    Master { stream: OwnedWriteHalf },
 }
 impl ClusterWriteConnected {
+    pub fn new(stream: OwnedWriteHalf, peer_kind: PeerKind) -> Self {
+        match peer_kind {
+            PeerKind::Peer => Self::Peer { stream },
+            PeerKind::Replica => Self::Replica { stream },
+            PeerKind::Master => Self::Master { stream },
+        }
+    }
     async fn ping(&mut self) {
         let msg = QueryIO::SimpleString("PING".to_string()).serialize();
 
@@ -172,7 +179,10 @@ impl ClusterWriteConnected {
             ClusterWriteConnected::Replica { stream } => {
                 let _ = stream.write(msg.as_bytes()).await;
             }
-            ClusterWriteConnected::ClusterMember { stream } => {
+            ClusterWriteConnected::Peer { stream } => {
+                let _ = stream.write(msg.as_bytes()).await;
+            }
+            ClusterWriteConnected::Master { stream } => {
                 let _ = stream.write(msg.as_bytes()).await;
             }
         }
@@ -187,7 +197,7 @@ pub enum ClusterWriteCommand {
     Join {
         addr: PeerAddr,
         buffer: OwnedWriteHalf,
-        is_slave: bool,
+        peer_kind: PeerKind,
     },
 }
 

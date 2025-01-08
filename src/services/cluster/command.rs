@@ -5,7 +5,7 @@ pub enum ClusterCommand {
     AddPeer {
         peer_addr: PeerAddr,
         stream: TcpStream,
-        is_slave: bool,
+        peer_kind: PeerKind,
     },
     RemovePeer(PeerAddr),
     GetPeers(tokio::sync::oneshot::Sender<Vec<PeerAddr>>),

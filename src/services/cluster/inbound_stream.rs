@@ -2,8 +2,8 @@ use super::actor::PeerAddr;
 use super::establishment::inbound::{HandShakeRequest, HandShakeRequestEnum};
 use crate::make_smart_pointer;
 
-use crate::services::query_io::QueryIO;
 use crate::services::interface::{TGetPeerIp, TStream};
+use crate::services::query_io::QueryIO;
 use tokio::net::TcpStream;
 
 // The following is used only when the node is in master mode
@@ -12,7 +12,7 @@ pub(crate) struct InboundStream(pub TcpStream);
 make_smart_pointer!(InboundStream, TcpStream);
 
 impl InboundStream {
-    pub async fn recv_threeway_handshake(&mut self) -> anyhow::Result<(PeerAddr, bool)> {
+    pub async fn recv_threeway_handshake(&mut self) -> anyhow::Result<(PeerAddr, String)> {
         self.recv_ping().await?;
 
         let port = self.recv_replconf_listening_port().await?;
@@ -25,7 +25,7 @@ impl InboundStream {
 
         Ok((
             PeerAddr(format!("{}:{}", self.get_peer_ip()?, port)),
-            _repl_id == "?", // if repl_id is '?' or of mine, it's slave, otherwise it's a peer.
+            _repl_id
         ))
     }
 
@@ -58,7 +58,7 @@ impl InboundStream {
         self.write(QueryIO::SimpleString(
             "FULLRESYNC 8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb 0".to_string(),
         ))
-        .await?;
+            .await?;
 
         Ok((repl_id, offset))
     }
