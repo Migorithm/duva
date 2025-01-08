@@ -2,13 +2,10 @@ use crate::make_smart_pointer;
 use crate::services::cluster::actor::{ClusterActor, PeerAddr};
 use crate::services::cluster::command::{ClusterCommand, PeerKind};
 use crate::services::config::replication::Replication;
-use crate::services::interface::{TRead, TStream};
+use crate::services::interface::TStream;
 use crate::services::query_io::QueryIO;
-use anyhow::Context;
-use tokio::io::AsyncReadExt;
-use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
 use tokio::net::TcpStream;
-use tokio::sync::mpsc::{Receiver, Sender};
+use tokio::sync::mpsc::Sender;
 
 use super::inbound_stream::InboundStream;
 use super::outbound_stream::OutboundStream;
