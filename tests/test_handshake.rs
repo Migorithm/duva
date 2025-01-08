@@ -1,5 +1,3 @@
-use std::io::{BufRead, BufReader};
-
 /// Three-way handshake test
 /// 1. Client sends PING command
 /// 2. Client sends REPLCONF listening-port command as follows:
@@ -18,7 +16,10 @@ use redis_starter_rust::{
         config::{actor::ConfigActor, manager::ConfigManager},
     },
 };
+use std::io::{BufRead, BufReader};
 use tokio::net::TcpStream;
+
+
 mod common;
 
 #[tokio::test]
@@ -49,9 +50,9 @@ async fn test_master_threeway_handshake() {
             "*3\r\n$8\r\nREPLCONF\r\n$14\r\nlistening-port\r\n$4\r\n{}\r\n",
             client_fake_port
         )
-        .as_bytes(),
+            .as_bytes(),
     )
-    .await;
+        .await;
 
     // THEN
     assert_eq!(h.get_response().await, "+OK\r\n");
@@ -85,7 +86,6 @@ async fn test_slave_threeway_handshake() {
 
     // Start the master server as a child process
     let _ = run_server_process(master_port, None);
-
     // WHEN run replica
     let mut replica_process =
         run_server_process(replica_port, Some(format!("localhost:{}", master_port)));

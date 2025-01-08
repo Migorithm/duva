@@ -31,7 +31,10 @@ impl ClusterManager {
     pub(crate) async fn accept_peer(&self, mut peer_stream: InboundStream) {
         let (peer_addr, is_slave) = peer_stream.recv_threeway_handshake().await.unwrap();
 
+        // TODO Need to decide which point to send file data
         // TODO At this point, slave stream must write master_replid so that other nodes can tell where it belongs
+        // TODO Remove this sleep
+        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
         self.disseminate_peers(&mut peer_stream).await.unwrap();
 
         // TODO At this point again, slave tries to connect to other nodes as peer in the cluster
@@ -46,10 +49,6 @@ impl ClusterManager {
 
     async fn disseminate_peers(&self, stream: &mut TcpStream) -> anyhow::Result<()> {
         let peers = self.get_peers().await?;
-        if peers.is_empty() {
-            return Ok(());
-        }
-
         stream
             .write(QueryIO::SimpleString(format!(
                 "PEERS {}",
@@ -63,21 +62,32 @@ impl ClusterManager {
         Ok(())
     }
 
-    pub async fn join_master(
+    pub async fn discover_cluster(
         &'static self,
         repl_info: Replication,
         self_port: u16,
     ) -> anyhow::Result<()> {
+        let master_bind_addr = repl_info.master_cluster_bind_addr();
         let mut outbound_stream =
-            OutboundStream(TcpStream::connect(repl_info.master_cluster_bind_addr()).await?);
+            OutboundStream(TcpStream::connect(&master_bind_addr).await?);
 
         //TODO: use repl_id and offset
         let (repl_id, offset) = outbound_stream
             .estabilish_handshake(repl_info, self_port)
             .await?;
 
-        //TODO: wait to receive file from master
+        let peer_list = outbound_stream.recv_peer_list().await?;
+        self.send(ClusterCommand::AddPeer {
+            peer_addr: PeerAddr(master_bind_addr),
+            stream: outbound_stream.0,
+            is_slave: false,
+        }).await?;
 
+        for peer in peer_list {
+            let mut peer_stream = OutboundStream(TcpStream::connect(peer).await?);
+        }
+
+        //TODO: wait to receive file from master
         Ok(())
     }
 }

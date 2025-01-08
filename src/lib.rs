@@ -128,7 +128,7 @@ where
                 let repl_info = self.config_manager.replication_info().await?;
                 tokio::spawn(
                     self.cluster_manager
-                        .join_master(repl_info, self.config_manager.port),
+                        .discover_cluster(repl_info, self.config_manager.port),
                 );
             }
 

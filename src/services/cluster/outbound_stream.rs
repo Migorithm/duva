@@ -21,7 +21,6 @@ impl OutboundStream {
         println!("[INFO] Three-way handshake completed");
 
         let (repl_id, _offset) = self.send_psync(&replication).await?;
-
         Ok((repl_id, _offset))
     }
 
@@ -80,10 +79,26 @@ impl OutboundStream {
     }
 
     async fn extract_response(&mut self) -> anyhow::Result<HandShakeResponse> {
+        let query_ios = self.read_values().await?;
+        println!("{:?}", query_ios);
+        match query_ios[0] {
+            QueryIO::SimpleString(ref value_array) => Ok(value_array.clone().try_into()?),
+            _ => Err(anyhow::anyhow!("Unexpected command format")),
+        }
+    }
+
+    pub(crate) async fn recv_peer_list(&mut self) -> anyhow::Result<Vec<String>> {
         let query_io = self.read_value().await?;
         match query_io {
-            QueryIO::SimpleString(value_array) => Ok(value_array.try_into()?),
-
+            QueryIO::SimpleString(value_array) if value_array.starts_with("PEERS ") => {
+                // "PEERS localhost:6379 localhost:6380"
+                let peer_list = value_array
+                    .trim_start_matches("PEERS ")
+                    .split_whitespace()
+                    .map(|x| x.to_string())
+                    .collect();
+                Ok(peer_list)
+            }
             _ => Err(anyhow::anyhow!("Unexpected command format")),
         }
     }
