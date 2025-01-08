@@ -6,10 +6,8 @@
 mod common;
 use common::{init_config_manager_with_free_port, start_test_server, TestStreamHandler};
 
-use crate::common::{array, config_command};
-use redis_starter_rust::{
-    adapters::cancellation_token::CancellationTokenFactory, services::cluster::actor::ClusterActor,
-};
+use crate::common::array;
+use redis_starter_rust::adapters::cancellation_token::CancellationTokenFactory;
 use tokio::net::TcpStream;
 
 #[tokio::test]
@@ -17,15 +15,23 @@ async fn test_config_get_dir() {
     // GIVEN
     //TODO test config should be dynamically configured
     let config = init_config_manager_with_free_port().await;
-    let cluster_actor = ClusterActor::default();
-    let _ = start_test_server(CancellationTokenFactory, config.clone(), cluster_actor).await;
+
+    let _ = start_test_server(CancellationTokenFactory, config.clone()).await;
 
     let mut client_stream = TcpStream::connect(config.bind_addr()).await.unwrap();
 
     let mut h: TestStreamHandler = client_stream.split().into();
 
     // WHEN
-    h.send(config_command("GET", "dir").as_slice()).await;
+    h.send(
+        {
+            let command = "GET";
+            let key = "dir";
+            array(vec!["CONFIG", command, key]).into_bytes()
+        }
+        .as_slice(),
+    )
+    .await;
 
     // THEN
     assert_eq!(h.get_response().await, array(vec!["dir", "."]));

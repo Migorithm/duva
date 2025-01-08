@@ -1,47 +1,32 @@
 /// After three-way handshake, client will receive peers from the master server
 mod common;
-use common::{
-    create_cluster_actor_with_peers, find_free_port_in_range, start_test_server,
-    threeway_handshake_helper,
-};
-use redis_starter_rust::{
-    adapters::cancellation_token::CancellationTokenFactory,
-    services::{
-        config::{actor::ConfigActor, manager::ConfigManager},
-        interface::TStream,
-    },
-};
-use tokio::net::TcpStream;
+use common::{find_free_port_in_range, run_server_process, wait_for_message};
 
 #[tokio::test]
 async fn test_disseminate_peers() {
     // GIVEN - master server configuration
-    let config = ConfigActor::default();
-    let peer_address_to_test = "localhost:6378";
+    // Find free ports for the master and replica
+    let master_port = find_free_port_in_range(6000, 6553).await.unwrap();
 
-    let mut manager = ConfigManager::new(config);
+    // Start the master server as a child process
+    let mut master_process = run_server_process(master_port, None);
 
-    // ! `peer_bind_addr` is bind_addr dedicated for peer connections
-    manager.port = find_free_port_in_range(6000, 6553).await.unwrap();
+    let master_stdout = master_process.stdout.take();
+    wait_for_message(
+        master_stdout.expect("failed to take stdout"),
+        format!(
+            "listening peer connection on localhost:{}...",
+            master_port + 10000
+        )
+        .as_str(),
+    );
 
-    let master_cluster_bind_addr = manager.peer_bind_addr();
-    let _ = start_test_server(
-        CancellationTokenFactory,
-        manager,
-        create_cluster_actor_with_peers(vec![peer_address_to_test.to_string()]),
-    )
-    .await;
+    // WHEN run replica
+    let replica_port = find_free_port_in_range(6000, 6553).await.unwrap();
+    let mut replica_process =
+        run_server_process(replica_port, Some(format!("localhost:{}", master_port)));
 
-    let mut client_stream = TcpStream::connect(master_cluster_bind_addr).await.unwrap();
-
-    let message = threeway_handshake_helper(&mut client_stream, None).await;
-
-    //THEN
-    let expected = format!("+PEERS {}\r\n", peer_address_to_test);
-    if let Some(combined) = message {
-        assert_eq!(combined.serialize(), expected);
-    } else {
-        let value = client_stream.read_value().await.unwrap();
-        assert_eq!(value.serialize(), expected);
-    }
+    // Read stdout from the replica process
+    let mut stdout = replica_process.stdout.take();
+    wait_for_message(stdout.take().unwrap(), "[INFO] Received peer list: []");
 }

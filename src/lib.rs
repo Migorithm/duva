@@ -32,14 +32,9 @@ impl<V> StartUpFacade<V>
 where
     V: TCancellationTokenFactory,
 {
-    pub fn new(
-        cancellation_factory: V,
-        config_manager: ConfigManager,
-        cluster_actor: ClusterActor,
-    ) -> Self {
+    pub fn new(cancellation_factory: V, config_manager: ConfigManager) -> Self {
         let (cache_manager, ttl_inbox) = CacheManager::run_cache_actors();
-        let cluster_manager: &'static ClusterManager =
-            Box::leak(ClusterManager::run(cluster_actor).into());
+        let cluster_manager: &'static ClusterManager = Box::leak(ClusterManager::run().into());
 
         // Leak the cache_dispatcher to make it static - this is safe because the cache_dispatcher
         // will live for the entire duration of the program.

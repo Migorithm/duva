@@ -8,15 +8,14 @@
 ///    *3\r\n$5\r\nPSYNC\r\n$1\r\n?\r\n$2\r\n-1\r\n
 ///
 ///
-use common::{find_free_port_in_range, run_server_process, start_test_server, TestStreamHandler};
+use common::{
+    find_free_port_in_range, run_server_process, start_test_server, wait_for_message,
+    TestStreamHandler,
+};
 use redis_starter_rust::{
     adapters::cancellation_token::CancellationTokenFactory,
-    services::{
-        cluster::actor::ClusterActor,
-        config::{actor::ConfigActor, manager::ConfigManager},
-    },
+    services::config::{actor::ConfigActor, manager::ConfigManager},
 };
-use std::io::{BufRead, BufReader, Read};
 use tokio::net::TcpStream;
 
 mod common;
@@ -30,9 +29,8 @@ async fn test_master_threeway_handshake() {
     // ! `peer_bind_addr` is bind_addr dedicated for peer connections
     manager.port = find_free_port_in_range(6000, 6553).await.unwrap();
     let master_cluster_bind_addr = manager.peer_bind_addr();
-    let cluster_actor: ClusterActor = ClusterActor::default();
 
-    let _ = start_test_server(CancellationTokenFactory, manager, cluster_actor).await;
+    let _ = start_test_server(CancellationTokenFactory, manager).await;
     let mut client_stream = TcpStream::connect(master_cluster_bind_addr).await.unwrap();
     let mut h: TestStreamHandler = client_stream.split().into();
 
@@ -81,7 +79,6 @@ async fn test_slave_threeway_handshake() {
     // GIVEN - master server configuration
     // Find free ports for the master and replica
     let master_port = find_free_port_in_range(6000, 6553).await.unwrap();
-    let replica_port = find_free_port_in_range(6001, 6553).await.unwrap();
 
     // Start the master server as a child process
     let mut master_process = run_server_process(master_port, None);
@@ -97,6 +94,7 @@ async fn test_slave_threeway_handshake() {
     );
 
     // WHEN run replica
+    let replica_port = find_free_port_in_range(6000, 6553).await.unwrap();
     let mut replica_process =
         run_server_process(replica_port, Some(format!("localhost:{}", master_port)));
 
@@ -106,14 +104,4 @@ async fn test_slave_threeway_handshake() {
         stdout.take().unwrap(),
         "[INFO] Three-way handshake completed",
     );
-}
-
-fn wait_for_message<T: Read>(read: T, target: &str) {
-    let mut buf = BufReader::new(read).lines();
-
-    while let Some(Ok(line)) = buf.next() {
-        if line == target {
-            break;
-        }
-    }
 }

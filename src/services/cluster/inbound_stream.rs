@@ -25,7 +25,7 @@ impl InboundStream {
 
         Ok((
             PeerAddr(format!("{}:{}", self.get_peer_ip()?, port)),
-            _repl_id
+            _repl_id,
         ))
     }
 
@@ -58,7 +58,7 @@ impl InboundStream {
         self.write(QueryIO::SimpleString(
             "FULLRESYNC 8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb 0".to_string(),
         ))
-            .await?;
+        .await?;
 
         Ok((repl_id, offset))
     }
