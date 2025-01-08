@@ -1,12 +1,8 @@
 mod common;
-use common::{
-    create_cluster_actor_with_peers, find_free_port_in_range, start_test_server,
-    threeway_handshake_helper,
-};
+use common::{find_free_port_in_range, start_test_server, threeway_handshake_helper};
 use redis_starter_rust::{
     adapters::cancellation_token::CancellationTokenFactory,
     services::{
-        cluster::actor::ClusterActor,
         config::{actor::ConfigActor, manager::ConfigManager},
         interface::TStream,
     },
@@ -64,12 +60,7 @@ async fn test_heartbeat_sent_to_multiple_replicas() {
 
     let replica_server_cluster_port = find_free_port_in_range(50000, 65535).await.unwrap();
     let replica_cluster_addr = format!("127.0.0.1:{}", replica_server_cluster_port);
-    let _ = start_test_server(
-        CancellationTokenFactory,
-        manager.clone(),
-        create_cluster_actor_with_peers(vec![replica_cluster_addr.clone()]),
-    )
-    .await;
+    let _ = start_test_server(CancellationTokenFactory, manager.clone()).await;
 
     // * pre-connected replica server
 
@@ -87,7 +78,7 @@ async fn test_heartbeat_sent_to_multiple_replicas() {
         config.replication.master_host = Some("localhost".to_string());
         let mut manager = ConfigManager::new(config);
         manager.port = connecting_replica_port;
-        let _ = start_test_server(CancellationTokenFactory, manager, ClusterActor::default()).await;
+        let _ = start_test_server(CancellationTokenFactory, manager).await;
     }
 
     // THEN

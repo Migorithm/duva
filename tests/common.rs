@@ -1,9 +1,10 @@
 use redis_starter_rust::services::cluster::actor::{ClusterActor, PeerAddr};
 use redis_starter_rust::services::config::actor::ConfigActor;
 use redis_starter_rust::services::config::manager::ConfigManager;
-use redis_starter_rust::services::interface::{TCancellationTokenFactory, TStream};
+use redis_starter_rust::services::interface::{TCancellationTokenFactory, TRead};
 use redis_starter_rust::services::query_io::QueryIO;
 use redis_starter_rust::{make_smart_pointer, StartUpFacade, TNotifyStartUp};
+use std::io::{BufRead, BufReader, Read};
 use std::process::{Child, Command, Stdio};
 use std::sync::Arc;
 use tokio::io::AsyncReadExt;
@@ -91,12 +92,11 @@ impl TNotifyStartUp for StartFlag {
 pub async fn start_test_server(
     cancellation_token_factory: impl TCancellationTokenFactory,
     config: ConfigManager,
-    cluster_actor: ClusterActor,
 ) -> tokio::task::JoinHandle<Result<(), anyhow::Error>> {
     let notify = Arc::new(tokio::sync::Notify::new());
     let start_flag = StartFlag(notify.clone());
 
-    let mut start_up_facade = StartUpFacade::new(cancellation_token_factory, config, cluster_actor);
+    let mut start_up_facade = StartUpFacade::new(cancellation_token_factory, config);
 
     let h = tokio::spawn(async move {
         start_up_facade.run(start_flag).await?;
@@ -124,9 +124,6 @@ pub fn run_server_process(port: u16, replicaof: Option<String>) -> TestProcessCh
         command.args(["--replicaof", &replicaof]);
     }
 
-    // To enable integration test
-    command.env("RUSTFLAGS", "--cfg integration");
-
     TestProcessChild(
         command
             .stdout(Stdio::piped())
@@ -136,6 +133,16 @@ pub fn run_server_process(port: u16, replicaof: Option<String>) -> TestProcessCh
     )
 }
 
+pub fn wait_for_message<T: Read>(read: T, target: &str) {
+    let mut buf = BufReader::new(read).lines();
+
+    while let Some(Ok(line)) = buf.next() {
+        if line == target {
+            break;
+        }
+    }
+}
+
 pub fn array(arr: Vec<&str>) -> String {
     QueryIO::Array(
         arr.iter()
@@ -143,46 +150,6 @@ pub fn array(arr: Vec<&str>) -> String {
             .collect(),
     )
     .serialize()
-}
-
-pub fn bulk_string(s: &str) -> String {
-    QueryIO::BulkString(s.to_string()).serialize()
-}
-
-pub fn ok_response() -> String {
-    QueryIO::SimpleString("OK".to_string()).serialize()
-}
-
-pub fn null_response() -> String {
-    QueryIO::Null.serialize()
-}
-
-pub fn keys_command(pattern: &str) -> Vec<u8> {
-    array(vec!["KEYS", pattern]).into_bytes()
-}
-
-pub fn config_command(command: &str, key: &str) -> Vec<u8> {
-    array(vec!["CONFIG", command, key]).into_bytes()
-}
-
-pub fn info_command(key: &str) -> Vec<u8> {
-    array(vec!["INFO", key]).into_bytes()
-}
-
-pub fn set_command_with_expiry(key: &str, value: &str, expiry: i64) -> Vec<u8> {
-    array(vec!["SET", key, value, "PX", &expiry.to_string()]).into_bytes()
-}
-
-pub fn set_command(key: &str, value: &str) -> Vec<u8> {
-    array(vec!["SET", key, value]).into_bytes()
-}
-
-pub fn get_command(key: &str) -> Vec<u8> {
-    array(vec!["GET", key]).into_bytes()
-}
-
-pub fn save_command() -> Vec<u8> {
-    array(vec!["SAVE"]).into_bytes()
 }
 
 pub async fn threeway_handshake_helper(
@@ -242,12 +209,4 @@ pub async fn threeway_handshake_helper(
     );
 
     values.get(1).cloned()
-}
-
-pub fn create_cluster_actor_with_peers(peers: Vec<String>) -> ClusterActor {
-    let mut cluster_actor = ClusterActor::default();
-    for peer in peers {
-        cluster_actor.peers.insert(PeerAddr(peer));
-    }
-    cluster_actor
 }

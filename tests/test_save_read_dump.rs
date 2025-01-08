@@ -4,16 +4,13 @@
 /// if the value of dir is /tmp, then the expected response to CONFIG GET dir is:
 /// *2\r\n$3\r\ndir\r\n$4\r\n/tmp\r\n
 mod common;
-use crate::common::{
-    array, keys_command, null_response, ok_response, save_command, set_command,
-    set_command_with_expiry, start_test_server,
-};
+use crate::common::{array, start_test_server};
 use common::{init_config_manager_with_free_port, TestStreamHandler};
 use redis_starter_rust::{
     adapters::cancellation_token::CancellationTokenFactory,
     services::{
-        cluster::actor::ClusterActor,
         config::{ConfigCommand, ConfigMessage},
+        query_io::QueryIO,
     },
 };
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -39,49 +36,48 @@ async fn test_save_read_dump() {
         .await
         .unwrap();
 
-    let _ = start_test_server(
-        CancellationTokenFactory,
-        config.clone(),
-        ClusterActor::default(),
-    )
-    .await;
+    let _ = start_test_server(CancellationTokenFactory, config.clone()).await;
 
     let mut client_stream = TcpStream::connect(config.bind_addr()).await.unwrap();
     let mut h: TestStreamHandler = client_stream.split().into();
 
     // WHEN
     // set without expiry time
-    h.send(set_command("foo", "bar").as_slice()).await;
-    assert_eq!(h.get_response().await, ok_response());
-    // set with expiry time
-    h.send(set_command_with_expiry("foo2", "bar2", 9999999999).as_slice())
+    h.send({ array(vec!["SET", "foo", "bar"]).into_bytes() }.as_slice())
         .await;
-    assert_eq!(h.get_response().await, ok_response());
+    assert_eq!(
+        h.get_response().await,
+        QueryIO::SimpleString("OK".to_string()).serialize()
+    );
+    // set with expiry time
+    h.send({ array(vec!["SET", "foo2", "bar2", "PX", "9999999999"]).into_bytes() }.as_slice())
+        .await;
+    assert_eq!(
+        h.get_response().await,
+        QueryIO::SimpleString("OK".to_string()).serialize()
+    );
     // check keys
-    h.send(keys_command("*").as_slice()).await;
+    h.send({ array(vec!["KEYS", "*"]).into_bytes() }.as_slice())
+        .await;
     assert_eq!(h.get_response().await, array(vec!["foo2", "foo"]));
     // save
-    h.send(save_command().as_slice()).await;
+    h.send(array(vec!["SAVE"]).into_bytes().as_slice()).await;
 
     // THEN
-    assert_eq!(h.get_response().await, null_response());
+    assert_eq!(h.get_response().await, QueryIO::Null.serialize());
 
     // wait for the file to be created
     tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
 
     // start another instance
-    let _ = start_test_server(
-        CancellationTokenFactory,
-        config.clone(),
-        ClusterActor::default(),
-    )
-    .await;
+    let _ = start_test_server(CancellationTokenFactory, config.clone()).await;
 
     let mut client_stream = TcpStream::connect(config.bind_addr()).await.unwrap();
     let mut h: TestStreamHandler = client_stream.split().into();
 
     // keys
-    h.send(keys_command("*").as_slice()).await;
+    h.send({ array(vec!["KEYS", "*"]).into_bytes() }.as_slice())
+        .await;
     assert_eq!(h.get_response().await, array(vec!["foo2", "foo"]));
 }
 

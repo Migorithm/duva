@@ -13,30 +13,6 @@ impl TStream for tokio::net::TcpStream {
         let (query_io, _) = parse(buffer)?;
         Ok(query_io)
     }
-    async fn read_values(&mut self) -> anyhow::Result<Vec<QueryIO>> {
-        let mut buffer = BytesMut::with_capacity(512);
-        self.read_bytes(&mut buffer).await?;
-
-        let mut parsed_values = Vec::new();
-        let mut remaining_buffer = buffer;
-
-        while !remaining_buffer.is_empty() {
-            match parse(remaining_buffer.clone()) {
-                Ok((query_io, consumed)) => {
-                    parsed_values.push(query_io);
-
-                    // * Remove the parsed portion from the buffer
-                    remaining_buffer = remaining_buffer.split_off(consumed);
-                }
-                Err(e) => {
-                    // Handle parsing errors
-                    // You might want to log the error or handle it differently based on your use case
-                    return Err(anyhow::anyhow!("Parsing error: {:?}", e));
-                }
-            }
-        }
-        Ok(parsed_values)
-    }
 
     async fn write(&mut self, value: QueryIO) -> Result<(), IoError> {
         self.write_all(value.serialize().as_bytes())
@@ -83,6 +59,31 @@ impl TRead for tokio::net::TcpStream {
             }
         }
         Ok(())
+    }
+
+    async fn read_values(&mut self) -> anyhow::Result<Vec<QueryIO>> {
+        let mut buffer = BytesMut::with_capacity(512);
+        self.read_bytes(&mut buffer).await?;
+
+        let mut parsed_values = Vec::new();
+        let mut remaining_buffer = buffer;
+
+        while !remaining_buffer.is_empty() {
+            match parse(remaining_buffer.clone()) {
+                Ok((query_io, consumed)) => {
+                    parsed_values.push(query_io);
+
+                    // * Remove the parsed portion from the buffer
+                    remaining_buffer = remaining_buffer.split_off(consumed);
+                }
+                Err(e) => {
+                    // Handle parsing errors
+                    // You might want to log the error or handle it differently based on your use case
+                    return Err(anyhow::anyhow!("Parsing error: {:?}", e));
+                }
+            }
+        }
+        Ok(parsed_values)
     }
 }
 
