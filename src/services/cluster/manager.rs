@@ -10,7 +10,6 @@ use tokio::net::TcpStream;
 use tokio::sync::mpsc::Sender;
 use tokio::time::interval;
 
-use super::actor::ClusterWriteCommand;
 use super::inbound_stream::InboundStream;
 use super::outbound_stream::OutboundStream;
 
@@ -21,7 +20,7 @@ make_smart_pointer!(ClusterManager, Sender<ClusterCommand>);
 impl ClusterManager {
     pub fn run() -> Self {
         let (actor_handler, rx) = tokio::sync::mpsc::channel(100);
-        tokio::spawn(ClusterActor::default().handle(rx));
+        tokio::spawn(ClusterActor::default().handle(actor_handler.clone(), rx));
 
         tokio::spawn({
             let heartbeat_sender = actor_handler.clone();
