@@ -1,6 +1,8 @@
 use crate::services::cluster::actor::PeerAddr;
 use tokio::net::TcpStream;
 
+use super::actor::ClusterWriteCommand;
+
 pub enum ClusterCommand {
     AddPeer {
         peer_addr: PeerAddr,
@@ -9,8 +11,16 @@ pub enum ClusterCommand {
     },
     RemovePeer(PeerAddr),
     GetPeers(tokio::sync::oneshot::Sender<Vec<PeerAddr>>),
+    Wirte(ClusterWriteCommand),
 }
 
+impl ClusterCommand {
+    pub(crate) fn ping() -> Self {
+        Self::Wirte(ClusterWriteCommand::Ping)
+    }
+}
+
+#[derive(Clone)]
 pub enum PeerKind {
     Peer,
     Replica,
