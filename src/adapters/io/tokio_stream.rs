@@ -7,6 +7,7 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::tcp::OwnedWriteHalf;
 
 impl TStream for tokio::net::TcpStream {
+    // TODO deprecated
     async fn read_value(&mut self) -> anyhow::Result<QueryIO> {
         let mut buffer = BytesMut::with_capacity(512);
         self.read_bytes(&mut buffer).await?;
@@ -29,6 +30,61 @@ impl TWrite for OwnedWriteHalf {
         self.write_all(buf)
             .await
             .map_err(|e| Into::<IoError>::into(e.kind()))
+    }
+}
+
+impl TRead for tokio::net::tcp::OwnedReadHalf {
+    // TCP doesn't inherently delimit messages.
+    // The data arrives in a continuous stream of bytes. And
+    // we might not receive all the data in one go.
+    // So, we need to read the data in chunks until we have received all the data for the message.
+    async fn read_bytes(&mut self, buffer: &mut BytesMut) -> Result<(), std::io::Error> {
+        // fixed size buffer
+        let mut temp_buffer = [0u8; 512];
+        loop {
+            let bytes_read = self.read(&mut temp_buffer).await?;
+
+            // If no bytes are read, it suggests that the no more data will be received for this message.
+            if bytes_read == 0 {
+                break;
+            }
+
+            // Extend the buffer with the newly read data
+            buffer.extend_from_slice(&temp_buffer[..bytes_read]);
+
+            // If fewer bytes than the buffer size are read, it suggests that
+            // - The sender has sent all the data currently available for this message.
+            // - You have reached the end of the message.
+            if bytes_read < temp_buffer.len() {
+                break;
+            }
+        }
+        Ok(())
+    }
+
+    async fn read_values(&mut self) -> anyhow::Result<Vec<QueryIO>> {
+        let mut buffer = BytesMut::with_capacity(512);
+        self.read_bytes(&mut buffer).await?;
+
+        let mut parsed_values = Vec::new();
+        let mut remaining_buffer = buffer;
+
+        while !remaining_buffer.is_empty() {
+            match parse(remaining_buffer.clone()) {
+                Ok((query_io, consumed)) => {
+                    parsed_values.push(query_io);
+
+                    // * Remove the parsed portion from the buffer
+                    remaining_buffer = remaining_buffer.split_off(consumed);
+                }
+                Err(e) => {
+                    // Handle parsing errors
+                    // You might want to log the error or handle it differently based on your use case
+                    return Err(anyhow::anyhow!("Parsing error: {:?}", e));
+                }
+            }
+        }
+        Ok(parsed_values)
     }
 }
 

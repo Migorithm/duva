@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use crate::make_smart_pointer;
 use crate::services::cluster::actor::{ClusterActor, PeerAddr};
 use crate::services::cluster::command::{ClusterCommand, PeerKind};
@@ -6,6 +8,7 @@ use crate::services::interface::TStream;
 use crate::services::query_io::QueryIO;
 use tokio::net::TcpStream;
 use tokio::sync::mpsc::Sender;
+use tokio::time::interval;
 
 use super::inbound_stream::InboundStream;
 use super::outbound_stream::OutboundStream;
@@ -16,9 +19,20 @@ make_smart_pointer!(ClusterManager, Sender<ClusterCommand>);
 
 impl ClusterManager {
     pub fn run() -> Self {
-        let (tx, rx) = tokio::sync::mpsc::channel(100);
-        tokio::spawn(ClusterActor::default().handle(rx));
-        Self(tx)
+        let (actor_handler, rx) = tokio::sync::mpsc::channel(100);
+        tokio::spawn(ClusterActor::default().handle(actor_handler.clone(), rx));
+
+        tokio::spawn({
+            let heartbeat_sender = actor_handler.clone();
+            async move {
+                let mut interval = interval(Duration::from_secs(1));
+                loop {
+                    interval.tick().await;
+                    let _ = heartbeat_sender.send(ClusterCommand::ping()).await;
+                }
+            }
+        });
+        Self(actor_handler)
     }
 
     pub(crate) async fn get_peers(&self) -> anyhow::Result<Vec<PeerAddr>> {
