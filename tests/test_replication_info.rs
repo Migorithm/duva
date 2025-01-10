@@ -24,8 +24,7 @@ async fn test_replication_info() {
     let mut h: TestStreamHandler = client_stream.split().into();
 
     // WHEN
-    h.send({ array(vec!["INFO", "replication"]).into_bytes() }.as_slice())
-        .await;
+    h.send({ array(vec!["INFO", "replication"]).into_bytes() }.as_slice()).await;
 
     // THEN
     assert_eq!(h.get_response().await, QueryIO::BulkString(

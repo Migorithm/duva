@@ -22,9 +22,7 @@ use tokio::{net::TcpStream, task::JoinHandle, time::timeout};
 async fn receive_server_ping_from_replica_stream(
     master_cluster_bind_addr: String,
 ) -> JoinHandle<()> {
-    let mut stream_handler = TcpStream::connect(master_cluster_bind_addr.clone())
-        .await
-        .unwrap();
+    let mut stream_handler = TcpStream::connect(master_cluster_bind_addr.clone()).await.unwrap();
     threeway_handshake_helper(&mut stream_handler, None).await;
 
     tokio::spawn(async move {
@@ -54,10 +52,7 @@ async fn test_heartbeat() {
     let handler = receive_server_ping_from_replica_stream(master_cluster_bind_addr.clone()).await;
 
     //WHEN we await on handler, it will receive 5 PING messages
-    timeout(Duration::from_secs(6), handler)
-        .await
-        .unwrap()
-        .unwrap();
+    timeout(Duration::from_secs(6), handler).await.unwrap().unwrap();
 }
 
 #[tokio::test]

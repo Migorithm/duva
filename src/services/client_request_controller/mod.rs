@@ -30,11 +30,7 @@ impl ClientRequestController {
         cache_manager: &'static CacheManager,
         ttl_manager: TtlSchedulerInbox,
     ) -> Self {
-        ClientRequestController {
-            config_manager,
-            cache_manager,
-            ttl_manager,
-        }
+        ClientRequestController { config_manager, cache_manager, ttl_manager }
     }
 
     pub(crate) async fn handle(
@@ -54,9 +50,7 @@ impl ClientRequestController {
             ClientRequest::Echo => args.first().ok_or(anyhow::anyhow!("Not exists"))?.clone(),
             ClientRequest::Set => {
                 let cache_entry = args.take_set_args()?;
-                self.cache_manager
-                    .route_set(cache_entry, self.ttl_manager.clone())
-                    .await?
+                self.cache_manager.route_set(cache_entry, self.ttl_manager.clone()).await?
             }
             ClientRequest::Save => {
                 // spawn save actor
@@ -95,11 +89,7 @@ impl ClientRequestController {
             ClientRequest::Delete => panic!("Not implemented"),
 
             ClientRequest::Info => QueryIO::BulkString(
-                self.config_manager
-                    .replication_info()
-                    .await?
-                    .vectorize()
-                    .join("\r\n"),
+                self.config_manager.replication_info().await?.vectorize().join("\r\n"),
             ),
         };
         Ok(response)

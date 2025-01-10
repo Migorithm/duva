@@ -20,14 +20,8 @@ impl TryFrom<String> for ConnectionResponse {
             var if var.starts_with("fullresync") => {
                 let mut iter = var.split_whitespace();
                 let _ = iter.next();
-                let repl_id = iter
-                    .next()
-                    .context("replication_id must be given")?
-                    .to_string();
-                let offset = iter
-                    .next()
-                    .context("offset must be given")?
-                    .parse::<i64>()?;
+                let repl_id = iter.next().context("replication_id must be given")?.to_string();
+                let offset = iter.next().context("offset must be given")?.parse::<i64>()?;
                 Ok(ConnectionResponse::FULLRESYNC { repl_id, offset })
             }
 

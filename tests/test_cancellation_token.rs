@@ -20,14 +20,10 @@ async fn test_cancellation_token() {
     let mut h: TestStreamHandler = client_stream.split().into();
 
     // WHEN
-    h.send(b"*5\r\n$3\r\nSET\r\n$10\r\nsomanyrand\r\n$3\r\nbar\r\n$2\r\npx\r\n$3\r\n300\r\n")
-        .await;
+    h.send(b"*5\r\n$3\r\nSET\r\n$10\r\nsomanyrand\r\n$3\r\nbar\r\n$2\r\npx\r\n$3\r\n300\r\n").await;
 
     // THEN
-    assert_eq!(
-        h.get_response().await,
-        "-Error operation cancelled due to timeout\r\n"
-    );
+    assert_eq!(h.get_response().await, "-Error operation cancelled due to timeout\r\n");
 }
 
 #[derive(Clone, Copy)]

@@ -10,21 +10,10 @@ use std::collections::HashMap;
 use tokio::sync::{mpsc, oneshot};
 
 pub enum CacheCommand {
-    Set {
-        cache_entry: CacheEntry,
-        ttl_sender: TtlSchedulerInbox,
-    },
-    Save {
-        outbox: mpsc::Sender<SaveCommand>,
-    },
-    Get {
-        key: String,
-        sender: oneshot::Sender<QueryIO>,
-    },
-    Keys {
-        pattern: Option<String>,
-        sender: oneshot::Sender<QueryIO>,
-    },
+    Set { cache_entry: CacheEntry, ttl_sender: TtlSchedulerInbox },
+    Save { outbox: mpsc::Sender<SaveCommand> },
+    Get { key: String, sender: oneshot::Sender<QueryIO> },
+    Keys { pattern: Option<String>, sender: oneshot::Sender<QueryIO> },
     Delete(String),
     StopSentinel,
 }
@@ -44,13 +33,7 @@ impl CacheActor {
     // Create a new CacheActor with inner state
     pub fn run() -> CacheCommandSender {
         let (tx, cache_actor_inbox) = mpsc::channel(100);
-        tokio::spawn(
-            Self {
-                inbox: cache_actor_inbox,
-                cache: CacheDb::default(),
-            }
-            .handle(),
-        );
+        tokio::spawn(Self { inbox: cache_actor_inbox, cache: CacheDb::default() }.handle());
         CacheCommandSender(tx)
     }
 
@@ -59,10 +42,7 @@ impl CacheActor {
             match command {
                 CacheCommand::StopSentinel => break,
 
-                CacheCommand::Set {
-                    cache_entry,
-                    ttl_sender,
-                } => {
+                CacheCommand::Set { cache_entry, ttl_sender } => {
                     let _ = self
                         .try_send_ttl(cache_entry.key(), cache_entry.expiry(), ttl_sender.clone())
                         .await;
@@ -89,9 +69,7 @@ impl CacheActor {
                         })
                         .await?;
                     for chunk in self.cache.iter().collect::<Vec<_>>().chunks(10) {
-                        outbox
-                            .send(SaveCommand::SaveChunk(CacheEntry::new(chunk)))
-                            .await?;
+                        outbox.send(SaveCommand::SaveChunk(CacheEntry::new(chunk))).await?;
                     }
                     // finalize the save operation
                     outbox.send(SaveCommand::StopSentinel).await?;
@@ -135,8 +113,7 @@ impl CacheActor {
             }
             CacheEntry::KeyValueExpiry(key, value, expiry) => {
                 self.cache.keys_with_expiry += 1;
-                self.cache
-                    .insert(key.clone(), CacheValue::ValueWithExpiry(value, expiry));
+                self.cache.insert(key.clone(), CacheValue::ValueWithExpiry(value, expiry));
             }
         }
     }
@@ -147,9 +124,7 @@ impl CacheActor {
         expiry: Option<std::time::SystemTime>,
         ttl_sender: TtlSchedulerInbox,
     ) -> Result<()> {
-        ttl_sender
-            .set_ttl(key.to_string(), expiry.context("Expiry not found")?)
-            .await;
+        ttl_sender.set_ttl(key.to_string(), expiry.context("Expiry not found")?).await;
         Ok(())
     }
 }
@@ -166,10 +141,7 @@ async fn test_set_and_delete_inc_dec_keys_with_expiry() {
 
     // GIVEN
     let (tx, rx) = mpsc::channel(100);
-    let actor = CacheActor {
-        inbox: rx,
-        cache: CacheDb::default(),
-    };
+    let actor = CacheActor { inbox: rx, cache: CacheDb::default() };
 
     let (ttl_tx, mut ttx_rx) = mpsc::channel(100);
     let ttl_sender = TtlSchedulerInbox(ttl_tx);

@@ -1,12 +1,8 @@
 use crate::services::{cluster::actor::PeerAddr, query_io::QueryIO};
-use tokio::net::{tcp::OwnedReadHalf, TcpStream};
+use tokio::net::TcpStream;
 
 pub enum ClusterCommand {
-    AddPeer {
-        peer_addr: PeerAddr,
-        stream: TcpStream,
-        peer_kind: PeerKind,
-    },
+    AddPeer { peer_addr: PeerAddr, stream: TcpStream, peer_kind: PeerKind },
     RemovePeer(PeerAddr),
     GetPeers(tokio::sync::oneshot::Sender<Vec<PeerAddr>>),
     Wirte(ClusterWriteCommand),

@@ -29,11 +29,7 @@ impl CacheManager {
         startup_time: SystemTime,
     ) -> Result<()> {
         let startup_time = &startup_time;
-        for kvs in dump
-            .key_values()
-            .into_iter()
-            .filter(|kvs| kvs.is_valid(startup_time))
-        {
+        for kvs in dump.key_values().into_iter().filter(|kvs| kvs.is_valid(startup_time)) {
             self.route_set(kvs, ttl_inbox.clone()).await?;
         }
 
@@ -42,9 +38,7 @@ impl CacheManager {
 
     pub(crate) async fn route_get(&self, key: String) -> Result<QueryIO> {
         let (tx, rx) = tokio::sync::oneshot::channel();
-        self.select_shard(&key)
-            .send(CacheCommand::Get { key, sender: tx })
-            .await?;
+        self.select_shard(&key).send(CacheCommand::Get { key, sender: tx }).await?;
 
         Ok(rx.await?)
     }
@@ -55,10 +49,7 @@ impl CacheManager {
         ttl_sender: TtlSchedulerInbox,
     ) -> Result<QueryIO> {
         self.select_shard(kvs.key())
-            .send(CacheCommand::Set {
-                cache_entry: kvs,
-                ttl_sender,
-            })
+            .send(CacheCommand::Set { cache_entry: kvs, ttl_sender })
             .await?;
         Ok(QueryIO::SimpleString("OK".to_string()))
     }
@@ -91,11 +82,7 @@ impl CacheManager {
 
         // send keys to shards
         self.chain(senders).for_each(|(shard, sender)| {
-            tokio::spawn(Self::send_keys_to_shard(
-                shard.clone(),
-                pattern.clone(),
-                sender,
-            ));
+            tokio::spawn(Self::send_keys_to_shard(shard.clone(), pattern.clone(), sender));
         });
         let mut keys = Vec::new();
         for v in receivers {
@@ -119,12 +106,7 @@ impl CacheManager {
         pattern: Option<String>,
         tx: OneShotSender<QueryIO>,
     ) -> Result<()> {
-        Ok(shard
-            .send(CacheCommand::Keys {
-                pattern: pattern.clone(),
-                sender: tx,
-            })
-            .await?)
+        Ok(shard.send(CacheCommand::Keys { pattern: pattern.clone(), sender: tx }).await?)
     }
 
     pub(crate) fn select_shard(&self, key: &str) -> &CacheCommandSender {
@@ -142,9 +124,7 @@ impl CacheManager {
         const NUM_OF_PERSISTENCE: usize = 10;
 
         let cache_dispatcher = CacheManager {
-            inboxes: (0..NUM_OF_PERSISTENCE)
-                .map(|_| CacheActor::run())
-                .collect::<Vec<_>>(),
+            inboxes: (0..NUM_OF_PERSISTENCE).map(|_| CacheActor::run()).collect::<Vec<_>>(),
         };
 
         let ttl_inbox = cache_dispatcher.run_ttl_actors();

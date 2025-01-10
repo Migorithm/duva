@@ -1,13 +1,13 @@
-use tokio::sync::mpsc;
-use tokio::time::interval;
-use std::time::{Duration, SystemTime};
-use tokio::sync::mpsc::Receiver;
-use std::collections::BinaryHeap;
-use std::cmp::Reverse;
 use crate::services::statefuls::cache::actor::CacheCommand;
 use crate::services::statefuls::cache::manager::CacheManager;
 use crate::services::statefuls::cache::ttl::command::TtlCommand;
 use crate::services::statefuls::cache::ttl::manager::TtlSchedulerInbox;
+use std::cmp::Reverse;
+use std::collections::BinaryHeap;
+use std::time::{Duration, SystemTime};
+use tokio::sync::mpsc;
+use tokio::sync::mpsc::Receiver;
+use tokio::time::interval;
 
 pub struct TtlActor;
 
@@ -15,10 +15,7 @@ impl TtlActor {
     pub(crate) fn run(cache_dispatcher: CacheManager) -> TtlSchedulerInbox {
         let (scheduler_outbox, inbox) = tokio::sync::mpsc::channel(100);
         tokio::spawn(Self::ttl_schedule_actor(inbox));
-        tokio::spawn(Self::background_delete_actor(
-            cache_dispatcher,
-            scheduler_outbox.clone(),
-        ));
+        tokio::spawn(Self::background_delete_actor(cache_dispatcher, scheduler_outbox.clone()));
 
         TtlSchedulerInbox(scheduler_outbox)
     }
@@ -37,10 +34,7 @@ impl TtlActor {
             let Ok(Some(key)) = rx.await else {
                 continue;
             };
-            cache_manager
-                .select_shard(&key)
-                .send(CacheCommand::Delete(key))
-                .await?;
+            cache_manager.select_shard(&key).send(CacheCommand::Delete(key)).await?;
         }
     }
 
@@ -62,9 +56,7 @@ impl TtlActor {
                         priority_queue.pop();
                     }
                     _ => {
-                        sender
-                            .send(None)
-                            .map_err(|_| anyhow::anyhow!("Error sending key"))?;
+                        sender.send(None).map_err(|_| anyhow::anyhow!("Error sending key"))?;
                     }
                 },
 

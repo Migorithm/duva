@@ -43,11 +43,7 @@ impl ClusterActor {
     ) {
         while let Some(command) = cluster_message_listener.recv().await {
             match command {
-                ClusterCommand::AddPeer {
-                    peer_addr,
-                    stream,
-                    peer_kind,
-                } => {
+                ClusterCommand::AddPeer { peer_addr, stream, peer_kind } => {
                     let (r, w) = stream.into_split();
                     // spawn listener
                     let (kill_trigger, kill_switch) = tokio::sync::oneshot::channel();

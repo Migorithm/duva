@@ -14,11 +14,7 @@ async fn test_disseminate_peers() {
     let master_stdout = master_process.stdout.take();
     wait_for_message(
         master_stdout.expect("failed to take stdout"),
-        format!(
-            "listening peer connection on localhost:{}...",
-            master_port + 10000
-        )
-        .as_str(),
+        format!("listening peer connection on localhost:{}...", master_port + 10000).as_str(),
     );
 
     // WHEN run replica

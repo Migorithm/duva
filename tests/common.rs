@@ -71,10 +71,7 @@ pub async fn init_slave_config_manager_with_free_port(master_port: u16) -> Confi
 // scan for available port
 pub async fn find_free_port_in_range(start: u16, end: u16) -> Option<u16> {
     for port in start..=end {
-        if TcpListener::bind(format!("127.0.0.1:{}", port))
-            .await
-            .is_ok()
-        {
+        if TcpListener::bind(format!("127.0.0.1:{}", port)).await.is_ok() {
             return Some(port);
         }
     }
@@ -144,12 +141,7 @@ pub fn wait_for_message<T: Read>(read: T, target: &str) {
 }
 
 pub fn array(arr: Vec<&str>) -> String {
-    QueryIO::Array(
-        arr.iter()
-            .map(|s| QueryIO::BulkString(s.to_string()))
-            .collect(),
-    )
-    .serialize()
+    QueryIO::Array(arr.iter().map(|s| QueryIO::BulkString(s.to_string())).collect()).serialize()
 }
 
 pub async fn threeway_handshake_helper(
@@ -164,10 +156,7 @@ pub async fn threeway_handshake_helper(
     };
 
     // client sends PING command
-    stream_handler
-        .write_all(b"*1\r\n$4\r\nPING\r\n")
-        .await
-        .unwrap();
+    stream_handler.write_all(b"*1\r\n$4\r\nPING\r\n").await.unwrap();
 
     let val = stream_handler.read_values().await.unwrap()[0].clone();
     assert_eq!(val.serialize(), "+PONG\r\n");
@@ -175,11 +164,8 @@ pub async fn threeway_handshake_helper(
     // client sends REPLCONF listening-port command
     stream_handler
         .write_all(
-            format!(
-                "*3\r\n$8\r\nREPLCONF\r\n$14\r\nlistening-port\r\n{}\r\n",
-                port_string
-            )
-            .as_bytes(),
+            format!("*3\r\n$8\r\nREPLCONF\r\n$14\r\nlistening-port\r\n{}\r\n", port_string)
+                .as_bytes(),
         )
         .await
         .unwrap();
@@ -197,16 +183,10 @@ pub async fn threeway_handshake_helper(
     // THEN - client receives OK
 
     // client sends PSYNC command
-    stream_handler
-        .write_all(b"*3\r\n$5\r\nPSYNC\r\n$1\r\n?\r\n$2\r\n-1\r\n")
-        .await
-        .unwrap();
+    stream_handler.write_all(b"*3\r\n$5\r\nPSYNC\r\n$1\r\n?\r\n$2\r\n-1\r\n").await.unwrap();
     let values = stream_handler.read_values().await.unwrap();
 
-    assert_eq!(
-        values[0].serialize(),
-        "+FULLRESYNC 8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb 0\r\n"
-    );
+    assert_eq!(values[0].serialize(), "+FULLRESYNC 8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb 0\r\n");
 
     values.get(1).cloned()
 }

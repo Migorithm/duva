@@ -123,9 +123,7 @@ fn encode_size(size: usize) -> Result<Vec<u8>> {
         result.extend_from_slice(&(size as u32).to_be_bytes());
     } else {
         // Size too large to encode within the supported format.
-        return Err(anyhow::anyhow!(
-            "Size too large to encode within the supported format."
-        ));
+        return Err(anyhow::anyhow!("Size too large to encode within the supported format."));
     }
     Ok(result)
 }
@@ -155,10 +153,7 @@ mod test {
         let size = 700;
         let encoded = encode_string(size, data).expect("Encoding failed");
         assert_eq!(encoded[0] >> 6, 0b01); // First two bits should be 0b01.
-        assert_eq!(
-            ((encoded[0] & 0x3F) as usize) << 8 | (encoded[1] as usize),
-            size
-        ); // Check the 14-bit size.
+        assert_eq!(((encoded[0] & 0x3F) as usize) << 8 | (encoded[1] as usize), size); // Check the 14-bit size.
         assert_eq!(&encoded[2..], data.as_bytes()); // Check the appended data.
     }
 
@@ -223,10 +218,7 @@ mod test {
         let data = "123";
         let size = data.len();
         let encoded = encode_string(size, data).unwrap();
-        let mut decoder = BytesDecoder {
-            data: &encoded,
-            state: DecoderInit,
-        };
+        let mut decoder = BytesDecoder { data: &encoded, state: DecoderInit };
         assert_eq!(decoder.string_decode(), Some("123".to_string()));
     }
 
@@ -244,10 +236,7 @@ mod test {
         let data = "12345";
         let size = data.len();
         let encoded = encode_string(size, data).unwrap();
-        let mut decoder = BytesDecoder {
-            data: &encoded,
-            state: DecoderInit,
-        };
+        let mut decoder = BytesDecoder { data: &encoded, state: DecoderInit };
         assert_eq!(decoder.string_decode(), Some("12345".to_string()));
     }
 
@@ -265,10 +254,7 @@ mod test {
         let data = "1234567";
         let size = data.len();
         let encoded = encode_string(size, data).unwrap();
-        let mut decoder = BytesDecoder {
-            data: &encoded,
-            state: DecoderInit,
-        };
+        let mut decoder = BytesDecoder { data: &encoded, state: DecoderInit };
         assert_eq!(decoder.string_decode(), Some("1234567".to_string()));
     }
 
@@ -277,10 +263,7 @@ mod test {
         let data = "42";
         let size = data.len();
         let encoded = encode_string(size, data).unwrap();
-        let mut decoder = BytesDecoder {
-            data: &encoded,
-            state: DecoderInit,
-        };
+        let mut decoder = BytesDecoder { data: &encoded, state: DecoderInit };
         assert_eq!(decoder.string_decode(), Some("42".to_string()));
     }
 
@@ -289,10 +272,7 @@ mod test {
         let data = "1000";
         let size = data.len();
         let encoded = encode_string(size, data).unwrap();
-        let mut decoder = BytesDecoder {
-            data: &encoded,
-            state: DecoderInit,
-        };
+        let mut decoder = BytesDecoder { data: &encoded, state: DecoderInit };
         assert_eq!(decoder.string_decode(), Some("1000".to_string()));
     }
 
@@ -301,10 +281,7 @@ mod test {
         let data = "100000";
         let size = data.len();
         let encoded = encode_string(size, data).unwrap();
-        let mut decoder = BytesDecoder {
-            data: &encoded,
-            state: DecoderInit,
-        };
+        let mut decoder = BytesDecoder { data: &encoded, state: DecoderInit };
         assert_eq!(decoder.string_decode(), Some("100000".to_string()));
     }
 
