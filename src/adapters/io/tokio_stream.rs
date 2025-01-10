@@ -16,20 +16,16 @@ impl TStream for tokio::net::TcpStream {
     }
 
     async fn write(&mut self, value: QueryIO) -> Result<(), IoError> {
-        self.write_all(value.serialize().as_bytes())
-            .await
-            .map_err(|e| {
-                eprintln!("error = {:?}", e);
-                Into::<IoError>::into(e.kind())
-            })
+        self.write_all(value.serialize().as_bytes()).await.map_err(|e| {
+            eprintln!("error = {:?}", e);
+            Into::<IoError>::into(e.kind())
+        })
     }
 }
 
 impl TWrite for OwnedWriteHalf {
     async fn write(&mut self, buf: &[u8]) -> Result<(), IoError> {
-        self.write_all(buf)
-            .await
-            .map_err(|e| Into::<IoError>::into(e.kind()))
+        self.write_all(buf).await.map_err(|e| Into::<IoError>::into(e.kind()))
     }
 }
 
@@ -203,8 +199,5 @@ async fn test_read_values() {
         parsed_values[0],
         QueryIO::SimpleString("FULLRESYNC 8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb 0".to_string())
     );
-    assert_eq!(
-        parsed_values[1],
-        QueryIO::SimpleString("PEERS localhost:6378".to_string())
-    );
+    assert_eq!(parsed_values[1], QueryIO::SimpleString("PEERS localhost:6378".to_string()));
 }

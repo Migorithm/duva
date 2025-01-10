@@ -128,18 +128,13 @@ impl<'a> BytesDecoder<'a, DecoderInit> {
     // then read 4 digit Header version (like 0011) and return RdbFileLoader<MetadataSectionLoading> with header value as "REDIS" + 4 digit version
     pub fn load_header(mut self) -> Result<BytesDecoder<'a, HeaderReady>> {
         if self.len() < 9 {
-            return Err(anyhow::Error::msg(
-                "header loading: data length is less than 9",
-            ))?;
+            return Err(anyhow::Error::msg("header loading: data length is less than 9"))?;
         }
 
         let header = self.take_header()?;
         let version = self.take_version()?;
 
-        Ok(BytesDecoder {
-            data: self.data,
-            state: HeaderReady(format!("{}{}", header, version)),
-        })
+        Ok(BytesDecoder { data: self.data, state: HeaderReady(format!("{}{}", header, version)) })
     }
     fn take_header(&mut self) -> Result<String> {
         let header = self.take_string(5)?;
@@ -149,8 +144,7 @@ impl<'a> BytesDecoder<'a, DecoderInit> {
         Ok(header)
     }
     fn take_version(&mut self) -> Result<String> {
-        self.take_string(4)
-            .context("header loading: version decode fail")
+        self.take_string(4).context("header loading: version decode fail")
     }
 }
 
@@ -165,10 +159,7 @@ impl<'a> BytesDecoder<'a, HeaderReady> {
         }
         Ok(BytesDecoder {
             data: self.data,
-            state: MetadataReady {
-                metadata,
-                header: self.state.0,
-            },
+            state: MetadataReady { metadata, header: self.state.0 },
         })
     }
     pub fn try_extract_metadata_key_value(&mut self) -> anyhow::Result<(String, String)> {
@@ -183,9 +174,8 @@ impl BytesDecoder<'_, MetadataReady> {
     pub fn load_database(mut self) -> Result<DumpFile> {
         let mut database = Vec::new();
         while self.check_indicator(DATABASE_SECTION_INDICATOR) {
-            let section = self
-                .extract_section()
-                .context("database loading: section extraction failed")?;
+            let section =
+                self.extract_section().context("database loading: section extraction failed")?;
 
             database.push(section);
         }
@@ -229,10 +219,8 @@ impl BytesDecoder<'_, MetadataReady> {
         }
         let key_value = self.try_key_value()?;
         if key_value.expiry().is_some() {
-            builder.expires_table_size = builder
-                .expires_table_size
-                .checked_sub(1)
-                .context("expires_table_size is 0")?;
+            builder.expires_table_size =
+                builder.expires_table_size.checked_sub(1).context("expires_table_size is 0")?;
         }
         builder.storage.push(key_value);
         builder.key_value_table_size -= 1;
@@ -260,10 +248,7 @@ impl BytesDecoder<'_, MetadataReady> {
             match self[0] {
                 //0b11111100
                 EXPIRY_TIME_IN_MILLISECONDS_INDICATOR => {
-                    expiry = Some(
-                        self.try_extract_expiry_time_in_milliseconds()?
-                            .to_systemtime(),
-                    );
+                    expiry = Some(self.try_extract_expiry_time_in_milliseconds()?.to_systemtime());
                 }
                 //0b11111101
                 EXPIRY_TIME_IN_SECONDS_INDICATOR => {
@@ -331,10 +316,7 @@ impl BytesDecoder<'_, MetadataReady> {
 
 impl<'a> From<&'a [u8]> for BytesDecoder<'a, DecoderInit> {
     fn from(data: &'a [u8]) -> Self {
-        Self {
-            data,
-            state: DecoderInit,
-        }
+        Self { data, state: DecoderInit }
     }
 }
 
@@ -386,9 +368,8 @@ fn test_integer_decoding() {
 
 #[test]
 fn test_string_decoding() {
-    static V1: [u8; 14] = [
-        0x0D, 0x48, 0x65, 0x6C, 0x6C, 0x6F, 0x2C, 0x20, 0x57, 0x6F, 0x72, 0x6C, 0x64, 0x21,
-    ];
+    static V1: [u8; 14] =
+        [0x0D, 0x48, 0x65, 0x6C, 0x6C, 0x6F, 0x2C, 0x20, 0x57, 0x6F, 0x72, 0x6C, 0x64, 0x21];
     let mut example1: BytesDecoder<DecoderInit> = (&V1 as &'static [u8]).into();
 
     static V2: [u8; 6] = [0x42, 0x0A, 0x54, 0x65, 0x73, 0x74];
@@ -401,9 +382,8 @@ fn test_string_decoding() {
 #[test]
 fn test_decoding() {
     // "Hello, World!"
-    static V1: [u8; 14] = [
-        0x0D, 0x48, 0x65, 0x6C, 0x6C, 0x6F, 0x2C, 0x20, 0x57, 0x6F, 0x72, 0x6C, 0x64, 0x21,
-    ];
+    static V1: [u8; 14] =
+        [0x0D, 0x48, 0x65, 0x6C, 0x6C, 0x6F, 0x2C, 0x20, 0x57, 0x6F, 0x72, 0x6C, 0x64, 0x21];
 
     let mut example1: BytesDecoder<DecoderInit> = (&V1 as &'static [u8]).into();
 
@@ -436,10 +416,7 @@ fn test_database_section_extractor() {
         0x62, 0x61, 0x7A, 0x03, 0x71, 0x75, 0x78,
     ];
 
-    let mut bytes_handler = BytesDecoder::<MetadataReady> {
-        data,
-        state: Default::default(),
-    };
+    let mut bytes_handler = BytesDecoder::<MetadataReady> { data, state: Default::default() };
 
     let db_section: DatabaseSection = bytes_handler.extract_section().unwrap();
     assert_eq!(db_section.index, 0);
@@ -457,10 +434,7 @@ fn test_database_section_extractor() {
         CacheEntry::KeyValueExpiry(key, value, expiry) => {
             assert_eq!(key, "foo");
             assert_eq!(value, "bar");
-            assert_eq!(
-                expiry,
-                &StoredDuration::Milliseconds(1713824559637).to_systemtime()
-            );
+            assert_eq!(expiry, &StoredDuration::Milliseconds(1713824559637).to_systemtime());
         }
         _ => panic!("Expected KeyValueExpiry"),
     }
@@ -473,9 +447,7 @@ fn test_non_expiry_key_value_pair() {
         state: Default::default(),
     };
 
-    let key_value = bytes_handler
-        .try_key_value()
-        .expect("Failed to extract key value expiry");
+    let key_value = bytes_handler.try_key_value().expect("Failed to extract key value expiry");
 
     match key_value {
         CacheEntry::KeyValue(key, value) => {
@@ -509,9 +481,7 @@ fn test_with_milliseconds_expiry_key_value_pair() {
 #[test]
 fn test_with_seconds_expiry_key_value_pair() {
     let mut bytes_handler = BytesDecoder::<MetadataReady> {
-        data: &[
-            0xFD, 0x52, 0xED, 0x2A, 0x66, 0x00, 0x03, 0x62, 0x61, 0x7A, 0x03, 0x71, 0x75, 0x78,
-        ],
+        data: &[0xFD, 0x52, 0xED, 0x2A, 0x66, 0x00, 0x03, 0x62, 0x61, 0x7A, 0x03, 0x71, 0x75, 0x78],
         state: Default::default(),
     };
 
@@ -524,9 +494,7 @@ fn test_with_seconds_expiry_key_value_pair() {
 #[test]
 fn test_invalid_expiry_key_value_pair() {
     let mut bytes_handler = BytesDecoder::<MetadataReady> {
-        data: &[
-            0xFF, 0x52, 0xED, 0x2A, 0x66, 0x00, 0x03, 0x62, 0x61, 0x7A, 0x03, 0x71, 0x75, 0x78,
-        ],
+        data: &[0xFF, 0x52, 0xED, 0x2A, 0x66, 0x00, 0x03, 0x62, 0x61, 0x7A, 0x03, 0x71, 0x75, 0x78],
         state: Default::default(),
     };
 
@@ -577,10 +545,8 @@ fn test_metadata_loading_multiple() {
         0xFA, 0x03, 0x61, 0x62, 0x63, 0x03, 0x64, 0x65, 0x66, 0xFA, 0x03, 0x67, 0x68, 0x69, 0x03,
         0x6A, 0x6B, 0x6C,
     ];
-    let bytes_handler = BytesDecoder::<HeaderReady> {
-        data: data.as_slice().into(),
-        state: Default::default(),
-    };
+    let bytes_handler =
+        BytesDecoder::<HeaderReady> { data: data.as_slice().into(), state: Default::default() };
 
     let metadata = bytes_handler.load_metadata().unwrap();
 
@@ -594,10 +560,8 @@ fn test_metadata_loading_no_metadata() {
         0xFE, 0x00, 0xFB, 0x03, 0x02, 0x00, 0x06, 0x66, 0x6F, 0x6F, 0x62, 0x61, 0x72, 0x06, 0x62,
         0x61, 0x7A, 0x03, 0x71, 0x75, 0x78,
     ];
-    let bytes_handler = BytesDecoder::<HeaderReady> {
-        data: data.as_slice().into(),
-        state: Default::default(),
-    };
+    let bytes_handler =
+        BytesDecoder::<HeaderReady> { data: data.as_slice().into(), state: Default::default() };
 
     let metadata = bytes_handler.load_metadata().unwrap();
     assert_eq!(metadata.state.metadata, HashMap::new());
@@ -612,19 +576,14 @@ fn test_database_loading() {
         0x62, 0x61, 0x7A, 0x03, 0x71, 0x75, 0x78, 0xFF, 0x89, 0x3B, 0xB7, 0x4E, 0xF8, 0x0F, 0x77,
         0x19,
     ];
-    let bytes_handler = BytesDecoder::<MetadataReady> {
-        data: data.as_slice().into(),
-        state: Default::default(),
-    };
+    let bytes_handler =
+        BytesDecoder::<MetadataReady> { data: data.as_slice().into(), state: Default::default() };
 
     let rdb_file = bytes_handler.load_database().unwrap();
     assert_eq!(rdb_file.database.len(), 1);
     assert_eq!(rdb_file.database[0].index, 0);
     assert_eq!(rdb_file.database[0].storage.len(), 3);
-    assert_eq!(
-        rdb_file.checksum,
-        vec![0x89, 0x3B, 0xB7, 0x4E, 0xF8, 0x0F, 0x77, 0x19]
-    );
+    assert_eq!(rdb_file.checksum, vec![0x89, 0x3B, 0xB7, 0x4E, 0xF8, 0x0F, 0x77, 0x19]);
 }
 
 // ! Most important test for the BytesEndec implementation in decoding path.
@@ -642,18 +601,11 @@ fn test_loading_all() {
         0x32, 0x00, 0x03, 0x66, 0x6F, 0x6F, 0x03, 0x62, 0x61, 0x72, 0xFF, 0x60, 0x82, 0x9C, 0xF8,
         0xFB, 0x2E, 0x7F, 0xEB,
     ];
-    let bytes_handler = BytesDecoder::<DecoderInit> {
-        data: data.as_slice().into(),
-        state: Default::default(),
-    };
+    let bytes_handler =
+        BytesDecoder::<DecoderInit> { data: data.as_slice().into(), state: Default::default() };
 
-    let rdb_file = bytes_handler
-        .load_header()
-        .unwrap()
-        .load_metadata()
-        .unwrap()
-        .load_database()
-        .unwrap();
+    let rdb_file =
+        bytes_handler.load_header().unwrap().load_metadata().unwrap().load_database().unwrap();
 
     assert_eq!(rdb_file.header, "REDIS0011");
     assert_eq!(rdb_file.database.len(), 1);
@@ -674,8 +626,5 @@ fn test_loading_all() {
         _ => panic!("Expected KeyValue"),
     }
 
-    assert_eq!(
-        rdb_file.checksum,
-        vec![0x60, 0x82, 0x9C, 0xF8, 0xFB, 0x2E, 0x7F, 0xEB]
-    );
+    assert_eq!(rdb_file.checksum, vec![0x60, 0x82, 0x9C, 0xF8, 0xFB, 0x2E, 0x7F, 0xEB]);
 }

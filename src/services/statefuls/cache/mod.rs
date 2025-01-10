@@ -39,10 +39,7 @@ impl CacheEntry {
     }
 
     pub fn new(chunk: &[(&String, &CacheValue)]) -> Vec<Self> {
-        chunk
-            .iter()
-            .map(|(k, v)| v.to_cache_entry(k))
-            .collect::<Vec<CacheEntry>>()
+        chunk.iter().map(|(k, v)| v.to_cache_entry(k)).collect::<Vec<CacheEntry>>()
     }
 }
 

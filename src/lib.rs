@@ -58,11 +58,7 @@ where
         if let Some(filepath) = self.config_manager.try_filepath().await? {
             let dump = PersistActor::dump(filepath).await?;
             self.cache_manager
-                .dump_cache(
-                    dump,
-                    self.ttl_inbox.clone(),
-                    self.config_manager.startup_time,
-                )
+                .dump_cache(dump, self.ttl_inbox.clone(), self.config_manager.startup_time)
                 .await?;
         }
 
@@ -127,14 +123,11 @@ where
                 let _ = stop_sentinel_tx.send(());
                 let repl_info = self.config_manager.replication_info().await?;
                 tokio::spawn(
-                    self.cluster_manager
-                        .discover_cluster(repl_info, self.config_manager.port),
+                    self.cluster_manager.discover_cluster(repl_info, self.config_manager.port),
                 );
             }
 
-            self.config_manager
-                .wait_until_cluster_mode_changed()
-                .await?;
+            self.config_manager.wait_until_cluster_mode_changed().await?;
             is_master_mode = self.config_manager.cluster_mode();
         }
     }

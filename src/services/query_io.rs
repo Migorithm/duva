@@ -119,10 +119,7 @@ fn parse_bulk_string(buffer: BytesMut) -> Result<(QueryIO, usize)> {
     let bulk_string_value = String::from_utf8(bulk_str.to_vec())?;
 
     // Return the bulk string value and adjusted length to account for CRLF
-    Ok((
-        QueryIO::BulkString(bulk_string_value),
-        len + bulk_str_len + 2,
-    ))
+    Ok((QueryIO::BulkString(bulk_string_value), len + bulk_str_len + 2))
 }
 
 fn read_until_crlf(buffer: &[u8]) -> Option<(&[u8], usize)> {

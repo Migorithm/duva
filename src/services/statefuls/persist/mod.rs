@@ -19,18 +19,10 @@ impl DumpFile {
         database: Vec<DatabaseSection>,
         checksum: Vec<u8>,
     ) -> Self {
-        Self {
-            header,
-            metadata,
-            database,
-            checksum,
-        }
+        Self { header, metadata, database, checksum }
     }
     pub fn key_values(self) -> Vec<CacheEntry> {
-        self.database
-            .into_iter()
-            .flat_map(|section| section.storage.into_iter())
-            .collect()
+        self.database.into_iter().flat_map(|section| section.storage.into_iter()).collect()
     }
 }
 
@@ -49,9 +41,6 @@ pub(crate) struct DatabaseSectionBuilder {
 }
 impl DatabaseSectionBuilder {
     pub fn build(self) -> DatabaseSection {
-        DatabaseSection {
-            index: self.index,
-            storage: self.storage,
-        }
+        DatabaseSection { index: self.index, storage: self.storage }
     }
 }

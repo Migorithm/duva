@@ -43,11 +43,8 @@ async fn test_master_threeway_handshake() {
     // WHEN - client sends REPLCONF listening-port command
     let client_fake_port = 6778;
     h.send(
-        format!(
-            "*3\r\n$8\r\nREPLCONF\r\n$14\r\nlistening-port\r\n$4\r\n{}\r\n",
-            client_fake_port
-        )
-        .as_bytes(),
+        format!("*3\r\n$8\r\nREPLCONF\r\n$14\r\nlistening-port\r\n$4\r\n{}\r\n", client_fake_port)
+            .as_bytes(),
     )
     .await;
 
@@ -55,8 +52,7 @@ async fn test_master_threeway_handshake() {
     assert_eq!(h.get_response().await, "+OK\r\n");
 
     // WHEN - client sends REPLCONF capa command
-    h.send(b"*3\r\n$8\r\nREPLCONF\r\n$4\r\ncapa\r\n$6\r\npsync2\r\n")
-        .await;
+    h.send(b"*3\r\n$8\r\nREPLCONF\r\n$4\r\ncapa\r\n$6\r\npsync2\r\n").await;
 
     // THEN - client receives OK
     assert_eq!(h.get_response().await, "+OK\r\n");
@@ -64,8 +60,7 @@ async fn test_master_threeway_handshake() {
     // WHEN - client sends PSYNC command
     // ! The first argument is the replication ID of the master
     // ! Since this is the first time the replica is connecting to the master, the replication ID will be ? (a question mark)
-    h.send(b"*3\r\n$5\r\nPSYNC\r\n$1\r\n?\r\n$2\r\n-1\r\n")
-        .await;
+    h.send(b"*3\r\n$5\r\nPSYNC\r\n$1\r\n?\r\n$2\r\n-1\r\n").await;
 
     // THEN - client receives FULLRESYNC - this is a dummy response
     assert!(h
@@ -86,11 +81,7 @@ async fn test_slave_threeway_handshake() {
     let master_stdout = master_process.stdout.take();
     wait_for_message(
         master_stdout.expect("failed to take stdout"),
-        format!(
-            "listening peer connection on localhost:{}...",
-            master_port + 10000
-        )
-        .as_str(),
+        format!("listening peer connection on localhost:{}...", master_port + 10000).as_str(),
     );
 
     // WHEN run replica
@@ -100,8 +91,5 @@ async fn test_slave_threeway_handshake() {
 
     // Read stdout from the replica process
     let mut stdout = replica_process.stdout.take();
-    wait_for_message(
-        stdout.take().unwrap(),
-        "[INFO] Three-way handshake completed",
-    );
+    wait_for_message(stdout.take().unwrap(), "[INFO] Three-way handshake completed");
 }

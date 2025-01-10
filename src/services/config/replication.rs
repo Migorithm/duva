@@ -35,10 +35,7 @@ impl Replication {
             format!("second_repl_offset:{}", self.second_repl_offset),
             format!("repl_backlog_active:{}", self.repl_backlog_active),
             format!("repl_backlog_size:{}", self.repl_backlog_size),
-            format!(
-                "repl_backlog_first_byte_offset:{}",
-                self.repl_backlog_first_byte_offset
-            ),
+            format!("repl_backlog_first_byte_offset:{}", self.repl_backlog_first_byte_offset),
         ]
     }
     fn role(&self) -> String {
@@ -50,10 +47,6 @@ impl Replication {
     }
 
     pub fn master_cluster_bind_addr(&self) -> String {
-        format!(
-            "{}:{}",
-            self.master_host.as_ref().unwrap(),
-            self.master_port.unwrap() + 10000
-        )
+        format!("{}:{}", self.master_host.as_ref().unwrap(), self.master_port.unwrap() + 10000)
     }
 }

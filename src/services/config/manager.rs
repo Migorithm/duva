@@ -114,8 +114,7 @@ impl ConfigManager {
 
     pub async fn route_query(&self, resource: ConfigResource) -> anyhow::Result<ConfigResponse> {
         let (callback, rx) = oneshot::channel();
-        self.send(ConfigMessage::Query(ConfigQuery::new(callback, resource)))
-            .await?;
+        self.send(ConfigMessage::Query(ConfigQuery::new(callback, resource))).await?;
         Ok(rx.await?)
     }
     pub async fn route_command(&self, command: ConfigCommand) -> anyhow::Result<()> {

@@ -1,10 +1,11 @@
-use std::sync::atomic::{AtomicBool, Ordering};
-
-use super::{
-    command::{ConfigMessage, ConfigResource, ConfigResponse},
-    ConfigCommand,
-};
-use crate::{env_var, services::config::replication::Replication};
+use super::command::ConfigMessage;
+use super::command::ConfigResource;
+use super::command::ConfigResponse;
+use super::ConfigCommand;
+use crate::env_var;
+use crate::services::config::replication::Replication;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
 use tokio::sync::mpsc::Receiver;
 
 pub static IS_MASTER_MODE: AtomicBool = AtomicBool::new(true);
@@ -107,10 +108,8 @@ impl Default for ConfigActor {
 
         let replication = Replication::new(replicaof);
 
-        IS_MASTER_MODE.store(
-            replication.master_port.is_none(),
-            std::sync::atomic::Ordering::Relaxed,
-        );
+        IS_MASTER_MODE
+            .store(replication.master_port.is_none(), std::sync::atomic::Ordering::Relaxed);
 
         ConfigActor {
             dir: Box::leak(dir.into_boxed_str()),

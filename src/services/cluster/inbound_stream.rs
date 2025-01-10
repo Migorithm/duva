@@ -23,18 +23,14 @@ impl InboundStream {
         // TODO check repl_id is '?' or of mine. If not, consider incoming as peer
         let (_repl_id, _offset) = self.recv_psync().await?;
 
-        Ok((
-            PeerAddr(format!("{}:{}", self.get_peer_ip()?, port)),
-            _repl_id,
-        ))
+        Ok((PeerAddr(format!("{}:{}", self.get_peer_ip()?, port)), _repl_id))
     }
 
     async fn recv_ping(&mut self) -> anyhow::Result<()> {
         let cmd = self.extract_cmd().await?;
         cmd.match_query(HandShakeRequestEnum::Ping)?;
 
-        self.write(QueryIO::SimpleString("PONG".to_string()))
-            .await?;
+        self.write(QueryIO::SimpleString("PONG".to_string())).await?;
         Ok(())
     }
 

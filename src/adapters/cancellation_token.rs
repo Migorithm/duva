@@ -8,13 +8,7 @@ pub struct CancellationTokenFactory;
 impl TCancellationTokenFactory for CancellationTokenFactory {
     fn create(&self, timeout: u64) -> (impl TCancellationNotifier, impl TCancellationWatcher) {
         let (tx, rx) = tokio::sync::oneshot::channel();
-        (
-            CancellationNotifier {
-                sender: tx,
-                timeout,
-            },
-            rx,
-        )
+        (CancellationNotifier { sender: tx, timeout }, rx)
     }
 }
 

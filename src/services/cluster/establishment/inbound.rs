@@ -68,9 +68,7 @@ impl HandShakeRequest {
 
         // Validate last capability is psync2
         if capabilities.last().context("No capabilities given")?.1 != "psync2" {
-            return Err(anyhow::anyhow!(
-                "psync2 must be given as the last capability"
-            ));
+            return Err(anyhow::anyhow!("psync2 must be given as the last capability"));
         }
         Ok(capabilities)
     }

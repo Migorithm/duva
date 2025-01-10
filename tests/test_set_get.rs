@@ -21,17 +21,12 @@ async fn test_set_get() {
     let mut client_stream = TcpStream::connect(config.bind_addr()).await.unwrap();
     let mut h: TestStreamHandler = client_stream.split().into();
 
-    h.send({ array(vec!["SET", "somanyrand", "bar", "PX", "300"]).into_bytes() }.as_slice())
-        .await;
+    h.send({ array(vec!["SET", "somanyrand", "bar", "PX", "300"]).into_bytes() }.as_slice()).await;
     // THEN
-    assert_eq!(
-        h.get_response().await,
-        QueryIO::SimpleString("OK".to_string()).serialize()
-    );
+    assert_eq!(h.get_response().await, QueryIO::SimpleString("OK".to_string()).serialize());
 
     // WHEN
-    h.send({ array(vec!["GET", "somanyrand"]).into_bytes() }.as_slice())
-        .await;
+    h.send({ array(vec!["GET", "somanyrand"]).into_bytes() }.as_slice()).await;
 
     // THEN
     let res = h.get_response().await;
@@ -39,8 +34,7 @@ async fn test_set_get() {
 
     // WHEN - wait for 300ms
     tokio::time::sleep(tokio::time::Duration::from_millis(300)).await;
-    h.send({ array(vec!["GET", "somanyrand"]).into_bytes() }.as_slice())
-        .await;
+    h.send({ array(vec!["GET", "somanyrand"]).into_bytes() }.as_slice()).await;
 
     // THEN
     let res = h.get_response().await;

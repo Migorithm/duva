@@ -31,10 +31,7 @@ impl SavingProcessor {
     }
     pub async fn handle_cmd(&mut self, cmd: SaveCommand) -> Result<bool> {
         match cmd {
-            SaveCommand::LocalShardSize {
-                table_size,
-                expiry_size,
-            } => {
+            SaveCommand::LocalShardSize { table_size, expiry_size } => {
                 self.meta.total_key_value_table_size += table_size;
                 self.meta.total_expires_table_size += expiry_size;
                 self.meta.num_of_saved_table_size_actor -= 1;

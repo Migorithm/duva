@@ -30,9 +30,7 @@ async fn test_save_read_dump() {
     let test_file_name = FileName(create_unique_file_name("test_save_dump"));
     let config = init_config_manager_with_free_port().await;
     config
-        .send(ConfigMessage::Command(ConfigCommand::SetDbFileName(
-            test_file_name.0.clone(),
-        )))
+        .send(ConfigMessage::Command(ConfigCommand::SetDbFileName(test_file_name.0.clone())))
         .await
         .unwrap();
 
@@ -43,22 +41,14 @@ async fn test_save_read_dump() {
 
     // WHEN
     // set without expiry time
-    h.send({ array(vec!["SET", "foo", "bar"]).into_bytes() }.as_slice())
-        .await;
-    assert_eq!(
-        h.get_response().await,
-        QueryIO::SimpleString("OK".to_string()).serialize()
-    );
+    h.send({ array(vec!["SET", "foo", "bar"]).into_bytes() }.as_slice()).await;
+    assert_eq!(h.get_response().await, QueryIO::SimpleString("OK".to_string()).serialize());
     // set with expiry time
     h.send({ array(vec!["SET", "foo2", "bar2", "PX", "9999999999"]).into_bytes() }.as_slice())
         .await;
-    assert_eq!(
-        h.get_response().await,
-        QueryIO::SimpleString("OK".to_string()).serialize()
-    );
+    assert_eq!(h.get_response().await, QueryIO::SimpleString("OK".to_string()).serialize());
     // check keys
-    h.send({ array(vec!["KEYS", "*"]).into_bytes() }.as_slice())
-        .await;
+    h.send({ array(vec!["KEYS", "*"]).into_bytes() }.as_slice()).await;
     assert_eq!(h.get_response().await, array(vec!["foo2", "foo"]));
     // save
     h.send(array(vec!["SAVE"]).into_bytes().as_slice()).await;
@@ -76,16 +66,12 @@ async fn test_save_read_dump() {
     let mut h: TestStreamHandler = client_stream.split().into();
 
     // keys
-    h.send({ array(vec!["KEYS", "*"]).into_bytes() }.as_slice())
-        .await;
+    h.send({ array(vec!["KEYS", "*"]).into_bytes() }.as_slice()).await;
     assert_eq!(h.get_response().await, array(vec!["foo2", "foo"]));
 }
 
 fn create_unique_file_name(function_name: &str) -> String {
-    let timestamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_nanos();
+    let timestamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
 
     format!("test_{}_{}.rdb", function_name, timestamp)
 }

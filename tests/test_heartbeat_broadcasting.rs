@@ -16,14 +16,10 @@ async fn receive_server_ping_from_replica_stream(
     replica_port: u16,
 ) -> JoinHandle<()> {
     // run the fake replica server in advance
-    let mut replica_stream = TcpStream::connect(master_cluster_bind_addr.clone())
-        .await
-        .unwrap();
+    let mut replica_stream = TcpStream::connect(master_cluster_bind_addr.clone()).await.unwrap();
     threeway_handshake_helper(&mut replica_stream, Some(replica_port)).await;
 
-    let listener = TcpListener::bind(format!("localhost:{}", replica_port))
-        .await
-        .unwrap();
+    let listener = TcpListener::bind(format!("localhost:{}", replica_port)).await.unwrap();
 
     let handler = tokio::spawn(async move {
         // * replica server
@@ -83,8 +79,5 @@ async fn test_heartbeat_sent_to_multiple_replicas() {
 
     // THEN
     // TODO: remove timeout when we implement the actual cluster heartbeat
-    timeout(std::time::Duration::from_secs(6), handler)
-        .await
-        .unwrap()
-        .unwrap();
+    timeout(std::time::Duration::from_secs(6), handler).await.unwrap().unwrap();
 }

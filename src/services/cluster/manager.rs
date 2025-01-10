@@ -1,17 +1,17 @@
-use std::time::Duration;
-
+use super::inbound_stream::InboundStream;
+use super::outbound_stream::OutboundStream;
 use crate::make_smart_pointer;
-use crate::services::cluster::actor::{ClusterActor, PeerAddr};
-use crate::services::cluster::command::{ClusterCommand, PeerKind};
+use crate::services::cluster::actor::ClusterActor;
+use crate::services::cluster::actor::PeerAddr;
+use crate::services::cluster::command::ClusterCommand;
+use crate::services::cluster::command::PeerKind;
 use crate::services::config::replication::Replication;
 use crate::services::interface::TStream;
 use crate::services::query_io::QueryIO;
+use std::time::Duration;
 use tokio::net::TcpStream;
 use tokio::sync::mpsc::Sender;
 use tokio::time::interval;
-
-use super::inbound_stream::InboundStream;
-use super::outbound_stream::OutboundStream;
 
 #[derive(Clone)]
 pub struct ClusterManager(Sender<ClusterCommand>);
@@ -19,8 +19,10 @@ make_smart_pointer!(ClusterManager, Sender<ClusterCommand>);
 
 impl ClusterManager {
     pub fn run() -> Self {
-        let (actor_handler, rx) = tokio::sync::mpsc::channel(100);
-        tokio::spawn(ClusterActor::default().handle(actor_handler.clone(), rx));
+        let (actor_handler, cluster_message_listener) = tokio::sync::mpsc::channel(100);
+        tokio::spawn(
+            ClusterActor::default().handle(actor_handler.clone(), cluster_message_listener),
+        );
 
         tokio::spawn({
             let heartbeat_sender = actor_handler.clone();
@@ -66,11 +68,7 @@ impl ClusterManager {
         stream
             .write(QueryIO::SimpleString(format!(
                 "PEERS {}",
-                peers
-                    .iter()
-                    .map(|x| x.to_string())
-                    .collect::<Vec<_>>()
-                    .join(" ")
+                peers.iter().map(|x| x.to_string()).collect::<Vec<_>>().join(" ")
             )))
             .await?;
         Ok(())
