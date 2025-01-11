@@ -5,12 +5,12 @@ pub enum ClusterCommand {
     AddPeer { peer_addr: PeerAddr, stream: TcpStream, peer_kind: PeerKind },
     RemovePeer(PeerAddr),
     GetPeers(tokio::sync::oneshot::Sender<Vec<PeerAddr>>),
-    Wirte(ClusterWriteCommand),
+    Write(ClusterWriteCommand),
 }
 
 impl ClusterCommand {
     pub(crate) fn ping() -> Self {
-        Self::Wirte(ClusterWriteCommand::Ping)
+        Self::Write(ClusterWriteCommand::Ping)
     }
 }
 
