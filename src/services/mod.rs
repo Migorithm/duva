@@ -1,4 +1,4 @@
-pub mod client_request_controller;
+pub mod client;
 pub mod cluster;
 pub mod config;
 pub mod error;

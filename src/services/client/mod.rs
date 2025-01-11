@@ -18,19 +18,19 @@ pub mod arguments;
 pub mod request;
 pub mod stream;
 
-pub(crate) struct ClientRequestController {
+pub(crate) struct ClientManager {
     config_manager: ConfigManager,
     cache_manager: &'static CacheManager,
     ttl_manager: TtlSchedulerInbox,
 }
 
-impl ClientRequestController {
+impl ClientManager {
     pub(crate) fn new(
         config_manager: ConfigManager,
         cache_manager: &'static CacheManager,
         ttl_manager: TtlSchedulerInbox,
     ) -> Self {
-        ClientRequestController { config_manager, cache_manager, ttl_manager }
+        ClientManager { config_manager, cache_manager, ttl_manager }
     }
 
     pub(crate) async fn handle(
@@ -58,7 +58,7 @@ impl ClientRequestController {
                     self.config_manager.get_filepath().await?,
                     self.cache_manager.inboxes.len(),
                 )
-                .await?;
+                    .await?;
 
                 self.cache_manager.route_save(outbox).await;
 
