@@ -2,7 +2,7 @@ pub mod adapters;
 pub mod macros;
 pub mod services;
 use anyhow::Result;
-use services::client::ClientManager;
+use services::client::manager::ClientManager;
 use services::cluster::inbound_stream::InboundStream;
 use services::cluster::manager::ClusterManager;
 use services::config::manager::ConfigManager;
