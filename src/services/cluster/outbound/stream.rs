@@ -1,4 +1,4 @@
-use super::establishment::outbound::ConnectionResponse;
+use crate::services::cluster::outbound::response::ConnectionResponse;
 use crate::services::interface::{TRead, TStream};
 use crate::services::query_io::QueryIO;
 use crate::{make_smart_pointer, write_array};

@@ -3,7 +3,7 @@ pub mod macros;
 pub mod services;
 use anyhow::Result;
 use services::client::manager::ClientManager;
-use services::cluster::inbound_stream::InboundStream;
+use services::cluster::inbound::stream::InboundStream;
 use services::cluster::manager::ClusterManager;
 use services::config::manager::ConfigManager;
 use services::error::IoError;

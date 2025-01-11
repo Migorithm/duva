@@ -1,6 +1,7 @@
-use super::actor::PeerAddr;
-use super::establishment::inbound::{HandShakeRequest, HandShakeRequestEnum};
 use crate::make_smart_pointer;
+use crate::services::cluster::actor::PeerAddr;
+use crate::services::cluster::inbound::request::HandShakeRequest;
+use crate::services::cluster::inbound::request::HandShakeRequestEnum;
 
 use crate::services::interface::{TGetPeerIp, TStream};
 use crate::services::query_io::QueryIO;
@@ -54,7 +55,7 @@ impl InboundStream {
         self.write(QueryIO::SimpleString(
             "FULLRESYNC 8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb 0".to_string(),
         ))
-        .await?;
+            .await?;
 
         Ok((repl_id, offset))
     }
