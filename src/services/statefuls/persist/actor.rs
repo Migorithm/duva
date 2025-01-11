@@ -33,11 +33,11 @@ impl PersistActor<SavingProcessor> {
 
         let processor = SavingProcessor::new(file, SaveMeta::new(num_of_cache_actors));
 
-        let actor = Self { processor };
+        let persist_actor = Self { processor };
 
         let (outbox, inbox) = tokio::sync::mpsc::channel(100);
 
-        tokio::spawn(actor.save(inbox));
+        tokio::spawn(persist_actor.save(inbox));
         Ok(outbox)
     }
 

@@ -1,36 +1,33 @@
+use crate::services::client::arguments::ClientRequestArguments;
+use crate::services::client::request::ClientRequest;
+use crate::services::client::stream::ClientStream;
 use crate::services::config::manager::ConfigManager;
 use crate::services::config::ConfigResponse;
-use crate::services::interface::{
-    TCancellationNotifier, TCancellationTokenFactory, TCancellationWatcher, TStream,
-};
+use crate::services::interface::TCancellationNotifier;
+use crate::services::interface::TCancellationTokenFactory;
+use crate::services::interface::TCancellationWatcher;
+use crate::services::interface::TStream;
 use crate::services::query_io::QueryIO;
 use crate::services::statefuls::cache::manager::CacheManager;
 use crate::services::statefuls::cache::ttl::manager::TtlSchedulerInbox;
 use crate::services::statefuls::persist::actor::PersistActor;
 use crate::services::statefuls::persist::endec::encoder::encoding_processor::SavingProcessor;
-use arguments::ClientRequestArguments;
-use request::ClientRequest;
-use stream::ClientStream;
 use tokio::net::TcpListener;
 use tokio::select;
 
-pub mod arguments;
-pub mod request;
-pub mod stream;
-
-pub(crate) struct ClientRequestController {
+pub(crate) struct ClientManager {
     config_manager: ConfigManager,
     cache_manager: &'static CacheManager,
     ttl_manager: TtlSchedulerInbox,
 }
 
-impl ClientRequestController {
+impl ClientManager {
     pub(crate) fn new(
         config_manager: ConfigManager,
         cache_manager: &'static CacheManager,
         ttl_manager: TtlSchedulerInbox,
     ) -> Self {
-        ClientRequestController { config_manager, cache_manager, ttl_manager }
+        ClientManager { config_manager, cache_manager, ttl_manager }
     }
 
     pub(crate) async fn handle(
@@ -58,7 +55,7 @@ impl ClientRequestController {
                     self.config_manager.get_filepath().await?,
                     self.cache_manager.inboxes.len(),
                 )
-                .await?;
+                    .await?;
 
                 self.cache_manager.route_save(outbox).await;
 

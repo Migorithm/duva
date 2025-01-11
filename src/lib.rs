@@ -2,9 +2,8 @@ pub mod adapters;
 pub mod macros;
 pub mod services;
 use anyhow::Result;
-use services::client_request_controller::ClientRequestController;
-use services::cluster::actor::ClusterActor;
-use services::cluster::inbound_stream::InboundStream;
+use services::client::manager::ClientManager;
+use services::cluster::inbound::stream::InboundStream;
 use services::cluster::manager::ClusterManager;
 use services::config::manager::ConfigManager;
 use services::error::IoError;
@@ -23,7 +22,7 @@ where
     cancellation_factory: V,
     ttl_inbox: TtlSchedulerInbox,
     cache_manager: &'static CacheManager,
-    client_request_controller: &'static ClientRequestController,
+    client_manager: &'static ClientManager,
     config_manager: ConfigManager,
     cluster_manager: &'static ClusterManager,
 }
@@ -39,8 +38,8 @@ where
         // Leak the cache_dispatcher to make it static - this is safe because the cache_dispatcher
         // will live for the entire duration of the program.
         let cache_manager: &'static CacheManager = Box::leak(cache_manager.into());
-        let client_request_controller: &'static ClientRequestController = Box::leak(
-            ClientRequestController::new(config_manager.clone(), cache_manager, ttl_inbox.clone())
+        let client_request_controller: &'static ClientManager = Box::leak(
+            ClientManager::new(config_manager.clone(), cache_manager, ttl_inbox.clone())
                 .into(),
         );
 
@@ -48,7 +47,7 @@ where
             cancellation_factory,
             cache_manager,
             ttl_inbox,
-            client_request_controller,
+            client_manager: client_request_controller,
             config_manager,
             cluster_manager,
         }
@@ -113,7 +112,7 @@ where
             if is_master_mode {
                 let client_stream_listener =
                     TcpListener::bind(&self.config_manager.bind_addr()).await?;
-                tokio::spawn(self.client_request_controller.receive_clients(
+                tokio::spawn(self.client_manager.receive_clients(
                     self.cancellation_factory,
                     stop_sentinel_recv,
                     client_stream_listener,

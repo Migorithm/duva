@@ -68,7 +68,7 @@ impl ClusterActor {
                     // send
                     let _ = callback.send(self.peers.iter().cloned().collect());
                 }
-                ClusterCommand::Wirte(write_cmd) => match write_cmd {
+                ClusterCommand::Write(write_cmd) => match write_cmd {
                     ClusterWriteCommand::Replicate { query } => todo!(),
                     ClusterWriteCommand::Ping => {
                         self.heartbeat().await;
