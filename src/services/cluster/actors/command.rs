@@ -1,5 +1,7 @@
-use crate::services::{cluster::actor::PeerAddr, query_io::QueryIO};
+use crate::services::query_io::QueryIO;
 use tokio::net::TcpStream;
+
+use super::actor::PeerAddr;
 
 pub enum ClusterCommand {
     AddPeer { peer_addr: PeerAddr, stream: TcpStream, peer_kind: PeerKind },

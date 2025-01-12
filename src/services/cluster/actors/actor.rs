@@ -1,19 +1,19 @@
-use super::command::ClusterWriteCommand;
+use super::command::{ClusterCommand, ClusterWriteCommand, PeerKind};
+use super::listening_actor::{ClusterReadConnected, PeerListenerHandler, PeerListeningActor};
 use crate::make_smart_pointer;
-use crate::services::cluster::command::{ClusterCommand, PeerKind};
-use crate::services::interface::{TRead, TWrite};
+
+use crate::services::interface::TWrite;
 use crate::services::query_io::QueryIO;
 use std::collections::BTreeMap;
-use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
+use tokio::net::tcp::OwnedWriteHalf;
 use tokio::net::TcpStream;
-use tokio::select;
+
 use tokio::sync::mpsc::Receiver;
 use tokio::sync::mpsc::Sender;
-use tokio::task::JoinHandle;
 
 #[derive(Debug, Default)]
 pub struct ClusterActor {
-    // PeerAddr is cluster ip:cluster_port of peer
+    // PeerAddr is cluster ip:{cluster_port} of peer
     members: BTreeMap<PeerAddr, Peer>,
 }
 
@@ -111,12 +111,12 @@ impl Peer {
 
         // Listner requires cluster handler to send messages to the cluster actor and cluster actor instead needs kill trigger to stop the listener
         let (kill_trigger, kill_switch) = tokio::sync::oneshot::channel();
-        let listener = PeerListener { read_connected, cluster_handler };
+        let listener = PeerListeningActor { read_connected, cluster_handler };
         let listener_task_handler = tokio::spawn(listener.listen(kill_switch));
 
         Self {
             write_connected,
-            listener_handler: PeerListenerHandler(kill_trigger, listener_task_handler),
+            listener_handler: PeerListenerHandler::new(kill_trigger, listener_task_handler),
         }
     }
 }
@@ -126,66 +126,4 @@ pub enum ClusterWriteConnected {
     Replica { stream: OwnedWriteHalf },
     Peer { stream: OwnedWriteHalf },
     Master { stream: OwnedWriteHalf },
-}
-
-struct PeerListener {
-    read_connected: ClusterReadConnected,
-    cluster_handler: Sender<ClusterCommand>, // cluster_handler is used to send messages to the cluster actor
-}
-
-#[derive(Debug)]
-struct PeerListenerHandler(ListenerKillTrigger, JoinHandle<ClusterReadConnected>);
-impl PeerListenerHandler {
-    async fn kill(self) -> ClusterReadConnected {
-        let _ = self.0.send(());
-        self.1.await.unwrap()
-    }
-}
-
-type ListenerKillTrigger = tokio::sync::oneshot::Sender<()>;
-type ListenerKillSwitch = tokio::sync::oneshot::Receiver<()>;
-
-impl PeerListener {
-    // TODO only outline is done
-    async fn listen(mut self, rx: ListenerKillSwitch) -> ClusterReadConnected {
-        let connected = select! {
-            _ = async{
-                    match self.read_connected {
-                        ClusterReadConnected::Replica { ref mut stream } =>Self::listen_replica_stream( stream ).await,
-                        ClusterReadConnected::Peer { ref mut stream } =>Self::listen_peer_stream( stream ).await,
-                        ClusterReadConnected::Master { ref mut stream } => Self::listen_master_stream( stream ).await,
-                    };
-                } => {
-                    self.read_connected
-                },
-            _ = rx => {
-                // If the kill switch is triggered, return the connected stream so the caller can decide what to do with it
-                self.read_connected
-            }
-        };
-        connected
-    }
-
-    async fn listen_replica_stream(read_buf: &mut OwnedReadHalf) {
-        while let Ok(values) = read_buf.read_values().await {
-            let _ = values;
-        }
-    }
-    async fn listen_peer_stream(read_buf: &mut OwnedReadHalf) {
-        while let Ok(values) = read_buf.read_values().await {
-            let _ = values;
-        }
-    }
-    async fn listen_master_stream(read_buf: &mut OwnedReadHalf) {
-        while let Ok(values) = read_buf.read_values().await {
-            let _ = values;
-        }
-    }
-}
-
-#[derive(Debug)]
-enum ClusterReadConnected {
-    Replica { stream: OwnedReadHalf },
-    Peer { stream: OwnedReadHalf },
-    Master { stream: OwnedReadHalf },
 }
