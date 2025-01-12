@@ -17,6 +17,7 @@ pub struct ClusterActor {
     write_members: BTreeMap<PeerAddr, ClusterWriteConnected>,
     read_members: BTreeMap<PeerAddr, PeerListenerHandler>,
 }
+
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Hash)]
 pub struct PeerAddr(pub String);
 make_smart_pointer!(PeerAddr, String);
@@ -61,7 +62,7 @@ impl ClusterActor {
                         .or_insert(ClusterWriteConnected::new(w, peer_kind));
                 }
                 ClusterCommand::RemovePeer(peer_addr) => {
-                    self.remove_peer(peer_addr);
+                    self.remove_peer(peer_addr).await;
                 }
 
                 ClusterCommand::GetPeers(callback) => {
@@ -69,7 +70,7 @@ impl ClusterActor {
                     let _ = callback.send(self.peers.iter().cloned().collect());
                 }
                 ClusterCommand::Write(write_cmd) => match write_cmd {
-                    ClusterWriteCommand::Replicate { query } => todo!(),
+                    ClusterWriteCommand::Replicate { query: _ } => todo!(),
                     ClusterWriteCommand::Ping => {
                         self.heartbeat().await;
                     }
@@ -147,9 +148,9 @@ impl PeerListener {
         let connected = select! {
             _ = async{
                     match self.connected {
-                        ClusterReadConnected::Replica { ref mut stream } =>Self::listen_replica_stream( stream).await,
-                        ClusterReadConnected::Peer { ref mut stream } =>Self::listen_peer_stream( stream).await,
-                        ClusterReadConnected::Master { ref mut stream } => Self::listen_master_stream( stream).await,
+                        ClusterReadConnected::Replica { ref mut stream } =>Self::listen_replica_stream( stream ).await,
+                        ClusterReadConnected::Peer { ref mut stream } =>Self::listen_peer_stream( stream ).await,
+                        ClusterReadConnected::Master { ref mut stream } => Self::listen_master_stream( stream ).await,
                     };
                 } => {
                     self.connected
