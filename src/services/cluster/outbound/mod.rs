@@ -1,2 +1,2 @@
-pub mod stream;
 pub mod response;
+pub mod stream;

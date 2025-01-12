@@ -39,8 +39,7 @@ where
         // will live for the entire duration of the program.
         let cache_manager: &'static CacheManager = Box::leak(cache_manager.into());
         let client_request_controller: &'static ClientManager = Box::leak(
-            ClientManager::new(config_manager.clone(), cache_manager, ttl_inbox.clone())
-                .into(),
+            ClientManager::new(config_manager.clone(), cache_manager, ttl_inbox.clone()).into(),
         );
 
         StartUpFacade {

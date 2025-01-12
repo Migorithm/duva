@@ -1,5 +1,4 @@
-pub mod actor;
-mod command;
-pub mod manager;
+mod actors;
 pub mod inbound;
+pub mod manager;
 pub mod outbound;

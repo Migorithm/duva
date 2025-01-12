@@ -40,10 +40,10 @@ impl HandShakeRequest {
 
         match self.args.as_mut_slice() {
             [QueryIO::BulkString(key), QueryIO::BulkString(port), ..]
-            if key == "listening-port" =>
-                {
-                    Ok(port.parse::<u16>()?)
-                }
+                if key == "listening-port" =>
+            {
+                Ok(port.parse::<u16>()?)
+            }
             _ => Err(anyhow::anyhow!("Invalid listening-port arguments")),
         }
     }

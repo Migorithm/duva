@@ -1,8 +1,6 @@
+use super::actors::actor::{ClusterActor, PeerAddr};
+use super::actors::command::{ClusterCommand, PeerKind};
 use crate::make_smart_pointer;
-use crate::services::cluster::actor::ClusterActor;
-use crate::services::cluster::actor::PeerAddr;
-use crate::services::cluster::command::ClusterCommand;
-use crate::services::cluster::command::PeerKind;
 use crate::services::cluster::inbound::stream::InboundStream;
 use crate::services::cluster::outbound::stream::OutboundStream;
 use crate::services::config::replication::Replication;
@@ -59,8 +57,8 @@ impl ClusterManager {
             stream: peer_stream.0,
             peer_kind: PeerKind::peer_kind(&self_repl_id, &repl_id),
         })
-            .await
-            .unwrap();
+        .await
+        .unwrap();
     }
 
     async fn disseminate_peers(&self, stream: &mut TcpStream) -> anyhow::Result<()> {
@@ -89,7 +87,7 @@ impl ClusterManager {
             stream: outbound_stream.0,
             peer_kind: PeerKind::Master,
         })
-            .await?;
+        .await?;
 
         for peer in peer_list {
             let mut peer_stream = OutboundStream(TcpStream::connect(peer).await?);
