@@ -59,8 +59,8 @@ impl ClusterManager {
             stream: peer_stream.0,
             peer_kind: PeerKind::peer_kind(&self_repl_id, &repl_id),
         })
-            .await
-            .unwrap();
+        .await
+        .unwrap();
     }
 
     async fn disseminate_peers(&self, stream: &mut TcpStream) -> anyhow::Result<()> {
@@ -89,7 +89,7 @@ impl ClusterManager {
             stream: outbound_stream.0,
             peer_kind: PeerKind::Master,
         })
-            .await?;
+        .await?;
 
         for peer in peer_list {
             let mut peer_stream = OutboundStream(TcpStream::connect(peer).await?);
