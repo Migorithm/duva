@@ -1,5 +1,5 @@
 use super::command::{ClusterCommand, ClusterWriteCommand, PeerKind};
-use super::listening_actor::{ClusterReadConnected, PeerListenerHandler, PeerListeningActor};
+use super::listening_actor::{ClusterReadConnected, ListeningActorKillTrigger, PeerListeningActor};
 use crate::make_smart_pointer;
 
 use crate::services::interface::TWrite;
@@ -42,7 +42,7 @@ impl ClusterActor {
     async fn remove_peer(&mut self, peer_addr: PeerAddr) {
         if let Some(peer) = self.members.remove(&peer_addr) {
             // stop the runnin process and take the connection in case topology changes are made
-            let _read_connected = peer.listener_handler.kill().await;
+            let _read_connected = peer.listening_actor_kill_trigger.kill().await;
         }
         self.members.remove(&peer_addr);
     }
@@ -84,7 +84,7 @@ impl ClusterActor {
 #[derive(Debug)]
 struct Peer {
     write_connected: ClusterWriteConnected,
-    listener_handler: PeerListenerHandler,
+    listening_actor_kill_trigger: ListeningActorKillTrigger,
 }
 
 impl Peer {
@@ -111,12 +111,15 @@ impl Peer {
 
         // Listner requires cluster handler to send messages to the cluster actor and cluster actor instead needs kill trigger to stop the listener
         let (kill_trigger, kill_switch) = tokio::sync::oneshot::channel();
-        let listener = PeerListeningActor { read_connected, cluster_handler };
-        let listener_task_handler = tokio::spawn(listener.listen(kill_switch));
+        let listening_actor = PeerListeningActor { read_connected, cluster_handler };
+        let listening_task = tokio::spawn(listening_actor.listen(kill_switch));
 
         Self {
             write_connected,
-            listener_handler: PeerListenerHandler::new(kill_trigger, listener_task_handler),
+            listening_actor_kill_trigger: ListeningActorKillTrigger::new(
+                kill_trigger,
+                listening_task,
+            ),
         }
     }
 }

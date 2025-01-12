@@ -22,6 +22,11 @@ pub(super) enum ClusterReadConnected {
 }
 
 impl PeerListeningActor {
+    /// The listening
+    /// - is done in the background
+    /// - is done in a loop
+    /// - is done until the kill switch is triggered
+    /// - returns the connected stream when the kill switch is triggered
     pub(super) async fn listen(mut self, rx: ReactorKillSwitch) -> ClusterReadConnected {
         let connected = select! {
             _ = async{
@@ -58,17 +63,17 @@ impl PeerListeningActor {
     }
 }
 
-pub(super) type ReactorKillTrigger = tokio::sync::oneshot::Sender<()>;
+pub(super) type KillTrigger = tokio::sync::oneshot::Sender<()>;
 pub(super) type ReactorKillSwitch = tokio::sync::oneshot::Receiver<()>;
 
 #[derive(Debug)]
-pub(super) struct PeerListenerHandler(ReactorKillTrigger, JoinHandle<ClusterReadConnected>);
-impl PeerListenerHandler {
+pub(super) struct ListeningActorKillTrigger(KillTrigger, JoinHandle<ClusterReadConnected>);
+impl ListeningActorKillTrigger {
     pub(super) fn new(
-        kill_trigger: ReactorKillTrigger,
-        listener_task_handler: JoinHandle<ClusterReadConnected>,
+        kill_trigger: KillTrigger,
+        listning_task: JoinHandle<ClusterReadConnected>,
     ) -> Self {
-        Self(kill_trigger, listener_task_handler)
+        Self(kill_trigger, listning_task)
     }
     pub(super) async fn kill(self) -> ClusterReadConnected {
         let _ = self.0.send(());
