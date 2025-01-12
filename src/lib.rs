@@ -104,7 +104,7 @@ where
     }
 
     async fn start_mode_specific_connection_handling(&mut self) -> anyhow::Result<()> {
-        let mut is_master_mode: bool = self.config_manager.cluster_mode();
+        let mut is_master_mode = self.config_manager.cluster_mode();
         loop {
             let (stop_sentinel_tx, stop_sentinel_recv) = tokio::sync::oneshot::channel::<()>();
 
