@@ -1,7 +1,7 @@
 use crate::services::query_io::QueryIO;
 use tokio::net::TcpStream;
 
-use super::actor::PeerAddr;
+use super::types::{PeerAddr, PeerKind};
 
 pub enum ClusterCommand {
     AddPeer { peer_addr: PeerAddr, stream: TcpStream, peer_kind: PeerKind },
@@ -21,19 +21,24 @@ pub enum ClusterWriteCommand {
     Ping,
 }
 
-#[derive(Clone)]
-pub enum PeerKind {
-    Peer,
-    Replica,
-    Master,
+pub enum MasterCommand {
+    Ping,
+    Replicate { query: QueryIO },
+}
+pub enum PeerCommand {
+    Ping,
 }
 
-impl PeerKind {
-    pub fn peer_kind(self_repl_id: &str, other_repl_id: &str) -> Self {
-        if self_repl_id == "?" || self_repl_id == other_repl_id {
-            Self::Replica
-        } else {
-            Self::Peer
+impl TryFrom<QueryIO> for MasterCommand {
+    type Error = anyhow::Error;
+    fn try_from(query: QueryIO) -> anyhow::Result<Self> {
+        match query {
+            QueryIO::SimpleString(s) => match s.to_lowercase().as_str() {
+                "ping" => Ok(Self::Ping),
+
+                _ => todo!(),
+            },
+            _ => todo!(),
         }
     }
 }

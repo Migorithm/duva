@@ -9,8 +9,7 @@
 ///
 ///
 use common::{
-    find_free_port_in_range, run_server_process, start_test_server, wait_for_message,
-    TestStreamHandler,
+    run_server_process, start_test_server, wait_for_message, TestStreamHandler, PORT_DISTRIBUTOR,
 };
 use redis_starter_rust::{
     adapters::cancellation_token::CancellationTokenFactory,
@@ -27,7 +26,7 @@ async fn test_master_threeway_handshake() {
     let mut manager = ConfigManager::new(config);
 
     // ! `peer_bind_addr` is bind_addr dedicated for peer connections
-    manager.port = find_free_port_in_range(6000, 6553).await.unwrap();
+    manager.port = PORT_DISTRIBUTOR.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
     let master_cluster_bind_addr = manager.peer_bind_addr();
 
     let _ = start_test_server(CancellationTokenFactory, manager).await;
@@ -73,7 +72,7 @@ async fn test_master_threeway_handshake() {
 async fn test_slave_threeway_handshake() {
     // GIVEN - master server configuration
     // Find free ports for the master and replica
-    let master_port = find_free_port_in_range(6000, 6553).await.unwrap();
+    let master_port = PORT_DISTRIBUTOR.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
 
     // Start the master server as a child process
     let mut master_process = run_server_process(master_port, None);
@@ -82,14 +81,15 @@ async fn test_slave_threeway_handshake() {
     wait_for_message(
         master_stdout.expect("failed to take stdout"),
         format!("listening peer connection on localhost:{}...", master_port + 10000).as_str(),
+        1,
     );
 
     // WHEN run replica
-    let replica_port = find_free_port_in_range(6000, 6553).await.unwrap();
+    let replica_port = PORT_DISTRIBUTOR.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
     let mut replica_process =
         run_server_process(replica_port, Some(format!("localhost:{}", master_port)));
 
     // Read stdout from the replica process
     let mut stdout = replica_process.stdout.take();
-    wait_for_message(stdout.take().unwrap(), "[INFO] Three-way handshake completed");
+    wait_for_message(stdout.take().unwrap(), "[INFO] Three-way handshake completed", 1);
 }
