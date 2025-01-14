@@ -17,7 +17,7 @@ impl ClusterCommand {
 }
 
 pub enum ClusterWriteCommand {
-    Replicate { query: QueryIO },
+    Replicate { query: QueryIO, peer_addr: PeerAddr },
     Ping,
 }
 

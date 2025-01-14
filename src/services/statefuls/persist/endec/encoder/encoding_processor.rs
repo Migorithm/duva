@@ -1,25 +1,44 @@
-use crate::services::{interface::TWrite, statefuls::cache::CacheEntry};
+use crate::services::statefuls::cache::CacheEntry;
 
 use crate::services::statefuls::persist::save_command::SaveCommand;
 use anyhow::Result;
 
+use super::byte_encoder::encode_checksum;
+use super::byte_encoder::encode_database_info;
+use super::byte_encoder::encode_database_table_size;
+use super::byte_encoder::encode_header;
+use super::byte_encoder::encode_metadata;
+use crate::make_smart_pointer;
+use crate::services::error::IoError;
+use crate::services::interface::TWrite;
 use std::collections::VecDeque;
 
-use super::byte_encoder::{
-    encode_checksum, encode_database_info, encode_database_table_size, encode_header,
-    encode_metadata,
-};
+pub struct InMemory(pub Vec<u8>);
+make_smart_pointer!(InMemory, Vec<u8>);
 
-pub struct SavingProcessor {
-    pub(super) writer: tokio::fs::File,
+impl TWrite for InMemory {
+    async fn write(&mut self, buf: &[u8]) -> Result<(), IoError> {
+        async move {
+            self.0.extend_from_slice(buf);
+            Ok(())
+        }.await
+    }
+}
+pub struct SavingProcessor<T> {
+    pub(super) writer: T,
     pub(super) meta: SaveMeta,
 }
 
-impl SavingProcessor {
-    pub fn new(file: tokio::fs::File, meta: SaveMeta) -> Self {
-        Self { writer: file, meta }
+impl SavingProcessor<InMemory> {
+    pub fn into_inner(self) -> InMemory {
+        self.writer
     }
+}
 
+impl<T: TWrite> SavingProcessor<T> {
+    pub fn new(writer: T, meta: SaveMeta) -> Self {
+        Self { writer, meta }
+    }
     pub async fn add_meta(&mut self) -> Result<()> {
         let meta = [
             encode_header("0011")?,

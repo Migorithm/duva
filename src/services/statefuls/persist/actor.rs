@@ -1,8 +1,10 @@
 use super::endec::decoder::byte_decoder::BytesDecoder;
 use super::endec::decoder::states::DecoderInit;
+use super::endec::encoder::encoding_processor::InMemory;
 use super::endec::encoder::encoding_processor::SaveMeta;
 use super::endec::encoder::encoding_processor::SavingProcessor;
 use super::DumpFile;
+use tokio::fs::File;
 
 use crate::services::interface::TWriterFactory;
 use crate::services::statefuls::persist::save_command::SaveCommand;
@@ -23,7 +25,37 @@ impl PersistActor<Load> {
     }
 }
 
-impl PersistActor<SavingProcessor> {
+impl PersistActor<SavingProcessor<InMemory>> {
+    pub async fn run(in_memory: InMemory, num_of_cache_actors: usize) -> anyhow::Result<(Sender<SaveCommand>, tokio::task::JoinHandle<anyhow::Result<InMemory>>)> {
+        let processor = SavingProcessor::new(in_memory, SaveMeta::new(num_of_cache_actors));
+        let persist_actor = Self { processor };
+
+        let (outbox, inbox) = tokio::sync::mpsc::channel(100);
+        let handle = tokio::spawn(async move {
+            persist_actor.save(inbox).await
+        });
+        Ok((outbox, handle))
+    }
+    async fn save(mut self, mut inbox: Receiver<SaveCommand>) -> anyhow::Result<InMemory> {
+        self.processor.add_meta().await?;
+        while let Some(command) = inbox.recv().await {
+            match self.processor.handle_cmd(command).await {
+                Ok(should_break) => {
+                    if should_break {
+                        break;
+                    }
+                }
+                Err(err) => {
+                    eprintln!("error while encoding: {:?}", err);
+                    return Err(err);
+                }
+            }
+        }
+        Ok(self.processor.into_inner())
+    }
+}
+
+impl PersistActor<SavingProcessor<File>> {
     pub async fn run(
         filepath: String,
         num_of_cache_actors: usize,
@@ -40,7 +72,6 @@ impl PersistActor<SavingProcessor> {
         tokio::spawn(persist_actor.save(inbox));
         Ok(outbox)
     }
-
     async fn save(mut self, mut inbox: Receiver<SaveCommand>) -> anyhow::Result<()> {
         self.processor.add_meta().await?;
         while let Some(command) = inbox.recv().await {
