@@ -1,12 +1,12 @@
 /// After three-way handshake, client will receive peers from the master server
 mod common;
-use common::{run_server_process, wait_for_message, PORT_DISTRIBUTOR};
+use common::{get_available_port, run_server_process, wait_for_message};
 
 #[tokio::test]
 async fn test_disseminate_peers() {
     // GIVEN - master server configuration
     // Find free ports for the master and replica
-    let master_port = PORT_DISTRIBUTOR.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    let master_port = get_available_port();
 
     // Start the master server as a child process
     let mut master_process = run_server_process(master_port, None);
@@ -19,7 +19,7 @@ async fn test_disseminate_peers() {
     );
 
     // WHEN run replica
-    let replica_port = PORT_DISTRIBUTOR.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    let replica_port = get_available_port();
     let mut replica_process =
         run_server_process(replica_port, Some(format!("localhost:{}", master_port)));
 

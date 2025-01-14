@@ -1,17 +1,16 @@
-//! This file contains tests for heartbeat between server and client
+//! This file contains tests for heartbeat between master and replica
 //! Any interconnected system should have a heartbeat mechanism to ensure that the connection is still alive
-//! In this case, the server will send PING message to the client and the client will respond with PONG message
-//! The following test simulate the replica server with the use of TcpStream.
-//! Actual implementation will be standalone replica server that will be connected to the master server
+//! In this case, the server will send PING message to the replica and the replica will respond with PONG message
+
 mod common;
-use common::{run_server_process, wait_for_message, PORT_DISTRIBUTOR};
+use common::{get_available_port, run_server_process, wait_for_message};
 
 #[tokio::test]
 async fn test_heartbeat() {
     // GIVEN
     // run the random server on a random port
 
-    let master_port = PORT_DISTRIBUTOR.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    let master_port = get_available_port();
 
     let mut master_process = run_server_process(master_port, None);
     let master_stdout = master_process.stdout.take();
@@ -21,7 +20,7 @@ async fn test_heartbeat() {
         1,
     );
 
-    let replica_port = PORT_DISTRIBUTOR.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    let replica_port = get_available_port();
     let mut replica_process =
         run_server_process(replica_port, Some(format!("localhost:{}", master_port)));
 
@@ -34,7 +33,7 @@ async fn test_heartbeat_sent_to_multiple_replicas() {
     // GIVEN
     // run the random server on a random port
 
-    let master_port = PORT_DISTRIBUTOR.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    let master_port = get_available_port();
 
     let mut master_process = run_server_process(master_port, None);
     let master_stdout = master_process.stdout.take();

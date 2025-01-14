@@ -9,7 +9,7 @@
 ///
 ///
 use common::{
-    run_server_process, start_test_server, wait_for_message, TestStreamHandler, PORT_DISTRIBUTOR,
+    get_available_port, run_server_process, start_test_server, wait_for_message, TestStreamHandler,
 };
 use redis_starter_rust::{
     adapters::cancellation_token::CancellationTokenFactory,
@@ -26,7 +26,7 @@ async fn test_master_threeway_handshake() {
     let mut manager = ConfigManager::new(config);
 
     // ! `peer_bind_addr` is bind_addr dedicated for peer connections
-    manager.port = PORT_DISTRIBUTOR.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    manager.port = get_available_port();
     let master_cluster_bind_addr = manager.peer_bind_addr();
 
     let _ = start_test_server(CancellationTokenFactory, manager).await;
@@ -72,7 +72,7 @@ async fn test_master_threeway_handshake() {
 async fn test_slave_threeway_handshake() {
     // GIVEN - master server configuration
     // Find free ports for the master and replica
-    let master_port = PORT_DISTRIBUTOR.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    let master_port = get_available_port();
 
     // Start the master server as a child process
     let mut master_process = run_server_process(master_port, None);
@@ -85,7 +85,7 @@ async fn test_slave_threeway_handshake() {
     );
 
     // WHEN run replica
-    let replica_port = PORT_DISTRIBUTOR.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    let replica_port = get_available_port();
     let mut replica_process =
         run_server_process(replica_port, Some(format!("localhost:{}", master_port)));
 

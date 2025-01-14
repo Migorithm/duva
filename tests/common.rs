@@ -14,9 +14,11 @@ use tokio::net::tcp::WriteHalf;
 
 use tokio::net::TcpStream;
 
-pub static PORT_DISTRIBUTOR: std::sync::atomic::AtomicU16 =
-    std::sync::atomic::AtomicU16::new(49152);
+static PORT_DISTRIBUTOR: std::sync::atomic::AtomicU16 = std::sync::atomic::AtomicU16::new(49152);
 
+pub fn get_available_port() -> u16 {
+    PORT_DISTRIBUTOR.fetch_add(1, std::sync::atomic::Ordering::SeqCst)
+}
 pub struct TestStreamHandler<'a> {
     pub read: ReadHalf<'a>,
     pub write: WriteHalf<'a>,
