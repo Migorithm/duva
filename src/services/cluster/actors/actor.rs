@@ -71,7 +71,16 @@ impl ClusterActor {
                     let _ = callback.send(self.members.keys().cloned().collect());
                 }
                 ClusterCommand::Write(write_cmd) => match write_cmd {
-                    ClusterWriteCommand::Replicate { query: _ } => todo!(),
+                    ClusterWriteCommand::Replicate { query: q, peer_addr } => {
+                        if let Some(peer) = self.members.get_mut(&peer_addr) {
+                            println!("[INFO] Replicating query to peer: {:?}", peer_addr);
+                            let msg = q.serialize();
+                            if let ClusterWriteConnected::Replica { stream } = &mut peer.write_connected {
+                                println!("sending to replica");
+                                let _ = stream.write(msg.as_bytes()).await;
+                            }
+                        }
+                    }
                     ClusterWriteCommand::Ping => {
                         self.heartbeat().await;
                     }

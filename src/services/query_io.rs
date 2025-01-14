@@ -11,6 +11,7 @@ pub enum QueryIO {
     Array(Vec<QueryIO>),
     Null,
     Err(String),
+    File(Vec<u8>),
 }
 
 #[macro_export]
@@ -34,6 +35,13 @@ impl QueryIO {
             }
             QueryIO::Null => "$-1\r\n".to_string(),
             QueryIO::Err(e) => format!("-{}\r\n", e),
+            QueryIO::File(f) => {
+                let mut result = format!("${}\r\n", f.len());
+                for v in f {
+                    result.push_str(&format!("{:02x}", v));
+                }
+                result
+            }
         }
     }
 
