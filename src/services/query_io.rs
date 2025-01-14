@@ -38,7 +38,7 @@ impl QueryIO {
             QueryIO::File(f) => {
                 let mut result = format!("${}\r\n", f.len());
                 for v in f {
-                    result.push_str(&format!("{:02x}", v));
+                    result.push_str(&format!("{:x}", v));
                 }
                 result
             }
@@ -83,7 +83,7 @@ pub fn parse(buffer: BytesMut) -> Result<(QueryIO, usize)> {
     match buffer[0] as char {
         '+' => parse_simple_string(buffer),
         '*' => parse_array(buffer),
-        '$' => parse_bulk_string(buffer),
+        '$' => parse_bulk_string_or_file(buffer),
         _ => Err(anyhow::anyhow!("Not a known value type {:?}", buffer)),
     }
 }
@@ -114,20 +114,23 @@ fn parse_array(buffer: BytesMut) -> Result<(QueryIO, usize)> {
     Ok((QueryIO::Array(bulk_strings), len))
 }
 
-fn parse_bulk_string(buffer: BytesMut) -> Result<(QueryIO, usize)> {
+fn parse_bulk_string_or_file(buffer: BytesMut) -> Result<(QueryIO, usize)> {
     let (line, mut len) =
         read_until_crlf(&buffer[1..]).ok_or(anyhow::anyhow!("Invalid bulk string"))?;
 
     // Adjust `len` to include the initial line and calculate `bulk_str_len`
     len += 1;
-    let bulk_str_len = usize::try_from(ConversionWrapper(line))?;
+    let content_len = usize::try_from(ConversionWrapper(line))?;
 
-    // Extract the bulk string from the buffer
-    let bulk_str = &buffer[len..len + bulk_str_len];
-    let bulk_string_value = String::from_utf8(bulk_str.to_vec())?;
-
-    // Return the bulk string value and adjusted length to account for CRLF
-    Ok((QueryIO::BulkString(bulk_string_value), len + bulk_str_len + 2))
+    if let Some((line, _)) = read_until_crlf(&buffer[len..]) {
+        // Extract the bulk string from the buffer
+        let bulk_string_value = String::from_utf8(line.to_vec())?;
+        // Return the bulk string value and adjusted length to account for CRLF
+        Ok((QueryIO::BulkString(bulk_string_value), len + content_len + 2))
+    } else {
+        let file_content = &buffer[len..(len + content_len)];
+        Ok((QueryIO::File(file_content.to_vec()), len + content_len))
+    }
 }
 
 fn read_until_crlf(buffer: &[u8]) -> Option<(&[u8], usize)> {
@@ -220,3 +223,17 @@ fn test_parse_array() {
         ])
     );
 }
+
+#[test]
+fn test_parse_file() {
+    // GIVEN
+    let buffer = BytesMut::from("$5\r\nhello");
+
+    // WHEN
+    let (value, len) = parse(buffer.clone()).unwrap();
+
+    // THEN
+    assert_eq!(len, 9);
+    assert_eq!(value, QueryIO::File(vec![0x68, 0x65, 0x6c, 0x6c, 0x6f]));
+}
+

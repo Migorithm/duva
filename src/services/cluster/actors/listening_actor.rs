@@ -62,7 +62,6 @@ impl PeerListeningActor {
             if values.is_empty() {
                 continue;
             }
-            println!("[INFO] Received File Data from Master: {:?}", values);
         }
     }
 }
@@ -75,9 +74,9 @@ pub(super) struct ListeningActorKillTrigger(KillTrigger, JoinHandle<ClusterReadC
 impl ListeningActorKillTrigger {
     pub(super) fn new(
         kill_trigger: KillTrigger,
-        listning_task: JoinHandle<ClusterReadConnected>,
+        listening_task: JoinHandle<ClusterReadConnected>,
     ) -> Self {
-        Self(kill_trigger, listning_task)
+        Self(kill_trigger, listening_task)
     }
     pub(super) async fn kill(self) -> ClusterReadConnected {
         let _ = self.0.send(());
