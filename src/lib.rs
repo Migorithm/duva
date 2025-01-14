@@ -64,6 +64,7 @@ where
             self.config_manager.peer_bind_addr(),
             self.cluster_manager,
             self.config_manager.clone(),
+            self.cache_manager,
         ));
         tokio::spawn(async move {
             tokio::time::sleep(Duration::from_secs(1)).await;
@@ -76,6 +77,7 @@ where
         peer_bind_addr: String,
         cluster_manager: &'static ClusterManager,
         config_manager: ConfigManager,
+        cache_manager: &'static CacheManager,
     ) -> Result<()> {
         let peer_listener = TcpListener::bind(&peer_bind_addr)
             .await
@@ -91,6 +93,7 @@ where
                     tokio::spawn(cluster_manager.accept_peer(
                         InboundStream(peer_stream),
                         config_manager.replication_info().await?.master_replid,
+                        cache_manager,
                     ));
                 }
 

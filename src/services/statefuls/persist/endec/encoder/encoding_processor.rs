@@ -1,25 +1,49 @@
-use crate::services::{interface::TWrite, statefuls::cache::CacheEntry};
+use crate::services::statefuls::cache::CacheEntry;
 
-use crate::services::statefuls::persist::save_command::SaveCommand;
+use crate::services::statefuls::persist::save_command::EncodingCommand;
 use anyhow::Result;
-
-use std::collections::VecDeque;
 
 use super::byte_encoder::{
     encode_checksum, encode_database_info, encode_database_table_size, encode_header,
     encode_metadata,
 };
+use crate::services::error::IoError;
+use crate::services::interface::TWrite;
+use std::collections::VecDeque;
+use tokio::io::AsyncWriteExt;
 
-pub struct SavingProcessor {
-    pub(super) writer: tokio::fs::File,
+pub enum SaveTarget {
+    File(tokio::fs::File),
+    InMemory(Vec<u8>),
+}
+
+pub struct EncodingProcessor {
+    pub(super) writer: SaveTarget,
     pub(super) meta: SaveMeta,
 }
 
-impl SavingProcessor {
-    pub fn new(file: tokio::fs::File, meta: SaveMeta) -> Self {
-        Self { writer: file, meta }
+impl TWrite for SaveTarget {
+    async fn write(&mut self, buf: &[u8]) -> Result<(), IoError> {
+        match self {
+            SaveTarget::File(file) => {
+                // TODO remove unwrap
+                file.write_all(buf).await.unwrap();
+            }
+            SaveTarget::InMemory(vec) => {
+                vec.extend_from_slice(buf)
+            }
+        }
+        Ok(())
     }
+}
 
+impl EncodingProcessor {
+    pub fn with_file(file: tokio::fs::File, meta: SaveMeta) -> Self {
+        Self { writer: SaveTarget::File(file), meta }
+    }
+    pub fn with_vec(meta: SaveMeta) -> Self {
+        Self { writer: SaveTarget::InMemory(Vec::new()), meta }
+    }
     pub async fn add_meta(&mut self) -> Result<()> {
         let meta = [
             encode_header("0011")?,
@@ -29,9 +53,9 @@ impl SavingProcessor {
         self.writer.write(&meta.concat()).await?;
         Ok(())
     }
-    pub async fn handle_cmd(&mut self, cmd: SaveCommand) -> Result<bool> {
+    pub async fn handle_cmd(&mut self, cmd: EncodingCommand) -> Result<bool> {
         match cmd {
-            SaveCommand::LocalShardSize { table_size, expiry_size } => {
+            EncodingCommand::LocalShardSize { table_size, expiry_size } => {
                 self.meta.total_key_value_table_size += table_size;
                 self.meta.total_expires_table_size += expiry_size;
                 self.meta.num_of_saved_table_size_actor -= 1;
@@ -44,13 +68,13 @@ impl SavingProcessor {
                         .await?;
                 }
             }
-            SaveCommand::SaveChunk(chunk) => {
+            EncodingCommand::SaveChunk(chunk) => {
                 self.meta.chunk_queue.push_back(chunk);
                 if self.meta.num_of_saved_table_size_actor == 0 {
                     self.encode_chunk_queue().await?;
                 }
             }
-            SaveCommand::StopSentinel => {
+            EncodingCommand::StopSentinel => {
                 self.meta.num_of_cache_actors -= 1;
                 if self.meta.num_of_cache_actors == 0 {
                     self.encode_chunk_queue().await?;

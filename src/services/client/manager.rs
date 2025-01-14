@@ -11,7 +11,7 @@ use crate::services::query_io::QueryIO;
 use crate::services::statefuls::cache::manager::CacheManager;
 use crate::services::statefuls::cache::ttl::manager::TtlSchedulerInbox;
 use crate::services::statefuls::persist::actor::PersistActor;
-use crate::services::statefuls::persist::endec::encoder::encoding_processor::SavingProcessor;
+use crate::services::statefuls::persist::endec::encoder::encoding_processor::EncodingProcessor;
 use tokio::net::TcpListener;
 use tokio::select;
 
@@ -51,11 +51,11 @@ impl ClientManager {
             }
             ClientRequest::Save => {
                 // spawn save actor
-                let outbox = PersistActor::<SavingProcessor>::run(
+                let outbox = PersistActor::<EncodingProcessor>::run(
                     self.config_manager.get_filepath().await?,
                     self.cache_manager.inboxes.len(),
                 )
-                .await?;
+                    .await?;
 
                 self.cache_manager.route_save(outbox).await;
 

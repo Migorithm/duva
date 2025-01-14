@@ -6,6 +6,7 @@ use crate::services::cluster::outbound::stream::OutboundStream;
 use crate::services::config::replication::Replication;
 use crate::services::interface::TStream;
 use crate::services::query_io::QueryIO;
+use crate::services::statefuls::cache::manager::CacheManager;
 use std::time::Duration;
 use tokio::net::TcpStream;
 use tokio::sync::mpsc::Sender;
@@ -42,7 +43,7 @@ impl ClusterManager {
         Ok(peers)
     }
 
-    pub(crate) async fn accept_peer(&self, mut peer_stream: InboundStream, self_repl_id: String) {
+    pub(crate) async fn accept_peer(&self, mut peer_stream: InboundStream, self_repl_id: String, cache_manager: &'static CacheManager) {
         let (peer_addr, repl_id) = peer_stream.recv_threeway_handshake().await.unwrap();
 
         // TODO Need to decide which point to send file data
@@ -51,14 +52,15 @@ impl ClusterManager {
 
         self.disseminate_peers(&mut peer_stream).await.unwrap();
 
+
         // TODO At this point again, slave tries to connect to other nodes as peer in the cluster
         self.send(ClusterCommand::AddPeer {
             peer_addr,
             stream: peer_stream.0,
             peer_kind: PeerKind::peer_kind(&self_repl_id, &repl_id),
         })
-        .await
-        .unwrap();
+            .await
+            .unwrap();
     }
 
     async fn disseminate_peers(&self, stream: &mut TcpStream) -> anyhow::Result<()> {
@@ -87,7 +89,7 @@ impl ClusterManager {
             stream: outbound_stream.0,
             peer_kind: PeerKind::Master,
         })
-        .await?;
+            .await?;
 
         for peer in peer_list {
             let mut peer_stream = OutboundStream(TcpStream::connect(peer).await?);
