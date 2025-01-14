@@ -1,6 +1,6 @@
-use super::command::{ClusterCommand, ClusterWriteCommand, PeerKind};
+use super::command::{ClusterCommand, ClusterWriteCommand};
 use super::listening_actor::{ClusterReadConnected, ListeningActorKillTrigger, PeerListeningActor};
-use crate::make_smart_pointer;
+use super::types::{PeerAddr, PeerKind};
 
 use crate::services::interface::TWrite;
 use crate::services::query_io::QueryIO;
@@ -16,10 +16,6 @@ pub struct ClusterActor {
     // PeerAddr is cluster ip:{cluster_port} of peer
     members: BTreeMap<PeerAddr, Peer>,
 }
-
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Hash)]
-pub struct PeerAddr(pub String);
-make_smart_pointer!(PeerAddr, String);
 
 impl ClusterActor {
     async fn heartbeat(&mut self) {

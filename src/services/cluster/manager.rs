@@ -1,5 +1,6 @@
-use super::actors::actor::{ClusterActor, PeerAddr};
-use super::actors::command::{ClusterCommand, PeerKind};
+use super::actors::actor::ClusterActor;
+use super::actors::command::ClusterCommand;
+use super::actors::types::{PeerAddr, PeerKind};
 use crate::make_smart_pointer;
 use crate::services::cluster::inbound::stream::InboundStream;
 use crate::services::cluster::outbound::stream::OutboundStream;

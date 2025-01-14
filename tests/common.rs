@@ -5,14 +5,20 @@ use redis_starter_rust::services::query_io::QueryIO;
 use redis_starter_rust::{make_smart_pointer, StartUpFacade, TNotifyStartUp};
 use std::io::{BufRead, BufReader, Read};
 use std::process::{Child, Command, Stdio};
+
 use std::sync::Arc;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
 use tokio::net::tcp::ReadHalf;
 use tokio::net::tcp::WriteHalf;
-use tokio::net::TcpListener;
+
 use tokio::net::TcpStream;
 
+static PORT_DISTRIBUTOR: std::sync::atomic::AtomicU16 = std::sync::atomic::AtomicU16::new(49152);
+
+pub fn get_available_port() -> u16 {
+    PORT_DISTRIBUTOR.fetch_add(1, std::sync::atomic::Ordering::SeqCst)
+}
 pub struct TestStreamHandler<'a> {
     pub read: ReadHalf<'a>,
     pub write: WriteHalf<'a>,
@@ -54,7 +60,7 @@ pub async fn init_config_manager_with_free_port() -> ConfigManager {
     let config = ConfigActor::default();
     let mut manager = ConfigManager::new(config);
 
-    manager.port = find_free_port_in_range(49152, 65535).await.unwrap();
+    manager.port = PORT_DISTRIBUTOR.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
     manager
 }
 
@@ -63,19 +69,11 @@ pub async fn init_slave_config_manager_with_free_port(master_port: u16) -> Confi
     config.replication.master_host = Some("localhost".to_string());
     config.replication.master_port = Some(master_port);
     let mut manager = ConfigManager::new(config);
-    manager.port = find_free_port_in_range(49152, 65535).await.unwrap();
+    manager.port = PORT_DISTRIBUTOR.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
 
     manager
 }
 // scan for available port
-pub async fn find_free_port_in_range(start: u16, end: u16) -> Option<u16> {
-    for port in start..=end {
-        if TcpListener::bind(format!("127.0.0.1:{}", port)).await.is_ok() {
-            return Some(port);
-        }
-    }
-    None
-}
 
 pub struct StartFlag(pub Arc<tokio::sync::Notify>);
 
@@ -129,12 +127,17 @@ pub fn run_server_process(port: u16, replicaof: Option<String>) -> TestProcessCh
     )
 }
 
-pub fn wait_for_message<T: Read>(read: T, target: &str) {
+pub fn wait_for_message<T: Read>(read: T, target: &str, target_count: usize) {
     let mut buf = BufReader::new(read).lines();
+    let mut cnt = 1;
 
     while let Some(Ok(line)) = buf.next() {
         if line == target {
-            break;
+            if cnt == target_count {
+                break;
+            } else {
+                cnt += 1;
+            }
         }
     }
 }
