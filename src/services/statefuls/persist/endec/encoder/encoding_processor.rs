@@ -18,7 +18,7 @@ pub enum SaveTarget {
 }
 
 pub struct EncodingProcessor {
-    pub(super) writer: SaveTarget,
+    pub(crate) target: SaveTarget,
     pub(super) meta: SaveMeta,
 }
 
@@ -39,10 +39,10 @@ impl TWrite for SaveTarget {
 
 impl EncodingProcessor {
     pub fn with_file(file: tokio::fs::File, meta: SaveMeta) -> Self {
-        Self { writer: SaveTarget::File(file), meta }
+        Self { target: SaveTarget::File(file), meta }
     }
     pub fn with_vec(meta: SaveMeta) -> Self {
-        Self { writer: SaveTarget::InMemory(Vec::new()), meta }
+        Self { target: SaveTarget::InMemory(Vec::new()), meta }
     }
     pub async fn add_meta(&mut self) -> Result<()> {
         let meta = [
@@ -50,7 +50,7 @@ impl EncodingProcessor {
             encode_metadata(Vec::from([("redis-ver", "6.0.16")]))?,
             encode_database_info(0)?,
         ];
-        self.writer.write(&meta.concat()).await?;
+        self.target.write(&meta.concat()).await?;
         Ok(())
     }
     pub async fn handle_cmd(&mut self, cmd: EncodingCommand) -> Result<bool> {
@@ -60,7 +60,7 @@ impl EncodingProcessor {
                 self.meta.total_expires_table_size += expiry_size;
                 self.meta.num_of_saved_table_size_actor -= 1;
                 if self.meta.num_of_saved_table_size_actor == 0 {
-                    self.writer
+                    self.target
                         .write(&encode_database_table_size(
                             self.meta.total_key_value_table_size,
                             self.meta.total_expires_table_size,
@@ -79,7 +79,7 @@ impl EncodingProcessor {
                 if self.meta.num_of_cache_actors == 0 {
                     self.encode_chunk_queue().await?;
                     let checksum = encode_checksum(&[0; 8])?;
-                    self.writer.write(&checksum).await?;
+                    self.target.write(&checksum).await?;
                     return Ok(true);
                 }
             }
@@ -91,7 +91,7 @@ impl EncodingProcessor {
         while let Some(chunk) = self.meta.chunk_queue.pop_front() {
             for kvs in chunk {
                 let encoded_chunk = kvs.encode_with_key()?;
-                self.writer.write(&encoded_chunk).await?;
+                self.target.write(&encoded_chunk).await?;
             }
         }
         Ok(())

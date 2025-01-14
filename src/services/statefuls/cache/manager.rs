@@ -22,7 +22,7 @@ pub(crate) struct CacheManager {
 }
 
 impl CacheManager {
-    pub(crate) async fn dump_cache(
+    pub(crate) async fn load_dump_file(
         &self,
         dump: DumpFile,
         ttl_inbox: TtlSchedulerInbox,
@@ -32,7 +32,6 @@ impl CacheManager {
         for kvs in dump.key_values().into_iter().filter(|kvs| kvs.is_valid(startup_time)) {
             self.route_set(kvs, ttl_inbox.clone()).await?;
         }
-
         Ok(())
     }
 
@@ -54,7 +53,7 @@ impl CacheManager {
         Ok(QueryIO::SimpleString("OK".to_string()))
     }
 
-    pub(crate) async fn route_save(&self, outbox: mpsc::Sender<EncodingCommand>) {
+    pub(crate) fn route_save(&self, outbox: mpsc::Sender<EncodingCommand>) {
         // get all the handlers to cache actors
         for inbox in self.inboxes.iter().map(Clone::clone) {
             let outbox = outbox.clone();
@@ -63,8 +62,6 @@ impl CacheManager {
             });
         }
     }
-
-
     // Send recv handler firstly to the background and return senders and join handlers for receivers
     fn oneshot_channels<T: Send + Sync + 'static>(
         &self,

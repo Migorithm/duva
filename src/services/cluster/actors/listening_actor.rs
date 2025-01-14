@@ -9,6 +9,7 @@ use tokio::select;
 use tokio::sync::mpsc::Sender;
 use tokio::task::JoinHandle;
 
+
 pub(crate) struct PeerListeningActor {
     pub(super) read_connected: ClusterReadConnected,
     pub(super) cluster_handler: Sender<ClusterCommand>, // cluster_handler is used to send messages to the cluster actor
@@ -58,7 +59,7 @@ impl PeerListeningActor {
     }
     async fn listen_master_stream(read_buf: &mut OwnedReadHalf) {
         while let Ok(values) = read_buf.read_values().await {
-            let _ = values;
+            println!("{:?}", values);
         }
     }
 }
@@ -71,9 +72,9 @@ pub(super) struct ListeningActorKillTrigger(KillTrigger, JoinHandle<ClusterReadC
 impl ListeningActorKillTrigger {
     pub(super) fn new(
         kill_trigger: KillTrigger,
-        listning_task: JoinHandle<ClusterReadConnected>,
+        listening_task: JoinHandle<ClusterReadConnected>,
     ) -> Self {
-        Self(kill_trigger, listning_task)
+        Self(kill_trigger, listening_task)
     }
     pub(super) async fn kill(self) -> ClusterReadConnected {
         let _ = self.0.send(());

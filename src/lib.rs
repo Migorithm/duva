@@ -54,9 +54,9 @@ where
 
     pub async fn run(&mut self, startup_notifier: impl TNotifyStartUp) -> Result<()> {
         if let Some(filepath) = self.config_manager.try_filepath().await? {
-            let dump = PersistActor::dump(filepath).await?;
+            let file = PersistActor::load_file(filepath).await?;
             self.cache_manager
-                .dump_cache(dump, self.ttl_inbox.clone(), self.config_manager.startup_time)
+                .load_dump_file(file, self.ttl_inbox.clone(), self.config_manager.startup_time)
                 .await?;
         }
 

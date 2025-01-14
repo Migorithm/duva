@@ -15,7 +15,7 @@ pub(crate) struct PersistActor<T> {
 }
 
 impl PersistActor<Load> {
-    pub(crate) async fn dump(filepath: String) -> anyhow::Result<DumpFile> {
+    pub(crate) async fn load_file(filepath: String) -> anyhow::Result<DumpFile> {
         let bytes = tokio::fs::read(filepath).await?;
         let decoder: BytesDecoder<DecoderInit> = bytes.as_slice().into();
         let database = decoder.load_header()?.load_metadata()?.load_database()?;

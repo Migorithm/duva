@@ -57,7 +57,7 @@ impl ClientManager {
                 )
                     .await?;
 
-                self.cache_manager.route_save(outbox).await;
+                self.cache_manager.route_save(outbox);
 
                 QueryIO::Null
             }

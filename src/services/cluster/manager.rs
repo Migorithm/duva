@@ -7,6 +7,7 @@ use crate::services::config::replication::Replication;
 use crate::services::interface::TStream;
 use crate::services::query_io::QueryIO;
 use crate::services::statefuls::cache::manager::CacheManager;
+use crate::services::statefuls::persist::endec::encoder::encoding_processor::{EncodingProcessor, SaveMeta, SaveTarget};
 use std::time::Duration;
 use tokio::net::TcpStream;
 use tokio::sync::mpsc::Sender;
@@ -44,6 +45,7 @@ impl ClusterManager {
     }
 
     pub(crate) async fn accept_peer(&self, mut peer_stream: InboundStream, self_repl_id: String, cache_manager: &'static CacheManager) {
+        // TODO
         let (peer_addr, repl_id) = peer_stream.recv_threeway_handshake().await.unwrap();
 
         // TODO Need to decide which point to send file data
@@ -52,6 +54,8 @@ impl ClusterManager {
 
         self.disseminate_peers(&mut peer_stream).await.unwrap();
 
+        // TODO sync only when master
+        Self::sync_replica(&mut peer_stream, cache_manager).await;
 
         // TODO At this point again, slave tries to connect to other nodes as peer in the cluster
         self.send(ClusterCommand::AddPeer {
@@ -61,6 +65,31 @@ impl ClusterManager {
         })
             .await
             .unwrap();
+    }
+
+    async fn sync_replica(peer_stream: &mut InboundStream, cache_manager: &CacheManager) {
+        let mut processor = EncodingProcessor::with_vec(SaveMeta::new(cache_manager.inboxes.len()));
+        processor.add_meta().await.unwrap();
+
+        //TODO Create MPSC Channel
+        let (tx, mut rx) = tokio::sync::mpsc::channel(100);
+        cache_manager.route_save(tx);
+        while let Some(command) = rx.recv().await {
+            match processor.handle_cmd(command).await {
+                Ok(should_break) => {
+                    if should_break {
+                        break;
+                    }
+                }
+                Err(err) => {
+                    panic!("error while encoding: {:?}", err);
+                }
+            }
+        }
+        let SaveTarget::InMemory(in_memory) = processor.target else {
+            panic!("SaveTarget should be InMemory");
+        };
+        peer_stream.write(QueryIO::File(in_memory)).await.unwrap();
     }
 
     async fn disseminate_peers(&self, stream: &mut TcpStream) -> anyhow::Result<()> {
