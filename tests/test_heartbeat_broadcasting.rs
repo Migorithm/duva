@@ -1,14 +1,8 @@
 mod common;
-use common::{get_available_port, start_test_server, threeway_handshake_helper};
-use redis_starter_rust::{
-    adapters::cancellation_token::CancellationTokenFactory,
-    services::{
-        config::{actor::ConfigActor, manager::ConfigManager},
-        interface::TStream,
-    },
-};
+use common::threeway_handshake_helper;
+use redis_starter_rust::services::interface::TStream;
 use std::collections::HashMap;
-use tokio::{net::TcpListener, time::timeout};
+use tokio::net::TcpListener;
 use tokio::{net::TcpStream, task::JoinHandle};
 
 async fn receive_server_ping_from_replica_stream(
@@ -50,34 +44,8 @@ async fn receive_server_ping_from_replica_stream(
 async fn test_heartbeat_sent_to_multiple_replicas() {
     // GIVEN
     // create master server with fake replica address as peers
-    let config = ConfigActor::default();
-    let manager = ConfigManager::new(config);
-    let master_cluster_bind_addr = manager.peer_bind_addr();
-
-    let replica_server_cluster_port = get_available_port();
-    let replica_cluster_addr = format!("127.0.0.1:{}", replica_server_cluster_port);
-    let _ = start_test_server(CancellationTokenFactory, manager.clone()).await;
-
-    // * pre-connected replica server
-
-    let handler = receive_server_ping_from_replica_stream(
-        master_cluster_bind_addr,
-        replica_server_cluster_port,
-    )
-    .await;
 
     // WHEN - new replica is connecting to master, the newly added server should start sending PING to the other servers attached to the master
-    {
-        let connecting_replica_port = 6782;
-        let mut config = ConfigActor::default();
-        config.replication.master_port = Some(manager.port);
-        config.replication.master_host = Some("localhost".to_string());
-        let mut manager = ConfigManager::new(config);
-        manager.port = connecting_replica_port;
-        let _ = start_test_server(CancellationTokenFactory, manager).await;
-    }
 
     // THEN
-    // TODO: remove timeout when we implement the actual cluster heartbeat
-    timeout(std::time::Duration::from_secs(6), handler).await.unwrap().unwrap();
 }

@@ -3,14 +3,19 @@ pub mod macros;
 pub mod services;
 use anyhow::Result;
 use services::client::manager::ClientManager;
+use services::cluster::actors::replication::IS_MASTER_MODE;
 use services::cluster::inbound::stream::InboundStream;
 use services::cluster::manager::ClusterManager;
+use services::config::init::get_env;
 use services::config::manager::ConfigManager;
 use services::error::IoError;
 use services::interface::TCancellationTokenFactory;
 use services::statefuls::cache::manager::CacheManager;
 use services::statefuls::cache::ttl::manager::TtlSchedulerInbox;
 use services::statefuls::persist::actor::PersistActor;
+
+use std::sync::atomic::Ordering;
+use std::thread::sleep;
 use std::time::Duration;
 use tokio::net::TcpListener;
 
@@ -25,6 +30,7 @@ where
     client_manager: &'static ClientManager,
     config_manager: ConfigManager,
     cluster_manager: &'static ClusterManager,
+    mode_change_watcher: tokio::sync::watch::Receiver<bool>,
 }
 
 impl<V> StartUpFacade<V>
@@ -32,14 +38,25 @@ where
     V: TCancellationTokenFactory,
 {
     pub fn new(cancellation_factory: V, config_manager: ConfigManager) -> Self {
+        let _ = get_env();
         let (cache_manager, ttl_inbox) = CacheManager::run_cache_actors();
-        let cluster_manager: &'static ClusterManager = Box::leak(ClusterManager::run().into());
+
+        let (notifier, mode_change_watcher) =
+            tokio::sync::watch::channel(IS_MASTER_MODE.load(Ordering::Acquire));
+        let cluster_manager: &'static ClusterManager =
+            Box::leak(ClusterManager::run(notifier).into());
 
         // Leak the cache_dispatcher to make it static - this is safe because the cache_dispatcher
         // will live for the entire duration of the program.
         let cache_manager: &'static CacheManager = Box::leak(cache_manager.into());
         let client_request_controller: &'static ClientManager = Box::leak(
-            ClientManager::new(config_manager.clone(), cache_manager, ttl_inbox.clone()).into(),
+            ClientManager::new(
+                config_manager.clone(),
+                cache_manager,
+                cluster_manager,
+                ttl_inbox.clone(),
+            )
+            .into(),
         );
 
         StartUpFacade {
@@ -49,6 +66,7 @@ where
             client_manager: client_request_controller,
             config_manager,
             cluster_manager,
+            mode_change_watcher,
         }
     }
 
@@ -63,19 +81,19 @@ where
         tokio::spawn(Self::start_accepting_peer_connections(
             self.config_manager.peer_bind_addr(),
             self.cluster_manager,
-            self.config_manager.clone(),
         ));
+
         tokio::spawn(async move {
             tokio::time::sleep(Duration::from_secs(1)).await;
             startup_notifier.notify_startup()
         });
+
         self.start_mode_specific_connection_handling().await
     }
 
     async fn start_accepting_peer_connections(
         peer_bind_addr: String,
         cluster_manager: &'static ClusterManager,
-        config_manager: ConfigManager,
     ) -> Result<()> {
         let peer_listener = TcpListener::bind(&peer_bind_addr)
             .await
@@ -88,10 +106,7 @@ where
             match peer_listener.accept().await {
                 // ? how do we know if incoming connection is from a peer or replica?
                 Ok((peer_stream, _socket_addr)) => {
-                    tokio::spawn(cluster_manager.accept_peer(
-                        InboundStream(peer_stream),
-                        config_manager.replication_info().await?.master_replid,
-                    ));
+                    tokio::spawn(cluster_manager.accept_peer(InboundStream(peer_stream)));
                 }
 
                 Err(err) => {
@@ -104,30 +119,43 @@ where
     }
 
     async fn start_mode_specific_connection_handling(&mut self) -> anyhow::Result<()> {
-        let mut is_master_mode = self.config_manager.cluster_mode();
+        let mut is_master_mode = self.cluster_mode();
+
         loop {
             let (stop_sentinel_tx, stop_sentinel_recv) = tokio::sync::oneshot::channel::<()>();
 
             if is_master_mode {
                 let client_stream_listener =
                     TcpListener::bind(&self.config_manager.bind_addr()).await?;
+
                 tokio::spawn(self.client_manager.receive_clients(
                     self.cancellation_factory,
                     stop_sentinel_recv,
                     client_stream_listener,
                 ));
+
+                sleep(Duration::from_millis(2));
             } else {
                 // Cancel all client connections only IF the cluster mode has changes to slave
                 let _ = stop_sentinel_tx.send(());
-                let repl_info = self.config_manager.replication_info().await?;
-                tokio::spawn(
-                    self.cluster_manager.discover_cluster(repl_info, self.config_manager.port),
-                );
+
+                tokio::spawn(self.cluster_manager.discover_cluster(self.config_manager.port));
             }
 
-            self.config_manager.wait_until_cluster_mode_changed().await?;
-            is_master_mode = self.config_manager.cluster_mode();
+            // TODO
+            self.wait_until_cluster_mode_changed().await?;
+
+            is_master_mode = self.cluster_mode();
         }
+    }
+
+    // Park the task until the cluster mode changes - error means notifier has been dropped
+    async fn wait_until_cluster_mode_changed(&mut self) -> anyhow::Result<()> {
+        self.mode_change_watcher.changed().await?;
+        Ok(())
+    }
+    fn cluster_mode(&mut self) -> bool {
+        *self.mode_change_watcher.borrow_and_update()
     }
 }
 

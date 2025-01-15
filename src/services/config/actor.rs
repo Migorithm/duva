@@ -1,34 +1,24 @@
+use std::thread::sleep;
+use std::time::Duration;
+
 use super::command::ConfigMessage;
 use super::command::ConfigResource;
 use super::command::ConfigResponse;
-use super::ConfigCommand;
-use crate::env_var;
-use crate::services::config::replication::Replication;
-use std::sync::atomic::AtomicBool;
-use std::sync::atomic::Ordering;
-use tokio::sync::mpsc::Receiver;
 
-pub static IS_MASTER_MODE: AtomicBool = AtomicBool::new(true);
+use super::init::get_env;
+use super::ConfigCommand;
+
+use tokio::sync::mpsc::Receiver;
 
 #[derive(Clone)]
 pub struct ConfigActor {
     pub(crate) dir: &'static str,
     pub dbfilename: &'static str,
-    pub replication: Replication,
 }
 
 impl ConfigActor {
-    pub fn handle(
-        mut self,
-        mut inbox: Receiver<ConfigMessage>,
-    ) -> tokio::sync::watch::Receiver<bool> {
-        // inner state
-        let (notifier, watcher) =
-            tokio::sync::watch::channel(IS_MASTER_MODE.load(Ordering::Relaxed));
-
+    pub fn handle(mut self, mut inbox: Receiver<ConfigMessage>) {
         tokio::spawn(async move {
-            let notifier = notifier;
-
             while let Some(msg) = inbox.recv().await {
                 match msg {
                     ConfigMessage::Query(query) => match query.resource {
@@ -41,17 +31,8 @@ impl ConfigActor {
                         ConfigResource::FilePath => {
                             query.respond_with(ConfigResponse::FilePath(self.get_filepath()));
                         }
-                        ConfigResource::ReplicationInfo => {
-                            query.respond_with(ConfigResponse::ReplicationInfo(
-                                self.replication.clone(),
-                            ));
-                        }
                     },
                     ConfigMessage::Command(config_command) => match config_command {
-                        ConfigCommand::ReplicaPing => {
-                            // ! Deprecated
-                            self.replication.connected_slaves += 1;
-                        }
                         ConfigCommand::SetDbFileName(new_file_name) => {
                             self.set_dbfilename(&new_file_name);
                         }
@@ -59,7 +40,6 @@ impl ConfigActor {
                 }
             }
         });
-        watcher
     }
 
     pub fn set_dir(&mut self, dir: &str) {
@@ -88,33 +68,10 @@ impl ConfigActor {
 
 impl Default for ConfigActor {
     fn default() -> Self {
-        env_var!(
-            {
-                replicaof
-            }
-            {
-                dir = ".".to_string(),
-                dbfilename = "dump.rdb".to_string()
-            }
-        );
-
-        let replicaof = replicaof.map(|host_port| {
-            host_port
-                .split_once(':')
-                .map(|(a, b)| (a.to_string(), b.to_string()))
-                .into_iter()
-                .collect::<(_, _)>()
-        });
-
-        let replication = Replication::new(replicaof);
-
-        IS_MASTER_MODE
-            .store(replication.master_port.is_none(), std::sync::atomic::Ordering::Relaxed);
-
+        let env = get_env();
         ConfigActor {
-            dir: Box::leak(dir.into_boxed_str()),
-            dbfilename: Box::leak(dbfilename.into_boxed_str()),
-            replication,
+            dir: Box::leak(env.dir.clone().into_boxed_str()),
+            dbfilename: Box::leak(env.dbfilename.clone().into_boxed_str()),
         }
     }
 }

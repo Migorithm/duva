@@ -1,12 +1,14 @@
 use super::actors::actor::ClusterActor;
 use super::actors::command::ClusterCommand;
+use super::actors::replication::Replication;
 use super::actors::types::{PeerAddr, PeerKind};
 use crate::make_smart_pointer;
 use crate::services::cluster::inbound::stream::InboundStream;
 use crate::services::cluster::outbound::stream::OutboundStream;
-use crate::services::config::replication::Replication;
+
 use crate::services::interface::TStream;
 use crate::services::query_io::QueryIO;
+use std::thread::sleep;
 use std::time::Duration;
 use tokio::net::TcpStream;
 use tokio::sync::mpsc::Sender;
@@ -17,11 +19,13 @@ pub struct ClusterManager(Sender<ClusterCommand>);
 make_smart_pointer!(ClusterManager, Sender<ClusterCommand>);
 
 impl ClusterManager {
-    pub fn run() -> Self {
+    pub fn run(notifier: tokio::sync::watch::Sender<bool>) -> Self {
         let (actor_handler, cluster_message_listener) = tokio::sync::mpsc::channel(100);
-        tokio::spawn(
-            ClusterActor::default().handle(actor_handler.clone(), cluster_message_listener),
-        );
+        tokio::spawn(ClusterActor::default().handle(
+            actor_handler.clone(),
+            cluster_message_listener,
+            notifier,
+        ));
 
         tokio::spawn({
             let heartbeat_sender = actor_handler.clone();
@@ -43,8 +47,10 @@ impl ClusterManager {
         Ok(peers)
     }
 
-    pub(crate) async fn accept_peer(&self, mut peer_stream: InboundStream, self_repl_id: String) {
-        let (peer_addr, repl_id) = peer_stream.recv_threeway_handshake().await.unwrap();
+    pub(crate) async fn accept_peer(&self, mut peer_stream: InboundStream) {
+        let (peer_addr, master_repl_id) = peer_stream.recv_threeway_handshake().await.unwrap();
+
+        let repl_info = self.replication_info().await.unwrap();
 
         // TODO Need to decide which point to send file data
         // TODO At this point, slave stream must write master_replid so that other nodes can tell where it belongs
@@ -56,7 +62,7 @@ impl ClusterManager {
         self.send(ClusterCommand::AddPeer {
             peer_addr,
             stream: peer_stream.0,
-            peer_kind: PeerKind::peer_kind(&self_repl_id, &repl_id),
+            peer_kind: PeerKind::peer_kind(&repl_info.master_replid, &master_repl_id),
         })
         .await
         .unwrap();
@@ -73,11 +79,16 @@ impl ClusterManager {
         Ok(())
     }
 
-    pub async fn discover_cluster(
-        &'static self,
-        repl_info: Replication,
-        self_port: u16,
-    ) -> anyhow::Result<()> {
+    pub(crate) async fn replication_info(&self) -> anyhow::Result<Replication> {
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        self.send(ClusterCommand::ReplicationInfo(tx)).await?;
+        Ok(rx.await?)
+    }
+
+    pub(crate) async fn discover_cluster(&'static self, self_port: u16) -> anyhow::Result<()> {
+        let repl_info = self.replication_info().await?;
+        println!("{:?}", repl_info);
+        sleep(Duration::from_secs(1));
         let master_bind_addr = repl_info.master_cluster_bind_addr();
         let mut outbound_stream = OutboundStream(TcpStream::connect(&master_bind_addr).await?);
 

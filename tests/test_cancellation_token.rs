@@ -12,6 +12,7 @@ use tokio::net::TcpStream;
 #[tokio::test]
 async fn test_cancellation_token() {
     // GIVEN
+
     let config = init_config_manager_with_free_port().await;
 
     let _ = start_test_server(TestCancellationTokenFactory, config.clone()).await;
