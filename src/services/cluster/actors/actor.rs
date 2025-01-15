@@ -1,5 +1,6 @@
 use super::command::{ClusterCommand, ClusterWriteCommand};
 use super::listening_actor::{ClusterReadConnected, ListeningActorKillTrigger, PeerListeningActor};
+use super::replication::Replication;
 use super::types::{PeerAddr, PeerKind};
 
 use crate::services::interface::TWrite;
@@ -15,6 +16,7 @@ use tokio::sync::mpsc::Sender;
 pub struct ClusterActor {
     // PeerAddr is cluster ip:{cluster_port} of peer
     members: BTreeMap<PeerAddr, Peer>,
+    replication: Replication,
 }
 
 impl ClusterActor {
@@ -47,8 +49,12 @@ impl ClusterActor {
         mut self,
         self_handler: Sender<ClusterCommand>,
         mut cluster_message_listener: Receiver<ClusterCommand>,
+        notifier: tokio::sync::watch::Sender<bool>,
     ) {
         while let Some(command) = cluster_message_listener.recv().await {
+            // TODO notifier will be used when election process is implemented
+            let _ = notifier.clone();
+
             match command {
                 ClusterCommand::AddPeer { peer_addr, stream, peer_kind } => {
                     // composite
@@ -72,6 +78,9 @@ impl ClusterActor {
                         self.heartbeat().await;
                     }
                 },
+                ClusterCommand::ReplicationInfo(sender) => {
+                    let _ = sender.send(self.replication.clone());
+                }
             }
         }
     }

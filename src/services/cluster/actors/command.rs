@@ -1,12 +1,16 @@
 use crate::services::query_io::QueryIO;
 use tokio::net::TcpStream;
 
-use super::types::{PeerAddr, PeerKind};
+use super::{
+    replication::Replication,
+    types::{PeerAddr, PeerKind},
+};
 
 pub enum ClusterCommand {
     AddPeer { peer_addr: PeerAddr, stream: TcpStream, peer_kind: PeerKind },
     RemovePeer(PeerAddr),
     GetPeers(tokio::sync::oneshot::Sender<Vec<PeerAddr>>),
+    ReplicationInfo(tokio::sync::oneshot::Sender<Replication>),
     Write(ClusterWriteCommand),
 }
 

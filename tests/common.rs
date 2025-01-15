@@ -64,15 +64,6 @@ pub async fn init_config_manager_with_free_port() -> ConfigManager {
     manager
 }
 
-pub async fn init_slave_config_manager_with_free_port(master_port: u16) -> ConfigManager {
-    let mut config = ConfigActor::default();
-    config.replication.master_host = Some("localhost".to_string());
-    config.replication.master_port = Some(master_port);
-    let mut manager = ConfigManager::new(config);
-    manager.port = PORT_DISTRIBUTOR.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-
-    manager
-}
 // scan for available port
 
 pub struct StartFlag(pub Arc<tokio::sync::Notify>);

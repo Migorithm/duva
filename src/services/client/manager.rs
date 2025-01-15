@@ -1,6 +1,10 @@
+use std::thread::sleep;
+use std::time::Duration;
+
 use crate::services::client::arguments::ClientRequestArguments;
 use crate::services::client::request::ClientRequest;
 use crate::services::client::stream::ClientStream;
+use crate::services::cluster::manager::ClusterManager;
 use crate::services::config::manager::ConfigManager;
 use crate::services::config::ConfigResponse;
 use crate::services::interface::TCancellationNotifier;
@@ -18,6 +22,7 @@ use tokio::select;
 pub(crate) struct ClientManager {
     config_manager: ConfigManager,
     cache_manager: &'static CacheManager,
+    cluster_manager: &'static ClusterManager,
     ttl_manager: TtlSchedulerInbox,
 }
 
@@ -25,9 +30,10 @@ impl ClientManager {
     pub(crate) fn new(
         config_manager: ConfigManager,
         cache_manager: &'static CacheManager,
+        cluster_manager: &'static ClusterManager,
         ttl_manager: TtlSchedulerInbox,
     ) -> Self {
-        ClientManager { config_manager, cache_manager, ttl_manager }
+        ClientManager { config_manager, cache_manager, ttl_manager, cluster_manager }
     }
 
     pub(crate) async fn handle(
@@ -86,7 +92,7 @@ impl ClientManager {
             ClientRequest::Delete => panic!("Not implemented"),
 
             ClientRequest::Info => QueryIO::BulkString(
-                self.config_manager.replication_info().await?.vectorize().join("\r\n"),
+                self.cluster_manager.replication_info().await?.vectorize().join("\r\n"),
             ),
         };
         Ok(response)
@@ -136,6 +142,7 @@ impl ClientManager {
                            }
                         ));
                     }
+
                 } =>{}
 
 
