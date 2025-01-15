@@ -124,6 +124,34 @@ sequenceDiagram
 
 ```
 
+## Strong consistency with Raft(RFC)
+
+### Election (normal flow)
+There are two timeout settings which control elections.
+- `Election timeout` : amount of time a follower waits until becoming a candidate, randomized to be between 150-300ms
+  - After elecction timeout, the follower becomes a candidate and start a new election term. In this case system:
+    - increases value `term` by 1
+    - starts counting voting(which is from 1 as it votes for itself)
+    - sends `Request Vote` messages to other nodes
+  - If the receiving node hasn't voted YET in this term, it votes for the candidate and resets its election timeout(and increase its `term` by 1 and mark it's voting state for candidate -> `Vote for` state).
+  - Once a candiate gets a majority of votes, it becomes a leader. 
+  
+- The leader begins sending out `Append Entries` messages to its followers, the interval of which is specified by the `heartbeat timeout`
+  - Followers get `Append Entries` and then change state from `Vote for: {node identifier}` ->  `Leader : {leader_node identifier}`
+  - The election term continues until a follower stops receiving heartbeats and becomes a candidate
+
+
+### Election in split brain
+- If two candidates occur at the same time, it causes race. Let's say we have two candidates(A,B) and two potential followers(C,D).
+- `Request Vote` arrives at two node(C,D) 
+  - C votes for A
+  - D votes for B
+- Now, each candidate has 2 votes and can receive no more for this term.
+- Then EVERY NODES wait one more round of `election timeout` and send `Request vote` again.
+
+
+
+
 ### Getting Started
 #### Prerequisites
 - Rust (latest stable version)
