@@ -2,12 +2,9 @@ use super::actor::ConfigActor;
 use super::command::ConfigCommand;
 use super::command::ConfigMessage;
 use super::command::ConfigQuery;
-
 use super::ConfigResource;
 use super::ConfigResponse;
-use crate::env_var;
-use std::thread::sleep;
-use std::time::Duration;
+use crate::services::config::init::get_env;
 use std::time::SystemTime;
 
 use tokio::fs::try_exists;
@@ -36,16 +33,13 @@ impl ConfigManager {
         let (tx, inbox) = tokio::sync::mpsc::channel(20);
 
         config.handle(inbox);
-        env_var!({}{
-            port = 6379,
-            host = "localhost".to_string()
-        });
 
+        let env = get_env();
         Self {
             config: tx,
             startup_time: SystemTime::now(),
-            port,
-            host: Box::leak(host.into_boxed_str()),
+            port: env.port,
+            host: Box::leak(env.host.clone().into_boxed_str()),
             // cluster_mode_watcher,
         }
     }

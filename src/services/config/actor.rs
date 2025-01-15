@@ -1,6 +1,3 @@
-use std::thread::sleep;
-use std::time::Duration;
-
 use super::command::ConfigMessage;
 use super::command::ConfigResource;
 use super::command::ConfigResponse;

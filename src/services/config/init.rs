@@ -6,6 +6,8 @@ pub(crate) struct Environment {
     pub(crate) replicaof: Option<(String, String)>,
     pub(crate) dir: String,
     pub(crate) dbfilename: String,
+    pub(crate) port: u16,
+    pub(crate) host: String,
 }
 
 impl Environment {
@@ -15,11 +17,12 @@ impl Environment {
                 replicaof
             }
             {
+                port = 6379,
+                host = "localhost".to_string(),
                 dir = ".".to_string(),
                 dbfilename = "dump.rdb".to_string()
             }
         );
-
         let replicaof = replicaof.map(|host_port| {
             host_port
                 .split_once(':')
@@ -29,7 +32,7 @@ impl Environment {
         });
         IS_MASTER_MODE.store(replicaof.is_none(), std::sync::atomic::Ordering::Relaxed);
 
-        Self { replicaof, dir, dbfilename }
+        Self { replicaof, dir, dbfilename, port, host }
     }
 }
 
