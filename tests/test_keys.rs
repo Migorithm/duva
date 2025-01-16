@@ -1,20 +1,14 @@
 mod common;
-use common::{array, init_config_manager_with_free_port, start_test_server, TestStreamHandler};
-
-use redis_starter_rust::{
-    adapters::cancellation_token::CancellationTokenFactory, services::query_io::QueryIO,
-};
-use tokio::net::TcpStream;
+use common::{array, spawn_server_process};
+use redis_starter_rust::{client_utils::ClientStreamHandler, services::query_io::QueryIO};
 
 #[tokio::test]
 async fn test_keys() {
     // GIVEN
-    let config = init_config_manager_with_free_port().await;
+    let process = spawn_server_process();
 
-    let _ = start_test_server(CancellationTokenFactory, config.clone()).await;
+    let mut h = ClientStreamHandler::new(process.bind_addr()).await;
 
-    let mut stream = TcpStream::connect(config.bind_addr()).await.unwrap();
-    let mut h: TestStreamHandler = stream.split().into();
     let num_of_keys = 500;
 
     // WHEN set 100000 keys

@@ -8,30 +8,17 @@
 ///    *3\r\n$5\r\nPSYNC\r\n$1\r\n?\r\n$2\r\n-1\r\n
 ///
 ///
-use common::{
-    get_available_port, run_server_process, start_test_server, wait_for_message, TestStreamHandler,
-};
-use redis_starter_rust::{
-    adapters::cancellation_token::CancellationTokenFactory,
-    services::config::{actor::ConfigActor, manager::ConfigManager},
-};
-use tokio::net::TcpStream;
+use common::{spawn_server_as_slave, spawn_server_process, wait_for_message};
+use redis_starter_rust::client_utils::ClientStreamHandler;
 
 mod common;
 
 #[tokio::test]
 async fn test_master_threeway_handshake() {
     // GIVEN - master server configuration
-    let config = ConfigActor::default();
-    let mut manager = ConfigManager::new(config);
+    let process = spawn_server_process();
 
-    // ! `peer_bind_addr` is bind_addr dedicated for peer connections
-    manager.port = get_available_port();
-    let master_cluster_bind_addr = manager.peer_bind_addr();
-
-    let _ = start_test_server(CancellationTokenFactory, manager).await;
-    let mut client_stream = TcpStream::connect(master_cluster_bind_addr).await.unwrap();
-    let mut h: TestStreamHandler = client_stream.split().into();
+    let mut h = ClientStreamHandler::new(format!("localhost:{}", process.port() + 10000)).await;
 
     // WHEN - client sends PING command
     h.send(b"*1\r\n$4\r\nPING\r\n").await;
@@ -72,22 +59,10 @@ async fn test_master_threeway_handshake() {
 async fn test_slave_threeway_handshake() {
     // GIVEN - master server configuration
     // Find free ports for the master and replica
-    let master_port = get_available_port();
-
-    // Start the master server as a child process
-    let mut master_process = run_server_process(master_port, None);
-
-    let master_stdout = master_process.stdout.take();
-    wait_for_message(
-        master_stdout.expect("failed to take stdout"),
-        format!("listening peer connection on localhost:{}...", master_port + 10000).as_str(),
-        1,
-    );
+    let master_process = spawn_server_process();
 
     // WHEN run replica
-    let replica_port = get_available_port();
-    let mut replica_process =
-        run_server_process(replica_port, Some(format!("localhost:{}", master_port)));
+    let mut replica_process = spawn_server_as_slave(&master_process);
 
     // Read stdout from the replica process
     let mut stdout = replica_process.stdout.take();

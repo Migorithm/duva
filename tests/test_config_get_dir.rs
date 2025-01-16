@@ -1,26 +1,17 @@
-/// Cache config should be injected to the handler!
-/// This is to enable client to configure things dynamically.
-
 /// if the value of dir is /tmp, then the expected response to CONFIG GET dir is:
 /// *2\r\n$3\r\ndir\r\n$4\r\n/tmp\r\n
 mod common;
-use common::{init_config_manager_with_free_port, start_test_server, TestStreamHandler};
-
 use crate::common::array;
-use redis_starter_rust::adapters::cancellation_token::CancellationTokenFactory;
-use tokio::net::TcpStream;
+use common::spawn_server_process;
+use redis_starter_rust::client_utils::ClientStreamHandler;
 
 #[tokio::test]
 async fn test_config_get_dir() {
     // GIVEN
     //TODO test config should be dynamically configured
-    let config = init_config_manager_with_free_port().await;
+    let process = spawn_server_process();
 
-    let _ = start_test_server(CancellationTokenFactory, config.clone()).await;
-
-    let mut client_stream = TcpStream::connect(config.bind_addr()).await.unwrap();
-
-    let mut h: TestStreamHandler = client_stream.split().into();
+    let mut h = ClientStreamHandler::new(process.bind_addr()).await;
 
     // WHEN
     h.send(

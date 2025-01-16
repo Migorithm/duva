@@ -5,23 +5,15 @@
 /// *2\r\n$3\r\ndir\r\n$4\r\n/tmp\r\n
 mod common;
 
-use common::{array, init_config_manager_with_free_port, start_test_server, TestStreamHandler};
+use common::{array, spawn_server_process};
 
-use redis_starter_rust::{
-    adapters::cancellation_token::CancellationTokenFactory, services::query_io::QueryIO,
-};
-use tokio::net::TcpStream;
+use redis_starter_rust::{client_utils::ClientStreamHandler, services::query_io::QueryIO};
 
 #[tokio::test]
 async fn test_replication_info() {
     // GIVEN
-    //TODO test config should be dynamically configured
-    let config = init_config_manager_with_free_port().await;
-
-    start_test_server(CancellationTokenFactory, config.clone()).await;
-
-    let mut client_stream = TcpStream::connect(config.bind_addr()).await.unwrap();
-    let mut h: TestStreamHandler = client_stream.split().into();
+    let process = spawn_server_process();
+    let mut h = ClientStreamHandler::new(process.bind_addr()).await;
 
     // WHEN
     h.send({ array(vec!["INFO", "replication"]).into_bytes() }.as_slice()).await;

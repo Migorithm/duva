@@ -3,23 +3,16 @@
 /// Then we get the key and check if the value is returned
 /// After 300ms, we get the key again and check if the value is not returned (-1)
 mod common;
+use common::{array, spawn_server_process};
 
-use common::{array, init_config_manager_with_free_port, start_test_server, TestStreamHandler};
-
-use redis_starter_rust::{
-    adapters::cancellation_token::CancellationTokenFactory, services::query_io::QueryIO,
-};
-use tokio::net::TcpStream;
+use redis_starter_rust::{client_utils::ClientStreamHandler, services::query_io::QueryIO};
 
 #[tokio::test]
 async fn test_set_get() {
     // GIVEN
-    let config = init_config_manager_with_free_port().await;
+    let process = spawn_server_process();
 
-    let _ = start_test_server(CancellationTokenFactory, config.clone()).await;
-
-    let mut client_stream = TcpStream::connect(config.bind_addr()).await.unwrap();
-    let mut h: TestStreamHandler = client_stream.split().into();
+    let mut h = ClientStreamHandler::new(process.bind_addr()).await;
 
     h.send({ array(vec!["SET", "somanyrand", "bar", "PX", "300"]).into_bytes() }.as_slice()).await;
     // THEN

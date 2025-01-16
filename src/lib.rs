@@ -19,6 +19,8 @@ use std::thread::sleep;
 use std::time::Duration;
 use tokio::net::TcpListener;
 
+pub mod client_utils;
+
 // * StartUp Facade that manages invokes subsystems
 pub struct StartUpFacade<V>
 where
