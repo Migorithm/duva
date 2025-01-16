@@ -10,11 +10,10 @@ async fn test_heartbeat() {
     // GIVEN
     // run the random server on a random port
 
-    let (_process, master_port) = spawn_server_process();
+    let process = spawn_server_process();
 
     let replica_port = get_available_port();
-    let mut replica_process =
-        run_server_process(replica_port, Some(format!("localhost:{}", master_port)));
+    let mut replica_process = run_server_process(replica_port, Some(process.bind_addr()));
 
     let mut stdout = replica_process.stdout.take();
     wait_for_message(stdout.take().unwrap(), "[INFO] Received ping from master", 2);
@@ -25,16 +24,16 @@ async fn test_heartbeat_sent_to_multiple_replicas() {
     // GIVEN
     // run the random server on a random port
 
-    let (_process, master_port) = spawn_server_process();
+    let process = spawn_server_process();
 
     // To prevent port race condition, we need to preallocate the ports
     let replica_port1 = get_available_port();
     let replica_port2 = get_available_port();
 
     // WHEN
-    let mut r1 = run_server_process(replica_port1, Some(format!("localhost:{}", master_port)));
+    let mut r1 = run_server_process(replica_port1, Some(process.bind_addr()));
 
-    let mut r2 = run_server_process(replica_port2, Some(format!("localhost:{}", master_port)));
+    let mut r2 = run_server_process(replica_port2, Some(process.bind_addr()));
 
     let t_h1 = std::thread::spawn(move || {
         let mut stdout = r1.stdout.take();

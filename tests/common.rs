@@ -9,7 +9,7 @@ pub fn get_available_port() -> u16 {
     PORT_DISTRIBUTOR.fetch_add(1, std::sync::atomic::Ordering::SeqCst)
 }
 
-pub fn spawn_server_process() -> (TestProcessChild, u16) {
+pub fn spawn_server_process() -> TestProcessChild {
     let port: u16 = get_available_port();
     let mut process = run_server_process(port, None);
     wait_for_message(
@@ -18,7 +18,7 @@ pub fn spawn_server_process() -> (TestProcessChild, u16) {
         1,
     );
 
-    (process, port)
+    process
 }
 
 impl Drop for TestProcessChild {
@@ -27,9 +27,17 @@ impl Drop for TestProcessChild {
     }
 }
 
+impl TestProcessChild {
+    pub fn bind_addr(&self) -> String {
+        format!("localhost:{}", self.1)
+    }
+    pub fn port(&self) -> u16 {
+        self.1
+    }
+}
 // scan for available port
 
-pub struct TestProcessChild(pub Child);
+pub struct TestProcessChild(pub Child, pub u16);
 
 make_smart_pointer!(TestProcessChild, Child);
 
@@ -47,6 +55,7 @@ pub fn run_server_process(port: u16, replicaof: Option<String>) -> TestProcessCh
             .stderr(Stdio::piped())
             .spawn()
             .expect("Failed to start server process"),
+        port,
     )
 }
 

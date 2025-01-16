@@ -11,9 +11,9 @@ use tokio::net::TcpStream;
 #[tokio::test]
 async fn test_set_get() {
     // GIVEN
-    let (_process, master_port) = spawn_server_process();
+    let process = spawn_server_process();
 
-    let client_stream = TcpStream::connect(format!("localhost:{}", master_port)).await.unwrap();
+    let client_stream = TcpStream::connect(process.bind_addr()).await.unwrap();
     let mut h: ClientStreamHandler = client_stream.into_split().into();
 
     h.send({ array(vec!["SET", "somanyrand", "bar", "PX", "300"]).into_bytes() }.as_slice()).await;

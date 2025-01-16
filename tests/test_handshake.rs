@@ -18,10 +18,10 @@ mod common;
 #[tokio::test]
 async fn test_master_threeway_handshake() {
     // GIVEN - master server configuration
-    let (_process, master_port) = spawn_server_process();
+    let process = spawn_server_process();
 
     let client_stream =
-        TcpStream::connect(format!("localhost:{}", master_port + 10000)).await.unwrap();
+        TcpStream::connect(format!("localhost:{}", process.port() + 10000)).await.unwrap();
     let mut h: ClientStreamHandler = client_stream.into_split().into();
 
     // WHEN - client sends PING command
@@ -63,22 +63,11 @@ async fn test_master_threeway_handshake() {
 async fn test_slave_threeway_handshake() {
     // GIVEN - master server configuration
     // Find free ports for the master and replica
-    let master_port = get_available_port();
-
-    // Start the master server as a child process
-    let mut master_process = run_server_process(master_port, None);
-
-    let master_stdout = master_process.stdout.take();
-    wait_for_message(
-        master_stdout.expect("failed to take stdout"),
-        format!("listening peer connection on localhost:{}...", master_port + 10000).as_str(),
-        1,
-    );
+    let master_process = spawn_server_process();
 
     // WHEN run replica
     let replica_port = get_available_port();
-    let mut replica_process =
-        run_server_process(replica_port, Some(format!("localhost:{}", master_port)));
+    let mut replica_process = run_server_process(replica_port, Some(master_process.bind_addr()));
 
     // Read stdout from the replica process
     let mut stdout = replica_process.stdout.take();

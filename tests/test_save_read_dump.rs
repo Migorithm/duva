@@ -36,6 +36,7 @@ fn run_server_with_dbfilename(dbfilename: &str) -> (TestProcessChild, u16) {
             .stderr(Stdio::piped())
             .spawn()
             .expect("Failed to start server process"),
+        port,
     );
     wait_for_message(
         process.0.stdout.as_mut().unwrap(),
