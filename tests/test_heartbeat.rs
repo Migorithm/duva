@@ -3,22 +3,17 @@
 //! In this case, the server will send PING message to the replica and the replica will respond with PONG message
 
 mod common;
-use common::{get_available_port, run_server_process, terminate_process, wait_for_message};
+use common::{
+    get_available_port, run_server_process, spawn_server_process, terminate_process,
+    wait_for_message,
+};
 
 #[tokio::test]
 async fn test_heartbeat() {
     // GIVEN
     // run the random server on a random port
 
-    let master_port = get_available_port();
-
-    let mut master_process = run_server_process(master_port, None);
-    let master_stdout = master_process.stdout.take();
-    wait_for_message(
-        master_stdout.expect("failed to take stdout"),
-        format!("listening peer connection on localhost:{}...", master_port + 10000).as_str(),
-        1,
-    );
+    let master_port = spawn_server_process();
 
     let replica_port = get_available_port();
     let mut replica_process =
@@ -36,19 +31,11 @@ async fn test_heartbeat_sent_to_multiple_replicas() {
     // GIVEN
     // run the random server on a random port
 
-    let master_port = get_available_port();
-
-    let mut master_process = run_server_process(master_port, None);
-    let master_stdout = master_process.stdout.take();
-    wait_for_message(
-        master_stdout.expect("failed to take stdout"),
-        format!("listening peer connection on localhost:{}...", master_port + 10000).as_str(),
-        1,
-    );
+    let master_port = spawn_server_process();
 
     // To prevent port race condition, we need to preallocate the ports
-    let replica_port1 = 60002;
-    let replica_port2 = 60003;
+    let replica_port1 = get_available_port();
+    let replica_port2 = get_available_port();
 
     // WHEN
     let mut r1 = run_server_process(replica_port1, Some(format!("localhost:{}", master_port)));
@@ -68,4 +55,8 @@ async fn test_heartbeat_sent_to_multiple_replicas() {
     //Then it should finish
     t_h1.join().unwrap();
     t_h2.join().unwrap();
+
+    terminate_process(master_port);
+    terminate_process(replica_port1);
+    terminate_process(replica_port2);
 }

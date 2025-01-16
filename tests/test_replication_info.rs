@@ -5,9 +5,9 @@
 /// *2\r\n$3\r\ndir\r\n$4\r\n/tmp\r\n
 mod common;
 
-use common::{array, spawn_server_process, terminate_process, TestStreamHandler};
+use common::{array, spawn_server_process, terminate_process};
 
-use redis_starter_rust::services::query_io::QueryIO;
+use redis_starter_rust::{client_utils::ClientStreamHandler, services::query_io::QueryIO};
 use tokio::net::TcpStream;
 
 #[tokio::test]
@@ -16,7 +16,7 @@ async fn test_replication_info() {
     let master_port = spawn_server_process();
 
     let mut client_stream = TcpStream::connect(format!("localhost:{}", master_port)).await.unwrap();
-    let mut h: TestStreamHandler = client_stream.split().into();
+    let mut h: ClientStreamHandler = client_stream.split().into();
 
     // WHEN
     h.send({ array(vec!["INFO", "replication"]).into_bytes() }.as_slice()).await;

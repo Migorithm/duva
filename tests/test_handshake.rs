@@ -9,13 +9,10 @@
 ///
 ///
 use common::{
-    get_available_port, run_server_process, start_test_server, terminate_process, wait_for_message,
-    TestStreamHandler,
+    get_available_port, run_server_process, spawn_server_process, terminate_process,
+    wait_for_message,
 };
-use redis_starter_rust::{
-    adapters::cancellation_token::CancellationTokenFactory,
-    services::config::{actor::ConfigActor, manager::ConfigManager},
-};
+use redis_starter_rust::client_utils::ClientStreamHandler;
 use tokio::net::TcpStream;
 
 mod common;
@@ -23,16 +20,11 @@ mod common;
 #[tokio::test]
 async fn test_master_threeway_handshake() {
     // GIVEN - master server configuration
-    let config = ConfigActor::default();
-    let mut manager = ConfigManager::new(config);
+    let master_port = spawn_server_process();
 
-    // ! `peer_bind_addr` is bind_addr dedicated for peer connections
-    manager.port = get_available_port();
-    let master_cluster_bind_addr = manager.peer_bind_addr();
-
-    let _ = start_test_server(CancellationTokenFactory, manager).await;
-    let mut client_stream = TcpStream::connect(master_cluster_bind_addr).await.unwrap();
-    let mut h: TestStreamHandler = client_stream.split().into();
+    let mut client_stream =
+        TcpStream::connect(format!("localhost:{}", master_port + 10000)).await.unwrap();
+    let mut h: ClientStreamHandler = client_stream.split().into();
 
     // WHEN - client sends PING command
     h.send(b"*1\r\n$4\r\nPING\r\n").await;
@@ -67,6 +59,8 @@ async fn test_master_threeway_handshake() {
         .get_response()
         .await
         .starts_with("+FULLRESYNC 8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb 0\r\n"));
+
+    terminate_process(master_port);
 }
 
 #[tokio::test]

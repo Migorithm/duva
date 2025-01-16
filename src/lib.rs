@@ -1,4 +1,5 @@
 pub mod adapters;
+pub mod client_utils;
 pub mod macros;
 pub mod services;
 use anyhow::Result;
