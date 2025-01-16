@@ -1,24 +1,21 @@
 use super::actors::actor::ClusterActor;
-
 use super::actors::command::ClusterCommand;
-use super::actors::command::ClusterWriteCommand;
 use super::actors::replication::Replication;
 use super::actors::types::{PeerAddr, PeerKind};
 use crate::make_smart_pointer;
 use crate::services::cluster::inbound::stream::InboundStream;
 use crate::services::cluster::outbound::stream::OutboundStream;
-
 use crate::services::interface::TStream;
 use crate::services::query_io::QueryIO;
 use crate::services::statefuls::cache::manager::CacheManager;
 use crate::services::statefuls::persist::actor::PersistActor;
-use crate::services::statefuls::persist::endec::encoder::encoding_processor::{
-    InMemory, SavingProcessor,
-};
+use crate::services::statefuls::persist::endec::encoder::encoding_processor::InMemory;
+use crate::services::statefuls::persist::endec::encoder::encoding_processor::SavingProcessor;
 use std::time::Duration;
 use tokio::net::TcpStream;
 use tokio::sync::mpsc::Sender;
 use tokio::time::interval;
+
 #[derive(Debug, Clone)]
 pub struct ClusterManager(Sender<ClusterCommand>);
 make_smart_pointer!(ClusterManager, Sender<ClusterCommand>);
