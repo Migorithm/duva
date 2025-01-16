@@ -1,6 +1,6 @@
 /// After three-way handshake, client will receive peers from the master server
 mod common;
-use common::{get_available_port, run_server_process, terminate_process, wait_for_message};
+use common::{get_available_port, run_server_process, wait_for_message};
 
 #[tokio::test]
 async fn test_disseminate_peers() {
@@ -26,7 +26,4 @@ async fn test_disseminate_peers() {
     // Read stdout from the replica process
     let mut stdout = replica_process.stdout.take();
     wait_for_message(stdout.take().unwrap(), "[INFO] Received peer list: []", 1);
-
-    terminate_process(master_port);
-    terminate_process(replica_port);
 }

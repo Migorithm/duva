@@ -1,5 +1,5 @@
 mod common;
-use common::{array, spawn_server_process, terminate_process};
+use common::{array, spawn_server_process};
 
 use redis_starter_rust::{client_utils::ClientStreamHandler, services::query_io::QueryIO};
 use tokio::net::TcpStream;
@@ -7,7 +7,7 @@ use tokio::net::TcpStream;
 #[tokio::test]
 async fn test_keys() {
     // GIVEN
-    let master_port = spawn_server_process();
+    let (_process, master_port) = spawn_server_process();
 
     let stream = TcpStream::connect(format!("localhost:{}", master_port)).await.unwrap();
     let mut h: ClientStreamHandler = stream.into_split().into();
@@ -24,6 +24,4 @@ async fn test_keys() {
     let res = h.get_response().await;
 
     assert!(res.starts_with(format!("*{}\r\n", num_of_keys).as_str()));
-
-    terminate_process(master_port);
 }

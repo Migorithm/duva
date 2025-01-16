@@ -5,7 +5,7 @@
 /// *2\r\n$3\r\ndir\r\n$4\r\n/tmp\r\n
 mod common;
 
-use common::{array, spawn_server_process, terminate_process};
+use common::{array, spawn_server_process};
 
 use redis_starter_rust::{client_utils::ClientStreamHandler, services::query_io::QueryIO};
 use tokio::net::TcpStream;
@@ -13,7 +13,7 @@ use tokio::net::TcpStream;
 #[tokio::test]
 async fn test_replication_info() {
     // GIVEN
-    let master_port = spawn_server_process();
+    let (_process, master_port) = spawn_server_process();
 
     let client_stream = TcpStream::connect(format!("localhost:{}", master_port)).await.unwrap();
     let mut h: ClientStreamHandler = client_stream.into_split().into();
@@ -25,6 +25,4 @@ async fn test_replication_info() {
     assert_eq!(h.get_response().await, QueryIO::BulkString(
         "role:master\r\nconnected_slaves:0\r\nmaster_replid:8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb\r\nmaster_repl_offset:0\r\nsecond_repl_offset:-1\r\nrepl_backlog_active:0\r\nrepl_backlog_size:1048576\r\nrepl_backlog_first_byte_offset:0".to_string()).serialize()
     );
-
-    terminate_process(master_port);
 }

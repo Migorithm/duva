@@ -8,10 +8,7 @@
 ///    *3\r\n$5\r\nPSYNC\r\n$1\r\n?\r\n$2\r\n-1\r\n
 ///
 ///
-use common::{
-    get_available_port, run_server_process, spawn_server_process, terminate_process,
-    wait_for_message,
-};
+use common::{get_available_port, run_server_process, spawn_server_process, wait_for_message};
 
 use redis_starter_rust::client_utils::ClientStreamHandler;
 use tokio::net::TcpStream;
@@ -21,7 +18,7 @@ mod common;
 #[tokio::test]
 async fn test_master_threeway_handshake() {
     // GIVEN - master server configuration
-    let master_port = spawn_server_process();
+    let (_process, master_port) = spawn_server_process();
 
     let client_stream =
         TcpStream::connect(format!("localhost:{}", master_port + 10000)).await.unwrap();
@@ -60,8 +57,6 @@ async fn test_master_threeway_handshake() {
         .get_response()
         .await
         .starts_with("+FULLRESYNC 8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb 0\r\n"));
-
-    terminate_process(master_port);
 }
 
 #[tokio::test]
@@ -88,7 +83,4 @@ async fn test_slave_threeway_handshake() {
     // Read stdout from the replica process
     let mut stdout = replica_process.stdout.take();
     wait_for_message(stdout.take().unwrap(), "[INFO] Three-way handshake completed", 1);
-
-    terminate_process(master_port);
-    terminate_process(replica_port);
 }

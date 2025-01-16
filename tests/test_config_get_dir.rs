@@ -4,7 +4,7 @@
 /// if the value of dir is /tmp, then the expected response to CONFIG GET dir is:
 /// *2\r\n$3\r\ndir\r\n$4\r\n/tmp\r\n
 mod common;
-use common::{spawn_server_process, terminate_process};
+use common::spawn_server_process;
 use redis_starter_rust::client_utils::ClientStreamHandler;
 
 use crate::common::array;
@@ -15,7 +15,7 @@ use tokio::net::TcpStream;
 async fn test_config_get_dir() {
     // GIVEN
     //TODO test config should be dynamically configured
-    let master_port = spawn_server_process();
+    let (_process, master_port) = spawn_server_process();
 
     let client_stream = TcpStream::connect(format!("localhost:{}", master_port)).await.unwrap();
 
@@ -34,6 +34,4 @@ async fn test_config_get_dir() {
 
     // THEN
     assert_eq!(h.get_response().await, array(vec!["dir", "."]));
-
-    terminate_process(master_port);
 }

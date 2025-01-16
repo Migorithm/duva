@@ -9,7 +9,7 @@ pub fn get_available_port() -> u16 {
     PORT_DISTRIBUTOR.fetch_add(1, std::sync::atomic::Ordering::SeqCst)
 }
 
-pub fn spawn_server_process() -> u16 {
+pub fn spawn_server_process() -> (TestProcessChild, u16) {
     let port: u16 = get_available_port();
     let mut process = run_server_process(port, None);
     wait_for_message(
@@ -18,27 +18,12 @@ pub fn spawn_server_process() -> u16 {
         1,
     );
 
-    port
+    (process, port)
 }
 
-pub fn terminate_process(port: u16) {
-    // Find the PID of the process using the port
-    let output = Command::new("lsof")
-        .args(&["-i", &format!(":{}", port), "-t"])
-        .output()
-        .expect("Failed to execute lsof command");
-
-    if output.stdout.is_empty() {
-        println!("No process is using port {}", port);
-        return;
-    }
-
-    // Extract the PID from the command output
-
-    for pid in String::from_utf8_lossy(&output.stdout).lines().collect::<Vec<&str>>() {
-        // Kill the process by PID
-        Command::new("kill").arg(pid.to_string()).spawn().expect("Failed to kill process");
-        println!("Killed process {} on port {}", pid, port);
+impl Drop for TestProcessChild {
+    fn drop(&mut self) {
+        self.0.kill().expect("Failed to kill process");
     }
 }
 

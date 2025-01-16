@@ -3,7 +3,7 @@
 /// Then we get the key and check if the value is returned
 /// After 300ms, we get the key again and check if the value is not returned (-1)
 mod common;
-use common::{array, spawn_server_process, terminate_process};
+use common::{array, spawn_server_process};
 
 use redis_starter_rust::{client_utils::ClientStreamHandler, services::query_io::QueryIO};
 use tokio::net::TcpStream;
@@ -11,7 +11,7 @@ use tokio::net::TcpStream;
 #[tokio::test]
 async fn test_set_get() {
     // GIVEN
-    let master_port = spawn_server_process();
+    let (_process, master_port) = spawn_server_process();
 
     let client_stream = TcpStream::connect(format!("localhost:{}", master_port)).await.unwrap();
     let mut h: ClientStreamHandler = client_stream.into_split().into();
@@ -34,6 +34,4 @@ async fn test_set_get() {
     // THEN
     let res = h.get_response().await;
     assert_eq!(res, QueryIO::Null.serialize());
-
-    terminate_process(master_port);
 }

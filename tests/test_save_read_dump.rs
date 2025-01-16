@@ -6,7 +6,7 @@
 mod common;
 use crate::common::array;
 use common::get_available_port;
-use common::terminate_process;
+
 use common::wait_for_message;
 
 use common::TestProcessChild;
@@ -25,7 +25,7 @@ impl Drop for FileName {
     }
 }
 
-fn run_server_with_dbfilename(dbfilename: &str) -> u16 {
+fn run_server_with_dbfilename(dbfilename: &str) -> (TestProcessChild, u16) {
     let port = get_available_port();
     let mut command = Command::new("cargo");
     command.args(["run", "--", "--port", &port.to_string(), "--dbfilename", dbfilename]);
@@ -43,7 +43,7 @@ fn run_server_with_dbfilename(dbfilename: &str) -> u16 {
         1,
     );
 
-    port
+    (process, port)
 }
 
 // TODO response cannot be deterministic!
@@ -52,7 +52,7 @@ async fn test_save_read_dump() {
     // GIVEN
     let test_file_name = FileName(create_unique_file_name("test_save_dump"));
 
-    let master_port = run_server_with_dbfilename(test_file_name.0.as_str());
+    let (_master_process, master_port) = run_server_with_dbfilename(test_file_name.0.as_str());
 
     let client_stream = TcpStream::connect(format!("localhost:{}", master_port)).await.unwrap();
     let mut h: ClientStreamHandler = client_stream.into_split().into();
@@ -80,8 +80,6 @@ async fn test_save_read_dump() {
     // keys
     h.send({ array(vec!["KEYS", "*"]).into_bytes() }.as_slice()).await;
     assert_eq!(h.get_response().await, array(vec!["foo2", "foo"]));
-
-    terminate_process(master_port);
 }
 
 fn create_unique_file_name(function_name: &str) -> String {
