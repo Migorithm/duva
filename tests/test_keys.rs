@@ -1,16 +1,14 @@
 mod common;
 use common::{array, spawn_server_process};
-
 use redis_starter_rust::{client_utils::ClientStreamHandler, services::query_io::QueryIO};
-use tokio::net::TcpStream;
 
 #[tokio::test]
 async fn test_keys() {
     // GIVEN
     let process = spawn_server_process();
 
-    let stream = TcpStream::connect(process.bind_addr()).await.unwrap();
-    let mut h: ClientStreamHandler = stream.into_split().into();
+    let mut h = ClientStreamHandler::new(process.bind_addr()).await;
+
     let num_of_keys = 500;
 
     // WHEN set 100000 keys

@@ -6,15 +6,13 @@ mod common;
 use common::{array, spawn_server_process};
 
 use redis_starter_rust::{client_utils::ClientStreamHandler, services::query_io::QueryIO};
-use tokio::net::TcpStream;
 
 #[tokio::test]
 async fn test_set_get() {
     // GIVEN
     let process = spawn_server_process();
 
-    let client_stream = TcpStream::connect(process.bind_addr()).await.unwrap();
-    let mut h: ClientStreamHandler = client_stream.into_split().into();
+    let mut h = ClientStreamHandler::new(process.bind_addr()).await;
 
     h.send({ array(vec!["SET", "somanyrand", "bar", "PX", "300"]).into_bytes() }.as_slice()).await;
     // THEN

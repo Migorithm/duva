@@ -8,15 +8,12 @@ mod common;
 use common::{array, spawn_server_process};
 
 use redis_starter_rust::{client_utils::ClientStreamHandler, services::query_io::QueryIO};
-use tokio::net::TcpStream;
 
 #[tokio::test]
 async fn test_replication_info() {
     // GIVEN
     let process = spawn_server_process();
-
-    let client_stream = TcpStream::connect(process.bind_addr()).await.unwrap();
-    let mut h: ClientStreamHandler = client_stream.into_split().into();
+    let mut h = ClientStreamHandler::new(process.bind_addr()).await;
 
     // WHEN
     h.send({ array(vec!["INFO", "replication"]).into_bytes() }.as_slice()).await;

@@ -21,6 +21,18 @@ pub fn spawn_server_process() -> TestProcessChild {
     process
 }
 
+pub fn spawn_server_as_slave(master: &TestProcessChild) -> TestProcessChild {
+    let port: u16 = get_available_port();
+    let mut process = run_server_process(port, Some(master.bind_addr()));
+    wait_for_message(
+        process.0.stdout.as_mut().unwrap(),
+        format!("listening peer connection on localhost:{}...", port + 10000).as_str(),
+        1,
+    );
+
+    process
+}
+
 impl Drop for TestProcessChild {
     fn drop(&mut self) {
         self.0.kill().expect("Failed to kill process");

@@ -8,10 +8,8 @@
 ///    *3\r\n$5\r\nPSYNC\r\n$1\r\n?\r\n$2\r\n-1\r\n
 ///
 ///
-use common::{get_available_port, run_server_process, spawn_server_process, wait_for_message};
-
+use common::{spawn_server_as_slave, spawn_server_process, wait_for_message};
 use redis_starter_rust::client_utils::ClientStreamHandler;
-use tokio::net::TcpStream;
 
 mod common;
 
@@ -20,9 +18,7 @@ async fn test_master_threeway_handshake() {
     // GIVEN - master server configuration
     let process = spawn_server_process();
 
-    let client_stream =
-        TcpStream::connect(format!("localhost:{}", process.port() + 10000)).await.unwrap();
-    let mut h: ClientStreamHandler = client_stream.into_split().into();
+    let mut h = ClientStreamHandler::new(format!("localhost:{}", process.port() + 10000)).await;
 
     // WHEN - client sends PING command
     h.send(b"*1\r\n$4\r\nPING\r\n").await;
@@ -66,8 +62,7 @@ async fn test_slave_threeway_handshake() {
     let master_process = spawn_server_process();
 
     // WHEN run replica
-    let replica_port = get_available_port();
-    let mut replica_process = run_server_process(replica_port, Some(master_process.bind_addr()));
+    let mut replica_process = spawn_server_as_slave(&master_process);
 
     // Read stdout from the replica process
     let mut stdout = replica_process.stdout.take();

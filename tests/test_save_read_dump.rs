@@ -6,9 +6,7 @@
 mod common;
 use crate::common::array;
 use common::get_available_port;
-
 use common::wait_for_message;
-
 use common::TestProcessChild;
 use redis_starter_rust::client_utils::ClientStreamHandler;
 use redis_starter_rust::services::query_io::QueryIO;
@@ -16,7 +14,6 @@ use std::process::Command;
 use std::process::Stdio;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
-use tokio::net::TcpStream;
 
 struct FileName(String);
 impl Drop for FileName {
@@ -25,7 +22,7 @@ impl Drop for FileName {
     }
 }
 
-fn run_server_with_dbfilename(dbfilename: &str) -> (TestProcessChild, u16) {
+fn run_server_with_dbfilename(dbfilename: &str) -> TestProcessChild {
     let port = get_available_port();
     let mut command = Command::new("cargo");
     command.args(["run", "--", "--port", &port.to_string(), "--dbfilename", dbfilename]);
@@ -44,7 +41,7 @@ fn run_server_with_dbfilename(dbfilename: &str) -> (TestProcessChild, u16) {
         1,
     );
 
-    (process, port)
+    process
 }
 
 // TODO response cannot be deterministic!
@@ -53,10 +50,9 @@ async fn test_save_read_dump() {
     // GIVEN
     let test_file_name = FileName(create_unique_file_name("test_save_dump"));
 
-    let (_master_process, master_port) = run_server_with_dbfilename(test_file_name.0.as_str());
+    let master_process = run_server_with_dbfilename(test_file_name.0.as_str());
 
-    let client_stream = TcpStream::connect(format!("localhost:{}", master_port)).await.unwrap();
-    let mut h: ClientStreamHandler = client_stream.into_split().into();
+    let mut h: ClientStreamHandler = ClientStreamHandler::new(master_process.bind_addr()).await;
 
     // WHEN
     // set without expiry time

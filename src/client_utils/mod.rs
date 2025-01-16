@@ -17,6 +17,12 @@ impl From<(OwnedReadHalf, OwnedWriteHalf)> for ClientStreamHandler {
 }
 
 impl ClientStreamHandler {
+    pub async fn new(bind_addr: String) -> Self {
+        let stream = tokio::net::TcpStream::connect(bind_addr).await.unwrap();
+        let (read, write) = stream.into_split();
+        Self { read, write }
+    }
+
     pub async fn send(&mut self, operation: &[u8]) {
         self.write.write_all(operation).await.unwrap();
         self.write.flush().await.unwrap();
