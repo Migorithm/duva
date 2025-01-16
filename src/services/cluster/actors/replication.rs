@@ -1,16 +1,30 @@
-#[derive(Debug, Clone, Default)]
+use crate::services::config::init::get_env;
+use std::sync::atomic::AtomicBool;
+pub static IS_MASTER_MODE: AtomicBool = AtomicBool::new(true);
+
+#[derive(Debug, Clone)]
 pub struct Replication {
-    pub connected_slaves: u16,             // The number of connected replicas
-    pub master_replid: String, // The replication ID of the master example: 8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb
-    master_repl_offset: u64,   // The replication offset of the master example: 0
-    second_repl_offset: i16,   // -1
-    repl_backlog_active: usize, // 0
-    repl_backlog_size: usize,  // 1048576
+    pub(crate) connected_slaves: u16, // The number of connected replicas
+    pub(crate) master_replid: String, // The replication ID of the master example: 8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb
+    master_repl_offset: u64,          // The replication offset of the master example: 0
+    second_repl_offset: i16,          // -1
+    repl_backlog_active: usize,       // 0
+    repl_backlog_size: usize,         // 1048576
     repl_backlog_first_byte_offset: usize, // 0
 
-    pub master_host: Option<String>,
-    pub master_port: Option<u16>,
+    pub(crate) master_host: Option<String>,
+    pub(crate) master_port: Option<u16>,
 }
+
+impl Default for Replication {
+    fn default() -> Self {
+        let replication = Replication::new(get_env().replicaof.clone());
+        IS_MASTER_MODE
+            .store(replication.master_port.is_none(), std::sync::atomic::Ordering::Relaxed);
+        replication
+    }
+}
+
 impl Replication {
     pub fn new(replicaof: Option<(String, String)>) -> Self {
         Replication {

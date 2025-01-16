@@ -2,13 +2,13 @@
 /// Message from a peer is one of events that can trigger a change in the cluster state.
 /// As it has to keep listening to incoming messages, it is implemented as an actor, run in the background.
 /// To take a control of the actor, PeerListenerHandler is used, which can kill the listening process and return the connected stream.
-use super::command::ClusterCommand;
+use super::command::{ClusterCommand, MasterCommand};
 use crate::services::interface::TRead;
+use crate::services::query_io::QueryIO;
 use tokio::net::tcp::OwnedReadHalf;
 use tokio::select;
 use tokio::sync::mpsc::Sender;
 use tokio::task::JoinHandle;
-
 
 pub(crate) struct PeerListeningActor {
     pub(super) read_connected: ClusterReadConnected,
@@ -58,11 +58,30 @@ impl PeerListeningActor {
         }
     }
     async fn listen_master_stream(read_buf: &mut OwnedReadHalf) {
-        while let Ok(values) = read_buf.read_values().await {
-            if values.is_empty() {
-                continue;
+        while let Ok(cmds) = Self::read_command::<MasterCommand>(read_buf).await {
+            for cmd in cmds {
+                match cmd {
+                    MasterCommand::Ping => {
+                        println!("[INFO] Received ping from master");
+                    }
+                    MasterCommand::Replicate { query } => {}
+                }
             }
         }
+    }
+
+    async fn read_command<T>(read_buf: &mut OwnedReadHalf) -> anyhow::Result<Vec<T>>
+    where
+        T: std::convert::TryFrom<QueryIO>,
+        T::Error: Into<anyhow::Error>,
+    {
+        read_buf
+            .read_values()
+            .await?
+            .into_iter()
+            .map(T::try_from)
+            .collect::<Result<_, _>>()
+            .map_err(Into::into)
     }
 }
 

@@ -1,6 +1,6 @@
 use crate::make_smart_pointer;
 
-use crate::services::cluster::actors::actor::PeerAddr;
+use crate::services::cluster::actors::types::PeerAddr;
 use crate::services::cluster::inbound::request::HandShakeRequest;
 use crate::services::cluster::inbound::request::HandShakeRequestEnum;
 

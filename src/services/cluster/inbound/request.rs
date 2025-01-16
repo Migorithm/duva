@@ -105,8 +105,7 @@ impl TryFrom<String> for HandShakeRequestEnum {
             "psync" => Ok(HandShakeRequestEnum::Psync),
 
             invalid_value => {
-                eprintln!("Invalid command,{}", invalid_value);
-                Err(anyhow::anyhow!("Invalid command"))
+                panic!("{}", invalid_value);
             }
         }
     }

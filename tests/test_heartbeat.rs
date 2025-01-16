@@ -1,76 +1,70 @@
-//! This file contains tests for heartbeat between server and client
+//! This file contains tests for heartbeat between master and replica
 //! Any interconnected system should have a heartbeat mechanism to ensure that the connection is still alive
-//! In this case, the server will send PING message to the client and the client will respond with PONG message
-//! The following test simulate the replica server with the use of TcpStream.
-//! Actual implementation will be standalone replica server that will be connected to the master server
+//! In this case, the server will send PING message to the replica and the replica will respond with PONG message
 
 mod common;
 
-use std::time::Duration;
-
-use common::{find_free_port_in_range, start_test_server, threeway_handshake_helper};
-use redis_starter_rust::{
-    adapters::cancellation_token::CancellationTokenFactory,
-    services::{
-        config::{actor::ConfigActor, manager::ConfigManager},
-        interface::TStream,
-    },
-};
-use tokio::{net::TcpStream, task::JoinHandle, time::timeout};
-
-// The following simulate the replica server by creating a TcpStream that will be connected by the master server
-async fn receive_server_ping_from_replica_stream(
-    master_cluster_bind_addr: String,
-) -> JoinHandle<()> {
-    let mut stream_handler = TcpStream::connect(master_cluster_bind_addr.clone()).await.unwrap();
-    threeway_handshake_helper(&mut stream_handler, None).await;
-
-    tokio::spawn(async move {
-        let mut count = 0;
-        while let Ok(values) = stream_handler.read_value().await {
-            if count == 5 {
-                break;
-            }
-            // TODO PING may not be used. It is just a placeholder
-            assert_eq!(values.serialize(), "+PING\r\n");
-            count += 1;
-        }
-    })
-}
+use common::{get_available_port, run_server_process, wait_for_message};
 
 #[tokio::test]
 async fn test_heartbeat() {
     // GIVEN
     // run the random server on a random port
-    let config = ConfigActor::default();
-    let mut manager = ConfigManager::new(config);
-    manager.port = find_free_port_in_range(6000, 6553).await.unwrap();
-    let master_cluster_bind_addr = manager.peer_bind_addr();
-    let _ = start_test_server(CancellationTokenFactory, manager).await;
 
-    // run the client bind stream on a random port so it can later get connection request from server
-    let handler = receive_server_ping_from_replica_stream(master_cluster_bind_addr.clone()).await;
+    let master_port = get_available_port();
 
-    //WHEN we await on handler, it will receive 5 PING messages
-    timeout(Duration::from_secs(6), handler).await.unwrap().unwrap();
+    let mut master_process = run_server_process(master_port, None);
+    let master_stdout = master_process.stdout.take();
+    wait_for_message(
+        master_stdout.expect("failed to take stdout"),
+        format!("listening peer connection on localhost:{}...", master_port + 10000).as_str(),
+        1,
+    );
+
+    let replica_port = get_available_port();
+
+    let mut replica_process =
+        run_server_process(replica_port, Some(format!("localhost:{}", master_port)));
+
+    let mut stdout = replica_process.stdout.take();
+    wait_for_message(stdout.take().unwrap(), "[INFO] Received ping from master", 2);
 }
 
 #[tokio::test]
 async fn test_heartbeat_sent_to_multiple_replicas() {
     // GIVEN
     // run the random server on a random port
-    let config = ConfigActor::default();
-    let mut manager = ConfigManager::new(config);
-    manager.port = find_free_port_in_range(6000, 6553).await.unwrap();
-    let master_cluster_bind_addr = manager.peer_bind_addr();
-    let _ = start_test_server(CancellationTokenFactory, manager).await;
 
-    // run the client bind stream on a random port so it can later get connection request from server
-    let repl1_handler =
-        receive_server_ping_from_replica_stream(master_cluster_bind_addr.clone()).await;
-    let repl2_handler =
-        receive_server_ping_from_replica_stream(master_cluster_bind_addr.clone()).await;
+    let master_port = get_available_port();
 
-    //WHEN we await on handler, it will receive 5 PING messages
-    let _ = tokio::join!(repl1_handler, repl2_handler);
+    let mut master_process = run_server_process(master_port, None);
+    let master_stdout = master_process.stdout.take();
+    wait_for_message(
+        master_stdout.expect("failed to take stdout"),
+        format!("listening peer connection on localhost:{}...", master_port + 10000).as_str(),
+        1,
+    );
+
+    // To prevent port race condition, we need to preallocate the ports
+    let replica_port1 = 6001;
+    let replica_port2 = 6002;
+
+    // WHEN
+    let mut r1 = run_server_process(replica_port1, Some(format!("localhost:{}", master_port)));
+
+    let mut r2 = run_server_process(replica_port2, Some(format!("localhost:{}", master_port)));
+
+    let t_h1 = std::thread::spawn(move || {
+        let mut stdout = r1.stdout.take();
+        wait_for_message(stdout.take().unwrap(), "[INFO] Received ping from master", 2);
+    });
+
+    let t_h2 = std::thread::spawn(move || {
+        let mut stdout = r2.stdout.take();
+        wait_for_message(stdout.take().unwrap(), "[INFO] Received ping from master", 2);
+    });
+
+    //Then it should finish
+    t_h1.join().unwrap();
+    t_h2.join().unwrap();
 }

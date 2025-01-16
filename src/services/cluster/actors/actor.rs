@@ -1,6 +1,7 @@
-use super::command::{ClusterCommand, ClusterWriteCommand, PeerKind};
+use super::command::{ClusterCommand, ClusterWriteCommand};
 use super::listening_actor::{ClusterReadConnected, ListeningActorKillTrigger, PeerListeningActor};
-use crate::make_smart_pointer;
+use super::replication::Replication;
+use super::types::{PeerAddr, PeerKind};
 
 use crate::services::interface::TWrite;
 use crate::services::query_io::QueryIO;
@@ -15,11 +16,8 @@ use tokio::sync::mpsc::Sender;
 pub struct ClusterActor {
     // PeerAddr is cluster ip:{cluster_port} of peer
     members: BTreeMap<PeerAddr, Peer>,
+    replication: Replication,
 }
-
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Hash)]
-pub struct PeerAddr(pub String);
-make_smart_pointer!(PeerAddr, String);
 
 impl ClusterActor {
     async fn heartbeat(&mut self) {
@@ -51,8 +49,12 @@ impl ClusterActor {
         mut self,
         self_handler: Sender<ClusterCommand>,
         mut cluster_message_listener: Receiver<ClusterCommand>,
+        notifier: tokio::sync::watch::Sender<bool>,
     ) {
         while let Some(command) = cluster_message_listener.recv().await {
+            // TODO notifier will be used when election process is implemented
+            let _ = notifier.clone();
+
             match command {
                 ClusterCommand::AddPeer { peer_addr, stream, peer_kind } => {
                     // composite
@@ -71,20 +73,14 @@ impl ClusterActor {
                     let _ = callback.send(self.members.keys().cloned().collect());
                 }
                 ClusterCommand::Write(write_cmd) => match write_cmd {
-                    ClusterWriteCommand::Replicate { query: q, peer_addr } => {
-                        if let Some(peer) = self.members.get_mut(&peer_addr) {
-                            println!("[INFO] Replicating query to peer: {:?}", peer_addr);
-                            let msg = q.serialize();
-                            if let ClusterWriteConnected::Replica { stream } = &mut peer.write_connected {
-                                println!("sending to replica");
-                                let _ = stream.write(msg.as_bytes()).await;
-                            }
-                        }
-                    }
+                    ClusterWriteCommand::Replicate { query, peer_addr } => todo!(),
                     ClusterWriteCommand::Ping => {
                         self.heartbeat().await;
                     }
                 },
+                ClusterCommand::ReplicationInfo(sender) => {
+                    let _ = sender.send(self.replication.clone());
+                }
             }
         }
     }
@@ -97,13 +93,12 @@ struct Peer {
 }
 
 impl Peer {
-    pub fn new(
+    fn split_stream(
         stream: TcpStream,
         peer_kind: PeerKind,
-        cluster_handler: Sender<ClusterCommand>,
-    ) -> Self {
+    ) -> (ClusterWriteConnected, ClusterReadConnected) {
         let (r, w) = stream.into_split();
-        let (write_connected, read_connected) = match peer_kind {
+        match peer_kind {
             PeerKind::Peer => (
                 ClusterWriteConnected::Peer { stream: w },
                 ClusterReadConnected::Peer { stream: r },
@@ -116,7 +111,15 @@ impl Peer {
                 ClusterWriteConnected::Master { stream: w },
                 ClusterReadConnected::Master { stream: r },
             ),
-        };
+        }
+    }
+
+    pub fn new(
+        stream: TcpStream,
+        peer_kind: PeerKind,
+        cluster_handler: Sender<ClusterCommand>,
+    ) -> Self {
+        let (write_connected, read_connected) = Self::split_stream(stream, peer_kind);
 
         // Listner requires cluster handler to send messages to the cluster actor and cluster actor instead needs kill trigger to stop the listener
         let (kill_trigger, kill_switch) = tokio::sync::oneshot::channel();

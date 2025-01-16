@@ -1,7 +1,5 @@
 use tokio::sync::oneshot;
 
-use super::replication::Replication;
-
 /// ConfigMessage is a message that can be sent to the ConfigManager.
 /// It can be either a query or a command.
 /// If it is a query, it will have a callback to send the response back to the caller.
@@ -24,21 +22,20 @@ impl ConfigQuery {
         let _ = self.callback.send(res);
     }
 }
+
+#[derive(Debug)]
 pub enum ConfigResource {
     Dir,
     DbFileName,
     FilePath,
-    ReplicationInfo,
 }
 
 pub enum ConfigResponse {
     Dir(String),
     DbFileName(String),
     FilePath(String),
-    ReplicationInfo(Replication),
 }
 
 pub enum ConfigCommand {
-    ReplicaPing,
     SetDbFileName(String),
 }

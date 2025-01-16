@@ -2,10 +2,9 @@ use super::actor::ConfigActor;
 use super::command::ConfigCommand;
 use super::command::ConfigMessage;
 use super::command::ConfigQuery;
-use super::replication::Replication;
 use super::ConfigResource;
 use super::ConfigResponse;
-use crate::env_var;
+use crate::services::config::init::get_env;
 use std::time::SystemTime;
 
 use tokio::fs::try_exists;
@@ -18,7 +17,6 @@ pub struct ConfigManager {
     pub(crate) startup_time: SystemTime,
     pub port: u16,
     pub(crate) host: &'static str,
-    pub(crate) cluster_mode_watcher: tokio::sync::watch::Receiver<bool>,
 }
 
 impl std::ops::Deref for ConfigManager {
@@ -33,34 +31,22 @@ impl ConfigManager {
     pub fn new(config: ConfigActor) -> Self {
         let (tx, inbox) = tokio::sync::mpsc::channel(20);
 
-        let cluster_mode_watcher = config.handle(inbox);
+        config.handle(inbox);
 
-        env_var!({}{
-            port = 6379,
-            host = "localhost".to_string()
-        });
-
+        let env = get_env();
         Self {
             config: tx,
             startup_time: SystemTime::now(),
-            port,
-            host: Box::leak(host.into_boxed_str()),
-            cluster_mode_watcher,
+            port: env.port,
+            host: Box::leak(env.host.clone().into_boxed_str()),
+            // cluster_mode_watcher,
         }
-    }
-
-    // Park the task until the cluster mode changes - error means notifier has been dropped
-    pub(crate) async fn wait_until_cluster_mode_changed(&mut self) -> anyhow::Result<()> {
-        self.cluster_mode_watcher.changed().await?;
-        Ok(())
-    }
-    pub(crate) fn cluster_mode(&mut self) -> bool {
-        *self.cluster_mode_watcher.borrow_and_update()
     }
 
     // The following is used on startup and check if the file exists
     pub async fn try_filepath(&self) -> anyhow::Result<Option<String>> {
         let res = self.route_query(ConfigResource::FilePath).await?;
+
         let ConfigResponse::FilePath(file_path) = res else {
             return Ok(None);
         };
@@ -101,15 +87,6 @@ impl ConfigManager {
             return Err(anyhow::anyhow!("Failed to get file path"));
         };
         Ok(file_path)
-    }
-
-    pub async fn replication_info(&self) -> anyhow::Result<Replication> {
-        let res = self.route_query(ConfigResource::ReplicationInfo).await?;
-
-        let ConfigResponse::ReplicationInfo(info) = res else {
-            return Err(anyhow::anyhow!("Failed to get replication info"));
-        };
-        Ok(info)
     }
 
     pub async fn route_query(&self, resource: ConfigResource) -> anyhow::Result<ConfigResponse> {

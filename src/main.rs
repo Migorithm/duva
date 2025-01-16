@@ -10,5 +10,6 @@ async fn main() -> anyhow::Result<()> {
     let config_manager = ConfigManager::new(ConfigActor::default());
 
     let mut start_up_runner = StartUpFacade::new(CancellationTokenFactory, config_manager);
+
     start_up_runner.run(()).await
 }

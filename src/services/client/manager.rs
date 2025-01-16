@@ -1,6 +1,7 @@
 use crate::services::client::arguments::ClientRequestArguments;
 use crate::services::client::request::ClientRequest;
 use crate::services::client::stream::ClientStream;
+use crate::services::cluster::manager::ClusterManager;
 use crate::services::config::manager::ConfigManager;
 use crate::services::config::ConfigResponse;
 use crate::services::interface::TCancellationNotifier;
@@ -19,6 +20,7 @@ use tokio::select;
 pub(crate) struct ClientManager {
     config_manager: ConfigManager,
     cache_manager: &'static CacheManager,
+    cluster_manager: &'static ClusterManager,
     ttl_manager: TtlSchedulerInbox,
 }
 
@@ -26,9 +28,10 @@ impl ClientManager {
     pub(crate) fn new(
         config_manager: ConfigManager,
         cache_manager: &'static CacheManager,
+        cluster_manager: &'static ClusterManager,
         ttl_manager: TtlSchedulerInbox,
     ) -> Self {
-        ClientManager { config_manager, cache_manager, ttl_manager }
+        ClientManager { config_manager, cache_manager, ttl_manager, cluster_manager }
     }
 
     pub(crate) async fn handle(
@@ -56,7 +59,7 @@ impl ClientManager {
                     self.config_manager.get_filepath().await?,
                     self.cache_manager.inboxes.len(),
                 )
-                    .await?;
+                .await?;
 
                 self.cache_manager.route_save(outbox).await;
 
@@ -87,7 +90,7 @@ impl ClientManager {
             ClientRequest::Delete => panic!("Not implemented"),
 
             ClientRequest::Info => QueryIO::BulkString(
-                self.config_manager.replication_info().await?.vectorize().join("\r\n"),
+                self.cluster_manager.replication_info().await?.vectorize().join("\r\n"),
             ),
         };
         Ok(response)
@@ -106,6 +109,7 @@ impl ClientManager {
             // when the sentinel is received.
             _ = async {
                     while let Ok((stream, _)) = client_stream_listener.accept().await {
+
                         conn_handlers.push(tokio::spawn(
                            async move{
                                 const TIMEOUT: u64 = 100;
@@ -120,7 +124,7 @@ impl ClientManager {
                                         cancellation_factory.create(TIMEOUT);
 
                                     // TODO subject to change - more to dynamic
-                                    // Notify the cancellation notifier to cancel the query after 100 milliseconds.
+
                                     cancellation_notifier.notify();
 
                                     let res = match self.handle(cancellation_token, request, query_args).await {
@@ -137,6 +141,7 @@ impl ClientManager {
                            }
                         ));
                     }
+
                 } =>{}
 
 

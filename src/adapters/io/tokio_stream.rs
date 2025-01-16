@@ -76,6 +76,7 @@ impl TRead for tokio::net::tcp::OwnedReadHalf {
                 Err(e) => {
                     // Handle parsing errors
                     // You might want to log the error or handle it differently based on your use case
+                    println!("{e:?} on owned read half");
                     return Err(anyhow::anyhow!("Parsing error: {:?}", e));
                 }
             }
@@ -131,6 +132,7 @@ impl TRead for tokio::net::TcpStream {
                 Err(e) => {
                     // Handle parsing errors
                     // You might want to log the error or handle it differently based on your use case
+                    println!("{e:?} on tcptream");
                     return Err(anyhow::anyhow!("Parsing error: {:?}", e));
                 }
             }

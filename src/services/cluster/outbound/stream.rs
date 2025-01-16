@@ -11,27 +11,31 @@ impl OutboundStream {
         // Trigger
         self.write(write_array!("PING")).await?;
         let mut ok_count = 0;
-
+        let mut peer_list: Vec<String> = vec![];
         loop {
             let res = self.read_values().await?;
             for query in res {
                 match ConnectionResponse::try_from(query)? {
-                    ConnectionResponse::PONG => {
+                    ConnectionResponse::Pong => {
                         let msg = self.after_pong(self_port);
                         self.write(msg).await?
                     }
-                    ConnectionResponse::OK => {
+                    ConnectionResponse::Ok => {
                         ok_count += 1;
                         let msg = self.after_ok(ok_count)?;
                         self.write(msg).await?
                     }
-                    ConnectionResponse::FULLRESYNC { repl_id, offset } => {
+                    ConnectionResponse::FullResync { repl_id, offset } => {
                         println!("[INFO] Three-way handshake completed")
                     }
-                    ConnectionResponse::PEERS(peer_list) => {
+                    ConnectionResponse::Peers(ls) => {
                         println!("[INFO] Received peer list: {:?}", peer_list);
-                        return Ok(peer_list);
+                        peer_list = ls;
                     }
+                    ConnectionResponse::File(vec) => {
+                        println!("[INFO] Received file: {:?}", vec);
+                    }
+                    ConnectionResponse::End => return Ok(peer_list),
                 }
             }
         }
