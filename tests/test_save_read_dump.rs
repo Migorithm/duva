@@ -54,8 +54,8 @@ async fn test_save_read_dump() {
 
     let master_port = run_server_with_dbfilename(test_file_name.0.as_str());
 
-    let mut client_stream = TcpStream::connect(format!("localhost:{}", master_port)).await.unwrap();
-    let mut h: ClientStreamHandler = client_stream.split().into();
+    let client_stream = TcpStream::connect(format!("localhost:{}", master_port)).await.unwrap();
+    let mut h: ClientStreamHandler = client_stream.into_split().into();
 
     // WHEN
     // set without expiry time

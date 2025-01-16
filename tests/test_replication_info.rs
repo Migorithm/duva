@@ -15,8 +15,8 @@ async fn test_replication_info() {
     // GIVEN
     let master_port = spawn_server_process();
 
-    let mut client_stream = TcpStream::connect(format!("localhost:{}", master_port)).await.unwrap();
-    let mut h: ClientStreamHandler = client_stream.split().into();
+    let client_stream = TcpStream::connect(format!("localhost:{}", master_port)).await.unwrap();
+    let mut h: ClientStreamHandler = client_stream.into_split().into();
 
     // WHEN
     h.send({ array(vec!["INFO", "replication"]).into_bytes() }.as_slice()).await;

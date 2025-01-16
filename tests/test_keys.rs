@@ -9,8 +9,8 @@ async fn test_keys() {
     // GIVEN
     let master_port = spawn_server_process();
 
-    let mut stream = TcpStream::connect(format!("localhost:{}", master_port)).await.unwrap();
-    let mut h: ClientStreamHandler = stream.split().into();
+    let stream = TcpStream::connect(format!("localhost:{}", master_port)).await.unwrap();
+    let mut h: ClientStreamHandler = stream.into_split().into();
     let num_of_keys = 500;
 
     // WHEN set 100000 keys

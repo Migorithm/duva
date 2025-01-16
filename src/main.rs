@@ -1,6 +1,5 @@
 use redis_starter_rust::{
     adapters::cancellation_token::CancellationTokenFactory,
-    client_utils::ClientStreamHandler,
     services::config::{actor::ConfigActor, manager::ConfigManager},
     StartUpFacade,
 };
@@ -17,6 +16,7 @@ async fn main() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn test_cancellation_token() {
+    use redis_starter_rust::client_utils::ClientStreamHandler;
     use redis_starter_rust::services::interface::TCancellationNotifier;
     use redis_starter_rust::services::interface::TCancellationTokenFactory;
     use redis_starter_rust::services::interface::TCancellationWatcher;
@@ -66,7 +66,7 @@ async fn test_cancellation_token() {
     notify.notified().await;
 
     let mut client_stream = TcpStream::connect(manager.bind_addr()).await.unwrap();
-    let mut h: ClientStreamHandler = client_stream.split().into();
+    let mut h: ClientStreamHandler = client_stream.into_split().into();
 
     // WHEN
     h.send(b"*5\r\n$3\r\nSET\r\n$10\r\nsomanyrand\r\n$3\r\nbar\r\n$2\r\npx\r\n$3\r\n300\r\n").await;

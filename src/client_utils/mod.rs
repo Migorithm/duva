@@ -2,21 +2,21 @@
 /// DO NOT USE THIS IN PRODUCTION
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
-    net::tcp::{ReadHalf, WriteHalf},
+    net::tcp::{OwnedReadHalf, OwnedWriteHalf},
 };
 
-pub struct ClientStreamHandler<'a> {
-    pub read: ReadHalf<'a>,
-    pub write: WriteHalf<'a>,
+pub struct ClientStreamHandler {
+    pub read: OwnedReadHalf,
+    pub write: OwnedWriteHalf,
 }
 
-impl<'a> From<(ReadHalf<'a>, WriteHalf<'a>)> for ClientStreamHandler<'a> {
-    fn from((read, write): (ReadHalf<'a>, WriteHalf<'a>)) -> Self {
+impl From<(OwnedReadHalf, OwnedWriteHalf)> for ClientStreamHandler {
+    fn from((read, write): (OwnedReadHalf, OwnedWriteHalf)) -> Self {
         Self { read, write }
     }
 }
 
-impl<'a> ClientStreamHandler<'a> {
+impl ClientStreamHandler {
     pub async fn send(&mut self, operation: &[u8]) {
         self.write.write_all(operation).await.unwrap();
         self.write.flush().await.unwrap();

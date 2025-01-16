@@ -17,9 +17,9 @@ async fn test_config_get_dir() {
     //TODO test config should be dynamically configured
     let master_port = spawn_server_process();
 
-    let mut client_stream = TcpStream::connect(format!("localhost:{}", master_port)).await.unwrap();
+    let client_stream = TcpStream::connect(format!("localhost:{}", master_port)).await.unwrap();
 
-    let mut h: ClientStreamHandler = client_stream.split().into();
+    let mut h: ClientStreamHandler = client_stream.into_split().into();
 
     // WHEN
     h.send(

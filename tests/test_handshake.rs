@@ -12,6 +12,7 @@ use common::{
     get_available_port, run_server_process, spawn_server_process, terminate_process,
     wait_for_message,
 };
+
 use redis_starter_rust::client_utils::ClientStreamHandler;
 use tokio::net::TcpStream;
 
@@ -22,9 +23,9 @@ async fn test_master_threeway_handshake() {
     // GIVEN - master server configuration
     let master_port = spawn_server_process();
 
-    let mut client_stream =
+    let client_stream =
         TcpStream::connect(format!("localhost:{}", master_port + 10000)).await.unwrap();
-    let mut h: ClientStreamHandler = client_stream.split().into();
+    let mut h: ClientStreamHandler = client_stream.into_split().into();
 
     // WHEN - client sends PING command
     h.send(b"*1\r\n$4\r\nPING\r\n").await;

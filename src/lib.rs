@@ -1,5 +1,4 @@
 pub mod adapters;
-pub mod client_utils;
 pub mod macros;
 pub mod services;
 use anyhow::Result;
@@ -19,6 +18,8 @@ use std::sync::atomic::Ordering;
 use std::thread::sleep;
 use std::time::Duration;
 use tokio::net::TcpListener;
+
+pub mod client_utils;
 
 // * StartUp Facade that manages invokes subsystems
 pub struct StartUpFacade<V>
