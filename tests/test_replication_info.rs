@@ -5,22 +5,17 @@
 /// *2\r\n$3\r\ndir\r\n$4\r\n/tmp\r\n
 mod common;
 
-use common::{array, init_config_manager_with_free_port, start_test_server, TestStreamHandler};
+use common::{array, spawn_server_process, terminate_process, TestStreamHandler};
 
-use redis_starter_rust::{
-    adapters::cancellation_token::CancellationTokenFactory, services::query_io::QueryIO,
-};
+use redis_starter_rust::services::query_io::QueryIO;
 use tokio::net::TcpStream;
 
 #[tokio::test]
 async fn test_replication_info() {
     // GIVEN
-    //TODO test config should be dynamically configured
-    let config = init_config_manager_with_free_port().await;
+    let master_port = spawn_server_process();
 
-    start_test_server(CancellationTokenFactory, config.clone()).await;
-
-    let mut client_stream = TcpStream::connect(config.bind_addr()).await.unwrap();
+    let mut client_stream = TcpStream::connect(format!("localhost:{}", master_port)).await.unwrap();
     let mut h: TestStreamHandler = client_stream.split().into();
 
     // WHEN
@@ -30,4 +25,6 @@ async fn test_replication_info() {
     assert_eq!(h.get_response().await, QueryIO::BulkString(
         "role:master\r\nconnected_slaves:0\r\nmaster_replid:8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb\r\nmaster_repl_offset:0\r\nsecond_repl_offset:-1\r\nrepl_backlog_active:0\r\nrepl_backlog_size:1048576\r\nrepl_backlog_first_byte_offset:0".to_string()).serialize()
     );
+
+    terminate_process(master_port);
 }

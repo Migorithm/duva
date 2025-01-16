@@ -3,7 +3,7 @@
 //! In this case, the server will send PING message to the replica and the replica will respond with PONG message
 
 mod common;
-use common::{get_available_port, run_server_process, wait_for_message};
+use common::{get_available_port, run_server_process, terminate_process, wait_for_message};
 
 #[tokio::test]
 async fn test_heartbeat() {
@@ -26,6 +26,9 @@ async fn test_heartbeat() {
 
     let mut stdout = replica_process.stdout.take();
     wait_for_message(stdout.take().unwrap(), "[INFO] Received ping from master", 2);
+
+    terminate_process(master_port);
+    terminate_process(replica_port);
 }
 
 #[tokio::test]

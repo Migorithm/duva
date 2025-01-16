@@ -9,7 +9,8 @@
 ///
 ///
 use common::{
-    get_available_port, run_server_process, start_test_server, wait_for_message, TestStreamHandler,
+    get_available_port, run_server_process, start_test_server, terminate_process, wait_for_message,
+    TestStreamHandler,
 };
 use redis_starter_rust::{
     adapters::cancellation_token::CancellationTokenFactory,
@@ -92,4 +93,7 @@ async fn test_slave_threeway_handshake() {
     // Read stdout from the replica process
     let mut stdout = replica_process.stdout.take();
     wait_for_message(stdout.take().unwrap(), "[INFO] Three-way handshake completed", 1);
+
+    terminate_process(master_port);
+    terminate_process(replica_port);
 }

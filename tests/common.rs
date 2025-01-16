@@ -24,6 +24,39 @@ pub struct TestStreamHandler<'a> {
     pub write: WriteHalf<'a>,
 }
 
+pub fn spawn_server_process() -> u16 {
+    let port = get_available_port();
+    let mut process = run_server_process(port, None);
+    wait_for_message(
+        process.0.stdout.as_mut().unwrap(),
+        format!("listening peer connection on localhost:{}...", port + 10000).as_str(),
+        1,
+    );
+
+    port
+}
+
+pub fn terminate_process(port: u16) {
+    // Find the PID of the process using the port
+    let output = Command::new("lsof")
+        .args(&["-i", &format!(":{}", port), "-t"])
+        .output()
+        .expect("Failed to execute lsof command");
+
+    if output.stdout.is_empty() {
+        println!("No process is using port {}", port);
+        return;
+    }
+
+    // Extract the PID from the command output
+
+    for pid in String::from_utf8_lossy(&output.stdout).lines().collect::<Vec<&str>>() {
+        // Kill the process by PID
+        Command::new("kill").arg(pid.to_string()).spawn().expect("Failed to kill process");
+        println!("Killed process {} on port {}", pid, port);
+    }
+}
+
 impl<'a> From<(ReadHalf<'a>, WriteHalf<'a>)> for TestStreamHandler<'a> {
     fn from((read, write): (ReadHalf<'a>, WriteHalf<'a>)) -> Self {
         Self { read, write }
@@ -94,11 +127,7 @@ pub async fn start_test_server(
 }
 
 pub struct TestProcessChild(pub Child);
-impl Drop for TestProcessChild {
-    fn drop(&mut self) {
-        self.0.kill().unwrap();
-    }
-}
+
 make_smart_pointer!(TestProcessChild, Child);
 
 pub fn run_server_process(port: u16, replicaof: Option<String>) -> TestProcessChild {

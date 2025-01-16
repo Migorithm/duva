@@ -54,7 +54,6 @@ impl ClusterManager {
 
         // TODO Need to decide which point to send file data
         // TODO At this point, slave stream must write master_replid so that other nodes can tell where it belongs
-        // TODO Remove this sleep
 
         self.disseminate_peers(&mut peer_stream).await.unwrap();
 
@@ -87,7 +86,6 @@ impl ClusterManager {
 
     pub(crate) async fn discover_cluster(&'static self, self_port: u16) -> anyhow::Result<()> {
         let repl_info = self.replication_info().await?;
-        println!("{:?}", repl_info);
         sleep(Duration::from_secs(1));
         let master_bind_addr = repl_info.master_cluster_bind_addr();
         let mut outbound_stream = OutboundStream(TcpStream::connect(&master_bind_addr).await?);
