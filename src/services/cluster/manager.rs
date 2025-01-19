@@ -95,10 +95,7 @@ impl ClusterManager {
         self.send(ClusterCommand::AddPeer {
             peer_addr: PeerAddr(master_bind_addr),
             stream: outbound_stream.0,
-            peer_kind: PeerKind::connected_peer_kind(
-                &repl_info.master_replid,
-                &connection_info.repl_id,
-            ),
+            peer_kind: PeerKind::connected_peer_kind(&repl_info, &connection_info.repl_id),
         })
         .await?;
 
