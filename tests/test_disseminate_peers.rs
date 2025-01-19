@@ -12,6 +12,6 @@ async fn test_disseminate_peers() {
     let mut replica_process = spawn_server_as_slave(&master_process);
 
     // Read stdout from the replica process
-    let mut stdout = replica_process.stdout.take();
-    wait_for_message(stdout.take().unwrap(), "[INFO] Received peer list: []", 1);
+    let mut stdout = replica_process.stdout.take().unwrap();
+    wait_for_message(&mut stdout, "[INFO] Received peer list: []", 1);
 }
