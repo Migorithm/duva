@@ -90,10 +90,8 @@ impl ClusterManager {
             stream: peer_stream.0,
             peer_kind: peer_kind.clone(),
         })
-        .await?;
+            .await?;
         Ok(())
-            .await
-            .unwrap();
     }
 
     async fn disseminate_peers(&self, stream: &mut TcpStream) -> anyhow::Result<()> {

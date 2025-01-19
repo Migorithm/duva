@@ -36,7 +36,10 @@ impl QueryIO {
             QueryIO::Null => "$-1\r\n".to_string(),
             QueryIO::Err(e) => format!("-{}\r\n", e),
             QueryIO::File(f) => {
-                let hex_file = f.into_iter().map(|x| format!("{:x}", x)).collect::<String>();
+                let mut hex_file = String::new();
+                for byte in f {
+                    hex_file.push_str(&format!("{:02x}", byte));
+                }
                 let mut result = format!("${}\r\n", hex_file.len());
                 result.push_str(&hex_file);
                 result
@@ -134,7 +137,11 @@ fn parse_bulk_string_or_file(buffer: BytesMut) -> Result<(QueryIO, usize)> {
         Ok((QueryIO::BulkString(bulk_string_value), len + content_len + 2))
     } else {
         let file_content = &buffer[len..(len + content_len)];
-        Ok((QueryIO::File(file_content.to_vec()), len + content_len))
+        let file = file_content
+            .chunks(2)
+            .map(|chunk| u8::from_str_radix(std::str::from_utf8(chunk).unwrap(), 16))
+            .collect::<Result<Vec<u8>, _>>()?;
+        Ok((QueryIO::File(file), len + content_len))
     }
 }
 
@@ -232,12 +239,13 @@ fn test_parse_array() {
 #[test]
 fn test_parse_file() {
     // GIVEN
-    let buffer = BytesMut::from("$5\r\nhello");
-
+    let file = QueryIO::File(b"hello".to_vec());
+    let serialized = file.serialize();
+    let buffer = BytesMut::from(serialized.as_str());
     // WHEN
-    let (value, len) = parse(buffer.clone()).unwrap();
+    let (value, len) = parse(buffer).unwrap();
 
     // THEN
-    assert_eq!(len, 9);
-    assert_eq!(value, QueryIO::File(vec![0x68, 0x65, 0x6c, 0x6c, 0x6f]));
+    assert_eq!(len, 15);
+    assert_eq!(value, QueryIO::File(b"hello".to_vec()));
 }
