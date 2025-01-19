@@ -144,7 +144,6 @@ where
                 tokio::spawn(self.cluster_manager.discover_cluster(self.config_manager.port));
             }
 
-            // TODO
             self.wait_until_cluster_mode_changed().await?;
 
             is_master_mode = self.cluster_mode();

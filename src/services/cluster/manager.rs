@@ -61,7 +61,7 @@ impl ClusterManager {
         self.send(ClusterCommand::AddPeer {
             peer_addr,
             stream: peer_stream.0,
-            peer_kind: PeerKind::peer_kind(&repl_info.master_replid, &master_repl_id),
+            peer_kind: PeerKind::accepted_peer_kind(&repl_info.master_replid, &master_repl_id),
         })
         .await
         .unwrap();
@@ -90,17 +90,24 @@ impl ClusterManager {
         let master_bind_addr = repl_info.master_cluster_bind_addr();
         let mut outbound_stream = OutboundStream(TcpStream::connect(&master_bind_addr).await?);
 
-        let peer_list = outbound_stream.establish_connection(self_port).await?;
+        let connection_info = outbound_stream.establish_connection(self_port).await?;
 
         self.send(ClusterCommand::AddPeer {
             peer_addr: PeerAddr(master_bind_addr),
             stream: outbound_stream.0,
-            peer_kind: PeerKind::Master,
+            peer_kind: PeerKind::connected_peer_kind(
+                &repl_info.master_replid,
+                &connection_info.repl_id,
+            ),
         })
         .await?;
 
-        for peer in peer_list {
-            let mut peer_stream = OutboundStream(TcpStream::connect(peer).await?);
+        let existing_peers = self.get_peers().await?;
+        for peer in connection_info.peer_list {
+            // if peer is not in the cluster, connect to it
+            if !existing_peers.contains(&PeerAddr(peer.clone())) {
+                let mut peer_stream = OutboundStream(TcpStream::connect(peer).await?);
+            }
         }
 
         //TODO: wait to receive file from master
