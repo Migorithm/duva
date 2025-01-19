@@ -124,9 +124,9 @@ sequenceDiagram
 
 ```
 
-## Strong consistency with Raft(RFC)
+### Strong consistency with Raft(RFC)
 
-### Election (normal flow)
+#### Election (normal flow)
 There are two timeout settings which control elections.
 - `Election timeout` : amount of time a follower waits until becoming a candidate, randomized to be between 150-300ms
   - After elecction timeout, the follower becomes a candidate and start a new election term. In this case system:
@@ -141,7 +141,7 @@ There are two timeout settings which control elections.
   - The election term continues until a follower stops receiving heartbeats and becomes a candidate
 
 
-### Election in split brain
+#### Election in split brain
 - If two candidates occur at the same time, it causes race. Let's say we have two candidates(A,B) and two potential followers(C,D).
 - `Request Vote` arrives at two node(C,D) 
   - C votes for A
@@ -150,6 +150,12 @@ There are two timeout settings which control elections.
 - Then EVERY NODES wait one more round of `election timeout` and send `Request vote` again.
 
 
+
+### Failure Detection(TBD)
+The system doesn't cooridnate important decisions using the protocol that's eventually consistent like gossip dissemination. 
+However, general information such as liveness of each node could be spread well with such algorithm. 
+As of writing(19th of Jan, 2025) the system is aimed at acheiving failure detection using `Gossip mechanis` which may evolve into 
+hybrid gossip algorithm using `Plumtree`
 
 
 ### Getting Started
