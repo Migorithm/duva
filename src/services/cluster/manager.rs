@@ -50,9 +50,7 @@ impl ClusterManager {
     pub(crate) async fn accept_peer(&self, mut peer_stream: InboundStream) -> anyhow::Result<()> {
         let repl_info = self.replication_info().await?;
 
-        let (peer_addr, master_repl_id) = peer_stream.recv_threeway_handshake(repl_info).await?;
-
-        let repl_info = self.replication_info().await?;
+        let (peer_addr, master_repl_id) = peer_stream.recv_threeway_handshake(&repl_info).await?;
 
         // TODO Need to decide which point to send file data
         // TODO At this point, slave stream must write master_replid so that other nodes can tell where it belongs

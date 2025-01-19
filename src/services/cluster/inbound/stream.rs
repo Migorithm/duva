@@ -17,7 +17,7 @@ make_smart_pointer!(InboundStream, TcpStream);
 impl InboundStream {
     pub async fn recv_threeway_handshake(
         &mut self,
-        repl_info: Replication,
+        repl_info: &Replication,
     ) -> anyhow::Result<(PeerAddr, String)> {
         self.recv_ping().await?;
 
@@ -27,7 +27,7 @@ impl InboundStream {
         let _capa_val_vec = self.recv_replconf_capa().await?;
 
         // TODO check repl_id is '?' or of mine. If not, consider incoming as peer
-        let (_repl_id, _offset) = self.recv_psync(&repl_info).await?;
+        let (_repl_id, _offset) = self.recv_psync(repl_info).await?;
 
         Ok((PeerAddr(format!("{}:{}", self.get_peer_ip()?, port)), _repl_id))
     }
