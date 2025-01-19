@@ -1,7 +1,6 @@
 use super::endec::decoder::byte_decoder::BytesDecoder;
 use super::endec::decoder::states::DecoderInit;
-use super::endec::encoder::encoding_processor::SaveMeta;
-use super::endec::encoder::encoding_processor::SavingProcessor;
+use super::endec::encoder::encoding_processor::EncodingProcessor;
 use super::DumpFile;
 
 use crate::services::interface::TWriterFactory;
@@ -23,7 +22,7 @@ impl PersistActor<Load> {
     }
 }
 
-impl PersistActor<SavingProcessor> {
+impl PersistActor<EncodingProcessor> {
     pub async fn run(
         filepath: String,
         num_of_cache_actors: usize,
@@ -31,7 +30,7 @@ impl PersistActor<SavingProcessor> {
         // * Propagate error to caller before sending it to the background
         let file = tokio::fs::File::create_writer(filepath).await?;
 
-        let processor = SavingProcessor::new(file, SaveMeta::new(num_of_cache_actors));
+        let processor = EncodingProcessor::with_file(file, num_of_cache_actors);
 
         let persist_actor = Self { processor };
 
