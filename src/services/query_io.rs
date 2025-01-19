@@ -2,6 +2,8 @@ use std::time::SystemTime;
 
 use crate::services::statefuls::cache::CacheValue;
 use anyhow::Result;
+use base64::prelude::BASE64_STANDARD;
+use base64::Engine;
 use bytes::BytesMut;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -36,7 +38,7 @@ impl QueryIO {
             QueryIO::Null => "$-1\r\n".to_string(),
             QueryIO::Err(e) => format!("-{}\r\n", e),
             QueryIO::File(f) => {
-                let hex_file = f.into_iter().map(|x| format!("{:x}", x)).collect::<String>();
+                let hex_file = BASE64_STANDARD.encode(f);
                 let mut result = format!("${}\r\n", hex_file.len());
                 result.push_str(&hex_file);
                 result
@@ -134,7 +136,9 @@ fn parse_bulk_string_or_file(buffer: BytesMut) -> Result<(QueryIO, usize)> {
         Ok((QueryIO::BulkString(bulk_string_value), len + content_len + 2))
     } else {
         let file_content = &buffer[len..(len + content_len)];
-        Ok((QueryIO::File(file_content.to_vec()), len + content_len))
+        // convert base64 to bytes
+        let file = BASE64_STANDARD.decode(file_content)?;
+        Ok((QueryIO::File(file), len + content_len))
     }
 }
 
