@@ -47,15 +47,17 @@ impl ClusterManager {
         Ok(peers)
     }
 
-    pub(crate) async fn accept_peer(&self, mut peer_stream: InboundStream) {
-        let (peer_addr, master_repl_id) = peer_stream.recv_threeway_handshake().await.unwrap();
+    pub(crate) async fn accept_peer(&self, mut peer_stream: InboundStream) -> anyhow::Result<()> {
+        let repl_info = self.replication_info().await?;
 
-        let repl_info = self.replication_info().await.unwrap();
+        let (peer_addr, master_repl_id) = peer_stream.recv_threeway_handshake(repl_info).await?;
+
+        let repl_info = self.replication_info().await?;
 
         // TODO Need to decide which point to send file data
         // TODO At this point, slave stream must write master_replid so that other nodes can tell where it belongs
 
-        self.disseminate_peers(&mut peer_stream).await.unwrap();
+        self.disseminate_peers(&mut peer_stream).await?;
 
         // TODO At this point again, slave tries to connect to other nodes as peer in the cluster
         self.send(ClusterCommand::AddPeer {
@@ -63,8 +65,8 @@ impl ClusterManager {
             stream: peer_stream.0,
             peer_kind: PeerKind::accepted_peer_kind(&repl_info.master_replid, &master_repl_id),
         })
-        .await
-        .unwrap();
+        .await?;
+        Ok(())
     }
 
     async fn disseminate_peers(&self, stream: &mut TcpStream) -> anyhow::Result<()> {

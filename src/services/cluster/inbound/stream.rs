@@ -1,5 +1,6 @@
 use crate::make_smart_pointer;
 
+use crate::services::cluster::actors::replication::Replication;
 use crate::services::cluster::actors::types::PeerAddr;
 use crate::services::cluster::inbound::request::HandShakeRequest;
 use crate::services::cluster::inbound::request::HandShakeRequestEnum;
@@ -14,7 +15,10 @@ pub(crate) struct InboundStream(pub TcpStream);
 make_smart_pointer!(InboundStream, TcpStream);
 
 impl InboundStream {
-    pub async fn recv_threeway_handshake(&mut self) -> anyhow::Result<(PeerAddr, String)> {
+    pub async fn recv_threeway_handshake(
+        &mut self,
+        repl_info: Replication,
+    ) -> anyhow::Result<(PeerAddr, String)> {
         self.recv_ping().await?;
 
         let port = self.recv_replconf_listening_port().await?;
@@ -23,7 +27,7 @@ impl InboundStream {
         let _capa_val_vec = self.recv_replconf_capa().await?;
 
         // TODO check repl_id is '?' or of mine. If not, consider incoming as peer
-        let (_repl_id, _offset) = self.recv_psync().await?;
+        let (_repl_id, _offset) = self.recv_psync(&repl_info).await?;
 
         Ok((PeerAddr(format!("{}:{}", self.get_peer_ip()?, port)), _repl_id))
     }
@@ -49,13 +53,14 @@ impl InboundStream {
         self.write(QueryIO::SimpleString("OK".to_string())).await?;
         Ok(capa_val_vec)
     }
-    async fn recv_psync(&mut self) -> anyhow::Result<(String, i64)> {
+    async fn recv_psync(&mut self, repl_info: &Replication) -> anyhow::Result<(String, i64)> {
         let mut cmd = self.extract_cmd().await?;
         let (repl_id, offset) = cmd.extract_psync()?;
 
-        self.write(QueryIO::SimpleString(
-            "FULLRESYNC 8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb 0".to_string(),
-        ))
+        self.write(QueryIO::SimpleString(format!(
+            "FULLRESYNC {} {}",
+            repl_info.master_replid, repl_info.master_repl_offset
+        )))
         .await?;
 
         Ok((repl_id, offset))

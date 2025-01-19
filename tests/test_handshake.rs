@@ -49,10 +49,9 @@ async fn test_master_threeway_handshake() {
     h.send(b"*3\r\n$5\r\nPSYNC\r\n$1\r\n?\r\n$2\r\n-1\r\n").await;
 
     // THEN - client receives FULLRESYNC - this is a dummy response
-    assert!(h
-        .get_response()
-        .await
-        .starts_with("+FULLRESYNC 8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb 0\r\n"));
+    let res = h.get_response().await;
+
+    assert!(res.starts_with("+FULLRESYNC 8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb 0\r\n"));
 }
 
 #[tokio::test]
