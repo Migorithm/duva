@@ -1,6 +1,6 @@
 use crate::make_smart_pointer;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum PeerKind {
     Peer,
     Replica,
@@ -9,7 +9,7 @@ pub enum PeerKind {
 
 impl PeerKind {
     pub fn peer_kind(self_repl_id: &str, other_repl_id: &str) -> Self {
-        if self_repl_id == "?" || self_repl_id == other_repl_id {
+        if other_repl_id == "?" || self_repl_id == other_repl_id {
             Self::Replica
         } else {
             Self::Peer

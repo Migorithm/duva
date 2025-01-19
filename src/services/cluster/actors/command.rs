@@ -29,11 +29,29 @@ pub enum MasterCommand {
     Ping,
     Replicate { query: QueryIO },
 }
+pub enum SlaveCommand {
+    Ping,
+}
+
 pub enum PeerCommand {
     Ping,
 }
 
 impl TryFrom<QueryIO> for MasterCommand {
+    type Error = anyhow::Error;
+    fn try_from(query: QueryIO) -> anyhow::Result<Self> {
+        match query {
+            QueryIO::SimpleString(s) => match s.to_lowercase().as_str() {
+                "ping" => Ok(Self::Ping),
+
+                _ => todo!(),
+            },
+            _ => todo!(),
+        }
+    }
+}
+
+impl TryFrom<QueryIO> for SlaveCommand {
     type Error = anyhow::Error;
     fn try_from(query: QueryIO) -> anyhow::Result<Self> {
         match query {

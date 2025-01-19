@@ -14,7 +14,6 @@ use tokio::sync::mpsc::Sender;
 
 #[derive(Debug, Default)]
 pub struct ClusterActor {
-    // PeerAddr is cluster ip:{cluster_port} of peer
     members: BTreeMap<PeerAddr, Peer>,
     replication: Replication,
 }
@@ -99,6 +98,7 @@ impl Peer {
         cluster_handler: Sender<ClusterCommand>,
     ) -> Self {
         let (r, w) = stream.into_split();
+        println!("{:?}", peer_kind);
         let (write_connected, read_connected) = match peer_kind {
             PeerKind::Peer => (
                 ClusterWriteConnected::Peer { stream: w },

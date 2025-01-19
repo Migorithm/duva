@@ -8,7 +8,7 @@ use crate::services::cluster::outbound::stream::OutboundStream;
 
 use crate::services::interface::TStream;
 use crate::services::query_io::QueryIO;
-use std::thread::sleep;
+
 use std::time::Duration;
 use tokio::net::TcpStream;
 use tokio::sync::mpsc::Sender;
@@ -86,7 +86,7 @@ impl ClusterManager {
 
     pub(crate) async fn discover_cluster(&'static self, self_port: u16) -> anyhow::Result<()> {
         let repl_info = self.replication_info().await?;
-        sleep(Duration::from_secs(1));
+
         let master_bind_addr = repl_info.master_cluster_bind_addr();
         let mut outbound_stream = OutboundStream(TcpStream::connect(&master_bind_addr).await?);
 
