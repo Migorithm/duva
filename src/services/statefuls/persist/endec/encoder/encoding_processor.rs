@@ -1,6 +1,6 @@
 use crate::services::{interface::TWrite, statefuls::cache::CacheEntry};
 
-use crate::services::statefuls::persist::save_command::SaveCommand;
+use crate::services::statefuls::persist::encoding_command::EncodingCommand;
 use anyhow::Result;
 
 use super::byte_encoder::encode_checksum;
@@ -54,9 +54,9 @@ impl EncodingProcessor {
         self.target.write(&meta.concat()).await?;
         Ok(())
     }
-    pub async fn handle_cmd(&mut self, cmd: SaveCommand) -> Result<bool> {
+    pub async fn handle_cmd(&mut self, cmd: EncodingCommand) -> Result<bool> {
         match cmd {
-            SaveCommand::LocalShardSize { table_size, expiry_size } => {
+            EncodingCommand::LocalShardSize { table_size, expiry_size } => {
                 self.meta.total_key_value_table_size += table_size;
                 self.meta.total_expires_table_size += expiry_size;
                 self.meta.num_of_saved_table_size_actor -= 1;
@@ -69,13 +69,13 @@ impl EncodingProcessor {
                         .await?;
                 }
             }
-            SaveCommand::SaveChunk(chunk) => {
+            EncodingCommand::SaveChunk(chunk) => {
                 self.meta.chunk_queue.push_back(chunk);
                 if self.meta.num_of_saved_table_size_actor == 0 {
                     self.encode_chunk_queue().await?;
                 }
             }
-            SaveCommand::StopSentinel => {
+            EncodingCommand::StopSentinel => {
                 self.meta.num_of_cache_actors -= 1;
                 if self.meta.num_of_cache_actors == 0 {
                     self.encode_chunk_queue().await?;

@@ -4,7 +4,7 @@ use crate::services::query_io::QueryIO;
 use crate::services::statefuls::cache::ttl::manager::TtlSchedulerInbox;
 
 use crate::services::statefuls::cache::ttl::actor::TtlActor;
-use crate::services::statefuls::persist::save_command::SaveCommand;
+use crate::services::statefuls::persist::encoding_command::EncodingCommand;
 use crate::services::statefuls::persist::DumpFile;
 use anyhow::Result;
 use std::time::SystemTime;
@@ -14,7 +14,7 @@ use tokio::sync::oneshot::Sender;
 
 type OneShotSender<T> = tokio::sync::oneshot::Sender<T>;
 type OneShotReceiverJoinHandle<T> =
-    tokio::task::JoinHandle<std::result::Result<T, tokio::sync::oneshot::error::RecvError>>;
+tokio::task::JoinHandle<std::result::Result<T, tokio::sync::oneshot::error::RecvError>>;
 
 #[derive(Clone)]
 pub(crate) struct CacheManager {
@@ -54,7 +54,7 @@ impl CacheManager {
         Ok(QueryIO::SimpleString("OK".to_string()))
     }
 
-    pub(crate) async fn route_save(&self, outbox: mpsc::Sender<SaveCommand>) {
+    pub(crate) async fn route_save(&self, outbox: mpsc::Sender<EncodingCommand>) {
         // get all the handlers to cache actors
         for inbox in self.inboxes.iter().map(Clone::clone) {
             let outbox = outbox.clone();
