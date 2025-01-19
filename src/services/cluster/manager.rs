@@ -10,6 +10,7 @@ use crate::services::interface::TStream;
 use crate::services::query_io::QueryIO;
 
 use crate::services::statefuls::cache::manager::CacheManager;
+use crate::services::statefuls::persist::endec::encoder::encoding_processor::EncodingProcessor;
 use std::time::Duration;
 use tokio::net::TcpStream;
 use tokio::sync::mpsc::Sender;
@@ -60,8 +61,32 @@ impl ClusterManager {
 
         // TODO At this point again, slave tries to connect to other nodes as peer in the cluster
         let peer_kind = PeerKind::accepted_peer_kind(&repl_info.master_replid, &master_repl_id);
+        if let PeerKind::Replica = peer_kind {
+            let (tx, mut rx) = tokio::sync::mpsc::channel(100);
+            let size = cache_manager.inboxes.len();
+            let mut processor = EncodingProcessor::with_vec(size);
+            processor.add_meta().await.unwrap();
+            cache_manager.route_save(tx).await;
+            while let Some(command) = rx.recv().await {
+                match processor.handle_cmd(command).await {
+                    Ok(should_break) => {
+                        if should_break {
+                            break;
+                        }
+                    }
+                    Err(err) => {
+                        panic!("error while encoding: {:?}", err);
+                    }
+                }
+            }
+            let file = processor.into_inner();
+            let dump = QueryIO::File(file);
+
+            println!("Dump {:?}", dump);
+            peer_stream.write(dump).await.unwrap();
+        }
         self.send(ClusterCommand::AddPeer {
-            peer_addr,
+            peer_addr: peer_addr.clone(),
             stream: peer_stream.0,
             peer_kind: peer_kind.clone(),
         })
@@ -69,8 +94,6 @@ impl ClusterManager {
         Ok(())
             .await
             .unwrap();
-
-        if let PeerKind::Replica = peer_kind {}
     }
 
     async fn disseminate_peers(&self, stream: &mut TcpStream) -> anyhow::Result<()> {

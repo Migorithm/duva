@@ -97,6 +97,14 @@ impl EncodingProcessor {
         }
         Ok(())
     }
+
+    pub fn into_inner(self) -> Vec<u8> {
+        if let EncodingTarget::InMemory(v) = self.target {
+            v
+        } else {
+            panic!("cannot return inner for non InMemory type target")
+        }
+    }
 }
 
 pub struct SaveMeta {
