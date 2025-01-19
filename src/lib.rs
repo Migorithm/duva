@@ -58,7 +58,7 @@ where
                 cluster_manager,
                 ttl_inbox.clone(),
             )
-            .into(),
+                .into(),
         );
 
         StartUpFacade {
@@ -83,6 +83,7 @@ where
         tokio::spawn(Self::start_accepting_peer_connections(
             self.config_manager.peer_bind_addr(),
             self.cluster_manager,
+            self.cache_manager,
         ));
 
         tokio::spawn(async move {
@@ -96,6 +97,7 @@ where
     async fn start_accepting_peer_connections(
         peer_bind_addr: String,
         cluster_manager: &'static ClusterManager,
+        cache_manager: &'static CacheManager,
     ) -> Result<()> {
         let peer_listener = TcpListener::bind(&peer_bind_addr)
             .await
@@ -110,7 +112,7 @@ where
                 Ok((peer_stream, _socket_addr)) => {
                     tokio::spawn(async move {
                         if let Err(err) =
-                            cluster_manager.accept_peer(InboundStream(peer_stream)).await
+                            cluster_manager.accept_peer(InboundStream(peer_stream), cache_manager).await
                         {
                             println!("[ERROR] Failed to accept peer connection: {:?}", err);
                         }
