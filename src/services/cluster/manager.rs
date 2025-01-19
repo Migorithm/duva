@@ -47,15 +47,15 @@ impl ClusterManager {
         Ok(peers)
     }
 
-    pub(crate) async fn accept_peer(&self, mut peer_stream: InboundStream) {
-        let (peer_addr, master_repl_id) = peer_stream.recv_threeway_handshake().await.unwrap();
+    pub(crate) async fn accept_peer(&self, mut peer_stream: InboundStream) -> anyhow::Result<()> {
+        let repl_info = self.replication_info().await?;
 
-        let repl_info = self.replication_info().await.unwrap();
+        let (peer_addr, master_repl_id) = peer_stream.recv_threeway_handshake(&repl_info).await?;
 
         // TODO Need to decide which point to send file data
         // TODO At this point, slave stream must write master_replid so that other nodes can tell where it belongs
 
-        self.disseminate_peers(&mut peer_stream).await.unwrap();
+        self.disseminate_peers(&mut peer_stream).await?;
 
         // TODO At this point again, slave tries to connect to other nodes as peer in the cluster
         self.send(ClusterCommand::AddPeer {
@@ -63,8 +63,8 @@ impl ClusterManager {
             stream: peer_stream.0,
             peer_kind: PeerKind::accepted_peer_kind(&repl_info.master_replid, &master_repl_id),
         })
-        .await
-        .unwrap();
+        .await?;
+        Ok(())
     }
 
     async fn disseminate_peers(&self, stream: &mut TcpStream) -> anyhow::Result<()> {
@@ -84,33 +84,42 @@ impl ClusterManager {
         Ok(rx.await?)
     }
 
-    pub(crate) async fn discover_cluster(&'static self, self_port: u16) -> anyhow::Result<()> {
+    pub(crate) async fn discover_cluster(
+        &'static self,
+        self_port: u16,
+        connect_to: String,
+    ) -> anyhow::Result<()> {
+        let existing_peers = self.get_peers().await?;
         let repl_info = self.replication_info().await?;
 
-        let master_bind_addr = repl_info.master_cluster_bind_addr();
-        let mut outbound_stream = OutboundStream(TcpStream::connect(&master_bind_addr).await?);
+        // Base case
+        if existing_peers.contains(&PeerAddr(connect_to.clone())) {
+            return Ok(());
+        }
+
+        let mut outbound_stream = OutboundStream(TcpStream::connect(&connect_to).await?);
 
         let connection_info = outbound_stream.establish_connection(self_port).await?;
 
         self.send(ClusterCommand::AddPeer {
-            peer_addr: PeerAddr(master_bind_addr),
+            peer_addr: PeerAddr(connect_to),
             stream: outbound_stream.0,
-            peer_kind: PeerKind::connected_peer_kind(
-                &repl_info.master_replid,
-                &connection_info.repl_id,
-            ),
+            peer_kind: PeerKind::connected_peer_kind(&repl_info, &connection_info.repl_id),
         })
         .await?;
 
-        let existing_peers = self.get_peers().await?;
-        for peer in connection_info.peer_list {
-            // if peer is not in the cluster, connect to it
-            if !existing_peers.contains(&PeerAddr(peer.clone())) {
-                let mut peer_stream = OutboundStream(TcpStream::connect(peer).await?);
-            }
+        if repl_info.master_replid == "?" {
+            self.send(ClusterCommand::SetReplicationId(connection_info.repl_id.clone())).await?;
         }
 
-        //TODO: wait to receive file from master
+        for peer in connection_info.list_peer_binding_addrs() {
+            // Recursive async calls need indirection because the compiler needs to know the size of the Future at compile time.
+            // async fn returns an anonymous Future type that contains all the state needed to execute the async function. With recursion, this would create an infinitely nested type like:
+            // Future<Future<Future<...>>>
+            // Using Box::pin adds a layer of indirection through the heap, breaking the infinite size issue by making the Future size fixed
+            Box::pin(self.discover_cluster(self_port, peer)).await?;
+        }
+
         Ok(())
     }
 }

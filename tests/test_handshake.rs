@@ -49,10 +49,9 @@ async fn test_master_threeway_handshake() {
     h.send(b"*3\r\n$5\r\nPSYNC\r\n$1\r\n?\r\n$2\r\n-1\r\n").await;
 
     // THEN - client receives FULLRESYNC - this is a dummy response
-    assert!(h
-        .get_response()
-        .await
-        .starts_with("+FULLRESYNC 8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb 0\r\n"));
+    let res = h.get_response().await;
+
+    assert!(res.starts_with("+FULLRESYNC 8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb 0\r\n"));
 }
 
 #[tokio::test]
@@ -65,6 +64,6 @@ async fn test_slave_threeway_handshake() {
     let mut replica_process = spawn_server_as_slave(&master_process);
 
     // Read stdout from the replica process
-    let mut stdout = replica_process.stdout.take();
-    wait_for_message(stdout.take().unwrap(), "[INFO] Three-way handshake completed", 1);
+    let mut stdout = replica_process.stdout.take().unwrap();
+    wait_for_message(&mut stdout, "[INFO] Three-way handshake completed", 1);
 }

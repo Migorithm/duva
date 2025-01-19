@@ -80,6 +80,9 @@ impl ClusterActor {
                 ClusterCommand::ReplicationInfo(sender) => {
                     let _ = sender.send(self.replication.clone());
                 }
+                ClusterCommand::SetReplicationId(master_repl_id) => {
+                    self.replication.master_replid = master_repl_id
+                }
             }
         }
     }
@@ -98,7 +101,7 @@ impl Peer {
         cluster_handler: Sender<ClusterCommand>,
     ) -> Self {
         let (r, w) = stream.into_split();
-        println!("{:?}", peer_kind);
+
         let (write_connected, read_connected) = match peer_kind {
             PeerKind::Peer => (
                 ClusterWriteConnected::Peer { stream: w },
