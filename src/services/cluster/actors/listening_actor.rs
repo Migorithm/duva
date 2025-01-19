@@ -10,6 +10,7 @@ use tokio::select;
 use tokio::sync::mpsc::Sender;
 use tokio::task::JoinHandle;
 
+
 pub(crate) struct PeerListeningActor {
     pub(super) read_connected: ClusterReadConnected,
     pub(super) cluster_handler: Sender<ClusterCommand>, // cluster_handler is used to send messages to the cluster actor
@@ -71,6 +72,9 @@ impl PeerListeningActor {
                         println!("[INFO] Received ping from master");
                     }
                     MasterCommand::Replicate { query } => {}
+                    MasterCommand::Sync(v) => {
+                        println!("[INFO] Received sync from master {:?}", v);
+                    }
                 }
             }
         }
