@@ -84,30 +84,35 @@ impl ClusterManager {
         Ok(rx.await?)
     }
 
-    pub(crate) async fn discover_cluster(&'static self, self_port: u16) -> anyhow::Result<()> {
+    pub(crate) async fn discover_cluster(
+        &'static self,
+        self_port: u16,
+        connect_to: String,
+    ) -> anyhow::Result<()> {
+        let existing_peers = self.get_peers().await?;
         let repl_info = self.replication_info().await?;
 
-        let master_bind_addr = repl_info.master_cluster_bind_addr();
-        let mut outbound_stream = OutboundStream(TcpStream::connect(&master_bind_addr).await?);
+        // Base case
+        if existing_peers.contains(&PeerAddr(connect_to.clone())) {
+            return Ok(());
+        }
 
+        let mut outbound_stream = OutboundStream(TcpStream::connect(&connect_to).await?);
         let connection_info = outbound_stream.establish_connection(self_port).await?;
 
         self.send(ClusterCommand::AddPeer {
-            peer_addr: PeerAddr(master_bind_addr),
+            peer_addr: PeerAddr(connect_to),
             stream: outbound_stream.0,
             peer_kind: PeerKind::connected_peer_kind(&repl_info, &connection_info.repl_id),
         })
         .await?;
 
-        let existing_peers = self.get_peers().await?;
         for peer in connection_info.peer_list {
             // if peer is not in the cluster, connect to it
-            if !existing_peers.contains(&PeerAddr(peer.clone())) {
-                let mut peer_stream = OutboundStream(TcpStream::connect(peer).await?);
-            }
+
+            let mut peer_stream = OutboundStream(TcpStream::connect(peer).await?);
         }
 
-        //TODO: wait to receive file from master
         Ok(())
     }
 }

@@ -147,7 +147,10 @@ where
                 // Cancel all client connections only IF the cluster mode has changes to slave
                 let _ = stop_sentinel_tx.send(());
 
-                tokio::spawn(self.cluster_manager.discover_cluster(self.config_manager.port));
+                tokio::spawn(self.cluster_manager.discover_cluster(
+                    self.config_manager.port,
+                    self.cluster_manager.replication_info().await?.master_cluster_bind_addr(),
+                ));
             }
 
             self.wait_until_cluster_mode_changed().await?;
