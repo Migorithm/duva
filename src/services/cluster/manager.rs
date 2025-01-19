@@ -95,7 +95,7 @@ impl ClusterManager {
         self.send(ClusterCommand::AddPeer {
             peer_addr: PeerAddr(master_bind_addr),
             stream: outbound_stream.0,
-            peer_kind: PeerKind::Master,
+            peer_kind: PeerKind::Master, // TODO, read metadata if exists. If it doesn't exist, you can assume it's connecting to master.
         })
         .await?;
 
