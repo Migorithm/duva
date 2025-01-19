@@ -26,6 +26,9 @@ impl OutboundStream {
                         self.write(msg).await?
                     }
                     ConnectionResponse::FULLRESYNC { repl_id, offset } => {
+                        // TODO repl_id here is the master_replid from connected server.
+                        // TODO Set repl_id if given server's repl_id is "?" otherwise, it means that now it's connected to peer.
+
                         println!("[INFO] Three-way handshake completed")
                     }
                     ConnectionResponse::PEERS(peer_list) => {
@@ -43,7 +46,7 @@ impl OutboundStream {
     fn after_ok(&self, ok_count: i32) -> anyhow::Result<QueryIO> {
         match ok_count {
             1 => Ok(write_array!("REPLCONF", "capa", "psync2")),
-            2 => Ok(write_array!("PSYNC", "?", "-1")),
+            2 => Ok(write_array!("PSYNC", "?", "-1")), // "?" here means the server is undecided about their master.
             _ => Err(anyhow::anyhow!("Unexpected OK count")),
         }
     }
