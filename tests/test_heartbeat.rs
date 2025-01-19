@@ -41,3 +41,18 @@ async fn test_heartbeat_sent_to_multiple_replicas() {
     t_h1.join().unwrap();
     t_h2.join().unwrap();
 }
+
+#[tokio::test]
+async fn test_heartbeat_master_receives_slave_heartbeat() {
+    // GIVEN
+    let mut master_process = spawn_server_process();
+    let mut replica_process = spawn_server_as_slave(&master_process);
+
+    //WHEN
+    let mut stdout = replica_process.stdout.take();
+
+    wait_for_message(stdout.take().unwrap(), "[INFO] Received ping from master", 2);
+
+    //THEN
+    wait_for_message(master_process.stdout.take().unwrap(), "[INFO] Received ping from slave", 2);
+}
