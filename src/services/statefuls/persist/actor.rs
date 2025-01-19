@@ -4,8 +4,9 @@ use super::endec::encoder::encoding_processor::EncodingProcessor;
 use super::DumpFile;
 
 use crate::services::interface::TWriterFactory;
-use crate::services::statefuls::persist::save_command::SaveCommand;
-use tokio::sync::mpsc::{Receiver, Sender};
+use crate::services::statefuls::persist::encoding_command::EncodingCommand;
+use tokio::sync::mpsc::Receiver;
+use tokio::sync::mpsc::Sender;
 
 pub struct Load;
 
@@ -26,7 +27,7 @@ impl PersistActor<EncodingProcessor> {
     pub async fn run(
         filepath: String,
         num_of_cache_actors: usize,
-    ) -> anyhow::Result<Sender<SaveCommand>> {
+    ) -> anyhow::Result<Sender<EncodingCommand>> {
         // * Propagate error to caller before sending it to the background
         let file = tokio::fs::File::create_writer(filepath).await?;
 
@@ -40,7 +41,7 @@ impl PersistActor<EncodingProcessor> {
         Ok(outbox)
     }
 
-    async fn save(mut self, mut inbox: Receiver<SaveCommand>) -> anyhow::Result<()> {
+    async fn save(mut self, mut inbox: Receiver<EncodingCommand>) -> anyhow::Result<()> {
         self.processor.add_meta().await?;
         while let Some(command) = inbox.recv().await {
             match self.processor.handle_cmd(command).await {
