@@ -58,7 +58,7 @@ where
                 cluster_manager,
                 ttl_inbox.clone(),
             )
-            .into(),
+                .into(),
         );
 
         StartUpFacade {
@@ -83,6 +83,7 @@ where
         tokio::spawn(Self::start_accepting_peer_connections(
             self.config_manager.peer_bind_addr(),
             self.cluster_manager,
+            self.cache_manager,
         ));
 
         tokio::spawn(async move {
@@ -96,6 +97,7 @@ where
     async fn start_accepting_peer_connections(
         peer_bind_addr: String,
         cluster_manager: &'static ClusterManager,
+        cache_manager: &'static CacheManager,
     ) -> Result<()> {
         let peer_listener = TcpListener::bind(&peer_bind_addr)
             .await
@@ -108,7 +110,7 @@ where
             match peer_listener.accept().await {
                 // ? how do we know if incoming connection is from a peer or replica?
                 Ok((peer_stream, _socket_addr)) => {
-                    tokio::spawn(cluster_manager.accept_peer(InboundStream(peer_stream)));
+                    tokio::spawn(cluster_manager.accept_peer(InboundStream(peer_stream), cache_manager));
                 }
 
                 Err(err) => {

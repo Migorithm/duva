@@ -9,6 +9,7 @@ use crate::services::cluster::outbound::stream::OutboundStream;
 use crate::services::interface::TStream;
 use crate::services::query_io::QueryIO;
 
+use crate::services::statefuls::cache::manager::CacheManager;
 use std::time::Duration;
 use tokio::net::TcpStream;
 use tokio::sync::mpsc::Sender;
@@ -47,7 +48,7 @@ impl ClusterManager {
         Ok(peers)
     }
 
-    pub(crate) async fn accept_peer(&self, mut peer_stream: InboundStream) {
+    pub(crate) async fn accept_peer(&self, mut peer_stream: InboundStream, cache_manager: &'static CacheManager) {
         let (peer_addr, master_repl_id) = peer_stream.recv_threeway_handshake().await.unwrap();
 
         let repl_info = self.replication_info().await.unwrap();
@@ -58,13 +59,16 @@ impl ClusterManager {
         self.disseminate_peers(&mut peer_stream).await.unwrap();
 
         // TODO At this point again, slave tries to connect to other nodes as peer in the cluster
+        let peer_kind = PeerKind::accepted_peer_kind(&repl_info.master_replid, &master_repl_id);
         self.send(ClusterCommand::AddPeer {
             peer_addr,
             stream: peer_stream.0,
-            peer_kind: PeerKind::accepted_peer_kind(&repl_info.master_replid, &master_repl_id),
+            peer_kind: peer_kind.clone(),
         })
-        .await
-        .unwrap();
+            .await
+            .unwrap();
+
+        if let PeerKind::Replica = peer_kind {}
     }
 
     async fn disseminate_peers(&self, stream: &mut TcpStream) -> anyhow::Result<()> {
@@ -100,7 +104,7 @@ impl ClusterManager {
                 &connection_info.repl_id,
             ),
         })
-        .await?;
+            .await?;
 
         let existing_peers = self.get_peers().await?;
         for peer in connection_info.peer_list {
