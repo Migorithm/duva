@@ -98,6 +98,7 @@ impl ClusterManager {
         }
 
         let mut outbound_stream = OutboundStream(TcpStream::connect(&connect_to).await?);
+
         let connection_info = outbound_stream.establish_connection(self_port).await?;
 
         self.send(ClusterCommand::AddPeer {
@@ -107,10 +108,16 @@ impl ClusterManager {
         })
         .await?;
 
-        for peer in connection_info.peer_list {
-            // if peer is not in the cluster, connect to it
+        if repl_info.master_replid == "?" {
+            self.send(ClusterCommand::SetReplicationId(connection_info.repl_id.clone())).await?;
+        }
 
-            let mut peer_stream = OutboundStream(TcpStream::connect(peer).await?);
+        for peer in connection_info.list_peer_binding_addrs() {
+            // Recursive async calls need indirection because the compiler needs to know the size of the Future at compile time.
+            // async fn returns an anonymous Future type that contains all the state needed to execute the async function. With recursion, this would create an infinitely nested type like:
+            // Future<Future<Future<...>>>
+            // Using Box::pin adds a layer of indirection through the heap, breaking the infinite size issue by making the Future size fixed
+            Box::pin(self.discover_cluster(self_port, peer)).await?;
         }
 
         Ok(())

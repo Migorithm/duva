@@ -63,3 +63,22 @@ pub(crate) struct ConnectionInfo {
     pub(crate) offset: i64,
     pub(crate) peer_list: Vec<String>,
 }
+
+impl ConnectionInfo {
+    pub(crate) fn list_peer_binding_addrs(&self) -> Vec<String> {
+        self.peer_list
+            .iter()
+            .flat_map(|peer| {
+                if let Some((ip, port)) = peer.rsplit_once(':') {
+                    Some(
+                        ip.to_string()
+                            + ":"
+                            + (port.parse::<u16>().unwrap() + 10000).to_string().as_str(),
+                    )
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>()
+    }
+}

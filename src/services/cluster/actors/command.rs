@@ -11,6 +11,7 @@ pub enum ClusterCommand {
     RemovePeer(PeerAddr),
     GetPeers(tokio::sync::oneshot::Sender<Vec<PeerAddr>>),
     ReplicationInfo(tokio::sync::oneshot::Sender<Replication>),
+    SetReplicationId(String),
     Write(ClusterWriteCommand),
 }
 
