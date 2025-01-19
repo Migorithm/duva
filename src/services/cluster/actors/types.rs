@@ -8,12 +8,15 @@ pub enum PeerKind {
 }
 
 impl PeerKind {
-    pub fn peer_kind(self_repl_id: &str, other_repl_id: &str) -> Self {
+    pub fn accepted_peer_kind(self_repl_id: &str, other_repl_id: &str) -> Self {
         if other_repl_id == "?" || self_repl_id == other_repl_id {
             Self::Replica
         } else {
             Self::Peer
         }
+    }
+    pub fn connected_peer_kind(self_repl_id: &str, other_repl_id: &str) -> Self {
+        Self::Master
     }
 }
 
