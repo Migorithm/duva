@@ -110,9 +110,11 @@ where
             match peer_listener.accept().await {
                 // ? how do we know if incoming connection is from a peer or replica?
                 Ok((peer_stream, _socket_addr)) => {
+                    let repl_info = cluster_manager.replication_info().await?;
+
                     tokio::spawn(async move {
                         if let Err(err) = cluster_manager
-                            .accept_peer(InboundStream(peer_stream), cache_manager)
+                            .accept_peer(InboundStream::new(peer_stream, repl_info), cache_manager)
                             .await
                         {
                             println!("[ERROR] Failed to accept peer connection: {:?}", err);

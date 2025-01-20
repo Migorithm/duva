@@ -70,18 +70,15 @@ impl ClusterManager {
         mut peer_stream: InboundStream,
         cache_manager: &'static CacheManager,
     ) -> anyhow::Result<()> {
-        let repl_info = self.replication_info().await?;
-        let (peer_addr, master_repl_id) = peer_stream.recv_threeway_handshake(&repl_info).await?;
-
+        peer_stream.recv_threeway_handshake().await?;
         peer_stream.disseminate_peers(self.get_peers().await?).await?;
-
-        let peer_kind = PeerKind::accepted_peer_kind(&repl_info.master_replid, &master_repl_id);
+        let peer_kind = peer_stream.peer_kind()?;
 
         if matches!(peer_kind, PeerKind::Replica) && IS_MASTER_MODE.load(Ordering::Acquire) {
             Self::send_sync_to_replica(&mut peer_stream, cache_manager).await?;
         }
+        self.send(peer_stream.to_add_peer()?).await?;
 
-        self.add_peer(peer_addr, peer_stream, peer_kind).await?;
         Ok(())
     }
 
