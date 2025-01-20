@@ -3,6 +3,7 @@ use crate::make_smart_pointer;
 
 use crate::services::cluster::actors::replication::Replication;
 use crate::services::cluster::actors::types::PeerAddr;
+use crate::services::cluster::actors::types::PeerAddrs;
 use crate::services::cluster::inbound::request::HandShakeRequest;
 use crate::services::cluster::inbound::request::HandShakeRequestEnum;
 
@@ -70,5 +71,10 @@ impl InboundStream {
     async fn extract_cmd(&mut self) -> anyhow::Result<HandShakeRequest> {
         let query_io = self.read_value().await?;
         HandShakeRequest::new(query_io)
+    }
+
+    pub(crate) async fn disseminate_peers(&mut self, peers: PeerAddrs) -> anyhow::Result<()> {
+        self.write(QueryIO::SimpleString(format!("PEERS {}", peers.stringify()))).await?;
+        Ok(())
     }
 }

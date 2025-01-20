@@ -73,7 +73,7 @@ impl ClusterManager {
         let repl_info = self.replication_info().await?;
         let (peer_addr, master_repl_id) = peer_stream.recv_threeway_handshake(&repl_info).await?;
 
-        self.disseminate_peers(&mut peer_stream).await?;
+        peer_stream.disseminate_peers(self.get_peers().await?).await?;
 
         let peer_kind = PeerKind::accepted_peer_kind(&repl_info.master_replid, &master_repl_id);
 
@@ -109,12 +109,6 @@ impl ClusterManager {
         let dump = QueryIO::File(processor.into_inner());
         println!("[INFO] Sent sync to slave {:?}", dump);
         peer_stream.write(dump).await?;
-        Ok(())
-    }
-
-    async fn disseminate_peers(&self, stream: &mut TcpStream) -> anyhow::Result<()> {
-        let peers = self.get_peers().await?;
-        stream.write(QueryIO::SimpleString(format!("PEERS {}", peers.stringify()))).await?;
         Ok(())
     }
 
