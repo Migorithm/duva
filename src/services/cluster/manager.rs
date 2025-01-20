@@ -1,10 +1,11 @@
 use super::actors::actor::ClusterActor;
 use super::actors::command::ClusterCommand;
-use super::actors::replication::Replication;
+use super::actors::replication::{Replication, IS_MASTER_MODE};
 use super::actors::types::{PeerAddr, PeerKind};
 use crate::make_smart_pointer;
 use crate::services::cluster::inbound::stream::InboundStream;
 use crate::services::cluster::outbound::stream::OutboundStream;
+use std::sync::atomic::Ordering;
 
 use crate::services::interface::TStream;
 use crate::services::query_io::QueryIO;
@@ -59,38 +60,50 @@ impl ClusterManager {
 
         self.disseminate_peers(&mut peer_stream).await?;
 
-        // TODO At this point again, slave tries to connect to other nodes as peer in the cluster
         let peer_kind = PeerKind::accepted_peer_kind(&repl_info.master_replid, &master_repl_id);
-        if let PeerKind::Replica = peer_kind {
-            let (tx, mut rx) = tokio::sync::mpsc::channel(100);
-            let size = cache_manager.inboxes.len();
-            let mut processor = EncodingProcessor::with_vec(size);
-            processor.add_meta().await.unwrap();
-            cache_manager.route_save(tx).await;
-            while let Some(command) = rx.recv().await {
-                match processor.handle_cmd(command).await {
-                    Ok(should_break) => {
-                        if should_break {
-                            break;
-                        }
-                    }
-                    Err(err) => {
-                        panic!("error while encoding: {:?}", err);
-                    }
-                }
+        if IS_MASTER_MODE.load(Ordering::Acquire) {
+            if let PeerKind::Replica = peer_kind {
+                Self::send_sync_to_replica(&mut peer_stream, cache_manager).await?;
             }
-            let file = processor.into_inner();
-            let dump = QueryIO::File(file);
-
-            println!("Dump {:?}", dump);
-            peer_stream.write(dump).await.unwrap();
         }
+
+        // TODO At this point again, slave tries to connect to other nodes as peer in the cluster
         self.send(ClusterCommand::AddPeer {
             peer_addr: peer_addr.clone(),
             stream: peer_stream.0,
             peer_kind: peer_kind.clone(),
         })
             .await?;
+        Ok(())
+    }
+
+    async fn send_sync_to_replica(peer_stream: &mut InboundStream, cache_manager: &CacheManager) -> anyhow::Result<()> {
+        let (tx, mut rx) = tokio::sync::mpsc::channel(100);
+        // route save caches
+        cache_manager.route_save(tx).await;
+
+        // run encoding processor
+        let size = cache_manager.inboxes.len();
+        let mut processor = EncodingProcessor::with_vec(size);
+        processor.add_meta().await?;
+        while let Some(command) = rx.recv().await {
+            match processor.handle_cmd(command).await {
+                Ok(should_break) => {
+                    if should_break {
+                        break;
+                    }
+                }
+                Err(err) => {
+                    panic!("error while encoding: {:?}", err);
+                }
+            }
+        }
+
+        // collect dump data from processor
+        let dump = QueryIO::File(processor.into_inner());
+
+        println!("[INFO] Sent sync to slave {:?}", dump);
+        peer_stream.write(dump).await?;
         Ok(())
     }
 
