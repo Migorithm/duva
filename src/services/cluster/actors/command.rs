@@ -3,13 +3,13 @@ use tokio::net::TcpStream;
 
 use super::{
     replication::Replication,
-    types::{PeerAddr, PeerKind},
+    types::{PeerAddr, PeerAddrs, PeerKind},
 };
 
 pub enum ClusterCommand {
     AddPeer { peer_addr: PeerAddr, stream: TcpStream, peer_kind: PeerKind },
     RemovePeer(PeerAddr),
-    GetPeers(tokio::sync::oneshot::Sender<Vec<PeerAddr>>),
+    GetPeers(tokio::sync::oneshot::Sender<PeerAddrs>),
     ReplicationInfo(tokio::sync::oneshot::Sender<Replication>),
     SetReplicationId(String),
     Write(ClusterWriteCommand),
@@ -44,9 +44,7 @@ impl TryFrom<QueryIO> for MasterCommand {
     type Error = anyhow::Error;
     fn try_from(query: QueryIO) -> anyhow::Result<Self> {
         match query {
-            QueryIO::File(v) => {
-                Ok(Self::Sync(v.into()))
-            }
+            QueryIO::File(v) => Ok(Self::Sync(v.into())),
             QueryIO::SimpleString(s) => match s.to_lowercase().as_str() {
                 "ping" => Ok(Self::Ping),
                 _ => todo!(),

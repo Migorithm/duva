@@ -32,3 +32,12 @@ impl PeerKind {
 pub struct PeerAddr(pub String);
 make_smart_pointer!(PeerAddr, String);
 from_to!(String, PeerAddr);
+
+pub struct PeerAddrs(pub Vec<PeerAddr>);
+make_smart_pointer!(PeerAddrs, Vec<PeerAddr>);
+from_to!(Vec<PeerAddr>, PeerAddrs);
+impl PeerAddrs {
+    pub fn stringify(self) -> String {
+        self.0.into_iter().map(|x| x.0).collect::<Vec<String>>().join(" ")
+    }
+}
