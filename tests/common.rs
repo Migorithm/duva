@@ -86,7 +86,11 @@ pub fn wait_for_message<T: Read>(read: &mut T, target: &str, target_count: usize
     }
 }
 
-pub fn wait_for_and_get_message<T: Read>(read: &mut T, target: &str, target_count: usize) -> String {
+pub fn wait_for_and_get_message<T: Read>(
+    read: &mut T,
+    target: &str,
+    target_count: usize,
+) -> String {
     let mut buf = BufReader::new(read).lines();
     let mut cnt = 1;
     let mut message = String::new();

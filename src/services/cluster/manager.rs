@@ -50,7 +50,11 @@ impl ClusterManager {
         Ok(peers)
     }
 
-    pub(crate) async fn accept_peer(&self, mut peer_stream: InboundStream, cache_manager: &'static CacheManager) -> anyhow::Result<()> {
+    pub(crate) async fn accept_peer(
+        &self,
+        mut peer_stream: InboundStream,
+        cache_manager: &'static CacheManager,
+    ) -> anyhow::Result<()> {
         let repl_info = self.replication_info().await?;
 
         let (peer_addr, master_repl_id) = peer_stream.recv_threeway_handshake(&repl_info).await?;
@@ -73,35 +77,32 @@ impl ClusterManager {
             stream: peer_stream.0,
             peer_kind: peer_kind.clone(),
         })
-            .await?;
+        .await?;
         Ok(())
     }
 
-    async fn send_sync_to_replica(peer_stream: &mut InboundStream, cache_manager: &CacheManager) -> anyhow::Result<()> {
+    async fn send_sync_to_replica(
+        peer_stream: &mut InboundStream,
+        cache_manager: &CacheManager,
+    ) -> anyhow::Result<()> {
         let (tx, mut rx) = tokio::sync::mpsc::channel(100);
         // route save caches
         cache_manager.route_save(tx).await;
 
         // run encoding processor
-        let size = cache_manager.inboxes.len();
-        let mut processor = EncodingProcessor::with_vec(size);
+        let mut processor = EncodingProcessor::with_vec(cache_manager.inboxes.len());
         processor.add_meta().await?;
-        while let Some(command) = rx.recv().await {
-            match processor.handle_cmd(command).await {
-                Ok(should_break) => {
-                    if should_break {
-                        break;
-                    }
-                }
+        while let Some(cmd) = rx.recv().await {
+            match processor.handle_cmd(cmd).await {
+                Ok(true) => break,
+                Ok(false) => continue,
                 Err(err) => {
-                    panic!("error while encoding: {:?}", err);
+                    panic!("Encoding Error: {:?}", err);
                 }
             }
         }
-
         // collect dump data from processor
         let dump = QueryIO::File(processor.into_inner());
-
         println!("[INFO] Sent sync to slave {:?}", dump);
         peer_stream.write(dump).await?;
         Ok(())
@@ -145,7 +146,8 @@ impl ClusterManager {
             peer_addr: PeerAddr(connect_to),
             stream: outbound_stream.0,
             peer_kind: PeerKind::connected_peer_kind(&repl_info, &connection_info.repl_id),
-        }).await?;
+        })
+        .await?;
 
         if repl_info.master_replid == "?" {
             self.send(ClusterCommand::SetReplicationId(connection_info.repl_id.clone())).await?;

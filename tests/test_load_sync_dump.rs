@@ -5,9 +5,7 @@ mod common;
 #[tokio::test]
 async fn test_send_sync_and_receive_sync() {
     let mut master = spawn_server_process();
-
     let mut replica = spawn_server_as_slave(&master);
-
     let mut stdout = master.stdout.take().unwrap();
 
     let master_message = "[INFO] Sent sync to slave ";
