@@ -1,5 +1,7 @@
 use crate::services::config::init::get_env;
 use std::sync::atomic::AtomicBool;
+
+use super::types::PeerAddr;
 pub static IS_MASTER_MODE: AtomicBool = AtomicBool::new(true);
 
 #[derive(Debug, Clone)]
@@ -59,7 +61,8 @@ impl Replication {
         ]
     }
 
-    pub fn master_cluster_bind_addr(&self) -> String {
+    pub fn master_cluster_bind_addr(&self) -> PeerAddr {
         format!("{}:{}", self.master_host.as_ref().unwrap(), self.master_port.unwrap() + 10000)
+            .into()
     }
 }

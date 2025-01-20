@@ -1,12 +1,17 @@
+use crate::services::cluster::actors::types::PeerAddr;
 use crate::services::cluster::outbound::response::ConnectionResponse;
 use crate::services::interface::{TRead, TStream};
 use crate::services::query_io::QueryIO;
-use crate::{make_smart_pointer, write_array};
+use crate::{from_to, make_smart_pointer, write_array};
 use tokio::net::TcpStream;
 
 // The following is used only when the node is in slave mode
 pub(crate) struct OutboundStream(pub(crate) TcpStream);
+
 impl OutboundStream {
+    pub(crate) async fn new(connect_to: &str) -> anyhow::Result<Self> {
+        Ok(OutboundStream(TcpStream::connect(connect_to).await?))
+    }
     pub async fn establish_connection(&mut self, self_port: u16) -> anyhow::Result<ConnectionInfo> {
         // Trigger
         self.write(write_array!("PING")).await?;
@@ -54,6 +59,7 @@ impl OutboundStream {
 }
 
 make_smart_pointer!(OutboundStream, TcpStream);
+from_to!(TcpStream, OutboundStream);
 
 #[derive(Debug, Default)]
 pub(crate) struct ConnectionInfo {
@@ -65,15 +71,16 @@ pub(crate) struct ConnectionInfo {
 }
 
 impl ConnectionInfo {
-    pub(crate) fn list_peer_binding_addrs(&self) -> Vec<String> {
+    pub(crate) fn list_peer_binding_addrs(&self) -> Vec<PeerAddr> {
         self.peer_list
             .iter()
             .flat_map(|peer| {
                 if let Some((ip, port)) = peer.rsplit_once(':') {
                     Some(
-                        ip.to_string()
+                        (ip.to_string()
                             + ":"
-                            + (port.parse::<u16>().unwrap() + 10000).to_string().as_str(),
+                            + (port.parse::<u16>().unwrap() + 10000).to_string().as_str())
+                        .into(),
                     )
                 } else {
                     None

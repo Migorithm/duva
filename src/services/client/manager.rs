@@ -58,7 +58,7 @@ impl ClientManager {
                     self.config_manager.get_filepath().await?,
                     self.cache_manager.inboxes.len(),
                 )
-                    .await?;
+                .await?;
 
                 self.cache_manager.route_save(outbox).await;
 

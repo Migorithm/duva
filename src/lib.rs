@@ -58,7 +58,7 @@ where
                 cluster_manager,
                 ttl_inbox.clone(),
             )
-                .into(),
+            .into(),
         );
 
         StartUpFacade {
@@ -111,8 +111,9 @@ where
                 // ? how do we know if incoming connection is from a peer or replica?
                 Ok((peer_stream, _socket_addr)) => {
                     tokio::spawn(async move {
-                        if let Err(err) =
-                            cluster_manager.accept_peer(InboundStream(peer_stream), cache_manager).await
+                        if let Err(err) = cluster_manager
+                            .accept_peer(InboundStream(peer_stream), cache_manager)
+                            .await
                         {
                             println!("[ERROR] Failed to accept peer connection: {:?}", err);
                         }

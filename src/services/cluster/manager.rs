@@ -50,34 +50,40 @@ impl ClusterManager {
         Ok(peers)
     }
 
+    async fn add_peer(
+        &self,
+        peer_addr: impl Into<PeerAddr>,
+        stream: impl Into<TcpStream>,
+        peer_kind: PeerKind,
+    ) -> anyhow::Result<()> {
+        self.send(ClusterCommand::AddPeer {
+            peer_addr: peer_addr.into(),
+            stream: stream.into(),
+            peer_kind,
+        })
+        .await?;
+        Ok(())
+    }
+
     pub(crate) async fn accept_peer(
         &self,
         mut peer_stream: InboundStream,
         cache_manager: &'static CacheManager,
     ) -> anyhow::Result<()> {
         let repl_info = self.replication_info().await?;
-
         let (peer_addr, master_repl_id) = peer_stream.recv_threeway_handshake(&repl_info).await?;
-
-        // TODO Need to decide which point to send file data
-        // TODO At this point, slave stream must write master_replid so that other nodes can tell where it belongs
 
         self.disseminate_peers(&mut peer_stream).await?;
 
         let peer_kind = PeerKind::accepted_peer_kind(&repl_info.master_replid, &master_repl_id);
-        if IS_MASTER_MODE.load(Ordering::Acquire) {
-            if let PeerKind::Replica = peer_kind {
-                Self::send_sync_to_replica(&mut peer_stream, cache_manager).await?;
-            }
+
+        if matches!(peer_kind, PeerKind::Replica) && IS_MASTER_MODE.load(Ordering::Acquire) {
+            Self::send_sync_to_replica(&mut peer_stream, cache_manager).await?;
         }
 
         // TODO At this point again, slave tries to connect to other nodes as peer in the cluster
-        self.send(ClusterCommand::AddPeer {
-            peer_addr: peer_addr.clone(),
-            stream: peer_stream.0,
-            peer_kind: peer_kind.clone(),
-        })
-        .await?;
+
+        self.add_peer(peer_addr, peer_stream.0, peer_kind).await?;
         Ok(())
     }
 
@@ -128,25 +134,25 @@ impl ClusterManager {
     pub(crate) async fn discover_cluster(
         &'static self,
         self_port: u16,
-        connect_to: String,
+        connect_to: PeerAddr,
     ) -> anyhow::Result<()> {
         let existing_peers = self.get_peers().await?;
         let repl_info = self.replication_info().await?;
 
         // Base case
-        if existing_peers.contains(&PeerAddr(connect_to.clone())) {
+        if existing_peers.contains(&connect_to) {
             return Ok(());
         }
 
-        let mut outbound_stream = OutboundStream(TcpStream::connect(&connect_to).await?);
+        let mut outbound_stream = OutboundStream::new(&connect_to).await?;
 
         let connection_info = outbound_stream.establish_connection(self_port).await?;
 
-        self.send(ClusterCommand::AddPeer {
-            peer_addr: PeerAddr(connect_to),
-            stream: outbound_stream.0,
-            peer_kind: PeerKind::connected_peer_kind(&repl_info, &connection_info.repl_id),
-        })
+        self.add_peer(
+            connect_to,
+            outbound_stream,
+            PeerKind::connected_peer_kind(&repl_info, &connection_info.repl_id),
+        )
         .await?;
 
         if repl_info.master_replid == "?" {

@@ -50,5 +50,10 @@ macro_rules! from_to {
                 Self(value)
             }
         }
+        impl From<$to> for $from {
+            fn from(value: $to) -> Self {
+                value.0
+            }
+        }
     };
 }
