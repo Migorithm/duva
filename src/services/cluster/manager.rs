@@ -97,19 +97,19 @@ impl ClusterManager {
         }
 
         // Recursive case
-        let mut outbound_stream = OutboundStream::new(&connect_to).await?;
+        let mut outbound_stream =
+            OutboundStream::new(&connect_to, self.replication_info().await?).await?;
 
         let connection_info = outbound_stream.establish_connection(self_port).await?;
 
-        let repl_info = self.replication_info().await?;
         self.add_peer(
             connect_to,
-            outbound_stream,
-            PeerKind::connected_peer_kind(&repl_info, &connection_info.repl_id),
+            outbound_stream.stream,
+            PeerKind::connected_peer_kind(&outbound_stream.repl_info, &connection_info.repl_id),
         )
         .await?;
 
-        if repl_info.master_replid == "?" {
+        if outbound_stream.repl_info.master_replid == "?" {
             self.send(ClusterCommand::SetReplicationId(connection_info.repl_id.clone())).await?;
         }
 

@@ -1,16 +1,21 @@
+use crate::services::cluster::actors::replication::Replication;
 use crate::services::cluster::actors::types::PeerAddr;
 use crate::services::cluster::outbound::response::ConnectionResponse;
 use crate::services::interface::{TRead, TStream};
 use crate::services::query_io::QueryIO;
-use crate::{from_to, make_smart_pointer, write_array};
+use crate::{make_smart_pointer, write_array};
 use tokio::net::TcpStream;
 
 // The following is used only when the node is in slave mode
-pub(crate) struct OutboundStream(pub(crate) TcpStream);
+pub(crate) struct OutboundStream {
+    pub(crate) stream: TcpStream,
+    pub(crate) repl_info: Replication,
+}
+make_smart_pointer!(OutboundStream, TcpStream => stream);
 
 impl OutboundStream {
-    pub(crate) async fn new(connect_to: &str) -> anyhow::Result<Self> {
-        Ok(OutboundStream(TcpStream::connect(connect_to).await?))
+    pub(crate) async fn new(connect_to: &str, repl_info: Replication) -> anyhow::Result<Self> {
+        Ok(OutboundStream { stream: TcpStream::connect(connect_to).await?, repl_info })
     }
     pub async fn establish_connection(&mut self, self_port: u16) -> anyhow::Result<ConnectionInfo> {
         // Trigger
@@ -57,9 +62,6 @@ impl OutboundStream {
         }
     }
 }
-
-make_smart_pointer!(OutboundStream, TcpStream);
-from_to!(TcpStream, OutboundStream);
 
 #[derive(Debug, Default)]
 pub(crate) struct ConnectionInfo {
