@@ -6,9 +6,7 @@ use crate::make_smart_pointer;
 use crate::services::cluster::inbound::stream::InboundStream;
 use crate::services::cluster::outbound::stream::OutboundStream;
 use crate::services::statefuls::cache::manager::CacheManager;
-
 use std::time::Duration;
-use tokio::net::TcpStream;
 use tokio::sync::mpsc::Sender;
 use tokio::time::interval;
 
@@ -43,21 +41,6 @@ impl ClusterManager {
         self.send(ClusterCommand::GetPeers(tx)).await?;
         let peers = rx.await?;
         Ok(peers)
-    }
-
-    async fn add_peer(
-        &self,
-        peer_addr: impl Into<PeerAddr>,
-        stream: impl Into<TcpStream>,
-        peer_kind: PeerKind,
-    ) -> anyhow::Result<()> {
-        self.send(ClusterCommand::AddPeer {
-            peer_addr: peer_addr.into(),
-            stream: stream.into(),
-            peer_kind,
-        })
-        .await?;
-        Ok(())
     }
 
     pub(crate) async fn accept_inbound_stream(
@@ -100,21 +83,15 @@ impl ClusterManager {
         let mut outbound_stream =
             OutboundStream::new(&connect_to, self.replication_info().await?).await?;
 
-        let connection_info = outbound_stream.establish_connection(self_port).await?;
+        outbound_stream.establish_connection(self_port).await?;
+        outbound_stream.set_replication_id(self).await?;
 
-        self.add_peer(
-            connect_to,
-            outbound_stream.stream,
-            PeerKind::connected_peer_kind(&outbound_stream.repl_info, &connection_info.repl_id),
-        )
-        .await?;
+        let (add_peer, connected_node_info) = outbound_stream.deconstruct(connect_to)?;
 
-        if outbound_stream.repl_info.master_replid == "?" {
-            self.send(ClusterCommand::SetReplicationId(connection_info.repl_id.clone())).await?;
-        }
+        self.send(add_peer).await?;
 
         // Discover additional peers concurrently
-        for peer in connection_info.list_peer_binding_addrs() {
+        for peer in connected_node_info.list_peer_binding_addrs() {
             Box::pin(self.discover_cluster(self_port, peer)).await?;
         }
 
