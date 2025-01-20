@@ -60,7 +60,7 @@ impl ClusterManager {
         Ok(())
     }
 
-    pub(crate) async fn accept_peer(
+    pub(crate) async fn accept_inbound_stream(
         &self,
         mut peer_stream: InboundStream,
         cache_manager: &'static CacheManager,

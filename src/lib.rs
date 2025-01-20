@@ -114,7 +114,10 @@ where
 
                     tokio::spawn(async move {
                         if let Err(err) = cluster_manager
-                            .accept_peer(InboundStream::new(peer_stream, repl_info), cache_manager)
+                            .accept_inbound_stream(
+                                InboundStream::new(peer_stream, repl_info),
+                                cache_manager,
+                            )
                             .await
                         {
                             println!("[ERROR] Failed to accept peer connection: {:?}", err);
