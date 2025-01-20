@@ -2,6 +2,7 @@ use crate::make_smart_pointer;
 
 use crate::services::cluster::actors::command::ClusterCommand;
 use crate::services::cluster::actors::replication::Replication;
+use crate::services::cluster::actors::replication::IS_MASTER_MODE;
 use crate::services::cluster::actors::types::PeerAddr;
 use crate::services::cluster::actors::types::PeerAddrs;
 use crate::services::cluster::actors::types::PeerKind;
@@ -10,6 +11,8 @@ use crate::services::cluster::inbound::request::HandShakeRequestEnum;
 
 use crate::services::interface::{TGetPeerIp, TStream};
 use crate::services::query_io::QueryIO;
+use crate::services::statefuls::cache::manager::CacheManager;
+use crate::services::statefuls::persist::endec::encoder::encoding_processor::EncodingProcessor;
 use anyhow::Context;
 use tokio::net::TcpStream;
 
@@ -104,5 +107,33 @@ impl InboundStream {
             peer_addr: self.inbound_peer_addr.context("No peer addr")?,
             stream: self.stream,
         })
+    }
+
+    pub(crate) async fn send_sync_to_inbound_server(
+        &mut self,
+        cache_manager: &'static CacheManager,
+    ) -> anyhow::Result<()> {
+        let (tx, mut rx) = tokio::sync::mpsc::channel(100);
+        // route save caches
+        cache_manager.route_save(tx).await;
+
+        // run encoding processor
+        let mut processor = EncodingProcessor::with_vec(cache_manager.inboxes.len());
+        processor.add_meta().await?;
+        while let Some(cmd) = rx.recv().await {
+            match processor.handle_cmd(cmd).await {
+                Ok(true) => break,
+                Ok(false) => continue,
+                Err(err) => {
+                    panic!("Encoding Error: {:?}", err);
+                }
+            }
+        }
+        // collect dump data from processor
+        let dump = QueryIO::File(processor.into_inner());
+        println!("[INFO] Sent sync to slave {:?}", dump);
+        self.write(dump).await?;
+
+        Ok(())
     }
 }

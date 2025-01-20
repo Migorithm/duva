@@ -5,13 +5,8 @@ use super::actors::types::{PeerAddr, PeerAddrs, PeerKind};
 use crate::make_smart_pointer;
 use crate::services::cluster::inbound::stream::InboundStream;
 use crate::services::cluster::outbound::stream::OutboundStream;
-use std::sync::atomic::Ordering;
-
-use crate::services::interface::TStream;
-use crate::services::query_io::QueryIO;
-
 use crate::services::statefuls::cache::manager::CacheManager;
-use crate::services::statefuls::persist::endec::encoder::encoding_processor::EncodingProcessor;
+
 use std::time::Duration;
 use tokio::net::TcpStream;
 use tokio::sync::mpsc::Sender;
@@ -72,40 +67,15 @@ impl ClusterManager {
     ) -> anyhow::Result<()> {
         peer_stream.recv_threeway_handshake().await?;
         peer_stream.disseminate_peers(self.get_peers().await?).await?;
-        let peer_kind = peer_stream.peer_kind()?;
 
-        if matches!(peer_kind, PeerKind::Replica) && IS_MASTER_MODE.load(Ordering::Acquire) {
-            Self::send_sync_to_replica(&mut peer_stream, cache_manager).await?;
+        if matches!(peer_stream.peer_kind()?, PeerKind::Replica)
+            && IS_MASTER_MODE.load(std::sync::atomic::Ordering::Acquire)
+        {
+            peer_stream.send_sync_to_inbound_server(cache_manager).await?;
         }
+
         self.send(peer_stream.to_add_peer()?).await?;
 
-        Ok(())
-    }
-
-    async fn send_sync_to_replica(
-        peer_stream: &mut InboundStream,
-        cache_manager: &CacheManager,
-    ) -> anyhow::Result<()> {
-        let (tx, mut rx) = tokio::sync::mpsc::channel(100);
-        // route save caches
-        cache_manager.route_save(tx).await;
-
-        // run encoding processor
-        let mut processor = EncodingProcessor::with_vec(cache_manager.inboxes.len());
-        processor.add_meta().await?;
-        while let Some(cmd) = rx.recv().await {
-            match processor.handle_cmd(cmd).await {
-                Ok(true) => break,
-                Ok(false) => continue,
-                Err(err) => {
-                    panic!("Encoding Error: {:?}", err);
-                }
-            }
-        }
-        // collect dump data from processor
-        let dump = QueryIO::File(processor.into_inner());
-        println!("[INFO] Sent sync to slave {:?}", dump);
-        peer_stream.write(dump).await?;
         Ok(())
     }
 
