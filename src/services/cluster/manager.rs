@@ -56,7 +56,6 @@ impl ClusterManager {
         {
             peer_stream.send_sync_to_inbound_server(cache_manager).await?;
         }
-
         self.send(peer_stream.to_add_peer()?).await?;
 
         Ok(())
@@ -80,18 +79,19 @@ impl ClusterManager {
         }
 
         // Recursive case
-        let mut outbound_stream =
-            OutboundStream::new(&connect_to, self.replication_info().await?).await?;
-
-        outbound_stream.establish_connection(self_port).await?;
-        outbound_stream.set_replication_id(self).await?;
-
-        let (add_peer, connected_node_info) = outbound_stream.deconstruct(connect_to)?;
-
-        self.send(add_peer).await?;
+        let (add_peer_cmd, connected_node_info) =
+            OutboundStream::new(connect_to, self.replication_info().await?)
+                .await?
+                .establish_connection(self_port)
+                .await?
+                .set_replication_id(self)
+                .await?
+                .deconstruct()?;
+        self.send(add_peer_cmd).await?;
 
         // Discover additional peers concurrently
         for peer in connected_node_info.list_peer_binding_addrs() {
+            // TODO Require investigation. Why does this have to be called at here?
             Box::pin(self.discover_cluster(self_port, peer)).await?;
         }
 

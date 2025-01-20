@@ -14,18 +14,20 @@ pub(crate) struct OutboundStream {
     pub(crate) stream: TcpStream,
     pub(crate) repl_info: Replication,
     connected_node_info: Option<ConnectedNodeInfo>,
+    connect_to: PeerAddr,
 }
 make_smart_pointer!(OutboundStream, TcpStream => stream);
 
 impl OutboundStream {
-    pub(crate) async fn new(connect_to: &str, repl_info: Replication) -> anyhow::Result<Self> {
+    pub(crate) async fn new(connect_to: PeerAddr, repl_info: Replication) -> anyhow::Result<Self> {
         Ok(OutboundStream {
-            stream: TcpStream::connect(connect_to).await?,
+            stream: TcpStream::connect(&connect_to.0).await?,
             repl_info,
             connected_node_info: None,
+            connect_to,
         })
     }
-    pub async fn establish_connection(&mut self, self_port: u16) -> anyhow::Result<()> {
+    pub async fn establish_connection(mut self, self_port: u16) -> anyhow::Result<Self> {
         // Trigger
         self.write(write_array!("PING")).await?;
         let mut ok_count = 0;
@@ -53,7 +55,7 @@ impl OutboundStream {
                         println!("[INFO] Received peer list: {:?}", peer_list);
                         connection_info.peer_list = peer_list;
                         self.connected_node_info = Some(connection_info);
-                        return Ok(());
+                        return Ok(self);
                     }
                 }
             }
@@ -72,9 +74,9 @@ impl OutboundStream {
     }
 
     pub(crate) async fn set_replication_id(
-        &self,
+        self,
         cluster_manager: &ClusterManager,
-    ) -> anyhow::Result<()> {
+    ) -> anyhow::Result<Self> {
         if self.repl_info.master_replid == "?" {
             cluster_manager
                 .send(ClusterCommand::SetReplicationId(
@@ -86,18 +88,15 @@ impl OutboundStream {
                 ))
                 .await?;
         }
-        Ok(())
+        Ok(self)
     }
-    pub(crate) fn deconstruct(
-        self,
-        connect_to: PeerAddr,
-    ) -> anyhow::Result<(ClusterCommand, ConnectedNodeInfo)> {
+    pub(crate) fn deconstruct(self) -> anyhow::Result<(ClusterCommand, ConnectedNodeInfo)> {
         let connection_info = self.connected_node_info.context("Connected node info not found")?;
 
         Ok((
             ClusterCommand::AddPeer {
                 peer_kind: PeerKind::connected_peer_kind(&self.repl_info, &connection_info.repl_id),
-                peer_addr: connect_to,
+                peer_addr: self.connect_to,
                 stream: self.stream,
             },
             connection_info,
