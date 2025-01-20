@@ -81,9 +81,7 @@ impl ClusterManager {
             Self::send_sync_to_replica(&mut peer_stream, cache_manager).await?;
         }
 
-        // TODO At this point again, slave tries to connect to other nodes as peer in the cluster
-
-        self.add_peer(peer_addr, peer_stream.0, peer_kind).await?;
+        self.add_peer(peer_addr, peer_stream, peer_kind).await?;
         Ok(())
     }
 

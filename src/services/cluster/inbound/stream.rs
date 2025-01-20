@@ -1,3 +1,4 @@
+use crate::from_to;
 use crate::make_smart_pointer;
 
 use crate::services::cluster::actors::replication::Replication;
@@ -11,7 +12,7 @@ use tokio::net::TcpStream;
 
 // The following is used only when the node is in master mode
 pub(crate) struct InboundStream(pub TcpStream);
-
+from_to!(TcpStream, InboundStream);
 make_smart_pointer!(InboundStream, TcpStream);
 
 impl InboundStream {
