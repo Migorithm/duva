@@ -115,7 +115,7 @@ impl ClusterManager {
     }
 
     async fn disseminate_peers(&self, stream: &mut TcpStream) -> anyhow::Result<()> {
-        let peers: PeerAddrs = self.get_peers().await?;
+        let peers = self.get_peers().await?;
         stream.write(QueryIO::SimpleString(format!("PEERS {}", peers.stringify()))).await?;
         Ok(())
     }
