@@ -9,11 +9,11 @@ async fn test_keys() {
 
     let mut h = ClientStreamHandler::new(process.bind_addr()).await;
 
-    let num_of_keys = 500;
+    let num_keys_to_store = 500;
 
-    // WHEN set 100000 keys
-    for i in 0..500 {
-        h.send({ array(vec!["SET", &i.to_string(), "bar"]).into_bytes() }.as_slice()).await;
+    // WHEN set 500 keys with the value `bar`.
+    for key in 0..num_keys_to_store {
+        h.send({ array(vec!["SET", &key.to_string(), "bar"]).into_bytes() }.as_slice()).await;
         assert_eq!(h.get_response().await, QueryIO::SimpleString("OK".to_string()).serialize());
     }
 
@@ -21,5 +21,5 @@ async fn test_keys() {
     h.send({ array(vec!["KEYS", "*"]).into_bytes() }.as_slice()).await;
     let res = h.get_response().await;
 
-    assert!(res.starts_with(format!("*{}\r\n", num_of_keys).as_str()));
+    assert!(res.starts_with(format!("*{}\r\n", num_keys_to_store).as_str()));
 }
