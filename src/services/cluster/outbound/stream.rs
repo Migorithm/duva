@@ -38,12 +38,20 @@ impl OutboundStream {
             for query in res {
                 match ConnectionResponse::try_from(query)? {
                     ConnectionResponse::PONG => {
-                        let msg = self.after_pong(self_port);
+                        let msg = write_array!("REPLCONF", "listening-port", self_port.to_string());
+
                         self.write(msg).await?
                     }
                     ConnectionResponse::OK => {
                         ok_count += 1;
-                        let msg = self.after_ok(ok_count)?;
+                        let msg = {
+                            match ok_count {
+                                1 => Ok(write_array!("REPLCONF", "capa", "psync2")),
+                                // "?" here means the server is undecided about their master. and -1 is the offset that slave is aware of
+                                2 => Ok(write_array!("PSYNC", "?", "-1")),
+                                _ => Err(anyhow::anyhow!("Unexpected OK count")),
+                            }
+                        }?;
                         self.write(msg).await?
                     }
                     ConnectionResponse::FULLRESYNC { repl_id, offset } => {
@@ -59,17 +67,6 @@ impl OutboundStream {
                     }
                 }
             }
-        }
-    }
-
-    fn after_pong(&self, self_port: u16) -> QueryIO {
-        write_array!("REPLCONF", "listening-port", self_port.to_string())
-    }
-    fn after_ok(&self, ok_count: i32) -> anyhow::Result<QueryIO> {
-        match ok_count {
-            1 => Ok(write_array!("REPLCONF", "capa", "psync2")),
-            2 => Ok(write_array!("PSYNC", "?", "-1")), // TODO "?" here means the server is undecided about their master.
-            _ => Err(anyhow::anyhow!("Unexpected OK count")),
         }
     }
 
