@@ -73,16 +73,39 @@ pub fn run_server_process(port: u16, replicaof: Option<String>) -> TestProcessCh
 
 pub fn wait_for_message<T: Read>(read: &mut T, target: &str, target_count: usize) {
     let mut buf = BufReader::new(read).lines();
-    let mut cnt = 0;
+    let mut cnt = 1;
 
     while let Some(Ok(line)) = buf.next() {
-        if line == target {
-            cnt += 1;
+        if line.starts_with(target) {
             if cnt == target_count {
                 break;
+            } else {
+                cnt += 1;
             }
         }
     }
+}
+
+pub fn wait_for_and_get_message<T: Read>(
+    read: &mut T,
+    target: &str,
+    target_count: usize,
+) -> String {
+    let mut buf = BufReader::new(read).lines();
+    let mut cnt = 1;
+    let mut message = String::new();
+
+    while let Some(Ok(line)) = buf.next() {
+        if line.starts_with(target) {
+            if cnt == target_count {
+                message = line;
+                break;
+            } else {
+                cnt += 1;
+            }
+        }
+    }
+    message
 }
 
 pub fn array(arr: Vec<&str>) -> String {

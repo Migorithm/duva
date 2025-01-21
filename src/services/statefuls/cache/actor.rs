@@ -3,7 +3,7 @@ use super::CacheValue;
 use crate::make_smart_pointer;
 use crate::services::query_io::QueryIO;
 use crate::services::statefuls::cache::ttl::manager::TtlSchedulerInbox;
-use crate::services::statefuls::persist::save_command::SaveCommand;
+use crate::services::statefuls::persist::encoding_command::EncodingCommand;
 use anyhow::Context;
 use anyhow::Result;
 use std::collections::HashMap;
@@ -11,7 +11,7 @@ use tokio::sync::{mpsc, oneshot};
 
 pub enum CacheCommand {
     Set { cache_entry: CacheEntry, ttl_sender: TtlSchedulerInbox },
-    Save { outbox: mpsc::Sender<SaveCommand> },
+    Save { outbox: mpsc::Sender<EncodingCommand> },
     Get { key: String, sender: oneshot::Sender<QueryIO> },
     Keys { pattern: Option<String>, sender: oneshot::Sender<QueryIO> },
     Delete(String),
@@ -63,16 +63,16 @@ impl CacheActor {
                 }
                 CacheCommand::Save { outbox } => {
                     outbox
-                        .send(SaveCommand::LocalShardSize {
+                        .send(EncodingCommand::LocalShardSize {
                             table_size: self.len(),
                             expiry_size: self.keys_with_expiry(),
                         })
                         .await?;
                     for chunk in self.cache.iter().collect::<Vec<_>>().chunks(10) {
-                        outbox.send(SaveCommand::SaveChunk(CacheEntry::new(chunk))).await?;
+                        outbox.send(EncodingCommand::SaveChunk(CacheEntry::new(chunk))).await?;
                     }
                     // finalize the save operation
-                    outbox.send(SaveCommand::StopSentinel).await?;
+                    outbox.send(EncodingCommand::StopSentinel).await?;
                 }
             }
         }
@@ -86,7 +86,7 @@ impl CacheActor {
         self.cache.keys_with_expiry
     }
 
-    fn keys_stream(&self, pattern: Option<String>) -> impl Iterator<Item = QueryIO> + '_ {
+    fn keys_stream(&self, pattern: Option<String>) -> impl Iterator<Item=QueryIO> + '_ {
         self.cache.keys().filter_map(move |k| {
             if pattern.as_ref().map_or(true, |p| k.contains(p)) {
                 Some(QueryIO::BulkString(k.to_string()))
@@ -161,8 +161,8 @@ async fn test_set_and_delete_inc_dec_keys_with_expiry() {
             },
             ttl_sender: ttl_sender.clone(),
         })
-        .await
-        .unwrap();
+            .await
+            .unwrap();
     }
 
     // key0 is expiry key. deleting the following will decrese the number by 1

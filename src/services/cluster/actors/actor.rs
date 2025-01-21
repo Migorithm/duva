@@ -69,7 +69,7 @@ impl ClusterActor {
 
                 ClusterCommand::GetPeers(callback) => {
                     // send
-                    let _ = callback.send(self.members.keys().cloned().collect());
+                    let _ = callback.send(self.members.keys().cloned().collect::<Vec<_>>().into());
                 }
                 ClusterCommand::Write(write_cmd) => match write_cmd {
                     ClusterWriteCommand::Replicate { query: _ } => todo!(),

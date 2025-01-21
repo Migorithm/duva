@@ -1,17 +1,37 @@
+use crate::services::cluster::actors::command::ClusterCommand;
+use crate::services::cluster::actors::replication::Replication;
+use crate::services::cluster::actors::types::{PeerAddr, PeerKind};
+use crate::services::cluster::manager::ClusterManager;
 use crate::services::cluster::outbound::response::ConnectionResponse;
 use crate::services::interface::{TRead, TStream};
 use crate::services::query_io::QueryIO;
 use crate::{make_smart_pointer, write_array};
+use anyhow::Context;
 use tokio::net::TcpStream;
 
 // The following is used only when the node is in slave mode
-pub(crate) struct OutboundStream(pub(crate) TcpStream);
+pub(crate) struct OutboundStream {
+    pub(crate) stream: TcpStream,
+    pub(crate) repl_info: Replication,
+    connected_node_info: Option<ConnectedNodeInfo>,
+    connect_to: PeerAddr,
+}
+make_smart_pointer!(OutboundStream, TcpStream => stream);
+
 impl OutboundStream {
-    pub async fn establish_connection(&mut self, self_port: u16) -> anyhow::Result<ConnectionInfo> {
+    pub(crate) async fn new(connect_to: PeerAddr, repl_info: Replication) -> anyhow::Result<Self> {
+        Ok(OutboundStream {
+            stream: TcpStream::connect(&connect_to.0).await?,
+            repl_info,
+            connected_node_info: None,
+            connect_to,
+        })
+    }
+    pub async fn establish_connection(mut self, self_port: u16) -> anyhow::Result<Self> {
         // Trigger
         self.write(write_array!("PING")).await?;
         let mut ok_count = 0;
-        let mut connection_info = ConnectionInfo::default();
+        let mut connection_info = ConnectedNodeInfo::default();
 
         loop {
             let res = self.read_values().await?;
@@ -34,7 +54,8 @@ impl OutboundStream {
                     ConnectionResponse::PEERS(peer_list) => {
                         println!("[INFO] Received peer list: {:?}", peer_list);
                         connection_info.peer_list = peer_list;
-                        return Ok(connection_info);
+                        self.connected_node_info = Some(connection_info);
+                        return Ok(self);
                     }
                 }
             }
@@ -51,12 +72,40 @@ impl OutboundStream {
             _ => Err(anyhow::anyhow!("Unexpected OK count")),
         }
     }
+
+    pub(crate) async fn set_replication_id(
+        self,
+        cluster_manager: &ClusterManager,
+    ) -> anyhow::Result<Self> {
+        if self.repl_info.master_replid == "?" {
+            cluster_manager
+                .send(ClusterCommand::SetReplicationId(
+                    self.connected_node_info
+                        .as_ref()
+                        .context("Connected node info not found. Cannot set replication id")?
+                        .repl_id
+                        .clone(),
+                ))
+                .await?;
+        }
+        Ok(self)
+    }
+    pub(crate) fn deconstruct(self) -> anyhow::Result<(ClusterCommand, ConnectedNodeInfo)> {
+        let connection_info = self.connected_node_info.context("Connected node info not found")?;
+
+        Ok((
+            ClusterCommand::AddPeer {
+                peer_kind: PeerKind::connected_peer_kind(&self.repl_info, &connection_info.repl_id),
+                peer_addr: self.connect_to,
+                stream: self.stream,
+            },
+            connection_info,
+        ))
+    }
 }
 
-make_smart_pointer!(OutboundStream, TcpStream);
-
 #[derive(Debug, Default)]
-pub(crate) struct ConnectionInfo {
+pub(crate) struct ConnectedNodeInfo {
     // TODO repl_id here is the master_replid from connected server.
     // TODO Set repl_id if given server's repl_id is "?" otherwise, it means that now it's connected to peer.
     pub(crate) repl_id: String,
@@ -64,16 +113,17 @@ pub(crate) struct ConnectionInfo {
     pub(crate) peer_list: Vec<String>,
 }
 
-impl ConnectionInfo {
-    pub(crate) fn list_peer_binding_addrs(&self) -> Vec<String> {
+impl ConnectedNodeInfo {
+    pub(crate) fn list_peer_binding_addrs(&self) -> Vec<PeerAddr> {
         self.peer_list
             .iter()
             .flat_map(|peer| {
                 if let Some((ip, port)) = peer.rsplit_once(':') {
                     Some(
-                        ip.to_string()
+                        (ip.to_string()
                             + ":"
-                            + (port.parse::<u16>().unwrap() + 10000).to_string().as_str(),
+                            + (port.parse::<u16>().unwrap() + 10000).to_string().as_str())
+                        .into(),
                     )
                 } else {
                     None

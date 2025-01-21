@@ -1,24 +1,34 @@
 use crate::make_smart_pointer;
-
+use crate::services::cluster::actors::command::ClusterCommand;
 use crate::services::cluster::actors::replication::Replication;
 use crate::services::cluster::actors::types::PeerAddr;
+use crate::services::cluster::actors::types::PeerAddrs;
+use crate::services::cluster::actors::types::PeerKind;
 use crate::services::cluster::inbound::request::HandShakeRequest;
 use crate::services::cluster::inbound::request::HandShakeRequestEnum;
 
 use crate::services::interface::{TGetPeerIp, TStream};
 use crate::services::query_io::QueryIO;
+use crate::services::statefuls::cache::manager::CacheManager;
+use crate::services::statefuls::persist::endec::encoder::encoding_processor::EncodingProcessor;
+use anyhow::Context;
 use tokio::net::TcpStream;
 
 // The following is used only when the node is in master mode
-pub(crate) struct InboundStream(pub TcpStream);
+pub(crate) struct InboundStream {
+    pub(crate) stream: TcpStream,
+    pub(crate) repl_info: Replication,
+    pub(crate) inbound_peer_addr: Option<PeerAddr>,
+    pub(crate) inbound_master_replid: Option<String>,
+}
 
-make_smart_pointer!(InboundStream, TcpStream);
+make_smart_pointer!(InboundStream, TcpStream => stream);
 
 impl InboundStream {
-    pub async fn recv_threeway_handshake(
-        &mut self,
-        repl_info: &Replication,
-    ) -> anyhow::Result<(PeerAddr, String)> {
+    pub(crate) fn new(stream: TcpStream, repl_info: Replication) -> Self {
+        Self { stream, repl_info, inbound_peer_addr: None, inbound_master_replid: None }
+    }
+    pub async fn recv_threeway_handshake(&mut self) -> anyhow::Result<()> {
         self.recv_ping().await?;
 
         let port = self.recv_replconf_listening_port().await?;
@@ -27,9 +37,12 @@ impl InboundStream {
         let _capa_val_vec = self.recv_replconf_capa().await?;
 
         // TODO check repl_id is '?' or of mine. If not, consider incoming as peer
-        let (_repl_id, _offset) = self.recv_psync(repl_info).await?;
+        let (repl_id, _offset) = self.recv_psync().await?;
 
-        Ok((PeerAddr(format!("{}:{}", self.get_peer_ip()?, port)), _repl_id))
+        self.inbound_peer_addr = Some(format!("{}:{}", self.get_peer_ip()?, port).into());
+        self.inbound_master_replid = Some(repl_id);
+
+        Ok(())
     }
 
     async fn recv_ping(&mut self) -> anyhow::Result<()> {
@@ -53,13 +66,16 @@ impl InboundStream {
         self.write(QueryIO::SimpleString("OK".to_string())).await?;
         Ok(capa_val_vec)
     }
-    async fn recv_psync(&mut self, repl_info: &Replication) -> anyhow::Result<(String, i64)> {
+    async fn recv_psync(&mut self) -> anyhow::Result<(String, i64)> {
         let mut cmd = self.extract_cmd().await?;
         let (repl_id, offset) = cmd.extract_psync()?;
 
+        let (self_master_replid, self_master_repl_offset) =
+            (self.repl_info.master_replid.clone(), self.repl_info.master_repl_offset);
+
         self.write(QueryIO::SimpleString(format!(
             "FULLRESYNC {} {}",
-            repl_info.master_replid, repl_info.master_repl_offset
+            self_master_replid, self_master_repl_offset
         )))
         .await?;
 
@@ -69,5 +85,53 @@ impl InboundStream {
     async fn extract_cmd(&mut self) -> anyhow::Result<HandShakeRequest> {
         let query_io = self.read_value().await?;
         HandShakeRequest::new(query_io)
+    }
+
+    pub(crate) async fn disseminate_peers(&mut self, peers: PeerAddrs) -> anyhow::Result<()> {
+        self.write(QueryIO::SimpleString(format!("PEERS {}", peers.stringify()))).await?;
+        Ok(())
+    }
+
+    pub(crate) fn peer_kind(&self) -> anyhow::Result<PeerKind> {
+        Ok(PeerKind::accepted_peer_kind(
+            &self.repl_info.master_replid,
+            self.inbound_master_replid.as_ref().context("No master replid")?,
+        ))
+    }
+
+    pub(crate) fn to_add_peer(self) -> anyhow::Result<ClusterCommand> {
+        Ok(ClusterCommand::AddPeer {
+            peer_kind: self.peer_kind()?,
+            peer_addr: self.inbound_peer_addr.context("No peer addr")?,
+            stream: self.stream,
+        })
+    }
+
+    pub(crate) async fn send_sync_to_inbound_server(
+        &mut self,
+        cache_manager: &'static CacheManager,
+    ) -> anyhow::Result<()> {
+        let (tx, mut rx) = tokio::sync::mpsc::channel(100);
+        // route save caches
+        cache_manager.route_save(tx).await;
+
+        // run encoding processor
+        let mut processor = EncodingProcessor::with_vec(cache_manager.inboxes.len());
+        processor.add_meta().await?;
+        while let Some(cmd) = rx.recv().await {
+            match processor.handle_cmd(cmd).await {
+                Ok(true) => break,
+                Ok(false) => continue,
+                Err(err) => {
+                    panic!("Encoding Error: {:?}", err);
+                }
+            }
+        }
+        // collect dump data from processor
+        let dump = QueryIO::File(processor.into_inner());
+        println!("[INFO] Sent sync to slave {:?}", dump);
+        self.write(dump).await?;
+
+        Ok(())
     }
 }

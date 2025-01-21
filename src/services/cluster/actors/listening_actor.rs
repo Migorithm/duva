@@ -70,7 +70,11 @@ impl PeerListeningActor {
                     MasterCommand::Ping => {
                         println!("[INFO] Received ping from master");
                     }
+
                     MasterCommand::Replicate { query: _ } => {}
+                    MasterCommand::Sync(v) => {
+                        println!("[INFO] Received sync from master {:?}", v);
+                    }
                 }
             }
         }
