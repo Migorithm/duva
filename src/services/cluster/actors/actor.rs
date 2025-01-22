@@ -1,5 +1,4 @@
 use super::command::ClusterCommand;
-
 use super::peer::Peer;
 use super::replication::Replication;
 use super::types::PeerAddr;
@@ -19,17 +18,7 @@ impl ClusterActor {
     async fn heartbeat(&mut self) {
         for peer in self.members.values_mut() {
             let msg = QueryIO::SimpleString("PING".to_string()).serialize();
-            match &mut peer.w_conn.kind {
-                super::types::PeerKind::Peer => {
-                    let _ = peer.w_conn.stream.write(msg.as_bytes()).await;
-                }
-                super::types::PeerKind::Replica => {
-                    let _ = peer.w_conn.stream.write(msg.as_bytes()).await;
-                }
-                super::types::PeerKind::Master => {
-                    let _ = peer.w_conn.stream.write(msg.as_bytes()).await;
-                }
-            }
+            let _ = peer.w_conn.stream.write(msg.as_bytes()).await;
         }
     }
 
