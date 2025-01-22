@@ -1,8 +1,7 @@
-use std::time::SystemTime;
-
 use crate::services::statefuls::cache::CacheValue;
 use anyhow::Result;
 use bytes::BytesMut;
+use std::time::SystemTime;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum QueryIO {
@@ -36,13 +35,15 @@ impl QueryIO {
             QueryIO::Null => "$-1\r\n".to_string(),
             QueryIO::Err(e) => format!("-{}\r\n", e),
             QueryIO::File(f) => {
-                let mut hex_file = String::new();
-                for byte in f {
+                let file_len = f.len() * 2;
+                let mut hex_file = String::with_capacity(file_len + file_len.to_string().len() + 2)
+                    + format!("${}\r\n", file_len).as_str();
+
+                f.into_iter().for_each(|byte| {
                     hex_file.push_str(&format!("{:02x}", byte));
-                }
-                let mut result = format!("${}\r\n", hex_file.len());
-                result.push_str(&hex_file);
-                result
+                });
+
+                hex_file
             }
         }
     }
