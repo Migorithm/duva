@@ -3,6 +3,9 @@
 /// As it has to keep listening to incoming messages, it is implemented as an actor, run in the background.
 /// To take a control of the actor, PeerListenerHandler is used, which can kill the listening process and return the connected stream.
 use super::command::{ClusterCommand, MasterCommand, SlaveCommand};
+use super::peer::ClusterReadConn;
+
+use crate::services::cluster::actors::types::PeerKind;
 use crate::services::interface::TRead;
 use crate::services::query_io::QueryIO;
 use tokio::net::tcp::OwnedReadHalf;
@@ -11,15 +14,8 @@ use tokio::sync::mpsc::Sender;
 use tokio::task::JoinHandle;
 
 pub(crate) struct PeerListeningActor {
-    pub(super) read_connected: ClusterReadConnected,
+    pub(super) read_connected: ClusterReadConn,
     pub(super) cluster_handler: Sender<ClusterCommand>, // cluster_handler is used to send messages to the cluster actor
-}
-
-#[derive(Debug)]
-pub(super) enum ClusterReadConnected {
-    Replica { stream: OwnedReadHalf },
-    Peer { stream: OwnedReadHalf },
-    Master { stream: OwnedReadHalf },
 }
 
 impl PeerListeningActor {
@@ -28,13 +24,19 @@ impl PeerListeningActor {
     /// - is done in a loop
     /// - is done until the kill switch is triggered
     /// - returns the connected stream when the kill switch is triggered
-    pub(super) async fn listen(mut self, rx: ReactorKillSwitch) -> ClusterReadConnected {
+    pub(super) async fn listen(mut self, rx: ReactorKillSwitch) -> ClusterReadConn {
         let connected = select! {
             _ = async{
-                    match self.read_connected {
-                        ClusterReadConnected::Replica { ref mut stream } =>Self::listen_replica_stream( stream ).await,
-                        ClusterReadConnected::Peer { ref mut stream } =>Self::listen_peer_stream( stream ).await,
-                        ClusterReadConnected::Master { ref mut stream } => Self::listen_master_stream( stream ).await,
+                    match self.read_connected.kind {
+                        PeerKind::Peer => {
+                            Self::listen_peer_stream(&mut self.read_connected.stream).await
+                        },
+                        PeerKind::Replica => {
+                            Self::listen_replica_stream(&mut self.read_connected.stream).await
+                        },
+                        PeerKind::Master => {
+                            Self::listen_master_stream(&mut self.read_connected.stream).await
+                        },
                     };
                 } => {
                     self.read_connected
@@ -99,15 +101,15 @@ pub(super) type KillTrigger = tokio::sync::oneshot::Sender<()>;
 pub(super) type ReactorKillSwitch = tokio::sync::oneshot::Receiver<()>;
 
 #[derive(Debug)]
-pub(super) struct ListeningActorKillTrigger(KillTrigger, JoinHandle<ClusterReadConnected>);
+pub(super) struct ListeningActorKillTrigger(KillTrigger, JoinHandle<ClusterReadConn>);
 impl ListeningActorKillTrigger {
     pub(super) fn new(
         kill_trigger: KillTrigger,
-        listning_task: JoinHandle<ClusterReadConnected>,
+        listning_task: JoinHandle<ClusterReadConn>,
     ) -> Self {
         Self(kill_trigger, listning_task)
     }
-    pub(super) async fn kill(self) -> ClusterReadConnected {
+    pub(super) async fn kill(self) -> ClusterReadConn {
         let _ = self.0.send(());
         self.1.await.unwrap()
     }

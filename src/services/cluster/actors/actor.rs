@@ -1,14 +1,11 @@
 use super::command::{ClusterCommand, ClusterWriteCommand};
-use super::listening_actor::{ClusterReadConnected, ListeningActorKillTrigger, PeerListeningActor};
-use super::replication::Replication;
-use super::types::{PeerAddr, PeerKind};
 
+use super::peer::Peer;
+use super::replication::Replication;
+use super::types::PeerAddr;
 use crate::services::interface::TWrite;
 use crate::services::query_io::QueryIO;
 use std::collections::BTreeMap;
-use tokio::net::tcp::OwnedWriteHalf;
-use tokio::net::TcpStream;
-
 use tokio::sync::mpsc::Receiver;
 use tokio::sync::mpsc::Sender;
 
@@ -22,15 +19,15 @@ impl ClusterActor {
     async fn heartbeat(&mut self) {
         for peer in self.members.values_mut() {
             let msg = QueryIO::SimpleString("PING".to_string()).serialize();
-            match &mut peer.write_connected {
-                ClusterWriteConnected::Replica { stream } => {
-                    let _ = stream.write(msg.as_bytes()).await;
+            match &mut peer.w_conn.kind {
+                super::types::PeerKind::Peer => {
+                    let _ = peer.w_conn.stream.write(msg.as_bytes()).await;
                 }
-                ClusterWriteConnected::Peer { stream } => {
-                    let _ = stream.write(msg.as_bytes()).await;
+                super::types::PeerKind::Replica => {
+                    let _ = peer.w_conn.stream.write(msg.as_bytes()).await;
                 }
-                ClusterWriteConnected::Master { stream } => {
-                    let _ = stream.write(msg.as_bytes()).await;
+                super::types::PeerKind::Master => {
+                    let _ = peer.w_conn.stream.write(msg.as_bytes()).await;
                 }
             }
         }
@@ -39,7 +36,7 @@ impl ClusterActor {
     async fn remove_peer(&mut self, peer_addr: PeerAddr) {
         if let Some(peer) = self.members.remove(&peer_addr) {
             // stop the runnin process and take the connection in case topology changes are made
-            let _read_connected = peer.listening_actor_kill_trigger.kill().await;
+            let _read_connected = peer.listner_kill_trigger.kill().await;
         }
         self.members.remove(&peer_addr);
     }
@@ -86,55 +83,4 @@ impl ClusterActor {
             }
         }
     }
-}
-
-#[derive(Debug)]
-struct Peer {
-    write_connected: ClusterWriteConnected,
-    listening_actor_kill_trigger: ListeningActorKillTrigger,
-}
-
-impl Peer {
-    pub fn new(
-        stream: TcpStream,
-        peer_kind: PeerKind,
-        cluster_handler: Sender<ClusterCommand>,
-    ) -> Self {
-        let (r, w) = stream.into_split();
-
-        let (write_connected, read_connected) = match peer_kind {
-            PeerKind::Peer => (
-                ClusterWriteConnected::Peer { stream: w },
-                ClusterReadConnected::Peer { stream: r },
-            ),
-            PeerKind::Replica => (
-                ClusterWriteConnected::Replica { stream: w },
-                ClusterReadConnected::Replica { stream: r },
-            ),
-            PeerKind::Master => (
-                ClusterWriteConnected::Master { stream: w },
-                ClusterReadConnected::Master { stream: r },
-            ),
-        };
-
-        // Listner requires cluster handler to send messages to the cluster actor and cluster actor instead needs kill trigger to stop the listener
-        let (kill_trigger, kill_switch) = tokio::sync::oneshot::channel();
-        let listening_actor = PeerListeningActor { read_connected, cluster_handler };
-        let listening_task = tokio::spawn(listening_actor.listen(kill_switch));
-
-        Self {
-            write_connected,
-            listening_actor_kill_trigger: ListeningActorKillTrigger::new(
-                kill_trigger,
-                listening_task,
-            ),
-        }
-    }
-}
-
-#[derive(Debug)]
-pub enum ClusterWriteConnected {
-    Replica { stream: OwnedWriteHalf },
-    Peer { stream: OwnedWriteHalf },
-    Master { stream: OwnedWriteHalf },
 }
