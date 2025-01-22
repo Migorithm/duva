@@ -181,12 +181,13 @@ cargo run -- --dir directory-path --dbfilename filename
 This server supports the RESP Protocol, enabling interaction with clients in a familiar Redis-like manner.
 
 ### Roadmap
-Future enhancements may include:
+Future enhancements will include:
 
 - Distributed sharding
+- Anti-entropy
+    - Gossip
 - Replication
-    - Anti-entropy mechanism (dotted version vector)
-    - Dissemination (TBD)
+    - TransactionLog
 - Pub/Sub support
 - More advanced data types (e.g., lists, sets, hashes)
 - Write-through / read-through support
