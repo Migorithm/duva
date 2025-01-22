@@ -1,4 +1,4 @@
-use crate::services::{interface::TWrite, statefuls::cache::CacheEntry};
+use crate::services::statefuls::cache::CacheEntry;
 
 use crate::services::statefuls::persist::encoding_command::EncodingCommand;
 use anyhow::Result;
@@ -20,13 +20,8 @@ pub enum EncodingTarget {
 impl EncodingTarget {
     pub async fn write(&mut self, buf: &[u8]) -> Result<(), IoError> {
         match self {
-            EncodingTarget::File(f) => {
-                f.write_all(buf).await
-                    .map_err(|e| e.kind().into())
-            }
-            EncodingTarget::InMemory(v) => {
-                Ok(v.extend_from_slice(buf))
-            }
+            EncodingTarget::File(f) => f.write_all(buf).await.map_err(|e| e.kind().into()),
+            EncodingTarget::InMemory(v) => Ok(v.extend_from_slice(buf)),
         }
     }
 }
@@ -42,7 +37,10 @@ impl EncodingProcessor {
     }
 
     pub fn with_vec(num_of_cache_actor: usize) -> Self {
-        Self { target: EncodingTarget::InMemory(Vec::new()), meta: SaveMeta::new(num_of_cache_actor) }
+        Self {
+            target: EncodingTarget::InMemory(Vec::new()),
+            meta: SaveMeta::new(num_of_cache_actor),
+        }
     }
 
     pub async fn add_meta(&mut self) -> Result<()> {
