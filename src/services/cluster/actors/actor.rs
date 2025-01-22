@@ -15,21 +15,6 @@ pub struct ClusterActor {
 }
 
 impl ClusterActor {
-    async fn heartbeat(&mut self) {
-        for peer in self.members.values_mut() {
-            let msg = QueryIO::SimpleString("PING".to_string()).serialize();
-            let _ = peer.w_conn.stream.write(msg.as_bytes()).await;
-        }
-    }
-
-    async fn remove_peer(&mut self, peer_addr: PeerAddr) {
-        if let Some(peer) = self.members.remove(&peer_addr) {
-            // stop the runnin process and take the connection in case topology changes are made
-            let _read_connected = peer.listner_kill_trigger.kill().await;
-        }
-        self.members.remove(&peer_addr);
-    }
-
     pub async fn handle(
         mut self,
         self_handler: Sender<ClusterCommand>,
@@ -66,9 +51,28 @@ impl ClusterActor {
                     let _ = sender.send(self.replication.clone());
                 }
                 ClusterCommand::SetReplicationId(master_repl_id) => {
-                    self.replication.master_replid = master_repl_id
+                    self.set_replication_id(master_repl_id);
                 }
             }
         }
+    }
+
+    async fn heartbeat(&mut self) {
+        for peer in self.members.values_mut() {
+            let msg = QueryIO::SimpleString("PING".to_string()).serialize();
+            let _ = peer.w_conn.stream.write(msg.as_bytes()).await;
+        }
+    }
+
+    async fn remove_peer(&mut self, peer_addr: PeerAddr) {
+        if let Some(peer) = self.members.remove(&peer_addr) {
+            // stop the runnin process and take the connection in case topology changes are made
+            let _read_connected = peer.listner_kill_trigger.kill().await;
+        }
+        self.members.remove(&peer_addr);
+    }
+
+    fn set_replication_id(&mut self, master_repl_id: String) {
+        self.replication.master_replid = master_repl_id
     }
 }
