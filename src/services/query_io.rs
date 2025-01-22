@@ -159,21 +159,19 @@ fn parse_array(buffer: BytesMut) -> Result<(QueryIO, usize)> {
 
 fn parse_peer_state(buffer: BytesMut) -> Result<(QueryIO, usize)> {
     // fixed rule for peer state
-    let mut len = 3;
+    let len = 3;
 
-    let (term, l) = parse(BytesMut::from(&buffer[len..]))?;
-    len += l;
-    let (offset, l) = parse(BytesMut::from(&buffer[len..]))?;
-    len += l;
-    let (last_updated, l) = parse(BytesMut::from(&buffer[len..]))?;
-    len += l;
+    let (term, l1) = parse(BytesMut::from(&buffer[len..]))?;
+    let (offset, l2) = parse(BytesMut::from(&buffer[len + l1..]))?;
+    let (last_updated, l3) = parse(BytesMut::from(&buffer[len + l1 + l2..]))?;
+
     Ok((
         QueryIO::PeerState {
             term: term.into(),
             offset: offset.into(),
             last_updated: last_updated.into(),
         },
-        len,
+        len + l1 + l2 + l3,
     ))
 }
 
@@ -282,7 +280,7 @@ fn test_parse_array() {
 }
 
 #[test]
-fn test_parse_peer_state() {
+fn test_from_bytes_to_peer_state() {
     // GIVEN
     let buffer = BytesMut::from("^\r\n$3\r\n245\r\n$7\r\n1234329\r\n$8\r\n53999944\r\n");
 
@@ -299,6 +297,31 @@ fn test_parse_peer_state() {
             last_updated: QueryIO::BulkString("53999944".to_string()).into(),
         }
     );
+    let peer_state: PeerState = value.into();
+    assert_eq!(peer_state.term, 245);
+    assert_eq!(peer_state.offset, 1234329);
+    assert_eq!(peer_state.last_updated, 53999944);
+}
+
+#[test]
+fn test_from_peer_state_to_bytes() {
+    use crate::services::query_io::QueryIO;
+
+    //GIVEN
+    let peer_state = PeerState { term: 1, offset: 2, last_updated: 3 };
+    //WHEN
+    let peer_state_serialized: QueryIO = peer_state.into();
+    let peer_state_serialized = peer_state_serialized.serialize();
+    //THEN
+    assert_eq!("^\r\n$1\r\n1\r\n$1\r\n2\r\n$1\r\n3\r\n", peer_state_serialized);
+
+    //GIVEN
+    let peer_state = PeerState { term: 5, offset: 3232, last_updated: 35535300 };
+    //WHEN
+    let peer_state_serialized: QueryIO = peer_state.into();
+    let peer_state_serialized = peer_state_serialized.serialize();
+    //THEN
+    assert_eq!("^\r\n$1\r\n5\r\n$4\r\n3232\r\n$8\r\n35535300\r\n", peer_state_serialized);
 }
 
 #[test]
