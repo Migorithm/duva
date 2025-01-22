@@ -1,4 +1,4 @@
-use crate::services::{cluster::actors::peer::Peer, statefuls::cache::CacheValue};
+use crate::services::statefuls::cache::CacheValue;
 use anyhow::Result;
 use bytes::BytesMut;
 use std::time::SystemTime;
@@ -95,15 +95,20 @@ impl From<PeerState> for QueryIO {
         }
     }
 }
-impl From<QueryIO> for PeerState {
-    fn from(value: QueryIO) -> Self {
-        let QueryIO::PeerState { term, offset, last_updated } = value else { panic!() };
+impl TryFrom<QueryIO> for PeerState {
+    type Error = anyhow::Error;
 
-        PeerState {
-            term: term.unpack_bulk_str().unwrap().parse().unwrap(),
-            offset: offset.unpack_bulk_str().unwrap().parse().unwrap(),
-            last_updated: last_updated.unpack_bulk_str().unwrap().parse().unwrap(),
-        }
+    fn try_from(value: QueryIO) -> std::result::Result<Self, Self::Error> {
+        let QueryIO::PeerState { term, offset, last_updated } = value else {
+            return Err(anyhow::anyhow!("invalid QueryIO invariant"));
+        };
+
+        // SAFETY : failing on this conversion will be a bug. And the system should crash
+        Ok(PeerState {
+            term: term.unpack_bulk_str()?.parse()?,
+            offset: offset.unpack_bulk_str()?.parse()?,
+            last_updated: last_updated.unpack_bulk_str()?.parse()?,
+        })
     }
 }
 
@@ -297,7 +302,7 @@ fn test_from_bytes_to_peer_state() {
             last_updated: QueryIO::BulkString("53999944".to_string()).into(),
         }
     );
-    let peer_state: PeerState = value.into();
+    let peer_state: PeerState = value.try_into().unwrap();
     assert_eq!(peer_state.term, 245);
     assert_eq!(peer_state.offset, 1234329);
     assert_eq!(peer_state.last_updated, 53999944);
