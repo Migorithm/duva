@@ -19,11 +19,8 @@ pub(crate) struct PeerListeningActor {
 }
 
 impl PeerListeningActor {
-    /// The listening
-    /// - is done in the background
-    /// - is done in a loop
-    /// - is done until the kill switch is triggered
-    /// - returns the connected stream when the kill switch is triggered
+    /// Run until the kill switch is triggered
+    /// returns the connected stream when the kill switch is triggered
     pub(super) async fn listen(mut self, rx: ReactorKillSwitch) -> ReadConnected {
         let connected = select! {
             _ = async{
