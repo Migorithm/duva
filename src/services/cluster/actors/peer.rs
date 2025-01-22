@@ -9,7 +9,7 @@ use tokio::sync::mpsc::Sender;
 
 #[derive(Debug)]
 pub(crate) struct Peer {
-    pub(crate) w_conn: ClusterWriteConn,
+    pub(crate) w_conn: WriteConnected,
     pub(crate) listner_kill_trigger: ListeningActorKillTrigger,
     state: PeerState,
 }
@@ -39,13 +39,13 @@ impl Peer {
 }
 
 #[derive(Debug)]
-pub struct ClusterWriteConn {
+pub struct WriteConnected {
     pub stream: OwnedWriteHalf,
     pub kind: PeerKind,
 }
 
 #[derive(Debug)]
-pub(super) struct ClusterReadConn {
+pub(super) struct ReadConnected {
     pub stream: OwnedReadHalf,
     pub kind: PeerKind,
 }
@@ -57,14 +57,14 @@ struct PeerState {
     last_updated: u64,
 }
 
-impl From<(OwnedReadHalf, PeerKind)> for ClusterReadConn {
-    fn from((r, peer_kind): (OwnedReadHalf, PeerKind)) -> ClusterReadConn {
-        ClusterReadConn { stream: r, kind: peer_kind }
+impl From<(OwnedReadHalf, PeerKind)> for ReadConnected {
+    fn from((r, peer_kind): (OwnedReadHalf, PeerKind)) -> ReadConnected {
+        ReadConnected { stream: r, kind: peer_kind }
     }
 }
 
-impl From<(OwnedWriteHalf, PeerKind)> for ClusterWriteConn {
-    fn from((w, peer_kind): (OwnedWriteHalf, PeerKind)) -> ClusterWriteConn {
-        ClusterWriteConn { stream: w, kind: peer_kind }
+impl From<(OwnedWriteHalf, PeerKind)> for WriteConnected {
+    fn from((w, peer_kind): (OwnedWriteHalf, PeerKind)) -> WriteConnected {
+        WriteConnected { stream: w, kind: peer_kind }
     }
 }
