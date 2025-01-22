@@ -2,6 +2,7 @@ use crate::services::cluster::actors::command::ClusterCommand;
 use crate::services::cluster::actors::listening_actor::ListeningActorKillTrigger;
 use crate::services::cluster::actors::listening_actor::PeerListeningActor;
 use crate::services::cluster::actors::types::PeerKind;
+
 use tokio::net::tcp::OwnedReadHalf;
 use tokio::net::tcp::OwnedWriteHalf;
 use tokio::net::TcpStream;
@@ -51,10 +52,10 @@ pub(super) struct ReadConnected {
 }
 
 #[derive(Debug, Default)]
-struct PeerState {
-    term: u64,
-    offset: u64,
-    last_updated: u64,
+pub(crate) struct PeerState {
+    pub(crate) term: u64,
+    pub(crate) offset: u64,
+    pub(crate) last_updated: u64,
 }
 
 impl From<(OwnedReadHalf, PeerKind)> for ReadConnected {
@@ -67,4 +68,25 @@ impl From<(OwnedWriteHalf, PeerKind)> for WriteConnected {
     fn from((w, peer_kind): (OwnedWriteHalf, PeerKind)) -> WriteConnected {
         WriteConnected { stream: w, kind: peer_kind }
     }
+}
+
+#[test]
+fn test_peer_state_serialization() {
+    use crate::services::query_io::QueryIO;
+
+    //GIVEN
+    let peer_state = PeerState { term: 1, offset: 2, last_updated: 3 };
+    //WHEN
+    let peer_state_serialized: QueryIO = peer_state.into();
+    let peer_state_serialized = peer_state_serialized.serialize();
+    //THEN
+    assert_eq!("^\r\n$1\r\n1\r\n$1\r\n2\r\n$1\r\n3\r\n", peer_state_serialized);
+
+    //GIVEN
+    let peer_state = PeerState { term: 5, offset: 3232, last_updated: 35535300 };
+    //WHEN
+    let peer_state_serialized: QueryIO = peer_state.into();
+    let peer_state_serialized = peer_state_serialized.serialize();
+    //THEN
+    assert_eq!("^\r\n$1\r\n5\r\n$4\r\n3232\r\n$8\r\n35535300\r\n", peer_state_serialized);
 }

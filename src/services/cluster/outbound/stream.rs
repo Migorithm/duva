@@ -4,7 +4,7 @@ use crate::services::cluster::actors::types::{PeerAddr, PeerKind};
 use crate::services::cluster::manager::ClusterManager;
 use crate::services::cluster::outbound::response::ConnectionResponse;
 use crate::services::interface::{TRead, TStream};
-use crate::services::query_io::QueryIO;
+
 use crate::{make_smart_pointer, write_array};
 use anyhow::Context;
 use tokio::net::TcpStream;

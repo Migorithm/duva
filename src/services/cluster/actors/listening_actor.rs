@@ -97,7 +97,7 @@ pub(super) type KillTrigger = tokio::sync::oneshot::Sender<()>;
 pub(super) type ReactorKillSwitch = tokio::sync::oneshot::Receiver<()>;
 
 #[derive(Debug)]
-pub(super) struct ListeningActorKillTrigger(KillTrigger, JoinHandle<ReadConnected>);
+pub(crate) struct ListeningActorKillTrigger(KillTrigger, JoinHandle<ReadConnected>);
 impl ListeningActorKillTrigger {
     pub(super) fn new(kill_trigger: KillTrigger, listning_task: JoinHandle<ReadConnected>) -> Self {
         Self(kill_trigger, listning_task)
