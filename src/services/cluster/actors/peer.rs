@@ -2,6 +2,7 @@ use crate::services::cluster::actors::command::ClusterCommand;
 use crate::services::cluster::actors::listening_actor::ListeningActorKillTrigger;
 use crate::services::cluster::actors::listening_actor::PeerListeningActor;
 use crate::services::cluster::actors::types::PeerKind;
+
 use tokio::net::tcp::OwnedReadHalf;
 use tokio::net::tcp::OwnedWriteHalf;
 use tokio::net::TcpStream;
@@ -51,10 +52,10 @@ pub(super) struct ReadConnected {
 }
 
 #[derive(Debug, Default)]
-struct PeerState {
-    term: u64,
-    offset: u64,
-    last_updated: u64,
+pub(crate) struct PeerState {
+    pub(crate) term: u64,
+    pub(crate) offset: u64,
+    pub(crate) last_updated: u64,
 }
 
 impl From<(OwnedReadHalf, PeerKind)> for ReadConnected {

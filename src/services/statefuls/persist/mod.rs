@@ -1,6 +1,6 @@
 pub mod actor;
-pub mod endec;
 pub mod encoding_command;
+pub mod endec;
 use super::cache::CacheEntry;
 use std::collections::HashMap;
 
