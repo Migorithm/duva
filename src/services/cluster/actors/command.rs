@@ -1,10 +1,9 @@
-use crate::services::query_io::QueryIO;
-use tokio::net::TcpStream;
-
 use super::{
     replication::Replication,
     types::{PeerAddr, PeerAddrs, PeerKind},
 };
+use crate::services::query_io::QueryIO;
+use tokio::net::TcpStream;
 
 pub enum ClusterCommand {
     AddPeer { peer_addr: PeerAddr, stream: TcpStream, peer_kind: PeerKind },
@@ -12,35 +11,21 @@ pub enum ClusterCommand {
     GetPeers(tokio::sync::oneshot::Sender<PeerAddrs>),
     ReplicationInfo(tokio::sync::oneshot::Sender<Replication>),
     SetReplicationId(String),
-    Write(ClusterWriteCommand),
-}
-
-impl ClusterCommand {
-    pub(crate) fn ping() -> Self {
-        Self::Write(ClusterWriteCommand::Ping)
-    }
-}
-
-pub enum ClusterWriteCommand {
-    Replicate { query: QueryIO },
     Ping,
+    Replicate { query: QueryIO },
 }
 
 #[derive(Debug)]
-pub enum MasterCommand {
+pub enum CommandFromMaster {
     Ping,
     Replicate { query: QueryIO },
     Sync(QueryIO),
 }
-pub enum SlaveCommand {
+pub enum CommandFromSlave {
     Ping,
 }
 
-pub enum PeerCommand {
-    Ping,
-}
-
-impl TryFrom<QueryIO> for MasterCommand {
+impl TryFrom<QueryIO> for CommandFromMaster {
     type Error = anyhow::Error;
     fn try_from(query: QueryIO) -> anyhow::Result<Self> {
         match query {
@@ -54,7 +39,7 @@ impl TryFrom<QueryIO> for MasterCommand {
     }
 }
 
-impl TryFrom<QueryIO> for SlaveCommand {
+impl TryFrom<QueryIO> for CommandFromSlave {
     type Error = anyhow::Error;
     fn try_from(query: QueryIO) -> anyhow::Result<Self> {
         match query {
