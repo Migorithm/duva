@@ -1,4 +1,4 @@
-use super::command::{ClusterCommand, ClusterWriteCommand};
+use super::command::ClusterCommand;
 
 use super::peer::Peer;
 use super::replication::Replication;
@@ -68,12 +68,11 @@ impl ClusterActor {
                     // send
                     let _ = callback.send(self.members.keys().cloned().collect::<Vec<_>>().into());
                 }
-                ClusterCommand::Write(write_cmd) => match write_cmd {
-                    ClusterWriteCommand::Replicate { query: _ } => todo!(),
-                    ClusterWriteCommand::Ping => {
-                        self.heartbeat().await;
-                    }
-                },
+
+                ClusterCommand::Replicate { query } => todo!(),
+                ClusterCommand::Ping => {
+                    self.heartbeat().await;
+                }
                 ClusterCommand::ReplicationInfo(sender) => {
                     let _ = sender.send(self.replication.clone());
                 }

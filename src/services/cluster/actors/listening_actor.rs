@@ -2,13 +2,11 @@
 /// Message from a peer is one of events that can trigger a change in the cluster state.
 /// As it has to keep listening to incoming messages, it is implemented as an actor, run in the background.
 /// To take a control of the actor, PeerListenerHandler is used, which can kill the listening process and return the connected stream.
-use super::command::{ClusterCommand, MasterCommand, SlaveCommand};
+use super::command::{ClusterCommand, CommandFromMaster, CommandFromSlave};
 use super::peer::ReadConnected;
-
 use crate::services::cluster::actors::types::PeerKind;
 use crate::services::interface::TRead;
 use crate::services::query_io::QueryIO;
-use tokio::net::tcp::OwnedReadHalf;
 use tokio::select;
 use tokio::sync::mpsc::Sender;
 use tokio::task::JoinHandle;
@@ -47,10 +45,10 @@ impl PeerListeningActor {
     }
 
     async fn listen_replica_stream(&mut self) {
-        while let Ok(cmds) = self.read_command::<SlaveCommand>().await {
+        while let Ok(cmds) = self.read_command::<CommandFromSlave>().await {
             for cmd in cmds {
                 match cmd {
-                    SlaveCommand::Ping => {
+                    CommandFromSlave::Ping => {
                         println!("[INFO] Received ping from slave");
                     }
                 }
@@ -63,15 +61,15 @@ impl PeerListeningActor {
         }
     }
     async fn listen_master_stream(&mut self) {
-        while let Ok(cmds) = self.read_command::<MasterCommand>().await {
+        while let Ok(cmds) = self.read_command::<CommandFromMaster>().await {
             for cmd in cmds {
                 match cmd {
-                    MasterCommand::Ping => {
+                    CommandFromMaster::Ping => {
                         println!("[INFO] Received ping from master");
                     }
 
-                    MasterCommand::Replicate { query: _ } => {}
-                    MasterCommand::Sync(v) => {
+                    CommandFromMaster::Replicate { query: _ } => {}
+                    CommandFromMaster::Sync(v) => {
                         println!("[INFO] Received sync from master {:?}", v);
                     }
                 }
