@@ -13,7 +13,7 @@ pub enum QueryIO {
     Null,
     Err(String),
     File(Vec<u8>),
-    PeerState { term: Box<QueryIO>, offset: Box<QueryIO>, last_updated: Box<QueryIO> },
+    PeerState { term: String, offset: String, last_updated: String },
 }
 
 #[macro_export]
@@ -36,11 +36,15 @@ impl QueryIO {
                 result
             }
             QueryIO::PeerState { term, offset, last_updated } => {
-                let mut result = format!("^\r\n");
-                result.push_str(&term.serialize());
-                result.push_str(&offset.serialize());
-                result.push_str(&last_updated.serialize());
-                result
+                format!(
+                    "^\r\n${}\r\n{}\r\n${}\r\n{}\r\n${}\r\n{}\r\n",
+                    term.len(),
+                    term,
+                    offset.len(),
+                    offset,
+                    last_updated.len(),
+                    last_updated
+                )
             }
             QueryIO::Null => "$-1\r\n".to_string(),
             QueryIO::Err(e) => format!("-{}\r\n", e),
@@ -89,9 +93,9 @@ impl From<Option<CacheValue>> for QueryIO {
 impl From<PeerState> for QueryIO {
     fn from(value: PeerState) -> Self {
         QueryIO::PeerState {
-            term: Box::new(value.term.to_string().into()),
-            offset: Box::new(value.offset.to_string().into()),
-            last_updated: Box::new(value.last_updated.to_string().into()),
+            term: value.term.to_string(),
+            offset: value.offset.to_string(),
+            last_updated: value.last_updated.to_string(),
         }
     }
 }
@@ -105,9 +109,9 @@ impl TryFrom<QueryIO> for PeerState {
 
         // SAFETY : failing on this conversion will be a bug. And the system should crash
         Ok(PeerState {
-            term: term.unpack_bulk_str()?.parse()?,
-            offset: offset.unpack_bulk_str()?.parse()?,
-            last_updated: last_updated.unpack_bulk_str()?.parse()?,
+            term: term.parse()?,
+            offset: offset.parse()?,
+            last_updated: last_updated.parse()?,
         })
     }
 }
@@ -172,9 +176,9 @@ fn parse_peer_state(buffer: BytesMut) -> Result<(QueryIO, usize)> {
 
     Ok((
         QueryIO::PeerState {
-            term: term.into(),
-            offset: offset.into(),
-            last_updated: last_updated.into(),
+            term: term.unpack_bulk_str()?.into(),
+            offset: offset.unpack_bulk_str()?.into(),
+            last_updated: last_updated.unpack_bulk_str()?.into(),
         },
         len + l1 + l2 + l3,
     ))
@@ -297,9 +301,9 @@ fn test_from_bytes_to_peer_state() {
     assert_eq!(
         value,
         QueryIO::PeerState {
-            term: QueryIO::BulkString("245".to_string()).into(),
-            offset: QueryIO::BulkString("1234329".to_string()).into(),
-            last_updated: QueryIO::BulkString("53999944".to_string()).into(),
+            term: "245".to_string(),
+            offset: "1234329".to_string(),
+            last_updated: "53999944".to_string(),
         }
     );
     let peer_state: PeerState = value.try_into().unwrap();
