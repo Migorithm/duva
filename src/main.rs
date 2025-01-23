@@ -65,7 +65,7 @@ async fn test_cancellation_token() {
     //warm up time
     notify.notified().await;
 
-    let mut client_stream = TcpStream::connect(manager.bind_addr()).await.unwrap();
+    let client_stream = TcpStream::connect(manager.bind_addr()).await.unwrap();
     let mut h: ClientStreamHandler = client_stream.into_split().into();
 
     // WHEN

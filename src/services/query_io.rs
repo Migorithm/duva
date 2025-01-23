@@ -1,9 +1,8 @@
+use super::cluster::actors::peer::PeerState;
 use crate::services::statefuls::cache::CacheValue;
 use anyhow::Result;
 use bytes::BytesMut;
 use std::time::SystemTime;
-
-use super::cluster::actors::peer::PeerState;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum QueryIO {
@@ -43,6 +42,7 @@ impl QueryIO {
                     last_updated.to_string().len(),
                 )
             }
+
             QueryIO::Null => "$-1\r\n".to_string(),
             QueryIO::Err(e) => format!("-{}\r\n", e),
             QueryIO::File(f) => {
@@ -59,12 +59,32 @@ impl QueryIO {
         }
     }
 
-    pub fn unpack_bulk_str(self) -> Result<String> {
+    pub fn unpack_single_entry<T>(self) -> Result<T>
+    where
+        T: std::str::FromStr<Err: std::error::Error + Sync + Send + 'static>,
+    {
         match self {
-            QueryIO::BulkString(s) => Ok(s.to_lowercase()),
+            QueryIO::BulkString(s) => Ok(s.to_lowercase().parse::<T>()?.into()),
             _ => Err(anyhow::anyhow!("Expected command to be a bulk string")),
         }
     }
+
+    pub fn unpack_array<T>(self) -> Result<Vec<T>>
+    where
+        T: std::str::FromStr<Err: std::error::Error + Sync + Send + 'static>,
+    {
+        let QueryIO::Array(s) = self else {
+            return Err(anyhow::anyhow!("Expected command to be a bulk array"));
+        };
+
+        let mut result = vec![];
+        for v in s {
+            let temp_val = v.unpack_single_entry()?;
+            result.push(temp_val);
+        }
+        Ok(result)
+    }
+
     pub fn extract_expiry(&self) -> anyhow::Result<SystemTime> {
         match self {
             QueryIO::BulkString(expiry) => {
@@ -115,7 +135,7 @@ impl From<Vec<u8>> for QueryIO {
         QueryIO::File(v)
     }
 }
-//
+
 pub fn parse(buffer: BytesMut) -> Result<(QueryIO, usize)> {
     match buffer[0] as char {
         '+' => parse_simple_string(buffer),
@@ -164,9 +184,9 @@ fn parse_peer_state(buffer: BytesMut) -> Result<(QueryIO, usize)> {
 
     Ok((
         QueryIO::PeerState(PeerState {
-            term: term.unpack_bulk_str()?.parse()?,
-            offset: offset.unpack_bulk_str()?.parse()?,
-            last_updated: last_updated.unpack_bulk_str()?.parse()?,
+            term: term.unpack_single_entry()?,
+            offset: offset.unpack_single_entry()?,
+            last_updated: last_updated.unpack_single_entry()?,
         }),
         len + l1 + l2 + l3,
     ))
