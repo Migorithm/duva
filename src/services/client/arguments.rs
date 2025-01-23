@@ -3,7 +3,7 @@ use crate::services::query_io::QueryIO;
 use crate::services::statefuls::cache::CacheEntry;
 use anyhow::Result;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct ClientRequestArguments(Vec<QueryIO>);
 
 make_smart_pointer!(ClientRequestArguments, Vec<QueryIO>);

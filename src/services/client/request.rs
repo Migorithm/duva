@@ -1,29 +1,14 @@
+use std::time::SystemTime;
+
 pub enum ClientRequest {
     Ping,
-    Echo,
-    Config,
-    Get,
-    Set,
-    Keys,
-    Delete,
+    Echo(String),
+    Config { key: String, value: String },
+    Get { key: String },
+    Set { key: String, value: String },
+    SetWithExpiry { key: String, value: String, expiry: SystemTime },
+    Keys { pattern: Option<String> },
+    Delete { key: String },
     Save,
     Info,
-}
-
-impl TryFrom<String> for ClientRequest {
-    type Error = anyhow::Error;
-    fn try_from(value: String) -> Result<Self, Self::Error> {
-        match value.to_lowercase().as_str() {
-            "ping" => Ok(ClientRequest::Ping),
-            "get" => Ok(ClientRequest::Get),
-            "set" => Ok(ClientRequest::Set),
-            "delete" => Ok(ClientRequest::Delete),
-            "echo" => Ok(ClientRequest::Echo),
-            "config" => Ok(ClientRequest::Config),
-            "keys" => Ok(ClientRequest::Keys),
-            "save" => Ok(ClientRequest::Save),
-            "info" => Ok(ClientRequest::Info),
-            _ => Err(anyhow::anyhow!("Invalid command")),
-        }
-    }
 }
