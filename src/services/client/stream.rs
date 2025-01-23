@@ -50,7 +50,7 @@ impl ClientStream {
         }
     }
 
-    pub fn extract_expiry(expiry: &str) -> anyhow::Result<SystemTime> {
+    fn extract_expiry(expiry: &str) -> anyhow::Result<SystemTime> {
         let systime =
             std::time::SystemTime::now() + std::time::Duration::from_millis(expiry.parse::<u64>()?);
         Ok(systime)
