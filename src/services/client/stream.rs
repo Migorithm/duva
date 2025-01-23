@@ -1,3 +1,5 @@
+use std::time::SystemTime;
+
 use super::request::ClientRequest;
 use crate::{
     make_smart_pointer,
@@ -27,9 +29,7 @@ impl ClientStream {
                     ["set", key, value, "px", expiry] => Ok(ClientRequest::SetWithExpiry {
                         key: key.to_string(),
                         value: value.to_string(),
-                        // convert expiry in &str to milliseconds
-                        expiry: std::time::SystemTime::now()
-                            + std::time::Duration::from_millis(expiry.parse::<u64>()?),
+                        expiry: Self::extract_expiry(expiry)?,
                     }),
                     ["delete", key] => Ok(ClientRequest::Delete { key: key.to_string() }),
                     ["echo", value] => Ok(ClientRequest::Echo(value.to_string())),
@@ -48,5 +48,11 @@ impl ClientStream {
             }
             _ => Err(anyhow::anyhow!("Unexpected command format")),
         }
+    }
+
+    pub fn extract_expiry(expiry: &str) -> anyhow::Result<SystemTime> {
+        let systime =
+            std::time::SystemTime::now() + std::time::Duration::from_millis(expiry.parse::<u64>()?);
+        Ok(systime)
     }
 }
