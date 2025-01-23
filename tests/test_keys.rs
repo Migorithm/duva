@@ -21,5 +21,5 @@ async fn test_keys() {
     h.send({ array(vec!["KEYS", "*"]).into_bytes() }.as_slice()).await;
     let res = h.get_response().await;
 
-    assert!(res.starts_with(format!("*{}\r\n", num_keys_to_store).as_str()));
+    assert!(res.starts_with(format!("*{}\r\n", dbg!(num_keys_to_store)).as_str()));
 }
