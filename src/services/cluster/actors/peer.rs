@@ -51,8 +51,8 @@ pub(super) struct ReadConnected {
     pub kind: PeerKind,
 }
 
-#[derive(Debug, Default)]
-pub(crate) struct PeerState {
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct PeerState {
     pub(crate) term: u64,
     pub(crate) offset: u64,
     pub(crate) last_updated: u64,

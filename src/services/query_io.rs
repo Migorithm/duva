@@ -13,7 +13,7 @@ pub enum QueryIO {
     Null,
     Err(String),
     File(Vec<u8>),
-    PeerState { term: String, offset: String, last_updated: String },
+    PeerState(PeerState),
 }
 
 #[macro_export]
@@ -35,15 +35,12 @@ impl QueryIO {
                 }
                 result
             }
-            QueryIO::PeerState { term, offset, last_updated } => {
+            QueryIO::PeerState(PeerState { term, offset, last_updated }) => {
                 format!(
-                    "^\r\n${}\r\n{}\r\n${}\r\n{}\r\n${}\r\n{}\r\n",
-                    term.len(),
-                    term,
-                    offset.len(),
-                    offset,
-                    last_updated.len(),
-                    last_updated
+                    "^\r\n${}\r\n{term}\r\n${}\r\n{offset}\r\n${}\r\n{last_updated}\r\n",
+                    term.to_string().len(),
+                    offset.to_string().len(),
+                    last_updated.to_string().len(),
                 )
             }
             QueryIO::Null => "$-1\r\n".to_string(),
@@ -92,27 +89,19 @@ impl From<Option<CacheValue>> for QueryIO {
 
 impl From<PeerState> for QueryIO {
     fn from(value: PeerState) -> Self {
-        QueryIO::PeerState {
-            term: value.term.to_string(),
-            offset: value.offset.to_string(),
-            last_updated: value.last_updated.to_string(),
-        }
+        QueryIO::PeerState(value)
     }
 }
 impl TryFrom<QueryIO> for PeerState {
     type Error = anyhow::Error;
 
     fn try_from(value: QueryIO) -> std::result::Result<Self, Self::Error> {
-        let QueryIO::PeerState { term, offset, last_updated } = value else {
+        let QueryIO::PeerState(PeerState { term, offset, last_updated }) = value else {
             return Err(anyhow::anyhow!("invalid QueryIO invariant"));
         };
 
         // SAFETY : failing on this conversion will be a bug. And the system should crash
-        Ok(PeerState {
-            term: term.parse()?,
-            offset: offset.parse()?,
-            last_updated: last_updated.parse()?,
-        })
+        Ok(PeerState { term, offset, last_updated })
     }
 }
 
@@ -133,7 +122,6 @@ pub fn parse(buffer: BytesMut) -> Result<(QueryIO, usize)> {
         '*' => parse_array(buffer),
         '$' => parse_bulk_string_or_file(buffer),
         '^' => parse_peer_state(buffer),
-
         _ => Err(anyhow::anyhow!("Not a known value type {:?}", buffer)),
     }
 }
@@ -175,11 +163,11 @@ fn parse_peer_state(buffer: BytesMut) -> Result<(QueryIO, usize)> {
     let (last_updated, l3) = parse(BytesMut::from(&buffer[len + l1 + l2..]))?;
 
     Ok((
-        QueryIO::PeerState {
-            term: term.unpack_bulk_str()?.into(),
-            offset: offset.unpack_bulk_str()?.into(),
-            last_updated: last_updated.unpack_bulk_str()?.into(),
-        },
+        QueryIO::PeerState(PeerState {
+            term: term.unpack_bulk_str()?.parse()?,
+            offset: offset.unpack_bulk_str()?.parse()?,
+            last_updated: last_updated.unpack_bulk_str()?.parse()?,
+        }),
         len + l1 + l2 + l3,
     ))
 }
@@ -300,11 +288,7 @@ fn test_from_bytes_to_peer_state() {
     assert_eq!(len, "^\r\n$3\r\n245\r\n$7\r\n1234329\r\n$8\r\n53999944\r\n".len());
     assert_eq!(
         value,
-        QueryIO::PeerState {
-            term: "245".to_string(),
-            offset: "1234329".to_string(),
-            last_updated: "53999944".to_string(),
-        }
+        QueryIO::PeerState(PeerState { term: 245, offset: 1234329, last_updated: 53999944 })
     );
     let peer_state: PeerState = value.try_into().unwrap();
     assert_eq!(peer_state.term, 245);

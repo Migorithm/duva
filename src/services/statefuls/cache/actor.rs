@@ -86,7 +86,7 @@ impl CacheActor {
         self.cache.keys_with_expiry
     }
 
-    fn keys_stream(&self, pattern: Option<String>) -> impl Iterator<Item=QueryIO> + '_ {
+    fn keys_stream(&self, pattern: Option<String>) -> impl Iterator<Item = QueryIO> + '_ {
         self.cache.keys().filter_map(move |k| {
             if pattern.as_ref().map_or(true, |p| k.contains(p)) {
                 Some(QueryIO::BulkString(k.to_string()))
@@ -161,8 +161,8 @@ async fn test_set_and_delete_inc_dec_keys_with_expiry() {
             },
             ttl_sender: ttl_sender.clone(),
         })
-            .await
-            .unwrap();
+        .await
+        .unwrap();
     }
 
     // key0 is expiry key. deleting the following will decrese the number by 1
