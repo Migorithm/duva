@@ -15,18 +15,12 @@ impl ClientStream {
         let query_io = self.read_value().await?;
         match query_io {
             QueryIO::Array(value_array) => {
-                let temp =
-                    value_array.into_iter().map(|v| v.unpack_single_entry::<String>()).flatten();
-
-                match temp
+                let values: Vec<String> = value_array
                     .into_iter()
-                    .map(|f| f.to_lowercase())
-                    .collect::<Vec<_>>()
-                    .iter()
-                    .map(String::as_str)
-                    .collect::<Vec<_>>()
-                    .as_slice()
-                {
+                    .map(|v| v.unpack_single_entry::<String>())
+                    .collect::<Result<_, _>>()?;
+
+                match values.iter().map(String::as_str).collect::<Vec<_>>().as_slice() {
                     ["ping"] => Ok(ClientRequest::Ping),
                     ["get", key] => Ok(ClientRequest::Get { key: key.to_string() }),
                     ["set", key, value] => {
@@ -52,7 +46,7 @@ impl ClientStream {
                         }
                     }
                     ["save"] => Ok(ClientRequest::Save),
-                    ["info", value] => Ok(ClientRequest::Info),
+                    ["info", _unused_value] => Ok(ClientRequest::Info),
                     _ => Err(anyhow::anyhow!("Invalid command")),
                 }
             }
