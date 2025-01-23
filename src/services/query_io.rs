@@ -84,17 +84,6 @@ impl QueryIO {
         }
         Ok(result)
     }
-
-    pub fn extract_expiry(&self) -> anyhow::Result<SystemTime> {
-        match self {
-            QueryIO::BulkString(expiry) => {
-                let systime = std::time::SystemTime::now()
-                    + std::time::Duration::from_millis(expiry.parse::<u64>()?);
-                Ok(systime)
-            }
-            _ => Err(anyhow::anyhow!("Invalid expiry")),
-        }
-    }
 }
 
 impl From<Option<CacheValue>> for QueryIO {

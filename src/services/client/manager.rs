@@ -1,4 +1,3 @@
-use crate::services::client::arguments::ClientRequestArguments;
 use crate::services::client::request::ClientRequest;
 use crate::services::client::stream::ClientStream;
 use crate::services::cluster::manager::ClusterManager;
@@ -11,6 +10,7 @@ use crate::services::interface::TStream;
 use crate::services::query_io::QueryIO;
 use crate::services::statefuls::cache::manager::CacheManager;
 use crate::services::statefuls::cache::ttl::manager::TtlSchedulerInbox;
+use crate::services::statefuls::cache::CacheEntry;
 use crate::services::statefuls::persist::actor::PersistActor;
 use crate::services::statefuls::persist::endec::encoder::encoding_processor::EncodingProcessor;
 use tokio::net::TcpListener;
@@ -37,7 +37,6 @@ impl ClientManager {
         &self,
         mut cancellation_token: impl TCancellationWatcher,
         cmd: ClientRequest,
-        args: ClientRequestArguments,
     ) -> anyhow::Result<QueryIO> {
         if cancellation_token.watch() {
             let err = QueryIO::Err("Error operation cancelled due to timeout".to_string());
@@ -47,9 +46,15 @@ impl ClientManager {
         // TODO if it is persistence operation, get the key and hash, take the appropriate sender, send it;
         let response = match cmd {
             ClientRequest::Ping => QueryIO::SimpleString("PONG".to_string()),
-            ClientRequest::Echo => args.first().ok_or(anyhow::anyhow!("Not exists"))?.clone(),
-            ClientRequest::Set => {
-                let cache_entry = args.take_set_args()?;
+            ClientRequest::Echo(val) => val.into(),
+            ClientRequest::Set { key, value } => {
+                let cache_entry = CacheEntry::KeyValue(key.to_owned(), value.to_string());
+
+                self.cache_manager.route_set(cache_entry, self.ttl_manager.clone()).await?
+            }
+            ClientRequest::SetWithExpiry { key, value, expiry } => {
+                let cache_entry =
+                    CacheEntry::KeyValueExpiry(key.to_owned(), value.to_string(), expiry);
                 self.cache_manager.route_set(cache_entry, self.ttl_manager.clone()).await?
             }
             ClientRequest::Save => {
@@ -64,18 +69,11 @@ impl ClientManager {
 
                 QueryIO::Null
             }
-            ClientRequest::Get => {
-                let key = args.take_get_args()?;
-                self.cache_manager.route_get(key).await?
-            }
-            ClientRequest::Keys => {
-                let pattern = args.take_keys_pattern()?;
-                self.cache_manager.route_keys(pattern).await?
-            }
+            ClientRequest::Get { key } => self.cache_manager.route_get(key).await?,
+            ClientRequest::Keys { pattern } => self.cache_manager.route_keys(pattern).await?,
             // modify we have to add a new command
-            ClientRequest::Config => {
-                let cmd = args.take_config_args()?;
-                let res = self.config_manager.route_get(cmd).await?;
+            ClientRequest::Config { key, value } => {
+                let res = self.config_manager.route_get((key, value)).await?;
 
                 match res {
                     ConfigResponse::Dir(value) => QueryIO::Array(vec![
@@ -86,7 +84,7 @@ impl ClientManager {
                     _ => QueryIO::Err("Invalid operation".into()),
                 }
             }
-            ClientRequest::Delete => panic!("Not implemented"),
+            ClientRequest::Delete { key } => panic!("Not implemented"),
 
             ClientRequest::Info => QueryIO::BulkString(
                 self.cluster_manager.replication_info().await?.vectorize().join("\r\n"),
@@ -113,7 +111,7 @@ impl ClientManager {
                                 const TIMEOUT: u64 = 100;
                                 let mut stream =  ClientStream(stream);
                                 loop {
-                                    let Ok((request, query_args)) = stream.extract_query().await else {
+                                    let Ok(request) = stream.extract_query().await else {
                                         eprintln!("invalid user request");
                                         continue;
                                     };
@@ -125,7 +123,7 @@ impl ClientManager {
                                     // Notify the cancellation notifier to cancel the query after 100 milliseconds.
                                     cancellation_notifier.notify();
 
-                                    let res = match self.handle(cancellation_token, request, query_args).await {
+                                    let res = match self.handle(cancellation_token, request).await {
                                         Ok(response) => stream.write(response).await,
                                         Err(e) => stream.write(QueryIO::Err(e.to_string())).await,
                                     };
