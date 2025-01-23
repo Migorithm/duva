@@ -22,7 +22,7 @@ impl ClientStream {
                     .first()
                     .context("request not given")?
                     .clone()
-                    .unpack_bulk_str()?
+                    .unpack_single_entry::<String>()?
                     .try_into()?,
                 ClientRequestArguments::new(value_array.into_iter().skip(1).collect()),
             )),

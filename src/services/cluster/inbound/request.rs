@@ -15,7 +15,7 @@ impl HandShakeRequest {
                     .first()
                     .context("request not given")?
                     .clone()
-                    .unpack_bulk_str()?
+                    .unpack_single_entry::<String>()?
                     .try_into()?,
                 args: QueryArguments::new(value_array.into_iter().skip(1).collect()),
             }),
@@ -78,13 +78,13 @@ impl HandShakeRequest {
         let replica_id = self
             .args
             .first()
-            .map(|v| v.clone().unpack_bulk_str())
+            .map(|v| v.clone().unpack_single_entry())
             .ok_or(anyhow::anyhow!("No replica id"))??;
         let offset = self
             .args
             .get(1)
-            .map(|v| v.clone().unpack_bulk_str().map(|s| s.parse::<i64>()))
-            .ok_or(anyhow::anyhow!("No offset"))???;
+            .map(|v| v.clone().unpack_single_entry::<i64>())
+            .ok_or(anyhow::anyhow!("No offset"))??;
         Ok((replica_id, offset))
     }
 }
