@@ -1,11 +1,9 @@
+use super::request::ClientRequest;
 use crate::{
     make_smart_pointer,
     services::{interface::TStream, query_io::QueryIO},
 };
-
 use tokio::net::TcpStream;
-
-use super::request::ClientRequest;
 
 pub struct ClientStream(pub(crate) TcpStream);
 make_smart_pointer!(ClientStream, TcpStream);
@@ -29,6 +27,7 @@ impl ClientStream {
                     ["set", key, value, "px", expiry] => Ok(ClientRequest::SetWithExpiry {
                         key: key.to_string(),
                         value: value.to_string(),
+                        // convert expiry in &str to milliseconds
                         expiry: std::time::SystemTime::now()
                             + std::time::Duration::from_millis(expiry.parse::<u64>()?),
                     }),
@@ -39,11 +38,8 @@ impl ClientStream {
                     }
 
                     ["keys", var] if var != &"" => {
-                        if var == &"*" {
-                            Ok(ClientRequest::Keys { pattern: None })
-                        } else {
-                            Ok(ClientRequest::Keys { pattern: Some(var.to_string()) })
-                        }
+                        let &"*" = var else { return Ok(ClientRequest::Keys { pattern: None }) };
+                        Ok(ClientRequest::Keys { pattern: Some(var.to_string()) })
                     }
                     ["save"] => Ok(ClientRequest::Save),
                     ["info", _unused_value] => Ok(ClientRequest::Info),
