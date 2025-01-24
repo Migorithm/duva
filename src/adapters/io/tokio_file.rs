@@ -1,16 +1,4 @@
-use crate::services::{
-    error::IoError,
-    interface::{TWrite, TWriterFactory},
-};
-use tokio::io::AsyncWriteExt;
-
-impl TWrite for tokio::fs::File {
-    async fn write(&mut self, buf: &[u8]) -> Result<(), IoError> {
-        AsyncWriteExt::write_all(&mut (self as &mut tokio::fs::File), buf)
-            .await
-            .map_err(|e| e.kind().into())
-    }
-}
+use crate::services::interface::TWriterFactory;
 
 impl TWriterFactory for tokio::fs::File {
     async fn create_writer(filepath: String) -> anyhow::Result<tokio::fs::File> {

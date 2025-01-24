@@ -7,6 +7,7 @@ use crate::services::cluster::actors::types::PeerKind;
 use crate::services::cluster::inbound::request::HandShakeRequest;
 use crate::services::cluster::inbound::request::HandShakeRequestEnum;
 
+use crate::services::interface::TRead;
 use crate::services::interface::{TGetPeerIp, TStream};
 use crate::services::query_io::QueryIO;
 use crate::services::statefuls::cache::manager::CacheManager;
@@ -83,8 +84,8 @@ impl InboundStream {
     }
 
     async fn extract_cmd(&mut self) -> anyhow::Result<HandShakeRequest> {
-        let query_io = self.read_value().await?;
-        HandShakeRequest::new(query_io)
+        let mut query_io = self.read_values().await?;
+        HandShakeRequest::new(query_io.swap_remove(0))
     }
 
     pub(crate) async fn disseminate_peers(&mut self, peers: PeerAddrs) -> anyhow::Result<()> {

@@ -111,28 +111,27 @@ impl ClientManager {
                                 const TIMEOUT: u64 = 100;
                                 let mut stream =  ClientStream(stream);
                                 loop {
-                                    let Ok(request) = stream.extract_query().await else {
+                                    let Ok(requests) = stream.extract_query().await else {
                                         eprintln!("invalid user request");
                                         continue;
                                     };
-
-                                    let (cancellation_notifier, cancellation_token) =
+                                    for request in requests {
+                                        let (cancellation_notifier, cancellation_token) =
                                         cancellation_factory.create(TIMEOUT);
-
-                                    // TODO subject to change - more to dynamic
-                                    // Notify the cancellation notifier to cancel the query after 100 milliseconds.
-                                    cancellation_notifier.notify();
-
-                                    let res = match self.handle(cancellation_token, request).await {
+                                        // TODO subject to change - more to dynamic
+                                        // Notify the cancellation notifier to cancel the query after 100 milliseconds.
+                                        cancellation_notifier.notify();
+                                        let res = match self.handle(cancellation_token, request).await {
                                         Ok(response) => stream.write(response).await,
                                         Err(e) => stream.write(QueryIO::Err(e.to_string())).await,
-                                    };
+                                        };
 
-                                    if let Err(e) = res {
-                                        if e.should_break() {
-                                            break;
-                                        }
+                                        if let Err(e) = res {
+                                            if e.should_break() {
+                                                break;
+                                            }
                                     }
+                                }
                                 }
                            }
                         ));

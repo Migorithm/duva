@@ -2,7 +2,6 @@ use super::cluster::actors::peer::PeerState;
 use crate::services::statefuls::cache::CacheValue;
 use anyhow::Result;
 use bytes::BytesMut;
-use std::time::SystemTime;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum QueryIO {

@@ -6,7 +6,6 @@ use super::query_io::QueryIO;
 
 pub trait TStream: TGetPeerIp + Send + Sync + 'static {
     // TODO deprecated
-    fn read_value(&mut self) -> impl std::future::Future<Output = anyhow::Result<QueryIO>> + Send;
 
     fn write(
         &mut self,
