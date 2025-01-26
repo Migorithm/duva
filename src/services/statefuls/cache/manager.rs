@@ -51,7 +51,7 @@ impl CacheManager {
         self.select_shard(kvs.key())
             .send(CacheCommand::Set { cache_entry: kvs, ttl_sender })
             .await?;
-        Ok(QueryIO::SimpleString("OK".to_string()))
+        Ok(QueryIO::SimpleString("OK".to_string().into()))
     }
 
     pub(crate) async fn route_save(&self, outbox: mpsc::Sender<EncodingCommand>) {

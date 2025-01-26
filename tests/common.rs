@@ -110,5 +110,6 @@ pub fn wait_for_and_get_message<T: Read>(
 }
 
 pub fn array(arr: Vec<&str>) -> Bytes {
-    QueryIO::Array(arr.iter().map(|s| QueryIO::BulkString(s.to_string())).collect()).serialize()
+    QueryIO::Array(arr.iter().map(|s| QueryIO::BulkString(s.to_string().into())).collect())
+        .serialize()
 }

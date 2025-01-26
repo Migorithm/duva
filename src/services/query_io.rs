@@ -1,3 +1,5 @@
+use std::fmt::Write;
+
 use super::cluster::actors::peer::PeerState;
 use crate::services::statefuls::cache::CacheValue;
 use anyhow::{Context, Result};
@@ -11,17 +13,6 @@ const ARRAY_PREFIX: char = '*';
 const ERROR_PREFIX: char = '-';
 const PEERSTATE_PREFIX: char = '^';
 
-#[derive(Clone, Debug, PartialEq)]
-pub enum QueryIO {
-    SimpleString(String),
-    BulkString(String),
-    Array(Vec<QueryIO>),
-    Null,
-    Err(String),
-    File(Vec<u8>),
-    PeerState(PeerState),
-}
-
 #[macro_export]
 macro_rules! write_array {
     ($($x:expr),*) => {
@@ -29,20 +20,58 @@ macro_rules! write_array {
     };
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub enum QueryIO {
+    SimpleString(Bytes),
+    BulkString(Bytes),
+    Array(Vec<QueryIO>),
+    Null,
+    Err(Bytes),
+    File(Bytes),
+    PeerState(PeerState),
+}
+
 impl QueryIO {
     pub fn serialize(self) -> Bytes {
+        let concatenator = |prefix: char| -> Bytes { Bytes::from_iter([prefix as u8].into_iter()) };
+
         match self {
-            QueryIO::SimpleString(s) => format!("{}{}\r\n", SIMPLE_STRING_PREFIX, s).into(),
-            QueryIO::BulkString(s) => {
-                format!("{}{}\r\n{}\r\n", BULK_STRING_PREFIX, s.len(), s).into()
+            QueryIO::SimpleString(s) => {
+                Bytes::from([concatenator(SIMPLE_STRING_PREFIX), s, "\r\n".into()].concat())
             }
-            QueryIO::Array(a) => {
-                let mut result = format!("{}{}\r\n", ARRAY_PREFIX, a.len()).into_bytes();
-                for v in a {
-                    result.extend(&v.serialize());
-                }
-                result.into()
+            QueryIO::BulkString(s) => Bytes::from(
+                [
+                    concatenator(BULK_STRING_PREFIX),
+                    s.len().to_string().into_bytes().into(),
+                    "\r\n".into(),
+                    s,
+                    "\r\n".into(),
+                ]
+                .concat(),
+            ),
+
+            QueryIO::File(f) => {
+                let file_len = f.len() * 2;
+                let mut hex_file = String::with_capacity(file_len + file_len.to_string().len() + 2);
+
+                // * To avoid the overhead of using format! macro by creating intermediate string, use write!
+                let _ = write!(&mut hex_file, "{}{}\r\n", FILE_PREFIX, file_len);
+                f.into_iter().for_each(|byte| {
+                    let _ = write!(hex_file, "{:02x}", byte);
+                });
+
+                hex_file.into()
             }
+            QueryIO::Err(e) => Bytes::from([concatenator(ERROR_PREFIX), e, "\r\n".into()].concat()),
+
+            QueryIO::Null => "$-1\r\n".into(),
+
+            QueryIO::Array(array) => [
+                Into::<Bytes>::into(format!("{}{}\r\n", ARRAY_PREFIX, array.len()).into_bytes()),
+                array.into_iter().flat_map(|v| v.serialize()).collect(),
+            ]
+            .concat()
+            .into(),
             QueryIO::PeerState(PeerState { term, offset, last_updated }) => format!(
                 "{}\r\n${}\r\n{term}\r\n${}\r\n{offset}\r\n${}\r\n{last_updated}\r\n",
                 PEERSTATE_PREFIX,
@@ -50,21 +79,7 @@ impl QueryIO {
                 offset.to_string().len(),
                 last_updated.to_string().len(),
             )
-                .into(),
-
-            QueryIO::Null => "$-1\r\n".into(),
-            QueryIO::Err(e) => format!("{}{}\r\n", ERROR_PREFIX, e).into(),
-            QueryIO::File(f) => {
-                let file_len = f.len() * 2;
-                let mut hex_file = String::with_capacity(file_len + file_len.to_string().len() + 2)
-                    + format!("{}{}\r\n", FILE_PREFIX, file_len).as_str();
-
-                f.into_iter().for_each(|byte| {
-                    hex_file.push_str(&format!("{:02x}", byte));
-                });
-
-                hex_file.into()
-            }
+            .into(),
         }
     }
 
@@ -73,7 +88,10 @@ impl QueryIO {
         T: std::str::FromStr<Err: std::error::Error + Sync + Send + 'static>,
     {
         match self {
-            QueryIO::BulkString(s) => Ok(s.to_lowercase().parse::<T>()?.into()),
+            QueryIO::BulkString(s) => {
+                Ok(String::from_utf8(s.into())?.to_lowercase().parse::<T>()?.into())
+            }
+
             _ => Err(anyhow::anyhow!("Expected command to be a bulk string")),
         }
     }
@@ -98,8 +116,8 @@ impl QueryIO {
 impl From<Option<CacheValue>> for QueryIO {
     fn from(v: Option<CacheValue>) -> Self {
         match v {
-            Some(CacheValue::Value(v)) => QueryIO::BulkString(v),
-            Some(CacheValue::ValueWithExpiry(v, _exp)) => QueryIO::BulkString(v),
+            Some(CacheValue::Value(v)) => QueryIO::BulkString(v.into()),
+            Some(CacheValue::ValueWithExpiry(v, _exp)) => QueryIO::BulkString(v.into()),
             None => QueryIO::Null,
         }
     }
@@ -125,26 +143,34 @@ impl TryFrom<QueryIO> for PeerState {
 
 pub fn deserialize(buffer: BytesMut) -> Result<(QueryIO, usize)> {
     match buffer[0] as char {
-        SIMPLE_STRING_PREFIX => parse_simple_string(buffer),
+        SIMPLE_STRING_PREFIX => {
+            let (bytes, len) = parse_simple_string(buffer)?;
+            Ok((QueryIO::SimpleString(bytes), len))
+        }
         ARRAY_PREFIX => parse_array(buffer),
-        BULK_STRING_PREFIX => parse_bulk_string(buffer),
-        FILE_PREFIX => parse_file(buffer),
+        BULK_STRING_PREFIX => {
+            let (bytes, len) = parse_bulk_string(buffer)?;
+            Ok((QueryIO::BulkString(bytes), len))
+        }
+        FILE_PREFIX => {
+            let (bytes, len) = parse_file(buffer)?;
+            Ok((QueryIO::File(bytes), len))
+        }
         PEERSTATE_PREFIX => parse_peer_state(buffer),
         _ => Err(anyhow::anyhow!("Not a known value type {:?}", buffer)),
     }
 }
 
 // +PING\r\n
-pub(crate) fn parse_simple_string(buffer: BytesMut) -> Result<(QueryIO, usize)> {
+pub(crate) fn parse_simple_string(buffer: BytesMut) -> Result<(Bytes, usize)> {
     let (line, len) =
-        read_until_crlf(&buffer[1..]).ok_or(anyhow::anyhow!("Invalid simple string"))?;
-    let string = String::from_utf8(line.to_vec())?;
-    Ok((QueryIO::SimpleString(string), len + 1))
+        read_until_crlf(&buffer[1..].into()).ok_or(anyhow::anyhow!("Invalid simple string"))?;
+    Ok((line, len + 1))
 }
 
 fn parse_array(buffer: BytesMut) -> Result<(QueryIO, usize)> {
     let (line, mut len) =
-        read_until_crlf(&buffer[1..]).ok_or(anyhow::anyhow!("Invalid bulk string"))?;
+        read_until_crlf(&buffer[1..].into()).ok_or(anyhow::anyhow!("Invalid bulk string"))?;
 
     len += 1;
 
@@ -180,26 +206,23 @@ fn parse_peer_state(buffer: BytesMut) -> Result<(QueryIO, usize)> {
     ))
 }
 
-fn parse_bulk_string(buffer: BytesMut) -> Result<(QueryIO, usize)> {
+fn parse_bulk_string(buffer: BytesMut) -> Result<(Bytes, usize)> {
     let (line, mut len) =
-        read_until_crlf(&buffer[1..]).ok_or(anyhow::anyhow!("Invalid bulk string"))?;
+        read_until_crlf(&buffer[1..].into()).ok_or(anyhow::anyhow!("Invalid bulk string"))?;
 
     // Adjust `len` to include the initial line and calculate `bulk_str_len`
     len += 1;
 
     let content_len: usize = String::from_utf8(line.to_vec())?.parse()?;
 
-    let (line, _) = read_until_crlf(&buffer[len..]).context("Invalid BulkString format!")?;
+    let (line, _) = read_until_crlf(&buffer[len..].into()).context("Invalid BulkString format!")?;
 
-    // Extract the bulk string from the buffer
-    let bulk_string_value = String::from_utf8(line.to_vec())?;
-    // Return the bulk string value and adjusted length to account for CRLF
-    Ok((QueryIO::BulkString(bulk_string_value), len + content_len + 2))
+    Ok((line, len + content_len + 2))
 }
 
-fn parse_file(buffer: BytesMut) -> Result<(QueryIO, usize)> {
+fn parse_file(buffer: BytesMut) -> Result<(Bytes, usize)> {
     let (line, mut len) =
-        read_until_crlf(&buffer[1..]).ok_or(anyhow::anyhow!("Invalid bulk string"))?;
+        read_until_crlf(&buffer[1..].into()).ok_or(anyhow::anyhow!("Invalid bulk string"))?;
 
     // Adjust `len` to include the initial line and calculate `bulk_str_len`
     len += 1;
@@ -211,20 +234,19 @@ fn parse_file(buffer: BytesMut) -> Result<(QueryIO, usize)> {
         .chunks(2)
         .map(|chunk| std::str::from_utf8(chunk).map(|s| u8::from_str_radix(s, 16)))
         .flatten()
-        .collect::<Result<Vec<u8>, _>>()?;
+        .collect::<Result<Bytes, _>>()?;
 
-    Ok((QueryIO::File(file), len + content_len))
+    Ok((file, len + content_len))
 }
 
-fn read_until_crlf(buffer: &[u8]) -> Option<(&[u8], usize)> {
+fn read_until_crlf(buffer: &BytesMut) -> Option<(Bytes, usize)> {
     for i in 1..buffer.len() {
         if buffer[i - 1] == b'\r' && buffer[i] == b'\n' {
-            return Some((&buffer[0..(i - 1)], i + 1));
+            return Some((Bytes::copy_from_slice(&buffer[0..(i - 1)]), i + 1));
         }
     }
     None
 }
-
 #[test]
 fn test_parse_simple_string() {
     // GIVEN
@@ -235,7 +257,7 @@ fn test_parse_simple_string() {
 
     // THEN
     assert_eq!(len, 5);
-    assert_eq!(value, QueryIO::SimpleString("OK".to_string()));
+    assert_eq!(value, b"OK".to_vec());
 }
 
 #[test]
@@ -248,7 +270,7 @@ fn test_parse_simple_string_ping() {
 
     // THEN
     assert_eq!(len, 7);
-    assert_eq!(value, QueryIO::SimpleString("PING".to_string()));
+    assert_eq!(value, QueryIO::SimpleString("PING".to_string().into()));
 }
 
 #[test]
@@ -261,7 +283,7 @@ fn test_parse_bulk_string() {
 
     // THEN
     assert_eq!(len, 11);
-    assert_eq!(value, QueryIO::BulkString("hello".to_string()));
+    assert_eq!(value, QueryIO::BulkString("hello".into()));
 }
 
 #[test]
@@ -274,7 +296,7 @@ fn test_parse_bulk_string_empty() {
 
     // THEN
     assert_eq!(len, 6);
-    assert_eq!(value, QueryIO::BulkString("".to_string()));
+    assert_eq!(value, QueryIO::BulkString("".into()));
 }
 
 #[test]
@@ -290,8 +312,8 @@ fn test_parse_array() {
     assert_eq!(
         value,
         QueryIO::Array(vec![
-            QueryIO::BulkString("hello".to_string()),
-            QueryIO::BulkString("world".to_string()),
+            QueryIO::BulkString("hello".into()),
+            QueryIO::BulkString("world".into()),
         ])
     );
 }
@@ -340,7 +362,7 @@ fn test_from_peer_state_to_bytes() {
 #[test]
 fn test_parse_file() {
     // GIVEN
-    let file = QueryIO::File(b"hello".to_vec());
+    let file = QueryIO::File("hello".into());
     let serialized = file.serialize();
     let buffer = BytesMut::from_iter(serialized);
     // WHEN
@@ -348,5 +370,5 @@ fn test_parse_file() {
 
     // THEN
     assert_eq!(len, 15);
-    assert_eq!(value, QueryIO::File(b"hello".to_vec()));
+    assert_eq!(value, QueryIO::File("hello".into()));
 }

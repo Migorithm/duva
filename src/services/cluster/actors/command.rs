@@ -30,8 +30,8 @@ impl TryFrom<QueryIO> for CommandFromMaster {
     fn try_from(query: QueryIO) -> anyhow::Result<Self> {
         match query {
             file @ QueryIO::File(_) => Ok(Self::Sync(file)),
-            QueryIO::SimpleString(s) => match s.to_lowercase().as_str() {
-                "ping" => Ok(Self::Ping),
+            QueryIO::SimpleString(s) => match s.as_ref() {
+                b"PING" | b"ping" => Ok(Self::Ping),
                 _ => todo!(),
             },
             _ => todo!(),
@@ -43,8 +43,8 @@ impl TryFrom<QueryIO> for CommandFromSlave {
     type Error = anyhow::Error;
     fn try_from(query: QueryIO) -> anyhow::Result<Self> {
         match query {
-            QueryIO::SimpleString(s) => match s.to_lowercase().as_str() {
-                "ping" => Ok(Self::Ping),
+            QueryIO::SimpleString(s) => match s.as_ref() {
+                b"PING" | b"ping" => Ok(Self::Ping),
 
                 _ => todo!(),
             },
