@@ -1,6 +1,6 @@
 use crate::services::error::IoError;
 use crate::services::interface::{TGetPeerIp, TRead, TStream, TWrite};
-use crate::services::query_io::{parse, QueryIO};
+use crate::services::query_io::{deserialize, QueryIO};
 use bytes::BytesMut;
 use std::io::ErrorKind;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -54,7 +54,7 @@ impl<T: AsyncReadExt + std::marker::Unpin + Sync + Send> TRead for T {
         let mut remaining_buffer = buffer;
 
         while !remaining_buffer.is_empty() {
-            match parse(remaining_buffer.clone()) {
+            match deserialize(remaining_buffer.clone()) {
                 Ok((query_io, consumed)) => {
                     parsed_values.push(query_io);
 
@@ -119,7 +119,7 @@ async fn test_read_values() {
 
     let mut parsed_values = vec![];
     while !buffer.is_empty() {
-        if let Ok((query_io, consumed)) = parse(buffer.clone()) {
+        if let Ok((query_io, consumed)) = deserialize(buffer.clone()) {
             parsed_values.push(query_io);
 
             // * Remove the parsed portion from the buffer
