@@ -50,7 +50,7 @@ impl QueryIO {
                 offset.to_string().len(),
                 last_updated.to_string().len(),
             )
-            .into(),
+                .into(),
 
             QueryIO::Null => "$-1\r\n".into(),
             QueryIO::Err(e) => format!("{}{}\r\n", ERROR_PREFIX, e).into(),
@@ -127,7 +127,7 @@ pub fn deserialize(buffer: BytesMut) -> Result<(QueryIO, usize)> {
     match buffer[0] as char {
         SIMPLE_STRING_PREFIX => parse_simple_string(buffer),
         ARRAY_PREFIX => parse_array(buffer),
-        BULK_STRING_PREFIX => parse_bulk_string_or_file(buffer),
+        BULK_STRING_PREFIX => parse_bulk_string(buffer),
         FILE_PREFIX => parse_file(buffer),
         PEERSTATE_PREFIX => parse_peer_state(buffer),
         _ => Err(anyhow::anyhow!("Not a known value type {:?}", buffer)),
@@ -180,7 +180,7 @@ fn parse_peer_state(buffer: BytesMut) -> Result<(QueryIO, usize)> {
     ))
 }
 
-fn parse_bulk_string_or_file(buffer: BytesMut) -> Result<(QueryIO, usize)> {
+fn parse_bulk_string(buffer: BytesMut) -> Result<(QueryIO, usize)> {
     let (line, mut len) =
         read_until_crlf(&buffer[1..]).ok_or(anyhow::anyhow!("Invalid bulk string"))?;
 
@@ -207,7 +207,6 @@ fn parse_file(buffer: BytesMut) -> Result<(QueryIO, usize)> {
 
     let file_content = &buffer[len..(len + content_len)];
 
-    // TODO Check - echo
     let file = file_content
         .chunks(2)
         .map(|chunk| std::str::from_utf8(chunk).map(|s| u8::from_str_radix(s, 16)))
