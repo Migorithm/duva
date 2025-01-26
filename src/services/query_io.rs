@@ -112,7 +112,7 @@ impl TryFrom<QueryIO> for PeerState {
     }
 }
 
-pub fn parse(buffer: BytesMut) -> Result<(QueryIO, usize)> {
+pub fn deserialize(buffer: BytesMut) -> Result<(QueryIO, usize)> {
     match buffer[0] as char {
         '+' => parse_simple_string(buffer),
         '*' => parse_array(buffer),
@@ -142,7 +142,7 @@ fn parse_array(buffer: BytesMut) -> Result<(QueryIO, usize)> {
     let mut bulk_strings = Vec::with_capacity(len_of_array);
 
     for _ in 0..len_of_array {
-        let (value, l) = parse(BytesMut::from(&buffer[len..]))?;
+        let (value, l) = deserialize(BytesMut::from(&buffer[len..]))?;
         bulk_strings.push(value);
         len += l;
     }
@@ -154,9 +154,9 @@ fn parse_peer_state(buffer: BytesMut) -> Result<(QueryIO, usize)> {
     // fixed rule for peer state
     let len = 3;
 
-    let (term, l1) = parse(BytesMut::from(&buffer[len..]))?;
-    let (offset, l2) = parse(BytesMut::from(&buffer[len + l1..]))?;
-    let (last_updated, l3) = parse(BytesMut::from(&buffer[len + l1 + l2..]))?;
+    let (term, l1) = deserialize(BytesMut::from(&buffer[len..]))?;
+    let (offset, l2) = deserialize(BytesMut::from(&buffer[len + l1..]))?;
+    let (last_updated, l3) = deserialize(BytesMut::from(&buffer[len + l1 + l2..]))?;
 
     Ok((
         QueryIO::PeerState(PeerState {
@@ -220,7 +220,7 @@ fn test_parse_simple_string_ping() {
     let buffer = BytesMut::from("+PING\r\n");
 
     // WHEN
-    let (value, len) = parse(buffer).unwrap();
+    let (value, len) = deserialize(buffer).unwrap();
 
     // THEN
     assert_eq!(len, 7);
@@ -233,7 +233,7 @@ fn test_parse_bulk_string() {
     let buffer = BytesMut::from("$5\r\nhello\r\n");
 
     // WHEN
-    let (value, len) = parse(buffer).unwrap();
+    let (value, len) = deserialize(buffer).unwrap();
 
     // THEN
     assert_eq!(len, 11);
@@ -246,7 +246,7 @@ fn test_parse_bulk_string_empty() {
     let buffer = BytesMut::from("$0\r\n\r\n");
 
     // WHEN
-    let (value, len) = parse(buffer).unwrap();
+    let (value, len) = deserialize(buffer).unwrap();
 
     // THEN
     assert_eq!(len, 6);
@@ -259,7 +259,7 @@ fn test_parse_array() {
     let buffer = BytesMut::from("*2\r\n$5\r\nhello\r\n$5\r\nworld\r\n");
 
     // WHEN
-    let (value, len) = parse(buffer).unwrap();
+    let (value, len) = deserialize(buffer).unwrap();
 
     // THEN
     assert_eq!(len, 26);
@@ -278,7 +278,7 @@ fn test_from_bytes_to_peer_state() {
     let buffer = BytesMut::from("^\r\n$3\r\n245\r\n$7\r\n1234329\r\n$8\r\n53999944\r\n");
 
     // WHEN
-    let (value, len) = parse(buffer).unwrap();
+    let (value, len) = deserialize(buffer).unwrap();
 
     // THEN
     assert_eq!(len, "^\r\n$3\r\n245\r\n$7\r\n1234329\r\n$8\r\n53999944\r\n".len());
@@ -320,7 +320,7 @@ fn test_parse_file() {
     let serialized = file.serialize();
     let buffer = BytesMut::from_iter(serialized);
     // WHEN
-    let (value, len) = parse(buffer).unwrap();
+    let (value, len) = deserialize(buffer).unwrap();
 
     // THEN
     assert_eq!(len, 15);
