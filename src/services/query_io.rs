@@ -130,7 +130,10 @@ pub fn deserialize(buffer: BytesMut) -> Result<(QueryIO, usize)> {
             Ok((QueryIO::SimpleString(String::from_utf8(bytes)?), len))
         }
         ARRAY_PREFIX => parse_array(buffer),
-        BULK_STRING_PREFIX => parse_bulk_string(buffer),
+        BULK_STRING_PREFIX => {
+            let (bytes, len) = parse_bulk_string(buffer)?;
+            Ok((QueryIO::BulkString(String::from_utf8(bytes)?), len))
+        }
         FILE_PREFIX => parse_file(buffer),
         PEERSTATE_PREFIX => parse_peer_state(buffer),
         _ => Err(anyhow::anyhow!("Not a known value type {:?}", buffer)),
@@ -182,7 +185,7 @@ fn parse_peer_state(buffer: BytesMut) -> Result<(QueryIO, usize)> {
     ))
 }
 
-fn parse_bulk_string(buffer: BytesMut) -> Result<(QueryIO, usize)> {
+fn parse_bulk_string(buffer: BytesMut) -> Result<(Vec<u8>, usize)> {
     let (line, mut len) =
         read_until_crlf(&buffer[1..]).ok_or(anyhow::anyhow!("Invalid bulk string"))?;
 
@@ -193,10 +196,7 @@ fn parse_bulk_string(buffer: BytesMut) -> Result<(QueryIO, usize)> {
 
     let (line, _) = read_until_crlf(&buffer[len..]).context("Invalid BulkString format!")?;
 
-    // Extract the bulk string from the buffer
-    let bulk_string_value = String::from_utf8(line.to_vec())?;
-    // Return the bulk string value and adjusted length to account for CRLF
-    Ok((QueryIO::BulkString(bulk_string_value), len + content_len + 2))
+    Ok((line.to_vec(), len + content_len + 2))
 }
 
 fn parse_file(buffer: BytesMut) -> Result<(QueryIO, usize)> {
