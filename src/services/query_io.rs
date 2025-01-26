@@ -134,7 +134,10 @@ pub fn deserialize(buffer: BytesMut) -> Result<(QueryIO, usize)> {
             let (bytes, len) = parse_bulk_string(buffer)?;
             Ok((QueryIO::BulkString(String::from_utf8(bytes)?), len))
         }
-        FILE_PREFIX => parse_file(buffer),
+        FILE_PREFIX => {
+            let (bytes, len) = parse_file(buffer)?;
+            Ok((QueryIO::File(bytes), len))
+        }
         PEERSTATE_PREFIX => parse_peer_state(buffer),
         _ => Err(anyhow::anyhow!("Not a known value type {:?}", buffer)),
     }
@@ -199,7 +202,7 @@ fn parse_bulk_string(buffer: BytesMut) -> Result<(Vec<u8>, usize)> {
     Ok((line.to_vec(), len + content_len + 2))
 }
 
-fn parse_file(buffer: BytesMut) -> Result<(QueryIO, usize)> {
+fn parse_file(buffer: BytesMut) -> Result<(Vec<u8>, usize)> {
     let (line, mut len) =
         read_until_crlf(&buffer[1..]).ok_or(anyhow::anyhow!("Invalid bulk string"))?;
 
@@ -215,7 +218,7 @@ fn parse_file(buffer: BytesMut) -> Result<(QueryIO, usize)> {
         .flatten()
         .collect::<Result<Vec<u8>, _>>()?;
 
-    Ok((QueryIO::File(file), len + content_len))
+    Ok((file, len + content_len))
 }
 
 fn read_until_crlf(buffer: &[u8]) -> Option<(&[u8], usize)> {
