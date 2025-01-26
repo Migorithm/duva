@@ -136,16 +136,16 @@ pub fn deserialize(buffer: BytesMut) -> Result<(QueryIO, usize)> {
     match buffer[0] as char {
         SIMPLE_STRING_PREFIX => {
             let (bytes, len) = parse_simple_string(buffer)?;
-            Ok((QueryIO::SimpleString(bytes.into()), len))
+            Ok((QueryIO::SimpleString(bytes), len))
         }
         ARRAY_PREFIX => parse_array(buffer),
         BULK_STRING_PREFIX => {
             let (bytes, len) = parse_bulk_string(buffer)?;
-            Ok((QueryIO::BulkString(bytes.into()), len))
+            Ok((QueryIO::BulkString(bytes), len))
         }
         FILE_PREFIX => {
             let (bytes, len) = parse_file(buffer)?;
-            Ok((QueryIO::File(bytes.into()), len))
+            Ok((QueryIO::File(bytes), len))
         }
         PEERSTATE_PREFIX => parse_peer_state(buffer),
         _ => Err(anyhow::anyhow!("Not a known value type {:?}", buffer)),
@@ -153,15 +153,15 @@ pub fn deserialize(buffer: BytesMut) -> Result<(QueryIO, usize)> {
 }
 
 // +PING\r\n
-pub(crate) fn parse_simple_string(buffer: BytesMut) -> Result<(Vec<u8>, usize)> {
+pub(crate) fn parse_simple_string(buffer: BytesMut) -> Result<(Bytes, usize)> {
     let (line, len) =
-        read_until_crlf(&buffer[1..]).ok_or(anyhow::anyhow!("Invalid simple string"))?;
-    Ok((line.to_vec(), len + 1))
+        read_until_crlf(&buffer[1..].into()).ok_or(anyhow::anyhow!("Invalid simple string"))?;
+    Ok((line, len + 1))
 }
 
 fn parse_array(buffer: BytesMut) -> Result<(QueryIO, usize)> {
     let (line, mut len) =
-        read_until_crlf(&buffer[1..]).ok_or(anyhow::anyhow!("Invalid bulk string"))?;
+        read_until_crlf(&buffer[1..].into()).ok_or(anyhow::anyhow!("Invalid bulk string"))?;
 
     len += 1;
 
@@ -197,23 +197,23 @@ fn parse_peer_state(buffer: BytesMut) -> Result<(QueryIO, usize)> {
     ))
 }
 
-fn parse_bulk_string(buffer: BytesMut) -> Result<(Vec<u8>, usize)> {
+fn parse_bulk_string(buffer: BytesMut) -> Result<(Bytes, usize)> {
     let (line, mut len) =
-        read_until_crlf(&buffer[1..]).ok_or(anyhow::anyhow!("Invalid bulk string"))?;
+        read_until_crlf(&buffer[1..].into()).ok_or(anyhow::anyhow!("Invalid bulk string"))?;
 
     // Adjust `len` to include the initial line and calculate `bulk_str_len`
     len += 1;
 
     let content_len: usize = String::from_utf8(line.to_vec())?.parse()?;
 
-    let (line, _) = read_until_crlf(&buffer[len..]).context("Invalid BulkString format!")?;
+    let (line, _) = read_until_crlf(&buffer[len..].into()).context("Invalid BulkString format!")?;
 
-    Ok((line.to_vec(), len + content_len + 2))
+    Ok((line, len + content_len + 2))
 }
 
-fn parse_file(buffer: BytesMut) -> Result<(Vec<u8>, usize)> {
+fn parse_file(buffer: BytesMut) -> Result<(Bytes, usize)> {
     let (line, mut len) =
-        read_until_crlf(&buffer[1..]).ok_or(anyhow::anyhow!("Invalid bulk string"))?;
+        read_until_crlf(&buffer[1..].into()).ok_or(anyhow::anyhow!("Invalid bulk string"))?;
 
     // Adjust `len` to include the initial line and calculate `bulk_str_len`
     len += 1;
@@ -225,20 +225,19 @@ fn parse_file(buffer: BytesMut) -> Result<(Vec<u8>, usize)> {
         .chunks(2)
         .map(|chunk| std::str::from_utf8(chunk).map(|s| u8::from_str_radix(s, 16)))
         .flatten()
-        .collect::<Result<Vec<u8>, _>>()?;
+        .collect::<Result<Bytes, _>>()?;
 
     Ok((file, len + content_len))
 }
 
-fn read_until_crlf(buffer: &[u8]) -> Option<(&[u8], usize)> {
+fn read_until_crlf(buffer: &BytesMut) -> Option<(Bytes, usize)> {
     for i in 1..buffer.len() {
         if buffer[i - 1] == b'\r' && buffer[i] == b'\n' {
-            return Some((&buffer[0..(i - 1)], i + 1));
+            return Some((Bytes::copy_from_slice(&buffer[0..(i - 1)]), i + 1));
         }
     }
     None
 }
-
 #[test]
 fn test_parse_simple_string() {
     // GIVEN
