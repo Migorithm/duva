@@ -57,10 +57,10 @@ async fn test_save_read_dump() {
     // WHEN
     // set without expiry time
     h.send(&array(vec!["SET", "foo", "bar"])).await;
-    assert_eq!(h.get_response().await, QueryIO::SimpleString(b"OK".into()).serialize());
+    assert_eq!(h.get_response().await, QueryIO::SimpleString("OK".into()).serialize());
     // set with expiry time
     h.send(&array(vec!["SET", "foo2", "bar2", "PX", "9999999999"])).await;
-    assert_eq!(h.get_response().await, QueryIO::SimpleString(b"OK".into()).serialize());
+    assert_eq!(h.get_response().await, QueryIO::SimpleString("OK".into()).serialize());
     // check keys
     h.send(&array(vec!["KEYS", "*"])).await;
     assert_eq!(h.get_response().await, array(vec!["foo2", "foo"]));

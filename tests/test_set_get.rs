@@ -16,14 +16,14 @@ async fn test_set_get() {
 
     h.send(&array(vec!["SET", "somanyrand", "bar", "PX", "300"])).await;
     // THEN
-    assert_eq!(h.get_response().await, QueryIO::SimpleString(b"OK".into()).serialize());
+    assert_eq!(h.get_response().await, QueryIO::SimpleString("OK".into()).serialize());
 
     // WHEN
     h.send(&array(vec!["GET", "somanyrand"])).await;
 
     // THEN
     let res = h.get_response().await;
-    assert_eq!(res, QueryIO::BulkString(b"bar".into()).serialize());
+    assert_eq!(res, QueryIO::BulkString("bar".into()).serialize());
 
     // WHEN - wait for 300ms
     tokio::time::sleep(tokio::time::Duration::from_millis(300)).await;

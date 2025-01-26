@@ -41,7 +41,7 @@ impl HandShakeRequest {
 
         match self.args.as_mut_slice() {
             [QueryIO::BulkString(key), QueryIO::BulkString(port), ..]
-                if key == b"listening-port" =>
+                if key == "listening-port" =>
             {
                 let value = String::from_utf8(port.to_vec())?.parse()?;
                 Ok(value)
@@ -61,7 +61,7 @@ impl HandShakeRequest {
             .args
             .chunks_exact(2)
             .filter_map(|chunk| match (&chunk[0], &chunk[1]) {
-                (QueryIO::BulkString(capa), QueryIO::BulkString(value)) if capa == b"capa" => {
+                (QueryIO::BulkString(capa), QueryIO::BulkString(value)) if capa == "capa" => {
                     Some((capa.clone().into(), value.clone().into()))
                 }
                 _ => None,

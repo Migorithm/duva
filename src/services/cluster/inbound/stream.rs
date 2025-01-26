@@ -51,7 +51,7 @@ impl InboundStream {
         let cmd = self.extract_cmd().await?;
         cmd.match_query(HandShakeRequestEnum::Ping)?;
 
-        self.write(QueryIO::SimpleString(b"PONG".into())).await?;
+        self.write(QueryIO::SimpleString("PONG".into())).await?;
         Ok(())
     }
 
@@ -60,7 +60,7 @@ impl InboundStream {
 
         let port = cmd.extract_listening_port()?;
 
-        self.write(QueryIO::SimpleString(b"OK".into())).await?;
+        self.write(QueryIO::SimpleString("OK".into())).await?;
 
         Ok(port)
     }
@@ -68,7 +68,7 @@ impl InboundStream {
     async fn recv_replconf_capa(&mut self) -> anyhow::Result<Vec<(Bytes, Bytes)>> {
         let mut cmd = self.extract_cmd().await?;
         let capa_val_vec = cmd.extract_capa()?;
-        self.write(QueryIO::SimpleString(b"OK".into())).await?;
+        self.write(QueryIO::SimpleString("OK".into())).await?;
         Ok(capa_val_vec)
     }
     async fn recv_psync(&mut self) -> anyhow::Result<(String, i64)> {
@@ -79,7 +79,7 @@ impl InboundStream {
             (self.repl_info.master_replid.clone(), self.repl_info.master_repl_offset);
 
         self.write(QueryIO::SimpleString(
-            format!("FULLRESYNC {} {}", self_master_replid, self_master_repl_offset).into_bytes(),
+            format!("FULLRESYNC {} {}", self_master_replid, self_master_repl_offset).into(),
         ))
         .await?;
 
@@ -92,8 +92,7 @@ impl InboundStream {
     }
 
     pub(crate) async fn disseminate_peers(&mut self, peers: PeerAddrs) -> anyhow::Result<()> {
-        self.write(QueryIO::SimpleString(format!("PEERS {}", peers.stringify()).into_bytes()))
-            .await?;
+        self.write(QueryIO::SimpleString(format!("PEERS {}", peers.stringify()).into())).await?;
         Ok(())
     }
 
@@ -133,7 +132,7 @@ impl InboundStream {
             }
         }
         // collect dump data from processor
-        let dump = QueryIO::File(processor.into_inner());
+        let dump = QueryIO::File(processor.into_inner().into());
         println!("[INFO] Sent sync to slave {:?}", dump);
         self.write(dump).await?;
 

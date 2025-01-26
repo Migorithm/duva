@@ -14,7 +14,7 @@ async fn test_keys() {
     // WHEN set 500 keys with the value `bar`.
     for key in 0..num_keys_to_store {
         h.send(&array(vec!["SET", &key.to_string(), "bar"])).await;
-        assert_eq!(h.get_response().await, QueryIO::SimpleString(b"OK".into()).serialize());
+        assert_eq!(h.get_response().await, QueryIO::SimpleString("OK".into()).serialize());
     }
 
     // Fire keys command
