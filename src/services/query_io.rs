@@ -22,7 +22,7 @@ macro_rules! write_array {
 }
 
 impl QueryIO {
-    pub fn serialize(&self) -> Bytes {
+    pub fn serialize(self) -> Bytes {
         match self {
             QueryIO::SimpleString(s) => format!("+{}\r\n", s).into(),
             QueryIO::BulkString(s) => format!("${}\r\n{}\r\n", s.len(), s).into(),
