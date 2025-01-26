@@ -36,14 +36,16 @@ impl QueryIO {
                 format!("{}{}\r\n", SIMPLE_STRING_PREFIX, String::from_utf8(s.into()).unwrap())
                     .into()
             }
-            QueryIO::BulkString(s) => {
-                let mut temp = (BULK_STRING_PREFIX as u8).to_be_bytes().to_vec();
-                temp.extend(s.len().to_string().as_bytes());
-                temp.extend(b"\r\n");
-                temp.extend(s);
-                temp.extend(b"\r\n");
-                temp.into()
-            }
+            QueryIO::BulkString(s) => Bytes::from(
+                [
+                    Bytes::from_iter([BULK_STRING_PREFIX as u8].into_iter()),
+                    s.len().to_string().into_bytes().into(),
+                    "\r\n".into(),
+                    s,
+                    "\r\n".into(),
+                ]
+                .concat(),
+            ),
             QueryIO::Array(a) => {
                 let mut result = format!("{}{}\r\n", ARRAY_PREFIX, a.len()).into_bytes();
                 result.extend(a.into_iter().flat_map(|v| v.serialize()));
