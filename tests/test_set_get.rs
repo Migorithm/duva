@@ -16,7 +16,7 @@ async fn test_set_get() {
 
     h.send(&array(vec!["SET", "somanyrand", "bar", "PX", "300"])).await;
     // THEN
-    assert_eq!(h.get_response().await, QueryIO::SimpleString("OK".to_string()).serialize());
+    assert_eq!(h.get_response().await, QueryIO::SimpleString(b"OK".into()).serialize());
 
     // WHEN
     h.send(&array(vec!["GET", "somanyrand"])).await;

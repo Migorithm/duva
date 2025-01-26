@@ -13,7 +13,7 @@ const PEERSTATE_PREFIX: char = '^';
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum QueryIO {
-    SimpleString(String),
+    SimpleString(Vec<u8>),
     BulkString(String),
     Array(Vec<QueryIO>),
     Null,
@@ -32,7 +32,13 @@ macro_rules! write_array {
 impl QueryIO {
     pub fn serialize(self) -> Bytes {
         match self {
-            QueryIO::SimpleString(s) => format!("{}{}\r\n", SIMPLE_STRING_PREFIX, s).into(),
+            QueryIO::SimpleString(s) => {
+                let mut temp = (SIMPLE_STRING_PREFIX as u8).to_be_bytes().to_vec();
+                temp.extend(s);
+                temp.push(b'\r');
+                temp.push(b'\n');
+                temp.into()
+            }
             QueryIO::BulkString(s) => {
                 format!("{}{}\r\n{}\r\n", BULK_STRING_PREFIX, s.len(), s).into()
             }
@@ -127,7 +133,7 @@ pub fn deserialize(buffer: BytesMut) -> Result<(QueryIO, usize)> {
     match buffer[0] as char {
         SIMPLE_STRING_PREFIX => {
             let (bytes, len) = parse_simple_string(buffer)?;
-            Ok((QueryIO::SimpleString(String::from_utf8(bytes)?), len))
+            Ok((QueryIO::SimpleString(bytes), len))
         }
         ARRAY_PREFIX => parse_array(buffer),
         BULK_STRING_PREFIX => {
@@ -253,7 +259,7 @@ fn test_parse_simple_string_ping() {
 
     // THEN
     assert_eq!(len, 7);
-    assert_eq!(value, QueryIO::SimpleString("PING".to_string()));
+    assert_eq!(value, QueryIO::SimpleString(b"PING".to_vec()));
 }
 
 #[test]

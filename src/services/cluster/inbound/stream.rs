@@ -50,21 +50,21 @@ impl InboundStream {
         let cmd = self.extract_cmd().await?;
         cmd.match_query(HandShakeRequestEnum::Ping)?;
 
-        self.write(QueryIO::SimpleString("PONG".to_string())).await?;
+        self.write(QueryIO::SimpleString(b"PONG".into())).await?;
         Ok(())
     }
 
     async fn recv_replconf_listening_port(&mut self) -> anyhow::Result<u16> {
         let mut cmd = self.extract_cmd().await?;
         let port = cmd.extract_listening_port()?;
-        self.write(QueryIO::SimpleString("OK".to_string())).await?;
+        self.write(QueryIO::SimpleString(b"OK".into())).await?;
         Ok(port)
     }
 
     async fn recv_replconf_capa(&mut self) -> anyhow::Result<Vec<(String, String)>> {
         let mut cmd = self.extract_cmd().await?;
         let capa_val_vec = cmd.extract_capa()?;
-        self.write(QueryIO::SimpleString("OK".to_string())).await?;
+        self.write(QueryIO::SimpleString(b"OK".into())).await?;
         Ok(capa_val_vec)
     }
     async fn recv_psync(&mut self) -> anyhow::Result<(String, i64)> {
@@ -74,10 +74,9 @@ impl InboundStream {
         let (self_master_replid, self_master_repl_offset) =
             (self.repl_info.master_replid.clone(), self.repl_info.master_repl_offset);
 
-        self.write(QueryIO::SimpleString(format!(
-            "FULLRESYNC {} {}",
-            self_master_replid, self_master_repl_offset
-        )))
+        self.write(QueryIO::SimpleString(
+            format!("FULLRESYNC {} {}", self_master_replid, self_master_repl_offset).into_bytes(),
+        ))
         .await?;
 
         Ok((repl_id, offset))
@@ -89,7 +88,8 @@ impl InboundStream {
     }
 
     pub(crate) async fn disseminate_peers(&mut self, peers: PeerAddrs) -> anyhow::Result<()> {
-        self.write(QueryIO::SimpleString(format!("PEERS {}", peers.stringify()))).await?;
+        self.write(QueryIO::SimpleString(format!("PEERS {}", peers.stringify()).into_bytes()))
+            .await?;
         Ok(())
     }
 

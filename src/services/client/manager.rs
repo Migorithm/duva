@@ -45,7 +45,7 @@ impl ClientManager {
 
         // TODO if it is persistence operation, get the key and hash, take the appropriate sender, send it;
         let response = match cmd {
-            ClientRequest::Ping => QueryIO::SimpleString("PONG".to_string()),
+            ClientRequest::Ping => QueryIO::SimpleString(b"PONG".into()),
             ClientRequest::Echo(val) => QueryIO::BulkString(val),
             ClientRequest::Set { key, value } => {
                 let cache_entry = CacheEntry::KeyValue(key.to_owned(), value.to_string());

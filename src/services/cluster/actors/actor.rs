@@ -59,7 +59,7 @@ impl ClusterActor {
 
     async fn heartbeat(&mut self) {
         for peer in self.members.values_mut() {
-            let msg = QueryIO::SimpleString("PING".to_string()).serialize();
+            let msg = QueryIO::SimpleString(b"PING".into()).serialize();
             let _ = peer.w_conn.stream.write(&msg).await;
         }
     }

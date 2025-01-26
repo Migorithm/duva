@@ -130,7 +130,8 @@ async fn test_read_values() {
     assert_eq!(parsed_values.len(), 2);
     assert_eq!(
         parsed_values[0],
-        QueryIO::SimpleString("FULLRESYNC 8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb 0".to_string())
+        QueryIO::SimpleString(b"FULLRESYNC 8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb 0".into())
     );
-    assert_eq!(parsed_values[1], QueryIO::SimpleString("PEERS localhost:6378".to_string()));
+
+    assert_eq!(parsed_values[1], QueryIO::SimpleString(b"PEERS localhost:6378".into()));
 }
