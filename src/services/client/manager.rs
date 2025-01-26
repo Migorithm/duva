@@ -39,7 +39,7 @@ impl ClientManager {
         cmd: ClientRequest,
     ) -> anyhow::Result<QueryIO> {
         if cancellation_token.watch() {
-            let err = QueryIO::Err("Error operation cancelled due to timeout".to_string());
+            let err = QueryIO::Err("Error operation cancelled due to timeout".into());
             return Ok(err);
         }
 
@@ -123,7 +123,7 @@ impl ClientManager {
                                         cancellation_notifier.notify();
                                         let res = match self.handle(cancellation_token, request).await {
                                         Ok(response) => stream.write(response).await,
-                                        Err(e) => stream.write(QueryIO::Err(e.to_string())).await,
+                                        Err(e) => stream.write(QueryIO::Err(e.to_string().into())).await,
                                         };
 
                                         if let Err(e) = res {

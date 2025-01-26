@@ -1,3 +1,5 @@
+use std::fmt::Write;
+
 use super::cluster::actors::peer::PeerState;
 use crate::services::statefuls::cache::CacheValue;
 use anyhow::{Context, Result};
@@ -24,21 +26,22 @@ pub enum QueryIO {
     BulkString(Bytes),
     Array(Vec<QueryIO>),
     Null,
-    Err(String),
+    Err(Bytes),
     File(Bytes),
     PeerState(PeerState),
 }
 
 impl QueryIO {
     pub fn serialize(self) -> Bytes {
+        let concatenator = |prefix: char| -> Bytes { Bytes::from_iter([prefix as u8].into_iter()) };
+
         match self {
             QueryIO::SimpleString(s) => {
-                format!("{}{}\r\n", SIMPLE_STRING_PREFIX, String::from_utf8(s.into()).unwrap())
-                    .into()
+                Bytes::from([concatenator(SIMPLE_STRING_PREFIX), s, "\r\n".into()].concat())
             }
             QueryIO::BulkString(s) => Bytes::from(
                 [
-                    Bytes::from_iter([BULK_STRING_PREFIX as u8].into_iter()),
+                    concatenator(BULK_STRING_PREFIX),
                     s.len().to_string().into_bytes().into(),
                     "\r\n".into(),
                     s,
@@ -46,11 +49,29 @@ impl QueryIO {
                 ]
                 .concat(),
             ),
-            QueryIO::Array(a) => {
-                let mut result = format!("{}{}\r\n", ARRAY_PREFIX, a.len()).into_bytes();
-                result.extend(a.into_iter().flat_map(|v| v.serialize()));
-                result.into()
+
+            QueryIO::File(f) => {
+                let file_len = f.len() * 2;
+                let mut hex_file = String::with_capacity(file_len + file_len.to_string().len() + 2);
+
+                // * To avoid the overhead of using format! macro by creating intermediate string, use write!
+                let _ = write!(&mut hex_file, "{}{}\r\n", FILE_PREFIX, file_len);
+                f.into_iter().for_each(|byte| {
+                    let _ = write!(hex_file, "{:02x}", byte);
+                });
+
+                hex_file.into()
             }
+            QueryIO::Err(e) => Bytes::from([concatenator(ERROR_PREFIX), e, "\r\n".into()].concat()),
+
+            QueryIO::Null => "$-1\r\n".into(),
+
+            QueryIO::Array(array) => [
+                Into::<Bytes>::into(format!("{}{}\r\n", ARRAY_PREFIX, array.len()).into_bytes()),
+                array.into_iter().flat_map(|v| v.serialize()).collect(),
+            ]
+            .concat()
+            .into(),
             QueryIO::PeerState(PeerState { term, offset, last_updated }) => format!(
                 "{}\r\n${}\r\n{term}\r\n${}\r\n{offset}\r\n${}\r\n{last_updated}\r\n",
                 PEERSTATE_PREFIX,
@@ -59,20 +80,6 @@ impl QueryIO {
                 last_updated.to_string().len(),
             )
             .into(),
-
-            QueryIO::Null => "$-1\r\n".into(),
-            QueryIO::Err(e) => format!("{}{}\r\n", ERROR_PREFIX, e).into(),
-            QueryIO::File(f) => {
-                let file_len = f.len() * 2;
-                let mut hex_file = String::with_capacity(file_len + file_len.to_string().len() + 2)
-                    + format!("{}{}\r\n", FILE_PREFIX, file_len).as_str();
-
-                f.into_iter().for_each(|byte| {
-                    hex_file.push_str(&format!("{:02x}", byte));
-                });
-
-                hex_file.into()
-            }
         }
     }
 
