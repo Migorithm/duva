@@ -1,7 +1,7 @@
 use super::cluster::actors::peer::PeerState;
 use crate::services::statefuls::cache::CacheValue;
 use anyhow::Result;
-use bytes::BytesMut;
+use bytes::{Bytes, BytesMut};
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum QueryIO {
@@ -22,28 +22,27 @@ macro_rules! write_array {
 }
 
 impl QueryIO {
-    pub fn serialize(&self) -> String {
+    pub fn serialize(self) -> Bytes {
         match self {
-            QueryIO::SimpleString(s) => format!("+{}\r\n", s),
-            QueryIO::BulkString(s) => format!("${}\r\n{}\r\n", s.len(), s),
+            QueryIO::SimpleString(s) => format!("+{}\r\n", s).into(),
+            QueryIO::BulkString(s) => format!("${}\r\n{}\r\n", s.len(), s).into(),
             QueryIO::Array(a) => {
-                let mut result = format!("*{}\r\n", a.len());
+                let mut result = format!("*{}\r\n", a.len()).into_bytes();
                 for v in a {
-                    result.push_str(&v.serialize());
+                    result.extend(&v.serialize());
                 }
-                result
+                result.into()
             }
-            QueryIO::PeerState(PeerState { term, offset, last_updated }) => {
-                format!(
-                    "^\r\n${}\r\n{term}\r\n${}\r\n{offset}\r\n${}\r\n{last_updated}\r\n",
-                    term.to_string().len(),
-                    offset.to_string().len(),
-                    last_updated.to_string().len(),
-                )
-            }
+            QueryIO::PeerState(PeerState { term, offset, last_updated }) => format!(
+                "^\r\n${}\r\n{term}\r\n${}\r\n{offset}\r\n${}\r\n{last_updated}\r\n",
+                term.to_string().len(),
+                offset.to_string().len(),
+                last_updated.to_string().len(),
+            )
+            .into(),
 
-            QueryIO::Null => "$-1\r\n".to_string(),
-            QueryIO::Err(e) => format!("-{}\r\n", e),
+            QueryIO::Null => "$-1\r\n".into(),
+            QueryIO::Err(e) => format!("-{}\r\n", e).into(),
             QueryIO::File(f) => {
                 let file_len = f.len() * 2;
                 let mut hex_file = String::with_capacity(file_len + file_len.to_string().len() + 2)
@@ -53,7 +52,7 @@ impl QueryIO {
                     hex_file.push_str(&format!("{:02x}", byte));
                 });
 
-                hex_file
+                hex_file.into()
             }
         }
     }
@@ -110,17 +109,6 @@ impl TryFrom<QueryIO> for PeerState {
 
         // SAFETY : failing on this conversion will be a bug. And the system should crash
         Ok(PeerState { term, offset, last_updated })
-    }
-}
-
-impl From<String> for QueryIO {
-    fn from(v: String) -> Self {
-        QueryIO::BulkString(v)
-    }
-}
-impl From<Vec<u8>> for QueryIO {
-    fn from(v: Vec<u8>) -> Self {
-        QueryIO::File(v)
     }
 }
 
@@ -330,7 +318,7 @@ fn test_parse_file() {
     // GIVEN
     let file = QueryIO::File(b"hello".to_vec());
     let serialized = file.serialize();
-    let buffer = BytesMut::from(serialized.as_str());
+    let buffer = BytesMut::from_iter(serialized);
     // WHEN
     let (value, len) = parse(buffer).unwrap();
 

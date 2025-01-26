@@ -13,12 +13,12 @@ async fn test_keys() {
 
     // WHEN set 500 keys with the value `bar`.
     for key in 0..num_keys_to_store {
-        h.send({ array(vec!["SET", &key.to_string(), "bar"]).into_bytes() }.as_slice()).await;
+        h.send(&array(vec!["SET", &key.to_string(), "bar"])).await;
         assert_eq!(h.get_response().await, QueryIO::SimpleString("OK".to_string()).serialize());
     }
 
     // Fire keys command
-    h.send({ array(vec!["KEYS", "*"]).into_bytes() }.as_slice()).await;
+    h.send(&array(vec!["KEYS", "*"])).await;
     let res = h.get_response().await;
 
     assert!(res.starts_with(format!("*{}\r\n", num_keys_to_store).as_str()));

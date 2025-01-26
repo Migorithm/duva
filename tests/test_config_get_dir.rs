@@ -14,14 +14,11 @@ async fn test_config_get_dir() {
     let mut h = ClientStreamHandler::new(process.bind_addr()).await;
 
     // WHEN
-    h.send(
-        {
-            let command = "GET";
-            let key = "dir";
-            array(vec!["CONFIG", command, key]).into_bytes()
-        }
-        .as_slice(),
-    )
+    h.send({
+        let command = "GET";
+        let key = "dir";
+        &array(vec!["CONFIG", command, key])
+    })
     .await;
 
     // THEN

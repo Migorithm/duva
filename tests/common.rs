@@ -1,3 +1,4 @@
+use bytes::Bytes;
 use redis_starter_rust::make_smart_pointer;
 use redis_starter_rust::services::query_io::QueryIO;
 use std::io::{BufRead, BufReader, Read};
@@ -108,6 +109,6 @@ pub fn wait_for_and_get_message<T: Read>(
     message
 }
 
-pub fn array(arr: Vec<&str>) -> String {
+pub fn array(arr: Vec<&str>) -> Bytes {
     QueryIO::Array(arr.iter().map(|s| QueryIO::BulkString(s.to_string())).collect()).serialize()
 }

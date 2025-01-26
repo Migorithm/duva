@@ -7,9 +7,7 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 impl TStream for tokio::net::TcpStream {
     async fn write(&mut self, value: QueryIO) -> Result<(), IoError> {
-        self.write_all(value.serialize().as_bytes())
-            .await
-            .map_err(|e| Into::<IoError>::into(e.kind()))
+        self.write_all(&value.serialize()).await.map_err(|e| Into::<IoError>::into(e.kind()))
     }
 }
 

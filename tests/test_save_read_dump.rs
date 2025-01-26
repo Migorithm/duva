@@ -56,17 +56,16 @@ async fn test_save_read_dump() {
 
     // WHEN
     // set without expiry time
-    h.send({ array(vec!["SET", "foo", "bar"]).into_bytes() }.as_slice()).await;
+    h.send(&array(vec!["SET", "foo", "bar"])).await;
     assert_eq!(h.get_response().await, QueryIO::SimpleString("OK".to_string()).serialize());
     // set with expiry time
-    h.send({ array(vec!["SET", "foo2", "bar2", "PX", "9999999999"]).into_bytes() }.as_slice())
-        .await;
+    h.send(&array(vec!["SET", "foo2", "bar2", "PX", "9999999999"])).await;
     assert_eq!(h.get_response().await, QueryIO::SimpleString("OK".to_string()).serialize());
     // check keys
-    h.send({ array(vec!["KEYS", "*"]).into_bytes() }.as_slice()).await;
+    h.send(&array(vec!["KEYS", "*"])).await;
     assert_eq!(h.get_response().await, array(vec!["foo2", "foo"]));
     // save
-    h.send(array(vec!["SAVE"]).into_bytes().as_slice()).await;
+    h.send(&array(vec!["SAVE"])).await;
 
     // THEN
     assert_eq!(h.get_response().await, QueryIO::Null.serialize());
@@ -75,7 +74,7 @@ async fn test_save_read_dump() {
     tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
 
     // keys
-    h.send({ array(vec!["KEYS", "*"]).into_bytes() }.as_slice()).await;
+    h.send(&array(vec!["KEYS", "*"])).await;
     assert_eq!(h.get_response().await, array(vec!["foo2", "foo"]));
 }
 
