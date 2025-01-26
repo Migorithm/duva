@@ -50,7 +50,7 @@ impl QueryIO {
                 offset.to_string().len(),
                 last_updated.to_string().len(),
             )
-                .into(),
+            .into(),
 
             QueryIO::Null => "$-1\r\n".into(),
             QueryIO::Err(e) => format!("{}{}\r\n", ERROR_PREFIX, e).into(),
@@ -125,7 +125,10 @@ impl TryFrom<QueryIO> for PeerState {
 
 pub fn deserialize(buffer: BytesMut) -> Result<(QueryIO, usize)> {
     match buffer[0] as char {
-        SIMPLE_STRING_PREFIX => parse_simple_string(buffer),
+        SIMPLE_STRING_PREFIX => {
+            let (bytes, len) = parse_simple_string(buffer)?;
+            Ok((QueryIO::SimpleString(String::from_utf8(bytes)?), len))
+        }
         ARRAY_PREFIX => parse_array(buffer),
         BULK_STRING_PREFIX => parse_bulk_string(buffer),
         FILE_PREFIX => parse_file(buffer),
@@ -135,11 +138,10 @@ pub fn deserialize(buffer: BytesMut) -> Result<(QueryIO, usize)> {
 }
 
 // +PING\r\n
-pub(crate) fn parse_simple_string(buffer: BytesMut) -> Result<(QueryIO, usize)> {
+pub(crate) fn parse_simple_string(buffer: BytesMut) -> Result<(Vec<u8>, usize)> {
     let (line, len) =
         read_until_crlf(&buffer[1..]).ok_or(anyhow::anyhow!("Invalid simple string"))?;
-    let string = String::from_utf8(line.to_vec())?;
-    Ok((QueryIO::SimpleString(string), len + 1))
+    Ok((line.to_vec(), len + 1))
 }
 
 fn parse_array(buffer: BytesMut) -> Result<(QueryIO, usize)> {
@@ -235,7 +237,7 @@ fn test_parse_simple_string() {
 
     // THEN
     assert_eq!(len, 5);
-    assert_eq!(value, QueryIO::SimpleString("OK".to_string()));
+    assert_eq!(value, b"OK".to_vec());
 }
 
 #[test]
