@@ -117,11 +117,6 @@ impl From<String> for QueryIO {
         QueryIO::BulkString(v)
     }
 }
-impl From<Vec<u8>> for QueryIO {
-    fn from(v: Vec<u8>) -> Self {
-        QueryIO::File(v)
-    }
-}
 
 pub fn parse(buffer: BytesMut) -> Result<(QueryIO, usize)> {
     match buffer[0] as char {

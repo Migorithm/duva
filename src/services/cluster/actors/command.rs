@@ -29,7 +29,7 @@ impl TryFrom<QueryIO> for CommandFromMaster {
     type Error = anyhow::Error;
     fn try_from(query: QueryIO) -> anyhow::Result<Self> {
         match query {
-            QueryIO::File(v) => Ok(Self::Sync(v.into())),
+            file @ QueryIO::File(_) => Ok(Self::Sync(file)),
             QueryIO::SimpleString(s) => match s.to_lowercase().as_str() {
                 "ping" => Ok(Self::Ping),
                 _ => todo!(),
