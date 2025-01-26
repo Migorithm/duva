@@ -89,7 +89,7 @@ impl CacheActor {
     fn keys_stream(&self, pattern: Option<String>) -> impl Iterator<Item = QueryIO> + '_ {
         self.cache.keys().filter_map(move |k| {
             if pattern.as_ref().map_or(true, |p| k.contains(p)) {
-                Some(QueryIO::BulkString(k.to_string()))
+                Some(QueryIO::BulkString(k.clone().into_bytes()))
             } else {
                 None
             }

@@ -49,6 +49,7 @@ impl ClusterManager {
         cache_manager: &'static CacheManager,
     ) -> anyhow::Result<()> {
         peer_stream.recv_threeway_handshake().await?;
+
         peer_stream.disseminate_peers(self.get_peers().await?).await?;
 
         if matches!(peer_stream.peer_kind()?, PeerKind::Replica)

@@ -23,7 +23,7 @@ async fn test_set_get() {
 
     // THEN
     let res = h.get_response().await;
-    assert_eq!(res, QueryIO::BulkString("bar".to_string()).serialize());
+    assert_eq!(res, QueryIO::BulkString(b"bar".into()).serialize());
 
     // WHEN - wait for 300ms
     tokio::time::sleep(tokio::time::Duration::from_millis(300)).await;

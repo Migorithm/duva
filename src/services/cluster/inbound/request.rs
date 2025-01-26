@@ -1,6 +1,7 @@
 use crate::services::cluster::inbound::arguments::QueryArguments;
 use crate::services::query_io::QueryIO;
 use anyhow::Context;
+use bytes::Bytes;
 
 pub(crate) struct HandShakeRequest {
     pub(crate) command: HandShakeRequestEnum,
@@ -40,27 +41,28 @@ impl HandShakeRequest {
 
         match self.args.as_mut_slice() {
             [QueryIO::BulkString(key), QueryIO::BulkString(port), ..]
-                if key == "listening-port" =>
+                if key == b"listening-port" =>
             {
-                Ok(port.parse::<u16>()?)
+                let value = String::from_utf8(port.to_vec())?.parse()?;
+                Ok(value)
             }
             _ => Err(anyhow::anyhow!("Invalid listening-port arguments")),
         }
     }
 
-    pub(crate) fn extract_capa(&mut self) -> anyhow::Result<Vec<(String, String)>> {
+    pub(crate) fn extract_capa(&mut self) -> anyhow::Result<Vec<(Bytes, Bytes)>> {
         self.match_query(HandShakeRequestEnum::ReplConf)?;
         if self.args.is_empty() || self.args.len() % 2 != 0 {
             return Err(anyhow::anyhow!("Invalid number of arguments"));
         }
 
         // Process pairs directly using chunks_exact
-        let capabilities: Vec<(String, String)> = self
+        let capabilities: Vec<(Bytes, Bytes)> = self
             .args
             .chunks_exact(2)
             .filter_map(|chunk| match (&chunk[0], &chunk[1]) {
-                (QueryIO::BulkString(capa), QueryIO::BulkString(value)) if capa == "capa" => {
-                    Some((capa.clone(), value.clone()))
+                (QueryIO::BulkString(capa), QueryIO::BulkString(value)) if capa == b"capa" => {
+                    Some((capa.clone().into(), value.clone().into()))
                 }
                 _ => None,
             })

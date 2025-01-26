@@ -46,7 +46,7 @@ impl ClientManager {
         // TODO if it is persistence operation, get the key and hash, take the appropriate sender, send it;
         let response = match cmd {
             ClientRequest::Ping => QueryIO::SimpleString(b"PONG".into()),
-            ClientRequest::Echo(val) => QueryIO::BulkString(val),
+            ClientRequest::Echo(val) => QueryIO::BulkString(val.into()),
             ClientRequest::Set { key, value } => {
                 let cache_entry = CacheEntry::KeyValue(key.to_owned(), value.to_string());
 
@@ -78,16 +78,16 @@ impl ClientManager {
                 match res {
                     ConfigResponse::Dir(value) => QueryIO::Array(vec![
                         QueryIO::BulkString("dir".into()),
-                        QueryIO::BulkString(value),
+                        QueryIO::BulkString(value.into()),
                     ]),
-                    ConfigResponse::DbFileName(value) => QueryIO::BulkString(value),
+                    ConfigResponse::DbFileName(value) => QueryIO::BulkString(value.into()),
                     _ => QueryIO::Err("Invalid operation".into()),
                 }
             }
             ClientRequest::Delete { key } => panic!("Not implemented"),
 
             ClientRequest::Info => QueryIO::BulkString(
-                self.cluster_manager.replication_info().await?.vectorize().join("\r\n"),
+                self.cluster_manager.replication_info().await?.vectorize().join("\r\n").into(),
             ),
         };
         Ok(response)

@@ -13,6 +13,7 @@ use crate::services::query_io::QueryIO;
 use crate::services::statefuls::cache::manager::CacheManager;
 use crate::services::statefuls::persist::endec::encoder::encoding_processor::EncodingProcessor;
 use anyhow::Context;
+use bytes::Bytes;
 use tokio::net::TcpStream;
 
 // The following is used only when the node is in master mode
@@ -56,12 +57,15 @@ impl InboundStream {
 
     async fn recv_replconf_listening_port(&mut self) -> anyhow::Result<u16> {
         let mut cmd = self.extract_cmd().await?;
+
         let port = cmd.extract_listening_port()?;
+
         self.write(QueryIO::SimpleString(b"OK".into())).await?;
+
         Ok(port)
     }
 
-    async fn recv_replconf_capa(&mut self) -> anyhow::Result<Vec<(String, String)>> {
+    async fn recv_replconf_capa(&mut self) -> anyhow::Result<Vec<(Bytes, Bytes)>> {
         let mut cmd = self.extract_cmd().await?;
         let capa_val_vec = cmd.extract_capa()?;
         self.write(QueryIO::SimpleString(b"OK".into())).await?;
