@@ -112,12 +112,6 @@ impl TryFrom<QueryIO> for PeerState {
     }
 }
 
-impl From<String> for QueryIO {
-    fn from(v: String) -> Self {
-        QueryIO::BulkString(v)
-    }
-}
-
 pub fn parse(buffer: BytesMut) -> Result<(QueryIO, usize)> {
     match buffer[0] as char {
         '+' => parse_simple_string(buffer),
