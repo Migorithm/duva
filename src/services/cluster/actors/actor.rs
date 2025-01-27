@@ -73,6 +73,7 @@ impl ClusterActor {
     }
 
     fn set_replication_id(&mut self, master_repl_id: String) {
-        self.replication.master_replid = master_repl_id
+        self.replication.master_replid = master_repl_id.clone();
+        self.replication.state.master_replid = master_repl_id;
     }
 }

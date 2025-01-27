@@ -39,7 +39,6 @@ impl ConfigManager {
             startup_time: SystemTime::now(),
             port: env.port,
             host: Box::leak(env.host.clone().into_boxed_str()),
-            // cluster_mode_watcher,
         }
     }
 
