@@ -12,7 +12,6 @@ use tokio::sync::mpsc::Sender;
 pub(crate) struct Peer {
     pub(crate) w_conn: WriteConnected,
     pub(crate) listner_kill_trigger: ListeningActorKillTrigger,
-    state: PeerState,
 }
 
 impl Peer {
@@ -34,7 +33,6 @@ impl Peer {
         Self {
             w_conn: write_connected,
             listner_kill_trigger: ListeningActorKillTrigger::new(kill_trigger, listening_task),
-            state: PeerState::default(),
         }
     }
 }
@@ -49,13 +47,6 @@ pub struct WriteConnected {
 pub(super) struct ReadConnected {
     pub stream: OwnedReadHalf,
     pub kind: PeerKind,
-}
-
-#[derive(Debug, Default, Clone, PartialEq)]
-pub struct PeerState {
-    pub(crate) term: u64,
-    pub(crate) offset: u64,
-    pub(crate) last_updated: u64,
 }
 
 impl From<(OwnedReadHalf, PeerKind)> for ReadConnected {
