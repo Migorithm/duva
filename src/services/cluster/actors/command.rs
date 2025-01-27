@@ -10,7 +10,7 @@ pub enum ClusterCommand {
     RemovePeer(PeerAddr),
     GetPeers(tokio::sync::oneshot::Sender<PeerAddrs>),
     ReplicationInfo(tokio::sync::oneshot::Sender<Replication>),
-    SetReplicationId(String),
+    SetReplicationInfo { master_repl_id: String, offset: u64 },
     Ping,
     Replicate { query: QueryIO },
 }

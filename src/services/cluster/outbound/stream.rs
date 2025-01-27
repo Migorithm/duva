@@ -70,19 +70,21 @@ impl OutboundStream {
         }
     }
 
-    pub(crate) async fn set_replication_id(
+    pub(crate) async fn set_replication_info(
         self,
         cluster_manager: &ClusterManager,
     ) -> anyhow::Result<Self> {
         if self.repl_info.master_replid == "?" {
+            let connected_node_info = self
+                .connected_node_info
+                .as_ref()
+                .context("Connected node info not found. Cannot set replication id")?;
+
             cluster_manager
-                .send(ClusterCommand::SetReplicationId(
-                    self.connected_node_info
-                        .as_ref()
-                        .context("Connected node info not found. Cannot set replication id")?
-                        .repl_id
-                        .clone(),
-                ))
+                .send(ClusterCommand::SetReplicationInfo {
+                    master_repl_id: connected_node_info.repl_id.clone(),
+                    offset: connected_node_info.offset,
+                })
                 .await?;
         }
         Ok(self)
@@ -106,7 +108,7 @@ pub(crate) struct ConnectedNodeInfo {
     // TODO repl_id here is the master_replid from connected server.
     // TODO Set repl_id if given server's repl_id is "?" otherwise, it means that now it's connected to peer.
     pub(crate) repl_id: String,
-    pub(crate) offset: i64,
+    pub(crate) offset: u64,
     pub(crate) peer_list: Vec<String>,
 }
 

@@ -89,7 +89,7 @@ impl ClusterManager {
                 .await?
                 .establish_connection(self_port)
                 .await?
-                .set_replication_id(self)
+                .set_replication_info(self)
                 .await?
                 .deconstruct()?;
         self.send(add_peer_cmd).await?;
