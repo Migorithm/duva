@@ -17,7 +17,6 @@ pub struct ConfigManager {
     pub(crate) startup_time: SystemTime,
     pub port: u16,
     pub(crate) host: &'static str,
-    // pub(crate) cluster_mode_watcher: tokio::sync::watch::Receiver<bool>,
 }
 
 impl std::ops::Deref for ConfigManager {
