@@ -32,7 +32,7 @@ impl ClientStream {
                             key: key.to_string(),
                             value: value.to_string(),
                         }),
-                        ("set", [key, value, px, expiry]) if px == "px" => {
+                        ("set", [key, value, px, expiry]) if px.to_lowercase() == "px" => {
                             Ok(ClientRequest::SetWithExpiry {
                                 key: key.to_string(),
                                 value: value.to_string(),
