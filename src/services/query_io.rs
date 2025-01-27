@@ -88,9 +88,7 @@ impl QueryIO {
         T: std::str::FromStr<Err: std::error::Error + Sync + Send + 'static>,
     {
         match self {
-            QueryIO::BulkString(s) => {
-                Ok(String::from_utf8(s.into())?.to_lowercase().parse::<T>()?.into())
-            }
+            QueryIO::BulkString(s) => Ok(String::from_utf8(s.into())?.parse::<T>()?.into()),
 
             _ => Err(anyhow::anyhow!("Expected command to be a bulk string")),
         }
