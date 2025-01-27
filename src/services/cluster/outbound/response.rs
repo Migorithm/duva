@@ -6,7 +6,7 @@ use crate::services::query_io::QueryIO;
 pub enum ConnectionResponse {
     PONG,
     OK,
-    FULLRESYNC { repl_id: String, offset: i64 },
+    FULLRESYNC { repl_id: String, offset: u64 },
     PEERS(Vec<String>),
 }
 
@@ -21,7 +21,7 @@ impl TryFrom<String> for ConnectionResponse {
                 let mut iter = var.split_whitespace();
                 let _ = iter.next();
                 let repl_id = iter.next().context("replication_id must be given")?.to_string();
-                let offset = iter.next().context("offset must be given")?.parse::<i64>()?;
+                let offset = iter.next().context("offset must be given")?.parse::<u64>()?;
                 Ok(ConnectionResponse::FULLRESYNC { repl_id, offset })
             }
 

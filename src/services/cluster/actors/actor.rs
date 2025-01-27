@@ -50,8 +50,8 @@ impl ClusterActor {
                 ClusterCommand::ReplicationInfo(sender) => {
                     let _ = sender.send(self.replication.clone());
                 }
-                ClusterCommand::SetReplicationId(master_repl_id) => {
-                    self.set_replication_id(master_repl_id);
+                ClusterCommand::SetReplicationInfo { master_repl_id, offset } => {
+                    self.set_replication_info(master_repl_id, offset);
                 }
             }
         }
@@ -72,7 +72,8 @@ impl ClusterActor {
         self.members.remove(&peer_addr);
     }
 
-    fn set_replication_id(&mut self, master_repl_id: String) {
-        self.replication.master_replid = master_repl_id
+    fn set_replication_info(&mut self, master_repl_id: String, offset: u64) {
+        self.replication.master_replid = master_repl_id;
+        self.replication.master_repl_offset = offset;
     }
 }

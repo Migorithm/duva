@@ -11,8 +11,10 @@ use tokio::sync::mpsc::Sender;
 use tokio::time::interval;
 
 #[derive(Clone)]
-pub struct ClusterManager(Sender<ClusterCommand>);
-make_smart_pointer!(ClusterManager, Sender<ClusterCommand>);
+pub struct ClusterManager {
+    actor_handler: Sender<ClusterCommand>,
+}
+make_smart_pointer!(ClusterManager, Sender<ClusterCommand> => actor_handler);
 
 impl ClusterManager {
     pub fn run(notifier: tokio::sync::watch::Sender<bool>) -> Self {
@@ -33,7 +35,9 @@ impl ClusterManager {
                 }
             }
         });
-        Self(actor_handler)
+
+        // TODO peer state may need to be picked up from a persistent storage on restart case
+        Self { actor_handler }
     }
 
     pub(crate) async fn get_peers(&self) -> anyhow::Result<PeerAddrs> {
@@ -85,7 +89,7 @@ impl ClusterManager {
                 .await?
                 .establish_connection(self_port)
                 .await?
-                .set_replication_id(self)
+                .set_replication_info(self)
                 .await?
                 .deconstruct()?;
         self.send(add_peer_cmd).await?;

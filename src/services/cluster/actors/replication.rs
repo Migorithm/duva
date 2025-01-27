@@ -17,6 +17,9 @@ pub struct Replication {
     //If the instance is a replica, these additional fields are provided:
     pub(crate) master_host: Option<String>,
     pub(crate) master_port: Option<u16>,
+
+    // * state is shared among peers
+    pub(crate) term: u64,
 }
 
 impl Default for Replication {
@@ -30,13 +33,15 @@ impl Default for Replication {
 
 impl Replication {
     pub fn new(replicaof: Option<(String, String)>) -> Self {
+        let master_replid = if replicaof.is_none() {
+            "8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb".to_string()
+        } else {
+            "?".to_string()
+        };
+
         Replication {
             connected_slaves: 0, // dynamically configurable
-            master_replid: if replicaof.is_none() {
-                "8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb".to_string()
-            } else {
-                "?".to_string()
-            },
+            master_replid: master_replid.clone(),
             master_repl_offset: 0,
             second_repl_offset: -1,
             repl_backlog_active: 0,
@@ -46,6 +51,7 @@ impl Replication {
             master_host: replicaof.as_ref().cloned().map(|(host, _)| host),
             master_port: replicaof
                 .map(|(_, port)| port.parse().expect("Invalid port number of given")),
+            term: 0,
         }
     }
     pub fn vectorize(&self) -> Vec<String> {
@@ -65,4 +71,21 @@ impl Replication {
         format!("{}:{}", self.master_host.as_ref().unwrap(), self.master_port.unwrap() + 10000)
             .into()
     }
+
+    pub fn current_state(&self) -> PeerState {
+        PeerState {
+            term: self.term,
+            offset: self.master_repl_offset,
+            last_updated: 0,
+            master_replid: self.master_replid.clone(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct PeerState {
+    pub(crate) term: u64,
+    pub(crate) offset: u64,
+    pub(crate) last_updated: u64,
+    pub(crate) master_replid: String,
 }
