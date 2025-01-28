@@ -48,8 +48,9 @@ impl PeerListeningActor {
         while let Ok(cmds) = self.read_command::<CommandFromSlave>().await {
             for cmd in cmds {
                 match cmd {
-                    CommandFromSlave::Ping => {
-                        println!("[INFO] Received ping from slave");
+                    CommandFromSlave::HeartBeat(peer_state) => {
+                        println!("[INFO] Received peer state from slave");
+                        // TODO update peer state on cluster manager
                     }
                 }
             }
@@ -64,8 +65,9 @@ impl PeerListeningActor {
         while let Ok(cmds) = self.read_command::<CommandFromMaster>().await {
             for cmd in cmds {
                 match cmd {
-                    CommandFromMaster::Ping => {
-                        println!("[INFO] Received ping from master");
+                    CommandFromMaster::HeartBeat(peer_state) => {
+                        println!("[INFO] Received peer state from master");
+                        // TODO update peer state on cluster manager
                     }
 
                     CommandFromMaster::Replicate { query: _ } => {}

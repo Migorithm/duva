@@ -31,7 +31,7 @@ impl ClusterManager {
                 let mut interval = interval(Duration::from_secs(1));
                 loop {
                     interval.tick().await;
-                    let _ = heartbeat_sender.send(ClusterCommand::Ping).await;
+                    let _ = heartbeat_sender.send(ClusterCommand::SendHeartBeat).await;
                 }
             }
         });

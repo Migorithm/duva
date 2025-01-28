@@ -44,8 +44,8 @@ impl ClusterActor {
                 }
 
                 ClusterCommand::Replicate { query } => todo!(),
-                ClusterCommand::Ping => {
-                    self.heartbeat().await;
+                ClusterCommand::SendHeartBeat => {
+                    self.send_heartbeat().await;
                 }
                 ClusterCommand::ReplicationInfo(sender) => {
                     let _ = sender.send(self.replication.clone());
@@ -57,9 +57,9 @@ impl ClusterActor {
         }
     }
 
-    async fn heartbeat(&mut self) {
+    async fn send_heartbeat(&mut self) {
         for peer in self.members.values_mut() {
-            let msg = QueryIO::SimpleString("PING".into()).serialize();
+            let msg = QueryIO::PeerState(self.replication.current_state()).serialize();
             let _ = peer.w_conn.stream.write(&msg).await;
         }
     }
