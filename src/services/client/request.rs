@@ -11,4 +11,5 @@ pub enum ClientRequest {
     Delete { key: String },
     Save,
     Info,
+    ClusterInfo,
 }

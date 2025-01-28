@@ -7,13 +7,19 @@ use crate::services::query_io::QueryIO;
 use tokio::net::TcpStream;
 
 pub enum ClusterCommand {
-    AddPeer { peer_addr: PeerAddr, stream: TcpStream, peer_kind: PeerKind },
+    AddPeer(AddPeer),
     RemovePeer(PeerAddr),
     GetPeers(tokio::sync::oneshot::Sender<PeerAddrs>),
     ReplicationInfo(tokio::sync::oneshot::Sender<Replication>),
     SetReplicationInfo { master_repl_id: String, offset: u64 },
     SendHeartBeat,
     Replicate { query: QueryIO },
+}
+
+pub struct AddPeer {
+    pub(crate) peer_addr: PeerAddr,
+    pub(crate) stream: TcpStream,
+    pub(crate) peer_kind: PeerKind,
 }
 
 #[derive(Debug)]

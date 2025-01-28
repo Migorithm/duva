@@ -1,4 +1,6 @@
-use crate::services::cluster::actors::command::ClusterCommand;
+use std::ops::Add;
+
+use crate::services::cluster::actors::command::{AddPeer, ClusterCommand};
 use crate::services::cluster::actors::replication::Replication;
 use crate::services::cluster::actors::types::{PeerAddr, PeerKind};
 use crate::services::cluster::manager::ClusterManager;
@@ -94,11 +96,11 @@ impl OutboundStream {
         let connection_info = self.connected_node_info.context("Connected node info not found")?;
 
         Ok((
-            ClusterCommand::AddPeer {
+            ClusterCommand::AddPeer(AddPeer {
                 peer_kind: PeerKind::connected_peer_kind(&self.repl_info, &connection_info.repl_id),
                 peer_addr: self.connect_to,
                 stream: self.stream,
-            },
+            }),
             connection_info,
         ))
     }

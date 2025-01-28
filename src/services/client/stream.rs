@@ -54,6 +54,9 @@ impl ClientStream {
                         }
                         ("save", []) => Ok(ClientRequest::Save),
                         ("info", [_unused_value]) => Ok(ClientRequest::Info),
+                        ("cluster", [val]) if val.as_str() == "info" => {
+                            Ok(ClientRequest::ClusterInfo)
+                        }
                         _ => Err(anyhow::anyhow!("Invalid command")),
                     }
                 }
