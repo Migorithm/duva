@@ -1,6 +1,6 @@
 use bytes::Bytes;
-use redis_starter_rust::make_smart_pointer;
-use redis_starter_rust::services::query_io::QueryIO;
+use duva::make_smart_pointer;
+use duva::services::query_io::QueryIO;
 use std::io::{BufRead, BufReader, Read};
 use std::process::{Child, Command, Stdio};
 

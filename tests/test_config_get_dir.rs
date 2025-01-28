@@ -3,7 +3,7 @@
 mod common;
 use crate::common::array;
 use common::spawn_server_process;
-use redis_starter_rust::client_utils::ClientStreamHandler;
+use duva::client_utils::ClientStreamHandler;
 
 #[tokio::test]
 async fn test_config_get_dir() {
