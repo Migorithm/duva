@@ -7,7 +7,7 @@ mod common;
 
 use common::{array, spawn_server_process};
 
-use redis_starter_rust::{client_utils::ClientStreamHandler, services::query_io::QueryIO};
+use duva::{client_utils::ClientStreamHandler, services::query_io::QueryIO};
 
 #[tokio::test]
 async fn test_replication_info() {

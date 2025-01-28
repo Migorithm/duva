@@ -1,4 +1,4 @@
-use redis_starter_rust::{
+use duva::{
     adapters::cancellation_token::CancellationTokenFactory,
     services::config::{actor::ConfigActor, manager::ConfigManager},
     StartUpFacade,
@@ -16,11 +16,11 @@ async fn main() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn test_cancellation_token() {
-    use redis_starter_rust::client_utils::ClientStreamHandler;
-    use redis_starter_rust::services::interface::TCancellationNotifier;
-    use redis_starter_rust::services::interface::TCancellationTokenFactory;
-    use redis_starter_rust::services::interface::TCancellationWatcher;
-    use redis_starter_rust::TNotifyStartUp;
+    use duva::client_utils::ClientStreamHandler;
+    use duva::services::interface::TCancellationNotifier;
+    use duva::services::interface::TCancellationTokenFactory;
+    use duva::services::interface::TCancellationWatcher;
+    use duva::TNotifyStartUp;
     use std::sync::Arc;
 
     use tokio::net::TcpStream;

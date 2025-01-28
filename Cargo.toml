@@ -1,6 +1,6 @@
 # DON'T EDIT THIS!
 [package]
-name = "redis-starter-rust"
+name = "duva"
 version = "0.1.0"
 authors = ["Migorithm <saka90030@gmail.com>"]
 edition = "2021"

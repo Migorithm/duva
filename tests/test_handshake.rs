@@ -9,7 +9,7 @@
 ///
 ///
 use common::{spawn_server_as_slave, spawn_server_process, wait_for_message};
-use redis_starter_rust::client_utils::ClientStreamHandler;
+use duva::client_utils::ClientStreamHandler;
 
 mod common;
 
