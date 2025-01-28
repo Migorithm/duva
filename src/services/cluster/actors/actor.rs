@@ -1,3 +1,4 @@
+use super::command::AddPeer;
 use super::command::ClusterCommand;
 use super::peer::Peer;
 use super::replication::Replication;
@@ -26,13 +27,9 @@ impl ClusterActor {
             let _ = notifier.clone();
 
             match command {
-                ClusterCommand::AddPeer { peer_addr, stream, peer_kind } => {
+                ClusterCommand::AddPeer(add_peer_cmd) => {
                     // composite
-                    self.members.entry(peer_addr).or_insert(Peer::new(
-                        stream,
-                        peer_kind,
-                        self_handler.clone(),
-                    ));
+                    self.add_peer(add_peer_cmd, self_handler.clone());
                 }
                 ClusterCommand::RemovePeer(peer_addr) => {
                     self.remove_peer(peer_addr).await;
@@ -64,6 +61,10 @@ impl ClusterActor {
         }
     }
 
+    fn add_peer(&mut self, add_peer_cmd: AddPeer, self_handler: Sender<ClusterCommand>) {
+        let AddPeer { peer_addr, stream, peer_kind } = add_peer_cmd;
+        self.members.entry(peer_addr).or_insert(Peer::new(stream, peer_kind, self_handler.clone()));
+    }
     async fn remove_peer(&mut self, peer_addr: PeerAddr) {
         if let Some(peer) = self.members.remove(&peer_addr) {
             // stop the runnin process and take the connection in case topology changes are made

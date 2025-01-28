@@ -54,7 +54,7 @@ impl Replication {
             term: 0,
         }
     }
-    pub fn vectorize(&self) -> Vec<String> {
+    pub fn vectorize(self) -> Vec<String> {
         vec![
             format!("role:{}", self.role),
             format!("connected_slaves:{}", self.connected_slaves),

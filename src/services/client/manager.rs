@@ -89,6 +89,14 @@ impl ClientManager {
             ClientRequest::Info => QueryIO::BulkString(
                 self.cluster_manager.replication_info().await?.vectorize().join("\r\n").into(),
             ),
+            ClientRequest::ClusterInfo => QueryIO::Array(
+                self.cluster_manager
+                    .cluster_info()
+                    .await?
+                    .into_iter()
+                    .map(|x| QueryIO::BulkString(x.into()))
+                    .collect(),
+            ),
         };
         Ok(response)
     }

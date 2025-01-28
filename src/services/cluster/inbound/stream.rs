@@ -1,4 +1,5 @@
 use crate::make_smart_pointer;
+use crate::services::cluster::actors::command::AddPeer;
 use crate::services::cluster::actors::command::ClusterCommand;
 use crate::services::cluster::actors::replication::Replication;
 use crate::services::cluster::actors::types::PeerAddr;
@@ -104,11 +105,11 @@ impl InboundStream {
     }
 
     pub(crate) fn to_add_peer(self) -> anyhow::Result<ClusterCommand> {
-        Ok(ClusterCommand::AddPeer {
+        Ok(ClusterCommand::AddPeer(AddPeer {
             peer_kind: self.peer_kind()?,
             peer_addr: self.inbound_peer_addr.context("No peer addr")?,
             stream: self.stream,
-        })
+        }))
     }
 
     pub(crate) async fn send_sync_to_inbound_server(
