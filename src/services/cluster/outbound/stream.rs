@@ -83,6 +83,7 @@ impl OutboundStream {
             cluster_manager
                 .send(ClusterCommand::SetReplicationInfo {
                     master_repl_id: connected_node_info.repl_id.clone(),
+                    // TODO offset setting here may want to be revisited once we implement synchronization - echo
                     offset: connected_node_info.offset,
                 })
                 .await?;
