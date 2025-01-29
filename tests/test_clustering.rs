@@ -54,7 +54,7 @@ async fn system_removes_node_when_heartbeat_is_not_received_for_certain_time() {
 
     // WHEN
     replica_process.kill().unwrap();
-    tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
+    tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
     h.send(cmd).await;
     let cluster_info = h.get_response().await;
 

@@ -9,13 +9,17 @@ use std::collections::BTreeMap;
 use tokio::sync::mpsc::Receiver;
 use tokio::sync::mpsc::Sender;
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct ClusterActor {
     members: BTreeMap<PeerAddr, Peer>,
     replication: Replication,
+    ttl_mills: u64,
 }
 
 impl ClusterActor {
+    pub fn new(ttl_mills: u64) -> Self {
+        Self { members: BTreeMap::new(), replication: Replication::default(), ttl_mills }
+    }
     pub async fn handle(
         mut self,
         self_handler: Sender<ClusterCommand>,
