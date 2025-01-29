@@ -3,8 +3,7 @@
 //! In this case, the server will send PING message to the replica and the replica will respond with PONG message
 
 mod common;
-use common::{array, spawn_server_as_slave, spawn_server_process, wait_for_message};
-use duva::client_utils::ClientStreamHandler;
+use common::{spawn_server_as_slave, spawn_server_process, wait_for_message};
 
 #[tokio::test]
 async fn test_heartbeat() {
