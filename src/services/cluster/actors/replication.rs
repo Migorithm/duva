@@ -78,6 +78,7 @@ impl Replication {
             offset: self.master_repl_offset,
             last_updated: 0,
             master_replid: self.master_replid.clone(),
+            hop_count: 0,
         }
     }
 }
@@ -88,4 +89,5 @@ pub struct PeerState {
     pub(crate) offset: u64,
     pub(crate) last_updated: u64,
     pub(crate) master_replid: String,
+    pub(crate) hop_count: u8, // Decremented on each hop - for gossip
 }

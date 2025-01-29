@@ -73,13 +73,15 @@ impl QueryIO {
             ]
             .concat()
             .into(),
-            QueryIO::PeerState(PeerState { term, offset, last_updated, master_replid }) => format!(
-                "{}\r\n${}\r\n{term}\r\n${}\r\n{offset}\r\n${}\r\n{last_updated}\r\n${}\r\n{master_replid}\r\n",
+            QueryIO::PeerState(PeerState { term, offset, last_updated, master_replid,hop_count }) => format!(
+                "{}\r\n${}\r\n{term}\r\n${}\r\n{offset}\r\n${}\r\n{last_updated}\r\n${}\r\n{master_replid}\r\n${}\r\n{hop_count}\r\n",
                 PEERSTATE_PREFIX,
                 term.to_string().len(),
                 offset.to_string().len(),
                 last_updated.to_string().len(),
                 master_replid.len(),
+                hop_count.to_string().len(),
+
             )
             .into(),
         }
@@ -132,13 +134,11 @@ impl TryFrom<QueryIO> for PeerState {
     type Error = anyhow::Error;
 
     fn try_from(value: QueryIO) -> std::result::Result<Self, Self::Error> {
-        let QueryIO::PeerState(PeerState { term, offset, last_updated, master_replid }) = value
-        else {
+        let QueryIO::PeerState(state) = value else {
             return Err(anyhow::anyhow!("invalid QueryIO invariant"));
         };
 
-        // SAFETY : failing on this conversion will be a bug. And the system should crash
-        Ok(PeerState { term, offset, last_updated, master_replid })
+        Ok(state)
     }
 }
 
@@ -197,6 +197,7 @@ fn parse_peer_state(buffer: BytesMut) -> Result<(QueryIO, usize)> {
     let (offset, l2) = deserialize(BytesMut::from(&buffer[len + l1..]))?;
     let (last_updated, l3) = deserialize(BytesMut::from(&buffer[len + l1 + l2..]))?;
     let (master_replid, l4) = deserialize(BytesMut::from(&buffer[len + l1 + l2 + l3..]))?;
+    let (hop_count, l5) = deserialize(BytesMut::from(&buffer[len + l1 + l2 + l3 + l4..]))?;
 
     Ok((
         QueryIO::PeerState(PeerState {
@@ -204,8 +205,9 @@ fn parse_peer_state(buffer: BytesMut) -> Result<(QueryIO, usize)> {
             offset: offset.unpack_single_entry()?,
             last_updated: last_updated.unpack_single_entry()?,
             master_replid: master_replid.unpack_single_entry()?,
+            hop_count: hop_count.unpack_single_entry()?,
         }),
-        len + l1 + l2 + l3 + l4,
+        len + l1 + l2 + l3 + l4 + l5,
     ))
 }
 
@@ -324,21 +326,26 @@ fn test_parse_array() {
 #[test]
 fn test_from_bytes_to_peer_state() {
     // GIVEN
-    let buffer =
-        BytesMut::from("^\r\n$3\r\n245\r\n$7\r\n1234329\r\n$8\r\n53999944\r\n$4\r\nabcd\r\n");
+    let buffer = BytesMut::from(
+        "^\r\n$3\r\n245\r\n$7\r\n1234329\r\n$8\r\n53999944\r\n$4\r\nabcd\r\n$1\r\n2\r\n",
+    );
 
     // WHEN
     let (value, len) = deserialize(buffer).unwrap();
 
     // THEN
-    assert_eq!(len, "^\r\n$3\r\n245\r\n$7\r\n1234329\r\n$8\r\n53999944\r\n$4\r\nabcd\r\n".len());
+    assert_eq!(
+        len,
+        "^\r\n$3\r\n245\r\n$7\r\n1234329\r\n$8\r\n53999944\r\n$4\r\nabcd\r\n$1\r\n2\r\n".len()
+    );
     assert_eq!(
         value,
         QueryIO::PeerState(PeerState {
             term: 245,
             offset: 1234329,
             last_updated: 53999944,
-            master_replid: "abcd".into()
+            master_replid: "abcd".into(),
+            hop_count: 2,
         })
     );
     let peer_state: PeerState = value.try_into().unwrap();
@@ -346,6 +353,7 @@ fn test_from_bytes_to_peer_state() {
     assert_eq!(peer_state.offset, 1234329);
     assert_eq!(peer_state.last_updated, 53999944);
     assert_eq!(peer_state.master_replid, "abcd");
+    assert_eq!(peer_state.hop_count, 2);
 }
 
 #[test]
@@ -353,14 +361,19 @@ fn test_from_peer_state_to_bytes() {
     use crate::services::query_io::QueryIO;
 
     //GIVEN
-    let peer_state =
-        PeerState { term: 1, offset: 2, last_updated: 3, master_replid: "your_master_repl".into() };
+    let peer_state = PeerState {
+        term: 1,
+        offset: 2,
+        last_updated: 3,
+        master_replid: "your_master_repl".into(),
+        hop_count: 2,
+    };
     //WHEN
     let peer_state_serialized: QueryIO = peer_state.into();
     let peer_state_serialized = peer_state_serialized.serialize();
     //THEN
     assert_eq!(
-        "^\r\n$1\r\n1\r\n$1\r\n2\r\n$1\r\n3\r\n$16\r\nyour_master_repl\r\n",
+        "^\r\n$1\r\n1\r\n$1\r\n2\r\n$1\r\n3\r\n$16\r\nyour_master_repl\r\n$1\r\n2\r\n",
         peer_state_serialized
     );
 
@@ -370,13 +383,14 @@ fn test_from_peer_state_to_bytes() {
         offset: 3232,
         last_updated: 35535300,
         master_replid: "your_master_repl2".into(),
+        hop_count: 40,
     };
     //WHEN
     let peer_state_serialized: QueryIO = peer_state.into();
     let peer_state_serialized = peer_state_serialized.serialize();
     //THEN
     assert_eq!(
-        "^\r\n$1\r\n5\r\n$4\r\n3232\r\n$8\r\n35535300\r\n$17\r\nyour_master_repl2\r\n",
+        "^\r\n$1\r\n5\r\n$4\r\n3232\r\n$8\r\n35535300\r\n$17\r\nyour_master_repl2\r\n$2\r\n40\r\n",
         peer_state_serialized
     );
 }
