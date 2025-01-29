@@ -2,7 +2,7 @@ use crate::make_smart_pointer;
 use crate::services::cluster::actors::command::AddPeer;
 use crate::services::cluster::actors::command::ClusterCommand;
 use crate::services::cluster::actors::replication::Replication;
-use crate::services::cluster::actors::types::PeerAddr;
+use crate::services::cluster::actors::types::PeerIdentifier;
 use crate::services::cluster::actors::types::PeerAddrs;
 use crate::services::cluster::actors::types::PeerKind;
 use crate::services::cluster::inbound::request::HandShakeRequest;
@@ -21,7 +21,7 @@ use tokio::net::TcpStream;
 pub(crate) struct InboundStream {
     pub(crate) stream: TcpStream,
     pub(crate) repl_info: Replication,
-    pub(crate) inbound_peer_addr: Option<PeerAddr>,
+    pub(crate) inbound_peer_addr: Option<PeerIdentifier>,
     pub(crate) inbound_master_replid: Option<String>,
 }
 

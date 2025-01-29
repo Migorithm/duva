@@ -2,7 +2,7 @@ use std::ops::Add;
 
 use crate::services::cluster::actors::command::{AddPeer, ClusterCommand};
 use crate::services::cluster::actors::replication::Replication;
-use crate::services::cluster::actors::types::{PeerAddr, PeerKind};
+use crate::services::cluster::actors::types::{PeerIdentifier, PeerKind};
 use crate::services::cluster::manager::ClusterManager;
 use crate::services::cluster::outbound::response::ConnectionResponse;
 use crate::services::interface::{TRead, TStream};
@@ -16,12 +16,12 @@ pub(crate) struct OutboundStream {
     pub(crate) stream: TcpStream,
     pub(crate) repl_info: Replication,
     connected_node_info: Option<ConnectedNodeInfo>,
-    connect_to: PeerAddr,
+    connect_to: PeerIdentifier,
 }
 make_smart_pointer!(OutboundStream, TcpStream => stream);
 
 impl OutboundStream {
-    pub(crate) async fn new(connect_to: PeerAddr, repl_info: Replication) -> anyhow::Result<Self> {
+    pub(crate) async fn new(connect_to: PeerIdentifier, repl_info: Replication) -> anyhow::Result<Self> {
         Ok(OutboundStream {
             stream: TcpStream::connect(&connect_to.0).await?,
             repl_info,
@@ -116,7 +116,7 @@ pub(crate) struct ConnectedNodeInfo {
 }
 
 impl ConnectedNodeInfo {
-    pub(crate) fn list_peer_binding_addrs(&self) -> Vec<PeerAddr> {
+    pub(crate) fn list_peer_binding_addrs(&self) -> Vec<PeerIdentifier> {
         self.peer_list
             .iter()
             .flat_map(|peer| {

@@ -2,7 +2,7 @@ use super::command::AddPeer;
 use super::command::ClusterCommand;
 use super::peer::Peer;
 use super::replication::Replication;
-use super::types::PeerAddr;
+use super::types::PeerIdentifier;
 use crate::services::interface::TWrite;
 use crate::services::query_io::QueryIO;
 use std::collections::BTreeMap;
@@ -11,7 +11,7 @@ use tokio::sync::mpsc::Sender;
 
 #[derive(Debug)]
 pub struct ClusterActor {
-    members: BTreeMap<PeerAddr, Peer>,
+    members: BTreeMap<PeerIdentifier, Peer>,
     replication: Replication,
     ttl_mills: u64,
 }
@@ -69,7 +69,7 @@ impl ClusterActor {
         let AddPeer { peer_addr, stream, peer_kind } = add_peer_cmd;
         self.members.entry(peer_addr).or_insert(Peer::new(stream, peer_kind, self_handler.clone()));
     }
-    async fn remove_peer(&mut self, peer_addr: PeerAddr) {
+    async fn remove_peer(&mut self, peer_addr: PeerIdentifier) {
         if let Some(peer) = self.members.remove(&peer_addr) {
             // stop the runnin process and take the connection in case topology changes are made
             let _read_connected = peer.listner_kill_trigger.kill().await;

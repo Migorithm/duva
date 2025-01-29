@@ -1,7 +1,7 @@
 use super::actors::actor::ClusterActor;
 use super::actors::command::ClusterCommand;
 use super::actors::replication::{Replication, IS_MASTER_MODE};
-use super::actors::types::{PeerAddr, PeerAddrs, PeerKind};
+use super::actors::types::{PeerAddrs, PeerIdentifier, PeerKind};
 use crate::services::cluster::inbound::stream::InboundStream;
 use crate::services::cluster::outbound::stream::OutboundStream;
 use crate::services::statefuls::cache::manager::CacheManager;
@@ -75,7 +75,7 @@ impl ClusterManager {
     pub(crate) async fn discover_cluster(
         &'static self,
         self_port: u16,
-        connect_to: PeerAddr,
+        connect_to: PeerIdentifier,
     ) -> anyhow::Result<()> {
         // Base case
         let existing_peers = self.get_peers().await?;
