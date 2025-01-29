@@ -12,6 +12,7 @@ use tokio::sync::mpsc::Sender;
 pub(crate) struct Peer {
     pub(crate) w_conn: WriteConnected,
     pub(crate) listner_kill_trigger: ListeningActorKillTrigger,
+    pub(crate) last_seen: std::time::Instant,
 }
 
 impl Peer {
@@ -33,6 +34,7 @@ impl Peer {
         Self {
             w_conn: write_connected,
             listner_kill_trigger: ListeningActorKillTrigger::new(kill_trigger, listening_task),
+            last_seen: std::time::Instant::now(),
         }
     }
 }
