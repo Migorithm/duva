@@ -9,7 +9,7 @@ pub(crate) struct Environment {
     pub(crate) port: u16,
     pub(crate) host: String,
     pub(crate) hf_mills: u64,
-    pub(crate) ttl_mills: u64,
+    pub(crate) ttl_mills: u128,
 }
 
 impl Environment {

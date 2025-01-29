@@ -4,6 +4,7 @@
 /// To take a control of the actor, PeerListenerHandler is used, which can kill the listening process and return the connected stream.
 use super::command::{ClusterCommand, CommandFromMaster, CommandFromSlave};
 use super::peer::ReadConnected;
+use super::types::PeerIdentifier;
 use crate::services::cluster::actors::types::PeerKind;
 use crate::services::interface::TRead;
 use crate::services::query_io::QueryIO;
@@ -13,7 +14,8 @@ use tokio::task::JoinHandle;
 
 pub(crate) struct PeerListeningActor {
     pub(super) read_connected: ReadConnected,
-    pub(super) cluster_handler: Sender<ClusterCommand>, // cluster_handler is used to send messages to the cluster actor
+    pub(super) cluster_handler: Sender<ClusterCommand>,
+    pub(crate) self_id: PeerIdentifier, // cluster_handler is used to send messages to the cluster actor
 }
 
 impl PeerListeningActor {
@@ -67,7 +69,13 @@ impl PeerListeningActor {
                 match cmd {
                     CommandFromMaster::HeartBeat(peer_state) => {
                         println!("[INFO] Received peer state from master");
-                        // TODO update peer state on cluster manager
+                        self.cluster_handler
+                            .send(ClusterCommand::ReportAlive {
+                                peer_identifier: self.self_id.clone(),
+                                state: peer_state,
+                            })
+                            .await
+                            .unwrap();
                     }
 
                     CommandFromMaster::Replicate { query: _ } => {}

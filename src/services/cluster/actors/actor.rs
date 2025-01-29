@@ -3,8 +3,10 @@ use super::command::ClusterCommand;
 use super::peer::Peer;
 use super::replication::Replication;
 use super::types::PeerIdentifier;
+use super::PeerState;
 use crate::services::interface::TWrite;
 use crate::services::query_io::QueryIO;
+
 use std::collections::BTreeMap;
 use tokio::sync::mpsc::Receiver;
 use tokio::sync::mpsc::Sender;
@@ -13,11 +15,11 @@ use tokio::sync::mpsc::Sender;
 pub struct ClusterActor {
     members: BTreeMap<PeerIdentifier, Peer>,
     replication: Replication,
-    ttl_mills: u64,
+    ttl_mills: u128,
 }
 
 impl ClusterActor {
-    pub fn new(ttl_mills: u64) -> Self {
+    pub fn new(ttl_mills: u128) -> Self {
         Self { members: BTreeMap::new(), replication: Replication::default(), ttl_mills }
     }
     pub async fn handle(
@@ -47,12 +49,19 @@ impl ClusterActor {
                 ClusterCommand::Replicate { query } => todo!(),
                 ClusterCommand::SendHeartBeat => {
                     self.send_heartbeat().await;
+
+                    // ! remove idle peers based on ttl.
+                    // ! The following may need to be moved else where to avoid blocking the main loop
+                    self.remove_idle_peers().await;
                 }
                 ClusterCommand::ReplicationInfo(sender) => {
                     let _ = sender.send(self.replication.clone());
                 }
                 ClusterCommand::SetReplicationInfo { master_repl_id, offset } => {
                     self.set_replication_info(master_repl_id, offset);
+                }
+                ClusterCommand::ReportAlive { peer_identifier, state } => {
+                    self.update_peer_state(peer_identifier, state);
                 }
             }
         }
@@ -67,7 +76,12 @@ impl ClusterActor {
 
     fn add_peer(&mut self, add_peer_cmd: AddPeer, self_handler: Sender<ClusterCommand>) {
         let AddPeer { peer_addr, stream, peer_kind } = add_peer_cmd;
-        self.members.entry(peer_addr).or_insert(Peer::new(stream, peer_kind, self_handler.clone()));
+        self.members.entry(peer_addr.clone()).or_insert(Peer::new(
+            stream,
+            peer_kind,
+            self_handler.clone(),
+            peer_addr,
+        ));
     }
     async fn remove_peer(&mut self, peer_addr: PeerIdentifier) {
         if let Some(peer) = self.members.remove(&peer_addr) {
@@ -80,5 +94,32 @@ impl ClusterActor {
     fn set_replication_info(&mut self, master_repl_id: String, offset: u64) {
         self.replication.master_replid = master_repl_id;
         self.replication.master_repl_offset = offset;
+    }
+
+    fn update_peer_state(&mut self, peer_identifier: PeerIdentifier, state: PeerState) {
+        let Some(peer) = self.members.get_mut(&peer_identifier) else {
+            eprintln!("Peer not found");
+            return;
+        };
+        peer.last_seen = std::time::Instant::now();
+    }
+
+    /// Remove the peers that are idle for more than ttl_mills
+    async fn remove_idle_peers(&mut self) {
+        // loop over members, if ttl is expired, remove the member
+        let now = std::time::Instant::now();
+
+        let to_be_removed = self
+            .members
+            .iter()
+            .filter_map(|(id, peer)| {
+                (now.duration_since(peer.last_seen).as_millis() > self.ttl_mills)
+                    .then(|| id.clone())
+            })
+            .collect::<Vec<_>>();
+
+        for peer_id in to_be_removed {
+            self.remove_peer(peer_id).await;
+        }
     }
 }

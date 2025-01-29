@@ -35,7 +35,6 @@ async fn test_make_peer_discovery_increase_known_node_count() {
 }
 
 #[tokio::test]
-#[ignore]
 async fn system_removes_node_when_heartbeat_is_not_received_for_certain_time() {
     // GIVEN
     let mut master_process = spawn_server_process();

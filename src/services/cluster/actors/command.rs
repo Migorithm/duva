@@ -14,6 +14,7 @@ pub enum ClusterCommand {
     SetReplicationInfo { master_repl_id: String, offset: u64 },
     SendHeartBeat,
     Replicate { query: QueryIO },
+    ReportAlive { peer_identifier: PeerIdentifier, state: PeerState },
 }
 
 pub struct AddPeer {
