@@ -21,7 +21,10 @@ pub(crate) struct OutboundStream {
 make_smart_pointer!(OutboundStream, TcpStream => stream);
 
 impl OutboundStream {
-    pub(crate) async fn new(connect_to: PeerIdentifier, repl_info: Replication) -> anyhow::Result<Self> {
+    pub(crate) async fn new(
+        connect_to: PeerIdentifier,
+        repl_info: Replication,
+    ) -> anyhow::Result<Self> {
         Ok(OutboundStream {
             stream: TcpStream::connect(&connect_to.0).await?,
             repl_info,
