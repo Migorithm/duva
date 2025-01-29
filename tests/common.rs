@@ -56,7 +56,7 @@ make_smart_pointer!(TestProcessChild, Child);
 
 pub fn run_server_process(port: u16, replicaof: Option<String>) -> TestProcessChild {
     let mut command = Command::new("cargo");
-    command.args(["run", "--", "--port", &port.to_string()]);
+    command.args(["run", "--", "--port", &port.to_string(), "--hf", "100"]);
 
     if let Some(replicaof) = replicaof {
         command.args(["--replicaof", &replicaof]);

@@ -2,10 +2,10 @@ use super::actors::actor::ClusterActor;
 use super::actors::command::ClusterCommand;
 use super::actors::replication::{Replication, IS_MASTER_MODE};
 use super::actors::types::{PeerAddr, PeerAddrs, PeerKind};
-use crate::make_smart_pointer;
 use crate::services::cluster::inbound::stream::InboundStream;
 use crate::services::cluster::outbound::stream::OutboundStream;
 use crate::services::statefuls::cache::manager::CacheManager;
+use crate::{get_env, make_smart_pointer};
 use std::time::Duration;
 use tokio::sync::mpsc::Sender;
 use tokio::time::interval;
@@ -27,8 +27,9 @@ impl ClusterManager {
 
         tokio::spawn({
             let heartbeat_sender = actor_handler.clone();
+            let heartbeat_frequency = get_env().heartbeat_frequency;
             async move {
-                let mut interval = interval(Duration::from_secs(1));
+                let mut interval = interval(Duration::from_millis(heartbeat_frequency));
                 loop {
                     interval.tick().await;
                     let _ = heartbeat_sender.send(ClusterCommand::SendHeartBeat).await;
