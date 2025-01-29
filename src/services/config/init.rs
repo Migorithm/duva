@@ -8,7 +8,7 @@ pub(crate) struct Environment {
     pub(crate) dbfilename: String,
     pub(crate) port: u16,
     pub(crate) host: String,
-    pub(crate) heartbeat_frequency: u64,
+    pub(crate) hf_mills: u64,
 }
 
 impl Environment {
@@ -34,7 +34,7 @@ impl Environment {
         });
         IS_MASTER_MODE.store(replicaof.is_none(), std::sync::atomic::Ordering::Relaxed);
 
-        Self { replicaof, dir, dbfilename, port, host, heartbeat_frequency: hf }
+        Self { replicaof, dir, dbfilename, port, host, hf_mills: hf }
     }
 }
 

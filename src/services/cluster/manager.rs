@@ -27,11 +27,10 @@ impl ClusterManager {
 
         tokio::spawn({
             let heartbeat_sender = actor_handler.clone();
-            let heartbeat_frequency = get_env().heartbeat_frequency;
+            let mut heartbeat_interval = interval(Duration::from_millis(get_env().hf_mills));
             async move {
-                let mut interval = interval(Duration::from_millis(heartbeat_frequency));
                 loop {
-                    interval.tick().await;
+                    heartbeat_interval.tick().await;
                     let _ = heartbeat_sender.send(ClusterCommand::SendHeartBeat).await;
                 }
             }
