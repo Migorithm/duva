@@ -67,16 +67,15 @@ impl ClusterActor {
     }
 
     fn hop_count(&self, fanout: usize, node_count: usize) -> u8 {
-        // TODO FANOUT should be configurable
         if node_count <= fanout as usize {
             return 0;
         }
         node_count.ilog(fanout) as u8
     }
     async fn send_heartbeat(&mut self) {
+        // TODO FANOUT should be configurable
         const FANOUT: usize = 2;
-        let node_count = self.members.len();
-        let hop_count = self.hop_count(FANOUT, node_count);
+        let hop_count = self.hop_count(FANOUT, self.members.len());
 
         for peer in self.members.values_mut() {
             let msg = QueryIO::PeerState(self.replication.current_state(hop_count)).serialize();
