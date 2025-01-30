@@ -66,17 +66,17 @@ impl ClusterActor {
         }
     }
 
-    fn hop_count(node_count: f32) -> u8 {
+    fn hop_count(node_count: usize) -> u8 {
         // TODO FANOUT should be configurable
         const FANOUT: f32 = 2.0;
-        node_count.log(FANOUT).ceil() as u8
+        (node_count as f32).log(FANOUT).ceil() as u8
     }
     async fn send_heartbeat(&mut self) {
         if self.members.is_empty() {
             return;
         }
 
-        let hop_count = Self::hop_count(self.members.len() as f32);
+        let hop_count = Self::hop_count(self.members.len());
 
         for peer in self.members.values_mut() {
             let msg = QueryIO::PeerState(self.replication.current_state(hop_count)).serialize();
@@ -137,7 +137,7 @@ impl ClusterActor {
 #[test]
 fn test_hop_count_when_one() {
     // GIVEN
-    let node_count = 1.0;
+    let node_count = 1;
     // WHEN
     let hop_count = ClusterActor::hop_count(node_count);
     // THEN
@@ -147,7 +147,7 @@ fn test_hop_count_when_one() {
 #[test]
 fn test_hop_count_when_two() {
     // GIVEN
-    let node_count = 2.0;
+    let node_count = 2;
     // WHEN
     let hop_count = ClusterActor::hop_count(node_count);
     // THEN
@@ -157,7 +157,7 @@ fn test_hop_count_when_two() {
 #[test]
 fn test_hop_count_when_thirty() {
     // GIVEN
-    let node_count = 30.0;
+    let node_count = 30;
     // WHEN
     let hop_count = ClusterActor::hop_count(node_count);
     // THEN
