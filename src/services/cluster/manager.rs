@@ -1,11 +1,11 @@
 use super::actors::actor::ClusterActor;
 use super::actors::command::ClusterCommand;
 use super::actors::replication::{Replication, IS_MASTER_MODE};
-use super::actors::types::{PeerAddr, PeerAddrs, PeerKind};
-use crate::make_smart_pointer;
+use super::actors::types::{PeerAddrs, PeerIdentifier, PeerKind};
 use crate::services::cluster::inbound::stream::InboundStream;
 use crate::services::cluster::outbound::stream::OutboundStream;
 use crate::services::statefuls::cache::manager::CacheManager;
+use crate::{get_env, make_smart_pointer};
 use std::time::Duration;
 use tokio::sync::mpsc::Sender;
 use tokio::time::interval;
@@ -19,7 +19,7 @@ make_smart_pointer!(ClusterManager, Sender<ClusterCommand> => actor_handler);
 impl ClusterManager {
     pub fn run(notifier: tokio::sync::watch::Sender<bool>) -> Self {
         let (actor_handler, cluster_message_listener) = tokio::sync::mpsc::channel(100);
-        tokio::spawn(ClusterActor::default().handle(
+        tokio::spawn(ClusterActor::new(get_env().ttl_mills).handle(
             actor_handler.clone(),
             cluster_message_listener,
             notifier,
@@ -27,10 +27,10 @@ impl ClusterManager {
 
         tokio::spawn({
             let heartbeat_sender = actor_handler.clone();
+            let mut heartbeat_interval = interval(Duration::from_millis(get_env().hf_mills));
             async move {
-                let mut interval = interval(Duration::from_secs(1));
                 loop {
-                    interval.tick().await;
+                    heartbeat_interval.tick().await;
                     let _ = heartbeat_sender.send(ClusterCommand::SendHeartBeat).await;
                 }
             }
@@ -75,7 +75,7 @@ impl ClusterManager {
     pub(crate) async fn discover_cluster(
         &'static self,
         self_port: u16,
-        connect_to: PeerAddr,
+        connect_to: PeerIdentifier,
     ) -> anyhow::Result<()> {
         // Base case
         let existing_peers = self.get_peers().await?;

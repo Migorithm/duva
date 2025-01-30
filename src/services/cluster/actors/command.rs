@@ -1,6 +1,6 @@
 use super::{
     replication::Replication,
-    types::{PeerAddr, PeerAddrs, PeerKind},
+    types::{PeerAddrs, PeerIdentifier, PeerKind},
     PeerState,
 };
 use crate::services::query_io::QueryIO;
@@ -8,16 +8,17 @@ use tokio::net::TcpStream;
 
 pub enum ClusterCommand {
     AddPeer(AddPeer),
-    RemovePeer(PeerAddr),
+    RemovePeer(PeerIdentifier),
     GetPeers(tokio::sync::oneshot::Sender<PeerAddrs>),
     ReplicationInfo(tokio::sync::oneshot::Sender<Replication>),
     SetReplicationInfo { master_repl_id: String, offset: u64 },
     SendHeartBeat,
     Replicate { query: QueryIO },
+    ReportAlive { peer_identifier: PeerIdentifier, state: PeerState },
 }
 
 pub struct AddPeer {
-    pub(crate) peer_addr: PeerAddr,
+    pub(crate) peer_addr: PeerIdentifier,
     pub(crate) stream: TcpStream,
     pub(crate) peer_kind: PeerKind,
 }

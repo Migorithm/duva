@@ -8,10 +8,13 @@ use tokio::net::tcp::OwnedWriteHalf;
 use tokio::net::TcpStream;
 use tokio::sync::mpsc::Sender;
 
+use super::types::PeerIdentifier;
+
 #[derive(Debug)]
 pub(crate) struct Peer {
     pub(crate) w_conn: WriteConnected,
     pub(crate) listner_kill_trigger: ListeningActorKillTrigger,
+    pub(crate) last_seen: std::time::Instant,
 }
 
 impl Peer {
@@ -19,6 +22,7 @@ impl Peer {
         stream: TcpStream,
         peer_kind: PeerKind,
         cluster_handler: Sender<ClusterCommand>,
+        peer_identifier: PeerIdentifier,
     ) -> Self {
         let (r, w) = stream.into_split();
 
@@ -27,12 +31,14 @@ impl Peer {
 
         // Listner requires cluster handler to send messages to the cluster actor and cluster actor instead needs kill trigger to stop the listener
         let (kill_trigger, kill_switch) = tokio::sync::oneshot::channel();
-        let listening_actor = PeerListeningActor { read_connected, cluster_handler };
+        let listening_actor =
+            PeerListeningActor { read_connected, cluster_handler, self_id: peer_identifier };
         let listening_task = tokio::spawn(listening_actor.listen(kill_switch));
 
         Self {
             w_conn: write_connected,
             listner_kill_trigger: ListeningActorKillTrigger::new(kill_trigger, listening_task),
+            last_seen: std::time::Instant::now(),
         }
     }
 }
