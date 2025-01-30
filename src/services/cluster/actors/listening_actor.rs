@@ -35,13 +35,9 @@ impl PeerListeningActor {
                             self.listen_master_stream().await
                         },
                     };
-                } => {
-                    self.read_connected
-                },
-            _ = rx => {
-                // If the kill switch is triggered, return the connected stream so the caller can decide what to do with it
-                self.read_connected
-            }
+                } => self.read_connected,
+            // If the kill switch is triggered, return the connected stream so the caller can decide what to do with it
+            _ = rx => self.read_connected
         };
         connected
     }

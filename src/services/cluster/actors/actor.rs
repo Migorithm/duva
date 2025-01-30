@@ -6,7 +6,6 @@ use super::types::PeerIdentifier;
 use super::PeerState;
 use crate::services::interface::TWrite;
 use crate::services::query_io::QueryIO;
-
 use std::collections::BTreeMap;
 use tokio::sync::mpsc::Receiver;
 use tokio::sync::mpsc::Sender;
@@ -67,9 +66,20 @@ impl ClusterActor {
         }
     }
 
+    fn hop_count(node_count: f32) -> u8 {
+        // TODO FANOUT should be configurable
+        const FANOUT: f32 = 2.0;
+        node_count.log(FANOUT).ceil() as u8
+    }
     async fn send_heartbeat(&mut self) {
+        if self.members.is_empty() {
+            return;
+        }
+
+        let hop_count = Self::hop_count(self.members.len() as f32);
+
         for peer in self.members.values_mut() {
-            let msg = QueryIO::PeerState(self.replication.current_state()).serialize();
+            let msg = QueryIO::PeerState(self.replication.current_state(hop_count)).serialize();
             let _ = peer.w_conn.stream.write(&msg).await;
         }
     }
@@ -122,4 +132,34 @@ impl ClusterActor {
             self.remove_peer(peer_id).await;
         }
     }
+}
+
+#[test]
+fn test_hop_count_when_one() {
+    // GIVEN
+    let node_count = 1.0;
+    // WHEN
+    let hop_count = ClusterActor::hop_count(node_count);
+    // THEN
+    assert_eq!(hop_count, 0);
+}
+
+#[test]
+fn test_hop_count_when_two() {
+    // GIVEN
+    let node_count = 2.0;
+    // WHEN
+    let hop_count = ClusterActor::hop_count(node_count);
+    // THEN
+    assert_eq!(hop_count, 1);
+}
+
+#[test]
+fn test_hop_count_when_thirty() {
+    // GIVEN
+    let node_count = 30.0;
+    // WHEN
+    let hop_count = ClusterActor::hop_count(node_count);
+    // THEN
+    assert_eq!(hop_count, 5);
 }

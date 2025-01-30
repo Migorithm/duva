@@ -1,14 +1,12 @@
+use super::types::PeerIdentifier;
 use crate::services::cluster::actors::command::ClusterCommand;
 use crate::services::cluster::actors::listening_actor::ListeningActorKillTrigger;
 use crate::services::cluster::actors::listening_actor::PeerListeningActor;
 use crate::services::cluster::actors::types::PeerKind;
-
 use tokio::net::tcp::OwnedReadHalf;
 use tokio::net::tcp::OwnedWriteHalf;
 use tokio::net::TcpStream;
 use tokio::sync::mpsc::Sender;
-
-use super::types::PeerIdentifier;
 
 #[derive(Debug)]
 pub(crate) struct Peer {
