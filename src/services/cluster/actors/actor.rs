@@ -66,20 +66,17 @@ impl ClusterActor {
         }
     }
 
-    fn hop_count(node_count: usize) -> u8 {
+    fn hop_count(&self, fanout: usize, node_count: usize) -> u8 {
         // TODO FANOUT should be configurable
-        const FANOUT: usize = 2;
-        if node_count <= FANOUT as usize {
+        if node_count <= fanout as usize {
             return 0;
         }
-        node_count.ilog(FANOUT) as u8
+        node_count.ilog(fanout) as u8
     }
     async fn send_heartbeat(&mut self) {
-        if self.members.is_empty() {
-            return;
-        }
-
-        let hop_count = Self::hop_count(self.members.len());
+        const FANOUT: usize = 2;
+        let node_count = self.members.len();
+        let hop_count = self.hop_count(FANOUT, node_count);
 
         for peer in self.members.values_mut() {
             let msg = QueryIO::PeerState(self.replication.current_state(hop_count)).serialize();
@@ -140,9 +137,11 @@ impl ClusterActor {
 #[test]
 fn test_hop_count_when_one() {
     // GIVEN
-    let node_count = 1;
+    let fanout = 2;
+    let cluster_actor = ClusterActor::new(100);
+
     // WHEN
-    let hop_count = ClusterActor::hop_count(node_count);
+    let hop_count = cluster_actor.hop_count(fanout, 1);
     // THEN
     assert_eq!(hop_count, 0);
 }
@@ -150,9 +149,11 @@ fn test_hop_count_when_one() {
 #[test]
 fn test_hop_count_when_two() {
     // GIVEN
-    let node_count = 2;
+    let fanout = 2;
+    let cluster_actor = ClusterActor::new(100);
+
     // WHEN
-    let hop_count = ClusterActor::hop_count(node_count);
+    let hop_count = cluster_actor.hop_count(fanout, 2);
     // THEN
     assert_eq!(hop_count, 0);
 }
@@ -160,9 +161,11 @@ fn test_hop_count_when_two() {
 #[test]
 fn test_hop_count_when_three() {
     // GIVEN
-    let node_count = 3;
+    let fanout = 2;
+    let cluster_actor = ClusterActor::new(100);
+
     // WHEN
-    let hop_count = ClusterActor::hop_count(node_count);
+    let hop_count = cluster_actor.hop_count(fanout, 3);
     // THEN
     assert_eq!(hop_count, 1);
 }
@@ -170,9 +173,11 @@ fn test_hop_count_when_three() {
 #[test]
 fn test_hop_count_when_thirty() {
     // GIVEN
-    let node_count = 30;
+    let fanout = 2;
+    let cluster_actor = ClusterActor::new(100);
+
     // WHEN
-    let hop_count = ClusterActor::hop_count(node_count);
+    let hop_count = cluster_actor.hop_count(fanout, 30);
     // THEN
     assert_eq!(hop_count, 4);
 }
