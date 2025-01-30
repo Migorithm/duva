@@ -68,8 +68,11 @@ impl ClusterActor {
 
     fn hop_count(node_count: usize) -> u8 {
         // TODO FANOUT should be configurable
-        const FANOUT: f32 = 2.0;
-        (node_count as f32).log(FANOUT).ceil().max(1.0) as u8
+        const FANOUT: usize = 2;
+        if node_count <= FANOUT as usize {
+            return 0;
+        }
+        node_count.ilog(FANOUT) as u8
     }
     async fn send_heartbeat(&mut self) {
         if self.members.is_empty() {
@@ -141,13 +144,23 @@ fn test_hop_count_when_one() {
     // WHEN
     let hop_count = ClusterActor::hop_count(node_count);
     // THEN
-    assert_eq!(hop_count, 1);
+    assert_eq!(hop_count, 0);
 }
 
 #[test]
 fn test_hop_count_when_two() {
     // GIVEN
     let node_count = 2;
+    // WHEN
+    let hop_count = ClusterActor::hop_count(node_count);
+    // THEN
+    assert_eq!(hop_count, 0);
+}
+
+#[test]
+fn test_hop_count_when_three() {
+    // GIVEN
+    let node_count = 3;
     // WHEN
     let hop_count = ClusterActor::hop_count(node_count);
     // THEN
@@ -161,5 +174,5 @@ fn test_hop_count_when_thirty() {
     // WHEN
     let hop_count = ClusterActor::hop_count(node_count);
     // THEN
-    assert_eq!(hop_count, 5);
+    assert_eq!(hop_count, 4);
 }
