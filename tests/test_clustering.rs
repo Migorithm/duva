@@ -12,9 +12,9 @@ async fn test_make_peer_discovery_increase_known_node_count() {
     // WHEN
     let mut replica_process = spawn_server_as_slave(&master_process);
     let mut stdout_for_repl1 = replica_process.stdout.take().unwrap();
-    wait_for_message(&mut stdout_for_repl1, "[INFO] Received peer state from master", 1);
+    wait_for_message(&mut stdout_for_repl1, "[INFO] from master rh:", 1);
     let mut master_stdout = master_process.stdout.take().unwrap();
-    wait_for_message(&mut master_stdout, "[INFO] Received peer state from slave", 1);
+    wait_for_message(&mut master_stdout, "[INFO] from replica rh:", 1);
 
     //THEN
     let mut h = ClientStreamHandler::new(master_process.bind_addr()).await;
@@ -25,7 +25,7 @@ async fn test_make_peer_discovery_increase_known_node_count() {
     // WHEN2
     let mut replica_process2 = spawn_server_as_slave(&master_process);
     let mut stdout_for_repl2 = replica_process2.stdout.take().unwrap();
-    wait_for_message(&mut stdout_for_repl2, "[INFO] Received peer state from master", 1);
+    wait_for_message(&mut stdout_for_repl2, "[INFO] from master rh:", 1);
 
     // THEN2
     let mut h = ClientStreamHandler::new(master_process.bind_addr()).await;
@@ -43,9 +43,9 @@ async fn system_removes_node_when_heartbeat_is_not_received_for_certain_time() {
 
     let mut replica_process = spawn_server_as_slave(&master_process);
     let mut stdout_for_repl1 = replica_process.stdout.take().unwrap();
-    wait_for_message(&mut stdout_for_repl1, "[INFO] Received peer state from master", 1);
+    wait_for_message(&mut stdout_for_repl1, "[INFO] from master rh:", 1);
     let mut master_stdout = master_process.stdout.take().unwrap();
-    wait_for_message(&mut master_stdout, "[INFO] Received peer state from slave", 1);
+    wait_for_message(&mut master_stdout, "[INFO] from replica rh:", 1);
     let mut h = ClientStreamHandler::new(master_process.bind_addr()).await;
     h.send(cmd).await;
     let cluster_info = h.get_response().await;

@@ -15,7 +15,7 @@ async fn test_heartbeat() {
     //WHEN & THEN
     let mut stdout = replica_process.stdout.take().unwrap();
 
-    wait_for_message(&mut stdout, "[INFO] Received peer state from master", 2);
+    wait_for_message(&mut stdout, "[INFO] from master rh:", 2);
 }
 
 #[tokio::test]
@@ -29,12 +29,12 @@ async fn test_heartbeat_sent_to_multiple_replicas() {
 
     let t_h1 = std::thread::spawn(move || {
         let mut stdout = r1.stdout.take().unwrap();
-        wait_for_message(&mut stdout, "[INFO] Received peer state from master", 2);
+        wait_for_message(&mut stdout, "[INFO] from master rh:", 2);
     });
 
     let t_h2 = std::thread::spawn(move || {
         let mut stdout = r2.stdout.take().unwrap();
-        wait_for_message(&mut stdout, "[INFO] Received peer state from master", 2);
+        wait_for_message(&mut stdout, "[INFO] from master rh:", 2);
     });
 
     //Then it should finish
@@ -51,11 +51,11 @@ async fn test_heartbeat_master_receives_slave_heartbeat() {
     //WHEN
     let mut stdout = replica_process.stdout.take().unwrap();
 
-    wait_for_message(&mut stdout, "[INFO] Received peer state from master", 2);
+    wait_for_message(&mut stdout, "[INFO] from master rh:", 2);
 
     //THEN
     let mut master_stdout = master_process.stdout.take().unwrap();
-    wait_for_message(&mut master_stdout, "[INFO] Received peer state from slave", 2);
+    wait_for_message(&mut master_stdout, "[INFO] from replica rh:", 2);
 }
 
 #[tokio::test]
@@ -65,16 +65,16 @@ async fn test_slave_to_slave_heartbeat() {
     let mut replica_process = spawn_server_as_slave(&master_process);
     let mut replica1_stdout = replica_process.stdout.take().unwrap();
 
-    wait_for_message(&mut replica1_stdout, "[INFO] Received peer state from master", 1);
+    wait_for_message(&mut replica1_stdout, "[INFO] from master rh:", 1);
 
     // WHEN run SECOND replica
     let mut replica2_process = spawn_server_as_slave(&master_process);
 
     // THEN - replica1 and replica2 should send heartbeat to each other
-    wait_for_message(&mut replica1_stdout, "[INFO] Received peer state from slave", 1);
+    wait_for_message(&mut replica1_stdout, "[INFO] from replica rh:", 1);
 
     // Read stdout from the replica process
     let mut replica2_std_out = replica2_process.stdout.take().unwrap();
-    wait_for_message(&mut replica2_std_out, "[INFO] Received peer state from master", 1);
-    wait_for_message(&mut replica2_std_out, "[INFO] Received peer state from slave", 1);
+    wait_for_message(&mut replica2_std_out, "[INFO] from master rh:", 1);
+    wait_for_message(&mut replica2_std_out, "[INFO] from replica rh:", 1);
 }

@@ -47,7 +47,7 @@ impl PeerListeningActor {
             for cmd in cmds {
                 match cmd {
                     CommandFromSlave::HeartBeat(peer_state) => {
-                        println!("[INFO] remaining hops:{}", peer_state.hop_count);
+                        println!("[INFO] from replica rh:{}", peer_state.hop_count);
                         // TODO update peer state on cluster manager
                     }
                 }
@@ -64,7 +64,7 @@ impl PeerListeningActor {
             for cmd in cmds {
                 match cmd {
                     CommandFromMaster::HeartBeat(peer_state) => {
-                        println!("[INFO] remaining hops:{}", peer_state.hop_count);
+                        println!("[INFO] from master rh:{}", peer_state.hop_count);
                         self.cluster_handler
                             .send(ClusterCommand::ReportAlive {
                                 peer_identifier: self.self_id.clone(),
