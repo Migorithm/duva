@@ -78,3 +78,28 @@ async fn test_slave_to_slave_heartbeat() {
     wait_for_message(&mut replica2_std_out, "[INFO] from master rh:0", 1);
     wait_for_message(&mut replica2_std_out, "[INFO] from replica rh:0", 1);
 }
+
+#[tokio::test]
+async fn test_heartbeat_hop_count() {
+    // GIVEN
+    let master_process = spawn_server_process();
+
+    let mut repl_p1 = spawn_server_as_slave(&master_process);
+    let mut repl1_stdout = repl_p1.stdout.take().unwrap();
+
+    wait_for_message(&mut repl1_stdout, "[INFO] from master rh:0", 1);
+    let mut repl_p2 = spawn_server_as_slave(&master_process);
+    wait_for_message(&mut repl1_stdout, "[INFO] from replica rh:0", 1);
+
+    let mut repl2_stdout = repl_p2.stdout.take().unwrap();
+    wait_for_message(&mut repl2_stdout, "[INFO] from replica rh:0", 1);
+
+    // WHEN run Third replica
+    let mut repl_p3 = spawn_server_as_slave(&master_process);
+    let mut repl3_stdout = repl_p3.stdout.take().unwrap();
+
+    // THEN - hop_count_starts_from 1
+    wait_for_message(&mut repl1_stdout, "[INFO] from master rh:1", 1);
+    wait_for_message(&mut repl2_stdout, "[INFO] from replica rh:1", 1);
+    wait_for_message(&mut repl3_stdout, "[INFO] from replica rh:1", 1);
+}
