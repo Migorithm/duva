@@ -1,5 +1,3 @@
-use std::ops::Add;
-
 use crate::services::cluster::actors::command::{AddPeer, ClusterCommand};
 use crate::services::cluster::actors::replication::Replication;
 use crate::services::cluster::actors::types::{PeerIdentifier, PeerKind};
@@ -44,7 +42,6 @@ impl OutboundStream {
                 match ConnectionResponse::try_from(query)? {
                     ConnectionResponse::PONG => {
                         let msg = write_array!("REPLCONF", "listening-port", self_port.to_string());
-
                         self.write(msg).await?
                     }
                     ConnectionResponse::OK => {

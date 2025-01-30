@@ -6,7 +6,6 @@ use super::types::PeerIdentifier;
 use super::PeerState;
 use crate::services::interface::TWrite;
 use crate::services::query_io::QueryIO;
-
 use std::collections::BTreeMap;
 use tokio::sync::mpsc::Receiver;
 use tokio::sync::mpsc::Sender;
@@ -67,9 +66,19 @@ impl ClusterActor {
         }
     }
 
+    fn hop_count(&self, fanout: usize, node_count: usize) -> u8 {
+        if node_count <= fanout as usize {
+            return 0;
+        }
+        node_count.ilog(fanout) as u8
+    }
     async fn send_heartbeat(&mut self) {
+        // TODO FANOUT should be configurable
+        const FANOUT: usize = 2;
+        let hop_count = self.hop_count(FANOUT, self.members.len());
+
         for peer in self.members.values_mut() {
-            let msg = QueryIO::PeerState(self.replication.current_state()).serialize();
+            let msg = QueryIO::PeerState(self.replication.current_state(hop_count)).serialize();
             let _ = peer.w_conn.stream.write(&msg).await;
         }
     }
@@ -122,4 +131,52 @@ impl ClusterActor {
             self.remove_peer(peer_id).await;
         }
     }
+}
+
+#[test]
+fn test_hop_count_when_one() {
+    // GIVEN
+    let fanout = 2;
+    let cluster_actor = ClusterActor::new(100);
+
+    // WHEN
+    let hop_count = cluster_actor.hop_count(fanout, 1);
+    // THEN
+    assert_eq!(hop_count, 0);
+}
+
+#[test]
+fn test_hop_count_when_two() {
+    // GIVEN
+    let fanout = 2;
+    let cluster_actor = ClusterActor::new(100);
+
+    // WHEN
+    let hop_count = cluster_actor.hop_count(fanout, 2);
+    // THEN
+    assert_eq!(hop_count, 0);
+}
+
+#[test]
+fn test_hop_count_when_three() {
+    // GIVEN
+    let fanout = 2;
+    let cluster_actor = ClusterActor::new(100);
+
+    // WHEN
+    let hop_count = cluster_actor.hop_count(fanout, 3);
+    // THEN
+    assert_eq!(hop_count, 1);
+}
+
+#[test]
+fn test_hop_count_when_thirty() {
+    // GIVEN
+    let fanout = 2;
+    let cluster_actor = ClusterActor::new(100);
+
+    // WHEN
+    let hop_count = cluster_actor.hop_count(fanout, 30);
+    // THEN
+    assert_eq!(hop_count, 4);
 }

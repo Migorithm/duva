@@ -72,13 +72,13 @@ impl Replication {
             .into()
     }
 
-    pub fn current_state(&self) -> PeerState {
+    pub fn current_state(&self, hop_count: u8) -> PeerState {
         PeerState {
             term: self.term,
             offset: self.master_repl_offset,
             last_updated: 0,
             master_replid: self.master_replid.clone(),
-            hop_count: 0,
+            hop_count,
         }
     }
 }

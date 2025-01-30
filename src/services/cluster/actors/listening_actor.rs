@@ -35,13 +35,9 @@ impl PeerListeningActor {
                             self.listen_master_stream().await
                         },
                     };
-                } => {
-                    self.read_connected
-                },
-            _ = rx => {
-                // If the kill switch is triggered, return the connected stream so the caller can decide what to do with it
-                self.read_connected
-            }
+                } => self.read_connected,
+            // If the kill switch is triggered, return the connected stream so the caller can decide what to do with it
+            _ = rx => self.read_connected
         };
         connected
     }
@@ -51,7 +47,7 @@ impl PeerListeningActor {
             for cmd in cmds {
                 match cmd {
                     CommandFromSlave::HeartBeat(peer_state) => {
-                        println!("[INFO] Received peer state from slave");
+                        println!("[INFO] from replica rh:{}", peer_state.hop_count);
                         // TODO update peer state on cluster manager
                     }
                 }
@@ -68,7 +64,7 @@ impl PeerListeningActor {
             for cmd in cmds {
                 match cmd {
                     CommandFromMaster::HeartBeat(peer_state) => {
-                        println!("[INFO] Received peer state from master");
+                        println!("[INFO] from master rh:{}", peer_state.hop_count);
                         self.cluster_handler
                             .send(ClusterCommand::ReportAlive {
                                 peer_identifier: self.self_id.clone(),
