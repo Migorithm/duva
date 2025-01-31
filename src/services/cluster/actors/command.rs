@@ -13,6 +13,7 @@ pub enum ClusterCommand {
     ReplicationInfo(tokio::sync::oneshot::Sender<Replication>),
     SetReplicationInfo { master_repl_id: String, offset: u64 },
     SendHeartBeat,
+    RelayHeartBeat(u8),
     Replicate { query: QueryIO },
     ReportAlive { peer_identifier: PeerIdentifier, state: PeerState },
 }

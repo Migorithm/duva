@@ -49,6 +49,11 @@ impl PeerListeningActor {
                     CommandFromSlave::HeartBeat(peer_state) => {
                         println!("[INFO] from replica rh:{}", peer_state.hop_count);
                         // TODO update peer state on cluster manager
+                        if peer_state.hop_count == 0 {
+                            return;
+                        }
+
+                        let _ = self.cluster_handler.send(ClusterCommand::SendHeartBeat).await;
                     }
                 }
             }

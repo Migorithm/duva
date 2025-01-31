@@ -47,12 +47,20 @@ impl ClusterActor {
 
                 ClusterCommand::Replicate { query } => todo!(),
                 ClusterCommand::SendHeartBeat => {
-                    self.send_heartbeat().await;
+                    // TODO FANOUT should be configurable
+                    const FANOUT: usize = 2;
+                    let hop_count = self.hop_count(FANOUT, self.members.len());
+
+                    self.send_heartbeat(hop_count).await;
 
                     // ! remove idle peers based on ttl.
                     // ! The following may need to be moved else where to avoid blocking the main loop
                     self.remove_idle_peers().await;
                 }
+                ClusterCommand::RelayHeartBeat(hop_count) => {
+                    self.send_heartbeat(hop_count).await;
+                }
+
                 ClusterCommand::ReplicationInfo(sender) => {
                     let _ = sender.send(self.replication.clone());
                 }
@@ -72,11 +80,7 @@ impl ClusterActor {
         }
         node_count.ilog(fanout) as u8
     }
-    async fn send_heartbeat(&mut self) {
-        // TODO FANOUT should be configurable
-        const FANOUT: usize = 2;
-        let hop_count = self.hop_count(FANOUT, self.members.len());
-
+    async fn send_heartbeat(&mut self, hop_count: u8) {
         for peer in self.members.values_mut() {
             let msg = QueryIO::PeerState(self.replication.current_state(hop_count)).serialize();
             let _ = peer.w_conn.stream.write(&msg).await;
