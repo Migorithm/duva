@@ -36,7 +36,7 @@ pub fn spawn_server_as_slave(master: &TestProcessChild) -> TestProcessChild {
 
 impl Drop for TestProcessChild {
     fn drop(&mut self) {
-        self.0.kill().expect("Failed to kill process");
+        let _ = self.0.kill();
     }
 }
 

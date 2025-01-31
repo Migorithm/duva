@@ -47,12 +47,17 @@ impl ClusterActor {
 
                 ClusterCommand::Replicate { query } => todo!(),
                 ClusterCommand::SendHeartBeat => {
-                    self.send_heartbeat().await;
+                    // TODO FANOUT should be configurable
+                    const FANOUT: usize = 2;
+                    let hop_count = self.hop_count(FANOUT, self.members.len());
+
+                    self.send_heartbeat(hop_count).await;
 
                     // ! remove idle peers based on ttl.
                     // ! The following may need to be moved else where to avoid blocking the main loop
                     self.remove_idle_peers().await;
                 }
+
                 ClusterCommand::ReplicationInfo(sender) => {
                     let _ = sender.send(self.replication.clone());
                 }
@@ -60,7 +65,8 @@ impl ClusterActor {
                     self.set_replication_info(master_repl_id, offset);
                 }
                 ClusterCommand::ReportAlive { peer_identifier, state } => {
-                    self.update_peer_state(peer_identifier, state);
+                    self.update_peer_state(&peer_identifier, &state);
+                    self.gossip(peer_identifier, state).await;
                 }
             }
         }
@@ -72,11 +78,7 @@ impl ClusterActor {
         }
         node_count.ilog(fanout) as u8
     }
-    async fn send_heartbeat(&mut self) {
-        // TODO FANOUT should be configurable
-        const FANOUT: usize = 2;
-        let hop_count = self.hop_count(FANOUT, self.members.len());
-
+    async fn send_heartbeat(&mut self, hop_count: u8) {
         for peer in self.members.values_mut() {
             let msg = QueryIO::PeerState(self.replication.current_state(hop_count)).serialize();
             let _ = peer.w_conn.stream.write(&msg).await;
@@ -105,8 +107,8 @@ impl ClusterActor {
         self.replication.master_repl_offset = offset;
     }
 
-    fn update_peer_state(&mut self, peer_identifier: PeerIdentifier, state: PeerState) {
-        let Some(peer) = self.members.get_mut(&peer_identifier) else {
+    fn update_peer_state(&mut self, peer_identifier: &PeerIdentifier, state: &PeerState) {
+        let Some(peer) = self.members.get_mut(peer_identifier) else {
             eprintln!("Peer not found");
             return;
         };
@@ -130,6 +132,14 @@ impl ClusterActor {
         for peer_id in to_be_removed {
             self.remove_peer(peer_id).await;
         }
+    }
+
+    async fn gossip(&mut self, peer_identifier: PeerIdentifier, state: PeerState) {
+        if state.hop_count == 0 {
+            return;
+        };
+        let hop_count = state.hop_count - 1;
+        self.send_heartbeat(hop_count).await;
     }
 }
 
