@@ -57,9 +57,6 @@ impl ClusterActor {
                     // ! The following may need to be moved else where to avoid blocking the main loop
                     self.remove_idle_peers().await;
                 }
-                ClusterCommand::RelayHeartBeat(hop_count) => {
-                    self.send_heartbeat(hop_count).await;
-                }
 
                 ClusterCommand::ReplicationInfo(sender) => {
                     let _ = sender.send(self.replication.clone());
@@ -68,7 +65,8 @@ impl ClusterActor {
                     self.set_replication_info(master_repl_id, offset);
                 }
                 ClusterCommand::ReportAlive { peer_identifier, state } => {
-                    self.update_peer_state(peer_identifier, state);
+                    self.update_peer_state(&peer_identifier, &state);
+                    self.gossip(peer_identifier, state).await;
                 }
             }
         }
@@ -109,8 +107,8 @@ impl ClusterActor {
         self.replication.master_repl_offset = offset;
     }
 
-    fn update_peer_state(&mut self, peer_identifier: PeerIdentifier, state: PeerState) {
-        let Some(peer) = self.members.get_mut(&peer_identifier) else {
+    fn update_peer_state(&mut self, peer_identifier: &PeerIdentifier, state: &PeerState) {
+        let Some(peer) = self.members.get_mut(peer_identifier) else {
             eprintln!("Peer not found");
             return;
         };
@@ -134,6 +132,14 @@ impl ClusterActor {
         for peer_id in to_be_removed {
             self.remove_peer(peer_id).await;
         }
+    }
+
+    async fn gossip(&mut self, peer_identifier: PeerIdentifier, state: PeerState) {
+        if state.hop_count == 0 {
+            return;
+        };
+        let hop_count = state.hop_count - 1;
+        self.send_heartbeat(hop_count).await;
     }
 }
 
