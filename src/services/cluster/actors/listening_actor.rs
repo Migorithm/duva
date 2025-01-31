@@ -52,8 +52,10 @@ impl PeerListeningActor {
                         if peer_state.hop_count == 0 {
                             return;
                         }
-
-                        let _ = self.cluster_handler.send(ClusterCommand::SendHeartBeat).await;
+                        let _ = self
+                            .cluster_handler
+                            .send(ClusterCommand::RelayHeartBeat(peer_state.hop_count - 1))
+                            .await;
                     }
                 }
             }
