@@ -5,6 +5,7 @@
 use super::command::{ClusterCommand, CommandFromMaster, CommandFromSlave};
 use super::peer::ReadConnected;
 use super::types::PeerIdentifier;
+use super::PeerState;
 use crate::services::cluster::actors::types::PeerKind;
 use crate::services::interface::TRead;
 use crate::services::query_io::QueryIO;
@@ -19,6 +20,17 @@ pub(crate) struct PeerListeningActor {
 }
 
 impl PeerListeningActor {
+    // Update peer state on cluster manager
+    async fn report_liveness(&mut self, peer_state: PeerState) {
+        let _ = self
+            .cluster_handler
+            .send(ClusterCommand::ReportAlive {
+                peer_identifier: self.self_id.clone(),
+                state: peer_state,
+            })
+            .await;
+    }
+
     /// Run until the kill switch is triggered
     /// returns the connected stream when the kill switch is triggered
     pub(super) async fn listen(mut self, rx: ReactorKillSwitch) -> ReadConnected {
@@ -47,16 +59,9 @@ impl PeerListeningActor {
             for cmd in cmds {
                 match cmd {
                     CommandFromSlave::HeartBeat(peer_state) => {
+                        // TODO change meesage to from {peer_id} rh:
                         println!("[INFO] from replica rh:{}", peer_state.hop_count);
-                        // TODO update peer state on cluster manager
-
-                        let _ = self
-                            .cluster_handler
-                            .send(ClusterCommand::ReportAlive {
-                                peer_identifier: self.self_id.clone(),
-                                state: peer_state,
-                            })
-                            .await;
+                        self.report_liveness(peer_state).await;
                     }
                 }
             }
@@ -72,14 +77,9 @@ impl PeerListeningActor {
             for cmd in cmds {
                 match cmd {
                     CommandFromMaster::HeartBeat(peer_state) => {
+                        // TODO change meesage to from {peer_id} rh:
                         println!("[INFO] from master rh:{}", peer_state.hop_count);
-                        let _ = self
-                            .cluster_handler
-                            .send(ClusterCommand::ReportAlive {
-                                peer_identifier: self.self_id.clone(),
-                                state: peer_state,
-                            })
-                            .await;
+                        self.report_liveness(peer_state).await;
                     }
 
                     CommandFromMaster::Replicate { query: _ } => {}
