@@ -1,4 +1,5 @@
-use super::replication::Replication;
+use crate::services::cluster::replication::replication::Replication;
+
 #[derive(Clone, Debug)]
 pub enum PeerKind {
     Peer,

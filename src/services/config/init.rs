@@ -1,6 +1,7 @@
 use std::sync::OnceLock;
 
-use crate::{env_var, services::cluster::actors::replication::IS_MASTER_MODE};
+use crate::env_var;
+use crate::services::cluster::replication::replication::IS_MASTER_MODE;
 
 pub(crate) struct Environment {
     pub(crate) replicaof: Option<(String, String)>,

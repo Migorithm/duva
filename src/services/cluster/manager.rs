@@ -1,10 +1,10 @@
 use super::actors::actor::ClusterActor;
-use super::actors::replication::{Replication, IS_MASTER_MODE};
 use crate::services::cluster::command::ClusterCommand;
 use crate::services::cluster::inbound::stream::InboundStream;
 use crate::services::cluster::outbound::stream::OutboundStream;
 use crate::services::cluster::peer::identifier::{PeerAddrs, PeerIdentifier};
 use crate::services::cluster::peer::kind::PeerKind;
+use crate::services::cluster::replication::replication::{Replication, IS_MASTER_MODE};
 use crate::services::statefuls::cache::manager::CacheManager;
 use crate::{get_env, make_smart_pointer};
 use std::time::Duration;

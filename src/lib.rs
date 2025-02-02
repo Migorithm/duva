@@ -3,9 +3,9 @@ pub mod macros;
 pub mod services;
 use anyhow::Result;
 use services::client::manager::ClientManager;
-use services::cluster::actors::replication::IS_MASTER_MODE;
 use services::cluster::inbound::stream::InboundStream;
 use services::cluster::manager::ClusterManager;
+use services::cluster::replication::replication::IS_MASTER_MODE;
 use services::config::init::get_env;
 use services::config::manager::ConfigManager;
 use services::error::IoError;
@@ -58,7 +58,7 @@ where
                 cluster_manager,
                 ttl_inbox.clone(),
             )
-            .into(),
+                .into(),
         );
 
         StartUpFacade {
