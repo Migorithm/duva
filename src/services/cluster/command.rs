@@ -1,8 +1,9 @@
 use crate::services::cluster::actors::{
     replication::Replication,
-    types::{PeerAddrs, PeerIdentifier, PeerKind},
     PeerState,
 };
+use crate::services::cluster::peer::identifier::{PeerAddrs, PeerIdentifier};
+use crate::services::cluster::peer::kind::PeerKind;
 use crate::services::query_io::QueryIO;
 use tokio::net::TcpStream;
 
