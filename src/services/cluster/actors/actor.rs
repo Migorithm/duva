@@ -64,9 +64,9 @@ impl ClusterActor {
                 ClusterCommand::SetReplicationInfo { master_repl_id, offset } => {
                     self.set_replication_info(master_repl_id, offset);
                 }
-                ClusterCommand::ReportAlive { peer_identifier, state } => {
-                    self.update_peer_state(&peer_identifier, &state);
-                    self.gossip(peer_identifier, state).await;
+                ClusterCommand::ReportAlive { state } => {
+                    self.update_peer_state(&state);
+                    self.gossip(state).await;
                 }
             }
         }
@@ -79,8 +79,11 @@ impl ClusterActor {
         node_count.ilog(fanout) as u8
     }
     async fn send_heartbeat(&mut self, hop_count: u8) {
+        // TODO randomly choose the peer to send the message
+
         for peer in self.members.values_mut() {
             let msg = QueryIO::PeerState(self.replication.current_state(hop_count)).serialize();
+
             let _ = peer.w_conn.stream.write(&msg).await;
         }
     }
@@ -107,8 +110,8 @@ impl ClusterActor {
         self.replication.master_repl_offset = offset;
     }
 
-    fn update_peer_state(&mut self, peer_identifier: &PeerIdentifier, state: &PeerState) {
-        let Some(peer) = self.members.get_mut(peer_identifier) else {
+    fn update_peer_state(&mut self, state: &PeerState) {
+        let Some(peer) = self.members.get_mut(&state.id) else {
             eprintln!("Peer not found");
             return;
         };
@@ -134,7 +137,7 @@ impl ClusterActor {
         }
     }
 
-    async fn gossip(&mut self, peer_identifier: PeerIdentifier, state: PeerState) {
+    async fn gossip(&mut self, state: PeerState) {
         if state.hop_count == 0 {
             return;
         };
