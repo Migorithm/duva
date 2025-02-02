@@ -35,10 +35,12 @@ fn run_server_with_dbfilename(dbfilename: &str) -> TestProcessChild {
             .expect("Failed to start server process"),
         port,
     );
-    process.wait_for_message(
-        format!("listening peer connection on 127.0.0.1:{}...", port + 10000).as_str(),
-        1,
-    );
+    process
+        .wait_for_message(
+            format!("listening peer connection on 127.0.0.1:{}...", port + 10000).as_str(),
+            1,
+        )
+        .unwrap();
 
     process
 }

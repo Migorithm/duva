@@ -60,5 +60,5 @@ async fn test_slave_threeway_handshake() {
     let mut replica_process = spawn_server_as_slave(&master_process);
 
     // Read stdout from the replica process
-    replica_process.wait_for_message("[INFO] Three-way handshake completed", 1);
+    replica_process.wait_for_message("[INFO] Three-way handshake completed", 1).unwrap();
 }

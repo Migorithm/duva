@@ -19,7 +19,9 @@ pub fn spawn_server_process() -> TestProcessChild {
         process.0.stdout.as_mut().unwrap(),
         format!("listening peer connection on 127.0.0.1:{}...", port + 10000).as_str(),
         1,
-    );
+        Some(2),
+    )
+    .unwrap();
 
     process
 }
@@ -31,7 +33,9 @@ pub fn spawn_server_as_slave(master: &TestProcessChild) -> TestProcessChild {
         process.0.stdout.as_mut().unwrap(),
         format!("listening peer connection on 127.0.0.1:{}...", port + 10000).as_str(),
         1,
-    );
+        Some(2),
+    )
+    .unwrap();
 
     process
 }
@@ -58,12 +62,24 @@ impl TestProcessChild {
 
 pub struct TestProcessChild(pub Child, pub u16);
 impl TestProcessChild {
-    pub fn wait_for_message(&mut self, target: &str, target_count: usize) {
+    pub fn wait_for_message(&mut self, target: &str, target_count: usize) -> anyhow::Result<()> {
         let read = self.0.stdout.as_mut().unwrap();
 
-        wait_for_message(read, target, target_count);
+        wait_for_message(read, target, target_count, None)
+    }
+
+    pub fn timed_wait_for_message(
+        &mut self,
+        target: &str,
+        target_count: usize,
+        wait_for: u64,
+    ) -> anyhow::Result<()> {
+        let read = self.0.stdout.as_mut().unwrap();
+
+        wait_for_message(read, target, target_count, Some(wait_for))
     }
 }
+
 make_smart_pointer!(TestProcessChild, Child);
 
 pub fn run_server_process(port: u16, replicaof: Option<String>) -> TestProcessChild {
@@ -84,8 +100,13 @@ pub fn run_server_process(port: u16, replicaof: Option<String>) -> TestProcessCh
     )
 }
 
-fn wait_for_message<T: Read>(read: &mut T, target: &str, target_count: usize) {
-    // let internal_count = Instant::now();
+fn wait_for_message<T: Read>(
+    read: &mut T,
+    target: &str,
+    target_count: usize,
+    timeout: Option<u64>,
+) -> anyhow::Result<()> {
+    let internal_count = Instant::now();
     let mut buf = BufReader::new(read).lines();
     let mut cnt = 1;
 
@@ -98,10 +119,14 @@ fn wait_for_message<T: Read>(read: &mut T, target: &str, target_count: usize) {
             }
         }
 
-        // if internal_count.elapsed().as_secs() > 5 {
-        //     panic!("Timeout while waiting for message: {}", target);
-        // }
+        if let Some(timeout) = timeout {
+            if internal_count.elapsed().as_secs() > timeout {
+                return Err(anyhow::anyhow!("Timeout waiting for message"));
+            }
+        }
     }
+
+    Ok(())
 }
 
 pub fn array(arr: Vec<&str>) -> Bytes {
@@ -109,7 +134,11 @@ pub fn array(arr: Vec<&str>) -> Bytes {
         .serialize()
 }
 
-pub fn check_internodes_communication(processes: &mut Vec<TestProcessChild>, hop_count: usize) {
+pub fn check_internodes_communication(
+    processes: &mut Vec<TestProcessChild>,
+    hop_count: usize,
+    time_out: u64,
+) -> anyhow::Result<()> {
     for i in 0..processes.len() {
         // First get the message from all other processes
         let messages: Vec<_> = processes
@@ -127,7 +156,8 @@ pub fn check_internodes_communication(processes: &mut Vec<TestProcessChild>, hop
 
         // Then wait for all messages
         for msg in messages {
-            processes[i].wait_for_message(&msg, 1);
+            processes[i].timed_wait_for_message(&msg, 1, time_out)?;
         }
     }
+    Ok(())
 }
