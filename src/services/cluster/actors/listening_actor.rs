@@ -52,10 +52,11 @@ impl PeerListeningActor {
         while let Ok(cmds) = self.read_command::<CommandFromSlave>().await {
             for cmd in cmds {
                 match cmd {
-                    CommandFromSlave::HeartBeat(peer_state) => {
+                    CommandFromSlave::HeartBeat(state) => {
                         // TODO change meesage to from {peer_id} rh:
-                        println!("[INFO] from replica rh:{}", peer_state.hop_count);
-                        self.report_liveness(peer_state).await;
+                        println!("[INFO] from replica rh:{}", state.hop_count);
+                        println!("[INFO] from {}, hc:{}", state.id, state.hop_count,);
+                        self.report_liveness(state).await;
                     }
                 }
             }
@@ -70,10 +71,10 @@ impl PeerListeningActor {
         while let Ok(cmds) = self.read_command::<CommandFromMaster>().await {
             for cmd in cmds {
                 match cmd {
-                    CommandFromMaster::HeartBeat(peer_state) => {
-                        // TODO change meesage to from {peer_id} rh:
-                        println!("[INFO] from master rh:{}", peer_state.hop_count);
-                        self.report_liveness(peer_state).await;
+                    CommandFromMaster::HeartBeat(state) => {
+                        println!("[INFO] from {}, hc:{}", state.id, state.hop_count);
+                        println!("[INFO] from master rh:{}", state.hop_count);
+                        self.report_liveness(state).await;
                     }
 
                     CommandFromMaster::Replicate { query: _ } => {}

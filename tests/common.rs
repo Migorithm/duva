@@ -47,6 +47,10 @@ impl TestProcessChild {
     pub fn port(&self) -> u16 {
         self.1
     }
+
+    pub fn heartbeat_msg(&self, expected_count: usize) -> String {
+        format!("[INFO] from {}, hc:{}", self.bind_addr(), expected_count)
+    }
 }
 // scan for available port
 
@@ -77,6 +81,7 @@ pub fn wait_for_message<T: Read>(read: &mut T, target: &str, target_count: usize
     let mut cnt = 1;
 
     while let Some(Ok(line)) = buf.next() {
+        println!("{}", line);
         if line.starts_with(target) {
             if cnt == target_count {
                 break;

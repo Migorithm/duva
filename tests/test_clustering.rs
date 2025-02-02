@@ -3,34 +3,31 @@ use common::{array, spawn_server_as_slave, spawn_server_process, wait_for_messag
 use duva::client_utils::ClientStreamHandler;
 
 #[tokio::test]
-async fn test_make_peer_discovery_increase_known_node_count() {
+async fn test_cluster_known_nodes_increase_when_new_replica_is_added() {
     // GIVEN
     let mut master_process = spawn_server_process();
+    let mut client_handler = ClientStreamHandler::new(master_process.bind_addr()).await;
 
     let cmd = &array(vec!["cluster", "info"]);
 
-    // WHEN
-    let mut replica_process = spawn_server_as_slave(&master_process);
-    let mut stdout_for_repl1 = replica_process.stdout.take().unwrap();
-    wait_for_message(&mut stdout_for_repl1, "[INFO] from master rh:", 1);
+    let mut repl_p = spawn_server_as_slave(&master_process);
+    let mut repl_std = repl_p.stdout.take().unwrap();
+    wait_for_message(&mut repl_std, &master_process.heartbeat_msg(0), 1);
     let mut master_stdout = master_process.stdout.take().unwrap();
-    wait_for_message(&mut master_stdout, "[INFO] from replica rh:", 1);
+    wait_for_message(&mut master_stdout, &repl_p.heartbeat_msg(0), 1);
 
-    //THEN
-    let mut h = ClientStreamHandler::new(master_process.bind_addr()).await;
-    h.send(cmd).await;
-    let cluster_info = h.get_response().await;
+    client_handler.send(cmd).await;
+    let cluster_info = client_handler.get_response().await;
     assert_eq!(cluster_info, array(vec!["cluster_known_nodes:1"]));
 
-    // WHEN2
-    let mut replica_process2 = spawn_server_as_slave(&master_process);
-    let mut stdout_for_repl2 = replica_process2.stdout.take().unwrap();
-    wait_for_message(&mut stdout_for_repl2, "[INFO] from master rh:", 1);
+    // WHEN -- new replica is added
+    let mut new_repl = spawn_server_as_slave(&master_process);
+    let mut new_repl = new_repl.stdout.take().unwrap();
+    wait_for_message(&mut new_repl, &master_process.heartbeat_msg(0), 1);
 
-    // THEN2
-    let mut h = ClientStreamHandler::new(master_process.bind_addr()).await;
-    h.send(cmd).await;
-    let cluster_info = h.get_response().await;
+    //THEN
+    client_handler.send(cmd).await;
+    let cluster_info = client_handler.get_response().await;
     assert_eq!(cluster_info, array(vec!["cluster_known_nodes:2"]));
 }
 
