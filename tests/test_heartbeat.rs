@@ -92,40 +92,41 @@ async fn test_heartbeat_hop_count() {
     let mut repl_p3 = spawn_server_as_slave(&master_p);
 
     // THEN - hop_count_starts_from 1
+    repl_p3.wait_for_message(&repl_p1.heartbeat_msg(DEFAULT_HOP_COUNT + 1), 1);
     repl_p1.wait_for_message(&master_p.heartbeat_msg(DEFAULT_HOP_COUNT + 1), 1);
     repl_p2.wait_for_message(&repl_p1.heartbeat_msg(DEFAULT_HOP_COUNT + 1), 1);
-    repl_p3.wait_for_message(&repl_p1.heartbeat_msg(DEFAULT_HOP_COUNT + 1), 1);
+    master_p.wait_for_message(&repl_p1.heartbeat_msg(DEFAULT_HOP_COUNT + 1), 1);
 
     //TODO - the following must pass!
+    // master_p.wait_for_message(&repl_p2.heartbeat_msg(DEFAULT_HOP_COUNT + 1), 1);
     // master_p.wait_for_message(&repl_p3.heartbeat_msg(DEFAULT_HOP_COUNT + 1), 1);
 }
 
 #[tokio::test]
 async fn test_heartbeat_hop_count_decreases_over_time() {
+    const DEFAULT_HOP_COUNT: usize = 0;
     // GIVEN
-    let master_process = spawn_server_process();
+    let master_p = spawn_server_process();
 
-    let mut repl_p1 = spawn_server_as_slave(&master_process);
-    let mut repl1_stdout = repl_p1.stdout.take().unwrap();
+    let mut repl_p1 = spawn_server_as_slave(&master_p);
+    repl_p1.wait_for_message(&master_p.heartbeat_msg(DEFAULT_HOP_COUNT), 1);
 
-    wait_for_message(&mut repl1_stdout, "[INFO] from master rh:0", 1);
-    let mut repl_p2 = spawn_server_as_slave(&master_process);
-    wait_for_message(&mut repl1_stdout, "[INFO] from replica rh:0", 1);
+    let mut repl_p2 = spawn_server_as_slave(&master_p);
 
-    let mut repl2_stdout = repl_p2.stdout.take().unwrap();
-    wait_for_message(&mut repl2_stdout, "[INFO] from replica rh:0", 1);
+    repl_p1.wait_for_message(&repl_p2.heartbeat_msg(DEFAULT_HOP_COUNT), 1);
+
+    repl_p2.wait_for_message(&repl_p1.heartbeat_msg(DEFAULT_HOP_COUNT), 1);
 
     // WHEN run Third replica
-    let mut repl_p3 = spawn_server_as_slave(&master_process);
-    let mut repl3_stdout = repl_p3.stdout.take().unwrap();
+    let mut repl_p3 = spawn_server_as_slave(&master_p);
 
     // THEN - some of the replicas will have hop_count 1 and some will have hop_count 0
-    wait_for_message(&mut repl1_stdout, "[INFO] from master rh:1", 1);
-    wait_for_message(&mut repl1_stdout, "[INFO] from master rh:0", 1);
+    repl_p1.wait_for_message(&master_p.heartbeat_msg(DEFAULT_HOP_COUNT + 1), 1);
+    repl_p1.wait_for_message(&master_p.heartbeat_msg(DEFAULT_HOP_COUNT), 1);
 
-    wait_for_message(&mut repl2_stdout, "[INFO] from replica rh:0", 1);
-    wait_for_message(&mut repl2_stdout, "[INFO] from replica rh:1", 1);
+    repl_p2.wait_for_message(&repl_p1.heartbeat_msg(DEFAULT_HOP_COUNT), 1);
+    repl_p2.wait_for_message(&repl_p1.heartbeat_msg(DEFAULT_HOP_COUNT + 1), 1);
 
-    wait_for_message(&mut repl3_stdout, "[INFO] from replica rh:0", 1);
-    wait_for_message(&mut repl3_stdout, "[INFO] from replica rh:1", 1);
+    repl_p3.wait_for_message(&repl_p1.heartbeat_msg(DEFAULT_HOP_COUNT), 1);
+    repl_p3.wait_for_message(&repl_p1.heartbeat_msg(DEFAULT_HOP_COUNT + 1), 1);
 }

@@ -55,7 +55,7 @@ impl PeerListeningActor {
                     CommandFromSlave::HeartBeat(state) => {
                         // TODO change meesage to from {peer_id} rh:
                         println!("[INFO] from replica rh:{}", state.hop_count);
-                        println!("[INFO] from {}, hc:{}", state.id, state.hop_count,);
+                        println!("[INFO] from {}, hc:{}", state.id, state.hop_count);
                         self.report_liveness(state).await;
                     }
                 }
