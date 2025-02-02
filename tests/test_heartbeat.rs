@@ -3,7 +3,7 @@
 //! In this case, the server will send PING message to the replica and the replica will respond with PONG message
 
 mod common;
-use common::{spawn_server_as_slave, spawn_server_process};
+use common::{check_cross_heartbeat, spawn_server_as_slave, spawn_server_process};
 
 #[tokio::test]
 async fn test_heartbeat() {
@@ -78,49 +78,48 @@ async fn test_heartbeat_hop_count() {
     const DEFAULT_HOP_COUNT: usize = 0;
 
     // GIVEN
+
     let mut master_p = spawn_server_process();
 
     let mut repl_p1 = spawn_server_as_slave(&master_p);
-    repl_p1.wait_for_message(&master_p.heartbeat_msg(DEFAULT_HOP_COUNT), 1);
-
     let mut repl_p2 = spawn_server_as_slave(&master_p);
 
-    repl_p1.wait_for_message(&repl_p2.heartbeat_msg(DEFAULT_HOP_COUNT), 1);
-    repl_p2.wait_for_message(&repl_p1.heartbeat_msg(DEFAULT_HOP_COUNT), 1);
+    check_cross_heartbeat(&mut [&mut master_p, &mut repl_p1, &mut repl_p2], DEFAULT_HOP_COUNT);
 
     // WHEN run Third replica
     let mut repl_p3 = spawn_server_as_slave(&master_p);
 
     // THEN - hop_count_starts_from 1
+
     repl_p3.wait_for_message(&repl_p1.heartbeat_msg(DEFAULT_HOP_COUNT + 1), 1);
     repl_p1.wait_for_message(&master_p.heartbeat_msg(DEFAULT_HOP_COUNT + 1), 1);
     repl_p2.wait_for_message(&repl_p1.heartbeat_msg(DEFAULT_HOP_COUNT + 1), 1);
     master_p.wait_for_message(&repl_p1.heartbeat_msg(DEFAULT_HOP_COUNT + 1), 1);
 
     //TODO - the following must pass!
-    // master_p.wait_for_message(&repl_p2.heartbeat_msg(DEFAULT_HOP_COUNT + 1), 1);
-    // master_p.wait_for_message(&repl_p3.heartbeat_msg(DEFAULT_HOP_COUNT + 1), 1);
+    // cross_heartbeat(
+    //     &mut [&mut master_p, &mut repl_p1, &mut repl_p2, &mut repl_p3],
+    //     DEFAULT_HOP_COUNT + 1,
+    // );
 }
 
 #[tokio::test]
 async fn test_heartbeat_hop_count_decreases_over_time() {
     const DEFAULT_HOP_COUNT: usize = 0;
     // GIVEN
-    let master_p = spawn_server_process();
+    let mut master_p = spawn_server_process();
 
     let mut repl_p1 = spawn_server_as_slave(&master_p);
-    repl_p1.wait_for_message(&master_p.heartbeat_msg(DEFAULT_HOP_COUNT), 1);
 
     let mut repl_p2 = spawn_server_as_slave(&master_p);
 
-    repl_p1.wait_for_message(&repl_p2.heartbeat_msg(DEFAULT_HOP_COUNT), 1);
-
-    repl_p2.wait_for_message(&repl_p1.heartbeat_msg(DEFAULT_HOP_COUNT), 1);
+    check_cross_heartbeat(&mut [&mut master_p, &mut repl_p1, &mut repl_p2], DEFAULT_HOP_COUNT);
 
     // WHEN run Third replica
     let mut repl_p3 = spawn_server_as_slave(&master_p);
 
     // THEN - some of the replicas will have hop_count 1 and some will have hop_count 0
+    //TODO replace with cross_heartbeat
     repl_p1.wait_for_message(&master_p.heartbeat_msg(DEFAULT_HOP_COUNT + 1), 1);
     repl_p1.wait_for_message(&master_p.heartbeat_msg(DEFAULT_HOP_COUNT), 1);
 

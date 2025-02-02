@@ -101,3 +101,16 @@ pub fn array(arr: Vec<&str>) -> Bytes {
     QueryIO::Array(arr.iter().map(|s| QueryIO::BulkString(s.to_string().into())).collect())
         .serialize()
 }
+
+pub fn check_cross_heartbeat(processes: &mut [&mut TestProcessChild], hop_count: usize) {
+    let len = processes.len();
+    for i in 0..len {
+        for j in 0..len {
+            if i != j {
+                let target = &processes[j];
+
+                processes[i].wait_for_message(&target.heartbeat_msg(hop_count), 1);
+            }
+        }
+    }
+}
