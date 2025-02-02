@@ -20,11 +20,13 @@ pub struct Replication {
 
     // * state is shared among peers
     pub(crate) term: u64,
+    pub(crate) self_identifier: PeerIdentifier,
 }
 
 impl Default for Replication {
     fn default() -> Self {
-        let replication = Replication::new(get_env().replicaof.clone());
+        let env = get_env();
+        let replication = Replication::new(env.replicaof.clone(), &env.host, env.port);
         IS_MASTER_MODE
             .store(replication.master_port.is_none(), std::sync::atomic::Ordering::Relaxed);
         replication
@@ -32,7 +34,7 @@ impl Default for Replication {
 }
 
 impl Replication {
-    pub fn new(replicaof: Option<(String, String)>) -> Self {
+    pub fn new(replicaof: Option<(String, String)>, self_host: &str, self_port: u16) -> Self {
         let master_replid = if replicaof.is_none() {
             "8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb".to_string()
         } else {
@@ -52,6 +54,7 @@ impl Replication {
             master_port: replicaof
                 .map(|(_, port)| port.parse().expect("Invalid port number of given")),
             term: 0,
+            self_identifier: PeerIdentifier::new(self_host, self_port),
         }
     }
     pub fn vectorize(self) -> Vec<String> {
@@ -64,6 +67,7 @@ impl Replication {
             format!("repl_backlog_active:{}", self.repl_backlog_active),
             format!("repl_backlog_size:{}", self.repl_backlog_size),
             format!("repl_backlog_first_byte_offset:{}", self.repl_backlog_first_byte_offset),
+            format!("self_identifier:{}", &*self.self_identifier),
         ]
     }
 
@@ -74,9 +78,9 @@ impl Replication {
 
     pub fn current_state(&self, hop_count: u8) -> PeerState {
         PeerState {
+            id: self.self_identifier.clone(),
             term: self.term,
             offset: self.master_repl_offset,
-            last_updated: 0,
             master_replid: self.master_replid.clone(),
             hop_count,
         }
@@ -85,9 +89,9 @@ impl Replication {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct PeerState {
+    pub(crate) id: PeerIdentifier,
     pub(crate) term: u64,
     pub(crate) offset: u64,
-    pub(crate) last_updated: u64,
     pub(crate) master_replid: String,
     pub(crate) hop_count: u8, // Decremented on each hop - for gossip
 }

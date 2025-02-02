@@ -1,3 +1,5 @@
+use std::str::FromStr;
+
 use crate::{from_to, make_smart_pointer};
 
 use super::replication::Replication;
@@ -30,6 +32,26 @@ impl PeerKind {
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Hash)]
 pub struct PeerIdentifier(pub String);
+impl PeerIdentifier {
+    pub fn new(host: &str, port: u16) -> Self {
+        Self(format!("{}:{}", host, port))
+    }
+}
+
+impl std::fmt::Display for PeerIdentifier {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl FromStr for PeerIdentifier {
+    type Err = std::io::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(Self(s.to_string()))
+    }
+}
+
 make_smart_pointer!(PeerIdentifier, String);
 from_to!(String, PeerIdentifier);
 
