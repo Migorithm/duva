@@ -55,26 +55,26 @@ async fn test_save_read_dump() {
 
     // WHEN
     // set without expiry time
-    h.send(&array(vec!["SET", "foo", "bar"])).await;
-    assert_eq!(h.get_response().await, QueryIO::SimpleString("OK".into()).serialize());
+    let res = h.send_and_get(&array(vec!["SET", "foo", "bar"])).await;
+    assert_eq!(res, QueryIO::SimpleString("OK".into()).serialize());
+
     // set with expiry time
-    h.send(&array(vec!["SET", "foo2", "bar2", "PX", "9999999999"])).await;
-    assert_eq!(h.get_response().await, QueryIO::SimpleString("OK".into()).serialize());
+
+    assert_eq!(
+        h.send_and_get(&array(vec!["SET", "foo2", "bar2", "PX", "9999999999"])).await,
+        QueryIO::SimpleString("OK".into()).serialize()
+    );
+
     // check keys
-    h.send(&array(vec!["KEYS", "*"])).await;
-    assert_eq!(h.get_response().await, array(vec!["foo2", "foo"]));
-    // save
-    h.send(&array(vec!["SAVE"])).await;
+    assert_eq!(h.send_and_get(&array(vec!["KEYS", "*"])).await, array(vec!["foo2", "foo"]));
 
     // THEN
-    assert_eq!(h.get_response().await, QueryIO::Null.serialize());
+    assert_eq!(h.send_and_get(&array(vec!["SAVE"])).await, QueryIO::Null.serialize());
 
     // wait for the file to be created
     tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
-
     // keys
-    h.send(&array(vec!["KEYS", "*"])).await;
-    assert_eq!(h.get_response().await, array(vec!["foo2", "foo"]));
+    assert_eq!(h.send_and_get(&array(vec!["KEYS", "*"])).await, array(vec!["foo2", "foo"]));
 }
 
 fn create_unique_file_name(function_name: &str) -> String {
