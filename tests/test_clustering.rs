@@ -5,26 +5,24 @@ use duva::client_utils::ClientStreamHandler;
 #[tokio::test]
 async fn test_cluster_known_nodes_increase_when_new_replica_is_added() {
     // GIVEN
-    let mut master_process = spawn_server_process();
-    let mut client_handler = ClientStreamHandler::new(master_process.bind_addr()).await;
+    let mut master_p = spawn_server_process();
+    let mut client_handler = ClientStreamHandler::new(master_p.bind_addr()).await;
 
     let cmd = &array(vec!["cluster", "info"]);
 
-    let mut repl_p = spawn_server_as_slave(&master_process);
-    repl_p.wait_for_message(&master_process.heartbeat_msg(0), 1);
-    master_process.wait_for_message(&repl_p.heartbeat_msg(0), 1);
+    let mut repl_p = spawn_server_as_slave(&master_p);
+    repl_p.wait_for_message(&master_p.heartbeat_msg(0), 1);
+    master_p.wait_for_message(&repl_p.heartbeat_msg(0), 1);
 
-    client_handler.send(cmd).await;
-    let cluster_info = client_handler.get_response().await;
+    let cluster_info = client_handler.send_and_get(cmd).await;
     assert_eq!(cluster_info, array(vec!["cluster_known_nodes:1"]));
 
     // WHEN -- new replica is added
-    let mut new_repl = spawn_server_as_slave(&master_process);
-    new_repl.wait_for_message(&master_process.heartbeat_msg(0), 1);
+    let mut new_repl_p = spawn_server_as_slave(&master_p);
+    new_repl_p.wait_for_message(&master_p.heartbeat_msg(0), 1);
 
     //THEN
-    client_handler.send(cmd).await;
-    let cluster_info = client_handler.get_response().await;
+    let cluster_info = client_handler.send_and_get(cmd).await;
     assert_eq!(cluster_info, array(vec!["cluster_known_nodes:2"]));
 }
 

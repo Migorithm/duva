@@ -68,4 +68,9 @@ impl ClientStreamHandler {
 
         String::from_utf8_lossy(&response).into_owned()
     }
+
+    pub async fn send_and_get(&mut self, operation: &[u8]) -> String {
+        self.send(operation).await;
+        self.get_response().await
+    }
 }
