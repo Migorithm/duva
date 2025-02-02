@@ -1,6 +1,6 @@
 use crate::make_smart_pointer;
-use crate::services::cluster::actors::command::AddPeer;
-use crate::services::cluster::actors::command::ClusterCommand;
+use crate::services::cluster::command::AddPeer;
+use crate::services::cluster::command::ClusterCommand;
 use crate::services::cluster::actors::replication::Replication;
 use crate::services::cluster::actors::types::PeerAddrs;
 use crate::services::cluster::actors::types::PeerIdentifier;

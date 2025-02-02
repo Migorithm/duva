@@ -1,5 +1,5 @@
 use super::types::PeerIdentifier;
-use crate::services::cluster::actors::command::ClusterCommand;
+use crate::services::cluster::command::ClusterCommand;
 use crate::services::cluster::actors::listening_actor::ListeningActorKillTrigger;
 use crate::services::cluster::actors::listening_actor::PeerListeningActor;
 use crate::services::cluster::actors::types::PeerKind;

@@ -2,7 +2,7 @@
 /// Message from a peer is one of events that can trigger a change in the cluster state.
 /// As it has to keep listening to incoming messages, it is implemented as an actor, run in the background.
 /// To take a control of the actor, PeerListenerHandler is used, which can kill the listening process and return the connected stream.
-use super::command::{ClusterCommand, CommandFromMaster, CommandFromSlave};
+use crate::services::cluster::command::{ClusterCommand, CommandFromMaster, CommandFromSlave};
 use super::peer::ReadConnected;
 use super::types::PeerIdentifier;
 use super::PeerState;

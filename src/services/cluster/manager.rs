@@ -1,5 +1,5 @@
 use super::actors::actor::ClusterActor;
-use super::actors::command::ClusterCommand;
+use crate::services::cluster::command::ClusterCommand;
 use super::actors::replication::{Replication, IS_MASTER_MODE};
 use super::actors::types::{PeerAddrs, PeerIdentifier, PeerKind};
 use crate::services::cluster::inbound::stream::InboundStream;

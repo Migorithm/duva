@@ -1,5 +1,5 @@
-use super::command::AddPeer;
-use super::command::ClusterCommand;
+use crate::services::cluster::command::AddPeer;
+use crate::services::cluster::command::ClusterCommand;
 use super::peer::Peer;
 use super::replication::Replication;
 use super::types::PeerIdentifier;
