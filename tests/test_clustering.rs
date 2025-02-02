@@ -11,10 +11,8 @@ async fn test_cluster_known_nodes_increase_when_new_replica_is_added() {
     let cmd = &array(vec!["cluster", "info"]);
 
     let mut repl_p = spawn_server_as_slave(&master_process);
-    let mut repl_std = repl_p.stdout.take().unwrap();
-    wait_for_message(&mut repl_std, &master_process.heartbeat_msg(0), 1);
-    let mut master_stdout = master_process.stdout.take().unwrap();
-    wait_for_message(&mut master_stdout, &repl_p.heartbeat_msg(0), 1);
+    repl_p.wait_for_message(&master_process.heartbeat_msg(0), 1);
+    master_process.wait_for_message(&repl_p.heartbeat_msg(0), 1);
 
     client_handler.send(cmd).await;
     let cluster_info = client_handler.get_response().await;
@@ -22,8 +20,7 @@ async fn test_cluster_known_nodes_increase_when_new_replica_is_added() {
 
     // WHEN -- new replica is added
     let mut new_repl = spawn_server_as_slave(&master_process);
-    let mut new_repl = new_repl.stdout.take().unwrap();
-    wait_for_message(&mut new_repl, &master_process.heartbeat_msg(0), 1);
+    new_repl.wait_for_message(&master_process.heartbeat_msg(0), 1);
 
     //THEN
     client_handler.send(cmd).await;

@@ -55,7 +55,13 @@ impl TestProcessChild {
 // scan for available port
 
 pub struct TestProcessChild(pub Child, pub u16);
+impl TestProcessChild {
+    pub fn wait_for_message(&mut self, target: &str, target_count: usize) {
+        let read = self.0.stdout.as_mut().unwrap();
 
+        wait_for_message(read, target, target_count);
+    }
+}
 make_smart_pointer!(TestProcessChild, Child);
 
 pub fn run_server_process(port: u16, replicaof: Option<String>) -> TestProcessChild {
