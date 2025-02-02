@@ -22,6 +22,9 @@ async fn test_cluster_known_nodes_increase_when_new_replica_is_added() {
     new_repl_p.wait_for_message(&master_p.heartbeat_msg(0), 1);
 
     //THEN
+    //TODO following is flaky when run with other tests!
+    // left: "*1\r\n$21\r\ncluster_known_nodes:1\r\n"
+    // right: b"*1\r\n$21\r\ncluster_known_nodes:2\r\n"
     let cluster_info = client_handler.send_and_get(cmd).await;
     assert_eq!(cluster_info, array(vec!["cluster_known_nodes:2"]));
 }
