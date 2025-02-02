@@ -82,7 +82,7 @@ pub fn run_server_process(port: u16, replicaof: Option<String>) -> TestProcessCh
     )
 }
 
-pub fn wait_for_message<T: Read>(read: &mut T, target: &str, target_count: usize) {
+fn wait_for_message<T: Read>(read: &mut T, target: &str, target_count: usize) {
     let mut buf = BufReader::new(read).lines();
     let mut cnt = 1;
 

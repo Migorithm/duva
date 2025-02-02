@@ -14,22 +14,17 @@ async fn test_set_get() {
 
     let mut h = ClientStreamHandler::new(process.bind_addr()).await;
 
-    h.send(&array(vec!["SET", "somanyrand", "bar", "PX", "300"])).await;
-    // THEN
-    assert_eq!(h.get_response().await, QueryIO::SimpleString("OK".into()).serialize());
-
-    // WHEN
-    h.send(&array(vec!["GET", "somanyrand"])).await;
-
-    // THEN
-    let res = h.get_response().await;
+    // WHEN - set key with expiry
+    assert_eq!(
+        h.send_and_get(&array(vec!["SET", "somanyrand", "bar", "PX", "300"])).await,
+        QueryIO::SimpleString("OK".into()).serialize()
+    );
+    let res = h.send_and_get(&array(vec!["GET", "somanyrand"])).await;
     assert_eq!(res, QueryIO::BulkString("bar".into()).serialize());
 
-    // WHEN - wait for 300ms
     tokio::time::sleep(tokio::time::Duration::from_millis(300)).await;
-    h.send(&array(vec!["GET", "somanyrand"])).await;
 
     // THEN
-    let res = h.get_response().await;
+    let res = h.send_and_get(&array(vec!["GET", "somanyrand"])).await;
     assert_eq!(res, QueryIO::Null.serialize());
 }

@@ -1,6 +1,6 @@
 mod common;
-use common::{array, spawn_server_as_slave, spawn_server_process, wait_for_message};
-use duva::{client_utils::ClientStreamHandler, services::cluster};
+use common::{array, spawn_server_as_slave, spawn_server_process};
+use duva::client_utils::ClientStreamHandler;
 
 #[tokio::test]
 async fn test_cluster_known_nodes_increase_when_new_replica_is_added() {

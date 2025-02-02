@@ -3,7 +3,7 @@
 //! In this case, the server will send PING message to the replica and the replica will respond with PONG message
 
 mod common;
-use common::{spawn_server_as_slave, spawn_server_process, wait_for_message};
+use common::{spawn_server_as_slave, spawn_server_process};
 
 #[tokio::test]
 async fn test_heartbeat() {

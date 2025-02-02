@@ -6,7 +6,7 @@
 mod common;
 use crate::common::array;
 use common::get_available_port;
-use common::wait_for_message;
+
 use common::TestProcessChild;
 use duva::client_utils::ClientStreamHandler;
 use duva::services::query_io::QueryIO;
@@ -35,8 +35,7 @@ fn run_server_with_dbfilename(dbfilename: &str) -> TestProcessChild {
             .expect("Failed to start server process"),
         port,
     );
-    wait_for_message(
-        process.0.stdout.as_mut().unwrap(),
+    process.wait_for_message(
         format!("listening peer connection on localhost:{}...", port + 10000).as_str(),
         1,
     );
@@ -52,7 +51,7 @@ async fn test_save_read_dump() {
 
     let master_process = run_server_with_dbfilename(test_file_name.0.as_str());
 
-    let mut h: ClientStreamHandler = ClientStreamHandler::new(master_process.bind_addr()).await;
+    let mut h = ClientStreamHandler::new(master_process.bind_addr()).await;
 
     // WHEN
     // set without expiry time
