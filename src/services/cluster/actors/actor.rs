@@ -90,6 +90,8 @@ impl ClusterActor {
 
     fn add_peer(&mut self, add_peer_cmd: AddPeer, self_handler: Sender<ClusterCommand>) {
         let AddPeer { peer_addr, stream, peer_kind } = add_peer_cmd;
+
+        println!("Peer added: {}", peer_addr);
         self.members.entry(peer_addr.clone()).or_insert(Peer::new(
             stream,
             peer_kind,
@@ -112,7 +114,8 @@ impl ClusterActor {
 
     fn update_peer_state(&mut self, state: &PeerState) {
         let Some(peer) = self.members.get_mut(&state.id) else {
-            eprintln!("Peer not found");
+            eprintln!("Peer not found {}", state.id);
+            println!("Peers: {:?}", self.members.keys());
             return;
         };
         peer.last_seen = std::time::Instant::now();

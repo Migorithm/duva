@@ -24,10 +24,10 @@ impl OutboundStream {
         repl_info: Replication,
     ) -> anyhow::Result<Self> {
         Ok(OutboundStream {
-            stream: TcpStream::connect(&connect_to.0).await?,
+            stream: TcpStream::connect(&connect_to.cluster_bind_addr()).await?,
             repl_info,
             connected_node_info: None,
-            connect_to,
+            connect_to: connect_to.to_string().into(),
         })
     }
     pub async fn establish_connection(mut self, self_port: u16) -> anyhow::Result<Self> {
@@ -116,21 +116,7 @@ pub(crate) struct ConnectedNodeInfo {
 }
 
 impl ConnectedNodeInfo {
-    pub(crate) fn list_peer_binding_addrs(&self) -> Vec<PeerIdentifier> {
-        self.peer_list
-            .iter()
-            .flat_map(|peer| {
-                if let Some((ip, port)) = peer.rsplit_once(':') {
-                    Some(
-                        (ip.to_string()
-                            + ":"
-                            + (port.parse::<u16>().unwrap() + 10000).to_string().as_str())
-                        .into(),
-                    )
-                } else {
-                    None
-                }
-            })
-            .collect::<Vec<_>>()
+    pub(crate) fn list_peer_binding_addrs(self) -> Vec<PeerIdentifier> {
+        self.peer_list.into_iter().map(Into::into).collect::<Vec<_>>()
     }
 }

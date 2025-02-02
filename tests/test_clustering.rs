@@ -11,17 +11,20 @@ async fn test_cluster_known_nodes_increase_when_new_replica_is_added() {
     let cmd = &array(vec!["cluster", "info"]);
 
     let mut repl_p = spawn_server_as_slave(&master_p);
-    repl_p.wait_for_message(&master_p.heartbeat_msg(0), 1);
-    master_p.wait_for_message(&repl_p.heartbeat_msg(0), 1);
+    repl_p.wait_for_message(&master_p.heartbeat_msg(0), 1).unwrap();
+    master_p.wait_for_message(&repl_p.heartbeat_msg(0), 1).unwrap();
 
     let cluster_info = client_handler.send_and_get(cmd).await;
     assert_eq!(cluster_info, array(vec!["cluster_known_nodes:1"]));
 
     // WHEN -- new replica is added
     let mut new_repl_p = spawn_server_as_slave(&master_p);
-    new_repl_p.wait_for_message(&master_p.heartbeat_msg(0), 1);
+    new_repl_p.wait_for_message(&master_p.heartbeat_msg(0), 1).unwrap();
 
     //THEN
+    //TODO following is flaky when run with other tests!
+    // left: "*1\r\n$21\r\ncluster_known_nodes:1\r\n"
+    // right: b"*1\r\n$21\r\ncluster_known_nodes:2\r\n"
     let cluster_info = client_handler.send_and_get(cmd).await;
     assert_eq!(cluster_info, array(vec!["cluster_known_nodes:2"]));
 }
@@ -34,9 +37,9 @@ async fn test_removes_node_when_heartbeat_is_not_received_for_certain_time() {
     let cmd = &array(vec!["cluster", "info"]);
 
     let mut repl_p = spawn_server_as_slave(&master_p);
-    repl_p.wait_for_message(&master_p.heartbeat_msg(0), 1);
+    repl_p.wait_for_message(&master_p.heartbeat_msg(0), 1).unwrap();
 
-    master_p.wait_for_message(&repl_p.heartbeat_msg(0), 1);
+    master_p.wait_for_message(&repl_p.heartbeat_msg(0), 1).unwrap();
 
     let mut h = ClientStreamHandler::new(master_p.bind_addr()).await;
     let cluster_info = h.send_and_get(cmd).await;

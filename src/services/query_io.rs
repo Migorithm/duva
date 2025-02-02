@@ -328,7 +328,7 @@ fn test_from_bytes_to_peer_state() {
     // GIVEN
 
     let buffer = BytesMut::from(
-        "^\r\n$3\r\n245\r\n$7\r\n1234329\r\n$4\r\nabcd\r\n$1\r\n2\r\n$15\r\nlocalhost:49153\r\n",
+        "^\r\n$3\r\n245\r\n$7\r\n1234329\r\n$4\r\nabcd\r\n$1\r\n2\r\n$15\r\n127.0.0.1:49153\r\n",
     );
 
     // WHEN
@@ -337,7 +337,7 @@ fn test_from_bytes_to_peer_state() {
     // THEN
     assert_eq!(
         len,
-        "^\r\n$3\r\n245\r\n$7\r\n1234329\r\n$4\r\nabcd\r\n$1\r\n2\r\n$15\r\nlocalhost:49153\r\n"
+        "^\r\n$3\r\n245\r\n$7\r\n1234329\r\n$4\r\nabcd\r\n$1\r\n2\r\n$15\r\n127.0.0.1:49153\r\n"
             .len()
     );
     assert_eq!(
@@ -347,7 +347,7 @@ fn test_from_bytes_to_peer_state() {
             offset: 1234329,
             master_replid: "abcd".into(),
             hop_count: 2,
-            id: "localhost:49153".to_string().into(),
+            id: "127.0.0.1:49153".to_string().into(),
         })
     );
     let peer_state: PeerState = value.try_into().unwrap();
@@ -368,14 +368,14 @@ fn test_from_peer_state_to_bytes() {
         offset: 2,
         master_replid: "your_master_repl".into(),
         hop_count: 2,
-        id: "localhost:49152".to_string().into(),
+        id: "127.0.0.1:49152".to_string().into(),
     };
     //WHEN
     let peer_state_serialized: QueryIO = peer_state.into();
     let peer_state_serialized = peer_state_serialized.serialize();
     //THEN
     assert_eq!(
-        "^\r\n$1\r\n1\r\n$1\r\n2\r\n$16\r\nyour_master_repl\r\n$1\r\n2\r\n$15\r\nlocalhost:49152\r\n",
+        "^\r\n$1\r\n1\r\n$1\r\n2\r\n$16\r\nyour_master_repl\r\n$1\r\n2\r\n$15\r\n127.0.0.1:49152\r\n",
         peer_state_serialized
     );
 
@@ -385,14 +385,14 @@ fn test_from_peer_state_to_bytes() {
         offset: 3232,
         master_replid: "your_master_repl2".into(),
         hop_count: 40,
-        id: "localhost:49159".to_string().into(),
+        id: "127.0.0.1:49159".to_string().into(),
     };
     //WHEN
     let peer_state_serialized: QueryIO = peer_state.into();
     let peer_state_serialized = peer_state_serialized.serialize();
     //THEN
     assert_eq!(
-        "^\r\n$1\r\n5\r\n$4\r\n3232\r\n$17\r\nyour_master_repl2\r\n$2\r\n40\r\n$15\r\nlocalhost:49159\r\n",
+        "^\r\n$1\r\n5\r\n$4\r\n3232\r\n$17\r\nyour_master_repl2\r\n$2\r\n40\r\n$15\r\n127.0.0.1:49159\r\n",
         peer_state_serialized
     );
 }

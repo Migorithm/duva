@@ -43,6 +43,7 @@ impl InboundStream {
         let (repl_id, _offset) = self.recv_psync().await?;
 
         self.inbound_peer_addr = Some(format!("{}:{}", self.get_peer_ip()?, port).into());
+
         self.inbound_master_replid = Some(repl_id);
 
         Ok(())

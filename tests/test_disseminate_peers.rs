@@ -12,5 +12,5 @@ async fn test_disseminate_peers() {
     let mut replica_process = spawn_server_as_slave(&master_process);
 
     // THEN
-    replica_process.wait_for_message("[INFO] Received peer list: []", 1);
+    replica_process.wait_for_message("[INFO] Received peer list: []", 1).unwrap();
 }

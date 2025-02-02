@@ -114,7 +114,7 @@ async fn test_read_values() {
     let mut buffer = BytesMut::with_capacity(512);
     // add a simple string to buffer
     buffer.extend_from_slice(b"+FULLRESYNC 8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb 0\r\n");
-    buffer.extend_from_slice(b"+PEERS localhost:6378\r\n");
+    buffer.extend_from_slice(b"+PEERS 127.0.0.1:6378\r\n");
     // add an integer to buffer
 
     let mut parsed_values = vec![];
@@ -133,5 +133,5 @@ async fn test_read_values() {
         QueryIO::SimpleString("FULLRESYNC 8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb 0".into())
     );
 
-    assert_eq!(parsed_values[1], QueryIO::SimpleString("PEERS localhost:6378".into()));
+    assert_eq!(parsed_values[1], QueryIO::SimpleString("PEERS 127.0.0.1:6378".into()));
 }
