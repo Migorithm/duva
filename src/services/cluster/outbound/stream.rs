@@ -1,4 +1,4 @@
-use crate::services::cluster::actors::command::{AddPeer, ClusterCommand};
+use crate::services::cluster::command::{AddPeer, ClusterCommand};
 use crate::services::cluster::actors::replication::Replication;
 use crate::services::cluster::actors::types::{PeerIdentifier, PeerKind};
 use crate::services::cluster::manager::ClusterManager;

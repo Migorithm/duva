@@ -1,4 +1,4 @@
-use super::{
+use crate::services::cluster::actors::{
     replication::Replication,
     types::{PeerAddrs, PeerIdentifier, PeerKind},
     PeerState,
