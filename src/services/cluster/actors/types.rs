@@ -30,6 +30,12 @@ impl PeerKind {
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Hash)]
 pub struct PeerIdentifier(pub String);
+impl PeerIdentifier {
+    pub fn new(host: &str, port: u16) -> Self {
+        Self(format!("{}:{}", host, port))
+    }
+}
+
 make_smart_pointer!(PeerIdentifier, String);
 from_to!(String, PeerIdentifier);
 
