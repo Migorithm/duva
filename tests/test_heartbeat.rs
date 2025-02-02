@@ -8,33 +8,32 @@ use common::{spawn_server_as_slave, spawn_server_process, wait_for_message};
 #[tokio::test]
 async fn test_heartbeat() {
     // GIVEN
-
-    let process = spawn_server_process();
-    let mut replica_process = spawn_server_as_slave(&process);
+    let master_process = spawn_server_process();
+    let mut replica_process = spawn_server_as_slave(&master_process);
 
     //WHEN & THEN
-    let mut stdout = replica_process.stdout.take().unwrap();
-
-    wait_for_message(&mut stdout, "[INFO] from master rh:0", 2);
+    replica_process.wait_for_message(&master_process.heartbeat_msg(0), 2);
 }
 
 #[tokio::test]
 async fn test_heartbeat_sent_to_multiple_replicas() {
     // GIVEN
-    let process = spawn_server_process();
+    let master_p = spawn_server_process();
+    let message = master_p.heartbeat_msg(0);
 
     // WHEN
-    let mut r1 = spawn_server_as_slave(&process);
-    let mut r2 = spawn_server_as_slave(&process);
+    let mut r1 = spawn_server_as_slave(&master_p);
+    let mut r2 = spawn_server_as_slave(&master_p);
 
-    let t_h1 = std::thread::spawn(move || {
-        let mut stdout = r1.stdout.take().unwrap();
-        wait_for_message(&mut stdout, "[INFO] from master rh:0", 2);
+    let t_h1 = std::thread::spawn({
+        let message = message.clone();
+        move || {
+            r1.wait_for_message(&message, 2);
+        }
     });
 
     let t_h2 = std::thread::spawn(move || {
-        let mut stdout = r2.stdout.take().unwrap();
-        wait_for_message(&mut stdout, "[INFO] from master rh:0", 2);
+        r2.wait_for_message(&message, 2);
     });
 
     //Then it should finish

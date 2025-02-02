@@ -87,7 +87,6 @@ pub fn wait_for_message<T: Read>(read: &mut T, target: &str, target_count: usize
     let mut cnt = 1;
 
     while let Some(Ok(line)) = buf.next() {
-        println!("{}", line);
         if line.starts_with(target) {
             if cnt == target_count {
                 break;

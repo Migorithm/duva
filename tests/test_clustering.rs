@@ -1,6 +1,6 @@
 mod common;
 use common::{array, spawn_server_as_slave, spawn_server_process, wait_for_message};
-use duva::client_utils::ClientStreamHandler;
+use duva::{client_utils::ClientStreamHandler, services::cluster};
 
 #[tokio::test]
 async fn test_cluster_known_nodes_increase_when_new_replica_is_added() {
@@ -27,27 +27,25 @@ async fn test_cluster_known_nodes_increase_when_new_replica_is_added() {
 }
 
 #[tokio::test]
-async fn system_removes_node_when_heartbeat_is_not_received_for_certain_time() {
+async fn test_removes_node_when_heartbeat_is_not_received_for_certain_time() {
     // GIVEN
-    let mut master_process = spawn_server_process();
+    let mut master_p = spawn_server_process();
 
     let cmd = &array(vec!["cluster", "info"]);
 
-    let mut replica_process = spawn_server_as_slave(&master_process);
-    let mut stdout_for_repl1 = replica_process.stdout.take().unwrap();
-    wait_for_message(&mut stdout_for_repl1, "[INFO] from master rh:", 1);
-    let mut master_stdout = master_process.stdout.take().unwrap();
-    wait_for_message(&mut master_stdout, "[INFO] from replica rh:", 1);
-    let mut h = ClientStreamHandler::new(master_process.bind_addr()).await;
-    h.send(cmd).await;
-    let cluster_info = h.get_response().await;
+    let mut repl_p = spawn_server_as_slave(&master_p);
+    repl_p.wait_for_message(&master_p.heartbeat_msg(0), 1);
+
+    master_p.wait_for_message(&repl_p.heartbeat_msg(0), 1);
+
+    let mut h = ClientStreamHandler::new(master_p.bind_addr()).await;
+    let cluster_info = h.send_and_get(cmd).await;
     assert_eq!(cluster_info, array(vec!["cluster_known_nodes:1"]));
 
     // WHEN
-    replica_process.kill().unwrap();
+    repl_p.kill().unwrap();
     tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
-    h.send(cmd).await;
-    let cluster_info = h.get_response().await;
+    let cluster_info = h.send_and_get(cmd).await;
 
     //THEN
     assert_eq!(cluster_info, array(vec!["cluster_known_nodes:0"]));
