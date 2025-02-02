@@ -97,28 +97,6 @@ fn wait_for_message<T: Read>(read: &mut T, target: &str, target_count: usize) {
     }
 }
 
-pub fn wait_for_and_get_message<T: Read>(
-    read: &mut T,
-    target: &str,
-    target_count: usize,
-) -> String {
-    let mut buf = BufReader::new(read).lines();
-    let mut cnt = 1;
-    let mut message = String::new();
-
-    while let Some(Ok(line)) = buf.next() {
-        if line.starts_with(target) {
-            if cnt == target_count {
-                message = line;
-                break;
-            } else {
-                cnt += 1;
-            }
-        }
-    }
-    message
-}
-
 pub fn array(arr: Vec<&str>) -> Bytes {
     QueryIO::Array(arr.iter().map(|s| QueryIO::BulkString(s.to_string().into())).collect())
         .serialize()
