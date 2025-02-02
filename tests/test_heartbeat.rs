@@ -56,23 +56,21 @@ async fn test_master_slave_both_send_heartbeats() {
 
 #[tokio::test]
 async fn test_slave_to_slave_heartbeat() {
+    const DEFAULT_HOP_COUNT: usize = 0;
     // GIVEN
-    let master_process = spawn_server_process();
-    let mut replica_process = spawn_server_as_slave(&master_process);
-    let mut replica1_stdout = replica_process.stdout.take().unwrap();
-
-    wait_for_message(&mut replica1_stdout, "[INFO] from master rh:0", 1);
+    let master_p = spawn_server_process();
+    let mut repl_p1 = spawn_server_as_slave(&master_p);
+    repl_p1.wait_for_message(&master_p.heartbeat_msg(DEFAULT_HOP_COUNT), 1);
 
     // WHEN run SECOND replica
-    let mut replica2_process = spawn_server_as_slave(&master_process);
+    let mut repl_p2 = spawn_server_as_slave(&master_p);
 
     // THEN - replica1 and replica2 should send heartbeat to each other
-    wait_for_message(&mut replica1_stdout, "[INFO] from replica rh:0", 1);
+    repl_p1.wait_for_message(&repl_p2.heartbeat_msg(DEFAULT_HOP_COUNT), 1);
 
     // Read stdout from the replica process
-    let mut replica2_std_out = replica2_process.stdout.take().unwrap();
-    wait_for_message(&mut replica2_std_out, "[INFO] from master rh:0", 1);
-    wait_for_message(&mut replica2_std_out, "[INFO] from replica rh:0", 1);
+    repl_p2.wait_for_message(&master_p.heartbeat_msg(DEFAULT_HOP_COUNT), 1);
+    repl_p2.wait_for_message(&repl_p1.heartbeat_msg(DEFAULT_HOP_COUNT), 1);
 }
 
 #[tokio::test]
