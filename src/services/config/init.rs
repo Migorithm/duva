@@ -20,7 +20,7 @@ impl Environment {
             }
             {
                 port = 6379,
-                host = "localhost".to_string(),
+                host = "127.0.0.1".to_string(),
                 dir = ".".to_string(),
                 dbfilename = "dump.rdb".to_string(),
                 hf = 1000,
