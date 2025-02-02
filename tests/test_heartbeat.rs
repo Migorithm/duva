@@ -42,19 +42,16 @@ async fn test_heartbeat_sent_to_multiple_replicas() {
 }
 
 #[tokio::test]
-async fn test_heartbeat_master_receives_slave_heartbeat() {
+async fn test_master_slave_both_send_heartbeats() {
     // GIVEN
     let mut master_process = spawn_server_process();
     let mut replica_process = spawn_server_as_slave(&master_process);
 
     //WHEN
-    let mut stdout = replica_process.stdout.take().unwrap();
-
-    wait_for_message(&mut stdout, "[INFO] from master rh:0", 2);
+    replica_process.wait_for_message(&master_process.heartbeat_msg(0), 2);
 
     //THEN
-    let mut master_stdout = master_process.stdout.take().unwrap();
-    wait_for_message(&mut master_stdout, "[INFO] from replica rh:0", 2);
+    master_process.wait_for_message(&replica_process.heartbeat_msg(0), 2);
 }
 
 #[tokio::test]
