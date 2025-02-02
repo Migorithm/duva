@@ -22,13 +22,7 @@ pub(crate) struct PeerListeningActor {
 impl PeerListeningActor {
     // Update peer state on cluster manager
     async fn report_liveness(&mut self, peer_state: PeerState) {
-        let _ = self
-            .cluster_handler
-            .send(ClusterCommand::ReportAlive {
-                peer_identifier: self.self_id.clone(),
-                state: peer_state,
-            })
-            .await;
+        let _ = self.cluster_handler.send(ClusterCommand::ReportAlive { state: peer_state }).await;
     }
 
     /// Run until the kill switch is triggered
