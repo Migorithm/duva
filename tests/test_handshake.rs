@@ -9,6 +9,7 @@
 use common::{spawn_server_as_slave, spawn_server_process};
 use duva::client_utils::ClientStreamHandler;
 
+
 mod common;
 
 #[tokio::test]
@@ -27,9 +28,9 @@ async fn test_master_threeway_handshake() {
             format!(
                 "*3\r\n$8\r\nREPLCONF\r\n$14\r\nlistening-port\r\n$4\r\n{client_fake_port}\r\n",
             )
-            .as_bytes(),
+                .as_bytes(),
         )
-        .await,
+            .await,
         "+OK\r\n"
     );
 
@@ -42,12 +43,14 @@ async fn test_master_threeway_handshake() {
     // WHEN - client sends PSYNC command
     // ! The first argument is the replication ID of the master
     // ! Since this is the first time the replica is connecting to the master, the replication ID will be ? (a question mark)
-    h.send(b"*3\r\n$5\r\nPSYNC\r\n$1\r\n?\r\n$2\r\n-1\r\n").await;
-    assert!(h
+    let response = h
         .send_and_get(b"*3\r\n$5\r\nPSYNC\r\n$1\r\n?\r\n$2\r\n-1\r\n")
-        .await
-        // dummy response
-        .starts_with("+FULLRESYNC 8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb 0\r\n"));
+        .await;
+
+    let split: Vec<&str> = response.split(' ').collect();
+    assert_eq!(split[0], "+FULLRESYNC");
+    assert_eq!(split[1].len(), 40); // replid length == 40
+    assert_eq!(split[2].len(), 3); // offset(1) + \r\n(2)
 }
 
 #[tokio::test]

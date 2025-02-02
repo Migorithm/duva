@@ -6,7 +6,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 const CHARSET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
 const LENGTH: usize = 40;
 
-fn generate_replid() -> String {
+pub(crate) fn generate_replid() -> String {
     let time = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .expect("Time went backwards")

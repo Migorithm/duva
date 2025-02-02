@@ -2,6 +2,8 @@ use crate::services::config::init::get_env;
 use std::sync::atomic::AtomicBool;
 
 use crate::services::cluster::peer::identifier::PeerIdentifier;
+use crate::services::cluster::replication::replid_generator::generate_replid;
+
 pub static IS_MASTER_MODE: AtomicBool = AtomicBool::new(true);
 
 #[derive(Debug, Clone)]
@@ -36,7 +38,7 @@ impl Default for Replication {
 impl Replication {
     pub fn new(replicaof: Option<(String, String)>, self_host: &str, self_port: u16) -> Self {
         let master_replid = if replicaof.is_none() {
-            "8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb".to_string()
+            generate_replid()
         } else {
             "?".to_string()
         };
