@@ -151,11 +151,17 @@ There are two timeout settings which control elections.
 
 
 
-### Failure Detection(TBD)
-The system doesn't cooridnate important decisions using the protocol that's eventually consistent like gossip dissemination. 
-However, general information such as liveness of each node could be spread well with such algorithm. 
-As of writing(19th of Jan, 2025) the system is aimed at acheiving failure detection using `Gossip mechanis` which may evolve into 
-hybrid gossip algorithm using `Plumtree`
+### Failure Detection
+The system doesn't cooridnate important decisions using the protocol using eventually consistent like gossip dissemination. 
+However, general information, such as node liveness can be efficiently propagated using such an algorithm.
+Duva achieves failure detection using `Gossip mechanism` which may evolve into a hybrid gossip algorithm based on `Plumtree`.
+Heartbeat frequency and timeout period before considering a node as failed are highly configurable:
+```sh
+cargo run -- --hf 100 --ttl 1500
+```
+Here `hf` means heartbeat is sent every 100ms.
+If a peer known to the given node has not sent a heartbeat within 1500ms (ttl), it is considered dead and removed from the list.
+
 
 
 ### Getting Started
