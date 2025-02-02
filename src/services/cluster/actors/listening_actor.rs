@@ -1,12 +1,12 @@
+use super::PeerState;
 /// PeerListeningActor is responsible for listening to incoming messages from a peer.
 /// Message from a peer is one of events that can trigger a change in the cluster state.
 /// As it has to keep listening to incoming messages, it is implemented as an actor, run in the background.
 /// To take a control of the actor, PeerListenerHandler is used, which can kill the listening process and return the connected stream.
 use crate::services::cluster::command::{ClusterCommand, CommandFromMaster, CommandFromSlave};
-use super::peer::ReadConnected;
-use super::types::PeerIdentifier;
-use super::PeerState;
-use crate::services::cluster::actors::types::PeerKind;
+use crate::services::cluster::peer::connected_types::ReadConnected;
+use crate::services::cluster::peer::identifier::PeerIdentifier;
+use crate::services::cluster::peer::kind::PeerKind;
 use crate::services::interface::TRead;
 use crate::services::query_io::QueryIO;
 use tokio::select;
@@ -14,8 +14,8 @@ use tokio::sync::mpsc::Sender;
 use tokio::task::JoinHandle;
 
 pub(crate) struct PeerListeningActor {
-    pub(super) read_connected: ReadConnected,
-    pub(super) cluster_handler: Sender<ClusterCommand>,
+    pub(crate) read_connected: ReadConnected,
+    pub(crate) cluster_handler: Sender<ClusterCommand>,
     pub(crate) self_id: PeerIdentifier, // cluster_handler is used to send messages to the cluster actor
 }
 
@@ -28,7 +28,7 @@ impl PeerListeningActor {
 
     /// Run until the kill switch is triggered
     /// returns the connected stream when the kill switch is triggered
-    pub(super) async fn listen(mut self, rx: ReactorKillSwitch) -> ReadConnected {
+    pub(crate) async fn listen(mut self, rx: ReactorKillSwitch) -> ReadConnected {
         let connected = select! {
             _ = async{
                     match self.read_connected.kind {
@@ -104,7 +104,7 @@ pub(super) type ReactorKillSwitch = tokio::sync::oneshot::Receiver<()>;
 #[derive(Debug)]
 pub(crate) struct ListeningActorKillTrigger(KillTrigger, JoinHandle<ReadConnected>);
 impl ListeningActorKillTrigger {
-    pub(super) fn new(kill_trigger: KillTrigger, listning_task: JoinHandle<ReadConnected>) -> Self {
+    pub(crate) fn new(kill_trigger: KillTrigger, listning_task: JoinHandle<ReadConnected>) -> Self {
         Self(kill_trigger, listning_task)
     }
     pub(super) async fn kill(self) -> ReadConnected {

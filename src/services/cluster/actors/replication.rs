@@ -1,7 +1,7 @@
 use crate::services::config::init::get_env;
 use std::sync::atomic::AtomicBool;
 
-use super::types::PeerIdentifier;
+use crate::services::cluster::peer::identifier::PeerIdentifier;
 pub static IS_MASTER_MODE: AtomicBool = AtomicBool::new(true);
 
 #[derive(Debug, Clone)]
