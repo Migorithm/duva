@@ -78,7 +78,7 @@ impl Replication {
 
     pub fn current_state(&self, hop_count: u8) -> PeerState {
         PeerState {
-            // id: self.self_identifier.clone(),
+            id: self.self_identifier.clone(),
             term: self.term,
             offset: self.master_repl_offset,
             master_replid: self.master_replid.clone(),
@@ -89,10 +89,9 @@ impl Replication {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct PeerState {
-    // pub(crate) id: PeerIdentifier,
+    pub(crate) id: PeerIdentifier,
     pub(crate) term: u64,
     pub(crate) offset: u64,
     pub(crate) master_replid: String,
     pub(crate) hop_count: u8, // Decremented on each hop - for gossip
-                              // pub(crate) propagation_history : Vec<PeerIdentifier>,
 }
