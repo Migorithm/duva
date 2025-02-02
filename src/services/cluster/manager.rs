@@ -97,6 +97,7 @@ impl ClusterManager {
         // Discover additional peers concurrently
         // TODO Require investigation. Why does 'list_peer_binding_addrs' have to be called at here?
         for peer in connected_node_info.list_peer_binding_addrs() {
+            println!("Discovering peer: {}", peer);
             Box::pin(self.discover_cluster(self_port, peer)).await?;
         }
 

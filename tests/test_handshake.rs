@@ -15,7 +15,7 @@ mod common;
 async fn test_master_threeway_handshake() {
     // GIVEN - master server configuration
     let process = spawn_server_process();
-    let mut h = ClientStreamHandler::new(format!("localhost:{}", process.port() + 10000)).await;
+    let mut h = ClientStreamHandler::new(format!("127.0.0.1:{}", process.port() + 10000)).await;
 
     // Case 1 - client sends PING command
     assert_eq!(h.send_and_get(b"*1\r\n$4\r\nPING\r\n").await, "+PONG\r\n");

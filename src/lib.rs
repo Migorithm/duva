@@ -157,7 +157,7 @@ where
 
                 tokio::spawn(self.cluster_manager.discover_cluster(
                     self.config_manager.port,
-                    self.cluster_manager.replication_info().await?.master_cluster_bind_addr(),
+                    self.cluster_manager.replication_info().await?.master_bind_addr(),
                 ));
             }
 

@@ -1,8 +1,10 @@
 use bytes::Bytes;
 use duva::make_smart_pointer;
 use duva::services::query_io::QueryIO;
+use std::alloc::System;
 use std::io::{BufRead, BufReader, Read};
 use std::process::{Child, Command, Stdio};
+use std::time::Instant;
 
 static PORT_DISTRIBUTOR: std::sync::atomic::AtomicU16 = std::sync::atomic::AtomicU16::new(49152);
 
@@ -15,7 +17,7 @@ pub fn spawn_server_process() -> TestProcessChild {
     let mut process = run_server_process(port, None);
     wait_for_message(
         process.0.stdout.as_mut().unwrap(),
-        format!("listening peer connection on localhost:{}...", port + 10000).as_str(),
+        format!("listening peer connection on 127.0.0.1:{}...", port + 10000).as_str(),
         1,
     );
 
@@ -27,7 +29,7 @@ pub fn spawn_server_as_slave(master: &TestProcessChild) -> TestProcessChild {
     let mut process = run_server_process(port, Some(master.bind_addr()));
     wait_for_message(
         process.0.stdout.as_mut().unwrap(),
-        format!("listening peer connection on localhost:{}...", port + 10000).as_str(),
+        format!("listening peer connection on 127.0.0.1:{}...", port + 10000).as_str(),
         1,
     );
 
@@ -42,7 +44,7 @@ impl Drop for TestProcessChild {
 
 impl TestProcessChild {
     pub fn bind_addr(&self) -> String {
-        format!("localhost:{}", self.1)
+        format!("127.0.0.1:{}", self.1)
     }
     pub fn port(&self) -> u16 {
         self.1
@@ -83,6 +85,7 @@ pub fn run_server_process(port: u16, replicaof: Option<String>) -> TestProcessCh
 }
 
 fn wait_for_message<T: Read>(read: &mut T, target: &str, target_count: usize) {
+    // let internal_count = Instant::now();
     let mut buf = BufReader::new(read).lines();
     let mut cnt = 1;
 
@@ -94,6 +97,10 @@ fn wait_for_message<T: Read>(read: &mut T, target: &str, target_count: usize) {
                 cnt += 1;
             }
         }
+
+        // if internal_count.elapsed().as_secs() > 5 {
+        //     panic!("Timeout while waiting for message: {}", target);
+        // }
     }
 }
 
@@ -102,15 +109,25 @@ pub fn array(arr: Vec<&str>) -> Bytes {
         .serialize()
 }
 
-pub fn check_cross_heartbeat(processes: &mut [&mut TestProcessChild], hop_count: usize) {
-    let len = processes.len();
-    for i in 0..len {
-        for j in 0..len {
-            if i != j {
-                let target = &processes[j];
+pub fn check_internodes_communication(processes: &mut Vec<TestProcessChild>, hop_count: usize) {
+    for i in 0..processes.len() {
+        // First get the message from all other processes
+        let messages: Vec<_> = processes
+            .iter()
+            .enumerate()
+            .filter(|&(j, _)| j != i)
+            .map(|(_, target)| {
+                (0..hop_count + 1)
+                    .into_iter()
+                    .map(|_| target.heartbeat_msg(hop_count))
+                    .collect::<Vec<String>>()
+            })
+            .flatten()
+            .collect();
 
-                processes[i].wait_for_message(&target.heartbeat_msg(hop_count), 1);
-            }
+        // Then wait for all messages
+        for msg in messages {
+            processes[i].wait_for_message(&msg, 1);
         }
     }
 }

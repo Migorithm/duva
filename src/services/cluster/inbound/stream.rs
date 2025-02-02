@@ -42,7 +42,7 @@ impl InboundStream {
         // TODO check repl_id is '?' or of mine. If not, consider incoming as peer
         let (repl_id, _offset) = self.recv_psync().await?;
 
-        self.inbound_peer_addr = dbg!(Some(format!("{}:{}", self.get_peer_ip()?, port).into()));
+        self.inbound_peer_addr = Some(format!("{}:{}", self.get_peer_ip()?, port).into());
 
         self.inbound_master_replid = Some(repl_id);
 

@@ -36,7 +36,7 @@ fn run_server_with_dbfilename(dbfilename: &str) -> TestProcessChild {
         port,
     );
     process.wait_for_message(
-        format!("listening peer connection on localhost:{}...", port + 10000).as_str(),
+        format!("listening peer connection on 127.0.0.1:{}...", port + 10000).as_str(),
         1,
     );
 

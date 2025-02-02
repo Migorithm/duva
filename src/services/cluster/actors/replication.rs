@@ -71,9 +71,8 @@ impl Replication {
         ]
     }
 
-    pub fn master_cluster_bind_addr(&self) -> PeerIdentifier {
-        format!("{}:{}", self.master_host.as_ref().unwrap(), self.master_port.unwrap() + 10000)
-            .into()
+    pub fn master_bind_addr(&self) -> PeerIdentifier {
+        format!("{}:{}", self.master_host.as_ref().unwrap(), self.master_port.unwrap()).into()
     }
 
     pub fn current_state(&self, hop_count: u8) -> PeerState {

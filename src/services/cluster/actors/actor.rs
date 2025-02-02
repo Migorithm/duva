@@ -115,6 +115,7 @@ impl ClusterActor {
     fn update_peer_state(&mut self, state: &PeerState) {
         let Some(peer) = self.members.get_mut(&state.id) else {
             eprintln!("Peer not found {}", state.id);
+            println!("Peers: {:?}", self.members.keys());
             return;
         };
         peer.last_seen = std::time::Instant::now();
