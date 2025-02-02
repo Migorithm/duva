@@ -1,9 +1,9 @@
-use crate::services::cluster::actors::replication::Replication;
 use crate::services::cluster::command::{AddPeer, ClusterCommand};
 use crate::services::cluster::manager::ClusterManager;
 use crate::services::cluster::outbound::response::ConnectionResponse;
 use crate::services::cluster::peer::identifier::PeerIdentifier;
 use crate::services::cluster::peer::kind::PeerKind;
+use crate::services::cluster::replication::replication::Replication;
 use crate::services::interface::{TRead, TStream};
 use crate::{make_smart_pointer, write_array};
 use anyhow::Context;
