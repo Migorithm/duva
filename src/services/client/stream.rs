@@ -54,9 +54,16 @@ impl ClientStream {
                         }
                         ("save", []) => Ok(ClientRequest::Save),
                         ("info", [_unused_value]) => Ok(ClientRequest::Info),
-                        ("cluster", [val]) if val.as_str() == "info" => {
-                            Ok(ClientRequest::ClusterInfo)
+                        ("cluster", val) if !val.is_empty() => {
+                            match val[0].to_lowercase().as_str() {
+                                "info" => Ok(ClientRequest::ClusterInfo),
+                                "forget" => Ok(ClientRequest::ClusterForget(
+                                    val.get(1).cloned().context("Must")?.into(),
+                                )),
+                                _ => Err(anyhow::anyhow!("Invalid command")),
+                            }
                         }
+
                         _ => Err(anyhow::anyhow!("Invalid command")),
                     }
                 }
