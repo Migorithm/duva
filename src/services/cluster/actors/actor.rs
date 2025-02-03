@@ -68,6 +68,14 @@ impl ClusterActor {
                     self.update_peer_state(&state);
                     self.gossip(state).await;
                 }
+                ClusterCommand::ForgetPeer(peer_addr, sender) => {
+                    let peer = self.remove_peer(peer_addr).await;
+                    if let Some(_) = peer {
+                        let _ = sender.send(Some(()));
+                    } else {
+                        let _ = sender.send(None);
+                    }
+                }
             }
         }
     }
@@ -99,12 +107,13 @@ impl ClusterActor {
             peer_addr,
         ));
     }
-    async fn remove_peer(&mut self, peer_addr: PeerIdentifier) {
+    async fn remove_peer(&mut self, peer_addr: PeerIdentifier) -> Option<()> {
         if let Some(peer) = self.members.remove(&peer_addr) {
             // stop the runnin process and take the connection in case topology changes are made
             let _read_connected = peer.listner_kill_trigger.kill().await;
+            return Some(());
         }
-        self.members.remove(&peer_addr);
+        None
     }
 
     fn set_replication_info(&mut self, master_repl_id: String, offset: u64) {

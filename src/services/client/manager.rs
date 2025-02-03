@@ -97,6 +97,13 @@ impl ClientManager {
                     .map(|x| QueryIO::BulkString(x.into()))
                     .collect(),
             ),
+            ClientRequest::ClusterForget(peer_identifier) => {
+                match self.cluster_manager.forget_peer(peer_identifier).await {
+                    Ok(true) => QueryIO::SimpleString("OK".into()),
+                    Ok(false) => QueryIO::Err("No such peer".into()),
+                    Err(e) => QueryIO::Err(e.to_string().into()),
+                }
+            }
         };
         Ok(response)
     }

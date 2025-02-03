@@ -1,3 +1,5 @@
+use std::any;
+
 use super::{
     replication::Replication,
     types::{PeerAddrs, PeerIdentifier, PeerKind},
@@ -15,6 +17,7 @@ pub enum ClusterCommand {
     SendHeartBeat,
     Replicate { query: QueryIO },
     ReportAlive { state: PeerState },
+    ForgetPeer(PeerIdentifier, tokio::sync::oneshot::Sender<Option<()>>),
 }
 
 pub struct AddPeer {
