@@ -1,18 +1,19 @@
-use super::PeerState;
-use crate::services::cluster::command::cluster_command::ClusterCommand;
-use crate::services::cluster::command::listening_command::{CommandFromMaster, CommandFromSlave};
 /// PeerListeningActor is responsible for listening to incoming messages from a peer.
 /// Message from a peer is one of events that can trigger a change in the cluster state.
 /// As it has to keep listening to incoming messages, it is implemented as an actor, run in the background.
 /// To take a control of the actor, PeerListenerHandler is used, which can kill the listening process and return the connected stream.
+use crate::services::cluster::command::cluster_command::ClusterCommand;
+use crate::services::cluster::command::listening_command::{CommandFromMaster, CommandFromSlave};
 use crate::services::cluster::peer::connected_types::ReadConnected;
 use crate::services::cluster::peer::identifier::PeerIdentifier;
 use crate::services::cluster::peer::kind::PeerKind;
+use crate::services::cluster::replication::replication::PeerState;
 use crate::services::interface::TRead;
 use crate::services::query_io::QueryIO;
 use tokio::select;
 use tokio::sync::mpsc::Sender;
 use tokio::task::JoinHandle;
+
 
 pub(crate) struct PeerListeningActor {
     pub(crate) read_connected: ReadConnected,

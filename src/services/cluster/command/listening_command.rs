@@ -1,4 +1,4 @@
-use crate::services::cluster::actors::PeerState;
+use crate::services::cluster::replication::replication::PeerState;
 use crate::services::query_io::QueryIO;
 
 #[derive(Debug)]

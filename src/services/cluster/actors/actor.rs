@@ -1,8 +1,7 @@
-use super::PeerState;
 use crate::services::cluster::command::cluster_command::{AddPeer, ClusterCommand};
 use crate::services::cluster::peer::identifier::PeerIdentifier;
 use crate::services::cluster::peer::peer::Peer;
-use crate::services::cluster::replication::replication::Replication;
+use crate::services::cluster::replication::replication::{PeerState, Replication};
 use crate::services::interface::TWrite;
 use crate::services::query_io::QueryIO;
 use std::collections::BTreeMap;
