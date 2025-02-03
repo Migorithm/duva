@@ -121,10 +121,13 @@ impl ClusterManager {
         Ok(vec![format!("cluster_known_nodes:{}", known_node_len)])
     }
 
-    pub(crate) async fn forget_peer(&self, peer_identifier: PeerIdentifier) -> anyhow::Result<()> {
-        let (tx, rx) = tokio::sync::oneshot::channel::<()>();
+    pub(crate) async fn forget_peer(
+        &self,
+        peer_identifier: PeerIdentifier,
+    ) -> anyhow::Result<bool> {
+        let (tx, rx) = tokio::sync::oneshot::channel::<Option<()>>();
         self.send(ClusterCommand::ForgetPeer(peer_identifier, tx)).await?;
-        rx.await?;
-        Ok(())
+        let Some(_) = rx.await? else { return Ok(false) };
+        Ok(true)
     }
 }
