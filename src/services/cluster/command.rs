@@ -1,5 +1,6 @@
 use crate::services::cluster::actors::PeerState;
-use crate::services::cluster::peer::identifier::{PeerAddrs, PeerIdentifier};
+use crate::services::cluster::peer::address::PeerAddrs;
+use crate::services::cluster::peer::identifier::PeerIdentifier;
 use crate::services::cluster::peer::kind::PeerKind;
 use crate::services::cluster::replication::replication::Replication;
 use crate::services::query_io::QueryIO;

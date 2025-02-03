@@ -60,15 +60,6 @@ impl std::fmt::Display for PeerIdentifier {
     }
 }
 
-pub struct PeerAddrs(pub Vec<PeerIdentifier>);
-make_smart_pointer!(PeerAddrs, Vec<PeerIdentifier>);
-from_to!(Vec<PeerIdentifier>, PeerAddrs);
-impl PeerAddrs {
-    pub fn stringify(self) -> String {
-        self.0.into_iter().map(|x| x.0).collect::<Vec<String>>().join(" ")
-    }
-}
-
 #[test]
 fn test_peer_identifier() {
     let peer = PeerIdentifier::new("127.0.0.1", 6379);

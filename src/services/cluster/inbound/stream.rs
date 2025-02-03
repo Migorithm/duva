@@ -3,10 +3,11 @@ use crate::services::cluster::command::AddPeer;
 use crate::services::cluster::command::ClusterCommand;
 use crate::services::cluster::inbound::request::HandShakeRequest;
 use crate::services::cluster::inbound::request::HandShakeRequestEnum;
-use crate::services::cluster::peer::identifier::{PeerAddrs, PeerIdentifier};
+use crate::services::cluster::peer::identifier::PeerIdentifier;
 use crate::services::cluster::peer::kind::PeerKind;
 use crate::services::cluster::replication::replication::Replication;
 
+use crate::services::cluster::peer::address::PeerAddrs;
 use crate::services::interface::TRead;
 use crate::services::interface::{TGetPeerIp, TStream};
 use crate::services::query_io::QueryIO;
