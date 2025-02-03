@@ -59,7 +59,7 @@ impl FromStr for PeerIdentifier {
 fn parse_address(addr: &str) -> Option<std::net::IpAddr> {
     match addr.to_lowercase().as_str() {
         // IPv4 127.0.0.1 variants
-        "127.0.0.1" | "127.0.0.1" => {
+        "127.0.0.1" | "localhost" => {
             Some(std::net::IpAddr::V4(std::net::Ipv4Addr::new(127, 0, 0, 1)))
         }
         // IPv6 127.0.0.1 variants
