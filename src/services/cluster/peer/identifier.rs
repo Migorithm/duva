@@ -1,6 +1,9 @@
+use crate::services::cluster::peer::address;
+use crate::{from_to, make_smart_pointer};
 use std::str::FromStr;
 
-use crate::{from_to, make_smart_pointer};
+make_smart_pointer!(PeerIdentifier, String);
+from_to!(String, PeerIdentifier);
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Hash)]
 pub struct PeerIdentifier(pub String);
@@ -13,7 +16,7 @@ impl PeerIdentifier {
         self.0
             .rsplit_once(':')
             .map(|(host, port)| {
-                format!("{}:{}", parse_address(host).unwrap(), port.parse::<u16>().unwrap() + 10000)
+                format!("{}:{}", address::parse_address(host).unwrap(), port.parse::<u16>().unwrap() + 10000)
             })
             .unwrap()
     }
@@ -27,24 +30,6 @@ impl FromStr for PeerIdentifier {
     }
 }
 
-fn parse_address(addr: &str) -> Option<std::net::IpAddr> {
-    match addr.to_lowercase().as_str() {
-        // IPv4 127.0.0.1 variants
-        "127.0.0.1" | "127.0.0.1" => {
-            Some(std::net::IpAddr::V4(std::net::Ipv4Addr::new(127, 0, 0, 1)))
-        }
-        // IPv6 127.0.0.1 variants
-        "::1" | "[::1]" | "0:0:0:0:0:0:0:1" => {
-            Some(std::net::IpAddr::V6(std::net::Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1)))
-        }
-        // Try to parse anything else as an IP address
-        other => other.parse().ok(),
-    }
-}
-
-make_smart_pointer!(PeerIdentifier, String);
-from_to!(String, PeerIdentifier);
-
 impl std::fmt::Display for PeerIdentifier {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
@@ -53,19 +38,10 @@ impl std::fmt::Display for PeerIdentifier {
             self.0
                 .rsplit_once(':')
                 .map(|(host, port)| {
-                    format!("{}:{}", parse_address(host).unwrap(), port.parse::<u16>().unwrap())
+                    format!("{}:{}", address::parse_address(host).unwrap(), port.parse::<u16>().unwrap())
                 })
                 .unwrap()
         )
-    }
-}
-
-pub struct PeerAddrs(pub Vec<PeerIdentifier>);
-make_smart_pointer!(PeerAddrs, Vec<PeerIdentifier>);
-from_to!(Vec<PeerIdentifier>, PeerAddrs);
-impl PeerAddrs {
-    pub fn stringify(self) -> String {
-        self.0.into_iter().map(|x| x.0).collect::<Vec<String>>().join(" ")
     }
 }
 
