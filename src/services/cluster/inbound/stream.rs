@@ -1,13 +1,12 @@
 use crate::make_smart_pointer;
-use crate::services::cluster::actors::command::AddPeer;
-use crate::services::cluster::actors::command::ClusterCommand;
-use crate::services::cluster::actors::replication::Replication;
-use crate::services::cluster::actors::types::PeerAddrs;
-use crate::services::cluster::actors::types::PeerIdentifier;
-use crate::services::cluster::actors::types::PeerKind;
 use crate::services::cluster::inbound::request::HandShakeRequest;
 use crate::services::cluster::inbound::request::HandShakeRequestEnum;
+use crate::services::cluster::peer::identifier::PeerIdentifier;
+use crate::services::cluster::peer::kind::PeerKind;
+use crate::services::cluster::replication::replication::Replication;
 
+use crate::services::cluster::command::cluster_command::{AddPeer, ClusterCommand};
+use crate::services::cluster::peer::address::PeerAddrs;
 use crate::services::interface::TRead;
 use crate::services::interface::{TGetPeerIp, TStream};
 use crate::services::query_io::QueryIO;
@@ -83,7 +82,7 @@ impl InboundStream {
         self.write(QueryIO::SimpleString(
             format!("FULLRESYNC {} {}", self_master_replid, self_master_repl_offset).into(),
         ))
-        .await?;
+            .await?;
 
         Ok((repl_id, offset))
     }

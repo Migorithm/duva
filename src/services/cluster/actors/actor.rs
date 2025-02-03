@@ -1,9 +1,7 @@
-use super::command::AddPeer;
-use super::command::ClusterCommand;
-use super::peer::Peer;
-use super::replication::Replication;
-use super::types::PeerIdentifier;
-use super::PeerState;
+use crate::services::cluster::command::cluster_command::{AddPeer, ClusterCommand};
+use crate::services::cluster::peer::identifier::PeerIdentifier;
+use crate::services::cluster::peer::peer::Peer;
+use crate::services::cluster::replication::replication::{PeerState, Replication};
 use crate::services::interface::TWrite;
 use crate::services::query_io::QueryIO;
 use std::collections::BTreeMap;
@@ -110,7 +108,7 @@ impl ClusterActor {
     async fn remove_peer(&mut self, peer_addr: PeerIdentifier) -> Option<()> {
         if let Some(peer) = self.members.remove(&peer_addr) {
             // stop the runnin process and take the connection in case topology changes are made
-            let _read_connected = peer.listner_kill_trigger.kill().await;
+            let _read_connected = peer.listener_kill_trigger.kill().await;
             return Some(());
         }
         None

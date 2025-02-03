@@ -1,10 +1,9 @@
 use std::fmt::Write;
 
+use crate::services::cluster::replication::replication::PeerState;
 use crate::services::statefuls::cache::CacheValue;
 use anyhow::{Context, Result};
 use bytes::{Bytes, BytesMut};
-
-use super::cluster::actors::PeerState;
 
 // ! CURRENTLY, only ascii unicode(0-127) is supported
 const FILE_PREFIX: char = '\u{0066}';
@@ -48,7 +47,7 @@ impl QueryIO {
                     s,
                     "\r\n".into(),
                 ]
-                .concat(),
+                    .concat(),
             ),
 
             QueryIO::File(f) => {
@@ -71,9 +70,9 @@ impl QueryIO {
                 Into::<Bytes>::into(format!("{}{}\r\n", ARRAY_PREFIX, array.len()).into_bytes()),
                 array.into_iter().flat_map(|v| v.serialize()).collect(),
             ]
-            .concat()
-            .into(),
-            QueryIO::PeerState(PeerState { term, offset,  master_replid,hop_count, id }) => format!(
+                .concat()
+                .into(),
+            QueryIO::PeerState(PeerState { term, offset, master_replid, hop_count, id }) => format!(
                 "{}\r\n${}\r\n{term}\r\n${}\r\n{offset}\r\n${}\r\n{master_replid}\r\n${}\r\n{hop_count}\r\n${}\r\n{id}\r\n",
                 PEERSTATE_PREFIX,
                 term.to_string().len(),
@@ -81,9 +80,8 @@ impl QueryIO {
                 master_replid.len(),
                 hop_count.to_string().len(),
                 id.len(),
-
             )
-            .into(),
+                .into(),
         }
     }
 

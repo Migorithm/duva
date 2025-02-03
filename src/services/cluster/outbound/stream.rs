@@ -1,10 +1,12 @@
-use crate::services::cluster::actors::command::{AddPeer, ClusterCommand};
-use crate::services::cluster::actors::replication::Replication;
-use crate::services::cluster::actors::types::{PeerIdentifier, PeerKind};
+use crate::services::cluster::command::cluster_command::AddPeer;
+use crate::services::cluster::command::cluster_command::ClusterCommand;
 use crate::services::cluster::manager::ClusterManager;
 use crate::services::cluster::outbound::response::ConnectionResponse;
-use crate::services::interface::{TRead, TStream};
-
+use crate::services::cluster::peer::identifier::PeerIdentifier;
+use crate::services::cluster::peer::kind::PeerKind;
+use crate::services::cluster::replication::replication::Replication;
+use crate::services::interface::TRead;
+use crate::services::interface::TStream;
 use crate::{make_smart_pointer, write_array};
 use anyhow::Context;
 use tokio::net::TcpStream;

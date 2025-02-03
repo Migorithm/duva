@@ -1,6 +1,5 @@
+use crate::services::cluster::peer::identifier::PeerIdentifier;
 use std::time::SystemTime;
-
-use crate::services::cluster::actors::types::PeerIdentifier;
 
 pub enum ClientRequest {
     Ping,
