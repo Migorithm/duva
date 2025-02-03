@@ -1,6 +1,5 @@
 use super::PeerState;
-use crate::services::cluster::command::AddPeer;
-use crate::services::cluster::command::ClusterCommand;
+use crate::services::cluster::command::cluster_command::{AddPeer, ClusterCommand};
 use crate::services::cluster::peer::identifier::PeerIdentifier;
 use crate::services::cluster::peer::peer::Peer;
 use crate::services::cluster::replication::replication::Replication;

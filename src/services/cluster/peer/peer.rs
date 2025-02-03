@@ -1,6 +1,6 @@
 use crate::services::cluster::actors::listening_actor::ListeningActorKillTrigger;
 use crate::services::cluster::actors::listening_actor::PeerListeningActor;
-use crate::services::cluster::command::ClusterCommand;
+use crate::services::cluster::command::cluster_command::ClusterCommand;
 use crate::services::cluster::peer::connected_types::WriteConnected;
 use crate::services::cluster::peer::identifier::PeerIdentifier;
 use crate::services::cluster::peer::kind::PeerKind;

@@ -1,5 +1,5 @@
 use super::actors::actor::ClusterActor;
-use crate::services::cluster::command::ClusterCommand;
+use crate::services::cluster::command::cluster_command::ClusterCommand;
 use crate::services::cluster::inbound::stream::InboundStream;
 use crate::services::cluster::outbound::stream::OutboundStream;
 use crate::services::cluster::peer::address::PeerAddrs;
