@@ -100,7 +100,7 @@ impl ClientManager {
             ClientRequest::ClusterForget(peer_identifier) => {
                 match self.cluster_manager.forget_peer(peer_identifier).await {
                     Ok(true) => QueryIO::SimpleString("OK".into()),
-                    Ok(false) => QueryIO::SimpleString("Not found".into()),
+                    Ok(false) => QueryIO::Err("No such peer".into()),
                     Err(e) => QueryIO::Err(e.to_string().into()),
                 }
             }

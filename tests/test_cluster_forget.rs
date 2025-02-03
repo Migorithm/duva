@@ -16,12 +16,33 @@ async fn test_cluster_forget_node() {
 
     // WHEN
     let mut client_handler = ClientStreamHandler::new(processes[0].bind_addr()).await;
-    let replica_id = dbg!(processes[1].bind_addr());
+    let replica_id = processes[1].bind_addr();
     let cmd = &array(vec!["cluster", "forget", &replica_id]);
     let cluster_info = client_handler.send_and_get(cmd).await;
 
     // THEN
-    assert_eq!(cluster_info, array(vec!["OK"]));
+    assert_eq!(cluster_info, "+OK\r\n");
+
+    // WHEN
+    let cluster_info = client_handler.send_and_get(&array(vec!["cluster", "info"])).await;
+
+    // THEN
+    assert_eq!(cluster_info, array(vec!["cluster_known_nodes:0"]));
+}
+
+#[tokio::test]
+async fn test_cluster_forget_node_return_error_when_wrong_id_given() {
+    // GIVEN
+    let master_p = spawn_server_process();
+
+    // WHEN
+    let mut client_handler = ClientStreamHandler::new(master_p.bind_addr()).await;
+    let replica_id = "localhost:doesn't exist";
+    let cmd = &array(vec!["cluster", "forget", &replica_id]);
+    let cluster_info = client_handler.send_and_get(cmd).await;
+
+    // THEN
+    assert_eq!(cluster_info, "-No such peer\r\n");
 
     // WHEN
     let cluster_info = client_handler.send_and_get(&array(vec!["cluster", "info"])).await;
