@@ -1,5 +1,7 @@
 use std::time::SystemTime;
 
+use crate::services::cluster::actors::types::PeerIdentifier;
+
 pub enum ClientRequest {
     Ping,
     Echo(String),
@@ -12,4 +14,5 @@ pub enum ClientRequest {
     Save,
     Info,
     ClusterInfo,
+    ClusterForget(PeerIdentifier),
 }

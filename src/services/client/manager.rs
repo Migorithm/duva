@@ -97,6 +97,7 @@ impl ClientManager {
                     .map(|x| QueryIO::BulkString(x.into()))
                     .collect(),
             ),
+            ClientRequest::ClusterForget(peer_identifier) => todo!(),
         };
         Ok(response)
     }
