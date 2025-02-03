@@ -120,4 +120,11 @@ impl ClusterManager {
         let known_node_len = self.get_peers().await?.len();
         Ok(vec![format!("cluster_known_nodes:{}", known_node_len)])
     }
+
+    pub(crate) async fn forget_peer(&self, peer_identifier: PeerIdentifier) -> anyhow::Result<()> {
+        let (tx, rx) = tokio::sync::oneshot::channel::<()>();
+        self.send(ClusterCommand::ForgetPeer(peer_identifier, tx)).await?;
+        rx.await?;
+        Ok(())
+    }
 }

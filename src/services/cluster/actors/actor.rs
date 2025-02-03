@@ -68,6 +68,9 @@ impl ClusterActor {
                     self.update_peer_state(&state);
                     self.gossip(state).await;
                 }
+                ClusterCommand::ForgetPeer(peer_addr, sender) => {
+                    self.remove_peer(peer_addr).await;
+                }
             }
         }
     }

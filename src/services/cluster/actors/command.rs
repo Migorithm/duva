@@ -15,6 +15,7 @@ pub enum ClusterCommand {
     SendHeartBeat,
     Replicate { query: QueryIO },
     ReportAlive { state: PeerState },
+    ForgetPeer(PeerIdentifier, tokio::sync::oneshot::Sender<()>),
 }
 
 pub struct AddPeer {
