@@ -1,2 +1,2 @@
 pub(crate) mod replication;
-mod replid_generator;
+pub(crate) mod replid_generator;
