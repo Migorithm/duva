@@ -98,8 +98,10 @@ impl ClientManager {
                     .collect(),
             ),
             ClientRequest::ClusterForget(peer_identifier) => {
-                self.cluster_manager.forget_peer(peer_identifier).await;
-                QueryIO::SimpleString("OK".into())
+                match self.cluster_manager.forget_peer(peer_identifier).await {
+                    Ok(_) => QueryIO::SimpleString("OK".into()),
+                    Err(e) => QueryIO::Err(e.to_string().into()),
+                }
             }
         };
         Ok(response)
