@@ -61,7 +61,7 @@ impl ClusterManager {
         if matches!(peer_stream.peer_kind()?, PeerKind::Replica)
             && IS_MASTER_MODE.load(std::sync::atomic::Ordering::Acquire)
         {
-            peer_stream.send_sync_to_inbound_server(cache_manager).await?;
+            peer_stream = peer_stream.send_sync_to_inbound_server(cache_manager).await?;
         }
         self.send(peer_stream.to_add_peer()?).await?;
 

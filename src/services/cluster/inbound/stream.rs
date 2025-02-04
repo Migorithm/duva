@@ -12,7 +12,7 @@ use crate::services::interface::TWrite;
 use crate::services::query_io::QueryIO;
 use crate::services::statefuls::cache::manager::CacheManager;
 use crate::services::statefuls::persist::endec::encoder::encoding_processor::{
-    EncodingProcessor, SaveMeta,
+    EncodingProcessor, SaveMeta, SaveTarget,
 };
 use anyhow::Context;
 use bytes::Bytes;
@@ -115,21 +115,20 @@ impl InboundStream {
     }
 
     pub(crate) async fn send_sync_to_inbound_server(
-        &mut self,
+        mut self,
         cache_manager: &'static CacheManager,
-    ) -> anyhow::Result<()> {
+    ) -> anyhow::Result<Self> {
         let (tx, mut rx) = tokio::sync::mpsc::channel(100);
         // route save caches
         cache_manager.route_save(tx).await;
 
-        // run encoding processor
-        let save_meta = SaveMeta::new(
+        let mut processor = EncodingProcessor::new(
+            SaveTarget::InMemory(Vec::new()),
             cache_manager.inboxes.len(),
-            self.repl_info.master_replid.clone(),
-            self.repl_info.master_repl_offset.to_string(),
-        );
-        let mut processor = EncodingProcessor::with_vec(save_meta);
-        processor.encode_meta().await?;
+            self.repl_info.clone(),
+        )
+        .await?;
+
         while let Some(cmd) = rx.recv().await {
             match processor.handle_cmd(cmd).await {
                 Ok(true) => break,
@@ -144,6 +143,6 @@ impl InboundStream {
         println!("[INFO] Sent sync to slave {:?}", dump);
         self.write(dump).await?;
 
-        Ok(())
+        Ok(self)
     }
 }

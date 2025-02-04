@@ -4,14 +4,14 @@ use crate::services::cluster::manager::ClusterManager;
 use crate::services::config::manager::ConfigManager;
 use crate::services::config::ConfigResponse;
 
-use crate::services::interface::TWrite;
+use crate::services::interface::{TWrite, TWriterFactory};
 use crate::services::query_io::QueryIO;
 use crate::services::statefuls::cache::manager::CacheManager;
 use crate::services::statefuls::cache::ttl::manager::TtlSchedulerInbox;
 use crate::services::statefuls::cache::CacheEntry;
 use crate::services::statefuls::persist::actor::PersistActor;
 use crate::services::statefuls::persist::endec::encoder::encoding_processor::{
-    EncodingProcessor, SaveMeta,
+    EncodingProcessor, SaveMeta, SaveTarget,
 };
 use tokio::net::{TcpListener, TcpStream};
 use tokio::select;
@@ -50,17 +50,33 @@ impl ClientManager {
             }
             ClientRequest::Save => {
                 // spawn save actor
-                let replication = self.cluster_manager.replication_info().await?;
-                let save_meta = SaveMeta::new(
+                let mut processor = EncodingProcessor::new(
+                    SaveTarget::File(self.config_manager.get_filepath().await?),
                     self.cache_manager.inboxes.len(),
-                    replication.master_replid,
-                    replication.master_repl_offset.to_string(),
-                );
-                let outbox = PersistActor::<EncodingProcessor>::run(
-                    self.config_manager.get_filepath().await?,
-                    save_meta,
+                    self.cluster_manager.replication_info().await?,
                 )
                 .await?;
+
+                let (outbox, mut inbox) = tokio::sync::mpsc::channel(100);
+                tokio::spawn({
+                    async move {
+                        processor.encode_meta().await?;
+                        while let Some(command) = inbox.recv().await {
+                            match processor.handle_cmd(command).await {
+                                Ok(should_break) => {
+                                    if should_break {
+                                        break;
+                                    }
+                                }
+                                Err(err) => {
+                                    eprintln!("error while encoding: {:?}", err);
+                                    return Err(err);
+                                }
+                            }
+                        }
+                        Ok(())
+                    }
+                });
 
                 self.cache_manager.route_save(outbox).await;
 
