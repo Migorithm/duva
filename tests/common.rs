@@ -1,9 +1,11 @@
 use bytes::Bytes;
 use duva::make_smart_pointer;
 use duva::services::query_io::QueryIO;
+
 use std::io::{BufRead, BufReader, Read};
 use std::process::{Child, Command, Stdio};
-use std::time::Instant;
+use std::thread;
+use std::time::{Duration, Instant};
 
 static PORT_DISTRIBUTOR: std::sync::atomic::AtomicU16 = std::sync::atomic::AtomicU16::new(49152);
 
@@ -41,7 +43,7 @@ pub fn spawn_server_as_slave(master: &TestProcessChild) -> TestProcessChild {
 
 impl Drop for TestProcessChild {
     fn drop(&mut self) {
-        let _ = self.process.kill();
+        let _ = self.terminate();
     }
 }
 
@@ -69,6 +71,33 @@ impl TestProcessChild {
     pub fn new(process: Child, port: u16) -> Self {
         TestProcessChild { process, port }
     }
+
+    /// Attempts to gracefully terminate the process, falling back to force kill if necessary
+    pub fn terminate(&mut self) -> std::io::Result<()> {
+        // First try graceful shutdown
+        // Give the process some time to shutdown gracefully
+        let timeout = Duration::from_secs(5);
+        let start = std::time::Instant::now();
+
+        while start.elapsed() < timeout {
+            match self.process.try_wait()? {
+                Some(_) => return Ok(()),
+                None => thread::sleep(Duration::from_millis(100)),
+            }
+        }
+
+        // Force kill if still running
+        self.process.kill()?;
+        self.process.wait()?;
+
+        Ok(())
+    }
+
+    /// Checks if the process is still running
+    pub fn is_running(&mut self) -> bool {
+        self.process.try_wait().map(|status| status.is_none()).unwrap_or(false)
+    }
+
     pub fn wait_for_message(&mut self, target: &str, target_count: usize) -> anyhow::Result<()> {
         let read = self.process.stdout.as_mut().unwrap();
 
@@ -87,7 +116,7 @@ impl TestProcessChild {
     }
 }
 
-make_smart_pointer!(TestProcessChild, Child);
+make_smart_pointer!(TestProcessChild, Child => process);
 
 pub fn run_server_process(port: u16, replicaof: Option<String>) -> TestProcessChild {
     let mut command = Command::new("cargo");
