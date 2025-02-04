@@ -1,11 +1,20 @@
-#[derive(Debug)]
+use thiserror::Error;
+
+#[derive(Error, Debug)]
 pub enum IoError {
+    #[error("ConnectionRefused")]
     ConnectionRefused,
+    #[error("ConnectionReset")]
     ConnectionReset,
+    #[error("ConnectionAborted")]
     ConnectionAborted,
+    #[error("NotConnected")]
     NotConnected,
+    #[error("BrokenPipe")]
     BrokenPipe,
+    #[error("TimedOut")]
     TimedOut,
+    #[error("Unknown")]
     Unknown,
 }
 
@@ -20,19 +29,5 @@ impl IoError {
                 | IoError::BrokenPipe
                 | IoError::TimedOut
         )
-    }
-}
-
-impl From<IoError> for anyhow::Error {
-    fn from(value: IoError) -> Self {
-        match value {
-            IoError::ConnectionRefused => anyhow::anyhow!("ConnectionRefused"),
-            IoError::ConnectionReset => anyhow::anyhow!("ConnectionReset"),
-            IoError::ConnectionAborted => anyhow::anyhow!("ConnectionAborted"),
-            IoError::NotConnected => anyhow::anyhow!("NotConnected"),
-            IoError::BrokenPipe => anyhow::anyhow!("BrokenPipe"),
-            IoError::TimedOut => anyhow::anyhow!("TimedOut"),
-            IoError::Unknown => anyhow::anyhow!("Unknown"),
-        }
     }
 }
