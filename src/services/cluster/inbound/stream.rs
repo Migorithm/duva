@@ -11,7 +11,7 @@ use crate::services::interface::TRead;
 use crate::services::interface::TWrite;
 use crate::services::query_io::QueryIO;
 use crate::services::statefuls::cache::manager::CacheManager;
-use crate::services::statefuls::persist::endec::encoder::encoding_processor::EncodingProcessor;
+use crate::services::statefuls::persist::endec::encoder::encoding_processor::{EncodingProcessor, SaveMeta};
 use anyhow::Context;
 use bytes::Bytes;
 use tokio::net::TcpStream;
@@ -82,7 +82,7 @@ impl InboundStream {
         self.write(QueryIO::SimpleString(
             format!("FULLRESYNC {} {}", self_master_replid, self_master_repl_offset).into(),
         ))
-        .await?;
+            .await?;
 
         Ok((repl_id, offset))
     }
@@ -121,8 +121,13 @@ impl InboundStream {
         cache_manager.route_save(tx).await;
 
         // run encoding processor
-        let mut processor = EncodingProcessor::with_vec(cache_manager.inboxes.len());
-        processor.add_meta().await?;
+        let save_meta = SaveMeta::new(
+            cache_manager.inboxes.len(),
+            self.repl_info.master_replid.clone(),
+            self.repl_info.master_repl_offset.to_string(),
+        );
+        let mut processor = EncodingProcessor::with_vec(save_meta);
+        processor.encode_meta().await?;
         while let Some(cmd) = rx.recv().await {
             match processor.handle_cmd(cmd).await {
                 Ok(true) => break,
