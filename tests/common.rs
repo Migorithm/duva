@@ -15,7 +15,7 @@ pub fn spawn_server_process() -> TestProcessChild {
     let port: u16 = get_available_port();
     let mut process = run_server_process(port, None);
     wait_for_message(
-        process.0.stdout.as_mut().unwrap(),
+        process.process.stdout.as_mut().unwrap(),
         format!("listening peer connection on 127.0.0.1:{}...", port + 10000).as_str(),
         1,
         Some(2),
@@ -29,7 +29,7 @@ pub fn spawn_server_as_slave(master: &TestProcessChild) -> TestProcessChild {
     let port: u16 = get_available_port();
     let mut process = run_server_process(port, Some(master.bind_addr()));
     wait_for_message(
-        process.0.stdout.as_mut().unwrap(),
+        process.process.stdout.as_mut().unwrap(),
         format!("listening peer connection on 127.0.0.1:{}...", port + 10000).as_str(),
         1,
         Some(2),
@@ -41,16 +41,16 @@ pub fn spawn_server_as_slave(master: &TestProcessChild) -> TestProcessChild {
 
 impl Drop for TestProcessChild {
     fn drop(&mut self) {
-        let _ = self.0.kill();
+        let _ = self.process.kill();
     }
 }
 
 impl TestProcessChild {
     pub fn bind_addr(&self) -> String {
-        format!("127.0.0.1:{}", self.1)
+        format!("127.0.0.1:{}", self.port)
     }
     pub fn port(&self) -> u16 {
-        self.1
+        self.port
     }
 
     pub fn heartbeat_msg(&self, expected_count: usize) -> String {
@@ -59,10 +59,18 @@ impl TestProcessChild {
 }
 // scan for available port
 
-pub struct TestProcessChild(pub Child, pub u16);
+#[derive(Debug)]
+pub struct TestProcessChild {
+    process: Child,
+    port: u16,
+}
+
 impl TestProcessChild {
+    pub fn new(process: Child, port: u16) -> Self {
+        TestProcessChild { process, port }
+    }
     pub fn wait_for_message(&mut self, target: &str, target_count: usize) -> anyhow::Result<()> {
-        let read = self.0.stdout.as_mut().unwrap();
+        let read = self.process.stdout.as_mut().unwrap();
 
         wait_for_message(read, target, target_count, None)
     }
@@ -73,7 +81,7 @@ impl TestProcessChild {
         target_count: usize,
         wait_for: u64,
     ) -> anyhow::Result<()> {
-        let read = self.0.stdout.as_mut().unwrap();
+        let read = self.process.stdout.as_mut().unwrap();
 
         wait_for_message(read, target, target_count, Some(wait_for))
     }
@@ -89,7 +97,7 @@ pub fn run_server_process(port: u16, replicaof: Option<String>) -> TestProcessCh
         command.args(["--replicaof", &replicaof]);
     }
 
-    TestProcessChild(
+    TestProcessChild::new(
         command
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())

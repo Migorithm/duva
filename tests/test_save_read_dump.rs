@@ -27,7 +27,7 @@ fn run_server_with_dbfilename(dbfilename: &str) -> TestProcessChild {
     let mut command = Command::new("cargo");
     command.args(["run", "--", "--port", &port.to_string(), "--dbfilename", dbfilename]);
 
-    let mut process = TestProcessChild(
+    let mut process = TestProcessChild::new(
         command
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
