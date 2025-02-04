@@ -51,7 +51,7 @@ impl StartUpFacade {
                 cluster_manager,
                 ttl_inbox.clone(),
             )
-                .into(),
+            .into(),
         );
 
         StartUpFacade {
@@ -67,7 +67,10 @@ impl StartUpFacade {
     pub async fn run(&mut self, startup_notifier: impl TNotifyStartUp) -> Result<()> {
         if let Some(filepath) = self.config_manager.try_filepath().await? {
             let dump = PersistActor::dump(filepath).await?;
-            self.set_replication_info_from(&dump).await?;
+            if let Some((repl_id, offset)) = dump.extract_replication_info() {
+                self.cluster_manager.set_replication_info(repl_id.to_string(), offset).await?;
+            };
+
             self.cache_manager
                 .dump_cache(dump, self.ttl_inbox.clone(), self.config_manager.startup_time)
                 .await?;
@@ -85,19 +88,6 @@ impl StartUpFacade {
         });
 
         self.start_mode_specific_connection_handling().await
-    }
-
-    async fn set_replication_info_from(&self, dump: &DumpFile) -> Result<()> {
-        if let Some(repl_id) = dump.metadata.get("repl-id") {
-            if let Some(offset) = dump.metadata.get("repl-offset") {
-                let offset: u64 = offset.parse().unwrap_or(0);
-                self.cluster_manager
-                    .set_replication_info(repl_id.to_string(), offset)
-                    .await?;
-                println!("[INFO] Replication info set from dump file");
-            }
-        }
-        Ok(())
     }
 
     async fn start_accepting_peer_connections(

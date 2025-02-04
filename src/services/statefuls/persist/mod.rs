@@ -24,6 +24,23 @@ impl DumpFile {
     pub fn key_values(self) -> Vec<CacheEntry> {
         self.database.into_iter().flat_map(|section| section.storage.into_iter()).collect()
     }
+
+    pub fn extract_replication_info(&self) -> Option<(String, u64)> {
+        if let Some(repl_id) = self.metadata.get("repl-id") {
+            if let Some(offset) = self.metadata.get("repl-offset") {
+                let offset: u64 = offset.parse().unwrap_or(0);
+
+                println!("[INFO] Replication info set from dump file");
+                return Some((repl_id.to_string(), offset));
+            }
+        }
+        None
+    }
+}
+
+pub struct DumpMetadata {
+    pub(crate) repl_id: String,
+    pub(crate) repl_offset: u64,
 }
 
 #[derive(Debug)]
