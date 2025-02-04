@@ -11,7 +11,7 @@ use crate::services::statefuls::cache::ttl::manager::TtlSchedulerInbox;
 use crate::services::statefuls::cache::CacheEntry;
 use crate::services::statefuls::persist::actor::PersistActor;
 use crate::services::statefuls::persist::endec::encoder::encoding_processor::EncodingProcessor;
-use tokio::net::TcpListener;
+use tokio::net::{TcpListener, TcpStream};
 use tokio::select;
 
 pub(crate) struct ClientManager {
@@ -97,9 +97,9 @@ impl ClientManager {
         Ok(response)
     }
 
-    pub async fn receive_clients(
+    /// Run while loop accepting stream and if the sentinel is received, abort the tasks
+    pub async fn accept_client_connections(
         &'static self,
-
         stop_sentinel_recv: tokio::sync::oneshot::Receiver<()>,
         client_stream_listener: TcpListener,
     ) {
@@ -111,38 +111,39 @@ impl ClientManager {
             _ = async {
                     while let Ok((stream, _)) = client_stream_listener.accept().await {
                         conn_handlers.push(tokio::spawn(
-                           async move{
-                                let mut stream =  ClientStream(stream);
-                                loop {
-                                    let Ok(requests) = stream.extract_query().await else {
-                                        eprintln!("invalid user request");
-                                        continue;
-                                    };
-                                    for request in requests {
-                                        let res = match self.handle( request).await  {
-                                            Ok(response) => stream.write(response).await,
-                                            Err(e) => stream.write(QueryIO::Err(e.to_string().into())).await,
-                                        };
-
-                                        if let Err(e) = res {
-                                            if e.should_break() {
-                                                break;
-                                            }
-                                    }
-                                }
-                                }
-                           }
+                            self.handle_client_stream(stream),
                         ));
                     }
+                } =>{
 
-                } =>{}
-
-
+                }
             _ = stop_sentinel_recv => {
                 // Reconnection logic should be implemented by client?
-                conn_handlers.iter().for_each(|handle| handle.abort());
+                    conn_handlers.iter().for_each(|handle| handle.abort());
                 },
 
         };
+    }
+
+    async fn handle_client_stream(&self, stream: TcpStream) {
+        let mut stream = ClientStream(stream);
+        loop {
+            let Ok(requests) = stream.extract_query().await else {
+                eprintln!("invalid user request");
+                continue;
+            };
+            for request in requests {
+                let res = match self.handle(request).await {
+                    Ok(response) => stream.write(response).await,
+                    Err(e) => stream.write(QueryIO::Err(e.to_string().into())).await,
+                };
+
+                if let Err(e) = res {
+                    if e.should_break() {
+                        break;
+                    }
+                }
+            }
+        }
     }
 }
