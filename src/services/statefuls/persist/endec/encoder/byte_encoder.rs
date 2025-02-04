@@ -10,7 +10,6 @@ use crate::services::statefuls::{
 use anyhow::Result;
 use std::time::UNIX_EPOCH;
 
-// TODO subject refactor
 impl CacheEntry {
     pub fn encode_with_key(&self) -> Result<Vec<u8>> {
         let mut result = Vec::new();

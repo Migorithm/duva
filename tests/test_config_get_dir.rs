@@ -8,7 +8,6 @@ use duva::client_utils::ClientStreamHandler;
 #[tokio::test]
 async fn test_config_get_dir() {
     // GIVEN
-    //TODO test config should be dynamically configured
     let process = spawn_server_process();
 
     let mut h = ClientStreamHandler::new(process.bind_addr()).await;
