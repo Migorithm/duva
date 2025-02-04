@@ -22,4 +22,3 @@ pub struct AddPeer {
     pub(crate) stream: TcpStream,
     pub(crate) peer_kind: PeerKind,
 }
-

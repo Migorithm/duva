@@ -11,7 +11,9 @@ use crate::services::interface::TRead;
 use crate::services::interface::TWrite;
 use crate::services::query_io::QueryIO;
 use crate::services::statefuls::cache::manager::CacheManager;
-use crate::services::statefuls::persist::endec::encoder::encoding_processor::{EncodingProcessor, SaveMeta};
+use crate::services::statefuls::persist::endec::encoder::encoding_processor::{
+    EncodingProcessor, SaveMeta,
+};
 use anyhow::Context;
 use bytes::Bytes;
 use tokio::net::TcpStream;
@@ -82,7 +84,7 @@ impl InboundStream {
         self.write(QueryIO::SimpleString(
             format!("FULLRESYNC {} {}", self_master_replid, self_master_repl_offset).into(),
         ))
-            .await?;
+        .await?;
 
         Ok((repl_id, offset))
     }

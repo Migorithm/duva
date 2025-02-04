@@ -10,7 +10,9 @@ use crate::services::statefuls::cache::manager::CacheManager;
 use crate::services::statefuls::cache::ttl::manager::TtlSchedulerInbox;
 use crate::services::statefuls::cache::CacheEntry;
 use crate::services::statefuls::persist::actor::PersistActor;
-use crate::services::statefuls::persist::endec::encoder::encoding_processor::{EncodingProcessor, SaveMeta};
+use crate::services::statefuls::persist::endec::encoder::encoding_processor::{
+    EncodingProcessor, SaveMeta,
+};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::select;
 
@@ -55,9 +57,10 @@ impl ClientManager {
                     replication.master_repl_offset.to_string(),
                 );
                 let outbox = PersistActor::<EncodingProcessor>::run(
-                    self.config_manager.get_filepath().await?, save_meta,
+                    self.config_manager.get_filepath().await?,
+                    save_meta,
                 )
-                    .await?;
+                .await?;
 
                 self.cache_manager.route_save(outbox).await;
 

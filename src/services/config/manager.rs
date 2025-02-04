@@ -6,7 +6,6 @@ use super::ConfigResource;
 use super::ConfigResponse;
 use crate::services::config::init::get_env;
 use std::time::SystemTime;
-
 use tokio::fs::try_exists;
 use tokio::sync::mpsc::Sender;
 use tokio::sync::oneshot;

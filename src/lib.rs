@@ -3,6 +3,7 @@ pub mod macros;
 pub mod services;
 use anyhow::Result;
 use services::client::manager::ClientManager;
+use services::cluster::command::cluster_command::ClusterCommand;
 use services::cluster::inbound::stream::InboundStream;
 use services::cluster::manager::ClusterManager;
 use services::cluster::replication::replication::IS_MASTER_MODE;
@@ -66,7 +67,9 @@ impl StartUpFacade {
         if let Some(filepath) = self.config_manager.try_filepath().await? {
             let dump = PersistActor::dump(filepath).await?;
             if let Some((repl_id, offset)) = dump.extract_replication_info() {
-                self.cluster_manager.set_replication_info(repl_id.to_string(), offset).await?;
+                self.cluster_manager
+                    .send(ClusterCommand::SetReplicationInfo { master_repl_id: repl_id, offset })
+                    .await?;
             };
 
             self.cache_manager
