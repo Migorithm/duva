@@ -2,7 +2,6 @@ pub mod actor;
 pub mod encoding_command;
 pub mod endec;
 use super::cache::CacheEntry;
-use std::collections::HashMap;
 
 #[derive(Debug)]
 pub struct DumpFile {
@@ -26,18 +25,14 @@ impl DumpFile {
     }
 
     pub fn extract_replication_info(&self) -> Option<(String, u64)> {
-        if let Some(repl_id) = self.metadata.repl_id.clone() {
-            if let Some(offset) = self.metadata.repl_offset {
-                let offset: u64 = offset;
-
-                println!("[INFO] Replication info set from dump file");
-                return Some((repl_id.to_string(), offset));
-            }
+        match (self.metadata.repl_id.as_ref(), self.metadata.repl_offset) {
+            (Some(repl_id), Some(offset)) => Some((repl_id.clone(), offset)),
+            _ => None,
         }
-        None
     }
 }
 
+// TODO make it non-nullable?
 #[derive(Debug, Default, PartialEq)]
 pub struct DumpMetadata {
     pub(crate) repl_id: Option<String>,
