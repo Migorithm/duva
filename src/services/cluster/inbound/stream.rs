@@ -11,8 +11,9 @@ use crate::services::interface::TRead;
 use crate::services::interface::TWrite;
 use crate::services::query_io::QueryIO;
 use crate::services::statefuls::cache::manager::CacheManager;
+use crate::services::statefuls::persist::encoding_command::EncodingCommand;
 use crate::services::statefuls::persist::endec::encoder::encoding_processor::{
-    EncodingProcessor, SaveMeta, SaveTarget,
+    SaveActor, SaveMeta, SaveTarget,
 };
 use anyhow::Context;
 use bytes::Bytes;
@@ -118,30 +119,17 @@ impl InboundStream {
         mut self,
         cache_manager: &'static CacheManager,
     ) -> anyhow::Result<Self> {
-        let (tx, mut rx) = tokio::sync::mpsc::channel(100);
         // route save caches
-        cache_manager.route_save(tx).await;
+        let task = cache_manager
+            .route_save(SaveTarget::InMemory(Vec::new()), self.repl_info.clone())
+            .await?
+            .await??;
 
-        let mut processor = EncodingProcessor::new(
-            SaveTarget::InMemory(Vec::new()),
-            cache_manager.inboxes.len(),
-            self.repl_info.clone(),
-        )
-        .await?;
-
-        while let Some(cmd) = rx.recv().await {
-            match processor.handle_cmd(cmd).await {
-                Ok(true) => break,
-                Ok(false) => continue,
-                Err(err) => {
-                    panic!("Encoding Error: {:?}", err);
-                }
-            }
-        }
-        // collect dump data from processor
-        let dump = QueryIO::File(processor.into_inner().into());
+        let dump = QueryIO::File(task.into_inner().into());
         println!("[INFO] Sent sync to slave {:?}", dump);
         self.write(dump).await?;
+
+        // collect dump data from processor
 
         Ok(self)
     }

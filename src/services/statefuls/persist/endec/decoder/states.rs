@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use crate::services::statefuls::persist::DumpMetadata;
 
 #[derive(Default)]

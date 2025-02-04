@@ -1,16 +1,19 @@
 use super::actor::{CacheActor, CacheCommand, CacheCommandSender};
 use super::CacheEntry;
+use crate::services::cluster::replication::replication::Replication;
 use crate::services::query_io::QueryIO;
 use crate::services::statefuls::cache::ttl::manager::TtlSchedulerInbox;
 
 use crate::services::statefuls::cache::ttl::actor::TtlActor;
-use crate::services::statefuls::persist::encoding_command::EncodingCommand;
+use crate::services::statefuls::persist::endec::encoder::encoding_processor::{
+    SaveActor, SaveTarget,
+};
 use crate::services::statefuls::persist::DumpFile;
 use anyhow::Result;
 use std::time::SystemTime;
 use std::{hash::Hasher, iter::Zip};
-use tokio::sync::mpsc;
 use tokio::sync::oneshot::Sender;
+use tokio::task::JoinHandle;
 
 type OneShotSender<T> = tokio::sync::oneshot::Sender<T>;
 type OneShotReceiverJoinHandle<T> =
@@ -54,14 +57,24 @@ impl CacheManager {
         Ok(QueryIO::SimpleString("OK".to_string().into()))
     }
 
-    pub(crate) async fn route_save(&self, outbox: mpsc::Sender<EncodingCommand>) {
+    pub(crate) async fn route_save(
+        &self,
+        save_target: SaveTarget,
+        repl_info: Replication,
+    ) -> Result<JoinHandle<anyhow::Result<SaveActor>>> {
+        let (outbox, inbox) = tokio::sync::mpsc::channel(100);
+        let save_actor = SaveActor::new(save_target, self.inboxes.len(), repl_info).await?;
+
         // get all the handlers to cache actors
-        for inbox in self.inboxes.iter().map(Clone::clone) {
+        for cache_handler in self.inboxes.iter().map(Clone::clone) {
             let outbox = outbox.clone();
             tokio::spawn(async move {
-                let _ = inbox.send(CacheCommand::Save { outbox }).await;
+                let _ = cache_handler.send(CacheCommand::Save { outbox }).await;
             });
         }
+
+        //* defaults to BGSAVE but optionally waitable
+        Ok(tokio::spawn(save_actor.run(inbox)))
     }
 
     // Send recv handler firstly to the background and return senders and join handlers for receivers

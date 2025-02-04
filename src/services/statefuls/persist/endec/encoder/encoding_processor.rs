@@ -35,12 +35,12 @@ impl SaveTarget {
     }
 }
 
-pub struct EncodingProcessor {
+pub struct SaveActor {
     pub(super) target: SaveTarget,
     pub(super) meta: SaveMeta,
 }
 
-impl EncodingProcessor {
+impl SaveActor {
     pub async fn new(
         target: SaveTarget,
         num_of_shards: usize,
@@ -54,6 +54,26 @@ impl EncodingProcessor {
         let mut processor = Self { target, meta };
         processor.encode_meta().await?;
         Ok(processor)
+    }
+
+    pub async fn run(
+        mut self,
+        mut inbox: tokio::sync::mpsc::Receiver<EncodingCommand>,
+    ) -> Result<Self> {
+        while let Some(cmd) = inbox.recv().await {
+            match self.handle_cmd(cmd).await {
+                Ok(should_break) => {
+                    if should_break {
+                        break;
+                    }
+                }
+                Err(err) => {
+                    eprintln!("error while encoding: {:?}", err);
+                    return Err(err);
+                }
+            }
+        }
+        Ok(self)
     }
 
     pub async fn encode_meta(&mut self) -> Result<()> {
