@@ -25,17 +25,6 @@ pub(crate) trait TWriterFactory: TWrite + Send + Sync + 'static + Sized {
     ) -> impl std::future::Future<Output = anyhow::Result<Self>> + Send;
 }
 
-pub trait TCancellationTokenFactory: Send + Sync + Copy + 'static {
-    fn create(&self, timeout: u64) -> (impl TCancellationNotifier, impl TCancellationWatcher);
-}
-
-pub trait TCancellationNotifier: Send {
-    fn notify(self);
-}
-pub trait TCancellationWatcher: Send {
-    fn watch(&mut self) -> bool;
-}
-
 pub trait TGetPeerIp {
     fn get_peer_ip(&self) -> Result<String, IoError>;
 }

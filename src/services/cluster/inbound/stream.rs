@@ -1,12 +1,11 @@
 use crate::make_smart_pointer;
+use crate::services::cluster::command::cluster_command::{AddPeer, ClusterCommand};
 use crate::services::cluster::inbound::request::HandShakeRequest;
 use crate::services::cluster::inbound::request::HandShakeRequestEnum;
+use crate::services::cluster::peer::address::PeerAddrs;
 use crate::services::cluster::peer::identifier::PeerIdentifier;
 use crate::services::cluster::peer::kind::PeerKind;
 use crate::services::cluster::replication::replication::Replication;
-
-use crate::services::cluster::command::cluster_command::{AddPeer, ClusterCommand};
-use crate::services::cluster::peer::address::PeerAddrs;
 use crate::services::interface::TGetPeerIp;
 use crate::services::interface::TRead;
 use crate::services::interface::TWrite;

@@ -3,9 +3,6 @@ use crate::services::client::stream::ClientStream;
 use crate::services::cluster::manager::ClusterManager;
 use crate::services::config::manager::ConfigManager;
 use crate::services::config::ConfigResponse;
-use crate::services::interface::TCancellationNotifier;
-use crate::services::interface::TCancellationTokenFactory;
-use crate::services::interface::TCancellationWatcher;
 
 use crate::services::interface::TWrite;
 use crate::services::query_io::QueryIO;
@@ -34,16 +31,7 @@ impl ClientManager {
         ClientManager { config_manager, cache_manager, ttl_manager, cluster_manager }
     }
 
-    pub(crate) async fn handle(
-        &self,
-        mut cancellation_token: impl TCancellationWatcher,
-        cmd: ClientRequest,
-    ) -> anyhow::Result<QueryIO> {
-        if cancellation_token.watch() {
-            let err = QueryIO::Err("Error operation cancelled due to timeout".into());
-            return Ok(err);
-        }
-
+    pub(crate) async fn handle(&self, cmd: ClientRequest) -> anyhow::Result<QueryIO> {
         // TODO if it is persistence operation, get the key and hash, take the appropriate sender, send it;
         let response = match cmd {
             ClientRequest::Ping => QueryIO::SimpleString("PONG".into()),
@@ -111,7 +99,7 @@ impl ClientManager {
 
     pub async fn receive_clients(
         &'static self,
-        cancellation_factory: impl TCancellationTokenFactory,
+
         stop_sentinel_recv: tokio::sync::oneshot::Receiver<()>,
         client_stream_listener: TcpListener,
     ) {
@@ -124,7 +112,6 @@ impl ClientManager {
                     while let Ok((stream, _)) = client_stream_listener.accept().await {
                         conn_handlers.push(tokio::spawn(
                            async move{
-                                const TIMEOUT: u64 = 100;
                                 let mut stream =  ClientStream(stream);
                                 loop {
                                     let Ok(requests) = stream.extract_query().await else {
@@ -132,14 +119,9 @@ impl ClientManager {
                                         continue;
                                     };
                                     for request in requests {
-                                        let (cancellation_notifier, cancellation_token) =
-                                        cancellation_factory.create(TIMEOUT);
-                                        // TODO subject to change - more to dynamic
-                                        // Notify the cancellation notifier to cancel the query after 100 milliseconds.
-                                        cancellation_notifier.notify();
-                                        let res = match self.handle(cancellation_token, request).await {
-                                        Ok(response) => stream.write(response).await,
-                                        Err(e) => stream.write(QueryIO::Err(e.to_string().into())).await,
+                                        let res = match self.handle( request).await  {
+                                            Ok(response) => stream.write(response).await,
+                                            Err(e) => stream.write(QueryIO::Err(e.to_string().into())).await,
                                         };
 
                                         if let Err(e) = res {

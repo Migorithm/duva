@@ -9,7 +9,6 @@ use services::cluster::replication::replication::IS_MASTER_MODE;
 use services::config::init::get_env;
 use services::config::manager::ConfigManager;
 use services::error::IoError;
-use services::interface::TCancellationTokenFactory;
 use services::statefuls::cache::manager::CacheManager;
 use services::statefuls::cache::ttl::manager::TtlSchedulerInbox;
 use services::statefuls::persist::actor::PersistActor;
@@ -22,11 +21,7 @@ use tokio::net::TcpListener;
 pub mod client_utils;
 
 // * StartUp Facade that manages invokes subsystems
-pub struct StartUpFacade<V>
-where
-    V: TCancellationTokenFactory,
-{
-    cancellation_factory: V,
+pub struct StartUpFacade {
     ttl_inbox: TtlSchedulerInbox,
     cache_manager: &'static CacheManager,
     client_manager: &'static ClientManager,
@@ -35,11 +30,8 @@ where
     mode_change_watcher: tokio::sync::watch::Receiver<bool>,
 }
 
-impl<V> StartUpFacade<V>
-where
-    V: TCancellationTokenFactory,
-{
-    pub fn new(cancellation_factory: V, config_manager: ConfigManager) -> Self {
+impl StartUpFacade {
+    pub fn new(config_manager: ConfigManager) -> Self {
         let _ = get_env();
         let (cache_manager, ttl_inbox) = CacheManager::run_cache_actors();
 
@@ -58,11 +50,10 @@ where
                 cluster_manager,
                 ttl_inbox.clone(),
             )
-                .into(),
+            .into(),
         );
 
         StartUpFacade {
-            cancellation_factory,
             cache_manager,
             ttl_inbox,
             client_manager: client_request_controller,
@@ -144,11 +135,9 @@ where
                 let client_stream_listener =
                     TcpListener::bind(&self.config_manager.bind_addr()).await?;
 
-                tokio::spawn(self.client_manager.receive_clients(
-                    self.cancellation_factory,
-                    stop_sentinel_recv,
-                    client_stream_listener,
-                ));
+                tokio::spawn(
+                    self.client_manager.receive_clients(stop_sentinel_recv, client_stream_listener),
+                );
 
                 sleep(Duration::from_millis(2));
             } else {
