@@ -7,8 +7,9 @@ use crate::services::cluster::replication::replication::Replication;
 
 use crate::services::cluster::command::cluster_command::{AddPeer, ClusterCommand};
 use crate::services::cluster::peer::address::PeerAddrs;
+use crate::services::interface::TGetPeerIp;
 use crate::services::interface::TRead;
-use crate::services::interface::{TGetPeerIp, TStream};
+use crate::services::interface::TWrite;
 use crate::services::query_io::QueryIO;
 use crate::services::statefuls::cache::manager::CacheManager;
 use crate::services::statefuls::persist::endec::encoder::encoding_processor::EncodingProcessor;
@@ -82,7 +83,7 @@ impl InboundStream {
         self.write(QueryIO::SimpleString(
             format!("FULLRESYNC {} {}", self_master_replid, self_master_repl_offset).into(),
         ))
-            .await?;
+        .await?;
 
         Ok((repl_id, offset))
     }

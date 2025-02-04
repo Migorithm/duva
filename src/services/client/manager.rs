@@ -6,7 +6,8 @@ use crate::services::config::ConfigResponse;
 use crate::services::interface::TCancellationNotifier;
 use crate::services::interface::TCancellationTokenFactory;
 use crate::services::interface::TCancellationWatcher;
-use crate::services::interface::TStream;
+
+use crate::services::interface::TWrite;
 use crate::services::query_io::QueryIO;
 use crate::services::statefuls::cache::manager::CacheManager;
 use crate::services::statefuls::cache::ttl::manager::TtlSchedulerInbox;
