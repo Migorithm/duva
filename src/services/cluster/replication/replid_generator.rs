@@ -3,7 +3,7 @@ use rand::{Rng, SeedableRng};
 use std::process;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-const CHARSET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+const CHARSET: &[u8] = b"abcdefghijklmnopqrstuvwxyz0123456789";
 const LENGTH: usize = 40;
 
 pub(crate) fn generate_replid() -> String {

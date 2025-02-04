@@ -74,6 +74,14 @@ impl ClusterManager {
         Ok(rx.await?)
     }
 
+    pub(crate) async fn set_replication_info(&self, repl_id: String, offset: u64) -> anyhow::Result<()> {
+        self.send(ClusterCommand::SetReplicationInfo {
+            master_repl_id: repl_id,
+            offset,
+        }).await?;
+        Ok(())
+    }
+
     pub(crate) async fn discover_cluster(
         &'static self,
         self_port: u16,
