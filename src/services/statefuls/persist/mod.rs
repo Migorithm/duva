@@ -7,7 +7,7 @@ use std::collections::HashMap;
 #[derive(Debug)]
 pub struct DumpFile {
     pub(crate) header: String,
-    pub(crate) metadata: HashMap<String, String>,
+    pub(crate) metadata: DumpMetadata,
     pub(crate) database: Vec<DatabaseSection>,
     pub(crate) checksum: Vec<u8>,
 }
@@ -15,7 +15,7 @@ pub struct DumpFile {
 impl DumpFile {
     pub fn new(
         header: String,
-        metadata: HashMap<String, String>,
+        metadata: DumpMetadata,
         database: Vec<DatabaseSection>,
         checksum: Vec<u8>,
     ) -> Self {
@@ -26,9 +26,9 @@ impl DumpFile {
     }
 
     pub fn extract_replication_info(&self) -> Option<(String, u64)> {
-        if let Some(repl_id) = self.metadata.get("repl-id") {
-            if let Some(offset) = self.metadata.get("repl-offset") {
-                let offset: u64 = offset.parse().unwrap_or(0);
+        if let Some(repl_id) = self.metadata.repl_id.clone() {
+            if let Some(offset) = self.metadata.repl_offset {
+                let offset: u64 = offset;
 
                 println!("[INFO] Replication info set from dump file");
                 return Some((repl_id.to_string(), offset));
@@ -38,9 +38,10 @@ impl DumpFile {
     }
 }
 
+#[derive(Debug, Default, PartialEq)]
 pub struct DumpMetadata {
-    pub(crate) repl_id: String,
-    pub(crate) repl_offset: u64,
+    pub(crate) repl_id: Option<String>,
+    pub(crate) repl_offset: Option<u64>,
 }
 
 #[derive(Debug)]
