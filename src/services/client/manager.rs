@@ -8,9 +8,7 @@ use crate::services::query_io::QueryIO;
 use crate::services::statefuls::cache::manager::CacheManager;
 use crate::services::statefuls::cache::ttl::manager::TtlSchedulerInbox;
 use crate::services::statefuls::cache::CacheEntry;
-use crate::services::statefuls::persist::endec::encoder::encoding_processor::{
-    SaveActor, SaveTarget,
-};
+use crate::services::statefuls::persist::endec::encoder::encoding_processor::SaveTarget;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::select;
 
@@ -53,8 +51,6 @@ impl ClientManager {
                         self.cluster_manager.replication_info().await?,
                     )
                     .await?;
-
-                //* BGSAVE
 
                 QueryIO::Null
             }

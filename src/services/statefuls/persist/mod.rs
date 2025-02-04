@@ -6,7 +6,7 @@ use super::cache::CacheEntry;
 #[derive(Debug)]
 pub struct DumpFile {
     pub(crate) header: String,
-    pub(crate) metadata: DumpMetadata,
+    pub(crate) metadata: DecodedMetadata,
     pub(crate) database: Vec<DatabaseSection>,
     pub(crate) checksum: Vec<u8>,
 }
@@ -14,7 +14,7 @@ pub struct DumpFile {
 impl DumpFile {
     pub fn new(
         header: String,
-        metadata: DumpMetadata,
+        metadata: DecodedMetadata,
         database: Vec<DatabaseSection>,
         checksum: Vec<u8>,
     ) -> Self {
@@ -34,7 +34,7 @@ impl DumpFile {
 
 // TODO make it non-nullable?
 #[derive(Debug, Default, PartialEq)]
-pub struct DumpMetadata {
+pub struct DecodedMetadata {
     pub(crate) repl_id: Option<String>,
     pub(crate) repl_offset: Option<u64>,
 }
