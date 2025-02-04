@@ -2,18 +2,17 @@ use crate::make_smart_pointer;
 use crate::services::cluster::command::cluster_command::{AddPeer, ClusterCommand};
 use crate::services::cluster::inbound::request::HandShakeRequest;
 use crate::services::cluster::inbound::request::HandShakeRequestEnum;
-use crate::services::cluster::peer::address::PeerAddrs;
-use crate::services::cluster::peer::identifier::PeerIdentifier;
-use crate::services::cluster::peer::kind::PeerKind;
-use crate::services::cluster::replication::replication::Replication;
+use crate::services::cluster::peers::address::PeerAddrs;
+use crate::services::cluster::peers::identifier::PeerIdentifier;
+use crate::services::cluster::peers::kind::PeerKind;
+use crate::services::cluster::replications::replication::Replication;
 use crate::services::interface::TGetPeerIp;
 use crate::services::interface::TRead;
 use crate::services::interface::TWrite;
 use crate::services::query_io::QueryIO;
 use crate::services::statefuls::cache::manager::CacheManager;
-use crate::services::statefuls::persist::endec::encoder::encoding_processor::{
-    EncodingProcessor, SaveMeta,
-};
+
+use crate::services::statefuls::persist::endec::encoder::encoding_processor::SaveTarget;
 use anyhow::Context;
 use bytes::Bytes;
 use tokio::net::TcpStream;
@@ -115,35 +114,21 @@ impl InboundStream {
     }
 
     pub(crate) async fn send_sync_to_inbound_server(
-        &mut self,
+        mut self,
         cache_manager: &'static CacheManager,
-    ) -> anyhow::Result<()> {
-        let (tx, mut rx) = tokio::sync::mpsc::channel(100);
+    ) -> anyhow::Result<Self> {
         // route save caches
-        cache_manager.route_save(tx).await;
+        let task = cache_manager
+            .route_save(SaveTarget::InMemory(Vec::new()), self.repl_info.clone())
+            .await?
+            .await??;
 
-        // run encoding processor
-        let save_meta = SaveMeta::new(
-            cache_manager.inboxes.len(),
-            self.repl_info.master_replid.clone(),
-            self.repl_info.master_repl_offset.to_string(),
-        );
-        let mut processor = EncodingProcessor::with_vec(save_meta);
-        processor.encode_meta().await?;
-        while let Some(cmd) = rx.recv().await {
-            match processor.handle_cmd(cmd).await {
-                Ok(true) => break,
-                Ok(false) => continue,
-                Err(err) => {
-                    panic!("Encoding Error: {:?}", err);
-                }
-            }
-        }
-        // collect dump data from processor
-        let dump = QueryIO::File(processor.into_inner().into());
+        let dump = QueryIO::File(task.into_inner().into());
         println!("[INFO] Sent sync to slave {:?}", dump);
         self.write(dump).await?;
 
-        Ok(())
+        // collect dump data from processor
+
+        Ok(self)
     }
 }

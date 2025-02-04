@@ -1,4 +1,4 @@
-use crate::services::cluster::peer::kind::PeerKind;
+use crate::services::cluster::peers::kind::PeerKind;
 use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
 
 #[derive(Debug)]

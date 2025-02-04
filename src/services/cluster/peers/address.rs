@@ -1,9 +1,8 @@
-use crate::services::cluster::peer::identifier::PeerIdentifier;
+use crate::services::cluster::peers::identifier::PeerIdentifier;
 use crate::{from_to, make_smart_pointer};
 
 make_smart_pointer!(PeerAddrs, Vec<PeerIdentifier>);
 from_to!(Vec<PeerIdentifier>, PeerAddrs);
-
 
 pub struct PeerAddrs(pub Vec<PeerIdentifier>);
 

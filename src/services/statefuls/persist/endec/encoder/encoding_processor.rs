@@ -1,6 +1,9 @@
+use crate::services::cluster::replications::replication::Replication;
+use crate::services::interface::TWriterFactory;
 use crate::services::statefuls::cache::CacheEntry;
 
 use crate::services::statefuls::persist::encoding_command::EncodingCommand;
+
 use anyhow::Result;
 
 use super::byte_encoder::encode_checksum;
@@ -12,32 +15,68 @@ use crate::services::error::IoError;
 use std::collections::VecDeque;
 use tokio::io::AsyncWriteExt;
 
-pub enum EncodingTarget {
-    File(tokio::fs::File),
+pub enum SaveTarget {
+    File(String),
     InMemory(Vec<u8>),
 }
 
-impl EncodingTarget {
+impl SaveTarget {
     pub async fn write(&mut self, buf: &[u8]) -> Result<(), IoError> {
         match self {
-            EncodingTarget::File(f) => f.write_all(buf).await.map_err(|e| e.kind().into()),
-            EncodingTarget::InMemory(v) => Ok(v.extend_from_slice(buf)),
+            SaveTarget::File(f) => {
+                let mut f = tokio::fs::File::create_writer(f.clone()).await.map_err(|e| {
+                    println!("{e}");
+                    IoError::Unknown
+                })?;
+                f.write_all(buf).await.map_err(|e| e.kind().into())
+            }
+            SaveTarget::InMemory(v) => {
+                v.extend_from_slice(buf);
+                Ok(())
+            }
         }
     }
 }
 
-pub struct EncodingProcessor {
-    pub(super) target: EncodingTarget,
+pub struct SaveActor {
+    pub(super) target: SaveTarget,
     pub(super) meta: SaveMeta,
 }
 
-impl EncodingProcessor {
-    pub fn with_file(file: tokio::fs::File, meta: SaveMeta) -> Self {
-        Self { target: EncodingTarget::File(file), meta }
+impl SaveActor {
+    pub async fn new(
+        target: SaveTarget,
+        num_of_shards: usize,
+        repl_info: Replication,
+    ) -> Result<Self> {
+        let meta = SaveMeta::new(
+            num_of_shards,
+            repl_info.master_replid.clone(),
+            repl_info.master_repl_offset.to_string(),
+        );
+        let mut processor = Self { target, meta };
+        processor.encode_meta().await?;
+        Ok(processor)
     }
 
-    pub fn with_vec(meta: SaveMeta) -> Self {
-        Self { target: EncodingTarget::InMemory(Vec::new()), meta }
+    pub async fn run(
+        mut self,
+        mut inbox: tokio::sync::mpsc::Receiver<EncodingCommand>,
+    ) -> Result<Self> {
+        while let Some(cmd) = inbox.recv().await {
+            match self.handle_cmd(cmd).await {
+                Ok(should_break) => {
+                    if should_break {
+                        break;
+                    }
+                }
+                Err(err) => {
+                    eprintln!("error while encoding: {:?}", err);
+                    return Err(err);
+                }
+            }
+        }
+        Ok(self)
     }
 
     pub async fn encode_meta(&mut self) -> Result<()> {
@@ -96,7 +135,7 @@ impl EncodingProcessor {
     }
 
     pub fn into_inner(self) -> Vec<u8> {
-        if let EncodingTarget::InMemory(v) = self.target {
+        if let SaveTarget::InMemory(v) = self.target {
             v
         } else {
             panic!("cannot return inner for non InMemory type target")

@@ -1,7 +1,7 @@
-use crate::services::cluster::peer::address::PeerAddrs;
-use crate::services::cluster::peer::identifier::PeerIdentifier;
-use crate::services::cluster::peer::kind::PeerKind;
-use crate::services::cluster::replication::replication::{PeerState, Replication};
+use crate::services::cluster::peers::address::PeerAddrs;
+use crate::services::cluster::peers::identifier::PeerIdentifier;
+use crate::services::cluster::peers::kind::PeerKind;
+use crate::services::cluster::replications::replication::{PeerState, Replication};
 use crate::services::query_io::QueryIO;
 use tokio::net::TcpStream;
 

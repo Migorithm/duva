@@ -62,7 +62,7 @@ impl HandShakeRequest {
             .chunks_exact(2)
             .filter_map(|chunk| match (&chunk[0], &chunk[1]) {
                 (QueryIO::BulkString(capa), QueryIO::BulkString(value)) if capa == "capa" => {
-                    Some((capa.clone().into(), value.clone().into()))
+                    Some((capa.clone(), value.clone()))
                 }
                 _ => None,
             })

@@ -1,4 +1,4 @@
-use crate::services::cluster::peer::identifier::PeerIdentifier;
+use crate::services::cluster::peers::identifier::PeerIdentifier;
 use std::time::SystemTime;
 
 pub enum ClientRequest {

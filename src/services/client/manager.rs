@@ -3,16 +3,12 @@ use crate::services::client::stream::ClientStream;
 use crate::services::cluster::manager::ClusterManager;
 use crate::services::config::manager::ConfigManager;
 use crate::services::config::ConfigResponse;
-
 use crate::services::interface::TWrite;
 use crate::services::query_io::QueryIO;
 use crate::services::statefuls::cache::manager::CacheManager;
 use crate::services::statefuls::cache::ttl::manager::TtlSchedulerInbox;
 use crate::services::statefuls::cache::CacheEntry;
-use crate::services::statefuls::persist::actor::PersistActor;
-use crate::services::statefuls::persist::endec::encoder::encoding_processor::{
-    EncodingProcessor, SaveMeta,
-};
+use crate::services::statefuls::persist::endec::encoder::encoding_processor::SaveTarget;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::select;
 
@@ -49,20 +45,12 @@ impl ClientManager {
                 self.cache_manager.route_set(cache_entry, self.ttl_manager.clone()).await?
             }
             ClientRequest::Save => {
-                // spawn save actor
-                let replication = self.cluster_manager.replication_info().await?;
-                let save_meta = SaveMeta::new(
-                    self.cache_manager.inboxes.len(),
-                    replication.master_replid,
-                    replication.master_repl_offset.to_string(),
-                );
-                let outbox = PersistActor::<EncodingProcessor>::run(
-                    self.config_manager.get_filepath().await?,
-                    save_meta,
-                )
-                .await?;
-
-                self.cache_manager.route_save(outbox).await;
+                self.cache_manager
+                    .route_save(
+                        SaveTarget::File(self.config_manager.get_filepath().await?),
+                        self.cluster_manager.replication_info().await?,
+                    )
+                    .await?;
 
                 QueryIO::Null
             }
@@ -81,7 +69,7 @@ impl ClientManager {
                     _ => QueryIO::Err("Invalid operation".into()),
                 }
             }
-            ClientRequest::Delete { key } => panic!("Not implemented"),
+            ClientRequest::Delete { key: _ } => panic!("Not implemented"),
 
             ClientRequest::Info => QueryIO::BulkString(
                 self.cluster_manager.replication_info().await?.vectorize().join("\r\n").into(),

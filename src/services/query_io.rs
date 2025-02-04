@@ -1,6 +1,6 @@
 use std::fmt::Write;
 
-use crate::services::cluster::replication::replication::PeerState;
+use crate::services::cluster::replications::replication::PeerState;
 use crate::services::statefuls::cache::CacheValue;
 use anyhow::{Context, Result};
 use bytes::{Bytes, BytesMut};
@@ -16,7 +16,7 @@ const PEERSTATE_PREFIX: char = '^';
 #[macro_export]
 macro_rules! write_array {
     ($($x:expr),*) => {
-        crate::services::query_io::QueryIO::Array(vec![$(crate::services::query_io::QueryIO::BulkString($x.into())),*])
+        $crate::services::query_io::QueryIO::Array(vec![$($crate::services::query_io::QueryIO::BulkString($x.into())),*])
     };
 }
 
@@ -33,7 +33,7 @@ pub enum QueryIO {
 
 impl QueryIO {
     pub fn serialize(self) -> Bytes {
-        let concatenator = |prefix: char| -> Bytes { Bytes::from_iter([prefix as u8].into_iter()) };
+        let concatenator = |prefix: char| -> Bytes { Bytes::from_iter([prefix as u8]) };
 
         match self {
             QueryIO::SimpleString(s) => {
@@ -90,7 +90,7 @@ impl QueryIO {
         T: std::str::FromStr<Err: std::error::Error + Sync + Send + 'static>,
     {
         match self {
-            QueryIO::BulkString(s) => Ok(String::from_utf8(s.into())?.parse::<T>()?.into()),
+            QueryIO::BulkString(s) => Ok(String::from_utf8(s.into())?.parse::<T>()?),
 
             _ => Err(anyhow::anyhow!("Expected command to be a bulk string")),
         }
@@ -241,8 +241,7 @@ fn parse_file(buffer: BytesMut) -> Result<(Bytes, usize)> {
 
     let file = file_content
         .chunks(2)
-        .map(|chunk| std::str::from_utf8(chunk).map(|s| u8::from_str_radix(s, 16)))
-        .flatten()
+        .flat_map(|chunk| std::str::from_utf8(chunk).map(|s| u8::from_str_radix(s, 16)))
         .collect::<Result<Bytes, _>>()?;
 
     Ok((file, len + content_len))

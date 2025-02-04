@@ -1,7 +1,7 @@
 use crate::services::cluster::command::cluster_command::{AddPeer, ClusterCommand};
-use crate::services::cluster::peer::identifier::PeerIdentifier;
-use crate::services::cluster::peer::peer::Peer;
-use crate::services::cluster::replication::replication::{PeerState, Replication};
+use crate::services::cluster::peers::identifier::PeerIdentifier;
+use crate::services::cluster::peers::peer::Peer;
+use crate::services::cluster::replications::replication::{PeerState, Replication};
 use crate::services::interface::TWrite;
 use crate::services::query_io::QueryIO;
 use std::collections::BTreeMap;
@@ -43,7 +43,7 @@ impl ClusterActor {
                     let _ = callback.send(self.members.keys().cloned().collect::<Vec<_>>().into());
                 }
 
-                ClusterCommand::Replicate { query } => todo!(),
+                ClusterCommand::Replicate { query: _ } => todo!(),
                 ClusterCommand::SendHeartBeat => {
                     // TODO FANOUT should be configurable
                     const FANOUT: usize = 2;
@@ -68,7 +68,7 @@ impl ClusterActor {
                 }
                 ClusterCommand::ForgetPeer(peer_addr, sender) => {
                     let peer = self.remove_peer(peer_addr).await;
-                    if let Some(_) = peer {
+                    if peer.is_some() {
                         let _ = sender.send(Some(()));
                     } else {
                         let _ = sender.send(None);
@@ -79,7 +79,7 @@ impl ClusterActor {
     }
 
     fn hop_count(&self, fanout: usize, node_count: usize) -> u8 {
-        if node_count <= fanout as usize {
+        if node_count <= fanout {
             return 0;
         }
         node_count.ilog(fanout) as u8
@@ -136,10 +136,8 @@ impl ClusterActor {
         let to_be_removed = self
             .members
             .iter()
-            .filter_map(|(id, peer)| {
-                (now.duration_since(peer.last_seen).as_millis() > self.ttl_mills)
-                    .then(|| id.clone())
-            })
+            .filter(|&(_, peer)| (now.duration_since(peer.last_seen).as_millis() > self.ttl_mills))
+            .map(|(id, _)| id.clone())
             .collect::<Vec<_>>();
 
         for peer_id in to_be_removed {

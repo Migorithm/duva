@@ -5,7 +5,7 @@ use crate::services::statefuls::persist::endec::{
     METADATA_SECTION_INDICATOR, STRING_VALUE_TYPE_INDICATOR,
 };
 use crate::services::statefuls::persist::{
-    DatabaseSection, DatabaseSectionBuilder, DumpFile, DumpMetadata,
+    DatabaseSection, DatabaseSectionBuilder, DecodedMetadata, DumpFile,
 };
 use anyhow::{Context, Result};
 use std::{
@@ -149,7 +149,7 @@ impl<'a> BytesDecoder<'a, DecoderInit> {
 
 impl<'a> BytesDecoder<'a, HeaderReady> {
     pub fn load_metadata(mut self) -> Result<BytesDecoder<'a, MetadataReady>> {
-        let mut metadata = DumpMetadata::default();
+        let mut metadata = DecodedMetadata::default();
         while self.check_indicator(METADATA_SECTION_INDICATOR) {
             let (key, value) = self
                 .try_extract_metadata_key_value()
@@ -543,7 +543,7 @@ fn test_metadata_loading_no_metadata() {
         BytesDecoder::<HeaderReady> { data: data.as_slice().into(), state: Default::default() };
 
     let metadata = bytes_handler.load_metadata().unwrap();
-    assert_eq!(metadata.state.metadata, DumpMetadata::default());
+    assert_eq!(metadata.state.metadata, DecodedMetadata::default());
 }
 
 #[test]

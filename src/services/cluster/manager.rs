@@ -2,10 +2,10 @@ use super::actors::actor::ClusterActor;
 use crate::services::cluster::command::cluster_command::ClusterCommand;
 use crate::services::cluster::inbound::stream::InboundStream;
 use crate::services::cluster::outbound::stream::OutboundStream;
-use crate::services::cluster::peer::address::PeerAddrs;
-use crate::services::cluster::peer::identifier::PeerIdentifier;
-use crate::services::cluster::peer::kind::PeerKind;
-use crate::services::cluster::replication::replication::{Replication, IS_MASTER_MODE};
+use crate::services::cluster::peers::address::PeerAddrs;
+use crate::services::cluster::peers::identifier::PeerIdentifier;
+use crate::services::cluster::peers::kind::PeerKind;
+use crate::services::cluster::replications::replication::{Replication, IS_MASTER_MODE};
 use crate::services::statefuls::cache::manager::CacheManager;
 use crate::{get_env, make_smart_pointer};
 use std::time::Duration;
@@ -61,7 +61,7 @@ impl ClusterManager {
         if matches!(peer_stream.peer_kind()?, PeerKind::Replica)
             && IS_MASTER_MODE.load(std::sync::atomic::Ordering::Acquire)
         {
-            peer_stream.send_sync_to_inbound_server(cache_manager).await?;
+            peer_stream = peer_stream.send_sync_to_inbound_server(cache_manager).await?;
         }
         self.send(peer_stream.to_add_peer()?).await?;
 
