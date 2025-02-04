@@ -179,6 +179,7 @@ impl StartUpFacade {
             };
             cache_manager.dump_cache(dump, ttl_inbox.clone(), config_manager.startup_time).await?;
         }
+
         startup_notifier.notify_startup();
         Ok(())
     }
