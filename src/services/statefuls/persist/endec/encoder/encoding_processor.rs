@@ -1,4 +1,4 @@
-use crate::services::cluster::replication::replication::Replication;
+use crate::services::cluster::replications::replication::Replication;
 use crate::services::interface::TWriterFactory;
 use crate::services::statefuls::cache::CacheEntry;
 
@@ -30,7 +30,10 @@ impl SaveTarget {
                 })?;
                 f.write_all(buf).await.map_err(|e| e.kind().into())
             }
-            SaveTarget::InMemory(v) => Ok(v.extend_from_slice(buf)),
+            SaveTarget::InMemory(v) => {
+                v.extend_from_slice(buf);
+                Ok(())
+            }
         }
     }
 }

@@ -18,10 +18,8 @@ impl ClientStream {
             .into_iter()
             .map(|query_io| match query_io {
                 QueryIO::Array(value_array) => {
-                    let mut values = value_array
-                        .into_iter()
-                        .map(|v| v.unpack_single_entry::<String>())
-                        .flatten();
+                    let mut values =
+                        value_array.into_iter().flat_map(|v| v.unpack_single_entry::<String>());
 
                     let command = values.next().context("Command not given")?.to_lowercase();
 
@@ -46,7 +44,7 @@ impl ClientStream {
                             value: value.to_string(),
                         }),
 
-                        ("keys", [var]) if var != &"" => {
+                        ("keys", [var]) if !var.is_empty() => {
                             if var == "*" {
                                 return Ok(ClientRequest::Keys { pattern: None });
                             }

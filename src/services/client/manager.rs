@@ -69,7 +69,7 @@ impl ClientManager {
                     _ => QueryIO::Err("Invalid operation".into()),
                 }
             }
-            ClientRequest::Delete { key } => panic!("Not implemented"),
+            ClientRequest::Delete { key: _ } => panic!("Not implemented"),
 
             ClientRequest::Info => QueryIO::BulkString(
                 self.cluster_manager.replication_info().await?.vectorize().join("\r\n").into(),

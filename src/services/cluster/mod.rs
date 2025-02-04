@@ -1,7 +1,7 @@
 pub(crate) mod actors;
+pub mod command;
 pub mod inbound;
 pub mod manager;
 pub mod outbound;
-pub mod command;
-pub(crate) mod peer;
-pub(crate) mod replication;
+pub(crate) mod peers;
+pub(crate) mod replications;

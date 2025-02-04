@@ -6,7 +6,7 @@ use services::client::manager::ClientManager;
 use services::cluster::command::cluster_command::ClusterCommand;
 use services::cluster::inbound::stream::InboundStream;
 use services::cluster::manager::ClusterManager;
-use services::cluster::replication::replication::IS_MASTER_MODE;
+use services::cluster::replications::replication::IS_MASTER_MODE;
 use services::config::init::get_env;
 use services::config::manager::ConfigManager;
 use services::error::IoError;

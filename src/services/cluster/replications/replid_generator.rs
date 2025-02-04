@@ -7,10 +7,8 @@ const CHARSET: &[u8] = b"abcdefghijklmnopqrstuvwxyz0123456789";
 const LENGTH: usize = 40;
 
 pub(crate) fn generate_replid() -> String {
-    let time = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("Time went backwards")
-        .as_nanos() as u64;
+    let time = SystemTime::now().duration_since(UNIX_EPOCH).expect("Time went backwards").as_nanos()
+        as u64;
 
     let pid = process::id() as u64;
 
