@@ -70,6 +70,14 @@ async fn test_save_read_dump() {
     // check keys
     assert_eq!(h.send_and_get(&array(vec!["KEYS", "*"])).await, array(vec!["foo2", "foo"]));
 
+    // check replication info
+    let res = h.send_and_get(&array(vec!["INFO", "replication"])).await;
+    let info: Vec<&str> = res.split("\r\n").collect();
+    let prev_master_repl_id = info[3].split(":").collect::<Vec<&str>>()[1];
+    let prev_master_repl_offset = info[4].split(":").collect::<Vec<&str>>()[1];
+
+    // THEN
+
     // THEN
     assert_eq!(h.send_and_get(&array(vec!["SAVE"])).await, QueryIO::Null.serialize());
 
@@ -77,6 +85,16 @@ async fn test_save_read_dump() {
     tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
     // keys
     assert_eq!(h.send_and_get(&array(vec!["KEYS", "*"])).await, array(vec!["foo2", "foo"]));
+
+    // replication info
+    let res = h.send_and_get(&array(vec!["INFO", "replication"])).await;
+    let info: Vec<&str> = res.split("\r\n").collect();
+    let master_repl_id = info[3].split(":").collect::<Vec<&str>>()[1];
+    let master_repl_offset = info[4].split(":").collect::<Vec<&str>>()[1];
+
+    // THEN
+    assert_eq!(master_repl_id, prev_master_repl_id);
+    assert_eq!(master_repl_offset, prev_master_repl_offset);
 }
 
 fn create_unique_file_name(function_name: &str) -> String {

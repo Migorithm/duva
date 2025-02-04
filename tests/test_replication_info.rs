@@ -7,7 +7,7 @@ mod common;
 
 use common::{array, spawn_server_process};
 
-use duva::{client_utils::ClientStreamHandler, services::query_io::QueryIO};
+use duva::client_utils::ClientStreamHandler;
 
 #[tokio::test]
 async fn test_replication_info() {
@@ -19,5 +19,17 @@ async fn test_replication_info() {
     let res = h.send_and_get(&array(vec!["INFO", "replication"])).await;
 
     // THEN
-    assert_eq!(res, QueryIO::BulkString("role:master\r\nconnected_slaves:0\r\nmaster_replid:8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb\r\nmaster_repl_offset:0\r\nsecond_repl_offset:-1\r\nrepl_backlog_active:0\r\nrepl_backlog_size:1048576\r\nrepl_backlog_first_byte_offset:0\r\nself_identifier:127.0.0.1:49152".into()).serialize());
+    let info: Vec<&str> = res.split("\r\n").collect();
+
+    // THEN
+    assert_eq!(info[0], "$249");
+    assert_eq!(info[1], "role:master");
+    assert_eq!(info[2], "connected_slaves:0");
+    assert!(info[3].starts_with("master_replid:"));
+    assert_eq!(info[4], "master_repl_offset:0");
+    assert_eq!(info[5], "second_repl_offset:-1");
+    assert_eq!(info[6], "repl_backlog_active:0");
+    assert_eq!(info[7], "repl_backlog_size:1048576");
+    assert_eq!(info[8], "repl_backlog_first_byte_offset:0");
+    assert_eq!(info[9], "self_identifier:127.0.0.1:49152");
 }

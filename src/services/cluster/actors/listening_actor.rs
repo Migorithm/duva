@@ -14,7 +14,6 @@ use tokio::select;
 use tokio::sync::mpsc::Sender;
 use tokio::task::JoinHandle;
 
-
 pub(crate) struct PeerListeningActor {
     pub(crate) read_connected: ReadConnected,
     pub(crate) cluster_handler: Sender<ClusterCommand>,

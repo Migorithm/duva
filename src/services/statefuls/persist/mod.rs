@@ -2,12 +2,11 @@ pub mod actor;
 pub mod encoding_command;
 pub mod endec;
 use super::cache::CacheEntry;
-use std::collections::HashMap;
 
 #[derive(Debug)]
 pub struct DumpFile {
     pub(crate) header: String,
-    pub(crate) metadata: HashMap<String, String>,
+    pub(crate) metadata: DumpMetadata,
     pub(crate) database: Vec<DatabaseSection>,
     pub(crate) checksum: Vec<u8>,
 }
@@ -15,7 +14,7 @@ pub struct DumpFile {
 impl DumpFile {
     pub fn new(
         header: String,
-        metadata: HashMap<String, String>,
+        metadata: DumpMetadata,
         database: Vec<DatabaseSection>,
         checksum: Vec<u8>,
     ) -> Self {
@@ -24,6 +23,20 @@ impl DumpFile {
     pub fn key_values(self) -> Vec<CacheEntry> {
         self.database.into_iter().flat_map(|section| section.storage.into_iter()).collect()
     }
+
+    pub fn extract_replication_info(&self) -> Option<(String, u64)> {
+        match (self.metadata.repl_id.as_ref(), self.metadata.repl_offset) {
+            (Some(repl_id), Some(offset)) => Some((repl_id.clone(), offset)),
+            _ => None,
+        }
+    }
+}
+
+// TODO make it non-nullable?
+#[derive(Debug, Default, PartialEq)]
+pub struct DumpMetadata {
+    pub(crate) repl_id: Option<String>,
+    pub(crate) repl_offset: Option<u64>,
 }
 
 #[derive(Debug)]

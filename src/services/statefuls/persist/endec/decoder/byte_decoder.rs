@@ -4,12 +4,11 @@ use crate::services::statefuls::persist::endec::{
     EXPIRY_TIME_IN_MILLISECONDS_INDICATOR, EXPIRY_TIME_IN_SECONDS_INDICATOR, HEADER_MAGIC_STRING,
     METADATA_SECTION_INDICATOR, STRING_VALUE_TYPE_INDICATOR,
 };
-use crate::services::statefuls::persist::{DatabaseSection, DatabaseSectionBuilder, DumpFile};
-
+use crate::services::statefuls::persist::{
+    DatabaseSection, DatabaseSectionBuilder, DumpFile, DumpMetadata,
+};
 use anyhow::{Context, Result};
-
 use std::{
-    collections::HashMap,
     ops::{Deref, DerefMut},
     time::SystemTime,
 };
@@ -150,12 +149,23 @@ impl<'a> BytesDecoder<'a, DecoderInit> {
 
 impl<'a> BytesDecoder<'a, HeaderReady> {
     pub fn load_metadata(mut self) -> Result<BytesDecoder<'a, MetadataReady>> {
-        let mut metadata = HashMap::new();
+        let mut metadata = DumpMetadata::default();
         while self.check_indicator(METADATA_SECTION_INDICATOR) {
             let (key, value) = self
                 .try_extract_metadata_key_value()
                 .context("metadata loading: key value extraction failed")?;
-            metadata.insert(key, value);
+
+            match key.as_str() {
+                "repl-id" => metadata.repl_id = Some(value),
+                "repl-offset" => {
+                    metadata.repl_offset = Some(value.parse().context("repl-offset parse fail")?)
+                }
+
+                var => {
+                    println!("Unknown metadata key: {}", var);
+                    panic!()
+                }
+            }
         }
         Ok(BytesDecoder {
             data: self.data,
@@ -524,37 +534,6 @@ fn test_header_loading_data_length_error() {
 }
 
 #[test]
-fn test_metadata_loading() {
-    static DATA: [u8; 9] = [0xFA, 0x03, 0x61, 0x62, 0x63, 0x03, 0x64, 0x65, 0x66];
-
-    let bytes_handler = BytesDecoder::<HeaderReady> {
-        data: (&DATA as &'static [u8]),
-        state: HeaderReady("REDIS0001".to_string()),
-    };
-
-    let metadata = bytes_handler.load_metadata().unwrap();
-
-    assert_eq!(metadata.state.metadata.get("abc"), Some(&"def".to_string()));
-    assert_eq!(metadata.state.metadata.get("ghi"), None);
-    assert_eq!(metadata.state.header, "REDIS0001");
-}
-
-#[test]
-fn test_metadata_loading_multiple() {
-    let data = vec![
-        0xFA, 0x03, 0x61, 0x62, 0x63, 0x03, 0x64, 0x65, 0x66, 0xFA, 0x03, 0x67, 0x68, 0x69, 0x03,
-        0x6A, 0x6B, 0x6C,
-    ];
-    let bytes_handler =
-        BytesDecoder::<HeaderReady> { data: data.as_slice().into(), state: Default::default() };
-
-    let metadata = bytes_handler.load_metadata().unwrap();
-
-    assert_eq!(metadata.state.metadata.get("abc"), Some(&"def".to_string()));
-    assert_eq!(metadata.state.metadata.get("ghi"), Some(&"jkl".to_string()));
-}
-
-#[test]
 fn test_metadata_loading_no_metadata() {
     let data = vec![
         0xFE, 0x00, 0xFB, 0x03, 0x02, 0x00, 0x06, 0x66, 0x6F, 0x6F, 0x62, 0x61, 0x72, 0x06, 0x62,
@@ -564,7 +543,7 @@ fn test_metadata_loading_no_metadata() {
         BytesDecoder::<HeaderReady> { data: data.as_slice().into(), state: Default::default() };
 
     let metadata = bytes_handler.load_metadata().unwrap();
-    assert_eq!(metadata.state.metadata, HashMap::new());
+    assert_eq!(metadata.state.metadata, DumpMetadata::default());
 }
 
 #[test]
@@ -589,15 +568,25 @@ fn test_database_loading() {
 // ! Most important test for the BytesEndec implementation in decoding path.
 #[test]
 fn test_loading_all() {
+    const M_KEY: u8 = 0xFA;
+
+    const R_ID_SIZE: u8 = 0x28;
+    const D_KEY: u8 = 0xFE;
+
     let data = vec![
         // Header
         0x52, 0x45, 0x44, 0x49, 0x53, 0x30, 0x30, 0x31, 0x31, // Metadata
-        0xFA, 0x09, 0x72, 0x65, 0x64, 0x69, 0x73, 0x2D, 0x76, 0x65, 0x72, 0x05, 0x37, 0x2E, 0x32,
-        0x2E, 0x36, 0xFA, 0x0A, 0x72, 0x65, 0x64, 0x69, 0x73, 0x2D, 0x62, 0x69, 0x74, 0x73, 0xC0,
-        0x40, 0xFA, 0x05, 0x63, 0x74, 0x69, 0x6D, 0x65, 0xC2, 0xEA, 0x17, 0x3E, 0x67, 0xFA, 0x08,
-        0x75, 0x73, 0x65, 0x64, 0x2D, 0x6D, 0x65, 0x6D, 0xC2, 0x30, 0xD1, 0x11, 0x00, 0xFA, 0x08,
-        0x61, 0x6F, 0x66, 0x2D, 0x62, 0x61, 0x73, 0x65, 0xC0, 0x00, // Database
-        0xFE, 0x00, 0xFB, 0x02, 0x00, 0x00, 0x04, 0x66, 0x6F, 0x6F, 0x32, 0x04, 0x62, 0x61, 0x72,
+        //* repl-id
+        M_KEY, 0x07, //size of key
+        0x72, 0x65, 0x70, 0x6c, 0x2d, 0x69, 0x64, R_ID_SIZE, // size of value(hex 28 = 40)
+        0x34, 0x32, 0x30, 0x64, 0x64, 0x37, 0x65, 0x33, 0x32, 0x34, 0x63, 0x33, 0x61, 0x36, 0x33,
+        0x37, 0x31, 0x62, 0x31, 0x30, 0x33, 0x31, 0x32, 0x39, 0x63, 0x65, 0x62, 0x65, 0x36, 0x65,
+        0x32, 0x35, 0x61, 0x32, 0x37, 0x30, 0x66, 0x39, 0x66, 0x64, //*
+        M_KEY, 0x0B, //size of key - repl-offset
+        0x72, 0x65, 0x70, 0x6C, 0x2D, 0x6F, 0x66, 0x66, 0x73, 0x65, 0x74,
+        0xC2, //size of offset
+        0xA1, 0xC3, 0x83, 0x00, // Database
+        D_KEY, 0x00, 0xFB, 0x02, 0x00, 0x00, 0x04, 0x66, 0x6F, 0x6F, 0x32, 0x04, 0x62, 0x61, 0x72,
         0x32, 0x00, 0x03, 0x66, 0x6F, 0x6F, 0x03, 0x62, 0x61, 0x72, 0xFF, 0x60, 0x82, 0x9C, 0xF8,
         0xFB, 0x2E, 0x7F, 0xEB,
     ];
@@ -627,4 +616,6 @@ fn test_loading_all() {
     }
 
     assert_eq!(rdb_file.checksum, vec![0x60, 0x82, 0x9C, 0xF8, 0xFB, 0x2E, 0x7F, 0xEB]);
+    assert_eq!(rdb_file.metadata.repl_id.unwrap(), "420dd7e324c3a6371b103129cebe6e25a270f9fd");
+    assert_eq!(rdb_file.metadata.repl_offset.unwrap(), 8635297);
 }

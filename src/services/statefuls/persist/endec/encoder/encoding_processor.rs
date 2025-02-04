@@ -32,23 +32,22 @@ pub struct EncodingProcessor {
 }
 
 impl EncodingProcessor {
-    pub fn with_file(file: tokio::fs::File, num_of_cache_actor: usize) -> Self {
-        Self { target: EncodingTarget::File(file), meta: SaveMeta::new(num_of_cache_actor) }
+    pub fn with_file(file: tokio::fs::File, meta: SaveMeta) -> Self {
+        Self { target: EncodingTarget::File(file), meta }
     }
 
-    pub fn with_vec(num_of_cache_actor: usize) -> Self {
-        Self {
-            target: EncodingTarget::InMemory(Vec::new()),
-            meta: SaveMeta::new(num_of_cache_actor),
+    pub fn with_vec(meta: SaveMeta) -> Self {
+        Self { target: EncodingTarget::InMemory(Vec::new()), meta }
+    }
+
+    pub async fn encode_meta(&mut self) -> Result<()> {
+        let mut metadata = vec![("redis-ver", "6.0.16")];
+        if &self.meta.repl_id != "?" {
+            metadata.push(("repl-id", &self.meta.repl_id));
+            metadata.push(("repl-offset", &self.meta.offset));
         }
-    }
 
-    pub async fn add_meta(&mut self) -> Result<()> {
-        let meta = [
-            encode_header("0011")?,
-            encode_metadata(Vec::from([("redis-ver", "6.0.16")]))?,
-            encode_database_info(0)?,
-        ];
+        let meta = [encode_header("0011")?, encode_metadata(metadata)?, encode_database_info(0)?];
         self.target.write(&meta.concat()).await?;
         Ok(())
     }
@@ -111,16 +110,20 @@ pub struct SaveMeta {
     total_expires_table_size: usize,
     chunk_queue: VecDeque<Vec<CacheEntry>>,
     num_of_cache_actors: usize,
+    repl_id: String,
+    offset: String,
 }
 
 impl SaveMeta {
-    pub fn new(num_of_cache_actors: usize) -> Self {
+    pub fn new(num_of_cache_actors: usize, repl_id: String, offset: String) -> Self {
         Self {
             num_of_saved_table_size_actor: num_of_cache_actors,
             total_key_value_table_size: 0,
             total_expires_table_size: 0,
             chunk_queue: VecDeque::new(),
             num_of_cache_actors,
+            repl_id,
+            offset,
         }
     }
 }

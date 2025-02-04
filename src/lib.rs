@@ -3,6 +3,7 @@ pub mod macros;
 pub mod services;
 use anyhow::Result;
 use services::client::manager::ClientManager;
+use services::cluster::command::cluster_command::ClusterCommand;
 use services::cluster::inbound::stream::InboundStream;
 use services::cluster::manager::ClusterManager;
 use services::cluster::replication::replication::IS_MASTER_MODE;
@@ -12,7 +13,6 @@ use services::error::IoError;
 use services::statefuls::cache::manager::CacheManager;
 use services::statefuls::cache::ttl::manager::TtlSchedulerInbox;
 use services::statefuls::persist::actor::PersistActor;
-
 use std::sync::atomic::Ordering;
 use std::thread::sleep;
 use std::time::Duration;
@@ -64,23 +64,19 @@ impl StartUpFacade {
     }
 
     pub async fn run(&mut self, startup_notifier: impl TNotifyStartUp) -> Result<()> {
-        if let Some(filepath) = self.config_manager.try_filepath().await? {
-            let dump = PersistActor::dump(filepath).await?;
-            self.cache_manager
-                .dump_cache(dump, self.ttl_inbox.clone(), self.config_manager.startup_time)
-                .await?;
-        }
-
         tokio::spawn(Self::start_accepting_peer_connections(
             self.config_manager.peer_bind_addr(),
             self.cluster_manager,
             self.cache_manager,
         ));
 
-        tokio::spawn(async move {
-            tokio::time::sleep(Duration::from_secs(1)).await;
-            startup_notifier.notify_startup()
-        });
+        tokio::spawn(Self::initialize_with_dump(
+            self.config_manager.clone(),
+            self.cache_manager,
+            self.ttl_inbox.clone(),
+            self.cluster_manager,
+            startup_notifier,
+        ));
 
         self.start_mode_specific_connection_handling().await
     }
@@ -164,6 +160,27 @@ impl StartUpFacade {
     }
     fn cluster_mode(&mut self) -> bool {
         *self.mode_change_watcher.borrow_and_update()
+    }
+
+    async fn initialize_with_dump(
+        config_manager: ConfigManager,
+        cache_manager: &'static CacheManager,
+        ttl_inbox: TtlSchedulerInbox,
+        cluster_manager: &'static ClusterManager,
+        startup_notifier: impl TNotifyStartUp,
+    ) -> Result<()> {
+        if let Some(filepath) = config_manager.try_filepath().await? {
+            let dump = PersistActor::dump(filepath).await?;
+            if let Some((repl_id, offset)) = dump.extract_replication_info() {
+                //  TODO reconnect! - echo
+                cluster_manager
+                    .send(ClusterCommand::SetReplicationInfo { master_repl_id: repl_id, offset })
+                    .await?;
+            };
+            cache_manager.dump_cache(dump, ttl_inbox.clone(), config_manager.startup_time).await?;
+        }
+        startup_notifier.notify_startup();
+        Ok(())
     }
 }
 
