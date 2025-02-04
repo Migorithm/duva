@@ -37,10 +37,7 @@ impl EncodingProcessor {
     }
 
     pub fn with_vec(meta: SaveMeta) -> Self {
-        Self {
-            target: EncodingTarget::InMemory(Vec::new()),
-            meta,
-        }
+        Self { target: EncodingTarget::InMemory(Vec::new()), meta }
     }
 
     pub async fn encode_meta(&mut self) -> Result<()> {
@@ -50,11 +47,7 @@ impl EncodingProcessor {
             metadata.push(("repl-offset", &self.meta.offset));
         }
 
-        let meta = [
-            encode_header("0011")?,
-            encode_metadata(metadata)?,
-            encode_database_info(0)?,
-        ];
+        let meta = [encode_header("0011")?, encode_metadata(metadata)?, encode_database_info(0)?];
         self.target.write(&meta.concat()).await?;
         Ok(())
     }
