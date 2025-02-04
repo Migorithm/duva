@@ -1,6 +1,6 @@
 use crate::services::error::IoError;
 
-use bytes::BytesMut;
+use bytes::{Bytes, BytesMut};
 
 use super::query_io::QueryIO;
 
@@ -25,7 +25,7 @@ pub trait TRead {
 pub(crate) trait TWrite {
     fn write(
         &mut self,
-        buf: &[u8],
+        buf: Bytes,
     ) -> impl std::future::Future<Output = Result<(), IoError>> + Send;
 }
 pub(crate) trait TWriterFactory: TWrite + Send + Sync + 'static + Sized {
