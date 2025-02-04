@@ -6,7 +6,7 @@ use crate::services::cluster::peer::identifier::PeerIdentifier;
 use crate::services::cluster::peer::kind::PeerKind;
 use crate::services::cluster::replication::replication::Replication;
 use crate::services::interface::TRead;
-use crate::services::interface::TStream;
+use crate::services::interface::TWrite;
 use crate::{make_smart_pointer, write_array};
 use anyhow::Context;
 use tokio::net::TcpStream;

@@ -1,19 +1,13 @@
 use crate::services::error::IoError;
-use crate::services::interface::{TGetPeerIp, TRead, TStream, TWrite};
+use crate::services::interface::{TGetPeerIp, TRead, TWrite};
 use crate::services::query_io::{deserialize, QueryIO};
-use bytes::BytesMut;
+use bytes::{Bytes, BytesMut};
 use std::io::ErrorKind;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
-impl TStream for tokio::net::TcpStream {
-    async fn write(&mut self, value: QueryIO) -> Result<(), IoError> {
-        self.write_all(&value.serialize()).await.map_err(|e| Into::<IoError>::into(e.kind()))
-    }
-}
-
 impl<T: AsyncWriteExt + std::marker::Unpin + Sync + Send> TWrite for T {
-    async fn write(&mut self, buf: &[u8]) -> Result<(), IoError> {
-        self.write_all(buf).await.map_err(|e| Into::<IoError>::into(e.kind()))
+    async fn write(&mut self, buf: impl Into<Bytes>) -> Result<(), IoError> {
+        self.write_all(&buf.into()).await.map_err(|e| Into::<IoError>::into(e.kind()))
     }
 }
 

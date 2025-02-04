@@ -1,17 +1,8 @@
 use crate::services::error::IoError;
 
-use bytes::BytesMut;
+use bytes::{Bytes, BytesMut};
 
 use super::query_io::QueryIO;
-
-pub trait TStream: TGetPeerIp + Send + Sync + 'static {
-    // TODO deprecated
-
-    fn write(
-        &mut self,
-        value: QueryIO,
-    ) -> impl std::future::Future<Output = Result<(), IoError>> + Send;
-}
 
 pub trait TRead {
     fn read_bytes(
@@ -25,7 +16,7 @@ pub trait TRead {
 pub(crate) trait TWrite {
     fn write(
         &mut self,
-        buf: &[u8],
+        buf: impl Into<Bytes> + Send,
     ) -> impl std::future::Future<Output = Result<(), IoError>> + Send;
 }
 pub(crate) trait TWriterFactory: TWrite + Send + Sync + 'static + Sized {

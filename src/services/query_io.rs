@@ -140,6 +140,12 @@ impl TryFrom<QueryIO> for PeerState {
     }
 }
 
+impl From<QueryIO> for Bytes {
+    fn from(value: QueryIO) -> Self {
+        value.serialize()
+    }
+}
+
 pub fn deserialize(buffer: BytesMut) -> Result<(QueryIO, usize)> {
     match buffer[0] as char {
         SIMPLE_STRING_PREFIX => {

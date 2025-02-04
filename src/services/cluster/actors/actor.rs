@@ -90,7 +90,7 @@ impl ClusterActor {
         for peer in self.members.values_mut() {
             let msg = QueryIO::PeerState(self.replication.current_state(hop_count)).serialize();
 
-            let _ = peer.w_conn.stream.write(&msg).await;
+            let _ = peer.w_conn.stream.write(msg).await;
         }
     }
 
