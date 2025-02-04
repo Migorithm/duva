@@ -136,7 +136,8 @@ impl StartUpFacade {
                     TcpListener::bind(&self.config_manager.bind_addr()).await?;
 
                 tokio::spawn(
-                    self.client_manager.receive_clients(stop_sentinel_recv, client_stream_listener),
+                    self.client_manager
+                        .accept_client_connections(stop_sentinel_recv, client_stream_listener),
                 );
 
                 sleep(Duration::from_millis(2));
