@@ -73,22 +73,24 @@ impl Replication {
         format!("{}:{}", self.master_host.as_ref().unwrap(), self.master_port.unwrap()).into()
     }
 
-    pub fn current_state(&self, hop_count: u8) -> PeerState {
+    pub fn current_state(&self, hop_count: u8, ban_list: Vec<PeerIdentifier>) -> PeerState {
         PeerState {
-            id: self.self_identifier.clone(),
+            heartbeat_from: self.self_identifier.clone(),
             term: self.term,
             offset: self.master_repl_offset,
             master_replid: self.master_replid.clone(),
             hop_count,
+            ban_list,
         }
     }
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct PeerState {
-    pub(crate) id: PeerIdentifier,
+    pub(crate) heartbeat_from: PeerIdentifier,
     pub(crate) term: u64,
     pub(crate) offset: u64,
     pub(crate) master_replid: String,
     pub(crate) hop_count: u8, // Decremented on each hop - for gossip
+    pub(crate) ban_list: Vec<PeerIdentifier>,
 }

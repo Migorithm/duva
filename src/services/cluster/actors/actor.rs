@@ -71,7 +71,7 @@ impl ClusterActor {
                     self.set_replication_info(master_repl_id, offset);
                 }
                 ClusterCommand::ReportAlive { state } => {
-                    if self.in_ban_list(&state.id) {
+                    if self.in_ban_list(&state.heartbeat_from) {
                         return;
                     }
                     self.gossip(state).await;
@@ -100,7 +100,10 @@ impl ClusterActor {
         // TODO randomly choose the peer to send the message
 
         for peer in self.members.values_mut() {
-            let msg = QueryIO::PeerState(self.replication.current_state(hop_count)).serialize();
+            let msg = QueryIO::PeerState(
+                self.replication.current_state(hop_count, self.ban_list.clone()),
+            )
+            .serialize();
 
             let _ = peer.w_conn.stream.write(msg).await;
         }
@@ -135,8 +138,8 @@ impl ClusterActor {
     }
 
     fn update_peer_state(&mut self, state: &PeerState) {
-        let Some(peer) = self.members.get_mut(&state.id) else {
-            eprintln!("Peer not found {}", state.id);
+        let Some(peer) = self.members.get_mut(&state.heartbeat_from) else {
+            eprintln!("Peer not found {}", state.heartbeat_from);
             println!("Peers: {:?}", self.members.keys());
             return;
         };
