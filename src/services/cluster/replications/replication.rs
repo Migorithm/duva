@@ -1,4 +1,7 @@
+use bytes::Bytes;
+
 use crate::services::config::init::get_env;
+use std::str::FromStr;
 use std::sync::atomic::AtomicBool;
 
 use crate::services::cluster::peers::identifier::PeerIdentifier;
@@ -23,7 +26,7 @@ pub struct Replication {
     // * state is shared among peers
     pub(crate) term: u64,
     pub(crate) self_identifier: PeerIdentifier,
-    pub(crate) ban_list: Vec<PeerIdentifier>,
+    pub(crate) ban_list: Vec<BannedPeer>,
 }
 
 impl Default for Replication {
@@ -76,7 +79,7 @@ impl Replication {
     }
 
     pub(crate) fn in_ban_list(&self, peer_identifier: &PeerIdentifier) -> bool {
-        self.ban_list.iter().find(|node| *node == peer_identifier).is_some()
+        self.ban_list.iter().find(|node| &node.p_id == peer_identifier).is_some()
     }
     pub fn current_state(&self, hop_count: u8) -> PeerState {
         PeerState {
@@ -90,10 +93,20 @@ impl Replication {
     }
 
     // ! how do we remove peer from ban list when it comes from outside?
-    pub(crate) fn merge_ban_list(&mut self, mut ban_list: Vec<PeerIdentifier>) {
+    pub(crate) fn merge_ban_list(&mut self, mut ban_list: Vec<BannedPeer>) {
         // deduplicate
         ban_list.retain(|node| !self.ban_list.contains(node));
         self.ban_list.extend(ban_list);
+    }
+
+    pub(crate) fn ban_peer(&mut self, p_id: &PeerIdentifier) {
+        self.ban_list.push(BannedPeer {
+            p_id: p_id.clone(),
+            ban_time: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("Time went backwards")
+                .as_secs(),
+        });
     }
 }
 
@@ -104,5 +117,27 @@ pub struct PeerState {
     pub(crate) offset: u64,
     pub(crate) master_replid: String,
     pub(crate) hop_count: u8, // Decremented on each hop - for gossip
-    pub(crate) ban_list: Vec<PeerIdentifier>,
+    pub(crate) ban_list: Vec<BannedPeer>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct BannedPeer {
+    pub(crate) p_id: PeerIdentifier,
+    pub(crate) ban_time: u64,
+}
+
+impl FromStr for BannedPeer {
+    type Err = std::io::Error;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let mut parts = s.split('-');
+        let p_id = parts.next().unwrap().parse::<PeerIdentifier>()?;
+        let ban_time = parts.next().unwrap().parse::<u64>().unwrap();
+        Ok(BannedPeer { p_id, ban_time })
+    }
+}
+
+impl From<BannedPeer> for Bytes {
+    fn from(banned_peer: BannedPeer) -> Self {
+        Bytes::from(format!("{}-{}", banned_peer.p_id, banned_peer.ban_time))
+    }
 }

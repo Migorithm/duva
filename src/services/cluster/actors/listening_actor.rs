@@ -16,8 +16,8 @@ use tokio::task::JoinHandle;
 
 pub(crate) struct PeerListeningActor {
     pub(crate) read_connected: ReadConnected,
-    pub(crate) cluster_handler: Sender<ClusterCommand>,
-    pub(crate) self_id: PeerIdentifier, // cluster_handler is used to send messages to the cluster actor
+    pub(crate) cluster_handler: Sender<ClusterCommand>, // cluster_handler is used to send messages to the cluster actor
+    pub(crate) self_id: PeerIdentifier,
 }
 
 impl PeerListeningActor {

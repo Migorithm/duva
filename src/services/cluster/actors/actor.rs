@@ -71,14 +71,11 @@ impl ClusterActor {
                     self.gossip(state).await;
                 }
                 ClusterCommand::ForgetPeer(peer_addr, sender) => {
-                    if self.forget_peer(peer_addr, self_handler.clone()).await.is_some() {
+                    if self.forget_peer(peer_addr).await.is_some() {
                         let _ = sender.send(Some(()));
                     } else {
                         let _ = sender.send(None);
                     }
-                }
-                ClusterCommand::LiftBan(peer_identifier) => {
-                    self.replication.ban_list.retain(|x| x != &peer_identifier)
                 }
             }
         }
@@ -162,19 +159,8 @@ impl ClusterActor {
         self.send_heartbeat(hop_count).await;
     }
 
-    async fn forget_peer(
-        &mut self,
-        peer_addr: PeerIdentifier,
-        self_handler: Sender<ClusterCommand>,
-    ) -> Option<()> {
-        self.replication.ban_list.push(peer_addr.clone());
-
-        // TODO propagate forget information in gossip.
-
-        tokio::spawn({
-            let pr = peer_addr.clone();
-            async move { self_handler.send(ClusterCommand::LiftBan(pr)).await }
-        });
+    async fn forget_peer(&mut self, peer_addr: PeerIdentifier) -> Option<()> {
+        self.replication.ban_peer(&peer_addr);
 
         self.remove_peer(&peer_addr).await
     }
