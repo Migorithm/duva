@@ -80,9 +80,7 @@ impl ClusterActor {
                     self.gossip(state).await;
                 }
                 ClusterCommand::ForgetPeer(peer_addr, sender) => {
-                    let removed = self.forget_peer(peer_addr, self_handler.clone()).await;
-
-                    if removed.is_some() {
+                    if self.forget_peer(peer_addr, self_handler.clone()).await.is_some() {
                         let _ = sender.send(Some(()));
                     } else {
                         let _ = sender.send(None);
