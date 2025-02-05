@@ -98,18 +98,6 @@ impl Replication {
         }
     }
 
-    // ! how do we remove peer from ban list when it comes from outside?
-    pub(crate) fn merge_ban_list(&mut self, ban_list: Vec<BannedPeer>) {
-        if ban_list.is_empty() {
-            return;
-        }
-
-        // merge, deduplicate and retain the latest
-        self.ban_list.extend(ban_list);
-        self.ban_list.sort_by_key(|node| (node.p_id.clone(), std::cmp::Reverse(node.ban_time)));
-        self.ban_list.dedup_by_key(|node| node.p_id.clone());
-    }
-
     pub(crate) fn ban_peer(&mut self, p_id: &PeerIdentifier) -> anyhow::Result<()> {
         self.ban_list.push(BannedPeer { p_id: p_id.clone(), ban_time: time_in_secs()? });
         Ok(())
