@@ -6,12 +6,13 @@ use crate::services::cluster::peers::identifier::PeerIdentifier;
 use crate::services::cluster::peers::kind::PeerKind;
 use tokio::net::TcpStream;
 use tokio::sync::mpsc::Sender;
+use tokio::time::Instant;
 
 #[derive(Debug)]
 pub(crate) struct Peer {
     pub(crate) w_conn: WriteConnected,
     pub(crate) listener_kill_trigger: ListeningActorKillTrigger,
-    pub(crate) last_seen: std::time::Instant,
+    pub(crate) last_seen: Instant,
 }
 
 impl Peer {
@@ -35,7 +36,7 @@ impl Peer {
         Self {
             w_conn: write_connected,
             listener_kill_trigger: ListeningActorKillTrigger::new(kill_trigger, listening_task),
-            last_seen: std::time::Instant::now(),
+            last_seen: Instant::now(),
         }
     }
 }

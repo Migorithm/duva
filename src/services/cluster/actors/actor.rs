@@ -7,13 +7,14 @@ use crate::services::query_io::QueryIO;
 use std::collections::{BTreeMap, HashMap};
 use tokio::sync::mpsc::Receiver;
 use tokio::sync::mpsc::Sender;
+use tokio::time::Instant;
 
 #[derive(Debug)]
 pub struct ClusterActor {
     members: BTreeMap<PeerIdentifier, Peer>,
     replication: Replication,
     ttl_mills: u128,
-    banned: HashMap<PeerIdentifier, std::time::Instant>,
+    banned: HashMap<PeerIdentifier, Instant>,
 }
 
 impl ClusterActor {
@@ -131,13 +132,13 @@ impl ClusterActor {
             println!("Peers: {:?}", self.members.keys());
             return;
         };
-        peer.last_seen = std::time::Instant::now();
+        peer.last_seen = Instant::now();
     }
 
     /// Remove the peers that are idle for more than ttl_mills
     async fn remove_idle_peers(&mut self) {
         // loop over members, if ttl is expired, remove the member
-        let now = std::time::Instant::now();
+        let now = Instant::now();
 
         let to_be_removed = self
             .members
@@ -160,7 +161,7 @@ impl ClusterActor {
     }
 
     async fn forget_peer(&mut self, peer_addr: PeerIdentifier) -> Option<()> {
-        self.banned.insert(peer_addr.clone(), std::time::Instant::now());
+        self.banned.insert(peer_addr.clone(), Instant::now());
         self.remove_peer(&peer_addr).await
     }
 }
