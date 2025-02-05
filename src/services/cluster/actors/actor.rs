@@ -1,7 +1,7 @@
 use crate::services::cluster::command::cluster_command::{AddPeer, ClusterCommand};
 use crate::services::cluster::peers::identifier::PeerIdentifier;
 use crate::services::cluster::peers::peer::Peer;
-use crate::services::cluster::replications::replication::{PeerState, Replication};
+use crate::services::cluster::replications::replication::{time_in_secs, PeerState, Replication};
 use crate::services::interface::TWrite;
 use crate::services::query_io::QueryIO;
 use std::collections::BTreeMap;
@@ -166,6 +166,10 @@ impl ClusterActor {
     }
 
     async fn cleanup_ban_list(&mut self) {
+        // TODO unwrap!
+        let current_time_in_sec = time_in_secs().unwrap();
+        self.replication.ban_list.retain(|node| current_time_in_sec - node.ban_time < 60);
+
         for node in
             self.replication.ban_list.iter().map(|node| node.p_id.clone()).collect::<Vec<_>>()
         {

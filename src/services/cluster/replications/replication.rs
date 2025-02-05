@@ -104,11 +104,8 @@ impl Replication {
             return;
         }
 
-        let current_time_in_sec = time_in_secs().unwrap();
-
         // merge, deduplicate and retain the latest
         self.ban_list.extend(ban_list);
-        self.ban_list.retain(|node| current_time_in_sec - node.ban_time < 60);
         self.ban_list.sort_by_key(|node| (node.p_id.clone(), std::cmp::Reverse(node.ban_time)));
         self.ban_list.dedup_by_key(|node| node.p_id.clone());
     }
