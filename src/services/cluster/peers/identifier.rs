@@ -62,8 +62,8 @@ impl std::fmt::Display for PeerIdentifier {
 
 #[test]
 fn test_peer_identifier() {
-    let peer = PeerIdentifier::new("127.0.0.1", 6379);
+    let peer = PeerIdentifier::new("localhost", 6379);
     assert_eq!(peer.cluster_bind_addr(), "127.0.0.1:16379"); // 127.0.0.1:6379 + 10000
     assert_eq!(peer.to_string(), "127.0.0.1:6379"); // overriden by display
-    assert_eq!(peer, "127.0.0.1:6379".parse().unwrap());
+    assert_eq!(peer, "localhost:6379".parse().unwrap());
 }

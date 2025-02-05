@@ -1,4 +1,7 @@
+use bytes::Bytes;
+
 use crate::services::config::init::get_env;
+use std::str::FromStr;
 use std::sync::atomic::AtomicBool;
 
 use crate::services::cluster::peers::identifier::PeerIdentifier;
@@ -23,6 +26,7 @@ pub struct Replication {
     // * state is shared among peers
     pub(crate) term: u64,
     pub(crate) self_identifier: PeerIdentifier,
+    pub(crate) ban_list: Vec<BannedPeer>,
 }
 
 impl Default for Replication {
@@ -53,6 +57,7 @@ impl Replication {
                 .map(|(_, port)| port.parse().expect("Invalid port number of given")),
             term: 0,
             self_identifier: PeerIdentifier::new(self_host, self_port),
+            ban_list: Default::default(),
         }
     }
     pub fn vectorize(self) -> Vec<String> {
@@ -73,22 +78,81 @@ impl Replication {
         format!("{}:{}", self.master_host.as_ref().unwrap(), self.master_port.unwrap()).into()
     }
 
+    pub(crate) fn in_ban_list(&self, peer_identifier: &PeerIdentifier) -> bool {
+        if let Ok(current_time_in_sec) = time_in_secs() {
+            self.ban_list.iter().any(|node| {
+                &node.p_id == peer_identifier && current_time_in_sec - node.ban_time < 60
+            })
+        } else {
+            false
+        }
+    }
     pub fn current_state(&self, hop_count: u8) -> PeerState {
         PeerState {
-            id: self.self_identifier.clone(),
+            heartbeat_from: self.self_identifier.clone(),
             term: self.term,
             offset: self.master_repl_offset,
             master_replid: self.master_replid.clone(),
             hop_count,
+            ban_list: self.ban_list.clone(),
         }
+    }
+
+    // ! how do we remove peer from ban list when it comes from outside?
+    pub(crate) fn merge_ban_list(&mut self, ban_list: Vec<BannedPeer>) {
+        if ban_list.is_empty() {
+            return;
+        }
+
+        let current_time_in_sec = time_in_secs().unwrap();
+
+        // merge, deduplicate and retain the latest
+        self.ban_list.extend(ban_list);
+        self.ban_list.retain(|node| current_time_in_sec - node.ban_time < 60);
+        self.ban_list.sort_by_key(|node| (node.p_id.clone(), std::cmp::Reverse(node.ban_time)));
+        self.ban_list.dedup_by_key(|node| node.p_id.clone());
+    }
+
+    pub(crate) fn ban_peer(&mut self, p_id: &PeerIdentifier) -> anyhow::Result<()> {
+        self.ban_list.push(BannedPeer { p_id: p_id.clone(), ban_time: time_in_secs()? });
+        Ok(())
     }
 }
 
+pub(crate) fn time_in_secs() -> anyhow::Result<u64> {
+    Ok(std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("Time went backwards")
+        .as_secs())
+}
 #[derive(Debug, Clone, PartialEq)]
 pub struct PeerState {
-    pub(crate) id: PeerIdentifier,
+    pub(crate) heartbeat_from: PeerIdentifier,
     pub(crate) term: u64,
     pub(crate) offset: u64,
     pub(crate) master_replid: String,
     pub(crate) hop_count: u8, // Decremented on each hop - for gossip
+    pub(crate) ban_list: Vec<BannedPeer>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct BannedPeer {
+    pub(crate) p_id: PeerIdentifier,
+    pub(crate) ban_time: u64,
+}
+
+impl FromStr for BannedPeer {
+    type Err = std::io::Error;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let mut parts = s.split('-');
+        let p_id = parts.next().unwrap().parse::<PeerIdentifier>()?;
+        let ban_time = parts.next().unwrap().parse::<u64>().unwrap();
+        Ok(BannedPeer { p_id, ban_time })
+    }
+}
+
+impl From<BannedPeer> for Bytes {
+    fn from(banned_peer: BannedPeer) -> Self {
+        Bytes::from(format!("{}-{}", banned_peer.p_id, banned_peer.ban_time))
+    }
 }

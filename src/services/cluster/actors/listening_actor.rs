@@ -16,14 +16,14 @@ use tokio::task::JoinHandle;
 
 pub(crate) struct PeerListeningActor {
     pub(crate) read_connected: ReadConnected,
-    pub(crate) cluster_handler: Sender<ClusterCommand>,
-    pub(crate) self_id: PeerIdentifier, // cluster_handler is used to send messages to the cluster actor
+    pub(crate) cluster_handler: Sender<ClusterCommand>, // cluster_handler is used to send messages to the cluster actor
+    pub(crate) self_id: PeerIdentifier,
 }
 
 impl PeerListeningActor {
     // Update peer state on cluster manager
     async fn report_liveness(&mut self, state: PeerState) {
-        println!("[INFO] from {}, hc:{}", state.id, state.hop_count);
+        println!("[INFO] from {}, hc:{}", state.heartbeat_from, state.hop_count);
         let _ = self.cluster_handler.send(ClusterCommand::ReportAlive { state }).await;
     }
 

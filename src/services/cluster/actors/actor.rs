@@ -14,17 +14,11 @@ pub struct ClusterActor {
     members: BTreeMap<PeerIdentifier, Peer>,
     replication: Replication,
     ttl_mills: u128,
-    ban_list: Vec<PeerIdentifier>,
 }
 
 impl ClusterActor {
     pub fn new(ttl_mills: u128) -> Self {
-        Self {
-            members: BTreeMap::new(),
-            replication: Replication::default(),
-            ttl_mills,
-            ban_list: Default::default(),
-        }
+        Self { members: BTreeMap::new(), replication: Replication::default(), ttl_mills }
     }
     pub async fn handle(
         mut self,
@@ -39,10 +33,11 @@ impl ClusterActor {
             match command {
                 ClusterCommand::AddPeer(add_peer_cmd) => {
                     // composite
+                    // ! If it is already in ban-list, don't add
+                    if self.replication.in_ban_list(&add_peer_cmd.peer_addr) {
+                        return;
+                    }
                     self.add_peer(add_peer_cmd, self_handler.clone());
-                }
-                ClusterCommand::RemovePeer(peer_addr) => {
-                    self.remove_peer(&peer_addr).await;
                 }
 
                 ClusterCommand::GetPeers(callback) => {
@@ -70,20 +65,17 @@ impl ClusterActor {
                     self.set_replication_info(master_repl_id, offset);
                 }
                 ClusterCommand::ReportAlive { state } => {
-                    self.update_peer_state(&state);
+                    if self.replication.in_ban_list(&state.heartbeat_from) {
+                        return;
+                    }
                     self.gossip(state).await;
                 }
                 ClusterCommand::ForgetPeer(peer_addr, sender) => {
-                    let removed = self.forget_peer(peer_addr, self_handler.clone()).await;
-
-                    if removed.is_some() {
+                    if let Ok(Some(())) = self.forget_peer(peer_addr).await {
                         let _ = sender.send(Some(()));
                     } else {
                         let _ = sender.send(None);
                     }
-                }
-                ClusterCommand::LiftBan(peer_identifier) => {
-                    self.ban_list.retain(|x| x != &peer_identifier)
                 }
             }
         }
@@ -108,11 +100,6 @@ impl ClusterActor {
     fn add_peer(&mut self, add_peer_cmd: AddPeer, self_handler: Sender<ClusterCommand>) {
         let AddPeer { peer_addr, stream, peer_kind } = add_peer_cmd;
 
-        // ! If it is already in ban-list, don't add
-        if let Some(_) = self.ban_list.iter().find(|node| **node == peer_addr) {
-            return;
-        }
-
         self.members.entry(peer_addr.clone()).or_insert(Peer::new(
             stream,
             peer_kind,
@@ -134,15 +121,6 @@ impl ClusterActor {
         self.replication.master_repl_offset = offset;
     }
 
-    fn update_peer_state(&mut self, state: &PeerState) {
-        let Some(peer) = self.members.get_mut(&state.id) else {
-            eprintln!("Peer not found {}", state.id);
-            println!("Peers: {:?}", self.members.keys());
-            return;
-        };
-        peer.last_seen = Instant::now();
-    }
-
     /// Remove the peers that are idle for more than ttl_mills
     async fn remove_idle_peers(&mut self) {
         // loop over members, if ttl is expired, remove the member
@@ -161,6 +139,15 @@ impl ClusterActor {
     }
 
     async fn gossip(&mut self, state: PeerState) {
+        let Some(peer) = self.members.get_mut(&state.heartbeat_from) else {
+            return;
+        };
+
+        // update peer
+        peer.last_seen = Instant::now();
+        self.replication.merge_ban_list(state.ban_list);
+
+        // If hop_count is 0, don't send the message to other peers
         if state.hop_count == 0 {
             return;
         };
@@ -168,19 +155,10 @@ impl ClusterActor {
         self.send_heartbeat(hop_count).await;
     }
 
-    async fn forget_peer(
-        &mut self,
-        peer_addr: PeerIdentifier,
-        self_handler: Sender<ClusterCommand>,
-    ) -> Option<()> {
-        self.ban_list.push(peer_addr.clone());
+    async fn forget_peer(&mut self, peer_addr: PeerIdentifier) -> anyhow::Result<Option<()>> {
+        self.replication.ban_peer(&peer_addr)?;
 
-        tokio::spawn({
-            let pr = peer_addr.clone();
-            async move { self_handler.send(ClusterCommand::LiftBan(pr)).await }
-        });
-
-        self.remove_peer(&peer_addr).await
+        Ok(self.remove_peer(&peer_addr).await)
     }
 }
 
