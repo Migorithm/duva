@@ -147,6 +147,10 @@ impl ClusterActor {
         peer.last_seen = Instant::now();
         self.replication.merge_ban_list(state.ban_list);
 
+        if !self.replication.ban_list.is_empty() {
+            self.cleanup_ban_list().await;
+        }
+
         // If hop_count is 0, don't send the message to other peers
         if state.hop_count == 0 {
             return;
@@ -159,6 +163,14 @@ impl ClusterActor {
         self.replication.ban_peer(&peer_addr)?;
 
         Ok(self.remove_peer(&peer_addr).await)
+    }
+
+    async fn cleanup_ban_list(&mut self) {
+        for node in
+            self.replication.ban_list.iter().map(|node| node.p_id.clone()).collect::<Vec<_>>()
+        {
+            self.remove_peer(&node).await;
+        }
     }
 }
 
