@@ -23,6 +23,7 @@ pub struct Replication {
     // * state is shared among peers
     pub(crate) term: u64,
     pub(crate) self_identifier: PeerIdentifier,
+    pub(crate) ban_list: Vec<PeerIdentifier>,
 }
 
 impl Default for Replication {
@@ -53,6 +54,7 @@ impl Replication {
                 .map(|(_, port)| port.parse().expect("Invalid port number of given")),
             term: 0,
             self_identifier: PeerIdentifier::new(self_host, self_port),
+            ban_list: Default::default(),
         }
     }
     pub fn vectorize(self) -> Vec<String> {
@@ -73,15 +75,25 @@ impl Replication {
         format!("{}:{}", self.master_host.as_ref().unwrap(), self.master_port.unwrap()).into()
     }
 
-    pub fn current_state(&self, hop_count: u8, ban_list: Vec<PeerIdentifier>) -> PeerState {
+    pub(crate) fn in_ban_list(&self, peer_identifier: &PeerIdentifier) -> bool {
+        self.ban_list.iter().find(|node| *node == peer_identifier).is_some()
+    }
+    pub fn current_state(&self, hop_count: u8) -> PeerState {
         PeerState {
             heartbeat_from: self.self_identifier.clone(),
             term: self.term,
             offset: self.master_repl_offset,
             master_replid: self.master_replid.clone(),
             hop_count,
-            ban_list,
+            ban_list: self.ban_list.clone(),
         }
+    }
+
+    // ! how do we remove peer from ban list when it comes from outside?
+    pub(crate) fn merge_ban_list(&mut self, mut ban_list: Vec<PeerIdentifier>) {
+        // deduplicate
+        ban_list.retain(|node| !self.ban_list.contains(node));
+        self.ban_list.extend(ban_list);
     }
 }
 

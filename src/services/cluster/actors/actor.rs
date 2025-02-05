@@ -14,17 +14,11 @@ pub struct ClusterActor {
     members: BTreeMap<PeerIdentifier, Peer>,
     replication: Replication,
     ttl_mills: u128,
-    ban_list: Vec<PeerIdentifier>,
 }
 
 impl ClusterActor {
     pub fn new(ttl_mills: u128) -> Self {
-        Self {
-            members: BTreeMap::new(),
-            replication: Replication::default(),
-            ttl_mills,
-            ban_list: Default::default(),
-        }
+        Self { members: BTreeMap::new(), replication: Replication::default(), ttl_mills }
     }
     pub async fn handle(
         mut self,
@@ -84,7 +78,7 @@ impl ClusterActor {
                     }
                 }
                 ClusterCommand::LiftBan(peer_identifier) => {
-                    self.ban_list.retain(|x| x != &peer_identifier)
+                    self.replication.ban_list.retain(|x| x != &peer_identifier)
                 }
             }
         }
@@ -100,17 +94,14 @@ impl ClusterActor {
         // TODO randomly choose the peer to send the message
 
         for peer in self.members.values_mut() {
-            let msg = QueryIO::PeerState(
-                self.replication.current_state(hop_count, self.ban_list.clone()),
-            )
-            .serialize();
+            let msg = QueryIO::PeerState(self.replication.current_state(hop_count)).serialize();
 
             let _ = peer.w_conn.stream.write(msg).await;
         }
     }
 
-    fn in_ban_list(&self, peer_identifier: &PeerIdentifier) -> bool {
-        self.ban_list.iter().find(|node| *node == peer_identifier).is_some()
+    fn in_ban_list(&self, p_id: &PeerIdentifier) -> bool {
+        self.replication.in_ban_list(p_id)
     }
 
     fn add_peer(&mut self, add_peer_cmd: AddPeer, self_handler: Sender<ClusterCommand>) {
@@ -137,15 +128,6 @@ impl ClusterActor {
         self.replication.master_repl_offset = offset;
     }
 
-    fn update_peer_state(&mut self, state: &PeerState) {
-        let Some(peer) = self.members.get_mut(&state.heartbeat_from) else {
-            eprintln!("Peer not found {}", state.heartbeat_from);
-            println!("Peers: {:?}", self.members.keys());
-            return;
-        };
-        peer.last_seen = Instant::now();
-    }
-
     /// Remove the peers that are idle for more than ttl_mills
     async fn remove_idle_peers(&mut self) {
         // loop over members, if ttl is expired, remove the member
@@ -164,8 +146,15 @@ impl ClusterActor {
     }
 
     async fn gossip(&mut self, state: PeerState) {
-        self.update_peer_state(&state);
+        let Some(peer) = self.members.get_mut(&state.heartbeat_from) else {
+            return;
+        };
 
+        // update peer
+        peer.last_seen = Instant::now();
+        self.replication.merge_ban_list(state.ban_list);
+
+        // If hop_count is 0, don't send the message to other peers
         if state.hop_count == 0 {
             return;
         };
@@ -178,7 +167,7 @@ impl ClusterActor {
         peer_addr: PeerIdentifier,
         self_handler: Sender<ClusterCommand>,
     ) -> Option<()> {
-        self.ban_list.push(peer_addr.clone());
+        self.replication.ban_list.push(peer_addr.clone());
 
         // TODO propagate forget information in gossip.
 
