@@ -39,6 +39,10 @@ impl ClusterActor {
             match command {
                 ClusterCommand::AddPeer(add_peer_cmd) => {
                     // composite
+                    // ! If it is already in ban-list, don't add
+                    if self.in_ban_list(&add_peer_cmd.peer_addr) {
+                        return;
+                    }
                     self.add_peer(add_peer_cmd, self_handler.clone());
                 }
                 ClusterCommand::RemovePeer(peer_addr) => {
@@ -70,7 +74,9 @@ impl ClusterActor {
                     self.set_replication_info(master_repl_id, offset);
                 }
                 ClusterCommand::ReportAlive { state } => {
-                    self.update_peer_state(&state);
+                    if self.in_ban_list(&state.id) {
+                        return;
+                    }
                     self.gossip(state).await;
                 }
                 ClusterCommand::ForgetPeer(peer_addr, sender) => {
@@ -105,13 +111,12 @@ impl ClusterActor {
         }
     }
 
+    fn in_ban_list(&self, peer_identifier: &PeerIdentifier) -> bool {
+        self.ban_list.iter().find(|node| *node == peer_identifier).is_some()
+    }
+
     fn add_peer(&mut self, add_peer_cmd: AddPeer, self_handler: Sender<ClusterCommand>) {
         let AddPeer { peer_addr, stream, peer_kind } = add_peer_cmd;
-
-        // ! If it is already in ban-list, don't add
-        if let Some(_) = self.ban_list.iter().find(|node| **node == peer_addr) {
-            return;
-        }
 
         self.members.entry(peer_addr.clone()).or_insert(Peer::new(
             stream,
@@ -161,6 +166,8 @@ impl ClusterActor {
     }
 
     async fn gossip(&mut self, state: PeerState) {
+        self.update_peer_state(&state);
+
         if state.hop_count == 0 {
             return;
         };
@@ -174,6 +181,8 @@ impl ClusterActor {
         self_handler: Sender<ClusterCommand>,
     ) -> Option<()> {
         self.ban_list.push(peer_addr.clone());
+
+        // TODO propagate forget information in gossip.
 
         tokio::spawn({
             let pr = peer_addr.clone();
