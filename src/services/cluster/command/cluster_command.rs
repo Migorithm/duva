@@ -15,6 +15,7 @@ pub enum ClusterCommand {
     Replicate { query: QueryIO },
     ReportAlive { state: PeerState },
     ForgetPeer(PeerIdentifier, tokio::sync::oneshot::Sender<Option<()>>),
+    LiftBan(PeerIdentifier),
 }
 
 pub struct AddPeer {
