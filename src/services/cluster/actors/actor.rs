@@ -45,9 +45,6 @@ impl ClusterActor {
                     }
                     self.add_peer(add_peer_cmd, self_handler.clone());
                 }
-                ClusterCommand::RemovePeer(peer_addr) => {
-                    self.remove_peer(&peer_addr).await;
-                }
 
                 ClusterCommand::GetPeers(callback) => {
                     // send

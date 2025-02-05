@@ -7,7 +7,7 @@ use tokio::net::TcpStream;
 
 pub enum ClusterCommand {
     AddPeer(AddPeer),
-    RemovePeer(PeerIdentifier),
+
     GetPeers(tokio::sync::oneshot::Sender<PeerAddrs>),
     ReplicationInfo(tokio::sync::oneshot::Sender<Replication>),
     SetReplicationInfo { master_repl_id: String, offset: u64 },
