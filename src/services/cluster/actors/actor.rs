@@ -4,7 +4,6 @@ use crate::services::cluster::peers::peer::Peer;
 use crate::services::cluster::replications::replication::{PeerState, Replication};
 use crate::services::interface::TWrite;
 use crate::services::query_io::QueryIO;
-use anyhow::Context;
 use std::collections::BTreeMap;
 use tokio::sync::mpsc::Receiver;
 use tokio::sync::mpsc::Sender;

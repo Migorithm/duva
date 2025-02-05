@@ -23,5 +23,8 @@
 (printf '*3\r\n$6\r\nCONFIG\r\n$3\r\nGET\r\n$3\r\nDir\r\n') | nc 127.0.0.1 6379
 
 
+# cluster forget
+(printf '*3\r\n$7\r\nCLUSTER\r\n$6\r\nFORGET\r\n$40\r\n127.0.0.1:6002\r\n') | nc 127.0.0.1 6000
+
 # replication connect
 cargo run -- --port 6000  & cargo run -- --port 6001 --replicaof 127.0.0.1:6000               
