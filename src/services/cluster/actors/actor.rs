@@ -4,7 +4,7 @@ use crate::services::cluster::peers::peer::Peer;
 use crate::services::cluster::replications::replication::{PeerState, Replication};
 use crate::services::interface::TWrite;
 use crate::services::query_io::QueryIO;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::BTreeMap;
 use tokio::sync::mpsc::Receiver;
 use tokio::sync::mpsc::Sender;
 use tokio::time::Instant;
@@ -14,7 +14,7 @@ pub struct ClusterActor {
     members: BTreeMap<PeerIdentifier, Peer>,
     replication: Replication,
     ttl_mills: u128,
-    banned: Vec<PeerIdentifier>,
+    ban_list: Vec<PeerIdentifier>,
 }
 
 impl ClusterActor {
@@ -23,7 +23,7 @@ impl ClusterActor {
             members: BTreeMap::new(),
             replication: Replication::default(),
             ttl_mills,
-            banned: Default::default(),
+            ban_list: Default::default(),
         }
     }
     pub async fn handle(
@@ -83,7 +83,7 @@ impl ClusterActor {
                     }
                 }
                 ClusterCommand::LiftBan(peer_identifier) => {
-                    self.banned.retain(|x| x != &peer_identifier)
+                    self.ban_list.retain(|x| x != &peer_identifier)
                 }
             }
         }
@@ -168,7 +168,7 @@ impl ClusterActor {
         peer_addr: PeerIdentifier,
         self_handler: Sender<ClusterCommand>,
     ) -> Option<()> {
-        self.banned.push(peer_addr.clone());
+        self.ban_list.push(peer_addr.clone());
 
         tokio::spawn({
             let pr = peer_addr.clone();
