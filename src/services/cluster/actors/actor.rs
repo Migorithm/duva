@@ -14,7 +14,7 @@ pub struct ClusterActor {
     members: BTreeMap<PeerIdentifier, Peer>,
     replication: Replication,
     ttl_mills: u128,
-    banned: HashMap<PeerIdentifier, Instant>,
+    banned: Vec<PeerIdentifier>,
 }
 
 impl ClusterActor {
@@ -23,7 +23,7 @@ impl ClusterActor {
             members: BTreeMap::new(),
             replication: Replication::default(),
             ttl_mills,
-            banned: HashMap::default(),
+            banned: Default::default(),
         }
     }
     pub async fn handle(
@@ -74,13 +74,16 @@ impl ClusterActor {
                     self.gossip(state).await;
                 }
                 ClusterCommand::ForgetPeer(peer_addr, sender) => {
-                    let removed = self.forget_peer(peer_addr).await;
+                    let removed = self.forget_peer(peer_addr, self_handler.clone()).await;
 
                     if removed.is_some() {
                         let _ = sender.send(Some(()));
                     } else {
                         let _ = sender.send(None);
                     }
+                }
+                ClusterCommand::LiftBan(peer_identifier) => {
+                    self.banned.retain(|x| x != &peer_identifier)
                 }
             }
         }
@@ -160,8 +163,18 @@ impl ClusterActor {
         self.send_heartbeat(hop_count).await;
     }
 
-    async fn forget_peer(&mut self, peer_addr: PeerIdentifier) -> Option<()> {
-        self.banned.insert(peer_addr.clone(), Instant::now());
+    async fn forget_peer(
+        &mut self,
+        peer_addr: PeerIdentifier,
+        self_handler: Sender<ClusterCommand>,
+    ) -> Option<()> {
+        self.banned.push(peer_addr.clone());
+
+        tokio::spawn({
+            let pr = peer_addr.clone();
+            async move { self_handler.send(ClusterCommand::LiftBan(pr)).await }
+        });
+
         self.remove_peer(&peer_addr).await
     }
 }
