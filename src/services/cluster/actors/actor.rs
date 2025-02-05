@@ -107,7 +107,12 @@ impl ClusterActor {
 
     fn add_peer(&mut self, add_peer_cmd: AddPeer, self_handler: Sender<ClusterCommand>) {
         let AddPeer { peer_addr, stream, peer_kind } = add_peer_cmd;
-        // TODO Check ban-list
+
+        // ! If it is already in ban-list, don't add
+        if let Some(_) = self.ban_list.iter().find(|node| **node == peer_addr) {
+            return;
+        }
+
         self.members.entry(peer_addr.clone()).or_insert(Peer::new(
             stream,
             peer_kind,
