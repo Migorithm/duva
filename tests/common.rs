@@ -75,7 +75,7 @@ impl TestProcessChild {
     pub fn terminate(&mut self) -> std::io::Result<()> {
         // First try graceful shutdown
         // Give the process some time to shutdown gracefully
-        let timeout = Duration::from_secs(5);
+        let timeout = Duration::from_secs(2);
         let start = std::time::Instant::now();
 
         while start.elapsed() < timeout {
