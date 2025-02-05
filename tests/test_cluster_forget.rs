@@ -5,32 +5,6 @@ use common::{array, check_internodes_communication, spawn_server_as_slave, spawn
 use duva::client_utils::ClientStreamHandler;
 
 #[tokio::test]
-async fn test_cluster_forget_node() {
-    // GIVEN
-    const HOP_COUNT: usize = 0;
-    let master_p = spawn_server_process();
-    let repl_p = spawn_server_as_slave(&master_p);
-    let mut processes = vec![master_p, repl_p];
-
-    check_internodes_communication(&mut processes, HOP_COUNT, 2).unwrap();
-
-    // WHEN
-    let mut client_handler = ClientStreamHandler::new(processes[0].bind_addr()).await;
-    let replica_id = processes[1].bind_addr();
-    let cmd = &array(vec!["cluster", "forget", &replica_id]);
-    let cluster_info = client_handler.send_and_get(cmd).await;
-
-    // THEN
-    assert_eq!(cluster_info, "+OK\r\n");
-
-    // WHEN
-    let cluster_info = client_handler.send_and_get(&array(vec!["cluster", "info"])).await;
-
-    // THEN
-    assert_eq!(cluster_info, array(vec!["cluster_known_nodes:0"]));
-}
-
-#[tokio::test]
 async fn test_cluster_forget_node_return_error_when_wrong_id_given() {
     // GIVEN
     let master_p = spawn_server_process();
@@ -64,14 +38,19 @@ async fn test_cluster_forget_node_propagation() {
 
     // WHEN
     const TIMEOUT: u64 = 2;
+    let never_arrivable_msg = processes[1].heartbeat_msg(1);
     let mut client_handler = ClientStreamHandler::new(processes[0].bind_addr()).await;
     let replica_id = processes[1].bind_addr();
     let cmd = &array(vec!["cluster", "forget", &replica_id]);
-    client_handler.send_and_get(cmd).await;
-    let never_arrivable_msg = processes[1].heartbeat_msg(1);
+    let response1 = client_handler.send_and_get(cmd).await;
+    let response2 = client_handler.send_and_get(&array(vec!["cluster", "info"])).await;
+
+    // THEN response being OK
+    assert_eq!(response1, "+OK\r\n");
+    // THEN cluster_known_nodes:1
+    assert_eq!(response2, array(vec!["cluster_known_nodes:1"]));
 
     // THEN - master_p and repl_p2 doesn't get message from repl_p2
-
     let res1 = processes[0].timed_wait_for_message(&never_arrivable_msg, HOP_COUNT, TIMEOUT);
     let res2 = processes[2].timed_wait_for_message(&never_arrivable_msg, HOP_COUNT, TIMEOUT);
 
