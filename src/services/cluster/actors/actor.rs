@@ -4,7 +4,7 @@ use crate::services::cluster::peers::peer::Peer;
 use crate::services::cluster::replications::replication::{PeerState, Replication};
 use crate::services::interface::TWrite;
 use crate::services::query_io::QueryIO;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use tokio::sync::mpsc::Receiver;
 use tokio::sync::mpsc::Sender;
 
@@ -13,11 +13,17 @@ pub struct ClusterActor {
     members: BTreeMap<PeerIdentifier, Peer>,
     replication: Replication,
     ttl_mills: u128,
+    banned: HashMap<PeerIdentifier, std::time::Instant>,
 }
 
 impl ClusterActor {
     pub fn new(ttl_mills: u128) -> Self {
-        Self { members: BTreeMap::new(), replication: Replication::default(), ttl_mills }
+        Self {
+            members: BTreeMap::new(),
+            replication: Replication::default(),
+            ttl_mills,
+            banned: HashMap::default(),
+        }
     }
     pub async fn handle(
         mut self,
@@ -35,7 +41,7 @@ impl ClusterActor {
                     self.add_peer(add_peer_cmd, self_handler.clone());
                 }
                 ClusterCommand::RemovePeer(peer_addr) => {
-                    self.remove_peer(peer_addr).await;
+                    self.remove_peer(&peer_addr).await;
                 }
 
                 ClusterCommand::GetPeers(callback) => {
@@ -67,8 +73,9 @@ impl ClusterActor {
                     self.gossip(state).await;
                 }
                 ClusterCommand::ForgetPeer(peer_addr, sender) => {
-                    let peer = self.remove_peer(peer_addr).await;
-                    if peer.is_some() {
+                    let removed = self.forget_peer(peer_addr).await;
+
+                    if removed.is_some() {
                         let _ = sender.send(Some(()));
                     } else {
                         let _ = sender.send(None);
@@ -96,8 +103,7 @@ impl ClusterActor {
 
     fn add_peer(&mut self, add_peer_cmd: AddPeer, self_handler: Sender<ClusterCommand>) {
         let AddPeer { peer_addr, stream, peer_kind } = add_peer_cmd;
-
-        println!("Peer added: {}", peer_addr);
+        // TODO Check ban-list
         self.members.entry(peer_addr.clone()).or_insert(Peer::new(
             stream,
             peer_kind,
@@ -105,8 +111,8 @@ impl ClusterActor {
             peer_addr,
         ));
     }
-    async fn remove_peer(&mut self, peer_addr: PeerIdentifier) -> Option<()> {
-        if let Some(peer) = self.members.remove(&peer_addr) {
+    async fn remove_peer(&mut self, peer_addr: &PeerIdentifier) -> Option<()> {
+        if let Some(peer) = self.members.remove(peer_addr) {
             // stop the runnin process and take the connection in case topology changes are made
             let _read_connected = peer.listener_kill_trigger.kill().await;
             return Some(());
@@ -141,7 +147,7 @@ impl ClusterActor {
             .collect::<Vec<_>>();
 
         for peer_id in to_be_removed {
-            self.remove_peer(peer_id).await;
+            self.remove_peer(&peer_id).await;
         }
     }
 
@@ -151,6 +157,11 @@ impl ClusterActor {
         };
         let hop_count = state.hop_count - 1;
         self.send_heartbeat(hop_count).await;
+    }
+
+    async fn forget_peer(&mut self, peer_addr: PeerIdentifier) -> Option<()> {
+        self.banned.insert(peer_addr.clone(), std::time::Instant::now());
+        self.remove_peer(&peer_addr).await
     }
 }
 
