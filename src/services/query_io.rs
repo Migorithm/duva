@@ -1,6 +1,6 @@
 use std::fmt::Write;
 
-use crate::services::cluster::replications::replication::PeerState;
+use crate::services::cluster::replications::replication::{time_in_secs, PeerState};
 use crate::services::statefuls::cache::CacheValue;
 use anyhow::{Context, Result};
 use bytes::{Bytes, BytesMut};
@@ -427,7 +427,7 @@ fn test_peer_state_ban_list_to_binary() {
     // GIVEN
     let mut replication = Replication::default();
     let peer_id = PeerIdentifier::new("127.0.0.1", 6739);
-    replication.ban_peer(&peer_id);
+    replication.ban_peer(&peer_id).unwrap();
 
     let ban_time = replication.ban_list[0].ban_time;
 
@@ -496,17 +496,14 @@ fn test_banned_peer_serde() {
     let peer_id = PeerIdentifier::new("127.0.0.1", 6739);
 
     //WHEN
-    replication.ban_peer(&peer_id);
+    replication.ban_peer(&peer_id).unwrap();
     let banned_peer_in_bytes: Bytes = replication.ban_list[0].clone().try_into().unwrap();
 
     let banned_peer: BannedPeer =
         String::from_utf8(banned_peer_in_bytes.to_vec()).unwrap().parse().unwrap();
     // less than 1 second passed
 
-    let current = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .expect("Time went backwards")
-        .as_secs();
+    let current = time_in_secs().unwrap();
 
     //THEN
     assert_eq!(banned_peer.ban_time, current);
@@ -523,7 +520,7 @@ fn test_banned_peer_serde_when_time_passed() {
     let peer_id = PeerIdentifier::new("127.0.0.1", 6739);
 
     //WHEN
-    replication.ban_peer(&peer_id);
+    replication.ban_peer(&peer_id).unwrap();
     let banned_peer_in_bytes: Bytes = replication.ban_list[0].clone().try_into().unwrap();
 
     let banned_peer: BannedPeer =
@@ -532,10 +529,7 @@ fn test_banned_peer_serde_when_time_passed() {
 
     std::thread::sleep(std::time::Duration::from_secs(1));
 
-    let current = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .expect("Time went backwards")
-        .as_secs();
+    let current = time_in_secs().unwrap();
 
     //THEN
     assert_ne!(banned_peer.ban_time, current);

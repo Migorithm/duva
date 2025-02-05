@@ -4,6 +4,7 @@ use crate::services::cluster::peers::peer::Peer;
 use crate::services::cluster::replications::replication::{PeerState, Replication};
 use crate::services::interface::TWrite;
 use crate::services::query_io::QueryIO;
+use anyhow::Context;
 use std::collections::BTreeMap;
 use tokio::sync::mpsc::Receiver;
 use tokio::sync::mpsc::Sender;
@@ -34,7 +35,7 @@ impl ClusterActor {
                 ClusterCommand::AddPeer(add_peer_cmd) => {
                     // composite
                     // ! If it is already in ban-list, don't add
-                    if self.in_ban_list(&add_peer_cmd.peer_addr) {
+                    if self.replication.in_ban_list(&add_peer_cmd.peer_addr) {
                         return;
                     }
                     self.add_peer(add_peer_cmd, self_handler.clone());
@@ -65,13 +66,13 @@ impl ClusterActor {
                     self.set_replication_info(master_repl_id, offset);
                 }
                 ClusterCommand::ReportAlive { state } => {
-                    if self.in_ban_list(&state.heartbeat_from) {
+                    if self.replication.in_ban_list(&state.heartbeat_from) {
                         return;
                     }
                     self.gossip(state).await;
                 }
                 ClusterCommand::ForgetPeer(peer_addr, sender) => {
-                    if self.forget_peer(peer_addr).await.is_some() {
+                    if let Ok(Some(())) = self.forget_peer(peer_addr).await {
                         let _ = sender.send(Some(()));
                     } else {
                         let _ = sender.send(None);
@@ -95,10 +96,6 @@ impl ClusterActor {
 
             let _ = peer.w_conn.stream.write(msg).await;
         }
-    }
-
-    fn in_ban_list(&self, p_id: &PeerIdentifier) -> bool {
-        self.replication.in_ban_list(p_id)
     }
 
     fn add_peer(&mut self, add_peer_cmd: AddPeer, self_handler: Sender<ClusterCommand>) {
@@ -159,10 +156,10 @@ impl ClusterActor {
         self.send_heartbeat(hop_count).await;
     }
 
-    async fn forget_peer(&mut self, peer_addr: PeerIdentifier) -> Option<()> {
-        self.replication.ban_peer(&peer_addr);
+    async fn forget_peer(&mut self, peer_addr: PeerIdentifier) -> anyhow::Result<Option<()>> {
+        self.replication.ban_peer(&peer_addr)?;
 
-        self.remove_peer(&peer_addr).await
+        Ok(self.remove_peer(&peer_addr).await)
     }
 }
 

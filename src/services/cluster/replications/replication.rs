@@ -79,7 +79,13 @@ impl Replication {
     }
 
     pub(crate) fn in_ban_list(&self, peer_identifier: &PeerIdentifier) -> bool {
-        self.ban_list.iter().find(|node| &node.p_id == peer_identifier).is_some()
+        if let Ok(current_time_in_sec) = time_in_secs() {
+            self.ban_list.iter().any(|node| {
+                &node.p_id == peer_identifier && current_time_in_sec - node.ban_time < 60
+            })
+        } else {
+            false
+        }
     }
     pub fn current_state(&self, hop_count: u8) -> PeerState {
         PeerState {
@@ -99,17 +105,18 @@ impl Replication {
         self.ban_list.extend(ban_list);
     }
 
-    pub(crate) fn ban_peer(&mut self, p_id: &PeerIdentifier) {
-        self.ban_list.push(BannedPeer {
-            p_id: p_id.clone(),
-            ban_time: std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .expect("Time went backwards")
-                .as_secs(),
-        });
+    pub(crate) fn ban_peer(&mut self, p_id: &PeerIdentifier) -> anyhow::Result<()> {
+        self.ban_list.push(BannedPeer { p_id: p_id.clone(), ban_time: time_in_secs()? });
+        Ok(())
     }
 }
 
+pub(crate) fn time_in_secs() -> anyhow::Result<u64> {
+    Ok(std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("Time went backwards")
+        .as_secs())
+}
 #[derive(Debug, Clone, PartialEq)]
 pub struct PeerState {
     pub(crate) heartbeat_from: PeerIdentifier,
