@@ -63,6 +63,7 @@ impl ClusterManager {
         {
             peer_stream = peer_stream.send_sync_to_inbound_server(cache_manager).await?;
         }
+
         self.send(peer_stream.to_add_peer()?).await?;
 
         Ok(())

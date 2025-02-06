@@ -37,7 +37,7 @@ impl ClusterActor {
                     // composite
                     // ! If it is already in ban-list, don't add
                     if self.replication.in_ban_list(&add_peer_cmd.peer_addr) {
-                        return;
+                        continue;
                     }
                     self.add_peer(add_peer_cmd, self_handler.clone());
                 }
