@@ -1,6 +1,5 @@
-use std::str::FromStr;
-
 use crate::{from_to, make_smart_pointer};
+use std::str::FromStr;
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Hash)]
 pub struct PeerIdentifier(pub String);
@@ -21,7 +20,6 @@ impl PeerIdentifier {
 
 impl FromStr for PeerIdentifier {
     type Err = std::io::Error;
-
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         Ok(Self(s.to_string()))
     }
