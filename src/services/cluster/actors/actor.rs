@@ -34,11 +34,6 @@ impl ClusterActor {
 
             match command {
                 ClusterCommand::AddPeer(add_peer_cmd) => {
-                    // composite
-                    // ! If it is already in ban-list, don't add
-                    if self.replication.in_ban_list(&add_peer_cmd.peer_addr) {
-                        continue;
-                    }
                     self.add_peer(add_peer_cmd, self_handler.clone());
                 }
 
@@ -68,7 +63,7 @@ impl ClusterActor {
                 }
                 ClusterCommand::ReportAlive { state } => {
                     if self.replication.in_ban_list(&state.heartbeat_from) {
-                        return;
+                        continue;
                     }
 
                     self.gossip(state.hop_count).await;
@@ -103,6 +98,8 @@ impl ClusterActor {
 
     fn add_peer(&mut self, add_peer_cmd: AddPeer, self_handler: Sender<ClusterCommand>) {
         let AddPeer { peer_addr, stream, peer_kind } = add_peer_cmd;
+
+        self.replication.remove_from_ban_list(&peer_addr);
 
         self.members.entry(peer_addr.clone()).or_insert(Peer::new(
             stream,

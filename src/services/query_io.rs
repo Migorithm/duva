@@ -1,6 +1,6 @@
 use std::fmt::Write;
 
-use crate::services::cluster::replications::replication::{time_in_secs, PeerState};
+use crate::services::cluster::replications::replication::PeerState;
 use crate::services::statefuls::cache::CacheValue;
 use anyhow::{Context, Result};
 use bytes::{Bytes, BytesMut};
@@ -488,9 +488,9 @@ fn test_parse_file() {
 #[test]
 fn test_banned_peer_serde() {
     use crate::services::cluster::peers::identifier::PeerIdentifier;
+    use crate::services::cluster::replications::replication::time_in_secs;
     use crate::services::cluster::replications::replication::BannedPeer;
     use crate::services::cluster::replications::replication::Replication;
-
     //GIVEN
     let mut replication = Replication::default();
     let peer_id = PeerIdentifier::new("127.0.0.1", 6739);
@@ -512,6 +512,7 @@ fn test_banned_peer_serde() {
 #[test]
 fn test_banned_peer_serde_when_time_passed() {
     use crate::services::cluster::peers::identifier::PeerIdentifier;
+    use crate::services::cluster::replications::replication::time_in_secs;
     use crate::services::cluster::replications::replication::BannedPeer;
     use crate::services::cluster::replications::replication::Replication;
 

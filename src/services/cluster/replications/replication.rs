@@ -102,6 +102,13 @@ impl Replication {
         self.ban_list.push(BannedPeer { p_id: p_id.clone(), ban_time: time_in_secs()? });
         Ok(())
     }
+
+    pub(crate) fn remove_from_ban_list(&mut self, peer_addr: &PeerIdentifier) {
+        let idx = self.ban_list.iter().position(|node| &node.p_id == peer_addr);
+        if let Some(idx) = idx {
+            self.ban_list.swap_remove(idx);
+        }
+    }
 }
 
 pub(crate) fn time_in_secs() -> anyhow::Result<u64> {
