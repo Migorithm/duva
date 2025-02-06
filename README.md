@@ -103,9 +103,6 @@ sequenceDiagram
         SlaveServer -->> slave_peer_listener: spawn 
         Note right of SlaveServer : SlaveServer also listens for incoming peer connections
     and 
-    
-
-        
         s-->>peer_listener: spawn
         
         loop 
