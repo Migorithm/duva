@@ -9,6 +9,11 @@
 
 (printf '*3\r\n$3\r\nSET\r\n$3\r\nfoo\r\n$3\r\nbar\r\n') | nc 127.0.0.1 6379
 
+# INFO 
+(printf '*2\r\n$4\r\nINFO\r\n$11\r\nreplication\r\n') | nc 127.0.0.1 6000  
+
+# Cluster info
+(printf '*2\r\n$7\r\nCLUSTER\r\n$4\r\ninfo\r\n') | nc 127.0.0.1 6000  
 
 # Get
 (printf '*2\r\n$3\r\nGET\r\n$3\r\nfoo\r\n') | nc 127.0.0.1 6379

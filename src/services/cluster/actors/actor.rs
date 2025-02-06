@@ -34,11 +34,10 @@ impl ClusterActor {
 
             match command {
                 ClusterCommand::AddPeer(add_peer_cmd) => {
-                    self.add_peer(add_peer_cmd, self_handler.clone());
+                    self.add_peer(add_peer_cmd, self_handler.clone()).await;
                 }
 
                 ClusterCommand::GetPeers(callback) => {
-                    // send
                     let _ = callback.send(self.members.keys().cloned().collect::<Vec<_>>().into());
                 }
 
@@ -96,17 +95,19 @@ impl ClusterActor {
         }
     }
 
-    fn add_peer(&mut self, add_peer_cmd: AddPeer, self_handler: Sender<ClusterCommand>) {
+    async fn add_peer(&mut self, add_peer_cmd: AddPeer, self_handler: Sender<ClusterCommand>) {
         let AddPeer { peer_addr, stream, peer_kind } = add_peer_cmd;
 
         self.replication.remove_from_ban_list(&peer_addr);
 
-        self.members.entry(peer_addr.clone()).or_insert(Peer::new(
-            stream,
-            peer_kind,
-            self_handler.clone(),
-            peer_addr,
-        ));
+        let peer = Peer::new(stream, peer_kind, self_handler.clone(), peer_addr.clone());
+
+        // If the map did have this key present, the value is updated, and the old
+        // value is returned. The key is not updated,
+        if let Some(existing_peer) = self.members.insert(peer_addr.clone(), peer) {
+            // stop the runnin process and take the connection in case topology changes are made
+            existing_peer.listener_kill_trigger.kill().await;
+        }
     }
     async fn remove_peer(&mut self, peer_addr: &PeerIdentifier) -> Option<()> {
         if let Some(peer) = self.members.remove(peer_addr) {
