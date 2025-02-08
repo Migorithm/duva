@@ -110,16 +110,12 @@ sequenceDiagram
         Note right of SlaveServer : SlaveServer also listens for incoming peer connections
     and 
         s-->>peer_listener: spawn
-        
         loop 
-        
             SlaveServer -->>+ peer_listener: bind 
             peer_listener -->- SlaveServer: threeway handshake
             peer_listener -->> SlaveServer : disseminate peer infomation
             peer_listener -->>+ Cluster : pass stream
             Cluster -->>- Cluster : add peer
-
-        
         end
         
   
