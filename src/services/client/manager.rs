@@ -4,6 +4,7 @@ use crate::services::cluster::command::cluster_command::ClusterCommand;
 use crate::services::cluster::manager::ClusterManager;
 use crate::services::config::manager::ConfigManager;
 use crate::services::config::ConfigResponse;
+
 use crate::services::interface::TWrite;
 use crate::services::query_io::QueryIO;
 use crate::services::statefuls::cache::manager::CacheManager;
@@ -123,7 +124,7 @@ impl ClientManager {
     }
 
     async fn handle_client_stream(&self, stream: TcpStream) {
-        let mut stream = ClientStream::new(stream);
+        let mut stream = ClientStream(stream);
         loop {
             let Ok(requests) = stream.extract_query().await else {
                 eprintln!("invalid user request");
@@ -131,7 +132,6 @@ impl ClientManager {
             };
 
             for request in requests.into_iter() {
-                // TODO Logging if needed
                 if let Err(_) = self.make_consensus(request.log()).await {
                     let _ = stream.write(QueryIO::Err("Consensus failed".into())).await;
                     continue;

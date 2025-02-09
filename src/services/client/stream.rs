@@ -8,16 +8,11 @@ use crate::{
 use anyhow::Context;
 use tokio::net::TcpStream;
 
-pub struct ClientStream {
-    stream: TcpStream,
-}
+pub struct ClientStream(pub(crate) TcpStream);
 
-make_smart_pointer!(ClientStream, TcpStream => stream);
+make_smart_pointer!(ClientStream, TcpStream);
 
 impl ClientStream {
-    pub(crate) fn new(stream: TcpStream) -> Self {
-        Self { stream }
-    }
     pub(crate) async fn extract_query(&mut self) -> anyhow::Result<Vec<ClientRequest>> {
         let query_ios = self.read_values().await?;
         Ok(query_ios

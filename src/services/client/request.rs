@@ -21,7 +21,6 @@ pub enum ClientRequest {
 }
 
 impl ClientRequest {
-    // TODO return could be Option<Log>
     pub fn log(&self) -> Option<QueryIO> {
         match self {
             ClientRequest::Set { key, value } => {
