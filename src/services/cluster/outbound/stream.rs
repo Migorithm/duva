@@ -4,7 +4,7 @@ use crate::services::cluster::manager::ClusterManager;
 use crate::services::cluster::outbound::response::ConnectionResponse;
 use crate::services::cluster::peers::identifier::PeerIdentifier;
 use crate::services::cluster::peers::kind::PeerKind;
-use crate::services::cluster::replications::replication::Replication;
+use crate::services::cluster::replications::replication::ReplicationInfo;
 use crate::services::interface::TRead;
 use crate::services::interface::TWrite;
 use crate::{make_smart_pointer, write_array};
@@ -14,7 +14,7 @@ use tokio::net::TcpStream;
 // The following is used only when the node is in slave mode
 pub(crate) struct OutboundStream {
     pub(crate) stream: TcpStream,
-    pub(crate) repl_info: Replication,
+    pub(crate) repl_info: ReplicationInfo,
     connected_node_info: Option<ConnectedNodeInfo>,
     connect_to: PeerIdentifier,
 }
@@ -23,7 +23,7 @@ make_smart_pointer!(OutboundStream, TcpStream => stream);
 impl OutboundStream {
     pub(crate) async fn new(
         connect_to: PeerIdentifier,
-        repl_info: Replication,
+        repl_info: ReplicationInfo,
     ) -> anyhow::Result<Self> {
         Ok(OutboundStream {
             stream: TcpStream::connect(&connect_to.cluster_bind_addr()).await?,

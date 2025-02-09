@@ -5,7 +5,7 @@ use crate::services::cluster::inbound::request::HandShakeRequestEnum;
 use crate::services::cluster::peers::address::PeerAddrs;
 use crate::services::cluster::peers::identifier::PeerIdentifier;
 use crate::services::cluster::peers::kind::PeerKind;
-use crate::services::cluster::replications::replication::Replication;
+use crate::services::cluster::replications::replication::ReplicationInfo;
 use crate::services::interface::TGetPeerIp;
 use crate::services::interface::TRead;
 use crate::services::interface::TWrite;
@@ -20,7 +20,7 @@ use tokio::net::TcpStream;
 // The following is used only when the node is in master mode
 pub(crate) struct InboundStream {
     pub(crate) stream: TcpStream,
-    pub(crate) repl_info: Replication,
+    pub(crate) repl_info: ReplicationInfo,
     pub(crate) inbound_peer_addr: Option<PeerIdentifier>,
     pub(crate) inbound_master_replid: Option<String>,
 }
@@ -28,7 +28,7 @@ pub(crate) struct InboundStream {
 make_smart_pointer!(InboundStream, TcpStream => stream);
 
 impl InboundStream {
-    pub(crate) fn new(stream: TcpStream, repl_info: Replication) -> Self {
+    pub(crate) fn new(stream: TcpStream, repl_info: ReplicationInfo) -> Self {
         Self { stream, repl_info, inbound_peer_addr: None, inbound_master_replid: None }
     }
     pub async fn recv_threeway_handshake(&mut self) -> anyhow::Result<()> {

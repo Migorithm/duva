@@ -1,4 +1,4 @@
-use crate::services::cluster::replications::replication::Replication;
+use crate::services::cluster::replications::replication::ReplicationInfo;
 use crate::services::interface::TWriterFactory;
 use crate::services::statefuls::cache::CacheEntry;
 
@@ -47,7 +47,7 @@ impl SaveActor {
     pub async fn new(
         target: SaveTarget,
         num_of_shards: usize,
-        repl_info: Replication,
+        repl_info: ReplicationInfo,
     ) -> Result<Self> {
         let meta = SaveMeta::new(
             num_of_shards,

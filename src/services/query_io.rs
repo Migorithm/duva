@@ -423,9 +423,9 @@ fn test_from_peer_state_to_bytes() {
 #[test]
 fn test_peer_state_ban_list_to_binary() {
     use crate::services::cluster::peers::identifier::PeerIdentifier;
-    use crate::services::cluster::replications::replication::Replication;
+    use crate::services::cluster::replications::replication::ReplicationInfo;
     // GIVEN
-    let mut replication = Replication::default();
+    let mut replication = ReplicationInfo::default();
     let peer_id = PeerIdentifier::new("127.0.0.1", 6739);
     replication.ban_peer(&peer_id).unwrap();
 
@@ -490,9 +490,9 @@ fn test_banned_peer_serde() {
     use crate::services::cluster::peers::identifier::PeerIdentifier;
     use crate::services::cluster::replications::replication::time_in_secs;
     use crate::services::cluster::replications::replication::BannedPeer;
-    use crate::services::cluster::replications::replication::Replication;
+    use crate::services::cluster::replications::replication::ReplicationInfo;
     //GIVEN
-    let mut replication = Replication::default();
+    let mut replication = ReplicationInfo::default();
     let peer_id = PeerIdentifier::new("127.0.0.1", 6739);
 
     //WHEN
@@ -514,10 +514,10 @@ fn test_banned_peer_serde_when_time_passed() {
     use crate::services::cluster::peers::identifier::PeerIdentifier;
     use crate::services::cluster::replications::replication::time_in_secs;
     use crate::services::cluster::replications::replication::BannedPeer;
-    use crate::services::cluster::replications::replication::Replication;
+    use crate::services::cluster::replications::replication::ReplicationInfo;
 
     //GIVEN
-    let mut replication = Replication::default();
+    let mut replication = ReplicationInfo::default();
     let peer_id = PeerIdentifier::new("127.0.0.1", 6739);
 
     //WHEN

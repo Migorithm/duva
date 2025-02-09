@@ -10,7 +10,7 @@ use crate::services::cluster::replications::replid_generator::generate_replid;
 pub static IS_MASTER_MODE: AtomicBool = AtomicBool::new(true);
 
 #[derive(Debug, Clone)]
-pub struct Replication {
+pub struct ReplicationInfo {
     pub(crate) connected_slaves: u16, // The number of connected replicas
     pub(crate) master_replid: String, // The replication ID of the master example: 8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb
     pub(crate) master_repl_offset: u64, // The server's current replication offset. Example: 0
@@ -29,21 +29,21 @@ pub struct Replication {
     pub(crate) ban_list: Vec<BannedPeer>,
 }
 
-impl Default for Replication {
+impl Default for ReplicationInfo {
     fn default() -> Self {
         let env = get_env();
-        let replication = Replication::new(env.replicaof.clone(), &env.host, env.port);
+        let replication = ReplicationInfo::new(env.replicaof.clone(), &env.host, env.port);
         IS_MASTER_MODE
             .store(replication.master_port.is_none(), std::sync::atomic::Ordering::Relaxed);
         replication
     }
 }
 
-impl Replication {
+impl ReplicationInfo {
     pub fn new(replicaof: Option<(String, String)>, self_host: &str, self_port: u16) -> Self {
         let master_replid = if replicaof.is_none() { generate_replid() } else { "?".to_string() };
 
-        Replication {
+        ReplicationInfo {
             connected_slaves: 0, // dynamically configurable
             master_replid: master_replid.clone(),
             master_repl_offset: 0,

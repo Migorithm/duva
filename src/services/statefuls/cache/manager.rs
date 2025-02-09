@@ -2,7 +2,7 @@ use super::actor::CacheActor;
 use super::actor::CacheCommand;
 use super::actor::CacheCommandSender;
 use super::CacheEntry;
-use crate::services::cluster::replications::replication::Replication;
+use crate::services::cluster::replications::replication::ReplicationInfo;
 use crate::services::query_io::QueryIO;
 use crate::services::statefuls::cache::ttl::actor::TtlActor;
 use crate::services::statefuls::cache::ttl::manager::TtlSchedulerInbox;
@@ -60,7 +60,7 @@ impl CacheManager {
     pub(crate) async fn route_save(
         &self,
         save_target: SaveTarget,
-        repl_info: Replication,
+        repl_info: ReplicationInfo,
     ) -> Result<JoinHandle<anyhow::Result<SaveActor>>> {
         let (outbox, inbox) = tokio::sync::mpsc::channel(100);
         let save_actor = SaveActor::new(save_target, self.inboxes.len(), repl_info).await?;

@@ -1,8 +1,10 @@
 use crate::services::client::request::ClientRequest;
 use crate::services::client::stream::ClientStream;
+use crate::services::cluster::command::cluster_command::ClusterCommand;
 use crate::services::cluster::manager::ClusterManager;
 use crate::services::config::manager::ConfigManager;
 use crate::services::config::ConfigResponse;
+
 use crate::services::interface::TWrite;
 use crate::services::query_io::QueryIO;
 use crate::services::statefuls::cache::manager::CacheManager;
@@ -128,7 +130,14 @@ impl ClientManager {
                 eprintln!("invalid user request");
                 continue;
             };
-            for request in requests {
+
+            for request in requests.into_iter() {
+                if let Err(_) = self.try_concensus(&request).await {
+                    let _ = stream.write(QueryIO::Err("Consensus failed".into())).await;
+                    continue;
+                };
+
+                // State change
                 let res = match self.handle(request).await {
                     Ok(response) => stream.write(response).await,
                     Err(e) => stream.write(QueryIO::Err(e.to_string().into())).await,
@@ -141,5 +150,15 @@ impl ClientManager {
                 }
             }
         }
+    }
+
+    async fn try_concensus(&self, request: &ClientRequest) -> anyhow::Result<()> {
+        let Some(log) = request.log() else {
+            return Ok(());
+        };
+
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        self.cluster_manager.send(ClusterCommand::Concensus { log, sender: tx }).await?;
+        Ok(rx.await?)
     }
 }

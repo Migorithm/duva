@@ -9,6 +9,7 @@ use anyhow::Context;
 use tokio::net::TcpStream;
 
 pub struct ClientStream(pub(crate) TcpStream);
+
 make_smart_pointer!(ClientStream, TcpStream);
 
 impl ClientStream {
@@ -23,51 +24,52 @@ impl ClientStream {
 
                     let command = values.next().context("Command not given")?.to_lowercase();
 
-                    match (command.as_str(), values.collect::<Vec<_>>().as_slice()) {
-                        ("ping", []) => Ok(ClientRequest::Ping),
-                        ("get", [key]) => Ok(ClientRequest::Get { key: key.to_string() }),
-                        ("set", [key, value]) => Ok(ClientRequest::Set {
-                            key: key.to_string(),
-                            value: value.to_string(),
-                        }),
-                        ("set", [key, value, px, expiry]) if px.to_lowercase() == "px" => {
-                            Ok(ClientRequest::SetWithExpiry {
-                                key: key.to_string(),
-                                value: value.to_string(),
-                                expiry: Self::extract_expiry(expiry)?,
-                            })
-                        }
-                        ("delete", [key]) => Ok(ClientRequest::Delete { key: key.to_string() }),
-                        ("echo", [value]) => Ok(ClientRequest::Echo(value.to_string())),
-                        ("config", [key, value]) => Ok(ClientRequest::Config {
-                            key: key.to_string(),
-                            value: value.to_string(),
-                        }),
-
-                        ("keys", [var]) if !var.is_empty() => {
-                            if var == "*" {
-                                return Ok(ClientRequest::Keys { pattern: None });
-                            }
-                            Ok(ClientRequest::Keys { pattern: Some(var.to_string()) })
-                        }
-                        ("save", []) => Ok(ClientRequest::Save),
-                        ("info", [_unused_value]) => Ok(ClientRequest::Info),
-                        ("cluster", val) if !val.is_empty() => {
-                            match val[0].to_lowercase().as_str() {
-                                "info" => Ok(ClientRequest::ClusterInfo),
-                                "forget" => Ok(ClientRequest::ClusterForget(
-                                    val.get(1).cloned().context("Must")?.into(),
-                                )),
-                                _ => Err(anyhow::anyhow!("Invalid command")),
-                            }
-                        }
-
-                        _ => Err(anyhow::anyhow!("Invalid command")),
-                    }
+                    self.parse_query(command, values.collect())
                 }
                 _ => Err(anyhow::anyhow!("Unexpected command format")),
             })
             .collect()
+    }
+
+    /// Analyze the command and arguments to create a `ClientRequest`
+    fn parse_query(&self, cmd: String, args: Vec<String>) -> anyhow::Result<ClientRequest> {
+        match (cmd.as_str(), args.as_slice()) {
+            ("ping", []) => Ok(ClientRequest::Ping),
+            ("get", [key]) => Ok(ClientRequest::Get { key: key.to_string() }),
+            ("set", [key, value]) => {
+                Ok(ClientRequest::Set { key: key.to_string(), value: value.to_string() })
+            }
+            ("set", [key, value, px, expiry]) if px.to_lowercase() == "px" => {
+                Ok(ClientRequest::SetWithExpiry {
+                    key: key.to_string(),
+                    value: value.to_string(),
+                    expiry: Self::extract_expiry(expiry)?,
+                })
+            }
+            ("delete", [key]) => Ok(ClientRequest::Delete { key: key.to_string() }),
+            ("echo", [value]) => Ok(ClientRequest::Echo(value.to_string())),
+            ("config", [key, value]) => {
+                Ok(ClientRequest::Config { key: key.to_string(), value: value.to_string() })
+            }
+
+            ("keys", [var]) if !var.is_empty() => {
+                if var == "*" {
+                    return Ok(ClientRequest::Keys { pattern: None });
+                }
+                Ok(ClientRequest::Keys { pattern: Some(var.to_string()) })
+            }
+            ("save", []) => Ok(ClientRequest::Save),
+            ("info", [_unused_value]) => Ok(ClientRequest::Info),
+            ("cluster", val) if !val.is_empty() => match val[0].to_lowercase().as_str() {
+                "info" => Ok(ClientRequest::ClusterInfo),
+                "forget" => {
+                    Ok(ClientRequest::ClusterForget(val.get(1).cloned().context("Must")?.into()))
+                }
+                _ => Err(anyhow::anyhow!("Invalid command")),
+            },
+
+            _ => Err(anyhow::anyhow!("Invalid command")),
+        }
     }
 
     fn extract_expiry(expiry: &str) -> anyhow::Result<SystemTime> {
