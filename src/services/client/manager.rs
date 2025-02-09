@@ -132,12 +132,11 @@ impl ClientManager {
             };
 
             for request in requests.into_iter() {
+                // ! if request requires concensus, send it to cluster manager so tranasction inputs can be logged and concensus can be made
                 let Ok(optional_commit_log) = self.try_concensus(&request).await else {
                     let _ = stream.write(QueryIO::Err("Consensus failed".into())).await;
                     continue;
                 };
-
-                // State change
 
                 let res = match self.handle(request).await {
                     Ok(response) => {
@@ -163,7 +162,6 @@ impl ClientManager {
         let Some(log) = request.log() else {
             return Ok(None);
         };
-
         let (tx, rx) = tokio::sync::oneshot::channel();
         self.cluster_manager.send(ClusterCommand::Concensus { log, sender: tx }).await?;
         Ok(Some(rx.await?))
