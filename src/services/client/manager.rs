@@ -122,16 +122,17 @@ impl ClientManager {
     }
 
     async fn handle_client_stream(&self, stream: TcpStream) {
-        let mut stream = ClientStream::new(stream, &self.cluster_manager);
+        let mut stream = ClientStream::new(stream);
         loop {
             let Ok(requests) = stream.extract_query().await else {
                 eprintln!("invalid user request");
                 continue;
             };
 
-            // Logging if needed
-
             for request in requests.into_iter() {
+                // TODO Logging if needed
+                if let Some(log) = request.log() {}
+
                 // State change
                 let res = match self.handle(request).await {
                     Ok(response) => stream.write(response).await,
