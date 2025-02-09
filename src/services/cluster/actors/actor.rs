@@ -75,6 +75,10 @@ impl ClusterActor {
                         let _ = sender.send(None);
                     }
                 }
+                ClusterCommand::Concensus { log, sender } => {
+                    // TODO implement concensus
+                    let _ = sender.send(());
+                }
             }
         }
     }

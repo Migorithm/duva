@@ -131,7 +131,13 @@ impl ClientManager {
 
             for request in requests.into_iter() {
                 // TODO Logging if needed
-                if let Some(log) = request.log() {}
+                if let Some(log) = request.log() {
+                    let wait = self.cluster_manager.concensus(log).await;
+
+                    if let Err(_) = wait.await {
+                        let _ = stream.write(QueryIO::Err("Concensus failed".into())).await;
+                    }
+                }
 
                 // State change
                 let res = match self.handle(request).await {

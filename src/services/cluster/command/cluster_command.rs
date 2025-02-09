@@ -14,6 +14,7 @@ pub enum ClusterCommand {
     Replicate { query: QueryIO },
     ReportAlive { state: PeerState },
     ForgetPeer(PeerIdentifier, tokio::sync::oneshot::Sender<Option<()>>),
+    Concensus { log: QueryIO, sender: tokio::sync::oneshot::Sender<()> },
 }
 
 pub struct AddPeer {
