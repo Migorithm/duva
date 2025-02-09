@@ -79,6 +79,7 @@ impl ClusterActor {
                     // TODO logging
                     // TODO if no replicas, just return Ok
                     // TODO implement concensus
+                    // TODO if any operations failed, it's okay to drop sender
                     let _ = sender.send(());
                 }
             }
