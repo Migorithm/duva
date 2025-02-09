@@ -29,14 +29,18 @@ impl ClientStream {
                         value_array.into_iter().flat_map(|v| v.unpack_single_entry::<String>());
 
                     let command = values.next().context("Command not given")?.to_lowercase();
+                    let args: Vec<_> = values.collect();
 
-                    match (command.as_str(), values.collect::<Vec<_>>().as_slice()) {
+                    match (command.as_str(), args.as_slice()) {
                         ("ping", []) => Ok(ClientRequest::Ping),
                         ("get", [key]) => Ok(ClientRequest::Get { key: key.to_string() }),
-                        ("set", [key, value]) => Ok(ClientRequest::Set {
-                            key: key.to_string(),
-                            value: value.to_string(),
-                        }),
+                        ("set", [key, value]) => {
+                            //TODO send it to
+                            Ok(ClientRequest::Set {
+                                key: key.to_string(),
+                                value: value.to_string(),
+                            })
+                        }
                         ("set", [key, value, px, expiry]) if px.to_lowercase() == "px" => {
                             Ok(ClientRequest::SetWithExpiry {
                                 key: key.to_string(),
