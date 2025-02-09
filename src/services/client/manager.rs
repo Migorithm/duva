@@ -1,5 +1,6 @@
 use crate::services::client::request::ClientRequest;
 use crate::services::client::stream::ClientStream;
+use crate::services::cluster::command::cluster_command::ClusterCommand;
 use crate::services::cluster::manager::ClusterManager;
 use crate::services::config::manager::ConfigManager;
 use crate::services::config::ConfigResponse;
@@ -131,13 +132,10 @@ impl ClientManager {
 
             for request in requests.into_iter() {
                 // TODO Logging if needed
-                if let Some(log) = request.log() {
-                    let wait = self.cluster_manager.concensus(log).await;
-
-                    if let Err(_) = wait.await {
-                        let _ = stream.write(QueryIO::Err("Concensus failed".into())).await;
-                    }
-                }
+                if let Err(_) = self.make_consensus(request.log()).await {
+                    let _ = stream.write(QueryIO::Err("Consensus failed".into())).await;
+                    continue;
+                };
 
                 // State change
                 let res = match self.handle(request).await {
@@ -152,5 +150,15 @@ impl ClientManager {
                 }
             }
         }
+    }
+
+    async fn make_consensus(&self, log: Option<QueryIO>) -> anyhow::Result<()> {
+        let Some(log) = log else {
+            return Ok(());
+        };
+
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        self.cluster_manager.send(ClusterCommand::Concensus { log, sender: tx }).await?;
+        Ok(rx.await?)
     }
 }

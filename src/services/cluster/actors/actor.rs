@@ -76,6 +76,8 @@ impl ClusterActor {
                     }
                 }
                 ClusterCommand::Concensus { log, sender } => {
+                    // TODO logging
+                    // TODO if no replicas, just return Ok
                     // TODO implement concensus
                     let _ = sender.send(());
                 }

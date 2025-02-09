@@ -137,13 +137,4 @@ impl ClusterManager {
     pub(crate) async fn log_request(&self, request: &ClientRequest) -> anyhow::Result<()> {
         Ok(())
     }
-
-    pub(crate) async fn concensus(
-        &self,
-        log: crate::services::query_io::QueryIO,
-    ) -> tokio::sync::oneshot::Receiver<()> {
-        let (tx, rx) = tokio::sync::oneshot::channel();
-        self.send(ClusterCommand::Concensus { log, sender: tx }).await;
-        rx
-    }
 }
