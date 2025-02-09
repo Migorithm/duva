@@ -80,7 +80,10 @@ impl ClusterActor {
                     // TODO if no replicas, just return Ok
                     // TODO implement concensus
                     // TODO if any operations failed, it's okay to drop sender
-                    let _ = sender.send(());
+                    let _ = sender.send(self.replication.master_repl_offset);
+                }
+                ClusterCommand::CommitLog(commit_log) => {
+                    // TODO send commit to all replicas
                 }
             }
         }

@@ -132,18 +132,23 @@ impl ClientManager {
             };
 
             for request in requests.into_iter() {
-                if let Err(_) = self.try_concensus(&request).await {
+                // ! if request requires concensus, send it to cluster manager so tranasction inputs can be logged and concensus can be made
+                let Ok(optional_commit_log) = self.try_concensus(&request).await else {
                     let _ = stream.write(QueryIO::Err("Consensus failed".into())).await;
                     continue;
                 };
 
-                // State change
                 let res = match self.handle(request).await {
-                    Ok(response) => stream.write(response).await,
-                    Err(e) => stream.write(QueryIO::Err(e.to_string().into())).await,
+                    Ok(response) => {
+                        // ! SAFETY: at this point, majority votes was made already. as long as at least
+                        // ! one node has the commit log, it will be committed.
+                        tokio::spawn(Self::commit_log(optional_commit_log, self.cluster_manager));
+                        response
+                    }
+                    Err(e) => QueryIO::Err(e.to_string().into()),
                 };
 
-                if let Err(e) = res {
+                if let Err(e) = stream.write(res).await {
                     if e.should_break() {
                         break;
                     }
@@ -152,13 +157,19 @@ impl ClientManager {
         }
     }
 
-    async fn try_concensus(&self, request: &ClientRequest) -> anyhow::Result<()> {
+    async fn try_concensus(&self, request: &ClientRequest) -> anyhow::Result<Option<u64>> {
+        // If the request doesn't require concensus, return Ok
         let Some(log) = request.log() else {
-            return Ok(());
+            return Ok(None);
         };
-
         let (tx, rx) = tokio::sync::oneshot::channel();
         self.cluster_manager.send(ClusterCommand::Concensus { log, sender: tx }).await?;
-        Ok(rx.await?)
+        Ok(Some(rx.await?))
+    }
+
+    async fn commit_log(optional_log: Option<u64>, cluster_manager: &'static ClusterManager) {
+        if let Some(commit_log) = optional_log {
+            let _ = cluster_manager.send(ClusterCommand::CommitLog(commit_log)).await;
+        }
     }
 }
