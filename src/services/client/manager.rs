@@ -132,7 +132,7 @@ impl ClientManager {
             };
 
             for request in requests.into_iter() {
-                if let Err(_) = self.make_consensus(request.log()).await {
+                if let Err(_) = self.try_concensus(&request).await {
                     let _ = stream.write(QueryIO::Err("Consensus failed".into())).await;
                     continue;
                 };
@@ -152,8 +152,8 @@ impl ClientManager {
         }
     }
 
-    async fn make_consensus(&self, log: Option<QueryIO>) -> anyhow::Result<()> {
-        let Some(log) = log else {
+    async fn try_concensus(&self, request: &ClientRequest) -> anyhow::Result<()> {
+        let Some(log) = request.log() else {
             return Ok(());
         };
 
