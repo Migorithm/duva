@@ -1,4 +1,5 @@
 use super::actors::actor::ClusterActor;
+use crate::services::client::request::ClientRequest;
 use crate::services::cluster::command::cluster_command::ClusterCommand;
 use crate::services::cluster::inbound::stream::InboundStream;
 use crate::services::cluster::outbound::stream::OutboundStream;
@@ -131,5 +132,9 @@ impl ClusterManager {
         self.send(ClusterCommand::ForgetPeer(peer_identifier, tx)).await?;
         let Some(_) = rx.await? else { return Ok(false) };
         Ok(true)
+    }
+
+    pub(crate) async fn log_request(&self, request: &ClientRequest) -> anyhow::Result<()> {
+        Ok(())
     }
 }

@@ -3,15 +3,22 @@ use std::time::SystemTime;
 use super::request::ClientRequest;
 use crate::{
     make_smart_pointer,
-    services::{interface::TRead, query_io::QueryIO},
+    services::{cluster::manager::ClusterManager, interface::TRead, query_io::QueryIO},
 };
 use anyhow::Context;
 use tokio::net::TcpStream;
 
-pub struct ClientStream(pub(crate) TcpStream);
-make_smart_pointer!(ClientStream, TcpStream);
+pub struct ClientStream {
+    stream: TcpStream,
+    cluster_manager: &'static ClusterManager,
+}
+
+make_smart_pointer!(ClientStream, TcpStream => stream);
 
 impl ClientStream {
+    pub(crate) fn new(stream: TcpStream, cluster_manager: &'static ClusterManager) -> Self {
+        Self { stream, cluster_manager }
+    }
     pub(crate) async fn extract_query(&mut self) -> anyhow::Result<Vec<ClientRequest>> {
         let query_ios = self.read_values().await?;
         query_ios
