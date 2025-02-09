@@ -1,14 +1,14 @@
 use crate::services::cluster::peers::address::PeerAddrs;
 use crate::services::cluster::peers::identifier::PeerIdentifier;
 use crate::services::cluster::peers::kind::PeerKind;
-use crate::services::cluster::replications::replication::{PeerState, Replication};
+use crate::services::cluster::replications::replication::{PeerState, ReplicationInfo};
 use crate::services::query_io::QueryIO;
 use tokio::net::TcpStream;
 
 pub enum ClusterCommand {
     AddPeer(AddPeer),
     GetPeers(tokio::sync::oneshot::Sender<PeerAddrs>),
-    ReplicationInfo(tokio::sync::oneshot::Sender<Replication>),
+    ReplicationInfo(tokio::sync::oneshot::Sender<ReplicationInfo>),
     SetReplicationInfo { master_repl_id: String, offset: u64 },
     SendHeartBeat,
     Replicate { query: QueryIO },

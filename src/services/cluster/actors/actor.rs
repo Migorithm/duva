@@ -2,7 +2,7 @@ use crate::services::cluster::command::cluster_command::{AddPeer, ClusterCommand
 use crate::services::cluster::peers::identifier::PeerIdentifier;
 use crate::services::cluster::peers::peer::Peer;
 use crate::services::cluster::replications::replication::{
-    time_in_secs, BannedPeer, PeerState, Replication,
+    time_in_secs, BannedPeer, PeerState, ReplicationInfo,
 };
 use crate::services::interface::TWrite;
 use crate::services::query_io::QueryIO;
@@ -14,13 +14,13 @@ use tokio::time::Instant;
 #[derive(Debug)]
 pub struct ClusterActor {
     members: BTreeMap<PeerIdentifier, Peer>,
-    replication: Replication,
+    replication: ReplicationInfo,
     ttl_mills: u128,
 }
 
 impl ClusterActor {
     pub fn new(ttl_mills: u128) -> Self {
-        Self { members: BTreeMap::new(), replication: Replication::default(), ttl_mills }
+        Self { members: BTreeMap::new(), replication: ReplicationInfo::default(), ttl_mills }
     }
     pub async fn handle(
         mut self,

@@ -5,7 +5,7 @@ use crate::services::cluster::outbound::stream::OutboundStream;
 use crate::services::cluster::peers::address::PeerAddrs;
 use crate::services::cluster::peers::identifier::PeerIdentifier;
 use crate::services::cluster::peers::kind::PeerKind;
-use crate::services::cluster::replications::replication::{Replication, IS_MASTER_MODE};
+use crate::services::cluster::replications::replication::{ReplicationInfo, IS_MASTER_MODE};
 use crate::services::statefuls::cache::manager::CacheManager;
 use crate::{get_env, make_smart_pointer};
 use std::time::Duration;
@@ -68,7 +68,7 @@ impl ClusterManager {
         Ok(())
     }
 
-    pub(crate) async fn replication_info(&self) -> anyhow::Result<Replication> {
+    pub(crate) async fn replication_info(&self) -> anyhow::Result<ReplicationInfo> {
         let (tx, rx) = tokio::sync::oneshot::channel();
         self.send(ClusterCommand::ReplicationInfo(tx)).await?;
         Ok(rx.await?)
