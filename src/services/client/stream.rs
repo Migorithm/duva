@@ -15,7 +15,7 @@ make_smart_pointer!(ClientStream, TcpStream);
 impl ClientStream {
     pub(crate) async fn extract_query(&mut self) -> anyhow::Result<Vec<ClientRequest>> {
         let query_ios = self.read_values().await?;
-        Ok(query_ios
+        query_ios
             .into_iter()
             .map(|query_io| match query_io {
                 QueryIO::Array(value_array) => {
@@ -28,11 +28,10 @@ impl ClientStream {
                 }
                 _ => Err(anyhow::anyhow!("Unexpected command format")),
             })
-            .flatten()
-            .collect::<Vec<_>>()
-            .into())
+            .collect()
     }
 
+    /// Analyze the command and arguments to create a `ClientRequest`
     fn parse_query(&self, cmd: String, args: Vec<String>) -> anyhow::Result<ClientRequest> {
         match (cmd.as_str(), args.as_slice()) {
             ("ping", []) => Ok(ClientRequest::Ping),
