@@ -128,7 +128,10 @@ impl ClientManager {
                 eprintln!("invalid user request");
                 continue;
             };
-            for request in requests {
+
+            // Logging if needed
+
+            for request in requests.into_iter() {
                 // State change
                 let res = match self.handle(request).await {
                     Ok(response) => stream.write(response).await,

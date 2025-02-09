@@ -21,7 +21,7 @@ impl ClientStream {
     }
     pub(crate) async fn extract_query(&mut self) -> anyhow::Result<Vec<ClientRequest>> {
         let query_ios = self.read_values().await?;
-        query_ios
+        Ok(query_ios
             .into_iter()
             .map(|query_io| match query_io {
                 QueryIO::Array(value_array) => {
@@ -29,13 +29,14 @@ impl ClientStream {
                         value_array.into_iter().flat_map(|v| v.unpack_single_entry::<String>());
 
                     let command = values.next().context("Command not given")?.to_lowercase();
-                    let args = values.collect::<Vec<_>>();
 
-                    self.parse_query(command, args)
+                    self.parse_query(command, values.collect())
                 }
                 _ => Err(anyhow::anyhow!("Unexpected command format")),
             })
-            .collect()
+            .flatten()
+            .collect::<Vec<_>>()
+            .into())
     }
 
     fn parse_query(&self, cmd: String, args: Vec<String>) -> anyhow::Result<ClientRequest> {
@@ -43,11 +44,9 @@ impl ClientStream {
             ("ping", []) => Ok(ClientRequest::Ping),
             ("get", [key]) => Ok(ClientRequest::Get { key: key.to_string() }),
             ("set", [key, value]) => {
-                //TODO put to logger
                 Ok(ClientRequest::Set { key: key.to_string(), value: value.to_string() })
             }
             ("set", [key, value, px, expiry]) if px.to_lowercase() == "px" => {
-                //TODO put to logger
                 Ok(ClientRequest::SetWithExpiry {
                     key: key.to_string(),
                     value: value.to_string(),
