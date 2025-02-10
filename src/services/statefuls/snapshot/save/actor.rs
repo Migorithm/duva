@@ -2,7 +2,7 @@ use crate::services::cluster::replications::replication::ReplicationInfo;
 use crate::services::interface::TWriterFactory;
 use crate::services::statefuls::cache::CacheEntry;
 
-use crate::services::statefuls::snapshot::save_command::SaveCommand;
+use crate::services::statefuls::snapshot::save::command::SaveCommand;
 
 use anyhow::Result;
 
