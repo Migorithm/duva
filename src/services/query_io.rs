@@ -1,4 +1,4 @@
-use super::aof::WriteKind;
+use super::aof::WriteRequest;
 use crate::services::cluster::replications::replication::PeerState;
 use crate::services::statefuls::cache::CacheValue;
 use anyhow::{Context, Result};
@@ -30,7 +30,7 @@ pub enum QueryIO {
     Err(Bytes),
     File(Bytes),
     PeerState(PeerState),
-    Replicate { query: WriteKind, offset: u64 },
+    Replicate { query: WriteRequest, offset: u64 },
 }
 
 impl QueryIO {
@@ -566,7 +566,7 @@ fn test_banned_peer_serde_when_time_passed() {
 #[test]
 fn test_from_replicate_to_binary() {
     // GIVEN
-    let query = WriteKind::Set { key: "foo".into(), value: "bar".into() };
+    let query = WriteRequest::Set { key: "foo".into(), value: "bar".into() };
     let replicate = QueryIO::Replicate { query, offset: 1 };
 
     // WHEN
@@ -589,7 +589,7 @@ fn test_from_binary_to_replicate() {
     assert_eq!(
         value,
         QueryIO::Replicate {
-            query: WriteKind::Set { key: "foo".into(), value: "bar".into() },
+            query: WriteRequest::Set { key: "foo".into(), value: "bar".into() },
             offset: 1
         }
     );
