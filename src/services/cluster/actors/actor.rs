@@ -1,5 +1,7 @@
+use crate::services::aof::{WriteKind, WriteOperation};
 use crate::services::cluster::command::cluster_command::{AddPeer, ClusterCommand};
 use crate::services::cluster::peers::identifier::PeerIdentifier;
+use crate::services::cluster::peers::kind::PeerKind;
 use crate::services::cluster::peers::peer::Peer;
 use crate::services::cluster::replications::replication::{
     time_in_secs, BannedPeer, PeerState, ReplicationInfo,
@@ -77,7 +79,8 @@ impl ClusterActor {
                 }
                 ClusterCommand::Concensus { log, sender } => {
                     // TODO logging
-                    // TODO if no replicas, just return Ok
+
+                    self.consensus(log).await;
                     // TODO implement concensus
                     // TODO if any operations failed, it's okay to drop sender
                     let _ = sender.send(self.replication.master_repl_offset);
@@ -195,6 +198,25 @@ impl ClusterActor {
         {
             self.remove_peer(&node).await;
         }
+    }
+
+    async fn consensus(&mut self, log: WriteKind) {
+        // TODO send current offset
+        let write_op = WriteOperation { op: log, offset: self.replication.master_repl_offset };
+
+        for peer in self.replicas() {
+            let _ = peer.w_conn.stream.write(write_op.clone().serialize()).await;
+        }
+        // TODO implement concensus
+        // TODO if any operations failed, it's okay to drop sender
+    }
+
+    fn replicas(&mut self) -> Vec<&mut Peer> {
+        self.members
+            .values_mut()
+            .into_iter()
+            .filter(|peer| matches!(peer.w_conn.kind, PeerKind::Replica))
+            .collect::<Vec<_>>()
     }
 }
 

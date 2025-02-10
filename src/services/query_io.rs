@@ -1,9 +1,9 @@
-use std::fmt::Write;
-
+use super::aof::WriteKind;
 use crate::services::cluster::replications::replication::PeerState;
 use crate::services::statefuls::cache::CacheValue;
 use anyhow::{Context, Result};
 use bytes::{Bytes, BytesMut};
+use std::fmt::Write;
 
 // ! CURRENTLY, only ascii unicode(0-127) is supported
 const FILE_PREFIX: char = '\u{0066}';
@@ -12,6 +12,7 @@ const BULK_STRING_PREFIX: char = '$';
 const ARRAY_PREFIX: char = '*';
 const ERROR_PREFIX: char = '-';
 const PEERSTATE_PREFIX: char = '^';
+const REPLICATE_PREFIX: char = '#';
 
 #[macro_export]
 macro_rules! write_array {
@@ -29,6 +30,7 @@ pub enum QueryIO {
     Err(Bytes),
     File(Bytes),
     PeerState(PeerState),
+    Replicate { query: WriteKind, offset: u64 },
 }
 
 impl QueryIO {
@@ -99,6 +101,16 @@ impl QueryIO {
                 );
 
                 [message, long_bytes].concat().into()
+            }
+            QueryIO::Replicate { query, offset } => {
+                let message: Bytes = format!(
+                    "{}\r\n${}\r\n{}\r\n",
+                    REPLICATE_PREFIX,
+                    offset.to_string().len(),
+                    offset
+                )
+                .into();
+                [message, query.to_array().serialize()].concat().into()
             }
         }
     }
@@ -180,6 +192,8 @@ pub fn deserialize(buffer: BytesMut) -> Result<(QueryIO, usize)> {
             Ok((QueryIO::File(bytes), len))
         }
         PEERSTATE_PREFIX => parse_peer_state(buffer),
+        REPLICATE_PREFIX => parse_replicate(buffer),
+
         _ => Err(anyhow::anyhow!("Not a known value type {:?}", buffer)),
     }
 }
@@ -232,6 +246,19 @@ fn parse_peer_state(buffer: BytesMut) -> Result<(QueryIO, usize)> {
             ban_list: ban_list.unpack_array()?,
         }),
         len + l1 + l2 + l3 + l4 + l5 + l6,
+    ))
+}
+
+fn parse_replicate(buffer: BytesMut) -> std::result::Result<(QueryIO, usize), anyhow::Error> {
+    let len = 3;
+
+    let (offset, l1) = deserialize(BytesMut::from(&buffer[len..]))?;
+
+    let (query, l2) = deserialize(BytesMut::from(&buffer[len + l1..]))?;
+
+    Ok((
+        QueryIO::Replicate { offset: offset.unpack_single_entry()?, query: query.try_into()? },
+        len + l1 + l2,
     ))
 }
 
@@ -534,4 +561,36 @@ fn test_banned_peer_serde_when_time_passed() {
 
     //THEN
     assert_ne!(banned_peer.ban_time, current);
+}
+
+#[test]
+fn test_from_replicate_to_binary() {
+    // GIVEN
+    let query = WriteKind::Set { key: "foo".into(), value: "bar".into() };
+    let replicate = QueryIO::Replicate { query, offset: 1 };
+
+    // WHEN
+    let serialized = replicate.clone().serialize();
+
+    // THEN
+    assert_eq!("#\r\n$1\r\n1\r\n*3\r\n$3\r\nSET\r\n$3\r\nfoo\r\n$3\r\nbar\r\n", serialized);
+}
+
+#[test]
+fn test_from_binary_to_replicate() {
+    // GIVEN
+    let data = "#\r\n$1\r\n1\r\n*3\r\n$3\r\nSET\r\n$3\r\nfoo\r\n$3\r\nbar\r\n";
+    let buffer = BytesMut::from(data);
+
+    // WHEN
+    let (value, _) = deserialize(buffer).unwrap();
+
+    // THEN
+    assert_eq!(
+        value,
+        QueryIO::Replicate {
+            query: WriteKind::Set { key: "foo".into(), value: "bar".into() },
+            offset: 1
+        }
+    );
 }

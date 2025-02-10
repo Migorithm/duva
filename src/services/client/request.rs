@@ -1,7 +1,4 @@
-use crate::{
-    services::{cluster::peers::identifier::PeerIdentifier, query_io::QueryIO},
-    write_array,
-};
+use crate::services::cluster::peers::identifier::PeerIdentifier;
 use std::time::SystemTime;
 
 #[derive(Clone, Debug)]
@@ -18,25 +15,4 @@ pub enum ClientRequest {
     Info,
     ClusterInfo,
     ClusterForget(PeerIdentifier),
-}
-
-impl ClientRequest {
-    pub fn log(&self) -> Option<QueryIO> {
-        match self {
-            ClientRequest::Set { key, value } => {
-                Some(write_array!("set", key.clone(), value.clone()))
-            }
-            ClientRequest::SetWithExpiry { key, value, expiry } => Some(
-                write_array!(
-                    "set",
-                    key.clone(),
-                    value.clone(),
-                    "px",
-                    expiry.duration_since(SystemTime::UNIX_EPOCH).unwrap().as_millis().to_string()
-                )
-                .into(),
-            ),
-            _ => None,
-        }
-    }
 }

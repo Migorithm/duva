@@ -1,10 +1,10 @@
+use crate::services::aof::WriteKind;
 use crate::services::client::request::ClientRequest;
 use crate::services::client::stream::ClientStream;
 use crate::services::cluster::command::cluster_command::ClusterCommand;
 use crate::services::cluster::manager::ClusterManager;
 use crate::services::config::manager::ConfigManager;
 use crate::services::config::ConfigResponse;
-
 use crate::services::interface::TWrite;
 use crate::services::query_io::QueryIO;
 use crate::services::statefuls::cache::manager::CacheManager;
@@ -159,7 +159,7 @@ impl ClientManager {
 
     async fn try_concensus(&self, request: &ClientRequest) -> anyhow::Result<Option<u64>> {
         // If the request doesn't require concensus, return Ok
-        let Some(log) = request.log() else {
+        let Some(log) = WriteKind::from_client_req(&request) else {
             return Ok(None);
         };
         let (tx, rx) = tokio::sync::oneshot::channel();
