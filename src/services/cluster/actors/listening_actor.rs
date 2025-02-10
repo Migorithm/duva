@@ -13,6 +13,7 @@ use crate::services::query_io::QueryIO;
 use tokio::select;
 use tokio::sync::mpsc::Sender;
 use tokio::task::JoinHandle;
+use crate::services::statefuls::snapshot::dump_loader::DumpLoader;
 
 pub(crate) struct PeerListeningActor {
     pub(crate) read_connected: ReadConnected,
@@ -75,8 +76,12 @@ impl PeerListeningActor {
                     }
 
                     CommandFromMaster::Replicate { query: _ } => {}
-                    CommandFromMaster::Sync(v) => {
-                        println!("[INFO] Received sync from master {:?}", v);
+                    CommandFromMaster::FullReSync(bytes) => {
+                        let Some(dump) = DumpLoader::load_from_bytes(bytes) else {
+                            println!("[ERROR] Failed to get full-sync from master");
+                            todo!("notify cluster manager that full-sync failed")
+                        };
+                        println!("[INFO] Received full-sync from master");
                     }
                 }
             }

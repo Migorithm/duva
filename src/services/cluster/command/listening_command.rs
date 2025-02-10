@@ -1,3 +1,4 @@
+use bytes::Bytes;
 use crate::services::cluster::replications::replication::PeerState;
 use crate::services::query_io::QueryIO;
 
@@ -5,7 +6,7 @@ use crate::services::query_io::QueryIO;
 pub enum CommandFromMaster {
     HeartBeat(PeerState),
     Replicate { query: QueryIO },
-    Sync(QueryIO),
+    FullReSync(Bytes),
 }
 
 pub enum CommandFromSlave {
@@ -16,7 +17,7 @@ impl TryFrom<QueryIO> for CommandFromMaster {
     type Error = anyhow::Error;
     fn try_from(query: QueryIO) -> anyhow::Result<Self> {
         match query {
-            file @ QueryIO::File(_) => Ok(Self::Sync(file)),
+            QueryIO::File(file_data) => Ok(Self::FullReSync(file_data)),
             QueryIO::PeerState(peer_state) => Ok(Self::HeartBeat(peer_state)),
             _ => todo!(),
         }
