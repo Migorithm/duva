@@ -3,7 +3,10 @@ use bytes::{Bytes, BytesMut};
 
 use crate::write_array;
 
-use super::query_io::{deserialize as deserialize_query_io, QueryIO};
+use super::{
+    client::request::ClientRequest,
+    query_io::{deserialize as deserialize_query_io, QueryIO},
+};
 
 /// Trait for an Append-Only File (AOF) abstraction.
 pub trait TAof {
@@ -105,6 +108,26 @@ impl WriteOperation {
         }
 
         Ok(ops)
+    }
+
+    pub fn from_client_req(req: &ClientRequest) -> Option<Self> {
+        match req {
+            ClientRequest::Set { key, value } => {
+                Some(WriteOperation::Set { key: key.clone(), value: value.clone() })
+            }
+            ClientRequest::SetWithExpiry { key, value, expiry } => {
+                let expires_at =
+                    expiry.duration_since(std::time::SystemTime::UNIX_EPOCH).unwrap().as_millis()
+                        as u64;
+
+                Some(WriteOperation::SetWithExpiry {
+                    key: key.clone(),
+                    value: value.clone(),
+                    expires_at,
+                })
+            }
+            _ => None,
+        }
     }
 }
 

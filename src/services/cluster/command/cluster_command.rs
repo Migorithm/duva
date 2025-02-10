@@ -1,3 +1,4 @@
+use crate::services::aof::WriteOperation;
 use crate::services::cluster::peers::address::PeerAddrs;
 use crate::services::cluster::peers::identifier::PeerIdentifier;
 use crate::services::cluster::peers::kind::PeerKind;
@@ -14,7 +15,7 @@ pub enum ClusterCommand {
     Replicate { query: QueryIO },
     ReportAlive { state: PeerState },
     ForgetPeer(PeerIdentifier, tokio::sync::oneshot::Sender<Option<()>>),
-    Concensus { log: QueryIO, sender: tokio::sync::oneshot::Sender<u64> },
+    Concensus { log: WriteOperation, sender: tokio::sync::oneshot::Sender<u64> },
     CommitLog(u64),
 }
 

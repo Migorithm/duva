@@ -1,3 +1,4 @@
+use crate::services::aof::WriteOperation;
 use crate::services::cluster::command::cluster_command::{AddPeer, ClusterCommand};
 use crate::services::cluster::peers::identifier::PeerIdentifier;
 use crate::services::cluster::peers::kind::PeerKind;
@@ -199,7 +200,7 @@ impl ClusterActor {
         }
     }
 
-    async fn consensus(&mut self, log: QueryIO) {
+    async fn consensus(&mut self, log: WriteOperation) {
         // TODO send current offset
         for peer in self.replicas() {
             let _ = peer.w_conn.stream.write(log.clone().serialize()).await;
