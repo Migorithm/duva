@@ -1,14 +1,11 @@
 //! A local append-only file (AOF) adapter.
-
-use std::path::{Path, PathBuf};
-
 use anyhow::Result;
-
 use bytes::BytesMut;
+use std::path::{Path, PathBuf};
 use tokio::fs::{File, OpenOptions};
 use tokio::io::{AsyncReadExt, AsyncWriteExt, BufReader, BufWriter};
 
-use crate::services::aof::{TAof, WriteOp, WriteOperation};
+use crate::services::aof::{TAof, WriteKind, WriteOperation};
 
 /// A local append-only file (AOF) implementation.
 pub struct LocalAof {
@@ -39,7 +36,7 @@ impl TAof for LocalAof {
     /// # Errors
     ///
     /// Returns an error if writing to or syncing the underlying file fails.
-    async fn append(&mut self, op: WriteOp) -> Result<()> {
+    async fn append(&mut self, op: WriteOperation) -> Result<()> {
         self.writer.write_all(&op.serialize()).await?;
         self.fsync().await?;
 
@@ -64,12 +61,9 @@ impl TAof for LocalAof {
 
         let bytes = BytesMut::from(&buf[..]);
 
-        let ops = WriteOperation::deserialize(bytes)?;
-
-        for op in ops {
+        for op in WriteKind::deserialize(bytes)? {
             f(op);
         }
-
         Ok(())
     }
 
@@ -142,8 +136,8 @@ mod tests {
 
         let mut aof = LocalAof::new(&path).await?;
 
-        let op = WriteOperation::Set { key: "foo".into(), value: "bar".into() };
-        let write_op = WriteOp { op, offset: 0 };
+        let op = WriteKind::Set { key: "foo".into(), value: "bar".into() };
+        let write_op = WriteOperation { op, offset: 0 };
         aof.append(write_op).await?;
         drop(aof);
 
@@ -151,7 +145,7 @@ mod tests {
         let mut buf = Vec::new();
         file.read_to_end(&mut buf).await?;
 
-        assert_eq!(buf, b"*3\r\n$3\r\nSET\r\n$3\r\nfoo\r\n$3\r\nbar\r\n");
+        assert_eq!(buf, b"#\r\n$1\r\n0\r\n*3\r\n$3\r\nSET\r\n$3\r\nfoo\r\n$3\r\nbar\r\n");
 
         Ok(())
     }
@@ -163,18 +157,18 @@ mod tests {
 
         {
             let mut aof = LocalAof::new(&path).await?;
-            aof.append(WriteOp {
-                op: WriteOperation::Set { key: "a".into(), value: "a".into() },
+            aof.append(WriteOperation {
+                op: WriteKind::Set { key: "a".into(), value: "a".into() },
                 offset: 0,
             })
             .await?;
-            aof.append(WriteOp {
-                op: WriteOperation::Set { key: "b".into(), value: "b".into() },
+            aof.append(WriteOperation {
+                op: WriteKind::Set { key: "b".into(), value: "b".into() },
                 offset: 1,
             })
             .await?;
-            aof.append(WriteOp {
-                op: WriteOperation::Set { key: "c".into(), value: "c".into() },
+            aof.append(WriteOperation {
+                op: WriteKind::Set { key: "c".into(), value: "c".into() },
                 offset: 2,
             })
             .await?;
@@ -189,9 +183,18 @@ mod tests {
         .await?;
 
         assert_eq!(ops.len(), 3);
-        assert_eq!(ops[0], WriteOperation::Set { key: "a".into(), value: "a".into() });
-        assert_eq!(ops[1], WriteOperation::Set { key: "b".into(), value: "b".into() });
-        assert_eq!(ops[2], WriteOperation::Set { key: "c".into(), value: "c".into() });
+        assert_eq!(
+            ops[0],
+            WriteOperation { op: WriteKind::Set { key: "a".into(), value: "a".into() }, offset: 0 }
+        );
+        assert_eq!(
+            ops[1],
+            WriteOperation { op: WriteKind::Set { key: "b".into(), value: "b".into() }, offset: 1 }
+        );
+        assert_eq!(
+            ops[2],
+            WriteOperation { op: WriteKind::Set { key: "c".into(), value: "c".into() }, offset: 2 }
+        );
 
         Ok(())
     }
@@ -205,18 +208,18 @@ mod tests {
         // Append three ops.
         {
             let mut aof = LocalAof::new(&path).await?;
-            aof.append(WriteOp {
-                op: WriteOperation::Set { key: "a".into(), value: "a".into() },
+            aof.append(WriteOperation {
+                op: WriteKind::Set { key: "a".into(), value: "a".into() },
                 offset: 0,
             })
             .await?;
-            aof.append(WriteOp {
-                op: WriteOperation::Set { key: "b".into(), value: "b".into() },
+            aof.append(WriteOperation {
+                op: WriteKind::Set { key: "b".into(), value: "b".into() },
                 offset: 1,
             })
             .await?;
-            aof.append(WriteOp {
-                op: WriteOperation::Set { key: "c".into(), value: "c".into() },
+            aof.append(WriteOperation {
+                op: WriteKind::Set { key: "c".into(), value: "c".into() },
                 offset: 2,
             })
             .await?;
@@ -246,7 +249,10 @@ mod tests {
             .is_err());
 
         assert_eq!(ops.len(), 1);
-        assert_eq!(ops[0], WriteOperation::Set { key: "a".into(), value: "a".into() });
+        assert_eq!(
+            ops[0],
+            WriteOperation { op: WriteKind::Set { key: "a".into(), value: "a".into() }, offset: 0 }
+        );
 
         Ok(())
     }

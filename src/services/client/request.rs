@@ -1,7 +1,4 @@
-use crate::{
-    services::{cluster::peers::identifier::PeerIdentifier, query_io::QueryIO},
-    write_array,
-};
+use crate::services::cluster::peers::identifier::PeerIdentifier;
 use std::time::SystemTime;
 
 #[derive(Clone, Debug)]

@@ -1,11 +1,9 @@
-use std::fmt::Write;
-
+use super::aof::WriteKind;
 use crate::services::cluster::replications::replication::PeerState;
 use crate::services::statefuls::cache::CacheValue;
 use anyhow::{Context, Result};
 use bytes::{Bytes, BytesMut};
-
-use super::aof::WriteOperation;
+use std::fmt::Write;
 
 // ! CURRENTLY, only ascii unicode(0-127) is supported
 const FILE_PREFIX: char = '\u{0066}';
@@ -32,7 +30,7 @@ pub enum QueryIO {
     Err(Bytes),
     File(Bytes),
     PeerState(PeerState),
-    Replicate { query: WriteOperation, offset: u64 },
+    Replicate { query: WriteKind, offset: u64 },
 }
 
 impl QueryIO {
@@ -568,7 +566,7 @@ fn test_banned_peer_serde_when_time_passed() {
 #[test]
 fn test_from_replicate_to_binary() {
     // GIVEN
-    let query = WriteOperation::Set { key: "foo".into(), value: "bar".into() };
+    let query = WriteKind::Set { key: "foo".into(), value: "bar".into() };
     let replicate = QueryIO::Replicate { query, offset: 1 };
 
     // WHEN
@@ -591,7 +589,7 @@ fn test_from_binary_to_replicate() {
     assert_eq!(
         value,
         QueryIO::Replicate {
-            query: WriteOperation::Set { key: "foo".into(), value: "bar".into() },
+            query: WriteKind::Set { key: "foo".into(), value: "bar".into() },
             offset: 1
         }
     );

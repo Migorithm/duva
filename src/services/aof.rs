@@ -11,7 +11,10 @@ use super::{
 /// Trait for an Append-Only File (AOF) abstraction.
 pub trait TAof {
     /// Appends a single `WriteOperation` to the log.
-    fn append(&mut self, op: WriteOp) -> impl std::future::Future<Output = Result<()>> + Send;
+    fn append(
+        &mut self,
+        op: WriteOperation,
+    ) -> impl std::future::Future<Output = Result<()>> + Send;
 
     /// Replays all logged operations from the beginning of the AOF, calling the provided callback `f` for each operation.
     ///
@@ -24,9 +27,16 @@ pub trait TAof {
     fn fsync(&mut self) -> impl std::future::Future<Output = Result<()>> + Send;
 }
 
-/// Operations that appear in the Append-Only File (AOF).
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum WriteOperation {
+pub struct WriteOperation {
+    pub op: WriteKind,
+    pub offset: u64,
+}
+
+/// Operations that appear in the Append-Only File (AOF).
+/// Client request is converted to WriteOperation and then it turns into WriteOp when it gets offset
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum WriteKind {
     /// Set a `key` to `value`, optionally with an expiration epoch time.
     /// TODO: Add `expires_at`.
     Set {
@@ -45,27 +55,21 @@ pub enum WriteOperation {
     },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct WriteOp {
-    pub op: WriteOperation,
-    pub offset: u64,
-}
-
-impl WriteOp {
+impl WriteOperation {
     pub fn serialize(self) -> Bytes {
         QueryIO::Replicate { query: self.op, offset: self.offset }.serialize()
     }
 }
 
-impl WriteOperation {
+impl WriteKind {
     /// Serialize this `WriteOperation` into bytes.
     pub fn to_array(self) -> QueryIO {
         match self {
-            WriteOperation::Set { key, value } => write_array!("SET", key, value),
-            WriteOperation::SetWithExpiry { key, value, expires_at } => {
+            WriteKind::Set { key, value } => write_array!("SET", key, value),
+            WriteKind::SetWithExpiry { key, value, expires_at } => {
                 write_array!("SET", key, value, "px", expires_at.to_string())
             }
-            WriteOperation::Delete { key } => write_array!("DEL", key),
+            WriteKind::Delete { key } => write_array!("DEL", key),
         }
     }
 
@@ -77,34 +81,12 @@ impl WriteOperation {
             let (query, consumed) = deserialize_query_io(bytes.clone())?;
             bytes = bytes.split_off(consumed);
 
-            let QueryIO::Array(bulk_strings) = query else {
-                return Err(anyhow::anyhow!("expected array"));
+            let (op, offset) = match query {
+                QueryIO::Replicate { query, offset } => (query, offset),
+                _ => return Err(anyhow::anyhow!("expected replicate")),
             };
 
-            let Some(QueryIO::BulkString(first_bytes)) = bulk_strings.first() else {
-                return Err(anyhow::anyhow!("expected bulk string"));
-            };
-
-            let first_str = std::str::from_utf8(first_bytes)?;
-
-            let op = match first_str {
-                "SET" if bulk_strings.len() == 3 => {
-                    let QueryIO::BulkString(key_bytes) = &bulk_strings[1] else {
-                        return Err(anyhow::anyhow!("expected key"));
-                    };
-                    let QueryIO::BulkString(value_bytes) = &bulk_strings[2] else {
-                        return Err(anyhow::anyhow!("expected value"));
-                    };
-
-                    let key = String::from_utf8(key_bytes.to_vec())?;
-                    let value = String::from_utf8(value_bytes.to_vec())?;
-
-                    WriteOperation::Set { key, value }
-                }
-                _ => todo!(),
-            };
-
-            ops.push(op);
+            ops.push(WriteOperation { op: op, offset: offset });
         }
 
         Ok(ops)
@@ -113,14 +95,14 @@ impl WriteOperation {
     pub fn from_client_req(req: &ClientRequest) -> Option<Self> {
         match req {
             ClientRequest::Set { key, value } => {
-                Some(WriteOperation::Set { key: key.clone(), value: value.clone() })
+                Some(WriteKind::Set { key: key.clone(), value: value.clone() })
             }
             ClientRequest::SetWithExpiry { key, value, expiry } => {
                 let expires_at =
                     expiry.duration_since(std::time::SystemTime::UNIX_EPOCH).unwrap().as_millis()
                         as u64;
 
-                Some(WriteOperation::SetWithExpiry {
+                Some(WriteKind::SetWithExpiry {
                     key: key.clone(),
                     value: value.clone(),
                     expires_at,
@@ -131,7 +113,7 @@ impl WriteOperation {
     }
 }
 
-impl TryFrom<QueryIO> for WriteOperation {
+impl TryFrom<QueryIO> for WriteKind {
     type Error = anyhow::Error;
 
     fn try_from(query: QueryIO) -> Result<Self> {
@@ -164,7 +146,7 @@ impl TryFrom<QueryIO> for WriteOperation {
                     "SET" if bulk_strings.len() == 3 => {
                         let key = String::from_utf8(key_bytes.to_vec())?;
                         let value = String::from_utf8(value_bytes.to_vec())?;
-                        WriteOperation::Set { key, value }
+                        WriteKind::Set { key, value }
                     }
                     _ => todo!(),
                 };
