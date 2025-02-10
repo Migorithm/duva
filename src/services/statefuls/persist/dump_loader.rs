@@ -4,9 +4,9 @@ use super::DumpFile;
 
 pub struct Load;
 
-pub(crate) struct PersistActor {}
+pub(crate) struct DumpLoader {}
 
-impl PersistActor {
+impl DumpLoader {
     pub(crate) async fn dump(filepath: String) -> anyhow::Result<DumpFile> {
         let bytes = tokio::fs::read(filepath).await?;
         let decoder: BytesDecoder<DecoderInit> = bytes.as_slice().into();

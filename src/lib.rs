@@ -12,7 +12,7 @@ use services::config::manager::ConfigManager;
 use services::error::IoError;
 use services::statefuls::cache::manager::CacheManager;
 use services::statefuls::cache::ttl::manager::TtlSchedulerInbox;
-use services::statefuls::persist::actor::PersistActor;
+use services::statefuls::persist::dump_loader::DumpLoader;
 use std::sync::atomic::Ordering;
 use std::thread::sleep;
 use std::time::Duration;
@@ -170,7 +170,7 @@ impl StartUpFacade {
         startup_notifier: impl TNotifyStartUp,
     ) -> Result<()> {
         if let Some(filepath) = config_manager.try_filepath().await? {
-            let dump = PersistActor::dump(filepath).await?;
+            let dump = DumpLoader::dump(filepath).await?;
             if let Some((repl_id, offset)) = dump.extract_replication_info() {
                 //  TODO reconnect! - echo
                 cluster_manager
