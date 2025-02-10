@@ -254,10 +254,23 @@ fn parse_replicate(buffer: BytesMut) -> std::result::Result<(QueryIO, usize), an
 
     let (offset, l1) = deserialize(BytesMut::from(&buffer[len..]))?;
 
-    let (query, l2) = deserialize(BytesMut::from(&buffer[len + l1..]))?;
+    let (QueryIO::Array(vec_query_ios), l2) = deserialize(BytesMut::from(&buffer[len + l1..]))?
+    else {
+        return Err(anyhow::anyhow!("expected array"));
+    };
 
+    // extract command
+    let mut args = vec_query_ios.into_iter();
+    let Some(QueryIO::BulkString(cmd_bytes)) = args.next() else {
+        return Err(anyhow::anyhow!("expected command"));
+    };
+
+    let cmd = std::str::from_utf8(&cmd_bytes)?.to_lowercase();
     Ok((
-        QueryIO::Replicate { offset: offset.unpack_single_entry()?, query: query.try_into()? },
+        QueryIO::Replicate {
+            offset: offset.unpack_single_entry()?,
+            query: WriteRequest::new(&cmd, args)?,
+        },
         len + l1 + l2,
     ))
 }

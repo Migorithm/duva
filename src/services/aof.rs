@@ -107,6 +107,14 @@ impl WriteRequest {
         }
     }
 
+    pub fn new(cmd: &str, args: std::vec::IntoIter<QueryIO>) -> Result<Self> {
+        match cmd {
+            "set" => Self::to_set(args),
+
+            _ => Err(anyhow::anyhow!("unsupported command")),
+        }
+    }
+
     pub fn to_set(mut args: std::vec::IntoIter<QueryIO>) -> anyhow::Result<Self> {
         match args.len() {
             2 => {
@@ -142,31 +150,5 @@ impl WriteRequest {
 
             _ => Err(anyhow::anyhow!("expected 2 or 4 arguments")),
         }
-    }
-}
-
-impl TryFrom<QueryIO> for WriteRequest {
-    type Error = anyhow::Error;
-
-    fn try_from(query: QueryIO) -> Result<Self> {
-        let bulk_strings = match query {
-            QueryIO::Array(strings) => strings,
-            _ => return Err(anyhow::anyhow!("expected array")),
-        };
-
-        let mut args = bulk_strings.into_iter();
-
-        // extract command
-        let Some(QueryIO::BulkString(cmd_bytes)) = args.next() else {
-            return Err(anyhow::anyhow!("expected command"));
-        };
-
-        let cmd = std::str::from_utf8(&cmd_bytes)?.to_lowercase();
-
-        if cmd == "set" {
-            return WriteRequest::to_set(args);
-        }
-
-        Err(anyhow::anyhow!("unsupported command"))
     }
 }
