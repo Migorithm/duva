@@ -8,7 +8,7 @@ use bytes::BytesMut;
 use tokio::fs::{File, OpenOptions};
 use tokio::io::{AsyncReadExt, AsyncWriteExt, BufReader, BufWriter};
 
-use crate::services::aof::{TAof, WriteOperation};
+use crate::services::aof::{TAof, WriteOp, WriteOperation};
 
 /// A local append-only file (AOF) implementation.
 pub struct LocalAof {
@@ -39,7 +39,7 @@ impl TAof for LocalAof {
     /// # Errors
     ///
     /// Returns an error if writing to or syncing the underlying file fails.
-    async fn append(&mut self, op: &WriteOperation) -> Result<()> {
+    async fn append(&mut self, op: WriteOp) -> Result<()> {
         self.writer.write_all(&op.serialize()).await?;
         self.fsync().await?;
 
@@ -141,8 +141,10 @@ mod tests {
         let path = dir.path().join("local.aof");
 
         let mut aof = LocalAof::new(&path).await?;
+
         let op = WriteOperation::Set { key: "foo".into(), value: "bar".into() };
-        aof.append(&op).await?;
+        let write_op = WriteOp { op, offset: 0 };
+        aof.append(write_op).await?;
         drop(aof);
 
         let mut file = tokio::fs::File::open(&path).await?;
@@ -161,9 +163,21 @@ mod tests {
 
         {
             let mut aof = LocalAof::new(&path).await?;
-            aof.append(&WriteOperation::Set { key: "a".into(), value: "a".into() }).await?;
-            aof.append(&WriteOperation::Set { key: "b".into(), value: "b".into() }).await?;
-            aof.append(&WriteOperation::Set { key: "c".into(), value: "c".into() }).await?;
+            aof.append(WriteOp {
+                op: WriteOperation::Set { key: "a".into(), value: "a".into() },
+                offset: 0,
+            })
+            .await?;
+            aof.append(WriteOp {
+                op: WriteOperation::Set { key: "b".into(), value: "b".into() },
+                offset: 1,
+            })
+            .await?;
+            aof.append(WriteOp {
+                op: WriteOperation::Set { key: "c".into(), value: "c".into() },
+                offset: 2,
+            })
+            .await?;
         }
 
         let mut aof = LocalAof::new(&path).await?;
@@ -191,9 +205,21 @@ mod tests {
         // Append three ops.
         {
             let mut aof = LocalAof::new(&path).await?;
-            aof.append(&WriteOperation::Set { key: "a".into(), value: "a".into() }).await?;
-            aof.append(&WriteOperation::Set { key: "b".into(), value: "b".into() }).await?;
-            aof.append(&WriteOperation::Set { key: "c".into(), value: "c".into() }).await?;
+            aof.append(WriteOp {
+                op: WriteOperation::Set { key: "a".into(), value: "a".into() },
+                offset: 0,
+            })
+            .await?;
+            aof.append(WriteOp {
+                op: WriteOperation::Set { key: "b".into(), value: "b".into() },
+                offset: 1,
+            })
+            .await?;
+            aof.append(WriteOp {
+                op: WriteOperation::Set { key: "c".into(), value: "c".into() },
+                offset: 2,
+            })
+            .await?;
         }
 
         // Corrupt file content by truncating to the first half.

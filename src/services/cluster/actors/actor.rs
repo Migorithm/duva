@@ -1,4 +1,4 @@
-use crate::services::aof::WriteOperation;
+use crate::services::aof::{WriteOp, WriteOperation};
 use crate::services::cluster::command::cluster_command::{AddPeer, ClusterCommand};
 use crate::services::cluster::peers::identifier::PeerIdentifier;
 use crate::services::cluster::peers::kind::PeerKind;
@@ -202,8 +202,10 @@ impl ClusterActor {
 
     async fn consensus(&mut self, log: WriteOperation) {
         // TODO send current offset
+        let write_op = WriteOp { op: log, offset: self.replication.master_repl_offset };
+
         for peer in self.replicas() {
-            let _ = peer.w_conn.stream.write(log.clone().serialize()).await;
+            let _ = peer.w_conn.stream.write(write_op.clone().serialize()).await;
         }
         // TODO implement concensus
         // TODO if any operations failed, it's okay to drop sender

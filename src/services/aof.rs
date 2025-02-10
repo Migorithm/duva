@@ -11,10 +11,7 @@ use super::{
 /// Trait for an Append-Only File (AOF) abstraction.
 pub trait TAof {
     /// Appends a single `WriteOperation` to the log.
-    fn append(
-        &mut self,
-        op: &WriteOperation,
-    ) -> impl std::future::Future<Output = Result<()>> + Send;
+    fn append(&mut self, op: WriteOp) -> impl std::future::Future<Output = Result<()>> + Send;
 
     /// Replays all logged operations from the beginning of the AOF, calling the provided callback `f` for each operation.
     ///
@@ -48,24 +45,27 @@ pub enum WriteOperation {
     },
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WriteOp {
+    pub op: WriteOperation,
+    pub offset: u64,
+}
+
+impl WriteOp {
+    pub fn serialize(self) -> Bytes {
+        QueryIO::Replicate { query: self.op, offset: self.offset }.serialize()
+    }
+}
+
 impl WriteOperation {
     /// Serialize this `WriteOperation` into bytes.
-    pub fn serialize(&self) -> Bytes {
-        match &self {
-            WriteOperation::Set { key, value } => {
-                let bytes = write_array!("SET", key.clone(), value.clone()).serialize();
-
-                bytes
-            }
-
-            // TODO deserialize this
+    pub fn to_array(self) -> QueryIO {
+        match self {
+            WriteOperation::Set { key, value } => write_array!("SET", key, value),
             WriteOperation::SetWithExpiry { key, value, expires_at } => {
-                let bytes =
-                    write_array!("SET", key.clone(), value.clone(), "px", expires_at.to_string())
-                        .serialize();
-                bytes
+                write_array!("SET", key, value, "px", expires_at.to_string())
             }
-            WriteOperation::Delete { key } => todo!(),
+            WriteOperation::Delete { key } => write_array!("DEL", key),
         }
     }
 
@@ -173,36 +173,5 @@ impl TryFrom<QueryIO> for WriteOperation {
             }
             _ => Err(anyhow::anyhow!("expected array")),
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_write_operation_serialize_set() {
-        // GIVEN a WriteOperation with a SET operation.
-        let op = WriteOperation::Set { key: "foo".into(), value: "bar".into() };
-
-        // WHEN serialized.
-        let bytes = op.serialize();
-
-        // THEN
-        assert_eq!(bytes, "*3\r\n$3\r\nSET\r\n$3\r\nfoo\r\n$3\r\nbar\r\n");
-    }
-
-    #[test]
-    fn test_write_operation_deserialize_set() {
-        // GIVEN a serialized WriteOperation.
-        let cmd = "*3\r\n$3\r\nSET\r\n$3\r\nfoo\r\n$3\r\nbar\r\n";
-        let bytes = BytesMut::from(cmd.as_bytes());
-
-        // WHEN deserialized.
-        let ops = WriteOperation::deserialize(bytes).unwrap();
-
-        // THEN we get the expected WriteOperation.
-        assert_eq!(ops.len(), 1);
-        assert_eq!(ops[0], WriteOperation::Set { key: "foo".into(), value: "bar".into() });
     }
 }

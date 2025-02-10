@@ -112,7 +112,7 @@ impl QueryIO {
                     offset
                 )
                 .into();
-                [message, query.serialize()].concat().into()
+                [message, query.to_array().serialize()].concat().into()
             }
         }
     }
