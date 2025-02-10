@@ -269,7 +269,7 @@ fn parse_replicate(buffer: BytesMut) -> std::result::Result<(QueryIO, usize), an
     Ok((
         QueryIO::Replicate {
             offset: offset.unpack_single_entry()?,
-            query: WriteRequest::new(&cmd, args)?,
+            query: WriteRequest::new(cmd, args)?,
         },
         len + l1 + l2,
     ))

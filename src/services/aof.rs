@@ -107,8 +107,8 @@ impl WriteRequest {
         }
     }
 
-    pub fn new(cmd: &str, args: std::vec::IntoIter<QueryIO>) -> Result<Self> {
-        match cmd {
+    pub fn new(cmd: String, args: std::vec::IntoIter<QueryIO>) -> Result<Self> {
+        match cmd.as_str() {
             "set" => Self::to_set(args),
 
             _ => Err(anyhow::anyhow!("unsupported command")),
