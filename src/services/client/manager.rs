@@ -10,7 +10,7 @@ use crate::services::query_io::QueryIO;
 use crate::services::statefuls::cache::manager::CacheManager;
 use crate::services::statefuls::cache::ttl::manager::TtlSchedulerInbox;
 use crate::services::statefuls::cache::CacheEntry;
-use crate::services::statefuls::snapshot::endec::encoder::encoding_processor::SaveTarget;
+use crate::services::statefuls::snapshot::save_actor::SaveTarget;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::select;
 

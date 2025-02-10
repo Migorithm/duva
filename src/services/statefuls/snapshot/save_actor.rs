@@ -6,11 +6,11 @@ use crate::services::statefuls::snapshot::encoding_command::EncodingCommand;
 
 use anyhow::Result;
 
-use super::byte_encoder::encode_checksum;
-use super::byte_encoder::encode_database_info;
-use super::byte_encoder::encode_database_table_size;
-use super::byte_encoder::encode_header;
-use super::byte_encoder::encode_metadata;
+use crate::services::statefuls::snapshot::endec::encoder::byte_encoder::encode_checksum;
+use crate::services::statefuls::snapshot::endec::encoder::byte_encoder::encode_database_info;
+use crate::services::statefuls::snapshot::endec::encoder::byte_encoder::encode_database_table_size;
+use crate::services::statefuls::snapshot::endec::encoder::byte_encoder::encode_header;
+use crate::services::statefuls::snapshot::endec::encoder::byte_encoder::encode_metadata;
 use crate::services::error::IoError;
 use std::collections::VecDeque;
 use tokio::io::AsyncWriteExt;
@@ -39,8 +39,8 @@ impl SaveTarget {
 }
 
 pub struct SaveActor {
-    pub(super) target: SaveTarget,
-    pub(super) meta: SaveMeta,
+    pub(in crate::services::statefuls::snapshot) target: SaveTarget,
+    pub(in crate::services::statefuls::snapshot) meta: SaveMeta,
 }
 
 impl SaveActor {
