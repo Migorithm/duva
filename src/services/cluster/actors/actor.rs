@@ -200,11 +200,10 @@ impl ClusterActor {
     }
 
     async fn consensus(&mut self, log: QueryIO) {
-        let replicas = self.replicas();
-        if replicas.is_empty() {
-            return;
+        // TODO send current offset
+        for peer in self.replicas() {
+            let _ = peer.w_conn.stream.write(log.clone().serialize()).await;
         }
-
         // TODO implement concensus
         // TODO if any operations failed, it's okay to drop sender
     }

@@ -1,6 +1,8 @@
 use anyhow::Result;
 use bytes::{Bytes, BytesMut};
 
+use crate::write_array;
+
 use super::query_io::{deserialize as deserialize_query_io, QueryIO};
 
 /// Trait for an Append-Only File (AOF) abstraction.
@@ -27,68 +29,128 @@ pub trait TAof {
 pub enum WriteOperation {
     /// Set a `key` to `value`, optionally with an expiration epoch time.
     /// TODO: Add `expires_at`.
-    Set { key: String, value: String },
+    Set {
+        key: String,
+        value: String,
+    },
+
+    SetWithExpiry {
+        key: String,
+        value: String,
+        expires_at: u64,
+    },
     /// Delete a key.
-    Delete { key: String },
+    Delete {
+        key: String,
+    },
 }
 
 impl WriteOperation {
     /// Serialize this `WriteOperation` into bytes.
-    pub fn serialize(&self) -> Result<Bytes> {
+    pub fn serialize(&self) -> Bytes {
         match &self {
             WriteOperation::Set { key, value } => {
-                let bytes = QueryIO::Array(vec![
-                    QueryIO::BulkString("SET".into()),
-                    QueryIO::BulkString(key.clone().into()),
-                    QueryIO::BulkString(value.clone().into()),
-                ])
-                .serialize();
-                Ok(bytes)
+                let bytes = write_array!("SET", key.clone(), value.clone()).serialize();
+
+                bytes
             }
-            _ => todo!(),
+
+            // TODO deserialize this
+            WriteOperation::SetWithExpiry { key, value, expires_at } => {
+                let bytes =
+                    write_array!("SET", key.clone(), value.clone(), "px", expires_at.to_string())
+                        .serialize();
+                bytes
+            }
+            WriteOperation::Delete { key } => todo!(),
         }
+    }
+
+    /// Deserialize `WriteOperation`s from the given bytes.
+    pub fn deserialize(mut bytes: BytesMut) -> Result<Vec<WriteOperation>> {
+        let mut ops = Vec::new();
+
+        while !bytes.is_empty() {
+            let (query, consumed) = deserialize_query_io(bytes.clone())?;
+            bytes = bytes.split_off(consumed);
+
+            let QueryIO::Array(bulk_strings) = query else {
+                return Err(anyhow::anyhow!("expected array"));
+            };
+
+            let Some(QueryIO::BulkString(first_bytes)) = bulk_strings.first() else {
+                return Err(anyhow::anyhow!("expected bulk string"));
+            };
+
+            let first_str = std::str::from_utf8(first_bytes)?;
+
+            let op = match first_str {
+                "SET" if bulk_strings.len() == 3 => {
+                    let QueryIO::BulkString(key_bytes) = &bulk_strings[1] else {
+                        return Err(anyhow::anyhow!("expected key"));
+                    };
+                    let QueryIO::BulkString(value_bytes) = &bulk_strings[2] else {
+                        return Err(anyhow::anyhow!("expected value"));
+                    };
+
+                    let key = String::from_utf8(key_bytes.to_vec())?;
+                    let value = String::from_utf8(value_bytes.to_vec())?;
+
+                    WriteOperation::Set { key, value }
+                }
+                _ => todo!(),
+            };
+
+            ops.push(op);
+        }
+
+        Ok(ops)
     }
 }
 
-/// Deserialize `WriteOperation`s from the given bytes.
-pub fn deserialize(mut bytes: BytesMut) -> Result<Vec<WriteOperation>> {
-    let mut ops = Vec::new();
+impl TryFrom<QueryIO> for WriteOperation {
+    type Error = anyhow::Error;
 
-    while !bytes.is_empty() {
-        let (query, consumed) = deserialize_query_io(bytes.clone())?;
-        bytes = bytes.split_off(consumed);
+    fn try_from(query: QueryIO) -> Result<Self> {
+        match query {
+            QueryIO::Array(bulk_strings) => {
+                if bulk_strings.len() < 3 {
+                    return Err(anyhow::anyhow!("expected array"));
+                }
 
-        let QueryIO::Array(bulk_strings) = query else {
-            return Err(anyhow::anyhow!("expected array"));
-        };
-
-        let Some(QueryIO::BulkString(first_bytes)) = bulk_strings.first() else {
-            return Err(anyhow::anyhow!("expected bulk string"));
-        };
-
-        let first_str = std::str::from_utf8(first_bytes)?;
-
-        let op = match first_str {
-            "SET" if bulk_strings.len() == 3 => {
-                let QueryIO::BulkString(key_bytes) = &bulk_strings[1] else {
-                    return Err(anyhow::anyhow!("expected key"));
+                let (
+                    QueryIO::BulkString(cmd_bytes),
+                    QueryIO::BulkString(key_bytes),
+                    QueryIO::BulkString(value_bytes),
+                    px,
+                    expiry,
+                ) = (
+                    bulk_strings.first().unwrap(),
+                    bulk_strings.get(1).unwrap(),
+                    bulk_strings.get(2).unwrap(),
+                    bulk_strings.get(3),
+                    bulk_strings.get(4),
+                )
+                else {
+                    return Err(anyhow::anyhow!("expected bulk string"));
                 };
-                let QueryIO::BulkString(value_bytes) = &bulk_strings[2] else {
-                    return Err(anyhow::anyhow!("expected value"));
+
+                let cmd = std::str::from_utf8(&cmd_bytes)?;
+
+                let op = match cmd {
+                    "SET" if bulk_strings.len() == 3 => {
+                        let key = String::from_utf8(key_bytes.to_vec())?;
+                        let value = String::from_utf8(value_bytes.to_vec())?;
+                        WriteOperation::Set { key, value }
+                    }
+                    _ => todo!(),
                 };
 
-                let key = String::from_utf8(key_bytes.to_vec())?;
-                let value = String::from_utf8(value_bytes.to_vec())?;
-
-                WriteOperation::Set { key, value }
+                Ok(op)
             }
-            _ => todo!(),
-        };
-
-        ops.push(op);
+            _ => Err(anyhow::anyhow!("expected array")),
+        }
     }
-
-    Ok(ops)
 }
 
 #[cfg(test)]
@@ -101,7 +163,7 @@ mod tests {
         let op = WriteOperation::Set { key: "foo".into(), value: "bar".into() };
 
         // WHEN serialized.
-        let bytes = op.serialize().unwrap();
+        let bytes = op.serialize();
 
         // THEN
         assert_eq!(bytes, "*3\r\n$3\r\nSET\r\n$3\r\nfoo\r\n$3\r\nbar\r\n");
@@ -114,7 +176,7 @@ mod tests {
         let bytes = BytesMut::from(cmd.as_bytes());
 
         // WHEN deserialized.
-        let ops = deserialize(bytes).unwrap();
+        let ops = WriteOperation::deserialize(bytes).unwrap();
 
         // THEN we get the expected WriteOperation.
         assert_eq!(ops.len(), 1);

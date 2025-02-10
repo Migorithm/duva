@@ -8,7 +8,7 @@ use bytes::BytesMut;
 use tokio::fs::{File, OpenOptions};
 use tokio::io::{AsyncReadExt, AsyncWriteExt, BufReader, BufWriter};
 
-use crate::services::aof::{deserialize, TAof, WriteOperation};
+use crate::services::aof::{TAof, WriteOperation};
 
 /// A local append-only file (AOF) implementation.
 pub struct LocalAof {
@@ -40,7 +40,7 @@ impl TAof for LocalAof {
     ///
     /// Returns an error if writing to or syncing the underlying file fails.
     async fn append(&mut self, op: &WriteOperation) -> Result<()> {
-        self.writer.write_all(&op.serialize()?).await?;
+        self.writer.write_all(&op.serialize()).await?;
         self.fsync().await?;
 
         Ok(())
@@ -64,7 +64,7 @@ impl TAof for LocalAof {
 
         let bytes = BytesMut::from(&buf[..]);
 
-        let ops = deserialize(bytes)?;
+        let ops = WriteOperation::deserialize(bytes)?;
 
         for op in ops {
             f(op);
