@@ -1,12 +1,9 @@
+use super::client::request::ClientRequest;
+use super::query_io::deserialize as deserialize_query_io;
+use super::query_io::QueryIO;
+use crate::write_array;
 use anyhow::Result;
 use bytes::{Bytes, BytesMut};
-
-use crate::write_array;
-
-use super::{
-    client::request::ClientRequest,
-    query_io::{deserialize as deserialize_query_io, QueryIO},
-};
 
 /// Trait for an Append-Only File (AOF) abstraction.
 pub trait TAof {
@@ -29,14 +26,14 @@ pub trait TAof {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WriteOperation {
-    pub op: WriteKind,
+    pub op: WriteRequest,
     pub offset: u64,
 }
 
 /// Operations that appear in the Append-Only File (AOF).
 /// Client request is converted to WriteOperation and then it turns into WriteOp when it gets offset
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum WriteKind {
+pub enum WriteRequest {
     /// Set a `key` to `value`, optionally with an expiration epoch time.
     /// TODO: Add `expires_at`.
     Set {
@@ -61,15 +58,15 @@ impl WriteOperation {
     }
 }
 
-impl WriteKind {
+impl WriteRequest {
     /// Serialize this `WriteOperation` into bytes.
     pub fn to_array(self) -> QueryIO {
         match self {
-            WriteKind::Set { key, value } => write_array!("SET", key, value),
-            WriteKind::SetWithExpiry { key, value, expires_at } => {
+            WriteRequest::Set { key, value } => write_array!("SET", key, value),
+            WriteRequest::SetWithExpiry { key, value, expires_at } => {
                 write_array!("SET", key, value, "px", expires_at.to_string())
             }
-            WriteKind::Delete { key } => write_array!("DEL", key),
+            WriteRequest::Delete { key } => write_array!("DEL", key),
         }
     }
 
@@ -81,12 +78,10 @@ impl WriteKind {
             let (query, consumed) = deserialize_query_io(bytes.clone())?;
             bytes = bytes.split_off(consumed);
 
-            let (op, offset) = match query {
-                QueryIO::Replicate { query, offset } => (query, offset),
-                _ => return Err(anyhow::anyhow!("expected replicate")),
+            let QueryIO::Replicate { query, offset } = query else {
+                return Err(anyhow::anyhow!("expected replicate"));
             };
-
-            ops.push(WriteOperation { op: op, offset: offset });
+            ops.push(WriteOperation { op: query, offset });
         }
 
         Ok(ops)
@@ -95,14 +90,14 @@ impl WriteKind {
     pub fn from_client_req(req: &ClientRequest) -> Option<Self> {
         match req {
             ClientRequest::Set { key, value } => {
-                Some(WriteKind::Set { key: key.clone(), value: value.clone() })
+                Some(WriteRequest::Set { key: key.clone(), value: value.clone() })
             }
             ClientRequest::SetWithExpiry { key, value, expiry } => {
                 let expires_at =
                     expiry.duration_since(std::time::SystemTime::UNIX_EPOCH).unwrap().as_millis()
                         as u64;
 
-                Some(WriteKind::SetWithExpiry {
+                Some(WriteRequest::SetWithExpiry {
                     key: key.clone(),
                     value: value.clone(),
                     expires_at,
@@ -111,49 +106,49 @@ impl WriteKind {
             _ => None,
         }
     }
-}
 
-impl TryFrom<QueryIO> for WriteKind {
-    type Error = anyhow::Error;
+    pub fn new(cmd: String, args: std::vec::IntoIter<QueryIO>) -> Result<Self> {
+        match cmd.as_str() {
+            "set" => Self::to_set(args),
 
-    fn try_from(query: QueryIO) -> Result<Self> {
-        match query {
-            QueryIO::Array(bulk_strings) => {
-                if bulk_strings.len() < 3 {
-                    return Err(anyhow::anyhow!("expected array"));
-                }
+            _ => Err(anyhow::anyhow!("unsupported command")),
+        }
+    }
 
-                let (
-                    QueryIO::BulkString(cmd_bytes),
-                    QueryIO::BulkString(key_bytes),
-                    QueryIO::BulkString(value_bytes),
-                    px,
-                    expiry,
-                ) = (
-                    bulk_strings.first().unwrap(),
-                    bulk_strings.get(1).unwrap(),
-                    bulk_strings.get(2).unwrap(),
-                    bulk_strings.get(3),
-                    bulk_strings.get(4),
-                )
+    pub fn to_set(mut args: std::vec::IntoIter<QueryIO>) -> anyhow::Result<Self> {
+        match args.len() {
+            2 => {
+                let (Some(QueryIO::BulkString(key)), Some(QueryIO::BulkString(value))) =
+                    (args.next(), args.next())
                 else {
-                    return Err(anyhow::anyhow!("expected bulk string"));
+                    return Err(anyhow::anyhow!("expected value"));
                 };
 
-                let cmd = std::str::from_utf8(&cmd_bytes)?;
-
-                let op = match cmd {
-                    "SET" if bulk_strings.len() == 3 => {
-                        let key = String::from_utf8(key_bytes.to_vec())?;
-                        let value = String::from_utf8(value_bytes.to_vec())?;
-                        WriteKind::Set { key, value }
-                    }
-                    _ => todo!(),
-                };
-
-                Ok(op)
+                Ok(WriteRequest::Set {
+                    key: String::from_utf8(key.to_vec())?,
+                    value: String::from_utf8(value.to_vec())?,
+                })
             }
-            _ => Err(anyhow::anyhow!("expected array")),
+
+            4 => {
+                let (
+                    Some(QueryIO::BulkString(key)),
+                    Some(QueryIO::BulkString(value)),
+                    Some(QueryIO::BulkString(_)),
+                    Some(QueryIO::BulkString(expiry)),
+                ) = (args.next(), args.next(), args.next(), args.next())
+                else {
+                    return Err(anyhow::anyhow!("expected value"));
+                };
+
+                Ok(WriteRequest::SetWithExpiry {
+                    key: String::from_utf8(key.to_vec())?,
+                    value: String::from_utf8(value.to_vec())?,
+                    expires_at: std::str::from_utf8(&expiry)?.parse()?,
+                })
+            }
+
+            _ => Err(anyhow::anyhow!("expected 2 or 4 arguments")),
         }
     }
 }

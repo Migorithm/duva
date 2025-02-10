@@ -1,11 +1,10 @@
 //! A local append-only file (AOF) adapter.
+use crate::services::aof::{TAof, WriteOperation, WriteRequest};
 use anyhow::Result;
 use bytes::BytesMut;
 use std::path::{Path, PathBuf};
 use tokio::fs::{File, OpenOptions};
 use tokio::io::{AsyncReadExt, AsyncWriteExt, BufReader, BufWriter};
-
-use crate::services::aof::{TAof, WriteKind, WriteOperation};
 
 /// A local append-only file (AOF) implementation.
 pub struct LocalAof {
@@ -61,7 +60,7 @@ impl TAof for LocalAof {
 
         let bytes = BytesMut::from(&buf[..]);
 
-        for op in WriteKind::deserialize(bytes)? {
+        for op in WriteRequest::deserialize(bytes)? {
             f(op);
         }
         Ok(())
@@ -136,7 +135,7 @@ mod tests {
 
         let mut aof = LocalAof::new(&path).await?;
 
-        let op = WriteKind::Set { key: "foo".into(), value: "bar".into() };
+        let op = WriteRequest::Set { key: "foo".into(), value: "bar".into() };
         let write_op = WriteOperation { op, offset: 0 };
         aof.append(write_op).await?;
         drop(aof);
@@ -158,17 +157,17 @@ mod tests {
         {
             let mut aof = LocalAof::new(&path).await?;
             aof.append(WriteOperation {
-                op: WriteKind::Set { key: "a".into(), value: "a".into() },
+                op: WriteRequest::Set { key: "a".into(), value: "a".into() },
                 offset: 0,
             })
             .await?;
             aof.append(WriteOperation {
-                op: WriteKind::Set { key: "b".into(), value: "b".into() },
+                op: WriteRequest::Set { key: "b".into(), value: "b".into() },
                 offset: 1,
             })
             .await?;
             aof.append(WriteOperation {
-                op: WriteKind::Set { key: "c".into(), value: "c".into() },
+                op: WriteRequest::Set { key: "c".into(), value: "c".into() },
                 offset: 2,
             })
             .await?;
@@ -185,15 +184,24 @@ mod tests {
         assert_eq!(ops.len(), 3);
         assert_eq!(
             ops[0],
-            WriteOperation { op: WriteKind::Set { key: "a".into(), value: "a".into() }, offset: 0 }
+            WriteOperation {
+                op: WriteRequest::Set { key: "a".into(), value: "a".into() },
+                offset: 0
+            }
         );
         assert_eq!(
             ops[1],
-            WriteOperation { op: WriteKind::Set { key: "b".into(), value: "b".into() }, offset: 1 }
+            WriteOperation {
+                op: WriteRequest::Set { key: "b".into(), value: "b".into() },
+                offset: 1
+            }
         );
         assert_eq!(
             ops[2],
-            WriteOperation { op: WriteKind::Set { key: "c".into(), value: "c".into() }, offset: 2 }
+            WriteOperation {
+                op: WriteRequest::Set { key: "c".into(), value: "c".into() },
+                offset: 2
+            }
         );
 
         Ok(())
@@ -209,17 +217,17 @@ mod tests {
         {
             let mut aof = LocalAof::new(&path).await?;
             aof.append(WriteOperation {
-                op: WriteKind::Set { key: "a".into(), value: "a".into() },
+                op: WriteRequest::Set { key: "a".into(), value: "a".into() },
                 offset: 0,
             })
             .await?;
             aof.append(WriteOperation {
-                op: WriteKind::Set { key: "b".into(), value: "b".into() },
+                op: WriteRequest::Set { key: "b".into(), value: "b".into() },
                 offset: 1,
             })
             .await?;
             aof.append(WriteOperation {
-                op: WriteKind::Set { key: "c".into(), value: "c".into() },
+                op: WriteRequest::Set { key: "c".into(), value: "c".into() },
                 offset: 2,
             })
             .await?;
@@ -251,7 +259,10 @@ mod tests {
         assert_eq!(ops.len(), 1);
         assert_eq!(
             ops[0],
-            WriteOperation { op: WriteKind::Set { key: "a".into(), value: "a".into() }, offset: 0 }
+            WriteOperation {
+                op: WriteRequest::Set { key: "a".into(), value: "a".into() },
+                offset: 0
+            }
         );
 
         Ok(())

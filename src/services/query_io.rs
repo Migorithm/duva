@@ -1,4 +1,4 @@
-use super::aof::WriteKind;
+use super::aof::WriteRequest;
 use crate::services::cluster::replications::replication::PeerState;
 use crate::services::statefuls::cache::CacheValue;
 use anyhow::{Context, Result};
@@ -30,7 +30,7 @@ pub enum QueryIO {
     Err(Bytes),
     File(Bytes),
     PeerState(PeerState),
-    Replicate { query: WriteKind, offset: u64 },
+    Replicate { query: WriteRequest, offset: u64 },
 }
 
 impl QueryIO {
@@ -254,10 +254,23 @@ fn parse_replicate(buffer: BytesMut) -> std::result::Result<(QueryIO, usize), an
 
     let (offset, l1) = deserialize(BytesMut::from(&buffer[len..]))?;
 
-    let (query, l2) = deserialize(BytesMut::from(&buffer[len + l1..]))?;
+    let (QueryIO::Array(vec_query_ios), l2) = deserialize(BytesMut::from(&buffer[len + l1..]))?
+    else {
+        return Err(anyhow::anyhow!("expected array"));
+    };
 
+    // extract command
+    let mut args = vec_query_ios.into_iter();
+    let Some(QueryIO::BulkString(cmd_bytes)) = args.next() else {
+        return Err(anyhow::anyhow!("expected command"));
+    };
+
+    let cmd = std::str::from_utf8(&cmd_bytes)?.to_lowercase();
     Ok((
-        QueryIO::Replicate { offset: offset.unpack_single_entry()?, query: query.try_into()? },
+        QueryIO::Replicate {
+            offset: offset.unpack_single_entry()?,
+            query: WriteRequest::new(cmd, args)?,
+        },
         len + l1 + l2,
     ))
 }
@@ -566,7 +579,7 @@ fn test_banned_peer_serde_when_time_passed() {
 #[test]
 fn test_from_replicate_to_binary() {
     // GIVEN
-    let query = WriteKind::Set { key: "foo".into(), value: "bar".into() };
+    let query = WriteRequest::Set { key: "foo".into(), value: "bar".into() };
     let replicate = QueryIO::Replicate { query, offset: 1 };
 
     // WHEN
@@ -589,7 +602,7 @@ fn test_from_binary_to_replicate() {
     assert_eq!(
         value,
         QueryIO::Replicate {
-            query: WriteKind::Set { key: "foo".into(), value: "bar".into() },
+            query: WriteRequest::Set { key: "foo".into(), value: "bar".into() },
             offset: 1
         }
     );
