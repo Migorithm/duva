@@ -1,6 +1,6 @@
 use crate::services::statefuls::{
     cache::CacheEntry,
-    persist::endec::{
+    snapshot::endec::{
         CHECKSUM_INDICATOR, DATABASE_SECTION_INDICATOR, DATABASE_TABLE_SIZE_INDICATOR,
         EXPIRY_TIME_IN_MILLISECONDS_INDICATOR, HEADER_MAGIC_STRING, METADATA_SECTION_INDICATOR,
         STRING_VALUE_TYPE_INDICATOR,
@@ -129,7 +129,7 @@ fn encode_size(size: usize) -> Result<Vec<u8>> {
 
 #[cfg(test)]
 mod test {
-    use crate::services::statefuls::persist::endec::{
+    use crate::services::statefuls::snapshot::endec::{
         decoder::{byte_decoder::BytesDecoder, states::DecoderInit},
         StoredDuration,
     };

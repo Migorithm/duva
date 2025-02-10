@@ -1,10 +1,10 @@
 use crate::services::statefuls::cache::CacheEntry;
-use crate::services::statefuls::persist::endec::{
+use crate::services::statefuls::snapshot::endec::{
     extract_range, StoredDuration, DATABASE_SECTION_INDICATOR, DATABASE_TABLE_SIZE_INDICATOR,
     EXPIRY_TIME_IN_MILLISECONDS_INDICATOR, EXPIRY_TIME_IN_SECONDS_INDICATOR, HEADER_MAGIC_STRING,
     METADATA_SECTION_INDICATOR, STRING_VALUE_TYPE_INDICATOR,
 };
-use crate::services::statefuls::persist::{
+use crate::services::statefuls::snapshot::{
     DatabaseSection, DatabaseSectionBuilder, DecodedMetadata, DumpFile,
 };
 use anyhow::{Context, Result};

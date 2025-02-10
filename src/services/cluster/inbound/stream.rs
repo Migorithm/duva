@@ -12,7 +12,7 @@ use crate::services::interface::TWrite;
 use crate::services::query_io::QueryIO;
 use crate::services::statefuls::cache::manager::CacheManager;
 
-use crate::services::statefuls::persist::endec::encoder::encoding_processor::SaveTarget;
+use crate::services::statefuls::snapshot::endec::encoder::encoding_processor::SaveTarget;
 use anyhow::Context;
 use bytes::Bytes;
 use tokio::net::TcpStream;

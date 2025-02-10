@@ -2,7 +2,7 @@ use crate::services::cluster::replications::replication::ReplicationInfo;
 use crate::services::interface::TWriterFactory;
 use crate::services::statefuls::cache::CacheEntry;
 
-use crate::services::statefuls::persist::encoding_command::EncodingCommand;
+use crate::services::statefuls::snapshot::encoding_command::EncodingCommand;
 
 use anyhow::Result;
 

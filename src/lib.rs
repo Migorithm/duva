@@ -12,7 +12,7 @@ use services::config::manager::ConfigManager;
 use services::error::IoError;
 use services::statefuls::cache::manager::CacheManager;
 use services::statefuls::cache::ttl::manager::TtlSchedulerInbox;
-use services::statefuls::persist::dump_loader::DumpLoader;
+use services::statefuls::snapshot::dump_loader::DumpLoader;
 use std::sync::atomic::Ordering;
 use std::thread::sleep;
 use std::time::Duration;

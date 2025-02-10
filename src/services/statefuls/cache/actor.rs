@@ -3,7 +3,7 @@ use super::CacheValue;
 use crate::make_smart_pointer;
 use crate::services::query_io::QueryIO;
 use crate::services::statefuls::cache::ttl::manager::TtlSchedulerInbox;
-use crate::services::statefuls::persist::encoding_command::EncodingCommand;
+use crate::services::statefuls::snapshot::encoding_command::EncodingCommand;
 use anyhow::Context;
 use anyhow::Result;
 use std::collections::HashMap;
