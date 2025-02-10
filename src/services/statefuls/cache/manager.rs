@@ -8,7 +8,7 @@ use crate::services::statefuls::cache::ttl::actor::TtlActor;
 use crate::services::statefuls::cache::ttl::manager::TtlSchedulerInbox;
 use crate::services::statefuls::snapshot::save::actor::SaveActor;
 use crate::services::statefuls::snapshot::save::actor::SaveTarget;
-use crate::services::statefuls::snapshot::DumpFile;
+use crate::services::statefuls::snapshot::dump_file::DumpFile;
 use anyhow::Result;
 use std::time::SystemTime;
 use std::{hash::Hasher, iter::Zip};

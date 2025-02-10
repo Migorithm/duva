@@ -170,7 +170,7 @@ impl StartUpFacade {
         startup_notifier: impl TNotifyStartUp,
     ) -> Result<()> {
         if let Some(filepath) = config_manager.try_filepath().await? {
-            let dump = DumpLoader::dump(filepath).await?;
+            let dump = DumpLoader::load(filepath).await?;
             if let Some((repl_id, offset)) = dump.extract_replication_info() {
                 //  TODO reconnect! - echo
                 cluster_manager
