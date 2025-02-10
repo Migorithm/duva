@@ -3,7 +3,7 @@ use super::CacheValue;
 use crate::make_smart_pointer;
 use crate::services::query_io::QueryIO;
 use crate::services::statefuls::cache::ttl::manager::TtlSchedulerInbox;
-use crate::services::statefuls::snapshot::encoding_command::EncodingCommand;
+use crate::services::statefuls::snapshot::save_command::SaveCommand;
 use anyhow::Context;
 use anyhow::Result;
 use std::collections::HashMap;
@@ -11,7 +11,7 @@ use tokio::sync::{mpsc, oneshot};
 
 pub enum CacheCommand {
     Set { cache_entry: CacheEntry, ttl_sender: TtlSchedulerInbox },
-    Save { outbox: mpsc::Sender<EncodingCommand> },
+    Save { outbox: mpsc::Sender<SaveCommand> },
     Get { key: String, sender: oneshot::Sender<QueryIO> },
     Keys { pattern: Option<String>, sender: oneshot::Sender<QueryIO> },
     Delete(String),
@@ -63,16 +63,16 @@ impl CacheActor {
                 }
                 CacheCommand::Save { outbox } => {
                     outbox
-                        .send(EncodingCommand::LocalShardSize {
+                        .send(SaveCommand::LocalShardSize {
                             table_size: self.len(),
                             expiry_size: self.keys_with_expiry(),
                         })
                         .await?;
                     for chunk in self.cache.iter().collect::<Vec<_>>().chunks(10) {
-                        outbox.send(EncodingCommand::SaveChunk(CacheEntry::new(chunk))).await?;
+                        outbox.send(SaveCommand::SaveChunk(CacheEntry::new(chunk))).await?;
                     }
                     // finalize the save operation
-                    outbox.send(EncodingCommand::StopSentinel).await?;
+                    outbox.send(SaveCommand::StopSentinel).await?;
                 }
             }
         }
