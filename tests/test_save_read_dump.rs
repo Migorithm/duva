@@ -61,7 +61,6 @@ async fn test_save_read_dump() {
     assert_eq!(res, QueryIO::SimpleString("OK".into()).serialize());
 
     // set with expiry time
-
     assert_eq!(
         h.send_and_get(&array(vec!["SET", "foo2", "bar2", "PX", "9999999999"])).await,
         QueryIO::SimpleString("OK".into()).serialize()
@@ -77,12 +76,19 @@ async fn test_save_read_dump() {
     let prev_master_repl_offset = info[4].split(":").collect::<Vec<&str>>()[1];
 
     // THEN
-
-    // THEN
     assert_eq!(h.send_and_get(&array(vec!["SAVE"])).await, QueryIO::Null.serialize());
 
     // wait for the file to be created
     tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+
+    // THEN
+    // kill master process
+    drop(master_process);
+
+    // run server with the same file name
+    let master_process = run_server_with_dbfilename(test_file_name.0.as_str());
+    let mut h = ClientStreamHandler::new(master_process.bind_addr()).await;
+
     // keys
     assert_eq!(h.send_and_get(&array(vec!["KEYS", "*"])).await, array(vec!["foo2", "foo"]));
 
