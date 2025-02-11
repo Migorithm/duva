@@ -16,7 +16,7 @@ use std::collections::VecDeque;
 use tokio::io::AsyncWriteExt;
 
 pub enum SaveTarget {
-    File(String),
+    File(tokio::fs::File),
     InMemory(Vec<u8>),
 }
 
@@ -24,10 +24,6 @@ impl SaveTarget {
     pub async fn write(&mut self, buf: &[u8]) -> Result<(), IoError> {
         match self {
             SaveTarget::File(f) => {
-                let mut f = tokio::fs::File::create_writer(f.clone()).await.map_err(|e| {
-                    println!("{e}");
-                    IoError::Unknown
-                })?;
                 f.write_all(buf).await.map_err(|e| e.kind().into())
             }
             SaveTarget::InMemory(v) => {
