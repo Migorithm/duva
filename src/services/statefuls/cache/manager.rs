@@ -4,7 +4,6 @@ use super::actor::CacheCommandSender;
 use super::CacheEntry;
 use crate::services::cluster::replications::replication::ReplicationInfo;
 use crate::services::query_io::QueryIO;
-use crate::services::statefuls::cache::ttl::actor::TtlActor;
 use crate::services::statefuls::cache::ttl::manager::TtlSchedulerManager;
 use crate::services::statefuls::snapshot::dump_file::DumpFile;
 use crate::services::statefuls::snapshot::save::actor::SaveActor;
@@ -20,7 +19,7 @@ type OneShotReceiverJoinHandle<T> =
     tokio::task::JoinHandle<std::result::Result<T, tokio::sync::oneshot::error::RecvError>>;
 
 #[derive(Clone)]
-pub(crate) struct CacheManager {
+pub struct CacheManager {
     pub(crate) inboxes: Vec<CacheCommandSender>,
 }
 

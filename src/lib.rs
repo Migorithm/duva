@@ -14,9 +14,9 @@ use services::error::IoError;
 use services::statefuls::cache::manager::CacheManager;
 use services::statefuls::snapshot::dump_loader::DumpLoader;
 use std::sync::atomic::Ordering;
-use std::thread::sleep;
 use std::time::Duration;
 use tokio::net::TcpListener;
+use tokio::time::sleep;
 
 pub mod client_utils;
 
@@ -109,7 +109,7 @@ impl StartUpFacade {
                         .accept_client_connections(stop_sentinel_recv, client_stream_listener),
                 );
 
-                sleep(Duration::from_millis(2));
+                sleep(Duration::from_millis(2)).await;
             } else {
                 // Cancel all client connections only IF the cluster mode has changes to slave
                 let _ = stop_sentinel_tx.send(());
