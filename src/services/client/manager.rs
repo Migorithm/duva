@@ -48,11 +48,8 @@ impl ClientManager {
             }
             ClientRequest::Save => {
                 let file_path = self.config_manager.get_filepath().await?;
-                let file = tokio::fs::OpenOptions::new()
-                    .write(true)
-                    .create(true)
-                    .open(&file_path)
-                    .await?;
+                let file =
+                    tokio::fs::OpenOptions::new().write(true).create(true).open(&file_path).await?;
                 self.cache_manager
                     .route_save(
                         SaveTarget::File(file),
