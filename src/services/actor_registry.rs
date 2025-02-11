@@ -16,6 +16,8 @@ pub struct ActorRegistry {
 impl ActorRegistry {
     pub(crate) fn new(config_manager: ConfigManager, cluster_manager: ClusterManager) -> Self {
         let cache_manager = CacheManager::run_cache_actors();
+
+        // TODO decide: do we have to run ttl actor on replica?
         let ttl_manager = TtlActor(cache_manager.clone()).run();
 
         Self { ttl_manager, cache_manager, config_manager, cluster_manager }
