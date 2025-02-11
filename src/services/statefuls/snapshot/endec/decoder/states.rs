@@ -1,4 +1,4 @@
-use crate::services::statefuls::persist::DecodedMetadata;
+use crate::services::statefuls::snapshot::dump_file::DecodedMetadata;
 
 #[derive(Default)]
 pub struct DecoderInit;

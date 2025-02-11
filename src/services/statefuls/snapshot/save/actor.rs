@@ -2,15 +2,15 @@ use crate::services::cluster::replications::replication::ReplicationInfo;
 use crate::services::interface::TWriterFactory;
 use crate::services::statefuls::cache::CacheEntry;
 
-use crate::services::statefuls::persist::encoding_command::EncodingCommand;
+use crate::services::statefuls::snapshot::save::command::SaveCommand;
 
 use anyhow::Result;
 
-use super::byte_encoder::encode_checksum;
-use super::byte_encoder::encode_database_info;
-use super::byte_encoder::encode_database_table_size;
-use super::byte_encoder::encode_header;
-use super::byte_encoder::encode_metadata;
+use crate::services::statefuls::snapshot::endec::encoder::byte_encoder::encode_checksum;
+use crate::services::statefuls::snapshot::endec::encoder::byte_encoder::encode_database_info;
+use crate::services::statefuls::snapshot::endec::encoder::byte_encoder::encode_database_table_size;
+use crate::services::statefuls::snapshot::endec::encoder::byte_encoder::encode_header;
+use crate::services::statefuls::snapshot::endec::encoder::byte_encoder::encode_metadata;
 use crate::services::error::IoError;
 use std::collections::VecDeque;
 use tokio::io::AsyncWriteExt;
@@ -39,8 +39,8 @@ impl SaveTarget {
 }
 
 pub struct SaveActor {
-    pub(super) target: SaveTarget,
-    pub(super) meta: SaveMeta,
+    pub(in crate::services::statefuls::snapshot) target: SaveTarget,
+    pub(in crate::services::statefuls::snapshot) meta: SaveMeta,
 }
 
 impl SaveActor {
@@ -61,7 +61,7 @@ impl SaveActor {
 
     pub async fn run(
         mut self,
-        mut inbox: tokio::sync::mpsc::Receiver<EncodingCommand>,
+        mut inbox: tokio::sync::mpsc::Receiver<SaveCommand>,
     ) -> Result<Self> {
         while let Some(cmd) = inbox.recv().await {
             match self.handle_cmd(cmd).await {
@@ -90,9 +90,9 @@ impl SaveActor {
         self.target.write(&meta.concat()).await?;
         Ok(())
     }
-    pub async fn handle_cmd(&mut self, cmd: EncodingCommand) -> Result<bool> {
+    pub async fn handle_cmd(&mut self, cmd: SaveCommand) -> Result<bool> {
         match cmd {
-            EncodingCommand::LocalShardSize { table_size, expiry_size } => {
+            SaveCommand::LocalShardSize { table_size, expiry_size } => {
                 self.meta.total_key_value_table_size += table_size;
                 self.meta.total_expires_table_size += expiry_size;
                 self.meta.num_of_saved_table_size_actor -= 1;
@@ -105,13 +105,13 @@ impl SaveActor {
                         .await?;
                 }
             }
-            EncodingCommand::SaveChunk(chunk) => {
+            SaveCommand::SaveChunk(chunk) => {
                 self.meta.chunk_queue.push_back(chunk);
                 if self.meta.num_of_saved_table_size_actor == 0 {
                     self.encode_chunk_queue().await?;
                 }
             }
-            EncodingCommand::StopSentinel => {
+            SaveCommand::StopSentinel => {
                 self.meta.num_of_cache_actors -= 1;
                 if self.meta.num_of_cache_actors == 0 {
                     self.encode_chunk_queue().await?;

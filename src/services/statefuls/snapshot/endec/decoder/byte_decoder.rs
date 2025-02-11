@@ -1,24 +1,35 @@
 use crate::services::statefuls::cache::CacheEntry;
-use crate::services::statefuls::persist::endec::{
+use crate::services::statefuls::snapshot::endec::{
     extract_range, StoredDuration, DATABASE_SECTION_INDICATOR, DATABASE_TABLE_SIZE_INDICATOR,
     EXPIRY_TIME_IN_MILLISECONDS_INDICATOR, EXPIRY_TIME_IN_SECONDS_INDICATOR, HEADER_MAGIC_STRING,
     METADATA_SECTION_INDICATOR, STRING_VALUE_TYPE_INDICATOR,
-};
-use crate::services::statefuls::persist::{
-    DatabaseSection, DatabaseSectionBuilder, DecodedMetadata, DumpFile,
 };
 use anyhow::{Context, Result};
 use std::{
     ops::{Deref, DerefMut},
     time::SystemTime,
 };
-
+use crate::services::statefuls::snapshot::dump_file::{DecodedDatabase, DecodedMetadata, DumpFile};
 use super::states::{DecoderInit, HeaderReady, MetadataReady};
 
 #[derive(Default)]
 pub struct BytesDecoder<'a, T> {
     pub data: &'a [u8],
     pub state: T,
+}
+
+#[derive(Default)]
+pub(crate) struct DatabaseSectionBuilder {
+    pub(crate) index: usize,
+    pub(crate) storage: Vec<CacheEntry>,
+    pub(crate) key_value_table_size: usize,
+    pub(crate) expires_table_size: usize,
+}
+
+impl DatabaseSectionBuilder {
+    pub fn build(self) -> DecodedDatabase {
+        DecodedDatabase { index: self.index, storage: self.storage }
+    }
 }
 
 /// General purpose BytesEndec implementation
@@ -198,7 +209,7 @@ impl BytesDecoder<'_, MetadataReady> {
             checksum,
         })
     }
-    fn extract_section(&mut self) -> Result<DatabaseSection> {
+    fn extract_section(&mut self) -> Result<DecodedDatabase> {
         let mut builder: DatabaseSectionBuilder = DatabaseSectionBuilder::default();
 
         while let Some(identifier) = self.first() {
@@ -428,7 +439,7 @@ fn test_database_section_extractor() {
 
     let mut bytes_handler = BytesDecoder::<MetadataReady> { data, state: Default::default() };
 
-    let db_section: DatabaseSection = bytes_handler.extract_section().unwrap();
+    let db_section: DecodedDatabase = bytes_handler.extract_section().unwrap();
     assert_eq!(db_section.index, 0);
     assert_eq!(db_section.storage.len(), 3);
 

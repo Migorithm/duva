@@ -1,13 +1,10 @@
-pub mod actor;
-pub mod encoding_command;
-pub mod endec;
-use super::cache::CacheEntry;
+use crate::services::statefuls::cache::CacheEntry;
 
 #[derive(Debug)]
 pub struct DumpFile {
     pub(crate) header: String,
     pub(crate) metadata: DecodedMetadata,
-    pub(crate) database: Vec<DatabaseSection>,
+    pub(crate) database: Vec<DecodedDatabase>,
     pub(crate) checksum: Vec<u8>,
 }
 
@@ -15,7 +12,7 @@ impl DumpFile {
     pub fn new(
         header: String,
         metadata: DecodedMetadata,
-        database: Vec<DatabaseSection>,
+        database: Vec<DecodedDatabase>,
         checksum: Vec<u8>,
     ) -> Self {
         Self { header, metadata, database, checksum }
@@ -40,20 +37,7 @@ pub struct DecodedMetadata {
 }
 
 #[derive(Debug)]
-pub struct DatabaseSection {
+pub struct DecodedDatabase {
     pub index: usize,
     pub storage: Vec<CacheEntry>,
-}
-
-#[derive(Default)]
-pub(crate) struct DatabaseSectionBuilder {
-    pub(crate) index: usize,
-    pub(crate) storage: Vec<CacheEntry>,
-    pub(crate) key_value_table_size: usize,
-    pub(crate) expires_table_size: usize,
-}
-impl DatabaseSectionBuilder {
-    pub fn build(self) -> DatabaseSection {
-        DatabaseSection { index: self.index, storage: self.storage }
-    }
 }
