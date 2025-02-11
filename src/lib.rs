@@ -44,8 +44,7 @@ impl StartUpFacade {
     pub async fn run(self, startup_notifier: impl TNotifyStartUp) -> Result<()> {
         tokio::spawn(Self::start_accepting_peer_connections(
             self.config_manager.peer_bind_addr(),
-            self.cluster_manager.clone(),
-            self.cache_manager.clone(),
+            self.actor_registry.clone(),
         ));
 
         tokio::spawn(Self::initialize_with_dump(self.actor_registry.clone(), startup_notifier));
@@ -55,8 +54,7 @@ impl StartUpFacade {
 
     async fn start_accepting_peer_connections(
         peer_bind_addr: String,
-        cluster_manager: ClusterManager,
-        cache_manager: CacheManager,
+        actor_registry: ActorRegistry,
     ) -> Result<()> {
         let peer_listener = TcpListener::bind(&peer_bind_addr)
             .await
@@ -70,9 +68,9 @@ impl StartUpFacade {
                 // ? how do we know if incoming connection is from a peer or replica?
                 Ok((peer_stream, _socket_addr)) => {
                     tokio::spawn({
-                        let cluster_m = cluster_manager.clone();
+                        let cluster_m = actor_registry.cluster_manager.clone();
                         let repl_info = cluster_m.replication_info().await?;
-                        let cache_m = cache_manager.clone();
+                        let cache_m = actor_registry.cache_manager.clone();
                         async move {
                             if let Err(err) = cluster_m
                                 .accept_inbound_stream(

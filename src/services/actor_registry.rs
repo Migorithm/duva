@@ -9,7 +9,6 @@ use super::{
 pub struct ActorRegistry {
     pub(crate) ttl_manager: TtlSchedulerManager,
     pub(crate) cache_manager: CacheManager,
-
     pub(crate) config_manager: ConfigManager,
     pub(crate) cluster_manager: ClusterManager,
 }
