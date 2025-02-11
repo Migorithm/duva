@@ -1,9 +1,9 @@
-use crate::CacheManager;
-
 use super::{
-    cluster::manager::ClusterManager, config::manager::ConfigManager,
-    statefuls::cache::ttl::manager::TtlSchedulerManager,
+    cluster::manager::ClusterManager,
+    config::manager::ConfigManager,
+    statefuls::cache::ttl::{actor::TtlActor, manager::TtlSchedulerManager},
 };
+use crate::CacheManager;
 
 #[derive(Clone)]
 pub struct ActorRegistry {
@@ -15,7 +15,8 @@ pub struct ActorRegistry {
 
 impl ActorRegistry {
     pub(crate) fn new(config_manager: ConfigManager, cluster_manager: ClusterManager) -> Self {
-        let (cache_manager, ttl_manager) = CacheManager::run_cache_actors();
+        let cache_manager = CacheManager::run_cache_actors();
+        let ttl_manager = TtlActor(cache_manager.clone()).run();
 
         Self { ttl_manager, cache_manager, config_manager, cluster_manager }
     }

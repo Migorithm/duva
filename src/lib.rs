@@ -23,10 +23,10 @@ pub mod client_utils;
 // * StartUp Facade that manages invokes subsystems
 pub struct StartUpFacade {
     client_manager: ClientManager,
-    actor_registry: ActorRegistry,
+    registry: ActorRegistry,
     mode_change_watcher: tokio::sync::watch::Receiver<bool>,
 }
-make_smart_pointer!(StartUpFacade, ActorRegistry => actor_registry);
+make_smart_pointer!(StartUpFacade, ActorRegistry => registry);
 
 impl StartUpFacade {
     pub fn new(config_manager: ConfigManager) -> Self {
@@ -36,25 +36,25 @@ impl StartUpFacade {
             tokio::sync::watch::channel(IS_MASTER_MODE.load(Ordering::Acquire));
         let cluster_manager = ClusterManager::run(notifier);
 
-        let actor_registry = ActorRegistry::new(config_manager.clone(), cluster_manager.clone());
-        let client_manager = ClientManager::new(actor_registry.clone());
-        StartUpFacade { client_manager, actor_registry, mode_change_watcher }
+        let registry = ActorRegistry::new(config_manager.clone(), cluster_manager.clone());
+        let client_manager = ClientManager::new(registry.clone());
+        StartUpFacade { client_manager, registry, mode_change_watcher }
     }
 
     pub async fn run(self, startup_notifier: impl TNotifyStartUp) -> Result<()> {
         tokio::spawn(Self::start_accepting_peer_connections(
             self.config_manager.peer_bind_addr(),
-            self.actor_registry.clone(),
+            self.registry.clone(),
         ));
 
-        tokio::spawn(Self::initialize_with_dump(self.actor_registry.clone(), startup_notifier));
+        tokio::spawn(Self::initialize_with_dump(self.registry.clone(), startup_notifier));
 
         self.start_mode_specific_connection_handling().await
     }
 
     async fn start_accepting_peer_connections(
         peer_bind_addr: String,
-        actor_registry: ActorRegistry,
+        registry: ActorRegistry,
     ) -> Result<()> {
         let peer_listener = TcpListener::bind(&peer_bind_addr)
             .await
@@ -68,9 +68,9 @@ impl StartUpFacade {
                 // ? how do we know if incoming connection is from a peer or replica?
                 Ok((peer_stream, _socket_addr)) => {
                     tokio::spawn({
-                        let cluster_m = actor_registry.cluster_manager.clone();
+                        let cluster_m = registry.cluster_manager.clone();
                         let repl_info = cluster_m.replication_info().await?;
-                        let cache_m = actor_registry.cache_manager.clone();
+                        let cache_m = registry.cache_manager.clone();
                         async move {
                             if let Err(err) = cluster_m
                                 .accept_inbound_stream(
@@ -139,25 +139,21 @@ impl StartUpFacade {
     }
 
     async fn initialize_with_dump(
-        actor_registry: ActorRegistry,
+        registry: ActorRegistry,
         startup_notifier: impl TNotifyStartUp,
     ) -> Result<()> {
-        if let Some(filepath) = actor_registry.config_manager.try_filepath().await? {
+        if let Some(filepath) = registry.config_manager.try_filepath().await? {
             let dump = DumpLoader::load(filepath).await?;
             if let Some((repl_id, offset)) = dump.extract_replication_info() {
                 //  TODO reconnect! - echo
-                actor_registry
+                registry
                     .cluster_manager
                     .send(ClusterCommand::SetReplicationInfo { master_repl_id: repl_id, offset })
                     .await?;
             };
-            actor_registry
+            registry
                 .cache_manager
-                .dump_cache(
-                    dump,
-                    actor_registry.ttl_manager,
-                    actor_registry.config_manager.startup_time,
-                )
+                .dump_cache(dump, registry.ttl_manager, registry.config_manager.startup_time)
                 .await?;
         }
 

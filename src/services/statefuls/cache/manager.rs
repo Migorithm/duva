@@ -133,18 +133,13 @@ impl CacheManager {
         hasher.finish() as usize % self.inboxes.len()
     }
 
-    pub fn run_cache_actors() -> (CacheManager, TtlSchedulerManager) {
+    pub fn run_cache_actors() -> CacheManager {
         const NUM_OF_PERSISTENCE: usize = 10;
 
         let cache_dispatcher = CacheManager {
             inboxes: (0..NUM_OF_PERSISTENCE).map(|_| CacheActor::run()).collect::<Vec<_>>(),
         };
 
-        let ttl_inbox = cache_dispatcher.run_ttl_actors();
-        (cache_dispatcher, ttl_inbox)
-    }
-
-    fn run_ttl_actors(&self) -> TtlSchedulerManager {
-        TtlActor::run(self.clone())
+        cache_dispatcher
     }
 }
