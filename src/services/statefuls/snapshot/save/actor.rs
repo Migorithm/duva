@@ -13,6 +13,7 @@ use crate::services::statefuls::snapshot::endec::encoder::byte_encoder::encode_d
 use crate::services::statefuls::snapshot::endec::encoder::byte_encoder::encode_header;
 use crate::services::statefuls::snapshot::endec::encoder::byte_encoder::encode_metadata;
 use std::collections::VecDeque;
+use tokio::fs::OpenOptions;
 use tokio::io::AsyncWriteExt;
 
 pub enum SaveTarget {
@@ -24,11 +25,16 @@ impl SaveTarget {
     pub async fn write(&mut self, buf: &[u8]) -> Result<(), IoError> {
         match self {
             SaveTarget::File(f) => {
-                let mut f = tokio::fs::File::create_writer(f.clone()).await.map_err(|e| {
-                    println!("{e}");
-                    IoError::Unknown
-                })?;
-                f.write_all(buf).await.map_err(|e| e.kind().into())
+                let mut file = OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open(f)
+                    .await
+                    .map_err(|e| {
+                        println!("{e}");
+                        IoError::Unknown
+                    })?;
+                file.write_all(buf).await.map_err(|e| e.kind().into())
             }
             SaveTarget::InMemory(v) => {
                 v.extend_from_slice(buf);

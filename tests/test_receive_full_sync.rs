@@ -20,5 +20,5 @@ async fn test_receive_full_sync() {
 
     // THEN
     tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-    replica_process.wait_for_message("[INFO] Full Sync Keys: [b\"foo\"]", 1).unwrap();
+    replica_process.wait_for_message("[INFO] Snapshot Replaced with Keys: [b\"foo\"]", 1).unwrap();
 }

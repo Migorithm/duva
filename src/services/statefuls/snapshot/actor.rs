@@ -38,7 +38,7 @@ impl SnapshotActor {
                             };
                             keys.push(key);
                         }
-                        println!("[INFO] Full Sync Keys: {:?}", keys);
+                        println!("[INFO] Snapshot Replaced with Keys: {:?}", keys);
                     }
                 }
             }
