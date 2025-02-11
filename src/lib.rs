@@ -31,18 +31,12 @@ make_smart_pointer!(StartUpFacade, ActorRegistry => actor_registry);
 impl StartUpFacade {
     pub fn new(config_manager: ConfigManager) -> Self {
         let _ = get_env();
-        let (cache_manager, ttl_inbox) = CacheManager::run_cache_actors();
 
         let (notifier, mode_change_watcher) =
             tokio::sync::watch::channel(IS_MASTER_MODE.load(Ordering::Acquire));
         let cluster_manager = ClusterManager::run(notifier);
 
-        let actor_registry = ActorRegistry::new(
-            ttl_inbox.clone(),
-            cache_manager.clone(),
-            config_manager.clone(),
-            cluster_manager.clone(),
-        );
+        let actor_registry = ActorRegistry::new(config_manager.clone(), cluster_manager.clone());
         let client_request_controller = ClientManager::new(actor_registry.clone());
         StartUpFacade {
             client_manager: client_request_controller,

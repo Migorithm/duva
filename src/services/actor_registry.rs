@@ -15,12 +15,9 @@ pub struct ActorRegistry {
 }
 
 impl ActorRegistry {
-    pub(crate) fn new(
-        ttl_manager: TtlSchedulerManager,
-        cache_manager: CacheManager,
-        config_manager: ConfigManager,
-        cluster_manager: ClusterManager,
-    ) -> Self {
+    pub(crate) fn new(config_manager: ConfigManager, cluster_manager: ClusterManager) -> Self {
+        let (cache_manager, ttl_manager) = CacheManager::run_cache_actors();
+
         Self { ttl_manager, cache_manager, config_manager, cluster_manager }
     }
 }
