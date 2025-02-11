@@ -37,12 +37,8 @@ impl StartUpFacade {
         let cluster_manager = ClusterManager::run(notifier);
 
         let actor_registry = ActorRegistry::new(config_manager.clone(), cluster_manager.clone());
-        let client_request_controller = ClientManager::new(actor_registry.clone());
-        StartUpFacade {
-            client_manager: client_request_controller,
-            actor_registry,
-            mode_change_watcher,
-        }
+        let client_manager = ClientManager::new(actor_registry.clone());
+        StartUpFacade { client_manager, actor_registry, mode_change_watcher }
     }
 
     pub async fn run(self, startup_notifier: impl TNotifyStartUp) -> Result<()> {
