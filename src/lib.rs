@@ -34,9 +34,8 @@ impl StartUpFacade {
 
         let (notifier, mode_change_watcher) =
             tokio::sync::watch::channel(IS_MASTER_MODE.load(Ordering::Acquire));
-        let cluster_manager = ClusterManager::run(notifier);
 
-        let registry = ActorRegistry::new(config_manager.clone(), cluster_manager.clone());
+        let registry = ActorRegistry::new(config_manager, ClusterManager::run(notifier));
         let client_manager = ClientManager::new(registry.clone());
         StartUpFacade { client_manager, registry, mode_change_watcher }
     }
