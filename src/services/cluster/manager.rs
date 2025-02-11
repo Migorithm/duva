@@ -53,7 +53,7 @@ impl ClusterManager {
     pub(crate) async fn accept_inbound_stream(
         &self,
         mut peer_stream: InboundStream,
-        cache_manager: &'static CacheManager,
+        cache_manager: CacheManager,
     ) -> anyhow::Result<()> {
         peer_stream.recv_threeway_handshake().await?;
 
@@ -76,7 +76,7 @@ impl ClusterManager {
     }
 
     pub(crate) async fn discover_cluster(
-        &'static self,
+        self,
         self_port: u16,
         connect_to: PeerIdentifier,
     ) -> anyhow::Result<()> {
@@ -92,7 +92,7 @@ impl ClusterManager {
                 .await?
                 .establish_connection(self_port)
                 .await?
-                .set_replication_info(self)
+                .set_replication_info(&self)
                 .await?
                 .deconstruct()?;
         self.send(add_peer_cmd).await?;
@@ -101,7 +101,7 @@ impl ClusterManager {
         // TODO Require investigation. Why does 'list_peer_binding_addrs' have to be called at here?
         for peer in connected_node_info.list_peer_binding_addrs() {
             println!("Discovering peer: {}", peer);
-            Box::pin(self.discover_cluster(self_port, peer)).await?;
+            Box::pin(self.clone().discover_cluster(self_port, peer)).await?;
         }
 
         Ok(())

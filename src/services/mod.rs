@@ -1,3 +1,4 @@
+pub mod actor_registry;
 pub mod aof;
 pub mod client;
 pub mod cluster;

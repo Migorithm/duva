@@ -2,6 +2,7 @@ pub mod adapters;
 pub mod macros;
 pub mod services;
 use anyhow::Result;
+use services::actor_registry::ActorRegistry;
 use services::client::manager::ClientManager;
 use services::cluster::command::cluster_command::ClusterCommand;
 use services::cluster::inbound::stream::InboundStream;
@@ -11,7 +12,6 @@ use services::config::init::get_env;
 use services::config::manager::ConfigManager;
 use services::error::IoError;
 use services::statefuls::cache::manager::CacheManager;
-use services::statefuls::cache::ttl::manager::TtlSchedulerInbox;
 use services::statefuls::snapshot::dump_loader::DumpLoader;
 use std::sync::atomic::Ordering;
 use std::thread::sleep;
@@ -22,69 +22,38 @@ pub mod client_utils;
 
 // * StartUp Facade that manages invokes subsystems
 pub struct StartUpFacade {
-    ttl_inbox: TtlSchedulerInbox,
-    cache_manager: &'static CacheManager,
-    client_manager: &'static ClientManager,
-    config_manager: ConfigManager,
-    cluster_manager: &'static ClusterManager,
+    client_manager: ClientManager,
+    registry: ActorRegistry,
     mode_change_watcher: tokio::sync::watch::Receiver<bool>,
 }
+make_smart_pointer!(StartUpFacade, ActorRegistry => registry);
 
 impl StartUpFacade {
     pub fn new(config_manager: ConfigManager) -> Self {
         let _ = get_env();
-        let (cache_manager, ttl_inbox) = CacheManager::run_cache_actors();
 
         let (notifier, mode_change_watcher) =
             tokio::sync::watch::channel(IS_MASTER_MODE.load(Ordering::Acquire));
-        let cluster_manager: &'static ClusterManager =
-            Box::leak(ClusterManager::run(notifier).into());
 
-        // Leak the cache_dispatcher to make it static - this is safe because the cache_dispatcher
-        // will live for the entire duration of the program.
-        let cache_manager: &'static CacheManager = Box::leak(cache_manager.into());
-        let client_request_controller: &'static ClientManager = Box::leak(
-            ClientManager::new(
-                config_manager.clone(),
-                cache_manager,
-                cluster_manager,
-                ttl_inbox.clone(),
-            )
-            .into(),
-        );
-
-        StartUpFacade {
-            cache_manager,
-            ttl_inbox,
-            client_manager: client_request_controller,
-            config_manager,
-            cluster_manager,
-            mode_change_watcher,
-        }
+        let registry = ActorRegistry::new(config_manager, ClusterManager::run(notifier));
+        let client_manager = ClientManager::new(registry.clone());
+        StartUpFacade { client_manager, registry, mode_change_watcher }
     }
 
-    pub async fn run(&mut self, startup_notifier: impl TNotifyStartUp) -> Result<()> {
+    pub async fn run(self, startup_notifier: impl TNotifyStartUp) -> Result<()> {
         tokio::spawn(Self::start_accepting_peer_connections(
             self.config_manager.peer_bind_addr(),
-            self.cluster_manager,
-            self.cache_manager,
+            self.registry.clone(),
         ));
 
-        tokio::spawn(Self::initialize_with_dump(
-            self.config_manager.clone(),
-            self.cache_manager,
-            self.ttl_inbox.clone(),
-            self.cluster_manager,
-            startup_notifier,
-        ));
+        tokio::spawn(Self::initialize_with_dump(self.registry.clone(), startup_notifier));
 
         self.start_mode_specific_connection_handling().await
     }
 
     async fn start_accepting_peer_connections(
         peer_bind_addr: String,
-        cluster_manager: &'static ClusterManager,
-        cache_manager: &'static CacheManager,
+        registry: ActorRegistry,
     ) -> Result<()> {
         let peer_listener = TcpListener::bind(&peer_bind_addr)
             .await
@@ -97,17 +66,20 @@ impl StartUpFacade {
             match peer_listener.accept().await {
                 // ? how do we know if incoming connection is from a peer or replica?
                 Ok((peer_stream, _socket_addr)) => {
-                    let repl_info = cluster_manager.replication_info().await?;
+                    tokio::spawn({
+                        let cluster_m = registry.cluster_manager.clone();
+                        let cache_m = registry.cache_manager.clone();
+                        let inbound_stream = InboundStream::new(
+                            peer_stream,
+                            registry.cluster_manager.replication_info().await?,
+                        );
 
-                    tokio::spawn(async move {
-                        if let Err(err) = cluster_manager
-                            .accept_inbound_stream(
-                                InboundStream::new(peer_stream, repl_info),
-                                cache_manager,
-                            )
-                            .await
-                        {
-                            println!("[ERROR] Failed to accept peer connection: {:?}", err);
+                        async move {
+                            if let Err(err) =
+                                cluster_m.accept_inbound_stream(inbound_stream, cache_m).await
+                            {
+                                println!("[ERROR] Failed to accept peer connection: {:?}", err);
+                            }
                         }
                     });
                 }
@@ -121,7 +93,7 @@ impl StartUpFacade {
         }
     }
 
-    async fn start_mode_specific_connection_handling(&mut self) -> anyhow::Result<()> {
+    async fn start_mode_specific_connection_handling(mut self) -> anyhow::Result<()> {
         let mut is_master_mode = self.cluster_mode();
 
         loop {
@@ -133,6 +105,7 @@ impl StartUpFacade {
 
                 tokio::spawn(
                     self.client_manager
+                        .clone()
                         .accept_client_connections(stop_sentinel_recv, client_stream_listener),
                 );
 
@@ -141,10 +114,12 @@ impl StartUpFacade {
                 // Cancel all client connections only IF the cluster mode has changes to slave
                 let _ = stop_sentinel_tx.send(());
 
-                tokio::spawn(self.cluster_manager.discover_cluster(
-                    self.config_manager.port,
-                    self.cluster_manager.replication_info().await?.master_bind_addr(),
-                ));
+                tokio::spawn({
+                    self.cluster_manager.clone().discover_cluster(
+                        self.config_manager.port,
+                        self.cluster_manager.replication_info().await?.master_bind_addr(),
+                    )
+                });
             }
 
             self.wait_until_cluster_mode_changed().await?;
@@ -163,21 +138,22 @@ impl StartUpFacade {
     }
 
     async fn initialize_with_dump(
-        config_manager: ConfigManager,
-        cache_manager: &'static CacheManager,
-        ttl_inbox: TtlSchedulerInbox,
-        cluster_manager: &'static ClusterManager,
+        registry: ActorRegistry,
         startup_notifier: impl TNotifyStartUp,
     ) -> Result<()> {
-        if let Some(filepath) = config_manager.try_filepath().await? {
+        if let Some(filepath) = registry.config_manager.try_filepath().await? {
             let dump = DumpLoader::load(filepath).await?;
             if let Some((repl_id, offset)) = dump.extract_replication_info() {
                 //  TODO reconnect! - echo
-                cluster_manager
+                registry
+                    .cluster_manager
                     .send(ClusterCommand::SetReplicationInfo { master_repl_id: repl_id, offset })
                     .await?;
             };
-            cache_manager.dump_cache(dump, ttl_inbox.clone(), config_manager.startup_time).await?;
+            registry
+                .cache_manager
+                .dump_cache(dump, registry.ttl_manager, registry.config_manager.startup_time)
+                .await?;
         }
 
         startup_notifier.notify_startup();

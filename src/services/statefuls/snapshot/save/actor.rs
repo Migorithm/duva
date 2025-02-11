@@ -1,17 +1,17 @@
 use crate::services::cluster::replications::replication::ReplicationInfo;
-use crate::services::interface::TWriterFactory;
+
 use crate::services::statefuls::cache::CacheEntry;
 
 use crate::services::statefuls::snapshot::save::command::SaveCommand;
 
 use anyhow::Result;
 
+use crate::services::error::IoError;
 use crate::services::statefuls::snapshot::endec::encoder::byte_encoder::encode_checksum;
 use crate::services::statefuls::snapshot::endec::encoder::byte_encoder::encode_database_info;
 use crate::services::statefuls::snapshot::endec::encoder::byte_encoder::encode_database_table_size;
 use crate::services::statefuls::snapshot::endec::encoder::byte_encoder::encode_header;
 use crate::services::statefuls::snapshot::endec::encoder::byte_encoder::encode_metadata;
-use crate::services::error::IoError;
 use std::collections::VecDeque;
 use tokio::io::AsyncWriteExt;
 
@@ -23,9 +23,7 @@ pub enum SaveTarget {
 impl SaveTarget {
     pub async fn write(&mut self, buf: &[u8]) -> Result<(), IoError> {
         match self {
-            SaveTarget::File(f) => {
-                f.write_all(buf).await.map_err(|e| e.kind().into())
-            }
+            SaveTarget::File(f) => f.write_all(buf).await.map_err(|e| e.kind().into()),
             SaveTarget::InMemory(v) => {
                 v.extend_from_slice(buf);
                 Ok(())

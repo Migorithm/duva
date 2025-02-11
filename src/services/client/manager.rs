@@ -1,34 +1,30 @@
+use crate::make_smart_pointer;
+use crate::services::actor_registry::ActorRegistry;
 use crate::services::aof::WriteRequest;
 use crate::services::client::request::ClientRequest;
 use crate::services::client::stream::ClientStream;
 use crate::services::cluster::command::cluster_command::ClusterCommand;
 use crate::services::cluster::manager::ClusterManager;
-use crate::services::config::manager::ConfigManager;
+
 use crate::services::config::ConfigResponse;
 use crate::services::interface::TWrite;
 use crate::services::query_io::QueryIO;
-use crate::services::statefuls::cache::manager::CacheManager;
-use crate::services::statefuls::cache::ttl::manager::TtlSchedulerInbox;
+
 use crate::services::statefuls::cache::CacheEntry;
 use crate::services::statefuls::snapshot::save::actor::SaveTarget;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::select;
 
+#[derive(Clone)]
 pub(crate) struct ClientManager {
-    config_manager: ConfigManager,
-    cache_manager: &'static CacheManager,
-    cluster_manager: &'static ClusterManager,
-    ttl_manager: TtlSchedulerInbox,
+    actor_registry: ActorRegistry,
 }
 
+make_smart_pointer!(ClientManager,ActorRegistry=>actor_registry);
+
 impl ClientManager {
-    pub(crate) fn new(
-        config_manager: ConfigManager,
-        cache_manager: &'static CacheManager,
-        cluster_manager: &'static ClusterManager,
-        ttl_manager: TtlSchedulerInbox,
-    ) -> Self {
-        ClientManager { config_manager, cache_manager, ttl_manager, cluster_manager }
+    pub(crate) fn new(actor_registry: ActorRegistry) -> Self {
+        ClientManager { actor_registry }
     }
 
     pub(crate) async fn handle(&self, cmd: ClientRequest) -> anyhow::Result<QueryIO> {
@@ -48,11 +44,8 @@ impl ClientManager {
             }
             ClientRequest::Save => {
                 let file_path = self.config_manager.get_filepath().await?;
-                let file = tokio::fs::OpenOptions::new()
-                    .write(true)
-                    .create(true)
-                    .open(&file_path)
-                    .await?;
+                let file =
+                    tokio::fs::OpenOptions::new().write(true).create(true).open(&file_path).await?;
                 self.cache_manager
                     .route_save(
                         SaveTarget::File(file),
@@ -103,7 +96,7 @@ impl ClientManager {
 
     /// Run while loop accepting stream and if the sentinel is received, abort the tasks
     pub async fn accept_client_connections(
-        &'static self,
+        self,
         stop_sentinel_recv: tokio::sync::oneshot::Receiver<()>,
         client_stream_listener: TcpListener,
     ) {
@@ -115,7 +108,7 @@ impl ClientManager {
             _ = async {
                     while let Ok((stream, _)) = client_stream_listener.accept().await {
                         conn_handlers.push(tokio::spawn(
-                            self.handle_client_stream(stream),
+                            self.clone().handle_client_stream(stream),
                         ));
                     }
                 } =>{
@@ -129,7 +122,7 @@ impl ClientManager {
         };
     }
 
-    async fn handle_client_stream(&self, stream: TcpStream) {
+    async fn handle_client_stream(self, stream: TcpStream) {
         let mut stream = ClientStream(stream);
         loop {
             let Ok(requests) = stream.extract_query().await else {
@@ -148,7 +141,10 @@ impl ClientManager {
                     Ok(response) => {
                         // ! SAFETY: at this point, majority votes was made already. as long as at least
                         // ! one node has the commit log, it will be committed.
-                        tokio::spawn(Self::commit_log(optional_commit_log, self.cluster_manager));
+                        tokio::spawn(Self::commit_log(
+                            optional_commit_log,
+                            self.cluster_manager.clone(),
+                        ));
                         response
                     }
                     Err(e) => QueryIO::Err(e.to_string().into()),
@@ -173,7 +169,7 @@ impl ClientManager {
         Ok(Some(rx.await?))
     }
 
-    async fn commit_log(optional_log: Option<u64>, cluster_manager: &'static ClusterManager) {
+    async fn commit_log(optional_log: Option<u64>, cluster_manager: ClusterManager) {
         if let Some(commit_log) = optional_log {
             let _ = cluster_manager.send(ClusterCommand::CommitLog(commit_log)).await;
         }

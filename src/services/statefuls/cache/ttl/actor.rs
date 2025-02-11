@@ -1,7 +1,8 @@
+use crate::make_smart_pointer;
 use crate::services::statefuls::cache::actor::CacheCommand;
 use crate::services::statefuls::cache::manager::CacheManager;
 use crate::services::statefuls::cache::ttl::command::TtlCommand;
-use crate::services::statefuls::cache::ttl::manager::TtlSchedulerInbox;
+use crate::services::statefuls::cache::ttl::manager::TtlSchedulerManager;
 use std::cmp::Reverse;
 use std::collections::BinaryHeap;
 use std::time::{Duration, SystemTime};
@@ -9,22 +10,20 @@ use tokio::sync::mpsc;
 use tokio::sync::mpsc::Receiver;
 use tokio::time::interval;
 
-pub struct TtlActor;
+pub struct TtlActor(pub(crate) CacheManager);
+make_smart_pointer!(TtlActor, CacheManager);
 
 impl TtlActor {
-    pub(crate) fn run(cache_dispatcher: CacheManager) -> TtlSchedulerInbox {
+    pub(crate) fn run(self) -> TtlSchedulerManager {
         let (scheduler_outbox, inbox) = tokio::sync::mpsc::channel(100);
         tokio::spawn(Self::ttl_schedule_actor(inbox));
-        tokio::spawn(Self::background_delete_actor(cache_dispatcher, scheduler_outbox.clone()));
+        tokio::spawn(self.background_delete_actor(scheduler_outbox.clone()));
 
-        TtlSchedulerInbox(scheduler_outbox)
+        TtlSchedulerManager(scheduler_outbox)
     }
 
     // Background actor keeps sending peek command to the scheduler actor to check if there is any key to delete.
-    async fn background_delete_actor(
-        cache_manager: CacheManager,
-        outbox: mpsc::Sender<TtlCommand>,
-    ) -> anyhow::Result<()> {
+    async fn background_delete_actor(self, outbox: mpsc::Sender<TtlCommand>) -> anyhow::Result<()> {
         let mut cleanup_interval = interval(Duration::from_millis(1));
         loop {
             cleanup_interval.tick().await;
@@ -34,7 +33,7 @@ impl TtlActor {
             let Ok(Some(key)) = rx.await else {
                 continue;
             };
-            cache_manager.select_shard(&key).send(CacheCommand::Delete(key)).await?;
+            self.select_shard(&key).send(CacheCommand::Delete(key)).await?;
         }
     }
 

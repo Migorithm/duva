@@ -115,7 +115,7 @@ impl InboundStream {
 
     pub(crate) async fn send_sync_to_inbound_server(
         mut self,
-        cache_manager: &'static CacheManager,
+        cache_manager: CacheManager,
     ) -> anyhow::Result<Self> {
         // route save caches
         let task = cache_manager

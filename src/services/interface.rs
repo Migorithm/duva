@@ -19,11 +19,6 @@ pub(crate) trait TWrite {
         buf: impl Into<Bytes> + Send,
     ) -> impl std::future::Future<Output = Result<(), IoError>> + Send;
 }
-pub(crate) trait TWriterFactory: TWrite + Send + Sync + 'static + Sized {
-    fn create_writer(
-        filepath: String,
-    ) -> impl std::future::Future<Output = anyhow::Result<Self>> + Send;
-}
 
 pub trait TGetPeerIp {
     fn get_peer_ip(&self) -> Result<String, IoError>;
