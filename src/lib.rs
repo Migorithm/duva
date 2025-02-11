@@ -68,15 +68,15 @@ impl StartUpFacade {
                 Ok((peer_stream, _socket_addr)) => {
                     tokio::spawn({
                         let cluster_m = registry.cluster_manager.clone();
-                        let repl_info = cluster_m.replication_info().await?;
                         let cache_m = registry.cache_manager.clone();
+                        let inbound_stream = InboundStream::new(
+                            peer_stream,
+                            registry.cluster_manager.replication_info().await?,
+                        );
+
                         async move {
-                            if let Err(err) = cluster_m
-                                .accept_inbound_stream(
-                                    InboundStream::new(peer_stream, repl_info),
-                                    cache_m,
-                                )
-                                .await
+                            if let Err(err) =
+                                cluster_m.accept_inbound_stream(inbound_stream, cache_m).await
                             {
                                 println!("[ERROR] Failed to accept peer connection: {:?}", err);
                             }
