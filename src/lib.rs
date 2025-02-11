@@ -28,6 +28,7 @@ pub struct StartUpFacade {
     client_manager: &'static ClientManager,
     config_manager: ConfigManager,
     cluster_manager: &'static ClusterManager,
+    snapshot_manager: SnapshotManager,
     mode_change_watcher: tokio::sync::watch::Receiver<bool>,
 }
 
@@ -44,7 +45,7 @@ impl StartUpFacade {
         let (notifier, mode_change_watcher) =
             tokio::sync::watch::channel(IS_MASTER_MODE.load(Ordering::Acquire));
         let cluster_manager: &'static ClusterManager =
-            Box::leak(ClusterManager::run(notifier, snapshot_manager).into());
+            Box::leak(ClusterManager::run(notifier, snapshot_manager.clone()).into());
 
         let client_request_controller: &'static ClientManager = Box::leak(
             ClientManager::new(
@@ -62,6 +63,7 @@ impl StartUpFacade {
             client_manager: client_request_controller,
             config_manager,
             cluster_manager,
+            snapshot_manager,
             mode_change_watcher,
         }
     }
@@ -75,9 +77,8 @@ impl StartUpFacade {
 
         tokio::spawn(Self::initialize_with_dump(
             self.config_manager.clone(),
-            self.cache_manager,
-            self.ttl_inbox.clone(),
             self.cluster_manager,
+            self.snapshot_manager.clone(),
             startup_notifier,
         ));
 
@@ -167,22 +168,22 @@ impl StartUpFacade {
 
     async fn initialize_with_dump(
         config_manager: ConfigManager,
-        cache_manager: &'static CacheManager,
-        ttl_inbox: TtlSchedulerInbox,
         cluster_manager: &'static ClusterManager,
+        snapshot_manager: SnapshotManager,
         startup_notifier: impl TNotifyStartUp,
     ) -> Result<()> {
-        if let Some(filepath) = config_manager.try_filepath().await? {
-            let dump = DumpLoader::load_from_filepath(filepath).await?;
-            if let Some((repl_id, offset)) = dump.extract_replication_info() {
-                //  TODO reconnect! - echo
-                cluster_manager
-                    .send(ClusterCommand::SetReplicationInfo { master_repl_id: repl_id, offset })
-                    .await?;
-            };
-            cache_manager.dump_cache(dump, ttl_inbox.clone(), config_manager.startup_time).await?;
-        }
-
+        let Some(filepath) = config_manager.try_filepath().await? else {
+            return Ok(());
+        };
+        let dump = DumpLoader::load_from_filepath(filepath).await?;
+        let Some((repl_id, offset)) = dump.extract_replication_info() else {
+            return Ok(());
+        };
+        //  TODO reconnect! - echo
+        cluster_manager
+            .send(ClusterCommand::SetReplicationInfo { master_repl_id: repl_id, offset })
+            .await?;
+        snapshot_manager.replace_snapshot(dump).await?;
         startup_notifier.notify_startup();
         Ok(())
     }
