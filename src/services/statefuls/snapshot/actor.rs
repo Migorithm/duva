@@ -29,8 +29,16 @@ impl SnapshotActor {
                         .dump_cache(dump, self.ttl_inbox.clone(), self.startup_time)
                         .await?;
 
-                    if let Ok(query_io) = self.cache_manager.route_keys(None).await {
-                        println!("Keys {:#?}",query_io)
+                    // Only for debugging and test
+                    if let Ok(QueryIO::Array(data)) = self.cache_manager.route_keys(None).await {
+                        let mut keys = vec![];
+                        for key in data {
+                            let QueryIO::BulkString(key) = key else {
+                                continue;
+                            };
+                            keys.push(key);
+                        }
+                        println!("[INFO] Full Sync Keys: {:?}", keys);
                     }
                 }
             }
