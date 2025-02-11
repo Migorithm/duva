@@ -6,12 +6,12 @@ use crate::services::statefuls::snapshot::save::command::SaveCommand;
 
 use anyhow::Result;
 
+use crate::services::error::IoError;
 use crate::services::statefuls::snapshot::endec::encoder::byte_encoder::encode_checksum;
 use crate::services::statefuls::snapshot::endec::encoder::byte_encoder::encode_database_info;
 use crate::services::statefuls::snapshot::endec::encoder::byte_encoder::encode_database_table_size;
 use crate::services::statefuls::snapshot::endec::encoder::byte_encoder::encode_header;
 use crate::services::statefuls::snapshot::endec::encoder::byte_encoder::encode_metadata;
-use crate::services::error::IoError;
 use std::collections::VecDeque;
 use tokio::io::AsyncWriteExt;
 
@@ -80,7 +80,7 @@ impl SaveActor {
     }
 
     pub async fn encode_meta(&mut self) -> Result<()> {
-        let mut metadata = vec![("redis-ver", "6.0.16")];
+        let mut metadata: Vec<(&str, &str)> = Vec::new();
         if &self.meta.repl_id != "?" {
             metadata.push(("repl-id", &self.meta.repl_id));
             metadata.push(("repl-offset", &self.meta.offset));

@@ -4,6 +4,7 @@ use crate::services::cluster::command::cluster_command::ClusterCommand;
 use crate::services::cluster::peers::connected_types::WriteConnected;
 use crate::services::cluster::peers::identifier::PeerIdentifier;
 use crate::services::cluster::peers::kind::PeerKind;
+use crate::services::statefuls::snapshot::manager::SnapshotManager;
 use tokio::net::TcpStream;
 use tokio::sync::mpsc::Sender;
 use tokio::time::Instant;
@@ -20,6 +21,7 @@ impl Peer {
         stream: TcpStream,
         peer_kind: PeerKind,
         cluster_handler: Sender<ClusterCommand>,
+        snapshot_manager: SnapshotManager,
         peer_identifier: PeerIdentifier,
     ) -> Self {
         let (r, w) = stream.into_split();
@@ -30,7 +32,7 @@ impl Peer {
         // Listner requires cluster handler to send messages to the cluster actor and cluster actor instead needs kill trigger to stop the listener
         let (kill_trigger, kill_switch) = tokio::sync::oneshot::channel();
         let listening_actor =
-            PeerListeningActor { read_connected, cluster_handler, self_id: peer_identifier };
+            PeerListeningActor { read_connected, cluster_handler, snapshot_manager, self_id: peer_identifier };
         let listening_task = tokio::spawn(listening_actor.listen(kill_switch));
 
         Self {

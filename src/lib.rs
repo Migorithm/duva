@@ -1,6 +1,7 @@
 pub mod adapters;
 pub mod macros;
 pub mod services;
+use crate::services::statefuls::snapshot::manager::SnapshotManager;
 use anyhow::Result;
 use services::client::manager::ClientManager;
 use services::cluster::command::cluster_command::ClusterCommand;
@@ -33,16 +34,18 @@ pub struct StartUpFacade {
 impl StartUpFacade {
     pub fn new(config_manager: ConfigManager) -> Self {
         let _ = get_env();
+        // Leak the cache_dispatcher to make it static - this is safe because the cache_dispatcher
+        // will live for the entire duration of the program.
         let (cache_manager, ttl_inbox) = CacheManager::run_cache_actors();
+        let cache_manager: &'static CacheManager = Box::leak(cache_manager.into());
+
+        let snapshot_manager = SnapshotManager::new(cache_manager, ttl_inbox.clone(), config_manager.startup_time);
 
         let (notifier, mode_change_watcher) =
             tokio::sync::watch::channel(IS_MASTER_MODE.load(Ordering::Acquire));
         let cluster_manager: &'static ClusterManager =
-            Box::leak(ClusterManager::run(notifier).into());
+            Box::leak(ClusterManager::run(notifier, snapshot_manager).into());
 
-        // Leak the cache_dispatcher to make it static - this is safe because the cache_dispatcher
-        // will live for the entire duration of the program.
-        let cache_manager: &'static CacheManager = Box::leak(cache_manager.into());
         let client_request_controller: &'static ClientManager = Box::leak(
             ClientManager::new(
                 config_manager.clone(),
@@ -50,7 +53,7 @@ impl StartUpFacade {
                 cluster_manager,
                 ttl_inbox.clone(),
             )
-            .into(),
+                .into(),
         );
 
         StartUpFacade {

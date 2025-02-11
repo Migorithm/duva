@@ -8,6 +8,7 @@ use crate::services::cluster::peers::identifier::PeerIdentifier;
 use crate::services::cluster::peers::kind::PeerKind;
 use crate::services::cluster::replications::replication::{ReplicationInfo, IS_MASTER_MODE};
 use crate::services::statefuls::cache::manager::CacheManager;
+use crate::services::statefuls::snapshot::manager::SnapshotManager;
 use crate::{get_env, make_smart_pointer};
 use std::time::Duration;
 use tokio::sync::mpsc::Sender;
@@ -20,12 +21,13 @@ pub struct ClusterManager {
 make_smart_pointer!(ClusterManager, Sender<ClusterCommand> => actor_handler);
 
 impl ClusterManager {
-    pub fn run(notifier: tokio::sync::watch::Sender<bool>) -> Self {
+    pub fn run(notifier: tokio::sync::watch::Sender<bool>, snapshot_manager: SnapshotManager) -> Self {
         let (actor_handler, cluster_message_listener) = tokio::sync::mpsc::channel(100);
         tokio::spawn(ClusterActor::new(get_env().ttl_mills).handle(
             actor_handler.clone(),
             cluster_message_listener,
             notifier,
+            snapshot_manager,
         ));
 
         tokio::spawn({

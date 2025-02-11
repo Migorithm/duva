@@ -8,6 +8,7 @@ use crate::services::cluster::replications::replication::{
 };
 use crate::services::interface::TWrite;
 use crate::services::query_io::QueryIO;
+use crate::services::statefuls::snapshot::manager::SnapshotManager;
 use std::collections::BTreeMap;
 use tokio::sync::mpsc::Receiver;
 use tokio::sync::mpsc::Sender;
@@ -29,6 +30,7 @@ impl ClusterActor {
         self_handler: Sender<ClusterCommand>,
         mut cluster_message_listener: Receiver<ClusterCommand>,
         notifier: tokio::sync::watch::Sender<bool>,
+        snapshot_manager: SnapshotManager,
     ) {
         while let Some(command) = cluster_message_listener.recv().await {
             // TODO notifier will be used when election process is implemented
@@ -36,7 +38,7 @@ impl ClusterActor {
 
             match command {
                 ClusterCommand::AddPeer(add_peer_cmd) => {
-                    self.add_peer(add_peer_cmd, self_handler.clone()).await;
+                    self.add_peer(add_peer_cmd, self_handler.clone(), snapshot_manager.clone()).await;
                 }
 
                 ClusterCommand::GetPeers(callback) => {
@@ -108,12 +110,12 @@ impl ClusterActor {
         }
     }
 
-    async fn add_peer(&mut self, add_peer_cmd: AddPeer, self_handler: Sender<ClusterCommand>) {
+    async fn add_peer(&mut self, add_peer_cmd: AddPeer, self_handler: Sender<ClusterCommand>, snapshot_manager: SnapshotManager) {
         let AddPeer { peer_addr, stream, peer_kind } = add_peer_cmd;
 
         self.replication.remove_from_ban_list(&peer_addr);
 
-        let peer = Peer::new(stream, peer_kind, self_handler.clone(), peer_addr.clone());
+        let peer = Peer::new(stream, peer_kind, self_handler, snapshot_manager, peer_addr.clone());
 
         // If the map did have this key present, the value is updated, and the old
         // value is returned. The key is not updated,

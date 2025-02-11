@@ -10,14 +10,17 @@ use crate::services::cluster::peers::kind::PeerKind;
 use crate::services::cluster::replications::replication::PeerState;
 use crate::services::interface::TRead;
 use crate::services::query_io::QueryIO;
+use crate::services::statefuls::snapshot::dump_loader::DumpLoader;
+use crate::services::statefuls::snapshot::manager::SnapshotManager;
 use tokio::select;
 use tokio::sync::mpsc::Sender;
 use tokio::task::JoinHandle;
-use crate::services::statefuls::snapshot::dump_loader::DumpLoader;
+
 
 pub(crate) struct PeerListeningActor {
     pub(crate) read_connected: ReadConnected,
     pub(crate) cluster_handler: Sender<ClusterCommand>, // cluster_handler is used to send messages to the cluster actor
+    pub(crate) snapshot_manager: SnapshotManager,
     pub(crate) self_id: PeerIdentifier,
 }
 
@@ -77,11 +80,15 @@ impl PeerListeningActor {
 
                     CommandFromMaster::Replicate { query: _ } => {}
                     CommandFromMaster::FullReSync(bytes) => {
-                        let Some(dump) = DumpLoader::load_from_bytes(bytes) else {
+                        let Ok(dump) = DumpLoader::load_from_bytes(bytes.as_ref()) else {
                             println!("[ERROR] Failed to get full-sync from master");
-                            todo!("notify cluster manager that full-sync failed")
+                            todo!("notify master that full-sync failed  and send it again")
                         };
                         println!("[INFO] Received full-sync from master");
+                        let Ok(_) = self.snapshot_manager.replace_snapshot(dump).await else {
+                            println!("[ERROR] Failed to replace snapshot");
+                            todo!("notify master that full-sync failed and send it again")
+                        };
                     }
                 }
             }
