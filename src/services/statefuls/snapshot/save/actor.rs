@@ -17,23 +17,14 @@ use tokio::fs::OpenOptions;
 use tokio::io::AsyncWriteExt;
 
 pub enum SaveTarget {
-    File(String),
+    File(tokio::fs::File),
     InMemory(Vec<u8>),
 }
 
 impl SaveTarget {
     pub async fn write(&mut self, buf: &[u8]) -> Result<(), IoError> {
         match self {
-            SaveTarget::File(f) => {
-                let mut file = OpenOptions::new()
-                    .create(true)
-                    .append(true)
-                    .open(f)
-                    .await
-                    .map_err(|e| {
-                        println!("{e}");
-                        IoError::Unknown
-                    })?;
+            SaveTarget::File(file) => {
                 file.write_all(buf).await.map_err(|e| e.kind().into())
             }
             SaveTarget::InMemory(v) => {
