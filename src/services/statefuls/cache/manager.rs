@@ -5,10 +5,10 @@ use super::CacheEntry;
 use crate::services::cluster::replications::replication::ReplicationInfo;
 use crate::services::query_io::QueryIO;
 use crate::services::statefuls::cache::ttl::actor::TtlActor;
-use crate::services::statefuls::cache::ttl::manager::TtlSchedulerInbox;
+use crate::services::statefuls::cache::ttl::manager::TtlSchedulerManager;
+use crate::services::statefuls::snapshot::dump_file::DumpFile;
 use crate::services::statefuls::snapshot::save::actor::SaveActor;
 use crate::services::statefuls::snapshot::save::actor::SaveTarget;
-use crate::services::statefuls::snapshot::dump_file::DumpFile;
 use anyhow::Result;
 use std::time::SystemTime;
 use std::{hash::Hasher, iter::Zip};
@@ -28,7 +28,7 @@ impl CacheManager {
     pub(crate) async fn dump_cache(
         &self,
         dump: DumpFile,
-        ttl_inbox: TtlSchedulerInbox,
+        ttl_inbox: TtlSchedulerManager,
         startup_time: SystemTime,
     ) -> Result<()> {
         let startup_time = &startup_time;
@@ -49,7 +49,7 @@ impl CacheManager {
     pub(crate) async fn route_set(
         &self,
         kvs: CacheEntry,
-        ttl_sender: TtlSchedulerInbox,
+        ttl_sender: TtlSchedulerManager,
     ) -> Result<QueryIO> {
         self.select_shard(kvs.key())
             .send(CacheCommand::Set { cache_entry: kvs, ttl_sender })
@@ -133,7 +133,7 @@ impl CacheManager {
         hasher.finish() as usize % self.inboxes.len()
     }
 
-    pub fn run_cache_actors() -> (CacheManager, TtlSchedulerInbox) {
+    pub fn run_cache_actors() -> (CacheManager, TtlSchedulerManager) {
         const NUM_OF_PERSISTENCE: usize = 10;
 
         let cache_dispatcher = CacheManager {
@@ -144,7 +144,7 @@ impl CacheManager {
         (cache_dispatcher, ttl_inbox)
     }
 
-    fn run_ttl_actors(&self) -> TtlSchedulerInbox {
+    fn run_ttl_actors(&self) -> TtlSchedulerManager {
         TtlActor::run(self.clone())
     }
 }

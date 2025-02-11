@@ -8,25 +8,26 @@ use crate::services::config::ConfigResponse;
 use crate::services::interface::TWrite;
 use crate::services::query_io::QueryIO;
 use crate::services::statefuls::cache::manager::CacheManager;
-use crate::services::statefuls::cache::ttl::manager::TtlSchedulerInbox;
+use crate::services::statefuls::cache::ttl::manager::TtlSchedulerManager;
 use crate::services::statefuls::cache::CacheEntry;
 use crate::services::statefuls::snapshot::save::actor::SaveTarget;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::select;
 
+#[derive(Clone)]
 pub(crate) struct ClientManager {
     config_manager: ConfigManager,
-    cache_manager: &'static CacheManager,
-    cluster_manager: &'static ClusterManager,
-    ttl_manager: TtlSchedulerInbox,
+    cache_manager: CacheManager,
+    cluster_manager: ClusterManager,
+    ttl_manager: TtlSchedulerManager,
 }
 
 impl ClientManager {
     pub(crate) fn new(
         config_manager: ConfigManager,
-        cache_manager: &'static CacheManager,
-        cluster_manager: &'static ClusterManager,
-        ttl_manager: TtlSchedulerInbox,
+        cache_manager: CacheManager,
+        cluster_manager: ClusterManager,
+        ttl_manager: TtlSchedulerManager,
     ) -> Self {
         ClientManager { config_manager, cache_manager, ttl_manager, cluster_manager }
     }
@@ -100,7 +101,7 @@ impl ClientManager {
 
     /// Run while loop accepting stream and if the sentinel is received, abort the tasks
     pub async fn accept_client_connections(
-        &'static self,
+        self,
         stop_sentinel_recv: tokio::sync::oneshot::Receiver<()>,
         client_stream_listener: TcpListener,
     ) {
@@ -112,7 +113,7 @@ impl ClientManager {
             _ = async {
                     while let Ok((stream, _)) = client_stream_listener.accept().await {
                         conn_handlers.push(tokio::spawn(
-                            self.handle_client_stream(stream),
+                            self.clone().handle_client_stream(stream),
                         ));
                     }
                 } =>{
@@ -126,7 +127,7 @@ impl ClientManager {
         };
     }
 
-    async fn handle_client_stream(&self, stream: TcpStream) {
+    async fn handle_client_stream(self, stream: TcpStream) {
         let mut stream = ClientStream(stream);
         loop {
             let Ok(requests) = stream.extract_query().await else {
@@ -145,7 +146,10 @@ impl ClientManager {
                     Ok(response) => {
                         // ! SAFETY: at this point, majority votes was made already. as long as at least
                         // ! one node has the commit log, it will be committed.
-                        tokio::spawn(Self::commit_log(optional_commit_log, self.cluster_manager));
+                        tokio::spawn(Self::commit_log(
+                            optional_commit_log,
+                            self.cluster_manager.clone(),
+                        ));
                         response
                     }
                     Err(e) => QueryIO::Err(e.to_string().into()),
@@ -170,7 +174,7 @@ impl ClientManager {
         Ok(Some(rx.await?))
     }
 
-    async fn commit_log(optional_log: Option<u64>, cluster_manager: &'static ClusterManager) {
+    async fn commit_log(optional_log: Option<u64>, cluster_manager: ClusterManager) {
         if let Some(commit_log) = optional_log {
             let _ = cluster_manager.send(ClusterCommand::CommitLog(commit_log)).await;
         }

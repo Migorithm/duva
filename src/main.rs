@@ -8,7 +8,7 @@ async fn main() -> anyhow::Result<()> {
     // bootstrap dependencies
     let config_manager = ConfigManager::new(ConfigActor::default());
 
-    let mut start_up_runner = StartUpFacade::new(config_manager);
+    let start_up_runner = StartUpFacade::new(config_manager);
 
     start_up_runner.run(()).await
 }

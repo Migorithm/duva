@@ -2,7 +2,7 @@ use super::CacheEntry;
 use super::CacheValue;
 use crate::make_smart_pointer;
 use crate::services::query_io::QueryIO;
-use crate::services::statefuls::cache::ttl::manager::TtlSchedulerInbox;
+use crate::services::statefuls::cache::ttl::manager::TtlSchedulerManager;
 use crate::services::statefuls::snapshot::save::command::SaveCommand;
 use anyhow::Context;
 use anyhow::Result;
@@ -10,7 +10,7 @@ use std::collections::HashMap;
 use tokio::sync::{mpsc, oneshot};
 
 pub enum CacheCommand {
-    Set { cache_entry: CacheEntry, ttl_sender: TtlSchedulerInbox },
+    Set { cache_entry: CacheEntry, ttl_sender: TtlSchedulerManager },
     Save { outbox: mpsc::Sender<SaveCommand> },
     Get { key: String, sender: oneshot::Sender<QueryIO> },
     Keys { pattern: Option<String>, sender: oneshot::Sender<QueryIO> },
@@ -122,7 +122,7 @@ impl CacheActor {
         &self,
         key: &str,
         expiry: Option<std::time::SystemTime>,
-        ttl_sender: TtlSchedulerInbox,
+        ttl_sender: TtlSchedulerManager,
     ) -> Result<()> {
         ttl_sender.set_ttl(key.to_string(), expiry.context("Expiry not found")?).await;
         Ok(())
@@ -144,7 +144,7 @@ async fn test_set_and_delete_inc_dec_keys_with_expiry() {
     let actor = CacheActor { inbox: rx, cache: CacheDb::default() };
 
     let (ttl_tx, mut ttx_rx) = mpsc::channel(100);
-    let ttl_sender = TtlSchedulerInbox(ttl_tx);
+    let ttl_sender = TtlSchedulerManager(ttl_tx);
     tokio::spawn(async move { ttx_rx.recv().await });
 
     // WHEN
