@@ -2,6 +2,7 @@ pub mod adapters;
 pub mod macros;
 pub mod services;
 use anyhow::Result;
+use services::actor_registry::ActorRegistry;
 use services::client::manager::ClientManager;
 use services::cluster::command::cluster_command::ClusterCommand;
 use services::cluster::inbound::stream::InboundStream;
@@ -11,7 +12,6 @@ use services::config::init::get_env;
 use services::config::manager::ConfigManager;
 use services::error::IoError;
 use services::statefuls::cache::manager::CacheManager;
-use services::statefuls::cache::ttl::manager::TtlSchedulerManager;
 use services::statefuls::snapshot::dump_loader::DumpLoader;
 use std::sync::atomic::Ordering;
 use std::thread::sleep;
@@ -22,13 +22,11 @@ pub mod client_utils;
 
 // * StartUp Facade that manages invokes subsystems
 pub struct StartUpFacade {
-    ttl_inbox: TtlSchedulerManager,
-    cache_manager: CacheManager,
     client_manager: ClientManager,
-    config_manager: ConfigManager,
-    cluster_manager: ClusterManager,
+    actor_registry: ActorRegistry,
     mode_change_watcher: tokio::sync::watch::Receiver<bool>,
 }
+make_smart_pointer!(StartUpFacade, ActorRegistry => actor_registry);
 
 impl StartUpFacade {
     pub fn new(config_manager: ConfigManager) -> Self {
@@ -39,19 +37,16 @@ impl StartUpFacade {
             tokio::sync::watch::channel(IS_MASTER_MODE.load(Ordering::Acquire));
         let cluster_manager = ClusterManager::run(notifier);
 
-        let client_request_controller = ClientManager::new(
-            config_manager.clone(),
-            cache_manager.clone(),
-            cluster_manager.clone(),
+        let actor_registry = ActorRegistry::new(
             ttl_inbox.clone(),
+            cache_manager.clone(),
+            config_manager.clone(),
+            cluster_manager.clone(),
         );
-
+        let client_request_controller = ClientManager::new(actor_registry.clone());
         StartUpFacade {
-            cache_manager,
-            ttl_inbox,
             client_manager: client_request_controller,
-            config_manager,
-            cluster_manager,
+            actor_registry,
             mode_change_watcher,
         }
     }
@@ -63,13 +58,7 @@ impl StartUpFacade {
             self.cache_manager.clone(),
         ));
 
-        tokio::spawn(Self::initialize_with_dump(
-            self.config_manager.clone(),
-            self.cache_manager.clone(),
-            self.ttl_inbox.clone(),
-            self.cluster_manager.clone(),
-            startup_notifier,
-        ));
+        tokio::spawn(Self::initialize_with_dump(self.actor_registry.clone(), startup_notifier));
 
         self.start_mode_specific_connection_handling().await
     }
@@ -162,21 +151,26 @@ impl StartUpFacade {
     }
 
     async fn initialize_with_dump(
-        config_manager: ConfigManager,
-        cache_manager: CacheManager,
-        ttl_inbox: TtlSchedulerManager,
-        cluster_manager: ClusterManager,
+        actor_registry: ActorRegistry,
         startup_notifier: impl TNotifyStartUp,
     ) -> Result<()> {
-        if let Some(filepath) = config_manager.try_filepath().await? {
+        if let Some(filepath) = actor_registry.config_manager.try_filepath().await? {
             let dump = DumpLoader::load(filepath).await?;
             if let Some((repl_id, offset)) = dump.extract_replication_info() {
                 //  TODO reconnect! - echo
-                cluster_manager
+                actor_registry
+                    .cluster_manager
                     .send(ClusterCommand::SetReplicationInfo { master_repl_id: repl_id, offset })
                     .await?;
             };
-            cache_manager.dump_cache(dump, ttl_inbox.clone(), config_manager.startup_time).await?;
+            actor_registry
+                .cache_manager
+                .dump_cache(
+                    dump,
+                    actor_registry.ttl_manager,
+                    actor_registry.config_manager.startup_time,
+                )
+                .await?;
         }
 
         startup_notifier.notify_startup();
