@@ -243,6 +243,7 @@ fn parse_peer_state(buffer: BytesMut) -> Result<(QueryIO, usize)> {
     let (hop_count, l4) = deserialize(BytesMut::from(&buffer[len + l1 + l2 + l3..]))?;
     let (id, l5) = deserialize(BytesMut::from(&buffer[len + l1 + l2 + l3 + l4..]))?;
     let (ban_list, l6) = deserialize(BytesMut::from(&buffer[len + l1 + l2 + l3 + l4 + l5..]))?;
+
     let (QueryIO::Array(append_entries), l7) =
         deserialize(BytesMut::from(&buffer[len + l1 + l2 + l3 + l4 + l5 + l6..]))?
     else {
@@ -407,7 +408,7 @@ fn test_parse_array() {
 #[test]
 fn test_from_bytes_to_peer_state() {
     // GIVEN
-    let data = "^\r\n$3\r\n245\r\n$7\r\n1234329\r\n$4\r\nabcd\r\n$1\r\n2\r\n$15\r\n127.0.0.1:49153\r\n*0\r\n";
+    let data = "^\r\n$3\r\n245\r\n$7\r\n1234329\r\n$4\r\nabcd\r\n$1\r\n2\r\n$15\r\n127.0.0.1:49153\r\n*0\r\n*0\r\n";
 
     let buffer = BytesMut::from(data);
 
@@ -508,7 +509,7 @@ fn test_binary_to_banned_list() {
     use crate::services::cluster::replications::replication::BannedPeer;
 
     // GIVEN
-    let binary= format!("^\r\n$1\r\n0\r\n$1\r\n0\r\n$6\r\n{}\r\n$1\r\n1\r\n$14\r\n127.0.0.1:6379\r\n*1\r\n$25\r\n127.0.0.1:6739-{}\r\n*0\r\n","random",6545442);
+    let binary= format!("^\r\n$1\r\n0\r\n$1\r\n0\r\n$6\r\nrandom\r\n$1\r\n1\r\n$14\r\n127.0.0.1:6379\r\n*1\r\n$22\r\n127.0.0.1:6739-6545442\r\n*0\r\n");
     let buffer = BytesMut::from_iter(binary.into_bytes());
 
     // WHEN
