@@ -13,6 +13,8 @@ use tokio::sync::mpsc::Receiver;
 use tokio::sync::mpsc::Sender;
 use tokio::time::Instant;
 
+const FANOUT: usize = 2;
+
 #[derive(Debug)]
 pub struct ClusterActor {
     members: BTreeMap<PeerIdentifier, Peer>,
@@ -45,11 +47,8 @@ impl ClusterActor {
 
                 ClusterCommand::Replicate { query: _ } => todo!(),
                 ClusterCommand::SendHeartBeat => {
-                    // TODO FANOUT should be configurable
-                    const FANOUT: usize = 2;
                     let hop_count = self.hop_count(FANOUT, self.members.len());
-
-                    self.send_heartbeat(hop_count).await;
+                    self.send_liveness_heartbeat(hop_count).await;
 
                     // ! remove idle peers based on ttl.
                     // ! The following may need to be moved else where to avoid blocking the main loop
@@ -62,13 +61,13 @@ impl ClusterActor {
                 ClusterCommand::SetReplicationInfo { master_repl_id, offset } => {
                     self.set_replication_info(master_repl_id, offset);
                 }
-                ClusterCommand::ReportAlive { state } => {
-                    if self.replication.in_ban_list(&state.heartbeat_from) {
+                ClusterCommand::ReceiveHeartBeat(heartbeat) => {
+                    if self.replication.in_ban_list(&heartbeat.heartbeat_from) {
                         continue;
                     }
 
-                    self.gossip(state.hop_count).await;
-                    self.update_on_report(state).await;
+                    self.gossip(heartbeat.hop_count).await;
+                    self.update_on_report(heartbeat).await;
                 }
                 ClusterCommand::ForgetPeer(peer_addr, sender) => {
                     if let Ok(Some(())) = self.forget_peer(peer_addr).await {
@@ -78,10 +77,8 @@ impl ClusterActor {
                     }
                 }
                 ClusterCommand::Concensus { log, sender } => {
-                    // TODO logging
-
                     self.consensus(log).await;
-                    // TODO implement concensus
+
                     // TODO if any operations failed, it's okay to drop sender
                     let _ = sender.send(self.replication.master_repl_offset);
                 }
@@ -98,13 +95,14 @@ impl ClusterActor {
         }
         node_count.ilog(fanout) as u8
     }
-    async fn send_heartbeat(&mut self, hop_count: u8) {
+
+    async fn send_liveness_heartbeat(&mut self, hop_count: u8) {
         // TODO randomly choose the peer to send the message
 
         for peer in self.members.values_mut() {
-            let msg = QueryIO::PeerState(self.replication.default_heartbeat(hop_count)).serialize();
+            let msg = QueryIO::HeartBeat(self.replication.default_heartbeat(hop_count)).serialize();
 
-            let _ = peer.w_conn.stream.write(msg).await;
+            let _ = peer.write(msg).await;
         }
     }
 
@@ -159,7 +157,7 @@ impl ClusterActor {
             return;
         };
         let hop_count = hop_count - 1;
-        self.send_heartbeat(hop_count).await;
+        self.send_liveness_heartbeat(hop_count).await;
     }
 
     async fn forget_peer(&mut self, peer_addr: PeerIdentifier) -> anyhow::Result<Option<()>> {
@@ -200,15 +198,15 @@ impl ClusterActor {
         }
     }
 
-    async fn consensus(&mut self, log: WriteRequest) {
-        // TODO send current offset
-        let write_op = WriteOperation { op: log, offset: self.replication.master_repl_offset };
+    async fn consensus(&mut self, req: WriteRequest) {
+        // TODO when are we going to increase offset?
+        let write_op = WriteOperation { op: req, offset: self.replication.master_repl_offset };
+
+        let heartbeat = self.replication.append_entry(0, write_op);
 
         for peer in self.replicas() {
-            let _ = peer.w_conn.stream.write(write_op.clone().serialize()).await;
+            let _ = peer.write_io(heartbeat.clone()).await;
         }
-        // TODO implement concensus
-        // TODO if any operations failed, it's okay to drop sender
     }
 
     fn replicas(&mut self) -> Vec<&mut Peer> {

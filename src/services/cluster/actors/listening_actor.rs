@@ -22,9 +22,9 @@ pub(crate) struct PeerListeningActor {
 
 impl PeerListeningActor {
     // Update peer state on cluster manager
-    async fn report_liveness(&mut self, state: HeartBeatMessage) {
+    async fn receive_heartbeat(&mut self, state: HeartBeatMessage) {
         println!("[INFO] from {}, hc:{}", state.heartbeat_from, state.hop_count);
-        let _ = self.cluster_handler.send(ClusterCommand::ReportAlive { state }).await;
+        let _ = self.cluster_handler.send(ClusterCommand::ReceiveHeartBeat(state)).await;
     }
 
     /// Run until the kill switch is triggered
@@ -55,7 +55,7 @@ impl PeerListeningActor {
             for cmd in cmds {
                 match cmd {
                     CommandFromSlave::HeartBeat(state) => {
-                        self.report_liveness(state).await;
+                        self.receive_heartbeat(state).await;
                     }
                 }
             }
@@ -70,14 +70,12 @@ impl PeerListeningActor {
         while let Ok(cmds) = self.read_command::<CommandFromMaster>().await {
             for cmd in cmds {
                 match cmd {
-                    CommandFromMaster::HeartBeat(state) => {
-                        self.report_liveness(state).await;
+                    CommandFromMaster::HeartBeat(mut state) => {
+                        self.log_entries(&mut state);
+                        self.receive_heartbeat(state).await;
                     }
                     CommandFromMaster::Sync(v) => {
                         println!("[INFO] Received sync from master {:?}", v);
-                    }
-                    CommandFromMaster::ReplicateLog(write_operation) => {
-                        // TODO make vote upon concensus
                     }
                 }
             }
@@ -97,6 +95,13 @@ impl PeerListeningActor {
             .map(T::try_from)
             .collect::<Result<_, _>>()
             .map_err(Into::into)
+    }
+
+    fn log_entries(&self, state: &mut HeartBeatMessage) {
+        let append_entries = state.append_entries.drain(..).collect::<Vec<_>>();
+        for entry in append_entries {
+            println!("[INFO] Append entry {:?}", entry);
+        }
     }
 }
 

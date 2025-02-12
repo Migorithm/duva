@@ -13,7 +13,7 @@ pub enum ClusterCommand {
     SetReplicationInfo { master_repl_id: String, offset: u64 },
     SendHeartBeat,
     Replicate { query: QueryIO },
-    ReportAlive { state: HeartBeatMessage },
+    ReceiveHeartBeat(HeartBeatMessage),
     ForgetPeer(PeerIdentifier, tokio::sync::oneshot::Sender<Option<()>>),
     Concensus { log: WriteRequest, sender: tokio::sync::oneshot::Sender<u64> },
     CommitLog(u64),

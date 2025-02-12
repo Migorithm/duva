@@ -88,6 +88,12 @@ impl ReplicationInfo {
             false
         }
     }
+
+    pub fn append_entry(&self, hop_count: u8, entry: WriteOperation) -> HeartBeatMessage {
+        let mut heartbeat = self.default_heartbeat(hop_count);
+        heartbeat.append_entries.push(entry);
+        heartbeat
+    }
     pub fn default_heartbeat(&self, hop_count: u8) -> HeartBeatMessage {
         HeartBeatMessage {
             heartbeat_from: self.self_identifier.clone(),
