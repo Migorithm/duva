@@ -100,7 +100,7 @@ impl ClusterActor {
         // TODO randomly choose the peer to send the message
 
         for peer in self.members.values_mut() {
-            let msg = QueryIO::PeerState(self.replication.default_heartbeat(hop_count)).serialize();
+            let msg = QueryIO::HeartBeat(self.replication.default_heartbeat(hop_count)).serialize();
 
             let _ = peer.write(msg).await;
         }

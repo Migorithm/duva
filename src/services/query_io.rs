@@ -29,7 +29,7 @@ pub enum QueryIO {
     Null,
     Err(Bytes),
     File(Bytes),
-    PeerState(HeartBeatMessage),
+    HeartBeat(HeartBeatMessage),
     ReplicateLog(WriteOperation),
 }
 
@@ -74,7 +74,7 @@ impl QueryIO {
             ]
             .concat()
             .into(),
-            QueryIO::PeerState(HeartBeatMessage {
+            QueryIO::HeartBeat(HeartBeatMessage {
                 term,
                 offset,
                 master_replid,
@@ -157,14 +157,14 @@ impl From<Option<CacheValue>> for QueryIO {
 
 impl From<HeartBeatMessage> for QueryIO {
     fn from(value: HeartBeatMessage) -> Self {
-        QueryIO::PeerState(value)
+        QueryIO::HeartBeat(value)
     }
 }
 impl TryFrom<QueryIO> for HeartBeatMessage {
     type Error = anyhow::Error;
 
     fn try_from(value: QueryIO) -> std::result::Result<Self, Self::Error> {
-        let QueryIO::PeerState(state) = value else {
+        let QueryIO::HeartBeat(state) = value else {
             return Err(anyhow::anyhow!("invalid QueryIO invariant"));
         };
 
@@ -193,7 +193,7 @@ pub fn deserialize(buffer: BytesMut) -> Result<(QueryIO, usize)> {
             let (bytes, len) = parse_file(buffer)?;
             Ok((QueryIO::File(bytes), len))
         }
-        PEERSTATE_PREFIX => parse_peer_state(buffer),
+        PEERSTATE_PREFIX => parse_heartbeat(buffer),
         REPLICATE_PREFIX => parse_replicate(buffer),
 
         _ => Err(anyhow::anyhow!("Not a known value type {:?}", buffer)),
@@ -227,7 +227,7 @@ fn parse_array(buffer: BytesMut) -> Result<(QueryIO, usize)> {
     Ok((QueryIO::Array(bulk_strings), len))
 }
 
-fn parse_peer_state(buffer: BytesMut) -> Result<(QueryIO, usize)> {
+fn parse_heartbeat(buffer: BytesMut) -> Result<(QueryIO, usize)> {
     // fixed rule for peer state
     let len = 3;
 
@@ -245,7 +245,7 @@ fn parse_peer_state(buffer: BytesMut) -> Result<(QueryIO, usize)> {
     };
 
     Ok((
-        QueryIO::PeerState(HeartBeatMessage {
+        QueryIO::HeartBeat(HeartBeatMessage {
             heartbeat_from: id.unpack_single_entry()?,
             term: term.unpack_single_entry()?,
             offset: offset.unpack_single_entry()?,
@@ -413,7 +413,7 @@ fn test_from_bytes_to_peer_state() {
     assert_eq!(len, data.len());
     assert_eq!(
         value,
-        QueryIO::PeerState(HeartBeatMessage {
+        QueryIO::HeartBeat(HeartBeatMessage {
             term: 245,
             offset: 1234329,
             master_replid: "abcd".into(),
@@ -433,11 +433,10 @@ fn test_from_bytes_to_peer_state() {
 }
 
 #[test]
-fn test_from_peer_state_to_bytes() {
+fn test_from_heartbeat_to_bytes() {
     use crate::services::query_io::QueryIO;
 
     //GIVEN
-
     let peer_state = HeartBeatMessage {
         term: 1,
         offset: 2,
@@ -445,14 +444,23 @@ fn test_from_peer_state_to_bytes() {
         hop_count: 2,
         heartbeat_from: "127.0.0.1:49152".to_string().into(),
         ban_list: Default::default(),
-        append_entries: vec![],
+        append_entries: vec![
+            WriteOperation {
+                op: WriteRequest::Set { key: "foo".into(), value: "bar".into() },
+                offset: 1,
+            },
+            WriteOperation {
+                op: WriteRequest::Set { key: "poo".into(), value: "bar".into() },
+                offset: 2,
+            },
+        ],
     };
     //WHEN
     let peer_state_serialized: QueryIO = peer_state.into();
     let peer_state_serialized = peer_state_serialized.serialize();
     //THEN
     assert_eq!(
-        "^\r\n$1\r\n1\r\n$1\r\n2\r\n$16\r\nyour_master_repl\r\n$1\r\n2\r\n$15\r\n127.0.0.1:49152\r\n*0\r\n*0\r\n",
+        "^\r\n$1\r\n1\r\n$1\r\n2\r\n$16\r\nyour_master_repl\r\n$1\r\n2\r\n$15\r\n127.0.0.1:49152\r\n*0\r\n*2\r\n#\r\n$1\r\n1\r\n*3\r\n$3\r\nSET\r\n$3\r\nfoo\r\n$3\r\nbar\r\n#\r\n$1\r\n2\r\n*3\r\n$3\r\nSET\r\n$3\r\npoo\r\n$3\r\nbar\r\n",
         peer_state_serialized
     );
 
@@ -498,12 +506,12 @@ fn test_peer_state_ban_list_to_binary() {
 }
 
 #[test]
-fn test_binary_to_banned_list() {
+fn test_binary_to_heartbeat() {
     use crate::services::cluster::peers::identifier::PeerIdentifier;
     use crate::services::cluster::replications::replication::BannedPeer;
 
     // GIVEN
-    let binary= format!("^\r\n$1\r\n0\r\n$1\r\n0\r\n$6\r\nrandom\r\n$1\r\n1\r\n$14\r\n127.0.0.1:6379\r\n*1\r\n$22\r\n127.0.0.1:6739-6545442\r\n*0\r\n");
+    let binary= format!("^\r\n$1\r\n0\r\n$1\r\n0\r\n$6\r\nrandom\r\n$1\r\n1\r\n$14\r\n127.0.0.1:6379\r\n*1\r\n$22\r\n127.0.0.1:6739-6545442\r\n*2\r\n#\r\n$1\r\n1\r\n*3\r\n$3\r\nSET\r\n$3\r\nfoo\r\n$3\r\nbar\r\n#\r\n$1\r\n2\r\n*3\r\n$3\r\nSET\r\n$3\r\npoo\r\n$3\r\nbar\r\n");
     let buffer = BytesMut::from_iter(binary.into_bytes());
 
     // WHEN
@@ -512,7 +520,7 @@ fn test_binary_to_banned_list() {
     // THEN
     assert_eq!(
         value,
-        QueryIO::PeerState(HeartBeatMessage {
+        QueryIO::HeartBeat(HeartBeatMessage {
             term: 0,
             offset: 0,
             master_replid: "random".into(),
@@ -523,7 +531,16 @@ fn test_binary_to_banned_list() {
                 ban_time: 6545442
             }]
             .to_vec(),
-            append_entries: vec![]
+            append_entries: vec![
+                WriteOperation {
+                    op: WriteRequest::Set { key: "foo".into(), value: "bar".into() },
+                    offset: 1
+                },
+                WriteOperation {
+                    op: WriteRequest::Set { key: "poo".into(), value: "bar".into() },
+                    offset: 2
+                }
+            ]
         })
     );
 }
@@ -594,7 +611,7 @@ fn test_banned_peer_serde_when_time_passed() {
 }
 
 #[test]
-fn test_from_replicate_to_binary() {
+fn test_from_replicate_log_to_binary() {
     // GIVEN
     let query = WriteRequest::Set { key: "foo".into(), value: "bar".into() };
     let replicate = QueryIO::ReplicateLog(WriteOperation { op: query, offset: 1 });
@@ -607,7 +624,7 @@ fn test_from_replicate_to_binary() {
 }
 
 #[test]
-fn test_from_binary_to_replicate() {
+fn test_from_binary_to_replicate_log() {
     // GIVEN
     let data = "#\r\n$1\r\n1\r\n*3\r\n$3\r\nSET\r\n$3\r\nfoo\r\n$3\r\nbar\r\n";
     let buffer = BytesMut::from(data);
@@ -621,38 +638,6 @@ fn test_from_binary_to_replicate() {
         QueryIO::ReplicateLog(WriteOperation {
             op: WriteRequest::Set { key: "foo".into(), value: "bar".into() },
             offset: 1
-        })
-    );
-}
-
-#[test]
-fn test_binary_to_append_entries() {
-    // GIVEN
-    let write_operation = WriteOperation {
-        offset: 0,
-        op: WriteRequest::Set { key: "foo".into(), value: "bar".into() },
-    };
-    let binary = format!(
-        "^\r\n$1\r\n0\r\n$1\r\n0\r\n$6\r\nrandom\r\n$1\r\n1\r\n$14\r\n127.0.0.1:6379\r\n*0\r\n*1\r\n{}",
-        String::from_utf8(write_operation.clone().serialize().to_vec()).unwrap()
-    );
-
-    let buffer = BytesMut::from_iter(binary.into_bytes());
-
-    // WHEN
-    let (value, _) = deserialize(buffer).unwrap();
-
-    // THEN
-    assert_eq!(
-        value,
-        QueryIO::PeerState(HeartBeatMessage {
-            term: 0,
-            offset: 0,
-            master_replid: "random".into(),
-            hop_count: 1,
-            heartbeat_from: "127.0.0.1:6379".to_string().into(),
-            ban_list: vec![],
-            append_entries: vec![write_operation]
         })
     );
 }
