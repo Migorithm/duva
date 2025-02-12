@@ -1,10 +1,11 @@
+use crate::services::aof::WriteOperation;
 use crate::services::cluster::replications::replication::PeerState;
 use crate::services::query_io::QueryIO;
 
 #[derive(Debug)]
 pub enum CommandFromMaster {
     HeartBeat(PeerState),
-    Replicate { query: QueryIO },
+    ReplicateLog(WriteOperation),
     Sync(QueryIO),
 }
 
@@ -18,6 +19,9 @@ impl TryFrom<QueryIO> for CommandFromMaster {
         match query {
             file @ QueryIO::File(_) => Ok(Self::Sync(file)),
             QueryIO::PeerState(peer_state) => Ok(Self::HeartBeat(peer_state)),
+            QueryIO::Consensus { query, offset } => {
+                Ok(Self::ReplicateLog(WriteOperation { offset, op: query }))
+            }
             _ => todo!(),
         }
     }

@@ -30,7 +30,7 @@ pub enum QueryIO {
     Err(Bytes),
     File(Bytes),
     PeerState(PeerState),
-    Replicate { query: WriteRequest, offset: u64 },
+    Consensus { query: WriteRequest, offset: u64 },
 }
 
 impl QueryIO {
@@ -102,7 +102,7 @@ impl QueryIO {
 
                 [message, long_bytes].concat().into()
             }
-            QueryIO::Replicate { query, offset } => {
+            QueryIO::Consensus { query, offset } => {
                 let message: Bytes = format!(
                     "{}\r\n${}\r\n{}\r\n",
                     REPLICATE_PREFIX,
@@ -267,7 +267,7 @@ fn parse_replicate(buffer: BytesMut) -> std::result::Result<(QueryIO, usize), an
 
     let cmd = std::str::from_utf8(&cmd_bytes)?.to_lowercase();
     Ok((
-        QueryIO::Replicate {
+        QueryIO::Consensus {
             offset: offset.unpack_single_entry()?,
             query: WriteRequest::new(cmd, args)?,
         },
@@ -580,7 +580,7 @@ fn test_banned_peer_serde_when_time_passed() {
 fn test_from_replicate_to_binary() {
     // GIVEN
     let query = WriteRequest::Set { key: "foo".into(), value: "bar".into() };
-    let replicate = QueryIO::Replicate { query, offset: 1 };
+    let replicate = QueryIO::Consensus { query, offset: 1 };
 
     // WHEN
     let serialized = replicate.clone().serialize();
@@ -601,7 +601,7 @@ fn test_from_binary_to_replicate() {
     // THEN
     assert_eq!(
         value,
-        QueryIO::Replicate {
+        QueryIO::Consensus {
             query: WriteRequest::Set { key: "foo".into(), value: "bar".into() },
             offset: 1
         }

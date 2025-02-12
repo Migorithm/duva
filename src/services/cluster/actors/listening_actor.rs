@@ -73,10 +73,11 @@ impl PeerListeningActor {
                     CommandFromMaster::HeartBeat(state) => {
                         self.report_liveness(state).await;
                     }
-
-                    CommandFromMaster::Replicate { query: _ } => {}
                     CommandFromMaster::Sync(v) => {
                         println!("[INFO] Received sync from master {:?}", v);
+                    }
+                    CommandFromMaster::ReplicateLog(write_operation) => {
+                        // TODO make vote upon concensus
                     }
                 }
             }
