@@ -77,10 +77,8 @@ impl ClusterActor {
                     }
                 }
                 ClusterCommand::Concensus { log, sender } => {
-                    // TODO logging
-
                     self.consensus(log).await;
-                    // TODO implement concensus
+
                     // TODO if any operations failed, it's okay to drop sender
                     let _ = sender.send(self.replication.master_repl_offset);
                 }
@@ -201,7 +199,7 @@ impl ClusterActor {
     }
 
     async fn consensus(&mut self, req: WriteRequest) {
-        // TODO send current offset
+        // TODO when are we going to increase offset?
         let write_op = WriteOperation { op: req, offset: self.replication.master_repl_offset };
 
         let heartbeat = self.replication.append_entry(0, write_op);
@@ -209,8 +207,6 @@ impl ClusterActor {
         for peer in self.replicas() {
             let _ = peer.write_io(heartbeat.clone()).await;
         }
-        // TODO implement concensus
-        // TODO if any operations failed, it's okay to drop sender
     }
 
     fn replicas(&mut self) -> Vec<&mut Peer> {

@@ -98,7 +98,7 @@ impl QueryIO {
                 .serialize();
 
                 let append_entries_array = QueryIO::Array(
-                    append_entries.into_iter().map(|op| QueryIO::BulkString(op.into())).collect(),
+                    append_entries.into_iter().map(|op| QueryIO::ReplicateLog(op.into())).collect(),
                 )
                 .serialize();
 
