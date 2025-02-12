@@ -15,7 +15,7 @@ pub enum ClusterCommand {
     Replicate { query: QueryIO },
     ReceiveHeartBeat(HeartBeatMessage),
     ForgetPeer(PeerIdentifier, tokio::sync::oneshot::Sender<Option<()>>),
-    Concensus { log: WriteRequest, sender: tokio::sync::oneshot::Sender<u64> },
+    Consensus { log: WriteRequest, sender: tokio::sync::oneshot::Sender<u64> },
     CommitLog(u64),
 }
 

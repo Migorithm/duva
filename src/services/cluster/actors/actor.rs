@@ -8,7 +8,7 @@ use crate::services::cluster::replications::replication::{
 };
 use crate::services::interface::TWrite;
 use crate::services::query_io::QueryIO;
-use futures::future::join_all;
+
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
 use std::collections::BTreeMap;
@@ -79,7 +79,7 @@ impl ClusterActor {
                         let _ = sender.send(None);
                     }
                 }
-                ClusterCommand::Concensus { log, sender } => {
+                ClusterCommand::Consensus { log, sender } => {
                     self.consensus(log).await;
 
                     // TODO if any operations failed, it's okay to drop sender
@@ -207,14 +207,14 @@ impl ClusterActor {
 
         let heartbeat = self.replication.append_entry(0, write_op);
 
-        while let Some(_) = self
+        let mut tasks = self
             .replicas()
             .into_iter()
             .map(|peer| peer.write_io(heartbeat.clone()))
-            .collect::<FuturesUnordered<_>>()
-            .next()
-            .await
-        {}
+            .collect::<FuturesUnordered<_>>();
+
+        // ! SAFETY DO NOT inline tasks.next().await in the while loop
+        while let Some(_) = tasks.next().await {}
     }
 
     fn replicas(&mut self) -> Vec<&mut Peer> {
