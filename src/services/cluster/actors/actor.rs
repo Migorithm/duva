@@ -8,6 +8,9 @@ use crate::services::cluster::replications::replication::{
 };
 use crate::services::interface::TWrite;
 use crate::services::query_io::QueryIO;
+use futures::future::join_all;
+use futures::stream::FuturesUnordered;
+use futures::StreamExt;
 use std::collections::BTreeMap;
 use tokio::sync::mpsc::Receiver;
 use tokio::sync::mpsc::Sender;
@@ -204,9 +207,14 @@ impl ClusterActor {
 
         let heartbeat = self.replication.append_entry(0, write_op);
 
-        for peer in self.replicas() {
-            let _ = peer.write_io(heartbeat.clone()).await;
-        }
+        while let Some(_) = self
+            .replicas()
+            .into_iter()
+            .map(|peer| peer.write_io(heartbeat.clone()))
+            .collect::<FuturesUnordered<_>>()
+            .next()
+            .await
+        {}
     }
 
     fn replicas(&mut self) -> Vec<&mut Peer> {

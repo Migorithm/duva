@@ -1,12 +1,10 @@
-use bytes::Bytes;
-
 use crate::services::aof::WriteOperation;
-use crate::services::config::init::get_env;
-use std::str::FromStr;
-use std::sync::atomic::AtomicBool;
-
 use crate::services::cluster::peers::identifier::PeerIdentifier;
 use crate::services::cluster::replications::replid_generator::generate_replid;
+use crate::services::config::init::get_env;
+use bytes::Bytes;
+use std::str::FromStr;
+use std::sync::atomic::AtomicBool;
 
 pub static IS_MASTER_MODE: AtomicBool = AtomicBool::new(true);
 
