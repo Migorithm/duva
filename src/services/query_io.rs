@@ -81,34 +81,28 @@ impl QueryIO {
                 hop_count,
                 heartbeat_from: id,
                 ban_list,
-                append_entries: append_entires,
+                append_entries,
             }) => {
-                let message = format!(
-                            "{}\r\n${}\r\n{term}\r\n${}\r\n{offset}\r\n${}\r\n{master_replid}\r\n${}\r\n{hop_count}\r\n${}\r\n{id}\r\n",
-                            PEERSTATE_PREFIX,
+                let header = format!(
+                            "{PEERSTATE_PREFIX}\r\n${}\r\n{term}\r\n${}\r\n{offset}\r\n${}\r\n{master_replid}\r\n${}\r\n{hop_count}\r\n${}\r\n{id}\r\n",
                             term.to_string().len(),
                             offset.to_string().len(),
                             master_replid.len(),
                             hop_count.to_string().len(),
                             id.len(),
-                            ).into();
+                );
 
                 let ban_list_array = QueryIO::Array(
-                    ban_list
-                        .into_iter()
-                        .map(|x| QueryIO::BulkString(x.into())) // Convert to Vec<u8>
-                        .collect(),
-                );
-                let appen_entries_array = QueryIO::Array(
-                    append_entires
-                        .into_iter()
-                        .map(|x| QueryIO::BulkString(x.into())) // Convert to Vec<u8>
-                        .collect(),
-                );
+                    ban_list.into_iter().map(|peer| QueryIO::BulkString(peer.into())).collect(),
+                )
+                .serialize();
 
-                [message, ban_list_array.serialize(), appen_entries_array.serialize()]
-                    .concat()
-                    .into()
+                let append_entries_array = QueryIO::Array(
+                    append_entries.into_iter().map(|op| QueryIO::BulkString(op.into())).collect(),
+                )
+                .serialize();
+
+                [header.into(), ban_list_array, append_entries_array].concat().into()
             }
             QueryIO::ReplicateLog(WriteOperation { op, offset }) => {
                 let message: Bytes = format!(
