@@ -13,6 +13,8 @@ use tokio::sync::mpsc::Receiver;
 use tokio::sync::mpsc::Sender;
 use tokio::time::Instant;
 
+const FANOUT: usize = 2;
+
 #[derive(Debug)]
 pub struct ClusterActor {
     members: BTreeMap<PeerIdentifier, Peer>,
@@ -45,11 +47,8 @@ impl ClusterActor {
 
                 ClusterCommand::Replicate { query: _ } => todo!(),
                 ClusterCommand::SendHeartBeat => {
-                    // TODO FANOUT should be configurable
-                    const FANOUT: usize = 2;
                     let hop_count = self.hop_count(FANOUT, self.members.len());
-
-                    self.send_heartbeat(hop_count).await;
+                    self.send_liveness_heartbeat(hop_count).await;
 
                     // ! remove idle peers based on ttl.
                     // ! The following may need to be moved else where to avoid blocking the main loop
@@ -98,7 +97,8 @@ impl ClusterActor {
         }
         node_count.ilog(fanout) as u8
     }
-    async fn send_heartbeat(&mut self, hop_count: u8) {
+
+    async fn send_liveness_heartbeat(&mut self, hop_count: u8) {
         // TODO randomly choose the peer to send the message
 
         for peer in self.members.values_mut() {
@@ -159,7 +159,7 @@ impl ClusterActor {
             return;
         };
         let hop_count = hop_count - 1;
-        self.send_heartbeat(hop_count).await;
+        self.send_liveness_heartbeat(hop_count).await;
     }
 
     async fn forget_peer(&mut self, peer_addr: PeerIdentifier) -> anyhow::Result<Option<()>> {

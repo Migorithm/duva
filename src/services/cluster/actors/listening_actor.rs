@@ -70,7 +70,8 @@ impl PeerListeningActor {
         while let Ok(cmds) = self.read_command::<CommandFromMaster>().await {
             for cmd in cmds {
                 match cmd {
-                    CommandFromMaster::HeartBeat(state) => {
+                    CommandFromMaster::HeartBeat(mut state) => {
+                        self.log_entries(&mut state);
                         self.receive_heartbeat(state).await;
                     }
                     CommandFromMaster::Sync(v) => {
@@ -94,6 +95,13 @@ impl PeerListeningActor {
             .map(T::try_from)
             .collect::<Result<_, _>>()
             .map_err(Into::into)
+    }
+
+    fn log_entries(&self, state: &mut HeartBeatMessage) {
+        let append_entries = state.append_entries.drain(..).collect::<Vec<_>>();
+        for entry in append_entries {
+            println!("[INFO] Append entry {:?}", entry);
+        }
     }
 }
 
