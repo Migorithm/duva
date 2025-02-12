@@ -18,6 +18,11 @@ pub(crate) trait TWrite {
         &mut self,
         buf: impl Into<Bytes> + Send,
     ) -> impl std::future::Future<Output = Result<(), IoError>> + Send;
+
+    fn write_io(
+        &mut self,
+        io: impl Into<QueryIO> + Send,
+    ) -> impl std::future::Future<Output = Result<(), IoError>> + Send;
 }
 
 pub trait TGetPeerIp {

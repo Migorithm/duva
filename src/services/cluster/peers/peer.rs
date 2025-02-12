@@ -1,9 +1,13 @@
+use std::ops::Deref;
+use std::ops::DerefMut;
+
 use crate::services::cluster::actors::listening_actor::ListeningActorKillTrigger;
 use crate::services::cluster::actors::listening_actor::PeerListeningActor;
 use crate::services::cluster::command::cluster_command::ClusterCommand;
 use crate::services::cluster::peers::connected_types::WriteConnected;
 use crate::services::cluster::peers::identifier::PeerIdentifier;
 use crate::services::cluster::peers::kind::PeerKind;
+use tokio::net::tcp::OwnedWriteHalf;
 use tokio::net::TcpStream;
 use tokio::sync::mpsc::Sender;
 use tokio::time::Instant;
@@ -38,5 +42,19 @@ impl Peer {
             listener_kill_trigger: ListeningActorKillTrigger::new(kill_trigger, listening_task),
             last_seen: Instant::now(),
         }
+    }
+}
+
+impl Deref for Peer {
+    type Target = OwnedWriteHalf;
+
+    fn deref(&self) -> &Self::Target {
+        &self.w_conn.stream
+    }
+}
+
+impl DerefMut for Peer {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.w_conn.stream
     }
 }

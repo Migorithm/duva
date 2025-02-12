@@ -9,6 +9,10 @@ impl<T: AsyncWriteExt + std::marker::Unpin + Sync + Send> TWrite for T {
     async fn write(&mut self, buf: impl Into<Bytes>) -> Result<(), IoError> {
         self.write_all(&buf.into()).await.map_err(|e| Into::<IoError>::into(e.kind()))
     }
+
+    async fn write_io(&mut self, io: impl Into<QueryIO>) -> Result<(), IoError> {
+        self.write_all(&io.into().serialize()).await.map_err(|e| Into::<IoError>::into(e.kind()))
+    }
 }
 
 impl<T: AsyncReadExt + std::marker::Unpin + Sync + Send> TRead for T {

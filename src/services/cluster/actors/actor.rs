@@ -104,7 +104,7 @@ impl ClusterActor {
         for peer in self.members.values_mut() {
             let msg = QueryIO::PeerState(self.replication.default_heartbeat(hop_count)).serialize();
 
-            let _ = peer.w_conn.stream.write(msg).await;
+            let _ = peer.write(msg).await;
         }
     }
 
@@ -200,12 +200,14 @@ impl ClusterActor {
         }
     }
 
-    async fn consensus(&mut self, log: WriteRequest) {
+    async fn consensus(&mut self, req: WriteRequest) {
         // TODO send current offset
-        let write_op = WriteOperation { op: log, offset: self.replication.master_repl_offset };
+        let write_op = WriteOperation { op: req, offset: self.replication.master_repl_offset };
+
+        let heartbeat = self.replication.append_entry(0, write_op);
 
         for peer in self.replicas() {
-            let _ = peer.w_conn.stream.write(write_op.clone().serialize()).await;
+            let _ = peer.write_io(heartbeat.clone()).await;
         }
         // TODO implement concensus
         // TODO if any operations failed, it's okay to drop sender
