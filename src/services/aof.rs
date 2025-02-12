@@ -152,3 +152,9 @@ impl WriteRequest {
         }
     }
 }
+
+impl From<WriteOperation> for Bytes {
+    fn from(op: WriteOperation) -> Self {
+        op.serialize()
+    }
+}
