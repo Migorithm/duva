@@ -2,7 +2,7 @@ use crate::services::aof::WriteRequest;
 use crate::services::cluster::peers::address::PeerAddrs;
 use crate::services::cluster::peers::identifier::PeerIdentifier;
 use crate::services::cluster::peers::kind::PeerKind;
-use crate::services::cluster::replications::replication::{PeerState, ReplicationInfo};
+use crate::services::cluster::replications::replication::{HeartBeatMessage, ReplicationInfo};
 use crate::services::query_io::QueryIO;
 use tokio::net::TcpStream;
 
@@ -13,7 +13,7 @@ pub enum ClusterCommand {
     SetReplicationInfo { master_repl_id: String, offset: u64 },
     SendHeartBeat,
     Replicate { query: QueryIO },
-    ReportAlive { state: PeerState },
+    ReportAlive { state: HeartBeatMessage },
     ForgetPeer(PeerIdentifier, tokio::sync::oneshot::Sender<Option<()>>),
     Concensus { log: WriteRequest, sender: tokio::sync::oneshot::Sender<u64> },
     CommitLog(u64),

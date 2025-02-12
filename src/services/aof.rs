@@ -54,12 +54,11 @@ pub enum WriteRequest {
 
 impl WriteOperation {
     pub fn serialize(self) -> Bytes {
-        QueryIO::Replicate { query: self.op, offset: self.offset }.serialize()
+        QueryIO::ReplicateLog(self).serialize()
     }
 }
 
 impl WriteRequest {
-    /// Serialize this `WriteOperation` into bytes.
     pub fn to_array(self) -> QueryIO {
         match self {
             WriteRequest::Set { key, value } => write_array!("SET", key, value),
@@ -75,13 +74,14 @@ impl WriteRequest {
         let mut ops = Vec::new();
 
         while !bytes.is_empty() {
+            println!("ddd");
             let (query, consumed) = deserialize_query_io(bytes.clone())?;
             bytes = bytes.split_off(consumed);
 
-            let QueryIO::Replicate { query, offset } = query else {
+            let QueryIO::ReplicateLog(write_operation) = query else {
                 return Err(anyhow::anyhow!("expected replicate"));
             };
-            ops.push(WriteOperation { op: query, offset });
+            ops.push(write_operation);
         }
 
         Ok(ops)
@@ -150,5 +150,11 @@ impl WriteRequest {
 
             _ => Err(anyhow::anyhow!("expected 2 or 4 arguments")),
         }
+    }
+}
+
+impl From<WriteOperation> for Bytes {
+    fn from(op: WriteOperation) -> Self {
+        op.serialize()
     }
 }

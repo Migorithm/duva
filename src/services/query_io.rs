@@ -1,6 +1,6 @@
 use super::aof::WriteRequest;
-use crate::services::cluster::replications::replication::PeerState;
 use crate::services::statefuls::cache::CacheValue;
+use crate::services::{aof::WriteOperation, cluster::replications::replication::HeartBeatMessage};
 use anyhow::{Context, Result};
 use bytes::{Bytes, BytesMut};
 use std::fmt::Write;
@@ -29,8 +29,8 @@ pub enum QueryIO {
     Null,
     Err(Bytes),
     File(Bytes),
-    PeerState(PeerState),
-    Replicate { query: WriteRequest, offset: u64 },
+    PeerState(HeartBeatMessage),
+    ReplicateLog(WriteOperation),
 }
 
 impl QueryIO {
@@ -74,35 +74,43 @@ impl QueryIO {
             ]
             .concat()
             .into(),
-            QueryIO::PeerState(PeerState {
+            QueryIO::PeerState(HeartBeatMessage {
                 term,
                 offset,
                 master_replid,
                 hop_count,
                 heartbeat_from: id,
                 ban_list,
+                append_entries: append_entires,
             }) => {
                 let message = format!(
-                            "{}\r\n${}\r\n{term}\r\n${}\r\n{offset}\r\n${}\r\n{master_replid}\r\n${}\r\n{hop_count}\r\n${}\r\n{id}\r\n{ARRAY_PREFIX}{}\r\n",
+                            "{}\r\n${}\r\n{term}\r\n${}\r\n{offset}\r\n${}\r\n{master_replid}\r\n${}\r\n{hop_count}\r\n${}\r\n{id}\r\n",
                             PEERSTATE_PREFIX,
                             term.to_string().len(),
                             offset.to_string().len(),
                             master_replid.len(),
                             hop_count.to_string().len(),
                             id.len(),
-                            ban_list.len()
                             ).into();
 
-                let long_bytes = Bytes::from(
+                let ban_list_array = QueryIO::Array(
                     ban_list
                         .into_iter()
-                        .flat_map(|x| QueryIO::BulkString(x.into()).serialize()) // Convert to Vec<u8>
-                        .collect::<Vec<u8>>(),
+                        .map(|x| QueryIO::BulkString(x.into())) // Convert to Vec<u8>
+                        .collect(),
+                );
+                let appen_entries_array = QueryIO::Array(
+                    append_entires
+                        .into_iter()
+                        .map(|x| QueryIO::BulkString(x.into())) // Convert to Vec<u8>
+                        .collect(),
                 );
 
-                [message, long_bytes].concat().into()
+                [message, ban_list_array.serialize(), appen_entries_array.serialize()]
+                    .concat()
+                    .into()
             }
-            QueryIO::Replicate { query, offset } => {
+            QueryIO::ReplicateLog(WriteOperation { op, offset }) => {
                 let message: Bytes = format!(
                     "{}\r\n${}\r\n{}\r\n",
                     REPLICATE_PREFIX,
@@ -110,7 +118,7 @@ impl QueryIO {
                     offset
                 )
                 .into();
-                [message, query.to_array().serialize()].concat().into()
+                [message, op.to_array().serialize()].concat().into()
             }
         }
     }
@@ -153,12 +161,12 @@ impl From<Option<CacheValue>> for QueryIO {
     }
 }
 
-impl From<PeerState> for QueryIO {
-    fn from(value: PeerState) -> Self {
+impl From<HeartBeatMessage> for QueryIO {
+    fn from(value: HeartBeatMessage) -> Self {
         QueryIO::PeerState(value)
     }
 }
-impl TryFrom<QueryIO> for PeerState {
+impl TryFrom<QueryIO> for HeartBeatMessage {
     type Error = anyhow::Error;
 
     fn try_from(value: QueryIO) -> std::result::Result<Self, Self::Error> {
@@ -236,16 +244,27 @@ fn parse_peer_state(buffer: BytesMut) -> Result<(QueryIO, usize)> {
     let (id, l5) = deserialize(BytesMut::from(&buffer[len + l1 + l2 + l3 + l4..]))?;
     let (ban_list, l6) = deserialize(BytesMut::from(&buffer[len + l1 + l2 + l3 + l4 + l5..]))?;
 
+    let (QueryIO::Array(append_entries), l7) =
+        deserialize(BytesMut::from(&buffer[len + l1 + l2 + l3 + l4 + l5 + l6..]))?
+    else {
+        return Err(anyhow::anyhow!("expected array"));
+    };
+
     Ok((
-        QueryIO::PeerState(PeerState {
+        QueryIO::PeerState(HeartBeatMessage {
             heartbeat_from: id.unpack_single_entry()?,
             term: term.unpack_single_entry()?,
             offset: offset.unpack_single_entry()?,
             master_replid: master_replid.unpack_single_entry()?,
             hop_count: hop_count.unpack_single_entry()?,
             ban_list: ban_list.unpack_array()?,
+            // TODO: implement append_entries
+            append_entries: append_entries
+                .into_iter()
+                .flat_map(|v| if let QueryIO::ReplicateLog(log) = v { Some(log) } else { None })
+                .collect::<Vec<_>>(),
         }),
-        len + l1 + l2 + l3 + l4 + l5 + l6,
+        len + l1 + l2 + l3 + l4 + l5 + l6 + l7,
     ))
 }
 
@@ -267,10 +286,10 @@ fn parse_replicate(buffer: BytesMut) -> std::result::Result<(QueryIO, usize), an
 
     let cmd = std::str::from_utf8(&cmd_bytes)?.to_lowercase();
     Ok((
-        QueryIO::Replicate {
+        QueryIO::ReplicateLog(WriteOperation {
+            op: WriteRequest::new(cmd, args)?,
             offset: offset.unpack_single_entry()?,
-            query: WriteRequest::new(cmd, args)?,
-        },
+        }),
         len + l1 + l2,
     ))
 }
@@ -389,7 +408,7 @@ fn test_parse_array() {
 #[test]
 fn test_from_bytes_to_peer_state() {
     // GIVEN
-    let data = "^\r\n$3\r\n245\r\n$7\r\n1234329\r\n$4\r\nabcd\r\n$1\r\n2\r\n$15\r\n127.0.0.1:49153\r\n*0\r\n";
+    let data = "^\r\n$3\r\n245\r\n$7\r\n1234329\r\n$4\r\nabcd\r\n$1\r\n2\r\n$15\r\n127.0.0.1:49153\r\n*0\r\n*0\r\n";
 
     let buffer = BytesMut::from(data);
 
@@ -400,16 +419,17 @@ fn test_from_bytes_to_peer_state() {
     assert_eq!(len, data.len());
     assert_eq!(
         value,
-        QueryIO::PeerState(PeerState {
+        QueryIO::PeerState(HeartBeatMessage {
             term: 245,
             offset: 1234329,
             master_replid: "abcd".into(),
             hop_count: 2,
             heartbeat_from: "127.0.0.1:49153".to_string().into(),
-            ban_list: vec![]
+            ban_list: vec![],
+            append_entries: vec![]
         })
     );
-    let peer_state: PeerState = value.try_into().unwrap();
+    let peer_state: HeartBeatMessage = value.try_into().unwrap();
     assert_eq!(peer_state.term, 245);
     assert_eq!(peer_state.offset, 1234329);
 
@@ -424,38 +444,40 @@ fn test_from_peer_state_to_bytes() {
 
     //GIVEN
 
-    let peer_state = PeerState {
+    let peer_state = HeartBeatMessage {
         term: 1,
         offset: 2,
         master_replid: "your_master_repl".into(),
         hop_count: 2,
         heartbeat_from: "127.0.0.1:49152".to_string().into(),
         ban_list: Default::default(),
+        append_entries: vec![],
     };
     //WHEN
     let peer_state_serialized: QueryIO = peer_state.into();
     let peer_state_serialized = peer_state_serialized.serialize();
     //THEN
     assert_eq!(
-        "^\r\n$1\r\n1\r\n$1\r\n2\r\n$16\r\nyour_master_repl\r\n$1\r\n2\r\n$15\r\n127.0.0.1:49152\r\n*0\r\n",
+        "^\r\n$1\r\n1\r\n$1\r\n2\r\n$16\r\nyour_master_repl\r\n$1\r\n2\r\n$15\r\n127.0.0.1:49152\r\n*0\r\n*0\r\n",
         peer_state_serialized
     );
 
     //GIVEN
-    let peer_state = PeerState {
+    let peer_state = HeartBeatMessage {
         term: 5,
         offset: 3232,
         master_replid: "your_master_repl2".into(),
         hop_count: 40,
         heartbeat_from: "127.0.0.1:49159".to_string().into(),
         ban_list: Default::default(),
+        append_entries: vec![],
     };
     //WHEN
     let peer_state_serialized: QueryIO = peer_state.into();
     let peer_state_serialized = peer_state_serialized.serialize();
     //THEN
     assert_eq!(
-        "^\r\n$1\r\n5\r\n$4\r\n3232\r\n$17\r\nyour_master_repl2\r\n$2\r\n40\r\n$15\r\n127.0.0.1:49159\r\n*0\r\n",
+        "^\r\n$1\r\n5\r\n$4\r\n3232\r\n$17\r\nyour_master_repl2\r\n$2\r\n40\r\n$15\r\n127.0.0.1:49159\r\n*0\r\n*0\r\n",
         peer_state_serialized
     );
 }
@@ -472,12 +494,12 @@ fn test_peer_state_ban_list_to_binary() {
     let ban_time = replication.ban_list[0].ban_time;
 
     //WHEN
-    let peer_state = replication.current_state(1);
+    let peer_state = replication.default_heartbeat(1);
     let peer_state_serialized: QueryIO = peer_state.into();
     let peer_state_serialized = peer_state_serialized.serialize();
 
     //THEN
-    let expected = format!("^\r\n$1\r\n0\r\n$1\r\n0\r\n$40\r\n{}\r\n$1\r\n1\r\n$14\r\n127.0.0.1:6379\r\n*1\r\n$25\r\n127.0.0.1:6739-{}\r\n",replication.master_replid,ban_time);
+    let expected = format!("^\r\n$1\r\n0\r\n$1\r\n0\r\n$40\r\n{}\r\n$1\r\n1\r\n$14\r\n127.0.0.1:6379\r\n*1\r\n$25\r\n127.0.0.1:6739-{}\r\n*0\r\n",replication.master_replid,ban_time);
     assert_eq!(expected, peer_state_serialized);
 }
 
@@ -487,7 +509,7 @@ fn test_binary_to_banned_list() {
     use crate::services::cluster::replications::replication::BannedPeer;
 
     // GIVEN
-    let binary= format!("^\r\n$1\r\n0\r\n$1\r\n0\r\n$6\r\n{}\r\n$1\r\n1\r\n$14\r\n127.0.0.1:6379\r\n*1\r\n$25\r\n127.0.0.1:6739-{}\r\n","random",6545442);
+    let binary= format!("^\r\n$1\r\n0\r\n$1\r\n0\r\n$6\r\nrandom\r\n$1\r\n1\r\n$14\r\n127.0.0.1:6379\r\n*1\r\n$22\r\n127.0.0.1:6739-6545442\r\n*0\r\n");
     let buffer = BytesMut::from_iter(binary.into_bytes());
 
     // WHEN
@@ -496,7 +518,7 @@ fn test_binary_to_banned_list() {
     // THEN
     assert_eq!(
         value,
-        QueryIO::PeerState(PeerState {
+        QueryIO::PeerState(HeartBeatMessage {
             term: 0,
             offset: 0,
             master_replid: "random".into(),
@@ -506,7 +528,8 @@ fn test_binary_to_banned_list() {
                 p_id: PeerIdentifier("127.0.0.1:6739".into()),
                 ban_time: 6545442
             }]
-            .to_vec()
+            .to_vec(),
+            append_entries: vec![]
         })
     );
 }
@@ -580,7 +603,7 @@ fn test_banned_peer_serde_when_time_passed() {
 fn test_from_replicate_to_binary() {
     // GIVEN
     let query = WriteRequest::Set { key: "foo".into(), value: "bar".into() };
-    let replicate = QueryIO::Replicate { query, offset: 1 };
+    let replicate = QueryIO::ReplicateLog(WriteOperation { op: query, offset: 1 });
 
     // WHEN
     let serialized = replicate.clone().serialize();
@@ -601,9 +624,41 @@ fn test_from_binary_to_replicate() {
     // THEN
     assert_eq!(
         value,
-        QueryIO::Replicate {
-            query: WriteRequest::Set { key: "foo".into(), value: "bar".into() },
+        QueryIO::ReplicateLog(WriteOperation {
+            op: WriteRequest::Set { key: "foo".into(), value: "bar".into() },
             offset: 1
-        }
+        })
+    );
+}
+
+#[test]
+fn test_binary_to_append_entries() {
+    // GIVEN
+    let write_operation = WriteOperation {
+        offset: 0,
+        op: WriteRequest::Set { key: "foo".into(), value: "bar".into() },
+    };
+    let binary = format!(
+        "^\r\n$1\r\n0\r\n$1\r\n0\r\n$6\r\nrandom\r\n$1\r\n1\r\n$14\r\n127.0.0.1:6379\r\n*0\r\n*1\r\n{}",
+        String::from_utf8(write_operation.clone().serialize().to_vec()).unwrap()
+    );
+
+    let buffer = BytesMut::from_iter(binary.into_bytes());
+
+    // WHEN
+    let (value, _) = deserialize(buffer).unwrap();
+
+    // THEN
+    assert_eq!(
+        value,
+        QueryIO::PeerState(HeartBeatMessage {
+            term: 0,
+            offset: 0,
+            master_replid: "random".into(),
+            hop_count: 1,
+            heartbeat_from: "127.0.0.1:6379".to_string().into(),
+            ban_list: vec![],
+            append_entries: vec![write_operation]
+        })
     );
 }

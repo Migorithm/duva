@@ -1,5 +1,6 @@
 use bytes::Bytes;
 
+use crate::services::aof::WriteOperation;
 use crate::services::config::init::get_env;
 use std::str::FromStr;
 use std::sync::atomic::AtomicBool;
@@ -87,14 +88,15 @@ impl ReplicationInfo {
             false
         }
     }
-    pub fn current_state(&self, hop_count: u8) -> PeerState {
-        PeerState {
+    pub fn default_heartbeat(&self, hop_count: u8) -> HeartBeatMessage {
+        HeartBeatMessage {
             heartbeat_from: self.self_identifier.clone(),
             term: self.term,
             offset: self.master_repl_offset,
             master_replid: self.master_replid.clone(),
             hop_count,
             ban_list: self.ban_list.clone(),
+            append_entries: vec![],
         }
     }
 
@@ -118,13 +120,14 @@ pub(crate) fn time_in_secs() -> anyhow::Result<u64> {
         .as_secs())
 }
 #[derive(Debug, Clone, PartialEq)]
-pub struct PeerState {
+pub struct HeartBeatMessage {
     pub(crate) heartbeat_from: PeerIdentifier,
     pub(crate) term: u64,
     pub(crate) offset: u64,
     pub(crate) master_replid: String,
     pub(crate) hop_count: u8, // Decremented on each hop - for gossip
     pub(crate) ban_list: Vec<BannedPeer>,
+    pub(crate) append_entries: Vec<WriteOperation>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
