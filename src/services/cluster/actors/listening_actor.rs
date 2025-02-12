@@ -22,9 +22,9 @@ pub(crate) struct PeerListeningActor {
 
 impl PeerListeningActor {
     // Update peer state on cluster manager
-    async fn report_liveness(&mut self, state: HeartBeatMessage) {
+    async fn receive_heartbeat(&mut self, state: HeartBeatMessage) {
         println!("[INFO] from {}, hc:{}", state.heartbeat_from, state.hop_count);
-        let _ = self.cluster_handler.send(ClusterCommand::ReportAlive { state }).await;
+        let _ = self.cluster_handler.send(ClusterCommand::ReceiveHeartBeat(state)).await;
     }
 
     /// Run until the kill switch is triggered
@@ -55,7 +55,7 @@ impl PeerListeningActor {
             for cmd in cmds {
                 match cmd {
                     CommandFromSlave::HeartBeat(state) => {
-                        self.report_liveness(state).await;
+                        self.receive_heartbeat(state).await;
                     }
                 }
             }
@@ -71,13 +71,10 @@ impl PeerListeningActor {
             for cmd in cmds {
                 match cmd {
                     CommandFromMaster::HeartBeat(state) => {
-                        self.report_liveness(state).await;
+                        self.receive_heartbeat(state).await;
                     }
                     CommandFromMaster::Sync(v) => {
                         println!("[INFO] Received sync from master {:?}", v);
-                    }
-                    CommandFromMaster::ReplicateLog(write_operation) => {
-                        // TODO make vote upon concensus
                     }
                 }
             }

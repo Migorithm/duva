@@ -1,11 +1,9 @@
-use crate::services::aof::WriteOperation;
 use crate::services::cluster::replications::replication::HeartBeatMessage;
 use crate::services::query_io::QueryIO;
 
 #[derive(Debug)]
 pub enum CommandFromMaster {
     HeartBeat(HeartBeatMessage),
-    ReplicateLog(WriteOperation),
     Sync(QueryIO),
 }
 
@@ -20,7 +18,6 @@ impl TryFrom<QueryIO> for CommandFromMaster {
             file @ QueryIO::File(_) => Ok(Self::Sync(file)),
             QueryIO::PeerState(peer_state) => Ok(Self::HeartBeat(peer_state)),
             // TODO term info should be included?
-            QueryIO::ReplicateLog(write_op) => Ok(Self::ReplicateLog(write_op)),
             _ => todo!(),
         }
     }

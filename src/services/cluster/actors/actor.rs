@@ -62,13 +62,13 @@ impl ClusterActor {
                 ClusterCommand::SetReplicationInfo { master_repl_id, offset } => {
                     self.set_replication_info(master_repl_id, offset);
                 }
-                ClusterCommand::ReportAlive { state } => {
-                    if self.replication.in_ban_list(&state.heartbeat_from) {
+                ClusterCommand::ReceiveHeartBeat(heartbeat) => {
+                    if self.replication.in_ban_list(&heartbeat.heartbeat_from) {
                         continue;
                     }
 
-                    self.gossip(state.hop_count).await;
-                    self.update_on_report(state).await;
+                    self.gossip(heartbeat.hop_count).await;
+                    self.update_on_report(heartbeat).await;
                 }
                 ClusterCommand::ForgetPeer(peer_addr, sender) => {
                     if let Ok(Some(())) = self.forget_peer(peer_addr).await {
