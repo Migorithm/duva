@@ -96,7 +96,7 @@ impl ReplicationInfo {
             master_replid: self.master_replid.clone(),
             hop_count,
             ban_list: self.ban_list.clone(),
-            append_entires: vec![],
+            append_entries: vec![],
         }
     }
 
@@ -127,7 +127,7 @@ pub struct HeartBeatMessage {
     pub(crate) master_replid: String,
     pub(crate) hop_count: u8, // Decremented on each hop - for gossip
     pub(crate) ban_list: Vec<BannedPeer>,
-    pub(crate) append_entires: Vec<WriteOperation>,
+    pub(crate) append_entries: Vec<WriteOperation>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]

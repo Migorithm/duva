@@ -54,12 +54,11 @@ pub enum WriteRequest {
 
 impl WriteOperation {
     pub fn serialize(self) -> Bytes {
-        QueryIO::ReplicateLog { query: self.op, offset: self.offset }.serialize()
+        QueryIO::ReplicateLog(self).serialize()
     }
 }
 
 impl WriteRequest {
-    /// Serialize this `WriteOperation` into bytes.
     pub fn to_array(self) -> QueryIO {
         match self {
             WriteRequest::Set { key, value } => write_array!("SET", key, value),
@@ -78,10 +77,10 @@ impl WriteRequest {
             let (query, consumed) = deserialize_query_io(bytes.clone())?;
             bytes = bytes.split_off(consumed);
 
-            let QueryIO::ReplicateLog { query, offset } = query else {
+            let QueryIO::ReplicateLog(write_operation) = query else {
                 return Err(anyhow::anyhow!("expected replicate"));
             };
-            ops.push(WriteOperation { op: query, offset });
+            ops.push(write_operation);
         }
 
         Ok(ops)

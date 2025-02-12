@@ -20,9 +20,7 @@ impl TryFrom<QueryIO> for CommandFromMaster {
             file @ QueryIO::File(_) => Ok(Self::Sync(file)),
             QueryIO::PeerState(peer_state) => Ok(Self::HeartBeat(peer_state)),
             // TODO term info should be included?
-            QueryIO::ReplicateLog { query, offset } => {
-                Ok(Self::ReplicateLog(WriteOperation { offset, op: query }))
-            }
+            QueryIO::ReplicateLog(write_op) => Ok(Self::ReplicateLog(write_op)),
             _ => todo!(),
         }
     }

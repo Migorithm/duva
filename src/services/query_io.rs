@@ -1,6 +1,6 @@
 use super::aof::WriteRequest;
-use crate::services::cluster::replications::replication::HeartBeatMessage;
 use crate::services::statefuls::cache::CacheValue;
+use crate::services::{aof::WriteOperation, cluster::replications::replication::HeartBeatMessage};
 use anyhow::{Context, Result};
 use bytes::{Bytes, BytesMut};
 use std::fmt::Write;
@@ -30,7 +30,7 @@ pub enum QueryIO {
     Err(Bytes),
     File(Bytes),
     PeerState(HeartBeatMessage),
-    ReplicateLog { query: WriteRequest, offset: u64 },
+    ReplicateLog(WriteOperation),
 }
 
 impl QueryIO {
@@ -81,7 +81,7 @@ impl QueryIO {
                 hop_count,
                 heartbeat_from: id,
                 ban_list,
-                append_entires,
+                append_entries: append_entires,
             }) => {
                 let message = format!(
                             "{}\r\n${}\r\n{term}\r\n${}\r\n{offset}\r\n${}\r\n{master_replid}\r\n${}\r\n{hop_count}\r\n${}\r\n{id}\r\n",
@@ -110,7 +110,7 @@ impl QueryIO {
                     .concat()
                     .into()
             }
-            QueryIO::ReplicateLog { query, offset } => {
+            QueryIO::ReplicateLog(WriteOperation { op, offset }) => {
                 let message: Bytes = format!(
                     "{}\r\n${}\r\n{}\r\n",
                     REPLICATE_PREFIX,
@@ -118,7 +118,7 @@ impl QueryIO {
                     offset
                 )
                 .into();
-                [message, query.to_array().serialize()].concat().into()
+                [message, op.to_array().serialize()].concat().into()
             }
         }
     }
@@ -243,6 +243,11 @@ fn parse_peer_state(buffer: BytesMut) -> Result<(QueryIO, usize)> {
     let (hop_count, l4) = deserialize(BytesMut::from(&buffer[len + l1 + l2 + l3..]))?;
     let (id, l5) = deserialize(BytesMut::from(&buffer[len + l1 + l2 + l3 + l4..]))?;
     let (ban_list, l6) = deserialize(BytesMut::from(&buffer[len + l1 + l2 + l3 + l4 + l5..]))?;
+    let (QueryIO::Array(append_entries), l7) =
+        deserialize(BytesMut::from(&buffer[len + l1 + l2 + l3 + l4 + l5 + l6..]))?
+    else {
+        return Err(anyhow::anyhow!("expected array"));
+    };
 
     Ok((
         QueryIO::PeerState(HeartBeatMessage {
@@ -253,9 +258,12 @@ fn parse_peer_state(buffer: BytesMut) -> Result<(QueryIO, usize)> {
             hop_count: hop_count.unpack_single_entry()?,
             ban_list: ban_list.unpack_array()?,
             // TODO: implement append_entries
-            append_entires: vec![],
+            append_entries: append_entries
+                .into_iter()
+                .flat_map(|v| if let QueryIO::ReplicateLog(log) = v { Some(log) } else { None })
+                .collect::<Vec<_>>(),
         }),
-        len + l1 + l2 + l3 + l4 + l5 + l6,
+        len + l1 + l2 + l3 + l4 + l5 + l6 + l7,
     ))
 }
 
@@ -277,10 +285,10 @@ fn parse_replicate(buffer: BytesMut) -> std::result::Result<(QueryIO, usize), an
 
     let cmd = std::str::from_utf8(&cmd_bytes)?.to_lowercase();
     Ok((
-        QueryIO::ReplicateLog {
+        QueryIO::ReplicateLog(WriteOperation {
+            op: WriteRequest::new(cmd, args)?,
             offset: offset.unpack_single_entry()?,
-            query: WriteRequest::new(cmd, args)?,
-        },
+        }),
         len + l1 + l2,
     ))
 }
@@ -417,7 +425,7 @@ fn test_from_bytes_to_peer_state() {
             hop_count: 2,
             heartbeat_from: "127.0.0.1:49153".to_string().into(),
             ban_list: vec![],
-            append_entires: vec![]
+            append_entries: vec![]
         })
     );
     let peer_state: HeartBeatMessage = value.try_into().unwrap();
@@ -442,7 +450,7 @@ fn test_from_peer_state_to_bytes() {
         hop_count: 2,
         heartbeat_from: "127.0.0.1:49152".to_string().into(),
         ban_list: Default::default(),
-        append_entires: vec![],
+        append_entries: vec![],
     };
     //WHEN
     let peer_state_serialized: QueryIO = peer_state.into();
@@ -461,7 +469,7 @@ fn test_from_peer_state_to_bytes() {
         hop_count: 40,
         heartbeat_from: "127.0.0.1:49159".to_string().into(),
         ban_list: Default::default(),
-        append_entires: vec![],
+        append_entries: vec![],
     };
     //WHEN
     let peer_state_serialized: QueryIO = peer_state.into();
@@ -520,7 +528,7 @@ fn test_binary_to_banned_list() {
                 ban_time: 6545442
             }]
             .to_vec(),
-            append_entires: vec![]
+            append_entries: vec![]
         })
     );
 }
@@ -594,7 +602,7 @@ fn test_banned_peer_serde_when_time_passed() {
 fn test_from_replicate_to_binary() {
     // GIVEN
     let query = WriteRequest::Set { key: "foo".into(), value: "bar".into() };
-    let replicate = QueryIO::ReplicateLog { query, offset: 1 };
+    let replicate = QueryIO::ReplicateLog(WriteOperation { op: query, offset: 1 });
 
     // WHEN
     let serialized = replicate.clone().serialize();
@@ -615,9 +623,41 @@ fn test_from_binary_to_replicate() {
     // THEN
     assert_eq!(
         value,
-        QueryIO::ReplicateLog {
-            query: WriteRequest::Set { key: "foo".into(), value: "bar".into() },
+        QueryIO::ReplicateLog(WriteOperation {
+            op: WriteRequest::Set { key: "foo".into(), value: "bar".into() },
             offset: 1
-        }
+        })
+    );
+}
+
+#[test]
+fn test_binary_to_append_entries() {
+    // GIVEN
+    let write_operation = WriteOperation {
+        offset: 0,
+        op: WriteRequest::Set { key: "foo".into(), value: "bar".into() },
+    };
+    let binary = format!(
+        "^\r\n$1\r\n0\r\n$1\r\n0\r\n$6\r\nrandom\r\n$1\r\n1\r\n$14\r\n127.0.0.1:6379\r\n*0\r\n*1\r\n{}",
+        String::from_utf8(write_operation.clone().serialize().to_vec()).unwrap()
+    );
+
+    let buffer = BytesMut::from_iter(binary.into_bytes());
+
+    // WHEN
+    let (value, _) = deserialize(buffer).unwrap();
+
+    // THEN
+    assert_eq!(
+        value,
+        QueryIO::PeerState(HeartBeatMessage {
+            term: 0,
+            offset: 0,
+            master_replid: "random".into(),
+            hop_count: 1,
+            heartbeat_from: "127.0.0.1:6379".to_string().into(),
+            ban_list: vec![],
+            append_entries: vec![write_operation]
+        })
     );
 }
