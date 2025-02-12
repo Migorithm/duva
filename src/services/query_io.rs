@@ -1,5 +1,5 @@
 use super::aof::WriteRequest;
-use crate::services::cluster::replications::replication::PeerState;
+use crate::services::cluster::replications::replication::HeartBeatMessage;
 use crate::services::statefuls::cache::CacheValue;
 use anyhow::{Context, Result};
 use bytes::{Bytes, BytesMut};
@@ -29,8 +29,8 @@ pub enum QueryIO {
     Null,
     Err(Bytes),
     File(Bytes),
-    PeerState(PeerState),
-    Consensus { query: WriteRequest, offset: u64 },
+    PeerState(HeartBeatMessage),
+    ReplicateLog { query: WriteRequest, offset: u64 },
 }
 
 impl QueryIO {
@@ -74,13 +74,14 @@ impl QueryIO {
             ]
             .concat()
             .into(),
-            QueryIO::PeerState(PeerState {
+            QueryIO::PeerState(HeartBeatMessage {
                 term,
                 offset,
                 master_replid,
                 hop_count,
                 heartbeat_from: id,
                 ban_list,
+                append_entires,
             }) => {
                 let message = format!(
                             "{}\r\n${}\r\n{term}\r\n${}\r\n{offset}\r\n${}\r\n{master_replid}\r\n${}\r\n{hop_count}\r\n${}\r\n{id}\r\n{ARRAY_PREFIX}{}\r\n",
@@ -102,7 +103,7 @@ impl QueryIO {
 
                 [message, long_bytes].concat().into()
             }
-            QueryIO::Consensus { query, offset } => {
+            QueryIO::ReplicateLog { query, offset } => {
                 let message: Bytes = format!(
                     "{}\r\n${}\r\n{}\r\n",
                     REPLICATE_PREFIX,
@@ -153,12 +154,12 @@ impl From<Option<CacheValue>> for QueryIO {
     }
 }
 
-impl From<PeerState> for QueryIO {
-    fn from(value: PeerState) -> Self {
+impl From<HeartBeatMessage> for QueryIO {
+    fn from(value: HeartBeatMessage) -> Self {
         QueryIO::PeerState(value)
     }
 }
-impl TryFrom<QueryIO> for PeerState {
+impl TryFrom<QueryIO> for HeartBeatMessage {
     type Error = anyhow::Error;
 
     fn try_from(value: QueryIO) -> std::result::Result<Self, Self::Error> {
@@ -237,13 +238,15 @@ fn parse_peer_state(buffer: BytesMut) -> Result<(QueryIO, usize)> {
     let (ban_list, l6) = deserialize(BytesMut::from(&buffer[len + l1 + l2 + l3 + l4 + l5..]))?;
 
     Ok((
-        QueryIO::PeerState(PeerState {
+        QueryIO::PeerState(HeartBeatMessage {
             heartbeat_from: id.unpack_single_entry()?,
             term: term.unpack_single_entry()?,
             offset: offset.unpack_single_entry()?,
             master_replid: master_replid.unpack_single_entry()?,
             hop_count: hop_count.unpack_single_entry()?,
             ban_list: ban_list.unpack_array()?,
+            // TODO: implement append_entries
+            append_entires: vec![],
         }),
         len + l1 + l2 + l3 + l4 + l5 + l6,
     ))
@@ -267,7 +270,7 @@ fn parse_replicate(buffer: BytesMut) -> std::result::Result<(QueryIO, usize), an
 
     let cmd = std::str::from_utf8(&cmd_bytes)?.to_lowercase();
     Ok((
-        QueryIO::Consensus {
+        QueryIO::ReplicateLog {
             offset: offset.unpack_single_entry()?,
             query: WriteRequest::new(cmd, args)?,
         },
@@ -400,16 +403,17 @@ fn test_from_bytes_to_peer_state() {
     assert_eq!(len, data.len());
     assert_eq!(
         value,
-        QueryIO::PeerState(PeerState {
+        QueryIO::PeerState(HeartBeatMessage {
             term: 245,
             offset: 1234329,
             master_replid: "abcd".into(),
             hop_count: 2,
             heartbeat_from: "127.0.0.1:49153".to_string().into(),
-            ban_list: vec![]
+            ban_list: vec![],
+            append_entires: vec![]
         })
     );
-    let peer_state: PeerState = value.try_into().unwrap();
+    let peer_state: HeartBeatMessage = value.try_into().unwrap();
     assert_eq!(peer_state.term, 245);
     assert_eq!(peer_state.offset, 1234329);
 
@@ -424,13 +428,14 @@ fn test_from_peer_state_to_bytes() {
 
     //GIVEN
 
-    let peer_state = PeerState {
+    let peer_state = HeartBeatMessage {
         term: 1,
         offset: 2,
         master_replid: "your_master_repl".into(),
         hop_count: 2,
         heartbeat_from: "127.0.0.1:49152".to_string().into(),
         ban_list: Default::default(),
+        append_entires: vec![],
     };
     //WHEN
     let peer_state_serialized: QueryIO = peer_state.into();
@@ -442,13 +447,14 @@ fn test_from_peer_state_to_bytes() {
     );
 
     //GIVEN
-    let peer_state = PeerState {
+    let peer_state = HeartBeatMessage {
         term: 5,
         offset: 3232,
         master_replid: "your_master_repl2".into(),
         hop_count: 40,
         heartbeat_from: "127.0.0.1:49159".to_string().into(),
         ban_list: Default::default(),
+        append_entires: vec![],
     };
     //WHEN
     let peer_state_serialized: QueryIO = peer_state.into();
@@ -472,7 +478,7 @@ fn test_peer_state_ban_list_to_binary() {
     let ban_time = replication.ban_list[0].ban_time;
 
     //WHEN
-    let peer_state = replication.current_state(1);
+    let peer_state = replication.default_heartbeat(1);
     let peer_state_serialized: QueryIO = peer_state.into();
     let peer_state_serialized = peer_state_serialized.serialize();
 
@@ -496,7 +502,7 @@ fn test_binary_to_banned_list() {
     // THEN
     assert_eq!(
         value,
-        QueryIO::PeerState(PeerState {
+        QueryIO::PeerState(HeartBeatMessage {
             term: 0,
             offset: 0,
             master_replid: "random".into(),
@@ -506,7 +512,8 @@ fn test_binary_to_banned_list() {
                 p_id: PeerIdentifier("127.0.0.1:6739".into()),
                 ban_time: 6545442
             }]
-            .to_vec()
+            .to_vec(),
+            append_entires: vec![]
         })
     );
 }
@@ -580,7 +587,7 @@ fn test_banned_peer_serde_when_time_passed() {
 fn test_from_replicate_to_binary() {
     // GIVEN
     let query = WriteRequest::Set { key: "foo".into(), value: "bar".into() };
-    let replicate = QueryIO::Consensus { query, offset: 1 };
+    let replicate = QueryIO::ReplicateLog { query, offset: 1 };
 
     // WHEN
     let serialized = replicate.clone().serialize();
@@ -601,7 +608,7 @@ fn test_from_binary_to_replicate() {
     // THEN
     assert_eq!(
         value,
-        QueryIO::Consensus {
+        QueryIO::ReplicateLog {
             query: WriteRequest::Set { key: "foo".into(), value: "bar".into() },
             offset: 1
         }

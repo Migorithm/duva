@@ -54,7 +54,7 @@ pub enum WriteRequest {
 
 impl WriteOperation {
     pub fn serialize(self) -> Bytes {
-        QueryIO::Consensus { query: self.op, offset: self.offset }.serialize()
+        QueryIO::ReplicateLog { query: self.op, offset: self.offset }.serialize()
     }
 }
 
@@ -78,7 +78,7 @@ impl WriteRequest {
             let (query, consumed) = deserialize_query_io(bytes.clone())?;
             bytes = bytes.split_off(consumed);
 
-            let QueryIO::Consensus { query, offset } = query else {
+            let QueryIO::ReplicateLog { query, offset } = query else {
                 return Err(anyhow::anyhow!("expected replicate"));
             };
             ops.push(WriteOperation { op: query, offset });

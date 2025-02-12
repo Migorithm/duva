@@ -7,7 +7,7 @@ use crate::services::cluster::command::listening_command::{CommandFromMaster, Co
 use crate::services::cluster::peers::connected_types::ReadConnected;
 use crate::services::cluster::peers::identifier::PeerIdentifier;
 use crate::services::cluster::peers::kind::PeerKind;
-use crate::services::cluster::replications::replication::PeerState;
+use crate::services::cluster::replications::replication::HeartBeatMessage;
 use crate::services::interface::TRead;
 use crate::services::query_io::QueryIO;
 use tokio::select;
@@ -22,7 +22,7 @@ pub(crate) struct PeerListeningActor {
 
 impl PeerListeningActor {
     // Update peer state on cluster manager
-    async fn report_liveness(&mut self, state: PeerState) {
+    async fn report_liveness(&mut self, state: HeartBeatMessage) {
         println!("[INFO] from {}, hc:{}", state.heartbeat_from, state.hop_count);
         let _ = self.cluster_handler.send(ClusterCommand::ReportAlive { state }).await;
     }

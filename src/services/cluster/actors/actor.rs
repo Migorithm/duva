@@ -4,7 +4,7 @@ use crate::services::cluster::peers::identifier::PeerIdentifier;
 use crate::services::cluster::peers::kind::PeerKind;
 use crate::services::cluster::peers::peer::Peer;
 use crate::services::cluster::replications::replication::{
-    time_in_secs, BannedPeer, PeerState, ReplicationInfo,
+    time_in_secs, BannedPeer, HeartBeatMessage, ReplicationInfo,
 };
 use crate::services::interface::TWrite;
 use crate::services::query_io::QueryIO;
@@ -102,7 +102,7 @@ impl ClusterActor {
         // TODO randomly choose the peer to send the message
 
         for peer in self.members.values_mut() {
-            let msg = QueryIO::PeerState(self.replication.current_state(hop_count)).serialize();
+            let msg = QueryIO::PeerState(self.replication.default_heartbeat(hop_count)).serialize();
 
             let _ = peer.w_conn.stream.write(msg).await;
         }
@@ -180,7 +180,7 @@ impl ClusterActor {
         self.replication.ban_list.dedup_by_key(|node| node.p_id.clone());
     }
 
-    async fn update_on_report(&mut self, state: PeerState) {
+    async fn update_on_report(&mut self, state: HeartBeatMessage) {
         let Some(peer) = self.members.get_mut(&state.heartbeat_from) else {
             return;
         };
