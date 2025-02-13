@@ -3,7 +3,7 @@
 /// As it has to keep listening to incoming messages, it is implemented as an actor, run in the background.
 /// To take a control of the actor, PeerListenerHandler is used, which can kill the listening process and return the connected stream.
 use super::requests::{RequestFromMaster, RequestFromSlave};
-use crate::services::cluster::command::cluster_command::ClusterCommand;
+use crate::services::cluster::actors::commands::ClusterCommand;
 use crate::services::cluster::peers::connected_types::ReadConnected;
 use crate::services::cluster::peers::identifier::PeerIdentifier;
 use crate::services::cluster::peers::kind::PeerKind;

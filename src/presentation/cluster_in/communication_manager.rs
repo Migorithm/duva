@@ -6,7 +6,7 @@ use crate::{
     get_env, make_smart_pointer,
     services::cluster::{
         actors::actor::ClusterActor,
-        command::cluster_command::ClusterCommand,
+        actors::commands::ClusterCommand,
         peers::{address::PeerAddrs, identifier::PeerIdentifier},
         replications::replication::ReplicationInfo,
     },

@@ -1,5 +1,5 @@
 use crate::services::aof::{WriteOperation, WriteRequest};
-use crate::services::cluster::command::cluster_command::{AddPeer, ClusterCommand};
+
 use crate::services::cluster::peers::identifier::PeerIdentifier;
 use crate::services::cluster::peers::kind::PeerKind;
 use crate::services::cluster::peers::peer::Peer;
@@ -12,8 +12,9 @@ use futures::stream::FuturesUnordered;
 use futures::StreamExt;
 use std::collections::BTreeMap;
 use tokio::sync::mpsc::Receiver;
-use tokio::sync::mpsc::Sender;
 use tokio::time::Instant;
+
+use super::commands::{AddPeer, ClusterCommand};
 
 const FANOUT: usize = 2;
 

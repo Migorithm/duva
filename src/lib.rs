@@ -11,7 +11,7 @@ use presentation::client_in::manager::ClientManager;
 use presentation::cluster_in::communication_manager::ClusterCommunicationManager;
 use presentation::cluster_in::connection_broker::ClusterConnectionManager;
 use presentation::cluster_in::inbound::stream::InboundStream;
-use services::cluster::command::cluster_command::ClusterCommand;
+use services::cluster::actors::commands::ClusterCommand;
 use services::cluster::replications::replication::IS_MASTER_MODE;
 
 use services::config::manager::ConfigManager;

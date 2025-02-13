@@ -3,7 +3,7 @@ use tokio::sync::mpsc::Sender;
 use crate::{
     presentation::cluster_in::communication_manager::ClusterCommunicationManager,
     services::{
-        cluster::command::cluster_command::ClusterCommand,
+        cluster::actors::commands::ClusterCommand,
         config::manager::ConfigManager,
         statefuls::cache::ttl::{actor::TtlActor, manager::TtlSchedulerManager},
     },

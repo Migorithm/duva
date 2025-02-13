@@ -1,4 +1,4 @@
-use crate::services::cluster::command::cluster_command::ClusterCommand;
+use crate::services::cluster::actors::commands::ClusterCommand;
 use crate::services::cluster::peers::identifier::PeerIdentifier;
 use crate::services::cluster::peers::kind::PeerKind;
 use crate::services::cluster::replications::replication::IS_MASTER_MODE;

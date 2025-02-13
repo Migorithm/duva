@@ -8,7 +8,7 @@ use peer_listeners::peer_listener::PeerListeningActor;
 use tokio::{net::TcpStream, sync::mpsc::Sender};
 
 use crate::services::cluster::{
-    command::cluster_command::ClusterCommand,
+    actors::commands::ClusterCommand,
     peers::{
         connected_types::{ReadConnected, WriteConnected},
         identifier::PeerIdentifier,
