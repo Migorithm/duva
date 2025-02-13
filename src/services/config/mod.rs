@@ -1,6 +1,6 @@
 pub mod actor;
 mod command;
-pub mod init;
+
 pub mod macros;
 pub mod manager;
 

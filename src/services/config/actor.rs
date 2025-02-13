@@ -1,8 +1,9 @@
+use crate::get_env;
+
 use super::command::ConfigMessage;
 use super::command::ConfigResource;
 use super::command::ConfigResponse;
 
-use super::init::get_env;
 use super::ConfigCommand;
 
 use tokio::sync::mpsc::Receiver;
