@@ -1,8 +1,8 @@
-use super::command::{CommandFromMaster, CommandFromSlave};
 /// PeerListeningActor is responsible for listening to incoming messages from a peer.
 /// Message from a peer is one of events that can trigger a change in the cluster state.
 /// As it has to keep listening to incoming messages, it is implemented as an actor, run in the background.
 /// To take a control of the actor, PeerListenerHandler is used, which can kill the listening process and return the connected stream.
+use super::requests::{RequestFromMaster, RequestFromSlave};
 use crate::services::cluster::command::cluster_command::ClusterCommand;
 use crate::services::cluster::peers::connected_types::ReadConnected;
 use crate::services::cluster::peers::identifier::PeerIdentifier;
@@ -66,10 +66,10 @@ impl PeerListeningActor {
     }
 
     async fn listen_replica_stream(&mut self) {
-        while let Ok(cmds) = self.read_command::<CommandFromSlave>().await {
+        while let Ok(cmds) = self.read_command::<RequestFromSlave>().await {
             for cmd in cmds {
                 match cmd {
-                    CommandFromSlave::HeartBeat(state) => {
+                    RequestFromSlave::HeartBeat(state) => {
                         self.receive_heartbeat(state).await;
                     }
                 }
@@ -82,14 +82,14 @@ impl PeerListeningActor {
         }
     }
     async fn listen_master_stream(&mut self) {
-        while let Ok(cmds) = self.read_command::<CommandFromMaster>().await {
+        while let Ok(cmds) = self.read_command::<RequestFromMaster>().await {
             for cmd in cmds {
                 match cmd {
-                    CommandFromMaster::HeartBeat(mut state) => {
+                    RequestFromMaster::HeartBeat(mut state) => {
                         self.log_entries(&mut state);
                         self.receive_heartbeat(state).await;
                     }
-                    CommandFromMaster::Sync(v) => {
+                    RequestFromMaster::Sync(v) => {
                         println!("[INFO] Received sync from master {:?}", v);
                     }
                 }
