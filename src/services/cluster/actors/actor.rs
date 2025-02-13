@@ -30,7 +30,6 @@ impl ClusterActor {
     }
     pub async fn handle(
         mut self,
-        self_handler: Sender<ClusterCommand>,
         mut cluster_message_listener: Receiver<ClusterCommand>,
         notifier: tokio::sync::watch::Sender<bool>,
     ) {

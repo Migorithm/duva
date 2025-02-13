@@ -20,11 +20,9 @@ make_smart_pointer!(ClusterCommunicationManager, Sender<ClusterCommand>);
 impl ClusterCommunicationManager {
     pub fn run(notifier: tokio::sync::watch::Sender<bool>) -> Sender<ClusterCommand> {
         let (actor_handler, cluster_message_listener) = tokio::sync::mpsc::channel(100);
-        tokio::spawn(ClusterActor::new(get_env().ttl_mills).handle(
-            actor_handler.clone(),
-            cluster_message_listener,
-            notifier,
-        ));
+        tokio::spawn(
+            ClusterActor::new(get_env().ttl_mills).handle(cluster_message_listener, notifier),
+        );
 
         tokio::spawn({
             let heartbeat_sender = actor_handler.clone();
