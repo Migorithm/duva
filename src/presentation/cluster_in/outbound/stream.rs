@@ -1,4 +1,4 @@
-use crate::presentation::cluster_in::connection_manager::ClusterConnectionManager;
+use crate::presentation::cluster_in::connection_broker::ClusterConnectionManager;
 use crate::presentation::cluster_in::create_peer;
 use crate::services::cluster::command::cluster_command::AddPeer;
 use crate::services::cluster::command::cluster_command::ClusterCommand;

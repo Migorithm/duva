@@ -1,8 +1,11 @@
-use tokio::sync::mpsc::Sender;
+use std::time::Duration;
+
+use tokio::{sync::mpsc::Sender, time::interval};
 
 use crate::{
-    make_smart_pointer,
+    get_env, make_smart_pointer,
     services::cluster::{
+        actors::actor::ClusterActor,
         command::cluster_command::ClusterCommand,
         peers::{address::PeerAddrs, identifier::PeerIdentifier},
         replications::replication::ReplicationInfo,
@@ -10,13 +13,34 @@ use crate::{
 };
 
 #[derive(Clone)]
-pub struct ClusterCommunicationManager {
-    actor_handler: Sender<ClusterCommand>,
-}
+pub struct ClusterCommunicationManager(pub(crate) Sender<ClusterCommand>);
 
-make_smart_pointer!(ClusterCommunicationManager, Sender<ClusterCommand> => actor_handler);
+make_smart_pointer!(ClusterCommunicationManager, Sender<ClusterCommand>);
 
 impl ClusterCommunicationManager {
+    pub fn run(notifier: tokio::sync::watch::Sender<bool>) -> Sender<ClusterCommand> {
+        let (actor_handler, cluster_message_listener) = tokio::sync::mpsc::channel(100);
+        tokio::spawn(ClusterActor::new(get_env().ttl_mills).handle(
+            actor_handler.clone(),
+            cluster_message_listener,
+            notifier,
+        ));
+
+        tokio::spawn({
+            let heartbeat_sender = actor_handler.clone();
+            let mut heartbeat_interval = interval(Duration::from_millis(get_env().hf_mills));
+            async move {
+                loop {
+                    heartbeat_interval.tick().await;
+                    let _ = heartbeat_sender.send(ClusterCommand::SendHeartBeat).await;
+                }
+            }
+        });
+
+        // TODO peer state may need to be picked up from a persistent storage on restart case
+        actor_handler
+    }
+
     pub(crate) async fn get_peers(&self) -> anyhow::Result<PeerAddrs> {
         let (tx, rx) = tokio::sync::oneshot::channel();
         self.send(ClusterCommand::GetPeers(tx)).await?;

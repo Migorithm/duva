@@ -1,5 +1,5 @@
 pub mod communication_manager;
-pub mod connection_manager;
+pub mod connection_broker;
 pub mod inbound;
 pub mod outbound;
 pub mod peer_listeners;

@@ -1,9 +1,9 @@
+use super::request::ClientRequest;
+use super::stream::ClientStream;
 use crate::actor_registry::ActorRegistry;
 use crate::make_smart_pointer;
-use crate::presentation::cluster_in::connection_manager::ClusterConnectionManager;
-
+use crate::presentation::cluster_in::communication_manager::ClusterCommunicationManager;
 use crate::services::cluster::command::cluster_command::ClusterCommand;
-
 use crate::services::config::ConfigResponse;
 use crate::services::interface::TWrite;
 use crate::services::query_io::QueryIO;
@@ -11,9 +11,6 @@ use crate::services::statefuls::cache::CacheEntry;
 use crate::services::statefuls::snapshot::save::actor::SaveTarget;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::select;
-
-use super::request::ClientRequest;
-use super::stream::ClientStream;
 
 #[derive(Clone)]
 pub(crate) struct ClientManager {
@@ -49,7 +46,7 @@ impl ClientManager {
                 self.cache_manager
                     .route_save(
                         SaveTarget::File(file),
-                        self.cluster_manager.replication_info().await?,
+                        self.cluster_communication_manager.replication_info().await?,
                     )
                     .await?;
 
@@ -73,10 +70,15 @@ impl ClientManager {
             ClientRequest::Delete { key: _ } => panic!("Not implemented"),
 
             ClientRequest::Info => QueryIO::BulkString(
-                self.cluster_manager.replication_info().await?.vectorize().join("\r\n").into(),
+                self.cluster_communication_manager
+                    .replication_info()
+                    .await?
+                    .vectorize()
+                    .join("\r\n")
+                    .into(),
             ),
             ClientRequest::ClusterInfo => QueryIO::Array(
-                self.cluster_manager
+                self.cluster_communication_manager
                     .cluster_info()
                     .await?
                     .into_iter()
@@ -84,7 +86,7 @@ impl ClientManager {
                     .collect(),
             ),
             ClientRequest::ClusterForget(peer_identifier) => {
-                match self.cluster_manager.forget_peer(peer_identifier).await {
+                match self.cluster_communication_manager.forget_peer(peer_identifier).await {
                     Ok(true) => QueryIO::SimpleString("OK".into()),
                     Ok(false) => QueryIO::Err("No such peer".into()),
                     Err(e) => QueryIO::Err(e.to_string().into()),
@@ -143,7 +145,7 @@ impl ClientManager {
                         // ! one node has the commit log, it will be committed.
                         tokio::spawn(Self::commit_log(
                             optional_commit_log,
-                            self.cluster_manager.clone(),
+                            self.cluster_communication_manager.clone(),
                         ));
                         response
                     }
@@ -165,11 +167,11 @@ impl ClientManager {
             return Ok(None);
         };
         let (tx, rx) = tokio::sync::oneshot::channel();
-        self.cluster_manager.send(ClusterCommand::Consensus { log, sender: tx }).await?;
+        self.cluster_actor_handler.send(ClusterCommand::Consensus { log, sender: tx }).await?;
         Ok(Some(rx.await?))
     }
 
-    async fn commit_log(optional_log: Option<u64>, cluster_manager: ClusterConnectionManager) {
+    async fn commit_log(optional_log: Option<u64>, cluster_manager: ClusterCommunicationManager) {
         if let Some(commit_log) = optional_log {
             let _ = cluster_manager.send(ClusterCommand::CommitLog(commit_log)).await;
         }
