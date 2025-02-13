@@ -1,6 +1,7 @@
-use super::client::request::ClientRequest;
 use super::query_io::deserialize as deserialize_query_io;
 use super::query_io::QueryIO;
+
+use crate::presentation::request::ClientRequest;
 use crate::write_array;
 use anyhow::Result;
 use bytes::{Bytes, BytesMut};

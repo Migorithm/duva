@@ -1,19 +1,18 @@
 use crate::make_smart_pointer;
 use crate::services::actor_registry::ActorRegistry;
 use crate::services::aof::WriteRequest;
-use crate::services::client::request::ClientRequest;
-use crate::services::client::stream::ClientStream;
 use crate::services::cluster::command::cluster_command::ClusterCommand;
 use crate::services::cluster::manager::ClusterManager;
-
 use crate::services::config::ConfigResponse;
 use crate::services::interface::TWrite;
 use crate::services::query_io::QueryIO;
-
 use crate::services::statefuls::cache::CacheEntry;
 use crate::services::statefuls::snapshot::save::actor::SaveTarget;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::select;
+
+use super::request::ClientRequest;
+use super::stream::ClientStream;
 
 #[derive(Clone)]
 pub(crate) struct ClientManager {

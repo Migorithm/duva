@@ -1,9 +1,11 @@
 pub mod adapters;
 pub mod macros;
+pub mod presentation;
 pub mod services;
 use anyhow::Result;
+use presentation::manager::ClientManager;
 use services::actor_registry::ActorRegistry;
-use services::client::manager::ClientManager;
+
 use services::cluster::command::cluster_command::ClusterCommand;
 use services::cluster::inbound::stream::InboundStream;
 use services::cluster::manager::ClusterManager;
