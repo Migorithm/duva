@@ -1,5 +1,4 @@
 use crate::services::aof::{WriteOperation, WriteRequest};
-
 use crate::services::cluster::peers::identifier::PeerIdentifier;
 use crate::services::cluster::peers::kind::PeerKind;
 use crate::services::cluster::peers::peer::Peer;
