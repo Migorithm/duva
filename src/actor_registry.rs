@@ -1,9 +1,11 @@
-use super::{
-    cluster::manager::ClusterManager,
-    config::manager::ConfigManager,
-    statefuls::cache::ttl::{actor::TtlActor, manager::TtlSchedulerManager},
+use crate::{
+    presentation::cluster_in::manager::ClusterManager,
+    services::{
+        config::manager::ConfigManager,
+        statefuls::cache::ttl::{actor::TtlActor, manager::TtlSchedulerManager},
+    },
+    CacheManager,
 };
-use crate::CacheManager;
 
 #[derive(Clone)]
 pub struct ActorRegistry {

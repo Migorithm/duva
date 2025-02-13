@@ -1,14 +1,16 @@
+mod actor_registry;
 pub mod adapters;
 pub mod macros;
 pub mod presentation;
 pub mod services;
+use actor_registry::ActorRegistry;
 use anyhow::Result;
-use presentation::manager::ClientManager;
-use services::actor_registry::ActorRegistry;
+use presentation::client_in::manager::ClientManager;
+use presentation::cluster_in::inbound::stream::InboundStream;
+use presentation::cluster_in::manager::ClusterManager;
 
 use services::cluster::command::cluster_command::ClusterCommand;
-use services::cluster::inbound::stream::InboundStream;
-use services::cluster::manager::ClusterManager;
+
 use services::cluster::replications::replication::IS_MASTER_MODE;
 use services::config::init::get_env;
 use services::config::manager::ConfigManager;

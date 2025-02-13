@@ -1,8 +1,9 @@
+use crate::actor_registry::ActorRegistry;
 use crate::make_smart_pointer;
-use crate::services::actor_registry::ActorRegistry;
+use crate::presentation::cluster_in::manager::ClusterManager;
 
 use crate::services::cluster::command::cluster_command::ClusterCommand;
-use crate::services::cluster::manager::ClusterManager;
+
 use crate::services::config::ConfigResponse;
 use crate::services::interface::TWrite;
 use crate::services::query_io::QueryIO;

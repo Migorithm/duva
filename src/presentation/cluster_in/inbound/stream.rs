@@ -1,7 +1,6 @@
 use crate::make_smart_pointer;
 use crate::services::cluster::command::cluster_command::{AddPeer, ClusterCommand};
-use crate::services::cluster::inbound::request::HandShakeRequest;
-use crate::services::cluster::inbound::request::HandShakeRequestEnum;
+
 use crate::services::cluster::peers::address::PeerAddrs;
 use crate::services::cluster::peers::identifier::PeerIdentifier;
 use crate::services::cluster::peers::kind::PeerKind;
@@ -16,6 +15,8 @@ use crate::services::statefuls::snapshot::save::actor::SaveTarget;
 use anyhow::Context;
 use bytes::Bytes;
 use tokio::net::TcpStream;
+
+use super::request::{HandShakeRequest, HandShakeRequestEnum};
 
 // The following is used only when the node is in master mode
 pub(crate) struct InboundStream {

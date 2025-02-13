@@ -1,7 +1,7 @@
+use crate::presentation::cluster_in::manager::ClusterManager;
 use crate::services::cluster::command::cluster_command::AddPeer;
 use crate::services::cluster::command::cluster_command::ClusterCommand;
-use crate::services::cluster::manager::ClusterManager;
-use crate::services::cluster::outbound::response::ConnectionResponse;
+
 use crate::services::cluster::peers::identifier::PeerIdentifier;
 use crate::services::cluster::peers::kind::PeerKind;
 use crate::services::cluster::replications::replication::ReplicationInfo;
@@ -10,6 +10,8 @@ use crate::services::interface::TWrite;
 use crate::{make_smart_pointer, write_array};
 use anyhow::Context;
 use tokio::net::TcpStream;
+
+use super::response::ConnectionResponse;
 
 // The following is used only when the node is in slave mode
 pub(crate) struct OutboundStream {
