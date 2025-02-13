@@ -8,8 +8,8 @@ use actor_registry::ActorRegistry;
 use anyhow::Result;
 use init::get_env;
 use presentation::client_in::manager::ClientManager;
+use presentation::cluster_in::connection_manager::ClusterConnectionManager;
 use presentation::cluster_in::inbound::stream::InboundStream;
-use presentation::cluster_in::manager::ClusterManager;
 use services::cluster::command::cluster_command::ClusterCommand;
 use services::cluster::replications::replication::IS_MASTER_MODE;
 
@@ -39,7 +39,7 @@ impl StartUpFacade {
         let (notifier, mode_change_watcher) =
             tokio::sync::watch::channel(IS_MASTER_MODE.load(Ordering::Acquire));
 
-        let registry = ActorRegistry::new(config_manager, ClusterManager::run(notifier));
+        let registry = ActorRegistry::new(config_manager, ClusterConnectionManager::run(notifier));
         let client_manager = ClientManager::new(registry.clone());
         StartUpFacade { client_manager, registry, mode_change_watcher }
     }

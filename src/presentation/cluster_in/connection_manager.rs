@@ -13,12 +13,12 @@ use tokio::time::interval;
 use super::outbound::stream::OutboundStream;
 
 #[derive(Clone)]
-pub struct ClusterManager {
+pub struct ClusterConnectionManager {
     actor_handler: Sender<ClusterCommand>,
 }
-make_smart_pointer!(ClusterManager, Sender<ClusterCommand> => actor_handler);
+make_smart_pointer!(ClusterConnectionManager, Sender<ClusterCommand> => actor_handler);
 
-impl ClusterManager {
+impl ClusterConnectionManager {
     pub fn run(notifier: tokio::sync::watch::Sender<bool>) -> Self {
         let (actor_handler, cluster_message_listener) = tokio::sync::mpsc::channel(100);
         tokio::spawn(ClusterActor::new(get_env().ttl_mills).handle(

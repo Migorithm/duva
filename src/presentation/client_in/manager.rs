@@ -1,6 +1,6 @@
 use crate::actor_registry::ActorRegistry;
 use crate::make_smart_pointer;
-use crate::presentation::cluster_in::manager::ClusterManager;
+use crate::presentation::cluster_in::connection_manager::ClusterConnectionManager;
 
 use crate::services::cluster::command::cluster_command::ClusterCommand;
 
@@ -169,7 +169,7 @@ impl ClientManager {
         Ok(Some(rx.await?))
     }
 
-    async fn commit_log(optional_log: Option<u64>, cluster_manager: ClusterManager) {
+    async fn commit_log(optional_log: Option<u64>, cluster_manager: ClusterConnectionManager) {
         if let Some(commit_log) = optional_log {
             let _ = cluster_manager.send(ClusterCommand::CommitLog(commit_log)).await;
         }

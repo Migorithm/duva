@@ -1,5 +1,5 @@
+use crate::presentation::cluster_in::connection_manager::ClusterConnectionManager;
 use crate::presentation::cluster_in::create_peer;
-use crate::presentation::cluster_in::manager::ClusterManager;
 use crate::services::cluster::command::cluster_command::AddPeer;
 use crate::services::cluster::command::cluster_command::ClusterCommand;
 use crate::services::cluster::peers::identifier::PeerIdentifier;
@@ -79,7 +79,7 @@ impl OutboundStream {
 
     pub(crate) async fn set_replication_info(
         self,
-        cluster_manager: &ClusterManager,
+        cluster_manager: &ClusterConnectionManager,
     ) -> anyhow::Result<Self> {
         if self.repl_info.master_replid == "?" {
             let connected_node_info = self
