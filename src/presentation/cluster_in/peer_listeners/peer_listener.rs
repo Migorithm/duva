@@ -1,10 +1,9 @@
+use super::command::{CommandFromMaster, CommandFromSlave};
 /// PeerListeningActor is responsible for listening to incoming messages from a peer.
 /// Message from a peer is one of events that can trigger a change in the cluster state.
 /// As it has to keep listening to incoming messages, it is implemented as an actor, run in the background.
 /// To take a control of the actor, PeerListenerHandler is used, which can kill the listening process and return the connected stream.
 use crate::services::cluster::command::cluster_command::ClusterCommand;
-
-use super::listening_command::{CommandFromMaster, CommandFromSlave};
 use crate::services::cluster::peers::connected_types::ReadConnected;
 use crate::services::cluster::peers::identifier::PeerIdentifier;
 use crate::services::cluster::peers::kind::PeerKind;

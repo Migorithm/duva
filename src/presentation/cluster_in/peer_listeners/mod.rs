@@ -1,2 +1,2 @@
-pub mod listening_command;
+pub mod command;
 pub mod peer_listener;
