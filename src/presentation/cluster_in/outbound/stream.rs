@@ -4,12 +4,14 @@ use crate::services::cluster::command::cluster_command::ClusterCommand;
 
 use crate::services::cluster::peers::identifier::PeerIdentifier;
 use crate::services::cluster::peers::kind::PeerKind;
+use crate::services::cluster::peers::peer::Peer;
 use crate::services::cluster::replications::replication::ReplicationInfo;
 use crate::services::interface::TRead;
 use crate::services::interface::TWrite;
 use crate::{make_smart_pointer, write_array};
 use anyhow::Context;
 use tokio::net::TcpStream;
+use tokio::sync::mpsc::Sender;
 
 use super::response::ConnectionResponse;
 
@@ -96,15 +98,18 @@ impl OutboundStream {
         }
         Ok(self)
     }
-    pub(crate) fn deconstruct(self) -> anyhow::Result<(ClusterCommand, ConnectedNodeInfo)> {
+    pub(crate) fn deconstruct(
+        self,
+        cluster_actor_handler: Sender<ClusterCommand>,
+    ) -> anyhow::Result<(ClusterCommand, ConnectedNodeInfo)> {
         let connection_info = self.connected_node_info.context("Connected node info not found")?;
 
+        let kind = PeerKind::connected_peer_kind(&self.repl_info, &connection_info.repl_id);
+        let addr = self.connect_to.clone();
+        let peer = Peer::new(self.stream, kind, cluster_actor_handler, addr.clone());
+
         Ok((
-            ClusterCommand::AddPeer(AddPeer {
-                peer_kind: PeerKind::connected_peer_kind(&self.repl_info, &connection_info.repl_id),
-                peer_addr: self.connect_to,
-                stream: self.stream,
-            }),
+            ClusterCommand::AddPeer(AddPeer { peer_addr: self.connect_to, peer: peer }),
             connection_info,
         ))
     }

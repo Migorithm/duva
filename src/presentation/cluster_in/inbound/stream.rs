@@ -1,20 +1,20 @@
 use crate::make_smart_pointer;
 use crate::services::cluster::command::cluster_command::{AddPeer, ClusterCommand};
-
 use crate::services::cluster::peers::address::PeerAddrs;
 use crate::services::cluster::peers::identifier::PeerIdentifier;
 use crate::services::cluster::peers::kind::PeerKind;
+use crate::services::cluster::peers::peer::Peer;
 use crate::services::cluster::replications::replication::ReplicationInfo;
 use crate::services::interface::TGetPeerIp;
 use crate::services::interface::TRead;
 use crate::services::interface::TWrite;
 use crate::services::query_io::QueryIO;
 use crate::services::statefuls::cache::manager::CacheManager;
-
 use crate::services::statefuls::snapshot::save::actor::SaveTarget;
 use anyhow::Context;
 use bytes::Bytes;
 use tokio::net::TcpStream;
+use tokio::sync::mpsc::Sender;
 
 use super::request::{HandShakeRequest, HandShakeRequestEnum};
 
@@ -106,12 +106,15 @@ impl InboundStream {
         ))
     }
 
-    pub(crate) fn to_add_peer(self) -> anyhow::Result<ClusterCommand> {
-        Ok(ClusterCommand::AddPeer(AddPeer {
-            peer_kind: self.peer_kind()?,
-            peer_addr: self.inbound_peer_addr.context("No peer addr")?,
-            stream: self.stream,
-        }))
+    pub(crate) fn to_add_peer(
+        self,
+        cluster_actor_handler: Sender<ClusterCommand>,
+    ) -> anyhow::Result<ClusterCommand> {
+        let kind = self.peer_kind()?;
+        let addr = self.inbound_peer_addr.context("No peer addr")?;
+        let peer = Peer::new(self.stream, kind, cluster_actor_handler, addr.clone());
+
+        Ok(ClusterCommand::AddPeer(AddPeer { peer_addr: addr, peer: peer }))
     }
 
     pub(crate) async fn send_sync_to_inbound_server(

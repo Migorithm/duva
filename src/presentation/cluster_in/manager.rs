@@ -63,7 +63,7 @@ impl ClusterManager {
         {
             peer_stream = peer_stream.send_sync_to_inbound_server(cache_manager).await?;
         }
-        self.send(peer_stream.to_add_peer()?).await?;
+        self.send(peer_stream.to_add_peer(self.actor_handler.clone())?).await?;
 
         Ok(())
     }
@@ -93,7 +93,7 @@ impl ClusterManager {
                 .await?
                 .set_replication_info(&self)
                 .await?
-                .deconstruct()?;
+                .deconstruct(self.actor_handler.clone())?;
         self.send(add_peer_cmd).await?;
 
         // Discover additional peers concurrently

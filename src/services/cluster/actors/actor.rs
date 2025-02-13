@@ -8,7 +8,6 @@ use crate::services::cluster::replications::replication::{
 };
 use crate::services::interface::TWrite;
 use crate::services::query_io::QueryIO;
-
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
 use std::collections::BTreeMap;
@@ -41,7 +40,7 @@ impl ClusterActor {
 
             match command {
                 ClusterCommand::AddPeer(add_peer_cmd) => {
-                    self.add_peer(add_peer_cmd, self_handler.clone()).await;
+                    self.add_peer(add_peer_cmd).await;
                 }
 
                 ClusterCommand::GetPeers(callback) => {
@@ -109,12 +108,10 @@ impl ClusterActor {
         }
     }
 
-    async fn add_peer(&mut self, add_peer_cmd: AddPeer, self_handler: Sender<ClusterCommand>) {
-        let AddPeer { peer_addr, stream, peer_kind } = add_peer_cmd;
+    async fn add_peer(&mut self, add_peer_cmd: AddPeer) {
+        let AddPeer { peer_addr, peer } = add_peer_cmd;
 
         self.replication.remove_from_ban_list(&peer_addr);
-
-        let peer = Peer::new(stream, peer_kind, self_handler.clone(), peer_addr.clone());
 
         // If the map did have this key present, the value is updated, and the old
         // value is returned. The key is not updated,

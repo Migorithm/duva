@@ -2,9 +2,9 @@ use crate::services::aof::WriteRequest;
 use crate::services::cluster::peers::address::PeerAddrs;
 use crate::services::cluster::peers::identifier::PeerIdentifier;
 use crate::services::cluster::peers::kind::PeerKind;
+use crate::services::cluster::peers::peer::Peer;
 use crate::services::cluster::replications::replication::{HeartBeatMessage, ReplicationInfo};
 use crate::services::query_io::QueryIO;
-use tokio::net::TcpStream;
 
 pub enum ClusterCommand {
     AddPeer(AddPeer),
@@ -21,6 +21,5 @@ pub enum ClusterCommand {
 
 pub struct AddPeer {
     pub(crate) peer_addr: PeerIdentifier,
-    pub(crate) stream: TcpStream,
-    pub(crate) peer_kind: PeerKind,
+    pub(crate) peer: Peer,
 }
