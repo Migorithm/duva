@@ -1,7 +1,7 @@
+use crate::get_env;
 use crate::services::aof::WriteOperation;
 use crate::services::cluster::peers::identifier::PeerIdentifier;
 use crate::services::cluster::replications::replid_generator::generate_replid;
-use crate::services::config::init::get_env;
 use bytes::Bytes;
 use std::str::FromStr;
 use std::sync::atomic::AtomicBool;

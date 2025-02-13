@@ -1,14 +1,19 @@
+mod actor_registry;
 pub mod adapters;
+mod init;
 pub mod macros;
+pub mod presentation;
 pub mod services;
+use actor_registry::ActorRegistry;
 use anyhow::Result;
-use services::actor_registry::ActorRegistry;
-use services::client::manager::ClientManager;
-use services::cluster::command::cluster_command::ClusterCommand;
-use services::cluster::inbound::stream::InboundStream;
-use services::cluster::manager::ClusterManager;
+use init::get_env;
+use presentation::client_in::manager::ClientManager;
+use presentation::cluster_in::communication_manager::ClusterCommunicationManager;
+use presentation::cluster_in::connection_broker::ClusterConnectionManager;
+use presentation::cluster_in::inbound::stream::InboundStream;
+use services::cluster::actors::commands::ClusterCommand;
 use services::cluster::replications::replication::IS_MASTER_MODE;
-use services::config::init::get_env;
+
 use services::config::manager::ConfigManager;
 use services::error::IoError;
 use services::statefuls::cache::manager::CacheManager;
@@ -35,7 +40,8 @@ impl StartUpFacade {
         let (notifier, mode_change_watcher) =
             tokio::sync::watch::channel(IS_MASTER_MODE.load(Ordering::Acquire));
 
-        let registry = ActorRegistry::new(config_manager, ClusterManager::run(notifier));
+        let registry =
+            ActorRegistry::new(config_manager, ClusterCommunicationManager::run(notifier));
         let client_manager = ClientManager::new(registry.clone());
         StartUpFacade { client_manager, registry, mode_change_watcher }
     }
@@ -67,16 +73,19 @@ impl StartUpFacade {
                 // ? how do we know if incoming connection is from a peer or replica?
                 Ok((peer_stream, _socket_addr)) => {
                     tokio::spawn({
-                        let cluster_m = registry.cluster_manager.clone();
+                        let cluster_m = registry.cluster_actor_handler.clone();
                         let cache_m = registry.cache_manager.clone();
                         let inbound_stream = InboundStream::new(
                             peer_stream,
-                            registry.cluster_manager.replication_info().await?,
+                            ClusterCommunicationManager(registry.cluster_actor_handler.clone())
+                                .replication_info()
+                                .await?,
                         );
 
                         async move {
-                            if let Err(err) =
-                                cluster_m.accept_inbound_stream(inbound_stream, cache_m).await
+                            if let Err(err) = ClusterConnectionManager::new(cluster_m)
+                                .accept_inbound_stream(inbound_stream, cache_m)
+                                .await
                             {
                                 println!("[ERROR] Failed to accept peer connection: {:?}", err);
                             }
@@ -114,10 +123,16 @@ impl StartUpFacade {
                 // Cancel all client connections only IF the cluster mode has changes to slave
                 let _ = stop_sentinel_tx.send(());
 
+                let connection_manager =
+                    ClusterConnectionManager::new(self.cluster_actor_handler.clone());
+
                 tokio::spawn({
-                    self.cluster_manager.clone().discover_cluster(
+                    connection_manager.discover_cluster(
                         self.config_manager.port,
-                        self.cluster_manager.replication_info().await?.master_bind_addr(),
+                        self.cluster_communication_manager
+                            .replication_info()
+                            .await?
+                            .master_bind_addr(),
                     )
                 });
             }
@@ -146,7 +161,7 @@ impl StartUpFacade {
             if let Some((repl_id, offset)) = dump.extract_replication_info() {
                 //  TODO reconnect! - echo
                 registry
-                    .cluster_manager
+                    .cluster_actor_handler
                     .send(ClusterCommand::SetReplicationInfo { master_repl_id: repl_id, offset })
                     .await?;
             };

@@ -1,5 +1,4 @@
 use crate::services::aof::{WriteOperation, WriteRequest};
-use crate::services::cluster::command::cluster_command::{AddPeer, ClusterCommand};
 use crate::services::cluster::peers::identifier::PeerIdentifier;
 use crate::services::cluster::peers::kind::PeerKind;
 use crate::services::cluster::peers::peer::Peer;
@@ -8,13 +7,13 @@ use crate::services::cluster::replications::replication::{
 };
 use crate::services::interface::TWrite;
 use crate::services::query_io::QueryIO;
-
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
 use std::collections::BTreeMap;
 use tokio::sync::mpsc::Receiver;
-use tokio::sync::mpsc::Sender;
 use tokio::time::Instant;
+
+use super::commands::{AddPeer, ClusterCommand};
 
 const FANOUT: usize = 2;
 
@@ -31,7 +30,6 @@ impl ClusterActor {
     }
     pub async fn handle(
         mut self,
-        self_handler: Sender<ClusterCommand>,
         mut cluster_message_listener: Receiver<ClusterCommand>,
         notifier: tokio::sync::watch::Sender<bool>,
     ) {
@@ -41,7 +39,7 @@ impl ClusterActor {
 
             match command {
                 ClusterCommand::AddPeer(add_peer_cmd) => {
-                    self.add_peer(add_peer_cmd, self_handler.clone()).await;
+                    self.add_peer(add_peer_cmd).await;
                 }
 
                 ClusterCommand::GetPeers(callback) => {
@@ -109,12 +107,10 @@ impl ClusterActor {
         }
     }
 
-    async fn add_peer(&mut self, add_peer_cmd: AddPeer, self_handler: Sender<ClusterCommand>) {
-        let AddPeer { peer_addr, stream, peer_kind } = add_peer_cmd;
+    async fn add_peer(&mut self, add_peer_cmd: AddPeer) {
+        let AddPeer { peer_id: peer_addr, peer } = add_peer_cmd;
 
         self.replication.remove_from_ban_list(&peer_addr);
-
-        let peer = Peer::new(stream, peer_kind, self_handler.clone(), peer_addr.clone());
 
         // If the map did have this key present, the value is updated, and the old
         // value is returned. The key is not updated,

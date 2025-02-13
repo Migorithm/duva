@@ -1,4 +1,3 @@
-use super::client::request::ClientRequest;
 use super::query_io::deserialize as deserialize_query_io;
 use super::query_io::QueryIO;
 use crate::write_array;
@@ -85,26 +84,6 @@ impl WriteRequest {
         }
 
         Ok(ops)
-    }
-
-    pub fn from_client_req(req: &ClientRequest) -> Option<Self> {
-        match req {
-            ClientRequest::Set { key, value } => {
-                Some(WriteRequest::Set { key: key.clone(), value: value.clone() })
-            }
-            ClientRequest::SetWithExpiry { key, value, expiry } => {
-                let expires_at =
-                    expiry.duration_since(std::time::SystemTime::UNIX_EPOCH).unwrap().as_millis()
-                        as u64;
-
-                Some(WriteRequest::SetWithExpiry {
-                    key: key.clone(),
-                    value: value.clone(),
-                    expires_at,
-                })
-            }
-            _ => None,
-        }
     }
 
     pub fn new(cmd: String, args: std::vec::IntoIter<QueryIO>) -> Result<Self> {

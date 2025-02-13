@@ -2,16 +2,16 @@ use crate::services::cluster::replications::replication::HeartBeatMessage;
 use crate::services::query_io::QueryIO;
 
 #[derive(Debug)]
-pub enum CommandFromMaster {
+pub enum RequestFromMaster {
     HeartBeat(HeartBeatMessage),
     Sync(QueryIO),
 }
 
-pub enum CommandFromSlave {
+pub enum RequestFromSlave {
     HeartBeat(HeartBeatMessage),
 }
 
-impl TryFrom<QueryIO> for CommandFromMaster {
+impl TryFrom<QueryIO> for RequestFromMaster {
     type Error = anyhow::Error;
     fn try_from(query: QueryIO) -> anyhow::Result<Self> {
         match query {
@@ -23,11 +23,11 @@ impl TryFrom<QueryIO> for CommandFromMaster {
     }
 }
 
-impl TryFrom<QueryIO> for CommandFromSlave {
+impl TryFrom<QueryIO> for RequestFromSlave {
     type Error = anyhow::Error;
     fn try_from(query: QueryIO) -> anyhow::Result<Self> {
         match query {
-            QueryIO::HeartBeat(peer_state) => Ok(CommandFromSlave::HeartBeat(peer_state)),
+            QueryIO::HeartBeat(peer_state) => Ok(RequestFromSlave::HeartBeat(peer_state)),
             _ => todo!(),
         }
     }

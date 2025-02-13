@@ -1,7 +1,7 @@
-use crate::services::cluster::command::cluster_command::AddPeer;
-use crate::services::cluster::command::cluster_command::ClusterCommand;
-use crate::services::cluster::manager::ClusterManager;
-use crate::services::cluster::outbound::response::ConnectionResponse;
+use crate::presentation::cluster_in::connection_broker::ClusterConnectionManager;
+use crate::presentation::cluster_in::create_peer;
+use crate::services::cluster::actors::commands::AddPeer;
+use crate::services::cluster::actors::commands::ClusterCommand;
 use crate::services::cluster::peers::identifier::PeerIdentifier;
 use crate::services::cluster::peers::kind::PeerKind;
 use crate::services::cluster::replications::replication::ReplicationInfo;
@@ -10,6 +10,9 @@ use crate::services::interface::TWrite;
 use crate::{make_smart_pointer, write_array};
 use anyhow::Context;
 use tokio::net::TcpStream;
+use tokio::sync::mpsc::Sender;
+
+use super::response::ConnectionResponse;
 
 // The following is used only when the node is in slave mode
 pub(crate) struct OutboundStream {
@@ -76,7 +79,7 @@ impl OutboundStream {
 
     pub(crate) async fn set_replication_info(
         self,
-        cluster_manager: &ClusterManager,
+        cluster_manager: &ClusterConnectionManager,
     ) -> anyhow::Result<Self> {
         if self.repl_info.master_replid == "?" {
             let connected_node_info = self
@@ -94,17 +97,18 @@ impl OutboundStream {
         }
         Ok(self)
     }
-    pub(crate) fn deconstruct(self) -> anyhow::Result<(ClusterCommand, ConnectedNodeInfo)> {
+    pub(crate) fn deconstruct(
+        self,
+        cluster_actor_handler: Sender<ClusterCommand>,
+    ) -> anyhow::Result<(ClusterCommand, ConnectedNodeInfo)> {
         let connection_info = self.connected_node_info.context("Connected node info not found")?;
 
-        Ok((
-            ClusterCommand::AddPeer(AddPeer {
-                peer_kind: PeerKind::connected_peer_kind(&self.repl_info, &connection_info.repl_id),
-                peer_addr: self.connect_to,
-                stream: self.stream,
-            }),
-            connection_info,
-        ))
+        let kind = PeerKind::connected_peer_kind(&self.repl_info, &connection_info.repl_id);
+
+        let peer =
+            create_peer(self.stream, kind.clone(), self.connect_to.clone(), cluster_actor_handler);
+
+        Ok((ClusterCommand::AddPeer(AddPeer { peer_id: self.connect_to, peer }), connection_info))
     }
 }
 
