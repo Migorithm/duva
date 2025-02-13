@@ -12,7 +12,6 @@ use crate::services::interface::TRead;
 use crate::services::query_io::QueryIO;
 use tokio::select;
 use tokio::sync::mpsc::Sender;
-use tokio::task::JoinHandle;
 
 pub(crate) struct PeerListeningActor {
     pub(crate) read_connected: ReadConnected,
@@ -105,17 +104,4 @@ impl PeerListeningActor {
     }
 }
 
-pub(super) type KillTrigger = tokio::sync::oneshot::Sender<()>;
 pub(super) type ReactorKillSwitch = tokio::sync::oneshot::Receiver<()>;
-
-#[derive(Debug)]
-pub(crate) struct ListeningActorKillTrigger(KillTrigger, JoinHandle<ReadConnected>);
-impl ListeningActorKillTrigger {
-    pub(crate) fn new(kill_trigger: KillTrigger, listning_task: JoinHandle<ReadConnected>) -> Self {
-        Self(kill_trigger, listning_task)
-    }
-    pub(super) async fn kill(self) -> ReadConnected {
-        let _ = self.0.send(());
-        self.1.await.unwrap()
-    }
-}
