@@ -1,6 +1,6 @@
 use crate::make_smart_pointer;
 use crate::services::actor_registry::ActorRegistry;
-use crate::services::aof::WriteRequest;
+
 use crate::services::cluster::command::cluster_command::ClusterCommand;
 use crate::services::cluster::manager::ClusterManager;
 use crate::services::config::ConfigResponse;
@@ -160,7 +160,7 @@ impl ClientManager {
 
     async fn try_consensus(&self, request: &ClientRequest) -> anyhow::Result<Option<u64>> {
         // If the request doesn't require consensus, return Ok
-        let Some(log) = WriteRequest::from_client_req(&request) else {
+        let Some(log) = request.to_write_request() else {
             return Ok(None);
         };
         let (tx, rx) = tokio::sync::oneshot::channel();
