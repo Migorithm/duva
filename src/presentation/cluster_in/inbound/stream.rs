@@ -1,9 +1,9 @@
 use crate::make_smart_pointer;
+use crate::presentation::cluster_in::create_peer;
 use crate::services::cluster::command::cluster_command::{AddPeer, ClusterCommand};
 use crate::services::cluster::peers::address::PeerAddrs;
 use crate::services::cluster::peers::identifier::PeerIdentifier;
 use crate::services::cluster::peers::kind::PeerKind;
-use crate::services::cluster::peers::peer::Peer;
 use crate::services::cluster::replications::replication::ReplicationInfo;
 use crate::services::interface::TGetPeerIp;
 use crate::services::interface::TRead;
@@ -111,10 +111,9 @@ impl InboundStream {
         cluster_actor_handler: Sender<ClusterCommand>,
     ) -> anyhow::Result<ClusterCommand> {
         let kind = self.peer_kind()?;
-        let addr = self.inbound_peer_addr.context("No peer addr")?;
-        let peer = Peer::new(self.stream, kind, cluster_actor_handler, addr.clone());
-
-        Ok(ClusterCommand::AddPeer(AddPeer { peer_addr: addr, peer: peer }))
+        let peer_id = self.inbound_peer_addr.context("No peer addr")?;
+        let peer = create_peer(self.stream, kind.clone(), peer_id.clone(), cluster_actor_handler);
+        Ok(ClusterCommand::AddPeer(AddPeer { peer_id, peer }))
     }
 
     pub(crate) async fn send_sync_to_inbound_server(

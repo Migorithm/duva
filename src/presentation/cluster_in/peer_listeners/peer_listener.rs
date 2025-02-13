@@ -7,19 +7,35 @@ use crate::services::cluster::command::listening_command::{CommandFromMaster, Co
 use crate::services::cluster::peers::connected_types::ReadConnected;
 use crate::services::cluster::peers::identifier::PeerIdentifier;
 use crate::services::cluster::peers::kind::PeerKind;
+use crate::services::cluster::peers::peer::ListeningActorKillTrigger;
 use crate::services::cluster::replications::replication::HeartBeatMessage;
 use crate::services::interface::TRead;
 use crate::services::query_io::QueryIO;
 use tokio::select;
 use tokio::sync::mpsc::Sender;
 
+// Listner requires cluster handler to send messages to the cluster actor and cluster actor instead needs kill trigger to stop the listener
 pub(crate) struct PeerListeningActor {
     pub(crate) read_connected: ReadConnected,
-    pub(crate) cluster_handler: Sender<ClusterCommand>, // cluster_handler is used to send messages to the cluster actor
+    pub(crate) cluster_handler: Sender<ClusterCommand>,
     pub(crate) self_id: PeerIdentifier,
 }
 
 impl PeerListeningActor {
+    pub fn new(
+        read_connected: ReadConnected,
+        cluster_handler: Sender<ClusterCommand>,
+        self_id: PeerIdentifier,
+    ) -> ListeningActorKillTrigger {
+        let (kill_trigger, kill_switch) = tokio::sync::oneshot::channel();
+        let listening_actor = PeerListeningActor { read_connected, cluster_handler, self_id };
+
+        ListeningActorKillTrigger::new(
+            kill_trigger,
+            tokio::spawn(listening_actor.listen(kill_switch)),
+        )
+    }
+
     // Update peer state on cluster manager
     async fn receive_heartbeat(&mut self, state: HeartBeatMessage) {
         println!("[INFO] from {}, hc:{}", state.heartbeat_from, state.hop_count);

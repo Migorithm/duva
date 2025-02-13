@@ -109,7 +109,7 @@ impl ClusterActor {
     }
 
     async fn add_peer(&mut self, add_peer_cmd: AddPeer) {
-        let AddPeer { peer_addr, peer } = add_peer_cmd;
+        let AddPeer { peer_id: peer_addr, peer } = add_peer_cmd;
 
         self.replication.remove_from_ban_list(&peer_addr);
 

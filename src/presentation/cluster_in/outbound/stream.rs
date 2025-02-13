@@ -1,10 +1,9 @@
+use crate::presentation::cluster_in::create_peer;
 use crate::presentation::cluster_in::manager::ClusterManager;
 use crate::services::cluster::command::cluster_command::AddPeer;
 use crate::services::cluster::command::cluster_command::ClusterCommand;
-
 use crate::services::cluster::peers::identifier::PeerIdentifier;
 use crate::services::cluster::peers::kind::PeerKind;
-use crate::services::cluster::peers::peer::Peer;
 use crate::services::cluster::replications::replication::ReplicationInfo;
 use crate::services::interface::TRead;
 use crate::services::interface::TWrite;
@@ -105,13 +104,11 @@ impl OutboundStream {
         let connection_info = self.connected_node_info.context("Connected node info not found")?;
 
         let kind = PeerKind::connected_peer_kind(&self.repl_info, &connection_info.repl_id);
-        let addr = self.connect_to.clone();
-        let peer = Peer::new(self.stream, kind, cluster_actor_handler, addr.clone());
 
-        Ok((
-            ClusterCommand::AddPeer(AddPeer { peer_addr: self.connect_to, peer: peer }),
-            connection_info,
-        ))
+        let peer =
+            create_peer(self.stream, kind.clone(), self.connect_to.clone(), cluster_actor_handler);
+
+        Ok((ClusterCommand::AddPeer(AddPeer { peer_id: self.connect_to, peer }), connection_info))
     }
 }
 
