@@ -4,7 +4,7 @@ pub mod inbound;
 pub mod outbound;
 pub mod peer_listeners;
 
-use peer_listeners::peer_listener::PeerListeningActor;
+use peer_listeners::peer_listener::PeerListener;
 use tokio::{net::TcpStream, sync::mpsc::Sender};
 
 use crate::services::cluster::{
@@ -25,8 +25,7 @@ fn create_peer(
     let (r, w) = stream.into_split();
 
     let read_connected = ReadConnected { stream: r, kind: kind.clone() };
-    let listener_kill_trigger =
-        PeerListeningActor::new(read_connected, cluster_actor_handler, addr);
+    let listener_kill_trigger = PeerListener::new(read_connected, cluster_actor_handler, addr);
 
     let peer = Peer::new(WriteConnected { stream: w, kind }, listener_kill_trigger);
     peer

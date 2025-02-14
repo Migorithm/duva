@@ -11,6 +11,9 @@ It offers several advantages, and the following is a non-exhaustive list of pros
 - Distributed systems: Systems spanning multiple servers or nodes.
 - Fault tolerance: Systems where reliability and recovery from failure are critical.
 
+### Conventions Used in This Project
+`-er` or `-Actor` postfix are used in this project to denote it works as either transient or long-running actor
+
 
 ### Features
 The following features have been implemented so far:
