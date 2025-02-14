@@ -22,29 +22,6 @@ impl Drop for FileName {
     }
 }
 
-fn run_server_with_dbfilename(dbfilename: &str) -> TestProcessChild {
-    let port = get_available_port();
-    let mut command = Command::new("cargo");
-    command.args(["run", "--", "--port", &port.to_string(), "--dbfilename", dbfilename]);
-
-    let mut process = TestProcessChild::new(
-        command
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .expect("Failed to start server process"),
-        port,
-    );
-    process
-        .wait_for_message(
-            format!("listening peer connection on 127.0.0.1:{}...", port + 10000).as_str(),
-            1,
-        )
-        .unwrap();
-
-    process
-}
-
 // TODO response cannot be deterministic!
 #[tokio::test]
 async fn test_save_read_dump() {
@@ -87,6 +64,10 @@ async fn test_save_read_dump() {
 
     // run server with the same file name
     let master_process = run_server_with_dbfilename(test_file_name.0.as_str());
+
+    // wait for the server to start
+    tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+   
     let mut h = ClientStreamHandler::new(master_process.bind_addr()).await;
 
     // keys
@@ -101,6 +82,29 @@ async fn test_save_read_dump() {
     // THEN
     assert_eq!(master_repl_id, prev_master_repl_id);
     assert_eq!(master_repl_offset, prev_master_repl_offset);
+}
+
+fn run_server_with_dbfilename(dbfilename: &str) -> TestProcessChild {
+    let port = get_available_port();
+    let mut command = Command::new("cargo");
+    command.args(["run", "--", "--port", &port.to_string(), "--dbfilename", dbfilename]);
+
+    let mut process = TestProcessChild::new(
+        command
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .expect("Failed to start server process"),
+        port,
+    );
+    process
+        .wait_for_message(
+            format!("listening peer connection on 127.0.0.1:{}...", port + 10000).as_str(),
+            1,
+        )
+        .unwrap();
+
+    process
 }
 
 fn create_unique_file_name(function_name: &str) -> String {

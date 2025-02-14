@@ -171,10 +171,8 @@ impl<'a> BytesDecoder<'a, HeaderReady> {
                 "repl-offset" => {
                     metadata.repl_offset = Some(value.parse().context("repl-offset parse fail")?)
                 }
-
                 var => {
                     println!("Unknown metadata key: {}", var);
-                    panic!()
                 }
             }
         }
