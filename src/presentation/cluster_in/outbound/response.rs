@@ -18,11 +18,17 @@ impl TryFrom<String> for ConnectionResponse {
             "ok" => Ok(ConnectionResponse::OK),
 
             var if var.starts_with("fullresync") => {
-                let mut iter = var.split_whitespace();
-                let _ = iter.next();
-                let repl_id = iter.next().context("replication_id must be given")?.to_string();
-                let offset = iter.next().context("offset must be given")?.parse::<u64>()?;
-                Ok(ConnectionResponse::FULLRESYNC { repl_id, offset })
+                let [_, repl_id, offset] = var
+                    .split_whitespace()
+                    .take(3)
+                    .collect::<Vec<_>>()
+                    .as_slice()
+                    .try_into()
+                    .context("Must have command, replication_id and offset")?;
+
+                let offset = offset.parse::<u64>()?;
+
+                Ok(ConnectionResponse::FULLRESYNC { repl_id: repl_id.to_string(), offset })
             }
 
             peer_msg if peer_msg.starts_with("peers ") => {

@@ -21,12 +21,13 @@ macro_rules! write_array {
     };
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Default)]
 pub enum QueryIO {
+    #[default]
+    Null,
     SimpleString(Bytes),
     BulkString(Bytes),
     Array(Vec<QueryIO>),
-    Null,
     Err(Bytes),
     File(Bytes),
     HeartBeat(HeartBeatMessage),
