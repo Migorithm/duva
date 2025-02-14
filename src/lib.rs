@@ -17,7 +17,7 @@ use services::cluster::replications::replication::IS_MASTER_MODE;
 use services::config::manager::ConfigManager;
 use services::error::IoError;
 use services::statefuls::cache::manager::CacheManager;
-use services::statefuls::snapshot::dump_loader::DumpLoader;
+use services::statefuls::snapshot::snapshot_loader::SnapshotLoader;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
 use tokio::net::TcpListener;
@@ -52,7 +52,7 @@ impl StartUpFacade {
             self.registry.clone(),
         ));
 
-        tokio::spawn(Self::initialize_with_dump(self.registry.clone(), startup_notifier));
+        tokio::spawn(Self::initialize_with_snapshot(self.registry.clone(), startup_notifier));
 
         self.start_mode_specific_connection_handling().await
     }
@@ -152,13 +152,13 @@ impl StartUpFacade {
         *self.mode_change_watcher.borrow_and_update()
     }
 
-    async fn initialize_with_dump(
+    async fn initialize_with_snapshot(
         registry: ActorRegistry,
         startup_notifier: impl TNotifyStartUp,
     ) -> Result<()> {
         if let Some(filepath) = registry.config_manager.try_filepath().await? {
-            let dump = DumpLoader::load(filepath).await?;
-            if let Some((repl_id, offset)) = dump.extract_replication_info() {
+            let snapshot = SnapshotLoader::load_from_filepath(filepath).await?;
+            if let Some((repl_id, offset)) = snapshot.extract_replication_info() {
                 //  TODO reconnect! - echo
                 registry
                     .cluster_actor_handler
@@ -167,7 +167,7 @@ impl StartUpFacade {
             };
             registry
                 .cache_manager
-                .dump_cache(dump, registry.ttl_manager, registry.config_manager.startup_time)
+                .apply_snapshot(snapshot, registry.ttl_manager, registry.config_manager.startup_time)
                 .await?;
         }
 

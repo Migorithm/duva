@@ -84,7 +84,7 @@ impl InboundStream {
         self.write(QueryIO::SimpleString(
             format!("FULLRESYNC {} {}", self_master_replid, self_master_repl_offset).into(),
         ))
-        .await?;
+            .await?;
 
         Ok((repl_id, offset))
     }
@@ -126,11 +126,11 @@ impl InboundStream {
             .await?
             .await??;
 
-        let dump = QueryIO::File(task.into_inner().into());
-        println!("[INFO] Sent sync to slave {:?}", dump);
-        self.write(dump).await?;
+        let snapshot = QueryIO::File(task.into_inner().into());
+        println!("[INFO] Sent sync to slave {:?}", snapshot);
+        self.write(snapshot).await?;
 
-        // collect dump data from processor
+        // collect snapshot data from processor
 
         Ok(self)
     }

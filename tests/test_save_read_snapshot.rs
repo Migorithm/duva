@@ -24,7 +24,7 @@ impl Drop for FileName {
 
 // TODO response cannot be deterministic!
 #[tokio::test]
-async fn test_save_read_dump() {
+async fn test_save_read_snapshot() {
     // GIVEN
     let test_file_name = FileName(create_unique_file_name("test_save_dump"));
 
@@ -67,7 +67,7 @@ async fn test_save_read_dump() {
 
     // wait for the server to start
     tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
-   
+
     let mut h = ClientStreamHandler::new(master_process.bind_addr()).await;
 
     // keys

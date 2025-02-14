@@ -5,9 +5,9 @@ use super::CacheEntry;
 use crate::services::cluster::replications::replication::ReplicationInfo;
 use crate::services::query_io::QueryIO;
 use crate::services::statefuls::cache::ttl::manager::TtlSchedulerManager;
-use crate::services::statefuls::snapshot::dump_file::DumpFile;
 use crate::services::statefuls::snapshot::save::actor::SaveActor;
 use crate::services::statefuls::snapshot::save::actor::SaveTarget;
+use crate::services::statefuls::snapshot::snapshot::Snapshot;
 use anyhow::Result;
 use std::time::SystemTime;
 use std::{hash::Hasher, iter::Zip};
@@ -16,7 +16,7 @@ use tokio::task::JoinHandle;
 
 type OneShotSender<T> = tokio::sync::oneshot::Sender<T>;
 type OneShotReceiverJoinHandle<T> =
-    tokio::task::JoinHandle<std::result::Result<T, tokio::sync::oneshot::error::RecvError>>;
+tokio::task::JoinHandle<std::result::Result<T, tokio::sync::oneshot::error::RecvError>>;
 
 #[derive(Clone)]
 pub struct CacheManager {
@@ -24,14 +24,14 @@ pub struct CacheManager {
 }
 
 impl CacheManager {
-    pub(crate) async fn dump_cache(
+    pub(crate) async fn apply_snapshot(
         &self,
-        dump: DumpFile,
+        snapshot: Snapshot,
         ttl_inbox: TtlSchedulerManager,
         startup_time: SystemTime,
     ) -> Result<()> {
         let startup_time = &startup_time;
-        for kvs in dump.key_values().into_iter().filter(|kvs| kvs.is_valid(startup_time)) {
+        for kvs in snapshot.key_values().into_iter().filter(|kvs| kvs.is_valid(startup_time)) {
             self.route_set(kvs, ttl_inbox.clone()).await?;
         }
 
