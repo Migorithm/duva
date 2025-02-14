@@ -1,26 +1,33 @@
-use crate::services::query_io::QueryIO;
+use crate::{from_to, make_smart_pointer, services::query_io::QueryIO};
 use anyhow::Context;
 use bytes::Bytes;
-
-use super::arguments::QueryArguments;
 
 pub(crate) struct HandShakeRequest {
     pub(crate) command: HandShakeRequestEnum,
     pub(crate) args: QueryArguments,
 }
+#[derive(Debug, Clone)]
+pub struct QueryArguments(pub Vec<QueryIO>);
+
+make_smart_pointer!(QueryArguments, Vec<QueryIO>);
+from_to!(Vec<QueryIO>, QueryArguments);
 
 impl HandShakeRequest {
     pub(crate) fn new(query_io: QueryIO) -> anyhow::Result<Self> {
         match query_io {
-            QueryIO::Array(value_array) => Ok(Self {
-                command: value_array
-                    .first()
-                    .context("request not given")?
-                    .clone()
-                    .unpack_single_entry::<String>()?
-                    .try_into()?,
-                args: QueryArguments::new(value_array.into_iter().skip(1).collect()),
-            }),
+            QueryIO::Array(value_array) => {
+                let mut iter = value_array.into_iter();
+
+                Ok(Self {
+                    command: iter
+                        .next()
+                        .context("request not given")?
+                        .clone()
+                        .unpack_single_entry::<String>()?
+                        .try_into()?,
+                    args: iter.collect::<Vec<_>>().into(),
+                })
+            }
             _ => Err(anyhow::anyhow!("Unexpected command format")),
         }
     }
@@ -78,16 +85,13 @@ impl HandShakeRequest {
     pub(crate) fn extract_psync(&mut self) -> anyhow::Result<(String, i64)> {
         self.match_query(HandShakeRequestEnum::Psync)?;
 
-        let replica_id = self
-            .args
-            .first()
-            .map(|v| v.clone().unpack_single_entry())
-            .ok_or(anyhow::anyhow!("No replica id"))??;
-        let offset = self
-            .args
-            .get(1)
-            .map(|v| v.clone().unpack_single_entry::<i64>())
-            .ok_or(anyhow::anyhow!("No offset"))??;
+        let Some([repl_id, offset]) = self.args.get_mut(..2) else {
+            return Err(anyhow::anyhow!("Invalid number of arguments"));
+        };
+
+        let replica_id = std::mem::take(repl_id).unpack_single_entry()?;
+        let offset = std::mem::take(offset).unpack_single_entry()?;
+
         Ok((replica_id, offset))
     }
 }
