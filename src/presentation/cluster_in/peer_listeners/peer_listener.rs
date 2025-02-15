@@ -16,7 +16,6 @@ use crate::services::statefuls::snapshot::snapshot_loader::SnapshotLoader;
 use tokio::select;
 use tokio::sync::mpsc::Sender;
 
-
 // Listner requires cluster handler to send messages to the cluster actor and cluster actor instead needs kill trigger to stop the listener
 pub(crate) struct PeerListener {
     pub(crate) read_connected: ReadConnected,
@@ -33,7 +32,8 @@ impl PeerListener {
         snapshot_applier: SnapshotApplier,
     ) -> ListeningActorKillTrigger {
         let (kill_trigger, kill_switch) = tokio::sync::oneshot::channel();
-        let listening_actor = PeerListener { read_connected, cluster_handler, self_id, snapshot_applier };
+        let listening_actor =
+            PeerListener { read_connected, cluster_handler, self_id, snapshot_applier };
 
         ListeningActorKillTrigger::new(
             kill_trigger,

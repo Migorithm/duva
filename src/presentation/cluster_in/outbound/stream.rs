@@ -106,8 +106,13 @@ impl OutboundStream {
 
         let kind = PeerKind::connected_peer_kind(&self.repl_info, &connection_info.repl_id);
 
-        let peer =
-            create_peer(self.stream, kind.clone(), self.connect_to.clone(), cluster_actor_handler, snapshot_applier);
+        let peer = create_peer(
+            self.stream,
+            kind.clone(),
+            self.connect_to.clone(),
+            cluster_actor_handler,
+            snapshot_applier,
+        );
 
         Ok((ClusterCommand::AddPeer(AddPeer { peer_id: self.connect_to, peer }), connection_info))
     }

@@ -84,7 +84,7 @@ impl InboundStream {
         self.write(QueryIO::SimpleString(
             format!("FULLRESYNC {} {}", self_master_replid, self_master_repl_offset).into(),
         ))
-            .await?;
+        .await?;
 
         Ok((repl_id, offset))
     }
@@ -113,7 +113,13 @@ impl InboundStream {
     ) -> anyhow::Result<ClusterCommand> {
         let kind = self.peer_kind()?;
         let peer_id = self.inbound_peer_addr.context("No peer addr")?;
-        let peer = create_peer(self.stream, kind.clone(), peer_id.clone(), cluster_actor_handler, snapshot_applier);
+        let peer = create_peer(
+            self.stream,
+            kind.clone(),
+            peer_id.clone(),
+            cluster_actor_handler,
+            snapshot_applier,
+        );
         Ok(ClusterCommand::AddPeer(AddPeer { peer_id, peer }))
     }
 

@@ -17,14 +17,12 @@ impl SnapshotApplier {
         ttl_scheduler_manager: TtlSchedulerManager,
         start_up_time: SystemTime,
     ) -> Self {
-        Self {
-            cache_manager,
-            ttl_scheduler_manager,
-            start_up_time,
-        }
+        Self { cache_manager, ttl_scheduler_manager, start_up_time }
     }
     pub async fn apply_snapshot(&self, snapshot: Snapshot) -> anyhow::Result<()> {
-        self.cache_manager.apply_snapshot(snapshot, self.ttl_scheduler_manager.clone(), self.start_up_time).await?;
+        self.cache_manager
+            .apply_snapshot(snapshot, self.ttl_scheduler_manager.clone(), self.start_up_time)
+            .await?;
 
         // Only for debugging and test
         if let Ok(QueryIO::Array(data)) = self.cache_manager.route_keys(None).await {
@@ -37,8 +35,6 @@ impl SnapshotApplier {
             }
             println!("[INFO] Full Sync Keys: {:?}", keys);
         }
-
         Ok(())
     }
 }
-
