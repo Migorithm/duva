@@ -182,7 +182,7 @@ impl StartUpFacade {
         if let Some(filepath) = registry.config_manager.try_filepath().await? {
             let snapshot = SnapshotLoader::load_from_filepath(filepath).await?;
             if let Some((repl_id, offset)) = snapshot.extract_replication_info() {
-                //  TODO reconnect! - echo
+                // Reconnection case - set the replication info
                 registry
                     .cluster_actor_handler
                     .send(ClusterCommand::SetReplicationInfo { master_repl_id: repl_id, offset })

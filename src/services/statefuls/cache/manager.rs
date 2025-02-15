@@ -9,6 +9,7 @@ use crate::services::statefuls::snapshot::save::actor::SaveActor;
 use crate::services::statefuls::snapshot::save::actor::SaveTarget;
 use crate::services::statefuls::snapshot::snapshot::Snapshot;
 use anyhow::Result;
+use futures::future::join_all;
 use std::time::SystemTime;
 use std::{hash::Hasher, iter::Zip};
 use tokio::sync::oneshot::Sender;
@@ -30,11 +31,14 @@ impl CacheManager {
         ttl_inbox: TtlSchedulerManager,
         startup_time: SystemTime,
     ) -> Result<()> {
-        let startup_time = &startup_time;
-        for kvs in snapshot.key_values().into_iter().filter(|kvs| kvs.is_valid(startup_time)) {
-            self.route_set(kvs, ttl_inbox.clone()).await?;
-        }
-
+        join_all(
+            snapshot
+                .key_values()
+                .into_iter()
+                .filter(|kvc| kvc.is_valid(&startup_time))
+                .map(|kvs| self.route_set(kvs, ttl_inbox.clone())),
+        )
+        .await;
         Ok(())
     }
 
