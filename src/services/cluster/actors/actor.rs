@@ -21,12 +21,12 @@ const FANOUT: usize = 2;
 pub struct ClusterActor {
     members: BTreeMap<PeerIdentifier, Peer>,
     replication: ReplicationInfo,
-    ttl_mills: u128,
+    node_timeout: u128,
 }
 
 impl ClusterActor {
-    pub fn new(ttl_mills: u128) -> Self {
-        Self { members: BTreeMap::new(), replication: ReplicationInfo::default(), ttl_mills }
+    pub fn new(node_timeout: u128) -> Self {
+        Self { members: BTreeMap::new(), replication: ReplicationInfo::default(), node_timeout }
     }
     pub async fn handle(
         mut self,
@@ -141,7 +141,9 @@ impl ClusterActor {
         let to_be_removed = self
             .members
             .iter()
-            .filter(|&(_, peer)| (now.duration_since(peer.last_seen).as_millis() > self.ttl_mills))
+            .filter(|&(_, peer)| {
+                (now.duration_since(peer.last_seen).as_millis() > self.node_timeout)
+            })
             .map(|(id, _)| id.clone())
             .collect::<Vec<_>>();
 
