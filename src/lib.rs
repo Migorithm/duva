@@ -6,14 +6,13 @@ pub mod presentation;
 pub mod services;
 use actor_registry::ActorRegistry;
 use anyhow::Result;
-use init::get_env;
+pub use init::Environment;
 use presentation::client_in::manager::ClientManager;
 use presentation::cluster_in::communication_manager::ClusterCommunicationManager;
 use presentation::cluster_in::connection_broker::ClusterConnectionManager;
 use presentation::cluster_in::inbound::stream::InboundStream;
 use services::cluster::actors::commands::ClusterCommand;
 use services::cluster::replications::replication::IS_MASTER_MODE;
-
 use services::config::manager::ConfigManager;
 use services::error::IoError;
 use services::statefuls::cache::manager::CacheManager;
@@ -34,9 +33,7 @@ pub struct StartUpFacade {
 make_smart_pointer!(StartUpFacade, ActorRegistry => registry);
 
 impl StartUpFacade {
-    pub fn new(config_manager: ConfigManager) -> Self {
-        let env = get_env();
-
+    pub fn new(config_manager: ConfigManager, env: Environment) -> Self {
         let (notifier, mode_change_watcher) =
             tokio::sync::watch::channel(IS_MASTER_MODE.load(Ordering::Acquire));
 

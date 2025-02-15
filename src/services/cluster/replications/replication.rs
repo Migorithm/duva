@@ -1,4 +1,3 @@
-use crate::get_env;
 use crate::services::aof::WriteOperation;
 use crate::services::cluster::peers::identifier::PeerIdentifier;
 use crate::services::cluster::replications::replid_generator::generate_replid;
