@@ -35,13 +35,15 @@ make_smart_pointer!(StartUpFacade, ActorRegistry => registry);
 
 impl StartUpFacade {
     pub fn new(config_manager: ConfigManager) -> Self {
-        let _ = get_env();
+        let env = get_env();
 
         let (notifier, mode_change_watcher) =
             tokio::sync::watch::channel(IS_MASTER_MODE.load(Ordering::Acquire));
 
-        let registry =
-            ActorRegistry::new(config_manager, ClusterCommunicationManager::run(notifier));
+        let registry = ActorRegistry::new(
+            config_manager,
+            ClusterCommunicationManager::run(notifier, env.ttl_mills, env.hf_mills),
+        );
         let client_manager = ClientManager::new(registry.clone());
         StartUpFacade { client_manager, registry, mode_change_watcher }
     }
