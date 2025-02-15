@@ -1,5 +1,3 @@
-use crate::get_env;
-
 use super::command::ConfigMessage;
 use super::command::ConfigResource;
 use super::command::ConfigResponse;
@@ -15,6 +13,12 @@ pub struct ConfigActor {
 }
 
 impl ConfigActor {
+    pub fn new(dir: String, dbfilename: String) -> Self {
+        Self {
+            dir: Box::leak(dir.into_boxed_str()),
+            dbfilename: Box::leak(dbfilename.into_boxed_str()),
+        }
+    }
     pub fn handle(mut self, mut inbox: Receiver<ConfigMessage>) {
         tokio::spawn(async move {
             while let Some(msg) = inbox.recv().await {
@@ -62,23 +66,4 @@ impl ConfigActor {
     pub fn get_filepath(&self) -> String {
         format!("{}/{}", self.dir, self.dbfilename)
     }
-}
-
-impl Default for ConfigActor {
-    fn default() -> Self {
-        let env = get_env();
-        ConfigActor {
-            dir: Box::leak(env.dir.clone().into_boxed_str()),
-            dbfilename: Box::leak(env.dbfilename.clone().into_boxed_str()),
-        }
-    }
-}
-
-#[test]
-fn test_set_dir() {
-    let mut config = ConfigActor::default();
-    config.set_dir("test");
-    assert_eq!(config.dir, "test");
-    config.set_dir("test2");
-    assert_eq!(config.dir, "test2");
 }

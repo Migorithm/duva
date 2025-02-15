@@ -1,14 +1,18 @@
 use duva::{
     services::config::{actor::ConfigActor, manager::ConfigManager},
-    StartUpFacade,
+    Environment, StartUpFacade,
 };
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     // bootstrap dependencies
-    let config_manager = ConfigManager::new(ConfigActor::default());
-
-    let start_up_runner = StartUpFacade::new(config_manager);
+    let env = Environment::new();
+    let config_manager = ConfigManager::new(
+        ConfigActor::new(env.dir.clone(), env.dbfilename.clone()),
+        env.host.clone(),
+        env.port,
+    );
+    let start_up_runner = StartUpFacade::new(config_manager, env);
 
     start_up_runner.run(()).await
 }
