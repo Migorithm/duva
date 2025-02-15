@@ -1,13 +1,13 @@
+use super::communication_manager::ClusterCommunicationManager;
+use super::outbound::stream::OutboundStream;
 use crate::services::cluster::actors::commands::ClusterCommand;
 use crate::services::cluster::peers::identifier::PeerIdentifier;
 use crate::services::cluster::peers::kind::PeerKind;
 use crate::services::cluster::replications::replication::IS_MASTER_MODE;
 use crate::services::statefuls::cache::manager::CacheManager;
+use crate::services::statefuls::snapshot::snapshot_applier::SnapshotApplier;
 use crate::{make_smart_pointer, InboundStream};
 use tokio::sync::mpsc::Sender;
-
-use super::communication_manager::ClusterCommunicationManager;
-use super::outbound::stream::OutboundStream;
 
 pub struct ClusterConnectionManager(pub(crate) ClusterCommunicationManager);
 
@@ -20,6 +20,7 @@ impl ClusterConnectionManager {
         &self,
         mut peer_stream: InboundStream,
         cache_manager: CacheManager,
+        snapshot_applier: SnapshotApplier,
     ) -> anyhow::Result<()> {
         peer_stream.recv_threeway_handshake().await?;
 
@@ -30,7 +31,7 @@ impl ClusterConnectionManager {
         {
             peer_stream = peer_stream.send_sync_to_inbound_server(cache_manager).await?;
         }
-        self.send(peer_stream.to_add_peer(self.clone())?).await?;
+        self.send(peer_stream.to_add_peer(self.clone(), snapshot_applier)?).await?;
 
         Ok(())
     }
@@ -39,6 +40,7 @@ impl ClusterConnectionManager {
         self,
         self_port: u16,
         connect_to: PeerIdentifier,
+        snapshot_applier: SnapshotApplier,
     ) -> anyhow::Result<()> {
         // Base case
         let existing_peers = self.get_peers().await?;
@@ -54,14 +56,14 @@ impl ClusterConnectionManager {
                 .await?
                 .set_replication_info(&self)
                 .await?
-                .deconstruct(self.clone())?;
+                .create_peer_cmd(self.clone(), snapshot_applier.clone())?;
         self.send(add_peer_cmd).await?;
 
         // Discover additional peers concurrently
         // TODO Require investigation. Why does 'list_peer_binding_addrs' have to be called at here?
         for peer in connected_node_info.list_peer_binding_addrs() {
             println!("Discovering peer: {}", peer);
-            Box::pin(ClusterConnectionManager(self.0.clone()).discover_cluster(self_port, peer))
+            Box::pin(ClusterConnectionManager(self.0.clone()).discover_cluster(self_port, peer, snapshot_applier.clone()))
                 .await?;
         }
 
@@ -69,7 +71,7 @@ impl ClusterConnectionManager {
     }
 
     pub fn clone(&self) -> Sender<ClusterCommand> {
-        self.0 .0.clone()
+        self.0.0.clone()
     }
 
     pub async fn send(&self, cmd: ClusterCommand) -> anyhow::Result<()> {

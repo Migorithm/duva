@@ -1,5 +1,5 @@
 use super::response::ConnectionResponse;
-use crate::presentation::cluster_in::connection_broker::ClusterConnectionManager;
+use crate::presentation::cluster_in::connection_manager::ClusterConnectionManager;
 use crate::presentation::cluster_in::create_peer;
 use crate::services::cluster::actors::commands::AddPeer;
 use crate::services::cluster::actors::commands::ClusterCommand;
