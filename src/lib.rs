@@ -46,9 +46,7 @@ impl StartUpFacade {
                 notifier,
                 env.ttl_mills,
                 env.hf_mills,
-                &env.host,
-                env.port,
-                env.replicaof.clone(),
+                env.init_replication_info(),
             ),
         );
         let client_manager = ClientManager::new(registry.clone());

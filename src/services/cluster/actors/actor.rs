@@ -25,14 +25,7 @@ pub struct ClusterActor {
 }
 
 impl ClusterActor {
-    pub fn new(
-        node_timeout: u128,
-        self_host: &str,
-        self_port: u16,
-        replica_of: Option<(String, String)>,
-    ) -> Self {
-        let replication = ReplicationInfo::new(replica_of.clone(), self_host, self_port);
-
+    pub fn new(node_timeout: u128, replication: ReplicationInfo) -> Self {
         Self { members: BTreeMap::new(), replication, node_timeout }
     }
     pub async fn handle(
@@ -235,7 +228,8 @@ impl ClusterActor {
 fn test_hop_count_when_one() {
     // GIVEN
     let fanout = 2;
-    let cluster_actor = ClusterActor::new(100, "localhost", 8080, None);
+    let replication = ReplicationInfo::new(None, "localhost", 8080);
+    let cluster_actor = ClusterActor::new(100, replication);
 
     // WHEN
     let hop_count = cluster_actor.hop_count(fanout, 1);
@@ -247,7 +241,8 @@ fn test_hop_count_when_one() {
 fn test_hop_count_when_two() {
     // GIVEN
     let fanout = 2;
-    let cluster_actor = ClusterActor::new(100, "localhost", 8080, None);
+    let replication = ReplicationInfo::new(None, "localhost", 8080);
+    let cluster_actor = ClusterActor::new(100, replication);
 
     // WHEN
     let hop_count = cluster_actor.hop_count(fanout, 2);
@@ -259,7 +254,8 @@ fn test_hop_count_when_two() {
 fn test_hop_count_when_three() {
     // GIVEN
     let fanout = 2;
-    let cluster_actor = ClusterActor::new(100, "localhost", 8080, None);
+    let replication = ReplicationInfo::new(None, "localhost", 8080);
+    let cluster_actor = ClusterActor::new(100, replication);
 
     // WHEN
     let hop_count = cluster_actor.hop_count(fanout, 3);
@@ -271,7 +267,8 @@ fn test_hop_count_when_three() {
 fn test_hop_count_when_thirty() {
     // GIVEN
     let fanout = 2;
-    let cluster_actor = ClusterActor::new(100, "localhost", 8080, None);
+    let replication = ReplicationInfo::new(None, "localhost", 8080);
+    let cluster_actor = ClusterActor::new(100, replication);
 
     // WHEN
     let hop_count = cluster_actor.hop_count(fanout, 30);
