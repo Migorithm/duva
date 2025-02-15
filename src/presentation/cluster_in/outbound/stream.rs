@@ -1,3 +1,4 @@
+use super::response::ConnectionResponse;
 use crate::presentation::cluster_in::connection_broker::ClusterConnectionManager;
 use crate::presentation::cluster_in::create_peer;
 use crate::services::cluster::actors::commands::AddPeer;
@@ -7,12 +8,11 @@ use crate::services::cluster::peers::kind::PeerKind;
 use crate::services::cluster::replications::replication::ReplicationInfo;
 use crate::services::interface::TRead;
 use crate::services::interface::TWrite;
+use crate::services::statefuls::snapshot::snapshot_applier::SnapshotApplier;
 use crate::{make_smart_pointer, write_array};
 use anyhow::Context;
 use tokio::net::TcpStream;
 use tokio::sync::mpsc::Sender;
-
-use super::response::ConnectionResponse;
 
 // The following is used only when the node is in slave mode
 pub(crate) struct OutboundStream {
@@ -97,16 +97,17 @@ impl OutboundStream {
         }
         Ok(self)
     }
-    pub(crate) fn deconstruct(
+    pub(crate) fn create_peer_cmd(
         self,
         cluster_actor_handler: Sender<ClusterCommand>,
+        snapshot_applier: SnapshotApplier,
     ) -> anyhow::Result<(ClusterCommand, ConnectedNodeInfo)> {
         let connection_info = self.connected_node_info.context("Connected node info not found")?;
 
         let kind = PeerKind::connected_peer_kind(&self.repl_info, &connection_info.repl_id);
 
         let peer =
-            create_peer(self.stream, kind.clone(), self.connect_to.clone(), cluster_actor_handler);
+            create_peer(self.stream, kind.clone(), self.connect_to.clone(), cluster_actor_handler, snapshot_applier);
 
         Ok((ClusterCommand::AddPeer(AddPeer { peer_id: self.connect_to, peer }), connection_info))
     }
