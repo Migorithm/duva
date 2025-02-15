@@ -9,7 +9,7 @@ use anyhow::Result;
 use init::get_env;
 use presentation::client_in::manager::ClientManager;
 use presentation::cluster_in::communication_manager::ClusterCommunicationManager;
-use presentation::cluster_in::connection_broker::ClusterConnectionManager;
+use presentation::cluster_in::connection_manager::ClusterConnectionManager;
 use presentation::cluster_in::inbound::stream::InboundStream;
 use services::cluster::actors::commands::ClusterCommand;
 use services::cluster::replications::replication::IS_MASTER_MODE;
@@ -41,7 +41,7 @@ impl StartUpFacade {
             tokio::sync::watch::channel(IS_MASTER_MODE.load(Ordering::Acquire));
 
         let registry =
-            ActorRegistry::new(config_manager, ClusterCommunicationManager::run(notifier));
+            ActorRegistry::new(config_manager, notifier);
         let client_manager = ClientManager::new(registry.clone());
         StartUpFacade { client_manager, registry, mode_change_watcher }
     }
@@ -75,6 +75,7 @@ impl StartUpFacade {
                     tokio::spawn({
                         let cluster_m = registry.cluster_actor_handler.clone();
                         let cache_m = registry.cache_manager.clone();
+                        let snapshot_applier = registry.snapshot_applier.clone();
                         let inbound_stream = InboundStream::new(
                             peer_stream,
                             ClusterCommunicationManager(registry.cluster_actor_handler.clone())
@@ -84,7 +85,7 @@ impl StartUpFacade {
 
                         async move {
                             if let Err(err) = ClusterConnectionManager::new(cluster_m)
-                                .accept_inbound_stream(inbound_stream, cache_m)
+                                .accept_inbound_stream(inbound_stream, cache_m, snapshot_applier)
                                 .await
                             {
                                 println!("[ERROR] Failed to accept peer connection: {:?}", err);
@@ -126,13 +127,16 @@ impl StartUpFacade {
                 let connection_manager =
                     ClusterConnectionManager::new(self.cluster_actor_handler.clone());
 
+                let peer_identifier = self.cluster_communication_manager
+                    .replication_info()
+                    .await?
+                    .master_bind_addr();
+
                 tokio::spawn({
                     connection_manager.discover_cluster(
                         self.config_manager.port,
-                        self.cluster_communication_manager
-                            .replication_info()
-                            .await?
-                            .master_bind_addr(),
+                        peer_identifier,
+                        self.snapshot_applier.clone(),
                     )
                 });
             }
