@@ -25,8 +25,8 @@ pub struct ClusterActor {
 }
 
 impl ClusterActor {
-    pub fn new(node_timeout: u128, replication: ReplicationInfo) -> Self {
-        Self { members: BTreeMap::new(), replication, node_timeout }
+    pub fn new(node_timeout: u128, init_repl_info: ReplicationInfo) -> Self {
+        Self { members: BTreeMap::new(), replication: init_repl_info, node_timeout }
     }
     pub async fn handle(
         mut self,
