@@ -21,31 +21,6 @@ pub struct ActorRegistry {
 }
 
 impl ActorRegistry {
-    pub(crate) fn new(
-        config_manager: ConfigManager,
-        cluster_actor_handler: Sender<ClusterCommand>,
-    ) -> Self {
-        let cache_manager = CacheManager::run_cache_actors();
-
-        // TODO decide: do we have to run ttl actor on replica?
-        let ttl_manager = TtlActor(cache_manager.clone()).run();
-
-        let snapshot_applier = SnapshotApplier::new(
-            cache_manager.clone(),
-            ttl_manager.clone(),
-            config_manager.startup_time,
-        );
-
-        Self {
-            ttl_manager,
-            cache_manager,
-            config_manager,
-
-            cluster_actor_handler: cluster_actor_handler,
-            snapshot_applier,
-        }
-    }
-
     pub(crate) fn cluster_communication_manager(&self) -> ClusterCommunicationManager {
         ClusterCommunicationManager(self.cluster_actor_handler.clone())
     }

@@ -16,6 +16,8 @@ use services::cluster::replications::replication::IS_MASTER_MODE;
 use services::config::manager::ConfigManager;
 use services::error::IoError;
 use services::statefuls::cache::manager::CacheManager;
+use services::statefuls::cache::ttl::actor::TtlActor;
+use services::statefuls::snapshot::snapshot_applier::SnapshotApplier;
 use services::statefuls::snapshot::snapshot_loader::SnapshotLoader;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
@@ -43,8 +45,23 @@ impl StartUpFacade {
             env.hf_mills,
             env.init_replication_info(),
         );
-        let registry = ActorRegistry::new(config_manager, cluster_actor_handler);
+        let cache_manager = CacheManager::run_cache_actors();
+        let ttl_manager = TtlActor(cache_manager.clone()).run();
+        let snapshot_applier = SnapshotApplier::new(
+            cache_manager.clone(),
+            ttl_manager.clone(),
+            config_manager.startup_time,
+        );
+
+        let registry = ActorRegistry {
+            config_manager,
+            cluster_actor_handler,
+            cache_manager,
+            ttl_manager,
+            snapshot_applier,
+        };
         let client_manager = ClientManager::new(registry.clone());
+
         StartUpFacade { client_manager, registry, mode_change_watcher }
     }
 
