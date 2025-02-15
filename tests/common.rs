@@ -3,7 +3,7 @@ use duva::make_smart_pointer;
 use duva::services::query_io::QueryIO;
 use std::io::{BufRead, BufReader, Read};
 use std::process::{Child, Command, Stdio};
-use std::thread;
+use std::thread::{self, sleep};
 use std::time::{Duration, Instant};
 
 static PORT_DISTRIBUTOR: std::sync::atomic::AtomicU16 = std::sync::atomic::AtomicU16::new(49152);

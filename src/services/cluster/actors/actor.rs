@@ -254,6 +254,8 @@ fn test_hop_count_when_three() {
     let fanout = 2;
     let replication = ReplicationInfo::new(None, "localhost", 8080);
     let cluster_actor = ClusterActor::new(100, replication);
+    let replication = ReplicationInfo::new(None, "localhost", 8080);
+    let cluster_actor = ClusterActor::new(100, replication);
 
     // WHEN
     let hop_count = cluster_actor.hop_count(fanout, 3);
