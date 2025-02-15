@@ -4,7 +4,6 @@ use super::command::ConfigMessage;
 use super::command::ConfigQuery;
 use super::ConfigResource;
 use super::ConfigResponse;
-
 use std::time::SystemTime;
 use tokio::fs::try_exists;
 use tokio::sync::mpsc::Sender;
@@ -15,7 +14,7 @@ pub struct ConfigManager {
     config: Sender<ConfigMessage>,
     pub(crate) startup_time: SystemTime,
     pub port: u16,
-    pub(crate) host: &'static str,
+    pub(crate) host: String,
 }
 
 impl std::ops::Deref for ConfigManager {
@@ -32,12 +31,7 @@ impl ConfigManager {
 
         config.handle(inbox);
 
-        Self {
-            config: tx,
-            startup_time: SystemTime::now(),
-            port: port,
-            host: Box::leak(host.into_boxed_str()),
-        }
+        Self { config: tx, startup_time: SystemTime::now(), port, host }
     }
 
     // The following is used on startup and check if the file exists
