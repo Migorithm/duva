@@ -25,8 +25,15 @@ pub struct ClusterActor {
 }
 
 impl ClusterActor {
-    pub fn new(node_timeout: u128) -> Self {
-        Self { members: BTreeMap::new(), replication: ReplicationInfo::default(), node_timeout }
+    pub fn new(
+        node_timeout: u128,
+        self_host: &str,
+        self_port: u16,
+        replica_of: Option<(String, String)>,
+    ) -> Self {
+        let replication = ReplicationInfo::new(replica_of.clone(), self_host, self_port);
+
+        Self { members: BTreeMap::new(), replication, node_timeout }
     }
     pub async fn handle(
         mut self,
@@ -228,7 +235,7 @@ impl ClusterActor {
 fn test_hop_count_when_one() {
     // GIVEN
     let fanout = 2;
-    let cluster_actor = ClusterActor::new(100);
+    let cluster_actor = ClusterActor::new(100, "localhost", 8080, None);
 
     // WHEN
     let hop_count = cluster_actor.hop_count(fanout, 1);
@@ -240,7 +247,7 @@ fn test_hop_count_when_one() {
 fn test_hop_count_when_two() {
     // GIVEN
     let fanout = 2;
-    let cluster_actor = ClusterActor::new(100);
+    let cluster_actor = ClusterActor::new(100, "localhost", 8080, None);
 
     // WHEN
     let hop_count = cluster_actor.hop_count(fanout, 2);
@@ -252,7 +259,7 @@ fn test_hop_count_when_two() {
 fn test_hop_count_when_three() {
     // GIVEN
     let fanout = 2;
-    let cluster_actor = ClusterActor::new(100);
+    let cluster_actor = ClusterActor::new(100, "localhost", 8080, None);
 
     // WHEN
     let hop_count = cluster_actor.hop_count(fanout, 3);
@@ -264,7 +271,7 @@ fn test_hop_count_when_three() {
 fn test_hop_count_when_thirty() {
     // GIVEN
     let fanout = 2;
-    let cluster_actor = ClusterActor::new(100);
+    let cluster_actor = ClusterActor::new(100, "localhost", 8080, None);
 
     // WHEN
     let hop_count = cluster_actor.hop_count(fanout, 30);

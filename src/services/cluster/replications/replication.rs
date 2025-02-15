@@ -28,21 +28,11 @@ pub struct ReplicationInfo {
     pub(crate) ban_list: Vec<BannedPeer>,
 }
 
-impl Default for ReplicationInfo {
-    fn default() -> Self {
-        let env = get_env();
-        let replication = ReplicationInfo::new(env.replicaof.clone(), &env.host, env.port);
-        IS_MASTER_MODE
-            .store(replication.master_port.is_none(), std::sync::atomic::Ordering::Relaxed);
-        replication
-    }
-}
-
 impl ReplicationInfo {
     pub fn new(replicaof: Option<(String, String)>, self_host: &str, self_port: u16) -> Self {
         let master_replid = if replicaof.is_none() { generate_replid() } else { "?".to_string() };
 
-        ReplicationInfo {
+        let replication = ReplicationInfo {
             connected_slaves: 0, // dynamically configurable
             master_replid: master_replid.clone(),
             master_repl_offset: 0,
@@ -57,7 +47,11 @@ impl ReplicationInfo {
             term: 0,
             self_identifier: PeerIdentifier::new(self_host, self_port),
             ban_list: Default::default(),
-        }
+        };
+
+        IS_MASTER_MODE
+            .store(replication.master_port.is_none(), std::sync::atomic::Ordering::Relaxed);
+        replication
     }
     pub fn vectorize(self) -> Vec<String> {
         vec![

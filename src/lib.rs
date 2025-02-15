@@ -42,7 +42,14 @@ impl StartUpFacade {
 
         let registry = ActorRegistry::new(
             config_manager,
-            ClusterCommunicationManager::run(notifier, env.ttl_mills, env.hf_mills),
+            ClusterCommunicationManager::run(
+                notifier,
+                env.ttl_mills,
+                env.hf_mills,
+                &env.host,
+                env.port,
+                env.replicaof.clone(),
+            ),
         );
         let client_manager = ClientManager::new(registry.clone());
         StartUpFacade { client_manager, registry, mode_change_watcher }
