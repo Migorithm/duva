@@ -64,14 +64,13 @@ impl StartUpFacade {
         StartUpFacade { client_manager, registry, mode_change_watcher }
     }
 
-    pub async fn run(self, startup_notifier: impl TNotifyStartUp) -> Result<()> {
+    pub async fn run(self) -> Result<()> {
         tokio::spawn(Self::start_accepting_peer_connections(
             self.config_manager.peer_bind_addr(),
             self.registry.clone(),
         ));
 
-        tokio::spawn(Self::initialize_with_snapshot(self.registry.clone(), startup_notifier));
-
+        self.initialize_with_snapshot().await?;
         self.start_mode_specific_connection_handling().await
     }
 
@@ -174,31 +173,18 @@ impl StartUpFacade {
         *self.mode_change_watcher.borrow_and_update()
     }
 
-    async fn initialize_with_snapshot(
-        registry: ActorRegistry,
-        startup_notifier: impl TNotifyStartUp,
-    ) -> Result<()> {
-        if let Some(filepath) = registry.config_manager.try_filepath().await? {
+    async fn initialize_with_snapshot(&self) -> Result<()> {
+        if let Some(filepath) = self.registry.config_manager.try_filepath().await? {
             let snapshot = SnapshotLoader::load_from_filepath(filepath).await?;
             if let Some((repl_id, offset)) = snapshot.extract_replication_info() {
                 // Reconnection case - set the replication info
-                registry
+                self.registry
                     .cluster_actor_handler
                     .send(ClusterCommand::SetReplicationInfo { master_repl_id: repl_id, offset })
                     .await?;
             };
-            registry.snapshot_applier.apply_snapshot(snapshot).await?;
+            self.registry.snapshot_applier.apply_snapshot(snapshot).await?;
         }
-
-        startup_notifier.notify_startup();
         Ok(())
     }
-}
-
-pub trait TNotifyStartUp: Send + 'static {
-    fn notify_startup(&self);
-}
-
-impl TNotifyStartUp for () {
-    fn notify_startup(&self) {}
 }

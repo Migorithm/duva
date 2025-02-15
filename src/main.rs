@@ -14,5 +14,5 @@ async fn main() -> anyhow::Result<()> {
     );
     let start_up_runner = StartUpFacade::new(config_manager, env);
 
-    start_up_runner.run(()).await
+    start_up_runner.run().await
 }
