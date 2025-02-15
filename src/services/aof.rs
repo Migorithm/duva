@@ -73,7 +73,6 @@ impl WriteRequest {
         let mut ops = Vec::new();
 
         while !bytes.is_empty() {
-            println!("ddd");
             let (query, consumed) = deserialize_query_io(bytes.clone())?;
             bytes = bytes.split_off(consumed);
 
