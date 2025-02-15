@@ -14,7 +14,7 @@ thiserror = "2.0.11"                                # error handling
 tokio = { version = "1.43.0", features = ["full"] }
 rand = "0.9.0"                                      # async networking
 futures = "0.3.31"                                  # async networking
-
+memmap2 = "0.9.5"                                   # memory mapping
 
 [dev-dependencies]
 tempfile = "3"
