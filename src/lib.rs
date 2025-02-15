@@ -9,14 +9,15 @@ use anyhow::Result;
 pub use init::Environment;
 use presentation::client_in::manager::ClientManager;
 use presentation::cluster_in::communication_manager::ClusterCommunicationManager;
-use presentation::cluster_in::connection_broker::ClusterConnectionManager;
 use presentation::cluster_in::inbound::stream::InboundStream;
 use services::cluster::actors::commands::ClusterCommand;
 use services::cluster::replications::replication::IS_MASTER_MODE;
 use services::config::manager::ConfigManager;
 use services::error::IoError;
 use services::statefuls::cache::manager::CacheManager;
-use services::statefuls::snapshot::dump_loader::DumpLoader;
+use services::statefuls::cache::ttl::actor::TtlActor;
+use services::statefuls::snapshot::snapshot_applier::SnapshotApplier;
+use services::statefuls::snapshot::snapshot_loader::SnapshotLoader;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
 use tokio::net::TcpListener;
@@ -37,27 +38,39 @@ impl StartUpFacade {
         let (notifier, mode_change_watcher) =
             tokio::sync::watch::channel(IS_MASTER_MODE.load(Ordering::Acquire));
 
-        let registry = ActorRegistry::new(
-            config_manager,
-            ClusterCommunicationManager::run(
-                notifier,
-                env.ttl_mills,
-                env.hf_mills,
-                env.init_replication_info(),
-            ),
+        let cluster_actor_handler = ClusterCommunicationManager::run(
+            notifier,
+            env.ttl_mills,
+            env.hf_mills,
+            env.init_replication_info(),
         );
+        let cache_manager = CacheManager::run_cache_actors();
+        let ttl_manager = TtlActor(cache_manager.clone()).run();
+        let snapshot_applier = SnapshotApplier::new(
+            cache_manager.clone(),
+            ttl_manager.clone(),
+            config_manager.startup_time,
+        );
+
+        let registry = ActorRegistry {
+            config_manager,
+            cluster_actor_handler,
+            cache_manager,
+            ttl_manager,
+            snapshot_applier,
+        };
         let client_manager = ClientManager::new(registry.clone());
+
         StartUpFacade { client_manager, registry, mode_change_watcher }
     }
 
-    pub async fn run(self, startup_notifier: impl TNotifyStartUp) -> Result<()> {
+    pub async fn run(self) -> Result<()> {
         tokio::spawn(Self::start_accepting_peer_connections(
             self.config_manager.peer_bind_addr(),
             self.registry.clone(),
         ));
 
-        tokio::spawn(Self::initialize_with_dump(self.registry.clone(), startup_notifier));
-
+        self.initialize_with_snapshot().await?;
         self.start_mode_specific_connection_handling().await
     }
 
@@ -77,18 +90,18 @@ impl StartUpFacade {
                 // ? how do we know if incoming connection is from a peer or replica?
                 Ok((peer_stream, _socket_addr)) => {
                     tokio::spawn({
-                        let cluster_m = registry.cluster_actor_handler.clone();
                         let cache_m = registry.cache_manager.clone();
+                        let snapshot_applier = registry.snapshot_applier.clone();
                         let inbound_stream = InboundStream::new(
                             peer_stream,
-                            ClusterCommunicationManager(registry.cluster_actor_handler.clone())
-                                .replication_info()
-                                .await?,
+                            registry.cluster_communication_manager().replication_info().await?,
                         );
 
+                        let connection_manager = registry.cluster_connection_manager();
+
                         async move {
-                            if let Err(err) = ClusterConnectionManager::new(cluster_m)
-                                .accept_inbound_stream(inbound_stream, cache_m)
+                            if let Err(err) = connection_manager
+                                .accept_inbound_stream(inbound_stream, cache_m, snapshot_applier)
                                 .await
                             {
                                 println!("[ERROR] Failed to accept peer connection: {:?}", err);
@@ -127,16 +140,20 @@ impl StartUpFacade {
                 // Cancel all client connections only IF the cluster mode has changes to slave
                 let _ = stop_sentinel_tx.send(());
 
-                let connection_manager =
-                    ClusterConnectionManager::new(self.cluster_actor_handler.clone());
+                let connection_manager = self.registry.cluster_connection_manager();
+
+                let peer_identifier = self
+                    .registry
+                    .cluster_communication_manager()
+                    .replication_info()
+                    .await?
+                    .master_bind_addr();
 
                 tokio::spawn({
                     connection_manager.discover_cluster(
                         self.config_manager.port,
-                        self.cluster_communication_manager
-                            .replication_info()
-                            .await?
-                            .master_bind_addr(),
+                        peer_identifier,
+                        self.snapshot_applier.clone(),
                     )
                 });
             }
@@ -156,34 +173,18 @@ impl StartUpFacade {
         *self.mode_change_watcher.borrow_and_update()
     }
 
-    async fn initialize_with_dump(
-        registry: ActorRegistry,
-        startup_notifier: impl TNotifyStartUp,
-    ) -> Result<()> {
-        if let Some(filepath) = registry.config_manager.try_filepath().await? {
-            let dump = DumpLoader::load(filepath).await?;
-            if let Some((repl_id, offset)) = dump.extract_replication_info() {
-                //  TODO reconnect! - echo
-                registry
+    async fn initialize_with_snapshot(&self) -> Result<()> {
+        if let Some(filepath) = self.registry.config_manager.try_filepath().await? {
+            let snapshot = SnapshotLoader::load_from_filepath(filepath).await?;
+            if let Some((repl_id, offset)) = snapshot.extract_replication_info() {
+                // Reconnection case - set the replication info
+                self.registry
                     .cluster_actor_handler
                     .send(ClusterCommand::SetReplicationInfo { master_repl_id: repl_id, offset })
                     .await?;
             };
-            registry
-                .cache_manager
-                .dump_cache(dump, registry.ttl_manager, registry.config_manager.startup_time)
-                .await?;
+            self.registry.snapshot_applier.apply_snapshot(snapshot).await?;
         }
-
-        startup_notifier.notify_startup();
         Ok(())
     }
-}
-
-pub trait TNotifyStartUp: Send + 'static {
-    fn notify_startup(&self);
-}
-
-impl TNotifyStartUp for () {
-    fn notify_startup(&self) {}
 }

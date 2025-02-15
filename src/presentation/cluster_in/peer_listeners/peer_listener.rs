@@ -11,6 +11,8 @@ use crate::services::cluster::peers::peer::ListeningActorKillTrigger;
 use crate::services::cluster::replications::replication::HeartBeatMessage;
 use crate::services::interface::TRead;
 use crate::services::query_io::QueryIO;
+use crate::services::statefuls::snapshot::snapshot_applier::SnapshotApplier;
+use crate::services::statefuls::snapshot::snapshot_loader::SnapshotLoader;
 use tokio::select;
 use tokio::sync::mpsc::Sender;
 
@@ -19,6 +21,7 @@ pub(crate) struct PeerListener {
     pub(crate) read_connected: ReadConnected,
     pub(crate) cluster_handler: Sender<ClusterCommand>,
     pub(crate) self_id: PeerIdentifier,
+    pub(crate) snapshot_applier: SnapshotApplier,
 }
 
 impl PeerListener {
@@ -26,9 +29,11 @@ impl PeerListener {
         read_connected: ReadConnected,
         cluster_handler: Sender<ClusterCommand>,
         self_id: PeerIdentifier,
+        snapshot_applier: SnapshotApplier,
     ) -> ListeningActorKillTrigger {
         let (kill_trigger, kill_switch) = tokio::sync::oneshot::channel();
-        let listening_actor = PeerListener { read_connected, cluster_handler, self_id };
+        let listening_actor =
+            PeerListener { read_connected, cluster_handler, self_id, snapshot_applier };
 
         ListeningActorKillTrigger::new(
             kill_trigger,
@@ -89,8 +94,15 @@ impl PeerListener {
                         self.log_entries(&mut state);
                         self.receive_heartbeat(state).await;
                     }
-                    RequestFromMaster::Sync(v) => {
-                        println!("[INFO] Received sync from master {:?}", v);
+                    RequestFromMaster::FullSync(data) => {
+                        let Ok(snapshot) = SnapshotLoader::load_from_bytes(&data) else {
+                            println!("[ERROR] Failed to load snapshot from master");
+                            continue;
+                        };
+                        let Ok(_) = self.snapshot_applier.apply_snapshot(snapshot).await else {
+                            println!("[ERROR] Failed to apply snapshot from master");
+                            continue;
+                        };
                     }
                 }
             }

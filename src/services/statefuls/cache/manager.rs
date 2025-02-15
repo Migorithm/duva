@@ -5,11 +5,9 @@ use super::CacheEntry;
 use crate::services::cluster::replications::replication::ReplicationInfo;
 use crate::services::query_io::QueryIO;
 use crate::services::statefuls::cache::ttl::manager::TtlSchedulerManager;
-use crate::services::statefuls::snapshot::dump_file::DumpFile;
 use crate::services::statefuls::snapshot::save::actor::SaveActor;
 use crate::services::statefuls::snapshot::save::actor::SaveTarget;
 use anyhow::Result;
-use std::time::SystemTime;
 use std::{hash::Hasher, iter::Zip};
 use tokio::sync::oneshot::Sender;
 use tokio::task::JoinHandle;
@@ -24,20 +22,6 @@ pub struct CacheManager {
 }
 
 impl CacheManager {
-    pub(crate) async fn dump_cache(
-        &self,
-        dump: DumpFile,
-        ttl_inbox: TtlSchedulerManager,
-        startup_time: SystemTime,
-    ) -> Result<()> {
-        let startup_time = &startup_time;
-        for kvs in dump.key_values().into_iter().filter(|kvs| kvs.is_valid(startup_time)) {
-            self.route_set(kvs, ttl_inbox.clone()).await?;
-        }
-
-        Ok(())
-    }
-
     pub(crate) async fn route_get(&self, key: String) -> Result<QueryIO> {
         let (tx, rx) = tokio::sync::oneshot::channel();
         self.select_shard(&key).send(CacheCommand::Get { key, sender: tx }).await?;

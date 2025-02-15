@@ -1,11 +1,11 @@
 use super::states::{DecoderInit, HeaderReady, MetadataReady};
 use crate::services::statefuls::cache::CacheEntry;
-use crate::services::statefuls::snapshot::dump_file::{DecodedDatabase, DecodedMetadata, DumpFile};
 use crate::services::statefuls::snapshot::endec::{
     extract_range, StoredDuration, DATABASE_SECTION_INDICATOR, DATABASE_TABLE_SIZE_INDICATOR,
     EXPIRY_TIME_IN_MILLISECONDS_INDICATOR, EXPIRY_TIME_IN_SECONDS_INDICATOR, HEADER_MAGIC_STRING,
     METADATA_SECTION_INDICATOR, STRING_VALUE_TYPE_INDICATOR,
 };
+use crate::services::statefuls::snapshot::snapshot::{DecodedDatabase, DecodedMetadata, Snapshot};
 use anyhow::{Context, Result};
 use std::{
     ops::{Deref, DerefMut},
@@ -171,10 +171,8 @@ impl<'a> BytesDecoder<'a, HeaderReady> {
                 "repl-offset" => {
                     metadata.repl_offset = Some(value.parse().context("repl-offset parse fail")?)
                 }
-
                 var => {
                     println!("Unknown metadata key: {}", var);
-                    panic!()
                 }
             }
         }
@@ -192,7 +190,7 @@ impl<'a> BytesDecoder<'a, HeaderReady> {
     }
 }
 impl BytesDecoder<'_, MetadataReady> {
-    pub fn load_database(mut self) -> Result<DumpFile> {
+    pub fn load_database(mut self) -> Result<Snapshot> {
         let mut database = Vec::new();
         while self.check_indicator(DATABASE_SECTION_INDICATOR) {
             let section =
@@ -202,7 +200,7 @@ impl BytesDecoder<'_, MetadataReady> {
         }
 
         let checksum = self.try_get_checksum()?;
-        Ok(DumpFile {
+        Ok(Snapshot {
             header: self.state.header,
             metadata: self.state.metadata,
             database,

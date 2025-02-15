@@ -141,9 +141,7 @@ impl ClusterActor {
         let to_be_removed = self
             .members
             .iter()
-            .filter(|&(_, peer)| {
-                (now.duration_since(peer.last_seen).as_millis() > self.node_timeout)
-            })
+            .filter(|&(_, peer)| now.duration_since(peer.last_seen).as_millis() > self.node_timeout)
             .map(|(id, _)| id.clone())
             .collect::<Vec<_>>();
 
@@ -254,6 +252,8 @@ fn test_hop_count_when_two() {
 fn test_hop_count_when_three() {
     // GIVEN
     let fanout = 2;
+    let replication = ReplicationInfo::new(None, "localhost", 8080);
+    let cluster_actor = ClusterActor::new(100, replication);
     let replication = ReplicationInfo::new(None, "localhost", 8080);
     let cluster_actor = ClusterActor::new(100, replication);
 

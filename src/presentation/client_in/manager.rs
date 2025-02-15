@@ -1,12 +1,15 @@
 use super::request::ClientRequest;
 use super::stream::ClientStream;
 use crate::actor_registry::ActorRegistry;
-use crate::make_smart_pointer;
+
 use crate::presentation::cluster_in::communication_manager::ClusterCommunicationManager;
 use crate::services::cluster::actors::commands::ClusterCommand;
+use crate::services::config::manager::ConfigManager;
 use crate::services::config::ConfigResponse;
 use crate::services::interface::TWrite;
 use crate::services::query_io::QueryIO;
+use crate::services::statefuls::cache::manager::CacheManager;
+use crate::services::statefuls::cache::ttl::manager::TtlSchedulerManager;
 use crate::services::statefuls::cache::CacheEntry;
 use crate::services::statefuls::snapshot::save::actor::SaveTarget;
 use tokio::net::{TcpListener, TcpStream};
@@ -14,14 +17,20 @@ use tokio::select;
 
 #[derive(Clone)]
 pub(crate) struct ClientManager {
-    actor_registry: ActorRegistry,
+    pub(crate) ttl_manager: TtlSchedulerManager,
+    pub(crate) cache_manager: CacheManager,
+    pub(crate) config_manager: ConfigManager,
+    pub(crate) cluster_communication_manager: ClusterCommunicationManager,
 }
-
-make_smart_pointer!(ClientManager,ActorRegistry=>actor_registry);
 
 impl ClientManager {
     pub(crate) fn new(actor_registry: ActorRegistry) -> Self {
-        ClientManager { actor_registry }
+        ClientManager {
+            cluster_communication_manager: actor_registry.cluster_communication_manager(),
+            ttl_manager: actor_registry.ttl_manager,
+            cache_manager: actor_registry.cache_manager,
+            config_manager: actor_registry.config_manager,
+        }
     }
 
     pub(crate) async fn handle(&self, cmd: ClientRequest) -> anyhow::Result<QueryIO> {
@@ -167,7 +176,9 @@ impl ClientManager {
             return Ok(None);
         };
         let (tx, rx) = tokio::sync::oneshot::channel();
-        self.cluster_actor_handler.send(ClusterCommand::Consensus { log, sender: tx }).await?;
+        self.cluster_communication_manager
+            .send(ClusterCommand::Consensus { log, sender: tx })
+            .await?;
         Ok(Some(rx.await?))
     }
 

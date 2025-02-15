@@ -16,7 +16,7 @@ pub fn spawn_server_process() -> TestProcessChild {
     let port: u16 = get_available_port();
     println!("Starting server on port {}", port);
     let mut process = run_server_process(port, None);
-    sleep(Duration::from_millis(500));
+
     wait_for_message(
         process.process.stdout.as_mut().unwrap(),
         format!("listening peer connection on 127.0.0.1:{}...", port + 10000).as_str(),

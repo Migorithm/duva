@@ -74,7 +74,7 @@ impl SaveActor {
     }
 
     pub async fn encode_meta(&mut self) -> Result<()> {
-        let mut metadata = vec![("redis-ver", "6.0.16")];
+        let mut metadata: Vec<(&str, &str)> = vec![];
         if &self.meta.repl_id != "?" {
             metadata.push(("repl-id", &self.meta.repl_id));
             metadata.push(("repl-offset", &self.meta.offset));

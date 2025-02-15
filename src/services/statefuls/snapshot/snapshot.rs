@@ -1,14 +1,14 @@
 use crate::services::statefuls::cache::CacheEntry;
 
 #[derive(Debug)]
-pub struct DumpFile {
+pub struct Snapshot {
     pub(crate) header: String,
     pub(crate) metadata: DecodedMetadata,
     pub(crate) database: Vec<DecodedDatabase>,
     pub(crate) checksum: Vec<u8>,
 }
 
-impl DumpFile {
+impl Snapshot {
     pub fn new(
         header: String,
         metadata: DecodedMetadata,

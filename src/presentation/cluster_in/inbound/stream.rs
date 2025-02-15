@@ -1,3 +1,4 @@
+use super::request::{HandShakeRequest, HandShakeRequestEnum};
 use crate::make_smart_pointer;
 use crate::presentation::cluster_in::create_peer;
 use crate::services::cluster::actors::commands::{AddPeer, ClusterCommand};
@@ -11,12 +12,11 @@ use crate::services::interface::TWrite;
 use crate::services::query_io::QueryIO;
 use crate::services::statefuls::cache::manager::CacheManager;
 use crate::services::statefuls::snapshot::save::actor::SaveTarget;
+use crate::services::statefuls::snapshot::snapshot_applier::SnapshotApplier;
 use anyhow::Context;
 use bytes::Bytes;
 use tokio::net::TcpStream;
 use tokio::sync::mpsc::Sender;
-
-use super::request::{HandShakeRequest, HandShakeRequestEnum};
 
 // The following is used only when the node is in master mode
 pub(crate) struct InboundStream {
@@ -109,10 +109,17 @@ impl InboundStream {
     pub(crate) fn to_add_peer(
         self,
         cluster_actor_handler: Sender<ClusterCommand>,
+        snapshot_applier: SnapshotApplier,
     ) -> anyhow::Result<ClusterCommand> {
         let kind = self.peer_kind()?;
         let peer_id = self.inbound_peer_addr.context("No peer addr")?;
-        let peer = create_peer(self.stream, kind.clone(), peer_id.clone(), cluster_actor_handler);
+        let peer = create_peer(
+            self.stream,
+            kind.clone(),
+            peer_id.clone(),
+            cluster_actor_handler,
+            snapshot_applier,
+        );
         Ok(ClusterCommand::AddPeer(AddPeer { peer_id, peer }))
     }
 
@@ -126,11 +133,11 @@ impl InboundStream {
             .await?
             .await??;
 
-        let dump = QueryIO::File(task.into_inner().into());
-        println!("[INFO] Sent sync to slave {:?}", dump);
-        self.write(dump).await?;
+        let snapshot = QueryIO::File(task.into_inner().into());
+        println!("[INFO] Sent sync to slave {:?}", snapshot);
+        self.write(snapshot).await?;
 
-        // collect dump data from processor
+        // collect snapshot data from processor
 
         Ok(self)
     }
