@@ -1,12 +1,9 @@
-use crate::get_env;
-
 use super::actor::ConfigActor;
 use super::command::ConfigCommand;
 use super::command::ConfigMessage;
 use super::command::ConfigQuery;
 use super::ConfigResource;
 use super::ConfigResponse;
-
 use std::time::SystemTime;
 use tokio::fs::try_exists;
 use tokio::sync::mpsc::Sender;
@@ -17,7 +14,7 @@ pub struct ConfigManager {
     config: Sender<ConfigMessage>,
     pub(crate) startup_time: SystemTime,
     pub port: u16,
-    pub(crate) host: &'static str,
+    pub(crate) host: String,
 }
 
 impl std::ops::Deref for ConfigManager {
@@ -29,18 +26,12 @@ impl std::ops::Deref for ConfigManager {
 }
 
 impl ConfigManager {
-    pub fn new(config: ConfigActor) -> Self {
+    pub fn new(config: ConfigActor, host: String, port: u16) -> Self {
         let (tx, inbox) = tokio::sync::mpsc::channel(20);
 
         config.handle(inbox);
 
-        let env = get_env();
-        Self {
-            config: tx,
-            startup_time: SystemTime::now(),
-            port: env.port,
-            host: Box::leak(env.host.clone().into_boxed_str()),
-        }
+        Self { config: tx, startup_time: SystemTime::now(), port, host }
     }
 
     // The following is used on startup and check if the file exists

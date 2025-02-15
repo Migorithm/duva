@@ -1,16 +1,14 @@
-use std::sync::OnceLock;
-
 use crate::env_var;
-use crate::services::cluster::replications::replication::IS_MASTER_MODE;
+use crate::services::cluster::replications::replication::{ReplicationInfo, IS_MASTER_MODE};
 
-pub(crate) struct Environment {
-    pub(crate) replicaof: Option<(String, String)>,
-    pub(crate) dir: String,
-    pub(crate) dbfilename: String,
-    pub(crate) port: u16,
-    pub(crate) host: String,
-    pub(crate) hf_mills: u64,
-    pub(crate) ttl_mills: u128,
+pub struct Environment {
+    pub replicaof: Option<(String, String)>,
+    pub dir: String,
+    pub dbfilename: String,
+    pub port: u16,
+    pub host: String,
+    pub hf_mills: u64,
+    pub ttl_mills: u128,
 }
 
 impl Environment {
@@ -39,10 +37,8 @@ impl Environment {
 
         Self { replicaof, dir, dbfilename, port, host, hf_mills: hf, ttl_mills: ttl }
     }
-}
 
-static E: OnceLock<Environment> = OnceLock::new();
-
-pub(crate) fn get_env() -> &'static Environment {
-    E.get_or_init(Environment::new)
+    pub(crate) fn init_replication_info(&self) -> ReplicationInfo {
+        ReplicationInfo::new(self.replicaof.clone(), &self.host, self.port)
+    }
 }

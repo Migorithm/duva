@@ -21,12 +21,12 @@ const FANOUT: usize = 2;
 pub struct ClusterActor {
     members: BTreeMap<PeerIdentifier, Peer>,
     replication: ReplicationInfo,
-    ttl_mills: u128,
+    node_timeout: u128,
 }
 
 impl ClusterActor {
-    pub fn new(ttl_mills: u128) -> Self {
-        Self { members: BTreeMap::new(), replication: ReplicationInfo::default(), ttl_mills }
+    pub fn new(node_timeout: u128, init_repl_info: ReplicationInfo) -> Self {
+        Self { members: BTreeMap::new(), replication: init_repl_info, node_timeout }
     }
     pub async fn handle(
         mut self,
@@ -141,7 +141,9 @@ impl ClusterActor {
         let to_be_removed = self
             .members
             .iter()
-            .filter(|&(_, peer)| (now.duration_since(peer.last_seen).as_millis() > self.ttl_mills))
+            .filter(|&(_, peer)| {
+                (now.duration_since(peer.last_seen).as_millis() > self.node_timeout)
+            })
             .map(|(id, _)| id.clone())
             .collect::<Vec<_>>();
 
@@ -226,7 +228,8 @@ impl ClusterActor {
 fn test_hop_count_when_one() {
     // GIVEN
     let fanout = 2;
-    let cluster_actor = ClusterActor::new(100);
+    let replication = ReplicationInfo::new(None, "localhost", 8080);
+    let cluster_actor = ClusterActor::new(100, replication);
 
     // WHEN
     let hop_count = cluster_actor.hop_count(fanout, 1);
@@ -238,7 +241,8 @@ fn test_hop_count_when_one() {
 fn test_hop_count_when_two() {
     // GIVEN
     let fanout = 2;
-    let cluster_actor = ClusterActor::new(100);
+    let replication = ReplicationInfo::new(None, "localhost", 8080);
+    let cluster_actor = ClusterActor::new(100, replication);
 
     // WHEN
     let hop_count = cluster_actor.hop_count(fanout, 2);
@@ -250,7 +254,8 @@ fn test_hop_count_when_two() {
 fn test_hop_count_when_three() {
     // GIVEN
     let fanout = 2;
-    let cluster_actor = ClusterActor::new(100);
+    let replication = ReplicationInfo::new(None, "localhost", 8080);
+    let cluster_actor = ClusterActor::new(100, replication);
 
     // WHEN
     let hop_count = cluster_actor.hop_count(fanout, 3);
@@ -262,7 +267,8 @@ fn test_hop_count_when_three() {
 fn test_hop_count_when_thirty() {
     // GIVEN
     let fanout = 2;
-    let cluster_actor = ClusterActor::new(100);
+    let replication = ReplicationInfo::new(None, "localhost", 8080);
+    let cluster_actor = ClusterActor::new(100, replication);
 
     // WHEN
     let hop_count = cluster_actor.hop_count(fanout, 30);

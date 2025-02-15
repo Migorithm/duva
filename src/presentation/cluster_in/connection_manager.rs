@@ -63,19 +63,27 @@ impl ClusterConnectionManager {
         // TODO Require investigation. Why does 'list_peer_binding_addrs' have to be called at here?
         for peer in connected_node_info.list_peer_binding_addrs() {
             println!("Discovering peer: {}", peer);
-            Box::pin(ClusterConnectionManager(self.0.clone()).discover_cluster(self_port, peer, snapshot_applier.clone()))
-                .await?;
+            Box::pin(ClusterConnectionManager(self.0.clone()).discover_cluster(
+                self_port,
+                peer,
+                snapshot_applier.clone(),
+            ))
+            .await?;
         }
 
         Ok(())
     }
 
     pub fn clone(&self) -> Sender<ClusterCommand> {
-        self.0.0.clone()
+        self.0 .0.clone()
     }
 
     pub async fn send(&self, cmd: ClusterCommand) -> anyhow::Result<()> {
         Ok(self.0.send(cmd).await?)
+    }
+
+    pub fn to_communication_manager(self) -> ClusterCommunicationManager {
+        self.0
     }
 }
 

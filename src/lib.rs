@@ -6,14 +6,13 @@ pub mod presentation;
 pub mod services;
 use actor_registry::ActorRegistry;
 use anyhow::Result;
-use init::get_env;
+pub use init::Environment;
 use presentation::client_in::manager::ClientManager;
 use presentation::cluster_in::communication_manager::ClusterCommunicationManager;
-use presentation::cluster_in::connection_manager::ClusterConnectionManager;
+
 use presentation::cluster_in::inbound::stream::InboundStream;
 use services::cluster::actors::commands::ClusterCommand;
 use services::cluster::replications::replication::IS_MASTER_MODE;
-
 use services::config::manager::ConfigManager;
 use services::error::IoError;
 use services::statefuls::cache::manager::CacheManager;
@@ -34,14 +33,17 @@ pub struct StartUpFacade {
 make_smart_pointer!(StartUpFacade, ActorRegistry => registry);
 
 impl StartUpFacade {
-    pub fn new(config_manager: ConfigManager) -> Self {
-        let _ = get_env();
-
+    pub fn new(config_manager: ConfigManager, env: Environment) -> Self {
         let (notifier, mode_change_watcher) =
             tokio::sync::watch::channel(IS_MASTER_MODE.load(Ordering::Acquire));
 
-        let registry =
-            ActorRegistry::new(config_manager, notifier);
+        let cluster_actor_handler = ClusterCommunicationManager::run(
+            notifier,
+            env.ttl_mills,
+            env.hf_mills,
+            env.init_replication_info(),
+        );
+        let registry = ActorRegistry::new(config_manager, cluster_actor_handler);
         let client_manager = ClientManager::new(registry.clone());
         StartUpFacade { client_manager, registry, mode_change_watcher }
     }
@@ -73,18 +75,17 @@ impl StartUpFacade {
                 // ? how do we know if incoming connection is from a peer or replica?
                 Ok((peer_stream, _socket_addr)) => {
                     tokio::spawn({
-                        let cluster_m = registry.cluster_actor_handler.clone();
                         let cache_m = registry.cache_manager.clone();
                         let snapshot_applier = registry.snapshot_applier.clone();
                         let inbound_stream = InboundStream::new(
                             peer_stream,
-                            ClusterCommunicationManager(registry.cluster_actor_handler.clone())
-                                .replication_info()
-                                .await?,
+                            registry.cluster_communication_manager().replication_info().await?,
                         );
 
+                        let connection_manager = registry.cluster_connection_manager();
+
                         async move {
-                            if let Err(err) = ClusterConnectionManager::new(cluster_m)
+                            if let Err(err) = connection_manager
                                 .accept_inbound_stream(inbound_stream, cache_m, snapshot_applier)
                                 .await
                             {
@@ -124,10 +125,11 @@ impl StartUpFacade {
                 // Cancel all client connections only IF the cluster mode has changes to slave
                 let _ = stop_sentinel_tx.send(());
 
-                let connection_manager =
-                    ClusterConnectionManager::new(self.cluster_actor_handler.clone());
+                let connection_manager = self.registry.cluster_connection_manager();
 
-                let peer_identifier = self.cluster_communication_manager
+                let peer_identifier = self
+                    .registry
+                    .cluster_communication_manager()
                     .replication_info()
                     .await?
                     .master_bind_addr();
@@ -171,7 +173,11 @@ impl StartUpFacade {
             };
             registry
                 .cache_manager
-                .apply_snapshot(snapshot, registry.ttl_manager, registry.config_manager.startup_time)
+                .apply_snapshot(
+                    snapshot,
+                    registry.ttl_manager,
+                    registry.config_manager.startup_time,
+                )
                 .await?;
         }
 

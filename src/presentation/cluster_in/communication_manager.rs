@@ -1,9 +1,5 @@
-use std::time::Duration;
-
-use tokio::{sync::mpsc::Sender, time::interval};
-
 use crate::{
-    get_env, make_smart_pointer,
+    make_smart_pointer,
     services::cluster::{
         actors::actor::ClusterActor,
         actors::commands::ClusterCommand,
@@ -11,6 +7,10 @@ use crate::{
         replications::replication::ReplicationInfo,
     },
 };
+use std::time::Duration;
+use tokio::{sync::mpsc::Sender, time::interval};
+
+use super::connection_manager::ClusterConnectionManager;
 
 #[derive(Clone)]
 pub struct ClusterCommunicationManager(pub(crate) Sender<ClusterCommand>);
@@ -18,15 +18,22 @@ pub struct ClusterCommunicationManager(pub(crate) Sender<ClusterCommand>);
 make_smart_pointer!(ClusterCommunicationManager, Sender<ClusterCommand>);
 
 impl ClusterCommunicationManager {
-    pub fn run(notifier: tokio::sync::watch::Sender<bool>) -> Sender<ClusterCommand> {
+    pub fn run(
+        notifier: tokio::sync::watch::Sender<bool>,
+        node_timeout: u128,
+        heartbeat_fq_mills: u64,
+        init_repl_info: ReplicationInfo,
+    ) -> Sender<ClusterCommand> {
         let (actor_handler, cluster_message_listener) = tokio::sync::mpsc::channel(100);
+
         tokio::spawn(
-            ClusterActor::new(get_env().ttl_mills).handle(cluster_message_listener, notifier),
+            ClusterActor::new(node_timeout, init_repl_info)
+                .handle(cluster_message_listener, notifier),
         );
 
         tokio::spawn({
             let heartbeat_sender = actor_handler.clone();
-            let mut heartbeat_interval = interval(Duration::from_millis(get_env().hf_mills));
+            let mut heartbeat_interval = interval(Duration::from_millis(heartbeat_fq_mills));
             async move {
                 loop {
                     heartbeat_interval.tick().await;
@@ -77,5 +84,9 @@ impl ClusterCommunicationManager {
         self.send(ClusterCommand::ForgetPeer(peer_identifier, tx)).await?;
         let Some(_) = rx.await? else { return Ok(false) };
         Ok(true)
+    }
+
+    pub(crate) fn to_connection_manager(self) -> ClusterConnectionManager {
+        ClusterConnectionManager(self.clone())
     }
 }
