@@ -141,9 +141,7 @@ impl ClusterActor {
         let to_be_removed = self
             .members
             .iter()
-            .filter(|&(_, peer)| {
-                (now.duration_since(peer.last_seen).as_millis() > self.node_timeout)
-            })
+            .filter(|&(_, peer)| now.duration_since(peer.last_seen).as_millis() > self.node_timeout)
             .map(|(id, _)| id.clone())
             .collect::<Vec<_>>();
 

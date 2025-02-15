@@ -7,10 +7,7 @@ use crate::services::query_io::QueryIO;
 use crate::services::statefuls::cache::ttl::manager::TtlSchedulerManager;
 use crate::services::statefuls::snapshot::save::actor::SaveActor;
 use crate::services::statefuls::snapshot::save::actor::SaveTarget;
-use crate::services::statefuls::snapshot::snapshot::Snapshot;
 use anyhow::Result;
-use futures::future::join_all;
-use std::time::SystemTime;
 use std::{hash::Hasher, iter::Zip};
 use tokio::sync::oneshot::Sender;
 use tokio::task::JoinHandle;
@@ -25,23 +22,6 @@ pub struct CacheManager {
 }
 
 impl CacheManager {
-    pub(crate) async fn apply_snapshot(
-        &self,
-        snapshot: Snapshot,
-        ttl_inbox: TtlSchedulerManager,
-        startup_time: SystemTime,
-    ) -> Result<()> {
-        join_all(
-            snapshot
-                .key_values()
-                .into_iter()
-                .filter(|kvc| kvc.is_valid(&startup_time))
-                .map(|kvs| self.route_set(kvs, ttl_inbox.clone())),
-        )
-        .await;
-        Ok(())
-    }
-
     pub(crate) async fn route_get(&self, key: String) -> Result<QueryIO> {
         let (tx, rx) = tokio::sync::oneshot::channel();
         self.select_shard(&key).send(CacheCommand::Get { key, sender: tx }).await?;

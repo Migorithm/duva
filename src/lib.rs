@@ -9,7 +9,6 @@ use anyhow::Result;
 pub use init::Environment;
 use presentation::client_in::manager::ClientManager;
 use presentation::cluster_in::communication_manager::ClusterCommunicationManager;
-
 use presentation::cluster_in::inbound::stream::InboundStream;
 use services::cluster::actors::commands::ClusterCommand;
 use services::cluster::replications::replication::IS_MASTER_MODE;
@@ -188,14 +187,7 @@ impl StartUpFacade {
                     .send(ClusterCommand::SetReplicationInfo { master_repl_id: repl_id, offset })
                     .await?;
             };
-            registry
-                .cache_manager
-                .apply_snapshot(
-                    snapshot,
-                    registry.ttl_manager,
-                    registry.config_manager.startup_time,
-                )
-                .await?;
+            registry.snapshot_applier.apply_snapshot(snapshot).await?;
         }
 
         startup_notifier.notify_startup();
