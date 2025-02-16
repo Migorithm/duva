@@ -94,7 +94,8 @@ impl PeerListener {
             for cmd in cmds {
                 match cmd {
                     RequestFromMaster::HeartBeat(mut state) => {
-                        self.log_entries(&mut state);
+                        self.log_entries(&mut state).await;
+
                         self.receive_heartbeat(state).await;
                     }
                     RequestFromMaster::FullSync(data) => {
@@ -127,9 +128,13 @@ impl PeerListener {
             .map_err(Into::into)
     }
 
-    fn log_entries(&self, state: &mut HeartBeatMessage) {
+    async fn log_entries(&self, state: &mut HeartBeatMessage) {
         let append_entries = state.append_entries.drain(..).collect::<Vec<_>>();
-        let _ = self.cluster_handler.send(ClusterCommand::ReceiveLogEntries(append_entries));
+        if append_entries.is_empty() {
+            return;
+        }
+
+        let _ = self.cluster_handler.send(ClusterCommand::ReceiveLogEntries(append_entries)).await;
     }
 }
 

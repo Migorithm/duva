@@ -88,8 +88,6 @@ impl ClusterActor {
                     }
                     self.req_consensus(log).await;
 
-                    // ! This means that we need an consensus collection to handle the response from the replicas
-                    // ! The actor will take (sender + log index) and
                     consensus_con.add(
                         self.replication.master_repl_offset,
                         sender,
@@ -99,6 +97,7 @@ impl ClusterActor {
                 ClusterCommand::ReceiveAcks(offsets) => {
                     offsets.into_iter().for_each(|offset| {
                         if let Some(mut consensus) = consensus_con.take(&offset) {
+                            println!("Received acks for offset: {}", offset);
                             consensus.apply_vote();
 
                             if let Some(consensus) = consensus.maybe_not_finished(offset) {
@@ -109,8 +108,9 @@ impl ClusterActor {
                 }
                 ClusterCommand::ReceiveLogEntries(write_operations) => {
                     // TODO handle the log entries
-
+                    println!("[INFO] Received log entries: {:?}", write_operations);
                     let offsets = write_operations.iter().map(|op| op.offset).collect::<Vec<_>>();
+
                     if let Some(master) = self.master_mut() {
                         let _ = master.write_io(QueryIO::Acks(offsets)).await;
                     }
