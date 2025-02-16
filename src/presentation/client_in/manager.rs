@@ -172,6 +172,6 @@ impl ClientManager {
         self.cluster_communication_manager
             .send(ClusterCommand::ReqConsensus { log, sender: tx })
             .await?;
-        Ok(Some(rx.await?))
+        Ok(rx.await?)
     }
 }

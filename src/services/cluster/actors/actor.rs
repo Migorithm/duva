@@ -81,6 +81,11 @@ impl ClusterActor {
                     }
                 }
                 ClusterCommand::ReqConsensus { log, sender } => {
+                    // ! If there are no replicas, don't send the request
+                    if self.replicas().count() == 0 {
+                        let _ = sender.send(None);
+                        continue;
+                    }
                     self.req_consensus(log).await;
 
                     // ! This means that we need an consensus collection to handle the response from the replicas
@@ -91,14 +96,16 @@ impl ClusterActor {
                         self.replicas().count(),
                     );
                 }
-                ClusterCommand::VoteConsensus { offset, is_successful } => {
-                    if let Some(mut consensus) = consensus_con.take(&offset) {
-                        consensus.apply_vote(is_successful);
+                ClusterCommand::ReceiveAcks(offsets) => {
+                    offsets.into_iter().for_each(|offset| {
+                        if let Some(mut consensus) = consensus_con.take(&offset) {
+                            consensus.apply_vote();
 
-                        if let Some(consensus) = consensus.maybe_not_finished(offset) {
-                            consensus_con.insert(offset, consensus);
+                            if let Some(consensus) = consensus.maybe_not_finished(offset) {
+                                consensus_con.insert(offset, consensus);
+                            }
                         }
-                    }
+                    });
                 }
                 ClusterCommand::ReceiveLogEntries(write_operations) => {
                     // TODO handle the log entries
@@ -221,9 +228,8 @@ impl ClusterActor {
 
     async fn req_consensus(&mut self, req: WriteRequest) {
         // TODO when are we going to increase offset?
-        let write_op = WriteOperation { op: req, offset: self.replication.master_repl_offset };
 
-        let heartbeat = self.replication.append_entry(0, write_op);
+        let heartbeat = self.replication.append_entry(0, req);
 
         let mut tasks = self
             .replicas_mut()

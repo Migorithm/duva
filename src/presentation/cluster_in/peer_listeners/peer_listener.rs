@@ -77,6 +77,9 @@ impl PeerListener {
                     RequestFromSlave::HeartBeat(state) => {
                         self.receive_heartbeat(state).await;
                     }
+                    RequestFromSlave::Acks(items) => {
+                        let _ = self.cluster_handler.send(ClusterCommand::ReceiveAcks(items)).await;
+                    }
                 }
             }
         }

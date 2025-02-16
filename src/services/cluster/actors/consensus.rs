@@ -5,20 +5,18 @@ use tokio::sync::oneshot::Sender;
 use crate::make_smart_pointer;
 
 pub struct ConsensusVoting {
-    sender: Sender<u64>,
+    sender: Sender<Option<u64>>,
     vote_count: u8,
     required_votes: u8,
 }
 impl ConsensusVoting {
-    pub fn apply_vote(&mut self, is_successful: bool) {
-        if is_successful {
-            self.vote_count += 1;
-        }
+    pub fn apply_vote(&mut self) {
+        self.vote_count += 1;
     }
 
     pub fn maybe_not_finished(self, offset: u64) -> Option<Self> {
         if self.vote_count >= self.required_votes {
-            let _ = self.sender.send(offset);
+            let _ = self.sender.send(Some(offset));
             None
         } else {
             Some(self)
@@ -29,7 +27,7 @@ impl ConsensusVoting {
 #[derive(Default)]
 pub struct ConsensusTracker(HashMap<u64, ConsensusVoting>);
 impl ConsensusTracker {
-    pub fn add(&mut self, key: u64, value: Sender<u64>, replica_count: usize) {
+    pub fn add(&mut self, key: u64, value: Sender<Option<u64>>, replica_count: usize) {
         self.0.insert(
             key,
             ConsensusVoting {
