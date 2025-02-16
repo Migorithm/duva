@@ -170,7 +170,7 @@ impl ClientManager {
         };
         let (tx, rx) = tokio::sync::oneshot::channel();
         self.cluster_communication_manager
-            .send(ClusterCommand::ReqConsensus { log, sender: tx })
+            .send(ClusterCommand::LeaderReqConsensus { log, sender: tx })
             .await?;
         Ok(rx.await?)
     }

@@ -13,12 +13,12 @@ pub enum ClusterCommand {
     SendHeartBeat,
 
     ForgetPeer(PeerIdentifier, tokio::sync::oneshot::Sender<Option<()>>),
-    ReqConsensus { log: WriteRequest, sender: tokio::sync::oneshot::Sender<Option<u64>> },
-    ReceiveAcks(Vec<u64>),
+    LeaderReqConsensus { log: WriteRequest, sender: tokio::sync::oneshot::Sender<Option<u64>> },
+    LeaderReceiveAcks(Vec<u64>),
 
     // peer listener commands
     ReceiveHeartBeat(HeartBeatMessage),
-    ReceiveLogEntries(Vec<WriteOperation>),
+    FollowerReceiveLogEntries(Vec<WriteOperation>),
 }
 
 pub struct AddPeer {
