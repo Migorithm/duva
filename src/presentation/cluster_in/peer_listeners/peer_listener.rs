@@ -126,9 +126,7 @@ impl PeerListener {
 
     fn log_entries(&self, state: &mut HeartBeatMessage) {
         let append_entries = state.append_entries.drain(..).collect::<Vec<_>>();
-        for entry in append_entries {
-            println!("[INFO] Append entry {:?}", entry);
-        }
+        let _ = self.cluster_handler.send(ClusterCommand::ReceiveLogEntries(append_entries));
     }
 }
 

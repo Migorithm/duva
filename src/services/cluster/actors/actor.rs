@@ -50,7 +50,6 @@ impl ClusterActor {
                     let _ = callback.send(self.members.keys().cloned().collect::<Vec<_>>().into());
                 }
 
-                ClusterCommand::Replicate { query: _ } => todo!(),
                 ClusterCommand::SendHeartBeat => {
                     let hop_count = self.hop_count(FANOUT, self.members.len());
                     self.send_liveness_heartbeat(hop_count).await;
@@ -99,6 +98,14 @@ impl ClusterActor {
                         if let Some(consensus) = consensus.maybe_not_finished(offset) {
                             consensus_con.insert(offset, consensus);
                         }
+                    }
+                }
+                ClusterCommand::ReceiveLogEntries(write_operations) => {
+                    // TODO handle the log entries
+
+                    let offsets = write_operations.iter().map(|op| op.offset).collect::<Vec<_>>();
+                    if let Some(master) = self.master_mut() {
+                        let _ = master.write_io(QueryIO::Acks(offsets)).await;
                     }
                 }
             }
@@ -228,12 +235,17 @@ impl ClusterActor {
         while let Some(_) = tasks.next().await {}
     }
 
+    fn master_mut(&mut self) -> Option<&mut Peer> {
+        self.members.values_mut().find(|peer| matches!(peer.w_conn.kind, PeerKind::Master))
+    }
+
     fn replicas(&self) -> impl Iterator<Item = &Peer> {
         self.members
             .values()
             .into_iter()
             .filter(|peer| matches!(peer.w_conn.kind, PeerKind::Replica))
     }
+
     fn replicas_mut(&mut self) -> Vec<&mut Peer> {
         self.members
             .values_mut()
