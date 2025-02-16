@@ -207,6 +207,7 @@ pub fn deserialize(buffer: BytesMut) -> Result<(QueryIO, usize)> {
         }
         PEERSTATE_PREFIX => parse_heartbeat(buffer),
         REPLICATE_PREFIX => parse_replicate(buffer),
+        ACKS_PREFIX => parse_acks(buffer),
 
         _ => Err(anyhow::anyhow!("Not a known value type {:?}", buffer)),
     }
@@ -298,6 +299,11 @@ fn parse_replicate(buffer: BytesMut) -> std::result::Result<(QueryIO, usize), an
         }),
         len + l1 + l2,
     ))
+}
+
+fn parse_acks(buffer: BytesMut) -> std::result::Result<(QueryIO, usize), anyhow::Error> {
+    let (acks, usize) = parse_array(buffer)?;
+    Ok((QueryIO::Acks(acks.unpack_array()?), usize))
 }
 
 fn parse_bulk_string(buffer: BytesMut) -> Result<(Bytes, usize)> {
