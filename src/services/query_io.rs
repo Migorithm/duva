@@ -13,6 +13,7 @@ const ARRAY_PREFIX: char = '*';
 const ERROR_PREFIX: char = '-';
 const PEERSTATE_PREFIX: char = '^';
 const REPLICATE_PREFIX: char = '#';
+const ACKS_PREFIX: char = '@';
 
 #[macro_export]
 macro_rules! write_array {
@@ -32,6 +33,7 @@ pub enum QueryIO {
     File(Bytes),
     HeartBeat(HeartBeatMessage),
     ReplicateLog(WriteOperation),
+    Acks(Vec<u64>),
 }
 
 impl QueryIO {
@@ -115,6 +117,15 @@ impl QueryIO {
                 .into();
                 [message, op.to_array().serialize()].concat().into()
             }
+            QueryIO::Acks(items) => [
+                format!("{}{}\r\n", ACKS_PREFIX, items.len()).into_bytes(),
+                items
+                    .into_iter()
+                    .flat_map(|item| QueryIO::BulkString(item.to_string().into()).serialize())
+                    .collect(),
+            ]
+            .concat()
+            .into(),
         }
     }
 
@@ -196,6 +207,7 @@ pub fn deserialize(buffer: BytesMut) -> Result<(QueryIO, usize)> {
         }
         PEERSTATE_PREFIX => parse_heartbeat(buffer),
         REPLICATE_PREFIX => parse_replicate(buffer),
+        ACKS_PREFIX => parse_acks(buffer),
 
         _ => Err(anyhow::anyhow!("Not a known value type {:?}", buffer)),
     }
@@ -287,6 +299,11 @@ fn parse_replicate(buffer: BytesMut) -> std::result::Result<(QueryIO, usize), an
         }),
         len + l1 + l2,
     ))
+}
+
+fn parse_acks(buffer: BytesMut) -> std::result::Result<(QueryIO, usize), anyhow::Error> {
+    let (acks, usize) = parse_array(buffer)?;
+    Ok((QueryIO::Acks(acks.unpack_array()?), usize))
 }
 
 fn parse_bulk_string(buffer: BytesMut) -> Result<(Bytes, usize)> {
@@ -641,4 +658,30 @@ fn test_from_binary_to_replicate_log() {
             offset: 1
         })
     );
+}
+
+#[test]
+fn test_from_binary_to_acks() {
+    // GIVEN
+    let data = "@2\r\n$1\r\n1\r\n$1\r\n2\r\n";
+    let buffer = BytesMut::from(data);
+
+    // WHEN
+    let (value, _) = deserialize(buffer).unwrap();
+
+    // THEN
+    assert_eq!(value, QueryIO::Acks(vec![1, 2]));
+}
+
+#[test]
+fn test_from_acks_to_binary() {
+    // GIVEN
+    let acks = vec![1, 2];
+    let replicate = QueryIO::Acks(acks);
+
+    // WHEN
+    let serialized = replicate.clone().serialize();
+
+    // THEN
+    assert_eq!("@2\r\n$1\r\n1\r\n$1\r\n2\r\n", serialized);
 }

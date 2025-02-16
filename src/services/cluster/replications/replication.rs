@@ -1,4 +1,4 @@
-use crate::services::aof::WriteOperation;
+use crate::services::aof::{WriteOperation, WriteRequest};
 use crate::services::cluster::peers::identifier::PeerIdentifier;
 use crate::services::cluster::replications::replid_generator::generate_replid;
 use bytes::Bytes;
@@ -80,12 +80,14 @@ impl ReplicationInfo {
         }
     }
 
-    pub fn append_entry(&mut self, hop_count: u8, entry: WriteOperation) -> HeartBeatMessage {
+    pub fn append_entry(&mut self, hop_count: u8, req: WriteRequest) -> HeartBeatMessage {
         self.master_repl_offset += 1;
+        let entry = WriteOperation { op: req, offset: self.master_repl_offset };
         let mut heartbeat = self.default_heartbeat(hop_count);
         heartbeat.append_entries.push(entry);
         heartbeat
     }
+
     pub fn default_heartbeat(&self, hop_count: u8) -> HeartBeatMessage {
         HeartBeatMessage {
             heartbeat_from: self.self_identifier.clone(),

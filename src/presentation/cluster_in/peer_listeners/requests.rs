@@ -10,6 +10,7 @@ pub enum RequestFromMaster {
 
 pub enum RequestFromSlave {
     HeartBeat(HeartBeatMessage),
+    Acks(Vec<u64>),
 }
 
 impl TryFrom<QueryIO> for RequestFromMaster {
@@ -29,6 +30,7 @@ impl TryFrom<QueryIO> for RequestFromSlave {
     fn try_from(query: QueryIO) -> anyhow::Result<Self> {
         match query {
             QueryIO::HeartBeat(peer_state) => Ok(RequestFromSlave::HeartBeat(peer_state)),
+            QueryIO::Acks(acks) => Ok(RequestFromSlave::Acks(acks)),
             _ => todo!(),
         }
     }

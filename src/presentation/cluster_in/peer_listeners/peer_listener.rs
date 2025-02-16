@@ -77,6 +77,9 @@ impl PeerListener {
                     RequestFromSlave::HeartBeat(state) => {
                         self.receive_heartbeat(state).await;
                     }
+                    RequestFromSlave::Acks(items) => {
+                        let _ = self.cluster_handler.send(ClusterCommand::ReceiveAcks(items)).await;
+                    }
                 }
             }
         }
@@ -91,7 +94,8 @@ impl PeerListener {
             for cmd in cmds {
                 match cmd {
                     RequestFromMaster::HeartBeat(mut state) => {
-                        self.log_entries(&mut state);
+                        self.log_entries(&mut state).await;
+
                         self.receive_heartbeat(state).await;
                     }
                     RequestFromMaster::FullSync(data) => {
@@ -109,6 +113,15 @@ impl PeerListener {
         }
     }
 
+    async fn log_entries(&self, state: &mut HeartBeatMessage) {
+        let append_entries = state.append_entries.drain(..).collect::<Vec<_>>();
+        if append_entries.is_empty() {
+            return;
+        }
+
+        let _ = self.cluster_handler.send(ClusterCommand::ReceiveLogEntries(append_entries)).await;
+    }
+
     async fn read_command<T>(&mut self) -> anyhow::Result<Vec<T>>
     where
         T: std::convert::TryFrom<QueryIO>,
@@ -122,13 +135,6 @@ impl PeerListener {
             .map(T::try_from)
             .collect::<Result<_, _>>()
             .map_err(Into::into)
-    }
-
-    fn log_entries(&self, state: &mut HeartBeatMessage) {
-        let append_entries = state.append_entries.drain(..).collect::<Vec<_>>();
-        for entry in append_entries {
-            println!("[INFO] Append entry {:?}", entry);
-        }
     }
 }
 

@@ -148,16 +148,9 @@ impl ClientManager {
                     continue;
                 };
 
+                // apply state change
                 let res = match self.handle(request).await {
-                    Ok(response) => {
-                        // ! SAFETY: at this point, majority votes was made already. as long as at least
-                        // ! one node has the commit log, it will be committed.
-                        tokio::spawn(Self::commit_log(
-                            optional_log_offset,
-                            self.cluster_communication_manager.clone(),
-                        ));
-                        response
-                    }
+                    Ok(response) => response,
                     Err(e) => QueryIO::Err(e.to_string().into()),
                 };
 
@@ -177,17 +170,8 @@ impl ClientManager {
         };
         let (tx, rx) = tokio::sync::oneshot::channel();
         self.cluster_communication_manager
-            .send(ClusterCommand::Consensus { log, sender: tx })
+            .send(ClusterCommand::ReqConsensus { log, sender: tx })
             .await?;
-        Ok(Some(rx.await?))
-    }
-
-    async fn commit_log(
-        optional_log_offset: Option<u64>,
-        cluster_manager: ClusterCommunicationManager,
-    ) {
-        if let Some(commit_log) = optional_log_offset {
-            let _ = cluster_manager.send(ClusterCommand::CommitLog(commit_log)).await;
-        }
+        Ok(rx.await?)
     }
 }
