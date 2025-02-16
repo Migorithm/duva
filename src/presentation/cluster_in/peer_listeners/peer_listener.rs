@@ -78,7 +78,10 @@ impl PeerListener {
                         self.receive_heartbeat(state).await;
                     }
                     RequestFromSlave::Acks(items) => {
-                        let _ = self.cluster_handler.send(ClusterCommand::ReceiveAcks(items)).await;
+                        let _ = self
+                            .cluster_handler
+                            .send(ClusterCommand::LeaderReceiveAcks(items))
+                            .await;
                     }
                 }
             }
@@ -119,7 +122,10 @@ impl PeerListener {
             return;
         }
 
-        let _ = self.cluster_handler.send(ClusterCommand::ReceiveLogEntries(append_entries)).await;
+        let _ = self
+            .cluster_handler
+            .send(ClusterCommand::FollowerReceiveLogEntries(append_entries))
+            .await;
     }
 
     async fn read_command<T>(&mut self) -> anyhow::Result<Vec<T>>

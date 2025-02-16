@@ -80,7 +80,7 @@ impl ClusterActor {
                         let _ = sender.send(None);
                     }
                 }
-                ClusterCommand::ReqConsensus { log, sender } => {
+                ClusterCommand::LeaderReqConsensus { log, sender } => {
                     // ! If there are no replicas, don't send the request
                     if self.replicas().count() == 0 {
                         let _ = sender.send(None);
@@ -94,10 +94,10 @@ impl ClusterActor {
                         self.replicas().count(),
                     );
                 }
-                ClusterCommand::ReceiveAcks(offsets) => {
+                ClusterCommand::LeaderReceiveAcks(offsets) => {
                     self.apply_acks(&mut consensus_con, offsets);
                 }
-                ClusterCommand::ReceiveLogEntries(write_operations) => {
+                ClusterCommand::FollowerReceiveLogEntries(write_operations) => {
                     // TODO handle the log entries
                     println!("[INFO] Received log entries: {:?}", write_operations);
                     self.receive_log_entries_from_master(write_operations).await;
@@ -298,8 +298,6 @@ fn test_hop_count_when_two() {
 fn test_hop_count_when_three() {
     // GIVEN
     let fanout = 2;
-    let replication = ReplicationInfo::new(None, "localhost", 8080);
-    let cluster_actor = ClusterActor::new(100, replication);
     let replication = ReplicationInfo::new(None, "localhost", 8080);
     let cluster_actor = ClusterActor::new(100, replication);
 
