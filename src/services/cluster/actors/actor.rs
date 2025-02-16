@@ -80,7 +80,18 @@ impl ClusterActor {
                 ClusterCommand::Consensus { log, sender } => {
                     self.consensus(log).await;
 
-                    // TODO if any operations failed, it's okay to drop sender
+                    // ! We won't wait for the result to come.
+                    // ! Replica will reject consensus if the log's index is higher than it's own watermark +1
+                    // ! and the leader will retry the consensus
+                    // ! This means that we need an consensus response actor to handle the response from the replicas
+                    // ! The actor will take (sender + log index) and
+
+                    // self.response_actor.send(ResponseActorCommand{
+                    //     log_index: log.index,
+                    //     // TODO if any operations failed, it's okay to drop sender
+                    //     sender
+                    // }).await;
+
                     let _ = sender.send(self.replication.master_repl_offset);
                 }
                 ClusterCommand::CommitLog(commit_log) => {

@@ -143,7 +143,7 @@ impl ClientManager {
 
             for request in requests.into_iter() {
                 // ! if request requires consensus, send it to cluster manager so tranasction inputs can be logged and consensus can be made
-                let Ok(optional_commit_log) = self.try_consensus(&request).await else {
+                let Ok(optional_log_offset) = self.try_consensus(&request).await else {
                     let _ = stream.write(QueryIO::Err("Consensus failed".into())).await;
                     continue;
                 };
@@ -153,7 +153,7 @@ impl ClientManager {
                         // ! SAFETY: at this point, majority votes was made already. as long as at least
                         // ! one node has the commit log, it will be committed.
                         tokio::spawn(Self::commit_log(
-                            optional_commit_log,
+                            optional_log_offset,
                             self.cluster_communication_manager.clone(),
                         ));
                         response
@@ -182,8 +182,11 @@ impl ClientManager {
         Ok(Some(rx.await?))
     }
 
-    async fn commit_log(optional_log: Option<u64>, cluster_manager: ClusterCommunicationManager) {
-        if let Some(commit_log) = optional_log {
+    async fn commit_log(
+        optional_log_offset: Option<u64>,
+        cluster_manager: ClusterCommunicationManager,
+    ) {
+        if let Some(commit_log) = optional_log_offset {
             let _ = cluster_manager.send(ClusterCommand::CommitLog(commit_log)).await;
         }
     }
