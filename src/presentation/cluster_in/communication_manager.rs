@@ -10,8 +10,6 @@ use crate::{
 use std::time::Duration;
 use tokio::{sync::mpsc::Sender, time::interval};
 
-use super::connection_manager::ClusterConnectionManager;
-
 #[derive(Clone)]
 pub struct ClusterCommunicationManager(pub(crate) Sender<ClusterCommand>);
 
@@ -84,9 +82,5 @@ impl ClusterCommunicationManager {
         self.send(ClusterCommand::ForgetPeer(peer_identifier, tx)).await?;
         let Some(_) = rx.await? else { return Ok(false) };
         Ok(true)
-    }
-
-    pub(crate) fn to_connection_manager(self) -> ClusterConnectionManager {
-        ClusterConnectionManager(self.clone())
     }
 }

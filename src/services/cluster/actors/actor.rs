@@ -11,9 +11,11 @@ use futures::stream::FuturesUnordered;
 use futures::StreamExt;
 use std::collections::BTreeMap;
 use tokio::sync::mpsc::Receiver;
+
 use tokio::time::Instant;
 
 use super::commands::{AddPeer, ClusterCommand};
+use super::consensus::ConsensusTracker;
 
 const FANOUT: usize = 2;
 
@@ -33,6 +35,8 @@ impl ClusterActor {
         mut cluster_message_listener: Receiver<ClusterCommand>,
         notifier: tokio::sync::watch::Sender<bool>,
     ) {
+        let mut consensus_con = ConsensusTracker::default();
+
         while let Some(command) = cluster_message_listener.recv().await {
             // TODO notifier will be used when election process is implemented
             let _ = notifier.clone();
@@ -77,25 +81,25 @@ impl ClusterActor {
                         let _ = sender.send(None);
                     }
                 }
-                ClusterCommand::Consensus { log, sender } => {
-                    self.consensus(log).await;
+                ClusterCommand::ReqConsensus { log, sender } => {
+                    self.req_consensus(log).await;
 
-                    // ! We won't wait for the result to come.
-                    // ! Replica will reject consensus if the log's index is higher than it's own watermark +1
-                    // ! and the leader will retry the consensus
-                    // ! This means that we need an consensus response actor to handle the response from the replicas
+                    // ! This means that we need an consensus collection to handle the response from the replicas
                     // ! The actor will take (sender + log index) and
-
-                    // self.response_actor.send(ResponseActorCommand{
-                    //     log_index: log.index,
-                    //     // TODO if any operations failed, it's okay to drop sender
-                    //     sender
-                    // }).await;
-
-                    let _ = sender.send(self.replication.master_repl_offset);
+                    consensus_con.add(
+                        self.replication.master_repl_offset,
+                        sender,
+                        self.replicas().count(),
+                    );
                 }
-                ClusterCommand::CommitLog(commit_log) => {
-                    // TODO send commit to all replicas
+                ClusterCommand::VoteConsensus { offset, is_successful } => {
+                    if let Some(mut consensus) = consensus_con.take(&offset) {
+                        consensus.apply_vote(is_successful);
+
+                        if let Some(consensus) = consensus.maybe_not_finished(offset) {
+                            consensus_con.insert(offset, consensus);
+                        }
+                    }
                 }
             }
         }
@@ -208,14 +212,14 @@ impl ClusterActor {
         }
     }
 
-    async fn consensus(&mut self, req: WriteRequest) {
+    async fn req_consensus(&mut self, req: WriteRequest) {
         // TODO when are we going to increase offset?
         let write_op = WriteOperation { op: req, offset: self.replication.master_repl_offset };
 
         let heartbeat = self.replication.append_entry(0, write_op);
 
         let mut tasks = self
-            .replicas()
+            .replicas_mut()
             .into_iter()
             .map(|peer| peer.write_io(heartbeat.clone()))
             .collect::<FuturesUnordered<_>>();
@@ -224,7 +228,13 @@ impl ClusterActor {
         while let Some(_) = tasks.next().await {}
     }
 
-    fn replicas(&mut self) -> Vec<&mut Peer> {
+    fn replicas(&self) -> impl Iterator<Item = &Peer> {
+        self.members
+            .values()
+            .into_iter()
+            .filter(|peer| matches!(peer.w_conn.kind, PeerKind::Replica))
+    }
+    fn replicas_mut(&mut self) -> Vec<&mut Peer> {
         self.members
             .values_mut()
             .into_iter()
