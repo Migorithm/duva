@@ -1,4 +1,4 @@
-use crate::services::aof::WriteRequest;
+use crate::services::aof::{WriteOperation, WriteRequest};
 use crate::services::cluster::peers::identifier::PeerIdentifier;
 use crate::services::cluster::peers::kind::PeerKind;
 use crate::services::cluster::peers::peer::Peer;
@@ -100,11 +100,7 @@ impl ClusterActor {
                 ClusterCommand::ReceiveLogEntries(write_operations) => {
                     // TODO handle the log entries
                     println!("[INFO] Received log entries: {:?}", write_operations);
-                    let offsets = write_operations.iter().map(|op| op.offset).collect::<Vec<_>>();
-
-                    if let Some(master) = self.master_mut() {
-                        let _ = master.write_io(QueryIO::Acks(offsets)).await;
-                    }
+                    self.receive_log_entries_from_master(write_operations).await;
                 }
             }
         }
@@ -262,6 +258,13 @@ impl ClusterActor {
                 }
             }
         });
+    }
+
+    async fn receive_log_entries_from_master(&mut self, write_operations: Vec<WriteOperation>) {
+        let offsets = write_operations.iter().map(|op| op.offset).collect::<Vec<_>>();
+        if let Some(master) = self.master_mut() {
+            let _ = master.write_io(QueryIO::Acks(offsets)).await;
+        }
     }
 }
 
