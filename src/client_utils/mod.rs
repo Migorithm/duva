@@ -28,6 +28,9 @@ impl ClientStreamHandler {
     /// # Panics
     /// Panics if the connection to `bind_addr` fails.
     pub async fn new(bind_addr: String) -> Self {
+        while tokio::net::TcpStream::connect(&bind_addr).await.is_err() {
+            tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+        }
         let stream = tokio::net::TcpStream::connect(bind_addr).await.unwrap();
 
         let (read_half, write_half) = stream.into_split();

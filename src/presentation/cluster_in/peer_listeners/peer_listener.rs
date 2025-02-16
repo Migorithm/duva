@@ -113,6 +113,15 @@ impl PeerListener {
         }
     }
 
+    async fn log_entries(&self, state: &mut HeartBeatMessage) {
+        let append_entries = state.append_entries.drain(..).collect::<Vec<_>>();
+        if append_entries.is_empty() {
+            return;
+        }
+
+        let _ = self.cluster_handler.send(ClusterCommand::ReceiveLogEntries(append_entries)).await;
+    }
+
     async fn read_command<T>(&mut self) -> anyhow::Result<Vec<T>>
     where
         T: std::convert::TryFrom<QueryIO>,
@@ -126,15 +135,6 @@ impl PeerListener {
             .map(T::try_from)
             .collect::<Result<_, _>>()
             .map_err(Into::into)
-    }
-
-    async fn log_entries(&self, state: &mut HeartBeatMessage) {
-        let append_entries = state.append_entries.drain(..).collect::<Vec<_>>();
-        if append_entries.is_empty() {
-            return;
-        }
-
-        let _ = self.cluster_handler.send(ClusterCommand::ReceiveLogEntries(append_entries)).await;
     }
 }
 
