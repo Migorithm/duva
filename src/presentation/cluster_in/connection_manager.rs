@@ -1,9 +1,9 @@
 use super::communication_manager::ClusterCommunicationManager;
 use super::outbound::stream::OutboundStream;
 use crate::services::cluster::actors::commands::ClusterCommand;
+use crate::services::cluster::actors::replication::IS_MASTER_MODE;
 use crate::services::cluster::peers::identifier::PeerIdentifier;
 use crate::services::cluster::peers::kind::PeerKind;
-use crate::services::cluster::replications::replication::IS_MASTER_MODE;
 use crate::services::statefuls::cache::manager::CacheManager;
 use crate::services::statefuls::snapshot::snapshot_applier::SnapshotApplier;
 use crate::{make_smart_pointer, InboundStream};
@@ -50,7 +50,7 @@ impl ClusterConnectionManager {
 
         // Recursive case
         let (add_peer_cmd, connected_node_info) =
-            OutboundStream::new(connect_to, self.replication_info().await?)
+            OutboundStream::new(connect_to, self.replication_info().await?.master_replid)
                 .await?
                 .establish_connection(self_port)
                 .await?

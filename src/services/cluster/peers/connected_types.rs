@@ -1,3 +1,5 @@
+use std::marker::PhantomData;
+
 use crate::services::cluster::peers::kind::PeerKind;
 use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
 
@@ -8,16 +10,20 @@ pub struct WriteConnected {
 }
 
 #[derive(Debug)]
-pub struct ReadConnected {
+pub struct ReadConnected<T> {
     pub stream: OwnedReadHalf,
-    pub kind: PeerKind,
+    pub kind: PhantomData<T>,
 }
 
-impl From<(OwnedReadHalf, PeerKind)> for ReadConnected {
-    fn from((r, peer_kind): (OwnedReadHalf, PeerKind)) -> ReadConnected {
-        ReadConnected { stream: r, kind: peer_kind }
+impl<T> ReadConnected<T> {
+    pub fn new(stream: OwnedReadHalf) -> Self {
+        Self { stream, kind: PhantomData }
     }
 }
+
+pub struct Leader;
+pub struct Follower;
+pub struct NonDataPeer;
 
 impl From<(OwnedWriteHalf, PeerKind)> for WriteConnected {
     fn from((w, peer_kind): (OwnedWriteHalf, PeerKind)) -> WriteConnected {

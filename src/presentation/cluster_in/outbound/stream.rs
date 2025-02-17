@@ -5,7 +5,6 @@ use crate::services::cluster::actors::commands::AddPeer;
 use crate::services::cluster::actors::commands::ClusterCommand;
 use crate::services::cluster::peers::identifier::PeerIdentifier;
 use crate::services::cluster::peers::kind::PeerKind;
-use crate::services::cluster::replications::replication::ReplicationInfo;
 use crate::services::interface::TRead;
 use crate::services::interface::TWrite;
 use crate::services::statefuls::snapshot::snapshot_applier::SnapshotApplier;
@@ -17,20 +16,20 @@ use tokio::sync::mpsc::Sender;
 // The following is used only when the node is in slave mode
 pub(crate) struct OutboundStream {
     pub(crate) stream: TcpStream,
-    pub(crate) repl_info: ReplicationInfo,
+
+    pub(crate) repl_id: String,
+
     connected_node_info: Option<ConnectedNodeInfo>,
     connect_to: PeerIdentifier,
 }
 make_smart_pointer!(OutboundStream, TcpStream => stream);
 
 impl OutboundStream {
-    pub(crate) async fn new(
-        connect_to: PeerIdentifier,
-        repl_info: ReplicationInfo,
-    ) -> anyhow::Result<Self> {
+    pub(crate) async fn new(connect_to: PeerIdentifier, repl_id: String) -> anyhow::Result<Self> {
         Ok(OutboundStream {
             stream: TcpStream::connect(&connect_to.cluster_bind_addr()).await?,
-            repl_info,
+            repl_id,
+
             connected_node_info: None,
             connect_to: connect_to.to_string().into(),
         })
@@ -81,7 +80,7 @@ impl OutboundStream {
         self,
         cluster_manager: &ClusterConnectionManager,
     ) -> anyhow::Result<Self> {
-        if self.repl_info.master_replid == "?" {
+        if self.repl_id == "?" {
             let connected_node_info = self
                 .connected_node_info
                 .as_ref()
@@ -104,7 +103,7 @@ impl OutboundStream {
     ) -> anyhow::Result<(ClusterCommand, ConnectedNodeInfo)> {
         let connection_info = self.connected_node_info.context("Connected node info not found")?;
 
-        let kind = PeerKind::connected_peer_kind(&self.repl_info, &connection_info.repl_id);
+        let kind = PeerKind::connected_peer_kind(&self.repl_id, &connection_info.repl_id);
 
         let peer = create_peer(
             self.stream,

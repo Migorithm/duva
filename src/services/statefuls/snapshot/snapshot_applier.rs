@@ -6,7 +6,7 @@ use crate::services::statefuls::cache::ttl::manager::TtlSchedulerManager;
 use crate::services::statefuls::snapshot::snapshot::Snapshot;
 use std::time::SystemTime;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct SnapshotApplier {
     cache_manager: CacheManager,
     ttl_scheduler_manager: TtlSchedulerManager,

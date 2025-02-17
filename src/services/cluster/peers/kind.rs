@@ -1,5 +1,3 @@
-use crate::services::cluster::replications::replication::ReplicationInfo;
-
 #[derive(Clone, Debug)]
 pub enum PeerKind {
     Peer,
@@ -15,10 +13,10 @@ impl PeerKind {
             _ => Self::Peer,
         }
     }
-    pub fn connected_peer_kind(self_repl_info: &ReplicationInfo, other_repl_id: &str) -> Self {
-        if self_repl_info.master_replid == "?" {
+    pub fn connected_peer_kind(self_repl_id: &str, other_repl_id: &str) -> Self {
+        if self_repl_id == "?" {
             Self::Master
-        } else if self_repl_info.master_replid == other_repl_id {
+        } else if self_repl_id == other_repl_id {
             Self::Replica
         } else {
             Self::Peer

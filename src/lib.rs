@@ -11,7 +11,7 @@ use presentation::client_in::manager::ClientManager;
 use presentation::cluster_in::communication_manager::ClusterCommunicationManager;
 use presentation::cluster_in::inbound::stream::InboundStream;
 use services::cluster::actors::commands::ClusterCommand;
-use services::cluster::replications::replication::IS_MASTER_MODE;
+use services::cluster::actors::replication::IS_MASTER_MODE;
 use services::config::manager::ConfigManager;
 use services::error::IoError;
 use services::statefuls::cache::manager::CacheManager;
@@ -38,18 +38,21 @@ impl StartUpFacade {
         let (notifier, mode_change_watcher) =
             tokio::sync::watch::channel(IS_MASTER_MODE.load(Ordering::Acquire));
 
-        let cluster_actor_handler = ClusterCommunicationManager::run(
-            notifier,
-            env.ttl_mills,
-            env.hf_mills,
-            env.init_replication_info(),
-        );
         let cache_manager = CacheManager::run_cache_actors();
         let ttl_manager = TtlActor(cache_manager.clone()).run();
         let snapshot_applier = SnapshotApplier::new(
             cache_manager.clone(),
             ttl_manager.clone(),
             config_manager.startup_time,
+        );
+
+        let cluster_actor_handler = ClusterCommunicationManager::run(
+            notifier,
+            env.ttl_mills,
+            env.hf_mills,
+            env.replicaof,
+            env.host.clone(),
+            env.port,
         );
 
         let registry = ActorRegistry {
@@ -92,9 +95,13 @@ impl StartUpFacade {
                     tokio::spawn({
                         let cache_m = registry.cache_manager.clone();
                         let snapshot_applier = registry.snapshot_applier.clone();
+                        let current_repo_info =
+                            registry.cluster_communication_manager().replication_info().await?;
+
                         let inbound_stream = InboundStream::new(
                             peer_stream,
-                            registry.cluster_communication_manager().replication_info().await?,
+                            current_repo_info.master_replid,
+                            current_repo_info.master_repl_offset,
                         );
 
                         let connection_manager = registry.cluster_connection_manager();

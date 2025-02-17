@@ -1,5 +1,5 @@
 use crate::env_var;
-use crate::services::cluster::replications::replication::{ReplicationInfo, IS_MASTER_MODE};
+use crate::services::cluster::actors::replication::IS_MASTER_MODE;
 
 pub struct Environment {
     pub replicaof: Option<(String, String)>,
@@ -36,9 +36,5 @@ impl Environment {
         IS_MASTER_MODE.store(replicaof.is_none(), std::sync::atomic::Ordering::Relaxed);
 
         Self { replicaof, dir, dbfilename, port, host, hf_mills: hf, ttl_mills: ttl }
-    }
-
-    pub(crate) fn init_replication_info(&self) -> ReplicationInfo {
-        ReplicationInfo::new(self.replicaof.clone(), &self.host, self.port)
     }
 }

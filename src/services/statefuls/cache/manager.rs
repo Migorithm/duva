@@ -2,7 +2,6 @@ use super::actor::CacheActor;
 use super::actor::CacheCommand;
 use super::actor::CacheCommandSender;
 use super::CacheEntry;
-use crate::services::cluster::replications::replication::ReplicationInfo;
 use crate::services::query_io::QueryIO;
 use crate::services::statefuls::cache::ttl::manager::TtlSchedulerManager;
 use crate::services::statefuls::snapshot::save::actor::SaveActor;
@@ -16,7 +15,7 @@ type OneShotSender<T> = tokio::sync::oneshot::Sender<T>;
 type OneShotReceiverJoinHandle<T> =
     tokio::task::JoinHandle<std::result::Result<T, tokio::sync::oneshot::error::RecvError>>;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct CacheManager {
     pub(crate) inboxes: Vec<CacheCommandSender>,
 }
@@ -43,10 +42,12 @@ impl CacheManager {
     pub(crate) async fn route_save(
         &self,
         save_target: SaveTarget,
-        repl_info: ReplicationInfo,
+        repl_id: String,
+        current_offset: u64,
     ) -> Result<JoinHandle<anyhow::Result<SaveActor>>> {
         let (outbox, inbox) = tokio::sync::mpsc::channel(100);
-        let save_actor = SaveActor::new(save_target, self.inboxes.len(), repl_info).await?;
+        let save_actor =
+            SaveActor::new(save_target, self.inboxes.len(), repl_id, current_offset).await?;
 
         // get all the handlers to cache actors
         for cache_handler in self.inboxes.iter().map(Clone::clone) {

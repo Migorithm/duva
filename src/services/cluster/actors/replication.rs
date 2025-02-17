@@ -1,9 +1,11 @@
 use crate::services::aof::{WriteOperation, WriteRequest};
 use crate::services::cluster::peers::identifier::PeerIdentifier;
-use crate::services::cluster::replications::replid_generator::generate_replid;
+
 use bytes::Bytes;
 use std::str::FromStr;
 use std::sync::atomic::AtomicBool;
+
+use super::replid_generator::generate_replid;
 
 pub static IS_MASTER_MODE: AtomicBool = AtomicBool::new(true);
 

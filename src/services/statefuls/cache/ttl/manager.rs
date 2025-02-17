@@ -2,7 +2,7 @@ use crate::make_smart_pointer;
 use crate::services::statefuls::cache::ttl::command::TtlCommand;
 use std::time::SystemTime;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct TtlSchedulerManager(pub(crate) tokio::sync::mpsc::Sender<TtlCommand>);
 
 impl TtlSchedulerManager {

@@ -129,7 +129,7 @@ impl CacheActor {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct CacheCommandSender(mpsc::Sender<CacheCommand>);
 
 make_smart_pointer!(CacheCommandSender, mpsc::Sender<CacheCommand>);
