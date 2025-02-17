@@ -3,6 +3,7 @@ use std::ops::DerefMut;
 
 use crate::services::cluster::peers::connected_types::WriteConnected;
 
+use tokio::net::tcp::OwnedReadHalf;
 use tokio::net::tcp::OwnedWriteHalf;
 
 use tokio::task::JoinHandle;
@@ -43,12 +44,12 @@ impl DerefMut for Peer {
 pub(super) type KillTrigger = tokio::sync::oneshot::Sender<()>;
 
 #[derive(Debug)]
-pub(crate) struct ListeningActorKillTrigger(KillTrigger, JoinHandle<ReadConnected>);
+pub(crate) struct ListeningActorKillTrigger(KillTrigger, JoinHandle<OwnedReadHalf>);
 impl ListeningActorKillTrigger {
-    pub(crate) fn new(kill_trigger: KillTrigger, listning_task: JoinHandle<ReadConnected>) -> Self {
+    pub(crate) fn new(kill_trigger: KillTrigger, listning_task: JoinHandle<OwnedReadHalf>) -> Self {
         Self(kill_trigger, listning_task)
     }
-    pub(crate) async fn kill(self) -> ReadConnected {
+    pub(crate) async fn kill(self) -> OwnedReadHalf {
         let _ = self.0.send(());
         self.1.await.unwrap()
     }
