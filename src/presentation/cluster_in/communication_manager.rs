@@ -1,10 +1,8 @@
 use crate::{
     make_smart_pointer,
     services::cluster::{
-        actors::actor::ClusterActor,
-        actors::commands::ClusterCommand,
-        peers::{address::PeerAddrs, identifier::PeerIdentifier},
-        replications::replication::ReplicationInfo,
+        actors::actor::ClusterActor, actors::commands::ClusterCommand,
+        peers::identifier::PeerIdentifier, replications::replication::ReplicationInfo,
     },
 };
 use std::time::Duration;
@@ -44,7 +42,7 @@ impl ClusterCommunicationManager {
         actor_handler
     }
 
-    pub(crate) async fn get_peers(&self) -> anyhow::Result<PeerAddrs> {
+    pub(crate) async fn get_peers(&self) -> anyhow::Result<Vec<PeerIdentifier>> {
         let (tx, rx) = tokio::sync::oneshot::channel();
         self.send(ClusterCommand::GetPeers(tx)).await?;
         let peers = rx.await?;

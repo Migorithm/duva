@@ -2,7 +2,7 @@ use super::request::{HandShakeRequest, HandShakeRequestEnum};
 use crate::make_smart_pointer;
 use crate::presentation::cluster_in::create_peer;
 use crate::services::cluster::actors::commands::{AddPeer, ClusterCommand};
-use crate::services::cluster::peers::address::PeerAddrs;
+
 use crate::services::cluster::peers::identifier::PeerIdentifier;
 use crate::services::cluster::peers::kind::PeerKind;
 use crate::services::cluster::replications::replication::ReplicationInfo;
@@ -94,8 +94,15 @@ impl InboundStream {
         HandShakeRequest::new(query_io.swap_remove(0))
     }
 
-    pub(crate) async fn disseminate_peers(&mut self, peers: PeerAddrs) -> anyhow::Result<()> {
-        self.write(QueryIO::SimpleString(format!("PEERS {}", peers.stringify()).into())).await?;
+    pub(crate) async fn disseminate_peers(
+        &mut self,
+        peers: Vec<PeerIdentifier>,
+    ) -> anyhow::Result<()> {
+        self.write(QueryIO::SimpleString(
+            format!("PEERS {}", peers.into_iter().map(|x| x.0).collect::<Vec<String>>().join(" "))
+                .into(),
+        ))
+        .await?;
         Ok(())
     }
 

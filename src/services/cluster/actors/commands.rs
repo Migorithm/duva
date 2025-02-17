@@ -1,5 +1,5 @@
 use crate::services::aof::{WriteOperation, WriteRequest};
-use crate::services::cluster::peers::address::PeerAddrs;
+
 use crate::services::cluster::peers::identifier::PeerIdentifier;
 
 use crate::services::cluster::peers::peer::Peer;
@@ -7,7 +7,7 @@ use crate::services::cluster::replications::replication::{HeartBeatMessage, Repl
 
 pub enum ClusterCommand {
     AddPeer(AddPeer),
-    GetPeers(tokio::sync::oneshot::Sender<PeerAddrs>),
+    GetPeers(tokio::sync::oneshot::Sender<Vec<PeerIdentifier>>),
     ReplicationInfo(tokio::sync::oneshot::Sender<ReplicationInfo>),
     SetReplicationInfo { master_repl_id: String, offset: u64 },
     SendHeartBeat,

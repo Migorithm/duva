@@ -1,6 +1,5 @@
-use crate::services::cluster::peers::connected_types::FromPeer;
-
 use super::*;
+use crate::services::cluster::peers::connected_types::FromPeer;
 
 impl TListen for PeerListener<FromPeer> {
     async fn listen(mut self, rx: ReactorKillSwitch) -> OwnedReadHalf {

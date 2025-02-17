@@ -1,7 +1,6 @@
-use crate::{
-    presentation::cluster_in::peer_listeners::requests::RequestFromMaster,
-    services::cluster::peers::connected_types::FromMaster, SnapshotLoader,
-};
+use bytes::Bytes;
+
+use crate::{services::cluster::peers::connected_types::FromMaster, SnapshotLoader};
 
 use super::*;
 
@@ -38,6 +37,24 @@ impl PeerListener<FromMaster> {
                     }
                 }
             }
+        }
+    }
+}
+
+#[derive(Debug)]
+pub enum RequestFromMaster {
+    HeartBeat(HeartBeatMessage),
+    FullSync(Bytes),
+}
+
+impl TryFrom<QueryIO> for RequestFromMaster {
+    type Error = anyhow::Error;
+    fn try_from(query: QueryIO) -> anyhow::Result<Self> {
+        match query {
+            QueryIO::File(data) => Ok(Self::FullSync(data)),
+            QueryIO::HeartBeat(peer_state) => Ok(Self::HeartBeat(peer_state)),
+            // TODO term info should be included?
+            _ => todo!(),
         }
     }
 }

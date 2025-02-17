@@ -1,7 +1,4 @@
-use crate::{
-    presentation::cluster_in::peer_listeners::requests::RequestFromSlave,
-    services::cluster::peers::connected_types::FromSlave,
-};
+use crate::services::cluster::peers::connected_types::FromSlave;
 
 use super::*;
 
@@ -31,6 +28,21 @@ impl PeerListener<FromSlave> {
                     }
                 }
             }
+        }
+    }
+}
+
+pub enum RequestFromSlave {
+    HeartBeat(HeartBeatMessage),
+    Acks(Vec<u64>),
+}
+impl TryFrom<QueryIO> for RequestFromSlave {
+    type Error = anyhow::Error;
+    fn try_from(query: QueryIO) -> anyhow::Result<Self> {
+        match query {
+            QueryIO::HeartBeat(peer_state) => Ok(RequestFromSlave::HeartBeat(peer_state)),
+            QueryIO::Acks(acks) => Ok(RequestFromSlave::Acks(acks)),
+            _ => todo!(),
         }
     }
 }

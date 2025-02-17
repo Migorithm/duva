@@ -3,8 +3,6 @@ pub mod connection_manager;
 pub mod inbound;
 pub mod outbound;
 
-pub mod peer_listeners;
-
 use tokio::{net::TcpStream, sync::mpsc::Sender};
 
 use crate::services::cluster::{

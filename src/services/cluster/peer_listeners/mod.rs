@@ -11,9 +11,9 @@ use super::{
 };
 use tokio::select;
 
-pub mod follower_listener;
-pub mod leader_listener;
-pub mod peer_listener;
+pub mod follower;
+pub mod leader;
+pub mod peer;
 
 pub trait TListen {
     fn listen(
