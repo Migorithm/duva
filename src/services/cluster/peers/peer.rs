@@ -1,8 +1,12 @@
 use std::ops::Deref;
 use std::ops::DerefMut;
 
+use super::connected_types::Follower;
+use super::connected_types::Leader;
+use super::connected_types::NonDataPeer;
 use super::connected_types::ReadConnected;
 use super::identifier::PeerIdentifier;
+use super::kind::PeerKind;
 
 use crate::services::cluster::actors::commands::ClusterCommand;
 use crate::services::cluster::listeners::ClusterListener;
@@ -11,6 +15,7 @@ use crate::services::cluster::peers::connected_types::WriteConnected;
 use crate::services::statefuls::snapshot::snapshot_applier::SnapshotApplier;
 use tokio::net::tcp::OwnedReadHalf;
 use tokio::net::tcp::OwnedWriteHalf;
+use tokio::net::TcpStream;
 use tokio::sync::mpsc::Sender;
 use tokio::task::JoinHandle;
 use tokio::time::Instant;
@@ -23,7 +28,7 @@ pub(crate) struct Peer {
 }
 
 impl Peer {
-    pub fn new<T>(
+    fn new<T>(
         write_connected: WriteConnected,
         read_connected: OwnedReadHalf,
         cluster_handler: Sender<ClusterCommand>,
@@ -41,6 +46,27 @@ impl Peer {
             tokio::spawn(listening_actor.listen(kill_switch)),
         );
         Self { w_conn: write_connected, listener_kill_trigger, last_seen: Instant::now() }
+    }
+
+    pub(crate) fn create(
+        stream: TcpStream,
+        kind: PeerKind,
+        addr: PeerIdentifier,
+        cluster_handler: Sender<ClusterCommand>,
+        snapshot_applier: SnapshotApplier,
+    ) -> Peer {
+        let (r, w) = stream.into_split();
+        let wc = WriteConnected::new(w, kind.clone());
+
+        match kind {
+            PeerKind::Peer => {
+                Peer::new::<NonDataPeer>(wc, r, cluster_handler, addr, snapshot_applier)
+            }
+            PeerKind::Replica => {
+                Peer::new::<Follower>(wc, r, cluster_handler, addr, snapshot_applier)
+            }
+            PeerKind::Master => Peer::new::<Leader>(wc, r, cluster_handler, addr, snapshot_applier),
+        }
     }
 }
 

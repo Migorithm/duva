@@ -1,10 +1,12 @@
 use super::response::ConnectionResponse;
 use crate::presentation::cluster_in::connection_manager::ClusterConnectionManager;
-use crate::presentation::cluster_in::create_peer;
+
 use crate::services::cluster::actors::commands::AddPeer;
 use crate::services::cluster::actors::commands::ClusterCommand;
 use crate::services::cluster::peers::identifier::PeerIdentifier;
 use crate::services::cluster::peers::kind::PeerKind;
+
+use crate::services::cluster::peers::peer::Peer;
 use crate::services::interface::TRead;
 use crate::services::interface::TWrite;
 use crate::services::statefuls::snapshot::snapshot_applier::SnapshotApplier;
@@ -105,7 +107,7 @@ impl OutboundStream {
 
         let kind = PeerKind::connected_peer_kind(&self.repl_id, &connection_info.repl_id);
 
-        let peer = create_peer(
+        let peer = Peer::create(
             self.stream,
             kind.clone(),
             self.connect_to.clone(),
