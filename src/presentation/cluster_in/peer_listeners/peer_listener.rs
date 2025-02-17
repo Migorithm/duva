@@ -17,6 +17,7 @@ use tokio::select;
 use tokio::sync::mpsc::Sender;
 
 // Listner requires cluster handler to send messages to the cluster actor and cluster actor instead needs kill trigger to stop the listener
+#[derive(Debug)]
 pub(crate) struct PeerListener {
     pub(crate) read_connected: ReadConnected,
     pub(crate) cluster_handler: Sender<ClusterCommand>,
@@ -49,7 +50,7 @@ impl PeerListener {
 
     /// Run until the kill switch is triggered
     /// returns the connected stream when the kill switch is triggered
-    pub(crate) async fn listen(mut self, rx: ReactorKillSwitch) -> ReadConnected {
+    pub(crate) async fn listen(mut self, rx: ReactorKillSwitch) -> PeerListener {
         let connected = select! {
             _ = async{
                     match self.read_connected.kind {
@@ -63,9 +64,9 @@ impl PeerListener {
                             self.listen_master_stream().await
                         },
                     };
-                } => self.read_connected,
+                } => self,
             // If the kill switch is triggered, return the connected stream so the caller can decide what to do with it
-            _ = rx => self.read_connected
+            _ = rx => self
         };
         connected
     }

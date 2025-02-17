@@ -16,7 +16,7 @@ type OneShotSender<T> = tokio::sync::oneshot::Sender<T>;
 type OneShotReceiverJoinHandle<T> =
     tokio::task::JoinHandle<std::result::Result<T, tokio::sync::oneshot::error::RecvError>>;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct CacheManager {
     pub(crate) inboxes: Vec<CacheCommandSender>,
 }

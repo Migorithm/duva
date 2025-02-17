@@ -1,6 +1,7 @@
 use std::ops::Deref;
 use std::ops::DerefMut;
 
+use crate::presentation::cluster_in::peer_listeners::peer_listener::PeerListener;
 use crate::services::cluster::peers::connected_types::WriteConnected;
 
 use tokio::net::tcp::OwnedWriteHalf;
@@ -43,12 +44,12 @@ impl DerefMut for Peer {
 pub(super) type KillTrigger = tokio::sync::oneshot::Sender<()>;
 
 #[derive(Debug)]
-pub(crate) struct ListeningActorKillTrigger(KillTrigger, JoinHandle<ReadConnected>);
+pub(crate) struct ListeningActorKillTrigger(KillTrigger, JoinHandle<PeerListener>);
 impl ListeningActorKillTrigger {
-    pub(crate) fn new(kill_trigger: KillTrigger, listning_task: JoinHandle<ReadConnected>) -> Self {
+    pub(crate) fn new(kill_trigger: KillTrigger, listning_task: JoinHandle<PeerListener>) -> Self {
         Self(kill_trigger, listning_task)
     }
-    pub(crate) async fn kill(self) -> ReadConnected {
+    pub(crate) async fn kill(self) -> PeerListener {
         let _ = self.0.send(());
         self.1.await.unwrap()
     }
