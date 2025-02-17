@@ -26,19 +26,12 @@ pub(crate) struct PeerListener {
 }
 
 impl PeerListener {
-    pub fn new(
-        read_connected: ReadConnected,
-        cluster_handler: Sender<ClusterCommand>,
-        self_id: PeerIdentifier,
-        snapshot_applier: SnapshotApplier,
-    ) -> ListeningActorKillTrigger {
+    pub fn new(peer_listener: PeerListener) -> ListeningActorKillTrigger {
         let (kill_trigger, kill_switch) = tokio::sync::oneshot::channel();
-        let listening_actor =
-            PeerListener { read_connected, cluster_handler, self_id, snapshot_applier };
 
         ListeningActorKillTrigger::new(
             kill_trigger,
-            tokio::spawn(listening_actor.listen(kill_switch)),
+            tokio::spawn(peer_listener.listen(kill_switch)),
         )
     }
 

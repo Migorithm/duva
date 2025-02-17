@@ -28,8 +28,14 @@ fn create_peer(
     let (r, w) = stream.into_split();
 
     let read_connected = ReadConnected { stream: r, kind: kind.clone() };
-    let listener_kill_trigger =
-        PeerListener::new(read_connected, cluster_actor_handler, addr, snapshot_applier);
+
+    let listening_actor = PeerListener {
+        read_connected,
+        cluster_handler: cluster_actor_handler,
+        self_id: addr,
+        snapshot_applier,
+    };
+    let listener_kill_trigger = PeerListener::new(listening_actor);
 
     let peer = Peer::new(WriteConnected { stream: w, kind }, listener_kill_trigger);
     peer
