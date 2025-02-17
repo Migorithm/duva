@@ -50,7 +50,7 @@ impl ClusterConnectionManager {
 
         // Recursive case
         let (add_peer_cmd, connected_node_info) =
-            OutboundStream::new(connect_to, self.replication_info().await?)
+            OutboundStream::new(connect_to, self.replication_info().await?.master_replid)
                 .await?
                 .establish_connection(self_port)
                 .await?
