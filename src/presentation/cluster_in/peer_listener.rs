@@ -26,33 +26,23 @@ pub(crate) struct PeerListener {
 }
 
 impl PeerListener {
-    // Update peer state on cluster manager
-    async fn receive_heartbeat(&mut self, state: HeartBeatMessage) {
-        println!("[INFO] from {}, hc:{}", state.heartbeat_from, state.hop_count);
-        let _ = self.cluster_handler.send(ClusterCommand::ReceiveHeartBeat(state)).await;
-    }
-
     /// Run until the kill switch is triggered
     /// returns the connected stream when the kill switch is triggered
     pub(crate) async fn listen(mut self, rx: ReactorKillSwitch) -> ReadConnected {
         let connected = select! {
-            _ = async{
-                    match self.read_connected.kind {
-                        PeerKind::Peer => {
-                            self.listen_peer_stream().await
-                        },
-                        PeerKind::Replica => {
-                            self.listen_replica_stream().await
-                        },
-                        PeerKind::Master => {
-                            self.listen_master_stream().await
-                        },
-                    };
-                } => self.read_connected,
+            _ = self.listen_based_on_kind() => self.read_connected,
             // If the kill switch is triggered, return the connected stream so the caller can decide what to do with it
             _ = rx => self.read_connected
         };
         connected
+    }
+
+    async fn listen_based_on_kind(&mut self) {
+        match self.read_connected.kind {
+            PeerKind::Peer => self.listen_peer_stream().await,
+            PeerKind::Replica => self.listen_replica_stream().await,
+            PeerKind::Master => self.listen_master_stream().await,
+        }
     }
 
     async fn listen_replica_stream(&mut self) {
@@ -101,6 +91,11 @@ impl PeerListener {
         }
     }
 
+    // Update peer state on cluster manager
+    async fn receive_heartbeat(&mut self, state: HeartBeatMessage) {
+        println!("[INFO] from {}, hc:{}", state.heartbeat_from, state.hop_count);
+        let _ = self.cluster_handler.send(ClusterCommand::ReceiveHeartBeat(state)).await;
+    }
     async fn log_entries(&self, state: &mut HeartBeatMessage) {
         let append_entries = state.append_entries.drain(..).collect::<Vec<_>>();
         if append_entries.is_empty() {
