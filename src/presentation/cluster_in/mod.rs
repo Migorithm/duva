@@ -8,7 +8,7 @@ use tokio::{net::TcpStream, sync::mpsc::Sender};
 use crate::services::cluster::{
     actors::commands::ClusterCommand,
     peers::{
-        connected_types::{FromMaster, FromPeer, FromSlave, WriteConnected},
+        connected_types::{Follower, Leader, NonDataPeer, WriteConnected},
         identifier::PeerIdentifier,
         kind::PeerKind,
         peer::Peer,
@@ -26,21 +26,21 @@ fn create_peer(
     let (r, w) = stream.into_split();
 
     match kind {
-        PeerKind::Peer => Peer::new::<FromPeer>(
+        PeerKind::Peer => Peer::new::<NonDataPeer>(
             WriteConnected { stream: w, kind },
             r,
             cluster_handler,
             addr,
             snapshot_applier,
         ),
-        PeerKind::Replica => Peer::new::<FromSlave>(
+        PeerKind::Replica => Peer::new::<Follower>(
             WriteConnected { stream: w, kind },
             r,
             cluster_handler,
             addr,
             snapshot_applier,
         ),
-        PeerKind::Master => Peer::new::<FromMaster>(
+        PeerKind::Master => Peer::new::<Leader>(
             WriteConnected { stream: w, kind },
             r,
             cluster_handler,

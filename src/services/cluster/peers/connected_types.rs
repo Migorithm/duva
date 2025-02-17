@@ -21,9 +21,9 @@ impl<T> ReadConnected<T> {
     }
 }
 
-pub struct FromMaster;
-pub struct FromSlave;
-pub struct FromPeer;
+pub struct Leader;
+pub struct Follower;
+pub struct NonDataPeer;
 
 impl From<(OwnedWriteHalf, PeerKind)> for WriteConnected {
     fn from((w, peer_kind): (OwnedWriteHalf, PeerKind)) -> WriteConnected {

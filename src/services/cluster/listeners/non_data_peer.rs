@@ -1,7 +1,8 @@
-use super::*;
-use crate::services::cluster::peers::connected_types::FromPeer;
+use crate::services::cluster::peers::connected_types::NonDataPeer;
 
-impl TListen for PeerListener<FromPeer> {
+use super::*;
+
+impl TListen for ClusterListener<NonDataPeer> {
     async fn listen(mut self, rx: ReactorKillSwitch) -> OwnedReadHalf {
         let connected = select! {
             _ = self.listen_peer_stream() => self.read_connected.stream,
@@ -12,7 +13,7 @@ impl TListen for PeerListener<FromPeer> {
     }
 }
 
-impl PeerListener<FromPeer> {
+impl ClusterListener<NonDataPeer> {
     async fn listen_peer_stream(&mut self) {
         while let Ok(values) = self.read_connected.stream.read_values().await {
             let _ = values;
