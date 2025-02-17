@@ -2,9 +2,10 @@ pub mod communication_manager;
 pub mod connection_manager;
 pub mod inbound;
 pub mod outbound;
+pub mod peer_listener;
 pub mod peer_listeners;
 
-use peer_listeners::peer_listener::PeerListener;
+use peer_listener::PeerListener;
 use tokio::{net::TcpStream, sync::mpsc::Sender};
 
 use crate::services::cluster::{
@@ -13,7 +14,7 @@ use crate::services::cluster::{
         connected_types::{ReadConnected, WriteConnected},
         identifier::PeerIdentifier,
         kind::PeerKind,
-        peer::Peer,
+        peer::{ListeningActorKillTrigger, Peer},
     },
 };
 use crate::services::statefuls::snapshot::snapshot_applier::SnapshotApplier;
@@ -29,14 +30,19 @@ fn create_peer(
 
     let read_connected = ReadConnected { stream: r, kind: kind.clone() };
 
+    let (kill_trigger, kill_switch) = tokio::sync::oneshot::channel();
+
     let listening_actor = PeerListener {
         read_connected,
         cluster_handler: cluster_actor_handler,
         self_id: addr,
         snapshot_applier,
     };
-    let listener_kill_trigger = PeerListener::new(listening_actor);
 
+    let listener_kill_trigger = ListeningActorKillTrigger::new(
+        kill_trigger,
+        tokio::spawn(listening_actor.listen(kill_switch)),
+    );
     let peer = Peer::new(WriteConnected { stream: w, kind }, listener_kill_trigger);
     peer
 }

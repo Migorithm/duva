@@ -2,12 +2,10 @@
 /// Message from a peer is one of events that can trigger a change in the cluster state.
 /// As it has to keep listening to incoming messages, it is implemented as an actor, run in the background.
 /// To take a control of the actor, PeerListenerHandler is used, which can kill the listening process and return the connected stream.
-use super::requests::{RequestFromMaster, RequestFromSlave};
 use crate::services::cluster::actors::commands::ClusterCommand;
 use crate::services::cluster::peers::connected_types::ReadConnected;
 use crate::services::cluster::peers::identifier::PeerIdentifier;
 use crate::services::cluster::peers::kind::PeerKind;
-use crate::services::cluster::peers::peer::ListeningActorKillTrigger;
 use crate::services::cluster::replications::replication::HeartBeatMessage;
 use crate::services::interface::TRead;
 use crate::services::query_io::QueryIO;
@@ -15,6 +13,8 @@ use crate::services::statefuls::snapshot::snapshot_applier::SnapshotApplier;
 use crate::services::statefuls::snapshot::snapshot_loader::SnapshotLoader;
 use tokio::select;
 use tokio::sync::mpsc::Sender;
+
+use super::peer_listeners::requests::{RequestFromMaster, RequestFromSlave};
 
 // Listner requires cluster handler to send messages to the cluster actor and cluster actor instead needs kill trigger to stop the listener
 #[derive(Debug)]
@@ -26,15 +26,6 @@ pub(crate) struct PeerListener {
 }
 
 impl PeerListener {
-    pub fn new(peer_listener: PeerListener) -> ListeningActorKillTrigger {
-        let (kill_trigger, kill_switch) = tokio::sync::oneshot::channel();
-
-        ListeningActorKillTrigger::new(
-            kill_trigger,
-            tokio::spawn(peer_listener.listen(kill_switch)),
-        )
-    }
-
     // Update peer state on cluster manager
     async fn receive_heartbeat(&mut self, state: HeartBeatMessage) {
         println!("[INFO] from {}, hc:{}", state.heartbeat_from, state.hop_count);
@@ -43,7 +34,7 @@ impl PeerListener {
 
     /// Run until the kill switch is triggered
     /// returns the connected stream when the kill switch is triggered
-    pub(crate) async fn listen(mut self, rx: ReactorKillSwitch) -> PeerListener {
+    pub(crate) async fn listen(mut self, rx: ReactorKillSwitch) -> ReadConnected {
         let connected = select! {
             _ = async{
                     match self.read_connected.kind {
@@ -57,9 +48,9 @@ impl PeerListener {
                             self.listen_master_stream().await
                         },
                     };
-                } => self,
+                } => self.read_connected,
             // If the kill switch is triggered, return the connected stream so the caller can decide what to do with it
-            _ = rx => self
+            _ = rx => self.read_connected
         };
         connected
     }
