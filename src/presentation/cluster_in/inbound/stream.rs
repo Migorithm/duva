@@ -1,9 +1,10 @@
 use super::request::{HandShakeRequest, HandShakeRequestEnum};
 use crate::make_smart_pointer;
-use crate::presentation::cluster_in::create_peer;
 use crate::services::cluster::actors::commands::{AddPeer, ClusterCommand};
 use crate::services::cluster::peers::identifier::PeerIdentifier;
 use crate::services::cluster::peers::kind::PeerKind;
+
+use crate::services::cluster::peers::peer::Peer;
 use crate::services::interface::TGetPeerIp;
 use crate::services::interface::TRead;
 use crate::services::interface::TWrite;
@@ -125,7 +126,7 @@ impl InboundStream {
     ) -> anyhow::Result<ClusterCommand> {
         let kind = self.peer_kind()?;
         let peer_id = self.inbound_peer_addr.context("No peer addr")?;
-        let peer = create_peer(
+        let peer = Peer::create(
             self.stream,
             kind.clone(),
             peer_id.clone(),

@@ -8,6 +8,11 @@ pub struct WriteConnected {
     pub stream: OwnedWriteHalf,
     pub kind: PeerKind,
 }
+impl WriteConnected {
+    pub fn new(stream: OwnedWriteHalf, kind: PeerKind) -> Self {
+        Self { stream, kind }
+    }
+}
 
 #[derive(Debug)]
 pub struct ReadConnected<T> {
