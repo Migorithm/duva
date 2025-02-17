@@ -2,7 +2,7 @@ use super::actor::CacheActor;
 use super::actor::CacheCommand;
 use super::actor::CacheCommandSender;
 use super::CacheEntry;
-use crate::services::cluster::replications::replication::ReplicationInfo;
+use crate::services::cluster::actors::replication::ReplicationInfo;
 use crate::services::query_io::QueryIO;
 use crate::services::statefuls::cache::ttl::manager::TtlSchedulerManager;
 use crate::services::statefuls::snapshot::save::actor::SaveActor;

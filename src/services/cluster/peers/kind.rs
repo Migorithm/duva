@@ -1,4 +1,4 @@
-use crate::services::cluster::replications::replication::ReplicationInfo;
+use crate::services::cluster::actors::replication::ReplicationInfo;
 
 #[derive(Clone, Debug)]
 pub enum PeerKind {

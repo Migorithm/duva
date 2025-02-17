@@ -5,9 +5,8 @@ use crate::services::{
 };
 
 use super::{
-    actors::commands::ClusterCommand,
+    actors::{commands::ClusterCommand, replication::HeartBeatMessage},
     peers::{connected_types::ReadConnected, identifier::PeerIdentifier},
-    replications::replication::HeartBeatMessage,
 };
 use tokio::select;
 

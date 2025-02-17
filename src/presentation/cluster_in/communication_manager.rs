@@ -2,7 +2,7 @@ use crate::{
     make_smart_pointer,
     services::cluster::{
         actors::actor::ClusterActor, actors::commands::ClusterCommand,
-        peers::identifier::PeerIdentifier, replications::replication::ReplicationInfo,
+        actors::replication::ReplicationInfo, peers::identifier::PeerIdentifier,
     },
 };
 use std::time::Duration;

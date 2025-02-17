@@ -3,9 +3,9 @@ use crate::make_smart_pointer;
 use crate::presentation::cluster_in::create_peer;
 use crate::services::cluster::actors::commands::{AddPeer, ClusterCommand};
 
+use crate::services::cluster::actors::replication::ReplicationInfo;
 use crate::services::cluster::peers::identifier::PeerIdentifier;
 use crate::services::cluster::peers::kind::PeerKind;
-use crate::services::cluster::replications::replication::ReplicationInfo;
 use crate::services::interface::TGetPeerIp;
 use crate::services::interface::TRead;
 use crate::services::interface::TWrite;

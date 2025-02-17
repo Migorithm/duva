@@ -1,10 +1,10 @@
 use crate::services::aof::{WriteOperation, WriteRequest};
+use crate::services::cluster::actors::replication::{
+    time_in_secs, BannedPeer, HeartBeatMessage, ReplicationInfo,
+};
 use crate::services::cluster::peers::identifier::PeerIdentifier;
 use crate::services::cluster::peers::kind::PeerKind;
 use crate::services::cluster::peers::peer::Peer;
-use crate::services::cluster::replications::replication::{
-    time_in_secs, BannedPeer, HeartBeatMessage, ReplicationInfo,
-};
 use crate::services::interface::TWrite;
 use crate::services::query_io::QueryIO;
 use futures::stream::FuturesUnordered;
