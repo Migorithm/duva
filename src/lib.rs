@@ -38,18 +38,21 @@ impl StartUpFacade {
         let (notifier, mode_change_watcher) =
             tokio::sync::watch::channel(IS_MASTER_MODE.load(Ordering::Acquire));
 
-        let cluster_actor_handler = ClusterCommunicationManager::run(
-            notifier,
-            env.ttl_mills,
-            env.hf_mills,
-            env.init_replication_info(),
-        );
         let cache_manager = CacheManager::run_cache_actors();
         let ttl_manager = TtlActor(cache_manager.clone()).run();
         let snapshot_applier = SnapshotApplier::new(
             cache_manager.clone(),
             ttl_manager.clone(),
             config_manager.startup_time,
+        );
+
+        let cluster_actor_handler = ClusterCommunicationManager::run(
+            notifier,
+            env.ttl_mills,
+            env.hf_mills,
+            env.replicaof,
+            env.host.clone(),
+            env.port,
         );
 
         let registry = ActorRegistry {

@@ -18,12 +18,14 @@ impl ClusterCommunicationManager {
         notifier: tokio::sync::watch::Sender<bool>,
         node_timeout: u128,
         heartbeat_fq_mills: u64,
-        init_repl_info: ReplicationInfo,
+        replicaof: Option<(String, String)>,
+        host: String,
+        port: u16,
     ) -> Sender<ClusterCommand> {
         let (actor_handler, cluster_message_listener) = tokio::sync::mpsc::channel(100);
 
         tokio::spawn(
-            ClusterActor::new(node_timeout, init_repl_info)
+            ClusterActor::new(node_timeout, ReplicationInfo::new(replicaof, &host, port))
                 .handle(cluster_message_listener, notifier),
         );
 
