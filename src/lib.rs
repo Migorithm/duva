@@ -92,9 +92,13 @@ impl StartUpFacade {
                     tokio::spawn({
                         let cache_m = registry.cache_manager.clone();
                         let snapshot_applier = registry.snapshot_applier.clone();
+                        let current_repo_info =
+                            registry.cluster_communication_manager().replication_info().await?;
+
                         let inbound_stream = InboundStream::new(
                             peer_stream,
-                            registry.cluster_communication_manager().replication_info().await?,
+                            current_repo_info.master_replid,
+                            current_repo_info.master_repl_offset,
                         );
 
                         let connection_manager = registry.cluster_connection_manager();

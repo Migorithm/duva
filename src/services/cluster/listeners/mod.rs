@@ -1,14 +1,12 @@
-use tokio::{net::tcp::OwnedReadHalf, sync::mpsc::Sender};
-
-use crate::services::{
-    interface::TRead, query_io::QueryIO, statefuls::snapshot::snapshot_applier::SnapshotApplier,
-};
-
 use super::{
     actors::{commands::ClusterCommand, replication::HeartBeatMessage},
     peers::{connected_types::ReadConnected, identifier::PeerIdentifier},
 };
+use crate::services::{
+    interface::TRead, query_io::QueryIO, statefuls::snapshot::snapshot_applier::SnapshotApplier,
+};
 use tokio::select;
+use tokio::{net::tcp::OwnedReadHalf, sync::mpsc::Sender};
 
 pub mod follower;
 pub mod leader;

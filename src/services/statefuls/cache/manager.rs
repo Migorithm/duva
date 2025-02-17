@@ -43,10 +43,12 @@ impl CacheManager {
     pub(crate) async fn route_save(
         &self,
         save_target: SaveTarget,
-        repl_info: ReplicationInfo,
+        repl_id: String,
+        current_offset: u64,
     ) -> Result<JoinHandle<anyhow::Result<SaveActor>>> {
         let (outbox, inbox) = tokio::sync::mpsc::channel(100);
-        let save_actor = SaveActor::new(save_target, self.inboxes.len(), repl_info).await?;
+        let save_actor =
+            SaveActor::new(save_target, self.inboxes.len(), repl_id, current_offset).await?;
 
         // get all the handlers to cache actors
         for cache_handler in self.inboxes.iter().map(Clone::clone) {

@@ -41,13 +41,10 @@ impl SaveActor {
     pub async fn new(
         target: SaveTarget,
         num_of_shards: usize,
-        repl_info: ReplicationInfo,
+        repl_id: String,
+        current_offset: u64,
     ) -> Result<Self> {
-        let meta = SaveMeta::new(
-            num_of_shards,
-            repl_info.master_replid.clone(),
-            repl_info.master_repl_offset.to_string(),
-        );
+        let meta = SaveMeta::new(num_of_shards, repl_id, current_offset.to_string());
         let mut processor = Self { target, meta };
         processor.encode_meta().await?;
         Ok(processor)

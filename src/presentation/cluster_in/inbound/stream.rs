@@ -2,8 +2,6 @@ use super::request::{HandShakeRequest, HandShakeRequestEnum};
 use crate::make_smart_pointer;
 use crate::presentation::cluster_in::create_peer;
 use crate::services::cluster::actors::commands::{AddPeer, ClusterCommand};
-
-use crate::services::cluster::actors::replication::ReplicationInfo;
 use crate::services::cluster::peers::identifier::PeerIdentifier;
 use crate::services::cluster::peers::kind::PeerKind;
 use crate::services::interface::TGetPeerIp;
@@ -21,7 +19,8 @@ use tokio::sync::mpsc::Sender;
 // The following is used only when the node is in master mode
 pub(crate) struct InboundStream {
     pub(crate) stream: TcpStream,
-    pub(crate) repl_info: ReplicationInfo,
+    pub(crate) current_offset: u64,
+    pub(crate) repl_id: String,
     pub(crate) inbound_peer_addr: Option<PeerIdentifier>,
     pub(crate) inbound_master_replid: Option<String>,
 }
@@ -29,8 +28,14 @@ pub(crate) struct InboundStream {
 make_smart_pointer!(InboundStream, TcpStream => stream);
 
 impl InboundStream {
-    pub(crate) fn new(stream: TcpStream, repl_info: ReplicationInfo) -> Self {
-        Self { stream, repl_info, inbound_peer_addr: None, inbound_master_replid: None }
+    pub(crate) fn new(stream: TcpStream, repl_id: String, current_offset: u64) -> Self {
+        Self {
+            stream,
+            inbound_peer_addr: None,
+            inbound_master_replid: None,
+            current_offset,
+            repl_id,
+        }
     }
     pub async fn recv_threeway_handshake(&mut self) -> anyhow::Result<()> {
         self.recv_ping().await?;
@@ -79,7 +84,7 @@ impl InboundStream {
         let (repl_id, offset) = cmd.extract_psync()?;
 
         let (self_master_replid, self_master_repl_offset) =
-            (self.repl_info.master_replid.clone(), self.repl_info.master_repl_offset);
+            (self.repl_id.clone(), self.current_offset);
 
         self.write(QueryIO::SimpleString(
             format!("FULLRESYNC {} {}", self_master_replid, self_master_repl_offset).into(),
@@ -108,7 +113,7 @@ impl InboundStream {
 
     pub(crate) fn peer_kind(&self) -> anyhow::Result<PeerKind> {
         Ok(PeerKind::accepted_peer_kind(
-            &self.repl_info.master_replid,
+            &self.repl_id,
             self.inbound_master_replid.as_ref().context("No master replid")?,
         ))
     }
@@ -136,7 +141,7 @@ impl InboundStream {
     ) -> anyhow::Result<Self> {
         // route save caches
         let task = cache_manager
-            .route_save(SaveTarget::InMemory(Vec::new()), self.repl_info.clone())
+            .route_save(SaveTarget::InMemory(Vec::new()), self.repl_id.clone(), self.current_offset)
             .await?
             .await??;
 
