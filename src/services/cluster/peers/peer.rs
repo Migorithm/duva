@@ -62,10 +62,10 @@ impl Peer {
             PeerKind::Peer => {
                 Peer::new::<NonDataPeer>(wc, r, cluster_handler, addr, snapshot_applier)
             }
-            PeerKind::Replica => {
+            PeerKind::Follower => {
                 Peer::new::<Follower>(wc, r, cluster_handler, addr, snapshot_applier)
             }
-            PeerKind::Master => Peer::new::<Leader>(wc, r, cluster_handler, addr, snapshot_applier),
+            PeerKind::Leader => Peer::new::<Leader>(wc, r, cluster_handler, addr, snapshot_applier),
         }
     }
 }

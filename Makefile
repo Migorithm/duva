@@ -35,13 +35,13 @@ cluster_info:
 cluster_forget:
 	$(call send_command, '*3\r\n$$7\r\nCLUSTER\r\n$$6\r\nFORGET\r\n$$40\r\n127.0.0.1:6002\r\n')
 
-master:
-	@echo '🔧 Setting up replication with master on port $(p) and slave on port $(rp)...'
-	@mkdir -p local_test/master
-	@echo '🚀 Starting master node in local_test/master...'
-	@cd local_test/master && cargo run -- --port $(p)
+leader:
+	@echo '🔧 Setting up replication with leader on port $(p) and follower on port $(rp)...'
+	@mkdir -p local_test/leader
+	@echo '🚀 Starting leader node in local_test/leader...'
+	@cd local_test/leader && cargo run -- --port $(p)
 
-slave:
-	@echo '🚀 Starting slave node in local_test/slave...'
-	@mkdir -p local_test/slave
-	@cd local_test/slave && cargo run -- --port $(rp) --replicaof 127.0.0.1:$(p)
+follower:
+	@echo '🚀 Starting follower node in local_test/follower...'
+	@mkdir -p local_test/follower
+	@cd local_test/follower && cargo run -- --port $(rp) --replicaof 127.0.0.1:$(p)

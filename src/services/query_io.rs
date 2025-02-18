@@ -80,17 +80,17 @@ impl QueryIO {
             QueryIO::HeartBeat(HeartBeatMessage {
                 term,
                 offset,
-                master_replid,
+                leader_replid,
                 hop_count,
                 heartbeat_from: id,
                 ban_list,
                 append_entries,
             }) => {
                 let header = format!(
-                            "{PEERSTATE_PREFIX}\r\n${}\r\n{term}\r\n${}\r\n{offset}\r\n${}\r\n{master_replid}\r\n${}\r\n{hop_count}\r\n${}\r\n{id}\r\n",
+                            "{PEERSTATE_PREFIX}\r\n${}\r\n{term}\r\n${}\r\n{offset}\r\n${}\r\n{leader_replid}\r\n${}\r\n{hop_count}\r\n${}\r\n{id}\r\n",
                             term.to_string().len(),
                             offset.to_string().len(),
-                            master_replid.len(),
+                            leader_replid.len(),
                             hop_count.to_string().len(),
                             id.len(),
                 );
@@ -246,7 +246,7 @@ fn parse_heartbeat(buffer: BytesMut) -> Result<(QueryIO, usize)> {
 
     let (term, l1) = deserialize(BytesMut::from(&buffer[len..]))?;
     let (offset, l2) = deserialize(BytesMut::from(&buffer[len + l1..]))?;
-    let (master_replid, l3) = deserialize(BytesMut::from(&buffer[len + l1 + l2..]))?;
+    let (leader_replid, l3) = deserialize(BytesMut::from(&buffer[len + l1 + l2..]))?;
     let (hop_count, l4) = deserialize(BytesMut::from(&buffer[len + l1 + l2 + l3..]))?;
     let (id, l5) = deserialize(BytesMut::from(&buffer[len + l1 + l2 + l3 + l4..]))?;
     let (ban_list, l6) = deserialize(BytesMut::from(&buffer[len + l1 + l2 + l3 + l4 + l5..]))?;
@@ -262,7 +262,7 @@ fn parse_heartbeat(buffer: BytesMut) -> Result<(QueryIO, usize)> {
             heartbeat_from: id.unpack_single_entry()?,
             term: term.unpack_single_entry()?,
             offset: offset.unpack_single_entry()?,
-            master_replid: master_replid.unpack_single_entry()?,
+            leader_replid: leader_replid.unpack_single_entry()?,
             hop_count: hop_count.unpack_single_entry()?,
             ban_list: ban_list.unpack_array()?,
             // TODO: implement append_entries
@@ -434,7 +434,7 @@ fn test_from_bytes_to_peer_state() {
         QueryIO::HeartBeat(HeartBeatMessage {
             term: 245,
             offset: 1234329,
-            master_replid: "abcd".into(),
+            leader_replid: "abcd".into(),
             hop_count: 2,
             heartbeat_from: "127.0.0.1:49153".to_string().into(),
             ban_list: vec![],
@@ -445,7 +445,7 @@ fn test_from_bytes_to_peer_state() {
     assert_eq!(peer_state.term, 245);
     assert_eq!(peer_state.offset, 1234329);
 
-    assert_eq!(peer_state.master_replid, "abcd");
+    assert_eq!(peer_state.leader_replid, "abcd");
     assert_eq!(peer_state.hop_count, 2);
     assert!(peer_state.ban_list.is_empty())
 }
@@ -458,7 +458,7 @@ fn test_from_heartbeat_to_bytes() {
     let peer_state = HeartBeatMessage {
         term: 1,
         offset: 2,
-        master_replid: "your_master_repl".into(),
+        leader_replid: "your_master_repl".into(),
         hop_count: 2,
         heartbeat_from: "127.0.0.1:49152".to_string().into(),
         ban_list: Default::default(),
@@ -486,7 +486,7 @@ fn test_from_heartbeat_to_bytes() {
     let peer_state = HeartBeatMessage {
         term: 5,
         offset: 3232,
-        master_replid: "your_master_repl2".into(),
+        leader_replid: "your_master_repl2".into(),
         hop_count: 40,
         heartbeat_from: "127.0.0.1:49159".to_string().into(),
         ban_list: Default::default(),
@@ -519,7 +519,7 @@ fn test_peer_state_ban_list_to_binary() {
     let peer_state_serialized = peer_state_serialized.serialize();
 
     //THEN
-    let expected = format!("^\r\n$1\r\n0\r\n$1\r\n0\r\n$40\r\n{}\r\n$1\r\n1\r\n$14\r\n127.0.0.1:6380\r\n*1\r\n$25\r\n127.0.0.1:6739-{}\r\n*0\r\n",replication.master_replid,ban_time);
+    let expected = format!("^\r\n$1\r\n0\r\n$1\r\n0\r\n$40\r\n{}\r\n$1\r\n1\r\n$14\r\n127.0.0.1:6380\r\n*1\r\n$25\r\n127.0.0.1:6739-{}\r\n*0\r\n",replication.leader_repl_id,ban_time);
     assert_eq!(expected, peer_state_serialized);
 }
 
@@ -541,7 +541,7 @@ fn test_binary_to_heartbeat() {
         QueryIO::HeartBeat(HeartBeatMessage {
             term: 0,
             offset: 0,
-            master_replid: "random".into(),
+            leader_replid: "random".into(),
             hop_count: 1,
             heartbeat_from: "127.0.0.1:6379".to_string().into(),
             ban_list: [BannedPeer {

@@ -57,8 +57,8 @@ impl ClientManager {
                 self.cache_manager
                     .route_save(
                         SaveTarget::File(file),
-                        repl_info.master_replid,
-                        repl_info.master_repl_offset,
+                        repl_info.leader_repl_id,
+                        repl_info.leader_repl_offset,
                     )
                     .await?;
 

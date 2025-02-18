@@ -11,7 +11,7 @@ use presentation::client_in::manager::ClientManager;
 use presentation::cluster_in::communication_manager::ClusterCommunicationManager;
 use presentation::cluster_in::inbound::stream::InboundStream;
 use services::cluster::actors::commands::ClusterCommand;
-use services::cluster::actors::replication::IS_MASTER_MODE;
+use services::cluster::actors::replication::IS_LEADER_MODE;
 use services::config::manager::ConfigManager;
 use services::error::IoError;
 use services::statefuls::cache::manager::CacheManager;
@@ -36,7 +36,7 @@ make_smart_pointer!(StartUpFacade, ActorRegistry => registry);
 impl StartUpFacade {
     pub fn new(config_manager: ConfigManager, env: Environment) -> Self {
         let (notifier, mode_change_watcher) =
-            tokio::sync::watch::channel(IS_MASTER_MODE.load(Ordering::Acquire));
+            tokio::sync::watch::channel(IS_LEADER_MODE.load(Ordering::Acquire));
 
         let cache_manager = CacheManager::run_cache_actors();
         let ttl_manager = TtlActor(cache_manager.clone()).run();
@@ -100,8 +100,8 @@ impl StartUpFacade {
 
                         let inbound_stream = InboundStream::new(
                             peer_stream,
-                            current_repo_info.master_replid,
-                            current_repo_info.master_repl_offset,
+                            current_repo_info.leader_repl_id,
+                            current_repo_info.leader_repl_offset,
                         );
 
                         let connection_manager = registry.cluster_connection_manager();
@@ -127,12 +127,12 @@ impl StartUpFacade {
     }
 
     async fn start_mode_specific_connection_handling(mut self) -> anyhow::Result<()> {
-        let mut is_master_mode = self.cluster_mode();
+        let mut is_leader_mode = self.cluster_mode();
 
         loop {
             let (stop_sentinel_tx, stop_sentinel_recv) = tokio::sync::oneshot::channel::<()>();
 
-            if is_master_mode {
+            if is_leader_mode {
                 let client_stream_listener =
                     TcpListener::bind(&self.config_manager.bind_addr()).await?;
 
@@ -144,7 +144,7 @@ impl StartUpFacade {
 
                 sleep(Duration::from_millis(2)).await;
             } else {
-                // Cancel all client connections only IF the cluster mode has changes to slave
+                // Cancel all client connections only IF the cluster mode has changes to follower
                 let _ = stop_sentinel_tx.send(());
 
                 let connection_manager = self.registry.cluster_connection_manager();
@@ -154,7 +154,7 @@ impl StartUpFacade {
                     .cluster_communication_manager()
                     .replication_info()
                     .await?
-                    .master_bind_addr();
+                    .leader_bind_addr();
 
                 tokio::spawn({
                     connection_manager.discover_cluster(
@@ -167,7 +167,7 @@ impl StartUpFacade {
 
             self.wait_until_cluster_mode_changed().await?;
 
-            is_master_mode = self.cluster_mode();
+            is_leader_mode = self.cluster_mode();
         }
     }
 
@@ -187,7 +187,7 @@ impl StartUpFacade {
                 // Reconnection case - set the replication info
                 self.registry
                     .cluster_actor_handler
-                    .send(ClusterCommand::SetReplicationInfo { master_repl_id: repl_id, offset })
+                    .send(ClusterCommand::SetReplicationInfo { leader_repl_id: repl_id, offset })
                     .await?;
             };
             self.registry.snapshot_applier.apply_snapshot(snapshot).await?;

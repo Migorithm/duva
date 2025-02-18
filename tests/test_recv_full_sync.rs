@@ -1,21 +1,21 @@
-/// After three-way handshake, client will receive peers from the master server
+/// After three-way handshake, client will receive peers from the leader server
 mod common;
 use crate::common::array;
-use common::{spawn_server_as_slave, spawn_server_process};
+use common::{spawn_server_as_follower, spawn_server_process};
 use duva::client_utils::ClientStreamHandler;
 
 #[tokio::test]
 async fn test_receive_full_sync() {
     // GIVEN
-    // Start the master server as a child process
-    let master_process = spawn_server_process();
-    let mut h = ClientStreamHandler::new(master_process.bind_addr()).await;
+    // Start the leader server as a child process
+    let leader_process = spawn_server_process();
+    let mut h = ClientStreamHandler::new(leader_process.bind_addr()).await;
 
     h.send_and_get(&array(vec!["SET", "foo", "bar"])).await;
     assert_eq!(h.send_and_get(&array(vec!["KEYS", "*"])).await, array(vec!["foo"]));
 
     // WHEN run replica
-    let mut replica_process = spawn_server_as_slave(&master_process);
+    let mut replica_process = spawn_server_as_follower(&leader_process);
 
     // THEN
     tokio::time::sleep(std::time::Duration::from_secs(1)).await;

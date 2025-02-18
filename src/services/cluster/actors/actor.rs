@@ -62,8 +62,8 @@ impl ClusterActor {
                 ClusterCommand::ReplicationInfo(sender) => {
                     let _ = sender.send(self.replication.clone());
                 }
-                ClusterCommand::SetReplicationInfo { master_repl_id, offset } => {
-                    self.set_replication_info(master_repl_id, offset);
+                ClusterCommand::SetReplicationInfo { leader_repl_id, offset } => {
+                    self.set_replication_info(leader_repl_id, offset);
                 }
                 ClusterCommand::ReceiveHeartBeat(heartbeat) => {
                     if self.replication.in_ban_list(&heartbeat.heartbeat_from) {
@@ -82,16 +82,16 @@ impl ClusterActor {
                 }
                 ClusterCommand::LeaderReqConsensus { log, sender } => {
                     // ! If there are no replicas, don't send the request
-                    if self.replicas().count() == 0 {
+                    if self.followers().count() == 0 {
                         let _ = sender.send(None);
                         continue;
                     }
                     self.req_consensus(log).await;
 
                     consensus_con.add(
-                        self.replication.master_repl_offset,
+                        self.replication.leader_repl_offset,
                         sender,
-                        self.replicas().count(),
+                        self.followers().count(),
                     );
                 }
                 ClusterCommand::LeaderReceiveAcks(offsets) => {
@@ -100,7 +100,7 @@ impl ClusterActor {
                 ClusterCommand::FollowerReceiveLogEntries(write_operations) => {
                     // TODO handle the log entries
                     println!("[INFO] Received log entries: {:?}", write_operations);
-                    self.receive_log_entries_from_master(write_operations).await;
+                    self.receive_log_entries_from_leader(write_operations).await;
                 }
             }
         }
@@ -144,9 +144,9 @@ impl ClusterActor {
         None
     }
 
-    fn set_replication_info(&mut self, master_repl_id: String, offset: u64) {
-        self.replication.master_replid = master_repl_id;
-        self.replication.master_repl_offset = offset;
+    fn set_replication_info(&mut self, leader_repl_id: String, offset: u64) {
+        self.replication.leader_repl_id = leader_repl_id;
+        self.replication.leader_repl_offset = offset;
     }
 
     /// Remove the peers that are idle for more than ttl_mills
@@ -219,7 +219,7 @@ impl ClusterActor {
         let heartbeat = self.replication.append_entry(0, req);
 
         let mut tasks = self
-            .replicas_mut()
+            .followers_mut()
             .into_iter()
             .map(|peer| peer.write_io(heartbeat.clone()))
             .collect::<FuturesUnordered<_>>();
@@ -228,22 +228,22 @@ impl ClusterActor {
         while let Some(_) = tasks.next().await {}
     }
 
-    fn master_mut(&mut self) -> Option<&mut Peer> {
-        self.members.values_mut().find(|peer| matches!(peer.w_conn.kind, PeerKind::Master))
+    fn leader_mut(&mut self) -> Option<&mut Peer> {
+        self.members.values_mut().find(|peer| matches!(peer.w_conn.kind, PeerKind::Leader))
     }
 
-    fn replicas(&self) -> impl Iterator<Item = &Peer> {
+    fn followers(&self) -> impl Iterator<Item = &Peer> {
         self.members
             .values()
             .into_iter()
-            .filter(|peer| matches!(peer.w_conn.kind, PeerKind::Replica))
+            .filter(|peer| matches!(peer.w_conn.kind, PeerKind::Follower))
     }
 
-    fn replicas_mut(&mut self) -> Vec<&mut Peer> {
+    fn followers_mut(&mut self) -> Vec<&mut Peer> {
         self.members
             .values_mut()
             .into_iter()
-            .filter(|peer| matches!(peer.w_conn.kind, PeerKind::Replica))
+            .filter(|peer| matches!(peer.w_conn.kind, PeerKind::Follower))
             .collect::<Vec<_>>()
     }
 
@@ -260,10 +260,10 @@ impl ClusterActor {
         });
     }
 
-    async fn receive_log_entries_from_master(&mut self, write_operations: Vec<WriteOperation>) {
+    async fn receive_log_entries_from_leader(&mut self, write_operations: Vec<WriteOperation>) {
         let offsets = write_operations.iter().map(|op| op.offset).collect::<Vec<_>>();
-        if let Some(master) = self.master_mut() {
-            let _ = master.write_io(QueryIO::Acks(offsets)).await;
+        if let Some(leader) = self.leader_mut() {
+            let _ = leader.write_io(QueryIO::Acks(offsets)).await;
         }
     }
 }
