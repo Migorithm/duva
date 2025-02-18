@@ -17,13 +17,13 @@ use bytes::Bytes;
 use tokio::net::TcpStream;
 use tokio::sync::mpsc::Sender;
 
-// The following is used only when the node is in master mode
+// The following is used only when the node is in leader mode
 pub(crate) struct InboundStream {
     pub(crate) stream: TcpStream,
     pub(crate) current_offset: u64,
     pub(crate) repl_id: String,
     pub(crate) inbound_peer_addr: Option<PeerIdentifier>,
-    pub(crate) inbound_master_replid: Option<String>,
+    pub(crate) inbound_leader_replid: Option<String>,
 }
 
 make_smart_pointer!(InboundStream, TcpStream => stream);
@@ -33,7 +33,7 @@ impl InboundStream {
         Self {
             stream,
             inbound_peer_addr: None,
-            inbound_master_replid: None,
+            inbound_leader_replid: None,
             current_offset,
             repl_id,
         }
@@ -51,7 +51,7 @@ impl InboundStream {
 
         self.inbound_peer_addr = Some(format!("{}:{}", self.get_peer_ip()?, port).into());
 
-        self.inbound_master_replid = Some(repl_id);
+        self.inbound_leader_replid = Some(repl_id);
 
         Ok(())
     }
@@ -84,11 +84,11 @@ impl InboundStream {
         let mut cmd = self.extract_cmd().await?;
         let (repl_id, offset) = cmd.extract_psync()?;
 
-        let (self_master_replid, self_master_repl_offset) =
+        let (self_leader_replid, self_leader_repl_offset) =
             (self.repl_id.clone(), self.current_offset);
 
         self.write(QueryIO::SimpleString(
-            format!("FULLRESYNC {} {}", self_master_replid, self_master_repl_offset).into(),
+            format!("FULLRESYNC {} {}", self_leader_replid, self_leader_repl_offset).into(),
         ))
         .await?;
 
@@ -115,7 +115,7 @@ impl InboundStream {
     pub(crate) fn peer_kind(&self) -> anyhow::Result<PeerKind> {
         Ok(PeerKind::accepted_peer_kind(
             &self.repl_id,
-            self.inbound_master_replid.as_ref().context("No master replid")?,
+            self.inbound_leader_replid.as_ref().context("No leader replid")?,
         ))
     }
 
@@ -147,7 +147,7 @@ impl InboundStream {
             .await??;
 
         let snapshot = QueryIO::File(task.into_inner().into());
-        println!("[INFO] Sent sync to slave {:?}", snapshot);
+        println!("[INFO] Sent sync to follower {:?}", snapshot);
         self.write(snapshot).await?;
 
         // collect snapshot data from processor

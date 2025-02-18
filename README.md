@@ -85,17 +85,15 @@ sequenceDiagram
 ```mermaid
 
 sequenceDiagram
-    participant s as MasterServer
-    
-    
+    participant s as Leader    
     actor Cache
     actor Config
     actor Cluster
     actor peer_listener
     
     actor client_listener
-    participant SlaveServer
-    actor slave_peer_listener
+    participant Follower
+    actor follower_listener
 
     par 
         s-->>Cache: spawn
@@ -109,14 +107,14 @@ sequenceDiagram
         s -->>client_listener:spawn
         
     and 
-        SlaveServer -->> slave_peer_listener: spawn 
-        Note right of SlaveServer : SlaveServer also listens for incoming peer connections
+        Follower -->> follower_listener: spawn 
+        Note right of Follower : Follower also listens for incoming peer connections
     and 
         s-->>peer_listener: spawn
         loop 
-            SlaveServer -->>+ peer_listener: bind 
-            peer_listener -->- SlaveServer: threeway handshake
-            peer_listener -->> SlaveServer : disseminate peer infomation
+            Follower -->>+ peer_listener: bind 
+            peer_listener -->- Follower: threeway handshake
+            peer_listener -->> Follower : disseminate peer infomation
             peer_listener -->>+ Cluster : pass stream
             Cluster -->>- Cluster : add peer
         end

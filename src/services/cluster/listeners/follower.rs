@@ -14,13 +14,13 @@ impl TListen for ClusterListener<Follower> {
 }
 impl ClusterListener<Follower> {
     async fn listen_replica_stream(&mut self) {
-        while let Ok(cmds) = self.read_command::<SlaveInput>().await {
+        while let Ok(cmds) = self.read_command::<FollowerInput>().await {
             for cmd in cmds {
                 match cmd {
-                    SlaveInput::HeartBeat(state) => {
+                    FollowerInput::HeartBeat(state) => {
                         self.receive_heartbeat(state).await;
                     }
-                    SlaveInput::Acks(items) => {
+                    FollowerInput::Acks(items) => {
                         let _ = self
                             .cluster_handler
                             .send(ClusterCommand::LeaderReceiveAcks(items))
@@ -32,16 +32,16 @@ impl ClusterListener<Follower> {
     }
 }
 
-pub enum SlaveInput {
+pub enum FollowerInput {
     HeartBeat(HeartBeatMessage),
     Acks(Vec<u64>),
 }
-impl TryFrom<QueryIO> for SlaveInput {
+impl TryFrom<QueryIO> for FollowerInput {
     type Error = anyhow::Error;
     fn try_from(query: QueryIO) -> anyhow::Result<Self> {
         match query {
-            QueryIO::HeartBeat(peer_state) => Ok(SlaveInput::HeartBeat(peer_state)),
-            QueryIO::Acks(acks) => Ok(SlaveInput::Acks(acks)),
+            QueryIO::HeartBeat(peer_state) => Ok(FollowerInput::HeartBeat(peer_state)),
+            QueryIO::Acks(acks) => Ok(FollowerInput::Acks(acks)),
             _ => todo!(),
         }
     }

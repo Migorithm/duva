@@ -28,9 +28,9 @@ async fn test_save_read_snapshot() {
     // GIVEN
     let test_file_name = FileName(create_unique_file_name("test_save_dump"));
 
-    let master_process = run_server_with_dbfilename(test_file_name.0.as_str());
+    let leader_process = run_server_with_dbfilename(test_file_name.0.as_str());
 
-    let mut h = ClientStreamHandler::new(master_process.bind_addr()).await;
+    let mut h = ClientStreamHandler::new(leader_process.bind_addr()).await;
 
     // WHEN
     // set without expiry time
@@ -49,8 +49,8 @@ async fn test_save_read_snapshot() {
     // check replication info
     let res = h.send_and_get(&array(vec!["INFO", "replication"])).await;
     let info: Vec<&str> = res.split("\r\n").collect();
-    let prev_master_repl_id = info[3].split(":").collect::<Vec<&str>>()[1];
-    let prev_master_repl_offset = info[4].split(":").collect::<Vec<&str>>()[1];
+    let prev_leader_repl_id = info[3].split(":").collect::<Vec<&str>>()[1];
+    let prev_leader_repl_offset = info[4].split(":").collect::<Vec<&str>>()[1];
 
     // THEN
     assert_eq!(h.send_and_get(&array(vec!["SAVE"])).await, QueryIO::Null.serialize());
@@ -59,16 +59,16 @@ async fn test_save_read_snapshot() {
     tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
 
     // THEN
-    // kill master process
-    drop(master_process);
+    // kill leader process
+    drop(leader_process);
 
     // run server with the same file name
-    let master_process = run_server_with_dbfilename(test_file_name.0.as_str());
+    let leader_process = run_server_with_dbfilename(test_file_name.0.as_str());
 
     // wait for the server to start
     tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
 
-    let mut h = ClientStreamHandler::new(master_process.bind_addr()).await;
+    let mut h = ClientStreamHandler::new(leader_process.bind_addr()).await;
 
     // keys
     assert_eq!(h.send_and_get(&array(vec!["KEYS", "*"])).await, array(vec!["foo2", "foo"]));
@@ -76,12 +76,12 @@ async fn test_save_read_snapshot() {
     // replication info
     let res = h.send_and_get(&array(vec!["INFO", "replication"])).await;
     let info: Vec<&str> = res.split("\r\n").collect();
-    let master_repl_id = info[3].split(":").collect::<Vec<&str>>()[1];
-    let master_repl_offset = info[4].split(":").collect::<Vec<&str>>()[1];
+    let leader_repl_id = info[3].split(":").collect::<Vec<&str>>()[1];
+    let leader_repl_offset = info[4].split(":").collect::<Vec<&str>>()[1];
 
     // THEN
-    assert_eq!(master_repl_id, prev_master_repl_id);
-    assert_eq!(master_repl_offset, prev_master_repl_offset);
+    assert_eq!(leader_repl_id, prev_leader_repl_id);
+    assert_eq!(leader_repl_offset, prev_leader_repl_offset);
 }
 
 fn run_server_with_dbfilename(dbfilename: &str) -> TestProcessChild {

@@ -15,7 +15,7 @@ use anyhow::Context;
 use tokio::net::TcpStream;
 use tokio::sync::mpsc::Sender;
 
-// The following is used only when the node is in slave mode
+// The following is used only when the node is in follower mode
 pub(crate) struct OutboundStream {
     pub(crate) stream: TcpStream,
 
@@ -55,7 +55,7 @@ impl OutboundStream {
                         let msg = {
                             match ok_count {
                                 1 => Ok(write_array!("REPLCONF", "capa", "psync2")),
-                                // "?" here means the server is undecided about their master. and -1 is the offset that slave is aware of
+                                // "?" here means the server is undecided about their leader. and -1 is the offset that follower is aware of
                                 2 => Ok(write_array!("PSYNC", "?", "-1")),
                                 _ => Err(anyhow::anyhow!("Unexpected OK count")),
                             }
@@ -90,7 +90,7 @@ impl OutboundStream {
 
             cluster_manager
                 .send(ClusterCommand::SetReplicationInfo {
-                    master_repl_id: connected_node_info.repl_id.clone(),
+                    leader_repl_id: connected_node_info.repl_id.clone(),
                     // TODO offset setting here may want to be revisited once we implement synchronization - echo
                     offset: connected_node_info.offset,
                 })
@@ -121,7 +121,7 @@ impl OutboundStream {
 
 #[derive(Debug, Default)]
 pub(crate) struct ConnectedNodeInfo {
-    // TODO repl_id here is the master_replid from connected server.
+    // TODO repl_id here is the leader_replid from connected server.
     // TODO Set repl_id if given server's repl_id is "?" otherwise, it means that now it's connected to peer.
     pub(crate) repl_id: String,
     pub(crate) offset: u64,

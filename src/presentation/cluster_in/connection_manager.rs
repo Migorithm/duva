@@ -1,7 +1,7 @@
 use super::communication_manager::ClusterCommunicationManager;
 use super::outbound::stream::OutboundStream;
 use crate::services::cluster::actors::commands::ClusterCommand;
-use crate::services::cluster::actors::replication::IS_MASTER_MODE;
+use crate::services::cluster::actors::replication::IS_LEADER_MODE;
 use crate::services::cluster::peers::identifier::PeerIdentifier;
 use crate::services::cluster::peers::kind::PeerKind;
 use crate::services::statefuls::cache::manager::CacheManager;
@@ -26,8 +26,8 @@ impl ClusterConnectionManager {
 
         peer_stream.disseminate_peers(self.0.get_peers().await?).await?;
 
-        if matches!(peer_stream.peer_kind()?, PeerKind::Replica)
-            && IS_MASTER_MODE.load(std::sync::atomic::Ordering::Acquire)
+        if matches!(peer_stream.peer_kind()?, PeerKind::Follower)
+            && IS_LEADER_MODE.load(std::sync::atomic::Ordering::Acquire)
         {
             peer_stream = peer_stream.send_sync_to_inbound_server(cache_manager).await?;
         }
@@ -50,7 +50,7 @@ impl ClusterConnectionManager {
 
         // Recursive case
         let (add_peer_cmd, connected_node_info) =
-            OutboundStream::new(connect_to, self.replication_info().await?.master_replid)
+            OutboundStream::new(connect_to, self.replication_info().await?.leader_repl_id)
                 .await?
                 .establish_connection(self_port)
                 .await?

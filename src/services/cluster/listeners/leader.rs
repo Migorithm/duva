@@ -17,21 +17,21 @@ impl TListen for ClusterListener<Leader> {
 
 impl ClusterListener<Leader> {
     async fn listen_leader(&mut self) {
-        while let Ok(cmds) = self.read_command::<MasterInput>().await {
+        while let Ok(cmds) = self.read_command::<LeaderInput>().await {
             for cmd in cmds {
                 match cmd {
-                    MasterInput::HeartBeat(mut state) => {
+                    LeaderInput::HeartBeat(mut state) => {
                         self.log_entries(&mut state).await;
 
                         self.receive_heartbeat(state).await;
                     }
-                    MasterInput::FullSync(data) => {
+                    LeaderInput::FullSync(data) => {
                         let Ok(snapshot) = SnapshotLoader::load_from_bytes(&data) else {
-                            println!("[ERROR] Failed to load snapshot from master");
+                            println!("[ERROR] Failed to load snapshot from leader");
                             continue;
                         };
                         let Ok(_) = self.snapshot_applier.apply_snapshot(snapshot).await else {
-                            println!("[ERROR] Failed to apply snapshot from master");
+                            println!("[ERROR] Failed to apply snapshot from leader");
                             continue;
                         };
                     }
@@ -53,12 +53,12 @@ impl ClusterListener<Leader> {
 }
 
 #[derive(Debug)]
-pub enum MasterInput {
+pub enum LeaderInput {
     HeartBeat(HeartBeatMessage),
     FullSync(Bytes),
 }
 
-impl TryFrom<QueryIO> for MasterInput {
+impl TryFrom<QueryIO> for LeaderInput {
     type Error = anyhow::Error;
     fn try_from(query: QueryIO) -> anyhow::Result<Self> {
         match query {

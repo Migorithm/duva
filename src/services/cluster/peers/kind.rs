@@ -1,23 +1,23 @@
 #[derive(Clone, Debug)]
 pub enum PeerKind {
     Peer,
-    Replica,
-    Master,
+    Follower,
+    Leader,
 }
 
 impl PeerKind {
     pub fn accepted_peer_kind(self_repl_id: &str, other_repl_id: &str) -> Self {
         match other_repl_id {
-            "?" => Self::Replica,
-            id if id == self_repl_id => Self::Replica,
+            "?" => Self::Follower,
+            id if id == self_repl_id => Self::Follower,
             _ => Self::Peer,
         }
     }
     pub fn connected_peer_kind(self_repl_id: &str, other_repl_id: &str) -> Self {
         if self_repl_id == "?" {
-            Self::Master
+            Self::Leader
         } else if self_repl_id == other_repl_id {
-            Self::Replica
+            Self::Follower
         } else {
             Self::Peer
         }
