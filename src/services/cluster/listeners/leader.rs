@@ -4,7 +4,7 @@ use crate::{services::cluster::peers::connected_types::Leader, SnapshotLoader};
 
 use super::*;
 
-impl TListen for ClusterListener<Leader> {
+impl TListenClusterPeer for ClusterListener<Leader> {
     async fn listen(mut self, rx: ReactorKillSwitch) -> OwnedReadHalf {
         let connected = select! {
             _ = self.listen_leader() => self.read_connected.stream,

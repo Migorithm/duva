@@ -1,8 +1,7 @@
+use super::*;
 use crate::services::cluster::peers::connected_types::Follower;
 
-use super::*;
-
-impl TListen for ClusterListener<Follower> {
+impl TListenClusterPeer for ClusterListener<Follower> {
     async fn listen(mut self, rx: ReactorKillSwitch) -> OwnedReadHalf {
         let connected = select! {
             _ = self.listen_replica_stream() => self.read_connected.stream,

@@ -7,19 +7,11 @@ use crate::services::{
 };
 use tokio::select;
 use tokio::{net::tcp::OwnedReadHalf, sync::mpsc::Sender};
-
 pub mod follower;
+pub mod interfaces;
+pub(crate) use interfaces::*;
 pub mod leader;
 pub mod non_data_peer;
-
-pub trait TListen {
-    fn listen(
-        self,
-        rx: ReactorKillSwitch,
-    ) -> impl std::future::Future<Output = OwnedReadHalf> + Send;
-}
-
-pub(super) type ReactorKillSwitch = tokio::sync::oneshot::Receiver<()>;
 
 // Listner requires cluster handler to send messages to the cluster actor and cluster actor instead needs kill trigger to stop the listener
 #[derive(Debug)]

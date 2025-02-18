@@ -11,7 +11,7 @@ pub static IS_LEADER_MODE: AtomicBool = AtomicBool::new(true);
 
 #[derive(Debug, Clone)]
 pub struct ReplicationInfo {
-    pub(crate) connected_slaves: u16, // The number of connected replicas
+    pub(crate) connected_followers: u16, // The number of connected replicas
     pub(crate) leader_repl_id: String, // The replication ID of the master example: 8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb
     pub(crate) leader_repl_offset: u64, // The server's current replication offset. Example: 0
     second_repl_offset: i16,           // -1
@@ -34,7 +34,7 @@ impl ReplicationInfo {
         let leader_repl_id = if replicaof.is_none() { generate_replid() } else { "?".to_string() };
 
         let replication = ReplicationInfo {
-            connected_slaves: 0, // dynamically configurable
+            connected_followers: 0, // dynamically configurable
             leader_repl_id: leader_repl_id.clone(),
             leader_repl_offset: 0,
             second_repl_offset: -1,
@@ -57,7 +57,7 @@ impl ReplicationInfo {
     pub fn vectorize(self) -> Vec<String> {
         vec![
             format!("role:{}", self.role),
-            format!("connected_slaves:{}", self.connected_slaves),
+            format!("connected_slaves:{}", self.connected_followers),
             format!("master_replid:{}", self.leader_repl_id),
             format!("master_repl_offset:{}", self.leader_repl_offset),
             format!("second_repl_offset:{}", self.second_repl_offset),

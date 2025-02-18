@@ -2,7 +2,7 @@ use crate::services::cluster::peers::connected_types::NonDataPeer;
 
 use super::*;
 
-impl TListen for ClusterListener<NonDataPeer> {
+impl TListenClusterPeer for ClusterListener<NonDataPeer> {
     async fn listen(mut self, rx: ReactorKillSwitch) -> OwnedReadHalf {
         let connected = select! {
             _ = self.listen_peer_stream() => self.read_connected.stream,

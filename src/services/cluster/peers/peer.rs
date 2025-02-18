@@ -9,8 +9,9 @@ use super::identifier::PeerIdentifier;
 use super::kind::PeerKind;
 
 use crate::services::cluster::actors::commands::ClusterCommand;
+use crate::services::cluster::listeners::interfaces::TListenClusterPeer;
 use crate::services::cluster::listeners::ClusterListener;
-use crate::services::cluster::listeners::TListen;
+
 use crate::services::cluster::peers::connected_types::WriteConnected;
 use crate::services::statefuls::snapshot::snapshot_applier::SnapshotApplier;
 use tokio::net::tcp::OwnedReadHalf;
@@ -36,7 +37,7 @@ impl Peer {
         snapshot_applier: SnapshotApplier,
     ) -> Self
     where
-        ClusterListener<T>: TListen + Send + Sync + 'static,
+        ClusterListener<T>: TListenClusterPeer + Send + Sync + 'static,
     {
         let (kill_trigger, kill_switch) = tokio::sync::oneshot::channel();
         let rc = ReadConnected::<T>::new(read_connected);
