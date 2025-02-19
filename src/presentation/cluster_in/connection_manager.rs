@@ -1,9 +1,10 @@
 use super::communication_manager::ClusterCommunicationManager;
 use super::outbound::stream::OutboundStream;
-use crate::services::cluster::actors::commands::ClusterCommand;
+use crate::domains::cluster_actors::commands::ClusterCommand;
+use crate::domains::peers::identifier::PeerIdentifier;
+use crate::domains::peers::kind::PeerKind;
+
 use crate::services::cluster::actors::replication::IS_LEADER_MODE;
-use crate::services::cluster::peers::identifier::PeerIdentifier;
-use crate::services::cluster::peers::kind::PeerKind;
 use crate::services::statefuls::cache::manager::CacheManager;
 use crate::services::statefuls::snapshot::snapshot_applier::SnapshotApplier;
 use crate::{make_smart_pointer, InboundStream};

@@ -1,5 +1,5 @@
+use crate::domains::peers::identifier::PeerIdentifier;
 use crate::services::aof::{WriteOperation, WriteRequest};
-use crate::services::cluster::peers::identifier::PeerIdentifier;
 
 use bytes::Bytes;
 use std::str::FromStr;

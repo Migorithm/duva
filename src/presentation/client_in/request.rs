@@ -1,4 +1,4 @@
-use crate::services::{aof::WriteRequest, cluster::peers::identifier::PeerIdentifier};
+use crate::{domains::peers::identifier::PeerIdentifier, services::aof::WriteRequest};
 use std::time::SystemTime;
 
 #[derive(Clone, Debug)]

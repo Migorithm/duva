@@ -1,10 +1,11 @@
 use super::request::{HandShakeRequest, HandShakeRequestEnum};
+use crate::domains::cluster_actors::commands::AddPeer;
+use crate::domains::cluster_actors::commands::ClusterCommand;
+use crate::domains::peers::identifier::PeerIdentifier;
+use crate::domains::peers::kind::PeerKind;
+use crate::domains::peers::peer::Peer;
 use crate::make_smart_pointer;
-use crate::services::cluster::actors::commands::{AddPeer, ClusterCommand};
-use crate::services::cluster::peers::identifier::PeerIdentifier;
-use crate::services::cluster::peers::kind::PeerKind;
 
-use crate::services::cluster::peers::peer::Peer;
 use crate::services::interface::TGetPeerIp;
 use crate::services::interface::TRead;
 use crate::services::interface::TWrite;

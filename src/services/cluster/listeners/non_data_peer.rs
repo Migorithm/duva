@@ -1,4 +1,7 @@
-use crate::services::cluster::peers::connected_types::NonDataPeer;
+use crate::domains::{
+    cluster_listeners::{ClusterListener, ReactorKillSwitch, TListen},
+    peers::connected_types::NonDataPeer,
+};
 
 use super::*;
 

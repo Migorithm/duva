@@ -1,6 +1,6 @@
 use std::marker::PhantomData;
 
-use crate::services::cluster::peers::kind::PeerKind;
+use crate::domains::peers::kind::PeerKind;
 use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
 
 #[derive(Debug)]

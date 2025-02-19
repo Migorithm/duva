@@ -1,4 +1,8 @@
-use crate::services::cluster::peers::connected_types::Follower;
+use crate::domains::{
+    cluster_actors::commands::ClusterCommand,
+    cluster_listeners::{ClusterListener, ReactorKillSwitch, TListen},
+    peers::connected_types::Follower,
+};
 
 use super::*;
 

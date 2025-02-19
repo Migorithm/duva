@@ -8,10 +8,11 @@ use super::connected_types::ReadConnected;
 use super::identifier::PeerIdentifier;
 use super::kind::PeerKind;
 
-use crate::services::cluster::actors::commands::ClusterCommand;
-use crate::services::cluster::listeners::ClusterListener;
-use crate::services::cluster::listeners::TListen;
-use crate::services::cluster::peers::connected_types::WriteConnected;
+use crate::domains::cluster_actors::commands::ClusterCommand;
+use crate::domains::cluster_listeners::ClusterListener;
+use crate::domains::cluster_listeners::TListen;
+use crate::domains::peers::connected_types::WriteConnected;
+
 use crate::services::statefuls::snapshot::snapshot_applier::SnapshotApplier;
 use tokio::net::tcp::OwnedReadHalf;
 use tokio::net::tcp::OwnedWriteHalf;

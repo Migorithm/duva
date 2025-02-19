@@ -1,11 +1,10 @@
-use std::time::SystemTime;
-
 use super::request::ClientRequest;
 use crate::{
     make_smart_pointer,
     services::{interface::TRead, query_io::QueryIO},
 };
 use anyhow::Context;
+use std::time::SystemTime;
 use tokio::net::TcpStream;
 
 pub struct ClientStream(pub(crate) TcpStream);

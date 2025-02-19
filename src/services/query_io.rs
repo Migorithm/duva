@@ -1,4 +1,6 @@
 use super::aof::WriteRequest;
+#[cfg(test)]
+use crate::domains::peers::identifier::PeerIdentifier;
 use crate::services::statefuls::cache::CacheValue;
 use crate::services::{aof::WriteOperation, cluster::actors::replication::HeartBeatMessage};
 use anyhow::{Context, Result};
@@ -505,7 +507,7 @@ fn test_from_heartbeat_to_bytes() {
 #[test]
 fn test_peer_state_ban_list_to_binary() {
     use crate::services::cluster::actors::replication::ReplicationInfo;
-    use crate::services::cluster::peers::identifier::PeerIdentifier;
+
     // GIVEN
     let mut replication = ReplicationInfo::new(None, "127.0.0.1", 6380);
     let peer_id = PeerIdentifier::new("127.0.0.1", 6739);
@@ -526,7 +528,6 @@ fn test_peer_state_ban_list_to_binary() {
 #[test]
 fn test_binary_to_heartbeat() {
     use crate::services::cluster::actors::replication::BannedPeer;
-    use crate::services::cluster::peers::identifier::PeerIdentifier;
 
     // GIVEN
     let binary= format!("^\r\n$1\r\n0\r\n$1\r\n0\r\n$6\r\nrandom\r\n$1\r\n1\r\n$14\r\n127.0.0.1:6379\r\n*1\r\n$22\r\n127.0.0.1:6739-6545442\r\n*2\r\n#\r\n$1\r\n1\r\n*3\r\n$3\r\nSET\r\n$3\r\nfoo\r\n$3\r\nbar\r\n#\r\n$1\r\n2\r\n*3\r\n$3\r\nSET\r\n$3\r\npoo\r\n$3\r\nbar\r\n");
@@ -582,7 +583,7 @@ fn test_banned_peer_serde() {
     use crate::services::cluster::actors::replication::time_in_secs;
     use crate::services::cluster::actors::replication::BannedPeer;
     use crate::services::cluster::actors::replication::ReplicationInfo;
-    use crate::services::cluster::peers::identifier::PeerIdentifier;
+
     //GIVEN
     let mut replication = ReplicationInfo::new(None, "127.0.0.1", 6380);
     let peer_id = PeerIdentifier::new("127.0.0.1", 6739);
@@ -606,7 +607,6 @@ fn test_banned_peer_serde_when_time_passed() {
     use crate::services::cluster::actors::replication::time_in_secs;
     use crate::services::cluster::actors::replication::BannedPeer;
     use crate::services::cluster::actors::replication::ReplicationInfo;
-    use crate::services::cluster::peers::identifier::PeerIdentifier;
 
     //GIVEN
     let mut replication = ReplicationInfo::new(None, "127.0.0.1", 6380);

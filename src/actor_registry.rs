@@ -1,10 +1,10 @@
+use crate::domains::cluster_actors::commands::ClusterCommand;
 use crate::presentation::cluster_in::connection_manager::ClusterConnectionManager;
 use crate::services::statefuls::snapshot::snapshot_applier::SnapshotApplier;
 use crate::{
     presentation::cluster_in::communication_manager::ClusterCommunicationManager,
     services::{
-        cluster::actors::commands::ClusterCommand, config::manager::ConfigManager,
-        statefuls::cache::ttl::manager::TtlSchedulerManager,
+        config::manager::ConfigManager, statefuls::cache::ttl::manager::TtlSchedulerManager,
     },
     CacheManager,
 };

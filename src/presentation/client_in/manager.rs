@@ -1,9 +1,8 @@
 use super::request::ClientRequest;
 use super::stream::ClientStream;
 use crate::actor_registry::ActorRegistry;
-
+use crate::domains::cluster_actors::commands::ClusterCommand;
 use crate::presentation::cluster_in::communication_manager::ClusterCommunicationManager;
-use crate::services::cluster::actors::commands::ClusterCommand;
 use crate::services::config::manager::ConfigManager;
 use crate::services::config::ConfigResponse;
 use crate::services::interface::TWrite;
