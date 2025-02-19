@@ -7,11 +7,11 @@ use crate::domains::peers::peer::Peer;
 use crate::domains::save::actor::SaveTarget;
 use crate::make_smart_pointer;
 
+use crate::services::cache_manager::CacheManager;
 use crate::services::interface::TGetPeerIp;
 use crate::services::interface::TRead;
 use crate::services::interface::TWrite;
 use crate::services::query_io::QueryIO;
-use crate::services::statefuls::cache::cache_manager::CacheManager;
 
 use crate::services::statefuls::snapshot::snapshot_applier::SnapshotApplier;
 use anyhow::Context;

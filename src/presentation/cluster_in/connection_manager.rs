@@ -5,7 +5,7 @@ use crate::domains::cluster_actors::replication::IS_LEADER_MODE;
 use crate::domains::peers::identifier::PeerIdentifier;
 use crate::domains::peers::kind::PeerKind;
 
-use crate::services::statefuls::cache::cache_manager::CacheManager;
+use crate::services::cache_manager::CacheManager;
 use crate::services::statefuls::snapshot::snapshot_applier::SnapshotApplier;
 use crate::{make_smart_pointer, InboundStream};
 use tokio::sync::mpsc::Sender;
