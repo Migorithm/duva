@@ -1,5 +1,5 @@
 use duva::{
-    domains::{cluster_actors::config_manager::ConfigManager, config_actors::actor::ConfigActor},
+    domains::{config_actors::actor::ConfigActor, config_actors::config_manager::ConfigManager},
     Environment, StartUpFacade,
 };
 

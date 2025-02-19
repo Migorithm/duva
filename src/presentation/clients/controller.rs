@@ -4,28 +4,27 @@ use crate::actor_registry::ActorRegistry;
 use crate::domains::caches::cache_manager::CacheManager;
 use crate::domains::caches::cache_objects::CacheEntry;
 use crate::domains::cluster_actors::commands::ClusterCommand;
-use crate::domains::cluster_actors::config_manager::ConfigManager;
 use crate::domains::config_actors::command::ConfigResponse;
+use crate::domains::config_actors::config_manager::ConfigManager;
 use crate::domains::query_parsers::QueryIO;
 use crate::domains::saves::actor::SaveTarget;
 use crate::domains::ttl::manager::TtlSchedulerManager;
 use crate::presentation::cluster_in::communication_manager::ClusterCommunicationManager;
 use crate::services::interface::TWrite;
-
 use tokio::net::{TcpListener, TcpStream};
 use tokio::select;
 
 #[derive(Clone)]
-pub(crate) struct ClientManager {
+pub(crate) struct ClientController {
     pub(crate) ttl_manager: TtlSchedulerManager,
     pub(crate) cache_manager: CacheManager,
     pub(crate) config_manager: ConfigManager,
     pub(crate) cluster_communication_manager: ClusterCommunicationManager,
 }
 
-impl ClientManager {
+impl ClientController {
     pub(crate) fn new(actor_registry: ActorRegistry) -> Self {
-        ClientManager {
+        ClientController {
             cluster_communication_manager: actor_registry.cluster_communication_manager(),
             ttl_manager: actor_registry.ttl_manager,
             cache_manager: actor_registry.cache_manager,
