@@ -1,10 +1,10 @@
 use crate::domains::{
+    cache::cache_objects::CacheEntry,
     save::endec::{
         CHECKSUM_INDICATOR, DATABASE_SECTION_INDICATOR, DATABASE_TABLE_SIZE_INDICATOR,
         EXPIRY_TIME_IN_MILLISECONDS_INDICATOR, HEADER_MAGIC_STRING, METADATA_SECTION_INDICATOR,
         STRING_VALUE_TYPE_INDICATOR,
     },
-    storage::cache_objects::CacheEntry,
 };
 
 use anyhow::Result;

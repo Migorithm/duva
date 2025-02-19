@@ -1,7 +1,7 @@
 use std::collections::VecDeque;
 
 use crate::{
-    domains::storage::cache_objects::CacheEntry,
+    domains::cache::cache_objects::CacheEntry,
     services::{error::IoError, statefuls::snapshot::save::command::SaveCommand},
 };
 use tokio::io::AsyncWriteExt;

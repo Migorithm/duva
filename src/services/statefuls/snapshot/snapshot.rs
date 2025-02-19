@@ -1,4 +1,4 @@
-use crate::domains::storage::cache_objects::CacheEntry;
+use crate::domains::cache::cache_objects::CacheEntry;
 
 #[derive(Debug)]
 pub struct Snapshot {

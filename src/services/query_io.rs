@@ -5,7 +5,7 @@ use crate::domains::cluster_actors::replication::{time_in_secs, BannedPeer, Repl
 #[cfg(test)]
 use crate::domains::peers::identifier::PeerIdentifier;
 
-use crate::domains::storage::cache_objects::CacheValue;
+use crate::domains::cache::cache_objects::CacheValue;
 use crate::services::aof::WriteOperation;
 
 use anyhow::{Context, Result};
