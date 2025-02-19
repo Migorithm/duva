@@ -1,3 +1,4 @@
+pub mod append_only_files;
 pub mod cache;
 pub mod cluster_actors;
 pub mod cluster_listeners;
@@ -7,5 +8,4 @@ pub mod peers;
 pub mod query_parsers;
 pub mod save;
 pub mod ttl;
-
 pub use error::IoError;

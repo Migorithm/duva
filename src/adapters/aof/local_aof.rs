@@ -1,10 +1,13 @@
 //! A local append-only file (AOF) adapter.
-use crate::services::aof::{TAof, WriteOperation, WriteRequest};
+
 use anyhow::Result;
 use bytes::BytesMut;
 use std::path::{Path, PathBuf};
 use tokio::fs::{File, OpenOptions};
 use tokio::io::{AsyncReadExt, AsyncWriteExt, BufReader, BufWriter};
+
+use crate::domains::append_only_files::interfaces::TAof;
+use crate::domains::append_only_files::{WriteOperation, WriteRequest};
 
 /// A local append-only file (AOF) implementation.
 pub struct LocalAof {

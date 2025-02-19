@@ -1,26 +1,9 @@
-use crate::domains::query_parsers::{deserialize, QueryIO};
-use crate::write_array;
-use anyhow::Result;
 use bytes::{Bytes, BytesMut};
 
-/// Trait for an Append-Only File (AOF) abstraction.
-pub trait TAof {
-    /// Appends a single `WriteOperation` to the log.
-    fn append(
-        &mut self,
-        op: WriteOperation,
-    ) -> impl std::future::Future<Output = Result<()>> + Send;
-
-    /// Replays all logged operations from the beginning of the AOF, calling the provided callback `f` for each operation.
-    ///
-    /// The callback `f(WriteOperation)` receives each operation in the order it was appended.
-    fn replay<F>(&mut self, f: F) -> impl std::future::Future<Output = Result<()>> + Send
-    where
-        F: FnMut(WriteOperation) + Send;
-
-    /// Forces pending writes to be physically recorded on disk.
-    fn fsync(&mut self) -> impl std::future::Future<Output = Result<()>> + Send;
-}
+use crate::{
+    domains::query_parsers::{deserialize, QueryIO},
+    write_array,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WriteOperation {
@@ -68,7 +51,7 @@ impl WriteRequest {
     }
 
     /// Deserialize `WriteOperation`s from the given bytes.
-    pub fn deserialize(mut bytes: BytesMut) -> Result<Vec<WriteOperation>> {
+    pub fn deserialize(mut bytes: BytesMut) -> anyhow::Result<Vec<WriteOperation>> {
         let mut ops = Vec::new();
 
         while !bytes.is_empty() {
@@ -84,7 +67,7 @@ impl WriteRequest {
         Ok(ops)
     }
 
-    pub fn new(cmd: String, args: std::vec::IntoIter<QueryIO>) -> Result<Self> {
+    pub fn new(cmd: String, args: std::vec::IntoIter<QueryIO>) -> anyhow::Result<Self> {
         match cmd.as_str() {
             "set" => Self::to_set(args),
 

@@ -1,3 +1,4 @@
+use crate::domains::append_only_files::{WriteOperation, WriteRequest};
 use crate::domains::cluster_actors::replication::HeartBeatMessage;
 #[cfg(test)]
 use crate::domains::cluster_actors::replication::{time_in_secs, BannedPeer, ReplicationInfo};
@@ -5,7 +6,6 @@ use crate::domains::cluster_actors::replication::{time_in_secs, BannedPeer, Repl
 use crate::domains::peers::identifier::PeerIdentifier;
 
 use crate::domains::cache::cache_objects::CacheValue;
-use crate::services::aof::{WriteOperation, WriteRequest};
 
 use anyhow::{Context, Result};
 use bytes::{Bytes, BytesMut};

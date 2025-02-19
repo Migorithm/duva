@@ -1,4 +1,3 @@
-pub mod aof;
 pub mod cache_handler;
 pub mod cache_manager;
 pub mod cluster_handler;

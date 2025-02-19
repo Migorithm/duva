@@ -1,7 +1,6 @@
 use crate::domains::peers::identifier::PeerIdentifier;
 use crate::domains::peers::kind::PeerKind;
 use crate::domains::peers::peer::Peer;
-use crate::services::aof::{WriteOperation, WriteRequest};
 
 use crate::services::interface::TWrite;
 

@@ -1,4 +1,7 @@
-use crate::domains::query_parsers::QueryIO;
+use crate::domains::{
+    append_only_files::{WriteOperation, WriteRequest},
+    query_parsers::QueryIO,
+};
 
 use super::{
     commands::AddPeer,

@@ -1,4 +1,4 @@
-use crate::{domains::peers::identifier::PeerIdentifier, services::aof::WriteRequest};
+use crate::domains::{append_only_files::WriteRequest, peers::identifier::PeerIdentifier};
 use std::time::SystemTime;
 
 #[derive(Clone, Debug)]

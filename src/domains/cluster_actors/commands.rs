@@ -1,6 +1,6 @@
-use crate::domains::peers::identifier::PeerIdentifier;
+use crate::domains::append_only_files::WriteOperation;
 use crate::domains::peers::peer::Peer;
-use crate::services::aof::{WriteOperation, WriteRequest};
+use crate::domains::{append_only_files::WriteRequest, peers::identifier::PeerIdentifier};
 
 use super::replication::{HeartBeatMessage, ReplicationInfo};
 

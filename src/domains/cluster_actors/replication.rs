@@ -1,5 +1,5 @@
+use crate::domains::append_only_files::{WriteOperation, WriteRequest};
 use crate::domains::peers::identifier::PeerIdentifier;
-use crate::services::aof::{WriteOperation, WriteRequest};
 
 use bytes::Bytes;
 use std::str::FromStr;
