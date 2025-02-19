@@ -1,4 +1,4 @@
-use crate::domains::save::snapshot::snapshot::DecodedMetadata;
+use crate::domains::saves::snapshot::snapshot::DecodedMetadata;
 
 #[derive(Default)]
 pub struct DecoderInit;

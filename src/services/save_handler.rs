@@ -1,4 +1,4 @@
-use crate::domains::save::{actor::SaveActor, command::SaveCommand};
+use crate::domains::saves::{actor::SaveActor, command::SaveCommand};
 
 impl SaveActor {
     pub async fn run(

@@ -1,6 +1,6 @@
 use std::collections::VecDeque;
 
-use crate::domains::{cache::cache_objects::CacheEntry, IoError};
+use crate::domains::{caches::cache_objects::CacheEntry, IoError};
 use tokio::io::AsyncWriteExt;
 
 use super::{

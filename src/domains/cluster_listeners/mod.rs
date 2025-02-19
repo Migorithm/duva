@@ -7,7 +7,7 @@ use super::{
     cluster_actors::{commands::ClusterCommand, replication::HeartBeatMessage},
     peers::{connected_types::ReadConnected, identifier::PeerIdentifier},
     query_parsers::QueryIO,
-    save::snapshot::snapshot_applier::SnapshotApplier,
+    saves::snapshot::snapshot_applier::SnapshotApplier,
 };
 
 pub(crate) type ReactorKillSwitch = tokio::sync::oneshot::Receiver<()>;

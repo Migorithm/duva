@@ -1,13 +1,13 @@
 use super::request::{HandShakeRequest, HandShakeRequestEnum};
-use crate::domains::cache::cache_manager::CacheManager;
+use crate::domains::caches::cache_manager::CacheManager;
 use crate::domains::cluster_actors::commands::AddPeer;
 use crate::domains::cluster_actors::commands::ClusterCommand;
 use crate::domains::peers::identifier::PeerIdentifier;
 use crate::domains::peers::kind::PeerKind;
 use crate::domains::peers::peer::Peer;
 use crate::domains::query_parsers::QueryIO;
-use crate::domains::save::actor::SaveTarget;
-use crate::domains::save::snapshot::snapshot_applier::SnapshotApplier;
+use crate::domains::saves::actor::SaveTarget;
+use crate::domains::saves::snapshot::snapshot_applier::SnapshotApplier;
 use crate::make_smart_pointer;
 
 use crate::services::interface::TGetPeerIp;

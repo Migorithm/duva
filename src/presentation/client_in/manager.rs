@@ -1,13 +1,13 @@
 use super::request::ClientRequest;
 use super::stream::ClientStream;
 use crate::actor_registry::ActorRegistry;
-use crate::domains::cache::cache_manager::CacheManager;
-use crate::domains::cache::cache_objects::CacheEntry;
+use crate::domains::caches::cache_manager::CacheManager;
+use crate::domains::caches::cache_objects::CacheEntry;
 use crate::domains::cluster_actors::commands::ClusterCommand;
 use crate::domains::cluster_actors::config_manager::ConfigManager;
 use crate::domains::config_actors::command::ConfigResponse;
 use crate::domains::query_parsers::QueryIO;
-use crate::domains::save::actor::SaveTarget;
+use crate::domains::saves::actor::SaveTarget;
 use crate::domains::ttl::manager::TtlSchedulerManager;
 use crate::presentation::cluster_in::communication_manager::ClusterCommunicationManager;
 use crate::services::interface::TWrite;

@@ -1,4 +1,4 @@
-use crate::domains::save::endec::decoder::{byte_decoder::BytesDecoder, states::DecoderInit};
+use crate::domains::saves::endec::decoder::{byte_decoder::BytesDecoder, states::DecoderInit};
 
 use super::snapshot::Snapshot;
 

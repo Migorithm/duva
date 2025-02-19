@@ -1,10 +1,10 @@
-use crate::domains::cache::actor::CacheActor;
-use crate::domains::cache::actor::CacheCommandSender;
-use crate::domains::cache::cache_objects::CacheEntry;
-use crate::domains::cache::command::CacheCommand;
+use crate::domains::caches::actor::CacheActor;
+use crate::domains::caches::actor::CacheCommandSender;
+use crate::domains::caches::cache_objects::CacheEntry;
+use crate::domains::caches::command::CacheCommand;
 use crate::domains::query_parsers::QueryIO;
-use crate::domains::save::actor::SaveActor;
-use crate::domains::save::actor::SaveTarget;
+use crate::domains::saves::actor::SaveActor;
+use crate::domains::saves::actor::SaveTarget;
 use crate::domains::ttl::manager::TtlSchedulerManager;
 
 use anyhow::Result;

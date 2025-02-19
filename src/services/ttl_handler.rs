@@ -7,7 +7,7 @@ use std::{
 use tokio::{sync::mpsc::Receiver, time::interval};
 
 use crate::domains::{
-    cache::command::CacheCommand,
+    caches::command::CacheCommand,
     ttl::{actor::TtlActor, command::TtlCommand, manager::TtlSchedulerManager},
 };
 

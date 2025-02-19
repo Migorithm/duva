@@ -1,9 +1,9 @@
-use crate::domains::cache::actor::CacheActor;
-use crate::domains::cache::cache_objects::CacheEntry;
-use crate::domains::cache::command::CacheCommand;
+use crate::domains::caches::actor::CacheActor;
+use crate::domains::caches::cache_objects::CacheEntry;
+use crate::domains::caches::command::CacheCommand;
 
 use crate::domains::query_parsers::QueryIO;
-use crate::domains::save::command::SaveCommand;
+use crate::domains::saves::command::SaveCommand;
 
 use anyhow::Result;
 
@@ -53,7 +53,7 @@ impl CacheActor {
 
 #[tokio::test]
 async fn test_set_and_delete_inc_dec_keys_with_expiry() {
-    use crate::domains::cache::actor::CacheDb;
+    use crate::domains::caches::actor::CacheDb;
     use crate::domains::ttl::manager::TtlSchedulerManager;
     use std::time::{Duration, SystemTime};
 

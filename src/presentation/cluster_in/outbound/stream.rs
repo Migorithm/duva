@@ -1,7 +1,7 @@
 use super::response::ConnectionResponse;
 use crate::domains::cluster_actors::commands::AddPeer;
 use crate::domains::cluster_actors::commands::ClusterCommand;
-use crate::domains::save::snapshot::snapshot_applier::SnapshotApplier;
+use crate::domains::saves::snapshot::snapshot_applier::SnapshotApplier;
 use crate::presentation::cluster_in::connection_manager::ClusterConnectionManager;
 
 use crate::domains::peers::identifier::PeerIdentifier;
