@@ -1,12 +1,10 @@
-use crate::domains::save::actor::SaveActor;
-use crate::services::statefuls::snapshot::save::command::SaveCommand;
-use anyhow::Result;
+use crate::domains::save::{actor::SaveActor, command::SaveCommand};
 
 impl SaveActor {
     pub async fn run(
         mut self,
         mut inbox: tokio::sync::mpsc::Receiver<SaveCommand>,
-    ) -> Result<Self> {
+    ) -> anyhow::Result<Self> {
         while let Some(cmd) = inbox.recv().await {
             match self.handle_cmd(cmd).await {
                 Ok(should_break) => {

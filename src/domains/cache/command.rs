@@ -1,8 +1,8 @@
 use tokio::sync::{mpsc, oneshot};
 
 use crate::{
-    domains::ttl::manager::TtlSchedulerManager,
-    services::{query_io::QueryIO, statefuls::snapshot::save::command::SaveCommand},
+    domains::{save::command::SaveCommand, ttl::manager::TtlSchedulerManager},
+    services::query_io::QueryIO,
 };
 
 use super::cache_objects::CacheEntry;
