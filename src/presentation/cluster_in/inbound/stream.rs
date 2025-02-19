@@ -5,6 +5,7 @@ use crate::domains::peers::identifier::PeerIdentifier;
 use crate::domains::peers::kind::PeerKind;
 use crate::domains::peers::peer::Peer;
 use crate::domains::save::actor::SaveTarget;
+use crate::domains::save::snapshot::snapshot_applier::SnapshotApplier;
 use crate::make_smart_pointer;
 
 use crate::services::cache_manager::CacheManager;
@@ -13,7 +14,6 @@ use crate::services::interface::TRead;
 use crate::services::interface::TWrite;
 use crate::services::query_io::QueryIO;
 
-use crate::services::statefuls::snapshot::snapshot_applier::SnapshotApplier;
 use anyhow::Context;
 use bytes::Bytes;
 use tokio::net::TcpStream;

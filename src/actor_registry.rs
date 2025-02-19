@@ -1,8 +1,9 @@
 use crate::domains::cluster_actors::commands::ClusterCommand;
+use crate::domains::save::snapshot::snapshot_applier::SnapshotApplier;
 use crate::domains::ttl::manager::TtlSchedulerManager;
 use crate::presentation::cluster_in::connection_manager::ClusterConnectionManager;
 use crate::services::config_manager::ConfigManager;
-use crate::services::statefuls::snapshot::snapshot_applier::SnapshotApplier;
+
 use crate::{
     presentation::cluster_in::communication_manager::ClusterCommunicationManager, CacheManager,
 };

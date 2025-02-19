@@ -1,12 +1,11 @@
 use tokio::{net::tcp::OwnedReadHalf, sync::mpsc::Sender};
 
-use crate::services::{
-    interface::TRead, query_io::QueryIO, statefuls::snapshot::snapshot_applier::SnapshotApplier,
-};
+use crate::services::{interface::TRead, query_io::QueryIO};
 
 use super::{
     cluster_actors::{commands::ClusterCommand, replication::HeartBeatMessage},
     peers::{connected_types::ReadConnected, identifier::PeerIdentifier},
+    save::snapshot::snapshot_applier::SnapshotApplier,
 };
 
 pub trait TListen {

@@ -6,7 +6,8 @@ use crate::domains::save::endec::{
     EXPIRY_TIME_IN_MILLISECONDS_INDICATOR, EXPIRY_TIME_IN_SECONDS_INDICATOR, HEADER_MAGIC_STRING,
     METADATA_SECTION_INDICATOR, STRING_VALUE_TYPE_INDICATOR,
 };
-use crate::services::statefuls::snapshot::snapshot::{DecodedDatabase, DecodedMetadata, Snapshot};
+use crate::domains::save::snapshot::snapshot::{DecodedDatabase, DecodedMetadata, Snapshot};
+
 use anyhow::{Context, Result};
 use std::{
     ops::{Deref, DerefMut},

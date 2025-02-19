@@ -12,8 +12,8 @@ use crate::domains::cluster_actors::commands::ClusterCommand;
 use crate::domains::cluster_listeners::ClusterListener;
 use crate::domains::cluster_listeners::TListen;
 use crate::domains::peers::connected_types::WriteConnected;
+use crate::domains::save::snapshot::snapshot_applier::SnapshotApplier;
 
-use crate::services::statefuls::snapshot::snapshot_applier::SnapshotApplier;
 use tokio::net::tcp::OwnedReadHalf;
 use tokio::net::tcp::OwnedWriteHalf;
 use tokio::net::TcpStream;

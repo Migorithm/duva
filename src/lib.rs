@@ -9,6 +9,8 @@ use actor_registry::ActorRegistry;
 use anyhow::Result;
 use domains::cluster_actors::commands::ClusterCommand;
 use domains::cluster_actors::replication::IS_LEADER_MODE;
+use domains::save::snapshot::snapshot_applier::SnapshotApplier;
+use domains::save::snapshot::snapshot_loader::SnapshotLoader;
 use domains::ttl::actor::TtlActor;
 pub use init::Environment;
 use presentation::client_in::manager::ClientManager;
@@ -19,8 +21,6 @@ use services::cache_manager::CacheManager;
 use services::config_manager::ConfigManager;
 use services::error::IoError;
 
-use services::statefuls::snapshot::snapshot_applier::SnapshotApplier;
-use services::statefuls::snapshot::snapshot_loader::SnapshotLoader;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
 use tokio::net::TcpListener;
