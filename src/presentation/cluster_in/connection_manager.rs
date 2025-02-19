@@ -1,11 +1,12 @@
 use super::communication_manager::ClusterCommunicationManager;
 use super::outbound::stream::OutboundStream;
+use crate::domains::cache::cache_manager::CacheManager;
 use crate::domains::cluster_actors::commands::ClusterCommand;
 use crate::domains::cluster_actors::replication::IS_LEADER_MODE;
 use crate::domains::peers::identifier::PeerIdentifier;
 use crate::domains::peers::kind::PeerKind;
 use crate::domains::save::snapshot::snapshot_applier::SnapshotApplier;
-use crate::services::cache_manager::CacheManager;
+
 use crate::{make_smart_pointer, InboundStream};
 use tokio::sync::mpsc::Sender;
 

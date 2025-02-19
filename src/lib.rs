@@ -7,7 +7,9 @@ pub mod presentation;
 pub mod services;
 use actor_registry::ActorRegistry;
 use anyhow::Result;
+use domains::cache::cache_manager::CacheManager;
 use domains::cluster_actors::commands::ClusterCommand;
+use domains::cluster_actors::config_manager::ConfigManager;
 use domains::cluster_actors::replication::IS_LEADER_MODE;
 use domains::save::snapshot::snapshot_applier::SnapshotApplier;
 use domains::save::snapshot::snapshot_loader::SnapshotLoader;
@@ -17,9 +19,6 @@ pub use init::Environment;
 use presentation::client_in::manager::ClientManager;
 use presentation::cluster_in::communication_manager::ClusterCommunicationManager;
 use presentation::cluster_in::inbound::stream::InboundStream;
-
-use services::cache_manager::CacheManager;
-use services::config_manager::ConfigManager;
 
 use std::sync::atomic::Ordering;
 use std::time::Duration;

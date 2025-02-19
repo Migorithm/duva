@@ -12,6 +12,7 @@ use std::collections::BTreeMap;
 use tokio::time::Instant;
 pub mod actor;
 pub mod commands;
+pub mod config_manager;
 pub mod consensus;
 pub mod replication;
 mod replid_generator;
