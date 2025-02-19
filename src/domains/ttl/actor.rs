@@ -2,14 +2,16 @@ use crate::domains::storage::command::CacheCommand;
 use crate::make_smart_pointer;
 
 use crate::services::statefuls::cache::manager::CacheManager;
-use crate::services::statefuls::cache::ttl::command::TtlCommand;
-use crate::services::statefuls::cache::ttl::manager::TtlSchedulerManager;
+
 use std::cmp::Reverse;
 use std::collections::BinaryHeap;
 use std::time::{Duration, SystemTime};
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::Receiver;
 use tokio::time::interval;
+
+use super::command::TtlCommand;
+use super::manager::TtlSchedulerManager;
 
 pub struct TtlActor(pub(crate) CacheManager);
 make_smart_pointer!(TtlActor, CacheManager);
