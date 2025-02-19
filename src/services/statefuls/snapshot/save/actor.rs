@@ -1,5 +1,6 @@
+use crate::domains::storage::cache_objects::CacheEntry;
 use crate::services::error::IoError;
-use crate::services::statefuls::cache::CacheEntry;
+
 use crate::services::statefuls::snapshot::endec::encoder::byte_encoder::encode_checksum;
 use crate::services::statefuls::snapshot::endec::encoder::byte_encoder::encode_database_info;
 use crate::services::statefuls::snapshot::endec::encoder::byte_encoder::encode_database_table_size;

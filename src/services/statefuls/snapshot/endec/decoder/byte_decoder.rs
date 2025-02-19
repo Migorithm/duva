@@ -1,5 +1,6 @@
 use super::states::{DecoderInit, HeaderReady, MetadataReady};
-use crate::services::statefuls::cache::CacheEntry;
+
+use crate::domains::storage::cache_objects::CacheEntry;
 use crate::services::statefuls::snapshot::endec::{
     extract_range, StoredDuration, DATABASE_SECTION_INDICATOR, DATABASE_TABLE_SIZE_INDICATOR,
     EXPIRY_TIME_IN_MILLISECONDS_INDICATOR, EXPIRY_TIME_IN_SECONDS_INDICATOR, HEADER_MAGIC_STRING,

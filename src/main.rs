@@ -1,5 +1,5 @@
 use duva::{
-    domains::config_actors::actor::ConfigActor, services::config::manager::ConfigManager,
+    domains::config_actors::actor::ConfigActor, services::config_manager::ConfigManager,
     Environment, StartUpFacade,
 };
 

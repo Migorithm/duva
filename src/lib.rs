@@ -14,7 +14,7 @@ use presentation::client_in::manager::ClientManager;
 use presentation::cluster_in::communication_manager::ClusterCommunicationManager;
 use presentation::cluster_in::inbound::stream::InboundStream;
 
-use services::config::manager::ConfigManager;
+use services::config_manager::ConfigManager;
 use services::error::IoError;
 use services::statefuls::cache::manager::CacheManager;
 use services::statefuls::cache::ttl::actor::TtlActor;

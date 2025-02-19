@@ -1,5 +1,6 @@
+use crate::domains::storage::command::CacheCommand;
 use crate::make_smart_pointer;
-use crate::services::statefuls::cache::actor::CacheCommand;
+
 use crate::services::statefuls::cache::manager::CacheManager;
 use crate::services::statefuls::cache::ttl::command::TtlCommand;
 use crate::services::statefuls::cache::ttl::manager::TtlSchedulerManager;

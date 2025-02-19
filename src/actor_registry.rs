@@ -4,7 +4,7 @@ use crate::services::statefuls::snapshot::snapshot_applier::SnapshotApplier;
 use crate::{
     presentation::cluster_in::communication_manager::ClusterCommunicationManager,
     services::{
-        config::manager::ConfigManager, statefuls::cache::ttl::manager::TtlSchedulerManager,
+        config_manager::ConfigManager, statefuls::cache::ttl::manager::TtlSchedulerManager,
     },
     CacheManager,
 };
