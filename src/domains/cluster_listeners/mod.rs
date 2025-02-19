@@ -1,12 +1,11 @@
 use tokio::{net::tcp::OwnedReadHalf, sync::mpsc::Sender};
 
 use crate::services::{
-    cluster::actors::replication::HeartBeatMessage, interface::TRead, query_io::QueryIO,
-    statefuls::snapshot::snapshot_applier::SnapshotApplier,
+    interface::TRead, query_io::QueryIO, statefuls::snapshot::snapshot_applier::SnapshotApplier,
 };
 
 use super::{
-    cluster_actors::commands::ClusterCommand,
+    cluster_actors::{commands::ClusterCommand, replication::HeartBeatMessage},
     peers::{connected_types::ReadConnected, identifier::PeerIdentifier},
 };
 

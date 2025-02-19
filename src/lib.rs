@@ -8,11 +8,12 @@ pub mod services;
 use actor_registry::ActorRegistry;
 use anyhow::Result;
 use domains::cluster_actors::commands::ClusterCommand;
+use domains::cluster_actors::replication::IS_LEADER_MODE;
 pub use init::Environment;
 use presentation::client_in::manager::ClientManager;
 use presentation::cluster_in::communication_manager::ClusterCommunicationManager;
 use presentation::cluster_in::inbound::stream::InboundStream;
-use services::cluster::actors::replication::IS_LEADER_MODE;
+
 use services::config::manager::ConfigManager;
 use services::error::IoError;
 use services::statefuls::cache::manager::CacheManager;

@@ -1,7 +1,8 @@
 use crate::domains::peers::identifier::PeerIdentifier;
 use crate::domains::peers::peer::Peer;
 use crate::services::aof::{WriteOperation, WriteRequest};
-use crate::services::cluster::actors::replication::{HeartBeatMessage, ReplicationInfo};
+
+use super::replication::{HeartBeatMessage, ReplicationInfo};
 
 pub enum ClusterCommand {
     AddPeer(AddPeer),

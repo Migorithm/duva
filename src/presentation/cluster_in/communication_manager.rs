@@ -1,10 +1,9 @@
 use crate::{
     domains::{
-        cluster_actors::{commands::ClusterCommand, ClusterActor},
+        cluster_actors::{commands::ClusterCommand, replication::ReplicationInfo, ClusterActor},
         peers::identifier::PeerIdentifier,
     },
     make_smart_pointer,
-    services::cluster::actors::replication::ReplicationInfo,
 };
 use std::time::Duration;
 use tokio::{sync::mpsc::Sender, time::interval};

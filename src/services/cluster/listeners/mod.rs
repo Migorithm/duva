@@ -1,5 +1,3 @@
-use super::actors::replication::HeartBeatMessage;
-
 use crate::services::{interface::TRead, query_io::QueryIO};
 use tokio::net::tcp::OwnedReadHalf;
 use tokio::select;
