@@ -1,8 +1,5 @@
-use crate::services::error::IoError;
-
+use crate::domains::{query_parsers::QueryIO, IoError};
 use bytes::{Bytes, BytesMut};
-
-use super::query_io::QueryIO;
 
 pub trait TRead {
     fn read_bytes(

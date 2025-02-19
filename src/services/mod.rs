@@ -1,8 +1,2 @@
-pub mod aof;
-pub mod cluster;
-pub mod config;
-pub mod error;
+pub mod handlers;
 pub mod interface;
-
-pub mod query_io;
-pub mod statefuls;

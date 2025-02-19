@@ -1,5 +1,4 @@
-use crate::env_var;
-use crate::services::cluster::actors::replication::IS_LEADER_MODE;
+use crate::{domains::cluster_actors::replication::IS_LEADER_MODE, env_var};
 
 pub struct Environment {
     pub replicaof: Option<(String, String)>,

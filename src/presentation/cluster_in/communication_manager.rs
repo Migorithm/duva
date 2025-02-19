@@ -1,9 +1,9 @@
 use crate::{
-    make_smart_pointer,
-    services::cluster::{
-        actors::actor::ClusterActor, actors::commands::ClusterCommand,
-        actors::replication::ReplicationInfo, peers::identifier::PeerIdentifier,
+    domains::{
+        cluster_actors::{commands::ClusterCommand, replication::ReplicationInfo, ClusterActor},
+        peers::identifier::PeerIdentifier,
     },
+    make_smart_pointer,
 };
 use std::time::Duration;
 use tokio::{sync::mpsc::Sender, time::interval};
@@ -25,8 +25,8 @@ impl ClusterCommunicationManager {
         let (actor_handler, cluster_message_listener) = tokio::sync::mpsc::channel(100);
 
         tokio::spawn(
-            ClusterActor::new(node_timeout, ReplicationInfo::new(replicaof, &host, port))
-                .handle(cluster_message_listener, notifier),
+            ClusterActor::new(node_timeout, ReplicationInfo::new(replicaof, &host, port), notifier)
+                .handle(cluster_message_listener),
         );
 
         tokio::spawn({

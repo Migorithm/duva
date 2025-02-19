@@ -1,12 +1,11 @@
+use crate::domains::cluster_actors::commands::ClusterCommand;
+use crate::domains::config_actors::config_manager::ConfigManager;
+use crate::domains::saves::snapshot::snapshot_applier::SnapshotApplier;
+use crate::domains::ttl::manager::TtlSchedulerManager;
 use crate::presentation::cluster_in::connection_manager::ClusterConnectionManager;
-use crate::services::statefuls::snapshot::snapshot_applier::SnapshotApplier;
+
 use crate::{
-    presentation::cluster_in::communication_manager::ClusterCommunicationManager,
-    services::{
-        cluster::actors::commands::ClusterCommand, config::manager::ConfigManager,
-        statefuls::cache::ttl::manager::TtlSchedulerManager,
-    },
-    CacheManager,
+    presentation::cluster_in::communication_manager::ClusterCommunicationManager, CacheManager,
 };
 use tokio::sync::mpsc::Sender;
 

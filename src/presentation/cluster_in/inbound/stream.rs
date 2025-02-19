@@ -1,17 +1,19 @@
 use super::request::{HandShakeRequest, HandShakeRequestEnum};
+use crate::domains::caches::cache_manager::CacheManager;
+use crate::domains::cluster_actors::commands::AddPeer;
+use crate::domains::cluster_actors::commands::ClusterCommand;
+use crate::domains::peers::identifier::PeerIdentifier;
+use crate::domains::peers::kind::PeerKind;
+use crate::domains::peers::peer::Peer;
+use crate::domains::query_parsers::QueryIO;
+use crate::domains::saves::actor::SaveTarget;
+use crate::domains::saves::snapshot::snapshot_applier::SnapshotApplier;
 use crate::make_smart_pointer;
-use crate::services::cluster::actors::commands::{AddPeer, ClusterCommand};
-use crate::services::cluster::peers::identifier::PeerIdentifier;
-use crate::services::cluster::peers::kind::PeerKind;
 
-use crate::services::cluster::peers::peer::Peer;
 use crate::services::interface::TGetPeerIp;
 use crate::services::interface::TRead;
 use crate::services::interface::TWrite;
-use crate::services::query_io::QueryIO;
-use crate::services::statefuls::cache::manager::CacheManager;
-use crate::services::statefuls::snapshot::save::actor::SaveTarget;
-use crate::services::statefuls::snapshot::snapshot_applier::SnapshotApplier;
+
 use anyhow::Context;
 use bytes::Bytes;
 use tokio::net::TcpStream;

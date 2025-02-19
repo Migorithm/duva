@@ -1,23 +1,24 @@
 mod actor_registry;
-pub mod adapters;
+pub(crate) mod adapters;
+pub mod domains;
 mod init;
 pub mod macros;
 pub mod presentation;
 pub mod services;
 use actor_registry::ActorRegistry;
 use anyhow::Result;
+use domains::caches::cache_manager::CacheManager;
+use domains::cluster_actors::commands::ClusterCommand;
+use domains::cluster_actors::replication::IS_LEADER_MODE;
+use domains::config_actors::config_manager::ConfigManager;
+use domains::saves::snapshot::snapshot_applier::SnapshotApplier;
+use domains::saves::snapshot::snapshot_loader::SnapshotLoader;
+use domains::ttl::actor::TtlActor;
+use domains::IoError;
 pub use init::Environment;
-use presentation::client_in::manager::ClientManager;
+use presentation::clients::ClientController;
 use presentation::cluster_in::communication_manager::ClusterCommunicationManager;
 use presentation::cluster_in::inbound::stream::InboundStream;
-use services::cluster::actors::commands::ClusterCommand;
-use services::cluster::actors::replication::IS_LEADER_MODE;
-use services::config::manager::ConfigManager;
-use services::error::IoError;
-use services::statefuls::cache::manager::CacheManager;
-use services::statefuls::cache::ttl::actor::TtlActor;
-use services::statefuls::snapshot::snapshot_applier::SnapshotApplier;
-use services::statefuls::snapshot::snapshot_loader::SnapshotLoader;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
 use tokio::net::TcpListener;
@@ -27,7 +28,7 @@ pub mod client_utils;
 
 // * StartUp Facade that manages invokes subsystems
 pub struct StartUpFacade {
-    client_manager: ClientManager,
+    client_manager: ClientController,
     registry: ActorRegistry,
     mode_change_watcher: tokio::sync::watch::Receiver<bool>,
 }
@@ -62,7 +63,7 @@ impl StartUpFacade {
             ttl_manager,
             snapshot_applier,
         };
-        let client_manager = ClientManager::new(registry.clone());
+        let client_manager = ClientController::new(registry.clone());
 
         StartUpFacade { client_manager, registry, mode_change_watcher }
     }

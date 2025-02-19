@@ -9,7 +9,8 @@ use common::get_available_port;
 
 use common::TestProcessChild;
 use duva::client_utils::ClientStreamHandler;
-use duva::services::query_io::QueryIO;
+use duva::domains::query_parsers::query_io::QueryIO;
+
 use std::process::Command;
 use std::process::Stdio;
 use std::time::SystemTime;

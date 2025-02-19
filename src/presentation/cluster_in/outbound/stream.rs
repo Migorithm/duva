@@ -1,15 +1,15 @@
 use super::response::ConnectionResponse;
+use crate::domains::cluster_actors::commands::AddPeer;
+use crate::domains::cluster_actors::commands::ClusterCommand;
+use crate::domains::saves::snapshot::snapshot_applier::SnapshotApplier;
 use crate::presentation::cluster_in::connection_manager::ClusterConnectionManager;
 
-use crate::services::cluster::actors::commands::AddPeer;
-use crate::services::cluster::actors::commands::ClusterCommand;
-use crate::services::cluster::peers::identifier::PeerIdentifier;
-use crate::services::cluster::peers::kind::PeerKind;
+use crate::domains::peers::identifier::PeerIdentifier;
+use crate::domains::peers::kind::PeerKind;
 
-use crate::services::cluster::peers::peer::Peer;
+use crate::domains::peers::peer::Peer;
 use crate::services::interface::TRead;
 use crate::services::interface::TWrite;
-use crate::services::statefuls::snapshot::snapshot_applier::SnapshotApplier;
 use crate::{make_smart_pointer, write_array};
 use anyhow::Context;
 use tokio::net::TcpStream;
