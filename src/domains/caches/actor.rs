@@ -9,6 +9,7 @@ use crate::make_smart_pointer;
 use anyhow::Context;
 use tokio::sync::mpsc;
 
+#[derive(Default)]
 pub struct CacheActor {
     pub(crate) cache: CacheDb,
 }
@@ -23,7 +24,7 @@ pub struct CacheDb {
 impl CacheActor {
     pub fn run() -> CacheCommandSender {
         let (tx, cache_actor_inbox) = mpsc::channel(100);
-        tokio::spawn(Self { cache: CacheDb::default() }.handle(cache_actor_inbox));
+        tokio::spawn(Self::default().handle(cache_actor_inbox));
         CacheCommandSender(tx)
     }
 

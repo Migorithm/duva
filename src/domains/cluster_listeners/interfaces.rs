@@ -1,6 +1,5 @@
-use tokio::net::tcp::OwnedReadHalf;
-
 use super::ReactorKillSwitch;
+use tokio::net::tcp::OwnedReadHalf;
 
 pub trait TListen {
     fn listen(
