@@ -1,19 +1,13 @@
-use tokio::{net::tcp::OwnedReadHalf, sync::mpsc::Sender};
-
+pub mod interfaces;
 use crate::services::{interface::TRead, query_io::QueryIO};
+pub(crate) use interfaces::TListen;
+use tokio::sync::mpsc::Sender;
 
 use super::{
     cluster_actors::{commands::ClusterCommand, replication::HeartBeatMessage},
     peers::{connected_types::ReadConnected, identifier::PeerIdentifier},
     save::snapshot::snapshot_applier::SnapshotApplier,
 };
-
-pub trait TListen {
-    fn listen(
-        self,
-        rx: ReactorKillSwitch,
-    ) -> impl std::future::Future<Output = OwnedReadHalf> + Send;
-}
 
 pub(crate) type ReactorKillSwitch = tokio::sync::oneshot::Receiver<()>;
 
