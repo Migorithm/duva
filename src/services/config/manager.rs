@@ -1,9 +1,10 @@
-use super::actor::ConfigActor;
-use super::command::ConfigCommand;
-use super::command::ConfigMessage;
-use super::command::ConfigQuery;
-use super::ConfigResource;
-use super::ConfigResponse;
+use crate::domains::config_actors::actor::ConfigActor;
+use crate::domains::config_actors::command::ConfigCommand;
+use crate::domains::config_actors::command::ConfigMessage;
+use crate::domains::config_actors::command::ConfigQuery;
+use crate::domains::config_actors::command::ConfigResource;
+use crate::domains::config_actors::command::ConfigResponse;
+
 use std::time::SystemTime;
 use tokio::fs::try_exists;
 use tokio::sync::mpsc::Sender;
