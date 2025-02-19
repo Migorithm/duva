@@ -17,7 +17,7 @@ use presentation::cluster_in::inbound::stream::InboundStream;
 
 use services::config_manager::ConfigManager;
 use services::error::IoError;
-use services::statefuls::cache::manager::CacheManager;
+use services::statefuls::cache::cache_manager::CacheManager;
 
 use services::statefuls::snapshot::snapshot_applier::SnapshotApplier;
 use services::statefuls::snapshot::snapshot_loader::SnapshotLoader;

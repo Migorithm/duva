@@ -4,14 +4,15 @@ use crate::domains::cluster_actors::commands::ClusterCommand;
 use crate::domains::peers::identifier::PeerIdentifier;
 use crate::domains::peers::kind::PeerKind;
 use crate::domains::peers::peer::Peer;
+use crate::domains::save::actor::SaveTarget;
 use crate::make_smart_pointer;
 
 use crate::services::interface::TGetPeerIp;
 use crate::services::interface::TRead;
 use crate::services::interface::TWrite;
 use crate::services::query_io::QueryIO;
-use crate::services::statefuls::cache::manager::CacheManager;
-use crate::services::statefuls::snapshot::save::actor::SaveTarget;
+use crate::services::statefuls::cache::cache_manager::CacheManager;
+
 use crate::services::statefuls::snapshot::snapshot_applier::SnapshotApplier;
 use anyhow::Context;
 use bytes::Bytes;

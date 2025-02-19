@@ -1,3 +1,6 @@
+use crate::domains::save::actor::SaveActor;
+use crate::domains::save::actor::SaveMeta;
+use crate::domains::save::actor::SaveTarget;
 use crate::domains::storage::cache_objects::CacheEntry;
 use crate::services::error::IoError;
 
@@ -8,30 +11,6 @@ use crate::services::statefuls::snapshot::endec::encoder::byte_encoder::encode_h
 use crate::services::statefuls::snapshot::endec::encoder::byte_encoder::encode_metadata;
 use crate::services::statefuls::snapshot::save::command::SaveCommand;
 use anyhow::Result;
-use std::collections::VecDeque;
-use tokio::io::AsyncWriteExt;
-
-pub enum SaveTarget {
-    File(tokio::fs::File),
-    InMemory(Vec<u8>),
-}
-
-impl SaveTarget {
-    pub async fn write(&mut self, buf: &[u8]) -> Result<(), IoError> {
-        match self {
-            SaveTarget::File(f) => f.write_all(buf).await.map_err(|e| e.kind().into()),
-            SaveTarget::InMemory(v) => {
-                v.extend_from_slice(buf);
-                Ok(())
-            }
-        }
-    }
-}
-
-pub struct SaveActor {
-    pub(in crate::services::statefuls::snapshot) target: SaveTarget,
-    pub(in crate::services::statefuls::snapshot) meta: SaveMeta,
-}
 
 impl SaveActor {
     pub async fn new(
@@ -126,30 +105,6 @@ impl SaveActor {
             v
         } else {
             panic!("cannot return inner for non InMemory type target")
-        }
-    }
-}
-
-pub struct SaveMeta {
-    num_of_saved_table_size_actor: usize,
-    total_key_value_table_size: usize,
-    total_expires_table_size: usize,
-    chunk_queue: VecDeque<Vec<CacheEntry>>,
-    num_of_cache_actors: usize,
-    repl_id: String,
-    offset: String,
-}
-
-impl SaveMeta {
-    pub fn new(num_of_cache_actors: usize, repl_id: String, offset: String) -> Self {
-        Self {
-            num_of_saved_table_size_actor: num_of_cache_actors,
-            total_key_value_table_size: 0,
-            total_expires_table_size: 0,
-            chunk_queue: VecDeque::new(),
-            num_of_cache_actors,
-            repl_id,
-            offset,
         }
     }
 }

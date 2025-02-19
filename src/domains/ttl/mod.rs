@@ -1,3 +1,3 @@
 pub(crate) mod actor;
-mod command;
+pub(crate) mod command;
 pub mod manager;

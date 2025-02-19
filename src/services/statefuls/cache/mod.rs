@@ -1,2 +1,1 @@
-pub mod cache_actor;
-pub mod manager;
+pub mod cache_manager;
