@@ -1,11 +1,11 @@
 use super::states::{DecoderInit, HeaderReady, MetadataReady};
 
-use crate::domains::storage::cache_objects::CacheEntry;
-use crate::services::statefuls::snapshot::endec::{
+use crate::domains::save::endec::{
     extract_range, StoredDuration, DATABASE_SECTION_INDICATOR, DATABASE_TABLE_SIZE_INDICATOR,
     EXPIRY_TIME_IN_MILLISECONDS_INDICATOR, EXPIRY_TIME_IN_SECONDS_INDICATOR, HEADER_MAGIC_STRING,
     METADATA_SECTION_INDICATOR, STRING_VALUE_TYPE_INDICATOR,
 };
+use crate::domains::storage::cache_objects::CacheEntry;
 use crate::services::statefuls::snapshot::snapshot::{DecodedDatabase, DecodedMetadata, Snapshot};
 use anyhow::{Context, Result};
 use std::{

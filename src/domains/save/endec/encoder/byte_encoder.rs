@@ -1,10 +1,10 @@
-use crate::{
-    domains::storage::cache_objects::CacheEntry,
-    services::statefuls::snapshot::endec::{
+use crate::domains::{
+    save::endec::{
         CHECKSUM_INDICATOR, DATABASE_SECTION_INDICATOR, DATABASE_TABLE_SIZE_INDICATOR,
         EXPIRY_TIME_IN_MILLISECONDS_INDICATOR, HEADER_MAGIC_STRING, METADATA_SECTION_INDICATOR,
         STRING_VALUE_TYPE_INDICATOR,
     },
+    storage::cache_objects::CacheEntry,
 };
 
 use anyhow::Result;
@@ -129,7 +129,7 @@ fn encode_size(size: usize) -> Result<Vec<u8>> {
 
 #[cfg(test)]
 mod test {
-    use crate::services::statefuls::snapshot::endec::{
+    use crate::domains::save::endec::{
         decoder::{byte_decoder::BytesDecoder, states::DecoderInit},
         StoredDuration,
     };
