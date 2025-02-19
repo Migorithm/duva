@@ -9,7 +9,7 @@ pub mod cluster_actor;
 pub mod config_actor;
 pub mod config_manager;
 pub mod listeners;
-pub mod query_io;
+
 pub mod save_actor;
 
 pub mod ttl_actor;

@@ -1,5 +1,4 @@
-use super::query_io::deserialize as deserialize_query_io;
-use super::query_io::QueryIO;
+use crate::domains::query_parsers::{deserialize, QueryIO};
 use crate::write_array;
 use anyhow::Result;
 use bytes::{Bytes, BytesMut};
@@ -73,7 +72,7 @@ impl WriteRequest {
         let mut ops = Vec::new();
 
         while !bytes.is_empty() {
-            let (query, consumed) = deserialize_query_io(bytes.clone())?;
+            let (query, consumed) = deserialize(bytes.clone())?;
             bytes = bytes.split_off(consumed);
 
             let QueryIO::ReplicateLog(write_operation) = query else {

@@ -1,6 +1,6 @@
 use anyhow::Context;
 
-use crate::services::query_io::QueryIO;
+use crate::domains::query_parsers::QueryIO;
 
 #[derive(Debug, PartialEq)]
 pub enum ConnectionResponse {

@@ -1,4 +1,4 @@
-use crate::{from_to, make_smart_pointer, services::query_io::QueryIO};
+use crate::{domains::query_parsers::QueryIO, from_to, make_smart_pointer};
 use anyhow::Context;
 use bytes::Bytes;
 

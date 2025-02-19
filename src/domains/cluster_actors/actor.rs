@@ -1,3 +1,5 @@
+use crate::domains::query_parsers::QueryIO;
+
 use super::{
     commands::AddPeer,
     replication::{time_in_secs, BannedPeer, HeartBeatMessage, ReplicationInfo},

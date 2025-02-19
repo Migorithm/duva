@@ -2,10 +2,10 @@ use crate::domains::cache::actor::CacheActor;
 use crate::domains::cache::actor::CacheCommandSender;
 use crate::domains::cache::cache_objects::CacheEntry;
 use crate::domains::cache::command::CacheCommand;
+use crate::domains::query_parsers::QueryIO;
 use crate::domains::save::actor::SaveActor;
 use crate::domains::save::actor::SaveTarget;
 use crate::domains::ttl::manager::TtlSchedulerManager;
-use crate::services::query_io::QueryIO;
 
 use anyhow::Result;
 use std::{hash::Hasher, iter::Zip};

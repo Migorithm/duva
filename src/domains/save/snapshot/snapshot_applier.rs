@@ -1,8 +1,8 @@
 use futures::future::join_all;
 
+use crate::domains::query_parsers::QueryIO;
 use crate::domains::ttl::manager::TtlSchedulerManager;
 use crate::services::cache_manager::CacheManager;
-use crate::services::query_io::QueryIO;
 
 use std::time::SystemTime;
 

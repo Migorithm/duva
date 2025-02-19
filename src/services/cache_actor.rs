@@ -2,8 +2,8 @@ use crate::domains::cache::actor::CacheActor;
 use crate::domains::cache::cache_objects::CacheEntry;
 use crate::domains::cache::command::CacheCommand;
 
+use crate::domains::query_parsers::QueryIO;
 use crate::domains::save::command::SaveCommand;
-use crate::services::query_io::QueryIO;
 
 use anyhow::Result;
 

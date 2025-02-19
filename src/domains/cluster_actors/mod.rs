@@ -4,7 +4,7 @@ use crate::domains::peers::peer::Peer;
 use crate::services::aof::{WriteOperation, WriteRequest};
 
 use crate::services::interface::TWrite;
-use crate::services::query_io::QueryIO;
+
 use consensus::ConsensusTracker;
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;

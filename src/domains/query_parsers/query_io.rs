@@ -1,4 +1,3 @@
-use super::aof::WriteRequest;
 use crate::domains::cluster_actors::replication::HeartBeatMessage;
 #[cfg(test)]
 use crate::domains::cluster_actors::replication::{time_in_secs, BannedPeer, ReplicationInfo};
@@ -6,7 +5,7 @@ use crate::domains::cluster_actors::replication::{time_in_secs, BannedPeer, Repl
 use crate::domains::peers::identifier::PeerIdentifier;
 
 use crate::domains::cache::cache_objects::CacheValue;
-use crate::services::aof::WriteOperation;
+use crate::services::aof::{WriteOperation, WriteRequest};
 
 use anyhow::{Context, Result};
 use bytes::{Bytes, BytesMut};
@@ -25,7 +24,7 @@ const ACKS_PREFIX: char = '@';
 #[macro_export]
 macro_rules! write_array {
     ($($x:expr),*) => {
-        $crate::services::query_io::QueryIO::Array(vec![$($crate::services::query_io::QueryIO::BulkString($x.into())),*])
+        $crate::domains::query_parsers::QueryIO::Array(vec![$($crate::domains::query_parsers::QueryIO::BulkString($x.into())),*])
     };
 }
 
@@ -459,8 +458,6 @@ fn test_from_bytes_to_peer_state() {
 
 #[test]
 fn test_from_heartbeat_to_bytes() {
-    use crate::services::query_io::QueryIO;
-
     //GIVEN
     let peer_state = HeartBeatMessage {
         term: 1,

@@ -1,11 +1,12 @@
 pub mod interfaces;
-use crate::services::{interface::TRead, query_io::QueryIO};
+use crate::services::interface::TRead;
 pub(crate) use interfaces::TListen;
 use tokio::sync::mpsc::Sender;
 
 use super::{
     cluster_actors::{commands::ClusterCommand, replication::HeartBeatMessage},
     peers::{connected_types::ReadConnected, identifier::PeerIdentifier},
+    query_parsers::QueryIO,
     save::snapshot::snapshot_applier::SnapshotApplier,
 };
 

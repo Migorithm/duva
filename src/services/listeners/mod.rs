@@ -1,4 +1,5 @@
-use crate::services::{interface::TRead, query_io::QueryIO};
+use crate::domains::query_parsers::QueryIO;
+use crate::services::interface::TRead;
 use tokio::net::tcp::OwnedReadHalf;
 use tokio::select;
 

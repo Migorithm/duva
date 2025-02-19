@@ -2,9 +2,9 @@ use std::collections::HashMap;
 
 use super::cache_objects::{CacheEntry, CacheValue};
 use super::command::CacheCommand;
+use crate::domains::query_parsers::QueryIO;
 use crate::domains::ttl::manager::TtlSchedulerManager;
 use crate::make_smart_pointer;
-use crate::services::query_io::QueryIO;
 
 use anyhow::Context;
 use tokio::sync::mpsc;

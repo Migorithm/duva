@@ -1,8 +1,5 @@
 use super::request::ClientRequest;
-use crate::{
-    make_smart_pointer,
-    services::{interface::TRead, query_io::QueryIO},
-};
+use crate::{domains::query_parsers::QueryIO, make_smart_pointer, services::interface::TRead};
 use anyhow::Context;
 use std::time::SystemTime;
 use tokio::net::TcpStream;
