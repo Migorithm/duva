@@ -12,6 +12,7 @@ use domains::cluster_actors::replication::IS_LEADER_MODE;
 use domains::save::snapshot::snapshot_applier::SnapshotApplier;
 use domains::save::snapshot::snapshot_loader::SnapshotLoader;
 use domains::ttl::actor::TtlActor;
+use domains::IoError;
 pub use init::Environment;
 use presentation::client_in::manager::ClientManager;
 use presentation::cluster_in::communication_manager::ClusterCommunicationManager;
@@ -19,7 +20,6 @@ use presentation::cluster_in::inbound::stream::InboundStream;
 
 use services::cache_manager::CacheManager;
 use services::config_manager::ConfigManager;
-use services::error::IoError;
 
 use std::sync::atomic::Ordering;
 use std::time::Duration;
