@@ -37,10 +37,10 @@ impl TtlActor {
             self.select_shard(&key).send(CacheCommand::Delete(key)).await?;
         }
     }
-    async fn handle(mut inbox: Receiver<TtlCommand>) -> anyhow::Result<()> {
+    async fn handle(mut recv: Receiver<TtlCommand>) -> anyhow::Result<()> {
         let mut priority_queue: BinaryHeap<(Reverse<SystemTime>, String)> = BinaryHeap::new();
 
-        while let Some(cmd) = inbox.recv().await {
+        while let Some(cmd) = recv.recv().await {
             match cmd {
                 TtlCommand::ScheduleTtl { expiry, key } => {
                     priority_queue.push((Reverse(expiry), key));

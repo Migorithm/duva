@@ -10,7 +10,6 @@ use anyhow::Context;
 use tokio::sync::mpsc;
 
 pub struct CacheActor {
-    pub(crate) inbox: mpsc::Receiver<CacheCommand>,
     pub(crate) cache: CacheDb,
 }
 
@@ -24,7 +23,7 @@ pub struct CacheDb {
 impl CacheActor {
     pub fn run() -> CacheCommandSender {
         let (tx, cache_actor_inbox) = mpsc::channel(100);
-        tokio::spawn(Self { inbox: cache_actor_inbox, cache: CacheDb::default() }.handle());
+        tokio::spawn(Self { cache: CacheDb::default() }.handle(cache_actor_inbox));
         CacheCommandSender(tx)
     }
 

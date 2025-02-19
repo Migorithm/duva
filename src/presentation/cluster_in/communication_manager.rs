@@ -25,8 +25,8 @@ impl ClusterCommunicationManager {
         let (actor_handler, cluster_message_listener) = tokio::sync::mpsc::channel(100);
 
         tokio::spawn(
-            ClusterActor::new(node_timeout, ReplicationInfo::new(replicaof, &host, port))
-                .handle(cluster_message_listener, notifier),
+            ClusterActor::new(node_timeout, ReplicationInfo::new(replicaof, &host, port), notifier)
+                .handle(cluster_message_listener),
         );
 
         tokio::spawn({

@@ -5,16 +5,14 @@ use crate::domains::cluster_actors::{ClusterActor, FANOUT};
 use tokio::sync::mpsc::Receiver;
 
 impl ClusterActor {
-    pub async fn handle(
+    pub(crate) async fn handle(
         mut self,
         mut cluster_message_listener: Receiver<ClusterCommand>,
-        notifier: tokio::sync::watch::Sender<bool>,
-    ) {
+    ) -> anyhow::Result<Self> {
         let mut consensus_con = ConsensusTracker::default();
 
         while let Some(command) = cluster_message_listener.recv().await {
             // TODO notifier will be used when election process is implemented
-            let _ = notifier.clone();
 
             match command {
                 ClusterCommand::AddPeer(add_peer_cmd) => {
@@ -79,5 +77,6 @@ impl ClusterActor {
                 }
             }
         }
+        Ok(self)
     }
 }

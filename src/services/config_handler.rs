@@ -5,9 +5,9 @@ use crate::domains::config_actors::{
 use tokio::sync::mpsc::Receiver;
 
 impl ConfigActor {
-    pub fn handle(mut self, mut inbox: Receiver<ConfigMessage>) {
+    pub(crate) fn handle(mut self, mut recv: Receiver<ConfigMessage>) {
         tokio::spawn(async move {
-            while let Some(msg) = inbox.recv().await {
+            while let Some(msg) = recv.recv().await {
                 match msg {
                     ConfigMessage::Query(query) => match query.resource {
                         ConfigResource::Dir => {

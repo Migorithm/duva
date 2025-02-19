@@ -4,12 +4,12 @@ use crate::domains::caches::command::CacheCommand;
 
 use crate::domains::query_parsers::QueryIO;
 use crate::domains::saves::command::SaveCommand;
-
 use anyhow::Result;
+use tokio::sync::mpsc::Receiver;
 
 impl CacheActor {
-    pub async fn handle(mut self) -> Result<Self> {
-        while let Some(command) = self.inbox.recv().await {
+    pub(crate) async fn handle(mut self, mut recv: Receiver<CacheCommand>) -> Result<Self> {
+        while let Some(command) = recv.recv().await {
             match command {
                 CacheCommand::StopSentinel => break,
 
@@ -59,14 +59,14 @@ async fn test_set_and_delete_inc_dec_keys_with_expiry() {
 
     // GIVEN
     let (tx, rx) = tokio::sync::mpsc::channel(100);
-    let actor = CacheActor { inbox: rx, cache: CacheDb::default() };
+    let actor = CacheActor { cache: CacheDb::default() };
 
     let (ttl_tx, mut ttx_rx) = tokio::sync::mpsc::channel(100);
     let ttl_sender = TtlSchedulerManager(ttl_tx);
     tokio::spawn(async move { ttx_rx.recv().await });
 
     // WHEN
-    let handler = tokio::spawn(actor.handle());
+    let handler = tokio::spawn(actor.handle(rx));
 
     for i in 0..100 {
         let key = format!("key{}", i);

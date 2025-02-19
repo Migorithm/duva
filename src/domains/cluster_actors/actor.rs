@@ -14,11 +14,16 @@ pub struct ClusterActor {
     pub(crate) members: BTreeMap<PeerIdentifier, Peer>,
     pub(crate) replication: ReplicationInfo,
     pub(crate) node_timeout: u128,
+    notifier: tokio::sync::watch::Sender<bool>,
 }
 
 impl ClusterActor {
-    pub fn new(node_timeout: u128, init_repl_info: ReplicationInfo) -> Self {
-        Self { members: BTreeMap::new(), replication: init_repl_info, node_timeout }
+    pub fn new(
+        node_timeout: u128,
+        init_repl_info: ReplicationInfo,
+        notifier: tokio::sync::watch::Sender<bool>,
+    ) -> Self {
+        Self { members: BTreeMap::new(), replication: init_repl_info, node_timeout, notifier }
     }
 
     pub fn hop_count(&self, fanout: usize, node_count: usize) -> u8 {
@@ -187,8 +192,10 @@ impl ClusterActor {
 fn test_hop_count_when_one() {
     // GIVEN
     let fanout = 2;
+
+    let (tx, rx) = tokio::sync::watch::channel(false);
     let replication = ReplicationInfo::new(None, "localhost", 8080);
-    let cluster_actor = ClusterActor::new(100, replication);
+    let cluster_actor = ClusterActor::new(100, replication, tx);
 
     // WHEN
     let hop_count = cluster_actor.hop_count(fanout, 1);
@@ -200,8 +207,9 @@ fn test_hop_count_when_one() {
 fn test_hop_count_when_two() {
     // GIVEN
     let fanout = 2;
+    let (tx, rx) = tokio::sync::watch::channel(false);
     let replication = ReplicationInfo::new(None, "localhost", 8080);
-    let cluster_actor = ClusterActor::new(100, replication);
+    let cluster_actor = ClusterActor::new(100, replication, tx);
 
     // WHEN
     let hop_count = cluster_actor.hop_count(fanout, 2);
@@ -213,8 +221,9 @@ fn test_hop_count_when_two() {
 fn test_hop_count_when_three() {
     // GIVEN
     let fanout = 2;
+    let (tx, rx) = tokio::sync::watch::channel(false);
     let replication = ReplicationInfo::new(None, "localhost", 8080);
-    let cluster_actor = ClusterActor::new(100, replication);
+    let cluster_actor = ClusterActor::new(100, replication, tx);
 
     // WHEN
     let hop_count = cluster_actor.hop_count(fanout, 3);
@@ -226,8 +235,9 @@ fn test_hop_count_when_three() {
 fn test_hop_count_when_thirty() {
     // GIVEN
     let fanout = 2;
+    let (tx, rx) = tokio::sync::watch::channel(false);
     let replication = ReplicationInfo::new(None, "localhost", 8080);
-    let cluster_actor = ClusterActor::new(100, replication);
+    let cluster_actor = ClusterActor::new(100, replication, tx);
 
     // WHEN
     let hop_count = cluster_actor.hop_count(fanout, 30);
