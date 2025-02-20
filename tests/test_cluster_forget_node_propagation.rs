@@ -31,10 +31,10 @@ async fn test_cluster_forget_node_propagation() {
     // leader_p and repl_p2 doesn't get message from repl_p2
     let h1 = std::thread::spawn({
         let never_arrivable_msg = never_arrivable_msg.clone();
-        move || leader_p.timed_wait_for_message(&never_arrivable_msg, HOP_COUNT, TIMEOUT)
+        move || leader_p.timed_wait_for_message(vec![&never_arrivable_msg], HOP_COUNT, TIMEOUT)
     });
     let h2 = std::thread::spawn(move || {
-        repl_p2.timed_wait_for_message(&never_arrivable_msg, HOP_COUNT, TIMEOUT)
+        repl_p2.timed_wait_for_message(vec![&never_arrivable_msg], HOP_COUNT, TIMEOUT)
     });
 
     assert!(h1.join().unwrap().is_err());

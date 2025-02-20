@@ -1,10 +1,9 @@
 use bytes::Bytes;
 use duva::domains::query_parsers::query_io::QueryIO;
 use duva::make_smart_pointer;
-
 use std::io::{BufRead, BufReader, Read};
 use std::process::{Child, Command, Stdio};
-use std::thread::{self, JoinHandle};
+use std::thread::{self};
 use std::time::{Duration, Instant};
 
 static PORT_DISTRIBUTOR: std::sync::atomic::AtomicU16 = std::sync::atomic::AtomicU16::new(49152);
@@ -20,7 +19,7 @@ pub fn spawn_server_process() -> TestProcessChild {
 
     wait_for_message(
         process.process.stdout.as_mut().unwrap(),
-        format!("listening peer connection on 127.0.0.1:{}...", port + 10000).as_str(),
+        vec![format!("listening peer connection on 127.0.0.1:{}...", port + 10000).as_str()],
         1,
         Some(2),
     )
@@ -34,7 +33,7 @@ pub fn spawn_server_as_follower(leader_bind_addr: String) -> TestProcessChild {
     let mut process = run_server_process(port, Some(leader_bind_addr));
     wait_for_message(
         process.process.stdout.as_mut().unwrap(),
-        format!("listening peer connection on 127.0.0.1:{}...", port + 10000).as_str(),
+        vec![format!("listening peer connection on 127.0.0.1:{}...", port + 10000).as_str()],
         1,
         Some(2),
     )
@@ -103,12 +102,12 @@ impl TestProcessChild {
     pub fn wait_for_message(&mut self, target: &str, target_count: usize) -> anyhow::Result<()> {
         let read = self.process.stdout.as_mut().unwrap();
 
-        wait_for_message(read, target, target_count, None)
+        wait_for_message(read, vec![target], target_count, None)
     }
 
     pub fn timed_wait_for_message(
         &mut self,
-        target: &str,
+        target: Vec<&str>,
         target_count: usize,
         wait_for: u64,
     ) -> anyhow::Result<()> {
@@ -140,7 +139,7 @@ pub fn run_server_process(port: u16, replicaof: Option<String>) -> TestProcessCh
 
 fn wait_for_message<T: Read>(
     read: &mut T,
-    target: &str,
+    mut target: Vec<&str>,
     target_count: usize,
     timeout: Option<u64>,
 ) -> anyhow::Result<()> {
@@ -148,10 +147,14 @@ fn wait_for_message<T: Read>(
     let mut buf = BufReader::new(read).lines();
     let mut cnt = 1;
 
+    let mut current_target = target.remove(0);
     while let Some(Ok(line)) = buf.next() {
-        if line.starts_with(target) {
+        if line.starts_with(current_target) {
             if cnt == target_count {
-                break;
+                if target.is_empty() {
+                    break;
+                }
+                current_target = target.remove(0);
             } else {
                 cnt += 1;
             }
@@ -194,7 +197,7 @@ pub fn check_internodes_communication(
 
         // Then wait for all messages
         for msg in messages {
-            processes[i].timed_wait_for_message(&msg, 1, time_out)?;
+            processes[i].timed_wait_for_message(vec![&msg], 1, time_out)?;
         }
     }
     Ok(())

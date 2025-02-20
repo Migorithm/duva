@@ -20,16 +20,18 @@ async fn test_set_operation_reaches_to_all_replicas() {
     //THEN - run the following together
     let h = std::thread::spawn(move || {
         repl_p.timed_wait_for_message(
-        "[INFO] Received log entries: [WriteOperation { op: Set { key: \"foo\", value: \"bar\" }",
+        vec!["[INFO] Received log entries: [WriteOperation { op: Set { key: \"foo\", value: \"bar\" }","[INFO] Received commit offset 1"],
         1,
-        2,
-        ).unwrap();
-        repl_p.timed_wait_for_message("[INFO] Received commit offset 1", 1, 2)
+        4,
+        )
     });
 
     let h2 = std::thread::spawn(move || {
-        leader_p.timed_wait_for_message("[INFO] Received acks for offset:", 1, 2).unwrap();
-        leader_p.timed_wait_for_message("[INFO] Sending commit request on 1", 1, 2)
+        leader_p.timed_wait_for_message(
+            vec!["[INFO] Received acks for offset:", "[INFO] Sending commit request on 1"],
+            1,
+            4,
+        )
     });
 
     h.join().unwrap().unwrap();
