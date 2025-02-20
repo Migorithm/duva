@@ -1,3 +1,4 @@
+use crate::domains::append_only_files::log::LogIndex;
 use crate::domains::append_only_files::{WriteOperation, WriteRequest};
 use crate::domains::cluster_actors::replication::HeartBeatMessage;
 #[cfg(test)]
@@ -39,7 +40,7 @@ pub enum QueryIO {
     File(Bytes),
     HeartBeat(HeartBeatMessage),
     ReplicateLog(WriteOperation),
-    Acks(Vec<u64>),
+    Acks(Vec<LogIndex>),
 }
 
 impl QueryIO {
@@ -469,11 +470,11 @@ fn test_from_heartbeat_to_bytes() {
         append_entries: vec![
             WriteOperation {
                 op: WriteRequest::Set { key: "foo".into(), value: "bar".into() },
-                offset: 1,
+                offset: 1.into(),
             },
             WriteOperation {
                 op: WriteRequest::Set { key: "poo".into(), value: "bar".into() },
-                offset: 2,
+                offset: 2.into(),
             },
         ],
     };
@@ -551,11 +552,11 @@ fn test_binary_to_heartbeat() {
             append_entries: vec![
                 WriteOperation {
                     op: WriteRequest::Set { key: "foo".into(), value: "bar".into() },
-                    offset: 1
+                    offset: 1.into()
                 },
                 WriteOperation {
                     op: WriteRequest::Set { key: "poo".into(), value: "bar".into() },
-                    offset: 2
+                    offset: 2.into()
                 }
             ]
         })
@@ -622,7 +623,7 @@ fn test_banned_peer_serde_when_time_passed() {
 fn test_from_replicate_log_to_binary() {
     // GIVEN
     let query = WriteRequest::Set { key: "foo".into(), value: "bar".into() };
-    let replicate = QueryIO::ReplicateLog(WriteOperation { op: query, offset: 1 });
+    let replicate = QueryIO::ReplicateLog(WriteOperation { op: query, offset: 1.into() });
 
     // WHEN
     let serialized = replicate.clone().serialize();
@@ -645,7 +646,7 @@ fn test_from_binary_to_replicate_log() {
         value,
         QueryIO::ReplicateLog(WriteOperation {
             op: WriteRequest::Set { key: "foo".into(), value: "bar".into() },
-            offset: 1
+            offset: 1.into()
         })
     );
 }
@@ -660,13 +661,13 @@ fn test_from_binary_to_acks() {
     let (value, _) = deserialize(buffer).unwrap();
 
     // THEN
-    assert_eq!(value, QueryIO::Acks(vec![1, 2]));
+    assert_eq!(value, QueryIO::Acks(vec![1.into(), 2.into()]));
 }
 
 #[test]
 fn test_from_acks_to_binary() {
     // GIVEN
-    let acks = vec![1, 2];
+    let acks = vec![1.into(), 2.into()];
     let replicate = QueryIO::Acks(acks);
 
     // WHEN

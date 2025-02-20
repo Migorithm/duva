@@ -139,7 +139,7 @@ mod tests {
         let mut aof = LocalAof::new(&path).await?;
 
         let op = WriteRequest::Set { key: "foo".into(), value: "bar".into() };
-        let write_op = WriteOperation { op, offset: 0 };
+        let write_op = WriteOperation { op, offset: 0.into() };
         aof.append(write_op).await?;
         drop(aof);
 
@@ -161,17 +161,17 @@ mod tests {
             let mut aof = LocalAof::new(&path).await?;
             aof.append(WriteOperation {
                 op: WriteRequest::Set { key: "a".into(), value: "a".into() },
-                offset: 0,
+                offset: 0.into(),
             })
             .await?;
             aof.append(WriteOperation {
                 op: WriteRequest::Set { key: "b".into(), value: "b".into() },
-                offset: 1,
+                offset: 1.into(),
             })
             .await?;
             aof.append(WriteOperation {
                 op: WriteRequest::Set { key: "c".into(), value: "c".into() },
-                offset: 2,
+                offset: 2.into(),
             })
             .await?;
         }
@@ -189,21 +189,21 @@ mod tests {
             ops[0],
             WriteOperation {
                 op: WriteRequest::Set { key: "a".into(), value: "a".into() },
-                offset: 0
+                offset: 0.into()
             }
         );
         assert_eq!(
             ops[1],
             WriteOperation {
                 op: WriteRequest::Set { key: "b".into(), value: "b".into() },
-                offset: 1
+                offset: 1.into()
             }
         );
         assert_eq!(
             ops[2],
             WriteOperation {
                 op: WriteRequest::Set { key: "c".into(), value: "c".into() },
-                offset: 2
+                offset: 2.into()
             }
         );
 
@@ -221,17 +221,17 @@ mod tests {
             let mut aof = LocalAof::new(&path).await?;
             aof.append(WriteOperation {
                 op: WriteRequest::Set { key: "a".into(), value: "a".into() },
-                offset: 0,
+                offset: 0.into(),
             })
             .await?;
             aof.append(WriteOperation {
                 op: WriteRequest::Set { key: "b".into(), value: "b".into() },
-                offset: 1,
+                offset: 1.into(),
             })
             .await?;
             aof.append(WriteOperation {
                 op: WriteRequest::Set { key: "c".into(), value: "c".into() },
-                offset: 2,
+                offset: 2.into(),
             })
             .await?;
         }
@@ -264,7 +264,7 @@ mod tests {
             ops[0],
             WriteOperation {
                 op: WriteRequest::Set { key: "a".into(), value: "a".into() },
-                offset: 0
+                offset: 0.into()
             }
         );
 

@@ -1,4 +1,4 @@
-use crate::domains::append_only_files::{WriteOperation, WriteRequest};
+use crate::domains::append_only_files::WriteOperation;
 use crate::domains::peers::identifier::PeerIdentifier;
 
 use bytes::Bytes;
@@ -82,8 +82,7 @@ impl ReplicationInfo {
         }
     }
 
-    pub fn append_entry(&mut self, hop_count: u8, req: WriteRequest) -> HeartBeatMessage {
-        let entry = WriteOperation { op: req, offset: self.leader_repl_offset };
+    pub fn append_entry(&mut self, hop_count: u8, entry: WriteOperation) -> HeartBeatMessage {
         let mut heartbeat = self.default_heartbeat(hop_count);
         heartbeat.append_entries.push(entry);
         heartbeat

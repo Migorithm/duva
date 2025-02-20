@@ -2,7 +2,7 @@ use bytes::Bytes;
 
 use crate::{
     domains::{
-        cluster_actors::{commands::ClusterCommand, replication::HeartBeatMessage},
+        cluster_actors::replication::HeartBeatMessage,
         cluster_listeners::{ClusterListener, ReactorKillSwitch, TListen},
         peers::connected_types::Leader,
     },

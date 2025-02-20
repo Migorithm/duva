@@ -1,3 +1,4 @@
+use crate::domains::append_only_files::log::LogIndex;
 use crate::domains::cluster_actors::commands::ClusterCommand;
 use crate::domains::cluster_actors::consensus::ConsensusTracker;
 use crate::domains::cluster_actors::{ClusterActor, FANOUT};
@@ -62,7 +63,7 @@ impl ClusterActor {
                     self.req_consensus(log).await;
 
                     consensus_con.add(
-                        self.replication.leader_repl_offset,
+                        LogIndex(self.replication.leader_repl_offset),
                         sender,
                         self.followers().count(),
                     );
