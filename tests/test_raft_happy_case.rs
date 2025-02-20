@@ -1,6 +1,5 @@
-use duva::client_utils::ClientStreamHandler;
-
 mod common;
+use duva::client_utils::ClientStreamHandler;
 
 #[tokio::test]
 async fn test_set_operation_reaches_to_all_replicas() {
@@ -24,15 +23,15 @@ async fn test_set_operation_reaches_to_all_replicas() {
         "[INFO] Received log entries: [WriteOperation { op: Set { key: \"foo\", value: \"bar\" }",
         1,
         2,
-        )
+        ).unwrap();
+        repl_p.timed_wait_for_message("[INFO] Received commit offset 1", 1, 2)
     });
 
     let h2 = std::thread::spawn(move || {
-        leader_p.timed_wait_for_message("[INFO] Received acks for offset:", 1, 2)
+        leader_p.timed_wait_for_message("[INFO] Received acks for offset:", 1, 2).unwrap();
+        leader_p.timed_wait_for_message("[INFO] Sending commit request on 1", 1, 2)
     });
 
     h.join().unwrap().unwrap();
     h2.join().unwrap().unwrap();
-    // TODO state change of the leader is not being checked
-    // TODO state change of the follower is not being checked
 }

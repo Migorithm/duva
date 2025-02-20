@@ -18,11 +18,9 @@ impl ClusterActor {
                 ClusterCommand::AddPeer(add_peer_cmd) => {
                     self.add_peer(add_peer_cmd).await;
                 }
-
                 ClusterCommand::GetPeers(callback) => {
                     let _ = callback.send(self.members.keys().cloned().collect::<Vec<_>>().into());
                 }
-
                 ClusterCommand::SendHeartBeat => {
                     let hop_count = self.hop_count(FANOUT, self.members.len());
                     self.send_liveness_heartbeat(hop_count).await;
@@ -31,7 +29,6 @@ impl ClusterActor {
                     // ! The following may need to be moved else where to avoid blocking the main loop
                     self.remove_idle_peers().await;
                 }
-
                 ClusterCommand::ReplicationInfo(sender) => {
                     let _ = sender.send(self.replication.clone());
                 }
@@ -44,7 +41,10 @@ impl ClusterActor {
                     }
 
                     self.gossip(heartbeat.hop_count).await;
-                    self.update_on_report(heartbeat).await;
+
+                    if self.update_last_seen(&heartbeat.heartbeat_from).is_some() {
+                        self.update_on_report(heartbeat).await;
+                    }
                 }
                 ClusterCommand::ForgetPeer(peer_addr, sender) => {
                     if let Ok(Some(())) = self.forget_peer(peer_addr).await {
@@ -70,10 +70,32 @@ impl ClusterActor {
                 ClusterCommand::LeaderReceiveAcks(offsets) => {
                     self.apply_acks(&mut consensus_con, offsets);
                 }
-                ClusterCommand::FollowerReceiveLogEntries(write_operations) => {
-                    // TODO handle the log entries
-                    println!("[INFO] Received log entries: {:?}", write_operations);
-                    self.receive_log_entries_from_leader(write_operations).await;
+
+                ClusterCommand::SendCommitHeartBeat { offset } => {
+                    self.send_commit_heartbeat(offset).await;
+                }
+
+                // * this can be called 3 different context
+                // 1. When the follower receives log entries
+                // 2. When the follower receives commit request
+                // 3. For geneal liveness heartbeat
+                ClusterCommand::AcceptLeaderHeartBeat(heart_beat_message) => {
+                    self.update_last_seen(&heart_beat_message.heartbeat_from);
+                    if !heart_beat_message.append_entries.is_empty() {
+                        // TODO handle the log entries
+                        println!(
+                            "[INFO] Received log entries: {:?}",
+                            heart_beat_message.append_entries
+                        );
+                        self.receive_log_entries_from_leader(heart_beat_message.append_entries)
+                            .await;
+                        continue;
+                    }
+
+                    if self.replication.leader_repl_offset < heart_beat_message.offset {
+                        println!("[INFO] Received commit offset {}", heart_beat_message.offset);
+                        self.replication.leader_repl_offset = heart_beat_message.offset;
+                    }
                 }
             }
         }

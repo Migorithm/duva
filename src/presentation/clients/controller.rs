@@ -156,6 +156,13 @@ impl ClientController {
                     Err(e) => QueryIO::Err(e.to_string().into()),
                 };
 
+                // ! run stream.write(res) and state change operation to replicas at the same time
+                if let Some(offset) = optional_log_offset {
+                    let _ = self
+                        .cluster_communication_manager
+                        .send(ClusterCommand::SendCommitHeartBeat { offset })
+                        .await;
+                }
                 if let Err(e) = stream.write(res).await {
                     if e.should_break() {
                         break;
