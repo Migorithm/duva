@@ -10,7 +10,7 @@ async fn test_cluster_known_nodes_increase_when_new_replica_is_added() {
 
     let cmd = &array(vec!["cluster", "info"]);
 
-    let mut repl_p = spawn_server_as_follower(&leader_p);
+    let mut repl_p = spawn_server_as_follower(leader_p.bind_addr());
     repl_p.wait_for_message(&leader_p.heartbeat_msg(0), 1).unwrap();
     leader_p.wait_for_message(&repl_p.heartbeat_msg(0), 1).unwrap();
 
@@ -18,7 +18,7 @@ async fn test_cluster_known_nodes_increase_when_new_replica_is_added() {
     assert_eq!(cluster_info, array(vec!["cluster_known_nodes:1"]));
 
     // WHEN -- new replica is added
-    let mut new_repl_p = spawn_server_as_follower(&leader_p);
+    let mut new_repl_p = spawn_server_as_follower(leader_p.bind_addr());
     new_repl_p.wait_for_message(&leader_p.heartbeat_msg(0), 1).unwrap();
 
     //THEN
@@ -36,7 +36,7 @@ async fn test_removes_node_when_heartbeat_is_not_received_for_certain_time() {
 
     let cmd = &array(vec!["cluster", "info"]);
 
-    let mut repl_p = spawn_server_as_follower(&leader_p);
+    let mut repl_p = spawn_server_as_follower(leader_p.bind_addr());
     repl_p.wait_for_message(&leader_p.heartbeat_msg(0), 1).unwrap();
 
     leader_p.wait_for_message(&repl_p.heartbeat_msg(0), 1).unwrap();

@@ -170,7 +170,7 @@ impl ClusterActor {
     pub fn apply_acks(&self, consensus_con: &mut ConsensusTracker, offsets: Vec<u64>) {
         offsets.into_iter().for_each(|offset| {
             if let Some(mut consensus) = consensus_con.take(&offset) {
-                println!("Received acks for offset: {}", offset);
+                println!("[INFO] Received acks for offset: {}", offset);
                 consensus.apply_vote();
 
                 if let Some(consensus) = consensus.maybe_not_finished(offset) {
