@@ -1,4 +1,5 @@
 use crate::domains::{
+    append_only_files::log::LogIndex,
     cluster_actors::{commands::ClusterCommand, replication::HeartBeatMessage},
     cluster_listeners::{ClusterListener, ReactorKillSwitch, TListen},
     peers::connected_types::Follower,
@@ -38,7 +39,7 @@ impl ClusterListener<Follower> {
 
 pub enum FollowerInput {
     HeartBeat(HeartBeatMessage),
-    Acks(Vec<u64>),
+    Acks(Vec<LogIndex>),
 }
 impl TryFrom<QueryIO> for FollowerInput {
     type Error = anyhow::Error;

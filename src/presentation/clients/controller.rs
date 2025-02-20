@@ -1,6 +1,7 @@
 use super::request::ClientRequest;
 use super::stream::ClientStream;
 use crate::actor_registry::ActorRegistry;
+use crate::domains::append_only_files::log::LogIndex;
 use crate::domains::caches::cache_manager::CacheManager;
 use crate::domains::caches::cache_objects::CacheEntry;
 use crate::domains::cluster_actors::commands::ClusterCommand;
@@ -11,6 +12,7 @@ use crate::domains::saves::actor::SaveTarget;
 use crate::domains::ttl::manager::TtlSchedulerManager;
 use crate::presentation::cluster_in::communication_manager::ClusterCommunicationManager;
 use crate::services::interface::TWrite;
+use futures::future::try_join_all;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::select;
 
@@ -143,12 +145,15 @@ impl ClientController {
                 continue;
             };
 
-            for request in requests.into_iter() {
+            let consensus = try_join_all(requests.iter().map(|r| self.try_consensus(&r))).await;
+            let Ok(res) = consensus else {
+                eprintln!("Consensus failed");
+                let _ = stream.write(QueryIO::Err("Consensus failed".into())).await;
+                continue;
+            };
+
+            for (request, log_index_num) in requests.into_iter().zip(res.into_iter()) {
                 // ! if request requires consensus, send it to cluster manager so tranasction inputs can be logged and consensus can be made
-                let Ok(optional_log_offset) = self.try_consensus(&request).await else {
-                    let _ = stream.write(QueryIO::Err("Consensus failed".into())).await;
-                    continue;
-                };
 
                 // apply state change
                 let res = match self.handle(request).await {
@@ -157,7 +162,7 @@ impl ClientController {
                 };
 
                 // ! run stream.write(res) and state change operation to replicas at the same time
-                if let Some(offset) = optional_log_offset {
+                if let Some(offset) = log_index_num {
                     let _ = self
                         .cluster_communication_manager
                         .send(ClusterCommand::SendCommitHeartBeat { offset })
@@ -172,7 +177,7 @@ impl ClientController {
         }
     }
 
-    async fn try_consensus(&self, request: &ClientRequest) -> anyhow::Result<Option<u64>> {
+    async fn try_consensus(&self, request: &ClientRequest) -> anyhow::Result<Option<LogIndex>> {
         // If the request doesn't require consensus, return Ok
         let Some(log) = request.to_write_request() else {
             return Ok(None);

@@ -1,5 +1,5 @@
 use crate::domains::{
-    append_only_files::{WriteOperation, WriteRequest},
+    append_only_files::{log::LogIndex, WriteOperation, WriteRequest},
     query_parsers::QueryIO,
 };
 
@@ -137,9 +137,9 @@ impl ClusterActor {
     }
 
     pub async fn req_consensus(&mut self, req: WriteRequest) {
-        // TODO when are we going to increase offset?
-
-        let heartbeat = self.replication.append_entry(0, req);
+        // TODO LOG, get log index, replace  self.replication.leader_repl_offset to log index
+        let entry = WriteOperation { op: req, offset: self.replication.leader_repl_offset.into() };
+        let heartbeat = self.replication.append_entry(0, entry);
 
         let mut tasks = self
             .followers_mut()
@@ -170,7 +170,7 @@ impl ClusterActor {
             .collect::<Vec<_>>()
     }
 
-    pub fn apply_acks(&self, consensus_con: &mut ConsensusTracker, offsets: Vec<u64>) {
+    pub fn apply_acks(&self, consensus_con: &mut ConsensusTracker, offsets: Vec<LogIndex>) {
         offsets.into_iter().for_each(|offset| {
             if let Some(mut consensus) = consensus_con.take(&offset) {
                 println!("[INFO] Received acks for offset: {}", offset);
@@ -190,7 +190,7 @@ impl ClusterActor {
         }
     }
 
-    pub(crate) async fn send_commit_heartbeat(&mut self, offset: u64) {
+    pub(crate) async fn send_commit_heartbeat(&mut self, offset: LogIndex) {
         // TODO is there any case where I can use offset input?
         self.replication.leader_repl_offset += 1;
         let message = self.replication.default_heartbeat(0);

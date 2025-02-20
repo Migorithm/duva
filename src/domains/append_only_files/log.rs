@@ -1,14 +1,34 @@
+use std::str::FromStr;
+
 use bytes::{Bytes, BytesMut};
 
 use crate::{
     domains::query_parsers::{deserialize, QueryIO},
-    write_array,
+    from_to, make_smart_pointer, write_array,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WriteOperation {
     pub op: WriteRequest,
-    pub offset: u64,
+    pub offset: LogIndex,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Copy, Hash, PartialOrd, Ord)]
+pub struct LogIndex(pub(crate) u64);
+make_smart_pointer!(LogIndex, u64);
+from_to!(u64, LogIndex);
+impl std::fmt::Display for LogIndex {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl FromStr for LogIndex {
+    type Err = std::num::ParseIntError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(LogIndex(s.parse()?))
+    }
 }
 
 /// Operations that appear in the Append-Only File (AOF).

@@ -2,10 +2,10 @@ use std::collections::HashMap;
 
 use tokio::sync::oneshot::Sender;
 
-use crate::make_smart_pointer;
+use crate::{domains::append_only_files::log::LogIndex, make_smart_pointer};
 
 pub struct ConsensusVoting {
-    sender: Sender<Option<u64>>,
+    sender: Sender<Option<LogIndex>>,
     vote_count: u8,
     required_votes: u8,
 }
@@ -14,9 +14,9 @@ impl ConsensusVoting {
         self.vote_count += 1;
     }
 
-    pub fn maybe_not_finished(self, offset: u64) -> Option<Self> {
+    pub fn maybe_not_finished(self, log_index: LogIndex) -> Option<Self> {
         if self.vote_count >= self.required_votes {
-            let _ = self.sender.send(Some(offset));
+            let _ = self.sender.send(Some(log_index));
             None
         } else {
             Some(self)
@@ -25,9 +25,9 @@ impl ConsensusVoting {
 }
 
 #[derive(Default)]
-pub struct ConsensusTracker(HashMap<u64, ConsensusVoting>);
+pub struct ConsensusTracker(HashMap<LogIndex, ConsensusVoting>);
 impl ConsensusTracker {
-    pub fn add(&mut self, key: u64, value: Sender<Option<u64>>, replica_count: usize) {
+    pub fn add(&mut self, key: LogIndex, value: Sender<Option<LogIndex>>, replica_count: usize) {
         self.0.insert(
             key,
             ConsensusVoting {
@@ -37,8 +37,8 @@ impl ConsensusTracker {
             },
         );
     }
-    pub fn take(&mut self, offset: &u64) -> Option<ConsensusVoting> {
+    pub fn take(&mut self, offset: &LogIndex) -> Option<ConsensusVoting> {
         self.0.remove(offset)
     }
 }
-make_smart_pointer!(ConsensusTracker, HashMap<u64, ConsensusVoting>);
+make_smart_pointer!(ConsensusTracker, HashMap<LogIndex, ConsensusVoting>);

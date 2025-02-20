@@ -1,3 +1,4 @@
+use crate::domains::append_only_files::log::LogIndex;
 use crate::domains::peers::peer::Peer;
 use crate::domains::{append_only_files::WriteRequest, peers::identifier::PeerIdentifier};
 
@@ -11,9 +12,9 @@ pub enum ClusterCommand {
     SendHeartBeat,
 
     ForgetPeer(PeerIdentifier, tokio::sync::oneshot::Sender<Option<()>>),
-    LeaderReqConsensus { log: WriteRequest, sender: tokio::sync::oneshot::Sender<Option<u64>> },
-    LeaderReceiveAcks(Vec<u64>),
-    SendCommitHeartBeat { offset: u64 },
+    LeaderReqConsensus { log: WriteRequest, sender: tokio::sync::oneshot::Sender<Option<LogIndex>> },
+    LeaderReceiveAcks(Vec<LogIndex>),
+    SendCommitHeartBeat { offset: LogIndex },
 
     // peer listener commands
     ReceiveHeartBeat(HeartBeatMessage),
