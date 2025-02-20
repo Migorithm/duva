@@ -4,7 +4,7 @@ use duva::make_smart_pointer;
 
 use std::io::{BufRead, BufReader, Read};
 use std::process::{Child, Command, Stdio};
-use std::thread;
+use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
 static PORT_DISTRIBUTOR: std::sync::atomic::AtomicU16 = std::sync::atomic::AtomicU16::new(49152);
@@ -29,9 +29,9 @@ pub fn spawn_server_process() -> TestProcessChild {
     process
 }
 
-pub fn spawn_server_as_follower(leader_process: &TestProcessChild) -> TestProcessChild {
+pub fn spawn_server_as_follower(leader_bind_addr: String) -> TestProcessChild {
     let port: u16 = get_available_port();
-    let mut process = run_server_process(port, Some(leader_process.bind_addr()));
+    let mut process = run_server_process(port, Some(leader_bind_addr));
     wait_for_message(
         process.process.stdout.as_mut().unwrap(),
         format!("listening peer connection on 127.0.0.1:{}...", port + 10000).as_str(),
@@ -173,7 +173,7 @@ pub fn array(arr: Vec<&str>) -> Bytes {
 }
 
 pub fn check_internodes_communication(
-    processes: &mut Vec<TestProcessChild>,
+    processes: &mut [&mut TestProcessChild],
     hop_count: usize,
     time_out: u64,
 ) -> anyhow::Result<()> {

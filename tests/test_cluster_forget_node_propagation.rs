@@ -8,31 +8,35 @@ use duva::client_utils::ClientStreamHandler;
 async fn test_cluster_forget_node_propagation() {
     // GIVEN
     const HOP_COUNT: usize = 0;
-    let leader_p = spawn_server_process();
-    let repl_p = spawn_server_as_follower(&leader_p);
-    let repl_p2 = spawn_server_as_follower(&leader_p);
-    let mut processes = vec![leader_p, repl_p, repl_p2];
+    let mut leader_p = spawn_server_process();
+    let mut repl_p = spawn_server_as_follower(leader_p.bind_addr());
+    let mut repl_p2 = spawn_server_as_follower(leader_p.bind_addr());
 
-    check_internodes_communication(&mut processes, HOP_COUNT, 2).unwrap();
+    check_internodes_communication(&mut [&mut leader_p, &mut repl_p, &mut repl_p2], HOP_COUNT, 2)
+        .unwrap();
 
     // WHEN
     const TIMEOUT: u64 = 2;
-    let never_arrivable_msg = processes[1].heartbeat_msg(1);
-    let mut client_handler = ClientStreamHandler::new(processes[0].bind_addr()).await;
-    let replica_id = processes[1].bind_addr();
+    let never_arrivable_msg = repl_p.heartbeat_msg(1);
+    let mut client_handler = ClientStreamHandler::new(leader_p.bind_addr()).await;
+    let replica_id = repl_p.bind_addr();
     let cmd = &array(vec!["cluster", "forget", &replica_id]);
     let response1 = client_handler.send_and_get(cmd).await;
     let response2 = client_handler.send_and_get(&array(vec!["cluster", "info"])).await;
 
-    // THEN response being OK
+    // THEN
     assert_eq!(response1, "+OK\r\n");
-    // THEN cluster_known_nodes:1
     assert_eq!(response2, array(vec!["cluster_known_nodes:1"]));
 
-    // THEN - leader_p and repl_p2 doesn't get message from repl_p2
-    let res1 = processes[0].timed_wait_for_message(&never_arrivable_msg, HOP_COUNT, TIMEOUT);
-    let res2 = processes[2].timed_wait_for_message(&never_arrivable_msg, HOP_COUNT, TIMEOUT);
+    // leader_p and repl_p2 doesn't get message from repl_p2
+    let h1 = std::thread::spawn({
+        let never_arrivable_msg = never_arrivable_msg.clone();
+        move || leader_p.timed_wait_for_message(&never_arrivable_msg, HOP_COUNT, TIMEOUT)
+    });
+    let h2 = std::thread::spawn(move || {
+        repl_p2.timed_wait_for_message(&never_arrivable_msg, HOP_COUNT, TIMEOUT)
+    });
 
-    assert!(res1.is_err());
-    assert!(res2.is_err());
+    assert!(h1.join().unwrap().is_err());
+    assert!(h2.join().unwrap().is_err());
 }
