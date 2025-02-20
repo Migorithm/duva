@@ -33,7 +33,7 @@ impl ConsensusTracker {
             ConsensusVoting {
                 sender: value,
                 vote_count: 0,
-                required_votes: (replica_count as f64 / 2.0).ceil() as u8,
+                required_votes: ((replica_count as f64 + 1.0) / 2.0).ceil() as u8,
             },
         );
     }

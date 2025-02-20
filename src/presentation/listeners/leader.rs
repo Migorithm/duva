@@ -27,10 +27,9 @@ impl ClusterListener<Leader> {
         while let Ok(cmds) = self.read_command::<LeaderInput>().await {
             for cmd in cmds {
                 match cmd {
-                    LeaderInput::HeartBeat(mut state) => {
-                        self.log_entries(&mut state).await;
-
-                        self.receive_heartbeat(state).await;
+                    LeaderInput::HeartBeat(state) => {
+                        // TODO refactoring
+                        self.accept_leader_hearbeat(state).await;
                     }
                     LeaderInput::FullSync(data) => {
                         let Ok(snapshot) = SnapshotLoader::load_from_bytes(&data) else {
@@ -45,17 +44,6 @@ impl ClusterListener<Leader> {
                 }
             }
         }
-    }
-    async fn log_entries(&self, state: &mut HeartBeatMessage) {
-        let append_entries = state.append_entries.drain(..).collect::<Vec<_>>();
-        if append_entries.is_empty() {
-            return;
-        }
-
-        let _ = self
-            .cluster_handler
-            .send(ClusterCommand::FollowerReceiveLogEntries(append_entries))
-            .await;
     }
 }
 

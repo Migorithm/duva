@@ -113,12 +113,15 @@ impl ClusterActor {
         self.replication.ban_list.dedup_by_key(|node| node.p_id.clone());
     }
 
+    pub fn update_last_seen(&mut self, peer_id: &PeerIdentifier) -> Option<()> {
+        if let Some(peer) = self.members.get_mut(peer_id) {
+            peer.last_seen = Instant::now();
+            return Some(());
+        }
+        None
+    }
+
     pub async fn update_on_report(&mut self, state: HeartBeatMessage) {
-        let Some(peer) = self.members.get_mut(&state.heartbeat_from) else {
-            return;
-        };
-        // update peer
-        peer.last_seen = Instant::now();
         self.merge_ban_list(state.ban_list);
 
         let current_time_in_sec = time_in_secs().unwrap();
@@ -185,6 +188,21 @@ impl ClusterActor {
         if let Some(leader) = self.leader_mut() {
             let _ = leader.write_io(QueryIO::Acks(offsets)).await;
         }
+    }
+
+    pub(crate) async fn send_commit_heartbeat(&mut self, offset: u64) {
+        // TODO is there any case where I can use offset input?
+        self.replication.leader_repl_offset += 1;
+        let message = self.replication.default_heartbeat(0);
+
+        let mut tasks = self
+            .followers_mut()
+            .into_iter()
+            .map(|peer| peer.write_io(message.clone()))
+            .collect::<FuturesUnordered<_>>();
+
+        println!("[INFO] Sending commit request on {}", message.offset);
+        while let Some(_) = tasks.next().await {}
     }
 }
 
