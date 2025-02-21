@@ -12,6 +12,8 @@ use anyhow::{Context, Result};
 use bytes::{Bytes, BytesMut};
 use std::fmt::Write;
 
+use super::parsing_context::ParseContext;
+
 // ! CURRENTLY, only ascii unicode(0-127) is supported
 const FILE_PREFIX: char = '\u{0066}';
 const SIMPLE_STRING_PREFIX: char = '+';
@@ -48,16 +50,19 @@ impl QueryIO {
         let concatenator = |prefix: char| -> Bytes { Bytes::from_iter([prefix as u8]) };
 
         match self {
-            QueryIO::SimpleString(s) => {
-                Bytes::from([concatenator(SIMPLE_STRING_PREFIX), s, "\r\n".into()].concat())
-            }
+            QueryIO::Null => "$-1\r\n".into(),
+
+            QueryIO::SimpleString(s) => Bytes::from(
+                [Bytes::from(SIMPLE_STRING_PREFIX.to_string()), s, Bytes::from("\r\n")].concat(),
+            ),
+
             QueryIO::BulkString(s) => Bytes::from(
                 [
-                    concatenator(BULK_STRING_PREFIX),
-                    s.len().to_string().into_bytes().into(),
-                    "\r\n".into(),
+                    Bytes::from(BULK_STRING_PREFIX.to_string()),
+                    Bytes::from(s.len().to_string()),
+                    Bytes::from("\r\n"),
                     s,
-                    "\r\n".into(),
+                    Bytes::from("\r\n"),
                 ]
                 .concat(),
             ),
@@ -74,16 +79,23 @@ impl QueryIO {
 
                 hex_file.into()
             }
+
+            QueryIO::Array(array) => {
+                let mut buffer = BytesMut::with_capacity(
+                    // Rough estimate of needed capacity
+                    array.len() * 32 + format!("{}{}\r\n", ARRAY_PREFIX, array.len()).len(),
+                );
+
+                // extend single buffer
+                buffer.extend_from_slice(format!("*{}\r\n", array.len()).as_bytes());
+                for item in array {
+                    buffer.extend_from_slice(&item.serialize());
+                }
+                buffer.freeze()
+            }
+
             QueryIO::Err(e) => Bytes::from([concatenator(ERROR_PREFIX), e, "\r\n".into()].concat()),
 
-            QueryIO::Null => "$-1\r\n".into(),
-
-            QueryIO::Array(array) => [
-                Into::<Bytes>::into(format!("{}{}\r\n", ARRAY_PREFIX, array.len()).into_bytes()),
-                array.into_iter().flat_map(|v| v.serialize()).collect(),
-            ]
-            .concat()
-            .into(),
             QueryIO::HeartBeat(HeartBeatMessage {
                 term,
                 offset,
@@ -93,46 +105,59 @@ impl QueryIO {
                 ban_list,
                 append_entries,
             }) => {
-                let header = format!(
+                let mut message = BytesMut::from(format!(
                     "{PEERSTATE_PREFIX}\r\n${}\r\n{term}\r\n${}\r\n{offset}\r\n${}\r\n{leader_replid}\r\n${}\r\n{hop_count}\r\n${}\r\n{id}\r\n",
                     term.to_string().len(),
                     offset.to_string().len(),
                     leader_replid.len(),
                     hop_count.to_string().len(),
                     id.len(),
+                ).as_bytes());
+
+                // add ban_list
+                message.extend(
+                    QueryIO::Array(
+                        ban_list.into_iter().map(|peer| QueryIO::BulkString(peer.into())).collect(),
+                    )
+                    .serialize(),
                 );
 
-                let ban_list_array = QueryIO::Array(
-                    ban_list.into_iter().map(|peer| QueryIO::BulkString(peer.into())).collect(),
-                )
-                .serialize();
+                // add append_entries
+                message.extend(
+                    QueryIO::Array(
+                        append_entries
+                            .into_iter()
+                            .map(|op| QueryIO::ReplicateLog(op.into()))
+                            .collect(),
+                    )
+                    .serialize(),
+                );
 
-                let append_entries_array = QueryIO::Array(
-                    append_entries.into_iter().map(|op| QueryIO::ReplicateLog(op.into())).collect(),
-                )
-                .serialize();
-
-                [header.into(), ban_list_array, append_entries_array].concat().into()
+                message.freeze()
             }
             QueryIO::ReplicateLog(WriteOperation { op, offset }) => {
-                let message: Bytes = format!(
-                    "{}\r\n${}\r\n{}\r\n",
-                    REPLICATE_PREFIX,
-                    offset.to_string().len(),
-                    offset
-                )
-                .into();
-                [message, op.to_array().serialize()].concat().into()
+                let mut message = BytesMut::from(
+                    format!(
+                        "{}\r\n${}\r\n{}\r\n",
+                        REPLICATE_PREFIX,
+                        offset.to_string().len(),
+                        offset
+                    )
+                    .as_bytes(),
+                );
+                message.extend(op.to_array().serialize());
+                message.freeze()
             }
-            QueryIO::Acks(items) => [
-                format!("{}{}\r\n", ACKS_PREFIX, items.len()).into_bytes(),
-                items
-                    .into_iter()
-                    .flat_map(|item| QueryIO::BulkString(item.to_string().into()).serialize())
-                    .collect(),
-            ]
-            .concat()
-            .into(),
+            QueryIO::Acks(items) => {
+                let mut bytes =
+                    BytesMut::from(format!("{}{}\r\n", ACKS_PREFIX, items.len()).as_bytes());
+                bytes.extend(
+                    items
+                        .into_iter()
+                        .flat_map(|item| QueryIO::BulkString(item.to_string().into()).serialize()),
+                );
+                bytes.freeze()
+            }
         }
     }
 
@@ -228,67 +253,65 @@ pub(crate) fn parse_simple_string(buffer: BytesMut) -> Result<(Bytes, usize)> {
 }
 
 fn parse_array(buffer: BytesMut) -> Result<(QueryIO, usize)> {
-    let (line, mut len) =
-        read_until_crlf(&buffer[1..].into()).ok_or(anyhow::anyhow!("Invalid bulk string"))?;
+    let mut ctx = ParseContext::new(buffer);
 
-    len += 1;
+    // skip array prefix
+    ctx.advance(1);
 
-    let array_len_in_str = String::from_utf8(line.to_vec())?;
-    let len_of_array = array_len_in_str.parse()?;
+    let (count_bytes, count_len) = read_until_crlf(&BytesMut::from(&ctx.buffer[ctx.offset()..]))
+        .ok_or(anyhow::anyhow!("Invalid array length"))?;
+    ctx.advance(count_len);
 
-    let mut bulk_strings = Vec::with_capacity(len_of_array);
+    // Convert array length string to number
+    let array_len = String::from_utf8(count_bytes.to_vec())?.parse::<usize>()?;
 
-    for _ in 0..len_of_array {
-        let (value, l) = deserialize(BytesMut::from(&buffer[len..]))?;
-        bulk_strings.push(value);
-        len += l;
-    }
+    let elements = (0..array_len).map(|_| ctx.parse_next()).collect::<Result<_>>()?;
 
-    Ok((QueryIO::Array(bulk_strings), len))
+    Ok((QueryIO::Array(elements), ctx.offset()))
 }
 
 fn parse_heartbeat(buffer: BytesMut) -> Result<(QueryIO, usize)> {
     // fixed rule for peer state
-    let len = 3;
+    let mut ctx = ParseContext::new(buffer);
+    ctx.advance(3);
 
-    let (term, l1) = deserialize(BytesMut::from(&buffer[len..]))?;
-    let (offset, l2) = deserialize(BytesMut::from(&buffer[len + l1..]))?;
-    let (leader_replid, l3) = deserialize(BytesMut::from(&buffer[len + l1 + l2..]))?;
-    let (hop_count, l4) = deserialize(BytesMut::from(&buffer[len + l1 + l2 + l3..]))?;
-    let (id, l5) = deserialize(BytesMut::from(&buffer[len + l1 + l2 + l3 + l4..]))?;
-    let (ban_list, l6) = deserialize(BytesMut::from(&buffer[len + l1 + l2 + l3 + l4 + l5..]))?;
+    let term = ctx.parse_next()?.unpack_single_entry()?;
+    let offset = ctx.parse_next()?.unpack_single_entry()?;
+    let leader_replid = ctx.parse_next()?.unpack_single_entry()?;
+    let hop_count = ctx.parse_next()?.unpack_single_entry()?;
+    let id = ctx.parse_next()?.unpack_single_entry()?;
+    let ban_list = ctx.parse_next()?.unpack_array()?;
 
-    let (QueryIO::Array(append_entries), l7) =
-        deserialize(BytesMut::from(&buffer[len + l1 + l2 + l3 + l4 + l5 + l6..]))?
-    else {
-        return Err(anyhow::anyhow!("expected array"));
+    let append_entries = if let QueryIO::Array(entries) = ctx.parse_next()? {
+        entries
+            .into_iter()
+            .flat_map(|v| if let QueryIO::ReplicateLog(log) = v { Some(log) } else { None })
+            .collect()
+    } else {
+        return Err(anyhow::anyhow!("expected array for append_entries"));
     };
 
-    Ok((
-        QueryIO::HeartBeat(HeartBeatMessage {
-            heartbeat_from: id.unpack_single_entry()?,
-            term: term.unpack_single_entry()?,
-            offset: offset.unpack_single_entry()?,
-            leader_replid: leader_replid.unpack_single_entry()?,
-            hop_count: hop_count.unpack_single_entry()?,
-            ban_list: ban_list.unpack_array()?,
-            // TODO: implement append_entries
-            append_entries: append_entries
-                .into_iter()
-                .flat_map(|v| if let QueryIO::ReplicateLog(log) = v { Some(log) } else { None })
-                .collect::<Vec<_>>(),
-        }),
-        len + l1 + l2 + l3 + l4 + l5 + l6 + l7,
-    ))
+    // Construct the result
+    let message = HeartBeatMessage {
+        heartbeat_from: id,
+        term,
+        offset,
+        leader_replid,
+        hop_count,
+        ban_list,
+        append_entries,
+    };
+
+    Ok((QueryIO::HeartBeat(message), ctx.offset()))
 }
 
 fn parse_replicate(buffer: BytesMut) -> std::result::Result<(QueryIO, usize), anyhow::Error> {
-    let len = 3;
+    let mut ctx = ParseContext::new(buffer);
+    ctx.advance(3);
 
-    let (offset, l1) = deserialize(BytesMut::from(&buffer[len..]))?;
+    let offset = ctx.parse_next()?.unpack_single_entry()?;
 
-    let (QueryIO::Array(vec_query_ios), l2) = deserialize(BytesMut::from(&buffer[len + l1..]))?
-    else {
+    let QueryIO::Array(vec_query_ios) = ctx.parse_next()? else {
         return Err(anyhow::anyhow!("expected array"));
     };
 
@@ -300,11 +323,8 @@ fn parse_replicate(buffer: BytesMut) -> std::result::Result<(QueryIO, usize), an
 
     let cmd = std::str::from_utf8(&cmd_bytes)?.to_lowercase();
     Ok((
-        QueryIO::ReplicateLog(WriteOperation {
-            op: WriteRequest::new(cmd, args)?,
-            offset: offset.unpack_single_entry()?,
-        }),
-        len + l1 + l2,
+        QueryIO::ReplicateLog(WriteOperation { op: WriteRequest::new(cmd, args)?, offset: offset }),
+        ctx.offset(),
     ))
 }
 
@@ -345,7 +365,7 @@ fn parse_file(buffer: BytesMut) -> Result<(Bytes, usize)> {
     Ok((file, len + content_len))
 }
 
-fn read_until_crlf(buffer: &BytesMut) -> Option<(Bytes, usize)> {
+pub(super) fn read_until_crlf(buffer: &BytesMut) -> Option<(Bytes, usize)> {
     for i in 1..buffer.len() {
         if buffer[i - 1] == b'\r' && buffer[i] == b'\n' {
             return Some((Bytes::copy_from_slice(&buffer[0..(i - 1)]), i + 1));
