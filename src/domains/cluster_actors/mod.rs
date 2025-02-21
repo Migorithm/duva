@@ -5,8 +5,8 @@ use crate::domains::peers::peer::Peer;
 use crate::services::interface::TWrite;
 
 use consensus::ConsensusTracker;
-use futures::stream::FuturesUnordered;
 use futures::StreamExt;
+use futures::stream::FuturesUnordered;
 use std::collections::BTreeMap;
 
 use tokio::time::Instant;

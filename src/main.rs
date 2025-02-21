@@ -1,6 +1,6 @@
 use duva::{
-    domains::{config_actors::actor::ConfigActor, config_actors::config_manager::ConfigManager},
     Environment, StartUpFacade,
+    domains::{config_actors::actor::ConfigActor, config_actors::config_manager::ConfigManager},
 };
 
 #[tokio::main]

@@ -1,5 +1,5 @@
-use crate::domains::query_parsers::{deserialize, QueryIO};
 use crate::domains::IoError;
+use crate::domains::query_parsers::{QueryIO, deserialize};
 use crate::services::interface::{TGetPeerIp, TRead, TWrite};
 
 use bytes::{Bytes, BytesMut};

@@ -130,8 +130,8 @@ fn encode_size(size: usize) -> Result<Vec<u8>> {
 #[cfg(test)]
 mod test {
     use crate::domains::saves::endec::{
-        decoder::{byte_decoder::BytesDecoder, states::DecoderInit},
         StoredDuration,
+        decoder::{byte_decoder::BytesDecoder, states::DecoderInit},
     };
 
     use super::*;
