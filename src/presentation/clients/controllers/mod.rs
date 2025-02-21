@@ -18,7 +18,7 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio::select;
 
 pub mod acceptor;
-pub mod controller;
+pub mod handler;
 
 pub(crate) struct Handler;
 #[derive(Clone)]
