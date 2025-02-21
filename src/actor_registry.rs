@@ -5,7 +5,7 @@ use crate::domains::ttl::manager::TtlSchedulerManager;
 use crate::presentation::cluster_in::connection_manager::ClusterConnectionManager;
 
 use crate::{
-    presentation::cluster_in::communication_manager::ClusterCommunicationManager, CacheManager,
+    CacheManager, presentation::cluster_in::communication_manager::ClusterCommunicationManager,
 };
 use tokio::sync::mpsc::Sender;
 

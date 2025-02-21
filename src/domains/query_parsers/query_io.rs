@@ -2,7 +2,7 @@ use crate::domains::append_only_files::log::LogIndex;
 use crate::domains::append_only_files::{WriteOperation, WriteRequest};
 use crate::domains::cluster_actors::replication::HeartBeatMessage;
 #[cfg(test)]
-use crate::domains::cluster_actors::replication::{time_in_secs, BannedPeer, ReplicationInfo};
+use crate::domains::cluster_actors::replication::{BannedPeer, ReplicationInfo, time_in_secs};
 #[cfg(test)]
 use crate::domains::peers::identifier::PeerIdentifier;
 
@@ -94,12 +94,12 @@ impl QueryIO {
                 append_entries,
             }) => {
                 let header = format!(
-                            "{PEERSTATE_PREFIX}\r\n${}\r\n{term}\r\n${}\r\n{offset}\r\n${}\r\n{leader_replid}\r\n${}\r\n{hop_count}\r\n${}\r\n{id}\r\n",
-                            term.to_string().len(),
-                            offset.to_string().len(),
-                            leader_replid.len(),
-                            hop_count.to_string().len(),
-                            id.len(),
+                    "{PEERSTATE_PREFIX}\r\n${}\r\n{term}\r\n${}\r\n{offset}\r\n${}\r\n{leader_replid}\r\n${}\r\n{hop_count}\r\n${}\r\n{id}\r\n",
+                    term.to_string().len(),
+                    offset.to_string().len(),
+                    leader_replid.len(),
+                    hop_count.to_string().len(),
+                    id.len(),
                 );
 
                 let ban_list_array = QueryIO::Array(
@@ -522,14 +522,19 @@ fn test_peer_state_ban_list_to_binary() {
     let peer_state_serialized = peer_state_serialized.serialize();
 
     //THEN
-    let expected = format!("^\r\n$1\r\n0\r\n$1\r\n0\r\n$40\r\n{}\r\n$1\r\n1\r\n$14\r\n127.0.0.1:6380\r\n*1\r\n$25\r\n127.0.0.1:6739-{}\r\n*0\r\n",replication.leader_repl_id,ban_time);
+    let expected = format!(
+        "^\r\n$1\r\n0\r\n$1\r\n0\r\n$40\r\n{}\r\n$1\r\n1\r\n$14\r\n127.0.0.1:6380\r\n*1\r\n$25\r\n127.0.0.1:6739-{}\r\n*0\r\n",
+        replication.leader_repl_id, ban_time
+    );
     assert_eq!(expected, peer_state_serialized);
 }
 
 #[test]
 fn test_binary_to_heartbeat() {
     // GIVEN
-    let binary= format!("^\r\n$1\r\n0\r\n$1\r\n0\r\n$6\r\nrandom\r\n$1\r\n1\r\n$14\r\n127.0.0.1:6379\r\n*1\r\n$22\r\n127.0.0.1:6739-6545442\r\n*2\r\n#\r\n$1\r\n1\r\n*3\r\n$3\r\nSET\r\n$3\r\nfoo\r\n$3\r\nbar\r\n#\r\n$1\r\n2\r\n*3\r\n$3\r\nSET\r\n$3\r\npoo\r\n$3\r\nbar\r\n");
+    let binary = format!(
+        "^\r\n$1\r\n0\r\n$1\r\n0\r\n$6\r\nrandom\r\n$1\r\n1\r\n$14\r\n127.0.0.1:6379\r\n*1\r\n$22\r\n127.0.0.1:6739-6545442\r\n*2\r\n#\r\n$1\r\n1\r\n*3\r\n$3\r\nSET\r\n$3\r\nfoo\r\n$3\r\nbar\r\n#\r\n$1\r\n2\r\n*3\r\n$3\r\nSET\r\n$3\r\npoo\r\n$3\r\nbar\r\n"
+    );
     let buffer = BytesMut::from_iter(binary.into_bytes());
 
     // WHEN

@@ -1,6 +1,6 @@
 use crate::{
     domains::{
-        cluster_actors::{commands::ClusterCommand, replication::ReplicationInfo, ClusterActor},
+        cluster_actors::{ClusterActor, commands::ClusterCommand, replication::ReplicationInfo},
         peers::identifier::PeerIdentifier,
     },
     make_smart_pointer,

@@ -3,7 +3,7 @@ use std::str::FromStr;
 use bytes::{Bytes, BytesMut};
 
 use crate::{
-    domains::query_parsers::{deserialize, QueryIO},
+    domains::query_parsers::{QueryIO, deserialize},
     from_to, make_smart_pointer, write_array,
 };
 

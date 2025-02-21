@@ -7,7 +7,7 @@ use crate::domains::peers::identifier::PeerIdentifier;
 use crate::domains::peers::kind::PeerKind;
 use crate::domains::saves::snapshot::snapshot_applier::SnapshotApplier;
 
-use crate::{make_smart_pointer, InboundStream};
+use crate::{InboundStream, make_smart_pointer};
 use tokio::sync::mpsc::Sender;
 
 pub struct ClusterConnectionManager(pub(crate) ClusterCommunicationManager);
@@ -76,7 +76,7 @@ impl ClusterConnectionManager {
     }
 
     pub fn clone(&self) -> Sender<ClusterCommand> {
-        self.0 .0.clone()
+        self.0.0.clone()
     }
 
     pub async fn send(&self, cmd: ClusterCommand) -> anyhow::Result<()> {

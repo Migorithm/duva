@@ -1,12 +1,12 @@
 use bytes::Bytes;
 
 use crate::{
+    SnapshotLoader,
     domains::{
         cluster_actors::replication::HeartBeatMessage,
         cluster_listeners::{ClusterListener, ReactorKillSwitch, TListen},
         peers::connected_types::Leader,
     },
-    SnapshotLoader,
 };
 
 use super::*;
