@@ -76,7 +76,23 @@ impl ClientController<Handler> {
         Ok(response)
     }
 
-    pub(super) async fn try_consensus(
+    // Manage the client requests & consensus
+    pub(super) async fn maybe_consensus_then_execute(
+        &self,
+        requests: Vec<ClientRequest>,
+    ) -> anyhow::Result<Vec<QueryIO>> {
+        let consensus = try_join_all(requests.iter().map(|r| self.maybe_consensus(&r))).await?;
+
+        let mut results = Vec::with_capacity(requests.len());
+        for (request, log_index_num) in requests.into_iter().zip(consensus.into_iter()) {
+            let (res, _) =
+                tokio::try_join!(self.handle(request), self.maybe_send_commit(log_index_num))?;
+            results.push(res);
+        }
+        Ok(results)
+    }
+
+    pub(super) async fn maybe_consensus(
         &self,
         request: &ClientRequest,
     ) -> anyhow::Result<Option<LogIndex>> {
@@ -89,24 +105,6 @@ impl ClientController<Handler> {
             .send(ClusterCommand::LeaderReqConsensus { log, sender: tx })
             .await?;
         Ok(rx.await?)
-    }
-
-    // Manage the client requests & consensus
-    pub(super) async fn handle_client_requests(
-        &self,
-        requests: Vec<ClientRequest>,
-    ) -> anyhow::Result<Vec<QueryIO>> {
-        // consensus first!
-        let consensus = try_join_all(requests.iter().map(|r| self.try_consensus(&r))).await?;
-
-        let mut results = Vec::with_capacity(requests.len());
-        for (request, log_index_num) in requests.into_iter().zip(consensus.into_iter()) {
-            let (res, _) =
-                tokio::try_join!(self.handle(request), self.maybe_send_commit(log_index_num),)?;
-
-            results.push(res);
-        }
-        Ok(results)
     }
 
     async fn maybe_send_commit(&self, log_index_num: Option<LogIndex>) -> anyhow::Result<()> {

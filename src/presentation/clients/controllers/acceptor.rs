@@ -61,7 +61,7 @@ impl ClientController<Acceptor> {
                 continue;
             };
 
-            let results = match controller.handle_client_requests(requests).await {
+            let results = match controller.maybe_consensus_then_execute(requests).await {
                 Ok(results) => results,
 
                 // ! One of the following errors can be returned:
