@@ -1,12 +1,8 @@
 use super::states::{DecoderInit, HeaderReady, MetadataReady};
 
 use crate::domains::caches::cache_objects::CacheEntry;
-use crate::domains::saves::endec::{
-    DATABASE_SECTION_INDICATOR, DATABASE_TABLE_SIZE_INDICATOR,
-    EXPIRY_TIME_IN_MILLISECONDS_INDICATOR, EXPIRY_TIME_IN_SECONDS_INDICATOR, HEADER_MAGIC_STRING,
-    METADATA_SECTION_INDICATOR, STRING_VALUE_TYPE_INDICATOR, StoredDuration, extract_range,
-};
-use crate::domains::saves::snapshot::snapshot::{DecodedDatabase, DecodedMetadata, Snapshot};
+use crate::domains::saves::endec::{extract_range, StoredDuration, DATABASE_SECTION_INDICATOR, DATABASE_TABLE_SIZE_INDICATOR, EXPIRY_TIME_IN_MILLISECONDS_INDICATOR, EXPIRY_TIME_IN_SECONDS_INDICATOR, HEADER_MAGIC_STRING, METADATA_SECTION_INDICATOR, STRING_VALUE_TYPE_INDICATOR, VERSION};
+use crate::domains::saves::snapshot::snapshot::{Metadata, Snapshot, SubDatabase};
 
 use anyhow::{Context, Result};
 use std::{
@@ -163,16 +159,16 @@ impl<'a> BytesDecoder<'a, DecoderInit> {
 
 impl<'a> BytesDecoder<'a, HeaderReady> {
     pub fn load_metadata(mut self) -> Result<BytesDecoder<'a, MetadataReady>> {
-        let mut metadata = DecodedMetadata::default();
+        let mut metadata = Metadata::default();
         while self.check_indicator(METADATA_SECTION_INDICATOR) {
             let (key, value) = self
                 .try_extract_metadata_key_value()
                 .context("metadata loading: key value extraction failed")?;
 
             match key.as_str() {
-                "repl-id" => metadata.repl_id = Some(value),
+                "repl-id" => metadata.repl_id = value,
                 "repl-offset" => {
-                    metadata.repl_offset = Some(value.parse().context("repl-offset parse fail")?)
+                    metadata.repl_offset = value.parse().context("repl-offset parse fail")?
                 }
                 var => {
                     println!("Unknown metadata key: {}", var);
@@ -555,7 +551,7 @@ fn test_metadata_loading_no_metadata() {
         BytesDecoder::<HeaderReady> { data: data.as_slice().into(), state: Default::default() };
 
     let metadata = bytes_handler.load_metadata().unwrap();
-    assert_eq!(metadata.state.metadata, DecodedMetadata::default());
+    assert_eq!(metadata.state.metadata, Metadata::default());
 }
 
 #[test]
@@ -631,6 +627,6 @@ fn test_loading_all() {
     }
 
     assert_eq!(rdb_file.checksum, vec![0x60, 0x82, 0x9C, 0xF8, 0xFB, 0x2E, 0x7F, 0xEB]);
-    assert_eq!(rdb_file.metadata.repl_id.unwrap(), "420dd7e324c3a6371b103129cebe6e25a270f9fd");
-    assert_eq!(rdb_file.metadata.repl_offset.unwrap(), 8635297);
+    assert_eq!(rdb_file.metadata.repl_id, "420dd7e324c3a6371b103129cebe6e25a270f9fd");
+    assert_eq!(rdb_file.metadata.repl_offset, 8635297);
 }

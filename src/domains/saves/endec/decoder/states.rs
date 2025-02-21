@@ -1,4 +1,4 @@
-use crate::domains::saves::snapshot::snapshot::DecodedMetadata;
+use crate::domains::saves::snapshot::snapshot::Metadata;
 
 #[derive(Default)]
 pub struct DecoderInit;
@@ -7,6 +7,6 @@ pub struct DecoderInit;
 pub struct HeaderReady(pub(crate) String);
 #[derive(Default)]
 pub struct MetadataReady {
-    pub(crate) metadata: DecodedMetadata,
+    pub(crate) metadata: Metadata,
     pub(crate) header: String,
 }
