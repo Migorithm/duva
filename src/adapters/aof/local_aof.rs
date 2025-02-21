@@ -252,12 +252,13 @@ mod tests {
         let mut aof = LocalAof::new(&path).await?;
         let mut ops = Vec::new();
 
-        assert!(aof
-            .replay(|op| {
+        assert!(
+            aof.replay(|op| {
                 ops.push(op);
             })
             .await
-            .is_err());
+            .is_err()
+        );
 
         assert_eq!(ops.len(), 1);
         assert_eq!(
