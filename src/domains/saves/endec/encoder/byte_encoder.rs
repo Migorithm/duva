@@ -7,6 +7,7 @@ use crate::domains::{
     },
 };
 
+use crate::domains::saves::endec::VERSION;
 use anyhow::Result;
 use std::time::UNIX_EPOCH;
 
@@ -31,13 +32,10 @@ impl CacheEntry {
     }
 }
 
-pub fn encode_header(version: &str) -> Result<Vec<u8>> {
-    if version.len() != 4 {
-        return Err(anyhow::anyhow!("Invalid version string"));
-    }
+pub fn encode_header() -> Result<Vec<u8>> {
     let mut result = Vec::new();
     result.extend_from_slice(HEADER_MAGIC_STRING.as_bytes());
-    result.extend_from_slice(version.as_bytes());
+    result.extend_from_slice(VERSION.as_bytes());
     Ok(result)
 }
 
@@ -130,8 +128,8 @@ fn encode_size(size: usize) -> Result<Vec<u8>> {
 #[cfg(test)]
 mod test {
     use crate::domains::saves::endec::{
-        StoredDuration,
         decoder::{byte_decoder::BytesDecoder, states::DecoderInit},
+        StoredDuration,
     };
 
     use super::*;
@@ -340,10 +338,9 @@ mod test {
 
     #[test]
     fn test_encode_header() {
-        let version = "0001";
-        let encoded = encode_header(version).unwrap();
-        let expected = vec![0x52, 0x45, 0x44, 0x49, 0x53, 0x30, 0x30, 0x30, 0x31];
-        assert_eq!(encoded, expected);
+        let encoded = encode_header().unwrap();
+        let header = HEADER_MAGIC_STRING.to_string() + VERSION;
+        assert_eq!(encoded, header.as_bytes());
     }
 
     #[test]

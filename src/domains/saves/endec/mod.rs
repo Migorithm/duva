@@ -76,10 +76,12 @@
 use std::ops::RangeInclusive;
 use std::time::SystemTime;
 
+
 pub mod decoder;
 pub mod encoder;
 
-const HEADER_MAGIC_STRING: &str = "REDIS";
+const HEADER_MAGIC_STRING: &str = "DUVA";
+const VERSION: &str = "0001";
 const METADATA_SECTION_INDICATOR: u8 = 0xFA;
 const DATABASE_SECTION_INDICATOR: u8 = 0xFE;
 const DATABASE_TABLE_SIZE_INDICATOR: u8 = 0xFB;

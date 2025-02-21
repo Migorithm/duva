@@ -1,6 +1,6 @@
 use std::collections::VecDeque;
 
-use crate::domains::{IoError, caches::cache_objects::CacheEntry};
+use crate::domains::{caches::cache_objects::CacheEntry, IoError};
 use tokio::io::AsyncWriteExt;
 
 use super::{
@@ -35,8 +35,7 @@ impl SaveActor {
             metadata.push(("repl-id", &self.meta.repl_id));
             metadata.push(("repl-offset", &self.meta.offset));
         }
-
-        let meta = [encode_header("0011")?, encode_metadata(metadata)?, encode_database_info(0)?];
+        let meta = [encode_header()?, encode_metadata(metadata)?, encode_database_info(0)?];
         self.target.write(&meta.concat()).await?;
         Ok(())
     }
