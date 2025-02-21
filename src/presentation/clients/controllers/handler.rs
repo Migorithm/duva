@@ -101,17 +101,20 @@ impl ClientController<Handler> {
 
         let mut results = Vec::with_capacity(requests.len());
         for (request, log_index_num) in requests.into_iter().zip(consensus.into_iter()) {
-            // ! if request requires consensus, send it to cluster manager so tranasction inputs can be logged and consensus can be made
-            // apply state change
-            let res = self.handle(request).await?;
-            // ! run stream.write(res) and state change operation to replicas at the same time
-            if let Some(offset) = log_index_num {
-                self.cluster_communication_manager
-                    .send(ClusterCommand::SendCommitHeartBeat { offset })
-                    .await?;
-            }
+            let (res, _) =
+                tokio::try_join!(self.handle(request), self.maybe_send_commit(log_index_num),)?;
+
             results.push(res);
         }
         Ok(results)
+    }
+
+    async fn maybe_send_commit(&self, log_index_num: Option<LogIndex>) -> anyhow::Result<()> {
+        if let Some(offset) = log_index_num {
+            self.cluster_communication_manager
+                .send(ClusterCommand::SendCommitHeartBeat { offset })
+                .await?;
+        }
+        Ok(())
     }
 }
