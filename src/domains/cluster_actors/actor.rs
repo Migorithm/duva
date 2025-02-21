@@ -1,11 +1,11 @@
 use crate::domains::{
-    append_only_files::{log::LogIndex, WriteOperation, WriteRequest},
+    append_only_files::{WriteOperation, WriteRequest, log::LogIndex},
     query_parsers::QueryIO,
 };
 
 use super::{
     commands::AddPeer,
-    replication::{time_in_secs, BannedPeer, HeartBeatMessage, ReplicationInfo},
+    replication::{BannedPeer, HeartBeatMessage, ReplicationInfo, time_in_secs},
     *,
 };
 

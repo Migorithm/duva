@@ -16,13 +16,11 @@ async fn test_config_get_dir() {
     sleep(Duration::from_millis(500)).await;
     let mut h = ClientStreamHandler::new(process.bind_addr()).await;
 
+    let command = "GET";
+    let key = "dir";
+    let cmd = array(vec!["CONFIG", command, key]);
     // WHEN
-    h.send({
-        let command = "GET";
-        let key = "dir";
-        &array(vec!["CONFIG", command, key])
-    })
-    .await;
+    h.send(&cmd).await;
 
     // THEN
     assert_eq!(h.get_response().await, array(vec!["dir", "."]));
