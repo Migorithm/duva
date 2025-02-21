@@ -7,6 +7,8 @@ use crate::domains::{
     },
 };
 
+use crate::domains::saves::endec::VERSION;
+use crate::domains::saves::snapshot::snapshot::Metadata;
 use anyhow::Result;
 use std::time::UNIX_EPOCH;
 
@@ -31,22 +33,19 @@ impl CacheEntry {
     }
 }
 
-pub fn encode_header(version: &str) -> Result<Vec<u8>> {
-    if version.len() != 4 {
-        return Err(anyhow::anyhow!("Invalid version string"));
-    }
+pub fn encode_header() -> Result<Vec<u8>> {
     let mut result = Vec::new();
     result.extend_from_slice(HEADER_MAGIC_STRING.as_bytes());
-    result.extend_from_slice(version.as_bytes());
+    result.extend_from_slice(VERSION.as_bytes());
     Ok(result)
 }
 
-pub fn encode_metadata(metadata: Vec<(&str, &str)>) -> Result<Vec<u8>> {
+pub fn encode_metadata(metadata: Metadata) -> Result<Vec<u8>> {
     let mut result = Vec::new();
-    for (key, value) in metadata.iter() {
-        result.push(METADATA_SECTION_INDICATOR);
-        result.extend_from_slice(&encode_key_value(key, value)?);
-    }
+    result.push(METADATA_SECTION_INDICATOR);
+    result.extend_from_slice(&encode_key_value("repl-id", &metadata.repl_id)?);
+    result.push(METADATA_SECTION_INDICATOR);
+    result.extend_from_slice(&encode_key_value("repl-offset", &metadata.repl_offset.to_string())?);
     Ok(result)
 }
 pub fn encode_database_info(index: usize) -> Result<Vec<u8>> {
@@ -130,8 +129,8 @@ fn encode_size(size: usize) -> Result<Vec<u8>> {
 #[cfg(test)]
 mod test {
     use crate::domains::saves::endec::{
-        StoredDuration,
         decoder::{byte_decoder::BytesDecoder, states::DecoderInit},
+        StoredDuration,
     };
 
     use super::*;
@@ -340,45 +339,48 @@ mod test {
 
     #[test]
     fn test_encode_header() {
-        let version = "0001";
-        let encoded = encode_header(version).unwrap();
-        let expected = vec![0x52, 0x45, 0x44, 0x49, 0x53, 0x30, 0x30, 0x30, 0x31];
-        assert_eq!(encoded, expected);
+        let encoded = encode_header().unwrap();
+        let header = HEADER_MAGIC_STRING.to_string() + VERSION;
+        assert_eq!(encoded, header.as_bytes());
     }
 
     #[test]
     fn test_encode_metadata() {
-        let mut metadata = Vec::new();
-        metadata.push(("key1", "value1"));
-        metadata.push(("key2", "value2"));
+        let metadata = Metadata {
+            repl_id: "key1".to_string(),
+            repl_offset: 123,
+        };
         let encoded = encode_metadata(metadata).unwrap();
         let expected = vec![
             METADATA_SECTION_INDICATOR,
+            0x07,
+            b'r',
+            b'e',
+            b'p',
+            b'l',
+            b'-',
+            b'i',
+            b'd',
             0x04,
             b'k',
             b'e',
             b'y',
-            b'1',
-            0x06,
-            b'v',
-            b'a',
-            b'l',
-            b'u',
-            b'e',
             b'1',
             METADATA_SECTION_INDICATOR,
-            0x04,
-            b'k',
+            0x0B,
+            b'r',
             b'e',
-            b'y',
-            b'2',
-            0x06,
-            b'v',
-            b'a',
+            b'p',
             b'l',
-            b'u',
+            b'-',
+            b'o',
+            b'f',
+            b'f',
+            b's',
             b'e',
-            b'2',
+            b't',
+            192,
+            123
         ];
         assert_eq!(encoded, expected);
     }

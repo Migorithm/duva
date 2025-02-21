@@ -1,12 +1,8 @@
 use super::states::{DecoderInit, HeaderReady, MetadataReady};
 
 use crate::domains::caches::cache_objects::CacheEntry;
-use crate::domains::saves::endec::{
-    DATABASE_SECTION_INDICATOR, DATABASE_TABLE_SIZE_INDICATOR,
-    EXPIRY_TIME_IN_MILLISECONDS_INDICATOR, EXPIRY_TIME_IN_SECONDS_INDICATOR, HEADER_MAGIC_STRING,
-    METADATA_SECTION_INDICATOR, STRING_VALUE_TYPE_INDICATOR, StoredDuration, extract_range,
-};
-use crate::domains::saves::snapshot::snapshot::{DecodedDatabase, DecodedMetadata, Snapshot};
+use crate::domains::saves::endec::{extract_range, StoredDuration, DATABASE_SECTION_INDICATOR, DATABASE_TABLE_SIZE_INDICATOR, EXPIRY_TIME_IN_MILLISECONDS_INDICATOR, EXPIRY_TIME_IN_SECONDS_INDICATOR, HEADER_MAGIC_STRING, METADATA_SECTION_INDICATOR, STRING_VALUE_TYPE_INDICATOR, VERSION};
+use crate::domains::saves::snapshot::snapshot::{Metadata, Snapshot, SubDatabase};
 
 use anyhow::{Context, Result};
 use std::{
@@ -29,8 +25,8 @@ pub(crate) struct DatabaseSectionBuilder {
 }
 
 impl DatabaseSectionBuilder {
-    pub fn build(self) -> DecodedDatabase {
-        DecodedDatabase { index: self.index, storage: self.storage }
+    pub fn build(self) -> SubDatabase {
+        SubDatabase { index: self.index, storage: self.storage }
     }
 }
 
@@ -139,8 +135,9 @@ impl<'a> BytesDecoder<'a, DecoderInit> {
     // read data and check first 5 ascii code convertable hex bytes are equal to "REDIS"
     // then read 4 digit Header version (like 0011) and return RdbFileLoader<MetadataSectionLoading> with header value as "REDIS" + 4 digit version
     pub fn load_header(mut self) -> Result<BytesDecoder<'a, HeaderReady>> {
-        if self.len() < 9 {
-            return Err(anyhow::Error::msg("header loading: data length is less than 9"))?;
+        let header_len = HEADER_MAGIC_STRING.len() + VERSION.len();
+        if self.len() < header_len {
+            return Err(anyhow::Error::msg(format!("header loading: data length is less than {}", header_len)))?;
         }
 
         let header = self.take_header()?;
@@ -149,9 +146,9 @@ impl<'a> BytesDecoder<'a, DecoderInit> {
         Ok(BytesDecoder { data: self.data, state: HeaderReady(format!("{}{}", header, version)) })
     }
     fn take_header(&mut self) -> Result<String> {
-        let header = self.take_string(5)?;
+        let header = self.take_string(HEADER_MAGIC_STRING.len())?;
         if header != HEADER_MAGIC_STRING {
-            return Err(anyhow::Error::msg("header loading: header is not REDIS"))?;
+            return Err(anyhow::Error::msg(format!("header loading: header is not {}", HEADER_MAGIC_STRING)))?;
         }
         Ok(header)
     }
@@ -162,16 +159,16 @@ impl<'a> BytesDecoder<'a, DecoderInit> {
 
 impl<'a> BytesDecoder<'a, HeaderReady> {
     pub fn load_metadata(mut self) -> Result<BytesDecoder<'a, MetadataReady>> {
-        let mut metadata = DecodedMetadata::default();
+        let mut metadata = Metadata::default();
         while self.check_indicator(METADATA_SECTION_INDICATOR) {
             let (key, value) = self
                 .try_extract_metadata_key_value()
                 .context("metadata loading: key value extraction failed")?;
 
             match key.as_str() {
-                "repl-id" => metadata.repl_id = Some(value),
+                "repl-id" => metadata.repl_id = value,
                 "repl-offset" => {
-                    metadata.repl_offset = Some(value.parse().context("repl-offset parse fail")?)
+                    metadata.repl_offset = value.parse().context("repl-offset parse fail")?
                 }
                 var => {
                     println!("Unknown metadata key: {}", var);
@@ -209,7 +206,7 @@ impl BytesDecoder<'_, MetadataReady> {
             checksum,
         })
     }
-    fn extract_section(&mut self) -> Result<DecodedDatabase> {
+    fn extract_section(&mut self) -> Result<SubDatabase> {
         let mut builder: DatabaseSectionBuilder = DatabaseSectionBuilder::default();
 
         while let Some(identifier) = self.first() {
@@ -439,7 +436,7 @@ fn test_database_section_extractor() {
 
     let mut bytes_handler = BytesDecoder::<MetadataReady> { data, state: Default::default() };
 
-    let db_section: DecodedDatabase = bytes_handler.extract_section().unwrap();
+    let db_section: SubDatabase = bytes_handler.extract_section().unwrap();
     assert_eq!(db_section.index, 0);
     assert_eq!(db_section.storage.len(), 3);
 
@@ -527,12 +524,12 @@ fn test_invalid_expiry_key_value_pair() {
 #[test]
 fn test_header_loading() {
     let decoder = BytesDecoder::<DecoderInit> {
-        data: &[0x52, 0x45, 0x44, 0x49, 0x53, 0x30, 0x30, 0x30, 0x31],
+        data: &[HEADER_MAGIC_STRING.as_bytes(), VERSION.as_bytes()].concat(),
         state: Default::default(),
     };
     let header = decoder.load_header().unwrap();
 
-    assert_eq!(header.state, HeaderReady("REDIS0001".to_string()));
+    assert_eq!(header.state, HeaderReady(HEADER_MAGIC_STRING.to_string() + VERSION));
 }
 
 #[test]
@@ -554,7 +551,7 @@ fn test_metadata_loading_no_metadata() {
         BytesDecoder::<HeaderReady> { data: data.as_slice().into(), state: Default::default() };
 
     let metadata = bytes_handler.load_metadata().unwrap();
-    assert_eq!(metadata.state.metadata, DecodedMetadata::default());
+    assert_eq!(metadata.state.metadata, Metadata::default());
 }
 
 #[test]
@@ -584,9 +581,12 @@ fn test_loading_all() {
     const R_ID_SIZE: u8 = 0x28;
     const D_KEY: u8 = 0xFE;
 
-    let data = vec![
-        // Header
-        0x52, 0x45, 0x44, 0x49, 0x53, 0x30, 0x30, 0x31, 0x31, // Metadata
+    let mut data = Vec::new();
+    data.extend_from_slice(HEADER_MAGIC_STRING.as_bytes());
+    data.extend_from_slice(VERSION.as_bytes());
+
+    data.extend_from_slice(&[
+        // Metadata
         //* repl-id
         M_KEY, 0x07, //size of key
         0x72, 0x65, 0x70, 0x6c, 0x2d, 0x69, 0x64, R_ID_SIZE, // size of value(hex 28 = 40)
@@ -600,14 +600,14 @@ fn test_loading_all() {
         D_KEY, 0x00, 0xFB, 0x02, 0x00, 0x00, 0x04, 0x66, 0x6F, 0x6F, 0x32, 0x04, 0x62, 0x61, 0x72,
         0x32, 0x00, 0x03, 0x66, 0x6F, 0x6F, 0x03, 0x62, 0x61, 0x72, 0xFF, 0x60, 0x82, 0x9C, 0xF8,
         0xFB, 0x2E, 0x7F, 0xEB,
-    ];
+    ]);
     let bytes_handler =
         BytesDecoder::<DecoderInit> { data: data.as_slice().into(), state: Default::default() };
 
     let rdb_file =
         bytes_handler.load_header().unwrap().load_metadata().unwrap().load_database().unwrap();
 
-    assert_eq!(rdb_file.header, "REDIS0011");
+    assert_eq!(rdb_file.header, HEADER_MAGIC_STRING.to_string() + VERSION);
     assert_eq!(rdb_file.database.len(), 1);
     assert_eq!(rdb_file.database[0].index, 0);
     assert_eq!(rdb_file.database[0].storage.len(), 2);
@@ -627,6 +627,6 @@ fn test_loading_all() {
     }
 
     assert_eq!(rdb_file.checksum, vec![0x60, 0x82, 0x9C, 0xF8, 0xFB, 0x2E, 0x7F, 0xEB]);
-    assert_eq!(rdb_file.metadata.repl_id.unwrap(), "420dd7e324c3a6371b103129cebe6e25a270f9fd");
-    assert_eq!(rdb_file.metadata.repl_offset.unwrap(), 8635297);
+    assert_eq!(rdb_file.metadata.repl_id, "420dd7e324c3a6371b103129cebe6e25a270f9fd");
+    assert_eq!(rdb_file.metadata.repl_offset, 8635297);
 }

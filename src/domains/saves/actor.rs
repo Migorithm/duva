@@ -1,8 +1,5 @@
 use std::collections::VecDeque;
 
-use crate::domains::{IoError, caches::cache_objects::CacheEntry};
-use tokio::io::AsyncWriteExt;
-
 use super::{
     command::SaveCommand,
     endec::encoder::byte_encoder::{
@@ -10,6 +7,9 @@ use super::{
         encode_metadata,
     },
 };
+use crate::domains::saves::snapshot::snapshot::Metadata;
+use crate::domains::{caches::cache_objects::CacheEntry, IoError};
+use tokio::io::AsyncWriteExt;
 
 pub struct SaveActor {
     pub(crate) target: SaveTarget,
@@ -23,20 +23,15 @@ impl SaveActor {
         repl_id: String,
         current_offset: u64,
     ) -> anyhow::Result<Self> {
-        let meta = SaveMeta::new(num_of_shards, repl_id, current_offset.to_string());
+        let meta = SaveMeta::new(num_of_shards, repl_id, current_offset);
         let mut processor = Self { target, meta };
         processor.encode_meta().await?;
         Ok(processor)
     }
 
     pub async fn encode_meta(&mut self) -> anyhow::Result<()> {
-        let mut metadata: Vec<(&str, &str)> = vec![];
-        if &self.meta.repl_id != "?" {
-            metadata.push(("repl-id", &self.meta.repl_id));
-            metadata.push(("repl-offset", &self.meta.offset));
-        }
-
-        let meta = [encode_header("0011")?, encode_metadata(metadata)?, encode_database_info(0)?];
+        let metadata = Metadata { repl_id: self.meta.repl_id.clone(), repl_offset: self.meta.offset };
+        let meta = [encode_header()?, encode_metadata(metadata)?, encode_database_info(0)?];
         self.target.write(&meta.concat()).await?;
         Ok(())
     }
@@ -117,11 +112,11 @@ pub struct SaveMeta {
     pub(crate) chunk_queue: VecDeque<Vec<CacheEntry>>,
     pub(crate) num_of_cache_actors: usize,
     pub(crate) repl_id: String,
-    pub(crate) offset: String,
+    pub(crate) offset: u64,
 }
 
 impl SaveMeta {
-    pub fn new(num_of_cache_actors: usize, repl_id: String, offset: String) -> Self {
+    pub fn new(num_of_cache_actors: usize, repl_id: String, offset: u64) -> Self {
         Self {
             num_of_saved_table_size_actor: num_of_cache_actors,
             total_key_value_table_size: 0,

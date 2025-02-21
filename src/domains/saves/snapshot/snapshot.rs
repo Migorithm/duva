@@ -3,16 +3,16 @@ use crate::domains::caches::cache_objects::CacheEntry;
 #[derive(Debug)]
 pub struct Snapshot {
     pub(crate) header: String,
-    pub(crate) metadata: DecodedMetadata,
-    pub(crate) database: Vec<DecodedDatabase>,
+    pub(crate) metadata: Metadata,
+    pub(crate) database: Vec<SubDatabase>,
     pub(crate) checksum: Vec<u8>,
 }
 
 impl Snapshot {
     pub fn new(
         header: String,
-        metadata: DecodedMetadata,
-        database: Vec<DecodedDatabase>,
+        metadata: Metadata,
+        database: Vec<SubDatabase>,
         checksum: Vec<u8>,
     ) -> Self {
         Self { header, metadata, database, checksum }
@@ -21,23 +21,19 @@ impl Snapshot {
         self.database.into_iter().flat_map(|section| section.storage.into_iter()).collect()
     }
 
-    pub fn extract_replication_info(&self) -> Option<(String, u64)> {
-        match (self.metadata.repl_id.as_ref(), self.metadata.repl_offset) {
-            (Some(repl_id), Some(offset)) => Some((repl_id.clone(), offset)),
-            _ => None,
-        }
+    pub fn extract_replication_info(&self) -> (String, u64) {
+        (self.metadata.repl_id.clone(), self.metadata.repl_offset)
     }
 }
 
-// TODO make it non-nullable?
 #[derive(Debug, Default, PartialEq)]
-pub struct DecodedMetadata {
-    pub(crate) repl_id: Option<String>,
-    pub(crate) repl_offset: Option<u64>,
+pub struct Metadata {
+    pub(crate) repl_id: String,
+    pub(crate) repl_offset: u64,
 }
 
 #[derive(Debug)]
-pub struct DecodedDatabase {
+pub struct SubDatabase {
     pub index: usize,
     pub storage: Vec<CacheEntry>,
 }

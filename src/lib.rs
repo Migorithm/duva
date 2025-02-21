@@ -7,7 +7,6 @@ pub mod presentation;
 pub mod services;
 use actor_registry::ActorRegistry;
 use anyhow::Result;
-use domains::IoError;
 use domains::caches::cache_manager::CacheManager;
 use domains::cluster_actors::commands::ClusterCommand;
 use domains::cluster_actors::replication::IS_LEADER_MODE;
@@ -15,6 +14,7 @@ use domains::config_actors::config_manager::ConfigManager;
 use domains::saves::snapshot::snapshot_applier::SnapshotApplier;
 use domains::saves::snapshot::snapshot_loader::SnapshotLoader;
 use domains::ttl::actor::TtlActor;
+use domains::IoError;
 pub use init::Environment;
 use presentation::clients::ClientController;
 use presentation::cluster_in::communication_manager::ClusterCommunicationManager;
@@ -181,13 +181,12 @@ impl StartUpFacade {
     async fn initialize_with_snapshot(&self) -> Result<()> {
         if let Some(filepath) = self.registry.config_manager.try_filepath().await? {
             let snapshot = SnapshotLoader::load_from_filepath(filepath).await?;
-            if let Some((repl_id, offset)) = snapshot.extract_replication_info() {
-                // Reconnection case - set the replication info
-                self.registry
-                    .cluster_actor_handler
-                    .send(ClusterCommand::SetReplicationInfo { leader_repl_id: repl_id, offset })
-                    .await?;
-            };
+            let (repl_id, offset) = snapshot.extract_replication_info();
+            // Reconnection case - set the replication info
+            self.registry
+                .cluster_actor_handler
+                .send(ClusterCommand::SetReplicationInfo { leader_repl_id: repl_id, offset })
+                .await?;
             self.registry.snapshot_applier.apply_snapshot(snapshot).await?;
         }
         Ok(())
