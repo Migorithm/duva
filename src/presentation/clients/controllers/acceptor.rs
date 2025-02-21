@@ -54,35 +54,26 @@ impl ClientController<Acceptor> {
 
         let controller = self.to_controller();
 
+        // name the loop
         loop {
             let Ok(requests) = stream.extract_query().await else {
                 eprintln!("invalid user request");
                 continue;
             };
 
-            let consensus =
-                try_join_all(requests.iter().map(|r| controller.try_consensus(&r))).await;
-            let Ok(res) = consensus else {
-                eprintln!("Consensus failed");
-                let _ = stream.write(QueryIO::Err("Consensus failed".into())).await;
-                continue;
+            let results = match controller.handle_client_requests(requests).await {
+                Ok(results) => results,
+
+                // ! One of the following errors can be returned:
+                // ! consensus or handler or commit
+                Err(e) => {
+                    eprintln!("[ERROR] {:?}", e);
+                    let _ = stream.write(QueryIO::Err(e.to_string().into())).await;
+                    continue;
+                }
             };
 
-            for (request, log_index_num) in requests.into_iter().zip(res.into_iter()) {
-                // ! if request requires consensus, send it to cluster manager so tranasction inputs can be logged and consensus can be made
-                // apply state change
-                let res = match controller.handle(request).await {
-                    Ok(response) => response,
-                    Err(e) => QueryIO::Err(e.to_string().into()),
-                };
-
-                // ! run stream.write(res) and state change operation to replicas at the same time
-                if let Some(offset) = log_index_num {
-                    let _ = controller
-                        .cluster_communication_manager
-                        .send(ClusterCommand::SendCommitHeartBeat { offset })
-                        .await;
-                }
+            for res in results {
                 if let Err(e) = stream.write(res).await {
                     if e.should_break() {
                         break;
