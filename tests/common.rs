@@ -81,15 +81,15 @@ impl TestProcessChild {
     pub fn terminate(&mut self) -> std::io::Result<()> {
         // First try graceful shutdown
         // Give the process some time to shutdown gracefully
-        // let timeout = Duration::from_secs(2);
-        // let start = std::time::Instant::now();
+        let timeout = Duration::from_secs(1);
+        let start = std::time::Instant::now();
 
-        // while start.elapsed() < timeout {
-        //     match self.process.try_wait()? {
-        //         Some(_) => return Ok(()),
-        //         None => thread::sleep(Duration::from_millis(100)),
-        //     }
-        // }
+        while start.elapsed() < timeout {
+            match self.process.try_wait()? {
+                Some(_) => return Ok(()),
+                None => thread::sleep(Duration::from_millis(100)),
+            }
+        }
 
         // Force kill if still running
         self.process.kill()?;
