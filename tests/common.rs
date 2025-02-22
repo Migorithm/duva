@@ -2,14 +2,18 @@ use bytes::Bytes;
 use duva::domains::query_parsers::query_io::QueryIO;
 use duva::make_smart_pointer;
 use std::io::{BufRead, BufReader, Read};
+use std::net::TcpListener;
 use std::process::{Child, Command, Stdio};
 use std::thread::{self};
 use std::time::{Duration, Instant};
 
-static PORT_DISTRIBUTOR: std::sync::atomic::AtomicU16 = std::sync::atomic::AtomicU16::new(49152);
-
+// Let the OS assign a free port dynamically to reduce port conflicts:
 pub fn get_available_port() -> u16 {
-    PORT_DISTRIBUTOR.fetch_add(1, std::sync::atomic::Ordering::SeqCst)
+    TcpListener::bind("127.0.0.1:0")
+        .expect("Failed to bind to a random port")
+        .local_addr()
+        .unwrap()
+        .port()
 }
 
 pub fn spawn_server_process() -> TestProcessChild {
@@ -77,7 +81,7 @@ impl TestProcessChild {
     pub fn terminate(&mut self) -> std::io::Result<()> {
         // First try graceful shutdown
         // Give the process some time to shutdown gracefully
-        let timeout = Duration::from_secs(2);
+        let timeout = Duration::from_secs(1);
         let start = std::time::Instant::now();
 
         while start.elapsed() < timeout {
@@ -92,11 +96,6 @@ impl TestProcessChild {
         self.process.wait()?;
 
         Ok(())
-    }
-
-    /// Checks if the process is still running
-    pub fn is_running(&mut self) -> bool {
-        self.process.try_wait().map(|status| status.is_none()).unwrap_or(false)
     }
 
     pub fn wait_for_message(&mut self, target: &str, target_count: usize) -> anyhow::Result<()> {

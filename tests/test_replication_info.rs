@@ -31,5 +31,5 @@ async fn test_replication_info() {
     assert_eq!(info[6], "repl_backlog_active:0");
     assert_eq!(info[7], "repl_backlog_size:1048576");
     assert_eq!(info[8], "repl_backlog_first_byte_offset:0");
-    assert_eq!(info[9], "self_identifier:127.0.0.1:49152");
+    assert_eq!(info[9], format!("self_identifier:127.0.0.1:{}", process.port()));
 }
