@@ -129,8 +129,8 @@ fn encode_size(size: usize) -> Result<Vec<u8>> {
 #[cfg(test)]
 mod test {
     use crate::domains::saves::endec::{
-        decoder::{byte_decoder::BytesDecoder, states::DecoderInit},
         StoredDuration,
+        decoder::{byte_decoder::BytesDecoder, states::DecoderInit},
     };
 
     use super::*;
@@ -346,10 +346,7 @@ mod test {
 
     #[test]
     fn test_encode_metadata() {
-        let metadata = Metadata {
-            repl_id: "key1".to_string(),
-            repl_offset: 123,
-        };
+        let metadata = Metadata { repl_id: "key1".to_string(), repl_offset: 123 };
         let encoded = encode_metadata(metadata).unwrap();
         let expected = vec![
             METADATA_SECTION_INDICATOR,
@@ -380,7 +377,7 @@ mod test {
             b'e',
             b't',
             192,
-            123
+            123,
         ];
         assert_eq!(encoded, expected);
     }

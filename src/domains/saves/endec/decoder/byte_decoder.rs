@@ -1,7 +1,12 @@
 use super::states::{DecoderInit, HeaderReady, MetadataReady};
 
 use crate::domains::caches::cache_objects::CacheEntry;
-use crate::domains::saves::endec::{extract_range, StoredDuration, DATABASE_SECTION_INDICATOR, DATABASE_TABLE_SIZE_INDICATOR, EXPIRY_TIME_IN_MILLISECONDS_INDICATOR, EXPIRY_TIME_IN_SECONDS_INDICATOR, HEADER_MAGIC_STRING, METADATA_SECTION_INDICATOR, STRING_VALUE_TYPE_INDICATOR, VERSION};
+use crate::domains::saves::endec::{
+    DATABASE_SECTION_INDICATOR, DATABASE_TABLE_SIZE_INDICATOR,
+    EXPIRY_TIME_IN_MILLISECONDS_INDICATOR, EXPIRY_TIME_IN_SECONDS_INDICATOR, HEADER_MAGIC_STRING,
+    METADATA_SECTION_INDICATOR, STRING_VALUE_TYPE_INDICATOR, StoredDuration, VERSION,
+    extract_range,
+};
 use crate::domains::saves::snapshot::snapshot::{Metadata, Snapshot, SubDatabase};
 
 use anyhow::{Context, Result};
@@ -137,7 +142,10 @@ impl<'a> BytesDecoder<'a, DecoderInit> {
     pub fn load_header(mut self) -> Result<BytesDecoder<'a, HeaderReady>> {
         let header_len = HEADER_MAGIC_STRING.len() + VERSION.len();
         if self.len() < header_len {
-            return Err(anyhow::Error::msg(format!("header loading: data length is less than {}", header_len)))?;
+            return Err(anyhow::Error::msg(format!(
+                "header loading: data length is less than {}",
+                header_len
+            )))?;
         }
 
         let header = self.take_header()?;
@@ -148,7 +156,10 @@ impl<'a> BytesDecoder<'a, DecoderInit> {
     fn take_header(&mut self) -> Result<String> {
         let header = self.take_string(HEADER_MAGIC_STRING.len())?;
         if header != HEADER_MAGIC_STRING {
-            return Err(anyhow::Error::msg(format!("header loading: header is not {}", HEADER_MAGIC_STRING)))?;
+            return Err(anyhow::Error::msg(format!(
+                "header loading: header is not {}",
+                HEADER_MAGIC_STRING
+            )))?;
         }
         Ok(header)
     }
