@@ -67,13 +67,9 @@ impl ClusterActor {
                         let _ = sender.send(None);
                         continue;
                     }
-                    self.req_consensus(write_operation).await;
 
-                    consensus_con.add(
-                        LogIndex(self.replication.leader_repl_offset),
-                        sender,
-                        self.followers().count(),
-                    );
+                    consensus_con.add(write_operation.offset, sender, self.followers().count());
+                    self.req_consensus(write_operation).await;
                 }
                 ClusterCommand::LeaderReceiveAcks(offsets) => {
                     self.apply_acks(&mut consensus_con, offsets);
