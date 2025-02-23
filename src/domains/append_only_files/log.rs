@@ -72,7 +72,7 @@ impl WriteRequest {
 
     /// Deserialize `WriteOperation`s from the given bytes.
     pub fn deserialize(mut bytes: BytesMut) -> anyhow::Result<Vec<WriteOperation>> {
-        let mut ops = Vec::new();
+        let mut ops: Vec<WriteOperation> = Vec::new();
 
         while !bytes.is_empty() {
             let (query, consumed) = deserialize(bytes.clone())?;

@@ -1,4 +1,4 @@
-use crate::domains::{query_parsers::QueryIO, IoError};
+use crate::domains::{IoError, query_parsers::QueryIO};
 use bytes::{Bytes, BytesMut};
 
 pub trait TRead {
