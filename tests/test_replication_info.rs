@@ -12,7 +12,7 @@ use duva::client_utils::ClientStreamHandler;
 #[tokio::test]
 async fn test_replication_info() {
     // GIVEN
-    let process = spawn_server_process();
+    let process = spawn_server_process(None);
     let mut h = ClientStreamHandler::new(process.bind_addr()).await;
 
     // WHEN

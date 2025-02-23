@@ -7,7 +7,7 @@ use duva::client_utils::ClientStreamHandler;
 #[tokio::test]
 async fn test_cluster_forget_node_return_error_when_wrong_id_given() {
     // GIVEN
-    let leader_p = spawn_server_process();
+    let leader_p = spawn_server_process(None);
 
     // WHEN
     let mut client_handler = ClientStreamHandler::new(leader_p.bind_addr()).await;

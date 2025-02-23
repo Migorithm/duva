@@ -6,7 +6,7 @@ async fn test_set_operation_reaches_to_all_replicas() {
     // GIVEN
 
     // loads the leader/follower processes
-    let mut leader_p = common::spawn_server_process();
+    let mut leader_p = common::spawn_server_process(None);
     let mut client_handler = ClientStreamHandler::new(leader_p.bind_addr()).await;
 
     let mut repl_p = common::spawn_server_as_follower(leader_p.bind_addr());

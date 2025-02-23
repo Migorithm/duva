@@ -5,7 +5,7 @@ use duva::client_utils::ClientStreamHandler;
 #[tokio::test]
 async fn test_removes_node_when_heartbeat_is_not_received_for_certain_time() {
     // GIVEN
-    let mut leader_p = spawn_server_process();
+    let mut leader_p = spawn_server_process(None);
 
     let cmd = &array(vec!["cluster", "info"]);
 
