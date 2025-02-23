@@ -10,7 +10,7 @@ use duva::{client_utils::ClientStreamHandler, domains::query_parsers::query_io::
 #[tokio::test]
 async fn test_set_get() {
     // GIVEN
-    let process = spawn_server_process();
+    let process = spawn_server_process(None);
 
     let mut h = ClientStreamHandler::new(process.bind_addr()).await;
 

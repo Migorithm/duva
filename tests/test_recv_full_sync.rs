@@ -8,7 +8,7 @@ use duva::client_utils::ClientStreamHandler;
 async fn test_receive_full_sync() {
     // GIVEN
     // Start the leader server as a child process
-    let leader_p = spawn_server_process();
+    let leader_p = spawn_server_process(None);
     let mut h = ClientStreamHandler::new(leader_p.bind_addr()).await;
 
     h.send_and_get(&array(vec!["SET", "foo", "bar"])).await;

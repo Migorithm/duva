@@ -8,7 +8,7 @@ use super::{
     },
 };
 use crate::domains::saves::snapshot::snapshot::Metadata;
-use crate::domains::{caches::cache_objects::CacheEntry, IoError};
+use crate::domains::{IoError, caches::cache_objects::CacheEntry};
 use tokio::io::AsyncWriteExt;
 
 pub struct SaveActor {
@@ -30,7 +30,8 @@ impl SaveActor {
     }
 
     pub async fn encode_meta(&mut self) -> anyhow::Result<()> {
-        let metadata = Metadata { repl_id: self.meta.repl_id.clone(), repl_offset: self.meta.offset };
+        let metadata =
+            Metadata { repl_id: self.meta.repl_id.clone(), repl_offset: self.meta.offset };
         let meta = [encode_header()?, encode_metadata(metadata)?, encode_database_info(0)?];
         self.target.write(&meta.concat()).await?;
         Ok(())

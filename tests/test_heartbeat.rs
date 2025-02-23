@@ -11,7 +11,7 @@ async fn test_heartbeat_hop_count_decreases_over_time() {
     const DEFAULT_HOP_COUNT: usize = 0;
     const TIMEOUT: u64 = 2;
     // GIVEN
-    let mut leader_p = spawn_server_process();
+    let mut leader_p = spawn_server_process(None);
     let leader_bind_addr = leader_p.bind_addr();
     let mut follower_p1 = spawn_server_as_follower(leader_bind_addr.clone());
     let mut follower_p2 = spawn_server_as_follower(leader_bind_addr.clone());
@@ -34,7 +34,7 @@ async fn test_heartbeat_hop_count_starts_with_0() {
     const TIMEOUT: u64 = 2;
 
     // GIVEN
-    let mut leader_p = spawn_server_process();
+    let mut leader_p = spawn_server_process(None);
     let leader_bind_addr = leader_p.bind_addr();
     // WHEN
     let mut follower_p1 = spawn_server_as_follower(leader_bind_addr.clone());

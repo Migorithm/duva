@@ -5,7 +5,7 @@ use duva::client_utils::ClientStreamHandler;
 #[tokio::test]
 async fn test_cluster_known_nodes_increase_when_new_replica_is_added() {
     // GIVEN
-    let mut leader_p = spawn_server_process();
+    let mut leader_p = spawn_server_process(None);
     let mut client_handler = ClientStreamHandler::new(leader_p.bind_addr()).await;
 
     let cmd = &array(vec!["cluster", "info"]);

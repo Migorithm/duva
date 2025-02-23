@@ -6,7 +6,7 @@ use common::{spawn_server_as_follower, spawn_server_process};
 async fn test_disseminate_peers() {
     // GIVEN
     // Start the leader server as a child process
-    let leader_p = spawn_server_process();
+    let leader_p = spawn_server_process(None);
 
     // WHEN run replica
     let mut replica_process = spawn_server_as_follower(leader_p.bind_addr());

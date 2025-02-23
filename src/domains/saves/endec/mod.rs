@@ -76,7 +76,6 @@
 use std::ops::RangeInclusive;
 use std::time::SystemTime;
 
-
 pub mod decoder;
 pub mod encoder;
 

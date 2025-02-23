@@ -5,31 +5,18 @@
 /// *2\r\n$3\r\ndir\r\n$4\r\n/tmp\r\n
 mod common;
 use crate::common::array;
-use common::get_available_port;
-
-use common::TestProcessChild;
+use common::spawn_server_process;
 use duva::client_utils::ClientStreamHandler;
 use duva::domains::query_parsers::query_io::QueryIO;
-
-use std::process::Command;
-use std::process::Stdio;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
-
-struct FileName(String);
-impl Drop for FileName {
-    fn drop(&mut self) {
-        std::fs::remove_file(&self.0).unwrap();
-    }
-}
 
 // TODO response cannot be deterministic!
 #[tokio::test]
 async fn test_save_read_snapshot() {
     // GIVEN
-    let test_file_name = FileName(create_unique_file_name("test_save_dump"));
-
-    let leader_process = run_server_with_dbfilename(test_file_name.0.as_str());
+    let file_name = Some(create_unique_file_name("test_save_dump"));
+    let leader_process = spawn_server_process(file_name.clone());
 
     let mut h = ClientStreamHandler::new(leader_process.bind_addr()).await;
 
@@ -64,7 +51,7 @@ async fn test_save_read_snapshot() {
     drop(leader_process);
 
     // run server with the same file name
-    let leader_process = run_server_with_dbfilename(test_file_name.0.as_str());
+    let leader_process = spawn_server_process(file_name.clone());
 
     // wait for the server to start
     tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
@@ -83,29 +70,10 @@ async fn test_save_read_snapshot() {
     // THEN
     assert_eq!(leader_repl_id, prev_leader_repl_id);
     assert_eq!(leader_repl_offset, prev_leader_repl_offset);
-}
 
-fn run_server_with_dbfilename(dbfilename: &str) -> TestProcessChild {
-    let port = get_available_port();
-    let mut command = Command::new("cargo");
-    command.args(["run", "--", "--port", &port.to_string(), "--dbfilename", dbfilename]);
-
-    let mut process = TestProcessChild::new(
-        command
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .expect("Failed to start server process"),
-        port,
-    );
-    process
-        .wait_for_message(
-            format!("listening peer connection on 127.0.0.1:{}...", port + 10000).as_str(),
-            1,
-        )
-        .unwrap();
-
-    process
+    let _ = std::fs::remove_file(file_name.as_ref().unwrap());
+    let aof_filename = file_name.as_ref().unwrap().to_string() + ".aof";
+    let _ = std::fs::remove_file(aof_filename);
 }
 
 fn create_unique_file_name(function_name: &str) -> String {

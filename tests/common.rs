@@ -5,7 +5,7 @@ use std::io::{BufRead, BufReader, Read};
 use std::net::TcpListener;
 use std::process::{Child, Command, Stdio};
 use std::thread::{self};
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 // Let the OS assign a free port dynamically to reduce port conflicts:
 pub fn get_available_port() -> u16 {
@@ -22,10 +22,10 @@ pub fn get_available_port() -> u16 {
     }
 }
 
-pub fn spawn_server_process() -> TestProcessChild {
+pub fn spawn_server_process(file_name: Option<String>) -> TestProcessChild {
     let port: u16 = get_available_port();
     println!("Starting server on port {}", port);
-    let mut process = run_server_process(port, None);
+    let mut process = run_server_process(port, None, file_name);
 
     wait_for_message(
         process.process.stdout.as_mut().unwrap(),
@@ -40,7 +40,7 @@ pub fn spawn_server_process() -> TestProcessChild {
 
 pub fn spawn_server_as_follower(leader_bind_addr: String) -> TestProcessChild {
     let port: u16 = get_available_port();
-    let mut process = run_server_process(port, Some(leader_bind_addr));
+    let mut process = run_server_process(port, Some(leader_bind_addr), None);
     wait_for_message(
         process.process.stdout.as_mut().unwrap(),
         vec![format!("listening peer connection on 127.0.0.1:{}...", port + 10000).as_str()],
@@ -55,6 +55,11 @@ pub fn spawn_server_as_follower(leader_bind_addr: String) -> TestProcessChild {
 impl Drop for TestProcessChild {
     fn drop(&mut self) {
         let _ = self.terminate();
+        if let Some(file_name) = self.file_name.as_ref() {
+        } else {
+            // remove if exists
+            let _ = std::fs::remove_file("dump.rdb.aof");
+        }
     }
 }
 
@@ -76,11 +81,12 @@ impl TestProcessChild {
 pub struct TestProcessChild {
     process: Child,
     port: u16,
+    file_name: Option<String>,
 }
 
 impl TestProcessChild {
-    pub fn new(process: Child, port: u16) -> Self {
-        TestProcessChild { process, port }
+    pub fn new(process: Child, port: u16, file_name: Option<String>) -> Self {
+        TestProcessChild { process, port, file_name }
     }
 
     /// Attempts to gracefully terminate the process, falling back to force kill if necessary
@@ -124,12 +130,19 @@ impl TestProcessChild {
 
 make_smart_pointer!(TestProcessChild, Child => process);
 
-pub fn run_server_process(port: u16, replicaof: Option<String>) -> TestProcessChild {
+pub fn run_server_process(
+    port: u16,
+    replicaof: Option<String>,
+    file_name: Option<String>,
+) -> TestProcessChild {
     let mut command = Command::new("cargo");
     command.args(["run", "--", "--port", &port.to_string(), "--hf", "100", "--ttl", "1500"]);
 
     if let Some(replicaof) = replicaof {
         command.args(["--replicaof", &replicaof]);
+    }
+    if let Some(file_name) = file_name.as_ref() {
+        command.args(["--dbfilename", &file_name]);
     }
 
     TestProcessChild::new(
@@ -139,6 +152,7 @@ pub fn run_server_process(port: u16, replicaof: Option<String>) -> TestProcessCh
             .spawn()
             .expect("Failed to start server process"),
         port,
+        file_name,
     )
 }
 

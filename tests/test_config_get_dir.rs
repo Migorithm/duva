@@ -11,7 +11,7 @@ use tokio::time::sleep;
 #[tokio::test]
 async fn test_config_get_dir() {
     // GIVEN
-    let process = spawn_server_process();
+    let process = spawn_server_process(None);
 
     sleep(Duration::from_millis(500)).await;
     let mut h = ClientStreamHandler::new(process.bind_addr()).await;
