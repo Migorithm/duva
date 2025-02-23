@@ -56,7 +56,8 @@ impl OutboundStream {
                             match ok_count {
                                 1 => Ok(write_array!("REPLCONF", "capa", "psync2")),
                                 // "?" here means the server is undecided about their leader. and -1 is the offset that follower is aware of
-                                2 => Ok(write_array!("PSYNC", "?", "-1")),
+                                // TODO extract current offset from dump.rdb or else 0 - echo
+                                2 => Ok(write_array!("PSYNC", "?", "0")),
                                 _ => Err(anyhow::anyhow!("Unexpected OK count")),
                             }
                         }?;
@@ -105,7 +106,8 @@ impl OutboundStream {
     ) -> anyhow::Result<(ClusterCommand, ConnectedNodeInfo)> {
         let connection_info = self.connected_node_info.context("Connected node info not found")?;
 
-        let kind = PeerKind::connected_peer_kind(&self.repl_id, &connection_info.repl_id);
+        //TODO peer_offset should be extracted from dump.rdb or else 0 - echo
+        let kind = PeerKind::connected_peer_kind(&self.repl_id, &connection_info.repl_id, 0);
 
         let peer = Peer::create(
             self.stream,

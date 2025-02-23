@@ -22,10 +22,11 @@ use tokio::sync::mpsc::Sender;
 // The following is used only when the node is in leader mode
 pub(crate) struct InboundStream {
     pub(crate) stream: TcpStream,
-    pub(crate) current_offset: u64,
+    pub(crate) self_offset: u64,
     pub(crate) repl_id: String,
     pub(crate) inbound_peer_addr: Option<PeerIdentifier>,
     pub(crate) inbound_leader_replid: Option<String>,
+    pub(crate) inbound_peer_offset: u64,
 }
 
 make_smart_pointer!(InboundStream, TcpStream => stream);
@@ -36,8 +37,9 @@ impl InboundStream {
             stream,
             inbound_peer_addr: None,
             inbound_leader_replid: None,
-            current_offset,
+            self_offset: current_offset,
             repl_id,
+            inbound_peer_offset: 0,
         }
     }
     pub async fn recv_threeway_handshake(&mut self) -> anyhow::Result<()> {
@@ -49,11 +51,11 @@ impl InboundStream {
         let _capa_val_vec = self.recv_replconf_capa().await?;
 
         // TODO check repl_id is '?' or of mine. If not, consider incoming as peer
-        let (repl_id, _offset) = self.recv_psync().await?;
+        let (repl_id, inbound_peer_offset) = self.recv_psync().await?;
 
         self.inbound_peer_addr = Some(format!("{}:{}", self.get_peer_ip()?, port).into());
-
         self.inbound_leader_replid = Some(repl_id);
+        self.inbound_peer_offset = inbound_peer_offset;
 
         Ok(())
     }
@@ -82,12 +84,12 @@ impl InboundStream {
         self.write(QueryIO::SimpleString("OK".into())).await?;
         Ok(capa_val_vec)
     }
-    async fn recv_psync(&mut self) -> anyhow::Result<(String, i64)> {
+    async fn recv_psync(&mut self) -> anyhow::Result<(String, u64)> {
         let mut cmd = self.extract_cmd().await?;
         let (repl_id, offset) = cmd.extract_psync()?;
 
         let (self_leader_replid, self_leader_repl_offset) =
-            (self.repl_id.clone(), self.current_offset);
+            (self.repl_id.clone(), self.self_offset);
 
         self.write(QueryIO::SimpleString(
             format!("FULLRESYNC {} {}", self_leader_replid, self_leader_repl_offset).into(),
@@ -118,6 +120,7 @@ impl InboundStream {
         Ok(PeerKind::accepted_peer_kind(
             &self.repl_id,
             self.inbound_leader_replid.as_ref().context("No leader replid")?,
+            self.inbound_peer_offset,
         ))
     }
 
@@ -144,7 +147,7 @@ impl InboundStream {
     ) -> anyhow::Result<Self> {
         // route save caches
         let task = cache_manager
-            .route_save(SaveTarget::InMemory(Vec::new()), self.repl_id.clone(), self.current_offset)
+            .route_save(SaveTarget::InMemory(Vec::new()), self.repl_id.clone(), self.self_offset)
             .await?
             .await??;
 

@@ -160,14 +160,14 @@ impl ClusterActor {
         self.members
             .values()
             .into_iter()
-            .filter(|peer| matches!(peer.w_conn.kind, PeerKind::Follower))
+            .filter(|peer| matches!(peer.w_conn.kind, PeerKind::Follower(_)))
     }
 
     pub(crate) fn followers_mut(&mut self) -> Vec<&mut Peer> {
         self.members
             .values_mut()
             .into_iter()
-            .filter(|peer| matches!(peer.w_conn.kind, PeerKind::Follower))
+            .filter(|peer| matches!(peer.w_conn.kind, PeerKind::Follower(_)))
             .collect::<Vec<_>>()
     }
 

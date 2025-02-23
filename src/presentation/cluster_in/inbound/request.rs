@@ -82,7 +82,7 @@ impl HandShakeRequest {
         }
         Ok(capabilities)
     }
-    pub(crate) fn extract_psync(&mut self) -> anyhow::Result<(String, i64)> {
+    pub(crate) fn extract_psync(&mut self) -> anyhow::Result<(String, u64)> {
         self.match_query(HandShakeRequestEnum::Psync)?;
 
         let Some([repl_id, offset]) = self.args.get_mut(..2) else {
