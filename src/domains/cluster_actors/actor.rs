@@ -1,5 +1,5 @@
 use crate::domains::{
-    append_only_files::{WriteOperation, WriteRequest, log::LogIndex},
+    append_only_files::{WriteOperation, log::LogIndex},
     query_parsers::QueryIO,
 };
 
@@ -14,6 +14,7 @@ pub struct ClusterActor {
     pub(crate) members: BTreeMap<PeerIdentifier, Peer>,
     pub(crate) replication: ReplicationInfo,
     pub(crate) node_timeout: u128,
+    // pub(crate) logger: Logger,
     notifier: tokio::sync::watch::Sender<bool>,
 }
 
@@ -136,9 +137,9 @@ impl ClusterActor {
         }
     }
 
-    pub async fn req_consensus(&mut self, req: WriteRequest) {
+    pub async fn req_consensus(&mut self, entry: WriteOperation) {
         // TODO LOG, get log index, replace  self.replication.leader_repl_offset to log index
-        let entry = WriteOperation { op: req, offset: self.replication.leader_repl_offset.into() };
+
         let heartbeat = self.replication.append_entry(0, entry);
 
         let mut tasks = self

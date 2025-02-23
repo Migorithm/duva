@@ -1,5 +1,5 @@
 mod actor_registry;
-pub(crate) mod adapters;
+pub mod adapters;
 pub mod domains;
 mod init;
 pub mod macros;
@@ -7,6 +7,8 @@ pub mod presentation;
 pub mod services;
 use actor_registry::ActorRegistry;
 use anyhow::Result;
+use domains::IoError;
+use domains::append_only_files::interfaces::TAof;
 use domains::caches::cache_manager::CacheManager;
 use domains::cluster_actors::commands::ClusterCommand;
 use domains::cluster_actors::replication::IS_LEADER_MODE;
@@ -14,7 +16,6 @@ use domains::config_actors::config_manager::ConfigManager;
 use domains::saves::snapshot::snapshot_applier::SnapshotApplier;
 use domains::saves::snapshot::snapshot_loader::SnapshotLoader;
 use domains::ttl::actor::TtlActor;
-use domains::IoError;
 pub use init::Environment;
 use presentation::clients::ClientController;
 use presentation::cluster_in::communication_manager::ClusterCommunicationManager;
@@ -34,7 +35,7 @@ pub struct StartUpFacade {
 make_smart_pointer!(StartUpFacade, ActorRegistry => registry);
 
 impl StartUpFacade {
-    pub fn new(config_manager: ConfigManager, env: Environment) -> Self {
+    pub fn new(config_manager: ConfigManager, env: Environment, aof: impl TAof) -> Self {
         let (notifier, mode_change_watcher) =
             tokio::sync::watch::channel(IS_LEADER_MODE.load(Ordering::Acquire));
 
@@ -53,6 +54,7 @@ impl StartUpFacade {
             env.replicaof,
             env.host.clone(),
             env.port,
+            aof,
         );
 
         let registry = ActorRegistry {

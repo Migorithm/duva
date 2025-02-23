@@ -1,5 +1,6 @@
 use crate::{
     domains::{
+        append_only_files::interfaces::TAof,
         cluster_actors::{ClusterActor, commands::ClusterCommand, replication::ReplicationInfo},
         peers::identifier::PeerIdentifier,
     },
@@ -21,12 +22,13 @@ impl ClusterCommunicationManager {
         replicaof: Option<(String, String)>,
         host: String,
         port: u16,
+        aof: impl TAof,
     ) -> Sender<ClusterCommand> {
         let (actor_handler, cluster_message_listener) = tokio::sync::mpsc::channel(100);
 
         tokio::spawn(
             ClusterActor::new(node_timeout, ReplicationInfo::new(replicaof, &host, port), notifier)
-                .handle(cluster_message_listener),
+                .handle(cluster_message_listener, aof),
         );
 
         tokio::spawn({

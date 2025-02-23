@@ -2,7 +2,7 @@ use super::WriteOperation;
 use anyhow::Result;
 
 /// Trait for an Append-Only File (AOF) abstraction.
-pub trait TAof {
+pub trait TAof: Send + 'static {
     /// Appends a single `WriteOperation` to the log.
     fn append(
         &mut self,

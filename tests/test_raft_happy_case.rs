@@ -20,7 +20,11 @@ async fn test_set_operation_reaches_to_all_replicas() {
     //THEN - run the following together
     let h = std::thread::spawn(move || {
         repl_p.timed_wait_for_message(
-        vec!["[INFO] Received log entries: [WriteOperation { op: Set { key: \"foo\", value: \"bar\" }","[INFO] Received commit offset 1"],
+        vec![
+            "[INFO] Received log entries: [WriteOperation { op: Set { key: \"foo\", value: \"bar\" }",
+
+            "[INFO] Received commit offset 1"
+            ],
         1,
         4,
         )

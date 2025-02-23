@@ -1,6 +1,7 @@
 use duva::{
     Environment, StartUpFacade,
-    domains::{config_actors::actor::ConfigActor, config_actors::config_manager::ConfigManager},
+    adapters::aof::local_aof::LocalAof,
+    domains::config_actors::{actor::ConfigActor, config_manager::ConfigManager},
 };
 
 #[tokio::main]
@@ -12,7 +13,11 @@ async fn main() -> anyhow::Result<()> {
         env.host.clone(),
         env.port,
     );
-    let start_up_runner = StartUpFacade::new(config_manager, env);
+
+    //TODO refactor the following
+    let local_aof = LocalAof::new(env.dbfilename.to_string() + ".aof").await?;
+
+    let start_up_runner = StartUpFacade::new(config_manager, env, local_aof);
 
     start_up_runner.run().await
 }

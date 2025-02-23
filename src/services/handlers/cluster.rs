@@ -1,4 +1,6 @@
+use crate::domains::append_only_files::interfaces::TAof;
 use crate::domains::append_only_files::log::LogIndex;
+use crate::domains::append_only_files::logger::Logger;
 use crate::domains::cluster_actors::commands::ClusterCommand;
 use crate::domains::cluster_actors::consensus::ConsensusTracker;
 use crate::domains::cluster_actors::{ClusterActor, FANOUT};
@@ -9,8 +11,10 @@ impl ClusterActor {
     pub(crate) async fn handle(
         mut self,
         mut cluster_message_listener: Receiver<ClusterCommand>,
+        aof: impl TAof,
     ) -> anyhow::Result<Self> {
         let mut consensus_con = ConsensusTracker::default();
+        let mut logger = Logger::new(aof);
 
         while let Some(command) = cluster_message_listener.recv().await {
             // TODO notifier will be used when election process is implemented
@@ -56,13 +60,14 @@ impl ClusterActor {
                 }
                 ClusterCommand::LeaderReqConsensus { log, sender } => {
                     // ! Logging here?
+                    let write_operation = logger.create_log_entry(&log).await?;
 
                     // ! If there are no replicas, don't send the request
                     if self.followers().count() == 0 {
                         let _ = sender.send(None);
                         continue;
                     }
-                    self.req_consensus(log).await;
+                    self.req_consensus(write_operation).await;
 
                     consensus_con.add(
                         LogIndex(self.replication.leader_repl_offset),
