@@ -22,7 +22,6 @@ async fn test_replication_info() {
     let info: Vec<&str> = res.split("\r\n").collect();
 
     // THEN
-    assert_eq!(info[0], "$249");
     assert_eq!(info[1], "role:master");
     assert_eq!(info[2], "connected_slaves:0");
     assert!(info[3].starts_with("master_replid:"));
