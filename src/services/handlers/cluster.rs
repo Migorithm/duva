@@ -55,6 +55,8 @@ impl ClusterActor {
                     }
                 }
                 ClusterCommand::LeaderReqConsensus { log, sender } => {
+                    // ! Logging here?
+
                     // ! If there are no replicas, don't send the request
                     if self.followers().count() == 0 {
                         let _ = sender.send(None);
