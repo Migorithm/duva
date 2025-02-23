@@ -9,11 +9,17 @@ use std::time::{Duration, Instant};
 
 // Let the OS assign a free port dynamically to reduce port conflicts:
 pub fn get_available_port() -> u16 {
-    TcpListener::bind("127.0.0.1:0")
-        .expect("Failed to bind to a random port")
-        .local_addr()
-        .unwrap()
-        .port()
+    loop {
+        let port = TcpListener::bind("127.0.0.1:0")
+            .expect("Failed to bind to a random port")
+            .local_addr()
+            .unwrap()
+            .port();
+
+        if (49152..55000).contains(&port) {
+            return port;
+        }
+    }
 }
 
 pub fn spawn_server_process() -> TestProcessChild {

@@ -83,6 +83,7 @@ impl ClientController<Handler> {
     ) -> anyhow::Result<Vec<QueryIO>> {
         let consensus = try_join_all(requests.iter().map(|r| self.maybe_consensus(&r))).await?;
 
+        // apply write operation to the state machine if it's a write request
         let mut results = Vec::with_capacity(requests.len());
         for (request, log_index_num) in requests.into_iter().zip(consensus.into_iter()) {
             let (res, _) =
@@ -100,6 +101,7 @@ impl ClientController<Handler> {
         let Some(log) = request.to_write_request() else {
             return Ok(None);
         };
+
         let (tx, rx) = tokio::sync::oneshot::channel();
         self.cluster_communication_manager
             .send(ClusterCommand::LeaderReqConsensus { log, sender: tx })

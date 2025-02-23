@@ -11,7 +11,7 @@ impl ClientController<Acceptor> {
         }
     }
 
-    pub(super) fn to_controller(self) -> ClientController<Handler> {
+    pub(super) fn to_handler(self) -> ClientController<Handler> {
         ClientController {
             cluster_communication_manager: self.cluster_communication_manager,
             ttl_manager: self.ttl_manager,
@@ -52,7 +52,7 @@ impl ClientController<Acceptor> {
     async fn handle_client_stream(self, stream: TcpStream) {
         let mut stream = ClientStream(stream);
 
-        let controller = self.to_controller();
+        let handler = self.to_handler();
 
         // name the loop
         loop {
@@ -61,7 +61,7 @@ impl ClientController<Acceptor> {
                 continue;
             };
 
-            let results = match controller.maybe_consensus_then_execute(requests).await {
+            let results = match handler.maybe_consensus_then_execute(requests).await {
                 Ok(results) => results,
 
                 // ! One of the following errors can be returned:
