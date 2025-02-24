@@ -1,5 +1,6 @@
 use crate::domains::{
     append_only_files::{WriteOperation, interfaces::TAof, log::LogIndex, logger::Logger},
+    caches::cache_manager::{self, CacheManager},
     query_parsers::QueryIO,
 };
 
@@ -14,7 +15,7 @@ pub struct ClusterActor {
     pub(crate) members: BTreeMap<PeerIdentifier, Peer>,
     pub(crate) replication: ReplicationInfo,
     pub(crate) node_timeout: u128,
-    // pub(crate) logger: Logger,
+    pub(crate) cache_manager: CacheManager,
     notifier: tokio::sync::watch::Sender<bool>,
 }
 
@@ -22,9 +23,16 @@ impl ClusterActor {
     pub fn new(
         node_timeout: u128,
         init_repl_info: ReplicationInfo,
+        cache_manager: CacheManager,
         notifier: tokio::sync::watch::Sender<bool>,
     ) -> Self {
-        Self { members: BTreeMap::new(), replication: init_repl_info, node_timeout, notifier }
+        Self {
+            members: BTreeMap::new(),
+            replication: init_repl_info,
+            node_timeout,
+            notifier,
+            cache_manager,
+        }
     }
 
     pub fn hop_count(&self, fanout: usize, node_count: usize) -> u8 {
@@ -174,7 +182,7 @@ impl ClusterActor {
     pub fn apply_acks(&self, consensus_con: &mut ConsensusTracker, offsets: Vec<LogIndex>) {
         offsets.into_iter().for_each(|offset| {
             if let Some(mut consensus) = consensus_con.take(&offset) {
-                println!("[INFO] Received acks for offset: {}", offset);
+                println!("[INFO] Received acks for log index num: {}", offset);
                 consensus.apply_vote();
 
                 if let Some(consensus) = consensus.maybe_not_finished(offset) {
@@ -191,7 +199,7 @@ impl ClusterActor {
     ) {
         let mut offsets = Vec::with_capacity(write_operations.len());
         for op in write_operations.into_iter() {
-            println!("[INFO] Received log entry: {:?}", op);
+            println!("[INFO] Received log entry with log index num {}: {:?}", op.offset, op.op);
             let _ = logger.create_log_entry(&op.op).await;
             offsets.push(op.offset);
         }
@@ -215,6 +223,10 @@ impl ClusterActor {
         println!("[INFO] Sending commit request on {}", message.offset);
         while let Some(_) = tasks.next().await {}
     }
+
+    pub(crate) async fn change_state(&mut self, logger: &mut Logger<impl TAof>, offset: u64) {
+        //TODO
+    }
 }
 
 #[test]
@@ -224,7 +236,7 @@ fn test_hop_count_when_one() {
 
     let (tx, rx) = tokio::sync::watch::channel(false);
     let replication = ReplicationInfo::new(None, "localhost", 8080);
-    let cluster_actor = ClusterActor::new(100, replication, tx);
+    let cluster_actor = ClusterActor::new(100, replication, CacheManager { inboxes: vec![] }, tx);
 
     // WHEN
     let hop_count = cluster_actor.hop_count(fanout, 1);
@@ -238,7 +250,7 @@ fn test_hop_count_when_two() {
     let fanout = 2;
     let (tx, rx) = tokio::sync::watch::channel(false);
     let replication = ReplicationInfo::new(None, "localhost", 8080);
-    let cluster_actor = ClusterActor::new(100, replication, tx);
+    let cluster_actor = ClusterActor::new(100, replication, CacheManager { inboxes: vec![] }, tx);
 
     // WHEN
     let hop_count = cluster_actor.hop_count(fanout, 2);
@@ -252,7 +264,7 @@ fn test_hop_count_when_three() {
     let fanout = 2;
     let (tx, rx) = tokio::sync::watch::channel(false);
     let replication = ReplicationInfo::new(None, "localhost", 8080);
-    let cluster_actor = ClusterActor::new(100, replication, tx);
+    let cluster_actor = ClusterActor::new(100, replication, CacheManager { inboxes: vec![] }, tx);
 
     // WHEN
     let hop_count = cluster_actor.hop_count(fanout, 3);
@@ -266,7 +278,7 @@ fn test_hop_count_when_thirty() {
     let fanout = 2;
     let (tx, rx) = tokio::sync::watch::channel(false);
     let replication = ReplicationInfo::new(None, "localhost", 8080);
-    let cluster_actor = ClusterActor::new(100, replication, tx);
+    let cluster_actor = ClusterActor::new(100, replication, CacheManager { inboxes: vec![] }, tx);
 
     // WHEN
     let hop_count = cluster_actor.hop_count(fanout, 30);

@@ -95,6 +95,7 @@ impl ClusterActor {
 
                     if self.replication.leader_repl_offset < heart_beat_message.offset {
                         println!("[INFO] Received commit offset {}", heart_beat_message.offset);
+                        self.change_state(&mut logger, heart_beat_message.offset).await;
                         self.replication.leader_repl_offset = heart_beat_message.offset;
                     }
                 }
