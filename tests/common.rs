@@ -1,12 +1,35 @@
 use bytes::Bytes;
 use duva::domains::query_parsers::query_io::QueryIO;
 use duva::make_smart_pointer;
-use std::borrow::Borrow;
 use std::io::{BufRead, BufReader, Read};
 use std::net::TcpListener;
 use std::process::{Child, Command, Stdio};
 use std::thread::{self};
 use std::time::{Duration, Instant};
+
+pub struct ServerEnv {
+    pub port: u16,
+    pub file_name: FileName,
+    pub leader_bind_addr: Option<String>,
+}
+
+impl Default for ServerEnv {
+    fn default() -> Self {
+        ServerEnv { port: get_available_port(), file_name: FileName(None), leader_bind_addr: None }
+    }
+}
+
+impl ServerEnv {
+    pub fn with_file_name(mut self, file_name: impl Into<String>) -> Self {
+        self.file_name = FileName(Some(file_name.into()));
+        self
+    }
+
+    pub fn with_leader_bind_addr(mut self, leader_bind_addr: String) -> Self {
+        self.leader_bind_addr = Some(leader_bind_addr);
+        self
+    }
+}
 
 // Let the OS assign a free port dynamically to reduce port conflicts:
 pub fn get_available_port() -> u16 {
@@ -23,7 +46,7 @@ pub fn get_available_port() -> u16 {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct FileName(pub Option<String>);
 impl Drop for FileName {
     fn drop(&mut self) {
@@ -38,17 +61,14 @@ impl Drop for FileName {
     }
 }
 
-pub fn spawn_server_process(
-    leader_bind_addr: Option<String>,
-    file_name: impl Borrow<FileName>,
-) -> TestProcessChild {
-    let port: u16 = get_available_port();
-    println!("Starting server on port {}", port);
-    let mut process = run_server_process(port, leader_bind_addr, file_name.borrow().0.clone());
+pub fn spawn_server_process(env: &ServerEnv) -> TestProcessChild {
+    println!("Starting server on port {}", env.port);
+    let mut process =
+        run_server_process(env.port, env.leader_bind_addr.clone(), env.file_name.0.clone());
 
     wait_for_message(
         process.process.stdout.as_mut().unwrap(),
-        vec![format!("listening peer connection on 127.0.0.1:{}...", port + 10000).as_str()],
+        vec![format!("listening peer connection on 127.0.0.1:{}...", env.port + 10000).as_str()],
         1,
         Some(2),
     )
@@ -67,9 +87,6 @@ impl TestProcessChild {
     pub fn bind_addr(&self) -> String {
         format!("127.0.0.1:{}", self.port)
     }
-    pub fn port(&self) -> u16 {
-        self.port
-    }
 
     pub fn heartbeat_msg(&self, expected_count: usize) -> String {
         format!("[INFO] from {}, hc:{}", self.bind_addr(), expected_count)
@@ -81,12 +98,11 @@ impl TestProcessChild {
 pub struct TestProcessChild {
     process: Child,
     port: u16,
-    file_name: Option<String>,
 }
 
 impl TestProcessChild {
-    pub fn new(process: Child, port: u16, file_name: Option<String>) -> Self {
-        TestProcessChild { process, port, file_name }
+    pub fn new(process: Child, port: u16) -> Self {
+        TestProcessChild { process, port }
     }
 
     /// Attempts to gracefully terminate the process, falling back to force kill if necessary
@@ -152,7 +168,6 @@ pub fn run_server_process(
             .spawn()
             .expect("Failed to start server process"),
         port,
-        file_name,
     )
 }
 

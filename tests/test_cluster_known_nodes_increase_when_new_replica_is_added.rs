@@ -1,17 +1,18 @@
 mod common;
-use common::{FileName, array, spawn_server_process};
+use common::{ServerEnv, array, spawn_server_process};
 use duva::client_utils::ClientStreamHandler;
 
 #[tokio::test]
 async fn test_cluster_known_nodes_increase_when_new_replica_is_added() {
     // GIVEN
-    let file_name: FileName = FileName(None);
-    let mut leader_p = spawn_server_process(None, &file_name);
+    let env = ServerEnv::default();
+    let mut leader_p = spawn_server_process(&env);
     let mut client_handler = ClientStreamHandler::new(leader_p.bind_addr()).await;
 
     let cmd = &array(vec!["cluster", "info"]);
 
-    let mut repl_p = spawn_server_process(leader_p.bind_addr().into(), &file_name);
+    let repl_env = ServerEnv::default().with_leader_bind_addr(leader_p.bind_addr().into());
+    let mut repl_p = spawn_server_process(&repl_env);
     repl_p.wait_for_message(&leader_p.heartbeat_msg(0), 1).unwrap();
     leader_p.wait_for_message(&repl_p.heartbeat_msg(0), 1).unwrap();
 
@@ -19,7 +20,8 @@ async fn test_cluster_known_nodes_increase_when_new_replica_is_added() {
     assert_eq!(cluster_info, array(vec!["cluster_known_nodes:1"]));
 
     // WHEN -- new replica is added
-    let mut new_repl_p = spawn_server_process(leader_p.bind_addr().into(), &file_name);
+    let repl_env2 = ServerEnv::default().with_leader_bind_addr(leader_p.bind_addr().into());
+    let mut new_repl_p = spawn_server_process(&repl_env2);
     new_repl_p.wait_for_message(&leader_p.heartbeat_msg(0), 1).unwrap();
 
     //THEN

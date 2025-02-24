@@ -5,15 +5,15 @@
 /// *2\r\n$3\r\ndir\r\n$4\r\n/tmp\r\n
 mod common;
 
-use common::{FileName, array, spawn_server_process};
+use common::{ServerEnv, array, spawn_server_process};
 
 use duva::client_utils::ClientStreamHandler;
 
 #[tokio::test]
 async fn test_replication_info() {
     // GIVEN
-    let file_name: FileName = FileName(None);
-    let process = spawn_server_process(None, &file_name);
+    let env = ServerEnv::default();
+    let process = spawn_server_process(&env);
     let mut h = ClientStreamHandler::new(process.bind_addr()).await;
 
     // WHEN
@@ -31,5 +31,5 @@ async fn test_replication_info() {
     assert_eq!(info[6], "repl_backlog_active:0");
     assert_eq!(info[7], "repl_backlog_size:1048576");
     assert_eq!(info[8], "repl_backlog_first_byte_offset:0");
-    assert_eq!(info[9], format!("self_identifier:127.0.0.1:{}", process.port()));
+    assert_eq!(info[9], format!("self_identifier:127.0.0.1:{}", env.port));
 }
