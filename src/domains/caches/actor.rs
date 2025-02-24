@@ -7,11 +7,12 @@ use crate::domains::ttl::manager::TtlSchedulerManager;
 use crate::make_smart_pointer;
 
 use anyhow::Context;
-use tokio::sync::mpsc;
 
-#[derive(Default)]
+use tokio::sync::mpsc::{self, Sender};
+
 pub struct CacheActor {
     pub(crate) cache: CacheDb,
+    pub(crate) self_handler: Sender<CacheCommand>,
 }
 
 #[derive(Default)]
@@ -24,7 +25,9 @@ pub struct CacheDb {
 impl CacheActor {
     pub fn run() -> CacheCommandSender {
         let (tx, cache_actor_inbox) = mpsc::channel(100);
-        tokio::spawn(Self::default().handle(cache_actor_inbox));
+        tokio::spawn(
+            Self { cache: CacheDb::default(), self_handler: tx.clone() }.handle(cache_actor_inbox),
+        );
         CacheCommandSender(tx)
     }
 

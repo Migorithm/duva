@@ -59,7 +59,7 @@ async fn test_set_and_delete_inc_dec_keys_with_expiry() {
 
     // GIVEN
     let (tx, rx) = tokio::sync::mpsc::channel(100);
-    let actor = CacheActor { cache: CacheDb::default() };
+    let actor = CacheActor { cache: CacheDb::default(), self_handler: tx.clone() };
 
     let (ttl_tx, mut ttx_rx) = tokio::sync::mpsc::channel(100);
     let ttl_sender = TtlSchedulerManager(ttl_tx);
