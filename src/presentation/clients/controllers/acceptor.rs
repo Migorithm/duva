@@ -4,7 +4,7 @@ impl ClientController<Acceptor> {
     pub(crate) fn new(actor_registry: ActorRegistry) -> Self {
         Self {
             cluster_communication_manager: actor_registry.cluster_communication_manager(),
-            ttl_manager: actor_registry.ttl_manager,
+
             cache_manager: actor_registry.cache_manager,
             config_manager: actor_registry.config_manager,
             acceptor: PhantomData,
@@ -14,7 +14,6 @@ impl ClientController<Acceptor> {
     pub(super) fn to_handler(self) -> ClientController<Handler> {
         ClientController {
             cluster_communication_manager: self.cluster_communication_manager,
-            ttl_manager: self.ttl_manager,
             cache_manager: self.cache_manager,
             config_manager: self.config_manager,
             acceptor: PhantomData,

@@ -7,7 +7,7 @@ use crate::domains::config_actors::command::ConfigResponse;
 use crate::domains::config_actors::config_manager::ConfigManager;
 use crate::domains::query_parsers::QueryIO;
 use crate::domains::saves::actor::SaveTarget;
-use crate::domains::ttl::manager::TtlSchedulerManager;
+
 use crate::presentation::clients::request::ClientRequest;
 use crate::presentation::clients::stream::ClientStream;
 use crate::presentation::cluster_in::communication_manager::ClusterCommunicationManager;
@@ -26,7 +26,6 @@ pub(crate) struct Acceptor;
 
 #[derive(Clone)]
 pub(crate) struct ClientController<T = Acceptor> {
-    pub(crate) ttl_manager: TtlSchedulerManager,
     pub(crate) cache_manager: CacheManager,
     pub(crate) config_manager: ConfigManager,
     pub(crate) cluster_communication_manager: ClusterCommunicationManager,
