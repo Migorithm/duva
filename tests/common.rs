@@ -1,6 +1,7 @@
 use bytes::Bytes;
 use duva::domains::query_parsers::query_io::QueryIO;
 use duva::make_smart_pointer;
+use std::borrow::Borrow;
 use std::io::{BufRead, BufReader, Read};
 use std::net::TcpListener;
 use std::process::{Child, Command, Stdio};
@@ -22,10 +23,25 @@ pub fn get_available_port() -> u16 {
     }
 }
 
-pub fn spawn_server_process(file_name: Option<String>) -> TestProcessChild {
+#[derive(Clone)]
+pub struct FileName(pub Option<String>);
+impl Drop for FileName {
+    fn drop(&mut self) {
+        if let Some(file_name) = self.0.as_ref() {
+            // remove if exists
+            let _ = std::fs::remove_file(file_name);
+            let _ = std::fs::remove_file(format!("{}.aof", file_name));
+        } else {
+            // remove if exists
+            let _ = std::fs::remove_file("dump.rdb.aof");
+        }
+    }
+}
+
+pub fn spawn_server_process(file_name: impl Borrow<FileName>) -> TestProcessChild {
     let port: u16 = get_available_port();
     println!("Starting server on port {}", port);
-    let mut process = run_server_process(port, None, file_name);
+    let mut process = run_server_process(port, None, file_name.borrow().0.clone());
 
     wait_for_message(
         process.process.stdout.as_mut().unwrap(),
@@ -40,10 +56,11 @@ pub fn spawn_server_process(file_name: Option<String>) -> TestProcessChild {
 
 pub fn spawn_server_as_follower(
     leader_bind_addr: String,
-    file_name: Option<String>,
+    file_name: impl Borrow<FileName>,
 ) -> TestProcessChild {
     let port: u16 = get_available_port();
-    let mut process = run_server_process(port, Some(leader_bind_addr), file_name);
+    let mut process =
+        run_server_process(port, Some(leader_bind_addr), file_name.borrow().0.clone());
     wait_for_message(
         process.process.stdout.as_mut().unwrap(),
         vec![format!("listening peer connection on 127.0.0.1:{}...", port + 10000).as_str()],
@@ -58,11 +75,6 @@ pub fn spawn_server_as_follower(
 impl Drop for TestProcessChild {
     fn drop(&mut self) {
         let _ = self.terminate();
-        if let Some(file_name) = self.file_name.as_ref() {
-        } else {
-            // remove if exists
-            let _ = std::fs::remove_file("dump.rdb.aof");
-        }
     }
 }
 

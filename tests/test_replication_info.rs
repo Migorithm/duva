@@ -5,14 +5,15 @@
 /// *2\r\n$3\r\ndir\r\n$4\r\n/tmp\r\n
 mod common;
 
-use common::{array, spawn_server_process};
+use common::{FileName, array, spawn_server_process};
 
 use duva::client_utils::ClientStreamHandler;
 
 #[tokio::test]
 async fn test_replication_info() {
     // GIVEN
-    let process = spawn_server_process(None);
+    let file_name: FileName = FileName(None);
+    let process = spawn_server_process(&file_name);
     let mut h = ClientStreamHandler::new(process.bind_addr()).await;
 
     // WHEN

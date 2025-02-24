@@ -4,14 +4,15 @@ mod common;
 use std::time::Duration;
 
 use crate::common::array;
-use common::spawn_server_process;
+use common::{FileName, spawn_server_process};
 use duva::client_utils::ClientStreamHandler;
 use tokio::time::sleep;
 
 #[tokio::test]
 async fn test_config_get_dir() {
     // GIVEN
-    let process = spawn_server_process(None);
+    let file_name: FileName = FileName(None);
+    let process = spawn_server_process(&file_name);
 
     sleep(Duration::from_millis(500)).await;
     let mut h = ClientStreamHandler::new(process.bind_addr()).await;
