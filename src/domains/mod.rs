@@ -7,5 +7,4 @@ pub mod error;
 pub mod peers;
 pub mod query_parsers;
 pub mod saves;
-pub mod ttl;
 pub use error::IoError;
