@@ -31,7 +31,7 @@ async fn test_set_operation_reaches_to_all_replicas() {
                 "[INFO] Received commit offset 1"
             ],
             1,
-            4,
+            2000,
         )
     });
 
@@ -39,7 +39,7 @@ async fn test_set_operation_reaches_to_all_replicas() {
         leader_p.timed_wait_for_message(
             vec!["[INFO] Received acks for log index num: 1", "[INFO] Sending commit request on 1"],
             1,
-            4,
+            2000,
         )
     });
 

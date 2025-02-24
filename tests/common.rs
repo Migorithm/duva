@@ -85,7 +85,7 @@ pub fn spawn_server_process(env: &ServerEnv) -> TestProcessChild {
         process.process.stdout.as_mut().unwrap(),
         vec![format!("listening peer connection on 127.0.0.1:{}...", env.port + 10000).as_str()],
         1,
-        Some(2),
+        Some(2000),
     )
     .unwrap();
 
@@ -151,7 +151,7 @@ impl TestProcessChild {
         &mut self,
         target: Vec<&str>,
         target_count: usize,
-        wait_for: u64,
+        wait_for: u128,
     ) -> anyhow::Result<()> {
         let read = self.process.stdout.as_mut().unwrap();
 
@@ -195,7 +195,7 @@ fn wait_for_message<T: Read>(
     read: &mut T,
     mut target: Vec<&str>,
     target_count: usize,
-    timeout_in_secs: Option<u64>,
+    timeout_in_millis: Option<u128>,
 ) -> anyhow::Result<()> {
     let internal_count = Instant::now();
     let mut buf = BufReader::new(read).lines();
@@ -214,8 +214,8 @@ fn wait_for_message<T: Read>(
             }
         }
 
-        if let Some(timeout) = timeout_in_secs {
-            if internal_count.elapsed().as_secs() > timeout {
+        if let Some(timeout) = timeout_in_millis {
+            if internal_count.elapsed().as_millis() > timeout {
                 return Err(anyhow::anyhow!("Timeout waiting for message"));
             }
         }
@@ -232,7 +232,7 @@ pub fn array(arr: Vec<&str>) -> Bytes {
 pub fn check_internodes_communication(
     processes: &mut [&mut TestProcessChild],
     hop_count: usize,
-    time_out: u64,
+    time_out: u128,
 ) -> anyhow::Result<()> {
     for i in 0..processes.len() {
         // First get the message from all other processes
