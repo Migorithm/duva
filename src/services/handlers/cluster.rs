@@ -1,10 +1,8 @@
 use crate::domains::append_only_files::interfaces::TAof;
-use crate::domains::append_only_files::log::LogIndex;
 use crate::domains::append_only_files::logger::Logger;
 use crate::domains::cluster_actors::commands::ClusterCommand;
 use crate::domains::cluster_actors::consensus::ConsensusTracker;
 use crate::domains::cluster_actors::{ClusterActor, FANOUT};
-
 use tokio::sync::mpsc::Receiver;
 
 impl ClusterActor {
@@ -91,8 +89,11 @@ impl ClusterActor {
                             "[INFO] Received log entries: {:?}",
                             heart_beat_message.append_entries
                         );
-                        self.receive_log_entries_from_leader(heart_beat_message.append_entries)
-                            .await;
+                        self.receive_log_entries_from_leader(
+                            heart_beat_message.append_entries,
+                            &mut logger,
+                        )
+                        .await;
                         continue;
                     }
 
