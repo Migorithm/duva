@@ -3,24 +3,30 @@ use common::{ServerEnv, array, check_internodes_communication, spawn_server_proc
 use duva::client_utils::ClientStreamHandler;
 
 #[tokio::test]
-async fn test_cluster_forget_node_propagation() {
+async fn test_cluster_forget_makes_all_nodes_forget_target_node() {
     // GIVEN
     const HOP_COUNT: usize = 0;
 
-    let env = ServerEnv::default();
+    let env = ServerEnv::default().with_ttl(500).with_hf(2);
     let mut leader_p = spawn_server_process(&env);
 
-    let repl_env = ServerEnv::default().with_leader_bind_addr(leader_p.bind_addr().clone());
+    let repl_env = ServerEnv::default()
+        .with_leader_bind_addr(leader_p.bind_addr().clone())
+        .with_ttl(500)
+        .with_hf(2);
     let mut repl_p = spawn_server_process(&repl_env);
 
-    let repl_env2 = ServerEnv::default().with_leader_bind_addr(leader_p.bind_addr().clone());
+    let repl_env2 = ServerEnv::default()
+        .with_leader_bind_addr(leader_p.bind_addr().clone())
+        .with_ttl(500)
+        .with_hf(2);
     let mut repl_p2 = spawn_server_process(&repl_env2);
 
     check_internodes_communication(&mut [&mut leader_p, &mut repl_p, &mut repl_p2], HOP_COUNT, 2)
         .unwrap();
 
     // WHEN
-    const TIMEOUT: u64 = 2;
+    const TIMEOUT_IN_SECS: u64 = 1;
     let never_arrivable_msg = repl_p.heartbeat_msg(1);
     let mut client_handler = ClientStreamHandler::new(leader_p.bind_addr()).await;
     let replica_id = repl_p.bind_addr();
@@ -35,10 +41,12 @@ async fn test_cluster_forget_node_propagation() {
     // leader_p and repl_p2 doesn't get message from repl_p2
     let h1 = std::thread::spawn({
         let never_arrivable_msg = never_arrivable_msg.clone();
-        move || leader_p.timed_wait_for_message(vec![&never_arrivable_msg], HOP_COUNT, TIMEOUT)
+        move || {
+            leader_p.timed_wait_for_message(vec![&never_arrivable_msg], HOP_COUNT, TIMEOUT_IN_SECS)
+        }
     });
     let h2 = std::thread::spawn(move || {
-        repl_p2.timed_wait_for_message(vec![&never_arrivable_msg], HOP_COUNT, TIMEOUT)
+        repl_p2.timed_wait_for_message(vec![&never_arrivable_msg], HOP_COUNT, TIMEOUT_IN_SECS)
     });
 
     assert!(h1.join().unwrap().is_err());

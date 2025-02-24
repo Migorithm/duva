@@ -11,11 +11,19 @@ pub struct ServerEnv {
     pub port: u16,
     pub file_name: FileName,
     pub leader_bind_addr: Option<String>,
+    pub hf: u128,
+    pub ttl: u128,
 }
 
 impl Default for ServerEnv {
     fn default() -> Self {
-        ServerEnv { port: get_available_port(), file_name: FileName(None), leader_bind_addr: None }
+        ServerEnv {
+            port: get_available_port(),
+            file_name: FileName(None),
+            leader_bind_addr: None,
+            hf: 100,
+            ttl: 1500,
+        }
     }
 }
 
@@ -27,6 +35,14 @@ impl ServerEnv {
 
     pub fn with_leader_bind_addr(mut self, leader_bind_addr: String) -> Self {
         self.leader_bind_addr = Some(leader_bind_addr);
+        self
+    }
+    pub fn with_hf(mut self, hf: u128) -> Self {
+        self.hf = hf;
+        self
+    }
+    pub fn with_ttl(mut self, ttl: u128) -> Self {
+        self.ttl = ttl;
         self
     }
 }
@@ -63,8 +79,7 @@ impl Drop for FileName {
 
 pub fn spawn_server_process(env: &ServerEnv) -> TestProcessChild {
     println!("Starting server on port {}", env.port);
-    let mut process =
-        run_server_process(env.port, env.leader_bind_addr.clone(), env.file_name.0.clone());
+    let mut process = run_server_process(&env);
 
     wait_for_message(
         process.process.stdout.as_mut().unwrap(),
@@ -146,18 +161,23 @@ impl TestProcessChild {
 
 make_smart_pointer!(TestProcessChild, Child => process);
 
-pub fn run_server_process(
-    port: u16,
-    replicaof: Option<String>,
-    file_name: Option<String>,
-) -> TestProcessChild {
+pub fn run_server_process(env: &ServerEnv) -> TestProcessChild {
     let mut command = Command::new("cargo");
-    command.args(["run", "--", "--port", &port.to_string(), "--hf", "100", "--ttl", "1500"]);
+    command.args([
+        "run",
+        "--",
+        "--port",
+        &env.port.to_string(),
+        "--hf",
+        &env.hf.to_string(),
+        "--ttl",
+        &env.ttl.to_string(),
+    ]);
 
-    if let Some(replicaof) = replicaof {
+    if let Some(replicaof) = env.leader_bind_addr.as_ref() {
         command.args(["--replicaof", &replicaof]);
     }
-    if let Some(file_name) = file_name.as_ref() {
+    if let Some(file_name) = env.file_name.0.as_ref() {
         command.args(["--dbfilename", &file_name]);
     }
 
@@ -167,7 +187,7 @@ pub fn run_server_process(
             .stderr(Stdio::piped())
             .spawn()
             .expect("Failed to start server process"),
-        port,
+        env.port,
     )
 }
 
@@ -175,7 +195,7 @@ fn wait_for_message<T: Read>(
     read: &mut T,
     mut target: Vec<&str>,
     target_count: usize,
-    timeout: Option<u64>,
+    timeout_in_secs: Option<u64>,
 ) -> anyhow::Result<()> {
     let internal_count = Instant::now();
     let mut buf = BufReader::new(read).lines();
@@ -194,7 +214,7 @@ fn wait_for_message<T: Read>(
             }
         }
 
-        if let Some(timeout) = timeout {
+        if let Some(timeout) = timeout_in_secs {
             if internal_count.elapsed().as_secs() > timeout {
                 return Err(anyhow::anyhow!("Timeout waiting for message"));
             }
