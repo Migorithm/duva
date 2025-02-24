@@ -85,10 +85,6 @@ impl ClusterActor {
                     self.update_last_seen(&heart_beat_message.heartbeat_from);
                     if !heart_beat_message.append_entries.is_empty() {
                         // TODO handle the log entries
-                        println!(
-                            "[INFO] Received log entries: {:?}",
-                            heart_beat_message.append_entries
-                        );
                         self.receive_log_entries_from_leader(
                             heart_beat_message.append_entries,
                             &mut logger,
