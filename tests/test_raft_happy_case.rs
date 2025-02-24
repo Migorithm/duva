@@ -1,16 +1,18 @@
 mod common;
+use common::FileName;
 use duva::client_utils::ClientStreamHandler;
 
 #[tokio::test]
 async fn test_set_operation_reaches_to_all_replicas() {
     // GIVEN
 
+    let file_name: FileName = FileName(None);
     // loads the leader/follower processes
-    let mut leader_p = common::spawn_server_process(None);
+    let mut leader_p = common::spawn_server_process(&file_name);
     let mut client_handler = ClientStreamHandler::new(leader_p.bind_addr()).await;
 
-    let mut repl_p =
-        common::spawn_server_as_follower(leader_p.bind_addr(), Some("follower_dbfilename".into()));
+    let repl_file_name = FileName("follower_dbfilename".to_string().into());
+    let mut repl_p = common::spawn_server_as_follower(leader_p.bind_addr(), &repl_file_name);
 
     repl_p.wait_for_message(&leader_p.heartbeat_msg(0), 1).unwrap();
     leader_p.wait_for_message(&repl_p.heartbeat_msg(0), 1).unwrap();
@@ -40,6 +42,4 @@ async fn test_set_operation_reaches_to_all_replicas() {
 
     h.join().unwrap().unwrap();
     h2.join().unwrap().unwrap();
-
-    let _ = std::fs::remove_file("follower_dbfilename.aof");
 }

@@ -5,6 +5,7 @@
 /// *2\r\n$3\r\ndir\r\n$4\r\n/tmp\r\n
 mod common;
 use crate::common::array;
+use common::FileName;
 use common::spawn_server_process;
 use duva::client_utils::ClientStreamHandler;
 use duva::domains::query_parsers::query_io::QueryIO;
@@ -15,8 +16,8 @@ use std::time::UNIX_EPOCH;
 #[tokio::test]
 async fn test_save_read_snapshot() {
     // GIVEN
-    let file_name = Some(create_unique_file_name("test_save_dump"));
-    let leader_process = spawn_server_process(file_name.clone());
+    let file_name = FileName(Some(create_unique_file_name("test_save_dump")));
+    let leader_process = spawn_server_process(&file_name);
 
     let mut h = ClientStreamHandler::new(leader_process.bind_addr()).await;
 
@@ -70,10 +71,6 @@ async fn test_save_read_snapshot() {
     // THEN
     assert_eq!(leader_repl_id, prev_leader_repl_id);
     assert_eq!(leader_repl_offset, prev_leader_repl_offset);
-
-    let _ = std::fs::remove_file(file_name.as_ref().unwrap());
-    let aof_filename = file_name.as_ref().unwrap().to_string() + ".aof";
-    let _ = std::fs::remove_file(aof_filename);
 }
 
 fn create_unique_file_name(function_name: &str) -> String {
