@@ -38,29 +38,14 @@ impl Drop for FileName {
     }
 }
 
-pub fn spawn_server_process(file_name: impl Borrow<FileName>) -> TestProcessChild {
-    let port: u16 = get_available_port();
-    println!("Starting server on port {}", port);
-    let mut process = run_server_process(port, None, file_name.borrow().0.clone());
-
-    wait_for_message(
-        process.process.stdout.as_mut().unwrap(),
-        vec![format!("listening peer connection on 127.0.0.1:{}...", port + 10000).as_str()],
-        1,
-        Some(2),
-    )
-    .unwrap();
-
-    process
-}
-
-pub fn spawn_server_as_follower(
-    leader_bind_addr: String,
+pub fn spawn_server_process(
+    leader_bind_addr: Option<String>,
     file_name: impl Borrow<FileName>,
 ) -> TestProcessChild {
     let port: u16 = get_available_port();
-    let mut process =
-        run_server_process(port, Some(leader_bind_addr), file_name.borrow().0.clone());
+    println!("Starting server on port {}", port);
+    let mut process = run_server_process(port, leader_bind_addr, file_name.borrow().0.clone());
+
     wait_for_message(
         process.process.stdout.as_mut().unwrap(),
         vec![format!("listening peer connection on 127.0.0.1:{}...", port + 10000).as_str()],

@@ -1,5 +1,5 @@
 mod common;
-use common::FileName;
+use common::{FileName, spawn_server_process};
 use duva::client_utils::ClientStreamHandler;
 
 #[tokio::test]
@@ -8,11 +8,11 @@ async fn test_set_operation_reaches_to_all_replicas() {
 
     let file_name: FileName = FileName(None);
     // loads the leader/follower processes
-    let mut leader_p = common::spawn_server_process(&file_name);
+    let mut leader_p = spawn_server_process(None, &file_name);
     let mut client_handler = ClientStreamHandler::new(leader_p.bind_addr()).await;
 
     let repl_file_name = FileName("follower_dbfilename".to_string().into());
-    let mut repl_p = common::spawn_server_as_follower(leader_p.bind_addr(), &repl_file_name);
+    let mut repl_p = spawn_server_process(leader_p.bind_addr().into(), &repl_file_name);
 
     repl_p.wait_for_message(&leader_p.heartbeat_msg(0), 1).unwrap();
     leader_p.wait_for_message(&repl_p.heartbeat_msg(0), 1).unwrap();

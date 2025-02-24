@@ -1,16 +1,16 @@
 mod common;
-use common::{FileName, array, spawn_server_as_follower, spawn_server_process};
+use common::{FileName, array, spawn_server_process};
 use duva::client_utils::ClientStreamHandler;
 
 #[tokio::test]
 async fn test_removes_node_when_heartbeat_is_not_received_for_certain_time() {
     // GIVEN
     let file_name: FileName = FileName(None);
-    let mut leader_p = spawn_server_process(&file_name);
+    let mut leader_p = spawn_server_process(None, &file_name);
 
     let cmd = &array(vec!["cluster", "info"]);
 
-    let mut repl_p = spawn_server_as_follower(leader_p.bind_addr(), &file_name);
+    let mut repl_p = spawn_server_process(leader_p.bind_addr().into(), &file_name);
     repl_p.wait_for_message(&leader_p.heartbeat_msg(0), 1).unwrap();
 
     leader_p.wait_for_message(&repl_p.heartbeat_msg(0), 1).unwrap();

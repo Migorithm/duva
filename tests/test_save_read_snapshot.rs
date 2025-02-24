@@ -17,7 +17,7 @@ use std::time::UNIX_EPOCH;
 async fn test_save_read_snapshot() {
     // GIVEN
     let file_name = FileName(Some(create_unique_file_name("test_save_dump")));
-    let leader_process = spawn_server_process(&file_name);
+    let leader_process = spawn_server_process(None, &file_name);
 
     let mut h = ClientStreamHandler::new(leader_process.bind_addr()).await;
 
@@ -52,7 +52,7 @@ async fn test_save_read_snapshot() {
     drop(leader_process);
 
     // run server with the same file name
-    let leader_process = spawn_server_process(file_name.clone());
+    let leader_process = spawn_server_process(None, file_name.clone());
 
     // wait for the server to start
     tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;

@@ -8,7 +8,7 @@ use duva::client_utils::ClientStreamHandler;
 async fn test_cluster_forget_node_return_error_when_wrong_id_given() {
     // GIVEN
     let file_name: FileName = FileName(None);
-    let leader_p = spawn_server_process(&file_name);
+    let leader_p = spawn_server_process(None, &file_name);
 
     // WHEN
     let mut client_handler = ClientStreamHandler::new(leader_p.bind_addr()).await;

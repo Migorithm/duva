@@ -11,7 +11,7 @@ use duva::{client_utils::ClientStreamHandler, domains::query_parsers::query_io::
 async fn test_set_get() {
     // GIVEN
     let file_name: FileName = FileName(None);
-    let process = spawn_server_process(&file_name);
+    let process = spawn_server_process(None, &file_name);
 
     let mut h = ClientStreamHandler::new(process.bind_addr()).await;
 
