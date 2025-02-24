@@ -3,15 +3,15 @@
 /// Then we get the key and check if the value is returned
 /// After 300ms, we get the key again and check if the value is not returned (-1)
 mod common;
-use common::{FileName, array, spawn_server_process};
+use common::{ServerEnv, array, spawn_server_process};
 
 use duva::{client_utils::ClientStreamHandler, domains::query_parsers::query_io::QueryIO};
 
 #[tokio::test]
 async fn test_set_get() {
     // GIVEN
-    let file_name: FileName = FileName(None);
-    let process = spawn_server_process(&file_name);
+    let env = ServerEnv::default();
+    let process = spawn_server_process(&env);
 
     let mut h = ClientStreamHandler::new(process.bind_addr()).await;
 

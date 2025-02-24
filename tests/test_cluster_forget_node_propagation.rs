@@ -1,7 +1,5 @@
 mod common;
-use common::{
-    FileName, array, check_internodes_communication, spawn_server_as_follower, spawn_server_process,
-};
+use common::{ServerEnv, array, check_internodes_communication, spawn_server_process};
 use duva::client_utils::ClientStreamHandler;
 
 #[tokio::test]
@@ -9,10 +7,14 @@ async fn test_cluster_forget_node_propagation() {
     // GIVEN
     const HOP_COUNT: usize = 0;
 
-    let file_name: FileName = FileName(None);
-    let mut leader_p = spawn_server_process(&file_name);
-    let mut repl_p = spawn_server_as_follower(leader_p.bind_addr(), &file_name);
-    let mut repl_p2 = spawn_server_as_follower(leader_p.bind_addr(), &file_name);
+    let env = ServerEnv::default();
+    let mut leader_p = spawn_server_process(&env);
+
+    let repl_env = ServerEnv::default().with_leader_bind_addr(leader_p.bind_addr().clone());
+    let mut repl_p = spawn_server_process(&repl_env);
+
+    let repl_env2 = ServerEnv::default().with_leader_bind_addr(leader_p.bind_addr().clone());
+    let mut repl_p2 = spawn_server_process(&repl_env2);
 
     check_internodes_communication(&mut [&mut leader_p, &mut repl_p, &mut repl_p2], HOP_COUNT, 2)
         .unwrap();

@@ -5,7 +5,7 @@
 /// *2\r\n$3\r\ndir\r\n$4\r\n/tmp\r\n
 mod common;
 use crate::common::array;
-use common::FileName;
+use common::ServerEnv;
 use common::spawn_server_process;
 use duva::client_utils::ClientStreamHandler;
 use duva::domains::query_parsers::query_io::QueryIO;
@@ -16,8 +16,9 @@ use std::time::UNIX_EPOCH;
 #[tokio::test]
 async fn test_save_read_snapshot() {
     // GIVEN
-    let file_name = FileName(Some(create_unique_file_name("test_save_dump")));
-    let leader_process = spawn_server_process(&file_name);
+
+    let env = ServerEnv::default().with_file_name(create_unique_file_name("test_save_dump"));
+    let leader_process = spawn_server_process(&env);
 
     let mut h = ClientStreamHandler::new(leader_process.bind_addr()).await;
 
@@ -52,7 +53,7 @@ async fn test_save_read_snapshot() {
     drop(leader_process);
 
     // run server with the same file name
-    let leader_process = spawn_server_process(file_name.clone());
+    let leader_process = spawn_server_process(&env);
 
     // wait for the server to start
     tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
