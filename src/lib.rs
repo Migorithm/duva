@@ -103,7 +103,7 @@ impl StartUpFacade {
                         let inbound_stream = InboundStream::new(
                             peer_stream,
                             current_repo_info.leader_repl_id,
-                            current_repo_info.leader_repl_offset,
+                            current_repo_info.commit_idx,
                         );
 
                         let connection_manager = registry.cluster_connection_manager();

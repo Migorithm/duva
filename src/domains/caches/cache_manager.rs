@@ -1,3 +1,4 @@
+use crate::domains::append_only_files::WriteRequest;
 use crate::domains::caches::actor::CacheActor;
 use crate::domains::caches::actor::CacheCommandSender;
 use crate::domains::caches::cache_objects::CacheEntry;

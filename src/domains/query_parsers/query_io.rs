@@ -98,7 +98,7 @@ impl QueryIO {
 
             QueryIO::HeartBeat(HeartBeatMessage {
                 term,
-                offset,
+                commit_idx,
                 leader_replid,
                 hop_count,
                 heartbeat_from: id,
@@ -106,9 +106,9 @@ impl QueryIO {
                 append_entries,
             }) => {
                 let mut message = BytesMut::from(format!(
-                    "{PEERSTATE_PREFIX}\r\n${}\r\n{term}\r\n${}\r\n{offset}\r\n${}\r\n{leader_replid}\r\n${}\r\n{hop_count}\r\n${}\r\n{id}\r\n",
+                    "{PEERSTATE_PREFIX}\r\n${}\r\n{term}\r\n${}\r\n{commit_idx}\r\n${}\r\n{leader_replid}\r\n${}\r\n{hop_count}\r\n${}\r\n{id}\r\n",
                     term.to_string().len(),
-                    offset.to_string().len(),
+                    commit_idx.to_string().len(),
                     leader_replid.len(),
                     hop_count.to_string().len(),
                     id.len(),
@@ -135,7 +135,7 @@ impl QueryIO {
 
                 message.freeze()
             }
-            QueryIO::ReplicateLog(WriteOperation { op, offset }) => {
+            QueryIO::ReplicateLog(WriteOperation { request: op, log_index: offset }) => {
                 let mut message = BytesMut::from(
                     format!(
                         "{}\r\n${}\r\n{}\r\n",
@@ -295,7 +295,7 @@ fn parse_heartbeat(buffer: BytesMut) -> Result<(QueryIO, usize)> {
     let message = HeartBeatMessage {
         heartbeat_from: id,
         term,
-        offset,
+        commit_idx: offset,
         leader_replid,
         hop_count,
         ban_list,
@@ -323,7 +323,10 @@ fn parse_replicate(buffer: BytesMut) -> std::result::Result<(QueryIO, usize), an
 
     let cmd = std::str::from_utf8(&cmd_bytes)?.to_lowercase();
     Ok((
-        QueryIO::ReplicateLog(WriteOperation { op: WriteRequest::new(cmd, args)?, offset: offset }),
+        QueryIO::ReplicateLog(WriteOperation {
+            request: WriteRequest::new(cmd, args)?,
+            log_index: offset,
+        }),
         ctx.offset(),
     ))
 }
@@ -460,7 +463,7 @@ fn test_from_bytes_to_peer_state() {
         value,
         QueryIO::HeartBeat(HeartBeatMessage {
             term: 245,
-            offset: 1234329,
+            commit_idx: 1234329,
             leader_replid: "abcd".into(),
             hop_count: 2,
             heartbeat_from: "127.0.0.1:49153".to_string().into(),
@@ -470,7 +473,7 @@ fn test_from_bytes_to_peer_state() {
     );
     let peer_state: HeartBeatMessage = value.try_into().unwrap();
     assert_eq!(peer_state.term, 245);
-    assert_eq!(peer_state.offset, 1234329);
+    assert_eq!(peer_state.commit_idx, 1234329);
 
     assert_eq!(peer_state.leader_replid, "abcd");
     assert_eq!(peer_state.hop_count, 2);
@@ -482,19 +485,19 @@ fn test_from_heartbeat_to_bytes() {
     //GIVEN
     let peer_state = HeartBeatMessage {
         term: 1,
-        offset: 2,
+        commit_idx: 2,
         leader_replid: "your_master_repl".into(),
         hop_count: 2,
         heartbeat_from: "127.0.0.1:49152".to_string().into(),
         ban_list: Default::default(),
         append_entries: vec![
             WriteOperation {
-                op: WriteRequest::Set { key: "foo".into(), value: "bar".into() },
-                offset: 1.into(),
+                request: WriteRequest::Set { key: "foo".into(), value: "bar".into() },
+                log_index: 1.into(),
             },
             WriteOperation {
-                op: WriteRequest::Set { key: "poo".into(), value: "bar".into() },
-                offset: 2.into(),
+                request: WriteRequest::Set { key: "poo".into(), value: "bar".into() },
+                log_index: 2.into(),
             },
         ],
     };
@@ -510,7 +513,7 @@ fn test_from_heartbeat_to_bytes() {
     //GIVEN
     let peer_state = HeartBeatMessage {
         term: 5,
-        offset: 3232,
+        commit_idx: 3232,
         leader_replid: "your_master_repl2".into(),
         hop_count: 40,
         heartbeat_from: "127.0.0.1:49159".to_string().into(),
@@ -565,7 +568,7 @@ fn test_binary_to_heartbeat() {
         value,
         QueryIO::HeartBeat(HeartBeatMessage {
             term: 0,
-            offset: 0,
+            commit_idx: 0,
             leader_replid: "random".into(),
             hop_count: 1,
             heartbeat_from: "127.0.0.1:6379".to_string().into(),
@@ -576,12 +579,12 @@ fn test_binary_to_heartbeat() {
             .to_vec(),
             append_entries: vec![
                 WriteOperation {
-                    op: WriteRequest::Set { key: "foo".into(), value: "bar".into() },
-                    offset: 1.into()
+                    request: WriteRequest::Set { key: "foo".into(), value: "bar".into() },
+                    log_index: 1.into()
                 },
                 WriteOperation {
-                    op: WriteRequest::Set { key: "poo".into(), value: "bar".into() },
-                    offset: 2.into()
+                    request: WriteRequest::Set { key: "poo".into(), value: "bar".into() },
+                    log_index: 2.into()
                 }
             ]
         })
@@ -648,7 +651,7 @@ fn test_banned_peer_serde_when_time_passed() {
 fn test_from_replicate_log_to_binary() {
     // GIVEN
     let query = WriteRequest::Set { key: "foo".into(), value: "bar".into() };
-    let replicate = QueryIO::ReplicateLog(WriteOperation { op: query, offset: 1.into() });
+    let replicate = QueryIO::ReplicateLog(WriteOperation { request: query, log_index: 1.into() });
 
     // WHEN
     let serialized = replicate.clone().serialize();
@@ -670,8 +673,8 @@ fn test_from_binary_to_replicate_log() {
     assert_eq!(
         value,
         QueryIO::ReplicateLog(WriteOperation {
-            op: WriteRequest::Set { key: "foo".into(), value: "bar".into() },
-            offset: 1.into()
+            request: WriteRequest::Set { key: "foo".into(), value: "bar".into() },
+            log_index: 1.into()
         })
     );
 }

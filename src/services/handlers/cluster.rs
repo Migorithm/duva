@@ -66,7 +66,7 @@ impl ClusterActor {
                         continue;
                     }
 
-                    consensus_con.add(write_operation.offset, sender, self.followers().count());
+                    consensus_con.add(write_operation.log_index, sender, self.followers().count());
                     self.req_consensus(write_operation).await;
                 }
                 ClusterCommand::LeaderReceiveAcks(offsets) => {
@@ -93,11 +93,7 @@ impl ClusterActor {
                         continue;
                     }
 
-                    if self.replication.leader_repl_offset < heart_beat_message.offset {
-                        println!("[INFO] Received commit offset {}", heart_beat_message.offset);
-                        self.change_state(&mut logger, heart_beat_message.offset).await;
-                        self.replication.leader_repl_offset = heart_beat_message.offset;
-                    }
+                    self.change_state(&mut logger, heart_beat_message).await;
                 }
             }
         }

@@ -26,7 +26,7 @@ impl ClientController<Handler> {
                     .route_save(
                         SaveTarget::File(file),
                         repl_info.leader_repl_id,
-                        repl_info.leader_repl_offset,
+                        repl_info.commit_idx,
                     )
                     .await?;
 
