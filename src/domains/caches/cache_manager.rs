@@ -1,4 +1,3 @@
-use crate::domains::append_only_files::WriteRequest;
 use crate::domains::caches::actor::CacheActor;
 use crate::domains::caches::actor::CacheCommandSender;
 use crate::domains::caches::cache_objects::CacheEntry;
@@ -6,7 +5,6 @@ use crate::domains::caches::command::CacheCommand;
 use crate::domains::query_parsers::QueryIO;
 use crate::domains::saves::actor::SaveActor;
 use crate::domains::saves::actor::SaveTarget;
-use crate::domains::ttl::manager::TtlSchedulerManager;
 
 use anyhow::Result;
 use std::{hash::Hasher, iter::Zip};
@@ -30,14 +28,8 @@ impl CacheManager {
         Ok(rx.await?)
     }
 
-    pub(crate) async fn route_set(
-        &self,
-        kvs: CacheEntry,
-        ttl_sender: TtlSchedulerManager,
-    ) -> Result<QueryIO> {
-        self.select_shard(kvs.key())
-            .send(CacheCommand::Set { cache_entry: kvs, ttl_sender })
-            .await?;
+    pub(crate) async fn route_set(&self, kvs: CacheEntry) -> Result<QueryIO> {
+        self.select_shard(kvs.key()).send(CacheCommand::Set { cache_entry: kvs }).await?;
         Ok(QueryIO::SimpleString("OK".to_string().into()))
     }
 

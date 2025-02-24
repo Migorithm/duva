@@ -1,7 +1,6 @@
 use crate::domains::caches::actor::CacheActor;
 use crate::domains::caches::cache_objects::CacheEntry;
 use crate::domains::caches::command::CacheCommand;
-
 use crate::domains::query_parsers::QueryIO;
 use crate::domains::saves::command::SaveCommand;
 use anyhow::Result;
@@ -13,10 +12,8 @@ impl CacheActor {
             match command {
                 CacheCommand::StopSentinel => break,
 
-                CacheCommand::Set { cache_entry, ttl_sender } => {
-                    let _ = self
-                        .try_send_ttl(cache_entry.key(), cache_entry.expiry(), ttl_sender.clone())
-                        .await;
+                CacheCommand::Set { cache_entry } => {
+                    let _ = self.try_send_ttl(cache_entry.key(), cache_entry.expiry()).await;
                     self.set(cache_entry);
                 }
                 CacheCommand::Get { key, sender } => {
@@ -54,16 +51,12 @@ impl CacheActor {
 #[tokio::test]
 async fn test_set_and_delete_inc_dec_keys_with_expiry() {
     use crate::domains::caches::actor::CacheDb;
-    use crate::domains::ttl::manager::TtlSchedulerManager;
+
     use std::time::{Duration, SystemTime};
 
     // GIVEN
     let (tx, rx) = tokio::sync::mpsc::channel(100);
-    let actor = CacheActor { cache: CacheDb::default() };
-
-    let (ttl_tx, mut ttx_rx) = tokio::sync::mpsc::channel(100);
-    let ttl_sender = TtlSchedulerManager(ttl_tx);
-    tokio::spawn(async move { ttx_rx.recv().await });
+    let actor = CacheActor { cache: CacheDb::default(), self_handler: tx.clone() };
 
     // WHEN
     let handler = tokio::spawn(actor.handle(rx));
@@ -77,7 +70,6 @@ async fn test_set_and_delete_inc_dec_keys_with_expiry() {
             } else {
                 CacheEntry::KeyValue(key, value)
             },
-            ttl_sender: ttl_sender.clone(),
         })
         .await
         .unwrap();
