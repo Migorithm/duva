@@ -3,7 +3,6 @@ use std::collections::HashMap;
 use super::cache_objects::{CacheEntry, CacheValue};
 use super::command::CacheCommand;
 use crate::domains::query_parsers::QueryIO;
-use crate::domains::ttl::manager::TtlSchedulerManager;
 use crate::make_smart_pointer;
 
 use anyhow::Context;
@@ -77,9 +76,21 @@ impl CacheActor {
         &self,
         key: &str,
         expiry: Option<std::time::SystemTime>,
-        ttl_sender: TtlSchedulerManager,
     ) -> anyhow::Result<()> {
-        ttl_sender.set_ttl(key.to_string(), expiry.context("Expiry not found")?).await;
+        if let Some(expiry) = expiry {
+            let handler = self.self_handler.clone();
+            let key = key.to_string();
+            let expire_in = expiry
+                .duration_since(std::time::SystemTime::now())
+                .context("Expiry time is in the past")?;
+            tokio::spawn({
+                async move {
+                    tokio::time::sleep(expire_in).await;
+                    let _ = handler.send(CacheCommand::Delete(key)).await;
+                }
+            });
+        }
+
         Ok(())
     }
 }

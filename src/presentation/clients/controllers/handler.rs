@@ -9,12 +9,12 @@ impl ClientController<Handler> {
             ClientRequest::Set { key, value } => {
                 let cache_entry = CacheEntry::KeyValue(key.to_owned(), value.to_string());
 
-                self.cache_manager.route_set(cache_entry, self.ttl_manager.clone()).await?
+                self.cache_manager.route_set(cache_entry).await?
             }
             ClientRequest::SetWithExpiry { key, value, expiry } => {
                 let cache_entry =
                     CacheEntry::KeyValueExpiry(key.to_owned(), value.to_string(), expiry);
-                self.cache_manager.route_set(cache_entry, self.ttl_manager.clone()).await?
+                self.cache_manager.route_set(cache_entry).await?
             }
             ClientRequest::Save => {
                 let file_path = self.config_manager.get_filepath().await?;

@@ -41,11 +41,8 @@ impl StartUpFacade {
 
         let cache_manager = CacheManager::run_cache_actors();
         let ttl_manager = TtlActor(cache_manager.clone()).run();
-        let snapshot_applier = SnapshotApplier::new(
-            cache_manager.clone(),
-            ttl_manager.clone(),
-            config_manager.startup_time,
-        );
+        let snapshot_applier =
+            SnapshotApplier::new(cache_manager.clone(), config_manager.startup_time);
 
         let cluster_actor_handler = ClusterCommunicationManager::run(
             notifier,

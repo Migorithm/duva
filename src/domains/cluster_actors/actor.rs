@@ -1,6 +1,6 @@
 use crate::domains::{
     append_only_files::{WriteOperation, interfaces::TAof, log::LogIndex, logger::Logger},
-    caches::cache_manager::{self, CacheManager},
+    caches::cache_manager::CacheManager,
     query_parsers::QueryIO,
 };
 
