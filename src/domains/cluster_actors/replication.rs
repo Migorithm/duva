@@ -13,10 +13,10 @@ pub static IS_LEADER_MODE: AtomicBool = AtomicBool::new(true);
 pub struct ReplicationInfo {
     pub(crate) connected_slaves: u16, // The number of connected replicas
     pub(crate) leader_repl_id: String, // The replication ID of the master example: 8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb
-    pub(crate) leader_repl_offset: u64, // The server's current replication offset. Example: 0
-    second_repl_offset: i16,           // -1
-    repl_backlog_active: usize,        // 0
-    repl_backlog_size: usize,          // 1048576
+    pub(crate) commit_idx: u64, // changed from leader_repl_offset The server's current replication offset. Example: 0
+    second_repl_offset: i16,    // -1
+    repl_backlog_active: usize, // 0
+    repl_backlog_size: usize,   // 1048576
     repl_backlog_first_byte_offset: usize, // 0
     role: String,
     //If the instance is a replica, these additional fields are provided:
@@ -36,7 +36,7 @@ impl ReplicationInfo {
         let replication = ReplicationInfo {
             connected_slaves: 0, // dynamically configurable
             leader_repl_id: leader_repl_id.clone(),
-            leader_repl_offset: 0,
+            commit_idx: 0,
             second_repl_offset: -1,
             repl_backlog_active: 0,
             repl_backlog_size: 1048576,
@@ -59,7 +59,7 @@ impl ReplicationInfo {
             format!("role:{}", self.role),
             format!("connected_slaves:{}", self.connected_slaves),
             format!("master_replid:{}", self.leader_repl_id),
-            format!("master_repl_offset:{}", self.leader_repl_offset),
+            format!("master_repl_offset:{}", self.commit_idx),
             format!("second_repl_offset:{}", self.second_repl_offset),
             format!("repl_backlog_active:{}", self.repl_backlog_active),
             format!("repl_backlog_size:{}", self.repl_backlog_size),
@@ -92,7 +92,7 @@ impl ReplicationInfo {
         HeartBeatMessage {
             heartbeat_from: self.self_identifier.clone(),
             term: self.term,
-            offset: self.leader_repl_offset,
+            commit_idx: self.commit_idx,
             leader_replid: self.leader_repl_id.clone(),
             hop_count,
             ban_list: self.ban_list.clone(),
@@ -123,7 +123,7 @@ pub(crate) fn time_in_secs() -> anyhow::Result<u64> {
 pub struct HeartBeatMessage {
     pub(crate) heartbeat_from: PeerIdentifier,
     pub(crate) term: u64,
-    pub(crate) offset: u64,
+    pub(crate) commit_idx: u64,
     pub(crate) leader_replid: String,
     pub(crate) hop_count: u8, // Decremented on each hop - for gossip
     pub(crate) ban_list: Vec<BannedPeer>,

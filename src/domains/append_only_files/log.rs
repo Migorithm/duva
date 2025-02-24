@@ -9,8 +9,8 @@ use crate::{
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WriteOperation {
-    pub op: WriteRequest,
-    pub offset: LogIndex,
+    pub request: WriteRequest,
+    pub log_index: LogIndex,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Copy, Hash, PartialOrd, Ord)]

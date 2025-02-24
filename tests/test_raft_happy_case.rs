@@ -23,7 +23,7 @@ async fn test_set_operation_reaches_to_all_replicas() {
         repl_p.timed_wait_for_message(
             vec![
                 "[INFO] Received log entry with log index num 1: Set { key: \"foo\", value: \"bar\" }",
-                "[INFO] Received commit offset 1",
+                "[INFO] Received commit offset 1"
             ],
             1,
             4,
@@ -32,7 +32,7 @@ async fn test_set_operation_reaches_to_all_replicas() {
 
     let h2 = std::thread::spawn(move || {
         leader_p.timed_wait_for_message(
-            vec!["[INFO] Received acks for offset:", "[INFO] Sending commit request on 1"],
+            vec!["[INFO] Received acks for log index num: 1", "[INFO] Sending commit request on 1"],
             1,
             4,
         )
