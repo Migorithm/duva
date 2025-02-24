@@ -1,5 +1,5 @@
 use crate::domains::{
-    append_only_files::{WriteOperation, log::LogIndex},
+    append_only_files::{WriteOperation, interfaces::TAof, log::LogIndex, logger::Logger},
     query_parsers::QueryIO,
 };
 
@@ -184,8 +184,18 @@ impl ClusterActor {
         });
     }
 
-    pub async fn receive_log_entries_from_leader(&mut self, write_operations: Vec<WriteOperation>) {
-        let offsets = write_operations.iter().map(|op| op.offset).collect::<Vec<_>>();
+    pub(crate) async fn receive_log_entries_from_leader(
+        &mut self,
+        write_operations: Vec<WriteOperation>,
+        logger: &mut Logger<impl TAof>,
+    ) {
+        let mut offsets = Vec::with_capacity(write_operations.len());
+        for op in write_operations.into_iter() {
+            println!("[INFO] Received log entry: {:?}", op);
+            let _ = logger.create_log_entry(&op.op).await;
+            offsets.push(op.offset);
+        }
+
         if let Some(leader) = self.leader_mut() {
             let _ = leader.write_io(QueryIO::Acks(offsets)).await;
         }

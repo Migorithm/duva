@@ -15,7 +15,7 @@ async fn test_receive_full_sync() {
     assert_eq!(h.send_and_get(&array(vec!["KEYS", "*"])).await, array(vec!["foo"]));
 
     // WHEN run replica
-    let mut replica_process = spawn_server_as_follower(leader_p.bind_addr());
+    let mut replica_process = spawn_server_as_follower(leader_p.bind_addr(), None);
 
     // THEN
     tokio::time::sleep(std::time::Duration::from_secs(1)).await;
