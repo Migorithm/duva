@@ -55,6 +55,7 @@ impl StartUpFacade {
             env.host.clone(),
             env.port,
             aof,
+            cache_manager.clone(),
         );
 
         let registry = ActorRegistry {
