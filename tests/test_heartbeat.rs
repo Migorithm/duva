@@ -13,14 +13,14 @@ async fn test_heartbeat_hop_count_decreases_over_time() {
     // GIVEN
     let mut leader_p = spawn_server_process(None);
     let leader_bind_addr = leader_p.bind_addr();
-    let mut follower_p1 = spawn_server_as_follower(leader_bind_addr.clone());
-    let mut follower_p2 = spawn_server_as_follower(leader_bind_addr.clone());
+    let mut follower_p1 = spawn_server_as_follower(leader_bind_addr.clone(), None);
+    let mut follower_p2 = spawn_server_as_follower(leader_bind_addr.clone(), None);
     let mut processes = vec![&mut leader_p, &mut follower_p1, &mut follower_p2];
 
     check_internodes_communication(&mut processes, DEFAULT_HOP_COUNT, TIMEOUT).unwrap();
 
     // WHEN run Third follower
-    let mut follower_p3 = spawn_server_as_follower(leader_bind_addr);
+    let mut follower_p3 = spawn_server_as_follower(leader_bind_addr, None);
     processes.push(&mut follower_p3);
 
     // THEN - some of the followers will have hop_count 1 and some will have hop_count 0
@@ -37,8 +37,8 @@ async fn test_heartbeat_hop_count_starts_with_0() {
     let mut leader_p = spawn_server_process(None);
     let leader_bind_addr = leader_p.bind_addr();
     // WHEN
-    let mut follower_p1 = spawn_server_as_follower(leader_bind_addr.clone());
-    let mut follower_p2 = spawn_server_as_follower(leader_bind_addr.clone());
+    let mut follower_p1 = spawn_server_as_follower(leader_bind_addr.clone(), None);
+    let mut follower_p2 = spawn_server_as_follower(leader_bind_addr.clone(), None);
 
     let processes = &mut [&mut leader_p, &mut follower_p1, &mut follower_p2];
     // THEN

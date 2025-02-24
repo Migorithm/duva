@@ -9,7 +9,7 @@ async fn test_disseminate_peers() {
     let leader_p = spawn_server_process(None);
 
     // WHEN run replica
-    let mut replica_process = spawn_server_as_follower(leader_p.bind_addr());
+    let mut replica_process = spawn_server_as_follower(leader_p.bind_addr(), None);
 
     // THEN
     replica_process.wait_for_message("[INFO] Received peer list: []", 1).unwrap();

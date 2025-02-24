@@ -9,8 +9,8 @@ async fn test_cluster_forget_node_propagation() {
     // GIVEN
     const HOP_COUNT: usize = 0;
     let mut leader_p = spawn_server_process(None);
-    let mut repl_p = spawn_server_as_follower(leader_p.bind_addr());
-    let mut repl_p2 = spawn_server_as_follower(leader_p.bind_addr());
+    let mut repl_p = spawn_server_as_follower(leader_p.bind_addr(), None);
+    let mut repl_p2 = spawn_server_as_follower(leader_p.bind_addr(), None);
 
     check_internodes_communication(&mut [&mut leader_p, &mut repl_p, &mut repl_p2], HOP_COUNT, 2)
         .unwrap();

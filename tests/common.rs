@@ -38,9 +38,12 @@ pub fn spawn_server_process(file_name: Option<String>) -> TestProcessChild {
     process
 }
 
-pub fn spawn_server_as_follower(leader_bind_addr: String) -> TestProcessChild {
+pub fn spawn_server_as_follower(
+    leader_bind_addr: String,
+    file_name: Option<String>,
+) -> TestProcessChild {
     let port: u16 = get_available_port();
-    let mut process = run_server_process(port, Some(leader_bind_addr), None);
+    let mut process = run_server_process(port, Some(leader_bind_addr), file_name);
     wait_for_message(
         process.process.stdout.as_mut().unwrap(),
         vec![format!("listening peer connection on 127.0.0.1:{}...", port + 10000).as_str()],

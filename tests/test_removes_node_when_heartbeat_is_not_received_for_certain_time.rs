@@ -9,7 +9,7 @@ async fn test_removes_node_when_heartbeat_is_not_received_for_certain_time() {
 
     let cmd = &array(vec!["cluster", "info"]);
 
-    let mut repl_p = spawn_server_as_follower(leader_p.bind_addr());
+    let mut repl_p = spawn_server_as_follower(leader_p.bind_addr(), None);
     repl_p.wait_for_message(&leader_p.heartbeat_msg(0), 1).unwrap();
 
     leader_p.wait_for_message(&repl_p.heartbeat_msg(0), 1).unwrap();
