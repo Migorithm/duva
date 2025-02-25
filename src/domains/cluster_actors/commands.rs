@@ -8,7 +8,7 @@ pub enum ClusterCommand {
     AddPeer(AddPeer),
     GetPeers(tokio::sync::oneshot::Sender<Vec<PeerIdentifier>>),
     ReplicationInfo(tokio::sync::oneshot::Sender<ReplicationInfo>),
-    SetReplicationInfo { leader_repl_id: String, offset: u64 },
+    SetReplicationInfo { leader_repl_id: String, commit_idx: u64 },
     SendHeartBeat,
 
     ForgetPeer(PeerIdentifier, tokio::sync::oneshot::Sender<Option<()>>),
