@@ -10,5 +10,6 @@ pub enum CacheCommand {
     Get { key: String, sender: oneshot::Sender<QueryIO> },
     Keys { pattern: Option<String>, sender: oneshot::Sender<QueryIO> },
     Delete(String),
+
     StopSentinel,
 }

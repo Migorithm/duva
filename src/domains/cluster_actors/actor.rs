@@ -231,7 +231,8 @@ impl ClusterActor {
         while let Some(_) = tasks.next().await {}
     }
 
-    pub(crate) async fn change_state(
+    // follower specific operation.
+    pub(crate) async fn replicate_state(
         &mut self,
         logger: &mut Logger<impl TAof>,
         heartbeat: HeartBeatMessage,
@@ -239,20 +240,16 @@ impl ClusterActor {
         if !self.replicatable(&heartbeat) {
             return;
         }
-
         println!("[INFO] Received commit offset {}", heartbeat.commit_idx);
 
-        //TODO try retrieve the logs that fall between the current commit index of this node and leader commit_idx
-        //TODO Note that there is a chance that this node hasn't received the log entries from the leader that matches the given commit idx.
-        //TODO in that case, we simply get the latest possible value and apply it to the state machine
-
+        //* Retrieve the logs that fall between the current 'log' index of this node and leader 'commit' idx
         let Ok(logs) = logger.range_logs(self.replication.commit_idx, heartbeat.commit_idx).await
         else {
             return;
         };
 
         for log in logs {
-            // TODO state change
+            let _ = self.cache_manager.apply_log(log.request).await;
             self.replication.commit_idx = log.log_index.into();
         }
     }

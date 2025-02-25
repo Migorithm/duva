@@ -1,11 +1,9 @@
-use std::str::FromStr;
-
-use bytes::{Bytes, BytesMut};
-
 use crate::{
     domains::query_parsers::{QueryIO, deserialize},
     from_to, make_smart_pointer, write_array,
 };
+use bytes::{Bytes, BytesMut};
+use std::str::FromStr;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WriteOperation {
@@ -60,6 +58,13 @@ impl WriteOperation {
 }
 
 impl WriteRequest {
+    pub(crate) fn key(&self) -> String {
+        match self {
+            WriteRequest::Set { key, .. } => key.clone(),
+            WriteRequest::SetWithExpiry { key, .. } => key.clone(),
+            WriteRequest::Delete { key } => key.clone(),
+        }
+    }
     pub fn to_array(self) -> QueryIO {
         match self {
             WriteRequest::Set { key, value } => write_array!("SET", key, value),

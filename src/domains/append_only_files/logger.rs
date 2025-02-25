@@ -23,9 +23,9 @@ impl<T: TAof> Logger<T> {
 
     pub(crate) async fn range_logs(
         &self,
-        commit_idx: u64,
+        current_commit_idx: u64,
         leader_commit_idx: u64,
     ) -> anyhow::Result<Vec<WriteOperation>> {
-        Ok(vec![])
+        self.target.range(current_commit_idx, leader_commit_idx).await
     }
 }

@@ -8,6 +8,7 @@ pub struct Environment {
     pub host: String,
     pub hf_mills: u64,
     pub ttl_mills: u128,
+    pub append_only: bool,
 }
 
 impl Environment {
@@ -22,7 +23,8 @@ impl Environment {
                 dir = ".".to_string(),
                 dbfilename = "dump.rdb".to_string(),
                 hf = 1000,
-                ttl = 60000
+                ttl = 60000,
+                append_only = false
             }
         );
         let replicaof = replicaof.map(|host_port| {
@@ -34,6 +36,6 @@ impl Environment {
         });
         IS_LEADER_MODE.store(replicaof.is_none(), std::sync::atomic::Ordering::Relaxed);
 
-        Self { replicaof, dir, dbfilename, port, host, hf_mills: hf, ttl_mills: ttl }
+        Self { replicaof, dir, dbfilename, port, host, hf_mills: hf, ttl_mills: ttl, append_only }
     }
 }

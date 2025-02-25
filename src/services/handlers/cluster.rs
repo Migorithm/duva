@@ -93,7 +93,7 @@ impl ClusterActor {
                         continue;
                     }
 
-                    self.change_state(&mut logger, heart_beat_message).await;
+                    self.replicate_state(&mut logger, heart_beat_message).await;
                 }
             }
         }

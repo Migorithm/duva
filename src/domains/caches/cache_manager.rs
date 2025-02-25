@@ -1,3 +1,4 @@
+use crate::domains::append_only_files::WriteRequest;
 use crate::domains::caches::actor::CacheActor;
 use crate::domains::caches::actor::CacheCommandSender;
 use crate::domains::caches::cache_objects::CacheEntry;
@@ -5,6 +6,7 @@ use crate::domains::caches::command::CacheCommand;
 use crate::domains::query_parsers::QueryIO;
 use crate::domains::saves::actor::SaveActor;
 use crate::domains::saves::actor::SaveTarget;
+use crate::domains::saves::endec::StoredDuration;
 
 use anyhow::Result;
 use std::{hash::Hasher, iter::Zip};
@@ -53,6 +55,26 @@ impl CacheManager {
 
         //* defaults to BGSAVE but optionally waitable
         Ok(tokio::spawn(save_actor.run(inbox)))
+    }
+
+    pub(crate) async fn apply_log(&self, msg: WriteRequest) -> Result<()> {
+        let shard = self.select_shard(&msg.key());
+        let command = match msg {
+            WriteRequest::Set { key, value } => {
+                CacheCommand::Set { cache_entry: CacheEntry::KeyValue(key, value) }
+            }
+            WriteRequest::SetWithExpiry { key, value, expires_at } => CacheCommand::Set {
+                cache_entry: CacheEntry::KeyValueExpiry(
+                    key,
+                    value,
+                    StoredDuration::Milliseconds(expires_at).to_systemtime(),
+                ),
+            },
+            WriteRequest::Delete { key } => CacheCommand::Delete(key),
+        };
+        shard.send(command).await?;
+
+        Ok(())
     }
 
     // Send recv handler firstly to the background and return senders and join handlers for receivers

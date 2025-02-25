@@ -13,6 +13,7 @@ pub struct ServerEnv {
     pub leader_bind_addr: Option<String>,
     pub hf: u128,
     pub ttl: u128,
+    pub appendonly: bool,
 }
 
 impl Default for ServerEnv {
@@ -23,6 +24,7 @@ impl Default for ServerEnv {
             leader_bind_addr: None,
             hf: 100,
             ttl: 1500,
+            appendonly: false,
         }
     }
 }
@@ -172,6 +174,8 @@ pub fn run_server_process(env: &ServerEnv) -> TestProcessChild {
         &env.hf.to_string(),
         "--ttl",
         &env.ttl.to_string(),
+        "--appendonly",
+        &env.appendonly.to_string(),
     ]);
 
     if let Some(replicaof) = env.leader_bind_addr.as_ref() {
