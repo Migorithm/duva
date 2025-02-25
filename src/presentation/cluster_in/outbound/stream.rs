@@ -20,18 +20,18 @@ pub(crate) struct OutboundStream {
     pub(crate) stream: TcpStream,
 
     pub(crate) repl_id: String,
-
+    commit_idx: u64,
     connected_node_info: Option<ConnectedNodeInfo>,
     connect_to: PeerIdentifier,
 }
 make_smart_pointer!(OutboundStream, TcpStream => stream);
 
 impl OutboundStream {
-    pub(crate) async fn new(connect_to: PeerIdentifier, repl_id: String) -> anyhow::Result<Self> {
+    pub(crate) async fn new(connect_to: PeerIdentifier, repl_id: String, commit_idx: u64) -> anyhow::Result<Self> {
         Ok(OutboundStream {
             stream: TcpStream::connect(&connect_to.cluster_bind_addr()).await?,
             repl_id,
-
+            commit_idx,
             connected_node_info: None,
             connect_to: connect_to.to_string().into(),
         })
@@ -56,8 +56,7 @@ impl OutboundStream {
                             match ok_count {
                                 1 => Ok(write_array!("REPLCONF", "capa", "psync2")),
                                 // "?" here means the server is undecided about their leader. and -1 is the offset that follower is aware of
-                                // TODO extract current offset from dump.rdb or else 0 - echo
-                                2 => Ok(write_array!("PSYNC", "?", "0")),
+                                2 => Ok(write_array!("PSYNC", self.repl_id.clone(), self.commit_idx.to_string() )),
                                 _ => Err(anyhow::anyhow!("Unexpected OK count")),
                             }
                         }?;
@@ -92,8 +91,7 @@ impl OutboundStream {
             cluster_manager
                 .send(ClusterCommand::SetReplicationInfo {
                     leader_repl_id: connected_node_info.repl_id.clone(),
-                    // TODO offset setting here may want to be revisited once we implement synchronization - echo
-                    offset: connected_node_info.offset,
+                    commit_idx: 0,
                 })
                 .await?;
         }
@@ -106,8 +104,7 @@ impl OutboundStream {
     ) -> anyhow::Result<(ClusterCommand, ConnectedNodeInfo)> {
         let connection_info = self.connected_node_info.context("Connected node info not found")?;
 
-        //TODO peer_offset should be extracted from dump.rdb or else 0 - echo
-        let kind = PeerKind::connected_peer_kind(&self.repl_id, &connection_info.repl_id, 0);
+        let kind = PeerKind::connected_peer_kind(&self.repl_id, &connection_info.repl_id, connection_info.offset);
 
         let peer = Peer::create(
             self.stream,

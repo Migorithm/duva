@@ -23,7 +23,7 @@ use tokio::sync::mpsc::Sender;
 pub(crate) struct InboundStream {
     pub(crate) stream: TcpStream,
     pub(crate) self_offset: u64,
-    pub(crate) repl_id: String,
+    pub(crate) self_repl_id: String,
     pub(crate) inbound_peer_addr: Option<PeerIdentifier>,
     pub(crate) inbound_leader_replid: Option<String>,
     pub(crate) inbound_peer_offset: u64,
@@ -38,7 +38,7 @@ impl InboundStream {
             inbound_peer_addr: None,
             inbound_leader_replid: None,
             self_offset: current_offset,
-            repl_id,
+            self_repl_id: repl_id,
             inbound_peer_offset: 0,
         }
     }
@@ -89,12 +89,12 @@ impl InboundStream {
         let (repl_id, offset) = cmd.extract_psync()?;
 
         let (self_leader_replid, self_leader_repl_offset) =
-            (self.repl_id.clone(), self.self_offset);
+            (self.self_repl_id.clone(), self.self_offset);
 
         self.write(QueryIO::SimpleString(
             format!("FULLRESYNC {} {}", self_leader_replid, self_leader_repl_offset).into(),
         ))
-        .await?;
+            .await?;
 
         Ok((repl_id, offset))
     }
@@ -112,13 +112,13 @@ impl InboundStream {
             format!("PEERS {}", peers.into_iter().map(|x| x.0).collect::<Vec<String>>().join(" "))
                 .into(),
         ))
-        .await?;
+            .await?;
         Ok(())
     }
 
     pub(crate) fn peer_kind(&self) -> anyhow::Result<PeerKind> {
         Ok(PeerKind::accepted_peer_kind(
-            &self.repl_id,
+            &self.self_repl_id,
             self.inbound_leader_replid.as_ref().context("No leader replid")?,
             self.inbound_peer_offset,
         ))
@@ -141,13 +141,13 @@ impl InboundStream {
         Ok(ClusterCommand::AddPeer(AddPeer { peer_id, peer }))
     }
 
-    pub(crate) async fn send_sync_to_inbound_server(
+    pub(crate) async fn send_full_resync_to_inbound_server(
         mut self,
         cache_manager: CacheManager,
     ) -> anyhow::Result<Self> {
         // route save caches
         let task = cache_manager
-            .route_save(SaveTarget::InMemory(Vec::new()), self.repl_id.clone(), self.self_offset)
+            .route_save(SaveTarget::InMemory(Vec::new()), self.self_repl_id.clone(), self.self_offset)
             .await?
             .await??;
 
