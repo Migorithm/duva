@@ -5,6 +5,7 @@ use crate::domains::append_only_files::interfaces::TAof;
 use anyhow::Result;
 
 /// A local append-only file (AOF) implementation.
+#[derive(Default)]
 pub struct InMemoryAof {
     writer: Vec<WriteOperation>,
 }

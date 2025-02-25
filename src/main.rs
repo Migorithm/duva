@@ -1,6 +1,6 @@
 use duva::{
     Environment, StartUpFacade,
-    adapters::aof::local_aof::LocalAof,
+    adapters::aof::{local_aof::LocalAof, memory_aof::InMemoryAof},
     domains::config_actors::{actor::ConfigActor, config_manager::ConfigManager},
 };
 
@@ -14,10 +14,14 @@ async fn main() -> anyhow::Result<()> {
         env.port,
     );
 
-    //TODO refactor the following
-    let local_aof = LocalAof::new(env.dbfilename.to_string() + ".aof").await?;
-
-    let start_up_runner = StartUpFacade::new(config_manager, env, local_aof);
-
-    start_up_runner.run().await
+    // ! should we support type erasure?
+    if env.append_only {
+        let local_aof = LocalAof::new(env.dbfilename.to_string() + ".aof").await?;
+        let start_up_runner = StartUpFacade::new(config_manager, env, local_aof);
+        start_up_runner.run().await
+    } else {
+        let in_memory_aof = InMemoryAof::default();
+        let start_up_runner = StartUpFacade::new(config_manager, env, in_memory_aof);
+        start_up_runner.run().await
+    }
 }
