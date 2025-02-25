@@ -7,7 +7,7 @@ use crate::domains::peers::identifier::PeerIdentifier;
 use crate::domains::peers::kind::PeerKind;
 use crate::domains::saves::snapshot::snapshot_applier::SnapshotApplier;
 
-use crate::{InboundStream, make_smart_pointer};
+use crate::{make_smart_pointer, InboundStream};
 use tokio::sync::mpsc::Sender;
 
 pub struct ClusterConnectionManager(pub(crate) ClusterCommunicationManager);
@@ -27,10 +27,12 @@ impl ClusterConnectionManager {
 
         peer_stream.disseminate_peers(self.0.get_peers().await?).await?;
 
-        if matches!(peer_stream.peer_kind()?, PeerKind::Follower(_))
-            && IS_LEADER_MODE.load(std::sync::atomic::Ordering::Acquire)
-        {
-            peer_stream = peer_stream.send_sync_to_inbound_server(cache_manager).await?;
+        if let PeerKind::Follower(commit_idx) = peer_stream.peer_kind()? {
+            if IS_LEADER_MODE.load(std::sync::atomic::Ordering::Acquire)
+                && commit_idx == 0
+            {
+                peer_stream = peer_stream.send_full_resync_to_inbound_server(cache_manager).await?;
+            }
         }
         self.send(peer_stream.to_add_peer(self.clone(), snapshot_applier)?).await?;
 
@@ -50,8 +52,9 @@ impl ClusterConnectionManager {
         }
 
         // Recursive case
+        let replication_info = self.replication_info().await?;
         let (add_peer_cmd, connected_node_info) =
-            OutboundStream::new(connect_to, self.replication_info().await?.leader_repl_id)
+            OutboundStream::new(connect_to, replication_info.leader_repl_id, replication_info.commit_idx)
                 .await?
                 .establish_connection(self_port)
                 .await?
@@ -69,7 +72,7 @@ impl ClusterConnectionManager {
                 peer,
                 snapshot_applier.clone(),
             ))
-            .await?;
+                .await?;
         }
 
         Ok(())
