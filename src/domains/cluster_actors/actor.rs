@@ -242,7 +242,7 @@ impl ClusterActor {
 
         println!("[INFO] Received commit offset {}", heartbeat.commit_idx);
 
-        //TODO try retrieve the logs that fall between the current commit index of this node and leader commit_idx
+        //TODO try retrieve the logs that fall between the current 'log' index of this node and leader 'commit' idx
         //TODO Note that there is a chance that this node hasn't received the log entries from the leader that matches the given commit idx.
         //TODO in that case, we simply get the latest possible value and apply it to the state machine
 

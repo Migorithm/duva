@@ -45,6 +45,10 @@ impl TAof for LocalAof {
         Ok(())
     }
 
+    async fn range(&self, start: u64, end: u64) -> Result<Vec<WriteOperation>> {
+        todo!()
+    }
+
     /// Replays all existing operations in the AOF, invoking a callback for each.
     ///
     /// # Errors
