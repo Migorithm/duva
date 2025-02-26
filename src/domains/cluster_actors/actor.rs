@@ -1,3 +1,5 @@
+use std::ops::RangeInclusive;
+
 use crate::domains::{
     append_only_files::{WriteOperation, interfaces::TAof, log::LogIndex, logger::Logger},
     caches::cache_manager::CacheManager,
@@ -146,9 +148,9 @@ impl ClusterActor {
     }
 
     pub async fn req_consensus(&mut self, entry: WriteOperation) {
-        // TODO LOG, get log index, replace  self.replication.leader_repl_offset to log index
+        let heartbeat = self.replication.append_entry(0, vec![entry]);
 
-        let heartbeat = self.replication.append_entry(0, entry);
+        // create entries per follower.
 
         let mut tasks = self
             .followers_mut()
@@ -169,6 +171,20 @@ impl ClusterActor {
             .values()
             .into_iter()
             .filter(|peer| matches!(peer.w_conn.kind, PeerKind::Follower(_)))
+    }
+
+    pub(crate) fn follower_log_range(&self, end_index: u64) -> Vec<RangeInclusive<u64>> {
+        self.members
+            .values()
+            .into_iter()
+            .flat_map(|p| {
+                if let PeerKind::Follower(current_commit_idx) = p.w_conn.kind {
+                    Some(current_commit_idx + 1..=end_index)
+                } else {
+                    None
+                }
+            })
+            .collect()
     }
 
     pub(crate) fn followers_mut(&mut self) -> Vec<&mut Peer> {

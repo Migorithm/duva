@@ -82,9 +82,13 @@ impl ReplicationInfo {
         }
     }
 
-    pub fn append_entry(&mut self, hop_count: u8, entry: WriteOperation) -> HeartBeatMessage {
+    pub fn append_entry(
+        &mut self,
+        hop_count: u8,
+        entries: Vec<WriteOperation>,
+    ) -> HeartBeatMessage {
         let mut heartbeat = self.default_heartbeat(hop_count);
-        heartbeat.append_entries.push(entry);
+        heartbeat.append_entries.extend(entries);
         heartbeat
     }
 
