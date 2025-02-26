@@ -3,7 +3,7 @@ use bytes::Bytes;
 use crate::{
     SnapshotLoader,
     domains::{
-        cluster_actors::replication::HeartBeatMessage,
+        cluster_actors::{commands::ClusterCommand, replication::HeartBeatMessage},
         cluster_listeners::{ClusterListener, ReactorKillSwitch, TListen},
         peers::connected_types::Leader,
     },
@@ -44,6 +44,10 @@ impl ClusterListener<Leader> {
                 }
             }
         }
+    }
+    pub(crate) async fn accept_leader_hearbeat(&mut self, state: HeartBeatMessage) {
+        println!("[INFO] from {}, hc:{}", state.heartbeat_from, state.hop_count);
+        let _ = self.cluster_handler.send(ClusterCommand::AcceptLeaderHeartBeat(state)).await;
     }
 }
 

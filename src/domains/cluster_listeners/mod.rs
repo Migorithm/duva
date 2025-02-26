@@ -48,9 +48,4 @@ impl<T> ClusterListener<T> {
             .collect::<Result<_, _>>()
             .map_err(Into::into)
     }
-
-    pub(crate) async fn accept_leader_hearbeat(&mut self, state: HeartBeatMessage) {
-        println!("[INFO] from {}, hc:{}", state.heartbeat_from, state.hop_count);
-        let _ = self.cluster_handler.send(ClusterCommand::AcceptLeaderHeartBeat(state)).await;
-    }
 }
