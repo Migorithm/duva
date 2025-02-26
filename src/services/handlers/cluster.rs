@@ -35,7 +35,7 @@ impl ClusterActor {
                 ClusterCommand::ReplicationInfo(sender) => {
                     let _ = sender.send(self.replication.clone());
                 }
-                ClusterCommand::SetReplicationInfo { leader_repl_id, offset } => {
+                ClusterCommand::SetReplicationInfo { leader_repl_id, commit_idx: offset } => {
                     self.set_replication_info(leader_repl_id, offset);
                 }
                 ClusterCommand::ReceiveHeartBeat(heartbeat) => {
@@ -89,7 +89,7 @@ impl ClusterActor {
                             heart_beat_message.append_entries,
                             &mut logger,
                         )
-                        .await;
+                            .await;
                         continue;
                     }
 

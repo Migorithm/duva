@@ -1,0 +1,17 @@
+---
+title: Full Sync with Append Entry
+---
+sequenceDiagram
+    participant L as Leader
+    participant F as Follower
+    L ->> L: append entry * 5
+    F ->> L: Connect (replid:?, commit_idx:0)
+    L ->> L: Check if the snapshot_idx is bigger than follower's commit_idx
+    alt Full Sync (Bigger case)
+        L ->> F: Send snapshot
+        F ->> L: Receive snapshot
+        L ->> F: Send append entry * 5
+        F ->> L: Receive append entry * 5
+    else Partial Sync (Smaller case)
+        L ->> F: Sync with Raft (No Full sync)
+    end
