@@ -7,6 +7,7 @@ use tokio::fs::{File, OpenOptions};
 use tokio::io::{AsyncReadExt, AsyncWriteExt, BufReader, BufWriter};
 
 use crate::domains::append_only_files::interfaces::TAof;
+use crate::domains::append_only_files::log::LogIndex;
 use crate::domains::append_only_files::{WriteOperation, WriteRequest};
 
 /// A local append-only file (AOF) implementation.
@@ -45,7 +46,7 @@ impl TAof for LocalAof {
         Ok(())
     }
 
-    fn range(&self, start: u64, end: u64) -> Vec<WriteOperation> {
+    fn range(&self, start_exclusive: u64, end_inclusive: u64) -> Vec<WriteOperation> {
         todo!()
     }
 

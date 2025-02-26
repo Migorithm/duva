@@ -2,6 +2,7 @@
 
 use crate::domains::append_only_files::WriteOperation;
 use crate::domains::append_only_files::interfaces::TAof;
+
 use anyhow::Result;
 
 /// A local append-only file (AOF) implementation.
@@ -30,10 +31,10 @@ impl TAof for InMemoryAof {
         Ok(())
     }
 
-    fn range(&self, start: u64, end: u64) -> Vec<WriteOperation> {
+    fn range(&self, start_exclusive: u64, end_inclusive: u64) -> Vec<WriteOperation> {
         self.writer
             .iter()
-            .filter(|op| start < *op.log_index && *op.log_index <= end)
+            .filter(|op| start_exclusive < *op.log_index && *op.log_index <= end_inclusive)
             .cloned()
             .collect()
     }

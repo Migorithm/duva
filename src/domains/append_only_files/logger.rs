@@ -29,8 +29,8 @@ impl<T: TAof> Logger<T> {
         Ok(())
     }
 
-    pub(crate) fn range(&self, start: u64, end: u64) -> Vec<WriteOperation> {
-        self.target.range(start, end)
+    pub(crate) fn range(&self, start_exclusive: u64, end_inclusive: u64) -> Vec<WriteOperation> {
+        self.target.range(start_exclusive, end_inclusive)
     }
 
     // from commit index
