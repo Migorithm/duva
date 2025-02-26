@@ -33,8 +33,7 @@ impl<T: TAof> Logger<T> {
         self.target.range(start_exclusive, end_inclusive)
     }
 
-    // from commit index
-    fn from(&self, from: u64) -> Vec<WriteOperation> {
-        self.target.range(from, *self.log_index)
+    fn from(&self, start_exclusive: u64) -> Vec<WriteOperation> {
+        self.target.range(start_exclusive, *self.log_index)
     }
 }
