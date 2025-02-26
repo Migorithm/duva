@@ -16,7 +16,6 @@ pub enum ClusterCommand {
     LeaderReceiveAcks(Vec<LogIndex>),
     SendCommitHeartBeat { offset: LogIndex },
 
-    // peer listener commands
     ReceiveHeartBeat(HeartBeatMessage),
 
     AcceptLeaderHeartBeat(HeartBeatMessage),

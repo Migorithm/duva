@@ -77,10 +77,10 @@ impl ClusterActor {
                     self.send_commit_heartbeat(offset).await;
                 }
 
-                // * this can be called 3 different context
-                // 1. When the follower receives log entries
-                // 2. When the follower receives commit request
-                // 3. For geneal liveness heartbeat
+                // * this can be called 2 different context
+                // Regardless of the context, liveness update is required
+                // 1. When follower is up-to-date with the leader + entry logging
+                // 2. When follower is behind the leader -> entry logging + commit
                 ClusterCommand::AcceptLeaderHeartBeat(heart_beat_message) => {
                     self.update_last_seen(&heart_beat_message.heartbeat_from);
                     if !heart_beat_message.append_entries.is_empty() {
@@ -92,7 +92,6 @@ impl ClusterActor {
                         .await;
                         continue;
                     }
-
                     self.replicate_state(&mut logger, heart_beat_message).await;
                 }
             }
