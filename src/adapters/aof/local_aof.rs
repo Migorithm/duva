@@ -45,7 +45,7 @@ impl TAof for LocalAof {
         Ok(())
     }
 
-    async fn range(&self, start: u64, end: u64) -> Result<Vec<WriteOperation>> {
+    fn range(&self, start: u64, end: u64) -> Vec<WriteOperation> {
         todo!()
     }
 

@@ -57,18 +57,18 @@ impl ClusterActor {
                     }
                 }
                 ClusterCommand::LeaderReqConsensus { log, sender } => {
-                    let write_operation = logger.create_log_entry(&log).await?;
+                    let append_entries =
+                        logger.create_log_entries(&log, self.get_lowerest_commit_idx()).await?;
 
-                    // ! If there are no replicas, don't send the request
+                    // Skip consensus for no replicas
                     let repl_count = self.followers().count();
                     if repl_count == 0 {
                         let _ = sender.send(None);
                         continue;
                     }
 
-                    consensus_con.add(write_operation.log_index, sender, repl_count);
-
-                    self.req_consensus(write_operation).await;
+                    consensus_con.add(logger.log_index, sender, repl_count);
+                    self.req_consensus(append_entries).await;
                 }
                 ClusterCommand::LeaderReceiveAcks(offsets) => {
                     self.apply_acks(&mut consensus_con, offsets);

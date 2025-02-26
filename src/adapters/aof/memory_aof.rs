@@ -30,12 +30,11 @@ impl TAof for InMemoryAof {
         Ok(())
     }
 
-    async fn range(&self, start: u64, end: u64) -> Result<Vec<WriteOperation>> {
-        Ok(self
-            .writer
+    fn range(&self, start: u64, end: u64) -> Vec<WriteOperation> {
+        self.writer
             .iter()
             .filter(|op| start < *op.log_index && *op.log_index <= end)
             .cloned()
-            .collect())
+            .collect()
     }
 }
