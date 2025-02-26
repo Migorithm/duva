@@ -124,7 +124,42 @@ sequenceDiagram
 
 ```
 
-### Strong consistency with Raft(RFC)
+#### Synchronization on connection
+There are quite a few scenarios related to this. For this, take a look at the diagram.
+The following is the partial sync scenario on startup:
+
+```mermaid
+sequenceDiagram
+    participant L as Leader
+    participant F as Follower
+    participant SF as Second Follower
+    L ->> L: Save Empty Dump with (Id, Peer Identifier)
+    F ->> L: Connect
+    L ->> F: Receive Snapshot
+    F ->> F: Save Dump from Leader
+    SF ->> L: Connect
+    L ->> SF: Receive Snapshot
+    SF ->> SF: Save Dump from Leader
+    L ->> L: append entry * 5
+    L ->> F: Replicate
+    L ->> SF: Replicate
+    
+    L ->> L: Create Snapshot (until commit_idx 5)
+    L ->> F: Create Snapshot 
+    L ->> SF : Create Snapshot
+
+    break
+        SF --> SF: Second Follower Crashed
+    end
+
+    L ->> L: append entry * 3
+    L ->> F: Replicate
+
+    SF ->> L: Connect (replid: leader_repl_id, commit_idx:5, term: 1)
+    L ->> SF: Receive Snapshot (commit_idx: 5)
+```
+
+### Strong consistency with Raft
 
 #### Election (normal flow)
 There are two timeout settings which control elections.
