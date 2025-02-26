@@ -82,9 +82,9 @@ impl ReplicationInfo {
         }
     }
 
-    pub fn append_entry(&mut self, hop_count: u8, entry: WriteOperation) -> HeartBeatMessage {
+    pub fn append_entry(&self, hop_count: u8, entries: Vec<WriteOperation>) -> HeartBeatMessage {
         let mut heartbeat = self.default_heartbeat(hop_count);
-        heartbeat.append_entries.push(entry);
+        heartbeat.append_entries.extend(entries);
         heartbeat
     }
 
@@ -128,6 +128,12 @@ pub struct HeartBeatMessage {
     pub(crate) hop_count: u8, // Decremented on each hop - for gossip
     pub(crate) ban_list: Vec<BannedPeer>,
     pub(crate) append_entries: Vec<WriteOperation>,
+}
+impl HeartBeatMessage {
+    pub(crate) fn set_append_entries(mut self, entries: Vec<WriteOperation>) -> Self {
+        self.append_entries = entries;
+        self
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]

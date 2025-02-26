@@ -1,31 +1,39 @@
-use super::{WriteOperation, WriteRequest, interfaces::TAof};
+use super::{WriteOperation, WriteRequest, interfaces::TAof, log::LogIndex};
 
 pub(crate) struct Logger<T: TAof> {
     pub(crate) target: T,
-    pub(crate) current_offset: u64,
+    pub(crate) log_index: LogIndex,
 }
 
 impl<T: TAof> Logger<T> {
     pub fn new(target: T) -> Self {
-        Self { target, current_offset: 0 }
+        Self { target, log_index: 0.into() }
     }
 
-    pub(crate) async fn create_log_entry(
+    pub(crate) async fn create_log_entries(
         &mut self,
         log: &WriteRequest,
-    ) -> anyhow::Result<WriteOperation> {
-        let op =
-            WriteOperation { request: log.clone(), log_index: (self.current_offset + 1).into() };
-        self.target.append(op.clone()).await?;
-        self.current_offset += 1;
-        Ok(op)
+        lowest_follower_index: u64,
+    ) -> anyhow::Result<Vec<WriteOperation>> {
+        self.write_log_entry(log).await?;
+
+        let mut logs = Vec::with_capacity((*self.log_index - lowest_follower_index) as usize);
+        logs.extend(self.from(lowest_follower_index));
+
+        Ok(logs)
+    }
+    pub(crate) async fn write_log_entry(&mut self, log: &WriteRequest) -> anyhow::Result<()> {
+        let op = WriteOperation { request: log.clone(), log_index: (*self.log_index + 1).into() };
+        self.target.append(op).await?;
+        *self.log_index += 1;
+        Ok(())
     }
 
-    pub(crate) async fn range_logs(
-        &self,
-        current_commit_idx: u64,
-        leader_commit_idx: u64,
-    ) -> anyhow::Result<Vec<WriteOperation>> {
-        self.target.range(current_commit_idx, leader_commit_idx).await
+    pub(crate) fn range(&self, start_exclusive: u64, end_inclusive: u64) -> Vec<WriteOperation> {
+        self.target.range(start_exclusive, end_inclusive)
+    }
+
+    fn from(&self, start_exclusive: u64) -> Vec<WriteOperation> {
+        self.target.range(start_exclusive, *self.log_index)
     }
 }

@@ -9,17 +9,11 @@ pub trait TAof: Send + Sync + 'static {
         op: WriteOperation,
     ) -> impl std::future::Future<Output = Result<()>> + Send;
 
-    // Retrieve logs that fall between the current 'log' index of this node and leader 'commit' idx
-    // note that there is a chance that this node hasn't received the log entries from the leader that matches the given commit idx.
-    // in that case, we simply get the latest possible value and apply it to the state machine
-    fn range(
-        &self,
-        start: u64,
-        end: u64,
-    ) -> impl std::future::Future<Output = Result<Vec<WriteOperation>>> + Send;
+    // Retrieve logs that fall between the current 'commit' index and target 'log' index
+    // NOT async as it is expected to be infallible and memory operation.
+    fn range(&self, start_exclusive: u64, end_inclusive: u64) -> Vec<WriteOperation>;
 
     /// Replays all logged operations from the beginning of the AOF, calling the provided callback `f` for each operation.
-    ///
     /// The callback `f(WriteOperation)` receives each operation in the order it was appended.
     fn replay<F>(&mut self, f: F) -> impl std::future::Future<Output = Result<()>> + Send
     where

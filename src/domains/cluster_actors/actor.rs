@@ -145,15 +145,21 @@ impl ClusterActor {
         }
     }
 
-    pub async fn req_consensus(&mut self, entry: WriteOperation) {
-        // TODO LOG, get log index, replace  self.replication.leader_repl_offset to log index
-
-        let heartbeat = self.replication.append_entry(0, entry);
+    pub(crate) async fn req_consensus(&mut self, append_entries: Vec<WriteOperation>) {
+        // create entries per follower.
+        let default_heartbeat = self.replication.default_heartbeat(0);
 
         let mut tasks = self
             .followers_mut()
             .into_iter()
-            .map(|peer| peer.write_io(heartbeat.clone()))
+            .map(|(peer, commit_idx)| {
+                let logs = append_entries
+                    .iter()
+                    .filter(|op| *op.log_index > commit_idx)
+                    .cloned()
+                    .collect::<Vec<_>>();
+                peer.write_io(default_heartbeat.clone().set_append_entries(logs))
+            })
             .collect::<FuturesUnordered<_>>();
 
         // ! SAFETY DO NOT inline tasks.next().await in the while loop
@@ -171,12 +177,27 @@ impl ClusterActor {
             .filter(|peer| matches!(peer.w_conn.kind, PeerKind::Follower(_)))
     }
 
-    pub(crate) fn followers_mut(&mut self) -> Vec<&mut Peer> {
+    pub(crate) fn followers_mut(&mut self) -> Vec<(&mut Peer, u64)> {
         self.members
             .values_mut()
             .into_iter()
-            .filter(|peer| matches!(peer.w_conn.kind, PeerKind::Follower(_)))
+            .filter_map(|peer| match peer.w_conn.kind {
+                PeerKind::Follower(current_commit) => Some((peer, current_commit)),
+                _ => None,
+            })
             .collect::<Vec<_>>()
+    }
+
+    pub(crate) fn get_lowerest_commit_idx(&self) -> u64 {
+        self.members
+            .values()
+            .into_iter()
+            .filter_map(|peer| match peer.w_conn.kind {
+                PeerKind::Follower(current_commit) => Some(current_commit),
+                _ => None,
+            })
+            .min()
+            .unwrap_or(0)
     }
 
     pub fn apply_acks(&self, consensus_con: &mut ConsensusTracker, offsets: Vec<LogIndex>) {
@@ -205,7 +226,7 @@ impl ClusterActor {
                 "[INFO] Received log entry with log index num {}: {:?}",
                 op.log_index, op.request
             );
-            let _ = logger.create_log_entry(&op.request).await;
+            let _ = logger.write_log_entry(&op.request).await;
             offsets.push(op.log_index);
         }
 
@@ -224,7 +245,7 @@ impl ClusterActor {
         let mut tasks = self
             .followers_mut()
             .into_iter()
-            .map(|peer| peer.write_io(message.clone()))
+            .map(|(peer, _)| peer.write_io(message.clone()))
             .collect::<FuturesUnordered<_>>();
 
         println!("[INFO] Sending commit request on {}", message.commit_idx);
@@ -243,12 +264,7 @@ impl ClusterActor {
         println!("[INFO] Received commit offset {}", heartbeat.commit_idx);
 
         //* Retrieve the logs that fall between the current 'log' index of this node and leader 'commit' idx
-        let Ok(logs) = logger.range_logs(self.replication.commit_idx, heartbeat.commit_idx).await
-        else {
-            return;
-        };
-
-        for log in logs {
+        for log in logger.range(self.replication.commit_idx, heartbeat.commit_idx) {
             let _ = self.cache_manager.apply_log(log.request).await;
             self.replication.commit_idx = log.log_index.into();
         }
