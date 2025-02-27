@@ -259,15 +259,25 @@ impl ClusterActor {
         while let Some(_) = tasks.next().await {}
     }
 
-    // follower specific operation.
-    pub(crate) async fn replicate_state(
+    pub(crate) async fn replicate(
         &mut self,
         logger: &mut Logger<impl TAof>,
         heartbeat: HeartBeatMessage,
     ) {
+        if !heartbeat.append_entries.is_empty() {
+            // TODO handle the log entries
+
+            let Ok(ack_index) = logger.write_log_entries(heartbeat.append_entries.clone()).await
+            else {
+                return;
+            };
+            self.send_ack(ack_index).await;
+        }
+
         if self.replication.term > heartbeat.term {
             return;
         }
+
         println!("[INFO] Received commit offset {}", heartbeat.commit_idx);
         //* Retrieve the logs that fall between the current 'log' index of this node and leader 'commit' idx
         for log in logger.range(self.replication.commit_idx, heartbeat.commit_idx) {
