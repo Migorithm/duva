@@ -16,6 +16,10 @@ impl TAof for InMemoryAof {
         self.writer.push(op);
         Ok(())
     }
+    async fn append_many(&mut self, ops: Vec<WriteOperation>) -> Result<()> {
+        self.writer.extend(ops);
+        Ok(())
+    }
 
     async fn replay<F>(&mut self, mut f: F) -> Result<()>
     where

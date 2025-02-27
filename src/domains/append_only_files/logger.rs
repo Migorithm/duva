@@ -22,6 +22,7 @@ impl<T: TAof> Logger<T> {
 
         Ok(logs)
     }
+
     pub(crate) async fn write_log_entry(&mut self, log: &WriteRequest) -> anyhow::Result<()> {
         let op = WriteOperation { request: log.clone(), log_index: (*self.log_index + 1).into() };
         self.target.append(op).await?;
@@ -29,6 +30,21 @@ impl<T: TAof> Logger<T> {
         Ok(())
     }
 
+    pub(crate) async fn write_log_entries(
+        &mut self,
+        append_entries: Vec<WriteOperation>,
+    ) -> anyhow::Result<LogIndex> {
+        // Filter and append entries in a single operation
+        let new_entries: Vec<_> =
+            append_entries.into_iter().filter(|log| log.log_index > self.log_index).collect();
+
+        let cnt = new_entries.len();
+        self.target.append_many(new_entries).await?;
+        *self.log_index += cnt as u64;
+
+        println!("[INFO] Received log entry with log index up to {}", self.log_index);
+        Ok(self.log_index.into())
+    }
     pub(crate) fn range(&self, start_exclusive: u64, end_inclusive: u64) -> Vec<WriteOperation> {
         self.target.range(start_exclusive, end_inclusive)
     }

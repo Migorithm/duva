@@ -213,6 +213,7 @@ impl ClusterActor {
         });
     }
 
+    // instead of sending multiple offsets, send the last offset.
     pub(crate) async fn receive_log_entries_from_leader(
         &mut self,
         write_operations: Vec<WriteOperation>,
@@ -232,6 +233,12 @@ impl ClusterActor {
 
         if let Some(leader) = self.leader_mut() {
             let _ = leader.write_io(QueryIO::Acks(offsets)).await;
+        }
+    }
+    pub(crate) async fn send_ack(&mut self, offset: LogIndex) {
+        if let Some(leader) = self.leader_mut() {
+            // TODO send the last offset instead of multiple offsets.
+            let _ = leader.write_io(QueryIO::Acks(vec![offset])).await;
         }
     }
 
@@ -258,22 +265,15 @@ impl ClusterActor {
         logger: &mut Logger<impl TAof>,
         heartbeat: HeartBeatMessage,
     ) {
-        if !self.replicatable(&heartbeat) {
+        if self.replication.term > heartbeat.term {
             return;
         }
         println!("[INFO] Received commit offset {}", heartbeat.commit_idx);
-
         //* Retrieve the logs that fall between the current 'log' index of this node and leader 'commit' idx
         for log in logger.range(self.replication.commit_idx, heartbeat.commit_idx) {
             let _ = self.cache_manager.apply_log(log.request).await;
             self.replication.commit_idx = log.log_index.into();
         }
-    }
-
-    /// Check if the node can replicate following raft consensus rule.
-    pub(crate) fn replicatable(&self, heartbeat: &HeartBeatMessage) -> bool {
-        self.replication.term <= heartbeat.term
-            && self.replication.commit_idx < heartbeat.commit_idx
     }
 }
 

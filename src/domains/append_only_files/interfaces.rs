@@ -9,6 +9,11 @@ pub trait TAof: Send + Sync + 'static {
         op: WriteOperation,
     ) -> impl std::future::Future<Output = Result<()>> + Send;
 
+    fn append_many(
+        &mut self,
+        ops: Vec<WriteOperation>,
+    ) -> impl std::future::Future<Output = Result<()>> + Send;
+
     // Retrieve logs that fall between the current 'commit' index and target 'log' index
     // NOT async as it is expected to be infallible and memory operation.
     fn range(&self, start_exclusive: u64, end_inclusive: u64) -> Vec<WriteOperation>;

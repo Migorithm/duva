@@ -46,6 +46,19 @@ impl TAof for LocalAof {
         Ok(())
     }
 
+    async fn append_many(&mut self, ops: Vec<WriteOperation>) -> Result<()> {
+        // merge all operations into a single buffer
+        let mut buf = BytesMut::new();
+        for op in ops {
+            buf.extend_from_slice(&op.clone().serialize());
+        }
+
+        // write all operations to the file
+        self.writer.write_all(&buf).await?;
+
+        Ok(())
+    }
+
     fn range(&self, start_exclusive: u64, end_inclusive: u64) -> Vec<WriteOperation> {
         todo!()
     }
