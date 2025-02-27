@@ -4,6 +4,7 @@ use tokio::sync::oneshot::Sender;
 
 use crate::{domains::append_only_files::log::LogIndex, make_smart_pointer};
 
+#[derive(Debug)]
 pub struct ConsensusVoting {
     sender: Sender<Option<LogIndex>>,
     vote_count: u8,
@@ -24,7 +25,7 @@ impl ConsensusVoting {
     }
 }
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct ConsensusTracker(HashMap<LogIndex, ConsensusVoting>);
 impl ConsensusTracker {
     pub fn add(&mut self, key: LogIndex, value: Sender<Option<LogIndex>>, replica_count: usize) {

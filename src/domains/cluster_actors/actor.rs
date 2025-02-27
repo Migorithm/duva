@@ -16,6 +16,7 @@ pub struct ClusterActor {
     pub(crate) replication: ReplicationInfo,
     pub(crate) node_timeout: u128,
     pub(crate) cache_manager: CacheManager,
+    pub(crate) consensus_con: ConsensusTracker,
     notifier: tokio::sync::watch::Sender<bool>,
 }
 
@@ -31,6 +32,7 @@ impl ClusterActor {
             replication: init_repl_info,
             node_timeout,
             notifier,
+            consensus_con: ConsensusTracker::default(),
             cache_manager,
         }
     }
@@ -145,7 +147,20 @@ impl ClusterActor {
         }
     }
 
-    pub(crate) async fn req_consensus(&mut self, append_entries: Vec<WriteOperation>) {
+    pub(crate) async fn req_consensus(
+        &mut self,
+        logger: &mut Logger<impl TAof>,
+        sender: tokio::sync::oneshot::Sender<Option<LogIndex>>,
+        append_entries: Vec<WriteOperation>,
+    ) {
+        // Skip consensus for no replicas
+        let repl_count = self.followers().count();
+        if repl_count == 0 {
+            let _ = sender.send(None);
+            return;
+        }
+        self.consensus_con.add(logger.log_index, sender, repl_count);
+
         // create entries per follower.
         let default_heartbeat = self.replication.default_heartbeat(0);
 
@@ -200,41 +215,19 @@ impl ClusterActor {
             .unwrap_or(0)
     }
 
-    pub fn apply_acks(&self, consensus_con: &mut ConsensusTracker, offsets: Vec<LogIndex>) {
+    pub fn apply_acks(&mut self, offsets: Vec<LogIndex>) {
         offsets.into_iter().for_each(|offset| {
-            if let Some(mut consensus) = consensus_con.take(&offset) {
+            if let Some(mut consensus) = self.consensus_con.take(&offset) {
                 println!("[INFO] Received acks for log index num: {}", offset);
                 consensus.apply_vote();
 
                 if let Some(consensus) = consensus.maybe_not_finished(offset) {
-                    consensus_con.insert(offset, consensus);
+                    self.consensus_con.insert(offset, consensus);
                 }
             }
         });
     }
 
-    // instead of sending multiple offsets, send the last offset.
-    pub(crate) async fn receive_log_entries_from_leader(
-        &mut self,
-        write_operations: Vec<WriteOperation>,
-        logger: &mut Logger<impl TAof>,
-    ) {
-        // TODO validation on replicatability.
-
-        let mut offsets = Vec::with_capacity(write_operations.len());
-        for op in write_operations.into_iter() {
-            println!(
-                "[INFO] Received log entry with log index num {}: {:?}",
-                op.log_index, op.request
-            );
-            let _ = logger.write_log_entry(&op.request).await;
-            offsets.push(op.log_index);
-        }
-
-        if let Some(leader) = self.leader_mut() {
-            let _ = leader.write_io(QueryIO::Acks(offsets)).await;
-        }
-    }
     pub(crate) async fn send_ack(&mut self, offset: LogIndex) {
         if let Some(leader) = self.leader_mut() {
             // TODO send the last offset instead of multiple offsets.
@@ -264,15 +257,14 @@ impl ClusterActor {
         logger: &mut Logger<impl TAof>,
         heartbeat: HeartBeatMessage,
     ) {
-        if !heartbeat.append_entries.is_empty() {
-            // TODO handle the log entries
-
-            let Ok(ack_index) = logger.write_log_entries(heartbeat.append_entries.clone()).await
-            else {
-                return;
-            };
-            self.send_ack(ack_index).await;
+        if heartbeat.append_entries.is_empty() {
+            return;
         }
+
+        let Ok(ack_index) = logger.write_log_entries(heartbeat.append_entries.clone()).await else {
+            return;
+        };
+        self.send_ack(ack_index).await;
 
         if self.replication.term > heartbeat.term {
             return;

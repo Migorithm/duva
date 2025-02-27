@@ -11,7 +11,6 @@ impl ClusterActor {
         mut cluster_message_listener: Receiver<ClusterCommand>,
         aof: impl TAof,
     ) -> anyhow::Result<Self> {
-        let mut consensus_con = ConsensusTracker::default();
         let mut logger = Logger::new(aof);
 
         while let Some(command) = cluster_message_listener.recv().await {
@@ -61,17 +60,11 @@ impl ClusterActor {
                         logger.create_log_entries(&log, self.get_lowerest_commit_idx()).await?;
 
                     // Skip consensus for no replicas
-                    let repl_count = self.followers().count();
-                    if repl_count == 0 {
-                        let _ = sender.send(None);
-                        continue;
-                    }
 
-                    consensus_con.add(logger.log_index, sender, repl_count);
-                    self.req_consensus(append_entries).await;
+                    self.req_consensus(&mut logger, sender, append_entries).await;
                 }
                 ClusterCommand::LeaderReceiveAcks(offsets) => {
-                    self.apply_acks(&mut consensus_con, offsets);
+                    self.apply_acks(offsets);
                 }
 
                 ClusterCommand::SendCommitHeartBeat { offset } => {
