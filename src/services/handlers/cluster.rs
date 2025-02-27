@@ -84,19 +84,7 @@ impl ClusterActor {
                 // 2. When follower is behind the leader -> entry logging + commit
                 ClusterCommand::AcceptLeaderHeartBeat(heart_beat_message) => {
                     self.update_last_seen(&heart_beat_message.heartbeat_from);
-
-                    if !heart_beat_message.append_entries.is_empty() {
-                        // TODO handle the log entries
-
-                        let Ok(ack_index) = logger
-                            .write_log_entries(heart_beat_message.append_entries.clone())
-                            .await
-                        else {
-                            continue;
-                        };
-                        self.send_ack(ack_index).await;
-                    }
-                    self.replicate_state(&mut logger, heart_beat_message).await;
+                    self.replicate(&mut logger, heart_beat_message).await;
                 }
             }
         }
