@@ -96,7 +96,7 @@ impl CacheActor {
 }
 
 #[derive(Clone, Debug)]
-pub struct CacheCommandSender(mpsc::Sender<CacheCommand>);
+pub struct CacheCommandSender(pub(crate) mpsc::Sender<CacheCommand>);
 
 make_smart_pointer!(CacheCommandSender, mpsc::Sender<CacheCommand>);
 make_smart_pointer!(CacheDb, HashMap<String, CacheValue> => inner);

@@ -40,9 +40,6 @@ impl StartUpFacade {
             tokio::sync::watch::channel(IS_LEADER_MODE.load(Ordering::Acquire));
 
         let cache_manager = CacheManager::run_cache_actors();
-        let snapshot_applier =
-            SnapshotApplier::new(cache_manager.clone(), config_manager.startup_time);
-
         let cluster_actor_handler = ClusterActor::run(
             env.ttl_mills,
             env.hf_mills,
@@ -53,10 +50,13 @@ impl StartUpFacade {
         );
 
         let registry = ActorRegistry {
-            config_manager,
+            snapshot_applier: SnapshotApplier::new(
+                cache_manager.clone(),
+                config_manager.startup_time,
+            ),
             cluster_actor_handler,
+            config_manager,
             cache_manager,
-            snapshot_applier,
         };
 
         StartUpFacade { registry, mode_change_watcher }

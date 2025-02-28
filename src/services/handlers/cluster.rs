@@ -59,12 +59,8 @@ impl ClusterActor {
                     }
                 }
                 ClusterCommand::LeaderReqConsensus { log, sender } => {
-                    let append_entries =
-                        logger.create_log_entries(&log, self.get_lowerest_commit_idx()).await?;
-
                     // Skip consensus for no replicas
-
-                    self.req_consensus(&mut logger, sender, append_entries).await;
+                    let _ = self.req_consensus(&mut logger, log, sender).await;
                 }
                 ClusterCommand::LeaderReceiveAcks(offsets) => {
                     self.apply_acks(offsets);
