@@ -110,13 +110,13 @@ impl StartUpFacade {
                             }
                         }
                     });
-                }
+                },
 
                 Err(err) => {
                     if Into::<IoError>::into(err.kind()).should_break() {
                         break Ok(());
                     }
-                }
+                },
             }
         }
     }

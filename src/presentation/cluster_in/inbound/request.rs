@@ -27,7 +27,7 @@ impl HandShakeRequest {
                         .try_into()?,
                     args: iter.collect::<Vec<_>>().into(),
                 })
-            }
+            },
             _ => Err(anyhow::anyhow!("Unexpected command format")),
         }
     }
@@ -53,7 +53,7 @@ impl HandShakeRequest {
             {
                 let value = String::from_utf8(port.to_vec())?.parse()?;
                 Ok(value)
-            }
+            },
             _ => Err(anyhow::anyhow!("Invalid listening-port arguments")),
         }
     }
@@ -71,7 +71,7 @@ impl HandShakeRequest {
             .filter_map(|chunk| match (&chunk[0], &chunk[1]) {
                 (QueryIO::BulkString(capa), QueryIO::BulkString(value)) if capa == "capa" => {
                     Some((capa.clone(), value.clone()))
-                }
+                },
                 _ => None,
             })
             .collect();
@@ -114,7 +114,7 @@ impl TryFrom<String> for HandShakeRequestEnum {
             invalid_value => {
                 eprintln!("Invalid command,{}", invalid_value);
                 Err(anyhow::anyhow!("Invalid command"))
-            }
+            },
         }
     }
 }

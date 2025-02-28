@@ -12,18 +12,18 @@ impl ConfigActor {
                     ConfigMessage::Query(query) => match query.resource {
                         ConfigResource::Dir => {
                             query.respond_with(ConfigResponse::Dir(self.dir.into()));
-                        }
+                        },
                         ConfigResource::DbFileName => {
                             query.respond_with(ConfigResponse::DbFileName(self.dbfilename.into()));
-                        }
+                        },
                         ConfigResource::FilePath => {
                             query.respond_with(ConfigResponse::FilePath(self.get_filepath()));
-                        }
+                        },
                     },
                     ConfigMessage::Command(config_command) => match config_command {
                         ConfigCommand::SetDbFileName(new_file_name) => {
                             self.set_dbfilename(&new_file_name);
-                        }
+                        },
                     },
                 }
             }

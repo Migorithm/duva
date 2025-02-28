@@ -69,7 +69,7 @@ impl ClientController<Acceptor> {
                     eprintln!("[ERROR] {:?}", e);
                     let _ = stream.write(QueryIO::Err(e.to_string().into())).await;
                     continue;
-                }
+                },
             };
 
             for res in results {

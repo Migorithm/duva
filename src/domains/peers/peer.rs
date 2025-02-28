@@ -62,13 +62,13 @@ impl Peer {
         match kind {
             PeerKind::Peer => {
                 Peer::new::<NonDataPeer>(stream, kind, cluster_handler, addr, snapshot_applier)
-            }
+            },
             PeerKind::Follower(_) => {
                 Peer::new::<Follower>(stream, kind, cluster_handler, addr, snapshot_applier)
-            }
+            },
             PeerKind::Leader => {
                 Peer::new::<Leader>(stream, kind, cluster_handler, addr, snapshot_applier)
-            }
+            },
         }
     }
 }

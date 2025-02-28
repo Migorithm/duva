@@ -94,7 +94,7 @@ impl InboundStream {
         self.write(QueryIO::SimpleString(
             format!("FULLRESYNC {} {}", self_leader_replid, self_leader_repl_offset).into(),
         ))
-            .await?;
+        .await?;
 
         Ok((repl_id, offset))
     }
@@ -112,7 +112,7 @@ impl InboundStream {
             format!("PEERS {}", peers.into_iter().map(|x| x.0).collect::<Vec<String>>().join(" "))
                 .into(),
         ))
-            .await?;
+        .await?;
         Ok(())
     }
 
@@ -147,7 +147,11 @@ impl InboundStream {
     ) -> anyhow::Result<Self> {
         // route save caches
         let task = cache_manager
-            .route_save(SaveTarget::InMemory(Vec::new()), self.self_repl_id.clone(), self.self_offset)
+            .route_save(
+                SaveTarget::InMemory(Vec::new()),
+                self.self_repl_id.clone(),
+                self.self_offset,
+            )
             .await?
             .await??;
 

@@ -10,11 +10,11 @@ impl SaveActor {
                     if should_break {
                         break;
                     }
-                }
+                },
                 Err(err) => {
                     eprintln!("error while encoding: {:?}", err);
                     return Err(err);
-                }
+                },
             }
         }
         Ok(self)

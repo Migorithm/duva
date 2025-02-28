@@ -59,12 +59,12 @@ impl<T: AsyncReadExt + std::marker::Unpin + Sync + Send> TRead for T {
 
                     // * Remove the parsed portion from the buffer
                     remaining_buffer = remaining_buffer.split_off(consumed);
-                }
+                },
                 Err(e) => {
                     // Handle parsing errors
                     // You might want to log the error or handle it differently based on your use case
                     return Err(anyhow::anyhow!("Parsing error: {:?}", e));
-                }
+                },
             }
         }
         Ok(parsed_values)
@@ -93,7 +93,7 @@ impl From<ErrorKind> for IoError {
             _ => {
                 eprintln!("unknown error: {:?}", value);
                 IoError::Unknown
-            }
+            },
         }
     }
 }

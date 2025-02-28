@@ -29,7 +29,7 @@ impl TryFrom<String> for ConnectionResponse {
                 let offset = offset.parse::<u64>()?;
 
                 Ok(ConnectionResponse::FULLRESYNC { repl_id: repl_id.to_string(), offset })
-            }
+            },
 
             peer_msg if peer_msg.starts_with("peers ") => {
                 let res = peer_msg
@@ -39,12 +39,12 @@ impl TryFrom<String> for ConnectionResponse {
                     .collect::<Vec<_>>();
 
                 Ok(ConnectionResponse::PEERS(res))
-            }
+            },
 
             invalid_value => {
                 eprintln!("Invalid command,{}", invalid_value);
                 Err(anyhow::anyhow!("Invalid command"))
-            }
+            },
         }
     }
 }
@@ -57,7 +57,7 @@ impl TryFrom<QueryIO> for ConnectionResponse {
             _ => {
                 eprintln!("Invalid command");
                 Err(anyhow::anyhow!("Invalid command"))
-            }
+            },
         }
     }
 }

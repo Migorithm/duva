@@ -19,7 +19,7 @@ impl CacheEntry {
             CacheEntry::KeyValue(key, value) => {
                 result.push(STRING_VALUE_TYPE_INDICATOR);
                 result.extend_from_slice(&encode_key_value(key, value)?);
-            }
+            },
             CacheEntry::KeyValueExpiry(key, value, expiry) => {
                 let secs = (expiry.duration_since(UNIX_EPOCH)?.as_millis()) as u64;
                 result.push(EXPIRY_TIME_IN_MILLISECONDS_INDICATOR);
@@ -27,7 +27,7 @@ impl CacheEntry {
 
                 result.push(STRING_VALUE_TYPE_INDICATOR);
                 result.extend_from_slice(&encode_key_value(key, value)?);
-            }
+            },
         }
         Ok(result)
     }

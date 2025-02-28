@@ -104,10 +104,10 @@ impl StoredDuration {
         match self {
             StoredDuration::Seconds(secs) => {
                 SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(*secs as u64)
-            }
+            },
             StoredDuration::Milliseconds(millis) => {
                 SystemTime::UNIX_EPOCH + std::time::Duration::from_millis(*millis)
-            }
+            },
         }
     }
 }
