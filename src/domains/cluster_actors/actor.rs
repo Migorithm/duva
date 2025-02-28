@@ -1,5 +1,7 @@
 use crate::domains::{
-    append_only_files::{WriteRequest, interfaces::TAof, log::LogIndex, logger::Logger},
+    append_only_files::{
+        WriteOperation, WriteRequest, interfaces::TAof, log::LogIndex, logger::Logger,
+    },
     caches::cache_manager::CacheManager,
     query_parsers::QueryIO,
 };
@@ -154,7 +156,7 @@ impl ClusterActor {
         sender: tokio::sync::oneshot::Sender<Option<LogIndex>>,
     ) -> anyhow::Result<()> {
         // Skip consensus for no replicas
-        let append_entries =
+        let append_entries: Vec<WriteOperation> =
             logger.create_log_entries(&write_request, self.get_lowerest_commit_idx()).await?;
 
         let repl_count = self.followers().count();
@@ -165,11 +167,10 @@ impl ClusterActor {
         self.consensus_tracker.add(logger.log_index, sender, repl_count);
 
         // create entries per follower.
-        let default_heartbeat = self.replication.default_heartbeat(0);
+        let default_heartbeat: HeartBeatMessage = self.replication.default_heartbeat(0);
 
         let mut tasks = self
             .followers_mut()
-            .into_iter()
             .map(|(peer, commit_idx)| {
                 let logs = append_entries
                     .iter()
@@ -189,22 +190,18 @@ impl ClusterActor {
         self.members.values_mut().find(|peer| matches!(peer.w_conn.kind, PeerKind::Leader))
     }
 
-    pub(crate) fn followers(&self) -> impl Iterator<Item = &Peer> {
-        self.members
-            .values()
-            .into_iter()
-            .filter(|peer| matches!(peer.w_conn.kind, PeerKind::Follower(_)))
+    pub(crate) fn followers(&self) -> impl Iterator<Item = (&PeerIdentifier, &Peer, u64)> {
+        self.members.iter().filter_map(|(id, peer)| match peer.w_conn.kind {
+            PeerKind::Follower(current_commit) => Some((id, peer, current_commit)),
+            _ => None,
+        })
     }
 
-    pub(crate) fn followers_mut(&mut self) -> Vec<(&mut Peer, u64)> {
-        self.members
-            .values_mut()
-            .into_iter()
-            .filter_map(|peer| match peer.w_conn.kind {
-                PeerKind::Follower(current_commit) => Some((peer, current_commit)),
-                _ => None,
-            })
-            .collect::<Vec<_>>()
+    pub(crate) fn followers_mut(&mut self) -> impl Iterator<Item = (&mut Peer, u64)> {
+        self.members.values_mut().into_iter().filter_map(|peer| match peer.w_conn.kind {
+            PeerKind::Follower(current_commit) => Some((peer, current_commit)),
+            _ => None,
+        })
     }
 
     pub(crate) fn get_lowerest_commit_idx(&self) -> u64 {
@@ -291,7 +288,7 @@ mod test {
             append_only_files::{WriteOperation, WriteRequest},
             caches::{cache_objects::CacheEntry, command::CacheCommand},
             cluster_actors::commands::ClusterCommand,
-            peers::connected_types::Follower,
+            peers::connected_types::{Follower, WriteConnected},
             saves::snapshot::snapshot_applier::SnapshotApplier,
         },
     };
@@ -334,6 +331,7 @@ mod test {
         num_stream: u16,
         cluster_sender: tokio::sync::mpsc::Sender<ClusterCommand>,
         cache_manager: CacheManager,
+        current_follower_offset: u64,
     ) {
         use tokio::net::TcpListener;
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -344,7 +342,7 @@ mod test {
                 PeerIdentifier::new("localhost", port),
                 Peer::new::<Follower>(
                     TcpStream::connect(bind_addr).await.unwrap(),
-                    PeerKind::Follower(0),
+                    PeerKind::Follower(current_follower_offset),
                     cluster_sender.clone(),
                     PeerIdentifier::new("localhost", port),
                     SnapshotApplier::new(cache_manager.clone(), SystemTime::now()),
@@ -450,7 +448,7 @@ mod test {
         // - add 5 followers
         let (cluster_sender, _) = tokio::sync::mpsc::channel(100);
 
-        cluster_member_create_helper(&mut cluster_actor, 5, cluster_sender, cache_manager).await;
+        cluster_member_create_helper(&mut cluster_actor, 5, cluster_sender, cache_manager, 0).await;
 
         let (tx, _) = tokio::sync::oneshot::channel();
 
@@ -483,7 +481,7 @@ mod test {
         // - add 5 followers
         let (cluster_sender, _) = tokio::sync::mpsc::channel(100);
 
-        cluster_member_create_helper(&mut cluster_actor, 5, cluster_sender, cache_manager).await;
+        cluster_member_create_helper(&mut cluster_actor, 5, cluster_sender, cache_manager, 0).await;
         let (client_request_sender, client_wait) = tokio::sync::oneshot::channel();
         cluster_actor
             .req_consensus(
@@ -508,6 +506,35 @@ mod test {
         assert_eq!(cluster_actor.consensus_tracker.len(), 0);
         assert_eq!(test_logger.log_index, 1.into());
         client_wait.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn logger_create_entries_from_lowest() {
+        // GIVEN
+        let mut test_logger = Logger::new(InMemoryAof::default());
+
+        let test_logs = vec![
+            write_operation_create_helper(1, "foo", "bar"),
+            write_operation_create_helper(2, "foo2", "bar"),
+            write_operation_create_helper(3, "foo3", "bar"),
+        ];
+        test_logger.write_log_entries(test_logs.clone()).await.unwrap();
+
+        // WHEN
+        const LOWEST_FOLLOWER_COMMIT_INDEX: u64 = 2;
+        let logs = test_logger
+            .create_log_entries(
+                &WriteRequest::Set { key: "foo4".into(), value: "bar".into() },
+                LOWEST_FOLLOWER_COMMIT_INDEX,
+            )
+            .await
+            .unwrap();
+
+        // THEN
+        assert_eq!(logs.len(), 2);
+        assert_eq!(logs[0].log_index, 3.into());
+        assert_eq!(logs[1].log_index, 4.into());
+        assert_eq!(test_logger.log_index, 4.into());
     }
 
     #[tokio::test]
