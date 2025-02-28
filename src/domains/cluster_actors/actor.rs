@@ -166,19 +166,9 @@ impl ClusterActor {
         }
         self.consensus_tracker.add(logger.log_index, sender, repl_count);
 
-        // create entries per follower.
-        let default_heartbeat: HeartBeatMessage = self.replication.default_heartbeat(0);
-
         let mut tasks = self
-            .followers_mut()
-            .map(|(peer, commit_idx)| {
-                let logs = append_entries
-                    .iter()
-                    .filter(|op| *op.log_index > commit_idx)
-                    .cloned()
-                    .collect::<Vec<_>>();
-                peer.write_io(default_heartbeat.clone().set_append_entries(logs))
-            })
+            .generate_follower_entries(append_entries)
+            .map(|(peer, hb)| peer.write_io(hb))
             .collect::<FuturesUnordered<_>>();
 
         // ! SAFETY DO NOT inline tasks.next().await in the while loop
@@ -201,6 +191,22 @@ impl ClusterActor {
         self.members.values_mut().into_iter().filter_map(|peer| match peer.w_conn.kind {
             PeerKind::Follower(current_commit) => Some((peer, current_commit)),
             _ => None,
+        })
+    }
+
+    /// create entries per follower.
+    pub(crate) fn generate_follower_entries(
+        &mut self,
+        append_entries: Vec<WriteOperation>,
+    ) -> impl Iterator<Item = (&mut Peer, HeartBeatMessage)> {
+        let default_heartbeat: HeartBeatMessage = self.replication.default_heartbeat(0);
+        self.followers_mut().map(move |(peer, commit_idx)| {
+            let logs = append_entries
+                .iter()
+                .filter(|op| *op.log_index > commit_idx)
+                .cloned()
+                .collect::<Vec<_>>();
+            (peer, default_heartbeat.clone().set_append_entries(logs))
         })
     }
 
@@ -288,12 +294,12 @@ mod test {
             append_only_files::{WriteOperation, WriteRequest},
             caches::{cache_objects::CacheEntry, command::CacheCommand},
             cluster_actors::commands::ClusterCommand,
-            peers::connected_types::{Follower, WriteConnected},
+            peers::connected_types::Follower,
             saves::snapshot::snapshot_applier::SnapshotApplier,
         },
     };
     use std::{
-        net::SocketAddr,
+        ops::{Range, RangeInclusive},
         time::{Duration, SystemTime},
     };
 
@@ -327,17 +333,16 @@ mod test {
 
     async fn cluster_member_create_helper(
         actor: &mut ClusterActor,
-
-        num_stream: u16,
+        num_stream: Range<u16>,
         cluster_sender: tokio::sync::mpsc::Sender<ClusterCommand>,
-        cache_manager: CacheManager,
+
         current_follower_offset: u64,
     ) {
         use tokio::net::TcpListener;
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let bind_addr = listener.local_addr().unwrap();
 
-        for port in 0..num_stream {
+        for port in num_stream {
             actor.members.insert(
                 PeerIdentifier::new("localhost", port),
                 Peer::new::<Follower>(
@@ -345,7 +350,7 @@ mod test {
                     PeerKind::Follower(current_follower_offset),
                     cluster_sender.clone(),
                     PeerIdentifier::new("localhost", port),
-                    SnapshotApplier::new(cache_manager.clone(), SystemTime::now()),
+                    SnapshotApplier::new(actor.cache_manager.clone(), SystemTime::now()),
                 ),
             );
         }
@@ -448,7 +453,7 @@ mod test {
         // - add 5 followers
         let (cluster_sender, _) = tokio::sync::mpsc::channel(100);
 
-        cluster_member_create_helper(&mut cluster_actor, 5, cluster_sender, cache_manager, 0).await;
+        cluster_member_create_helper(&mut cluster_actor, 0..5, cluster_sender, 0).await;
 
         let (tx, _) = tokio::sync::oneshot::channel();
 
@@ -481,7 +486,7 @@ mod test {
         // - add 5 followers
         let (cluster_sender, _) = tokio::sync::mpsc::channel(100);
 
-        cluster_member_create_helper(&mut cluster_actor, 5, cluster_sender, cache_manager, 0).await;
+        cluster_member_create_helper(&mut cluster_actor, 0..5, cluster_sender, 0).await;
         let (client_request_sender, client_wait) = tokio::sync::oneshot::channel();
         cluster_actor
             .req_consensus(
@@ -535,6 +540,53 @@ mod test {
         assert_eq!(logs[0].log_index, 3.into());
         assert_eq!(logs[1].log_index, 4.into());
         assert_eq!(test_logger.log_index, 4.into());
+    }
+
+    #[tokio::test]
+    async fn generate_follower_entries() {
+        // GIVEN
+        let mut test_logger = Logger::new(InMemoryAof::default());
+
+        let (cache_handler, _) = tokio::sync::mpsc::channel(100);
+        let cache_manager: CacheManager = CacheManager::test_new(cache_handler);
+        let mut cluster_actor = cluster_actor_create_helper(cache_manager.clone());
+
+        let (cluster_sender, _) = tokio::sync::mpsc::channel(100);
+        cluster_member_create_helper(&mut cluster_actor, 0..5, cluster_sender.clone(), 3).await;
+
+        let test_logs = vec![
+            write_operation_create_helper(1, "foo", "bar"),
+            write_operation_create_helper(2, "foo2", "bar"),
+            write_operation_create_helper(3, "foo3", "bar"),
+        ];
+
+        cluster_actor.replication.commit_idx = 3;
+
+        test_logger.write_log_entries(test_logs).await.unwrap();
+
+        //WHEN
+        // *add lagged followers with its commit index being 1
+        cluster_member_create_helper(&mut cluster_actor, 5..7, cluster_sender, 1).await;
+
+        // * add new log - this must create entries that are greater than 3
+        let lowest_commit_idx = cluster_actor.get_lowerest_commit_idx();
+        let append_entries = test_logger
+            .create_log_entries(
+                &WriteRequest::Set { key: "foo4".into(), value: "bar".into() },
+                lowest_commit_idx,
+            )
+            .await
+            .unwrap();
+
+        // THEN
+        assert_eq!(append_entries.len(), 3);
+
+        let entries = cluster_actor.generate_follower_entries(append_entries).collect::<Vec<_>>();
+
+        // * for old followers must have 1 entry
+        assert_eq!(entries.iter().filter(|(_, hb)| hb.append_entries.len() == 1).count(), 5);
+        // * for lagged followers must have 3 entries
+        assert_eq!(entries.iter().filter(|(_, hb)| hb.append_entries.len() == 3).count(), 2)
     }
 
     #[tokio::test]
