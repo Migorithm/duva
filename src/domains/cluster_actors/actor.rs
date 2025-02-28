@@ -278,6 +278,8 @@ impl ClusterActor {
 
 #[cfg(test)]
 mod test {
+    use std::time::Duration;
+
     use crate::{
         adapters::aof::memory_aof::InMemoryAof,
         domains::{
@@ -370,15 +372,17 @@ mod test {
         }
     }
 
+    fn cluster_actor_create_helper(cache_manager: CacheManager) -> ClusterActor {
+        let (tx, rx) = tokio::sync::watch::channel(false);
+        let replication = ReplicationInfo::new(None, "localhost", 8080);
+        ClusterActor::new(100, replication, cache_manager, tx)
+    }
+
     #[tokio::test]
     async fn follower_cluster_actor_replicate_log() {
         // GIVEN
         let mut test_logger = Logger::new(InMemoryAof::default());
-        let (notifier, _) = tokio::sync::watch::channel(false);
-        let repl_info = ReplicationInfo::new(None, "localhost", 8080);
-        let mut cluster_actor =
-            ClusterActor::new(100, repl_info, CacheManager { inboxes: vec![] }, notifier);
-
+        let mut cluster_actor = cluster_actor_create_helper(CacheManager { inboxes: vec![] });
         // WHEN - term
         let heartbeat = heartbeat_create_helper(
             0,
@@ -406,13 +410,10 @@ mod test {
     async fn follower_cluster_actor_replicate_state() {
         // GIVEN
         let mut test_logger = Logger::new(InMemoryAof::default());
-        let (notifier, _) = tokio::sync::watch::channel(false);
-        let repl_info = ReplicationInfo::new(None, "localhost", 8080);
 
         let (tx, mut rx) = tokio::sync::mpsc::channel(100);
-
-        let cache_actor: CacheManager = CacheManager::test_new(tx);
-        let mut cluster_actor = ClusterActor::new(100, repl_info, cache_actor, notifier);
+        let cache_manager: CacheManager = CacheManager::test_new(tx);
+        let mut cluster_actor = cluster_actor_create_helper(cache_manager);
         let heartbeat = heartbeat_create_helper(
             0,
             0,
@@ -425,7 +426,7 @@ mod test {
         cluster_actor.replicate(&mut test_logger, heartbeat).await;
 
         // WHEN - commit until 2
-        let handler = tokio::spawn(async move {
+        let task = tokio::spawn(async move {
             while let Some(message) = rx.recv().await {
                 match message {
                     CacheCommand::Set { cache_entry: CacheEntry::KeyValue(key, value) } => {
@@ -444,6 +445,48 @@ mod test {
         // THEN
         assert_eq!(cluster_actor.replication.commit_idx, 2);
         assert_eq!(test_logger.log_index, 2.into());
-        handler.await.unwrap();
+        task.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn follower_cluster_actor_replicate_state_only_upto_commit() {
+        // GIVEN
+        let mut test_logger = Logger::new(InMemoryAof::default());
+        let (tx, mut rx) = tokio::sync::mpsc::channel(100);
+        let cache_manager: CacheManager = CacheManager::test_new(tx);
+        let mut cluster_actor = cluster_actor_create_helper(cache_manager);
+        let heartbeat = heartbeat_create_helper(
+            0,
+            0,
+            vec![
+                write_operation_create_helper(1, "foo", "bar"),
+                write_operation_create_helper(2, "foo2", "bar"),
+            ],
+        );
+
+        cluster_actor.replicate(&mut test_logger, heartbeat).await;
+
+        // WHEN - commit until 2
+        let task = tokio::spawn(async move {
+            while let Some(message) = rx.recv().await {
+                match message {
+                    CacheCommand::Set { cache_entry: CacheEntry::KeyValue(key, value) } => {
+                        assert_eq!(value, "bar");
+                        if key == "foo2" {
+                            break;
+                        }
+                    }
+                    _ => continue,
+                }
+            }
+        });
+        const COMMIT_IDX: u64 = 1;
+        let heartbeat = heartbeat_create_helper(0, COMMIT_IDX, vec![]);
+        cluster_actor.replicate(&mut test_logger, heartbeat).await;
+
+        // THEN
+        assert!(tokio::time::timeout(Duration::from_secs(1), task).await.is_err());
+        assert_eq!(cluster_actor.replication.commit_idx, 1);
+        assert_eq!(test_logger.log_index, 2.into());
     }
 }
