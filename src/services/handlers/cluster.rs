@@ -1,9 +1,12 @@
 use crate::domains::append_only_files::interfaces::TAof;
 use crate::domains::append_only_files::logger::Logger;
+use crate::domains::caches::cache_manager::CacheManager;
 use crate::domains::cluster_actors::commands::ClusterCommand;
-use crate::domains::cluster_actors::consensus::ConsensusTracker;
+use crate::domains::cluster_actors::replication::ReplicationInfo;
 use crate::domains::cluster_actors::{ClusterActor, FANOUT};
-use tokio::sync::mpsc::Receiver;
+use std::time::Duration;
+use tokio::sync::mpsc::{Receiver, Sender};
+use tokio::time::interval;
 
 impl ClusterActor {
     pub(crate) async fn handle(
@@ -82,5 +85,32 @@ impl ClusterActor {
             }
         }
         Ok(self)
+    }
+
+    pub fn run(
+        node_timeout: u128,
+        heartbeat_fq_mills: u64,
+        init_replication: ReplicationInfo,
+        cache_manager: CacheManager,
+        notifier: tokio::sync::watch::Sender<bool>,
+        aof: impl TAof,
+    ) -> Sender<ClusterCommand> {
+        let (actor_handler, cluster_message_listener) = tokio::sync::mpsc::channel(100);
+        tokio::spawn(
+            ClusterActor::new(node_timeout, init_replication, cache_manager, notifier)
+                .handle(cluster_message_listener, aof),
+        );
+
+        tokio::spawn({
+            let heartbeat_sender = actor_handler.clone();
+            let mut heartbeat_interval = interval(Duration::from_millis(heartbeat_fq_mills));
+            async move {
+                loop {
+                    heartbeat_interval.tick().await;
+                    let _ = heartbeat_sender.send(ClusterCommand::SendHeartBeat).await;
+                }
+            }
+        });
+        actor_handler
     }
 }

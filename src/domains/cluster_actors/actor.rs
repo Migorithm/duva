@@ -236,11 +236,10 @@ impl ClusterActor {
     }
 
     pub(crate) async fn send_commit_heartbeat(&mut self, offset: LogIndex) {
-        //TODO use input offset to keep track of up to what point the follower catches up.
-
         // TODO is there any case where I can use offset input?
         self.replication.commit_idx += 1;
-        let message = self.replication.default_heartbeat(0);
+        let message: HeartBeatMessage = self.replication.default_heartbeat(0);
+        println!("[INFO] Sending commit request on {}", message.commit_idx);
 
         let mut tasks = self
             .followers_mut()
@@ -248,7 +247,6 @@ impl ClusterActor {
             .map(|(peer, _)| peer.write_io(message.clone()))
             .collect::<FuturesUnordered<_>>();
 
-        println!("[INFO] Sending commit request on {}", message.commit_idx);
         while let Some(_) = tasks.next().await {}
     }
 
@@ -257,25 +255,24 @@ impl ClusterActor {
         logger: &mut Logger<impl TAof>,
         heartbeat: HeartBeatMessage,
     ) {
-        if heartbeat.append_entries.is_empty() {
-            return;
+        // * lagging case
+        if self.replication.commit_idx < heartbeat.commit_idx {
+            println!("[INFO] Received commit offset {}", heartbeat.commit_idx);
+            //* Retrieve the logs that fall between the current 'log' index of this node and leader 'commit' idx
+            for log in logger.range(self.replication.commit_idx, heartbeat.commit_idx) {
+                let _ = self.cache_manager.apply_log(log.request).await;
+                self.replication.commit_idx = log.log_index.into();
+            }
         }
 
+        // * logging case
+        if heartbeat.append_entries.is_empty() || self.replication.term > heartbeat.term {
+            return;
+        }
         let Ok(ack_index) = logger.write_log_entries(heartbeat.append_entries.clone()).await else {
             return;
         };
         self.send_ack(ack_index).await;
-
-        if self.replication.term > heartbeat.term {
-            return;
-        }
-
-        println!("[INFO] Received commit offset {}", heartbeat.commit_idx);
-        //* Retrieve the logs that fall between the current 'log' index of this node and leader 'commit' idx
-        for log in logger.range(self.replication.commit_idx, heartbeat.commit_idx) {
-            let _ = self.cache_manager.apply_log(log.request).await;
-            self.replication.commit_idx = log.log_index.into();
-        }
     }
 }
 
