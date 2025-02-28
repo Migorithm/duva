@@ -142,4 +142,10 @@ impl CacheManager {
 
         cache_dispatcher
     }
+
+    // create a new cache manager
+    #[cfg(test)]
+    pub fn test_new(tx: tokio::sync::mpsc::Sender<CacheCommand>) -> CacheManager {
+        CacheManager { inboxes: (0..10).map(|_| CacheCommandSender(tx.clone())).collect() }
+    }
 }

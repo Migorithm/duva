@@ -276,59 +276,174 @@ impl ClusterActor {
     }
 }
 
-#[test]
-fn test_hop_count_when_one() {
-    // GIVEN
-    let fanout = 2;
+#[cfg(test)]
+mod test {
+    use crate::{
+        adapters::aof::memory_aof::InMemoryAof,
+        domains::{
+            append_only_files::WriteRequest,
+            caches::{cache_objects::CacheEntry, command::CacheCommand},
+        },
+    };
 
-    let (tx, rx) = tokio::sync::watch::channel(false);
-    let replication = ReplicationInfo::new(None, "localhost", 8080);
-    let cluster_actor = ClusterActor::new(100, replication, CacheManager { inboxes: vec![] }, tx);
+    use super::*;
+    #[test]
+    fn test_hop_count_when_one() {
+        // GIVEN
+        let fanout = 2;
 
-    // WHEN
-    let hop_count = cluster_actor.hop_count(fanout, 1);
-    // THEN
-    assert_eq!(hop_count, 0);
-}
+        let (tx, rx) = tokio::sync::watch::channel(false);
+        let replication = ReplicationInfo::new(None, "localhost", 8080);
+        let cluster_actor =
+            ClusterActor::new(100, replication, CacheManager { inboxes: vec![] }, tx);
 
-#[test]
-fn test_hop_count_when_two() {
-    // GIVEN
-    let fanout = 2;
-    let (tx, rx) = tokio::sync::watch::channel(false);
-    let replication = ReplicationInfo::new(None, "localhost", 8080);
-    let cluster_actor = ClusterActor::new(100, replication, CacheManager { inboxes: vec![] }, tx);
+        // WHEN
+        let hop_count = cluster_actor.hop_count(fanout, 1);
+        // THEN
+        assert_eq!(hop_count, 0);
+    }
 
-    // WHEN
-    let hop_count = cluster_actor.hop_count(fanout, 2);
-    // THEN
-    assert_eq!(hop_count, 0);
-}
+    #[test]
+    fn test_hop_count_when_two() {
+        // GIVEN
+        let fanout = 2;
+        let (tx, rx) = tokio::sync::watch::channel(false);
+        let replication = ReplicationInfo::new(None, "localhost", 8080);
+        let cluster_actor =
+            ClusterActor::new(100, replication, CacheManager { inboxes: vec![] }, tx);
 
-#[test]
-fn test_hop_count_when_three() {
-    // GIVEN
-    let fanout = 2;
-    let (tx, rx) = tokio::sync::watch::channel(false);
-    let replication = ReplicationInfo::new(None, "localhost", 8080);
-    let cluster_actor = ClusterActor::new(100, replication, CacheManager { inboxes: vec![] }, tx);
+        // WHEN
+        let hop_count = cluster_actor.hop_count(fanout, 2);
+        // THEN
+        assert_eq!(hop_count, 0);
+    }
 
-    // WHEN
-    let hop_count = cluster_actor.hop_count(fanout, 3);
-    // THEN
-    assert_eq!(hop_count, 1);
-}
+    #[test]
+    fn test_hop_count_when_three() {
+        // GIVEN
+        let fanout = 2;
+        let (tx, rx) = tokio::sync::watch::channel(false);
+        let replication = ReplicationInfo::new(None, "localhost", 8080);
+        let cluster_actor =
+            ClusterActor::new(100, replication, CacheManager { inboxes: vec![] }, tx);
 
-#[test]
-fn test_hop_count_when_thirty() {
-    // GIVEN
-    let fanout = 2;
-    let (tx, rx) = tokio::sync::watch::channel(false);
-    let replication = ReplicationInfo::new(None, "localhost", 8080);
-    let cluster_actor = ClusterActor::new(100, replication, CacheManager { inboxes: vec![] }, tx);
+        // WHEN
+        let hop_count = cluster_actor.hop_count(fanout, 3);
+        // THEN
+        assert_eq!(hop_count, 1);
+    }
 
-    // WHEN
-    let hop_count = cluster_actor.hop_count(fanout, 30);
-    // THEN
-    assert_eq!(hop_count, 4);
+    #[test]
+    fn test_hop_count_when_thirty() {
+        // GIVEN
+        let fanout = 2;
+        let (tx, rx) = tokio::sync::watch::channel(false);
+        let replication = ReplicationInfo::new(None, "localhost", 8080);
+        let cluster_actor =
+            ClusterActor::new(100, replication, CacheManager { inboxes: vec![] }, tx);
+
+        // WHEN
+        let hop_count = cluster_actor.hop_count(fanout, 30);
+        // THEN
+        assert_eq!(hop_count, 4);
+    }
+
+    fn write_operation_create_helper(index_num: u64, key: &str, value: &str) -> WriteOperation {
+        WriteOperation {
+            log_index: index_num.into(),
+            request: WriteRequest::Set { key: key.into(), value: value.into() },
+        }
+    }
+    fn heartbeat_create_helper(
+        term: u64,
+        commit_idx: u64,
+        op_logs: Vec<WriteOperation>,
+    ) -> HeartBeatMessage {
+        HeartBeatMessage {
+            term,
+            commit_idx,
+            append_entries: op_logs,
+            ban_list: vec![],
+            heartbeat_from: PeerIdentifier::new("localhost", 8080),
+            leader_replid: "localhost".to_string(),
+            hop_count: 0,
+        }
+    }
+
+    #[tokio::test]
+    async fn follower_cluster_actor_replicate_log() {
+        // GIVEN
+        let mut test_logger = Logger::new(InMemoryAof::default());
+        let (notifier, _) = tokio::sync::watch::channel(false);
+        let repl_info = ReplicationInfo::new(None, "localhost", 8080);
+        let mut cluster_actor =
+            ClusterActor::new(100, repl_info, CacheManager { inboxes: vec![] }, notifier);
+
+        // WHEN - term
+        let heartbeat = heartbeat_create_helper(
+            0,
+            0,
+            vec![
+                write_operation_create_helper(1, "foo", "bar"),
+                write_operation_create_helper(2, "foo2", "bar"),
+            ],
+        );
+
+        cluster_actor.replicate(&mut test_logger, heartbeat).await;
+
+        // THEN
+        assert_eq!(cluster_actor.replication.commit_idx, 0);
+        assert_eq!(test_logger.log_index, 2.into());
+        let logs = test_logger.range(0, 2);
+        assert_eq!(logs.len(), 2);
+        assert_eq!(logs[0].log_index, 1.into());
+        assert_eq!(logs[1].log_index, 2.into());
+        assert_eq!(logs[0].request, WriteRequest::Set { key: "foo".into(), value: "bar".into() });
+        assert_eq!(logs[1].request, WriteRequest::Set { key: "foo2".into(), value: "bar".into() });
+    }
+
+    #[tokio::test]
+    async fn follower_cluster_actor_replicate_state() {
+        // GIVEN
+        let mut test_logger = Logger::new(InMemoryAof::default());
+        let (notifier, _) = tokio::sync::watch::channel(false);
+        let repl_info = ReplicationInfo::new(None, "localhost", 8080);
+
+        let (tx, mut rx) = tokio::sync::mpsc::channel(100);
+
+        let cache_actor: CacheManager = CacheManager::test_new(tx);
+        let mut cluster_actor = ClusterActor::new(100, repl_info, cache_actor, notifier);
+        let heartbeat = heartbeat_create_helper(
+            0,
+            0,
+            vec![
+                write_operation_create_helper(1, "foo", "bar"),
+                write_operation_create_helper(2, "foo2", "bar"),
+            ],
+        );
+
+        cluster_actor.replicate(&mut test_logger, heartbeat).await;
+
+        // WHEN - commit until 2
+        let handler = tokio::spawn(async move {
+            while let Some(message) = rx.recv().await {
+                match message {
+                    CacheCommand::Set { cache_entry: CacheEntry::KeyValue(key, value) } => {
+                        assert_eq!(value, "bar");
+                        if key == "foo2" {
+                            break;
+                        }
+                    }
+                    _ => continue,
+                }
+            }
+        });
+        let heartbeat = heartbeat_create_helper(0, 2, vec![]);
+        cluster_actor.replicate(&mut test_logger, heartbeat).await;
+
+        // THEN
+        assert_eq!(cluster_actor.replication.commit_idx, 2);
+        assert_eq!(test_logger.log_index, 2.into());
+        handler.await.unwrap();
+    }
 }
