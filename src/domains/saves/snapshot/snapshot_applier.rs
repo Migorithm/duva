@@ -27,7 +27,7 @@ impl SnapshotApplier {
                 .filter(|kvc| kvc.is_valid(&startup_time))
                 .map(|kvs| self.cache_manager.route_set(kvs)),
         )
-            .await;
+        .await;
 
         // TODO let's find the way to test without adding the following code - echo
         // Only for debugging and test

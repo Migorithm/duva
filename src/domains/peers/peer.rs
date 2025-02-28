@@ -29,9 +29,9 @@ pub(crate) struct Peer {
 }
 
 impl Peer {
-    fn new<T>(
-        write_connected: WriteConnected,
-        read_connected: OwnedReadHalf,
+    pub fn new<T>(
+        stream: TcpStream,
+        kind: PeerKind,
         cluster_handler: Sender<ClusterCommand>,
         addr: PeerIdentifier,
         snapshot_applier: SnapshotApplier,
@@ -39,14 +39,17 @@ impl Peer {
     where
         ClusterListener<T>: TListen + Send + Sync + 'static,
     {
+        let (r, w) = stream.into_split();
+        let w_conn = WriteConnected::new(w, kind);
+
         let (kill_trigger, kill_switch) = tokio::sync::oneshot::channel();
-        let rc = ReadConnected::<T>::new(read_connected);
+        let rc = ReadConnected::<T>::new(r);
         let listening_actor = ClusterListener::new(rc, cluster_handler, addr, snapshot_applier);
         let listener_kill_trigger = ListeningActorKillTrigger::new(
             kill_trigger,
             tokio::spawn(listening_actor.listen(kill_switch)),
         );
-        Self { w_conn: write_connected, listener_kill_trigger, last_seen: Instant::now() }
+        Self { w_conn, listener_kill_trigger, last_seen: Instant::now() }
     }
 
     pub(crate) fn create(
@@ -56,17 +59,16 @@ impl Peer {
         cluster_handler: Sender<ClusterCommand>,
         snapshot_applier: SnapshotApplier,
     ) -> Peer {
-        let (r, w) = stream.into_split();
-        let wc = WriteConnected::new(w, kind.clone());
-
         match kind {
             PeerKind::Peer => {
-                Peer::new::<NonDataPeer>(wc, r, cluster_handler, addr, snapshot_applier)
+                Peer::new::<NonDataPeer>(stream, kind, cluster_handler, addr, snapshot_applier)
             }
             PeerKind::Follower(_) => {
-                Peer::new::<Follower>(wc, r, cluster_handler, addr, snapshot_applier)
+                Peer::new::<Follower>(stream, kind, cluster_handler, addr, snapshot_applier)
             }
-            PeerKind::Leader => Peer::new::<Leader>(wc, r, cluster_handler, addr, snapshot_applier),
+            PeerKind::Leader => {
+                Peer::new::<Leader>(stream, kind, cluster_handler, addr, snapshot_applier)
+            }
         }
     }
 }
