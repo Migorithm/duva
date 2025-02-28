@@ -50,13 +50,13 @@ impl SaveActor {
                         )?)
                         .await?;
                 }
-            }
+            },
             SaveCommand::SaveChunk(chunk) => {
                 self.meta.chunk_queue.push_back(chunk);
                 if self.meta.num_of_saved_table_size_actor == 0 {
                     self.encode_chunk_queue().await?;
                 }
-            }
+            },
             SaveCommand::StopSentinel => {
                 self.meta.num_of_cache_actors -= 1;
                 if self.meta.num_of_cache_actors == 0 {
@@ -65,7 +65,7 @@ impl SaveActor {
                     self.target.write(&checksum).await?;
                     return Ok(true);
                 }
-            }
+            },
         }
         Ok(false)
     }
@@ -101,7 +101,7 @@ impl SaveTarget {
             SaveTarget::InMemory(v) => {
                 v.extend_from_slice(buf);
                 Ok(())
-            }
+            },
         }
     }
 }

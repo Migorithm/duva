@@ -22,7 +22,7 @@ impl ClientRequest {
         match self {
             ClientRequest::Set { key, value } => {
                 Some(WriteRequest::Set { key: key.clone(), value: value.clone() })
-            }
+            },
             ClientRequest::SetWithExpiry { key, value, expiry } => {
                 let expires_at =
                     expiry.duration_since(std::time::SystemTime::UNIX_EPOCH).unwrap().as_millis()
@@ -33,7 +33,7 @@ impl ClientRequest {
                     value: value.clone(),
                     expires_at,
                 })
-            }
+            },
             _ => None,
         }
     }

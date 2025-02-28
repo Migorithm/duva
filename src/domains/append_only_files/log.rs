@@ -70,7 +70,7 @@ impl WriteRequest {
             WriteRequest::Set { key, value } => write_array!("SET", key, value),
             WriteRequest::SetWithExpiry { key, value, expires_at } => {
                 write_array!("SET", key, value, "px", expires_at.to_string())
-            }
+            },
             WriteRequest::Delete { key } => write_array!("DEL", key),
         }
     }
@@ -113,7 +113,7 @@ impl WriteRequest {
                     key: String::from_utf8(key.to_vec())?,
                     value: String::from_utf8(value.to_vec())?,
                 })
-            }
+            },
 
             4 => {
                 let (
@@ -131,7 +131,7 @@ impl WriteRequest {
                     value: String::from_utf8(value.to_vec())?,
                     expires_at: std::str::from_utf8(&expiry)?.parse()?,
                 })
-            }
+            },
 
             _ => Err(anyhow::anyhow!("expected 2 or 4 arguments")),
         }

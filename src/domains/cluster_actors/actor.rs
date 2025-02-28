@@ -566,7 +566,7 @@ mod test {
                         if key == "foo2" {
                             break;
                         }
-                    }
+                    },
                     _ => continue,
                 }
             }
@@ -607,7 +607,7 @@ mod test {
                         if key == "foo2" {
                             break;
                         }
-                    }
+                    },
                     _ => continue,
                 }
             }

@@ -62,7 +62,7 @@ impl CacheManager {
         let command = match msg {
             WriteRequest::Set { key, value } => {
                 CacheCommand::Set { cache_entry: CacheEntry::KeyValue(key, value) }
-            }
+            },
             WriteRequest::SetWithExpiry { key, value, expires_at } => CacheCommand::Set {
                 cache_entry: CacheEntry::KeyValueExpiry(
                     key,

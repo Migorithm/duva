@@ -30,7 +30,7 @@ impl ClusterListener<Leader> {
                     LeaderInput::HeartBeat(state) => {
                         // TODO refactoring
                         self.accept_leader_hearbeat(state).await;
-                    }
+                    },
                     LeaderInput::FullSync(data) => {
                         let Ok(snapshot) = SnapshotLoader::load_from_bytes(&data) else {
                             println!("[ERROR] Failed to load snapshot from leader");
@@ -40,7 +40,7 @@ impl ClusterListener<Leader> {
                             println!("[ERROR] Failed to apply snapshot from leader");
                             continue;
                         };
-                    }
+                    },
                 }
             }
         }

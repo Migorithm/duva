@@ -78,7 +78,7 @@ impl QueryIO {
                 });
 
                 hex_file.into()
-            }
+            },
 
             QueryIO::Array(array) => {
                 let mut buffer = BytesMut::with_capacity(
@@ -92,7 +92,7 @@ impl QueryIO {
                     buffer.extend_from_slice(&item.serialize());
                 }
                 buffer.freeze()
-            }
+            },
 
             QueryIO::Err(e) => Bytes::from([concatenator(ERROR_PREFIX), e, "\r\n".into()].concat()),
 
@@ -134,7 +134,7 @@ impl QueryIO {
                 );
 
                 message.freeze()
-            }
+            },
             QueryIO::ReplicateLog(WriteOperation { request: op, log_index: offset }) => {
                 let mut message = BytesMut::from(
                     format!(
@@ -147,7 +147,7 @@ impl QueryIO {
                 );
                 message.extend(op.to_array().serialize());
                 message.freeze()
-            }
+            },
             QueryIO::Acks(items) => {
                 let mut bytes =
                     BytesMut::from(format!("{}{}\r\n", ACKS_PREFIX, items.len()).as_bytes());
@@ -157,7 +157,7 @@ impl QueryIO {
                         .flat_map(|item| QueryIO::BulkString(item.to_string().into()).serialize()),
                 );
                 bytes.freeze()
-            }
+            },
         }
     }
 
@@ -227,16 +227,16 @@ pub fn deserialize(buffer: BytesMut) -> Result<(QueryIO, usize)> {
         SIMPLE_STRING_PREFIX => {
             let (bytes, len) = parse_simple_string(buffer)?;
             Ok((QueryIO::SimpleString(bytes), len))
-        }
+        },
         ARRAY_PREFIX => parse_array(buffer),
         BULK_STRING_PREFIX => {
             let (bytes, len) = parse_bulk_string(buffer)?;
             Ok((QueryIO::BulkString(bytes), len))
-        }
+        },
         FILE_PREFIX => {
             let (bytes, len) = parse_file(buffer)?;
             Ok((QueryIO::File(bytes), len))
-        }
+        },
         PEERSTATE_PREFIX => parse_heartbeat(buffer),
         REPLICATE_PREFIX => parse_replicate(buffer),
         ACKS_PREFIX => parse_acks(buffer),

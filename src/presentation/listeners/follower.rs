@@ -24,13 +24,13 @@ impl ClusterListener<Follower> {
                 match cmd {
                     FollowerInput::HeartBeat(state) => {
                         self.receive_heartbeat(state).await;
-                    }
+                    },
                     FollowerInput::Acks(items) => {
                         let _ = self
                             .cluster_handler
                             .send(ClusterCommand::LeaderReceiveAcks(items))
                             .await;
-                    }
+                    },
                 }
             }
         }

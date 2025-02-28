@@ -27,7 +27,11 @@ pub(crate) struct OutboundStream {
 make_smart_pointer!(OutboundStream, TcpStream => stream);
 
 impl OutboundStream {
-    pub(crate) async fn new(connect_to: PeerIdentifier, repl_id: String, commit_idx: u64) -> anyhow::Result<Self> {
+    pub(crate) async fn new(
+        connect_to: PeerIdentifier,
+        repl_id: String,
+        commit_idx: u64,
+    ) -> anyhow::Result<Self> {
         Ok(OutboundStream {
             stream: TcpStream::connect(&connect_to.cluster_bind_addr()).await?,
             repl_id,
@@ -49,30 +53,34 @@ impl OutboundStream {
                     ConnectionResponse::PONG => {
                         let msg = write_array!("REPLCONF", "listening-port", self_port.to_string());
                         self.write(msg).await?
-                    }
+                    },
                     ConnectionResponse::OK => {
                         ok_count += 1;
                         let msg = {
                             match ok_count {
                                 1 => Ok(write_array!("REPLCONF", "capa", "psync2")),
                                 // "?" here means the server is undecided about their leader. and -1 is the offset that follower is aware of
-                                2 => Ok(write_array!("PSYNC", self.repl_id.clone(), self.commit_idx.to_string() )),
+                                2 => Ok(write_array!(
+                                    "PSYNC",
+                                    self.repl_id.clone(),
+                                    self.commit_idx.to_string()
+                                )),
                                 _ => Err(anyhow::anyhow!("Unexpected OK count")),
                             }
                         }?;
                         self.write(msg).await?
-                    }
+                    },
                     ConnectionResponse::FULLRESYNC { repl_id, offset } => {
                         connection_info.repl_id = repl_id;
                         connection_info.offset = offset;
                         println!("[INFO] Three-way handshake completed")
-                    }
+                    },
                     ConnectionResponse::PEERS(peer_list) => {
                         println!("[INFO] Received peer list: {:?}", peer_list);
                         connection_info.peer_list = peer_list;
                         self.connected_node_info = Some(connection_info);
                         return Ok(self);
-                    }
+                    },
                 }
             }
         }
@@ -104,7 +112,11 @@ impl OutboundStream {
     ) -> anyhow::Result<(ClusterCommand, ConnectedNodeInfo)> {
         let connection_info = self.connected_node_info.context("Connected node info not found")?;
 
-        let kind = PeerKind::connected_peer_kind(&self.repl_id, &connection_info.repl_id, connection_info.offset);
+        let kind = PeerKind::connected_peer_kind(
+            &self.repl_id,
+            &connection_info.repl_id,
+            connection_info.offset,
+        );
 
         let peer = Peer::create(
             self.stream,

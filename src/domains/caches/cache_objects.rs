@@ -59,7 +59,7 @@ impl CacheValue {
             CacheValue::Value(v) => CacheEntry::KeyValue(key.to_string(), v.clone()),
             CacheValue::ValueWithExpiry(v, expiry) => {
                 CacheEntry::KeyValueExpiry(key.to_string(), v.clone(), *expiry)
-            }
+            },
         }
     }
 }

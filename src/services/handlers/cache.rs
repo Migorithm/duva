@@ -15,20 +15,20 @@ impl CacheActor {
                 CacheCommand::Set { cache_entry } => {
                     let _ = self.try_send_ttl(cache_entry.key(), cache_entry.expiry()).await;
                     self.set(cache_entry);
-                }
+                },
                 CacheCommand::Get { key, sender } => {
                     let _ = sender.send(self.get(&key).into());
-                }
+                },
                 CacheCommand::Keys { pattern, sender } => {
                     let ks: Vec<_> = self.keys_stream(pattern).collect();
 
                     sender
                         .send(QueryIO::Array(ks))
                         .map_err(|_| anyhow::anyhow!("Error sending keys"))?;
-                }
+                },
                 CacheCommand::Delete(key) => {
                     self.delete(&key);
-                }
+                },
                 CacheCommand::Save { outbox } => {
                     outbox
                         .send(SaveCommand::LocalShardSize {
@@ -41,7 +41,7 @@ impl CacheActor {
                     }
                     // finalize the save operation
                     outbox.send(SaveCommand::StopSentinel).await?;
-                }
+                },
             }
         }
         Ok(self)
