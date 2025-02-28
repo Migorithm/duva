@@ -1,5 +1,7 @@
 use crate::domains::{
-    append_only_files::{WriteOperation, interfaces::TAof, log::LogIndex, logger::Logger},
+    append_only_files::{
+        WriteOperation, WriteRequest, interfaces::TAof, log::LogIndex, logger::Logger,
+    },
     caches::cache_manager::CacheManager,
     query_parsers::QueryIO,
 };
@@ -150,14 +152,17 @@ impl ClusterActor {
     pub(crate) async fn req_consensus(
         &mut self,
         logger: &mut Logger<impl TAof>,
+        write_request: WriteRequest,
         sender: tokio::sync::oneshot::Sender<Option<LogIndex>>,
-        append_entries: Vec<WriteOperation>,
-    ) {
+    ) -> anyhow::Result<()> {
         // Skip consensus for no replicas
+        let append_entries =
+            logger.create_log_entries(&write_request, self.get_lowerest_commit_idx()).await?;
+
         let repl_count = self.followers().count();
         if repl_count == 0 {
             let _ = sender.send(None);
-            return;
+            return Ok(());
         }
         self.consensus_con.add(logger.log_index, sender, repl_count);
 
@@ -179,6 +184,7 @@ impl ClusterActor {
 
         // ! SAFETY DO NOT inline tasks.next().await in the while loop
         while let Some(_) = tasks.next().await {}
+        Ok(())
     }
 
     pub(crate) fn leader_mut(&mut self) -> Option<&mut Peer> {
@@ -278,8 +284,7 @@ impl ClusterActor {
 
 #[cfg(test)]
 mod test {
-    use std::time::Duration;
-
+    use super::*;
     use crate::{
         adapters::aof::memory_aof::InMemoryAof,
         domains::{
@@ -287,8 +292,36 @@ mod test {
             caches::{cache_objects::CacheEntry, command::CacheCommand},
         },
     };
+    use std::time::Duration;
 
-    use super::*;
+    fn write_operation_create_helper(index_num: u64, key: &str, value: &str) -> WriteOperation {
+        WriteOperation {
+            log_index: index_num.into(),
+            request: WriteRequest::Set { key: key.into(), value: value.into() },
+        }
+    }
+    fn heartbeat_create_helper(
+        term: u64,
+        commit_idx: u64,
+        op_logs: Vec<WriteOperation>,
+    ) -> HeartBeatMessage {
+        HeartBeatMessage {
+            term,
+            commit_idx,
+            append_entries: op_logs,
+            ban_list: vec![],
+            heartbeat_from: PeerIdentifier::new("localhost", 8080),
+            leader_replid: "localhost".to_string(),
+            hop_count: 0,
+        }
+    }
+
+    fn cluster_actor_create_helper(cache_manager: CacheManager) -> ClusterActor {
+        let (tx, rx) = tokio::sync::watch::channel(false);
+        let replication = ReplicationInfo::new(None, "localhost", 8080);
+        ClusterActor::new(100, replication, cache_manager, tx)
+    }
+
     #[test]
     fn test_hop_count_when_one() {
         // GIVEN
@@ -350,32 +383,26 @@ mod test {
         assert_eq!(hop_count, 4);
     }
 
-    fn write_operation_create_helper(index_num: u64, key: &str, value: &str) -> WriteOperation {
-        WriteOperation {
-            log_index: index_num.into(),
-            request: WriteRequest::Set { key: key.into(), value: value.into() },
-        }
-    }
-    fn heartbeat_create_helper(
-        term: u64,
-        commit_idx: u64,
-        op_logs: Vec<WriteOperation>,
-    ) -> HeartBeatMessage {
-        HeartBeatMessage {
-            term,
-            commit_idx,
-            append_entries: op_logs,
-            ban_list: vec![],
-            heartbeat_from: PeerIdentifier::new("localhost", 8080),
-            leader_replid: "localhost".to_string(),
-            hop_count: 0,
-        }
-    }
+    #[tokio::test]
+    async fn leader_consensus_con_not_changed_when_followers_not_exist() {
+        // GIVEN
+        let mut test_logger = Logger::new(InMemoryAof::default());
+        let mut cluster_actor = cluster_actor_create_helper(CacheManager { inboxes: vec![] });
+        let (tx, rx) = tokio::sync::oneshot::channel();
 
-    fn cluster_actor_create_helper(cache_manager: CacheManager) -> ClusterActor {
-        let (tx, rx) = tokio::sync::watch::channel(false);
-        let replication = ReplicationInfo::new(None, "localhost", 8080);
-        ClusterActor::new(100, replication, cache_manager, tx)
+        // WHEN
+        cluster_actor
+            .req_consensus(
+                &mut test_logger,
+                WriteRequest::Set { key: "foo".into(), value: "bar".into() },
+                tx,
+            )
+            .await
+            .unwrap();
+
+        // THEN
+        assert_eq!(cluster_actor.consensus_con.len(), 0);
+        assert_eq!(test_logger.log_index, 1.into());
     }
 
     #[tokio::test]
@@ -449,7 +476,7 @@ mod test {
     }
 
     #[tokio::test]
-    async fn follower_cluster_actor_replicate_state_only_upto_commit() {
+    async fn follower_cluster_actor_replicate_state_only_upto_commit_idx() {
         // GIVEN
         let mut test_logger = Logger::new(InMemoryAof::default());
         let (tx, mut rx) = tokio::sync::mpsc::channel(100);
