@@ -1,0 +1,72 @@
+---
+title : Discard log entries based on high water mark
+---
+sequenceDiagram
+    participant A as NodeA
+    participant B as NodeB
+    participant C as NodeC
+    Actor Migo
+
+    C ->> A : logX (term=1)
+    C ->> A : logX+1 (term=1)
+    C ->> A : hwm = X-1
+
+    C --x B : connection issue
+
+    A ->> A : update hwm(X-1)
+    A ->> A : commit log(X-1)
+    A ->> C : Ack(index X)
+
+    C ->> C : Quorum achieved, update hwm(X)
+    C ->> C : apply logX(term=1)
+    Migo ->> C : X+2
+    C ->> C : logX+2(term=1)
+    rect rgb(134, 35, 44)
+    C --x C : crash
+    end
+
+    Note over A,C : <NodeA><br>term1<br>hwm X-1<br>log X-1, X, X+1
+    Note over A,C : <NodeB><br>term1<br>hwm -<br>log X-1
+    Note over A,C : <NodeC><br>term1<br>hwm X<br>log X-1, X, X+1, X+2
+
+    A --> B : elect leader
+    A --> A : elected (term=2)
+    A ->> B : get uncommitted
+    B ->> A : send log(X-1)
+    A ->> A : Select log etnries to replicate -> Same X-1
+    rect rgb(220, 95, 105)
+    note over A,B : Note that the term is now 2
+    A ->> B : send logX-1(term=2) 
+    A ->> B : send X(term=2) 
+    A ->> B : send X+1(term=2) 
+    end
+
+    B ->> B : Overwrite + add logs
+    B ->> A : acks(X-1, X, X+1)
+
+    A ->> A : update hwm = X+1
+    A ->> A : apply X, X+1
+    A ->> B : hwm = X+1
+    B ->> B : apply X-1, X, X+1
+    
+
+    rect rgb(29, 66, 125)
+    C ->> C : recover
+    end
+
+    
+    Note over A,C : <NodeA><br>term2<br>hwm X+1<br>log X-1, X, X+1
+    Note over A,C : <NodeB><br>term2<br>hwm X+1<br>log X-1, X, X+1
+    Note over A,C : <NodeC><br>term1<br>hwm X<br>log X-1, X, X+1, X+2
+
+
+    C ->> A : send log X+2
+    A --) C : ERROR gen :2
+    C ->> C : Step down as follower
+    rect rgb(134, 35, 44) 
+    Note right of C: Discard logs with index > current hwm
+    C ->> C : discard X+1, X+2
+    end
+    A ->> C : send logs X+1 
+
+
