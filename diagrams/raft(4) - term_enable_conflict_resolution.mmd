@@ -9,17 +9,18 @@ sequenceDiagram
     Actor Migo
 
     Migo ->> C: x=1
-    rect rgb(0, 255, 0)
+    rect rgb(58, 95, 58)
     C ->>C : log(x=1, index=1, term=1) 
     end
     C --x C : crash 
     
 
     A --> B : elect leader
-    A --> A : elected(term=2)
+    A --> A : elected  (term=2)
+    
     Kay ->> A: x=2
 
-    rect rgb(0, 255, 0)
+    rect rgb(58, 95, 58)
     A ->>A : log(x=2, index=1, term=2) 
     end
     A --x A : crash 
@@ -35,8 +36,8 @@ sequenceDiagram
     A ->> C : send logs(x=2, index=1, term=2)
     C ->> C : Select log etnries to replicate 
     Note over A,C : log(x=2, index=1, term=2) is selected<br>Because its term is higher
-    rect rgb(0, 255, 0)
-    C ->> C : log(x=2, index=1, term=3)
+    rect rgb(94, 98, 53)
+    C ->> C : OVERWRITE<br> log(x=2, index=1, term=3)
     end
     C ->> A : Consensus on log(x=2, index=1, term=3)
     A ->> A : log(x=2, index=1, term=3)
