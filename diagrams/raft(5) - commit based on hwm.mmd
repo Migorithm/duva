@@ -1,0 +1,38 @@
+---
+title : When do followers commit their log entries?
+---
+sequenceDiagram
+    participant A as NodeA
+    participant B as NodeB
+    participant C as NodeC
+    Actor Migo
+
+    Migo ->> C: x=1
+    C ->>C : log(x=1, index=1, term=1)
+    C ->> A : Heartbeat with log (hwm=0) 
+    C ->> B : Heartbeat with log (hwm=0)
+    
+    A ->> C : Ack(index 1)
+    rect rgb(58, 95, 58)
+    C ->> C : update high water mark(1)
+    end
+    C ->> C : apply log(x=1, index=1, term=1)
+
+    par 
+    C ->> Migo : Ok
+
+    and B late ack
+    B ->> C : Ack(index 1) - ignored
+    
+    and C sends heartbeat
+    C ->> B : heartbeat (hwm=1)
+    C ->> A : heartbeat (hwm=1)
+    end
+
+    A ->> A : commit log index 1
+    B ->> B : commit log index 1
+    Note over A,B: Followers commit log entries<br>based on high water mark
+
+
+
+
