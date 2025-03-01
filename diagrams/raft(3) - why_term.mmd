@@ -1,0 +1,28 @@
+---
+title : why term in RAFT
+---
+sequenceDiagram
+    Actor Kay
+    participant A as NodeA
+    participant B as NodeB
+    participant C as NodeC
+    Actor Migo
+
+    Migo ->> C: x=1
+    C ->>C : log(x=1, index=1) 
+    break
+    C --x C : crash 
+    end
+
+    A --> B : elect leader
+    A --> A : elected
+    Kay ->> A: x=2
+    A ->>A : log(x=2, index=1) 
+
+    critical 
+    C --> C : recover
+    end
+    C --> A : elect 
+    Note over A,C : Which log entry was replicated<br> on quorum by previous leader?
+
+
