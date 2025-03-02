@@ -77,9 +77,9 @@ impl ClusterActor {
         None
     }
 
-    pub fn set_replication_info(&mut self, leader_repl_id: String, offset: u64) {
+    pub fn set_replication_info(&mut self, leader_repl_id: String, hwm: u64) {
         self.replication.leader_repl_id = leader_repl_id;
-        self.replication.commit_idx = offset;
+        self.replication.hwm = hwm;
     }
 
     /// Remove the peers that are idle for more than ttl_mills
@@ -157,7 +157,7 @@ impl ClusterActor {
     ) -> anyhow::Result<()> {
         // Skip consensus for no replicas
         let append_entries: Vec<WriteOperation> =
-            logger.create_log_entries(&write_request, self.get_lowerest_commit_idx()).await?;
+            logger.create_log_entries(&write_request, self.get_lowest_hwm()).await?;
 
         let repl_count = self.followers().count();
         if repl_count == 0 {
@@ -200,17 +200,14 @@ impl ClusterActor {
         append_entries: Vec<WriteOperation>,
     ) -> impl Iterator<Item = (&mut Peer, HeartBeatMessage)> {
         let default_heartbeat: HeartBeatMessage = self.replication.default_heartbeat(0);
-        self.followers_mut().map(move |(peer, commit_idx)| {
-            let logs = append_entries
-                .iter()
-                .filter(|op| *op.log_index > commit_idx)
-                .cloned()
-                .collect::<Vec<_>>();
+        self.followers_mut().map(move |(peer, hwm)| {
+            let logs =
+                append_entries.iter().filter(|op| *op.log_index > hwm).cloned().collect::<Vec<_>>();
             (peer, default_heartbeat.clone().set_append_entries(logs))
         })
     }
 
-    pub(crate) fn get_lowerest_commit_idx(&self) -> u64 {
+    pub(crate) fn get_lowest_hwm(&self) -> u64 {
         self.members
             .values()
             .into_iter()
@@ -244,9 +241,9 @@ impl ClusterActor {
 
     pub(crate) async fn send_commit_heartbeat(&mut self, offset: LogIndex) {
         // TODO is there any case where I can use offset input?
-        self.replication.commit_idx += 1;
+        self.replication.hwm += 1;
         let message: HeartBeatMessage = self.replication.default_heartbeat(0);
-        println!("[INFO] Sending commit request on {}", message.commit_idx);
+        println!("[INFO] Sending commit request on {}", message.hwm);
 
         let mut tasks = self
             .followers_mut()
@@ -263,12 +260,12 @@ impl ClusterActor {
         heartbeat: HeartBeatMessage,
     ) {
         // * lagging case
-        if self.replication.commit_idx < heartbeat.commit_idx {
-            println!("[INFO] Received commit offset {}", heartbeat.commit_idx);
+        if self.replication.hwm < heartbeat.hwm {
+            println!("[INFO] Received commit offset {}", heartbeat.hwm);
             //* Retrieve the logs that fall between the current 'log' index of this node and leader 'commit' idx
-            for log in logger.range(self.replication.commit_idx, heartbeat.commit_idx) {
+            for log in logger.range(self.replication.hwm, heartbeat.hwm) {
                 let _ = self.cache_manager.apply_log(log.request).await;
-                self.replication.commit_idx = log.log_index.into();
+                self.replication.hwm = log.log_index.into();
             }
         }
 
@@ -313,12 +310,12 @@ mod test {
     }
     fn heartbeat_create_helper(
         term: u64,
-        commit_idx: u64,
+        hwm: u64,
         op_logs: Vec<WriteOperation>,
     ) -> HeartBeatMessage {
         HeartBeatMessage {
             term,
-            commit_idx,
+            hwm,
             append_entries: op_logs,
             ban_list: vec![],
             heartbeat_from: PeerIdentifier::new("localhost", 8080),
@@ -552,7 +549,7 @@ mod test {
             write_operation_create_helper(3, "foo3", "bar"),
         ];
 
-        cluster_actor.replication.commit_idx = 3;
+        cluster_actor.replication.hwm = 3;
 
         test_logger.write_log_entries(test_logs).await.unwrap();
 
@@ -561,11 +558,11 @@ mod test {
         cluster_member_create_helper(&mut cluster_actor, 5..7, cluster_sender, 1).await;
 
         // * add new log - this must create entries that are greater than 3
-        let lowest_commit_idx = cluster_actor.get_lowerest_commit_idx();
+        let lowest_hwm = cluster_actor.get_lowest_hwm();
         let append_entries = test_logger
             .create_log_entries(
                 &WriteRequest::Set { key: "foo4".into(), value: "bar".into() },
-                lowest_commit_idx,
+                lowest_hwm,
             )
             .await
             .unwrap();
@@ -599,7 +596,7 @@ mod test {
         cluster_actor.replicate(&mut test_logger, heartbeat).await;
 
         // THEN
-        assert_eq!(cluster_actor.replication.commit_idx, 0);
+        assert_eq!(cluster_actor.replication.hwm, 0);
         assert_eq!(test_logger.log_index, 2.into());
         let logs = test_logger.range(0, 2);
         assert_eq!(logs.len(), 2);
@@ -644,13 +641,13 @@ mod test {
         cluster_actor.replicate(&mut test_logger, heartbeat).await;
 
         // THEN
-        assert_eq!(cluster_actor.replication.commit_idx, 2);
+        assert_eq!(cluster_actor.replication.hwm, 2);
         assert_eq!(test_logger.log_index, 2.into());
         task.await.unwrap();
     }
 
     #[tokio::test]
-    async fn follower_cluster_actor_replicate_state_only_upto_commit_idx() {
+    async fn follower_cluster_actor_replicate_state_only_upto_hwm() {
         // GIVEN
         let mut test_logger = Logger::new(InMemoryAof::default());
 
@@ -681,13 +678,13 @@ mod test {
                 }
             }
         });
-        const COMMIT_IDX: u64 = 1;
-        let heartbeat = heartbeat_create_helper(0, COMMIT_IDX, vec![]);
+        const hwm: u64 = 1;
+        let heartbeat = heartbeat_create_helper(0, hwm, vec![]);
         cluster_actor.replicate(&mut test_logger, heartbeat).await;
 
         // THEN
         assert!(tokio::time::timeout(Duration::from_secs(1), task).await.is_err());
-        assert_eq!(cluster_actor.replication.commit_idx, 1);
+        assert_eq!(cluster_actor.replication.hwm, 1);
         assert_eq!(test_logger.log_index, 2.into());
     }
 }

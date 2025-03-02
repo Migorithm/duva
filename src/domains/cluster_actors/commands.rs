@@ -8,13 +8,13 @@ pub enum ClusterCommand {
     AddPeer(AddPeer),
     GetPeers(tokio::sync::oneshot::Sender<Vec<PeerIdentifier>>),
     ReplicationInfo(tokio::sync::oneshot::Sender<ReplicationInfo>),
-    SetReplicationInfo { leader_repl_id: String, commit_idx: u64 },
+    SetReplicationInfo { leader_repl_id: String, hwm: u64 },
     SendHeartBeat,
 
     ForgetPeer(PeerIdentifier, tokio::sync::oneshot::Sender<Option<()>>),
     LeaderReqConsensus { log: WriteRequest, sender: tokio::sync::oneshot::Sender<Option<LogIndex>> },
     LeaderReceiveAcks(Vec<LogIndex>),
-    SendCommitHeartBeat { offset: LogIndex },
+    SendCommitHeartBeat { log_idx: LogIndex },
 
     ReceiveHeartBeat(HeartBeatMessage),
 

@@ -5,6 +5,6 @@ sequenceDiagram
     participant L as Leader
     participant F as Follower
     L ->> L: append entry * 5
-    L ->> L: Snapshot (until commit_idx 5)
-    F ->> L: Connect (replid:?, commit_idx:0)
-    L ->> F: Send Full Sync (Snapshot with commit_idx 5)
+    L ->> L: Snapshot (until hwm 5)
+    F ->> L: Connect (replid:?, hwm:0)
+    L ->> F: Send Full Sync (Snapshot with hwm 5)

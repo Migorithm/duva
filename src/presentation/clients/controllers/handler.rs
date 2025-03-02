@@ -23,11 +23,7 @@ impl ClientController<Handler> {
 
                 let repl_info = self.cluster_communication_manager.replication_info().await?;
                 self.cache_manager
-                    .route_save(
-                        SaveTarget::File(file),
-                        repl_info.leader_repl_id,
-                        repl_info.commit_idx,
-                    )
+                    .route_save(SaveTarget::File(file), repl_info.leader_repl_id, repl_info.hwm)
                     .await?;
 
                 QueryIO::Null
@@ -112,7 +108,7 @@ impl ClientController<Handler> {
     async fn maybe_send_commit(&self, log_index_num: Option<LogIndex>) -> anyhow::Result<()> {
         if let Some(offset) = log_index_num {
             self.cluster_communication_manager
-                .send(ClusterCommand::SendCommitHeartBeat { offset })
+                .send(ClusterCommand::SendCommitHeartBeat { log_idx: offset })
                 .await?;
         }
         Ok(())
