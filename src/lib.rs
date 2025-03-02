@@ -96,7 +96,7 @@ impl StartUpFacade {
                         let inbound_stream = InboundStream::new(
                             peer_stream,
                             current_repo_info.leader_repl_id,
-                            current_repo_info.commit_idx,
+                            current_repo_info.hwm,
                         );
 
                         let connection_manager = registry.cluster_connection_manager();
@@ -177,11 +177,11 @@ impl StartUpFacade {
     async fn initialize_with_snapshot(&self) -> Result<()> {
         if let Some(filepath) = self.registry.config_manager.try_filepath().await? {
             let snapshot = SnapshotLoader::load_from_filepath(filepath).await?;
-            let (repl_id, commit_idx) = snapshot.extract_replication_info();
+            let (repl_id, hwm) = snapshot.extract_replication_info();
             // Reconnection case - set the replication info
             self.registry
                 .cluster_actor_handler
-                .send(ClusterCommand::SetReplicationInfo { leader_repl_id: repl_id, commit_idx })
+                .send(ClusterCommand::SetReplicationInfo { leader_repl_id: repl_id, hwm })
                 .await?;
             self.registry.snapshot_applier.apply_snapshot(snapshot).await?;
         }

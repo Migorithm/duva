@@ -20,7 +20,7 @@ pub(crate) struct OutboundStream {
     pub(crate) stream: TcpStream,
 
     pub(crate) repl_id: String,
-    commit_idx: u64,
+    hwm: u64,
     connected_node_info: Option<ConnectedNodeInfo>,
     connect_to: PeerIdentifier,
 }
@@ -30,12 +30,12 @@ impl OutboundStream {
     pub(crate) async fn new(
         connect_to: PeerIdentifier,
         repl_id: String,
-        commit_idx: u64,
+        hwm: u64,
     ) -> anyhow::Result<Self> {
         Ok(OutboundStream {
             stream: TcpStream::connect(&connect_to.cluster_bind_addr()).await?,
             repl_id,
-            commit_idx,
+            hwm,
             connected_node_info: None,
             connect_to: connect_to.to_string().into(),
         })
@@ -63,7 +63,7 @@ impl OutboundStream {
                                 2 => Ok(write_array!(
                                     "PSYNC",
                                     self.repl_id.clone(),
-                                    self.commit_idx.to_string()
+                                    self.hwm.to_string()
                                 )),
                                 _ => Err(anyhow::anyhow!("Unexpected OK count")),
                             }
@@ -99,7 +99,7 @@ impl OutboundStream {
             cluster_manager
                 .send(ClusterCommand::SetReplicationInfo {
                     leader_repl_id: connected_node_info.repl_id.clone(),
-                    commit_idx: 0,
+                    hwm: 0,
                 })
                 .await?;
         }

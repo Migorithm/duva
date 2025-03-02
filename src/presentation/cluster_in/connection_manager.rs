@@ -27,8 +27,8 @@ impl ClusterConnectionManager {
 
         peer_stream.disseminate_peers(self.0.get_peers().await?).await?;
 
-        if let PeerKind::Follower(commit_idx) = peer_stream.peer_kind()? {
-            if IS_LEADER_MODE.load(std::sync::atomic::Ordering::Acquire) && commit_idx == 0 {
+        if let PeerKind::Follower(hwm) = peer_stream.peer_kind()? {
+            if IS_LEADER_MODE.load(std::sync::atomic::Ordering::Acquire) && hwm == 0 {
                 peer_stream = peer_stream.send_full_resync_to_inbound_server(cache_manager).await?;
             }
         }
@@ -51,17 +51,14 @@ impl ClusterConnectionManager {
 
         // Recursive case
         let replication_info = self.replication_info().await?;
-        let (add_peer_cmd, connected_node_info) = OutboundStream::new(
-            connect_to,
-            replication_info.leader_repl_id,
-            replication_info.commit_idx,
-        )
-        .await?
-        .establish_connection(self_port)
-        .await?
-        .set_replication_info(&self)
-        .await?
-        .create_peer_cmd(self.clone(), snapshot_applier.clone())?;
+        let (add_peer_cmd, connected_node_info) =
+            OutboundStream::new(connect_to, replication_info.leader_repl_id, replication_info.hwm)
+                .await?
+                .establish_connection(self_port)
+                .await?
+                .set_replication_info(&self)
+                .await?
+                .create_peer_cmd(self.clone(), snapshot_applier.clone())?;
         self.send(add_peer_cmd).await?;
 
         // Discover additional peers concurrently

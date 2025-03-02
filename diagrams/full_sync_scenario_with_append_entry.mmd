@@ -5,8 +5,8 @@ sequenceDiagram
     participant L as Leader
     participant F as Follower
     L ->> L: append entry * 5
-    F ->> L: Connect (replid:?, commit_idx:0)
-    L ->> L: Check if the snapshot_idx is bigger than follower's commit_idx
+    F ->> L: Connect (replid:?, hwm:0)
+    L ->> L: Check if the snapshot_idx is bigger than follower's hwm
     alt Full Sync (Bigger case)
         L ->> F: Send snapshot
         F ->> L: Receive snapshot

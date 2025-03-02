@@ -98,7 +98,7 @@ impl QueryIO {
 
             QueryIO::HeartBeat(HeartBeatMessage {
                 term,
-                commit_idx,
+                hwm,
                 leader_replid,
                 hop_count,
                 heartbeat_from: id,
@@ -106,9 +106,9 @@ impl QueryIO {
                 append_entries,
             }) => {
                 let mut message = BytesMut::from(format!(
-                    "{PEERSTATE_PREFIX}\r\n${}\r\n{term}\r\n${}\r\n{commit_idx}\r\n${}\r\n{leader_replid}\r\n${}\r\n{hop_count}\r\n${}\r\n{id}\r\n",
+                    "{PEERSTATE_PREFIX}\r\n${}\r\n{term}\r\n${}\r\n{hwm}\r\n${}\r\n{leader_replid}\r\n${}\r\n{hop_count}\r\n${}\r\n{id}\r\n",
                     term.to_string().len(),
-                    commit_idx.to_string().len(),
+                    hwm.to_string().len(),
                     leader_replid.len(),
                     hop_count.to_string().len(),
                     id.len(),
@@ -295,7 +295,7 @@ fn parse_heartbeat(buffer: BytesMut) -> Result<(QueryIO, usize)> {
     let message = HeartBeatMessage {
         heartbeat_from: id,
         term,
-        commit_idx: offset,
+        hwm: offset,
         leader_replid,
         hop_count,
         ban_list,
@@ -463,7 +463,7 @@ fn test_from_bytes_to_peer_state() {
         value,
         QueryIO::HeartBeat(HeartBeatMessage {
             term: 245,
-            commit_idx: 1234329,
+            hwm: 1234329,
             leader_replid: "abcd".into(),
             hop_count: 2,
             heartbeat_from: "127.0.0.1:49153".to_string().into(),
@@ -473,7 +473,7 @@ fn test_from_bytes_to_peer_state() {
     );
     let peer_state: HeartBeatMessage = value.try_into().unwrap();
     assert_eq!(peer_state.term, 245);
-    assert_eq!(peer_state.commit_idx, 1234329);
+    assert_eq!(peer_state.hwm, 1234329);
 
     assert_eq!(peer_state.leader_replid, "abcd");
     assert_eq!(peer_state.hop_count, 2);
@@ -485,7 +485,7 @@ fn test_from_heartbeat_to_bytes() {
     //GIVEN
     let peer_state = HeartBeatMessage {
         term: 1,
-        commit_idx: 2,
+        hwm: 2,
         leader_replid: "your_master_repl".into(),
         hop_count: 2,
         heartbeat_from: "127.0.0.1:49152".to_string().into(),
@@ -513,7 +513,7 @@ fn test_from_heartbeat_to_bytes() {
     //GIVEN
     let peer_state = HeartBeatMessage {
         term: 5,
-        commit_idx: 3232,
+        hwm: 3232,
         leader_replid: "your_master_repl2".into(),
         hop_count: 40,
         heartbeat_from: "127.0.0.1:49159".to_string().into(),
@@ -568,7 +568,7 @@ fn test_binary_to_heartbeat() {
         value,
         QueryIO::HeartBeat(HeartBeatMessage {
             term: 0,
-            commit_idx: 0,
+            hwm: 0,
             leader_replid: "random".into(),
             hop_count: 1,
             heartbeat_from: "127.0.0.1:6379".to_string().into(),

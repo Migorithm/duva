@@ -37,8 +37,8 @@ impl ClusterActor {
                 ClusterCommand::ReplicationInfo(sender) => {
                     let _ = sender.send(self.replication.clone());
                 },
-                ClusterCommand::SetReplicationInfo { leader_repl_id, commit_idx: offset } => {
-                    self.set_replication_info(leader_repl_id, offset);
+                ClusterCommand::SetReplicationInfo { leader_repl_id, hwm } => {
+                    self.set_replication_info(leader_repl_id, hwm);
                 },
                 ClusterCommand::ReceiveHeartBeat(heartbeat) => {
                     if self.replication.in_ban_list(&heartbeat.heartbeat_from) {
@@ -66,7 +66,7 @@ impl ClusterActor {
                     self.apply_acks(offsets);
                 },
 
-                ClusterCommand::SendCommitHeartBeat { offset } => {
+                ClusterCommand::SendCommitHeartBeat { log_idx: offset } => {
                     self.send_commit_heartbeat(offset).await;
                 },
 

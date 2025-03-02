@@ -16,7 +16,7 @@ sequenceDiagram
     L ->> F: Replicate
     L ->> SF: Replicate
     
-    L ->> L: Create Snapshot (until commit_idx 5)
+    L ->> L: Create Snapshot (until hwm 5)
     L ->> F: Create Snapshot 
     L ->> SF : Create Snapshot
 
@@ -27,5 +27,5 @@ sequenceDiagram
     L ->> L: append entry * 3
     L ->> F: Replicate
 
-    SF ->> L: Connect (replid: leader_repl_id, commit_idx:5, term: 1)
-    L ->> SF: Receive Snapshot (commit_idx: 5)
+    SF ->> L: Connect (replid: leader_repl_id, hwm:5, term: 1)
+    L ->> SF: Receive Snapshot (hwm: 5)
