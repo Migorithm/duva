@@ -1,0 +1,59 @@
+---
+title : Idempotent receiver
+---
+sequenceDiagram
+    participant A as NodeA
+    participant B as NodeB
+    participant C as NodeC
+    Actor Migo
+
+    C ->> C : elected, term=1
+
+    Migo ->> C : register()
+    C ->>C : generate unique id
+    C ->>C : repl(cliend_id = 'migo')
+
+    C ->>B : repl(cliend_id = 'migo')
+    C ->>A : repl(cliend_id = 'migo')
+
+    C ->>Migo : client_id = 'migo'
+
+    Note over A,C : nodes maintain a client request table for registered table
+
+    Migo ->> C : client_id = 'migo', request_id=1, payload
+    C ->>C : rep(migo:1:payload, term=1)
+    C ->>B : rep(migo:1:payload, term=1)
+    C ->>A : rep(migo:1:payload, term=1)
+    B --)C : ack
+    C ->>C : is_quorum_reached
+    C ->>C : apply(migo:1:payload, term=1)
+
+    Note right of C: ClientTable<br>==migo==<br>1:payload<br>term=1
+
+    rect rgb(134, 35, 44)
+    C --xC : crash
+    end
+
+    A <<-->> B : elect leader
+    B --> B : elected (term=2)
+    B ->> A : repl(migo:1:palyoad, term=2)
+    A ->> B : ack
+    B ->> B : is_quorum_reached
+    B ->> B : apply(migo:1:payload)
+    Note right of B: ClientTable<br>==migo==<br>1:payload<br>term=2
+
+
+    Migo ->> B: client_id = 'migo', request_id=1, payload
+    rect rgb(40, 80, 120)
+    B ->> B : is_already_applied(migo:1)
+    end
+    B ->> Migo : Success
+
+    
+
+    
+   
+
+    
+
+
