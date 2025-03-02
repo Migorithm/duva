@@ -19,7 +19,7 @@ sequenceDiagram
 
     C ->> C : Quorum achieved, update hwm(X)
     C ->> C : apply logX(term=1)
-    Migo ->> C : X+2
+    Migo ->> C : Request X+2
     C ->> C : logX+2(term=1)
     rect rgb(134, 35, 44)
     C --x C : crash
