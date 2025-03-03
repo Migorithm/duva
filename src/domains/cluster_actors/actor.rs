@@ -22,6 +22,7 @@ pub struct ClusterActor {
     pub(crate) receiver: tokio::sync::mpsc::Receiver<ClusterCommand>,
     pub(crate) self_handler: tokio::sync::mpsc::Sender<ClusterCommand>,
     leader_mode_heartbeat_sender: Option<tokio::task::JoinHandle<()>>,
+    // TODO notifier will be used when election process is implemented?
     notifier: tokio::sync::watch::Sender<bool>,
 }
 

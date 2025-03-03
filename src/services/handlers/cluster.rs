@@ -9,7 +9,6 @@ use tokio::sync::mpsc::Sender;
 impl ClusterActor {
     pub(crate) async fn handle(
         mut self,
-
         aof: impl TAof,
         cache_manager: CacheManager,
         heartbeat_interval_in_mills: u64,
@@ -19,8 +18,6 @@ impl ClusterActor {
         self.leader_heartbeat_periodically();
 
         while let Some(command) = self.receiver.recv().await {
-            // TODO notifier will be used when election process is implemented
-
             match command {
                 ClusterCommand::AddPeer(add_peer_cmd) => {
                     self.add_peer(add_peer_cmd).await;
