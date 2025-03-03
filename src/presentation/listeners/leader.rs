@@ -1,3 +1,4 @@
+use super::*;
 use crate::{
     SnapshotLoader,
     domains::{
@@ -7,10 +8,7 @@ use crate::{
     },
 };
 use bytes::Bytes;
-use std::time::Duration;
-use tokio::time::timeout;
-
-use super::*;
+use std::{sync::atomic::AtomicI16, time::Duration};
 
 impl TListen for ClusterListener<Leader> {
     async fn listen(mut self, rx: ReactorKillSwitch) -> OwnedReadHalf {
@@ -23,6 +21,9 @@ impl TListen for ClusterListener<Leader> {
     }
 }
 
+#[cfg(test)]
+static ATOMIC: AtomicI16 = AtomicI16::new(0);
+
 impl ClusterListener<Leader> {
     async fn listen_leader(&mut self) {
         loop {
@@ -30,7 +31,9 @@ impl ClusterListener<Leader> {
                 result = self.read_command::<LeaderInput>() => {
                     match result {
                         Ok(cmds) => {
-                            println!("[INFO] leader listener received {} commands", cmds.len());
+                            #[cfg(test)]
+                            ATOMIC.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
                             for cmd in cmds {
                                 match cmd {
                                     LeaderInput::HeartBeat(state) => {
@@ -50,7 +53,9 @@ impl ClusterListener<Leader> {
                             }
                         },
                         Err(e)=> {
+                            // Most likely connection close case
                             println!("Error reading command: {:?}", e);
+                            break;
                         }
                     }
                 },
@@ -80,7 +85,6 @@ impl TryFrom<QueryIO> for LeaderInput {
         match query {
             QueryIO::File(data) => Ok(Self::FullSync(data)),
             QueryIO::HeartBeat(peer_state) => Ok(Self::HeartBeat(peer_state)),
-            // TODO term info should be included?
             _ => todo!(),
         }
     }
@@ -97,18 +101,32 @@ mod tests {
         },
         services::interface::TWrite,
     };
-    use std::{sync::atomic::AtomicI16, time::SystemTime};
-    use tokio::net::{TcpListener, TcpStream};
+    use std::time::SystemTime;
+    use tokio::net::{TcpListener, TcpStream, tcp::OwnedWriteHalf};
+
+    async fn create_server_listener_client_writer() -> (OwnedReadHalf, OwnedWriteHalf) {
+        // Create listener
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        // Connect client to listener
+        let client_stream = TcpStream::connect(addr).await.unwrap();
+        let (_, client_write) = client_stream.into_split();
+
+        // Accept the connection on the server side
+        let (server_stream, _) = listener.accept().await.unwrap();
+        let (server_read, _) = server_stream.into_split();
+
+        (server_read, client_write)
+    }
 
     #[tokio::test]
     async fn leader_listener_should_break_loop_when_timeout() {
         //GIVEN
-        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let stream = TcpStream::connect(listener.local_addr().unwrap()).await.unwrap();
-        let (r, mut x) = stream.into_split();
+        let (server_read, mut client_write) = create_server_listener_client_writer().await;
+
         let (cluster_tx, _) = tokio::sync::mpsc::channel(1);
         let mut listener = ClusterListener {
-            read_connected: ReadConnected::<Leader>::new(r),
+            read_connected: ReadConnected::<Leader>::new(server_read),
             cluster_handler: cluster_tx,
             self_id: PeerIdentifier::new("localhost", 1),
             snapshot_applier: SnapshotApplier::new(
@@ -116,8 +134,6 @@ mod tests {
                 SystemTime::now(),
             ),
         };
-        //WHEN
-        static ATOMIC: AtomicI16 = AtomicI16::new(0);
 
         // - run listener
         let task = tokio::spawn(async move {
@@ -125,19 +141,19 @@ mod tests {
         });
 
         // - simulate heartbeat
-        tokio::spawn(async move {
+        let sending_task = tokio::spawn(async move {
             let msg = QueryIO::HeartBeat(HeartBeatMessage::default());
-            for _ in 0..5 {
-                tokio::time::sleep(Duration::from_millis(100)).await;
-                // heartbeat
+            for i in 0..20 {
+                client_write.write(msg.clone().serialize()).await.unwrap();
 
-                x.write_io(msg.clone()).await.unwrap();
-                ATOMIC.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                tokio::time::sleep(Duration::from_millis(100 * i)).await;
             }
         });
         task.await.unwrap();
+        sending_task.abort();
 
         //THEN
-        assert_eq!(5, ATOMIC.load(std::sync::atomic::Ordering::Relaxed))
+
+        assert!(ATOMIC.load(std::sync::atomic::Ordering::Relaxed) > 7);
     }
 }
