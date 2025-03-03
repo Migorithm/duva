@@ -37,7 +37,14 @@ impl ClusterListener<Leader> {
                                         self.handle_leader_heartbeat(state).await;
                                     },
                                     LeaderInput::FullSync(data) => {
-                                        // Your existing code
+                                        let Ok(snapshot) = SnapshotLoader::load_from_bytes(&data) else {
+                                            println!("[ERROR] Failed to load snapshot from leader");
+                                            continue;
+                                        };
+                                        let Ok(_) = self.snapshot_applier.apply_snapshot(snapshot).await else {
+                                            println!("[ERROR] Failed to apply snapshot from leader");
+                                            continue;
+                                        };
                                     }
                                 }
                             }
