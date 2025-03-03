@@ -13,6 +13,7 @@ impl ClusterActor {
         mut self,
         mut cluster_message_listener: Receiver<ClusterCommand>,
         aof: impl TAof,
+        cache_manager: CacheManager,
     ) -> anyhow::Result<Self> {
         let mut logger = Logger::new(aof);
 
@@ -76,7 +77,7 @@ impl ClusterActor {
                 // 2. When follower is behind the leader -> entry logging + commit
                 ClusterCommand::AcceptLeaderHeartBeat(heart_beat_message) => {
                     self.update_last_seen(&heart_beat_message.heartbeat_from);
-                    self.replicate(&mut logger, heart_beat_message).await;
+                    self.replicate(&mut logger, heart_beat_message, &cache_manager).await;
                 },
             }
         }
@@ -92,10 +93,11 @@ impl ClusterActor {
         aof: impl TAof,
     ) -> Sender<ClusterCommand> {
         let (actor_handler, cluster_message_listener) = tokio::sync::mpsc::channel(100);
-        tokio::spawn(
-            ClusterActor::new(node_timeout, init_replication, cache_manager, notifier)
-                .handle(cluster_message_listener, aof),
-        );
+        tokio::spawn(ClusterActor::new(node_timeout, init_replication, notifier).handle(
+            cluster_message_listener,
+            aof,
+            cache_manager,
+        ));
 
         tokio::spawn({
             let heartbeat_sender = actor_handler.clone();
