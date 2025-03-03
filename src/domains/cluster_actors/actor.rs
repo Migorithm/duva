@@ -1,5 +1,5 @@
 use super::{
-    commands::AddPeer,
+    commands::{AddPeer, ClusterCommand},
     replication::{BannedPeer, HeartBeatMessage, ReplicationInfo, time_in_secs},
     *,
 };
@@ -10,6 +10,8 @@ use crate::domains::{
     caches::cache_manager::CacheManager,
     query_parsers::QueryIO,
 };
+use std::time::Duration;
+use tokio::time::interval;
 
 #[derive(Debug)]
 pub struct ClusterActor {
@@ -17,6 +19,10 @@ pub struct ClusterActor {
     pub(crate) replication: ReplicationInfo,
     pub(crate) node_timeout: u128,
     pub(crate) consensus_tracker: ConsensusTracker,
+    pub(crate) receiver: tokio::sync::mpsc::Receiver<ClusterCommand>,
+    pub(crate) self_handler: tokio::sync::mpsc::Sender<ClusterCommand>,
+    leader_mode_heartbeat_sender: Option<tokio::task::JoinHandle<()>>,
+    // TODO notifier will be used when election process is implemented?
     notifier: tokio::sync::watch::Sender<bool>,
 }
 
@@ -26,11 +32,16 @@ impl ClusterActor {
         init_repl_info: ReplicationInfo,
         notifier: tokio::sync::watch::Sender<bool>,
     ) -> Self {
+        let (self_handler, receiver) = tokio::sync::mpsc::channel(100);
         Self {
-            members: BTreeMap::new(),
             replication: init_repl_info,
             node_timeout,
             notifier,
+            receiver,
+            self_handler,
+
+            members: BTreeMap::new(),
+            leader_mode_heartbeat_sender: None,
             consensus_tracker: ConsensusTracker::default(),
         }
     }
@@ -240,14 +251,7 @@ impl ClusterActor {
         self.replication.hwm += 1;
         let message: HeartBeatMessage = self.replication.default_heartbeat(0);
         println!("[INFO] Sending commit request on {}", message.hwm);
-
-        let mut tasks = self
-            .followers_mut()
-            .into_iter()
-            .map(|(peer, _)| peer.write_io(message.clone()))
-            .collect::<FuturesUnordered<_>>();
-
-        while let Some(_) = tasks.next().await {}
+        self.send_to_replicas(message).await;
     }
 
     pub(crate) async fn replicate(
@@ -274,6 +278,47 @@ impl ClusterActor {
             return;
         };
         self.send_ack(ack_index).await;
+    }
+
+    pub(crate) async fn send_leader_heartbeat(&mut self) {
+        let heartbeat = self.replication.default_heartbeat(0);
+        self.send_to_replicas(heartbeat).await;
+    }
+
+    async fn send_to_replicas(&mut self, msg: impl Into<QueryIO> + Send + Clone) {
+        let mut tasks = self
+            .followers_mut()
+            .into_iter()
+            .map(|(peer, _)| peer.write_io(msg.clone()))
+            .collect::<FuturesUnordered<_>>();
+        while let Some(_) = tasks.next().await {}
+    }
+
+    pub fn heartbeat_periodically(&self, heartbeat_interval: u64) {
+        let actor_handler = self.self_handler.clone();
+        tokio::spawn(async move {
+            let mut heartbeat_interval = interval(Duration::from_millis(heartbeat_interval));
+            loop {
+                heartbeat_interval.tick().await;
+                let _ = actor_handler.send(ClusterCommand::SendHeartBeat).await;
+            }
+        });
+    }
+    pub fn leader_heartbeat_periodically(&mut self) {
+        const LEADER_HEARTBEAT_INTERVAL: u64 = 300;
+        let is_leader_mode = self.replication.is_leader_mode();
+        if !is_leader_mode {
+            return;
+        }
+        let actor_handler = self.self_handler.clone();
+
+        self.leader_mode_heartbeat_sender = Some(tokio::spawn(async move {
+            let mut heartbeat_interval = interval(Duration::from_millis(LEADER_HEARTBEAT_INTERVAL));
+            loop {
+                heartbeat_interval.tick().await;
+                let _ = actor_handler.send(ClusterCommand::SendLeaderHeartBeat).await;
+            }
+        }));
     }
 }
 

@@ -19,6 +19,7 @@ pub enum ClusterCommand {
     ReceiveHeartBeat(HeartBeatMessage),
 
     AcceptLeaderHeartBeat(HeartBeatMessage),
+    SendLeaderHeartBeat,
 }
 
 pub struct AddPeer {

@@ -111,6 +111,9 @@ impl ReplicationInfo {
             self.ban_list.swap_remove(idx);
         }
     }
+    pub(crate) fn is_leader_mode(&self) -> bool {
+        self.leader_host.is_none()
+    }
 }
 
 pub(crate) fn time_in_secs() -> anyhow::Result<u64> {
@@ -119,6 +122,7 @@ pub(crate) fn time_in_secs() -> anyhow::Result<u64> {
         .expect("Time went backwards")
         .as_secs())
 }
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct HeartBeatMessage {
     pub(crate) heartbeat_from: PeerIdentifier,

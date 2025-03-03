@@ -4,22 +4,20 @@ use crate::domains::caches::cache_manager::CacheManager;
 use crate::domains::cluster_actors::commands::ClusterCommand;
 use crate::domains::cluster_actors::replication::ReplicationInfo;
 use crate::domains::cluster_actors::{ClusterActor, FANOUT};
-use std::time::Duration;
-use tokio::sync::mpsc::{Receiver, Sender};
-use tokio::time::interval;
+use tokio::sync::mpsc::Sender;
 
 impl ClusterActor {
     pub(crate) async fn handle(
         mut self,
-        mut cluster_message_listener: Receiver<ClusterCommand>,
         aof: impl TAof,
         cache_manager: CacheManager,
+        heartbeat_interval_in_mills: u64,
     ) -> anyhow::Result<Self> {
         let mut logger = Logger::new(aof);
+        self.heartbeat_periodically(heartbeat_interval_in_mills);
+        self.leader_heartbeat_periodically();
 
-        while let Some(command) = cluster_message_listener.recv().await {
-            // TODO notifier will be used when election process is implemented
-
+        while let Some(command) = self.receiver.recv().await {
             match command {
                 ClusterCommand::AddPeer(add_peer_cmd) => {
                     self.add_peer(add_peer_cmd).await;
@@ -66,18 +64,15 @@ impl ClusterActor {
                 ClusterCommand::LeaderReceiveAcks(offsets) => {
                     self.apply_acks(offsets);
                 },
-
                 ClusterCommand::SendCommitHeartBeat { log_idx: offset } => {
                     self.send_commit_heartbeat(offset).await;
                 },
-
-                // * this can be called 2 different context
-                // Regardless of the context, liveness update is required
-                // 1. When follower is up-to-date with the leader + entry logging
-                // 2. When follower is behind the leader -> entry logging + commit
                 ClusterCommand::AcceptLeaderHeartBeat(heart_beat_message) => {
                     self.update_last_seen(&heart_beat_message.heartbeat_from);
                     self.replicate(&mut logger, heart_beat_message, &cache_manager).await;
+                },
+                ClusterCommand::SendLeaderHeartBeat => {
+                    self.send_leader_heartbeat().await;
                 },
             }
         }
@@ -86,29 +81,15 @@ impl ClusterActor {
 
     pub fn run(
         node_timeout: u128,
-        heartbeat_fq_mills: u64,
+        heartbeat_interval: u64,
         init_replication: ReplicationInfo,
         cache_manager: CacheManager,
         notifier: tokio::sync::watch::Sender<bool>,
         aof: impl TAof,
     ) -> Sender<ClusterCommand> {
-        let (actor_handler, cluster_message_listener) = tokio::sync::mpsc::channel(100);
-        tokio::spawn(ClusterActor::new(node_timeout, init_replication, notifier).handle(
-            cluster_message_listener,
-            aof,
-            cache_manager,
-        ));
-
-        tokio::spawn({
-            let heartbeat_sender = actor_handler.clone();
-            let mut heartbeat_interval = interval(Duration::from_millis(heartbeat_fq_mills));
-            async move {
-                loop {
-                    heartbeat_interval.tick().await;
-                    let _ = heartbeat_sender.send(ClusterCommand::SendHeartBeat).await;
-                }
-            }
-        });
+        let cluster_actor = ClusterActor::new(node_timeout, init_replication, notifier);
+        let actor_handler = cluster_actor.self_handler.clone();
+        tokio::spawn(cluster_actor.handle(aof, cache_manager, heartbeat_interval));
         actor_handler
     }
 }
