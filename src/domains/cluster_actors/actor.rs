@@ -1,3 +1,8 @@
+use super::{
+    commands::AddPeer,
+    replication::{BannedPeer, HeartBeatMessage, ReplicationInfo, time_in_secs},
+    *,
+};
 use crate::domains::{
     append_only_files::{
         WriteOperation, WriteRequest, interfaces::TAof, log::LogIndex, logger::Logger,
@@ -6,18 +11,11 @@ use crate::domains::{
     query_parsers::QueryIO,
 };
 
-use super::{
-    commands::AddPeer,
-    replication::{BannedPeer, HeartBeatMessage, ReplicationInfo, time_in_secs},
-    *,
-};
-
 #[derive(Debug)]
 pub struct ClusterActor {
     pub(crate) members: BTreeMap<PeerIdentifier, Peer>,
     pub(crate) replication: ReplicationInfo,
     pub(crate) node_timeout: u128,
-    pub(crate) cache_manager: CacheManager,
     pub(crate) consensus_tracker: ConsensusTracker,
     notifier: tokio::sync::watch::Sender<bool>,
 }
@@ -26,7 +24,6 @@ impl ClusterActor {
     pub fn new(
         node_timeout: u128,
         init_repl_info: ReplicationInfo,
-        cache_manager: CacheManager,
         notifier: tokio::sync::watch::Sender<bool>,
     ) -> Self {
         Self {
@@ -35,7 +32,6 @@ impl ClusterActor {
             node_timeout,
             notifier,
             consensus_tracker: ConsensusTracker::default(),
-            cache_manager,
         }
     }
 
@@ -258,13 +254,14 @@ impl ClusterActor {
         &mut self,
         logger: &mut Logger<impl TAof>,
         heartbeat: HeartBeatMessage,
+        cache_manager: &CacheManager,
     ) {
         // * lagging case
         if self.replication.hwm < heartbeat.hwm {
             println!("[INFO] Received commit offset {}", heartbeat.hwm);
             //* Retrieve the logs that fall between the current 'log' index of this node and leader 'commit' idx
             for log in logger.range(self.replication.hwm, heartbeat.hwm) {
-                let _ = self.cache_manager.apply_log(log.request).await;
+                let _ = cache_manager.apply_log(log.request).await;
                 self.replication.hwm = log.log_index.into();
             }
         }
@@ -284,14 +281,14 @@ impl ClusterActor {
 #[allow(unused_variables)]
 mod test {
 
-    use tokio::{net::TcpStream, sync::mpsc::Receiver};
+    use tokio::{net::TcpStream, sync::mpsc::channel};
 
     use super::*;
     use crate::{
         adapters::aof::memory_aof::InMemoryAof,
         domains::{
             append_only_files::{WriteOperation, WriteRequest},
-            caches::{cache_objects::CacheEntry, command::CacheCommand},
+            caches::{actor::CacheCommandSender, cache_objects::CacheEntry, command::CacheCommand},
             cluster_actors::commands::ClusterCommand,
             peers::connected_types::Follower,
             saves::snapshot::snapshot_applier::SnapshotApplier,
@@ -324,19 +321,17 @@ mod test {
         }
     }
 
-    fn cluster_actor_create_helper() -> (ClusterActor, Receiver<CacheCommand>) {
-        let (cache_handler, receiver) = tokio::sync::mpsc::channel(100);
-        let cache_manager: CacheManager = CacheManager::test_new(cache_handler);
+    fn cluster_actor_create_helper() -> ClusterActor {
         let (tx, rx) = tokio::sync::watch::channel(false);
         let replication = ReplicationInfo::new(None, "localhost", 8080);
-        (ClusterActor::new(100, replication, cache_manager, tx), receiver)
+        ClusterActor::new(100, replication, tx)
     }
 
     async fn cluster_member_create_helper(
         actor: &mut ClusterActor,
         num_stream: Range<u16>,
         cluster_sender: tokio::sync::mpsc::Sender<ClusterCommand>,
-
+        cache_manager: CacheManager,
         current_follower_offset: u64,
     ) {
         use tokio::net::TcpListener;
@@ -351,7 +346,7 @@ mod test {
                     PeerKind::Follower(current_follower_offset),
                     cluster_sender.clone(),
                     PeerIdentifier::new("localhost", port),
-                    SnapshotApplier::new(actor.cache_manager.clone(), SystemTime::now()),
+                    SnapshotApplier::new(cache_manager.clone(), SystemTime::now()),
                 ),
             );
         }
@@ -364,8 +359,7 @@ mod test {
 
         let (tx, rx) = tokio::sync::watch::channel(false);
         let replication = ReplicationInfo::new(None, "localhost", 8080);
-        let cluster_actor =
-            ClusterActor::new(100, replication, CacheManager { inboxes: vec![] }, tx);
+        let cluster_actor = ClusterActor::new(100, replication, tx);
 
         // WHEN
         let hop_count = cluster_actor.hop_count(fanout, 1);
@@ -379,8 +373,7 @@ mod test {
         let fanout = 2;
         let (tx, rx) = tokio::sync::watch::channel(false);
         let replication = ReplicationInfo::new(None, "localhost", 8080);
-        let cluster_actor =
-            ClusterActor::new(100, replication, CacheManager { inboxes: vec![] }, tx);
+        let cluster_actor = ClusterActor::new(100, replication, tx);
 
         // WHEN
         let hop_count = cluster_actor.hop_count(fanout, 2);
@@ -394,8 +387,7 @@ mod test {
         let fanout = 2;
         let (tx, rx) = tokio::sync::watch::channel(false);
         let replication = ReplicationInfo::new(None, "localhost", 8080);
-        let cluster_actor =
-            ClusterActor::new(100, replication, CacheManager { inboxes: vec![] }, tx);
+        let cluster_actor = ClusterActor::new(100, replication, tx);
 
         // WHEN
         let hop_count = cluster_actor.hop_count(fanout, 3);
@@ -409,8 +401,7 @@ mod test {
         let fanout = 2;
         let (tx, rx) = tokio::sync::watch::channel(false);
         let replication = ReplicationInfo::new(None, "localhost", 8080);
-        let cluster_actor =
-            ClusterActor::new(100, replication, CacheManager { inboxes: vec![] }, tx);
+        let cluster_actor = ClusterActor::new(100, replication, tx);
 
         // WHEN
         let hop_count = cluster_actor.hop_count(fanout, 30);
@@ -422,7 +413,7 @@ mod test {
     async fn leader_consensus_tracker_not_changed_when_followers_not_exist() {
         // GIVEN
         let mut test_logger = Logger::new(InMemoryAof::default());
-        let mut cluster_actor = cluster_actor_create_helper().0;
+        let mut cluster_actor = cluster_actor_create_helper();
         let (tx, rx) = tokio::sync::oneshot::channel();
 
         // WHEN
@@ -444,12 +435,15 @@ mod test {
     async fn req_consensus_inserts_consensus_voting() {
         // GIVEN
         let mut test_logger = Logger::new(InMemoryAof::default());
-        let mut cluster_actor = cluster_actor_create_helper().0;
+
+        let mut cluster_actor = cluster_actor_create_helper();
 
         // - add 5 followers
         let (cluster_sender, _) = tokio::sync::mpsc::channel(100);
+        let cache_manager = CacheManager { inboxes: vec![] };
 
-        cluster_member_create_helper(&mut cluster_actor, 0..5, cluster_sender, 0).await;
+        cluster_member_create_helper(&mut cluster_actor, 0..5, cluster_sender, cache_manager, 0)
+            .await;
 
         let (tx, _) = tokio::sync::oneshot::channel();
 
@@ -472,12 +466,14 @@ mod test {
     async fn apply_acks_delete_consensus_voting_when_consensus_reached() {
         // GIVEN
         let mut test_logger = Logger::new(InMemoryAof::default());
-        let mut cluster_actor = cluster_actor_create_helper().0;
+        let mut cluster_actor = cluster_actor_create_helper();
 
         let (cluster_sender, _) = tokio::sync::mpsc::channel(100);
 
         // - add followers to create quorum
-        cluster_member_create_helper(&mut cluster_actor, 0..4, cluster_sender, 0).await;
+        let cache_manager = CacheManager { inboxes: vec![] };
+        cluster_member_create_helper(&mut cluster_actor, 0..4, cluster_sender, cache_manager, 0)
+            .await;
         let (client_request_sender, client_wait) = tokio::sync::oneshot::channel();
         cluster_actor
             .req_consensus(
@@ -538,10 +534,18 @@ mod test {
         // GIVEN
         let mut test_logger = Logger::new(InMemoryAof::default());
 
-        let mut cluster_actor = cluster_actor_create_helper().0;
+        let mut cluster_actor = cluster_actor_create_helper();
 
         let (cluster_sender, _) = tokio::sync::mpsc::channel(100);
-        cluster_member_create_helper(&mut cluster_actor, 0..5, cluster_sender.clone(), 3).await;
+        let cache_manager = CacheManager { inboxes: vec![] };
+        cluster_member_create_helper(
+            &mut cluster_actor,
+            0..5,
+            cluster_sender.clone(),
+            cache_manager,
+            3,
+        )
+        .await;
 
         let test_logs = vec![
             write_operation_create_helper(1, "foo", "bar"),
@@ -555,7 +559,9 @@ mod test {
 
         //WHEN
         // *add lagged followers with its commit index being 1
-        cluster_member_create_helper(&mut cluster_actor, 5..7, cluster_sender, 1).await;
+        let cache_manager = CacheManager { inboxes: vec![] };
+        cluster_member_create_helper(&mut cluster_actor, 5..7, cluster_sender, cache_manager, 1)
+            .await;
 
         // * add new log - this must create entries that are greater than 3
         let lowest_hwm = cluster_actor.get_lowest_hwm();
@@ -582,7 +588,7 @@ mod test {
     async fn follower_cluster_actor_replicate_log() {
         // GIVEN
         let mut test_logger = Logger::new(InMemoryAof::default());
-        let mut cluster_actor = cluster_actor_create_helper().0;
+        let mut cluster_actor = cluster_actor_create_helper();
         // WHEN - term
         let heartbeat = heartbeat_create_helper(
             0,
@@ -592,8 +598,10 @@ mod test {
                 write_operation_create_helper(2, "foo2", "bar"),
             ],
         );
-
-        cluster_actor.replicate(&mut test_logger, heartbeat).await;
+        let cache_manager = CacheManager {
+            inboxes: (0..10).map(|_| CacheCommandSender(channel(10).0)).collect::<Vec<_>>(),
+        };
+        cluster_actor.replicate(&mut test_logger, heartbeat, &cache_manager).await;
 
         // THEN
         assert_eq!(cluster_actor.replication.hwm, 0);
@@ -610,7 +618,8 @@ mod test {
     async fn follower_cluster_actor_replicate_state() {
         // GIVEN
         let mut test_logger = Logger::new(InMemoryAof::default());
-        let (mut cluster_actor, mut cache_actor) = cluster_actor_create_helper();
+        let (cache_handler, mut receiver) = tokio::sync::mpsc::channel(100);
+        let mut cluster_actor = cluster_actor_create_helper();
 
         let heartbeat = heartbeat_create_helper(
             0,
@@ -621,11 +630,12 @@ mod test {
             ],
         );
 
-        cluster_actor.replicate(&mut test_logger, heartbeat).await;
+        let cache_manager = CacheManager { inboxes: vec![CacheCommandSender(cache_handler)] };
+        cluster_actor.replicate(&mut test_logger, heartbeat, &cache_manager).await;
 
         // WHEN - commit until 2
         let task = tokio::spawn(async move {
-            while let Some(message) = cache_actor.recv().await {
+            while let Some(message) = receiver.recv().await {
                 match message {
                     CacheCommand::Set { cache_entry: CacheEntry::KeyValue(key, value) } => {
                         assert_eq!(value, "bar");
@@ -638,7 +648,7 @@ mod test {
             }
         });
         let heartbeat = heartbeat_create_helper(0, 2, vec![]);
-        cluster_actor.replicate(&mut test_logger, heartbeat).await;
+        cluster_actor.replicate(&mut test_logger, heartbeat, &cache_manager).await;
 
         // THEN
         assert_eq!(cluster_actor.replication.hwm, 2);
@@ -651,7 +661,7 @@ mod test {
         // GIVEN
         let mut test_logger = Logger::new(InMemoryAof::default());
 
-        let (mut cluster_actor, mut rx) = cluster_actor_create_helper();
+        let mut cluster_actor = cluster_actor_create_helper();
 
         let heartbeat = heartbeat_create_helper(
             0,
@@ -661,8 +671,9 @@ mod test {
                 write_operation_create_helper(2, "foo2", "bar"),
             ],
         );
-
-        cluster_actor.replicate(&mut test_logger, heartbeat).await;
+        let (tx, mut rx) = tokio::sync::mpsc::channel(100);
+        let cache_manager = CacheManager { inboxes: vec![CacheCommandSender(tx)] };
+        cluster_actor.replicate(&mut test_logger, heartbeat, &cache_manager).await;
 
         // WHEN - commit until 2
         let task = tokio::spawn(async move {
@@ -678,9 +689,9 @@ mod test {
                 }
             }
         });
-        const hwm: u64 = 1;
-        let heartbeat = heartbeat_create_helper(0, hwm, vec![]);
-        cluster_actor.replicate(&mut test_logger, heartbeat).await;
+        const HWM: u64 = 1;
+        let heartbeat = heartbeat_create_helper(0, HWM, vec![]);
+        cluster_actor.replicate(&mut test_logger, heartbeat, &cache_manager).await;
 
         // THEN
         assert!(tokio::time::timeout(Duration::from_secs(1), task).await.is_err());

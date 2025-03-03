@@ -18,7 +18,6 @@ use domains::saves::snapshot::snapshot_applier::SnapshotApplier;
 use domains::saves::snapshot::snapshot_loader::SnapshotLoader;
 pub use init::Environment;
 use presentation::clients::ClientController;
-use presentation::cluster_in::communication_manager::ClusterCommunicationManager;
 use presentation::cluster_in::inbound::stream::InboundStream;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
