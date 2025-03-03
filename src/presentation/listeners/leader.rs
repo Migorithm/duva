@@ -31,26 +31,7 @@ impl ClusterListener<Leader> {
                 result = self.read_command::<LeaderInput>() => {
                     match result {
                         Ok(cmds) => {
-                            #[cfg(test)]
-                            ATOMIC.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-
-                            for cmd in cmds {
-                                match cmd {
-                                    LeaderInput::HeartBeat(state) => {
-                                        self.handle_leader_heartbeat(state).await;
-                                    },
-                                    LeaderInput::FullSync(data) => {
-                                        let Ok(snapshot) = SnapshotLoader::load_from_bytes(&data) else {
-                                            println!("[ERROR] Failed to load snapshot from leader");
-                                            continue;
-                                        };
-                                        let Ok(_) = self.snapshot_applier.apply_snapshot(snapshot).await else {
-                                            println!("[ERROR] Failed to apply snapshot from leader");
-                                            continue;
-                                        };
-                                    }
-                                }
-                            }
+                            self.handle_leader_message(cmds).await;
                         },
                         Err(e)=> {
                             // Most likely connection close case
@@ -59,6 +40,8 @@ impl ClusterListener<Leader> {
                         }
                     }
                 },
+
+                // ELECTION timeout
                 _ =  tokio::time::sleep(Duration::from_millis(rand::random_range(700..1000))) =>{
                     println!("[INFO] leader listener timeout");
                     break;
@@ -67,9 +50,32 @@ impl ClusterListener<Leader> {
             };
         }
     }
-    pub(crate) async fn handle_leader_heartbeat(&mut self, state: HeartBeatMessage) {
-        println!("[INFO] from {}, hc:{}", state.heartbeat_from, state.hop_count);
-        let _ = self.cluster_handler.send(ClusterCommand::HandleLeaderHeartBeat(state)).await;
+
+    async fn handle_leader_message(&mut self, cmds: Vec<LeaderInput>) {
+        #[cfg(test)]
+        ATOMIC.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+        for cmd in cmds {
+            match cmd {
+                LeaderInput::HeartBeat(state) => {
+                    println!("[INFO] from {}, hc:{}", state.heartbeat_from, state.hop_count);
+                    let _ = self
+                        .cluster_handler
+                        .send(ClusterCommand::HandleLeaderHeartBeat(state))
+                        .await;
+                },
+                LeaderInput::FullSync(data) => {
+                    let Ok(snapshot) = SnapshotLoader::load_from_bytes(&data) else {
+                        println!("[ERROR] Failed to load snapshot from leader");
+                        continue;
+                    };
+                    let Ok(_) = self.snapshot_applier.apply_snapshot(snapshot).await else {
+                        println!("[ERROR] Failed to apply snapshot from leader");
+                        continue;
+                    };
+                },
+            }
+        }
     }
 }
 
