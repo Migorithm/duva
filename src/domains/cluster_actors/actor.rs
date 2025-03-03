@@ -1,5 +1,9 @@
+use std::time::Duration;
+
+use tokio::{sync::mpsc::Sender, time::interval};
+
 use super::{
-    commands::AddPeer,
+    commands::{AddPeer, ClusterCommand},
     replication::{BannedPeer, HeartBeatMessage, ReplicationInfo, time_in_secs},
     *,
 };
@@ -18,6 +22,7 @@ pub struct ClusterActor {
     pub(crate) node_timeout: u128,
     pub(crate) consensus_tracker: ConsensusTracker,
     notifier: tokio::sync::watch::Sender<bool>,
+    leader_mode_heartbeat_sender: Option<tokio::task::JoinHandle<()>>,
 }
 
 impl ClusterActor {
@@ -32,6 +37,7 @@ impl ClusterActor {
             node_timeout,
             notifier,
             consensus_tracker: ConsensusTracker::default(),
+            leader_mode_heartbeat_sender: None,
         }
     }
 
@@ -281,6 +287,35 @@ impl ClusterActor {
             .map(|(peer, _)| peer.write_io(msg.clone()))
             .collect::<FuturesUnordered<_>>();
         while let Some(_) = tasks.next().await {}
+    }
+
+    pub fn heartbeat_periodically(
+        &self,
+        heartbeat_interval: u64,
+        actor_handler: Sender<ClusterCommand>,
+    ) {
+        tokio::spawn(async move {
+            let mut heartbeat_interval = interval(Duration::from_millis(heartbeat_interval));
+            loop {
+                heartbeat_interval.tick().await;
+                let _ = actor_handler.send(ClusterCommand::SendHeartBeat).await;
+            }
+        });
+    }
+    pub fn leader_heartbeat_periodically(&mut self, actor_handler: Sender<ClusterCommand>) {
+        const LEADER_HEARTBEAT_INTERVAL: u64 = 300;
+        let is_leader_mode = self.replication.is_leader_mode();
+        if !is_leader_mode {
+            return;
+        }
+
+        self.leader_mode_heartbeat_sender = Some(tokio::spawn(async move {
+            let mut heartbeat_interval = interval(Duration::from_millis(LEADER_HEARTBEAT_INTERVAL));
+            loop {
+                heartbeat_interval.tick().await;
+                let _ = actor_handler.send(ClusterCommand::SendLeaderHeartBeat).await;
+            }
+        }));
     }
 }
 
