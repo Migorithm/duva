@@ -4,22 +4,21 @@ use crate::domains::caches::cache_manager::CacheManager;
 use crate::domains::cluster_actors::commands::ClusterCommand;
 use crate::domains::cluster_actors::replication::ReplicationInfo;
 use crate::domains::cluster_actors::{ClusterActor, FANOUT};
-use tokio::sync::mpsc::{Receiver, Sender};
+use tokio::sync::mpsc::Sender;
 
 impl ClusterActor {
     pub(crate) async fn handle(
         mut self,
-        mut listener: Receiver<ClusterCommand>,
+
         aof: impl TAof,
         cache_manager: CacheManager,
         heartbeat_interval_in_mills: u64,
-        self_handler: Sender<ClusterCommand>,
     ) -> anyhow::Result<Self> {
         let mut logger = Logger::new(aof);
-        self.heartbeat_periodically(heartbeat_interval_in_mills, self_handler.clone());
-        self.leader_heartbeat_periodically(self_handler);
+        self.heartbeat_periodically(heartbeat_interval_in_mills);
+        self.leader_heartbeat_periodically();
 
-        while let Some(command) = listener.recv().await {
+        while let Some(command) = self.receiver.recv().await {
             // TODO notifier will be used when election process is implemented
 
             match command {
@@ -91,14 +90,9 @@ impl ClusterActor {
         notifier: tokio::sync::watch::Sender<bool>,
         aof: impl TAof,
     ) -> Sender<ClusterCommand> {
-        let (actor_handler, cluster_message_listener) = tokio::sync::mpsc::channel(100);
-        tokio::spawn(ClusterActor::new(node_timeout, init_replication, notifier).handle(
-            cluster_message_listener,
-            aof,
-            cache_manager,
-            heartbeat_interval,
-            actor_handler.clone(),
-        ));
+        let cluster_actor = ClusterActor::new(node_timeout, init_replication, notifier);
+        let actor_handler = cluster_actor.self_handler.clone();
+        tokio::spawn(cluster_actor.handle(aof, cache_manager, heartbeat_interval));
         actor_handler
     }
 }

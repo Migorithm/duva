@@ -1,7 +1,3 @@
-use std::time::Duration;
-
-use tokio::{sync::mpsc::Sender, time::interval};
-
 use super::{
     commands::{AddPeer, ClusterCommand},
     replication::{BannedPeer, HeartBeatMessage, ReplicationInfo, time_in_secs},
@@ -14,6 +10,8 @@ use crate::domains::{
     caches::cache_manager::CacheManager,
     query_parsers::QueryIO,
 };
+use std::time::Duration;
+use tokio::time::interval;
 
 #[derive(Debug)]
 pub struct ClusterActor {
@@ -21,8 +19,10 @@ pub struct ClusterActor {
     pub(crate) replication: ReplicationInfo,
     pub(crate) node_timeout: u128,
     pub(crate) consensus_tracker: ConsensusTracker,
-    notifier: tokio::sync::watch::Sender<bool>,
+    pub(crate) receiver: tokio::sync::mpsc::Receiver<ClusterCommand>,
+    pub(crate) self_handler: tokio::sync::mpsc::Sender<ClusterCommand>,
     leader_mode_heartbeat_sender: Option<tokio::task::JoinHandle<()>>,
+    notifier: tokio::sync::watch::Sender<bool>,
 }
 
 impl ClusterActor {
@@ -31,13 +31,17 @@ impl ClusterActor {
         init_repl_info: ReplicationInfo,
         notifier: tokio::sync::watch::Sender<bool>,
     ) -> Self {
+        let (self_handler, receiver) = tokio::sync::mpsc::channel(100);
         Self {
-            members: BTreeMap::new(),
             replication: init_repl_info,
             node_timeout,
             notifier,
-            consensus_tracker: ConsensusTracker::default(),
+            receiver,
+            self_handler,
+
+            members: BTreeMap::new(),
             leader_mode_heartbeat_sender: None,
+            consensus_tracker: ConsensusTracker::default(),
         }
     }
 
@@ -289,11 +293,8 @@ impl ClusterActor {
         while let Some(_) = tasks.next().await {}
     }
 
-    pub fn heartbeat_periodically(
-        &self,
-        heartbeat_interval: u64,
-        actor_handler: Sender<ClusterCommand>,
-    ) {
+    pub fn heartbeat_periodically(&self, heartbeat_interval: u64) {
+        let actor_handler = self.self_handler.clone();
         tokio::spawn(async move {
             let mut heartbeat_interval = interval(Duration::from_millis(heartbeat_interval));
             loop {
@@ -302,12 +303,13 @@ impl ClusterActor {
             }
         });
     }
-    pub fn leader_heartbeat_periodically(&mut self, actor_handler: Sender<ClusterCommand>) {
+    pub fn leader_heartbeat_periodically(&mut self) {
         const LEADER_HEARTBEAT_INTERVAL: u64 = 300;
         let is_leader_mode = self.replication.is_leader_mode();
         if !is_leader_mode {
             return;
         }
+        let actor_handler = self.self_handler.clone();
 
         self.leader_mode_heartbeat_sender = Some(tokio::spawn(async move {
             let mut heartbeat_interval = interval(Duration::from_millis(LEADER_HEARTBEAT_INTERVAL));
