@@ -14,11 +14,11 @@ impl ClusterActor {
         mut listener: Receiver<ClusterCommand>,
         aof: impl TAof,
         cache_manager: CacheManager,
-        heartbeat_fq_mills: u64,
+        heartbeat_interval_in_mills: u64,
         self_handler: Sender<ClusterCommand>,
     ) -> anyhow::Result<Self> {
         let mut logger = Logger::new(aof);
-        Self::heartbeat_periodically(heartbeat_fq_mills, self_handler.clone());
+        Self::heartbeat_periodically(heartbeat_interval_in_mills, self_handler.clone());
         let mut _leader_mode_hb_sender = Self::leader_heartbeat_periodically(
             300,
             self_handler,
@@ -89,9 +89,9 @@ impl ClusterActor {
         Ok(self)
     }
 
-    pub fn heartbeat_periodically(heartbeat_fq_mills: u64, actor_handler: Sender<ClusterCommand>) {
+    pub fn heartbeat_periodically(heartbeat_interval: u64, actor_handler: Sender<ClusterCommand>) {
         tokio::spawn(async move {
-            let mut heartbeat_interval = interval(Duration::from_millis(heartbeat_fq_mills));
+            let mut heartbeat_interval = interval(Duration::from_millis(heartbeat_interval));
             loop {
                 heartbeat_interval.tick().await;
                 let _ = actor_handler.send(ClusterCommand::SendHeartBeat).await;
@@ -99,7 +99,7 @@ impl ClusterActor {
         });
     }
     pub fn leader_heartbeat_periodically(
-        heartbeat_fq_mills: u64,
+        leader_heartbeat_interval: u64,
         actor_handler: Sender<ClusterCommand>,
         is_leader_mode: bool,
     ) -> Option<tokio::task::JoinHandle<()>> {
@@ -107,7 +107,7 @@ impl ClusterActor {
             return None;
         }
         Some(tokio::spawn(async move {
-            let mut heartbeat_interval = interval(Duration::from_millis(heartbeat_fq_mills));
+            let mut heartbeat_interval = interval(Duration::from_millis(leader_heartbeat_interval));
             loop {
                 heartbeat_interval.tick().await;
                 let _ = actor_handler.send(ClusterCommand::SendLeaderHeartBeat).await;
@@ -117,7 +117,7 @@ impl ClusterActor {
 
     pub fn run(
         node_timeout: u128,
-        heartbeat_fq_mills: u64,
+        heartbeat_interval: u64,
         init_replication: ReplicationInfo,
         cache_manager: CacheManager,
         notifier: tokio::sync::watch::Sender<bool>,
@@ -128,7 +128,7 @@ impl ClusterActor {
             cluster_message_listener,
             aof,
             cache_manager,
-            heartbeat_fq_mills,
+            heartbeat_interval,
             actor_handler.clone(),
         ));
         actor_handler
