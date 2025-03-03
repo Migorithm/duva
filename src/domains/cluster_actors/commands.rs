@@ -18,7 +18,7 @@ pub enum ClusterCommand {
 
     ReceiveHeartBeat(HeartBeatMessage),
 
-    AcceptLeaderHeartBeat(HeartBeatMessage),
+    HandleLeaderHeartBeat(HeartBeatMessage),
     SendLeaderHeartBeat,
 }
 

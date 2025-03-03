@@ -34,6 +34,7 @@ impl<T> ClusterListener<T> {
         let _ = self.cluster_handler.send(ClusterCommand::ReceiveHeartBeat(state)).await;
     }
 
+    // TODO bug! it always returns
     pub(crate) async fn read_command<U>(&mut self) -> anyhow::Result<Vec<U>>
     where
         U: std::convert::TryFrom<QueryIO>,

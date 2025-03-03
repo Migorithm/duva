@@ -1,5 +1,3 @@
-use bytes::Bytes;
-
 use crate::{
     SnapshotLoader,
     domains::{
@@ -8,6 +6,9 @@ use crate::{
         peers::connected_types::Leader,
     },
 };
+use bytes::Bytes;
+use std::time::Duration;
+use tokio::time::timeout;
 
 use super::*;
 
@@ -24,30 +25,45 @@ impl TListen for ClusterListener<Leader> {
 
 impl ClusterListener<Leader> {
     async fn listen_leader(&mut self) {
-        while let Ok(cmds) = self.read_command::<LeaderInput>().await {
-            for cmd in cmds {
-                match cmd {
-                    LeaderInput::HeartBeat(state) => {
-                        // TODO refactoring
-                        self.accept_leader_hearbeat(state).await;
-                    },
-                    LeaderInput::FullSync(data) => {
-                        let Ok(snapshot) = SnapshotLoader::load_from_bytes(&data) else {
-                            println!("[ERROR] Failed to load snapshot from leader");
-                            continue;
-                        };
-                        let Ok(_) = self.snapshot_applier.apply_snapshot(snapshot).await else {
-                            println!("[ERROR] Failed to apply snapshot from leader");
-                            continue;
-                        };
-                    },
+        let (tx, mut rx) = tokio::sync::mpsc::channel::<()>(1);
+        select! {
+            _ = async move {
+                while let Ok(cmds) = self.read_command::<LeaderInput>().await {
+                    println!("[INFO] number of cmds {}", cmds.len());
+                    let _ = tx.send(()).await;
+                    for cmd in cmds {
+                        match cmd {
+                            LeaderInput::HeartBeat(state) => {
+                                // TODO refactoring
+                                self.handle_leader_heartbeat(state).await;
+                            },
+                            LeaderInput::FullSync(data) => {
+                                let Ok(snapshot) = SnapshotLoader::load_from_bytes(&data) else {
+                                    println!("[ERROR] Failed to load snapshot from leader");
+                                    continue;
+                                };
+                                let Ok(_) = self.snapshot_applier.apply_snapshot(snapshot).await else {
+                                    println!("[ERROR] Failed to apply snapshot from leader");
+                                    continue;
+                                };
+                            },
+                        }
+                    }
                 }
+            } => {},
+            _ = async move{
+                while let Ok(Some(_)) = timeout( Duration::from_millis(rand::random_range(700..1000)),rx.recv()).await {
+                }
+
+            } => {
+                println!("[INFO] leader listener timeout");
             }
-        }
+
+        };
     }
-    pub(crate) async fn accept_leader_hearbeat(&mut self, state: HeartBeatMessage) {
+    pub(crate) async fn handle_leader_heartbeat(&mut self, state: HeartBeatMessage) {
         println!("[INFO] from {}, hc:{}", state.heartbeat_from, state.hop_count);
-        let _ = self.cluster_handler.send(ClusterCommand::AcceptLeaderHeartBeat(state)).await;
+        let _ = self.cluster_handler.send(ClusterCommand::HandleLeaderHeartBeat(state)).await;
     }
 }
 
@@ -66,5 +82,61 @@ impl TryFrom<QueryIO> for LeaderInput {
             // TODO term info should be included?
             _ => todo!(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{
+        domains::{
+            caches::cache_manager::CacheManager,
+            peers::{connected_types::ReadConnected, identifier::PeerIdentifier},
+            saves::snapshot::snapshot_applier::SnapshotApplier,
+        },
+        services::interface::TWrite,
+    };
+    use std::{sync::atomic::AtomicI16, time::SystemTime};
+    use tokio::net::{TcpListener, TcpStream};
+
+    #[tokio::test]
+    async fn leader_listener_should_break_loop_when_timeout() {
+        //GIVEN
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let stream = TcpStream::connect(listener.local_addr().unwrap()).await.unwrap();
+        let (r, mut x) = stream.into_split();
+        let (cluster_tx, _) = tokio::sync::mpsc::channel(1);
+        let mut listener = ClusterListener {
+            read_connected: ReadConnected::<Leader>::new(r),
+            cluster_handler: cluster_tx,
+            self_id: PeerIdentifier::new("localhost", 1),
+            snapshot_applier: SnapshotApplier::new(
+                CacheManager { inboxes: vec![] },
+                SystemTime::now(),
+            ),
+        };
+        //WHEN
+        static ATOMIC: AtomicI16 = AtomicI16::new(0);
+
+        // - run listener
+        let task = tokio::spawn(async move {
+            listener.listen_leader().await;
+        });
+
+        // - simulate heartbeat
+        tokio::spawn(async move {
+            let msg = QueryIO::HeartBeat(HeartBeatMessage::default());
+            for _ in 0..5 {
+                tokio::time::sleep(Duration::from_millis(100)).await;
+                // heartbeat
+
+                x.write_io(msg.clone()).await.unwrap();
+                ATOMIC.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            }
+        });
+        task.await.unwrap();
+
+        //THEN
+        assert_eq!(5, ATOMIC.load(std::sync::atomic::Ordering::Relaxed))
     }
 }

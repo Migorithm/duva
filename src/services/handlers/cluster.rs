@@ -67,7 +67,7 @@ impl ClusterActor {
                 ClusterCommand::SendCommitHeartBeat { log_idx: offset } => {
                     self.send_commit_heartbeat(offset).await;
                 },
-                ClusterCommand::AcceptLeaderHeartBeat(heart_beat_message) => {
+                ClusterCommand::HandleLeaderHeartBeat(heart_beat_message) => {
                     self.update_last_seen(&heart_beat_message.heartbeat_from);
                     self.replicate(&mut logger, heart_beat_message, &cache_manager).await;
                 },

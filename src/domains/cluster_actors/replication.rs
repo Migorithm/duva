@@ -124,6 +124,7 @@ pub(crate) fn time_in_secs() -> anyhow::Result<u64> {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+
 pub struct HeartBeatMessage {
     pub(crate) heartbeat_from: PeerIdentifier,
     pub(crate) term: u64,
@@ -159,5 +160,20 @@ impl FromStr for BannedPeer {
 impl From<BannedPeer> for Bytes {
     fn from(banned_peer: BannedPeer) -> Self {
         Bytes::from(format!("{}-{}", banned_peer.p_id, banned_peer.ban_time))
+    }
+}
+
+#[cfg(test)]
+impl Default for HeartBeatMessage {
+    fn default() -> Self {
+        HeartBeatMessage {
+            heartbeat_from: PeerIdentifier::new("localhost", 8080),
+            term: 0,
+            hwm: 0,
+            leader_replid: "8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb".to_string(),
+            hop_count: 0,
+            ban_list: vec![],
+            append_entries: vec![],
+        }
     }
 }
