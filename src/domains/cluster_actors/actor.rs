@@ -240,14 +240,7 @@ impl ClusterActor {
         self.replication.hwm += 1;
         let message: HeartBeatMessage = self.replication.default_heartbeat(0);
         println!("[INFO] Sending commit request on {}", message.hwm);
-
-        let mut tasks = self
-            .followers_mut()
-            .into_iter()
-            .map(|(peer, _)| peer.write_io(message.clone()))
-            .collect::<FuturesUnordered<_>>();
-
-        while let Some(_) = tasks.next().await {}
+        self.send_to_replicas(message).await;
     }
 
     pub(crate) async fn replicate(
@@ -274,6 +267,20 @@ impl ClusterActor {
             return;
         };
         self.send_ack(ack_index).await;
+    }
+
+    pub(crate) async fn send_leader_heartbeat(&mut self) {
+        let heartbeat = self.replication.default_heartbeat(0);
+        self.send_to_replicas(heartbeat).await;
+    }
+
+    async fn send_to_replicas(&mut self, msg: impl Into<QueryIO> + Send + Clone) {
+        let mut tasks = self
+            .followers_mut()
+            .into_iter()
+            .map(|(peer, _)| peer.write_io(msg.clone()))
+            .collect::<FuturesUnordered<_>>();
+        while let Some(_) = tasks.next().await {}
     }
 }
 

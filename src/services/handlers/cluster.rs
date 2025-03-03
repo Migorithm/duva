@@ -2,7 +2,7 @@ use crate::domains::append_only_files::interfaces::TAof;
 use crate::domains::append_only_files::logger::Logger;
 use crate::domains::caches::cache_manager::CacheManager;
 use crate::domains::cluster_actors::commands::ClusterCommand;
-use crate::domains::cluster_actors::replication::ReplicationInfo;
+use crate::domains::cluster_actors::replication::{IS_LEADER_MODE, ReplicationInfo};
 use crate::domains::cluster_actors::{ClusterActor, FANOUT};
 use std::time::Duration;
 use tokio::sync::mpsc::{Receiver, Sender};
@@ -11,13 +11,21 @@ use tokio::time::interval;
 impl ClusterActor {
     pub(crate) async fn handle(
         mut self,
-        mut cluster_message_listener: Receiver<ClusterCommand>,
+        mut listener: Receiver<ClusterCommand>,
         aof: impl TAof,
         cache_manager: CacheManager,
+        heartbeat_fq_mills: u64,
+        self_handler: Sender<ClusterCommand>,
     ) -> anyhow::Result<Self> {
         let mut logger = Logger::new(aof);
+        Self::heartbeat_periodically(heartbeat_fq_mills, self_handler.clone());
+        let mut leader_mode_hb_sender = Self::leader_heartbeat_periodically(
+            300,
+            self_handler,
+            self.replication.is_leader_mode(),
+        );
 
-        while let Some(command) = cluster_message_listener.recv().await {
+        while let Some(command) = listener.recv().await {
             // TODO notifier will be used when election process is implemented
 
             match command {
@@ -66,22 +74,45 @@ impl ClusterActor {
                 ClusterCommand::LeaderReceiveAcks(offsets) => {
                     self.apply_acks(offsets);
                 },
-
                 ClusterCommand::SendCommitHeartBeat { log_idx: offset } => {
                     self.send_commit_heartbeat(offset).await;
                 },
-
-                // * this can be called 2 different context
-                // Regardless of the context, liveness update is required
-                // 1. When follower is up-to-date with the leader + entry logging
-                // 2. When follower is behind the leader -> entry logging + commit
                 ClusterCommand::AcceptLeaderHeartBeat(heart_beat_message) => {
                     self.update_last_seen(&heart_beat_message.heartbeat_from);
                     self.replicate(&mut logger, heart_beat_message, &cache_manager).await;
                 },
+                ClusterCommand::SendLeaderHeartBeat => {
+                    self.send_leader_heartbeat().await;
+                },
             }
         }
         Ok(self)
+    }
+
+    pub fn heartbeat_periodically(heartbeat_fq_mills: u64, actor_handler: Sender<ClusterCommand>) {
+        tokio::spawn(async move {
+            let mut heartbeat_interval = interval(Duration::from_millis(heartbeat_fq_mills));
+            loop {
+                heartbeat_interval.tick().await;
+                let _ = actor_handler.send(ClusterCommand::SendHeartBeat).await;
+            }
+        });
+    }
+    pub fn leader_heartbeat_periodically(
+        heartbeat_fq_mills: u64,
+        actor_handler: Sender<ClusterCommand>,
+        is_leader_mode: bool,
+    ) -> Option<tokio::task::JoinHandle<()>> {
+        if !is_leader_mode {
+            return None;
+        }
+        Some(tokio::spawn(async move {
+            let mut heartbeat_interval = interval(Duration::from_millis(heartbeat_fq_mills));
+            loop {
+                heartbeat_interval.tick().await;
+                let _ = actor_handler.send(ClusterCommand::SendLeaderHeartBeat).await;
+            }
+        }))
     }
 
     pub fn run(
@@ -97,18 +128,24 @@ impl ClusterActor {
             cluster_message_listener,
             aof,
             cache_manager,
+            heartbeat_fq_mills,
+            actor_handler.clone(),
         ));
-
-        tokio::spawn({
-            let heartbeat_sender = actor_handler.clone();
-            let mut heartbeat_interval = interval(Duration::from_millis(heartbeat_fq_mills));
-            async move {
-                loop {
-                    heartbeat_interval.tick().await;
-                    let _ = heartbeat_sender.send(ClusterCommand::SendHeartBeat).await;
-                }
-            }
-        });
         actor_handler
     }
+}
+
+#[tokio::test]
+async fn test_you_can_kill_task_that_runs_infinite_loop() {
+    let task = tokio::spawn(async move {
+        loop {
+            println!("Task is running");
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+    });
+
+    tokio::time::sleep(Duration::from_millis(1)).await;
+    task.abort();
+
+    println!("Task is killed");
 }
