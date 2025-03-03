@@ -2,7 +2,7 @@ use crate::domains::append_only_files::interfaces::TAof;
 use crate::domains::append_only_files::logger::Logger;
 use crate::domains::caches::cache_manager::CacheManager;
 use crate::domains::cluster_actors::commands::ClusterCommand;
-use crate::domains::cluster_actors::replication::{IS_LEADER_MODE, ReplicationInfo};
+use crate::domains::cluster_actors::replication::ReplicationInfo;
 use crate::domains::cluster_actors::{ClusterActor, FANOUT};
 use std::time::Duration;
 use tokio::sync::mpsc::{Receiver, Sender};
@@ -19,7 +19,7 @@ impl ClusterActor {
     ) -> anyhow::Result<Self> {
         let mut logger = Logger::new(aof);
         Self::heartbeat_periodically(heartbeat_fq_mills, self_handler.clone());
-        let mut leader_mode_hb_sender = Self::leader_heartbeat_periodically(
+        let mut _leader_mode_hb_sender = Self::leader_heartbeat_periodically(
             300,
             self_handler,
             self.replication.is_leader_mode(),
