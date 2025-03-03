@@ -25,41 +25,35 @@ impl TListen for ClusterListener<Leader> {
 
 impl ClusterListener<Leader> {
     async fn listen_leader(&mut self) {
-        let (tx, mut rx) = tokio::sync::mpsc::channel::<()>(1);
-        select! {
-            _ = async move {
-                while let Ok(cmds) = self.read_command::<LeaderInput>().await {
-                    println!("[INFO] number of cmds {}", cmds.len());
-                    let _ = tx.send(()).await;
-                    for cmd in cmds {
-                        match cmd {
-                            LeaderInput::HeartBeat(state) => {
-                                // TODO refactoring
-                                self.handle_leader_heartbeat(state).await;
-                            },
-                            LeaderInput::FullSync(data) => {
-                                let Ok(snapshot) = SnapshotLoader::load_from_bytes(&data) else {
-                                    println!("[ERROR] Failed to load snapshot from leader");
-                                    continue;
-                                };
-                                let Ok(_) = self.snapshot_applier.apply_snapshot(snapshot).await else {
-                                    println!("[ERROR] Failed to apply snapshot from leader");
-                                    continue;
-                                };
-                            },
+        loop {
+            select! {
+                result = self.read_command::<LeaderInput>() => {
+                    match result {
+                        Ok(cmds) => {
+                            println!("[INFO] leader listener received {} commands", cmds.len());
+                            for cmd in cmds {
+                                match cmd {
+                                    LeaderInput::HeartBeat(state) => {
+                                        self.handle_leader_heartbeat(state).await;
+                                    },
+                                    LeaderInput::FullSync(data) => {
+                                        // Your existing code
+                                    }
+                                }
+                            }
+                        },
+                        Err(e)=> {
+                            println!("Error reading command: {:?}", e);
                         }
                     }
-                }
-            } => {},
-            _ = async move{
-                while let Ok(Some(_)) = timeout( Duration::from_millis(rand::random_range(700..1000)),rx.recv()).await {
+                },
+                _ =  tokio::time::sleep(Duration::from_millis(rand::random_range(700..1000))) =>{
+                    println!("[INFO] leader listener timeout");
+                    break;
                 }
 
-            } => {
-                println!("[INFO] leader listener timeout");
-            }
-
-        };
+            };
+        }
     }
     pub(crate) async fn handle_leader_heartbeat(&mut self, state: HeartBeatMessage) {
         println!("[INFO] from {}, hc:{}", state.heartbeat_from, state.hop_count);
