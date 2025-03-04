@@ -5,7 +5,7 @@ use super::{
 };
 use crate::domains::{
     append_only_files::{
-        WriteOperation, WriteRequest, interfaces::TAof, log::LogIndex, logger::Logger,
+        WriteOperation, WriteRequest, interfaces::TWriteAheadLog, log::LogIndex, logger::Logger,
     },
     caches::cache_manager::CacheManager,
     query_parsers::QueryIO,
@@ -84,7 +84,7 @@ impl ClusterActor {
         None
     }
 
-    pub fn set_replication_info(&mut self, leader_repl_id: String, hwm: u64) {
+    pub fn set_replication_info(&mut self, leader_repl_id: PeerIdentifier, hwm: u64) {
         self.replication.leader_repl_id = leader_repl_id;
         self.replication.hwm = hwm;
     }
@@ -158,7 +158,7 @@ impl ClusterActor {
 
     pub(crate) async fn req_consensus(
         &mut self,
-        logger: &mut Logger<impl TAof>,
+        logger: &mut Logger<impl TWriteAheadLog>,
         write_request: WriteRequest,
         sender: tokio::sync::oneshot::Sender<Option<LogIndex>>,
     ) -> anyhow::Result<()> {
@@ -256,7 +256,7 @@ impl ClusterActor {
 
     pub(crate) async fn replicate(
         &mut self,
-        logger: &mut Logger<impl TAof>,
+        logger: &mut Logger<impl TWriteAheadLog>,
         heartbeat: HeartBeatMessage,
         cache_manager: &CacheManager,
     ) {
@@ -339,7 +339,7 @@ mod test {
 
     use super::*;
     use crate::{
-        adapters::aof::memory_aof::InMemoryAof,
+        adapters::wal::memory_wal::InMemoryWAL,
         domains::{
             append_only_files::{WriteOperation, WriteRequest},
             caches::{actor::CacheCommandSender, cache_objects::CacheEntry, command::CacheCommand},
@@ -370,7 +370,7 @@ mod test {
             append_entries: op_logs,
             ban_list: vec![],
             heartbeat_from: PeerIdentifier::new("localhost", 8080),
-            leader_replid: "localhost".to_string(),
+            leader_replid: "localhost".to_string().into(),
             hop_count: 0,
         }
     }
@@ -399,7 +399,6 @@ mod test {
                     TcpStream::connect(bind_addr).await.unwrap(),
                     PeerKind::Follower(current_follower_offset),
                     cluster_sender.clone(),
-                    PeerIdentifier::new("localhost", port),
                     SnapshotApplier::new(cache_manager.clone(), SystemTime::now()),
                 ),
             );
@@ -466,7 +465,7 @@ mod test {
     #[tokio::test]
     async fn leader_consensus_tracker_not_changed_when_followers_not_exist() {
         // GIVEN
-        let mut test_logger = Logger::new(InMemoryAof::default());
+        let mut test_logger = Logger::new(InMemoryWAL::default());
         let mut cluster_actor = cluster_actor_create_helper();
         let (tx, rx) = tokio::sync::oneshot::channel();
 
@@ -488,7 +487,7 @@ mod test {
     #[tokio::test]
     async fn req_consensus_inserts_consensus_voting() {
         // GIVEN
-        let mut test_logger = Logger::new(InMemoryAof::default());
+        let mut test_logger = Logger::new(InMemoryWAL::default());
 
         let mut cluster_actor = cluster_actor_create_helper();
 
@@ -519,7 +518,7 @@ mod test {
     #[tokio::test]
     async fn apply_acks_delete_consensus_voting_when_consensus_reached() {
         // GIVEN
-        let mut test_logger = Logger::new(InMemoryAof::default());
+        let mut test_logger = Logger::new(InMemoryWAL::default());
         let mut cluster_actor = cluster_actor_create_helper();
 
         let (cluster_sender, _) = tokio::sync::mpsc::channel(100);
@@ -557,7 +556,7 @@ mod test {
     #[tokio::test]
     async fn logger_create_entries_from_lowest() {
         // GIVEN
-        let mut test_logger = Logger::new(InMemoryAof::default());
+        let mut test_logger = Logger::new(InMemoryWAL::default());
 
         let test_logs = vec![
             write_operation_create_helper(1, "foo", "bar"),
@@ -586,7 +585,7 @@ mod test {
     #[tokio::test]
     async fn generate_follower_entries() {
         // GIVEN
-        let mut test_logger = Logger::new(InMemoryAof::default());
+        let mut test_logger = Logger::new(InMemoryWAL::default());
 
         let mut cluster_actor = cluster_actor_create_helper();
 
@@ -641,7 +640,7 @@ mod test {
     #[tokio::test]
     async fn follower_cluster_actor_replicate_log() {
         // GIVEN
-        let mut test_logger = Logger::new(InMemoryAof::default());
+        let mut test_logger = Logger::new(InMemoryWAL::default());
         let mut cluster_actor = cluster_actor_create_helper();
         // WHEN - term
         let heartbeat = heartbeat_create_helper(
@@ -671,7 +670,7 @@ mod test {
     #[tokio::test]
     async fn follower_cluster_actor_replicate_state() {
         // GIVEN
-        let mut test_logger = Logger::new(InMemoryAof::default());
+        let mut test_logger = Logger::new(InMemoryWAL::default());
         let (cache_handler, mut receiver) = tokio::sync::mpsc::channel(100);
         let mut cluster_actor = cluster_actor_create_helper();
 
@@ -713,7 +712,7 @@ mod test {
     #[tokio::test]
     async fn follower_cluster_actor_replicate_state_only_upto_hwm() {
         // GIVEN
-        let mut test_logger = Logger::new(InMemoryAof::default());
+        let mut test_logger = Logger::new(InMemoryWAL::default());
 
         let mut cluster_actor = cluster_actor_create_helper();
 

@@ -23,13 +23,8 @@ async fn test_replication_info() {
     let info: Vec<&str> = res.split("\r\n").collect();
 
     // THEN
-    assert_eq!(info[1], "role:master");
-    assert_eq!(info[2], "connected_slaves:0");
-    assert!(info[3].starts_with("master_replid:"));
-    assert_eq!(info[4], "master_repl_offset:0");
-    assert_eq!(info[5], "second_repl_offset:-1");
-    assert_eq!(info[6], "repl_backlog_active:0");
-    assert_eq!(info[7], "repl_backlog_size:1048576");
-    assert_eq!(info[8], "repl_backlog_first_byte_offset:0");
-    assert_eq!(info[9], format!("self_identifier:127.0.0.1:{}", env.port));
+    assert_eq!(info[1], "role:leader");
+    assert!(info[2].starts_with("leader_repl_id:"));
+    assert_eq!(info[3], "high_watermark:0");
+    assert_eq!(info[4], format!("self_identifier:127.0.0.1:{}", env.port));
 }

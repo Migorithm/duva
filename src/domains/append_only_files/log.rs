@@ -29,7 +29,7 @@ impl FromStr for LogIndex {
     }
 }
 
-/// Operations that appear in the Append-Only File (AOF).
+/// Operations that appear in the Append-Only File (WAL).
 /// Client request is converted to WriteOperation and then it turns into WriteOp when it gets offset
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum WriteRequest {

@@ -170,14 +170,14 @@ impl<'a> BytesDecoder<'a, DecoderInit> {
 
 impl<'a> BytesDecoder<'a, HeaderReady> {
     pub fn load_metadata(mut self) -> Result<BytesDecoder<'a, MetadataReady>> {
-        let mut metadata = Metadata::default();
+        let mut metadata = Metadata { repl_id: "".to_string().into(), repl_offset: 0 };
         while self.check_indicator(METADATA_SECTION_INDICATOR) {
             let (key, value) = self
                 .try_extract_metadata_key_value()
                 .context("metadata loading: key value extraction failed")?;
 
             match key.as_str() {
-                "repl-id" => metadata.repl_id = value,
+                "repl-id" => metadata.repl_id = value.into(),
                 "repl-offset" => {
                     metadata.repl_offset = value.parse().context("repl-offset parse fail")?
                 },
@@ -638,6 +638,6 @@ fn test_loading_all() {
     }
 
     assert_eq!(rdb_file.checksum, vec![0x60, 0x82, 0x9C, 0xF8, 0xFB, 0x2E, 0x7F, 0xEB]);
-    assert_eq!(rdb_file.metadata.repl_id, "420dd7e324c3a6371b103129cebe6e25a270f9fd");
+    assert_eq!(*rdb_file.metadata.repl_id, "420dd7e324c3a6371b103129cebe6e25a270f9fd");
     assert_eq!(rdb_file.metadata.repl_offset, 8635297);
 }

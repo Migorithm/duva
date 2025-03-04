@@ -4,7 +4,7 @@ use duva::make_smart_pointer;
 use std::io::{BufRead, BufReader, Read};
 use std::net::TcpListener;
 use std::process::{Child, Command, Stdio};
-use std::thread::{self};
+use std::thread::sleep;
 use std::time::{Duration, Instant};
 
 pub struct ServerEnv {
@@ -13,7 +13,7 @@ pub struct ServerEnv {
     pub leader_bind_addr: Option<String>,
     pub hf: u128,
     pub ttl: u128,
-    pub appendonly: bool,
+    pub use_wal: bool,
 }
 
 impl Default for ServerEnv {
@@ -24,7 +24,7 @@ impl Default for ServerEnv {
             leader_bind_addr: None,
             hf: 100,
             ttl: 1500,
-            appendonly: false,
+            use_wal: false,
         }
     }
 }
@@ -71,10 +71,10 @@ impl Drop for FileName {
         if let Some(file_name) = self.0.as_ref() {
             // remove if exists
             let _ = std::fs::remove_file(file_name);
-            let _ = std::fs::remove_file(format!("{}.aof", file_name));
+            let _ = std::fs::remove_file(format!("{}.wal", file_name));
         } else {
             // remove if exists
-            let _ = std::fs::remove_file("dump.rdb.aof");
+            let _ = std::fs::remove_file("dump.rdb.wal");
         }
     }
 }
@@ -87,7 +87,7 @@ pub fn spawn_server_process(env: &ServerEnv) -> TestProcessChild {
         process.process.stdout.as_mut().unwrap(),
         vec![format!("listening peer connection on 127.0.0.1:{}...", env.port + 10000).as_str()],
         1,
-        Some(2000),
+        Some(10000),
     )
     .unwrap();
 
@@ -132,7 +132,7 @@ impl TestProcessChild {
         while start.elapsed() < timeout {
             match self.process.try_wait()? {
                 Some(_) => return Ok(()),
-                None => thread::sleep(Duration::from_millis(100)),
+                None => sleep(Duration::from_millis(100)),
             }
         }
 
@@ -174,8 +174,8 @@ pub fn run_server_process(env: &ServerEnv) -> TestProcessChild {
         &env.hf.to_string(),
         "--ttl",
         &env.ttl.to_string(),
-        "--appendonly",
-        &env.appendonly.to_string(),
+        "--use_wal",
+        &env.use_wal.to_string(),
     ]);
 
     if let Some(replicaof) = env.leader_bind_addr.as_ref() {

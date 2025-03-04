@@ -1,25 +1,21 @@
-//! A local append-only file (AOF) adapter.
-
+use crate::domains::append_only_files::interfaces::TWriteAheadLog;
+use crate::domains::append_only_files::{WriteOperation, WriteRequest};
 use anyhow::Result;
 use bytes::BytesMut;
 use std::path::{Path, PathBuf};
 use tokio::fs::{File, OpenOptions};
 use tokio::io::{AsyncReadExt, AsyncWriteExt, BufReader, BufWriter};
 
-use crate::domains::append_only_files::interfaces::TAof;
-use crate::domains::append_only_files::log::LogIndex;
-use crate::domains::append_only_files::{WriteOperation, WriteRequest};
-
-/// A local append-only file (AOF) implementation.
-pub struct LocalAof {
-    /// The file path where the AOF data is stored.
+/// A local write-ahead-log file (WAL) implementation.
+pub struct LocalWAL {
+    /// The file path where the WAL data is stored.
     path: PathBuf,
 
     /// A buffered writer for the underlying file.
     writer: BufWriter<File>,
 }
 
-impl LocalAof {
+impl LocalWAL {
     /// Creates a new `LocalAof` by opening the specified `path`.
     ///
     /// # Errors
@@ -33,7 +29,7 @@ impl LocalAof {
     }
 }
 
-impl TAof for LocalAof {
+impl TWriteAheadLog for LocalWAL {
     /// Appends a single `WriteOperation` to the file.
     ///
     /// # Errors
@@ -63,7 +59,7 @@ impl TAof for LocalAof {
         todo!()
     }
 
-    /// Replays all existing operations in the AOF, invoking a callback for each.
+    /// Replays all existing operations in the WAL, invoking a callback for each.
     ///
     /// # Errors
     ///
@@ -113,10 +109,10 @@ mod tests {
     #[tokio::test]
     async fn test_new_creates_aof() -> Result<()> {
         let dir = TempDir::new()?;
-        let path = dir.path().join("local.aof");
+        let path = dir.path().join("local.wal");
 
         assert!(!path.exists());
-        assert!(LocalAof::new(&path).await.is_ok());
+        assert!(LocalWAL::new(&path).await.is_ok());
         assert!(path.exists());
 
         Ok(())
@@ -125,14 +121,14 @@ mod tests {
     #[tokio::test]
     async fn test_new_opens_existing_file() -> Result<()> {
         let dir = TempDir::new()?;
-        let path = dir.path().join("local.aof");
+        let path = dir.path().join("local.wal");
 
         assert!(!path.exists());
 
         tokio::fs::File::create(&path).await?;
         assert!(path.exists());
 
-        assert!(LocalAof::new(&path).await.is_ok());
+        assert!(LocalWAL::new(&path).await.is_ok());
         assert!(path.exists());
 
         Ok(())
@@ -141,10 +137,10 @@ mod tests {
     #[tokio::test]
     async fn test_new_fails_if_directory_not_found() -> Result<()> {
         let dir = TempDir::new()?;
-        let path = dir.path().join("invalid/local.aof");
+        let path = dir.path().join("invalid/local.wal");
 
         assert!(!path.exists());
-        assert!(LocalAof::new(&path).await.is_err());
+        assert!(LocalWAL::new(&path).await.is_err());
 
         Ok(())
     }
@@ -152,14 +148,14 @@ mod tests {
     #[tokio::test]
     async fn test_append_stores_to_disk() -> Result<()> {
         let dir = TempDir::new()?;
-        let path = dir.path().join("local.aof");
+        let path = dir.path().join("local.wal");
 
-        let mut aof = LocalAof::new(&path).await?;
+        let mut wal = LocalWAL::new(&path).await?;
 
         let request = WriteRequest::Set { key: "foo".into(), value: "bar".into() };
         let write_op = WriteOperation { request, log_index: 0.into() };
-        aof.append(write_op).await?;
-        drop(aof);
+        wal.append(write_op).await?;
+        drop(wal);
 
         let mut file = tokio::fs::File::open(&path).await?;
         let mut buf = Vec::new();
@@ -173,31 +169,31 @@ mod tests {
     #[tokio::test]
     async fn test_replay_multiple_operations() -> Result<()> {
         let dir = TempDir::new()?;
-        let path = dir.path().join("local.aof");
+        let path = dir.path().join("local.wal");
 
         {
-            let mut aof = LocalAof::new(&path).await?;
-            aof.append(WriteOperation {
+            let mut wal = LocalWAL::new(&path).await?;
+            wal.append(WriteOperation {
                 request: WriteRequest::Set { key: "a".into(), value: "a".into() },
                 log_index: 0.into(),
             })
             .await?;
-            aof.append(WriteOperation {
+            wal.append(WriteOperation {
                 request: WriteRequest::Set { key: "b".into(), value: "b".into() },
                 log_index: 1.into(),
             })
             .await?;
-            aof.append(WriteOperation {
+            wal.append(WriteOperation {
                 request: WriteRequest::Set { key: "c".into(), value: "c".into() },
                 log_index: 2.into(),
             })
             .await?;
         }
 
-        let mut aof = LocalAof::new(&path).await?;
+        let mut wal = LocalWAL::new(&path).await?;
         let mut ops = Vec::new();
 
-        aof.replay(|op| {
+        wal.replay(|op| {
             ops.push(op);
         })
         .await?;
@@ -232,22 +228,22 @@ mod tests {
     #[ignore = "This is desired behavior. However, currently deserialize fails if any part of the file is corrupted."]
     async fn test_replay_partial_data() -> Result<()> {
         let dir = TempDir::new()?;
-        let path = dir.path().join("local.aof");
+        let path = dir.path().join("local.wal");
 
         // Append three ops.
         {
-            let mut aof = LocalAof::new(&path).await?;
-            aof.append(WriteOperation {
+            let mut wal = LocalWAL::new(&path).await?;
+            wal.append(WriteOperation {
                 request: WriteRequest::Set { key: "a".into(), value: "a".into() },
                 log_index: 0.into(),
             })
             .await?;
-            aof.append(WriteOperation {
+            wal.append(WriteOperation {
                 request: WriteRequest::Set { key: "b".into(), value: "b".into() },
                 log_index: 1.into(),
             })
             .await?;
-            aof.append(WriteOperation {
+            wal.append(WriteOperation {
                 request: WriteRequest::Set { key: "c".into(), value: "c".into() },
                 log_index: 2.into(),
             })
@@ -267,11 +263,11 @@ mod tests {
             file.write_all(&data).await?;
         }
 
-        let mut aof = LocalAof::new(&path).await?;
+        let mut wal = LocalWAL::new(&path).await?;
         let mut ops = Vec::new();
 
         assert!(
-            aof.replay(|op| {
+            wal.replay(|op| {
                 ops.push(op);
             })
             .await

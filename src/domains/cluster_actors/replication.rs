@@ -5,48 +5,44 @@ use bytes::Bytes;
 use std::str::FromStr;
 use std::sync::atomic::AtomicBool;
 
-use super::replid_generator::generate_replid;
-
 pub static IS_LEADER_MODE: AtomicBool = AtomicBool::new(true);
 
 #[derive(Debug, Clone)]
 pub struct ReplicationInfo {
-    pub(crate) connected_slaves: u16, // The number of connected replicas
-    pub(crate) leader_repl_id: String, // The replication ID of the master example: 8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb
-    pub(crate) hwm: u64,               // high water mark (commit idx)
-    second_repl_offset: i16,           // -1
-    repl_backlog_active: usize,        // 0
-    repl_backlog_size: usize,          // 1048576
-    repl_backlog_first_byte_offset: usize, // 0
+    pub(crate) leader_repl_id: PeerIdentifier, // The replication ID of the master example: 8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb
+
+    pub(crate) hwm: u64, // high water mark (commit idx)
     role: String,
+
+    pub(crate) self_host: String,
+    pub(crate) self_port: u16,
     //If the instance is a replica, these additional fields are provided:
     pub(crate) leader_host: Option<String>,
     pub(crate) leader_port: Option<u16>,
 
     // * state is shared among peers
     pub(crate) term: u64,
-    pub(crate) self_identifier: PeerIdentifier,
     pub(crate) ban_list: Vec<BannedPeer>,
 }
 
 impl ReplicationInfo {
     pub fn new(replicaof: Option<(String, String)>, self_host: &str, self_port: u16) -> Self {
-        let leader_repl_id = if replicaof.is_none() { generate_replid() } else { "?".to_string() };
+        let leader_repl_id = if replicaof.is_none() {
+            PeerIdentifier::new(self_host, self_port)
+        } else {
+            "?".to_string().into()
+        };
 
         let replication = ReplicationInfo {
-            connected_slaves: 0, // dynamically configurable
             leader_repl_id: leader_repl_id.clone(),
             hwm: 0,
-            second_repl_offset: -1,
-            repl_backlog_active: 0,
-            repl_backlog_size: 1048576,
-            repl_backlog_first_byte_offset: 0,
-            role: if replicaof.is_some() { "slave".to_string() } else { "master".to_string() },
+            role: if replicaof.is_some() { "follower".to_string() } else { "leader".to_string() },
             leader_host: replicaof.as_ref().cloned().map(|(host, _)| host),
             leader_port: replicaof
                 .map(|(_, port)| port.parse().expect("Invalid port number of given")),
             term: 0,
-            self_identifier: PeerIdentifier::new(self_host, self_port),
+            self_host: self_host.to_string(),
+            self_port,
             ban_list: Default::default(),
         };
 
@@ -54,17 +50,16 @@ impl ReplicationInfo {
             .store(replication.leader_port.is_none(), std::sync::atomic::Ordering::Relaxed);
         replication
     }
+
+    fn self_identifier(&self) -> PeerIdentifier {
+        PeerIdentifier::new(&self.self_host, self.self_port)
+    }
     pub fn vectorize(self) -> Vec<String> {
         vec![
             format!("role:{}", self.role),
-            format!("connected_slaves:{}", self.connected_slaves),
-            format!("master_replid:{}", self.leader_repl_id),
-            format!("master_repl_offset:{}", self.hwm),
-            format!("second_repl_offset:{}", self.second_repl_offset),
-            format!("repl_backlog_active:{}", self.repl_backlog_active),
-            format!("repl_backlog_size:{}", self.repl_backlog_size),
-            format!("repl_backlog_first_byte_offset:{}", self.repl_backlog_first_byte_offset),
-            format!("self_identifier:{}", &*self.self_identifier),
+            format!("leader_repl_id:{}", self.leader_repl_id),
+            format!("high_watermark:{}", self.hwm),
+            format!("self_identifier:{}", self.self_identifier()),
         ]
     }
 
@@ -90,7 +85,7 @@ impl ReplicationInfo {
 
     pub fn default_heartbeat(&self, hop_count: u8) -> HeartBeatMessage {
         HeartBeatMessage {
-            heartbeat_from: self.self_identifier.clone(),
+            heartbeat_from: self.self_identifier(),
             term: self.term,
             hwm: self.hwm,
             leader_replid: self.leader_repl_id.clone(),
@@ -129,7 +124,7 @@ pub struct HeartBeatMessage {
     pub(crate) heartbeat_from: PeerIdentifier,
     pub(crate) term: u64,
     pub(crate) hwm: u64,
-    pub(crate) leader_replid: String,
+    pub(crate) leader_replid: PeerIdentifier,
     pub(crate) hop_count: u8, // Decremented on each hop - for gossip
     pub(crate) ban_list: Vec<BannedPeer>,
     pub(crate) append_entries: Vec<WriteOperation>,
@@ -170,7 +165,7 @@ impl Default for HeartBeatMessage {
             heartbeat_from: PeerIdentifier::new("localhost", 8080),
             term: 0,
             hwm: 0,
-            leader_replid: "8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb".to_string(),
+            leader_replid: PeerIdentifier::new("localhost", 8080),
             hop_count: 0,
             ban_list: vec![],
             append_entries: vec![],

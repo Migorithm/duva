@@ -19,7 +19,7 @@ use tokio::sync::mpsc::Sender;
 pub(crate) struct OutboundStream {
     pub(crate) stream: TcpStream,
 
-    pub(crate) repl_id: String,
+    pub(crate) repl_id: PeerIdentifier,
     hwm: u64,
     connected_node_info: Option<ConnectedNodeInfo>,
     connect_to: PeerIdentifier,
@@ -29,7 +29,7 @@ make_smart_pointer!(OutboundStream, TcpStream => stream);
 impl OutboundStream {
     pub(crate) async fn new(
         connect_to: PeerIdentifier,
-        repl_id: String,
+        repl_id: PeerIdentifier,
         hwm: u64,
     ) -> anyhow::Result<Self> {
         Ok(OutboundStream {
@@ -44,7 +44,11 @@ impl OutboundStream {
         // Trigger
         self.write(write_array!("PING")).await?;
         let mut ok_count = 0;
-        let mut connection_info = ConnectedNodeInfo::default();
+        let mut connection_info = ConnectedNodeInfo {
+            repl_id: "".to_string().into(),
+            offset: Default::default(),
+            peer_list: Default::default(),
+        };
 
         loop {
             let res = self.read_values().await?;
@@ -71,7 +75,7 @@ impl OutboundStream {
                         self.write(msg).await?
                     },
                     ConnectionResponse::FULLRESYNC { repl_id, offset } => {
-                        connection_info.repl_id = repl_id;
+                        connection_info.repl_id = repl_id.into();
                         connection_info.offset = offset;
                         println!("[INFO] Three-way handshake completed")
                     },
@@ -90,7 +94,7 @@ impl OutboundStream {
         self,
         cluster_manager: &ClusterConnectionManager,
     ) -> anyhow::Result<Self> {
-        if self.repl_id == "?" {
+        if *self.repl_id == "?" {
             let connected_node_info = self
                 .connected_node_info
                 .as_ref()
@@ -118,23 +122,17 @@ impl OutboundStream {
             connection_info.offset,
         );
 
-        let peer = Peer::create(
-            self.stream,
-            kind.clone(),
-            self.connect_to.clone(),
-            cluster_actor_handler,
-            snapshot_applier,
-        );
+        let peer = Peer::create(self.stream, kind.clone(), cluster_actor_handler, snapshot_applier);
 
         Ok((ClusterCommand::AddPeer(AddPeer { peer_id: self.connect_to, peer }), connection_info))
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub(crate) struct ConnectedNodeInfo {
     // TODO repl_id here is the leader_replid from connected server.
     // TODO Set repl_id if given server's repl_id is "?" otherwise, it means that now it's connected to peer.
-    pub(crate) repl_id: String,
+    pub(crate) repl_id: PeerIdentifier,
     pub(crate) offset: u64,
     pub(crate) peer_list: Vec<String>,
 }

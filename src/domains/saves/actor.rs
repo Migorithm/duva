@@ -7,8 +7,8 @@ use super::{
         encode_metadata,
     },
 };
-use crate::domains::saves::snapshot::snapshot::Metadata;
 use crate::domains::{IoError, caches::cache_objects::CacheEntry};
+use crate::domains::{peers::identifier::PeerIdentifier, saves::snapshot::snapshot::Metadata};
 use tokio::io::AsyncWriteExt;
 
 pub struct SaveActor {
@@ -20,7 +20,7 @@ impl SaveActor {
     pub async fn new(
         target: SaveTarget,
         num_of_shards: usize,
-        repl_id: String,
+        repl_id: PeerIdentifier,
         current_offset: u64,
     ) -> anyhow::Result<Self> {
         let meta = SaveMeta::new(num_of_shards, repl_id, current_offset);
@@ -112,12 +112,12 @@ pub struct SaveMeta {
     pub(crate) total_expires_table_size: usize,
     pub(crate) chunk_queue: VecDeque<Vec<CacheEntry>>,
     pub(crate) num_of_cache_actors: usize,
-    pub(crate) repl_id: String,
+    pub(crate) repl_id: PeerIdentifier,
     pub(crate) offset: u64,
 }
 
 impl SaveMeta {
-    pub fn new(num_of_cache_actors: usize, repl_id: String, offset: u64) -> Self {
+    pub fn new(num_of_cache_actors: usize, repl_id: PeerIdentifier, offset: u64) -> Self {
         Self {
             num_of_saved_table_size_actor: num_of_cache_actors,
             total_key_value_table_size: 0,

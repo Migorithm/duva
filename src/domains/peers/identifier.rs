@@ -1,7 +1,9 @@
+use bytes::Bytes;
+
 use crate::{from_to, make_smart_pointer};
 use std::str::FromStr;
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Hash)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Hash, Default)]
 pub struct PeerIdentifier(pub String);
 impl PeerIdentifier {
     pub fn new(host: &str, port: u16) -> Self {
@@ -22,6 +24,17 @@ impl FromStr for PeerIdentifier {
     type Err = std::io::Error;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         Ok(Self(s.to_string()))
+    }
+}
+impl From<&str> for PeerIdentifier {
+    fn from(s: &str) -> Self {
+        Self(s.to_string())
+    }
+}
+
+impl From<PeerIdentifier> for Bytes {
+    fn from(peer: PeerIdentifier) -> Self {
+        Bytes::from(peer.0)
     }
 }
 
@@ -55,13 +68,6 @@ impl std::fmt::Display for PeerIdentifier {
                 })
                 .unwrap()
         )
-    }
-}
-
-#[cfg(test)]
-impl Default for PeerIdentifier {
-    fn default() -> Self {
-        Self("localhost:6379".to_string())
     }
 }
 

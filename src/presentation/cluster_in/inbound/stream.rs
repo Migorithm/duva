@@ -23,16 +23,16 @@ use tokio::sync::mpsc::Sender;
 pub(crate) struct InboundStream {
     pub(crate) stream: TcpStream,
     pub(crate) self_offset: u64,
-    pub(crate) self_repl_id: String,
+    pub(crate) self_repl_id: PeerIdentifier,
     pub(crate) inbound_peer_addr: Option<PeerIdentifier>,
-    pub(crate) inbound_leader_replid: Option<String>,
+    pub(crate) inbound_leader_replid: Option<PeerIdentifier>,
     pub(crate) inbound_peer_offset: u64,
 }
 
 make_smart_pointer!(InboundStream, TcpStream => stream);
 
 impl InboundStream {
-    pub(crate) fn new(stream: TcpStream, repl_id: String, current_offset: u64) -> Self {
+    pub(crate) fn new(stream: TcpStream, repl_id: PeerIdentifier, current_offset: u64) -> Self {
         Self {
             stream,
             inbound_peer_addr: None,
@@ -53,8 +53,8 @@ impl InboundStream {
         // TODO check repl_id is '?' or of mine. If not, consider incoming as peer
         let (repl_id, inbound_peer_offset) = self.recv_psync().await?;
 
-        self.inbound_peer_addr = Some(format!("{}:{}", self.get_peer_ip()?, port).into());
-        self.inbound_leader_replid = Some(repl_id);
+        self.inbound_peer_addr = Some(PeerIdentifier::new(&self.get_peer_ip()?, port));
+        self.inbound_leader_replid = Some(repl_id.into());
         self.inbound_peer_offset = inbound_peer_offset;
 
         Ok(())
@@ -131,13 +131,7 @@ impl InboundStream {
     ) -> anyhow::Result<ClusterCommand> {
         let kind = self.peer_kind()?;
         let peer_id = self.inbound_peer_addr.context("No peer addr")?;
-        let peer = Peer::create(
-            self.stream,
-            kind.clone(),
-            peer_id.clone(),
-            cluster_actor_handler,
-            snapshot_applier,
-        );
+        let peer = Peer::create(self.stream, kind.clone(), cluster_actor_handler, snapshot_applier);
         Ok(ClusterCommand::AddPeer(AddPeer { peer_id, peer }))
     }
 

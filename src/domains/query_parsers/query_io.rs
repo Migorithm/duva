@@ -475,7 +475,7 @@ fn test_from_bytes_to_peer_state() {
     assert_eq!(peer_state.term, 245);
     assert_eq!(peer_state.hwm, 1234329);
 
-    assert_eq!(peer_state.leader_replid, "abcd");
+    assert_eq!(*peer_state.leader_replid, "abcd");
     assert_eq!(peer_state.hop_count, 2);
     assert!(peer_state.ban_list.is_empty())
 }
@@ -486,7 +486,7 @@ fn test_from_heartbeat_to_bytes() {
     let peer_state = HeartBeatMessage {
         term: 1,
         hwm: 2,
-        leader_replid: "your_master_repl".into(),
+        leader_replid: "localhost:3329".into(),
         hop_count: 2,
         heartbeat_from: "127.0.0.1:49152".to_string().into(),
         ban_list: Default::default(),
@@ -506,7 +506,7 @@ fn test_from_heartbeat_to_bytes() {
     let peer_state_serialized = peer_state_serialized.serialize();
     //THEN
     assert_eq!(
-        "^\r\n$1\r\n1\r\n$1\r\n2\r\n$16\r\nyour_master_repl\r\n$1\r\n2\r\n$15\r\n127.0.0.1:49152\r\n*0\r\n*2\r\n#\r\n$1\r\n1\r\n*3\r\n$3\r\nSET\r\n$3\r\nfoo\r\n$3\r\nbar\r\n#\r\n$1\r\n2\r\n*3\r\n$3\r\nSET\r\n$3\r\npoo\r\n$3\r\nbar\r\n",
+        "^\r\n$1\r\n1\r\n$1\r\n2\r\n$14\r\n127.0.0.1:3329\r\n$1\r\n2\r\n$15\r\n127.0.0.1:49152\r\n*0\r\n*2\r\n#\r\n$1\r\n1\r\n*3\r\n$3\r\nSET\r\n$3\r\nfoo\r\n$3\r\nbar\r\n#\r\n$1\r\n2\r\n*3\r\n$3\r\nSET\r\n$3\r\npoo\r\n$3\r\nbar\r\n",
         peer_state_serialized
     );
 
@@ -514,7 +514,7 @@ fn test_from_heartbeat_to_bytes() {
     let peer_state = HeartBeatMessage {
         term: 5,
         hwm: 3232,
-        leader_replid: "your_master_repl2".into(),
+        leader_replid: "localhost:23399".into(),
         hop_count: 40,
         heartbeat_from: "127.0.0.1:49159".to_string().into(),
         ban_list: Default::default(),
@@ -525,7 +525,7 @@ fn test_from_heartbeat_to_bytes() {
     let peer_state_serialized = peer_state_serialized.serialize();
     //THEN
     assert_eq!(
-        "^\r\n$1\r\n5\r\n$4\r\n3232\r\n$17\r\nyour_master_repl2\r\n$2\r\n40\r\n$15\r\n127.0.0.1:49159\r\n*0\r\n*0\r\n",
+        "^\r\n$1\r\n5\r\n$4\r\n3232\r\n$15\r\n127.0.0.1:23399\r\n$2\r\n40\r\n$15\r\n127.0.0.1:49159\r\n*0\r\n*0\r\n",
         peer_state_serialized
     );
 }
@@ -546,7 +546,7 @@ fn test_peer_state_ban_list_to_binary() {
 
     //THEN
     let expected = format!(
-        "^\r\n$1\r\n0\r\n$1\r\n0\r\n$40\r\n{}\r\n$1\r\n1\r\n$14\r\n127.0.0.1:6380\r\n*1\r\n$25\r\n127.0.0.1:6739-{}\r\n*0\r\n",
+        "^\r\n$1\r\n0\r\n$1\r\n0\r\n$14\r\n{}\r\n$1\r\n1\r\n$14\r\n127.0.0.1:6380\r\n*1\r\n$25\r\n127.0.0.1:6739-{}\r\n*0\r\n",
         replication.leader_repl_id, ban_time
     );
     assert_eq!(expected, peer_state_serialized);
