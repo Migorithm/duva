@@ -9,18 +9,19 @@ pub static IS_LEADER_MODE: AtomicBool = AtomicBool::new(true);
 
 #[derive(Debug, Clone)]
 pub struct ReplicationInfo {
-    pub(crate) connected_followers: u16, // The number of connected replicas
     pub(crate) leader_repl_id: String, // The replication ID of the master example: 8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb
     pub(crate) hwm: u64,               // high water mark (commit idx)
-
     role: String,
+
+    pub(crate) self_host: String,
+    pub(crate) self_port: u16,
     //If the instance is a replica, these additional fields are provided:
     pub(crate) leader_host: Option<String>,
     pub(crate) leader_port: Option<u16>,
 
     // * state is shared among peers
     pub(crate) term: u64,
-    pub(crate) self_identifier: PeerIdentifier,
+
     pub(crate) ban_list: Vec<BannedPeer>,
 }
 
@@ -30,7 +31,6 @@ impl ReplicationInfo {
             if replicaof.is_none() { uuid::Uuid::now_v7().to_string() } else { "?".to_string() };
 
         let replication = ReplicationInfo {
-            connected_followers: 0, // dynamically configurable
             leader_repl_id: leader_repl_id.clone(),
             hwm: 0,
             role: if replicaof.is_some() { "follower".to_string() } else { "leader".to_string() },
@@ -38,7 +38,8 @@ impl ReplicationInfo {
             leader_port: replicaof
                 .map(|(_, port)| port.parse().expect("Invalid port number of given")),
             term: 0,
-            self_identifier: PeerIdentifier::new(self_host, self_port),
+            self_host: self_host.to_string(),
+            self_port,
             ban_list: Default::default(),
         };
 
@@ -46,13 +47,16 @@ impl ReplicationInfo {
             .store(replication.leader_port.is_none(), std::sync::atomic::Ordering::Relaxed);
         replication
     }
+
+    fn self_identifier(&self) -> PeerIdentifier {
+        PeerIdentifier::new(&self.self_host, self.self_port)
+    }
     pub fn vectorize(self) -> Vec<String> {
         vec![
             format!("role:{}", self.role),
-            format!("connected_followers:{}", self.connected_followers),
             format!("leader_repl_id:{}", self.leader_repl_id),
             format!("high_watermark:{}", self.hwm),
-            format!("self_identifier:{}", &*self.self_identifier),
+            format!("self_identifier:{}", self.self_identifier()),
         ]
     }
 
@@ -78,7 +82,7 @@ impl ReplicationInfo {
 
     pub fn default_heartbeat(&self, hop_count: u8) -> HeartBeatMessage {
         HeartBeatMessage {
-            heartbeat_from: self.self_identifier.clone(),
+            heartbeat_from: self.self_identifier(),
             term: self.term,
             hwm: self.hwm,
             leader_replid: self.leader_repl_id.clone(),

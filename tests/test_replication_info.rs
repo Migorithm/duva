@@ -24,8 +24,7 @@ async fn test_replication_info() {
 
     // THEN
     assert_eq!(info[1], "role:leader");
-    assert_eq!(info[2], "connected_followers:0");
-    assert!(info[3].starts_with("leader_repl_id:"));
-    assert_eq!(info[4], "high_watermark:0");
-    assert_eq!(info[5], format!("self_identifier:127.0.0.1:{}", env.port));
+    assert!(info[2].starts_with("leader_repl_id:"));
+    assert_eq!(info[3], "high_watermark:0");
+    assert_eq!(info[4], format!("self_identifier:127.0.0.1:{}", env.port));
 }
