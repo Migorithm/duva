@@ -1,6 +1,6 @@
 use duva::{
     Environment, StartUpFacade,
-    adapters::aof::{local_aof::LocalAof, memory_aof::InMemoryAof},
+    adapters::wal::{local_wal::LocalAof, memory_aof::InMemoryAof},
     domains::config_actors::{actor::ConfigActor, config_manager::ConfigManager},
 };
 

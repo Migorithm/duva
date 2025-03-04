@@ -339,7 +339,7 @@ mod test {
 
     use super::*;
     use crate::{
-        adapters::aof::memory_aof::InMemoryAof,
+        adapters::wal::memory_wal::InMemoryAof,
         domains::{
             append_only_files::{WriteOperation, WriteRequest},
             caches::{actor::CacheCommandSender, cache_objects::CacheEntry, command::CacheCommand},
