@@ -184,18 +184,18 @@ impl ClusterActor {
     }
 
     pub(crate) fn leader_mut(&mut self) -> Option<&mut Peer> {
-        self.members.values_mut().find(|peer| matches!(peer.w_conn.kind, PeerKind::Leader))
+        self.members.values_mut().find(|peer| matches!(peer.kind, PeerKind::Leader))
     }
 
     pub(crate) fn followers(&self) -> impl Iterator<Item = (&PeerIdentifier, &Peer, u64)> {
-        self.members.iter().filter_map(|(id, peer)| match peer.w_conn.kind {
+        self.members.iter().filter_map(|(id, peer)| match peer.kind {
             PeerKind::Follower(current_commit) => Some((id, peer, current_commit)),
             _ => None,
         })
     }
 
     pub(crate) fn followers_mut(&mut self) -> impl Iterator<Item = (&mut Peer, u64)> {
-        self.members.values_mut().into_iter().filter_map(|peer| match peer.w_conn.kind {
+        self.members.values_mut().into_iter().filter_map(|peer| match peer.kind {
             PeerKind::Follower(current_commit) => Some((peer, current_commit)),
             _ => None,
         })
@@ -218,7 +218,7 @@ impl ClusterActor {
         self.members
             .values()
             .into_iter()
-            .filter_map(|peer| match peer.w_conn.kind {
+            .filter_map(|peer| match peer.kind {
                 PeerKind::Follower(current_commit) => Some(current_commit),
                 _ => None,
             })
