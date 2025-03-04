@@ -1,7 +1,7 @@
 use crate::{from_to, make_smart_pointer};
 use std::str::FromStr;
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Hash, Default)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Hash)]
 pub struct PeerIdentifier(pub String);
 impl PeerIdentifier {
     pub fn new(host: &str, port: u16) -> Self {
@@ -55,6 +55,13 @@ impl std::fmt::Display for PeerIdentifier {
                 })
                 .unwrap()
         )
+    }
+}
+
+#[cfg(test)]
+impl Default for PeerIdentifier {
+    fn default() -> Self {
+        Self("localhost:6379".to_string())
     }
 }
 

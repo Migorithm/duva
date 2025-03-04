@@ -8,7 +8,7 @@ use crate::{
     },
 };
 use bytes::Bytes;
-use std::{sync::atomic::AtomicI16, time::Duration};
+use std::time::Duration;
 
 impl TListen for ClusterListener<Leader> {
     async fn listen(mut self, rx: ReactorKillSwitch) -> OwnedReadHalf {
@@ -22,7 +22,7 @@ impl TListen for ClusterListener<Leader> {
 }
 
 #[cfg(test)]
-static ATOMIC: AtomicI16 = AtomicI16::new(0);
+static ATOMIC: std::sync::atomic::AtomicI16 = std::sync::atomic::AtomicI16::new(0);
 
 impl ClusterListener<Leader> {
     async fn listen_leader(&mut self) {
