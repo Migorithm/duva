@@ -86,7 +86,6 @@ dependencies = [
  "tempfile",
  "thiserror",
  "tokio",
- "uuid",
 ]
 
 [[package]]
@@ -524,15 +523,6 @@ name = "unicode-ident"
 version = "1.0.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3354b9ac3fae1ff6755cb6db53683adb661634f67557942dea4facebec0fee4b"
-
-[[package]]
-name = "uuid"
-version = "1.15.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e0f540e3240398cce6128b64ba83fdbdd86129c16a3aa1a3a252efd66eb3d587"
-dependencies = [
- "getrandom",
-]
 
 [[package]]
 name = "wasi"

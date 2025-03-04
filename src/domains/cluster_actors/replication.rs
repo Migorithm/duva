@@ -9,8 +9,9 @@ pub static IS_LEADER_MODE: AtomicBool = AtomicBool::new(true);
 
 #[derive(Debug, Clone)]
 pub struct ReplicationInfo {
-    pub(crate) leader_repl_id: String, // The replication ID of the master example: 8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb
-    pub(crate) hwm: u64,               // high water mark (commit idx)
+    pub(crate) leader_repl_id: PeerIdentifier, // The replication ID of the master example: 8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb
+
+    pub(crate) hwm: u64, // high water mark (commit idx)
     role: String,
 
     pub(crate) self_host: String,
@@ -26,8 +27,11 @@ pub struct ReplicationInfo {
 
 impl ReplicationInfo {
     pub fn new(replicaof: Option<(String, String)>, self_host: &str, self_port: u16) -> Self {
-        let leader_repl_id =
-            if replicaof.is_none() { uuid::Uuid::now_v7().to_string() } else { "?".to_string() };
+        let leader_repl_id = if replicaof.is_none() {
+            PeerIdentifier::new(self_host, self_port)
+        } else {
+            "?".to_string().into()
+        };
 
         let replication = ReplicationInfo {
             leader_repl_id: leader_repl_id.clone(),
@@ -120,7 +124,7 @@ pub struct HeartBeatMessage {
     pub(crate) heartbeat_from: PeerIdentifier,
     pub(crate) term: u64,
     pub(crate) hwm: u64,
-    pub(crate) leader_replid: String,
+    pub(crate) leader_replid: PeerIdentifier,
     pub(crate) hop_count: u8, // Decremented on each hop - for gossip
     pub(crate) ban_list: Vec<BannedPeer>,
     pub(crate) append_entries: Vec<WriteOperation>,
@@ -161,7 +165,7 @@ impl Default for HeartBeatMessage {
             heartbeat_from: PeerIdentifier::new("localhost", 8080),
             term: 0,
             hwm: 0,
-            leader_replid: "8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb".to_string(),
+            leader_replid: PeerIdentifier::new("localhost", 8080),
             hop_count: 0,
             ban_list: vec![],
             append_entries: vec![],

@@ -84,7 +84,7 @@ impl ClusterActor {
         None
     }
 
-    pub fn set_replication_info(&mut self, leader_repl_id: String, hwm: u64) {
+    pub fn set_replication_info(&mut self, leader_repl_id: PeerIdentifier, hwm: u64) {
         self.replication.leader_repl_id = leader_repl_id;
         self.replication.hwm = hwm;
     }
@@ -370,7 +370,7 @@ mod test {
             append_entries: op_logs,
             ban_list: vec![],
             heartbeat_from: PeerIdentifier::new("localhost", 8080),
-            leader_replid: "localhost".to_string(),
+            leader_replid: "localhost".to_string().into(),
             hop_count: 0,
         }
     }
