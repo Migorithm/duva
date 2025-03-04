@@ -5,8 +5,6 @@ use bytes::Bytes;
 use std::str::FromStr;
 use std::sync::atomic::AtomicBool;
 
-use super::replid_generator::generate_replid;
-
 pub static IS_LEADER_MODE: AtomicBool = AtomicBool::new(true);
 
 #[derive(Debug, Clone)]
@@ -31,7 +29,8 @@ pub struct ReplicationInfo {
 
 impl ReplicationInfo {
     pub fn new(replicaof: Option<(String, String)>, self_host: &str, self_port: u16) -> Self {
-        let leader_repl_id = if replicaof.is_none() { generate_replid() } else { "?".to_string() };
+        let leader_repl_id =
+            if replicaof.is_none() { uuid::Uuid::now_v7().to_string() } else { "?".to_string() };
 
         let replication = ReplicationInfo {
             connected_followers: 0, // dynamically configurable

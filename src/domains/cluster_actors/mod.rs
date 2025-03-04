@@ -15,6 +15,6 @@ pub mod commands;
 
 pub mod consensus;
 pub mod replication;
-mod replid_generator;
+
 pub const FANOUT: usize = 2;
 pub use actor::ClusterActor;
