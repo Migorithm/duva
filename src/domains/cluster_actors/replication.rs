@@ -11,7 +11,7 @@ pub static IS_LEADER_MODE: AtomicBool = AtomicBool::new(true);
 
 #[derive(Debug, Clone)]
 pub struct ReplicationInfo {
-    pub(crate) connected_slaves: u16, // The number of connected replicas
+    pub(crate) connected_followers: u16, // The number of connected replicas
     pub(crate) leader_repl_id: String, // The replication ID of the master example: 8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb
     pub(crate) hwm: u64,               // high water mark (commit idx)
     second_repl_offset: i16,           // -1
@@ -34,14 +34,14 @@ impl ReplicationInfo {
         let leader_repl_id = if replicaof.is_none() { generate_replid() } else { "?".to_string() };
 
         let replication = ReplicationInfo {
-            connected_slaves: 0, // dynamically configurable
+            connected_followers: 0, // dynamically configurable
             leader_repl_id: leader_repl_id.clone(),
             hwm: 0,
             second_repl_offset: -1,
             repl_backlog_active: 0,
             repl_backlog_size: 1048576,
             repl_backlog_first_byte_offset: 0,
-            role: if replicaof.is_some() { "slave".to_string() } else { "master".to_string() },
+            role: if replicaof.is_some() { "follower".to_string() } else { "leader".to_string() },
             leader_host: replicaof.as_ref().cloned().map(|(host, _)| host),
             leader_port: replicaof
                 .map(|(_, port)| port.parse().expect("Invalid port number of given")),
@@ -57,9 +57,9 @@ impl ReplicationInfo {
     pub fn vectorize(self) -> Vec<String> {
         vec![
             format!("role:{}", self.role),
-            format!("connected_slaves:{}", self.connected_slaves),
-            format!("master_replid:{}", self.leader_repl_id),
-            format!("master_repl_offset:{}", self.hwm),
+            format!("connected_followers:{}", self.connected_followers),
+            format!("leader_repl_id:{}", self.leader_repl_id),
+            format!("high_watermark:{}", self.hwm),
             format!("second_repl_offset:{}", self.second_repl_offset),
             format!("repl_backlog_active:{}", self.repl_backlog_active),
             format!("repl_backlog_size:{}", self.repl_backlog_size),
