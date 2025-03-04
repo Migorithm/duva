@@ -27,9 +27,5 @@ async fn test_replication_info() {
     assert_eq!(info[2], "connected_followers:0");
     assert!(info[3].starts_with("leader_repl_id:"));
     assert_eq!(info[4], "high_watermark:0");
-    assert_eq!(info[5], "second_repl_offset:-1");
-    assert_eq!(info[6], "repl_backlog_active:0");
-    assert_eq!(info[7], "repl_backlog_size:1048576");
-    assert_eq!(info[8], "repl_backlog_first_byte_offset:0");
-    assert_eq!(info[9], format!("self_identifier:127.0.0.1:{}", env.port));
+    assert_eq!(info[5], format!("self_identifier:127.0.0.1:{}", env.port));
 }

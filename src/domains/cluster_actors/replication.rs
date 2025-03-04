@@ -12,10 +12,7 @@ pub struct ReplicationInfo {
     pub(crate) connected_followers: u16, // The number of connected replicas
     pub(crate) leader_repl_id: String, // The replication ID of the master example: 8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb
     pub(crate) hwm: u64,               // high water mark (commit idx)
-    second_repl_offset: i16,           // -1
-    repl_backlog_active: usize,        // 0
-    repl_backlog_size: usize,          // 1048576
-    repl_backlog_first_byte_offset: usize, // 0
+
     role: String,
     //If the instance is a replica, these additional fields are provided:
     pub(crate) leader_host: Option<String>,
@@ -36,10 +33,6 @@ impl ReplicationInfo {
             connected_followers: 0, // dynamically configurable
             leader_repl_id: leader_repl_id.clone(),
             hwm: 0,
-            second_repl_offset: -1,
-            repl_backlog_active: 0,
-            repl_backlog_size: 1048576,
-            repl_backlog_first_byte_offset: 0,
             role: if replicaof.is_some() { "follower".to_string() } else { "leader".to_string() },
             leader_host: replicaof.as_ref().cloned().map(|(host, _)| host),
             leader_port: replicaof
@@ -59,10 +52,6 @@ impl ReplicationInfo {
             format!("connected_followers:{}", self.connected_followers),
             format!("leader_repl_id:{}", self.leader_repl_id),
             format!("high_watermark:{}", self.hwm),
-            format!("second_repl_offset:{}", self.second_repl_offset),
-            format!("repl_backlog_active:{}", self.repl_backlog_active),
-            format!("repl_backlog_size:{}", self.repl_backlog_size),
-            format!("repl_backlog_first_byte_offset:{}", self.repl_backlog_first_byte_offset),
             format!("self_identifier:{}", &*self.self_identifier),
         ]
     }
