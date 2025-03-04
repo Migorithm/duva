@@ -58,6 +58,13 @@ impl std::fmt::Display for PeerIdentifier {
     }
 }
 
+#[cfg(test)]
+impl Default for PeerIdentifier {
+    fn default() -> Self {
+        Self("localhost:6379".to_string())
+    }
+}
+
 #[test]
 fn test_peer_identifier() {
     let peer = PeerIdentifier::new("localhost", 6379);

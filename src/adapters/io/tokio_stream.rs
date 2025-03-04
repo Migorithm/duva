@@ -27,9 +27,16 @@ impl<T: AsyncReadExt + std::marker::Unpin + Sync + Send> TRead for T {
         loop {
             let bytes_read = self.read(&mut temp_buffer).await?;
 
-            // If no bytes are read, it suggests that the no more data will be received for this message.
             if bytes_read == 0 {
-                break;
+                // read 0 bytes AND buffer is empty - connection closed
+                if buffer.len() == 0 {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::ConnectionAborted,
+                        "Connection closed by peer",
+                    ));
+                }
+                // read 0 bytes but buffer is not empty - end of message
+                return Ok(());
             }
 
             // Extend the buffer with the newly read data

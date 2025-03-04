@@ -11,7 +11,7 @@ use crate::domains::{
     query_parsers::QueryIO,
 };
 use std::time::Duration;
-use tokio::time::interval;
+use tokio::{select, time::interval};
 
 #[derive(Debug)]
 pub struct ClusterActor {
@@ -21,7 +21,7 @@ pub struct ClusterActor {
     pub(crate) consensus_tracker: ConsensusTracker,
     pub(crate) receiver: tokio::sync::mpsc::Receiver<ClusterCommand>,
     pub(crate) self_handler: tokio::sync::mpsc::Sender<ClusterCommand>,
-    leader_mode_heartbeat_sender: Option<tokio::task::JoinHandle<()>>,
+    leader_mode_heartbeat_sender: Option<tokio::sync::oneshot::Sender<()>>,
     // TODO notifier will be used when election process is implemented?
     notifier: tokio::sync::watch::Sender<bool>,
 }
@@ -312,13 +312,22 @@ impl ClusterActor {
         }
         let actor_handler = self.self_handler.clone();
 
-        self.leader_mode_heartbeat_sender = Some(tokio::spawn(async move {
-            let mut heartbeat_interval = interval(Duration::from_millis(LEADER_HEARTBEAT_INTERVAL));
-            loop {
-                heartbeat_interval.tick().await;
-                let _ = actor_handler.send(ClusterCommand::SendLeaderHeartBeat).await;
+        let (tx, rx) = tokio::sync::oneshot::channel::<()>();
+
+        tokio::spawn(async move {
+            select! {
+                _ = rx => {},
+                _ = async {
+                    let mut heartbeat_interval = interval(Duration::from_millis(LEADER_HEARTBEAT_INTERVAL));
+                    loop {
+                        heartbeat_interval.tick().await;
+                        let _ = actor_handler.send(ClusterCommand::SendLeaderHeartBeat).await;
+                    }
+                } => {},
             }
-        }));
+        });
+
+        self.leader_mode_heartbeat_sender = Some(tx);
     }
 }
 
