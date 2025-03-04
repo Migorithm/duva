@@ -4,11 +4,11 @@ use crate::domains::append_only_files::interfaces::TAof;
 use anyhow::Result;
 
 #[derive(Default)]
-pub struct InMemoryAof {
+pub struct InMemoryWAL {
     writer: Vec<WriteOperation>,
 }
 
-impl TAof for InMemoryAof {
+impl TAof for InMemoryWAL {
     async fn append(&mut self, op: WriteOperation) -> Result<()> {
         self.writer.push(op);
         Ok(())

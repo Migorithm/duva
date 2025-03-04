@@ -339,7 +339,7 @@ mod test {
 
     use super::*;
     use crate::{
-        adapters::wal::memory_wal::InMemoryAof,
+        adapters::wal::memory_wal::InMemoryWAL,
         domains::{
             append_only_files::{WriteOperation, WriteRequest},
             caches::{actor::CacheCommandSender, cache_objects::CacheEntry, command::CacheCommand},
@@ -465,7 +465,7 @@ mod test {
     #[tokio::test]
     async fn leader_consensus_tracker_not_changed_when_followers_not_exist() {
         // GIVEN
-        let mut test_logger = Logger::new(InMemoryAof::default());
+        let mut test_logger = Logger::new(InMemoryWAL::default());
         let mut cluster_actor = cluster_actor_create_helper();
         let (tx, rx) = tokio::sync::oneshot::channel();
 
@@ -487,7 +487,7 @@ mod test {
     #[tokio::test]
     async fn req_consensus_inserts_consensus_voting() {
         // GIVEN
-        let mut test_logger = Logger::new(InMemoryAof::default());
+        let mut test_logger = Logger::new(InMemoryWAL::default());
 
         let mut cluster_actor = cluster_actor_create_helper();
 
@@ -518,7 +518,7 @@ mod test {
     #[tokio::test]
     async fn apply_acks_delete_consensus_voting_when_consensus_reached() {
         // GIVEN
-        let mut test_logger = Logger::new(InMemoryAof::default());
+        let mut test_logger = Logger::new(InMemoryWAL::default());
         let mut cluster_actor = cluster_actor_create_helper();
 
         let (cluster_sender, _) = tokio::sync::mpsc::channel(100);
@@ -556,7 +556,7 @@ mod test {
     #[tokio::test]
     async fn logger_create_entries_from_lowest() {
         // GIVEN
-        let mut test_logger = Logger::new(InMemoryAof::default());
+        let mut test_logger = Logger::new(InMemoryWAL::default());
 
         let test_logs = vec![
             write_operation_create_helper(1, "foo", "bar"),
@@ -585,7 +585,7 @@ mod test {
     #[tokio::test]
     async fn generate_follower_entries() {
         // GIVEN
-        let mut test_logger = Logger::new(InMemoryAof::default());
+        let mut test_logger = Logger::new(InMemoryWAL::default());
 
         let mut cluster_actor = cluster_actor_create_helper();
 
@@ -640,7 +640,7 @@ mod test {
     #[tokio::test]
     async fn follower_cluster_actor_replicate_log() {
         // GIVEN
-        let mut test_logger = Logger::new(InMemoryAof::default());
+        let mut test_logger = Logger::new(InMemoryWAL::default());
         let mut cluster_actor = cluster_actor_create_helper();
         // WHEN - term
         let heartbeat = heartbeat_create_helper(
@@ -670,7 +670,7 @@ mod test {
     #[tokio::test]
     async fn follower_cluster_actor_replicate_state() {
         // GIVEN
-        let mut test_logger = Logger::new(InMemoryAof::default());
+        let mut test_logger = Logger::new(InMemoryWAL::default());
         let (cache_handler, mut receiver) = tokio::sync::mpsc::channel(100);
         let mut cluster_actor = cluster_actor_create_helper();
 
@@ -712,7 +712,7 @@ mod test {
     #[tokio::test]
     async fn follower_cluster_actor_replicate_state_only_upto_hwm() {
         // GIVEN
-        let mut test_logger = Logger::new(InMemoryAof::default());
+        let mut test_logger = Logger::new(InMemoryWAL::default());
 
         let mut cluster_actor = cluster_actor_create_helper();
 
