@@ -101,8 +101,7 @@ mod tests {
     use super::*;
     use crate::{
         domains::{
-            caches::cache_manager::CacheManager,
-            peers::{connected_types::ReadConnected, identifier::PeerIdentifier},
+            caches::cache_manager::CacheManager, peers::connected_types::ReadConnected,
             saves::snapshot::snapshot_applier::SnapshotApplier,
         },
         services::interface::TWrite,
@@ -134,7 +133,7 @@ mod tests {
         let mut listener = ClusterListener {
             read_connected: ReadConnected::<Leader>::new(server_read),
             cluster_handler: cluster_tx,
-            self_id: PeerIdentifier::new("localhost", 1),
+
             snapshot_applier: SnapshotApplier::new(
                 CacheManager { inboxes: vec![] },
                 SystemTime::now(),

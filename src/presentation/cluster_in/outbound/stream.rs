@@ -118,13 +118,7 @@ impl OutboundStream {
             connection_info.offset,
         );
 
-        let peer = Peer::create(
-            self.stream,
-            kind.clone(),
-            self.connect_to.clone(),
-            cluster_actor_handler,
-            snapshot_applier,
-        );
+        let peer = Peer::create(self.stream, kind.clone(), cluster_actor_handler, snapshot_applier);
 
         Ok((ClusterCommand::AddPeer(AddPeer { peer_id: self.connect_to, peer }), connection_info))
     }

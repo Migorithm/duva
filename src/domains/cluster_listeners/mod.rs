@@ -1,7 +1,7 @@
 pub mod interfaces;
 use super::{
     cluster_actors::{commands::ClusterCommand, replication::HeartBeatMessage},
-    peers::{connected_types::ReadConnected, identifier::PeerIdentifier},
+    peers::connected_types::ReadConnected,
     query_parsers::QueryIO,
     saves::snapshot::snapshot_applier::SnapshotApplier,
 };
@@ -15,7 +15,6 @@ pub(crate) type ReactorKillSwitch = tokio::sync::oneshot::Receiver<()>;
 pub(crate) struct ClusterListener<T> {
     pub(crate) read_connected: ReadConnected<T>,
     pub(crate) cluster_handler: Sender<ClusterCommand>,
-    pub(crate) self_id: PeerIdentifier,
     pub(crate) snapshot_applier: SnapshotApplier,
 }
 
@@ -23,10 +22,9 @@ impl<T> ClusterListener<T> {
     pub fn new(
         read_connected: ReadConnected<T>,
         cluster_handler: Sender<ClusterCommand>,
-        self_id: PeerIdentifier,
         snapshot_applier: SnapshotApplier,
     ) -> Self {
-        Self { read_connected, cluster_handler, self_id, snapshot_applier }
+        Self { read_connected, cluster_handler, snapshot_applier }
     }
     // Update peer state on cluster manager
     pub(crate) async fn receive_heartbeat(&mut self, state: HeartBeatMessage) {

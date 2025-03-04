@@ -399,7 +399,6 @@ mod test {
                     TcpStream::connect(bind_addr).await.unwrap(),
                     PeerKind::Follower(current_follower_offset),
                     cluster_sender.clone(),
-                    PeerIdentifier::new("localhost", port),
                     SnapshotApplier::new(cache_manager.clone(), SystemTime::now()),
                 ),
             );

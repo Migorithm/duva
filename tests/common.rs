@@ -4,7 +4,8 @@ use duva::make_smart_pointer;
 use std::io::{BufRead, BufReader, Read};
 use std::net::TcpListener;
 use std::process::{Child, Command, Stdio};
-use std::thread::{self, sleep};
+
+use std::thread::sleep;
 use std::time::{Duration, Instant};
 
 pub struct ServerEnv {
@@ -132,7 +133,7 @@ impl TestProcessChild {
         while start.elapsed() < timeout {
             match self.process.try_wait()? {
                 Some(_) => return Ok(()),
-                None => thread::sleep(Duration::from_millis(100)),
+                None => sleep(Duration::from_millis(100)),
             }
         }
 
