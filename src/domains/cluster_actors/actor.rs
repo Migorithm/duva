@@ -5,7 +5,7 @@ use super::{
 };
 use crate::domains::{
     append_only_files::{
-        WriteOperation, WriteRequest, interfaces::TAof, log::LogIndex, logger::Logger,
+        WriteOperation, WriteRequest, interfaces::TWriteAheadLog, log::LogIndex, logger::Logger,
     },
     caches::cache_manager::CacheManager,
     query_parsers::QueryIO,
@@ -158,7 +158,7 @@ impl ClusterActor {
 
     pub(crate) async fn req_consensus(
         &mut self,
-        logger: &mut Logger<impl TAof>,
+        logger: &mut Logger<impl TWriteAheadLog>,
         write_request: WriteRequest,
         sender: tokio::sync::oneshot::Sender<Option<LogIndex>>,
     ) -> anyhow::Result<()> {
@@ -256,7 +256,7 @@ impl ClusterActor {
 
     pub(crate) async fn replicate(
         &mut self,
-        logger: &mut Logger<impl TAof>,
+        logger: &mut Logger<impl TWriteAheadLog>,
         heartbeat: HeartBeatMessage,
         cache_manager: &CacheManager,
     ) {

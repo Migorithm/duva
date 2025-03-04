@@ -1,6 +1,6 @@
-//! A local write-ahead-lof file (AOF) adapter.
+//! A local write-ahead-lof file (WAL) adapter.
 use crate::domains::append_only_files::WriteOperation;
-use crate::domains::append_only_files::interfaces::TAof;
+use crate::domains::append_only_files::interfaces::TWriteAheadLog;
 use anyhow::Result;
 
 #[derive(Default)]
@@ -8,7 +8,7 @@ pub struct InMemoryWAL {
     writer: Vec<WriteOperation>,
 }
 
-impl TAof for InMemoryWAL {
+impl TWriteAheadLog for InMemoryWAL {
     async fn append(&mut self, op: WriteOperation) -> Result<()> {
         self.writer.push(op);
         Ok(())

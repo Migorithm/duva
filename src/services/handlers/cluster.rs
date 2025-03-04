@@ -1,4 +1,4 @@
-use crate::domains::append_only_files::interfaces::TAof;
+use crate::domains::append_only_files::interfaces::TWriteAheadLog;
 use crate::domains::append_only_files::logger::Logger;
 use crate::domains::caches::cache_manager::CacheManager;
 use crate::domains::cluster_actors::commands::ClusterCommand;
@@ -9,7 +9,7 @@ use tokio::sync::mpsc::Sender;
 impl ClusterActor {
     pub(crate) async fn handle(
         mut self,
-        aof: impl TAof,
+        aof: impl TWriteAheadLog,
         cache_manager: CacheManager,
         heartbeat_interval_in_mills: u64,
     ) -> anyhow::Result<Self> {
@@ -85,7 +85,7 @@ impl ClusterActor {
         init_replication: ReplicationInfo,
         cache_manager: CacheManager,
         notifier: tokio::sync::watch::Sender<bool>,
-        aof: impl TAof,
+        aof: impl TWriteAheadLog,
     ) -> Sender<ClusterCommand> {
         let cluster_actor = ClusterActor::new(node_timeout, init_replication, notifier);
         let actor_handler = cluster_actor.self_handler.clone();

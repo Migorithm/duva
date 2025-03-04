@@ -1,11 +1,11 @@
-use super::{WriteOperation, WriteRequest, interfaces::TAof, log::LogIndex};
+use super::{WriteOperation, WriteRequest, interfaces::TWriteAheadLog, log::LogIndex};
 
-pub(crate) struct Logger<T: TAof> {
+pub(crate) struct Logger<T: TWriteAheadLog> {
     pub(crate) target: T,
     pub(crate) log_index: LogIndex,
 }
 
-impl<T: TAof> Logger<T> {
+impl<T: TWriteAheadLog> Logger<T> {
     pub fn new(target: T) -> Self {
         Self { target, log_index: 0.into() }
     }

@@ -1,4 +1,4 @@
-use crate::domains::append_only_files::interfaces::TAof;
+use crate::domains::append_only_files::interfaces::TWriteAheadLog;
 use crate::domains::append_only_files::{WriteOperation, WriteRequest};
 use anyhow::Result;
 use bytes::BytesMut;
@@ -6,9 +6,9 @@ use std::path::{Path, PathBuf};
 use tokio::fs::{File, OpenOptions};
 use tokio::io::{AsyncReadExt, AsyncWriteExt, BufReader, BufWriter};
 
-/// A local write-ahead-log file (AOF) implementation.
+/// A local write-ahead-log file (WAL) implementation.
 pub struct LocalWAL {
-    /// The file path where the AOF data is stored.
+    /// The file path where the WAL data is stored.
     path: PathBuf,
 
     /// A buffered writer for the underlying file.
@@ -29,7 +29,7 @@ impl LocalWAL {
     }
 }
 
-impl TAof for LocalWAL {
+impl TWriteAheadLog for LocalWAL {
     /// Appends a single `WriteOperation` to the file.
     ///
     /// # Errors
@@ -59,7 +59,7 @@ impl TAof for LocalWAL {
         todo!()
     }
 
-    /// Replays all existing operations in the AOF, invoking a callback for each.
+    /// Replays all existing operations in the WAL, invoking a callback for each.
     ///
     /// # Errors
     ///
@@ -172,28 +172,28 @@ mod tests {
         let path = dir.path().join("local.aof");
 
         {
-            let mut aof = LocalWAL::new(&path).await?;
-            aof.append(WriteOperation {
+            let mut wal = LocalWAL::new(&path).await?;
+            wal.append(WriteOperation {
                 request: WriteRequest::Set { key: "a".into(), value: "a".into() },
                 log_index: 0.into(),
             })
             .await?;
-            aof.append(WriteOperation {
+            wal.append(WriteOperation {
                 request: WriteRequest::Set { key: "b".into(), value: "b".into() },
                 log_index: 1.into(),
             })
             .await?;
-            aof.append(WriteOperation {
+            wal.append(WriteOperation {
                 request: WriteRequest::Set { key: "c".into(), value: "c".into() },
                 log_index: 2.into(),
             })
             .await?;
         }
 
-        let mut aof = LocalWAL::new(&path).await?;
+        let mut wal = LocalWAL::new(&path).await?;
         let mut ops = Vec::new();
 
-        aof.replay(|op| {
+        wal.replay(|op| {
             ops.push(op);
         })
         .await?;
