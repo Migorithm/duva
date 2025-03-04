@@ -109,7 +109,7 @@ mod tests {
     #[tokio::test]
     async fn test_new_creates_aof() -> Result<()> {
         let dir = TempDir::new()?;
-        let path = dir.path().join("local.aof");
+        let path = dir.path().join("local.wal");
 
         assert!(!path.exists());
         assert!(LocalWAL::new(&path).await.is_ok());
@@ -121,7 +121,7 @@ mod tests {
     #[tokio::test]
     async fn test_new_opens_existing_file() -> Result<()> {
         let dir = TempDir::new()?;
-        let path = dir.path().join("local.aof");
+        let path = dir.path().join("local.wal");
 
         assert!(!path.exists());
 
@@ -137,7 +137,7 @@ mod tests {
     #[tokio::test]
     async fn test_new_fails_if_directory_not_found() -> Result<()> {
         let dir = TempDir::new()?;
-        let path = dir.path().join("invalid/local.aof");
+        let path = dir.path().join("invalid/local.wal");
 
         assert!(!path.exists());
         assert!(LocalWAL::new(&path).await.is_err());
@@ -148,14 +148,14 @@ mod tests {
     #[tokio::test]
     async fn test_append_stores_to_disk() -> Result<()> {
         let dir = TempDir::new()?;
-        let path = dir.path().join("local.aof");
+        let path = dir.path().join("local.wal");
 
-        let mut aof = LocalWAL::new(&path).await?;
+        let mut wal = LocalWAL::new(&path).await?;
 
         let request = WriteRequest::Set { key: "foo".into(), value: "bar".into() };
         let write_op = WriteOperation { request, log_index: 0.into() };
-        aof.append(write_op).await?;
-        drop(aof);
+        wal.append(write_op).await?;
+        drop(wal);
 
         let mut file = tokio::fs::File::open(&path).await?;
         let mut buf = Vec::new();
@@ -169,7 +169,7 @@ mod tests {
     #[tokio::test]
     async fn test_replay_multiple_operations() -> Result<()> {
         let dir = TempDir::new()?;
-        let path = dir.path().join("local.aof");
+        let path = dir.path().join("local.wal");
 
         {
             let mut wal = LocalWAL::new(&path).await?;
@@ -228,22 +228,22 @@ mod tests {
     #[ignore = "This is desired behavior. However, currently deserialize fails if any part of the file is corrupted."]
     async fn test_replay_partial_data() -> Result<()> {
         let dir = TempDir::new()?;
-        let path = dir.path().join("local.aof");
+        let path = dir.path().join("local.wal");
 
         // Append three ops.
         {
-            let mut aof = LocalWAL::new(&path).await?;
-            aof.append(WriteOperation {
+            let mut wal = LocalWAL::new(&path).await?;
+            wal.append(WriteOperation {
                 request: WriteRequest::Set { key: "a".into(), value: "a".into() },
                 log_index: 0.into(),
             })
             .await?;
-            aof.append(WriteOperation {
+            wal.append(WriteOperation {
                 request: WriteRequest::Set { key: "b".into(), value: "b".into() },
                 log_index: 1.into(),
             })
             .await?;
-            aof.append(WriteOperation {
+            wal.append(WriteOperation {
                 request: WriteRequest::Set { key: "c".into(), value: "c".into() },
                 log_index: 2.into(),
             })
@@ -263,11 +263,11 @@ mod tests {
             file.write_all(&data).await?;
         }
 
-        let mut aof = LocalWAL::new(&path).await?;
+        let mut wal = LocalWAL::new(&path).await?;
         let mut ops = Vec::new();
 
         assert!(
-            aof.replay(|op| {
+            wal.replay(|op| {
                 ops.push(op);
             })
             .await

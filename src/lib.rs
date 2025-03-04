@@ -34,7 +34,7 @@ pub struct StartUpFacade {
 make_smart_pointer!(StartUpFacade, ActorRegistry => registry);
 
 impl StartUpFacade {
-    pub fn new(config_manager: ConfigManager, env: Environment, aof: impl TWriteAheadLog) -> Self {
+    pub fn new(config_manager: ConfigManager, env: Environment, wal: impl TWriteAheadLog) -> Self {
         let (notifier, mode_change_watcher) =
             tokio::sync::watch::channel(IS_LEADER_MODE.load(Ordering::Acquire));
 
@@ -45,7 +45,7 @@ impl StartUpFacade {
             ReplicationInfo::new(env.replicaof, &env.host, env.port),
             cache_manager.clone(),
             notifier,
-            aof,
+            wal,
         );
 
         let registry = ActorRegistry {

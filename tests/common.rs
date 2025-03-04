@@ -14,7 +14,7 @@ pub struct ServerEnv {
     pub leader_bind_addr: Option<String>,
     pub hf: u128,
     pub ttl: u128,
-    pub appendonly: bool,
+    pub use_wal: bool,
 }
 
 impl Default for ServerEnv {
@@ -25,7 +25,7 @@ impl Default for ServerEnv {
             leader_bind_addr: None,
             hf: 100,
             ttl: 1500,
-            appendonly: false,
+            use_wal: false,
         }
     }
 }
@@ -72,10 +72,10 @@ impl Drop for FileName {
         if let Some(file_name) = self.0.as_ref() {
             // remove if exists
             let _ = std::fs::remove_file(file_name);
-            let _ = std::fs::remove_file(format!("{}.aof", file_name));
+            let _ = std::fs::remove_file(format!("{}.wal", file_name));
         } else {
             // remove if exists
-            let _ = std::fs::remove_file("dump.rdb.aof");
+            let _ = std::fs::remove_file("dump.rdb.wal");
         }
     }
 }
@@ -175,8 +175,8 @@ pub fn run_server_process(env: &ServerEnv) -> TestProcessChild {
         &env.hf.to_string(),
         "--ttl",
         &env.ttl.to_string(),
-        "--appendonly",
-        &env.appendonly.to_string(),
+        "--use_wal",
+        &env.use_wal.to_string(),
     ]);
 
     if let Some(replicaof) = env.leader_bind_addr.as_ref() {

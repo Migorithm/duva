@@ -16,7 +16,7 @@ async fn main() -> anyhow::Result<()> {
 
     // ! should we support type erasure?
     if env.append_only {
-        let local_aof = LocalWAL::new(env.dbfilename.to_string() + ".aof").await?;
+        let local_aof = LocalWAL::new(env.dbfilename.to_string() + ".wal").await?;
         let start_up_runner = StartUpFacade::new(config_manager, env, local_aof);
         start_up_runner.run().await
     } else {
