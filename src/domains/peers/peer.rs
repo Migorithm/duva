@@ -26,6 +26,7 @@ pub(crate) struct Peer {
     pub(crate) w_conn: WriteConnected,
     pub(crate) listener_kill_trigger: ListeningActorKillTrigger,
     pub(crate) last_seen: Instant,
+    pub kind: PeerKind,
 }
 
 impl Peer {
@@ -40,7 +41,7 @@ impl Peer {
         ClusterListener<T>: TListen + Send + Sync + 'static,
     {
         let (r, w) = stream.into_split();
-        let w_conn = WriteConnected::new(w, kind);
+        let w_conn = WriteConnected::new(w);
 
         let (kill_trigger, kill_switch) = tokio::sync::oneshot::channel();
         let rc = ReadConnected::<T>::new(r);
@@ -49,7 +50,7 @@ impl Peer {
             kill_trigger,
             tokio::spawn(listening_actor.listen(kill_switch)),
         );
-        Self { w_conn, listener_kill_trigger, last_seen: Instant::now() }
+        Self { w_conn, listener_kill_trigger, last_seen: Instant::now(), kind }
     }
 
     pub(crate) fn create(
