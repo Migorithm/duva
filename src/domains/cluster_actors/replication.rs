@@ -21,7 +21,6 @@ pub struct ReplicationInfo {
 
     // * state is shared among peers
     pub(crate) term: u64,
-
     pub(crate) ban_list: Vec<BannedPeer>,
 }
 

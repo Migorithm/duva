@@ -546,7 +546,7 @@ fn test_peer_state_ban_list_to_binary() {
 
     //THEN
     let expected = format!(
-        "^\r\n$1\r\n0\r\n$1\r\n0\r\n$40\r\n{}\r\n$1\r\n1\r\n$14\r\n127.0.0.1:6380\r\n*1\r\n$25\r\n127.0.0.1:6739-{}\r\n*0\r\n",
+        "^\r\n$1\r\n0\r\n$1\r\n0\r\n$36\r\n{}\r\n$1\r\n1\r\n$14\r\n127.0.0.1:6380\r\n*1\r\n$25\r\n127.0.0.1:6739-{}\r\n*0\r\n",
         replication.leader_repl_id, ban_time
     );
     assert_eq!(expected, peer_state_serialized);

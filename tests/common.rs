@@ -4,7 +4,7 @@ use duva::make_smart_pointer;
 use std::io::{BufRead, BufReader, Read};
 use std::net::TcpListener;
 use std::process::{Child, Command, Stdio};
-use std::thread::{self};
+use std::thread::{self, sleep};
 use std::time::{Duration, Instant};
 
 pub struct ServerEnv {
@@ -87,7 +87,7 @@ pub fn spawn_server_process(env: &ServerEnv) -> TestProcessChild {
         process.process.stdout.as_mut().unwrap(),
         vec![format!("listening peer connection on 127.0.0.1:{}...", env.port + 10000).as_str()],
         1,
-        Some(2000),
+        Some(10000),
     )
     .unwrap();
 
