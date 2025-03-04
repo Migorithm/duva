@@ -34,7 +34,7 @@ sequenceDiagram
     C --xC : crash
     end
 
-    A <<-->> B : elect leader
+    A -->> B : elect leader
     B --> B : elected (term=2)
     B ->> A : repl(migo:1:palyoad, term=2)
     A ->> B : ack
