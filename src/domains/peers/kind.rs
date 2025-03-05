@@ -12,14 +12,7 @@ pub enum PeerKind {
 }
 
 impl PeerKind {
-    pub fn accepted_peer_kind(my_repl_id: &str, peer_repl_id: &str, peer_hwm: u64) -> Self {
-        if my_repl_id == peer_repl_id {
-            return Self::Follower { hwm: peer_hwm, leader_repl_id: peer_repl_id.into() };
-        }
-
-        Self::Leader
-    }
-    pub fn connected_peer_kind(my_repl_id: &str, peer_info: ConnectedPeerInfo) -> Self {
+    pub fn decide_peer_kind(my_repl_id: &str, peer_info: ConnectedPeerInfo) -> Self {
         if my_repl_id == *peer_info.id {
             return Self::Leader;
         }
@@ -29,7 +22,6 @@ impl PeerKind {
                 leader_repl_id: peer_info.leader_repl_id,
             };
         }
-
         if peer_info.id == peer_info.leader_repl_id {
             return Self::PLeader;
         }

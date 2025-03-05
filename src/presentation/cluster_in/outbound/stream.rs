@@ -118,8 +118,7 @@ impl OutboundStream {
             self.connected_node_info.context("Connected node info not found")?;
         let peer_list = connection_info.list_peer_binding_addrs();
 
-        let kind =
-            PeerKind::connected_peer_kind(&self.my_repl_info.leader_repl_id, connection_info);
+        let kind = PeerKind::decide_peer_kind(&self.my_repl_info.leader_repl_id, connection_info);
 
         let peer = Peer::create(self.stream, kind.clone(), cluster_actor_handler, snapshot_applier);
 

@@ -2,9 +2,7 @@ use super::communication_manager::ClusterCommunicationManager;
 use super::outbound::stream::OutboundStream;
 use crate::domains::caches::cache_manager::CacheManager;
 use crate::domains::cluster_actors::commands::ClusterCommand;
-use crate::domains::cluster_actors::replication::IS_LEADER_MODE;
 use crate::domains::peers::identifier::PeerIdentifier;
-use crate::domains::peers::kind::PeerKind;
 use crate::domains::saves::snapshot::snapshot_applier::SnapshotApplier;
 use crate::{InboundStream, make_smart_pointer};
 use tokio::sync::mpsc::Sender;
@@ -23,14 +21,9 @@ impl ClusterConnectionManager {
         snapshot_applier: SnapshotApplier,
     ) -> anyhow::Result<()> {
         peer_stream.recv_threeway_handshake().await?;
-
         peer_stream.disseminate_peers(self.0.get_peers().await?).await?;
+        peer_stream.may_try_fullsync(cache_manager).await?;
 
-        if let PeerKind::Follower { hwm, leader_repl_id } = peer_stream.peer_kind()? {
-            if IS_LEADER_MODE.load(std::sync::atomic::Ordering::Acquire) && hwm == 0 {
-                peer_stream = peer_stream.send_full_resync_to_inbound_server(cache_manager).await?;
-            }
-        }
         self.send(peer_stream.to_add_peer(self.clone(), snapshot_applier)?).await?;
 
         Ok(())

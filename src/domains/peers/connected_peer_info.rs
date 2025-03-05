@@ -1,6 +1,6 @@
 use super::identifier::PeerIdentifier;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub(crate) struct ConnectedPeerInfo {
     // TODO repl_id here is the leader_replid from connected server.
     pub(crate) id: PeerIdentifier,
