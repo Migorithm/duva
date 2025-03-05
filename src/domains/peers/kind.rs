@@ -43,7 +43,8 @@ impl Display for PeerKind {
         match self {
             PeerKind::Peer => write!(f, "peer"),
             PeerKind::Follower { hwm, leader_repl_id } => write!(f, "follower {}", leader_repl_id),
-            PeerKind::Leader => write!(f, "leader -"),
+            // TODO leader will have slot info
+            PeerKind::Leader => write!(f, "leader - 0"),
         }
     }
 }

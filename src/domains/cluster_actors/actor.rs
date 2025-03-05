@@ -780,7 +780,8 @@ mod test {
         let mut cluster_actor = cluster_actor_create_helper();
         let self_identifier: PeerIdentifier = bind_addr.to_string().into();
 
-        for port in [6379, 6380, 6381, 6382, 6383] {
+        // followers
+        for port in [6379, 6380] {
             cluster_actor.members.insert(
                 PeerIdentifier::new("localhost", port),
                 Peer::new::<Follower>(
@@ -792,15 +793,52 @@ mod test {
             );
         }
 
+        // leader for different shard?
+        cluster_actor.members.insert(
+            PeerIdentifier::new("localhost", 6334),
+            Peer::new::<Follower>(
+                TcpStream::connect(bind_addr).await.unwrap(),
+                PeerKind::Leader,
+                cluster_sender.clone(),
+                SnapshotApplier::new(cache_manager.clone(), SystemTime::now()),
+            ),
+        );
+
+        let listener_for_second_shard = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let bind_addr_for_second_shard = listener_for_second_shard.local_addr().unwrap();
+        let second_shard_leader_identifier: PeerIdentifier =
+            listener_for_second_shard.local_addr().unwrap().to_string().into();
+
+        // follower for different shard
+        for port in [2655, 2653] {
+            cluster_actor.members.insert(
+                PeerIdentifier::new("localhost", port),
+                Peer::new::<Follower>(
+                    TcpStream::connect(bind_addr_for_second_shard).await.unwrap(),
+                    PeerKind::Follower {
+                        hwm: 0,
+                        leader_repl_id: second_shard_leader_identifier.clone(),
+                    },
+                    cluster_sender.clone(),
+                    SnapshotApplier::new(cache_manager.clone(), SystemTime::now()),
+                ),
+            );
+        }
+
         // WHEN
         let res = cluster_actor.cluster_nodes();
 
         assert_eq!(res.len(), 6);
-        assert_eq!(res[0], format!("127.0.0.1:6379 follower {}", self_identifier));
-        assert_eq!(res[1], format!("127.0.0.1:6380 follower {}", self_identifier));
-        assert_eq!(res[2], format!("127.0.0.1:6381 follower {}", self_identifier));
-        assert_eq!(res[3], format!("127.0.0.1:6382 follower {}", self_identifier));
-        assert_eq!(res[4], format!("127.0.0.1:6383 follower {}", self_identifier));
-        assert_eq!(res[5], format!("127.0.0.1:8080 myself,leader - 0"));
+
+        for value in [
+            format!("127.0.0.1:6379 follower {}", self_identifier),
+            format!("127.0.0.1:6380 follower {}", self_identifier),
+            format!("{} leader - 0", second_shard_leader_identifier),
+            format!("127.0.0.1:2655 follower {}", second_shard_leader_identifier),
+            format!("127.0.0.1:2653 follower {}", second_shard_leader_identifier),
+            format!("127.0.0.1:8080 myself,leader - 0"),
+        ] {
+            assert!(res.contains(dbg!(&value)));
+        }
     }
 }
