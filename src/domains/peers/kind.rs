@@ -1,6 +1,6 @@
 use std::fmt::Display;
 
-use super::identifier::PeerIdentifier;
+use super::{connected_peer_info::ConnectedPeerInfo, identifier::PeerIdentifier};
 
 #[derive(Clone, Debug)]
 pub enum PeerKind {
@@ -19,23 +19,21 @@ impl PeerKind {
 
         Self::Leader
     }
-    pub fn connected_peer_kind(
-        my_repl_id: &str,
-        peer_id: &str,
-        peer_repl_id: &str,
-        peer_hwm: u64,
-    ) -> Self {
-        if my_repl_id == peer_id {
+    pub fn connected_peer_kind(my_repl_id: &str, peer_info: ConnectedPeerInfo) -> Self {
+        if my_repl_id == *peer_info.id {
             return Self::Leader;
         }
-        if my_repl_id == peer_repl_id {
-            return Self::Follower { hwm: peer_hwm, leader_repl_id: peer_repl_id.into() };
+        if my_repl_id == *peer_info.leader_repl_id {
+            return Self::Follower {
+                hwm: peer_info.offset,
+                leader_repl_id: peer_info.leader_repl_id,
+            };
         }
 
-        if peer_id == peer_repl_id {
+        if peer_info.id == peer_info.leader_repl_id {
             return Self::PLeader;
         }
-        Self::PFollower { leader_repl_id: peer_repl_id.into() }
+        Self::PFollower { leader_repl_id: peer_info.leader_repl_id }
     }
 }
 

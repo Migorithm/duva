@@ -2,6 +2,7 @@ use super::response::ConnectionResponse;
 use crate::domains::cluster_actors::commands::AddPeer;
 use crate::domains::cluster_actors::commands::ClusterCommand;
 use crate::domains::cluster_actors::replication::ReplicationInfo;
+use crate::domains::peers::connected_peer_info::ConnectedPeerInfo;
 use crate::domains::peers::identifier::PeerIdentifier;
 use crate::domains::peers::kind::PeerKind;
 use crate::domains::peers::peer::Peer;
@@ -19,7 +20,7 @@ pub(crate) struct OutboundStream {
     pub(crate) stream: TcpStream,
     pub(crate) my_repl_info: ReplicationInfo,
 
-    connected_node_info: Option<ConnectedNodeInfo>,
+    connected_node_info: Option<ConnectedPeerInfo>,
     connect_to: PeerIdentifier,
 }
 make_smart_pointer!(OutboundStream, TcpStream => stream);
@@ -40,7 +41,7 @@ impl OutboundStream {
         // Trigger
         self.write(write_array!("PING")).await?;
         let mut ok_count = 0;
-        let mut connection_info = ConnectedNodeInfo {
+        let mut connection_info = ConnectedPeerInfo {
             id: Default::default(),
             leader_repl_id: Default::default(),
             offset: Default::default(),
@@ -112,33 +113,16 @@ impl OutboundStream {
         self,
         cluster_actor_handler: Sender<ClusterCommand>,
         snapshot_applier: SnapshotApplier,
-    ) -> anyhow::Result<(ClusterCommand, ConnectedNodeInfo)> {
-        let connection_info = self.connected_node_info.context("Connected node info not found")?;
-        println!("ddddd");
-        let kind = PeerKind::connected_peer_kind(
-            &self.my_repl_info.leader_repl_id,
-            &connection_info.id,
-            &connection_info.leader_repl_id,
-            connection_info.offset,
-        );
+    ) -> anyhow::Result<(ClusterCommand, Vec<PeerIdentifier>)> {
+        let mut connection_info =
+            self.connected_node_info.context("Connected node info not found")?;
+        let peer_list = connection_info.list_peer_binding_addrs();
+
+        let kind =
+            PeerKind::connected_peer_kind(&self.my_repl_info.leader_repl_id, connection_info);
 
         let peer = Peer::create(self.stream, kind.clone(), cluster_actor_handler, snapshot_applier);
 
-        Ok((ClusterCommand::AddPeer(AddPeer { peer_id: self.connect_to, peer }), connection_info))
-    }
-}
-
-#[derive(Debug)]
-pub(crate) struct ConnectedNodeInfo {
-    // TODO repl_id here is the leader_replid from connected server.
-    pub(crate) id: PeerIdentifier,
-    pub(crate) leader_repl_id: PeerIdentifier,
-    pub(crate) offset: u64,
-    pub(crate) peer_list: Vec<String>,
-}
-
-impl ConnectedNodeInfo {
-    pub(crate) fn list_peer_binding_addrs(self) -> Vec<PeerIdentifier> {
-        self.peer_list.into_iter().map(Into::into).collect::<Vec<_>>()
+        Ok((ClusterCommand::AddPeer(AddPeer { peer_id: self.connect_to, peer }), peer_list))
     }
 }

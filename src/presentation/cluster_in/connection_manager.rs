@@ -51,7 +51,7 @@ impl ClusterConnectionManager {
         // Recursive case
         let replication_info = self.replication_info().await?;
 
-        let (add_peer_cmd, connected_node_info) = OutboundStream::new(connect_to, replication_info)
+        let (add_peer_cmd, peer_list) = OutboundStream::new(connect_to, replication_info)
             .await?
             .establish_connection(self_port)
             .await?
@@ -62,7 +62,7 @@ impl ClusterConnectionManager {
 
         // Discover additional peers concurrently
         // TODO Require investigation. Why does 'list_peer_binding_addrs' have to be called at here?
-        for peer in connected_node_info.list_peer_binding_addrs() {
+        for peer in peer_list {
             println!("Discovering peer: {}", peer);
             Box::pin(ClusterConnectionManager(self.0.clone()).discover_cluster(
                 self_port,
