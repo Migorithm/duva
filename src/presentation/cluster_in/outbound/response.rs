@@ -6,7 +6,7 @@ use crate::domains::query_parsers::QueryIO;
 pub enum ConnectionResponse {
     PONG,
     OK,
-    FULLRESYNC { repl_id: String, offset: u64 },
+    FULLRESYNC { id: String, repl_id: String, offset: u64 },
     PEERS(Vec<String>),
 }
 
@@ -18,9 +18,9 @@ impl TryFrom<String> for ConnectionResponse {
             "ok" => Ok(ConnectionResponse::OK),
 
             var if var.starts_with("fullresync") => {
-                let [_, repl_id, offset] = var
+                let [_, id, repl_id, offset] = var
                     .split_whitespace()
-                    .take(3)
+                    .take(4)
                     .collect::<Vec<_>>()
                     .as_slice()
                     .try_into()
@@ -28,7 +28,11 @@ impl TryFrom<String> for ConnectionResponse {
 
                 let offset = offset.parse::<u64>()?;
 
-                Ok(ConnectionResponse::FULLRESYNC { repl_id: repl_id.to_string(), offset })
+                Ok(ConnectionResponse::FULLRESYNC {
+                    id: id.to_string(),
+                    repl_id: repl_id.to_string(),
+                    offset,
+                })
             },
 
             peer_msg if peer_msg.starts_with("peers ") => {

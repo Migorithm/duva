@@ -6,7 +6,6 @@ use crate::domains::cluster_actors::replication::IS_LEADER_MODE;
 use crate::domains::peers::identifier::PeerIdentifier;
 use crate::domains::peers::kind::PeerKind;
 use crate::domains::saves::snapshot::snapshot_applier::SnapshotApplier;
-
 use crate::{InboundStream, make_smart_pointer};
 use tokio::sync::mpsc::Sender;
 
@@ -51,19 +50,19 @@ impl ClusterConnectionManager {
 
         // Recursive case
         let replication_info = self.replication_info().await?;
-        let (add_peer_cmd, connected_node_info) =
-            OutboundStream::new(connect_to, replication_info.leader_repl_id, replication_info.hwm)
-                .await?
-                .establish_connection(self_port)
-                .await?
-                .set_replication_info(&self)
-                .await?
-                .create_peer_cmd(self.clone(), snapshot_applier.clone())?;
+
+        let (add_peer_cmd, peer_list) = OutboundStream::new(connect_to, replication_info)
+            .await?
+            .establish_connection(self_port)
+            .await?
+            .set_replication_info(&self)
+            .await?
+            .create_peer_cmd(self.clone(), snapshot_applier.clone())?;
         self.send(add_peer_cmd).await?;
 
         // Discover additional peers concurrently
         // TODO Require investigation. Why does 'list_peer_binding_addrs' have to be called at here?
-        for peer in connected_node_info.list_peer_binding_addrs() {
+        for peer in peer_list {
             println!("Discovering peer: {}", peer);
             Box::pin(ClusterConnectionManager(self.0.clone()).discover_cluster(
                 self_port,

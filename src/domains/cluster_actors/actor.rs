@@ -813,7 +813,7 @@ mod test {
             second_shard_leader_identifier.clone(),
             Peer::new::<Follower>(
                 TcpStream::connect(bind_addr).await.unwrap(),
-                PeerKind::Leader,
+                PeerKind::PLeader,
                 cluster_sender.clone(),
                 SnapshotApplier::new(cache_manager.clone(), SystemTime::now()),
             ),
@@ -825,10 +825,7 @@ mod test {
                 PeerIdentifier::new("localhost", port),
                 Peer::new::<Follower>(
                     TcpStream::connect(bind_addr_for_second_shard).await.unwrap(),
-                    PeerKind::Follower {
-                        hwm: 0,
-                        leader_repl_id: second_shard_leader_identifier.clone(),
-                    },
+                    PeerKind::PFollower { leader_repl_id: second_shard_leader_identifier.clone() },
                     cluster_sender.clone(),
                     SnapshotApplier::new(cache_manager.clone(), SystemTime::now()),
                 ),
