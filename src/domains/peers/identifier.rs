@@ -18,6 +18,9 @@ impl PeerIdentifier {
             })
             .unwrap()
     }
+    pub fn cluster_bind_port(&self) -> u16 {
+        self.0.rsplit_once(':').map(|(_, port)| port.parse::<u16>().unwrap() + 10000).unwrap()
+    }
 }
 
 impl FromStr for PeerIdentifier {

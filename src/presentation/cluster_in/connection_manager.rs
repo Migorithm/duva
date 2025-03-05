@@ -27,7 +27,7 @@ impl ClusterConnectionManager {
 
         peer_stream.disseminate_peers(self.0.get_peers().await?).await?;
 
-        if let PeerKind::Follower(hwm) = peer_stream.peer_kind()? {
+        if let PeerKind::Follower { hwm, leader_repl_id } = peer_stream.peer_kind()? {
             if IS_LEADER_MODE.load(std::sync::atomic::Ordering::Acquire) && hwm == 0 {
                 peer_stream = peer_stream.send_full_resync_to_inbound_server(cache_manager).await?;
             }

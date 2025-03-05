@@ -188,15 +188,15 @@ impl ClusterActor {
     }
 
     pub(crate) fn followers(&self) -> impl Iterator<Item = (&PeerIdentifier, &Peer, u64)> {
-        self.members.iter().filter_map(|(id, peer)| match peer.kind {
-            PeerKind::Follower(current_commit) => Some((id, peer, current_commit)),
+        self.members.iter().filter_map(|(id, peer)| match &peer.kind {
+            PeerKind::Follower { hwm, leader_repl_id } => Some((id, peer, *hwm)),
             _ => None,
         })
     }
 
     pub(crate) fn followers_mut(&mut self) -> impl Iterator<Item = (&mut Peer, u64)> {
-        self.members.values_mut().into_iter().filter_map(|peer| match peer.kind {
-            PeerKind::Follower(current_commit) => Some((peer, current_commit)),
+        self.members.values_mut().into_iter().filter_map(|peer| match peer.kind.clone() {
+            PeerKind::Follower { hwm, leader_repl_id } => Some((peer, hwm)),
             _ => None,
         })
     }
@@ -218,8 +218,8 @@ impl ClusterActor {
         self.members
             .values()
             .into_iter()
-            .filter_map(|peer| match peer.kind {
-                PeerKind::Follower(current_commit) => Some(current_commit),
+            .filter_map(|peer| match &peer.kind {
+                PeerKind::Follower { hwm, leader_repl_id } => Some(*hwm),
                 _ => None,
             })
             .min()
@@ -329,6 +329,14 @@ impl ClusterActor {
 
         self.leader_mode_heartbeat_sender = Some(tx);
     }
+
+    pub fn cluster_nodes(&self) -> Vec<String> {
+        self.members
+            .iter()
+            .map(|(key, value)| format!("{key} {}", value.kind))
+            .chain(std::iter::once(self.replication.self_info()))
+            .collect()
+    }
 }
 
 #[cfg(test)]
@@ -386,7 +394,7 @@ mod test {
         num_stream: Range<u16>,
         cluster_sender: tokio::sync::mpsc::Sender<ClusterCommand>,
         cache_manager: CacheManager,
-        current_follower_offset: u64,
+        follower_hwm: u64,
     ) {
         use tokio::net::TcpListener;
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -397,7 +405,13 @@ mod test {
                 PeerIdentifier::new("localhost", port),
                 Peer::new::<Follower>(
                     TcpStream::connect(bind_addr).await.unwrap(),
-                    PeerKind::Follower(current_follower_offset),
+                    PeerKind::Follower {
+                        hwm: follower_hwm,
+                        leader_repl_id: PeerIdentifier::new(
+                            &actor.replication.self_host,
+                            actor.replication.self_port,
+                        ),
+                    },
                     cluster_sender.clone(),
                     SnapshotApplier::new(cache_manager.clone(), SystemTime::now()),
                 ),
@@ -750,5 +764,91 @@ mod test {
         assert!(tokio::time::timeout(Duration::from_secs(1), task).await.is_err());
         assert_eq!(cluster_actor.replication.hwm, 1);
         assert_eq!(test_logger.log_index, 2.into());
+    }
+
+    /*
+    cluster nodes should return the following:
+    127.0.0.1:30004 follower 127.0.0.1:30001
+    127.0.0.1:30002 leader - 5461-10922
+    127.0.0.1:30003 leader - 10923-16383
+    127.0.0.1:30005 follower 127.0.0.1:30002
+    127.0.0.1:30006 follower 127.0.0.1:30003
+    127.0.0.1:30001 myself,leader - 0-5460
+    <ip:port> <flags> <leader> <link-state> <slot>
+         */
+    #[tokio::test]
+    async fn test_cluster_nodes() {
+        use tokio::net::TcpListener;
+        // GIVEN
+
+        let (cluster_sender, _) = tokio::sync::mpsc::channel(100);
+        let cache_manager = CacheManager { inboxes: vec![] };
+
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let bind_addr = listener.local_addr().unwrap();
+
+        let mut cluster_actor = cluster_actor_create_helper();
+        let self_identifier: PeerIdentifier = bind_addr.to_string().into();
+
+        // followers
+        for port in [6379, 6380] {
+            cluster_actor.members.insert(
+                PeerIdentifier::new("localhost", port),
+                Peer::new::<Follower>(
+                    TcpStream::connect(bind_addr).await.unwrap(),
+                    PeerKind::Follower { hwm: 0, leader_repl_id: self_identifier.clone() },
+                    cluster_sender.clone(),
+                    SnapshotApplier::new(cache_manager.clone(), SystemTime::now()),
+                ),
+            );
+        }
+
+        let listener_for_second_shard = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let bind_addr_for_second_shard = listener_for_second_shard.local_addr().unwrap();
+        let second_shard_leader_identifier: PeerIdentifier =
+            listener_for_second_shard.local_addr().unwrap().to_string().into();
+
+        // leader for different shard?
+        cluster_actor.members.insert(
+            second_shard_leader_identifier.clone(),
+            Peer::new::<Follower>(
+                TcpStream::connect(bind_addr).await.unwrap(),
+                PeerKind::Leader,
+                cluster_sender.clone(),
+                SnapshotApplier::new(cache_manager.clone(), SystemTime::now()),
+            ),
+        );
+
+        // follower for different shard
+        for port in [2655, 2653] {
+            cluster_actor.members.insert(
+                PeerIdentifier::new("localhost", port),
+                Peer::new::<Follower>(
+                    TcpStream::connect(bind_addr_for_second_shard).await.unwrap(),
+                    PeerKind::Follower {
+                        hwm: 0,
+                        leader_repl_id: second_shard_leader_identifier.clone(),
+                    },
+                    cluster_sender.clone(),
+                    SnapshotApplier::new(cache_manager.clone(), SystemTime::now()),
+                ),
+            );
+        }
+
+        // WHEN
+        let res = cluster_actor.cluster_nodes();
+
+        assert_eq!(res.len(), 6);
+
+        for value in [
+            format!("127.0.0.1:6379 follower {}", self_identifier),
+            format!("127.0.0.1:6380 follower {}", self_identifier),
+            format!("{} leader - 0", second_shard_leader_identifier),
+            format!("127.0.0.1:2655 follower {}", second_shard_leader_identifier),
+            format!("127.0.0.1:2653 follower {}", second_shard_leader_identifier),
+            format!("127.0.0.1:8080 myself,leader - 0"),
+        ] {
+            assert!(res.contains(&value));
+        }
     }
 }
