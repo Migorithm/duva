@@ -766,6 +766,16 @@ mod test {
         assert_eq!(test_logger.log_index, 2.into());
     }
 
+    /*
+    cluster nodes should return the following:
+    127.0.0.1:30004 follower 127.0.0.1:30001
+    127.0.0.1:30002 leader - 5461-10922
+    127.0.0.1:30003 leader - 10923-16383
+    127.0.0.1:30005 follower 127.0.0.1:30002
+    127.0.0.1:30006 follower 127.0.0.1:30003
+    127.0.0.1:30001 myself,leader - 0-5460
+    <ip:port> <flags> <leader> <link-state> <slot>
+         */
     #[tokio::test]
     async fn test_cluster_nodes() {
         use tokio::net::TcpListener;
