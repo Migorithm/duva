@@ -1,0 +1,38 @@
+---
+title: Log Compaction with Installing Snapshot
+---
+sequenceDiagram
+    participant A as Leader
+    participant B as Follower
+    participant C as Followers
+    Note over A: Leader log entries: 7<br>commited entries: 5
+    Note over B: Follower1 log entries: 4<br>commited entries: 2
+    Note over C: Assume we have more followers
+    A ->> A: snapshotting commited entries
+    Note over A: last included index=5, last included term=1
+    A ->> A: Remove log entries until hwm=5
+    Note over A: Log6, Log7 remained, Log1-5 removed
+    B ->> B: snapshotting commited entries hwm=2
+    Note over B: last included index=2, last included term=1
+    B ->> B: Remove log entries until hwm=2
+    Note over B: Log3, Log4 remained, Log1-2 removed
+    A ->> B: Install snapshot
+    B ->> B: Save snapshot
+    B ->> B: Remove self snapshot that has smaller index
+
+    alt existing log index, term = snapshot index, term
+        B ->> B: retain log entries
+    else
+        B ->> B: discard log entries
+    end
+    B ->> B: Apply snapshot
+    Note over B: Log Compaction is done<br> Replicating continues
+
+
+
+
+
+
+
+
+
