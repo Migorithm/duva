@@ -5,7 +5,7 @@ pub(crate) struct ConnectedPeerInfo {
     // TODO repl_id here is the leader_replid from connected server.
     pub(crate) id: PeerIdentifier,
     pub(crate) leader_repl_id: PeerIdentifier,
-    pub(crate) offset: u64,
+    pub(crate) hwm: u64,
     pub(crate) peer_list: Vec<String>,
 }
 
