@@ -3,18 +3,17 @@ use futures::future::join_all;
 use crate::domains::caches::cache_manager::CacheManager;
 use crate::domains::query_parsers::QueryIO;
 
-use std::time::SystemTime;
-
 use super::snapshot::Snapshot;
+use chrono::{DateTime, Utc};
 
 #[derive(Clone, Debug)]
 pub struct SnapshotApplier {
     cache_manager: CacheManager,
-    start_up_time: SystemTime,
+    start_up_time: DateTime<Utc>,
 }
 
 impl SnapshotApplier {
-    pub fn new(cache_manager: CacheManager, start_up_time: SystemTime) -> Self {
+    pub fn new(cache_manager: CacheManager, start_up_time: DateTime<Utc>) -> Self {
         Self { cache_manager, start_up_time }
     }
     pub async fn apply_snapshot(&self, snapshot: Snapshot) -> anyhow::Result<()> {
@@ -27,7 +26,7 @@ impl SnapshotApplier {
                 .filter(|kvc| kvc.is_valid(&startup_time))
                 .map(|kvs| self.cache_manager.route_set(kvs)),
         )
-        .await;
+            .await;
 
         // TODO let's find the way to test without adding the following code - echo
         // Only for debugging and test

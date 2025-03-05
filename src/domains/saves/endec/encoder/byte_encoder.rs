@@ -10,7 +10,6 @@ use crate::domains::{
 use crate::domains::saves::endec::VERSION;
 use crate::domains::saves::snapshot::snapshot::Metadata;
 use anyhow::Result;
-use std::time::UNIX_EPOCH;
 
 impl CacheEntry {
     pub fn encode_with_key(&self) -> Result<Vec<u8>> {
@@ -19,15 +18,15 @@ impl CacheEntry {
             CacheEntry::KeyValue(key, value) => {
                 result.push(STRING_VALUE_TYPE_INDICATOR);
                 result.extend_from_slice(&encode_key_value(key, value)?);
-            },
+            }
             CacheEntry::KeyValueExpiry(key, value, expiry) => {
-                let secs = (expiry.duration_since(UNIX_EPOCH)?.as_millis()) as u64;
+                let milli_seconds = expiry.timestamp_millis();
                 result.push(EXPIRY_TIME_IN_MILLISECONDS_INDICATOR);
-                result.extend_from_slice(&secs.to_le_bytes());
+                result.extend_from_slice(&milli_seconds.to_le_bytes());
 
                 result.push(STRING_VALUE_TYPE_INDICATOR);
                 result.extend_from_slice(&encode_key_value(key, value)?);
-            },
+            }
         }
         Ok(result)
     }
@@ -129,8 +128,8 @@ fn encode_size(size: usize) -> Result<Vec<u8>> {
 #[cfg(test)]
 mod test {
     use crate::domains::saves::endec::{
-        StoredDuration,
         decoder::{byte_decoder::BytesDecoder, states::DecoderInit},
+        StoredDuration,
     };
 
     use super::*;
@@ -308,7 +307,7 @@ mod test {
         let kvs = CacheEntry::KeyValueExpiry(
             "key".to_string(),
             "value".to_string(),
-            StoredDuration::Milliseconds(1713824559637).to_systemtime(),
+            StoredDuration::Milliseconds(1713824559637).to_datetime(),
         );
 
         let encoded = kvs.encode_with_key().unwrap();

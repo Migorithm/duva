@@ -2,18 +2,16 @@ use super::states::{DecoderInit, HeaderReady, MetadataReady};
 
 use crate::domains::caches::cache_objects::CacheEntry;
 use crate::domains::saves::endec::{
-    DATABASE_SECTION_INDICATOR, DATABASE_TABLE_SIZE_INDICATOR,
-    EXPIRY_TIME_IN_MILLISECONDS_INDICATOR, EXPIRY_TIME_IN_SECONDS_INDICATOR, HEADER_MAGIC_STRING,
-    METADATA_SECTION_INDICATOR, STRING_VALUE_TYPE_INDICATOR, StoredDuration, VERSION,
-    extract_range,
+    extract_range, StoredDuration,
+    DATABASE_SECTION_INDICATOR, DATABASE_TABLE_SIZE_INDICATOR, EXPIRY_TIME_IN_MILLISECONDS_INDICATOR,
+    EXPIRY_TIME_IN_SECONDS_INDICATOR, HEADER_MAGIC_STRING, METADATA_SECTION_INDICATOR, STRING_VALUE_TYPE_INDICATOR,
+    VERSION,
 };
 use crate::domains::saves::snapshot::snapshot::{Metadata, Snapshot, SubDatabase};
 
 use anyhow::{Context, Result};
-use std::{
-    ops::{Deref, DerefMut},
-    time::SystemTime,
-};
+use chrono::{DateTime, Utc};
+use std::ops::{Deref, DerefMut};
 
 #[derive(Default)]
 pub struct BytesDecoder<'a, T> {
@@ -74,7 +72,7 @@ impl<T> BytesDecoder<'_, T> {
                     let size = (first_byte & 0x3F) as usize;
                     self.skip(1);
                     Some(size)
-                },
+                }
                 0b01 => {
                     if self.len() < 2 {
                         return None;
@@ -82,7 +80,7 @@ impl<T> BytesDecoder<'_, T> {
                     let size = (((first_byte & 0x3F) as usize) << 8) | (self[1] as usize);
                     self.skip(2);
                     Some(size)
-                },
+                }
                 0b10 => {
                     if self.len() < 5 {
                         return None;
@@ -94,7 +92,7 @@ impl<T> BytesDecoder<'_, T> {
 
                     self.skip(5);
                     Some(size)
-                },
+                }
                 _ => None,
             }
         } else {
@@ -110,21 +108,21 @@ impl<T> BytesDecoder<'_, T> {
                     let value = i8::from_le_bytes([self[1]]).to_string();
                     self.skip(2);
                     return Some(value);
-                },
+                }
                 0xC1 => {
                     if self.len() >= 3 {
                         let value = i16::from_le_bytes(extract_range(self, 1..=2)?).to_string();
                         self.skip(3);
                         return Some(value);
                     }
-                },
+                }
                 0xC2 => {
                     if self.len() >= 5 {
                         let value = i32::from_le_bytes(extract_range(self, 1..=4)?).to_string();
                         self.skip(5);
                         return Some(value);
                     }
-                },
+                }
                 _ => return None,
             }
         }
@@ -180,10 +178,10 @@ impl<'a> BytesDecoder<'a, HeaderReady> {
                 "repl-id" => metadata.repl_id = value.into(),
                 "repl-offset" => {
                     metadata.repl_offset = value.parse().context("repl-offset parse fail")?
-                },
+                }
                 var => {
                     println!("Unknown metadata key: {}", var);
-                },
+                }
             }
         }
         Ok(BytesDecoder {
@@ -224,15 +222,15 @@ impl BytesDecoder<'_, MetadataReady> {
             match *identifier {
                 DATABASE_SECTION_INDICATOR => {
                     self.try_set_index(&mut builder)?;
-                },
+                }
                 DATABASE_TABLE_SIZE_INDICATOR => {
                     self.try_set_table_sizes(&mut builder)?;
-                },
+                }
                 _ => {
                     if self.should_stop_extending_storage(&mut builder)? {
                         break;
                     }
-                },
+                }
             }
         }
         Ok(builder.build())
@@ -272,17 +270,17 @@ impl BytesDecoder<'_, MetadataReady> {
     }
 
     fn try_key_value(&mut self) -> Result<CacheEntry> {
-        let mut expiry: Option<SystemTime> = None;
+        let mut expiry: Option<DateTime<Utc>> = None;
         while self.len() > 0 {
             match self[0] {
                 //0b11111100
                 EXPIRY_TIME_IN_MILLISECONDS_INDICATOR => {
-                    expiry = Some(self.try_extract_expiry_time_in_milliseconds()?.to_systemtime());
-                },
+                    expiry = Some(self.try_extract_expiry_time_in_milliseconds()?.to_datetime());
+                }
                 //0b11111101
                 EXPIRY_TIME_IN_SECONDS_INDICATOR => {
-                    expiry = Some(self.try_extract_expiry_time_in_seconds()?.to_systemtime());
-                },
+                    expiry = Some(self.try_extract_expiry_time_in_seconds()?.to_datetime());
+                }
                 //0b11111110
                 STRING_VALUE_TYPE_INDICATOR => {
                     let (key, value) = self.try_extract_key_value()?;
@@ -291,10 +289,10 @@ impl BytesDecoder<'_, MetadataReady> {
                         Some(expiry) => Ok(CacheEntry::KeyValueExpiry(key, value, expiry)),
                         None => Ok(CacheEntry::KeyValue(key, value)),
                     };
-                },
+                }
                 _ => {
                     return Err(anyhow::anyhow!("Invalid key value pair"));
-                },
+                }
             }
         }
         Err(anyhow::anyhow!("Invalid key value pair"))
@@ -455,7 +453,7 @@ fn test_database_section_extractor() {
         CacheEntry::KeyValue(key, value) => {
             assert_eq!(key, "foobar");
             assert_eq!(value, "bazqux");
-        },
+        }
         _ => panic!("Expected KeyValueExpiry"),
     }
 
@@ -463,8 +461,8 @@ fn test_database_section_extractor() {
         CacheEntry::KeyValueExpiry(key, value, expiry) => {
             assert_eq!(key, "foo");
             assert_eq!(value, "bar");
-            assert_eq!(expiry, &StoredDuration::Milliseconds(1713824559637).to_systemtime());
-        },
+            assert_eq!(expiry, &StoredDuration::Milliseconds(1713824559637).to_datetime());
+        }
         _ => panic!("Expected KeyValueExpiry"),
     }
 }
@@ -482,7 +480,7 @@ fn test_non_expiry_key_value_pair() {
         CacheEntry::KeyValue(key, value) => {
             assert_eq!(key, "baz");
             assert_eq!(value, "qux");
-        },
+        }
         _ => panic!("Expected KeyValue"),
     }
 
@@ -626,14 +624,14 @@ fn test_loading_all() {
         CacheEntry::KeyValue(ref key, ref value) => {
             assert_eq!(key, "foo2");
             assert_eq!(value, "bar2");
-        },
+        }
         _ => panic!("Expected KeyValue"),
     }
     match rdb_file.database[0].storage[1] {
         CacheEntry::KeyValue(ref key, ref value) => {
             assert_eq!(key, "foo");
             assert_eq!(value, "bar");
-        },
+        }
         _ => panic!("Expected KeyValue"),
     }
 

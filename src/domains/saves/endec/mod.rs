@@ -58,6 +58,7 @@
 //! ```
 //!
 //! It's primarily about communication/protocol rather than efficiency.\
+use chrono::{DateTime, Utc};
 /// # Extract Key-Value Pair Storage
 /// Extract key-value pair from the data buffer and remove the extracted data from the buffer.
 ///
@@ -74,7 +75,6 @@
 /// 4. **Value:** Encoding depends on the value type.
 // Safe conversion from a slice to an array of a specific size.
 use std::ops::RangeInclusive;
-use std::time::SystemTime;
 
 pub mod decoder;
 pub mod encoder;
@@ -100,14 +100,32 @@ pub enum StoredDuration {
 }
 
 impl StoredDuration {
-    pub fn to_systemtime(&self) -> SystemTime {
+    pub fn to_datetime(&self) -> DateTime<Utc> {
         match self {
-            StoredDuration::Seconds(secs) => {
-                SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(*secs as u64)
-            },
-            StoredDuration::Milliseconds(millis) => {
-                SystemTime::UNIX_EPOCH + std::time::Duration::from_millis(*millis)
-            },
+            StoredDuration::Seconds(secs) =>
+                DateTime::<Utc>::from_timestamp(*secs as i64, 0)
+                    .expect("Invalid timestamp"),
+            StoredDuration::Milliseconds(millis) =>
+                DateTime::from_timestamp_millis(*millis as i64)
+                    .expect("Invalid timestamp"),
         }
+    }
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_stored_duration_to_datetime() {
+        let stored = StoredDuration::Seconds(1);
+        let datetime = stored.to_datetime();
+        assert_eq!(datetime, DateTime::<Utc>::from_timestamp(1, 0).expect("Invalid timestamp"));
+
+        let stored = StoredDuration::Milliseconds(1000);
+        let datetime = stored.to_datetime();
+        assert_eq!(datetime, DateTime::<Utc>::from_timestamp(1, 0).expect("Invalid timestamp"));
+        assert_eq!(datetime, DateTime::<Utc>::from_timestamp(1, 0).expect("Invalid timestamp"));
     }
 }

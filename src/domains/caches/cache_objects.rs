@@ -1,19 +1,20 @@
-use std::time::SystemTime;
+use chrono::{DateTime, Utc};
 
 #[derive(Debug, Clone)]
 pub enum CacheEntry {
     KeyValue(String, String),
-    KeyValueExpiry(String, String, SystemTime),
+    KeyValueExpiry(String, String, DateTime<Utc>),
 }
+
 impl CacheEntry {
-    pub fn is_valid(&self, current_systime: &SystemTime) -> bool {
+    pub fn is_valid(&self, current_systime: &DateTime<Utc>) -> bool {
         match &self {
             CacheEntry::KeyValueExpiry(_, _, expiry) => *expiry > *current_systime,
             _ => true,
         }
     }
 
-    pub fn expiry(&self) -> Option<SystemTime> {
+    pub fn expiry(&self) -> Option<DateTime<Utc>> {
         match &self {
             CacheEntry::KeyValueExpiry(_, _, expiry) => Some(*expiry),
             _ => None,
@@ -41,7 +42,7 @@ impl CacheEntry {
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum CacheValue {
     Value(String),
-    ValueWithExpiry(String, SystemTime),
+    ValueWithExpiry(String, DateTime<Utc>),
 }
 impl CacheValue {
     pub fn value(&self) -> &str {
@@ -59,7 +60,7 @@ impl CacheValue {
             CacheValue::Value(v) => CacheEntry::KeyValue(key.to_string(), v.clone()),
             CacheValue::ValueWithExpiry(v, expiry) => {
                 CacheEntry::KeyValueExpiry(key.to_string(), v.clone(), *expiry)
-            },
+            }
         }
     }
 }
