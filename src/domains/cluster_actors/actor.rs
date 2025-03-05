@@ -793,9 +793,14 @@ mod test {
             );
         }
 
+        let listener_for_second_shard = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let bind_addr_for_second_shard = listener_for_second_shard.local_addr().unwrap();
+        let second_shard_leader_identifier: PeerIdentifier =
+            listener_for_second_shard.local_addr().unwrap().to_string().into();
+
         // leader for different shard?
         cluster_actor.members.insert(
-            PeerIdentifier::new("localhost", 6334),
+            second_shard_leader_identifier.clone(),
             Peer::new::<Follower>(
                 TcpStream::connect(bind_addr).await.unwrap(),
                 PeerKind::Leader,
@@ -803,11 +808,6 @@ mod test {
                 SnapshotApplier::new(cache_manager.clone(), SystemTime::now()),
             ),
         );
-
-        let listener_for_second_shard = TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let bind_addr_for_second_shard = listener_for_second_shard.local_addr().unwrap();
-        let second_shard_leader_identifier: PeerIdentifier =
-            listener_for_second_shard.local_addr().unwrap().to_string().into();
 
         // follower for different shard
         for port in [2655, 2653] {
@@ -838,7 +838,7 @@ mod test {
             format!("127.0.0.1:2653 follower {}", second_shard_leader_identifier),
             format!("127.0.0.1:8080 myself,leader - 0"),
         ] {
-            assert!(res.contains(dbg!(&value)));
+            assert!(res.contains(&value));
         }
     }
 }
