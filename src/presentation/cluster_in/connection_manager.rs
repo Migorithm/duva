@@ -6,7 +6,6 @@ use crate::domains::cluster_actors::replication::IS_LEADER_MODE;
 use crate::domains::peers::identifier::PeerIdentifier;
 use crate::domains::peers::kind::PeerKind;
 use crate::domains::saves::snapshot::snapshot_applier::SnapshotApplier;
-
 use crate::{InboundStream, make_smart_pointer};
 use tokio::sync::mpsc::Sender;
 

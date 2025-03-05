@@ -32,13 +32,17 @@ pub(crate) struct InboundStream {
 make_smart_pointer!(InboundStream, TcpStream => stream);
 
 impl InboundStream {
-    pub(crate) fn new(stream: TcpStream, repl_id: PeerIdentifier, current_offset: u64) -> Self {
+    pub(crate) fn new(
+        stream: TcpStream,
+        self_repl_id: PeerIdentifier,
+        current_offset: u64,
+    ) -> Self {
         Self {
             stream,
             inbound_peer_addr: None,
             inbound_leader_replid: None,
             self_offset: current_offset,
-            self_repl_id: repl_id,
+            self_repl_id,
             inbound_peer_offset: 0,
         }
     }
