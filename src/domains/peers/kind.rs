@@ -4,9 +4,11 @@ use super::identifier::PeerIdentifier;
 
 #[derive(Clone, Debug)]
 pub enum PeerKind {
-    Peer,
     Follower { hwm: u64, leader_repl_id: PeerIdentifier },
     Leader,
+
+    PFollower { leader_repl_id: PeerIdentifier },
+    PLeader,
 }
 
 impl PeerKind {
@@ -20,7 +22,7 @@ impl PeerKind {
             id if id == self_repl_id => {
                 Self::Follower { hwm: inbound_peer_hwm, leader_repl_id: other_repl_id.into() }
             },
-            _ => Self::Peer,
+            _ => Self::PLeader,
         }
     }
     pub fn connected_peer_kind(
@@ -33,7 +35,7 @@ impl PeerKind {
         } else if self_repl_id == other_repl_id {
             Self::Follower { hwm: inbound_peer_hwm, leader_repl_id: other_repl_id.into() }
         } else {
-            Self::Peer
+            Self::PLeader
         }
     }
 }
@@ -41,10 +43,10 @@ impl PeerKind {
 impl Display for PeerKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            PeerKind::Peer => write!(f, "peer"),
             PeerKind::Follower { hwm, leader_repl_id } => write!(f, "follower {}", leader_repl_id),
-            // TODO leader will have slot info
             PeerKind::Leader => write!(f, "leader - 0"),
+            PeerKind::PFollower { leader_repl_id } => write!(f, "follower {}", leader_repl_id),
+            PeerKind::PLeader => write!(f, "leader - 0"),
         }
     }
 }
