@@ -44,7 +44,7 @@ impl OutboundStream {
         let mut connection_info = ConnectedPeerInfo {
             id: Default::default(),
             leader_repl_id: Default::default(),
-            offset: Default::default(),
+            hwm: Default::default(),
             peer_list: Default::default(),
         };
 
@@ -74,7 +74,7 @@ impl OutboundStream {
                     },
                     ConnectionResponse::FULLRESYNC { id, repl_id, offset } => {
                         connection_info.leader_repl_id = repl_id.into();
-                        connection_info.offset = offset;
+                        connection_info.hwm = offset;
                         connection_info.id = id.into();
                         println!("given id {}", connection_info.id);
                         println!("[INFO] Three-way handshake completed")

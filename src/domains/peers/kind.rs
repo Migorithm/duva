@@ -6,7 +6,6 @@ use super::{connected_peer_info::ConnectedPeerInfo, identifier::PeerIdentifier};
 pub enum PeerKind {
     Follower { hwm: u64, leader_repl_id: PeerIdentifier },
     Leader,
-
     PFollower { leader_repl_id: PeerIdentifier },
     PLeader,
 }
@@ -17,10 +16,7 @@ impl PeerKind {
             return Self::Leader;
         }
         if my_repl_id == *peer_info.leader_repl_id {
-            return Self::Follower {
-                hwm: peer_info.offset,
-                leader_repl_id: peer_info.leader_repl_id,
-            };
+            return Self::Follower { hwm: peer_info.hwm, leader_repl_id: peer_info.leader_repl_id };
         }
         if peer_info.id == peer_info.leader_repl_id {
             return Self::PLeader;
