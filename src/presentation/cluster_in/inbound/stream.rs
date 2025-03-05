@@ -2,7 +2,9 @@ use super::request::{HandShakeRequest, HandShakeRequestEnum};
 use crate::domains::caches::cache_manager::CacheManager;
 use crate::domains::cluster_actors::commands::AddPeer;
 use crate::domains::cluster_actors::commands::ClusterCommand;
+use crate::domains::cluster_actors::replication::IS_LEADER_MODE;
 use crate::domains::cluster_actors::replication::ReplicationInfo;
+use crate::domains::peers::connected_peer_info::ConnectedPeerInfo;
 use crate::domains::peers::identifier::PeerIdentifier;
 use crate::domains::peers::kind::PeerKind;
 use crate::domains::peers::peer::Peer;
@@ -13,7 +15,6 @@ use crate::make_smart_pointer;
 use crate::services::interface::TGetPeerIp;
 use crate::services::interface::TRead;
 use crate::services::interface::TWrite;
-use anyhow::Context;
 use bytes::Bytes;
 use tokio::net::TcpStream;
 use tokio::sync::mpsc::Sender;
@@ -22,22 +23,14 @@ use tokio::sync::mpsc::Sender;
 pub(crate) struct InboundStream {
     pub(crate) stream: TcpStream,
     pub(crate) self_repl_info: ReplicationInfo,
-    pub(crate) inbound_peer_addr: Option<PeerIdentifier>,
-    pub(crate) inbound_leader_replid: Option<PeerIdentifier>,
-    pub(crate) inbound_peer_offset: u64,
+    pub(crate) peer_info: ConnectedPeerInfo,
 }
 
 make_smart_pointer!(InboundStream, TcpStream => stream);
 
 impl InboundStream {
     pub(crate) fn new(stream: TcpStream, self_repl_info: ReplicationInfo) -> Self {
-        Self {
-            stream,
-            inbound_peer_addr: None,
-            inbound_leader_replid: None,
-            self_repl_info,
-            inbound_peer_offset: 0,
-        }
+        Self { stream, self_repl_info, peer_info: Default::default() }
     }
     pub async fn recv_threeway_handshake(&mut self) -> anyhow::Result<()> {
         self.recv_ping().await?;
@@ -48,11 +41,11 @@ impl InboundStream {
         let _capa_val_vec = self.recv_replconf_capa().await?;
 
         // TODO check repl_id is '?' or of mine. If not, consider incoming as peer
-        let (repl_id, inbound_peer_offset) = self.recv_psync().await?;
+        let (peer_leader_repl_id, peer_hwm) = self.recv_psync().await?;
 
-        self.inbound_peer_addr = Some(PeerIdentifier::new(&self.get_peer_ip()?, port));
-        self.inbound_leader_replid = Some(repl_id.into());
-        self.inbound_peer_offset = inbound_peer_offset;
+        self.peer_info.id = PeerIdentifier::new(&self.get_peer_ip()?, port);
+        self.peer_info.leader_repl_id = peer_leader_repl_id.into();
+        self.peer_info.hwm = peer_hwm;
 
         Ok(())
     }
@@ -117,11 +110,7 @@ impl InboundStream {
     }
 
     pub(crate) fn peer_kind(&self) -> anyhow::Result<PeerKind> {
-        Ok(PeerKind::accepted_peer_kind(
-            &self.self_repl_info.leader_repl_id,
-            self.inbound_leader_replid.as_ref().context("No leader replid")?,
-            self.inbound_peer_offset,
-        ))
+        Ok(PeerKind::decide_peer_kind(&self.self_repl_info.leader_repl_id, self.peer_info.clone()))
     }
 
     pub(crate) fn to_add_peer(
@@ -130,15 +119,15 @@ impl InboundStream {
         snapshot_applier: SnapshotApplier,
     ) -> anyhow::Result<ClusterCommand> {
         let kind = self.peer_kind()?;
-        let peer_id = self.inbound_peer_addr.context("No peer addr")?;
+
         let peer = Peer::create(self.stream, kind.clone(), cluster_actor_handler, snapshot_applier);
-        Ok(ClusterCommand::AddPeer(AddPeer { peer_id, peer }))
+        Ok(ClusterCommand::AddPeer(AddPeer { peer_id: self.peer_info.id, peer }))
     }
 
     pub(crate) async fn send_full_resync_to_inbound_server(
-        mut self,
+        &mut self,
         cache_manager: CacheManager,
-    ) -> anyhow::Result<Self> {
+    ) -> anyhow::Result<()> {
         // route save caches
         let task = cache_manager
             .route_save(
@@ -154,7 +143,18 @@ impl InboundStream {
         self.write(snapshot).await?;
 
         // collect snapshot data from processor
+        Ok(())
+    }
 
-        Ok(self)
+    pub(crate) async fn may_try_fullsync(
+        &mut self,
+        cache_manager: CacheManager,
+    ) -> anyhow::Result<()> {
+        if let PeerKind::Follower { hwm, leader_repl_id } = self.peer_kind()? {
+            if IS_LEADER_MODE.load(std::sync::atomic::Ordering::Acquire) && hwm == 0 {
+                self.send_full_resync_to_inbound_server(cache_manager).await?;
+            }
+        }
+        Ok(())
     }
 }
