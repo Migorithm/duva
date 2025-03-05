@@ -331,7 +331,11 @@ impl ClusterActor {
     }
 
     pub fn cluster_nodes(&self) -> Vec<String> {
-        self.members.iter().map(|(key, value)| format!("{key} {}", value.kind)).collect()
+        self.members
+            .iter()
+            .map(|(key, value)| format!("{key} {}", value.kind))
+            .chain(std::iter::once(self.replication.node_info()))
+            .collect()
     }
 }
 
@@ -795,6 +799,6 @@ mod test {
         assert_eq!(res[2], format!("localhost:6381 follower {}", bind_addr.to_string()));
         assert_eq!(res[3], format!("localhost:6382 follower {}", bind_addr.to_string()));
         assert_eq!(res[4], format!("localhost:6383 follower {}", bind_addr.to_string()));
-        assert_eq!(res[5], format!("localhost:8080 leader - 0"));
+        assert_eq!(res[5], format!("localhost:8080 myself,leader - 0"));
     }
 }

@@ -51,9 +51,22 @@ impl ReplicationInfo {
         replication
     }
 
+    pub(crate) fn node_info(&self) -> String {
+        let self_id = self.self_identifier();
+        let leader_repl_id =
+            if *self_id == *self.leader_repl_id { "-" } else { &self.leader_repl_id };
+
+        //TODO last 0 denotes slots - subject to work
+        format!("{} myself,{} {} 0", self_id, self.role(), leader_repl_id)
+    }
+
     fn self_identifier(&self) -> PeerIdentifier {
         PeerIdentifier::new(&self.self_host, self.self_port)
     }
+    fn role(&self) -> &str {
+        &self.role
+    }
+
     pub fn vectorize(self) -> Vec<String> {
         vec![
             format!("role:{}", self.role),
