@@ -329,6 +329,10 @@ impl ClusterActor {
 
         self.leader_mode_heartbeat_sender = Some(tx);
     }
+
+    pub fn cluster_nodes(&self) -> Vec<String> {
+        self.members.iter().map(|(key, value)| format!("{key} {}", value.kind)).collect()
+    }
 }
 
 #[cfg(test)]
@@ -750,5 +754,47 @@ mod test {
         assert!(tokio::time::timeout(Duration::from_secs(1), task).await.is_err());
         assert_eq!(cluster_actor.replication.hwm, 1);
         assert_eq!(test_logger.log_index, 2.into());
+    }
+
+    #[tokio::test]
+    async fn test_cluster_nodes() {
+        use tokio::net::TcpListener;
+        // GIVEN
+        let mut cluster_actor = cluster_actor_create_helper();
+        let (cluster_sender, _) = tokio::sync::mpsc::channel(100);
+        let cache_manager = CacheManager { inboxes: vec![] };
+
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let bind_addr = listener.local_addr().unwrap();
+
+        for port in [6379, 6380, 6381, 6382, 6383] {
+            cluster_actor.members.insert(
+                PeerIdentifier::new("localhost", port),
+                Peer::new::<Follower>(
+                    TcpStream::connect(bind_addr).await.unwrap(),
+                    PeerKind::Follower(0),
+                    cluster_sender.clone(),
+                    SnapshotApplier::new(cache_manager.clone(), SystemTime::now()),
+                ),
+            );
+        }
+
+        // WHEN
+        let res = cluster_actor.cluster_nodes();
+
+        // THEN
+        // 127.0.0.1:30004 follower 127.0.0.1:30001
+        // 127.0.0.1:30002 leader - 5461-10922
+        // 127.0.0.1:30003 leader - 10923-16383
+        // 127.0.0.1:30005 follower 127.0.0.1:30002
+        // 127.0.0.1:30006 follower 127.0.0.1:30003
+        // 127.0.0.1:30001 myself,leader - 0-5460
+        assert_eq!(res.len(), 5);
+        assert_eq!(res[0], format!("localhost:6379 follower {}", bind_addr.to_string()));
+        assert_eq!(res[1], format!("localhost:6380 follower {}", bind_addr.to_string()));
+        assert_eq!(res[2], format!("localhost:6381 follower {}", bind_addr.to_string()));
+        assert_eq!(res[3], format!("localhost:6382 follower {}", bind_addr.to_string()));
+        assert_eq!(res[4], format!("localhost:6383 follower {}", bind_addr.to_string()));
+        assert_eq!(res[5], format!("localhost:8080 leader - 0"));
     }
 }

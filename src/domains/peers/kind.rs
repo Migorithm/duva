@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 #[derive(Clone, Debug)]
 pub enum PeerKind {
     Peer,
@@ -28,6 +30,16 @@ impl PeerKind {
             Self::Follower(inbound_peer_offset)
         } else {
             Self::Peer
+        }
+    }
+}
+
+impl Display for PeerKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            PeerKind::Peer => write!(f, "peer"),
+            PeerKind::Follower(_) => write!(f, "follower"),
+            PeerKind::Leader => write!(f, "leader"),
         }
     }
 }
