@@ -334,7 +334,7 @@ impl ClusterActor {
         self.members
             .iter()
             .map(|(key, value)| format!("{key} {}", value.kind))
-            .chain(std::iter::once(self.replication.node_info()))
+            .chain(std::iter::once(self.replication.self_info()))
             .collect()
     }
 }

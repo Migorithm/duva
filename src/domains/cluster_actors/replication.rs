@@ -51,7 +51,7 @@ impl ReplicationInfo {
         replication
     }
 
-    pub(crate) fn node_info(&self) -> String {
+    pub(crate) fn self_info(&self) -> String {
         let self_id = self.self_identifier();
         let leader_repl_id =
             if *self_id == *self.leader_repl_id { "-" } else { &self.leader_repl_id };
