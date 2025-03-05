@@ -27,10 +27,13 @@ pub struct ReplicationInfo {
 
 impl ReplicationInfo {
     pub fn new(replicaof: Option<(String, String)>, self_host: &str, self_port: u16) -> Self {
-        let leader_repl_id = if replicaof.is_none() {
-            PeerIdentifier::new(self_host, self_port)
+        let leader_repl_id = if let Some((leader_host, leader_port)) = replicaof.as_ref() {
+            PeerIdentifier::new(
+                leader_host,
+                leader_port.parse().expect("Invalid port number given"),
+            )
         } else {
-            "?".to_string().into()
+            PeerIdentifier::new(self_host, self_port)
         };
 
         let replication = ReplicationInfo {
@@ -39,7 +42,7 @@ impl ReplicationInfo {
             role: if replicaof.is_some() { "follower".to_string() } else { "leader".to_string() },
             leader_host: replicaof.as_ref().cloned().map(|(host, _)| host),
             leader_port: replicaof
-                .map(|(_, port)| port.parse().expect("Invalid port number of given")),
+                .map(|(_, port)| port.parse().expect("Invalid port number given")),
             term: 0,
             self_host: self_host.to_string(),
             self_port,
@@ -60,7 +63,7 @@ impl ReplicationInfo {
         format!("{} myself,{} {} 0", self_id, self.role(), leader_repl_id)
     }
 
-    fn self_identifier(&self) -> PeerIdentifier {
+    pub(crate) fn self_identifier(&self) -> PeerIdentifier {
         PeerIdentifier::new(&self.self_host, self.self_port)
     }
     fn role(&self) -> &str {

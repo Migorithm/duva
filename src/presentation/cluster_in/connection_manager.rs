@@ -50,14 +50,14 @@ impl ClusterConnectionManager {
 
         // Recursive case
         let replication_info = self.replication_info().await?;
-        let (add_peer_cmd, connected_node_info) =
-            OutboundStream::new(connect_to, replication_info.leader_repl_id, replication_info.hwm)
-                .await?
-                .establish_connection(self_port)
-                .await?
-                .set_replication_info(&self)
-                .await?
-                .create_peer_cmd(self.clone(), snapshot_applier.clone())?;
+
+        let (add_peer_cmd, connected_node_info) = OutboundStream::new(connect_to, replication_info)
+            .await?
+            .establish_connection(self_port)
+            .await?
+            .set_replication_info(&self)
+            .await?
+            .create_peer_cmd(self.clone(), snapshot_applier.clone())?;
         self.send(add_peer_cmd).await?;
 
         // Discover additional peers concurrently

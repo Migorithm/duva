@@ -92,11 +92,7 @@ impl StartUpFacade {
                         let current_repo_info =
                             registry.cluster_communication_manager().replication_info().await?;
 
-                        let inbound_stream = InboundStream::new(
-                            peer_stream,
-                            current_repo_info.leader_repl_id,
-                            current_repo_info.hwm,
-                        );
+                        let inbound_stream = InboundStream::new(peer_stream, current_repo_info);
 
                         let connection_manager = registry.cluster_connection_manager();
 
@@ -127,6 +123,7 @@ impl StartUpFacade {
             let (stop_sentinel_tx, stop_sentinel_recv) = tokio::sync::oneshot::channel::<()>();
 
             if is_leader_mode {
+                println!("[INFO] Run on leader mode. Start accepting client stream...");
                 let client_stream_listener =
                     TcpListener::bind(&self.config_manager.bind_addr()).await?;
 

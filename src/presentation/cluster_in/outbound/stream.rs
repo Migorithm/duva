@@ -1,6 +1,7 @@
 use super::response::ConnectionResponse;
 use crate::domains::cluster_actors::commands::AddPeer;
 use crate::domains::cluster_actors::commands::ClusterCommand;
+use crate::domains::cluster_actors::replication::ReplicationInfo;
 use crate::domains::peers::identifier::PeerIdentifier;
 use crate::domains::peers::kind::PeerKind;
 use crate::domains::peers::peer::Peer;
@@ -16,9 +17,8 @@ use tokio::sync::mpsc::Sender;
 // The following is used only when the node is in follower mode
 pub(crate) struct OutboundStream {
     pub(crate) stream: TcpStream,
+    pub(crate) my_repl_info: ReplicationInfo,
 
-    pub(crate) repl_id: PeerIdentifier,
-    hwm: u64,
     connected_node_info: Option<ConnectedNodeInfo>,
     connect_to: PeerIdentifier,
 }
@@ -27,13 +27,11 @@ make_smart_pointer!(OutboundStream, TcpStream => stream);
 impl OutboundStream {
     pub(crate) async fn new(
         connect_to: PeerIdentifier,
-        repl_id: PeerIdentifier,
-        hwm: u64,
+        my_repl_info: ReplicationInfo,
     ) -> anyhow::Result<Self> {
         Ok(OutboundStream {
             stream: TcpStream::connect(&connect_to.cluster_bind_addr()).await?,
-            repl_id,
-            hwm,
+            my_repl_info,
             connected_node_info: None,
             connect_to: connect_to.to_string().into(),
         })
@@ -43,7 +41,8 @@ impl OutboundStream {
         self.write(write_array!("PING")).await?;
         let mut ok_count = 0;
         let mut connection_info = ConnectedNodeInfo {
-            repl_id: "".to_string().into(),
+            id: Default::default(),
+            leader_repl_id: Default::default(),
             offset: Default::default(),
             peer_list: Default::default(),
         };
@@ -64,17 +63,19 @@ impl OutboundStream {
                                 // "?" here means the server is undecided about their leader. and -1 is the offset that follower is aware of
                                 2 => Ok(write_array!(
                                     "PSYNC",
-                                    self.repl_id.clone(),
-                                    self.hwm.to_string()
+                                    self.my_repl_info.leader_repl_id.clone(),
+                                    self.my_repl_info.hwm.to_string()
                                 )),
                                 _ => Err(anyhow::anyhow!("Unexpected OK count")),
                             }
                         }?;
                         self.write(msg).await?
                     },
-                    ConnectionResponse::FULLRESYNC { repl_id, offset } => {
-                        connection_info.repl_id = repl_id.into();
+                    ConnectionResponse::FULLRESYNC { id, repl_id, offset } => {
+                        connection_info.leader_repl_id = repl_id.into();
                         connection_info.offset = offset;
+                        connection_info.id = id.into();
+                        println!("given id {}", connection_info.id);
                         println!("[INFO] Three-way handshake completed")
                     },
                     ConnectionResponse::PEERS(peer_list) => {
@@ -92,7 +93,7 @@ impl OutboundStream {
         self,
         cluster_manager: &ClusterConnectionManager,
     ) -> anyhow::Result<Self> {
-        if *self.repl_id == "?" {
+        if *self.my_repl_info.leader_repl_id == "?" {
             let connected_node_info = self
                 .connected_node_info
                 .as_ref()
@@ -100,7 +101,7 @@ impl OutboundStream {
 
             cluster_manager
                 .send(ClusterCommand::SetReplicationInfo {
-                    leader_repl_id: connected_node_info.repl_id.clone(),
+                    leader_repl_id: connected_node_info.leader_repl_id.clone(),
                     hwm: 0,
                 })
                 .await?;
@@ -113,10 +114,11 @@ impl OutboundStream {
         snapshot_applier: SnapshotApplier,
     ) -> anyhow::Result<(ClusterCommand, ConnectedNodeInfo)> {
         let connection_info = self.connected_node_info.context("Connected node info not found")?;
-
+        println!("ddddd");
         let kind = PeerKind::connected_peer_kind(
-            &self.repl_id,
-            &connection_info.repl_id,
+            &self.my_repl_info.leader_repl_id,
+            &connection_info.id,
+            &connection_info.leader_repl_id,
             connection_info.offset,
         );
 
@@ -129,8 +131,8 @@ impl OutboundStream {
 #[derive(Debug)]
 pub(crate) struct ConnectedNodeInfo {
     // TODO repl_id here is the leader_replid from connected server.
-    // TODO Set repl_id if given server's repl_id is "?" otherwise, it means that now it's connected to peer.
-    pub(crate) repl_id: PeerIdentifier,
+    pub(crate) id: PeerIdentifier,
+    pub(crate) leader_repl_id: PeerIdentifier,
     pub(crate) offset: u64,
     pub(crate) peer_list: Vec<String>,
 }

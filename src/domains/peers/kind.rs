@@ -12,31 +12,31 @@ pub enum PeerKind {
 }
 
 impl PeerKind {
-    pub fn accepted_peer_kind(
-        self_repl_id: &str,
-        other_repl_id: &str,
-        inbound_peer_hwm: u64,
-    ) -> Self {
-        match other_repl_id {
-            "?" => Self::Follower { hwm: inbound_peer_hwm, leader_repl_id: other_repl_id.into() },
-            id if id == self_repl_id => {
-                Self::Follower { hwm: inbound_peer_hwm, leader_repl_id: other_repl_id.into() }
-            },
-            _ => Self::PLeader,
+    pub fn accepted_peer_kind(my_repl_id: &str, peer_repl_id: &str, peer_hwm: u64) -> Self {
+        if my_repl_id == peer_repl_id {
+            return Self::Follower { hwm: peer_hwm, leader_repl_id: peer_repl_id.into() };
         }
+
+        Self::Leader
     }
     pub fn connected_peer_kind(
-        self_repl_id: &str,
-        other_repl_id: &str,
-        inbound_peer_hwm: u64,
+        my_repl_id: &str,
+        peer_id: &str,
+        peer_repl_id: &str,
+        peer_hwm: u64,
     ) -> Self {
-        if self_repl_id == "?" {
-            Self::Leader
-        } else if self_repl_id == other_repl_id {
-            Self::Follower { hwm: inbound_peer_hwm, leader_repl_id: other_repl_id.into() }
-        } else {
-            Self::PLeader
+        // ! can the following be used by crashed leader when they are trying to reconnect?
+
+        if my_repl_id == peer_id {
+            return Self::Leader;
         }
+
+        if my_repl_id == peer_repl_id {
+            return Self::Follower { hwm: peer_hwm, leader_repl_id: peer_repl_id.into() };
+        }
+
+        // TODO we need to set this right
+        Self::PLeader
     }
 }
 

@@ -2,6 +2,7 @@ use super::request::{HandShakeRequest, HandShakeRequestEnum};
 use crate::domains::caches::cache_manager::CacheManager;
 use crate::domains::cluster_actors::commands::AddPeer;
 use crate::domains::cluster_actors::commands::ClusterCommand;
+use crate::domains::cluster_actors::replication::ReplicationInfo;
 use crate::domains::peers::identifier::PeerIdentifier;
 use crate::domains::peers::kind::PeerKind;
 use crate::domains::peers::peer::Peer;
@@ -9,11 +10,9 @@ use crate::domains::query_parsers::QueryIO;
 use crate::domains::saves::actor::SaveTarget;
 use crate::domains::saves::snapshot::snapshot_applier::SnapshotApplier;
 use crate::make_smart_pointer;
-
 use crate::services::interface::TGetPeerIp;
 use crate::services::interface::TRead;
 use crate::services::interface::TWrite;
-
 use anyhow::Context;
 use bytes::Bytes;
 use tokio::net::TcpStream;
@@ -22,8 +21,7 @@ use tokio::sync::mpsc::Sender;
 // The following is used only when the node is in leader mode
 pub(crate) struct InboundStream {
     pub(crate) stream: TcpStream,
-    pub(crate) self_offset: u64,
-    pub(crate) self_repl_id: PeerIdentifier,
+    pub(crate) self_repl_info: ReplicationInfo,
     pub(crate) inbound_peer_addr: Option<PeerIdentifier>,
     pub(crate) inbound_leader_replid: Option<PeerIdentifier>,
     pub(crate) inbound_peer_offset: u64,
@@ -32,17 +30,12 @@ pub(crate) struct InboundStream {
 make_smart_pointer!(InboundStream, TcpStream => stream);
 
 impl InboundStream {
-    pub(crate) fn new(
-        stream: TcpStream,
-        self_repl_id: PeerIdentifier,
-        current_offset: u64,
-    ) -> Self {
+    pub(crate) fn new(stream: TcpStream, self_repl_info: ReplicationInfo) -> Self {
         Self {
             stream,
             inbound_peer_addr: None,
             inbound_leader_replid: None,
-            self_offset: current_offset,
-            self_repl_id,
+            self_repl_info,
             inbound_peer_offset: 0,
         }
     }
@@ -92,11 +85,14 @@ impl InboundStream {
         let mut cmd = self.extract_cmd().await?;
         let (repl_id, offset) = cmd.extract_psync()?;
 
-        let (self_leader_replid, self_leader_repl_offset) =
-            (self.self_repl_id.clone(), self.self_offset);
+        let (id, self_leader_replid, self_leader_repl_offset) = (
+            self.self_repl_info.self_identifier(),
+            self.self_repl_info.leader_repl_id.clone(),
+            self.self_repl_info.hwm,
+        );
 
         self.write(QueryIO::SimpleString(
-            format!("FULLRESYNC {} {}", self_leader_replid, self_leader_repl_offset).into(),
+            format!("FULLRESYNC {} {} {}", id, self_leader_replid, self_leader_repl_offset).into(),
         ))
         .await?;
 
@@ -122,7 +118,7 @@ impl InboundStream {
 
     pub(crate) fn peer_kind(&self) -> anyhow::Result<PeerKind> {
         Ok(PeerKind::accepted_peer_kind(
-            &self.self_repl_id,
+            &self.self_repl_info.leader_repl_id,
             self.inbound_leader_replid.as_ref().context("No leader replid")?,
             self.inbound_peer_offset,
         ))
@@ -147,8 +143,8 @@ impl InboundStream {
         let task = cache_manager
             .route_save(
                 SaveTarget::InMemory(Vec::new()),
-                self.self_repl_id.clone(),
-                self.self_offset,
+                self.self_repl_info.leader_repl_id.clone(),
+                self.self_repl_info.hwm,
             )
             .await?
             .await??;
