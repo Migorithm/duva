@@ -58,7 +58,7 @@ impl Peer {
             PeerKind::Peer => {
                 Peer::new::<NonDataPeer>(stream, kind, cluster_handler, snapshot_applier)
             },
-            PeerKind::Follower(_) => {
+            PeerKind::Follower { .. } => {
                 Peer::new::<Follower>(stream, kind, cluster_handler, snapshot_applier)
             },
             PeerKind::Leader => {

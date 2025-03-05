@@ -188,15 +188,15 @@ impl ClusterActor {
     }
 
     pub(crate) fn followers(&self) -> impl Iterator<Item = (&PeerIdentifier, &Peer, u64)> {
-        self.members.iter().filter_map(|(id, peer)| match peer.kind {
-            PeerKind::Follower(current_commit) => Some((id, peer, current_commit)),
+        self.members.iter().filter_map(|(id, peer)| match &peer.kind {
+            PeerKind::Follower { hwm, leader_repl_id } => Some((id, peer, *hwm)),
             _ => None,
         })
     }
 
     pub(crate) fn followers_mut(&mut self) -> impl Iterator<Item = (&mut Peer, u64)> {
-        self.members.values_mut().into_iter().filter_map(|peer| match peer.kind {
-            PeerKind::Follower(current_commit) => Some((peer, current_commit)),
+        self.members.values_mut().into_iter().filter_map(|peer| match peer.kind.clone() {
+            PeerKind::Follower { hwm, leader_repl_id } => Some((peer, hwm)),
             _ => None,
         })
     }
@@ -218,8 +218,8 @@ impl ClusterActor {
         self.members
             .values()
             .into_iter()
-            .filter_map(|peer| match peer.kind {
-                PeerKind::Follower(current_commit) => Some(current_commit),
+            .filter_map(|peer| match &peer.kind {
+                PeerKind::Follower { hwm, leader_repl_id } => Some(*hwm),
                 _ => None,
             })
             .min()
@@ -394,7 +394,7 @@ mod test {
         num_stream: Range<u16>,
         cluster_sender: tokio::sync::mpsc::Sender<ClusterCommand>,
         cache_manager: CacheManager,
-        current_follower_offset: u64,
+        follower_hwm: u64,
     ) {
         use tokio::net::TcpListener;
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -405,7 +405,13 @@ mod test {
                 PeerIdentifier::new("localhost", port),
                 Peer::new::<Follower>(
                     TcpStream::connect(bind_addr).await.unwrap(),
-                    PeerKind::Follower(current_follower_offset),
+                    PeerKind::Follower {
+                        hwm: follower_hwm,
+                        leader_repl_id: PeerIdentifier::new(
+                            &actor.replication.self_host,
+                            actor.replication.self_port,
+                        ),
+                    },
                     cluster_sender.clone(),
                     SnapshotApplier::new(cache_manager.clone(), SystemTime::now()),
                 ),
@@ -764,19 +770,22 @@ mod test {
     async fn test_cluster_nodes() {
         use tokio::net::TcpListener;
         // GIVEN
-        let mut cluster_actor = cluster_actor_create_helper();
+
         let (cluster_sender, _) = tokio::sync::mpsc::channel(100);
         let cache_manager = CacheManager { inboxes: vec![] };
 
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let bind_addr = listener.local_addr().unwrap();
 
+        let mut cluster_actor = cluster_actor_create_helper();
+        let self_identifier: PeerIdentifier = bind_addr.to_string().into();
+
         for port in [6379, 6380, 6381, 6382, 6383] {
             cluster_actor.members.insert(
                 PeerIdentifier::new("localhost", port),
                 Peer::new::<Follower>(
                     TcpStream::connect(bind_addr).await.unwrap(),
-                    PeerKind::Follower(0),
+                    PeerKind::Follower { hwm: 0, leader_repl_id: self_identifier.clone() },
                     cluster_sender.clone(),
                     SnapshotApplier::new(cache_manager.clone(), SystemTime::now()),
                 ),
@@ -786,19 +795,12 @@ mod test {
         // WHEN
         let res = cluster_actor.cluster_nodes();
 
-        // THEN
-        // 127.0.0.1:30004 follower 127.0.0.1:30001
-        // 127.0.0.1:30002 leader - 5461-10922
-        // 127.0.0.1:30003 leader - 10923-16383
-        // 127.0.0.1:30005 follower 127.0.0.1:30002
-        // 127.0.0.1:30006 follower 127.0.0.1:30003
-        // 127.0.0.1:30001 myself,leader - 0-5460
-        assert_eq!(res.len(), 5);
-        assert_eq!(res[0], format!("localhost:6379 follower {}", bind_addr.to_string()));
-        assert_eq!(res[1], format!("localhost:6380 follower {}", bind_addr.to_string()));
-        assert_eq!(res[2], format!("localhost:6381 follower {}", bind_addr.to_string()));
-        assert_eq!(res[3], format!("localhost:6382 follower {}", bind_addr.to_string()));
-        assert_eq!(res[4], format!("localhost:6383 follower {}", bind_addr.to_string()));
-        assert_eq!(res[5], format!("localhost:8080 myself,leader - 0"));
+        assert_eq!(res.len(), 6);
+        assert_eq!(res[0], format!("127.0.0.1:6379 follower {}", self_identifier));
+        assert_eq!(res[1], format!("127.0.0.1:6380 follower {}", self_identifier));
+        assert_eq!(res[2], format!("127.0.0.1:6381 follower {}", self_identifier));
+        assert_eq!(res[3], format!("127.0.0.1:6382 follower {}", self_identifier));
+        assert_eq!(res[4], format!("127.0.0.1:6383 follower {}", self_identifier));
+        assert_eq!(res[5], format!("127.0.0.1:8080 myself,leader - 0"));
     }
 }
