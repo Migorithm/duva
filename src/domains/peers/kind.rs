@@ -25,18 +25,17 @@ impl PeerKind {
         peer_repl_id: &str,
         peer_hwm: u64,
     ) -> Self {
-        // ! can the following be used by crashed leader when they are trying to reconnect?
-
         if my_repl_id == peer_id {
             return Self::Leader;
         }
-
         if my_repl_id == peer_repl_id {
             return Self::Follower { hwm: peer_hwm, leader_repl_id: peer_repl_id.into() };
         }
 
-        // TODO we need to set this right
-        Self::PLeader
+        if peer_id == peer_repl_id {
+            return Self::PLeader;
+        }
+        Self::PFollower { leader_repl_id: peer_repl_id.into() }
     }
 }
 
