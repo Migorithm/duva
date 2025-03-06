@@ -1,4 +1,4 @@
-use super::{WriteOperation, WriteRequest, interfaces::TWriteAheadLog, log::LogIndex};
+use super::{interfaces::TWriteAheadLog, log::LogIndex, WriteOperation, WriteRequest};
 
 pub(crate) struct Logger<T: TWriteAheadLog> {
     pub(crate) target: T,
@@ -44,6 +44,10 @@ impl<T: TWriteAheadLog> Logger<T> {
 
         println!("[INFO] Received log entry with log index up to {}", self.log_index);
         Ok(self.log_index.into())
+    }
+
+    pub(crate) async fn overwrite(&mut self, ops: Vec<WriteOperation>) -> anyhow::Result<()> {
+        self.target.overwrite(ops).await
     }
     pub(crate) fn range(&self, start_exclusive: u64, end_inclusive: u64) -> Vec<WriteOperation> {
         self.target.range(start_exclusive, end_inclusive)

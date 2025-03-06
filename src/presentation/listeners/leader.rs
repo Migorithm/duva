@@ -1,13 +1,10 @@
 use super::*;
-use crate::{
-    SnapshotLoader,
-    domains::{
-        cluster_actors::{commands::ClusterCommand, replication::HeartBeatMessage},
-        cluster_listeners::{ClusterListener, ReactorKillSwitch, TListen},
-        peers::connected_types::Leader,
-    },
-};
-use bytes::Bytes;
+use crate::domains::cluster_actors::commands::ClusterCommand;
+use crate::domains::cluster_actors::replication::HeartBeatMessage;
+use crate::domains::cluster_listeners::ClusterListener;
+use crate::domains::cluster_listeners::ReactorKillSwitch;
+use crate::domains::cluster_listeners::TListen;
+use crate::domains::peers::connected_types::Leader;
 use std::time::Duration;
 
 impl TListen for ClusterListener<Leader> {
@@ -64,18 +61,15 @@ impl ClusterListener<Leader> {
                         .send(ClusterCommand::HandleLeaderHeartBeat(state))
                         .await;
                 },
-                LeaderInput::FullSync(data) => {
-                    let Ok(snapshot) = SnapshotLoader::load_from_bytes(&data) else {
-                        println!("[ERROR] Failed to load snapshot from leader");
-                        continue;
-                    };
-                    let _ =
-                        self.cluster_handler.send(ClusterCommand::ApplySnapshot(snapshot)).await;
+                LeaderInput::FullSync(logs) => {
+                    let _ = self.cluster_handler
+                        .send(ClusterCommand::InstallLeaderState(logs));
                 },
             }
         }
     }
 }
+
 
 #[derive(Debug)]
 pub enum LeaderInput {
@@ -87,7 +81,9 @@ impl TryFrom<QueryIO> for LeaderInput {
     type Error = anyhow::Error;
     fn try_from(query: QueryIO) -> anyhow::Result<Self> {
         match query {
-            QueryIO::File(data) => Ok(Self::FullSync(data)),
+            QueryIO::File(data) => {
+                todo!();
+            }
             QueryIO::HeartBeat(peer_state) => Ok(Self::HeartBeat(peer_state)),
             _ => todo!(),
         }
