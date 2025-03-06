@@ -9,9 +9,9 @@ use crate::domains::cluster_listeners::TListen;
 use crate::domains::peers::connected_types::WriteConnected;
 use std::ops::Deref;
 use std::ops::DerefMut;
+use tokio::net::TcpStream;
 use tokio::net::tcp::OwnedReadHalf;
 use tokio::net::tcp::OwnedWriteHalf;
-use tokio::net::TcpStream;
 use tokio::sync::mpsc::Sender;
 use tokio::task::JoinHandle;
 use tokio::time::Instant;
@@ -52,12 +52,8 @@ impl Peer {
         cluster_handler: Sender<ClusterCommand>,
     ) -> Peer {
         match kind {
-            PeerKind::Follower { .. } => {
-                Peer::new::<Follower>(stream, kind, cluster_handler)
-            }
-            PeerKind::Leader => {
-                Peer::new::<Leader>(stream, kind, cluster_handler)
-            }
+            PeerKind::Follower { .. } => Peer::new::<Follower>(stream, kind, cluster_handler),
+            PeerKind::Leader => Peer::new::<Leader>(stream, kind, cluster_handler),
             _ => Peer::new::<NonDataPeer>(stream, kind, cluster_handler),
         }
     }

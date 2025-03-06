@@ -3,7 +3,7 @@ use crate::domains::config_actors::config_manager::ConfigManager;
 use crate::presentation::cluster_in::connection_manager::ClusterConnectionManager;
 
 use crate::{
-    presentation::cluster_in::communication_manager::ClusterCommunicationManager, CacheManager,
+    CacheManager, presentation::cluster_in::communication_manager::ClusterCommunicationManager,
 };
 use tokio::sync::mpsc::Sender;
 

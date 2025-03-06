@@ -23,18 +23,16 @@ impl ClientRequest {
         match self {
             ClientRequest::Set { key, value } => {
                 Some(WriteRequest::Set { key: key.clone(), value: value.clone() })
-            }
+            },
             ClientRequest::SetWithExpiry { key, value, expiry } => {
-                let expires_at =
-                    expiry.timestamp_millis()
-                        as u64;
+                let expires_at = expiry.timestamp_millis() as u64;
 
                 Some(WriteRequest::SetWithExpiry {
                     key: key.clone(),
                     value: value.clone(),
                     expires_at,
                 })
-            }
+            },
             _ => None,
         }
     }

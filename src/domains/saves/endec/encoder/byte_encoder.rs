@@ -18,7 +18,7 @@ impl CacheEntry {
             CacheEntry::KeyValue(key, value) => {
                 result.push(STRING_VALUE_TYPE_INDICATOR);
                 result.extend_from_slice(&encode_key_value(key, value)?);
-            }
+            },
             CacheEntry::KeyValueExpiry(key, value, expiry) => {
                 let milli_seconds = expiry.timestamp_millis();
                 result.push(EXPIRY_TIME_IN_MILLISECONDS_INDICATOR);
@@ -26,7 +26,7 @@ impl CacheEntry {
 
                 result.push(STRING_VALUE_TYPE_INDICATOR);
                 result.extend_from_slice(&encode_key_value(key, value)?);
-            }
+            },
         }
         Ok(result)
     }
@@ -128,8 +128,8 @@ fn encode_size(size: usize) -> Result<Vec<u8>> {
 #[cfg(test)]
 mod test {
     use crate::domains::saves::endec::{
-        decoder::{byte_decoder::BytesDecoder, states::DecoderInit},
         StoredDuration,
+        decoder::{byte_decoder::BytesDecoder, states::DecoderInit},
     };
 
     use super::*;

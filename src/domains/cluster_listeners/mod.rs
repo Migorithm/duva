@@ -17,10 +17,7 @@ pub(crate) struct ClusterListener<T> {
 }
 
 impl<T> ClusterListener<T> {
-    pub fn new(
-        read_connected: ReadConnected<T>,
-        cluster_handler: Sender<ClusterCommand>,
-    ) -> Self {
+    pub fn new(read_connected: ReadConnected<T>, cluster_handler: Sender<ClusterCommand>) -> Self {
         Self { read_connected, cluster_handler }
     }
     // Update peer state on cluster manager

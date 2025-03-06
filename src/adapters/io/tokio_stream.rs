@@ -1,7 +1,6 @@
 use crate::domains::IoError;
 use crate::domains::query_parsers::{QueryIO, deserialize};
 use crate::services::interface::{TGetPeerIp, TRead, TWrite};
-
 use bytes::{Bytes, BytesMut};
 use std::io::ErrorKind;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -25,8 +24,10 @@ impl<T: AsyncReadExt + std::marker::Unpin + Sync + Send> TRead for T {
         // fixed size buffer
         let mut temp_buffer = [0u8; 512];
         loop {
-            let bytes_read =
-                self.read(&mut temp_buffer).await.map_err(|err| IoError::ConnectionRefused)?;
+            let bytes_read = self
+                .read(&mut temp_buffer)
+                .await
+                .map_err(|err| Into::<IoError>::into(err.kind()))?;
 
             if bytes_read == 0 {
                 // read 0 bytes AND buffer is empty - connection closed
@@ -78,10 +79,7 @@ impl<T: AsyncReadExt + std::marker::Unpin + Sync + Send> TRead for T {
 
 impl TGetPeerIp for tokio::net::TcpStream {
     fn get_peer_ip(&self) -> Result<String, IoError> {
-        let addr = self.peer_addr().map_err(|error| {
-            eprintln!("error = {:?}", error);
-            IoError::NotConnected
-        })?;
+        let addr = self.peer_addr().map_err(|error| Into::<IoError>::into(error.kind()))?;
         Ok(addr.ip().to_string())
     }
 }
