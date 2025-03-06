@@ -78,18 +78,16 @@ impl StartUpFacade {
                 // ? how do we know if incoming connection is from a peer or replica?
                 Ok((peer_stream, _socket_addr)) => {
                     tokio::spawn({
-                        let cache_m = registry.cache_manager.clone();
-                        let current_repo_info =
-                            registry.cluster_communication_manager().replication_info().await?;
+                        let ccm = registry.cluster_communication_manager();
+                        let current_repo_info = ccm.replication_info().await?;
 
                         let inbound_stream = InboundStream::new(peer_stream, current_repo_info);
 
                         let connection_manager = registry.cluster_connection_manager();
 
                         async move {
-                            if let Err(err) = connection_manager
-                                .accept_inbound_stream(inbound_stream, cache_m)
-                                .await
+                            if let Err(err) =
+                                connection_manager.accept_inbound_stream(inbound_stream, ccm).await
                             {
                                 println!("[ERROR] Failed to accept peer connection: {:?}", err);
                             }

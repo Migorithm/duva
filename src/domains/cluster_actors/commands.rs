@@ -1,4 +1,5 @@
 use super::replication::{HeartBeatMessage, ReplicationInfo};
+use crate::domains::append_only_files::WriteOperation;
 use crate::domains::append_only_files::log::LogIndex;
 use crate::domains::peers::peer::Peer;
 use crate::domains::saves::snapshot::snapshot::Snapshot;
@@ -22,6 +23,7 @@ pub enum ClusterCommand {
     HandleLeaderHeartBeat(HeartBeatMessage),
     SendLeaderHeartBeat,
     ClusterNodes(tokio::sync::oneshot::Sender<Vec<String>>),
+    FetchCurrentState(tokio::sync::oneshot::Sender<Vec<WriteOperation>>),
 }
 
 pub struct AddPeer {

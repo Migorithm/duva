@@ -3,7 +3,7 @@ use crate::domains::append_only_files::WriteOperation;
 use crate::domains::append_only_files::interfaces::TWriteAheadLog;
 use anyhow::Result;
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct InMemoryWAL {
     writer: Vec<WriteOperation>,
 }
