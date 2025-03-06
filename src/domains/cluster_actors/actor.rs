@@ -1,11 +1,11 @@
 use super::{
     commands::{AddPeer, ClusterCommand},
-    replication::{time_in_secs, BannedPeer, HeartBeatMessage, ReplicationInfo},
+    replication::{BannedPeer, HeartBeatMessage, ReplicationInfo, time_in_secs},
     *,
 };
 use crate::domains::{
     append_only_files::{
-        interfaces::TWriteAheadLog, log::LogIndex, logger::Logger, WriteOperation, WriteRequest,
+        WriteOperation, WriteRequest, interfaces::TWriteAheadLog, log::LogIndex, logger::Logger,
     },
     caches::cache_manager::CacheManager,
     query_parsers::QueryIO,
@@ -187,14 +187,14 @@ impl ClusterActor {
         self.members.values_mut().find(|peer| matches!(peer.kind, PeerKind::Leader))
     }
 
-    pub(crate) fn followers(&self) -> impl Iterator<Item=(&PeerIdentifier, &Peer, u64)> {
+    pub(crate) fn followers(&self) -> impl Iterator<Item = (&PeerIdentifier, &Peer, u64)> {
         self.members.iter().filter_map(|(id, peer)| match &peer.kind {
             PeerKind::Follower { hwm, leader_repl_id } => Some((id, peer, *hwm)),
             _ => None,
         })
     }
 
-    pub(crate) fn followers_mut(&mut self) -> impl Iterator<Item=(&mut Peer, u64)> {
+    pub(crate) fn followers_mut(&mut self) -> impl Iterator<Item = (&mut Peer, u64)> {
         self.members.values_mut().into_iter().filter_map(|peer| match peer.kind.clone() {
             PeerKind::Follower { hwm, leader_repl_id } => Some((peer, hwm)),
             _ => None,
@@ -205,7 +205,7 @@ impl ClusterActor {
     pub(crate) fn generate_follower_entries(
         &mut self,
         append_entries: Vec<WriteOperation>,
-    ) -> impl Iterator<Item=(&mut Peer, HeartBeatMessage)> {
+    ) -> impl Iterator<Item = (&mut Peer, HeartBeatMessage)> {
         let default_heartbeat: HeartBeatMessage = self.replication.default_heartbeat(0);
         self.followers_mut().map(move |(peer, hwm)| {
             let logs =
@@ -352,14 +352,9 @@ mod test {
             caches::{actor::CacheCommandSender, cache_objects::CacheEntry, command::CacheCommand},
             cluster_actors::commands::ClusterCommand,
             peers::connected_types::Follower,
-            saves::snapshot::snapshot_applier::SnapshotApplier,
         },
     };
-    use chrono::Utc;
-    use std::{
-        ops::Range,
-        time::Duration,
-    };
+    use std::{ops::Range, time::Duration};
 
     fn write_operation_create_helper(index_num: u64, key: &str, value: &str) -> WriteOperation {
         WriteOperation {
@@ -413,7 +408,6 @@ mod test {
                         ),
                     },
                     cluster_sender.clone(),
-                    SnapshotApplier::new(cache_manager.clone(), Utc::now()),
                 ),
             );
         }
@@ -612,7 +606,7 @@ mod test {
             cache_manager,
             3,
         )
-            .await;
+        .await;
 
         let test_logs = vec![
             write_operation_create_helper(1, "foo", "bar"),
@@ -709,7 +703,7 @@ mod test {
                         if key == "foo2" {
                             break;
                         }
-                    }
+                    },
                     _ => continue,
                 }
             }
@@ -751,7 +745,7 @@ mod test {
                         if key == "foo2" {
                             break;
                         }
-                    }
+                    },
                     _ => continue,
                 }
             }
@@ -798,7 +792,6 @@ mod test {
                     TcpStream::connect(bind_addr).await.unwrap(),
                     PeerKind::Follower { hwm: 0, leader_repl_id: self_identifier.clone() },
                     cluster_sender.clone(),
-                    SnapshotApplier::new(cache_manager.clone(), SystemTime::now()),
                 ),
             );
         }
@@ -815,7 +808,6 @@ mod test {
                 TcpStream::connect(bind_addr).await.unwrap(),
                 PeerKind::PLeader,
                 cluster_sender.clone(),
-                SnapshotApplier::new(cache_manager.clone(), SystemTime::now()),
             ),
         );
 
@@ -827,7 +819,6 @@ mod test {
                     TcpStream::connect(bind_addr_for_second_shard).await.unwrap(),
                     PeerKind::PFollower { leader_repl_id: second_shard_leader_identifier.clone() },
                     cluster_sender.clone(),
-                    SnapshotApplier::new(cache_manager.clone(), SystemTime::now()),
                 ),
             );
         }
