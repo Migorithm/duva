@@ -30,7 +30,6 @@ impl ClientController<Handler> {
             },
             ClientRequest::Get { key } => self.cache_manager.route_get(key).await?,
             ClientRequest::Keys { pattern } => self.cache_manager.route_keys(pattern).await?,
-            // modify we have to add a new command
             ClientRequest::Config { key, value } => {
                 let res = self.config_manager.route_get((key, value)).await?;
 
@@ -44,7 +43,6 @@ impl ClientController<Handler> {
                 }
             },
             ClientRequest::Delete { key: _ } => panic!("Not implemented"),
-
             ClientRequest::Info => QueryIO::BulkString(
                 self.cluster_communication_manager
                     .replication_info()
@@ -53,14 +51,13 @@ impl ClientController<Handler> {
                     .join("\r\n")
                     .into(),
             ),
-            ClientRequest::ClusterInfo => QueryIO::Array(
-                self.cluster_communication_manager
-                    .cluster_info()
-                    .await?
-                    .into_iter()
-                    .map(|x| QueryIO::BulkString(x.into()))
-                    .collect(),
-            ),
+            ClientRequest::ClusterInfo => {
+                self.cluster_communication_manager.cluster_info().await?.into()
+            },
+            ClientRequest::ClusterNodes => {
+                self.cluster_communication_manager.cluster_nodes().await?.into()
+            },
+
             ClientRequest::ClusterForget(peer_identifier) => {
                 match self.cluster_communication_manager.forget_peer(peer_identifier).await {
                     Ok(true) => QueryIO::SimpleString("OK".into()),

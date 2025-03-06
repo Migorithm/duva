@@ -58,6 +58,7 @@ impl ClientStream {
             ("info", [_unused_value]) => Ok(ClientRequest::Info),
             ("cluster", val) if !val.is_empty() => match val[0].to_lowercase().as_str() {
                 "info" => Ok(ClientRequest::ClusterInfo),
+                "nodes" => Ok(ClientRequest::ClusterNodes),
                 "forget" => {
                     Ok(ClientRequest::ClusterForget(val.get(1).cloned().context("Must")?.into()))
                 },
