@@ -1,3 +1,5 @@
+use crate::domains::IoError;
+
 use super::*;
 
 impl ClientController<Acceptor> {
@@ -55,29 +57,35 @@ impl ClientController<Acceptor> {
 
         // name the loop
         loop {
-            let Ok(requests) = stream.extract_query().await else {
-                eprintln!("invalid user request");
-                continue;
-            };
+            match stream.extract_query().await {
+                Ok(requests) => {
+                    let results = match handler.maybe_consensus_then_execute(requests).await {
+                        Ok(results) => results,
 
-            let results = match handler.maybe_consensus_then_execute(requests).await {
-                Ok(results) => results,
+                        // ! One of the following errors can be returned:
+                        // ! consensus or handler or commit
+                        Err(e) => {
+                            eprintln!("[ERROR] {:?}", e);
+                            let _ = stream.write(QueryIO::Err(e.to_string().into())).await;
+                            continue;
+                        },
+                    };
 
-                // ! One of the following errors can be returned:
-                // ! consensus or handler or commit
-                Err(e) => {
-                    eprintln!("[ERROR] {:?}", e);
-                    let _ = stream.write(QueryIO::Err(e.to_string().into())).await;
-                    continue;
-                },
-            };
-
-            for res in results {
-                if let Err(e) = stream.write(res).await {
-                    if e.should_break() {
-                        break;
+                    for res in results {
+                        if let Err(e) = stream.write(res).await {
+                            if e.should_break() {
+                                break;
+                            }
+                        }
                     }
-                }
+                },
+
+                Err(err) => {
+                    if err.should_break() {
+                        eprintln!("[INFO] {}", err);
+                        return;
+                    }
+                },
             }
         }
     }
