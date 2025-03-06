@@ -5,7 +5,7 @@ k = foo
 v = bar
 
 define send_command
-	( printf $1 | $(NETCAT) & echo $$! > .nc_pid; disown; sleep 1; kill `cat .nc_pid` >/dev/null 2>&1 && rm -f .nc_pid )
+	( printf $1 )
 endef
 
 set:
