@@ -9,14 +9,17 @@ use crate::domains::saves::actor::SaveActor;
 use crate::domains::saves::actor::SaveTarget;
 use crate::domains::saves::endec::StoredDuration;
 
+use crate::domains::saves::snapshot::snapshot::Snapshot;
 use anyhow::Result;
+use chrono::Utc;
+use futures::future::join_all;
 use std::{hash::Hasher, iter::Zip};
 use tokio::sync::oneshot::Sender;
 use tokio::task::JoinHandle;
 
 type OneShotSender<T> = tokio::sync::oneshot::Sender<T>;
 type OneShotReceiverJoinHandle<T> =
-    tokio::task::JoinHandle<std::result::Result<T, tokio::sync::oneshot::error::RecvError>>;
+tokio::task::JoinHandle<std::result::Result<T, tokio::sync::oneshot::error::RecvError>>;
 
 #[derive(Clone, Debug)]
 pub struct CacheManager {
@@ -24,6 +27,16 @@ pub struct CacheManager {
 }
 
 impl CacheManager {
+    pub fn run_cache_actors() -> CacheManager {
+        const NUM_OF_PERSISTENCE: usize = 10;
+
+        let cache_dispatcher = CacheManager {
+            inboxes: (0..NUM_OF_PERSISTENCE).map(|_| CacheActor::run()).collect::<Vec<_>>(),
+        };
+
+        cache_dispatcher
+    }
+
     pub(crate) async fn route_get(&self, key: String) -> Result<QueryIO> {
         let (tx, rx) = tokio::sync::oneshot::channel();
         self.select_shard(&key).send(CacheCommand::Get { key, sender: tx }).await?;
@@ -41,7 +54,7 @@ impl CacheManager {
         save_target: SaveTarget,
         repl_id: PeerIdentifier,
         current_offset: u64,
-    ) -> Result<JoinHandle<anyhow::Result<SaveActor>>> {
+    ) -> Result<JoinHandle<Result<SaveActor>>> {
         let (outbox, inbox) = tokio::sync::mpsc::channel(100);
         let save_actor =
             SaveActor::new(save_target, self.inboxes.len(), repl_id, current_offset).await?;
@@ -63,12 +76,12 @@ impl CacheManager {
         let command = match msg {
             WriteRequest::Set { key, value } => {
                 CacheCommand::Set { cache_entry: CacheEntry::KeyValue(key, value) }
-            },
+            }
             WriteRequest::SetWithExpiry { key, value, expires_at } => CacheCommand::Set {
                 cache_entry: CacheEntry::KeyValueExpiry(
                     key,
                     value,
-                    StoredDuration::Milliseconds(expires_at).to_systemtime(),
+                    StoredDuration::Milliseconds(expires_at).to_datetime(),
                 ),
             },
             WriteRequest::Delete { key } => CacheCommand::Delete(key),
@@ -76,19 +89,6 @@ impl CacheManager {
         shard.send(command).await?;
 
         Ok(())
-    }
-
-    // Send recv handler firstly to the background and return senders and join handlers for receivers
-    fn ontshot_channels<T: Send + Sync + 'static>(
-        &self,
-    ) -> (Vec<OneShotSender<T>>, Vec<OneShotReceiverJoinHandle<T>>) {
-        (0..self.inboxes.len())
-            .map(|_| {
-                let (sender, recv) = tokio::sync::oneshot::channel();
-                let recv_handler = tokio::spawn(recv);
-                (sender, recv_handler)
-            })
-            .unzip()
     }
 
     pub(crate) async fn route_keys(&self, pattern: Option<String>) -> Result<QueryIO> {
@@ -105,6 +105,42 @@ impl CacheManager {
             }
         }
         Ok(QueryIO::Array(keys))
+    }
+    pub(crate) async fn apply_snapshot(&self, snapshot: Snapshot) -> Result<()> {
+        join_all(
+            snapshot
+                .key_values()
+                .into_iter()
+                .filter(|kvc| kvc.is_valid(&Utc::now()))
+                .map(|kvs| self.route_set(kvs)),
+        ).await;
+
+        // TODO let's find the way to test without adding the following code - echo
+        // Only for debugging and test
+        if let Ok(QueryIO::Array(data)) = self.route_keys(None).await {
+            let mut keys = vec![];
+            for key in data {
+                let QueryIO::BulkString(key) = key else {
+                    continue;
+                };
+                keys.push(key);
+            }
+            println!("[INFO] Full Sync Keys: {:?}", keys);
+        }
+        Ok(())
+    }
+
+    // Send recv handler firstly to the background and return senders and join handlers for receivers
+    fn ontshot_channels<T: Send + Sync + 'static>(
+        &self,
+    ) -> (Vec<OneShotSender<T>>, Vec<OneShotReceiverJoinHandle<T>>) {
+        (0..self.inboxes.len())
+            .map(|_| {
+                let (sender, recv) = tokio::sync::oneshot::channel();
+                let recv_handler = tokio::spawn(recv);
+                (sender, recv_handler)
+            })
+            .unzip()
     }
 
     fn chain<T>(
@@ -132,16 +168,6 @@ impl CacheManager {
         let mut hasher = std::hash::DefaultHasher::new();
         std::hash::Hash::hash(&s, &mut hasher);
         hasher.finish() as usize % self.inboxes.len()
-    }
-
-    pub fn run_cache_actors() -> CacheManager {
-        const NUM_OF_PERSISTENCE: usize = 10;
-
-        let cache_dispatcher = CacheManager {
-            inboxes: (0..NUM_OF_PERSISTENCE).map(|_| CacheActor::run()).collect::<Vec<_>>(),
-        };
-
-        cache_dispatcher
     }
 
     // create a new cache manager

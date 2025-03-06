@@ -15,20 +15,20 @@ impl CacheActor {
                 CacheCommand::Set { cache_entry } => {
                     let _ = self.try_send_ttl(cache_entry.key(), cache_entry.expiry()).await;
                     self.set(cache_entry);
-                },
+                }
                 CacheCommand::Get { key, sender } => {
                     let _ = sender.send(self.get(&key).into());
-                },
+                }
                 CacheCommand::Keys { pattern, sender } => {
                     let ks: Vec<_> = self.keys_stream(pattern).collect();
 
                     sender
                         .send(QueryIO::Array(ks))
                         .map_err(|_| anyhow::anyhow!("Error sending keys"))?;
-                },
+                }
                 CacheCommand::Delete(key) => {
                     self.delete(&key);
-                },
+                }
                 CacheCommand::Save { outbox } => {
                     outbox
                         .send(SaveCommand::LocalShardSize {
@@ -41,7 +41,7 @@ impl CacheActor {
                     }
                     // finalize the save operation
                     outbox.send(SaveCommand::StopSentinel).await?;
-                },
+                }
             }
         }
         Ok(self)
@@ -52,7 +52,7 @@ impl CacheActor {
 async fn test_set_and_delete_inc_dec_keys_with_expiry() {
     use crate::domains::caches::actor::CacheDb;
 
-    use std::time::{Duration, SystemTime};
+    use std::time::Duration;
 
     // GIVEN
     let (tx, rx) = tokio::sync::mpsc::channel(100);
@@ -66,13 +66,13 @@ async fn test_set_and_delete_inc_dec_keys_with_expiry() {
         let value = format!("value{}", i);
         tx.send(CacheCommand::Set {
             cache_entry: if i & 1 == 0 {
-                CacheEntry::KeyValueExpiry(key, value, SystemTime::now() + Duration::from_secs(10))
+                CacheEntry::KeyValueExpiry(key, value, Utc::now() + Duration::from_secs(10))
             } else {
                 CacheEntry::KeyValue(key, value)
             },
         })
-        .await
-        .unwrap();
+            .await
+            .unwrap();
     }
 
     // key0 is expiry key. deleting the following will decrese the number by 1

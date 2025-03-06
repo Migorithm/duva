@@ -5,7 +5,7 @@ use crate::domains::config_actors::command::ConfigQuery;
 use crate::domains::config_actors::command::ConfigResource;
 use crate::domains::config_actors::command::ConfigResponse;
 
-use std::time::SystemTime;
+use chrono::{DateTime, Utc};
 use tokio::fs::try_exists;
 use tokio::sync::mpsc::Sender;
 use tokio::sync::oneshot;
@@ -13,7 +13,7 @@ use tokio::sync::oneshot;
 #[derive(Clone)]
 pub struct ConfigManager {
     config: Sender<ConfigMessage>,
-    pub(crate) startup_time: SystemTime,
+    pub(crate) startup_time: DateTime<Utc>,
     pub port: u16,
     pub(crate) host: String,
 }
@@ -32,7 +32,7 @@ impl ConfigManager {
 
         config.handle(inbox);
 
-        Self { config: tx, startup_time: SystemTime::now(), port, host }
+        Self { config: tx, startup_time: Utc::now(), port, host }
     }
 
     // The following is used on startup and check if the file exists
@@ -47,11 +47,11 @@ impl ConfigManager {
             Ok(false) => {
                 println!("File does not exist");
                 Ok(None)
-            },
+            }
             Err(_) => {
                 println!("Error in try_filepath");
                 Ok(None)
-            }, // Not given a dbfilename
+            } // Not given a dbfilename
         }
     }
 

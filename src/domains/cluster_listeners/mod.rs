@@ -3,7 +3,6 @@ use super::{
     cluster_actors::{commands::ClusterCommand, replication::HeartBeatMessage},
     peers::connected_types::ReadConnected,
     query_parsers::QueryIO,
-    saves::snapshot::snapshot_applier::SnapshotApplier,
 };
 use crate::services::interface::TRead;
 pub(crate) use interfaces::TListen;
@@ -15,16 +14,14 @@ pub(crate) type ReactorKillSwitch = tokio::sync::oneshot::Receiver<()>;
 pub(crate) struct ClusterListener<T> {
     pub(crate) read_connected: ReadConnected<T>,
     pub(crate) cluster_handler: Sender<ClusterCommand>,
-    pub(crate) snapshot_applier: SnapshotApplier,
 }
 
 impl<T> ClusterListener<T> {
     pub fn new(
         read_connected: ReadConnected<T>,
         cluster_handler: Sender<ClusterCommand>,
-        snapshot_applier: SnapshotApplier,
     ) -> Self {
-        Self { read_connected, cluster_handler, snapshot_applier }
+        Self { read_connected, cluster_handler }
     }
     // Update peer state on cluster manager
     pub(crate) async fn receive_heartbeat(&mut self, state: HeartBeatMessage) {

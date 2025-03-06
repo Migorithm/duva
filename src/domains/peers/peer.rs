@@ -7,12 +7,11 @@ use crate::domains::cluster_actors::commands::ClusterCommand;
 use crate::domains::cluster_listeners::ClusterListener;
 use crate::domains::cluster_listeners::TListen;
 use crate::domains::peers::connected_types::WriteConnected;
-use crate::domains::saves::snapshot::snapshot_applier::SnapshotApplier;
 use std::ops::Deref;
 use std::ops::DerefMut;
-use tokio::net::TcpStream;
 use tokio::net::tcp::OwnedReadHalf;
 use tokio::net::tcp::OwnedWriteHalf;
+use tokio::net::TcpStream;
 use tokio::sync::mpsc::Sender;
 use tokio::task::JoinHandle;
 use tokio::time::Instant;
@@ -30,7 +29,6 @@ impl Peer {
         stream: TcpStream,
         kind: PeerKind,
         cluster_handler: Sender<ClusterCommand>,
-        snapshot_applier: SnapshotApplier,
     ) -> Self
     where
         ClusterListener<T>: TListen + Send + Sync + 'static,
@@ -40,7 +38,7 @@ impl Peer {
 
         let (kill_trigger, kill_switch) = tokio::sync::oneshot::channel();
         let rc = ReadConnected::<T>::new(r);
-        let listening_actor = ClusterListener::new(rc, cluster_handler, snapshot_applier);
+        let listening_actor = ClusterListener::new(rc, cluster_handler);
         let listener_kill_trigger = ListeningActorKillTrigger::new(
             kill_trigger,
             tokio::spawn(listening_actor.listen(kill_switch)),
@@ -52,16 +50,15 @@ impl Peer {
         stream: TcpStream,
         kind: PeerKind,
         cluster_handler: Sender<ClusterCommand>,
-        snapshot_applier: SnapshotApplier,
     ) -> Peer {
         match kind {
             PeerKind::Follower { .. } => {
-                Peer::new::<Follower>(stream, kind, cluster_handler, snapshot_applier)
-            },
+                Peer::new::<Follower>(stream, kind, cluster_handler)
+            }
             PeerKind::Leader => {
-                Peer::new::<Leader>(stream, kind, cluster_handler, snapshot_applier)
-            },
-            _ => Peer::new::<NonDataPeer>(stream, kind, cluster_handler, snapshot_applier),
+                Peer::new::<Leader>(stream, kind, cluster_handler)
+            }
+            _ => Peer::new::<NonDataPeer>(stream, kind, cluster_handler),
         }
     }
 }

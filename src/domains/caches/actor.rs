@@ -6,7 +6,7 @@ use crate::domains::query_parsers::QueryIO;
 use crate::make_smart_pointer;
 
 use anyhow::Context;
-
+use chrono::{DateTime, Utc};
 use tokio::sync::mpsc::{self, Sender};
 
 pub struct CacheActor {
@@ -40,7 +40,7 @@ impl CacheActor {
     pub(crate) fn keys_stream(
         &self,
         pattern: Option<String>,
-    ) -> impl Iterator<Item = QueryIO> + '_ {
+    ) -> impl Iterator<Item=QueryIO> + '_ {
         self.cache.keys().filter_map(move |k| {
             if pattern.as_ref().map_or(true, |p| k.contains(p)) {
                 Some(QueryIO::BulkString(k.clone().into()))
@@ -64,24 +64,25 @@ impl CacheActor {
         match cache_entry {
             CacheEntry::KeyValue(key, value) => {
                 self.cache.insert(key, CacheValue::Value(value));
-            },
+            }
             CacheEntry::KeyValueExpiry(key, value, expiry) => {
                 self.cache.keys_with_expiry += 1;
                 self.cache.insert(key.clone(), CacheValue::ValueWithExpiry(value, expiry));
-            },
+            }
         }
     }
 
     pub(crate) async fn try_send_ttl(
         &self,
         key: &str,
-        expiry: Option<std::time::SystemTime>,
+        expiry: Option<DateTime<Utc>>,
     ) -> anyhow::Result<()> {
         if let Some(expiry) = expiry {
             let handler = self.self_handler.clone();
             let key = key.to_string();
             let expire_in = expiry
-                .duration_since(std::time::SystemTime::now())
+                .signed_duration_since(Utc::now())
+                .to_std()
                 .context("Expiry time is in the past")?;
             tokio::spawn({
                 async move {

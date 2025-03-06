@@ -7,15 +7,14 @@ pub mod presentation;
 pub mod services;
 use actor_registry::ActorRegistry;
 use anyhow::Result;
-use domains::IoError;
 use domains::append_only_files::interfaces::TWriteAheadLog;
 use domains::caches::cache_manager::CacheManager;
-use domains::cluster_actors::ClusterActor;
 use domains::cluster_actors::commands::ClusterCommand;
-use domains::cluster_actors::replication::{IS_LEADER_MODE, ReplicationInfo};
+use domains::cluster_actors::replication::{ReplicationInfo, IS_LEADER_MODE};
+use domains::cluster_actors::ClusterActor;
 use domains::config_actors::config_manager::ConfigManager;
-use domains::saves::snapshot::snapshot_applier::SnapshotApplier;
 use domains::saves::snapshot::snapshot_loader::SnapshotLoader;
+use domains::IoError;
 pub use init::Environment;
 use presentation::clients::ClientController;
 use presentation::cluster_in::inbound::stream::InboundStream;
@@ -49,10 +48,6 @@ impl StartUpFacade {
         );
 
         let registry = ActorRegistry {
-            snapshot_applier: SnapshotApplier::new(
-                cache_manager.clone(),
-                config_manager.startup_time,
-            ),
             cluster_actor_handler,
             config_manager,
             cache_manager,
@@ -88,7 +83,6 @@ impl StartUpFacade {
                 Ok((peer_stream, _socket_addr)) => {
                     tokio::spawn({
                         let cache_m = registry.cache_manager.clone();
-                        let snapshot_applier = registry.snapshot_applier.clone();
                         let current_repo_info =
                             registry.cluster_communication_manager().replication_info().await?;
 
@@ -98,20 +92,20 @@ impl StartUpFacade {
 
                         async move {
                             if let Err(err) = connection_manager
-                                .accept_inbound_stream(inbound_stream, cache_m, snapshot_applier)
+                                .accept_inbound_stream(inbound_stream, cache_m)
                                 .await
                             {
                                 println!("[ERROR] Failed to accept peer connection: {:?}", err);
                             }
                         }
                     });
-                },
+                }
 
                 Err(err) => {
                     if Into::<IoError>::into(err.kind()).should_break() {
                         break Ok(());
                     }
-                },
+                }
             }
         }
     }
@@ -150,7 +144,6 @@ impl StartUpFacade {
                     connection_manager.discover_cluster(
                         self.config_manager.port,
                         peer_identifier,
-                        self.snapshot_applier.clone(),
                     )
                 });
             }
@@ -179,7 +172,7 @@ impl StartUpFacade {
                 .cluster_actor_handler
                 .send(ClusterCommand::SetReplicationInfo { leader_repl_id: repl_id, hwm })
                 .await?;
-            self.registry.snapshot_applier.apply_snapshot(snapshot).await?;
+            self.registry.cache_manager.apply_snapshot(snapshot).await?;
         }
         Ok(())
     }

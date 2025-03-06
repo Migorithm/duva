@@ -1,5 +1,5 @@
 use crate::domains::{append_only_files::WriteRequest, peers::identifier::PeerIdentifier};
-use std::time::SystemTime;
+use chrono::{DateTime, Utc};
 
 #[derive(Clone, Debug)]
 pub enum ClientRequest {
@@ -8,7 +8,7 @@ pub enum ClientRequest {
     Config { key: String, value: String },
     Get { key: String },
     Set { key: String, value: String },
-    SetWithExpiry { key: String, value: String, expiry: SystemTime },
+    SetWithExpiry { key: String, value: String, expiry: DateTime<Utc> },
     Keys { pattern: Option<String> },
     Delete { key: String },
     Save,
@@ -23,10 +23,10 @@ impl ClientRequest {
         match self {
             ClientRequest::Set { key, value } => {
                 Some(WriteRequest::Set { key: key.clone(), value: value.clone() })
-            },
+            }
             ClientRequest::SetWithExpiry { key, value, expiry } => {
                 let expires_at =
-                    expiry.duration_since(std::time::SystemTime::UNIX_EPOCH).unwrap().as_millis()
+                    expiry.timestamp_millis()
                         as u64;
 
                 Some(WriteRequest::SetWithExpiry {
@@ -34,7 +34,7 @@ impl ClientRequest {
                     value: value.clone(),
                     expires_at,
                 })
-            },
+            }
             _ => None,
         }
     }
