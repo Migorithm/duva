@@ -2,7 +2,7 @@ use crate::domains::append_only_files::log::LogIndex;
 use crate::domains::append_only_files::{WriteOperation, WriteRequest};
 use crate::domains::cluster_actors::replication::HeartBeatMessage;
 #[cfg(test)]
-use crate::domains::cluster_actors::replication::{BannedPeer, ReplicationInfo, time_in_secs};
+use crate::domains::cluster_actors::replication::{time_in_secs, BannedPeer, ReplicationInfo};
 #[cfg(test)]
 use crate::domains::peers::identifier::PeerIdentifier;
 
@@ -64,7 +64,7 @@ impl QueryIO {
                     s,
                     Bytes::from("\r\n"),
                 ]
-                .concat(),
+                    .concat(),
             ),
 
             QueryIO::File(f) => {
@@ -78,7 +78,7 @@ impl QueryIO {
                 });
 
                 hex_file.into()
-            },
+            }
 
             QueryIO::Array(array) => {
                 let mut buffer = BytesMut::with_capacity(
@@ -92,19 +92,19 @@ impl QueryIO {
                     buffer.extend_from_slice(&item.serialize());
                 }
                 buffer.freeze()
-            },
+            }
 
             QueryIO::Err(e) => Bytes::from([concatenator(ERROR_PREFIX), e, "\r\n".into()].concat()),
 
             QueryIO::HeartBeat(HeartBeatMessage {
-                term,
-                hwm,
-                leader_replid,
-                hop_count,
-                heartbeat_from: id,
-                ban_list,
-                append_entries,
-            }) => {
+                                   term,
+                                   hwm,
+                                   leader_replid,
+                                   hop_count,
+                                   heartbeat_from: id,
+                                   ban_list,
+                                   append_entries,
+                               }) => {
                 let mut message = BytesMut::from(format!(
                     "{PEERSTATE_PREFIX}\r\n${}\r\n{term}\r\n${}\r\n{hwm}\r\n${}\r\n{leader_replid}\r\n${}\r\n{hop_count}\r\n${}\r\n{id}\r\n",
                     term.to_string().len(),
@@ -119,7 +119,7 @@ impl QueryIO {
                     QueryIO::Array(
                         ban_list.into_iter().map(|peer| QueryIO::BulkString(peer.into())).collect(),
                     )
-                    .serialize(),
+                        .serialize(),
                 );
 
                 // add append_entries
@@ -130,11 +130,11 @@ impl QueryIO {
                             .map(|op| QueryIO::ReplicateLog(op.into()))
                             .collect(),
                     )
-                    .serialize(),
+                        .serialize(),
                 );
 
                 message.freeze()
-            },
+            }
             QueryIO::ReplicateLog(WriteOperation { request: op, log_index: offset }) => {
                 let mut message = BytesMut::from(
                     format!(
@@ -143,11 +143,11 @@ impl QueryIO {
                         offset.to_string().len(),
                         offset
                     )
-                    .as_bytes(),
+                        .as_bytes(),
                 );
                 message.extend(op.to_array().serialize());
                 message.freeze()
-            },
+            }
             QueryIO::Acks(items) => {
                 let mut bytes =
                     BytesMut::from(format!("{}{}\r\n", ACKS_PREFIX, items.len()).as_bytes());
@@ -157,7 +157,7 @@ impl QueryIO {
                         .flat_map(|item| QueryIO::BulkString(item.to_string().into()).serialize()),
                 );
                 bytes.freeze()
-            },
+            }
         }
     }
 
@@ -237,16 +237,16 @@ pub fn deserialize(buffer: BytesMut) -> Result<(QueryIO, usize)> {
         SIMPLE_STRING_PREFIX => {
             let (bytes, len) = parse_simple_string(buffer)?;
             Ok((QueryIO::SimpleString(bytes), len))
-        },
+        }
         ARRAY_PREFIX => parse_array(buffer),
         BULK_STRING_PREFIX => {
             let (bytes, len) = parse_bulk_string(buffer)?;
             Ok((QueryIO::BulkString(bytes), len))
-        },
+        }
         FILE_PREFIX => {
             let (bytes, len) = parse_file(buffer)?;
             Ok((QueryIO::File(bytes), len))
-        },
+        }
         PEERSTATE_PREFIX => parse_heartbeat(buffer),
         REPLICATE_PREFIX => parse_replicate(buffer),
         ACKS_PREFIX => parse_acks(buffer),
@@ -586,7 +586,7 @@ fn test_binary_to_heartbeat() {
                 p_id: PeerIdentifier("127.0.0.1:6739".into()),
                 ban_time: 6545442
             }]
-            .to_vec(),
+                .to_vec(),
             append_entries: vec![
                 WriteOperation {
                     request: WriteRequest::Set { key: "foo".into(), value: "bar".into() },
@@ -604,15 +604,15 @@ fn test_binary_to_heartbeat() {
 #[test]
 fn test_parse_file() {
     // GIVEN
-    let file = QueryIO::File("hello".into());
+    let file = QueryIO::File("".into());
     let serialized = file.serialize();
     let buffer = BytesMut::from_iter(serialized);
     // WHEN
     let (value, len) = deserialize(buffer).unwrap();
 
     // THEN
-    assert_eq!(len, 15);
-    assert_eq!(value, QueryIO::File("hello".into()));
+    assert_eq!(len, 69);
+    assert_eq!(value, QueryIO::File("&*3\r\n$3\r\nSET\r\n$3\r\nfoo\r\n$3\r\nbar\r\n".into()));
 }
 
 #[test]
