@@ -47,11 +47,11 @@ impl ConfigManager {
             Ok(false) => {
                 println!("File does not exist");
                 Ok(None)
-            }
+            },
             Err(_) => {
                 println!("Error in try_filepath");
                 Ok(None)
-            } // Not given a dbfilename
+            }, // Not given a dbfilename
         }
     }
 

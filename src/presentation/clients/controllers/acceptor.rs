@@ -1,5 +1,3 @@
-use crate::domains::IoError;
-
 use super::*;
 
 impl ClientController<Acceptor> {
