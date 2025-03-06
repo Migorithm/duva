@@ -4,7 +4,6 @@ use crate::domains::caches::command::CacheCommand;
 use crate::domains::query_parsers::QueryIO;
 use crate::domains::saves::command::SaveCommand;
 use anyhow::Result;
-use chrono::Utc;
 use tokio::sync::mpsc::Receiver;
 
 impl CacheActor {

@@ -6,7 +6,6 @@ use crate::domains::peers::connected_peer_info::ConnectedPeerInfo;
 use crate::domains::peers::identifier::PeerIdentifier;
 use crate::domains::peers::kind::PeerKind;
 use crate::domains::peers::peer::Peer;
-use crate::domains::saves::snapshot::snapshot_applier::SnapshotApplier;
 use crate::presentation::cluster_in::connection_manager::ClusterConnectionManager;
 use crate::services::interface::TRead;
 use crate::services::interface::TWrite;
@@ -55,7 +54,7 @@ impl OutboundStream {
                     ConnectionResponse::PONG => {
                         let msg = write_array!("REPLCONF", "listening-port", self_port.to_string());
                         self.write(msg).await?
-                    },
+                    }
                     ConnectionResponse::OK => {
                         ok_count += 1;
                         let msg = {
@@ -71,20 +70,20 @@ impl OutboundStream {
                             }
                         }?;
                         self.write(msg).await?
-                    },
+                    }
                     ConnectionResponse::FULLRESYNC { id, repl_id, offset } => {
                         connection_info.leader_repl_id = repl_id.into();
                         connection_info.hwm = offset;
                         connection_info.id = id.into();
                         println!("given id {}", connection_info.id);
                         println!("[INFO] Three-way handshake completed")
-                    },
+                    }
                     ConnectionResponse::PEERS(peer_list) => {
                         println!("[INFO] Received peer list: {:?}", peer_list);
                         connection_info.peer_list = peer_list;
                         self.connected_node_info = Some(connection_info);
                         return Ok(self);
-                    },
+                    }
                 }
             }
         }
@@ -112,7 +111,6 @@ impl OutboundStream {
     pub(crate) fn create_peer_cmd(
         self,
         cluster_actor_handler: Sender<ClusterCommand>,
-        snapshot_applier: SnapshotApplier,
     ) -> anyhow::Result<(ClusterCommand, Vec<PeerIdentifier>)> {
         let mut connection_info =
             self.connected_node_info.context("Connected node info not found")?;
@@ -120,7 +118,7 @@ impl OutboundStream {
 
         let kind = PeerKind::decide_peer_kind(&self.my_repl_info.leader_repl_id, connection_info);
 
-        let peer = Peer::create(self.stream, kind.clone(), cluster_actor_handler, snapshot_applier);
+        let peer = Peer::create(self.stream, kind.clone(), cluster_actor_handler);
 
         Ok((ClusterCommand::AddPeer(AddPeer { peer_id: self.connect_to, peer }), peer_list))
     }

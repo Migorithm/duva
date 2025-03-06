@@ -7,9 +7,9 @@ pub enum CacheEntry {
 }
 
 impl CacheEntry {
-    pub fn is_valid(&self, current_systime: &DateTime<Utc>) -> bool {
+    pub fn is_valid(&self, current_datetime: &DateTime<Utc>) -> bool {
         match &self {
-            CacheEntry::KeyValueExpiry(_, _, expiry) => *expiry > *current_systime,
+            CacheEntry::KeyValueExpiry(_, _, expiry) => *expiry > *current_datetime,
             _ => true,
         }
     }

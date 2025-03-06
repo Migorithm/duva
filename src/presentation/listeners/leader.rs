@@ -69,15 +69,16 @@ impl ClusterListener<Leader> {
                         println!("[ERROR] Failed to load snapshot from leader");
                         continue;
                     };
-                    let Ok(_) = self.snapshot_applier.apply_snapshot(snapshot).await else {
-                        println!("[ERROR] Failed to apply snapshot from leader");
-                        continue;
-                    };
+                    let _ = self.
+                        cluster_handler
+                        .send(ClusterCommand::ApplySnapshot(snapshot))
+                        .await;
                 }
             }
         }
     }
 }
+
 
 #[derive(Debug)]
 pub enum LeaderInput {
@@ -100,13 +101,9 @@ impl TryFrom<QueryIO> for LeaderInput {
 mod tests {
     use super::*;
     use crate::{
-        domains::{
-            caches::cache_manager::CacheManager, peers::connected_types::ReadConnected,
-            saves::snapshot::snapshot_applier::SnapshotApplier,
-        },
+        domains::peers::connected_types::ReadConnected,
         services::interface::TWrite,
     };
-    use chrono::Utc;
     use tokio::net::{tcp::OwnedWriteHalf, TcpListener, TcpStream};
 
     async fn create_server_listener_client_writer() -> (OwnedReadHalf, OwnedWriteHalf) {
@@ -133,11 +130,6 @@ mod tests {
         let mut listener = ClusterListener {
             read_connected: ReadConnected::<Leader>::new(server_read),
             cluster_handler: cluster_tx,
-
-            snapshot_applier: SnapshotApplier::new(
-                CacheManager { inboxes: vec![] },
-                Utc::now(),
-            ),
         };
 
         // - run listener

@@ -3,8 +3,7 @@ use super::outbound::stream::OutboundStream;
 use crate::domains::caches::cache_manager::CacheManager;
 use crate::domains::cluster_actors::commands::ClusterCommand;
 use crate::domains::peers::identifier::PeerIdentifier;
-use crate::domains::saves::snapshot::snapshot_applier::SnapshotApplier;
-use crate::{InboundStream, make_smart_pointer};
+use crate::{make_smart_pointer, InboundStream};
 use tokio::sync::mpsc::Sender;
 
 pub struct ClusterConnectionManager(pub(crate) ClusterCommunicationManager);
@@ -18,13 +17,12 @@ impl ClusterConnectionManager {
         &self,
         mut peer_stream: InboundStream,
         cache_manager: CacheManager,
-        snapshot_applier: SnapshotApplier,
     ) -> anyhow::Result<()> {
         peer_stream.recv_threeway_handshake().await?;
         peer_stream.disseminate_peers(self.0.get_peers().await?).await?;
         peer_stream.may_try_fullsync(cache_manager).await?;
 
-        self.send(peer_stream.to_add_peer(self.clone(), snapshot_applier)?).await?;
+        self.send(peer_stream.to_add_peer(self.clone())?).await?;
 
         Ok(())
     }
@@ -33,7 +31,6 @@ impl ClusterConnectionManager {
         self,
         self_port: u16,
         connect_to: PeerIdentifier,
-        snapshot_applier: SnapshotApplier,
     ) -> anyhow::Result<()> {
         // Base case
         let existing_peers = self.get_peers().await?;
@@ -50,7 +47,7 @@ impl ClusterConnectionManager {
             .await?
             .set_replication_info(&self)
             .await?
-            .create_peer_cmd(self.clone(), snapshot_applier.clone())?;
+            .create_peer_cmd(self.clone())?;
         self.send(add_peer_cmd).await?;
 
         // Discover additional peers concurrently
@@ -60,9 +57,8 @@ impl ClusterConnectionManager {
             Box::pin(ClusterConnectionManager(self.0.clone()).discover_cluster(
                 self_port,
                 peer,
-                snapshot_applier.clone(),
             ))
-            .await?;
+                .await?;
         }
 
         Ok(())

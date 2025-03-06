@@ -1,14 +1,15 @@
+use super::replication::{HeartBeatMessage, ReplicationInfo};
 use crate::domains::append_only_files::log::LogIndex;
 use crate::domains::peers::peer::Peer;
+use crate::domains::saves::snapshot::snapshot::Snapshot;
 use crate::domains::{append_only_files::WriteRequest, peers::identifier::PeerIdentifier};
-
-use super::replication::{HeartBeatMessage, ReplicationInfo};
 
 pub enum ClusterCommand {
     AddPeer(AddPeer),
     GetPeers(tokio::sync::oneshot::Sender<Vec<PeerIdentifier>>),
     ReplicationInfo(tokio::sync::oneshot::Sender<ReplicationInfo>),
     SetReplicationInfo { leader_repl_id: PeerIdentifier, hwm: u64 },
+    ApplySnapshot(Snapshot),
     SendHeartBeat,
 
     ForgetPeer(PeerIdentifier, tokio::sync::oneshot::Sender<Option<()>>),
