@@ -1,9 +1,9 @@
 use super::communication_manager::ClusterCommunicationManager;
 use super::outbound::stream::OutboundStream;
-use crate::domains::caches::cache_manager::CacheManager;
+
 use crate::domains::cluster_actors::commands::ClusterCommand;
 use crate::domains::peers::identifier::PeerIdentifier;
-use crate::{make_smart_pointer, InboundStream};
+use crate::{InboundStream, make_smart_pointer};
 use tokio::sync::mpsc::Sender;
 
 pub struct ClusterConnectionManager(pub(crate) ClusterCommunicationManager);
@@ -16,11 +16,11 @@ impl ClusterConnectionManager {
     pub(crate) async fn accept_inbound_stream(
         &self,
         mut peer_stream: InboundStream,
-        cache_manager: CacheManager,
+        ccm: ClusterCommunicationManager,
     ) -> anyhow::Result<()> {
         peer_stream.recv_threeway_handshake().await?;
         peer_stream.disseminate_peers(self.0.get_peers().await?).await?;
-        peer_stream.may_try_fullsync(cache_manager).await?;
+        peer_stream.may_try_sync(ccm).await?;
 
         self.send(peer_stream.to_add_peer(self.clone())?).await?;
 
@@ -54,10 +54,7 @@ impl ClusterConnectionManager {
         // TODO Require investigation. Why does 'list_peer_binding_addrs' have to be called at here?
         for peer in peer_list {
             println!("Discovering peer: {}", peer);
-            Box::pin(ClusterConnectionManager(self.0.clone()).discover_cluster(
-                self_port,
-                peer,
-            ))
+            Box::pin(ClusterConnectionManager(self.0.clone()).discover_cluster(self_port, peer))
                 .await?;
         }
 

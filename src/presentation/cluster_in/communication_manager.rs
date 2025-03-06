@@ -1,5 +1,6 @@
 use crate::{
     domains::{
+        append_only_files::WriteOperation,
         cluster_actors::{commands::ClusterCommand, replication::ReplicationInfo},
         peers::identifier::PeerIdentifier,
     },
@@ -57,6 +58,12 @@ impl ClusterCommunicationManager {
     pub(crate) async fn cluster_nodes(&self) -> anyhow::Result<Vec<String>> {
         let (tx, rx) = tokio::sync::oneshot::channel();
         self.send(ClusterCommand::ClusterNodes(tx)).await?;
+        Ok(rx.await?)
+    }
+
+    pub(crate) async fn fetch_logs_for_sync(&self) -> anyhow::Result<Vec<WriteOperation>> {
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        self.send(ClusterCommand::FetchCurrentState(tx)).await?;
         Ok(rx.await?)
     }
 }

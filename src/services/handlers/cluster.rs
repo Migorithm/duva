@@ -83,6 +83,10 @@ impl ClusterActor {
                         todo!()
                     };
                 },
+                ClusterCommand::FetchCurrentState(sender) => {
+                    let logs = logger.range(0, self.replication.hwm);
+                    let _ = sender.send(logs);
+                },
             }
         }
         Ok(self)

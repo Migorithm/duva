@@ -7,6 +7,7 @@ use tokio::fs::{File, OpenOptions};
 use tokio::io::{AsyncReadExt, AsyncWriteExt, BufReader, BufWriter};
 
 /// A local write-ahead-log file (WAL) implementation.
+
 pub struct LocalWAL {
     /// The file path where the WAL data is stored.
     path: PathBuf,
