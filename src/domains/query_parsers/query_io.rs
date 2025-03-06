@@ -315,7 +315,7 @@ fn parse_heartbeat(buffer: BytesMut) -> Result<(QueryIO, usize)> {
     Ok((QueryIO::HeartBeat(message), ctx.offset()))
 }
 
-fn parse_replicate(buffer: BytesMut) -> std::result::Result<(QueryIO, usize), anyhow::Error> {
+pub fn parse_replicate(buffer: BytesMut) -> std::result::Result<(QueryIO, usize), anyhow::Error> {
     let mut ctx = ParseContext::new(buffer);
     ctx.advance(3);
 
@@ -604,15 +604,14 @@ fn test_binary_to_heartbeat() {
 #[test]
 fn test_parse_file() {
     // GIVEN
-    let file = QueryIO::File("".into());
+    let file = QueryIO::File("hello".into());
     let serialized = file.serialize();
     let buffer = BytesMut::from_iter(serialized);
     // WHEN
     let (value, len) = deserialize(buffer).unwrap();
 
     // THEN
-    assert_eq!(len, 69);
-    assert_eq!(value, QueryIO::File("&*3\r\n$3\r\nSET\r\n$3\r\nfoo\r\n$3\r\nbar\r\n".into()));
+    assert_eq!(value, QueryIO::File("hello".into()));
 }
 
 #[test]

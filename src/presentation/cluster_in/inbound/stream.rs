@@ -148,6 +148,7 @@ impl InboundStream {
             if self.self_repl_info.self_identifier() == leader_repl_id {
                 // get logs
                 let logs = ccm.fetch_logs_for_sync().await?;
+                println!("Logs: {:?}", logs);
                 self.send_full_sync_to_inbound_server(logs).await?;
             }
         }

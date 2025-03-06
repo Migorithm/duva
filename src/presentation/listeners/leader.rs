@@ -1,4 +1,7 @@
 use super::*;
+use crate::domains::append_only_files::WriteOperation;
+use crate::domains::query_parsers::deserialize;
+use crate::domains::query_parsers::query_io::parse_replicate;
 use crate::domains::cluster_actors::commands::ClusterCommand;
 use crate::domains::cluster_actors::replication::HeartBeatMessage;
 use crate::domains::cluster_listeners::ClusterListener;
@@ -74,7 +77,7 @@ impl ClusterListener<Leader> {
 #[derive(Debug)]
 pub enum LeaderInput {
     HeartBeat(HeartBeatMessage),
-    FullSync(Bytes),
+    FullSync(Vec<WriteOperation>),
 }
 
 impl TryFrom<QueryIO> for LeaderInput {
@@ -82,7 +85,21 @@ impl TryFrom<QueryIO> for LeaderInput {
     fn try_from(query: QueryIO) -> anyhow::Result<Self> {
         match query {
             QueryIO::File(data) => {
-                todo!();
+                let data = data.into();
+                let Ok((QueryIO::Array(array), _)) = deserialize(data) else {
+                    return Err(anyhow::anyhow!("Invalid data"));
+                };
+                let mut ops = Vec::new();
+                for str in array {
+                    let QueryIO::BulkString(ops_data) = str else {
+                        return Err(anyhow::anyhow!("Invalid data"));
+                    };
+                    let Ok((QueryIO::ReplicateLog(log), _)) = parse_replicate(ops_data.into()) else {
+                        return Err(anyhow::anyhow!("Invalid data"));
+                    };
+                    ops.push(log);
+                }
+                Ok(Self::FullSync(ops))
             }
             QueryIO::HeartBeat(peer_state) => Ok(Self::HeartBeat(peer_state)),
             _ => todo!(),
