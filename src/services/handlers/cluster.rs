@@ -25,6 +25,9 @@ impl ClusterActor {
                 ClusterCommand::GetPeers(callback) => {
                     let _ = callback.send(self.members.keys().cloned().collect::<Vec<_>>().into());
                 },
+                ClusterCommand::ClusterNodes(callback) => {
+                    let _ = callback.send(self.cluster_nodes());
+                },
                 ClusterCommand::SendHeartBeat => {
                     let hop_count = self.hop_count(FANOUT, self.members.len());
                     self.send_liveness_heartbeat(hop_count).await;

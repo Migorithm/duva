@@ -14,6 +14,7 @@ pub enum ClientRequest {
     Save,
     Info,
     ClusterInfo,
+    ClusterNodes,
     ClusterForget(PeerIdentifier),
 }
 

@@ -20,6 +20,7 @@ pub enum ClusterCommand {
 
     HandleLeaderHeartBeat(HeartBeatMessage),
     SendLeaderHeartBeat,
+    ClusterNodes(tokio::sync::oneshot::Sender<Vec<String>>),
 }
 
 pub struct AddPeer {

@@ -189,6 +189,16 @@ impl QueryIO {
     }
 }
 
+impl From<String> for QueryIO {
+    fn from(value: String) -> Self {
+        QueryIO::BulkString(value.into())
+    }
+}
+impl From<Vec<String>> for QueryIO {
+    fn from(value: Vec<String>) -> Self {
+        QueryIO::Array(value.into_iter().map(Into::into).collect())
+    }
+}
 impl From<Option<CacheValue>> for QueryIO {
     fn from(v: Option<CacheValue>) -> Self {
         match v {

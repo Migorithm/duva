@@ -53,4 +53,10 @@ impl ClusterCommunicationManager {
         let Some(_) = rx.await? else { return Ok(false) };
         Ok(true)
     }
+
+    pub(crate) async fn cluster_nodes(&self) -> anyhow::Result<Vec<String>> {
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        self.send(ClusterCommand::ClusterNodes(tx)).await?;
+        Ok(rx.await?)
+    }
 }
