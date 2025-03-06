@@ -2,8 +2,8 @@ use super::request::{HandShakeRequest, HandShakeRequestEnum};
 use crate::domains::caches::cache_manager::CacheManager;
 use crate::domains::cluster_actors::commands::AddPeer;
 use crate::domains::cluster_actors::commands::ClusterCommand;
-use crate::domains::cluster_actors::replication::ReplicationInfo;
 use crate::domains::cluster_actors::replication::IS_LEADER_MODE;
+use crate::domains::cluster_actors::replication::ReplicationInfo;
 use crate::domains::peers::connected_peer_info::ConnectedPeerInfo;
 use crate::domains::peers::identifier::PeerIdentifier;
 use crate::domains::peers::kind::PeerKind;
@@ -86,7 +86,7 @@ impl InboundStream {
         self.write(QueryIO::SimpleString(
             format!("FULLRESYNC {} {} {}", id, self_leader_replid, self_leader_repl_offset).into(),
         ))
-            .await?;
+        .await?;
 
         Ok((repl_id, offset))
     }
@@ -104,7 +104,7 @@ impl InboundStream {
             format!("PEERS {}", peers.into_iter().map(|x| x.0).collect::<Vec<String>>().join(" "))
                 .into(),
         ))
-            .await?;
+        .await?;
         Ok(())
     }
 

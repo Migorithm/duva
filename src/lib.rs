@@ -7,14 +7,14 @@ pub mod presentation;
 pub mod services;
 use actor_registry::ActorRegistry;
 use anyhow::Result;
+use domains::IoError;
 use domains::append_only_files::interfaces::TWriteAheadLog;
 use domains::caches::cache_manager::CacheManager;
-use domains::cluster_actors::commands::ClusterCommand;
-use domains::cluster_actors::replication::{ReplicationInfo, IS_LEADER_MODE};
 use domains::cluster_actors::ClusterActor;
+use domains::cluster_actors::commands::ClusterCommand;
+use domains::cluster_actors::replication::{IS_LEADER_MODE, ReplicationInfo};
 use domains::config_actors::config_manager::ConfigManager;
 use domains::saves::snapshot::snapshot_loader::SnapshotLoader;
-use domains::IoError;
 pub use init::Environment;
 use presentation::clients::ClientController;
 use presentation::cluster_in::inbound::stream::InboundStream;
@@ -47,11 +47,7 @@ impl StartUpFacade {
             wal,
         );
 
-        let registry = ActorRegistry {
-            cluster_actor_handler,
-            config_manager,
-            cache_manager,
-        };
+        let registry = ActorRegistry { cluster_actor_handler, config_manager, cache_manager };
 
         StartUpFacade { registry, mode_change_watcher }
     }
@@ -99,13 +95,13 @@ impl StartUpFacade {
                             }
                         }
                     });
-                }
+                },
 
                 Err(err) => {
                     if Into::<IoError>::into(err.kind()).should_break() {
                         break Ok(());
                     }
-                }
+                },
             }
         }
     }
@@ -141,10 +137,7 @@ impl StartUpFacade {
                     .leader_bind_addr();
 
                 tokio::spawn({
-                    connection_manager.discover_cluster(
-                        self.config_manager.port,
-                        peer_identifier,
-                    )
+                    connection_manager.discover_cluster(self.config_manager.port, peer_identifier)
                 });
             }
 
