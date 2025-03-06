@@ -1,11 +1,11 @@
 use super::*;
 use crate::{
+    SnapshotLoader,
     domains::{
         cluster_actors::{commands::ClusterCommand, replication::HeartBeatMessage},
         cluster_listeners::{ClusterListener, ReactorKillSwitch, TListen},
         peers::connected_types::Leader,
     },
-    SnapshotLoader,
 };
 use bytes::Bytes;
 use std::time::Duration;
@@ -63,22 +63,19 @@ impl ClusterListener<Leader> {
                         .cluster_handler
                         .send(ClusterCommand::HandleLeaderHeartBeat(state))
                         .await;
-                }
+                },
                 LeaderInput::FullSync(data) => {
                     let Ok(snapshot) = SnapshotLoader::load_from_bytes(&data) else {
                         println!("[ERROR] Failed to load snapshot from leader");
                         continue;
                     };
-                    let _ = self.
-                        cluster_handler
-                        .send(ClusterCommand::ApplySnapshot(snapshot))
-                        .await;
-                }
+                    let _ =
+                        self.cluster_handler.send(ClusterCommand::ApplySnapshot(snapshot)).await;
+                },
             }
         }
     }
 }
-
 
 #[derive(Debug)]
 pub enum LeaderInput {
@@ -100,11 +97,8 @@ impl TryFrom<QueryIO> for LeaderInput {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        domains::peers::connected_types::ReadConnected,
-        services::interface::TWrite,
-    };
-    use tokio::net::{tcp::OwnedWriteHalf, TcpListener, TcpStream};
+    use crate::{domains::peers::connected_types::ReadConnected, services::interface::TWrite};
+    use tokio::net::{TcpListener, TcpStream, tcp::OwnedWriteHalf};
 
     async fn create_server_listener_client_writer() -> (OwnedReadHalf, OwnedWriteHalf) {
         // Create listener

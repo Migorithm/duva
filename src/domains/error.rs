@@ -14,12 +14,14 @@ pub enum IoError {
     BrokenPipe,
     #[error("TimedOut")]
     TimedOut,
-    #[error("Unknown")]
-    Unknown,
+    #[error("Read")]
+    Read,
+    #[error("Custom")]
+    Custom(String),
 }
 
 impl IoError {
-    pub fn should_break(self) -> bool {
+    pub fn should_break(&self) -> bool {
         matches!(
             self,
             IoError::ConnectionRefused
@@ -28,6 +30,7 @@ impl IoError {
                 | IoError::NotConnected
                 | IoError::BrokenPipe
                 | IoError::TimedOut
+                | IoError::Read
         )
     }
 }

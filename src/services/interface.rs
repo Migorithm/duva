@@ -5,9 +5,9 @@ pub trait TRead {
     fn read_bytes(
         &mut self,
         buf: &mut BytesMut,
-    ) -> impl std::future::Future<Output = Result<(), std::io::Error>> + Send;
+    ) -> impl std::future::Future<Output = Result<(), IoError>> + Send;
 
-    fn read_values(&mut self) -> impl std::future::Future<Output = anyhow::Result<Vec<QueryIO>>>;
+    fn read_values(&mut self) -> impl std::future::Future<Output = Result<Vec<QueryIO>, IoError>>;
 }
 
 pub(crate) trait TWrite {
