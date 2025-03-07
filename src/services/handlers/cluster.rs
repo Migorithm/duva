@@ -48,7 +48,7 @@ impl ClusterActor {
                     }
 
                     self.gossip(heartbeat.hop_count).await;
-                    self.update_last_seen(&heartbeat);
+                    self.update_on_hertbeat_message(&heartbeat);
                     self.update_ban_list(heartbeat.ban_list).await;
                 },
                 ClusterCommand::ForgetPeer(peer_addr, sender) => {
@@ -69,7 +69,7 @@ impl ClusterActor {
                     self.send_commit_heartbeat(offset).await;
                 },
                 ClusterCommand::HandleLeaderHeartBeat(heart_beat_message) => {
-                    self.update_last_seen(&heart_beat_message);
+                    self.update_on_hertbeat_message(&heart_beat_message);
                     self.replicate(&mut logger, heart_beat_message, &cache_manager).await;
                 },
                 ClusterCommand::SendLeaderHeartBeat => {

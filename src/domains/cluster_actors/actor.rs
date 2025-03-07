@@ -133,7 +133,7 @@ impl ClusterActor {
         self.replication.ban_list.dedup_by_key(|node| node.p_id.clone());
     }
 
-    pub fn update_last_seen(&mut self, heartheat: &HeartBeatMessage) {
+    pub fn update_on_hertbeat_message(&mut self, heartheat: &HeartBeatMessage) {
         if let Some(peer) = self.members.get_mut(&heartheat.heartbeat_from) {
             peer.last_seen = Instant::now();
 
