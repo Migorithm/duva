@@ -33,22 +33,9 @@ impl FromStr for LogIndex {
 /// Client request is converted to WriteOperation and then it turns into WriteOp when it gets offset
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum WriteRequest {
-    /// Set a `key` to `value`, optionally with an expiration epoch time.
-    /// TODO: Add `expires_at`.
-    Set {
-        key: String,
-        value: String,
-    },
-
-    SetWithExpiry {
-        key: String,
-        value: String,
-        expires_at: u64,
-    },
-    /// Delete a key.
-    Delete {
-        key: String,
-    },
+    Set { key: String, value: String },
+    SetWithExpiry { key: String, value: String, expires_at: u64 },
+    Delete { key: String },
 }
 
 impl WriteOperation {
