@@ -1,0 +1,28 @@
+---
+title: Log Compaction Happy Case
+---
+sequenceDiagram
+    participant A as Leader
+    participant B as Follower
+    participant C as Followers
+    Note over A: Leader log entries: 7<br>commited entries: 5
+    Note over B: Follower1 log entries: 6<br>commited entries: 4
+    Note over C: Assume we have more followers
+    A ->> A: snapshotting commited entries
+    Note over A: last included index=5, last included term=1
+    A ->> A: Remove log entries until hwm=5
+    Note over A: Log6, Log7 remained, Log1-5 removed
+    B ->> B: snapshotting commited entries hwm=4
+    Note over B: last included index=4, last included term=1
+    B ->> B: Remove log entries until hwm=4
+    Note over B: Log5, Log6, Log7 remained, Log1-4 removed
+    Note over A, C: Log Compaction is done<br> Replicating continues
+
+
+
+
+
+
+
+
+
