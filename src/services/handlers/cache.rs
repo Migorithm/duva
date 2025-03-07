@@ -4,7 +4,6 @@ use crate::domains::caches::command::CacheCommand;
 use crate::domains::query_parsers::QueryIO;
 use crate::domains::saves::command::SaveCommand;
 use anyhow::Result;
-use chrono::Utc;
 use tokio::sync::mpsc::Receiver;
 
 impl CacheActor {
@@ -14,7 +13,7 @@ impl CacheActor {
                 CacheCommand::StopSentinel => break,
 
                 CacheCommand::Set { cache_entry } => {
-                    let _ = self.try_send_ttl(cache_entry.key(), cache_entry.expiry()).await;
+                    let _ = self.try_send_ttl(&cache_entry).await;
                     self.set(cache_entry);
                 },
                 CacheCommand::Get { key, sender } => {
@@ -52,7 +51,7 @@ impl CacheActor {
 #[tokio::test]
 async fn test_set_and_delete_inc_dec_keys_with_expiry() {
     use crate::domains::caches::actor::CacheDb;
-
+    use chrono::Utc;
     use std::time::Duration;
 
     // GIVEN

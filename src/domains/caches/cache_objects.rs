@@ -1,3 +1,6 @@
+use std::time::Duration;
+
+use anyhow::Context;
 use chrono::{DateTime, Utc};
 
 #[derive(Debug, Clone)]
@@ -7,35 +10,46 @@ pub enum CacheEntry {
 }
 
 impl CacheEntry {
-    pub fn is_valid(&self, current_datetime: &DateTime<Utc>) -> bool {
+    pub(crate) fn is_valid(&self, current_datetime: &DateTime<Utc>) -> bool {
         match &self {
             CacheEntry::KeyValueExpiry(_, _, expiry) => *expiry > *current_datetime,
             _ => true,
         }
     }
 
-    pub fn expiry(&self) -> Option<DateTime<Utc>> {
+    pub(crate) fn expiry(&self) -> Option<DateTime<Utc>> {
         match &self {
             CacheEntry::KeyValueExpiry(_, _, expiry) => Some(*expiry),
             _ => None,
         }
     }
 
-    pub fn key(&self) -> &str {
+    pub(crate) fn key(&self) -> &str {
         match &self {
             CacheEntry::KeyValue(key, _) => key,
             CacheEntry::KeyValueExpiry(key, _, _) => key,
         }
     }
-    pub fn value(&self) -> &str {
+    pub(crate) fn value(&self) -> &str {
         match &self {
             CacheEntry::KeyValue(_, value) => value,
             CacheEntry::KeyValueExpiry(_, value, _) => value,
         }
     }
 
-    pub fn new(chunk: &[(&String, &CacheValue)]) -> Vec<Self> {
+    pub(crate) fn new(chunk: &[(&String, &CacheValue)]) -> Vec<Self> {
         chunk.iter().map(|(k, v)| v.to_cache_entry(k)).collect::<Vec<CacheEntry>>()
+    }
+
+    pub(crate) fn expire_in(&self) -> anyhow::Result<Option<Duration>> {
+        if let CacheEntry::KeyValueExpiry(_, _, expiry) = self {
+            let dr = expiry
+                .signed_duration_since(Utc::now())
+                .to_std()
+                .context("Expiry time is in the past")?;
+            return Ok(Some(dr));
+        }
+        Ok(None)
     }
 }
 
@@ -60,7 +74,7 @@ impl CacheValue {
             CacheValue::Value(v) => CacheEntry::KeyValue(key.to_string(), v.clone()),
             CacheValue::ValueWithExpiry(v, expiry) => {
                 CacheEntry::KeyValueExpiry(key.to_string(), v.clone(), *expiry)
-            }
+            },
         }
     }
 }
