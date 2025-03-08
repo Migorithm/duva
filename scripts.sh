@@ -1,13 +1,13 @@
 # Set
-(printf '*3\r\n$3\r\nSET\r\n$3\r\nfoo\r\n$3\r\nbar\r\n') | nc 127.0.0.1 6379
+(printf '*3\r\n$3\r\nSET\r\n$3\r\nfoo\r\n$3\r\nbar\r\n') | nc 127.0.0.1 6000
 
 # Set with expiration
-(printf '*5\r\n$3\r\nSET\r\n$3\r\nfoo\r\n$3\r\nbar\r\n$2\r\npx\r\n$5\r\n30000\r\n') | nc 127.0.0.1 6379
-(printf '*5\r\n$3\r\nSET\r\n$10\r\nsomanyrand\r\n$3\r\nbar\r\n$2\r\npx\r\n$5\r\n30000\r\n') | nc 127.0.0.1 6379
+(printf '*5\r\n$3\r\nSET\r\n$3\r\nfoo\r\n$3\r\nbar\r\n$2\r\npx\r\n$5\r\n30000\r\n') | nc 127.0.0.1 6000
+(printf '*5\r\n$3\r\nSET\r\n$10\r\nsomanyrand\r\n$3\r\nbar\r\n$2\r\npx\r\n$5\r\n30000\r\n') | nc 127.0.0.1 6000
 
-(printf '*5\r\n$3\r\nSET\r\n$3\r\nfoo\r\n$3\r\nbar\r\n$2\r\npx\r\n$10\r\n9999999999\r\n') | nc 127.0.0.1 6379
+(printf '*5\r\n$3\r\nSET\r\n$3\r\nfoo\r\n$3\r\nbar\r\n$2\r\npx\r\n$10\r\n9999999999\r\n') | nc 127.0.0.1 6000
 
-(printf '*3\r\n$3\r\nSET\r\n$3\r\nfoo\r\n$3\r\nbar\r\n') | nc 127.0.0.1 6379
+(printf '*3\r\n$3\r\nSET\r\n$3\r\nfoo\r\n$3\r\nbar\r\n') | nc 127.0.0.1 6000
 
 # INFO 
 (printf '*2\r\n$4\r\nINFO\r\n$11\r\nreplication\r\n') | nc 127.0.0.1 6000  
@@ -16,16 +16,16 @@
 (printf '*2\r\n$7\r\nCLUSTER\r\n$4\r\ninfo\r\n') | nc 127.0.0.1 6000  
 
 # Get
-(printf '*2\r\n$3\r\nGET\r\n$3\r\nfoo\r\n') | nc 127.0.0.1 6379
+(printf '*2\r\n$3\r\nGET\r\n$3\r\nfoo\r\n') | nc 127.0.0.1 6000
 
 # Keys
-(printf '*2\r\n$4\r\nKEYS\r\n$1\r\n*\r\n') | nc 127.0.0.1 6379
+(printf '*2\r\n$4\r\nKEYS\r\n$1\r\n*\r\n') | nc 127.0.0.1 6000
 
 # SAVE
-(printf '*1\r\n$4\r\nSAVE\r\n') | nc 127.0.0.1 6379
+(printf '*1\r\n$4\r\nSAVE\r\n') | nc 127.0.0.1 6000
 
 # config
-(printf '*3\r\n$6\r\nCONFIG\r\n$3\r\nGET\r\n$3\r\nDir\r\n') | nc 127.0.0.1 6379
+(printf '*3\r\n$6\r\nCONFIG\r\n$3\r\nGET\r\n$3\r\nDir\r\n') | nc 127.0.0.1 6000
 
 
 # cluster forget

@@ -48,10 +48,8 @@ impl ClusterActor {
                     }
 
                     self.gossip(heartbeat.hop_count).await;
-
-                    if self.update_last_seen(&heartbeat.heartbeat_from).is_some() {
-                        self.update_on_report(heartbeat).await;
-                    }
+                    self.update_on_hertbeat_message(&heartbeat);
+                    self.update_ban_list(heartbeat.ban_list).await;
                 },
                 ClusterCommand::ForgetPeer(peer_addr, sender) => {
                     if let Ok(Some(())) = self.forget_peer(peer_addr).await {
@@ -71,17 +69,17 @@ impl ClusterActor {
                     self.send_commit_heartbeat(offset).await;
                 },
                 ClusterCommand::HandleLeaderHeartBeat(heart_beat_message) => {
-                    self.update_last_seen(&heart_beat_message.heartbeat_from);
+                    self.update_on_hertbeat_message(&heart_beat_message);
                     self.replicate(&mut logger, heart_beat_message, &cache_manager).await;
                 },
                 ClusterCommand::SendLeaderHeartBeat => {
                     self.send_leader_heartbeat().await;
                 },
-                ClusterCommand::ApplySnapshot(snapshot) => {
-                    let Ok(_) = cache_manager.apply_snapshot(snapshot).await else {
-                        // TODO: re-request snapshot to leader
-                        todo!()
-                    };
+                ClusterCommand::InstallLeaderState(logs) => {
+                    if logger.overwrite(logs.clone()).await.is_err() {
+                        continue;
+                    }
+                    self.install_leader_state(logs, &cache_manager).await;
                 },
                 ClusterCommand::FetchCurrentState(sender) => {
                     let logs = logger.range(0, self.replication.hwm);

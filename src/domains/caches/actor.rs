@@ -40,7 +40,7 @@ impl CacheActor {
     pub(crate) fn keys_stream(
         &self,
         pattern: Option<String>,
-    ) -> impl Iterator<Item=QueryIO> + '_ {
+    ) -> impl Iterator<Item = QueryIO> + '_ {
         self.cache.keys().filter_map(move |k| {
             if pattern.as_ref().map_or(true, |p| k.contains(p)) {
                 Some(QueryIO::BulkString(k.clone().into()))
@@ -64,34 +64,24 @@ impl CacheActor {
         match cache_entry {
             CacheEntry::KeyValue(key, value) => {
                 self.cache.insert(key, CacheValue::Value(value));
-            }
+            },
             CacheEntry::KeyValueExpiry(key, value, expiry) => {
                 self.cache.keys_with_expiry += 1;
                 self.cache.insert(key.clone(), CacheValue::ValueWithExpiry(value, expiry));
-            }
+            },
         }
     }
 
-    pub(crate) async fn try_send_ttl(
-        &self,
-        key: &str,
-        expiry: Option<DateTime<Utc>>,
-    ) -> anyhow::Result<()> {
-        if let Some(expiry) = expiry {
-            let handler = self.self_handler.clone();
-            let key = key.to_string();
-            let expire_in = expiry
-                .signed_duration_since(Utc::now())
-                .to_std()
-                .context("Expiry time is in the past")?;
-            tokio::spawn({
-                async move {
-                    tokio::time::sleep(expire_in).await;
-                    let _ = handler.send(CacheCommand::Delete(key)).await;
-                }
-            });
-        }
-
+    pub(crate) async fn try_send_ttl(&self, cache_entry: &CacheEntry) -> anyhow::Result<()> {
+        let Some(expire_in) = cache_entry.expire_in()? else { return Ok(()) };
+        let handler = self.self_handler.clone();
+        tokio::spawn({
+            let key = cache_entry.key().to_string();
+            async move {
+                tokio::time::sleep(expire_in).await;
+                let _ = handler.send(CacheCommand::Delete(key)).await;
+            }
+        });
         Ok(())
     }
 }

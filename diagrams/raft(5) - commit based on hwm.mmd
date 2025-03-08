@@ -13,6 +13,7 @@ sequenceDiagram
     C ->> B : Heartbeat with log (hwm=0)
     
     A ->> C : Ack(index 1)
+    # Q: Apply then update high water mark?
     rect rgb(58, 95, 58)
     C ->> C : update high water mark(1)
     end

@@ -1,7 +1,6 @@
 use crate::domains::IoError;
 use crate::domains::query_parsers::{QueryIO, deserialize};
 use crate::services::interface::{TGetPeerIp, TRead, TWrite};
-
 use bytes::{Bytes, BytesMut};
 use std::io::ErrorKind;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -21,19 +20,19 @@ impl<T: AsyncReadExt + std::marker::Unpin + Sync + Send> TRead for T {
     // The data arrives in a continuous stream of bytes. And
     // we might not receive all the data in one go.
     // So, we need to read the data in chunks until we have received all the data for the message.
-    async fn read_bytes(&mut self, buffer: &mut BytesMut) -> Result<(), std::io::Error> {
+    async fn read_bytes(&mut self, buffer: &mut BytesMut) -> Result<(), IoError> {
         // fixed size buffer
         let mut temp_buffer = [0u8; 512];
         loop {
-            let bytes_read = self.read(&mut temp_buffer).await?;
+            let bytes_read = self
+                .read(&mut temp_buffer)
+                .await
+                .map_err(|err| Into::<IoError>::into(err.kind()))?;
 
             if bytes_read == 0 {
                 // read 0 bytes AND buffer is empty - connection closed
                 if buffer.len() == 0 {
-                    return Err(std::io::Error::new(
-                        std::io::ErrorKind::ConnectionAborted,
-                        "Connection closed by peer",
-                    ));
+                    return Err(IoError::ConnectionAborted);
                 }
                 // read 0 bytes but buffer is not empty - end of message
                 return Ok(());
@@ -52,7 +51,7 @@ impl<T: AsyncReadExt + std::marker::Unpin + Sync + Send> TRead for T {
         Ok(())
     }
 
-    async fn read_values(&mut self) -> anyhow::Result<Vec<QueryIO>> {
+    async fn read_values(&mut self) -> Result<Vec<QueryIO>, IoError> {
         let mut buffer = BytesMut::with_capacity(512);
         self.read_bytes(&mut buffer).await?;
 
@@ -70,7 +69,7 @@ impl<T: AsyncReadExt + std::marker::Unpin + Sync + Send> TRead for T {
                 Err(e) => {
                     // Handle parsing errors
                     // You might want to log the error or handle it differently based on your use case
-                    return Err(anyhow::anyhow!("Parsing error: {:?}", e));
+                    return Err(IoError::Custom(format!("Parsing error: {:?}", e)));
                 },
             }
         }
@@ -80,10 +79,7 @@ impl<T: AsyncReadExt + std::marker::Unpin + Sync + Send> TRead for T {
 
 impl TGetPeerIp for tokio::net::TcpStream {
     fn get_peer_ip(&self) -> Result<String, IoError> {
-        let addr = self.peer_addr().map_err(|error| {
-            eprintln!("error = {:?}", error);
-            IoError::NotConnected
-        })?;
+        let addr = self.peer_addr().map_err(|error| Into::<IoError>::into(error.kind()))?;
         Ok(addr.ip().to_string())
     }
 }
@@ -99,7 +95,7 @@ impl From<ErrorKind> for IoError {
             ErrorKind::TimedOut => IoError::TimedOut,
             _ => {
                 eprintln!("unknown error: {:?}", value);
-                IoError::Unknown
+                IoError::Custom(format!("unknown error: {:?}", value))
             },
         }
     }

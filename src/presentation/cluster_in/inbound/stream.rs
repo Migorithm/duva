@@ -1,17 +1,14 @@
-use super::request::{HandShakeRequest, HandShakeRequestEnum};
+use super::request::HandShakeRequest;
+use super::request::HandShakeRequestEnum;
 use crate::domains::append_only_files::WriteOperation;
-use crate::domains::append_only_files::interfaces::TWriteAheadLog;
-use crate::domains::caches::cache_manager::CacheManager;
 use crate::domains::cluster_actors::commands::AddPeer;
 use crate::domains::cluster_actors::commands::ClusterCommand;
-use crate::domains::cluster_actors::replication::IS_LEADER_MODE;
 use crate::domains::cluster_actors::replication::ReplicationInfo;
 use crate::domains::peers::connected_peer_info::ConnectedPeerInfo;
 use crate::domains::peers::identifier::PeerIdentifier;
 use crate::domains::peers::kind::PeerKind;
 use crate::domains::peers::peer::Peer;
 use crate::domains::query_parsers::QueryIO;
-use crate::domains::saves::actor::SaveTarget;
 use crate::make_smart_pointer;
 use crate::presentation::cluster_in::communication_manager::ClusterCommunicationManager;
 use crate::services::interface::TGetPeerIp;
@@ -129,11 +126,15 @@ impl InboundStream {
         &mut self,
         logs: Vec<WriteOperation>,
     ) -> anyhow::Result<()> {
-        let snapshot = QueryIO::File(
-            logs.into_iter().map(|x| x.serialize()).collect::<Vec<_>>().concat().into(),
+        let serialized_logs = QueryIO::File(
+            QueryIO::Array(
+                logs.into_iter().map(|x| QueryIO::BulkString(x.serialize())).collect::<Vec<_>>(),
+            )
+            .serialize(),
         );
-        println!("[INFO] Sent sync to follower {:?}", snapshot);
-        self.write(snapshot).await?;
+
+        println!("[INFO] Sent sync to follower {:?}", serialized_logs);
+        self.write(serialized_logs).await?;
 
         // collect snapshot data from processor
         Ok(())

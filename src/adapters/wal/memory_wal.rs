@@ -1,6 +1,6 @@
 //! A local write-ahead-lof file (WAL) adapter.
-use crate::domains::append_only_files::WriteOperation;
 use crate::domains::append_only_files::interfaces::TWriteAheadLog;
+use crate::domains::append_only_files::WriteOperation;
 use anyhow::Result;
 
 #[derive(Default, Clone)]
@@ -29,6 +29,11 @@ impl TWriteAheadLog for InMemoryWAL {
     }
 
     async fn fsync(&mut self) -> Result<()> {
+        Ok(())
+    }
+
+    async fn overwrite(&mut self, ops: Vec<WriteOperation>) -> Result<()> {
+        self.writer = ops;
         Ok(())
     }
 

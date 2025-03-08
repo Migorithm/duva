@@ -19,7 +19,7 @@ use tokio::task::JoinHandle;
 
 type OneShotSender<T> = tokio::sync::oneshot::Sender<T>;
 type OneShotReceiverJoinHandle<T> =
-tokio::task::JoinHandle<std::result::Result<T, tokio::sync::oneshot::error::RecvError>>;
+    tokio::task::JoinHandle<std::result::Result<T, tokio::sync::oneshot::error::RecvError>>;
 
 #[derive(Clone, Debug)]
 pub struct CacheManager {
@@ -76,7 +76,7 @@ impl CacheManager {
         let command = match msg {
             WriteRequest::Set { key, value } => {
                 CacheCommand::Set { cache_entry: CacheEntry::KeyValue(key, value) }
-            }
+            },
             WriteRequest::SetWithExpiry { key, value, expires_at } => CacheCommand::Set {
                 cache_entry: CacheEntry::KeyValueExpiry(
                     key,
@@ -113,7 +113,8 @@ impl CacheManager {
                 .into_iter()
                 .filter(|kvc| kvc.is_valid(&Utc::now()))
                 .map(|kvs| self.route_set(kvs)),
-        ).await;
+        )
+        .await;
 
         // TODO let's find the way to test without adding the following code - echo
         // Only for debugging and test

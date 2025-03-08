@@ -1,7 +1,7 @@
 /// After three-way handshake, client will receive peers from the leader server
 mod common;
 use crate::common::array;
-use common::{ServerEnv, spawn_server_process};
+use common::{spawn_server_process, ServerEnv};
 use duva::client_utils::ClientStreamHandler;
 
 #[tokio::test]
@@ -21,5 +21,5 @@ async fn test_receive_full_sync() {
 
     // THEN
     tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-    replica_process.wait_for_message("[INFO] Full Sync Keys: [b\"foo\"]", 1).unwrap();
+    replica_process.wait_for_message("[INFO] Received Leader State - length 1", 1).unwrap();
 }
