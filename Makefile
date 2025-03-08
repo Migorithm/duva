@@ -5,7 +5,7 @@ k = foo
 v = bar
 
 define send_command
-	( printf $1 )
+	( printf $1 | $(NETCAT) )
 endef
 
 set:
