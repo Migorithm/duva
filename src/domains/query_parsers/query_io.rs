@@ -1,8 +1,8 @@
+use crate::domains::append_only_files::WriteOperation;
 use crate::domains::append_only_files::log::LogIndex;
-use crate::domains::append_only_files::{WriteOperation, WriteRequest};
 use crate::domains::cluster_actors::replication::HeartBeatMessage;
 #[cfg(test)]
-use crate::domains::cluster_actors::replication::{BannedPeer, ReplicationInfo, time_in_secs};
+use crate::domains::cluster_actors::replication::ReplicationInfo;
 #[cfg(test)]
 use crate::domains::peers::identifier::PeerIdentifier;
 
@@ -20,9 +20,11 @@ const SIMPLE_STRING_PREFIX: char = '+';
 const BULK_STRING_PREFIX: char = '$';
 const ARRAY_PREFIX: char = '*';
 const ERROR_PREFIX: char = '-';
-const PEERSTATE_PREFIX: char = '^';
+const HEARTBEAT_PREFIX: char = '^';
 const REPLICATE_PREFIX: char = '#';
 const ACKS_PREFIX: char = '@';
+
+const SERDE_CONFIG: bincode::config::Configuration = bincode::config::standard();
 
 #[macro_export]
 macro_rules! write_array {
@@ -39,9 +41,11 @@ pub enum QueryIO {
     BulkString(Bytes),
     Array(Vec<QueryIO>),
     Err(Bytes),
+
+    // custom types
     File(Bytes),
     HeartBeat(HeartBeatMessage),
-    ReplicateLog(WriteOperation),
+    WriteOperation(WriteOperation),
     Acks(Vec<LogIndex>),
 }
 
@@ -96,68 +100,12 @@ impl QueryIO {
 
             QueryIO::Err(e) => Bytes::from([concatenator(ERROR_PREFIX), e, "\r\n".into()].concat()),
 
-            QueryIO::HeartBeat(HeartBeatMessage {
-                term,
-                hwm,
-                leader_replid,
-                hop_count,
-                heartbeat_from: id,
-                ban_list,
-                append_entries,
-            }) => {
-                let mut message = BytesMut::from(format!(
-                    "{PEERSTATE_PREFIX}\r\n${}\r\n{term}\r\n${}\r\n{hwm}\r\n${}\r\n{leader_replid}\r\n${}\r\n{hop_count}\r\n${}\r\n{id}\r\n",
-                    term.to_string().len(),
-                    hwm.to_string().len(),
-                    leader_replid.len(),
-                    hop_count.to_string().len(),
-                    id.len(),
-                ).as_bytes());
+            QueryIO::HeartBeat(heartbeat) => serialize_with_bincode(HEARTBEAT_PREFIX, heartbeat),
 
-                // add ban_list
-                message.extend(
-                    QueryIO::Array(
-                        ban_list.into_iter().map(|peer| QueryIO::BulkString(peer.into())).collect(),
-                    )
-                    .serialize(),
-                );
-
-                // add append_entries
-                message.extend(
-                    QueryIO::Array(
-                        append_entries
-                            .into_iter()
-                            .map(|op| QueryIO::ReplicateLog(op.into()))
-                            .collect(),
-                    )
-                    .serialize(),
-                );
-
-                message.freeze()
+            QueryIO::WriteOperation(write_operation) => {
+                serialize_with_bincode(REPLICATE_PREFIX, write_operation)
             },
-            QueryIO::ReplicateLog(WriteOperation { request: op, log_index: offset }) => {
-                let mut message = BytesMut::from(
-                    format!(
-                        "{}\r\n${}\r\n{}\r\n",
-                        REPLICATE_PREFIX,
-                        offset.to_string().len(),
-                        offset
-                    )
-                    .as_bytes(),
-                );
-                message.extend(op.to_array().serialize());
-                message.freeze()
-            },
-            QueryIO::Acks(items) => {
-                let mut bytes =
-                    BytesMut::from(format!("{}{}\r\n", ACKS_PREFIX, items.len()).as_bytes());
-                bytes.extend(
-                    items
-                        .into_iter()
-                        .flat_map(|item| QueryIO::BulkString(item.to_string().into()).serialize()),
-                );
-                bytes.freeze()
-            },
+            QueryIO::Acks(items) => serialize_with_bincode(ACKS_PREFIX, items),
         }
     }
 
@@ -209,23 +157,6 @@ impl From<Option<CacheValue>> for QueryIO {
     }
 }
 
-impl From<HeartBeatMessage> for QueryIO {
-    fn from(value: HeartBeatMessage) -> Self {
-        QueryIO::HeartBeat(value)
-    }
-}
-impl TryFrom<QueryIO> for HeartBeatMessage {
-    type Error = anyhow::Error;
-
-    fn try_from(value: QueryIO) -> std::result::Result<Self, Self::Error> {
-        let QueryIO::HeartBeat(state) = value else {
-            return Err(anyhow::anyhow!("invalid QueryIO invariant"));
-        };
-
-        Ok(state)
-    }
-}
-
 impl From<QueryIO> for Bytes {
     fn from(value: QueryIO) -> Self {
         value.serialize()
@@ -247,9 +178,9 @@ pub fn deserialize(buffer: BytesMut) -> Result<(QueryIO, usize)> {
             let (bytes, len) = parse_file(buffer)?;
             Ok((QueryIO::File(bytes), len))
         },
-        PEERSTATE_PREFIX => parse_heartbeat(buffer),
-        REPLICATE_PREFIX => parse_replicate(buffer),
-        ACKS_PREFIX => parse_acks(buffer),
+        HEARTBEAT_PREFIX => parse_custom_type::<HeartBeatMessage>(buffer),
+        REPLICATE_PREFIX => parse_custom_type::<WriteOperation>(buffer),
+        ACKS_PREFIX => parse_custom_type::<Vec<LogIndex>>(buffer),
 
         _ => Err(anyhow::anyhow!("Not a known value type {:?}", buffer)),
     }
@@ -280,70 +211,15 @@ fn parse_array(buffer: BytesMut) -> Result<(QueryIO, usize)> {
     Ok((QueryIO::Array(elements), ctx.offset()))
 }
 
-fn parse_heartbeat(buffer: BytesMut) -> Result<(QueryIO, usize)> {
-    // fixed rule for peer state
-    let mut ctx = ParseContext::new(buffer);
-    ctx.advance(3);
-
-    let term = ctx.parse_next()?.unpack_single_entry()?;
-    let offset = ctx.parse_next()?.unpack_single_entry()?;
-    let leader_replid = ctx.parse_next()?.unpack_single_entry()?;
-    let hop_count = ctx.parse_next()?.unpack_single_entry()?;
-    let id = ctx.parse_next()?.unpack_single_entry()?;
-    let ban_list = ctx.parse_next()?.unpack_array()?;
-
-    let append_entries = if let QueryIO::Array(entries) = ctx.parse_next()? {
-        entries
-            .into_iter()
-            .flat_map(|v| if let QueryIO::ReplicateLog(log) = v { Some(log) } else { None })
-            .collect()
-    } else {
-        return Err(anyhow::anyhow!("expected array for append_entries"));
-    };
-
-    // Construct the result
-    let message = HeartBeatMessage {
-        heartbeat_from: id,
-        term,
-        hwm: offset,
-        leader_replid,
-        hop_count,
-        ban_list,
-        append_entries,
-    };
-
-    Ok((QueryIO::HeartBeat(message), ctx.offset()))
-}
-
-pub fn parse_replicate(buffer: BytesMut) -> std::result::Result<(QueryIO, usize), anyhow::Error> {
-    let mut ctx = ParseContext::new(buffer);
-    ctx.advance(3);
-
-    let offset = ctx.parse_next()?.unpack_single_entry()?;
-
-    let QueryIO::Array(vec_query_ios) = ctx.parse_next()? else {
-        return Err(anyhow::anyhow!("expected array"));
-    };
-
-    // extract command
-    let mut args = vec_query_ios.into_iter();
-    let Some(QueryIO::BulkString(cmd_bytes)) = args.next() else {
-        return Err(anyhow::anyhow!("expected command"));
-    };
-
-    let cmd = std::str::from_utf8(&cmd_bytes)?.to_lowercase();
-    Ok((
-        QueryIO::ReplicateLog(WriteOperation {
-            request: WriteRequest::new(cmd, args)?,
-            log_index: offset,
-        }),
-        ctx.offset(),
-    ))
-}
-
-fn parse_acks(buffer: BytesMut) -> std::result::Result<(QueryIO, usize), anyhow::Error> {
-    let (acks, usize) = parse_array(buffer)?;
-    Ok((QueryIO::Acks(acks.unpack_array()?), usize))
+pub fn parse_custom_type<T>(
+    buffer: BytesMut,
+) -> std::result::Result<(QueryIO, usize), anyhow::Error>
+where
+    T: bincode::Decode<()> + Into<QueryIO>,
+{
+    let (encoded, len): (T, usize) = bincode::decode_from_slice(&buffer[1..], SERDE_CONFIG)
+        .map_err(|err| anyhow::anyhow!("Failed to decode heartbeat message: {:?}", err))?;
+    Ok((encoded.into(), len + 1))
 }
 
 fn parse_bulk_string(buffer: BytesMut) -> Result<(Bytes, usize)> {
@@ -398,330 +274,329 @@ pub(super) fn read_until_crlf(buffer: &BytesMut) -> Option<(Bytes, usize)> {
     }
     None
 }
-#[test]
-fn test_parse_simple_string() {
-    // GIVEN
-    let buffer = BytesMut::from("+OK\r\n");
 
-    // WHEN
-    let (value, len) = parse_simple_string(buffer).unwrap();
-
-    // THEN
-    assert_eq!(len, 5);
-    assert_eq!(value, b"OK".to_vec());
+fn serialize_with_bincode<T: bincode::Encode>(prefix: char, arg: T) -> Bytes {
+    let mut buffer = BytesMut::new();
+    buffer.extend_from_slice(prefix.to_string().as_bytes());
+    buffer.extend_from_slice(&bincode::encode_to_vec(&arg, SERDE_CONFIG).unwrap());
+    buffer.freeze()
 }
 
-#[test]
-fn test_parse_simple_string_ping() {
-    // GIVEN
-    let buffer = BytesMut::from("+PING\r\n");
-
-    // WHEN
-    let (value, len) = deserialize(buffer).unwrap();
-
-    // THEN
-    assert_eq!(len, 7);
-    assert_eq!(value, QueryIO::SimpleString("PING".to_string().into()));
+impl From<WriteOperation> for QueryIO {
+    fn from(value: WriteOperation) -> Self {
+        QueryIO::WriteOperation(value)
+    }
 }
 
-#[test]
-fn test_parse_bulk_string() {
-    // GIVEN
-    let buffer = BytesMut::from("$5\r\nhello\r\n");
-
-    // WHEN
-    let (value, len) = deserialize(buffer).unwrap();
-
-    // THEN
-    assert_eq!(len, 11);
-    assert_eq!(value, QueryIO::BulkString("hello".into()));
+impl From<Vec<LogIndex>> for QueryIO {
+    fn from(value: Vec<LogIndex>) -> Self {
+        QueryIO::Acks(value)
+    }
 }
-
-#[test]
-fn test_parse_bulk_string_empty() {
-    // GIVEN
-    let buffer = BytesMut::from("$0\r\n\r\n");
-
-    // WHEN
-    let (value, len) = deserialize(buffer).unwrap();
-
-    // THEN
-    assert_eq!(len, 6);
-    assert_eq!(value, QueryIO::BulkString("".into()));
+impl From<HeartBeatMessage> for QueryIO {
+    fn from(value: HeartBeatMessage) -> Self {
+        QueryIO::HeartBeat(value)
+    }
 }
+#[cfg(test)]
+mod test {
 
-#[test]
-fn test_parse_array() {
-    // GIVEN
-    let buffer = BytesMut::from("*2\r\n$5\r\nhello\r\n$5\r\nworld\r\n");
+    use crate::domains::append_only_files::WriteRequest;
 
-    // WHEN
-    let (value, len) = deserialize(buffer).unwrap();
+    use super::*;
 
-    // THEN
-    assert_eq!(len, 26);
-    assert_eq!(
-        value,
-        QueryIO::Array(vec![
-            QueryIO::BulkString("hello".into()),
-            QueryIO::BulkString("world".into()),
-        ])
-    );
-}
+    #[test]
+    fn test_parse_simple_string() {
+        // GIVEN
+        let buffer = BytesMut::from("+OK\r\n");
 
-#[test]
-fn test_from_bytes_to_peer_state() {
-    // GIVEN
-    let data = "^\r\n$3\r\n245\r\n$7\r\n1234329\r\n$4\r\nabcd\r\n$1\r\n2\r\n$15\r\n127.0.0.1:49153\r\n*0\r\n*0\r\n";
+        // WHEN
+        let (value, len) = parse_simple_string(buffer).unwrap();
 
-    let buffer = BytesMut::from(data);
+        // THEN
+        assert_eq!(len, 5);
+        assert_eq!(value, b"OK".to_vec());
+    }
 
-    // WHEN
-    let (value, len) = deserialize(buffer).unwrap();
+    #[test]
+    fn test_parse_simple_string_ping() {
+        // GIVEN
+        let buffer = BytesMut::from("+PING\r\n");
 
-    // THEN
-    assert_eq!(len, data.len());
-    assert_eq!(
-        value,
-        QueryIO::HeartBeat(HeartBeatMessage {
-            term: 245,
-            hwm: 1234329,
-            leader_replid: "abcd".into(),
+        // WHEN
+        let (value, len) = deserialize(buffer).unwrap();
+
+        // THEN
+        assert_eq!(len, 7);
+        assert_eq!(value, QueryIO::SimpleString("PING".to_string().into()));
+    }
+
+    #[test]
+    fn test_parse_bulk_string() {
+        // GIVEN
+        let buffer = BytesMut::from("$5\r\nhello\r\n");
+
+        // WHEN
+        let (value, len) = deserialize(buffer).unwrap();
+
+        // THEN
+        assert_eq!(len, 11);
+        assert_eq!(value, QueryIO::BulkString("hello".into()));
+    }
+
+    #[test]
+    fn test_parse_bulk_string_empty() {
+        // GIVEN
+        let buffer = BytesMut::from("$0\r\n\r\n");
+
+        // WHEN
+        let (value, len) = deserialize(buffer).unwrap();
+
+        // THEN
+        assert_eq!(len, 6);
+        assert_eq!(value, QueryIO::BulkString("".into()));
+    }
+
+    #[test]
+    fn test_parse_array() {
+        // GIVEN
+        let buffer = BytesMut::from("*2\r\n$5\r\nhello\r\n$5\r\nworld\r\n");
+
+        // WHEN
+        let (value, len) = deserialize(buffer).unwrap();
+
+        // THEN
+        assert_eq!(len, 26);
+        assert_eq!(
+            value,
+            QueryIO::Array(vec![
+                QueryIO::BulkString("hello".into()),
+                QueryIO::BulkString("world".into()),
+            ])
+        );
+    }
+
+    #[test]
+    fn test_from_bytes_to_peer_state() {
+        // GIVEN
+
+        let data = b"^\x0f127.0.0.1:49153\xf5\xfc\x99\xd5\x12\0\x04abcd\x02\0\0";
+
+        let buffer = BytesMut::from_iter(data);
+
+        // WHEN
+        let (QueryIO::HeartBeat(heartbeat), len) = deserialize(buffer).unwrap() else {
+            panic!();
+        };
+
+        // THEN
+        assert_eq!(len, data.len());
+        assert_eq!(
+            heartbeat,
+            HeartBeatMessage {
+                term: 245,
+                hwm: 1234329,
+                leader_replid: "abcd".into(),
+                hop_count: 2,
+                heartbeat_from: "127.0.0.1:49153".to_string().into(),
+                ban_list: vec![],
+                append_entries: vec![]
+            }
+        );
+
+        assert_eq!(heartbeat.term, 245);
+        assert_eq!(heartbeat.hwm, 1234329);
+
+        assert_eq!(*heartbeat.leader_replid, "abcd");
+        assert_eq!(heartbeat.hop_count, 2);
+        assert!(heartbeat.ban_list.is_empty())
+    }
+
+    #[test]
+    fn test_from_heartbeat_to_bytes() {
+        //GIVEN
+        let peer_state = HeartBeatMessage {
+            term: 1,
+            hwm: 2,
+            leader_replid: "localhost:3329".into(),
             hop_count: 2,
-            heartbeat_from: "127.0.0.1:49153".to_string().into(),
-            ban_list: vec![],
-            append_entries: vec![]
-        })
-    );
-    let peer_state: HeartBeatMessage = value.try_into().unwrap();
-    assert_eq!(peer_state.term, 245);
-    assert_eq!(peer_state.hwm, 1234329);
-
-    assert_eq!(*peer_state.leader_replid, "abcd");
-    assert_eq!(peer_state.hop_count, 2);
-    assert!(peer_state.ban_list.is_empty())
-}
-
-#[test]
-fn test_from_heartbeat_to_bytes() {
-    //GIVEN
-    let peer_state = HeartBeatMessage {
-        term: 1,
-        hwm: 2,
-        leader_replid: "localhost:3329".into(),
-        hop_count: 2,
-        heartbeat_from: "127.0.0.1:49152".to_string().into(),
-        ban_list: Default::default(),
-        append_entries: vec![
-            WriteOperation {
-                request: WriteRequest::Set { key: "foo".into(), value: "bar".into() },
-                log_index: 1.into(),
-            },
-            WriteOperation {
-                request: WriteRequest::Set { key: "poo".into(), value: "bar".into() },
-                log_index: 2.into(),
-            },
-        ],
-    };
-    //WHEN
-    let peer_state_serialized: QueryIO = peer_state.into();
-    let peer_state_serialized = peer_state_serialized.serialize();
-    //THEN
-    assert_eq!(
-        "^\r\n$1\r\n1\r\n$1\r\n2\r\n$14\r\n127.0.0.1:3329\r\n$1\r\n2\r\n$15\r\n127.0.0.1:49152\r\n*0\r\n*2\r\n#\r\n$1\r\n1\r\n*3\r\n$3\r\nSET\r\n$3\r\nfoo\r\n$3\r\nbar\r\n#\r\n$1\r\n2\r\n*3\r\n$3\r\nSET\r\n$3\r\npoo\r\n$3\r\nbar\r\n",
-        peer_state_serialized
-    );
-
-    //GIVEN
-    let peer_state = HeartBeatMessage {
-        term: 5,
-        hwm: 3232,
-        leader_replid: "localhost:23399".into(),
-        hop_count: 40,
-        heartbeat_from: "127.0.0.1:49159".to_string().into(),
-        ban_list: Default::default(),
-        append_entries: vec![],
-    };
-    //WHEN
-    let peer_state_serialized: QueryIO = peer_state.into();
-    let peer_state_serialized = peer_state_serialized.serialize();
-    //THEN
-    assert_eq!(
-        "^\r\n$1\r\n5\r\n$4\r\n3232\r\n$15\r\n127.0.0.1:23399\r\n$2\r\n40\r\n$15\r\n127.0.0.1:49159\r\n*0\r\n*0\r\n",
-        peer_state_serialized
-    );
-}
-
-#[test]
-fn test_peer_state_ban_list_to_binary() {
-    // GIVEN
-    let mut replication = ReplicationInfo::new(None, "127.0.0.1", 6380);
-    let peer_id = PeerIdentifier::new("127.0.0.1", 6739);
-    replication.ban_peer(&peer_id).unwrap();
-
-    let ban_time = replication.ban_list[0].ban_time;
-
-    //WHEN
-    let peer_state = replication.default_heartbeat(1);
-    let peer_state_serialized: QueryIO = peer_state.into();
-    let peer_state_serialized = peer_state_serialized.serialize();
-
-    //THEN
-    let expected = format!(
-        "^\r\n$1\r\n0\r\n$1\r\n0\r\n$14\r\n{}\r\n$1\r\n1\r\n$14\r\n127.0.0.1:6380\r\n*1\r\n$25\r\n127.0.0.1:6739-{}\r\n*0\r\n",
-        replication.leader_repl_id, ban_time
-    );
-    assert_eq!(expected, peer_state_serialized);
-}
-
-#[test]
-fn test_binary_to_heartbeat() {
-    // GIVEN
-    let binary = format!(
-        "^\r\n$1\r\n0\r\n$1\r\n0\r\n$6\r\nrandom\r\n$1\r\n1\r\n$14\r\n127.0.0.1:6379\r\n*1\r\n$22\r\n127.0.0.1:6739-6545442\r\n*2\r\n#\r\n$1\r\n1\r\n*3\r\n$3\r\nSET\r\n$3\r\nfoo\r\n$3\r\nbar\r\n#\r\n$1\r\n2\r\n*3\r\n$3\r\nSET\r\n$3\r\npoo\r\n$3\r\nbar\r\n"
-    );
-    let buffer = BytesMut::from_iter(binary.into_bytes());
-
-    // WHEN
-    let (value, _) = deserialize(buffer).unwrap();
-
-    // THEN
-    assert_eq!(
-        value,
-        QueryIO::HeartBeat(HeartBeatMessage {
-            term: 0,
-            hwm: 0,
-            leader_replid: "random".into(),
-            hop_count: 1,
-            heartbeat_from: "127.0.0.1:6379".to_string().into(),
-            ban_list: [BannedPeer {
-                p_id: PeerIdentifier("127.0.0.1:6739".into()),
-                ban_time: 6545442
-            }]
-            .to_vec(),
+            heartbeat_from: "127.0.0.1:49152".to_string().into(),
+            ban_list: Default::default(),
             append_entries: vec![
                 WriteOperation {
                     request: WriteRequest::Set { key: "foo".into(), value: "bar".into() },
-                    log_index: 1.into()
+                    log_index: 1.into(),
                 },
                 WriteOperation {
                     request: WriteRequest::Set { key: "poo".into(), value: "bar".into() },
-                    log_index: 2.into()
-                }
+                    log_index: 2.into(),
+                },
+            ],
+        };
+        //WHEN
+        let peer_state_serialized: QueryIO = peer_state.into();
+        let peer_state_serialized = peer_state_serialized.serialize();
+        //THEN
+        assert_eq!(
+            "^\x0f127.0.0.1:49152\x01\x02\x0elocalhost:3329\x02\0\x02\0\x03foo\x03bar\x01\0\x03poo\x03bar\x02",
+            peer_state_serialized
+        );
+
+        //GIVEN
+        let peer_state = HeartBeatMessage {
+            term: 5,
+            hwm: 3232,
+            leader_replid: "localhost:23399".into(),
+            hop_count: 40,
+            heartbeat_from: "127.0.0.1:49159".to_string().into(),
+            ban_list: Default::default(),
+            append_entries: vec![],
+        };
+        //WHEN
+        let peer_state_serialized: QueryIO = peer_state.into();
+        let peer_state_serialized = peer_state_serialized.serialize();
+        //THEN
+        assert_eq!(
+            b"^\x0f127.0.0.1:49159\x05\xfb\xa0\x0c\x0flocalhost:23399(\0\0".to_vec(),
+            peer_state_serialized
+        );
+    }
+
+    #[test]
+    fn test_peer_state_ban_list_to_binary() {
+        // GIVEN
+        let mut replication = ReplicationInfo::new(None, "127.0.0.1", 6380);
+        let peer_id = PeerIdentifier::new("127.0.0.1", 6739);
+        replication.ban_peer(&peer_id).unwrap();
+
+        let ban_time = replication.ban_list[0].ban_time;
+        // encode ban_time with bincode
+        let config = bincode::config::standard();
+        let ban_time = bincode::encode_to_vec(ban_time, config).unwrap();
+
+        //WHEN
+        let peer_state = replication.default_heartbeat(1);
+        let peer_state_serialized: QueryIO = peer_state.into();
+        let peer_state_serialized = peer_state_serialized.serialize();
+
+        //THEN
+        let expected = Bytes::from(
+            [
+                Bytes::from_iter(
+                    *b"^\x0e127.0.0.1:6380\0\0\x0e127.0.0.1:6380\x01\x01\x0e127.0.0.1:6739",
+                ),
+                Bytes::from_iter(ban_time),
+                Bytes::from_iter(*b"\0"),
             ]
-        })
-    );
-}
+            .concat(),
+        );
 
-#[test]
-fn test_parse_file() {
-    // GIVEN
-    let file = QueryIO::File("hello".into());
-    let serialized = file.serialize();
-    let buffer = BytesMut::from_iter(serialized);
-    // WHEN
-    let (value, len) = deserialize(buffer).unwrap();
+        assert_eq!(expected, peer_state_serialized);
+    }
 
-    // THEN
-    assert_eq!(value, QueryIO::File("hello".into()));
-}
+    #[test]
+    fn test_binary_to_heartbeat() {
+        // GIVEN
+        let buffer = Bytes::from_iter(
+            *b"^\x0e127.0.0.1:6379\0\0\x06random\x01\0\x02\0\x03foo\x03bar\x01\0\x03poo\x03bar\x02",
+        );
 
-#[test]
-fn test_banned_peer_serde() {
-    //GIVEN
-    let mut replication = ReplicationInfo::new(None, "127.0.0.1", 6380);
-    let peer_id = PeerIdentifier::new("127.0.0.1", 6739);
+        // WHEN
+        let (value, _) = deserialize(buffer.into()).unwrap();
 
-    //WHEN
-    replication.ban_peer(&peer_id).unwrap();
-    let banned_peer_in_bytes: Bytes = replication.ban_list[0].clone().try_into().unwrap();
+        // THEN
+        assert_eq!(
+            value,
+            QueryIO::HeartBeat(HeartBeatMessage {
+                term: 0,
+                hwm: 0,
+                leader_replid: "random".into(),
+                hop_count: 1,
+                heartbeat_from: "127.0.0.1:6379".to_string().into(),
+                ban_list: [].to_vec(),
+                append_entries: vec![
+                    WriteOperation {
+                        request: WriteRequest::Set { key: "foo".into(), value: "bar".into() },
+                        log_index: 1.into()
+                    },
+                    WriteOperation {
+                        request: WriteRequest::Set { key: "poo".into(), value: "bar".into() },
+                        log_index: 2.into()
+                    }
+                ]
+            })
+        );
+    }
 
-    let banned_peer: BannedPeer =
-        String::from_utf8(banned_peer_in_bytes.to_vec()).unwrap().parse().unwrap();
-    // less than 1 second passed
+    #[test]
+    fn test_parse_file() {
+        // GIVEN
+        let file = QueryIO::File("hello".into());
+        let serialized = file.serialize();
+        let buffer = BytesMut::from_iter(serialized);
+        // WHEN
+        let (value, len) = deserialize(buffer).unwrap();
 
-    let current = time_in_secs().unwrap();
+        // THEN
+        assert_eq!(value, QueryIO::File("hello".into()));
+    }
 
-    //THEN
-    assert_eq!(banned_peer.ban_time, current);
-}
+    #[test]
+    fn test_from_replicate_log_to_binary() {
+        // GIVEN
+        let query = WriteRequest::Set { key: "foo".into(), value: "bar".into() };
+        let replicate =
+            QueryIO::WriteOperation(WriteOperation { request: query, log_index: 1.into() });
 
-#[test]
-fn test_banned_peer_serde_when_time_passed() {
-    //GIVEN
-    let mut replication = ReplicationInfo::new(None, "127.0.0.1", 6380);
-    let peer_id = PeerIdentifier::new("127.0.0.1", 6739);
+        // WHEN
+        let serialized = replicate.clone().serialize();
+        // THEN
+        assert_eq!("#\0\x03foo\x03bar\x01", serialized);
+    }
 
-    //WHEN
-    replication.ban_peer(&peer_id).unwrap();
-    let banned_peer_in_bytes: Bytes = replication.ban_list[0].clone().try_into().unwrap();
+    #[test]
+    fn test_from_binary_to_replicate_log() {
+        // GIVEN
+        let data = "#\0\x03foo\x03bar\x01";
+        let buffer = BytesMut::from(data);
 
-    let banned_peer: BannedPeer =
-        String::from_utf8(banned_peer_in_bytes.to_vec()).unwrap().parse().unwrap();
-    // less than 1 second passed
+        // WHEN
+        let (value, _) = deserialize(buffer).unwrap();
 
-    std::thread::sleep(std::time::Duration::from_secs(1));
+        // THEN
+        assert_eq!(
+            value,
+            QueryIO::WriteOperation(WriteOperation {
+                request: WriteRequest::Set { key: "foo".into(), value: "bar".into() },
+                log_index: 1.into()
+            })
+        );
+    }
 
-    let current = time_in_secs().unwrap();
+    #[test]
+    fn test_from_binary_to_acks() {
+        // GIVEN
 
-    //THEN
-    assert_ne!(banned_peer.ban_time, current);
-}
+        let data = "@\x02\x01\x02";
+        let buffer = BytesMut::from(data);
 
-#[test]
-fn test_from_replicate_log_to_binary() {
-    // GIVEN
-    let query = WriteRequest::Set { key: "foo".into(), value: "bar".into() };
-    let replicate = QueryIO::ReplicateLog(WriteOperation { request: query, log_index: 1.into() });
+        // WHEN
+        let (value, _) = deserialize(buffer).unwrap();
 
-    // WHEN
-    let serialized = replicate.clone().serialize();
+        // THEN
+        assert_eq!(value, QueryIO::Acks(vec![1.into(), 2.into()]));
+    }
 
-    // THEN
-    assert_eq!("#\r\n$1\r\n1\r\n*3\r\n$3\r\nSET\r\n$3\r\nfoo\r\n$3\r\nbar\r\n", serialized);
-}
+    #[test]
+    fn test_from_acks_to_binary() {
+        // GIVEN
+        let acks = vec![1.into(), 2.into()];
+        let replicate = QueryIO::Acks(acks);
 
-#[test]
-fn test_from_binary_to_replicate_log() {
-    // GIVEN
-    let data = "#\r\n$1\r\n1\r\n*3\r\n$3\r\nSET\r\n$3\r\nfoo\r\n$3\r\nbar\r\n";
-    let buffer = BytesMut::from(data);
+        // WHEN
+        let serialized = replicate.clone().serialize();
 
-    // WHEN
-    let (value, _) = deserialize(buffer).unwrap();
-
-    // THEN
-    assert_eq!(
-        value,
-        QueryIO::ReplicateLog(WriteOperation {
-            request: WriteRequest::Set { key: "foo".into(), value: "bar".into() },
-            log_index: 1.into()
-        })
-    );
-}
-
-#[test]
-fn test_from_binary_to_acks() {
-    // GIVEN
-    let data = "@2\r\n$1\r\n1\r\n$1\r\n2\r\n";
-    let buffer = BytesMut::from(data);
-
-    // WHEN
-    let (value, _) = deserialize(buffer).unwrap();
-
-    // THEN
-    assert_eq!(value, QueryIO::Acks(vec![1.into(), 2.into()]));
-}
-
-#[test]
-fn test_from_acks_to_binary() {
-    // GIVEN
-    let acks = vec![1.into(), 2.into()];
-    let replicate = QueryIO::Acks(acks);
-
-    // WHEN
-    let serialized = replicate.clone().serialize();
-
-    // THEN
-    assert_eq!("@2\r\n$1\r\n1\r\n$1\r\n2\r\n", serialized);
+        // THEN
+        assert_eq!("@\x02\x01\x02", serialized);
+    }
 }

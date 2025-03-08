@@ -1,8 +1,5 @@
 use crate::domains::append_only_files::WriteOperation;
 use crate::domains::peers::identifier::PeerIdentifier;
-
-use bytes::Bytes;
-use std::str::FromStr;
 use std::sync::atomic::AtomicBool;
 
 pub static IS_LEADER_MODE: AtomicBool = AtomicBool::new(true);
@@ -134,7 +131,7 @@ pub(crate) fn time_in_secs() -> anyhow::Result<u64> {
         .as_secs())
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, bincode::Encode, bincode::Decode)]
 
 pub struct HeartBeatMessage {
     pub(crate) heartbeat_from: PeerIdentifier,
@@ -152,26 +149,10 @@ impl HeartBeatMessage {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, bincode::Encode, bincode::Decode)]
 pub struct BannedPeer {
     pub(crate) p_id: PeerIdentifier,
     pub(crate) ban_time: u64,
-}
-
-impl FromStr for BannedPeer {
-    type Err = std::io::Error;
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let mut parts = s.split('-');
-        let p_id = parts.next().unwrap().parse::<PeerIdentifier>()?;
-        let ban_time = parts.next().unwrap().parse::<u64>().unwrap();
-        Ok(BannedPeer { p_id, ban_time })
-    }
-}
-
-impl From<BannedPeer> for Bytes {
-    fn from(banned_peer: BannedPeer) -> Self {
-        Bytes::from(format!("{}-{}", banned_peer.p_id, banned_peer.ban_time))
-    }
 }
 
 #[cfg(test)]
