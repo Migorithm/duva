@@ -14,7 +14,7 @@ use crate::presentation::cluster_in::communication_manager::ClusterCommunication
 use crate::services::interface::TGetPeerIp;
 use crate::services::interface::TRead;
 use crate::services::interface::TWrite;
-use bytes::Bytes;
+
 use tokio::net::TcpStream;
 use tokio::sync::mpsc::Sender;
 
@@ -67,7 +67,7 @@ impl InboundStream {
         Ok(port)
     }
 
-    async fn recv_replconf_capa(&mut self) -> anyhow::Result<Vec<(Bytes, Bytes)>> {
+    async fn recv_replconf_capa(&mut self) -> anyhow::Result<Vec<(String, String)>> {
         let mut cmd = self.extract_cmd().await?;
         let capa_val_vec = cmd.extract_capa()?;
         self.write(QueryIO::SimpleString("OK".into())).await?;
@@ -128,7 +128,7 @@ impl InboundStream {
     ) -> anyhow::Result<()> {
         let serialized_logs = QueryIO::File(
             QueryIO::Array(
-                logs.into_iter().map(|x| QueryIO::BulkString(x.serialize())).collect::<Vec<_>>(),
+                logs.into_iter().map(|x| QueryIO::WriteOperation(x)).collect::<Vec<_>>(),
             )
             .serialize(),
         );

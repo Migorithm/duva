@@ -92,12 +92,7 @@ impl TryFrom<QueryIO> for LeaderInput {
                 };
                 let mut ops = Vec::new();
                 for str in array {
-                    let QueryIO::BulkString(ops_data) = str else {
-                        return Err(anyhow::anyhow!("Invalid data"));
-                    };
-                    let Ok((QueryIO::WriteOperation(log), _)) =
-                        parse_custom_type::<WriteOperation>(ops_data.into())
-                    else {
+                    let QueryIO::WriteOperation(log) = str else {
                         return Err(anyhow::anyhow!("Invalid data"));
                     };
                     ops.push(log);

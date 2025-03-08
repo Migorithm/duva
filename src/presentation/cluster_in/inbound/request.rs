@@ -1,6 +1,5 @@
 use crate::{domains::query_parsers::QueryIO, from_to, make_smart_pointer};
 use anyhow::Context;
-use bytes::Bytes;
 
 pub(crate) struct HandShakeRequest {
     pub(crate) command: HandShakeRequestEnum,
@@ -51,21 +50,21 @@ impl HandShakeRequest {
             [QueryIO::BulkString(key), QueryIO::BulkString(port), ..]
                 if key == "listening-port" =>
             {
-                let value = String::from_utf8(port.to_vec())?.parse()?;
+                let value = port.parse()?;
                 Ok(value)
             },
             _ => Err(anyhow::anyhow!("Invalid listening-port arguments")),
         }
     }
 
-    pub(crate) fn extract_capa(&mut self) -> anyhow::Result<Vec<(Bytes, Bytes)>> {
+    pub(crate) fn extract_capa(&mut self) -> anyhow::Result<Vec<(String, String)>> {
         self.match_query(HandShakeRequestEnum::ReplConf)?;
         if self.args.is_empty() || self.args.len() % 2 != 0 {
             return Err(anyhow::anyhow!("Invalid number of arguments"));
         }
 
         // Process pairs directly using chunks_exact
-        let capabilities: Vec<(Bytes, Bytes)> = self
+        let capabilities: Vec<(String, String)> = self
             .args
             .chunks_exact(2)
             .filter_map(|chunk| match (&chunk[0], &chunk[1]) {
