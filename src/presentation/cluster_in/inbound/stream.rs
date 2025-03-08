@@ -14,7 +14,7 @@ use crate::presentation::cluster_in::communication_manager::ClusterCommunication
 use crate::services::interface::TGetPeerIp;
 use crate::services::interface::TRead;
 use crate::services::interface::TWrite;
-use bytes::Bytes;
+
 use tokio::net::TcpStream;
 use tokio::sync::mpsc::Sender;
 
@@ -67,7 +67,7 @@ impl InboundStream {
         Ok(port)
     }
 
-    async fn recv_replconf_capa(&mut self) -> anyhow::Result<Vec<(Bytes, Bytes)>> {
+    async fn recv_replconf_capa(&mut self) -> anyhow::Result<Vec<(String, String)>> {
         let mut cmd = self.extract_cmd().await?;
         let capa_val_vec = cmd.extract_capa()?;
         self.write(QueryIO::SimpleString("OK".into())).await?;
@@ -122,34 +122,15 @@ impl InboundStream {
         Ok(ClusterCommand::AddPeer(AddPeer { peer_id: self.peer_info.id, peer }))
     }
 
-    pub(crate) async fn send_full_sync_to_inbound_server(
-        &mut self,
-        logs: Vec<WriteOperation>,
-    ) -> anyhow::Result<()> {
-        let serialized_logs = QueryIO::File(
-            QueryIO::Array(
-                logs.into_iter().map(|x| QueryIO::BulkString(x.serialize())).collect::<Vec<_>>(),
-            )
-            .serialize(),
-        );
-
-        println!("[INFO] Sent sync to follower {:?}", serialized_logs);
-        self.write(serialized_logs).await?;
-
-        // collect snapshot data from processor
-        Ok(())
-    }
-
     // depending on the condition, try full/partial sync.
     pub(crate) async fn may_try_sync(
         &mut self,
         ccm: ClusterCommunicationManager,
     ) -> anyhow::Result<()> {
-        if let PeerKind::Follower { watermark: hwm, leader_repl_id } = self.peer_kind()? {
+        if let PeerKind::Follower { watermark, leader_repl_id } = self.peer_kind()? {
             if self.self_repl_info.self_identifier() == leader_repl_id {
-                // get logs
                 let logs = ccm.fetch_logs_for_sync().await?;
-                self.send_full_sync_to_inbound_server(logs).await?;
+                self.write_io(logs).await?;
             }
         }
         Ok(())

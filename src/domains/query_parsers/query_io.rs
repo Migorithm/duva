@@ -37,10 +37,10 @@ macro_rules! write_array {
 pub enum QueryIO {
     #[default]
     Null,
-    SimpleString(Bytes),
-    BulkString(Bytes),
+    SimpleString(String),
+    BulkString(String),
     Array(Vec<QueryIO>),
-    Err(Bytes),
+    Err(String),
 
     // custom types
     File(Bytes),
@@ -57,7 +57,8 @@ impl QueryIO {
             QueryIO::Null => "$-1\r\n".into(),
 
             QueryIO::SimpleString(s) => Bytes::from(
-                [Bytes::from(SIMPLE_STRING_PREFIX.to_string()), s, Bytes::from("\r\n")].concat(),
+                [Bytes::from(SIMPLE_STRING_PREFIX.to_string()), s.into(), Bytes::from("\r\n")]
+                    .concat(),
             ),
 
             QueryIO::BulkString(s) => Bytes::from(
@@ -65,7 +66,7 @@ impl QueryIO {
                     Bytes::from(BULK_STRING_PREFIX.to_string()),
                     Bytes::from(s.len().to_string()),
                     Bytes::from("\r\n"),
-                    s,
+                    s.into(),
                     Bytes::from("\r\n"),
                 ]
                 .concat(),
@@ -98,7 +99,9 @@ impl QueryIO {
                 buffer.freeze()
             },
 
-            QueryIO::Err(e) => Bytes::from([concatenator(ERROR_PREFIX), e, "\r\n".into()].concat()),
+            QueryIO::Err(e) => {
+                Bytes::from([concatenator(ERROR_PREFIX), e.into(), "\r\n".into()].concat())
+            },
 
             QueryIO::HeartBeat(heartbeat) => serialize_with_bincode(HEARTBEAT_PREFIX, heartbeat),
 
@@ -187,7 +190,7 @@ pub fn deserialize(buffer: BytesMut) -> Result<(QueryIO, usize)> {
 }
 
 // +PING\r\n
-pub(crate) fn parse_simple_string(buffer: BytesMut) -> Result<(Bytes, usize)> {
+pub(crate) fn parse_simple_string(buffer: BytesMut) -> Result<(String, usize)> {
     let (line, len) =
         read_until_crlf(&buffer[1..].into()).ok_or(anyhow::anyhow!("Invalid simple string"))?;
     Ok((line, len + 1))
@@ -204,7 +207,7 @@ fn parse_array(buffer: BytesMut) -> Result<(QueryIO, usize)> {
     ctx.advance(count_len);
 
     // Convert array length string to number
-    let array_len = String::from_utf8(count_bytes.to_vec())?.parse::<usize>()?;
+    let array_len = count_bytes.parse()?;
 
     let elements = (0..array_len).map(|_| ctx.parse_next()).collect::<Result<_>>()?;
 
@@ -222,14 +225,14 @@ where
     Ok((encoded.into(), len + 1))
 }
 
-fn parse_bulk_string(buffer: BytesMut) -> Result<(Bytes, usize)> {
+fn parse_bulk_string(buffer: BytesMut) -> Result<(String, usize)> {
     let (line, mut len) =
         read_until_crlf(&buffer[1..].into()).ok_or(anyhow::anyhow!("Invalid bulk string"))?;
 
     // Adjust `len` to include the initial line and calculate `bulk_str_len`
     len += 1;
 
-    let content_len: usize = String::from_utf8(line.to_vec())?.parse()?;
+    let content_len: usize = line.parse()?;
 
     let (line, total_len) = read_content_until_crlf(&buffer[len..].into(), content_len)
         .context("Invalid BulkString format!")?;
@@ -242,7 +245,7 @@ fn parse_file(buffer: BytesMut) -> Result<(Bytes, usize)> {
 
     // Adjust `len` to include the initial line and calculate `bulk_str_len`
     len += 1;
-    let content_len: usize = String::from_utf8(line.to_vec())?.parse()?;
+    let content_len: usize = line.parse()?;
 
     let file_content = &buffer[len..(len + content_len)];
 
@@ -256,20 +259,23 @@ fn parse_file(buffer: BytesMut) -> Result<(Bytes, usize)> {
 pub(super) fn read_content_until_crlf(
     buffer: &BytesMut,
     content_len: usize,
-) -> Option<(Bytes, usize)> {
+) -> Option<(String, usize)> {
     if buffer.len() < content_len + 2 {
         return None;
     }
     if buffer[content_len] == b'\r' && buffer[content_len + 1] == b'\n' {
-        return Some((Bytes::copy_from_slice(&buffer[0..content_len]), content_len + 2));
+        return Some((
+            String::from_utf8_lossy(&buffer[0..content_len]).to_string(),
+            content_len + 2,
+        ));
     }
     None
 }
 
-pub(super) fn read_until_crlf(buffer: &BytesMut) -> Option<(Bytes, usize)> {
+pub(super) fn read_until_crlf(buffer: &BytesMut) -> Option<(String, usize)> {
     for i in 1..buffer.len() {
         if buffer[i - 1] == b'\r' && buffer[i] == b'\n' {
-            return Some((Bytes::copy_from_slice(&buffer[0..(i - 1)]), i + 1));
+            return Some((String::from_utf8_lossy(&buffer[0..(i - 1)]).to_string(), i + 1));
         }
     }
     None
@@ -285,6 +291,13 @@ fn serialize_with_bincode<T: bincode::Encode>(prefix: char, arg: T) -> Bytes {
 impl From<WriteOperation> for QueryIO {
     fn from(value: WriteOperation) -> Self {
         QueryIO::WriteOperation(value)
+    }
+}
+impl From<Vec<WriteOperation>> for QueryIO {
+    fn from(value: Vec<WriteOperation>) -> Self {
+        QueryIO::File(
+            QueryIO::Array(value.into_iter().map(Into::into).collect::<Vec<_>>()).serialize(),
+        )
     }
 }
 
@@ -315,7 +328,7 @@ mod test {
 
         // THEN
         assert_eq!(len, 5);
-        assert_eq!(value, b"OK".to_vec());
+        assert_eq!(value, "OK".to_string());
     }
 
     #[test]

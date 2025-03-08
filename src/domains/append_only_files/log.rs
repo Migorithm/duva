@@ -98,10 +98,7 @@ impl WriteRequest {
                     return Err(anyhow::anyhow!("expected value"));
                 };
 
-                Ok(WriteRequest::Set {
-                    key: String::from_utf8(key.to_vec())?,
-                    value: String::from_utf8(value.to_vec())?,
-                })
+                Ok(WriteRequest::Set { key, value })
             },
 
             4 => {
@@ -115,11 +112,7 @@ impl WriteRequest {
                     return Err(anyhow::anyhow!("expected value"));
                 };
 
-                Ok(WriteRequest::SetWithExpiry {
-                    key: String::from_utf8(key.to_vec())?,
-                    value: String::from_utf8(value.to_vec())?,
-                    expires_at: std::str::from_utf8(&expiry)?.parse()?,
-                })
+                Ok(WriteRequest::SetWithExpiry { key, value, expires_at: expiry.parse()? })
             },
 
             _ => Err(anyhow::anyhow!("expected 2 or 4 arguments")),
