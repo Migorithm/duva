@@ -167,7 +167,10 @@ mod tests {
         let mut buf = Vec::new();
         file.read_to_end(&mut buf).await?;
 
-        assert_eq!(buf, b"#\r\n$1\r\n0\r\n*3\r\n$3\r\nSET\r\n$3\r\nfoo\r\n$3\r\nbar\r\n");
+        let (encoded, _): (WriteOperation, usize) =
+            bincode::decode_from_slice(&buf[1..], bincode::config::standard()).unwrap();
+
+        assert_eq!(encoded.request.key(), "foo");
 
         Ok(())
     }

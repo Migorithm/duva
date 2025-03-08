@@ -1,8 +1,5 @@
 use crate::domains::append_only_files::WriteOperation;
 use crate::domains::peers::identifier::PeerIdentifier;
-
-use bytes::Bytes;
-use std::str::FromStr;
 use std::sync::atomic::AtomicBool;
 
 pub static IS_LEADER_MODE: AtomicBool = AtomicBool::new(true);

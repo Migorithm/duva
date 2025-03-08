@@ -2,7 +2,7 @@ use crate::domains::append_only_files::log::LogIndex;
 use crate::domains::append_only_files::{WriteOperation, WriteRequest};
 use crate::domains::cluster_actors::replication::HeartBeatMessage;
 #[cfg(test)]
-use crate::domains::cluster_actors::replication::{BannedPeer, ReplicationInfo, time_in_secs};
+use crate::domains::cluster_actors::replication::ReplicationInfo;
 #[cfg(test)]
 use crate::domains::peers::identifier::PeerIdentifier;
 
@@ -23,6 +23,8 @@ const ERROR_PREFIX: char = '-';
 const PEERSTATE_PREFIX: char = '^';
 const REPLICATE_PREFIX: char = '#';
 const ACKS_PREFIX: char = '@';
+
+const SERDE_CONFIG: bincode::config::Configuration = bincode::config::standard();
 
 #[macro_export]
 macro_rules! write_array {
@@ -96,29 +98,10 @@ impl QueryIO {
 
             QueryIO::Err(e) => Bytes::from([concatenator(ERROR_PREFIX), e, "\r\n".into()].concat()),
 
-            QueryIO::HeartBeat(heartbeat) => {
-                let config = bincode::config::standard();
+            QueryIO::HeartBeat(heartbeat) => serialize_with_bincode(PEERSTATE_PREFIX, heartbeat),
 
-                Bytes::from(
-                    [
-                        PEERSTATE_PREFIX.to_string().into(),
-                        bincode::encode_to_vec(&heartbeat, config).unwrap(),
-                    ]
-                    .concat(),
-                )
-            },
-            QueryIO::ReplicateLog(WriteOperation { request: op, log_index: offset }) => {
-                let mut message = BytesMut::from(
-                    format!(
-                        "{}\r\n${}\r\n{}\r\n",
-                        REPLICATE_PREFIX,
-                        offset.to_string().len(),
-                        offset
-                    )
-                    .as_bytes(),
-                );
-                message.extend(op.to_array().serialize());
-                message.freeze()
+            QueryIO::ReplicateLog(write_operation) => {
+                serialize_with_bincode(REPLICATE_PREFIX, write_operation)
             },
             QueryIO::Acks(items) => {
                 let mut bytes =
@@ -254,38 +237,16 @@ fn parse_array(buffer: BytesMut) -> Result<(QueryIO, usize)> {
 
 fn parse_heartbeat(buffer: BytesMut) -> Result<(QueryIO, usize)> {
     // fixed rule for peer state
-
-    let config = bincode::config::standard();
-    let (encoded, len) = bincode::decode_from_slice(&buffer[1..], config)
+    let (encoded, len) = bincode::decode_from_slice(&buffer[1..], SERDE_CONFIG)
         .map_err(|err| anyhow::anyhow!("Failed to decode heartbeat message: {:?}", err))?;
 
     Ok((QueryIO::HeartBeat(encoded), len + 1))
 }
 
 pub fn parse_replicate(buffer: BytesMut) -> std::result::Result<(QueryIO, usize), anyhow::Error> {
-    let mut ctx = ParseContext::new(buffer);
-    ctx.advance(3);
-
-    let offset = ctx.parse_next()?.unpack_single_entry()?;
-
-    let QueryIO::Array(vec_query_ios) = ctx.parse_next()? else {
-        return Err(anyhow::anyhow!("expected array"));
-    };
-
-    // extract command
-    let mut args = vec_query_ios.into_iter();
-    let Some(QueryIO::BulkString(cmd_bytes)) = args.next() else {
-        return Err(anyhow::anyhow!("expected command"));
-    };
-
-    let cmd = std::str::from_utf8(&cmd_bytes)?.to_lowercase();
-    Ok((
-        QueryIO::ReplicateLog(WriteOperation {
-            request: WriteRequest::new(cmd, args)?,
-            log_index: offset,
-        }),
-        ctx.offset(),
-    ))
+    let (encoded, len) = bincode::decode_from_slice(&buffer[1..], SERDE_CONFIG)
+        .map_err(|err| anyhow::anyhow!("Failed to decode heartbeat message: {:?}", err))?;
+    Ok((QueryIO::ReplicateLog(encoded), len + 1))
 }
 
 fn parse_acks(buffer: BytesMut) -> std::result::Result<(QueryIO, usize), anyhow::Error> {
@@ -345,6 +306,14 @@ pub(super) fn read_until_crlf(buffer: &BytesMut) -> Option<(Bytes, usize)> {
     }
     None
 }
+
+fn serialize_with_bincode<T: bincode::Encode>(prefix: char, arg: T) -> Bytes {
+    let mut buffer = BytesMut::new();
+    buffer.extend_from_slice(prefix.to_string().as_bytes());
+    buffer.extend_from_slice(&bincode::encode_to_vec(&arg, SERDE_CONFIG).unwrap());
+    buffer.freeze()
+}
+
 #[test]
 fn test_parse_simple_string() {
     // GIVEN
@@ -587,15 +556,14 @@ fn test_from_replicate_log_to_binary() {
 
     // WHEN
     let serialized = replicate.clone().serialize();
-
     // THEN
-    assert_eq!("#\r\n$1\r\n1\r\n*3\r\n$3\r\nSET\r\n$3\r\nfoo\r\n$3\r\nbar\r\n", serialized);
+    assert_eq!("#\0\x03foo\x03bar\x01", serialized);
 }
 
 #[test]
 fn test_from_binary_to_replicate_log() {
     // GIVEN
-    let data = "#\r\n$1\r\n1\r\n*3\r\n$3\r\nSET\r\n$3\r\nfoo\r\n$3\r\nbar\r\n";
+    let data = "#\0\x03foo\x03bar\x01";
     let buffer = BytesMut::from(data);
 
     // WHEN
