@@ -3,7 +3,9 @@ use bytes::Bytes;
 use crate::{from_to, make_smart_pointer};
 use std::str::FromStr;
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Hash, Default)]
+#[derive(
+    Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Hash, Default, bincode::Encode, bincode::Decode,
+)]
 pub struct PeerIdentifier(pub String);
 impl PeerIdentifier {
     pub fn new(host: &str, port: u16) -> Self {

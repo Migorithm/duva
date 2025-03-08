@@ -134,7 +134,7 @@ pub(crate) fn time_in_secs() -> anyhow::Result<u64> {
         .as_secs())
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, bincode::Encode, bincode::Decode)]
 
 pub struct HeartBeatMessage {
     pub(crate) heartbeat_from: PeerIdentifier,
@@ -152,7 +152,7 @@ impl HeartBeatMessage {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, bincode::Encode, bincode::Decode)]
 pub struct BannedPeer {
     pub(crate) p_id: PeerIdentifier,
     pub(crate) ban_time: u64,

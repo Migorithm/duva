@@ -5,13 +5,15 @@ use crate::{
 use bytes::{Bytes, BytesMut};
 use std::str::FromStr;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, bincode::Encode, bincode::Decode)]
 pub struct WriteOperation {
     pub request: WriteRequest,
     pub log_index: LogIndex,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Copy, Hash, PartialOrd, Ord)]
+#[derive(
+    Debug, Clone, PartialEq, Eq, Copy, Hash, PartialOrd, Ord, bincode::Encode, bincode::Decode,
+)]
 pub struct LogIndex(pub(crate) u64);
 make_smart_pointer!(LogIndex, u64);
 from_to!(u64, LogIndex);
@@ -31,7 +33,7 @@ impl FromStr for LogIndex {
 
 /// Operations that appear in the Append-Only File (WAL).
 /// Client request is converted to WriteOperation and then it turns into WriteOp when it gets offset
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, bincode::Encode, bincode::Decode)]
 pub enum WriteRequest {
     Set { key: String, value: String },
     SetWithExpiry { key: String, value: String, expires_at: u64 },

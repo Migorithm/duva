@@ -96,44 +96,16 @@ impl QueryIO {
 
             QueryIO::Err(e) => Bytes::from([concatenator(ERROR_PREFIX), e, "\r\n".into()].concat()),
 
-            QueryIO::HeartBeat(HeartBeatMessage {
-                term,
-                hwm,
-                leader_replid,
-                hop_count,
-                heartbeat_from: id,
-                ban_list,
-                append_entries,
-            }) => {
-                let mut message = BytesMut::from(format!(
-                    "{PEERSTATE_PREFIX}\r\n${}\r\n{term}\r\n${}\r\n{hwm}\r\n${}\r\n{leader_replid}\r\n${}\r\n{hop_count}\r\n${}\r\n{id}\r\n",
-                    term.to_string().len(),
-                    hwm.to_string().len(),
-                    leader_replid.len(),
-                    hop_count.to_string().len(),
-                    id.len(),
-                ).as_bytes());
+            QueryIO::HeartBeat(heartbeat) => {
+                let config = bincode::config::standard();
 
-                // add ban_list
-                message.extend(
-                    QueryIO::Array(
-                        ban_list.into_iter().map(|peer| QueryIO::BulkString(peer.into())).collect(),
-                    )
-                    .serialize(),
-                );
-
-                // add append_entries
-                message.extend(
-                    QueryIO::Array(
-                        append_entries
-                            .into_iter()
-                            .map(|op| QueryIO::ReplicateLog(op.into()))
-                            .collect(),
-                    )
-                    .serialize(),
-                );
-
-                message.freeze()
+                Bytes::from(
+                    [
+                        PEERSTATE_PREFIX.to_string().into(),
+                        bincode::encode_to_vec(&heartbeat, config).unwrap(),
+                    ]
+                    .concat(),
+                )
             },
             QueryIO::ReplicateLog(WriteOperation { request: op, log_index: offset }) => {
                 let mut message = BytesMut::from(
@@ -282,37 +254,12 @@ fn parse_array(buffer: BytesMut) -> Result<(QueryIO, usize)> {
 
 fn parse_heartbeat(buffer: BytesMut) -> Result<(QueryIO, usize)> {
     // fixed rule for peer state
-    let mut ctx = ParseContext::new(buffer);
-    ctx.advance(3);
 
-    let term = ctx.parse_next()?.unpack_single_entry()?;
-    let offset = ctx.parse_next()?.unpack_single_entry()?;
-    let leader_replid = ctx.parse_next()?.unpack_single_entry()?;
-    let hop_count = ctx.parse_next()?.unpack_single_entry()?;
-    let id = ctx.parse_next()?.unpack_single_entry()?;
-    let ban_list = ctx.parse_next()?.unpack_array()?;
+    let config = bincode::config::standard();
+    let (encoded, len): (HeartBeatMessage, usize) = bincode::decode_from_slice(&buffer, config)
+        .map_err(|err| anyhow::anyhow!("Failed to decode heartbeat message: {:?}", err))?;
 
-    let append_entries = if let QueryIO::Array(entries) = ctx.parse_next()? {
-        entries
-            .into_iter()
-            .flat_map(|v| if let QueryIO::ReplicateLog(log) = v { Some(log) } else { None })
-            .collect()
-    } else {
-        return Err(anyhow::anyhow!("expected array for append_entries"));
-    };
-
-    // Construct the result
-    let message = HeartBeatMessage {
-        heartbeat_from: id,
-        term,
-        hwm: offset,
-        leader_replid,
-        hop_count,
-        ban_list,
-        append_entries,
-    };
-
-    Ok((QueryIO::HeartBeat(message), ctx.offset()))
+    Ok((QueryIO::HeartBeat(encoded), len + 1))
 }
 
 pub fn parse_replicate(buffer: BytesMut) -> std::result::Result<(QueryIO, usize), anyhow::Error> {
@@ -560,6 +507,9 @@ fn test_peer_state_ban_list_to_binary() {
     replication.ban_peer(&peer_id).unwrap();
 
     let ban_time = replication.ban_list[0].ban_time;
+    // encode ban_time with bincode
+    let config = bincode::config::standard();
+    let ban_time = bincode::encode_to_vec(ban_time, config).unwrap();
 
     //WHEN
     let peer_state = replication.default_heartbeat(1);
@@ -567,23 +517,39 @@ fn test_peer_state_ban_list_to_binary() {
     let peer_state_serialized = peer_state_serialized.serialize();
 
     //THEN
-    let expected = format!(
-        "^\r\n$1\r\n0\r\n$1\r\n0\r\n$14\r\n{}\r\n$1\r\n1\r\n$14\r\n127.0.0.1:6380\r\n*1\r\n$25\r\n127.0.0.1:6739-{}\r\n*0\r\n",
-        replication.leader_repl_id, ban_time
+    let expected = Bytes::from(
+        [
+            Bytes::from_iter(
+                *b"^\x0e127.0.0.1:6380\0\0\x0e127.0.0.1:6380\x01\x01\x0e127.0.0.1:6739",
+            ),
+            Bytes::from_iter(ban_time),
+            Bytes::from_iter(*b"\0"),
+        ]
+        .concat(),
     );
+
     assert_eq!(expected, peer_state_serialized);
 }
 
 #[test]
 fn test_binary_to_heartbeat() {
     // GIVEN
-    let binary = format!(
-        "^\r\n$1\r\n0\r\n$1\r\n0\r\n$6\r\nrandom\r\n$1\r\n1\r\n$14\r\n127.0.0.1:6379\r\n*1\r\n$22\r\n127.0.0.1:6739-6545442\r\n*2\r\n#\r\n$1\r\n1\r\n*3\r\n$3\r\nSET\r\n$3\r\nfoo\r\n$3\r\nbar\r\n#\r\n$1\r\n2\r\n*3\r\n$3\r\nSET\r\n$3\r\npoo\r\n$3\r\nbar\r\n"
+    let ban_time = 6545442;
+    let config = bincode::config::standard();
+    let ban_time = bincode::encode_to_vec(ban_time, config).unwrap();
+    let buffer = Bytes::from(
+        [
+            Bytes::from_iter(
+                *b"^\x0e127.0.0.1:6380\0\0\x0e127.0.0.1:6380\x01\x01\x0e127.0.0.1:6739",
+            ),
+            Bytes::from_iter(ban_time),
+            Bytes::from_iter(*b"\0"),
+        ]
+        .concat(),
     );
-    let buffer = BytesMut::from_iter(binary.into_bytes());
 
     // WHEN
-    let (value, _) = deserialize(buffer).unwrap();
+    let (value, _) = deserialize(buffer.into()).unwrap();
 
     // THEN
     assert_eq!(
