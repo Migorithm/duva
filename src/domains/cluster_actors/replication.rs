@@ -158,22 +158,6 @@ pub struct BannedPeer {
     pub(crate) ban_time: u64,
 }
 
-impl FromStr for BannedPeer {
-    type Err = std::io::Error;
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let mut parts = s.split('-');
-        let p_id = parts.next().unwrap().parse::<PeerIdentifier>()?;
-        let ban_time = parts.next().unwrap().parse::<u64>().unwrap();
-        Ok(BannedPeer { p_id, ban_time })
-    }
-}
-
-impl From<BannedPeer> for Bytes {
-    fn from(banned_peer: BannedPeer) -> Self {
-        Bytes::from(format!("{}-{}", banned_peer.p_id, banned_peer.ban_time))
-    }
-}
-
 #[cfg(test)]
 impl Default for HeartBeatMessage {
     fn default() -> Self {

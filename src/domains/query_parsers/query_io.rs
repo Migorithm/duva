@@ -256,7 +256,7 @@ fn parse_heartbeat(buffer: BytesMut) -> Result<(QueryIO, usize)> {
     // fixed rule for peer state
 
     let config = bincode::config::standard();
-    let (encoded, len): (HeartBeatMessage, usize) = bincode::decode_from_slice(&buffer, config)
+    let (encoded, len) = bincode::decode_from_slice(&buffer[1..], config)
         .map_err(|err| anyhow::anyhow!("Failed to decode heartbeat message: {:?}", err))?;
 
     Ok((QueryIO::HeartBeat(encoded), len + 1))
@@ -419,9 +419,10 @@ fn test_parse_array() {
 #[test]
 fn test_from_bytes_to_peer_state() {
     // GIVEN
-    let data = "^\r\n$3\r\n245\r\n$7\r\n1234329\r\n$4\r\nabcd\r\n$1\r\n2\r\n$15\r\n127.0.0.1:49153\r\n*0\r\n*0\r\n";
 
-    let buffer = BytesMut::from(data);
+    let data = b"^\x0f127.0.0.1:49153\xf5\xfc\x99\xd5\x12\0\x04abcd\x02\0\0";
+
+    let buffer = BytesMut::from_iter(data);
 
     // WHEN
     let (value, len) = deserialize(buffer).unwrap();
@@ -475,7 +476,7 @@ fn test_from_heartbeat_to_bytes() {
     let peer_state_serialized = peer_state_serialized.serialize();
     //THEN
     assert_eq!(
-        "^\r\n$1\r\n1\r\n$1\r\n2\r\n$14\r\n127.0.0.1:3329\r\n$1\r\n2\r\n$15\r\n127.0.0.1:49152\r\n*0\r\n*2\r\n#\r\n$1\r\n1\r\n*3\r\n$3\r\nSET\r\n$3\r\nfoo\r\n$3\r\nbar\r\n#\r\n$1\r\n2\r\n*3\r\n$3\r\nSET\r\n$3\r\npoo\r\n$3\r\nbar\r\n",
+        "^\x0f127.0.0.1:49152\x01\x02\x0elocalhost:3329\x02\0\x02\0\x03foo\x03bar\x01\0\x03poo\x03bar\x02",
         peer_state_serialized
     );
 
@@ -494,7 +495,7 @@ fn test_from_heartbeat_to_bytes() {
     let peer_state_serialized = peer_state_serialized.serialize();
     //THEN
     assert_eq!(
-        "^\r\n$1\r\n5\r\n$4\r\n3232\r\n$15\r\n127.0.0.1:23399\r\n$2\r\n40\r\n$15\r\n127.0.0.1:49159\r\n*0\r\n*0\r\n",
+        b"^\x0f127.0.0.1:49159\x05\xfb\xa0\x0c\x0flocalhost:23399(\0\0".to_vec(),
         peer_state_serialized
     );
 }
@@ -534,18 +535,8 @@ fn test_peer_state_ban_list_to_binary() {
 #[test]
 fn test_binary_to_heartbeat() {
     // GIVEN
-    let ban_time = 6545442;
-    let config = bincode::config::standard();
-    let ban_time = bincode::encode_to_vec(ban_time, config).unwrap();
-    let buffer = Bytes::from(
-        [
-            Bytes::from_iter(
-                *b"^\x0e127.0.0.1:6380\0\0\x0e127.0.0.1:6380\x01\x01\x0e127.0.0.1:6739",
-            ),
-            Bytes::from_iter(ban_time),
-            Bytes::from_iter(*b"\0"),
-        ]
-        .concat(),
+    let buffer = Bytes::from_iter(
+        *b"^\x0e127.0.0.1:6379\0\0\x06random\x01\0\x02\0\x03foo\x03bar\x01\0\x03poo\x03bar\x02",
     );
 
     // WHEN
@@ -560,11 +551,7 @@ fn test_binary_to_heartbeat() {
             leader_replid: "random".into(),
             hop_count: 1,
             heartbeat_from: "127.0.0.1:6379".to_string().into(),
-            ban_list: [BannedPeer {
-                p_id: PeerIdentifier("127.0.0.1:6739".into()),
-                ban_time: 6545442
-            }]
-            .to_vec(),
+            ban_list: [].to_vec(),
             append_entries: vec![
                 WriteOperation {
                     request: WriteRequest::Set { key: "foo".into(), value: "bar".into() },
@@ -590,48 +577,6 @@ fn test_parse_file() {
 
     // THEN
     assert_eq!(value, QueryIO::File("hello".into()));
-}
-
-#[test]
-fn test_banned_peer_serde() {
-    //GIVEN
-    let mut replication = ReplicationInfo::new(None, "127.0.0.1", 6380);
-    let peer_id = PeerIdentifier::new("127.0.0.1", 6739);
-
-    //WHEN
-    replication.ban_peer(&peer_id).unwrap();
-    let banned_peer_in_bytes: Bytes = replication.ban_list[0].clone().try_into().unwrap();
-
-    let banned_peer: BannedPeer =
-        String::from_utf8(banned_peer_in_bytes.to_vec()).unwrap().parse().unwrap();
-    // less than 1 second passed
-
-    let current = time_in_secs().unwrap();
-
-    //THEN
-    assert_eq!(banned_peer.ban_time, current);
-}
-
-#[test]
-fn test_banned_peer_serde_when_time_passed() {
-    //GIVEN
-    let mut replication = ReplicationInfo::new(None, "127.0.0.1", 6380);
-    let peer_id = PeerIdentifier::new("127.0.0.1", 6739);
-
-    //WHEN
-    replication.ban_peer(&peer_id).unwrap();
-    let banned_peer_in_bytes: Bytes = replication.ban_list[0].clone().try_into().unwrap();
-
-    let banned_peer: BannedPeer =
-        String::from_utf8(banned_peer_in_bytes.to_vec()).unwrap().parse().unwrap();
-    // less than 1 second passed
-
-    std::thread::sleep(std::time::Duration::from_secs(1));
-
-    let current = time_in_secs().unwrap();
-
-    //THEN
-    assert_ne!(banned_peer.ban_time, current);
 }
 
 #[test]
