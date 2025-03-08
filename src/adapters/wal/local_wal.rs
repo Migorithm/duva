@@ -7,6 +7,7 @@ use tokio::fs::{File, OpenOptions};
 use tokio::io::{AsyncReadExt, AsyncWriteExt, BufReader, BufWriter};
 
 /// A local write-ahead-log file (WAL) implementation.
+
 pub struct LocalWAL {
     /// The file path where the WAL data is stored.
     path: PathBuf,
@@ -98,6 +99,11 @@ impl TWriteAheadLog for LocalWAL {
 
         Ok(())
     }
+
+    // TODO create tmp file then rename
+    async fn overwrite(&mut self, ops: Vec<WriteOperation>) -> Result<()> {
+        todo!()
+    }
 }
 
 #[cfg(test)]
@@ -177,17 +183,17 @@ mod tests {
                 request: WriteRequest::Set { key: "a".into(), value: "a".into() },
                 log_index: 0.into(),
             })
-            .await?;
+                .await?;
             wal.append(WriteOperation {
                 request: WriteRequest::Set { key: "b".into(), value: "b".into() },
                 log_index: 1.into(),
             })
-            .await?;
+                .await?;
             wal.append(WriteOperation {
                 request: WriteRequest::Set { key: "c".into(), value: "c".into() },
                 log_index: 2.into(),
             })
-            .await?;
+                .await?;
         }
 
         let mut wal = LocalWAL::new(&path).await?;
@@ -196,7 +202,7 @@ mod tests {
         wal.replay(|op| {
             ops.push(op);
         })
-        .await?;
+            .await?;
 
         assert_eq!(ops.len(), 3);
         assert_eq!(
@@ -237,17 +243,17 @@ mod tests {
                 request: WriteRequest::Set { key: "a".into(), value: "a".into() },
                 log_index: 0.into(),
             })
-            .await?;
+                .await?;
             wal.append(WriteOperation {
                 request: WriteRequest::Set { key: "b".into(), value: "b".into() },
                 log_index: 1.into(),
             })
-            .await?;
+                .await?;
             wal.append(WriteOperation {
                 request: WriteRequest::Set { key: "c".into(), value: "c".into() },
                 log_index: 2.into(),
             })
-            .await?;
+                .await?;
         }
 
         // Corrupt file content by truncating to the first half.
@@ -270,8 +276,8 @@ mod tests {
             wal.replay(|op| {
                 ops.push(op);
             })
-            .await
-            .is_err()
+                .await
+                .is_err()
         );
 
         assert_eq!(ops.len(), 1);

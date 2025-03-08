@@ -1,11 +1,11 @@
 use super::{
     commands::{AddPeer, ClusterCommand},
-    replication::{BannedPeer, HeartBeatMessage, ReplicationInfo, time_in_secs},
+    replication::{time_in_secs, BannedPeer, HeartBeatMessage, ReplicationInfo},
     *,
 };
 use crate::domains::{
     append_only_files::{
-        WriteOperation, WriteRequest, interfaces::TWriteAheadLog, log::LogIndex, logger::Logger,
+        interfaces::TWriteAheadLog, log::LogIndex, logger::Logger, WriteOperation, WriteRequest,
     },
     caches::cache_manager::CacheManager,
     query_parsers::QueryIO,
@@ -170,7 +170,7 @@ impl ClusterActor {
 
         let repl_count = self.followers().count();
         if repl_count == 0 {
-            let _ = sender.send(None);
+            let _ = sender.send(Some(logger.log_index));
             return Ok(());
         }
         self.consensus_tracker.add(logger.log_index, sender, repl_count);
@@ -189,14 +189,22 @@ impl ClusterActor {
         self.members.values_mut().find(|peer| matches!(peer.kind, PeerKind::Leader))
     }
 
-    pub(crate) fn followers(&self) -> impl Iterator<Item = (&PeerIdentifier, &Peer, u64)> {
+    pub(crate) async fn install_leader_state(&mut self, logs: Vec<WriteOperation>, cache_manager: &CacheManager) {
+        println!("[INFO] Received Leader State - length {}", logs.len());
+        for log in logs {
+            let _ = cache_manager.apply_log(log.request).await;
+            self.replication.hwm = log.log_index.into();
+        }
+    }
+
+    pub(crate) fn followers(&self) -> impl Iterator<Item=(&PeerIdentifier, &Peer, u64)> {
         self.members.iter().filter_map(|(id, peer)| match &peer.kind {
             PeerKind::Follower { hwm, leader_repl_id } => Some((id, peer, *hwm)),
             _ => None,
         })
     }
 
-    pub(crate) fn followers_mut(&mut self) -> impl Iterator<Item = (&mut Peer, u64)> {
+    pub(crate) fn followers_mut(&mut self) -> impl Iterator<Item=(&mut Peer, u64)> {
         self.members.values_mut().into_iter().filter_map(|peer| match peer.kind.clone() {
             PeerKind::Follower { hwm, leader_repl_id } => Some((peer, hwm)),
             _ => None,
@@ -207,7 +215,7 @@ impl ClusterActor {
     pub(crate) fn generate_follower_entries(
         &mut self,
         append_entries: Vec<WriteOperation>,
-    ) -> impl Iterator<Item = (&mut Peer, HeartBeatMessage)> {
+    ) -> impl Iterator<Item=(&mut Peer, HeartBeatMessage)> {
         let default_heartbeat: HeartBeatMessage = self.replication.default_heartbeat(0);
         self.followers_mut().map(move |(peer, hwm)| {
             let logs =
@@ -608,7 +616,7 @@ mod test {
             cache_manager,
             3,
         )
-        .await;
+            .await;
 
         let test_logs = vec![
             write_operation_create_helper(1, "foo", "bar"),
@@ -705,7 +713,7 @@ mod test {
                         if key == "foo2" {
                             break;
                         }
-                    },
+                    }
                     _ => continue,
                 }
             }
@@ -747,7 +755,7 @@ mod test {
                         if key == "foo2" {
                             break;
                         }
-                    },
+                    }
                     _ => continue,
                 }
             }

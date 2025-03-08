@@ -75,11 +75,15 @@ impl ClusterActor {
                 ClusterCommand::SendLeaderHeartBeat => {
                     self.send_leader_heartbeat().await;
                 },
-                ClusterCommand::ApplySnapshot(snapshot) => {
-                    let Ok(_) = cache_manager.apply_snapshot(snapshot).await else {
-                        // TODO: re-request snapshot to leader
-                        todo!()
-                    };
+                ClusterCommand::InstallLeaderState(logs) => {
+                    if logger.overwrite(logs.clone()).await.is_err() {
+                        continue;
+                    }
+                    self.install_leader_state(logs, &cache_manager).await;
+                },
+                ClusterCommand::FetchCurrentState(sender) => {
+                    let logs = logger.range(0, self.replication.hwm);
+                    let _ = sender.send(logs);
                 },
             }
         }

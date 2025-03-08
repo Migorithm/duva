@@ -1,16 +1,16 @@
-use super::request::{HandShakeRequest, HandShakeRequestEnum};
-use crate::domains::caches::cache_manager::CacheManager;
+use super::request::HandShakeRequest;
+use super::request::HandShakeRequestEnum;
+use crate::domains::append_only_files::WriteOperation;
 use crate::domains::cluster_actors::commands::AddPeer;
 use crate::domains::cluster_actors::commands::ClusterCommand;
-use crate::domains::cluster_actors::replication::IS_LEADER_MODE;
 use crate::domains::cluster_actors::replication::ReplicationInfo;
 use crate::domains::peers::connected_peer_info::ConnectedPeerInfo;
 use crate::domains::peers::identifier::PeerIdentifier;
 use crate::domains::peers::kind::PeerKind;
 use crate::domains::peers::peer::Peer;
 use crate::domains::query_parsers::QueryIO;
-use crate::domains::saves::actor::SaveTarget;
 use crate::make_smart_pointer;
+use crate::presentation::cluster_in::communication_manager::ClusterCommunicationManager;
 use crate::services::interface::TGetPeerIp;
 use crate::services::interface::TRead;
 use crate::services::interface::TWrite;
@@ -122,35 +122,34 @@ impl InboundStream {
         Ok(ClusterCommand::AddPeer(AddPeer { peer_id: self.peer_info.id, peer }))
     }
 
-    pub(crate) async fn send_full_resync_to_inbound_server(
+    pub(crate) async fn send_full_sync_to_inbound_server(
         &mut self,
-        cache_manager: CacheManager,
+        logs: Vec<WriteOperation>,
     ) -> anyhow::Result<()> {
-        // route save caches
-        let task = cache_manager
-            .route_save(
-                SaveTarget::InMemory(Vec::new()),
-                self.self_repl_info.leader_repl_id.clone(),
-                self.self_repl_info.hwm,
+        let serialized_logs = QueryIO::File(
+            QueryIO::Array(
+                logs.into_iter().map(|x| QueryIO::BulkString(x.serialize())).collect::<Vec<_>>(),
             )
-            .await?
-            .await??;
+            .serialize(),
+        );
 
-        let snapshot = QueryIO::File(task.into_inner().into());
-        println!("[INFO] Sent sync to follower {:?}", snapshot);
-        self.write(snapshot).await?;
+        println!("[INFO] Sent sync to follower {:?}", serialized_logs);
+        self.write(serialized_logs).await?;
 
         // collect snapshot data from processor
         Ok(())
     }
 
-    pub(crate) async fn may_try_fullsync(
+    // depending on the condition, try full/partial sync.
+    pub(crate) async fn may_try_sync(
         &mut self,
-        cache_manager: CacheManager,
+        ccm: ClusterCommunicationManager,
     ) -> anyhow::Result<()> {
         if let PeerKind::Follower { hwm, leader_repl_id } = self.peer_kind()? {
-            if IS_LEADER_MODE.load(std::sync::atomic::Ordering::Acquire) && hwm == 0 {
-                self.send_full_resync_to_inbound_server(cache_manager).await?;
+            if self.self_repl_info.self_identifier() == leader_repl_id {
+                // get logs
+                let logs = ccm.fetch_logs_for_sync().await?;
+                self.send_full_sync_to_inbound_server(logs).await?;
             }
         }
         Ok(())

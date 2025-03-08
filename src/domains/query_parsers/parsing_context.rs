@@ -1,6 +1,6 @@
 use bytes::BytesMut;
 
-use super::{QueryIO, deserialize};
+use super::{deserialize, QueryIO};
 
 pub(super) struct ParseContext {
     offset: usize,
