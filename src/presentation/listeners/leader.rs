@@ -100,7 +100,6 @@ impl TryFrom<QueryIO> for LeaderInput {
                     };
                     ops.push(log);
                 }
-                println!("ops: {:?}", ops);
                 Ok(Self::FullSync(ops))
             }
             QueryIO::HeartBeat(peer_state) => Ok(Self::HeartBeat(peer_state)),

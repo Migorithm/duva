@@ -47,7 +47,10 @@ impl<T: TWriteAheadLog> Logger<T> {
     }
 
     pub(crate) async fn overwrite(&mut self, ops: Vec<WriteOperation>) -> anyhow::Result<()> {
-        self.target.overwrite(ops).await
+        let last_index = ops.len() as u64;
+        self.target.overwrite(ops).await?;
+        self.log_index = LogIndex(last_index);
+        Ok(())
     }
     pub(crate) fn range(&self, start_exclusive: u64, end_inclusive: u64) -> Vec<WriteOperation> {
         self.target.range(start_exclusive, end_inclusive)

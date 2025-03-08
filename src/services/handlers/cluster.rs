@@ -76,15 +76,12 @@ impl ClusterActor {
                     self.send_leader_heartbeat().await;
                 }
                 ClusterCommand::InstallLeaderState(logs) => {
-                    println!("Installing leader state");
                     if logger.overwrite(logs.clone()).await.is_err() {
-                        println!("Failed to install leader state");
                         continue;
                     }
                     self.install_leader_state(logs, &cache_manager).await;
                 }
                 ClusterCommand::FetchCurrentState(sender) => {
-                    println!("[INFO] HWM: {}", self.replication.hwm);
                     let logs = logger.range(0, self.replication.hwm);
                     let _ = sender.send(logs);
                 }
