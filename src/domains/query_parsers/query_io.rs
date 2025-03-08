@@ -293,6 +293,13 @@ impl From<WriteOperation> for QueryIO {
         QueryIO::WriteOperation(value)
     }
 }
+impl From<Vec<WriteOperation>> for QueryIO {
+    fn from(value: Vec<WriteOperation>) -> Self {
+        QueryIO::File(
+            QueryIO::Array(value.into_iter().map(Into::into).collect::<Vec<_>>()).serialize(),
+        )
+    }
+}
 
 impl From<Vec<LogIndex>> for QueryIO {
     fn from(value: Vec<LogIndex>) -> Self {

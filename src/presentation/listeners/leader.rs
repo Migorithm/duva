@@ -7,8 +7,6 @@ use crate::domains::cluster_listeners::ReactorKillSwitch;
 use crate::domains::cluster_listeners::TListen;
 use crate::domains::peers::connected_types::Leader;
 use crate::domains::query_parsers::deserialize;
-use crate::domains::query_parsers::query_io::parse_custom_type;
-
 use std::time::Duration;
 
 impl TListen for ClusterListener<Leader> {

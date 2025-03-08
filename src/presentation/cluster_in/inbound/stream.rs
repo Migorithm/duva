@@ -126,17 +126,8 @@ impl InboundStream {
         &mut self,
         logs: Vec<WriteOperation>,
     ) -> anyhow::Result<()> {
-        let serialized_logs = QueryIO::File(
-            QueryIO::Array(
-                logs.into_iter().map(|x| QueryIO::WriteOperation(x)).collect::<Vec<_>>(),
-            )
-            .serialize(),
-        );
-
-        println!("[INFO] Sent sync to follower {:?}", serialized_logs);
-        self.write(serialized_logs).await?;
-
-        // collect snapshot data from processor
+        println!("[INFO] Sent sync to follower {:?}", logs);
+        self.write_io(logs).await?;
         Ok(())
     }
 
