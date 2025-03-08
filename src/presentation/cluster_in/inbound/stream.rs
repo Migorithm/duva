@@ -122,25 +122,15 @@ impl InboundStream {
         Ok(ClusterCommand::AddPeer(AddPeer { peer_id: self.peer_info.id, peer }))
     }
 
-    pub(crate) async fn send_full_sync_to_inbound_server(
-        &mut self,
-        logs: Vec<WriteOperation>,
-    ) -> anyhow::Result<()> {
-        println!("[INFO] Sent sync to follower {:?}", logs);
-        self.write_io(logs).await?;
-        Ok(())
-    }
-
     // depending on the condition, try full/partial sync.
     pub(crate) async fn may_try_sync(
         &mut self,
         ccm: ClusterCommunicationManager,
     ) -> anyhow::Result<()> {
-        if let PeerKind::Follower { watermark: hwm, leader_repl_id } = self.peer_kind()? {
+        if let PeerKind::Follower { watermark, leader_repl_id } = self.peer_kind()? {
             if self.self_repl_info.self_identifier() == leader_repl_id {
-                // get logs
                 let logs = ccm.fetch_logs_for_sync().await?;
-                self.send_full_sync_to_inbound_server(logs).await?;
+                self.write_io(logs).await?;
             }
         }
         Ok(())
