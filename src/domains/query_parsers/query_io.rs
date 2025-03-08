@@ -20,7 +20,7 @@ const SIMPLE_STRING_PREFIX: char = '+';
 const BULK_STRING_PREFIX: char = '$';
 const ARRAY_PREFIX: char = '*';
 const ERROR_PREFIX: char = '-';
-const PEERSTATE_PREFIX: char = '^';
+const HEARTBEAT_PREFIX: char = '^';
 const REPLICATE_PREFIX: char = '#';
 const ACKS_PREFIX: char = '@';
 
@@ -98,7 +98,7 @@ impl QueryIO {
 
             QueryIO::Err(e) => Bytes::from([concatenator(ERROR_PREFIX), e, "\r\n".into()].concat()),
 
-            QueryIO::HeartBeat(heartbeat) => serialize_with_bincode(PEERSTATE_PREFIX, heartbeat),
+            QueryIO::HeartBeat(heartbeat) => serialize_with_bincode(HEARTBEAT_PREFIX, heartbeat),
 
             QueryIO::ReplicateLog(write_operation) => {
                 serialize_with_bincode(REPLICATE_PREFIX, write_operation)
@@ -202,7 +202,7 @@ pub fn deserialize(buffer: BytesMut) -> Result<(QueryIO, usize)> {
             let (bytes, len) = parse_file(buffer)?;
             Ok((QueryIO::File(bytes), len))
         },
-        PEERSTATE_PREFIX => parse_heartbeat(buffer),
+        HEARTBEAT_PREFIX => parse_heartbeat(buffer),
         REPLICATE_PREFIX => parse_replicate(buffer),
         ACKS_PREFIX => parse_acks(buffer),
 
