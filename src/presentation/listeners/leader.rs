@@ -63,17 +63,16 @@ impl ClusterListener<Leader> {
                         .cluster_handler
                         .send(ClusterCommand::HandleLeaderHeartBeat(state))
                         .await;
-                }
+                },
                 LeaderInput::FullSync(logs) => {
                     println!("Received full sync logs: {:?}", logs);
-                    let _ = self.cluster_handler
-                        .send(ClusterCommand::InstallLeaderState(logs)).await;
-                }
+                    let _ =
+                        self.cluster_handler.send(ClusterCommand::InstallLeaderState(logs)).await;
+                },
             }
         }
     }
 }
-
 
 #[derive(Debug)]
 pub enum LeaderInput {
@@ -95,13 +94,14 @@ impl TryFrom<QueryIO> for LeaderInput {
                     let QueryIO::BulkString(ops_data) = str else {
                         return Err(anyhow::anyhow!("Invalid data"));
                     };
-                    let Ok((QueryIO::ReplicateLog(log), _)) = parse_replicate(ops_data.into()) else {
+                    let Ok((QueryIO::ReplicateLog(log), _)) = parse_replicate(ops_data.into())
+                    else {
                         return Err(anyhow::anyhow!("Invalid data"));
                     };
                     ops.push(log);
                 }
                 Ok(Self::FullSync(ops))
-            }
+            },
             QueryIO::HeartBeat(peer_state) => Ok(Self::HeartBeat(peer_state)),
             _ => todo!(),
         }
@@ -112,7 +112,7 @@ impl TryFrom<QueryIO> for LeaderInput {
 mod tests {
     use super::*;
     use crate::{domains::peers::connected_types::ReadConnected, services::interface::TWrite};
-    use tokio::net::{tcp::OwnedWriteHalf, TcpListener, TcpStream};
+    use tokio::net::{TcpListener, TcpStream, tcp::OwnedWriteHalf};
 
     async fn create_server_listener_client_writer() -> (OwnedReadHalf, OwnedWriteHalf) {
         // Create listener
