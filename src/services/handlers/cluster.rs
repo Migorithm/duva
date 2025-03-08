@@ -83,6 +83,7 @@ impl ClusterActor {
                     self.install_leader_state(logs, &cache_manager).await;
                 }
                 ClusterCommand::FetchCurrentState(sender) => {
+                    println!("[INFO] HWM: {}", self.replication.hwm);
                     let logs = logger.range(0, self.replication.hwm);
                     let _ = sender.send(logs);
                 }

@@ -170,7 +170,7 @@ impl ClusterActor {
 
         let repl_count = self.followers().count();
         if repl_count == 0 {
-            let _ = sender.send(None);
+            let _ = sender.send(Some(logger.log_index));
             return Ok(());
         }
         self.consensus_tracker.add(logger.log_index, sender, repl_count);
@@ -259,6 +259,10 @@ impl ClusterActor {
     pub(crate) async fn send_commit_heartbeat(&mut self, offset: LogIndex) {
         // TODO is there any case where I can use offset input?
         self.replication.hwm += 1;
+        println!(
+            "[INFO] Sending commit offset {} to followers",
+            self.replication.hwm
+        );
         let message: HeartBeatMessage = self.replication.default_heartbeat(0);
         println!("[INFO] Sending commit request on {}", message.hwm);
         self.send_to_replicas(message).await;
