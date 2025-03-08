@@ -45,7 +45,7 @@ pub enum QueryIO {
     // custom types
     File(Bytes),
     HeartBeat(HeartBeatMessage),
-    ReplicateLog(WriteOperation),
+    WriteOperation(WriteOperation),
     Acks(Vec<LogIndex>),
 }
 
@@ -102,7 +102,7 @@ impl QueryIO {
 
             QueryIO::HeartBeat(heartbeat) => serialize_with_bincode(HEARTBEAT_PREFIX, heartbeat),
 
-            QueryIO::ReplicateLog(write_operation) => {
+            QueryIO::WriteOperation(write_operation) => {
                 serialize_with_bincode(REPLICATE_PREFIX, write_operation)
             },
             QueryIO::Acks(items) => serialize_with_bincode(ACKS_PREFIX, items),
@@ -284,7 +284,7 @@ fn serialize_with_bincode<T: bincode::Encode>(prefix: char, arg: T) -> Bytes {
 
 impl From<WriteOperation> for QueryIO {
     fn from(value: WriteOperation) -> Self {
-        QueryIO::ReplicateLog(value)
+        QueryIO::WriteOperation(value)
     }
 }
 
@@ -546,7 +546,7 @@ mod test {
         // GIVEN
         let query = WriteRequest::Set { key: "foo".into(), value: "bar".into() };
         let replicate =
-            QueryIO::ReplicateLog(WriteOperation { request: query, log_index: 1.into() });
+            QueryIO::WriteOperation(WriteOperation { request: query, log_index: 1.into() });
 
         // WHEN
         let serialized = replicate.clone().serialize();
@@ -566,7 +566,7 @@ mod test {
         // THEN
         assert_eq!(
             value,
-            QueryIO::ReplicateLog(WriteOperation {
+            QueryIO::WriteOperation(WriteOperation {
                 request: WriteRequest::Set { key: "foo".into(), value: "bar".into() },
                 log_index: 1.into()
             })

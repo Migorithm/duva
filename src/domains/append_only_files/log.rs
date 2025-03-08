@@ -42,7 +42,7 @@ pub enum WriteRequest {
 
 impl WriteOperation {
     pub fn serialize(self) -> Bytes {
-        QueryIO::ReplicateLog(self).serialize()
+        QueryIO::WriteOperation(self).serialize()
     }
 }
 
@@ -72,7 +72,7 @@ impl WriteRequest {
             let (query, consumed) = deserialize(bytes.clone())?;
             bytes = bytes.split_off(consumed);
 
-            let QueryIO::ReplicateLog(write_operation) = query else {
+            let QueryIO::WriteOperation(write_operation) = query else {
                 return Err(anyhow::anyhow!("expected replicate"));
             };
             ops.push(write_operation);

@@ -95,7 +95,7 @@ impl TryFrom<QueryIO> for LeaderInput {
                     let QueryIO::BulkString(ops_data) = str else {
                         return Err(anyhow::anyhow!("Invalid data"));
                     };
-                    let Ok((QueryIO::ReplicateLog(log), _)) =
+                    let Ok((QueryIO::WriteOperation(log), _)) =
                         parse_custom_type::<WriteOperation>(ops_data.into())
                     else {
                         return Err(anyhow::anyhow!("Invalid data"));
