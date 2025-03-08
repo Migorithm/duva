@@ -355,9 +355,8 @@ fn parse_bulk_string(buffer: BytesMut) -> Result<(Bytes, usize)> {
 
     let content_len: usize = String::from_utf8(line.to_vec())?.parse()?;
 
-    let (line, _) = read_until_crlf(&buffer[len..].into()).context("Invalid BulkString format!")?;
-
-    Ok((line, len + content_len + 2))
+    let (line, total_len) = read_content_until_crlf(&buffer[len..].into(), content_len).context("Invalid BulkString format!")?;
+    Ok((line, len + total_len))
 }
 
 fn parse_file(buffer: BytesMut) -> Result<(Bytes, usize)> {
@@ -376,6 +375,15 @@ fn parse_file(buffer: BytesMut) -> Result<(Bytes, usize)> {
         .collect::<Result<Bytes, _>>()?;
 
     Ok((file, len + content_len))
+}
+pub(super) fn read_content_until_crlf(buffer: &BytesMut, content_len: usize) -> Option<(Bytes, usize)> {
+    if buffer.len() < content_len + 2 {
+        return None;
+    }
+    if buffer[content_len] == b'\r' && buffer[content_len + 1] == b'\n' {
+        return Some((Bytes::copy_from_slice(&buffer[0..content_len]), content_len + 2));
+    }
+    None
 }
 
 pub(super) fn read_until_crlf(buffer: &BytesMut) -> Option<(Bytes, usize)> {

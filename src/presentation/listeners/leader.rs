@@ -1,13 +1,13 @@
 use super::*;
 use crate::domains::append_only_files::WriteOperation;
-use crate::domains::query_parsers::deserialize;
-use crate::domains::query_parsers::query_io::parse_replicate;
 use crate::domains::cluster_actors::commands::ClusterCommand;
 use crate::domains::cluster_actors::replication::HeartBeatMessage;
 use crate::domains::cluster_listeners::ClusterListener;
 use crate::domains::cluster_listeners::ReactorKillSwitch;
 use crate::domains::cluster_listeners::TListen;
 use crate::domains::peers::connected_types::Leader;
+use crate::domains::query_parsers::deserialize;
+use crate::domains::query_parsers::query_io::parse_replicate;
 use std::time::Duration;
 
 impl TListen for ClusterListener<Leader> {
@@ -63,11 +63,12 @@ impl ClusterListener<Leader> {
                         .cluster_handler
                         .send(ClusterCommand::HandleLeaderHeartBeat(state))
                         .await;
-                },
+                }
                 LeaderInput::FullSync(logs) => {
+                    println!("Received full sync logs: {:?}", logs);
                     let _ = self.cluster_handler
-                        .send(ClusterCommand::InstallLeaderState(logs));
-                },
+                        .send(ClusterCommand::InstallLeaderState(logs)).await;
+                }
             }
         }
     }
@@ -99,6 +100,7 @@ impl TryFrom<QueryIO> for LeaderInput {
                     };
                     ops.push(log);
                 }
+                println!("ops: {:?}", ops);
                 Ok(Self::FullSync(ops))
             }
             QueryIO::HeartBeat(peer_state) => Ok(Self::HeartBeat(peer_state)),
@@ -111,7 +113,7 @@ impl TryFrom<QueryIO> for LeaderInput {
 mod tests {
     use super::*;
     use crate::{domains::peers::connected_types::ReadConnected, services::interface::TWrite};
-    use tokio::net::{TcpListener, TcpStream, tcp::OwnedWriteHalf};
+    use tokio::net::{tcp::OwnedWriteHalf, TcpListener, TcpStream};
 
     async fn create_server_listener_client_writer() -> (OwnedReadHalf, OwnedWriteHalf) {
         // Create listener

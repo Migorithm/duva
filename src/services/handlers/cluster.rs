@@ -76,8 +76,9 @@ impl ClusterActor {
                     self.send_leader_heartbeat().await;
                 }
                 ClusterCommand::InstallLeaderState(logs) => {
-                    // TODO consider failure case when logs are not written all
+                    println!("Installing leader state");
                     if logger.overwrite(logs.clone()).await.is_err() {
+                        println!("Failed to install leader state");
                         continue;
                     }
                     self.install_leader_state(logs, &cache_manager).await;
