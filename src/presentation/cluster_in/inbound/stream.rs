@@ -145,7 +145,7 @@ impl InboundStream {
         &mut self,
         ccm: ClusterCommunicationManager,
     ) -> anyhow::Result<()> {
-        if let PeerKind::Follower { hwm, leader_repl_id } = self.peer_kind()? {
+        if let PeerKind::Follower { watermark: hwm, leader_repl_id } = self.peer_kind()? {
             if self.self_repl_info.self_identifier() == leader_repl_id {
                 // get logs
                 let logs = ccm.fetch_logs_for_sync().await?;
