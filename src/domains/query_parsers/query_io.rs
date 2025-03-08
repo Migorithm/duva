@@ -41,6 +41,8 @@ pub enum QueryIO {
     BulkString(Bytes),
     Array(Vec<QueryIO>),
     Err(Bytes),
+
+    // custom types
     File(Bytes),
     HeartBeat(HeartBeatMessage),
     ReplicateLog(WriteOperation),
@@ -155,12 +157,6 @@ impl From<Option<CacheValue>> for QueryIO {
     }
 }
 
-impl From<HeartBeatMessage> for QueryIO {
-    fn from(value: HeartBeatMessage) -> Self {
-        QueryIO::HeartBeat(value)
-    }
-}
-
 impl From<QueryIO> for Bytes {
     fn from(value: QueryIO) -> Self {
         value.serialize()
@@ -182,9 +178,9 @@ pub fn deserialize(buffer: BytesMut) -> Result<(QueryIO, usize)> {
             let (bytes, len) = parse_file(buffer)?;
             Ok((QueryIO::File(bytes), len))
         },
-        HEARTBEAT_PREFIX => parse_heartbeat(buffer),
-        REPLICATE_PREFIX => parse_replicate(buffer),
-        ACKS_PREFIX => parse_acks(buffer),
+        HEARTBEAT_PREFIX => parse_custom_type::<HeartBeatMessage>(buffer),
+        REPLICATE_PREFIX => parse_custom_type::<WriteOperation>(buffer),
+        ACKS_PREFIX => parse_custom_type::<Vec<LogIndex>>(buffer),
 
         _ => Err(anyhow::anyhow!("Not a known value type {:?}", buffer)),
     }
@@ -215,24 +211,15 @@ fn parse_array(buffer: BytesMut) -> Result<(QueryIO, usize)> {
     Ok((QueryIO::Array(elements), ctx.offset()))
 }
 
-fn parse_heartbeat(buffer: BytesMut) -> Result<(QueryIO, usize)> {
-    // fixed rule for peer state
-    let (encoded, len) = bincode::decode_from_slice(&buffer[1..], SERDE_CONFIG)
+pub fn parse_custom_type<T>(
+    buffer: BytesMut,
+) -> std::result::Result<(QueryIO, usize), anyhow::Error>
+where
+    T: bincode::Decode<()> + Into<QueryIO>,
+{
+    let (encoded, len): (T, usize) = bincode::decode_from_slice(&buffer[1..], SERDE_CONFIG)
         .map_err(|err| anyhow::anyhow!("Failed to decode heartbeat message: {:?}", err))?;
-
-    Ok((QueryIO::HeartBeat(encoded), len + 1))
-}
-
-pub fn parse_replicate(buffer: BytesMut) -> std::result::Result<(QueryIO, usize), anyhow::Error> {
-    let (encoded, len) = bincode::decode_from_slice(&buffer[1..], SERDE_CONFIG)
-        .map_err(|err| anyhow::anyhow!("Failed to decode heartbeat message: {:?}", err))?;
-    Ok((QueryIO::ReplicateLog(encoded), len + 1))
-}
-
-fn parse_acks(buffer: BytesMut) -> std::result::Result<(QueryIO, usize), anyhow::Error> {
-    let (encoded, len) = bincode::decode_from_slice(&buffer[1..], SERDE_CONFIG)
-        .map_err(|err| anyhow::anyhow!("Failed to decode heartbeat message: {:?}", err))?;
-    Ok((QueryIO::Acks(encoded), len + 1))
+    Ok((encoded.into(), len + 1))
 }
 
 fn parse_bulk_string(buffer: BytesMut) -> Result<(Bytes, usize)> {
@@ -295,6 +282,22 @@ fn serialize_with_bincode<T: bincode::Encode>(prefix: char, arg: T) -> Bytes {
     buffer.freeze()
 }
 
+impl From<WriteOperation> for QueryIO {
+    fn from(value: WriteOperation) -> Self {
+        QueryIO::ReplicateLog(value)
+    }
+}
+
+impl From<Vec<LogIndex>> for QueryIO {
+    fn from(value: Vec<LogIndex>) -> Self {
+        QueryIO::Acks(value)
+    }
+}
+impl From<HeartBeatMessage> for QueryIO {
+    fn from(value: HeartBeatMessage) -> Self {
+        QueryIO::HeartBeat(value)
+    }
+}
 #[cfg(test)]
 mod test {
 
