@@ -1,7 +1,7 @@
 /// After three-way handshake, client will receive peers from the leader server
 mod common;
 use crate::common::array;
-use common::{spawn_server_process, ServerEnv};
+use common::{ServerEnv, spawn_server_process};
 use duva::client_utils::ClientStreamHandler;
 
 #[tokio::test]

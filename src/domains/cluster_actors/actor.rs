@@ -1,11 +1,11 @@
 use super::{
     commands::{AddPeer, ClusterCommand},
-    replication::{time_in_secs, BannedPeer, HeartBeatMessage, ReplicationInfo},
+    replication::{BannedPeer, HeartBeatMessage, ReplicationInfo, time_in_secs},
     *,
 };
 use crate::domains::{
     append_only_files::{
-        interfaces::TWriteAheadLog, log::LogIndex, logger::Logger, WriteOperation, WriteRequest,
+        WriteOperation, WriteRequest, interfaces::TWriteAheadLog, log::LogIndex, logger::Logger,
     },
     caches::cache_manager::CacheManager,
     query_parsers::QueryIO,
@@ -137,7 +137,7 @@ impl ClusterActor {
         if let Some(peer) = self.members.get_mut(&heartheat.heartbeat_from) {
             peer.last_seen = Instant::now();
 
-            if let PeerKind::Follower { hwm, .. } = &mut peer.kind {
+            if let PeerKind::Follower { watermark: hwm, .. } = &mut peer.kind {
                 *hwm = heartheat.hwm;
             }
         }
@@ -166,7 +166,7 @@ impl ClusterActor {
     ) -> anyhow::Result<()> {
         // Skip consensus for no replicas
         let append_entries: Vec<WriteOperation> =
-            logger.create_log_entries(&write_request, self.get_lowest_hwm()).await?;
+            logger.create_log_entries(&write_request, self.take_low_watermark()).await?;
 
         let repl_count = self.followers().count();
         if repl_count == 0 {
@@ -189,7 +189,11 @@ impl ClusterActor {
         self.members.values_mut().find(|peer| matches!(peer.kind, PeerKind::Leader))
     }
 
-    pub(crate) async fn install_leader_state(&mut self, logs: Vec<WriteOperation>, cache_manager: &CacheManager) {
+    pub(crate) async fn install_leader_state(
+        &mut self,
+        logs: Vec<WriteOperation>,
+        cache_manager: &CacheManager,
+    ) {
         println!("[INFO] Received Leader State - length {}", logs.len());
         for log in logs {
             let _ = cache_manager.apply_log(log.request).await;
@@ -197,16 +201,16 @@ impl ClusterActor {
         }
     }
 
-    pub(crate) fn followers(&self) -> impl Iterator<Item=(&PeerIdentifier, &Peer, u64)> {
+    pub(crate) fn followers(&self) -> impl Iterator<Item = (&PeerIdentifier, &Peer, u64)> {
         self.members.iter().filter_map(|(id, peer)| match &peer.kind {
-            PeerKind::Follower { hwm, leader_repl_id } => Some((id, peer, *hwm)),
+            PeerKind::Follower { watermark: hwm, leader_repl_id } => Some((id, peer, *hwm)),
             _ => None,
         })
     }
 
-    pub(crate) fn followers_mut(&mut self) -> impl Iterator<Item=(&mut Peer, u64)> {
+    pub(crate) fn followers_mut(&mut self) -> impl Iterator<Item = (&mut Peer, u64)> {
         self.members.values_mut().into_iter().filter_map(|peer| match peer.kind.clone() {
-            PeerKind::Follower { hwm, leader_repl_id } => Some((peer, hwm)),
+            PeerKind::Follower { watermark: hwm, leader_repl_id } => Some((peer, hwm)),
             _ => None,
         })
     }
@@ -215,7 +219,7 @@ impl ClusterActor {
     pub(crate) fn generate_follower_entries(
         &mut self,
         append_entries: Vec<WriteOperation>,
-    ) -> impl Iterator<Item=(&mut Peer, HeartBeatMessage)> {
+    ) -> impl Iterator<Item = (&mut Peer, HeartBeatMessage)> {
         let default_heartbeat: HeartBeatMessage = self.replication.default_heartbeat(0);
         self.followers_mut().map(move |(peer, hwm)| {
             let logs =
@@ -224,12 +228,12 @@ impl ClusterActor {
         })
     }
 
-    pub(crate) fn get_lowest_hwm(&self) -> u64 {
+    pub(crate) fn take_low_watermark(&self) -> u64 {
         self.members
             .values()
             .into_iter()
             .filter_map(|peer| match &peer.kind {
-                PeerKind::Follower { hwm, leader_repl_id } => Some(*hwm),
+                PeerKind::Follower { watermark, leader_repl_id } => Some(*watermark),
                 _ => None,
             })
             .min()
@@ -411,7 +415,7 @@ mod test {
                 Peer::new::<Follower>(
                     TcpStream::connect(bind_addr).await.unwrap(),
                     PeerKind::Follower {
-                        hwm: follower_hwm,
+                        watermark: follower_hwm,
                         leader_repl_id: PeerIdentifier::new(
                             &actor.replication.self_host,
                             actor.replication.self_port,
@@ -616,7 +620,7 @@ mod test {
             cache_manager,
             3,
         )
-            .await;
+        .await;
 
         let test_logs = vec![
             write_operation_create_helper(1, "foo", "bar"),
@@ -635,7 +639,7 @@ mod test {
             .await;
 
         // * add new log - this must create entries that are greater than 3
-        let lowest_hwm = cluster_actor.get_lowest_hwm();
+        let lowest_hwm = cluster_actor.take_low_watermark();
         let append_entries = test_logger
             .create_log_entries(
                 &WriteRequest::Set { key: "foo4".into(), value: "bar".into() },
@@ -713,7 +717,7 @@ mod test {
                         if key == "foo2" {
                             break;
                         }
-                    }
+                    },
                     _ => continue,
                 }
             }
@@ -755,7 +759,7 @@ mod test {
                         if key == "foo2" {
                             break;
                         }
-                    }
+                    },
                     _ => continue,
                 }
             }
@@ -800,7 +804,7 @@ mod test {
                 PeerIdentifier::new("localhost", port),
                 Peer::new::<Follower>(
                     TcpStream::connect(bind_addr).await.unwrap(),
-                    PeerKind::Follower { hwm: 0, leader_repl_id: self_identifier.clone() },
+                    PeerKind::Follower { watermark: 0, leader_repl_id: self_identifier.clone() },
                     cluster_sender.clone(),
                 ),
             );

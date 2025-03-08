@@ -10,12 +10,12 @@ impl ClientController<Handler> {
                 let cache_entry = CacheEntry::KeyValue(key.to_owned(), value.to_string());
 
                 self.cache_manager.route_set(cache_entry).await?
-            }
+            },
             ClientRequest::SetWithExpiry { key, value, expiry } => {
                 let cache_entry =
                     CacheEntry::KeyValueExpiry(key.to_owned(), value.to_string(), expiry);
                 self.cache_manager.route_set(cache_entry).await?
-            }
+            },
             ClientRequest::Save => {
                 let file_path = self.config_manager.get_filepath().await?;
                 let file =
@@ -27,7 +27,7 @@ impl ClientController<Handler> {
                     .await?;
 
                 QueryIO::Null
-            }
+            },
             ClientRequest::Get { key } => self.cache_manager.route_get(key).await?,
             ClientRequest::Keys { pattern } => self.cache_manager.route_keys(pattern).await?,
             ClientRequest::Config { key, value } => {
@@ -41,7 +41,7 @@ impl ClientController<Handler> {
                     ConfigResponse::DbFileName(value) => QueryIO::BulkString(value.into()),
                     _ => QueryIO::Err("Invalid operation".into()),
                 }
-            }
+            },
             ClientRequest::Delete { key: _ } => panic!("Not implemented"),
             ClientRequest::Info => QueryIO::BulkString(
                 self.cluster_communication_manager
@@ -53,10 +53,10 @@ impl ClientController<Handler> {
             ),
             ClientRequest::ClusterInfo => {
                 self.cluster_communication_manager.cluster_info().await?.into()
-            }
+            },
             ClientRequest::ClusterNodes => {
                 self.cluster_communication_manager.cluster_nodes().await?.into()
-            }
+            },
 
             ClientRequest::ClusterForget(peer_identifier) => {
                 match self.cluster_communication_manager.forget_peer(peer_identifier).await {
@@ -64,7 +64,7 @@ impl ClientController<Handler> {
                     Ok(false) => QueryIO::Err("No such peer".into()),
                     Err(e) => QueryIO::Err(e.to_string().into()),
                 }
-            }
+            },
         };
         Ok(response)
     }

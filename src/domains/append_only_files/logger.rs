@@ -1,4 +1,4 @@
-use super::{interfaces::TWriteAheadLog, log::LogIndex, WriteOperation, WriteRequest};
+use super::{WriteOperation, WriteRequest, interfaces::TWriteAheadLog, log::LogIndex};
 
 pub(crate) struct Logger<T: TWriteAheadLog> {
     pub(crate) target: T,

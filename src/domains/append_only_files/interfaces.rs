@@ -7,12 +7,12 @@ pub trait TWriteAheadLog: Send + Sync + 'static {
     fn append(
         &mut self,
         op: WriteOperation,
-    ) -> impl std::future::Future<Output=Result<()>> + Send;
+    ) -> impl std::future::Future<Output = Result<()>> + Send;
 
     fn append_many(
         &mut self,
         ops: Vec<WriteOperation>,
-    ) -> impl std::future::Future<Output=Result<()>> + Send;
+    ) -> impl std::future::Future<Output = Result<()>> + Send;
 
     // Retrieve logs that fall between the current 'commit' index and target 'log' index
     // NOT async as it is expected to be infallible and memory operation.
@@ -20,15 +20,15 @@ pub trait TWriteAheadLog: Send + Sync + 'static {
 
     /// Replays all logged operations from the beginning of the WAL, calling the provided callback `f` for each operation.
     /// The callback `f(WriteOperation)` receives each operation in the order it was appended.
-    fn replay<F>(&mut self, f: F) -> impl std::future::Future<Output=Result<()>> + Send
+    fn replay<F>(&mut self, f: F) -> impl std::future::Future<Output = Result<()>> + Send
     where
         F: FnMut(WriteOperation) + Send;
 
     /// Forces pending writes to be physically recorded on disk.
-    fn fsync(&mut self) -> impl std::future::Future<Output=Result<()>> + Send;
+    fn fsync(&mut self) -> impl std::future::Future<Output = Result<()>> + Send;
 
     fn overwrite(
         &mut self,
         ops: Vec<WriteOperation>,
-    ) -> impl std::future::Future<Output=Result<()>> + Send;
+    ) -> impl std::future::Future<Output = Result<()>> + Send;
 }
