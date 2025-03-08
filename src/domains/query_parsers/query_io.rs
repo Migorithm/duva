@@ -103,16 +103,7 @@ impl QueryIO {
             QueryIO::ReplicateLog(write_operation) => {
                 serialize_with_bincode(REPLICATE_PREFIX, write_operation)
             },
-            QueryIO::Acks(items) => {
-                let mut bytes =
-                    BytesMut::from(format!("{}{}\r\n", ACKS_PREFIX, items.len()).as_bytes());
-                bytes.extend(
-                    items
-                        .into_iter()
-                        .flat_map(|item| QueryIO::BulkString(item.to_string().into()).serialize()),
-                );
-                bytes.freeze()
-            },
+            QueryIO::Acks(items) => serialize_with_bincode(ACKS_PREFIX, items),
         }
     }
 
@@ -167,17 +158,6 @@ impl From<Option<CacheValue>> for QueryIO {
 impl From<HeartBeatMessage> for QueryIO {
     fn from(value: HeartBeatMessage) -> Self {
         QueryIO::HeartBeat(value)
-    }
-}
-impl TryFrom<QueryIO> for HeartBeatMessage {
-    type Error = anyhow::Error;
-
-    fn try_from(value: QueryIO) -> std::result::Result<Self, Self::Error> {
-        let QueryIO::HeartBeat(state) = value else {
-            return Err(anyhow::anyhow!("invalid QueryIO invariant"));
-        };
-
-        Ok(state)
     }
 }
 
@@ -250,8 +230,9 @@ pub fn parse_replicate(buffer: BytesMut) -> std::result::Result<(QueryIO, usize)
 }
 
 fn parse_acks(buffer: BytesMut) -> std::result::Result<(QueryIO, usize), anyhow::Error> {
-    let (acks, usize) = parse_array(buffer)?;
-    Ok((QueryIO::Acks(acks.unpack_array()?), usize))
+    let (encoded, len) = bincode::decode_from_slice(&buffer[1..], SERDE_CONFIG)
+        .map_err(|err| anyhow::anyhow!("Failed to decode heartbeat message: {:?}", err))?;
+    Ok((QueryIO::Acks(encoded), len + 1))
 }
 
 fn parse_bulk_string(buffer: BytesMut) -> Result<(Bytes, usize)> {
@@ -401,13 +382,15 @@ mod test {
         let buffer = BytesMut::from_iter(data);
 
         // WHEN
-        let (value, len) = deserialize(buffer).unwrap();
+        let (QueryIO::HeartBeat(heartbeat), len) = deserialize(buffer).unwrap() else {
+            panic!();
+        };
 
         // THEN
         assert_eq!(len, data.len());
         assert_eq!(
-            value,
-            QueryIO::HeartBeat(HeartBeatMessage {
+            heartbeat,
+            HeartBeatMessage {
                 term: 245,
                 hwm: 1234329,
                 leader_replid: "abcd".into(),
@@ -415,15 +398,15 @@ mod test {
                 heartbeat_from: "127.0.0.1:49153".to_string().into(),
                 ban_list: vec![],
                 append_entries: vec![]
-            })
+            }
         );
-        let peer_state: HeartBeatMessage = value.try_into().unwrap();
-        assert_eq!(peer_state.term, 245);
-        assert_eq!(peer_state.hwm, 1234329);
 
-        assert_eq!(*peer_state.leader_replid, "abcd");
-        assert_eq!(peer_state.hop_count, 2);
-        assert!(peer_state.ban_list.is_empty())
+        assert_eq!(heartbeat.term, 245);
+        assert_eq!(heartbeat.hwm, 1234329);
+
+        assert_eq!(*heartbeat.leader_replid, "abcd");
+        assert_eq!(heartbeat.hop_count, 2);
+        assert!(heartbeat.ban_list.is_empty())
     }
 
     #[test]
@@ -590,7 +573,8 @@ mod test {
     #[test]
     fn test_from_binary_to_acks() {
         // GIVEN
-        let data = "@2\r\n$1\r\n1\r\n$1\r\n2\r\n";
+
+        let data = "@\x02\x01\x02";
         let buffer = BytesMut::from(data);
 
         // WHEN
@@ -610,6 +594,6 @@ mod test {
         let serialized = replicate.clone().serialize();
 
         // THEN
-        assert_eq!("@2\r\n$1\r\n1\r\n$1\r\n2\r\n", serialized);
+        assert_eq!("@\x02\x01\x02", serialized);
     }
 }
