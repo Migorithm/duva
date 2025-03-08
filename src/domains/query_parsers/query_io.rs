@@ -51,26 +51,25 @@ pub enum QueryIO {
 
 impl QueryIO {
     pub fn serialize(self) -> Bytes {
-        let concatenator = |prefix: char| -> Bytes { Bytes::from_iter([prefix as u8]) };
-
         match self {
             QueryIO::Null => "$-1\r\n".into(),
 
-            QueryIO::SimpleString(s) => Bytes::from(
-                [Bytes::from(SIMPLE_STRING_PREFIX.to_string()), s.into(), Bytes::from("\r\n")]
-                    .concat(),
-            ),
+            QueryIO::SimpleString(s) => {
+                let mut buffer =
+                    String::with_capacity(SIMPLE_STRING_PREFIX.len_utf8() + s.len() + 2);
+                write!(&mut buffer, "{}{}\r\n", SIMPLE_STRING_PREFIX, s).unwrap();
+                buffer.into()
+            },
 
-            QueryIO::BulkString(s) => Bytes::from(
-                [
-                    Bytes::from(BULK_STRING_PREFIX.to_string()),
-                    Bytes::from(s.len().to_string()),
-                    Bytes::from("\r\n"),
-                    s.into(),
-                    Bytes::from("\r\n"),
-                ]
-                .concat(),
-            ),
+            QueryIO::BulkString(s) => {
+                let mut byte_mut = BytesMut::with_capacity(1 + 1 + s.len() + 4);
+                byte_mut.extend_from_slice(BULK_STRING_PREFIX.encode_utf8(&mut [0; 4]).as_bytes());
+                byte_mut.extend_from_slice(s.len().to_string().as_bytes());
+                byte_mut.extend_from_slice(b"\r\n");
+                byte_mut.extend_from_slice(s.as_bytes());
+                byte_mut.extend_from_slice(b"\r\n");
+                byte_mut.freeze()
+            },
 
             QueryIO::File(f) => {
                 let file_len = f.len() * 2;
@@ -88,7 +87,7 @@ impl QueryIO {
             QueryIO::Array(array) => {
                 let mut buffer = BytesMut::with_capacity(
                     // Rough estimate of needed capacity
-                    array.len() * 32 + format!("{}{}\r\n", ARRAY_PREFIX, array.len()).len(),
+                    array.len() * 32 + 1 + array.len(),
                 );
 
                 // extend single buffer
@@ -99,16 +98,14 @@ impl QueryIO {
                 buffer.freeze()
             },
 
-            QueryIO::Err(e) => {
-                Bytes::from([concatenator(ERROR_PREFIX), e.into(), "\r\n".into()].concat())
-            },
+            QueryIO::Err(e) => Bytes::from(["-".to_string(), e.into(), "\r\n".into()].concat()),
 
-            QueryIO::HeartBeat(heartbeat) => serialize_with_bincode(HEARTBEAT_PREFIX, heartbeat),
+            QueryIO::HeartBeat(heartbeat) => serialize_with_bincode(HEARTBEAT_PREFIX, &heartbeat),
 
             QueryIO::WriteOperation(write_operation) => {
-                serialize_with_bincode(REPLICATE_PREFIX, write_operation)
+                serialize_with_bincode(REPLICATE_PREFIX, &write_operation)
             },
-            QueryIO::Acks(items) => serialize_with_bincode(ACKS_PREFIX, items),
+            QueryIO::Acks(items) => serialize_with_bincode(ACKS_PREFIX, &items),
         }
     }
 
@@ -281,13 +278,20 @@ pub(super) fn read_until_crlf(buffer: &BytesMut) -> Option<(String, usize)> {
     None
 }
 
-fn serialize_with_bincode<T: bincode::Encode>(prefix: char, arg: T) -> Bytes {
-    let mut buffer = BytesMut::new();
-    buffer.extend_from_slice(prefix.to_string().as_bytes());
-    buffer.extend_from_slice(&bincode::encode_to_vec(&arg, SERDE_CONFIG).unwrap());
+fn serialize_with_bincode<T: bincode::Encode>(prefix: char, arg: &T) -> Bytes {
+    let prefix_len = prefix.len_utf8();
+
+    // Allocate buffer with reasoanble initial capacity
+    let estimated_data_size = 64;
+    let mut buffer = BytesMut::with_capacity(prefix_len + estimated_data_size);
+
+    buffer.extend_from_slice(prefix.encode_utf8(&mut [0; 4]).as_bytes());
+
+    let encoded = bincode::encode_to_vec(arg, SERDE_CONFIG).unwrap();
+    buffer.extend_from_slice(&encoded);
+
     buffer.freeze()
 }
-
 impl From<WriteOperation> for QueryIO {
     fn from(value: WriteOperation) -> Self {
         QueryIO::WriteOperation(value)
