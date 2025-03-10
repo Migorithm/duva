@@ -54,11 +54,13 @@ impl ClusterActor {
 
     pub async fn send_liveness_heartbeat(&mut self, hop_count: u8) {
         // TODO randomly choose the peer to send the message
+        let msg = QueryIO::HeartBeat(
+            self.replication.default_heartbeat(hop_count).set_cluster_nodes(self.cluster_nodes()),
+        )
+        .serialize();
 
         for peer in self.members.values_mut() {
-            let msg = QueryIO::HeartBeat(self.replication.default_heartbeat(hop_count)).serialize();
-
-            let _ = peer.write(msg).await;
+            let _ = peer.write(msg.clone()).await;
         }
     }
 
@@ -389,6 +391,7 @@ mod test {
             heartbeat_from: PeerIdentifier::new("localhost", 8080),
             leader_replid: "localhost".to_string().into(),
             hop_count: 0,
+            cluster_nodes: vec![],
         }
     }
 
