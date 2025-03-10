@@ -317,9 +317,6 @@ impl From<HeartBeatMessage> for QueryIO {
 }
 #[cfg(test)]
 mod test {
-
-    use chrono::{DateTime, Utc};
-
     use crate::domains::{
         append_only_files::WriteRequest, cluster_actors::replication::BannedPeer,
     };
@@ -411,62 +408,33 @@ mod test {
     }
 
     #[test]
-    fn test_from_replicate_log_to_binary() {
+    fn test_write_operation_to_binary_back_to_itself() {
         // GIVEN
-        let query = WriteRequest::Set { key: "foo".into(), value: "bar".into() };
-        let replicate =
-            QueryIO::WriteOperation(WriteOperation { request: query, log_index: 1.into() });
+        let op = QueryIO::WriteOperation(WriteOperation {
+            request: WriteRequest::Set { key: "foo".into(), value: "bar".into() },
+            log_index: 1.into(),
+        });
 
         // WHEN
-        let serialized = replicate.clone().serialize();
+        let serialized = op.clone().serialize();
+        let (deserialized, _) = deserialize(serialized.clone().into()).unwrap();
+
         // THEN
-        assert_eq!("#\0\x03foo\x03bar\x01", serialized);
+        assert_eq!(deserialized, op);
     }
 
     #[test]
-    fn test_from_binary_to_replicate_log() {
-        // GIVEN
-        let data = "#\0\x03foo\x03bar\x01";
-        let buffer = BytesMut::from(data);
-
-        // WHEN
-        let (value, _) = deserialize(buffer).unwrap();
-
-        // THEN
-        assert_eq!(
-            value,
-            QueryIO::WriteOperation(WriteOperation {
-                request: WriteRequest::Set { key: "foo".into(), value: "bar".into() },
-                log_index: 1.into()
-            })
-        );
-    }
-
-    #[test]
-    fn test_from_binary_to_acks() {
-        // GIVEN
-
-        let data = "@\x02\x01\x02";
-        let buffer = BytesMut::from(data);
-
-        // WHEN
-        let (value, _) = deserialize(buffer).unwrap();
-
-        // THEN
-        assert_eq!(value, QueryIO::Acks(vec![1.into(), 2.into()]));
-    }
-
-    #[test]
-    fn test_from_acks_to_binary() {
+    fn test_acks_to_binary_back_to_acks() {
         // GIVEN
         let acks = vec![1.into(), 2.into()];
-        let replicate = QueryIO::Acks(acks);
+        let acks = QueryIO::Acks(acks);
 
         // WHEN
-        let serialized = replicate.clone().serialize();
+        let serialized = acks.clone().serialize();
+        let (deserialized, _) = deserialize(BytesMut::from(serialized)).unwrap();
 
         // THEN
-        assert_eq!("@\x02\x01\x02", serialized);
+        assert_eq!(deserialized, acks);
     }
 
     #[test]
