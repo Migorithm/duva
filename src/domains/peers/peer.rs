@@ -117,12 +117,16 @@ impl DerefMut for Peer {
     }
 }
 
-pub(super) type KillTrigger = tokio::sync::oneshot::Sender<()>;
-
 #[derive(Debug)]
-pub(crate) struct ListeningActorKillTrigger(KillTrigger, JoinHandle<OwnedReadHalf>);
+pub(crate) struct ListeningActorKillTrigger(
+    tokio::sync::oneshot::Sender<()>,
+    JoinHandle<OwnedReadHalf>,
+);
 impl ListeningActorKillTrigger {
-    pub(crate) fn new(kill_trigger: KillTrigger, listning_task: JoinHandle<OwnedReadHalf>) -> Self {
+    pub(crate) fn new(
+        kill_trigger: tokio::sync::oneshot::Sender<()>,
+        listning_task: JoinHandle<OwnedReadHalf>,
+    ) -> Self {
         Self(kill_trigger, listning_task)
     }
     pub(crate) async fn kill(self) -> OwnedReadHalf {
