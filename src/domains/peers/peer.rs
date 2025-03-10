@@ -1,12 +1,14 @@
+use super::connected_peer_info::ConnectedPeerInfo;
 use super::connected_types::Follower;
 use super::connected_types::Leader;
 use super::connected_types::NonDataPeer;
 use super::connected_types::ReadConnected;
-use super::kind::PeerKind;
+use super::identifier::PeerIdentifier;
 use crate::domains::cluster_actors::commands::ClusterCommand;
 use crate::domains::cluster_listeners::ClusterListener;
 use crate::domains::cluster_listeners::TListen;
 use crate::domains::peers::connected_types::WriteConnected;
+use std::fmt::Display;
 use std::ops::Deref;
 use std::ops::DerefMut;
 use tokio::net::TcpStream;
@@ -34,16 +36,19 @@ impl Peer {
         ClusterListener<T>: TListen + Send + Sync + 'static,
     {
         let (r, w) = stream.into_split();
-        let w_conn = WriteConnected::new(w);
+        let listening_actor = ClusterListener::new(ReadConnected::<T>::new(r), cluster_handler);
 
         let (kill_trigger, kill_switch) = tokio::sync::oneshot::channel();
-        let rc = ReadConnected::<T>::new(r);
-        let listening_actor = ClusterListener::new(rc, cluster_handler);
         let listener_kill_trigger = ListeningActorKillTrigger::new(
             kill_trigger,
             tokio::spawn(listening_actor.listen(kill_switch)),
         );
-        Self { w_conn, listener_kill_trigger, last_seen: Instant::now(), kind }
+        Self {
+            w_conn: WriteConnected::new(w),
+            listener_kill_trigger,
+            last_seen: Instant::now(),
+            kind,
+        }
     }
 
     pub(crate) fn create(
@@ -55,6 +60,45 @@ impl Peer {
             PeerKind::Follower { .. } => Peer::new::<Follower>(stream, kind, cluster_handler),
             PeerKind::Leader => Peer::new::<Leader>(stream, kind, cluster_handler),
             _ => Peer::new::<NonDataPeer>(stream, kind, cluster_handler),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum PeerKind {
+    Follower { watermark: u64, leader_repl_id: PeerIdentifier },
+    Leader,
+    PFollower { leader_repl_id: PeerIdentifier },
+    PLeader,
+}
+
+impl PeerKind {
+    pub fn decide_peer_kind(my_repl_id: &str, peer_info: ConnectedPeerInfo) -> Self {
+        if my_repl_id == *peer_info.id {
+            return Self::Leader;
+        }
+        if my_repl_id == *peer_info.leader_repl_id {
+            return Self::Follower {
+                watermark: peer_info.hwm,
+                leader_repl_id: peer_info.leader_repl_id,
+            };
+        }
+        if peer_info.id == peer_info.leader_repl_id {
+            return Self::PLeader;
+        }
+        Self::PFollower { leader_repl_id: peer_info.leader_repl_id }
+    }
+}
+
+impl Display for PeerKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            PeerKind::Follower { watermark: hwm, leader_repl_id } => {
+                write!(f, "follower {}", leader_repl_id)
+            },
+            PeerKind::Leader => write!(f, "leader - 0"),
+            PeerKind::PFollower { leader_repl_id } => write!(f, "follower {}", leader_repl_id),
+            PeerKind::PLeader => write!(f, "leader - 0"),
         }
     }
 }
