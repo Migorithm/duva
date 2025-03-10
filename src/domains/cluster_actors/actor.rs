@@ -345,8 +345,9 @@ impl ClusterActor {
 
     pub fn cluster_nodes(&self) -> Vec<String> {
         self.members
-            .iter()
-            .map(|(key, value)| format!("{key} {}", value.kind))
+            .values()
+            .into_iter()
+            .map(|peer| peer.to_string())
             .chain(std::iter::once(self.replication.self_info()))
             .collect()
     }
