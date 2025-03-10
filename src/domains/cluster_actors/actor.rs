@@ -1,15 +1,14 @@
-use super::{
-    commands::{AddPeer, ClusterCommand},
-    replication::{BannedPeer, HeartBeatMessage, ReplicationInfo, time_in_secs},
-    *,
-};
-use crate::domains::{
-    append_only_files::{
-        WriteOperation, WriteRequest, interfaces::TWriteAheadLog, log::LogIndex, logger::Logger,
-    },
-    caches::cache_manager::CacheManager,
-    query_parsers::QueryIO,
-};
+use super::commands::AddPeer;
+use super::replication::HeartBeatMessage;
+use super::replication::ReplicationInfo;
+use super::replication::time_in_secs;
+use super::{commands::ClusterCommand, replication::BannedPeer, *};
+use crate::domains::append_only_files::WriteOperation;
+use crate::domains::append_only_files::WriteRequest;
+use crate::domains::append_only_files::interfaces::TWriteAheadLog;
+use crate::domains::append_only_files::log::LogIndex;
+use crate::domains::append_only_files::logger::Logger;
+use crate::domains::{caches::cache_manager::CacheManager, query_parsers::QueryIO};
 use std::time::Duration;
 use tokio::{select, time::interval};
 
@@ -55,11 +54,13 @@ impl ClusterActor {
 
     pub async fn send_liveness_heartbeat(&mut self, hop_count: u8) {
         // TODO randomly choose the peer to send the message
+        let msg = QueryIO::HeartBeat(
+            self.replication.default_heartbeat(hop_count).set_cluster_nodes(self.cluster_nodes()),
+        )
+        .serialize();
 
         for peer in self.members.values_mut() {
-            let msg = QueryIO::HeartBeat(self.replication.default_heartbeat(hop_count)).serialize();
-
-            let _ = peer.write(msg).await;
+            let _ = peer.write(msg.clone()).await;
         }
     }
 
@@ -346,8 +347,9 @@ impl ClusterActor {
 
     pub fn cluster_nodes(&self) -> Vec<String> {
         self.members
-            .iter()
-            .map(|(key, value)| format!("{key} {}", value.kind))
+            .values()
+            .into_iter()
+            .map(|peer| peer.to_string())
             .chain(std::iter::once(self.replication.self_info()))
             .collect()
     }
@@ -389,6 +391,7 @@ mod test {
             heartbeat_from: PeerIdentifier::new("localhost", 8080),
             leader_replid: "localhost".to_string().into(),
             hop_count: 0,
+            cluster_nodes: vec![],
         }
     }
 
@@ -410,9 +413,11 @@ mod test {
         let bind_addr = listener.local_addr().unwrap();
 
         for port in num_stream {
+            let key = PeerIdentifier::new("localhost", port);
             actor.members.insert(
                 PeerIdentifier::new("localhost", port),
                 Peer::new::<Follower>(
+                    key.to_string(),
                     TcpStream::connect(bind_addr).await.unwrap(),
                     PeerKind::Follower {
                         watermark: follower_hwm,
@@ -800,9 +805,11 @@ mod test {
 
         // followers
         for port in [6379, 6380] {
+            let key = PeerIdentifier::new("localhost", port);
             cluster_actor.members.insert(
-                PeerIdentifier::new("localhost", port),
+                key.clone(),
                 Peer::new::<Follower>(
+                    key.to_string(),
                     TcpStream::connect(bind_addr).await.unwrap(),
                     PeerKind::Follower { watermark: 0, leader_repl_id: self_identifier.clone() },
                     cluster_sender.clone(),
@@ -819,6 +826,7 @@ mod test {
         cluster_actor.members.insert(
             second_shard_leader_identifier.clone(),
             Peer::new::<Follower>(
+                (*second_shard_leader_identifier).clone(),
                 TcpStream::connect(bind_addr).await.unwrap(),
                 PeerKind::PLeader,
                 cluster_sender.clone(),
@@ -827,9 +835,11 @@ mod test {
 
         // follower for different shard
         for port in [2655, 2653] {
+            let key = PeerIdentifier::new("localhost", port);
             cluster_actor.members.insert(
-                PeerIdentifier::new("localhost", port),
+                key.clone(),
                 Peer::new::<Follower>(
+                    key.to_string(),
                     TcpStream::connect(bind_addr_for_second_shard).await.unwrap(),
                     PeerKind::PFollower { leader_repl_id: second_shard_leader_identifier.clone() },
                     cluster_sender.clone(),

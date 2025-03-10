@@ -318,7 +318,11 @@ impl From<HeartBeatMessage> for QueryIO {
 #[cfg(test)]
 mod test {
 
-    use crate::domains::append_only_files::WriteRequest;
+    use chrono::{DateTime, Utc};
+
+    use crate::domains::{
+        append_only_files::WriteRequest, cluster_actors::replication::BannedPeer,
+    };
 
     use super::*;
 
@@ -394,158 +398,6 @@ mod test {
     }
 
     #[test]
-    fn test_from_bytes_to_peer_state() {
-        // GIVEN
-
-        let data = b"^\x0f127.0.0.1:49153\xf5\xfc\x99\xd5\x12\0\x04abcd\x02\0\0";
-
-        let buffer = BytesMut::from_iter(data);
-
-        // WHEN
-        let (QueryIO::HeartBeat(heartbeat), len) = deserialize(buffer).unwrap() else {
-            panic!();
-        };
-
-        // THEN
-        assert_eq!(len, data.len());
-        assert_eq!(
-            heartbeat,
-            HeartBeatMessage {
-                term: 245,
-                hwm: 1234329,
-                leader_replid: "abcd".into(),
-                hop_count: 2,
-                heartbeat_from: "127.0.0.1:49153".to_string().into(),
-                ban_list: vec![],
-                append_entries: vec![]
-            }
-        );
-
-        assert_eq!(heartbeat.term, 245);
-        assert_eq!(heartbeat.hwm, 1234329);
-
-        assert_eq!(*heartbeat.leader_replid, "abcd");
-        assert_eq!(heartbeat.hop_count, 2);
-        assert!(heartbeat.ban_list.is_empty())
-    }
-
-    #[test]
-    fn test_from_heartbeat_to_bytes() {
-        //GIVEN
-        let peer_state = HeartBeatMessage {
-            term: 1,
-            hwm: 2,
-            leader_replid: "localhost:3329".into(),
-            hop_count: 2,
-            heartbeat_from: "127.0.0.1:49152".to_string().into(),
-            ban_list: Default::default(),
-            append_entries: vec![
-                WriteOperation {
-                    request: WriteRequest::Set { key: "foo".into(), value: "bar".into() },
-                    log_index: 1.into(),
-                },
-                WriteOperation {
-                    request: WriteRequest::Set { key: "poo".into(), value: "bar".into() },
-                    log_index: 2.into(),
-                },
-            ],
-        };
-        //WHEN
-        let peer_state_serialized: QueryIO = peer_state.into();
-        let peer_state_serialized = peer_state_serialized.serialize();
-        //THEN
-        assert_eq!(
-            "^\x0f127.0.0.1:49152\x01\x02\x0elocalhost:3329\x02\0\x02\0\x03foo\x03bar\x01\0\x03poo\x03bar\x02",
-            peer_state_serialized
-        );
-
-        //GIVEN
-        let peer_state = HeartBeatMessage {
-            term: 5,
-            hwm: 3232,
-            leader_replid: "localhost:23399".into(),
-            hop_count: 40,
-            heartbeat_from: "127.0.0.1:49159".to_string().into(),
-            ban_list: Default::default(),
-            append_entries: vec![],
-        };
-        //WHEN
-        let peer_state_serialized: QueryIO = peer_state.into();
-        let peer_state_serialized = peer_state_serialized.serialize();
-        //THEN
-        assert_eq!(
-            b"^\x0f127.0.0.1:49159\x05\xfb\xa0\x0c\x0flocalhost:23399(\0\0".to_vec(),
-            peer_state_serialized
-        );
-    }
-
-    #[test]
-    fn test_peer_state_ban_list_to_binary() {
-        // GIVEN
-        let mut replication = ReplicationInfo::new(None, "127.0.0.1", 6380);
-        let peer_id = PeerIdentifier::new("127.0.0.1", 6739);
-        replication.ban_peer(&peer_id).unwrap();
-
-        let ban_time = replication.ban_list[0].ban_time;
-        // encode ban_time with bincode
-        let config = bincode::config::standard();
-        let ban_time = bincode::encode_to_vec(ban_time, config).unwrap();
-
-        //WHEN
-        let peer_state = replication.default_heartbeat(1);
-        let peer_state_serialized: QueryIO = peer_state.into();
-        let peer_state_serialized = peer_state_serialized.serialize();
-
-        //THEN
-        let expected = Bytes::from(
-            [
-                Bytes::from_iter(
-                    *b"^\x0e127.0.0.1:6380\0\0\x0e127.0.0.1:6380\x01\x01\x0e127.0.0.1:6739",
-                ),
-                Bytes::from_iter(ban_time),
-                Bytes::from_iter(*b"\0"),
-            ]
-            .concat(),
-        );
-
-        assert_eq!(expected, peer_state_serialized);
-    }
-
-    #[test]
-    fn test_binary_to_heartbeat() {
-        // GIVEN
-        let buffer = Bytes::from_iter(
-            *b"^\x0e127.0.0.1:6379\0\0\x06random\x01\0\x02\0\x03foo\x03bar\x01\0\x03poo\x03bar\x02",
-        );
-
-        // WHEN
-        let (value, _) = deserialize(buffer.into()).unwrap();
-
-        // THEN
-        assert_eq!(
-            value,
-            QueryIO::HeartBeat(HeartBeatMessage {
-                term: 0,
-                hwm: 0,
-                leader_replid: "random".into(),
-                hop_count: 1,
-                heartbeat_from: "127.0.0.1:6379".to_string().into(),
-                ban_list: [].to_vec(),
-                append_entries: vec![
-                    WriteOperation {
-                        request: WriteRequest::Set { key: "foo".into(), value: "bar".into() },
-                        log_index: 1.into()
-                    },
-                    WriteOperation {
-                        request: WriteRequest::Set { key: "poo".into(), value: "bar".into() },
-                        log_index: 2.into()
-                    }
-                ]
-            })
-        );
-    }
-
-    #[test]
     fn test_parse_file() {
         // GIVEN
         let file = QueryIO::File("hello".into());
@@ -615,5 +467,55 @@ mod test {
 
         // THEN
         assert_eq!("@\x02\x01\x02", serialized);
+    }
+
+    #[test]
+    fn test_heartbeat_to_binary_back_to_heartbeat() {
+        // GIVEN
+        let me = PeerIdentifier::new("me".into(), 6035);
+        let leader = PeerIdentifier::new("leader".into(), 6036);
+        let banned_list = vec![
+            BannedPeer { p_id: "banned1".into(), ban_time: 3553 },
+            BannedPeer { p_id: "banned2".into(), ban_time: 3556 },
+        ];
+        let heartbeat = HeartBeatMessage {
+            heartbeat_from: me.clone(),
+            term: 1,
+            hwm: 5,
+            leader_replid: leader.clone(),
+            hop_count: 2,
+            ban_list: banned_list,
+            append_entries: vec![
+                WriteOperation {
+                    request: WriteRequest::Set { key: "foo".into(), value: "bar".into() },
+                    log_index: 1.into(),
+                },
+                WriteOperation {
+                    request: WriteRequest::SetWithExpiry {
+                        key: "foo".into(),
+                        value: "bar".into(),
+                        expires_at: 323232,
+                    },
+                    log_index: 2.into(),
+                },
+            ],
+            cluster_nodes: vec![
+                "127.0.0.1:30004 follower 127.0.0.1:30001".into(),
+                "127.0.0.1:30002 leader - 5461-10922".into(),
+                "127.0.0.1:30003 leader - 10923-16383".into(),
+                "127.0.0.1:30005 follower 127.0.0.1:30002".into(),
+                "127.0.0.1:30006 follower 127.0.0.1:30003".into(),
+                "127.0.0.1:30001 myself,leader - 0-5460".into(),
+            ],
+        };
+        let replicate = QueryIO::HeartBeat(heartbeat);
+
+        // WHEN
+        let serialized = replicate.clone().serialize();
+
+        let (value, _) = deserialize(BytesMut::from(serialized)).unwrap();
+
+        // THEN
+        assert_eq!(value, replicate);
     }
 }

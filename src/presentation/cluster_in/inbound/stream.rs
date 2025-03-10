@@ -1,13 +1,12 @@
 use super::request::HandShakeRequest;
 use super::request::HandShakeRequestEnum;
-use crate::domains::append_only_files::WriteOperation;
 use crate::domains::cluster_actors::commands::AddPeer;
 use crate::domains::cluster_actors::commands::ClusterCommand;
 use crate::domains::cluster_actors::replication::ReplicationInfo;
 use crate::domains::peers::connected_peer_info::ConnectedPeerInfo;
 use crate::domains::peers::identifier::PeerIdentifier;
-use crate::domains::peers::kind::PeerKind;
 use crate::domains::peers::peer::Peer;
+use crate::domains::peers::peer::PeerKind;
 use crate::domains::query_parsers::QueryIO;
 use crate::make_smart_pointer;
 use crate::presentation::cluster_in::communication_manager::ClusterCommunicationManager;
@@ -118,7 +117,12 @@ impl InboundStream {
     ) -> anyhow::Result<ClusterCommand> {
         let kind = self.peer_kind()?;
 
-        let peer = Peer::create(self.stream, kind.clone(), cluster_actor_handler);
+        let peer = Peer::create(
+            (*self.peer_info.id).clone(),
+            self.stream,
+            kind.clone(),
+            cluster_actor_handler,
+        );
         Ok(ClusterCommand::AddPeer(AddPeer { peer_id: self.peer_info.id, peer }))
     }
 
