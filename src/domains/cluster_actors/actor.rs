@@ -409,9 +409,11 @@ mod test {
         let bind_addr = listener.local_addr().unwrap();
 
         for port in num_stream {
+            let key = PeerIdentifier::new("localhost", port);
             actor.members.insert(
                 PeerIdentifier::new("localhost", port),
                 Peer::new::<Follower>(
+                    key.to_string(),
                     TcpStream::connect(bind_addr).await.unwrap(),
                     PeerKind::Follower {
                         watermark: follower_hwm,
@@ -799,9 +801,11 @@ mod test {
 
         // followers
         for port in [6379, 6380] {
+            let key = PeerIdentifier::new("localhost", port);
             cluster_actor.members.insert(
-                PeerIdentifier::new("localhost", port),
+                key.clone(),
                 Peer::new::<Follower>(
+                    key.to_string(),
                     TcpStream::connect(bind_addr).await.unwrap(),
                     PeerKind::Follower { watermark: 0, leader_repl_id: self_identifier.clone() },
                     cluster_sender.clone(),
@@ -818,6 +822,7 @@ mod test {
         cluster_actor.members.insert(
             second_shard_leader_identifier.clone(),
             Peer::new::<Follower>(
+                (*second_shard_leader_identifier).clone(),
                 TcpStream::connect(bind_addr).await.unwrap(),
                 PeerKind::PLeader,
                 cluster_sender.clone(),
@@ -826,9 +831,11 @@ mod test {
 
         // follower for different shard
         for port in [2655, 2653] {
+            let key = PeerIdentifier::new("localhost", port);
             cluster_actor.members.insert(
-                PeerIdentifier::new("localhost", port),
+                key.clone(),
                 Peer::new::<Follower>(
+                    key.to_string(),
                     TcpStream::connect(bind_addr_for_second_shard).await.unwrap(),
                     PeerKind::PFollower { leader_repl_id: second_shard_leader_identifier.clone() },
                     cluster_sender.clone(),

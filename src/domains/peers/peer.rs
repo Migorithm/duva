@@ -20,6 +20,7 @@ use tokio::time::Instant;
 
 #[derive(Debug)]
 pub(crate) struct Peer {
+    pub(crate) addr: String,
     pub(crate) w_conn: WriteConnected,
     pub(crate) listener_kill_trigger: ListeningActorKillTrigger,
     pub(crate) last_seen: Instant,
@@ -28,6 +29,7 @@ pub(crate) struct Peer {
 
 impl Peer {
     pub fn new<T>(
+        addr: String,
         stream: TcpStream,
         kind: PeerKind,
         cluster_handler: Sender<ClusterCommand>,
@@ -44,6 +46,7 @@ impl Peer {
             tokio::spawn(listening_actor.listen(kill_switch)),
         );
         Self {
+            addr,
             w_conn: WriteConnected::new(w),
             listener_kill_trigger,
             last_seen: Instant::now(),
@@ -52,14 +55,15 @@ impl Peer {
     }
 
     pub(crate) fn create(
+        addr: String,
         stream: TcpStream,
         kind: PeerKind,
         cluster_handler: Sender<ClusterCommand>,
     ) -> Peer {
         match kind {
-            PeerKind::Follower { .. } => Peer::new::<Follower>(stream, kind, cluster_handler),
-            PeerKind::Leader => Peer::new::<Leader>(stream, kind, cluster_handler),
-            _ => Peer::new::<NonDataPeer>(stream, kind, cluster_handler),
+            PeerKind::Follower { .. } => Peer::new::<Follower>(addr, stream, kind, cluster_handler),
+            PeerKind::Leader => Peer::new::<Leader>(addr, stream, kind, cluster_handler),
+            _ => Peer::new::<NonDataPeer>(addr, stream, kind, cluster_handler),
         }
     }
 }

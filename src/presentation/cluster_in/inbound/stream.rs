@@ -117,7 +117,12 @@ impl InboundStream {
     ) -> anyhow::Result<ClusterCommand> {
         let kind = self.peer_kind()?;
 
-        let peer = Peer::create(self.stream, kind.clone(), cluster_actor_handler);
+        let peer = Peer::create(
+            (*self.peer_info.id).clone(),
+            self.stream,
+            kind.clone(),
+            cluster_actor_handler,
+        );
         Ok(ClusterCommand::AddPeer(AddPeer { peer_id: self.peer_info.id, peer }))
     }
 
