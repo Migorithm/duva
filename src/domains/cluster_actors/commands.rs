@@ -8,14 +8,22 @@ pub enum ClusterCommand {
     AddPeer(AddPeer),
     GetPeers(tokio::sync::oneshot::Sender<Vec<PeerIdentifier>>),
     ReplicationInfo(tokio::sync::oneshot::Sender<ReplicationInfo>),
-    SetReplicationInfo { leader_repl_id: PeerIdentifier, hwm: u64 },
+    SetReplicationInfo {
+        leader_repl_id: PeerIdentifier,
+        hwm: u64,
+    },
     InstallLeaderState(Vec<WriteOperation>),
     SendHeartBeat,
 
     ForgetPeer(PeerIdentifier, tokio::sync::oneshot::Sender<Option<()>>),
-    LeaderReqConsensus { log: WriteRequest, sender: tokio::sync::oneshot::Sender<Option<LogIndex>> },
+    LeaderReqConsensus {
+        log: WriteRequest,
+        sender: tokio::sync::oneshot::Sender<WriteConsensusResponse>,
+    },
     LeaderReceiveAcks(Vec<LogIndex>),
-    SendCommitHeartBeat { log_idx: LogIndex },
+    SendCommitHeartBeat {
+        log_idx: LogIndex,
+    },
 
     ReceiveHeartBeat(HeartBeatMessage),
 
@@ -23,6 +31,13 @@ pub enum ClusterCommand {
     SendLeaderHeartBeat,
     ClusterNodes(tokio::sync::oneshot::Sender<Vec<String>>),
     FetchCurrentState(tokio::sync::oneshot::Sender<Vec<WriteOperation>>),
+}
+
+#[derive(Debug)]
+pub enum WriteConsensusResponse {
+    LogIndex(Option<LogIndex>),
+
+    Err(String),
 }
 
 pub struct AddPeer {

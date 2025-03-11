@@ -4,9 +4,11 @@ use tokio::sync::oneshot::Sender;
 
 use crate::{domains::append_only_files::log::LogIndex, make_smart_pointer};
 
+use super::commands::WriteConsensusResponse;
+
 #[derive(Debug)]
 pub struct ConsensusVoting {
-    sender: Sender<Option<LogIndex>>,
+    sender: Sender<WriteConsensusResponse>,
     vote_count: u8,
     required_votes: u8,
 }
@@ -17,7 +19,7 @@ impl ConsensusVoting {
 
     pub fn maybe_not_finished(self, log_index: LogIndex) -> Option<Self> {
         if self.vote_count >= self.required_votes {
-            let _ = self.sender.send(Some(log_index));
+            let _ = self.sender.send(WriteConsensusResponse::LogIndex(Some(log_index)));
             None
         } else {
             Some(self)
@@ -28,7 +30,12 @@ impl ConsensusVoting {
 #[derive(Default, Debug)]
 pub struct ConsensusTracker(HashMap<LogIndex, ConsensusVoting>);
 impl ConsensusTracker {
-    pub fn add(&mut self, key: LogIndex, value: Sender<Option<LogIndex>>, replica_count: usize) {
+    pub fn add(
+        &mut self,
+        key: LogIndex,
+        value: Sender<WriteConsensusResponse>,
+        replica_count: usize,
+    ) {
         self.0.insert(
             key,
             ConsensusVoting {

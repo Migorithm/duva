@@ -13,12 +13,18 @@ impl<T: TWriteAheadLog> Logger<T> {
     pub(crate) async fn create_log_entries(
         &mut self,
         log: &WriteRequest,
-        lowest_follower_index: u64,
+        lowest_follower_index: Option<u64>,
     ) -> anyhow::Result<Vec<WriteOperation>> {
+        let current_idx = self.log_index;
         self.write_log_entry(log).await?;
 
-        let mut logs = Vec::with_capacity((*self.log_index - lowest_follower_index) as usize);
-        logs.extend(self.from(lowest_follower_index));
+        if lowest_follower_index.is_none() {
+            return Ok(self.from(current_idx.into()));
+        }
+
+        let mut logs =
+            Vec::with_capacity((*self.log_index - lowest_follower_index.unwrap()) as usize);
+        logs.extend(self.from(lowest_follower_index.unwrap()));
 
         Ok(logs)
     }

@@ -1,9 +1,11 @@
 use super::commands::AddPeer;
+use super::commands::WriteConsensusResponse;
 use super::replication::HeartBeatMessage;
 use super::replication::ReplicationInfo;
 use super::replication::time_in_secs;
 use super::{commands::ClusterCommand, replication::BannedPeer, *};
 use crate::domains::append_only_files::WriteOperation;
+
 use crate::domains::append_only_files::WriteRequest;
 use crate::domains::append_only_files::interfaces::TWriteAheadLog;
 use crate::domains::append_only_files::log::LogIndex;
@@ -153,30 +155,43 @@ impl ClusterActor {
         }
     }
 
+    pub(crate) async fn try_create_append_entries(
+        &mut self,
+        logger: &mut Logger<impl TWriteAheadLog>,
+        log: &WriteRequest,
+    ) -> Result<Vec<WriteOperation>, WriteConsensusResponse> {
+        if !self.replication.is_leader_mode() {
+            return Err(WriteConsensusResponse::Err("Write given to follower".into()));
+        }
+
+        let Ok(append_entries) = logger.create_log_entries(&log, self.take_low_watermark()).await
+        else {
+            return Err(WriteConsensusResponse::Err("Write operation failed".into()));
+        };
+
+        // Skip consensus for no replicas
+        if self.followers().count() == 0 {
+            return Err(WriteConsensusResponse::LogIndex(Some(logger.log_index)));
+        }
+
+        Ok(append_entries)
+    }
+
     pub(crate) async fn req_consensus(
         &mut self,
         logger: &mut Logger<impl TWriteAheadLog>,
-        write_request: WriteRequest,
-        callback: tokio::sync::oneshot::Sender<Option<LogIndex>>,
-    ) -> Result<(), tokio::sync::oneshot::Sender<Option<LogIndex>>> {
-        if !self.replication.is_leader_mode() {
-            return Err(callback);
-        }
-
-        // Skip consensus for no replicas
-        let Ok(append_entries) =
-            logger.create_log_entries(&write_request, self.take_low_watermark()).await
-        else {
-            return Err(callback);
+        log: WriteRequest,
+        callback: tokio::sync::oneshot::Sender<WriteConsensusResponse>,
+    ) -> anyhow::Result<()> {
+        let append_entries = match self.try_create_append_entries(logger, &log).await {
+            Ok(entries) => entries,
+            Err(err) => {
+                let _ = callback.send(err);
+                return Ok(());
+            },
         };
 
-        let repl_count = self.followers().count();
-        if repl_count == 0 {
-            let _ = callback.send(Some(logger.log_index));
-            return Ok(());
-        }
-        self.consensus_tracker.add(logger.log_index, callback, repl_count);
-
+        self.consensus_tracker.add(logger.log_index, callback, self.followers().count());
         let mut tasks = self
             .generate_follower_entries(append_entries)
             .map(|(peer, hb)| peer.write_io(hb))
@@ -230,7 +245,7 @@ impl ClusterActor {
         })
     }
 
-    pub(crate) fn take_low_watermark(&self) -> u64 {
+    pub(crate) fn take_low_watermark(&self) -> Option<u64> {
         self.members
             .values()
             .into_iter()
@@ -239,7 +254,6 @@ impl ClusterActor {
                 _ => None,
             })
             .min()
-            .unwrap_or(0)
     }
 
     pub fn apply_acks(&mut self, offsets: Vec<LogIndex>) {
@@ -553,6 +567,7 @@ mod test {
         cluster_member_create_helper(&mut cluster_actor, 0..4, cluster_sender, cache_manager, 0)
             .await;
         let (client_request_sender, client_wait) = tokio::sync::oneshot::channel();
+
         cluster_actor
             .req_consensus(
                 &mut test_logger,
@@ -595,7 +610,7 @@ mod test {
         let logs = test_logger
             .create_log_entries(
                 &WriteRequest::Set { key: "foo4".into(), value: "bar".into() },
-                LOWEST_FOLLOWER_COMMIT_INDEX,
+                Some(LOWEST_FOLLOWER_COMMIT_INDEX),
             )
             .await
             .unwrap();

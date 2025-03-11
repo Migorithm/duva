@@ -1,3 +1,5 @@
+use crate::domains::cluster_actors::commands::WriteConsensusResponse;
+
 use super::*;
 
 impl ClientController<Handler> {
@@ -99,7 +101,11 @@ impl ClientController<Handler> {
         self.cluster_communication_manager
             .send(ClusterCommand::LeaderReqConsensus { log, sender: tx })
             .await?;
-        Ok(rx.await?)
+
+        match rx.await? {
+            WriteConsensusResponse::LogIndex(log_index) => Ok(log_index),
+            WriteConsensusResponse::Err(_) => todo!(),
+        }
     }
 
     async fn maybe_send_commit(&self, log_index_num: Option<LogIndex>) -> anyhow::Result<()> {
