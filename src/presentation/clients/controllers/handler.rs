@@ -103,8 +103,9 @@ impl ClientController<Handler> {
             .await?;
 
         match rx.await? {
+            //TODO remove option
             WriteConsensusResponse::LogIndex(log_index) => Ok(log_index),
-            WriteConsensusResponse::Err(_) => todo!(),
+            WriteConsensusResponse::Err(err) => Err(anyhow::anyhow!(err)),
         }
     }
 
