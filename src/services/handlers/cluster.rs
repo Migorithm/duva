@@ -95,10 +95,10 @@ impl ClusterActor {
         heartbeat_interval: u64,
         init_replication: ReplicationInfo,
         cache_manager: CacheManager,
-        notifier: tokio::sync::watch::Sender<bool>,
+
         wal: impl TWriteAheadLog,
     ) -> Sender<ClusterCommand> {
-        let cluster_actor = ClusterActor::new(node_timeout, init_replication, notifier);
+        let cluster_actor = ClusterActor::new(node_timeout, init_replication);
         let actor_handler = cluster_actor.self_handler.clone();
         tokio::spawn(cluster_actor.handle(wal, cache_manager, heartbeat_interval));
         actor_handler

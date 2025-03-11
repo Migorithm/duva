@@ -1,3 +1,5 @@
+use anyhow::Context;
+
 use crate::domains::append_only_files::WriteOperation;
 use crate::domains::peers::identifier::PeerIdentifier;
 use std::sync::atomic::AtomicBool;
@@ -76,8 +78,8 @@ impl ReplicationInfo {
         ]
     }
 
-    pub fn leader_bind_addr(&self) -> PeerIdentifier {
-        format!("{}:{}", self.leader_host.as_ref().unwrap(), self.leader_port.unwrap()).into()
+    pub(crate) fn leader_bind_addr(&self) -> Option<PeerIdentifier> {
+        Some(format!("{}:{}", self.leader_host.as_ref()?, self.leader_port?).into())
     }
 
     pub(crate) fn in_ban_list(&self, peer_identifier: &PeerIdentifier) -> bool {
