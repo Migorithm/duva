@@ -1,13 +1,13 @@
 use super::commands::AddPeer;
+use super::replication::time_in_secs;
 use super::replication::HeartBeatMessage;
 use super::replication::ReplicationInfo;
-use super::replication::time_in_secs;
 use super::{commands::ClusterCommand, replication::BannedPeer, *};
-use crate::domains::append_only_files::WriteOperation;
-use crate::domains::append_only_files::WriteRequest;
 use crate::domains::append_only_files::interfaces::TWriteAheadLog;
 use crate::domains::append_only_files::log::LogIndex;
 use crate::domains::append_only_files::logger::Logger;
+use crate::domains::append_only_files::WriteOperation;
+use crate::domains::append_only_files::WriteRequest;
 use crate::domains::{caches::cache_manager::CacheManager, query_parsers::QueryIO};
 use std::time::Duration;
 use tokio::{select, time::interval};
@@ -158,10 +158,16 @@ impl ClusterActor {
         logger: &mut Logger<impl TWriteAheadLog>,
         write_request: WriteRequest,
         sender: tokio::sync::oneshot::Sender<Option<LogIndex>>,
-    ) -> anyhow::Result<()> {
+    ) -> Result<(), tokio::sync::oneshot::Sender<Option<LogIndex>>> {
+        if !self.replication.is_leader_mode() {
+            return Err(sender);
+        }
+
         // Skip consensus for no replicas
-        let append_entries: Vec<WriteOperation> =
-            logger.create_log_entries(&write_request, self.take_low_watermark()).await?;
+        let Ok(append_entries) =
+            logger.create_log_entries(&write_request, self.take_low_watermark()).await else {
+            return Err(sender);
+        };
 
         let repl_count = self.followers().count();
         if repl_count == 0 {
@@ -352,8 +358,6 @@ impl ClusterActor {
 #[cfg(test)]
 #[allow(unused_variables)]
 mod test {
-    use tokio::{net::TcpStream, sync::mpsc::channel};
-
     use super::*;
     use crate::{
         adapters::wal::memory_wal::InMemoryWAL,
@@ -365,6 +369,7 @@ mod test {
         },
     };
     use std::{ops::Range, time::Duration};
+    use tokio::{net::TcpStream, sync::mpsc::channel};
 
     fn write_operation_create_helper(index_num: u64, key: &str, value: &str) -> WriteOperation {
         WriteOperation {
