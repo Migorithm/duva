@@ -1,9 +1,11 @@
 use super::commands::AddPeer;
+use super::commands::WriteConsensusResponse;
 use super::replication::HeartBeatMessage;
 use super::replication::ReplicationInfo;
 use super::replication::time_in_secs;
 use super::{commands::ClusterCommand, replication::BannedPeer, *};
 use crate::domains::append_only_files::WriteOperation;
+
 use crate::domains::append_only_files::WriteRequest;
 use crate::domains::append_only_files::interfaces::TWriteAheadLog;
 use crate::domains::append_only_files::log::LogIndex;
@@ -21,21 +23,15 @@ pub struct ClusterActor {
     pub(crate) receiver: tokio::sync::mpsc::Receiver<ClusterCommand>,
     pub(crate) self_handler: tokio::sync::mpsc::Sender<ClusterCommand>,
     leader_mode_heartbeat_sender: Option<tokio::sync::oneshot::Sender<()>>,
-    // TODO notifier will be used when election process is implemented?
-    notifier: tokio::sync::watch::Sender<bool>,
 }
 
 impl ClusterActor {
-    pub fn new(
-        node_timeout: u128,
-        init_repl_info: ReplicationInfo,
-        notifier: tokio::sync::watch::Sender<bool>,
-    ) -> Self {
+    pub fn new(node_timeout: u128, init_repl_info: ReplicationInfo) -> Self {
         let (self_handler, receiver) = tokio::sync::mpsc::channel(100);
         Self {
             replication: init_repl_info,
             node_timeout,
-            notifier,
+
             receiver,
             self_handler,
 
@@ -159,23 +155,43 @@ impl ClusterActor {
         }
     }
 
+    pub(crate) async fn try_create_append_entries(
+        &mut self,
+        logger: &mut Logger<impl TWriteAheadLog>,
+        log: &WriteRequest,
+    ) -> Result<Vec<WriteOperation>, WriteConsensusResponse> {
+        if !self.replication.is_leader_mode() {
+            return Err(WriteConsensusResponse::Err("Write given to follower".into()));
+        }
+
+        let Ok(append_entries) = logger.create_log_entries(&log, self.take_low_watermark()).await
+        else {
+            return Err(WriteConsensusResponse::Err("Write operation failed".into()));
+        };
+
+        // Skip consensus for no replicas
+        if self.followers().count() == 0 {
+            return Err(WriteConsensusResponse::LogIndex(Some(logger.log_index)));
+        }
+
+        Ok(append_entries)
+    }
+
     pub(crate) async fn req_consensus(
         &mut self,
         logger: &mut Logger<impl TWriteAheadLog>,
-        write_request: WriteRequest,
-        sender: tokio::sync::oneshot::Sender<Option<LogIndex>>,
+        log: WriteRequest,
+        callback: tokio::sync::oneshot::Sender<WriteConsensusResponse>,
     ) -> anyhow::Result<()> {
-        // Skip consensus for no replicas
-        let append_entries: Vec<WriteOperation> =
-            logger.create_log_entries(&write_request, self.take_low_watermark()).await?;
+        let append_entries = match self.try_create_append_entries(logger, &log).await {
+            Ok(entries) => entries,
+            Err(err) => {
+                let _ = callback.send(err);
+                return Ok(());
+            },
+        };
 
-        let repl_count = self.followers().count();
-        if repl_count == 0 {
-            let _ = sender.send(Some(logger.log_index));
-            return Ok(());
-        }
-        self.consensus_tracker.add(logger.log_index, sender, repl_count);
-
+        self.consensus_tracker.add(logger.log_index, callback, self.followers().count());
         let mut tasks = self
             .generate_follower_entries(append_entries)
             .map(|(peer, hb)| peer.write_io(hb))
@@ -229,7 +245,7 @@ impl ClusterActor {
         })
     }
 
-    pub(crate) fn take_low_watermark(&self) -> u64 {
+    pub(crate) fn take_low_watermark(&self) -> Option<u64> {
         self.members
             .values()
             .into_iter()
@@ -238,7 +254,6 @@ impl ClusterActor {
                 _ => None,
             })
             .min()
-            .unwrap_or(0)
     }
 
     pub fn apply_acks(&mut self, offsets: Vec<LogIndex>) {
@@ -358,8 +373,6 @@ impl ClusterActor {
 #[cfg(test)]
 #[allow(unused_variables)]
 mod test {
-    use tokio::{net::TcpStream, sync::mpsc::channel};
-
     use super::*;
     use crate::{
         adapters::wal::memory_wal::InMemoryWAL,
@@ -371,6 +384,7 @@ mod test {
         },
     };
     use std::{ops::Range, time::Duration};
+    use tokio::{net::TcpStream, sync::mpsc::channel};
 
     fn write_operation_create_helper(index_num: u64, key: &str, value: &str) -> WriteOperation {
         WriteOperation {
@@ -396,9 +410,8 @@ mod test {
     }
 
     fn cluster_actor_create_helper() -> ClusterActor {
-        let (tx, rx) = tokio::sync::watch::channel(false);
         let replication = ReplicationInfo::new(None, "localhost", 8080);
-        ClusterActor::new(100, replication, tx)
+        ClusterActor::new(100, replication)
     }
 
     async fn cluster_member_create_helper(
@@ -437,9 +450,8 @@ mod test {
         // GIVEN
         let fanout = 2;
 
-        let (tx, rx) = tokio::sync::watch::channel(false);
         let replication = ReplicationInfo::new(None, "localhost", 8080);
-        let cluster_actor = ClusterActor::new(100, replication, tx);
+        let cluster_actor = ClusterActor::new(100, replication);
 
         // WHEN
         let hop_count = cluster_actor.hop_count(fanout, 1);
@@ -451,9 +463,9 @@ mod test {
     fn test_hop_count_when_two() {
         // GIVEN
         let fanout = 2;
-        let (tx, rx) = tokio::sync::watch::channel(false);
+
         let replication = ReplicationInfo::new(None, "localhost", 8080);
-        let cluster_actor = ClusterActor::new(100, replication, tx);
+        let cluster_actor = ClusterActor::new(100, replication);
 
         // WHEN
         let hop_count = cluster_actor.hop_count(fanout, 2);
@@ -465,9 +477,9 @@ mod test {
     fn test_hop_count_when_three() {
         // GIVEN
         let fanout = 2;
-        let (tx, rx) = tokio::sync::watch::channel(false);
+
         let replication = ReplicationInfo::new(None, "localhost", 8080);
-        let cluster_actor = ClusterActor::new(100, replication, tx);
+        let cluster_actor = ClusterActor::new(100, replication);
 
         // WHEN
         let hop_count = cluster_actor.hop_count(fanout, 3);
@@ -479,9 +491,9 @@ mod test {
     fn test_hop_count_when_thirty() {
         // GIVEN
         let fanout = 2;
-        let (tx, rx) = tokio::sync::watch::channel(false);
+
         let replication = ReplicationInfo::new(None, "localhost", 8080);
-        let cluster_actor = ClusterActor::new(100, replication, tx);
+        let cluster_actor = ClusterActor::new(100, replication);
 
         // WHEN
         let hop_count = cluster_actor.hop_count(fanout, 30);
@@ -555,6 +567,7 @@ mod test {
         cluster_member_create_helper(&mut cluster_actor, 0..4, cluster_sender, cache_manager, 0)
             .await;
         let (client_request_sender, client_wait) = tokio::sync::oneshot::channel();
+
         cluster_actor
             .req_consensus(
                 &mut test_logger,
@@ -597,7 +610,7 @@ mod test {
         let logs = test_logger
             .create_log_entries(
                 &WriteRequest::Set { key: "foo4".into(), value: "bar".into() },
-                LOWEST_FOLLOWER_COMMIT_INDEX,
+                Some(LOWEST_FOLLOWER_COMMIT_INDEX),
             )
             .await
             .unwrap();

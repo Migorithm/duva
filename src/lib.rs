@@ -6,19 +6,19 @@ pub mod macros;
 pub mod presentation;
 pub mod services;
 use actor_registry::ActorRegistry;
-use anyhow::Result;
+use anyhow::{Context, Result};
 use domains::IoError;
 use domains::append_only_files::interfaces::TWriteAheadLog;
 use domains::caches::cache_manager::CacheManager;
 use domains::cluster_actors::ClusterActor;
 use domains::cluster_actors::commands::ClusterCommand;
-use domains::cluster_actors::replication::{IS_LEADER_MODE, ReplicationInfo};
+use domains::cluster_actors::replication::ReplicationInfo;
 use domains::config_actors::config_manager::ConfigManager;
 use domains::saves::snapshot::snapshot_loader::SnapshotLoader;
 pub use init::Environment;
 use presentation::clients::ClientController;
 use presentation::cluster_in::inbound::stream::InboundStream;
-use std::sync::atomic::Ordering;
+
 use std::time::Duration;
 use tokio::net::TcpListener;
 use tokio::time::sleep;
@@ -28,28 +28,23 @@ pub mod client_utils;
 // * StartUp Facade that manages invokes subsystems
 pub struct StartUpFacade {
     registry: ActorRegistry,
-    mode_change_watcher: tokio::sync::watch::Receiver<bool>,
 }
 make_smart_pointer!(StartUpFacade, ActorRegistry => registry);
 
 impl StartUpFacade {
     pub fn new(config_manager: ConfigManager, env: Environment, wal: impl TWriteAheadLog) -> Self {
-        let (notifier, mode_change_watcher) =
-            tokio::sync::watch::channel(IS_LEADER_MODE.load(Ordering::Acquire));
-
         let cache_manager = CacheManager::run_cache_actors();
         let cluster_actor_handler = ClusterActor::run(
             env.ttl_mills,
             env.hf_mills,
             ReplicationInfo::new(env.replicaof, &env.host, env.port),
             cache_manager.clone(),
-            notifier,
             wal,
         );
 
         let registry = ActorRegistry { cluster_actor_handler, config_manager, cache_manager };
 
-        StartUpFacade { registry, mode_change_watcher }
+        StartUpFacade { registry }
     }
 
     pub async fn run(self) -> Result<()> {
@@ -59,7 +54,8 @@ impl StartUpFacade {
         ));
 
         self.initialize_with_snapshot().await?;
-        self.start_mode_specific_connection_handling().await
+        let _ = self.discover_peers().await;
+        self.start_receiving_client_streams().await
     }
 
     async fn start_accepting_peer_connections(
@@ -104,54 +100,33 @@ impl StartUpFacade {
         }
     }
 
-    async fn start_mode_specific_connection_handling(mut self) -> anyhow::Result<()> {
-        let mut is_leader_mode = self.cluster_mode();
-
-        loop {
-            let (stop_sentinel_tx, stop_sentinel_recv) = tokio::sync::oneshot::channel::<()>();
-
-            if is_leader_mode {
-                println!("[INFO] Run on leader mode. Start accepting client stream...");
-                let client_stream_listener =
-                    TcpListener::bind(&self.config_manager.bind_addr()).await?;
-
-                tokio::spawn(
-                    ClientController::new(self.registry.clone())
-                        .accept_client_connections(stop_sentinel_recv, client_stream_listener),
-                );
-
-                sleep(Duration::from_millis(2)).await;
-            } else {
-                // Cancel all client connections only IF the cluster mode has changes to follower
-                let _ = stop_sentinel_tx.send(());
-
-                let connection_manager = self.registry.cluster_connection_manager();
-
-                let peer_identifier = self
-                    .registry
-                    .cluster_communication_manager()
-                    .replication_info()
-                    .await?
-                    .leader_bind_addr();
-
-                tokio::spawn({
-                    connection_manager.discover_cluster(self.config_manager.port, peer_identifier)
-                });
-            }
-
-            self.wait_until_cluster_mode_changed().await?;
-
-            is_leader_mode = self.cluster_mode();
-        }
-    }
-
-    // Park the task until the cluster mode changes - error means notifier has been dropped
-    async fn wait_until_cluster_mode_changed(&mut self) -> anyhow::Result<()> {
-        self.mode_change_watcher.changed().await?;
+    // #1 Check if it has persisted cluster node info locally, if it does and finds some other nodes, try connect
+    // #2 Otherwise, check if this node is a follower and connect to the leader
+    async fn discover_peers(&self) -> anyhow::Result<()> {
+        let connection_manager = self.registry.cluster_connection_manager();
+        let peer_identifier = self
+            .registry
+            .cluster_communication_manager()
+            .replication_info()
+            .await?
+            .leader_bind_addr()
+            .context("No leader bind address found")?;
+        connection_manager.discover_cluster(self.config_manager.port, peer_identifier).await?;
         Ok(())
     }
-    fn cluster_mode(&mut self) -> bool {
-        *self.mode_change_watcher.borrow_and_update()
+
+    /// Run while loop accepting stream and if the sentinel is received, abort the tasks
+    async fn start_receiving_client_streams(self) -> anyhow::Result<()> {
+        let client_stream_listener = TcpListener::bind(&self.config_manager.bind_addr()).await?;
+        println!("start listening on {}", self.config_manager.bind_addr());
+        let mut conn_handlers: Vec<tokio::task::JoinHandle<()>> = Vec::with_capacity(100);
+        while let Ok((stream, _)) = client_stream_listener.accept().await {
+            conn_handlers.push(tokio::spawn(
+                ClientController::new(self.registry.clone()).handle_client_stream(stream),
+            ));
+        }
+
+        Ok(())
     }
 
     async fn initialize_with_snapshot(&self) -> Result<()> {
