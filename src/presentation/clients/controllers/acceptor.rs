@@ -25,8 +25,8 @@ impl ClientController<Acceptor> {
 
         let handler = self.to_handler();
 
-        // name the loop
         loop {
+            //TODO check on current mode of the node for every query? or get notified when change is made?
             match stream.extract_query().await {
                 Ok(requests) => {
                     let results = match handler.maybe_consensus_then_execute(requests).await {

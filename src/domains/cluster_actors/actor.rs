@@ -158,7 +158,11 @@ impl ClusterActor {
         logger: &mut Logger<impl TWriteAheadLog>,
         write_request: WriteRequest,
         sender: tokio::sync::oneshot::Sender<Option<LogIndex>>,
-    ) -> anyhow::Result<()> {
+    ) -> Result<(), tokio::sync::oneshot::Sender<Option<LogIndex>>> {
+        if !self.replication.is_leader_mode() {
+            return Err(sender);
+        }
+
         // Skip consensus for no replicas
         let append_entries: Vec<WriteOperation> =
             logger.create_log_entries(&write_request, self.take_low_watermark()).await?;
