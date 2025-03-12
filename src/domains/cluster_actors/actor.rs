@@ -1,5 +1,8 @@
 use super::commands::AddPeer;
+use super::commands::RequestVote;
+use super::commands::RequestVoteReply;
 use super::commands::WriteConsensusResponse;
+use super::consensus::ElectionState;
 use super::replication::HeartBeatMessage;
 use super::replication::ReplicationInfo;
 use super::replication::time_in_secs;
@@ -18,31 +21,51 @@ pub struct ClusterActor {
     pub(crate) members: BTreeMap<PeerIdentifier, Peer>,
     pub(crate) replication: ReplicationInfo,
     pub(crate) node_timeout: u128,
-    pub(crate) consensus_tracker: ConsensusTracker,
+    pub(crate) consensus_tracker: LogConsensusTracker,
+    pub(crate) election_state: ElectionState,
     pub(crate) receiver: tokio::sync::mpsc::Receiver<ClusterCommand>,
     pub(crate) self_handler: tokio::sync::mpsc::Sender<ClusterCommand>,
     leader_mode_heartbeat_sender: Option<tokio::sync::oneshot::Sender<()>>,
 }
 
 impl ClusterActor {
-    pub fn new(node_timeout: u128, init_repl_info: ReplicationInfo) -> Self {
+    pub(crate) fn new(node_timeout: u128, init_repl_info: ReplicationInfo) -> Self {
         let (self_handler, receiver) = tokio::sync::mpsc::channel(100);
         Self {
+            election_state: ElectionState::new(init_repl_info.role()),
             replication: init_repl_info,
             node_timeout,
             receiver,
             self_handler,
             members: BTreeMap::new(),
             leader_mode_heartbeat_sender: None,
-            consensus_tracker: ConsensusTracker::default(),
+            consensus_tracker: LogConsensusTracker::default(),
         }
     }
 
-    pub fn hop_count(&self, fanout: usize, node_count: usize) -> u8 {
+    pub(crate) fn hop_count(&self, fanout: usize, node_count: usize) -> u8 {
         if node_count <= fanout {
             return 0;
         }
         node_count.ilog(fanout) as u8
+    }
+
+    pub(crate) fn followers(&self) -> impl Iterator<Item = (&PeerIdentifier, &Peer, u64)> {
+        self.members.iter().filter_map(|(id, peer)| match &peer.kind {
+            PeerKind::Follower { watermark: hwm, leader_repl_id } => Some((id, peer, *hwm)),
+            _ => None,
+        })
+    }
+
+    pub(crate) fn followers_mut(&mut self) -> impl Iterator<Item = (&mut Peer, u64)> {
+        self.members.values_mut().into_iter().filter_map(|peer| match peer.kind.clone() {
+            PeerKind::Follower { watermark: hwm, leader_repl_id } => Some((peer, hwm)),
+            _ => None,
+        })
+    }
+
+    fn find_follower_mut(&mut self, peer_id: &PeerIdentifier) -> Option<&mut Peer> {
+        self.members.get_mut(peer_id).filter(|peer| matches!(peer.kind, PeerKind::Follower { .. }))
     }
 
     pub(crate) async fn send_liveness_heartbeat(&mut self, hop_count: u8) {
@@ -68,7 +91,7 @@ impl ClusterActor {
             existing_peer.kill().await;
         }
     }
-    pub async fn remove_peer(&mut self, peer_addr: &PeerIdentifier) -> Option<()> {
+    pub(crate) async fn remove_peer(&mut self, peer_addr: &PeerIdentifier) -> Option<()> {
         if let Some(peer) = self.members.remove(peer_addr) {
             // stop the runnin process and take the connection in case topology changes are made
             let _read_connected = peer.kill().await;
@@ -192,13 +215,12 @@ impl ClusterActor {
         };
 
         self.consensus_tracker.add(logger.log_index, callback, self.followers().count());
-        let mut tasks = self
-            .generate_follower_entries(append_entries)
+        self.generate_follower_entries(append_entries)
             .map(|(peer, hb)| peer.write_io(hb))
-            .collect::<FuturesUnordered<_>>();
+            .collect::<FuturesUnordered<_>>()
+            .for_each(|_| async {})
+            .await;
 
-        // ! SAFETY DO NOT inline tasks.next().await in the while loop
-        while let Some(_) = tasks.next().await {}
         Ok(())
     }
 
@@ -216,20 +238,6 @@ impl ClusterActor {
             let _ = cache_manager.apply_log(log.request).await;
             self.replication.hwm = log.log_index.into();
         }
-    }
-
-    pub(crate) fn followers(&self) -> impl Iterator<Item = (&PeerIdentifier, &Peer, u64)> {
-        self.members.iter().filter_map(|(id, peer)| match &peer.kind {
-            PeerKind::Follower { watermark: hwm, leader_repl_id } => Some((id, peer, *hwm)),
-            _ => None,
-        })
-    }
-
-    pub(crate) fn followers_mut(&mut self) -> impl Iterator<Item = (&mut Peer, u64)> {
-        self.members.values_mut().into_iter().filter_map(|peer| match peer.kind.clone() {
-            PeerKind::Follower { watermark: hwm, leader_repl_id } => Some((peer, hwm)),
-            _ => None,
-        })
     }
 
     /// create entries per follower.
@@ -260,7 +268,7 @@ impl ClusterActor {
         offsets.into_iter().for_each(|offset| {
             if let Some(mut consensus) = self.consensus_tracker.take(&offset) {
                 println!("[INFO] Received acks for log index num: {}", offset);
-                consensus.apply_vote();
+                consensus.increase_vote();
 
                 if let Some(consensus) = consensus.maybe_not_finished(offset) {
                     self.consensus_tracker.insert(offset, consensus);
@@ -316,12 +324,12 @@ impl ClusterActor {
     }
 
     async fn send_to_replicas(&mut self, msg: impl Into<QueryIO> + Send + Clone) {
-        let mut tasks = self
-            .followers_mut()
+        self.followers_mut()
             .into_iter()
             .map(|(peer, _)| peer.write_io(msg.clone()))
-            .collect::<FuturesUnordered<_>>();
-        while let Some(_) = tasks.next().await {}
+            .collect::<FuturesUnordered<_>>()
+            .for_each(|_| async {})
+            .await;
     }
 
     pub(crate) fn heartbeat_periodically(&self, heartbeat_interval: u64) {
@@ -364,9 +372,75 @@ impl ClusterActor {
         self.members
             .values()
             .into_iter()
-            .map(|peer| peer.to_string())
+            .map(|peer| match &peer.kind {
+                PeerKind::Follower { watermark: hwm, leader_repl_id } => {
+                    format!("{} follower {}", peer.addr, leader_repl_id)
+                },
+                PeerKind::Leader => format!("{} leader - 0", peer.addr),
+                PeerKind::PFollower { leader_repl_id } => {
+                    format!("{} follower {}", peer.addr, leader_repl_id)
+                },
+                PeerKind::PLeader => format!("{} leader - 0", peer.addr),
+            })
             .chain(std::iter::once(self.replication.self_info()))
             .collect()
+    }
+
+    pub(crate) async fn run_for_election(
+        &mut self,
+        callback: tokio::sync::oneshot::Sender<()>,
+        last_log_index: LogIndex,
+        last_log_term: u64,
+    ) {
+        let ElectionState::Follower { voted_for: None } = self.election_state else {
+            let _ = callback.send(());
+            return;
+        };
+
+        self.election_state.to_candidate(self.followers().count(), callback);
+        let request_vote = RequestVote::new(
+            self.replication.term,
+            self.replication.self_identifier(),
+            last_log_index,
+            last_log_term,
+        );
+
+        self.followers_mut()
+            .map(|(peer, _)| peer.write_io(request_vote.clone()))
+            .collect::<FuturesUnordered<_>>()
+            .for_each(|_| async {})
+            .await;
+    }
+
+    pub(crate) async fn vote_election(
+        &mut self,
+        request_vote: RequestVote,
+        current_log_idx: LogIndex,
+    ) {
+        let grant_vote = self.election_state.is_votable(&request_vote.candidate_id)
+            && self.replication.term < request_vote.term
+            && current_log_idx <= request_vote.last_log_index;
+
+        if grant_vote {
+            self.election_state =
+                ElectionState::Follower { voted_for: Some(request_vote.candidate_id.clone()) };
+        }
+
+        let term = self.replication.term;
+        let Some(peer) = self.find_follower_mut(&request_vote.candidate_id) else {
+            return;
+        };
+        let _ = peer.write_io(RequestVoteReply { term, vote_granted: grant_vote }).await;
+    }
+
+    pub(crate) async fn tally_vote(&mut self, request_vote_reply: RequestVoteReply) {
+        if !self.election_state.may_become_leader(request_vote_reply) {
+            return;
+        };
+        println!("[INFO] {} won leader election", self.replication.self_identifier());
+
+        //TODO - how to notify other followers of this election? What's the rule?
+        self.replication.become_leader();
     }
 }
 
@@ -374,17 +448,18 @@ impl ClusterActor {
 #[allow(unused_variables)]
 mod test {
     use super::*;
-    use crate::{
-        adapters::wal::memory_wal::InMemoryWAL,
-        domains::{
-            append_only_files::{WriteOperation, WriteRequest},
-            caches::{actor::CacheCommandSender, cache_objects::CacheEntry, command::CacheCommand},
-            cluster_actors::commands::ClusterCommand,
-            peers::connected_types::Follower,
-        },
-    };
-    use std::{ops::Range, time::Duration};
-    use tokio::{net::TcpStream, sync::mpsc::channel};
+    use crate::adapters::wal::memory_wal::InMemoryWAL;
+    use crate::domains::append_only_files::WriteOperation;
+    use crate::domains::append_only_files::WriteRequest;
+    use crate::domains::caches::actor::CacheCommandSender;
+    use crate::domains::caches::cache_objects::CacheEntry;
+    use crate::domains::caches::command::CacheCommand;
+    use crate::domains::cluster_actors::commands::ClusterCommand;
+    use crate::domains::peers::connected_types::Follower;
+    use std::ops::Range;
+    use std::time::Duration;
+    use tokio::net::TcpStream;
+    use tokio::sync::mpsc::channel;
 
     fn write_operation_create_helper(index_num: u64, key: &str, value: &str) -> WriteOperation {
         WriteOperation {

@@ -1,8 +1,8 @@
-use crate::domains::append_only_files::WriteOperation;
 use crate::domains::append_only_files::log::LogIndex;
+use crate::domains::cluster_actors::commands::RequestVoteReply;
 use crate::domains::cluster_actors::replication::HeartBeatMessage;
-#[cfg(test)]
-use crate::domains::cluster_actors::replication::ReplicationInfo;
+use crate::domains::{append_only_files::WriteOperation, cluster_actors::commands::RequestVote};
+
 #[cfg(test)]
 use crate::domains::peers::identifier::PeerIdentifier;
 
@@ -19,11 +19,11 @@ const FILE_PREFIX: char = '\u{0066}';
 const SIMPLE_STRING_PREFIX: char = '+';
 const BULK_STRING_PREFIX: char = '$';
 const ARRAY_PREFIX: char = '*';
-const ERROR_PREFIX: char = '-';
 const HEARTBEAT_PREFIX: char = '^';
 const REPLICATE_PREFIX: char = '#';
 const ACKS_PREFIX: char = '@';
-
+const REQUEST_VOTE_PREFIX: char = 'v';
+const REQUEST_VOTE_REPLY_PREFIX: char = 'r';
 const SERDE_CONFIG: bincode::config::Configuration = bincode::config::standard();
 
 #[macro_export]
@@ -33,9 +33,8 @@ macro_rules! write_array {
     };
 }
 
-#[derive(Clone, Debug, PartialEq, Default)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum QueryIO {
-    #[default]
     Null,
     SimpleString(String),
     BulkString(String),
@@ -47,20 +46,20 @@ pub enum QueryIO {
     HeartBeat(HeartBeatMessage),
     WriteOperation(WriteOperation),
     Acks(Vec<LogIndex>),
+    RequestVote(RequestVote),
+    RequestVoteReply(RequestVoteReply),
 }
 
 impl QueryIO {
     pub fn serialize(self) -> Bytes {
         match self {
             QueryIO::Null => "$-1\r\n".into(),
-
             QueryIO::SimpleString(s) => {
                 let mut buffer =
                     String::with_capacity(SIMPLE_STRING_PREFIX.len_utf8() + s.len() + 2);
                 write!(&mut buffer, "{}{}\r\n", SIMPLE_STRING_PREFIX, s).unwrap();
                 buffer.into()
             },
-
             QueryIO::BulkString(s) => {
                 let mut byte_mut = BytesMut::with_capacity(1 + 1 + s.len() + 4);
                 byte_mut.extend_from_slice(BULK_STRING_PREFIX.encode_utf8(&mut [0; 4]).as_bytes());
@@ -70,7 +69,6 @@ impl QueryIO {
                 byte_mut.extend_from_slice(b"\r\n");
                 byte_mut.freeze()
             },
-
             QueryIO::File(f) => {
                 let file_len = f.len() * 2;
                 let mut hex_file = String::with_capacity(file_len + file_len.to_string().len() + 2);
@@ -83,7 +81,6 @@ impl QueryIO {
 
                 hex_file.into()
             },
-
             QueryIO::Array(array) => {
                 let mut buffer = BytesMut::with_capacity(
                     // Rough estimate of needed capacity
@@ -97,15 +94,18 @@ impl QueryIO {
                 }
                 buffer.freeze()
             },
-
             QueryIO::Err(e) => Bytes::from(["-".to_string(), e.into(), "\r\n".into()].concat()),
-
             QueryIO::HeartBeat(heartbeat) => serialize_with_bincode(HEARTBEAT_PREFIX, &heartbeat),
-
             QueryIO::WriteOperation(write_operation) => {
                 serialize_with_bincode(REPLICATE_PREFIX, &write_operation)
             },
             QueryIO::Acks(items) => serialize_with_bincode(ACKS_PREFIX, &items),
+            QueryIO::RequestVote(request_vote) => {
+                serialize_with_bincode(REQUEST_VOTE_PREFIX, &request_vote)
+            },
+            QueryIO::RequestVoteReply(request_vote_reply) => {
+                serialize_with_bincode(REQUEST_VOTE_REPLY_PREFIX, &request_vote_reply)
+            },
         }
     }
 
@@ -134,6 +134,12 @@ impl QueryIO {
             result.push(temp_val);
         }
         Ok(result)
+    }
+}
+
+impl Default for QueryIO {
+    fn default() -> Self {
+        QueryIO::Null
     }
 }
 
@@ -181,6 +187,8 @@ pub fn deserialize(buffer: BytesMut) -> Result<(QueryIO, usize)> {
         HEARTBEAT_PREFIX => parse_custom_type::<HeartBeatMessage>(buffer),
         REPLICATE_PREFIX => parse_custom_type::<WriteOperation>(buffer),
         ACKS_PREFIX => parse_custom_type::<Vec<LogIndex>>(buffer),
+        REQUEST_VOTE_PREFIX => parse_custom_type::<RequestVote>(buffer),
+        REQUEST_VOTE_REPLY_PREFIX => parse_custom_type::<RequestVoteReply>(buffer),
 
         _ => Err(anyhow::anyhow!("Not a known value type {:?}", buffer)),
     }
@@ -315,6 +323,17 @@ impl From<HeartBeatMessage> for QueryIO {
         QueryIO::HeartBeat(value)
     }
 }
+impl From<RequestVote> for QueryIO {
+    fn from(value: RequestVote) -> Self {
+        QueryIO::RequestVote(value)
+    }
+}
+
+impl From<RequestVoteReply> for QueryIO {
+    fn from(value: RequestVoteReply) -> Self {
+        QueryIO::RequestVoteReply(value)
+    }
+}
 #[cfg(test)]
 mod test {
     use crate::domains::{
@@ -443,8 +462,8 @@ mod test {
         let me = PeerIdentifier::new("me".into(), 6035);
         let leader = PeerIdentifier::new("leader".into(), 6036);
         let banned_list = vec![
-            BannedPeer { p_id: "banned1".into(), ban_time: 3553 },
-            BannedPeer { p_id: "banned2".into(), ban_time: 3556 },
+            BannedPeer { p_id: PeerIdentifier("banned1".into()), ban_time: 3553 },
+            BannedPeer { p_id: PeerIdentifier("banned2".into()), ban_time: 3556 },
         ];
         let heartbeat = HeartBeatMessage {
             heartbeat_from: me.clone(),
@@ -485,5 +504,38 @@ mod test {
 
         // THEN
         assert_eq!(value, replicate);
+    }
+
+    #[test]
+    fn test_request_vote_to_binary_back_to_request_vote() {
+        // GIVEN
+        let request_vote = RequestVote {
+            term: 1,
+            candidate_id: PeerIdentifier("me".into()),
+            last_log_index: 5.into(),
+            last_log_term: 1,
+        };
+        let request_vote = QueryIO::RequestVote(request_vote);
+
+        // WHEN
+        let serialized = request_vote.clone().serialize();
+        let (deserialized, _) = deserialize(BytesMut::from(serialized)).unwrap();
+
+        // THEN
+        assert_eq!(deserialized, request_vote);
+    }
+
+    #[test]
+    fn test_request_vote_reply_to_binary_back_to_request_vote_reply() {
+        // GIVEN
+        let request_vote_reply = RequestVoteReply { term: 1, vote_granted: true };
+        let request_vote_reply = QueryIO::RequestVoteReply(request_vote_reply);
+
+        // WHEN
+        let serialized = request_vote_reply.clone().serialize();
+        let (deserialized, _) = deserialize(BytesMut::from(serialized)).unwrap();
+
+        // THEN
+        assert_eq!(deserialized, request_vote_reply);
     }
 }

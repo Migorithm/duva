@@ -1,10 +1,5 @@
-use anyhow::Context;
-
 use crate::domains::append_only_files::WriteOperation;
 use crate::domains::peers::identifier::PeerIdentifier;
-use std::sync::atomic::AtomicBool;
-
-pub static IS_LEADER_MODE: AtomicBool = AtomicBool::new(true);
 
 #[derive(Debug, Clone)]
 pub struct ReplicationInfo {
@@ -48,8 +43,6 @@ impl ReplicationInfo {
             ban_list: Default::default(),
         };
 
-        IS_LEADER_MODE
-            .store(replication.leader_port.is_none(), std::sync::atomic::Ordering::Relaxed);
         replication
     }
 
@@ -65,7 +58,7 @@ impl ReplicationInfo {
     pub(crate) fn self_identifier(&self) -> PeerIdentifier {
         PeerIdentifier::new(&self.self_host, self.self_port)
     }
-    fn role(&self) -> &str {
+    pub(crate) fn role(&self) -> &str {
         &self.role
     }
 
@@ -124,6 +117,14 @@ impl ReplicationInfo {
     }
     pub(crate) fn is_leader_mode(&self) -> bool {
         self.leader_host.is_none()
+    }
+
+    pub(crate) fn become_leader(&mut self) {
+        self.role = "leader".to_string();
+        self.leader_host = None;
+        self.leader_port = None;
+
+        self.leader_repl_id = self.self_identifier();
     }
 }
 

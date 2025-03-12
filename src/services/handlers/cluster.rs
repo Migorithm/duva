@@ -84,6 +84,15 @@ impl ClusterActor {
                     let logs = logger.range(0, self.replication.hwm);
                     let _ = sender.send(logs);
                 },
+                ClusterCommand::StartLeaderElection(callback) => {
+                    self.run_for_election(callback, logger.log_index, self.replication.term).await; // TODO term must be from log
+                },
+                ClusterCommand::VoteElection(request_vote) => {
+                    self.vote_election(request_vote, logger.log_index).await;
+                },
+                ClusterCommand::ApplyElectionVote(request_vote_reply) => {
+                    self.tally_vote(request_vote_reply).await;
+                },
             }
         }
         Ok(self)

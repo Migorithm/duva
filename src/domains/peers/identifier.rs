@@ -1,7 +1,4 @@
-use bytes::Bytes;
-
 use crate::{from_to, make_smart_pointer};
-use std::str::FromStr;
 
 #[derive(
     Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Hash, Default, bincode::Encode, bincode::Decode,
@@ -22,24 +19,6 @@ impl PeerIdentifier {
     }
     pub fn cluster_bind_port(&self) -> u16 {
         self.0.rsplit_once(':').map(|(_, port)| port.parse::<u16>().unwrap() + 10000).unwrap()
-    }
-}
-
-impl FromStr for PeerIdentifier {
-    type Err = std::io::Error;
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(Self(s.to_string()))
-    }
-}
-impl From<&str> for PeerIdentifier {
-    fn from(s: &str) -> Self {
-        Self(s.to_string())
-    }
-}
-
-impl From<PeerIdentifier> for Bytes {
-    fn from(peer: PeerIdentifier) -> Self {
-        Bytes::from(peer.0)
     }
 }
 
@@ -74,12 +53,4 @@ impl std::fmt::Display for PeerIdentifier {
                 .unwrap()
         )
     }
-}
-
-#[test]
-fn test_peer_identifier() {
-    let peer = PeerIdentifier::new("localhost", 6379);
-    assert_eq!(peer.cluster_bind_addr(), "127.0.0.1:16379"); // 127.0.0.1:6379 + 10000
-    assert_eq!(peer.to_string(), "127.0.0.1:6379"); // overriden by display
-    assert_eq!(peer, "localhost:6379".parse().unwrap());
 }
