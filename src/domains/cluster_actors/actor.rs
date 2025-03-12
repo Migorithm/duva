@@ -5,7 +5,6 @@ use super::replication::ReplicationInfo;
 use super::replication::time_in_secs;
 use super::{commands::ClusterCommand, replication::BannedPeer, *};
 use crate::domains::append_only_files::WriteOperation;
-
 use crate::domains::append_only_files::WriteRequest;
 use crate::domains::append_only_files::interfaces::TWriteAheadLog;
 use crate::domains::append_only_files::log::LogIndex;
@@ -31,10 +30,8 @@ impl ClusterActor {
         Self {
             replication: init_repl_info,
             node_timeout,
-
             receiver,
             self_handler,
-
             members: BTreeMap::new(),
             leader_mode_heartbeat_sender: None,
             consensus_tracker: ConsensusTracker::default(),
@@ -48,7 +45,7 @@ impl ClusterActor {
         node_count.ilog(fanout) as u8
     }
 
-    pub async fn send_liveness_heartbeat(&mut self, hop_count: u8) {
+    pub(crate) async fn send_liveness_heartbeat(&mut self, hop_count: u8) {
         // TODO randomly choose the peer to send the message
         let msg = QueryIO::HeartBeat(
             self.replication.default_heartbeat(hop_count).set_cluster_nodes(self.cluster_nodes()),
@@ -60,7 +57,7 @@ impl ClusterActor {
         }
     }
 
-    pub async fn add_peer(&mut self, add_peer_cmd: AddPeer) {
+    pub(crate) async fn add_peer(&mut self, add_peer_cmd: AddPeer) {
         let AddPeer { peer_id: peer_addr, peer } = add_peer_cmd;
 
         self.replication.remove_from_ban_list(&peer_addr);
@@ -68,26 +65,25 @@ impl ClusterActor {
         // If the map did have this key present, the value is updated, and the old
         // value is returned. The key is not updated,
         if let Some(existing_peer) = self.members.insert(peer_addr.clone(), peer) {
-            // stop the runnin process and take the connection in case topology changes are made
-            existing_peer.listener_kill_trigger.kill().await;
+            existing_peer.kill().await;
         }
     }
     pub async fn remove_peer(&mut self, peer_addr: &PeerIdentifier) -> Option<()> {
         if let Some(peer) = self.members.remove(peer_addr) {
             // stop the runnin process and take the connection in case topology changes are made
-            let _read_connected = peer.listener_kill_trigger.kill().await;
+            let _read_connected = peer.kill().await;
             return Some(());
         }
         None
     }
 
-    pub fn set_replication_info(&mut self, leader_repl_id: PeerIdentifier, hwm: u64) {
+    pub(crate) fn set_replication_info(&mut self, leader_repl_id: PeerIdentifier, hwm: u64) {
         self.replication.leader_repl_id = leader_repl_id;
         self.replication.hwm = hwm;
     }
 
     /// Remove the peers that are idle for more than ttl_mills
-    pub async fn remove_idle_peers(&mut self) {
+    pub(crate) async fn remove_idle_peers(&mut self) {
         // loop over members, if ttl is expired, remove the member
         let now = Instant::now();
 
@@ -103,7 +99,7 @@ impl ClusterActor {
         }
     }
 
-    pub async fn gossip(&mut self, hop_count: u8) {
+    pub(crate) async fn gossip(&mut self, hop_count: u8) {
         // If hop_count is 0, don't send the message to other peers
         if hop_count == 0 {
             return;
@@ -112,13 +108,16 @@ impl ClusterActor {
         self.send_liveness_heartbeat(hop_count).await;
     }
 
-    pub async fn forget_peer(&mut self, peer_addr: PeerIdentifier) -> anyhow::Result<Option<()>> {
+    pub(crate) async fn forget_peer(
+        &mut self,
+        peer_addr: PeerIdentifier,
+    ) -> anyhow::Result<Option<()>> {
         self.replication.ban_peer(&peer_addr)?;
 
         Ok(self.remove_peer(&peer_addr).await)
     }
 
-    pub fn merge_ban_list(&mut self, ban_list: Vec<BannedPeer>) {
+    fn merge_ban_list(&mut self, ban_list: Vec<BannedPeer>) {
         if ban_list.is_empty() {
             return;
         }
@@ -129,8 +128,25 @@ impl ClusterActor {
             .sort_by_key(|node| (node.p_id.clone(), std::cmp::Reverse(node.ban_time)));
         self.replication.ban_list.dedup_by_key(|node| node.p_id.clone());
     }
+    fn retain_only_recent_banned_nodes(&mut self) {
+        // remove the nodes that are banned for more than 60 seconds
+        let current_time_in_sec = time_in_secs().unwrap();
+        self.replication.ban_list.retain(|node| current_time_in_sec - node.ban_time < 60);
+    }
+    async fn remove_banned_peers(&mut self) {
+        let ban_list = self.replication.ban_list.clone();
+        for banned_peer in ban_list {
+            let _ = self.remove_peer(&banned_peer.p_id).await;
+        }
+    }
 
-    pub fn update_on_hertbeat_message(&mut self, heartheat: &HeartBeatMessage) {
+    pub(crate) async fn apply_ban_list(&mut self, ban_list: Vec<BannedPeer>) {
+        self.merge_ban_list(ban_list);
+        self.retain_only_recent_banned_nodes();
+        self.remove_banned_peers().await;
+    }
+
+    pub(crate) fn update_on_hertbeat_message(&mut self, heartheat: &HeartBeatMessage) {
         if let Some(peer) = self.members.get_mut(&heartheat.heartbeat_from) {
             peer.last_seen = Instant::now();
 
@@ -139,22 +155,6 @@ impl ClusterActor {
             }
         }
     }
-
-    pub async fn update_ban_list(&mut self, ban_list: Vec<BannedPeer>) {
-        self.merge_ban_list(ban_list);
-
-        let current_time_in_sec = time_in_secs().unwrap();
-        self.replication.ban_list.retain(|node| current_time_in_sec - node.ban_time < 60);
-        if self.replication.ban_list.is_empty() {
-            return;
-        }
-        for node in
-            self.replication.ban_list.iter().map(|node| node.p_id.clone()).collect::<Vec<_>>()
-        {
-            self.remove_peer(&node).await;
-        }
-    }
-
     pub(crate) async fn try_create_append_entries(
         &mut self,
         logger: &mut Logger<impl TWriteAheadLog>,
@@ -256,7 +256,7 @@ impl ClusterActor {
             .min()
     }
 
-    pub fn apply_acks(&mut self, offsets: Vec<LogIndex>) {
+    pub(crate) fn apply_acks(&mut self, offsets: Vec<LogIndex>) {
         offsets.into_iter().for_each(|offset| {
             if let Some(mut consensus) = self.consensus_tracker.take(&offset) {
                 println!("[INFO] Received acks for log index num: {}", offset);
@@ -324,7 +324,7 @@ impl ClusterActor {
         while let Some(_) = tasks.next().await {}
     }
 
-    pub fn heartbeat_periodically(&self, heartbeat_interval: u64) {
+    pub(crate) fn heartbeat_periodically(&self, heartbeat_interval: u64) {
         let actor_handler = self.self_handler.clone();
         tokio::spawn(async move {
             let mut heartbeat_interval = interval(Duration::from_millis(heartbeat_interval));
@@ -334,7 +334,7 @@ impl ClusterActor {
             }
         });
     }
-    pub fn leader_heartbeat_periodically(&mut self) {
+    pub(crate) fn leader_heartbeat_periodically(&mut self) {
         const LEADER_HEARTBEAT_INTERVAL: u64 = 300;
         let is_leader_mode = self.replication.is_leader_mode();
         if !is_leader_mode {
@@ -360,7 +360,7 @@ impl ClusterActor {
         self.leader_mode_heartbeat_sender = Some(tx);
     }
 
-    pub fn cluster_nodes(&self) -> Vec<String> {
+    pub(crate) fn cluster_nodes(&self) -> Vec<String> {
         self.members
             .values()
             .into_iter()

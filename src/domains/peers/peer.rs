@@ -66,6 +66,9 @@ impl Peer {
             _ => Peer::new::<NonDataPeer>(addr, stream, kind, cluster_handler),
         }
     }
+    pub(crate) async fn kill(self) -> OwnedReadHalf {
+        self.listener_kill_trigger.kill().await
+    }
 }
 
 #[derive(Clone, Debug)]
