@@ -1,5 +1,6 @@
 use super::commands::AddPeer;
 use super::commands::RequestVote;
+use super::commands::RequestVoteReply;
 use super::commands::WriteConsensusResponse;
 use super::consensus::ElectionState;
 use super::replication::HeartBeatMessage;
@@ -47,6 +48,27 @@ impl ClusterActor {
             return 0;
         }
         node_count.ilog(fanout) as u8
+    }
+
+    pub(crate) fn followers(&self) -> impl Iterator<Item = (&PeerIdentifier, &Peer, u64)> {
+        self.members.iter().filter_map(|(id, peer)| match &peer.kind {
+            PeerKind::Follower { watermark: hwm, leader_repl_id } => Some((id, peer, *hwm)),
+            _ => None,
+        })
+    }
+
+    pub(crate) fn followers_mut(&mut self) -> impl Iterator<Item = (&mut Peer, u64)> {
+        self.members.values_mut().into_iter().filter_map(|peer| match peer.kind.clone() {
+            PeerKind::Follower { watermark: hwm, leader_repl_id } => Some((peer, hwm)),
+            _ => None,
+        })
+    }
+
+    fn find_follower_mut(&mut self, peer_id: &PeerIdentifier) -> Option<&mut Peer> {
+        self.members.get_mut(peer_id).filter(|peer| matches!(peer.kind, PeerKind::Follower { .. }))
+    }
+    fn find_follower(&self, peer_id: &PeerIdentifier) -> Option<&Peer> {
+        self.members.get(peer_id).filter(|peer| matches!(peer.kind, PeerKind::Follower { .. }))
     }
 
     pub(crate) async fn send_liveness_heartbeat(&mut self, hop_count: u8) {
@@ -221,20 +243,6 @@ impl ClusterActor {
         }
     }
 
-    pub(crate) fn followers(&self) -> impl Iterator<Item = (&PeerIdentifier, &Peer, u64)> {
-        self.members.iter().filter_map(|(id, peer)| match &peer.kind {
-            PeerKind::Follower { watermark: hwm, leader_repl_id } => Some((id, peer, *hwm)),
-            _ => None,
-        })
-    }
-
-    pub(crate) fn followers_mut(&mut self) -> impl Iterator<Item = (&mut Peer, u64)> {
-        self.members.values_mut().into_iter().filter_map(|peer| match peer.kind.clone() {
-            PeerKind::Follower { watermark: hwm, leader_repl_id } => Some((peer, hwm)),
-            _ => None,
-        })
-    }
-
     /// create entries per follower.
     pub(crate) fn generate_follower_entries(
         &mut self,
@@ -387,7 +395,7 @@ impl ClusterActor {
         callback: tokio::sync::oneshot::Sender<()>,
         logger: &Logger<impl TWriteAheadLog>,
     ) {
-        let ElectionState::Follower = self.election_state else {
+        let ElectionState::Follower { voted_for: None } = self.election_state else {
             let _ = callback.send(());
             return;
         };
@@ -396,10 +404,37 @@ impl ClusterActor {
         let request_vote = self.create_request_vote(logger);
 
         self.followers_mut()
-            .map(|(peer, _)| peer.write_io(QueryIO::RequestVote(request_vote.clone())))
+            .map(|(peer, _)| peer.write_io(request_vote.clone()))
             .collect::<FuturesUnordered<_>>()
             .for_each(|_| async {})
             .await;
+    }
+
+    pub(crate) async fn vote_election(
+        &mut self,
+        request_vote: RequestVote,
+        current_log_idx: LogIndex,
+    ) {
+        let grant_vote = self.election_state.is_votable(&request_vote.candidate_id)
+            && self.replication.term < request_vote.term
+            && current_log_idx <= request_vote.last_log_index;
+
+        if grant_vote {
+            self.election_state =
+                ElectionState::Follower { voted_for: Some(request_vote.candidate_id.clone()) };
+        }
+
+        let term = self.replication.term;
+        let Some(peer) = self.find_follower_mut(&request_vote.candidate_id) else {
+            return;
+        };
+        let _ = peer.write_io(RequestVoteReply { term, vote_granted: grant_vote }).await;
+    }
+
+    pub(crate) async fn apply_election_vote(&mut self, request_vote_reply: RequestVoteReply) {
+        if self.election_state.may_become_leader(request_vote_reply) {
+            println!("[INFO] {} Election won", self.replication.self_identifier());
+        };
     }
 }
 

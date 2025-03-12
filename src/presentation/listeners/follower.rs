@@ -1,6 +1,9 @@
 use crate::domains::{
     append_only_files::log::LogIndex,
-    cluster_actors::{commands::ClusterCommand, replication::HeartBeatMessage},
+    cluster_actors::{
+        commands::{ClusterCommand, RequestVote, RequestVoteReply},
+        replication::HeartBeatMessage,
+    },
     cluster_listeners::{ClusterListener, ReactorKillSwitch, TListen},
     peers::connected_types::Follower,
 };
@@ -31,6 +34,18 @@ impl ClusterListener<Follower> {
                             .send(ClusterCommand::LeaderReceiveAcks(items))
                             .await;
                     },
+                    FollowerInput::RequestVote(request_vote) => {
+                        let _ = self
+                            .cluster_handler
+                            .send(ClusterCommand::VoteElection(request_vote))
+                            .await;
+                    },
+                    FollowerInput::RequestVoteReply(reply) => {
+                        let _ = self
+                            .cluster_handler
+                            .send(ClusterCommand::ApplyElectionVote(reply))
+                            .await;
+                    },
                 }
             }
         }
@@ -40,6 +55,8 @@ impl ClusterListener<Follower> {
 pub enum FollowerInput {
     HeartBeat(HeartBeatMessage),
     Acks(Vec<LogIndex>),
+    RequestVote(RequestVote),
+    RequestVoteReply(RequestVoteReply),
 }
 impl TryFrom<QueryIO> for FollowerInput {
     type Error = anyhow::Error;
@@ -47,6 +64,8 @@ impl TryFrom<QueryIO> for FollowerInput {
         match query {
             QueryIO::HeartBeat(peer_state) => Ok(FollowerInput::HeartBeat(peer_state)),
             QueryIO::Acks(acks) => Ok(FollowerInput::Acks(acks)),
+            QueryIO::RequestVote(vote) => Ok(FollowerInput::RequestVote(vote)),
+            QueryIO::RequestVoteReply(reply) => Ok(FollowerInput::RequestVoteReply(reply)),
             _ => todo!(),
         }
     }

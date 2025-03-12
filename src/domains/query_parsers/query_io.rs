@@ -1,4 +1,5 @@
 use crate::domains::append_only_files::log::LogIndex;
+use crate::domains::cluster_actors::commands::RequestVoteReply;
 use crate::domains::cluster_actors::replication::HeartBeatMessage;
 use crate::domains::{append_only_files::WriteOperation, cluster_actors::commands::RequestVote};
 
@@ -23,7 +24,7 @@ const HEARTBEAT_PREFIX: char = '^';
 const REPLICATE_PREFIX: char = '#';
 const ACKS_PREFIX: char = '@';
 const REQUEST_VOTE_PREFIX: char = 'v';
-
+const REQUEST_VOTE_REPLY_PREFIX: char = 'r';
 const SERDE_CONFIG: bincode::config::Configuration = bincode::config::standard();
 
 #[macro_export]
@@ -47,6 +48,7 @@ pub enum QueryIO {
     WriteOperation(WriteOperation),
     Acks(Vec<LogIndex>),
     RequestVote(RequestVote),
+    RequestVoteReply(RequestVoteReply),
 }
 
 impl QueryIO {
@@ -101,6 +103,9 @@ impl QueryIO {
             QueryIO::Acks(items) => serialize_with_bincode(ACKS_PREFIX, &items),
             QueryIO::RequestVote(request_vote) => {
                 serialize_with_bincode(REQUEST_VOTE_PREFIX, &request_vote)
+            },
+            QueryIO::RequestVoteReply(request_vote_reply) => {
+                serialize_with_bincode(REQUEST_VOTE_REPLY_PREFIX, &request_vote_reply)
             },
         }
     }
@@ -184,6 +189,7 @@ pub fn deserialize(buffer: BytesMut) -> Result<(QueryIO, usize)> {
         REPLICATE_PREFIX => parse_custom_type::<WriteOperation>(buffer),
         ACKS_PREFIX => parse_custom_type::<Vec<LogIndex>>(buffer),
         REQUEST_VOTE_PREFIX => parse_custom_type::<RequestVote>(buffer),
+        REQUEST_VOTE_REPLY_PREFIX => parse_custom_type::<RequestVoteReply>(buffer),
 
         _ => Err(anyhow::anyhow!("Not a known value type {:?}", buffer)),
     }
@@ -324,6 +330,11 @@ impl From<RequestVote> for QueryIO {
     }
 }
 
+impl From<RequestVoteReply> for QueryIO {
+    fn from(value: RequestVoteReply) -> Self {
+        QueryIO::RequestVoteReply(value)
+    }
+}
 #[cfg(test)]
 mod test {
     use crate::domains::{
@@ -513,5 +524,19 @@ mod test {
 
         // THEN
         assert_eq!(deserialized, request_vote);
+    }
+
+    #[test]
+    fn test_request_vote_reply_to_binary_back_to_request_vote_reply() {
+        // GIVEN
+        let request_vote_reply = RequestVoteReply { term: 1, vote_granted: true };
+        let request_vote_reply = QueryIO::RequestVoteReply(request_vote_reply);
+
+        // WHEN
+        let serialized = request_vote_reply.clone().serialize();
+        let (deserialized, _) = deserialize(BytesMut::from(serialized)).unwrap();
+
+        // THEN
+        assert_eq!(deserialized, request_vote_reply);
     }
 }

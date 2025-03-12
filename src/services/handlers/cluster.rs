@@ -87,6 +87,12 @@ impl ClusterActor {
                 ClusterCommand::StartLeaderElection(callback) => {
                     self.start_leader_election(callback, &logger).await;
                 },
+                ClusterCommand::VoteElection(request_vote) => {
+                    self.vote_election(request_vote, logger.log_index).await;
+                },
+                ClusterCommand::ApplyElectionVote(request_vote_reply) => {
+                    self.apply_election_vote(request_vote_reply).await;
+                },
             }
         }
         Ok(self)

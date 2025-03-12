@@ -7,7 +7,10 @@ use crate::{
     make_smart_pointer,
 };
 
-use super::{commands::WriteConsensusResponse, replication::ReplicationInfo};
+use super::{
+    commands::{RequestVoteReply, WriteConsensusResponse},
+    replication::ReplicationInfo,
+};
 
 #[derive(Debug)]
 pub struct ConsensusVoting<T> {
@@ -56,15 +59,15 @@ make_smart_pointer!(LogConsensusTracker, HashMap<LogIndex, ConsensusVoting<Write
 
 #[derive(Debug)]
 pub enum ElectionState {
-    Candidate { voted_for: PeerIdentifier, voting: ConsensusVoting<()> },
-    Follower,
+    Candidate { voting: Option<ConsensusVoting<()>> },
+    Follower { voted_for: Option<PeerIdentifier> },
     Leader,
 }
 impl ElectionState {
     pub(crate) fn new(role: &str) -> Self {
         match role {
             "leader" => ElectionState::Leader,
-            _ => ElectionState::Follower,
+            _ => ElectionState::Follower { voted_for: None },
         }
     }
 
@@ -75,13 +78,48 @@ impl ElectionState {
         callback: tokio::sync::oneshot::Sender<()>,
     ) {
         *self = ElectionState::Candidate {
-            voted_for: replication.self_identifier(),
-            voting: ConsensusVoting {
+            voting: Some(ConsensusVoting {
                 callback,
                 vote_count: 1,
                 required_votes: get_required_votes(replica_count),
-            },
+            }),
         };
+    }
+
+    pub(crate) fn is_votable(&self, candidiate_id: &PeerIdentifier) -> bool {
+        match self {
+            ElectionState::Follower { voted_for } => {
+                if voted_for.is_none() || voted_for.as_ref() == Some(candidiate_id) {
+                    true
+                } else {
+                    false
+                }
+            },
+            _ => false,
+        }
+    }
+
+    pub(crate) fn may_become_leader(&mut self, request_vote_reply: RequestVoteReply) -> bool {
+        match self {
+            ElectionState::Candidate { voting } => {
+                let Some(mut current_voting) = voting.take() else {
+                    return false;
+                };
+                if request_vote_reply.vote_granted {
+                    current_voting.vote_count += 1;
+                    if current_voting.vote_count >= current_voting.required_votes {
+                        let _ = current_voting.callback.send(());
+                        *self = ElectionState::Leader;
+                        return true;
+                    } else {
+                        *voting = Some(current_voting);
+                        return false;
+                    }
+                }
+                return false;
+            },
+            _ => false,
+        }
     }
 }
 

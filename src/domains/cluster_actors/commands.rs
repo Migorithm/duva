@@ -32,6 +32,8 @@ pub enum ClusterCommand {
     ClusterNodes(tokio::sync::oneshot::Sender<Vec<String>>),
     FetchCurrentState(tokio::sync::oneshot::Sender<Vec<WriteOperation>>),
     StartLeaderElection(tokio::sync::oneshot::Sender<()>),
+    VoteElection(RequestVote),
+    ApplyElectionVote(RequestVoteReply),
 }
 
 #[derive(Debug)]
@@ -54,6 +56,7 @@ pub struct RequestVote {
     pub(crate) last_log_term: u64, //the term of the last log entry, used for election restrictions. If the term is low, it won’t win the election.
 }
 
+#[derive(Clone, Debug, PartialEq, bincode::Encode, bincode::Decode)]
 pub struct RequestVoteReply {
     pub(crate) term: u64,
     pub(crate) vote_granted: bool,
