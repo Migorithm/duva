@@ -35,6 +35,7 @@ impl ClusterListener<Leader> {
                         Err(e)=> {
                             // Most likely connection close case
                             println!("Error reading command: {:?}", e);
+                            self.start_leader_election().await;
                             break;
                         }
                     }
@@ -42,7 +43,7 @@ impl ClusterListener<Leader> {
 
                 // ELECTION timeout
                 _ =  tokio::time::sleep(Duration::from_millis(rand::random_range(700..1000))) =>{
-                    println!("[INFO] leader listener timeout");
+                    self.start_leader_election().await;
                     break;
                 }
 

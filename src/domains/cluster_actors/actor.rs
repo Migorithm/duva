@@ -1,5 +1,6 @@
 use super::commands::AddPeer;
 use super::commands::WriteConsensusResponse;
+use super::consensus::ElectionState;
 use super::replication::HeartBeatMessage;
 use super::replication::ReplicationInfo;
 use super::replication::time_in_secs;
@@ -18,7 +19,8 @@ pub struct ClusterActor {
     pub(crate) members: BTreeMap<PeerIdentifier, Peer>,
     pub(crate) replication: ReplicationInfo,
     pub(crate) node_timeout: u128,
-    pub(crate) consensus_tracker: ConsensusTracker,
+    pub(crate) consensus_tracker: LogConsensusTracker,
+    pub(crate) election_state: ElectionState,
     pub(crate) receiver: tokio::sync::mpsc::Receiver<ClusterCommand>,
     pub(crate) self_handler: tokio::sync::mpsc::Sender<ClusterCommand>,
     leader_mode_heartbeat_sender: Option<tokio::sync::oneshot::Sender<()>>,
@@ -28,13 +30,14 @@ impl ClusterActor {
     pub fn new(node_timeout: u128, init_repl_info: ReplicationInfo) -> Self {
         let (self_handler, receiver) = tokio::sync::mpsc::channel(100);
         Self {
+            election_state: ElectionState::new(init_repl_info.role()),
             replication: init_repl_info,
             node_timeout,
             receiver,
             self_handler,
             members: BTreeMap::new(),
             leader_mode_heartbeat_sender: None,
-            consensus_tracker: ConsensusTracker::default(),
+            consensus_tracker: LogConsensusTracker::default(),
         }
     }
 
@@ -367,6 +370,18 @@ impl ClusterActor {
             .map(|peer| peer.to_string())
             .chain(std::iter::once(self.replication.self_info()))
             .collect()
+    }
+
+    pub(crate) async fn start_leader_election(
+        &mut self,
+        callback: tokio::sync::oneshot::Sender<()>,
+    ) {
+        let ElectionState::Follower = self.election_state else {
+            let _ = callback.send(());
+            return;
+        };
+
+        self.election_state.run_candidate(&self.replication, self.followers().count(), callback);
     }
 }
 

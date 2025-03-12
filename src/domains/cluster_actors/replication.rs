@@ -65,7 +65,7 @@ impl ReplicationInfo {
     pub(crate) fn self_identifier(&self) -> PeerIdentifier {
         PeerIdentifier::new(&self.self_host, self.self_port)
     }
-    fn role(&self) -> &str {
+    pub(crate) fn role(&self) -> &str {
         &self.role
     }
 

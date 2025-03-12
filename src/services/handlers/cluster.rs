@@ -84,6 +84,9 @@ impl ClusterActor {
                     let logs = logger.range(0, self.replication.hwm);
                     let _ = sender.send(logs);
                 },
+                ClusterCommand::StartLeaderElection(callback) => {
+                    self.start_leader_election(callback).await;
+                },
             }
         }
         Ok(self)
