@@ -271,7 +271,7 @@ impl ClusterActor {
         offsets.into_iter().for_each(|offset| {
             if let Some(mut consensus) = self.consensus_tracker.take(&offset) {
                 println!("[INFO] Received acks for log index num: {}", offset);
-                consensus.apply_vote();
+                consensus.increase_vote();
 
                 if let Some(consensus) = consensus.maybe_not_finished(offset) {
                     self.consensus_tracker.insert(offset, consensus);
@@ -380,28 +380,32 @@ impl ClusterActor {
             .collect()
     }
 
-    pub(crate) fn create_request_vote(&self, logger: &Logger<impl TWriteAheadLog>) -> RequestVote {
+    pub(crate) fn create_request_vote(
+        &self,
+        last_log_index: LogIndex,
+        last_log_term: u64,
+    ) -> RequestVote {
         RequestVote {
             term: self.replication.term + 1,
             candidate_id: self.replication.self_identifier(),
-            last_log_index: logger.log_index,
-            // TODO term must be from log
-            last_log_term: self.replication.term,
+            last_log_index,
+            last_log_term,
         }
     }
 
-    pub(crate) async fn start_leader_election(
+    pub(crate) async fn run_for_election(
         &mut self,
         callback: tokio::sync::oneshot::Sender<()>,
-        logger: &Logger<impl TWriteAheadLog>,
+        last_log_index: LogIndex,
+        last_log_term: u64,
     ) {
         let ElectionState::Follower { voted_for: None } = self.election_state else {
             let _ = callback.send(());
             return;
         };
 
-        self.election_state.run_candidate(&self.replication, self.followers().count(), callback);
-        let request_vote = self.create_request_vote(logger);
+        self.election_state.to_candidate(self.followers().count(), callback);
+        let request_vote = self.create_request_vote(last_log_index, last_log_term);
 
         self.followers_mut()
             .map(|(peer, _)| peer.write_io(request_vote.clone()))
@@ -431,7 +435,7 @@ impl ClusterActor {
         let _ = peer.write_io(RequestVoteReply { term, vote_granted: grant_vote }).await;
     }
 
-    pub(crate) async fn apply_election_vote(&mut self, request_vote_reply: RequestVoteReply) {
+    pub(crate) async fn tally_vote(&mut self, request_vote_reply: RequestVoteReply) {
         if !self.election_state.may_become_leader(request_vote_reply) {
             return;
         };

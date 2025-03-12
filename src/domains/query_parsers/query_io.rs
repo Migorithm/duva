@@ -19,7 +19,6 @@ const FILE_PREFIX: char = '\u{0066}';
 const SIMPLE_STRING_PREFIX: char = '+';
 const BULK_STRING_PREFIX: char = '$';
 const ARRAY_PREFIX: char = '*';
-const ERROR_PREFIX: char = '-';
 const HEARTBEAT_PREFIX: char = '^';
 const REPLICATE_PREFIX: char = '#';
 const ACKS_PREFIX: char = '@';

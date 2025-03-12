@@ -85,13 +85,13 @@ impl ClusterActor {
                     let _ = sender.send(logs);
                 },
                 ClusterCommand::StartLeaderElection(callback) => {
-                    self.start_leader_election(callback, &logger).await;
+                    self.run_for_election(callback, logger.log_index, self.replication.term).await; // TODO term must be from log
                 },
                 ClusterCommand::VoteElection(request_vote) => {
                     self.vote_election(request_vote, logger.log_index).await;
                 },
                 ClusterCommand::ApplyElectionVote(request_vote_reply) => {
-                    self.apply_election_vote(request_vote_reply).await;
+                    self.tally_vote(request_vote_reply).await;
                 },
             }
         }

@@ -39,7 +39,6 @@ pub enum ClusterCommand {
 #[derive(Debug)]
 pub enum WriteConsensusResponse {
     LogIndex(Option<LogIndex>),
-
     Err(String),
 }
 

@@ -18,15 +18,33 @@ pub struct ConsensusVoting<T> {
     vote_count: u8,
     required_votes: u8,
 }
-impl ConsensusVoting<WriteConsensusResponse> {
-    pub fn apply_vote(&mut self) {
+impl<T> ConsensusVoting<T> {
+    pub fn increase_vote(&mut self) {
         self.vote_count += 1;
     }
+}
 
+impl ConsensusVoting<WriteConsensusResponse> {
     pub fn maybe_not_finished(self, log_index: LogIndex) -> Option<Self> {
         if self.vote_count >= self.required_votes {
             let _ = self.callback.send(WriteConsensusResponse::LogIndex(Some(log_index)));
             None
+        } else {
+            Some(self)
+        }
+    }
+}
+
+impl ConsensusVoting<()> {
+    pub fn maybe_not_finished(mut self, granted: bool) -> Option<Self> {
+        if granted {
+            self.increase_vote();
+            if self.vote_count >= self.required_votes {
+                let _ = self.callback.send(());
+                None
+            } else {
+                Some(self)
+            }
         } else {
             Some(self)
         }
@@ -71,9 +89,8 @@ impl ElectionState {
         }
     }
 
-    pub(crate) fn run_candidate(
+    pub(crate) fn to_candidate(
         &mut self,
-        replication: &ReplicationInfo,
         replica_count: usize,
         callback: tokio::sync::oneshot::Sender<()>,
     ) {
@@ -102,21 +119,20 @@ impl ElectionState {
     pub(crate) fn may_become_leader(&mut self, request_vote_reply: RequestVoteReply) -> bool {
         match self {
             ElectionState::Candidate { voting } => {
-                let Some(mut current_voting) = voting.take() else {
+                let Some(current_voting) = voting.take() else {
                     return false;
                 };
-                if request_vote_reply.vote_granted {
-                    current_voting.vote_count += 1;
-                    if current_voting.vote_count >= current_voting.required_votes {
-                        let _ = current_voting.callback.send(());
-                        *self = ElectionState::Leader;
-                        return true;
-                    } else {
-                        *voting = Some(current_voting);
-                        return false;
-                    }
+
+                if let Some(unfinished_voting) =
+                    current_voting.maybe_not_finished(request_vote_reply.vote_granted)
+                {
+                    *voting = Some(unfinished_voting);
+
+                    return false;
+                } else {
+                    *self = ElectionState::Leader;
+                    return true;
                 }
-                return false;
             },
             _ => false,
         }
