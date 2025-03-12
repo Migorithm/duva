@@ -374,17 +374,18 @@ impl ClusterActor {
 #[allow(unused_variables)]
 mod test {
     use super::*;
-    use crate::{
-        adapters::wal::memory_wal::InMemoryWAL,
-        domains::{
-            append_only_files::{WriteOperation, WriteRequest},
-            caches::{actor::CacheCommandSender, cache_objects::CacheEntry, command::CacheCommand},
-            cluster_actors::commands::ClusterCommand,
-            peers::connected_types::Follower,
-        },
-    };
-    use std::{ops::Range, time::Duration};
-    use tokio::{net::TcpStream, sync::mpsc::channel};
+    use crate::adapters::wal::memory_wal::InMemoryWAL;
+    use crate::domains::append_only_files::WriteOperation;
+    use crate::domains::append_only_files::WriteRequest;
+    use crate::domains::caches::actor::CacheCommandSender;
+    use crate::domains::caches::cache_objects::CacheEntry;
+    use crate::domains::caches::command::CacheCommand;
+    use crate::domains::cluster_actors::commands::ClusterCommand;
+    use crate::domains::peers::connected_types::Follower;
+    use std::ops::Range;
+    use std::time::Duration;
+    use tokio::net::TcpStream;
+    use tokio::sync::mpsc::channel;
 
     fn write_operation_create_helper(index_num: u64, key: &str, value: &str) -> WriteOperation {
         WriteOperation {
