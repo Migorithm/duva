@@ -432,9 +432,11 @@ impl ClusterActor {
     }
 
     pub(crate) async fn apply_election_vote(&mut self, request_vote_reply: RequestVoteReply) {
-        if self.election_state.may_become_leader(request_vote_reply) {
-            println!("[INFO] {} Election won", self.replication.self_identifier());
+        if !self.election_state.may_become_leader(request_vote_reply) {
+            return;
         };
+        println!("[INFO] {} won leader election", self.replication.self_identifier());
+        self.replication.become_leader();
     }
 }
 

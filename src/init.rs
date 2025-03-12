@@ -1,4 +1,4 @@
-use crate::{domains::cluster_actors::replication::IS_LEADER_MODE, env_var};
+use crate::env_var;
 
 pub struct Environment {
     pub replicaof: Option<(String, String)>,
@@ -34,7 +34,6 @@ impl Environment {
                 .into_iter()
                 .collect::<(_, _)>()
         });
-        IS_LEADER_MODE.store(replicaof.is_none(), std::sync::atomic::Ordering::Relaxed);
 
         Self { replicaof, dir, dbfilename, port, host, hf_mills: hf, ttl_mills: ttl, append_only }
     }

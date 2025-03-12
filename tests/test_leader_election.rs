@@ -1,7 +1,7 @@
 mod common;
 use std::{thread::sleep, time::Duration};
 
-use common::{ServerEnv, array, check_internodes_communication, spawn_server_process};
+use common::{ServerEnv, array, spawn_server_process};
 use duva::client_utils::ClientStreamHandler;
 
 #[tokio::test]
@@ -29,5 +29,5 @@ async fn test() {
     let response2 = handler2.send_and_get(&array(vec!["info", "replication"])).await;
 
     // THEN - one of the replicas should become the leader
-    assert!([response1, response2].iter().any(|d| d.contains("role:leader")));
+    assert!([dbg!(response1), dbg!(response2)].iter().any(|d| d.contains("role:leader")));
 }
