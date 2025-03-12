@@ -386,19 +386,6 @@ impl ClusterActor {
             .collect()
     }
 
-    pub(crate) fn create_request_vote(
-        &self,
-        last_log_index: LogIndex,
-        last_log_term: u64,
-    ) -> RequestVote {
-        RequestVote {
-            term: self.replication.term + 1,
-            candidate_id: self.replication.self_identifier(),
-            last_log_index,
-            last_log_term,
-        }
-    }
-
     pub(crate) async fn run_for_election(
         &mut self,
         callback: tokio::sync::oneshot::Sender<()>,
@@ -411,7 +398,12 @@ impl ClusterActor {
         };
 
         self.election_state.to_candidate(self.followers().count(), callback);
-        let request_vote = self.create_request_vote(last_log_index, last_log_term);
+        let request_vote = RequestVote::new(
+            self.replication.term,
+            self.replication.self_identifier(),
+            last_log_index,
+            last_log_term,
+        );
 
         self.followers_mut()
             .map(|(peer, _)| peer.write_io(request_vote.clone()))
