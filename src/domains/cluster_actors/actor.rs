@@ -5,7 +5,6 @@ use super::replication::ReplicationInfo;
 use super::replication::time_in_secs;
 use super::{commands::ClusterCommand, replication::BannedPeer, *};
 use crate::domains::append_only_files::WriteOperation;
-
 use crate::domains::append_only_files::WriteRequest;
 use crate::domains::append_only_files::interfaces::TWriteAheadLog;
 use crate::domains::append_only_files::log::LogIndex;
@@ -31,10 +30,8 @@ impl ClusterActor {
         Self {
             replication: init_repl_info,
             node_timeout,
-
             receiver,
             self_handler,
-
             members: BTreeMap::new(),
             leader_mode_heartbeat_sender: None,
             consensus_tracker: ConsensusTracker::default(),
@@ -68,14 +65,13 @@ impl ClusterActor {
         // If the map did have this key present, the value is updated, and the old
         // value is returned. The key is not updated,
         if let Some(existing_peer) = self.members.insert(peer_addr.clone(), peer) {
-            // stop the runnin process and take the connection in case topology changes are made
-            existing_peer.listener_kill_trigger.kill().await;
+            existing_peer.kill().await;
         }
     }
     pub async fn remove_peer(&mut self, peer_addr: &PeerIdentifier) -> Option<()> {
         if let Some(peer) = self.members.remove(peer_addr) {
             // stop the runnin process and take the connection in case topology changes are made
-            let _read_connected = peer.listener_kill_trigger.kill().await;
+            let _read_connected = peer.kill().await;
             return Some(());
         }
         None
