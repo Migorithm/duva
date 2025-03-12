@@ -438,6 +438,8 @@ impl ClusterActor {
             return;
         };
         println!("[INFO] {} won leader election", self.replication.self_identifier());
+
+        //TODO - how to notify other followers of this election? What's the rule?
         self.replication.become_leader();
     }
 }
