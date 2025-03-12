@@ -141,9 +141,7 @@ impl ClusterActor {
 
         let current_time_in_sec = time_in_secs().unwrap();
         self.replication.ban_list.retain(|node| current_time_in_sec - node.ban_time < 60);
-        if self.replication.ban_list.is_empty() {
-            return;
-        }
+
         for node in
             self.replication.ban_list.iter().map(|node| node.p_id.clone()).collect::<Vec<_>>()
         {
