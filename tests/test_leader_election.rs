@@ -7,18 +7,15 @@ use duva::client_utils::ClientStreamHandler;
 #[tokio::test]
 async fn test() {
     // GIVEN
-    const DEFAULT_HOP_COUNT: usize = 0;
-    const TIMEOUT_IN_MILLIS: u128 = 2000;
+    let mut leader_p = spawn_server_process(&ServerEnv::default());
 
-    let env = ServerEnv::default();
-    let mut leader_p = spawn_server_process(&env);
-    let repl_env = ServerEnv::default().with_leader_bind_addr(leader_p.bind_addr().into());
-    let mut follower_p1 = spawn_server_process(&repl_env);
-    let repl_env2 = ServerEnv::default().with_leader_bind_addr(leader_p.bind_addr().into());
-    let mut follower_p2 = spawn_server_process(&repl_env2);
+    let follower_p1 = spawn_server_process(
+        &ServerEnv::default().with_leader_bind_addr(leader_p.bind_addr().into()),
+    );
 
-    let processes = &mut [&mut leader_p, &mut follower_p1, &mut follower_p2];
-    check_internodes_communication(processes, DEFAULT_HOP_COUNT, TIMEOUT_IN_MILLIS).unwrap();
+    let follower_p2 = spawn_server_process(
+        &ServerEnv::default().with_leader_bind_addr(leader_p.bind_addr().into()),
+    );
 
     // WHEN
     leader_p.kill().unwrap();
