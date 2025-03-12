@@ -4,16 +4,19 @@ use super::connected_types::Leader;
 use super::connected_types::NonDataPeer;
 use super::connected_types::ReadConnected;
 use super::identifier::PeerIdentifier;
+use crate::domains::IoError;
 use crate::domains::cluster_actors::commands::ClusterCommand;
 use crate::domains::cluster_listeners::ClusterListener;
 use crate::domains::cluster_listeners::TListen;
 use crate::domains::peers::connected_types::WriteConnected;
+use crate::domains::query_parsers::QueryIO;
+use crate::services::interface::TWrite;
+use bytes::Bytes;
 use std::fmt::Display;
-use std::ops::Deref;
-use std::ops::DerefMut;
+
 use tokio::net::TcpStream;
 use tokio::net::tcp::OwnedReadHalf;
-use tokio::net::tcp::OwnedWriteHalf;
+
 use tokio::sync::mpsc::Sender;
 use tokio::task::JoinHandle;
 use tokio::time::Instant;
@@ -52,6 +55,14 @@ impl Peer {
             last_seen: Instant::now(),
             kind,
         }
+    }
+
+    pub(crate) async fn write(&mut self, buf: impl Into<Bytes> + Send) -> Result<(), IoError> {
+        self.w_conn.stream.write(buf).await
+    }
+
+    pub(crate) async fn write_io(&mut self, io: impl Into<QueryIO> + Send) -> Result<(), IoError> {
+        self.w_conn.stream.write_io(io).await
     }
 
     pub(crate) fn create(
@@ -109,20 +120,6 @@ impl Display for Peer {
             },
             PeerKind::PLeader => write!(f, "{} leader - 0", self.addr),
         }
-    }
-}
-
-impl Deref for Peer {
-    type Target = OwnedWriteHalf;
-
-    fn deref(&self) -> &Self::Target {
-        &self.w_conn.stream
-    }
-}
-
-impl DerefMut for Peer {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.w_conn.stream
     }
 }
 
