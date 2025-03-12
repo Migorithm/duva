@@ -45,3 +45,16 @@ pub struct AddPeer {
     pub(crate) peer_id: PeerIdentifier,
     pub(crate) peer: Peer,
 }
+
+#[derive(Clone, Debug, PartialEq, bincode::Encode, bincode::Decode)]
+pub struct RequestVote {
+    pub(crate) term: u64, // current term of the candidate. Without it, the old leader wouldn't be able to step down gracefully.
+    pub(crate) candidate_id: PeerIdentifier,
+    pub(crate) last_log_index: LogIndex,
+    pub(crate) last_log_term: u64, //the term of the last log entry, used for election restrictions. If the term is low, it won’t win the election.
+}
+
+pub struct RequestVoteReply {
+    pub(crate) term: u64,
+    pub(crate) vote_granted: bool,
+}

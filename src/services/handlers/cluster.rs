@@ -85,7 +85,7 @@ impl ClusterActor {
                     let _ = sender.send(logs);
                 },
                 ClusterCommand::StartLeaderElection(callback) => {
-                    self.start_leader_election(callback).await;
+                    self.start_leader_election(callback, &logger).await;
                 },
             }
         }

@@ -1,4 +1,5 @@
 use super::commands::AddPeer;
+use super::commands::RequestVote;
 use super::commands::WriteConsensusResponse;
 use super::consensus::ElectionState;
 use super::replication::HeartBeatMessage;
@@ -195,13 +196,12 @@ impl ClusterActor {
         };
 
         self.consensus_tracker.add(logger.log_index, callback, self.followers().count());
-        let mut tasks = self
-            .generate_follower_entries(append_entries)
+        self.generate_follower_entries(append_entries)
             .map(|(peer, hb)| peer.write_io(hb))
-            .collect::<FuturesUnordered<_>>();
+            .collect::<FuturesUnordered<_>>()
+            .for_each(|_| async {})
+            .await;
 
-        // ! SAFETY DO NOT inline tasks.next().await in the while loop
-        while let Some(_) = tasks.next().await {}
         Ok(())
     }
 
@@ -319,12 +319,12 @@ impl ClusterActor {
     }
 
     async fn send_to_replicas(&mut self, msg: impl Into<QueryIO> + Send + Clone) {
-        let mut tasks = self
-            .followers_mut()
+        self.followers_mut()
             .into_iter()
             .map(|(peer, _)| peer.write_io(msg.clone()))
-            .collect::<FuturesUnordered<_>>();
-        while let Some(_) = tasks.next().await {}
+            .collect::<FuturesUnordered<_>>()
+            .for_each(|_| async {})
+            .await;
     }
 
     pub(crate) fn heartbeat_periodically(&self, heartbeat_interval: u64) {
@@ -372,9 +372,20 @@ impl ClusterActor {
             .collect()
     }
 
+    pub(crate) fn create_request_vote(&self, logger: &Logger<impl TWriteAheadLog>) -> RequestVote {
+        RequestVote {
+            term: self.replication.term + 1,
+            candidate_id: self.replication.self_identifier(),
+            last_log_index: logger.log_index,
+            // TODO term must be from log
+            last_log_term: self.replication.term,
+        }
+    }
+
     pub(crate) async fn start_leader_election(
         &mut self,
         callback: tokio::sync::oneshot::Sender<()>,
+        logger: &Logger<impl TWriteAheadLog>,
     ) {
         let ElectionState::Follower = self.election_state else {
             let _ = callback.send(());
@@ -382,6 +393,13 @@ impl ClusterActor {
         };
 
         self.election_state.run_candidate(&self.replication, self.followers().count(), callback);
+        let request_vote = self.create_request_vote(logger);
+
+        self.followers_mut()
+            .map(|(peer, _)| peer.write_io(QueryIO::RequestVote(request_vote.clone())))
+            .collect::<FuturesUnordered<_>>()
+            .for_each(|_| async {})
+            .await;
     }
 }
 
