@@ -127,10 +127,23 @@ impl ClusterActor {
             .ban_list
             .sort_by_key(|node| (node.p_id.clone(), std::cmp::Reverse(node.ban_time)));
         self.replication.ban_list.dedup_by_key(|node| node.p_id.clone());
-
+    }
+    fn retain_only_recent_banned_nodes(&mut self) {
         // remove the nodes that are banned for more than 60 seconds
         let current_time_in_sec = time_in_secs().unwrap();
         self.replication.ban_list.retain(|node| current_time_in_sec - node.ban_time < 60);
+    }
+    async fn remove_banned_peers(&mut self) {
+        let ban_list = self.replication.ban_list.clone();
+        for banned_peer in ban_list {
+            let _ = self.remove_peer(&banned_peer.p_id).await;
+        }
+    }
+
+    pub(crate) async fn apply_ban_list(&mut self, ban_list: Vec<BannedPeer>) {
+        self.merge_ban_list(ban_list);
+        self.retain_only_recent_banned_nodes();
+        self.remove_banned_peers().await;
     }
 
     pub(crate) fn update_on_hertbeat_message(&mut self, heartheat: &HeartBeatMessage) {
@@ -142,17 +155,6 @@ impl ClusterActor {
             }
         }
     }
-
-    pub(crate) async fn update_ban_list(&mut self, ban_list: Vec<BannedPeer>) {
-        self.merge_ban_list(ban_list);
-
-        for node in
-            self.replication.ban_list.iter().map(|node| node.p_id.clone()).collect::<Vec<_>>()
-        {
-            self.remove_peer(&node).await;
-        }
-    }
-
     pub(crate) async fn try_create_append_entries(
         &mut self,
         logger: &mut Logger<impl TWriteAheadLog>,

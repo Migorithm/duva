@@ -48,7 +48,7 @@ impl ClusterActor {
                     }
                     self.gossip(heartbeat.hop_count).await;
                     self.update_on_hertbeat_message(&heartbeat);
-                    self.update_ban_list(heartbeat.ban_list).await;
+                    self.apply_ban_list(heartbeat.ban_list).await;
                 },
                 ClusterCommand::ForgetPeer(peer_addr, sender) => {
                     if let Ok(Some(())) = self.forget_peer(peer_addr).await {
