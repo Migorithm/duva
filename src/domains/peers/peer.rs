@@ -12,7 +12,6 @@ use crate::domains::peers::connected_types::WriteConnected;
 use crate::domains::query_parsers::QueryIO;
 use crate::services::interface::TWrite;
 use bytes::Bytes;
-use std::fmt::Display;
 
 use tokio::net::TcpStream;
 use tokio::net::tcp::OwnedReadHalf;

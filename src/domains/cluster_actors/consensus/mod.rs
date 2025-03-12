@@ -7,10 +7,7 @@ use crate::{
     make_smart_pointer,
 };
 
-use super::{
-    commands::{RequestVoteReply, WriteConsensusResponse},
-    replication::ReplicationInfo,
-};
+use super::commands::{RequestVoteReply, WriteConsensusResponse};
 
 #[derive(Debug)]
 pub struct ConsensusVoting<T> {

@@ -29,7 +29,7 @@ pub struct ClusterActor {
 }
 
 impl ClusterActor {
-    pub fn new(node_timeout: u128, init_repl_info: ReplicationInfo) -> Self {
+    pub(crate) fn new(node_timeout: u128, init_repl_info: ReplicationInfo) -> Self {
         let (self_handler, receiver) = tokio::sync::mpsc::channel(100);
         Self {
             election_state: ElectionState::new(init_repl_info.role()),
@@ -43,7 +43,7 @@ impl ClusterActor {
         }
     }
 
-    pub fn hop_count(&self, fanout: usize, node_count: usize) -> u8 {
+    pub(crate) fn hop_count(&self, fanout: usize, node_count: usize) -> u8 {
         if node_count <= fanout {
             return 0;
         }
@@ -66,9 +66,6 @@ impl ClusterActor {
 
     fn find_follower_mut(&mut self, peer_id: &PeerIdentifier) -> Option<&mut Peer> {
         self.members.get_mut(peer_id).filter(|peer| matches!(peer.kind, PeerKind::Follower { .. }))
-    }
-    fn find_follower(&self, peer_id: &PeerIdentifier) -> Option<&Peer> {
-        self.members.get(peer_id).filter(|peer| matches!(peer.kind, PeerKind::Follower { .. }))
     }
 
     pub(crate) async fn send_liveness_heartbeat(&mut self, hop_count: u8) {
@@ -94,7 +91,7 @@ impl ClusterActor {
             existing_peer.kill().await;
         }
     }
-    pub async fn remove_peer(&mut self, peer_addr: &PeerIdentifier) -> Option<()> {
+    pub(crate) async fn remove_peer(&mut self, peer_addr: &PeerIdentifier) -> Option<()> {
         if let Some(peer) = self.members.remove(peer_addr) {
             // stop the runnin process and take the connection in case topology changes are made
             let _read_connected = peer.kill().await;

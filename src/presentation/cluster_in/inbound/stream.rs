@@ -13,7 +13,6 @@ use crate::presentation::cluster_in::communication_manager::ClusterCommunication
 use crate::services::interface::TGetPeerIp;
 use crate::services::interface::TRead;
 use crate::services::interface::TWrite;
-
 use tokio::net::TcpStream;
 use tokio::sync::mpsc::Sender;
 
@@ -30,7 +29,7 @@ impl InboundStream {
     pub(crate) fn new(stream: TcpStream, self_repl_info: ReplicationInfo) -> Self {
         Self { stream, self_repl_info, peer_info: Default::default() }
     }
-    pub async fn recv_threeway_handshake(&mut self) -> anyhow::Result<()> {
+    pub(crate) async fn recv_threeway_handshake(&mut self) -> anyhow::Result<()> {
         self.recv_ping().await?;
 
         let port = self.recv_replconf_listening_port().await?;

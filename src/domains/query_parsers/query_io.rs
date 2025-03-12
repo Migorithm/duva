@@ -462,8 +462,8 @@ mod test {
         let me = PeerIdentifier::new("me".into(), 6035);
         let leader = PeerIdentifier::new("leader".into(), 6036);
         let banned_list = vec![
-            BannedPeer { p_id: "banned1".into(), ban_time: 3553 },
-            BannedPeer { p_id: "banned2".into(), ban_time: 3556 },
+            BannedPeer { p_id: PeerIdentifier("banned1".into()), ban_time: 3553 },
+            BannedPeer { p_id: PeerIdentifier("banned2".into()), ban_time: 3556 },
         ];
         let heartbeat = HeartBeatMessage {
             heartbeat_from: me.clone(),
@@ -511,7 +511,7 @@ mod test {
         // GIVEN
         let request_vote = RequestVote {
             term: 1,
-            candidate_id: "me".into(),
+            candidate_id: PeerIdentifier("me".into()),
             last_log_index: 5.into(),
             last_log_term: 1,
         };

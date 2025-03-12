@@ -1,7 +1,6 @@
 use crate::domains::peers::identifier::PeerIdentifier;
 use crate::domains::peers::peer::Peer;
 use crate::domains::peers::peer::PeerKind;
-use crate::services::interface::TWrite;
 use consensus::LogConsensusTracker;
 use futures::StreamExt;
 use futures::stream::FuturesUnordered;
