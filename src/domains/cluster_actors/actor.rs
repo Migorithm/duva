@@ -375,7 +375,16 @@ impl ClusterActor {
         self.members
             .values()
             .into_iter()
-            .map(|peer| peer.to_string())
+            .map(|peer| match &peer.kind {
+                PeerKind::Follower { watermark: hwm, leader_repl_id } => {
+                    format!("{} follower {}", peer.addr, leader_repl_id)
+                },
+                PeerKind::Leader => format!("{} leader - 0", peer.addr),
+                PeerKind::PFollower { leader_repl_id } => {
+                    format!("{} follower {}", peer.addr, leader_repl_id)
+                },
+                PeerKind::PLeader => format!("{} leader - 0", peer.addr),
+            })
             .chain(std::iter::once(self.replication.self_info()))
             .collect()
     }

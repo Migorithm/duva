@@ -108,21 +108,6 @@ impl PeerKind {
     }
 }
 
-impl Display for Peer {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match &self.kind {
-            PeerKind::Follower { watermark: hwm, leader_repl_id } => {
-                write!(f, "{} follower {}", self.addr, leader_repl_id)
-            },
-            PeerKind::Leader => write!(f, "{} leader - 0", self.addr),
-            PeerKind::PFollower { leader_repl_id } => {
-                write!(f, "{} follower {}", self.addr, leader_repl_id)
-            },
-            PeerKind::PLeader => write!(f, "{} leader - 0", self.addr),
-        }
-    }
-}
-
 #[derive(Debug)]
 pub(crate) struct ListeningActorKillTrigger(
     tokio::sync::oneshot::Sender<()>,
