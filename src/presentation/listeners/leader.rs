@@ -35,9 +35,12 @@ impl ClusterListener<Leader> {
                         Err(e)=> {
                             // Most likely connection close case
                             println!("Error reading command: {:?}", e);
-                            tokio::time::sleep(Duration::from_millis(rand::random_range(800..1200))).await;
-                            self.start_leader_election().await;
+                            tokio::time::sleep(Duration::from_millis(rand::random_range(0..700))).await;
+                            while !self.start_leader_election().await{
+                                tokio::time::sleep(Duration::from_millis(rand::random_range(800..1200))).await;
+                            }
                             break;
+
                         }
                     }
                 },

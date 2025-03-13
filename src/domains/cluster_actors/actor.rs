@@ -440,6 +440,12 @@ impl ClusterActor {
             consensus::enums::ConsensusState::NotYetFinished => return,
         };
 
+        self.followers_mut()
+            .map(|(peer, _)| peer.write_io(msg.clone()))
+            .collect::<FuturesUnordered<_>>()
+            .for_each(|_| async {})
+            .await;
+
         //TODO - how to notify other followers of this election? What's the rule?
     }
 }

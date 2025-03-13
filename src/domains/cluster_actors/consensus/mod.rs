@@ -4,6 +4,7 @@ use crate::{
     domains::{append_only_files::log::LogIndex, peers::identifier::PeerIdentifier},
     make_smart_pointer,
 };
+
 use enums::ConsensusState;
 use std::collections::HashMap;
 use tokio::sync::oneshot::Sender;
@@ -37,7 +38,7 @@ impl ConsensusVoting<WriteConsensusResponse> {
 }
 
 impl ConsensusVoting<bool> {
-    pub fn maybe_not_finished(mut self, granted: bool) -> Option<Self> {
+    pub fn maybe_not_finished(mut self, granted: bool) -> Result<bool, Self> {
         if granted {
             self.increase_vote();
         } else {
@@ -47,14 +48,12 @@ impl ConsensusVoting<bool> {
         let required_count = self.get_required_votes();
         if self.pos_vt >= required_count {
             let _ = self.callback.send(true);
-            None
-        } else if self.neg_vt >= required_count
-            || self.neg_vt + self.pos_vt >= self.replica_count as u8
-        {
-            let _ = self.callback.send(false);
-            None
+            Ok(true)
+        } else if self.neg_vt >= required_count {
+            let _ = self.callback.send(true);
+            Ok(false)
         } else {
-            Some(self)
+            Err(self)
         }
     }
 }
@@ -83,6 +82,7 @@ pub enum ElectionState {
     Follower { voted_for: Option<PeerIdentifier> },
     Leader,
 }
+
 impl ElectionState {
     pub(crate) fn new(role: &str) -> Self {
         match role {
@@ -114,9 +114,6 @@ impl ElectionState {
         }
     }
 
-    // not yet finished
-    // finished - failed
-    // finished - succeded
     pub(crate) fn may_become_leader(
         &mut self,
         request_vote_reply: RequestVoteReply,
@@ -127,15 +124,20 @@ impl ElectionState {
                     return ConsensusState::NotYetFinished;
                 };
 
-                if let Some(unfinished_voting) =
-                    current_voting.maybe_not_finished(request_vote_reply.vote_granted)
-                {
-                    *voting = Some(unfinished_voting);
-
-                    return ConsensusState::NotYetFinished;
-                } else {
-                    *self = ElectionState::Leader;
-                    return ConsensusState::Succeeded;
+                match current_voting.maybe_not_finished(request_vote_reply.vote_granted) {
+                    Ok(become_leader) => {
+                        if become_leader {
+                            *self = ElectionState::Leader;
+                            return ConsensusState::Succeeded;
+                        } else {
+                            *self = ElectionState::Follower { voted_for: None };
+                            return ConsensusState::Failed;
+                        }
+                    },
+                    Err(unfinished_voting) => {
+                        *voting = Some(unfinished_voting);
+                        return ConsensusState::NotYetFinished;
+                    },
                 }
             },
             _ => ConsensusState::NotYetFinished,
