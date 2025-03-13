@@ -421,6 +421,7 @@ impl ClusterActor {
         if grant_vote {
             self.election_state =
                 ElectionState::Follower { voted_for: Some(request_vote.candidate_id.clone()) };
+            self.replication.term = request_vote.term;
         }
 
         let term = self.replication.term;
