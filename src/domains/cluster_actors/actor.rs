@@ -398,12 +398,7 @@ impl ClusterActor {
         };
 
         self.election_state.to_candidate(self.followers().count(), callback);
-        let request_vote = RequestVote::new(
-            self.replication.term,
-            self.replication.self_identifier(),
-            last_log_index,
-            last_log_term,
-        );
+        let request_vote = RequestVote::new(&self.replication, last_log_index, last_log_term);
 
         self.followers_mut()
             .map(|(peer, _)| peer.write_io(request_vote.clone()))
