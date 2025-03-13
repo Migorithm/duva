@@ -494,6 +494,7 @@ mod test {
                 "127.0.0.1:30006 follower 127.0.0.1:30003".into(),
                 "127.0.0.1:30001 myself,leader - 0-5460".into(),
             ],
+            election_result: None,
         };
         let replicate = QueryIO::HeartBeat(heartbeat);
 

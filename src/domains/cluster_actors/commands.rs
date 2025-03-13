@@ -14,7 +14,6 @@ pub enum ClusterCommand {
     },
     InstallLeaderState(Vec<WriteOperation>),
     SendHeartBeat,
-
     ForgetPeer(PeerIdentifier, tokio::sync::oneshot::Sender<Option<()>>),
     LeaderReqConsensus {
         log: WriteRequest,
@@ -24,14 +23,12 @@ pub enum ClusterCommand {
     SendCommitHeartBeat {
         log_idx: LogIndex,
     },
-
     ReceiveHeartBeat(HeartBeatMessage),
-
     HandleLeaderHeartBeat(HeartBeatMessage),
     SendLeaderHeartBeat,
     ClusterNodes(tokio::sync::oneshot::Sender<Vec<String>>),
     FetchCurrentState(tokio::sync::oneshot::Sender<Vec<WriteOperation>>),
-    StartLeaderElection(tokio::sync::oneshot::Sender<()>),
+    StartLeaderElection(tokio::sync::oneshot::Sender<bool>),
     VoteElection(RequestVote),
     ApplyElectionVote(RequestVoteReply),
 }
