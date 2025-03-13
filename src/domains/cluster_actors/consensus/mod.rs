@@ -35,6 +35,7 @@ impl ConsensusVoting<WriteConsensusResponse> {
 impl ConsensusVoting<()> {
     pub fn maybe_not_finished(mut self, granted: bool) -> Option<Self> {
         if granted {
+            println!("111");
             self.increase_vote();
             if self.vote_count >= self.required_votes {
                 let _ = self.callback.send(());

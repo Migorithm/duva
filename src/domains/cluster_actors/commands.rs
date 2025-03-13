@@ -56,12 +56,16 @@ pub struct RequestVote {
 }
 impl RequestVote {
     pub(crate) fn new(
-        term: u64,
-        candidate_id: PeerIdentifier,
+        repl: &ReplicationInfo,
         last_log_index: LogIndex,
         last_log_term: u64,
     ) -> Self {
-        Self { term, candidate_id, last_log_index, last_log_term }
+        Self {
+            term: repl.term + 1,
+            candidate_id: repl.self_identifier(),
+            last_log_index,
+            last_log_term,
+        }
     }
 }
 
