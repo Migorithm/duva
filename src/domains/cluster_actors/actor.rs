@@ -397,6 +397,8 @@ impl ClusterActor {
             return;
         };
 
+        // ! increment the term and vote for self
+        self.replication.term += 1;
         self.election_state.to_candidate(self.followers().count(), callback);
         let request_vote = RequestVote::new(&self.replication, last_log_index, last_log_term);
 
@@ -432,13 +434,17 @@ impl ClusterActor {
         let msg = match self.election_state.may_become_leader(request_vote_reply) {
             consensus::enums::ConsensusState::Succeeded => {
                 self.replication.set_leader_state();
-                self.replication.default_heartbeat(0).set_election_result(true)
+                self.replication.default_heartbeat(0)
             },
-            consensus::enums::ConsensusState::Failed => {
-                self.replication.default_heartbeat(0).set_election_result(false)
-            },
+            consensus::enums::ConsensusState::Failed => self.replication.default_heartbeat(0),
             consensus::enums::ConsensusState::NotYetFinished => return,
         };
+
+        self.followers_mut()
+            .map(|(peer, _)| peer.write_io(msg.clone()))
+            .collect::<FuturesUnordered<_>>()
+            .for_each(|_| async {})
+            .await;
 
         //TODO - how to notify other followers of this election? What's the rule?
     }
@@ -481,7 +487,6 @@ mod test {
             leader_replid: "localhost".to_string().into(),
             hop_count: 0,
             cluster_nodes: vec![],
-            election_result: None,
         }
     }
 
