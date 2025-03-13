@@ -1,29 +1,33 @@
-use std::collections::HashMap;
-
-use tokio::sync::oneshot::Sender;
-
+pub mod enums;
+use super::commands::{RequestVoteReply, WriteConsensusResponse};
 use crate::{
     domains::{append_only_files::log::LogIndex, peers::identifier::PeerIdentifier},
     make_smart_pointer,
 };
-
-use super::commands::{RequestVoteReply, WriteConsensusResponse};
+use enums::ConsensusState;
+use std::collections::HashMap;
+use tokio::sync::oneshot::Sender;
 
 #[derive(Debug)]
 pub struct ConsensusVoting<T> {
     callback: Sender<T>,
-    vote_count: u8,
-    required_votes: u8,
+    pos_vt: u8,
+    neg_vt: u8,
+    replica_count: usize,
 }
 impl<T> ConsensusVoting<T> {
     pub fn increase_vote(&mut self) {
-        self.vote_count += 1;
+        self.pos_vt += 1;
+    }
+
+    fn get_required_votes(&self) -> u8 {
+        ((self.replica_count as f64 + 1.0) / 2.0).ceil() as u8
     }
 }
 
 impl ConsensusVoting<WriteConsensusResponse> {
     pub fn maybe_not_finished(self, log_index: LogIndex) -> Option<Self> {
-        if self.vote_count >= self.required_votes {
+        if self.pos_vt >= self.get_required_votes() {
             let _ = self.callback.send(WriteConsensusResponse::LogIndex(Some(log_index)));
             None
         } else {
@@ -32,17 +36,23 @@ impl ConsensusVoting<WriteConsensusResponse> {
     }
 }
 
-impl ConsensusVoting<()> {
+impl ConsensusVoting<bool> {
     pub fn maybe_not_finished(mut self, granted: bool) -> Option<Self> {
         if granted {
-            println!("111");
             self.increase_vote();
-            if self.vote_count >= self.required_votes {
-                let _ = self.callback.send(());
-                None
-            } else {
-                Some(self)
-            }
+        } else {
+            self.neg_vt += 1;
+        }
+
+        let required_count = self.get_required_votes();
+        if self.pos_vt >= required_count {
+            let _ = self.callback.send(true);
+            None
+        } else if self.neg_vt >= required_count
+            || self.neg_vt + self.pos_vt >= self.replica_count as u8
+        {
+            let _ = self.callback.send(false);
+            None
         } else {
             Some(self)
         }
@@ -58,14 +68,8 @@ impl LogConsensusTracker {
         value: Sender<WriteConsensusResponse>,
         replica_count: usize,
     ) {
-        self.0.insert(
-            key,
-            ConsensusVoting {
-                callback: value,
-                vote_count: 0,
-                required_votes: get_required_votes(replica_count),
-            },
-        );
+        self.0
+            .insert(key, ConsensusVoting { callback: value, pos_vt: 0, neg_vt: 0, replica_count });
     }
     pub fn take(&mut self, offset: &LogIndex) -> Option<ConsensusVoting<WriteConsensusResponse>> {
         self.0.remove(offset)
@@ -75,7 +79,7 @@ make_smart_pointer!(LogConsensusTracker, HashMap<LogIndex, ConsensusVoting<Write
 
 #[derive(Debug)]
 pub enum ElectionState {
-    Candidate { voting: Option<ConsensusVoting<()>> },
+    Candidate { voting: Option<ConsensusVoting<bool>> },
     Follower { voted_for: Option<PeerIdentifier> },
     Leader,
 }
@@ -90,14 +94,10 @@ impl ElectionState {
     pub(crate) fn to_candidate(
         &mut self,
         replica_count: usize,
-        callback: tokio::sync::oneshot::Sender<()>,
+        callback: tokio::sync::oneshot::Sender<bool>,
     ) {
         *self = ElectionState::Candidate {
-            voting: Some(ConsensusVoting {
-                callback,
-                vote_count: 1,
-                required_votes: get_required_votes(replica_count),
-            }),
+            voting: Some(ConsensusVoting { callback, pos_vt: 1, neg_vt: 0, replica_count }),
         };
     }
 
@@ -114,11 +114,17 @@ impl ElectionState {
         }
     }
 
-    pub(crate) fn may_become_leader(&mut self, request_vote_reply: RequestVoteReply) -> bool {
+    // not yet finished
+    // finished - failed
+    // finished - succeded
+    pub(crate) fn may_become_leader(
+        &mut self,
+        request_vote_reply: RequestVoteReply,
+    ) -> ConsensusState {
         match self {
             ElectionState::Candidate { voting } => {
                 let Some(current_voting) = voting.take() else {
-                    return false;
+                    return ConsensusState::NotYetFinished;
                 };
 
                 if let Some(unfinished_voting) =
@@ -126,17 +132,13 @@ impl ElectionState {
                 {
                     *voting = Some(unfinished_voting);
 
-                    return false;
+                    return ConsensusState::NotYetFinished;
                 } else {
                     *self = ElectionState::Leader;
-                    return true;
+                    return ConsensusState::Succeeded;
                 }
             },
-            _ => false,
+            _ => ConsensusState::NotYetFinished,
         }
     }
-}
-
-fn get_required_votes(replica_count: usize) -> u8 {
-    ((replica_count as f64 + 1.0) / 2.0).ceil() as u8
 }

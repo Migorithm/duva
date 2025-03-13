@@ -388,12 +388,12 @@ impl ClusterActor {
 
     pub(crate) async fn run_for_election(
         &mut self,
-        callback: tokio::sync::oneshot::Sender<()>,
+        callback: tokio::sync::oneshot::Sender<bool>,
         last_log_index: LogIndex,
         last_log_term: u64,
     ) {
         let ElectionState::Follower { voted_for: None } = self.election_state else {
-            let _ = callback.send(());
+            let _ = callback.send(false);
             return;
         };
 
@@ -429,13 +429,18 @@ impl ClusterActor {
     }
 
     pub(crate) async fn tally_vote(&mut self, request_vote_reply: RequestVoteReply) {
-        if !self.election_state.may_become_leader(request_vote_reply) {
-            return;
+        let msg = match self.election_state.may_become_leader(request_vote_reply) {
+            consensus::enums::ConsensusState::Succeeded => {
+                self.replication.set_leader_state();
+                self.replication.default_heartbeat(0).set_election_result(true)
+            },
+            consensus::enums::ConsensusState::Failed => {
+                self.replication.default_heartbeat(0).set_election_result(false)
+            },
+            consensus::enums::ConsensusState::NotYetFinished => return,
         };
-        println!("[INFO] {} won leader election", self.replication.self_identifier());
 
         //TODO - how to notify other followers of this election? What's the rule?
-        self.replication.become_leader();
     }
 }
 
@@ -476,6 +481,7 @@ mod test {
             leader_replid: "localhost".to_string().into(),
             hop_count: 0,
             cluster_nodes: vec![],
+            election_result: None,
         }
     }
 

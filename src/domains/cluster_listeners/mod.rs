@@ -45,6 +45,14 @@ impl<T> ClusterListener<T> {
         let (callback, rx) = tokio::sync::oneshot::channel();
         let _ = self.cluster_handler.send(ClusterCommand::StartLeaderElection(callback)).await;
 
-        let _ = rx.await;
+        let Ok(became_leader) = rx.await else {
+            return;
+        };
+
+        if became_leader {
+            println!("[INFO] I am the leader");
+        } else {
+            println!("[INFO] I am not the leader")
+        };
     }
 }

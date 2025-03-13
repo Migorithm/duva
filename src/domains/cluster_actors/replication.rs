@@ -101,6 +101,7 @@ impl ReplicationInfo {
             ban_list: self.ban_list.clone(),
             append_entries: vec![],
             cluster_nodes: vec![],
+            election_result: None,
         }
     }
 
@@ -119,11 +120,11 @@ impl ReplicationInfo {
         self.leader_host.is_none()
     }
 
-    pub(crate) fn become_leader(&mut self) {
+    pub(crate) fn set_leader_state(&mut self) {
         self.role = "leader".to_string();
+        self.term += 1;
         self.leader_host = None;
         self.leader_port = None;
-
         self.leader_repl_id = self.self_identifier();
     }
 }
@@ -146,6 +147,7 @@ pub struct HeartBeatMessage {
     pub(crate) ban_list: Vec<BannedPeer>,
     pub(crate) append_entries: Vec<WriteOperation>,
     pub(crate) cluster_nodes: Vec<String>,
+    pub(crate) election_result: Option<bool>,
 }
 impl HeartBeatMessage {
     pub(crate) fn set_append_entries(mut self, entries: Vec<WriteOperation>) -> Self {
@@ -156,6 +158,10 @@ impl HeartBeatMessage {
     pub(crate) fn set_cluster_nodes(mut self, cluster_nodes: Vec<String>) -> Self {
         self.cluster_nodes = cluster_nodes;
         self
+    }
+
+    pub(crate) fn set_election_result(self, arg: bool) -> HeartBeatMessage {
+        HeartBeatMessage { election_result: Some(arg), ..self }
     }
 }
 
@@ -177,6 +183,7 @@ impl Default for HeartBeatMessage {
             ban_list: vec![],
             append_entries: vec![],
             cluster_nodes: vec![],
+            election_result: None,
         }
     }
 }
