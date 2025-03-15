@@ -75,7 +75,6 @@ impl OutboundStream {
                         connection_info.leader_repl_id = repl_id.into();
                         connection_info.hwm = offset;
                         connection_info.id = id.into();
-                        println!("given id {}", connection_info.id);
                         println!("[INFO] Three-way handshake completed")
                     },
                     ConnectionResponse::PEERS(peer_list) => {

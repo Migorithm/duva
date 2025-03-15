@@ -1,0 +1,8 @@
+[profile.default]
+retries = 0          # this is the default, so it doesn't need to be specified
+slow-timeout = "15s"
+
+
+[profile.ci]
+retries = 1
+slow-timeout = { period = "15s", terminate-after = 2 }
