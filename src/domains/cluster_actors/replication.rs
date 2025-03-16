@@ -142,11 +142,27 @@ impl ReplicationState {
         res
     }
 
-    pub(crate) fn may_become_leader(&mut self, granted: bool) -> ConsensusState {
-        self.election_state.may_become_leader(granted)
+    pub(crate) fn may_become_leader(&mut self, granted: bool) -> bool {
+        match self.election_state.may_become_leader(granted) {
+            ConsensusState::Succeeded => {
+                println!("[INFO] Election succeeded");
+                self.set_leader_state();
+                true
+            },
+            ConsensusState::Failed => {
+                println!("[INFO] Election failed");
+                self.reset_election_state();
+                true
+            },
+            ConsensusState::NotYetFinished => false,
+        }
+    }
+    fn reset_election_state(&mut self) {
+        // TODO leader id set to none
+        self.election_state = ElectionState::Follower { voted_for: None };
     }
 
-    pub(crate) fn set_leader_state(&mut self) {
+    fn set_leader_state(&mut self) {
         self.role = "leader".to_string();
         self.leader_host = None;
         self.leader_port = None;
@@ -159,7 +175,6 @@ impl ReplicationState {
             // If the term is lower, this cannot be from the current leader
             return false;
         }
-        dbg!(&heartbeat.leader_replid);
 
         heartbeat.leader_replid == self.leader_repl_id
     }

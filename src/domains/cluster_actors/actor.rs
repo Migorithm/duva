@@ -384,15 +384,13 @@ impl ClusterActor {
     }
 
     pub(crate) async fn tally_vote(&mut self, request_vote_reply: RequestVoteReply) {
-        let msg = match self.replication.may_become_leader(request_vote_reply.vote_granted) {
-            consensus::enums::ConsensusState::Succeeded => {
-                println!("[INFO] Election succeeded");
-                self.replication.set_leader_state();
-                self.replication.default_heartbeat(0)
-            },
-            consensus::enums::ConsensusState::Failed => self.replication.default_heartbeat(0),
-            consensus::enums::ConsensusState::NotYetFinished => return,
-        };
+        let election_process_finished =
+            self.replication.may_become_leader(request_vote_reply.vote_granted);
+
+        if !election_process_finished {
+            return;
+        }
+        let msg = self.replication.default_heartbeat(0);
 
         self.followers_mut()
             .map(|(peer, _)| peer.write_io(msg.clone()))

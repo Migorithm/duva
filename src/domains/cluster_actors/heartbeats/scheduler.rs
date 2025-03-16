@@ -83,7 +83,7 @@ impl HeartBeatScheduler {
                         }
                     },
                     _ =  tokio::time::sleep(Duration::from_millis(rand::random_range(LEADER_HEARTBEAT_INTERVAL*3..LEADER_HEARTBEAT_INTERVAL*5)))=>{
-                        println!("Election timeout");
+                        eprintln!("\x1b[33m[WARN] Election timeout\x1b[0m");
                         let _ = cluster_handler.send(ClusterCommand::StartLeaderElection).await;
 
                     }
