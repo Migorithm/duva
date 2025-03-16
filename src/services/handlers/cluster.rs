@@ -2,6 +2,7 @@ use crate::domains::append_only_files::interfaces::TWriteAheadLog;
 use crate::domains::append_only_files::logger::Logger;
 use crate::domains::caches::cache_manager::CacheManager;
 use crate::domains::cluster_actors::commands::ClusterCommand;
+use crate::domains::cluster_actors::heartbeats::scheduler::HeartBeatScheduler;
 use crate::domains::cluster_actors::replication::ReplicationInfo;
 use crate::domains::cluster_actors::{ClusterActor, FANOUT};
 use tokio::sync::mpsc::Sender;
@@ -14,8 +15,11 @@ impl ClusterActor {
         heartbeat_interval_in_mills: u64,
     ) -> anyhow::Result<Self> {
         let mut logger = Logger::new(wal);
-        self.heartbeat_periodically(heartbeat_interval_in_mills);
-        self.leader_heartbeat_periodically();
+        let mut heartbeat_scheduler = HeartBeatScheduler::run(
+            self.self_handler.clone(),
+            self.replication.is_leader_mode(),
+            heartbeat_interval_in_mills,
+        );
 
         while let Some(command) = self.receiver.recv().await {
             match command {

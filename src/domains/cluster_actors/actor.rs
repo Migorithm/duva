@@ -13,8 +13,6 @@ use crate::domains::append_only_files::interfaces::TWriteAheadLog;
 use crate::domains::append_only_files::log::LogIndex;
 use crate::domains::append_only_files::logger::Logger;
 use crate::domains::{caches::cache_manager::CacheManager, query_parsers::QueryIO};
-use std::time::Duration;
-use tokio::{select, time::interval};
 
 #[derive(Debug)]
 pub struct ClusterActor {
@@ -25,7 +23,6 @@ pub struct ClusterActor {
     pub(crate) election_state: ElectionState,
     pub(crate) receiver: tokio::sync::mpsc::Receiver<ClusterCommand>,
     pub(crate) self_handler: tokio::sync::mpsc::Sender<ClusterCommand>,
-    leader_mode_heartbeat_sender: Option<tokio::sync::oneshot::Sender<()>>,
 }
 
 impl ClusterActor {
@@ -38,7 +35,6 @@ impl ClusterActor {
             receiver,
             self_handler,
             members: BTreeMap::new(),
-            leader_mode_heartbeat_sender: None,
             consensus_tracker: LogConsensusTracker::default(),
         }
     }
@@ -330,42 +326,6 @@ impl ClusterActor {
             .collect::<FuturesUnordered<_>>()
             .for_each(|_| async {})
             .await;
-    }
-
-    pub(crate) fn heartbeat_periodically(&self, heartbeat_interval: u64) {
-        let actor_handler = self.self_handler.clone();
-        tokio::spawn(async move {
-            let mut heartbeat_interval = interval(Duration::from_millis(heartbeat_interval));
-            loop {
-                heartbeat_interval.tick().await;
-                let _ = actor_handler.send(ClusterCommand::SendHeartBeat).await;
-            }
-        });
-    }
-    pub(crate) fn leader_heartbeat_periodically(&mut self) {
-        const LEADER_HEARTBEAT_INTERVAL: u64 = 300;
-        let is_leader_mode = self.replication.is_leader_mode();
-        if !is_leader_mode {
-            return;
-        }
-        let actor_handler = self.self_handler.clone();
-
-        let (tx, rx) = tokio::sync::oneshot::channel::<()>();
-
-        tokio::spawn(async move {
-            select! {
-                _ = rx => {},
-                _ = async {
-                    let mut heartbeat_interval = interval(Duration::from_millis(LEADER_HEARTBEAT_INTERVAL));
-                    loop {
-                        heartbeat_interval.tick().await;
-                        let _ = actor_handler.send(ClusterCommand::SendLeaderHeartBeat).await;
-                    }
-                } => {},
-            }
-        });
-
-        self.leader_mode_heartbeat_sender = Some(tx);
     }
 
     pub(crate) fn cluster_nodes(&self) -> Vec<String> {

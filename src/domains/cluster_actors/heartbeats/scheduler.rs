@@ -6,6 +6,7 @@ use crate::domains::cluster_actors::commands::ClusterCommand;
 
 const LEADER_HEARTBEAT_INTERVAL: u64 = 300;
 
+#[derive(Debug)]
 pub(crate) struct HeartBeatScheduler {
     cluster_handler: Sender<ClusterCommand>,
     controller: ModeController,
@@ -14,10 +15,10 @@ pub(crate) struct HeartBeatScheduler {
 impl HeartBeatScheduler {
     pub fn run(
         cluster_handler: Sender<ClusterCommand>,
-        master_mode: bool,
+        is_leader_mode: bool,
         cluster_heartbeat_interval: u64,
     ) -> Self {
-        let controller = if master_mode {
+        let controller = if is_leader_mode {
             ModeController::Leader(Self::leader_heartbeat_periodically(
                 LEADER_HEARTBEAT_INTERVAL,
                 cluster_handler.clone(),
@@ -98,6 +99,7 @@ pub enum ElectionTimeOutCommand {
     Ping,
 }
 
+#[derive(Debug)]
 enum ModeController {
     Leader(tokio::sync::oneshot::Sender<()>),
     Follower(tokio::sync::mpsc::Sender<ElectionTimeOutCommand>),
