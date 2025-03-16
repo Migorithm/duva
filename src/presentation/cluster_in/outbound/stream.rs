@@ -1,12 +1,13 @@
 use super::response::ConnectionResponse;
 use crate::domains::cluster_actors::commands::AddPeer;
 use crate::domains::cluster_actors::commands::ClusterCommand;
-use crate::domains::cluster_actors::replication::ReplicationInfo;
+use crate::domains::cluster_actors::replication::ReplicationState;
 use crate::domains::peers::connected_peer_info::ConnectedPeerInfo;
 use crate::domains::peers::identifier::PeerIdentifier;
 use crate::domains::peers::peer::Peer;
 use crate::domains::peers::peer::PeerKind;
 use crate::presentation::cluster_in::connection_manager::ClusterConnectionManager;
+use crate::presentation::cluster_in::create_peer;
 use crate::services::interface::TRead;
 use crate::services::interface::TWrite;
 use crate::{make_smart_pointer, write_array};
@@ -17,7 +18,7 @@ use tokio::sync::mpsc::Sender;
 // The following is used only when the node is in follower mode
 pub(crate) struct OutboundStream {
     pub(crate) stream: TcpStream,
-    pub(crate) my_repl_info: ReplicationInfo,
+    pub(crate) my_repl_info: ReplicationState,
 
     connected_node_info: Option<ConnectedPeerInfo>,
     connect_to: PeerIdentifier,
@@ -27,7 +28,7 @@ make_smart_pointer!(OutboundStream, TcpStream => stream);
 impl OutboundStream {
     pub(crate) async fn new(
         connect_to: PeerIdentifier,
-        my_repl_info: ReplicationInfo,
+        my_repl_info: ReplicationState,
     ) -> anyhow::Result<Self> {
         Ok(OutboundStream {
             stream: TcpStream::connect(&connect_to.cluster_bind_addr()).await?,
@@ -63,7 +64,7 @@ impl OutboundStream {
                                 // "?" here means the server is undecided about their leader. and -1 is the offset that follower is aware of
                                 2 => Ok(write_array!(
                                     "PSYNC",
-                                    self.my_repl_info.leader_repl_id.clone(),
+                                    self.my_repl_info.leader_replid.clone(),
                                     self.my_repl_info.hwm.to_string()
                                 )),
                                 _ => Err(anyhow::anyhow!("Unexpected OK count")),
@@ -92,7 +93,7 @@ impl OutboundStream {
         self,
         cluster_manager: &ClusterConnectionManager,
     ) -> anyhow::Result<Self> {
-        if *self.my_repl_info.leader_repl_id == "?" {
+        if *self.my_repl_info.leader_replid == "?" {
             let connected_node_info = self
                 .connected_node_info
                 .as_ref()
@@ -115,10 +116,10 @@ impl OutboundStream {
             self.connected_node_info.context("Connected node info not found")?;
         let peer_list = connection_info.list_peer_binding_addrs();
 
-        let peer = Peer::create(
+        let peer = create_peer(
             (*self.connect_to).clone(),
             self.stream,
-            PeerKind::decide_peer_kind(&self.my_repl_info.leader_repl_id, connection_info),
+            PeerKind::decide_peer_kind(&self.my_repl_info.leader_replid, connection_info),
             cluster_actor_handler,
         );
 

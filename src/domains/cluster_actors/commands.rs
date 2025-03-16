@@ -1,13 +1,16 @@
-use super::replication::{HeartBeatMessage, ReplicationInfo};
+use bincode::de;
+
+use super::replication::{HeartBeatMessage, ReplicationState};
 use crate::domains::append_only_files::WriteOperation;
 use crate::domains::append_only_files::log::LogIndex;
 use crate::domains::peers::peer::Peer;
 use crate::domains::{append_only_files::WriteRequest, peers::identifier::PeerIdentifier};
 
+#[derive(Debug)]
 pub enum ClusterCommand {
     AddPeer(AddPeer),
     GetPeers(tokio::sync::oneshot::Sender<Vec<PeerIdentifier>>),
-    ReplicationInfo(tokio::sync::oneshot::Sender<ReplicationInfo>),
+    ReplicationInfo(tokio::sync::oneshot::Sender<ReplicationState>),
     SetReplicationInfo {
         leader_repl_id: PeerIdentifier,
         hwm: u64,
@@ -24,11 +27,11 @@ pub enum ClusterCommand {
         log_idx: LogIndex,
     },
     ReceiveHeartBeat(HeartBeatMessage),
-    HandleLeaderHeartBeat(HeartBeatMessage),
+
     SendLeaderHeartBeat,
     ClusterNodes(tokio::sync::oneshot::Sender<Vec<String>>),
     FetchCurrentState(tokio::sync::oneshot::Sender<Vec<WriteOperation>>),
-    StartLeaderElection(tokio::sync::oneshot::Sender<bool>),
+    StartLeaderElection,
     VoteElection(RequestVote),
     ApplyElectionVote(RequestVoteReply),
 }
@@ -39,6 +42,7 @@ pub enum WriteConsensusResponse {
     Err(String),
 }
 
+#[derive(Debug)]
 pub struct AddPeer {
     pub(crate) peer_id: PeerIdentifier,
     pub(crate) peer: Peer,
@@ -53,12 +57,12 @@ pub struct RequestVote {
 }
 impl RequestVote {
     pub(crate) fn new(
-        repl: &ReplicationInfo,
+        repl: &ReplicationState,
         last_log_index: LogIndex,
         last_log_term: u64,
     ) -> Self {
         Self {
-            term: repl.term + 1,
+            term: repl.term,
             candidate_id: repl.self_identifier(),
             last_log_index,
             last_log_term,
@@ -70,4 +74,35 @@ impl RequestVote {
 pub struct RequestVoteReply {
     pub(crate) term: u64,
     pub(crate) vote_granted: bool,
+}
+
+impl PartialEq for ClusterCommand {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::AddPeer(l0), Self::AddPeer(r0)) => true,
+            (Self::GetPeers(l0), Self::GetPeers(r0)) => true,
+            (Self::ReplicationInfo(l0), Self::ReplicationInfo(r0)) => true,
+            (
+                Self::SetReplicationInfo { leader_repl_id: l_leader_repl_id, hwm: l_hwm },
+                Self::SetReplicationInfo { leader_repl_id: r_leader_repl_id, hwm: r_hwm },
+            ) => l_leader_repl_id == r_leader_repl_id && l_hwm == r_hwm,
+            (Self::InstallLeaderState(l0), Self::InstallLeaderState(r0)) => l0 == r0,
+            (Self::ForgetPeer(l0, l1), Self::ForgetPeer(r0, r1)) => l0 == r0,
+            (
+                Self::LeaderReqConsensus { log: l_log, sender: l_sender },
+                Self::LeaderReqConsensus { log: r_log, sender: r_sender },
+            ) => l_log == r_log,
+            (Self::LeaderReceiveAcks(l0), Self::LeaderReceiveAcks(r0)) => l0 == r0,
+            (
+                Self::SendCommitHeartBeat { log_idx: l_log_idx },
+                Self::SendCommitHeartBeat { log_idx: r_log_idx },
+            ) => l_log_idx == r_log_idx,
+            (Self::ReceiveHeartBeat(l0), Self::ReceiveHeartBeat(r0)) => l0 == r0,
+            (Self::ClusterNodes(l0), Self::ClusterNodes(r0)) => true,
+            (Self::FetchCurrentState(l0), Self::FetchCurrentState(r0)) => true,
+            (Self::VoteElection(l0), Self::VoteElection(r0)) => l0 == r0,
+            (Self::ApplyElectionVote(l0), Self::ApplyElectionVote(r0)) => l0 == r0,
+            _ => core::mem::discriminant(self) == core::mem::discriminant(other),
+        }
+    }
 }

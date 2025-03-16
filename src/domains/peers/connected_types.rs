@@ -1,4 +1,3 @@
-use std::marker::PhantomData;
 use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
 
 #[derive(Debug)]
@@ -12,20 +11,15 @@ impl WriteConnected {
 }
 
 #[derive(Debug)]
-pub struct ReadConnected<T> {
+pub struct ReadConnected {
     pub stream: OwnedReadHalf,
-    pub kind: PhantomData<T>,
 }
 
-impl<T> ReadConnected<T> {
+impl ReadConnected {
     pub fn new(stream: OwnedReadHalf) -> Self {
-        Self { stream, kind: PhantomData }
+        Self { stream }
     }
 }
-
-pub struct Leader;
-pub struct Follower;
-pub struct NonDataPeer;
 
 impl From<OwnedWriteHalf> for WriteConnected {
     fn from(w: OwnedWriteHalf) -> WriteConnected {

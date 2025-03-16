@@ -2,9 +2,9 @@ use super::commands::AddPeer;
 use super::commands::RequestVote;
 use super::commands::RequestVoteReply;
 use super::commands::WriteConsensusResponse;
-use super::consensus::ElectionState;
+use super::heartbeats::scheduler::HeartBeatScheduler;
 use super::replication::HeartBeatMessage;
-use super::replication::ReplicationInfo;
+use super::replication::ReplicationState;
 use super::replication::time_in_secs;
 use super::{commands::ClusterCommand, replication::BannedPeer, *};
 use crate::domains::append_only_files::WriteOperation;
@@ -12,33 +12,40 @@ use crate::domains::append_only_files::WriteRequest;
 use crate::domains::append_only_files::interfaces::TWriteAheadLog;
 use crate::domains::append_only_files::log::LogIndex;
 use crate::domains::append_only_files::logger::Logger;
+use crate::domains::cluster_actors::election_state::ElectionState;
 use crate::domains::{caches::cache_manager::CacheManager, query_parsers::QueryIO};
-use std::time::Duration;
-use tokio::{select, time::interval};
 
 #[derive(Debug)]
 pub struct ClusterActor {
     pub(crate) members: BTreeMap<PeerIdentifier, Peer>,
-    pub(crate) replication: ReplicationInfo,
+    pub(crate) replication: ReplicationState,
     pub(crate) node_timeout: u128,
     pub(crate) consensus_tracker: LogConsensusTracker,
-    pub(crate) election_state: ElectionState,
     pub(crate) receiver: tokio::sync::mpsc::Receiver<ClusterCommand>,
     pub(crate) self_handler: tokio::sync::mpsc::Sender<ClusterCommand>,
-    leader_mode_heartbeat_sender: Option<tokio::sync::oneshot::Sender<()>>,
+    pub(crate) heartbeat_scheduler: HeartBeatScheduler,
 }
 
 impl ClusterActor {
-    pub(crate) fn new(node_timeout: u128, init_repl_info: ReplicationInfo) -> Self {
+    pub(crate) fn new(
+        node_timeout: u128,
+        init_repl_info: ReplicationState,
+        heartbeat_interval_in_mills: u64,
+    ) -> Self {
         let (self_handler, receiver) = tokio::sync::mpsc::channel(100);
+        let heartbeat_scheduler = HeartBeatScheduler::run(
+            self_handler.clone(),
+            init_repl_info.is_leader_mode(),
+            heartbeat_interval_in_mills,
+        );
+
         Self {
-            election_state: ElectionState::new(init_repl_info.role()),
+            heartbeat_scheduler,
             replication: init_repl_info,
             node_timeout,
             receiver,
             self_handler,
             members: BTreeMap::new(),
-            leader_mode_heartbeat_sender: None,
             consensus_tracker: LogConsensusTracker::default(),
         }
     }
@@ -87,7 +94,7 @@ impl ClusterActor {
 
         // If the map did have this key present, the value is updated, and the old
         // value is returned. The key is not updated,
-        if let Some(existing_peer) = self.members.insert(peer_addr.clone(), peer) {
+        if let Some(existing_peer) = self.members.insert(peer_addr, peer) {
             existing_peer.kill().await;
         }
     }
@@ -101,7 +108,7 @@ impl ClusterActor {
     }
 
     pub(crate) fn set_replication_info(&mut self, leader_repl_id: PeerIdentifier, hwm: u64) {
-        self.replication.leader_repl_id = leader_repl_id;
+        self.replication.leader_replid = leader_repl_id;
         self.replication.hwm = hwm;
     }
 
@@ -332,42 +339,6 @@ impl ClusterActor {
             .await;
     }
 
-    pub(crate) fn heartbeat_periodically(&self, heartbeat_interval: u64) {
-        let actor_handler = self.self_handler.clone();
-        tokio::spawn(async move {
-            let mut heartbeat_interval = interval(Duration::from_millis(heartbeat_interval));
-            loop {
-                heartbeat_interval.tick().await;
-                let _ = actor_handler.send(ClusterCommand::SendHeartBeat).await;
-            }
-        });
-    }
-    pub(crate) fn leader_heartbeat_periodically(&mut self) {
-        const LEADER_HEARTBEAT_INTERVAL: u64 = 300;
-        let is_leader_mode = self.replication.is_leader_mode();
-        if !is_leader_mode {
-            return;
-        }
-        let actor_handler = self.self_handler.clone();
-
-        let (tx, rx) = tokio::sync::oneshot::channel::<()>();
-
-        tokio::spawn(async move {
-            select! {
-                _ = rx => {},
-                _ = async {
-                    let mut heartbeat_interval = interval(Duration::from_millis(LEADER_HEARTBEAT_INTERVAL));
-                    loop {
-                        heartbeat_interval.tick().await;
-                        let _ = actor_handler.send(ClusterCommand::SendLeaderHeartBeat).await;
-                    }
-                } => {},
-            }
-        });
-
-        self.leader_mode_heartbeat_sender = Some(tx);
-    }
-
     pub(crate) fn cluster_nodes(&self) -> Vec<String> {
         self.members
             .values()
@@ -386,22 +357,15 @@ impl ClusterActor {
             .collect()
     }
 
-    pub(crate) async fn run_for_election(
-        &mut self,
-        callback: tokio::sync::oneshot::Sender<bool>,
-        last_log_index: LogIndex,
-        last_log_term: u64,
-    ) {
-        let ElectionState::Follower { voted_for: None } = self.election_state else {
-            let _ = callback.send(false);
+    pub(crate) async fn run_for_election(&mut self, last_log_index: LogIndex, last_log_term: u64) {
+        let ElectionState::Follower { voted_for: None } = self.replication.election_state else {
             return;
         };
 
-        // ! increment the term and vote for self
-        self.replication.term += 1;
-        self.election_state.to_candidate(self.followers().count(), callback);
+        self.replication.run_for_election(self.followers().count());
         let request_vote = RequestVote::new(&self.replication, last_log_index, last_log_term);
 
+        println!("[INFO] Running for election term {}", self.replication.term);
         self.followers_mut()
             .map(|(peer, _)| peer.write_io(request_vote.clone()))
             .collect::<FuturesUnordered<_>>()
@@ -414,15 +378,13 @@ impl ClusterActor {
         request_vote: RequestVote,
         current_log_idx: LogIndex,
     ) {
-        let grant_vote = self.election_state.is_votable(&request_vote.candidate_id)
-            && self.replication.term < request_vote.term
-            && current_log_idx <= request_vote.last_log_index;
+        let grant_vote = current_log_idx <= request_vote.last_log_index
+            && self.replication.may_become_follower(&request_vote.candidate_id, request_vote.term);
 
-        if grant_vote {
-            self.election_state =
-                ElectionState::Follower { voted_for: Some(request_vote.candidate_id.clone()) };
-            self.replication.term = request_vote.term;
-        }
+        println!(
+            "[INFO] Voting for {} with term {} and granted: {}",
+            request_vote.candidate_id, request_vote.term, grant_vote
+        );
 
         let term = self.replication.term;
         let Some(peer) = self.find_follower_mut(&request_vote.candidate_id) else {
@@ -432,14 +394,17 @@ impl ClusterActor {
     }
 
     pub(crate) async fn tally_vote(&mut self, request_vote_reply: RequestVoteReply) {
-        let msg = match self.election_state.may_become_leader(request_vote_reply) {
-            consensus::enums::ConsensusState::Succeeded => {
-                self.replication.set_leader_state();
-                self.replication.default_heartbeat(0)
-            },
-            consensus::enums::ConsensusState::Failed => self.replication.default_heartbeat(0),
-            consensus::enums::ConsensusState::NotYetFinished => return,
-        };
+        let election_process_finished =
+            self.replication.may_become_leader(request_vote_reply.vote_granted);
+
+        if !election_process_finished {
+            return;
+        }
+
+        if self.replication.is_leader_mode() {
+            self.heartbeat_scheduler.switch().await;
+        }
+        let msg = self.replication.default_heartbeat(0);
 
         self.followers_mut()
             .map(|(peer, _)| peer.write_io(msg.clone()))
@@ -448,6 +413,15 @@ impl ClusterActor {
             .await;
 
         //TODO - how to notify other followers of this election? What's the rule?
+    }
+
+    pub(crate) fn boost_leadership(&mut self, heartbeat: &HeartBeatMessage) {
+        self.replication.term = heartbeat.term;
+        if let Some(follower) =
+            self.members.iter_mut().find(|(k, v)| *k == &heartbeat.heartbeat_from).map(|(_, v)| v)
+        {
+            follower.kind = PeerKind::Leader;
+        }
     }
 }
 
@@ -462,7 +436,8 @@ mod test {
     use crate::domains::caches::cache_objects::CacheEntry;
     use crate::domains::caches::command::CacheCommand;
     use crate::domains::cluster_actors::commands::ClusterCommand;
-    use crate::domains::peers::connected_types::Follower;
+    use crate::presentation::cluster_in::create_peer;
+
     use std::ops::Range;
     use std::time::Duration;
     use tokio::net::TcpStream;
@@ -492,8 +467,8 @@ mod test {
     }
 
     fn cluster_actor_create_helper() -> ClusterActor {
-        let replication = ReplicationInfo::new(None, "localhost", 8080);
-        ClusterActor::new(100, replication)
+        let replication = ReplicationState::new(None, "localhost", 8080);
+        ClusterActor::new(100, replication, 100)
     }
 
     async fn cluster_member_create_helper(
@@ -511,7 +486,7 @@ mod test {
             let key = PeerIdentifier::new("localhost", port);
             actor.members.insert(
                 PeerIdentifier::new("localhost", port),
-                Peer::new::<Follower>(
+                create_peer(
                     key.to_string(),
                     TcpStream::connect(bind_addr).await.unwrap(),
                     PeerKind::Follower {
@@ -527,13 +502,13 @@ mod test {
         }
     }
 
-    #[test]
-    fn test_hop_count_when_one() {
+    #[tokio::test]
+    async fn test_hop_count_when_one() {
         // GIVEN
         let fanout = 2;
 
-        let replication = ReplicationInfo::new(None, "localhost", 8080);
-        let cluster_actor = ClusterActor::new(100, replication);
+        let replication = ReplicationState::new(None, "localhost", 8080);
+        let cluster_actor = ClusterActor::new(100, replication, 100);
 
         // WHEN
         let hop_count = cluster_actor.hop_count(fanout, 1);
@@ -541,13 +516,13 @@ mod test {
         assert_eq!(hop_count, 0);
     }
 
-    #[test]
-    fn test_hop_count_when_two() {
+    #[tokio::test]
+    async fn test_hop_count_when_two() {
         // GIVEN
         let fanout = 2;
 
-        let replication = ReplicationInfo::new(None, "localhost", 8080);
-        let cluster_actor = ClusterActor::new(100, replication);
+        let replication = ReplicationState::new(None, "localhost", 8080);
+        let cluster_actor = ClusterActor::new(100, replication, 100);
 
         // WHEN
         let hop_count = cluster_actor.hop_count(fanout, 2);
@@ -555,13 +530,13 @@ mod test {
         assert_eq!(hop_count, 0);
     }
 
-    #[test]
-    fn test_hop_count_when_three() {
+    #[tokio::test]
+    async fn test_hop_count_when_three() {
         // GIVEN
         let fanout = 2;
 
-        let replication = ReplicationInfo::new(None, "localhost", 8080);
-        let cluster_actor = ClusterActor::new(100, replication);
+        let replication = ReplicationState::new(None, "localhost", 8080);
+        let cluster_actor = ClusterActor::new(100, replication, 100);
 
         // WHEN
         let hop_count = cluster_actor.hop_count(fanout, 3);
@@ -569,13 +544,13 @@ mod test {
         assert_eq!(hop_count, 1);
     }
 
-    #[test]
-    fn test_hop_count_when_thirty() {
+    #[tokio::test]
+    async fn test_hop_count_when_thirty() {
         // GIVEN
         let fanout = 2;
 
-        let replication = ReplicationInfo::new(None, "localhost", 8080);
-        let cluster_actor = ClusterActor::new(100, replication);
+        let replication = ReplicationState::new(None, "localhost", 8080);
+        let cluster_actor = ClusterActor::new(100, replication, 100);
 
         // WHEN
         let hop_count = cluster_actor.hop_count(fanout, 30);
@@ -903,7 +878,7 @@ mod test {
             let key = PeerIdentifier::new("localhost", port);
             cluster_actor.members.insert(
                 key.clone(),
-                Peer::new::<Follower>(
+                create_peer(
                     key.to_string(),
                     TcpStream::connect(bind_addr).await.unwrap(),
                     PeerKind::Follower { watermark: 0, leader_repl_id: self_identifier.clone() },
@@ -920,7 +895,7 @@ mod test {
         // leader for different shard?
         cluster_actor.members.insert(
             second_shard_leader_identifier.clone(),
-            Peer::new::<Follower>(
+            create_peer(
                 (*second_shard_leader_identifier).clone(),
                 TcpStream::connect(bind_addr).await.unwrap(),
                 PeerKind::PLeader,
@@ -933,7 +908,7 @@ mod test {
             let key = PeerIdentifier::new("localhost", port);
             cluster_actor.members.insert(
                 key.clone(),
-                Peer::new::<Follower>(
+                create_peer(
                     key.to_string(),
                     TcpStream::connect(bind_addr_for_second_shard).await.unwrap(),
                     PeerKind::PFollower { leader_repl_id: second_shard_leader_identifier.clone() },

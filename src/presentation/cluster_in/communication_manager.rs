@@ -1,7 +1,7 @@
 use crate::{
     domains::{
         append_only_files::WriteOperation,
-        cluster_actors::{commands::ClusterCommand, replication::ReplicationInfo},
+        cluster_actors::{commands::ClusterCommand, replication::ReplicationState},
         peers::identifier::PeerIdentifier,
     },
     make_smart_pointer,
@@ -22,7 +22,7 @@ impl ClusterCommunicationManager {
         Ok(peers)
     }
 
-    pub(crate) async fn replication_info(&self) -> anyhow::Result<ReplicationInfo> {
+    pub(crate) async fn replication_info(&self) -> anyhow::Result<ReplicationState> {
         let (tx, rx) = tokio::sync::oneshot::channel();
         self.send(ClusterCommand::ReplicationInfo(tx)).await?;
         Ok(rx.await?)

@@ -1,7 +1,7 @@
 pub mod append_only_files;
 pub mod caches;
 pub mod cluster_actors;
-pub mod cluster_listeners;
+
 pub mod config_actors;
 pub mod error;
 pub mod peers;

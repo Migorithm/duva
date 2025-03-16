@@ -2,7 +2,8 @@ use crate::domains::append_only_files::interfaces::TWriteAheadLog;
 use crate::domains::append_only_files::logger::Logger;
 use crate::domains::caches::cache_manager::CacheManager;
 use crate::domains::cluster_actors::commands::ClusterCommand;
-use crate::domains::cluster_actors::replication::ReplicationInfo;
+
+use crate::domains::cluster_actors::replication::ReplicationState;
 use crate::domains::cluster_actors::{ClusterActor, FANOUT};
 use tokio::sync::mpsc::Sender;
 
@@ -11,11 +12,8 @@ impl ClusterActor {
         mut self,
         wal: impl TWriteAheadLog,
         cache_manager: CacheManager,
-        heartbeat_interval_in_mills: u64,
     ) -> anyhow::Result<Self> {
         let mut logger = Logger::new(wal);
-        self.heartbeat_periodically(heartbeat_interval_in_mills);
-        self.leader_heartbeat_periodically();
 
         while let Some(command) = self.receiver.recv().await {
             match command {
@@ -42,13 +40,22 @@ impl ClusterActor {
                 ClusterCommand::SetReplicationInfo { leader_repl_id, hwm } => {
                     self.set_replication_info(leader_repl_id, hwm);
                 },
-                ClusterCommand::ReceiveHeartBeat(heartbeat) => {
+                ClusterCommand::ReceiveHeartBeat(mut heartbeat) => {
                     if self.replication.in_ban_list(&heartbeat.heartbeat_from) {
                         continue;
                     }
                     self.gossip(heartbeat.hop_count).await;
                     self.update_on_hertbeat_message(&heartbeat);
-                    self.apply_ban_list(heartbeat.ban_list).await;
+                    self.apply_ban_list(std::mem::take(&mut heartbeat.ban_list)).await;
+
+                    // check if the heartbeat is from a leader
+                    if self.replication.is_from_leader(&heartbeat) {
+                        // TODO hack
+                        self.replication.leader_replid = heartbeat.leader_replid.clone();
+                        self.boost_leadership(&heartbeat);
+                        self.heartbeat_scheduler.reset_election_timeout();
+                        self.replicate(&mut logger, heartbeat, &cache_manager).await;
+                    }
                 },
                 ClusterCommand::ForgetPeer(peer_addr, sender) => {
                     if let Ok(Some(())) = self.forget_peer(peer_addr).await {
@@ -67,10 +74,7 @@ impl ClusterActor {
                 ClusterCommand::SendCommitHeartBeat { log_idx: offset } => {
                     self.send_commit_heartbeat(offset).await;
                 },
-                ClusterCommand::HandleLeaderHeartBeat(heart_beat_message) => {
-                    self.update_on_hertbeat_message(&heart_beat_message);
-                    self.replicate(&mut logger, heart_beat_message, &cache_manager).await;
-                },
+
                 ClusterCommand::SendLeaderHeartBeat => {
                     self.send_leader_heartbeat().await;
                 },
@@ -84,8 +88,8 @@ impl ClusterActor {
                     let logs = logger.range(0, self.replication.hwm);
                     let _ = sender.send(logs);
                 },
-                ClusterCommand::StartLeaderElection(callback) => {
-                    self.run_for_election(callback, logger.log_index, self.replication.term).await; // TODO term must be from log
+                ClusterCommand::StartLeaderElection => {
+                    self.run_for_election(logger.log_index, self.replication.term).await;
                 },
                 ClusterCommand::VoteElection(request_vote) => {
                     self.vote_election(request_vote, logger.log_index).await;
@@ -101,14 +105,14 @@ impl ClusterActor {
     pub fn run(
         node_timeout: u128,
         heartbeat_interval: u64,
-        init_replication: ReplicationInfo,
+        init_replication: ReplicationState,
         cache_manager: CacheManager,
 
         wal: impl TWriteAheadLog,
     ) -> Sender<ClusterCommand> {
-        let cluster_actor = ClusterActor::new(node_timeout, init_replication);
+        let cluster_actor = ClusterActor::new(node_timeout, init_replication, heartbeat_interval);
         let actor_handler = cluster_actor.self_handler.clone();
-        tokio::spawn(cluster_actor.handle(wal, cache_manager, heartbeat_interval));
+        tokio::spawn(cluster_actor.handle(wal, cache_manager));
         actor_handler
     }
 }

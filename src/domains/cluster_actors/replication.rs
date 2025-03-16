@@ -1,15 +1,14 @@
-pub mod heartbeat;
-
+use super::consensus::enums::ConsensusState;
+use super::election_state::ElectionState;
+pub(crate) use super::heartbeats::heartbeat::BannedPeer;
+pub(crate) use super::heartbeats::heartbeat::HeartBeatMessage;
 use crate::domains::append_only_files::WriteOperation;
 use crate::domains::peers::identifier::PeerIdentifier;
-pub(crate) use heartbeat::BannedPeer;
-pub(crate) use heartbeat::HeartBeatMessage;
 
 #[derive(Debug, Clone)]
-pub struct ReplicationInfo {
-    pub(crate) leader_repl_id: PeerIdentifier, // The replication ID of the master example: 8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb
-
-    pub(crate) hwm: u64, // high water mark (commit idx)
+pub struct ReplicationState {
+    pub(crate) leader_replid: PeerIdentifier, // The replication ID of the master example: 8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb
+    pub(crate) hwm: u64,                      // high water mark (commit idx)
     role: String,
 
     pub(crate) self_host: String,
@@ -21,9 +20,11 @@ pub struct ReplicationInfo {
     // * state is shared among peers
     pub(crate) term: u64,
     pub(crate) ban_list: Vec<BannedPeer>,
+
+    pub(crate) election_state: ElectionState,
 }
 
-impl ReplicationInfo {
+impl ReplicationState {
     pub fn new(replicaof: Option<(String, String)>, self_host: &str, self_port: u16) -> Self {
         let leader_repl_id = if let Some((leader_host, leader_port)) = replicaof.as_ref() {
             PeerIdentifier::new(
@@ -34,10 +35,12 @@ impl ReplicationInfo {
             PeerIdentifier::new(self_host, self_port)
         };
 
-        let replication = ReplicationInfo {
-            leader_repl_id: leader_repl_id.clone(),
+        let role = if replicaof.is_some() { "follower".to_string() } else { "leader".to_string() };
+        let replication = ReplicationState {
+            election_state: ElectionState::new(&role),
+            role,
+            leader_replid: leader_repl_id.clone(),
             hwm: 0,
-            role: if replicaof.is_some() { "follower".to_string() } else { "leader".to_string() },
             leader_host: replicaof.as_ref().cloned().map(|(host, _)| host),
             leader_port: replicaof
                 .map(|(_, port)| port.parse().expect("Invalid port number given")),
@@ -53,7 +56,7 @@ impl ReplicationInfo {
     pub(crate) fn self_info(&self) -> String {
         let self_id = self.self_identifier();
         let leader_repl_id =
-            if *self_id == *self.leader_repl_id { "-" } else { &self.leader_repl_id };
+            if *self_id == *self.leader_replid { "-" } else { &self.leader_replid };
 
         //TODO last 0 denotes slots - subject to work
         format!("{} myself,{} {} 0", self_id, self.role(), leader_repl_id)
@@ -69,7 +72,7 @@ impl ReplicationInfo {
     pub fn vectorize(self) -> Vec<String> {
         vec![
             format!("role:{}", self.role),
-            format!("leader_repl_id:{}", self.leader_repl_id),
+            format!("leader_repl_id:{}", self.leader_replid),
             format!("high_watermark:{}", self.hwm),
             format!("self_identifier:{}", self.self_identifier()),
         ]
@@ -100,7 +103,7 @@ impl ReplicationInfo {
             heartbeat_from: self.self_identifier(),
             term: self.term,
             hwm: self.hwm,
-            leader_replid: self.leader_repl_id.clone(),
+            leader_replid: self.leader_replid.clone(),
             hop_count,
             ban_list: self.ban_list.clone(),
             append_entries: vec![],
@@ -123,11 +126,57 @@ impl ReplicationInfo {
         self.leader_host.is_none()
     }
 
-    pub(crate) fn set_leader_state(&mut self) {
+    pub(crate) fn run_for_election(&mut self, replica_count: usize) {
+        self.term += 1;
+        self.election_state.to_candidate(replica_count);
+    }
+    pub(crate) fn may_become_follower(
+        &mut self,
+        candidate_id: &PeerIdentifier,
+        election_term: u64,
+    ) -> bool {
+        let res = self.election_state.is_votable(candidate_id) && self.term < election_term;
+        self.election_state = ElectionState::Follower { voted_for: Some(candidate_id.clone()) };
+        self.term = election_term;
+        res
+    }
+
+    pub(crate) fn may_become_leader(&mut self, granted: bool) -> bool {
+        match self.election_state.may_become_leader(granted) {
+            ConsensusState::Succeeded => {
+                eprintln!("\x1b[32m[INFO] Election succeeded\x1b[0m");
+                self.set_leader_state();
+
+                true
+            },
+            ConsensusState::Failed => {
+                println!("[INFO] Election failed");
+                self.reset_election_state();
+                true
+            },
+            ConsensusState::NotYetFinished => false,
+        }
+    }
+    fn reset_election_state(&mut self) {
+        // TODO leader id set to none
+        self.election_state = ElectionState::Follower { voted_for: None };
+    }
+
+    fn set_leader_state(&mut self) {
         self.role = "leader".to_string();
         self.leader_host = None;
         self.leader_port = None;
-        self.leader_repl_id = self.self_identifier();
+        self.leader_replid = self.self_identifier();
+    }
+
+    pub(crate) fn is_from_leader(&self, heartbeat: &HeartBeatMessage) -> bool {
+        // Check if the heartbeat's term is at least as high as the follower's current term
+        if heartbeat.term < self.term {
+            // If the term is lower, this cannot be from the current leader
+            return false;
+        }
+
+        heartbeat.leader_replid == heartbeat.heartbeat_from
     }
 }
 

@@ -2,7 +2,7 @@ use super::request::HandShakeRequest;
 use super::request::HandShakeRequestEnum;
 use crate::domains::cluster_actors::commands::AddPeer;
 use crate::domains::cluster_actors::commands::ClusterCommand;
-use crate::domains::cluster_actors::replication::ReplicationInfo;
+use crate::domains::cluster_actors::replication::ReplicationState;
 use crate::domains::peers::connected_peer_info::ConnectedPeerInfo;
 use crate::domains::peers::identifier::PeerIdentifier;
 use crate::domains::peers::peer::Peer;
@@ -10,6 +10,7 @@ use crate::domains::peers::peer::PeerKind;
 use crate::domains::query_parsers::QueryIO;
 use crate::make_smart_pointer;
 use crate::presentation::cluster_in::communication_manager::ClusterCommunicationManager;
+use crate::presentation::cluster_in::create_peer;
 use crate::services::interface::TGetPeerIp;
 use crate::services::interface::TRead;
 use crate::services::interface::TWrite;
@@ -19,14 +20,14 @@ use tokio::sync::mpsc::Sender;
 // The following is used only when the node is in leader mode
 pub(crate) struct InboundStream {
     pub(crate) stream: TcpStream,
-    pub(crate) self_repl_info: ReplicationInfo,
+    pub(crate) self_repl_info: ReplicationState,
     pub(crate) peer_info: ConnectedPeerInfo,
 }
 
 make_smart_pointer!(InboundStream, TcpStream => stream);
 
 impl InboundStream {
-    pub(crate) fn new(stream: TcpStream, self_repl_info: ReplicationInfo) -> Self {
+    pub(crate) fn new(stream: TcpStream, self_repl_info: ReplicationState) -> Self {
         Self { stream, self_repl_info, peer_info: Default::default() }
     }
     pub(crate) async fn recv_threeway_handshake(&mut self) -> anyhow::Result<()> {
@@ -77,7 +78,7 @@ impl InboundStream {
 
         let (id, self_leader_replid, self_leader_repl_offset) = (
             self.self_repl_info.self_identifier(),
-            self.self_repl_info.leader_repl_id.clone(),
+            self.self_repl_info.leader_replid.clone(),
             self.self_repl_info.hwm,
         );
 
@@ -107,7 +108,7 @@ impl InboundStream {
     }
 
     pub(crate) fn peer_kind(&self) -> anyhow::Result<PeerKind> {
-        Ok(PeerKind::decide_peer_kind(&self.self_repl_info.leader_repl_id, self.peer_info.clone()))
+        Ok(PeerKind::decide_peer_kind(&self.self_repl_info.leader_replid, self.peer_info.clone()))
     }
 
     pub(crate) fn to_add_peer(
@@ -116,7 +117,7 @@ impl InboundStream {
     ) -> anyhow::Result<ClusterCommand> {
         let kind = self.peer_kind()?;
 
-        let peer = Peer::create(
+        let peer = create_peer(
             (*self.peer_info.id).clone(),
             self.stream,
             kind.clone(),
