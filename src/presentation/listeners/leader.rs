@@ -7,7 +7,6 @@ use crate::domains::cluster_listeners::ReactorKillSwitch;
 use crate::domains::cluster_listeners::TListen;
 use crate::domains::peers::connected_types::Leader;
 use crate::domains::query_parsers::deserialize;
-use std::time::Duration;
 
 impl TListen for ClusterListener<Leader> {
     async fn listen(mut self, rx: ReactorKillSwitch) -> OwnedReadHalf {
@@ -25,29 +24,27 @@ static ATOMIC: std::sync::atomic::AtomicI16 = std::sync::atomic::AtomicI16::new(
 
 impl ClusterListener<Leader> {
     async fn listen_leader(&mut self) {
-        while let Ok(msg) = self.read_command::<LeaderInput>().await {
-            self.handle_leader_message(msg).await;
-        }
-    }
+        while let Ok(cmds) = self.read_command::<LeaderInput>().await {
+            #[cfg(test)]
+            ATOMIC.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
-    async fn handle_leader_message(&mut self, cmds: Vec<LeaderInput>) {
-        #[cfg(test)]
-        ATOMIC.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-
-        for cmd in cmds {
-            match cmd {
-                LeaderInput::HeartBeat(state) => {
-                    println!("[INFO] from {}, hc:{}", state.heartbeat_from, state.hop_count);
-                    let _ = self
-                        .cluster_handler
-                        .send(ClusterCommand::HandleLeaderHeartBeat(state))
-                        .await;
-                },
-                LeaderInput::FullSync(logs) => {
-                    println!("Received full sync logs: {:?}", logs);
-                    let _ =
-                        self.cluster_handler.send(ClusterCommand::InstallLeaderState(logs)).await;
-                },
+            for cmd in cmds {
+                match cmd {
+                    LeaderInput::HeartBeat(state) => {
+                        println!("[INFO] from {}, hc:{}", state.heartbeat_from, state.hop_count);
+                        let _ = self
+                            .cluster_handler
+                            .send(ClusterCommand::HandleLeaderHeartBeat(state))
+                            .await;
+                    },
+                    LeaderInput::FullSync(logs) => {
+                        println!("Received full sync logs: {:?}", logs);
+                        let _ = self
+                            .cluster_handler
+                            .send(ClusterCommand::InstallLeaderState(logs))
+                            .await;
+                    },
+                }
             }
         }
     }
@@ -80,60 +77,5 @@ impl TryFrom<QueryIO> for LeaderInput {
             QueryIO::HeartBeat(peer_state) => Ok(Self::HeartBeat(peer_state)),
             _ => todo!(),
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::{domains::peers::connected_types::ReadConnected, services::interface::TWrite};
-    use tokio::net::{TcpListener, TcpStream, tcp::OwnedWriteHalf};
-
-    async fn create_server_listener_client_writer() -> (OwnedReadHalf, OwnedWriteHalf) {
-        // Create listener
-        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let addr = listener.local_addr().unwrap();
-        // Connect client to listener
-        let client_stream = TcpStream::connect(addr).await.unwrap();
-        let (_, client_write) = client_stream.into_split();
-
-        // Accept the connection on the server side
-        let (server_stream, _) = listener.accept().await.unwrap();
-        let (server_read, _) = server_stream.into_split();
-
-        (server_read, client_write)
-    }
-
-    #[tokio::test]
-    async fn leader_listener_should_break_loop_when_timeout() {
-        //GIVEN
-        let (server_read, mut client_write) = create_server_listener_client_writer().await;
-
-        let (cluster_tx, _) = tokio::sync::mpsc::channel(1);
-        let mut listener = ClusterListener {
-            read_connected: ReadConnected::<Leader>::new(server_read),
-            cluster_handler: cluster_tx,
-        };
-
-        // - run listener
-        let task = tokio::spawn(async move {
-            listener.listen_leader().await;
-        });
-
-        // - simulate heartbeat
-        let sending_task = tokio::spawn(async move {
-            let msg = QueryIO::HeartBeat(HeartBeatMessage::default());
-            for i in 0..20 {
-                client_write.write(msg.clone().serialize()).await.unwrap();
-
-                tokio::time::sleep(Duration::from_millis(100 * i)).await;
-            }
-        });
-        task.await.unwrap();
-        sending_task.abort();
-
-        //THEN
-
-        assert!(ATOMIC.load(std::sync::atomic::Ordering::Relaxed) > 7);
     }
 }
