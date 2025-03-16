@@ -92,13 +92,21 @@ impl ClusterActor {
 
         self.replication.remove_from_ban_list(&peer_addr);
 
+        if !self.replication.replica_set.iter().any(|node| node == &peer_addr) {
+            self.replication.replica_set.push(peer_addr.clone());
+        }
+
         // If the map did have this key present, the value is updated, and the old
         // value is returned. The key is not updated,
-        if let Some(existing_peer) = self.members.insert(peer_addr.clone(), peer) {
+        if let Some(existing_peer) = self.members.insert(peer_addr, peer) {
             existing_peer.kill().await;
         }
     }
     pub(crate) async fn remove_peer(&mut self, peer_addr: &PeerIdentifier) -> Option<()> {
+        if self.replication.replica_set.iter().any(|node| node == peer_addr) {
+            self.replication.replica_set.retain(|node| node != peer_addr);
+        }
+
         if let Some(peer) = self.members.remove(peer_addr) {
             // stop the runnin process and take the connection in case topology changes are made
             let _read_connected = peer.kill().await;
@@ -108,7 +116,7 @@ impl ClusterActor {
     }
 
     pub(crate) fn set_replication_info(&mut self, leader_repl_id: PeerIdentifier, hwm: u64) {
-        self.replication.leader_repl_id = leader_repl_id;
+        self.replication.leader_replid = leader_repl_id;
         self.replication.hwm = hwm;
     }
 

@@ -25,7 +25,7 @@ impl ClientController<Handler> {
 
                 let repl_info = self.cluster_communication_manager.replication_info().await?;
                 self.cache_manager
-                    .route_save(SaveTarget::File(file), repl_info.leader_repl_id, repl_info.hwm)
+                    .route_save(SaveTarget::File(file), repl_info.leader_replid, repl_info.hwm)
                     .await?;
 
                 QueryIO::Null

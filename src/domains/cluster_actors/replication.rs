@@ -7,8 +7,8 @@ use crate::domains::peers::identifier::PeerIdentifier;
 
 #[derive(Debug, Clone)]
 pub struct ReplicationState {
-    pub(crate) leader_repl_id: PeerIdentifier, // The replication ID of the master example: 8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb
-
+    pub(crate) leader_replid: PeerIdentifier, // The replication ID of the master example: 8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb
+    pub(crate) replica_set: Vec<PeerIdentifier>,
     pub(crate) hwm: u64, // high water mark (commit idx)
     role: String,
 
@@ -40,7 +40,7 @@ impl ReplicationState {
         let replication = ReplicationState {
             election_state: ElectionState::new(&role),
             role,
-            leader_repl_id: leader_repl_id.clone(),
+            leader_replid: leader_repl_id.clone(),
             hwm: 0,
             leader_host: replicaof.as_ref().cloned().map(|(host, _)| host),
             leader_port: replicaof
@@ -49,6 +49,7 @@ impl ReplicationState {
             self_host: self_host.to_string(),
             self_port,
             ban_list: Default::default(),
+            replica_set: vec![],
         };
 
         replication
@@ -57,7 +58,7 @@ impl ReplicationState {
     pub(crate) fn self_info(&self) -> String {
         let self_id = self.self_identifier();
         let leader_repl_id =
-            if *self_id == *self.leader_repl_id { "-" } else { &self.leader_repl_id };
+            if *self_id == *self.leader_replid { "-" } else { &self.leader_replid };
 
         //TODO last 0 denotes slots - subject to work
         format!("{} myself,{} {} 0", self_id, self.role(), leader_repl_id)
@@ -73,7 +74,7 @@ impl ReplicationState {
     pub fn vectorize(self) -> Vec<String> {
         vec![
             format!("role:{}", self.role),
-            format!("leader_repl_id:{}", self.leader_repl_id),
+            format!("leader_repl_id:{}", self.leader_replid),
             format!("high_watermark:{}", self.hwm),
             format!("self_identifier:{}", self.self_identifier()),
         ]
@@ -104,7 +105,7 @@ impl ReplicationState {
             heartbeat_from: self.self_identifier(),
             term: self.term,
             hwm: self.hwm,
-            leader_replid: self.leader_repl_id.clone(),
+            leader_replid: self.leader_replid.clone(),
             hop_count,
             ban_list: self.ban_list.clone(),
             append_entries: vec![],
@@ -167,7 +168,7 @@ impl ReplicationState {
         self.role = "leader".to_string();
         self.leader_host = None;
         self.leader_port = None;
-        self.leader_repl_id = self.self_identifier();
+        self.leader_replid = self.self_identifier();
     }
 
     pub(crate) fn is_from_leader(&self, heartbeat: &HeartBeatMessage) -> bool {
@@ -177,7 +178,7 @@ impl ReplicationState {
             return false;
         }
 
-        heartbeat.leader_replid == self.leader_repl_id
+        self.replica_set.contains(&heartbeat.heartbeat_from) && !self.is_leader_mode()
     }
 }
 
