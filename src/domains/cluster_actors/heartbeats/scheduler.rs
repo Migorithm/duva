@@ -12,20 +12,24 @@ pub(crate) struct HeartBeatScheduler {
 }
 
 impl HeartBeatScheduler {
-    pub fn run(cluster_handler: Sender<ClusterCommand>, master_mode: bool) -> Self {
+    pub fn run(
+        cluster_handler: Sender<ClusterCommand>,
+        master_mode: bool,
+        cluster_heartbeat_interval: u64,
+    ) -> Self {
         let controller = if master_mode {
             ModeController::Leader(Self::leader_heartbeat_periodically(
                 LEADER_HEARTBEAT_INTERVAL,
                 cluster_handler.clone(),
             ))
         } else {
-            ModeController::Follower(Self::schedule_election_timeout(cluster_handler.clone()))
+            ModeController::Follower(Self::start_election_timer(cluster_handler.clone()))
         };
 
-        Self { cluster_handler, controller }
+        Self { cluster_handler, controller }.heartbeat_periodically(cluster_heartbeat_interval)
     }
 
-    pub(crate) fn heartbeat_periodically(&self, cluster_heartbeat_interval: u64) {
+    pub(crate) fn heartbeat_periodically(self, cluster_heartbeat_interval: u64) -> Self {
         let handler = self.cluster_handler.clone();
         let mut heartbeat_interval = interval(Duration::from_millis(cluster_heartbeat_interval));
 
@@ -37,6 +41,7 @@ impl HeartBeatScheduler {
                 }
             }
         });
+        self
     }
 
     pub(crate) fn leader_heartbeat_periodically(
@@ -62,7 +67,7 @@ impl HeartBeatScheduler {
         tx
     }
 
-    pub(crate) fn schedule_election_timeout(
+    pub(crate) fn start_election_timer(
         cluster_handler: Sender<ClusterCommand>,
     ) -> tokio::sync::mpsc::Sender<ElectionTimeOutCommand> {
         let (tx, mut rx) = tokio::sync::mpsc::channel::<ElectionTimeOutCommand>(5);
@@ -73,8 +78,7 @@ impl HeartBeatScheduler {
                     Some(msg) = rx.recv() => {
                         match msg {
                             ElectionTimeOutCommand::Stop => return,
-                            ElectionTimeOutCommand::Ping => {
-                            },
+                            ElectionTimeOutCommand::Ping => {},
                         }
                     },
                     _ =  tokio::time::sleep(Duration::from_millis(rand::random_range(LEADER_HEARTBEAT_INTERVAL*3..LEADER_HEARTBEAT_INTERVAL*5)))=>{
@@ -102,15 +106,14 @@ enum ModeController {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Arc;
-    use tokio::sync::Mutex;
-    use tokio::sync::mpsc::{Receiver, Sender, channel};
+
+    use tokio::sync::mpsc::{Receiver, channel};
     use tokio::time::{Duration, timeout};
 
     // Helper function to create a test scheduler
     async fn setup_scheduler(master_mode: bool) -> (HeartBeatScheduler, Receiver<ClusterCommand>) {
         let (tx, rx) = channel(10);
-        let scheduler = HeartBeatScheduler::run(tx, master_mode);
+        let scheduler = HeartBeatScheduler::run(tx, master_mode, 200);
         (scheduler, rx)
     }
 
@@ -189,7 +192,7 @@ mod tests {
     #[tokio::test]
     async fn test_election_timeout() {
         let (tx, mut rx) = channel(10);
-        let controller = HeartBeatScheduler::schedule_election_timeout(tx);
+        let controller = HeartBeatScheduler::start_election_timer(tx);
 
         // Test stopping the election timeout
         let stop_result = timeout(Duration::from_millis(100), async {
@@ -202,7 +205,7 @@ mod tests {
 
         // Test election trigger after timeout
         let (tx2, mut rx2) = channel(10);
-        let _ = HeartBeatScheduler::schedule_election_timeout(tx2);
+        let _ = HeartBeatScheduler::start_election_timer(tx2);
 
         let election_triggered =
             timeout(Duration::from_millis(LEADER_HEARTBEAT_INTERVAL * 6), async {
@@ -220,7 +223,7 @@ mod tests {
     #[tokio::test]
     async fn test_update_leader_heartbeat() {
         let (tx, _rx) = channel(10);
-        let controller = HeartBeatScheduler::schedule_election_timeout(tx);
+        let controller = HeartBeatScheduler::start_election_timer(tx);
 
         // Test sending UpdateLeaderHeartBeat command
         let ping_result = timeout(Duration::from_millis(100), async {
