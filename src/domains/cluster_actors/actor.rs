@@ -21,7 +21,6 @@ pub struct ClusterActor {
     pub(crate) replication: ReplicationState,
     pub(crate) node_timeout: u128,
     pub(crate) consensus_tracker: LogConsensusTracker,
-
     pub(crate) receiver: tokio::sync::mpsc::Receiver<ClusterCommand>,
     pub(crate) self_handler: tokio::sync::mpsc::Sender<ClusterCommand>,
     pub(crate) heartbeat_scheduler: HeartBeatScheduler,
@@ -34,12 +33,14 @@ impl ClusterActor {
         heartbeat_interval_in_mills: u64,
     ) -> Self {
         let (self_handler, receiver) = tokio::sync::mpsc::channel(100);
+        let heartbeat_scheduler = HeartBeatScheduler::run(
+            self_handler.clone(),
+            init_repl_info.is_leader_mode(),
+            heartbeat_interval_in_mills,
+        );
+
         Self {
-            heartbeat_scheduler: HeartBeatScheduler::run(
-                self_handler.clone(),
-                init_repl_info.is_leader_mode(),
-                heartbeat_interval_in_mills,
-            ),
+            heartbeat_scheduler,
             replication: init_repl_info,
             node_timeout,
             receiver,
