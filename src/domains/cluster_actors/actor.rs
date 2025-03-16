@@ -285,8 +285,8 @@ impl ClusterActor {
         });
     }
 
-    pub(crate) async fn send_ack(&mut self, offset: LogIndex) {
-        if let Some(leader) = self.leader_mut() {
+    pub(crate) async fn send_ack(&mut self, send_to: &PeerIdentifier, offset: LogIndex) {
+        if let Some(leader) = self.members.get_mut(send_to) {
             // TODO send the last offset instead of multiple offsets.
             let _ = leader.write_io(QueryIO::Acks(vec![offset])).await;
         }
@@ -306,6 +306,7 @@ impl ClusterActor {
         heartbeat: HeartBeatMessage,
         cache_manager: &CacheManager,
     ) {
+        self.replication.term = heartbeat.term;
         // * lagging case
         if self.replication.hwm < heartbeat.hwm {
             println!("[INFO] Received commit offset {}", heartbeat.hwm);
@@ -320,10 +321,10 @@ impl ClusterActor {
         if heartbeat.append_entries.is_empty() || self.replication.term > heartbeat.term {
             return;
         }
-        let Ok(ack_index) = logger.write_log_entries(heartbeat.append_entries.clone()).await else {
+        let Ok(ack_index) = logger.write_log_entries(heartbeat.append_entries).await else {
             return;
         };
-        self.send_ack(ack_index).await;
+        self.send_ack(&heartbeat.heartbeat_from, ack_index).await;
     }
 
     pub(crate) async fn send_leader_heartbeat(&mut self) {
@@ -416,13 +417,14 @@ impl ClusterActor {
         //TODO - how to notify other followers of this election? What's the rule?
     }
 
-    pub(crate) fn boost_leadership(&mut self, heartbeat: &HeartBeatMessage) {
-        self.replication.term = heartbeat.term;
-        if let Some(follower) =
-            self.members.iter_mut().find(|(k, v)| *k == &heartbeat.heartbeat_from).map(|(_, v)| v)
-        {
-            follower.kind = PeerKind::Leader;
+    pub(crate) fn reset_election_timeout(&mut self, leader_id: &PeerIdentifier) {
+        if let Some(peer) = self.members.get_mut(leader_id) {
+            peer.last_seen = Instant::now();
         }
+        self.heartbeat_scheduler.reset_election_timeout();
+
+        // TODO Perhaps, we don't need this value.
+        self.replication.leader_replid = leader_id.clone();
     }
 }
 

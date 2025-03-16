@@ -42,15 +42,12 @@ impl ClusterActor {
                     // ! The following may need to be moved else where to avoid blocking the main loop
                     self.remove_idle_peers().await;
                 },
+
+                // ! AppendEntriesRPC is a message from a leader to a follower
                 ClusterCommand::AppendEntriesRPC(heartbeat) => {
                     // check if the heartbeat is from a leader
-                    self.update_on_hertbeat_message(&heartbeat);
-                    if self.replication.is_from_leader(&heartbeat) {
-                        self.replication.leader_replid = heartbeat.leader_replid.clone();
-                        self.boost_leadership(&heartbeat);
-                        self.heartbeat_scheduler.reset_election_timeout();
-                        self.replicate(&mut logger, heartbeat, &cache_manager).await;
-                    }
+                    self.reset_election_timeout(&heartbeat.leader_replid);
+                    self.replicate(&mut logger, heartbeat, &cache_manager).await;
                 },
                 ClusterCommand::ClusterHeartBeat(mut heartbeat) => {
                     if self.replication.in_ban_list(&heartbeat.heartbeat_from) {
