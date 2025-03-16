@@ -27,12 +27,15 @@ impl ClusterListener {
 
             for cmd in cmds {
                 match cmd {
-                    PeerInput::HeartBeat(state) => {
-                        println!("[INFO] from {}, hc:{}", state.heartbeat_from, state.hop_count);
-                        let _ = self
-                            .cluster_handler
-                            .send(ClusterCommand::ReceiveHeartBeat(state))
-                            .await;
+                    PeerInput::AppendEntriesRPC(hb) => {
+                        println!("[INFO] from {}, hc:{}", hb.heartbeat_from, hb.hop_count);
+                        let _ =
+                            self.cluster_handler.send(ClusterCommand::AppendEntriesRPC(hb)).await;
+                    },
+                    PeerInput::ClusterHeartBeat(hb) => {
+                        println!("[INFO] from {}, hc:{}", hb.heartbeat_from, hb.hop_count);
+                        let _ =
+                            self.cluster_handler.send(ClusterCommand::ClusterHeartBeat(hb)).await;
                     },
                     PeerInput::FullSync(logs) => {
                         println!("Received full sync logs: {:?}", logs);
@@ -73,7 +76,8 @@ impl ClusterListener {
 
 #[derive(Debug)]
 pub enum PeerInput {
-    HeartBeat(HeartBeatMessage),
+    AppendEntriesRPC(HeartBeatMessage),
+    ClusterHeartBeat(HeartBeatMessage),
     FullSync(Vec<WriteOperation>),
     Acks(Vec<LogIndex>),
     RequestVote(RequestVote),
@@ -98,11 +102,12 @@ impl TryFrom<QueryIO> for PeerInput {
                 }
                 Ok(Self::FullSync(ops))
             },
-            QueryIO::HeartBeat(peer_state) => Ok(Self::HeartBeat(peer_state)),
+            QueryIO::AppendEntriesRPC(peer_state) => Ok(Self::AppendEntriesRPC(peer_state.0)),
+            QueryIO::ClusterHeartBeat(heartbeat) => Ok(Self::ClusterHeartBeat(heartbeat.0)),
             QueryIO::Acks(acks) => Ok(PeerInput::Acks(acks)),
             QueryIO::RequestVote(vote) => Ok(PeerInput::RequestVote(vote)),
             QueryIO::RequestVoteReply(reply) => Ok(PeerInput::RequestVoteReply(reply)),
-            _ => todo!(),
+            _ => Err(anyhow::anyhow!("Invalid data")),
         }
     }
 }

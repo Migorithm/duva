@@ -2,6 +2,8 @@ use super::commands::AddPeer;
 use super::commands::RequestVote;
 use super::commands::RequestVoteReply;
 use super::commands::WriteConsensusResponse;
+use super::heartbeats::heartbeat::AppendEntriesRPC;
+use super::heartbeats::heartbeat::ClusterHeartBeat;
 use super::heartbeats::scheduler::HeartBeatScheduler;
 use super::replication::HeartBeatMessage;
 use super::replication::ReplicationState;
@@ -75,15 +77,14 @@ impl ClusterActor {
         self.members.get_mut(peer_id).filter(|peer| matches!(peer.kind, PeerKind::Follower { .. }))
     }
 
-    pub(crate) async fn send_liveness_heartbeat(&mut self, hop_count: u8) {
+    pub(crate) async fn send_cluster_heartbeat(&mut self, hop_count: u8) {
         // TODO randomly choose the peer to send the message
-        let msg = QueryIO::HeartBeat(
+        let msg = ClusterHeartBeat(
             self.replication.default_heartbeat(hop_count).set_cluster_nodes(self.cluster_nodes()),
-        )
-        .serialize();
+        );
 
         for peer in self.members.values_mut() {
-            let _ = peer.write(msg.clone()).await;
+            let _ = peer.write_io(msg.clone()).await;
         }
     }
 
@@ -135,7 +136,7 @@ impl ClusterActor {
             return;
         };
         let hop_count = hop_count - 1;
-        self.send_liveness_heartbeat(hop_count).await;
+        self.send_cluster_heartbeat(hop_count).await;
     }
 
     pub(crate) async fn forget_peer(
@@ -223,7 +224,7 @@ impl ClusterActor {
 
         self.consensus_tracker.add(logger.log_index, callback, self.followers().count());
         self.generate_follower_entries(append_entries)
-            .map(|(peer, hb)| peer.write_io(hb))
+            .map(|(peer, hb)| peer.write_io(AppendEntriesRPC(hb)))
             .collect::<FuturesUnordered<_>>()
             .for_each(|_| async {})
             .await;
@@ -296,7 +297,7 @@ impl ClusterActor {
         self.replication.hwm += 1;
         let message: HeartBeatMessage = self.replication.default_heartbeat(0);
         println!("[INFO] Sending commit request on {}", message.hwm);
-        self.send_to_replicas(message).await;
+        self.send_to_replicas(AppendEntriesRPC(message)).await;
     }
 
     pub(crate) async fn replicate(
@@ -327,7 +328,7 @@ impl ClusterActor {
 
     pub(crate) async fn send_leader_heartbeat(&mut self) {
         let heartbeat = self.replication.default_heartbeat(0);
-        self.send_to_replicas(heartbeat).await;
+        self.send_to_replicas(AppendEntriesRPC(heartbeat)).await;
     }
 
     async fn send_to_replicas(&mut self, msg: impl Into<QueryIO> + Send + Clone) {
@@ -407,7 +408,7 @@ impl ClusterActor {
         let msg = self.replication.default_heartbeat(0);
 
         self.followers_mut()
-            .map(|(peer, _)| peer.write_io(msg.clone()))
+            .map(|(peer, _)| peer.write_io(AppendEntriesRPC(msg.clone())))
             .collect::<FuturesUnordered<_>>()
             .for_each(|_| async {})
             .await;

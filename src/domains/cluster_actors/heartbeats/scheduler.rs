@@ -39,7 +39,7 @@ impl HeartBeatScheduler {
             async move {
                 loop {
                     heartbeat_interval.tick().await;
-                    let _ = handler.send(ClusterCommand::SendHeartBeat).await;
+                    let _ = handler.send(ClusterCommand::SendClusterHeatBeat).await;
                 }
             }
         });
@@ -179,7 +179,7 @@ mod tests {
             while let Some(cmd) = rx.recv().await {
                 assert!(matches!(
                     cmd,
-                    ClusterCommand::SendLeaderHeartBeat | ClusterCommand::SendHeartBeat
+                    ClusterCommand::SendLeaderHeartBeat | ClusterCommand::SendClusterHeatBeat
                 ));
                 count += 1;
                 if count >= 2 {

@@ -26,36 +26,39 @@ impl ClusterActor {
                 ClusterCommand::ClusterNodes(callback) => {
                     let _ = callback.send(self.cluster_nodes());
                 },
-                ClusterCommand::SendHeartBeat => {
-                    let hop_count = self.hop_count(FANOUT, self.members.len());
-                    self.send_liveness_heartbeat(hop_count).await;
 
-                    // ! remove idle peers based on ttl.
-                    // ! The following may need to be moved else where to avoid blocking the main loop
-                    self.remove_idle_peers().await;
-                },
                 ClusterCommand::ReplicationInfo(sender) => {
                     let _ = sender.send(self.replication.clone());
                 },
                 ClusterCommand::SetReplicationInfo { leader_repl_id, hwm } => {
                     self.set_replication_info(leader_repl_id, hwm);
                 },
-                ClusterCommand::ReceiveHeartBeat(mut heartbeat) => {
+
+                ClusterCommand::SendClusterHeatBeat => {
+                    let hop_count = self.hop_count(FANOUT, self.members.len());
+                    self.send_cluster_heartbeat(hop_count).await;
+
+                    // ! remove idle peers based on ttl.
+                    // ! The following may need to be moved else where to avoid blocking the main loop
+                    self.remove_idle_peers().await;
+                },
+                ClusterCommand::AppendEntriesRPC(heartbeat) => {
+                    // check if the heartbeat is from a leader
+                    self.update_on_hertbeat_message(&heartbeat);
+                    if self.replication.is_from_leader(&heartbeat) {
+                        self.replication.leader_replid = heartbeat.leader_replid.clone();
+                        self.boost_leadership(&heartbeat);
+                        self.heartbeat_scheduler.reset_election_timeout();
+                        self.replicate(&mut logger, heartbeat, &cache_manager).await;
+                    }
+                },
+                ClusterCommand::ClusterHeartBeat(mut heartbeat) => {
                     if self.replication.in_ban_list(&heartbeat.heartbeat_from) {
                         continue;
                     }
                     self.gossip(heartbeat.hop_count).await;
                     self.update_on_hertbeat_message(&heartbeat);
                     self.apply_ban_list(std::mem::take(&mut heartbeat.ban_list)).await;
-
-                    // check if the heartbeat is from a leader
-                    if self.replication.is_from_leader(&heartbeat) {
-                        // TODO hack
-                        self.replication.leader_replid = heartbeat.leader_replid.clone();
-                        self.boost_leadership(&heartbeat);
-                        self.heartbeat_scheduler.reset_election_timeout();
-                        self.replicate(&mut logger, heartbeat, &cache_manager).await;
-                    }
                 },
                 ClusterCommand::ForgetPeer(peer_addr, sender) => {
                     if let Ok(Some(())) = self.forget_peer(peer_addr).await {
@@ -74,7 +77,6 @@ impl ClusterActor {
                 ClusterCommand::SendCommitHeartBeat { log_idx: offset } => {
                     self.send_commit_heartbeat(offset).await;
                 },
-
                 ClusterCommand::SendLeaderHeartBeat => {
                     self.send_leader_heartbeat().await;
                 },

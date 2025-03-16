@@ -30,3 +30,8 @@ pub struct BannedPeer {
     pub(crate) p_id: PeerIdentifier,
     pub(crate) ban_time: u64,
 }
+
+#[derive(Debug, Clone, PartialEq, bincode::Encode, bincode::Decode)]
+pub struct AppendEntriesRPC(pub HeartBeatMessage);
+#[derive(Debug, Clone, PartialEq, bincode::Encode, bincode::Decode)]
+pub struct ClusterHeartBeat(pub HeartBeatMessage);

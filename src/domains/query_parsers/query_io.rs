@@ -1,5 +1,6 @@
 use crate::domains::append_only_files::log::LogIndex;
 use crate::domains::cluster_actors::commands::RequestVoteReply;
+use crate::domains::cluster_actors::heartbeats::heartbeat::{AppendEntriesRPC, ClusterHeartBeat};
 use crate::domains::cluster_actors::replication::HeartBeatMessage;
 use crate::domains::{append_only_files::WriteOperation, cluster_actors::commands::RequestVote};
 
@@ -19,7 +20,8 @@ const FILE_PREFIX: char = '\u{0066}';
 const SIMPLE_STRING_PREFIX: char = '+';
 const BULK_STRING_PREFIX: char = '$';
 const ARRAY_PREFIX: char = '*';
-const HEARTBEAT_PREFIX: char = '^';
+const APPEND_ENTRY_RPC_PREFIX: char = '^';
+const CLUSTER_HEARTBEAT_PREFIX: char = 'c';
 const REPLICATE_PREFIX: char = '#';
 const ACKS_PREFIX: char = '@';
 const REQUEST_VOTE_PREFIX: char = 'v';
@@ -43,7 +45,8 @@ pub enum QueryIO {
 
     // custom types
     File(Bytes),
-    HeartBeat(HeartBeatMessage),
+    AppendEntriesRPC(AppendEntriesRPC),
+    ClusterHeartBeat(ClusterHeartBeat),
     WriteOperation(WriteOperation),
     Acks(Vec<LogIndex>),
     RequestVote(RequestVote),
@@ -95,7 +98,9 @@ impl QueryIO {
                 buffer.freeze()
             },
             QueryIO::Err(e) => Bytes::from(["-".to_string(), e.into(), "\r\n".into()].concat()),
-            QueryIO::HeartBeat(heartbeat) => serialize_with_bincode(HEARTBEAT_PREFIX, &heartbeat),
+            QueryIO::AppendEntriesRPC(heartbeat) => {
+                serialize_with_bincode(APPEND_ENTRY_RPC_PREFIX, &heartbeat)
+            },
             QueryIO::WriteOperation(write_operation) => {
                 serialize_with_bincode(REPLICATE_PREFIX, &write_operation)
             },
@@ -105,6 +110,9 @@ impl QueryIO {
             },
             QueryIO::RequestVoteReply(request_vote_reply) => {
                 serialize_with_bincode(REQUEST_VOTE_REPLY_PREFIX, &request_vote_reply)
+            },
+            QueryIO::ClusterHeartBeat(heart_beat_message) => {
+                serialize_with_bincode(CLUSTER_HEARTBEAT_PREFIX, &heart_beat_message)
             },
         }
     }
@@ -184,7 +192,8 @@ pub fn deserialize(buffer: BytesMut) -> Result<(QueryIO, usize)> {
             let (bytes, len) = parse_file(buffer)?;
             Ok((QueryIO::File(bytes), len))
         },
-        HEARTBEAT_PREFIX => parse_custom_type::<HeartBeatMessage>(buffer),
+        APPEND_ENTRY_RPC_PREFIX => parse_custom_type::<AppendEntriesRPC>(buffer),
+        CLUSTER_HEARTBEAT_PREFIX => parse_custom_type::<ClusterHeartBeat>(buffer),
         REPLICATE_PREFIX => parse_custom_type::<WriteOperation>(buffer),
         ACKS_PREFIX => parse_custom_type::<Vec<LogIndex>>(buffer),
         REQUEST_VOTE_PREFIX => parse_custom_type::<RequestVote>(buffer),
@@ -313,16 +322,24 @@ impl From<Vec<WriteOperation>> for QueryIO {
     }
 }
 
+impl From<AppendEntriesRPC> for QueryIO {
+    fn from(value: AppendEntriesRPC) -> Self {
+        QueryIO::AppendEntriesRPC(value)
+    }
+}
+
+impl From<ClusterHeartBeat> for QueryIO {
+    fn from(value: ClusterHeartBeat) -> Self {
+        QueryIO::ClusterHeartBeat(value)
+    }
+}
+
 impl From<Vec<LogIndex>> for QueryIO {
     fn from(value: Vec<LogIndex>) -> Self {
         QueryIO::Acks(value)
     }
 }
-impl From<HeartBeatMessage> for QueryIO {
-    fn from(value: HeartBeatMessage) -> Self {
-        QueryIO::HeartBeat(value)
-    }
-}
+
 impl From<RequestVote> for QueryIO {
     fn from(value: RequestVote) -> Self {
         QueryIO::RequestVote(value)
@@ -495,7 +512,7 @@ mod test {
                 "127.0.0.1:30001 myself,leader - 0-5460".into(),
             ],
         };
-        let replicate = QueryIO::HeartBeat(heartbeat);
+        let replicate = QueryIO::AppendEntriesRPC(AppendEntriesRPC(heartbeat));
 
         // WHEN
         let serialized = replicate.clone().serialize();
