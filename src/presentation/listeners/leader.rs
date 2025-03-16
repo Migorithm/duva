@@ -25,33 +25,8 @@ static ATOMIC: std::sync::atomic::AtomicI16 = std::sync::atomic::AtomicI16::new(
 
 impl ClusterListener<Leader> {
     async fn listen_leader(&mut self) {
-        loop {
-            select! {
-                result = self.read_command::<LeaderInput>() => {
-                    match result {
-                        Ok(cmds) => {
-                            self.handle_leader_message(cmds).await;
-                        },
-                        Err(e)=> {
-                            // Most likely connection close case
-                            println!("Error reading command: {:?}", e);
-                            tokio::time::sleep(Duration::from_millis(rand::random_range(0..700))).await;
-                            while !self.start_leader_election().await{
-                                tokio::time::sleep(Duration::from_millis(rand::random_range(800..1200))).await;
-                            }
-                            break;
-
-                        }
-                    }
-                },
-
-                // ELECTION timeout
-                _ =  tokio::time::sleep(Duration::from_millis(rand::random_range(700..1000))) =>{
-                    self.start_leader_election().await;
-                    break;
-                }
-
-            };
+        while let Ok(msg) = self.read_command::<LeaderInput>().await {
+            self.handle_leader_message(msg).await;
         }
     }
 
