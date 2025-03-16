@@ -1,9 +1,12 @@
+use bincode::de;
+
 use super::replication::{HeartBeatMessage, ReplicationInfo};
 use crate::domains::append_only_files::WriteOperation;
 use crate::domains::append_only_files::log::LogIndex;
 use crate::domains::peers::peer::Peer;
 use crate::domains::{append_only_files::WriteRequest, peers::identifier::PeerIdentifier};
 
+#[derive(Debug)]
 pub enum ClusterCommand {
     AddPeer(AddPeer),
     GetPeers(tokio::sync::oneshot::Sender<Vec<PeerIdentifier>>),
@@ -39,6 +42,7 @@ pub enum WriteConsensusResponse {
     Err(String),
 }
 
+#[derive(Debug)]
 pub struct AddPeer {
     pub(crate) peer_id: PeerIdentifier,
     pub(crate) peer: Peer,
@@ -70,4 +74,36 @@ impl RequestVote {
 pub struct RequestVoteReply {
     pub(crate) term: u64,
     pub(crate) vote_granted: bool,
+}
+
+impl PartialEq for ClusterCommand {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::AddPeer(l0), Self::AddPeer(r0)) => true,
+            (Self::GetPeers(l0), Self::GetPeers(r0)) => true,
+            (Self::ReplicationInfo(l0), Self::ReplicationInfo(r0)) => true,
+            (
+                Self::SetReplicationInfo { leader_repl_id: l_leader_repl_id, hwm: l_hwm },
+                Self::SetReplicationInfo { leader_repl_id: r_leader_repl_id, hwm: r_hwm },
+            ) => l_leader_repl_id == r_leader_repl_id && l_hwm == r_hwm,
+            (Self::InstallLeaderState(l0), Self::InstallLeaderState(r0)) => l0 == r0,
+            (Self::ForgetPeer(l0, l1), Self::ForgetPeer(r0, r1)) => l0 == r0,
+            (
+                Self::LeaderReqConsensus { log: l_log, sender: l_sender },
+                Self::LeaderReqConsensus { log: r_log, sender: r_sender },
+            ) => l_log == r_log,
+            (Self::LeaderReceiveAcks(l0), Self::LeaderReceiveAcks(r0)) => l0 == r0,
+            (
+                Self::SendCommitHeartBeat { log_idx: l_log_idx },
+                Self::SendCommitHeartBeat { log_idx: r_log_idx },
+            ) => l_log_idx == r_log_idx,
+            (Self::ReceiveHeartBeat(l0), Self::ReceiveHeartBeat(r0)) => l0 == r0,
+            (Self::HandleLeaderHeartBeat(l0), Self::HandleLeaderHeartBeat(r0)) => l0 == r0,
+            (Self::ClusterNodes(l0), Self::ClusterNodes(r0)) => true,
+            (Self::FetchCurrentState(l0), Self::FetchCurrentState(r0)) => true,
+            (Self::VoteElection(l0), Self::VoteElection(r0)) => l0 == r0,
+            (Self::ApplyElectionVote(l0), Self::ApplyElectionVote(r0)) => l0 == r0,
+            _ => core::mem::discriminant(self) == core::mem::discriminant(other),
+        }
+    }
 }
