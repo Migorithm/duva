@@ -1,9 +1,7 @@
-pub mod heartbeat;
-
+pub(crate) use super::heartbeats::heartbeat::BannedPeer;
+pub(crate) use super::heartbeats::heartbeat::HeartBeatMessage;
 use crate::domains::append_only_files::WriteOperation;
 use crate::domains::peers::identifier::PeerIdentifier;
-pub(crate) use heartbeat::BannedPeer;
-pub(crate) use heartbeat::HeartBeatMessage;
 
 #[derive(Debug, Clone)]
 pub struct ReplicationInfo {

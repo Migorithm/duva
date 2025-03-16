@@ -40,14 +40,4 @@ impl<T> ClusterListener<T> {
             .collect::<Result<_, _>>()
             .map_err(Into::into)
     }
-
-    pub(crate) async fn start_leader_election(&mut self) -> bool {
-        let (callback, rx) = tokio::sync::oneshot::channel();
-        let _ = self.cluster_handler.send(ClusterCommand::StartLeaderElection(callback)).await;
-
-        let Ok(election_finished) = rx.await else {
-            return false;
-        };
-        election_finished
-    }
 }

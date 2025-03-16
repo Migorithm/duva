@@ -386,20 +386,14 @@ impl ClusterActor {
             .collect()
     }
 
-    pub(crate) async fn run_for_election(
-        &mut self,
-        callback: tokio::sync::oneshot::Sender<bool>,
-        last_log_index: LogIndex,
-        last_log_term: u64,
-    ) {
+    pub(crate) async fn run_for_election(&mut self, last_log_index: LogIndex, last_log_term: u64) {
         let ElectionState::Follower { voted_for: None } = self.election_state else {
-            let _ = callback.send(false);
             return;
         };
 
         // ! increment the term and vote for self
         self.replication.term += 1;
-        self.election_state.to_candidate(self.followers().count(), callback);
+        self.election_state.to_candidate(self.followers().count());
         let request_vote = RequestVote::new(&self.replication, last_log_index, last_log_term);
 
         self.followers_mut()

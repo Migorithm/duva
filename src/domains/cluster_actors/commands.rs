@@ -28,7 +28,7 @@ pub enum ClusterCommand {
     SendLeaderHeartBeat,
     ClusterNodes(tokio::sync::oneshot::Sender<Vec<String>>),
     FetchCurrentState(tokio::sync::oneshot::Sender<Vec<WriteOperation>>),
-    StartLeaderElection(tokio::sync::oneshot::Sender<bool>),
+    StartLeaderElection,
     VoteElection(RequestVote),
     ApplyElectionVote(RequestVoteReply),
 }

@@ -30,19 +30,3 @@ pub struct BannedPeer {
     pub(crate) p_id: PeerIdentifier,
     pub(crate) ban_time: u64,
 }
-
-#[cfg(test)]
-impl Default for HeartBeatMessage {
-    fn default() -> Self {
-        HeartBeatMessage {
-            heartbeat_from: PeerIdentifier::new("localhost", 8080),
-            term: 0,
-            hwm: 0,
-            leader_replid: PeerIdentifier::new("localhost", 8080),
-            hop_count: 0,
-            ban_list: vec![],
-            append_entries: vec![],
-            cluster_nodes: vec![],
-        }
-    }
-}

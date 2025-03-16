@@ -10,6 +10,8 @@ pub mod actor;
 pub mod commands;
 
 pub mod consensus;
+
+pub mod heartbeats;
 pub mod replication;
 
 pub const FANOUT: usize = 2;
