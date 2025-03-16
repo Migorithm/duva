@@ -8,8 +8,7 @@ use crate::domains::peers::identifier::PeerIdentifier;
 #[derive(Debug, Clone)]
 pub struct ReplicationState {
     pub(crate) leader_replid: PeerIdentifier, // The replication ID of the master example: 8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb
-    pub(crate) replica_set: Vec<PeerIdentifier>,
-    pub(crate) hwm: u64, // high water mark (commit idx)
+    pub(crate) hwm: u64,                      // high water mark (commit idx)
     role: String,
 
     pub(crate) self_host: String,
@@ -49,7 +48,6 @@ impl ReplicationState {
             self_host: self_host.to_string(),
             self_port,
             ban_list: Default::default(),
-            replica_set: vec![],
         };
 
         replication
