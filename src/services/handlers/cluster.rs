@@ -52,6 +52,7 @@ impl ClusterActor {
                     if self.replication.is_from_leader(&heartbeat) {
                         // TODO hack
                         self.replication.leader_replid = heartbeat.leader_replid.clone();
+                        self.boost_leadership(&heartbeat);
                         self.heartbeat_scheduler.reset_election_timeout();
                         self.replicate(&mut logger, heartbeat, &cache_manager).await;
                     }

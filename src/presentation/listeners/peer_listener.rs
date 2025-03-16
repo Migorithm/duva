@@ -5,8 +5,6 @@ use crate::domains::cluster_actors::commands::ClusterCommand;
 use crate::domains::cluster_actors::commands::RequestVote;
 use crate::domains::cluster_actors::commands::RequestVoteReply;
 use crate::domains::cluster_actors::replication::HeartBeatMessage;
-use crate::domains::cluster_listeners::ClusterListener;
-use crate::domains::cluster_listeners::ReactorKillSwitch;
 
 use crate::domains::query_parsers::deserialize;
 
@@ -64,6 +62,12 @@ impl ClusterListener {
                 }
             }
         }
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        let _ = self
+            .cluster_handler
+            .send(ClusterCommand::ForgetPeer(self.listening_to.clone(), tx))
+            .await;
+        rx.await.ok();
     }
 }
 

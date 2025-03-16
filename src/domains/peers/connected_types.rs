@@ -1,4 +1,3 @@
-use std::marker::PhantomData;
 use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
 
 #[derive(Debug)]

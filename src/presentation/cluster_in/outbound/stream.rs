@@ -7,6 +7,7 @@ use crate::domains::peers::identifier::PeerIdentifier;
 use crate::domains::peers::peer::Peer;
 use crate::domains::peers::peer::PeerKind;
 use crate::presentation::cluster_in::connection_manager::ClusterConnectionManager;
+use crate::presentation::cluster_in::create_peer;
 use crate::services::interface::TRead;
 use crate::services::interface::TWrite;
 use crate::{make_smart_pointer, write_array};
@@ -115,7 +116,7 @@ impl OutboundStream {
             self.connected_node_info.context("Connected node info not found")?;
         let peer_list = connection_info.list_peer_binding_addrs();
 
-        let peer = Peer::create(
+        let peer = create_peer(
             (*self.connect_to).clone(),
             self.stream,
             PeerKind::decide_peer_kind(&self.my_repl_info.leader_replid, connection_info),

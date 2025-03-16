@@ -1,12 +1,8 @@
 pub mod enums;
 pub mod voting;
-use super::commands::{RequestVoteReply, WriteConsensusResponse};
-use crate::{
-    domains::{append_only_files::log::LogIndex, peers::identifier::PeerIdentifier},
-    make_smart_pointer,
-};
+use super::commands::WriteConsensusResponse;
+use crate::{domains::append_only_files::log::LogIndex, make_smart_pointer};
 
-use enums::ConsensusState;
 use std::collections::HashMap;
 use tokio::sync::oneshot::Sender;
 use voting::ConsensusVoting;

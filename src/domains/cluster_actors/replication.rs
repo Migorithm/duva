@@ -178,7 +178,7 @@ impl ReplicationState {
             return false;
         }
 
-        self.replica_set.contains(&heartbeat.heartbeat_from) && !self.is_leader_mode()
+        heartbeat.leader_replid == heartbeat.heartbeat_from
     }
 }
 

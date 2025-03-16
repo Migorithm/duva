@@ -1,20 +1,11 @@
 use super::connected_peer_info::ConnectedPeerInfo;
-
-use super::connected_types::ReadConnected;
 use super::identifier::PeerIdentifier;
 use crate::domains::IoError;
-use crate::domains::cluster_actors::commands::ClusterCommand;
-use crate::domains::cluster_listeners::ClusterListener;
-
 use crate::domains::peers::connected_types::WriteConnected;
 use crate::domains::query_parsers::QueryIO;
 use crate::services::interface::TWrite;
 use bytes::Bytes;
-
-use tokio::net::TcpStream;
-use tokio::net::tcp::OwnedReadHalf;
-
-use tokio::sync::mpsc::Sender;
+use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
 use tokio::task::JoinHandle;
 use tokio::time::Instant;
 
@@ -30,18 +21,10 @@ pub(crate) struct Peer {
 impl Peer {
     pub fn new(
         addr: String,
-        stream: TcpStream,
+        w: OwnedWriteHalf,
         kind: PeerKind,
-        cluster_handler: Sender<ClusterCommand>,
+        listener_kill_trigger: ListeningActorKillTrigger,
     ) -> Self {
-        let (r, w) = stream.into_split();
-        let listening_actor = ClusterListener::new(ReadConnected::new(r), cluster_handler);
-
-        let (kill_trigger, kill_switch) = tokio::sync::oneshot::channel();
-        let listener_kill_trigger = ListeningActorKillTrigger::new(
-            kill_trigger,
-            tokio::spawn(listening_actor.listen(kill_switch)),
-        );
         Self {
             addr,
             w_conn: WriteConnected::new(w),
@@ -59,18 +42,6 @@ impl Peer {
         self.w_conn.stream.write_io(io).await
     }
 
-    pub(crate) fn create(
-        addr: String,
-        stream: TcpStream,
-        kind: PeerKind,
-        cluster_handler: Sender<ClusterCommand>,
-    ) -> Peer {
-        match kind {
-            PeerKind::Follower { .. } => Peer::new(addr, stream, kind, cluster_handler),
-            PeerKind::Leader => Peer::new(addr, stream, kind, cluster_handler),
-            _ => Peer::new(addr, stream, kind, cluster_handler),
-        }
-    }
     pub(crate) async fn kill(self) -> OwnedReadHalf {
         self.listener_kill_trigger.kill().await
     }

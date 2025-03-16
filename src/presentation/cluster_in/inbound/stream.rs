@@ -10,6 +10,7 @@ use crate::domains::peers::peer::PeerKind;
 use crate::domains::query_parsers::QueryIO;
 use crate::make_smart_pointer;
 use crate::presentation::cluster_in::communication_manager::ClusterCommunicationManager;
+use crate::presentation::cluster_in::create_peer;
 use crate::services::interface::TGetPeerIp;
 use crate::services::interface::TRead;
 use crate::services::interface::TWrite;
@@ -116,7 +117,7 @@ impl InboundStream {
     ) -> anyhow::Result<ClusterCommand> {
         let kind = self.peer_kind()?;
 
-        let peer = Peer::create(
+        let peer = create_peer(
             (*self.peer_info.id).clone(),
             self.stream,
             kind.clone(),

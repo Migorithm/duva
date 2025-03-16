@@ -229,7 +229,7 @@ impl ClusterActor {
             },
         };
 
-        self.consensus_tracker.add(logger.log_index, callback, self.followers().count());
+        self.consensus_tracker.add(logger.log_index, callback, dbg!(self.followers().count()));
         self.generate_follower_entries(append_entries)
             .map(|(peer, hb)| peer.write_io(hb))
             .collect::<FuturesUnordered<_>>()
@@ -370,11 +370,10 @@ impl ClusterActor {
             return;
         };
 
-        // ! increment the term and vote for self
-        println!("[INFO] Running for election term {}", self.replication.term);
         self.replication.run_for_election(self.followers().count());
         let request_vote = RequestVote::new(&self.replication, last_log_index, last_log_term);
 
+        println!("[INFO] Running for election term {}", self.replication.term);
         self.followers_mut()
             .map(|(peer, _)| peer.write_io(request_vote.clone()))
             .collect::<FuturesUnordered<_>>()
@@ -423,6 +422,15 @@ impl ClusterActor {
 
         //TODO - how to notify other followers of this election? What's the rule?
     }
+
+    pub(crate) fn boost_leadership(&mut self, heartbeat: &HeartBeatMessage) {
+        self.replication.term = heartbeat.term;
+        if let Some(follower) =
+            self.members.iter_mut().find(|(k, v)| *k == &heartbeat.heartbeat_from).map(|(_, v)| v)
+        {
+            follower.kind = PeerKind::Leader;
+        }
+    }
 }
 
 #[cfg(test)]
@@ -436,6 +444,7 @@ mod test {
     use crate::domains::caches::cache_objects::CacheEntry;
     use crate::domains::caches::command::CacheCommand;
     use crate::domains::cluster_actors::commands::ClusterCommand;
+    use crate::presentation::cluster_in::create_peer;
 
     use std::ops::Range;
     use std::time::Duration;
@@ -485,7 +494,7 @@ mod test {
             let key = PeerIdentifier::new("localhost", port);
             actor.members.insert(
                 PeerIdentifier::new("localhost", port),
-                Peer::new(
+                create_peer(
                     key.to_string(),
                     TcpStream::connect(bind_addr).await.unwrap(),
                     PeerKind::Follower {
@@ -877,7 +886,7 @@ mod test {
             let key = PeerIdentifier::new("localhost", port);
             cluster_actor.members.insert(
                 key.clone(),
-                Peer::new(
+                create_peer(
                     key.to_string(),
                     TcpStream::connect(bind_addr).await.unwrap(),
                     PeerKind::Follower { watermark: 0, leader_repl_id: self_identifier.clone() },
@@ -894,7 +903,7 @@ mod test {
         // leader for different shard?
         cluster_actor.members.insert(
             second_shard_leader_identifier.clone(),
-            Peer::new(
+            create_peer(
                 (*second_shard_leader_identifier).clone(),
                 TcpStream::connect(bind_addr).await.unwrap(),
                 PeerKind::PLeader,
@@ -907,7 +916,7 @@ mod test {
             let key = PeerIdentifier::new("localhost", port);
             cluster_actor.members.insert(
                 key.clone(),
-                Peer::new(
+                create_peer(
                     key.to_string(),
                     TcpStream::connect(bind_addr_for_second_shard).await.unwrap(),
                     PeerKind::PFollower { leader_repl_id: second_shard_leader_identifier.clone() },
