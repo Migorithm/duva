@@ -62,7 +62,7 @@ impl RequestVote {
         last_log_term: u64,
     ) -> Self {
         Self {
-            term: repl.term + 1,
+            term: repl.term,
             candidate_id: repl.self_identifier(),
             last_log_index,
             last_log_term,

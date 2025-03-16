@@ -72,6 +72,7 @@ impl ClusterActor {
                     self.send_commit_heartbeat(offset).await;
                 },
                 ClusterCommand::HandleLeaderHeartBeat(heart_beat_message) => {
+                    heartbeat_scheduler.update_leader();
                     self.update_on_hertbeat_message(&heart_beat_message);
                     self.replicate(&mut logger, heart_beat_message, &cache_manager).await;
                 },
@@ -89,7 +90,7 @@ impl ClusterActor {
                     let _ = sender.send(logs);
                 },
                 ClusterCommand::StartLeaderElection => {
-                    self.run_for_election(logger.log_index, self.replication.term).await; // TODO term must be from log
+                    self.run_for_election(logger.log_index, self.replication.term).await;
                 },
                 ClusterCommand::VoteElection(request_vote) => {
                     self.vote_election(request_vote, logger.log_index).await;

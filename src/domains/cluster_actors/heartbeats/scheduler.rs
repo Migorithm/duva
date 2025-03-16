@@ -83,6 +83,7 @@ impl HeartBeatScheduler {
                         }
                     },
                     _ =  tokio::time::sleep(Duration::from_millis(rand::random_range(LEADER_HEARTBEAT_INTERVAL*3..LEADER_HEARTBEAT_INTERVAL*5)))=>{
+                        println!("Election timeout");
                         let _ = cluster_handler.send(ClusterCommand::StartLeaderElection).await;
 
                     }
@@ -91,6 +92,12 @@ impl HeartBeatScheduler {
         });
 
         tx
+    }
+
+    pub(crate) fn update_leader(&self) {
+        if let ModeController::Follower(tx) = &self.controller {
+            let _ = tx.try_send(ElectionTimeOutCommand::Ping);
+        }
     }
 }
 

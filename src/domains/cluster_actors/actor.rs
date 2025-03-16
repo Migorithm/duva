@@ -353,6 +353,7 @@ impl ClusterActor {
 
         // ! increment the term and vote for self
         self.replication.term += 1;
+        println!("[INFO] Running for election term {}", self.replication.term);
         self.election_state.to_candidate(self.followers().count());
         let request_vote = RequestVote::new(&self.replication, last_log_index, last_log_term);
 
@@ -372,6 +373,10 @@ impl ClusterActor {
             && self.replication.term < request_vote.term
             && current_log_idx <= request_vote.last_log_index;
 
+        println!(
+            "[INFO] Voting for {} with term {} and granted: {}",
+            request_vote.candidate_id, request_vote.term, grant_vote
+        );
         if grant_vote {
             self.election_state =
                 ElectionState::Follower { voted_for: Some(request_vote.candidate_id.clone()) };
