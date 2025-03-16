@@ -12,7 +12,7 @@ use domains::append_only_files::interfaces::TWriteAheadLog;
 use domains::caches::cache_manager::CacheManager;
 use domains::cluster_actors::ClusterActor;
 use domains::cluster_actors::commands::ClusterCommand;
-use domains::cluster_actors::replication::ReplicationInfo;
+use domains::cluster_actors::replication::ReplicationState;
 use domains::config_actors::config_manager::ConfigManager;
 use domains::saves::snapshot::snapshot_loader::SnapshotLoader;
 pub use init::Environment;
@@ -34,7 +34,7 @@ impl StartUpFacade {
         let cluster_actor_handler = ClusterActor::run(
             env.ttl_mills,
             env.hf_mills,
-            ReplicationInfo::new(env.replicaof, &env.host, env.port),
+            ReplicationState::new(env.replicaof, &env.host, env.port),
             cache_manager.clone(),
             wal,
         );

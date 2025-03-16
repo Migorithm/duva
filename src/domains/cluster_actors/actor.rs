@@ -2,9 +2,9 @@ use super::commands::AddPeer;
 use super::commands::RequestVote;
 use super::commands::RequestVoteReply;
 use super::commands::WriteConsensusResponse;
-use super::consensus::ElectionState;
+
 use super::replication::HeartBeatMessage;
-use super::replication::ReplicationInfo;
+use super::replication::ReplicationState;
 use super::replication::time_in_secs;
 use super::{commands::ClusterCommand, replication::BannedPeer, *};
 use crate::domains::append_only_files::WriteOperation;
@@ -12,24 +12,24 @@ use crate::domains::append_only_files::WriteRequest;
 use crate::domains::append_only_files::interfaces::TWriteAheadLog;
 use crate::domains::append_only_files::log::LogIndex;
 use crate::domains::append_only_files::logger::Logger;
+use crate::domains::cluster_actors::election_state::ElectionState;
 use crate::domains::{caches::cache_manager::CacheManager, query_parsers::QueryIO};
 
 #[derive(Debug)]
 pub struct ClusterActor {
     pub(crate) members: BTreeMap<PeerIdentifier, Peer>,
-    pub(crate) replication: ReplicationInfo,
+    pub(crate) replication: ReplicationState,
     pub(crate) node_timeout: u128,
     pub(crate) consensus_tracker: LogConsensusTracker,
-    pub(crate) election_state: ElectionState,
+
     pub(crate) receiver: tokio::sync::mpsc::Receiver<ClusterCommand>,
     pub(crate) self_handler: tokio::sync::mpsc::Sender<ClusterCommand>,
 }
 
 impl ClusterActor {
-    pub(crate) fn new(node_timeout: u128, init_repl_info: ReplicationInfo) -> Self {
+    pub(crate) fn new(node_timeout: u128, init_repl_info: ReplicationState) -> Self {
         let (self_handler, receiver) = tokio::sync::mpsc::channel(100);
         Self {
-            election_state: ElectionState::new(init_repl_info.role()),
             replication: init_repl_info,
             node_timeout,
             receiver,
@@ -347,14 +347,13 @@ impl ClusterActor {
     }
 
     pub(crate) async fn run_for_election(&mut self, last_log_index: LogIndex, last_log_term: u64) {
-        let ElectionState::Follower { voted_for: None } = self.election_state else {
+        let ElectionState::Follower { voted_for: None } = self.replication.election_state else {
             return;
         };
 
         // ! increment the term and vote for self
-        self.replication.term += 1;
         println!("[INFO] Running for election term {}", self.replication.term);
-        self.election_state.to_candidate(self.followers().count());
+        self.replication.run_for_election(self.followers().count());
         let request_vote = RequestVote::new(&self.replication, last_log_index, last_log_term);
 
         self.followers_mut()
@@ -369,19 +368,13 @@ impl ClusterActor {
         request_vote: RequestVote,
         current_log_idx: LogIndex,
     ) {
-        let grant_vote = self.election_state.is_votable(&request_vote.candidate_id)
-            && self.replication.term < request_vote.term
-            && current_log_idx <= request_vote.last_log_index;
+        let grant_vote = current_log_idx <= request_vote.last_log_index
+            && self.replication.may_become_follower(&request_vote.candidate_id, request_vote.term);
 
         println!(
             "[INFO] Voting for {} with term {} and granted: {}",
             request_vote.candidate_id, request_vote.term, grant_vote
         );
-        if grant_vote {
-            self.election_state =
-                ElectionState::Follower { voted_for: Some(request_vote.candidate_id.clone()) };
-            self.replication.term = request_vote.term;
-        }
 
         let term = self.replication.term;
         let Some(peer) = self.find_follower_mut(&request_vote.candidate_id) else {
@@ -391,7 +384,7 @@ impl ClusterActor {
     }
 
     pub(crate) async fn tally_vote(&mut self, request_vote_reply: RequestVoteReply) {
-        let msg = match self.election_state.may_become_leader(request_vote_reply) {
+        let msg = match self.replication.may_become_leader(request_vote_reply.vote_granted) {
             consensus::enums::ConsensusState::Succeeded => {
                 println!("[INFO] Election succeeded");
                 self.replication.set_leader_state();
@@ -422,7 +415,7 @@ mod test {
     use crate::domains::caches::cache_objects::CacheEntry;
     use crate::domains::caches::command::CacheCommand;
     use crate::domains::cluster_actors::commands::ClusterCommand;
-    use crate::domains::peers::connected_types::Follower;
+
     use std::ops::Range;
     use std::time::Duration;
     use tokio::net::TcpStream;
@@ -452,7 +445,7 @@ mod test {
     }
 
     fn cluster_actor_create_helper() -> ClusterActor {
-        let replication = ReplicationInfo::new(None, "localhost", 8080);
+        let replication = ReplicationState::new(None, "localhost", 8080);
         ClusterActor::new(100, replication)
     }
 
@@ -471,7 +464,7 @@ mod test {
             let key = PeerIdentifier::new("localhost", port);
             actor.members.insert(
                 PeerIdentifier::new("localhost", port),
-                Peer::new::<Follower>(
+                Peer::new(
                     key.to_string(),
                     TcpStream::connect(bind_addr).await.unwrap(),
                     PeerKind::Follower {
@@ -492,7 +485,7 @@ mod test {
         // GIVEN
         let fanout = 2;
 
-        let replication = ReplicationInfo::new(None, "localhost", 8080);
+        let replication = ReplicationState::new(None, "localhost", 8080);
         let cluster_actor = ClusterActor::new(100, replication);
 
         // WHEN
@@ -506,7 +499,7 @@ mod test {
         // GIVEN
         let fanout = 2;
 
-        let replication = ReplicationInfo::new(None, "localhost", 8080);
+        let replication = ReplicationState::new(None, "localhost", 8080);
         let cluster_actor = ClusterActor::new(100, replication);
 
         // WHEN
@@ -520,7 +513,7 @@ mod test {
         // GIVEN
         let fanout = 2;
 
-        let replication = ReplicationInfo::new(None, "localhost", 8080);
+        let replication = ReplicationState::new(None, "localhost", 8080);
         let cluster_actor = ClusterActor::new(100, replication);
 
         // WHEN
@@ -534,7 +527,7 @@ mod test {
         // GIVEN
         let fanout = 2;
 
-        let replication = ReplicationInfo::new(None, "localhost", 8080);
+        let replication = ReplicationState::new(None, "localhost", 8080);
         let cluster_actor = ClusterActor::new(100, replication);
 
         // WHEN
@@ -863,7 +856,7 @@ mod test {
             let key = PeerIdentifier::new("localhost", port);
             cluster_actor.members.insert(
                 key.clone(),
-                Peer::new::<Follower>(
+                Peer::new(
                     key.to_string(),
                     TcpStream::connect(bind_addr).await.unwrap(),
                     PeerKind::Follower { watermark: 0, leader_repl_id: self_identifier.clone() },
@@ -880,7 +873,7 @@ mod test {
         // leader for different shard?
         cluster_actor.members.insert(
             second_shard_leader_identifier.clone(),
-            Peer::new::<Follower>(
+            Peer::new(
                 (*second_shard_leader_identifier).clone(),
                 TcpStream::connect(bind_addr).await.unwrap(),
                 PeerKind::PLeader,
@@ -893,7 +886,7 @@ mod test {
             let key = PeerIdentifier::new("localhost", port);
             cluster_actor.members.insert(
                 key.clone(),
-                Peer::new::<Follower>(
+                Peer::new(
                     key.to_string(),
                     TcpStream::connect(bind_addr_for_second_shard).await.unwrap(),
                     PeerKind::PFollower { leader_repl_id: second_shard_leader_identifier.clone() },

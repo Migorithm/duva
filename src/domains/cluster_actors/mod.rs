@@ -11,6 +11,7 @@ pub mod commands;
 
 pub mod consensus;
 
+pub mod election_state;
 pub mod heartbeats;
 pub mod replication;
 

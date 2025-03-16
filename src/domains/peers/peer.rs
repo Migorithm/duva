@@ -1,13 +1,11 @@
 use super::connected_peer_info::ConnectedPeerInfo;
-use super::connected_types::Follower;
-use super::connected_types::Leader;
-use super::connected_types::NonDataPeer;
+
 use super::connected_types::ReadConnected;
 use super::identifier::PeerIdentifier;
 use crate::domains::IoError;
 use crate::domains::cluster_actors::commands::ClusterCommand;
 use crate::domains::cluster_listeners::ClusterListener;
-use crate::domains::cluster_listeners::TListen;
+
 use crate::domains::peers::connected_types::WriteConnected;
 use crate::domains::query_parsers::QueryIO;
 use crate::services::interface::TWrite;
@@ -30,17 +28,14 @@ pub(crate) struct Peer {
 }
 
 impl Peer {
-    pub fn new<T>(
+    pub fn new(
         addr: String,
         stream: TcpStream,
         kind: PeerKind,
         cluster_handler: Sender<ClusterCommand>,
-    ) -> Self
-    where
-        ClusterListener<T>: TListen + Send + Sync + 'static,
-    {
+    ) -> Self {
         let (r, w) = stream.into_split();
-        let listening_actor = ClusterListener::new(ReadConnected::<T>::new(r), cluster_handler);
+        let listening_actor = ClusterListener::new(ReadConnected::new(r), cluster_handler);
 
         let (kill_trigger, kill_switch) = tokio::sync::oneshot::channel();
         let listener_kill_trigger = ListeningActorKillTrigger::new(
@@ -71,9 +66,9 @@ impl Peer {
         cluster_handler: Sender<ClusterCommand>,
     ) -> Peer {
         match kind {
-            PeerKind::Follower { .. } => Peer::new::<Follower>(addr, stream, kind, cluster_handler),
-            PeerKind::Leader => Peer::new::<Leader>(addr, stream, kind, cluster_handler),
-            _ => Peer::new::<NonDataPeer>(addr, stream, kind, cluster_handler),
+            PeerKind::Follower { .. } => Peer::new(addr, stream, kind, cluster_handler),
+            PeerKind::Leader => Peer::new(addr, stream, kind, cluster_handler),
+            _ => Peer::new(addr, stream, kind, cluster_handler),
         }
     }
     pub(crate) async fn kill(self) -> OwnedReadHalf {

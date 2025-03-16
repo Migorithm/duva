@@ -5,7 +5,6 @@ use crate::domains::{
 };
 
 pub(crate) type ReplicationVote = Sender<WriteConsensusResponse>;
-pub(crate) type ElectionVote = ();
 
 #[derive(Debug)]
 pub struct ConsensusVoting<T> {
@@ -31,25 +30,6 @@ impl ConsensusVoting<ReplicationVote> {
             None
         } else {
             Some(self)
-        }
-    }
-}
-
-impl ConsensusVoting<ElectionVote> {
-    pub fn maybe_not_finished(mut self, granted: bool) -> Result<bool, Self> {
-        if granted {
-            self.increase_vote();
-        } else {
-            self.neg_vt += 1;
-        }
-
-        let required_count = self.get_required_votes();
-        if self.pos_vt >= required_count {
-            Ok(true)
-        } else if self.neg_vt >= required_count {
-            Ok(false)
-        } else {
-            Err(self)
         }
     }
 }

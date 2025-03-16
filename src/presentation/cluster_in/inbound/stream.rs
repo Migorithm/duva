@@ -2,7 +2,7 @@ use super::request::HandShakeRequest;
 use super::request::HandShakeRequestEnum;
 use crate::domains::cluster_actors::commands::AddPeer;
 use crate::domains::cluster_actors::commands::ClusterCommand;
-use crate::domains::cluster_actors::replication::ReplicationInfo;
+use crate::domains::cluster_actors::replication::ReplicationState;
 use crate::domains::peers::connected_peer_info::ConnectedPeerInfo;
 use crate::domains::peers::identifier::PeerIdentifier;
 use crate::domains::peers::peer::Peer;
@@ -19,14 +19,14 @@ use tokio::sync::mpsc::Sender;
 // The following is used only when the node is in leader mode
 pub(crate) struct InboundStream {
     pub(crate) stream: TcpStream,
-    pub(crate) self_repl_info: ReplicationInfo,
+    pub(crate) self_repl_info: ReplicationState,
     pub(crate) peer_info: ConnectedPeerInfo,
 }
 
 make_smart_pointer!(InboundStream, TcpStream => stream);
 
 impl InboundStream {
-    pub(crate) fn new(stream: TcpStream, self_repl_info: ReplicationInfo) -> Self {
+    pub(crate) fn new(stream: TcpStream, self_repl_info: ReplicationState) -> Self {
         Self { stream, self_repl_info, peer_info: Default::default() }
     }
     pub(crate) async fn recv_threeway_handshake(&mut self) -> anyhow::Result<()> {

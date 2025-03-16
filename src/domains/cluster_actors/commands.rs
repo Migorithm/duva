@@ -1,6 +1,6 @@
 use bincode::de;
 
-use super::replication::{HeartBeatMessage, ReplicationInfo};
+use super::replication::{HeartBeatMessage, ReplicationState};
 use crate::domains::append_only_files::WriteOperation;
 use crate::domains::append_only_files::log::LogIndex;
 use crate::domains::peers::peer::Peer;
@@ -10,7 +10,7 @@ use crate::domains::{append_only_files::WriteRequest, peers::identifier::PeerIde
 pub enum ClusterCommand {
     AddPeer(AddPeer),
     GetPeers(tokio::sync::oneshot::Sender<Vec<PeerIdentifier>>),
-    ReplicationInfo(tokio::sync::oneshot::Sender<ReplicationInfo>),
+    ReplicationInfo(tokio::sync::oneshot::Sender<ReplicationState>),
     SetReplicationInfo {
         leader_repl_id: PeerIdentifier,
         hwm: u64,
@@ -27,7 +27,7 @@ pub enum ClusterCommand {
         log_idx: LogIndex,
     },
     ReceiveHeartBeat(HeartBeatMessage),
-    HandleLeaderHeartBeat(HeartBeatMessage),
+
     SendLeaderHeartBeat,
     ClusterNodes(tokio::sync::oneshot::Sender<Vec<String>>),
     FetchCurrentState(tokio::sync::oneshot::Sender<Vec<WriteOperation>>),
@@ -57,7 +57,7 @@ pub struct RequestVote {
 }
 impl RequestVote {
     pub(crate) fn new(
-        repl: &ReplicationInfo,
+        repl: &ReplicationState,
         last_log_index: LogIndex,
         last_log_term: u64,
     ) -> Self {
@@ -98,7 +98,6 @@ impl PartialEq for ClusterCommand {
                 Self::SendCommitHeartBeat { log_idx: r_log_idx },
             ) => l_log_idx == r_log_idx,
             (Self::ReceiveHeartBeat(l0), Self::ReceiveHeartBeat(r0)) => l0 == r0,
-            (Self::HandleLeaderHeartBeat(l0), Self::HandleLeaderHeartBeat(r0)) => l0 == r0,
             (Self::ClusterNodes(l0), Self::ClusterNodes(r0)) => true,
             (Self::FetchCurrentState(l0), Self::FetchCurrentState(r0)) => true,
             (Self::VoteElection(l0), Self::VoteElection(r0)) => l0 == r0,

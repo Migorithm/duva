@@ -1,7 +1,7 @@
 use super::response::ConnectionResponse;
 use crate::domains::cluster_actors::commands::AddPeer;
 use crate::domains::cluster_actors::commands::ClusterCommand;
-use crate::domains::cluster_actors::replication::ReplicationInfo;
+use crate::domains::cluster_actors::replication::ReplicationState;
 use crate::domains::peers::connected_peer_info::ConnectedPeerInfo;
 use crate::domains::peers::identifier::PeerIdentifier;
 use crate::domains::peers::peer::Peer;
@@ -17,7 +17,7 @@ use tokio::sync::mpsc::Sender;
 // The following is used only when the node is in follower mode
 pub(crate) struct OutboundStream {
     pub(crate) stream: TcpStream,
-    pub(crate) my_repl_info: ReplicationInfo,
+    pub(crate) my_repl_info: ReplicationState,
 
     connected_node_info: Option<ConnectedPeerInfo>,
     connect_to: PeerIdentifier,
@@ -27,7 +27,7 @@ make_smart_pointer!(OutboundStream, TcpStream => stream);
 impl OutboundStream {
     pub(crate) async fn new(
         connect_to: PeerIdentifier,
-        my_repl_info: ReplicationInfo,
+        my_repl_info: ReplicationState,
     ) -> anyhow::Result<Self> {
         Ok(OutboundStream {
             stream: TcpStream::connect(&connect_to.cluster_bind_addr()).await?,

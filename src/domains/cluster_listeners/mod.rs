@@ -1,23 +1,22 @@
-pub mod interfaces;
 use super::{
     cluster_actors::{commands::ClusterCommand, replication::HeartBeatMessage},
     peers::connected_types::ReadConnected,
     query_parsers::QueryIO,
 };
-use crate::services::interface::TRead;
-pub(crate) use interfaces::TListen;
+use crate::{presentation::listeners::leader::PeerInput, services::interface::TRead};
+
 use tokio::sync::mpsc::Sender;
 pub(crate) type ReactorKillSwitch = tokio::sync::oneshot::Receiver<()>;
 
 // Listner requires cluster handler to send messages to the cluster actor and cluster actor instead needs kill trigger to stop the listener
 #[derive(Debug)]
-pub(crate) struct ClusterListener<T> {
-    pub(crate) read_connected: ReadConnected<T>,
+pub(crate) struct ClusterListener {
+    pub(crate) read_connected: ReadConnected,
     pub(crate) cluster_handler: Sender<ClusterCommand>,
 }
 
-impl<T> ClusterListener<T> {
-    pub fn new(read_connected: ReadConnected<T>, cluster_handler: Sender<ClusterCommand>) -> Self {
+impl ClusterListener {
+    pub fn new(read_connected: ReadConnected, cluster_handler: Sender<ClusterCommand>) -> Self {
         Self { read_connected, cluster_handler }
     }
     // Update peer state on cluster manager
@@ -26,17 +25,13 @@ impl<T> ClusterListener<T> {
         let _ = self.cluster_handler.send(ClusterCommand::ReceiveHeartBeat(state)).await;
     }
 
-    pub(crate) async fn read_command<U>(&mut self) -> anyhow::Result<Vec<U>>
-    where
-        U: std::convert::TryFrom<QueryIO>,
-        U::Error: Into<anyhow::Error>,
-    {
+    pub(crate) async fn read_command(&mut self) -> anyhow::Result<Vec<PeerInput>> {
         self.read_connected
             .stream
             .read_values()
             .await?
             .into_iter()
-            .map(U::try_from)
+            .map(PeerInput::try_from)
             .collect::<Result<_, _>>()
             .map_err(Into::into)
     }
