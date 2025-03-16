@@ -1,9 +1,9 @@
 use crate::domains::cluster_actors::commands::ClusterCommand;
 use crate::domains::config_actors::config_manager::ConfigManager;
-use crate::presentation::cluster_in::connection_manager::ClusterConnectionManager;
+use crate::presentation::clusters::connection_manager::ClusterConnectionManager;
 
 use crate::{
-    CacheManager, presentation::cluster_in::communication_manager::ClusterCommunicationManager,
+    CacheManager, presentation::clusters::communication_manager::ClusterCommunicationManager,
 };
 use tokio::sync::mpsc::Sender;
 

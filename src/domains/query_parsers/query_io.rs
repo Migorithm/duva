@@ -1,7 +1,7 @@
 use crate::domains::append_only_files::log::LogIndex;
 use crate::domains::cluster_actors::commands::RequestVoteReply;
 use crate::domains::cluster_actors::heartbeats::heartbeat::{AppendEntriesRPC, ClusterHeartBeat};
-use crate::domains::cluster_actors::replication::HeartBeatMessage;
+
 use crate::domains::{append_only_files::WriteOperation, cluster_actors::commands::RequestVote};
 
 #[cfg(test)]
@@ -353,6 +353,7 @@ impl From<RequestVoteReply> for QueryIO {
 }
 #[cfg(test)]
 mod test {
+    use crate::domains::cluster_actors::replication::HeartBeatMessage;
     use crate::domains::{
         append_only_files::WriteRequest, cluster_actors::replication::BannedPeer,
     };
