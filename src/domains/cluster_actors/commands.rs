@@ -26,7 +26,7 @@ pub enum ClusterCommand {
     SendCommitHeartBeat {
         log_idx: LogIndex,
     },
-    ReceiveHeartBeat(HeartBeatMessage),
+    AppendEntriesRPC(HeartBeatMessage),
 
     SendLeaderHeartBeat,
     ClusterNodes(tokio::sync::oneshot::Sender<Vec<String>>),
@@ -34,6 +34,7 @@ pub enum ClusterCommand {
     StartLeaderElection,
     VoteElection(RequestVote),
     ApplyElectionVote(RequestVoteReply),
+    ClusterHeartBeat(HeartBeatMessage),
 }
 
 #[derive(Debug)]
@@ -97,11 +98,12 @@ impl PartialEq for ClusterCommand {
                 Self::SendCommitHeartBeat { log_idx: l_log_idx },
                 Self::SendCommitHeartBeat { log_idx: r_log_idx },
             ) => l_log_idx == r_log_idx,
-            (Self::ReceiveHeartBeat(l0), Self::ReceiveHeartBeat(r0)) => l0 == r0,
+            (Self::AppendEntriesRPC(l0), Self::AppendEntriesRPC(r0)) => l0 == r0,
             (Self::ClusterNodes(l0), Self::ClusterNodes(r0)) => true,
             (Self::FetchCurrentState(l0), Self::FetchCurrentState(r0)) => true,
             (Self::VoteElection(l0), Self::VoteElection(r0)) => l0 == r0,
             (Self::ApplyElectionVote(l0), Self::ApplyElectionVote(r0)) => l0 == r0,
+            (Self::ClusterHeartBeat(l0), Self::ClusterHeartBeat(r0)) => l0 == r0,
             _ => core::mem::discriminant(self) == core::mem::discriminant(other),
         }
     }

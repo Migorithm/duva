@@ -40,7 +40,7 @@ impl ClusterActor {
                 ClusterCommand::SetReplicationInfo { leader_repl_id, hwm } => {
                     self.set_replication_info(leader_repl_id, hwm);
                 },
-                ClusterCommand::ReceiveHeartBeat(mut heartbeat) => {
+                ClusterCommand::AppendEntriesRPC(mut heartbeat) => {
                     if self.replication.in_ban_list(&heartbeat.heartbeat_from) {
                         continue;
                     }
@@ -57,6 +57,7 @@ impl ClusterActor {
                         self.replicate(&mut logger, heartbeat, &cache_manager).await;
                     }
                 },
+                ClusterCommand::ClusterHeartBeat(heart_beat_message) => todo!(),
                 ClusterCommand::ForgetPeer(peer_addr, sender) => {
                     if let Ok(Some(())) = self.forget_peer(peer_addr).await {
                         let _ = sender.send(Some(()));
@@ -74,7 +75,6 @@ impl ClusterActor {
                 ClusterCommand::SendCommitHeartBeat { log_idx: offset } => {
                     self.send_commit_heartbeat(offset).await;
                 },
-
                 ClusterCommand::SendLeaderHeartBeat => {
                     self.send_leader_heartbeat().await;
                 },

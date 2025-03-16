@@ -32,7 +32,7 @@ impl ClusterListener {
     // Update peer state on cluster manager
     pub(crate) async fn receive_heartbeat(&mut self, state: HeartBeatMessage) {
         println!("[INFO] from {}, hc:{}", state.heartbeat_from, state.hop_count);
-        let _ = self.cluster_handler.send(ClusterCommand::ReceiveHeartBeat(state)).await;
+        let _ = self.cluster_handler.send(ClusterCommand::AppendEntriesRPC(state)).await;
     }
 
     pub(crate) async fn read_command(&mut self) -> anyhow::Result<Vec<PeerInput>> {

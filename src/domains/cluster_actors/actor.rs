@@ -77,7 +77,7 @@ impl ClusterActor {
 
     pub(crate) async fn send_liveness_heartbeat(&mut self, hop_count: u8) {
         // TODO randomly choose the peer to send the message
-        let msg = QueryIO::HeartBeat(
+        let msg = QueryIO::AppendEntriesRPC(
             self.replication.default_heartbeat(hop_count).set_cluster_nodes(self.cluster_nodes()),
         )
         .serialize();
