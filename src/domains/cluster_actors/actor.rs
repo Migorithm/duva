@@ -393,6 +393,7 @@ impl ClusterActor {
     pub(crate) async fn tally_vote(&mut self, request_vote_reply: RequestVoteReply) {
         let msg = match self.election_state.may_become_leader(request_vote_reply) {
             consensus::enums::ConsensusState::Succeeded => {
+                println!("[INFO] Election succeeded");
                 self.replication.set_leader_state();
                 self.replication.default_heartbeat(0)
             },
