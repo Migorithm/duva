@@ -1,17 +1,26 @@
-use super::listeners::ClusterListener;
 use crate::domains::{
-    cluster_actors::commands::ClusterCommand,
+    cluster_actors::{commands::ClusterCommand, replication::HeartBeatMessage},
     peers::{
         connected_types::ReadConnected,
+        identifier::PeerIdentifier,
         peer::{ListeningActorKillTrigger, Peer, PeerKind},
     },
 };
-use tokio::{net::TcpStream, sync::mpsc::Sender};
-pub mod communication_manager;
-pub mod connection_manager;
-pub mod inbound;
-pub mod outbound;
 
+use listener::ClusterListener;
+use peer_input::PeerInput;
+use tokio::net::{TcpStream, tcp::OwnedReadHalf};
+use tokio::select;
+
+pub mod listener;
+pub mod peer_input;
+
+use crate::services::interface::TRead;
+
+use tokio::sync::mpsc::Sender;
+pub(crate) type ReactorKillSwitch = tokio::sync::oneshot::Receiver<()>;
+
+// Listner requires cluster handler to send messages to the cluster actor and cluster actor instead needs kill trigger to stop the listener
 pub(crate) fn create_peer(
     addr: String,
     stream: TcpStream,

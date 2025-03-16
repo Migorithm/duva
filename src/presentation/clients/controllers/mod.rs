@@ -10,7 +10,7 @@ use crate::domains::saves::actor::SaveTarget;
 
 use crate::presentation::clients::request::ClientRequest;
 use crate::presentation::clients::stream::ClientStream;
-use crate::presentation::cluster_in::communication_manager::ClusterCommunicationManager;
+use crate::presentation::clusters::communication_manager::ClusterCommunicationManager;
 use crate::services::interface::TWrite;
 use futures::future::try_join_all;
 use std::marker::PhantomData;

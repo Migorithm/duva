@@ -17,7 +17,7 @@ use domains::config_actors::config_manager::ConfigManager;
 use domains::saves::snapshot::snapshot_loader::SnapshotLoader;
 pub use init::Environment;
 use presentation::clients::ClientController;
-use presentation::cluster_in::inbound::stream::InboundStream;
+use presentation::clusters::inbound::stream::InboundStream;
 use tokio::net::TcpListener;
 
 pub mod client_utils;

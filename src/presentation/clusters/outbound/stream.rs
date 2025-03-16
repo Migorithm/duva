@@ -6,8 +6,9 @@ use crate::domains::peers::connected_peer_info::ConnectedPeerInfo;
 use crate::domains::peers::identifier::PeerIdentifier;
 use crate::domains::peers::peer::Peer;
 use crate::domains::peers::peer::PeerKind;
-use crate::presentation::cluster_in::connection_manager::ClusterConnectionManager;
-use crate::presentation::cluster_in::create_peer;
+use crate::presentation::clusters::connection_manager::ClusterConnectionManager;
+
+use crate::presentation::clusters::listeners::create_peer;
 use crate::services::interface::TRead;
 use crate::services::interface::TWrite;
 use crate::{make_smart_pointer, write_array};
