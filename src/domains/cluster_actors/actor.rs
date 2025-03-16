@@ -502,8 +502,8 @@ mod test {
         }
     }
 
-    #[test]
-    fn test_hop_count_when_one() {
+    #[tokio::test]
+    async fn test_hop_count_when_one() {
         // GIVEN
         let fanout = 2;
 
@@ -516,8 +516,8 @@ mod test {
         assert_eq!(hop_count, 0);
     }
 
-    #[test]
-    fn test_hop_count_when_two() {
+    #[tokio::test]
+    async fn test_hop_count_when_two() {
         // GIVEN
         let fanout = 2;
 
@@ -530,8 +530,8 @@ mod test {
         assert_eq!(hop_count, 0);
     }
 
-    #[test]
-    fn test_hop_count_when_three() {
+    #[tokio::test]
+    async fn test_hop_count_when_three() {
         // GIVEN
         let fanout = 2;
 
@@ -544,8 +544,8 @@ mod test {
         assert_eq!(hop_count, 1);
     }
 
-    #[test]
-    fn test_hop_count_when_thirty() {
+    #[tokio::test]
+    async fn test_hop_count_when_thirty() {
         // GIVEN
         let fanout = 2;
 
