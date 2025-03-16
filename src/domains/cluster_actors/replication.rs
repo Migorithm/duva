@@ -145,8 +145,9 @@ impl ReplicationState {
     pub(crate) fn may_become_leader(&mut self, granted: bool) -> bool {
         match self.election_state.may_become_leader(granted) {
             ConsensusState::Succeeded => {
-                println!("[INFO] Election succeeded");
+                eprintln!("\x1b[32m[INFO] Election succeeded\x1b[0m");
                 self.set_leader_state();
+
                 true
             },
             ConsensusState::Failed => {

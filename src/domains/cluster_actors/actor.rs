@@ -2,7 +2,7 @@ use super::commands::AddPeer;
 use super::commands::RequestVote;
 use super::commands::RequestVoteReply;
 use super::commands::WriteConsensusResponse;
-
+use super::heartbeats::scheduler::HeartBeatScheduler;
 use super::replication::HeartBeatMessage;
 use super::replication::ReplicationState;
 use super::replication::time_in_secs;
@@ -24,12 +24,22 @@ pub struct ClusterActor {
 
     pub(crate) receiver: tokio::sync::mpsc::Receiver<ClusterCommand>,
     pub(crate) self_handler: tokio::sync::mpsc::Sender<ClusterCommand>,
+    pub(crate) heartbeat_scheduler: HeartBeatScheduler,
 }
 
 impl ClusterActor {
-    pub(crate) fn new(node_timeout: u128, init_repl_info: ReplicationState) -> Self {
+    pub(crate) fn new(
+        node_timeout: u128,
+        init_repl_info: ReplicationState,
+        heartbeat_interval_in_mills: u64,
+    ) -> Self {
         let (self_handler, receiver) = tokio::sync::mpsc::channel(100);
         Self {
+            heartbeat_scheduler: HeartBeatScheduler::run(
+                self_handler.clone(),
+                init_repl_info.is_leader_mode(),
+                heartbeat_interval_in_mills,
+            ),
             replication: init_repl_info,
             node_timeout,
             receiver,
@@ -444,7 +454,7 @@ mod test {
 
     fn cluster_actor_create_helper() -> ClusterActor {
         let replication = ReplicationState::new(None, "localhost", 8080);
-        ClusterActor::new(100, replication)
+        ClusterActor::new(100, replication, 100)
     }
 
     async fn cluster_member_create_helper(
@@ -484,7 +494,7 @@ mod test {
         let fanout = 2;
 
         let replication = ReplicationState::new(None, "localhost", 8080);
-        let cluster_actor = ClusterActor::new(100, replication);
+        let cluster_actor = ClusterActor::new(100, replication, 100);
 
         // WHEN
         let hop_count = cluster_actor.hop_count(fanout, 1);
@@ -498,7 +508,7 @@ mod test {
         let fanout = 2;
 
         let replication = ReplicationState::new(None, "localhost", 8080);
-        let cluster_actor = ClusterActor::new(100, replication);
+        let cluster_actor = ClusterActor::new(100, replication, 100);
 
         // WHEN
         let hop_count = cluster_actor.hop_count(fanout, 2);
@@ -512,7 +522,7 @@ mod test {
         let fanout = 2;
 
         let replication = ReplicationState::new(None, "localhost", 8080);
-        let cluster_actor = ClusterActor::new(100, replication);
+        let cluster_actor = ClusterActor::new(100, replication, 100);
 
         // WHEN
         let hop_count = cluster_actor.hop_count(fanout, 3);
@@ -526,7 +536,7 @@ mod test {
         let fanout = 2;
 
         let replication = ReplicationState::new(None, "localhost", 8080);
-        let cluster_actor = ClusterActor::new(100, replication);
+        let cluster_actor = ClusterActor::new(100, replication, 100);
 
         // WHEN
         let hop_count = cluster_actor.hop_count(fanout, 30);
