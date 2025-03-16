@@ -9,7 +9,7 @@ const LEADER_HEARTBEAT_INTERVAL: u64 = 300;
 #[derive(Debug)]
 pub(crate) struct HeartBeatScheduler {
     cluster_handler: Sender<ClusterCommand>,
-    controller: ModeController,
+    controller: Option<ModeController>,
 }
 
 impl HeartBeatScheduler {
@@ -27,7 +27,8 @@ impl HeartBeatScheduler {
             ModeController::Follower(Self::start_election_timer(cluster_handler.clone()))
         };
 
-        Self { cluster_handler, controller }.heartbeat_periodically(cluster_heartbeat_interval)
+        Self { cluster_handler, controller: Some(controller) }
+            .heartbeat_periodically(cluster_heartbeat_interval)
     }
 
     pub(crate) fn heartbeat_periodically(self, cluster_heartbeat_interval: u64) -> Self {
@@ -94,10 +95,30 @@ impl HeartBeatScheduler {
         tx
     }
 
-    pub(crate) fn update_leader(&self) {
-        if let ModeController::Follower(tx) = &self.controller {
+    pub(crate) fn reset_election_timeout(&self) {
+        if let Some(ModeController::Follower(tx)) = &self.controller {
             let _ = tx.try_send(ElectionTimeOutCommand::Ping);
         }
+    }
+
+    pub(crate) async fn switch(&mut self) {
+        let controller = match self.controller.take() {
+            Some(ModeController::Leader(sender)) => {
+                let _ = sender.send(());
+                Some(ModeController::Follower(Self::start_election_timer(
+                    self.cluster_handler.clone(),
+                )))
+            },
+            Some(ModeController::Follower(sender)) => {
+                let _ = sender.send(ElectionTimeOutCommand::Stop).await;
+                Some(ModeController::Leader(Self::leader_heartbeat_periodically(
+                    LEADER_HEARTBEAT_INTERVAL,
+                    self.cluster_handler.clone(),
+                )))
+            },
+            None => None,
+        };
+        self.controller = controller;
     }
 }
 
@@ -131,8 +152,9 @@ mod tests {
         let (scheduler, _) = setup_scheduler(true).await;
 
         match scheduler.controller {
-            ModeController::Leader(_) => assert!(true),
-            ModeController::Follower(_) => assert!(false, "Expected Leader mode"),
+            Some(ModeController::Leader(_)) => assert!(true),
+            Some(ModeController::Follower(_)) => assert!(false, "Expected Leader mode"),
+            None => assert!(false, "Expected Leader mode"),
         }
     }
 
@@ -141,8 +163,9 @@ mod tests {
         let (scheduler, _) = setup_scheduler(false).await;
 
         match scheduler.controller {
-            ModeController::Follower(_) => assert!(true),
-            ModeController::Leader(_) => assert!(false, "Expected Follower mode"),
+            Some(ModeController::Follower(_)) => assert!(true),
+            Some(ModeController::Leader(_)) => assert!(false, "Expected Follower mode"),
+            None => todo!(),
         }
     }
 

@@ -401,6 +401,10 @@ impl ClusterActor {
         if !election_process_finished {
             return;
         }
+
+        if self.replication.is_leader_mode() {
+            self.heartbeat_scheduler.switch().await;
+        }
         let msg = self.replication.default_heartbeat(0);
 
         self.followers_mut()

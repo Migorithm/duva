@@ -50,7 +50,7 @@ impl ClusterActor {
 
                     // check if the heartbeat is from a leader
                     if self.replication.is_from_leader(&heartbeat) {
-                        self.heartbeat_scheduler.update_leader();
+                        self.heartbeat_scheduler.reset_election_timeout();
                         self.replicate(&mut logger, heartbeat, &cache_manager).await;
                     }
                 },
