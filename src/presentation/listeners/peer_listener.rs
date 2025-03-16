@@ -102,8 +102,8 @@ impl TryFrom<QueryIO> for PeerInput {
                 }
                 Ok(Self::FullSync(ops))
             },
-            QueryIO::AppendEntriesRPC(peer_state) => Ok(Self::AppendEntriesRPC(peer_state)),
-            QueryIO::ClusterHeartBeat(heartbeat) => Ok(Self::ClusterHeartBeat(heartbeat)),
+            QueryIO::AppendEntriesRPC(peer_state) => Ok(Self::AppendEntriesRPC(peer_state.0)),
+            QueryIO::ClusterHeartBeat(heartbeat) => Ok(Self::ClusterHeartBeat(heartbeat.0)),
             QueryIO::Acks(acks) => Ok(PeerInput::Acks(acks)),
             QueryIO::RequestVote(vote) => Ok(PeerInput::RequestVote(vote)),
             QueryIO::RequestVoteReply(reply) => Ok(PeerInput::RequestVoteReply(reply)),

@@ -16,7 +16,7 @@ pub enum ClusterCommand {
         hwm: u64,
     },
     InstallLeaderState(Vec<WriteOperation>),
-    SendHeartBeat,
+    SendClusterHeatBeat,
     ForgetPeer(PeerIdentifier, tokio::sync::oneshot::Sender<Option<()>>),
     LeaderReqConsensus {
         log: WriteRequest,
