@@ -10,7 +10,7 @@ pub(crate) struct HeartBeatScheduler {
 }
 
 impl HeartBeatScheduler {
-    pub fn run(
+    pub(crate) fn run(
         cluster_handler: Sender<ClusterCommand>,
         is_leader_mode: bool,
         cluster_heartbeat_interval: u64,
