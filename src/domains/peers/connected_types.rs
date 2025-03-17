@@ -1,22 +1,22 @@
 use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
 
 #[derive(Debug)]
-pub struct WriteConnected {
-    pub stream: OwnedWriteHalf,
+pub(crate) struct WriteConnected {
+    pub(crate) stream: OwnedWriteHalf,
 }
 impl WriteConnected {
-    pub fn new(stream: OwnedWriteHalf) -> Self {
+    pub(crate) fn new(stream: OwnedWriteHalf) -> Self {
         Self { stream }
     }
 }
 
 #[derive(Debug)]
-pub struct ReadConnected {
-    pub stream: OwnedReadHalf,
+pub(crate) struct ReadConnected {
+    pub(crate) stream: OwnedReadHalf,
 }
 
 impl ReadConnected {
-    pub fn new(stream: OwnedReadHalf) -> Self {
+    pub(crate) fn new(stream: OwnedReadHalf) -> Self {
         Self { stream }
     }
 }

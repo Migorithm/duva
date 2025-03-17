@@ -52,7 +52,7 @@ impl ClusterActor {
         }
     }
 
-    pub(crate) fn hop_count(&self, fanout: usize, node_count: usize) -> u8 {
+    pub(crate) fn hop_count(fanout: usize, node_count: usize) -> u8 {
         if node_count <= fanout {
             return 0;
         }
@@ -232,10 +232,6 @@ impl ClusterActor {
         Ok(())
     }
 
-    pub(crate) fn leader_mut(&mut self) -> Option<&mut Peer> {
-        self.members.values_mut().find(|peer| matches!(peer.kind, PeerKind::Leader))
-    }
-
     pub(crate) async fn install_leader_state(
         &mut self,
         logs: Vec<WriteOperation>,
@@ -364,7 +360,7 @@ impl ClusterActor {
             return;
         };
 
-        self.replication.run_for_election(self.followers().count());
+        self.replication.become_candidate(self.followers().count());
         let request_vote = RequestVote::new(&self.replication, last_log_index, last_log_term);
 
         println!("[INFO] Running for election term {}", self.replication.term);
@@ -396,10 +392,7 @@ impl ClusterActor {
     }
 
     pub(crate) async fn tally_vote(&mut self, request_vote_reply: RequestVoteReply) {
-        let election_process_finished =
-            self.replication.may_become_leader(request_vote_reply.vote_granted);
-
-        if !election_process_finished {
+        if !self.replication.should_become_leader(request_vote_reply.vote_granted) {
             return;
         }
 
@@ -510,11 +503,8 @@ mod test {
         // GIVEN
         let fanout = 2;
 
-        let replication = ReplicationState::new(None, "localhost", 8080);
-        let cluster_actor = ClusterActor::new(100, replication, 100);
-
         // WHEN
-        let hop_count = cluster_actor.hop_count(fanout, 1);
+        let hop_count = ClusterActor::hop_count(fanout, 1);
         // THEN
         assert_eq!(hop_count, 0);
     }
@@ -524,11 +514,8 @@ mod test {
         // GIVEN
         let fanout = 2;
 
-        let replication = ReplicationState::new(None, "localhost", 8080);
-        let cluster_actor = ClusterActor::new(100, replication, 100);
-
         // WHEN
-        let hop_count = cluster_actor.hop_count(fanout, 2);
+        let hop_count = ClusterActor::hop_count(fanout, 2);
         // THEN
         assert_eq!(hop_count, 0);
     }
@@ -538,11 +525,8 @@ mod test {
         // GIVEN
         let fanout = 2;
 
-        let replication = ReplicationState::new(None, "localhost", 8080);
-        let cluster_actor = ClusterActor::new(100, replication, 100);
-
         // WHEN
-        let hop_count = cluster_actor.hop_count(fanout, 3);
+        let hop_count = ClusterActor::hop_count(fanout, 3);
         // THEN
         assert_eq!(hop_count, 1);
     }
@@ -552,11 +536,8 @@ mod test {
         // GIVEN
         let fanout = 2;
 
-        let replication = ReplicationState::new(None, "localhost", 8080);
-        let cluster_actor = ClusterActor::new(100, replication, 100);
-
         // WHEN
-        let hop_count = cluster_actor.hop_count(fanout, 30);
+        let hop_count = ClusterActor::hop_count(fanout, 30);
         // THEN
         assert_eq!(hop_count, 4);
     }

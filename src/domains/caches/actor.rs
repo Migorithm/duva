@@ -4,9 +4,6 @@ use super::cache_objects::{CacheEntry, CacheValue};
 use super::command::CacheCommand;
 use crate::domains::query_parsers::QueryIO;
 use crate::make_smart_pointer;
-
-use anyhow::Context;
-use chrono::{DateTime, Utc};
 use tokio::sync::mpsc::{self, Sender};
 
 pub struct CacheActor {
@@ -15,14 +12,14 @@ pub struct CacheActor {
 }
 
 #[derive(Default)]
-pub struct CacheDb {
+pub(crate) struct CacheDb {
     inner: HashMap<String, CacheValue>,
     // OPTIMIZATION: Add a counter to keep track of the number of keys with expiry
     pub(crate) keys_with_expiry: usize,
 }
 
 impl CacheActor {
-    pub fn run() -> CacheCommandSender {
+    pub(crate) fn run() -> CacheCommandSender {
         let (tx, cache_actor_inbox) = mpsc::channel(100);
         tokio::spawn(
             Self { cache: CacheDb::default(), self_handler: tx.clone() }.handle(cache_actor_inbox),
@@ -87,7 +84,7 @@ impl CacheActor {
 }
 
 #[derive(Clone, Debug)]
-pub struct CacheCommandSender(pub(crate) mpsc::Sender<CacheCommand>);
+pub(crate) struct CacheCommandSender(pub(crate) mpsc::Sender<CacheCommand>);
 
 make_smart_pointer!(CacheCommandSender, mpsc::Sender<CacheCommand>);
 make_smart_pointer!(CacheDb, HashMap<String, CacheValue> => inner);

@@ -1,8 +1,6 @@
-use super::consensus::enums::ConsensusState;
 use super::election_state::ElectionState;
 pub(crate) use super::heartbeats::heartbeat::BannedPeer;
 pub(crate) use super::heartbeats::heartbeat::HeartBeatMessage;
-use crate::domains::append_only_files::WriteOperation;
 use crate::domains::peers::identifier::PeerIdentifier;
 
 #[derive(Debug, Clone)]
@@ -25,7 +23,11 @@ pub struct ReplicationState {
 }
 
 impl ReplicationState {
-    pub fn new(replicaof: Option<(String, String)>, self_host: &str, self_port: u16) -> Self {
+    pub(crate) fn new(
+        replicaof: Option<(String, String)>,
+        self_host: &str,
+        self_port: u16,
+    ) -> Self {
         let leader_repl_id = if let Some((leader_host, leader_port)) = replicaof.as_ref() {
             PeerIdentifier::new(
                 leader_host,
@@ -69,7 +71,7 @@ impl ReplicationState {
         &self.role
     }
 
-    pub fn vectorize(self) -> Vec<String> {
+    pub(crate) fn vectorize(self) -> Vec<String> {
         vec![
             format!("role:{}", self.role),
             format!("leader_repl_id:{}", self.leader_replid),
@@ -92,13 +94,7 @@ impl ReplicationState {
         }
     }
 
-    pub fn append_entry(&self, hop_count: u8, entries: Vec<WriteOperation>) -> HeartBeatMessage {
-        let mut heartbeat = self.default_heartbeat(hop_count);
-        heartbeat.append_entries.extend(entries);
-        heartbeat
-    }
-
-    pub fn default_heartbeat(&self, hop_count: u8) -> HeartBeatMessage {
+    pub(crate) fn default_heartbeat(&self, hop_count: u8) -> HeartBeatMessage {
         HeartBeatMessage {
             heartbeat_from: self.self_identifier(),
             term: self.term,
@@ -126,40 +122,39 @@ impl ReplicationState {
         self.leader_host.is_none()
     }
 
-    pub(crate) fn run_for_election(&mut self, replica_count: usize) {
+    pub(crate) fn become_candidate(&mut self, replica_count: usize) {
         self.term += 1;
-        self.election_state.to_candidate(replica_count);
+
+        self.election_state.become_candidate(replica_count);
     }
     pub(crate) fn may_become_follower(
         &mut self,
         candidate_id: &PeerIdentifier,
         election_term: u64,
     ) -> bool {
-        let res = self.election_state.is_votable(candidate_id) && self.term < election_term;
-        self.election_state = ElectionState::Follower { voted_for: Some(candidate_id.clone()) };
+        if !(self.election_state.is_votable(candidate_id) && self.term < election_term) {
+            return false;
+        }
+        self.election_state.become_follower(Some(candidate_id.clone()));
         self.term = election_term;
-        res
+        true
     }
 
-    pub(crate) fn may_become_leader(&mut self, granted: bool) -> bool {
-        match self.election_state.may_become_leader(granted) {
-            ConsensusState::Succeeded => {
+    pub(crate) fn should_become_leader(&mut self, granted: bool) -> bool {
+        match self.election_state.should_become_leader(granted) {
+            Some(true) => {
                 eprintln!("\x1b[32m[INFO] Election succeeded\x1b[0m");
                 self.set_leader_state();
 
                 true
             },
-            ConsensusState::Failed => {
+            Some(false) => {
                 println!("[INFO] Election failed");
-                self.reset_election_state();
+                self.election_state.become_follower(None);
                 true
             },
-            ConsensusState::NotYetFinished => false,
+            None => false,
         }
-    }
-    fn reset_election_state(&mut self) {
-        // TODO leader id set to none
-        self.election_state = ElectionState::Follower { voted_for: None };
     }
 
     fn set_leader_state(&mut self) {
@@ -167,16 +162,7 @@ impl ReplicationState {
         self.leader_host = None;
         self.leader_port = None;
         self.leader_replid = self.self_identifier();
-    }
-
-    pub(crate) fn is_from_leader(&self, heartbeat: &HeartBeatMessage) -> bool {
-        // Check if the heartbeat's term is at least as high as the follower's current term
-        if heartbeat.term < self.term {
-            // If the term is lower, this cannot be from the current leader
-            return false;
-        }
-
-        heartbeat.leader_replid == heartbeat.heartbeat_from
+        self.election_state.become_leader();
     }
 }
 

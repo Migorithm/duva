@@ -5,20 +5,17 @@ use crate::{from_to, make_smart_pointer};
 )]
 pub struct PeerIdentifier(pub String);
 impl PeerIdentifier {
-    pub fn new(host: &str, port: u16) -> Self {
+    pub(crate) fn new(host: &str, port: u16) -> Self {
         Self(format!("{}:{}", host, port))
     }
 
-    pub fn cluster_bind_addr(&self) -> String {
+    pub(crate) fn cluster_bind_addr(&self) -> String {
         self.0
             .rsplit_once(':')
             .map(|(host, port)| {
                 format!("{}:{}", parse_address(host).unwrap(), port.parse::<u16>().unwrap() + 10000)
             })
             .unwrap()
-    }
-    pub fn cluster_bind_port(&self) -> u16 {
-        self.0.rsplit_once(':').map(|(_, port)| port.parse::<u16>().unwrap() + 10000).unwrap()
     }
 }
 

@@ -11,7 +11,7 @@ impl ConfigActor {
         }
     }
 
-    pub fn set_dir(&mut self, dir: &str) {
+    pub(crate) fn set_dir(&mut self, dir: &str) {
         unsafe {
             // Get the pointer to the str
             let ptr: *const str = self.dir;
@@ -20,7 +20,7 @@ impl ConfigActor {
             self.dir = Box::leak(dir.into());
         }
     }
-    pub fn set_dbfilename(&mut self, dbfilename: &str) {
+    pub(crate) fn set_dbfilename(&mut self, dbfilename: &str) {
         unsafe {
             // Get the pointer to the str
             let ptr: *const str = self.dbfilename;
@@ -30,7 +30,7 @@ impl ConfigActor {
         }
     }
 
-    pub fn get_filepath(&self) -> String {
+    pub(crate) fn get_filepath(&self) -> String {
         format!("{}/{}", self.dir, self.dbfilename)
     }
 }

@@ -35,7 +35,7 @@ impl ClusterActor {
                 },
 
                 ClusterCommand::SendClusterHeatBeat => {
-                    let hop_count = self.hop_count(FANOUT, self.members.len());
+                    let hop_count = Self::hop_count(FANOUT, self.members.len());
                     self.send_cluster_heartbeat(hop_count).await;
 
                     // ! remove idle peers based on ttl.
@@ -74,7 +74,7 @@ impl ClusterActor {
                 ClusterCommand::SendCommitHeartBeat { log_idx: offset } => {
                     self.send_commit_heartbeat(offset).await;
                 },
-                ClusterCommand::SendLeaderHeartBeat => {
+                ClusterCommand::SendAppendEntriesRPC => {
                     self.send_leader_heartbeat().await;
                 },
                 ClusterCommand::InstallLeaderState(logs) => {
@@ -101,7 +101,7 @@ impl ClusterActor {
         Ok(self)
     }
 
-    pub fn run(
+    pub(crate) fn run(
         node_timeout: u128,
         heartbeat_interval: u64,
         init_replication: ReplicationState,
