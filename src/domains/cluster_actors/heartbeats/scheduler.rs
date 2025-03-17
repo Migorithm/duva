@@ -1,9 +1,6 @@
-use std::time::Duration;
-
-use tokio::{select, sync::mpsc::Sender, time::interval};
-
 use crate::domains::cluster_actors::commands::ClusterCommand;
-
+use std::time::Duration;
+use tokio::{select, sync::mpsc::Sender, time::interval};
 const LEADER_HEARTBEAT_INTERVAL: u64 = 300;
 
 #[derive(Debug)]

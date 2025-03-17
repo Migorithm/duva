@@ -12,9 +12,6 @@ use crate::domains::caches::cache_objects::CacheValue;
 use anyhow::{Context, Result};
 use bytes::{Bytes, BytesMut};
 use std::fmt::Write;
-
-use super::parsing_context::ParseContext;
-
 // ! CURRENTLY, only ascii unicode(0-127) is supported
 const FILE_PREFIX: char = '\u{0066}';
 const SIMPLE_STRING_PREFIX: char = '+';
@@ -211,21 +208,24 @@ pub(crate) fn parse_simple_string(buffer: BytesMut) -> Result<(String, usize)> {
 }
 
 fn parse_array(buffer: BytesMut) -> Result<(QueryIO, usize)> {
-    let mut ctx = ParseContext::new(buffer);
+    let mut offset = 0;
+    offset += 1;
 
-    // skip array prefix
-    ctx.advance(1);
-
-    let (count_bytes, count_len) = read_until_crlf(&BytesMut::from(&ctx.buffer[ctx.offset()..]))
+    let (count_bytes, count_len) = read_until_crlf(&BytesMut::from(&buffer[offset..]))
         .ok_or(anyhow::anyhow!("Invalid array length"))?;
-    ctx.advance(count_len);
+    offset += count_len;
 
-    // Convert array length string to number
     let array_len = count_bytes.parse()?;
 
-    let elements = (0..array_len).map(|_| ctx.parse_next()).collect::<Result<_>>()?;
+    let mut elements = Vec::with_capacity(array_len);
 
-    Ok((QueryIO::Array(elements), ctx.offset()))
+    for _ in 0..array_len {
+        let (element, len) = deserialize(BytesMut::from(&buffer[offset..]))?;
+        offset += len;
+        elements.push(element);
+    }
+
+    Ok((QueryIO::Array(elements), offset))
 }
 
 pub fn parse_custom_type<T>(
