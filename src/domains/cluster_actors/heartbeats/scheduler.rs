@@ -6,7 +6,7 @@ const LEADER_HEARTBEAT_INTERVAL: u64 = 300;
 #[derive(Debug)]
 pub(crate) struct HeartBeatScheduler {
     cluster_handler: Sender<ClusterCommand>,
-    controller: Option<ModeController>,
+    controller: Option<SchedulerMode>,
 }
 
 impl HeartBeatScheduler {
@@ -16,20 +16,20 @@ impl HeartBeatScheduler {
         cluster_heartbeat_interval: u64,
     ) -> Self {
         let controller = if is_leader_mode {
-            ModeController::Leader(Self::leader_heartbeat_periodically(
+            SchedulerMode::Leader(Self::send_append_entries_rpc(
                 LEADER_HEARTBEAT_INTERVAL,
                 cluster_handler.clone(),
             ))
         } else {
-            ModeController::Follower(Self::start_election_timer(cluster_handler.clone()))
+            SchedulerMode::Follower(Self::start_election_timer(cluster_handler.clone()))
         };
 
         Self { cluster_handler, controller: Some(controller) }
-            .heartbeat_periodically(cluster_heartbeat_interval)
+            .send_cluster_heartbeat(cluster_heartbeat_interval)
     }
 
-    pub(crate) fn heartbeat_periodically(self, cluster_heartbeat_interval: u64) -> Self {
-        let handler = self.cluster_handler.clone();
+    pub(crate) fn send_cluster_heartbeat(self, cluster_heartbeat_interval: u64) -> Self {
+        let handler: Sender<ClusterCommand> = self.cluster_handler.clone();
         let mut heartbeat_interval = interval(Duration::from_millis(cluster_heartbeat_interval));
 
         tokio::spawn({
@@ -43,7 +43,7 @@ impl HeartBeatScheduler {
         self
     }
 
-    pub(crate) fn leader_heartbeat_periodically(
+    pub(crate) fn send_append_entries_rpc(
         heartbeat_interval: u64,
         cluster_handler: Sender<ClusterCommand>,
     ) -> tokio::sync::oneshot::Sender<()> {
@@ -57,7 +57,7 @@ impl HeartBeatScheduler {
                 _ = async {
                     loop {
                         itv.tick().await;
-                        let _ = cluster_handler.send(ClusterCommand::SendLeaderHeartBeat).await;
+                        let _ = cluster_handler.send(ClusterCommand::SendAppendEntriesRPC).await;
                     }
                 } => {},
             }
@@ -93,22 +93,22 @@ impl HeartBeatScheduler {
     }
 
     pub(crate) fn reset_election_timeout(&self) {
-        if let Some(ModeController::Follower(tx)) = &self.controller {
+        if let Some(SchedulerMode::Follower(tx)) = &self.controller {
             let _ = tx.try_send(ElectionTimeOutCommand::Ping);
         }
     }
 
     pub(crate) async fn switch(&mut self) {
         let controller = match self.controller.take() {
-            Some(ModeController::Leader(sender)) => {
+            Some(SchedulerMode::Leader(sender)) => {
                 let _ = sender.send(());
-                Some(ModeController::Follower(Self::start_election_timer(
+                Some(SchedulerMode::Follower(Self::start_election_timer(
                     self.cluster_handler.clone(),
                 )))
             },
-            Some(ModeController::Follower(sender)) => {
+            Some(SchedulerMode::Follower(sender)) => {
                 let _ = sender.send(ElectionTimeOutCommand::Stop).await;
-                Some(ModeController::Leader(Self::leader_heartbeat_periodically(
+                Some(SchedulerMode::Leader(Self::send_append_entries_rpc(
                     LEADER_HEARTBEAT_INTERVAL,
                     self.cluster_handler.clone(),
                 )))
@@ -125,7 +125,7 @@ pub enum ElectionTimeOutCommand {
 }
 
 #[derive(Debug)]
-enum ModeController {
+enum SchedulerMode {
     Leader(tokio::sync::oneshot::Sender<()>),
     Follower(tokio::sync::mpsc::Sender<ElectionTimeOutCommand>),
 }
@@ -149,8 +149,8 @@ mod tests {
         let (scheduler, _) = setup_scheduler(true).await;
 
         match scheduler.controller {
-            Some(ModeController::Leader(_)) => assert!(true),
-            Some(ModeController::Follower(_)) => assert!(false, "Expected Leader mode"),
+            Some(SchedulerMode::Leader(_)) => assert!(true),
+            Some(SchedulerMode::Follower(_)) => assert!(false, "Expected Leader mode"),
             None => assert!(false, "Expected Leader mode"),
         }
     }
@@ -160,8 +160,8 @@ mod tests {
         let (scheduler, _) = setup_scheduler(false).await;
 
         match scheduler.controller {
-            Some(ModeController::Follower(_)) => assert!(true),
-            Some(ModeController::Leader(_)) => assert!(false, "Expected Follower mode"),
+            Some(SchedulerMode::Follower(_)) => assert!(true),
+            Some(SchedulerMode::Leader(_)) => assert!(false, "Expected Follower mode"),
             None => todo!(),
         }
     }
@@ -176,7 +176,7 @@ mod tests {
             while let Some(cmd) = rx.recv().await {
                 assert!(matches!(
                     cmd,
-                    ClusterCommand::SendLeaderHeartBeat | ClusterCommand::SendClusterHeatBeat
+                    ClusterCommand::SendAppendEntriesRPC | ClusterCommand::SendClusterHeatBeat
                 ));
                 count += 1;
                 if count >= 2 {
@@ -195,13 +195,13 @@ mod tests {
     async fn test_leader_heartbeat_periodically() {
         let (tx, mut rx) = channel(10);
         let heartbeat_interval = 100; // 100ms
-        let stop_signal = HeartBeatScheduler::leader_heartbeat_periodically(heartbeat_interval, tx);
+        let stop_signal = HeartBeatScheduler::send_append_entries_rpc(heartbeat_interval, tx);
 
         // Wait for at least 2 heartbeats
         let received = timeout(Duration::from_millis(250), async {
             let mut count = 0;
             while let Some(cmd) = rx.recv().await {
-                assert!(matches!(cmd, ClusterCommand::SendLeaderHeartBeat));
+                assert!(matches!(cmd, ClusterCommand::SendAppendEntriesRPC));
                 count += 1;
                 if count >= 2 {
                     break;

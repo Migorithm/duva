@@ -74,7 +74,7 @@ impl ClusterActor {
                 ClusterCommand::SendCommitHeartBeat { log_idx: offset } => {
                     self.send_commit_heartbeat(offset).await;
                 },
-                ClusterCommand::SendLeaderHeartBeat => {
+                ClusterCommand::SendAppendEntriesRPC => {
                     self.send_leader_heartbeat().await;
                 },
                 ClusterCommand::InstallLeaderState(logs) => {

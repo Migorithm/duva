@@ -28,7 +28,7 @@ pub enum ClusterCommand {
     },
     AppendEntriesRPC(HeartBeatMessage),
 
-    SendLeaderHeartBeat,
+    SendAppendEntriesRPC,
     ClusterNodes(tokio::sync::oneshot::Sender<Vec<String>>),
     FetchCurrentState(tokio::sync::oneshot::Sender<Vec<WriteOperation>>),
     StartLeaderElection,
