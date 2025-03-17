@@ -168,16 +168,6 @@ impl ReplicationState {
         self.leader_port = None;
         self.leader_replid = self.self_identifier();
     }
-
-    pub(crate) fn is_from_leader(&self, heartbeat: &HeartBeatMessage) -> bool {
-        // Check if the heartbeat's term is at least as high as the follower's current term
-        if heartbeat.term < self.term {
-            // If the term is lower, this cannot be from the current leader
-            return false;
-        }
-
-        heartbeat.leader_replid == heartbeat.heartbeat_from
-    }
 }
 
 pub(crate) fn time_in_secs() -> anyhow::Result<u64> {
