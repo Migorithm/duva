@@ -1,5 +1,3 @@
-use bincode::de;
-
 use super::replication::{HeartBeatMessage, ReplicationState};
 use crate::domains::append_only_files::WriteOperation;
 use crate::domains::append_only_files::log::LogIndex;

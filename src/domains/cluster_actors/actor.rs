@@ -360,7 +360,7 @@ impl ClusterActor {
             return;
         };
 
-        self.replication.run_for_election(self.followers().count());
+        self.replication.become_candidate(self.followers().count());
         let request_vote = RequestVote::new(&self.replication, last_log_index, last_log_term);
 
         println!("[INFO] Running for election term {}", self.replication.term);

@@ -1,6 +1,5 @@
+use super::consensus::enums::ConsensusState;
 use crate::domains::peers::identifier::PeerIdentifier;
-
-use super::{commands::RequestVoteReply, consensus::enums::ConsensusState};
 
 #[derive(Debug, Clone)]
 pub enum ElectionState {
@@ -17,10 +16,13 @@ impl ElectionState {
         }
     }
 
-    pub(crate) fn to_candidate(&mut self, replica_count: usize) {
+    pub(crate) fn become_candidate(&mut self, replica_count: usize) {
         *self = ElectionState::Candidate {
             voting: Some(ElectionVoting { pos_vt: 1, neg_vt: 0, replica_count }),
         };
+    }
+    pub(crate) fn become_follower(&mut self, candidate_id: &PeerIdentifier) {
+        *self = ElectionState::Follower { voted_for: Some(candidate_id.clone()) };
     }
 
     pub(crate) fn is_votable(&self, candidiate_id: &PeerIdentifier) -> bool {

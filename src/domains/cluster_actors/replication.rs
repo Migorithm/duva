@@ -2,7 +2,6 @@ use super::consensus::enums::ConsensusState;
 use super::election_state::ElectionState;
 pub(crate) use super::heartbeats::heartbeat::BannedPeer;
 pub(crate) use super::heartbeats::heartbeat::HeartBeatMessage;
-use crate::domains::append_only_files::WriteOperation;
 use crate::domains::peers::identifier::PeerIdentifier;
 
 #[derive(Debug, Clone)]
@@ -124,19 +123,22 @@ impl ReplicationState {
         self.leader_host.is_none()
     }
 
-    pub(crate) fn run_for_election(&mut self, replica_count: usize) {
+    pub(crate) fn become_candidate(&mut self, replica_count: usize) {
         self.term += 1;
-        self.election_state.to_candidate(replica_count);
+
+        self.election_state.become_candidate(replica_count);
     }
     pub(crate) fn may_become_follower(
         &mut self,
         candidate_id: &PeerIdentifier,
         election_term: u64,
     ) -> bool {
-        let res = self.election_state.is_votable(candidate_id) && self.term < election_term;
-        self.election_state = ElectionState::Follower { voted_for: Some(candidate_id.clone()) };
+        if !(self.election_state.is_votable(candidate_id) && self.term < election_term) {
+            return false;
+        }
+        self.election_state.become_follower(candidate_id);
         self.term = election_term;
-        res
+        true
     }
 
     pub(crate) fn may_become_leader(&mut self, granted: bool) -> bool {
