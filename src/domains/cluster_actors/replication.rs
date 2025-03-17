@@ -1,4 +1,3 @@
-use super::consensus::enums::ConsensusState;
 use super::election_state::ElectionState;
 pub(crate) use super::heartbeats::heartbeat::BannedPeer;
 pub(crate) use super::heartbeats::heartbeat::HeartBeatMessage;
@@ -136,30 +135,26 @@ impl ReplicationState {
         if !(self.election_state.is_votable(candidate_id) && self.term < election_term) {
             return false;
         }
-        self.election_state.become_follower(candidate_id);
+        self.election_state.become_follower(Some(candidate_id.clone()));
         self.term = election_term;
         true
     }
 
-    pub(crate) fn may_become_leader(&mut self, granted: bool) -> bool {
-        match self.election_state.may_become_leader(granted) {
-            ConsensusState::Succeeded => {
+    pub(crate) fn should_become_leader(&mut self, granted: bool) -> bool {
+        match self.election_state.should_become_leader(granted) {
+            Some(true) => {
                 eprintln!("\x1b[32m[INFO] Election succeeded\x1b[0m");
                 self.set_leader_state();
 
                 true
             },
-            ConsensusState::Failed => {
+            Some(false) => {
                 println!("[INFO] Election failed");
-                self.reset_election_state();
+                self.election_state.become_follower(None);
                 true
             },
-            ConsensusState::NotYetFinished => false,
+            None => false,
         }
-    }
-    fn reset_election_state(&mut self) {
-        // TODO leader id set to none
-        self.election_state = ElectionState::Follower { voted_for: None };
     }
 
     fn set_leader_state(&mut self) {
@@ -167,6 +162,7 @@ impl ReplicationState {
         self.leader_host = None;
         self.leader_port = None;
         self.leader_replid = self.self_identifier();
+        self.election_state.become_leader();
     }
 }
 

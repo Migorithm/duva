@@ -1,4 +1,3 @@
-pub mod enums;
 pub mod voting;
 use super::commands::WriteConsensusResponse;
 use crate::{domains::append_only_files::log::LogIndex, make_smart_pointer};

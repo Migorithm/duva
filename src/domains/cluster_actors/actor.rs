@@ -392,10 +392,7 @@ impl ClusterActor {
     }
 
     pub(crate) async fn tally_vote(&mut self, request_vote_reply: RequestVoteReply) {
-        let election_process_finished =
-            self.replication.may_become_leader(request_vote_reply.vote_granted);
-
-        if !election_process_finished {
+        if !self.replication.should_become_leader(request_vote_reply.vote_granted) {
             return;
         }
 
