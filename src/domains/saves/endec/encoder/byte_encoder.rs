@@ -12,7 +12,7 @@ use crate::domains::saves::snapshot::snapshot::Metadata;
 use anyhow::Result;
 
 impl CacheEntry {
-    pub fn encode_with_key(&self) -> Result<Vec<u8>> {
+    pub(crate) fn encode_with_key(&self) -> Result<Vec<u8>> {
         let mut result = Vec::new();
         match self {
             CacheEntry::KeyValue(key, value) => {
@@ -32,14 +32,14 @@ impl CacheEntry {
     }
 }
 
-pub fn encode_header() -> Result<Vec<u8>> {
+pub(crate) fn encode_header() -> Result<Vec<u8>> {
     let mut result = Vec::new();
     result.extend_from_slice(HEADER_MAGIC_STRING.as_bytes());
     result.extend_from_slice(VERSION.as_bytes());
     Ok(result)
 }
 
-pub fn encode_metadata(metadata: Metadata) -> Result<Vec<u8>> {
+pub(crate) fn encode_metadata(metadata: Metadata) -> Result<Vec<u8>> {
     let mut result = Vec::new();
     result.push(METADATA_SECTION_INDICATOR);
     result.extend_from_slice(&encode_key_value("repl-id", &metadata.repl_id)?);
@@ -47,20 +47,23 @@ pub fn encode_metadata(metadata: Metadata) -> Result<Vec<u8>> {
     result.extend_from_slice(&encode_key_value("repl-offset", &metadata.repl_offset.to_string())?);
     Ok(result)
 }
-pub fn encode_database_info(index: usize) -> Result<Vec<u8>> {
+pub(crate) fn encode_database_info(index: usize) -> Result<Vec<u8>> {
     let mut result = Vec::new();
     result.push(DATABASE_SECTION_INDICATOR);
     result.extend_from_slice(&encode_size(index)?);
     Ok(result)
 }
-pub fn encode_database_table_size(table_size: usize, expires_table_size: usize) -> Result<Vec<u8>> {
+pub(crate) fn encode_database_table_size(
+    table_size: usize,
+    expires_table_size: usize,
+) -> Result<Vec<u8>> {
     let mut result = Vec::new();
     result.push(DATABASE_TABLE_SIZE_INDICATOR);
     result.extend_from_slice(&encode_size(table_size)?);
     result.extend_from_slice(&encode_size(expires_table_size)?);
     Ok(result)
 }
-pub fn encode_checksum(checksum: &[u8]) -> Result<Vec<u8>> {
+pub(crate) fn encode_checksum(checksum: &[u8]) -> Result<Vec<u8>> {
     let mut result = Vec::new();
     result.push(CHECKSUM_INDICATOR);
     result.extend_from_slice(checksum);

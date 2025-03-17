@@ -101,7 +101,7 @@ impl ClusterActor {
         Ok(self)
     }
 
-    pub fn run(
+    pub(crate) fn run(
         node_timeout: u128,
         heartbeat_interval: u64,
         init_replication: ReplicationState,
