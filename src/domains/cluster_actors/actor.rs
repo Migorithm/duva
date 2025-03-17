@@ -52,7 +52,7 @@ impl ClusterActor {
         }
     }
 
-    pub(crate) fn hop_count(&self, fanout: usize, node_count: usize) -> u8 {
+    pub(crate) fn hop_count(fanout: usize, node_count: usize) -> u8 {
         if node_count <= fanout {
             return 0;
         }
@@ -230,10 +230,6 @@ impl ClusterActor {
             .await;
 
         Ok(())
-    }
-
-    pub(crate) fn leader_mut(&mut self) -> Option<&mut Peer> {
-        self.members.values_mut().find(|peer| matches!(peer.kind, PeerKind::Leader))
     }
 
     pub(crate) async fn install_leader_state(
@@ -510,11 +506,8 @@ mod test {
         // GIVEN
         let fanout = 2;
 
-        let replication = ReplicationState::new(None, "localhost", 8080);
-        let cluster_actor = ClusterActor::new(100, replication, 100);
-
         // WHEN
-        let hop_count = cluster_actor.hop_count(fanout, 1);
+        let hop_count = ClusterActor::hop_count(fanout, 1);
         // THEN
         assert_eq!(hop_count, 0);
     }
@@ -524,11 +517,8 @@ mod test {
         // GIVEN
         let fanout = 2;
 
-        let replication = ReplicationState::new(None, "localhost", 8080);
-        let cluster_actor = ClusterActor::new(100, replication, 100);
-
         // WHEN
-        let hop_count = cluster_actor.hop_count(fanout, 2);
+        let hop_count = ClusterActor::hop_count(fanout, 2);
         // THEN
         assert_eq!(hop_count, 0);
     }
@@ -538,11 +528,8 @@ mod test {
         // GIVEN
         let fanout = 2;
 
-        let replication = ReplicationState::new(None, "localhost", 8080);
-        let cluster_actor = ClusterActor::new(100, replication, 100);
-
         // WHEN
-        let hop_count = cluster_actor.hop_count(fanout, 3);
+        let hop_count = ClusterActor::hop_count(fanout, 3);
         // THEN
         assert_eq!(hop_count, 1);
     }
@@ -552,11 +539,8 @@ mod test {
         // GIVEN
         let fanout = 2;
 
-        let replication = ReplicationState::new(None, "localhost", 8080);
-        let cluster_actor = ClusterActor::new(100, replication, 100);
-
         // WHEN
-        let hop_count = cluster_actor.hop_count(fanout, 30);
+        let hop_count = ClusterActor::hop_count(fanout, 30);
         // THEN
         assert_eq!(hop_count, 4);
     }

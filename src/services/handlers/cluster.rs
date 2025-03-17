@@ -35,7 +35,7 @@ impl ClusterActor {
                 },
 
                 ClusterCommand::SendClusterHeatBeat => {
-                    let hop_count = self.hop_count(FANOUT, self.members.len());
+                    let hop_count = Self::hop_count(FANOUT, self.members.len());
                     self.send_cluster_heartbeat(hop_count).await;
 
                     // ! remove idle peers based on ttl.
