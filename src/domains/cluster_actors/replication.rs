@@ -25,7 +25,11 @@ pub struct ReplicationState {
 }
 
 impl ReplicationState {
-    pub fn new(replicaof: Option<(String, String)>, self_host: &str, self_port: u16) -> Self {
+    pub(crate) fn new(
+        replicaof: Option<(String, String)>,
+        self_host: &str,
+        self_port: u16,
+    ) -> Self {
         let leader_repl_id = if let Some((leader_host, leader_port)) = replicaof.as_ref() {
             PeerIdentifier::new(
                 leader_host,
@@ -69,7 +73,7 @@ impl ReplicationState {
         &self.role
     }
 
-    pub fn vectorize(self) -> Vec<String> {
+    pub(crate) fn vectorize(self) -> Vec<String> {
         vec![
             format!("role:{}", self.role),
             format!("leader_repl_id:{}", self.leader_replid),
@@ -92,13 +96,7 @@ impl ReplicationState {
         }
     }
 
-    pub fn append_entry(&self, hop_count: u8, entries: Vec<WriteOperation>) -> HeartBeatMessage {
-        let mut heartbeat = self.default_heartbeat(hop_count);
-        heartbeat.append_entries.extend(entries);
-        heartbeat
-    }
-
-    pub fn default_heartbeat(&self, hop_count: u8) -> HeartBeatMessage {
+    pub(crate) fn default_heartbeat(&self, hop_count: u8) -> HeartBeatMessage {
         HeartBeatMessage {
             heartbeat_from: self.self_identifier(),
             term: self.term,
