@@ -1,5 +1,4 @@
 use crate::domains::config_actors::actor::ConfigActor;
-use crate::domains::config_actors::command::ConfigCommand;
 use crate::domains::config_actors::command::ConfigMessage;
 use crate::domains::config_actors::command::ConfigQuery;
 use crate::domains::config_actors::command::ConfigResource;
@@ -12,7 +11,7 @@ use tokio::sync::oneshot;
 
 #[derive(Clone)]
 pub struct ConfigManager {
-    config: Sender<ConfigMessage>,
+    pub(crate) config: Sender<ConfigMessage>,
     pub(crate) startup_time: DateTime<Utc>,
     pub port: u16,
     pub(crate) host: String,
@@ -36,7 +35,7 @@ impl ConfigManager {
     }
 
     // The following is used on startup and check if the file exists
-    pub async fn try_filepath(&self) -> anyhow::Result<Option<String>> {
+    pub(crate) async fn try_filepath(&self) -> anyhow::Result<Option<String>> {
         let res = self.route_query(ConfigResource::FilePath).await?;
 
         let ConfigResponse::FilePath(file_path) = res else {
@@ -55,15 +54,15 @@ impl ConfigManager {
         }
     }
 
-    pub fn bind_addr(&self) -> String {
+    pub(crate) fn bind_addr(&self) -> String {
         format!("{}:{}", self.host, self.port)
     }
 
-    pub fn peer_bind_addr(&self) -> String {
+    pub(crate) fn peer_bind_addr(&self) -> String {
         format!("{}:{}", self.host, self.port + 10000)
     }
 
-    pub async fn route_get(&self, cmd: (String, String)) -> anyhow::Result<ConfigResponse> {
+    pub(crate) async fn route_get(&self, cmd: (String, String)) -> anyhow::Result<ConfigResponse> {
         let resource = match (cmd.0.to_lowercase().as_str(), cmd.1.to_lowercase().as_str()) {
             ("get", "dir") => ConfigResource::Dir,
             ("get", "dbfilename") => ConfigResource::DbFileName,
@@ -72,7 +71,7 @@ impl ConfigManager {
         let res = self.route_query(resource).await?;
         Ok(res)
     }
-    pub async fn get_filepath(&self) -> anyhow::Result<String> {
+    pub(crate) async fn get_filepath(&self) -> anyhow::Result<String> {
         let res = self.route_query(ConfigResource::FilePath).await?;
 
         let ConfigResponse::FilePath(file_path) = res else {
@@ -81,13 +80,12 @@ impl ConfigManager {
         Ok(file_path)
     }
 
-    pub async fn route_query(&self, resource: ConfigResource) -> anyhow::Result<ConfigResponse> {
+    pub(crate) async fn route_query(
+        &self,
+        resource: ConfigResource,
+    ) -> anyhow::Result<ConfigResponse> {
         let (callback, rx) = oneshot::channel();
         self.send(ConfigMessage::Query(ConfigQuery::new(callback, resource))).await?;
         Ok(rx.await?)
-    }
-    pub async fn route_command(&self, command: ConfigCommand) -> anyhow::Result<()> {
-        self.send(ConfigMessage::Command(command)).await?;
-        Ok(())
     }
 }

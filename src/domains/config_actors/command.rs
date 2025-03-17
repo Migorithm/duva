@@ -10,8 +10,8 @@ pub enum ConfigMessage {
 }
 
 pub struct ConfigQuery {
-    pub callback: oneshot::Sender<ConfigResponse>,
-    pub resource: ConfigResource,
+    pub(crate) callback: oneshot::Sender<ConfigResponse>,
+    pub(crate) resource: ConfigResource,
 }
 impl ConfigQuery {
     pub(crate) fn new(callback: oneshot::Sender<ConfigResponse>, resource: ConfigResource) -> Self {

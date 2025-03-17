@@ -14,7 +14,7 @@ pub struct ConsensusVoting<T> {
     pub(crate) replica_count: usize,
 }
 impl<T> ConsensusVoting<T> {
-    pub fn increase_vote(&mut self) {
+    pub(crate) fn increase_vote(&mut self) {
         self.pos_vt += 1;
     }
 
@@ -24,7 +24,7 @@ impl<T> ConsensusVoting<T> {
 }
 
 impl ConsensusVoting<ReplicationVote> {
-    pub fn maybe_not_finished(self, log_index: LogIndex) -> Option<Self> {
+    pub(crate) fn maybe_not_finished(self, log_index: LogIndex) -> Option<Self> {
         if self.pos_vt >= self.get_required_votes() {
             let _ = self.callback.send(WriteConsensusResponse::LogIndex(Some(log_index)));
             None

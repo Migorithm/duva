@@ -22,12 +22,12 @@ type OneShotReceiverJoinHandle<T> =
     tokio::task::JoinHandle<std::result::Result<T, tokio::sync::oneshot::error::RecvError>>;
 
 #[derive(Clone, Debug)]
-pub struct CacheManager {
+pub(crate) struct CacheManager {
     pub(crate) inboxes: Vec<CacheCommandSender>,
 }
 
 impl CacheManager {
-    pub fn run_cache_actors() -> CacheManager {
+    pub(crate) fn run_cache_actors() -> CacheManager {
         const NUM_OF_PERSISTENCE: usize = 10;
 
         let cache_dispatcher = CacheManager {

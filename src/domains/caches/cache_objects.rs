@@ -54,22 +54,16 @@ impl CacheEntry {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
-pub enum CacheValue {
+pub(crate) enum CacheValue {
     Value(String),
     ValueWithExpiry(String, DateTime<Utc>),
 }
 impl CacheValue {
-    pub fn value(&self) -> &str {
-        match self {
-            CacheValue::Value(v) => v,
-            CacheValue::ValueWithExpiry(v, _) => v,
-        }
-    }
-    pub fn has_expiry(&self) -> bool {
+    pub(crate) fn has_expiry(&self) -> bool {
         matches!(self, CacheValue::ValueWithExpiry(_, _))
     }
 
-    pub fn to_cache_entry(&self, key: &str) -> CacheEntry {
+    pub(crate) fn to_cache_entry(&self, key: &str) -> CacheEntry {
         match self {
             CacheValue::Value(v) => CacheEntry::KeyValue(key.to_string(), v.clone()),
             CacheValue::ValueWithExpiry(v, expiry) => {

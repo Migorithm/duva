@@ -1,7 +1,7 @@
 use crate::domains::peers::identifier::PeerIdentifier;
 
 #[derive(Debug, Clone)]
-pub enum ElectionState {
+pub(crate) enum ElectionState {
     Candidate { voting: Option<ElectionVoting> },
     Follower { voted_for: Option<PeerIdentifier> },
     Leader,
@@ -58,7 +58,7 @@ impl ElectionState {
 }
 
 #[derive(Debug, Clone)]
-pub struct ElectionVoting {
+pub(crate) struct ElectionVoting {
     pub(crate) pos_vt: u8,
     pub(crate) neg_vt: u8,
     pub(crate) replica_count: usize,
