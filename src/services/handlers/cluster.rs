@@ -46,7 +46,8 @@ impl ClusterActor {
                 // ! AppendEntriesRPC is a message from a leader to a follower
                 ClusterCommand::AppendEntriesRPC(heartbeat) => {
                     // check if the heartbeat is from a leader
-                    self.reset_election_timeout(&heartbeat.replid);
+
+                    self.reset_election_timeout(&heartbeat.heartbeat_from);
                     self.replicate(&mut logger, heartbeat, &cache_manager).await;
                 },
                 ClusterCommand::ClusterHeartBeat(mut heartbeat) => {

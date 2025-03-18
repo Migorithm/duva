@@ -1,6 +1,7 @@
 use super::response::ConnectionResponse;
 use crate::domains::cluster_actors::commands::AddPeer;
 use crate::domains::cluster_actors::commands::ClusterCommand;
+use crate::domains::cluster_actors::replication::ReplicationId;
 use crate::domains::cluster_actors::replication::ReplicationState;
 use crate::domains::peers::connected_peer_info::ConnectedPeerInfo;
 use crate::domains::peers::identifier::PeerIdentifier;
@@ -74,7 +75,7 @@ impl OutboundStream {
                         self.write(msg).await?
                     },
                     ConnectionResponse::FULLRESYNC { id, repl_id, offset } => {
-                        connection_info.leader_repl_id = repl_id.into();
+                        connection_info.leader_repl_id = ReplicationId::Key(repl_id.into());
                         connection_info.hwm = offset;
                         connection_info.id = id.into();
                         println!("[INFO] Three-way handshake completed")
@@ -94,7 +95,7 @@ impl OutboundStream {
         self,
         cluster_manager: &ClusterConnectionManager,
     ) -> anyhow::Result<Self> {
-        if *self.my_repl_info.replid == "?" {
+        if self.my_repl_info.replid == ReplicationId::Undecided {
             let connected_node_info = self
                 .connected_node_info
                 .as_ref()

@@ -2,6 +2,7 @@ use super::request::HandShakeRequest;
 use super::request::HandShakeRequestEnum;
 use crate::domains::cluster_actors::commands::AddPeer;
 use crate::domains::cluster_actors::commands::ClusterCommand;
+use crate::domains::cluster_actors::replication::ReplicationId;
 use crate::domains::cluster_actors::replication::ReplicationState;
 use crate::domains::peers::connected_peer_info::ConnectedPeerInfo;
 use crate::domains::peers::identifier::PeerIdentifier;
@@ -43,7 +44,7 @@ impl InboundStream {
         let (peer_leader_repl_id, peer_hwm) = self.recv_psync().await?;
 
         self.peer_info.id = PeerIdentifier::new(&self.get_peer_ip()?, port);
-        self.peer_info.leader_repl_id = peer_leader_repl_id.into();
+        self.peer_info.leader_repl_id = ReplicationId::Key(peer_leader_repl_id.into());
         self.peer_info.hwm = peer_hwm;
 
         Ok(())

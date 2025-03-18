@@ -1,10 +1,12 @@
+use crate::domains::cluster_actors::replication::ReplicationId;
+
 use super::identifier::PeerIdentifier;
 
 #[derive(Debug, Clone, Default)]
 pub(crate) struct ConnectedPeerInfo {
     // TODO repl_id here is the leader_replid from connected server.
     pub(crate) id: PeerIdentifier,
-    pub(crate) leader_repl_id: PeerIdentifier,
+    pub(crate) leader_repl_id: ReplicationId,
     pub(crate) hwm: u64,
     pub(crate) peer_list: Vec<String>,
 }

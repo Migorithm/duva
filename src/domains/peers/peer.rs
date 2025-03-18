@@ -1,6 +1,7 @@
 use super::connected_peer_info::ConnectedPeerInfo;
 use super::identifier::PeerIdentifier;
 use crate::domains::IoError;
+use crate::domains::cluster_actors::replication::ReplicationId;
 use crate::domains::peers::connected_types::WriteConnected;
 use crate::domains::query_parsers::QueryIO;
 use crate::services::interface::TWrite;
@@ -56,7 +57,7 @@ pub enum PeerKind {
 }
 
 impl PeerKind {
-    pub fn decide_peer_kind(my_repl_id: &str, peer_info: ConnectedPeerInfo) -> Self {
+    pub fn decide_peer_kind(my_repl_id: &ReplicationId, peer_info: ConnectedPeerInfo) -> Self {
         if my_repl_id == *peer_info.id {
             return Self::Leader;
         }

@@ -163,8 +163,11 @@ pub(crate) fn time_in_secs() -> anyhow::Result<u64> {
         .as_secs())
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, bincode::Encode, bincode::Decode)]
+#[derive(
+    Debug, Clone, PartialEq, Default, Eq, PartialOrd, Ord, bincode::Encode, bincode::Decode,
+)]
 pub enum ReplicationId {
+    #[default]
     Undecided,
     Key(String),
 }
@@ -174,6 +177,15 @@ impl Display for ReplicationId {
         match self {
             ReplicationId::Undecided => write!(f, "?"),
             ReplicationId::Key(key) => write!(f, "{}", key),
+        }
+    }
+}
+
+impl From<ReplicationId> for String {
+    fn from(value: ReplicationId) -> Self {
+        match value {
+            ReplicationId::Undecided => "?".to_string(),
+            ReplicationId::Key(key) => key,
         }
     }
 }
