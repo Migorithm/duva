@@ -1,5 +1,5 @@
 mod common;
-use common::{ServerEnv, spawn_server_process};
+use common::{spawn_server_process, ServerEnv};
 
 use crate::common::array;
 use duva::client_utils::ClientStreamHandler;
@@ -55,7 +55,7 @@ async fn test_lazy_leader_discovery() {
     // WHEN
     // switch replication to future_leader
     repl_client_h
-        .send(&common::array(vec!["REPLICAOF", future_leader_p.bind_addr().as_str()]))
+        .send(&common::array(vec!["REPLICAOF", "127.0.0.1", &future_leader_env.port.to_string()]))
         .await;
 
     repl_p.wait_for_message("[INFO] Received Leader State - length 1", 1).unwrap();

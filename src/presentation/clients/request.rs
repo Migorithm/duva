@@ -16,6 +16,7 @@ pub enum ClientRequest {
     ClusterInfo,
     ClusterNodes,
     ClusterForget(PeerIdentifier),
+    ReplicaOf(PeerIdentifier)
 }
 
 impl ClientRequest {

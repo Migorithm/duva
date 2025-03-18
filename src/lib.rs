@@ -1,3 +1,5 @@
+extern crate core;
+
 mod actor_registry;
 pub mod adapters;
 pub mod domains;
@@ -7,14 +9,14 @@ pub mod presentation;
 pub mod services;
 use actor_registry::ActorRegistry;
 use anyhow::{Context, Result};
-use domains::IoError;
 use domains::append_only_files::interfaces::TWriteAheadLog;
 use domains::caches::cache_manager::CacheManager;
-use domains::cluster_actors::ClusterActor;
 use domains::cluster_actors::commands::ClusterCommand;
 use domains::cluster_actors::replication::ReplicationState;
+use domains::cluster_actors::ClusterActor;
 use domains::config_actors::config_manager::ConfigManager;
 use domains::saves::snapshot::snapshot_loader::SnapshotLoader;
+use domains::IoError;
 pub use init::Environment;
 use presentation::clients::ClientController;
 use presentation::clusters::inbound::stream::InboundStream;

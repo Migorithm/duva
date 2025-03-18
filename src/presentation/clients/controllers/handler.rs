@@ -67,6 +67,12 @@ impl ClientController<Handler> {
                     Err(e) => QueryIO::Err(e.to_string().into()),
                 }
             },
+            ClientRequest::ReplicaOf(peer_identifier) => {
+                match self.cluster_connection_manager.discover_cluster(self.config_manager.port, peer_identifier).await {
+                    Ok(_) => QueryIO::SimpleString("OK".into()),
+                    Err(e) => QueryIO::Err(e.to_string().into()),
+                }
+            }
         };
         Ok(response)
     }

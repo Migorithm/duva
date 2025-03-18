@@ -164,6 +164,12 @@ impl ReplicationState {
         self.leader_replid = self.self_identifier();
         self.election_state.become_leader();
     }
+
+    // pub(crate) fn change_leader(&mut self, leader_addr: &PeerIdentifier) {
+    //     self.leader_host =leader_addr.host().clone();
+    //     self.leader_port =leader_addr.port();
+    //     self.may_become_follower(leader_addr, self.term);
+    // }
 }
 
 pub(crate) fn time_in_secs() -> anyhow::Result<u64> {

@@ -1,6 +1,7 @@
 use super::request::ClientRequest;
+use crate::domains::peers::identifier::PeerIdentifier;
 use crate::{
-    domains::{IoError, query_parsers::QueryIO},
+    domains::{query_parsers::QueryIO, IoError},
     make_smart_pointer,
     services::interface::TRead,
 };
@@ -72,7 +73,11 @@ impl ClientStream {
                 },
                 _ => Err(anyhow::anyhow!("Invalid command")),
             },
-
+            ("replicaof", val) if !val.is_empty() => match val{
+                [no, _] if no.to_lowercase() == "no" => todo!(),
+                [host, port] => Ok(ClientRequest::ReplicaOf(PeerIdentifier::new(host, port.parse::<u16>().context("Invalid port")?))),
+                _ => Ok(ClientRequest::ReplicaOf(val[0].clone().into())),
+            },
             _ => Err(anyhow::anyhow!("Invalid command")),
         }
     }

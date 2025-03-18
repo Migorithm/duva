@@ -17,6 +17,15 @@ impl PeerIdentifier {
             })
             .unwrap()
     }
+
+    // TODO maybe put host and port in a struct
+    pub(crate) fn host(&self) -> Option<String> {
+        self.0.rsplit_once(':')?.0.parse().ok()
+    }
+
+    pub(crate) fn port(&self) -> Option<u16> {
+        self.0.rsplit_once(':')?.1.parse().ok()
+    }
 }
 
 fn parse_address(addr: &str) -> Option<std::net::IpAddr> {

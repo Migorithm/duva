@@ -11,6 +11,7 @@ use crate::domains::saves::actor::SaveTarget;
 use crate::presentation::clients::request::ClientRequest;
 use crate::presentation::clients::stream::ClientStream;
 use crate::presentation::clusters::communication_manager::ClusterCommunicationManager;
+use crate::presentation::clusters::connection_manager::ClusterConnectionManager;
 use crate::services::interface::TWrite;
 use futures::future::try_join_all;
 use std::marker::PhantomData;
@@ -28,5 +29,6 @@ pub(crate) struct ClientController<T = Acceptor> {
     pub(crate) cache_manager: CacheManager,
     pub(crate) config_manager: ConfigManager,
     pub(crate) cluster_communication_manager: ClusterCommunicationManager,
+    pub(crate) cluster_connection_manager: ClusterConnectionManager,
     pub(crate) acceptor: PhantomData<T>,
 }

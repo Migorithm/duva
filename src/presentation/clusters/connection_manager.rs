@@ -3,9 +3,10 @@ use super::outbound::stream::OutboundStream;
 
 use crate::domains::cluster_actors::commands::ClusterCommand;
 use crate::domains::peers::identifier::PeerIdentifier;
-use crate::{InboundStream, make_smart_pointer};
+use crate::{make_smart_pointer, InboundStream};
 use tokio::sync::mpsc::Sender;
 
+#[derive(Clone)]
 pub struct ClusterConnectionManager(pub(crate) ClusterCommunicationManager);
 
 impl ClusterConnectionManager {
@@ -28,7 +29,7 @@ impl ClusterConnectionManager {
     }
 
     pub(crate) async fn discover_cluster(
-        self,
+        &self,
         self_port: u16,
         connect_to: PeerIdentifier,
     ) -> anyhow::Result<()> {
