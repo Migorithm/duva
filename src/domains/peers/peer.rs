@@ -4,7 +4,7 @@ use crate::domains::cluster_actors::replication::ReplicationId;
 use crate::domains::peers::connected_types::WriteConnected;
 use crate::domains::query_parsers::QueryIO;
 use crate::services::interface::TWrite;
-use bytes::Bytes;
+
 use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
 use tokio::task::JoinHandle;
 use tokio::time::Instant;
@@ -34,10 +34,6 @@ impl Peer {
         }
     }
 
-    pub(crate) async fn write(&mut self, buf: impl Into<Bytes> + Send) -> Result<(), IoError> {
-        self.w_conn.stream.write(buf).await
-    }
-
     pub(crate) async fn write_io(&mut self, io: impl Into<QueryIO> + Send) -> Result<(), IoError> {
         self.w_conn.stream.write_io(io).await
     }
@@ -49,17 +45,16 @@ impl Peer {
 
 #[derive(Clone, Debug)]
 pub enum PeerKind {
-    Follower { watermark: u64, replid: ReplicationId },
-
+    Replica { watermark: u64, replid: ReplicationId },
     NonDataPeer { replid: ReplicationId },
 }
 
 impl PeerKind {
     pub fn decide_peer_kind(my_repl_id: &ReplicationId, peer_info: &ConnectedPeerInfo) -> Self {
         if peer_info.replid == ReplicationId::Undecided {
-            PeerKind::Follower { watermark: peer_info.hwm, replid: peer_info.replid.clone() }
+            PeerKind::Replica { watermark: peer_info.hwm, replid: peer_info.replid.clone() }
         } else if my_repl_id == &peer_info.replid {
-            PeerKind::Follower { watermark: peer_info.hwm, replid: peer_info.replid.clone() }
+            PeerKind::Replica { watermark: peer_info.hwm, replid: peer_info.replid.clone() }
         } else {
             PeerKind::NonDataPeer { replid: peer_info.replid.clone() }
         }

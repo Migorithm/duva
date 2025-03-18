@@ -6,19 +6,16 @@ use crate::domains::cluster_actors::replication::ReplicationId;
 use crate::domains::cluster_actors::replication::ReplicationState;
 use crate::domains::peers::connected_peer_info::ConnectedPeerInfo;
 use crate::domains::peers::identifier::PeerIdentifier;
-
 use crate::domains::peers::peer::PeerKind;
 use crate::domains::query_parsers::QueryIO;
 use crate::make_smart_pointer;
 use crate::presentation::clusters::communication_manager::ClusterCommunicationManager;
-
 use crate::presentation::clusters::listeners::create_peer;
 use crate::services::interface::TGetPeerIp;
 use crate::services::interface::TRead;
 use crate::services::interface::TWrite;
 use tokio::net::TcpStream;
 use tokio::sync::mpsc::Sender;
-use tokio::task::yield_now;
 
 // The following is used only when the node is in leader mode
 pub(crate) struct InboundStream {
@@ -137,7 +134,7 @@ impl InboundStream {
         ccm: ClusterCommunicationManager,
         connected_peer_info: &ConnectedPeerInfo,
     ) -> anyhow::Result<()> {
-        if let PeerKind::Follower { watermark, replid } = self.decide_peer_kind(connected_peer_info)
+        if let PeerKind::Replica { watermark, replid } = self.decide_peer_kind(connected_peer_info)
         {
             if replid == ReplicationId::Undecided {
                 let logs = ccm.fetch_logs_for_sync().await?;
