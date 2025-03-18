@@ -6,7 +6,7 @@ use super::identifier::PeerIdentifier;
 pub(crate) struct ConnectedPeerInfo {
     // TODO repl_id here is the leader_replid from connected server.
     pub(crate) id: PeerIdentifier,
-    pub(crate) leader_repl_id: ReplicationId,
+    pub(crate) replid: ReplicationId,
     pub(crate) hwm: u64,
     pub(crate) peer_list: Vec<String>,
 }

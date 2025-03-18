@@ -45,7 +45,7 @@ impl OutboundStream {
         let mut ok_count = 0;
         let mut connection_info = ConnectedPeerInfo {
             id: Default::default(),
-            leader_repl_id: Default::default(),
+            replid: Default::default(),
             hwm: Default::default(),
             peer_list: Default::default(),
         };
@@ -75,7 +75,7 @@ impl OutboundStream {
                         self.write(msg).await?
                     },
                     ConnectionResponse::FULLRESYNC { id, repl_id, offset } => {
-                        connection_info.leader_repl_id = ReplicationId::Key(repl_id.into());
+                        connection_info.replid = ReplicationId::Key(repl_id.into());
                         connection_info.hwm = offset;
                         connection_info.id = id.into();
                         println!("[INFO] Three-way handshake completed")
@@ -103,7 +103,7 @@ impl OutboundStream {
 
             cluster_manager
                 .send(ClusterCommand::SetReplicationInfo {
-                    leader_repl_id: connected_node_info.leader_repl_id.clone(),
+                    leader_repl_id: connected_node_info.replid.clone(),
                     hwm: 0,
                 })
                 .await?;

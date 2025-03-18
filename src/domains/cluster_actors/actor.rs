@@ -62,14 +62,14 @@ impl ClusterActor {
 
     pub(crate) fn followers(&self) -> impl Iterator<Item = (&PeerIdentifier, &Peer, u64)> {
         self.members.iter().filter_map(|(id, peer)| match &peer.kind {
-            PeerKind::Follower { watermark: hwm, leader_repl_id } => Some((id, peer, *hwm)),
+            PeerKind::Follower { watermark: hwm, replid: leader_repl_id } => Some((id, peer, *hwm)),
             _ => None,
         })
     }
 
     pub(crate) fn followers_mut(&mut self) -> impl Iterator<Item = (&mut Peer, u64)> {
         self.members.values_mut().into_iter().filter_map(|peer| match peer.kind.clone() {
-            PeerKind::Follower { watermark: hwm, leader_repl_id } => Some((peer, hwm)),
+            PeerKind::Follower { watermark: hwm, replid: leader_repl_id } => Some((peer, hwm)),
             _ => None,
         })
     }
@@ -263,7 +263,7 @@ impl ClusterActor {
             .values()
             .into_iter()
             .filter_map(|peer| match &peer.kind {
-                PeerKind::Follower { watermark, leader_repl_id } => Some(*watermark),
+                PeerKind::Follower { watermark, replid: leader_repl_id } => Some(*watermark),
                 _ => None,
             })
             .min()
@@ -343,12 +343,12 @@ impl ClusterActor {
             .values()
             .into_iter()
             .map(|peer| match &peer.kind {
-                PeerKind::Follower { watermark: hwm, leader_repl_id } => {
-                    format!("{} follower {}", peer.addr, leader_repl_id)
+                PeerKind::Follower { watermark: hwm, replid } => {
+                    format!("{} follower {}", peer.addr, replid)
                 },
                 PeerKind::Leader => format!("{} leader - 0", peer.addr),
-                PeerKind::PFollower { leader_repl_id } => {
-                    format!("{} follower {}", peer.addr, leader_repl_id)
+                PeerKind::PFollower { replid } => {
+                    format!("{} follower {}", peer.addr, replid)
                 },
                 PeerKind::PLeader => format!("{} leader - 0", peer.addr),
             })
@@ -485,10 +485,7 @@ mod test {
                     TcpStream::connect(bind_addr).await.unwrap(),
                     PeerKind::Follower {
                         watermark: follower_hwm,
-                        leader_repl_id: PeerIdentifier::new(
-                            &actor.replication.self_host,
-                            actor.replication.self_port,
-                        ),
+                        replid: ReplicationId::Key("localhost".to_string().into()),
                     },
                     cluster_sender.clone(),
                 ),
@@ -841,6 +838,7 @@ mod test {
     127.0.0.1:30001 myself,leader - 0-5460
     <ip:port> <flags> <leader> <link-state> <slot>
          */
+    //TODO Fix the following
     #[tokio::test]
     async fn test_cluster_nodes() {
         use tokio::net::TcpListener;
@@ -853,7 +851,7 @@ mod test {
         let bind_addr = listener.local_addr().unwrap();
 
         let mut cluster_actor = cluster_actor_create_helper();
-        let self_identifier: PeerIdentifier = bind_addr.to_string().into();
+        let self_identifier = ReplicationId::Key(bind_addr.to_string().into());
 
         // followers
         for port in [6379, 6380] {
@@ -863,7 +861,7 @@ mod test {
                 create_peer(
                     key.to_string(),
                     TcpStream::connect(bind_addr).await.unwrap(),
-                    PeerKind::Follower { watermark: 0, leader_repl_id: self_identifier.clone() },
+                    PeerKind::Follower { watermark: 0, replid: self_identifier.clone() },
                     cluster_sender.clone(),
                 ),
             );
@@ -893,14 +891,16 @@ mod test {
                 create_peer(
                     key.to_string(),
                     TcpStream::connect(bind_addr_for_second_shard).await.unwrap(),
-                    PeerKind::PFollower { leader_repl_id: second_shard_leader_identifier.clone() },
+                    PeerKind::PFollower {
+                        replid: ReplicationId::Key((*second_shard_leader_identifier).clone()),
+                    },
                     cluster_sender.clone(),
                 ),
             );
         }
 
         // WHEN
-        let res = cluster_actor.cluster_nodes();
+        let res = dbg!(cluster_actor.cluster_nodes());
 
         assert_eq!(res.len(), 6);
 
@@ -910,7 +910,7 @@ mod test {
             format!("{} leader - 0", second_shard_leader_identifier),
             format!("127.0.0.1:2655 follower {}", second_shard_leader_identifier),
             format!("127.0.0.1:2653 follower {}", second_shard_leader_identifier),
-            format!("127.0.0.1:8080 myself,leader - 0"),
+            format!("127.0.0.1:8080 myself,leader ? 0"),
         ] {
             assert!(res.contains(&value));
         }

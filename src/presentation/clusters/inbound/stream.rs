@@ -44,7 +44,7 @@ impl InboundStream {
         let (peer_leader_repl_id, peer_hwm) = self.recv_psync().await?;
 
         self.peer_info.id = PeerIdentifier::new(&self.get_peer_ip()?, port);
-        self.peer_info.leader_repl_id = ReplicationId::Key(peer_leader_repl_id.into());
+        self.peer_info.replid = ReplicationId::Key(peer_leader_repl_id.into());
         self.peer_info.hwm = peer_hwm;
 
         Ok(())
@@ -133,8 +133,8 @@ impl InboundStream {
         &mut self,
         ccm: ClusterCommunicationManager,
     ) -> anyhow::Result<()> {
-        if let PeerKind::Follower { watermark, leader_repl_id } = self.peer_kind()? {
-            if self.self_repl_info.self_identifier() == leader_repl_id {
+        if let PeerKind::Follower { watermark, replid } = self.peer_kind()? {
+            if replid == ReplicationId::Undecided {
                 let logs = ccm.fetch_logs_for_sync().await?;
                 self.write_io(logs).await?;
             }
