@@ -1,3 +1,5 @@
+use uuid::Uuid;
+
 use super::election_state::ElectionState;
 pub(crate) use super::heartbeats::heartbeat::BannedPeer;
 pub(crate) use super::heartbeats::heartbeat::HeartBeatMessage;
@@ -171,4 +173,9 @@ pub(crate) fn time_in_secs() -> anyhow::Result<u64> {
         .duration_since(std::time::UNIX_EPOCH)
         .expect("Time went backwards")
         .as_secs())
+}
+
+pub enum PartitionKey {
+    Undecided,
+    Key(Uuid),
 }
