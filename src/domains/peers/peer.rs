@@ -1,5 +1,4 @@
 use super::connected_peer_info::ConnectedPeerInfo;
-use super::identifier::PeerIdentifier;
 use crate::domains::IoError;
 use crate::domains::cluster_actors::replication::ReplicationId;
 use crate::domains::peers::connected_types::WriteConnected;

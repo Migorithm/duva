@@ -22,6 +22,7 @@ pub struct ReplicationState {
     pub(crate) ban_list: Vec<BannedPeer>,
 
     pub(crate) election_state: ElectionState,
+    pub(crate) is_leader_mode: bool,
 }
 
 impl ReplicationState {
@@ -38,6 +39,7 @@ impl ReplicationState {
 
         let role = if replicaof.is_some() { "follower".to_string() } else { "leader".to_string() };
         let replication = ReplicationState {
+            is_leader_mode: replicaof.is_none(),
             election_state: ElectionState::new(&role),
             role,
             replid,
@@ -114,9 +116,6 @@ impl ReplicationState {
         if let Some(idx) = idx {
             self.ban_list.swap_remove(idx);
         }
-    }
-    pub(crate) fn is_leader_mode(&self) -> bool {
-        self.leader_host.is_none()
     }
 
     pub(crate) fn become_candidate(&mut self, replica_count: usize) {

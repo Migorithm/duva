@@ -38,7 +38,7 @@ impl ClusterActor {
         let (self_handler, receiver) = tokio::sync::mpsc::channel(100);
         let heartbeat_scheduler = HeartBeatScheduler::run(
             self_handler.clone(),
-            init_repl_info.is_leader_mode(),
+            init_repl_info.is_leader_mode,
             heartbeat_interval_in_mills,
         );
 
@@ -192,7 +192,7 @@ impl ClusterActor {
         logger: &mut Logger<impl TWriteAheadLog>,
         log: &WriteRequest,
     ) -> Result<Vec<WriteOperation>, WriteConsensusResponse> {
-        if !self.replication.is_leader_mode() {
+        if !self.replication.is_leader_mode {
             return Err(WriteConsensusResponse::Err("Write given to follower".into()));
         }
 
@@ -330,6 +330,9 @@ impl ClusterActor {
     }
 
     async fn send_to_replicas(&mut self, msg: impl Into<QueryIO> + Send + Clone) {
+        for peer in self.members.values_mut() {
+            println!("{:?}", peer.kind);
+        }
         self.followers_mut()
             .into_iter()
             .map(|(peer, _)| peer.write_io(msg.clone()))
@@ -395,7 +398,7 @@ impl ClusterActor {
             return;
         }
 
-        if self.replication.is_leader_mode() {
+        if self.replication.is_leader_mode {
             self.heartbeat_scheduler.switch().await;
         }
         let msg = self.replication.default_heartbeat(0);
