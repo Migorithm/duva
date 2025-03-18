@@ -175,7 +175,7 @@ pub(crate) fn time_in_secs() -> anyhow::Result<u64> {
         .as_secs())
 }
 
-pub enum PartitionKey {
+pub enum ReplicationId {
     Undecided,
     Key(Uuid),
 }
