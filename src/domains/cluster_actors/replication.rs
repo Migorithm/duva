@@ -198,3 +198,12 @@ impl From<ReplicationId> for String {
         }
     }
 }
+
+impl From<String> for ReplicationId {
+    fn from(value: String) -> Self {
+        match value.as_str() {
+            "?" => ReplicationId::Undecided,
+            _ => ReplicationId::Key(value),
+        }
+    }
+}

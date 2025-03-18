@@ -56,7 +56,6 @@ impl ClusterListener {
                             self.cluster_handler.send(ClusterCommand::ClusterHeartBeat(hb)).await;
                     },
                     PeerInput::FullSync(logs) => {
-                        println!("Received full sync logs: {:?}", logs);
                         let _ = self
                             .cluster_handler
                             .send(ClusterCommand::InstallLeaderState(logs))

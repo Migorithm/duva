@@ -44,7 +44,7 @@ impl InboundStream {
 
         Ok(ConnectedPeerInfo {
             id: PeerIdentifier::new(&self.get_peer_ip()?, port),
-            replid: ReplicationId::Key(peer_leader_repl_id.into()),
+            replid: peer_leader_repl_id,
             hwm: peer_hwm,
             peer_list: vec![],
         })
@@ -74,7 +74,7 @@ impl InboundStream {
         self.write(QueryIO::SimpleString("OK".into())).await?;
         Ok(capa_val_vec)
     }
-    async fn recv_psync(&mut self) -> anyhow::Result<(String, u64)> {
+    async fn recv_psync(&mut self) -> anyhow::Result<(ReplicationId, u64)> {
         let mut cmd = self.extract_cmd().await?;
         let (inbound_repl_id, offset) = cmd.extract_psync()?;
 
@@ -116,15 +116,18 @@ impl InboundStream {
         cluster_actor_handler: Sender<ClusterCommand>,
         connected_peer_info: ConnectedPeerInfo,
     ) -> anyhow::Result<ClusterCommand> {
-        let kind = PeerKind::decide_peer_kind(&self.self_repl_info.replid, &connected_peer_info);
-
+        let kind = self.decide_peer_kind(&connected_peer_info);
         let peer = create_peer(
             (connected_peer_info.id).to_string(),
             self.stream,
-            kind.clone(),
+            kind,
             cluster_actor_handler,
         );
         Ok(ClusterCommand::AddPeer(AddPeer { peer_id: connected_peer_info.id, peer }))
+    }
+
+    pub(crate) fn decide_peer_kind(&self, connected_peer_info: &ConnectedPeerInfo) -> PeerKind {
+        PeerKind::decide_peer_kind(&self.self_repl_info.replid, connected_peer_info)
     }
 
     // depending on the condition, try full/partial sync.
@@ -133,9 +136,8 @@ impl InboundStream {
         ccm: ClusterCommunicationManager,
         connected_peer_info: &ConnectedPeerInfo,
     ) -> anyhow::Result<()> {
-        let peer_kind =
-            PeerKind::decide_peer_kind(&self.self_repl_info.replid, connected_peer_info);
-        if let PeerKind::Follower { watermark, replid } = peer_kind {
+        if let PeerKind::Follower { watermark, replid } = self.decide_peer_kind(connected_peer_info)
+        {
             if replid == ReplicationId::Undecided {
                 let logs = ccm.fetch_logs_for_sync().await?;
                 self.write_io(logs).await?;
