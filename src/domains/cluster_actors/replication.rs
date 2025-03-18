@@ -131,7 +131,7 @@ impl ReplicationState {
         if !(self.election_state.is_votable(candidate_id) && self.term < election_term) {
             return false;
         }
-        self.election_state.become_follower(Some(candidate_id.clone()));
+        self.become_follower(Some(candidate_id.clone()));
         self.term = election_term;
         true
     }
@@ -140,23 +140,27 @@ impl ReplicationState {
         match self.election_state.should_become_leader(granted) {
             Some(true) => {
                 eprintln!("\x1b[32m[INFO] Election succeeded\x1b[0m");
-                self.set_leader_state();
+                self.become_leader();
 
                 true
             },
             Some(false) => {
                 println!("[INFO] Election failed");
-                self.election_state.become_follower(None);
+                self.become_follower(None);
                 true
             },
             None => false,
         }
     }
-
-    fn set_leader_state(&mut self) {
+    fn become_follower(&mut self, leader_id: Option<PeerIdentifier>) {
+        self.election_state.become_follower(leader_id);
+        self.is_leader_mode = false;
+    }
+    fn become_leader(&mut self) {
         self.role = "leader".to_string();
         self.leader_host = None;
         self.leader_port = None;
+        self.is_leader_mode = true;
         self.election_state.become_leader();
     }
 }
