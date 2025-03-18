@@ -60,22 +60,22 @@ impl ClusterActor {
         node_count.ilog(fanout) as u8
     }
 
-    pub(crate) fn followers(&self) -> impl Iterator<Item = (&PeerIdentifier, &Peer, u64)> {
+    pub(crate) fn replicas(&self) -> impl Iterator<Item = (&PeerIdentifier, &Peer, u64)> {
         self.members.iter().filter_map(|(id, peer)| match &peer.kind {
-            PeerKind::Follower { watermark: hwm, replid: leader_repl_id } => Some((id, peer, *hwm)),
+            PeerKind::Replica { watermark: hwm, replid: leader_repl_id } => Some((id, peer, *hwm)),
             _ => None,
         })
     }
 
-    pub(crate) fn followers_mut(&mut self) -> impl Iterator<Item = (&mut Peer, u64)> {
+    pub(crate) fn replicas_mut(&mut self) -> impl Iterator<Item = (&mut Peer, u64)> {
         self.members.values_mut().into_iter().filter_map(|peer| match peer.kind.clone() {
-            PeerKind::Follower { watermark: hwm, replid: leader_repl_id } => Some((peer, hwm)),
+            PeerKind::Replica { watermark: hwm, replid: leader_repl_id } => Some((peer, hwm)),
             _ => None,
         })
     }
 
-    fn find_follower_mut(&mut self, peer_id: &PeerIdentifier) -> Option<&mut Peer> {
-        self.members.get_mut(peer_id).filter(|peer| matches!(peer.kind, PeerKind::Follower { .. }))
+    fn find_replica_mut(&mut self, peer_id: &PeerIdentifier) -> Option<&mut Peer> {
+        self.members.get_mut(peer_id).filter(|peer| matches!(peer.kind, PeerKind::Replica { .. }))
     }
 
     pub(crate) async fn send_cluster_heartbeat(&mut self, hop_count: u8) {
@@ -182,7 +182,7 @@ impl ClusterActor {
         if let Some(peer) = self.members.get_mut(&heartheat.heartbeat_from) {
             peer.last_seen = Instant::now();
 
-            if let PeerKind::Follower { watermark: hwm, .. } = &mut peer.kind {
+            if let PeerKind::Replica { watermark: hwm, .. } = &mut peer.kind {
                 *hwm = heartheat.hwm;
             }
         }
@@ -202,7 +202,7 @@ impl ClusterActor {
         };
 
         // Skip consensus for no replicas
-        if self.followers().count() == 0 {
+        if self.replicas().count() == 0 {
             return Err(WriteConsensusResponse::LogIndex(Some(logger.log_index)));
         }
 
@@ -223,7 +223,7 @@ impl ClusterActor {
             },
         };
 
-        self.consensus_tracker.add(logger.log_index, callback, self.followers().count());
+        self.consensus_tracker.add(logger.log_index, callback, self.replicas().count());
         self.generate_follower_entries(append_entries)
             .map(|(peer, hb)| peer.write_io(AppendEntriesRPC(hb)))
             .collect::<FuturesUnordered<_>>()
@@ -251,7 +251,7 @@ impl ClusterActor {
         append_entries: Vec<WriteOperation>,
     ) -> impl Iterator<Item = (&mut Peer, HeartBeatMessage)> {
         let default_heartbeat: HeartBeatMessage = self.replication.default_heartbeat(0);
-        self.followers_mut().map(move |(peer, hwm)| {
+        self.replicas_mut().map(move |(peer, hwm)| {
             let logs =
                 append_entries.iter().filter(|op| *op.log_index > hwm).cloned().collect::<Vec<_>>();
             (peer, default_heartbeat.clone().set_append_entries(logs))
@@ -263,7 +263,7 @@ impl ClusterActor {
             .values()
             .into_iter()
             .filter_map(|peer| match &peer.kind {
-                PeerKind::Follower { watermark, replid: leader_repl_id } => Some(*watermark),
+                PeerKind::Replica { watermark, replid: leader_repl_id } => Some(*watermark),
                 _ => None,
             })
             .min()
@@ -325,12 +325,11 @@ impl ClusterActor {
     }
 
     pub(crate) async fn send_leader_heartbeat(&mut self) {
-        let heartbeat = self.replication.default_heartbeat(0);
-        self.send_to_replicas(AppendEntriesRPC(heartbeat)).await;
+        self.send_to_replicas(AppendEntriesRPC(self.replication.default_heartbeat(0))).await;
     }
 
     async fn send_to_replicas(&mut self, msg: impl Into<QueryIO> + Send + Clone) {
-        self.followers_mut()
+        self.replicas_mut()
             .into_iter()
             .map(|(peer, _)| peer.write_io(msg.clone()))
             .collect::<FuturesUnordered<_>>()
@@ -343,7 +342,7 @@ impl ClusterActor {
             .values()
             .into_iter()
             .map(|peer| match &peer.kind {
-                PeerKind::Follower { watermark: hwm, replid } => {
+                PeerKind::Replica { watermark: hwm, replid } => {
                     format!("{} follower {}", peer.addr, replid)
                 },
                 PeerKind::NonDataPeer { replid } => {
@@ -359,11 +358,11 @@ impl ClusterActor {
             return;
         };
 
-        self.replication.become_candidate(self.followers().count());
+        self.replication.become_candidate(self.replicas().count());
         let request_vote = RequestVote::new(&self.replication, last_log_index, last_log_term);
 
         println!("[INFO] Running for election term {}", self.replication.term);
-        self.followers_mut()
+        self.replicas_mut()
             .map(|(peer, _)| peer.write_io(request_vote.clone()))
             .collect::<FuturesUnordered<_>>()
             .for_each(|_| async {})
@@ -384,7 +383,7 @@ impl ClusterActor {
         );
 
         let term = self.replication.term;
-        let Some(peer) = self.find_follower_mut(&request_vote.candidate_id) else {
+        let Some(peer) = self.find_replica_mut(&request_vote.candidate_id) else {
             return;
         };
         let _ = peer.write_io(RequestVoteReply { term, vote_granted: grant_vote }).await;
@@ -400,7 +399,7 @@ impl ClusterActor {
         }
         let msg = self.replication.default_heartbeat(0);
 
-        self.followers_mut()
+        self.replicas_mut()
             .map(|(peer, _)| peer.write_io(AppendEntriesRPC(msg.clone())))
             .collect::<FuturesUnordered<_>>()
             .for_each(|_| async {})
@@ -481,7 +480,7 @@ mod test {
                 create_peer(
                     key.to_string(),
                     TcpStream::connect(bind_addr).await.unwrap(),
-                    PeerKind::Follower {
+                    PeerKind::Replica {
                         watermark: follower_hwm,
                         replid: ReplicationId::Key("localhost".to_string().into()),
                     },
@@ -860,7 +859,7 @@ mod test {
                 create_peer(
                     key.to_string(),
                     TcpStream::connect(bind_addr).await.unwrap(),
-                    PeerKind::Follower { watermark: 0, replid: self_identifier.clone() },
+                    PeerKind::Replica { watermark: 0, replid: self_identifier.clone() },
                     cluster_sender.clone(),
                 ),
             );
