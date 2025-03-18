@@ -330,9 +330,6 @@ impl ClusterActor {
     }
 
     async fn send_to_replicas(&mut self, msg: impl Into<QueryIO> + Send + Clone) {
-        for peer in self.members.values_mut() {
-            println!("{:?}", peer.kind);
-        }
         self.followers_mut()
             .into_iter()
             .map(|(peer, _)| peer.write_io(msg.clone()))
