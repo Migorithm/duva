@@ -1,6 +1,6 @@
 use super::connected_peer_info::ConnectedPeerInfo;
-use super::identifier::PeerIdentifier;
 use crate::domains::IoError;
+use crate::domains::cluster_actors::replication::ReplicationId;
 use crate::domains::peers::connected_types::WriteConnected;
 use crate::domains::query_parsers::QueryIO;
 use crate::services::interface::TWrite;
@@ -49,27 +49,20 @@ impl Peer {
 
 #[derive(Clone, Debug)]
 pub enum PeerKind {
-    Follower { watermark: u64, leader_repl_id: PeerIdentifier },
-    Leader,
-    PFollower { leader_repl_id: PeerIdentifier },
-    PLeader,
+    Follower { watermark: u64, replid: ReplicationId },
+
+    NonDataPeer { replid: ReplicationId },
 }
 
 impl PeerKind {
-    pub fn decide_peer_kind(my_repl_id: &str, peer_info: ConnectedPeerInfo) -> Self {
-        if my_repl_id == *peer_info.id {
-            return Self::Leader;
+    pub fn decide_peer_kind(my_repl_id: &ReplicationId, peer_info: &ConnectedPeerInfo) -> Self {
+        if peer_info.replid == ReplicationId::Undecided {
+            PeerKind::Follower { watermark: peer_info.hwm, replid: peer_info.replid.clone() }
+        } else if my_repl_id == &peer_info.replid {
+            PeerKind::Follower { watermark: peer_info.hwm, replid: peer_info.replid.clone() }
+        } else {
+            PeerKind::NonDataPeer { replid: peer_info.replid.clone() }
         }
-        if my_repl_id == *peer_info.leader_repl_id {
-            return Self::Follower {
-                watermark: peer_info.hwm,
-                leader_repl_id: peer_info.leader_repl_id,
-            };
-        }
-        if peer_info.id == peer_info.leader_repl_id {
-            return Self::PLeader;
-        }
-        Self::PFollower { leader_repl_id: peer_info.leader_repl_id }
     }
 }
 

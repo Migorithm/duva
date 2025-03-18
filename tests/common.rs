@@ -233,6 +233,7 @@ pub fn array(arr: Vec<&str>) -> Bytes {
         .serialize()
 }
 
+/// Check if all processes can communicate with each other
 pub fn check_internodes_communication(
     processes: &mut [&mut TestProcessChild],
     hop_count: usize,

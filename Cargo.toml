@@ -17,6 +17,7 @@ futures = "0.3.31"                                  # async networking
 memmap2 = "0.9.5"                                   # memory mapping
 chrono = "0.4.40"
 bincode = { version = "2.0.1" }                     # serialization
+uuid = { version = "1.16.0", features = ["v7"] }    # unique id generation
 
 [dev-dependencies]
 tempfile = "3.18.0"

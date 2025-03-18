@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 use super::election_state::ElectionState;
 pub(crate) use super::heartbeats::heartbeat::BannedPeer;
 pub(crate) use super::heartbeats::heartbeat::HeartBeatMessage;
@@ -5,8 +7,8 @@ use crate::domains::peers::identifier::PeerIdentifier;
 
 #[derive(Debug, Clone)]
 pub struct ReplicationState {
-    pub(crate) leader_replid: PeerIdentifier, // The replication ID of the master example: 8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb
-    pub(crate) hwm: u64,                      // high water mark (commit idx)
+    pub(crate) replid: ReplicationId, // The replication ID of the master example: 8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb
+    pub(crate) hwm: u64,              // high water mark (commit idx)
     role: String,
 
     pub(crate) self_host: String,
@@ -20,6 +22,7 @@ pub struct ReplicationState {
     pub(crate) ban_list: Vec<BannedPeer>,
 
     pub(crate) election_state: ElectionState,
+    pub(crate) is_leader_mode: bool,
 }
 
 impl ReplicationState {
@@ -28,20 +31,18 @@ impl ReplicationState {
         self_host: &str,
         self_port: u16,
     ) -> Self {
-        let leader_repl_id = if let Some((leader_host, leader_port)) = replicaof.as_ref() {
-            PeerIdentifier::new(
-                leader_host,
-                leader_port.parse().expect("Invalid port number given"),
-            )
+        let replid = if replicaof.is_none() {
+            ReplicationId::Key(uuid::Uuid::now_v7().to_string())
         } else {
-            PeerIdentifier::new(self_host, self_port)
+            ReplicationId::Undecided
         };
 
         let role = if replicaof.is_some() { "follower".to_string() } else { "leader".to_string() };
         let replication = ReplicationState {
+            is_leader_mode: replicaof.is_none(),
             election_state: ElectionState::new(&role),
             role,
-            leader_replid: leader_repl_id.clone(),
+            replid,
             hwm: 0,
             leader_host: replicaof.as_ref().cloned().map(|(host, _)| host),
             leader_port: replicaof
@@ -57,11 +58,9 @@ impl ReplicationState {
 
     pub(crate) fn self_info(&self) -> String {
         let self_id = self.self_identifier();
-        let leader_repl_id =
-            if *self_id == *self.leader_replid { "-" } else { &self.leader_replid };
 
         //TODO last 0 denotes slots - subject to work
-        format!("{} myself,{} {} 0", self_id, self.role(), leader_repl_id)
+        format!("{} myself,{} {} 0", self_id, self.role(), self.replid)
     }
 
     pub(crate) fn self_identifier(&self) -> PeerIdentifier {
@@ -74,7 +73,7 @@ impl ReplicationState {
     pub(crate) fn vectorize(self) -> Vec<String> {
         vec![
             format!("role:{}", self.role),
-            format!("leader_repl_id:{}", self.leader_replid),
+            format!("leader_repl_id:{}", self.replid),
             format!("high_watermark:{}", self.hwm),
             format!("self_identifier:{}", self.self_identifier()),
         ]
@@ -99,7 +98,7 @@ impl ReplicationState {
             heartbeat_from: self.self_identifier(),
             term: self.term,
             hwm: self.hwm,
-            leader_replid: self.leader_replid.clone(),
+            replid: self.replid.clone(),
             hop_count,
             ban_list: self.ban_list.clone(),
             append_entries: vec![],
@@ -118,9 +117,6 @@ impl ReplicationState {
             self.ban_list.swap_remove(idx);
         }
     }
-    pub(crate) fn is_leader_mode(&self) -> bool {
-        self.leader_host.is_none()
-    }
 
     pub(crate) fn become_candidate(&mut self, replica_count: usize) {
         self.term += 1;
@@ -135,7 +131,7 @@ impl ReplicationState {
         if !(self.election_state.is_votable(candidate_id) && self.term < election_term) {
             return false;
         }
-        self.election_state.become_follower(Some(candidate_id.clone()));
+        self.become_follower(Some(candidate_id.clone()));
         self.term = election_term;
         true
     }
@@ -144,24 +140,27 @@ impl ReplicationState {
         match self.election_state.should_become_leader(granted) {
             Some(true) => {
                 eprintln!("\x1b[32m[INFO] Election succeeded\x1b[0m");
-                self.set_leader_state();
+                self.become_leader();
 
                 true
             },
             Some(false) => {
                 println!("[INFO] Election failed");
-                self.election_state.become_follower(None);
+                self.become_follower(None);
                 true
             },
             None => false,
         }
     }
-
-    fn set_leader_state(&mut self) {
+    fn become_follower(&mut self, leader_id: Option<PeerIdentifier>) {
+        self.election_state.become_follower(leader_id);
+        self.is_leader_mode = false;
+    }
+    fn become_leader(&mut self) {
         self.role = "leader".to_string();
         self.leader_host = None;
         self.leader_port = None;
-        self.leader_replid = self.self_identifier();
+        self.is_leader_mode = true;
         self.election_state.become_leader();
     }
 }
@@ -171,4 +170,40 @@ pub(crate) fn time_in_secs() -> anyhow::Result<u64> {
         .duration_since(std::time::UNIX_EPOCH)
         .expect("Time went backwards")
         .as_secs())
+}
+
+#[derive(
+    Debug, Clone, PartialEq, Default, Eq, PartialOrd, Ord, bincode::Encode, bincode::Decode,
+)]
+pub enum ReplicationId {
+    #[default]
+    Undecided,
+    Key(String),
+}
+
+impl Display for ReplicationId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ReplicationId::Undecided => write!(f, "?"),
+            ReplicationId::Key(key) => write!(f, "{}", key),
+        }
+    }
+}
+
+impl From<ReplicationId> for String {
+    fn from(value: ReplicationId) -> Self {
+        match value {
+            ReplicationId::Undecided => "?".to_string(),
+            ReplicationId::Key(key) => key,
+        }
+    }
+}
+
+impl From<String> for ReplicationId {
+    fn from(value: String) -> Self {
+        match value.as_str() {
+            "?" => ReplicationId::Undecided,
+            _ => ReplicationId::Key(value),
+        }
+    }
 }

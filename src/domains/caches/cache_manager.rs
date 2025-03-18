@@ -3,6 +3,7 @@ use crate::domains::caches::actor::CacheActor;
 use crate::domains::caches::actor::CacheCommandSender;
 use crate::domains::caches::cache_objects::CacheEntry;
 use crate::domains::caches::command::CacheCommand;
+use crate::domains::cluster_actors::replication::ReplicationId;
 use crate::domains::peers::identifier::PeerIdentifier;
 use crate::domains::query_parsers::QueryIO;
 use crate::domains::saves::actor::SaveActor;
@@ -52,7 +53,7 @@ impl CacheManager {
     pub(crate) async fn route_save(
         &self,
         save_target: SaveTarget,
-        repl_id: PeerIdentifier,
+        repl_id: ReplicationId,
         current_offset: u64,
     ) -> Result<JoinHandle<Result<SaveActor>>> {
         let (outbox, inbox) = tokio::sync::mpsc::channel(100);

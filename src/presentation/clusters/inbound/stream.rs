@@ -2,6 +2,7 @@ use super::request::HandShakeRequest;
 use super::request::HandShakeRequestEnum;
 use crate::domains::cluster_actors::commands::AddPeer;
 use crate::domains::cluster_actors::commands::ClusterCommand;
+use crate::domains::cluster_actors::replication::ReplicationId;
 use crate::domains::cluster_actors::replication::ReplicationState;
 use crate::domains::peers::connected_peer_info::ConnectedPeerInfo;
 use crate::domains::peers::identifier::PeerIdentifier;
@@ -17,21 +18,21 @@ use crate::services::interface::TRead;
 use crate::services::interface::TWrite;
 use tokio::net::TcpStream;
 use tokio::sync::mpsc::Sender;
+use tokio::task::yield_now;
 
 // The following is used only when the node is in leader mode
 pub(crate) struct InboundStream {
     pub(crate) stream: TcpStream,
     pub(crate) self_repl_info: ReplicationState,
-    pub(crate) peer_info: ConnectedPeerInfo,
 }
 
 make_smart_pointer!(InboundStream, TcpStream => stream);
 
 impl InboundStream {
     pub(crate) fn new(stream: TcpStream, self_repl_info: ReplicationState) -> Self {
-        Self { stream, self_repl_info, peer_info: Default::default() }
+        Self { stream, self_repl_info }
     }
-    pub(crate) async fn recv_threeway_handshake(&mut self) -> anyhow::Result<()> {
+    pub(crate) async fn recv_threeway_handshake(&mut self) -> anyhow::Result<ConnectedPeerInfo> {
         self.recv_ping().await?;
 
         let port = self.recv_replconf_listening_port().await?;
@@ -42,11 +43,12 @@ impl InboundStream {
         // TODO check repl_id is '?' or of mine. If not, consider incoming as peer
         let (peer_leader_repl_id, peer_hwm) = self.recv_psync().await?;
 
-        self.peer_info.id = PeerIdentifier::new(&self.get_peer_ip()?, port);
-        self.peer_info.leader_repl_id = peer_leader_repl_id.into();
-        self.peer_info.hwm = peer_hwm;
-
-        Ok(())
+        Ok(ConnectedPeerInfo {
+            id: PeerIdentifier::new(&self.get_peer_ip()?, port),
+            replid: peer_leader_repl_id,
+            hwm: peer_hwm,
+            peer_list: vec![],
+        })
     }
 
     async fn recv_ping(&mut self) -> anyhow::Result<()> {
@@ -73,13 +75,15 @@ impl InboundStream {
         self.write(QueryIO::SimpleString("OK".into())).await?;
         Ok(capa_val_vec)
     }
-    async fn recv_psync(&mut self) -> anyhow::Result<(String, u64)> {
+    async fn recv_psync(&mut self) -> anyhow::Result<(ReplicationId, u64)> {
         let mut cmd = self.extract_cmd().await?;
-        let (repl_id, offset) = cmd.extract_psync()?;
+        let (inbound_repl_id, offset) = cmd.extract_psync()?;
+
+        // ! Assumption, if self replid is not set at this point but still receives inbound stream, this is leader.
 
         let (id, self_leader_replid, self_leader_repl_offset) = (
             self.self_repl_info.self_identifier(),
-            self.self_repl_info.leader_replid.clone(),
+            self.self_repl_info.replid.clone(),
             self.self_repl_info.hwm,
         );
 
@@ -88,7 +92,7 @@ impl InboundStream {
         ))
         .await?;
 
-        Ok((repl_id, offset))
+        Ok((inbound_repl_id, offset))
     }
 
     async fn extract_cmd(&mut self) -> anyhow::Result<HandShakeRequest> {
@@ -108,32 +112,34 @@ impl InboundStream {
         Ok(())
     }
 
-    pub(crate) fn peer_kind(&self) -> anyhow::Result<PeerKind> {
-        Ok(PeerKind::decide_peer_kind(&self.self_repl_info.leader_replid, self.peer_info.clone()))
-    }
-
     pub(crate) fn to_add_peer(
         self,
         cluster_actor_handler: Sender<ClusterCommand>,
+        connected_peer_info: ConnectedPeerInfo,
     ) -> anyhow::Result<ClusterCommand> {
-        let kind = self.peer_kind()?;
-
+        let kind = self.decide_peer_kind(&connected_peer_info);
         let peer = create_peer(
-            (*self.peer_info.id).clone(),
+            (connected_peer_info.id).to_string(),
             self.stream,
-            kind.clone(),
+            kind,
             cluster_actor_handler,
         );
-        Ok(ClusterCommand::AddPeer(AddPeer { peer_id: self.peer_info.id, peer }))
+        Ok(ClusterCommand::AddPeer(AddPeer { peer_id: connected_peer_info.id, peer }))
+    }
+
+    pub(crate) fn decide_peer_kind(&self, connected_peer_info: &ConnectedPeerInfo) -> PeerKind {
+        PeerKind::decide_peer_kind(&self.self_repl_info.replid, connected_peer_info)
     }
 
     // depending on the condition, try full/partial sync.
     pub(crate) async fn may_try_sync(
         &mut self,
         ccm: ClusterCommunicationManager,
+        connected_peer_info: &ConnectedPeerInfo,
     ) -> anyhow::Result<()> {
-        if let PeerKind::Follower { watermark, leader_repl_id } = self.peer_kind()? {
-            if self.self_repl_info.self_identifier() == leader_repl_id {
+        if let PeerKind::Follower { watermark, replid } = self.decide_peer_kind(connected_peer_info)
+        {
+            if replid == ReplicationId::Undecided {
                 let logs = ccm.fetch_logs_for_sync().await?;
                 self.write_io(logs).await?;
             }

@@ -1,6 +1,7 @@
 use super::states::{DecoderInit, HeaderReady, MetadataReady};
 
 use crate::domains::caches::cache_objects::CacheEntry;
+use crate::domains::cluster_actors::replication::ReplicationId;
 use crate::domains::saves::endec::{
     DATABASE_SECTION_INDICATOR, DATABASE_TABLE_SIZE_INDICATOR,
     EXPIRY_TIME_IN_MILLISECONDS_INDICATOR, EXPIRY_TIME_IN_SECONDS_INDICATOR, HEADER_MAGIC_STRING,
@@ -168,14 +169,14 @@ impl<'a> BytesDecoder<'a, DecoderInit> {
 
 impl<'a> BytesDecoder<'a, HeaderReady> {
     pub fn load_metadata(mut self) -> Result<BytesDecoder<'a, MetadataReady>> {
-        let mut metadata = Metadata { repl_id: "".to_string().into(), repl_offset: 0 };
+        let mut metadata = Metadata { repl_id: ReplicationId::Undecided, repl_offset: 0 };
         while self.check_indicator(METADATA_SECTION_INDICATOR) {
             let (key, value) = self
                 .try_extract_metadata_key_value()
                 .context("metadata loading: key value extraction failed")?;
 
             match key.as_str() {
-                "repl-id" => metadata.repl_id = value.into(),
+                "repl-id" => metadata.repl_id = ReplicationId::Key(value.into()),
                 "repl-offset" => {
                     metadata.repl_offset = value.parse().context("repl-offset parse fail")?
                 },
@@ -443,7 +444,13 @@ fn test_database_section_extractor() {
         0x62, 0x61, 0x7A, 0x03, 0x71, 0x75, 0x78,
     ];
 
-    let mut bytes_handler = BytesDecoder::<MetadataReady> { data, state: Default::default() };
+    let mut bytes_handler = BytesDecoder::<MetadataReady> {
+        data,
+        state: MetadataReady {
+            metadata: Metadata { repl_id: ReplicationId::Undecided, repl_offset: 0 },
+            header: "".into(),
+        },
+    };
 
     let db_section: SubDatabase = bytes_handler.extract_section().unwrap();
     assert_eq!(db_section.index, 0);
@@ -471,7 +478,10 @@ fn test_database_section_extractor() {
 fn test_non_expiry_key_value_pair() {
     let mut bytes_handler = BytesDecoder::<MetadataReady> {
         data: &[0x00, 0x03, 0x62, 0x61, 0x7A, 0x03, 0x71, 0x75, 0x78],
-        state: Default::default(),
+        state: MetadataReady {
+            metadata: Metadata { repl_id: ReplicationId::Undecided, repl_offset: 0 },
+            header: "".into(),
+        },
     };
 
     let key_value = bytes_handler.try_key_value().expect("Failed to extract key value expiry");
@@ -494,7 +504,10 @@ fn test_with_milliseconds_expiry_key_value_pair() {
             0xFC, 0x15, 0x72, 0xE7, 0x07, 0x8F, 0x01, 0x00, 0x00, 0x00, 0x03, 0x62, 0x61, 0x7A,
             0x03, 0x71, 0x75, 0x78,
         ],
-        state: Default::default(),
+        state: MetadataReady {
+            metadata: Metadata { repl_id: ReplicationId::Undecided, repl_offset: 0 },
+            header: "".into(),
+        },
     };
 
     let key_value = bytes_handler.try_key_value().unwrap();
@@ -509,7 +522,10 @@ fn test_with_milliseconds_expiry_key_value_pair() {
 fn test_with_seconds_expiry_key_value_pair() {
     let mut bytes_handler = BytesDecoder::<MetadataReady> {
         data: &[0xFD, 0x52, 0xED, 0x2A, 0x66, 0x00, 0x03, 0x62, 0x61, 0x7A, 0x03, 0x71, 0x75, 0x78],
-        state: Default::default(),
+        state: MetadataReady {
+            metadata: Metadata { repl_id: ReplicationId::Undecided, repl_offset: 0 },
+            header: "".into(),
+        },
     };
 
     let key_value = bytes_handler.try_key_value().unwrap();
@@ -522,7 +538,10 @@ fn test_with_seconds_expiry_key_value_pair() {
 fn test_invalid_expiry_key_value_pair() {
     let mut bytes_handler = BytesDecoder::<MetadataReady> {
         data: &[0xFF, 0x52, 0xED, 0x2A, 0x66, 0x00, 0x03, 0x62, 0x61, 0x7A, 0x03, 0x71, 0x75, 0x78],
-        state: Default::default(),
+        state: MetadataReady {
+            metadata: Metadata { repl_id: ReplicationId::Undecided, repl_offset: 0 },
+            header: "".into(),
+        },
     };
 
     let result = bytes_handler.try_key_value();
@@ -560,7 +579,10 @@ fn test_metadata_loading_no_metadata() {
         BytesDecoder::<HeaderReady> { data: data.as_slice().into(), state: Default::default() };
 
     let metadata = bytes_handler.load_metadata().unwrap();
-    assert_eq!(metadata.state.metadata, Metadata::default());
+    assert_eq!(
+        metadata.state.metadata,
+        Metadata { repl_id: ReplicationId::Undecided, repl_offset: Default::default() }
+    );
 }
 
 #[test]
@@ -572,8 +594,13 @@ fn test_database_loading() {
         0x62, 0x61, 0x7A, 0x03, 0x71, 0x75, 0x78, 0xFF, 0x89, 0x3B, 0xB7, 0x4E, 0xF8, 0x0F, 0x77,
         0x19,
     ];
-    let bytes_handler =
-        BytesDecoder::<MetadataReady> { data: data.as_slice().into(), state: Default::default() };
+    let bytes_handler = BytesDecoder::<MetadataReady> {
+        data: data.as_slice().into(),
+        state: MetadataReady {
+            metadata: Metadata { repl_id: ReplicationId::Undecided, repl_offset: 0 },
+            header: "".into(),
+        },
+    };
 
     let rdb_file = bytes_handler.load_database().unwrap();
     assert_eq!(rdb_file.database.len(), 1);
@@ -636,6 +663,9 @@ fn test_loading_all() {
     }
 
     assert_eq!(rdb_file.checksum, vec![0x60, 0x82, 0x9C, 0xF8, 0xFB, 0x2E, 0x7F, 0xEB]);
-    assert_eq!(*rdb_file.metadata.repl_id, "420dd7e324c3a6371b103129cebe6e25a270f9fd");
+    assert_eq!(
+        rdb_file.metadata.repl_id,
+        ReplicationId::Key("420dd7e324c3a6371b103129cebe6e25a270f9fd".into())
+    );
     assert_eq!(rdb_file.metadata.repl_offset, 8635297);
 }

@@ -1,4 +1,4 @@
-use super::replication::{HeartBeatMessage, ReplicationState};
+use super::replication::{HeartBeatMessage, ReplicationId, ReplicationState};
 use crate::domains::append_only_files::WriteOperation;
 use crate::domains::append_only_files::log::LogIndex;
 use crate::domains::peers::peer::Peer;
@@ -9,8 +9,9 @@ pub enum ClusterCommand {
     AddPeer(AddPeer),
     GetPeers(tokio::sync::oneshot::Sender<Vec<PeerIdentifier>>),
     ReplicationInfo(tokio::sync::oneshot::Sender<ReplicationState>),
+
     SetReplicationInfo {
-        leader_repl_id: PeerIdentifier,
+        replid: ReplicationId,
         hwm: u64,
     },
     InstallLeaderState(Vec<WriteOperation>),

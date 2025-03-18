@@ -1,6 +1,7 @@
 use super::response::ConnectionResponse;
 use crate::domains::cluster_actors::commands::AddPeer;
 use crate::domains::cluster_actors::commands::ClusterCommand;
+use crate::domains::cluster_actors::replication::ReplicationId;
 use crate::domains::cluster_actors::replication::ReplicationState;
 use crate::domains::peers::connected_peer_info::ConnectedPeerInfo;
 use crate::domains::peers::identifier::PeerIdentifier;
@@ -44,7 +45,7 @@ impl OutboundStream {
         let mut ok_count = 0;
         let mut connection_info = ConnectedPeerInfo {
             id: Default::default(),
-            leader_repl_id: Default::default(),
+            replid: Default::default(),
             hwm: Default::default(),
             peer_list: Default::default(),
         };
@@ -65,7 +66,7 @@ impl OutboundStream {
                                 // "?" here means the server is undecided about their leader. and -1 is the offset that follower is aware of
                                 2 => Ok(write_array!(
                                     "PSYNC",
-                                    self.my_repl_info.leader_replid.clone(),
+                                    self.my_repl_info.replid.clone(),
                                     self.my_repl_info.hwm.to_string()
                                 )),
                                 _ => Err(anyhow::anyhow!("Unexpected OK count")),
@@ -74,7 +75,7 @@ impl OutboundStream {
                         self.write(msg).await?
                     },
                     ConnectionResponse::FULLRESYNC { id, repl_id, offset } => {
-                        connection_info.leader_repl_id = repl_id.into();
+                        connection_info.replid = ReplicationId::Key(repl_id.into());
                         connection_info.hwm = offset;
                         connection_info.id = id.into();
                         println!("[INFO] Three-way handshake completed")
@@ -94,7 +95,7 @@ impl OutboundStream {
         self,
         cluster_manager: &ClusterConnectionManager,
     ) -> anyhow::Result<Self> {
-        if *self.my_repl_info.leader_replid == "?" {
+        if self.my_repl_info.replid == ReplicationId::Undecided {
             let connected_node_info = self
                 .connected_node_info
                 .as_ref()
@@ -102,7 +103,7 @@ impl OutboundStream {
 
             cluster_manager
                 .send(ClusterCommand::SetReplicationInfo {
-                    leader_repl_id: connected_node_info.leader_repl_id.clone(),
+                    replid: connected_node_info.replid.clone(),
                     hwm: 0,
                 })
                 .await?;
@@ -120,7 +121,7 @@ impl OutboundStream {
         let peer = create_peer(
             (*self.connect_to).clone(),
             self.stream,
-            PeerKind::decide_peer_kind(&self.my_repl_info.leader_replid, connection_info),
+            PeerKind::decide_peer_kind(&self.my_repl_info.replid, &connection_info),
             cluster_actor_handler,
         );
 
