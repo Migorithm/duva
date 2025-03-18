@@ -1,4 +1,4 @@
-use uuid::Uuid;
+use std::fmt::Display;
 
 use super::election_state::ElectionState;
 pub(crate) use super::heartbeats::heartbeat::BannedPeer;
@@ -7,8 +7,8 @@ use crate::domains::peers::identifier::PeerIdentifier;
 
 #[derive(Debug, Clone)]
 pub struct ReplicationState {
-    pub(crate) leader_replid: PeerIdentifier, // The replication ID of the master example: 8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb
-    pub(crate) hwm: u64,                      // high water mark (commit idx)
+    pub(crate) repl_id: ReplicationId, // The replication ID of the master example: 8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb
+    pub(crate) hwm: u64,               // high water mark (commit idx)
     role: String,
 
     pub(crate) self_host: String,
@@ -30,20 +30,11 @@ impl ReplicationState {
         self_host: &str,
         self_port: u16,
     ) -> Self {
-        let leader_repl_id = if let Some((leader_host, leader_port)) = replicaof.as_ref() {
-            PeerIdentifier::new(
-                leader_host,
-                leader_port.parse().expect("Invalid port number given"),
-            )
-        } else {
-            PeerIdentifier::new(self_host, self_port)
-        };
-
         let role = if replicaof.is_some() { "follower".to_string() } else { "leader".to_string() };
         let replication = ReplicationState {
             election_state: ElectionState::new(&role),
             role,
-            leader_replid: leader_repl_id.clone(),
+            repl_id: ReplicationId::Undecided,
             hwm: 0,
             leader_host: replicaof.as_ref().cloned().map(|(host, _)| host),
             leader_port: replicaof
@@ -59,11 +50,9 @@ impl ReplicationState {
 
     pub(crate) fn self_info(&self) -> String {
         let self_id = self.self_identifier();
-        let leader_repl_id =
-            if *self_id == *self.leader_replid { "-" } else { &self.leader_replid };
 
         //TODO last 0 denotes slots - subject to work
-        format!("{} myself,{} {} 0", self_id, self.role(), leader_repl_id)
+        format!("{} myself,{} {} 0", self_id, self.role(), self.repl_id)
     }
 
     pub(crate) fn self_identifier(&self) -> PeerIdentifier {
@@ -76,7 +65,7 @@ impl ReplicationState {
     pub(crate) fn vectorize(self) -> Vec<String> {
         vec![
             format!("role:{}", self.role),
-            format!("leader_repl_id:{}", self.leader_replid),
+            format!("leader_repl_id:{}", self.repl_id),
             format!("high_watermark:{}", self.hwm),
             format!("self_identifier:{}", self.self_identifier()),
         ]
@@ -101,7 +90,7 @@ impl ReplicationState {
             heartbeat_from: self.self_identifier(),
             term: self.term,
             hwm: self.hwm,
-            leader_replid: self.leader_replid.clone(),
+            leader_replid: self.repl_id.clone(),
             hop_count,
             ban_list: self.ban_list.clone(),
             append_entries: vec![],
@@ -163,7 +152,6 @@ impl ReplicationState {
         self.role = "leader".to_string();
         self.leader_host = None;
         self.leader_port = None;
-        self.leader_replid = self.self_identifier();
         self.election_state.become_leader();
     }
 }
@@ -175,7 +163,17 @@ pub(crate) fn time_in_secs() -> anyhow::Result<u64> {
         .as_secs())
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, bincode::Encode, bincode::Decode)]
 pub enum ReplicationId {
     Undecided,
-    Key(Uuid),
+    Key(String),
+}
+
+impl Display for ReplicationId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ReplicationId::Undecided => write!(f, "?"),
+            ReplicationId::Key(key) => write!(f, "{}", key),
+        }
+    }
 }

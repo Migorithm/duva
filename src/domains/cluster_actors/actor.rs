@@ -109,7 +109,7 @@ impl ClusterActor {
     }
 
     pub(crate) fn set_replication_info(&mut self, leader_repl_id: PeerIdentifier, hwm: u64) {
-        self.replication.leader_replid = leader_repl_id;
+        self.replication.repl_id = leader_repl_id;
         self.replication.hwm = hwm;
     }
 
@@ -417,7 +417,7 @@ impl ClusterActor {
         self.heartbeat_scheduler.reset_election_timeout();
 
         // TODO Perhaps, we don't need this value.
-        self.replication.leader_replid = leader_id.clone();
+        self.replication.repl_id = leader_id.clone();
     }
 }
 
