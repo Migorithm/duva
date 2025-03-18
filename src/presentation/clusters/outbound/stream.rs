@@ -103,7 +103,7 @@ impl OutboundStream {
 
             cluster_manager
                 .send(ClusterCommand::SetReplicationInfo {
-                    leader_repl_id: connected_node_info.replid.clone(),
+                    replid: connected_node_info.replid.clone(),
                     hwm: 0,
                 })
                 .await?;
@@ -121,7 +121,7 @@ impl OutboundStream {
         let peer = create_peer(
             (*self.connect_to).clone(),
             self.stream,
-            PeerKind::decide_peer_kind(&self.my_repl_info.replid, connection_info),
+            PeerKind::decide_peer_kind(&self.my_repl_info.replid, &connection_info),
             cluster_actor_handler,
         );
 

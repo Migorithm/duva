@@ -76,7 +76,9 @@ impl InboundStream {
     }
     async fn recv_psync(&mut self) -> anyhow::Result<(String, u64)> {
         let mut cmd = self.extract_cmd().await?;
-        let (repl_id, offset) = cmd.extract_psync()?;
+        let (inbound_repl_id, offset) = cmd.extract_psync()?;
+
+        // ! Assumption, if self replid is not set at this point but still receives inbound stream, this is leader.
 
         let (id, self_leader_replid, self_leader_repl_offset) = (
             self.self_repl_info.self_identifier(),
@@ -89,7 +91,7 @@ impl InboundStream {
         ))
         .await?;
 
-        Ok((repl_id, offset))
+        Ok((inbound_repl_id, offset))
     }
 
     async fn extract_cmd(&mut self) -> anyhow::Result<HandShakeRequest> {
@@ -114,8 +116,7 @@ impl InboundStream {
         cluster_actor_handler: Sender<ClusterCommand>,
         connected_peer_info: ConnectedPeerInfo,
     ) -> anyhow::Result<ClusterCommand> {
-        let kind =
-            PeerKind::decide_peer_kind(&self.self_repl_info.replid, connected_peer_info.clone());
+        let kind = PeerKind::decide_peer_kind(&self.self_repl_info.replid, &connected_peer_info);
 
         let peer = create_peer(
             (connected_peer_info.id).to_string(),
@@ -133,7 +134,7 @@ impl InboundStream {
         connected_peer_info: &ConnectedPeerInfo,
     ) -> anyhow::Result<()> {
         let peer_kind =
-            PeerKind::decide_peer_kind(&self.self_repl_info.replid, connected_peer_info.clone());
+            PeerKind::decide_peer_kind(&self.self_repl_info.replid, connected_peer_info);
         if let PeerKind::Follower { watermark, replid } = peer_kind {
             if replid == ReplicationId::Undecided {
                 let logs = ccm.fetch_logs_for_sync().await?;

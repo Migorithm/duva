@@ -133,7 +133,7 @@ impl StartUpFacade {
             // Reconnection case - set the replication info
             self.registry
                 .cluster_actor_handler
-                .send(ClusterCommand::SetReplicationInfo { leader_repl_id: repl_id, hwm })
+                .send(ClusterCommand::SetReplicationInfo { replid: repl_id, hwm })
                 .await?;
             self.registry.cache_manager.apply_snapshot(snapshot).await?;
         }

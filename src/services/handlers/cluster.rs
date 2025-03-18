@@ -26,14 +26,12 @@ impl ClusterActor {
                 ClusterCommand::ClusterNodes(callback) => {
                     let _ = callback.send(self.cluster_nodes());
                 },
-
                 ClusterCommand::ReplicationInfo(sender) => {
                     let _ = sender.send(self.replication.clone());
                 },
-                ClusterCommand::SetReplicationInfo { leader_repl_id, hwm } => {
+                ClusterCommand::SetReplicationInfo { replid: leader_repl_id, hwm } => {
                     self.set_replication_info(leader_repl_id, hwm);
                 },
-
                 ClusterCommand::SendClusterHeatBeat => {
                     let hop_count = Self::hop_count(FANOUT, self.members.len());
                     self.send_cluster_heartbeat(hop_count).await;
@@ -42,8 +40,6 @@ impl ClusterActor {
                     // ! The following may need to be moved else where to avoid blocking the main loop
                     self.remove_idle_peers().await;
                 },
-
-                // ! AppendEntriesRPC is a message from a leader to a follower
                 ClusterCommand::AppendEntriesRPC(heartbeat) => {
                     // check if the heartbeat is from a leader
 

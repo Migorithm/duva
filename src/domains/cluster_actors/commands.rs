@@ -9,8 +9,9 @@ pub enum ClusterCommand {
     AddPeer(AddPeer),
     GetPeers(tokio::sync::oneshot::Sender<Vec<PeerIdentifier>>),
     ReplicationInfo(tokio::sync::oneshot::Sender<ReplicationState>),
+
     SetReplicationInfo {
-        leader_repl_id: ReplicationId,
+        replid: ReplicationId,
         hwm: u64,
     },
     InstallLeaderState(Vec<WriteOperation>),

@@ -51,19 +51,18 @@ impl Peer {
 #[derive(Clone, Debug)]
 pub enum PeerKind {
     Follower { watermark: u64, replid: ReplicationId },
-    Leader,
-    PFollower { replid: ReplicationId },
-    PLeader,
+
+    NonDataPeer { replid: ReplicationId },
 }
 
 impl PeerKind {
-    pub fn decide_peer_kind(my_repl_id: &ReplicationId, peer_info: ConnectedPeerInfo) -> Self {
+    pub fn decide_peer_kind(my_repl_id: &ReplicationId, peer_info: &ConnectedPeerInfo) -> Self {
         if peer_info.replid == ReplicationId::Undecided {
-            PeerKind::Follower { watermark: peer_info.hwm, replid: peer_info.replid }
-        } else if my_repl_id == &ReplicationId::Undecided {
-            PeerKind::Leader
+            PeerKind::Follower { watermark: peer_info.hwm, replid: peer_info.replid.clone() }
+        } else if my_repl_id == &peer_info.replid {
+            PeerKind::Follower { watermark: peer_info.hwm, replid: peer_info.replid.clone() }
         } else {
-            PeerKind::PFollower { replid: peer_info.replid }
+            PeerKind::NonDataPeer { replid: peer_info.replid.clone() }
         }
     }
 }

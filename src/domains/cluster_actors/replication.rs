@@ -30,11 +30,17 @@ impl ReplicationState {
         self_host: &str,
         self_port: u16,
     ) -> Self {
+        let replid = if replicaof.is_none() {
+            ReplicationId::Key(uuid::Uuid::now_v7().to_string())
+        } else {
+            ReplicationId::Undecided
+        };
+
         let role = if replicaof.is_some() { "follower".to_string() } else { "leader".to_string() };
         let replication = ReplicationState {
             election_state: ElectionState::new(&role),
             role,
-            replid: ReplicationId::Undecided,
+            replid,
             hwm: 0,
             leader_host: replicaof.as_ref().cloned().map(|(host, _)| host),
             leader_port: replicaof
