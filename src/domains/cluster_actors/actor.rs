@@ -6,6 +6,7 @@ use super::heartbeats::heartbeat::AppendEntriesRPC;
 use super::heartbeats::heartbeat::ClusterHeartBeat;
 use super::heartbeats::scheduler::HeartBeatScheduler;
 use super::replication::HeartBeatMessage;
+use super::replication::ReplicationId;
 use super::replication::ReplicationState;
 use super::replication::time_in_secs;
 use super::{commands::ClusterCommand, replication::BannedPeer, *};
@@ -108,8 +109,8 @@ impl ClusterActor {
         None
     }
 
-    pub(crate) fn set_replication_info(&mut self, leader_repl_id: PeerIdentifier, hwm: u64) {
-        self.replication.repl_id = leader_repl_id;
+    pub(crate) fn set_replication_info(&mut self, leader_repl_id: ReplicationId, hwm: u64) {
+        self.replication.replid = leader_repl_id;
         self.replication.hwm = hwm;
     }
 
@@ -415,9 +416,6 @@ impl ClusterActor {
             peer.last_seen = Instant::now();
         }
         self.heartbeat_scheduler.reset_election_timeout();
-
-        // TODO Perhaps, we don't need this value.
-        self.replication.repl_id = leader_id.clone();
     }
 }
 
@@ -456,7 +454,7 @@ mod test {
             append_entries: op_logs,
             ban_list: vec![],
             heartbeat_from: PeerIdentifier::new("localhost", 8080),
-            leader_replid: "localhost".to_string().into(),
+            replid: ReplicationId::Key("localhost".to_string().into()),
             hop_count: 0,
             cluster_nodes: vec![],
         }

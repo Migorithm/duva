@@ -487,7 +487,7 @@ mod test {
             heartbeat_from: me.clone(),
             term: 1,
             hwm: 5,
-            leader_replid: leader.clone(),
+            replid: leader.clone(),
             hop_count: 2,
             ban_list: banned_list,
             append_entries: vec![

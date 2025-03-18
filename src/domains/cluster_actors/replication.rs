@@ -7,8 +7,8 @@ use crate::domains::peers::identifier::PeerIdentifier;
 
 #[derive(Debug, Clone)]
 pub struct ReplicationState {
-    pub(crate) repl_id: ReplicationId, // The replication ID of the master example: 8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb
-    pub(crate) hwm: u64,               // high water mark (commit idx)
+    pub(crate) replid: ReplicationId, // The replication ID of the master example: 8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb
+    pub(crate) hwm: u64,              // high water mark (commit idx)
     role: String,
 
     pub(crate) self_host: String,
@@ -34,7 +34,7 @@ impl ReplicationState {
         let replication = ReplicationState {
             election_state: ElectionState::new(&role),
             role,
-            repl_id: ReplicationId::Undecided,
+            replid: ReplicationId::Undecided,
             hwm: 0,
             leader_host: replicaof.as_ref().cloned().map(|(host, _)| host),
             leader_port: replicaof
@@ -52,7 +52,7 @@ impl ReplicationState {
         let self_id = self.self_identifier();
 
         //TODO last 0 denotes slots - subject to work
-        format!("{} myself,{} {} 0", self_id, self.role(), self.repl_id)
+        format!("{} myself,{} {} 0", self_id, self.role(), self.replid)
     }
 
     pub(crate) fn self_identifier(&self) -> PeerIdentifier {
@@ -65,7 +65,7 @@ impl ReplicationState {
     pub(crate) fn vectorize(self) -> Vec<String> {
         vec![
             format!("role:{}", self.role),
-            format!("leader_repl_id:{}", self.repl_id),
+            format!("leader_repl_id:{}", self.replid),
             format!("high_watermark:{}", self.hwm),
             format!("self_identifier:{}", self.self_identifier()),
         ]
@@ -90,7 +90,7 @@ impl ReplicationState {
             heartbeat_from: self.self_identifier(),
             term: self.term,
             hwm: self.hwm,
-            leader_replid: self.repl_id.clone(),
+            replid: self.replid.clone(),
             hop_count,
             ban_list: self.ban_list.clone(),
             append_entries: vec![],

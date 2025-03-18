@@ -9,7 +9,7 @@ pub struct HeartBeatMessage {
     pub(crate) heartbeat_from: PeerIdentifier,
     pub(crate) term: u64,
     pub(crate) hwm: u64,
-    pub(crate) leader_replid: ReplicationId,
+    pub(crate) replid: ReplicationId,
     pub(crate) hop_count: u8, // Decremented on each hop - for gossip
     pub(crate) ban_list: Vec<BannedPeer>,
     pub(crate) append_entries: Vec<WriteOperation>,

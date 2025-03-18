@@ -42,7 +42,7 @@ pub(crate) fn encode_header() -> Result<Vec<u8>> {
 pub(crate) fn encode_metadata(metadata: Metadata) -> Result<Vec<u8>> {
     let mut result = Vec::new();
     result.push(METADATA_SECTION_INDICATOR);
-    result.extend_from_slice(&encode_key_value("repl-id", &metadata.repl_id)?);
+    result.extend_from_slice(&encode_key_value("repl-id", &metadata.repl_id.to_string())?);
     result.push(METADATA_SECTION_INDICATOR);
     result.extend_from_slice(&encode_key_value("repl-offset", &metadata.repl_offset.to_string())?);
     Ok(result)
@@ -130,9 +130,12 @@ fn encode_size(size: usize) -> Result<Vec<u8>> {
 
 #[cfg(test)]
 mod test {
-    use crate::domains::saves::endec::{
-        StoredDuration,
-        decoder::{byte_decoder::BytesDecoder, states::DecoderInit},
+    use crate::domains::{
+        cluster_actors::replication::ReplicationId,
+        saves::endec::{
+            StoredDuration,
+            decoder::{byte_decoder::BytesDecoder, states::DecoderInit},
+        },
     };
 
     use super::*;
@@ -348,7 +351,8 @@ mod test {
 
     #[test]
     fn test_encode_metadata() {
-        let metadata = Metadata { repl_id: "key1".to_string().into(), repl_offset: 123 };
+        let metadata =
+            Metadata { repl_id: ReplicationId::Key("key1".to_string().into()), repl_offset: 123 };
         let encoded = encode_metadata(metadata).unwrap();
         let expected = vec![
             METADATA_SECTION_INDICATOR,

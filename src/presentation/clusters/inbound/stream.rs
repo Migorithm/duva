@@ -79,7 +79,7 @@ impl InboundStream {
 
         let (id, self_leader_replid, self_leader_repl_offset) = (
             self.self_repl_info.self_identifier(),
-            self.self_repl_info.repl_id.clone(),
+            self.self_repl_info.replid.clone(),
             self.self_repl_info.hwm,
         );
 
@@ -109,7 +109,7 @@ impl InboundStream {
     }
 
     pub(crate) fn peer_kind(&self) -> anyhow::Result<PeerKind> {
-        Ok(PeerKind::decide_peer_kind(&self.self_repl_info.repl_id, self.peer_info.clone()))
+        Ok(PeerKind::decide_peer_kind(&self.self_repl_info.replid, self.peer_info.clone()))
     }
 
     pub(crate) fn to_add_peer(

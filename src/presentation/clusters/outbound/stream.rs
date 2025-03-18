@@ -65,7 +65,7 @@ impl OutboundStream {
                                 // "?" here means the server is undecided about their leader. and -1 is the offset that follower is aware of
                                 2 => Ok(write_array!(
                                     "PSYNC",
-                                    self.my_repl_info.repl_id.clone(),
+                                    self.my_repl_info.replid.clone(),
                                     self.my_repl_info.hwm.to_string()
                                 )),
                                 _ => Err(anyhow::anyhow!("Unexpected OK count")),
@@ -94,7 +94,7 @@ impl OutboundStream {
         self,
         cluster_manager: &ClusterConnectionManager,
     ) -> anyhow::Result<Self> {
-        if *self.my_repl_info.repl_id == "?" {
+        if *self.my_repl_info.replid == "?" {
             let connected_node_info = self
                 .connected_node_info
                 .as_ref()
@@ -120,7 +120,7 @@ impl OutboundStream {
         let peer = create_peer(
             (*self.connect_to).clone(),
             self.stream,
-            PeerKind::decide_peer_kind(&self.my_repl_info.repl_id, connection_info),
+            PeerKind::decide_peer_kind(&self.my_repl_info.replid, connection_info),
             cluster_actor_handler,
         );
 
