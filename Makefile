@@ -1,8 +1,10 @@
-p ?= 6379
-rp ?= 6378
+p = 6379
+rp = 6378
+lp = 6379
 NETCAT = nc 127.0.0.1 $(p)
 k = foo
 v = bar
+addr = 127.0.0.1
 
 define send_command
 	( printf $1 | $(NETCAT) )
@@ -34,6 +36,9 @@ cluster_info:
 
 cluster_forget:
 	$(call send_command, '*3\r\n$$7\r\nCLUSTER\r\n$$6\r\nFORGET\r\n$$40\r\n127.0.0.1:6002\r\n')
+
+replica_of:
+	$(call send_command, '*3\r\n$$9\r\nREPLICAOF\r\n$$9\r\n$(addr)\r\n$$4\r\n$(lp)\r\n')
 
 leader:
 	@echo '🔧 Setting up replication with leader on port $(p) and follower on port $(rp)...'
