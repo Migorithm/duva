@@ -3,6 +3,7 @@ use std::fmt::Display;
 use super::election_state::ElectionState;
 pub(crate) use super::heartbeats::heartbeat::BannedPeer;
 pub(crate) use super::heartbeats::heartbeat::HeartBeatMessage;
+use crate::domains::append_only_files::log::LogIndex;
 use crate::domains::peers::identifier::PeerIdentifier;
 
 #[derive(Debug, Clone)]
@@ -93,7 +94,12 @@ impl ReplicationState {
         }
     }
 
-    pub(crate) fn default_heartbeat(&self, hop_count: u8) -> HeartBeatMessage {
+    pub(crate) fn default_heartbeat(
+        &self,
+        hop_count: u8,
+        prev_log_index: LogIndex,
+        prev_log_term: u64,
+    ) -> HeartBeatMessage {
         HeartBeatMessage {
             heartbeat_from: self.self_identifier(),
             term: self.term,
@@ -103,6 +109,8 @@ impl ReplicationState {
             ban_list: self.ban_list.clone(),
             append_entries: vec![],
             cluster_nodes: vec![],
+            prev_log_index,
+            prev_log_term,
         }
     }
 

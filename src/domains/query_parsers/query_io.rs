@@ -487,6 +487,8 @@ mod test {
         let heartbeat = HeartBeatMessage {
             heartbeat_from: me.clone(),
             term: 1,
+            prev_log_index: 0.into(),
+            prev_log_term: 1,
             hwm: 5,
             replid: leader.clone(),
             hop_count: 2,

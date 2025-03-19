@@ -3,12 +3,12 @@ use super::{WriteOperation, WriteRequest, interfaces::TWriteAheadLog, log::LogIn
 pub(crate) struct Logger<T: TWriteAheadLog> {
     pub(crate) target: T,
     pub(crate) log_index: LogIndex,
-    // need to store
+    pub(crate) term: u64,
 }
 
 impl<T: TWriteAheadLog> Logger<T> {
     pub fn new(target: T) -> Self {
-        Self { target, log_index: 0.into() }
+        Self { target, log_index: 0.into(), term: 0 }
     }
 
     pub(crate) async fn create_log_entries(

@@ -34,7 +34,7 @@ impl ClusterActor {
                 },
                 ClusterCommand::SendClusterHeatBeat => {
                     let hop_count = Self::hop_count(FANOUT, self.members.len());
-                    self.send_cluster_heartbeat(hop_count).await;
+                    self.send_cluster_heartbeat(hop_count, &logger).await;
 
                     // ! remove idle peers based on ttl.
                     // ! The following may need to be moved else where to avoid blocking the main loop
@@ -50,7 +50,7 @@ impl ClusterActor {
                     if self.replication.in_ban_list(&heartbeat.heartbeat_from) {
                         continue;
                     }
-                    self.gossip(heartbeat.hop_count).await;
+                    self.gossip(heartbeat.hop_count, &logger).await;
                     self.update_on_hertbeat_message(&heartbeat);
                     self.apply_ban_list(std::mem::take(&mut heartbeat.ban_list)).await;
                 },
@@ -72,7 +72,7 @@ impl ClusterActor {
                     self.send_commit_heartbeat(offset).await;
                 },
                 ClusterCommand::SendAppendEntriesRPC => {
-                    self.send_leader_heartbeat().await;
+                    self.send_leader_heartbeat(&logger).await;
                 },
                 ClusterCommand::InstallLeaderState(logs) => {
                     if logger.overwrite(logs.clone()).await.is_err() {
@@ -91,7 +91,7 @@ impl ClusterActor {
                     self.vote_election(request_vote, logger.log_index).await;
                 },
                 ClusterCommand::ApplyElectionVote(request_vote_reply) => {
-                    self.tally_vote(request_vote_reply).await;
+                    self.tally_vote(request_vote_reply, &logger).await;
                 },
             }
         }

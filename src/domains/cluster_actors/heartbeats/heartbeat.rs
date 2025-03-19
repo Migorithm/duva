@@ -1,5 +1,6 @@
 use crate::domains::{
-    append_only_files::WriteOperation, cluster_actors::replication::ReplicationId,
+    append_only_files::{WriteOperation, log::LogIndex},
+    cluster_actors::replication::ReplicationId,
     peers::identifier::PeerIdentifier,
 };
 
@@ -10,11 +11,12 @@ pub struct HeartBeatMessage {
     pub(crate) term: u64,
     pub(crate) hwm: u64,
     pub(crate) replid: ReplicationId,
-    pub(crate) hop_count: u8, // Decremented on each hop - for gossip
+    pub(crate) hop_count: u8,
     pub(crate) ban_list: Vec<BannedPeer>,
     pub(crate) append_entries: Vec<WriteOperation>,
     pub(crate) cluster_nodes: Vec<String>,
-    // voting data structure required!
+    pub(crate) prev_log_index: LogIndex, //index of log entry immediately preceding new ones
+    pub(crate) prev_log_term: u64,       //term of prev_log_index entry
 }
 impl HeartBeatMessage {
     pub(crate) fn set_append_entries(mut self, entries: Vec<WriteOperation>) -> Self {

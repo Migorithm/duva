@@ -13,7 +13,9 @@ use super::{commands::ClusterCommand, replication::BannedPeer, *};
 use crate::domains::append_only_files::WriteOperation;
 use crate::domains::append_only_files::WriteRequest;
 use crate::domains::append_only_files::interfaces::TWriteAheadLog;
+use crate::domains::append_only_files::log;
 use crate::domains::append_only_files::log::LogIndex;
+use crate::domains::append_only_files::logger;
 use crate::domains::append_only_files::logger::Logger;
 use crate::domains::cluster_actors::election_state::ElectionState;
 use crate::domains::{caches::cache_manager::CacheManager, query_parsers::QueryIO};
@@ -78,10 +80,16 @@ impl ClusterActor {
         self.members.get_mut(peer_id).filter(|peer| matches!(peer.kind, PeerKind::Replica { .. }))
     }
 
-    pub(crate) async fn send_cluster_heartbeat(&mut self, hop_count: u8) {
+    pub(crate) async fn send_cluster_heartbeat(
+        &mut self,
+        hop_count: u8,
+        logger: &Logger<impl TWriteAheadLog>,
+    ) {
         // TODO randomly choose the peer to send the message
         let msg = ClusterHeartBeat(
-            self.replication.default_heartbeat(hop_count).set_cluster_nodes(self.cluster_nodes()),
+            self.replication
+                .default_heartbeat(hop_count, logger.log_index, logger.term)
+                .set_cluster_nodes(self.cluster_nodes()),
         );
 
         for peer in self.members.values_mut() {
@@ -131,13 +139,13 @@ impl ClusterActor {
         }
     }
 
-    pub(crate) async fn gossip(&mut self, hop_count: u8) {
+    pub(crate) async fn gossip(&mut self, hop_count: u8, logger: &Logger<impl TWriteAheadLog>) {
         // If hop_count is 0, don't send the message to other peers
         if hop_count == 0 {
             return;
         };
         let hop_count = hop_count - 1;
-        self.send_cluster_heartbeat(hop_count).await;
+        self.send_cluster_heartbeat(hop_count, logger).await;
     }
 
     pub(crate) async fn forget_peer(
@@ -216,6 +224,7 @@ impl ClusterActor {
         log: WriteRequest,
         callback: tokio::sync::oneshot::Sender<WriteConsensusResponse>,
     ) -> anyhow::Result<()> {
+        let (prev_log_index, prev_term) = (logger.log_index, logger.term);
         let append_entries = match self.try_create_append_entries(logger, &log).await {
             Ok(entries) => entries,
             Err(err) => {
@@ -225,7 +234,7 @@ impl ClusterActor {
         };
 
         self.consensus_tracker.add(logger.log_index, callback, self.replicas().count());
-        self.generate_follower_entries(append_entries)
+        self.generate_follower_entries(append_entries, prev_log_index, prev_term)
             .map(|(peer, hb)| peer.write_io(AppendEntriesRPC(hb)))
             .collect::<FuturesUnordered<_>>()
             .for_each(|_| async {})
@@ -250,8 +259,11 @@ impl ClusterActor {
     pub(crate) fn generate_follower_entries(
         &mut self,
         append_entries: Vec<WriteOperation>,
+        prev_log_index: LogIndex,
+        prev_term: u64,
     ) -> impl Iterator<Item = (&mut Peer, HeartBeatMessage)> {
-        let default_heartbeat: HeartBeatMessage = self.replication.default_heartbeat(0);
+        let default_heartbeat: HeartBeatMessage =
+            self.replication.default_heartbeat(0, prev_log_index, prev_term);
         self.replicas_mut().map(move |(peer, hwm)| {
             let logs =
                 append_entries.iter().filter(|op| *op.log_index > hwm).cloned().collect::<Vec<_>>();
@@ -293,7 +305,8 @@ impl ClusterActor {
     pub(crate) async fn send_commit_heartbeat(&mut self, offset: LogIndex) {
         // TODO is there any case where I can use offset input?
         self.replication.hwm += 1;
-        let message: HeartBeatMessage = self.replication.default_heartbeat(0);
+        let message: HeartBeatMessage =
+            self.replication.default_heartbeat(0, offset, self.replication.term);
         println!("[INFO] Sending commit request on {}", message.hwm);
         self.send_to_replicas(AppendEntriesRPC(message)).await;
     }
@@ -325,8 +338,13 @@ impl ClusterActor {
         self.send_ack(&heartbeat.heartbeat_from, ack_index).await;
     }
 
-    pub(crate) async fn send_leader_heartbeat(&mut self) {
-        self.send_to_replicas(AppendEntriesRPC(self.replication.default_heartbeat(0))).await;
+    pub(crate) async fn send_leader_heartbeat(&mut self, logger: &Logger<impl TWriteAheadLog>) {
+        self.send_to_replicas(AppendEntriesRPC(self.replication.default_heartbeat(
+            0,
+            logger.log_index,
+            logger.term,
+        )))
+        .await;
     }
 
     async fn send_to_replicas(&mut self, msg: impl Into<QueryIO> + Send + Clone) {
@@ -390,7 +408,11 @@ impl ClusterActor {
         let _ = peer.write_io(RequestVoteReply { term, vote_granted: grant_vote }).await;
     }
 
-    pub(crate) async fn tally_vote(&mut self, request_vote_reply: RequestVoteReply) {
+    pub(crate) async fn tally_vote(
+        &mut self,
+        request_vote_reply: RequestVoteReply,
+        logger: &Logger<impl TWriteAheadLog>,
+    ) {
         if !self.replication.should_become_leader(request_vote_reply.vote_granted) {
             return;
         }
@@ -398,7 +420,7 @@ impl ClusterActor {
         if self.replication.is_leader_mode {
             self.heartbeat_scheduler.switch().await;
         }
-        let msg = self.replication.default_heartbeat(0);
+        let msg = self.replication.default_heartbeat(0, logger.log_index, logger.term);
 
         self.replicas_mut()
             .map(|(peer, _)| peer.write_io(AppendEntriesRPC(msg.clone())))
@@ -450,6 +472,12 @@ mod test {
         HeartBeatMessage {
             term,
             hwm,
+            prev_log_index: if !op_logs.is_empty() {
+                (*op_logs[0].log_index - 1).into()
+            } else {
+                0.into()
+            },
+            prev_log_term: 0,
             append_entries: op_logs,
             ban_list: vec![],
             heartbeat_from: PeerIdentifier::new("localhost", 8080),
@@ -706,7 +734,9 @@ mod test {
         // THEN
         assert_eq!(append_entries.len(), 3);
 
-        let entries = cluster_actor.generate_follower_entries(append_entries).collect::<Vec<_>>();
+        let entries = cluster_actor
+            .generate_follower_entries(append_entries, 3.into(), 0)
+            .collect::<Vec<_>>();
 
         // * for old followers must have 1 entry
         assert_eq!(entries.iter().filter(|(_, hb)| hb.append_entries.len() == 1).count(), 5);
