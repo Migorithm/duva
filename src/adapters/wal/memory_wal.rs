@@ -40,8 +40,12 @@ impl TWriteAheadLog for InMemoryWAL {
     fn range(&self, start_exclusive: u64, end_inclusive: u64) -> Vec<WriteOperation> {
         self.writer
             .iter()
-            .filter(|op| start_exclusive < *op.log_index && *op.log_index <= end_inclusive)
+            .filter(|op| start_exclusive < op.log_index && op.log_index <= end_inclusive)
             .cloned()
             .collect()
+    }
+
+    async fn read_at(&self, prev_log_index: u64) -> Option<WriteOperation> {
+        self.writer.iter().find(|op| op.log_index == prev_log_index).cloned()
     }
 }

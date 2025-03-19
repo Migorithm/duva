@@ -1,5 +1,5 @@
 use crate::domains::append_only_files::interfaces::TWriteAheadLog;
-use crate::domains::append_only_files::logger::Logger;
+use crate::domains::append_only_files::logger::ReplicatedLogs;
 use crate::domains::caches::cache_manager::CacheManager;
 use crate::domains::cluster_actors::commands::ClusterCommand;
 
@@ -13,7 +13,7 @@ impl ClusterActor {
         wal: impl TWriteAheadLog,
         cache_manager: CacheManager,
     ) -> anyhow::Result<Self> {
-        let mut logger = Logger::new(wal);
+        let mut logger = ReplicatedLogs::new(wal, 0, 0);
 
         while let Some(command) = self.receiver.recv().await {
             match command {
@@ -34,23 +34,18 @@ impl ClusterActor {
                 },
                 ClusterCommand::SendClusterHeatBeat => {
                     let hop_count = Self::hop_count(FANOUT, self.members.len());
-                    self.send_cluster_heartbeat(hop_count).await;
+                    self.send_cluster_heartbeat(hop_count, &logger).await;
 
                     // ! remove idle peers based on ttl.
                     // ! The following may need to be moved else where to avoid blocking the main loop
                     self.remove_idle_peers().await;
                 },
-                ClusterCommand::AppendEntriesRPC(heartbeat) => {
-                    // check if the heartbeat is from a leader
 
-                    self.reset_election_timeout(&heartbeat.heartbeat_from);
-                    self.replicate(&mut logger, heartbeat, &cache_manager).await;
-                },
                 ClusterCommand::ClusterHeartBeat(mut heartbeat) => {
                     if self.replication.in_ban_list(&heartbeat.heartbeat_from) {
                         continue;
                     }
-                    self.gossip(heartbeat.hop_count).await;
+                    self.gossip(heartbeat.hop_count, &logger).await;
                     self.update_on_hertbeat_message(&heartbeat);
                     self.apply_ban_list(std::mem::take(&mut heartbeat.ban_list)).await;
                 },
@@ -65,6 +60,12 @@ impl ClusterActor {
                     // Skip consensus for no replicas
                     let _ = self.req_consensus(&mut logger, log, sender).await;
                 },
+
+                // Follower receives heartbeat from leader
+                ClusterCommand::AppendEntriesRPC(heartbeat) => {
+                    self.reset_election_timeout(&heartbeat.heartbeat_from);
+                    self.replicate(&mut logger, heartbeat, &cache_manager).await;
+                },
                 ClusterCommand::LeaderReceiveAcks(offsets) => {
                     self.apply_acks(offsets);
                 },
@@ -72,7 +73,7 @@ impl ClusterActor {
                     self.send_commit_heartbeat(offset).await;
                 },
                 ClusterCommand::SendAppendEntriesRPC => {
-                    self.send_leader_heartbeat().await;
+                    self.send_leader_heartbeat(&logger).await;
                 },
                 ClusterCommand::InstallLeaderState(logs) => {
                     if logger.overwrite(logs.clone()).await.is_err() {
@@ -91,7 +92,7 @@ impl ClusterActor {
                     self.vote_election(request_vote, logger.log_index).await;
                 },
                 ClusterCommand::ApplyElectionVote(request_vote_reply) => {
-                    self.tally_vote(request_vote_reply).await;
+                    self.tally_vote(request_vote_reply, &logger).await;
                 },
             }
         }
