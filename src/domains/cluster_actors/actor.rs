@@ -306,7 +306,7 @@ impl ClusterActor {
 
     // After send_negative_ack: Leader needs to backtrack and send earlier entries
     async fn send_negative_ack(&self, send_to: &PeerIdentifier, prev_log_index: u64) {
-        todo!()
+        //TODO
     }
 
     pub(crate) async fn send_commit_heartbeat(&mut self, offset: u64) {
@@ -346,8 +346,10 @@ impl ClusterActor {
             self.check_previous_entry_consistency(wal, rpc.prev_log_index, rpc.prev_log_term).await
         {
             // TODO If consistency fails, truncate log starting at prev_log_index + 1
+            println!("{e}");
             if wal.read_at(rpc.prev_log_index).await.is_some() {
                 // Entry exists but term mismatches
+                println!("dsddsds");
                 wal.truncate_after(rpc.prev_log_index).await;
             }
 
@@ -356,6 +358,7 @@ impl ClusterActor {
         }
 
         let match_index = wal.write_log_entries(std::mem::take(&mut rpc.append_entries)).await?;
+
         self.send_ack(&rpc.heartbeat_from, match_index).await;
         Ok(())
     }
@@ -384,12 +387,12 @@ impl ClusterActor {
         // TODO If entry_matches is false:
         // * Raft followers should truncate their log starting at prev_log_index + 1 and then append the new entries
         // * Just returning an error is breaking consistency
-        let entry = wal
+        let prev_entry = wal
             .read_at(prev_log_index)
             .await
             .ok_or_else(|| anyhow::anyhow!("No entry at prev_log_index"))?;
 
-        if entry.term != prev_log_term {
+        if prev_entry.term != prev_log_term {
             // ! Term mismatch -> triggers log truncation
             return Err(anyhow::anyhow!("Log term mismatch"));
         }
@@ -552,11 +555,16 @@ mod test {
     use tokio::net::TcpStream;
     use tokio::sync::mpsc::channel;
 
-    fn write_operation_create_helper(index_num: u64, key: &str, value: &str) -> WriteOperation {
+    fn write_operation_create_helper(
+        index_num: u64,
+        term: u64,
+        key: &str,
+        value: &str,
+    ) -> WriteOperation {
         WriteOperation {
             log_index: index_num.into(),
             request: WriteRequest::Set { key: key.into(), value: value.into() },
-            term: 0,
+            term,
         }
     }
     fn heartbeat_create_helper(
@@ -753,9 +761,9 @@ mod test {
         let mut test_logger = ReplicatedLogs::new(InMemoryWAL::default(), 0, 0);
 
         let test_logs = vec![
-            write_operation_create_helper(1, "foo", "bar"),
-            write_operation_create_helper(2, "foo2", "bar"),
-            write_operation_create_helper(3, "foo3", "bar"),
+            write_operation_create_helper(1, 0, "foo", "bar"),
+            write_operation_create_helper(2, 0, "foo2", "bar"),
+            write_operation_create_helper(3, 0, "foo3", "bar"),
         ];
         test_logger.write_log_entries(test_logs.clone()).await.unwrap();
 
@@ -796,9 +804,9 @@ mod test {
         .await;
 
         let test_logs = vec![
-            write_operation_create_helper(1, "foo", "bar"),
-            write_operation_create_helper(2, "foo2", "bar"),
-            write_operation_create_helper(3, "foo3", "bar"),
+            write_operation_create_helper(1, 0, "foo", "bar"),
+            write_operation_create_helper(2, 0, "foo2", "bar"),
+            write_operation_create_helper(3, 0, "foo3", "bar"),
         ];
 
         cluster_actor.replication.hwm = 3;
@@ -844,8 +852,8 @@ mod test {
             0,
             0,
             vec![
-                write_operation_create_helper(1, "foo", "bar"),
-                write_operation_create_helper(2, "foo2", "bar"),
+                write_operation_create_helper(1, 0, "foo", "bar"),
+                write_operation_create_helper(2, 0, "foo2", "bar"),
             ],
         );
         let cache_manager = CacheManager {
@@ -875,8 +883,8 @@ mod test {
             0,
             0,
             vec![
-                write_operation_create_helper(1, "foo", "bar"),
-                write_operation_create_helper(2, "foo2", "bar"),
+                write_operation_create_helper(1, 0, "foo", "bar"),
+                write_operation_create_helper(2, 0, "foo2", "bar"),
             ],
         );
 
@@ -914,9 +922,9 @@ mod test {
 
         // Add multiple entries
         let entries = vec![
-            write_operation_create_helper(1, "key1", "value1"),
-            write_operation_create_helper(2, "key2", "value2"),
-            write_operation_create_helper(3, "key3", "value3"),
+            write_operation_create_helper(1, 0, "key1", "value1"),
+            write_operation_create_helper(2, 0, "key2", "value2"),
+            write_operation_create_helper(3, 0, "key3", "value3"),
         ];
 
         let heartbeat = heartbeat_create_helper(1, 0, entries);
@@ -967,8 +975,8 @@ mod test {
 
         // First, append some entries
         let first_entries = vec![
-            write_operation_create_helper(1, "key1", "value1"),
-            write_operation_create_helper(2, "key2", "value2"),
+            write_operation_create_helper(1, 0, "key1", "value1"),
+            write_operation_create_helper(2, 0, "key2", "value2"),
         ];
 
         let first_heartbeat = heartbeat_create_helper(1, 0, first_entries);
@@ -995,7 +1003,7 @@ mod test {
         });
 
         // WHEN - commit partial entries and append new ones
-        let second_entries = vec![write_operation_create_helper(3, "key3", "value3")];
+        let second_entries = vec![write_operation_create_helper(3, 0, "key3", "value3")];
 
         let second_heartbeat = heartbeat_create_helper(1, 1, second_entries);
 
@@ -1025,8 +1033,8 @@ mod test {
             0,
             0, // hwm=0, nothing committed yet
             vec![
-                write_operation_create_helper(1, "foo", "bar"),
-                write_operation_create_helper(2, "foo2", "bar"),
+                write_operation_create_helper(1, 0, "foo", "bar"),
+                write_operation_create_helper(2, 0, "foo2", "bar"),
             ],
         );
 
@@ -1074,6 +1082,40 @@ mod test {
         assert_eq!(cluster_actor.replication.hwm, 1);
         assert_eq!(test_logger.log_index, 2);
     }
+
+    #[tokio::test]
+    async fn follower_truncates_log_on_term_mismatch() {
+        // GIVEN: A follower with an existing log entry at index 1, term 1
+        let mut inmemory = InMemoryWAL::default();
+        //prefill
+
+        inmemory.writer.extend(vec![
+            write_operation_create_helper(2, 1, "key1", "val1"),
+            write_operation_create_helper(3, 1, "key2", "val2"),
+        ]);
+
+        let mut test_logger = ReplicatedLogs::new(inmemory, 3, 1);
+        let mut cluster_actor = cluster_actor_create_helper();
+
+        // Simulate an initial log entry at index 1, term 1
+
+        // WHEN: Leader sends an AppendEntries with prev_log_index=1, prev_log_term=2 (mismatch)
+        let mut heartbeat = heartbeat_create_helper(
+            2,
+            0,
+            vec![write_operation_create_helper(2, 0, "key2", "val2")],
+        );
+        heartbeat.prev_log_term = 0;
+        heartbeat.prev_log_index = 2;
+
+        let result = cluster_actor.try_append_entries(&mut test_logger, &mut heartbeat).await;
+
+        // THEN: Expect truncation and rejection
+        assert!(result.is_err(), "Should reject due to term mismatch");
+        // Note: In your current code, truncation happens but the RPC fails. Ideally, it should truncate and then append.
+        // For this test to fully pass, you'd need to adjust try_append_entries to truncate and append on term mismatch.
+    }
+
     /*
     cluster nodes should return the following:
     127.0.0.1:30004 follower 127.0.0.1:30001

@@ -5,7 +5,7 @@ use anyhow::Result;
 
 #[derive(Default, Clone)]
 pub struct InMemoryWAL {
-    writer: Vec<WriteOperation>,
+    pub writer: Vec<WriteOperation>,
 }
 
 impl TWriteAheadLog for InMemoryWAL {
@@ -15,6 +15,7 @@ impl TWriteAheadLog for InMemoryWAL {
     }
     async fn append_many(&mut self, ops: Vec<WriteOperation>) -> Result<()> {
         self.writer.extend(ops);
+
         Ok(())
     }
 
