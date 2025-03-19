@@ -346,10 +346,8 @@ impl ClusterActor {
             self.check_previous_entry_consistency(wal, rpc.prev_log_index, rpc.prev_log_term).await
         {
             // TODO If consistency fails, truncate log starting at prev_log_index + 1
-            println!("{e}");
             if wal.read_at(rpc.prev_log_index).await.is_some() {
                 // Entry exists but term mismatches
-                println!("dsddsds");
                 wal.truncate_after(rpc.prev_log_index).await;
             }
 
@@ -1097,8 +1095,9 @@ mod test {
         let mut test_logger = ReplicatedLogs::new(inmemory, 3, 1);
         let mut cluster_actor = cluster_actor_create_helper();
 
-        // Simulate an initial log entry at index 1, term 1
+        assert_eq!(test_logger.target.writer.len(), 2);
 
+        // Simulate an initial log entry at index 1, term 1
         // WHEN: Leader sends an AppendEntries with prev_log_index=1, prev_log_term=2 (mismatch)
         let mut heartbeat = heartbeat_create_helper(
             2,
@@ -1111,9 +1110,50 @@ mod test {
         let result = cluster_actor.try_append_entries(&mut test_logger, &mut heartbeat).await;
 
         // THEN: Expect truncation and rejection
+        assert_eq!(test_logger.target.writer.len(), 1);
         assert!(result.is_err(), "Should reject due to term mismatch");
-        // Note: In your current code, truncation happens but the RPC fails. Ideally, it should truncate and then append.
-        // For this test to fully pass, you'd need to adjust try_append_entries to truncate and append on term mismatch.
+    }
+
+    #[tokio::test]
+    async fn follower_accepts_entries_with_empty_log_and_prev_log_index_zero() {
+        // GIVEN: A follower with an empty log
+        let mut test_logger = ReplicatedLogs::new(InMemoryWAL::default(), 0, 0);
+        let mut cluster_actor = cluster_actor_create_helper();
+
+        // WHEN: Leader sends entries with prev_log_index=0
+        let mut heartbeat = heartbeat_create_helper(
+            1,
+            0,
+            vec![write_operation_create_helper(1, 0, "key1", "val1")],
+        );
+
+        let result = cluster_actor.try_append_entries(&mut test_logger, &mut heartbeat).await;
+
+        // THEN: Entries are accepted
+        assert!(result.is_ok(), "Should accept entries with prev_log_index=0 on empty log");
+        assert_eq!(test_logger.log_index, 1); // Assuming write_log_entries updates log_index
+    }
+
+    #[tokio::test]
+    async fn follower_rejects_entries_with_empty_log_and_prev_log_index_nonzero() {
+        // GIVEN: A follower with an empty log
+        let mut test_logger = ReplicatedLogs::new(InMemoryWAL::default(), 0, 0);
+        let mut cluster_actor = cluster_actor_create_helper();
+
+        // WHEN: Leader sends entries with prev_log_index=1
+        let mut heartbeat = heartbeat_create_helper(
+            1,
+            0,
+            vec![write_operation_create_helper(2, 0, "key2", "val2")],
+        );
+        heartbeat.prev_log_index = 1;
+        heartbeat.prev_log_term = 1;
+
+        let result = cluster_actor.try_append_entries(&mut test_logger, &mut heartbeat).await;
+
+        // THEN: Entries are rejected
+        assert!(result.is_err(), "Should reject entries with prev_log_index > 0 on empty log");
+        assert_eq!(test_logger.log_index, 0); // Log should remain unchanged
     }
 
     /*
