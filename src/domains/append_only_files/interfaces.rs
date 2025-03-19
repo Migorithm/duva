@@ -1,4 +1,4 @@
-use super::{WriteOperation, log::LogIndex};
+use super::WriteOperation;
 use anyhow::Result;
 
 /// Trait for an Append-Only File (WAL) abstraction.
@@ -24,4 +24,8 @@ pub trait TWriteAheadLog: Send + Sync + 'static {
     fn overwrite(&mut self, ops: Vec<WriteOperation>) -> impl Future<Output = Result<()>> + Send;
 
     fn read_at(&self, prev_log_index: u64) -> impl Future<Output = Option<WriteOperation>> + Send;
+
+    fn log_start_index(&self) -> u64;
+
+    fn is_empty(&self) -> bool;
 }

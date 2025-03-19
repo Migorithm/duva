@@ -108,6 +108,14 @@ impl TWriteAheadLog for LocalWAL {
     async fn read_at(&self, prev_log_index: u64) -> Option<WriteOperation> {
         todo!()
     }
+
+    fn log_start_index(&self) -> u64 {
+        todo!()
+    }
+
+    fn is_empty(&self) -> bool {
+        todo!()
+    }
 }
 
 #[cfg(test)]

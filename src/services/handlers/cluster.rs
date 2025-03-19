@@ -64,6 +64,16 @@ impl ClusterActor {
                 // Follower receives heartbeat from leader
                 ClusterCommand::AppendEntriesRPC(heartbeat) => {
                     self.reset_election_timeout(&heartbeat.heartbeat_from);
+
+                    if heartbeat.term < self.replication.term {
+                        continue;
+                    }
+                    self.apply_term_then_may_stepdown(
+                        heartbeat.term,
+                        &heartbeat.heartbeat_from,
+                        &mut logger,
+                    );
+
                     self.replicate(&mut logger, heartbeat, &cache_manager).await;
                 },
                 ClusterCommand::LeaderReceiveAcks(offsets) => {

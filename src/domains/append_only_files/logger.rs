@@ -77,4 +77,12 @@ impl<T: TWriteAheadLog> ReplicatedLogs<T> {
     pub(crate) async fn read_at(&self, prev_log_index: u64) -> Option<WriteOperation> {
         self.target.read_at(prev_log_index).await
     }
+
+    pub(crate) fn log_start_index(&self) -> u64 {
+        self.target.log_start_index()
+    }
+
+    pub(crate) fn is_empty(&self) -> bool {
+        self.target.is_empty()
+    }
 }
