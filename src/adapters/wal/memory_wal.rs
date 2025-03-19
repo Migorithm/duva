@@ -56,4 +56,8 @@ impl TWriteAheadLog for InMemoryWAL {
     fn is_empty(&self) -> bool {
         self.writer.is_empty()
     }
+
+    async fn truncate_after(&mut self, log_index: u64) {
+        self.writer.retain(|op| op.log_index <= log_index);
+    }
 }

@@ -85,4 +85,8 @@ impl<T: TWriteAheadLog> ReplicatedLogs<T> {
     pub(crate) fn is_empty(&self) -> bool {
         self.target.is_empty()
     }
+
+    pub(crate) async fn truncate_after(&mut self, log_index: u64) {
+        self.target.truncate_after(log_index).await;
+    }
 }

@@ -116,6 +116,8 @@ impl TWriteAheadLog for LocalWAL {
     fn is_empty(&self) -> bool {
         todo!()
     }
+
+    async fn truncate_after(&mut self, log_index: u64) {}
 }
 
 #[cfg(test)]

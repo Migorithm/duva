@@ -348,7 +348,7 @@ impl ClusterActor {
             // TODO If consistency fails, truncate log starting at prev_log_index + 1
             if wal.read_at(rpc.prev_log_index).await.is_some() {
                 // Entry exists but term mismatches
-                // wal.truncate_after(rpc.prev_log_index).await?;
+                wal.truncate_after(rpc.prev_log_index).await;
             }
 
             self.send_negative_ack(&rpc.heartbeat_from, wal.log_index).await;
@@ -374,10 +374,10 @@ impl ClusterActor {
             return Err(anyhow::anyhow!("WAL is empty and prev_log_index > 0"));
         }
 
-        // Check if the previous log index is within our log range
-        let log_start_index = wal.log_start_index();
-
-        if prev_log_index < log_start_index {
+        // When prev_log_index < log_start_index, it means the leader is referencing a log entry that the follower no longer has in its WAL
+        // because it has been compacted or truncated. This situation indicates a mismatch between the leader’s view of the follower’s log and the follower’s actual log.
+        if prev_log_index < wal.log_start_index() {
+            // since log_start_index is the earliest index in WAL, the following error thrown but it wouldn't cause compaction to happen
             return Err(anyhow::anyhow!("Previous log index is too old"));
         }
 
@@ -390,6 +390,7 @@ impl ClusterActor {
             .ok_or_else(|| anyhow::anyhow!("No entry at prev_log_index"))?;
 
         if entry.term != prev_log_term {
+            // ! Term mismatch -> triggers log truncation
             return Err(anyhow::anyhow!("Log term mismatch"));
         }
 
