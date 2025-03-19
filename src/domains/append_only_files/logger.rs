@@ -7,8 +7,8 @@ pub(crate) struct Logger<T: TWriteAheadLog> {
 }
 
 impl<T: TWriteAheadLog> Logger<T> {
-    pub fn new(target: T) -> Self {
-        Self { target, log_index: 0.into(), term: 0 }
+    pub fn new(target: T, log_index: impl Into<LogIndex>, term: u64) -> Self {
+        Self { target, log_index: log_index.into(), term }
     }
 
     pub(crate) async fn create_log_entries(

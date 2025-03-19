@@ -13,7 +13,7 @@ impl ClusterActor {
         wal: impl TWriteAheadLog,
         cache_manager: CacheManager,
     ) -> anyhow::Result<Self> {
-        let mut logger = Logger::new(wal);
+        let mut logger = Logger::new(wal, 0.into(), 0);
 
         while let Some(command) = self.receiver.recv().await {
             match command {
