@@ -5,7 +5,7 @@ use anyhow::Result;
 
 #[derive(Default, Clone)]
 pub struct InMemoryWAL {
-    writer: Vec<WriteOperation>,
+    pub writer: Vec<WriteOperation>,
 }
 
 impl TWriteAheadLog for InMemoryWAL {
@@ -15,6 +15,7 @@ impl TWriteAheadLog for InMemoryWAL {
     }
     async fn append_many(&mut self, ops: Vec<WriteOperation>) -> Result<()> {
         self.writer.extend(ops);
+
         Ok(())
     }
 
@@ -47,5 +48,17 @@ impl TWriteAheadLog for InMemoryWAL {
 
     async fn read_at(&self, prev_log_index: u64) -> Option<WriteOperation> {
         self.writer.iter().find(|op| op.log_index == prev_log_index).cloned()
+    }
+
+    fn log_start_index(&self) -> u64 {
+        self.writer.first().map(|op| op.log_index).unwrap_or(0)
+    }
+
+    fn is_empty(&self) -> bool {
+        self.writer.is_empty()
+    }
+
+    async fn truncate_after(&mut self, log_index: u64) {
+        self.writer.retain(|op| op.log_index <= log_index);
     }
 }
