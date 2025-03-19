@@ -45,7 +45,7 @@ pub enum QueryIO {
     AppendEntriesRPC(AppendEntriesRPC),
     ClusterHeartBeat(ClusterHeartBeat),
     WriteOperation(WriteOperation),
-    Acks(Vec<LogIndex>),
+    Acks(Vec<u64>),
     RequestVote(RequestVote),
     RequestVoteReply(RequestVoteReply),
 }
@@ -192,7 +192,7 @@ pub fn deserialize(buffer: BytesMut) -> Result<(QueryIO, usize)> {
         APPEND_ENTRY_RPC_PREFIX => parse_custom_type::<AppendEntriesRPC>(buffer),
         CLUSTER_HEARTBEAT_PREFIX => parse_custom_type::<ClusterHeartBeat>(buffer),
         REPLICATE_PREFIX => parse_custom_type::<WriteOperation>(buffer),
-        ACKS_PREFIX => parse_custom_type::<Vec<LogIndex>>(buffer),
+        ACKS_PREFIX => parse_custom_type::<Vec<u64>>(buffer),
         REQUEST_VOTE_PREFIX => parse_custom_type::<RequestVote>(buffer),
         REQUEST_VOTE_REPLY_PREFIX => parse_custom_type::<RequestVoteReply>(buffer),
 
@@ -334,8 +334,8 @@ impl From<ClusterHeartBeat> for QueryIO {
     }
 }
 
-impl From<Vec<LogIndex>> for QueryIO {
-    fn from(value: Vec<LogIndex>) -> Self {
+impl From<Vec<u64>> for QueryIO {
+    fn from(value: Vec<u64>) -> Self {
         QueryIO::Acks(value)
     }
 }
@@ -449,7 +449,7 @@ mod test {
         // GIVEN
         let op = QueryIO::WriteOperation(WriteOperation {
             request: WriteRequest::Set { key: "foo".into(), value: "bar".into() },
-            log_index: 1.into(),
+            log_index: 1,
             term: 0,
         });
 
@@ -464,7 +464,7 @@ mod test {
     #[test]
     fn test_acks_to_binary_back_to_acks() {
         // GIVEN
-        let acks = vec![1.into(), 2.into()];
+        let acks = vec![1, 2];
         let acks = QueryIO::Acks(acks);
 
         // WHEN
@@ -487,7 +487,7 @@ mod test {
         let heartbeat = HeartBeatMessage {
             heartbeat_from: me.clone(),
             term: 1,
-            prev_log_index: 0.into(),
+            prev_log_index: 0,
             prev_log_term: 1,
             hwm: 5,
             replid: leader.clone(),
@@ -496,7 +496,7 @@ mod test {
             append_entries: vec![
                 WriteOperation {
                     request: WriteRequest::Set { key: "foo".into(), value: "bar".into() },
-                    log_index: 1.into(),
+                    log_index: 1,
                     term: 0,
                 },
                 WriteOperation {
@@ -505,7 +505,7 @@ mod test {
                         value: "bar".into(),
                         expires_at: 323232,
                     },
-                    log_index: 2.into(),
+                    log_index: 2,
                     term: 1,
                 },
             ],
@@ -535,7 +535,7 @@ mod test {
         let request_vote = RequestVote {
             term: 1,
             candidate_id: PeerIdentifier("me".into()),
-            last_log_index: 5.into(),
+            last_log_index: 5,
             last_log_term: 1,
         };
         let request_vote = QueryIO::RequestVote(request_vote);

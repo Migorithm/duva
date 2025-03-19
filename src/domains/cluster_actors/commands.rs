@@ -1,6 +1,6 @@
 use super::replication::{HeartBeatMessage, ReplicationId, ReplicationState};
 use crate::domains::append_only_files::WriteOperation;
-use crate::domains::append_only_files::log::LogIndex;
+
 use crate::domains::peers::peer::Peer;
 use crate::domains::{append_only_files::WriteRequest, peers::identifier::PeerIdentifier};
 
@@ -21,9 +21,9 @@ pub enum ClusterCommand {
         log: WriteRequest,
         sender: tokio::sync::oneshot::Sender<WriteConsensusResponse>,
     },
-    LeaderReceiveAcks(Vec<LogIndex>),
+    LeaderReceiveAcks(Vec<u64>),
     SendCommitHeartBeat {
-        log_idx: LogIndex,
+        log_idx: u64,
     },
     AppendEntriesRPC(HeartBeatMessage),
 
@@ -38,7 +38,7 @@ pub enum ClusterCommand {
 
 #[derive(Debug)]
 pub enum WriteConsensusResponse {
-    LogIndex(Option<LogIndex>),
+    LogIndex(Option<u64>),
     Err(String),
 }
 
@@ -52,15 +52,11 @@ pub struct AddPeer {
 pub struct RequestVote {
     pub(crate) term: u64, // current term of the candidate. Without it, the old leader wouldn't be able to step down gracefully.
     pub(crate) candidate_id: PeerIdentifier,
-    pub(crate) last_log_index: LogIndex,
+    pub(crate) last_log_index: u64,
     pub(crate) last_log_term: u64, //the term of the last log entry, used for election restrictions. If the term is low, it won’t win the election.
 }
 impl RequestVote {
-    pub(crate) fn new(
-        repl: &ReplicationState,
-        last_log_index: LogIndex,
-        last_log_term: u64,
-    ) -> Self {
+    pub(crate) fn new(repl: &ReplicationState, last_log_index: u64, last_log_term: u64) -> Self {
         Self {
             term: repl.term,
             candidate_id: repl.self_identifier(),

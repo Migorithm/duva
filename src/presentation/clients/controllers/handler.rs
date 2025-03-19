@@ -91,7 +91,7 @@ impl ClientController<Handler> {
     pub(super) async fn maybe_consensus(
         &self,
         request: &ClientRequest,
-    ) -> anyhow::Result<Option<LogIndex>> {
+    ) -> anyhow::Result<Option<u64>> {
         // If the request doesn't require consensus, return Ok
         let Some(log) = request.to_write_request() else {
             return Ok(None);
@@ -109,7 +109,7 @@ impl ClientController<Handler> {
         }
     }
 
-    async fn maybe_send_commit(&self, log_index_num: Option<LogIndex>) -> anyhow::Result<()> {
+    async fn maybe_send_commit(&self, log_index_num: Option<u64>) -> anyhow::Result<()> {
         if let Some(log_idx) = log_index_num {
             self.cluster_communication_manager
                 .send(ClusterCommand::SendCommitHeartBeat { log_idx })

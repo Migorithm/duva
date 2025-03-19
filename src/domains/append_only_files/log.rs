@@ -8,7 +8,7 @@ use std::str::FromStr;
 #[derive(Debug, Clone, PartialEq, Eq, bincode::Encode, bincode::Decode)]
 pub struct WriteOperation {
     pub request: WriteRequest,
-    pub log_index: LogIndex,
+    pub log_index: u64,
     pub term: u64,
 }
 

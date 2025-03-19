@@ -257,14 +257,14 @@ impl ClusterActor {
     pub(crate) fn generate_follower_entries(
         &mut self,
         append_entries: Vec<WriteOperation>,
-        prev_log_index: LogIndex,
+        prev_log_index: u64,
         prev_term: u64,
     ) -> impl Iterator<Item = (&mut Peer, HeartBeatMessage)> {
         let default_heartbeat: HeartBeatMessage =
             self.replication.default_heartbeat(0, prev_log_index, prev_term);
         self.replicas_mut().map(move |(peer, hwm)| {
             let logs =
-                append_entries.iter().filter(|op| *op.log_index > hwm).cloned().collect::<Vec<_>>();
+                append_entries.iter().filter(|op| op.log_index > hwm).cloned().collect::<Vec<_>>();
             (peer, default_heartbeat.clone().set_append_entries(logs))
         })
     }
@@ -280,7 +280,7 @@ impl ClusterActor {
             .min()
     }
 
-    pub(crate) fn apply_acks(&mut self, offsets: Vec<LogIndex>) {
+    pub(crate) fn apply_acks(&mut self, offsets: Vec<u64>) {
         offsets.into_iter().for_each(|offset| {
             if let Some(mut consensus) = self.consensus_tracker.take(&offset) {
                 println!("[INFO] Received acks for log index num: {}", offset);
@@ -293,14 +293,14 @@ impl ClusterActor {
         });
     }
 
-    pub(crate) async fn send_ack(&mut self, send_to: &PeerIdentifier, offset: LogIndex) {
+    pub(crate) async fn send_ack(&mut self, send_to: &PeerIdentifier, offset: u64) {
         if let Some(leader) = self.members.get_mut(send_to) {
             // TODO send the last offset instead of multiple offsets.
             let _ = leader.write_io(QueryIO::Acks(vec![offset])).await;
         }
     }
 
-    pub(crate) async fn send_commit_heartbeat(&mut self, offset: LogIndex) {
+    pub(crate) async fn send_commit_heartbeat(&mut self, offset: u64) {
         // TODO is there any case where I can use offset input?
         self.replication.hwm += 1;
         let message: HeartBeatMessage =
@@ -315,7 +315,13 @@ impl ClusterActor {
         heartbeat: HeartBeatMessage,
         cache_manager: &CacheManager,
     ) {
-        self.replication.term = heartbeat.term;
+        // Reject requests with stale terms
+        if heartbeat.term < self.replication.term {
+            return;
+        }
+
+        self.update_term_if_required(logger, heartbeat.term);
+
         // * lagging case
         if self.replication.hwm < heartbeat.hwm {
             println!("[INFO] Received commit offset {}", heartbeat.hwm);
@@ -370,7 +376,7 @@ impl ClusterActor {
             .collect()
     }
 
-    pub(crate) async fn run_for_election(&mut self, last_log_index: LogIndex, last_log_term: u64) {
+    pub(crate) async fn run_for_election(&mut self, last_log_index: u64, last_log_term: u64) {
         let ElectionState::Follower { voted_for: None } = self.replication.election_state else {
             return;
         };
@@ -386,11 +392,7 @@ impl ClusterActor {
             .await;
     }
 
-    pub(crate) async fn vote_election(
-        &mut self,
-        request_vote: RequestVote,
-        current_log_idx: LogIndex,
-    ) {
+    pub(crate) async fn vote_election(&mut self, request_vote: RequestVote, current_log_idx: u64) {
         let grant_vote = current_log_idx <= request_vote.last_log_index
             && self.replication.may_become_follower(&request_vote.candidate_id, request_vote.term);
 
@@ -435,6 +437,21 @@ impl ClusterActor {
         }
         self.heartbeat_scheduler.reset_election_timeout();
     }
+
+    fn update_term_if_required(
+        &mut self,
+        logger: &mut Logger<impl TWriteAheadLog>,
+        heartbeat_term: u64,
+    ) {
+        if heartbeat_term > self.replication.term {
+            self.replication.term = heartbeat_term;
+            logger.term = heartbeat_term;
+        }
+    }
+
+    async fn send_negative_ack(&self, heartbeat_from: &PeerIdentifier, prev_log_index: u64) {
+        todo!()
+    }
 }
 
 #[cfg(test)]
@@ -470,11 +487,7 @@ mod test {
         HeartBeatMessage {
             term,
             hwm,
-            prev_log_index: if !op_logs.is_empty() {
-                (*op_logs[0].log_index - 1).into()
-            } else {
-                0.into()
-            },
+            prev_log_index: if !op_logs.is_empty() { (op_logs[0].log_index - 1) } else { 0 },
             prev_log_term: 0,
             append_entries: op_logs,
             ban_list: vec![],
@@ -581,7 +594,7 @@ mod test {
 
         // THEN
         assert_eq!(cluster_actor.consensus_tracker.len(), 0);
-        assert_eq!(test_logger.log_index, 1.into());
+        assert_eq!(test_logger.log_index, 1);
     }
 
     #[tokio::test]
@@ -612,7 +625,7 @@ mod test {
 
         // THEN
         assert_eq!(cluster_actor.consensus_tracker.len(), 1);
-        assert_eq!(test_logger.log_index, 1.into());
+        assert_eq!(test_logger.log_index, 1);
     }
 
     #[tokio::test]
@@ -639,18 +652,18 @@ mod test {
             .unwrap();
 
         // WHEN
-        cluster_actor.apply_acks(vec![1.into()]);
-        cluster_actor.apply_acks(vec![1.into()]);
+        cluster_actor.apply_acks(vec![1]);
+        cluster_actor.apply_acks(vec![1]);
 
         // up to this point, tracker hold the consensus
         assert_eq!(cluster_actor.consensus_tracker.len(), 1);
 
         // ! Majority votes made
-        cluster_actor.apply_acks(vec![1.into()]);
+        cluster_actor.apply_acks(vec![1]);
 
         // THEN
         assert_eq!(cluster_actor.consensus_tracker.len(), 0);
-        assert_eq!(test_logger.log_index, 1.into());
+        assert_eq!(test_logger.log_index, 1);
         client_wait.await.unwrap();
     }
 
@@ -679,9 +692,9 @@ mod test {
 
         // THEN
         assert_eq!(logs.len(), 2);
-        assert_eq!(logs[0].log_index, 3.into());
-        assert_eq!(logs[1].log_index, 4.into());
-        assert_eq!(test_logger.log_index, 4.into());
+        assert_eq!(logs[0].log_index, 3);
+        assert_eq!(logs[1].log_index, 4);
+        assert_eq!(test_logger.log_index, 4);
     }
 
     #[tokio::test]
@@ -732,9 +745,8 @@ mod test {
         // THEN
         assert_eq!(append_entries.len(), 3);
 
-        let entries = cluster_actor
-            .generate_follower_entries(append_entries, 3.into(), 0)
-            .collect::<Vec<_>>();
+        let entries =
+            cluster_actor.generate_follower_entries(append_entries, 3, 0).collect::<Vec<_>>();
 
         // * for old followers must have 1 entry
         assert_eq!(entries.iter().filter(|(_, hb)| hb.append_entries.len() == 1).count(), 5);
@@ -763,11 +775,11 @@ mod test {
 
         // THEN
         assert_eq!(cluster_actor.replication.hwm, 0);
-        assert_eq!(test_logger.log_index, 2.into());
+        assert_eq!(test_logger.log_index, 2);
         let logs = test_logger.range(0, 2);
         assert_eq!(logs.len(), 2);
-        assert_eq!(logs[0].log_index, 1.into());
-        assert_eq!(logs[1].log_index, 2.into());
+        assert_eq!(logs[0].log_index, 1);
+        assert_eq!(logs[1].log_index, 2);
         assert_eq!(logs[0].request, WriteRequest::Set { key: "foo".into(), value: "bar".into() });
         assert_eq!(logs[1].request, WriteRequest::Set { key: "foo2".into(), value: "bar".into() });
     }
@@ -810,7 +822,7 @@ mod test {
 
         // THEN
         assert_eq!(cluster_actor.replication.hwm, 2);
-        assert_eq!(test_logger.log_index, 2.into());
+        assert_eq!(test_logger.log_index, 2);
         task.await.unwrap();
     }
 
@@ -854,7 +866,7 @@ mod test {
         // THEN
         assert!(tokio::time::timeout(Duration::from_secs(1), task).await.is_err());
         assert_eq!(cluster_actor.replication.hwm, 1);
-        assert_eq!(test_logger.log_index, 2.into());
+        assert_eq!(test_logger.log_index, 2);
     }
 
     /*

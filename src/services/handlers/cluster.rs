@@ -13,7 +13,7 @@ impl ClusterActor {
         wal: impl TWriteAheadLog,
         cache_manager: CacheManager,
     ) -> anyhow::Result<Self> {
-        let mut logger = Logger::new(wal, 0.into(), 0);
+        let mut logger = Logger::new(wal, 0, 0);
 
         while let Some(command) = self.receiver.recv().await {
             match command {
@@ -40,12 +40,7 @@ impl ClusterActor {
                     // ! The following may need to be moved else where to avoid blocking the main loop
                     self.remove_idle_peers().await;
                 },
-                ClusterCommand::AppendEntriesRPC(heartbeat) => {
-                    // check if the heartbeat is from a leader
 
-                    self.reset_election_timeout(&heartbeat.heartbeat_from);
-                    self.replicate(&mut logger, heartbeat, &cache_manager).await;
-                },
                 ClusterCommand::ClusterHeartBeat(mut heartbeat) => {
                     if self.replication.in_ban_list(&heartbeat.heartbeat_from) {
                         continue;
@@ -64,6 +59,12 @@ impl ClusterActor {
                 ClusterCommand::LeaderReqConsensus { log, sender } => {
                     // Skip consensus for no replicas
                     let _ = self.req_consensus(&mut logger, log, sender).await;
+                },
+
+                // Follower receives heartbeat from leader
+                ClusterCommand::AppendEntriesRPC(heartbeat) => {
+                    self.reset_election_timeout(&heartbeat.heartbeat_from);
+                    self.replicate(&mut logger, heartbeat, &cache_manager).await;
                 },
                 ClusterCommand::LeaderReceiveAcks(offsets) => {
                     self.apply_acks(offsets);

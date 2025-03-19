@@ -97,7 +97,7 @@ impl ReplicationState {
     pub(crate) fn default_heartbeat(
         &self,
         hop_count: u8,
-        prev_log_index: LogIndex,
+        prev_log_index: u64,
         prev_log_term: u64,
     ) -> HeartBeatMessage {
         HeartBeatMessage {

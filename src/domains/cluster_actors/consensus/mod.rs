@@ -1,6 +1,6 @@
 pub mod voting;
 use super::commands::WriteConsensusResponse;
-use crate::{domains::append_only_files::log::LogIndex, make_smart_pointer};
+use crate::make_smart_pointer;
 
 use std::collections::HashMap;
 use tokio::sync::oneshot::Sender;
@@ -8,12 +8,12 @@ use voting::ConsensusVoting;
 
 #[derive(Default, Debug)]
 pub struct LogConsensusTracker(
-    pub(crate) HashMap<LogIndex, ConsensusVoting<Sender<WriteConsensusResponse>>>,
+    pub(crate) HashMap<u64, ConsensusVoting<Sender<WriteConsensusResponse>>>,
 );
 impl LogConsensusTracker {
     pub(crate) fn add(
         &mut self,
-        key: LogIndex,
+        key: u64,
         value: Sender<WriteConsensusResponse>,
         replica_count: usize,
     ) {
@@ -22,9 +22,9 @@ impl LogConsensusTracker {
     }
     pub(crate) fn take(
         &mut self,
-        offset: &LogIndex,
+        offset: &u64,
     ) -> Option<ConsensusVoting<Sender<WriteConsensusResponse>>> {
         self.0.remove(offset)
     }
 }
-make_smart_pointer!(LogConsensusTracker, HashMap<LogIndex, ConsensusVoting<Sender<WriteConsensusResponse>>>);
+make_smart_pointer!(LogConsensusTracker, HashMap<u64, ConsensusVoting<Sender<WriteConsensusResponse>>>);

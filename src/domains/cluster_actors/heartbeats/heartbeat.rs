@@ -15,8 +15,8 @@ pub struct HeartBeatMessage {
     pub(crate) ban_list: Vec<BannedPeer>,
     pub(crate) append_entries: Vec<WriteOperation>,
     pub(crate) cluster_nodes: Vec<String>,
-    pub(crate) prev_log_index: LogIndex, //index of log entry immediately preceding new ones
-    pub(crate) prev_log_term: u64,       //term of prev_log_index entry
+    pub(crate) prev_log_index: u64, //index of log entry immediately preceding new ones
+    pub(crate) prev_log_term: u64,  //term of prev_log_index entry
 }
 impl HeartBeatMessage {
     pub(crate) fn set_append_entries(mut self, entries: Vec<WriteOperation>) -> Self {
