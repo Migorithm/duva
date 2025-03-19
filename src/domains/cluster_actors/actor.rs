@@ -296,11 +296,17 @@ impl ClusterActor {
         });
     }
 
-    pub(crate) async fn send_ack(&mut self, send_to: &PeerIdentifier, offset: u64) {
+    // After send_ack: Leader updates its knowledge of follower's progress
+    async fn send_ack(&mut self, send_to: &PeerIdentifier, log_index: u64) {
         if let Some(leader) = self.members.get_mut(send_to) {
             // TODO send the last offset instead of multiple offsets.
-            let _ = leader.write_io(QueryIO::Acks(vec![offset])).await;
+            let _ = leader.write_io(QueryIO::AppendEntriesResponse(vec![log_index])).await;
         }
+    }
+
+    // After send_negative_ack: Leader needs to backtrack and send earlier entries
+    async fn send_negative_ack(&self, send_to: &PeerIdentifier, prev_log_index: u64) {
+        todo!()
     }
 
     pub(crate) async fn send_commit_heartbeat(&mut self, offset: u64) {
@@ -434,10 +440,6 @@ impl ClusterActor {
             peer.last_seen = Instant::now();
         }
         self.heartbeat_scheduler.reset_election_timeout();
-    }
-
-    async fn send_negative_ack(&self, heartbeat_from: &PeerIdentifier, prev_log_index: u64) {
-        todo!()
     }
 
     async fn try_append_entries(

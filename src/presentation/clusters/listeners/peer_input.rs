@@ -37,7 +37,7 @@ impl TryFrom<QueryIO> for PeerInput {
             },
             QueryIO::AppendEntriesRPC(peer_state) => Ok(Self::AppendEntriesRPC(peer_state.0)),
             QueryIO::ClusterHeartBeat(heartbeat) => Ok(Self::ClusterHeartBeat(heartbeat.0)),
-            QueryIO::Acks(acks) => Ok(PeerInput::Acks(acks)),
+            QueryIO::AppendEntriesResponse(acks) => Ok(PeerInput::Acks(acks)),
             QueryIO::RequestVote(vote) => Ok(PeerInput::RequestVote(vote)),
             QueryIO::RequestVoteReply(reply) => Ok(PeerInput::RequestVoteReply(reply)),
             _ => Err(anyhow::anyhow!("Invalid data")),

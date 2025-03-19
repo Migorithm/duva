@@ -45,7 +45,7 @@ pub enum QueryIO {
     AppendEntriesRPC(AppendEntriesRPC),
     ClusterHeartBeat(ClusterHeartBeat),
     WriteOperation(WriteOperation),
-    Acks(Vec<u64>),
+    AppendEntriesResponse(Vec<u64>),
     RequestVote(RequestVote),
     RequestVoteReply(RequestVoteReply),
 }
@@ -101,7 +101,7 @@ impl QueryIO {
             QueryIO::WriteOperation(write_operation) => {
                 serialize_with_bincode(REPLICATE_PREFIX, &write_operation)
             },
-            QueryIO::Acks(items) => serialize_with_bincode(ACKS_PREFIX, &items),
+            QueryIO::AppendEntriesResponse(items) => serialize_with_bincode(ACKS_PREFIX, &items),
             QueryIO::RequestVote(request_vote) => {
                 serialize_with_bincode(REQUEST_VOTE_PREFIX, &request_vote)
             },
@@ -336,7 +336,7 @@ impl From<ClusterHeartBeat> for QueryIO {
 
 impl From<Vec<u64>> for QueryIO {
     fn from(value: Vec<u64>) -> Self {
-        QueryIO::Acks(value)
+        QueryIO::AppendEntriesResponse(value)
     }
 }
 
@@ -465,7 +465,7 @@ mod test {
     fn test_acks_to_binary_back_to_acks() {
         // GIVEN
         let acks = vec![1, 2];
-        let acks = QueryIO::Acks(acks);
+        let acks = QueryIO::AppendEntriesResponse(acks);
 
         // WHEN
         let serialized = acks.clone().serialize();
