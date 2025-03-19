@@ -159,7 +159,7 @@ mod tests {
         let mut wal = LocalWAL::new(&path).await?;
 
         let request = WriteRequest::Set { key: "foo".into(), value: "bar".into() };
-        let write_op = WriteOperation { request, log_index: 0.into() };
+        let write_op = WriteOperation { request, log_index: 0.into(), term: 0 };
         wal.append(write_op).await?;
         drop(wal);
 
@@ -185,16 +185,19 @@ mod tests {
             wal.append(WriteOperation {
                 request: WriteRequest::Set { key: "a".into(), value: "a".into() },
                 log_index: 0.into(),
+                term: 0,
             })
             .await?;
             wal.append(WriteOperation {
                 request: WriteRequest::Set { key: "b".into(), value: "b".into() },
                 log_index: 1.into(),
+                term: 0,
             })
             .await?;
             wal.append(WriteOperation {
                 request: WriteRequest::Set { key: "c".into(), value: "c".into() },
                 log_index: 2.into(),
+                term: 1,
             })
             .await?;
         }
@@ -212,21 +215,24 @@ mod tests {
             ops[0],
             WriteOperation {
                 request: WriteRequest::Set { key: "a".into(), value: "a".into() },
-                log_index: 0.into()
+                log_index: 0.into(),
+                term: 0
             }
         );
         assert_eq!(
             ops[1],
             WriteOperation {
                 request: WriteRequest::Set { key: "b".into(), value: "b".into() },
-                log_index: 1.into()
+                log_index: 1.into(),
+                term: 0
             }
         );
         assert_eq!(
             ops[2],
             WriteOperation {
                 request: WriteRequest::Set { key: "c".into(), value: "c".into() },
-                log_index: 2.into()
+                log_index: 2.into(),
+                term: 1
             }
         );
 
@@ -245,16 +251,19 @@ mod tests {
             wal.append(WriteOperation {
                 request: WriteRequest::Set { key: "a".into(), value: "a".into() },
                 log_index: 0.into(),
+                term: 0,
             })
             .await?;
             wal.append(WriteOperation {
                 request: WriteRequest::Set { key: "b".into(), value: "b".into() },
                 log_index: 1.into(),
+                term: 0,
             })
             .await?;
             wal.append(WriteOperation {
                 request: WriteRequest::Set { key: "c".into(), value: "c".into() },
                 log_index: 2.into(),
+                term: 1,
             })
             .await?;
         }
@@ -288,7 +297,8 @@ mod tests {
             ops[0],
             WriteOperation {
                 request: WriteRequest::Set { key: "a".into(), value: "a".into() },
-                log_index: 0.into()
+                log_index: 0.into(),
+                term: 0
             }
         );
 

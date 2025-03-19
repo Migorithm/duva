@@ -3,23 +3,22 @@ use super::{WriteOperation, WriteRequest, interfaces::TWriteAheadLog, log::LogIn
 pub(crate) struct Logger<T: TWriteAheadLog> {
     pub(crate) target: T,
     pub(crate) log_index: LogIndex,
-
     // need to store
-    pub(crate) log_term: u64,
 }
 
 impl<T: TWriteAheadLog> Logger<T> {
     pub fn new(target: T) -> Self {
-        Self { target, log_index: 0.into(), log_term: 0 }
+        Self { target, log_index: 0.into() }
     }
 
     pub(crate) async fn create_log_entries(
         &mut self,
         log: &WriteRequest,
         low_watermark: Option<u64>,
+        term: u64,
     ) -> anyhow::Result<Vec<WriteOperation>> {
         let current_idx = self.log_index;
-        self.write_log_entry(log).await?;
+        self.write_log_entry(log, term).await?;
 
         if low_watermark.is_none() {
             return Ok(self.from(current_idx.into()));
@@ -31,8 +30,13 @@ impl<T: TWriteAheadLog> Logger<T> {
         Ok(logs)
     }
 
-    pub(crate) async fn write_log_entry(&mut self, log: &WriteRequest) -> anyhow::Result<()> {
-        let op = WriteOperation { request: log.clone(), log_index: (*self.log_index + 1).into() };
+    pub(crate) async fn write_log_entry(
+        &mut self,
+        log: &WriteRequest,
+        term: u64,
+    ) -> anyhow::Result<()> {
+        let op =
+            WriteOperation { request: log.clone(), log_index: (*self.log_index + 1).into(), term };
         self.target.append(op).await?;
         *self.log_index += 1;
         Ok(())

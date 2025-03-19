@@ -196,7 +196,8 @@ impl ClusterActor {
             return Err(WriteConsensusResponse::Err("Write given to follower".into()));
         }
 
-        let Ok(append_entries) = logger.create_log_entries(&log, self.take_low_watermark()).await
+        let Ok(append_entries) =
+            logger.create_log_entries(&log, self.take_low_watermark(), self.replication.term).await
         else {
             return Err(WriteConsensusResponse::Err("Write operation failed".into()));
         };
@@ -438,6 +439,7 @@ mod test {
         WriteOperation {
             log_index: index_num.into(),
             request: WriteRequest::Set { key: key.into(), value: value.into() },
+            term: 0,
         }
     }
     fn heartbeat_create_helper(
@@ -644,6 +646,7 @@ mod test {
             .create_log_entries(
                 &WriteRequest::Set { key: "foo4".into(), value: "bar".into() },
                 Some(LOWEST_FOLLOWER_COMMIT_INDEX),
+                0,
             )
             .await
             .unwrap();
@@ -695,6 +698,7 @@ mod test {
             .create_log_entries(
                 &WriteRequest::Set { key: "foo4".into(), value: "bar".into() },
                 lowest_hwm,
+                0,
             )
             .await
             .unwrap();

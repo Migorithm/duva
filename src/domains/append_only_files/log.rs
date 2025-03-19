@@ -9,6 +9,7 @@ use std::str::FromStr;
 pub struct WriteOperation {
     pub request: WriteRequest,
     pub log_index: LogIndex,
+    pub term: u64,
 }
 
 #[derive(

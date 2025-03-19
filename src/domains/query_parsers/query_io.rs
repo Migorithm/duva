@@ -450,6 +450,7 @@ mod test {
         let op = QueryIO::WriteOperation(WriteOperation {
             request: WriteRequest::Set { key: "foo".into(), value: "bar".into() },
             log_index: 1.into(),
+            term: 0,
         });
 
         // WHEN
@@ -494,6 +495,7 @@ mod test {
                 WriteOperation {
                     request: WriteRequest::Set { key: "foo".into(), value: "bar".into() },
                     log_index: 1.into(),
+                    term: 0,
                 },
                 WriteOperation {
                     request: WriteRequest::SetWithExpiry {
@@ -502,6 +504,7 @@ mod test {
                         expires_at: 323232,
                     },
                     log_index: 2.into(),
+                    term: 1,
                 },
             ],
             cluster_nodes: vec![
