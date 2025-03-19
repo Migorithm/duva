@@ -342,25 +342,22 @@ impl ClusterActor {
             return Ok(());
         }
 
-        // If rpc.prev_log_index == 0, skip the consistency check entirely.
-
         if let Err(e) =
             self.check_previous_entry_consistency(wal, rpc.prev_log_index, rpc.prev_log_term).await
         {
+            // TODO If consistency fails, truncate log starting at prev_log_index + 1
+            if wal.read_at(rpc.prev_log_index).await.is_some() {
+                // Entry exists but term mismatches
+                // wal.truncate_after(rpc.prev_log_index).await?;
+            }
+
             self.send_negative_ack(&rpc.heartbeat_from, wal.log_index).await;
             return Err(e);
         }
 
-        match wal.write_log_entries(std::mem::take(&mut rpc.append_entries)).await {
-            Ok(match_index) => {
-                self.send_ack(&rpc.heartbeat_from, match_index).await;
-                Ok(())
-            },
-            Err(e) => {
-                println!("[ERROR] Failed to write log entries: {:?}", e);
-                Err(e)
-            },
-        }
+        let match_index = wal.write_log_entries(std::mem::take(&mut rpc.append_entries)).await?;
+        self.send_ack(&rpc.heartbeat_from, match_index).await;
+        Ok(())
     }
 
     async fn check_previous_entry_consistency(
@@ -369,14 +366,9 @@ impl ClusterActor {
         prev_log_index: u64,
         prev_log_term: u64,
     ) -> anyhow::Result<()> {
-        // ! Consistency Check Issue:
-        //     If the leader sends an AppendEntries RPC with prev_log_index > 0,
-        //     but the follower's WAL is empty, there's no way the follower can verify the consistency of the previous log entry (since it doesn't exist).
-        // ! First Entry Handling:
-        //     A new follower or one that has just cleared its logs will have an empty WAL.
-        //     In this case, it should only accept entries with prev_log_index = 0 (which indicates the beginning of the log).
         if wal.is_empty() {
             if prev_log_index == 0 {
+                // ! First entry, no previous log to check
                 return Ok(());
             }
             return Err(anyhow::anyhow!("WAL is empty and prev_log_index > 0"));
@@ -386,22 +378,19 @@ impl ClusterActor {
         let log_start_index = wal.log_start_index();
 
         if prev_log_index < log_start_index {
-            // Previous log index is too old, we've compacted past it
             return Err(anyhow::anyhow!("Previous log index is too old"));
         }
 
         // TODO If entry_matches is false:
         // * Raft followers should truncate their log starting at prev_log_index + 1 and then append the new entries
         // * Just returning an error is breaking consistency
-        let entry_matches = wal
+        let entry = wal
             .read_at(prev_log_index)
             .await
-            .map(|entry| entry.term == prev_log_term)
-            .unwrap_or(false);
+            .ok_or_else(|| anyhow::anyhow!("No entry at prev_log_index"))?;
 
-        if !entry_matches {
-            // Log inconsistency
-            return Err(anyhow::anyhow!("Log inconsistency"));
+        if entry.term != prev_log_term {
+            return Err(anyhow::anyhow!("Log term mismatch"));
         }
 
         Ok(())
