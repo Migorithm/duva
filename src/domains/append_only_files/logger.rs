@@ -1,12 +1,12 @@
 use super::{WriteOperation, WriteRequest, interfaces::TWriteAheadLog};
 
-pub(crate) struct Logger<T: TWriteAheadLog> {
+pub(crate) struct ReplicatedLogs<T: TWriteAheadLog> {
     pub(crate) target: T,
     pub(crate) log_index: u64,
     pub(crate) term: u64,
 }
 
-impl<T: TWriteAheadLog> Logger<T> {
+impl<T: TWriteAheadLog> ReplicatedLogs<T> {
     pub fn new(target: T, log_index: u64, term: u64) -> Self {
         Self { target, log_index, term }
     }

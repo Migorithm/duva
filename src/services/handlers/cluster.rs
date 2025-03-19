@@ -1,5 +1,5 @@
 use crate::domains::append_only_files::interfaces::TWriteAheadLog;
-use crate::domains::append_only_files::logger::Logger;
+use crate::domains::append_only_files::logger::ReplicatedLogs;
 use crate::domains::caches::cache_manager::CacheManager;
 use crate::domains::cluster_actors::commands::ClusterCommand;
 
@@ -13,7 +13,7 @@ impl ClusterActor {
         wal: impl TWriteAheadLog,
         cache_manager: CacheManager,
     ) -> anyhow::Result<Self> {
-        let mut logger = Logger::new(wal, 0, 0);
+        let mut logger = ReplicatedLogs::new(wal, 0, 0);
 
         while let Some(command) = self.receiver.recv().await {
             match command {
