@@ -218,3 +218,16 @@ impl From<String> for ReplicationId {
         }
     }
 }
+
+#[test]
+fn test_cloning_replication_state() {
+    //GIVEN
+    let replication_state = ReplicationState::new(None, "ads", 1231);
+    let cloned = replication_state.clone();
+
+    //WHEN
+    replication_state.hwm.store(5, Ordering::Release);
+
+    //THEN
+    assert_eq!(cloned.hwm.load(Ordering::Relaxed), 5);
+}
