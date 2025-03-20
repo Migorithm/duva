@@ -1,4 +1,5 @@
 use crate::domains::caches::actor::CacheActor;
+
 use crate::domains::caches::cache_objects::CacheEntry;
 use crate::domains::caches::command::CacheCommand;
 use crate::domains::query_parsers::QueryIO;
@@ -11,12 +12,14 @@ impl CacheActor {
         while let Some(command) = recv.recv().await {
             match command {
                 CacheCommand::StopSentinel => break,
-
                 CacheCommand::Set { cache_entry } => {
                     let _ = self.try_send_ttl(&cache_entry).await;
                     self.set(cache_entry);
                 },
                 CacheCommand::Get { key, sender } => {
+                    let _ = sender.send(self.get(&key).into());
+                },
+                CacheCommand::IndexGet { key, index, sender } => {
                     let _ = sender.send(self.get(&key).into());
                 },
                 CacheCommand::Keys { pattern, sender } => {
@@ -51,12 +54,18 @@ impl CacheActor {
 #[tokio::test]
 async fn test_set_and_delete_inc_dec_keys_with_expiry() {
     use crate::domains::caches::actor::CacheDb;
+    use crate::domains::caches::awaiters::Awaiters;
     use chrono::Utc;
     use std::time::Duration;
 
     // GIVEN
     let (tx, rx) = tokio::sync::mpsc::channel(100);
-    let actor = CacheActor { cache: CacheDb::default(), self_handler: tx.clone() };
+    let actor = CacheActor {
+        cache: CacheDb::default(),
+        self_handler: tx.clone(),
+        hwm: 0,
+        awaiters: Awaiters::default(),
+    };
 
     // WHEN
     let handler = tokio::spawn(actor.handle(rx));

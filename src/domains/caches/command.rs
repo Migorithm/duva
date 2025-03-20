@@ -12,4 +12,5 @@ pub enum CacheCommand {
     Delete(String),
 
     StopSentinel,
+    IndexGet { key: String, index: u64, sender: oneshot::Sender<QueryIO> },
 }

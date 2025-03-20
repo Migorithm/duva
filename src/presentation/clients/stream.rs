@@ -40,6 +40,9 @@ impl ClientStream {
         match (cmd.as_str(), args.as_slice()) {
             ("ping", []) => Ok(ClientRequest::Ping),
             ("get", [key]) => Ok(ClientRequest::Get { key: key.to_string() }),
+            ("get", [key, index]) => {
+                Ok(ClientRequest::IndexGet { key: key.to_string(), index: index.parse()? })
+            },
             ("set", [key, value]) => {
                 Ok(ClientRequest::Set { key: key.to_string(), value: value.to_string() })
             },

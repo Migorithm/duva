@@ -44,9 +44,9 @@ impl CacheManager {
         Ok(rx.await?)
     }
 
-    pub(crate) async fn route_set(&self, kvs: CacheEntry) -> Result<QueryIO> {
+    pub(crate) async fn route_set(&self, kvs: CacheEntry) -> Result<()> {
         self.select_shard(kvs.key()).send(CacheCommand::Set { cache_entry: kvs }).await?;
-        Ok(QueryIO::SimpleString("OK".to_string().into()))
+        Ok(())
     }
 
     pub(crate) async fn route_save(
@@ -175,5 +175,12 @@ impl CacheManager {
     #[cfg(test)]
     pub fn test_new(tx: tokio::sync::mpsc::Sender<CacheCommand>) -> CacheManager {
         CacheManager { inboxes: (0..10).map(|_| CacheCommandSender(tx.clone())).collect() }
+    }
+
+    pub(crate) async fn route_index_get(&self, key: String, index: u64) -> Result<QueryIO> {
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        self.select_shard(&key).send(CacheCommand::IndexGet { key, index, sender: tx }).await?;
+
+        Ok(rx.await?)
     }
 }
