@@ -1,8 +1,11 @@
 use super::cache_objects::{CacheEntry, CacheValue};
 use super::command::CacheCommand;
+use crate::domains::caches::awaiters::Awaiters;
 use crate::domains::query_parsers::QueryIO;
 use crate::make_smart_pointer;
 use std::collections::HashMap;
+use std::sync::atomic::AtomicU64;
+use std::sync::Arc;
 use tokio::sync::mpsc::{self, Sender};
 
 pub struct CacheActor {
@@ -18,11 +21,11 @@ pub(crate) struct CacheDb {
 }
 
 impl CacheActor {
-    pub(crate) fn run() -> CacheCommandSender {
+    pub(crate) fn run(hwm: Arc<AtomicU64>) -> CacheCommandSender {
         let (tx, cache_actor_inbox) = mpsc::channel(100);
         tokio::spawn(
             Self { cache: CacheDb::default(), self_handler: tx.clone() }
-                .handle(cache_actor_inbox, Default::default()),
+                .handle(cache_actor_inbox, Awaiters::new(hwm)),
         );
         CacheCommandSender(tx)
     }

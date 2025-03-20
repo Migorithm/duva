@@ -60,14 +60,15 @@ async fn test_set_and_delete_inc_dec_keys_with_expiry() {
     use crate::domains::caches::actor::CacheDb;
     use chrono::Utc;
     use std::time::Duration;
-
+    use std::sync::Arc;
     // GIVEN
     let (tx, rx) = tokio::sync::mpsc::channel(100);
+    let hwm= Arc::new(0.into());
     let actor = CacheActor { cache: CacheDb::default(), self_handler: tx.clone() };
 
     // WHEN
 
-    let handler = tokio::spawn(actor.handle(rx, Default::default()));
+    let handler = tokio::spawn(actor.handle(rx, Awaiters::new(hwm)));
 
     for i in 0..100 {
         let key = format!("key{}", i);
