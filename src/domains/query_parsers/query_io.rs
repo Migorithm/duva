@@ -1,4 +1,3 @@
-use crate::domains::append_only_files::log::LogIndex;
 use crate::domains::cluster_actors::commands::RequestVoteReply;
 use crate::domains::cluster_actors::heartbeats::heartbeat::{AppendEntriesRPC, ClusterHeartBeat};
 

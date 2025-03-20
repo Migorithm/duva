@@ -4,7 +4,6 @@ use crate::domains::caches::actor::CacheCommandSender;
 use crate::domains::caches::cache_objects::CacheEntry;
 use crate::domains::caches::command::CacheCommand;
 use crate::domains::cluster_actors::replication::ReplicationId;
-use crate::domains::peers::identifier::PeerIdentifier;
 use crate::domains::query_parsers::QueryIO;
 use crate::domains::saves::actor::SaveActor;
 use crate::domains::saves::actor::SaveTarget;

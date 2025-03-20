@@ -1,9 +1,8 @@
-use std::fmt::Display;
-
 use super::election_state::ElectionState;
 pub(crate) use super::heartbeats::heartbeat::BannedPeer;
 pub(crate) use super::heartbeats::heartbeat::HeartBeatMessage;
-use crate::domains::append_only_files::log::LogIndex;
+use std::fmt::Display;
+
 use crate::domains::peers::identifier::PeerIdentifier;
 
 #[derive(Debug, Clone)]
