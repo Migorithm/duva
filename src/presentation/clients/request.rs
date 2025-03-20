@@ -24,7 +24,9 @@ pub enum ClientRequest {
 }
 
 impl ClientRequest {
-    pub fn to_write_request(&self) -> Option<(ClusterCommand, Receiver<WriteConsensusResponse>)> {
+    pub fn may_cluster_command(
+        &self,
+    ) -> Option<(ClusterCommand, Receiver<WriteConsensusResponse>)> {
         match self {
             ClientRequest::Set { key, value } => {
                 let (tx, rx) = tokio::sync::oneshot::channel();

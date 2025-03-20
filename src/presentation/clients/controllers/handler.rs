@@ -93,7 +93,7 @@ impl ClientController<Handler> {
         request: &ClientRequest,
     ) -> anyhow::Result<Option<u64>> {
         // If the request doesn't require consensus, return Ok
-        let Some((cluster_command, rx)) = request.to_write_request() else {
+        let Some((cluster_command, rx)) = request.may_cluster_command() else {
             return Ok(None);
         };
 
