@@ -4,8 +4,8 @@ use crate::domains::caches::awaiters::Awaiters;
 use crate::domains::query_parsers::QueryIO;
 use crate::make_smart_pointer;
 use std::collections::HashMap;
-use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
+use std::sync::atomic::AtomicU64;
 use tokio::sync::mpsc::{self, Sender};
 
 pub struct CacheActor {

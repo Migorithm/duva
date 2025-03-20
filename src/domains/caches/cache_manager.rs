@@ -13,8 +13,8 @@ use crate::domains::saves::snapshot::snapshot::Snapshot;
 use anyhow::Result;
 use chrono::Utc;
 use futures::future::join_all;
-use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
+use std::sync::atomic::AtomicU64;
 use std::{hash::Hasher, iter::Zip};
 use tokio::sync::oneshot::Sender;
 use tokio::task::JoinHandle;
@@ -33,7 +33,9 @@ impl CacheManager {
         const NUM_OF_PERSISTENCE: usize = 10;
 
         let cache_dispatcher = CacheManager {
-            inboxes: (0..NUM_OF_PERSISTENCE).map(|_| CacheActor::run(hwm.clone())).collect::<Vec<_>>(),
+            inboxes: (0..NUM_OF_PERSISTENCE)
+                .map(|_| CacheActor::run(hwm.clone()))
+                .collect::<Vec<_>>(),
         };
 
         cache_dispatcher
