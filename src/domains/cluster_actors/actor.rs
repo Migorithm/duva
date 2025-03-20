@@ -61,14 +61,14 @@ impl ClusterActor {
 
     pub(crate) fn replicas(&self) -> impl Iterator<Item = (&PeerIdentifier, &Peer, u64)> {
         self.members.iter().filter_map(|(id, peer)| match &peer.kind {
-            PeerKind::Replica { watermark: hwm, replid: leader_repl_id } => Some((id, peer, *hwm)),
+            PeerKind::Replica { watermark: hwm, replid } => Some((id, peer, *hwm)),
             _ => None,
         })
     }
 
     pub(crate) fn replicas_mut(&mut self) -> impl Iterator<Item = (&mut Peer, u64)> {
         self.members.values_mut().into_iter().filter_map(|peer| match peer.kind.clone() {
-            PeerKind::Replica { watermark: hwm, replid: leader_repl_id } => Some((peer, hwm)),
+            PeerKind::Replica { watermark: hwm, replid } => Some((peer, hwm)),
             _ => None,
         })
     }
@@ -277,7 +277,7 @@ impl ClusterActor {
             .values()
             .into_iter()
             .filter_map(|peer| match &peer.kind {
-                PeerKind::Replica { watermark, replid: leader_repl_id } => Some(*watermark),
+                PeerKind::Replica { watermark, replid } => Some(*watermark),
                 _ => None,
             })
             .min()
@@ -424,7 +424,7 @@ impl ClusterActor {
             .values()
             .into_iter()
             .map(|peer| match &peer.kind {
-                PeerKind::Replica { watermark: hwm, replid } => {
+                PeerKind::Replica { watermark, replid } => {
                     format!("{} follower {}", peer.addr, replid)
                 },
                 PeerKind::NonDataPeer { replid } => {

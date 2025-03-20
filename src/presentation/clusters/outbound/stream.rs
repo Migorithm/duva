@@ -5,7 +5,6 @@ use crate::domains::cluster_actors::replication::ReplicationId;
 use crate::domains::cluster_actors::replication::ReplicationState;
 use crate::domains::peers::connected_peer_info::ConnectedPeerInfo;
 use crate::domains::peers::identifier::PeerIdentifier;
-use crate::domains::peers::peer::Peer;
 use crate::domains::peers::peer::PeerKind;
 use crate::presentation::clusters::connection_manager::ClusterConnectionManager;
 

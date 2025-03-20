@@ -1,8 +1,5 @@
+use crate::domains::cluster_actors::commands::WriteConsensusResponse;
 use tokio::sync::oneshot::Sender;
-
-use crate::domains::{
-    append_only_files::log::LogIndex, cluster_actors::commands::WriteConsensusResponse,
-};
 
 pub(crate) type ReplicationVote = Sender<WriteConsensusResponse>;
 

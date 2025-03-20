@@ -1,5 +1,5 @@
 use crate::actor_registry::ActorRegistry;
-use crate::domains::append_only_files::log::LogIndex;
+
 use crate::domains::caches::cache_manager::CacheManager;
 use crate::domains::caches::cache_objects::CacheEntry;
 use crate::domains::cluster_actors::commands::ClusterCommand;

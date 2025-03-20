@@ -1,5 +1,5 @@
 use crate::domains::{
-    cluster_actors::{commands::ClusterCommand, replication::HeartBeatMessage},
+    cluster_actors::commands::ClusterCommand,
     peers::{
         connected_types::ReadConnected,
         identifier::PeerIdentifier,
