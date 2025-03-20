@@ -1,3 +1,5 @@
+use std::sync::atomic::Ordering;
+
 use super::response::ConnectionResponse;
 use crate::domains::cluster_actors::commands::AddPeer;
 use crate::domains::cluster_actors::commands::ClusterCommand;
@@ -66,7 +68,7 @@ impl OutboundStream {
                                 2 => Ok(write_array!(
                                     "PSYNC",
                                     self.my_repl_info.replid.clone(),
-                                    self.my_repl_info.hwm.to_string()
+                                    self.my_repl_info.hwm.load(Ordering::Acquire).to_string()
                                 )),
                                 _ => Err(anyhow::anyhow!("Unexpected OK count")),
                             }

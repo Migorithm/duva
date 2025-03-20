@@ -2,13 +2,17 @@ use super::election_state::ElectionState;
 pub(crate) use super::heartbeats::heartbeat::BannedPeer;
 pub(crate) use super::heartbeats::heartbeat::HeartBeatMessage;
 use std::fmt::Display;
+use std::sync::Arc;
+
+use std::sync::atomic::AtomicU64;
+use std::sync::atomic::Ordering;
 
 use crate::domains::peers::identifier::PeerIdentifier;
 
 #[derive(Debug, Clone)]
 pub struct ReplicationState {
     pub(crate) replid: ReplicationId, // The replication ID of the master example: 8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb
-    pub(crate) hwm: u64,              // high water mark (commit idx)
+    pub(crate) hwm: Arc<AtomicU64>,   // high water mark (commit idx)
     role: String,
 
     pub(crate) self_host: String,
@@ -43,7 +47,7 @@ impl ReplicationState {
             election_state: ElectionState::new(&role),
             role,
             replid,
-            hwm: 0,
+            hwm: Arc::new(0.into()),
             leader_host: replicaof.as_ref().cloned().map(|(host, _)| host),
             leader_port: replicaof
                 .map(|(_, port)| port.parse().expect("Invalid port number given")),
@@ -74,7 +78,7 @@ impl ReplicationState {
         vec![
             format!("role:{}", self.role),
             format!("leader_repl_id:{}", self.replid),
-            format!("high_watermark:{}", self.hwm),
+            format!("high_watermark:{}", self.hwm.load(Ordering::Relaxed)),
             format!("self_identifier:{}", self.self_identifier()),
         ]
     }
@@ -102,7 +106,7 @@ impl ReplicationState {
         HeartBeatMessage {
             heartbeat_from: self.self_identifier(),
             term: self.term,
-            hwm: self.hwm,
+            hwm: self.hwm.load(Ordering::Relaxed),
             replid: self.replid.clone(),
             hop_count,
             ban_list: self.ban_list.clone(),

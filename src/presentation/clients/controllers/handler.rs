@@ -1,3 +1,5 @@
+use std::sync::atomic::Ordering;
+
 use crate::domains::cluster_actors::commands::WriteConsensusResponse;
 
 use super::*;
@@ -30,7 +32,11 @@ impl ClientController<Handler> {
 
                 let repl_info = self.cluster_communication_manager.replication_info().await?;
                 self.cache_manager
-                    .route_save(SaveTarget::File(file), repl_info.replid, repl_info.hwm)
+                    .route_save(
+                        SaveTarget::File(file),
+                        repl_info.replid,
+                        repl_info.hwm.load(Ordering::Acquire),
+                    )
                     .await?;
 
                 QueryIO::Null

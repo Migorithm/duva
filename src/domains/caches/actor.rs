@@ -1,17 +1,13 @@
-use std::collections::HashMap;
-
-use super::awaiters::Awaiters;
 use super::cache_objects::{CacheEntry, CacheValue};
 use super::command::CacheCommand;
 use crate::domains::query_parsers::QueryIO;
 use crate::make_smart_pointer;
+use std::collections::HashMap;
 use tokio::sync::mpsc::{self, Sender};
 
 pub struct CacheActor {
     pub(crate) cache: CacheDb,
     pub(crate) self_handler: Sender<CacheCommand>,
-    pub(crate) hwm: u64,
-    pub(crate) awaiters: Awaiters,
 }
 
 #[derive(Default)]
@@ -25,13 +21,8 @@ impl CacheActor {
     pub(crate) fn run() -> CacheCommandSender {
         let (tx, cache_actor_inbox) = mpsc::channel(100);
         tokio::spawn(
-            Self {
-                cache: CacheDb::default(),
-                self_handler: tx.clone(),
-                hwm: 0,
-                awaiters: Awaiters::default(),
-            }
-            .handle(cache_actor_inbox),
+            Self { cache: CacheDb::default(), self_handler: tx.clone() }
+                .handle(cache_actor_inbox, Default::default()),
         );
         CacheCommandSender(tx)
     }
