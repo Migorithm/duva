@@ -1,5 +1,10 @@
-use crate::domains::{append_only_files::WriteRequest, peers::identifier::PeerIdentifier};
+use crate::domains::{
+    append_only_files::WriteRequest,
+    cluster_actors::commands::{ClusterCommand, WriteConsensusResponse},
+    peers::identifier::PeerIdentifier,
+};
 use chrono::{DateTime, Utc};
+use tokio::sync::oneshot::Receiver;
 
 #[derive(Clone, Debug)]
 pub enum ClientRequest {
@@ -19,19 +24,33 @@ pub enum ClientRequest {
 }
 
 impl ClientRequest {
-    pub fn to_write_request(&self) -> Option<WriteRequest> {
+    pub fn to_write_request(&self) -> Option<(ClusterCommand, Receiver<WriteConsensusResponse>)> {
         match self {
             ClientRequest::Set { key, value } => {
-                Some(WriteRequest::Set { key: key.clone(), value: value.clone() })
+                let (tx, rx) = tokio::sync::oneshot::channel();
+                Some((
+                    ClusterCommand::LeaderReqConsensus {
+                        log: WriteRequest::Set { key: key.clone(), value: value.clone() },
+                        sender: tx,
+                    },
+                    rx,
+                ))
             },
             ClientRequest::SetWithExpiry { key, value, expiry } => {
                 let expires_at = expiry.timestamp_millis() as u64;
+                let (tx, rx) = tokio::sync::oneshot::channel();
 
-                Some(WriteRequest::SetWithExpiry {
-                    key: key.clone(),
-                    value: value.clone(),
-                    expires_at,
-                })
+                Some((
+                    ClusterCommand::LeaderReqConsensus {
+                        log: WriteRequest::SetWithExpiry {
+                            key: key.clone(),
+                            value: value.clone(),
+                            expires_at,
+                        },
+                        sender: tx,
+                    },
+                    rx,
+                ))
             },
             _ => None,
         }

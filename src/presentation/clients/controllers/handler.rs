@@ -93,14 +93,11 @@ impl ClientController<Handler> {
         request: &ClientRequest,
     ) -> anyhow::Result<Option<u64>> {
         // If the request doesn't require consensus, return Ok
-        let Some(log) = request.to_write_request() else {
+        let Some((cluster_command, rx)) = request.to_write_request() else {
             return Ok(None);
         };
 
-        let (tx, rx) = tokio::sync::oneshot::channel();
-        self.cluster_communication_manager
-            .send(ClusterCommand::LeaderReqConsensus { log, sender: tx })
-            .await?;
+        self.cluster_communication_manager.send(cluster_command).await?;
 
         match rx.await? {
             //TODO remove option
