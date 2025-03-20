@@ -5,13 +5,14 @@ use crate::domains::caches::command::CacheCommand;
 use crate::domains::query_parsers::QueryIO;
 use crate::domains::saves::command::SaveCommand;
 use anyhow::Result;
+use std::sync::atomic::Ordering;
 use tokio::sync::mpsc::Receiver;
 
 impl CacheActor {
     pub(crate) async fn handle(
         mut self,
         mut recv: Receiver<CacheCommand>,
-        awaiters: Awaiters,
+        mut awaiters: Awaiters,
     ) -> Result<Self> {
         while let Some(command) = recv.recv().await {
             match command {
@@ -24,7 +25,12 @@ impl CacheActor {
                     let _ = sender.send(self.get(&key).into());
                 },
                 CacheCommand::IndexGet { key, index, sender } => {
-                    let _ = sender.send(self.get(&key).into());
+                    let current_hwm = awaiters.hwm.load(Ordering::Relaxed);
+                    if current_hwm < index {
+                        awaiters.push(index, sender);
+                    } else {
+                        let _ = sender.send(self.get(&key).into());
+                    }
                 },
                 CacheCommand::Keys { pattern, sender } => {
                     let ks: Vec<_> = self.keys_stream(pattern).collect();
