@@ -1,6 +1,6 @@
 use super::cache_objects::{CacheEntry, CacheValue};
 use super::command::CacheCommand;
-use crate::domains::caches::awaiters::ReadQueue;
+use crate::domains::caches::read_queue::ReadQueue;
 use crate::domains::query_parsers::QueryIO;
 use crate::make_smart_pointer;
 use std::collections::HashMap;

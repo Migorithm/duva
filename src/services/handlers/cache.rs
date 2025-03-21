@@ -1,7 +1,7 @@
 use crate::domains::caches::actor::CacheActor;
-use crate::domains::caches::awaiters::ReadQueue;
 use crate::domains::caches::cache_objects::CacheEntry;
 use crate::domains::caches::command::CacheCommand;
+use crate::domains::caches::read_queue::ReadQueue;
 use crate::domains::query_parsers::QueryIO;
 use crate::domains::saves::command::SaveCommand;
 use anyhow::Result;
@@ -12,7 +12,7 @@ impl CacheActor {
     pub(crate) async fn handle(
         mut self,
         mut recv: Receiver<CacheCommand>,
-        mut awaiters: ReadQueue,
+        mut rq: ReadQueue,
     ) -> Result<Self> {
         while let Some(command) = recv.recv().await {
             match command {
@@ -25,7 +25,7 @@ impl CacheActor {
                     self.get(&key, sender);
                 },
                 CacheCommand::IndexGet { key, read_idx, callback } => {
-                    if let Some(callback) = awaiters.defer_if_stale(read_idx, &key, callback) {
+                    if let Some(callback) = rq.defer_if_stale(read_idx, &key, callback) {
                         self.get(&key, callback);
                     }
                 },

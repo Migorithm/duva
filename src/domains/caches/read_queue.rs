@@ -45,12 +45,12 @@ fn test_push() {
     let (tx1, rx1) = tokio::sync::oneshot::channel();
     let (tx2, rx2) = tokio::sync::oneshot::channel();
     let hwm = Arc::new(AtomicU64::new(1));
-    let mut awaiters = ReadQueue::new(hwm.clone());
+    let mut rq = ReadQueue::new(hwm.clone());
 
     //WHEN
-    awaiters.push(1, DeferredRead { key: "migo".into(), callback: tx1 });
-    awaiters.push(1, DeferredRead { key: "migo2".into(), callback: tx2 });
+    rq.push(1, DeferredRead { key: "migo".into(), callback: tx1 });
+    rq.push(1, DeferredRead { key: "migo2".into(), callback: tx2 });
 
     //THEN
-    assert_eq!(awaiters.inner[&1].len(), 2)
+    assert_eq!(rq.inner[&1].len(), 2)
 }
