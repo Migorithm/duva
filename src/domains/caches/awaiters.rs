@@ -7,7 +7,12 @@ use crate::domains::query_parsers::QueryIO;
 
 pub struct ReadQueue {
     pub(crate) hwm: Arc<AtomicU64>,
-    inner: HashMap<u64, Vec<Sender<QueryIO>>>,
+    inner: HashMap<u64, Vec<DeferredRead>>,
+}
+
+struct DeferredRead {
+    key: String,
+    callback: Sender<QueryIO>,
 }
 
 impl ReadQueue {
@@ -15,17 +20,18 @@ impl ReadQueue {
         ReadQueue { hwm, inner: Default::default() }
     }
 
-    pub(crate) fn push(&mut self, index: u64, callback: Sender<QueryIO>) {
-        self.inner.entry(index).or_default().push(callback);
+    fn push(&mut self, index: u64, deferred_read: DeferredRead) {
+        self.inner.entry(index).or_default().push(deferred_read);
     }
     pub(crate) fn defer_if_stale(
         &mut self,
         read_idx: u64,
+        key: &str,
         callback: Sender<QueryIO>,
     ) -> Option<Sender<QueryIO>> {
         let current_hwm = self.hwm.load(Ordering::Relaxed);
         if current_hwm < read_idx {
-            self.push(read_idx, callback);
+            self.push(read_idx, DeferredRead { key: key.into(), callback });
             None
         } else {
             Some(callback)
@@ -42,8 +48,8 @@ fn test_push() {
     let mut awaiters = ReadQueue::new(hwm.clone());
 
     //WHEN
-    awaiters.push(1, tx1);
-    awaiters.push(1, tx2);
+    awaiters.push(1, DeferredRead { key: "migo".into(), callback: tx1 });
+    awaiters.push(1, DeferredRead { key: "migo2".into(), callback: tx2 });
 
     //THEN
     assert_eq!(awaiters.inner[&1].len(), 2)

@@ -5,7 +5,7 @@ use crate::domains::caches::command::CacheCommand;
 use crate::domains::query_parsers::QueryIO;
 use crate::domains::saves::command::SaveCommand;
 use anyhow::Result;
-use std::sync::atomic::Ordering;
+
 use tokio::sync::mpsc::Receiver;
 
 impl CacheActor {
@@ -25,7 +25,7 @@ impl CacheActor {
                     self.get(&key, sender);
                 },
                 CacheCommand::IndexGet { key, read_idx, callback } => {
-                    if let Some(callback) = awaiters.defer_if_stale(read_idx, callback) {
+                    if let Some(callback) = awaiters.defer_if_stale(read_idx, &key, callback) {
                         self.get(&key, callback);
                     }
                 },
