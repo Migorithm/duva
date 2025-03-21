@@ -7,6 +7,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::AtomicU64;
 use tokio::sync::mpsc::{self, Sender};
+use tokio::sync::oneshot;
 
 pub struct CacheActor {
     pub(crate) cache: CacheDb,
@@ -56,8 +57,8 @@ impl CacheActor {
             }
         }
     }
-    pub(crate) fn get(&self, key: &str) -> Option<CacheValue> {
-        self.cache.get(key).cloned()
+    pub(crate) fn get(&self, key: &str, callback: oneshot::Sender<QueryIO>) {
+        let _ = callback.send(self.cache.get(key).cloned().into());
     }
 
     pub(crate) fn set(&mut self, cache_entry: CacheEntry) {

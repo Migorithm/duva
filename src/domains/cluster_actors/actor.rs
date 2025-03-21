@@ -333,7 +333,7 @@ impl ClusterActor {
         };
 
         // * state machine case
-        self.change_state(heartbeat.hwm, wal, cache_manager).await;
+        self.replicate_state(heartbeat.hwm, wal, cache_manager).await;
     }
 
     async fn try_append_entries(
@@ -500,7 +500,7 @@ impl ClusterActor {
         self.heartbeat_scheduler.reset_election_timeout();
     }
 
-    async fn change_state(
+    async fn replicate_state(
         &mut self,
         heartbeat_hwm: u64,
         wal: &mut ReplicatedLogs<impl TWriteAheadLog>,

@@ -22,14 +22,14 @@ impl CacheActor {
                     self.set(cache_entry);
                 },
                 CacheCommand::Get { key, sender } => {
-                    let _ = sender.send(self.get(&key).into());
+                    self.get(&key, sender);
                 },
                 CacheCommand::IndexGet { key, index, sender } => {
                     let current_hwm = awaiters.hwm.load(Ordering::Relaxed);
                     if current_hwm < index {
                         awaiters.push(index, sender);
                     } else {
-                        let _ = sender.send(self.get(&key).into());
+                        self.get(&key, sender);
                     }
                 },
                 CacheCommand::Keys { pattern, sender } => {
