@@ -43,7 +43,7 @@ impl CacheManager {
 
     pub(crate) async fn route_get(&self, key: String) -> Result<QueryIO> {
         let (tx, rx) = tokio::sync::oneshot::channel();
-        self.select_shard(&key).send(CacheCommand::Get { key, sender: tx }).await?;
+        self.select_shard(&key).send(CacheCommand::Get { key, callback: tx }).await?;
 
         Ok(rx.await?)
     }
@@ -161,7 +161,7 @@ impl CacheManager {
         pattern: Option<String>,
         tx: OneShotSender<QueryIO>,
     ) -> Result<()> {
-        Ok(shard.send(CacheCommand::Keys { pattern: pattern.clone(), sender: tx }).await?)
+        Ok(shard.send(CacheCommand::Keys { pattern: pattern.clone(), callback: tx }).await?)
     }
 
     pub(crate) fn select_shard(&self, key: &str) -> &CacheCommandSender {
@@ -183,7 +183,9 @@ impl CacheManager {
 
     pub(crate) async fn route_index_get(&self, key: String, index: u64) -> Result<QueryIO> {
         let (tx, rx) = tokio::sync::oneshot::channel();
-        self.select_shard(&key).send(CacheCommand::IndexGet { key, index, sender: tx }).await?;
+        self.select_shard(&key)
+            .send(CacheCommand::IndexGet { key, read_idx: index, callback: tx })
+            .await?;
 
         Ok(rx.await?)
     }

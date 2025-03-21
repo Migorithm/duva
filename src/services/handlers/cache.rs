@@ -1,5 +1,5 @@
 use crate::domains::caches::actor::CacheActor;
-use crate::domains::caches::awaiters::Awaiters;
+use crate::domains::caches::awaiters::ReadQueue;
 use crate::domains::caches::cache_objects::CacheEntry;
 use crate::domains::caches::command::CacheCommand;
 use crate::domains::query_parsers::QueryIO;
@@ -12,7 +12,7 @@ impl CacheActor {
     pub(crate) async fn handle(
         mut self,
         mut recv: Receiver<CacheCommand>,
-        mut awaiters: Awaiters,
+        mut awaiters: ReadQueue,
     ) -> Result<Self> {
         while let Some(command) = recv.recv().await {
             match command {
@@ -21,18 +21,15 @@ impl CacheActor {
                     let _ = self.try_send_ttl(&cache_entry).await;
                     self.set(cache_entry);
                 },
-                CacheCommand::Get { key, sender } => {
+                CacheCommand::Get { key, callback: sender } => {
                     self.get(&key, sender);
                 },
-                CacheCommand::IndexGet { key, index, sender } => {
-                    let current_hwm = awaiters.hwm.load(Ordering::Relaxed);
-                    if current_hwm < index {
-                        awaiters.push(index, sender);
-                    } else {
-                        self.get(&key, sender);
+                CacheCommand::IndexGet { key, read_idx, callback } => {
+                    if let Some(callback) = awaiters.defer_if_stale(read_idx, callback) {
+                        self.get(&key, callback);
                     }
                 },
-                CacheCommand::Keys { pattern, sender } => {
+                CacheCommand::Keys { pattern, callback: sender } => {
                     let ks: Vec<_> = self.keys_stream(pattern).collect();
 
                     sender
@@ -74,7 +71,7 @@ async fn test_set_and_delete_inc_dec_keys_with_expiry() {
 
     // WHEN
 
-    let handler = tokio::spawn(actor.handle(rx, Awaiters::new(hwm)));
+    let handler = tokio::spawn(actor.handle(rx, ReadQueue::new(hwm)));
 
     for i in 0..100 {
         let key = format!("key{}", i);

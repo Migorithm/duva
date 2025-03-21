@@ -1,6 +1,6 @@
 use super::cache_objects::{CacheEntry, CacheValue};
 use super::command::CacheCommand;
-use crate::domains::caches::awaiters::Awaiters;
+use crate::domains::caches::awaiters::ReadQueue;
 use crate::domains::query_parsers::QueryIO;
 use crate::make_smart_pointer;
 use std::collections::HashMap;
@@ -26,7 +26,7 @@ impl CacheActor {
         let (tx, cache_actor_inbox) = mpsc::channel(100);
         tokio::spawn(
             Self { cache: CacheDb::default(), self_handler: tx.clone() }
-                .handle(cache_actor_inbox, Awaiters::new(hwm)),
+                .handle(cache_actor_inbox, ReadQueue::new(hwm)),
         );
         CacheCommandSender(tx)
     }
