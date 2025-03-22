@@ -1,10 +1,13 @@
-use std::collections::HashMap;
-
 use super::cache_objects::{CacheEntry, CacheValue};
 use super::command::CacheCommand;
+use crate::domains::caches::read_queue::ReadQueue;
 use crate::domains::query_parsers::QueryIO;
 use crate::make_smart_pointer;
+use std::collections::HashMap;
+use std::sync::Arc;
+use std::sync::atomic::AtomicU64;
 use tokio::sync::mpsc::{self, Sender};
+use tokio::sync::oneshot;
 
 pub struct CacheActor {
     pub(crate) cache: CacheDb,
@@ -19,10 +22,11 @@ pub(crate) struct CacheDb {
 }
 
 impl CacheActor {
-    pub(crate) fn run() -> CacheCommandSender {
+    pub(crate) fn run(hwm: Arc<AtomicU64>) -> CacheCommandSender {
         let (tx, cache_actor_inbox) = mpsc::channel(100);
         tokio::spawn(
-            Self { cache: CacheDb::default(), self_handler: tx.clone() }.handle(cache_actor_inbox),
+            Self { cache: CacheDb::default(), self_handler: tx.clone() }
+                .handle(cache_actor_inbox, ReadQueue::new(hwm)),
         );
         CacheCommandSender(tx)
     }
@@ -53,8 +57,8 @@ impl CacheActor {
             }
         }
     }
-    pub(crate) fn get(&self, key: &str) -> Option<CacheValue> {
-        self.cache.get(key).cloned()
+    pub(crate) fn get(&self, key: &str, callback: oneshot::Sender<QueryIO>) {
+        let _ = callback.send(self.cache.get(key).cloned().into());
     }
 
     pub(crate) fn set(&mut self, cache_entry: CacheEntry) {

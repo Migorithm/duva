@@ -25,12 +25,12 @@ async fn test_save_read_snapshot() {
     // WHEN
     // set without expiry time
     let res = h.send_and_get(&array(vec!["SET", "foo", "bar"])).await;
-    assert_eq!(res, QueryIO::SimpleString("OK".into()).serialize());
+    assert_eq!(res, QueryIO::SimpleString("OK RINDEX 1".into()).serialize());
 
     // set with expiry time
     assert_eq!(
         h.send_and_get(&array(vec!["SET", "foo2", "bar2", "PX", "9999999999"])).await,
-        QueryIO::SimpleString("OK".into()).serialize()
+        QueryIO::SimpleString("OK RINDEX 2".into()).serialize()
     );
 
     // check keys

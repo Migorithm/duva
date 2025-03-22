@@ -18,7 +18,7 @@ async fn test_set_get() {
     // WHEN - set key with expiry
     assert_eq!(
         h.send_and_get(&array(vec!["SET", "somanyrand", "bar", "PX", "300"])).await,
-        QueryIO::SimpleString("OK".into()).serialize()
+        QueryIO::SimpleString("OK RINDEX 1".into()).serialize()
     );
     let res = h.send_and_get(&array(vec!["GET", "somanyrand"])).await;
     assert_eq!(res, QueryIO::BulkString("bar".into()).serialize());

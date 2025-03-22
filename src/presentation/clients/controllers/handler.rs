@@ -1,22 +1,29 @@
+use std::sync::atomic::Ordering;
+
 use crate::domains::cluster_actors::commands::WriteConsensusResponse;
 
 use super::*;
 
 impl ClientController<Handler> {
-    pub(crate) async fn handle(&self, cmd: ClientRequest) -> anyhow::Result<QueryIO> {
+    pub(crate) async fn handle(
+        &self,
+        cmd: ClientRequest,
+        current_index: Option<u64>,
+    ) -> anyhow::Result<QueryIO> {
         // TODO if it is persistence operation, get the key and hash, take the appropriate sender, send it;
         let response = match cmd {
             ClientRequest::Ping => QueryIO::SimpleString("PONG".into()),
             ClientRequest::Echo(val) => QueryIO::BulkString(val.into()),
             ClientRequest::Set { key, value } => {
                 let cache_entry = CacheEntry::KeyValue(key.to_owned(), value.to_string());
-
-                self.cache_manager.route_set(cache_entry).await?
+                self.cache_manager.route_set(cache_entry).await?;
+                QueryIO::SimpleString(format!("OK RINDEX {}", current_index.unwrap()).into())
             },
             ClientRequest::SetWithExpiry { key, value, expiry } => {
                 let cache_entry =
                     CacheEntry::KeyValueExpiry(key.to_owned(), value.to_string(), expiry);
-                self.cache_manager.route_set(cache_entry).await?
+                self.cache_manager.route_set(cache_entry).await?;
+                QueryIO::SimpleString(format!("OK RINDEX {}", current_index.unwrap()).into())
             },
             ClientRequest::Save => {
                 let file_path = self.config_manager.get_filepath().await?;
@@ -25,12 +32,19 @@ impl ClientController<Handler> {
 
                 let repl_info = self.cluster_communication_manager.replication_info().await?;
                 self.cache_manager
-                    .route_save(SaveTarget::File(file), repl_info.replid, repl_info.hwm)
+                    .route_save(
+                        SaveTarget::File(file),
+                        repl_info.replid,
+                        repl_info.hwm.load(Ordering::Acquire),
+                    )
                     .await?;
 
                 QueryIO::Null
             },
             ClientRequest::Get { key } => self.cache_manager.route_get(key).await?,
+            ClientRequest::IndexGet { key, index } => {
+                self.cache_manager.route_index_get(key, index).await?
+            },
             ClientRequest::Keys { pattern } => self.cache_manager.route_keys(pattern).await?,
             ClientRequest::Config { key, value } => {
                 let res = self.config_manager.route_get((key, value)).await?;
@@ -59,7 +73,6 @@ impl ClientController<Handler> {
             ClientRequest::ClusterNodes => {
                 self.cluster_communication_manager.cluster_nodes().await?.into()
             },
-
             ClientRequest::ClusterForget(peer_identifier) => {
                 match self.cluster_communication_manager.forget_peer(peer_identifier).await {
                     Ok(true) => QueryIO::SimpleString("OK".into()),
@@ -81,8 +94,10 @@ impl ClientController<Handler> {
         // apply write operation to the state machine if it's a write request
         let mut results = Vec::with_capacity(requests.len());
         for (request, log_index_num) in requests.into_iter().zip(consensus.into_iter()) {
-            let (res, _) =
-                tokio::try_join!(self.handle(request), self.maybe_send_commit(log_index_num))?;
+            let (res, _) = tokio::try_join!(
+                self.handle(request, log_index_num),
+                self.maybe_send_commit(log_index_num)
+            )?;
             results.push(res);
         }
         Ok(results)

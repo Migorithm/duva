@@ -13,6 +13,8 @@ use crate::domains::saves::snapshot::snapshot::Snapshot;
 use anyhow::Result;
 use chrono::Utc;
 use futures::future::join_all;
+use std::sync::Arc;
+use std::sync::atomic::AtomicU64;
 use std::{hash::Hasher, iter::Zip};
 use tokio::sync::oneshot::Sender;
 use tokio::task::JoinHandle;
@@ -27,11 +29,13 @@ pub(crate) struct CacheManager {
 }
 
 impl CacheManager {
-    pub(crate) fn run_cache_actors() -> CacheManager {
+    pub(crate) fn run_cache_actors(hwm: Arc<AtomicU64>) -> CacheManager {
         const NUM_OF_PERSISTENCE: usize = 10;
 
         let cache_dispatcher = CacheManager {
-            inboxes: (0..NUM_OF_PERSISTENCE).map(|_| CacheActor::run()).collect::<Vec<_>>(),
+            inboxes: (0..NUM_OF_PERSISTENCE)
+                .map(|_| CacheActor::run(hwm.clone()))
+                .collect::<Vec<_>>(),
         };
 
         cache_dispatcher
@@ -39,14 +43,14 @@ impl CacheManager {
 
     pub(crate) async fn route_get(&self, key: String) -> Result<QueryIO> {
         let (tx, rx) = tokio::sync::oneshot::channel();
-        self.select_shard(&key).send(CacheCommand::Get { key, sender: tx }).await?;
+        self.select_shard(&key).send(CacheCommand::Get { key, callback: tx }).await?;
 
         Ok(rx.await?)
     }
 
-    pub(crate) async fn route_set(&self, kvs: CacheEntry) -> Result<QueryIO> {
+    pub(crate) async fn route_set(&self, kvs: CacheEntry) -> Result<()> {
         self.select_shard(kvs.key()).send(CacheCommand::Set { cache_entry: kvs }).await?;
-        Ok(QueryIO::SimpleString("OK".to_string().into()))
+        Ok(())
     }
 
     pub(crate) async fn route_save(
@@ -71,6 +75,7 @@ impl CacheManager {
         Ok(tokio::spawn(save_actor.run(inbox)))
     }
 
+    // TODO - perhaps, we don't need background job.
     pub(crate) async fn apply_log(&self, msg: WriteRequest) -> Result<()> {
         let shard = self.select_shard(&msg.key());
         let command = match msg {
@@ -87,8 +92,12 @@ impl CacheManager {
             WriteRequest::Delete { key } => CacheCommand::Delete(key),
         };
         shard.send(command).await?;
+        self.pings().await;
 
         Ok(())
+    }
+    async fn pings(&self) {
+        join_all(self.inboxes.iter().map(|shard| shard.send(CacheCommand::Ping))).await;
     }
 
     pub(crate) async fn route_keys(&self, pattern: Option<String>) -> Result<QueryIO> {
@@ -157,7 +166,7 @@ impl CacheManager {
         pattern: Option<String>,
         tx: OneShotSender<QueryIO>,
     ) -> Result<()> {
-        Ok(shard.send(CacheCommand::Keys { pattern: pattern.clone(), sender: tx }).await?)
+        Ok(shard.send(CacheCommand::Keys { pattern: pattern.clone(), callback: tx }).await?)
     }
 
     pub(crate) fn select_shard(&self, key: &str) -> &CacheCommandSender {
@@ -175,5 +184,14 @@ impl CacheManager {
     #[cfg(test)]
     pub fn test_new(tx: tokio::sync::mpsc::Sender<CacheCommand>) -> CacheManager {
         CacheManager { inboxes: (0..10).map(|_| CacheCommandSender(tx.clone())).collect() }
+    }
+
+    pub(crate) async fn route_index_get(&self, key: String, index: u64) -> Result<QueryIO> {
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        self.select_shard(&key)
+            .send(CacheCommand::IndexGet { key, read_idx: index, callback: tx })
+            .await?;
+
+        Ok(rx.await?)
     }
 }

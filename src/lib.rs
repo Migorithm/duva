@@ -30,11 +30,12 @@ make_smart_pointer!(StartUpFacade, ActorRegistry => registry);
 
 impl StartUpFacade {
     pub fn new(config_manager: ConfigManager, env: Environment, wal: impl TWriteAheadLog) -> Self {
-        let cache_manager = CacheManager::run_cache_actors();
+        let replication_state = ReplicationState::new(env.replicaof, &env.host, env.port);
+        let cache_manager = CacheManager::run_cache_actors(replication_state.hwm.clone());
         let cluster_actor_handler = ClusterActor::run(
             env.ttl_mills,
             env.hf_mills,
-            ReplicationState::new(env.replicaof, &env.host, env.port),
+            replication_state,
             cache_manager.clone(),
             wal,
         );

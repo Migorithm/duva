@@ -1,3 +1,5 @@
+use std::sync::atomic::Ordering;
+
 use super::request::HandShakeRequest;
 use super::request::HandShakeRequestEnum;
 use crate::domains::cluster_actors::commands::AddPeer;
@@ -81,7 +83,7 @@ impl InboundStream {
         let (id, self_leader_replid, self_leader_repl_offset) = (
             self.self_repl_info.self_identifier(),
             self.self_repl_info.replid.clone(),
-            self.self_repl_info.hwm,
+            self.self_repl_info.hwm.load(Ordering::Relaxed),
         );
 
         self.write(QueryIO::SimpleString(

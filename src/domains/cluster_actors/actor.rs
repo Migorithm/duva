@@ -1,3 +1,5 @@
+use std::sync::atomic::Ordering;
+
 use super::commands::AddPeer;
 use super::commands::RequestVote;
 use super::commands::RequestVoteReply;
@@ -116,7 +118,7 @@ impl ClusterActor {
 
     pub(crate) fn set_replication_info(&mut self, leader_repl_id: ReplicationId, hwm: u64) {
         self.replication.replid = leader_repl_id;
-        self.replication.hwm = hwm;
+        self.replication.hwm.store(hwm, Ordering::Release);
     }
 
     /// Remove the peers that are idle for more than ttl_mills
@@ -252,7 +254,7 @@ impl ClusterActor {
         println!("[INFO] Received Leader State - length {}", logs.len());
         for log in logs {
             let _ = cache_manager.apply_log(log.request).await;
-            self.replication.hwm = log.log_index.into();
+            self.replication.hwm.store(log.log_index, Ordering::Release);
         }
     }
 
@@ -311,7 +313,8 @@ impl ClusterActor {
 
     pub(crate) async fn send_commit_heartbeat(&mut self, offset: u64) {
         // TODO is there any case where I can use offset input?
-        self.replication.hwm += 1;
+        self.replication.hwm.fetch_add(1, Ordering::Relaxed);
+
         let message: HeartBeatMessage =
             self.replication.default_heartbeat(0, offset, self.replication.term);
         println!("[INFO] Sending commit request on {}", message.hwm);
@@ -330,7 +333,7 @@ impl ClusterActor {
         };
 
         // * state machine case
-        self.change_state(heartbeat.hwm, wal, cache_manager).await;
+        self.replicate_state(heartbeat.hwm, wal, cache_manager).await;
     }
 
     async fn try_append_entries(
@@ -497,20 +500,21 @@ impl ClusterActor {
         self.heartbeat_scheduler.reset_election_timeout();
     }
 
-    async fn change_state(
+    async fn replicate_state(
         &mut self,
         heartbeat_hwm: u64,
         wal: &mut ReplicatedLogs<impl TWriteAheadLog>,
         cache_manager: &CacheManager,
     ) {
-        if heartbeat_hwm > self.replication.hwm {
+        let old_hwm = self.replication.hwm.load(Ordering::Acquire);
+        if heartbeat_hwm > old_hwm {
             println!("[INFO] Received commit offset {}", heartbeat_hwm);
 
-            let old_hwm = self.replication.hwm;
-            self.replication.hwm = std::cmp::min(heartbeat_hwm, wal.log_index);
+            let new_hwm = std::cmp::min(heartbeat_hwm, wal.log_index);
+            self.replication.hwm.store(new_hwm, Ordering::Release);
 
             // Apply all newly committed entries to state machine
-            for log_index in (old_hwm + 1)..=self.replication.hwm {
+            for log_index in (old_hwm + 1)..=new_hwm {
                 if let Some(log) = wal.read_at(log_index).await {
                     match cache_manager.apply_log(log.request).await {
                         Ok(_) => {},
@@ -807,7 +811,7 @@ mod test {
             write_operation_create_helper(3, 0, "foo3", "bar"),
         ];
 
-        cluster_actor.replication.hwm = 3;
+        cluster_actor.replication.hwm.store(3, Ordering::Release);
 
         test_logger.write_log_entries(test_logs).await.unwrap();
 
@@ -860,7 +864,7 @@ mod test {
         cluster_actor.replicate(&mut test_logger, heartbeat, &cache_manager).await;
 
         // THEN
-        assert_eq!(cluster_actor.replication.hwm, 0);
+        assert_eq!(cluster_actor.replication.hwm.load(Ordering::Relaxed), 0);
         assert_eq!(test_logger.log_index, 2);
         let logs = test_logger.range(0, 2);
         assert_eq!(logs.len(), 2);
@@ -907,7 +911,7 @@ mod test {
         cluster_actor.replicate(&mut test_logger, heartbeat, &cache_manager).await;
 
         // THEN
-        assert_eq!(cluster_actor.replication.hwm, 2);
+        assert_eq!(cluster_actor.replication.hwm.load(Ordering::Relaxed), 2);
         assert_eq!(test_logger.log_index, 2);
         task.await.unwrap();
     }
@@ -962,7 +966,7 @@ mod test {
             .expect("Task failed");
 
         assert_eq!(applied_keys, vec!["key1", "key2", "key3"]);
-        assert_eq!(cluster_actor.replication.hwm, 3);
+        assert_eq!(cluster_actor.replication.hwm.load(Ordering::Relaxed), 3);
     }
 
     #[tokio::test]
@@ -1015,7 +1019,7 @@ mod test {
             .expect("Task failed");
 
         assert_eq!(applied_keys, vec!["key1"]);
-        assert_eq!(cluster_actor.replication.hwm, 1);
+        assert_eq!(cluster_actor.replication.hwm.load(Ordering::Relaxed), 1);
         assert_eq!(test_logger.log_index, 3); // All entries are in the log
     }
 
@@ -1077,7 +1081,7 @@ mod test {
         task.abort();
 
         // Verify state
-        assert_eq!(cluster_actor.replication.hwm, 1);
+        assert_eq!(cluster_actor.replication.hwm.load(Ordering::Relaxed), 1);
         assert_eq!(test_logger.log_index, 2);
     }
 

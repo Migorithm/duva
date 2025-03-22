@@ -7,6 +7,7 @@ pub enum ClientRequest {
     Echo(String),
     Config { key: String, value: String },
     Get { key: String },
+    IndexGet { key: String, index: u64 },
     Set { key: String, value: String },
     SetWithExpiry { key: String, value: String, expiry: DateTime<Utc> },
     Keys { pattern: Option<String> },

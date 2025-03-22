@@ -1,3 +1,5 @@
+use std::sync::atomic::Ordering;
+
 use crate::domains::append_only_files::interfaces::TWriteAheadLog;
 use crate::domains::append_only_files::logger::ReplicatedLogs;
 use crate::domains::caches::cache_manager::CacheManager;
@@ -92,7 +94,7 @@ impl ClusterActor {
                     self.install_leader_state(logs, &cache_manager).await;
                 },
                 ClusterCommand::FetchCurrentState(sender) => {
-                    let logs = logger.range(0, self.replication.hwm);
+                    let logs = logger.range(0, self.replication.hwm.load(Ordering::Acquire));
                     let _ = sender.send(logs);
                 },
                 ClusterCommand::StartLeaderElection => {
