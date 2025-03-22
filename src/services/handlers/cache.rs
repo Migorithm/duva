@@ -1,12 +1,15 @@
+use std::time::Duration;
+
 use crate::domains::caches::actor::CacheActor;
 use crate::domains::caches::cache_objects::CacheEntry;
 use crate::domains::caches::command::CacheCommand;
-use crate::domains::caches::read_queue::{self, DeferredRead, ReadQueue};
+use crate::domains::caches::read_queue::{DeferredRead, ReadQueue};
 use crate::domains::query_parsers::QueryIO;
 use crate::domains::saves::command::SaveCommand;
 use anyhow::Result;
 
 use tokio::sync::mpsc::Receiver;
+use tokio::time::timeout;
 
 impl CacheActor {
     pub(crate) async fn handle(
@@ -65,41 +68,98 @@ impl CacheActor {
     }
 }
 
-#[tokio::test]
-async fn test_set_and_delete_inc_dec_keys_with_expiry() {
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::domains::caches::actor::CacheActor;
     use crate::domains::caches::actor::CacheDb;
-    use chrono::Utc;
+    use crate::domains::caches::cache_objects::CacheEntry;
+    use crate::domains::caches::command::CacheCommand;
+    use crate::domains::caches::read_queue::ReadQueue;
+    use crate::domains::query_parsers::QueryIO;
     use std::sync::Arc;
-    use std::time::Duration;
-    // GIVEN
-    let (tx, rx) = tokio::sync::mpsc::channel(100);
-    let hwm = Arc::new(0.into());
-    let actor = CacheActor { cache: CacheDb::default(), self_handler: tx.clone() };
 
-    // WHEN
+    use chrono::Utc;
+    use tokio::sync::oneshot;
 
-    let handler = tokio::spawn(actor.handle(rx, ReadQueue::new(hwm)));
+    #[tokio::test]
+    async fn test_set_and_delete_inc_dec_keys_with_expiry() {
+        // GIVEN
+        let (tx, rx) = tokio::sync::mpsc::channel(100);
+        let hwm = Arc::new(0.into());
+        let actor = CacheActor { cache: CacheDb::default(), self_handler: tx.clone() };
 
-    for i in 0..100 {
-        let key = format!("key{}", i);
-        let value = format!("value{}", i);
-        tx.send(CacheCommand::Set {
-            cache_entry: if i & 1 == 0 {
-                CacheEntry::KeyValueExpiry(key, value, Utc::now() + Duration::from_secs(10))
-            } else {
-                CacheEntry::KeyValue(key, value)
-            },
-        })
-        .await
-        .unwrap();
+        // WHEN
+
+        let handler = tokio::spawn(actor.handle(rx, ReadQueue::new(hwm)));
+
+        for i in 0..100 {
+            let key = format!("key{}", i);
+            let value = format!("value{}", i);
+            tx.send(CacheCommand::Set {
+                cache_entry: if i & 1 == 0 {
+                    CacheEntry::KeyValueExpiry(key, value, Utc::now() + Duration::from_secs(10))
+                } else {
+                    CacheEntry::KeyValue(key, value)
+                },
+            })
+            .await
+            .unwrap();
+        }
+
+        // key0 is expiry key. deleting the following will decrese the number by 1
+        let delete_key = "key0".to_string();
+        tx.send(CacheCommand::Delete(delete_key)).await.unwrap();
+        tx.send(CacheCommand::StopSentinel).await.unwrap();
+        let actor: CacheActor = handler.await.unwrap().unwrap();
+
+        // THEN
+        assert_eq!(actor.cache.keys_with_expiry, 49);
     }
 
-    // key0 is expiry key. deleting the following will decrese the number by 1
-    let delete_key = "key0".to_string();
-    tx.send(CacheCommand::Delete(delete_key)).await.unwrap();
-    tx.send(CacheCommand::StopSentinel).await.unwrap();
-    let actor: CacheActor = handler.await.unwrap().unwrap();
+    #[tokio::test]
+    async fn test_index_get_put_in_rq() {
+        // GIVEN
+        let (cache, rx) = tokio::sync::mpsc::channel(100);
+        let hwm = Arc::new(0.into());
+        let actor = CacheActor { cache: CacheDb::default(), self_handler: cache.clone() };
 
-    // THEN
-    assert_eq!(actor.cache.keys_with_expiry, 49);
+        // WHEN
+        let handler = tokio::spawn(actor.handle(rx, ReadQueue::new(hwm)));
+
+        let key = "key".to_string();
+        let value = "value".to_string();
+        let (tx1, rx1) = oneshot::channel();
+        let (tx2, rx2) = oneshot::channel();
+
+        cache
+            .send(CacheCommand::Set {
+                cache_entry: CacheEntry::KeyValue(key.clone(), value.clone()),
+            })
+            .await
+            .unwrap();
+
+        cache
+            .send(CacheCommand::IndexGet { key: key.clone(), read_idx: 0, callback: tx1 })
+            .await
+            .unwrap();
+        cache
+            .send(CacheCommand::IndexGet { key: key.clone(), read_idx: 1, callback: tx2 })
+            .await
+            .unwrap();
+
+        let expected_res = QueryIO::BulkString(value.clone().into());
+
+        // THEN
+        let res1 = tokio::spawn(rx1);
+        let res2 = tokio::spawn(rx2);
+
+        assert_eq!(res1.await.unwrap().unwrap(), expected_res.clone());
+
+        let timeout = timeout(Duration::from_millis(1000), res2);
+        assert!(timeout.await.is_err());
+
+        cache.send(CacheCommand::StopSentinel).await.unwrap();
+        handler.await.unwrap().unwrap();
+    }
 }
