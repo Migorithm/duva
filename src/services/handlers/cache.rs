@@ -78,9 +78,16 @@ mod test {
     use crate::domains::caches::read_queue::ReadQueue;
     use crate::domains::query_parsers::QueryIO;
     use std::sync::Arc;
+    use std::sync::atomic::AtomicU64;
 
     use chrono::Utc;
+    use futures::FutureExt;
+    use futures::future::Fuse;
+    use futures::select;
+    use tokio::pin;
+    use tokio::sync::mpsc::Sender;
     use tokio::sync::oneshot;
+    use tokio::time::sleep;
 
     #[tokio::test]
     async fn test_set_and_delete_inc_dec_keys_with_expiry() {
@@ -121,32 +128,22 @@ mod test {
     async fn test_index_get_put_in_rq() {
         // GIVEN
         let (cache, rx) = tokio::sync::mpsc::channel(100);
-        let hwm = Arc::new(0.into());
-        let actor = CacheActor { cache: CacheDb::default(), self_handler: cache.clone() };
-
+        let hwm: Arc<AtomicU64> = Arc::new(0.into());
+        tokio::spawn(
+            CacheActor { cache: CacheDb::default(), self_handler: cache.clone() }
+                .handle(rx, ReadQueue::new(hwm.clone())),
+        );
         // WHEN
-        let handler = tokio::spawn(actor.handle(rx, ReadQueue::new(hwm)));
+        let cache = S(cache);
 
         let key = "key".to_string();
         let value = "value".to_string();
         let (tx1, rx1) = oneshot::channel();
         let (tx2, rx2) = oneshot::channel();
 
-        cache
-            .send(CacheCommand::Set {
-                cache_entry: CacheEntry::KeyValue(key.clone(), value.clone()),
-            })
-            .await
-            .unwrap();
-
-        cache
-            .send(CacheCommand::IndexGet { key: key.clone(), read_idx: 0, callback: tx1 })
-            .await
-            .unwrap();
-        cache
-            .send(CacheCommand::IndexGet { key: key.clone(), read_idx: 1, callback: tx2 })
-            .await
-            .unwrap();
+        cache.set(key.clone(), value.clone()).await;
+        cache.index_get(key.clone(), 0, tx1).await;
+        cache.index_get(key.clone(), 1, tx2).await;
 
         let expected_res = QueryIO::BulkString(value.clone().into());
 
@@ -158,8 +155,54 @@ mod test {
 
         let timeout = timeout(Duration::from_millis(1000), res2);
         assert!(timeout.await.is_err());
+    }
 
-        cache.send(CacheCommand::StopSentinel).await.unwrap();
-        handler.await.unwrap().unwrap();
+    #[tokio::test]
+    async fn test_index_get_returns_successfully_when_ping_is_made_after_hwm_update() {
+        // GIVEN
+        let (cache, rx) = tokio::sync::mpsc::channel(100);
+        let hwm: Arc<AtomicU64> = Arc::new(0.into());
+        tokio::spawn(
+            CacheActor { cache: CacheDb::default(), self_handler: cache.clone() }
+                .handle(rx, ReadQueue::new(hwm.clone())),
+        );
+
+        let cache = S(cache);
+
+        let key = "key".to_string();
+        let value = "value".to_string();
+        cache.set(key.clone(), value.clone()).await;
+
+        // ! Fail when hwm wasn't updated and ping was not sent
+        let (fail_t, fail_r) = oneshot::channel();
+        cache.index_get(key.clone(), 1, fail_t).await;
+        timeout(Duration::from_millis(1000), fail_r).await.unwrap_err();
+
+        // * success when hwm was updated and ping was sent
+        let (t, r) = oneshot::channel();
+        cache.index_get(key.clone(), 1, t).await;
+
+        let task = tokio::spawn(r);
+        hwm.store(1, std::sync::atomic::Ordering::Relaxed);
+        cache.ping().await;
+
+        // THEN
+        assert_eq!(task.await.unwrap().unwrap(), QueryIO::BulkString(value.clone().into()));
+    }
+
+    struct S(Sender<CacheCommand>);
+    impl S {
+        async fn set(&self, key: String, value: String) {
+            self.0
+                .send(CacheCommand::Set { cache_entry: CacheEntry::KeyValue(key, value) })
+                .await
+                .unwrap();
+        }
+        async fn index_get(&self, key: String, read_idx: u64, callback: oneshot::Sender<QueryIO>) {
+            self.0.send(CacheCommand::IndexGet { key, read_idx, callback }).await.unwrap();
+        }
+        async fn ping(&self) {
+            self.0.send(CacheCommand::Ping).await.unwrap();
+        }
     }
 }
