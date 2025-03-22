@@ -10,8 +10,7 @@ pub enum CacheCommand {
     Get { key: String, callback: oneshot::Sender<QueryIO> },
     Keys { pattern: Option<String>, callback: oneshot::Sender<QueryIO> },
     Delete(String),
-
-    StopSentinel,
     IndexGet { key: String, read_idx: u64, callback: oneshot::Sender<QueryIO> },
     Ping,
+    StopSentinel,
 }

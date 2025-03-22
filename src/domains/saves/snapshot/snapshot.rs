@@ -1,6 +1,5 @@
 use crate::domains::{
     caches::cache_objects::CacheEntry, cluster_actors::replication::ReplicationId,
-    peers::identifier::PeerIdentifier,
 };
 
 #[derive(Debug)]

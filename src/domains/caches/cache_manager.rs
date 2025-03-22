@@ -8,7 +8,6 @@ use crate::domains::query_parsers::QueryIO;
 use crate::domains::saves::actor::SaveActor;
 use crate::domains::saves::actor::SaveTarget;
 use crate::domains::saves::endec::StoredDuration;
-
 use crate::domains::saves::snapshot::snapshot::Snapshot;
 use anyhow::Result;
 use chrono::Utc;
@@ -75,7 +74,6 @@ impl CacheManager {
         Ok(tokio::spawn(save_actor.run(inbox)))
     }
 
-    // TODO - perhaps, we don't need background job.
     pub(crate) async fn apply_log(&self, msg: WriteRequest) -> Result<()> {
         let shard = self.select_shard(&msg.key());
         let command = match msg {
