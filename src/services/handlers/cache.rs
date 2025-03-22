@@ -52,6 +52,7 @@ impl CacheActor {
                     // finalize the save operation
                     outbox.send(SaveCommand::StopSentinel).await?;
                 },
+                CacheCommand::Ping => todo!(),
             }
         }
         Ok(self)

@@ -75,6 +75,7 @@ impl CacheManager {
         Ok(tokio::spawn(save_actor.run(inbox)))
     }
 
+    // TODO - perhaps, we don't need background job.
     pub(crate) async fn apply_log(&self, msg: WriteRequest) -> Result<()> {
         let shard = self.select_shard(&msg.key());
         let command = match msg {
@@ -91,8 +92,12 @@ impl CacheManager {
             WriteRequest::Delete { key } => CacheCommand::Delete(key),
         };
         shard.send(command).await?;
+        self.pings().await;
 
         Ok(())
+    }
+    async fn pings(&self) {
+        join_all(self.inboxes.iter().map(|shard| shard.send(CacheCommand::Ping))).await;
     }
 
     pub(crate) async fn route_keys(&self, pattern: Option<String>) -> Result<QueryIO> {

@@ -13,4 +13,5 @@ pub enum CacheCommand {
 
     StopSentinel,
     IndexGet { key: String, read_idx: u64, callback: oneshot::Sender<QueryIO> },
+    Ping,
 }
