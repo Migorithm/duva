@@ -1,6 +1,5 @@
 use crate::domains::cluster_actors::commands::WriteConsensusResponse;
 use tokio::sync::oneshot::Sender;
-
 pub(crate) type ReplicationVote = Sender<WriteConsensusResponse>;
 
 #[derive(Debug)]

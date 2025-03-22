@@ -1,5 +1,3 @@
-use std::sync::atomic::Ordering;
-
 use super::commands::AddPeer;
 use super::commands::RequestVote;
 use super::commands::RequestVoteReply;
@@ -18,6 +16,7 @@ use crate::domains::append_only_files::interfaces::TWriteAheadLog;
 use crate::domains::append_only_files::logger::ReplicatedLogs;
 use crate::domains::cluster_actors::election_state::ElectionState;
 use crate::domains::{caches::cache_manager::CacheManager, query_parsers::QueryIO};
+use std::sync::atomic::Ordering;
 
 #[derive(Debug)]
 pub struct ClusterActor {

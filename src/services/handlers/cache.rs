@@ -1,5 +1,3 @@
-use std::time::Duration;
-
 use crate::domains::caches::actor::CacheActor;
 use crate::domains::caches::cache_objects::CacheEntry;
 use crate::domains::caches::command::CacheCommand;
@@ -7,9 +5,7 @@ use crate::domains::caches::read_queue::{DeferredRead, ReadQueue};
 use crate::domains::query_parsers::QueryIO;
 use crate::domains::saves::command::SaveCommand;
 use anyhow::Result;
-
 use tokio::sync::mpsc::Receiver;
-use tokio::time::timeout;
 
 impl CacheActor {
     pub(crate) async fn handle(
@@ -70,24 +66,35 @@ impl CacheActor {
 
 #[cfg(test)]
 mod test {
-    use super::*;
     use crate::domains::caches::actor::CacheActor;
     use crate::domains::caches::actor::CacheDb;
     use crate::domains::caches::cache_objects::CacheEntry;
     use crate::domains::caches::command::CacheCommand;
     use crate::domains::caches::read_queue::ReadQueue;
     use crate::domains::query_parsers::QueryIO;
+    use chrono::Utc;
     use std::sync::Arc;
     use std::sync::atomic::AtomicU64;
-
-    use chrono::Utc;
-    use futures::FutureExt;
-    use futures::future::Fuse;
-    use futures::select;
-    use tokio::pin;
+    use std::time::Duration;
     use tokio::sync::mpsc::Sender;
     use tokio::sync::oneshot;
-    use tokio::time::sleep;
+    use tokio::time::timeout;
+
+    struct S(Sender<CacheCommand>);
+    impl S {
+        async fn set(&self, key: String, value: String) {
+            self.0
+                .send(CacheCommand::Set { cache_entry: CacheEntry::KeyValue(key, value) })
+                .await
+                .unwrap();
+        }
+        async fn index_get(&self, key: String, read_idx: u64, callback: oneshot::Sender<QueryIO>) {
+            self.0.send(CacheCommand::IndexGet { key, read_idx, callback }).await.unwrap();
+        }
+        async fn ping(&self) {
+            self.0.send(CacheCommand::Ping).await.unwrap();
+        }
+    }
 
     #[tokio::test]
     async fn test_set_and_delete_inc_dec_keys_with_expiry() {
@@ -188,21 +195,5 @@ mod test {
 
         // THEN
         assert_eq!(task.await.unwrap().unwrap(), QueryIO::BulkString(value.clone().into()));
-    }
-
-    struct S(Sender<CacheCommand>);
-    impl S {
-        async fn set(&self, key: String, value: String) {
-            self.0
-                .send(CacheCommand::Set { cache_entry: CacheEntry::KeyValue(key, value) })
-                .await
-                .unwrap();
-        }
-        async fn index_get(&self, key: String, read_idx: u64, callback: oneshot::Sender<QueryIO>) {
-            self.0.send(CacheCommand::IndexGet { key, read_idx, callback }).await.unwrap();
-        }
-        async fn ping(&self) {
-            self.0.send(CacheCommand::Ping).await.unwrap();
-        }
     }
 }

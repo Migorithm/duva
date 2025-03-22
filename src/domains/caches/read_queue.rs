@@ -47,8 +47,8 @@ impl ReadQueue {
 #[test]
 fn test_push() {
     //GIVEN
-    let (tx1, rx1) = tokio::sync::oneshot::channel();
-    let (tx2, rx2) = tokio::sync::oneshot::channel();
+    let (tx1, _) = tokio::sync::oneshot::channel();
+    let (tx2, _) = tokio::sync::oneshot::channel();
     let hwm = Arc::new(AtomicU64::new(1));
     let mut rq = ReadQueue::new(hwm.clone());
 

@@ -1,12 +1,7 @@
+use crate::domains::caches::cache_objects::CacheValue;
 use crate::domains::cluster_actors::commands::RequestVoteReply;
 use crate::domains::cluster_actors::heartbeats::heartbeat::{AppendEntriesRPC, ClusterHeartBeat};
-
 use crate::domains::{append_only_files::WriteOperation, cluster_actors::commands::RequestVote};
-
-#[cfg(test)]
-use crate::domains::peers::identifier::PeerIdentifier;
-
-use crate::domains::caches::cache_objects::CacheValue;
 
 use anyhow::{Context, Result};
 use bytes::{Bytes, BytesMut};
@@ -353,6 +348,7 @@ impl From<RequestVoteReply> for QueryIO {
 #[cfg(test)]
 mod test {
     use crate::domains::cluster_actors::replication::{HeartBeatMessage, ReplicationId};
+    use crate::domains::peers::identifier::PeerIdentifier;
     use crate::domains::{
         append_only_files::WriteRequest, cluster_actors::replication::BannedPeer,
     };
@@ -437,7 +433,7 @@ mod test {
         let serialized = file.serialize();
         let buffer = BytesMut::from_iter(serialized);
         // WHEN
-        let (value, len) = deserialize(buffer).unwrap();
+        let (value, _) = deserialize(buffer).unwrap();
 
         // THEN
         assert_eq!(value, QueryIO::File("hello".into()));
