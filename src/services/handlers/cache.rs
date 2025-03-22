@@ -1,7 +1,7 @@
 use crate::domains::caches::actor::CacheActor;
 use crate::domains::caches::cache_objects::CacheEntry;
 use crate::domains::caches::command::CacheCommand;
-use crate::domains::caches::read_queue::ReadQueue;
+use crate::domains::caches::read_queue::{self, DeferredRead, ReadQueue};
 use crate::domains::query_parsers::QueryIO;
 use crate::domains::saves::command::SaveCommand;
 use anyhow::Result;
@@ -52,7 +52,13 @@ impl CacheActor {
                     // finalize the save operation
                     outbox.send(SaveCommand::StopSentinel).await?;
                 },
-                CacheCommand::Ping => todo!(),
+                CacheCommand::Ping => {
+                    if let Some(pending_rqs) = rq.take_pending_requests() {
+                        for DeferredRead { key, callback } in pending_rqs {
+                            self.get(&key, callback);
+                        }
+                    };
+                },
             }
         }
         Ok(self)

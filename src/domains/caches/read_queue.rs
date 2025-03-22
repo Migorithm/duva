@@ -10,9 +10,9 @@ pub struct ReadQueue {
     inner: HashMap<u64, Vec<DeferredRead>>,
 }
 
-struct DeferredRead {
-    key: String,
-    callback: Sender<QueryIO>,
+pub(crate) struct DeferredRead {
+    pub(crate) key: String,
+    pub(crate) callback: Sender<QueryIO>,
 }
 
 impl ReadQueue {
@@ -36,6 +36,11 @@ impl ReadQueue {
         } else {
             Some(callback)
         }
+    }
+
+    pub(crate) fn take_pending_requests(&mut self) -> Option<Vec<DeferredRead>> {
+        let current_hwm = self.hwm.load(Ordering::Relaxed);
+        self.inner.remove(&current_hwm)
     }
 }
 
