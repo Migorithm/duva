@@ -65,7 +65,7 @@ impl ClusterActor {
 
                 // Follower receives heartbeat from leader
                 ClusterCommand::AppendEntriesRPC(heartbeat) => {
-                    if self.maybe_reject(&heartbeat, &repl_logs).await {
+                    if self.check_term_outdated(&heartbeat, &repl_logs).await {
                         continue;
                     };
                     self.reset_election_timeout(&heartbeat.from);
@@ -74,8 +74,8 @@ impl ClusterActor {
                 },
 
                 ClusterCommand::ReplicationResponse(repl_res) => {
-                    if !repl_res.is_granted {
-                        self.step_down().await;
+                    if !repl_res.is_granted() {
+                        self.handle_repl_rejection(repl_res).await;
                         continue;
                     }
                     self.update_on_hertbeat_message(&repl_res.from, repl_res.log_idx);

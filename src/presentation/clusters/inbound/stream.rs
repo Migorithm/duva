@@ -8,7 +8,7 @@ use crate::domains::cluster_actors::replication::ReplicationId;
 use crate::domains::cluster_actors::replication::ReplicationState;
 use crate::domains::peers::connected_peer_info::ConnectedPeerInfo;
 use crate::domains::peers::identifier::PeerIdentifier;
-use crate::domains::peers::peer::PeerKind;
+use crate::domains::peers::peer::PeerState;
 use crate::domains::query_parsers::QueryIO;
 use crate::make_smart_pointer;
 use crate::presentation::clusters::communication_manager::ClusterCommunicationManager;
@@ -126,8 +126,8 @@ impl InboundStream {
         Ok(ClusterCommand::AddPeer(AddPeer { peer_id: connected_peer_info.id, peer }))
     }
 
-    pub(crate) fn decide_peer_kind(&self, connected_peer_info: &ConnectedPeerInfo) -> PeerKind {
-        PeerKind::decide_peer_kind(&self.self_repl_info.replid, connected_peer_info)
+    pub(crate) fn decide_peer_kind(&self, connected_peer_info: &ConnectedPeerInfo) -> PeerState {
+        PeerState::decide_peer_kind(&self.self_repl_info.replid, connected_peer_info)
     }
 
     // depending on the condition, try full/partial sync.
@@ -136,7 +136,7 @@ impl InboundStream {
         ccm: ClusterCommunicationManager,
         connected_peer_info: &ConnectedPeerInfo,
     ) -> anyhow::Result<()> {
-        if let PeerKind::Replica { match_index: watermark, replid } =
+        if let PeerState::Replica { match_index: watermark, replid } =
             self.decide_peer_kind(connected_peer_info)
         {
             if replid == ReplicationId::Undecided {

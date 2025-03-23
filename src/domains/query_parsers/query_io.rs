@@ -349,6 +349,7 @@ impl From<RequestVoteReply> for QueryIO {
 }
 #[cfg(test)]
 mod test {
+    use crate::domains::cluster_actors::commands::RejectionReason;
     use crate::domains::cluster_actors::replication::{HeartBeatMessage, ReplicationId};
     use crate::domains::peers::identifier::PeerIdentifier;
     use crate::domains::{
@@ -463,7 +464,7 @@ mod test {
         // GIVEN
         let follower_res = ReplicationResponse {
             term: 0,
-            is_granted: true,
+            rej_reason: RejectionReason::None,
             log_idx: 2,
             from: PeerIdentifier("repl1".into()),
         };

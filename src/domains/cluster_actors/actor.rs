@@ -1,5 +1,6 @@
 use super::commands::AddPeer;
 use super::commands::ConsensusClientResponse;
+use super::commands::RejectionReason;
 use super::commands::ReplicationResponse;
 use super::commands::RequestVote;
 use super::commands::RequestVoteReply;
@@ -63,20 +64,20 @@ impl ClusterActor {
 
     pub(crate) fn replicas(&self) -> impl Iterator<Item = (&PeerIdentifier, &Peer, u64)> {
         self.members.iter().filter_map(|(id, peer)| match &peer.kind {
-            PeerKind::Replica { match_index: hwm, replid } => Some((id, peer, *hwm)),
+            PeerState::Replica { match_index: hwm, replid } => Some((id, peer, *hwm)),
             _ => None,
         })
     }
 
     pub(crate) fn replicas_mut(&mut self) -> impl Iterator<Item = (&mut Peer, u64)> {
         self.members.values_mut().into_iter().filter_map(|peer| match peer.kind.clone() {
-            PeerKind::Replica { match_index: hwm, replid } => Some((peer, hwm)),
+            PeerState::Replica { match_index: hwm, replid } => Some((peer, hwm)),
             _ => None,
         })
     }
 
     fn find_replica_mut(&mut self, peer_id: &PeerIdentifier) -> Option<&mut Peer> {
-        self.members.get_mut(peer_id).filter(|peer| matches!(peer.kind, PeerKind::Replica { .. }))
+        self.members.get_mut(peer_id).filter(|peer| matches!(peer.kind, PeerState::Replica { .. }))
     }
 
     pub(crate) async fn send_cluster_heartbeat(
@@ -200,7 +201,7 @@ impl ClusterActor {
         if let Some(peer) = self.members.get_mut(from) {
             peer.last_seen = Instant::now();
 
-            if let PeerKind::Replica { match_index, .. } = &mut peer.kind {
+            if let PeerState::Replica { match_index, .. } = &mut peer.kind {
                 *match_index = log_index;
             }
         }
@@ -284,7 +285,7 @@ impl ClusterActor {
             .values()
             .into_iter()
             .filter_map(|peer| match &peer.kind {
-                PeerKind::Replica { match_index: watermark, replid } => Some(*watermark),
+                PeerState::Replica { match_index: watermark, replid } => Some(*watermark),
                 _ => None,
             })
             .min()
@@ -302,10 +303,15 @@ impl ClusterActor {
     }
 
     // After send_ack: Leader updates its knowledge of follower's progress
-    async fn send_ack(&mut self, send_to: &PeerIdentifier, log_idx: u64, is_granted: bool) {
+    async fn send_ack(
+        &mut self,
+        send_to: &PeerIdentifier,
+        log_idx: u64,
+        rejection_reason: RejectionReason,
+    ) {
         if let Some(leader) = self.members.get_mut(send_to) {
             let _ = leader
-                .write_io(ReplicationResponse::new(log_idx, is_granted, &self.replication))
+                .write_io(ReplicationResponse::new(log_idx, rejection_reason, &self.replication))
                 .await;
         }
     }
@@ -345,56 +351,45 @@ impl ClusterActor {
         }
 
         if let Err(e) =
-            self.check_previous_entry_consistency(wal, rpc.prev_log_index, rpc.prev_log_term).await
+            self.ensure_prev_consistency(wal, rpc.prev_log_index, rpc.prev_log_term).await
         {
-            // TODO If consistency fails, truncate log starting at prev_log_index + 1
-            if wal.read_at(rpc.prev_log_index).await.is_some() {
-                // Entry exists but term mismatches
-                wal.truncate_after(rpc.prev_log_index).await;
-            }
-
-            self.send_ack(&rpc.from, wal.log_index, false).await;
-            return Err(e);
+            self.send_ack(&rpc.from, wal.log_index, e).await;
+            return Err(anyhow::anyhow!("Fail fail to append"));
         }
 
         let match_index = wal.write_log_entries(std::mem::take(&mut rpc.append_entries)).await?;
 
-        self.send_ack(&rpc.from, match_index, true).await;
+        self.send_ack(&rpc.from, match_index, RejectionReason::None).await;
         Ok(())
     }
 
-    async fn check_previous_entry_consistency(
+    async fn ensure_prev_consistency(
         &self,
         wal: &mut ReplicatedLogs<impl TWriteAheadLog>,
         prev_log_index: u64,
         prev_log_term: u64,
-    ) -> anyhow::Result<()> {
+    ) -> Result<(), RejectionReason> {
+        // Case 1: Empty log
         if wal.is_empty() {
             if prev_log_index == 0 {
-                // ! First entry, no previous log to check
-                return Ok(());
+                return Ok(()); // First entry, no previous log to check
             }
-            return Err(anyhow::anyhow!("WAL is empty and prev_log_index > 0"));
+            return Err(RejectionReason::LogInconsistency); // Log empty but leader expects an entry
         }
 
-        // When prev_log_index < log_start_index, it means the leader is referencing a log entry that the follower no longer has in its WAL
-        // because it has been compacted or truncated. This situation indicates a mismatch between the leader’s view of the follower’s log and the follower’s actual log.
+        // Case 2: Previous index is before the log’s start (compacted/truncated)
         if prev_log_index < wal.log_start_index() {
-            // since log_start_index is the earliest index in WAL, the following error thrown but it wouldn't cause compaction to happen
-            return Err(anyhow::anyhow!("Previous log index is too old"));
+            return Err(RejectionReason::LogInconsistency); // Leader references an old, unavailable entry
         }
 
-        // TODO If entry_matches is false:
         // * Raft followers should truncate their log starting at prev_log_index + 1 and then append the new entries
         // * Just returning an error is breaking consistency
-        let prev_entry = wal
-            .read_at(prev_log_index)
-            .await
-            .ok_or_else(|| anyhow::anyhow!("No entry at prev_log_index"))?;
-
-        if prev_entry.term != prev_log_term {
-            // ! Term mismatch -> triggers log truncation
-            return Err(anyhow::anyhow!("Log term mismatch"));
+        if let Some(prev_entry) = wal.read_at(prev_log_index).await {
+            if prev_entry.term != prev_log_term {
+                // ! Term mismatch -> triggers log truncation
+                wal.truncate_after(prev_log_index).await;
+                return Err(RejectionReason::LogInconsistency);
+            }
         }
 
         Ok(())
@@ -426,10 +421,10 @@ impl ClusterActor {
             .values()
             .into_iter()
             .map(|peer| match &peer.kind {
-                PeerKind::Replica { match_index, replid } => {
+                PeerState::Replica { match_index, replid } => {
                     format!("{} {} 0", peer.addr, replid)
                 },
-                PeerKind::NonDataPeer { replid, match_index } => {
+                PeerState::NonDataPeer { replid, match_index } => {
                     format!("{} {} 0", peer.addr, replid)
                 },
             })
@@ -526,13 +521,14 @@ impl ClusterActor {
         }
     }
 
-    pub(crate) async fn maybe_reject(
+    pub(crate) async fn check_term_outdated(
         &mut self,
         heartbeat: &HeartBeatMessage,
         wal: &ReplicatedLogs<impl TWriteAheadLog>,
     ) -> bool {
         if heartbeat.term < self.replication.term {
-            self.send_ack(&heartbeat.from, wal.log_index, false).await;
+            self.send_ack(&heartbeat.from, wal.log_index, RejectionReason::ReceiverHasHigherTerm)
+                .await;
             return true;
         }
         false
@@ -550,6 +546,20 @@ impl ClusterActor {
         eprintln!("\x1b[32m[INFO] Election succeeded\x1b[0m");
         self.replication.become_leader();
         self.heartbeat_scheduler.turn_leader_mode().await;
+    }
+
+    pub(crate) async fn handle_repl_rejection(&mut self, repl_res: ReplicationResponse) {
+        match repl_res.rej_reason {
+            RejectionReason::ReceiverHasHigherTerm => self.step_down().await,
+            RejectionReason::LogInconsistency => self.decrease_match_index(&repl_res.from),
+            RejectionReason::None => return,
+        }
+    }
+
+    fn decrease_match_index(&mut self, from: &PeerIdentifier) {
+        if let Some(peer) = self.members.get_mut(from) {
+            peer.kind.decrease_match_index();
+        }
     }
 }
 
@@ -626,7 +636,7 @@ mod test {
                 create_peer(
                     key.to_string(),
                     TcpStream::connect(bind_addr).await.unwrap(),
-                    PeerKind::Replica {
+                    PeerState::Replica {
                         match_index: follower_hwm,
                         replid: ReplicationId::Key("localhost".to_string().into()),
                     },
@@ -757,7 +767,7 @@ mod test {
         let follower_res = ReplicationResponse {
             log_idx: 1,
             term: 0,
-            is_granted: true,
+            rej_reason: RejectionReason::None,
             from: PeerIdentifier("repl1".into()), //TODO Must be changed if "update_match_index" becomes idempotent operation on peer id
         };
         cluster_actor.track_replication_progress(follower_res.clone());
@@ -1212,7 +1222,7 @@ mod test {
                 create_peer(
                     key.to_string(),
                     TcpStream::connect(bind_addr).await.unwrap(),
-                    PeerKind::Replica { match_index: 0, replid: repl_id.clone() },
+                    PeerState::Replica { match_index: 0, replid: repl_id.clone() },
                     cluster_sender.clone(),
                 ),
             );
@@ -1230,7 +1240,7 @@ mod test {
             create_peer(
                 (*second_shard_leader_identifier).clone(),
                 TcpStream::connect(bind_addr).await.unwrap(),
-                PeerKind::NonDataPeer {
+                PeerState::NonDataPeer {
                     replid: ReplicationId::Key(second_shard_repl_id.to_string()),
                     match_index: 0,
                 },
@@ -1246,7 +1256,7 @@ mod test {
                 create_peer(
                     key.to_string(),
                     TcpStream::connect(bind_addr_for_second_shard).await.unwrap(),
-                    PeerKind::NonDataPeer {
+                    PeerState::NonDataPeer {
                         replid: ReplicationId::Key(second_shard_repl_id.to_string()),
                         match_index: 0,
                     },
@@ -1301,7 +1311,7 @@ mod test {
         let peer = create_peer(
             "foo".to_string(),
             TcpStream::connect(bind_addr).await.unwrap(),
-            PeerKind::Replica { match_index: 0, replid: ReplicationId::Key(repl_id.to_string()) },
+            PeerState::Replica { match_index: 0, replid: ReplicationId::Key(repl_id.to_string()) },
             cluster_actor.self_handler.clone(),
         );
 
