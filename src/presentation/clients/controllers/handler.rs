@@ -1,6 +1,6 @@
 use std::sync::atomic::Ordering;
 
-use crate::domains::cluster_actors::commands::WriteConsensusResponse;
+use crate::domains::cluster_actors::commands::ConsensusClientResponse;
 
 use super::*;
 
@@ -119,8 +119,8 @@ impl ClientController<Handler> {
 
         match rx.await? {
             //TODO remove option
-            WriteConsensusResponse::LogIndex(log_index) => Ok(log_index),
-            WriteConsensusResponse::Err(err) => Err(anyhow::anyhow!(err)),
+            ConsensusClientResponse::LogIndex(log_index) => Ok(log_index),
+            ConsensusClientResponse::Err(err) => Err(anyhow::anyhow!(err)),
         }
     }
 

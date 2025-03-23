@@ -1,7 +1,7 @@
 use crate::domains::{
     append_only_files::WriteOperation,
     cluster_actors::{
-        commands::{RequestVote, RequestVoteReply},
+        commands::{ReplicationResponse, RequestVote, RequestVoteReply},
         replication::HeartBeatMessage,
     },
     query_parsers::{QueryIO, deserialize},
@@ -12,7 +12,7 @@ pub enum PeerInput {
     AppendEntriesRPC(HeartBeatMessage),
     ClusterHeartBeat(HeartBeatMessage),
     FullSync(Vec<WriteOperation>),
-    Acks(Vec<u64>),
+    Acks(ReplicationResponse),
     RequestVote(RequestVote),
     RequestVoteReply(RequestVoteReply),
 }
@@ -37,7 +37,7 @@ impl TryFrom<QueryIO> for PeerInput {
             },
             QueryIO::AppendEntriesRPC(peer_state) => Ok(Self::AppendEntriesRPC(peer_state.0)),
             QueryIO::ClusterHeartBeat(heartbeat) => Ok(Self::ClusterHeartBeat(heartbeat.0)),
-            QueryIO::AppendEntriesResponse(acks) => Ok(PeerInput::Acks(acks)),
+            QueryIO::ConsensusFollowerResponse(acks) => Ok(PeerInput::Acks(acks)),
             QueryIO::RequestVote(vote) => Ok(PeerInput::RequestVote(vote)),
             QueryIO::RequestVoteReply(reply) => Ok(PeerInput::RequestVoteReply(reply)),
             _ => Err(anyhow::anyhow!("Invalid data")),

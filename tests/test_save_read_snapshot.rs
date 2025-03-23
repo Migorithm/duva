@@ -16,7 +16,6 @@ use std::time::UNIX_EPOCH;
 #[tokio::test]
 async fn test_save_read_snapshot() {
     // GIVEN
-
     let env = ServerEnv::default().with_file_name(create_unique_file_name("test_save_dump"));
     let leader_process = spawn_server_process(&env);
 

@@ -98,14 +98,8 @@ impl HeartBeatScheduler {
         }
     }
 
-    pub(crate) async fn switch(&mut self) {
+    pub(crate) async fn turn_leader_mode(&mut self) {
         let controller = match self.controller.take() {
-            Some(SchedulerMode::Leader(sender)) => {
-                let _ = sender.send(());
-                Some(SchedulerMode::Follower(Self::start_election_timer(
-                    self.cluster_handler.clone(),
-                )))
-            },
             Some(SchedulerMode::Follower(sender)) => {
                 let _ = sender.send(ElectionTimeOutCommand::Stop).await;
                 Some(SchedulerMode::Leader(Self::send_append_entries_rpc(
@@ -113,6 +107,21 @@ impl HeartBeatScheduler {
                     self.cluster_handler.clone(),
                 )))
             },
+            Some(SchedulerMode::Leader(sender)) => Some(SchedulerMode::Leader(sender)),
+            None => None,
+        };
+        self.controller = controller;
+    }
+
+    pub(crate) async fn turn_follower_mode(&mut self) {
+        let controller = match self.controller.take() {
+            Some(SchedulerMode::Leader(sender)) => {
+                let _ = sender.send(());
+                Some(SchedulerMode::Follower(Self::start_election_timer(
+                    self.cluster_handler.clone(),
+                )))
+            },
+            Some(SchedulerMode::Follower(sender)) => Some(SchedulerMode::Follower(sender)),
             None => None,
         };
         self.controller = controller;

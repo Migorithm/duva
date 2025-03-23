@@ -15,7 +15,7 @@ impl ClusterActor {
         wal: impl TWriteAheadLog,
         cache_manager: CacheManager,
     ) -> anyhow::Result<Self> {
-        let mut logger = ReplicatedLogs::new(wal, 0, 0);
+        let mut repl_logs = ReplicatedLogs::new(wal, 0, 0);
 
         while let Some(command) = self.receiver.recv().await {
             match command {
@@ -37,7 +37,7 @@ impl ClusterActor {
                 },
                 ClusterCommand::SendClusterHeatBeat => {
                     let hop_count = Self::hop_count(FANOUT, self.members.len());
-                    self.send_cluster_heartbeat(hop_count, &logger).await;
+                    self.send_cluster_heartbeat(hop_count, &repl_logs).await;
 
                     // ! remove idle peers based on ttl.
                     // ! The following may need to be moved else where to avoid blocking the main loop
@@ -45,11 +45,11 @@ impl ClusterActor {
                 },
 
                 ClusterCommand::ClusterHeartBeat(mut heartbeat) => {
-                    if self.replication.in_ban_list(&heartbeat.heartbeat_from) {
+                    if self.replication.in_ban_list(&heartbeat.from) {
                         continue;
                     }
-                    self.gossip(heartbeat.hop_count, &logger).await;
-                    self.update_on_hertbeat_message(&heartbeat);
+                    self.gossip(heartbeat.hop_count, &repl_logs).await;
+                    self.update_on_hertbeat_message(&heartbeat.from, heartbeat.hwm);
                     self.apply_ban_list(std::mem::take(&mut heartbeat.ban_list)).await;
                 },
                 ClusterCommand::ForgetPeer(peer_addr, sender) => {
@@ -60,52 +60,54 @@ impl ClusterActor {
                     }
                 },
                 ClusterCommand::LeaderReqConsensus { log, sender } => {
-                    // Skip consensus for no replicas
-                    let _ = self.req_consensus(&mut logger, log, sender).await;
+                    self.req_consensus(&mut repl_logs, log, sender).await;
                 },
 
                 // Follower receives heartbeat from leader
                 ClusterCommand::AppendEntriesRPC(heartbeat) => {
-                    self.reset_election_timeout(&heartbeat.heartbeat_from);
+                    if self.maybe_reject(&heartbeat, &repl_logs).await {
+                        continue;
+                    };
+                    self.reset_election_timeout(&heartbeat.from);
+                    self.maybe_update_term(heartbeat.term, &mut repl_logs);
+                    self.replicate(&mut repl_logs, heartbeat, &cache_manager).await;
+                },
 
-                    if heartbeat.term < self.replication.term {
+                ClusterCommand::ReplicationResponse(repl_res) => {
+                    if !repl_res.is_granted {
+                        self.step_down().await;
                         continue;
                     }
-                    self.apply_term_then_may_stepdown(
-                        heartbeat.term,
-                        &heartbeat.heartbeat_from,
-                        &mut logger,
-                    );
-
-                    self.replicate(&mut logger, heartbeat, &cache_manager).await;
-                },
-                ClusterCommand::LeaderReceiveAcks(offsets) => {
-                    self.apply_acks(offsets);
+                    self.update_on_hertbeat_message(&repl_res.from, repl_res.log_idx);
+                    self.track_replication_progress(repl_res);
                 },
                 ClusterCommand::SendCommitHeartBeat { log_idx: offset } => {
                     self.send_commit_heartbeat(offset).await;
                 },
                 ClusterCommand::SendAppendEntriesRPC => {
-                    self.send_leader_heartbeat(&logger).await;
+                    self.send_leader_heartbeat(&repl_logs).await;
                 },
                 ClusterCommand::InstallLeaderState(logs) => {
-                    if logger.overwrite(logs.clone()).await.is_err() {
+                    if repl_logs.overwrite(logs.clone()).await.is_err() {
                         continue;
                     }
                     self.install_leader_state(logs, &cache_manager).await;
                 },
                 ClusterCommand::FetchCurrentState(sender) => {
-                    let logs = logger.range(0, self.replication.hwm.load(Ordering::Acquire));
+                    let logs = repl_logs.range(0, self.replication.hwm.load(Ordering::Acquire));
                     let _ = sender.send(logs);
                 },
                 ClusterCommand::StartLeaderElection => {
-                    self.run_for_election(logger.log_index, self.replication.term).await;
+                    self.run_for_election(repl_logs.log_index, self.replication.term).await;
                 },
                 ClusterCommand::VoteElection(request_vote) => {
-                    self.vote_election(request_vote, logger.log_index).await;
+                    self.vote_election(request_vote, repl_logs.log_index).await;
                 },
                 ClusterCommand::ApplyElectionVote(request_vote_reply) => {
-                    self.tally_vote(request_vote_reply, &logger).await;
+                    if !request_vote_reply.vote_granted {
+                        continue;
+                    }
+                    self.tally_vote(&repl_logs).await;
                 },
             }
         }

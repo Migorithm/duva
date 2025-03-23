@@ -45,18 +45,18 @@ impl Peer {
 
 #[derive(Clone, Debug)]
 pub enum PeerKind {
-    Replica { watermark: u64, replid: ReplicationId },
-    NonDataPeer { replid: ReplicationId },
+    Replica { match_index: u64, replid: ReplicationId },
+    NonDataPeer { match_index: u64, replid: ReplicationId },
 }
 
 impl PeerKind {
     pub fn decide_peer_kind(my_repl_id: &ReplicationId, peer_info: &ConnectedPeerInfo) -> Self {
         if peer_info.replid == ReplicationId::Undecided {
-            PeerKind::Replica { watermark: peer_info.hwm, replid: peer_info.replid.clone() }
+            PeerKind::Replica { match_index: peer_info.hwm, replid: peer_info.replid.clone() }
         } else if my_repl_id == &peer_info.replid {
-            PeerKind::Replica { watermark: peer_info.hwm, replid: peer_info.replid.clone() }
+            PeerKind::Replica { match_index: peer_info.hwm, replid: peer_info.replid.clone() }
         } else {
-            PeerKind::NonDataPeer { replid: peer_info.replid.clone() }
+            PeerKind::NonDataPeer { match_index: peer_info.hwm, replid: peer_info.replid.clone() }
         }
     }
 }

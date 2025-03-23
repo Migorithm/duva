@@ -7,10 +7,10 @@ use super::{
         encode_metadata,
     },
 };
+use crate::domains::saves::snapshot::snapshot::Metadata;
 use crate::domains::{
     IoError, caches::cache_objects::CacheEntry, cluster_actors::replication::ReplicationId,
 };
-use crate::domains::{peers::identifier::PeerIdentifier, saves::snapshot::snapshot::Metadata};
 use tokio::io::AsyncWriteExt;
 
 pub struct SaveActor {

@@ -1,6 +1,6 @@
-use crate::domains::cluster_actors::commands::WriteConsensusResponse;
+use crate::domains::cluster_actors::commands::ConsensusClientResponse;
 use tokio::sync::oneshot::Sender;
-pub(crate) type ReplicationVote = Sender<WriteConsensusResponse>;
+pub(crate) type ReplicationVote = Sender<ConsensusClientResponse>;
 
 #[derive(Debug)]
 pub struct ConsensusVoting<T> {
@@ -22,7 +22,7 @@ impl<T> ConsensusVoting<T> {
 impl ConsensusVoting<ReplicationVote> {
     pub(crate) fn maybe_not_finished(self, log_index: u64) -> Option<Self> {
         if self.pos_vt >= self.get_required_votes() {
-            let _ = self.callback.send(WriteConsensusResponse::LogIndex(Some(log_index)));
+            let _ = self.callback.send(ConsensusClientResponse::LogIndex(Some(log_index)));
             None
         } else {
             Some(self)
