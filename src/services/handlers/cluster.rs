@@ -3,7 +3,7 @@ use std::sync::atomic::Ordering;
 use crate::domains::append_only_files::interfaces::TWriteAheadLog;
 use crate::domains::append_only_files::logger::ReplicatedLogs;
 use crate::domains::caches::cache_manager::CacheManager;
-use crate::domains::cluster_actors::commands::ClusterCommand;
+use crate::domains::cluster_actors::commands::{ClusterCommand, RejectionReason};
 
 use crate::domains::cluster_actors::replication::ReplicationState;
 use crate::domains::cluster_actors::{ClusterActor, FANOUT};
@@ -65,7 +65,7 @@ impl ClusterActor {
 
                 // Follower receives heartbeat from leader
                 ClusterCommand::AppendEntriesRPC(heartbeat) => {
-                    if self.maybe_reject(&heartbeat, &repl_logs).await {
+                    if self.is_term_mismatched(&heartbeat, &repl_logs).await {
                         continue;
                     };
                     self.reset_election_timeout(&heartbeat.from);
@@ -74,7 +74,7 @@ impl ClusterActor {
                 },
 
                 ClusterCommand::ReplicationResponse(repl_res) => {
-                    if !repl_res.is_granted {
+                    if let RejectionReason::ReceiverHasHigherTerm = repl_res.rej_reason {
                         self.step_down().await;
                         continue;
                     }

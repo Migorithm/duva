@@ -1,5 +1,6 @@
 use super::commands::AddPeer;
 use super::commands::ConsensusClientResponse;
+use super::commands::RejectionReason;
 use super::commands::ReplicationResponse;
 use super::commands::RequestVote;
 use super::commands::RequestVoteReply;
@@ -302,10 +303,15 @@ impl ClusterActor {
     }
 
     // After send_ack: Leader updates its knowledge of follower's progress
-    async fn send_ack(&mut self, send_to: &PeerIdentifier, log_idx: u64, is_granted: bool) {
+    async fn send_ack(
+        &mut self,
+        send_to: &PeerIdentifier,
+        log_idx: u64,
+        rejection_reason: RejectionReason,
+    ) {
         if let Some(leader) = self.members.get_mut(send_to) {
             let _ = leader
-                .write_io(ReplicationResponse::new(log_idx, is_granted, &self.replication))
+                .write_io(ReplicationResponse::new(log_idx, rejection_reason, &self.replication))
                 .await;
         }
     }
@@ -347,19 +353,13 @@ impl ClusterActor {
         if let Err(e) =
             self.check_previous_entry_consistency(wal, rpc.prev_log_index, rpc.prev_log_term).await
         {
-            // TODO If consistency fails, truncate log starting at prev_log_index + 1
-            if wal.read_at(rpc.prev_log_index).await.is_some() {
-                // Entry exists but term mismatches
-                wal.truncate_after(rpc.prev_log_index).await;
-            }
-
-            self.send_ack(&rpc.from, wal.log_index, false).await;
-            return Err(e);
+            self.send_ack(&rpc.from, wal.log_index, e).await;
+            return Err(anyhow::anyhow!("Fail fail to append"));
         }
 
         let match_index = wal.write_log_entries(std::mem::take(&mut rpc.append_entries)).await?;
 
-        self.send_ack(&rpc.from, match_index, true).await;
+        self.send_ack(&rpc.from, match_index, RejectionReason::None).await;
         Ok(())
     }
 
@@ -368,33 +368,28 @@ impl ClusterActor {
         wal: &mut ReplicatedLogs<impl TWriteAheadLog>,
         prev_log_index: u64,
         prev_log_term: u64,
-    ) -> anyhow::Result<()> {
+    ) -> Result<(), RejectionReason> {
+        // Case 1: Empty log
         if wal.is_empty() {
             if prev_log_index == 0 {
-                // ! First entry, no previous log to check
-                return Ok(());
+                return Ok(()); // First entry, no previous log to check
             }
-            return Err(anyhow::anyhow!("WAL is empty and prev_log_index > 0"));
+            return Err(RejectionReason::LogInconsistency); // Log empty but leader expects an entry
         }
 
-        // When prev_log_index < log_start_index, it means the leader is referencing a log entry that the follower no longer has in its WAL
-        // because it has been compacted or truncated. This situation indicates a mismatch between the leader’s view of the follower’s log and the follower’s actual log.
+        // Case 2: Previous index is before the log’s start (compacted/truncated)
         if prev_log_index < wal.log_start_index() {
-            // since log_start_index is the earliest index in WAL, the following error thrown but it wouldn't cause compaction to happen
-            return Err(anyhow::anyhow!("Previous log index is too old"));
+            return Err(RejectionReason::LogInconsistency); // Leader references an old, unavailable entry
         }
 
-        // TODO If entry_matches is false:
         // * Raft followers should truncate their log starting at prev_log_index + 1 and then append the new entries
         // * Just returning an error is breaking consistency
-        let prev_entry = wal
-            .read_at(prev_log_index)
-            .await
-            .ok_or_else(|| anyhow::anyhow!("No entry at prev_log_index"))?;
-
-        if prev_entry.term != prev_log_term {
-            // ! Term mismatch -> triggers log truncation
-            return Err(anyhow::anyhow!("Log term mismatch"));
+        if let Some(prev_entry) = wal.read_at(prev_log_index).await {
+            if prev_entry.term != prev_log_term {
+                // ! Term mismatch -> triggers log truncation
+                wal.truncate_after(prev_log_index).await;
+                return Err(RejectionReason::LogInconsistency);
+            }
         }
 
         Ok(())
@@ -526,13 +521,14 @@ impl ClusterActor {
         }
     }
 
-    pub(crate) async fn maybe_reject(
+    pub(crate) async fn is_term_mismatched(
         &mut self,
         heartbeat: &HeartBeatMessage,
         wal: &ReplicatedLogs<impl TWriteAheadLog>,
     ) -> bool {
         if heartbeat.term < self.replication.term {
-            self.send_ack(&heartbeat.from, wal.log_index, false).await;
+            self.send_ack(&heartbeat.from, wal.log_index, RejectionReason::ReceiverHasHigherTerm)
+                .await;
             return true;
         }
         false
@@ -757,7 +753,7 @@ mod test {
         let follower_res = ReplicationResponse {
             log_idx: 1,
             term: 0,
-            is_granted: true,
+            rej_reason: RejectionReason::None,
             from: PeerIdentifier("repl1".into()), //TODO Must be changed if "update_match_index" becomes idempotent operation on peer id
         };
         cluster_actor.track_replication_progress(follower_res.clone());
