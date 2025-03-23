@@ -95,6 +95,13 @@ impl ClusterActor {
         }
     }
 
+    pub(crate) async fn snapshot_topology(&self, path: &str) {
+        // TODO: consider single writer access to file
+        let topology = self.cluster_nodes().join("\r\n");
+
+        let _ = tokio::fs::write(path, topology).await;
+    }
+
     pub(crate) async fn add_peer(&mut self, add_peer_cmd: AddPeer) {
         let AddPeer { peer_id: peer_addr, peer } = add_peer_cmd;
 
@@ -427,10 +434,10 @@ impl ClusterActor {
             .into_iter()
             .map(|peer| match &peer.kind {
                 PeerKind::Replica { watermark, replid } => {
-                    format!("{} follower {}", peer.addr, replid)
+                    format!("{} {} 0", peer.addr, replid)
                 },
                 PeerKind::NonDataPeer { replid } => {
-                    format!("{} follower {}", peer.addr, replid)
+                    format!("{} {} 0", peer.addr, replid)
                 },
             })
             .chain(std::iter::once(self.replication.self_info()))
@@ -553,6 +560,7 @@ mod test {
 
     use std::ops::Range;
     use std::time::Duration;
+    use tokio::net::TcpListener;
     use tokio::net::TcpStream;
     use tokio::sync::mpsc::channel;
 
@@ -1161,17 +1169,16 @@ mod test {
 
     /*
     cluster nodes should return the following:
-    127.0.0.1:30004 follower 127.0.0.1:30001
-    127.0.0.1:30002 leader - 5461-10922
-    127.0.0.1:30003 leader - 10923-16383
-    127.0.0.1:30005 follower 127.0.0.1:30002
-    127.0.0.1:30006 follower 127.0.0.1:30003
-    127.0.0.1:30001 myself,leader - 0-5460
-    <ip:port> <flags> <leader> <link-state> <slot>
+    127.0.0.1:30004 x 10923-16383
+    127.0.0.1:30002 y 5461-10922
+    127.0.0.1:30003 x 10923-16383
+    127.0.0.1:30005 z 0-5460
+    127.0.0.1:30006 z 0-5460
+    127.0.0.1:30001 myself,y 5461-10922
+    <ip:port> <flags> <repl_id> <coverage(shard)>
          */
     //TODO Fix the following
     #[tokio::test]
-    #[ignore]
     async fn test_cluster_nodes() {
         use tokio::net::TcpListener;
         // GIVEN
@@ -1183,7 +1190,8 @@ mod test {
         let bind_addr = listener.local_addr().unwrap();
 
         let mut cluster_actor = cluster_actor_create_helper();
-        let self_identifier = ReplicationId::Key(bind_addr.to_string().into());
+
+        let repl_id = cluster_actor.replication.replid.clone();
 
         // followers
         for port in [6379, 6380] {
@@ -1193,7 +1201,7 @@ mod test {
                 create_peer(
                     key.to_string(),
                     TcpStream::connect(bind_addr).await.unwrap(),
-                    PeerKind::Replica { watermark: 0, replid: self_identifier.clone() },
+                    PeerKind::Replica { watermark: 0, replid: repl_id.clone() },
                     cluster_sender.clone(),
                 ),
             );
@@ -1203,6 +1211,7 @@ mod test {
         let bind_addr_for_second_shard = listener_for_second_shard.local_addr().unwrap();
         let second_shard_leader_identifier: PeerIdentifier =
             listener_for_second_shard.local_addr().unwrap().to_string().into();
+        let second_shard_repl_id = uuid::Uuid::now_v7();
 
         // leader for different shard?
         cluster_actor.members.insert(
@@ -1211,7 +1220,7 @@ mod test {
                 (*second_shard_leader_identifier).clone(),
                 TcpStream::connect(bind_addr).await.unwrap(),
                 PeerKind::NonDataPeer {
-                    replid: ReplicationId::Key(uuid::Uuid::now_v7().to_string()),
+                    replid: ReplicationId::Key(second_shard_repl_id.to_string()),
                 },
                 cluster_sender.clone(),
             ),
@@ -1226,7 +1235,7 @@ mod test {
                     key.to_string(),
                     TcpStream::connect(bind_addr_for_second_shard).await.unwrap(),
                     PeerKind::NonDataPeer {
-                        replid: ReplicationId::Key((*second_shard_leader_identifier).clone()),
+                        replid: ReplicationId::Key(second_shard_repl_id.to_string()),
                     },
                     cluster_sender.clone(),
                 ),
@@ -1234,19 +1243,76 @@ mod test {
         }
 
         // WHEN
-        let res = dbg!(cluster_actor.cluster_nodes());
+        let res = cluster_actor.cluster_nodes();
 
         assert_eq!(res.len(), 6);
 
         for value in [
-            format!("127.0.0.1:6379 follower {}", self_identifier),
-            format!("127.0.0.1:6380 follower {}", self_identifier),
-            format!("{} leader - 0", second_shard_leader_identifier),
-            format!("127.0.0.1:2655 follower {}", second_shard_leader_identifier),
-            format!("127.0.0.1:2653 follower {}", second_shard_leader_identifier),
-            format!("127.0.0.1:8080 myself,leader ? 0"),
+            format!("127.0.0.1:6379 {} 0", repl_id),
+            format!("127.0.0.1:6380 {} 0", repl_id),
+            format!("{} {} 0", second_shard_leader_identifier, second_shard_repl_id),
+            format!("127.0.0.1:2655 {} 0", second_shard_repl_id),
+            format!("127.0.0.1:2653 {} 0", second_shard_repl_id),
+            format!("127.0.0.1:8080 myself,{} 0", repl_id),
         ] {
             assert!(res.contains(&value));
         }
+    }
+
+    #[tokio::test]
+    async fn test_store_current_topology() {
+        // GIVEN
+        let cluster_actor = cluster_actor_create_helper();
+        let repl_id = cluster_actor.replication.replid.clone();
+        let self_id = cluster_actor.replication.self_identifier();
+
+        // WHEN
+        cluster_actor.snapshot_topology("test_store_current_topology.tp").await;
+
+        // THEN
+        let topology = tokio::fs::read_to_string("test_store_current_topology.tp").await.unwrap();
+        let expected_topology = format!("{} myself,{} 0", self_id, repl_id);
+        assert_eq!(topology, expected_topology);
+
+        tokio::fs::remove_file("test_store_current_topology.tp").await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_snapshot_topology_after_add_peer() {
+        // GIVEN
+        let mut cluster_actor = cluster_actor_create_helper();
+        let repl_id = cluster_actor.replication.replid.clone();
+
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let bind_addr = listener.local_addr().unwrap();
+        let peer = create_peer(
+            "foo".to_string(),
+            TcpStream::connect(bind_addr).await.unwrap(),
+            PeerKind::Replica { watermark: 0, replid: ReplicationId::Key(repl_id.to_string()) },
+            cluster_actor.self_handler.clone(),
+        );
+
+        // WHEN
+        let add_peer_cmd = AddPeer { peer_id: PeerIdentifier(String::from("foo")), peer };
+        cluster_actor.add_peer(add_peer_cmd).await;
+        cluster_actor.snapshot_topology("test_snapshot_topology_after_add_peer.tp").await;
+
+        // THEN
+        let topology =
+            tokio::fs::read_to_string("test_snapshot_topology_after_add_peer.tp").await.unwrap();
+        let mut cluster_nodes =
+            topology.split("\r\n").map(|x| x.to_string()).collect::<Vec<String>>();
+
+        cluster_nodes.dedup();
+        assert_eq!(cluster_nodes.len(), 2);
+
+        for value in [
+            format!("foo {} 0", repl_id),
+            format!("{} myself,{} 0", cluster_actor.replication.self_identifier(), repl_id),
+        ] {
+            assert!(cluster_nodes.contains(&value));
+        }
+
+        tokio::fs::remove_file("test_snapshot_topology_after_add_peer.tp").await.unwrap();
     }
 }
