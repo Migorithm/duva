@@ -481,7 +481,7 @@ impl ClusterActor {
         }
 
         if self.replication.is_leader_mode {
-            self.heartbeat_scheduler.switch().await;
+            self.heartbeat_scheduler.turn_leader_mode().await;
         }
         let msg = self.replication.default_heartbeat(0, logger.log_index, logger.term);
 

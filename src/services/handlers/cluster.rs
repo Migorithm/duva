@@ -77,7 +77,6 @@ impl ClusterActor {
                 //TODO
                 ClusterCommand::ReplicationResponse(repl_res) => {
                     if !repl_res.is_granted {
-                        //TODO stepdown
                         continue;
                     }
                     self.update_on_hertbeat_message(&repl_res.from, repl_res.log_idx);
