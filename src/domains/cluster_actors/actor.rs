@@ -64,20 +64,20 @@ impl ClusterActor {
 
     pub(crate) fn replicas(&self) -> impl Iterator<Item = (&PeerIdentifier, &Peer, u64)> {
         self.members.iter().filter_map(|(id, peer)| match &peer.kind {
-            PeerKind::Replica { match_index: hwm, replid } => Some((id, peer, *hwm)),
+            PeerState::Replica { match_index: hwm, replid } => Some((id, peer, *hwm)),
             _ => None,
         })
     }
 
     pub(crate) fn replicas_mut(&mut self) -> impl Iterator<Item = (&mut Peer, u64)> {
         self.members.values_mut().into_iter().filter_map(|peer| match peer.kind.clone() {
-            PeerKind::Replica { match_index: hwm, replid } => Some((peer, hwm)),
+            PeerState::Replica { match_index: hwm, replid } => Some((peer, hwm)),
             _ => None,
         })
     }
 
     fn find_replica_mut(&mut self, peer_id: &PeerIdentifier) -> Option<&mut Peer> {
-        self.members.get_mut(peer_id).filter(|peer| matches!(peer.kind, PeerKind::Replica { .. }))
+        self.members.get_mut(peer_id).filter(|peer| matches!(peer.kind, PeerState::Replica { .. }))
     }
 
     pub(crate) async fn send_cluster_heartbeat(
@@ -201,7 +201,7 @@ impl ClusterActor {
         if let Some(peer) = self.members.get_mut(from) {
             peer.last_seen = Instant::now();
 
-            if let PeerKind::Replica { match_index, .. } = &mut peer.kind {
+            if let PeerState::Replica { match_index, .. } = &mut peer.kind {
                 *match_index = log_index;
             }
         }
@@ -285,7 +285,7 @@ impl ClusterActor {
             .values()
             .into_iter()
             .filter_map(|peer| match &peer.kind {
-                PeerKind::Replica { match_index: watermark, replid } => Some(*watermark),
+                PeerState::Replica { match_index: watermark, replid } => Some(*watermark),
                 _ => None,
             })
             .min()
@@ -421,10 +421,10 @@ impl ClusterActor {
             .values()
             .into_iter()
             .map(|peer| match &peer.kind {
-                PeerKind::Replica { match_index, replid } => {
+                PeerState::Replica { match_index, replid } => {
                     format!("{} {} 0", peer.addr, replid)
                 },
-                PeerKind::NonDataPeer { replid, match_index } => {
+                PeerState::NonDataPeer { replid, match_index } => {
                     format!("{} {} 0", peer.addr, replid)
                 },
             })
@@ -636,7 +636,7 @@ mod test {
                 create_peer(
                     key.to_string(),
                     TcpStream::connect(bind_addr).await.unwrap(),
-                    PeerKind::Replica {
+                    PeerState::Replica {
                         match_index: follower_hwm,
                         replid: ReplicationId::Key("localhost".to_string().into()),
                     },
@@ -1222,7 +1222,7 @@ mod test {
                 create_peer(
                     key.to_string(),
                     TcpStream::connect(bind_addr).await.unwrap(),
-                    PeerKind::Replica { match_index: 0, replid: repl_id.clone() },
+                    PeerState::Replica { match_index: 0, replid: repl_id.clone() },
                     cluster_sender.clone(),
                 ),
             );
@@ -1240,7 +1240,7 @@ mod test {
             create_peer(
                 (*second_shard_leader_identifier).clone(),
                 TcpStream::connect(bind_addr).await.unwrap(),
-                PeerKind::NonDataPeer {
+                PeerState::NonDataPeer {
                     replid: ReplicationId::Key(second_shard_repl_id.to_string()),
                     match_index: 0,
                 },
@@ -1256,7 +1256,7 @@ mod test {
                 create_peer(
                     key.to_string(),
                     TcpStream::connect(bind_addr_for_second_shard).await.unwrap(),
-                    PeerKind::NonDataPeer {
+                    PeerState::NonDataPeer {
                         replid: ReplicationId::Key(second_shard_repl_id.to_string()),
                         match_index: 0,
                     },
@@ -1311,7 +1311,7 @@ mod test {
         let peer = create_peer(
             "foo".to_string(),
             TcpStream::connect(bind_addr).await.unwrap(),
-            PeerKind::Replica { match_index: 0, replid: ReplicationId::Key(repl_id.to_string()) },
+            PeerState::Replica { match_index: 0, replid: ReplicationId::Key(repl_id.to_string()) },
             cluster_actor.self_handler.clone(),
         );
 

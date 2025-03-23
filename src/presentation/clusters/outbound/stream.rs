@@ -7,7 +7,7 @@ use crate::domains::cluster_actors::replication::ReplicationId;
 use crate::domains::cluster_actors::replication::ReplicationState;
 use crate::domains::peers::connected_peer_info::ConnectedPeerInfo;
 use crate::domains::peers::identifier::PeerIdentifier;
-use crate::domains::peers::peer::PeerKind;
+use crate::domains::peers::peer::PeerState;
 use crate::presentation::clusters::connection_manager::ClusterConnectionManager;
 
 use crate::presentation::clusters::listeners::create_peer;
@@ -122,7 +122,7 @@ impl OutboundStream {
         let peer = create_peer(
             (*self.connect_to).clone(),
             self.stream,
-            PeerKind::decide_peer_kind(&self.my_repl_info.replid, &connection_info),
+            PeerState::decide_peer_kind(&self.my_repl_info.replid, &connection_info),
             cluster_actor_handler,
         );
 

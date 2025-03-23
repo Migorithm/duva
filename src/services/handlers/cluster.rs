@@ -3,7 +3,7 @@ use std::sync::atomic::Ordering;
 use crate::domains::append_only_files::interfaces::TWriteAheadLog;
 use crate::domains::append_only_files::logger::ReplicatedLogs;
 use crate::domains::caches::cache_manager::CacheManager;
-use crate::domains::cluster_actors::commands::{ClusterCommand, RejectionReason};
+use crate::domains::cluster_actors::commands::ClusterCommand;
 
 use crate::domains::cluster_actors::replication::ReplicationState;
 use crate::domains::cluster_actors::{ClusterActor, FANOUT};

@@ -3,7 +3,7 @@ use crate::domains::{
     peers::{
         connected_types::ReadConnected,
         identifier::PeerIdentifier,
-        peer::{ListeningActorKillTrigger, Peer, PeerKind},
+        peer::{ListeningActorKillTrigger, Peer, PeerState},
     },
 };
 
@@ -24,7 +24,7 @@ pub(crate) type ReactorKillSwitch = tokio::sync::oneshot::Receiver<()>;
 pub(crate) fn create_peer(
     addr: String,
     stream: TcpStream,
-    kind: PeerKind,
+    kind: PeerState,
     cluster_handler: Sender<ClusterCommand>,
 ) -> Peer {
     let (r, w) = stream.into_split();

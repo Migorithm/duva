@@ -15,14 +15,14 @@ pub(crate) struct Peer {
     pub(crate) w_conn: WriteConnected,
     pub(crate) listener_kill_trigger: ListeningActorKillTrigger,
     pub(crate) last_seen: Instant,
-    pub kind: PeerKind,
+    pub kind: PeerState,
 }
 
 impl Peer {
     pub fn new(
         addr: String,
         w: OwnedWriteHalf,
-        kind: PeerKind,
+        kind: PeerState,
         listener_kill_trigger: ListeningActorKillTrigger,
     ) -> Self {
         Self {
@@ -44,25 +44,26 @@ impl Peer {
 }
 
 #[derive(Clone, Debug)]
-pub enum PeerKind {
+pub enum PeerState {
     Replica { match_index: u64, replid: ReplicationId },
     NonDataPeer { match_index: u64, replid: ReplicationId },
 }
 
-impl PeerKind {
+impl PeerState {
     pub fn decide_peer_kind(my_repl_id: &ReplicationId, peer_info: &ConnectedPeerInfo) -> Self {
         if peer_info.replid == ReplicationId::Undecided {
-            PeerKind::Replica { match_index: peer_info.hwm, replid: peer_info.replid.clone() }
+            PeerState::Replica { match_index: peer_info.hwm, replid: peer_info.replid.clone() }
         } else if my_repl_id == &peer_info.replid {
-            PeerKind::Replica { match_index: peer_info.hwm, replid: peer_info.replid.clone() }
+            PeerState::Replica { match_index: peer_info.hwm, replid: peer_info.replid.clone() }
         } else {
-            PeerKind::NonDataPeer { match_index: peer_info.hwm, replid: peer_info.replid.clone() }
+            PeerState::NonDataPeer { match_index: peer_info.hwm, replid: peer_info.replid.clone() }
         }
     }
+
     pub fn decrease_match_index(&mut self) {
         match self {
-            PeerKind::Replica { match_index, replid } => *match_index -= 1,
-            PeerKind::NonDataPeer { match_index, replid } => *match_index -= 1,
+            PeerState::Replica { match_index, replid } => *match_index -= 1,
+            PeerState::NonDataPeer { match_index, replid } => *match_index -= 1,
         }
     }
 }
