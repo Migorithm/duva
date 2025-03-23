@@ -70,9 +70,6 @@ impl ReplicationState {
     pub(crate) fn self_identifier(&self) -> PeerIdentifier {
         PeerIdentifier::new(&self.self_host, self.self_port)
     }
-    pub(crate) fn role(&self) -> &str {
-        &self.role
-    }
 
     pub(crate) fn vectorize(self) -> Vec<String> {
         vec![

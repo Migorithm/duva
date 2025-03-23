@@ -64,7 +64,7 @@ impl ClusterListener {
                     PeerInput::Acks(items) => {
                         let _ = self
                             .cluster_handler
-                            .send(ClusterCommand::LeaderReceiveAcks(items))
+                            .send(ClusterCommand::ReplicationResponse(items))
                             .await;
                     },
                     PeerInput::RequestVote(request_vote) => {

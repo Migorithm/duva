@@ -1,6 +1,6 @@
 use super::commands::AddPeer;
 use super::commands::ConsensusClientResponse;
-use super::commands::ConsensusFollowerResponse;
+use super::commands::ReplicationResponse;
 use super::commands::RequestVote;
 use super::commands::RequestVoteReply;
 use super::heartbeats::heartbeat::AppendEntriesRPC;
@@ -292,7 +292,7 @@ impl ClusterActor {
             .min()
     }
 
-    pub(crate) fn apply_acks(&mut self, res: ConsensusFollowerResponse) {
+    pub(crate) fn update_match_index(&mut self, res: ReplicationResponse) {
         if let Some(mut consensus) = self.consensus_tracker.take(&res.log_idx) {
             println!("[INFO] Received acks for log index num: {}", res.log_idx);
             consensus.increase_vote();
@@ -304,22 +304,12 @@ impl ClusterActor {
     }
 
     // After send_ack: Leader updates its knowledge of follower's progress
-    async fn send_ack(&mut self, send_to: &PeerIdentifier, log_idx: u64) {
+    async fn send_ack(&mut self, send_to: &PeerIdentifier, log_idx: u64, is_granted: bool) {
         if let Some(leader) = self.members.get_mut(send_to) {
-            // TODO send the last offset instead of multiple offsets.
             let _ = leader
-                .write_io(ConsensusFollowerResponse {
-                    log_idx,
-                    term: self.replication.term,
-                    is_granted: true,
-                })
+                .write_io(ReplicationResponse::new(log_idx, is_granted, &self.replication))
                 .await;
         }
-    }
-
-    // After send_negative_ack: Leader needs to backtrack and send earlier entries
-    async fn send_negative_ack(&self, send_to: &PeerIdentifier, prev_log_index: u64) {
-        //TODO
     }
 
     pub(crate) async fn send_commit_heartbeat(&mut self, offset: u64) {
@@ -365,13 +355,13 @@ impl ClusterActor {
                 wal.truncate_after(rpc.prev_log_index).await;
             }
 
-            self.send_negative_ack(&rpc.heartbeat_from, wal.log_index).await;
+            self.send_ack(&rpc.heartbeat_from, wal.log_index, false).await;
             return Err(e);
         }
 
         let match_index = wal.write_log_entries(std::mem::take(&mut rpc.append_entries)).await?;
 
-        self.send_ack(&rpc.heartbeat_from, match_index).await;
+        self.send_ack(&rpc.heartbeat_from, match_index, true).await;
         Ok(())
     }
 
@@ -536,17 +526,27 @@ impl ClusterActor {
         }
     }
 
-    // TODO the node should step down to follower state if it’s a leader or candidate (Raft rule).
-    pub(crate) fn apply_term_then_may_stepdown(
+    pub(crate) fn maybe_update_term(
         &mut self,
         new_term: u64,
-        heartbeat_from: &PeerIdentifier,
         wal: &mut ReplicatedLogs<impl TWriteAheadLog>,
     ) {
         if new_term > self.replication.term {
             self.replication.term = new_term;
             wal.term = new_term;
         }
+    }
+
+    pub(crate) async fn maybe_reject(
+        &mut self,
+        heartbeat: &HeartBeatMessage,
+        wal: &ReplicatedLogs<impl TWriteAheadLog>,
+    ) -> bool {
+        if heartbeat.term < self.replication.term {
+            self.send_ack(&heartbeat.heartbeat_from, wal.log_index, false).await;
+            return true;
+        }
+        false
     }
 }
 
@@ -754,15 +754,20 @@ mod test {
             .unwrap();
 
         // WHEN
-        let follower_res = ConsensusFollowerResponse { log_idx: 1, term: 0, is_granted: true };
-        cluster_actor.apply_acks(follower_res.clone());
-        cluster_actor.apply_acks(follower_res.clone());
+        let follower_res = ReplicationResponse {
+            log_idx: 1,
+            term: 0,
+            is_granted: true,
+            from: PeerIdentifier("repl1".into()), //TODO Must be changed if "update_match_index" becomes idempotent operation on peer id
+        };
+        cluster_actor.update_match_index(follower_res.clone());
+        cluster_actor.update_match_index(follower_res.clone());
 
         // up to this point, tracker hold the consensus
         assert_eq!(cluster_actor.consensus_tracker.len(), 1);
 
         // ! Majority votes made
-        cluster_actor.apply_acks(follower_res.clone());
+        cluster_actor.update_match_index(follower_res.clone());
 
         // THEN
         assert_eq!(cluster_actor.consensus_tracker.len(), 0);

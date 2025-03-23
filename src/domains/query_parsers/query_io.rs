@@ -1,5 +1,5 @@
 use crate::domains::caches::cache_objects::CacheValue;
-use crate::domains::cluster_actors::commands::{ConsensusFollowerResponse, RequestVoteReply};
+use crate::domains::cluster_actors::commands::{ReplicationResponse, RequestVoteReply};
 use crate::domains::cluster_actors::heartbeats::heartbeat::{AppendEntriesRPC, ClusterHeartBeat};
 use crate::domains::{append_only_files::WriteOperation, cluster_actors::commands::RequestVote};
 
@@ -39,7 +39,7 @@ pub enum QueryIO {
     AppendEntriesRPC(AppendEntriesRPC),
     ClusterHeartBeat(ClusterHeartBeat),
     WriteOperation(WriteOperation),
-    ConsensusFollowerResponse(ConsensusFollowerResponse),
+    ConsensusFollowerResponse(ReplicationResponse),
     RequestVote(RequestVote),
     RequestVoteReply(RequestVoteReply),
 }
@@ -188,7 +188,7 @@ pub fn deserialize(buffer: BytesMut) -> Result<(QueryIO, usize)> {
         APPEND_ENTRY_RPC_PREFIX => parse_custom_type::<AppendEntriesRPC>(buffer),
         CLUSTER_HEARTBEAT_PREFIX => parse_custom_type::<ClusterHeartBeat>(buffer),
         REPLICATE_PREFIX => parse_custom_type::<WriteOperation>(buffer),
-        ACKS_PREFIX => parse_custom_type::<ConsensusFollowerResponse>(buffer),
+        ACKS_PREFIX => parse_custom_type::<ReplicationResponse>(buffer),
         REQUEST_VOTE_PREFIX => parse_custom_type::<RequestVote>(buffer),
         REQUEST_VOTE_REPLY_PREFIX => parse_custom_type::<RequestVoteReply>(buffer),
 
@@ -330,8 +330,8 @@ impl From<ClusterHeartBeat> for QueryIO {
     }
 }
 
-impl From<ConsensusFollowerResponse> for QueryIO {
-    fn from(value: ConsensusFollowerResponse) -> Self {
+impl From<ReplicationResponse> for QueryIO {
+    fn from(value: ReplicationResponse) -> Self {
         QueryIO::ConsensusFollowerResponse(value)
     }
 }
@@ -461,7 +461,12 @@ mod test {
     #[test]
     fn test_acks_to_binary_back_to_acks() {
         // GIVEN
-        let follower_res = ConsensusFollowerResponse { term: 0, is_granted: true, log_idx: 2 };
+        let follower_res = ReplicationResponse {
+            term: 0,
+            is_granted: true,
+            log_idx: 2,
+            from: PeerIdentifier("repl1".into()),
+        };
         let acks = QueryIO::ConsensusFollowerResponse(follower_res);
 
         // WHEN

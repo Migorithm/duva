@@ -1,7 +1,7 @@
 use crate::domains::{
     append_only_files::WriteOperation,
     cluster_actors::{
-        commands::{ConsensusFollowerResponse, RequestVote, RequestVoteReply},
+        commands::{ReplicationResponse, RequestVote, RequestVoteReply},
         replication::HeartBeatMessage,
     },
     query_parsers::{QueryIO, deserialize},
@@ -12,7 +12,7 @@ pub enum PeerInput {
     AppendEntriesRPC(HeartBeatMessage),
     ClusterHeartBeat(HeartBeatMessage),
     FullSync(Vec<WriteOperation>),
-    Acks(ConsensusFollowerResponse),
+    Acks(ReplicationResponse),
     RequestVote(RequestVote),
     RequestVoteReply(RequestVoteReply),
 }

@@ -26,7 +26,7 @@ pub enum ClusterCommand {
         log: WriteRequest,
         sender: tokio::sync::oneshot::Sender<ConsensusClientResponse>,
     },
-    LeaderReceiveAcks(ConsensusFollowerResponse),
+    ReplicationResponse(ReplicationResponse),
     SendCommitHeartBeat {
         log_idx: u64,
     },
