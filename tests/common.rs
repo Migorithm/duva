@@ -76,6 +76,8 @@ impl Drop for FileName {
             // remove if exists
             let _ = std::fs::remove_file("dump.rdb.wal");
         }
+
+        let _ = std::fs::remove_file("duva.tp");
     }
 }
 
