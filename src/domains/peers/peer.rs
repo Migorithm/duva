@@ -59,6 +59,12 @@ impl PeerKind {
             PeerKind::NonDataPeer { match_index: peer_info.hwm, replid: peer_info.replid.clone() }
         }
     }
+    pub fn decrease_match_index(&mut self) {
+        match self {
+            PeerKind::Replica { match_index, replid } => *match_index -= 1,
+            PeerKind::NonDataPeer { match_index, replid } => *match_index -= 1,
+        }
+    }
 }
 
 #[derive(Debug)]

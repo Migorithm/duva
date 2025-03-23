@@ -74,8 +74,8 @@ impl ClusterActor {
                 },
 
                 ClusterCommand::ReplicationResponse(repl_res) => {
-                    if let RejectionReason::ReceiverHasHigherTerm = repl_res.rej_reason {
-                        self.step_down().await;
+                    if !repl_res.is_granted() {
+                        self.handle_repl_rejection(repl_res).await;
                         continue;
                     }
                     self.update_on_hertbeat_message(&repl_res.from, repl_res.log_idx);

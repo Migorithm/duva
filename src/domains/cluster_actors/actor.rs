@@ -547,6 +547,20 @@ impl ClusterActor {
         self.replication.become_leader();
         self.heartbeat_scheduler.turn_leader_mode().await;
     }
+
+    pub(crate) async fn handle_repl_rejection(&mut self, repl_res: ReplicationResponse) {
+        match repl_res.rej_reason {
+            RejectionReason::ReceiverHasHigherTerm => self.step_down().await,
+            RejectionReason::LogInconsistency => self.decrease_match_index(&repl_res.from),
+            RejectionReason::None => return,
+        }
+    }
+
+    fn decrease_match_index(&mut self, from: &PeerIdentifier) {
+        if let Some(peer) = self.members.get_mut(from) {
+            peer.kind.decrease_match_index();
+        }
+    }
 }
 
 #[cfg(test)]

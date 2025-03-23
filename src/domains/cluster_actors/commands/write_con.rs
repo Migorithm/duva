@@ -31,4 +31,8 @@ impl ReplicationResponse {
     ) -> Self {
         Self { log_idx, term: repl_state.term, rej_reason, from: repl_state.self_identifier() }
     }
+
+    pub(crate) fn is_granted(&self) -> bool {
+        self.rej_reason == RejectionReason::None
+    }
 }
