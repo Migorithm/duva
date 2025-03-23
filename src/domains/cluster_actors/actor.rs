@@ -471,27 +471,18 @@ impl ClusterActor {
         let _ = peer.write_io(RequestVoteReply { term, vote_granted: grant_vote }).await;
     }
 
-    pub(crate) async fn tally_vote(
-        &mut self,
-        request_vote_reply: RequestVoteReply,
-        logger: &ReplicatedLogs<impl TWriteAheadLog>,
-    ) {
-        if !self.replication.may_become_leader(request_vote_reply.vote_granted) {
+    pub(crate) async fn tally_vote(&mut self, logger: &ReplicatedLogs<impl TWriteAheadLog>) {
+        if !self.replication.election_state.may_become_leader() {
             return;
         }
+        self.become_leader().await;
 
-        if self.replication.is_leader_mode {
-            self.heartbeat_scheduler.turn_leader_mode().await;
-        }
         let msg = self.replication.default_heartbeat(0, logger.log_index, logger.term);
-
         self.replicas_mut()
             .map(|(peer, _)| peer.write_io(AppendEntriesRPC(msg.clone())))
             .collect::<FuturesUnordered<_>>()
             .for_each(|_| async {})
             .await;
-
-        //TODO - how to notify other followers of this election? What's the rule?
     }
 
     pub(crate) fn reset_election_timeout(&mut self, leader_id: &PeerIdentifier) {
@@ -555,6 +546,12 @@ impl ClusterActor {
     pub(crate) async fn step_down(&mut self) {
         self.replication.become_follower(None);
         self.heartbeat_scheduler.turn_follower_mode().await;
+    }
+
+    async fn become_leader(&mut self) {
+        eprintln!("\x1b[32m[INFO] Election succeeded\x1b[0m");
+        self.replication.become_leader();
+        self.heartbeat_scheduler.turn_leader_mode().await;
     }
 }
 

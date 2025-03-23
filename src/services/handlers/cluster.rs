@@ -105,7 +105,10 @@ impl ClusterActor {
                     self.vote_election(request_vote, repl_logs.log_index).await;
                 },
                 ClusterCommand::ApplyElectionVote(request_vote_reply) => {
-                    self.tally_vote(request_vote_reply, &repl_logs).await;
+                    if !request_vote_reply.vote_granted {
+                        continue;
+                    }
+                    self.tally_vote(&repl_logs).await;
                 },
             }
         }

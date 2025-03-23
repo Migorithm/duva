@@ -34,21 +34,15 @@ impl ElectionState {
         }
     }
 
-    pub(crate) fn should_become_leader(&mut self, granted: bool) -> Option<()> {
-        if let ElectionState::Candidate { voting } = self {
-            // Try to take ownership of the current voting state
-            if let Some(current_voting) = voting.take() {
-                // Process the vote with granted (true/false)
-                match current_voting.voting_maybe_finished(granted) {
-                    Ok(become_leader) => return Some(become_leader),
-                    Err(unfinished_voting) => {
-                        // Put the updated voting state back
-                        *voting = Some(unfinished_voting);
-                    },
-                }
-            }
-        }
-        return None;
+    pub(crate) fn may_become_leader(&mut self) -> bool {
+        let ElectionState::Candidate { voting } = self else { return false };
+        // Try to take ownership of the current voting state
+        let Some(current_voting) = voting.take() else {
+            return false;
+        };
+        // Process the vote with granted (true/false)
+        *voting = current_voting.voting_if_unfinished();
+        voting.is_none()
     }
 }
 
@@ -60,22 +54,16 @@ pub(crate) struct ElectionVoting {
 }
 
 impl ElectionVoting {
-    pub(crate) fn increase_vote(&mut self) {
-        self.cnt += 1;
-    }
-
     fn get_required_votes(&self) -> u8 {
         ((self.replica_count as f64 + 1.0) / 2.0).ceil() as u8
     }
-    pub(crate) fn voting_maybe_finished(mut self, granted: bool) -> Result<(), Self> {
-        if granted {
-            self.increase_vote();
-        }
+    pub(crate) fn voting_if_unfinished(mut self) -> Option<Self> {
+        self.cnt += 1;
 
         let required_count = self.get_required_votes();
         if self.cnt >= required_count {
-            return Ok(());
+            return None;
         }
-        Err(self)
+        Some(self)
     }
 }
