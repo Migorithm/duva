@@ -46,7 +46,7 @@ impl Peer {
 #[derive(Clone, Debug)]
 pub enum PeerKind {
     Replica { match_index: u64, replid: ReplicationId },
-    NonDataPeer { replid: ReplicationId },
+    NonDataPeer { match_index: u64, replid: ReplicationId },
 }
 
 impl PeerKind {
@@ -56,7 +56,7 @@ impl PeerKind {
         } else if my_repl_id == &peer_info.replid {
             PeerKind::Replica { match_index: peer_info.hwm, replid: peer_info.replid.clone() }
         } else {
-            PeerKind::NonDataPeer { replid: peer_info.replid.clone() }
+            PeerKind::NonDataPeer { match_index: peer_info.hwm, replid: peer_info.replid.clone() }
         }
     }
 }

@@ -101,7 +101,7 @@ impl ReplicationState {
         prev_log_term: u64,
     ) -> HeartBeatMessage {
         HeartBeatMessage {
-            heartbeat_from: self.self_identifier(),
+            from: self.self_identifier(),
             term: self.term,
             hwm: self.hwm.load(Ordering::Relaxed),
             replid: self.replid.clone(),

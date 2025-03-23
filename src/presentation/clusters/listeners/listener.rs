@@ -46,12 +46,12 @@ impl ClusterListener {
             for cmd in cmds {
                 match cmd {
                     PeerInput::AppendEntriesRPC(hb) => {
-                        println!("[INFO] from {}, hc:{}", hb.heartbeat_from, hb.hop_count);
+                        println!("[INFO] from {}, hc:{}", hb.from, hb.hop_count);
                         let _ =
                             self.cluster_handler.send(ClusterCommand::AppendEntriesRPC(hb)).await;
                     },
                     PeerInput::ClusterHeartBeat(hb) => {
-                        println!("[INFO] from {}, hc:{}", hb.heartbeat_from, hb.hop_count);
+                        println!("[INFO] from {}, hc:{}", hb.from, hb.hop_count);
                         let _ =
                             self.cluster_handler.send(ClusterCommand::ClusterHeartBeat(hb)).await;
                     },

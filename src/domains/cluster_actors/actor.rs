@@ -196,12 +196,12 @@ impl ClusterActor {
         self.remove_banned_peers().await;
     }
 
-    pub(crate) fn update_on_hertbeat_message(&mut self, heartheat: &HeartBeatMessage) {
-        if let Some(peer) = self.members.get_mut(&heartheat.heartbeat_from) {
+    pub(crate) fn update_on_hertbeat_message(&mut self, from: &PeerIdentifier, log_index: u64) {
+        if let Some(peer) = self.members.get_mut(from) {
             peer.last_seen = Instant::now();
 
-            if let PeerKind::Replica { match_index: hwm, .. } = &mut peer.kind {
-                *hwm = heartheat.hwm;
+            if let PeerKind::Replica { match_index, .. } = &mut peer.kind {
+                *match_index = log_index;
             }
         }
     }
@@ -292,7 +292,7 @@ impl ClusterActor {
             .min()
     }
 
-    pub(crate) fn update_match_index(&mut self, res: ReplicationResponse) {
+    pub(crate) fn track_replication_progress(&mut self, res: ReplicationResponse) {
         if let Some(mut consensus) = self.consensus_tracker.take(&res.log_idx) {
             println!("[INFO] Received acks for log index num: {}", res.log_idx);
             consensus.increase_vote();
@@ -355,13 +355,13 @@ impl ClusterActor {
                 wal.truncate_after(rpc.prev_log_index).await;
             }
 
-            self.send_ack(&rpc.heartbeat_from, wal.log_index, false).await;
+            self.send_ack(&rpc.from, wal.log_index, false).await;
             return Err(e);
         }
 
         let match_index = wal.write_log_entries(std::mem::take(&mut rpc.append_entries)).await?;
 
-        self.send_ack(&rpc.heartbeat_from, match_index, true).await;
+        self.send_ack(&rpc.from, match_index, true).await;
         Ok(())
     }
 
@@ -428,10 +428,10 @@ impl ClusterActor {
             .values()
             .into_iter()
             .map(|peer| match &peer.kind {
-                PeerKind::Replica { match_index: watermark, replid } => {
+                PeerKind::Replica { match_index, replid } => {
                     format!("{} {} 0", peer.addr, replid)
                 },
-                PeerKind::NonDataPeer { replid } => {
+                PeerKind::NonDataPeer { replid, match_index } => {
                     format!("{} {} 0", peer.addr, replid)
                 },
             })
@@ -543,7 +543,7 @@ impl ClusterActor {
         wal: &ReplicatedLogs<impl TWriteAheadLog>,
     ) -> bool {
         if heartbeat.term < self.replication.term {
-            self.send_ack(&heartbeat.heartbeat_from, wal.log_index, false).await;
+            self.send_ack(&heartbeat.from, wal.log_index, false).await;
             return true;
         }
         false
@@ -593,7 +593,7 @@ mod test {
             prev_log_term: 0,
             append_entries: op_logs,
             ban_list: vec![],
-            heartbeat_from: PeerIdentifier::new("localhost", 8080),
+            from: PeerIdentifier::new("localhost", 8080),
             replid: ReplicationId::Key("localhost".to_string().into()),
             hop_count: 0,
             cluster_nodes: vec![],
@@ -760,14 +760,14 @@ mod test {
             is_granted: true,
             from: PeerIdentifier("repl1".into()), //TODO Must be changed if "update_match_index" becomes idempotent operation on peer id
         };
-        cluster_actor.update_match_index(follower_res.clone());
-        cluster_actor.update_match_index(follower_res.clone());
+        cluster_actor.track_replication_progress(follower_res.clone());
+        cluster_actor.track_replication_progress(follower_res.clone());
 
         // up to this point, tracker hold the consensus
         assert_eq!(cluster_actor.consensus_tracker.len(), 1);
 
         // ! Majority votes made
-        cluster_actor.update_match_index(follower_res.clone());
+        cluster_actor.track_replication_progress(follower_res.clone());
 
         // THEN
         assert_eq!(cluster_actor.consensus_tracker.len(), 0);
@@ -1232,6 +1232,7 @@ mod test {
                 TcpStream::connect(bind_addr).await.unwrap(),
                 PeerKind::NonDataPeer {
                     replid: ReplicationId::Key(second_shard_repl_id.to_string()),
+                    match_index: 0,
                 },
                 cluster_sender.clone(),
             ),
@@ -1247,6 +1248,7 @@ mod test {
                     TcpStream::connect(bind_addr_for_second_shard).await.unwrap(),
                     PeerKind::NonDataPeer {
                         replid: ReplicationId::Key(second_shard_repl_id.to_string()),
+                        match_index: 0,
                     },
                     cluster_sender.clone(),
                 ),

@@ -487,7 +487,7 @@ mod test {
             BannedPeer { p_id: PeerIdentifier("banned2".into()), ban_time: 3556 },
         ];
         let heartbeat = HeartBeatMessage {
-            heartbeat_from: me.clone(),
+            from: me.clone(),
             term: 1,
             prev_log_index: 0,
             prev_log_term: 1,

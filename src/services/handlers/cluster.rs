@@ -45,11 +45,11 @@ impl ClusterActor {
                 },
 
                 ClusterCommand::ClusterHeartBeat(mut heartbeat) => {
-                    if self.replication.in_ban_list(&heartbeat.heartbeat_from) {
+                    if self.replication.in_ban_list(&heartbeat.from) {
                         continue;
                     }
                     self.gossip(heartbeat.hop_count, &repl_logs).await;
-                    self.update_on_hertbeat_message(&heartbeat);
+                    self.update_on_hertbeat_message(&heartbeat.from, heartbeat.hwm);
                     self.apply_ban_list(std::mem::take(&mut heartbeat.ban_list)).await;
                 },
                 ClusterCommand::ForgetPeer(peer_addr, sender) => {
@@ -69,7 +69,7 @@ impl ClusterActor {
                     if self.maybe_reject(&heartbeat, &repl_logs).await {
                         continue;
                     };
-                    self.reset_election_timeout(&heartbeat.heartbeat_from);
+                    self.reset_election_timeout(&heartbeat.from);
                     self.maybe_update_term(heartbeat.term, &mut repl_logs);
                     self.replicate(&mut repl_logs, heartbeat, &cache_manager).await;
                 },
@@ -77,9 +77,11 @@ impl ClusterActor {
                 //TODO
                 ClusterCommand::ReplicationResponse(repl_res) => {
                     if !repl_res.is_granted {
-                        // TODO step down case!
+                        //TODO stepdown
+                        continue;
                     }
-                    self.update_match_index(repl_res);
+                    self.update_on_hertbeat_message(&repl_res.from, repl_res.log_idx);
+                    self.track_replication_progress(repl_res);
                 },
                 ClusterCommand::SendCommitHeartBeat { log_idx: offset } => {
                     self.send_commit_heartbeat(offset).await;
