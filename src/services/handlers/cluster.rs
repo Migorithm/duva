@@ -60,8 +60,7 @@ impl ClusterActor {
                     }
                 },
                 ClusterCommand::LeaderReqConsensus { log, sender } => {
-                    // Skip consensus for no replicas
-                    let _ = self.req_consensus(&mut repl_logs, log, sender).await;
+                    self.req_consensus(&mut repl_logs, log, sender).await;
                 },
 
                 // Follower receives heartbeat from leader

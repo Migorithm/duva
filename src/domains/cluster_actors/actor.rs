@@ -233,13 +233,13 @@ impl ClusterActor {
         logger: &mut ReplicatedLogs<impl TWriteAheadLog>,
         log: WriteRequest,
         callback: tokio::sync::oneshot::Sender<ConsensusClientResponse>,
-    ) -> anyhow::Result<()> {
+    ) {
         let (prev_log_index, prev_term) = (logger.log_index, logger.term);
         let append_entries = match self.try_create_append_entries(logger, &log).await {
             Ok(entries) => entries,
             Err(err) => {
                 let _ = callback.send(err);
-                return Ok(());
+                return;
             },
         };
 
@@ -249,8 +249,6 @@ impl ClusterActor {
             .collect::<FuturesUnordered<_>>()
             .for_each(|_| async {})
             .await;
-
-        Ok(())
     }
 
     pub(crate) async fn install_leader_state(
@@ -696,8 +694,7 @@ mod test {
                 WriteRequest::Set { key: "foo".into(), value: "bar".into() },
                 tx,
             )
-            .await
-            .unwrap();
+            .await;
 
         // THEN
         assert_eq!(cluster_actor.consensus_tracker.len(), 0);
@@ -727,8 +724,7 @@ mod test {
                 WriteRequest::Set { key: "foo".into(), value: "bar".into() },
                 tx,
             )
-            .await
-            .unwrap();
+            .await;
 
         // THEN
         assert_eq!(cluster_actor.consensus_tracker.len(), 1);
@@ -755,8 +751,7 @@ mod test {
                 WriteRequest::Set { key: "foo".into(), value: "bar".into() },
                 client_request_sender,
             )
-            .await
-            .unwrap();
+            .await;
 
         // WHEN
         let follower_res = ReplicationResponse {
