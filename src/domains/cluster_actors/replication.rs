@@ -64,7 +64,7 @@ impl ReplicationState {
         let self_id = self.self_identifier();
 
         //TODO last 0 denotes slots - subject to work
-        format!("{} myself,{} {} 0", self_id, self.role(), self.replid)
+        format!("{} myself,{} 0", self_id, self.replid)
     }
 
     pub(crate) fn self_identifier(&self) -> PeerIdentifier {

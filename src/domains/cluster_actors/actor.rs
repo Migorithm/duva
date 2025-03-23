@@ -427,10 +427,10 @@ impl ClusterActor {
             .into_iter()
             .map(|peer| match &peer.kind {
                 PeerKind::Replica { watermark, replid } => {
-                    format!("{} follower {}", peer.addr, replid)
+                    format!("{} {} 0", peer.addr, replid)
                 },
                 PeerKind::NonDataPeer { replid } => {
-                    format!("{} follower {}", peer.addr, replid)
+                    format!("{} {} 0", peer.addr, replid)
                 },
             })
             .chain(std::iter::once(self.replication.self_info()))
@@ -1171,7 +1171,6 @@ mod test {
          */
     //TODO Fix the following
     #[tokio::test]
-    #[ignore]
     async fn test_cluster_nodes() {
         use tokio::net::TcpListener;
         // GIVEN
@@ -1183,7 +1182,8 @@ mod test {
         let bind_addr = listener.local_addr().unwrap();
 
         let mut cluster_actor = cluster_actor_create_helper();
-        let self_identifier = ReplicationId::Key(bind_addr.to_string().into());
+
+        let repl_id = cluster_actor.replication.replid.clone();
 
         // followers
         for port in [6379, 6380] {
@@ -1193,7 +1193,7 @@ mod test {
                 create_peer(
                     key.to_string(),
                     TcpStream::connect(bind_addr).await.unwrap(),
-                    PeerKind::Replica { watermark: 0, replid: self_identifier.clone() },
+                    PeerKind::Replica { watermark: 0, replid: repl_id.clone() },
                     cluster_sender.clone(),
                 ),
             );
@@ -1203,6 +1203,7 @@ mod test {
         let bind_addr_for_second_shard = listener_for_second_shard.local_addr().unwrap();
         let second_shard_leader_identifier: PeerIdentifier =
             listener_for_second_shard.local_addr().unwrap().to_string().into();
+        let second_shard_repl_id = uuid::Uuid::now_v7();
 
         // leader for different shard?
         cluster_actor.members.insert(
@@ -1211,7 +1212,7 @@ mod test {
                 (*second_shard_leader_identifier).clone(),
                 TcpStream::connect(bind_addr).await.unwrap(),
                 PeerKind::NonDataPeer {
-                    replid: ReplicationId::Key(uuid::Uuid::now_v7().to_string()),
+                    replid: ReplicationId::Key(second_shard_repl_id.to_string()),
                 },
                 cluster_sender.clone(),
             ),
@@ -1226,7 +1227,7 @@ mod test {
                     key.to_string(),
                     TcpStream::connect(bind_addr_for_second_shard).await.unwrap(),
                     PeerKind::NonDataPeer {
-                        replid: ReplicationId::Key((*second_shard_leader_identifier).clone()),
+                        replid: ReplicationId::Key(second_shard_repl_id.to_string()),
                     },
                     cluster_sender.clone(),
                 ),
@@ -1234,17 +1235,17 @@ mod test {
         }
 
         // WHEN
-        let res = dbg!(cluster_actor.cluster_nodes());
+        let res = cluster_actor.cluster_nodes();
 
         assert_eq!(res.len(), 6);
 
         for value in [
-            format!("127.0.0.1:6379 follower {}", self_identifier),
-            format!("127.0.0.1:6380 follower {}", self_identifier),
-            format!("{} leader - 0", second_shard_leader_identifier),
-            format!("127.0.0.1:2655 follower {}", second_shard_leader_identifier),
-            format!("127.0.0.1:2653 follower {}", second_shard_leader_identifier),
-            format!("127.0.0.1:8080 myself,leader ? 0"),
+            format!("127.0.0.1:6379 {} 0", repl_id),
+            format!("127.0.0.1:6380 {} 0", repl_id),
+            format!("{} {} 0", second_shard_leader_identifier, second_shard_repl_id),
+            format!("127.0.0.1:2655 {} 0", second_shard_repl_id),
+            format!("127.0.0.1:2653 {} 0", second_shard_repl_id),
+            format!("127.0.0.1:8080 myself,{} 0", repl_id),
         ] {
             assert!(res.contains(&value));
         }
