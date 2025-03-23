@@ -351,7 +351,7 @@ impl ClusterActor {
         }
 
         if let Err(e) =
-            self.check_previous_entry_consistency(wal, rpc.prev_log_index, rpc.prev_log_term).await
+            self.ensure_prev_consistency(wal, rpc.prev_log_index, rpc.prev_log_term).await
         {
             self.send_ack(&rpc.from, wal.log_index, e).await;
             return Err(anyhow::anyhow!("Fail fail to append"));
@@ -363,7 +363,7 @@ impl ClusterActor {
         Ok(())
     }
 
-    async fn check_previous_entry_consistency(
+    async fn ensure_prev_consistency(
         &self,
         wal: &mut ReplicatedLogs<impl TWriteAheadLog>,
         prev_log_index: u64,
