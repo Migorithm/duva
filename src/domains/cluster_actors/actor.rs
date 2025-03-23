@@ -1,7 +1,8 @@
 use super::commands::AddPeer;
+use super::commands::ConsensusClientResponse;
+use super::commands::ConsensusFollowerResponse;
 use super::commands::RequestVote;
 use super::commands::RequestVoteReply;
-use super::commands::WriteConsensusResponse;
 use super::heartbeats::heartbeat::AppendEntriesRPC;
 use super::heartbeats::heartbeat::ClusterHeartBeat;
 use super::heartbeats::scheduler::HeartBeatScheduler;
@@ -62,14 +63,14 @@ impl ClusterActor {
 
     pub(crate) fn replicas(&self) -> impl Iterator<Item = (&PeerIdentifier, &Peer, u64)> {
         self.members.iter().filter_map(|(id, peer)| match &peer.kind {
-            PeerKind::Replica { watermark: hwm, replid } => Some((id, peer, *hwm)),
+            PeerKind::Replica { match_index: hwm, replid } => Some((id, peer, *hwm)),
             _ => None,
         })
     }
 
     pub(crate) fn replicas_mut(&mut self) -> impl Iterator<Item = (&mut Peer, u64)> {
         self.members.values_mut().into_iter().filter_map(|peer| match peer.kind.clone() {
-            PeerKind::Replica { watermark: hwm, replid } => Some((peer, hwm)),
+            PeerKind::Replica { match_index: hwm, replid } => Some((peer, hwm)),
             _ => None,
         })
     }
@@ -199,7 +200,7 @@ impl ClusterActor {
         if let Some(peer) = self.members.get_mut(&heartheat.heartbeat_from) {
             peer.last_seen = Instant::now();
 
-            if let PeerKind::Replica { watermark: hwm, .. } = &mut peer.kind {
+            if let PeerKind::Replica { match_index: hwm, .. } = &mut peer.kind {
                 *hwm = heartheat.hwm;
             }
         }
@@ -208,20 +209,20 @@ impl ClusterActor {
         &mut self,
         logger: &mut ReplicatedLogs<impl TWriteAheadLog>,
         log: &WriteRequest,
-    ) -> Result<Vec<WriteOperation>, WriteConsensusResponse> {
+    ) -> Result<Vec<WriteOperation>, ConsensusClientResponse> {
         if !self.replication.is_leader_mode {
-            return Err(WriteConsensusResponse::Err("Write given to follower".into()));
+            return Err(ConsensusClientResponse::Err("Write given to follower".into()));
         }
 
         let Ok(append_entries) =
             logger.create_log_entries(&log, self.take_low_watermark(), self.replication.term).await
         else {
-            return Err(WriteConsensusResponse::Err("Write operation failed".into()));
+            return Err(ConsensusClientResponse::Err("Write operation failed".into()));
         };
 
         // Skip consensus for no replicas
         if self.replicas().count() == 0 {
-            return Err(WriteConsensusResponse::LogIndex(Some(logger.log_index)));
+            return Err(ConsensusClientResponse::LogIndex(Some(logger.log_index)));
         }
 
         Ok(append_entries)
@@ -231,7 +232,7 @@ impl ClusterActor {
         &mut self,
         logger: &mut ReplicatedLogs<impl TWriteAheadLog>,
         log: WriteRequest,
-        callback: tokio::sync::oneshot::Sender<WriteConsensusResponse>,
+        callback: tokio::sync::oneshot::Sender<ConsensusClientResponse>,
     ) -> anyhow::Result<()> {
         let (prev_log_index, prev_term) = (logger.log_index, logger.term);
         let append_entries = match self.try_create_append_entries(logger, &log).await {
@@ -285,30 +286,34 @@ impl ClusterActor {
             .values()
             .into_iter()
             .filter_map(|peer| match &peer.kind {
-                PeerKind::Replica { watermark, replid } => Some(*watermark),
+                PeerKind::Replica { match_index: watermark, replid } => Some(*watermark),
                 _ => None,
             })
             .min()
     }
 
-    pub(crate) fn apply_acks(&mut self, offsets: Vec<u64>) {
-        offsets.into_iter().for_each(|offset| {
-            if let Some(mut consensus) = self.consensus_tracker.take(&offset) {
-                println!("[INFO] Received acks for log index num: {}", offset);
-                consensus.increase_vote();
+    pub(crate) fn apply_acks(&mut self, res: ConsensusFollowerResponse) {
+        if let Some(mut consensus) = self.consensus_tracker.take(&res.log_idx) {
+            println!("[INFO] Received acks for log index num: {}", res.log_idx);
+            consensus.increase_vote();
 
-                if let Some(consensus) = consensus.maybe_not_finished(offset) {
-                    self.consensus_tracker.insert(offset, consensus);
-                }
+            if let Some(consensus) = consensus.maybe_not_finished(res.log_idx) {
+                self.consensus_tracker.insert(res.log_idx, consensus);
             }
-        });
+        }
     }
 
     // After send_ack: Leader updates its knowledge of follower's progress
-    async fn send_ack(&mut self, send_to: &PeerIdentifier, log_index: u64) {
+    async fn send_ack(&mut self, send_to: &PeerIdentifier, log_idx: u64) {
         if let Some(leader) = self.members.get_mut(send_to) {
             // TODO send the last offset instead of multiple offsets.
-            let _ = leader.write_io(QueryIO::AppendEntriesResponse(vec![log_index])).await;
+            let _ = leader
+                .write_io(ConsensusFollowerResponse {
+                    log_idx,
+                    term: self.replication.term,
+                    is_granted: true,
+                })
+                .await;
         }
     }
 
@@ -433,7 +438,7 @@ impl ClusterActor {
             .values()
             .into_iter()
             .map(|peer| match &peer.kind {
-                PeerKind::Replica { watermark, replid } => {
+                PeerKind::Replica { match_index: watermark, replid } => {
                     format!("{} {} 0", peer.addr, replid)
                 },
                 PeerKind::NonDataPeer { replid } => {
@@ -619,7 +624,7 @@ mod test {
                     key.to_string(),
                     TcpStream::connect(bind_addr).await.unwrap(),
                     PeerKind::Replica {
-                        watermark: follower_hwm,
+                        match_index: follower_hwm,
                         replid: ReplicationId::Key("localhost".to_string().into()),
                     },
                     cluster_sender.clone(),
@@ -749,14 +754,15 @@ mod test {
             .unwrap();
 
         // WHEN
-        cluster_actor.apply_acks(vec![1]);
-        cluster_actor.apply_acks(vec![1]);
+        let follower_res = ConsensusFollowerResponse { log_idx: 1, term: 0, is_granted: true };
+        cluster_actor.apply_acks(follower_res.clone());
+        cluster_actor.apply_acks(follower_res.clone());
 
         // up to this point, tracker hold the consensus
         assert_eq!(cluster_actor.consensus_tracker.len(), 1);
 
         // ! Majority votes made
-        cluster_actor.apply_acks(vec![1]);
+        cluster_actor.apply_acks(follower_res.clone());
 
         // THEN
         assert_eq!(cluster_actor.consensus_tracker.len(), 0);
@@ -1201,7 +1207,7 @@ mod test {
                 create_peer(
                     key.to_string(),
                     TcpStream::connect(bind_addr).await.unwrap(),
-                    PeerKind::Replica { watermark: 0, replid: repl_id.clone() },
+                    PeerKind::Replica { match_index: 0, replid: repl_id.clone() },
                     cluster_sender.clone(),
                 ),
             );
@@ -1288,7 +1294,7 @@ mod test {
         let peer = create_peer(
             "foo".to_string(),
             TcpStream::connect(bind_addr).await.unwrap(),
-            PeerKind::Replica { watermark: 0, replid: ReplicationId::Key(repl_id.to_string()) },
+            PeerKind::Replica { match_index: 0, replid: ReplicationId::Key(repl_id.to_string()) },
             cluster_actor.self_handler.clone(),
         );
 
