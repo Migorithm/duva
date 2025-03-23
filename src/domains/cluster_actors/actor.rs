@@ -521,7 +521,7 @@ impl ClusterActor {
         }
     }
 
-    pub(crate) async fn is_term_mismatched(
+    pub(crate) async fn check_term_outdated(
         &mut self,
         heartbeat: &HeartBeatMessage,
         wal: &ReplicatedLogs<impl TWriteAheadLog>,

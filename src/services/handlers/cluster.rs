@@ -65,7 +65,7 @@ impl ClusterActor {
 
                 // Follower receives heartbeat from leader
                 ClusterCommand::AppendEntriesRPC(heartbeat) => {
-                    if self.is_term_mismatched(&heartbeat, &repl_logs).await {
+                    if self.check_term_outdated(&heartbeat, &repl_logs).await {
                         continue;
                     };
                     self.reset_election_timeout(&heartbeat.from);
