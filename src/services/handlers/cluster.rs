@@ -74,9 +74,9 @@ impl ClusterActor {
                     self.replicate(&mut repl_logs, heartbeat, &cache_manager).await;
                 },
 
-                //TODO
                 ClusterCommand::ReplicationResponse(repl_res) => {
                     if !repl_res.is_granted {
+                        self.step_down().await;
                         continue;
                     }
                     self.update_on_hertbeat_message(&repl_res.from, repl_res.log_idx);

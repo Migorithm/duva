@@ -476,7 +476,7 @@ impl ClusterActor {
         request_vote_reply: RequestVoteReply,
         logger: &ReplicatedLogs<impl TWriteAheadLog>,
     ) {
-        if !self.replication.should_become_leader(request_vote_reply.vote_granted) {
+        if !self.replication.may_become_leader(request_vote_reply.vote_granted) {
             return;
         }
 
@@ -547,6 +547,14 @@ impl ClusterActor {
             return true;
         }
         false
+    }
+
+    /// Used when:
+    /// 1) on follower's consensus rejection when term is not matched
+    /// 2) step down operation is given from user
+    pub(crate) async fn step_down(&mut self) {
+        self.replication.become_follower(None);
+        self.heartbeat_scheduler.turn_follower_mode().await;
     }
 }
 
