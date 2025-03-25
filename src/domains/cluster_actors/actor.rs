@@ -16,7 +16,8 @@ use crate::domains::append_only_files::WriteOperation;
 use crate::domains::append_only_files::WriteRequest;
 use crate::domains::append_only_files::interfaces::TWriteAheadLog;
 use crate::domains::append_only_files::logger::ReplicatedLogs;
-use crate::domains::cluster_actors::election_state::ElectionState;
+
+use crate::domains::cluster_actors::consensus::ElectionState;
 use crate::domains::{caches::cache_manager::CacheManager, query_parsers::QueryIO};
 use std::sync::atomic::Ordering;
 
@@ -433,7 +434,7 @@ impl ClusterActor {
             return;
         };
 
-        self.replication.become_candidate(self.replicas().count());
+        self.replication.become_candidate(self.replicas().count() as u8);
         let request_vote = RequestVote::new(&self.replication, last_log_index, last_log_term);
 
         println!("[INFO] Running for election term {}", self.replication.term);

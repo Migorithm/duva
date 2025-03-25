@@ -1,4 +1,4 @@
-use super::election_state::ElectionState;
+use super::consensus::ElectionState;
 pub(crate) use super::heartbeats::heartbeat::BannedPeer;
 pub(crate) use super::heartbeats::heartbeat::HeartBeatMessage;
 use std::fmt::Display;
@@ -126,9 +126,8 @@ impl ReplicationState {
         }
     }
 
-    pub(crate) fn become_candidate(&mut self, replica_count: usize) {
+    pub(crate) fn become_candidate(&mut self, replica_count: u8) {
         self.term += 1;
-
         self.election_state.become_candidate(replica_count);
     }
     pub(crate) fn may_become_follower(
