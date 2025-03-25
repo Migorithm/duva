@@ -17,8 +17,8 @@ impl ElectionState {
     pub(crate) fn become_leader(&mut self) {
         *self = ElectionState::Leader;
     }
-    pub(crate) fn become_candidate(&mut self, replica_count: usize) {
-        *self = ElectionState::Candidate { voting: Some(ElectionVoting { cnt: 1, replica_count }) };
+    pub(crate) fn become_candidate(&mut self, replica_count: u8) {
+        *self = ElectionState::Candidate { voting: Some(ElectionVoting { cnt: 0, replica_count }) };
     }
 
     pub(crate) fn is_votable(&self, candidiate_id: &PeerIdentifier) -> bool {
@@ -49,13 +49,12 @@ impl ElectionState {
 #[derive(Debug, Clone)]
 pub(crate) struct ElectionVoting {
     pub(crate) cnt: u8,
-
-    pub(crate) replica_count: usize,
+    pub(crate) replica_count: u8,
 }
 
 impl ElectionVoting {
     fn get_required_votes(&self) -> u8 {
-        ((self.replica_count as f64 + 1.0) / 2.0).ceil() as u8
+        (self.replica_count + 1).div_ceil(2)
     }
     pub(crate) fn voting_if_unfinished(mut self) -> Option<Self> {
         self.cnt += 1;
@@ -66,4 +65,22 @@ impl ElectionVoting {
         }
         Some(self)
     }
+}
+
+#[test]
+fn test_get_required_votes() {
+    let ev = ElectionVoting { cnt: 0, replica_count: 0 };
+    assert_eq!(ev.get_required_votes(), 1);
+
+    let ev = ElectionVoting { cnt: 0, replica_count: 1 };
+    assert_eq!(ev.get_required_votes(), 1);
+
+    let ev = ElectionVoting { cnt: 0, replica_count: 2 };
+    assert_eq!(ev.get_required_votes(), 2);
+
+    let ev = ElectionVoting { cnt: 0, replica_count: 3 };
+    assert_eq!(ev.get_required_votes(), 2);
+
+    let ev = ElectionVoting { cnt: 0, replica_count: 4 };
+    assert_eq!(ev.get_required_votes(), 3);
 }
