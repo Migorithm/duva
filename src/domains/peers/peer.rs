@@ -1,8 +1,8 @@
 use super::connected_peer_info::ConnectedPeerInfo;
+use crate::domains::IoError;
 use crate::domains::cluster_actors::replication::ReplicationId;
 use crate::domains::peers::connected_types::WriteConnected;
 use crate::domains::query_parsers::QueryIO;
-use crate::domains::IoError;
 use crate::services::interface::TWrite;
 
 use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
