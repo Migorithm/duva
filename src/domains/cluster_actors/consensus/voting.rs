@@ -5,13 +5,13 @@ use tokio::sync::oneshot::Sender;
 pub(crate) type ReplicationVote = Sender<ConsensusClientResponse>;
 
 #[derive(Debug)]
-pub struct ConsensusVoting<T> {
-    pub(crate) callback: T,
+pub struct ConsensusVoting {
+    pub(crate) callback: ReplicationVote,
     pub(crate) cnt: u8,
     pub(crate) voters: Vec<PeerIdentifier>,
 }
-impl<T> ConsensusVoting<T> {
-    pub(crate) fn increase_vote(&mut self, voter: PeerIdentifier) {
+impl ConsensusVoting {
+    fn increase_vote(&mut self, voter: PeerIdentifier) {
         self.cnt += 1;
         self.voters.push(voter);
     }
@@ -19,12 +19,12 @@ impl<T> ConsensusVoting<T> {
     fn get_required_votes(&self) -> u8 {
         ((self.voters.capacity() as f64 + 1.0) / 2.0).ceil() as u8
     }
-    pub(crate) fn votable(&self, voter: &PeerIdentifier) -> bool {
+    fn votable(&self, voter: &PeerIdentifier) -> bool {
         !self.voters.iter().any(|v| v == voter)
     }
 }
 
-impl ConsensusVoting<ReplicationVote> {
+impl ConsensusVoting {
     pub(crate) fn vote_and_maybe_stay_pending(
         mut self,
         log_idx: u64,

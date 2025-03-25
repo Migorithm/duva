@@ -7,9 +7,7 @@ use tokio::sync::oneshot::Sender;
 use voting::ConsensusVoting;
 
 #[derive(Default, Debug)]
-pub struct LogConsensusTracker(
-    pub(crate) HashMap<u64, ConsensusVoting<Sender<ConsensusClientResponse>>>,
-);
+pub struct LogConsensusTracker(pub(crate) HashMap<u64, ConsensusVoting>);
 impl LogConsensusTracker {
     pub(crate) fn add(
         &mut self,
@@ -35,4 +33,4 @@ impl LogConsensusTracker {
         }
     }
 }
-make_smart_pointer!(LogConsensusTracker, HashMap<u64, ConsensusVoting<Sender<ConsensusClientResponse>>>);
+make_smart_pointer!(LogConsensusTracker, HashMap<u64, ConsensusVoting>);
