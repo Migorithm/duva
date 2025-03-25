@@ -17,7 +17,7 @@ impl LogConsensusTracker {
         value: Sender<ConsensusClientResponse>,
         replica_count: usize,
     ) {
-        self.0.insert(
+        self.insert(
             key,
             ConsensusVoting {
                 callback: value,
