@@ -14,6 +14,7 @@ pub struct ServerEnv {
     pub hf: u128,
     pub ttl: u128,
     pub use_wal: bool,
+    pub topology_path: TopologyPath,
 }
 
 impl Default for ServerEnv {
@@ -25,6 +26,7 @@ impl Default for ServerEnv {
             hf: 100,
             ttl: 1500,
             use_wal: false,
+            topology_path: TopologyPath(None),
         }
     }
 }
@@ -45,6 +47,10 @@ impl ServerEnv {
     }
     pub fn with_ttl(mut self, ttl: u128) -> Self {
         self.ttl = ttl;
+        self
+    }
+    pub fn with_topology_path(mut self, topology_path: impl Into<String>) -> Self {
+        self.topology_path = TopologyPath(Some(topology_path.into()));
         self
     }
 }
@@ -76,8 +82,17 @@ impl Drop for FileName {
             // remove if exists
             let _ = std::fs::remove_file("dump.rdb.wal");
         }
+    }
+}
 
-        let _ = std::fs::remove_file("duva.tp");
+pub struct TopologyPath(pub Option<String>);
+impl Drop for TopologyPath {
+    fn drop(&mut self) {
+        if let Some(topology_path) = self.0.as_ref() {
+            let _ = std::fs::remove_file(topology_path);
+        } else {
+            let _ = std::fs::remove_file("duva.tp");
+        }
     }
 }
 
