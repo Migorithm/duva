@@ -136,10 +136,8 @@ impl InboundStream {
         ccm: ClusterCommunicationManager,
         connected_peer_info: &ConnectedPeerInfo,
     ) -> anyhow::Result<()> {
-        if let PeerState::Replica { match_index: watermark, replid } =
-            self.decide_peer_kind(connected_peer_info)
-        {
-            if replid == ReplicationId::Undecided {
+        if let PeerState::Replica { .. } = self.decide_peer_kind(connected_peer_info) {
+            if let ReplicationId::Undecided = connected_peer_info.replid {
                 let logs = ccm.fetch_logs_for_sync().await?;
                 self.write_io(logs).await?;
             }
