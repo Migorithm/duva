@@ -11,20 +11,6 @@ pub struct ConsensusVoting {
     pub(crate) voters: Vec<PeerIdentifier>,
 }
 impl ConsensusVoting {
-    fn increase_vote(&mut self, voter: PeerIdentifier) {
-        self.cnt += 1;
-        self.voters.push(voter);
-    }
-
-    fn get_required_votes(&self) -> u8 {
-        ((self.voters.capacity() as f64 + 1.0) / 2.0).ceil() as u8
-    }
-    fn votable(&self, voter: &PeerIdentifier) -> bool {
-        !self.voters.iter().any(|v| v == voter)
-    }
-}
-
-impl ConsensusVoting {
     pub(crate) fn vote_and_maybe_stay_pending(
         mut self,
         log_idx: u64,
@@ -41,5 +27,17 @@ impl ConsensusVoting {
 
         let _ = self.callback.send(ConsensusClientResponse::LogIndex(Some(log_idx)));
         None
+    }
+
+    fn increase_vote(&mut self, voter: PeerIdentifier) {
+        self.cnt += 1;
+        self.voters.push(voter);
+    }
+
+    fn get_required_votes(&self) -> u8 {
+        ((self.voters.capacity() as f64 + 1.0) / 2.0).ceil() as u8
+    }
+    fn votable(&self, voter: &PeerIdentifier) -> bool {
+        !self.voters.iter().any(|v| v == voter)
     }
 }
