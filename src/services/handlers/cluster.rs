@@ -21,7 +21,7 @@ impl ClusterActor {
             match command {
                 ClusterCommand::AddPeer(add_peer_cmd) => {
                     self.add_peer(add_peer_cmd).await;
-                    self.snapshot_topology("duva.tp").await;
+                    self.snapshot_topology().await;
                 },
                 ClusterCommand::GetPeers(callback) => {
                     let _ = callback.send(self.members.keys().cloned().collect::<Vec<_>>().into());
