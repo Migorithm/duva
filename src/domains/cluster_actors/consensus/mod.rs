@@ -28,12 +28,8 @@ impl LogConsensusTracker {
     }
 
     pub(crate) fn track_progress(&mut self, log_idx: u64, from: PeerIdentifier) {
-        if let Some(mut consensus) = self.remove(&log_idx) {
-            if consensus.votable(&from) {
-                println!("[INFO] Received acks for log index num: {}", log_idx);
-                consensus.increase_vote(from);
-            }
-            if let Some(consensus) = consensus.send_result_or_pending(log_idx) {
+        if let Some(consensus) = self.remove(&log_idx) {
+            if let Some(consensus) = consensus.vote_and_maybe_stay_pending(log_idx, from) {
                 self.insert(log_idx, consensus);
             }
         }

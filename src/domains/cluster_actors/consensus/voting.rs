@@ -25,9 +25,20 @@ impl<T> ConsensusVoting<T> {
 }
 
 impl ConsensusVoting<ReplicationVote> {
-    pub(crate) fn send_result_or_pending(self, log_index: u64) -> Option<Self> {
+    pub(crate) fn vote_and_maybe_stay_pending(
+        mut self,
+        log_idx: u64,
+        from: PeerIdentifier,
+    ) -> Option<Self> {
+        if self.votable(&from) {
+            println!("[INFO] Received acks for log index num: {}", log_idx);
+            self.increase_vote(from);
+        } else {
+            return Some(self);
+        }
+
         if self.cnt >= self.get_required_votes() {
-            let _ = self.callback.send(ConsensusClientResponse::LogIndex(Some(log_index)));
+            let _ = self.callback.send(ConsensusClientResponse::LogIndex(Some(log_idx)));
             None
         } else {
             Some(self)
