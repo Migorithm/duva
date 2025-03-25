@@ -21,7 +21,7 @@ impl ClusterActor {
             match command {
                 ClusterCommand::AddPeer(add_peer_cmd) => {
                     self.add_peer(add_peer_cmd).await;
-                    self.snapshot_topology("duva.tp").await;
+                    self.snapshot_topology().await;
                 },
                 ClusterCommand::GetPeers(callback) => {
                     let _ = callback.send(self.members.keys().cloned().collect::<Vec<_>>().into());
@@ -116,13 +116,14 @@ impl ClusterActor {
 
     pub(crate) fn run(
         node_timeout: u128,
+        topology_path: String,
         heartbeat_interval: u64,
         init_replication: ReplicationState,
         cache_manager: CacheManager,
-
         wal: impl TWriteAheadLog,
     ) -> Sender<ClusterCommand> {
-        let cluster_actor = ClusterActor::new(node_timeout, init_replication, heartbeat_interval);
+        let cluster_actor =
+            ClusterActor::new(node_timeout, init_replication, heartbeat_interval, topology_path);
         let actor_handler = cluster_actor.self_handler.clone();
         tokio::spawn(cluster_actor.handle(wal, cache_manager));
         actor_handler

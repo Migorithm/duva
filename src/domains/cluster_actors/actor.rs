@@ -29,6 +29,7 @@ pub struct ClusterActor {
     pub(crate) receiver: tokio::sync::mpsc::Receiver<ClusterCommand>,
     pub(crate) self_handler: tokio::sync::mpsc::Sender<ClusterCommand>,
     pub(crate) heartbeat_scheduler: HeartBeatScheduler,
+    pub(crate) topology_path: String,
 }
 
 impl ClusterActor {
@@ -36,6 +37,7 @@ impl ClusterActor {
         node_timeout: u128,
         init_repl_info: ReplicationState,
         heartbeat_interval_in_mills: u64,
+        topology_path: String,
     ) -> Self {
         let (self_handler, receiver) = tokio::sync::mpsc::channel(100);
         let heartbeat_scheduler = HeartBeatScheduler::run(
@@ -52,6 +54,7 @@ impl ClusterActor {
             self_handler,
             members: BTreeMap::new(),
             consensus_tracker: LogConsensusTracker::default(),
+            topology_path,
         }
     }
 
@@ -97,11 +100,11 @@ impl ClusterActor {
         }
     }
 
-    pub(crate) async fn snapshot_topology(&self, path: &str) {
+    pub(crate) async fn snapshot_topology(&self) {
         // TODO: consider single writer access to file
         let topology = self.cluster_nodes().join("\r\n");
 
-        let _ = tokio::fs::write(path, topology).await;
+        let _ = tokio::fs::write(&self.topology_path, topology).await;
     }
 
     pub(crate) async fn add_peer(&mut self, add_peer_cmd: AddPeer) {
@@ -615,7 +618,7 @@ mod test {
 
     fn cluster_actor_create_helper() -> ClusterActor {
         let replication = ReplicationState::new(None, "localhost", 8080);
-        ClusterActor::new(100, replication, 100)
+        ClusterActor::new(100, replication, 100, "duva.tp".into())
     }
 
     async fn cluster_member_create_helper(
@@ -1285,25 +1288,31 @@ mod test {
     #[tokio::test]
     async fn test_store_current_topology() {
         // GIVEN
-        let cluster_actor = cluster_actor_create_helper();
+        let mut cluster_actor = cluster_actor_create_helper();
+        let path = "test_store_current_topology.tp";
+        cluster_actor.topology_path = path.into();
+
         let repl_id = cluster_actor.replication.replid.clone();
         let self_id = cluster_actor.replication.self_identifier();
 
         // WHEN
-        cluster_actor.snapshot_topology("test_store_current_topology.tp").await;
+        cluster_actor.snapshot_topology().await;
 
         // THEN
-        let topology = tokio::fs::read_to_string("test_store_current_topology.tp").await.unwrap();
+        let topology = tokio::fs::read_to_string(path).await.unwrap();
         let expected_topology = format!("{} myself,{} 0", self_id, repl_id);
         assert_eq!(topology, expected_topology);
 
-        tokio::fs::remove_file("test_store_current_topology.tp").await.unwrap();
+        tokio::fs::remove_file(path).await.unwrap();
     }
 
     #[tokio::test]
     async fn test_snapshot_topology_after_add_peer() {
         // GIVEN
         let mut cluster_actor = cluster_actor_create_helper();
+        let path = "test_snapshot_topology_after_add_peer.tp";
+        cluster_actor.topology_path = path.into();
+
         let repl_id = cluster_actor.replication.replid.clone();
 
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -1318,11 +1327,10 @@ mod test {
         // WHEN
         let add_peer_cmd = AddPeer { peer_id: PeerIdentifier(String::from("foo")), peer };
         cluster_actor.add_peer(add_peer_cmd).await;
-        cluster_actor.snapshot_topology("test_snapshot_topology_after_add_peer.tp").await;
+        cluster_actor.snapshot_topology().await;
 
         // THEN
-        let topology =
-            tokio::fs::read_to_string("test_snapshot_topology_after_add_peer.tp").await.unwrap();
+        let topology = tokio::fs::read_to_string(path).await.unwrap();
         let mut cluster_nodes =
             topology.split("\r\n").map(|x| x.to_string()).collect::<Vec<String>>();
 
@@ -1336,6 +1344,6 @@ mod test {
             assert!(cluster_nodes.contains(&value));
         }
 
-        tokio::fs::remove_file("test_snapshot_topology_after_add_peer.tp").await.unwrap();
+        tokio::fs::remove_file(path).await.unwrap();
     }
 }
