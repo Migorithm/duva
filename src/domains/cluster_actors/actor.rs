@@ -29,6 +29,7 @@ pub struct ClusterActor {
     pub(crate) receiver: tokio::sync::mpsc::Receiver<ClusterCommand>,
     pub(crate) self_handler: tokio::sync::mpsc::Sender<ClusterCommand>,
     pub(crate) heartbeat_scheduler: HeartBeatScheduler,
+    pub(crate) topology_path: String,
 }
 
 impl ClusterActor {
@@ -36,6 +37,7 @@ impl ClusterActor {
         node_timeout: u128,
         init_repl_info: ReplicationState,
         heartbeat_interval_in_mills: u64,
+        topology_path: String,
     ) -> Self {
         let (self_handler, receiver) = tokio::sync::mpsc::channel(100);
         let heartbeat_scheduler = HeartBeatScheduler::run(
@@ -52,6 +54,7 @@ impl ClusterActor {
             self_handler,
             members: BTreeMap::new(),
             consensus_tracker: LogConsensusTracker::default(),
+            topology_path,
         }
     }
 
@@ -615,7 +618,7 @@ mod test {
 
     fn cluster_actor_create_helper() -> ClusterActor {
         let replication = ReplicationState::new(None, "localhost", 8080);
-        ClusterActor::new(100, replication, 100)
+        ClusterActor::new(100, replication, 100, "duva.tp".into())
     }
 
     async fn cluster_member_create_helper(

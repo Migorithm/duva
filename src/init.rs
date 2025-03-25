@@ -9,6 +9,7 @@ pub struct Environment {
     pub hf_mills: u64,
     pub ttl_mills: u128,
     pub append_only: bool,
+    pub topology_path: String,
 }
 
 impl Environment {
@@ -24,7 +25,8 @@ impl Environment {
                 dbfilename = "dump.rdb".to_string(),
                 hf = 1000,
                 ttl = 60000,
-                append_only = false
+                append_only = false,
+                topology_path = "duva.tp".to_string()
             }
         );
         let replicaof = replicaof.map(|host_port| {
@@ -35,6 +37,16 @@ impl Environment {
                 .collect::<(_, _)>()
         });
 
-        Self { replicaof, dir, dbfilename, port, host, hf_mills: hf, ttl_mills: ttl, append_only }
+        Self {
+            replicaof,
+            dir,
+            dbfilename,
+            port,
+            host,
+            hf_mills: hf,
+            ttl_mills: ttl,
+            append_only,
+            topology_path,
+        }
     }
 }
