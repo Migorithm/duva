@@ -5,34 +5,39 @@ use tokio::sync::oneshot::Sender;
 pub(crate) type ReplicationVote = Sender<ConsensusClientResponse>;
 
 #[derive(Debug)]
-pub struct ConsensusVoting<T> {
-    pub(crate) callback: T,
-    pub(crate) pos_vt: u8,
-    pub(crate) neg_vt: u8,
-    pub(crate) replica_count: usize,
+pub struct ConsensusVoting {
+    pub(crate) callback: ReplicationVote,
+    pub(crate) cnt: u8,
     pub(crate) voters: Vec<PeerIdentifier>,
 }
-impl<T> ConsensusVoting<T> {
-    pub(crate) fn increase_vote(&mut self, voter: PeerIdentifier) {
-        if self.voters.iter().any(|v| v == &voter) {
-            return;
+impl ConsensusVoting {
+    pub(crate) fn vote_and_maybe_stay_pending(
+        mut self,
+        log_idx: u64,
+        from: PeerIdentifier,
+    ) -> Option<Self> {
+        if self.votable(&from) {
+            println!("[INFO] Received acks for log index num: {}", log_idx);
+            self.increase_vote(from);
         }
-        self.pos_vt += 1;
+
+        if self.cnt < self.get_required_votes() {
+            return Some(self);
+        }
+
+        let _ = self.callback.send(ConsensusClientResponse::LogIndex(Some(log_idx)));
+        None
+    }
+
+    fn increase_vote(&mut self, voter: PeerIdentifier) {
+        self.cnt += 1;
         self.voters.push(voter);
     }
 
     fn get_required_votes(&self) -> u8 {
-        ((self.replica_count as f64 + 1.0) / 2.0).ceil() as u8
+        ((self.voters.capacity() as f64 + 1.0) / 2.0).ceil() as u8
     }
-}
-
-impl ConsensusVoting<ReplicationVote> {
-    pub(crate) fn maybe_not_finished(self, log_index: u64) -> Option<Self> {
-        if self.pos_vt >= self.get_required_votes() {
-            let _ = self.callback.send(ConsensusClientResponse::LogIndex(Some(log_index)));
-            None
-        } else {
-            Some(self)
-        }
+    fn votable(&self, voter: &PeerIdentifier) -> bool {
+        !self.voters.iter().any(|v| v == voter)
     }
 }

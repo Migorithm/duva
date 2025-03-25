@@ -295,14 +295,7 @@ impl ClusterActor {
     }
 
     pub(crate) fn track_replication_progress(&mut self, res: ReplicationResponse) {
-        if let Some(mut consensus) = self.consensus_tracker.take(&res.log_idx) {
-            println!("[INFO] Received acks for log index num: {}", res.log_idx);
-            consensus.increase_vote(res.from);
-
-            if let Some(consensus) = consensus.maybe_not_finished(res.log_idx) {
-                self.consensus_tracker.insert(res.log_idx, consensus);
-            }
-        }
+        self.consensus_tracker.track_progress(res.log_idx, res.from);
     }
 
     // After send_ack: Leader updates its knowledge of follower's progress
