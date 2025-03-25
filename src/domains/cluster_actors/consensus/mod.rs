@@ -21,9 +21,7 @@ impl LogConsensusTracker {
             key,
             ConsensusVoting {
                 callback: value,
-                pos_vt: 0, // no need for self vote
-                neg_vt: 0,
-                replica_count,
+                cnt: 0, // no need for self vote
                 voters: Vec::with_capacity(replica_count),
             },
         );
