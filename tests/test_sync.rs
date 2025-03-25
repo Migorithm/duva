@@ -1,6 +1,6 @@
 mod common;
 use crate::common::array;
-use common::{check_internodes_communication, spawn_server_process, ServerEnv};
+use common::{ServerEnv, check_internodes_communication, spawn_server_process};
 use duva::client_utils::ClientStreamHandler;
 
 #[tokio::test]
