@@ -35,4 +35,9 @@ impl ReplicationResponse {
     pub(crate) fn is_granted(&self) -> bool {
         self.rej_reason == RejectionReason::None
     }
+
+    #[cfg(test)]
+    pub(crate) fn set_from(self, from: &str) -> Self {
+        Self { from: PeerIdentifier(from.to_string()), ..self }
+    }
 }
