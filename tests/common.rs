@@ -193,6 +193,8 @@ pub fn run_server_process(env: &ServerEnv) -> TestProcessChild {
         &env.ttl.to_string(),
         "--use_wal",
         &env.use_wal.to_string(),
+        "--tpp",
+        &env.topology_path.0.as_ref().unwrap_or(&"duva.tp".to_string()),
     ]);
 
     if let Some(replicaof) = env.leader_bind_addr.as_ref() {

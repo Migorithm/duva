@@ -26,7 +26,7 @@ impl Environment {
                 hf = 1000,
                 ttl = 60000,
                 append_only = false,
-                topology_path = "duva.tp".to_string()
+                tpp = "duva.tp".to_string() // topology path
             }
         );
         let replicaof = replicaof.map(|host_port| {
@@ -46,7 +46,7 @@ impl Environment {
             hf_mills: hf,
             ttl_mills: ttl,
             append_only,
-            topology_path,
+            topology_path: tpp,
         }
     }
 }

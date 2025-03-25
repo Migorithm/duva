@@ -52,7 +52,7 @@ pub enum PeerState {
 impl PeerState {
     pub fn decide_peer_kind(my_repl_id: &ReplicationId, peer_info: &ConnectedPeerInfo) -> Self {
         if peer_info.replid == ReplicationId::Undecided {
-            PeerState::Replica { match_index: peer_info.hwm, replid: peer_info.replid.clone() }
+            PeerState::Replica { match_index: peer_info.hwm, replid: my_repl_id.clone() }
         } else if my_repl_id == &peer_info.replid {
             PeerState::Replica { match_index: peer_info.hwm, replid: peer_info.replid.clone() }
         } else {
