@@ -1,8 +1,8 @@
 use super::connected_peer_info::ConnectedPeerInfo;
-use crate::domains::IoError;
 use crate::domains::cluster_actors::replication::ReplicationId;
 use crate::domains::peers::connected_types::WriteConnected;
 use crate::domains::query_parsers::QueryIO;
+use crate::domains::IoError;
 use crate::services::interface::TWrite;
 
 use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
@@ -52,7 +52,7 @@ pub enum PeerState {
 impl PeerState {
     pub fn decide_peer_kind(my_repl_id: &ReplicationId, peer_info: &ConnectedPeerInfo) -> Self {
         if peer_info.replid == ReplicationId::Undecided {
-            PeerState::Replica { match_index: peer_info.hwm, replid: peer_info.replid.clone() }
+            PeerState::Replica { match_index: peer_info.hwm, replid: my_repl_id.clone() }
         } else if my_repl_id == &peer_info.replid {
             PeerState::Replica { match_index: peer_info.hwm, replid: peer_info.replid.clone() }
         } else {

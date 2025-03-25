@@ -3,7 +3,7 @@ use super::outbound::stream::OutboundStream;
 
 use crate::domains::cluster_actors::commands::ClusterCommand;
 use crate::domains::peers::identifier::PeerIdentifier;
-use crate::{InboundStream, make_smart_pointer};
+use crate::{make_smart_pointer, InboundStream};
 use tokio::sync::mpsc::Sender;
 
 pub struct ClusterConnectionManager(pub(crate) ClusterCommunicationManager);
