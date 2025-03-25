@@ -297,7 +297,7 @@ impl ClusterActor {
     pub(crate) fn track_replication_progress(&mut self, res: ReplicationResponse) {
         if let Some(mut consensus) = self.consensus_tracker.take(&res.log_idx) {
             println!("[INFO] Received acks for log index num: {}", res.log_idx);
-            consensus.increase_vote();
+            consensus.increase_vote(res.from);
 
             if let Some(consensus) = consensus.maybe_not_finished(res.log_idx) {
                 self.consensus_tracker.insert(res.log_idx, consensus);
@@ -745,7 +745,7 @@ mod test {
     }
 
     #[tokio::test]
-    async fn apply_acks_delete_consensus_voting_when_consensus_reached() {
+    async fn test_consensus_voting_deleted_when_consensus_reached() {
         // GIVEN
         let mut test_logger = ReplicatedLogs::new(InMemoryWAL::default(), 0, 0);
         let mut cluster_actor = cluster_actor_create_helper();
@@ -771,21 +771,62 @@ mod test {
             log_idx: 1,
             term: 0,
             rej_reason: RejectionReason::None,
-            from: PeerIdentifier("repl1".into()), //TODO Must be changed if "update_match_index" becomes idempotent operation on peer id
+            from: PeerIdentifier("".into()),
         };
-        cluster_actor.track_replication_progress(follower_res.clone());
-        cluster_actor.track_replication_progress(follower_res.clone());
+        cluster_actor.track_replication_progress(follower_res.clone().set_from("repl1"));
+        cluster_actor.track_replication_progress(follower_res.clone().set_from("repl2"));
 
         // up to this point, tracker hold the consensus
         assert_eq!(cluster_actor.consensus_tracker.len(), 1);
+        assert_eq!(cluster_actor.consensus_tracker.get(&1).unwrap().voters.len(), 2);
 
         // ! Majority votes made
-        cluster_actor.track_replication_progress(follower_res.clone());
+        cluster_actor.track_replication_progress(follower_res.set_from("repl3"));
 
         // THEN
         assert_eq!(cluster_actor.consensus_tracker.len(), 0);
         assert_eq!(test_logger.log_index, 1);
+
         client_wait.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_same_voter_can_vote_only_once() {
+        // GIVEN
+        let mut test_logger = ReplicatedLogs::new(InMemoryWAL::default(), 0, 0);
+        let mut cluster_actor = cluster_actor_create_helper();
+
+        let (cluster_sender, _) = tokio::sync::mpsc::channel(100);
+
+        // - add followers to create quorum
+        let cache_manager = CacheManager { inboxes: vec![] };
+        cluster_member_create_helper(&mut cluster_actor, 0..4, cluster_sender, cache_manager, 0)
+            .await;
+        let (client_request_sender, client_wait) = tokio::sync::oneshot::channel();
+
+        cluster_actor
+            .req_consensus(
+                &mut test_logger,
+                WriteRequest::Set { key: "foo".into(), value: "bar".into() },
+                client_request_sender,
+            )
+            .await;
+
+        // WHEN
+        assert_eq!(cluster_actor.consensus_tracker.len(), 1);
+        let follower_res = ReplicationResponse {
+            log_idx: 1,
+            term: 0,
+            rej_reason: RejectionReason::None,
+            from: PeerIdentifier("repl1".into()), //TODO Must be changed if "update_match_index" becomes idempotent operation on peer id
+        };
+        cluster_actor.track_replication_progress(follower_res.clone());
+        cluster_actor.track_replication_progress(follower_res.clone());
+        cluster_actor.track_replication_progress(follower_res.clone());
+
+        // THEN - no change in consensus tracker even though the same voter voted multiple times
+        assert_eq!(cluster_actor.consensus_tracker.len(), 1);
+        assert_eq!(test_logger.log_index, 1);
     }
 
     #[tokio::test]

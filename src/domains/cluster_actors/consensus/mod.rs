@@ -17,8 +17,16 @@ impl LogConsensusTracker {
         value: Sender<ConsensusClientResponse>,
         replica_count: usize,
     ) {
-        self.0
-            .insert(key, ConsensusVoting { callback: value, pos_vt: 0, neg_vt: 0, replica_count });
+        self.0.insert(
+            key,
+            ConsensusVoting {
+                callback: value,
+                pos_vt: 0, // no need for self vote
+                neg_vt: 0,
+                replica_count,
+                voters: Vec::with_capacity(replica_count),
+            },
+        );
     }
     pub(crate) fn take(
         &mut self,
