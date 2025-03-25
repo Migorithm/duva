@@ -33,15 +33,13 @@ impl ConsensusVoting {
         if self.votable(&from) {
             println!("[INFO] Received acks for log index num: {}", log_idx);
             self.increase_vote(from);
-        } else {
+        }
+
+        if self.cnt < self.get_required_votes() {
             return Some(self);
         }
 
-        if self.cnt >= self.get_required_votes() {
-            let _ = self.callback.send(ConsensusClientResponse::LogIndex(Some(log_idx)));
-            None
-        } else {
-            Some(self)
-        }
+        let _ = self.callback.send(ConsensusClientResponse::LogIndex(Some(log_idx)));
+        None
     }
 }
