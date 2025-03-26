@@ -160,6 +160,10 @@ sequenceDiagram
 ```
 
 #### RYOW consistency guarantee (follower reads)
+This ensures that clients always see their most recent writes, even when reading from followers—providing a smooth, consistent user experience without unnecessary load on the leader.
+
+This ensures that clients never read stale data after a successful write, improving both performance and consistency without requiring all reads to go to the leader. With this enhancement, Project X delivers stronger guarantees, lower latency, and improved scalability🚀.
+
 ```mermaid
 sequenceDiagram
     actor C as Client
@@ -177,9 +181,6 @@ sequenceDiagram
     L->>F: write(X,5,hwm=2)
     note over F : X:5<br>hwm:2
     F->>C: X:5
-
-    
-
 ```
 
 ### Strong consistency with Raft
