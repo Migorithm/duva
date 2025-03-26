@@ -26,12 +26,12 @@ impl ClientSessions {
         id
     }
 
-    pub fn get_response(&mut self, id: Uuid, req_id: u64) -> Option<Response> {
+    pub fn get_response(&mut self, id: Uuid, req_id: u64) -> Option<QueryIO> {
         let session = self.get(&id)?;
         let Some(res) = session.response.as_ref() else {
             return None;
         };
-        if res.request_id == req_id { Some(res.clone()) } else { None }
+        if res.request_id == req_id { Some(res.value.clone()) } else { None }
     }
     pub fn set_response(&mut self, id: Uuid, response: Response) {
         let entry =
