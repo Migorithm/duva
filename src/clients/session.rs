@@ -33,4 +33,10 @@ impl ClientSessions {
         };
         if res.request_id == req_id { Some(res.clone()) } else { None }
     }
+    pub fn set_response(&mut self, id: Uuid, response: Response) {
+        let entry =
+            self.entry(id).or_insert(Session { last_accessed: Default::default(), response: None });
+        entry.last_accessed = Utc::now();
+        entry.response = Some(response);
+    }
 }
