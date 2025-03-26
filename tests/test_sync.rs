@@ -1,7 +1,7 @@
 mod common;
 use crate::common::array;
 use common::{ServerEnv, check_internodes_communication, spawn_server_process};
-use duva::client_utils::ClientStreamHandler;
+use duva::clients::ClientStreamHandler;
 
 #[tokio::test]
 async fn test_full_sync_on_newly_added_replica() {
