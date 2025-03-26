@@ -20,7 +20,7 @@ use presentation::clients::ClientController;
 use presentation::clusters::inbound::stream::InboundStream;
 use tokio::net::TcpListener;
 
-pub mod client_utils;
+pub mod clients;
 
 // * StartUp Facade that manages invokes subsystems
 pub struct StartUpFacade {

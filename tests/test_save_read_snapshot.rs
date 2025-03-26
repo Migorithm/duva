@@ -7,7 +7,7 @@ mod common;
 use crate::common::array;
 use common::ServerEnv;
 use common::spawn_server_process;
-use duva::client_utils::ClientStreamHandler;
+use duva::clients::ClientStreamHandler;
 use duva::domains::query_parsers::query_io::QueryIO;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;

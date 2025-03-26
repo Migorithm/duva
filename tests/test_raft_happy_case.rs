@@ -1,6 +1,6 @@
 mod common;
 use common::{ServerEnv, spawn_server_process};
-use duva::client_utils::ClientStreamHandler;
+use duva::clients::ClientStreamHandler;
 
 #[tokio::test]
 async fn test_set_operation_reaches_to_all_replicas() {

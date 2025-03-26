@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use crate::common::array;
 use common::{ServerEnv, spawn_server_process};
-use duva::client_utils::ClientStreamHandler;
+use duva::clients::ClientStreamHandler;
 use tokio::time::sleep;
 
 #[tokio::test]

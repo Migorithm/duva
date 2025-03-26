@@ -1,6 +1,6 @@
 mod common;
 use common::{ServerEnv, array, spawn_server_process};
-use duva::{client_utils::ClientStreamHandler, domains::query_parsers::query_io::QueryIO};
+use duva::{clients::ClientStreamHandler, domains::query_parsers::query_io::QueryIO};
 
 #[tokio::test]
 async fn test_keys() {
