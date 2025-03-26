@@ -37,8 +37,8 @@ The following features have been implemented so far:
     - Full File Synchronization to Replica
     - Failure detection
     - Cluster node liveness check
-    - Cluster commands:
-        - Forget 
+    - RYOW consistency
+    - Follower reads
 
 
 - Protocol Support
@@ -157,6 +157,30 @@ sequenceDiagram
 
     SF ->> L: Connect (replid: leader_repl_id, hwm:5, term: 1)
     L ->> SF: Receive Snapshot (hwm: 5)
+```
+
+#### RYOW consistency guarantee (follower reads)
+This ensures that clients always see their most recent writes, even when reading from followers—providing a smooth, consistent user experience without unnecessary load on the leader.
+
+This ensures that clients never read stale data after a successful write, improving both performance and consistency without requiring all reads to go to the leader. With this enhancement, Project X delivers stronger guarantees, lower latency, and improved scalability🚀.
+
+```mermaid
+sequenceDiagram
+    actor C as Client
+    participant L as Leader
+    participant F as Follower
+
+    note over L,F : X:1<br>hwm:1
+
+    C->>L: write(X,5)
+    note over L : X:5<br>hwm:2
+    note over F : X:1<br>hwm:1
+    L->>C: hwm:2
+    C->>F: read(X,hwm=2)
+    F--)F: wait for latest hwm
+    L->>F: write(X,5,hwm=2)
+    note over F : X:5<br>hwm:2
+    F->>C: X:5
 ```
 
 ### Strong consistency with Raft
