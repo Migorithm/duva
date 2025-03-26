@@ -2,6 +2,7 @@ use crate::domains::caches::cache_objects::CacheValue;
 use crate::domains::cluster_actors::commands::{ReplicationResponse, RequestVoteReply};
 use crate::domains::cluster_actors::heartbeats::heartbeat::{AppendEntriesRPC, ClusterHeartBeat};
 use crate::domains::{append_only_files::WriteOperation, cluster_actors::commands::RequestVote};
+use crate::presentation::clients::request::{self, ClientRequest};
 
 use anyhow::{Context, Result};
 use bytes::{Bytes, BytesMut};
@@ -17,6 +18,7 @@ const REPLICATE_PREFIX: char = '#';
 const ACKS_PREFIX: char = '@';
 const REQUEST_VOTE_PREFIX: char = 'v';
 const REQUEST_VOTE_REPLY_PREFIX: char = 'r';
+const SESSION_REQUEST_PREFIX: char = '!';
 const SERDE_CONFIG: bincode::config::Configuration = bincode::config::standard();
 
 #[macro_export]
@@ -32,6 +34,7 @@ pub enum QueryIO {
     SimpleString(String),
     BulkString(String),
     Array(Vec<QueryIO>),
+    SessionRequest { request_id: u64, value: Vec<QueryIO> },
     Err(String),
 
     // custom types
@@ -88,6 +91,7 @@ impl QueryIO {
                 }
                 buffer.freeze()
             },
+            QueryIO::SessionRequest { request_id, value } => todo!(),
             QueryIO::Err(e) => Bytes::from(["-".to_string(), e.into(), "\r\n".into()].concat()),
             QueryIO::AppendEntriesRPC(heartbeat) => {
                 serialize_with_bincode(APPEND_ENTRY_RPC_PREFIX, &heartbeat)
@@ -177,6 +181,7 @@ pub fn deserialize(buffer: BytesMut) -> Result<(QueryIO, usize)> {
             Ok((QueryIO::SimpleString(bytes), len))
         },
         ARRAY_PREFIX => parse_array(buffer),
+        SESSION_REQUEST_PREFIX => parse_session_request(buffer),
         BULK_STRING_PREFIX => {
             let (bytes, len) = parse_bulk_string(buffer)?;
             Ok((QueryIO::BulkString(bytes), len))
@@ -185,6 +190,7 @@ pub fn deserialize(buffer: BytesMut) -> Result<(QueryIO, usize)> {
             let (bytes, len) = parse_file(buffer)?;
             Ok((QueryIO::File(bytes), len))
         },
+
         APPEND_ENTRY_RPC_PREFIX => parse_custom_type::<AppendEntriesRPC>(buffer),
         CLUSTER_HEARTBEAT_PREFIX => parse_custom_type::<ClusterHeartBeat>(buffer),
         REPLICATE_PREFIX => parse_custom_type::<WriteOperation>(buffer),
@@ -224,9 +230,36 @@ fn parse_array(buffer: BytesMut) -> Result<(QueryIO, usize)> {
     Ok((QueryIO::Array(elements), offset))
 }
 
-pub fn parse_custom_type<T>(
-    buffer: BytesMut,
-) -> std::result::Result<(QueryIO, usize), anyhow::Error>
+fn parse_session_request(buffer: BytesMut) -> Result<(QueryIO, usize)> {
+    let mut offset = 0;
+    // ! to advance '!'
+    offset += 1;
+
+    let (count_bytes, count_len) = read_until_crlf(&BytesMut::from(&buffer[offset..]))
+        .ok_or(anyhow::anyhow!("Invalid array length"))?;
+    offset += count_len;
+    let request_id = count_bytes.parse()?;
+
+    // ! to advance '$'
+    offset += 1;
+
+    let (count_bytes, count_len) = read_until_crlf(&BytesMut::from(&buffer[offset..]))
+        .ok_or(anyhow::anyhow!("Invalid array length"))?;
+    offset += count_len;
+
+    let array_len = count_bytes.parse()?;
+
+    let mut elements = Vec::with_capacity(array_len);
+
+    for _ in 0..array_len {
+        let (element, len) = deserialize(BytesMut::from(&buffer[offset..]))?;
+        offset += len;
+        elements.push(element);
+    }
+    Ok((QueryIO::SessionRequest { request_id, value: elements }, offset))
+}
+
+pub fn parse_custom_type<T>(buffer: BytesMut) -> Result<(QueryIO, usize)>
 where
     T: bincode::Decode<()> + Into<QueryIO>,
 {
@@ -359,7 +392,7 @@ mod test {
     use super::*;
 
     #[test]
-    fn test_parse_simple_string() {
+    fn test_deserialize_simple_string() {
         // GIVEN
         let buffer = BytesMut::from("+OK\r\n");
 
@@ -372,7 +405,7 @@ mod test {
     }
 
     #[test]
-    fn test_parse_simple_string_ping() {
+    fn test_deserialize_simple_string_ping() {
         // GIVEN
         let buffer = BytesMut::from("+PING\r\n");
 
@@ -385,7 +418,7 @@ mod test {
     }
 
     #[test]
-    fn test_parse_bulk_string() {
+    fn test_deserialize_bulk_string() {
         // GIVEN
         let buffer = BytesMut::from("$5\r\nhello\r\n");
 
@@ -398,7 +431,7 @@ mod test {
     }
 
     #[test]
-    fn test_parse_bulk_string_empty() {
+    fn test_deserialize_bulk_string_empty() {
         // GIVEN
         let buffer = BytesMut::from("$0\r\n\r\n");
 
@@ -411,7 +444,7 @@ mod test {
     }
 
     #[test]
-    fn test_parse_array() {
+    fn test_deserialize_array() {
         // GIVEN
         let buffer = BytesMut::from("*2\r\n$5\r\nhello\r\n$5\r\nworld\r\n");
 
@@ -426,6 +459,28 @@ mod test {
                 QueryIO::BulkString("hello".into()),
                 QueryIO::BulkString("world".into()),
             ])
+        );
+    }
+
+    #[test]
+    fn test_deserialize_sessions_request() {
+        // GIVEN
+        let buffer = BytesMut::from("!30\r\n$2\r\n$5\r\nhello\r\n$5\r\nworld\r\n");
+
+        // WHEN
+        let (value, len) = deserialize(buffer).unwrap();
+
+        // THEN
+        assert_eq!(len, 31);
+        assert_eq!(
+            value,
+            QueryIO::SessionRequest {
+                request_id: 30,
+                value: vec![
+                    QueryIO::BulkString("hello".into()),
+                    QueryIO::BulkString("world".into()),
+                ]
+            }
         );
     }
 
