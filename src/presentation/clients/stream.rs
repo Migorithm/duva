@@ -1,4 +1,4 @@
-use super::request::ClientRequest;
+use super::request::ClientAction;
 use crate::{
     domains::{IoError, query_parsers::QueryIO},
     make_smart_pointer,
@@ -13,7 +13,7 @@ pub struct ClientStream(pub(crate) TcpStream);
 make_smart_pointer!(ClientStream, TcpStream);
 
 impl ClientStream {
-    pub(crate) async fn extract_query(&mut self) -> Result<Vec<ClientRequest>, IoError> {
+    pub(crate) async fn extract_query(&mut self) -> Result<Vec<ClientAction>, IoError> {
         let query_ios = self.read_values().await?;
 
         query_ios
@@ -36,42 +36,42 @@ impl ClientStream {
     }
 
     /// Analyze the command and arguments to create a `ClientRequest`
-    fn parse_query(&self, cmd: String, args: Vec<String>) -> anyhow::Result<ClientRequest> {
+    fn parse_query(&self, cmd: String, args: Vec<String>) -> anyhow::Result<ClientAction> {
         match (cmd.as_str(), args.as_slice()) {
-            ("ping", []) => Ok(ClientRequest::Ping),
-            ("get", [key]) => Ok(ClientRequest::Get { key: key.to_string() }),
+            ("ping", []) => Ok(ClientAction::Ping),
+            ("get", [key]) => Ok(ClientAction::Get { key: key.to_string() }),
             ("get", [key, index]) => {
-                Ok(ClientRequest::IndexGet { key: key.to_string(), index: index.parse()? })
+                Ok(ClientAction::IndexGet { key: key.to_string(), index: index.parse()? })
             },
             ("set", [key, value]) => {
-                Ok(ClientRequest::Set { key: key.to_string(), value: value.to_string() })
+                Ok(ClientAction::Set { key: key.to_string(), value: value.to_string() })
             },
             ("set", [key, value, px, expiry]) if px.to_lowercase() == "px" => {
-                Ok(ClientRequest::SetWithExpiry {
+                Ok(ClientAction::SetWithExpiry {
                     key: key.to_string(),
                     value: value.to_string(),
                     expiry: Self::extract_expiry(expiry)?,
                 })
             },
-            ("delete", [key]) => Ok(ClientRequest::Delete { key: key.to_string() }),
-            ("echo", [value]) => Ok(ClientRequest::Echo(value.to_string())),
+            ("delete", [key]) => Ok(ClientAction::Delete { key: key.to_string() }),
+            ("echo", [value]) => Ok(ClientAction::Echo(value.to_string())),
             ("config", [key, value]) => {
-                Ok(ClientRequest::Config { key: key.to_string(), value: value.to_string() })
+                Ok(ClientAction::Config { key: key.to_string(), value: value.to_string() })
             },
 
             ("keys", [var]) if !var.is_empty() => {
                 if var == "*" {
-                    return Ok(ClientRequest::Keys { pattern: None });
+                    return Ok(ClientAction::Keys { pattern: None });
                 }
-                Ok(ClientRequest::Keys { pattern: Some(var.to_string()) })
+                Ok(ClientAction::Keys { pattern: Some(var.to_string()) })
             },
-            ("save", []) => Ok(ClientRequest::Save),
-            ("info", [_unused_value]) => Ok(ClientRequest::Info),
+            ("save", []) => Ok(ClientAction::Save),
+            ("info", [_unused_value]) => Ok(ClientAction::Info),
             ("cluster", val) if !val.is_empty() => match val[0].to_lowercase().as_str() {
-                "info" => Ok(ClientRequest::ClusterInfo),
-                "nodes" => Ok(ClientRequest::ClusterNodes),
+                "info" => Ok(ClientAction::ClusterInfo),
+                "nodes" => Ok(ClientAction::ClusterNodes),
                 "forget" => {
-                    Ok(ClientRequest::ClusterForget(val.get(1).cloned().context("Must")?.into()))
+                    Ok(ClientAction::ClusterForget(val.get(1).cloned().context("Must")?.into()))
                 },
                 _ => Err(anyhow::anyhow!("Invalid command")),
             },
