@@ -91,7 +91,12 @@ impl QueryIO {
                 }
                 buffer.freeze()
             },
-            QueryIO::SessionRequest { request_id, value } => todo!(),
+            QueryIO::SessionRequest { request_id, value } => {
+                let mut buffer = BytesMut::with_capacity(32 + 1 + value.len() * 32);
+                buffer.extend_from_slice(format!("!{}\r\n", request_id).as_bytes());
+                buffer.extend_from_slice(&QueryIO::Array(value).serialize());
+                buffer.freeze()
+            },
             QueryIO::Err(e) => Bytes::from(["-".to_string(), e.into(), "\r\n".into()].concat()),
             QueryIO::AppendEntriesRPC(heartbeat) => {
                 serialize_with_bincode(APPEND_ENTRY_RPC_PREFIX, &heartbeat)
@@ -463,9 +468,9 @@ mod test {
     }
 
     #[test]
-    fn test_deserialize_sessions_request() {
+    fn test_deserialize_session_request() {
         // GIVEN
-        let buffer = BytesMut::from("!30\r\n$2\r\n$5\r\nhello\r\n$5\r\nworld\r\n");
+        let buffer = BytesMut::from("!30\r\n*2\r\n$5\r\nhello\r\n$5\r\nworld\r\n");
 
         // WHEN
         let (value, len) = deserialize(buffer).unwrap();
@@ -482,6 +487,20 @@ mod test {
                 ]
             }
         );
+    }
+    #[test]
+    fn test_serialize_session_request() {
+        // GIVEN
+        let request = QueryIO::SessionRequest {
+            request_id: 30,
+            value: vec![QueryIO::BulkString("hello".into()), QueryIO::BulkString("world".into())],
+        };
+
+        // WHEN
+        let serialized = request.serialize();
+
+        // THEN
+        assert_eq!(serialized, Bytes::from("!30\r\n*2\r\n$5\r\nhello\r\n$5\r\nworld\r\n"));
     }
 
     #[test]
