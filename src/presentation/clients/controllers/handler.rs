@@ -7,25 +7,25 @@ use super::*;
 impl ClientController<Handler> {
     pub(crate) async fn handle(
         &self,
-        cmd: ClientRequest,
+        cmd: ClientAction,
         current_index: Option<u64>,
     ) -> anyhow::Result<QueryIO> {
         // TODO if it is persistence operation, get the key and hash, take the appropriate sender, send it;
         let response = match cmd {
-            ClientRequest::Ping => QueryIO::SimpleString("PONG".into()),
-            ClientRequest::Echo(val) => QueryIO::BulkString(val.into()),
-            ClientRequest::Set { key, value } => {
+            ClientAction::Ping => QueryIO::SimpleString("PONG".into()),
+            ClientAction::Echo(val) => QueryIO::BulkString(val.into()),
+            ClientAction::Set { key, value } => {
                 let cache_entry = CacheEntry::KeyValue(key.to_owned(), value.to_string());
                 self.cache_manager.route_set(cache_entry).await?;
                 QueryIO::SimpleString(format!("OK RINDEX {}", current_index.unwrap()).into())
             },
-            ClientRequest::SetWithExpiry { key, value, expiry } => {
+            ClientAction::SetWithExpiry { key, value, expiry } => {
                 let cache_entry =
                     CacheEntry::KeyValueExpiry(key.to_owned(), value.to_string(), expiry);
                 self.cache_manager.route_set(cache_entry).await?;
                 QueryIO::SimpleString(format!("OK RINDEX {}", current_index.unwrap()).into())
             },
-            ClientRequest::Save => {
+            ClientAction::Save => {
                 let file_path = self.config_manager.get_filepath().await?;
                 let file =
                     tokio::fs::OpenOptions::new().write(true).create(true).open(&file_path).await?;
@@ -41,12 +41,12 @@ impl ClientController<Handler> {
 
                 QueryIO::Null
             },
-            ClientRequest::Get { key } => self.cache_manager.route_get(key).await?,
-            ClientRequest::IndexGet { key, index } => {
+            ClientAction::Get { key } => self.cache_manager.route_get(key).await?,
+            ClientAction::IndexGet { key, index } => {
                 self.cache_manager.route_index_get(key, index).await?
             },
-            ClientRequest::Keys { pattern } => self.cache_manager.route_keys(pattern).await?,
-            ClientRequest::Config { key, value } => {
+            ClientAction::Keys { pattern } => self.cache_manager.route_keys(pattern).await?,
+            ClientAction::Config { key, value } => {
                 let res = self.config_manager.route_get((key, value)).await?;
 
                 match res {
@@ -58,8 +58,8 @@ impl ClientController<Handler> {
                     _ => QueryIO::Err("Invalid operation".into()),
                 }
             },
-            ClientRequest::Delete { key: _ } => panic!("Not implemented"),
-            ClientRequest::Info => QueryIO::BulkString(
+            ClientAction::Delete { key: _ } => panic!("Not implemented"),
+            ClientAction::Info => QueryIO::BulkString(
                 self.cluster_communication_manager
                     .replication_info()
                     .await?
@@ -67,13 +67,13 @@ impl ClientController<Handler> {
                     .join("\r\n")
                     .into(),
             ),
-            ClientRequest::ClusterInfo => {
+            ClientAction::ClusterInfo => {
                 self.cluster_communication_manager.cluster_info().await?.into()
             },
-            ClientRequest::ClusterNodes => {
+            ClientAction::ClusterNodes => {
                 self.cluster_communication_manager.cluster_nodes().await?.into()
             },
-            ClientRequest::ClusterForget(peer_identifier) => {
+            ClientAction::ClusterForget(peer_identifier) => {
                 match self.cluster_communication_manager.forget_peer(peer_identifier).await {
                     Ok(true) => QueryIO::SimpleString("OK".into()),
                     Ok(false) => QueryIO::Err("No such peer".into()),
@@ -87,7 +87,7 @@ impl ClientController<Handler> {
     // Manage the client requests & consensus
     pub(super) async fn maybe_consensus_then_execute(
         &self,
-        requests: Vec<ClientRequest>,
+        requests: Vec<ClientAction>,
     ) -> anyhow::Result<Vec<QueryIO>> {
         let consensus = try_join_all(requests.iter().map(|r| self.maybe_consensus(&r))).await?;
 
@@ -105,7 +105,7 @@ impl ClientController<Handler> {
 
     pub(super) async fn maybe_consensus(
         &self,
-        request: &ClientRequest,
+        request: &ClientAction,
     ) -> anyhow::Result<Option<u64>> {
         // If the request doesn't require consensus, return Ok
         let Some(log) = request.to_write_request() else {

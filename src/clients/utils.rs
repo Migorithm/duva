@@ -7,7 +7,6 @@ use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::tcp::{OwnedReadHalf, OwnedWriteHalf},
 };
-
 /// A client utility for reading and writing asynchronously over a TCP stream.
 pub struct ClientStreamHandler {
     /// The owned read-half of the TCP stream.

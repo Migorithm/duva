@@ -2,7 +2,7 @@ mod common;
 use std::{thread::sleep, time::Duration};
 
 use common::{ServerEnv, array, check_internodes_communication, spawn_server_process};
-use duva::client_utils::ClientStreamHandler;
+use duva::clients::ClientStreamHandler;
 
 #[tokio::test]
 async fn test() {

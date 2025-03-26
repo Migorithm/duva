@@ -7,7 +7,7 @@ mod common;
 
 use common::{ServerEnv, array, spawn_server_process};
 
-use duva::client_utils::ClientStreamHandler;
+use duva::clients::ClientStreamHandler;
 
 #[tokio::test]
 async fn test_replication_info() {

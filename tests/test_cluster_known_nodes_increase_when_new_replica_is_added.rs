@@ -1,6 +1,6 @@
 mod common;
 use common::{ServerEnv, array, spawn_server_process};
-use duva::client_utils::ClientStreamHandler;
+use duva::clients::ClientStreamHandler;
 
 #[tokio::test]
 async fn test_cluster_topology_change_when_new_node_added() {

@@ -8,7 +8,7 @@ use crate::domains::config_actors::config_manager::ConfigManager;
 use crate::domains::query_parsers::QueryIO;
 use crate::domains::saves::actor::SaveTarget;
 
-use crate::presentation::clients::request::ClientRequest;
+use crate::presentation::clients::request::ClientAction;
 use crate::presentation::clients::stream::ClientStream;
 use crate::presentation::clusters::communication_manager::ClusterCommunicationManager;
 use crate::services::interface::TWrite;

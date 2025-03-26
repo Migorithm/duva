@@ -2,7 +2,7 @@ use crate::domains::{append_only_files::WriteRequest, peers::identifier::PeerIde
 use chrono::{DateTime, Utc};
 
 #[derive(Clone, Debug)]
-pub enum ClientRequest {
+pub enum ClientAction {
     Ping,
     Echo(String),
     Config { key: String, value: String },
@@ -19,13 +19,13 @@ pub enum ClientRequest {
     ClusterForget(PeerIdentifier),
 }
 
-impl ClientRequest {
+impl ClientAction {
     pub fn to_write_request(&self) -> Option<WriteRequest> {
         match self {
-            ClientRequest::Set { key, value } => {
+            ClientAction::Set { key, value } => {
                 Some(WriteRequest::Set { key: key.clone(), value: value.clone() })
             },
-            ClientRequest::SetWithExpiry { key, value, expiry } => {
+            ClientAction::SetWithExpiry { key, value, expiry } => {
                 let expires_at = expiry.timestamp_millis() as u64;
 
                 Some(WriteRequest::SetWithExpiry {
@@ -37,4 +37,10 @@ impl ClientRequest {
             _ => None,
         }
     }
+}
+
+#[derive(Clone, Debug)]
+pub struct ClientRequest {
+    pub action: ClientAction,
+    pub request_id: Option<u64>,
 }

@@ -1,4 +1,4 @@
-use super::request::ClientRequest;
+use super::request::{ClientAction, ClientRequest};
 use crate::{
     domains::{IoError, query_parsers::QueryIO},
     make_smart_pointer,
@@ -19,15 +19,14 @@ impl ClientStream {
         query_ios
             .into_iter()
             .map(|query_io| match query_io {
-                QueryIO::Array(value_array) => {
-                    let mut values =
-                        value_array.into_iter().flat_map(|v| v.unpack_single_entry::<String>());
-
-                    let Some(command) = values.next() else {
-                        return Err(IoError::Custom("Unexpected command format".to_string()));
-                    };
-
-                    self.parse_query(command.to_lowercase(), values.collect())
+                QueryIO::Array(value) => {
+                    let (command, args) = Self::extract_command_args(value)?;
+                    self.parse_query(None, command.to_lowercase(), args)
+                        .map_err(|e| IoError::Custom(e.to_string()))
+                },
+                QueryIO::SessionRequest { request_id, value } => {
+                    let (command, args) = Self::extract_command_args(value)?;
+                    self.parse_query(Some(request_id), command.to_lowercase(), args)
                         .map_err(|e| IoError::Custom(e.to_string()))
                 },
                 _ => Err(IoError::Custom("Unexpected command format".to_string())),
@@ -35,49 +34,64 @@ impl ClientStream {
             .collect()
     }
 
+    fn extract_command_args(values: Vec<QueryIO>) -> Result<(String, Vec<String>), IoError> {
+        let mut values = values.into_iter().flat_map(|v| v.unpack_single_entry::<String>());
+        let command =
+            values.next().ok_or(IoError::Custom("Unexpected command format".to_string()))?;
+        Ok((command, values.collect()))
+    }
+
     /// Analyze the command and arguments to create a `ClientRequest`
-    fn parse_query(&self, cmd: String, args: Vec<String>) -> anyhow::Result<ClientRequest> {
-        match (cmd.as_str(), args.as_slice()) {
-            ("ping", []) => Ok(ClientRequest::Ping),
-            ("get", [key]) => Ok(ClientRequest::Get { key: key.to_string() }),
+    fn parse_query(
+        &self,
+        request_id: Option<u64>,
+        cmd: String,
+        args: Vec<String>,
+    ) -> anyhow::Result<ClientRequest> {
+        let action = match (cmd.as_str(), args.as_slice()) {
+            ("ping", []) => ClientAction::Ping,
+            ("get", [key]) => ClientAction::Get { key: key.to_string() },
             ("get", [key, index]) => {
-                Ok(ClientRequest::IndexGet { key: key.to_string(), index: index.parse()? })
+                ClientAction::IndexGet { key: key.to_string(), index: index.parse()? }
             },
             ("set", [key, value]) => {
-                Ok(ClientRequest::Set { key: key.to_string(), value: value.to_string() })
+                ClientAction::Set { key: key.to_string(), value: value.to_string() }
             },
             ("set", [key, value, px, expiry]) if px.to_lowercase() == "px" => {
-                Ok(ClientRequest::SetWithExpiry {
+                ClientAction::SetWithExpiry {
                     key: key.to_string(),
                     value: value.to_string(),
                     expiry: Self::extract_expiry(expiry)?,
-                })
+                }
             },
-            ("delete", [key]) => Ok(ClientRequest::Delete { key: key.to_string() }),
-            ("echo", [value]) => Ok(ClientRequest::Echo(value.to_string())),
+            ("delete", [key]) => ClientAction::Delete { key: key.to_string() },
+            ("echo", [value]) => ClientAction::Echo(value.to_string()),
             ("config", [key, value]) => {
-                Ok(ClientRequest::Config { key: key.to_string(), value: value.to_string() })
+                ClientAction::Config { key: key.to_string(), value: value.to_string() }
             },
 
             ("keys", [var]) if !var.is_empty() => {
                 if var == "*" {
-                    return Ok(ClientRequest::Keys { pattern: None });
+                    ClientAction::Keys { pattern: None }
+                } else {
+                    ClientAction::Keys { pattern: Some(var.to_string()) }
                 }
-                Ok(ClientRequest::Keys { pattern: Some(var.to_string()) })
             },
-            ("save", []) => Ok(ClientRequest::Save),
-            ("info", [_unused_value]) => Ok(ClientRequest::Info),
+            ("save", []) => ClientAction::Save,
+            ("info", [_unused_value]) => ClientAction::Info,
             ("cluster", val) if !val.is_empty() => match val[0].to_lowercase().as_str() {
-                "info" => Ok(ClientRequest::ClusterInfo),
-                "nodes" => Ok(ClientRequest::ClusterNodes),
+                "info" => ClientAction::ClusterInfo,
+                "nodes" => ClientAction::ClusterNodes,
                 "forget" => {
-                    Ok(ClientRequest::ClusterForget(val.get(1).cloned().context("Must")?.into()))
+                    ClientAction::ClusterForget(val.get(1).cloned().context("Must")?.into())
                 },
-                _ => Err(anyhow::anyhow!("Invalid command")),
+                _ => return Err(anyhow::anyhow!("Invalid command")),
             },
 
-            _ => Err(anyhow::anyhow!("Invalid command")),
-        }
+            _ => return Err(anyhow::anyhow!("Invalid command")),
+        };
+
+        Ok(ClientRequest { action, request_id })
     }
 
     fn extract_expiry(expiry: &str) -> anyhow::Result<DateTime<Utc>> {

@@ -1,6 +1,6 @@
 mod common;
 use common::{ServerEnv, array, spawn_server_process};
-use duva::client_utils::ClientStreamHandler;
+use duva::clients::ClientStreamHandler;
 
 #[tokio::test]
 async fn test_removes_node_when_heartbeat_is_not_received_for_certain_time() {

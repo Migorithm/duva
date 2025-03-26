@@ -2,7 +2,7 @@
 /// In other words the specified node is removed from the nodes table of the node receiving the command.
 mod common;
 use common::{ServerEnv, array, spawn_server_process};
-use duva::client_utils::ClientStreamHandler;
+use duva::clients::ClientStreamHandler;
 
 #[tokio::test]
 async fn test_cluster_forget_node_return_error_when_wrong_id_given() {
