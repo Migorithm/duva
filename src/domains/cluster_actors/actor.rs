@@ -535,8 +535,8 @@ impl ClusterActor {
     /// Used when:
     /// 1) on follower's consensus rejection when term is not matched
     /// 2) step down operation is given from user
-    pub(crate) async fn step_down(&mut self, leader_id: Option<PeerIdentifier>) {
-        self.replication.become_follower(leader_id);
+    pub(crate) async fn step_down(&mut self) {
+        self.replication.become_follower(None);
         self.heartbeat_scheduler.turn_follower_mode().await;
     }
 
@@ -548,7 +548,7 @@ impl ClusterActor {
 
     pub(crate) async fn handle_repl_rejection(&mut self, repl_res: ReplicationResponse) {
         match repl_res.rej_reason {
-            RejectionReason::ReceiverHasHigherTerm => self.step_down(None).await,
+            RejectionReason::ReceiverHasHigherTerm => self.step_down().await,
             RejectionReason::LogInconsistency => self.decrease_match_index(&repl_res.from),
             RejectionReason::None => return,
         }
@@ -558,6 +558,12 @@ impl ClusterActor {
         if let Some(peer) = self.members.get_mut(from) {
             peer.kind.decrease_match_index();
         }
+    }
+
+    pub(crate) async fn replicaof(&mut self, peer_addr: PeerIdentifier) {
+        self.replication.become_follower(Some(peer_addr));
+        self.set_replication_info(ReplicationId::Undecided, 0);
+        self.heartbeat_scheduler.turn_follower_mode().await;
     }
 }
 

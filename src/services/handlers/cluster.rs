@@ -5,7 +5,7 @@ use crate::domains::append_only_files::logger::ReplicatedLogs;
 use crate::domains::caches::cache_manager::CacheManager;
 use crate::domains::cluster_actors::commands::ClusterCommand;
 
-use crate::domains::cluster_actors::replication::{ReplicationId, ReplicationState};
+use crate::domains::cluster_actors::replication::ReplicationState;
 use crate::domains::cluster_actors::{ClusterActor, FANOUT};
 use tokio::sync::mpsc::Sender;
 
@@ -110,8 +110,7 @@ impl ClusterActor {
                     self.tally_vote(&repl_logs).await;
                 },
                 ClusterCommand::ReplicaOf(peer_addr) => {
-                    self.step_down(Some(peer_addr)).await;
-                    self.set_replication_info(ReplicationId::Undecided, 0);
+                    self.replicaof(peer_addr).await;
                 },
             }
         }
