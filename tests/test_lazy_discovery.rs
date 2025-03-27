@@ -41,7 +41,6 @@ async fn test_lazy_discovery_of_leader() {
             .await,
         "+OK\r\n"
     );
-    tokio::time::sleep(std::time::Duration::from_millis(2000)).await;
 
     // THEN
     let cluster_info = other_h.send_and_get(&array(vec!["CLUSTER", "INFO"])).await;

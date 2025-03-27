@@ -90,6 +90,7 @@ impl ClientController<Handler> {
                 ClusterConnectionManager(self.cluster_communication_manager.clone())
                     .discover_cluster(self.config_manager.port, peer_identifier)
                     .await?;
+
                 QueryIO::SimpleString("OK".into())
             },
         };

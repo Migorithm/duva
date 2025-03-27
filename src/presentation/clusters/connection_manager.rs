@@ -34,7 +34,6 @@ impl ClusterConnectionManager {
         connect_to: PeerIdentifier,
     ) -> anyhow::Result<()> {
         // Base case
-        println!("dsdds");
         let existing_peers = self.get_peers().await?;
         if existing_peers.contains(&connect_to) {
             return Ok(());
