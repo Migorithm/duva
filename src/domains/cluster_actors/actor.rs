@@ -308,18 +308,20 @@ impl ClusterActor {
         res: ReplicationResponse,
         sessions: &mut ClientSessions,
     ) {
-        if let Some(mut consensus) = self.consensus_tracker.remove(&res.log_idx) {
-            if consensus.votable(&res.from) {
-                println!("[INFO] Received acks for log index num: {}", res.log_idx);
-                consensus.increase_vote(res.from);
-            }
-            if consensus.cnt < consensus.get_required_votes() {
-                self.consensus_tracker.insert(res.log_idx, consensus);
-                return;
-            }
-            sessions.set_response(consensus.session_req.take());
-            let _ = consensus.callback.send(ConsensusClientResponse::LogIndex(Some(res.log_idx)));
+        let Some(mut consensus) = self.consensus_tracker.remove(&res.log_idx) else {
+            return;
+        };
+
+        if consensus.votable(&res.from) {
+            println!("[INFO] Received acks for log index num: {}", res.log_idx);
+            consensus.increase_vote(res.from);
         }
+        if consensus.cnt < consensus.get_required_votes() {
+            self.consensus_tracker.insert(res.log_idx, consensus);
+            return;
+        }
+        sessions.set_response(consensus.session_req.take());
+        let _ = consensus.callback.send(ConsensusClientResponse::LogIndex(Some(res.log_idx)));
     }
 
     // After send_ack: Leader updates its knowledge of follower's progress
