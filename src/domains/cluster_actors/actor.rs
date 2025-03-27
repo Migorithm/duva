@@ -835,12 +835,14 @@ mod test {
             .await;
         let (client_request_sender, client_wait) = tokio::sync::oneshot::channel();
 
+        let client_id = Uuid::now_v7();
+        let client_request = SessionRequest::new(3, client_id);
         cluster_actor
             .req_consensus(
                 &mut test_logger,
                 WriteRequest::Set { key: "foo".into(), value: "bar".into() },
                 client_request_sender,
-                None,
+                Some(client_request.clone()),
             )
             .await;
 
@@ -868,6 +870,7 @@ mod test {
         assert_eq!(test_logger.log_index, 1);
 
         client_wait.await.unwrap();
+        assert!(sessions.is_processed(&Some(client_request)));
     }
 
     #[tokio::test]
