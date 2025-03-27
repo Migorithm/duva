@@ -22,7 +22,7 @@ pub enum ClusterCommand {
     InstallLeaderState(Vec<WriteOperation>),
     SendClusterHeatBeat,
     ForgetPeer(PeerIdentifier, tokio::sync::oneshot::Sender<Option<()>>),
-    StepDown(PeerIdentifier),
+    ReplicaOf(PeerIdentifier),
     LeaderReqConsensus {
         log: WriteRequest,
         sender: tokio::sync::oneshot::Sender<ConsensusClientResponse>,
