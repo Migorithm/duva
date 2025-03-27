@@ -192,4 +192,8 @@ impl CacheManager {
 
         Ok(rx.await?)
     }
+
+    pub(crate) async fn drop_cache(&self) {
+        join_all(self.inboxes.iter().map(|shard| shard.send(CacheCommand::Drop))).await;
+    }
 }
