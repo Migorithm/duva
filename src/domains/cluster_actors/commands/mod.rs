@@ -1,7 +1,10 @@
 mod election;
 pub(crate) mod types;
 mod write_con;
-use super::replication::{HeartBeatMessage, ReplicationId, ReplicationState};
+use super::{
+    replication::{HeartBeatMessage, ReplicationId, ReplicationState},
+    session::SessionRequest,
+};
 use crate::domains::append_only_files::WriteOperation;
 pub(crate) use election::*;
 pub(crate) use types::*;
@@ -25,6 +28,7 @@ pub enum ClusterCommand {
     LeaderReqConsensus {
         log: WriteRequest,
         sender: tokio::sync::oneshot::Sender<ConsensusClientResponse>,
+        session_req: Option<SessionRequest>,
     },
     ReplicationResponse(ReplicationResponse),
     SendCommitHeartBeat {

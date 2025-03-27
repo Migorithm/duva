@@ -90,9 +90,9 @@ impl ClientController<Handler> {
     // Manage the client requests & consensus
     pub(super) async fn maybe_consensus_then_execute(
         &self,
-        requests: Vec<ClientRequest>,
+        mut requests: Vec<ClientRequest>,
     ) -> anyhow::Result<Vec<QueryIO>> {
-        let consensus = try_join_all(requests.iter().map(|r| self.maybe_consensus(&r))).await?;
+        let consensus = try_join_all(requests.iter_mut().map(|r| self.maybe_consensus(r))).await?;
 
         // apply write operation to the state machine if it's a write request
         let mut results = Vec::with_capacity(requests.len());
@@ -108,7 +108,7 @@ impl ClientController<Handler> {
 
     pub(super) async fn maybe_consensus(
         &self,
-        request: &ClientRequest,
+        request: &mut ClientRequest,
     ) -> anyhow::Result<Option<u64>> {
         // If the request doesn't require consensus, return Ok
         let Some(log) = request.action.to_write_request() else {
@@ -117,7 +117,11 @@ impl ClientController<Handler> {
 
         let (tx, rx) = tokio::sync::oneshot::channel();
         self.cluster_communication_manager
-            .send(ClusterCommand::LeaderReqConsensus { log, sender: tx })
+            .send(ClusterCommand::LeaderReqConsensus {
+                log,
+                sender: tx,
+                session_req: request.session_req.take(),
+            })
             .await?;
 
         match rx.await? {

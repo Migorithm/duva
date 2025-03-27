@@ -61,7 +61,7 @@ impl ClusterActor {
                         let _ = sender.send(None);
                     }
                 },
-                ClusterCommand::LeaderReqConsensus { log, sender } => {
+                ClusterCommand::LeaderReqConsensus { log, sender, session_req: request_id } => {
                     self.req_consensus(&mut repl_logs, log, sender).await;
                 },
 

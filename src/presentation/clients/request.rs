@@ -1,4 +1,7 @@
-use crate::domains::{append_only_files::WriteRequest, peers::identifier::PeerIdentifier};
+use crate::domains::{
+    append_only_files::WriteRequest, cluster_actors::session::SessionRequest,
+    peers::identifier::PeerIdentifier,
+};
 use chrono::{DateTime, Utc};
 
 #[derive(Clone, Debug)]
@@ -42,5 +45,5 @@ impl ClientAction {
 #[derive(Clone, Debug)]
 pub struct ClientRequest {
     pub action: ClientAction,
-    pub request_id: Option<u64>,
+    pub session_req: Option<SessionRequest>,
 }

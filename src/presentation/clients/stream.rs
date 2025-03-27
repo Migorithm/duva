@@ -1,6 +1,6 @@
 use super::request::{ClientAction, ClientRequest};
 use crate::{
-    domains::{IoError, query_parsers::QueryIO},
+    domains::{IoError, cluster_actors::session::SessionRequest, query_parsers::QueryIO},
     make_smart_pointer,
     services::interface::TRead,
 };
@@ -26,8 +26,12 @@ impl ClientStream {
                 },
                 QueryIO::SessionRequest { request_id, value } => {
                     let (command, args) = Self::extract_command_args(value)?;
-                    self.parse_query(Some(request_id), command.to_lowercase(), args)
-                        .map_err(|e| IoError::Custom(e.to_string()))
+                    self.parse_query(
+                        Some(SessionRequest::new(request_id, self.client_id())),
+                        command.to_lowercase(),
+                        args,
+                    )
+                    .map_err(|e| IoError::Custom(e.to_string()))
                 },
                 _ => Err(IoError::Custom("Unexpected command format".to_string())),
             })
@@ -44,7 +48,7 @@ impl ClientStream {
     /// Analyze the command and arguments to create a `ClientRequest`
     fn parse_query(
         &self,
-        request_id: Option<u64>,
+        session_req: Option<SessionRequest>,
         cmd: String,
         args: Vec<String>,
     ) -> anyhow::Result<ClientRequest> {
@@ -91,11 +95,15 @@ impl ClientStream {
             _ => return Err(anyhow::anyhow!("Invalid command")),
         };
 
-        Ok(ClientRequest { action, request_id })
+        Ok(ClientRequest { action, session_req })
     }
 
     fn extract_expiry(expiry: &str) -> anyhow::Result<DateTime<Utc>> {
         let expiry = expiry.parse::<i64>().context("Invalid expiry")?;
         Ok(Utc::now() + chrono::Duration::milliseconds(expiry))
+    }
+
+    fn client_id(&self) -> uuid::Uuid {
+        todo!()
     }
 }
