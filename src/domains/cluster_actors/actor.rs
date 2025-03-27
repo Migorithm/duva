@@ -11,6 +11,7 @@ use super::replication::HeartBeatMessage;
 use super::replication::ReplicationId;
 use super::replication::ReplicationState;
 use super::replication::time_in_secs;
+use super::session::SessionRequest;
 use super::{commands::ClusterCommand, replication::BannedPeer, *};
 use crate::domains::append_only_files::WriteOperation;
 use crate::domains::append_only_files::WriteRequest;
@@ -238,6 +239,7 @@ impl ClusterActor {
         logger: &mut ReplicatedLogs<impl TWriteAheadLog>,
         log: WriteRequest,
         callback: tokio::sync::oneshot::Sender<ConsensusClientResponse>,
+        session_req: Option<SessionRequest>,
     ) {
         let (prev_log_index, prev_term) = (logger.log_index, logger.term);
         let append_entries = match self.try_create_append_entries(logger, &log).await {
@@ -700,6 +702,7 @@ mod test {
                 &mut test_logger,
                 WriteRequest::Set { key: "foo".into(), value: "bar".into() },
                 tx,
+                None,
             )
             .await;
 
@@ -730,6 +733,7 @@ mod test {
                 &mut test_logger,
                 WriteRequest::Set { key: "foo".into(), value: "bar".into() },
                 tx,
+                None,
             )
             .await;
 
@@ -757,6 +761,7 @@ mod test {
                 &mut test_logger,
                 WriteRequest::Set { key: "foo".into(), value: "bar".into() },
                 client_request_sender,
+                None,
             )
             .await;
 
@@ -803,6 +808,7 @@ mod test {
                 &mut test_logger,
                 WriteRequest::Set { key: "foo".into(), value: "bar".into() },
                 client_request_sender,
+                None,
             )
             .await;
 

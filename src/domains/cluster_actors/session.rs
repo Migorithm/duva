@@ -32,7 +32,10 @@ impl ClientSessions {
         id
     }
 
-    pub(crate) fn is_processed(&self, client_req: SessionRequest) -> bool {
+    pub(crate) fn is_processed(&self, client_req: &Option<SessionRequest>) -> bool {
+        let Some(client_req) = client_req else {
+            return false;
+        };
         if self.get(&client_req.client_id).is_none() {
             return false;
         }

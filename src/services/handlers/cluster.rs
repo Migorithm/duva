@@ -62,15 +62,13 @@ impl ClusterActor {
                     }
                 },
                 ClusterCommand::LeaderReqConsensus { log, sender, session_req } => {
-                    if let Some(session_r) = session_req {
-                        if client_sessions.is_processed(session_r) {
-                            let _ = sender
-                                .send(ConsensusClientResponse::LogIndex(Some(repl_logs.log_index)));
-                            continue;
-                        };
-                    }
+                    if client_sessions.is_processed(&session_req) {
+                        let _ = sender
+                            .send(ConsensusClientResponse::LogIndex(Some(repl_logs.log_index)));
+                        continue;
+                    };
 
-                    self.req_consensus(&mut repl_logs, log, sender).await;
+                    self.req_consensus(&mut repl_logs, log, sender, session_req).await;
                 },
 
                 // Follower receives heartbeat from leader
