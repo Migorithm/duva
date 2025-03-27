@@ -56,7 +56,7 @@ impl ClusterCommunicationManager {
         Ok(true)
     }
 
-    pub(crate) async fn step_down(&self, peer_identifier: PeerIdentifier) {
+    pub(crate) async fn replicaof(&self, peer_identifier: PeerIdentifier) {
         let _ = self.send(ClusterCommand::StepDown(peer_identifier)).await;
         let _ = self
             .send(ClusterCommand::SetReplicationInfo { replid: ReplicationId::Undecided, hwm: 0 })

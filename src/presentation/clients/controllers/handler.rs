@@ -1,6 +1,9 @@
 use std::sync::atomic::Ordering;
 
-use crate::domains::cluster_actors::commands::ConsensusClientResponse;
+use crate::{
+    domains::cluster_actors::commands::ConsensusClientResponse,
+    presentation::clusters::connection_manager::ClusterConnectionManager,
+};
 
 use super::*;
 
@@ -82,7 +85,7 @@ impl ClientController<Handler> {
             },
             ClientAction::ReplicaOf(peer_identifier) => {
                 // TODO should check if the peer is in the cluster?
-                self.cluster_communication_manager.step_down(peer_identifier.clone()).await;
+                self.cluster_communication_manager.replicaof(peer_identifier.clone()).await;
                 ClusterConnectionManager(self.cluster_communication_manager.clone())
                     .discover_cluster(self.config_manager.port, peer_identifier)
                     .await?;
