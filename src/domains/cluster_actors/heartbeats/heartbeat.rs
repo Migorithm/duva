@@ -5,7 +5,7 @@ use crate::domains::{
 
 #[derive(Debug, Clone, PartialEq, bincode::Encode, bincode::Decode)]
 
-pub struct HeartBeatMessage {
+pub(crate) struct HeartBeatMessage {
     pub(crate) from: PeerIdentifier,
     pub(crate) term: u64,
     pub(crate) hwm: u64,

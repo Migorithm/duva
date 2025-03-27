@@ -7,6 +7,7 @@ use crate::{
 use anyhow::Context;
 use chrono::{DateTime, Utc};
 use tokio::net::TcpStream;
+use uuid::Uuid;
 
 pub struct ClientStream(pub(crate) TcpStream);
 
@@ -104,6 +105,7 @@ impl ClientStream {
     }
 
     fn client_id(&self) -> uuid::Uuid {
-        todo!()
+        //TODO client_id should be generated on connection
+        Uuid::now_v7()
     }
 }

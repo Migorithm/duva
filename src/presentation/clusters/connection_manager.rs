@@ -6,10 +6,10 @@ use crate::domains::peers::identifier::PeerIdentifier;
 use crate::{InboundStream, make_smart_pointer};
 use tokio::sync::mpsc::Sender;
 
-pub struct ClusterConnectionManager(pub(crate) ClusterCommunicationManager);
+pub(crate) struct ClusterConnectionManager(pub(crate) ClusterCommunicationManager);
 
 impl ClusterConnectionManager {
-    pub fn new(actor_handler: Sender<ClusterCommand>) -> Self {
+    pub(crate) fn new(actor_handler: Sender<ClusterCommand>) -> Self {
         Self(ClusterCommunicationManager(actor_handler))
     }
 

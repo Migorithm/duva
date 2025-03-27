@@ -13,7 +13,7 @@ pub(crate) use write_con::*;
 use crate::domains::{append_only_files::WriteRequest, peers::identifier::PeerIdentifier};
 
 #[derive(Debug)]
-pub enum ClusterCommand {
+pub(crate) enum ClusterCommand {
     AddPeer(AddPeer),
     GetPeers(tokio::sync::oneshot::Sender<Vec<PeerIdentifier>>),
     ReplicationInfo(tokio::sync::oneshot::Sender<ReplicationState>),

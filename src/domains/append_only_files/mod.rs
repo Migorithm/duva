@@ -2,5 +2,5 @@ pub mod interfaces;
 pub mod log;
 pub mod logger;
 
-pub use log::WriteOperation;
-pub use log::WriteRequest;
+pub(crate) use log::WriteOperation;
+pub(crate) use log::WriteRequest;

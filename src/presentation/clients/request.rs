@@ -5,7 +5,7 @@ use crate::domains::{
 use chrono::{DateTime, Utc};
 
 #[derive(Clone, Debug)]
-pub enum ClientAction {
+pub(crate) enum ClientAction {
     Ping,
     Echo(String),
     Config { key: String, value: String },
@@ -43,7 +43,7 @@ impl ClientAction {
 }
 
 #[derive(Clone, Debug)]
-pub struct ClientRequest {
-    pub action: ClientAction,
-    pub session_req: Option<SessionRequest>,
+pub(crate) struct ClientRequest {
+    pub(crate) action: ClientAction,
+    pub(crate) session_req: Option<SessionRequest>,
 }

@@ -3,7 +3,7 @@ use std::sync::atomic::Ordering;
 use crate::domains::append_only_files::interfaces::TWriteAheadLog;
 use crate::domains::append_only_files::logger::ReplicatedLogs;
 use crate::domains::caches::cache_manager::CacheManager;
-use crate::domains::cluster_actors::commands::ClusterCommand;
+use crate::domains::cluster_actors::commands::{ClusterCommand, ConsensusClientResponse};
 
 use crate::domains::cluster_actors::replication::ReplicationState;
 use crate::domains::cluster_actors::session::ClientSessions;
@@ -61,7 +61,15 @@ impl ClusterActor {
                         let _ = sender.send(None);
                     }
                 },
-                ClusterCommand::LeaderReqConsensus { log, sender, session_req: request_id } => {
+                ClusterCommand::LeaderReqConsensus { log, sender, session_req } => {
+                    if let Some(session_r) = session_req {
+                        if client_sessions.is_processed(session_r) {
+                            let _ = sender
+                                .send(ConsensusClientResponse::LogIndex(Some(repl_logs.log_index)));
+                            continue;
+                        };
+                    }
+
                     self.req_consensus(&mut repl_logs, log, sender).await;
                 },
 
