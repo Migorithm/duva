@@ -52,7 +52,7 @@ pub struct LogConsensusVoting {
     pub(crate) voters: Vec<PeerIdentifier>,
     callback: ReplicationVote,
     cnt: u8,
-    session_req: Option<SessionRequest>,
+    pub(crate) session_req: Option<SessionRequest>,
 }
 impl LogConsensusVoting {
     fn new(

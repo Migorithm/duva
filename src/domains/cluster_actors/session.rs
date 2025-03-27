@@ -12,7 +12,7 @@ pub(crate) struct Session {
     processed_req_id: Option<u64>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) struct SessionRequest {
     pub(crate) request_id: u64,
     pub(crate) client_id: Uuid,

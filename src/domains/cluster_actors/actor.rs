@@ -754,7 +754,7 @@ mod test {
     }
 
     #[tokio::test]
-    async fn test_leader_req_consensus_when_already_processed() {
+    async fn test_leader_req_consensus_early_return_when_already_processed_session_req_given() {
         // GIVEN
         let test_logger = ReplicatedLogs::new(InMemoryWAL::default(), 0, 0);
         let cluster_actor = cluster_actor_create_helper();
@@ -764,12 +764,11 @@ mod test {
         let mut sessions = ClientSessions::default();
         let client_id = Uuid::now_v7();
         let client_req = SessionRequest::new(1, client_id);
-        sessions.set_response(Some(client_req.clone()));
 
+        // WHEN - session request is already processed
+        sessions.set_response(Some(client_req.clone()));
         let handler = cluster_actor.self_handler.clone();
         tokio::spawn(cluster_actor.handle(InMemoryWAL::default(), cache_manager, sessions));
-
-        // WHEN
         let (tx, rx) = tokio::sync::oneshot::channel();
         handler
             .send(ClusterCommand::LeaderReqConsensus {
@@ -782,6 +781,43 @@ mod test {
 
         // THEN
         rx.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_session_request_is_saved_on_tracker() {
+        // GIVEN
+        let mut test_logger = ReplicatedLogs::new(InMemoryWAL::default(), 0, 0);
+
+        let mut cluster_actor = cluster_actor_create_helper();
+
+        // - add 5 followers
+        let (cluster_sender, _) = tokio::sync::mpsc::channel(100);
+        let cache_manager = CacheManager { inboxes: vec![] };
+
+        cluster_member_create_helper(&mut cluster_actor, 0..5, cluster_sender, cache_manager, 0)
+            .await;
+
+        let (tx, _) = tokio::sync::oneshot::channel();
+
+        // WHEN
+        let client_id = Uuid::now_v7();
+        let session_request = SessionRequest::new(1, client_id);
+        cluster_actor
+            .req_consensus(
+                &mut test_logger,
+                WriteRequest::Set { key: "foo".into(), value: "bar".into() },
+                tx,
+                Some(session_request.clone()),
+            )
+            .await;
+
+        // THEN
+        assert_eq!(cluster_actor.consensus_tracker.len(), 1);
+        assert_eq!(test_logger.log_index, 1);
+        assert_eq!(
+            cluster_actor.consensus_tracker.remove(&1).unwrap().session_req.unwrap(),
+            session_request.clone()
+        );
     }
 
     #[tokio::test]
