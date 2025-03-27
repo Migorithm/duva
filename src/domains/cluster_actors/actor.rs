@@ -7,15 +7,15 @@ use super::commands::RequestVoteReply;
 use super::heartbeats::heartbeat::AppendEntriesRPC;
 use super::heartbeats::heartbeat::ClusterHeartBeat;
 use super::heartbeats::scheduler::HeartBeatScheduler;
-use super::replication::time_in_secs;
 use super::replication::HeartBeatMessage;
 use super::replication::ReplicationId;
 use super::replication::ReplicationState;
+use super::replication::time_in_secs;
 use super::{commands::ClusterCommand, replication::BannedPeer, *};
-use crate::domains::append_only_files::interfaces::TWriteAheadLog;
-use crate::domains::append_only_files::logger::ReplicatedLogs;
 use crate::domains::append_only_files::WriteOperation;
 use crate::domains::append_only_files::WriteRequest;
+use crate::domains::append_only_files::interfaces::TWriteAheadLog;
+use crate::domains::append_only_files::logger::ReplicatedLogs;
 
 use crate::domains::cluster_actors::consensus::ElectionState;
 use crate::domains::{caches::cache_manager::CacheManager, query_parsers::QueryIO};
