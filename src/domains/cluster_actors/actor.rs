@@ -7,15 +7,15 @@ use super::commands::RequestVoteReply;
 use super::heartbeats::heartbeat::AppendEntriesRPC;
 use super::heartbeats::heartbeat::ClusterHeartBeat;
 use super::heartbeats::scheduler::HeartBeatScheduler;
+use super::replication::time_in_secs;
 use super::replication::HeartBeatMessage;
 use super::replication::ReplicationId;
 use super::replication::ReplicationState;
-use super::replication::time_in_secs;
 use super::{commands::ClusterCommand, replication::BannedPeer, *};
-use crate::domains::append_only_files::WriteOperation;
-use crate::domains::append_only_files::WriteRequest;
 use crate::domains::append_only_files::interfaces::TWriteAheadLog;
 use crate::domains::append_only_files::logger::ReplicatedLogs;
+use crate::domains::append_only_files::WriteOperation;
+use crate::domains::append_only_files::WriteRequest;
 
 use crate::domains::cluster_actors::consensus::ElectionState;
 use crate::domains::{caches::cache_manager::CacheManager, query_parsers::QueryIO};
@@ -535,8 +535,8 @@ impl ClusterActor {
     /// Used when:
     /// 1) on follower's consensus rejection when term is not matched
     /// 2) step down operation is given from user
-    pub(crate) async fn step_down(&mut self) {
-        self.replication.become_follower(None);
+    pub(crate) async fn step_down(&mut self, leader_id: Option<PeerIdentifier>) {
+        self.replication.become_follower(leader_id);
         self.heartbeat_scheduler.turn_follower_mode().await;
     }
 
@@ -548,7 +548,7 @@ impl ClusterActor {
 
     pub(crate) async fn handle_repl_rejection(&mut self, repl_res: ReplicationResponse) {
         match repl_res.rej_reason {
-            RejectionReason::ReceiverHasHigherTerm => self.step_down().await,
+            RejectionReason::ReceiverHasHigherTerm => self.step_down(None).await,
             RejectionReason::LogInconsistency => self.decrease_match_index(&repl_res.from),
             RejectionReason::None => return,
         }

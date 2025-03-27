@@ -109,6 +109,9 @@ impl ClusterActor {
                     }
                     self.tally_vote(&repl_logs).await;
                 },
+                ClusterCommand::StepDown(peer_addr) => {
+                    self.step_down(Some(peer_addr)).await;
+                },
             }
         }
         Ok(self)

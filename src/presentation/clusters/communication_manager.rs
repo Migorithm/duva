@@ -7,6 +7,7 @@ use crate::{
     make_smart_pointer,
 };
 
+use crate::domains::cluster_actors::replication::ReplicationId;
 use tokio::sync::mpsc::Sender;
 
 #[derive(Clone)]
@@ -53,6 +54,13 @@ impl ClusterCommunicationManager {
         self.send(ClusterCommand::ForgetPeer(peer_identifier, tx)).await?;
         let Some(_) = rx.await? else { return Ok(false) };
         Ok(true)
+    }
+
+    pub(crate) async fn step_down(&self, peer_identifier: PeerIdentifier) {
+        let _ = self.send(ClusterCommand::StepDown(peer_identifier)).await;
+        let _ = self
+            .send(ClusterCommand::SetReplicationInfo { replid: ReplicationId::Undecided, hwm: 0 })
+            .await;
     }
 
     pub(crate) async fn cluster_nodes(&self) -> anyhow::Result<Vec<String>> {
