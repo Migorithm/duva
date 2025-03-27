@@ -3,7 +3,7 @@ use crate::{from_to, make_smart_pointer};
 #[derive(
     Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Hash, Default, bincode::Encode, bincode::Decode,
 )]
-pub struct PeerIdentifier(pub String);
+pub(crate) struct PeerIdentifier(pub String);
 impl PeerIdentifier {
     pub(crate) fn new(host: &str, port: u16) -> Self {
         Self(format!("{}:{}", host, port))

@@ -10,7 +10,7 @@ use std::sync::atomic::Ordering;
 use crate::domains::peers::identifier::PeerIdentifier;
 
 #[derive(Debug, Clone)]
-pub struct ReplicationState {
+pub(crate) struct ReplicationState {
     pub(crate) replid: ReplicationId, // The replication ID of the master example: 8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb
     pub(crate) hwm: Arc<AtomicU64>,   // high water mark (commit idx)
     role: String,
@@ -166,7 +166,7 @@ pub(crate) fn time_in_secs() -> anyhow::Result<u64> {
 #[derive(
     Debug, Clone, PartialEq, Default, Eq, PartialOrd, Ord, bincode::Encode, bincode::Decode,
 )]
-pub enum ReplicationId {
+pub(crate) enum ReplicationId {
     #[default]
     Undecided,
     Key(String),

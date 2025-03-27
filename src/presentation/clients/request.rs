@@ -1,8 +1,11 @@
-use crate::domains::{append_only_files::WriteRequest, peers::identifier::PeerIdentifier};
+use crate::domains::{
+    append_only_files::WriteRequest, cluster_actors::session::SessionRequest,
+    peers::identifier::PeerIdentifier,
+};
 use chrono::{DateTime, Utc};
 
 #[derive(Clone, Debug)]
-pub enum ClientAction {
+pub(crate) enum ClientAction {
     Ping,
     Echo(String),
     Config { key: String, value: String },
@@ -40,7 +43,7 @@ impl ClientAction {
 }
 
 #[derive(Clone, Debug)]
-pub struct ClientRequest {
-    pub action: ClientAction,
-    pub request_id: Option<u64>,
+pub(crate) struct ClientRequest {
+    pub(crate) action: ClientAction,
+    pub(crate) session_req: Option<SessionRequest>,
 }

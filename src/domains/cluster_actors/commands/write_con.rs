@@ -3,13 +3,13 @@ use crate::domains::{
 };
 
 #[derive(Debug)]
-pub enum ConsensusClientResponse {
+pub(crate) enum ConsensusClientResponse {
     LogIndex(Option<u64>),
     Err(String),
 }
 
 #[derive(Debug, Clone, PartialEq, bincode::Decode, bincode::Encode)]
-pub struct ReplicationResponse {
+pub(crate) struct ReplicationResponse {
     pub(crate) log_idx: u64,
     pub(crate) term: u64,
     pub(crate) rej_reason: RejectionReason,
@@ -17,7 +17,7 @@ pub struct ReplicationResponse {
 }
 
 #[derive(Debug, Clone, PartialEq, bincode::Decode, bincode::Encode)]
-pub enum RejectionReason {
+pub(crate) enum RejectionReason {
     ReceiverHasHigherTerm,
     LogInconsistency,
     None,

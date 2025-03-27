@@ -1,6 +1,9 @@
 use std::sync::atomic::Ordering;
 
-use crate::domains::cluster_actors::commands::ConsensusClientResponse;
+use crate::{
+    domains::cluster_actors::commands::ConsensusClientResponse,
+    presentation::clients::request::ClientRequest,
+};
 
 use super::*;
 
@@ -87,15 +90,15 @@ impl ClientController<Handler> {
     // Manage the client requests & consensus
     pub(super) async fn maybe_consensus_then_execute(
         &self,
-        requests: Vec<ClientAction>,
+        mut requests: Vec<ClientRequest>,
     ) -> anyhow::Result<Vec<QueryIO>> {
-        let consensus = try_join_all(requests.iter().map(|r| self.maybe_consensus(&r))).await?;
+        let consensus = try_join_all(requests.iter_mut().map(|r| self.maybe_consensus(r))).await?;
 
         // apply write operation to the state machine if it's a write request
         let mut results = Vec::with_capacity(requests.len());
         for (request, log_index_num) in requests.into_iter().zip(consensus.into_iter()) {
             let (res, _) = tokio::try_join!(
-                self.handle(request, log_index_num),
+                self.handle(request.action, log_index_num),
                 self.maybe_send_commit(log_index_num)
             )?;
             results.push(res);
@@ -105,16 +108,20 @@ impl ClientController<Handler> {
 
     pub(super) async fn maybe_consensus(
         &self,
-        request: &ClientAction,
+        request: &mut ClientRequest,
     ) -> anyhow::Result<Option<u64>> {
         // If the request doesn't require consensus, return Ok
-        let Some(log) = request.to_write_request() else {
+        let Some(log) = request.action.to_write_request() else {
             return Ok(None);
         };
 
         let (tx, rx) = tokio::sync::oneshot::channel();
         self.cluster_communication_manager
-            .send(ClusterCommand::LeaderReqConsensus { log, sender: tx })
+            .send(ClusterCommand::LeaderReqConsensus {
+                log,
+                callback: tx,
+                session_req: request.session_req.take(),
+            })
             .await?;
 
         match rx.await? {

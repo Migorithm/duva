@@ -11,6 +11,8 @@ use super::replication::HeartBeatMessage;
 use super::replication::ReplicationId;
 use super::replication::ReplicationState;
 use super::replication::time_in_secs;
+use super::session::ClientSessions;
+use super::session::SessionRequest;
 use super::{commands::ClusterCommand, replication::BannedPeer, *};
 use crate::domains::append_only_files::WriteOperation;
 use crate::domains::append_only_files::WriteRequest;
@@ -238,6 +240,7 @@ impl ClusterActor {
         logger: &mut ReplicatedLogs<impl TWriteAheadLog>,
         log: WriteRequest,
         callback: tokio::sync::oneshot::Sender<ConsensusClientResponse>,
+        session_req: Option<SessionRequest>,
     ) {
         let (prev_log_index, prev_term) = (logger.log_index, logger.term);
         let append_entries = match self.try_create_append_entries(logger, &log).await {
@@ -248,7 +251,12 @@ impl ClusterActor {
             },
         };
 
-        self.consensus_tracker.add(logger.log_index, callback, self.replicas().count());
+        self.consensus_tracker.add(
+            logger.log_index,
+            callback,
+            self.replicas().count(),
+            session_req,
+        );
         self.generate_follower_entries(append_entries, prev_log_index, prev_term)
             .map(|(peer, hb)| peer.write_io(AppendEntriesRPC(hb)))
             .collect::<FuturesUnordered<_>>()
@@ -295,8 +303,25 @@ impl ClusterActor {
             .min()
     }
 
-    pub(crate) fn track_replication_progress(&mut self, res: ReplicationResponse) {
-        self.consensus_tracker.track_progress(res.log_idx, res.from);
+    pub(crate) fn track_replication_progress(
+        &mut self,
+        res: ReplicationResponse,
+        sessions: &mut ClientSessions,
+    ) {
+        let Some(mut consensus) = self.consensus_tracker.remove(&res.log_idx) else {
+            return;
+        };
+
+        if consensus.votable(&res.from) {
+            println!("[INFO] Received acks for log index num: {}", res.log_idx);
+            consensus.increase_vote(res.from);
+        }
+        if consensus.cnt < consensus.get_required_votes() {
+            self.consensus_tracker.insert(res.log_idx, consensus);
+            return;
+        }
+        sessions.set_response(consensus.session_req.take());
+        let _ = consensus.callback.send(ConsensusClientResponse::LogIndex(Some(res.log_idx)));
     }
 
     // After send_ack: Leader updates its knowledge of follower's progress
@@ -578,6 +603,7 @@ mod test {
     use tokio::net::TcpListener;
     use tokio::net::TcpStream;
     use tokio::sync::mpsc::channel;
+    use uuid::Uuid;
 
     fn write_operation_create_helper(
         index_num: u64,
@@ -700,6 +726,7 @@ mod test {
                 &mut test_logger,
                 WriteRequest::Set { key: "foo".into(), value: "bar".into() },
                 tx,
+                None,
             )
             .await;
 
@@ -723,24 +750,62 @@ mod test {
             .await;
 
         let (tx, _) = tokio::sync::oneshot::channel();
-
+        let client_id = Uuid::now_v7();
+        let session_request = SessionRequest::new(1, client_id);
         // WHEN
         cluster_actor
             .req_consensus(
                 &mut test_logger,
                 WriteRequest::Set { key: "foo".into(), value: "bar".into() },
                 tx,
+                Some(session_request.clone()),
             )
             .await;
 
         // THEN
         assert_eq!(cluster_actor.consensus_tracker.len(), 1);
         assert_eq!(test_logger.log_index, 1);
+
+        assert_eq!(
+            cluster_actor.consensus_tracker.get(&1).unwrap().session_req.as_ref().unwrap().clone(), //* session_request_is_saved_on_tracker
+            session_request
+        );
+    }
+
+    #[tokio::test]
+    async fn test_leader_req_consensus_early_return_when_already_processed_session_req_given() {
+        // GIVEN
+        let test_logger = ReplicatedLogs::new(InMemoryWAL::default(), 0, 0);
+        let cluster_actor = cluster_actor_create_helper();
+
+        let cache_manager = CacheManager { inboxes: vec![] };
+
+        let mut sessions = ClientSessions::default();
+        let client_id = Uuid::now_v7();
+        let client_req = SessionRequest::new(1, client_id);
+
+        // WHEN - session request is already processed
+        sessions.set_response(Some(client_req.clone()));
+        let handler = cluster_actor.self_handler.clone();
+        tokio::spawn(cluster_actor.handle(InMemoryWAL::default(), cache_manager, sessions));
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        handler
+            .send(ClusterCommand::LeaderReqConsensus {
+                log: WriteRequest::Set { key: "foo".into(), value: "bar".into() },
+                callback: tx,
+                session_req: Some(client_req),
+            })
+            .await
+            .unwrap();
+
+        // THEN
+        rx.await.unwrap();
     }
 
     #[tokio::test]
     async fn test_consensus_voting_deleted_when_consensus_reached() {
         // GIVEN
+        let mut sessions = ClientSessions::default();
         let mut test_logger = ReplicatedLogs::new(InMemoryWAL::default(), 0, 0);
         let mut cluster_actor = cluster_actor_create_helper();
 
@@ -752,11 +817,14 @@ mod test {
             .await;
         let (client_request_sender, client_wait) = tokio::sync::oneshot::channel();
 
+        let client_id = Uuid::now_v7();
+        let client_request = SessionRequest::new(3, client_id);
         cluster_actor
             .req_consensus(
                 &mut test_logger,
                 WriteRequest::Set { key: "foo".into(), value: "bar".into() },
                 client_request_sender,
+                Some(client_request.clone()),
             )
             .await;
 
@@ -767,26 +835,30 @@ mod test {
             rej_reason: RejectionReason::None,
             from: PeerIdentifier("".into()),
         };
-        cluster_actor.track_replication_progress(follower_res.clone().set_from("repl1"));
-        cluster_actor.track_replication_progress(follower_res.clone().set_from("repl2"));
+        cluster_actor
+            .track_replication_progress(follower_res.clone().set_from("repl1"), &mut sessions);
+        cluster_actor
+            .track_replication_progress(follower_res.clone().set_from("repl2"), &mut sessions);
 
         // up to this point, tracker hold the consensus
         assert_eq!(cluster_actor.consensus_tracker.len(), 1);
         assert_eq!(cluster_actor.consensus_tracker.get(&1).unwrap().voters.len(), 2);
 
         // ! Majority votes made
-        cluster_actor.track_replication_progress(follower_res.set_from("repl3"));
+        cluster_actor.track_replication_progress(follower_res.set_from("repl3"), &mut sessions);
 
         // THEN
         assert_eq!(cluster_actor.consensus_tracker.len(), 0);
         assert_eq!(test_logger.log_index, 1);
 
         client_wait.await.unwrap();
+        assert!(sessions.is_processed(&Some(client_request))); // * session_request_is_marked_as_processed
     }
 
     #[tokio::test]
     async fn test_same_voter_can_vote_only_once() {
         // GIVEN
+        let mut sessions = ClientSessions::default();
         let mut test_logger = ReplicatedLogs::new(InMemoryWAL::default(), 0, 0);
         let mut cluster_actor = cluster_actor_create_helper();
 
@@ -803,6 +875,7 @@ mod test {
                 &mut test_logger,
                 WriteRequest::Set { key: "foo".into(), value: "bar".into() },
                 client_request_sender,
+                None,
             )
             .await;
 
@@ -814,9 +887,9 @@ mod test {
             rej_reason: RejectionReason::None,
             from: PeerIdentifier("repl1".into()), //TODO Must be changed if "update_match_index" becomes idempotent operation on peer id
         };
-        cluster_actor.track_replication_progress(follower_res.clone());
-        cluster_actor.track_replication_progress(follower_res.clone());
-        cluster_actor.track_replication_progress(follower_res.clone());
+        cluster_actor.track_replication_progress(follower_res.clone(), &mut sessions);
+        cluster_actor.track_replication_progress(follower_res.clone(), &mut sessions);
+        cluster_actor.track_replication_progress(follower_res.clone(), &mut sessions);
 
         // THEN - no change in consensus tracker even though the same voter voted multiple times
         assert_eq!(cluster_actor.consensus_tracker.len(), 1);

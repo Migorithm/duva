@@ -1,7 +1,10 @@
 mod election;
 pub(crate) mod types;
 mod write_con;
-use super::replication::{HeartBeatMessage, ReplicationId, ReplicationState};
+use super::{
+    replication::{HeartBeatMessage, ReplicationId, ReplicationState},
+    session::SessionRequest,
+};
 use crate::domains::append_only_files::WriteOperation;
 pub(crate) use election::*;
 pub(crate) use types::*;
@@ -10,7 +13,7 @@ pub(crate) use write_con::*;
 use crate::domains::{append_only_files::WriteRequest, peers::identifier::PeerIdentifier};
 
 #[derive(Debug)]
-pub enum ClusterCommand {
+pub(crate) enum ClusterCommand {
     AddPeer(AddPeer),
     GetPeers(tokio::sync::oneshot::Sender<Vec<PeerIdentifier>>),
     ReplicationInfo(tokio::sync::oneshot::Sender<ReplicationState>),
@@ -24,7 +27,8 @@ pub enum ClusterCommand {
     ForgetPeer(PeerIdentifier, tokio::sync::oneshot::Sender<Option<()>>),
     LeaderReqConsensus {
         log: WriteRequest,
-        sender: tokio::sync::oneshot::Sender<ConsensusClientResponse>,
+        callback: tokio::sync::oneshot::Sender<ConsensusClientResponse>,
+        session_req: Option<SessionRequest>,
     },
     ReplicationResponse(ReplicationResponse),
     SendCommitHeartBeat {
