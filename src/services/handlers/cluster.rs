@@ -6,6 +6,7 @@ use crate::domains::caches::cache_manager::CacheManager;
 use crate::domains::cluster_actors::commands::ClusterCommand;
 
 use crate::domains::cluster_actors::replication::ReplicationState;
+use crate::domains::cluster_actors::session::ClientSessions;
 use crate::domains::cluster_actors::{ClusterActor, FANOUT};
 use tokio::sync::mpsc::Sender;
 
@@ -14,6 +15,7 @@ impl ClusterActor {
         mut self,
         wal: impl TWriteAheadLog,
         cache_manager: CacheManager,
+        client_sessions: ClientSessions,
     ) -> anyhow::Result<Self> {
         let mut repl_logs = ReplicatedLogs::new(wal, 0, 0);
 
@@ -125,7 +127,7 @@ impl ClusterActor {
         let cluster_actor =
             ClusterActor::new(node_timeout, init_replication, heartbeat_interval, topology_path);
         let actor_handler = cluster_actor.self_handler.clone();
-        tokio::spawn(cluster_actor.handle(wal, cache_manager));
+        tokio::spawn(cluster_actor.handle(wal, cache_manager, ClientSessions::default()));
         actor_handler
     }
 }
