@@ -261,7 +261,6 @@ impl ClusterActor {
         logs: Vec<WriteOperation>,
         cache_manager: &CacheManager,
     ) {
-        cache_manager.drop_cache().await;
         println!("[INFO] Received Leader State - length {}", logs.len());
         for log in logs {
             let _ = cache_manager.apply_log(log.request).await;

@@ -34,6 +34,7 @@ impl ClusterConnectionManager {
         connect_to: PeerIdentifier,
     ) -> anyhow::Result<()> {
         // Base case
+        println!("dsdds");
         let existing_peers = self.get_peers().await?;
         if existing_peers.contains(&connect_to) {
             return Ok(());
@@ -41,7 +42,6 @@ impl ClusterConnectionManager {
 
         // Recursive case
         let replication_info = self.replication_info().await?;
-
         let (add_peer_cmd, peer_list) = OutboundStream::new(connect_to, replication_info)
             .await?
             .establish_connection(self_port)

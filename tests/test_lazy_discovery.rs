@@ -1,4 +1,4 @@
-use crate::common::{array, contains_all};
+use crate::common::{array, contains_only};
 use common::{ServerEnv, spawn_server_process};
 use duva::clients::ClientStreamHandler;
 
@@ -14,7 +14,7 @@ async fn test_lazy_discovery_of_leader() {
     target_h.send_and_get(&array(vec!["SET", "key", "value"])).await;
     target_h.send_and_get(&array(vec!["SET", "key2", "value2"])).await;
 
-    assert!(contains_all(
+    assert!(contains_only(
         target_h.send_and_get(&array(vec!["KEYS", "*"])).await,
         vec!["key", "key2"]
     ));
@@ -26,7 +26,10 @@ async fn test_lazy_discovery_of_leader() {
     other_h.send_and_get(&array(vec!["SET", "other", "value"])).await;
     other_h.send_and_get(&array(vec!["SET", "other2", "value2"])).await;
 
-    assert!(contains_all(
+    let cluster_info = other_h.send_and_get(&array(vec!["CLUSTER", "INFO"])).await;
+    assert_eq!(cluster_info, array(vec!["cluster_known_nodes:0"]));
+
+    assert!(contains_only(
         other_h.send_and_get(&array(vec!["KEYS", "*"])).await,
         vec!["other", "other2"]
     ));
@@ -38,11 +41,12 @@ async fn test_lazy_discovery_of_leader() {
             .await,
         "+OK\r\n"
     );
+    tokio::time::sleep(std::time::Duration::from_millis(2000)).await;
 
     // THEN
     let cluster_info = other_h.send_and_get(&array(vec!["CLUSTER", "INFO"])).await;
     assert_eq!(cluster_info, array(vec!["cluster_known_nodes:1"]));
 
     let response = target_h.send_and_get(&array(vec!["KEYS", "*"])).await;
-    assert!(contains_all(response, vec!["other", "other2"]));
+    assert!(contains_only(response, vec!["other", "other2"]));
 }

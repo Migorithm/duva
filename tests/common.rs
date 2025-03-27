@@ -247,20 +247,20 @@ fn wait_for_message<T: Read>(
     Ok(())
 }
 
-pub fn contains_all(source: String, target: Vec<&str>) -> bool {
+pub fn contains_only(source: String, target: Vec<&str>) -> bool {
     let (QueryIO::Array(vec), _) = deserialize(BytesMut::from(source.as_str())).unwrap() else {
         panic!("Invalid input")
     };
     let mut target = target.iter().map(|s| s.to_string()).collect::<Vec<String>>();
-    for item in vec {
+    for item in dbg!(vec) {
         if let QueryIO::BulkString(value) = item {
-            println!("value: {}", value);
             if let Some(index) = target.iter().position(|s| s == value.as_str()) {
                 target.remove(index);
             }
         }
     }
-    target.is_empty()
+
+    dbg!(target).is_empty()
 }
 
 pub fn array(arr: Vec<&str>) -> Bytes {
