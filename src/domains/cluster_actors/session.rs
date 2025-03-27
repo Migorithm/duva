@@ -9,7 +9,7 @@ pub(crate) struct ClientSessions(HashMap<Uuid, Session>);
 
 pub(crate) struct Session {
     last_accessed: DateTime<Utc>,
-    latest_processed_idx: Option<u64>,
+    processed_req_id: Option<u64>,
 }
 
 #[derive(Debug, Clone)]
@@ -28,7 +28,7 @@ make_smart_pointer!(ClientSessions,HashMap<Uuid, Session>);
 impl ClientSessions {
     pub(crate) fn register_client(&mut self) -> Uuid {
         let id = Uuid::now_v7();
-        self.insert(id, Session { last_accessed: Utc::now(), latest_processed_idx: None });
+        self.insert(id, Session { last_accessed: Utc::now(), processed_req_id: None });
         id
     }
 
@@ -37,17 +37,17 @@ impl ClientSessions {
             return false;
         }
         let session = self.get(&client_req.client_id).unwrap();
-        let Some(res) = session.latest_processed_idx.as_ref() else {
+        let Some(res) = session.processed_req_id.as_ref() else {
             return false;
         };
 
         *res == client_req.request_id
     }
-    pub(crate) fn set_response(&mut self, id: Uuid, last_processed_idx: u64) {
+    pub(crate) fn set_response(&mut self, id: Uuid, processed_req_id: u64) {
         let entry = self
             .entry(id)
-            .or_insert(Session { last_accessed: Default::default(), latest_processed_idx: None });
+            .or_insert(Session { last_accessed: Default::default(), processed_req_id: None });
         entry.last_accessed = Utc::now();
-        entry.latest_processed_idx = Some(last_processed_idx);
+        entry.processed_req_id = Some(processed_req_id);
     }
 }
