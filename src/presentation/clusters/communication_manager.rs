@@ -58,9 +58,6 @@ impl ClusterCommunicationManager {
 
     pub(crate) async fn replicaof(&self, peer_identifier: PeerIdentifier) {
         let _ = self.send(ClusterCommand::ReplicaOf(peer_identifier)).await;
-        let _ = self
-            .send(ClusterCommand::SetReplicationInfo { replid: ReplicationId::Undecided, hwm: 0 })
-            .await;
     }
 
     pub(crate) async fn cluster_nodes(&self) -> anyhow::Result<Vec<String>> {
