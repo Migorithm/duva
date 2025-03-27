@@ -27,7 +27,7 @@ pub(crate) enum ClusterCommand {
     ForgetPeer(PeerIdentifier, tokio::sync::oneshot::Sender<Option<()>>),
     LeaderReqConsensus {
         log: WriteRequest,
-        sender: tokio::sync::oneshot::Sender<ConsensusClientResponse>,
+        callback: tokio::sync::oneshot::Sender<ConsensusClientResponse>,
         session_req: Option<SessionRequest>,
     },
     ReplicationResponse(ReplicationResponse),

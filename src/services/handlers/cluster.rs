@@ -15,7 +15,7 @@ impl ClusterActor {
         mut self,
         wal: impl TWriteAheadLog,
         cache_manager: CacheManager,
-        client_sessions: ClientSessions,
+        mut client_sessions: ClientSessions,
     ) -> anyhow::Result<Self> {
         let mut repl_logs = ReplicatedLogs::new(wal, 0, 0);
 
@@ -61,14 +61,13 @@ impl ClusterActor {
                         let _ = sender.send(None);
                     }
                 },
-                ClusterCommand::LeaderReqConsensus { log, sender, session_req } => {
+                ClusterCommand::LeaderReqConsensus { log, callback, session_req } => {
                     if client_sessions.is_processed(&session_req) {
-                        let _ = sender
+                        let _ = callback
                             .send(ConsensusClientResponse::LogIndex(Some(repl_logs.log_index)));
                         continue;
                     };
-
-                    self.req_consensus(&mut repl_logs, log, sender, session_req).await;
+                    self.req_consensus(&mut repl_logs, log, callback, session_req).await;
                 },
 
                 // Follower receives heartbeat from leader
@@ -87,7 +86,7 @@ impl ClusterActor {
                         continue;
                     }
                     self.update_on_hertbeat_message(&repl_res.from, repl_res.log_idx);
-                    self.track_replication_progress(repl_res);
+                    self.track_replication_progress(repl_res, &mut client_sessions);
                 },
                 ClusterCommand::SendCommitHeartBeat { log_idx: offset } => {
                     self.send_commit_heartbeat(offset).await;

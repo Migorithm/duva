@@ -46,11 +46,13 @@ impl ClientSessions {
 
         *res == client_req.request_id
     }
-    pub(crate) fn set_response(&mut self, id: Uuid, processed_req_id: u64) {
+    pub(crate) fn set_response(&mut self, session_req: Option<SessionRequest>) {
+        let Some(session_req) = session_req else { return };
+
         let entry = self
-            .entry(id)
+            .entry(session_req.client_id)
             .or_insert(Session { last_accessed: Default::default(), processed_req_id: None });
         entry.last_accessed = Utc::now();
-        entry.processed_req_id = Some(processed_req_id);
+        entry.processed_req_id = Some(session_req.request_id);
     }
 }

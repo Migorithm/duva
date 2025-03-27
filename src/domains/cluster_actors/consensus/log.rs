@@ -2,7 +2,10 @@ use std::collections::HashMap;
 
 use crate::{
     domains::{
-        cluster_actors::{commands::ConsensusClientResponse, session::SessionRequest},
+        cluster_actors::{
+            commands::ConsensusClientResponse,
+            session::{ClientSessions, SessionRequest},
+        },
         peers::identifier::PeerIdentifier,
     },
     make_smart_pointer,
@@ -22,11 +25,23 @@ impl LogConsensusTracker {
     ) {
         self.insert(key, LogConsensusVoting::new(callback, replica_count, session_req));
     }
-    pub(crate) fn track_progress(&mut self, log_idx: u64, from: PeerIdentifier) {
-        if let Some(consensus) = self.remove(&log_idx) {
-            if let Some(consensus) = consensus.vote_and_maybe_stay_pending(log_idx, from) {
-                self.insert(log_idx, consensus);
+    pub(crate) fn track_progress(
+        &mut self,
+        log_idx: u64,
+        from: PeerIdentifier,
+        client_sessions: &mut ClientSessions,
+    ) {
+        if let Some(mut consensus) = self.remove(&log_idx) {
+            if consensus.votable(&from) {
+                println!("[INFO] Received acks for log index num: {}", log_idx);
+                consensus.increase_vote(from);
             }
+            if consensus.cnt < consensus.get_required_votes() {
+                self.insert(log_idx, consensus);
+                return;
+            }
+            client_sessions.set_response(consensus.session_req.take());
+            let _ = consensus.callback.send(ConsensusClientResponse::LogIndex(Some(log_idx)));
         }
     }
 }
@@ -46,20 +61,6 @@ impl LogConsensusVoting {
         session_req: Option<SessionRequest>,
     ) -> Self {
         Self { callback, cnt: 0, voters: Vec::with_capacity(replica_count), session_req }
-    }
-
-    fn vote_and_maybe_stay_pending(mut self, log_idx: u64, from: PeerIdentifier) -> Option<Self> {
-        if self.votable(&from) {
-            println!("[INFO] Received acks for log index num: {}", log_idx);
-            self.increase_vote(from);
-        }
-
-        if self.cnt < self.get_required_votes() {
-            return Some(self);
-        }
-
-        let _ = self.callback.send(ConsensusClientResponse::LogIndex(Some(log_idx)));
-        None
     }
 
     fn increase_vote(&mut self, voter: PeerIdentifier) {

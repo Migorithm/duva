@@ -119,7 +119,7 @@ impl ClientController<Handler> {
         self.cluster_communication_manager
             .send(ClusterCommand::LeaderReqConsensus {
                 log,
-                sender: tx,
+                callback: tx,
                 session_req: request.session_req.take(),
             })
             .await?;
