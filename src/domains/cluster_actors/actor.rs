@@ -262,10 +262,14 @@ impl ClusterActor {
         cache_manager: &CacheManager,
     ) {
         println!("[INFO] Received Leader State - length {}", logs.len());
+        if logs.is_empty() {
+            return;
+        }
+        let last_log_idx = logs.last().unwrap().log_index;
         for log in logs {
             let _ = cache_manager.apply_log(log.request).await;
-            self.replication.hwm.store(log.log_index, Ordering::Release);
         }
+        self.replication.hwm.store(last_log_idx, Ordering::Release);
     }
 
     /// create entries per follower.
