@@ -60,3 +60,6 @@ follower:
 follower-tp:
 	@mkdir -p local_test/follower
 	@cd local_test/follower && cargo run -- --port $(rp) --replicaof 127.0.0.1:$(p) --topology_path $(tp)
+
+replica-of:
+	$(call send_command, '*3\r\n$$9\r\nREPLICAOF\r\n$$9\r\n127.0.0.1\r\n$$4\r\n$(lp)\r\n')

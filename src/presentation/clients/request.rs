@@ -17,6 +17,7 @@ pub enum ClientAction {
     ClusterInfo,
     ClusterNodes,
     ClusterForget(PeerIdentifier),
+    ReplicaOf(PeerIdentifier),
 }
 
 impl ClientAction {

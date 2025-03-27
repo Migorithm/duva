@@ -80,6 +80,14 @@ impl ClientController<Handler> {
                     Err(e) => QueryIO::Err(e.to_string().into()),
                 }
             },
+            ClientAction::ReplicaOf(peer_identifier) => {
+                // TODO should check if the peer is in the cluster?
+                self.cluster_communication_manager.step_down(peer_identifier.clone()).await;
+                ClusterConnectionManager(self.cluster_communication_manager.clone())
+                    .discover_cluster(self.config_manager.port, peer_identifier)
+                    .await?;
+                QueryIO::SimpleString("OK".into())
+            },
         };
         Ok(response)
     }
