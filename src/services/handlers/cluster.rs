@@ -63,6 +63,7 @@ impl ClusterActor {
                 },
                 ClusterCommand::LeaderReqConsensus { log, callback, session_req } => {
                     if client_sessions.is_processed(&session_req) {
+                        // TODO is it okay to send current log index?
                         let _ = callback
                             .send(ConsensusClientResponse::LogIndex(Some(repl_logs.log_index)));
                         continue;
