@@ -250,7 +250,12 @@ impl ClusterActor {
             },
         };
 
-        self.consensus_tracker.add(logger.log_index, callback, self.replicas().count());
+        self.consensus_tracker.add(
+            logger.log_index,
+            callback,
+            self.replicas().count(),
+            session_req,
+        );
         self.generate_follower_entries(append_entries, prev_log_index, prev_term)
             .map(|(peer, hb)| peer.write_io(AppendEntriesRPC(hb)))
             .collect::<FuturesUnordered<_>>()
