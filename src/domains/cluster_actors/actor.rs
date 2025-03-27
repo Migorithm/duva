@@ -750,20 +750,26 @@ mod test {
             .await;
 
         let (tx, _) = tokio::sync::oneshot::channel();
-
+        let client_id = Uuid::now_v7();
+        let session_request = SessionRequest::new(1, client_id);
         // WHEN
         cluster_actor
             .req_consensus(
                 &mut test_logger,
                 WriteRequest::Set { key: "foo".into(), value: "bar".into() },
                 tx,
-                None,
+                Some(session_request.clone()),
             )
             .await;
 
         // THEN
         assert_eq!(cluster_actor.consensus_tracker.len(), 1);
         assert_eq!(test_logger.log_index, 1);
+
+        assert_eq!(
+            cluster_actor.consensus_tracker.get(&1).unwrap().session_req.as_ref().unwrap().clone(), //* session_request_is_saved_on_tracker
+            session_request
+        );
     }
 
     #[tokio::test]
@@ -794,43 +800,6 @@ mod test {
 
         // THEN
         rx.await.unwrap();
-    }
-
-    #[tokio::test]
-    async fn test_session_request_is_saved_on_tracker() {
-        // GIVEN
-        let mut test_logger = ReplicatedLogs::new(InMemoryWAL::default(), 0, 0);
-
-        let mut cluster_actor = cluster_actor_create_helper();
-
-        // - add 5 followers
-        let (cluster_sender, _) = tokio::sync::mpsc::channel(100);
-        let cache_manager = CacheManager { inboxes: vec![] };
-
-        cluster_member_create_helper(&mut cluster_actor, 0..5, cluster_sender, cache_manager, 0)
-            .await;
-
-        let (tx, _) = tokio::sync::oneshot::channel();
-
-        // WHEN
-        let client_id = Uuid::now_v7();
-        let session_request = SessionRequest::new(1, client_id);
-        cluster_actor
-            .req_consensus(
-                &mut test_logger,
-                WriteRequest::Set { key: "foo".into(), value: "bar".into() },
-                tx,
-                Some(session_request.clone()),
-            )
-            .await;
-
-        // THEN
-        assert_eq!(cluster_actor.consensus_tracker.len(), 1);
-        assert_eq!(test_logger.log_index, 1);
-        assert_eq!(
-            cluster_actor.consensus_tracker.remove(&1).unwrap().session_req.unwrap(),
-            session_request.clone()
-        );
     }
 
     #[tokio::test]
@@ -883,7 +852,7 @@ mod test {
         assert_eq!(test_logger.log_index, 1);
 
         client_wait.await.unwrap();
-        assert!(sessions.is_processed(&Some(client_request)));
+        assert!(sessions.is_processed(&Some(client_request))); // * session_request_is_marked_as_processed
     }
 
     #[tokio::test]
