@@ -1,7 +1,7 @@
 #[derive(Debug, Clone, PartialEq, Eq, bincode::Decode, bincode::Encode)]
 pub enum AuthRequest {
-    ClientIdExists(String),
-    ClientIdNotExists,
+    ConnectWithId(String),
+    ConnectWithoutId,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, bincode::Decode, bincode::Encode)]

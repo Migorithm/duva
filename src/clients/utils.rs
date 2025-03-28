@@ -32,7 +32,7 @@ impl ClientStreamHandler {
         }
         let mut stream = tokio::net::TcpStream::connect(bind_addr).await.unwrap();
 
-        stream.ser_write(AuthRequest::ClientIdNotExists).await.unwrap(); // client_id not exist
+        stream.ser_write(AuthRequest::ConnectWithoutId).await.unwrap(); // client_id not exist
 
         let AuthResponse::ClientId(client_id) = stream.auth_read().await.unwrap();
         let client_id = Uuid::parse_str(&client_id).unwrap();

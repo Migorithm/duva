@@ -23,11 +23,11 @@ impl ClientStream {
         let auth_req = stream.auth_read().await?;
         let mut c_id = Uuid::now_v7();
         match auth_req {
-            AuthRequest::ClientIdExists(client_id) => {
+            AuthRequest::ConnectWithId(client_id) => {
                 c_id = Uuid::parse_str(&client_id)
                     .map_err(|_| IoError::Custom("Deserialization error".to_string()))?;
             },
-            AuthRequest::ClientIdNotExists => {
+            AuthRequest::ConnectWithoutId => {
                 stream.ser_write(AuthResponse::ClientId(c_id.to_string())).await?;
             },
         }
