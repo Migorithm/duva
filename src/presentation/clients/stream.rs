@@ -1,5 +1,7 @@
 use super::request::{ClientAction, ClientRequest};
 use crate::{
+    TAuthRead, TSerWrite,
+    clients::authentications::{AuthRequest, AuthResponse},
     domains::{IoError, cluster_actors::session::SessionRequest, query_parsers::QueryIO},
     make_smart_pointer,
     services::interface::TRead,
@@ -14,6 +16,18 @@ pub struct ClientStream(pub(crate) TcpStream);
 make_smart_pointer!(ClientStream, TcpStream);
 
 impl ClientStream {
+    pub(crate) async fn authenticate(&mut self) -> Result<(), IoError> {
+        let auth_req = self.auth_read().await?;
+        match auth_req {
+            AuthRequest::ClientIdExists => {},
+            AuthRequest::ClientIdNotExists => {
+                self.ser_write(AuthResponse::ClientId(Uuid::now_v7().to_string())).await?;
+            },
+        }
+
+        Ok(())
+    }
+
     pub(crate) async fn extract_query(&mut self) -> Result<Vec<ClientRequest>, IoError> {
         let query_ios = self.read_values().await?;
 
