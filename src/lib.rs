@@ -18,7 +18,7 @@ use domains::config_actors::config_manager::ConfigManager;
 
 use domains::saves::snapshot::snapshot_loader::SnapshotLoader;
 pub use init::Environment;
-use presentation::clients::ClientController;
+use presentation::clients::{ClientController, stream::ClientStream};
 use presentation::clusters::inbound::stream::InboundStream;
 use services::interface::{TAuthRead, TSerWrite};
 
@@ -138,7 +138,8 @@ impl StartUpFacade {
             }
 
             conn_handlers.push(tokio::spawn(
-                ClientController::new(self.registry.clone()).handle_client_stream(stream),
+                ClientController::new(self.registry.clone())
+                    .handle_client_stream(ClientStream(stream)),
             ));
         }
 

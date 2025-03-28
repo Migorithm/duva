@@ -20,9 +20,7 @@ impl ClientController<Acceptor> {
         }
     }
 
-    pub(crate) async fn handle_client_stream(self, stream: TcpStream) {
-        let mut stream = ClientStream(stream);
-
+    pub(crate) async fn handle_client_stream(self, mut stream: ClientStream) {
         let handler = self.to_handler();
 
         loop {
