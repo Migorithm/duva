@@ -344,7 +344,7 @@ impl ClusterActor {
 
         let message: HeartBeatMessage =
             self.replication.default_heartbeat(0, offset, self.replication.term);
-        println!("[INFO] Sending commit request on {}", message.hwm);
+        println!("[INFO] log {} commited", message.hwm);
         self.send_to_replicas(AppendEntriesRPC(message)).await;
     }
 

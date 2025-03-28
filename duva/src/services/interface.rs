@@ -22,14 +22,14 @@ pub(crate) trait TWrite {
     ) -> impl std::future::Future<Output = Result<(), IoError>> + Send;
 }
 
-pub(crate) trait TSerWrite {
+pub trait TSerWrite {
     fn ser_write(
         &mut self,
         buf: impl bincode::Encode + Send,
     ) -> impl std::future::Future<Output = Result<(), IoError>> + Send;
 }
 
-pub(crate) trait TAuthRead<T: bincode::Decode<()> + Send> {
+pub trait TAuthRead<T: bincode::Decode<()> + Send> {
     fn auth_read(&mut self) -> impl std::future::Future<Output = Result<T, IoError>> + Send;
 }
 

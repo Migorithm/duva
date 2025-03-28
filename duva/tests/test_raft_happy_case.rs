@@ -37,7 +37,7 @@ async fn test_set_operation_reaches_to_all_replicas() {
 
     let h2 = std::thread::spawn(move || {
         leader_p.timed_wait_for_message(
-            vec!["[INFO] Received acks for log index num: 1", "[INFO] Sending commit request on 1"],
+            vec!["[INFO] Received acks for log index num: 1", "[INFO] log 1 commited"],
             1,
             2000,
         )
