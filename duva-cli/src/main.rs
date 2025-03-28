@@ -1,13 +1,13 @@
 use clap::Parser;
 use duva::{
     clients::authentications::{AuthRequest, AuthResponse},
-    services::interface::{TAuthRead, TRead, TSerWrite},
-    tokio::{
+    prelude::tokio::{
         self,
         io::{AsyncReadExt, AsyncWriteExt},
         net::TcpStream,
     },
-    uuid::Uuid,
+    prelude::uuid::Uuid,
+    services::interface::{TAuthRead, TRead, TSerWrite},
 };
 use rustyline::DefaultEditor;
 

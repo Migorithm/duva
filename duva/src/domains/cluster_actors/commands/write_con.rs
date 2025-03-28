@@ -9,7 +9,7 @@ pub(crate) enum ConsensusClientResponse {
 }
 
 #[derive(Debug, Clone, PartialEq, bincode::Decode, bincode::Encode)]
-pub(crate) struct ReplicationResponse {
+pub struct ReplicationResponse {
     pub(crate) log_idx: u64,
     pub(crate) term: u64,
     pub(crate) rej_reason: RejectionReason,

@@ -3,7 +3,7 @@ use crate::domains::{
 };
 
 #[derive(Clone, Debug, PartialEq, bincode::Encode, bincode::Decode)]
-pub(crate) struct RequestVote {
+pub struct RequestVote {
     pub(crate) term: u64, // current term of the candidate. Without it, the old leader wouldn't be able to step down gracefully.
     pub(crate) candidate_id: PeerIdentifier,
     pub(crate) last_log_index: u64,
@@ -21,7 +21,7 @@ impl RequestVote {
 }
 
 #[derive(Clone, Debug, PartialEq, bincode::Encode, bincode::Decode)]
-pub(crate) struct RequestVoteReply {
+pub struct RequestVoteReply {
     pub(crate) term: u64,
     pub(crate) vote_granted: bool,
 }

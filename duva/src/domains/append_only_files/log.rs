@@ -5,7 +5,7 @@ use crate::{
 use bytes::{Bytes, BytesMut};
 
 #[derive(Debug, Clone, PartialEq, Eq, bincode::Encode, bincode::Decode)]
-pub(crate) struct WriteOperation {
+pub struct WriteOperation {
     pub(crate) request: WriteRequest,
     pub(crate) log_index: u64,
     pub(crate) term: u64,

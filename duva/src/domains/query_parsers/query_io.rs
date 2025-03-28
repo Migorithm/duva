@@ -18,6 +18,7 @@ const ACKS_PREFIX: char = '@';
 const REQUEST_VOTE_PREFIX: char = 'v';
 const REQUEST_VOTE_REPLY_PREFIX: char = 'r';
 const SESSION_REQUEST_PREFIX: char = '!';
+const ERR_PREFIX: char = '-';
 pub(crate) const SERDE_CONFIG: bincode::config::Configuration = bincode::config::standard();
 
 #[macro_export]
@@ -96,7 +97,9 @@ impl QueryIO {
                 buffer.extend_from_slice(&QueryIO::Array(value).serialize());
                 buffer.freeze()
             },
-            QueryIO::Err(e) => Bytes::from(["-".to_string(), e.into(), "\r\n".into()].concat()),
+            QueryIO::Err(e) => {
+                Bytes::from([ERR_PREFIX.to_string(), e.into(), "\r\n".into()].concat())
+            },
             QueryIO::AppendEntriesRPC(heartbeat) => {
                 serialize_with_bincode(APPEND_ENTRY_RPC_PREFIX, &heartbeat)
             },
