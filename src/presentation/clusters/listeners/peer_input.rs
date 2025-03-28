@@ -8,7 +8,7 @@ use crate::domains::{
 };
 
 #[derive(Debug)]
-pub enum PeerInput {
+pub(crate) enum PeerInput {
     AppendEntriesRPC(HeartBeatMessage),
     ClusterHeartBeat(HeartBeatMessage),
     FullSync(Vec<WriteOperation>),

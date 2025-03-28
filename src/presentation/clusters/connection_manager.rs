@@ -9,10 +9,6 @@ use tokio::sync::mpsc::Sender;
 pub(crate) struct ClusterConnectionManager(pub(crate) ClusterCommunicationManager);
 
 impl ClusterConnectionManager {
-    pub(crate) fn new(actor_handler: Sender<ClusterCommand>) -> Self {
-        Self(ClusterCommunicationManager(actor_handler))
-    }
-
     pub(crate) async fn accept_inbound_stream(
         &self,
         mut peer_stream: InboundStream,
@@ -68,10 +64,6 @@ impl ClusterConnectionManager {
 
     pub async fn send(&self, cmd: ClusterCommand) -> anyhow::Result<()> {
         Ok(self.0.send(cmd).await?)
-    }
-
-    pub fn to_communication_manager(self) -> ClusterCommunicationManager {
-        self.0
     }
 }
 

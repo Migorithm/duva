@@ -7,7 +7,6 @@ pub mod presentation;
 pub mod services;
 use actor_registry::ActorRegistry;
 use anyhow::{Context, Result};
-use clients::authentications::AuthResponse;
 use domains::IoError;
 use domains::append_only_files::interfaces::TWriteAheadLog;
 use domains::caches::cache_manager::CacheManager;
@@ -15,15 +14,12 @@ use domains::cluster_actors::ClusterActor;
 use domains::cluster_actors::commands::ClusterCommand;
 use domains::cluster_actors::replication::ReplicationState;
 use domains::config_actors::config_manager::ConfigManager;
-
 use domains::saves::snapshot::snapshot_loader::SnapshotLoader;
 pub use init::Environment;
 use presentation::clients::{ClientController, stream::ClientStream};
 use presentation::clusters::inbound::stream::InboundStream;
 use services::interface::{TAuthRead, TSerWrite};
-
 use tokio::net::TcpListener;
-use uuid::Uuid;
 
 pub mod clients;
 
