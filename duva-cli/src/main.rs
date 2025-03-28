@@ -1,7 +1,7 @@
 use clap::Parser;
 use duva::{
     clients::authentications::{AuthRequest, AuthResponse},
-    services::interface::{TAuthRead, TSerWrite},
+    services::interface::{TAuthRead, TRead, TSerWrite},
     tokio::{
         self,
         io::{AsyncReadExt, AsyncWriteExt},
@@ -36,12 +36,12 @@ fn build_resp_command(args: Vec<&str>) -> String {
 }
 
 async fn send_command(stream: &mut TcpStream, command: String) -> String {
-    stream.write_all(dbg!(command).as_bytes()).await.unwrap();
+    stream.write_all(command.as_bytes()).await.unwrap();
     stream.flush().await.unwrap();
 
-    let mut response = String::new();
-    stream.read_to_string(&mut response).await.unwrap();
-    response
+    let mut response = vec![];
+    stream.read_buf(&mut response).await.unwrap();
+    String::from_utf8(response.to_vec()).unwrap()
 }
 
 #[tokio::main]
