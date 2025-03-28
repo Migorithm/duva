@@ -20,6 +20,7 @@ async fn test_full_sync_on_newly_added_replica() {
     check_internodes_communication(&mut [&mut leader_p, &mut replica_process], 0, 1000).unwrap();
 
     // THEN
+
     let mut client_to_repl = ClientStreamHandler::new(replica_process.bind_addr()).await;
     assert_eq!(client_to_repl.send_and_get(&array(vec!["KEYS", "*"])).await, array(vec!["foo"]));
 }

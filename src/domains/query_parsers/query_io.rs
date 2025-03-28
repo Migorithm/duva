@@ -2,7 +2,6 @@ use crate::domains::caches::cache_objects::CacheValue;
 use crate::domains::cluster_actors::commands::{ReplicationResponse, RequestVoteReply};
 use crate::domains::cluster_actors::heartbeats::heartbeat::{AppendEntriesRPC, ClusterHeartBeat};
 use crate::domains::{append_only_files::WriteOperation, cluster_actors::commands::RequestVote};
-use crate::presentation::clients::request::{self, ClientRequest};
 
 use anyhow::{Context, Result};
 use bytes::{Bytes, BytesMut};
@@ -19,7 +18,7 @@ const ACKS_PREFIX: char = '@';
 const REQUEST_VOTE_PREFIX: char = 'v';
 const REQUEST_VOTE_REPLY_PREFIX: char = 'r';
 const SESSION_REQUEST_PREFIX: char = '!';
-const SERDE_CONFIG: bincode::config::Configuration = bincode::config::standard();
+pub(crate) const SERDE_CONFIG: bincode::config::Configuration = bincode::config::standard();
 
 #[macro_export]
 macro_rules! write_array {

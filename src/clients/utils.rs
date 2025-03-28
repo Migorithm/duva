@@ -7,18 +7,18 @@ use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::tcp::{OwnedReadHalf, OwnedWriteHalf},
 };
+use uuid::Uuid;
+
+use crate::{TAuthRead, services::interface::TSerWrite};
+
+use super::authentications::{AuthRequest, AuthResponse};
 /// A client utility for reading and writing asynchronously over a TCP stream.
 pub struct ClientStreamHandler {
     /// The owned read-half of the TCP stream.
     pub read_half: OwnedReadHalf,
     /// The owned write-half of the TCP stream.
     pub write_half: OwnedWriteHalf,
-}
-
-impl From<(OwnedReadHalf, OwnedWriteHalf)> for ClientStreamHandler {
-    fn from((read_half, write_half): (OwnedReadHalf, OwnedWriteHalf)) -> Self {
-        Self { read_half, write_half }
-    }
+    pub client_id: Uuid,
 }
 
 impl ClientStreamHandler {
@@ -30,10 +30,15 @@ impl ClientStreamHandler {
         while tokio::net::TcpStream::connect(&bind_addr).await.is_err() {
             tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
         }
-        let stream = tokio::net::TcpStream::connect(bind_addr).await.unwrap();
+        let mut stream = tokio::net::TcpStream::connect(bind_addr).await.unwrap();
+
+        stream.ser_write(AuthRequest::ClientIdNotExists).await.unwrap(); // client_id not exist
+
+        let AuthResponse::ClientId(client_id) = stream.auth_read().await.unwrap();
+        let client_id = Uuid::parse_str(&client_id).unwrap();
 
         let (read_half, write_half) = stream.into_split();
-        Self { read_half, write_half }
+        Self { read_half, write_half, client_id }
     }
 
     /// Sends a byte slice to the server.

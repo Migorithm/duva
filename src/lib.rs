@@ -7,6 +7,7 @@ pub mod presentation;
 pub mod services;
 use actor_registry::ActorRegistry;
 use anyhow::{Context, Result};
+use clients::authentications::AuthResponse;
 use domains::IoError;
 use domains::append_only_files::interfaces::TWriteAheadLog;
 use domains::caches::cache_manager::CacheManager;
@@ -14,11 +15,15 @@ use domains::cluster_actors::ClusterActor;
 use domains::cluster_actors::commands::ClusterCommand;
 use domains::cluster_actors::replication::ReplicationState;
 use domains::config_actors::config_manager::ConfigManager;
+
 use domains::saves::snapshot::snapshot_loader::SnapshotLoader;
 pub use init::Environment;
 use presentation::clients::ClientController;
 use presentation::clusters::inbound::stream::InboundStream;
+use services::interface::{TAuthRead, TSerWrite};
+
 use tokio::net::TcpListener;
+use uuid::Uuid;
 
 pub mod clients;
 
@@ -119,7 +124,19 @@ impl StartUpFacade {
         let client_stream_listener = TcpListener::bind(&self.config_manager.bind_addr()).await?;
         println!("start listening on {}", self.config_manager.bind_addr());
         let mut conn_handlers: Vec<tokio::task::JoinHandle<()>> = Vec::with_capacity(100);
-        while let Ok((stream, _)) = client_stream_listener.accept().await {
+        while let Ok((mut stream, _)) = client_stream_listener.accept().await {
+            let Ok(auth_req) = stream.auth_read().await else {
+                drop(stream);
+                continue;
+            };
+
+            match auth_req {
+                clients::authentications::AuthRequest::ClientIdExists => {},
+                clients::authentications::AuthRequest::ClientIdNotExists => {
+                    stream.ser_write(AuthResponse::ClientId(Uuid::now_v7().to_string())).await?;
+                },
+            }
+
             conn_handlers.push(tokio::spawn(
                 ClientController::new(self.registry.clone()).handle_client_stream(stream),
             ));

@@ -26,12 +26,6 @@ impl SessionRequest {
 make_smart_pointer!(ClientSessions,HashMap<Uuid, Session>);
 
 impl ClientSessions {
-    pub(crate) fn register_client(&mut self) -> Uuid {
-        let id = Uuid::now_v7();
-        self.insert(id, Session { last_accessed: Utc::now(), processed_req_id: None });
-        id
-    }
-
     pub(crate) fn is_processed(&self, client_req: &Option<SessionRequest>) -> bool {
         let Some(client_req) = client_req else {
             return false;
