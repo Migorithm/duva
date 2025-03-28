@@ -1,12 +1,16 @@
 use clap::Parser;
 use duva::{
     clients::authentications::{AuthRequest, AuthResponse},
-    prelude::tokio::{
-        self,
-        io::{AsyncReadExt, AsyncWriteExt},
-        net::TcpStream,
+    domains::query_parsers::query_io::{QueryIO, deserialize},
+    prelude::{
+        BytesMut,
+        tokio::{
+            self,
+            io::{AsyncReadExt, AsyncWriteExt},
+            net::TcpStream,
+        },
+        uuid::Uuid,
     },
-    prelude::uuid::Uuid,
     services::interface::{TAuthRead, TRead, TSerWrite},
 };
 use rustyline::DefaultEditor;
@@ -35,13 +39,30 @@ fn build_resp_command(args: Vec<&str>) -> String {
     command
 }
 
-async fn send_command(stream: &mut TcpStream, command: String) -> String {
+async fn send_command(stream: &mut TcpStream, command: String) {
+    // TODO input validation required otherwise, it hangs
     stream.write_all(command.as_bytes()).await.unwrap();
     stream.flush().await.unwrap();
 
     let mut response = vec![];
     stream.read_buf(&mut response).await.unwrap();
-    String::from_utf8(response.to_vec()).unwrap()
+
+    let (query_io, _) = deserialize(BytesMut::from_iter(response)).unwrap();
+    match query_io {
+        QueryIO::BulkString(value) => {
+            println!("{}", value)
+        },
+        QueryIO::Err(err) => {
+            println!("{}", err);
+        },
+        QueryIO::Null => {
+            println!("(nil)");
+        },
+        QueryIO::SimpleString(val) => println!("{}", val),
+        _ => {
+            println!("Unexpected response format");
+        },
+    }
 }
 
 #[tokio::main]
@@ -69,7 +90,7 @@ async fn main() {
                     break;
                 }
 
-                println!("{}", send_command(&mut stream, build_resp_command(args)).await);
+                send_command(&mut stream, build_resp_command(args)).await;
             },
             Err(_) => {
                 println!("Exiting...");

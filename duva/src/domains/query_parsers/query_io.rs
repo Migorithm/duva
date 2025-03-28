@@ -19,6 +19,7 @@ const REQUEST_VOTE_PREFIX: char = 'v';
 const REQUEST_VOTE_REPLY_PREFIX: char = 'r';
 const SESSION_REQUEST_PREFIX: char = '!';
 const ERR_PREFIX: char = '-';
+const NULL_PREFIX: char = '\u{0000}';
 pub(crate) const SERDE_CONFIG: bincode::config::Configuration = bincode::config::standard();
 
 #[macro_export]
@@ -50,7 +51,7 @@ pub enum QueryIO {
 impl QueryIO {
     pub fn serialize(self) -> Bytes {
         match self {
-            QueryIO::Null => "$-1\r\n".into(),
+            QueryIO::Null => NULL_PREFIX.to_string().into(),
             QueryIO::SimpleString(s) => {
                 let mut buffer =
                     String::with_capacity(SIMPLE_STRING_PREFIX.len_utf8() + s.len() + 2);
@@ -197,6 +198,11 @@ pub fn deserialize(buffer: BytesMut) -> Result<(QueryIO, usize)> {
             let (bytes, len) = parse_file(buffer)?;
             Ok((QueryIO::File(bytes), len))
         },
+        ERR_PREFIX => {
+            let (bytes, len) = parse_simple_string(buffer)?;
+            Ok((QueryIO::Err(bytes), len))
+        },
+        NULL_PREFIX => Ok((QueryIO::Null, 1)),
 
         APPEND_ENTRY_RPC_PREFIX => parse_custom_type::<AppendEntriesRPC>(buffer),
         CLUSTER_HEARTBEAT_PREFIX => parse_custom_type::<ClusterHeartBeat>(buffer),
