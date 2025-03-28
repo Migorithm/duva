@@ -11,21 +11,28 @@ use chrono::{DateTime, Utc};
 use tokio::net::TcpStream;
 use uuid::Uuid;
 
-pub struct ClientStream(pub(crate) TcpStream);
+pub struct ClientStream {
+    pub(crate) stream: TcpStream,
+    pub(crate) client_id: Uuid,
+}
 
-make_smart_pointer!(ClientStream, TcpStream);
+make_smart_pointer!(ClientStream, TcpStream=>stream);
 
 impl ClientStream {
-    pub(crate) async fn authenticate(&mut self) -> Result<(), IoError> {
-        let auth_req = self.auth_read().await?;
+    pub(crate) async fn authenticate(mut stream: TcpStream) -> Result<Self, IoError> {
+        let auth_req = stream.auth_read().await?;
+        let mut c_id = Uuid::now_v7();
         match auth_req {
-            AuthRequest::ClientIdExists => {},
+            AuthRequest::ClientIdExists(client_id) => {
+                c_id = Uuid::parse_str(&client_id)
+                    .map_err(|_| IoError::Custom("Deserialization error".to_string()))?;
+            },
             AuthRequest::ClientIdNotExists => {
-                self.ser_write(AuthResponse::ClientId(Uuid::now_v7().to_string())).await?;
+                stream.ser_write(AuthResponse::ClientId(c_id.to_string())).await?;
             },
         }
 
-        Ok(())
+        Ok(Self { stream, client_id: c_id })
     }
 
     pub(crate) async fn extract_query(&mut self) -> Result<Vec<ClientRequest>, IoError> {

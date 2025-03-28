@@ -125,13 +125,10 @@ impl StartUpFacade {
         println!("start listening on {}", self.config_manager.bind_addr());
         let mut conn_handlers: Vec<tokio::task::JoinHandle<()>> = Vec::with_capacity(100);
         while let Ok((stream, _)) = client_stream_listener.accept().await {
-            let mut client_stream = ClientStream(stream);
-
-            if let Err(err) = client_stream.authenticate().await {
-                eprintln!("[ERROR] Failed to authenticate client stream: {:?}", err);
-                drop(client_stream);
+            let Ok(client_stream) = ClientStream::authenticate(stream).await else {
+                eprintln!("[ERROR] Failed to authenticate client stream");
                 continue;
-            }
+            };
 
             conn_handlers.push(tokio::spawn(
                 ClientController::new(self.registry.clone()).handle_client_stream(client_stream),

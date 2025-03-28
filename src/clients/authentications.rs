@@ -1,6 +1,6 @@
 #[derive(Debug, Clone, PartialEq, Eq, bincode::Decode, bincode::Encode)]
 pub enum AuthRequest {
-    ClientIdExists,
+    ClientIdExists(String),
     ClientIdNotExists,
 }
 
