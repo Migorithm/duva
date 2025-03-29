@@ -27,7 +27,7 @@ async fn main() -> Result<(), String> {
             println!("{}", e);
             continue;
         }
-        if let Err(e) = controller.send_command(build_command(args)).await {
+        if let Err(e) = controller.send_command(args).await {
             println!("{}", e);
         }
     }

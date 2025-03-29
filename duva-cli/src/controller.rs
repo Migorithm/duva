@@ -14,7 +14,7 @@ use duva::{
 };
 use rustyline::{DefaultEditor, Editor, history::FileHistory};
 
-use crate::Cli;
+use crate::{Cli, build_command};
 
 const PROMPT: &str = "duva-cli> ";
 
@@ -48,7 +48,9 @@ impl ClientController {
         (stream, client_id)
     }
 
-    pub(crate) async fn send_command(&mut self, command: String) -> Result<(), String> {
+    pub(crate) async fn send_command(&mut self, args: Vec<&str>) -> Result<(), String> {
+        let command = build_command(args);
+
         // TODO input validation required otherwise, it hangs
         self.stream.write_all(command.as_bytes()).await.unwrap();
         self.stream.flush().await.unwrap();
