@@ -4,7 +4,7 @@ pub mod controller;
 
 use cli::Cli;
 use command::{build_command, validate_input};
-use controller::ClientController;
+use controller::{ClientController, PROMPT};
 use duva::prelude::*;
 
 #[tokio::main]
@@ -12,7 +12,10 @@ async fn main() -> Result<(), String> {
     let mut controller = ClientController::new().await;
 
     loop {
-        let readline = controller.read_line()?;
+        let readline = controller
+            .editor
+            .readline(PROMPT)
+            .map_err(|e| format!("Failed to read line: {}", e))?;
 
         let args: Vec<&str> = readline.split_whitespace().collect();
         if args.is_empty() {
