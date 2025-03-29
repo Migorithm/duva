@@ -252,7 +252,7 @@ pub fn contains_only(source: String, target: Vec<&str>) -> bool {
         panic!("Invalid input")
     };
     let mut target = target.iter().map(|s| s.to_string()).collect::<Vec<String>>();
-    for item in dbg!(vec) {
+    for item in vec {
         if let QueryIO::BulkString(value) = item {
             if let Some(index) = target.iter().position(|s| s == value.as_str()) {
                 target.remove(index);
@@ -260,13 +260,18 @@ pub fn contains_only(source: String, target: Vec<&str>) -> bool {
         }
     }
 
-    dbg!(target).is_empty()
+    target.is_empty()
 }
 
 pub fn array(arr: Vec<&str>) -> Bytes {
     QueryIO::Array(arr.iter().map(|s| QueryIO::BulkString(s.to_string().into())).collect())
         .serialize()
 }
+
+pub fn bulk_string(value: &str) -> Bytes {
+    QueryIO::BulkString(value.to_string().into()).serialize()
+}
+
 pub fn session_request(request_id: u64, arr: Vec<&str>) -> Bytes {
     QueryIO::SessionRequest {
         request_id,

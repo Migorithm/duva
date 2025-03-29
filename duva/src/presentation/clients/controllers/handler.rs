@@ -2,8 +2,8 @@ use std::sync::atomic::Ordering;
 
 use crate::{
     domains::cluster_actors::commands::ConsensusClientResponse,
-    presentation::clusters::connection_manager::ClusterConnectionManager,
     presentation::clients::request::ClientRequest,
+    presentation::clusters::connection_manager::ClusterConnectionManager,
 };
 
 use super::*;

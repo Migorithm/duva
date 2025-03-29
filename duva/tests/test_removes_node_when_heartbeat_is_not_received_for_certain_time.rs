@@ -1,4 +1,5 @@
 mod common;
+use crate::common::bulk_string;
 use common::{ServerEnv, array, spawn_server_process};
 use duva::clients::ClientStreamHandler;
 
@@ -17,7 +18,7 @@ async fn test_removes_node_when_heartbeat_is_not_received_for_certain_time() {
 
     let mut h = ClientStreamHandler::new(leader_p.bind_addr()).await;
     let cluster_info = h.send_and_get(cmd).await;
-    assert_eq!(cluster_info, array(vec!["cluster_known_nodes:1"]));
+    assert_eq!(cluster_info, bulk_string("cluster_known_nodes:1"));
 
     // WHEN
     repl_p.kill().unwrap();
@@ -25,5 +26,5 @@ async fn test_removes_node_when_heartbeat_is_not_received_for_certain_time() {
     let cluster_info = h.send_and_get(cmd).await;
 
     //THEN
-    assert_eq!(cluster_info, array(vec!["cluster_known_nodes:0"]));
+    assert_eq!(cluster_info, bulk_string("cluster_known_nodes:0"));
 }
