@@ -1,0 +1,23 @@
+# DON'T EDIT THIS!
+[package]
+name = "duva"
+version = "0.1.0"
+authors = ["Migorithm <saka90030@gmail.com>"]
+edition = "2024"
+
+
+# DON'T EDIT THIS!
+[dependencies]
+anyhow = "1.0.97"                                   # error handling
+bytes = "1.10.1"                                    # helps manage buffers
+thiserror = "2.0.12"                                # error handling
+tokio = { version = "1.44.1", features = ["full"] }
+rand = "0.9.0"                                      # async networking
+futures = "0.3.31"                                  # async networking
+memmap2 = "0.9.5"                                   # memory mapping
+chrono = "0.4.40"
+bincode = { version = "2.0.1" }                     # serialization
+uuid = { version = "1.16.0", features = ["v7"] }    # unique id generation
+
+[dev-dependencies]
+tempfile = "3.19.1"

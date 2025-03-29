@@ -1,0 +1,9 @@
+[package]
+name = "duva-cli"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+duva = { path = "../duva" }
+clap = { version = "*", features = ["derive"] }
+rustyline = { version = "15.0.0" }
