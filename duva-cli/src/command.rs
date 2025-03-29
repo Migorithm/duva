@@ -13,8 +13,13 @@ pub(crate) fn validate_input(args: &[&str]) -> Result<(), String> {
     // Command-specific validation
     match args[0].to_uppercase().as_str() {
         "SET" => {
-            if args.len() < 3 {
+            if !(args.len() == 3 || args.len() == 5) {
                 return Err("(error) ERR wrong number of arguments for 'set' command".to_string());
+            }
+            if args.len() == 5 {
+                if args[3].to_uppercase() != "PX" {
+                    return Err("(error) ERR syntax error".to_string());
+                }
             }
         },
         "GET" => {
@@ -32,6 +37,28 @@ pub(crate) fn validate_input(args: &[&str]) -> Result<(), String> {
                 return Err("(error) ERR wrong number of arguments for 'hset' command".to_string());
             }
         },
+        "PING" => {
+            if args.len() != 1 {
+                return Err("(error) ERR wrong number of arguments for 'ping' command".to_string());
+            }
+        },
+        "ECHO" => {
+            if args.len() != 2 {
+                return Err("(error) ERR wrong number of arguments for 'echo' command".to_string());
+            }
+        },
+
+        "CLUSTER" => {
+            if args.len() < 2 {
+                return Err(
+                    "(error) ERR wrong number of arguments for 'cluster' command".to_string()
+                );
+            }
+            if args[1].to_uppercase() != "NODES" && args[1].to_uppercase() != "INFO" {
+                return Err("(error) ERR unknown subcommand".to_string());
+            }
+        },
+
         // Add other commands as needed
         unknown_cmd => {
             return Err(format!(

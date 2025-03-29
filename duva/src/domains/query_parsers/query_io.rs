@@ -289,7 +289,6 @@ fn parse_bulk_string(buffer: BytesMut) -> Result<(String, usize)> {
     len += 1;
 
     let content_len: usize = line.parse()?;
-
     let (line, total_len) = read_content_until_crlf(&buffer[len..].into(), content_len)
         .context("Invalid BulkString format!")?;
     Ok((line, len + total_len))

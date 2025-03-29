@@ -28,7 +28,7 @@ impl ClusterCommunicationManager {
         Ok(rx.await?)
     }
 
-    pub(crate) async fn cluster_info(&self) -> anyhow::Result<Vec<String>> {
+    pub(crate) async fn cluster_info(&self) -> anyhow::Result<String> {
         //cluster_state:ok
         //cluster_slots_assigned:16384
         //cluster_slots_ok:16384
@@ -42,7 +42,7 @@ impl ClusterCommunicationManager {
         //cluster_stats_messages_received:1483968
         //total_cluster_links_buffer_limit_exceeded:0
         let known_node_len = self.get_peers().await?.len();
-        Ok(vec![format!("cluster_known_nodes:{}", known_node_len)])
+        Ok(format!("cluster_known_nodes:{}", known_node_len))
     }
 
     pub(crate) async fn forget_peer(
