@@ -59,6 +59,14 @@ pub(crate) fn validate_input(args: &[&str]) -> Result<(), String> {
             }
         },
 
+        "REPLICAOF" => {
+            if args.len() != 3 {
+                return Err(
+                    "(error) ERR wrong number of arguments for 'replicaof' command".to_string()
+                );
+            }
+        },
+
         // Add other commands as needed
         unknown_cmd => {
             return Err(format!(
