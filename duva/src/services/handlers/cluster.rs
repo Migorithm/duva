@@ -117,6 +117,11 @@ impl ClusterActor {
                     }
                     self.tally_vote(&repl_logs).await;
                 },
+                ClusterCommand::ReplicaOf(peer_addr, callback) => {
+                    cache_manager.drop_cache().await;
+                    self.replicaof(peer_addr).await;
+                    let _ = callback.send(());
+                },
             }
         }
         Ok(self)

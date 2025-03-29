@@ -58,6 +58,9 @@ impl CacheActor {
                         }
                     };
                 },
+                CacheCommand::Drop => {
+                    self.cache.clear();
+                },
             }
         }
         Ok(self)
@@ -88,11 +91,17 @@ mod test {
                 .await
                 .unwrap();
         }
+        async fn get(&self, key: String, callback: oneshot::Sender<QueryIO>) {
+            self.0.send(CacheCommand::Get { key, callback }).await.unwrap();
+        }
         async fn index_get(&self, key: String, read_idx: u64, callback: oneshot::Sender<QueryIO>) {
             self.0.send(CacheCommand::IndexGet { key, read_idx, callback }).await.unwrap();
         }
         async fn ping(&self) {
             self.0.send(CacheCommand::Ping).await.unwrap();
+        }
+        async fn drop(&self) {
+            self.0.send(CacheCommand::Drop).await.unwrap();
         }
     }
 
@@ -195,5 +204,33 @@ mod test {
 
         // THEN
         assert_eq!(task.await.unwrap().unwrap(), QueryIO::BulkString(value.clone().into()));
+    }
+
+    #[tokio::test]
+    async fn test_drop_cache() {
+        // GIVEN
+        let (cache, rx) = tokio::sync::mpsc::channel(100);
+        let hwm: Arc<AtomicU64> = Arc::new(0.into());
+        tokio::spawn(
+            CacheActor { cache: CacheDb::default(), self_handler: cache.clone() }
+                .handle(rx, ReadQueue::new(hwm.clone())),
+        );
+        // WHEN
+        let cache = S(cache);
+
+        cache.set("key".to_string().clone(), "value".to_string().clone()).await;
+        cache.set("key1".to_string().clone(), "value1".to_string().clone()).await;
+        cache.drop().await;
+
+        // THEN
+        let (tx, rx) = oneshot::channel();
+        cache.get("key".to_string().clone(), tx).await;
+        let result = rx.await.unwrap();
+        assert_eq!(result, QueryIO::Null);
+
+        let (tx, rx) = oneshot::channel();
+        cache.get("key1".to_string().clone(), tx).await;
+        let result = rx.await.unwrap();
+        assert_eq!(result, QueryIO::Null);
     }
 }

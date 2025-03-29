@@ -55,6 +55,13 @@ impl ClusterCommunicationManager {
         Ok(true)
     }
 
+    pub(crate) async fn replicaof(&self, peer_identifier: PeerIdentifier) {
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        let _ = self.send(ClusterCommand::ReplicaOf(peer_identifier, tx)).await;
+
+        let _ = rx.await;
+    }
+
     pub(crate) async fn cluster_nodes(&self) -> anyhow::Result<Vec<String>> {
         let (tx, rx) = tokio::sync::oneshot::channel();
         self.send(ClusterCommand::ClusterNodes(tx)).await?;

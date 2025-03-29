@@ -25,6 +25,7 @@ pub(crate) enum ClusterCommand {
     InstallLeaderState(Vec<WriteOperation>),
     SendClusterHeatBeat,
     ForgetPeer(PeerIdentifier, tokio::sync::oneshot::Sender<Option<()>>),
+    ReplicaOf(PeerIdentifier, tokio::sync::oneshot::Sender<()>),
     LeaderReqConsensus {
         log: WriteRequest,
         callback: tokio::sync::oneshot::Sender<ConsensusClientResponse>,
