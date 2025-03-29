@@ -1,4 +1,4 @@
-pub(crate) fn build_resp_command(args: Vec<&str>) -> Result<String, String> {
+pub(crate) fn build_command(args: Vec<&str>) -> Result<String, String> {
     // Check for invalid characters in command parts
     // Command-specific validation
     match args[0].to_uppercase().as_str() {

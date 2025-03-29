@@ -3,7 +3,7 @@ pub mod command;
 
 use clap::Parser;
 use cli::Cli;
-use command::build_resp_command;
+use command::build_command;
 use duva::prelude::tokio::io::{AsyncReadExt, AsyncWriteExt};
 use duva::prelude::tokio::net::TcpStream;
 use duva::prelude::uuid::Uuid;
@@ -88,8 +88,7 @@ async fn main() {
                     break;
                 }
 
-                // input validation
-                match build_resp_command(args.clone()) {
+                match build_command(args.clone()) {
                     Ok(command) => {
                         if let Err(e) = send_command(&mut stream, command).await {
                             println!("{}", e);
