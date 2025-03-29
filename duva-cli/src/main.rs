@@ -88,7 +88,7 @@ async fn main() {
                     break;
                 }
 
-                match build_command(args.clone()) {
+                match build_command(args) {
                     Ok(command) => {
                         if let Err(e) = send_command(&mut stream, command).await {
                             println!("{}", e);
