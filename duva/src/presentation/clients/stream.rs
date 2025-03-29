@@ -1,6 +1,6 @@
 use super::request::{ClientAction, ClientRequest};
 use crate::{
-    TAuthRead, TSerWrite,
+    TSerdeReadWrite,
     clients::authentications::{AuthRequest, AuthResponse},
     domains::{IoError, cluster_actors::session::SessionRequest, query_parsers::QueryIO},
     make_smart_pointer,
@@ -20,7 +20,7 @@ make_smart_pointer!(ClientStream, TcpStream=>stream);
 
 impl ClientStream {
     pub(crate) async fn authenticate(mut stream: TcpStream) -> Result<Self, IoError> {
-        let auth_req = stream.auth_read().await?;
+        let auth_req = stream.de_read().await?;
         let mut c_id = Uuid::now_v7();
         match auth_req {
             AuthRequest::ConnectWithId(client_id) => {

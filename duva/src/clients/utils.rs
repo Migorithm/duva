@@ -9,7 +9,7 @@ use tokio::{
 };
 use uuid::Uuid;
 
-use crate::{TAuthRead, services::interface::TSerWrite};
+use crate::services::interface::TSerdeReadWrite;
 
 use super::authentications::{AuthRequest, AuthResponse};
 /// A client utility for reading and writing asynchronously over a TCP stream.
@@ -34,7 +34,7 @@ impl ClientStreamHandler {
 
         stream.ser_write(AuthRequest::ConnectWithoutId).await.unwrap(); // client_id not exist
 
-        let AuthResponse::ClientId(client_id) = stream.auth_read().await.unwrap();
+        let AuthResponse::ClientId(client_id) = stream.de_read().await.unwrap();
         let client_id = Uuid::parse_str(&client_id).unwrap();
 
         let (read_half, write_half) = stream.into_split();

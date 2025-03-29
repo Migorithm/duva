@@ -1,7 +1,7 @@
 use crate::domains::IoError;
 use crate::domains::query_parsers::query_io::SERDE_CONFIG;
 use crate::domains::query_parsers::{QueryIO, deserialize};
-use crate::services::interface::{TAuthRead, TGetPeerIp, TRead, TSerWrite, TWrite};
+use crate::services::interface::{TGetPeerIp, TRead, TSerdeReadWrite, TWrite};
 use bytes::{Bytes, BytesMut};
 use std::io::ErrorKind;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -78,18 +78,19 @@ impl<T: AsyncReadExt + std::marker::Unpin + Sync + Send> TRead for T {
     }
 }
 
-impl<T: AsyncWriteExt + std::marker::Unpin + Sync + Send> TSerWrite for T {
+impl<T: AsyncWriteExt + std::marker::Unpin + Sync + Send> TSerdeReadWrite for T
+where
+    T: AsyncWriteExt + AsyncReadExt + std::marker::Unpin + Sync + Send,
+{
     async fn ser_write(&mut self, buf: impl bincode::Encode + Send) -> Result<(), IoError> {
         let encoded = bincode::encode_to_vec(buf, SERDE_CONFIG)
             .map_err(|e| IoError::Custom("SerializationError".into()))?;
         self.write_all(&encoded).await.map_err(|e| Into::<IoError>::into(e.kind()))
     }
-}
-impl<T: AsyncReadExt + std::marker::Unpin + Sync + Send, U> TAuthRead<U> for T
-where
-    U: bincode::Decode<()> + Send + 'static,
-{
-    async fn auth_read(&mut self) -> Result<U, IoError> {
+    async fn de_read<U>(&mut self) -> Result<U, IoError>
+    where
+        U: bincode::Decode<()> + Send,
+    {
         let mut buffer = BytesMut::with_capacity(512);
         self.read_bytes(&mut buffer).await?;
 

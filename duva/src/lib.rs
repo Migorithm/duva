@@ -18,7 +18,7 @@ use domains::saves::snapshot::snapshot_loader::SnapshotLoader;
 pub use init::Environment;
 use presentation::clients::{ClientController, stream::ClientStream};
 use presentation::clusters::inbound::stream::InboundStream;
-use services::interface::{TAuthRead, TSerWrite};
+use services::interface::TSerdeReadWrite;
 
 use tokio::net::TcpListener;
 
