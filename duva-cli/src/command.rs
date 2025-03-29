@@ -47,6 +47,17 @@ pub(crate) fn validate_input(args: &[&str]) -> Result<(), String> {
                 return Err("(error) ERR wrong number of arguments for 'echo' command".to_string());
             }
         },
+        //TODO fix this
+        "CLUSTER" => {
+            if args.len() < 2 {
+                return Err(
+                    "(error) ERR wrong number of arguments for 'cluster' command".to_string()
+                );
+            }
+            if args[1].to_uppercase() != "NODES" && args[1].to_uppercase() != "INFO" {
+                return Err("(error) ERR unknown subcommand".to_string());
+            }
+        },
 
         // Add other commands as needed
         unknown_cmd => {
