@@ -1,4 +1,14 @@
-pub(crate) fn build_command(args: Vec<&str>) -> Result<String, String> {
+pub(crate) fn build_command(args: Vec<&str>) -> String {
+    // Build the valid RESP command
+    let mut command = format!("*{}\r\n", args.len());
+    for arg in args {
+        command.push_str(&format!("${}\r\n{}\r\n", arg.len(), arg));
+    }
+
+    command
+}
+
+pub(crate) fn validate_input(args: &[&str]) -> Result<(), String> {
     // Check for invalid characters in command parts
     // Command-specific validation
     match args[0].to_uppercase().as_str() {
@@ -29,12 +39,5 @@ pub(crate) fn build_command(args: Vec<&str>) -> Result<String, String> {
             ));
         },
     }
-
-    // Build the valid RESP command
-    let mut command = format!("*{}\r\n", args.len());
-    for arg in args {
-        command.push_str(&format!("${}\r\n{}\r\n", arg.len(), arg));
-    }
-
-    Ok(command)
+    Ok(())
 }
