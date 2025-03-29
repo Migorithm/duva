@@ -47,7 +47,7 @@ pub(crate) fn validate_input(args: &[&str]) -> Result<(), String> {
                 return Err("(error) ERR wrong number of arguments for 'echo' command".to_string());
             }
         },
-        //TODO fix this
+
         "CLUSTER" => {
             if args.len() < 2 {
                 return Err(
