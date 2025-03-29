@@ -23,12 +23,10 @@ pub(crate) fn build_command(args: Vec<&str>) -> Result<String, String> {
             }
         },
         // Add other commands as needed
-        _ => {
-            // For unknown commands, we can either:
-            // 1. Reject them
-            // return Err(format!("Unknown command: {}", args[0]));
-            // 2. Or let them pass but warn
-            // eprintln!("Warning: Unknown command: {}", args[0]);
+        unknown_cmd => {
+            return Err(format!(
+                "(error) ERR unknown command '{unknown_cmd}', with args beginning with",
+            ));
         },
     }
 

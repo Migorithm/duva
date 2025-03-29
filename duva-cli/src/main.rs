@@ -1,6 +1,5 @@
 pub mod cli;
 pub mod command;
-
 use clap::Parser;
 use cli::Cli;
 use command::build_command;
@@ -63,7 +62,7 @@ async fn send_command(stream: &mut TcpStream, command: String) -> Result<(), Str
 }
 
 #[tokio::main]
-async fn main() {
+async fn main() -> Result<(), String> {
     let cli = Cli::parse();
     let mut rl = DefaultEditor::new().expect("Failed to initialize input editor");
     let mut stream = TcpStream::connect(&cli.address()).await.unwrap();
@@ -76,34 +75,28 @@ async fn main() {
     println!("Connected to Redis at {}", cli.address());
 
     loop {
-        let readline = rl.readline("duva-cli> ");
-        match readline {
-            Ok(line) => {
-                let args: Vec<&str> = line.split_whitespace().collect();
-                if args.is_empty() {
-                    continue;
-                }
-                if args[0].eq_ignore_ascii_case("exit") {
-                    println!("Exiting...");
-                    break;
-                }
+        let readline = rl.readline("duva-cli> ").map_err(|e| "Failed to read line".to_string())?;
 
-                match build_command(args) {
-                    Ok(command) => {
-                        if let Err(e) = send_command(&mut stream, command).await {
-                            println!("{}", e);
-                        }
-                    },
-                    Err(e) => {
-                        println!("{}", e);
-                        continue;
-                    },
+        let args: Vec<&str> = readline.split_whitespace().collect();
+        if args.is_empty() {
+            continue;
+        }
+        if args[0].eq_ignore_ascii_case("exit") {
+            println!("Exiting...");
+            break;
+        }
+
+        match build_command(args) {
+            Ok(command) => {
+                if let Err(e) = send_command(&mut stream, command).await {
+                    println!("{}", e);
                 }
             },
-            Err(_) => {
-                println!("Exiting...");
-                break;
+            Err(e) => {
+                println!("{}", e);
+                continue;
             },
         }
     }
+    Ok(())
 }
