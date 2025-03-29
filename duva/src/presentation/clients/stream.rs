@@ -1,4 +1,5 @@
 use super::request::{ClientAction, ClientRequest};
+use crate::domains::peers::identifier::PeerIdentifier;
 use crate::{
     TSerdeReadWrite,
     clients::authentications::{AuthRequest, AuthResponse},
@@ -113,7 +114,9 @@ impl ClientStream {
                 },
                 _ => return Err(anyhow::anyhow!("Invalid command")),
             },
-
+            ("replicaof", [host, port]) => {
+                ClientAction::ReplicaOf(PeerIdentifier::new(host, port.parse()?))
+            },
             _ => return Err(anyhow::anyhow!("Invalid command")),
         };
 

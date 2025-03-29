@@ -143,11 +143,11 @@ impl ReplicationState {
         true
     }
 
-    pub(crate) fn become_follower(&mut self, leader_id: Option<PeerIdentifier>) {
+    pub(super) fn become_follower(&mut self, leader_id: Option<PeerIdentifier>) {
         self.election_state = ElectionState::Follower { voted_for: leader_id };
         self.is_leader_mode = false;
     }
-    pub(crate) fn become_leader(&mut self) {
+    pub(super) fn become_leader(&mut self) {
         self.role = "leader".to_string();
         self.leader_host = None;
         self.leader_port = None;

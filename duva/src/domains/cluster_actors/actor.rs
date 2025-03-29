@@ -1,4 +1,5 @@
 use super::commands::AddPeer;
+use super::commands::ClusterCommand;
 use super::commands::ConsensusClientResponse;
 use super::commands::RejectionReason;
 use super::commands::ReplicationResponse;
@@ -7,13 +8,14 @@ use super::commands::RequestVoteReply;
 use super::heartbeats::heartbeat::AppendEntriesRPC;
 use super::heartbeats::heartbeat::ClusterHeartBeat;
 use super::heartbeats::scheduler::HeartBeatScheduler;
+use super::replication::BannedPeer;
 use super::replication::HeartBeatMessage;
 use super::replication::ReplicationId;
 use super::replication::ReplicationState;
 use super::replication::time_in_secs;
 use super::session::ClientSessions;
 use super::session::SessionRequest;
-use super::{commands::ClusterCommand, replication::BannedPeer, *};
+use super::*;
 use crate::domains::append_only_files::WriteOperation;
 use crate::domains::append_only_files::WriteRequest;
 use crate::domains::append_only_files::interfaces::TWriteAheadLog;
@@ -270,10 +272,14 @@ impl ClusterActor {
         cache_manager: &CacheManager,
     ) {
         println!("[INFO] Received Leader State - length {}", logs.len());
+        if logs.is_empty() {
+            return;
+        }
+        let last_log_idx = logs.last().unwrap().log_index;
         for log in logs {
             let _ = cache_manager.apply_log(log.request).await;
-            self.replication.hwm.store(log.log_index, Ordering::Release);
         }
+        self.replication.hwm.store(last_log_idx, Ordering::Release);
     }
 
     /// create entries per follower.
@@ -582,6 +588,12 @@ impl ClusterActor {
         if let Some(peer) = self.members.get_mut(from) {
             peer.kind.decrease_match_index();
         }
+    }
+
+    pub(crate) async fn replicaof(&mut self, peer_addr: PeerIdentifier) {
+        self.replication.become_follower(Some(peer_addr));
+        self.set_replication_info(ReplicationId::Undecided, 0);
+        self.heartbeat_scheduler.turn_follower_mode().await;
     }
 }
 

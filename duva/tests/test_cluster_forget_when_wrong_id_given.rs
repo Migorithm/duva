@@ -1,6 +1,7 @@
 /// Cluster forget {node id} is used in order to remove a node, from the set of known nodes for the node receiving the command.
 /// In other words the specified node is removed from the nodes table of the node receiving the command.
 mod common;
+use crate::common::bulk_string;
 use common::{ServerEnv, array, spawn_server_process};
 use duva::clients::ClientStreamHandler;
 
@@ -24,5 +25,5 @@ async fn test_cluster_forget_node_return_error_when_wrong_id_given() {
     let cluster_info = client_handler.send_and_get(&array(vec!["cluster", "info"])).await;
 
     // THEN
-    assert_eq!(cluster_info, array(vec!["cluster_known_nodes:0"]));
+    assert_eq!(cluster_info, bulk_string("cluster_known_nodes:0"));
 }

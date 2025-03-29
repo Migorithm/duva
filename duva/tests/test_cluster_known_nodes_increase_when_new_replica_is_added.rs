@@ -1,4 +1,5 @@
 mod common;
+use crate::common::bulk_string;
 use common::{ServerEnv, array, spawn_server_process};
 use duva::clients::ClientStreamHandler;
 
@@ -19,7 +20,7 @@ async fn test_cluster_topology_change_when_new_node_added() {
     leader_p.wait_for_message(&repl_p.heartbeat_msg(0), 1).unwrap();
 
     let cluster_info = client_handler.send_and_get(cmd).await;
-    assert_eq!(cluster_info, array(vec!["cluster_known_nodes:1"]));
+    assert_eq!(cluster_info, bulk_string("cluster_known_nodes:1"));
 
     // WHEN -- new replica is added
     let repl_env2 = ServerEnv::default()
@@ -33,7 +34,7 @@ async fn test_cluster_topology_change_when_new_node_added() {
     // left: "*1\r\n$21\r\ncluster_known_nodes:1\r\n"
     // right: b"*1\r\n$21\r\ncluster_known_nodes:2\r\n"
     let cluster_info = client_handler.send_and_get(cmd).await;
-    assert_eq!(cluster_info, array(vec!["cluster_known_nodes:2"]));
+    assert_eq!(cluster_info, bulk_string("cluster_known_nodes:2"));
 
     let mut nodes = Vec::new();
     client_handler

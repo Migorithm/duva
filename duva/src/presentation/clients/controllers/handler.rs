@@ -3,6 +3,7 @@ use std::sync::atomic::Ordering;
 use crate::{
     domains::cluster_actors::commands::ConsensusClientResponse,
     presentation::clients::request::ClientRequest,
+    presentation::clusters::connection_manager::ClusterConnectionManager,
 };
 
 use super::*;
@@ -82,6 +83,18 @@ impl ClientController<Handler> {
                     Ok(false) => QueryIO::Err("No such peer".into()),
                     Err(e) => QueryIO::Err(e.to_string().into()),
                 }
+            },
+            ClientAction::ReplicaOf(peer_identifier) => {
+                // TODO should check if the peer is in the cluster?
+                self.cluster_communication_manager.replicaof(peer_identifier.clone()).await;
+
+                let (tx, rx) = tokio::sync::oneshot::channel();
+                ClusterConnectionManager(self.cluster_communication_manager.clone())
+                    .discover_cluster(self.config_manager.port, peer_identifier, Some(tx))
+                    .await?;
+                let _ = rx.await;
+
+                QueryIO::SimpleString("OK".into())
             },
         };
         Ok(response)
