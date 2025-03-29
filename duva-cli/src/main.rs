@@ -1,6 +1,8 @@
+pub mod cli;
 pub mod command;
 
 use clap::Parser;
+use cli::Cli;
 use command::build_resp_command;
 use duva::prelude::tokio::io::{AsyncReadExt, AsyncWriteExt};
 use duva::prelude::tokio::net::TcpStream;
@@ -12,22 +14,6 @@ use duva::{
     domains::query_parsers::query_io::{QueryIO, deserialize},
 };
 use rustyline::DefaultEditor;
-
-#[derive(Parser)]
-#[command(name = "redis-cli", version = "1.0", about = "A simple interactive Redis CLI in Rust")]
-#[clap(disable_help_flag = true)]
-struct Cli {
-    #[arg(short, long, default_value = "6000")]
-    port: u16,
-    #[arg(short, long, default_value = "127.0.0.1")]
-    host: String,
-}
-
-impl Cli {
-    fn address(&self) -> String {
-        format!("{}:{}", self.host, self.port)
-    }
-}
 
 async fn send_command(stream: &mut TcpStream, command: String) -> Result<(), String> {
     // TODO input validation required otherwise, it hangs
