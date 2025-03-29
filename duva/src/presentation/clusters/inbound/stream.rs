@@ -123,7 +123,7 @@ impl InboundStream {
             kind,
             cluster_actor_handler,
         );
-        Ok(ClusterCommand::AddPeer(AddPeer { peer_id: connected_peer_info.id, peer }))
+        Ok(ClusterCommand::AddPeer(AddPeer { peer_id: connected_peer_info.id, peer }, None))
     }
 
     pub(crate) fn decide_peer_kind(&self, connected_peer_info: &ConnectedPeerInfo) -> PeerState {

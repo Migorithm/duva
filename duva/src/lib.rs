@@ -119,7 +119,9 @@ impl StartUpFacade {
             .await?
             .leader_bind_addr()
             .context("No leader bind address found")?;
-        connection_manager.discover_cluster(self.config_manager.port, peer_identifier).await?;
+        connection_manager
+            .discover_cluster(self.config_manager.port, peer_identifier, None)
+            .await?;
         Ok(())
     }
 

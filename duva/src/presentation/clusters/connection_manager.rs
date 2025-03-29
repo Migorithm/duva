@@ -28,6 +28,7 @@ impl ClusterConnectionManager {
         self,
         self_port: u16,
         connect_to: PeerIdentifier,
+        tx: Option<tokio::sync::oneshot::Sender<()>>,
     ) -> anyhow::Result<()> {
         // Base case
         let existing_peers = self.get_peers().await?;
@@ -43,15 +44,17 @@ impl ClusterConnectionManager {
             .await?
             .set_replication_info(&self)
             .await?
-            .create_peer_cmd(self.clone())?;
+            .create_peer_cmd(self.clone(), tx)?;
         self.send(add_peer_cmd).await?;
 
         // Discover additional peers concurrently
         // TODO Require investigation. Why does 'list_peer_binding_addrs' have to be called at here?
         for peer in peer_list {
             println!("Discovering peer: {}", peer);
-            Box::pin(ClusterConnectionManager(self.0.clone()).discover_cluster(self_port, peer))
-                .await?;
+            Box::pin(
+                ClusterConnectionManager(self.0.clone()).discover_cluster(self_port, peer, None),
+            )
+            .await?;
         }
 
         Ok(())
