@@ -21,6 +21,7 @@ pub const PROMPT: &str = "duva-cli> ";
 pub(crate) struct ClientController {
     stream: TcpStream,
     client_id: Uuid,
+    latest_index: u64,
     pub(crate) editor: Editor<(), FileHistory>,
 }
 
@@ -29,7 +30,7 @@ impl ClientController {
         let cli: Cli = Cli::parse();
         let editor = DefaultEditor::new().expect("Failed to initialize input editor");
         let (stream, client_id) = ClientController::authenticate(&cli.address()).await;
-        Self { stream, client_id, editor }
+        Self { stream, client_id, editor, latest_index: 0 }
     }
 
     async fn authenticate(server_addr: &str) -> (TcpStream, Uuid) {
@@ -81,7 +82,7 @@ impl ClientController {
                         Ok(())
                     },
                     QueryIO::SimpleString(value) => {
-                        println!("{value}",);
+                        println!("{value}");
                         Ok(())
                     },
 
