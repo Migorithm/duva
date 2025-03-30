@@ -76,7 +76,7 @@ impl OutboundStream {
                         self.write(msg).await?
                     },
                     ConnectionResponse::FULLRESYNC { id, repl_id, offset } => {
-                        connection_info.replid = ReplicationId::Key(repl_id.into());
+                        connection_info.replid = ReplicationId::Key(repl_id);
                         connection_info.hwm = offset;
                         connection_info.id = id.into();
                         println!("[INFO] Three-way handshake completed")

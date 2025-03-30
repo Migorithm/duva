@@ -27,7 +27,7 @@ async fn main() {
         // and the rest are arguments
         let (cmd, args) = separate_command_and_args(args);
 
-        match take_input(&cmd, &args) {
+        match take_input(cmd, &args) {
             Ok(input) => {
                 if let Err(e) = controller.send_command(cmd, args, input).await {
                     println!("{}", e);

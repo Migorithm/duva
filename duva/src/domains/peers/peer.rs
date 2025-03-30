@@ -62,8 +62,8 @@ impl PeerState {
 
     pub fn decrease_match_index(&mut self) {
         match self {
-            PeerState::Replica { match_index, replid } => *match_index -= 1,
-            PeerState::NonDataPeer { match_index, replid } => *match_index -= 1,
+            PeerState::Replica { match_index, .. } => *match_index -= 1,
+            PeerState::NonDataPeer { match_index, .. } => *match_index -= 1,
         }
     }
 }

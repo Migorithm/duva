@@ -8,7 +8,7 @@ use crate::domains::{
 };
 
 use crate::domains::saves::endec::VERSION;
-use crate::domains::saves::snapshot::snapshot::Metadata;
+use crate::domains::saves::snapshot::Metadata;
 use anyhow::Result;
 
 impl CacheEntry {

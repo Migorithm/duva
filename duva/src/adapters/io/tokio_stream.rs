@@ -32,7 +32,7 @@ impl<T: AsyncReadExt + std::marker::Unpin + Sync + Send> TRead for T {
 
             if bytes_read == 0 {
                 // read 0 bytes AND buffer is empty - connection closed
-                if buffer.len() == 0 {
+                if buffer.is_empty() {
                     return Err(IoError::ConnectionAborted);
                 }
                 // read 0 bytes but buffer is not empty - end of message
@@ -82,12 +82,12 @@ impl<T: AsyncWriteExt + std::marker::Unpin + Sync + Send> TSerdeReadWrite for T
 where
     T: AsyncWriteExt + AsyncReadExt + std::marker::Unpin + Sync + Send,
 {
-    async fn ser_write(&mut self, buf: impl bincode::Encode + Send) -> Result<(), IoError> {
+    async fn serialized_write(&mut self, buf: impl bincode::Encode + Send) -> Result<(), IoError> {
         let encoded = bincode::encode_to_vec(buf, SERDE_CONFIG)
-            .map_err(|e| IoError::Custom("SerializationError".into()))?;
+            .map_err(|e| IoError::Custom(e.to_string()))?;
         self.write_all(&encoded).await.map_err(|e| Into::<IoError>::into(e.kind()))
     }
-    async fn de_read<U>(&mut self) -> Result<U, IoError>
+    async fn deserialized_read<U>(&mut self) -> Result<U, IoError>
     where
         U: bincode::Decode<()> + Send,
     {
@@ -95,7 +95,7 @@ where
         self.read_bytes(&mut buffer).await?;
 
         let (auth_request, _) = bincode::decode_from_slice(&buffer, SERDE_CONFIG)
-            .map_err(|e| IoError::Custom(format!("Failed to decode AuthRequest: {}", e)))?;
+            .map_err(|e| IoError::Custom(e.to_string()))?;
 
         Ok(auth_request)
     }

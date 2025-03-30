@@ -36,6 +36,6 @@ pub struct BannedPeer {
 }
 
 #[derive(Debug, Clone, PartialEq, bincode::Encode, bincode::Decode)]
-pub struct AppendEntriesRPC(pub HeartBeatMessage);
+pub struct AppendEntriesRPC(pub(crate) HeartBeatMessage);
 #[derive(Debug, Clone, PartialEq, bincode::Encode, bincode::Decode)]
-pub struct ClusterHeartBeat(pub HeartBeatMessage);
+pub struct ClusterHeartBeat(pub(crate) HeartBeatMessage);

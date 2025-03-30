@@ -28,7 +28,6 @@ impl ClusterListener {
             .into_iter()
             .map(PeerInput::try_from)
             .collect::<Result<_, _>>()
-            .map_err(Into::into)
     }
     pub(crate) async fn listen(mut self, rx: ReactorKillSwitch) -> OwnedReadHalf {
         let connected = select! {

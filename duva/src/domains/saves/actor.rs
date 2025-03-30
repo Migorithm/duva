@@ -7,7 +7,7 @@ use super::{
         encode_metadata,
     },
 };
-use crate::domains::saves::snapshot::snapshot::Metadata;
+use crate::domains::saves::snapshot::Metadata;
 use crate::domains::{
     IoError, caches::cache_objects::CacheEntry, cluster_actors::replication::ReplicationId,
 };
@@ -19,7 +19,7 @@ pub struct SaveActor {
 }
 
 impl SaveActor {
-    pub async fn new(
+    pub(crate) async fn new(
         target: SaveTarget,
         num_of_shards: usize,
         repl_id: ReplicationId,
@@ -119,7 +119,7 @@ pub struct SaveMeta {
 }
 
 impl SaveMeta {
-    pub fn new(num_of_cache_actors: usize, repl_id: ReplicationId, offset: u64) -> Self {
+    pub(crate) fn new(num_of_cache_actors: usize, repl_id: ReplicationId, offset: u64) -> Self {
         Self {
             num_of_saved_table_size_actor: num_of_cache_actors,
             total_key_value_table_size: 0,
