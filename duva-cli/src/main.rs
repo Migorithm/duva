@@ -4,7 +4,7 @@ pub mod controller;
 pub mod error;
 
 use cli::Cli;
-use command::{build_command, take_input};
+use command::{build_command, separate_command_and_args, take_input};
 use controller::{ClientController, PROMPT};
 use duva::prelude::*;
 
@@ -15,20 +15,17 @@ async fn main() {
     loop {
         let readline = controller.editor.readline(PROMPT).unwrap_or_else(|_| std::process::exit(0));
 
-        let args: Vec<String> = readline.split_whitespace().map(|s| s.to_string()).collect();
+        let args: Vec<&str> = readline.split_whitespace().collect();
         if args.is_empty() {
             continue;
+        }
+        if args[0].eq_ignore_ascii_case("exit") {
+            break;
         }
 
         // split command and arg where first element is command
         // and the rest are arguments
-        let (cmd, args) = args.split_at(1);
-        let cmd = cmd[0].to_string();
-        let args = args.to_vec();
-
-        if cmd.eq_ignore_ascii_case("exit") {
-            break;
-        }
+        let (cmd, args) = separate_command_and_args(args);
 
         match take_input(&cmd, &args) {
             Ok(input) => {

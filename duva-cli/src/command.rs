@@ -1,4 +1,12 @@
-pub(crate) fn build_command(cmd: String, args: Vec<String>) -> String {
+pub(crate) fn separate_command_and_args(args: Vec<&str>) -> (&str, Vec<&str>) {
+    // Split the input into command and arguments
+    let (cmd, args) = args.split_at(1);
+    let cmd = cmd[0];
+    let args = args.to_vec();
+    (cmd, args)
+}
+
+pub(crate) fn build_command(cmd: &str, args: Vec<&str>) -> String {
     // Build the valid RESP command
     let mut command = format!("*{}\r\n${}\r\n{}\r\n", args.len() + 1, cmd.len(), cmd);
     for arg in args {
@@ -8,7 +16,7 @@ pub(crate) fn build_command(cmd: String, args: Vec<String>) -> String {
     command
 }
 
-pub(crate) fn take_input(action: &str, args: &[String]) -> Result<ClientInputKind, String> {
+pub(crate) fn take_input(action: &str, args: &[&str]) -> Result<ClientInputKind, String> {
     // Check for invalid characters in command parts
     // Command-specific validation
     match action.to_uppercase().as_str() {

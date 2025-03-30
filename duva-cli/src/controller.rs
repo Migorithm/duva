@@ -47,8 +47,8 @@ impl ClientController {
 
     pub(crate) async fn send_command(
         &mut self,
-        action: String,
-        args: Vec<String>,
+        action: &str,
+        args: Vec<&str>,
         input: ClientInputKind,
     ) -> Result<(), String> {
         // If previous command had a protocol error, try to recover the connection
