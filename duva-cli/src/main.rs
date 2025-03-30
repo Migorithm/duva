@@ -4,7 +4,7 @@ pub mod controller;
 pub mod error;
 
 use cli::Cli;
-use command::{build_command, validate_input};
+use command::{build_command, take_input};
 use controller::{ClientController, PROMPT};
 use duva::prelude::*;
 
@@ -29,12 +29,16 @@ async fn main() {
             break;
         }
 
-        if let Err(e) = validate_input(&cmd, &args) {
-            println!("{}", e);
-            continue;
-        }
-        if let Err(e) = controller.send_command(cmd, args).await {
-            println!("{}", e);
+        match take_input(&cmd, &args) {
+            Ok(input) => {
+                if let Err(e) = controller.send_command(cmd, args, input).await {
+                    println!("{}", e);
+                }
+            },
+            Err(e) => {
+                println!("{}", e);
+                continue;
+            },
         }
     }
 }

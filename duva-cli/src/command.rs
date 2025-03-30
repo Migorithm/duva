@@ -8,7 +8,7 @@ pub(crate) fn build_command(cmd: String, args: Vec<String>) -> String {
     command
 }
 
-pub(crate) fn validate_input(action: &str, args: &[String]) -> Result<(), String> {
+pub(crate) fn take_input(action: &str, args: &[String]) -> Result<ClientInputKind, String> {
     // Check for invalid characters in command parts
     // Command-specific validation
     match action.to_uppercase().as_str() {
@@ -21,23 +21,39 @@ pub(crate) fn validate_input(action: &str, args: &[String]) -> Result<(), String
                     return Err("(error) ERR syntax error".to_string());
                 }
             }
+            return Ok(ClientInputKind::Set);
         },
         "GET" => {
             if args.len() != 1 {
                 return Err("(error) ERR wrong number of arguments for 'get' command".to_string());
             }
+            return Ok(ClientInputKind::Get);
+        },
+        "KEYS" => {
+            if args.len() != 1 {
+                return Err("(error) ERR wrong number of arguments for 'keys' command".to_string());
+            }
+            return Ok(ClientInputKind::Keys);
         },
         "DEL" => {
             if args.len() != 1 {
                 return Err("(error) ERR wrong number of arguments for 'del' command".to_string());
             }
+            return Ok(ClientInputKind::Delete);
         },
 
-        "PING" => {},
+        "PING" => Ok(ClientInputKind::Ping),
         "ECHO" => {
             if args.len() != 1 {
                 return Err("(error) ERR wrong number of arguments for 'echo' command".to_string());
             }
+            return Ok(ClientInputKind::Echo);
+        },
+        "INFO" => {
+            if !args.is_empty() {
+                return Err("(error) ERR wrong number of arguments for 'info' command".to_string());
+            }
+            return Ok(ClientInputKind::Info);
         },
 
         "CLUSTER" => {
@@ -46,9 +62,20 @@ pub(crate) fn validate_input(action: &str, args: &[String]) -> Result<(), String
                     "(error) ERR wrong number of arguments for 'cluster' command".to_string()
                 );
             }
-            if args[0].to_uppercase() != "NODES" && args[0].to_uppercase() != "INFO" {
-                return Err("(error) ERR unknown subcommand".to_string());
+            if args[0].to_uppercase() == "NODES" {
+                return Ok(ClientInputKind::ClusterNodes);
+            } else if args[0].to_uppercase() == "INFO" {
+                return Ok(ClientInputKind::ClusterInfo);
+            } else if args[0].to_uppercase() == "FORGET" {
+                if args.len() != 2 {
+                    return Err(
+                        "(error) ERR wrong number of arguments for 'cluster forget' command"
+                            .to_string(),
+                    );
+                }
+                return Ok(ClientInputKind::ClusterForget);
             }
+            return Err("(error) ERR unknown subcommand".to_string());
         },
 
         // Add other commands as needed
@@ -58,5 +85,20 @@ pub(crate) fn validate_input(action: &str, args: &[String]) -> Result<(), String
             ));
         },
     }
-    Ok(())
+}
+
+pub enum ClientInputKind {
+    Ping,
+    Get,
+    IndexGet,
+    Set,
+    Delete,
+    Echo,
+    Config,
+    Keys,
+    Save,
+    Info,
+    ClusterInfo,
+    ClusterNodes,
+    ClusterForget,
 }

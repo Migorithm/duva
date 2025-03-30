@@ -1,4 +1,4 @@
-use crate::{Cli, build_command};
+use crate::{Cli, build_command, command::ClientInputKind};
 use clap::Parser;
 use duva::{
     clients::authentications::{AuthRequest, AuthResponse},
@@ -49,6 +49,7 @@ impl ClientController {
         &mut self,
         action: String,
         args: Vec<String>,
+        input: ClientInputKind,
     ) -> Result<(), String> {
         // If previous command had a protocol error, try to recover the connection
 
@@ -69,53 +70,46 @@ impl ClientController {
             Err(e) => return Err(format!("Failed to read response: {}", e)),
         };
 
+        let Ok((query_io, _)) = deserialize(BytesMut::from_iter(response)) else {
+            let _ = self.drain_stream(100).await;
+            return Err("Invalid RESP protocol".into());
+        };
+
         // Deserialize response and check if it follows RESP protocol
-        match deserialize(BytesMut::from_iter(response)) {
-            Ok((query_io, _)) => {
-                match query_io {
-                    QueryIO::BulkString(value) => {
-                        println!("{value}");
-                        Ok(())
-                    },
-                    QueryIO::Err(err) => {
-                        println!("{}", err);
-                        Ok(()) // We still return Ok since we got a valid RESP error response
-                    },
-                    QueryIO::Null => {
-                        println!("(nil)");
-                        Ok(())
-                    },
-                    QueryIO::SimpleString(value) => {
-                        println!("{value}");
-                        Ok(())
-                    },
 
-                    QueryIO::Array(array) => {
-                        for item in array {
-                            let QueryIO::BulkString(value) = item else {
-                                println!("Unexpected response format");
-                                break;
-                            };
-                            println!("{value}");
-                        }
-                        Ok(())
-                    },
-
-                    _ => {
-                        let err_msg = "Unexpected response format";
-                        println!("{err_msg}");
-                        Err(err_msg.to_string())
-                    },
-                }
+        match query_io {
+            QueryIO::BulkString(value) => {
+                println!("{value}");
+                Ok(())
             },
-            Err(e) => {
-                let err_msg = format!("Invalid RESP protocol: {}", e);
+            QueryIO::Err(err) => {
+                println!("{}", err);
+                Ok(()) // We still return Ok since we got a valid RESP error response
+            },
+            QueryIO::Null => {
+                println!("(nil)");
+                Ok(())
+            },
+            QueryIO::SimpleString(value) => {
+                println!("{value}");
+                Ok(())
+            },
+
+            QueryIO::Array(array) => {
+                for item in array {
+                    let QueryIO::BulkString(value) = item else {
+                        println!("Unexpected response format");
+                        break;
+                    };
+                    println!("{value}");
+                }
+                Ok(())
+            },
+
+            _ => {
+                let err_msg = "Unexpected response format";
                 println!("{err_msg}");
-
-                // Try to recover for next command
-                let _ = self.drain_stream(100).await;
-
-                Err(err_msg)
+                Err(err_msg.to_string())
             },
         }
     }
