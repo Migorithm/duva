@@ -45,10 +45,14 @@ impl ClientController {
         (stream, client_id)
     }
 
-    pub(crate) async fn send_command(&mut self, args: Vec<&str>) -> Result<(), String> {
+    pub(crate) async fn send_command(
+        &mut self,
+        action: String,
+        args: Vec<String>,
+    ) -> Result<(), String> {
         // If previous command had a protocol error, try to recover the connection
 
-        let command = build_command(args);
+        let command = build_command(action, args);
 
         // TODO input validation required otherwise, it hangs
         if let Err(e) = self.stream.write_all(command.as_bytes()).await {
