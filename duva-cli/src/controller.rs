@@ -1,4 +1,4 @@
-use crate::{Cli, build_command};
+use crate::{Cli, build_command, command::ClientInputKind};
 use clap::Parser;
 use duva::{
     clients::authentications::{AuthRequest, AuthResponse},
@@ -21,6 +21,7 @@ pub const PROMPT: &str = "duva-cli> ";
 pub(crate) struct ClientController {
     stream: TcpStream,
     client_id: Uuid,
+    latest_index: u64,
     pub(crate) editor: Editor<(), FileHistory>,
 }
 
@@ -29,7 +30,7 @@ impl ClientController {
         let cli: Cli = Cli::parse();
         let editor = DefaultEditor::new().expect("Failed to initialize input editor");
         let (stream, client_id) = ClientController::authenticate(&cli.address()).await;
-        Self { stream, client_id, editor }
+        Self { stream, client_id, editor, latest_index: 0 }
     }
 
     async fn authenticate(server_addr: &str) -> (TcpStream, Uuid) {
@@ -44,10 +45,15 @@ impl ClientController {
         (stream, client_id)
     }
 
-    pub(crate) async fn send_command(&mut self, args: Vec<&str>) -> Result<(), String> {
+    pub(crate) async fn send_command(
+        &mut self,
+        action: &str,
+        args: Vec<&str>,
+        input: ClientInputKind,
+    ) -> Result<(), String> {
         // If previous command had a protocol error, try to recover the connection
 
-        let command = build_command(args);
+        let command = build_command(action, args);
 
         // TODO input validation required otherwise, it hangs
         if let Err(e) = self.stream.write_all(command.as_bytes()).await {
@@ -64,55 +70,14 @@ impl ClientController {
             Err(e) => return Err(format!("Failed to read response: {}", e)),
         };
 
+        let Ok((query_io, _)) = deserialize(BytesMut::from_iter(response)) else {
+            let _ = self.drain_stream(100).await;
+            return Err("Invalid RESP protocol".into());
+        };
+
         // Deserialize response and check if it follows RESP protocol
-        match deserialize(BytesMut::from_iter(response)) {
-            Ok((query_io, _)) => {
-                match query_io {
-                    QueryIO::BulkString(value) => {
-                        println!("{value}");
-                        Ok(())
-                    },
-                    QueryIO::Err(err) => {
-                        println!("{}", err);
-                        Ok(()) // We still return Ok since we got a valid RESP error response
-                    },
-                    QueryIO::Null => {
-                        println!("(nil)");
-                        Ok(())
-                    },
-                    QueryIO::SimpleString(value) => {
-                        println!("{value}",);
-                        Ok(())
-                    },
 
-                    QueryIO::Array(array) => {
-                        for item in array {
-                            let QueryIO::BulkString(value) = item else {
-                                println!("Unexpected response format");
-                                break;
-                            };
-                            println!("{value}");
-                        }
-                        Ok(())
-                    },
-
-                    _ => {
-                        let err_msg = "Unexpected response format";
-                        println!("{err_msg}");
-                        Err(err_msg.to_string())
-                    },
-                }
-            },
-            Err(e) => {
-                let err_msg = format!("Invalid RESP protocol: {}", e);
-                println!("{err_msg}");
-
-                // Try to recover for next command
-                let _ = self.drain_stream(100).await;
-
-                Err(err_msg)
-            },
-        }
+        self.render_return_per_input(input, query_io)
     }
 
     async fn drain_stream(&mut self, timeout_ms: u64) -> Result<(), String> {
@@ -150,6 +115,61 @@ impl ClientController {
         match tokio::time::timeout(timeout_duration, drain_future).await {
             Ok(result) => result,
             Err(_) => Err("Timeout while draining the stream".to_string()),
+        }
+    }
+
+    fn render_return_per_input(
+        &mut self,
+        input: ClientInputKind,
+        query_io: QueryIO,
+    ) -> Result<(), String> {
+        use ClientInputKind::*;
+        match input {
+            Ping | Get | IndexGet | Delete | Echo | Config | Keys | Save | Info | ClusterForget => {
+                match query_io {
+                    QueryIO::Null => println!("(nil)"),
+                    QueryIO::SimpleString(value) => println!("{value}"),
+                    QueryIO::BulkString(value) => println!("{value}"),
+                    QueryIO::Err(value) => {
+                        return Err(format!("(error) {value}"));
+                    },
+                    _ => {
+                        return Err("Unexpected response format".to_string());
+                    },
+                }
+                return Ok(());
+            },
+            Set => {
+                let v = match query_io {
+                    QueryIO::SimpleString(value) => value,
+                    QueryIO::BulkString(value) => value,
+                    QueryIO::Err(value) => {
+                        return Err(format!("(error) {value}"));
+                    },
+                    _ => {
+                        return Err("Unexpected response format".to_string());
+                    },
+                };
+                let rindex = v.split_whitespace().last().unwrap();
+                self.latest_index = rindex.parse::<u64>().unwrap();
+
+                println!("OK");
+                return Ok(());
+            },
+
+            ClusterInfo | ClusterNodes => {
+                let QueryIO::Array(value) = query_io else {
+                    return Err("Unexpected response format".to_string());
+                };
+                for item in value {
+                    let QueryIO::BulkString(value) = item else {
+                        println!("Unexpected response format");
+                        break;
+                    };
+                    println!("{value}");
+                }
+                return Ok(());
+            },
         }
     }
 }

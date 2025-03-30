@@ -13,7 +13,7 @@ pub(crate) struct Session {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct SessionRequest {
+pub struct SessionRequest {
     pub(crate) request_id: u64,
     pub(crate) client_id: Uuid,
 }

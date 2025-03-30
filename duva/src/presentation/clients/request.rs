@@ -43,7 +43,7 @@ impl ClientAction {
 }
 
 #[derive(Clone, Debug)]
-pub(crate) struct ClientRequest {
+pub struct ClientRequest {
     pub(crate) action: ClientAction,
     pub(crate) session_req: Option<SessionRequest>,
 }
