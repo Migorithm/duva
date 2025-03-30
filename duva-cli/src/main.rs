@@ -16,15 +16,16 @@ async fn main() {
         let readline = controller.editor.readline(PROMPT).unwrap_or_else(|_| std::process::exit(0));
 
         let args: Vec<String> = readline.split_whitespace().map(|s| s.to_string()).collect();
+        if args.is_empty() {
+            continue;
+        }
+
         // split command and arg where first element is command
         // and the rest are arguments
         let (cmd, args) = args.split_at(1);
         let cmd = cmd[0].to_string();
         let args = args.to_vec();
 
-        if cmd.is_empty() {
-            continue;
-        }
         if cmd.eq_ignore_ascii_case("exit") {
             break;
         }
@@ -37,7 +38,6 @@ async fn main() {
             },
             Err(e) => {
                 println!("{}", e);
-                continue;
             },
         }
     }
