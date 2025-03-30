@@ -24,30 +24,28 @@ pub(crate) fn take_input(action: &str, args: &[&str]) -> Result<ClientInputKind,
             if !(args.len() == 2 || args.len() == 4) {
                 return Err("(error) ERR wrong number of arguments for 'set' command".to_string());
             }
-            if args.len() == 4 {
-                if args[2].to_uppercase() != "PX" {
-                    return Err("(error) ERR syntax error".to_string());
-                }
+            if args.len() == 4 && args[2].to_uppercase() == "EX" {
+                return Err("(error) ERR syntax error".to_string());
             }
-            return Ok(ClientInputKind::Set);
+            Ok(ClientInputKind::Set)
         },
         "GET" => {
             if args.len() != 1 {
                 return Err("(error) ERR wrong number of arguments for 'get' command".to_string());
             }
-            return Ok(ClientInputKind::Get);
+            Ok(ClientInputKind::Get)
         },
         "KEYS" => {
             if args.len() != 1 {
                 return Err("(error) ERR wrong number of arguments for 'keys' command".to_string());
             }
-            return Ok(ClientInputKind::Keys);
+            Ok(ClientInputKind::Keys)
         },
         "DEL" => {
             if args.len() != 1 {
                 return Err("(error) ERR wrong number of arguments for 'del' command".to_string());
             }
-            return Ok(ClientInputKind::Delete);
+            Ok(ClientInputKind::Delete)
         },
 
         "PING" => Ok(ClientInputKind::Ping),
@@ -55,17 +53,17 @@ pub(crate) fn take_input(action: &str, args: &[&str]) -> Result<ClientInputKind,
             if args.len() != 1 {
                 return Err("(error) ERR wrong number of arguments for 'echo' command".to_string());
             }
-            return Ok(ClientInputKind::Echo);
+            Ok(ClientInputKind::Echo)
         },
         "INFO" => {
             if !args.is_empty() {
                 return Err("(error) ERR wrong number of arguments for 'info' command".to_string());
             }
-            return Ok(ClientInputKind::Info);
+            Ok(ClientInputKind::Info)
         },
 
         "CLUSTER" => {
-            if args.len() < 1 {
+            if args.is_empty() {
                 return Err(
                     "(error) ERR wrong number of arguments for 'cluster' command".to_string()
                 );
@@ -83,14 +81,12 @@ pub(crate) fn take_input(action: &str, args: &[&str]) -> Result<ClientInputKind,
                 }
                 return Ok(ClientInputKind::ClusterForget);
             }
-            return Err("(error) ERR unknown subcommand".to_string());
+            Err("(error) ERR unknown subcommand".to_string())
         },
 
         // Add other commands as needed
         unknown_cmd => {
-            return Err(format!(
-                "(error) ERR unknown command '{unknown_cmd}', with args beginning with",
-            ));
+            Err(format!("(error) ERR unknown command '{unknown_cmd}', with args beginning with",))
         },
     }
 }

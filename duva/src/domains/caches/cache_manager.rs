@@ -8,7 +8,7 @@ use crate::domains::query_parsers::QueryIO;
 use crate::domains::saves::actor::SaveActor;
 use crate::domains::saves::actor::SaveTarget;
 use crate::domains::saves::endec::StoredDuration;
-use crate::domains::saves::snapshot::snapshot::Snapshot;
+use crate::domains::saves::snapshot::Snapshot;
 use anyhow::Result;
 use chrono::Utc;
 use futures::future::join_all;
@@ -30,14 +30,11 @@ pub(crate) struct CacheManager {
 impl CacheManager {
     pub(crate) fn run_cache_actors(hwm: Arc<AtomicU64>) -> CacheManager {
         const NUM_OF_PERSISTENCE: usize = 10;
-
-        let cache_dispatcher = CacheManager {
+        CacheManager {
             inboxes: (0..NUM_OF_PERSISTENCE)
                 .map(|_| CacheActor::run(hwm.clone()))
                 .collect::<Vec<_>>(),
-        };
-
-        cache_dispatcher
+        }
     }
 
     pub(crate) async fn route_get(&self, key: String) -> Result<QueryIO> {

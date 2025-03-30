@@ -26,7 +26,7 @@ impl ClusterActor {
                     self.snapshot_topology().await;
                 },
                 ClusterCommand::GetPeers(callback) => {
-                    let _ = callback.send(self.members.keys().cloned().collect::<Vec<_>>().into());
+                    let _ = callback.send(self.members.keys().cloned().collect::<Vec<_>>());
                 },
                 ClusterCommand::ClusterNodes(callback) => {
                     let _ = callback.send(self.cluster_nodes());

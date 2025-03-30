@@ -13,6 +13,7 @@ impl<T: TWriteAheadLog> ReplicatedLogs<T> {
     pub fn set_term(&mut self, term: u64) {
         self.term = term;
     }
+
     pub(crate) async fn create_log_entries(
         &mut self,
         log: &WriteRequest,
@@ -23,7 +24,7 @@ impl<T: TWriteAheadLog> ReplicatedLogs<T> {
         self.write_log_entry(log, term).await?;
 
         if low_watermark.is_none() {
-            return Ok(self.from(current_idx.into()));
+            return Ok(self.from(current_idx));
         }
 
         let mut logs = Vec::with_capacity((self.log_index - low_watermark.unwrap()) as usize);
@@ -37,8 +38,7 @@ impl<T: TWriteAheadLog> ReplicatedLogs<T> {
         log: &WriteRequest,
         term: u64,
     ) -> anyhow::Result<()> {
-        let op =
-            WriteOperation { request: log.clone(), log_index: (self.log_index + 1).into(), term };
+        let op = WriteOperation { request: log.clone(), log_index: (self.log_index + 1), term };
         self.target.append(op).await?;
         self.log_index += 1;
         Ok(())
@@ -57,7 +57,7 @@ impl<T: TWriteAheadLog> ReplicatedLogs<T> {
         self.log_index += cnt as u64;
 
         println!("[INFO] Received log entry with log index up to {}", self.log_index);
-        Ok(self.log_index.into())
+        Ok(self.log_index)
     }
 
     pub(crate) async fn overwrite(&mut self, ops: Vec<WriteOperation>) -> anyhow::Result<()> {

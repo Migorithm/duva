@@ -11,7 +11,7 @@ impl ClientController<Acceptor> {
         }
     }
 
-    pub(super) fn to_handler(self) -> ClientController<Handler> {
+    pub(super) fn into_handler(self) -> ClientController<Handler> {
         ClientController {
             cluster_communication_manager: self.cluster_communication_manager,
             cache_manager: self.cache_manager,
@@ -21,7 +21,7 @@ impl ClientController<Acceptor> {
     }
 
     pub(crate) async fn handle_client_stream(self, mut stream: ClientStream) {
-        let handler = self.to_handler();
+        let handler = self.into_handler();
 
         loop {
             //TODO check on current mode of the node for every query? or get notified when change is made?
@@ -35,7 +35,7 @@ impl ClientController<Acceptor> {
                         // ! consensus or handler or commit
                         Err(e) => {
                             eprintln!("[ERROR] {:?}", e);
-                            let _ = stream.write(QueryIO::Err(e.to_string().into())).await;
+                            let _ = stream.write(QueryIO::Err(e.to_string())).await;
                             continue;
                         },
                     };

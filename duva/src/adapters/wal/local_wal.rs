@@ -11,7 +11,6 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt, BufReader, BufWriter};
 pub struct LocalWAL {
     /// The file path where the WAL data is stored.
     path: PathBuf,
-
     /// A buffered writer for the underlying file.
     writer: BufWriter<File>,
 }

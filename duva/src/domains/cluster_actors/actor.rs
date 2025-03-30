@@ -70,14 +70,14 @@ impl ClusterActor {
 
     pub(crate) fn replicas(&self) -> impl Iterator<Item = (&PeerIdentifier, &Peer, u64)> {
         self.members.iter().filter_map(|(id, peer)| match &peer.kind {
-            PeerState::Replica { match_index: hwm, replid } => Some((id, peer, *hwm)),
+            PeerState::Replica { match_index: hwm, .. } => Some((id, peer, *hwm)),
             _ => None,
         })
     }
 
     pub(crate) fn replicas_mut(&mut self) -> impl Iterator<Item = (&mut Peer, u64)> {
-        self.members.values_mut().into_iter().filter_map(|peer| match peer.kind.clone() {
-            PeerState::Replica { match_index: hwm, replid } => Some((peer, hwm)),
+        self.members.values_mut().filter_map(|peer| match peer.kind.clone() {
+            PeerState::Replica { match_index: hwm, .. } => Some((peer, hwm)),
             _ => None,
         })
     }
@@ -222,7 +222,7 @@ impl ClusterActor {
         }
 
         let Ok(append_entries) =
-            logger.create_log_entries(&log, self.take_low_watermark(), self.replication.term).await
+            logger.create_log_entries(log, self.take_low_watermark(), self.replication.term).await
         else {
             return Err(ConsensusClientResponse::Err("Write operation failed".into()));
         };
@@ -295,9 +295,8 @@ impl ClusterActor {
     pub(crate) fn take_low_watermark(&self) -> Option<u64> {
         self.members
             .values()
-            .into_iter()
             .filter_map(|peer| match &peer.kind {
-                PeerState::Replica { match_index: watermark, replid } => Some(*watermark),
+                PeerState::Replica { match_index: watermark, .. } => Some(*watermark),
                 _ => None,
             })
             .min()
@@ -355,7 +354,7 @@ impl ClusterActor {
         cache_manager: &CacheManager,
     ) {
         // * logging case
-        if let Err(_) = self.try_append_entries(wal, &mut heartbeat).await {
+        if self.try_append_entries(wal, &mut heartbeat).await.is_err() {
             return;
         };
 
@@ -431,7 +430,6 @@ impl ClusterActor {
 
     async fn send_to_replicas(&mut self, msg: impl Into<QueryIO> + Send + Clone) {
         self.replicas_mut()
-            .into_iter()
             .map(|(peer, _)| peer.write_io(msg.clone()))
             .collect::<FuturesUnordered<_>>()
             .for_each(|_| async {})
@@ -441,12 +439,11 @@ impl ClusterActor {
     pub(crate) fn cluster_nodes(&self) -> Vec<String> {
         self.members
             .values()
-            .into_iter()
             .map(|peer| match &peer.kind {
-                PeerState::Replica { match_index, replid } => {
+                PeerState::Replica { match_index: _, replid } => {
                     format!("{} {} 0", peer.addr, replid)
                 },
-                PeerState::NonDataPeer { replid, match_index } => {
+                PeerState::NonDataPeer { replid, match_index: _ } => {
                     format!("{} {} 0", peer.addr, replid)
                 },
             })
@@ -574,7 +571,7 @@ impl ClusterActor {
         match repl_res.rej_reason {
             RejectionReason::ReceiverHasHigherTerm => self.step_down().await,
             RejectionReason::LogInconsistency => self.decrease_match_index(&repl_res.from),
-            RejectionReason::None => return,
+            RejectionReason::None => (),
         }
     }
 

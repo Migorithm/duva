@@ -1,4 +1,4 @@
-use super::snapshot::Snapshot;
+use super::Snapshot;
 use crate::domains::saves::endec::decoder::{byte_decoder::BytesDecoder, states::DecoderInit};
 
 pub(crate) struct SnapshotLoader {}

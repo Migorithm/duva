@@ -19,7 +19,7 @@ make_smart_pointer!(ClientStream, TcpStream=>stream);
 
 impl ClientStream {
     pub(crate) async fn authenticate(mut stream: TcpStream) -> Result<Self, IoError> {
-        let auth_req = stream.de_read().await?;
+        let auth_req = stream.deserialized_read().await?;
         let mut c_id = Uuid::now_v7();
         match auth_req {
             AuthRequest::ConnectWithId(client_id) => {
@@ -27,7 +27,7 @@ impl ClientStream {
                     .map_err(|_| IoError::Custom("Deserialization error".to_string()))?;
             },
             AuthRequest::ConnectWithoutId => {
-                stream.ser_write(AuthResponse::ClientId(c_id.to_string())).await?;
+                stream.serialized_write(AuthResponse::ClientId(c_id.to_string())).await?;
             },
         }
 
