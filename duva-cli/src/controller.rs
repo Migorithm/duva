@@ -77,41 +77,7 @@ impl ClientController {
 
         // Deserialize response and check if it follows RESP protocol
 
-        match query_io {
-            QueryIO::BulkString(value) => {
-                println!("{value}");
-                Ok(())
-            },
-            QueryIO::Err(err) => {
-                println!("{}", err);
-                Ok(()) // We still return Ok since we got a valid RESP error response
-            },
-            QueryIO::Null => {
-                println!("(nil)");
-                Ok(())
-            },
-            QueryIO::SimpleString(value) => {
-                println!("{value}");
-                Ok(())
-            },
-
-            QueryIO::Array(array) => {
-                for item in array {
-                    let QueryIO::BulkString(value) = item else {
-                        println!("Unexpected response format");
-                        break;
-                    };
-                    println!("{value}");
-                }
-                Ok(())
-            },
-
-            _ => {
-                let err_msg = "Unexpected response format";
-                println!("{err_msg}");
-                Err(err_msg.to_string())
-            },
-        }
+        self.render_return_per_input(input, query_io)
     }
 
     async fn drain_stream(&mut self, timeout_ms: u64) -> Result<(), String> {
@@ -149,6 +115,61 @@ impl ClientController {
         match tokio::time::timeout(timeout_duration, drain_future).await {
             Ok(result) => result,
             Err(_) => Err("Timeout while draining the stream".to_string()),
+        }
+    }
+
+    fn render_return_per_input(
+        &mut self,
+        input: ClientInputKind,
+        query_io: QueryIO,
+    ) -> Result<(), String> {
+        use ClientInputKind::*;
+        match input {
+            Ping | Get | IndexGet | Delete | Echo | Config | Keys | Save | Info | ClusterForget => {
+                match query_io {
+                    QueryIO::Null => println!("(nil)"),
+                    QueryIO::SimpleString(value) => println!("{value}"),
+                    QueryIO::BulkString(value) => println!("{value}"),
+                    QueryIO::Err(value) => {
+                        return Err(format!("(error) {value}"));
+                    },
+                    _ => {
+                        return Err("Unexpected response format".to_string());
+                    },
+                }
+                return Ok(());
+            },
+            Set => {
+                let v = match query_io {
+                    QueryIO::SimpleString(value) => value,
+                    QueryIO::BulkString(value) => value,
+                    QueryIO::Err(value) => {
+                        return Err(format!("(error) {value}"));
+                    },
+                    _ => {
+                        return Err("Unexpected response format".to_string());
+                    },
+                };
+                let rindex = v.split_whitespace().last().unwrap();
+                self.latest_index = rindex.parse::<u64>().unwrap();
+
+                println!("OK");
+                return Ok(());
+            },
+
+            ClusterInfo | ClusterNodes => {
+                let QueryIO::Array(value) = query_io else {
+                    return Err("Unexpected response format".to_string());
+                };
+                for item in value {
+                    let QueryIO::BulkString(value) = item else {
+                        println!("Unexpected response format");
+                        break;
+                    };
+                    println!("{value}");
+                }
+                return Ok(());
+            },
         }
     }
 }
