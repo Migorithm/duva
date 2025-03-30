@@ -93,7 +93,7 @@ impl ClusterActor {
         // TODO randomly choose the peer to send the message
         let msg = ClusterHeartBeat(
             self.replication
-                .default_heartbeat(hop_count, logger.log_index, logger.term)
+                .default_heartbeat(hop_count, logger.last_log_index, logger.last_log_term)
                 .set_cluster_nodes(self.cluster_nodes()),
         );
 
@@ -228,7 +228,7 @@ impl ClusterActor {
 
         // Skip consensus for no replicas
         if self.replicas().count() == 0 {
-            return Err(ConsensusClientResponse::LogIndex(Some(logger.log_index)));
+            return Err(ConsensusClientResponse::LogIndex(Some(logger.last_log_index)));
         }
 
         Ok(append_entries)
@@ -241,7 +241,7 @@ impl ClusterActor {
         callback: tokio::sync::oneshot::Sender<ConsensusClientResponse>,
         session_req: Option<SessionRequest>,
     ) {
-        let (prev_log_index, prev_term) = (logger.log_index, logger.term);
+        let (prev_log_index, prev_term) = (logger.last_log_index, logger.last_log_term);
         let append_entries = match self.try_create_append_entries(logger, &log).await {
             Ok(entries) => entries,
             Err(err) => {
@@ -251,7 +251,7 @@ impl ClusterActor {
         };
 
         self.consensus_tracker.add(
-            logger.log_index,
+            logger.last_log_index,
             callback,
             self.replicas().count(),
             session_req,
@@ -373,7 +373,7 @@ impl ClusterActor {
         if let Err(e) =
             self.ensure_prev_consistency(wal, rpc.prev_log_index, rpc.prev_log_term).await
         {
-            self.send_ack(&rpc.from, wal.log_index, e).await;
+            self.send_ack(&rpc.from, wal.last_log_index, e).await;
             return Err(anyhow::anyhow!("Fail fail to append"));
         }
 
@@ -421,8 +421,8 @@ impl ClusterActor {
     ) {
         self.send_to_replicas(AppendEntriesRPC(self.replication.default_heartbeat(
             0,
-            logger.log_index,
-            logger.term,
+            logger.last_log_index,
+            logger.last_log_term,
         )))
         .await;
     }
@@ -450,13 +450,17 @@ impl ClusterActor {
             .collect()
     }
 
-    pub(crate) async fn run_for_election(&mut self, last_log_index: u64, last_log_term: u64) {
+    pub(crate) async fn run_for_election(
+        &mut self,
+        logger: &mut ReplicatedLogs<impl TWriteAheadLog>,
+    ) {
         let ElectionState::Follower { voted_for: None } = self.replication.election_state else {
             return;
         };
 
-        self.replication.become_candidate(self.replicas().count() as u8);
-        let request_vote = RequestVote::new(&self.replication, last_log_index, last_log_term);
+        self.become_candidate();
+        let request_vote =
+            RequestVote::new(&self.replication, logger.last_log_index, logger.last_log_index);
 
         println!("[INFO] Running for election term {}", self.replication.term);
         self.replicas_mut()
@@ -488,7 +492,8 @@ impl ClusterActor {
         }
         self.become_leader().await;
 
-        let msg = self.replication.default_heartbeat(0, logger.log_index, logger.term);
+        let msg =
+            self.replication.default_heartbeat(0, logger.last_log_index, logger.last_log_term);
         self.replicas_mut()
             .map(|(peer, _)| peer.write_io(AppendEntriesRPC(msg.clone())))
             .collect::<FuturesUnordered<_>>()
@@ -513,7 +518,7 @@ impl ClusterActor {
         if heartbeat_hwm > old_hwm {
             println!("[INFO] Received commit offset {}", heartbeat_hwm);
 
-            let new_hwm = std::cmp::min(heartbeat_hwm, wal.log_index);
+            let new_hwm = std::cmp::min(heartbeat_hwm, wal.last_log_index);
             self.replication.hwm.store(new_hwm, Ordering::Release);
 
             // Apply all newly committed entries to state machine
@@ -535,7 +540,7 @@ impl ClusterActor {
     ) {
         if new_term > self.replication.term {
             self.replication.term = new_term;
-            wal.term = new_term;
+            wal.last_log_term = new_term;
         }
     }
 
@@ -545,8 +550,12 @@ impl ClusterActor {
         wal: &ReplicatedLogs<impl TWriteAheadLog>,
     ) -> bool {
         if heartbeat.term < self.replication.term {
-            self.send_ack(&heartbeat.from, wal.log_index, RejectionReason::ReceiverHasHigherTerm)
-                .await;
+            self.send_ack(
+                &heartbeat.from,
+                wal.last_log_index,
+                RejectionReason::ReceiverHasHigherTerm,
+            )
+            .await;
             return true;
         }
         false
@@ -564,6 +573,9 @@ impl ClusterActor {
         eprintln!("\x1b[32m[INFO] Election succeeded\x1b[0m");
         self.replication.become_leader();
         self.heartbeat_scheduler.turn_leader_mode().await;
+    }
+    fn become_candidate(&mut self) {
+        self.replication.become_candidate(self.replicas().count() as u8);
     }
 
     pub(crate) async fn handle_repl_rejection(&mut self, repl_res: ReplicationResponse) {
@@ -728,7 +740,7 @@ mod test {
 
         // THEN
         assert_eq!(cluster_actor.consensus_tracker.len(), 0);
-        assert_eq!(logger.log_index, 1);
+        assert_eq!(logger.last_log_index, 1);
     }
 
     #[tokio::test]
@@ -760,7 +772,7 @@ mod test {
 
         // THEN
         assert_eq!(cluster_actor.consensus_tracker.len(), 1);
-        assert_eq!(logger.log_index, 1);
+        assert_eq!(logger.last_log_index, 1);
 
         assert_eq!(
             cluster_actor.consensus_tracker.get(&1).unwrap().session_req.as_ref().unwrap().clone(), //* session_request_is_saved_on_tracker
@@ -845,7 +857,7 @@ mod test {
 
         // THEN
         assert_eq!(cluster_actor.consensus_tracker.len(), 0);
-        assert_eq!(logger.log_index, 1);
+        assert_eq!(logger.last_log_index, 1);
 
         client_wait.await.unwrap();
         assert!(sessions.is_processed(&Some(client_request))); // * session_request_is_marked_as_processed
@@ -889,7 +901,7 @@ mod test {
 
         // THEN - no change in consensus tracker even though the same voter voted multiple times
         assert_eq!(cluster_actor.consensus_tracker.len(), 1);
-        assert_eq!(logger.log_index, 1);
+        assert_eq!(logger.last_log_index, 1);
     }
 
     #[tokio::test]
@@ -919,7 +931,7 @@ mod test {
         assert_eq!(logs.len(), 2);
         assert_eq!(logs[0].log_index, 3);
         assert_eq!(logs[1].log_index, 4);
-        assert_eq!(logger.log_index, 4);
+        assert_eq!(logger.last_log_index, 4);
     }
 
     #[tokio::test]
@@ -1000,7 +1012,7 @@ mod test {
 
         // THEN
         assert_eq!(cluster_actor.replication.hwm.load(Ordering::Relaxed), 0);
-        assert_eq!(logger.log_index, 2);
+        assert_eq!(logger.last_log_index, 2);
         let logs = logger.range(0, 2);
         assert_eq!(logs.len(), 2);
         assert_eq!(logs[0].log_index, 1);
@@ -1047,7 +1059,7 @@ mod test {
 
         // THEN
         assert_eq!(cluster_actor.replication.hwm.load(Ordering::Relaxed), 2);
-        assert_eq!(logger.log_index, 2);
+        assert_eq!(logger.last_log_index, 2);
         task.await.unwrap();
     }
 
@@ -1155,7 +1167,7 @@ mod test {
 
         assert_eq!(applied_keys, vec!["key1"]);
         assert_eq!(cluster_actor.replication.hwm.load(Ordering::Relaxed), 1);
-        assert_eq!(logger.log_index, 3); // All entries are in the log
+        assert_eq!(logger.last_log_index, 3); // All entries are in the log
     }
 
     #[tokio::test]
@@ -1217,7 +1229,7 @@ mod test {
 
         // Verify state
         assert_eq!(cluster_actor.replication.hwm.load(Ordering::Relaxed), 1);
-        assert_eq!(logger.log_index, 2);
+        assert_eq!(logger.last_log_index, 2);
     }
 
     #[tokio::test]
@@ -1270,7 +1282,7 @@ mod test {
 
         // THEN: Entries are accepted
         assert!(result.is_ok(), "Should accept entries with prev_log_index=0 on empty log");
-        assert_eq!(logger.log_index, 1); // Assuming write_log_entries updates log_index
+        assert_eq!(logger.last_log_index, 1); // Assuming write_log_entries updates log_index
     }
 
     #[tokio::test]
@@ -1292,7 +1304,7 @@ mod test {
 
         // THEN: Entries are rejected
         assert!(result.is_err(), "Should reject entries with prev_log_index > 0 on empty log");
-        assert_eq!(logger.log_index, 0); // Log should remain unchanged
+        assert_eq!(logger.last_log_index, 0); // Log should remain unchanged
     }
 
     /*

@@ -65,7 +65,7 @@ impl ClusterActor {
                     if client_sessions.is_processed(&session_req) {
                         // TODO is it okay to send current log index?
                         let _ = callback
-                            .send(ConsensusClientResponse::LogIndex(Some(logger.log_index)));
+                            .send(ConsensusClientResponse::LogIndex(Some(logger.last_log_index)));
                         continue;
                     };
                     self.req_consensus(&mut logger, log, callback, session_req).await;
@@ -106,10 +106,10 @@ impl ClusterActor {
                     let _ = sender.send(logs);
                 },
                 ClusterCommand::StartLeaderElection => {
-                    self.run_for_election(logger.log_index, self.replication.term).await;
+                    self.run_for_election(&mut logger).await;
                 },
                 ClusterCommand::VoteElection(request_vote) => {
-                    self.vote_election(request_vote, logger.log_index).await;
+                    self.vote_election(request_vote, logger.last_log_index).await;
                 },
                 ClusterCommand::ApplyElectionVote(request_vote_reply) => {
                     if !request_vote_reply.vote_granted {

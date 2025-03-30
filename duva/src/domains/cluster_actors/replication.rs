@@ -1,13 +1,11 @@
 use super::consensus::ElectionState;
 pub(crate) use super::heartbeats::heartbeat::BannedPeer;
 pub(crate) use super::heartbeats::heartbeat::HeartBeatMessage;
+use crate::domains::peers::identifier::PeerIdentifier;
 use std::fmt::Display;
 use std::sync::Arc;
-
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
-
-use crate::domains::peers::identifier::PeerIdentifier;
 
 #[derive(Debug, Clone)]
 pub(crate) struct ReplicationState {
@@ -128,6 +126,7 @@ impl ReplicationState {
 
     pub(crate) fn become_candidate(&mut self, replica_count: u8) {
         self.term += 1;
+
         self.election_state.become_candidate(replica_count);
     }
     pub(crate) fn may_become_follower(
