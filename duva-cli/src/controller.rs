@@ -124,18 +124,17 @@ impl ClientController {
     ) -> Result<(), String> {
         use ClientInputKind::*;
         match input {
-            Ping | Get | IndexGet | Delete | Echo | Config | Keys | Save | Info | ClusterForget => {
-                match query_io {
-                    QueryIO::Null => println!("(nil)"),
-                    QueryIO::SimpleString(value) => println!("{value}"),
-                    QueryIO::BulkString(value) => println!("{value}"),
-                    QueryIO::Err(value) => {
-                        return Err(format!("(error) {value}"));
-                    },
-                    _ => {
-                        return Err("Unexpected response format".to_string());
-                    },
-                }
+            Ping | Get | IndexGet | Delete | Echo | Config | Keys | Save | Info | ClusterForget
+            | ClusterInfo => match query_io {
+                QueryIO::Null => println!("(nil)"),
+                QueryIO::SimpleString(value) => println!("{value}"),
+                QueryIO::BulkString(value) => println!("{value}"),
+                QueryIO::Err(value) => {
+                    return Err(format!("(error) {value}"));
+                },
+                _ => {
+                    return Err("Unexpected response format".to_string());
+                },
             },
             Set => {
                 let v = match query_io {
@@ -153,7 +152,7 @@ impl ClientController {
                 println!("OK");
             },
 
-            ClusterInfo | ClusterNodes => {
+            ClusterNodes => {
                 let QueryIO::Array(value) = query_io else {
                     return Err("Unexpected response format".to_string());
                 };
