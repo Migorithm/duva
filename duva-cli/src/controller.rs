@@ -36,7 +36,7 @@ impl ClientController {
 
     async fn authenticate(server_addr: &str) -> (TcpStream, Uuid, u64) {
         let mut stream = TcpStream::connect(server_addr).await.unwrap();
-        stream.serialized_write(AuthRequest::ConnectWithoutId).await.unwrap(); // client_id not exist
+        stream.serialized_write(AuthRequest::default()).await.unwrap(); // client_id not exist
 
         let AuthResponse { client_id, request_id } = stream.deserialized_read().await.unwrap();
 

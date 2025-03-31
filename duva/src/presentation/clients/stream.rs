@@ -7,6 +7,7 @@ use crate::{
     services::interface::TRead,
 };
 
+use anyhow::Context;
 use tokio::net::TcpStream;
 use uuid::Uuid;
 
@@ -19,21 +20,21 @@ make_smart_pointer!(ClientStream, TcpStream=>stream);
 
 impl ClientStream {
     pub(crate) async fn authenticate(mut stream: TcpStream) -> Result<Self, IoError> {
-        let auth_req = stream.deserialized_read().await?;
-        let mut c_id = Uuid::now_v7();
-        match auth_req {
-            AuthRequest::ConnectWithId(client_id) => {
-                c_id = Uuid::parse_str(&client_id)
-                    .map_err(|_| IoError::Custom("Deserialization error".to_string()))?;
-            },
-            AuthRequest::ConnectWithoutId => {
-                stream
-                    .serialized_write(AuthResponse { client_id: c_id.to_string(), request_id: 0 })
-                    .await?;
-            },
-        }
+        let auth_req: AuthRequest = stream.deserialized_read().await?;
 
-        Ok(Self { stream, client_id: c_id })
+        let client_id = match auth_req.client_id {
+            Some(client_id) => {
+                // TODO check if the given client_id has been tracked
+                Uuid::parse_str(&client_id).map_err(|e| IoError::Custom(e.to_string()))?
+            },
+            None => Uuid::now_v7(),
+        };
+
+        stream
+            .serialized_write(AuthResponse { client_id: client_id.to_string(), request_id: 0 })
+            .await?;
+
+        Ok(Self { stream, client_id })
     }
 
     pub(crate) async fn extract_query(&mut self) -> Result<Vec<ClientRequest>, IoError> {
