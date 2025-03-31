@@ -21,7 +21,8 @@ pub const PROMPT: &str = "duva-cli> ";
 pub(crate) struct ClientController {
     stream: TcpStream,
     client_id: Uuid,
-    latest_index: u64,
+    request_id: u64,
+    latest_known_index: u64,
     pub(crate) editor: Editor<(), FileHistory>,
 }
 
@@ -29,20 +30,21 @@ impl ClientController {
     pub(crate) async fn new() -> Self {
         let cli: Cli = Cli::parse();
         let editor = DefaultEditor::new().expect("Failed to initialize input editor");
-        let (stream, client_id) = ClientController::authenticate(&cli.address()).await;
-        Self { stream, client_id, editor, latest_index: 0 }
+        let (stream, client_id, request_id) = ClientController::authenticate(&cli.address()).await;
+        Self { stream, client_id, editor, latest_known_index: 0, request_id }
     }
 
-    async fn authenticate(server_addr: &str) -> (TcpStream, Uuid) {
+    async fn authenticate(server_addr: &str) -> (TcpStream, Uuid, u64) {
         let mut stream = TcpStream::connect(server_addr).await.unwrap();
-        stream.serialized_write(AuthRequest::ConnectWithoutId).await.unwrap(); // client_id not exist
+        stream.serialized_write(AuthRequest::default()).await.unwrap(); // client_id not exist
 
-        let AuthResponse::ClientId(client_id) = stream.deserialized_read().await.unwrap();
+        let AuthResponse { client_id, request_id } = stream.deserialized_read().await.unwrap();
+
         let client_id = Uuid::parse_str(&client_id).unwrap();
         println!("Client ID: {}", client_id);
         println!("Connected to Redis at {}", server_addr);
 
-        (stream, client_id)
+        (stream, client_id, request_id)
     }
 
     pub(crate) async fn send_command(
@@ -51,9 +53,7 @@ impl ClientController {
         args: Vec<&str>,
         input: ClientInputKind,
     ) -> Result<(), String> {
-        // If previous command had a protocol error, try to recover the connection
-
-        let command = build_command(action, args);
+        let command = build_command(action, args, self.request_id);
 
         // TODO input validation required otherwise, it hangs
         if let Err(e) = self.stream.write_all(command.as_bytes()).await {
@@ -75,8 +75,8 @@ impl ClientController {
             return Err("Invalid RESP protocol".into());
         };
 
+        self.may_update_request_id(&input);
         // Deserialize response and check if it follows RESP protocol
-
         self.render_return_per_input(input, query_io)
     }
 
@@ -125,18 +125,17 @@ impl ClientController {
     ) -> Result<(), String> {
         use ClientInputKind::*;
         match input {
-            Ping | Get | IndexGet | Delete | Echo | Config | Keys | Save | Info | ClusterForget => {
-                match query_io {
-                    QueryIO::Null => println!("(nil)"),
-                    QueryIO::SimpleString(value) => println!("{value}"),
-                    QueryIO::BulkString(value) => println!("{value}"),
-                    QueryIO::Err(value) => {
-                        return Err(format!("(error) {value}"));
-                    },
-                    _ => {
-                        return Err("Unexpected response format".to_string());
-                    },
-                }
+            Ping | Get | IndexGet | Delete | Echo | Config | Keys | Save | Info | ClusterForget
+            | ClusterInfo => match query_io {
+                QueryIO::Null => println!("(nil)"),
+                QueryIO::SimpleString(value) => println!("{value}"),
+                QueryIO::BulkString(value) => println!("{value}"),
+                QueryIO::Err(value) => {
+                    return Err(format!("(error) {value}"));
+                },
+                _ => {
+                    return Err("Unexpected response format".to_string());
+                },
             },
             Set => {
                 let v = match query_io {
@@ -150,11 +149,11 @@ impl ClientController {
                     },
                 };
                 let rindex = v.split_whitespace().last().unwrap();
-                self.latest_index = rindex.parse::<u64>().unwrap();
+                self.latest_known_index = rindex.parse::<u64>().unwrap();
                 println!("OK");
             },
 
-            ClusterInfo | ClusterNodes => {
+            ClusterNodes => {
                 let QueryIO::Array(value) = query_io else {
                     return Err("Unexpected response format".to_string());
                 };
@@ -168,5 +167,15 @@ impl ClientController {
             },
         }
         Ok(())
+    }
+
+    fn may_update_request_id(&mut self, input: &ClientInputKind) {
+        match input {
+            ClientInputKind::Set | ClientInputKind::Delete | ClientInputKind::Save => {
+                self.request_id += 1;
+            },
+
+            _ => {},
+        }
     }
 }
