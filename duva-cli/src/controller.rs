@@ -74,8 +74,8 @@ impl ClientController {
             return Err("Invalid RESP protocol".into());
         };
 
+        self.may_update_request_id(&input);
         // Deserialize response and check if it follows RESP protocol
-        self.request_id += 1;
         self.render_return_per_input(input, query_io)
     }
 
@@ -166,5 +166,15 @@ impl ClientController {
             },
         }
         Ok(())
+    }
+
+    fn may_update_request_id(&mut self, input: &ClientInputKind) {
+        match input {
+            ClientInputKind::Set | ClientInputKind::Delete | ClientInputKind::Save => {
+                self.request_id += 1;
+            },
+
+            _ => {},
+        }
     }
 }
