@@ -27,7 +27,9 @@ impl ClientStream {
                     .map_err(|_| IoError::Custom("Deserialization error".to_string()))?;
             },
             AuthRequest::ConnectWithoutId => {
-                stream.serialized_write(AuthResponse::ClientId(c_id.to_string())).await?;
+                stream
+                    .serialized_write(AuthResponse { client_id: c_id.to_string(), request_id: 0 })
+                    .await?;
             },
         }
 

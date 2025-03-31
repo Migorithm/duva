@@ -22,7 +22,7 @@ pub(crate) struct ClientController {
     stream: TcpStream,
     client_id: Uuid,
     request_id: u64,
-    latest_index: u64,
+    latest_known_index: u64,
     pub(crate) editor: Editor<(), FileHistory>,
 }
 
@@ -30,20 +30,21 @@ impl ClientController {
     pub(crate) async fn new() -> Self {
         let cli: Cli = Cli::parse();
         let editor = DefaultEditor::new().expect("Failed to initialize input editor");
-        let (stream, client_id) = ClientController::authenticate(&cli.address()).await;
-        Self { stream, client_id, editor, latest_index: 0, request_id: 0 }
+        let (stream, client_id, request_id) = ClientController::authenticate(&cli.address()).await;
+        Self { stream, client_id, editor, latest_known_index: 0, request_id }
     }
 
-    async fn authenticate(server_addr: &str) -> (TcpStream, Uuid) {
+    async fn authenticate(server_addr: &str) -> (TcpStream, Uuid, u64) {
         let mut stream = TcpStream::connect(server_addr).await.unwrap();
         stream.serialized_write(AuthRequest::ConnectWithoutId).await.unwrap(); // client_id not exist
 
-        let AuthResponse::ClientId(client_id) = stream.deserialized_read().await.unwrap();
+        let AuthResponse { client_id, request_id } = stream.deserialized_read().await.unwrap();
+
         let client_id = Uuid::parse_str(&client_id).unwrap();
         println!("Client ID: {}", client_id);
         println!("Connected to Redis at {}", server_addr);
 
-        (stream, client_id)
+        (stream, client_id, request_id)
     }
 
     pub(crate) async fn send_command(
@@ -148,7 +149,7 @@ impl ClientController {
                     },
                 };
                 let rindex = v.split_whitespace().last().unwrap();
-                self.latest_index = rindex.parse::<u64>().unwrap();
+                self.latest_known_index = rindex.parse::<u64>().unwrap();
                 println!("OK");
             },
 
