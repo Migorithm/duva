@@ -21,6 +21,7 @@ pub const PROMPT: &str = "duva-cli> ";
 pub(crate) struct ClientController {
     stream: TcpStream,
     client_id: Uuid,
+    request_id: u64,
     latest_index: u64,
     pub(crate) editor: Editor<(), FileHistory>,
 }
@@ -30,7 +31,7 @@ impl ClientController {
         let cli: Cli = Cli::parse();
         let editor = DefaultEditor::new().expect("Failed to initialize input editor");
         let (stream, client_id) = ClientController::authenticate(&cli.address()).await;
-        Self { stream, client_id, editor, latest_index: 0 }
+        Self { stream, client_id, editor, latest_index: 0, request_id: 0 }
     }
 
     async fn authenticate(server_addr: &str) -> (TcpStream, Uuid) {
@@ -51,9 +52,7 @@ impl ClientController {
         args: Vec<&str>,
         input: ClientInputKind,
     ) -> Result<(), String> {
-        // If previous command had a protocol error, try to recover the connection
-
-        let command = build_command(action, args);
+        let command = build_command(action, args, self.request_id);
 
         // TODO input validation required otherwise, it hangs
         if let Err(e) = self.stream.write_all(command.as_bytes()).await {
@@ -76,7 +75,7 @@ impl ClientController {
         };
 
         // Deserialize response and check if it follows RESP protocol
-
+        self.request_id += 1;
         self.render_return_per_input(input, query_io)
     }
 
