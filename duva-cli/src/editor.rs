@@ -119,7 +119,7 @@ fn diy_hints() -> HashSet<CommandHint> {
 
 fn command_patterns() -> HashMap<&'static str, Vec<(&'static str, usize)>> {
     // Command pattern definitions - mapping commands to their expected arguments
-    let command_patterns: HashMap<&str, Vec<(&str, usize)>> = [
+    [
         // (command, [(hint_text, args_required), ...])
         ("set", vec![("key value", 0), ("value", 1), ("px expr", 2), ("expr", 3)]),
         ("get", vec![("key", 0)]),
@@ -127,8 +127,7 @@ fn command_patterns() -> HashMap<&'static str, Vec<(&'static str, usize)>> {
     ]
     .iter()
     .cloned()
-    .collect();
-    command_patterns
+    .collect()
 }
 
 impl Highlighter for DIYHinter {
