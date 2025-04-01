@@ -114,9 +114,13 @@ fn default_hints() -> HashSet<CommandHint> {
     let mut set = HashSet::new();
     set.insert(CommandHint::new("get key", "get "));
     set.insert(CommandHint::new("set key value", "set "));
-    set.insert(CommandHint::new("set key value px expr", "set "));
+    set.insert(CommandHint::new("set key value [px expr]", "set "));
     set.insert(CommandHint::new("cluster info", "cluster "));
     set.insert(CommandHint::new("cluster nodes", "cluster "));
+    set.insert(CommandHint::new("cluster forget node", "cluster "));
+    set.insert(CommandHint::new("ping", ""));
+    set.insert(CommandHint::new("keys pattern", "keys "));
+    set.insert(CommandHint::new("info", ""));
 
     set
 }
@@ -125,7 +129,7 @@ fn dynamic_hints() -> HashMap<&'static str, Vec<(&'static str, usize)>> {
     // Command pattern definitions - mapping commands to their expected arguments
     [
         // (command, [(hint_text, args_required), ...])
-        ("set", vec![("key value", 0), ("value", 1), ("px expr", 2), ("expr", 3)]),
+        ("set", vec![("key value", 0), ("value", 1), ("[px expr]", 2), ("expr", 3)]),
         ("get", vec![("key", 0)]),
         // Add more commands here as needed
     ]
