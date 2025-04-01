@@ -75,20 +75,21 @@ impl Hinter for DIYHinter {
         // Look up the command in our patterns
         if let Some(patterns) = self.command_patterns.get(command.to_lowercase().as_str()) {
             for (hint_text, required_args) in patterns {
-                if args_count == *required_args {
-                    if *required_args == 0 && ends_with_space {
+                if args_count != *required_args {
+                    continue;
+                }
+
+                if ends_with_space {
+                    if *required_args == 0 {
                         // For commands with no args yet provided
                         return Some(CommandHint::new(hint_text, ""));
-                    } else if *required_args > 0 {
-                        if ends_with_space {
-                            // When we have required args and line ends with space
-                            return Some(CommandHint::new(hint_text, ""));
-                        } else if args_count == *required_args && *required_args == 1 {
-                            // Special case for "set key" without trailing space
-                            return Some(CommandHint::new(format!(" {}", hint_text).as_str(), ""));
-                        }
                     }
+                    // When we have required args and line ends with space
+                    return Some(CommandHint::new(hint_text, ""));
                 }
+
+                // hint should be shown after a space
+                return Some(CommandHint::new(format!(" {}", hint_text).as_str(), ""));
             }
         }
 
@@ -122,7 +123,6 @@ fn command_patterns() -> HashMap<&'static str, Vec<(&'static str, usize)>> {
         // (command, [(hint_text, args_required), ...])
         ("set", vec![("key value", 0), ("value", 1), ("px expr", 2), ("expr", 3)]),
         ("get", vec![("key", 0)]),
-        ("cluster", vec![("info", 0), ("nodes", 0)]),
         // Add more commands here as needed
     ]
     .iter()
