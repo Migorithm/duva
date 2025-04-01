@@ -11,7 +11,10 @@ pub fn create() -> Editor<DIYHinter, SQLiteHistory> {
     let history =
         rustyline::sqlite_history::SQLiteHistory::open(editor_conf, "duva-cli.hist").unwrap();
     let mut editor = Editor::with_history(editor_conf, history).unwrap();
-    editor.set_helper(Some(DIYHinter { hints: diy_hints(), command_patterns: command_patterns() }));
+    editor.set_helper(Some(DIYHinter {
+        default_hints: default_hints(),
+        dynamic_hints: dynamic_hints(),
+    }));
 
     editor
 }
@@ -19,8 +22,8 @@ pub fn create() -> Editor<DIYHinter, SQLiteHistory> {
 #[derive(Completer, Helper, Validator)]
 pub struct DIYHinter {
     // It's simple example of rustyline, for more efficient, please use ** radix trie **
-    hints: HashSet<CommandHint>,
-    command_patterns: HashMap<&'static str, Vec<(&'static str, usize)>>,
+    default_hints: HashSet<CommandHint>,
+    dynamic_hints: HashMap<&'static str, Vec<(&'static str, usize)>>,
 }
 
 #[derive(Hash, Debug, PartialEq, Eq)]
@@ -73,7 +76,7 @@ impl Hinter for DIYHinter {
         let ends_with_space = line.ends_with(" ");
 
         // Look up the command in our patterns
-        if let Some(patterns) = self.command_patterns.get(command.to_lowercase().as_str()) {
+        if let Some(patterns) = self.dynamic_hints.get(command.to_lowercase().as_str()) {
             for (hint_text, required_args) in patterns {
                 if args_count != *required_args {
                     continue;
@@ -95,7 +98,7 @@ impl Hinter for DIYHinter {
 
         // Default behavior - try to match against full hints
         let mut matching_hints =
-            self.hints
+            self.default_hints
                 .iter()
                 .filter_map(|hint| {
                     if hint.display.starts_with(line) { Some(hint.suffix(pos)) } else { None }
@@ -106,7 +109,8 @@ impl Hinter for DIYHinter {
         matching_hints.into_iter().next()
     }
 }
-fn diy_hints() -> HashSet<CommandHint> {
+
+fn default_hints() -> HashSet<CommandHint> {
     let mut set = HashSet::new();
     set.insert(CommandHint::new("get key", "get "));
     set.insert(CommandHint::new("set key value", "set "));
@@ -117,7 +121,7 @@ fn diy_hints() -> HashSet<CommandHint> {
     set
 }
 
-fn command_patterns() -> HashMap<&'static str, Vec<(&'static str, usize)>> {
+fn dynamic_hints() -> HashMap<&'static str, Vec<(&'static str, usize)>> {
     // Command pattern definitions - mapping commands to their expected arguments
     [
         // (command, [(hint_text, args_required), ...])
