@@ -110,6 +110,8 @@ fn diy_hints() -> HashSet<CommandHint> {
     set.insert(CommandHint::new("get key", "get "));
     set.insert(CommandHint::new("set key value", "set "));
     set.insert(CommandHint::new("set key value px expr", "set "));
+    set.insert(CommandHint::new("cluster info", "cluster "));
+    set.insert(CommandHint::new("cluster nodes", "cluster "));
 
     set
 }
@@ -120,6 +122,7 @@ fn command_patterns() -> HashMap<&'static str, Vec<(&'static str, usize)>> {
         // (command, [(hint_text, args_required), ...])
         ("set", vec![("key value", 0), ("value", 1), ("px expr", 2)]),
         ("get", vec![("key", 0)]),
+        ("cluster", vec![("info", 0), ("nodes", 0)]),
         // Add more commands here as needed
     ]
     .iter()
