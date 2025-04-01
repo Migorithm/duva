@@ -1,6 +1,7 @@
 pub mod cli;
 pub mod command;
 pub mod controller;
+pub mod editor;
 pub mod error;
 
 use cli::Cli;
