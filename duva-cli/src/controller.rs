@@ -18,7 +18,7 @@ use duva::{
     },
     services::interface::{TRead, TSerdeReadWrite},
 };
-use rustyline::{Config, Editor, sqlite_history::SQLiteHistory};
+use rustyline::{Editor, sqlite_history::SQLiteHistory};
 
 pub const PROMPT: &str = "duva-cli> ";
 

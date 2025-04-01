@@ -11,4 +11,6 @@ rustyline = { version = "15.0.0", features = [
     "with-sqlite-history",
     "rustyline-derive",
     "derive",
+    "regex",
+
 ] }
