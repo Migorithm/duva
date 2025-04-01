@@ -1,4 +1,8 @@
-use crate::{Cli, build_command, command::ClientInputKind};
+use crate::{
+    Cli, build_command,
+    command::ClientInputKind,
+    editor::{self, DIYHinter},
+};
 use clap::Parser;
 use duva::{
     clients::authentications::{AuthRequest, AuthResponse},
@@ -14,7 +18,7 @@ use duva::{
     },
     services::interface::{TRead, TSerdeReadWrite},
 };
-use rustyline::{DefaultEditor, Editor, history::FileHistory};
+use rustyline::{Editor, sqlite_history::SQLiteHistory};
 
 pub const PROMPT: &str = "duva-cli> ";
 
@@ -23,15 +27,14 @@ pub(crate) struct ClientController {
     client_id: Uuid,
     request_id: u64,
     latest_known_index: u64,
-    pub(crate) editor: Editor<(), FileHistory>,
+    pub(crate) editor: Editor<DIYHinter, SQLiteHistory>,
 }
 
 impl ClientController {
     pub(crate) async fn new() -> Self {
         let cli: Cli = Cli::parse();
-        let editor = DefaultEditor::new().expect("Failed to initialize input editor");
         let (stream, client_id, request_id) = ClientController::authenticate(&cli.address()).await;
-        Self { stream, client_id, editor, latest_known_index: 0, request_id }
+        Self { stream, client_id, editor: editor::create(), latest_known_index: 0, request_id }
     }
 
     async fn authenticate(server_addr: &str) -> (TcpStream, Uuid, u64) {
