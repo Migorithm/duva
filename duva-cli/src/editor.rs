@@ -78,6 +78,7 @@ impl Hinter for DIYHinter {
         // Look up the command in our patterns
         if let Some(patterns) = self.dynamic_hints.get(command.to_lowercase().as_str()) {
             for (hint_text, required_args) in patterns {
+                // This prevents shwowing hints when we have more args than required
                 if args_count != *required_args {
                     continue;
                 }
