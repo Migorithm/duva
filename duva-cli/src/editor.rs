@@ -73,7 +73,7 @@ impl Hinter for DIYHinter {
         let ends_with_space = line.ends_with(" ");
 
         // Look up the command in our patterns
-        if let Some(patterns) = self.command_patterns.get(command) {
+        if let Some(patterns) = self.command_patterns.get(command.to_lowercase().as_str()) {
             for (hint_text, required_args) in patterns {
                 if args_count == *required_args {
                     if *required_args == 0 && ends_with_space {
