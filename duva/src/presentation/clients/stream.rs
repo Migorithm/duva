@@ -7,7 +7,6 @@ use crate::{
     services::interface::TRead,
 };
 
-use anyhow::Context;
 use tokio::net::TcpStream;
 use uuid::Uuid;
 

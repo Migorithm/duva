@@ -1,7 +1,7 @@
 use crate::{
     Cli, build_command,
     command::ClientInputKind,
-    editor::{self, DIYHinter},
+    editor::{self, DuvaHinter},
 };
 use clap::Parser;
 use duva::{
@@ -27,7 +27,7 @@ pub(crate) struct ClientController {
     client_id: Uuid,
     request_id: u64,
     latest_known_index: u64,
-    pub(crate) editor: Editor<DIYHinter, SQLiteHistory>,
+    pub(crate) editor: Editor<DuvaHinter, SQLiteHistory>,
 }
 
 impl ClientController {

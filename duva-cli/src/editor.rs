@@ -6,12 +6,12 @@ use rustyline::{
 };
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
-pub fn create() -> Editor<DIYHinter, SQLiteHistory> {
+pub fn create() -> Editor<DuvaHinter, SQLiteHistory> {
     let editor_conf = Config::builder().auto_add_history(true).build();
     let history =
         rustyline::sqlite_history::SQLiteHistory::open(editor_conf, "duva-cli.hist").unwrap();
     let mut editor = Editor::with_history(editor_conf, history).unwrap();
-    editor.set_helper(Some(DIYHinter {
+    editor.set_helper(Some(DuvaHinter {
         default_hints: default_hints(),
         dynamic_hints: dynamic_hints(),
     }));
@@ -20,7 +20,7 @@ pub fn create() -> Editor<DIYHinter, SQLiteHistory> {
 }
 
 #[derive(Completer, Helper, Validator)]
-pub struct DIYHinter {
+pub struct DuvaHinter {
     // It's simple example of rustyline, for more efficient, please use ** radix trie **
     default_hints: HashSet<CommandHint>,
     dynamic_hints: HashMap<&'static str, Vec<(&'static str, usize)>>,
@@ -56,7 +56,7 @@ impl Hint for CommandHint {
     }
 }
 
-impl Hinter for DIYHinter {
+impl Hinter for DuvaHinter {
     type Hint = CommandHint;
 
     fn hint(&self, line: &str, pos: usize, _ctx: &Context<'_>) -> Option<CommandHint> {
@@ -121,7 +121,8 @@ fn default_hints() -> HashSet<CommandHint> {
     set.insert(CommandHint::new("cluster forget node", "cluster "));
     set.insert(CommandHint::new("ping", ""));
     set.insert(CommandHint::new("keys pattern", "keys "));
-    set.insert(CommandHint::new("info", ""));
+    set.insert(CommandHint::new("info [section]", ""));
+    set.insert(CommandHint::new("info replication", ""));
 
     set
 }
@@ -131,6 +132,8 @@ fn dynamic_hints() -> HashMap<&'static str, Vec<(&'static str, usize)>> {
     [
         // (command, [(hint_text, args_required), ...])
         ("set", vec![("key value", 0), ("value", 1), ("[px expr]", 2), ("expr", 3)]),
+        ("cluster forget", vec![("node", 0)]),
+        ("keys", vec![("pattern", 0)]),
         ("get", vec![("key", 0)]),
         // Add more commands here as needed
     ]
@@ -139,7 +142,7 @@ fn dynamic_hints() -> HashMap<&'static str, Vec<(&'static str, usize)>> {
     .collect()
 }
 
-impl Highlighter for DIYHinter {
+impl Highlighter for DuvaHinter {
     fn highlight_prompt<'b, 's: 'b, 'p: 'b>(
         &'s self,
         prompt: &'p str,
