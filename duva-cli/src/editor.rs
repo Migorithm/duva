@@ -1,18 +1,18 @@
-use std::borrow::Cow;
-use std::collections::{HashMap, HashSet};
-
 use rustyline::highlight::Highlighter;
 use rustyline::{
     Completer, Config, Context, Editor, Helper, Validator,
     hint::{Hint, Hinter},
     sqlite_history::SQLiteHistory,
 };
+use std::borrow::Cow;
+use std::collections::{HashMap, HashSet};
 pub fn create() -> Editor<DIYHinter, SQLiteHistory> {
     let editor_conf = Config::builder().auto_add_history(true).build();
     let history =
         rustyline::sqlite_history::SQLiteHistory::open(editor_conf, "duva-cli.hist").unwrap();
     let mut editor = Editor::with_history(editor_conf, history).unwrap();
     editor.set_helper(Some(DIYHinter { hints: diy_hints(), command_patterns: command_patterns() }));
+
     editor
 }
 
@@ -120,7 +120,7 @@ fn command_patterns() -> HashMap<&'static str, Vec<(&'static str, usize)>> {
     // Command pattern definitions - mapping commands to their expected arguments
     let command_patterns: HashMap<&str, Vec<(&str, usize)>> = [
         // (command, [(hint_text, args_required), ...])
-        ("set", vec![("key value", 0), ("value", 1), ("px expr", 2)]),
+        ("set", vec![("key value", 0), ("value", 1), ("px expr", 2), ("expr", 3)]),
         ("get", vec![("key", 0)]),
         ("cluster", vec![("info", 0), ("nodes", 0)]),
         // Add more commands here as needed
