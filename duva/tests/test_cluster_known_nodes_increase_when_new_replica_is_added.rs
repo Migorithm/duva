@@ -1,6 +1,6 @@
 mod common;
 use common::{ServerEnv, array, spawn_server_process};
-use duva::clients::ClientStreamHandler;
+use duva::{clients::ClientStreamHandler, domains::query_parsers::query_io::QueryIO};
 
 #[tokio::test]
 async fn test_cluster_topology_change_when_new_node_added() {
@@ -19,7 +19,7 @@ async fn test_cluster_topology_change_when_new_node_added() {
     leader_p.wait_for_message(&repl_p.heartbeat_msg(0), 1).unwrap();
 
     let cluster_info = client_handler.send_and_get(cmd).await;
-    assert_eq!(cluster_info, array(vec!["cluster_known_nodes:1"]));
+    assert_eq!(cluster_info, QueryIO::BulkString("cluster_known_nodes:1".into()).serialize());
 
     // WHEN -- new replica is added
     let repl_env2 = ServerEnv::default()
@@ -30,7 +30,7 @@ async fn test_cluster_topology_change_when_new_node_added() {
 
     //THEN
     let cluster_info = client_handler.send_and_get(cmd).await;
-    assert_eq!(cluster_info, array(vec!["cluster_known_nodes:2"]));
+    assert_eq!(cluster_info, QueryIO::BulkString("cluster_known_nodes:2".into()).serialize());
 
     let mut nodes = Vec::new();
     client_handler

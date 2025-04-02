@@ -454,7 +454,8 @@ impl ClusterActor {
         &mut self,
         logger: &mut ReplicatedLogs<impl TWriteAheadLog>,
     ) {
-        let ElectionState::Follower { voted_for: None } = self.replication.election_state else {
+        let ElectionState::Follower { voted_for: None } = dbg!(&self.replication.election_state)
+        else {
             return;
         };
 
