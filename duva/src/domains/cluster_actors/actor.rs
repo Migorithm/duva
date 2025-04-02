@@ -1317,7 +1317,6 @@ mod test {
     127.0.0.1:30001 myself,y 5461-10922
     <ip:port> <flags> <repl_id> <coverage(shard)>
          */
-    //TODO Fix the following
     #[tokio::test]
     async fn test_cluster_nodes() {
         use tokio::net::TcpListener;

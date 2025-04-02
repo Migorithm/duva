@@ -69,7 +69,6 @@ impl ClientStream {
     }
 
     fn client_id(&self) -> uuid::Uuid {
-        //TODO client_id should be generated on connection
-        Uuid::now_v7()
+        self.client_id
     }
 }
