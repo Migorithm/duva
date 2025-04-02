@@ -1,3 +1,4 @@
+#![allow(dead_code, unused_variables)]
 use crate::domains::append_only_files::interfaces::TWriteAheadLog;
 use crate::domains::append_only_files::{WriteOperation, WriteRequest};
 use anyhow::Result;

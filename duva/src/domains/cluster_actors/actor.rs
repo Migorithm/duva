@@ -633,7 +633,7 @@ mod test {
         HeartBeatMessage {
             term,
             hwm,
-            prev_log_index: if !op_logs.is_empty() { (op_logs[0].log_index - 1) } else { 0 },
+            prev_log_index: if !op_logs.is_empty() { op_logs[0].log_index - 1 } else { 0 },
             prev_log_term: 0,
             append_entries: op_logs,
             ban_list: vec![],
