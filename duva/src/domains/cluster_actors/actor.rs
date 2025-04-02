@@ -454,8 +454,7 @@ impl ClusterActor {
         &mut self,
         logger: &mut ReplicatedLogs<impl TWriteAheadLog>,
     ) {
-        let ElectionState::Follower { voted_for: None } = dbg!(&self.replication.election_state)
-        else {
+        let ElectionState::Follower { voted_for: None } = &self.replication.election_state else {
             return;
         };
 
@@ -507,6 +506,7 @@ impl ClusterActor {
             peer.last_seen = Instant::now();
         }
         self.heartbeat_scheduler.reset_election_timeout();
+        self.replication.election_state = ElectionState::Follower { voted_for: None };
     }
 
     async fn replicate_state(
@@ -534,14 +534,9 @@ impl ClusterActor {
         }
     }
 
-    pub(crate) fn maybe_update_term(
-        &mut self,
-        new_term: u64,
-        wal: &mut ReplicatedLogs<impl TWriteAheadLog>,
-    ) {
+    pub(crate) fn maybe_update_term(&mut self, new_term: u64) {
         if new_term > self.replication.term {
             self.replication.term = new_term;
-            wal.last_log_term = new_term;
         }
     }
 
