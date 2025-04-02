@@ -177,7 +177,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_heartbeat_periodically() {
-        let (scheduler, mut rx) = setup_scheduler(true).await;
+        let (_, mut rx) = setup_scheduler(true).await;
 
         // Wait for at least 2 heartbeats
         let received = timeout(Duration::from_millis(250), async {
@@ -229,7 +229,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_election_timeout() {
-        let (tx, mut rx) = channel(10);
+        let (tx, mut _rx) = channel(10);
         let controller = HeartBeatScheduler::start_election_timer(tx);
 
         // Test stopping the election timeout

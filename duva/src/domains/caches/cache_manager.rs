@@ -175,12 +175,6 @@ impl CacheManager {
         hasher.finish() as usize % self.inboxes.len()
     }
 
-    // create a new cache manager
-    #[cfg(test)]
-    pub fn test_new(tx: tokio::sync::mpsc::Sender<CacheCommand>) -> CacheManager {
-        CacheManager { inboxes: (0..10).map(|_| CacheCommandSender(tx.clone())).collect() }
-    }
-
     pub(crate) async fn route_index_get(&self, key: String, index: u64) -> Result<QueryIO> {
         let (tx, rx) = tokio::sync::oneshot::channel();
         self.select_shard(&key)

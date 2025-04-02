@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use crate::domains::config_actors::actor::ConfigActor;
 use crate::domains::config_actors::command::ConfigMessage;
 use crate::domains::config_actors::command::ConfigQuery;

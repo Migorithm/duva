@@ -3,6 +3,7 @@ use crate::domains::{
     caches::cache_objects::CacheEntry, cluster_actors::replication::ReplicationId,
 };
 
+#[allow(dead_code)]
 #[derive(Debug)]
 pub struct Snapshot {
     pub(crate) header: String,
