@@ -57,7 +57,7 @@ pub(crate) fn take_input(action: &str, args: &[&str]) -> Result<ClientInputKind,
             Ok(ClientInputKind::Echo)
         },
         "INFO" => {
-            if !args.is_empty() {
+            if args.is_empty() {
                 return Err("(error) ERR wrong number of arguments for 'info' command".to_string());
             }
             Ok(ClientInputKind::Info)
