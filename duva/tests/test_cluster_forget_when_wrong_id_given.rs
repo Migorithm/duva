@@ -2,7 +2,7 @@
 /// In other words the specified node is removed from the nodes table of the node receiving the command.
 mod common;
 use common::{ServerEnv, array, spawn_server_process};
-use duva::clients::ClientStreamHandler;
+use duva::{clients::ClientStreamHandler, domains::query_parsers::query_io::QueryIO};
 
 #[tokio::test]
 async fn test_cluster_forget_node_return_error_when_wrong_id_given() {
@@ -24,5 +24,5 @@ async fn test_cluster_forget_node_return_error_when_wrong_id_given() {
     let cluster_info = client_handler.send_and_get(&array(vec!["cluster", "info"])).await;
 
     // THEN
-    assert_eq!(cluster_info, array(vec!["cluster_known_nodes:0"]));
+    assert_eq!(cluster_info, QueryIO::BulkString("cluster_known_nodes:0".into()).serialize());
 }

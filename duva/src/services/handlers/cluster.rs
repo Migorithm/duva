@@ -76,8 +76,9 @@ impl ClusterActor {
                     if self.check_term_outdated(&heartbeat, &logger).await {
                         continue;
                     };
+
                     self.reset_election_timeout(&heartbeat.from);
-                    self.maybe_update_term(heartbeat.term, &mut logger);
+                    self.maybe_update_term(heartbeat.term);
                     self.replicate(&mut logger, heartbeat, &cache_manager).await;
                 },
 
