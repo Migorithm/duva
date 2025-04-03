@@ -370,7 +370,6 @@ impl ClusterActor {
             return Ok(());
         }
 
-        // TODO ERROR below
         if let Err(e) =
             self.ensure_prev_consistency(wal, rpc.prev_log_index, rpc.prev_log_term).await
         {
@@ -379,7 +378,7 @@ impl ClusterActor {
         }
 
         let match_index = wal.write_log_entries(std::mem::take(&mut rpc.append_entries)).await?;
-        println!("[INFO] match index {}", match_index);
+
         self.send_ack(&rpc.from, match_index, RejectionReason::None).await;
         Ok(())
     }
@@ -395,6 +394,7 @@ impl ClusterActor {
             if prev_log_index == 0 {
                 return Ok(()); // First entry, no previous log to check
             }
+
             return Err(RejectionReason::LogInconsistency); // Log empty but leader expects an entry
         }
 
@@ -409,6 +409,7 @@ impl ClusterActor {
             if prev_entry.term != prev_log_term {
                 // ! Term mismatch -> triggers log truncation
                 wal.truncate_after(prev_log_index).await;
+
                 return Err(RejectionReason::LogInconsistency);
             }
         }
