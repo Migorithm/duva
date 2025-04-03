@@ -356,6 +356,7 @@ impl ClusterActor {
         if self.try_append_entries(wal, &mut heartbeat).await.is_err() {
             return;
         };
+        println!("Ddd");
 
         // * state machine case
         self.replicate_state(heartbeat.hwm, wal, cache_manager).await;
@@ -370,6 +371,7 @@ impl ClusterActor {
             return Ok(());
         }
 
+        // TODO ERROR below
         if let Err(e) =
             self.ensure_prev_consistency(wal, rpc.prev_log_index, rpc.prev_log_term).await
         {
@@ -378,7 +380,7 @@ impl ClusterActor {
         }
 
         let match_index = wal.write_log_entries(std::mem::take(&mut rpc.append_entries)).await?;
-
+        println!("[INFO] match index {}", match_index);
         self.send_ack(&rpc.from, match_index, RejectionReason::None).await;
         Ok(())
     }
@@ -518,6 +520,7 @@ impl ClusterActor {
         let old_hwm = self.replication.hwm.load(Ordering::Acquire);
         if heartbeat_hwm > old_hwm {
             println!("[INFO] Received commit offset {}", heartbeat_hwm);
+            println!("[INFO] self offset {}", old_hwm);
 
             let new_hwm = std::cmp::min(heartbeat_hwm, wal.last_log_index);
             self.replication.hwm.store(new_hwm, Ordering::Release);
