@@ -394,6 +394,7 @@ impl ClusterActor {
             if prev_log_index == 0 {
                 return Ok(()); // First entry, no previous log to check
             }
+
             return Err(RejectionReason::LogInconsistency); // Log empty but leader expects an entry
         }
 
@@ -408,6 +409,7 @@ impl ClusterActor {
             if prev_entry.term != prev_log_term {
                 // ! Term mismatch -> triggers log truncation
                 wal.truncate_after(prev_log_index).await;
+
                 return Err(RejectionReason::LogInconsistency);
             }
         }

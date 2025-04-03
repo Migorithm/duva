@@ -27,6 +27,9 @@ impl<T: TWriteAheadLog> ReplicatedLogs<T> {
         let mut logs = Vec::with_capacity((self.last_log_index - low_watermark.unwrap()) as usize);
         logs.extend(self.from(low_watermark.unwrap()));
 
+        // ! Last log term must be updated because
+        // ! log consistency check is based on previous log term and index
+        self.last_log_term = term;
         Ok(logs)
     }
 
