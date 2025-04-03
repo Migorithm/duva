@@ -356,7 +356,6 @@ impl ClusterActor {
         if self.try_append_entries(wal, &mut heartbeat).await.is_err() {
             return;
         };
-        println!("Ddd");
 
         // * state machine case
         self.replicate_state(heartbeat.hwm, wal, cache_manager).await;
@@ -520,7 +519,6 @@ impl ClusterActor {
         let old_hwm = self.replication.hwm.load(Ordering::Acquire);
         if heartbeat_hwm > old_hwm {
             println!("[INFO] Received commit offset {}", heartbeat_hwm);
-            println!("[INFO] self offset {}", old_hwm);
 
             let new_hwm = std::cmp::min(heartbeat_hwm, wal.last_log_index);
             self.replication.hwm.store(new_hwm, Ordering::Release);
