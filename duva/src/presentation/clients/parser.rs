@@ -27,7 +27,7 @@ pub fn parse_query(
                 expiry: extract_expiry(expiry)?,
             }
         },
-        ("delete", [key]) => ClientAction::Delete { key: key.to_string() },
+        ("del", keys) => ClientAction::Delete { keys: keys.to_vec() },
         ("echo", [value]) => ClientAction::Echo(value.to_string()),
         ("config", [key, value]) => {
             ClientAction::Config { key: key.to_string(), value: value.to_string() }

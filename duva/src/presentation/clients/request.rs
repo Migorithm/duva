@@ -14,7 +14,7 @@ pub(crate) enum ClientAction {
     Set { key: String, value: String },
     SetWithExpiry { key: String, value: String, expiry: DateTime<Utc> },
     Keys { pattern: Option<String> },
-    Delete { key: String },
+    Delete { keys: Vec<String> },
     Save,
     Info,
     ClusterInfo,
@@ -37,6 +37,7 @@ impl ClientAction {
                     expires_at,
                 })
             },
+            ClientAction::Delete { keys } => Some(WriteRequest::Delete { keys: keys.clone() }),
             _ => None,
         }
     }

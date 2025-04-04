@@ -74,35 +74,22 @@ impl CacheManager {
     }
 
     pub(crate) async fn apply_log(&self, msg: WriteRequest) -> Result<()> {
-        let shard_command = match msg {
-            WriteRequest::Set { key, value } => vec![(
-                self.select_shard(&key),
-                CacheCommand::Set { cache_entry: CacheEntry::KeyValue(key, value) },
-            )],
-            WriteRequest::SetWithExpiry { key, value, expires_at } => vec![(
-                self.select_shard(&key),
-                CacheCommand::Set {
-                    cache_entry: CacheEntry::KeyValueExpiry(
-                        key,
-                        value,
-                        StoredDuration::Milliseconds(expires_at).to_datetime(),
-                    ),
-                },
-            )],
-            WriteRequest::Delete { key } => key
-                .into_iter()
-                .map(|k| (self.select_shard(&k), CacheCommand::Delete(k)))
-                .collect::<Vec<_>>(),
+        match msg {
+            WriteRequest::Set { key, value } => {
+                self.route_set(CacheEntry::KeyValue(key, value)).await?;
+            },
+            WriteRequest::SetWithExpiry { key, value, expires_at } => {
+                self.route_set(CacheEntry::KeyValueExpiry(
+                    key,
+                    value,
+                    StoredDuration::Milliseconds(expires_at).to_datetime(),
+                ))
+                .await?;
+            },
+            WriteRequest::Delete { keys } => {
+                self.route_delete(keys).await?;
+            },
         };
-
-        // Execute all shard commands concurrently and collect results
-        FuturesUnordered::from_iter(
-            shard_command
-                .into_iter()
-                .map(|(shard, command)| async move { shard.send(command).await }),
-        )
-        .collect::<Vec<_>>()
-        .await;
 
         self.pings().await;
 
@@ -113,7 +100,7 @@ impl CacheManager {
     }
 
     pub(crate) async fn route_keys(&self, pattern: Option<String>) -> Result<QueryIO> {
-        let (senders, receivers) = self.ontshot_channels();
+        let (senders, receivers) = self.oneshot_channels();
 
         // send keys to shards
         self.chain(senders).for_each(|(shard, sender)| {
@@ -153,7 +140,7 @@ impl CacheManager {
     }
 
     // Send recv handler firstly to the background and return senders and join handlers for receivers
-    fn ontshot_channels<T: Send + Sync + 'static>(
+    fn oneshot_channels<T: Send + Sync + 'static>(
         &self,
     ) -> (Vec<OneShotSender<T>>, Vec<OneShotReceiverJoinHandle<T>>) {
         (0..self.inboxes.len())
@@ -179,6 +166,23 @@ impl CacheManager {
         tx: OneShotSender<QueryIO>,
     ) -> Result<()> {
         Ok(shard.send(CacheCommand::Keys { pattern: pattern.clone(), callback: tx }).await?)
+    }
+
+    pub(crate) async fn route_delete(&self, keys: Vec<String>) -> Result<u64> {
+        let mut rxs = Vec::with_capacity(keys.len());
+        for key in keys {
+            let (tx, rx) = tokio::sync::oneshot::channel();
+            self.select_shard(&key).send(CacheCommand::Delete { key, callback: tx }).await?;
+            rxs.push(rx);
+        }
+
+        let mut deleted = 0;
+        for rx in rxs {
+            if rx.await? {
+                deleted += 1;
+            }
+        }
+        Ok(deleted)
     }
 
     pub(crate) fn select_shard(&self, key: &str) -> &CacheCommandSender {
