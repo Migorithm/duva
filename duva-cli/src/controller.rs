@@ -128,7 +128,7 @@ impl ClientController {
     ) -> Result<(), String> {
         use ClientInputKind::*;
         match input {
-            Ping | Get | IndexGet | Del | Echo | Config | Keys | Save | Info | ClusterForget
+            Ping | Get | IndexGet | Echo | Config | Keys | Save | Info | ClusterForget
             | ClusterInfo => match query_io {
                 QueryIO::Null => println!("(nil)"),
                 QueryIO::SimpleString(value) => println!("{value}"),
@@ -151,7 +151,6 @@ impl ClientController {
             Set => {
                 let v = match query_io {
                     QueryIO::SimpleString(value) => value,
-                    QueryIO::BulkString(value) => value,
                     QueryIO::Err(value) => {
                         return Err(format!("(error) {value}"));
                     },
