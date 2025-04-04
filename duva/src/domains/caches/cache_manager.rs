@@ -169,22 +169,22 @@ impl CacheManager {
     }
 
     pub(crate) async fn route_delete(&self, keys: Vec<String>) -> Result<u64> {
-        let mut rxs = Vec::with_capacity(keys.len());
-        for key in keys {
+        // Create futures for all delete operations at once
+        let results = FuturesUnordered::from_iter(keys.into_iter().map(|key| {
             let (tx, rx) = tokio::sync::oneshot::channel();
-            self.select_shard(&key).send(CacheCommand::Delete { key, callback: tx }).await?;
-            rxs.push(rx);
-        }
-
-        let mut deleted = 0;
-        for rx in rxs {
-            if rx.await? {
-                deleted += 1;
+            async move {
+                let _ =
+                    self.select_shard(&key).send(CacheCommand::Delete { key, callback: tx }).await;
+                rx.await
             }
-        }
-        Ok(deleted)
-    }
+        }))
+        .collect::<Vec<_>>()
+        .await;
 
+        let deleted = results.into_iter().filter_map(|r| r.ok().filter(|&success| success)).count();
+
+        Ok(deleted as u64)
+    }
     pub(crate) fn select_shard(&self, key: &str) -> &CacheCommandSender {
         let shard_key = self.take_shard_key_from_str(key);
         &self.inboxes[shard_key]
