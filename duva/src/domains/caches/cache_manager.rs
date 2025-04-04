@@ -11,7 +11,9 @@ use crate::domains::saves::endec::StoredDuration;
 use crate::domains::saves::snapshot::Snapshot;
 use anyhow::Result;
 use chrono::Utc;
+use futures::StreamExt;
 use futures::future::join_all;
+use futures::stream::FuturesUnordered;
 use std::sync::Arc;
 use std::sync::atomic::AtomicU64;
 use std::{hash::Hasher, iter::Zip};
@@ -72,21 +74,34 @@ impl CacheManager {
     }
 
     pub(crate) async fn apply_log(&self, msg: WriteRequest) -> Result<()> {
-        let shard = self.select_shard(&msg.key());
-        let command = match msg {
-            WriteRequest::Set { key, value } => {
-                CacheCommand::Set { cache_entry: CacheEntry::KeyValue(key, value) }
-            },
-            WriteRequest::SetWithExpiry { key, value, expires_at } => CacheCommand::Set {
-                cache_entry: CacheEntry::KeyValueExpiry(
-                    key,
-                    value,
-                    StoredDuration::Milliseconds(expires_at).to_datetime(),
-                ),
-            },
-            WriteRequest::Delete { key } => CacheCommand::Delete(key),
+        let shard_command = match msg {
+            WriteRequest::Set { key, value } => vec![(
+                self.select_shard(&key),
+                CacheCommand::Set { cache_entry: CacheEntry::KeyValue(key, value) },
+            )],
+            WriteRequest::SetWithExpiry { key, value, expires_at } => vec![(
+                self.select_shard(&key),
+                CacheCommand::Set {
+                    cache_entry: CacheEntry::KeyValueExpiry(
+                        key,
+                        value,
+                        StoredDuration::Milliseconds(expires_at).to_datetime(),
+                    ),
+                },
+            )],
+            WriteRequest::Delete { key } => key
+                .into_iter()
+                .map(|k| (self.select_shard(&k), CacheCommand::Delete(k)))
+                .collect::<Vec<_>>(),
         };
-        shard.send(command).await?;
+
+        shard_command
+            .into_iter()
+            .map(|(shard, command)| shard.send(command))
+            .collect::<FuturesUnordered<_>>()
+            .for_each(|_| async {})
+            .await;
+
         self.pings().await;
 
         Ok(())

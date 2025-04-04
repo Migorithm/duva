@@ -17,7 +17,7 @@ pub struct WriteOperation {
 pub enum WriteRequest {
     Set { key: String, value: String },
     SetWithExpiry { key: String, value: String, expires_at: u64 },
-    Delete { key: String },
+    Delete { key: Vec<String> },
 }
 
 impl WriteOperation {
@@ -27,10 +27,10 @@ impl WriteOperation {
 }
 
 impl WriteRequest {
-    pub(crate) fn key(&self) -> String {
+    pub(crate) fn key(&self) -> Vec<String> {
         match self {
-            WriteRequest::Set { key, .. } => key.clone(),
-            WriteRequest::SetWithExpiry { key, .. } => key.clone(),
+            WriteRequest::Set { key, .. } => vec![key.clone()],
+            WriteRequest::SetWithExpiry { key, .. } => vec![key.clone()],
             WriteRequest::Delete { key } => key.clone(),
         }
     }
@@ -40,7 +40,11 @@ impl WriteRequest {
             WriteRequest::SetWithExpiry { key, value, expires_at } => {
                 write_array!("SET", key, value, "px", expires_at.to_string())
             },
-            WriteRequest::Delete { key } => write_array!("DEL", key),
+            WriteRequest::Delete { key } => {
+                let mut args = vec!["DEL".to_string()];
+                args.extend(key);
+                QueryIO::Array(args.into_iter().map(QueryIO::BulkString).collect())
+            },
         }
     }
 
