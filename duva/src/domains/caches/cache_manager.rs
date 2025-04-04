@@ -95,12 +95,14 @@ impl CacheManager {
                 .collect::<Vec<_>>(),
         };
 
-        shard_command
-            .into_iter()
-            .map(|(shard, command)| shard.send(command))
-            .collect::<FuturesUnordered<_>>()
-            .for_each(|_| async {})
-            .await;
+        // Execute all shard commands concurrently and collect results
+        FuturesUnordered::from_iter(
+            shard_command
+                .into_iter()
+                .map(|(shard, command)| async move { shard.send(command).await }),
+        )
+        .collect::<Vec<_>>()
+        .await;
 
         self.pings().await;
 
