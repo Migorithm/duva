@@ -11,7 +11,7 @@ use duva::prelude::*;
 
 #[tokio::main]
 async fn main() {
-    let mut controller = ClientController::new().await;
+    let mut controller = ClientController::new(editor::create()).await;
 
     loop {
         let readline = controller.readline();
