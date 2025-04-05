@@ -6,6 +6,7 @@ use rustyline::{
 };
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
+
 pub fn create() -> Editor<DuvaHinter, SQLiteHistory> {
     let editor_conf = Config::builder().auto_add_history(true).build();
     let history =

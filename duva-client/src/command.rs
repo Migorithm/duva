@@ -1,4 +1,4 @@
-pub(crate) fn separate_command_and_args(args: Vec<&str>) -> (&str, Vec<&str>) {
+pub fn separate_command_and_args(args: Vec<&str>) -> (&str, Vec<&str>) {
     // Split the input into command and arguments
     let (cmd, args) = args.split_at(1);
     let cmd = cmd[0];
@@ -17,7 +17,7 @@ pub(crate) fn build_command(cmd: &str, args: Vec<&str>, request_id: u64) -> Stri
     command
 }
 
-pub(crate) fn take_input(action: &str, args: &[&str]) -> Result<ClientInputKind, String> {
+pub fn take_input(action: &str, args: &[&str]) -> Result<ClientInputKind, String> {
     // Check for invalid characters in command parts
     // Command-specific validation
     match action.to_uppercase().as_str() {
