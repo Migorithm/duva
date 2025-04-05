@@ -65,10 +65,10 @@ use chrono::{DateTime, Utc};
 /// Each key-value pair is stored as follows:
 ///
 /// 1. Optional Expire Information:
-///     **Timestamp in Seconds:**
-///     FD - Expire timestamp in seconds (4-byte unsigned integer)
-///     **Timestamp in Milliseconds:**
-///     FC - Expire timestamp in milliseconds (8-byte unsigned long)
+///    **Timestamp in Seconds:**
+///    FD - Expire timestamp in seconds (4-byte unsigned integer)
+///    **Timestamp in Milliseconds:**
+///    FC - Expire timestamp in milliseconds (8-byte unsigned long)
 ///
 /// 2. **Value Type:** 1-byte flag indicating the type and encoding of the value.
 /// 3. **Key:** String encoded.

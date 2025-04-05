@@ -43,10 +43,10 @@ pub(crate) fn take_input(action: &str, args: &[&str]) -> Result<ClientInputKind,
             Ok(ClientInputKind::Keys)
         },
         "DEL" => {
-            if args.len() != 1 {
+            if args.len() < 1 {
                 return Err("(error) ERR wrong number of arguments for 'del' command".to_string());
             }
-            Ok(ClientInputKind::Delete)
+            Ok(ClientInputKind::Del)
         },
 
         "PING" => Ok(ClientInputKind::Ping),
@@ -97,7 +97,7 @@ pub enum ClientInputKind {
     Get,
     IndexGet,
     Set,
-    Delete,
+    Del,
     Echo,
     Config,
     Keys,

@@ -184,7 +184,7 @@ mod tests {
         let (encoded, _): (WriteOperation, usize) =
             bincode::decode_from_slice(&buf[1..], bincode::config::standard()).unwrap();
 
-        assert_eq!(encoded.request.key(), "foo");
+        assert_eq!(encoded.request.key(), vec!["foo"]);
 
         Ok(())
     }

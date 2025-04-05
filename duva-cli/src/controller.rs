@@ -128,7 +128,7 @@ impl ClientController {
     ) -> Result<(), String> {
         use ClientInputKind::*;
         match input {
-            Ping | Get | IndexGet | Delete | Echo | Config | Keys | Save | Info | ClusterForget
+            Ping | Get | IndexGet | Echo | Config | Keys | Save | Info | ClusterForget
             | ClusterInfo => match query_io {
                 QueryIO::Null => println!("(nil)"),
                 QueryIO::SimpleString(value) => println!("{value}"),
@@ -140,10 +140,17 @@ impl ClientController {
                     return Err("Unexpected response format".to_string());
                 },
             },
+            Del => {
+                let QueryIO::SimpleString(value) = query_io else {
+                    return Err("Unexpected response format".to_string());
+                };
+                let deleted_count = value.parse::<u64>().unwrap();
+                println!("(integer) {}", deleted_count);
+            },
+
             Set => {
                 let v = match query_io {
                     QueryIO::SimpleString(value) => value,
-                    QueryIO::BulkString(value) => value,
                     QueryIO::Err(value) => {
                         return Err(format!("(error) {value}"));
                     },
@@ -174,7 +181,7 @@ impl ClientController {
 
     fn may_update_request_id(&mut self, input: &ClientInputKind) {
         match input {
-            ClientInputKind::Set | ClientInputKind::Delete | ClientInputKind::Save => {
+            ClientInputKind::Set | ClientInputKind::Del | ClientInputKind::Save => {
                 self.request_id += 1;
             },
 

@@ -65,7 +65,9 @@ impl ClientController<Handler> {
                     _ => QueryIO::Err("Invalid operation".into()),
                 }
             },
-            ClientAction::Delete { key: _ } => panic!("Not implemented"),
+            ClientAction::Delete { keys } => {
+                QueryIO::SimpleString(self.cache_manager.route_delete(keys).await?.to_string())
+            },
             ClientAction::Info => QueryIO::BulkString(
                 self.cluster_communication_manager
                     .replication_info()
