@@ -31,20 +31,19 @@ pub(crate) struct ClientController<T> {
 }
 
 impl ClientController<Editor<DuvaHinter, SQLiteHistory>> {
-    pub(crate) async fn new(editor: Editor<DuvaHinter, SQLiteHistory>) -> Self {
-        let cli: Cli = Cli::parse();
-        let (stream, client_id, request_id) =
-            ClientController::<Editor<DuvaHinter, SQLiteHistory>>::authenticate(&cli.address())
-                .await;
-        Self { stream, client_id, target: editor, latest_known_index: 0, request_id }
-    }
-
     pub(crate) fn readline(&mut self) -> String {
         self.target.readline(PROMPT).unwrap_or_else(|_| std::process::exit(0))
     }
 }
 
 impl<T> ClientController<T> {
+    pub(crate) async fn new(editor: T) -> Self {
+        let cli: Cli = Cli::parse();
+        let (stream, client_id, request_id) =
+            ClientController::<T>::authenticate(&cli.address()).await;
+        Self { stream, client_id, target: editor, latest_known_index: 0, request_id }
+    }
+
     async fn authenticate(server_addr: &str) -> (TcpStream, Uuid, u64) {
         let mut stream = TcpStream::connect(server_addr).await.unwrap();
         stream.serialized_write(AuthRequest::default()).await.unwrap(); // client_id not exist
