@@ -1,20 +1,22 @@
-pub mod cli;
-pub mod command;
-pub mod controller;
-pub mod editor;
-pub mod error;
+mod cli;
+mod editor;
 
-use cli::Cli;
-use command::{build_command, separate_command_and_args, take_input};
-use controller::{ClientController, PROMPT};
-use duva::prelude::*;
+use clap::Parser;
+use duva::prelude::tokio;
+use duva_client::{
+    command::{separate_command_and_args, take_input},
+    controller::ClientController,
+};
+
+const PROMPT: &str = "duva-cli> ";
 
 #[tokio::main]
 async fn main() {
-    let mut controller = ClientController::new().await;
+    let cli = cli::Cli::parse();
+    let mut controller = ClientController::new(editor::create(), &cli.address()).await;
 
     loop {
-        let readline = controller.editor.readline(PROMPT).unwrap_or_else(|_| std::process::exit(0));
+        let readline = controller.target.readline(PROMPT).unwrap_or_else(|_| std::process::exit(0));
 
         let args: Vec<&str> = readline.split_whitespace().collect();
         if args.is_empty() {

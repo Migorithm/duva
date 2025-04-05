@@ -276,7 +276,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "duva-cli"
+name = "duva-client"
 version = "0.1.0"
 dependencies = [
  "clap",

@@ -1,5 +1,5 @@
 [package]
-name = "duva-cli"
+name = "duva-client"
 version = "0.1.0"
 edition = "2024"
 
@@ -11,3 +11,9 @@ rustyline = { version = "15.0.0", features = [
     "with-sqlite-history",
     "derive",
 ] }
+
+
+[[bin]]
+name = "cli"
+path = "src/cli/main.rs"
+# cargo run -p duva-client --bin cli -- --port 6000

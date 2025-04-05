@@ -1,9 +1,4 @@
-use crate::{
-    Cli, build_command,
-    command::ClientInputKind,
-    editor::{self, DuvaHinter},
-};
-use clap::Parser;
+use crate::command::{ClientInputKind, build_command};
 use duva::{
     clients::authentications::{AuthRequest, AuthResponse},
     domains::query_parsers::query_io::{QueryIO, deserialize},
@@ -18,23 +13,20 @@ use duva::{
     },
     services::interface::{TRead, TSerdeReadWrite},
 };
-use rustyline::{Editor, sqlite_history::SQLiteHistory};
 
-pub const PROMPT: &str = "duva-cli> ";
-
-pub(crate) struct ClientController {
+pub struct ClientController<T> {
     stream: TcpStream,
     client_id: Uuid,
     request_id: u64,
     latest_known_index: u64,
-    pub(crate) editor: Editor<DuvaHinter, SQLiteHistory>,
+    pub target: T,
 }
 
-impl ClientController {
-    pub(crate) async fn new() -> Self {
-        let cli: Cli = Cli::parse();
-        let (stream, client_id, request_id) = ClientController::authenticate(&cli.address()).await;
-        Self { stream, client_id, editor: editor::create(), latest_known_index: 0, request_id }
+impl<T> ClientController<T> {
+    pub async fn new(editor: T, server_addr: &str) -> Self {
+        let (stream, client_id, request_id) =
+            ClientController::<T>::authenticate(server_addr).await;
+        Self { stream, client_id, target: editor, latest_known_index: 0, request_id }
     }
 
     async fn authenticate(server_addr: &str) -> (TcpStream, Uuid, u64) {
@@ -50,7 +42,7 @@ impl ClientController {
         (stream, client_id, request_id)
     }
 
-    pub(crate) async fn send_command(
+    pub async fn send_command(
         &mut self,
         action: &str,
         args: Vec<&str>,
