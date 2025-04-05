@@ -22,19 +22,23 @@ use rustyline::{Editor, sqlite_history::SQLiteHistory};
 
 pub const PROMPT: &str = "duva-cli> ";
 
-pub(crate) struct ClientController {
+pub(crate) struct ClientController<T> {
     stream: TcpStream,
     client_id: Uuid,
     request_id: u64,
     latest_known_index: u64,
-    pub(crate) editor: Editor<DuvaHinter, SQLiteHistory>,
+    pub(crate) target: T,
 }
 
-impl ClientController {
+impl ClientController<Editor<DuvaHinter, SQLiteHistory>> {
     pub(crate) async fn new() -> Self {
         let cli: Cli = Cli::parse();
         let (stream, client_id, request_id) = ClientController::authenticate(&cli.address()).await;
-        Self { stream, client_id, editor: editor::create(), latest_known_index: 0, request_id }
+        Self { stream, client_id, target: editor::create(), latest_known_index: 0, request_id }
+    }
+
+    pub(crate) fn readline(&mut self) -> String {
+        self.target.readline(PROMPT).unwrap_or_else(|_| std::process::exit(0))
     }
 
     async fn authenticate(server_addr: &str) -> (TcpStream, Uuid, u64) {
