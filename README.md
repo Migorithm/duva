@@ -2,6 +2,13 @@
 Duva is a distributed cache server aimed at efficient and scalable key-value store operations using Actor models, written in Rust
 
 
+## cli support
+
+
+https://github.com/user-attachments/assets/89c0b080-2bc8-467d-b75b-639a50b2bdba
+
+
+
 
 ### Why the Actor model?
 Designed to handle concurrent, distributed, and scalable systems, it models independent units of computation (actors) that communicate solely via message passing. 
