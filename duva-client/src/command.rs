@@ -48,6 +48,14 @@ pub fn take_input(action: &str, args: &[&str]) -> Result<ClientInputKind, String
             }
             Ok(ClientInputKind::Del)
         },
+        "EXISTS" => {
+            if args.len() < 1 {
+                return Err(
+                    "(error) ERR wrong number of arguments for 'exists' command".to_string()
+                );
+            }
+            Ok(ClientInputKind::Exists)
+        },
 
         "PING" => Ok(ClientInputKind::Ping),
         "ECHO" => {
@@ -106,4 +114,5 @@ pub enum ClientInputKind {
     ClusterInfo,
     ClusterNodes,
     ClusterForget,
+    Exists,
 }

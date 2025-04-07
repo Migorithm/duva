@@ -132,14 +132,13 @@ impl<T> ClientController<T> {
                     return Err("Unexpected response format".to_string());
                 },
             },
-            Del => {
+            Del | Exists => {
                 let QueryIO::SimpleString(value) = query_io else {
                     return Err("Unexpected response format".to_string());
                 };
                 let deleted_count = value.parse::<u64>().unwrap();
                 println!("(integer) {}", deleted_count);
             },
-
             Set => {
                 let v = match query_io {
                     QueryIO::SimpleString(value) => value,
@@ -154,7 +153,6 @@ impl<T> ClientController<T> {
                 self.latest_known_index = rindex.parse::<u64>().unwrap();
                 println!("OK");
             },
-
             ClusterNodes => {
                 let QueryIO::Array(value) = query_io else {
                     return Err("Unexpected response format".to_string());

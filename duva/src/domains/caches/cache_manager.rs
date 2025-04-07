@@ -14,8 +14,11 @@ use chrono::Utc;
 use futures::StreamExt;
 use futures::future::join_all;
 use futures::stream::FuturesUnordered;
+use tokio::sync::oneshot::error::RecvError;
+
 use std::sync::Arc;
 use std::sync::atomic::AtomicU64;
+
 use std::{hash::Hasher, iter::Zip};
 use tokio::sync::oneshot::Sender;
 use tokio::task::JoinHandle;
@@ -169,25 +172,41 @@ impl CacheManager {
     }
 
     pub(crate) async fn route_delete(&self, keys: Vec<String>) -> Result<u64> {
+        let closure = |key, callback| -> CacheCommand { CacheCommand::Delete { key, callback } };
         // Create futures for all delete operations at once
-        let results = FuturesUnordered::from_iter(keys.into_iter().map(|key| {
+        let results = self.send_selectively(keys, closure).await;
+
+        let deleted = results.into_iter().filter_map(|r| r.ok().filter(|&success| success)).count();
+        Ok(deleted as u64)
+    }
+    pub(crate) async fn route_exists(&self, keys: Vec<String>) -> Result<u64> {
+        let closure = |key, callback| -> CacheCommand { CacheCommand::Exists { key, callback } };
+        // Create futures for all delete operations at once
+        let results = self.send_selectively(keys, closure).await;
+
+        let found = results.into_iter().filter_map(|r| r.ok().filter(|&success| success)).count();
+        Ok(found as u64)
+    }
+
+    pub(crate) fn select_shard(&self, key: &str) -> &CacheCommandSender {
+        let shard_key = self.take_shard_key_from_str(key);
+        &self.inboxes[shard_key]
+    }
+
+    async fn send_selectively<T>(
+        &self,
+        keys: Vec<String>,
+        func: fn(String, Sender<T>) -> CacheCommand,
+    ) -> Vec<Result<T, RecvError>> {
+        FuturesUnordered::from_iter(keys.into_iter().map(|key| {
             let (tx, rx) = tokio::sync::oneshot::channel();
             async move {
-                let _ =
-                    self.select_shard(&key).send(CacheCommand::Delete { key, callback: tx }).await;
+                let _ = self.select_shard(&key).send(func(key, tx)).await;
                 rx.await
             }
         }))
         .collect::<Vec<_>>()
-        .await;
-
-        let deleted = results.into_iter().filter_map(|r| r.ok().filter(|&success| success)).count();
-
-        Ok(deleted as u64)
-    }
-    pub(crate) fn select_shard(&self, key: &str) -> &CacheCommandSender {
-        let shard_key = self.take_shard_key_from_str(key);
-        &self.inboxes[shard_key]
+        .await
     }
 
     fn take_shard_key_from_str(&self, s: &str) -> usize {
