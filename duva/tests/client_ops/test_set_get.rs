@@ -2,9 +2,7 @@
 /// Firstly, we set a key with a value and an expiry of 300ms
 /// Then we get the key and check if the value is returned
 /// After 300ms, we get the key again and check if the value is not returned (-1)
-mod common;
-use common::{ServerEnv, array, spawn_server_process};
-
+use crate::common::{ServerEnv, array, spawn_server_process};
 use duva::{clients::ClientStreamHandler, domains::query_parsers::query_io::QueryIO};
 
 #[tokio::test]

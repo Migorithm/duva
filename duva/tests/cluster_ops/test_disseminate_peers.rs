@@ -1,6 +1,5 @@
 /// After three-way handshake, client will receive peers from the leader server
-mod common;
-use common::{ServerEnv, spawn_server_process};
+use crate::common::{ServerEnv, spawn_server_process};
 
 #[tokio::test]
 async fn test_disseminate_peers() {

@@ -1,5 +1,4 @@
-mod common;
-use common::{ServerEnv, spawn_server_process};
+use crate::common::{ServerEnv, array, spawn_server_process};
 use duva::clients::ClientStreamHandler;
 
 #[tokio::test]
@@ -21,7 +20,7 @@ async fn test_set_operation_reaches_to_all_replicas() {
     leader_p.wait_for_message(&repl_p.heartbeat_msg(0), 1).unwrap();
 
     // WHEN -- set operation is made
-    client_handler.send(&common::array(vec!["SET", "foo", "bar"])).await;
+    client_handler.send(&array(vec!["SET", "foo", "bar"])).await;
 
     //THEN - run the following together
     let h = std::thread::spawn(move || {

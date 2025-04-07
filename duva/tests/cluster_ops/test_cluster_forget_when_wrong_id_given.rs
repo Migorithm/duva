@@ -1,7 +1,6 @@
 /// Cluster forget {node id} is used in order to remove a node, from the set of known nodes for the node receiving the command.
 /// In other words the specified node is removed from the nodes table of the node receiving the command.
-mod common;
-use common::{ServerEnv, array, spawn_server_process};
+use crate::common::{ServerEnv, array, spawn_server_process};
 use duva::{clients::ClientStreamHandler, domains::query_parsers::query_io::QueryIO};
 
 #[tokio::test]

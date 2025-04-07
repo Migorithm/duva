@@ -1,5 +1,4 @@
-mod common;
-use common::{ServerEnv, array, spawn_server_process};
+use crate::common::{ServerEnv, array, spawn_server_process};
 use duva::{clients::ClientStreamHandler, domains::query_parsers::query_io::QueryIO};
 
 #[tokio::test]
