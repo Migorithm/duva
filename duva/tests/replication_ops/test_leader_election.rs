@@ -1,7 +1,6 @@
-mod common;
 use std::{thread::sleep, time::Duration};
 
-use common::{ServerEnv, array, check_internodes_communication, spawn_server_process};
+use crate::common::{ServerEnv, array, check_internodes_communication, spawn_server_process};
 use duva::clients::ClientStreamHandler;
 
 #[tokio::test]

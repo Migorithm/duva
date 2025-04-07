@@ -3,9 +3,7 @@
 
 /// if the value of dir is /tmp, then the expected response to CONFIG GET dir is:
 /// *2\r\n$3\r\ndir\r\n$4\r\n/tmp\r\n
-mod common;
-
-use common::{ServerEnv, array, spawn_server_process};
+use crate::common::{ServerEnv, array, spawn_server_process};
 
 use duva::clients::ClientStreamHandler;
 
