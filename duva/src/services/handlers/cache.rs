@@ -38,6 +38,9 @@ impl CacheActor {
                 CacheCommand::Delete { key, callback } => {
                     self.delete(key, callback);
                 },
+                CacheCommand::Exists { key, callback } => {
+                    self.exists(key, callback);
+                },
                 CacheCommand::Save { outbox } => {
                     outbox
                         .send(SaveCommand::LocalShardSize {

@@ -20,6 +20,7 @@ pub(crate) enum ClientAction {
     ClusterInfo,
     ClusterNodes,
     ClusterForget(PeerIdentifier),
+    Exists { keys: Vec<String> },
 }
 
 impl ClientAction {

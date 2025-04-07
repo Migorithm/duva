@@ -28,6 +28,7 @@ pub fn parse_query(
             }
         },
         ("del", keys) => ClientAction::Delete { keys: keys.to_vec() },
+        ("exists", keys) => ClientAction::Exists { keys: keys.to_vec() },
         ("echo", [value]) => ClientAction::Echo(value.to_string()),
         ("config", [key, value]) => {
             ClientAction::Config { key: key.to_string(), value: value.to_string() }
