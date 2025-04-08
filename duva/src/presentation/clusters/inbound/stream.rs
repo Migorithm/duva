@@ -86,9 +86,10 @@ impl InboundStream {
             self.self_repl_info.hwm.load(Ordering::Relaxed),
         );
 
-        self.write(QueryIO::SimpleString(
-            format!("FULLRESYNC {} {} {}", id, self_leader_replid, self_leader_repl_offset).into(),
-        ))
+        self.write(QueryIO::SimpleString(format!(
+            "FULLRESYNC {} {} {}",
+            id, self_leader_replid, self_leader_repl_offset
+        )))
         .await?;
 
         Ok((inbound_repl_id, offset))
@@ -103,15 +104,15 @@ impl InboundStream {
         &mut self,
         peers: Vec<PeerIdentifier>,
     ) -> anyhow::Result<()> {
-        self.write(QueryIO::SimpleString(
-            format!("PEERS {}", peers.into_iter().map(|x| x.0).collect::<Vec<String>>().join(" "))
-                .into(),
-        ))
+        self.write(QueryIO::SimpleString(format!(
+            "PEERS {}",
+            peers.into_iter().map(|x| x.0).collect::<Vec<String>>().join(" ")
+        )))
         .await?;
         Ok(())
     }
 
-    pub(crate) fn to_add_peer(
+    pub(crate) fn into_add_peer(
         self,
         cluster_actor_handler: Sender<ClusterCommand>,
         connected_peer_info: ConnectedPeerInfo,

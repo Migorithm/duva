@@ -20,7 +20,6 @@ use crate::domains::append_only_files::WriteOperation;
 use crate::domains::append_only_files::WriteRequest;
 use crate::domains::append_only_files::interfaces::TWriteAheadLog;
 use crate::domains::append_only_files::logger::ReplicatedLogs;
-
 use crate::domains::cluster_actors::consensus::ElectionState;
 use crate::domains::{caches::cache_manager::CacheManager, query_parsers::QueryIO};
 use std::sync::atomic::Ordering;
@@ -72,14 +71,14 @@ impl ClusterActor {
 
     pub(crate) fn replicas(&self) -> impl Iterator<Item = (&PeerIdentifier, &Peer, u64)> {
         self.members.iter().filter_map(|(id, peer)| match &peer.kind {
-            PeerState::Replica { match_index: hwm, replid } => Some((id, peer, *hwm)),
+            PeerState::Replica { match_index: hwm, .. } => Some((id, peer, *hwm)),
             _ => None,
         })
     }
 
     pub(crate) fn replicas_mut(&mut self) -> impl Iterator<Item = (&mut Peer, u64)> {
-        self.members.values_mut().into_iter().filter_map(|peer| match peer.kind.clone() {
-            PeerState::Replica { match_index: hwm, replid } => Some((peer, hwm)),
+        self.members.values_mut().filter_map(|peer| match peer.kind.clone() {
+            PeerState::Replica { match_index: hwm, .. } => Some((peer, hwm)),
             _ => None,
         })
     }
@@ -96,7 +95,7 @@ impl ClusterActor {
         // TODO randomly choose the peer to send the message
         let msg = ClusterHeartBeat(
             self.replication
-                .default_heartbeat(hop_count, logger.log_index, logger.term)
+                .default_heartbeat(hop_count, logger.last_log_index, logger.last_log_term)
                 .set_cluster_nodes(self.cluster_nodes()),
         );
 
@@ -224,14 +223,14 @@ impl ClusterActor {
         }
 
         let Ok(append_entries) =
-            logger.create_log_entries(&log, self.take_low_watermark(), self.replication.term).await
+            logger.create_log_entries(log, self.take_low_watermark(), self.replication.term).await
         else {
             return Err(ConsensusClientResponse::Err("Write operation failed".into()));
         };
 
         // Skip consensus for no replicas
         if self.replicas().count() == 0 {
-            return Err(ConsensusClientResponse::LogIndex(Some(logger.log_index)));
+            return Err(ConsensusClientResponse::LogIndex(Some(logger.last_log_index)));
         }
 
         Ok(append_entries)
@@ -244,7 +243,7 @@ impl ClusterActor {
         callback: tokio::sync::oneshot::Sender<ConsensusClientResponse>,
         session_req: Option<SessionRequest>,
     ) {
-        let (prev_log_index, prev_term) = (logger.log_index, logger.term);
+        let (prev_log_index, prev_term) = (logger.last_log_index, logger.last_log_term);
         let append_entries = match self.try_create_append_entries(logger, &log).await {
             Ok(entries) => entries,
             Err(err) => {
@@ -254,7 +253,7 @@ impl ClusterActor {
         };
 
         self.consensus_tracker.add(
-            logger.log_index,
+            logger.last_log_index,
             callback,
             self.replicas().count(),
             session_req,
@@ -301,9 +300,8 @@ impl ClusterActor {
     pub(crate) fn take_low_watermark(&self) -> Option<u64> {
         self.members
             .values()
-            .into_iter()
             .filter_map(|peer| match &peer.kind {
-                PeerState::Replica { match_index: watermark, replid } => Some(*watermark),
+                PeerState::Replica { match_index: watermark, .. } => Some(*watermark),
                 _ => None,
             })
             .min()
@@ -361,7 +359,7 @@ impl ClusterActor {
         cache_manager: &CacheManager,
     ) {
         // * logging case
-        if let Err(_) = self.try_append_entries(wal, &mut heartbeat).await {
+        if self.try_append_entries(wal, &mut heartbeat).await.is_err() {
             return;
         };
 
@@ -381,7 +379,7 @@ impl ClusterActor {
         if let Err(e) =
             self.ensure_prev_consistency(wal, rpc.prev_log_index, rpc.prev_log_term).await
         {
-            self.send_ack(&rpc.from, wal.log_index, e).await;
+            self.send_ack(&rpc.from, wal.last_log_index, e).await;
             return Err(anyhow::anyhow!("Fail fail to append"));
         }
 
@@ -402,6 +400,7 @@ impl ClusterActor {
             if prev_log_index == 0 {
                 return Ok(()); // First entry, no previous log to check
             }
+
             return Err(RejectionReason::LogInconsistency); // Log empty but leader expects an entry
         }
 
@@ -416,6 +415,7 @@ impl ClusterActor {
             if prev_entry.term != prev_log_term {
                 // ! Term mismatch -> triggers log truncation
                 wal.truncate_after(prev_log_index).await;
+
                 return Err(RejectionReason::LogInconsistency);
             }
         }
@@ -429,15 +429,14 @@ impl ClusterActor {
     ) {
         self.send_to_replicas(AppendEntriesRPC(self.replication.default_heartbeat(
             0,
-            logger.log_index,
-            logger.term,
+            logger.last_log_index,
+            logger.last_log_term,
         )))
         .await;
     }
 
     async fn send_to_replicas(&mut self, msg: impl Into<QueryIO> + Send + Clone) {
         self.replicas_mut()
-            .into_iter()
             .map(|(peer, _)| peer.write_io(msg.clone()))
             .collect::<FuturesUnordered<_>>()
             .for_each(|_| async {})
@@ -447,12 +446,11 @@ impl ClusterActor {
     pub(crate) fn cluster_nodes(&self) -> Vec<String> {
         self.members
             .values()
-            .into_iter()
             .map(|peer| match &peer.kind {
-                PeerState::Replica { match_index, replid } => {
+                PeerState::Replica { match_index: _, replid } => {
                     format!("{} {} 0", peer.addr, replid)
                 },
-                PeerState::NonDataPeer { replid, match_index } => {
+                PeerState::NonDataPeer { replid, match_index: _ } => {
                     format!("{} {} 0", peer.addr, replid)
                 },
             })
@@ -460,13 +458,17 @@ impl ClusterActor {
             .collect()
     }
 
-    pub(crate) async fn run_for_election(&mut self, last_log_index: u64, last_log_term: u64) {
-        let ElectionState::Follower { voted_for: None } = self.replication.election_state else {
+    pub(crate) async fn run_for_election(
+        &mut self,
+        logger: &mut ReplicatedLogs<impl TWriteAheadLog>,
+    ) {
+        let ElectionState::Follower { voted_for: None } = &self.replication.election_state else {
             return;
         };
 
-        self.replication.become_candidate(self.replicas().count() as u8);
-        let request_vote = RequestVote::new(&self.replication, last_log_index, last_log_term);
+        self.become_candidate();
+        let request_vote =
+            RequestVote::new(&self.replication, logger.last_log_index, logger.last_log_index);
 
         println!("[INFO] Running for election term {}", self.replication.term);
         self.replicas_mut()
@@ -498,7 +500,8 @@ impl ClusterActor {
         }
         self.become_leader().await;
 
-        let msg = self.replication.default_heartbeat(0, logger.log_index, logger.term);
+        let msg =
+            self.replication.default_heartbeat(0, logger.last_log_index, logger.last_log_term);
         self.replicas_mut()
             .map(|(peer, _)| peer.write_io(AppendEntriesRPC(msg.clone())))
             .collect::<FuturesUnordered<_>>()
@@ -511,6 +514,7 @@ impl ClusterActor {
             peer.last_seen = Instant::now();
         }
         self.heartbeat_scheduler.reset_election_timeout();
+        self.replication.election_state = ElectionState::Follower { voted_for: None };
     }
 
     async fn replicate_state(
@@ -523,7 +527,7 @@ impl ClusterActor {
         if heartbeat_hwm > old_hwm {
             println!("[INFO] Received commit offset {}", heartbeat_hwm);
 
-            let new_hwm = std::cmp::min(heartbeat_hwm, wal.log_index);
+            let new_hwm = std::cmp::min(heartbeat_hwm, wal.last_log_index);
             self.replication.hwm.store(new_hwm, Ordering::Release);
 
             // Apply all newly committed entries to state machine
@@ -538,14 +542,9 @@ impl ClusterActor {
         }
     }
 
-    pub(crate) fn maybe_update_term(
-        &mut self,
-        new_term: u64,
-        wal: &mut ReplicatedLogs<impl TWriteAheadLog>,
-    ) {
+    pub(crate) fn maybe_update_term(&mut self, new_term: u64) {
         if new_term > self.replication.term {
             self.replication.term = new_term;
-            wal.term = new_term;
         }
     }
 
@@ -555,8 +554,12 @@ impl ClusterActor {
         wal: &ReplicatedLogs<impl TWriteAheadLog>,
     ) -> bool {
         if heartbeat.term < self.replication.term {
-            self.send_ack(&heartbeat.from, wal.log_index, RejectionReason::ReceiverHasHigherTerm)
-                .await;
+            self.send_ack(
+                &heartbeat.from,
+                wal.last_log_index,
+                RejectionReason::ReceiverHasHigherTerm,
+            )
+            .await;
             return true;
         }
         false
@@ -575,12 +578,15 @@ impl ClusterActor {
         self.replication.become_leader();
         self.heartbeat_scheduler.turn_leader_mode().await;
     }
+    fn become_candidate(&mut self) {
+        self.replication.become_candidate(self.replicas().count() as u8);
+    }
 
     pub(crate) async fn handle_repl_rejection(&mut self, repl_res: ReplicationResponse) {
         match repl_res.rej_reason {
             RejectionReason::ReceiverHasHigherTerm => self.step_down().await,
             RejectionReason::LogInconsistency => self.decrease_match_index(&repl_res.from),
-            RejectionReason::None => return,
+            RejectionReason::None => (),
         }
     }
 
@@ -637,7 +643,7 @@ mod test {
         HeartBeatMessage {
             term,
             hwm,
-            prev_log_index: if !op_logs.is_empty() { (op_logs[0].log_index - 1) } else { 0 },
+            prev_log_index: if !op_logs.is_empty() { op_logs[0].log_index - 1 } else { 0 },
             prev_log_term: 0,
             append_entries: op_logs,
             ban_list: vec![],
@@ -728,14 +734,14 @@ mod test {
     #[tokio::test]
     async fn leader_consensus_tracker_not_changed_when_followers_not_exist() {
         // GIVEN
-        let mut test_logger = ReplicatedLogs::new(InMemoryWAL::default(), 0, 0);
+        let mut logger = ReplicatedLogs::new(InMemoryWAL::default(), 0, 0);
         let mut cluster_actor = cluster_actor_create_helper();
         let (tx, rx) = tokio::sync::oneshot::channel();
 
         // WHEN
         cluster_actor
             .req_consensus(
-                &mut test_logger,
+                &mut logger,
                 WriteRequest::Set { key: "foo".into(), value: "bar".into() },
                 tx,
                 None,
@@ -744,13 +750,13 @@ mod test {
 
         // THEN
         assert_eq!(cluster_actor.consensus_tracker.len(), 0);
-        assert_eq!(test_logger.log_index, 1);
+        assert_eq!(logger.last_log_index, 1);
     }
 
     #[tokio::test]
     async fn req_consensus_inserts_consensus_voting() {
         // GIVEN
-        let mut test_logger = ReplicatedLogs::new(InMemoryWAL::default(), 0, 0);
+        let mut logger = ReplicatedLogs::new(InMemoryWAL::default(), 0, 0);
 
         let mut cluster_actor = cluster_actor_create_helper();
 
@@ -767,7 +773,7 @@ mod test {
         // WHEN
         cluster_actor
             .req_consensus(
-                &mut test_logger,
+                &mut logger,
                 WriteRequest::Set { key: "foo".into(), value: "bar".into() },
                 tx,
                 Some(session_request.clone()),
@@ -776,7 +782,7 @@ mod test {
 
         // THEN
         assert_eq!(cluster_actor.consensus_tracker.len(), 1);
-        assert_eq!(test_logger.log_index, 1);
+        assert_eq!(logger.last_log_index, 1);
 
         assert_eq!(
             cluster_actor.consensus_tracker.get(&1).unwrap().session_req.as_ref().unwrap().clone(), //* session_request_is_saved_on_tracker
@@ -787,7 +793,7 @@ mod test {
     #[tokio::test]
     async fn test_leader_req_consensus_early_return_when_already_processed_session_req_given() {
         // GIVEN
-        let test_logger = ReplicatedLogs::new(InMemoryWAL::default(), 0, 0);
+        let logger = ReplicatedLogs::new(InMemoryWAL::default(), 0, 0);
         let cluster_actor = cluster_actor_create_helper();
 
         let cache_manager = CacheManager { inboxes: vec![] };
@@ -818,7 +824,7 @@ mod test {
     async fn test_consensus_voting_deleted_when_consensus_reached() {
         // GIVEN
         let mut sessions = ClientSessions::default();
-        let mut test_logger = ReplicatedLogs::new(InMemoryWAL::default(), 0, 0);
+        let mut logger = ReplicatedLogs::new(InMemoryWAL::default(), 0, 0);
         let mut cluster_actor = cluster_actor_create_helper();
 
         let (cluster_sender, _) = tokio::sync::mpsc::channel(100);
@@ -833,7 +839,7 @@ mod test {
         let client_request = SessionRequest::new(3, client_id);
         cluster_actor
             .req_consensus(
-                &mut test_logger,
+                &mut logger,
                 WriteRequest::Set { key: "foo".into(), value: "bar".into() },
                 client_request_sender,
                 Some(client_request.clone()),
@@ -861,7 +867,7 @@ mod test {
 
         // THEN
         assert_eq!(cluster_actor.consensus_tracker.len(), 0);
-        assert_eq!(test_logger.log_index, 1);
+        assert_eq!(logger.last_log_index, 1);
 
         client_wait.await.unwrap();
         assert!(sessions.is_processed(&Some(client_request))); // * session_request_is_marked_as_processed
@@ -871,7 +877,7 @@ mod test {
     async fn test_same_voter_can_vote_only_once() {
         // GIVEN
         let mut sessions = ClientSessions::default();
-        let mut test_logger = ReplicatedLogs::new(InMemoryWAL::default(), 0, 0);
+        let mut logger = ReplicatedLogs::new(InMemoryWAL::default(), 0, 0);
         let mut cluster_actor = cluster_actor_create_helper();
 
         let (cluster_sender, _) = tokio::sync::mpsc::channel(100);
@@ -884,7 +890,7 @@ mod test {
 
         cluster_actor
             .req_consensus(
-                &mut test_logger,
+                &mut logger,
                 WriteRequest::Set { key: "foo".into(), value: "bar".into() },
                 client_request_sender,
                 None,
@@ -905,24 +911,24 @@ mod test {
 
         // THEN - no change in consensus tracker even though the same voter voted multiple times
         assert_eq!(cluster_actor.consensus_tracker.len(), 1);
-        assert_eq!(test_logger.log_index, 1);
+        assert_eq!(logger.last_log_index, 1);
     }
 
     #[tokio::test]
     async fn logger_create_entries_from_lowest() {
         // GIVEN
-        let mut test_logger = ReplicatedLogs::new(InMemoryWAL::default(), 0, 0);
+        let mut logger = ReplicatedLogs::new(InMemoryWAL::default(), 0, 0);
 
         let test_logs = vec![
             write_operation_create_helper(1, 0, "foo", "bar"),
             write_operation_create_helper(2, 0, "foo2", "bar"),
             write_operation_create_helper(3, 0, "foo3", "bar"),
         ];
-        test_logger.write_log_entries(test_logs.clone()).await.unwrap();
+        logger.write_log_entries(test_logs.clone()).await.unwrap();
 
         // WHEN
         const LOWEST_FOLLOWER_COMMIT_INDEX: u64 = 2;
-        let logs = test_logger
+        let logs = logger
             .create_log_entries(
                 &WriteRequest::Set { key: "foo4".into(), value: "bar".into() },
                 Some(LOWEST_FOLLOWER_COMMIT_INDEX),
@@ -935,13 +941,13 @@ mod test {
         assert_eq!(logs.len(), 2);
         assert_eq!(logs[0].log_index, 3);
         assert_eq!(logs[1].log_index, 4);
-        assert_eq!(test_logger.log_index, 4);
+        assert_eq!(logger.last_log_index, 4);
     }
 
     #[tokio::test]
     async fn generate_follower_entries() {
         // GIVEN
-        let mut test_logger = ReplicatedLogs::new(InMemoryWAL::default(), 0, 0);
+        let mut logger = ReplicatedLogs::new(InMemoryWAL::default(), 0, 0);
 
         let mut cluster_actor = cluster_actor_create_helper();
 
@@ -964,7 +970,7 @@ mod test {
 
         cluster_actor.replication.hwm.store(3, Ordering::Release);
 
-        test_logger.write_log_entries(test_logs).await.unwrap();
+        logger.write_log_entries(test_logs).await.unwrap();
 
         //WHEN
         // *add lagged followers with its commit index being 1
@@ -974,7 +980,7 @@ mod test {
 
         // * add new log - this must create entries that are greater than 3
         let lowest_hwm = cluster_actor.take_low_watermark();
-        let append_entries = test_logger
+        let append_entries = logger
             .create_log_entries(
                 &WriteRequest::Set { key: "foo4".into(), value: "bar".into() },
                 lowest_hwm,
@@ -998,7 +1004,7 @@ mod test {
     #[tokio::test]
     async fn follower_cluster_actor_replicate_log() {
         // GIVEN
-        let mut test_logger = ReplicatedLogs::new(InMemoryWAL::default(), 0, 0);
+        let mut logger = ReplicatedLogs::new(InMemoryWAL::default(), 0, 0);
         let mut cluster_actor = cluster_actor_create_helper();
         // WHEN - term
         let heartbeat = heartbeat_create_helper(
@@ -1012,12 +1018,12 @@ mod test {
         let cache_manager = CacheManager {
             inboxes: (0..10).map(|_| CacheCommandSender(channel(10).0)).collect::<Vec<_>>(),
         };
-        cluster_actor.replicate(&mut test_logger, heartbeat, &cache_manager).await;
+        cluster_actor.replicate(&mut logger, heartbeat, &cache_manager).await;
 
         // THEN
         assert_eq!(cluster_actor.replication.hwm.load(Ordering::Relaxed), 0);
-        assert_eq!(test_logger.log_index, 2);
-        let logs = test_logger.range(0, 2);
+        assert_eq!(logger.last_log_index, 2);
+        let logs = logger.range(0, 2);
         assert_eq!(logs.len(), 2);
         assert_eq!(logs[0].log_index, 1);
         assert_eq!(logs[1].log_index, 2);
@@ -1028,7 +1034,7 @@ mod test {
     #[tokio::test]
     async fn follower_cluster_actor_replicate_state() {
         // GIVEN
-        let mut test_logger = ReplicatedLogs::new(InMemoryWAL::default(), 0, 0);
+        let mut logger = ReplicatedLogs::new(InMemoryWAL::default(), 0, 0);
         let (cache_handler, mut receiver) = tokio::sync::mpsc::channel(100);
         let mut cluster_actor = cluster_actor_create_helper();
 
@@ -1042,7 +1048,7 @@ mod test {
         );
 
         let cache_manager = CacheManager { inboxes: vec![CacheCommandSender(cache_handler)] };
-        cluster_actor.replicate(&mut test_logger, heartbeat, &cache_manager).await;
+        cluster_actor.replicate(&mut logger, heartbeat, &cache_manager).await;
 
         // WHEN - commit until 2
         let task = tokio::spawn(async move {
@@ -1059,18 +1065,18 @@ mod test {
             }
         });
         let heartbeat = heartbeat_create_helper(0, 2, vec![]);
-        cluster_actor.replicate(&mut test_logger, heartbeat, &cache_manager).await;
+        cluster_actor.replicate(&mut logger, heartbeat, &cache_manager).await;
 
         // THEN
         assert_eq!(cluster_actor.replication.hwm.load(Ordering::Relaxed), 2);
-        assert_eq!(test_logger.log_index, 2);
+        assert_eq!(logger.last_log_index, 2);
         task.await.unwrap();
     }
 
     #[tokio::test]
     async fn test_apply_multiple_committed_entries() {
         // GIVEN
-        let mut test_logger = ReplicatedLogs::new(InMemoryWAL::default(), 0, 0);
+        let mut logger = ReplicatedLogs::new(InMemoryWAL::default(), 0, 0);
         let mut cluster_actor = cluster_actor_create_helper();
 
         // Add multiple entries
@@ -1086,7 +1092,7 @@ mod test {
         let cache_manager = CacheManager { inboxes: vec![CacheCommandSender(tx)] };
 
         // First append entries but don't commit
-        cluster_actor.replicate(&mut test_logger, heartbeat, &cache_manager).await;
+        cluster_actor.replicate(&mut logger, heartbeat, &cache_manager).await;
 
         // Create a task to monitor applied entries
         let monitor_task = tokio::spawn(async move {
@@ -1107,7 +1113,7 @@ mod test {
         // WHEN - commit all entries
         let commit_heartbeat = heartbeat_create_helper(1, 3, vec![]);
 
-        cluster_actor.replicate(&mut test_logger, commit_heartbeat, &cache_manager).await;
+        cluster_actor.replicate(&mut logger, commit_heartbeat, &cache_manager).await;
 
         // THEN
         // Verify that all entries were committed and applied in order
@@ -1123,7 +1129,7 @@ mod test {
     #[tokio::test]
     async fn test_partial_commit_with_new_entries() {
         // GIVEN
-        let mut test_logger = ReplicatedLogs::new(InMemoryWAL::default(), 0, 0);
+        let mut logger = ReplicatedLogs::new(InMemoryWAL::default(), 0, 0);
         let mut cluster_actor = cluster_actor_create_helper();
 
         // First, append some entries
@@ -1137,7 +1143,7 @@ mod test {
         let (tx, mut rx) = tokio::sync::mpsc::channel(100);
         let cache_manager = CacheManager { inboxes: vec![CacheCommandSender(tx)] };
 
-        cluster_actor.replicate(&mut test_logger, first_heartbeat, &cache_manager).await;
+        cluster_actor.replicate(&mut logger, first_heartbeat, &cache_manager).await;
 
         // Create a task to monitor applied entries
         let monitor_task = tokio::spawn(async move {
@@ -1160,7 +1166,7 @@ mod test {
 
         let second_heartbeat = heartbeat_create_helper(1, 1, second_entries);
 
-        cluster_actor.replicate(&mut test_logger, second_heartbeat, &cache_manager).await;
+        cluster_actor.replicate(&mut logger, second_heartbeat, &cache_manager).await;
 
         // THEN
         // Verify that only key1 was applied
@@ -1171,13 +1177,13 @@ mod test {
 
         assert_eq!(applied_keys, vec!["key1"]);
         assert_eq!(cluster_actor.replication.hwm.load(Ordering::Relaxed), 1);
-        assert_eq!(test_logger.log_index, 3); // All entries are in the log
+        assert_eq!(logger.last_log_index, 3); // All entries are in the log
     }
 
     #[tokio::test]
     async fn follower_cluster_actor_replicate_state_only_upto_hwm() {
         // GIVEN
-        let mut test_logger = ReplicatedLogs::new(InMemoryWAL::default(), 0, 0);
+        let mut logger = ReplicatedLogs::new(InMemoryWAL::default(), 0, 0);
 
         let mut cluster_actor = cluster_actor_create_helper();
 
@@ -1195,7 +1201,7 @@ mod test {
         let cache_manager = CacheManager { inboxes: vec![CacheCommandSender(tx)] };
 
         // This just appends the entries to the log but doesn't commit them
-        cluster_actor.replicate(&mut test_logger, heartbeat, &cache_manager).await;
+        cluster_actor.replicate(&mut logger, heartbeat, &cache_manager).await;
 
         // WHEN - commit only up to index 1
         let task = tokio::spawn(async move {
@@ -1222,7 +1228,7 @@ mod test {
         // Send a heartbeat with hwm=1 to commit only the first entry
         const HWM: u64 = 1;
         let heartbeat = heartbeat_create_helper(0, HWM, vec![]);
-        cluster_actor.replicate(&mut test_logger, heartbeat, &cache_manager).await;
+        cluster_actor.replicate(&mut logger, heartbeat, &cache_manager).await;
 
         // THEN
         // Give the task a chance to process the message
@@ -1233,7 +1239,7 @@ mod test {
 
         // Verify state
         assert_eq!(cluster_actor.replication.hwm.load(Ordering::Relaxed), 1);
-        assert_eq!(test_logger.log_index, 2);
+        assert_eq!(logger.last_log_index, 2);
     }
 
     #[tokio::test]
@@ -1247,10 +1253,10 @@ mod test {
             write_operation_create_helper(3, 1, "key2", "val2"),
         ]);
 
-        let mut test_logger = ReplicatedLogs::new(inmemory, 3, 1);
+        let mut logger = ReplicatedLogs::new(inmemory, 3, 1);
         let mut cluster_actor = cluster_actor_create_helper();
 
-        assert_eq!(test_logger.target.writer.len(), 2);
+        assert_eq!(logger.target.writer.len(), 2);
 
         // Simulate an initial log entry at index 1, term 1
         // WHEN: Leader sends an AppendEntries with prev_log_index=1, prev_log_term=2 (mismatch)
@@ -1262,17 +1268,17 @@ mod test {
         heartbeat.prev_log_term = 0;
         heartbeat.prev_log_index = 2;
 
-        let result = cluster_actor.try_append_entries(&mut test_logger, &mut heartbeat).await;
+        let result = cluster_actor.try_append_entries(&mut logger, &mut heartbeat).await;
 
         // THEN: Expect truncation and rejection
-        assert_eq!(test_logger.target.writer.len(), 1);
+        assert_eq!(logger.target.writer.len(), 1);
         assert!(result.is_err(), "Should reject due to term mismatch");
     }
 
     #[tokio::test]
     async fn follower_accepts_entries_with_empty_log_and_prev_log_index_zero() {
         // GIVEN: A follower with an empty log
-        let mut test_logger = ReplicatedLogs::new(InMemoryWAL::default(), 0, 0);
+        let mut logger = ReplicatedLogs::new(InMemoryWAL::default(), 0, 0);
         let mut cluster_actor = cluster_actor_create_helper();
 
         // WHEN: Leader sends entries with prev_log_index=0
@@ -1282,17 +1288,17 @@ mod test {
             vec![write_operation_create_helper(1, 0, "key1", "val1")],
         );
 
-        let result = cluster_actor.try_append_entries(&mut test_logger, &mut heartbeat).await;
+        let result = cluster_actor.try_append_entries(&mut logger, &mut heartbeat).await;
 
         // THEN: Entries are accepted
         assert!(result.is_ok(), "Should accept entries with prev_log_index=0 on empty log");
-        assert_eq!(test_logger.log_index, 1); // Assuming write_log_entries updates log_index
+        assert_eq!(logger.last_log_index, 1); // Assuming write_log_entries updates log_index
     }
 
     #[tokio::test]
     async fn follower_rejects_entries_with_empty_log_and_prev_log_index_nonzero() {
         // GIVEN: A follower with an empty log
-        let mut test_logger = ReplicatedLogs::new(InMemoryWAL::default(), 0, 0);
+        let mut logger = ReplicatedLogs::new(InMemoryWAL::default(), 0, 0);
         let mut cluster_actor = cluster_actor_create_helper();
 
         // WHEN: Leader sends entries with prev_log_index=1
@@ -1304,11 +1310,11 @@ mod test {
         heartbeat.prev_log_index = 1;
         heartbeat.prev_log_term = 1;
 
-        let result = cluster_actor.try_append_entries(&mut test_logger, &mut heartbeat).await;
+        let result = cluster_actor.try_append_entries(&mut logger, &mut heartbeat).await;
 
         // THEN: Entries are rejected
         assert!(result.is_err(), "Should reject entries with prev_log_index > 0 on empty log");
-        assert_eq!(test_logger.log_index, 0); // Log should remain unchanged
+        assert_eq!(logger.last_log_index, 0); // Log should remain unchanged
     }
 
     /*
@@ -1321,7 +1327,6 @@ mod test {
     127.0.0.1:30001 myself,y 5461-10922
     <ip:port> <flags> <repl_id> <coverage(shard)>
          */
-    //TODO Fix the following
     #[tokio::test]
     async fn test_cluster_nodes() {
         use tokio::net::TcpListener;

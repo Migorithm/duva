@@ -1,3 +1,4 @@
+#![allow(dead_code, unused_variables)]
 use crate::domains::append_only_files::interfaces::TWriteAheadLog;
 use crate::domains::append_only_files::{WriteOperation, WriteRequest};
 use anyhow::Result;
@@ -11,7 +12,6 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt, BufReader, BufWriter};
 pub struct LocalWAL {
     /// The file path where the WAL data is stored.
     path: PathBuf,
-
     /// A buffered writer for the underlying file.
     writer: BufWriter<File>,
 }
@@ -184,7 +184,7 @@ mod tests {
         let (encoded, _): (WriteOperation, usize) =
             bincode::decode_from_slice(&buf[1..], bincode::config::standard()).unwrap();
 
-        assert_eq!(encoded.request.key(), "foo");
+        assert_eq!(encoded.request.key(), vec!["foo"]);
 
         Ok(())
     }

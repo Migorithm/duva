@@ -1,9 +1,7 @@
 //! This file contains tests for heartbeat between leader and follower
 //! Any interconnected system should have a heartbeat mechanism to ensure that the connection is still alive
 //! In this case, the server will send PING message to the follower and the follower will respond with PONG message
-mod common;
-use common::{ServerEnv, check_internodes_communication, spawn_server_process};
-
+use crate::common::{ServerEnv, check_internodes_communication, spawn_server_process};
 #[tokio::test]
 async fn test_heartbeat_hop_count_decreases_over_time() {
     const DEFAULT_HOP_COUNT: usize = 0;

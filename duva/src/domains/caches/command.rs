@@ -9,9 +9,10 @@ pub enum CacheCommand {
     Save { outbox: mpsc::Sender<SaveCommand> },
     Get { key: String, callback: oneshot::Sender<QueryIO> },
     Keys { pattern: Option<String>, callback: oneshot::Sender<QueryIO> },
-    Delete(String),
+    Delete { key: String, callback: oneshot::Sender<bool> },
     IndexGet { key: String, read_idx: u64, callback: oneshot::Sender<QueryIO> },
     Ping,
     StopSentinel,
     Drop,
+    Exists { key: String, callback: oneshot::Sender<bool> },
 }

@@ -29,13 +29,17 @@ macro_rules! write_array {
     };
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Default)]
 pub enum QueryIO {
+    #[default]
     Null,
     SimpleString(String),
     BulkString(String),
     Array(Vec<QueryIO>),
-    SessionRequest { request_id: u64, value: Vec<QueryIO> },
+    SessionRequest {
+        request_id: u64,
+        value: Vec<QueryIO>,
+    },
     Err(String),
 
     // custom types
@@ -98,9 +102,7 @@ impl QueryIO {
                 buffer.extend_from_slice(&QueryIO::Array(value).serialize());
                 buffer.freeze()
             },
-            QueryIO::Err(e) => {
-                Bytes::from([ERR_PREFIX.to_string(), e.into(), "\r\n".into()].concat())
-            },
+            QueryIO::Err(e) => Bytes::from([ERR_PREFIX.to_string(), e, "\r\n".into()].concat()),
             QueryIO::AppendEntriesRPC(heartbeat) => {
                 serialize_with_bincode(APPEND_ENTRY_RPC_PREFIX, &heartbeat)
             },
@@ -150,15 +152,9 @@ impl QueryIO {
     }
 }
 
-impl Default for QueryIO {
-    fn default() -> Self {
-        QueryIO::Null
-    }
-}
-
 impl From<String> for QueryIO {
     fn from(value: String) -> Self {
-        QueryIO::BulkString(value.into())
+        QueryIO::BulkString(value)
     }
 }
 impl From<Vec<String>> for QueryIO {
@@ -169,8 +165,8 @@ impl From<Vec<String>> for QueryIO {
 impl From<Option<CacheValue>> for QueryIO {
     fn from(v: Option<CacheValue>) -> Self {
         match v {
-            Some(CacheValue::Value(v)) => QueryIO::BulkString(v.into()),
-            Some(CacheValue::ValueWithExpiry(v, _exp)) => QueryIO::BulkString(v.into()),
+            Some(CacheValue::Value(v)) => QueryIO::BulkString(v),
+            Some(CacheValue::ValueWithExpiry(v, _exp)) => QueryIO::BulkString(v), // todo need to revisit
             None => QueryIO::Null,
         }
     }

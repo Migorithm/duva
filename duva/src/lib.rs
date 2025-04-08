@@ -23,6 +23,7 @@ use services::interface::TSerdeReadWrite;
 use tokio::net::TcpListener;
 
 pub mod prelude {
+    pub use crate::domains::peers::identifier::PeerIdentifier;
     pub use bytes;
     pub use bytes::BytesMut;
     pub use tokio;
@@ -130,8 +131,19 @@ impl StartUpFacade {
         let client_stream_listener = TcpListener::bind(&self.config_manager.bind_addr()).await?;
         println!("start listening on {}", self.config_manager.bind_addr());
         let mut conn_handlers: Vec<tokio::task::JoinHandle<()>> = Vec::with_capacity(100);
+
         while let Ok((stream, _)) = client_stream_listener.accept().await {
-            let Ok(client_stream) = ClientStream::authenticate(stream).await else {
+            let peers = self.registry.cluster_communication_manager().get_peers().await?;
+
+            // TODO implement ROLE command
+            let is_leader = self
+                .registry
+                .cluster_communication_manager()
+                .replication_info()
+                .await?
+                .is_leader_mode;
+            let Ok(client_stream) = ClientStream::authenticate(stream, peers, is_leader).await
+            else {
                 eprintln!("[ERROR] Failed to authenticate client stream");
                 continue;
             };

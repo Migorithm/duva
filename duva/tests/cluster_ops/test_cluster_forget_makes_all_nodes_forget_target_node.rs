@@ -1,3 +1,6 @@
+use crate::common::{ServerEnv, array, check_internodes_communication, spawn_server_process};
+
+use duva::{clients::ClientStreamHandler, domains::query_parsers::query_io::QueryIO};
 mod common;
 use crate::common::bulk_string;
 use common::{ServerEnv, array, check_internodes_communication, spawn_server_process};
@@ -37,7 +40,7 @@ async fn test_cluster_forget_makes_all_nodes_forget_target_node() {
 
     // THEN
     assert_eq!(response1, "+OK\r\n");
-    assert_eq!(response2, bulk_string("cluster_known_nodes:1"));
+    assert_eq!(response2, QueryIO::BulkString("cluster_known_nodes:1".into()).serialize());
 
     // leader_p and repl_p2 doesn't get message from repl_p2
     let h1 = std::thread::spawn({

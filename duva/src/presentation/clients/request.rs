@@ -14,13 +14,14 @@ pub(crate) enum ClientAction {
     Set { key: String, value: String },
     SetWithExpiry { key: String, value: String, expiry: DateTime<Utc> },
     Keys { pattern: Option<String> },
-    Delete { key: String },
+    Delete { keys: Vec<String> },
     Save,
     Info,
     ClusterInfo,
     ClusterNodes,
     ClusterForget(PeerIdentifier),
     ReplicaOf(PeerIdentifier),
+    Exists { keys: Vec<String> },
 }
 
 impl ClientAction {
@@ -38,13 +39,14 @@ impl ClientAction {
                     expires_at,
                 })
             },
+            ClientAction::Delete { keys } => Some(WriteRequest::Delete { keys: keys.clone() }),
             _ => None,
         }
     }
 }
 
 #[derive(Clone, Debug)]
-pub(crate) struct ClientRequest {
+pub struct ClientRequest {
     pub(crate) action: ClientAction,
     pub(crate) session_req: Option<SessionRequest>,
 }

@@ -11,3 +11,7 @@ target/
 /.idea/
 
 local_test/
+duva-cli.hist
+duva.tp
+duva-cli
+duva-server

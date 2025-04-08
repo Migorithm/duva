@@ -8,12 +8,17 @@ use crate::domains::query_parsers::QueryIO;
 use crate::domains::saves::actor::SaveActor;
 use crate::domains::saves::actor::SaveTarget;
 use crate::domains::saves::endec::StoredDuration;
-use crate::domains::saves::snapshot::snapshot::Snapshot;
+use crate::domains::saves::snapshot::Snapshot;
 use anyhow::Result;
 use chrono::Utc;
+use futures::StreamExt;
 use futures::future::join_all;
+use futures::stream::FuturesUnordered;
+use tokio::sync::oneshot::error::RecvError;
+
 use std::sync::Arc;
 use std::sync::atomic::AtomicU64;
+
 use std::{hash::Hasher, iter::Zip};
 use tokio::sync::oneshot::Sender;
 use tokio::task::JoinHandle;
@@ -30,14 +35,11 @@ pub(crate) struct CacheManager {
 impl CacheManager {
     pub(crate) fn run_cache_actors(hwm: Arc<AtomicU64>) -> CacheManager {
         const NUM_OF_PERSISTENCE: usize = 10;
-
-        let cache_dispatcher = CacheManager {
+        CacheManager {
             inboxes: (0..NUM_OF_PERSISTENCE)
                 .map(|_| CacheActor::run(hwm.clone()))
                 .collect::<Vec<_>>(),
-        };
-
-        cache_dispatcher
+        }
     }
 
     pub(crate) async fn route_get(&self, key: String) -> Result<QueryIO> {
@@ -75,21 +77,23 @@ impl CacheManager {
     }
 
     pub(crate) async fn apply_log(&self, msg: WriteRequest) -> Result<()> {
-        let shard = self.select_shard(&msg.key());
-        let command = match msg {
+        match msg {
             WriteRequest::Set { key, value } => {
-                CacheCommand::Set { cache_entry: CacheEntry::KeyValue(key, value) }
+                self.route_set(CacheEntry::KeyValue(key, value)).await?;
             },
-            WriteRequest::SetWithExpiry { key, value, expires_at } => CacheCommand::Set {
-                cache_entry: CacheEntry::KeyValueExpiry(
+            WriteRequest::SetWithExpiry { key, value, expires_at } => {
+                self.route_set(CacheEntry::KeyValueExpiry(
                     key,
                     value,
                     StoredDuration::Milliseconds(expires_at).to_datetime(),
-                ),
+                ))
+                .await?;
             },
-            WriteRequest::Delete { key } => CacheCommand::Delete(key),
+            WriteRequest::Delete { keys } => {
+                self.route_delete(keys).await?;
+            },
         };
-        shard.send(command).await?;
+
         self.pings().await;
 
         Ok(())
@@ -99,7 +103,7 @@ impl CacheManager {
     }
 
     pub(crate) async fn route_keys(&self, pattern: Option<String>) -> Result<QueryIO> {
-        let (senders, receivers) = self.ontshot_channels();
+        let (senders, receivers) = self.oneshot_channels();
 
         // send keys to shards
         self.chain(senders).for_each(|(shard, sender)| {
@@ -139,7 +143,7 @@ impl CacheManager {
     }
 
     // Send recv handler firstly to the background and return senders and join handlers for receivers
-    fn ontshot_channels<T: Send + Sync + 'static>(
+    fn oneshot_channels<T: Send + Sync + 'static>(
         &self,
     ) -> (Vec<OneShotSender<T>>, Vec<OneShotReceiverJoinHandle<T>>) {
         (0..self.inboxes.len())
@@ -167,21 +171,48 @@ impl CacheManager {
         Ok(shard.send(CacheCommand::Keys { pattern: pattern.clone(), callback: tx }).await?)
     }
 
+    pub(crate) async fn route_delete(&self, keys: Vec<String>) -> Result<u64> {
+        let closure = |key, callback| -> CacheCommand { CacheCommand::Delete { key, callback } };
+        // Create futures for all delete operations at once
+        let results = self.send_selectively(keys, closure).await;
+
+        let deleted = results.into_iter().filter_map(|r| r.ok().filter(|&success| success)).count();
+        Ok(deleted as u64)
+    }
+    pub(crate) async fn route_exists(&self, keys: Vec<String>) -> Result<u64> {
+        let closure = |key, callback| -> CacheCommand { CacheCommand::Exists { key, callback } };
+        // Create futures for all delete operations at once
+        let results = self.send_selectively(keys, closure).await;
+
+        let found = results.into_iter().filter_map(|r| r.ok().filter(|&success| success)).count();
+        Ok(found as u64)
+    }
+
     pub(crate) fn select_shard(&self, key: &str) -> &CacheCommandSender {
         let shard_key = self.take_shard_key_from_str(key);
         &self.inboxes[shard_key]
+    }
+
+    async fn send_selectively<T>(
+        &self,
+        keys: Vec<String>,
+        func: fn(String, Sender<T>) -> CacheCommand,
+    ) -> Vec<Result<T, RecvError>> {
+        FuturesUnordered::from_iter(keys.into_iter().map(|key| {
+            let (tx, rx) = tokio::sync::oneshot::channel();
+            async move {
+                let _ = self.select_shard(&key).send(func(key, tx)).await;
+                rx.await
+            }
+        }))
+        .collect::<Vec<_>>()
+        .await
     }
 
     fn take_shard_key_from_str(&self, s: &str) -> usize {
         let mut hasher = std::hash::DefaultHasher::new();
         std::hash::Hash::hash(&s, &mut hasher);
         hasher.finish() as usize % self.inboxes.len()
-    }
-
-    // create a new cache manager
-    #[cfg(test)]
-    pub fn test_new(tx: tokio::sync::mpsc::Sender<CacheCommand>) -> CacheManager {
-        CacheManager { inboxes: (0..10).map(|_| CacheCommandSender(tx.clone())).collect() }
     }
 
     pub(crate) async fn route_index_get(&self, key: String, index: u64) -> Result<QueryIO> {

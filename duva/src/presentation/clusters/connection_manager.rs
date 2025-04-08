@@ -19,7 +19,7 @@ impl ClusterConnectionManager {
         peer_stream.disseminate_peers(self.0.get_peers().await?).await?;
         peer_stream.may_try_sync(ccm, &connected_peer_info).await?;
 
-        self.send(peer_stream.to_add_peer(self.clone(), connected_peer_info)?).await?;
+        self.send(peer_stream.into_add_peer(self.clone(), connected_peer_info)?).await?;
 
         Ok(())
     }

@@ -1,6 +1,6 @@
-mod common;
-use common::{ServerEnv, array, session_request, spawn_server_process};
 use duva::{clients::ClientStreamHandler, domains::query_parsers::query_io::QueryIO};
+
+use crate::common::{ServerEnv, array, session_request, spawn_server_process};
 
 #[tokio::test]
 async fn test_send_session_request() {

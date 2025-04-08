@@ -8,7 +8,7 @@ use crate::domains::saves::endec::{
     METADATA_SECTION_INDICATOR, STRING_VALUE_TYPE_INDICATOR, StoredDuration, VERSION,
     extract_range,
 };
-use crate::domains::saves::snapshot::snapshot::{Metadata, Snapshot, SubDatabase};
+use crate::domains::saves::snapshot::{Metadata, Snapshot, SubDatabase};
 
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
@@ -176,7 +176,7 @@ impl<'a> BytesDecoder<'a, HeaderReady> {
                 .context("metadata loading: key value extraction failed")?;
 
             match key.as_str() {
-                "repl-id" => metadata.repl_id = ReplicationId::Key(value.into()),
+                "repl-id" => metadata.repl_id = ReplicationId::Key(value),
                 "repl-offset" => {
                     metadata.repl_offset = value.parse().context("repl-offset parse fail")?
                 },
@@ -350,12 +350,11 @@ impl<'a> From<&'a [u8]> for BytesDecoder<'a, DecoderInit> {
 
 impl<'a, T> Deref for BytesDecoder<'a, T> {
     type Target = &'a [u8];
-
     fn deref(&self) -> &Self::Target {
         &self.data
     }
 }
-impl<'a, T> DerefMut for BytesDecoder<'a, T> {
+impl<T> DerefMut for BytesDecoder<'_, T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.data
     }

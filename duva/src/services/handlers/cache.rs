@@ -20,8 +20,8 @@ impl CacheActor {
                     let _ = self.try_send_ttl(&cache_entry).await;
                     self.set(cache_entry);
                 },
-                CacheCommand::Get { key, callback: sender } => {
-                    self.get(&key, sender);
+                CacheCommand::Get { key, callback } => {
+                    self.get(&key, callback);
                 },
                 CacheCommand::IndexGet { key, read_idx, callback } => {
                     if let Some(callback) = rq.defer_if_stale(read_idx, &key, callback) {
@@ -35,8 +35,11 @@ impl CacheActor {
                         .send(QueryIO::Array(ks))
                         .map_err(|_| anyhow::anyhow!("Error sending keys"))?;
                 },
-                CacheCommand::Delete(key) => {
-                    self.delete(&key);
+                CacheCommand::Delete { key, callback } => {
+                    self.delete(key, callback);
+                },
+                CacheCommand::Exists { key, callback } => {
+                    self.exists(key, callback);
                 },
                 CacheCommand::Save { outbox } => {
                     outbox
@@ -132,11 +135,14 @@ mod test {
 
         // key0 is expiry key. deleting the following will decrese the number by 1
         let delete_key = "key0".to_string();
-        tx.send(CacheCommand::Delete(delete_key)).await.unwrap();
+        let (callback, rx) = oneshot::channel();
+        tx.send(CacheCommand::Delete { key: delete_key, callback }).await.unwrap();
         tx.send(CacheCommand::StopSentinel).await.unwrap();
         let actor: CacheActor = handler.await.unwrap().unwrap();
+        let res = rx.await.unwrap();
 
         // THEN
+        assert!(res);
         assert_eq!(actor.cache.keys_with_expiry, 49);
     }
 

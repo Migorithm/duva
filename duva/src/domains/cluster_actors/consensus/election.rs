@@ -24,11 +24,7 @@ impl ElectionState {
     pub(crate) fn is_votable(&self, candidiate_id: &PeerIdentifier) -> bool {
         match self {
             ElectionState::Follower { voted_for } => {
-                if voted_for.is_none() || voted_for.as_ref() == Some(candidiate_id) {
-                    true
-                } else {
-                    false
-                }
+                voted_for.is_none() || voted_for.as_ref() == Some(candidiate_id)
             },
             _ => false,
         }

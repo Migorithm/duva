@@ -23,12 +23,12 @@ pub(crate) trait TWrite {
 }
 
 pub trait TSerdeReadWrite {
-    fn ser_write(
+    fn serialized_write(
         &mut self,
         buf: impl bincode::Encode + Send,
     ) -> impl std::future::Future<Output = Result<(), IoError>> + Send;
 
-    fn de_read<U: bincode::Decode<()> + Send>(
+    fn deserialized_read<U: bincode::Decode<()> + Send>(
         &mut self,
     ) -> impl std::future::Future<Output = Result<U, IoError>> + Send;
 }

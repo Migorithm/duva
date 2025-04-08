@@ -1,10 +1,15 @@
-#[derive(Debug, Clone, PartialEq, Eq, bincode::Decode, bincode::Encode)]
-pub enum AuthRequest {
-    ConnectWithId(String),
-    ConnectWithoutId,
+use crate::domains::peers::identifier::PeerIdentifier;
+
+#[derive(Debug, Clone, PartialEq, Eq, Default, bincode::Decode, bincode::Encode)]
+pub struct AuthRequest {
+    pub client_id: Option<String>,
+    pub request_id: u64,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, bincode::Decode, bincode::Encode)]
-pub enum AuthResponse {
-    ClientId(String),
+#[derive(Debug, Clone, PartialEq, Eq, Default, bincode::Decode, bincode::Encode)]
+pub struct AuthResponse {
+    pub client_id: String,
+    pub request_id: u64,
+    pub cluster_nodes: Vec<PeerIdentifier>,
+    pub connected_to_leader: bool,
 }

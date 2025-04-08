@@ -17,22 +17,26 @@ impl ClientController<Handler> {
         // TODO if it is persistence operation, get the key and hash, take the appropriate sender, send it;
         let response = match cmd {
             ClientAction::Ping => QueryIO::SimpleString("PONG".into()),
-            ClientAction::Echo(val) => QueryIO::BulkString(val.into()),
+            ClientAction::Echo(val) => QueryIO::BulkString(val),
             ClientAction::Set { key, value } => {
                 let cache_entry = CacheEntry::KeyValue(key.to_owned(), value.to_string());
                 self.cache_manager.route_set(cache_entry).await?;
-                QueryIO::SimpleString(format!("OK RINDEX {}", current_index.unwrap()).into())
+                QueryIO::SimpleString(format!("OK RINDEX {}", current_index.unwrap()))
             },
             ClientAction::SetWithExpiry { key, value, expiry } => {
                 let cache_entry =
                     CacheEntry::KeyValueExpiry(key.to_owned(), value.to_string(), expiry);
                 self.cache_manager.route_set(cache_entry).await?;
-                QueryIO::SimpleString(format!("OK RINDEX {}", current_index.unwrap()).into())
+                QueryIO::SimpleString(format!("OK RINDEX {}", current_index.unwrap()))
             },
             ClientAction::Save => {
                 let file_path = self.config_manager.get_filepath().await?;
-                let file =
-                    tokio::fs::OpenOptions::new().write(true).create(true).open(&file_path).await?;
+                let file = tokio::fs::OpenOptions::new()
+                    .write(true)
+                    .truncate(true)
+                    .create(true)
+                    .open(&file_path)
+                    .await?;
 
                 let repl_info = self.cluster_communication_manager.replication_info().await?;
                 self.cache_manager
@@ -56,20 +60,25 @@ impl ClientController<Handler> {
                 match res {
                     ConfigResponse::Dir(value) => QueryIO::Array(vec![
                         QueryIO::BulkString("dir".into()),
-                        QueryIO::BulkString(value.into()),
+                        QueryIO::BulkString(value),
                     ]),
-                    ConfigResponse::DbFileName(value) => QueryIO::BulkString(value.into()),
+                    ConfigResponse::DbFileName(value) => QueryIO::BulkString(value),
                     _ => QueryIO::Err("Invalid operation".into()),
                 }
             },
-            ClientAction::Delete { key: _ } => panic!("Not implemented"),
+            ClientAction::Delete { keys } => {
+                QueryIO::SimpleString(self.cache_manager.route_delete(keys).await?.to_string())
+            },
+
+            ClientAction::Exists { keys } => {
+                QueryIO::SimpleString(self.cache_manager.route_exists(keys).await?.to_string())
+            },
             ClientAction::Info => QueryIO::BulkString(
                 self.cluster_communication_manager
                     .replication_info()
                     .await?
                     .vectorize()
-                    .join("\r\n")
-                    .into(),
+                    .join("\r\n"),
             ),
             ClientAction::ClusterInfo => {
                 self.cluster_communication_manager.cluster_info().await?.into()
@@ -81,7 +90,7 @@ impl ClientController<Handler> {
                 match self.cluster_communication_manager.forget_peer(peer_identifier).await {
                     Ok(true) => QueryIO::SimpleString("OK".into()),
                     Ok(false) => QueryIO::Err("No such peer".into()),
-                    Err(e) => QueryIO::Err(e.to_string().into()),
+                    Err(e) => QueryIO::Err(e.to_string()),
                 }
             },
             ClientAction::ReplicaOf(peer_identifier) => {

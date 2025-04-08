@@ -2,6 +2,13 @@
 Duva is a distributed cache server aimed at efficient and scalable key-value store operations using Actor models, written in Rust
 
 
+## cli support
+
+
+https://github.com/user-attachments/assets/89c0b080-2bc8-467d-b75b-639a50b2bdba
+
+
+
 
 ### Why the Actor model?
 Designed to handle concurrent, distributed, and scalable systems, it models independent units of computation (actors) that communicate solely via message passing. 
@@ -39,6 +46,8 @@ The following features have been implemented so far:
     - Cluster node liveness check
     - RYOW consistency
     - Follower reads
+    - Pull-based Reconnection on leader failure (client)
+
 
 
 - Protocol Support
@@ -157,6 +166,30 @@ sequenceDiagram
 
     SF ->> L: Connect (replid: leader_repl_id, hwm:5, term: 1)
     L ->> SF: Receive Snapshot (hwm: 5)
+```
+
+#### Reconnection on leader failure (pull-based)
+```mermaid
+sequenceDiagram
+    actor C as Client
+    participant L as Leader
+    participant F as Followers
+
+    C ->> L : request
+
+    break Leader failed
+        L --x L : Crash
+        C --x L : request
+    end
+    
+    loop
+        C ->> F : Are you leader?
+        F ->> C : No
+        C ->> F : Are you leader?
+        F ->> C : Yes    
+    end
+    C ->> C : Reset leader information
+    C ->> F : retry request
 ```
 
 #### RYOW consistency guarantee (follower reads)

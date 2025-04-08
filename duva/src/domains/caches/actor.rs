@@ -43,18 +43,28 @@ impl CacheActor {
         pattern: Option<String>,
     ) -> impl Iterator<Item = QueryIO> + '_ {
         self.cache.keys().filter_map(move |k| {
-            if pattern.as_ref().map_or(true, |p| k.contains(p)) {
-                Some(QueryIO::BulkString(k.clone().into()))
+            if pattern.as_ref().is_none_or(|p| k.contains(p)) {
+                Some(QueryIO::BulkString(k.clone()))
             } else {
                 None
             }
         })
     }
-    pub(crate) fn delete(&mut self, key: &str) {
-        if let Some(value) = self.cache.remove(key) {
+    pub(crate) fn delete(&mut self, key: String, callback: oneshot::Sender<bool>) {
+        if let Some(value) = self.cache.remove(&key) {
             if value.has_expiry() {
                 self.cache.keys_with_expiry -= 1;
             }
+            let _ = callback.send(true);
+        } else {
+            let _ = callback.send(false);
+        }
+    }
+    pub(crate) fn exists(&self, key: String, callback: oneshot::Sender<bool>) {
+        if self.cache.get(&key).is_some() {
+            let _ = callback.send(true);
+        } else {
+            let _ = callback.send(false);
         }
     }
     pub(crate) fn get(&self, key: &str, callback: oneshot::Sender<QueryIO>) {
@@ -80,7 +90,9 @@ impl CacheActor {
             let key = cache_entry.key().to_string();
             async move {
                 tokio::time::sleep(expire_in).await;
-                let _ = handler.send(CacheCommand::Delete(key)).await;
+                let (tx, rx) = oneshot::channel();
+                let _ = handler.send(CacheCommand::Delete { key, callback: tx }).await;
+                let _ = rx.await;
             }
         });
         Ok(())
