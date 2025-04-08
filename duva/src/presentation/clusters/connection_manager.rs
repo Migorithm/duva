@@ -24,7 +24,7 @@ impl ClusterConnectionManager {
 
         let (tx, rx) = tokio::sync::oneshot::channel();
         self.send(peer_stream.into_add_peer(self.handler(), connected_peer_info, tx)?).await?;
-
+        rx.await?;
         Ok(())
     }
 
