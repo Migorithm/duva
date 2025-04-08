@@ -1,5 +1,7 @@
 use std::collections::VecDeque;
 
+use tokio::sync::mpsc::Sender;
+
 use super::communication_manager::ClusterCommunicationManager;
 use super::outbound::stream::OutboundStream;
 
@@ -21,7 +23,7 @@ impl ClusterConnectionManager {
         peer_stream.may_try_sync(ccm, &connected_peer_info).await?;
 
         let (tx, rx) = tokio::sync::oneshot::channel();
-        self.send(peer_stream.into_add_peer(self.0.0.clone(), connected_peer_info, tx)?).await?;
+        self.send(peer_stream.into_add_peer(self.handler(), connected_peer_info, tx)?).await?;
 
         Ok(())
     }
@@ -34,13 +36,13 @@ impl ClusterConnectionManager {
         let mut queue = VecDeque::from(vec![connect_to.clone()]);
         let mut callbacks = Vec::new();
         while let Some(connect_to) = queue.pop_front() {
-            let (tx, rx) = tokio::sync::oneshot::channel();
+            let (tx, callback) = tokio::sync::oneshot::channel();
             queue.extend(
                 ClusterConnectionManager(self.clone())
                     .connect_to_server(self_port, connect_to, tx)
                     .await?,
             );
-            callbacks.push(rx);
+            callbacks.push(callback);
         }
         for callback in callbacks {
             let _ = callback.await;
@@ -52,7 +54,7 @@ impl ClusterConnectionManager {
         self,
         self_port: u16,
         connect_to: PeerIdentifier,
-        sender: tokio::sync::oneshot::Sender<()>,
+        callback: tokio::sync::oneshot::Sender<()>,
     ) -> anyhow::Result<Vec<PeerIdentifier>> {
         let existing_peers = self.get_peers().await?;
         if existing_peers.contains(&connect_to) {
@@ -66,7 +68,7 @@ impl ClusterConnectionManager {
             .await?
             .set_replication_info(&self)
             .await?
-            .create_peer_cmd(self.0.0.clone(), sender)?;
+            .create_peer_cmd(self.handler(), callback)?;
         self.send(add_peer_cmd).await?;
 
         Ok(peer_list)
@@ -74,6 +76,10 @@ impl ClusterConnectionManager {
 
     pub async fn send(&self, cmd: ClusterCommand) -> anyhow::Result<()> {
         Ok(self.0.send(cmd).await?)
+    }
+
+    fn handler(&self) -> Sender<ClusterCommand> {
+        self.0.0.clone()
     }
 }
 
