@@ -96,11 +96,10 @@ impl ClientController<Handler> {
             ClientAction::ReplicaOf(peer_identifier) => {
                 self.cluster_communication_manager.replicaof(peer_identifier.clone()).await;
 
-                let (tx, rx) = tokio::sync::oneshot::channel();
                 ClusterConnectionManager(self.cluster_communication_manager.clone())
-                    .discover_cluster(self.config_manager.port, peer_identifier, tx)
+                    .discover_cluster(self.config_manager.port, peer_identifier)
                     .await?;
-                let _ = rx.await;
+
                 QueryIO::SimpleString("OK".into())
             },
         };

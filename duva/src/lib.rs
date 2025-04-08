@@ -112,17 +112,19 @@ impl StartUpFacade {
     // #1 Check if it has persisted cluster node info locally, if it does and finds some other nodes, try connect
     // #2 Otherwise, check if this node is a follower and connect to the leader
     async fn discover_peers(&self) -> anyhow::Result<()> {
-        let connection_manager = self.registry.cluster_connection_manager();
-        let peer_identifier = self
+        let connect_to = self
             .registry
             .cluster_communication_manager()
             .replication_info()
             .await?
             .leader_bind_addr()
             .context("No leader bind address found")?;
-        let (tx, rx) = tokio::sync::oneshot::channel();
-        connection_manager.discover_cluster(self.config_manager.port, peer_identifier, tx).await?;
-        let _ = rx.await;
+
+        self.registry
+            .cluster_connection_manager()
+            .discover_cluster(self.config_manager.port, connect_to)
+            .await?;
+
         Ok(())
     }
 
