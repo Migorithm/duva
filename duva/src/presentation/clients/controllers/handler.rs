@@ -99,10 +99,9 @@ impl ClientController<Handler> {
 
                 let (tx, rx) = tokio::sync::oneshot::channel();
                 ClusterConnectionManager(self.cluster_communication_manager.clone())
-                    .discover_cluster(self.config_manager.port, peer_identifier, Some(tx))
+                    .discover_cluster(self.config_manager.port, peer_identifier, tx)
                     .await?;
                 let _ = rx.await;
-
                 QueryIO::SimpleString("OK".into())
             },
         };

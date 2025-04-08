@@ -24,9 +24,7 @@ impl ClusterActor {
                 ClusterCommand::AddPeer(add_peer_cmd, callback) => {
                     self.add_peer(add_peer_cmd).await;
                     self.snapshot_topology().await;
-                    if let Some(callback) = callback {
-                        let _ = callback.send(());
-                    }
+                    let _ = callback.send(());
                 },
                 ClusterCommand::GetPeers(callback) => {
                     let _ = callback.send(self.members.keys().cloned().collect::<Vec<_>>());

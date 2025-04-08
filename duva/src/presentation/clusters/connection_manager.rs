@@ -19,7 +19,8 @@ impl ClusterConnectionManager {
         peer_stream.disseminate_peers(self.0.get_peers().await?).await?;
         peer_stream.may_try_sync(ccm, &connected_peer_info).await?;
 
-        self.send(peer_stream.into_add_peer(self.clone(), connected_peer_info)?).await?;
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        self.send(peer_stream.into_add_peer(self.clone(), connected_peer_info, tx)?).await?;
 
         Ok(())
     }
@@ -28,7 +29,7 @@ impl ClusterConnectionManager {
         self,
         self_port: u16,
         connect_to: PeerIdentifier,
-        tx: Option<tokio::sync::oneshot::Sender<()>>,
+        Sender: tokio::sync::oneshot::Sender<()>,
     ) -> anyhow::Result<()> {
         // Base case
         let existing_peers = self.get_peers().await?;
@@ -44,19 +45,24 @@ impl ClusterConnectionManager {
             .await?
             .set_replication_info(&self)
             .await?
-            .create_peer_cmd(self.clone(), tx)?;
+            .create_peer_cmd(self.clone(), Sender)?;
         self.send(add_peer_cmd).await?;
 
         // Discover additional peers concurrently
         // TODO Require investigation. Why does 'list_peer_binding_addrs' have to be called at here?
+        let mut callbacks = Vec::new();
         for peer in peer_list {
             println!("Discovering peer: {}", peer);
+            let (tx, rx) = tokio::sync::oneshot::channel();
             Box::pin(
-                ClusterConnectionManager(self.0.clone()).discover_cluster(self_port, peer, None),
+                ClusterConnectionManager(self.0.clone()).discover_cluster(self_port, peer, tx),
             )
             .await?;
+            callbacks.push(rx);
         }
-
+        for callback in callbacks {
+            let _ = callback.await;
+        }
         Ok(())
     }
 

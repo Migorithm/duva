@@ -116,6 +116,7 @@ impl InboundStream {
         self,
         cluster_actor_handler: Sender<ClusterCommand>,
         connected_peer_info: ConnectedPeerInfo,
+        Sender: tokio::sync::oneshot::Sender<()>,
     ) -> anyhow::Result<ClusterCommand> {
         let kind = self.decide_peer_kind(&connected_peer_info);
         let peer = create_peer(
@@ -124,7 +125,7 @@ impl InboundStream {
             kind,
             cluster_actor_handler,
         );
-        Ok(ClusterCommand::AddPeer(AddPeer { peer_id: connected_peer_info.id, peer }, None))
+        Ok(ClusterCommand::AddPeer(AddPeer { peer_id: connected_peer_info.id, peer }, Sender))
     }
 
     pub(crate) fn decide_peer_kind(&self, connected_peer_info: &ConnectedPeerInfo) -> PeerState {

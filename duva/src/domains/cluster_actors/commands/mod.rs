@@ -14,7 +14,7 @@ use crate::domains::{append_only_files::WriteRequest, peers::identifier::PeerIde
 
 #[derive(Debug)]
 pub(crate) enum ClusterCommand {
-    AddPeer(AddPeer, Option<tokio::sync::oneshot::Sender<()>>),
+    AddPeer(AddPeer, tokio::sync::oneshot::Sender<()>),
     GetPeers(tokio::sync::oneshot::Sender<Vec<PeerIdentifier>>),
     ReplicationInfo(tokio::sync::oneshot::Sender<ReplicationState>),
 
