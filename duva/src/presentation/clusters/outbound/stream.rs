@@ -40,7 +40,7 @@ impl OutboundStream {
             connect_to: connect_to.to_string().into(),
         })
     }
-    pub async fn establish_connection(mut self, self_port: u16) -> anyhow::Result<Self> {
+    pub async fn initiate_threeway_handshake(mut self, self_port: u16) -> anyhow::Result<Self> {
         // Trigger
         self.write(write_array!("PING")).await?;
         let mut ok_count = 0;

@@ -105,7 +105,7 @@ impl ClusterActor {
                 },
                 ClusterCommand::FetchCurrentState(sender) => {
                     let logs = logger.range(0, self.replication.hwm.load(Ordering::Acquire));
-                    let _ = sender.send(logs);
+                    let _ = sender.send(logs.into());
                 },
                 ClusterCommand::StartLeaderElection => {
                     self.run_for_election(&mut logger).await;

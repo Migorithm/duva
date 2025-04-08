@@ -1,7 +1,9 @@
 use crate::{
     domains::{
-        append_only_files::WriteOperation,
-        cluster_actors::{commands::ClusterCommand, replication::ReplicationState},
+        cluster_actors::{
+            commands::{ClusterCommand, SyncLogs},
+            replication::ReplicationState,
+        },
         peers::identifier::PeerIdentifier,
     },
     make_smart_pointer,
@@ -68,7 +70,7 @@ impl ClusterCommunicationManager {
         Ok(rx.await?)
     }
 
-    pub(crate) async fn fetch_logs_for_sync(&self) -> anyhow::Result<Vec<WriteOperation>> {
+    pub(crate) async fn fetch_logs_for_sync(&self) -> anyhow::Result<SyncLogs> {
         let (tx, rx) = tokio::sync::oneshot::channel();
         self.send(ClusterCommand::FetchCurrentState(tx)).await?;
         Ok(rx.await?)

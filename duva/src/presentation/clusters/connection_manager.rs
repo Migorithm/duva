@@ -64,7 +64,7 @@ impl ClusterConnectionManager {
         let replication_info = self.replication_info().await?;
         let (add_peer_cmd, peer_list) = OutboundStream::new(connect_to, replication_info)
             .await?
-            .establish_connection(self_port)
+            .initiate_threeway_handshake(self_port)
             .await?
             .set_replication_info(&self)
             .await?
