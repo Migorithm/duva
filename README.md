@@ -168,6 +168,30 @@ sequenceDiagram
     L ->> SF: Receive Snapshot (hwm: 5)
 ```
 
+#### Reconnection on leader failure (pull-based)
+```mermaid
+sequenceDiagram
+    actor C as Client
+    participant L as Leader
+    participant F as Followers
+
+    C ->> L : request
+
+    break Leader failed
+        L --x L : Crash
+        C --x L : request
+    end
+    
+    loop
+        C ->> F : Are you leader?
+        F ->> C : No
+        C ->> F : Are you leader?
+        F ->> C : Yes    
+    end
+    C ->> C : Reset leader information
+    C ->> F : retry request
+```
+
 #### RYOW consistency guarantee (follower reads)
 This ensures that clients always see their most recent writes, even when reading from followers—providing a smooth, consistent user experience without unnecessary load on the leader.
 
