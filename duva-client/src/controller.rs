@@ -38,6 +38,7 @@ impl<T> ClientController<T> {
         }
     }
 
+    // pull-based leader discovery
     async fn discover_leader(&mut self) -> Result<(), String> {
         for node in &self.cluster_nodes {
             let Ok(mut stream) = TcpStream::connect(node.as_str()).await else {
@@ -60,7 +61,7 @@ impl<T> ClientController<T> {
                 return Ok(());
             }
         }
-        Err("No leader found".to_string())
+        Err("No leader found in the cluster".to_string())
     }
 
     async fn authenticate(server_addr: &str) -> (TcpStream, AuthResponse) {
