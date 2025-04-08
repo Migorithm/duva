@@ -17,7 +17,6 @@ use crate::services::interface::TGetPeerIp;
 use crate::services::interface::TRead;
 use crate::services::interface::TWrite;
 use tokio::net::TcpStream;
-use tokio::sync::mpsc::Sender;
 
 // The following is used only when the node is in leader mode
 pub(crate) struct InboundStream {
@@ -112,38 +111,28 @@ impl InboundStream {
         Ok(())
     }
 
-    pub(crate) fn into_add_peer(
-        self,
-        cluster_actor_handler: Sender<ClusterCommand>,
-        connected_peer_info: ConnectedPeerInfo,
-        Sender: tokio::sync::oneshot::Sender<()>,
-    ) -> anyhow::Result<ClusterCommand> {
-        let kind = self.decide_peer_kind(&connected_peer_info);
-        let peer = create_peer(
-            (connected_peer_info.id).to_string(),
-            self.stream,
-            kind,
-            cluster_actor_handler,
-        );
-        Ok(ClusterCommand::AddPeer(AddPeer { peer_id: connected_peer_info.id, peer }, Sender))
-    }
-
     pub(crate) fn decide_peer_kind(&self, connected_peer_info: &ConnectedPeerInfo) -> PeerState {
         PeerState::decide_peer_kind(&self.self_repl_info.replid, connected_peer_info)
     }
 
-    // depending on the condition, try full/partial sync.
-    pub(crate) async fn may_try_sync(
-        &mut self,
+    pub(crate) async fn prepare_add_peer_cmd(
+        mut self,
         ccm: ClusterCommunicationManager,
-        connected_peer_info: &ConnectedPeerInfo,
-    ) -> anyhow::Result<()> {
-        if let PeerState::Replica { .. } = self.decide_peer_kind(connected_peer_info) {
+        connected_peer_info: ConnectedPeerInfo,
+        callback: tokio::sync::oneshot::Sender<()>,
+    ) -> anyhow::Result<ClusterCommand> {
+        let peer_state = self.decide_peer_kind(&connected_peer_info);
+
+        // conditional sync
+        if let PeerState::Replica { .. } = &peer_state {
             if let ReplicationId::Undecided = connected_peer_info.replid {
                 let logs = ccm.fetch_logs_for_sync().await?;
                 self.write_io(logs).await?;
             }
         }
-        Ok(())
+
+        let peer =
+            create_peer((connected_peer_info.id).to_string(), self.stream, peer_state, ccm.0);
+        Ok(ClusterCommand::AddPeer(AddPeer { peer_id: connected_peer_info.id, peer }, callback))
     }
 }

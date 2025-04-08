@@ -20,10 +20,11 @@ impl ClusterConnectionManager {
         let connected_peer_info = peer_stream.recv_threeway_handshake().await?;
 
         peer_stream.disseminate_peers(self.0.get_peers().await?).await?;
-        peer_stream.may_try_sync(ccm, &connected_peer_info).await?;
 
-        let (tx, rx) = tokio::sync::oneshot::channel();
-        self.send(peer_stream.into_add_peer(self.handler(), connected_peer_info, tx)?).await?;
+        let (callback, rx) = tokio::sync::oneshot::channel();
+        let add_peer_cmd =
+            peer_stream.prepare_add_peer_cmd(ccm, connected_peer_info, callback).await?;
+        self.send(add_peer_cmd).await?;
         rx.await?;
         Ok(())
     }
