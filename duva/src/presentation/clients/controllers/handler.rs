@@ -94,7 +94,6 @@ impl ClientController<Handler> {
                 }
             },
             ClientAction::ReplicaOf(peer_identifier) => {
-                // TODO should check if the peer is in the cluster?
                 self.cluster_communication_manager.replicaof(peer_identifier.clone()).await;
 
                 let (tx, rx) = tokio::sync::oneshot::channel();

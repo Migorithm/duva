@@ -225,6 +225,13 @@ impl CacheManager {
     }
 
     pub(crate) async fn drop_cache(&self) {
-        join_all(self.inboxes.iter().map(|shard| shard.send(CacheCommand::Drop))).await;
+        let (txs, rxs) = self.oneshot_channels();
+        join_all(
+            self.chain(txs)
+                .map(|(shard, sender)| shard.send(CacheCommand::Drop { callback: sender })),
+        )
+        .await;
+
+        join_all(rxs.into_iter().map(|rx| rx)).await;
     }
 }

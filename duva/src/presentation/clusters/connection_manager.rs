@@ -29,7 +29,7 @@ impl ClusterConnectionManager {
         self,
         self_port: u16,
         connect_to: PeerIdentifier,
-        Sender: tokio::sync::oneshot::Sender<()>,
+        sender: tokio::sync::oneshot::Sender<()>,
     ) -> anyhow::Result<()> {
         // Base case
         let existing_peers = self.get_peers().await?;
@@ -45,7 +45,7 @@ impl ClusterConnectionManager {
             .await?
             .set_replication_info(&self)
             .await?
-            .create_peer_cmd(self.clone(), Sender)?;
+            .create_peer_cmd(self.clone(), sender)?;
         self.send(add_peer_cmd).await?;
 
         // Discover additional peers concurrently

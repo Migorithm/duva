@@ -114,7 +114,7 @@ impl OutboundStream {
     pub(crate) fn create_peer_cmd(
         self,
         cluster_actor_handler: Sender<ClusterCommand>,
-        Sender: tokio::sync::oneshot::Sender<()>,
+        sender: tokio::sync::oneshot::Sender<()>,
     ) -> anyhow::Result<(ClusterCommand, Vec<PeerIdentifier>)> {
         let mut connection_info =
             self.connected_node_info.context("Connected node info not found")?;
@@ -127,6 +127,6 @@ impl OutboundStream {
             cluster_actor_handler,
         );
 
-        Ok((ClusterCommand::AddPeer(AddPeer { peer_id: self.connect_to, peer }, Sender), peer_list))
+        Ok((ClusterCommand::AddPeer(AddPeer { peer_id: self.connect_to, peer }, sender), peer_list))
     }
 }

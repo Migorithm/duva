@@ -61,8 +61,9 @@ impl CacheActor {
                         }
                     };
                 },
-                CacheCommand::Drop => {
+                CacheCommand::Drop { callback } => {
                     self.cache.clear();
+                    let _ = callback.send(());
                 },
             }
         }
@@ -104,7 +105,9 @@ mod test {
             self.0.send(CacheCommand::Ping).await.unwrap();
         }
         async fn drop(&self) {
-            self.0.send(CacheCommand::Drop).await.unwrap();
+            let (tx, rx) = oneshot::channel();
+            self.0.send(CacheCommand::Drop { callback: tx }).await.unwrap();
+            let _ = rx.await;
         }
     }
 
