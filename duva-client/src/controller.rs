@@ -41,6 +41,9 @@ impl<T> ClientController<T> {
     // pull-based leader discovery
     async fn discover_leader(&mut self) -> Result<(), String> {
         for node in &self.cluster_nodes {
+            tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+            println!("Trying to connect to node: {}...", node);
+
             let Ok(mut stream) = TcpStream::connect(node.as_str()).await else {
                 continue;
             };
