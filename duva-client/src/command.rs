@@ -81,6 +81,14 @@ pub fn take_input(action: &str, args: &[&str]) -> Result<ClientInputKind, String
             }
             Err("(error) ERR unknown subcommand".to_string())
         },
+        "REPLICAOF" => {
+            if args.len() != 3 {
+                return Err(
+                    "(error) ERR wrong number of arguments for 'replicaof' command".to_string()
+                );
+            };
+            Ok(ClientInputKind::ReplicaOf)
+        },
 
         // Add other commands as needed
         unknown_cmd => {
@@ -104,4 +112,5 @@ pub enum ClientInputKind {
     ClusterNodes,
     ClusterForget,
     Exists,
+    ReplicaOf,
 }

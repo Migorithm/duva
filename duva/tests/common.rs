@@ -1,7 +1,5 @@
 #![allow(dead_code, unused_variables)]
 
-use bytes::Bytes;
-use duva::domains::query_parsers::query_io::QueryIO;
 use bytes::{Bytes, BytesMut};
 use duva::domains::query_parsers::query_io::{QueryIO, deserialize};
 use duva::make_smart_pointer;
@@ -270,10 +268,6 @@ pub fn contains_only(source: String, target: Vec<&str>) -> bool {
 pub fn array(arr: Vec<&str>) -> Bytes {
     QueryIO::Array(arr.iter().map(|s| QueryIO::BulkString(s.to_string().into())).collect())
         .serialize()
-}
-
-pub fn bulk_string(value: &str) -> Bytes {
-    QueryIO::BulkString(value.to_string().into()).serialize()
 }
 
 pub fn session_request(request_id: u64, arr: Vec<&str>) -> Bytes {

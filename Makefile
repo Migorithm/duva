@@ -8,7 +8,7 @@ tp = duva.tp
 cli:
 	@echo '🚀 Starting client in local_test/cli...'
 	@mkdir -p local_test/cli
-	@cd local_test/cli && cargo run --bin duva-cli -- --port $(p)
+	@cd local_test/cli && cargo run --bin cli -- --port $(p)
 
 leader:
 	@echo '🔧 Setting up replication with leader on port $(p) and follower on port $(rp)...'

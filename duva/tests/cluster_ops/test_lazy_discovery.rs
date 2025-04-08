@@ -1,8 +1,6 @@
-use crate::common::{array, bulk_string, contains_only};
-use common::{ServerEnv, spawn_server_process};
+use crate::common::{ServerEnv, array, contains_only, spawn_server_process};
 use duva::clients::ClientStreamHandler;
-
-mod common;
+use duva::domains::query_parsers::query_io::QueryIO;
 
 #[tokio::test]
 async fn test_lazy_discovery_of_leader() {
@@ -27,7 +25,7 @@ async fn test_lazy_discovery_of_leader() {
     other_h.send_and_get(&array(vec!["SET", "other2", "value2"])).await;
 
     let cluster_info = other_h.send_and_get(&array(vec!["CLUSTER", "INFO"])).await;
-    assert_eq!(cluster_info, bulk_string("cluster_known_nodes:0"));
+    assert_eq!(cluster_info, QueryIO::BulkString("cluster_known_nodes:0".into()).serialize());
 
     assert!(contains_only(
         other_h.send_and_get(&array(vec!["KEYS", "*"])).await,
@@ -44,7 +42,7 @@ async fn test_lazy_discovery_of_leader() {
 
     // THEN
     let cluster_info = other_h.send_and_get(&array(vec!["CLUSTER", "INFO"])).await;
-    assert_eq!(cluster_info, bulk_string("cluster_known_nodes:1"));
+    assert_eq!(cluster_info, QueryIO::BulkString("cluster_known_nodes:1".into()).serialize());
 
     let response = target_h.send_and_get(&array(vec!["KEYS", "*"])).await;
     assert!(contains_only(response, vec!["other", "other2"]));

@@ -1,10 +1,6 @@
 use crate::common::{ServerEnv, array, check_internodes_communication, spawn_server_process};
 
 use duva::{clients::ClientStreamHandler, domains::query_parsers::query_io::QueryIO};
-mod common;
-use crate::common::bulk_string;
-use common::{ServerEnv, array, check_internodes_communication, spawn_server_process};
-use duva::clients::ClientStreamHandler;
 
 #[tokio::test]
 async fn test_cluster_forget_makes_all_nodes_forget_target_node() {

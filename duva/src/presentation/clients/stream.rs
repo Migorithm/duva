@@ -1,5 +1,3 @@
-use super::request::{ClientAction, ClientRequest};
-use crate::domains::peers::identifier::PeerIdentifier;
 use super::{parser::parse_query, request::ClientRequest};
 use crate::{
     TSerdeReadWrite,
