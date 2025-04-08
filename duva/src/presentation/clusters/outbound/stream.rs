@@ -105,7 +105,7 @@ impl OutboundStream {
             cluster_manager
                 .send(ClusterCommand::SetReplicationInfo {
                     replid: connected_node_info.replid.clone(),
-                    hwm: 0,
+                    hwm: self.my_repl_info.hwm.load(Ordering::Acquire),
                 })
                 .await?;
         }
