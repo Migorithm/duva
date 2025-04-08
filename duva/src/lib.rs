@@ -132,7 +132,16 @@ impl StartUpFacade {
 
         while let Ok((stream, _)) = client_stream_listener.accept().await {
             let peers = self.registry.cluster_communication_manager().get_peers().await?;
-            let Ok(client_stream) = ClientStream::authenticate(stream, peers).await else {
+
+            // TODO implement ROLE command
+            let is_leader = self
+                .registry
+                .cluster_communication_manager()
+                .replication_info()
+                .await?
+                .is_leader_mode;
+            let Ok(client_stream) = ClientStream::authenticate(stream, peers, is_leader).await
+            else {
                 eprintln!("[ERROR] Failed to authenticate client stream");
                 continue;
             };

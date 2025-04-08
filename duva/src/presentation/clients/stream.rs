@@ -24,6 +24,7 @@ impl ClientStream {
     pub(crate) async fn authenticate(
         mut stream: TcpStream,
         peers: Vec<PeerIdentifier>,
+        is_leader: bool,
     ) -> Result<Self, IoError> {
         let auth_req: AuthRequest = stream.deserialized_read().await?;
 
@@ -38,8 +39,9 @@ impl ClientStream {
         stream
             .serialized_write(AuthResponse {
                 client_id: client_id.to_string(),
-                request_id: 0,
+                request_id: auth_req.request_id,
                 cluster_nodes: peers,
+                connected_to_leader: is_leader,
             })
             .await?;
 

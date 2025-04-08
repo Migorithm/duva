@@ -1,16 +1,17 @@
 use crate::command::ClientInputKind;
+use duva::domains::{
+    IoError,
+    query_parsers::query_io::{QueryIO, deserialize},
+};
+use duva::prelude::BytesMut;
+use duva::prelude::PeerIdentifier;
+use duva::prelude::tokio;
+use duva::prelude::tokio::io::AsyncReadExt;
+use duva::prelude::tokio::io::AsyncWriteExt;
+use duva::prelude::tokio::net::TcpStream;
+use duva::prelude::uuid::Uuid;
 use duva::{
     clients::authentications::{AuthRequest, AuthResponse},
-    domains::query_parsers::query_io::{QueryIO, deserialize},
-    prelude::{
-        BytesMut, PeerIdentifier,
-        tokio::{
-            self,
-            io::{AsyncReadExt, AsyncWriteExt},
-            net::TcpStream,
-        },
-        uuid::Uuid,
-    },
     services::interface::{TRead, TSerdeReadWrite},
 };
 
@@ -35,6 +36,31 @@ impl<T> ClientController<T> {
             request_id: auth_response.request_id,
             cluster_nodes: auth_response.cluster_nodes,
         }
+    }
+
+    async fn discover_leader(&mut self) -> Result<(), String> {
+        for node in &self.cluster_nodes {
+            let Ok(mut stream) = TcpStream::connect(node.as_str()).await else {
+                continue;
+            };
+
+            stream
+                .serialized_write(AuthRequest {
+                    client_id: Some(self.client_id.to_string()),
+                    request_id: self.request_id,
+                })
+                .await
+                .unwrap(); // client_id not exist
+
+            let auth_response: AuthResponse = stream.deserialized_read().await.unwrap();
+            if auth_response.connected_to_leader {
+                println!("Connected to a new leader: {}", node);
+                self.stream = stream;
+                self.cluster_nodes = auth_response.cluster_nodes;
+                return Ok(());
+            }
+        }
+        Err("No leader found".to_string())
     }
 
     async fn authenticate(server_addr: &str) -> (TcpStream, AuthResponse) {
@@ -82,15 +108,16 @@ impl<T> ClientController<T> {
         let mut response = BytesMut::with_capacity(512);
 
         if let Err(e) = self.stream.read_bytes(&mut response).await {
-            let res = Err(format!("Failed to read response: {}", e));
             match e {
-                duva::domains::IoError::ConnectionAborted => {
-                    // TODO reconnect logic
-                    return res;
+                IoError::ConnectionAborted | IoError::ConnectionReset => {
+                    self.discover_leader().await?;
+
+                    // recursively call the function to retry
+                    return Box::pin(self.try_send_and_get(cmd)).await;
                 },
                 _ => {
                     // Handle other errors
-                    return res;
+                    return Err(format!("Failed to read response: {}", e));
                 },
             }
         }
