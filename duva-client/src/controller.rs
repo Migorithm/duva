@@ -3,7 +3,7 @@ use duva::{
     clients::authentications::{AuthRequest, AuthResponse},
     domains::query_parsers::query_io::{QueryIO, deserialize},
     prelude::{
-        BytesMut,
+        BytesMut, PeerIdentifier,
         tokio::{
             self,
             io::{AsyncReadExt, AsyncWriteExt},
@@ -19,27 +19,31 @@ pub struct ClientController<T> {
     client_id: Uuid,
     request_id: u64,
     latest_known_index: u64,
+    cluster_nodes: Vec<PeerIdentifier>,
     pub target: T,
 }
 
 impl<T> ClientController<T> {
     pub async fn new(editor: T, server_addr: &str) -> Self {
-        let (stream, client_id, request_id) =
-            ClientController::<T>::authenticate(server_addr).await;
-        Self { stream, client_id, target: editor, latest_known_index: 0, request_id }
+        let (stream, mut auth_response) = ClientController::<T>::authenticate(server_addr).await;
+        auth_response.cluster_nodes.push(server_addr.to_string().into());
+        Self {
+            stream,
+            client_id: Uuid::parse_str(&auth_response.client_id).unwrap(),
+            target: editor,
+            latest_known_index: 0,
+            request_id: auth_response.request_id,
+            cluster_nodes: auth_response.cluster_nodes,
+        }
     }
 
-    async fn authenticate(server_addr: &str) -> (TcpStream, Uuid, u64) {
+    async fn authenticate(server_addr: &str) -> (TcpStream, AuthResponse) {
         let mut stream = TcpStream::connect(server_addr).await.unwrap();
         stream.serialized_write(AuthRequest::default()).await.unwrap(); // client_id not exist
 
-        let AuthResponse { client_id, request_id } = stream.deserialized_read().await.unwrap();
+        let auth_response: AuthResponse = stream.deserialized_read().await.unwrap();
 
-        let client_id = Uuid::parse_str(&client_id).unwrap();
-        println!("Client ID: {}", client_id);
-        println!("Connected to Redis at {}", server_addr);
-
-        (stream, client_id, request_id)
+        (stream, auth_response)
     }
 
     pub async fn send_command(

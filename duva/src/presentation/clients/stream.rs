@@ -2,7 +2,10 @@ use super::{parser::parse_query, request::ClientRequest};
 use crate::{
     TSerdeReadWrite,
     clients::authentications::{AuthRequest, AuthResponse},
-    domains::{IoError, cluster_actors::session::SessionRequest, query_parsers::QueryIO},
+    domains::{
+        IoError, cluster_actors::session::SessionRequest, peers::identifier::PeerIdentifier,
+        query_parsers::QueryIO,
+    },
     make_smart_pointer,
     services::interface::TRead,
 };
@@ -18,7 +21,10 @@ pub struct ClientStream {
 make_smart_pointer!(ClientStream, TcpStream=>stream);
 
 impl ClientStream {
-    pub(crate) async fn authenticate(mut stream: TcpStream) -> Result<Self, IoError> {
+    pub(crate) async fn authenticate(
+        mut stream: TcpStream,
+        peers: Vec<PeerIdentifier>,
+    ) -> Result<Self, IoError> {
         let auth_req: AuthRequest = stream.deserialized_read().await?;
 
         let client_id = match auth_req.client_id {
@@ -30,7 +36,11 @@ impl ClientStream {
         };
 
         stream
-            .serialized_write(AuthResponse { client_id: client_id.to_string(), request_id: 0 })
+            .serialized_write(AuthResponse {
+                client_id: client_id.to_string(),
+                request_id: 0,
+                cluster_nodes: peers,
+            })
             .await?;
 
         Ok(Self { stream, client_id })
