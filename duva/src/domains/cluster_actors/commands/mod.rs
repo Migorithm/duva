@@ -45,7 +45,3 @@ pub(crate) enum ClusterCommand {
     ApplyElectionVote(RequestVoteReply),
     ClusterHeartBeat(HeartBeatMessage),
 }
-
-#[derive(Debug)]
-pub(crate) struct SyncLogs(pub(crate) Vec<WriteOperation>);
-from_to!(Vec<WriteOperation>, SyncLogs);
