@@ -1,4 +1,4 @@
-use crate::command::{ClientInputKind, build_command};
+use crate::command::ClientInputKind;
 use duva::{
     clients::authentications::{AuthRequest, AuthResponse},
     domains::query_parsers::query_io::{QueryIO, deserialize},
@@ -46,16 +46,32 @@ impl<T> ClientController<T> {
         (stream, auth_response)
     }
 
+    pub fn build_command(&self, cmd: &str, args: Vec<&str>) -> String {
+        // Build the valid RESP command
+        let mut command =
+            format!("!{}\r\n*{}\r\n${}\r\n{}\r\n", self.request_id, args.len() + 1, cmd.len(), cmd);
+        for arg in args {
+            command.push_str(&format!("${}\r\n{}\r\n", arg.len(), arg));
+        }
+
+        command
+    }
+
     pub async fn send_command(
         &mut self,
-        action: &str,
-        args: Vec<&str>,
+        command: String,
         input: ClientInputKind,
     ) -> Result<(), String> {
-        let command = build_command(action, args, self.request_id);
+        let query_io = self.try_send_and_get(command.as_bytes()).await?;
 
+        self.may_update_request_id(&input);
+        // Deserialize response and check if it follows RESP protocol
+        self.render_return_per_input(input, query_io)
+    }
+
+    async fn try_send_and_get(&mut self, cmd: &[u8]) -> Result<QueryIO, String> {
         // TODO input validation required otherwise, it hangs
-        if let Err(e) = self.stream.write_all(command.as_bytes()).await {
+        if let Err(e) = self.stream.write_all(cmd).await {
             return Err(format!("Failed to send command: {}", e));
         }
 
@@ -64,6 +80,7 @@ impl<T> ClientController<T> {
         }
 
         let mut response = BytesMut::with_capacity(512);
+
         match self.stream.read_bytes(&mut response).await {
             Ok(_) => {},
             Err(e) => return Err(format!("Failed to read response: {}", e)),
@@ -74,9 +91,7 @@ impl<T> ClientController<T> {
             return Err("Invalid RESP protocol".into());
         };
 
-        self.may_update_request_id(&input);
-        // Deserialize response and check if it follows RESP protocol
-        self.render_return_per_input(input, query_io)
+        Ok(query_io)
     }
 
     async fn drain_stream(&mut self, timeout_ms: u64) -> Result<(), String> {

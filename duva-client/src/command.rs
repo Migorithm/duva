@@ -6,17 +6,6 @@ pub fn separate_command_and_args(args: Vec<&str>) -> (&str, Vec<&str>) {
     (cmd, args)
 }
 
-pub(crate) fn build_command(cmd: &str, args: Vec<&str>, request_id: u64) -> String {
-    // Build the valid RESP command
-    let mut command =
-        format!("!{}\r\n*{}\r\n${}\r\n{}\r\n", request_id, args.len() + 1, cmd.len(), cmd);
-    for arg in args {
-        command.push_str(&format!("${}\r\n{}\r\n", arg.len(), arg));
-    }
-
-    command
-}
-
 pub fn take_input(action: &str, args: &[&str]) -> Result<ClientInputKind, String> {
     // Check for invalid characters in command parts
     // Command-specific validation
