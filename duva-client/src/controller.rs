@@ -1,16 +1,17 @@
-use crate::command::{ClientInputKind, build_command};
+use crate::command::ClientInputKind;
+use duva::domains::{
+    IoError,
+    query_parsers::query_io::{QueryIO, deserialize},
+};
+use duva::prelude::BytesMut;
+use duva::prelude::PeerIdentifier;
+use duva::prelude::tokio;
+use duva::prelude::tokio::io::AsyncReadExt;
+use duva::prelude::tokio::io::AsyncWriteExt;
+use duva::prelude::tokio::net::TcpStream;
+use duva::prelude::uuid::Uuid;
 use duva::{
     clients::authentications::{AuthRequest, AuthResponse},
-    domains::query_parsers::query_io::{QueryIO, deserialize},
-    prelude::{
-        BytesMut,
-        tokio::{
-            self,
-            io::{AsyncReadExt, AsyncWriteExt},
-            net::TcpStream,
-        },
-        uuid::Uuid,
-    },
     services::interface::{TRead, TSerdeReadWrite},
 };
 
@@ -19,39 +20,88 @@ pub struct ClientController<T> {
     client_id: Uuid,
     request_id: u64,
     latest_known_index: u64,
+    cluster_nodes: Vec<PeerIdentifier>,
     pub target: T,
 }
 
 impl<T> ClientController<T> {
     pub async fn new(editor: T, server_addr: &str) -> Self {
-        let (stream, client_id, request_id) =
-            ClientController::<T>::authenticate(server_addr).await;
-        Self { stream, client_id, target: editor, latest_known_index: 0, request_id }
+        let (stream, mut auth_response) = ClientController::<T>::authenticate(server_addr).await;
+        auth_response.cluster_nodes.push(server_addr.to_string().into());
+        Self {
+            stream,
+            client_id: Uuid::parse_str(&auth_response.client_id).unwrap(),
+            target: editor,
+            latest_known_index: 0,
+            request_id: auth_response.request_id,
+            cluster_nodes: auth_response.cluster_nodes,
+        }
     }
 
-    async fn authenticate(server_addr: &str) -> (TcpStream, Uuid, u64) {
+    // pull-based leader discovery
+    async fn discover_leader(&mut self) -> Result<(), String> {
+        for node in &self.cluster_nodes {
+            tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+            println!("Trying to connect to node: {}...", node);
+
+            let Ok(mut stream) = TcpStream::connect(node.as_str()).await else {
+                continue;
+            };
+
+            stream
+                .serialized_write(AuthRequest {
+                    client_id: Some(self.client_id.to_string()),
+                    request_id: self.request_id,
+                })
+                .await
+                .unwrap(); // client_id not exist
+
+            let auth_response: AuthResponse = stream.deserialized_read().await.unwrap();
+            if auth_response.connected_to_leader {
+                println!("Connected to a new leader: {}", node);
+                self.stream = stream;
+                self.cluster_nodes = auth_response.cluster_nodes;
+                return Ok(());
+            }
+        }
+        Err("No leader found in the cluster".to_string())
+    }
+
+    async fn authenticate(server_addr: &str) -> (TcpStream, AuthResponse) {
         let mut stream = TcpStream::connect(server_addr).await.unwrap();
         stream.serialized_write(AuthRequest::default()).await.unwrap(); // client_id not exist
 
-        let AuthResponse { client_id, request_id } = stream.deserialized_read().await.unwrap();
+        let auth_response: AuthResponse = stream.deserialized_read().await.unwrap();
 
-        let client_id = Uuid::parse_str(&client_id).unwrap();
-        println!("Client ID: {}", client_id);
-        println!("Connected to Redis at {}", server_addr);
+        (stream, auth_response)
+    }
 
-        (stream, client_id, request_id)
+    pub fn build_command(&self, cmd: &str, args: Vec<&str>) -> String {
+        // Build the valid RESP command
+        let mut command =
+            format!("!{}\r\n*{}\r\n${}\r\n{}\r\n", self.request_id, args.len() + 1, cmd.len(), cmd);
+        for arg in args {
+            command.push_str(&format!("${}\r\n{}\r\n", arg.len(), arg));
+        }
+
+        command
     }
 
     pub async fn send_command(
         &mut self,
-        action: &str,
-        args: Vec<&str>,
+        command: String,
         input: ClientInputKind,
     ) -> Result<(), String> {
-        let command = build_command(action, args, self.request_id);
+        let query_io = self.try_send_and_get(command.as_bytes()).await?;
 
+        self.may_update_request_id(&input);
+        // Deserialize response and check if it follows RESP protocol
+        self.render_return_per_input(input, query_io)
+    }
+
+    async fn try_send_and_get(&mut self, cmd: &[u8]) -> Result<QueryIO, String> {
         // TODO input validation required otherwise, it hangs
-        if let Err(e) = self.stream.write_all(command.as_bytes()).await {
+        if let Err(e) = self.stream.write_all(cmd).await {
             return Err(format!("Failed to send command: {}", e));
         }
 
@@ -60,19 +110,28 @@ impl<T> ClientController<T> {
         }
 
         let mut response = BytesMut::with_capacity(512);
-        match self.stream.read_bytes(&mut response).await {
-            Ok(_) => {},
-            Err(e) => return Err(format!("Failed to read response: {}", e)),
-        };
+
+        if let Err(e) = self.stream.read_bytes(&mut response).await {
+            match e {
+                IoError::ConnectionAborted | IoError::ConnectionReset => {
+                    self.discover_leader().await?;
+
+                    // recursively call the function to retry
+                    return Box::pin(self.try_send_and_get(cmd)).await;
+                },
+                _ => {
+                    // Handle other errors
+                    return Err(format!("Failed to read response: {}", e));
+                },
+            }
+        }
 
         let Ok((query_io, _)) = deserialize(BytesMut::from_iter(response)) else {
             let _ = self.drain_stream(100).await;
             return Err("Invalid RESP protocol".into());
         };
 
-        self.may_update_request_id(&input);
-        // Deserialize response and check if it follows RESP protocol
-        self.render_return_per_input(input, query_io)
+        Ok(query_io)
     }
 
     async fn drain_stream(&mut self, timeout_ms: u64) -> Result<(), String> {

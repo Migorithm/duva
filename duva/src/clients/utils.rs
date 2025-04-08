@@ -34,7 +34,8 @@ impl ClientStreamHandler {
 
         stream.serialized_write(AuthRequest::default()).await.unwrap(); // client_id not exist
 
-        let AuthResponse { client_id, request_id } = stream.deserialized_read().await.unwrap();
+        let AuthResponse { client_id, request_id, cluster_nodes, connected_to_leader } =
+            stream.deserialized_read().await.unwrap();
         let client_id = Uuid::parse_str(&client_id).unwrap();
 
         let (read_half, write_half) = stream.into_split();

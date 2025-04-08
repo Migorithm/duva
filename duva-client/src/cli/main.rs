@@ -32,7 +32,8 @@ async fn main() {
 
         match take_input(cmd, &args) {
             Ok(input) => {
-                if let Err(e) = controller.send_command(cmd, args, input).await {
+                let command = controller.build_command(cmd, args);
+                if let Err(e) = controller.send_command(command, input).await {
                     println!("{}", e);
                 }
             },
