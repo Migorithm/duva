@@ -82,7 +82,7 @@ pub fn take_input(action: &str, args: &[&str]) -> Result<ClientInputKind, String
             Err("(error) ERR unknown subcommand".to_string())
         },
         "REPLICAOF" => {
-            if args.len() != 3 {
+            if args.len() != 2 {
                 return Err(
                     "(error) ERR wrong number of arguments for 'replicaof' command".to_string()
                 );
