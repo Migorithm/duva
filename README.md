@@ -46,6 +46,8 @@ The following features have been implemented so far:
     - Cluster node liveness check
     - RYOW consistency
     - Follower reads
+    - Pull-based Reconnection on leader failure (client)
+
 
 
 - Protocol Support
