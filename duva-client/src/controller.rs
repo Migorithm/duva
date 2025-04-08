@@ -81,10 +81,19 @@ impl<T> ClientController<T> {
 
         let mut response = BytesMut::with_capacity(512);
 
-        match self.stream.read_bytes(&mut response).await {
-            Ok(_) => {},
-            Err(e) => return Err(format!("Failed to read response: {}", e)),
-        };
+        if let Err(e) = self.stream.read_bytes(&mut response).await {
+            let res = Err(format!("Failed to read response: {}", e));
+            match e {
+                duva::domains::IoError::ConnectionAborted => {
+                    // TODO reconnect logic
+                    return res;
+                },
+                _ => {
+                    // Handle other errors
+                    return res;
+                },
+            }
+        }
 
         let Ok((query_io, _)) = deserialize(BytesMut::from_iter(response)) else {
             let _ = self.drain_stream(100).await;
