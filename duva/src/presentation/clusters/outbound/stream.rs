@@ -9,6 +9,7 @@ use crate::domains::peers::connected_peer_info::ConnectedPeerInfo;
 use crate::domains::peers::identifier::PeerIdentifier;
 use crate::domains::peers::peer::Peer;
 use crate::domains::peers::peer::PeerState;
+use crate::domains::query_parsers::QueryIO;
 use crate::presentation::clusters::connection_manager::ClusterConnectionManager;
 
 use crate::presentation::clusters::listeners::start_listen;
@@ -46,7 +47,7 @@ impl OutboundStream {
             connect_to: connect_to.to_string().into(),
         })
     }
-    pub async fn initiate_threeway_handshake(mut self, self_port: u16) -> anyhow::Result<Self> {
+    pub async fn initiate_handshake(mut self, self_port: u16) -> anyhow::Result<Self> {
         // Trigger
         self.w.write(write_array!("PING")).await?;
         let mut ok_count = 0;
@@ -85,12 +86,12 @@ impl OutboundStream {
                         connection_info.replid = ReplicationId::Key(repl_id);
                         connection_info.hwm = offset;
                         connection_info.id = id.into();
-                        println!("[INFO] Three-way handshake completed")
+                        self.reply_with_ok().await?;
                     },
                     ConnectionResponse::PEERS(peer_list) => {
-                        println!("[INFO] Received peer list: {:?}", peer_list);
                         connection_info.peer_list = peer_list;
                         self.connected_node_info = Some(connection_info);
+                        self.reply_with_ok().await?;
                         return Ok(self);
                     },
                 }
@@ -98,6 +99,10 @@ impl OutboundStream {
         }
     }
 
+    async fn reply_with_ok(&mut self) -> anyhow::Result<()> {
+        self.w.write_io(QueryIO::SimpleString("OK".to_string())).await?;
+        Ok(())
+    }
     pub(crate) async fn set_replication_info(
         self,
         cluster_manager: &ClusterConnectionManager,

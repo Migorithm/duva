@@ -1,15 +1,13 @@
 use crate::domains::{
     cluster_actors::commands::ClusterCommand,
     peers::{
-        connected_types::ReadConnected,
-        identifier::PeerIdentifier,
-        peer::{ListeningActorKillTrigger, Peer, PeerState},
+        connected_types::ReadConnected, identifier::PeerIdentifier, peer::ListeningActorKillTrigger,
     },
 };
 
 use listener::ClusterListener;
 use peer_input::PeerInput;
-use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
+use tokio::net::tcp::OwnedReadHalf;
 use tokio::select;
 
 pub mod listener;

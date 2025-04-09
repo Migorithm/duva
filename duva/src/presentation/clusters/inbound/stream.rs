@@ -1,5 +1,3 @@
-use std::sync::atomic::Ordering;
-
 use super::request::HandShakeRequest;
 use super::request::HandShakeRequestEnum;
 use crate::domains::IoError;
@@ -12,12 +10,11 @@ use crate::domains::peers::identifier::PeerIdentifier;
 use crate::domains::peers::peer::Peer;
 use crate::domains::peers::peer::PeerState;
 use crate::domains::query_parsers::QueryIO;
-
 use crate::presentation::clusters::communication_manager::ClusterCommunicationManager;
-
 use crate::presentation::clusters::listeners::start_listen;
 use crate::services::interface::TRead;
 use crate::services::interface::TWrite;
+use std::sync::atomic::Ordering;
 use tokio::net::TcpStream;
 use tokio::net::tcp::OwnedReadHalf;
 use tokio::net::tcp::OwnedWriteHalf;
@@ -34,7 +31,7 @@ impl InboundStream {
         let (read, write) = stream.into_split();
         Self { r: read, w: write, self_repl_info }
     }
-    pub(crate) async fn recv_threeway_handshake(&mut self) -> anyhow::Result<ConnectedPeerInfo> {
+    pub(crate) async fn recv_handshake(&mut self) -> anyhow::Result<ConnectedPeerInfo> {
         self.recv_ping().await?;
 
         let port = self.recv_replconf_listening_port().await?;
@@ -96,7 +93,7 @@ impl InboundStream {
                 id, self_leader_replid, self_leader_repl_offset
             )))
             .await?;
-
+        self.recv_ok().await?;
         Ok((inbound_repl_id, offset))
     }
 
@@ -115,6 +112,22 @@ impl InboundStream {
                 peers.into_iter().map(|x| x.0).collect::<Vec<String>>().join(" ")
             )))
             .await?;
+
+        self.recv_ok().await?;
+        Ok(())
+    }
+
+    async fn recv_ok(&mut self) -> anyhow::Result<()> {
+        let mut query_io = self.r.read_values().await?;
+        let Some(query) = query_io.pop() else {
+            return Err(anyhow::anyhow!("No query found"));
+        };
+        let QueryIO::SimpleString(val) = query else {
+            return Err(anyhow::anyhow!("Invalid query"));
+        };
+        if val.to_lowercase() != "ok" {
+            return Err(anyhow::anyhow!("Invalid response"));
+        }
         Ok(())
     }
 
