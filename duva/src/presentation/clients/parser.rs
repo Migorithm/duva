@@ -1,9 +1,9 @@
 use anyhow::Context;
 use chrono::{DateTime, Utc};
 
-use crate::domains::cluster_actors::session::SessionRequest;
-
 use super::request::{ClientAction, ClientRequest};
+use crate::domains::cluster_actors::session::SessionRequest;
+use crate::prelude::PeerIdentifier;
 
 /// Analyze the command and arguments to create a `ClientRequest`
 pub fn parse_query(
@@ -49,7 +49,9 @@ pub fn parse_query(
             "forget" => ClientAction::ClusterForget(val.get(1).cloned().context("Must")?.into()),
             _ => return Err(anyhow::anyhow!("Invalid command")),
         },
-
+        ("replicaof", [host, port]) => {
+            ClientAction::ReplicaOf(PeerIdentifier::new(host, port.parse()?))
+        },
         _ => return Err(anyhow::anyhow!("Invalid command")),
     };
 

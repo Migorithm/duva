@@ -14,7 +14,7 @@ use crate::domains::{append_only_files::WriteRequest, peers::identifier::PeerIde
 
 #[derive(Debug)]
 pub(crate) enum ClusterCommand {
-    AddPeer(AddPeer),
+    AddPeer(AddPeer, tokio::sync::oneshot::Sender<()>),
     GetPeers(tokio::sync::oneshot::Sender<Vec<PeerIdentifier>>),
     ReplicationInfo(tokio::sync::oneshot::Sender<ReplicationState>),
 
@@ -25,6 +25,7 @@ pub(crate) enum ClusterCommand {
     InstallLeaderState(Vec<WriteOperation>),
     SendClusterHeatBeat,
     ForgetPeer(PeerIdentifier, tokio::sync::oneshot::Sender<Option<()>>),
+    ReplicaOf(PeerIdentifier, tokio::sync::oneshot::Sender<()>),
     LeaderReqConsensus {
         log: WriteRequest,
         callback: tokio::sync::oneshot::Sender<ConsensusClientResponse>,
@@ -38,7 +39,7 @@ pub(crate) enum ClusterCommand {
 
     SendAppendEntriesRPC,
     ClusterNodes(tokio::sync::oneshot::Sender<Vec<String>>),
-    FetchCurrentState(tokio::sync::oneshot::Sender<Vec<WriteOperation>>),
+    FetchCurrentState(tokio::sync::oneshot::Sender<SyncLogs>),
     StartLeaderElection,
     VoteElection(RequestVote),
     ApplyElectionVote(RequestVoteReply),

@@ -1,5 +1,5 @@
 use crate::domains::caches::cache_objects::CacheValue;
-use crate::domains::cluster_actors::commands::{ReplicationResponse, RequestVoteReply};
+use crate::domains::cluster_actors::commands::{ReplicationResponse, RequestVoteReply, SyncLogs};
 use crate::domains::cluster_actors::heartbeats::heartbeat::{AppendEntriesRPC, ClusterHeartBeat};
 use crate::domains::{append_only_files::WriteOperation, cluster_actors::commands::RequestVote};
 
@@ -351,10 +351,10 @@ impl From<WriteOperation> for QueryIO {
         QueryIO::WriteOperation(value)
     }
 }
-impl From<Vec<WriteOperation>> for QueryIO {
-    fn from(value: Vec<WriteOperation>) -> Self {
+impl From<SyncLogs> for QueryIO {
+    fn from(value: SyncLogs) -> Self {
         QueryIO::File(
-            QueryIO::Array(value.into_iter().map(Into::into).collect::<Vec<_>>()).serialize(),
+            QueryIO::Array(value.0.into_iter().map(Into::into).collect::<Vec<_>>()).serialize(),
         )
     }
 }

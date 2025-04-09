@@ -21,9 +21,10 @@ impl ClusterActor {
 
         while let Some(command) = self.receiver.recv().await {
             match command {
-                ClusterCommand::AddPeer(add_peer_cmd) => {
+                ClusterCommand::AddPeer(add_peer_cmd, callback) => {
                     self.add_peer(add_peer_cmd).await;
                     self.snapshot_topology().await;
+                    let _ = callback.send(());
                 },
                 ClusterCommand::GetPeers(callback) => {
                     let _ = callback.send(self.members.keys().cloned().collect::<Vec<_>>());
@@ -104,7 +105,7 @@ impl ClusterActor {
                 },
                 ClusterCommand::FetchCurrentState(sender) => {
                     let logs = logger.range(0, self.replication.hwm.load(Ordering::Acquire));
-                    let _ = sender.send(logs);
+                    let _ = sender.send(logs.into());
                 },
                 ClusterCommand::StartLeaderElection => {
                     self.run_for_election(&mut logger).await;
@@ -117,6 +118,11 @@ impl ClusterActor {
                         continue;
                     }
                     self.tally_vote(&logger).await;
+                },
+                ClusterCommand::ReplicaOf(peer_addr, callback) => {
+                    cache_manager.drop_cache().await;
+                    self.replicaof(peer_addr).await;
+                    let _ = callback.send(());
                 },
             }
         }

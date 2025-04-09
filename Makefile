@@ -5,58 +5,32 @@ k = foo
 v = bar
 tp = duva.tp
 
-define send_command
-	( printf $1 | $(NETCAT) )
-endef
-
-set:
-	$(call send_command, '*3\r\n$$3\r\nSET\r\n$$3\r\n$(k)\r\n$$3\r\n$(v)\r\n')
-
-set_expire:
-	$(call send_command, '*5\r\n$$3\r\nSET\r\n$$3\r\n$(k)\r\n$$3\r\n$(v)\r\n$$2\r\npx\r\n$$6\r\n300000\r\n')
-
-get:
-	$(call send_command, '*2\r\n$$3\r\nGET\r\n$$3\r\n$(k)\r\n')
-
-keys:
-	$(call send_command, '*2\r\n$$4\r\nKEYS\r\n$$1\r\n*\r\n')
-
-save:
-	$(call send_command, '*1\r\n$$4\r\nSAVE\r\n')
-
-config:
-	$(call send_command, '*3\r\n$$6\r\nCONFIG\r\n$$3\r\nGET\r\n$$3\r\nDir\r\n')
-
-info:
-	$(call send_command, '*2\r\n$$4\r\nINFO\r\n$$11\r\nreplication\r\n')
-
-cluster_info:
-	$(call send_command, '*2\r\n$$7\r\nCLUSTER\r\n$$4\r\ninfo\r\n')
-
-cluster_forget:
-	$(call send_command, '*3\r\n$$7\r\nCLUSTER\r\n$$6\r\nFORGET\r\n$$40\r\n127.0.0.1:6002\r\n')
+cli:
+	@echo '🚀 Starting client in local_test/cli...'
+	@mkdir -p local_test/cli
+	@cd local_test/cli && cargo run --bin cli -- --port $(p)
 
 leader:
 	@echo '🔧 Setting up replication with leader on port $(p) and follower on port $(rp)...'
 	@mkdir -p local_test/leader
 	@echo '🚀 Starting leader node in local_test/leader...'
-	@cd local_test/leader && cargo run -- --port $(p)
+	@cd local_test/leader && cargo run --bin duva -- --port $(p)
 
 leader-tp:
 	@mkdir -p local_test/leader
-	@cd local_test/leader && cargo run -- --port $(p) --topology_path $(tp)
+	@cd local_test/leader && cargo run --bin duva -- --port $(p) --topology_path $(tp)
 
 leader-aof:
 	@echo '🔧 Setting up replication with leader on port $(p) and follower on port $(rp)...'
 	@mkdir -p local_test/leader
 	@echo '🚀 Starting leader node in local_test/leader...'
-	@cd local_test/leader && cargo run -- --port $(p) --append_only true
+	@cd local_test/leader && cargo run --bin duva -- --port $(p) --append_only true
 
 follower:
 	@echo '🚀 Starting follower node in local_test/follower...'
 	@mkdir -p local_test/follower
-	@cd local_test/follower && cargo run -- --port $(rp) --replicaof 127.0.0.1:$(p)
+	@cd local_test/follower && cargo run --bin duva -- --port $(rp) --replicaof 127.0.0.1:$(p)
 
 follower-tp:
 	@mkdir -p local_test/follower
-	@cd local_test/follower && cargo run -- --port $(rp) --replicaof 127.0.0.1:$(p) --topology_path $(tp)
+	@cd local_test/follower && cargo run --bin duva -- --port $(rp) --replicaof 127.0.0.1:$(p) --topology_path $(tp)

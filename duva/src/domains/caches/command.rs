@@ -13,5 +13,6 @@ pub enum CacheCommand {
     IndexGet { key: String, read_idx: u64, callback: oneshot::Sender<QueryIO> },
     Ping,
     StopSentinel,
+    Drop { callback: oneshot::Sender<()> },
     Exists { key: String, callback: oneshot::Sender<bool> },
 }

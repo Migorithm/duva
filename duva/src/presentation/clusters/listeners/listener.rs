@@ -13,11 +13,17 @@ pub(crate) struct ClusterListener {
 
 impl ClusterListener {
     pub fn new(
-        read_connected: ReadConnected,
+        read_connected: OwnedReadHalf,
         cluster_handler: Sender<ClusterCommand>,
         listening_to: PeerIdentifier,
-    ) -> Self {
-        Self { read_connected, cluster_handler, listening_to }
+    ) -> ListeningActorKillTrigger {
+        let listener = Self {
+            read_connected: ReadConnected::new(read_connected),
+            cluster_handler,
+            listening_to,
+        };
+        let (kill_trigger, kill_switch) = tokio::sync::oneshot::channel();
+        ListeningActorKillTrigger::new(kill_trigger, tokio::spawn(listener.listen(kill_switch)))
     }
 
     pub(crate) async fn read_command(&mut self) -> anyhow::Result<Vec<PeerInput>> {
