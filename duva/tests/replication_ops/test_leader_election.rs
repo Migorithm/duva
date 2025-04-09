@@ -25,14 +25,16 @@ async fn test_leader_election() {
     sleep(Duration::from_secs(2));
 
     // THEN
-    let mut handler = ClientStreamHandler::new(follower_p1.bind_addr()).await;
-    let mut handler2 = ClientStreamHandler::new(follower_p2.bind_addr()).await;
-
-    let response1 = handler.send_and_get(&array(vec!["info", "replication"])).await;
-    let response2 = handler2.send_and_get(&array(vec!["info", "replication"])).await;
-
-    // THEN - one of the replicas should become the leader
-    assert!([response1, response2].iter().any(|d| d.contains("role:leader")));
+    let mut flag = false;
+    for f in [&follower_p1, &follower_p2] {
+        let mut handler = ClientStreamHandler::new(f.bind_addr()).await;
+        let response1 = handler.send_and_get(&array(vec!["info", "replication"])).await;
+        if response1.contains("role:leader") {
+            flag = true;
+            break;
+        }
+    }
+    assert!(flag, "No leader found after the first leader was killed");
 }
 
 // ! EDGE case : when last_log_term is not updated, after the election, first write operation succeeds but second one doesn't
@@ -58,17 +60,20 @@ async fn test_set_twice_after_election() {
     // WHEN
     leader_p.kill().unwrap();
     sleep(Duration::from_secs(1));
-    let mut handler = ClientStreamHandler::new(follower_p1.bind_addr()).await;
-    let mut handler2 = ClientStreamHandler::new(follower_p2.bind_addr()).await;
-    let response1 = handler.send_and_get(&array(vec!["info", "replication"])).await;
 
-    if response1.contains("role:leader") {
-        let _ = handler.send_and_get(&array(vec!["set", "1", "2"])).await;
-        let _ = handler.send_and_get(&array(vec!["set", "2", "3"])).await;
-    } else {
-        let _ = handler2.send_and_get(&array(vec!["set", "1", "2"])).await;
-        let _ = handler2.send_and_get(&array(vec!["set", "2", "3"])).await;
-    };
+    let mut flag = false;
+    for f in [&follower_p1, &follower_p2] {
+        let mut handler = ClientStreamHandler::new(f.bind_addr()).await;
+        let res = handler.send_and_get(&array(vec!["info", "replication"])).await;
+        if res.contains("role:leader") {
+            // THEN - one of the replicas should become the leader
+            let _ = handler.send_and_get(&array(vec!["set", "1", "2"])).await;
+            let _ = handler.send_and_get(&array(vec!["set", "2", "3"])).await;
+            flag = true;
+            break;
+        }
+    }
+    assert!(flag, "No leader found after the first leader was killed");
 }
 
 /// following test is to see if election works even after the first election.
@@ -89,41 +94,38 @@ async fn test_leader_election_twice() {
     let processes = &mut [&mut leader_p, &mut follower_p1, &mut follower_p2];
     check_internodes_communication(processes, DEFAULT_HOP_COUNT, TIMEOUT_IN_MILLIS).unwrap();
 
-    // WHEN
+    // !first leader is killed -> election happens
     leader_p.kill().unwrap();
     sleep(Duration::from_secs(1));
-    let mut handler = ClientStreamHandler::new(follower_p1.bind_addr()).await;
-    let mut handler2 = ClientStreamHandler::new(follower_p2.bind_addr()).await;
-    let response1 = handler.send_and_get(&array(vec!["info", "replication"])).await;
 
-    if response1.contains("role:leader") {
-        let follower_p3 = spawn_server_process(
-            &ServerEnv::default().with_leader_bind_addr(follower_p1.bind_addr().into()),
-        );
-        sleep(Duration::from_secs(1));
-        follower_p1.kill().unwrap();
-        sleep(Duration::from_secs(1));
-        let mut handler3 = ClientStreamHandler::new(follower_p3.bind_addr()).await;
+    let mut processes = vec![];
 
-        let response2 = handler2.send_and_get(&array(vec!["info", "replication"])).await;
-        let response3 = handler3.send_and_get(&array(vec!["info", "replication"])).await;
-        // THEN - one of the replicas should become the leader
-
-        assert!([response2, response3].iter().any(|d| d.contains("role:leader")));
-    } else {
-        let follower_p3 = spawn_server_process(
-            &ServerEnv::default().with_leader_bind_addr(follower_p2.bind_addr().into()),
-        );
-        sleep(Duration::from_secs(1));
-        follower_p2.kill().unwrap();
+    for mut f in [follower_p1, follower_p2] {
+        let mut handler = ClientStreamHandler::new(f.bind_addr()).await;
+        let res = handler.send_and_get(&array(vec!["info", "replication"])).await;
+        if !res.contains("role:leader") {
+            processes.push(f);
+            continue;
+        }
+        let new_process =
+            spawn_server_process(&ServerEnv::default().with_leader_bind_addr(f.bind_addr().into()));
         sleep(Duration::from_secs(1));
 
-        let mut handler3 = ClientStreamHandler::new(follower_p3.bind_addr()).await;
+        // WHEN
+        // ! second leader is killed -> election happens
+        f.kill().unwrap();
+        processes.push(new_process);
+    }
+    assert_eq!(processes.len(), 2);
 
-        let response1 = handler.send_and_get(&array(vec!["info", "replication"])).await;
-        let response3 = handler3.send_and_get(&array(vec!["info", "replication"])).await;
-
-        // THEN - one of the replicas should become the leader
-        assert!([response1, response3].iter().any(|d| d.contains("role:leader")));
-    };
+    let mut flag = false;
+    for f in processes.iter() {
+        let mut handler = ClientStreamHandler::new(f.bind_addr()).await;
+        let res = handler.send_and_get(&array(vec!["info", "replication"])).await;
+        if res.contains("role:leader") {
+            flag = true;
+            break;
+        }
+    }
+    assert!(flag, "No leader found after the second leader was killed");
 }
