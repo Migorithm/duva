@@ -9,7 +9,7 @@ use crate::domains::{
 
 use listener::ClusterListener;
 use peer_input::PeerInput;
-use tokio::net::{TcpStream, tcp::OwnedReadHalf};
+use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
 use tokio::select;
 
 pub mod listener;
@@ -20,21 +20,14 @@ use crate::services::interface::TRead;
 use tokio::sync::mpsc::Sender;
 pub(crate) type ReactorKillSwitch = tokio::sync::oneshot::Receiver<()>;
 
-// Listner requires cluster handler to send messages to the cluster actor and cluster actor instead needs kill trigger to stop the listener
-pub(crate) fn create_peer(
+pub(crate) fn start_listen(
+    r: OwnedReadHalf,
     addr: String,
-    stream: TcpStream,
-    kind: PeerState,
     cluster_handler: Sender<ClusterCommand>,
-) -> Peer {
-    let (r, w) = stream.into_split();
+) -> ListeningActorKillTrigger {
     let listening_actor =
         ClusterListener::new(ReadConnected::new(r), cluster_handler, addr.clone().into());
 
     let (kill_trigger, kill_switch) = tokio::sync::oneshot::channel();
-    let listener_kill_trigger: ListeningActorKillTrigger = ListeningActorKillTrigger::new(
-        kill_trigger,
-        tokio::spawn(listening_actor.listen(kill_switch)),
-    );
-    Peer::new(addr, w, kind, listener_kill_trigger)
+    ListeningActorKillTrigger::new(kill_trigger, tokio::spawn(listening_actor.listen(kill_switch)))
 }

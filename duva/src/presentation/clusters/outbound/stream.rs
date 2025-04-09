@@ -7,34 +7,40 @@ use crate::domains::cluster_actors::replication::ReplicationId;
 use crate::domains::cluster_actors::replication::ReplicationState;
 use crate::domains::peers::connected_peer_info::ConnectedPeerInfo;
 use crate::domains::peers::identifier::PeerIdentifier;
+use crate::domains::peers::peer::Peer;
 use crate::domains::peers::peer::PeerState;
 use crate::presentation::clusters::connection_manager::ClusterConnectionManager;
 
-use crate::presentation::clusters::listeners::create_peer;
+use crate::presentation::clusters::listeners::start_listen;
 use crate::services::interface::TRead;
 use crate::services::interface::TWrite;
-use crate::{make_smart_pointer, write_array};
+use crate::write_array;
 use anyhow::Context;
 use tokio::net::TcpStream;
+use tokio::net::tcp::OwnedReadHalf;
+use tokio::net::tcp::OwnedWriteHalf;
 use tokio::sync::mpsc::Sender;
 
 // The following is used only when the node is in follower mode
 pub(crate) struct OutboundStream {
-    pub(crate) stream: TcpStream,
+    r: OwnedReadHalf,
+    w: OwnedWriteHalf,
     pub(crate) my_repl_info: ReplicationState,
 
     connected_node_info: Option<ConnectedPeerInfo>,
     connect_to: PeerIdentifier,
 }
-make_smart_pointer!(OutboundStream, TcpStream => stream);
 
 impl OutboundStream {
     pub(crate) async fn new(
         connect_to: PeerIdentifier,
         my_repl_info: ReplicationState,
     ) -> anyhow::Result<Self> {
+        let stream = TcpStream::connect(&connect_to.cluster_bind_addr()).await?;
+        let (read, write) = stream.into_split();
         Ok(OutboundStream {
-            stream: TcpStream::connect(&connect_to.cluster_bind_addr()).await?,
+            r: read,
+            w: write,
             my_repl_info,
             connected_node_info: None,
             connect_to: connect_to.to_string().into(),
@@ -42,7 +48,7 @@ impl OutboundStream {
     }
     pub async fn initiate_threeway_handshake(mut self, self_port: u16) -> anyhow::Result<Self> {
         // Trigger
-        self.write(write_array!("PING")).await?;
+        self.w.write(write_array!("PING")).await?;
         let mut ok_count = 0;
         let mut connection_info = ConnectedPeerInfo {
             id: Default::default(),
@@ -52,12 +58,12 @@ impl OutboundStream {
         };
 
         loop {
-            let res = self.read_values().await?;
+            let res = self.r.read_values().await?;
             for query in res {
                 match ConnectionResponse::try_from(query)? {
                     ConnectionResponse::PONG => {
                         let msg = write_array!("REPLCONF", "listening-port", self_port.to_string());
-                        self.write(msg).await?
+                        self.w.write(msg).await?
                     },
                     ConnectionResponse::OK => {
                         ok_count += 1;
@@ -73,7 +79,7 @@ impl OutboundStream {
                                 _ => Err(anyhow::anyhow!("Unexpected OK count")),
                             }
                         }?;
-                        self.write(msg).await?
+                        self.w.write(msg).await?
                     },
                     ConnectionResponse::FULLRESYNC { id, repl_id, offset } => {
                         connection_info.replid = ReplicationId::Key(repl_id);
@@ -120,11 +126,13 @@ impl OutboundStream {
             self.connected_node_info.context("Connected node info not found")?;
         let peer_list = connection_info.list_peer_binding_addrs();
 
-        let peer = create_peer(
+        let kill_switch = start_listen(self.r, (*self.connect_to).clone(), cluster_actor_handler);
+
+        let peer = Peer::new(
             (*self.connect_to).clone(),
-            self.stream,
+            self.w,
             PeerState::decide_peer_kind(&self.my_repl_info.replid, &connection_info),
-            cluster_actor_handler,
+            kill_switch,
         );
 
         Ok((ClusterCommand::AddPeer(AddPeer { peer_id: self.connect_to, peer }, sender), peer_list))

@@ -614,7 +614,8 @@ mod test {
     use crate::domains::caches::cache_objects::CacheEntry;
     use crate::domains::caches::command::CacheCommand;
     use crate::domains::cluster_actors::commands::ClusterCommand;
-    use crate::presentation::clusters::listeners::create_peer;
+
+    use crate::presentation::clusters::listeners::start_listen;
 
     use std::ops::Range;
     use std::time::Duration;
@@ -672,16 +673,18 @@ mod test {
 
         for port in num_stream {
             let key = PeerIdentifier::new("localhost", port);
+            let (r, x) = TcpStream::connect(bind_addr).await.unwrap().into_split();
+            let kill_switch = start_listen(r, key.to_string(), cluster_sender.clone());
             actor.members.insert(
                 PeerIdentifier::new("localhost", port),
-                create_peer(
+                Peer::new(
                     key.to_string(),
-                    TcpStream::connect(bind_addr).await.unwrap(),
+                    x,
                     PeerState::Replica {
                         match_index: follower_hwm,
                         replid: ReplicationId::Key("localhost".to_string().into()),
                     },
-                    cluster_sender.clone(),
+                    kill_switch,
                 ),
             );
         }
@@ -1345,13 +1348,15 @@ mod test {
         // followers
         for port in [6379, 6380] {
             let key = PeerIdentifier::new("localhost", port);
+            let (r, x) = TcpStream::connect(bind_addr).await.unwrap().into_split();
+            let kill_switch = start_listen(r, key.to_string(), cluster_sender.clone());
             cluster_actor.members.insert(
                 key.clone(),
-                create_peer(
+                Peer::new(
                     key.to_string(),
-                    TcpStream::connect(bind_addr).await.unwrap(),
+                    x,
                     PeerState::Replica { match_index: 0, replid: repl_id.clone() },
-                    cluster_sender.clone(),
+                    kill_switch,
                 ),
             );
         }
@@ -1363,32 +1368,38 @@ mod test {
         let second_shard_repl_id = uuid::Uuid::now_v7();
 
         // leader for different shard?
+        let (r, x) = TcpStream::connect(bind_addr).await.unwrap().into_split();
+        let kill_switch =
+            start_listen(r, (*second_shard_leader_identifier).clone(), cluster_sender.clone());
+
         cluster_actor.members.insert(
             second_shard_leader_identifier.clone(),
-            create_peer(
+            Peer::new(
                 (*second_shard_leader_identifier).clone(),
-                TcpStream::connect(bind_addr).await.unwrap(),
+                x,
                 PeerState::NonDataPeer {
                     replid: ReplicationId::Key(second_shard_repl_id.to_string()),
                     match_index: 0,
                 },
-                cluster_sender.clone(),
+                kill_switch,
             ),
         );
 
         // follower for different shard
         for port in [2655, 2653] {
             let key = PeerIdentifier::new("localhost", port);
+            let (r, x) = TcpStream::connect(bind_addr).await.unwrap().into_split();
+            let kill_switch = start_listen(r, key.to_string(), cluster_sender.clone());
             cluster_actor.members.insert(
                 key.clone(),
-                create_peer(
+                Peer::new(
                     key.to_string(),
-                    TcpStream::connect(bind_addr_for_second_shard).await.unwrap(),
+                    x,
                     PeerState::NonDataPeer {
                         replid: ReplicationId::Key(second_shard_repl_id.to_string()),
                         match_index: 0,
                     },
-                    cluster_sender.clone(),
+                    kill_switch,
                 ),
             );
         }
@@ -1442,11 +1453,13 @@ mod test {
 
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let bind_addr = listener.local_addr().unwrap();
-        let peer = create_peer(
+        let (r, x) = TcpStream::connect(bind_addr).await.unwrap().into_split();
+        let kill_switch = start_listen(r, "foo".to_string(), cluster_actor.self_handler.clone());
+        let peer = Peer::new(
             "foo".to_string(),
-            TcpStream::connect(bind_addr).await.unwrap(),
+            x,
             PeerState::Replica { match_index: 0, replid: ReplicationId::Key(repl_id.to_string()) },
-            cluster_actor.self_handler.clone(),
+            kill_switch,
         );
 
         // WHEN
