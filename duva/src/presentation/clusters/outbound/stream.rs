@@ -12,7 +12,8 @@ use crate::domains::peers::peer::PeerState;
 use crate::domains::query_parsers::QueryIO;
 use crate::presentation::clusters::connection_manager::ClusterConnectionManager;
 
-use crate::presentation::clusters::listeners::start_listen;
+use crate::presentation::clusters::listeners::listener::ClusterListener;
+
 use crate::services::interface::TRead;
 use crate::services::interface::TWrite;
 use crate::write_array;
@@ -131,7 +132,8 @@ impl OutboundStream {
             self.connected_node_info.context("Connected node info not found")?;
         let peer_list = connection_info.list_peer_binding_addrs();
 
-        let kill_switch = start_listen(self.r, (*self.connect_to).clone(), cluster_actor_handler);
+        let kill_switch =
+            ClusterListener::new(self.r, cluster_actor_handler, self.connect_to.clone());
 
         let peer = Peer::new(
             (*self.connect_to).clone(),

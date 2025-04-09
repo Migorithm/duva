@@ -615,7 +615,7 @@ mod test {
     use crate::domains::caches::command::CacheCommand;
     use crate::domains::cluster_actors::commands::ClusterCommand;
 
-    use crate::presentation::clusters::listeners::start_listen;
+    use crate::presentation::clusters::listeners::listener::ClusterListener;
 
     use std::ops::Range;
     use std::time::Duration;
@@ -674,7 +674,7 @@ mod test {
         for port in num_stream {
             let key = PeerIdentifier::new("localhost", port);
             let (r, x) = TcpStream::connect(bind_addr).await.unwrap().into_split();
-            let kill_switch = start_listen(r, key.to_string(), cluster_sender.clone());
+            let kill_switch = ClusterListener::new(r, cluster_sender.clone(), key.clone());
             actor.members.insert(
                 PeerIdentifier::new("localhost", port),
                 Peer::new(
@@ -1349,7 +1349,7 @@ mod test {
         for port in [6379, 6380] {
             let key = PeerIdentifier::new("localhost", port);
             let (r, x) = TcpStream::connect(bind_addr).await.unwrap().into_split();
-            let kill_switch = start_listen(r, key.to_string(), cluster_sender.clone());
+            let kill_switch = ClusterListener::new(r, cluster_sender.clone(), key.clone());
             cluster_actor.members.insert(
                 key.clone(),
                 Peer::new(
@@ -1370,7 +1370,7 @@ mod test {
         // leader for different shard?
         let (r, x) = TcpStream::connect(bind_addr).await.unwrap().into_split();
         let kill_switch =
-            start_listen(r, (*second_shard_leader_identifier).clone(), cluster_sender.clone());
+            ClusterListener::new(r, cluster_sender.clone(), second_shard_leader_identifier.clone());
 
         cluster_actor.members.insert(
             second_shard_leader_identifier.clone(),
@@ -1389,7 +1389,8 @@ mod test {
         for port in [2655, 2653] {
             let key = PeerIdentifier::new("localhost", port);
             let (r, x) = TcpStream::connect(bind_addr).await.unwrap().into_split();
-            let kill_switch = start_listen(r, key.to_string(), cluster_sender.clone());
+            let kill_switch = ClusterListener::new(r, cluster_sender.clone(), key.clone());
+
             cluster_actor.members.insert(
                 key.clone(),
                 Peer::new(
@@ -1454,7 +1455,13 @@ mod test {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let bind_addr = listener.local_addr().unwrap();
         let (r, x) = TcpStream::connect(bind_addr).await.unwrap().into_split();
-        let kill_switch = start_listen(r, "foo".to_string(), cluster_actor.self_handler.clone());
+
+        let kill_switch = ClusterListener::new(
+            r,
+            cluster_actor.self_handler.clone(),
+            PeerIdentifier("foo".into()),
+        );
+
         let peer = Peer::new(
             "foo".to_string(),
             x,

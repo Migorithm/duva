@@ -11,7 +11,8 @@ use crate::domains::peers::peer::Peer;
 use crate::domains::peers::peer::PeerState;
 use crate::domains::query_parsers::QueryIO;
 use crate::presentation::clusters::communication_manager::ClusterCommunicationManager;
-use crate::presentation::clusters::listeners::start_listen;
+use crate::presentation::clusters::listeners::listener::ClusterListener;
+
 use crate::services::interface::TRead;
 use crate::services::interface::TWrite;
 use std::sync::atomic::Ordering;
@@ -151,7 +152,8 @@ impl InboundStream {
             }
         }
 
-        let kill_switch = start_listen(self.r, (connected_peer_info.id).to_string(), ccm.0);
+        let kill_switch = ClusterListener::new(self.r, ccm.0, connected_peer_info.id.clone());
+
         let peer = Peer::new((connected_peer_info.id).to_string(), self.w, peer_state, kill_switch);
 
         Ok(ClusterCommand::AddPeer(AddPeer { peer_id: connected_peer_info.id, peer }, callback))
