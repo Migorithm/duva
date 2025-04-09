@@ -1,7 +1,10 @@
 use std::{thread::sleep, time::Duration};
 
 use crate::common::{ServerEnv, array, check_internodes_communication, spawn_server_process};
-use duva::clients::ClientStreamHandler;
+use duva::{
+    clients::ClientStreamHandler,
+    domains::cluster_actors::heartbeats::scheduler::LEADER_HEARTBEAT_INTERVAL_MAX,
+};
 
 #[tokio::test]
 async fn test_leader_election() {
@@ -22,7 +25,7 @@ async fn test_leader_election() {
 
     // WHEN
     leader_p.kill().unwrap();
-    sleep(Duration::from_secs(2));
+    sleep(Duration::from_millis(LEADER_HEARTBEAT_INTERVAL_MAX));
 
     // THEN
     let mut flag = false;
@@ -59,7 +62,7 @@ async fn test_set_twice_after_election() {
 
     // WHEN
     leader_p.kill().unwrap();
-    sleep(Duration::from_secs(1));
+    sleep(Duration::from_millis(LEADER_HEARTBEAT_INTERVAL_MAX));
 
     let mut flag = false;
     for f in [&follower_p1, &follower_p2] {
@@ -96,7 +99,7 @@ async fn test_leader_election_twice() {
 
     // !first leader is killed -> election happens
     leader_p.kill().unwrap();
-    sleep(Duration::from_secs(1));
+    sleep(Duration::from_millis(LEADER_HEARTBEAT_INTERVAL_MAX));
 
     let mut processes = vec![];
 
@@ -109,11 +112,12 @@ async fn test_leader_election_twice() {
         }
         let new_process =
             spawn_server_process(&ServerEnv::default().with_leader_bind_addr(f.bind_addr().into()));
-        sleep(Duration::from_secs(1));
+        sleep(Duration::from_millis(LEADER_HEARTBEAT_INTERVAL_MAX));
 
         // WHEN
         // ! second leader is killed -> election happens
         f.kill().unwrap();
+        sleep(Duration::from_millis(LEADER_HEARTBEAT_INTERVAL_MAX));
         processes.push(new_process);
     }
     assert_eq!(processes.len(), 2);

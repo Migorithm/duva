@@ -186,6 +186,8 @@ pub fn run_server_process(env: &ServerEnv) -> TestProcessChild {
     let mut command = Command::new("cargo");
     command.args([
         "run",
+        "-p",
+        "duva",
         "--",
         "--port",
         &env.port.to_string(),
