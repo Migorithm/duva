@@ -18,7 +18,7 @@ use domains::saves::snapshot::snapshot_loader::SnapshotLoader;
 pub use init::Environment;
 use prelude::PeerIdentifier;
 use presentation::clients::ClientController;
-use presentation::clients::controllers::authenticate;
+use presentation::clients::authenticate;
 
 use presentation::clusters::inbound::stream::InboundStream;
 

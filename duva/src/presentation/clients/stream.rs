@@ -8,7 +8,6 @@ use tokio::{
     sync::mpsc::Sender,
 };
 use uuid::Uuid;
-
 pub struct ClientStreamReader {
     pub(crate) r: OwnedReadHalf,
     pub(crate) client_id: Uuid,
