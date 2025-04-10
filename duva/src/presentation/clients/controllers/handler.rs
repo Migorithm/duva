@@ -69,7 +69,6 @@ impl ClientController<Handler> {
             ClientAction::Delete { keys } => {
                 QueryIO::SimpleString(self.cache_manager.route_delete(keys).await?.to_string())
             },
-
             ClientAction::Exists { keys } => {
                 QueryIO::SimpleString(self.cache_manager.route_exists(keys).await?.to_string())
             },
@@ -101,6 +100,10 @@ impl ClientController<Handler> {
                     .await?;
 
                 QueryIO::SimpleString("OK".into())
+            },
+            ClientAction::Role => {
+                let role = self.cluster_communication_manager.role();
+                QueryIO::SimpleString(role.await?)
             },
         };
         Ok(response)

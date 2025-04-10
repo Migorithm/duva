@@ -1,13 +1,10 @@
-use std::collections::VecDeque;
-
-use tokio::sync::mpsc::Sender;
-
 use super::communication_manager::ClusterCommunicationManager;
 use super::outbound::stream::OutboundStream;
-
 use crate::domains::cluster_actors::commands::ClusterCommand;
 use crate::domains::peers::identifier::PeerIdentifier;
 use crate::{InboundStream, make_smart_pointer};
+use std::collections::VecDeque;
+use tokio::sync::mpsc::Sender;
 
 pub(crate) struct ClusterConnectionManager(pub(crate) ClusterCommunicationManager);
 

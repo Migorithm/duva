@@ -11,7 +11,7 @@ use std::sync::atomic::Ordering;
 pub(crate) struct ReplicationState {
     pub(crate) replid: ReplicationId, // The replication ID of the master example: 8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb
     pub(crate) hwm: Arc<AtomicU64>,   // high water mark (commit idx)
-    role: String,
+    pub(crate) role: String,
 
     pub(crate) self_host: String,
     pub(crate) self_port: u16,
@@ -143,6 +143,7 @@ impl ReplicationState {
     pub(super) fn become_follower(&mut self, leader_id: Option<PeerIdentifier>) {
         self.election_state = ElectionState::Follower { voted_for: leader_id };
         self.is_leader_mode = false;
+        self.role = "follower".to_string();
     }
     pub(super) fn become_leader(&mut self) {
         self.role = "leader".to_string();

@@ -22,6 +22,7 @@ pub(crate) enum ClientAction {
     ClusterForget(PeerIdentifier),
     ReplicaOf(PeerIdentifier),
     Exists { keys: Vec<String> },
+    Role,
 }
 
 impl ClientAction {

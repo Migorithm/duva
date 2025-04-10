@@ -44,4 +44,5 @@ pub(crate) enum ClusterCommand {
     VoteElection(RequestVote),
     ApplyElectionVote(RequestVoteReply),
     ClusterHeartBeat(HeartBeatMessage),
+    GetRole(tokio::sync::oneshot::Sender<String>),
 }

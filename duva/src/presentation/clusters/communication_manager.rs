@@ -8,7 +8,6 @@ use crate::{
     },
     make_smart_pointer,
 };
-
 use tokio::sync::mpsc::Sender;
 
 #[derive(Clone)]
@@ -73,6 +72,12 @@ impl ClusterCommunicationManager {
     pub(crate) async fn fetch_logs_for_sync(&self) -> anyhow::Result<SyncLogs> {
         let (tx, rx) = tokio::sync::oneshot::channel();
         self.send(ClusterCommand::FetchCurrentState(tx)).await?;
+        Ok(rx.await?)
+    }
+
+    pub(crate) async fn role(&self) -> anyhow::Result<String> {
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        self.send(ClusterCommand::GetRole(tx)).await?;
         Ok(rx.await?)
     }
 }
