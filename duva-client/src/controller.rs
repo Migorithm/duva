@@ -56,8 +56,14 @@ impl<T> ClientController<T> {
             tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
             println!("Trying to connect to node: {}...", node);
 
-            let Ok((r, w, auth_response)) =
-                ClientController::<T>::authenticate(node, Some(AuthRequest::default())).await
+            let Ok((r, w, auth_response)) = ClientController::<T>::authenticate(
+                node,
+                Some(AuthRequest {
+                    client_id: Some(self.client_id.to_string()),
+                    request_id: self.request_id,
+                }),
+            )
+            .await
             else {
                 continue;
             };
