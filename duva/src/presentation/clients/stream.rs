@@ -1,6 +1,7 @@
 use super::{ClientController, parser::parse_query, request::ClientRequest};
 use crate::{
     domains::{IoError, cluster_actors::session::SessionRequest, query_parsers::QueryIO},
+    prelude::PeerIdentifier,
     services::interface::{TRead, TWrite},
 };
 use tokio::{
@@ -11,9 +12,7 @@ use uuid::Uuid;
 pub struct ClientStreamReader {
     pub(crate) r: OwnedReadHalf,
     pub(crate) client_id: Uuid,
-    pub(crate) sender: Sender<QueryIO>,
 }
-pub struct ClientStreamWriter(pub(crate) OwnedWriteHalf);
 
 impl ClientStreamReader {
     pub(crate) async fn extract_query(&mut self) -> Result<Vec<ClientRequest>, IoError> {
@@ -47,7 +46,11 @@ impl ClientStreamReader {
         Ok((command, values.collect()))
     }
 
-    pub(crate) async fn handle_client_stream(mut self, handler: ClientController) {
+    pub(crate) async fn handle_client_stream(
+        mut self,
+        handler: ClientController,
+        sender: Sender<QueryIO>,
+    ) {
         loop {
             //TODO check on current mode of the node for every query? or get notified when change is made?
 
@@ -60,13 +63,13 @@ impl ClientStreamReader {
                         // ! consensus or handler or commit
                         Err(e) => {
                             eprintln!("[ERROR] {:?}", e);
-                            let _ = self.sender.send(QueryIO::Err(e.to_string())).await;
+                            let _ = sender.send(QueryIO::Err(e.to_string())).await;
                             continue;
                         },
                     };
 
                     for res in results {
-                        if self.sender.send(res).await.is_err() {
+                        if sender.send(res).await.is_err() {
                             break;
                         }
                     }
@@ -83,12 +86,16 @@ impl ClientStreamReader {
     }
 }
 
+pub struct ClientStreamWriter(pub(crate) OwnedWriteHalf);
 impl ClientStreamWriter {
     pub(crate) async fn write(&mut self, query_io: QueryIO) -> Result<(), IoError> {
         self.0.write(query_io).await
     }
 
-    pub(crate) fn run(mut self) -> Sender<QueryIO> {
+    pub(crate) fn run(
+        mut self,
+        mut topology_observer: tokio::sync::broadcast::Receiver<Vec<PeerIdentifier>>,
+    ) -> Sender<QueryIO> {
         let (tx, mut rx) = tokio::sync::mpsc::channel(100);
         tokio::spawn(async move {
             while let Some(data) = rx.recv().await {
@@ -96,6 +103,15 @@ impl ClientStreamWriter {
                     if e.should_break() {
                         break;
                     }
+                }
+            }
+        });
+
+        tokio::spawn({
+            let tx = tx.clone();
+            async move {
+                while let Ok(peers) = topology_observer.recv().await {
+                    let _ = tx.send(QueryIO::TopologyChange(peers)).await;
                 }
             }
         });

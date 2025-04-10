@@ -5,7 +5,7 @@ use super::{
     replication::{HeartBeatMessage, ReplicationId, ReplicationState},
     session::SessionRequest,
 };
-use crate::domains::append_only_files::WriteOperation;
+use crate::domains::{append_only_files::WriteOperation, query_parsers::QueryIO};
 pub(crate) use election::*;
 pub(crate) use types::*;
 pub(crate) use write_con::*;
@@ -45,4 +45,7 @@ pub(crate) enum ClusterCommand {
     ApplyElectionVote(RequestVoteReply),
     ClusterHeartBeat(HeartBeatMessage),
     GetRole(tokio::sync::oneshot::Sender<String>),
+    RegisterClient(
+        tokio::sync::oneshot::Sender<tokio::sync::broadcast::Receiver<Vec<PeerIdentifier>>>,
+    ),
 }

@@ -127,14 +127,19 @@ impl StartUpFacade {
 
             // TODO implement ROLE command
             let is_leader = self.registry.cluster_communication_manager().role().await? == "leader";
-            let Ok(client_stream) = authenticate(stream, peers, is_leader).await else {
+            let Ok((reader, writer)) = authenticate(stream, peers, is_leader).await else {
                 eprintln!("[ERROR] Failed to authenticate client stream");
                 continue;
             };
 
-            conn_handlers.push(tokio::spawn(
-                client_stream.handle_client_stream(ClientController::new(self.registry.clone())),
-            ));
+            let topology_observer =
+                self.registry.cluster_communication_manager().register_client().await?;
+            let write_handler = writer.run(topology_observer);
+
+            conn_handlers.push(tokio::spawn(reader.handle_client_stream(
+                ClientController::new(self.registry.clone()),
+                write_handler.clone(),
+            )));
         }
 
         Ok(())

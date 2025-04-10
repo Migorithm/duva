@@ -5,6 +5,7 @@ use crate::{
             replication::ReplicationState,
         },
         peers::identifier::PeerIdentifier,
+        query_parsers::QueryIO,
     },
     make_smart_pointer,
 };
@@ -78,6 +79,14 @@ impl ClusterCommunicationManager {
     pub(crate) async fn role(&self) -> anyhow::Result<String> {
         let (tx, rx) = tokio::sync::oneshot::channel();
         self.send(ClusterCommand::GetRole(tx)).await?;
+        Ok(rx.await?)
+    }
+
+    pub(crate) async fn register_client(
+        &self,
+    ) -> anyhow::Result<tokio::sync::broadcast::Receiver<Vec<PeerIdentifier>>> {
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        self.send(ClusterCommand::RegisterClient(tx)).await;
         Ok(rx.await?)
     }
 }

@@ -13,7 +13,7 @@ pub(crate) async fn authenticate(
     mut stream: TcpStream,
     peers: Vec<PeerIdentifier>,
     is_leader: bool,
-) -> Result<ClientStreamReader, IoError> {
+) -> Result<(ClientStreamReader, ClientStreamWriter), IoError> {
     let auth_req: AuthRequest = stream.deserialized_read().await?;
 
     let client_id = match auth_req.client_id {
@@ -34,8 +34,8 @@ pub(crate) async fn authenticate(
         .await?;
 
     let (r, w) = stream.into_split();
-    let sender = ClientStreamWriter(w).run();
-    let reader = ClientStreamReader { r, client_id, sender };
+    let reader = ClientStreamReader { r, client_id };
+    let sender = ClientStreamWriter(w);
 
-    Ok(reader)
+    Ok((reader, sender))
 }

@@ -34,6 +34,7 @@ pub struct ClusterActor {
     pub(crate) self_handler: tokio::sync::mpsc::Sender<ClusterCommand>,
     pub(crate) heartbeat_scheduler: HeartBeatScheduler,
     pub(crate) topology_path: String,
+    pub(crate) node_change_broadcast: tokio::sync::broadcast::Sender<Vec<PeerIdentifier>>,
 }
 
 impl ClusterActor {
@@ -50,6 +51,8 @@ impl ClusterActor {
             heartbeat_interval_in_mills,
         );
 
+        let (tx, _) = tokio::sync::broadcast::channel::<Vec<PeerIdentifier>>(100);
+
         Self {
             heartbeat_scheduler,
             replication: init_repl_info,
@@ -59,6 +62,7 @@ impl ClusterActor {
             members: BTreeMap::new(),
             consensus_tracker: LogConsensusTracker::default(),
             topology_path,
+            node_change_broadcast: tx,
         }
     }
 
@@ -614,9 +618,7 @@ mod test {
     use crate::domains::caches::cache_objects::CacheEntry;
     use crate::domains::caches::command::CacheCommand;
     use crate::domains::cluster_actors::commands::ClusterCommand;
-
     use crate::presentation::clusters::listeners::listener::ClusterListener;
-
     use std::ops::Range;
     use std::time::Duration;
     use tokio::net::TcpListener;
