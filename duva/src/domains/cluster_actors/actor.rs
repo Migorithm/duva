@@ -125,6 +125,7 @@ impl ClusterActor {
         if let Some(existing_peer) = self.members.insert(peer_addr, peer) {
             existing_peer.kill().await;
         }
+        self.node_change_broadcast.send(self.members.keys().cloned().collect()).ok();
     }
     pub(crate) async fn remove_peer(&mut self, peer_addr: &PeerIdentifier) -> Option<()> {
         if let Some(peer) = self.members.remove(peer_addr) {

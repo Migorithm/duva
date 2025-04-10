@@ -111,6 +111,7 @@ impl ClientStreamWriter {
             let tx = tx.clone();
             async move {
                 while let Ok(peers) = topology_observer.recv().await {
+                    println!("[INFO] Topology change: {:?}", peers);
                     let _ = tx.send(QueryIO::TopologyChange(peers)).await;
                 }
             }
