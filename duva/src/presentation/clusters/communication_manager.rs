@@ -82,11 +82,11 @@ impl ClusterCommunicationManager {
         Ok(rx.await?)
     }
 
-    pub(crate) async fn register_client(
+    pub(crate) async fn subscribe_topology_change(
         &self,
     ) -> anyhow::Result<tokio::sync::broadcast::Receiver<Vec<PeerIdentifier>>> {
         let (tx, rx) = tokio::sync::oneshot::channel();
-        self.send(ClusterCommand::RegisterClient(tx)).await;
+        let _ = self.send(ClusterCommand::SubscribeToTopologyChange(tx)).await;
         Ok(rx.await?)
     }
 }
