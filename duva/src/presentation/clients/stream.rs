@@ -6,19 +6,25 @@ use crate::{
         IoError, cluster_actors::session::SessionRequest, peers::identifier::PeerIdentifier,
         query_parsers::QueryIO,
     },
-    make_smart_pointer,
-    services::interface::TRead,
+    services::interface::{TRead, TWrite},
 };
 
-use tokio::net::TcpStream;
+use tokio::net::{
+    TcpStream,
+    tcp::{OwnedReadHalf, OwnedWriteHalf},
+};
 use uuid::Uuid;
 
 pub struct ClientStream {
-    pub(crate) stream: TcpStream,
-    pub(crate) client_id: Uuid,
+    pub(crate) r: ClientReader,
+    pub(crate) w: ClientWriter,
 }
 
-make_smart_pointer!(ClientStream, TcpStream=>stream);
+pub struct ClientReader {
+    pub(crate) r: OwnedReadHalf,
+    pub(crate) client_id: Uuid,
+}
+pub struct ClientWriter(pub(crate) OwnedWriteHalf);
 
 impl ClientStream {
     pub(crate) async fn authenticate(
@@ -45,11 +51,14 @@ impl ClientStream {
             })
             .await?;
 
-        Ok(Self { stream, client_id })
+        let (r, w) = stream.into_split();
+        Ok(Self { r: ClientReader { r, client_id }, w: ClientWriter(w) })
     }
+}
 
+impl ClientReader {
     pub(crate) async fn extract_query(&mut self) -> Result<Vec<ClientRequest>, IoError> {
-        let query_ios = self.read_values().await?;
+        let query_ios = self.r.read_values().await?;
 
         query_ios
             .into_iter()
@@ -62,7 +71,7 @@ impl ClientStream {
                 QueryIO::SessionRequest { request_id, value } => {
                     let (command, args) = Self::extract_command_args(value)?;
                     parse_query(
-                        Some(SessionRequest::new(request_id, self.client_id())),
+                        Some(SessionRequest::new(request_id, self.client_id)),
                         command.to_lowercase(),
                         args,
                     )
@@ -72,15 +81,16 @@ impl ClientStream {
             })
             .collect()
     }
-
     fn extract_command_args(values: Vec<QueryIO>) -> Result<(String, Vec<String>), IoError> {
         let mut values = values.into_iter().flat_map(|v| v.unpack_single_entry::<String>());
         let command =
             values.next().ok_or(IoError::Custom("Unexpected command format".to_string()))?;
         Ok((command, values.collect()))
     }
+}
 
-    fn client_id(&self) -> uuid::Uuid {
-        self.client_id
+impl ClientWriter {
+    pub(crate) async fn write(&mut self, query_io: QueryIO) -> Result<(), IoError> {
+        self.0.write(query_io).await
     }
 }

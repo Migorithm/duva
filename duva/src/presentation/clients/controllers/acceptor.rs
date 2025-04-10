@@ -26,7 +26,7 @@ impl ClientController<Acceptor> {
         loop {
             //TODO check on current mode of the node for every query? or get notified when change is made?
 
-            match stream.extract_query().await {
+            match stream.r.extract_query().await {
                 Ok(requests) => {
                     let results = match handler.maybe_consensus_then_execute(requests).await {
                         Ok(results) => results,
@@ -35,13 +35,13 @@ impl ClientController<Acceptor> {
                         // ! consensus or handler or commit
                         Err(e) => {
                             eprintln!("[ERROR] {:?}", e);
-                            let _ = stream.write(QueryIO::Err(e.to_string())).await;
+                            let _ = stream.w.write(QueryIO::Err(e.to_string())).await;
                             continue;
                         },
                     };
 
                     for res in results {
-                        if let Err(e) = stream.write(res).await {
+                        if let Err(e) = stream.w.write(res).await {
                             if e.should_break() {
                                 break;
                             }
