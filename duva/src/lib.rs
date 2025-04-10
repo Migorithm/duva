@@ -6,7 +6,7 @@ pub mod macros;
 pub mod presentation;
 pub mod services;
 use actor_registry::ActorRegistry;
-use anyhow::{Context, Result};
+use anyhow::Result;
 use domains::IoError;
 use domains::append_only_files::interfaces::TWriteAheadLog;
 use domains::caches::cache_manager::CacheManager;
@@ -16,6 +16,7 @@ use domains::cluster_actors::replication::ReplicationState;
 use domains::config_actors::config_manager::ConfigManager;
 use domains::saves::snapshot::snapshot_loader::SnapshotLoader;
 pub use init::Environment;
+use prelude::PeerIdentifier;
 use presentation::clients::{ClientController, stream::ClientStream};
 use presentation::clusters::inbound::stream::InboundStream;
 use services::interface::TSerdeReadWrite;
@@ -39,12 +40,12 @@ pub struct StartUpFacade {
 make_smart_pointer!(StartUpFacade, ActorRegistry => registry);
 
 impl StartUpFacade {
-    pub fn new(config_manager: ConfigManager, env: Environment, wal: impl TWriteAheadLog) -> Self {
-        let replication_state = ReplicationState::new(env.replicaof, &env.host, env.port);
+    pub fn new(config_manager: ConfigManager, env: &Environment, wal: impl TWriteAheadLog) -> Self {
+        let replication_state = ReplicationState::new(env.seed_server.clone(), &env.host, env.port);
         let cache_manager = CacheManager::run_cache_actors(replication_state.hwm.clone());
         let cluster_actor_handler = ClusterActor::run(
             env.ttl_mills,
-            env.topology_path,
+            env.topology_path.clone(),
             env.hf_mills,
             replication_state,
             cache_manager.clone(),
@@ -56,14 +57,19 @@ impl StartUpFacade {
         StartUpFacade { registry }
     }
 
-    pub async fn run(self) -> Result<()> {
+    pub async fn run(self, seed_server: Option<PeerIdentifier>) -> Result<()> {
         tokio::spawn(Self::start_accepting_peer_connections(
             self.config_manager.peer_bind_addr(),
             self.registry.clone(),
         ));
 
         self.initialize_with_snapshot().await?;
-        let _ = self.discover_peers().await;
+        if let Some(seed_server) = seed_server {
+            self.registry
+                .cluster_connection_manager()
+                .discover_cluster(self.config_manager.port, seed_server)
+                .await?;
+        }
         self.start_receiving_client_streams().await
     }
 
@@ -107,25 +113,6 @@ impl StartUpFacade {
                 },
             }
         }
-    }
-
-    // #1 Check if it has persisted cluster node info locally, if it does and finds some other nodes, try connect
-    // #2 Otherwise, check if this node is a follower and connect to the leader
-    async fn discover_peers(&self) -> anyhow::Result<()> {
-        let connect_to = self
-            .registry
-            .cluster_communication_manager()
-            .replication_info()
-            .await?
-            .leader_bind_addr()
-            .context("No leader bind address found")?;
-
-        self.registry
-            .cluster_connection_manager()
-            .discover_cluster(self.config_manager.port, connect_to)
-            .await?;
-
-        Ok(())
     }
 
     /// Run while loop accepting stream and if the sentinel is received, abort the tasks

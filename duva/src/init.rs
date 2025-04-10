@@ -1,7 +1,7 @@
-use crate::env_var;
+use crate::{env_var, prelude::PeerIdentifier};
 
 pub struct Environment {
-    pub replicaof: Option<(String, String)>,
+    pub seed_server: Option<PeerIdentifier>,
     pub dir: String,
     pub dbfilename: String,
     pub port: u16,
@@ -29,16 +29,12 @@ impl Environment {
                 tpp = "duva.tp".to_string() // topology path
             }
         );
-        let replicaof = replicaof.map(|host_port| {
-            host_port
-                .split_once(':')
-                .map(|(a, b)| (a.to_string(), b.to_string()))
-                .into_iter()
-                .collect::<(_, _)>()
+        let replicaof = replicaof.and_then(|host_and_port| {
+            host_and_port.split_once(':').map(|(host, port)| format!("{}:{}", host, port).into())
         });
 
         Self {
-            replicaof,
+            seed_server: replicaof,
             dir,
             dbfilename,
             port,
