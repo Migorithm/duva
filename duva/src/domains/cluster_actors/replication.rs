@@ -15,9 +15,6 @@ pub(crate) struct ReplicationState {
 
     pub(crate) self_host: String,
     pub(crate) self_port: u16,
-    //If the instance is a replica, these additional fields are provided:
-    pub(crate) leader_host: Option<String>,
-    pub(crate) leader_port: Option<u16>,
 
     // * state is shared among peers
     pub(crate) term: u64,
@@ -28,11 +25,7 @@ pub(crate) struct ReplicationState {
 }
 
 impl ReplicationState {
-    pub(crate) fn new(
-        replicaof: Option<(String, String)>,
-        self_host: &str,
-        self_port: u16,
-    ) -> Self {
+    pub(crate) fn new(replicaof: Option<PeerIdentifier>, self_host: &str, self_port: u16) -> Self {
         let replid = if replicaof.is_none() {
             ReplicationId::Key(uuid::Uuid::now_v7().to_string())
         } else {
@@ -46,9 +39,6 @@ impl ReplicationState {
             role,
             replid,
             hwm: Arc::new(0.into()),
-            leader_host: replicaof.as_ref().cloned().map(|(host, _)| host),
-            leader_port: replicaof
-                .map(|(_, port)| port.parse().expect("Invalid port number given")),
             term: 0,
             self_host: self_host.to_string(),
             self_port,
@@ -74,10 +64,6 @@ impl ReplicationState {
             format!("high_watermark:{}", self.hwm.load(Ordering::Relaxed)),
             format!("self_identifier:{}", self.self_identifier()),
         ]
-    }
-
-    pub(crate) fn leader_bind_addr(&self) -> Option<PeerIdentifier> {
-        Some(format!("{}:{}", self.leader_host.as_ref()?, self.leader_port?).into())
     }
 
     pub(crate) fn in_ban_list(&self, peer_identifier: &PeerIdentifier) -> bool {
@@ -147,8 +133,6 @@ impl ReplicationState {
     }
     pub(super) fn become_leader(&mut self) {
         self.role = "leader".to_string();
-        self.leader_host = None;
-        self.leader_port = None;
         self.is_leader_mode = true;
         self.election_state.become_leader();
     }
