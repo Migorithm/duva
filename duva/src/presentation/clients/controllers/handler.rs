@@ -1,14 +1,13 @@
-use std::sync::atomic::Ordering;
-
 use crate::{
     domains::cluster_actors::commands::ConsensusClientResponse,
     presentation::clients::request::ClientRequest,
     presentation::clusters::connection_manager::ClusterConnectionManager,
 };
+use std::sync::atomic::Ordering;
 
 use super::*;
 
-impl ClientController<Handler> {
+impl ClientController {
     pub(crate) async fn handle(
         &self,
         cmd: ClientAction,
@@ -110,7 +109,7 @@ impl ClientController<Handler> {
     }
 
     // Manage the client requests & consensus
-    pub(super) async fn maybe_consensus_then_execute(
+    pub(crate) async fn maybe_consensus_then_execute(
         &self,
         mut requests: Vec<ClientRequest>,
     ) -> anyhow::Result<Vec<QueryIO>> {
@@ -128,7 +127,7 @@ impl ClientController<Handler> {
         Ok(results)
     }
 
-    pub(super) async fn maybe_consensus(
+    pub(crate) async fn maybe_consensus(
         &self,
         request: &mut ClientRequest,
     ) -> anyhow::Result<Option<u64>> {

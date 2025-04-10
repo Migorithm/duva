@@ -17,9 +17,10 @@ use domains::config_actors::config_manager::ConfigManager;
 use domains::saves::snapshot::snapshot_loader::SnapshotLoader;
 pub use init::Environment;
 use prelude::PeerIdentifier;
-use presentation::clients::{ClientController, stream::ClientStream};
+use presentation::clients::ClientController;
+use presentation::clients::controllers::authenticate;
+
 use presentation::clusters::inbound::stream::InboundStream;
-use services::interface::TSerdeReadWrite;
 
 use tokio::net::TcpListener;
 
@@ -126,14 +127,13 @@ impl StartUpFacade {
 
             // TODO implement ROLE command
             let is_leader = self.registry.cluster_communication_manager().role().await? == "leader";
-            let Ok(client_stream) = ClientStream::authenticate(stream, peers, is_leader).await
-            else {
+            let Ok(client_stream) = authenticate(stream, peers, is_leader).await else {
                 eprintln!("[ERROR] Failed to authenticate client stream");
                 continue;
             };
 
             conn_handlers.push(tokio::spawn(
-                ClientController::new(self.registry.clone()).handle_client_stream(client_stream),
+                client_stream.handle_client_stream(ClientController::new(self.registry.clone())),
             ));
         }
 

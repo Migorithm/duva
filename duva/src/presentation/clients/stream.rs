@@ -1,62 +1,22 @@
-use super::{parser::parse_query, request::ClientRequest};
+use super::{ClientController, parser::parse_query, request::ClientRequest};
 use crate::{
-    TSerdeReadWrite,
-    clients::authentications::{AuthRequest, AuthResponse},
-    domains::{
-        IoError, cluster_actors::session::SessionRequest, peers::identifier::PeerIdentifier,
-        query_parsers::QueryIO,
-    },
+    domains::{IoError, cluster_actors::session::SessionRequest, query_parsers::QueryIO},
     services::interface::{TRead, TWrite},
 };
-
-use tokio::net::{
-    TcpStream,
-    tcp::{OwnedReadHalf, OwnedWriteHalf},
+use tokio::{
+    net::tcp::{OwnedReadHalf, OwnedWriteHalf},
+    sync::mpsc::Sender,
 };
 use uuid::Uuid;
 
-pub struct ClientStream {
-    pub(crate) r: ClientReader,
-    pub(crate) w: ClientWriter,
-}
-
-pub struct ClientReader {
+pub struct ClientStreamReader {
     pub(crate) r: OwnedReadHalf,
     pub(crate) client_id: Uuid,
+    pub(crate) sender: Sender<QueryIO>,
 }
-pub struct ClientWriter(pub(crate) OwnedWriteHalf);
+pub struct ClientStreamWriter(pub(crate) OwnedWriteHalf);
 
-impl ClientStream {
-    pub(crate) async fn authenticate(
-        mut stream: TcpStream,
-        peers: Vec<PeerIdentifier>,
-        is_leader: bool,
-    ) -> Result<Self, IoError> {
-        let auth_req: AuthRequest = stream.deserialized_read().await?;
-
-        let client_id = match auth_req.client_id {
-            Some(client_id) => {
-                // TODO check if the given client_id has been tracked
-                Uuid::parse_str(&client_id).map_err(|e| IoError::Custom(e.to_string()))?
-            },
-            None => Uuid::now_v7(),
-        };
-
-        stream
-            .serialized_write(AuthResponse {
-                client_id: client_id.to_string(),
-                request_id: auth_req.request_id,
-                cluster_nodes: peers,
-                connected_to_leader: is_leader,
-            })
-            .await?;
-
-        let (r, w) = stream.into_split();
-        Ok(Self { r: ClientReader { r, client_id }, w: ClientWriter(w) })
-    }
-}
-
-impl ClientReader {
+impl ClientStreamReader {
     pub(crate) async fn extract_query(&mut self) -> Result<Vec<ClientRequest>, IoError> {
         let query_ios = self.r.read_values().await?;
 
@@ -87,10 +47,59 @@ impl ClientReader {
             values.next().ok_or(IoError::Custom("Unexpected command format".to_string()))?;
         Ok((command, values.collect()))
     }
+
+    pub(crate) async fn handle_client_stream(mut self, handler: ClientController) {
+        loop {
+            //TODO check on current mode of the node for every query? or get notified when change is made?
+
+            match self.extract_query().await {
+                Ok(requests) => {
+                    let results = match handler.maybe_consensus_then_execute(requests).await {
+                        Ok(results) => results,
+
+                        // ! One of the following errors can be returned:
+                        // ! consensus or handler or commit
+                        Err(e) => {
+                            eprintln!("[ERROR] {:?}", e);
+                            let _ = self.sender.send(QueryIO::Err(e.to_string())).await;
+                            continue;
+                        },
+                    };
+
+                    for res in results {
+                        if self.sender.send(res).await.is_err() {
+                            break;
+                        }
+                    }
+                },
+
+                Err(err) => {
+                    if err.should_break() {
+                        eprintln!("[INFO] {}", err);
+                        return;
+                    }
+                },
+            }
+        }
+    }
 }
 
-impl ClientWriter {
+impl ClientStreamWriter {
     pub(crate) async fn write(&mut self, query_io: QueryIO) -> Result<(), IoError> {
         self.0.write(query_io).await
+    }
+
+    pub(crate) fn run(mut self) -> Sender<QueryIO> {
+        let (tx, mut rx) = tokio::sync::mpsc::channel(100);
+        tokio::spawn(async move {
+            while let Some(data) = rx.recv().await {
+                if let Err(e) = self.write(data).await {
+                    if e.should_break() {
+                        break;
+                    }
+                }
+            }
+        });
+        tx
     }
 }
