@@ -5,7 +5,7 @@ use super::{
     replication::{HeartBeatMessage, ReplicationId, ReplicationState},
     session::SessionRequest,
 };
-use crate::domains::{append_only_files::WriteOperation, query_parsers::QueryIO};
+use crate::domains::append_only_files::WriteOperation;
 pub(crate) use election::*;
 pub(crate) use types::*;
 pub(crate) use write_con::*;

@@ -1,22 +1,27 @@
 use crate::command::ClientInputKind;
-use duva::domains::{
-    IoError,
-    query_parsers::query_io::{QueryIO, deserialize},
-};
 use duva::prelude::BytesMut;
 use duva::prelude::PeerIdentifier;
 use duva::prelude::tokio;
 use duva::prelude::tokio::io::AsyncReadExt;
 use duva::prelude::tokio::io::AsyncWriteExt;
 use duva::prelude::tokio::net::TcpStream;
+use duva::prelude::tokio::net::tcp::OwnedWriteHalf;
 use duva::prelude::uuid::Uuid;
 use duva::{
     clients::authentications::{AuthRequest, AuthResponse},
     services::interface::{TRead, TSerdeReadWrite},
 };
+use duva::{
+    domains::{
+        IoError,
+        query_parsers::query_io::{QueryIO, deserialize},
+    },
+    prelude::tokio::net::tcp::OwnedReadHalf,
+};
 
 pub struct ClientController<T> {
-    stream: TcpStream,
+    r: ReadBuffer,
+    w: WriteBuffer,
     client_id: Uuid,
     request_id: u64,
     latest_known_index: u64,
@@ -24,12 +29,19 @@ pub struct ClientController<T> {
     pub target: T,
 }
 
+pub struct ReadBuffer(OwnedReadHalf);
+pub struct WriteBuffer(OwnedWriteHalf);
+
 impl<T> ClientController<T> {
     pub async fn new(editor: T, server_addr: &str) -> Self {
-        let (stream, mut auth_response) = ClientController::<T>::authenticate(server_addr).await;
+        let (r, w, mut auth_response) =
+            ClientController::<T>::authenticate(server_addr, None).await.unwrap();
+
         auth_response.cluster_nodes.push(server_addr.to_string().into());
+
         Self {
-            stream,
+            r,
+            w,
             client_id: Uuid::parse_str(&auth_response.client_id).unwrap(),
             target: editor,
             latest_known_index: 0,
@@ -44,22 +56,16 @@ impl<T> ClientController<T> {
             tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
             println!("Trying to connect to node: {}...", node);
 
-            let Ok(mut stream) = TcpStream::connect(node.as_str()).await else {
+            let Ok((r, w, auth_response)) =
+                ClientController::<T>::authenticate(node, Some(AuthRequest::default())).await
+            else {
                 continue;
             };
 
-            stream
-                .serialized_write(AuthRequest {
-                    client_id: Some(self.client_id.to_string()),
-                    request_id: self.request_id,
-                })
-                .await
-                .unwrap(); // client_id not exist
-
-            let auth_response: AuthResponse = stream.deserialized_read().await.unwrap();
             if auth_response.connected_to_leader {
                 println!("Connected to a new leader: {}", node);
-                self.stream = stream;
+                self.r = r;
+                self.w = w;
                 self.cluster_nodes = auth_response.cluster_nodes;
                 return Ok(());
             }
@@ -67,13 +73,17 @@ impl<T> ClientController<T> {
         Err("No leader found in the cluster".to_string())
     }
 
-    async fn authenticate(server_addr: &str) -> (TcpStream, AuthResponse) {
-        let mut stream = TcpStream::connect(server_addr).await.unwrap();
-        stream.serialized_write(AuthRequest::default()).await.unwrap(); // client_id not exist
+    async fn authenticate(
+        server_addr: &str,
+        auth_request: Option<AuthRequest>,
+    ) -> Result<(ReadBuffer, WriteBuffer, AuthResponse), IoError> {
+        let mut stream =
+            TcpStream::connect(server_addr).await.map_err(|e| IoError::ConnectionRefused)?;
+        stream.serialized_write(auth_request.unwrap_or(AuthRequest::default())).await.unwrap(); // client_id not exist
 
-        let auth_response: AuthResponse = stream.deserialized_read().await.unwrap();
-
-        (stream, auth_response)
+        let auth_response: AuthResponse = stream.deserialized_read().await?;
+        let (r, w) = stream.into_split();
+        Ok((ReadBuffer(r), WriteBuffer(w), auth_response))
     }
 
     pub fn build_command(&self, cmd: &str, args: Vec<&str>) -> String {
@@ -101,17 +111,17 @@ impl<T> ClientController<T> {
 
     async fn try_send_and_get(&mut self, cmd: &[u8]) -> Result<QueryIO, String> {
         // TODO input validation required otherwise, it hangs
-        if let Err(e) = self.stream.write_all(cmd).await {
+        if let Err(e) = self.w.0.write_all(cmd).await {
             return Err(format!("Failed to send command: {}", e));
         }
 
-        if let Err(e) = self.stream.flush().await {
+        if let Err(e) = self.w.0.flush().await {
             return Err(format!("Failed to flush stream: {}", e));
         }
 
         let mut response = BytesMut::with_capacity(512);
 
-        if let Err(e) = self.stream.read_bytes(&mut response).await {
+        if let Err(e) = self.r.0.read_bytes(&mut response).await {
             match e {
                 IoError::ConnectionAborted | IoError::ConnectionReset => {
                     self.discover_leader().await?;
@@ -146,7 +156,7 @@ impl<T> ClientController<T> {
             loop {
                 match tokio::time::timeout(
                     std::time::Duration::from_millis(10),
-                    self.stream.read(&mut buffer),
+                    self.r.0.read(&mut buffer),
                 )
                 .await
                 {
