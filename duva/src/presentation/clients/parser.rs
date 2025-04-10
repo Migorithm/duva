@@ -52,6 +52,7 @@ pub fn parse_query(
         ("replicaof", [host, port]) => {
             ClientAction::ReplicaOf(PeerIdentifier::new(host, port.parse()?))
         },
+        ("role", []) => ClientAction::Role,
         _ => return Err(anyhow::anyhow!("Invalid command")),
     };
 

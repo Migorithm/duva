@@ -46,7 +46,6 @@ impl ClusterActor {
                     // ! The following may need to be moved else where to avoid blocking the main loop
                     self.remove_idle_peers().await;
                 },
-
                 ClusterCommand::ClusterHeartBeat(mut heartbeat) => {
                     if self.replication.in_ban_list(&heartbeat.from) {
                         continue;
@@ -71,8 +70,6 @@ impl ClusterActor {
                     };
                     self.req_consensus(&mut logger, log, callback, session_req).await;
                 },
-
-                // Follower receives heartbeat from leader
                 ClusterCommand::AppendEntriesRPC(heartbeat) => {
                     if self.check_term_outdated(&heartbeat, &logger).await {
                         continue;
@@ -82,7 +79,6 @@ impl ClusterActor {
                     self.maybe_update_term(heartbeat.term);
                     self.replicate(&mut logger, heartbeat, &cache_manager).await;
                 },
-
                 ClusterCommand::ReplicationResponse(repl_res) => {
                     if !repl_res.is_granted() {
                         self.handle_repl_rejection(repl_res).await;
@@ -123,6 +119,9 @@ impl ClusterActor {
                     cache_manager.drop_cache().await;
                     self.replicaof(peer_addr).await;
                     let _ = callback.send(());
+                },
+                ClusterCommand::GetRole(sender) => {
+                    let _ = sender.send(self.replication.role.clone());
                 },
             }
         }
