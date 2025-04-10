@@ -124,7 +124,7 @@ impl ClusterActor {
                     let _ = sender.send(self.replication.role.clone());
                 },
                 ClusterCommand::SubscribeToTopologyChange(sender) => {
-                    sender.send(self.node_change_broadcast.subscribe());
+                    let _ = sender.send(self.node_change_broadcast.subscribe());
                 },
             }
         }

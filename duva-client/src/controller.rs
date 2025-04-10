@@ -97,7 +97,6 @@ impl<T> ClientController<T> {
         for arg in args {
             command.push_str(&format!("${}\r\n{}\r\n", arg.len(), arg));
         }
-
         command
     }
 
