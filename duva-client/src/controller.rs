@@ -179,7 +179,7 @@ impl<T> ClientController<T> {
     ) -> Result<(), String> {
         use ClientInputKind::*;
         match input {
-            Ping | Get | IndexGet | Echo | Config | Keys | Save | Info | ClusterForget
+            Ping | Get | IndexGet | Echo | Config | Keys | Save | Info | ClusterForget | Role
             | ReplicaOf | ClusterInfo => match query_io {
                 QueryIO::Null => println!("(nil)"),
                 QueryIO::SimpleString(value) => println!("{value}"),

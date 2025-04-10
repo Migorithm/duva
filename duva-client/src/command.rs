@@ -89,6 +89,12 @@ pub fn take_input(action: &str, args: &[&str]) -> Result<ClientInputKind, String
             };
             Ok(ClientInputKind::ReplicaOf)
         },
+        "ROLE" => {
+            if !args.is_empty() {
+                return Err("(error) ERR wrong number of argument for 'role' command".to_string());
+            }
+            Ok(ClientInputKind::Role)
+        },
 
         // Add other commands as needed
         unknown_cmd => {
@@ -113,4 +119,5 @@ pub enum ClientInputKind {
     ClusterForget,
     Exists,
     ReplicaOf,
+    Role,
 }
