@@ -6,6 +6,7 @@ use duva::prelude::tokio::io::AsyncReadExt;
 use duva::prelude::tokio::io::AsyncWriteExt;
 use duva::prelude::tokio::net::TcpStream;
 use duva::prelude::tokio::net::tcp::OwnedWriteHalf;
+
 use duva::prelude::uuid::Uuid;
 use duva::{
     clients::authentications::{AuthRequest, AuthResponse},
@@ -51,33 +52,6 @@ impl<T> ClientController<T> {
         }
     }
 
-    // pull-based leader discovery
-    async fn discover_leader(&mut self) -> Result<(), String> {
-        for node in &self.cluster_nodes {
-            tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
-            println!("Trying to connect to node: {}...", node);
-
-            let auth_req = AuthRequest {
-                client_id: Some(self.client_id.to_string()),
-                request_id: self.request_id,
-            };
-            let Ok((r, w, auth_response)) =
-                ClientController::<T>::authenticate(node, Some(auth_req)).await
-            else {
-                continue;
-            };
-
-            if auth_response.connected_to_leader {
-                println!("Connected to a new leader: {}", node);
-                self.r = r;
-                self.w = w;
-                self.cluster_nodes = auth_response.cluster_nodes;
-                return Ok(());
-            }
-        }
-        Err("No leader found in the cluster".to_string())
-    }
-
     async fn authenticate(
         server_addr: &str,
         auth_request: Option<AuthRequest>,
@@ -106,6 +80,7 @@ impl<T> ClientController<T> {
         command: String,
         input: ClientInputKind,
     ) -> Result<(), String> {
+        //TODO separate
         let query_io = self.try_send_and_get(command.as_bytes()).await?;
 
         self.may_update_request_id(&input);
@@ -124,7 +99,6 @@ impl<T> ClientController<T> {
         }
 
         let mut response = BytesMut::with_capacity(512);
-
         if let Err(e) = self.r.0.read_bytes(&mut response).await {
             match e {
                 IoError::ConnectionAborted | IoError::ConnectionReset => {
@@ -144,8 +118,34 @@ impl<T> ClientController<T> {
             let _ = self.drain_stream(100).await;
             return Err("Invalid RESP protocol".into());
         };
-
         Ok(query_io)
+    }
+
+    // pull-based leader discovery
+    async fn discover_leader(&mut self) -> Result<(), String> {
+        for node in &self.cluster_nodes {
+            tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+            println!("Trying to connect to node: {}...", node);
+
+            let auth_req = AuthRequest {
+                client_id: Some(self.client_id.to_string()),
+                request_id: self.request_id,
+            };
+            let Ok((r, w, auth_response)) =
+                ClientController::<T>::authenticate(node, Some(auth_req)).await
+            else {
+                continue;
+            };
+
+            if auth_response.connected_to_leader {
+                println!("Connected to a new leader: {}", node);
+                self.r = r;
+                self.w = w;
+                self.cluster_nodes = auth_response.cluster_nodes;
+                return Ok(());
+            }
+        }
+        Err("No leader found in the cluster".to_string())
     }
 
     async fn drain_stream(&mut self, timeout_ms: u64) -> Result<(), String> {

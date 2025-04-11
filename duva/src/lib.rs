@@ -26,6 +26,7 @@ use tokio::net::TcpListener;
 
 pub mod prelude {
     pub use crate::domains::peers::identifier::PeerIdentifier;
+    pub use anyhow;
     pub use bytes;
     pub use bytes::BytesMut;
     pub use tokio;
