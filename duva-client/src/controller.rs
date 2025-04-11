@@ -212,8 +212,8 @@ impl ServerStreamReader {
         mut self,
         controller_sender: tokio::sync::mpsc::Sender<QueryIO>,
     ) -> oneshot::Sender<()> {
-        let (tx, rx) = tokio::sync::oneshot::channel::<()>();
-        let task = async move {
+        let (kill_trigger, kill_switch) = tokio::sync::oneshot::channel::<()>();
+        let future = async move {
             while let Ok(data) = self.read().await {
                 if let Err(e) = controller_sender.send(data).await {
                     println!("Failed to send data: {}", e);
@@ -222,11 +222,11 @@ impl ServerStreamReader {
         };
         tokio::spawn(async {
             tokio::select! {
-                _ = task => {}
-                _ = rx => {}
+                _ = future => {}
+                _ = kill_switch => {}
             }
         });
-        tx
+        kill_trigger
     }
 
     pub async fn read(&mut self) -> Result<QueryIO, IoError> {
