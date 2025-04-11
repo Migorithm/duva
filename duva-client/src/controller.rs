@@ -1,14 +1,13 @@
-use std::time::Duration;
-
 use crate::command::ClientInputKind;
 use duva::prelude::PeerIdentifier;
 use duva::prelude::tokio;
-use duva::prelude::tokio::io::AsyncReadExt;
 use duva::prelude::tokio::io::AsyncWriteExt;
 use duva::prelude::tokio::net::TcpStream;
 use duva::prelude::tokio::net::tcp::OwnedWriteHalf;
 use duva::prelude::tokio::sync::mpsc::Receiver;
+use duva::prelude::tokio::sync::mpsc::Sender;
 use duva::prelude::tokio::time::timeout;
+use std::time::Duration;
 
 use duva::prelude::tokio::sync::oneshot;
 
@@ -25,8 +24,8 @@ use duva::{
 // TODO Read actor and Write actor
 pub struct ClientController<T> {
     read_kill_switch: Option<tokio::sync::oneshot::Sender<()>>,
-    from_server: Receiver<Result<QueryIO, IoError>>,
-    w: tokio::sync::mpsc::Sender<Sendable>,
+    from_server: Receiver<Readable>,
+    to_server: Sender<Sendable>,
     client_id: Uuid,
     request_id: u64,
     latest_known_index: u64,
@@ -40,12 +39,12 @@ impl<T> ClientController<T> {
             ClientController::<T>::authenticate(server_addr, None).await.unwrap();
 
         auth_response.cluster_nodes.push(server_addr.to_string().into());
-        let (tx, rx) = tokio::sync::mpsc::channel::<Result<QueryIO, IoError>>(100);
+        let (tx, rx) = tokio::sync::mpsc::channel::<Readable>(100);
 
         Self {
             read_kill_switch: Some(r.run(tx)),
             from_server: rx,
-            w: w.run(),
+            to_server: w.run(),
             client_id: Uuid::parse_str(&auth_response.client_id).unwrap(),
             target: editor,
             latest_known_index: 0,
@@ -82,22 +81,23 @@ impl<T> ClientController<T> {
         command: String,
         input: ClientInputKind,
     ) -> Result<(), IoError> {
-        //TODO separate
-
-        if let Ok(Some(Ok(QueryIO::TopologyChange(cluster_nodes)))) =
+        //TODO separate out listening
+        //TODO PAIN : how do we map input with command?
+        if let Ok(Some(Readable::FromServer(Ok(QueryIO::TopologyChange(cluster_nodes))))) =
             timeout(Duration::from_millis(10), self.from_server.recv()).await
         {
             self.cluster_nodes = cluster_nodes;
         }
 
-        self.w.send(Sendable::Command(command.as_bytes().to_vec())).await.unwrap();
+        self.to_server.send(Sendable::Command(command.as_bytes().to_vec())).await.unwrap();
 
         match self.from_server.recv().await.unwrap() {
-            Ok(query_io) => {
+            Readable::FromServer(Ok(query_io)) => {
                 self.may_update_request_id(&input);
                 self.render_return_per_input(input, query_io).map_err(|e| IoError::Custom(e))?;
             },
-            Err(e) => {
+            Readable::FromServer(Err(e)) => {
+                println!("Error: {}", e);
                 match e {
                     IoError::ConnectionAborted | IoError::ConnectionReset => {
                         self.discover_leader().await?;
@@ -136,6 +136,7 @@ impl<T> ClientController<T> {
                 self.replace_stream(r, w).await;
 
                 self.cluster_nodes = auth_response.cluster_nodes;
+
                 return Ok(());
             }
         }
@@ -210,10 +211,10 @@ impl<T> ClientController<T> {
 
     async fn replace_stream(&mut self, r: ServerStreamReader, w: ServerStreamWriter) {
         self.read_kill_switch.take().unwrap().send(()).unwrap();
-        let (tx, rx) = tokio::sync::mpsc::channel::<Result<QueryIO, IoError>>(100);
+        let (tx, rx) = tokio::sync::mpsc::channel::<Readable>(100);
         self.read_kill_switch = Some(r.run(tx));
-        self.w.send(Sendable::Stop).await.unwrap();
-        self.w = w.run();
+        self.to_server.send(Sendable::Stop).await.unwrap();
+        self.to_server = w.run();
         self.from_server = rx;
     }
 }
@@ -222,23 +223,27 @@ pub struct ServerStreamReader(OwnedReadHalf);
 impl ServerStreamReader {
     pub fn run(
         mut self,
-        controller_sender: tokio::sync::mpsc::Sender<Result<QueryIO, IoError>>,
+        controller_sender: tokio::sync::mpsc::Sender<Readable>,
     ) -> oneshot::Sender<()> {
         let (kill_trigger, kill_switch) = tokio::sync::oneshot::channel::<()>();
 
         let future = async move {
             let controller_sender = controller_sender.clone();
             loop {
-                match self.read().await {
+                match self.0.read_values().await {
                     Ok(query_ios) => {
                         for query_io in query_ios {
-                            if controller_sender.send(Ok(query_io)).await.is_err() {
+                            if controller_sender
+                                .send(Readable::FromServer(Ok(query_io)))
+                                .await
+                                .is_err()
+                            {
                                 break;
                             }
                         }
                     },
                     Err(e) => {
-                        if controller_sender.send(Err(e)).await.is_err() {
+                        if controller_sender.send(Readable::FromServer(Err(e))).await.is_err() {
                             break;
                         }
                     },
@@ -253,10 +258,9 @@ impl ServerStreamReader {
         });
         kill_trigger
     }
-
-    pub async fn read(&mut self) -> Result<Vec<QueryIO>, IoError> {
-        self.0.read_values().await
-    }
+}
+pub enum Readable {
+    FromServer(Result<QueryIO, IoError>),
 }
 
 pub struct ServerStreamWriter(OwnedWriteHalf);
