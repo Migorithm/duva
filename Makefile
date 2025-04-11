@@ -34,3 +34,8 @@ follower:
 follower-tp:
 	@mkdir -p local_test/follower
 	@cd local_test/follower && cargo run --bin duva -- --port $(rp) --replicaof 127.0.0.1:$(p) --topology_path $(tp)
+
+leader:
+	cargo run -p duva -- --port 6000
+follower:
+	cargo run -p duva -- --port $(p) --replicaof 127.0.0.1:6000

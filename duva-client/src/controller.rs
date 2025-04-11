@@ -23,16 +23,13 @@ use duva::{
 // TODO Read actor and Write actor
 pub struct ClientController<T> {
     r: ServerStreamReader,
-    w: ServerStreamWriter,
+    w: tokio::sync::mpsc::Sender<Sendable>,
     client_id: Uuid,
     request_id: u64,
     latest_known_index: u64,
     cluster_nodes: Vec<PeerIdentifier>,
     pub target: T,
 }
-
-pub struct ServerStreamReader(OwnedReadHalf);
-pub struct ServerStreamWriter(OwnedWriteHalf);
 
 impl<T> ClientController<T> {
     pub async fn new(editor: T, server_addr: &str) -> Self {
@@ -43,7 +40,7 @@ impl<T> ClientController<T> {
 
         Self {
             r,
-            w,
+            w: w.run(),
             client_id: Uuid::parse_str(&auth_response.client_id).unwrap(),
             target: editor,
             latest_known_index: 0,
@@ -81,22 +78,17 @@ impl<T> ClientController<T> {
         input: ClientInputKind,
     ) -> Result<(), String> {
         //TODO separate
-        let query_io = self.try_send_and_get(command.as_bytes()).await?;
+        let query_io = self.try_send_and_get(command).await?;
 
         self.may_update_request_id(&input);
         // Deserialize response and check if it follows RESP protocol
         self.render_return_per_input(input, query_io)
     }
 
-    async fn try_send_and_get(&mut self, cmd: &[u8]) -> Result<QueryIO, String> {
+    async fn try_send_and_get(&mut self, cmd: String) -> Result<QueryIO, String> {
         // TODO input validation required otherwise, it hangs
-        if let Err(e) = self.w.0.write_all(cmd).await {
-            return Err(format!("Failed to send command: {}", e));
-        }
 
-        if let Err(e) = self.w.0.flush().await {
-            return Err(format!("Failed to flush stream: {}", e));
-        }
+        self.w.send(Sendable::Command(cmd.as_bytes().to_vec())).await.unwrap();
 
         let mut response = BytesMut::with_capacity(512);
         if let Err(e) = self.r.0.read_bytes(&mut response).await {
@@ -139,8 +131,8 @@ impl<T> ClientController<T> {
 
             if auth_response.connected_to_leader {
                 println!("Connected to a new leader: {}", node);
-                self.r = r;
-                self.w = w;
+                self.replace_stream(r, w).await;
+
                 self.cluster_nodes = auth_response.cluster_nodes;
                 return Ok(());
             }
@@ -251,4 +243,56 @@ impl<T> ClientController<T> {
             _ => {},
         }
     }
+
+    async fn replace_stream(&mut self, r: ServerStreamReader, w: ServerStreamWriter) {
+        self.r = r;
+        self.w.send(Sendable::Stop).await.unwrap();
+        self.w = w.run();
+    }
+}
+
+pub struct ServerStreamReader(OwnedReadHalf);
+pub struct ServerStreamWriter(OwnedWriteHalf);
+
+impl ServerStreamWriter {
+    pub async fn write_all(&mut self, buf: &[u8]) -> Result<(), String> {
+        if let Err(e) = self.0.write_all(buf).await {
+            return Err(format!("Failed to send command: {}", e));
+        }
+
+        if let Err(e) = self.0.flush().await {
+            return Err(format!("Failed to flush stream: {}", e));
+        }
+        Ok(())
+    }
+
+    pub async fn flush(&mut self) -> Result<(), String> {
+        if let Err(e) = self.0.flush().await {
+            return Err(format!("Failed to flush stream: {}", e));
+        }
+        Ok(())
+    }
+
+    pub fn run(mut self) -> tokio::sync::mpsc::Sender<Sendable> {
+        let (tx, mut rx) = tokio::sync::mpsc::channel::<Sendable>(100);
+
+        tokio::spawn(async move {
+            while let Some(sendable) = rx.recv().await {
+                match sendable {
+                    Sendable::Command(cmd) => {
+                        if let Err(e) = self.write_all(&cmd).await {
+                            println!("{e}");
+                        };
+                    },
+                    Sendable::Stop => break,
+                }
+            }
+        });
+        tx
+    }
+}
+
+pub enum Sendable {
+    Command(Vec<u8>),
+    Stop,
 }
