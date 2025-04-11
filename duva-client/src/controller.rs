@@ -78,39 +78,43 @@ impl<T> ClientController<T> {
         input: ClientInputKind,
     ) -> Result<(), String> {
         //TODO separate
-        let query_io = self.try_send_and_get(command).await?;
-
-        self.may_update_request_id(&input);
-        // Deserialize response and check if it follows RESP protocol
-        self.render_return_per_input(input, query_io)
+        self.send(command.clone()).await?;
+        self.read(input, command).await?;
+        Ok(())
     }
 
-    async fn try_send_and_get(&mut self, cmd: String) -> Result<QueryIO, String> {
+    async fn send(&mut self, cmd: String) -> Result<(), String> {
         // TODO input validation required otherwise, it hangs
 
         self.w.send(Sendable::Command(cmd.as_bytes().to_vec())).await.unwrap();
 
-        let mut response = BytesMut::with_capacity(512);
-        if let Err(e) = self.r.0.read_bytes(&mut response).await {
-            match e {
-                IoError::ConnectionAborted | IoError::ConnectionReset => {
-                    self.discover_leader().await?;
+        Ok(())
+    }
 
-                    // recursively call the function to retry
-                    return Box::pin(self.try_send_and_get(cmd)).await;
-                },
-                _ => {
-                    // Handle other errors
-                    return Err(format!("Failed to read response: {}", e));
-                },
-            }
+    async fn read(&mut self, input: ClientInputKind, command: String) -> Result<(), String> {
+        match self.r.read().await {
+            Ok(query_io) => {
+                self.may_update_request_id(&input);
+                self.render_return_per_input(input, query_io)?;
+                Ok(())
+            },
+            Err(e) => {
+                match e {
+                    IoError::ConnectionAborted | IoError::ConnectionReset => {
+                        self.discover_leader().await?;
+
+                        // recursively call the function to retry
+                        self.send(command.clone()).await?;
+                        Box::pin(self.read(input, command)).await?;
+                        Ok(())
+                    },
+                    _ => {
+                        // Handle other errors
+                        return Err(format!("Failed to read response: {}", e));
+                    },
+                }
+            },
         }
-
-        let Ok((query_io, _)) = deserialize(BytesMut::from_iter(response)) else {
-            let _ = self.drain_stream(100).await;
-            return Err("Invalid RESP protocol".into());
-        };
-        Ok(query_io)
     }
 
     // pull-based leader discovery
@@ -138,44 +142,6 @@ impl<T> ClientController<T> {
             }
         }
         Err("No leader found in the cluster".to_string())
-    }
-
-    async fn drain_stream(&mut self, timeout_ms: u64) -> Result<(), String> {
-        // Use a timeout to avoid getting stuck
-        let timeout_duration = std::time::Duration::from_millis(timeout_ms);
-
-        let drain_future = async {
-            let mut total_bytes_drained = 0;
-            let mut buffer = [0u8; 1024];
-
-            // Try to read with a very short timeout
-            loop {
-                match tokio::time::timeout(
-                    std::time::Duration::from_millis(10),
-                    self.r.0.read(&mut buffer),
-                )
-                .await
-                {
-                    Ok(Ok(0)) => break, // Connection closed
-                    Ok(Ok(n)) => {
-                        total_bytes_drained += n;
-                        // If we've drained a lot of data, let's assume we're done
-                        if total_bytes_drained > 4096 {
-                            break;
-                        }
-                    },
-                    Ok(Err(_)) | Err(_) => break, // Error or timeout
-                }
-            }
-
-            Ok(())
-        };
-
-        // Apply an overall timeout to the drain operation
-        match tokio::time::timeout(timeout_duration, drain_future).await {
-            Ok(result) => result,
-            Err(_) => Err("Timeout while draining the stream".to_string()),
-        }
     }
 
     fn render_return_per_input(
@@ -252,6 +218,57 @@ impl<T> ClientController<T> {
 }
 
 pub struct ServerStreamReader(OwnedReadHalf);
+impl ServerStreamReader {
+    pub async fn read(&mut self) -> Result<QueryIO, IoError> {
+        let mut response = BytesMut::with_capacity(512);
+        self.0.read_bytes(&mut response).await?;
+
+        let Ok((query_io, _)) = deserialize(BytesMut::from_iter(response)) else {
+            let _ = self.drain_stream(100).await;
+            return Err(IoError::Custom("Invalid RESP protocol".into()));
+        };
+        Ok(query_io)
+    }
+
+    async fn drain_stream(&mut self, timeout_ms: u64) -> Result<(), String> {
+        // Use a timeout to avoid getting stuck
+        let timeout_duration = std::time::Duration::from_millis(timeout_ms);
+
+        let drain_future = async {
+            let mut total_bytes_drained = 0;
+            let mut buffer = [0u8; 1024];
+
+            // Try to read with a very short timeout
+            loop {
+                match tokio::time::timeout(
+                    std::time::Duration::from_millis(10),
+                    self.0.read(&mut buffer),
+                )
+                .await
+                {
+                    Ok(Ok(0)) => break, // Connection closed
+                    Ok(Ok(n)) => {
+                        total_bytes_drained += n;
+                        // If we've drained a lot of data, let's assume we're done
+                        if total_bytes_drained > 4096 {
+                            break;
+                        }
+                    },
+                    Ok(Err(_)) | Err(_) => break, // Error or timeout
+                }
+            }
+
+            Ok(())
+        };
+
+        // Apply an overall timeout to the drain operation
+        match tokio::time::timeout(timeout_duration, drain_future).await {
+            Ok(result) => result,
+            Err(_) => Err("Timeout while draining the stream".to_string()),
+        }
+    }
+}
+
 pub struct ServerStreamWriter(OwnedWriteHalf);
 
 impl ServerStreamWriter {
