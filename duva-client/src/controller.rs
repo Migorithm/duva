@@ -6,7 +6,8 @@ use duva::prelude::tokio::io::AsyncReadExt;
 use duva::prelude::tokio::io::AsyncWriteExt;
 use duva::prelude::tokio::net::TcpStream;
 use duva::prelude::tokio::net::tcp::OwnedWriteHalf;
-use duva::prelude::tokio::select;
+use duva::prelude::tokio::sync::mpsc::Receiver;
+
 use duva::prelude::tokio::sync::oneshot;
 
 use duva::prelude::uuid::Uuid;
@@ -24,7 +25,8 @@ use duva::{
 
 // TODO Read actor and Write actor
 pub struct ClientController<T> {
-    r: ServerStreamReader,
+    read_kill_switch: Option<tokio::sync::oneshot::Sender<()>>,
+    from_server: Receiver<Result<QueryIO, IoError>>,
     w: tokio::sync::mpsc::Sender<Sendable>,
     client_id: Uuid,
     request_id: u64,
@@ -39,9 +41,11 @@ impl<T> ClientController<T> {
             ClientController::<T>::authenticate(server_addr, None).await.unwrap();
 
         auth_response.cluster_nodes.push(server_addr.to_string().into());
+        let (tx, rx) = tokio::sync::mpsc::channel::<Result<QueryIO, IoError>>(100);
 
         Self {
-            r,
+            read_kill_switch: Some(r.run(tx)),
+            from_server: rx,
             w: w.run(),
             client_id: Uuid::parse_str(&auth_response.client_id).unwrap(),
             target: editor,
@@ -82,7 +86,7 @@ impl<T> ClientController<T> {
         //TODO separate
         self.w.send(Sendable::Command(command.as_bytes().to_vec())).await.unwrap();
 
-        match self.r.read().await {
+        match self.from_server.recv().await.unwrap() {
             Ok(query_io) => {
                 self.may_update_request_id(&input);
                 self.render_return_per_input(input, query_io).map_err(|e| IoError::Custom(e))?;
@@ -200,27 +204,30 @@ impl<T> ClientController<T> {
     }
 
     async fn replace_stream(&mut self, r: ServerStreamReader, w: ServerStreamWriter) {
-        self.r = r;
+        self.read_kill_switch.take().unwrap().send(()).unwrap();
+        let (tx, rx) = tokio::sync::mpsc::channel::<Result<QueryIO, IoError>>(100);
+        self.read_kill_switch = Some(r.run(tx));
         self.w.send(Sendable::Stop).await.unwrap();
         self.w = w.run();
+        self.from_server = rx;
     }
 }
 
 pub struct ServerStreamReader(OwnedReadHalf);
 impl ServerStreamReader {
-    pub async fn run(
+    pub fn run(
         mut self,
-        controller_sender: tokio::sync::mpsc::Sender<QueryIO>,
+        controller_sender: tokio::sync::mpsc::Sender<Result<QueryIO, IoError>>,
     ) -> oneshot::Sender<()> {
         let (kill_trigger, kill_switch) = tokio::sync::oneshot::channel::<()>();
+
         let future = async move {
-            while let Ok(data) = self.read().await {
-                if let Err(e) = controller_sender.send(data).await {
-                    println!("Failed to send data: {}", e);
-                }
+            let controller_sender = controller_sender.clone();
+            loop {
+                let _ = controller_sender.send(self.read().await).await;
             }
         };
-        tokio::spawn(async {
+        tokio::spawn(async move {
             tokio::select! {
                 _ = future => {}
                 _ = kill_switch => {}
