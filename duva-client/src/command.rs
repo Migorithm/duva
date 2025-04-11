@@ -103,6 +103,7 @@ pub fn take_input(action: &str, args: &[&str]) -> Result<ClientInputKind, String
     }
 }
 
+#[derive(Debug, Clone)]
 pub enum ClientInputKind {
     Ping,
     Get,

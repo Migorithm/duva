@@ -76,49 +76,38 @@ impl<T> ClientController<T> {
         &mut self,
         command: String,
         input: ClientInputKind,
-    ) -> Result<(), String> {
+    ) -> Result<(), IoError> {
         //TODO separate
-        self.send(command.clone()).await?;
-        self.read(input, command).await?;
+        self.w.send(Sendable::Command(command.as_bytes().to_vec())).await.unwrap();
+        if let Err(e) = self.read(input.clone(), command.clone()).await {
+            match e {
+                IoError::ConnectionAborted | IoError::ConnectionReset => {
+                    self.discover_leader().await?;
+
+                    // recursively call the function to retry
+                    self.w.send(Sendable::Command(command.as_bytes().to_vec())).await.unwrap();
+                    self.read(input, command).await?;
+                    return Ok(());
+                },
+                _ => {
+                    // Handle other errors
+                    return Err(e);
+                },
+            }
+        };
         Ok(())
     }
 
-    async fn send(&mut self, cmd: String) -> Result<(), String> {
-        // TODO input validation required otherwise, it hangs
+    async fn read(&mut self, input: ClientInputKind, command: String) -> Result<(), IoError> {
+        let query_io = self.r.read().await?;
 
-        self.w.send(Sendable::Command(cmd.as_bytes().to_vec())).await.unwrap();
-
+        self.may_update_request_id(&input);
+        self.render_return_per_input(input, query_io).map_err(|e| IoError::Custom(e))?;
         Ok(())
-    }
-
-    async fn read(&mut self, input: ClientInputKind, command: String) -> Result<(), String> {
-        match self.r.read().await {
-            Ok(query_io) => {
-                self.may_update_request_id(&input);
-                self.render_return_per_input(input, query_io)?;
-                Ok(())
-            },
-            Err(e) => {
-                match e {
-                    IoError::ConnectionAborted | IoError::ConnectionReset => {
-                        self.discover_leader().await?;
-
-                        // recursively call the function to retry
-                        self.send(command.clone()).await?;
-                        Box::pin(self.read(input, command)).await?;
-                        Ok(())
-                    },
-                    _ => {
-                        // Handle other errors
-                        return Err(format!("Failed to read response: {}", e));
-                    },
-                }
-            },
-        }
     }
 
     // pull-based leader discovery
-    async fn discover_leader(&mut self) -> Result<(), String> {
+    async fn discover_leader(&mut self) -> Result<(), IoError> {
         for node in &self.cluster_nodes {
             tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
             println!("Trying to connect to node: {}...", node);
@@ -141,7 +130,7 @@ impl<T> ClientController<T> {
                 return Ok(());
             }
         }
-        Err("No leader found in the cluster".to_string())
+        Err(IoError::Custom("No leader found in the cluster".to_string()))
     }
 
     fn render_return_per_input(
