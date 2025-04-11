@@ -6,6 +6,8 @@ use duva::prelude::tokio::io::AsyncReadExt;
 use duva::prelude::tokio::io::AsyncWriteExt;
 use duva::prelude::tokio::net::TcpStream;
 use duva::prelude::tokio::net::tcp::OwnedWriteHalf;
+use duva::prelude::tokio::select;
+use duva::prelude::tokio::sync::oneshot;
 
 use duva::prelude::uuid::Uuid;
 use duva::{
@@ -206,14 +208,25 @@ impl<T> ClientController<T> {
 
 pub struct ServerStreamReader(OwnedReadHalf);
 impl ServerStreamReader {
-    pub fn run(mut self, controller_sender: tokio::sync::mpsc::Sender<QueryIO>) {
-        tokio::spawn(async move {
+    pub async fn run(
+        mut self,
+        controller_sender: tokio::sync::mpsc::Sender<QueryIO>,
+    ) -> oneshot::Sender<()> {
+        let (tx, rx) = tokio::sync::oneshot::channel::<()>();
+        let task = async move {
             while let Ok(data) = self.read().await {
                 if let Err(e) = controller_sender.send(data).await {
                     println!("Failed to send data: {}", e);
                 }
             }
+        };
+        tokio::spawn(async {
+            tokio::select! {
+                _ = task => {}
+                _ = rx => {}
+            }
         });
+        tx
     }
 
     pub async fn read(&mut self) -> Result<QueryIO, IoError> {
