@@ -1,5 +1,6 @@
+use std::time::Duration;
+
 use crate::command::ClientInputKind;
-use duva::prelude::BytesMut;
 use duva::prelude::PeerIdentifier;
 use duva::prelude::tokio;
 use duva::prelude::tokio::io::AsyncReadExt;
@@ -7,6 +8,7 @@ use duva::prelude::tokio::io::AsyncWriteExt;
 use duva::prelude::tokio::net::TcpStream;
 use duva::prelude::tokio::net::tcp::OwnedWriteHalf;
 use duva::prelude::tokio::sync::mpsc::Receiver;
+use duva::prelude::tokio::time::timeout;
 
 use duva::prelude::tokio::sync::oneshot;
 
@@ -16,10 +18,7 @@ use duva::{
     services::interface::{TRead, TSerdeReadWrite},
 };
 use duva::{
-    domains::{
-        IoError,
-        query_parsers::query_io::{QueryIO, deserialize},
-    },
+    domains::{IoError, query_parsers::query_io::QueryIO},
     prelude::tokio::net::tcp::OwnedReadHalf,
 };
 
@@ -84,6 +83,13 @@ impl<T> ClientController<T> {
         input: ClientInputKind,
     ) -> Result<(), IoError> {
         //TODO separate
+
+        if let Ok(Some(Ok(QueryIO::TopologyChange(cluster_nodes)))) =
+            timeout(Duration::from_millis(10), self.from_server.recv()).await
+        {
+            self.cluster_nodes = cluster_nodes;
+        }
+
         self.w.send(Sendable::Command(command.as_bytes().to_vec())).await.unwrap();
 
         match self.from_server.recv().await.unwrap() {
@@ -100,7 +106,6 @@ impl<T> ClientController<T> {
                         return Ok(());
                     },
                     _ => {
-                        // Handle other errors
                         return Err(e);
                     },
                 }
@@ -224,7 +229,20 @@ impl ServerStreamReader {
         let future = async move {
             let controller_sender = controller_sender.clone();
             loop {
-                let _ = controller_sender.send(self.read().await).await;
+                match self.read().await {
+                    Ok(query_ios) => {
+                        for query_io in query_ios {
+                            if controller_sender.send(Ok(query_io)).await.is_err() {
+                                break;
+                            }
+                        }
+                    },
+                    Err(e) => {
+                        if controller_sender.send(Err(e)).await.is_err() {
+                            break;
+                        }
+                    },
+                }
             }
         };
         tokio::spawn(async move {
@@ -236,53 +254,8 @@ impl ServerStreamReader {
         kill_trigger
     }
 
-    pub async fn read(&mut self) -> Result<QueryIO, IoError> {
-        let mut response = BytesMut::with_capacity(512);
-        self.0.read_bytes(&mut response).await?;
-
-        let Ok((query_io, _)) = deserialize(BytesMut::from_iter(response)) else {
-            let _ = self.drain_stream(100).await;
-            return Err(IoError::Custom("Invalid RESP protocol".into()));
-        };
-        Ok(query_io)
-    }
-
-    async fn drain_stream(&mut self, timeout_ms: u64) -> Result<(), String> {
-        // Use a timeout to avoid getting stuck
-        let timeout_duration = std::time::Duration::from_millis(timeout_ms);
-
-        let drain_future = async {
-            let mut total_bytes_drained = 0;
-            let mut buffer = [0u8; 1024];
-
-            // Try to read with a very short timeout
-            loop {
-                match tokio::time::timeout(
-                    std::time::Duration::from_millis(10),
-                    self.0.read(&mut buffer),
-                )
-                .await
-                {
-                    Ok(Ok(0)) => break, // Connection closed
-                    Ok(Ok(n)) => {
-                        total_bytes_drained += n;
-                        // If we've drained a lot of data, let's assume we're done
-                        if total_bytes_drained > 4096 {
-                            break;
-                        }
-                    },
-                    Ok(Err(_)) | Err(_) => break, // Error or timeout
-                }
-            }
-
-            Ok(())
-        };
-
-        // Apply an overall timeout to the drain operation
-        match tokio::time::timeout(timeout_duration, drain_future).await {
-            Ok(result) => result,
-            Err(_) => Err("Timeout while draining the stream".to_string()),
-        }
+    pub async fn read(&mut self) -> Result<Vec<QueryIO>, IoError> {
+        self.0.read_values().await
     }
 }
 
