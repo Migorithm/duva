@@ -21,8 +21,8 @@ use duva::{
 
 // TODO Read actor and Write actor
 pub struct ClientController<T> {
-    r: ReadBuffer,
-    w: WriteBuffer,
+    r: ServerStreamReader,
+    w: ServerStreamWriter,
     client_id: Uuid,
     request_id: u64,
     latest_known_index: u64,
@@ -30,8 +30,8 @@ pub struct ClientController<T> {
     pub target: T,
 }
 
-pub struct ReadBuffer(OwnedReadHalf);
-pub struct WriteBuffer(OwnedWriteHalf);
+pub struct ServerStreamReader(OwnedReadHalf);
+pub struct ServerStreamWriter(OwnedWriteHalf);
 
 impl<T> ClientController<T> {
     pub async fn new(editor: T, server_addr: &str) -> Self {
@@ -81,14 +81,14 @@ impl<T> ClientController<T> {
     async fn authenticate(
         server_addr: &str,
         auth_request: Option<AuthRequest>,
-    ) -> Result<(ReadBuffer, WriteBuffer, AuthResponse), IoError> {
+    ) -> Result<(ServerStreamReader, ServerStreamWriter, AuthResponse), IoError> {
         let mut stream =
             TcpStream::connect(server_addr).await.map_err(|e| IoError::ConnectionRefused)?;
         stream.serialized_write(auth_request.unwrap_or(AuthRequest::default())).await.unwrap(); // client_id not exist
 
         let auth_response: AuthResponse = stream.deserialized_read().await?;
         let (r, w) = stream.into_split();
-        Ok((ReadBuffer(r), WriteBuffer(w), auth_response))
+        Ok((ServerStreamReader(r), ServerStreamWriter(w), auth_response))
     }
 
     pub fn build_command(&self, cmd: &str, args: Vec<&str>) -> String {
