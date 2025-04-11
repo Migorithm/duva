@@ -79,30 +79,28 @@ impl<T> ClientController<T> {
     ) -> Result<(), IoError> {
         //TODO separate
         self.w.send(Sendable::Command(command.as_bytes().to_vec())).await.unwrap();
-        if let Err(e) = self.read(input.clone(), command.clone()).await {
-            match e {
-                IoError::ConnectionAborted | IoError::ConnectionReset => {
-                    self.discover_leader().await?;
 
-                    // recursively call the function to retry
-                    self.w.send(Sendable::Command(command.as_bytes().to_vec())).await.unwrap();
-                    self.read(input, command).await?;
-                    return Ok(());
-                },
-                _ => {
-                    // Handle other errors
-                    return Err(e);
-                },
-            }
-        };
-        Ok(())
-    }
+        match self.r.read().await {
+            Ok(query_io) => {
+                self.may_update_request_id(&input);
+                self.render_return_per_input(input, query_io).map_err(|e| IoError::Custom(e))?;
+            },
+            Err(e) => {
+                match e {
+                    IoError::ConnectionAborted | IoError::ConnectionReset => {
+                        self.discover_leader().await?;
+                        // recursively call the function to retry
+                        Box::pin(self.send_command(command, input)).await?;
+                        return Ok(());
+                    },
+                    _ => {
+                        // Handle other errors
+                        return Err(e);
+                    },
+                }
+            },
+        }
 
-    async fn read(&mut self, input: ClientInputKind, command: String) -> Result<(), IoError> {
-        let query_io = self.r.read().await?;
-
-        self.may_update_request_id(&input);
-        self.render_return_per_input(input, query_io).map_err(|e| IoError::Custom(e))?;
         Ok(())
     }
 
@@ -208,6 +206,16 @@ impl<T> ClientController<T> {
 
 pub struct ServerStreamReader(OwnedReadHalf);
 impl ServerStreamReader {
+    pub fn run(mut self, controller_sender: tokio::sync::mpsc::Sender<QueryIO>) {
+        tokio::spawn(async move {
+            while let Ok(data) = self.read().await {
+                if let Err(e) = controller_sender.send(data).await {
+                    println!("Failed to send data: {}", e);
+                }
+            }
+        });
+    }
+
     pub async fn read(&mut self) -> Result<QueryIO, IoError> {
         let mut response = BytesMut::with_capacity(512);
         self.0.read_bytes(&mut response).await?;
