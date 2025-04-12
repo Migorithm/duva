@@ -273,6 +273,8 @@ impl ClusterActor {
             self.replicas().count(),
             session_req,
         );
+
+        // dbg!(self.replicas().count()); // CHECKED. replica count right.
         self.generate_follower_entries(append_entries, prev_log_index, prev_term)
             .map(|(peer, hb)| peer.write_io(AppendEntriesRPC(hb)))
             .collect::<FuturesUnordered<_>>()

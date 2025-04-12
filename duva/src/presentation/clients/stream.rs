@@ -16,7 +16,7 @@ pub struct ClientStreamReader {
 
 impl ClientStreamReader {
     pub(crate) async fn extract_query(&mut self) -> Result<Vec<ClientRequest>, IoError> {
-        let query_ios = self.r.read_values().await?;
+        let query_ios = dbg!(self.r.read_values().await?);
 
         query_ios
             .into_iter()

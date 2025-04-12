@@ -1,6 +1,3 @@
-use tokio::net::TcpStream;
-use uuid::Uuid;
-
 use crate::{
     clients::authentications::{AuthRequest, AuthResponse},
     domains::IoError,
@@ -8,6 +5,8 @@ use crate::{
     presentation::clients::stream::{ClientStreamReader, ClientStreamWriter},
     services::interface::TSerdeReadWrite,
 };
+use tokio::net::TcpStream;
+use uuid::Uuid;
 
 pub(crate) async fn authenticate(
     mut stream: TcpStream,

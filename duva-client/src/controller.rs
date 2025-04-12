@@ -117,18 +117,18 @@ impl ServerStreamWriter {
         Ok(())
     }
 
-    pub fn run(mut self) -> tokio::sync::mpsc::Sender<Sendable> {
-        let (tx, mut rx) = tokio::sync::mpsc::channel::<Sendable>(100);
+    pub fn run(mut self) -> tokio::sync::mpsc::Sender<MsgToServer> {
+        let (tx, mut rx) = tokio::sync::mpsc::channel::<MsgToServer>(100);
 
         tokio::spawn(async move {
             while let Some(sendable) = rx.recv().await {
                 match sendable {
-                    Sendable::Command(cmd) => {
+                    MsgToServer::Command(cmd) => {
                         if let Err(e) = self.write_all(&cmd).await {
                             println!("{e}");
                         };
                     },
-                    Sendable::Stop => break,
+                    MsgToServer::Stop => break,
                 }
             }
         });
@@ -136,7 +136,7 @@ impl ServerStreamWriter {
     }
 }
 
-pub enum Sendable {
+pub enum MsgToServer {
     Command(Vec<u8>),
     Stop,
 }

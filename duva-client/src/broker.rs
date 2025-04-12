@@ -3,7 +3,7 @@ use crate::cli_input::InputQueue;
 
 use crate::command::ClientInputKind;
 use crate::controller::CommandToServer;
-use crate::controller::Sendable;
+use crate::controller::MsgToServer;
 use crate::controller::ServerStreamReader;
 use crate::controller::ServerStreamWriter;
 use duva::domains::cluster_actors::heartbeats::scheduler::LEADER_HEARTBEAT_INTERVAL_MAX;
@@ -22,7 +22,7 @@ use duva::{
 pub struct Broker {
     pub(crate) tx: Sender<BrokerMessage>,
     pub(crate) rx: Receiver<BrokerMessage>,
-    pub(crate) to_server: Sender<Sendable>,
+    pub(crate) to_server: Sender<MsgToServer>,
     pub(crate) client_id: Uuid,
     pub(crate) request_id: u64,
     pub(crate) latest_known_index: u64,
@@ -72,7 +72,7 @@ impl Broker {
                 BrokerMessage::ToServer(command) => {
                     let cmd = self.build_command(&command.command, command.args);
                     if let Err(e) =
-                        self.to_server.send(Sendable::Command(cmd.as_bytes().to_vec())).await
+                        self.to_server.send(MsgToServer::Command(cmd.as_bytes().to_vec())).await
                     {
                         println!("Failed to send command: {}", e);
                     }
@@ -129,7 +129,7 @@ impl Broker {
             let _ = switch.send(());
         }
         self.read_kill_switch = Some(r.run(self.tx.clone()));
-        self.to_server.send(Sendable::Stop).await.unwrap();
+        self.to_server.send(MsgToServer::Stop).await.unwrap();
         self.to_server = w.run();
     }
 
