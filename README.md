@@ -46,8 +46,7 @@ The following features have been implemented so far:
     - Cluster node liveness check
     - RYOW consistency
     - Follower reads
-    - Pull-based Reconnection on leader failure (client)
-
+    - push-based topology change subscription
 
 
 - Protocol Support
@@ -168,14 +167,21 @@ sequenceDiagram
     L ->> SF: Receive Snapshot (hwm: 5)
 ```
 
-#### Reconnection on leader failure (pull-based)
+#### Push-based topology change subscription
 ```mermaid
 sequenceDiagram
     actor C as Client
     participant L as Leader
     participant F as Followers
 
-    C ->> L : request
+    C --> L : Connection established
+    L ->> L : Register client connection to topology change watcher
+    
+    F --> L : Peer Connection made
+    
+    L ->> C : Notify client of topology change
+    C ->> C : Update topology
+
 
     break Leader failed
         L --x L : Crash
@@ -190,6 +196,8 @@ sequenceDiagram
     end
     C ->> C : Reset leader information
     C ->> F : retry request
+
+
 ```
 
 #### RYOW consistency guarantee (follower reads)
