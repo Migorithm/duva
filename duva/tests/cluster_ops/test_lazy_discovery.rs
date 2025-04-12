@@ -27,26 +27,14 @@ async fn test_lazy_discovery_of_leader() {
 
     // WHEN
     assert_eq!(
-        target_h.send_and_get(format!("REPLICAOF 127.0.0.1 {}", &other_env.port).as_bytes(), 2),
-        [
-            format!(
-                "Topology change: [PeerIdentifier(\"127.0.0.1:{}\"), PeerIdentifier(\"127.0.0.1:{}\")]",
-                other_env.port, target_env.port,
-            ),
-            "OK".to_string(),
-        ]
+        target_h.send_and_get(format!("REPLICAOF 127.0.0.1 {}", &other_env.port).as_bytes(), 1),
+        ["OK".to_string(),]
     );
 
     // THEN
     assert_eq!(
-        other_h.send_and_get("CLUSTER INFO".as_bytes(), 2),
-        vec![
-            format!(
-                "Topology change: [PeerIdentifier(\"127.0.0.1:{}\"), PeerIdentifier(\"127.0.0.1:{}\")]",
-                target_env.port, other_env.port,
-            ),
-            "cluster_known_nodes:1".to_string()
-        ]
+        other_h.send_and_get("CLUSTER INFO".as_bytes(), 1),
+        vec!["cluster_known_nodes:1".to_string()]
     );
 
     assert_eq!(
