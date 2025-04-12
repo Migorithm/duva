@@ -17,14 +17,16 @@ use domains::config_actors::config_manager::ConfigManager;
 use domains::saves::snapshot::snapshot_loader::SnapshotLoader;
 pub use init::Environment;
 use prelude::PeerIdentifier;
-use presentation::clients::{ClientController, stream::ClientStream};
+use presentation::clients::ClientController;
+use presentation::clients::authenticate;
+
 use presentation::clusters::inbound::stream::InboundStream;
-use services::interface::TSerdeReadWrite;
 
 use tokio::net::TcpListener;
 
 pub mod prelude {
     pub use crate::domains::peers::identifier::PeerIdentifier;
+    pub use anyhow;
     pub use bytes;
     pub use bytes::BytesMut;
     pub use tokio;
@@ -122,24 +124,23 @@ impl StartUpFacade {
         let mut conn_handlers: Vec<tokio::task::JoinHandle<()>> = Vec::with_capacity(100);
 
         while let Ok((stream, _)) = client_stream_listener.accept().await {
-            let peers = self.registry.cluster_communication_manager().get_peers().await?;
+            let mut peers = self.registry.cluster_communication_manager().get_peers().await?;
+            peers.push(PeerIdentifier(self.registry.config_manager.bind_addr()));
 
-            // TODO implement ROLE command
-            let is_leader = self
-                .registry
-                .cluster_communication_manager()
-                .replication_info()
-                .await?
-                .is_leader_mode;
-            let Ok(client_stream) = ClientStream::authenticate(stream, peers, is_leader).await
-            else {
+            let is_leader = self.registry.cluster_communication_manager().role().await? == "leader";
+            let Ok((reader, writer)) = authenticate(stream, peers, is_leader).await else {
                 eprintln!("[ERROR] Failed to authenticate client stream");
                 continue;
             };
 
-            conn_handlers.push(tokio::spawn(
-                ClientController::new(self.registry.clone()).handle_client_stream(client_stream),
-            ));
+            let topology_observer =
+                self.registry.cluster_communication_manager().subscribe_topology_change().await?;
+            let write_handler = writer.run(topology_observer);
+
+            conn_handlers.push(tokio::spawn(reader.handle_client_stream(
+                ClientController::new(self.registry.clone()),
+                write_handler.clone(),
+            )));
         }
 
         Ok(())

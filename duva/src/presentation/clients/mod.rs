@@ -1,7 +1,7 @@
-pub mod controllers;
-pub mod request;
-
+mod authenticate;
+pub mod controller;
 pub mod parser;
+pub mod request;
 pub mod stream;
-
-pub(crate) use controllers::ClientController;
+pub(crate) use authenticate::authenticate;
+pub(crate) use controller::ClientController;

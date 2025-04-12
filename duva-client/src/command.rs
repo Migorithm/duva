@@ -6,7 +6,7 @@ pub fn separate_command_and_args(args: Vec<&str>) -> (&str, Vec<&str>) {
     (cmd, args)
 }
 
-pub fn take_input(action: &str, args: &[&str]) -> Result<ClientInputKind, String> {
+pub fn validate_input(action: &str, args: &[&str]) -> Result<ClientInputKind, String> {
     // Check for invalid characters in command parts
     // Command-specific validation
     match action.to_uppercase().as_str() {
@@ -103,6 +103,7 @@ pub fn take_input(action: &str, args: &[&str]) -> Result<ClientInputKind, String
     }
 }
 
+#[derive(Debug, Clone)]
 pub enum ClientInputKind {
     Ping,
     Get,

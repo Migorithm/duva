@@ -1,5 +1,3 @@
-use std::sync::atomic::Ordering;
-
 use super::response::ConnectionResponse;
 use crate::domains::cluster_actors::commands::AddPeer;
 use crate::domains::cluster_actors::commands::ClusterCommand;
@@ -11,13 +9,12 @@ use crate::domains::peers::peer::Peer;
 use crate::domains::peers::peer::PeerState;
 use crate::domains::query_parsers::QueryIO;
 use crate::presentation::clusters::connection_manager::ClusterConnectionManager;
-
 use crate::presentation::clusters::listeners::listener::ClusterListener;
-
 use crate::services::interface::TRead;
 use crate::services::interface::TWrite;
 use crate::write_array;
 use anyhow::Context;
+use std::sync::atomic::Ordering;
 use tokio::net::TcpStream;
 use tokio::net::tcp::OwnedReadHalf;
 use tokio::net::tcp::OwnedWriteHalf;

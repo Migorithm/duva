@@ -22,6 +22,7 @@ use crate::domains::append_only_files::interfaces::TWriteAheadLog;
 use crate::domains::append_only_files::logger::ReplicatedLogs;
 use crate::domains::cluster_actors::consensus::ElectionState;
 use crate::domains::{caches::cache_manager::CacheManager, query_parsers::QueryIO};
+use std::iter;
 use std::sync::atomic::Ordering;
 
 #[derive(Debug)]
@@ -34,6 +35,7 @@ pub struct ClusterActor {
     pub(crate) self_handler: tokio::sync::mpsc::Sender<ClusterCommand>,
     pub(crate) heartbeat_scheduler: HeartBeatScheduler,
     pub(crate) topology_path: String,
+    pub(crate) node_change_broadcast: tokio::sync::broadcast::Sender<Vec<PeerIdentifier>>,
 }
 
 impl ClusterActor {
@@ -50,6 +52,8 @@ impl ClusterActor {
             heartbeat_interval_in_mills,
         );
 
+        let (tx, _) = tokio::sync::broadcast::channel::<Vec<PeerIdentifier>>(100);
+
         Self {
             heartbeat_scheduler,
             replication: init_repl_info,
@@ -59,6 +63,7 @@ impl ClusterActor {
             members: BTreeMap::new(),
             consensus_tracker: LogConsensusTracker::default(),
             topology_path,
+            node_change_broadcast: tx,
         }
     }
 
@@ -121,6 +126,16 @@ impl ClusterActor {
         if let Some(existing_peer) = self.members.insert(peer_addr, peer) {
             existing_peer.kill().await;
         }
+
+        self.node_change_broadcast
+            .send(
+                self.members
+                    .keys()
+                    .cloned()
+                    .chain(iter::once(self.replication.self_identifier()))
+                    .collect(),
+            )
+            .ok();
     }
     pub(crate) async fn remove_peer(&mut self, peer_addr: &PeerIdentifier) -> Option<()> {
         if let Some(peer) = self.members.remove(peer_addr) {
@@ -222,8 +237,9 @@ impl ClusterActor {
             return Err(ConsensusClientResponse::Err("Write given to follower".into()));
         }
 
-        let Ok(append_entries) =
-            logger.create_log_entries(log, self.take_low_watermark(), self.replication.term).await
+        let Ok(append_entries) = logger
+            .leader_write_entries(log, self.take_low_watermark(), self.replication.term)
+            .await
         else {
             return Err(ConsensusClientResponse::Err("Write operation failed".into()));
         };
@@ -243,7 +259,7 @@ impl ClusterActor {
         callback: tokio::sync::oneshot::Sender<ConsensusClientResponse>,
         session_req: Option<SessionRequest>,
     ) {
-        let (prev_log_index, prev_term) = (logger.last_log_index, logger.last_log_term);
+        let (prev_log_index, prev_term) = (logger.last_log_index, dbg!(logger.last_log_term));
         let append_entries = match self.try_create_append_entries(logger, &log).await {
             Ok(entries) => entries,
             Err(err) => {
@@ -258,6 +274,8 @@ impl ClusterActor {
             self.replicas().count(),
             session_req,
         );
+
+        // dbg!(self.replicas().count()); // CHECKED. replica count right.
         self.generate_follower_entries(append_entries, prev_log_index, prev_term)
             .map(|(peer, hb)| peer.write_io(AppendEntriesRPC(hb)))
             .collect::<FuturesUnordered<_>>()
@@ -359,7 +377,7 @@ impl ClusterActor {
         cache_manager: &CacheManager,
     ) {
         // * logging case
-        if self.try_append_entries(wal, &mut heartbeat).await.is_err() {
+        if self.try_replicate_logs(wal, &mut heartbeat).await.is_err() {
             return;
         };
 
@@ -367,7 +385,7 @@ impl ClusterActor {
         self.replicate_state(heartbeat.hwm, wal, cache_manager).await;
     }
 
-    async fn try_append_entries(
+    async fn try_replicate_logs(
         &mut self,
         wal: &mut ReplicatedLogs<impl TWriteAheadLog>,
         rpc: &mut HeartBeatMessage,
@@ -383,7 +401,8 @@ impl ClusterActor {
             return Err(anyhow::anyhow!("Fail fail to append"));
         }
 
-        let match_index = wal.write_log_entries(std::mem::take(&mut rpc.append_entries)).await?;
+        let match_index =
+            wal.follower_write_entries(std::mem::take(&mut rpc.append_entries)).await?;
 
         self.send_ack(&rpc.from, match_index, RejectionReason::None).await;
         Ok(())
@@ -400,20 +419,23 @@ impl ClusterActor {
             if prev_log_index == 0 {
                 return Ok(()); // First entry, no previous log to check
             }
-
+            println!("[ERROR] Log is empty but leader expects an entry");
             return Err(RejectionReason::LogInconsistency); // Log empty but leader expects an entry
         }
 
         // Case 2: Previous index is before the log’s start (compacted/truncated)
         if prev_log_index < wal.log_start_index() {
+            println!("[ERROR] Previous log index is before the log’s start");
             return Err(RejectionReason::LogInconsistency); // Leader references an old, unavailable entry
         }
 
         // * Raft followers should truncate their log starting at prev_log_index + 1 and then append the new entries
         // * Just returning an error is breaking consistency
         if let Some(prev_entry) = wal.read_at(prev_log_index).await {
+            println!("[INFO] Previous log entry: {:?}", prev_entry);
             if prev_entry.term != prev_log_term {
                 // ! Term mismatch -> triggers log truncation
+                println!("[ERROR] Term mismatch: {} != {}", prev_entry.term, prev_log_term);
                 wal.truncate_after(prev_log_index).await;
 
                 return Err(RejectionReason::LogInconsistency);
@@ -585,7 +607,9 @@ impl ClusterActor {
     pub(crate) async fn handle_repl_rejection(&mut self, repl_res: ReplicationResponse) {
         match repl_res.rej_reason {
             RejectionReason::ReceiverHasHigherTerm => self.step_down().await,
-            RejectionReason::LogInconsistency => self.decrease_match_index(&repl_res.from),
+            RejectionReason::LogInconsistency => {
+                self.decrease_match_index(&repl_res.from);
+            },
             RejectionReason::None => (),
         }
     }
@@ -614,9 +638,7 @@ mod test {
     use crate::domains::caches::cache_objects::CacheEntry;
     use crate::domains::caches::command::CacheCommand;
     use crate::domains::cluster_actors::commands::ClusterCommand;
-
     use crate::presentation::clusters::listeners::listener::ClusterListener;
-
     use std::ops::Range;
     use std::time::Duration;
     use tokio::net::TcpListener;
@@ -927,12 +949,12 @@ mod test {
             write_operation_create_helper(2, 0, "foo2", "bar"),
             write_operation_create_helper(3, 0, "foo3", "bar"),
         ];
-        logger.write_log_entries(test_logs.clone()).await.unwrap();
+        logger.follower_write_entries(test_logs.clone()).await.unwrap();
 
         // WHEN
         const LOWEST_FOLLOWER_COMMIT_INDEX: u64 = 2;
         let logs = logger
-            .create_log_entries(
+            .leader_write_entries(
                 &WriteRequest::Set { key: "foo4".into(), value: "bar".into() },
                 Some(LOWEST_FOLLOWER_COMMIT_INDEX),
                 0,
@@ -973,7 +995,7 @@ mod test {
 
         cluster_actor.replication.hwm.store(3, Ordering::Release);
 
-        logger.write_log_entries(test_logs).await.unwrap();
+        logger.follower_write_entries(test_logs).await.unwrap();
 
         //WHEN
         // *add lagged followers with its commit index being 1
@@ -984,7 +1006,7 @@ mod test {
         // * add new log - this must create entries that are greater than 3
         let lowest_hwm = cluster_actor.take_low_watermark();
         let append_entries = logger
-            .create_log_entries(
+            .leader_write_entries(
                 &WriteRequest::Set { key: "foo4".into(), value: "bar".into() },
                 lowest_hwm,
                 0,
@@ -1271,7 +1293,7 @@ mod test {
         heartbeat.prev_log_term = 0;
         heartbeat.prev_log_index = 2;
 
-        let result = cluster_actor.try_append_entries(&mut logger, &mut heartbeat).await;
+        let result = cluster_actor.try_replicate_logs(&mut logger, &mut heartbeat).await;
 
         // THEN: Expect truncation and rejection
         assert_eq!(logger.target.writer.len(), 1);
@@ -1291,7 +1313,7 @@ mod test {
             vec![write_operation_create_helper(1, 0, "key1", "val1")],
         );
 
-        let result = cluster_actor.try_append_entries(&mut logger, &mut heartbeat).await;
+        let result = cluster_actor.try_replicate_logs(&mut logger, &mut heartbeat).await;
 
         // THEN: Entries are accepted
         assert!(result.is_ok(), "Should accept entries with prev_log_index=0 on empty log");
@@ -1313,7 +1335,7 @@ mod test {
         heartbeat.prev_log_index = 1;
         heartbeat.prev_log_term = 1;
 
-        let result = cluster_actor.try_append_entries(&mut logger, &mut heartbeat).await;
+        let result = cluster_actor.try_replicate_logs(&mut logger, &mut heartbeat).await;
 
         // THEN: Entries are rejected
         assert!(result.is_err(), "Should reject entries with prev_log_index > 0 on empty log");

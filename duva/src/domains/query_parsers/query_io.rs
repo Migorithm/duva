@@ -1,7 +1,9 @@
 use crate::domains::caches::cache_objects::CacheValue;
 use crate::domains::cluster_actors::commands::{ReplicationResponse, RequestVoteReply, SyncLogs};
 use crate::domains::cluster_actors::heartbeats::heartbeat::{AppendEntriesRPC, ClusterHeartBeat};
+
 use crate::domains::{append_only_files::WriteOperation, cluster_actors::commands::RequestVote};
+use crate::prelude::PeerIdentifier;
 
 use anyhow::{Context, Result};
 use bytes::{Bytes, BytesMut};
@@ -13,6 +15,7 @@ const BULK_STRING_PREFIX: char = '$';
 const ARRAY_PREFIX: char = '*';
 const APPEND_ENTRY_RPC_PREFIX: char = '^';
 const CLUSTER_HEARTBEAT_PREFIX: char = 'c';
+const TOPOLOGY_CHANGE_PREFIX: char = 't';
 const REPLICATE_PREFIX: char = '#';
 const ACKS_PREFIX: char = '@';
 const REQUEST_VOTE_PREFIX: char = 'v';
@@ -50,6 +53,8 @@ pub enum QueryIO {
     ConsensusFollowerResponse(ReplicationResponse),
     RequestVote(RequestVote),
     RequestVoteReply(RequestVoteReply),
+
+    TopologyChange(Vec<PeerIdentifier>),
 }
 
 impl QueryIO {
@@ -120,6 +125,9 @@ impl QueryIO {
             },
             QueryIO::ClusterHeartBeat(heart_beat_message) => {
                 serialize_with_bincode(CLUSTER_HEARTBEAT_PREFIX, &heart_beat_message)
+            },
+            QueryIO::TopologyChange(peer_identifiers) => {
+                serialize_with_bincode(TOPOLOGY_CHANGE_PREFIX, &peer_identifiers)
             },
         }
     }
@@ -206,6 +214,7 @@ pub fn deserialize(buffer: BytesMut) -> Result<(QueryIO, usize)> {
         ACKS_PREFIX => parse_custom_type::<ReplicationResponse>(buffer),
         REQUEST_VOTE_PREFIX => parse_custom_type::<RequestVote>(buffer),
         REQUEST_VOTE_REPLY_PREFIX => parse_custom_type::<RequestVoteReply>(buffer),
+        TOPOLOGY_CHANGE_PREFIX => parse_custom_type::<Vec<PeerIdentifier>>(buffer),
 
         _ => Err(anyhow::anyhow!("Not a known value type {:?}", buffer)),
     }
@@ -386,6 +395,12 @@ impl From<RequestVote> for QueryIO {
 impl From<RequestVoteReply> for QueryIO {
     fn from(value: RequestVoteReply) -> Self {
         QueryIO::RequestVoteReply(value)
+    }
+}
+
+impl From<Vec<PeerIdentifier>> for QueryIO {
+    fn from(value: Vec<PeerIdentifier>) -> Self {
+        QueryIO::TopologyChange(value)
     }
 }
 #[cfg(test)]
@@ -640,5 +655,22 @@ mod test {
 
         // THEN
         assert_eq!(deserialized, request_vote_reply);
+    }
+
+    #[test]
+    fn test_topology_change_serde() {
+        //GIVEN
+        let topology =
+            vec!["127.0.0.1:6000".to_string().into(), "127.0.0.1:6001".to_string().into()];
+        let query_io = QueryIO::TopologyChange(topology.clone());
+
+        //WHEN
+        let serialized = query_io.clone().serialize();
+        let (deserialized, _) = deserialize(BytesMut::from(serialized)).unwrap();
+        let QueryIO::TopologyChange(deserialized_topology) = deserialized else {
+            panic!("Expected a TopologyChange");
+        };
+        //THEN
+        assert_eq!(deserialized_topology, topology);
     }
 }

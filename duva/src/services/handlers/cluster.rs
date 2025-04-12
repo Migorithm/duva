@@ -94,7 +94,7 @@ impl ClusterActor {
                     self.send_leader_heartbeat(&logger).await;
                 },
                 ClusterCommand::InstallLeaderState(logs) => {
-                    if logger.overwrite(logs.clone()).await.is_err() {
+                    if logger.follower_install_logs(logs.clone()).await.is_err() {
                         continue;
                     }
                     self.install_leader_state(logs, &cache_manager).await;
@@ -122,6 +122,9 @@ impl ClusterActor {
                 },
                 ClusterCommand::GetRole(sender) => {
                     let _ = sender.send(self.replication.role.clone());
+                },
+                ClusterCommand::SubscribeToTopologyChange(sender) => {
+                    let _ = sender.send(self.node_change_broadcast.subscribe());
                 },
             }
         }

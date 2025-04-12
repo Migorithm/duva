@@ -2,9 +2,11 @@ mod cli;
 mod editor;
 
 use clap::Parser;
-use duva::prelude::tokio;
+use duva::prelude::tokio::{self, sync::oneshot};
 use duva_client::{
-    command::{separate_command_and_args, take_input},
+    broker::BrokerMessage,
+    cli_input::{Input, render_return_per_input},
+    command::{separate_command_and_args, validate_input},
     controller::ClientController,
 };
 
@@ -30,12 +32,16 @@ async fn main() {
         // and the rest are arguments
         let (cmd, args) = separate_command_and_args(args);
 
-        match take_input(cmd, &args) {
+        match validate_input(cmd, &args) {
             Ok(input) => {
-                let command = controller.build_command(cmd, args);
-                if let Err(e) = controller.send_command(command, input).await {
-                    println!("{}", e);
-                }
+                let (tx, rx) = oneshot::channel();
+                let input = Input::new(input, tx);
+                let _ = controller
+                    .broker_tx
+                    .send(BrokerMessage::from_command(cmd.into(), args, input))
+                    .await;
+                let (kind, query_io) = rx.await.unwrap();
+                render_return_per_input(kind, query_io);
             },
             Err(e) => {
                 println!("{}", e);
