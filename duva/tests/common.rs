@@ -300,18 +300,20 @@ pub struct Client {
 
 impl Client {
     pub fn new(port: u16) -> Client {
+        let mut command = Command::new("cargo");
+        command.args([
+            "run",
+            "-p",
+            "duva-client",
+            "--bin",
+            "cli",
+            "--",
+            "--port",
+            &port.to_string(),
+        ]);
+
         Client {
-            child: Command::new("cargo")
-                .args([
-                    "run",
-                    "-p",
-                    "duva-client",
-                    "--bin",
-                    "cli",
-                    "--",
-                    "--port",
-                    &port.to_string(),
-                ])
+            child: command
                 .stdin(Stdio::piped())
                 .stdout(Stdio::piped())
                 .spawn()

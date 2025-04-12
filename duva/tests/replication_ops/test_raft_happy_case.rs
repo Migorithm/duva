@@ -1,5 +1,4 @@
-use crate::common::{ServerEnv, array, spawn_server_process};
-use duva::clients::ClientStreamHandler;
+use crate::common::{Client, ServerEnv, spawn_server_process};
 
 #[tokio::test]
 async fn test_set_operation_reaches_to_all_replicas() {
@@ -8,7 +7,7 @@ async fn test_set_operation_reaches_to_all_replicas() {
     let env = ServerEnv::default();
     // loads the leader/follower processes
     let mut leader_p = spawn_server_process(&env);
-    let mut client_handler = ClientStreamHandler::new(leader_p.bind_addr()).await;
+    let mut client_handler = Client::new(leader_p.port);
 
     let repl_env = ServerEnv::default()
         .with_leader_bind_addr(leader_p.bind_addr().into())
@@ -20,7 +19,7 @@ async fn test_set_operation_reaches_to_all_replicas() {
     leader_p.wait_for_message(&repl_p.heartbeat_msg(0), 1).unwrap();
 
     // WHEN -- set operation is made
-    client_handler.send(&array(vec!["SET", "foo", "bar"])).await;
+    client_handler.send_and_get("SET foo bar", 1);
 
     //THEN - run the following together
     let h = std::thread::spawn(move || {
