@@ -1,6 +1,4 @@
-use crate::common::{ServerEnv, array, check_internodes_communication, spawn_server_process};
-
-use duva::{clients::ClientStreamHandler, domains::query_parsers::query_io::QueryIO};
+use crate::common::{Client, ServerEnv, check_internodes_communication, spawn_server_process};
 
 #[tokio::test]
 async fn test_cluster_forget_makes_all_nodes_forget_target_node() {
@@ -28,15 +26,15 @@ async fn test_cluster_forget_makes_all_nodes_forget_target_node() {
     // WHEN
     const TIMEOUT_IN_MILLIS: u128 = 500;
     let never_arrivable_msg = repl_p.heartbeat_msg(1);
-    let mut client_handler = ClientStreamHandler::new(leader_p.bind_addr()).await;
+    let mut client_handler = Client::new(leader_p.port);
     let replica_id = repl_p.bind_addr();
-    let cmd = &array(vec!["cluster", "forget", &replica_id]);
-    let response1 = client_handler.send_and_get(cmd).await;
-    let response2 = client_handler.send_and_get(&array(vec!["cluster", "info"])).await;
+
+    let response1 = client_handler.send_and_get(format!("cluster forget {}", &replica_id), 1);
+    let response2 = client_handler.send_and_get("cluster info", 1);
 
     // THEN
-    assert_eq!(response1, "+OK\r\n");
-    assert_eq!(response2, QueryIO::BulkString("cluster_known_nodes:1".into()).serialize());
+    assert_eq!(response1.first().unwrap(), "OK");
+    assert_eq!(response2.first().unwrap(), "cluster_known_nodes:1");
 
     // leader_p and repl_p2 doesn't get message from repl_p2
     let h1 = std::thread::spawn({
