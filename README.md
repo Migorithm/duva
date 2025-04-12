@@ -46,7 +46,7 @@ The following features have been implemented so far:
     - Cluster node liveness check
     - RYOW consistency
     - Follower reads
-    - push-based topology change subscription
+    - push-based topology change notification
 
 
 - Protocol Support
@@ -167,7 +167,7 @@ sequenceDiagram
     L ->> SF: Receive Snapshot (hwm: 5)
 ```
 
-#### Push-based topology change subscription
+#### Push-based topology change notification
 ```mermaid
 sequenceDiagram
     actor C as Client
