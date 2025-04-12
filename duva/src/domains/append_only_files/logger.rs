@@ -11,7 +11,7 @@ impl<T: TWriteAheadLog> ReplicatedLogs<T> {
         Self { target, last_log_index, last_log_term }
     }
 
-    pub(crate) async fn create_log_entries(
+    pub(crate) async fn leader_write_entries(
         &mut self,
         log: &WriteRequest,
         low_watermark: Option<u64>,
@@ -33,11 +33,7 @@ impl<T: TWriteAheadLog> ReplicatedLogs<T> {
         Ok(logs)
     }
 
-    pub(crate) async fn write_single_entry(
-        &mut self,
-        log: &WriteRequest,
-        term: u64,
-    ) -> anyhow::Result<()> {
+    async fn write_single_entry(&mut self, log: &WriteRequest, term: u64) -> anyhow::Result<()> {
         let op =
             WriteOperation { request: log.clone(), log_index: (self.last_log_index + 1), term };
         self.target.append(op).await?;
@@ -46,7 +42,7 @@ impl<T: TWriteAheadLog> ReplicatedLogs<T> {
     }
 
     // FOLLOWER side operation
-    pub(crate) async fn replicate_entries(
+    pub(crate) async fn follower_write_entries(
         &mut self,
         append_entries: Vec<WriteOperation>,
     ) -> anyhow::Result<u64> {
@@ -62,7 +58,10 @@ impl<T: TWriteAheadLog> ReplicatedLogs<T> {
         Ok(self.last_log_index)
     }
 
-    pub(crate) async fn install_logs(&mut self, ops: Vec<WriteOperation>) -> anyhow::Result<()> {
+    pub(crate) async fn follower_install_logs(
+        &mut self,
+        ops: Vec<WriteOperation>,
+    ) -> anyhow::Result<()> {
         self.update_metadata(&ops);
         self.target.overwrite(ops).await?;
         Ok(())

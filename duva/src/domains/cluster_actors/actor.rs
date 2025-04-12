@@ -237,8 +237,9 @@ impl ClusterActor {
             return Err(ConsensusClientResponse::Err("Write given to follower".into()));
         }
 
-        let Ok(append_entries) =
-            logger.create_log_entries(log, self.take_low_watermark(), self.replication.term).await
+        let Ok(append_entries) = logger
+            .leader_write_entries(log, self.take_low_watermark(), self.replication.term)
+            .await
         else {
             return Err(ConsensusClientResponse::Err("Write operation failed".into()));
         };
@@ -400,7 +401,8 @@ impl ClusterActor {
             return Err(anyhow::anyhow!("Fail fail to append"));
         }
 
-        let match_index = wal.replicate_entries(std::mem::take(&mut rpc.append_entries)).await?;
+        let match_index =
+            wal.follower_write_entries(std::mem::take(&mut rpc.append_entries)).await?;
 
         self.send_ack(&rpc.from, match_index, RejectionReason::None).await;
         Ok(())
@@ -431,9 +433,6 @@ impl ClusterActor {
         // * Just returning an error is breaking consistency
         if let Some(prev_entry) = wal.read_at(prev_log_index).await {
             println!("[INFO] Previous log entry: {:?}", prev_entry);
-            // TWO issues
-            // TODO1 why rejection didn't work?
-            // TODO2 why term mismatch happens?
             if prev_entry.term != prev_log_term {
                 // ! Term mismatch -> triggers log truncation
                 println!("[ERROR] Term mismatch: {} != {}", prev_entry.term, prev_log_term);
@@ -948,12 +947,12 @@ mod test {
             write_operation_create_helper(2, 0, "foo2", "bar"),
             write_operation_create_helper(3, 0, "foo3", "bar"),
         ];
-        logger.replicate_entries(test_logs.clone()).await.unwrap();
+        logger.follower_write_entries(test_logs.clone()).await.unwrap();
 
         // WHEN
         const LOWEST_FOLLOWER_COMMIT_INDEX: u64 = 2;
         let logs = logger
-            .create_log_entries(
+            .leader_write_entries(
                 &WriteRequest::Set { key: "foo4".into(), value: "bar".into() },
                 Some(LOWEST_FOLLOWER_COMMIT_INDEX),
                 0,
@@ -994,7 +993,7 @@ mod test {
 
         cluster_actor.replication.hwm.store(3, Ordering::Release);
 
-        logger.replicate_entries(test_logs).await.unwrap();
+        logger.follower_write_entries(test_logs).await.unwrap();
 
         //WHEN
         // *add lagged followers with its commit index being 1
@@ -1005,7 +1004,7 @@ mod test {
         // * add new log - this must create entries that are greater than 3
         let lowest_hwm = cluster_actor.take_low_watermark();
         let append_entries = logger
-            .create_log_entries(
+            .leader_write_entries(
                 &WriteRequest::Set { key: "foo4".into(), value: "bar".into() },
                 lowest_hwm,
                 0,
