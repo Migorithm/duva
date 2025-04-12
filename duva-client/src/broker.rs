@@ -1,6 +1,7 @@
 use crate::cli_input::Input;
 use crate::cli_input::InputQueue;
-use crate::cli_input::need_index_increase;
+
+use crate::command::ClientInputKind;
 use crate::controller::CommandToServer;
 use crate::controller::Sendable;
 use crate::controller::ServerStreamReader;
@@ -44,11 +45,12 @@ impl Broker {
                         continue;
                     };
 
-                    if let Some(index) = need_index_increase(&input.kind, &query_io) {
+                    if let Some(index) = self.need_index_increase(&input.kind, &query_io) {
                         if index > self.latest_known_index {
                             self.latest_known_index = index;
                         }
                     }
+                    self.may_update_request_id(&input.kind);
 
                     input.callback.send((input.kind, query_io)).unwrap_or_else(|_| {
                         println!("Failed to send response to input callback");
@@ -88,6 +90,25 @@ impl Broker {
             command.push_str(&format!("${}\r\n{}\r\n", arg.len(), arg));
         }
         command
+    }
+
+    fn need_index_increase(&mut self, kind: &ClientInputKind, query_io: &QueryIO) -> Option<u64> {
+        if matches!(kind, ClientInputKind::Set | ClientInputKind::Del) {
+            if let QueryIO::SimpleString(v) = query_io {
+                let rindex = v.split_whitespace().last().unwrap();
+                return rindex.parse::<u64>().ok();
+            }
+        }
+        None
+    }
+
+    fn may_update_request_id(&mut self, input: &ClientInputKind) {
+        match input {
+            ClientInputKind::Set | ClientInputKind::Del | ClientInputKind::Save => {
+                self.request_id += 1;
+            },
+            _ => {},
+        }
     }
 
     pub(crate) async fn authenticate(

@@ -34,16 +34,6 @@ impl Input {
     }
 }
 
-pub(crate) fn need_index_increase(kind: &ClientInputKind, query_io: &QueryIO) -> Option<u64> {
-    if matches!(kind, Set | Del) {
-        if let QueryIO::SimpleString(v) = query_io {
-            let rindex = v.split_whitespace().last().unwrap();
-            return rindex.parse::<u64>().ok();
-        }
-    }
-    None
-}
-
 pub fn render_return_per_input(kind: ClientInputKind, query_io: QueryIO) {
     match kind {
         Ping | Get | IndexGet | Echo | Config | Keys | Save | Info | ClusterForget | Role
