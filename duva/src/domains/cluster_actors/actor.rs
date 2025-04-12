@@ -377,7 +377,7 @@ impl ClusterActor {
         cache_manager: &CacheManager,
     ) {
         // * logging case
-        if self.try_append_entries(wal, &mut heartbeat).await.is_err() {
+        if self.try_replicate_logs(wal, &mut heartbeat).await.is_err() {
             return;
         };
 
@@ -385,7 +385,7 @@ impl ClusterActor {
         self.replicate_state(heartbeat.hwm, wal, cache_manager).await;
     }
 
-    async fn try_append_entries(
+    async fn try_replicate_logs(
         &mut self,
         wal: &mut ReplicatedLogs<impl TWriteAheadLog>,
         rpc: &mut HeartBeatMessage,
@@ -607,7 +607,9 @@ impl ClusterActor {
     pub(crate) async fn handle_repl_rejection(&mut self, repl_res: ReplicationResponse) {
         match repl_res.rej_reason {
             RejectionReason::ReceiverHasHigherTerm => self.step_down().await,
-            RejectionReason::LogInconsistency => self.decrease_match_index(&repl_res.from),
+            RejectionReason::LogInconsistency => {
+                self.decrease_match_index(&repl_res.from);
+            },
             RejectionReason::None => (),
         }
     }
@@ -1291,7 +1293,7 @@ mod test {
         heartbeat.prev_log_term = 0;
         heartbeat.prev_log_index = 2;
 
-        let result = cluster_actor.try_append_entries(&mut logger, &mut heartbeat).await;
+        let result = cluster_actor.try_replicate_logs(&mut logger, &mut heartbeat).await;
 
         // THEN: Expect truncation and rejection
         assert_eq!(logger.target.writer.len(), 1);
@@ -1311,7 +1313,7 @@ mod test {
             vec![write_operation_create_helper(1, 0, "key1", "val1")],
         );
 
-        let result = cluster_actor.try_append_entries(&mut logger, &mut heartbeat).await;
+        let result = cluster_actor.try_replicate_logs(&mut logger, &mut heartbeat).await;
 
         // THEN: Entries are accepted
         assert!(result.is_ok(), "Should accept entries with prev_log_index=0 on empty log");
@@ -1333,7 +1335,7 @@ mod test {
         heartbeat.prev_log_index = 1;
         heartbeat.prev_log_term = 1;
 
-        let result = cluster_actor.try_append_entries(&mut logger, &mut heartbeat).await;
+        let result = cluster_actor.try_replicate_logs(&mut logger, &mut heartbeat).await;
 
         // THEN: Entries are rejected
         assert!(result.is_err(), "Should reject entries with prev_log_index > 0 on empty log");
