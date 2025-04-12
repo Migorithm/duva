@@ -2,10 +2,9 @@
 /// *2\r\n$3\r\ndir\r\n$4\r\n/tmp\r\n
 use std::time::Duration;
 
-use duva::clients::ClientStreamHandler;
 use tokio::time::sleep;
 
-use crate::common::{ServerEnv, array, spawn_server_process};
+use crate::common::{Client, ServerEnv, spawn_server_process};
 
 #[tokio::test]
 async fn test_config_get_dir() {
@@ -14,14 +13,11 @@ async fn test_config_get_dir() {
     let process = spawn_server_process(&env);
 
     sleep(Duration::from_millis(500)).await;
-    let mut h = ClientStreamHandler::new(process.bind_addr()).await;
+    let mut h = Client::new(process.port);
 
-    let command = "GET";
-    let key = "dir";
-    let cmd = array(vec!["CONFIG", command, key]);
     // WHEN
-    h.send(&cmd).await;
+    let res = h.send_and_get("CONFIG get dir", 1);
 
     // THEN
-    assert_eq!(h.get_response().await, array(vec!["dir", "."]));
+    assert_eq!(res.first().unwrap(), "dir .")
 }

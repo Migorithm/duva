@@ -44,7 +44,7 @@ pub fn render_return_per_input(kind: ClientInputKind, query_io: QueryIO) {
             QueryIO::Err(value) => {
                 println!("(error) {value}");
             },
-            _ => {
+            _err => {
                 println!("Unexpected response format");
             },
         },

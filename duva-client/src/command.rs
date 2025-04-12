@@ -95,7 +95,14 @@ pub fn validate_input(action: &str, args: &[&str]) -> Result<ClientInputKind, St
             }
             Ok(ClientInputKind::Role)
         },
-
+        "CONFIG" => {
+            if args.len() != 2 {
+                return Err(
+                    "(error) ERR wrong number of arguments for 'config' command".to_string()
+                );
+            }
+            Ok(ClientInputKind::Config)
+        },
         // Add other commands as needed
         unknown_cmd => {
             Err(format!("(error) ERR unknown command '{unknown_cmd}', with args beginning with",))

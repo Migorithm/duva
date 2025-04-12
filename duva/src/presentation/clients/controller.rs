@@ -78,11 +78,8 @@ impl ClientController {
                 let res = self.config_manager.route_get((key, value)).await?;
 
                 match res {
-                    ConfigResponse::Dir(value) => QueryIO::Array(vec![
-                        QueryIO::BulkString("dir".into()),
-                        QueryIO::BulkString(value),
-                    ]),
-                    ConfigResponse::DbFileName(value) => QueryIO::BulkString(value),
+                    ConfigResponse::Dir(value) => QueryIO::SimpleString(format!("dir {}", value)),
+                    ConfigResponse::DbFileName(value) => QueryIO::SimpleString(value),
                     _ => QueryIO::Err("Invalid operation".into()),
                 }
             },
