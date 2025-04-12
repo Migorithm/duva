@@ -3,9 +3,9 @@
 use bytes::{Bytes, BytesMut};
 use duva::domains::query_parsers::query_io::{QueryIO, deserialize};
 use duva::make_smart_pointer;
-use std::io::{BufRead, BufReader, Read};
+use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpListener;
-use std::process::{Child, Command, Stdio};
+use std::process::{Child, ChildStdin, Command, Stdio};
 use std::thread::sleep;
 use std::time::{Duration, Instant};
 
@@ -133,7 +133,7 @@ impl TestProcessChild {
 #[derive(Debug)]
 pub struct TestProcessChild {
     process: Child,
-    port: u16,
+    pub port: u16,
 }
 
 impl TestProcessChild {
@@ -251,22 +251,6 @@ fn wait_for_message<T: Read>(
     Ok(())
 }
 
-pub fn contains_only(source: String, target: Vec<&str>) -> bool {
-    let (QueryIO::Array(vec), _) = deserialize(BytesMut::from(source.as_str())).unwrap() else {
-        panic!("Invalid input")
-    };
-    let mut target = target.iter().map(|s| s.to_string()).collect::<Vec<String>>();
-    for item in vec {
-        if let QueryIO::BulkString(value) = item {
-            if let Some(index) = target.iter().position(|s| s == value.as_str()) {
-                target.remove(index);
-            }
-        }
-    }
-
-    target.is_empty()
-}
-
 pub fn array(arr: Vec<&str>) -> Bytes {
     QueryIO::Array(arr.iter().map(|s| QueryIO::BulkString(s.to_string().into())).collect())
         .serialize()
@@ -307,4 +291,72 @@ pub fn check_internodes_communication(
         }
     }
     Ok(())
+}
+
+pub struct Client {
+    pub child: Child,
+    reader: Option<BufReader<std::process::ChildStdout>>,
+}
+
+impl Client {
+    pub fn new(port: u16) -> Client {
+        Client {
+            child: Command::new("cargo")
+                .args([
+                    "run",
+                    "-p",
+                    "duva-client",
+                    "--bin",
+                    "cli",
+                    "--",
+                    "--port",
+                    &port.to_string(),
+                ])
+                .stdin(Stdio::piped())
+                .stdout(Stdio::piped())
+                .spawn()
+                .expect("Failed to start CLI"),
+            reader: None,
+        }
+    }
+
+    pub fn send(&mut self, command: &[u8]) -> anyhow::Result<()> {
+        let stdin = self.child.stdin.as_mut().unwrap();
+        stdin.write_all(command)?;
+        stdin.write_all(b"\r\n")?;
+        stdin.flush()?;
+        Ok(())
+    }
+
+    pub fn read(&mut self) -> Result<String, ()> {
+        // Initialize reader if it doesn't exist
+        if self.reader.is_none() {
+            self.reader = Some(BufReader::new(self.child.stdout.take().unwrap()));
+        }
+
+        let reader = self.reader.as_mut().unwrap();
+        let mut line = String::new();
+        reader.read_line(&mut line).map_err(|_| ())?;
+        Ok(line.trim().to_string())
+    }
+
+    pub fn send_and_get(&mut self, command: &[u8], mut cnt: u8) -> Vec<String> {
+        self.send(command).unwrap();
+
+        let mut res = vec![];
+        while cnt > 0 {
+            cnt -= 1;
+            if let Ok(line) = self.read() {
+                res.push(line);
+            }
+        }
+        res
+    }
+}
+
+impl Drop for Client {
+    fn drop(&mut self) {
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+    }
 }
