@@ -103,6 +103,12 @@ pub fn validate_input(action: &str, args: &[&str]) -> Result<ClientInputKind, St
             }
             Ok(ClientInputKind::Config)
         },
+        "SAVE" => {
+            if !args.is_empty() {
+                return Err("(error) ERR wrong number of arguments for 'save' command".to_string());
+            }
+            Ok(ClientInputKind::Save)
+        },
         // Add other commands as needed
         unknown_cmd => {
             Err(format!("(error) ERR unknown command '{unknown_cmd}', with args beginning with",))
