@@ -22,6 +22,7 @@ use crate::domains::append_only_files::interfaces::TWriteAheadLog;
 use crate::domains::append_only_files::logger::ReplicatedLogs;
 use crate::domains::cluster_actors::consensus::ElectionState;
 use crate::domains::{caches::cache_manager::CacheManager, query_parsers::QueryIO};
+use std::iter;
 use std::sync::atomic::Ordering;
 
 #[derive(Debug)]
@@ -125,7 +126,16 @@ impl ClusterActor {
         if let Some(existing_peer) = self.members.insert(peer_addr, peer) {
             existing_peer.kill().await;
         }
-        self.node_change_broadcast.send(self.members.keys().cloned().collect()).ok();
+
+        self.node_change_broadcast
+            .send(
+                self.members
+                    .keys()
+                    .cloned()
+                    .chain(iter::once(self.replication.self_identifier()))
+                    .collect(),
+            )
+            .ok();
     }
     pub(crate) async fn remove_peer(&mut self, peer_addr: &PeerIdentifier) -> Option<()> {
         if let Some(peer) = self.members.remove(peer_addr) {
