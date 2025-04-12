@@ -1,9 +1,21 @@
+---
+title : Push-based topology change subscription & reconnection on leader failure
+
+---
+
 sequenceDiagram
     actor C as Client
     participant L as Leader
     participant F as Followers
 
-    C ->> L : request
+    C --> L : Connection established
+    L ->> L : Register client connection to topology change watcher
+    
+    F --> L : Peer Connection made
+    
+    L ->> C : Notify client of topology change
+    C ->> C : Update topology
+
 
     break Leader failed
         L --x L : Crash
