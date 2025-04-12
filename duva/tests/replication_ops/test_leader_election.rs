@@ -1,10 +1,7 @@
 use std::{thread::sleep, time::Duration};
 
-use crate::common::{ServerEnv, array, check_internodes_communication, spawn_server_process};
-use duva::{
-    clients::ClientStreamHandler,
-    domains::cluster_actors::heartbeats::scheduler::LEADER_HEARTBEAT_INTERVAL_MAX,
-};
+use crate::common::{Client, ServerEnv, check_internodes_communication, spawn_server_process};
+use duva::domains::cluster_actors::heartbeats::scheduler::LEADER_HEARTBEAT_INTERVAL_MAX;
 
 #[tokio::test]
 async fn test_leader_election() {
@@ -30,9 +27,9 @@ async fn test_leader_election() {
     // THEN
     let mut flag = false;
     for f in [&follower_p1, &follower_p2] {
-        let mut handler = ClientStreamHandler::new(f.bind_addr()).await;
-        let response1 = handler.send_and_get(&array(vec!["info", "replication"])).await;
-        if response1.contains("role:leader") {
+        let mut handler = Client::new(f.port);
+        let response1 = handler.send_and_get("info replication", 4);
+        if response1.contains(&"role:leader".to_string()) {
             flag = true;
             break;
         }
@@ -66,12 +63,13 @@ async fn test_set_twice_after_election() {
 
     let mut flag = false;
     for f in [&follower_p1, &follower_p2] {
-        let mut handler = ClientStreamHandler::new(f.bind_addr()).await;
-        let res = handler.send_and_get(&array(vec!["info", "replication"])).await;
-        if res.contains("role:leader") {
+        let mut handler = Client::new(f.port);
+        let res = handler.send_and_get("info replication", 4);
+        if res.contains(&"role:leader".to_string()) {
             // THEN - one of the replicas should become the leader
-            let _ = handler.send_and_get(&array(vec!["set", "1", "2"])).await;
-            let _ = handler.send_and_get(&array(vec!["set", "2", "3"])).await;
+            assert_eq!(handler.send_and_get("set 1 2", 1).first().unwrap(), "OK");
+            assert_eq!(handler.send_and_get("set 2 3", 1).first().unwrap(), "OK");
+
             flag = true;
             break;
         }
@@ -104,9 +102,9 @@ async fn test_leader_election_twice() {
     let mut processes = vec![];
 
     for mut f in [follower_p1, follower_p2] {
-        let mut handler = ClientStreamHandler::new(f.bind_addr()).await;
-        let res = handler.send_and_get(&array(vec!["info", "replication"])).await;
-        if !res.contains("role:leader") {
+        let mut handler = Client::new(f.port);
+        let res = handler.send_and_get("info replication", 4);
+        if !res.contains(&"role:leader".to_string()) {
             processes.push(f);
             continue;
         }
@@ -124,9 +122,9 @@ async fn test_leader_election_twice() {
 
     let mut flag = false;
     for f in processes.iter() {
-        let mut handler = ClientStreamHandler::new(f.bind_addr()).await;
-        let res = handler.send_and_get(&array(vec!["info", "replication"])).await;
-        if res.contains("role:leader") {
+        let mut handler = Client::new(f.port);
+        let res = handler.send_and_get("info replication", 4);
+        if res.contains(&"role:leader".to_string()) {
             flag = true;
             break;
         }
