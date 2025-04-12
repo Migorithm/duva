@@ -342,7 +342,7 @@ impl Client {
         Ok(line.trim().to_string())
     }
 
-    pub fn send_and_get(&mut self, command: impl AsRef<[u8]>, mut cnt: u8) -> Vec<String> {
+    pub fn send_and_get(&mut self, command: impl AsRef<[u8]>, mut cnt: u16) -> Vec<String> {
         self.send(command.as_ref()).unwrap();
 
         let mut res = vec![];
