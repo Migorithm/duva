@@ -258,7 +258,7 @@ impl ClusterActor {
         callback: tokio::sync::oneshot::Sender<ConsensusClientResponse>,
         session_req: Option<SessionRequest>,
     ) {
-        let (prev_log_index, prev_term) = (logger.last_log_index, logger.last_log_term);
+        let (prev_log_index, prev_term) = (logger.last_log_index, dbg!(logger.last_log_term));
         let append_entries = match self.try_create_append_entries(logger, &log).await {
             Ok(entries) => entries,
             Err(err) => {
@@ -400,7 +400,7 @@ impl ClusterActor {
             return Err(anyhow::anyhow!("Fail fail to append"));
         }
 
-        let match_index = wal.write_log_entries(std::mem::take(&mut rpc.append_entries)).await?;
+        let match_index = wal.replicate_entries(std::mem::take(&mut rpc.append_entries)).await?;
 
         self.send_ack(&rpc.from, match_index, RejectionReason::None).await;
         Ok(())
@@ -417,20 +417,26 @@ impl ClusterActor {
             if prev_log_index == 0 {
                 return Ok(()); // First entry, no previous log to check
             }
-
+            println!("[ERROR] Log is empty but leader expects an entry");
             return Err(RejectionReason::LogInconsistency); // Log empty but leader expects an entry
         }
 
         // Case 2: Previous index is before the log’s start (compacted/truncated)
         if prev_log_index < wal.log_start_index() {
+            println!("[ERROR] Previous log index is before the log’s start");
             return Err(RejectionReason::LogInconsistency); // Leader references an old, unavailable entry
         }
 
         // * Raft followers should truncate their log starting at prev_log_index + 1 and then append the new entries
         // * Just returning an error is breaking consistency
         if let Some(prev_entry) = wal.read_at(prev_log_index).await {
+            println!("[INFO] Previous log entry: {:?}", prev_entry);
+            // TWO issues
+            // TODO1 why rejection didn't work?
+            // TODO2 why term mismatch happens?
             if prev_entry.term != prev_log_term {
                 // ! Term mismatch -> triggers log truncation
+                println!("[ERROR] Term mismatch: {} != {}", prev_entry.term, prev_log_term);
                 wal.truncate_after(prev_log_index).await;
 
                 return Err(RejectionReason::LogInconsistency);
@@ -942,7 +948,7 @@ mod test {
             write_operation_create_helper(2, 0, "foo2", "bar"),
             write_operation_create_helper(3, 0, "foo3", "bar"),
         ];
-        logger.write_log_entries(test_logs.clone()).await.unwrap();
+        logger.replicate_entries(test_logs.clone()).await.unwrap();
 
         // WHEN
         const LOWEST_FOLLOWER_COMMIT_INDEX: u64 = 2;
@@ -988,7 +994,7 @@ mod test {
 
         cluster_actor.replication.hwm.store(3, Ordering::Release);
 
-        logger.write_log_entries(test_logs).await.unwrap();
+        logger.replicate_entries(test_logs).await.unwrap();
 
         //WHEN
         // *add lagged followers with its commit index being 1

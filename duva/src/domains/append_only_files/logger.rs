@@ -18,7 +18,7 @@ impl<T: TWriteAheadLog> ReplicatedLogs<T> {
         term: u64,
     ) -> anyhow::Result<Vec<WriteOperation>> {
         let current_idx = self.last_log_index;
-        self.write_log_entry(log, term).await?;
+        self.write_single_entry(log, term).await?;
 
         if low_watermark.is_none() {
             return Ok(self.from(current_idx));
@@ -33,7 +33,7 @@ impl<T: TWriteAheadLog> ReplicatedLogs<T> {
         Ok(logs)
     }
 
-    pub(crate) async fn write_log_entry(
+    pub(crate) async fn write_single_entry(
         &mut self,
         log: &WriteRequest,
         term: u64,
@@ -45,7 +45,8 @@ impl<T: TWriteAheadLog> ReplicatedLogs<T> {
         Ok(())
     }
 
-    pub(crate) async fn write_log_entries(
+    // FOLLOWER side operation
+    pub(crate) async fn replicate_entries(
         &mut self,
         append_entries: Vec<WriteOperation>,
     ) -> anyhow::Result<u64> {
@@ -53,18 +54,17 @@ impl<T: TWriteAheadLog> ReplicatedLogs<T> {
         let new_entries: Vec<_> =
             append_entries.into_iter().filter(|log| log.log_index > self.last_log_index).collect();
 
-        let cnt = new_entries.len();
+        self.update_metadata(&new_entries);
+
         self.target.append_many(new_entries).await?;
-        self.last_log_index += cnt as u64;
 
         println!("[INFO] Received log entry with log index up to {}", self.last_log_index);
         Ok(self.last_log_index)
     }
 
-    pub(crate) async fn overwrite(&mut self, ops: Vec<WriteOperation>) -> anyhow::Result<()> {
-        let last_index = ops.len() as u64;
+    pub(crate) async fn install_logs(&mut self, ops: Vec<WriteOperation>) -> anyhow::Result<()> {
+        self.update_metadata(&ops);
         self.target.overwrite(ops).await?;
-        self.last_log_index = last_index;
         Ok(())
     }
     pub(crate) fn range(&self, start_exclusive: u64, end_inclusive: u64) -> Vec<WriteOperation> {
@@ -89,5 +89,14 @@ impl<T: TWriteAheadLog> ReplicatedLogs<T> {
 
     pub(crate) async fn truncate_after(&mut self, log_index: u64) {
         self.target.truncate_after(log_index).await;
+    }
+
+    fn update_metadata(&mut self, new_entries: &[WriteOperation]) {
+        if new_entries.is_empty() {
+            return;
+        }
+        let last_entry = new_entries.last().unwrap();
+        self.last_log_index = last_entry.log_index;
+        self.last_log_term = last_entry.term;
     }
 }
