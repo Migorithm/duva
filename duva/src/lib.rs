@@ -124,7 +124,8 @@ impl StartUpFacade {
         let mut conn_handlers: Vec<tokio::task::JoinHandle<()>> = Vec::with_capacity(100);
 
         while let Ok((stream, _)) = client_stream_listener.accept().await {
-            let peers = self.registry.cluster_communication_manager().get_peers().await?;
+            let mut peers = self.registry.cluster_communication_manager().get_peers().await?;
+            peers.push(PeerIdentifier(self.registry.config_manager.bind_addr()));
 
             let is_leader = self.registry.cluster_communication_manager().role().await? == "leader";
             let Ok((reader, writer)) = authenticate(stream, peers, is_leader).await else {
