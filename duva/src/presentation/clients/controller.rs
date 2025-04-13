@@ -120,7 +120,7 @@ impl ClientController {
             },
             ClientAction::Role => {
                 let role = self.cluster_communication_manager.role();
-                QueryIO::SimpleString(role.await?)
+                QueryIO::SimpleString(role.await?.to_string())
             },
         };
         Ok(response)

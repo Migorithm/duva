@@ -13,6 +13,7 @@ use domains::caches::cache_manager::CacheManager;
 use domains::cluster_actors::ClusterActor;
 use domains::cluster_actors::commands::ClusterCommand;
 use domains::cluster_actors::replication::ReplicationState;
+use domains::cluster_actors::replication::Role;
 use domains::config_actors::config_manager::ConfigManager;
 use domains::saves::snapshot::snapshot_loader::SnapshotLoader;
 pub use init::Environment;
@@ -127,7 +128,8 @@ impl StartUpFacade {
             let mut peers = self.registry.cluster_communication_manager().get_peers().await?;
             peers.push(PeerIdentifier(self.registry.config_manager.bind_addr()));
 
-            let is_leader = self.registry.cluster_communication_manager().role().await? == "leader";
+            let is_leader =
+                self.registry.cluster_communication_manager().role().await? == Role::Leader;
             let Ok((reader, writer)) = authenticate(stream, peers, is_leader).await else {
                 eprintln!("[ERROR] Failed to authenticate client stream");
                 continue;
