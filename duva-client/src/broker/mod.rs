@@ -1,10 +1,8 @@
 mod input_queue;
-
+mod read_stream;
+mod write_stream;
 use crate::command::ClientInputKind;
 use crate::command::Input;
-use crate::server_streams::MsgToServer;
-use crate::server_streams::ServerStreamReader;
-use crate::server_streams::ServerStreamWriter;
 
 use duva::domains::cluster_actors::heartbeats::scheduler::LEADER_HEARTBEAT_INTERVAL_MAX;
 use duva::domains::{IoError, query_parsers::query_io::QueryIO};
@@ -19,6 +17,10 @@ use duva::{
     services::interface::TSerdeReadWrite,
 };
 use input_queue::InputQueue;
+
+use read_stream::ServerStreamReader;
+use write_stream::MsgToServer;
+use write_stream::ServerStreamWriter;
 
 pub struct Broker {
     pub(crate) tx: Sender<BrokerMessage>,
