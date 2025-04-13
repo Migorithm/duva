@@ -6,7 +6,6 @@ use duva::prelude::tokio;
 use duva::prelude::tokio::sync::mpsc::Sender;
 use duva::prelude::uuid::Uuid;
 
-// TODO Read actor and Write actor
 pub struct ClientController<T> {
     pub broker_tx: Sender<BrokerMessage>,
     pub target: T,
@@ -33,6 +32,7 @@ impl<T> ClientController<T> {
         Self { broker_tx, target: editor }
     }
 
+    #[cfg_attr(not(feature = "cli"), allow(unused))]
     pub fn print_res(&self, kind: ClientInputKind, query_io: QueryIO) {
         use ClientInputKind::*;
         match kind {
