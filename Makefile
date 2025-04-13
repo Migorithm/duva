@@ -37,4 +37,4 @@ follower-tp:
 
 
 cli:
-	cargo run -p duva-client --bin cli -- --port $(p)
+	cargo run -p duva-client --bin cli --features cli -- --port $(p)

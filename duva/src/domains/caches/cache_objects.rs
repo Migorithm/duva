@@ -29,12 +29,6 @@ impl CacheEntry {
             CacheEntry::KeyValueExpiry(key, _, _) => key,
         }
     }
-    pub(crate) fn value(&self) -> &str {
-        match &self {
-            CacheEntry::KeyValue(_, value) => value,
-            CacheEntry::KeyValueExpiry(_, value, _) => value,
-        }
-    }
 
     pub(crate) fn new(chunk: &[(&String, &CacheValue)]) -> Vec<Self> {
         chunk.iter().map(|(k, v)| v.to_cache_entry(k)).collect::<Vec<CacheEntry>>()

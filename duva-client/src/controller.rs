@@ -57,7 +57,7 @@ impl<T> ClientController<T> {
                 let QueryIO::Null = query_io else {
                     return Response::FormatError;
                 };
-                Response::String("OK".into())
+                Response::Null
             },
             Set => match query_io {
                 QueryIO::SimpleString(_) => Response::String("OK".into()),
@@ -106,7 +106,6 @@ enum Response {
     FormatError,
     String(String),
     Integer(u64),
-
     Error(String),
     Array(Vec<Response>),
 }
@@ -115,13 +114,17 @@ impl Display for Response {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Response::Null => write!(f, "(nil)"),
-            Response::Error(value) => write!(f, "(error) {value}"),
             Response::FormatError => write!(f, "Unexpected response format"),
             Response::String(value) => write!(f, "{value}"),
             Response::Integer(value) => write!(f, "(integer) {value}"),
+            Response::Error(value) => write!(f, "(error) {value}"),
             Response::Array(responses) => {
-                for response in responses {
-                    writeln!(f, "{}", response)?;
+                let mut iter = responses.iter().peekable();
+                while let Some(response) = iter.next() {
+                    write!(f, "{}", response)?;
+                    if iter.peek().is_some() {
+                        writeln!(f)?; // Add newline only between items, not at the end
+                    }
                 }
                 Ok(())
             },
