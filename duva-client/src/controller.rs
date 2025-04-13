@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 use crate::broker::Broker;
 use crate::broker::BrokerMessage;
 use crate::command::ClientInputKind;
@@ -32,71 +34,96 @@ impl<T> ClientController<T> {
         Self { broker_tx, target: editor }
     }
 
-    #[cfg_attr(not(feature = "cli"), allow(unused))]
-    pub fn print_res(&self, kind: ClientInputKind, query_io: QueryIO) {
+    fn render_return(&self, kind: ClientInputKind, query_io: QueryIO) -> Response {
         use ClientInputKind::*;
         match kind {
-            Ping | Get | Echo | Config | Save | Info | ClusterForget | Role | ReplicaOf
-            | ClusterInfo => match query_io {
-                QueryIO::Null => println!("(nil)"),
-                QueryIO::SimpleString(value) => println!("{value}"),
-                QueryIO::BulkString(value) => println!("{value}"),
-                QueryIO::Err(value) => {
-                    println!("(error) {value}");
-                },
-                _err => {
-                    println!("Unexpected response format");
-                },
+            Ping | Get | Echo | Config | Info | ClusterForget | Role | ReplicaOf | ClusterInfo => {
+                match query_io {
+                    QueryIO::Null => Response::Null,
+                    QueryIO::SimpleString(value) => Response::String(value),
+                    QueryIO::BulkString(value) => Response::String(value),
+                    QueryIO::Err(value) => Response::Error(value),
+                    _err => Response::FormatError,
+                }
             },
             Del | Exists => {
                 let QueryIO::SimpleString(value) = query_io else {
-                    println!("Unexpected response format");
-                    return;
+                    return Response::FormatError;
                 };
                 let deleted_count = value.parse::<u64>().unwrap();
-                println!("(integer) {}", deleted_count);
+                Response::Integer(deleted_count)
             },
-            Set => {
-                match query_io {
-                    QueryIO::SimpleString(_) => {
-                        println!("OK");
-                        return;
-                    },
-                    QueryIO::Err(value) => {
-                        println!("(error) {value}");
-                        return;
-                    },
-                    _ => {
-                        println!("Unexpected response format");
-                        return;
-                    },
+            Save => {
+                let QueryIO::Null = query_io else {
+                    return Response::FormatError;
                 };
+                Response::String("OK".into())
+            },
+            Set => match query_io {
+                QueryIO::SimpleString(_) => Response::String("OK".into()),
+                QueryIO::Err(value) => Response::Error(value),
+                _ => {
+                    return Response::FormatError;
+                },
             },
             Keys => {
                 let QueryIO::Array(value) = query_io else {
-                    println!("Unexpected response format");
-                    return;
+                    return Response::FormatError;
                 };
+                let mut keys = Vec::new();
                 for (i, item) in value.into_iter().enumerate() {
                     let QueryIO::BulkString(value) = item else {
-                        println!("Unexpected response format");
-                        break;
+                        return Response::FormatError;
                     };
-                    println!("{i}) \"{value}\"");
+                    keys.push(Response::String(format!("{i}) \"{value}\"")));
                 }
+                Response::Array(keys)
             },
             ClusterNodes => {
                 let QueryIO::Array(value) = query_io else {
-                    println!("Unexpected response format");
-                    return;
+                    return Response::FormatError;
                 };
+                let mut nodes = Vec::new();
                 for item in value {
                     let QueryIO::BulkString(value) = item else {
-                        println!("Unexpected response format");
-                        break;
+                        return Response::FormatError;
                     };
-                    println!("{value}");
+                    nodes.push(Response::String(value));
                 }
+                Response::Array(nodes)
+            },
+        }
+    }
+
+    #[cfg_attr(not(feature = "cli"), allow(unused))]
+    pub fn print_res(&self, kind: ClientInputKind, query_io: QueryIO) {
+        println!("{}", self.render_return(kind, query_io));
+    }
+}
+
+enum Response {
+    Null,
+    FormatError,
+    String(String),
+    Integer(u64),
+
+    Error(String),
+    Array(Vec<Response>),
+}
+
+impl Display for Response {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Response::Null => write!(f, "(nil)"),
+            Response::Error(value) => write!(f, "(error) {value}"),
+            Response::FormatError => write!(f, "Unexpected response format"),
+            Response::String(value) => write!(f, "{value}"),
+            Response::Integer(value) => write!(f, "(integer) {value}"),
+            Response::Array(responses) => {
+                for response in responses {
+                    writeln!(f, "{}", response)?;
+                }
+                Ok(())
             },
         }
     }

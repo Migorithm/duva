@@ -307,6 +307,8 @@ impl Client {
             "duva-client",
             "--bin",
             "cli",
+            "--features",
+            "cli",
             "--",
             "--port",
             &port.to_string(),
