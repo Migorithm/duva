@@ -1,7 +1,6 @@
 use crate::cli_input::Input;
 use crate::cli_input::InputQueue;
 use crate::command::ClientInputKind;
-use crate::controller::CommandToServer;
 use crate::controller::MsgToServer;
 use crate::controller::ServerStreamReader;
 use crate::controller::ServerStreamWriter;
@@ -115,8 +114,8 @@ impl Broker {
     ) -> Result<(ServerStreamReader, ServerStreamWriter, AuthResponse), IoError> {
         let mut stream =
             TcpStream::connect(server_addr).await.map_err(|e| IoError::ConnectionRefused)?;
-        stream.serialized_write(auth_request.unwrap_or(AuthRequest::default())).await.unwrap(); // client_id not exist
 
+        stream.serialized_write(auth_request.unwrap_or(AuthRequest::default())).await.unwrap(); // client_id not exist
         let auth_response: AuthResponse = stream.deserialized_read().await?;
         let (r, w) = stream.into_split();
         Ok((ServerStreamReader(r), ServerStreamWriter(w), auth_response))
@@ -169,4 +168,10 @@ impl BrokerMessage {
             input,
         })
     }
+}
+
+pub struct CommandToServer {
+    pub command: String,
+    pub args: Vec<String>,
+    pub input: Input,
 }

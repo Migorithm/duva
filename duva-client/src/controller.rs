@@ -160,12 +160,6 @@ impl ServerStreamReader {
     }
 }
 
-pub struct CommandToServer {
-    pub command: String,
-    pub args: Vec<String>,
-    pub input: Input,
-}
-
 pub struct ServerStreamWriter(pub(crate) OwnedWriteHalf);
 
 impl ServerStreamWriter {

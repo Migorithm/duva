@@ -3,7 +3,6 @@ use std::collections::VecDeque;
 use duva::{domains::query_parsers::query_io::QueryIO, prelude::tokio::sync::oneshot};
 
 use crate::command::ClientInputKind;
-use ClientInputKind::*;
 
 #[derive(Debug, Default)]
 pub struct InputQueue {
