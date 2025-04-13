@@ -5,8 +5,7 @@ use clap::Parser;
 use duva::prelude::tokio::{self, sync::oneshot};
 use duva_client::{
     broker::BrokerMessage,
-    cli_input::Input,
-    command::{separate_command_and_args, validate_input},
+    command::{Input, separate_command_and_args, validate_input},
     controller::ClientController,
 };
 

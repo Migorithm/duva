@@ -1,6 +1,7 @@
-use crate::cli_input::Input;
-use crate::cli_input::InputQueue;
+mod input_queue;
+
 use crate::command::ClientInputKind;
+use crate::command::Input;
 use crate::server_streams::MsgToServer;
 use crate::server_streams::ServerStreamReader;
 use crate::server_streams::ServerStreamWriter;
@@ -17,6 +18,7 @@ use duva::{
     clients::authentications::{AuthRequest, AuthResponse},
     services::interface::TSerdeReadWrite,
 };
+use input_queue::InputQueue;
 
 pub struct Broker {
     pub(crate) tx: Sender<BrokerMessage>,

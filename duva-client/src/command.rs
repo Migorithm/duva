@@ -1,3 +1,5 @@
+use duva::{domains::query_parsers::query_io::QueryIO, prelude::tokio::sync::oneshot};
+
 pub fn separate_command_and_args(args: Vec<&str>) -> (&str, Vec<&str>) {
     // Split the input into command and arguments
     let (cmd, args) = args.split_at(1);
@@ -134,4 +136,19 @@ pub enum ClientInputKind {
     Exists,
     ReplicaOf,
     Role,
+}
+
+#[derive(Debug)]
+pub struct Input {
+    pub kind: ClientInputKind,
+    pub callback: oneshot::Sender<(ClientInputKind, QueryIO)>,
+}
+
+impl Input {
+    pub fn new(
+        input: ClientInputKind,
+        callback: oneshot::Sender<(ClientInputKind, QueryIO)>,
+    ) -> Self {
+        Self { kind: input, callback }
+    }
 }
