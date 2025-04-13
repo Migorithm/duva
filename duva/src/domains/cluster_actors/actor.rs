@@ -105,7 +105,7 @@ impl ClusterActor {
         );
 
         for peer in self.members.values_mut() {
-            let _ = peer.write_io(msg.clone()).await;
+            let _ = peer.send_to_peer(msg.clone()).await;
         }
     }
 
@@ -277,7 +277,7 @@ impl ClusterActor {
 
         // dbg!(self.replicas().count()); // CHECKED. replica count right.
         self.generate_follower_entries(append_entries, prev_log_index, prev_term)
-            .map(|(peer, hb)| peer.write_io(AppendEntriesRPC(hb)))
+            .map(|(peer, hb)| peer.send_to_peer(AppendEntriesRPC(hb)))
             .collect::<FuturesUnordered<_>>()
             .for_each(|_| async {})
             .await;
@@ -355,7 +355,11 @@ impl ClusterActor {
     ) {
         if let Some(leader) = self.members.get_mut(send_to) {
             let _ = leader
-                .write_io(ReplicationResponse::new(log_idx, rejection_reason, &self.replication))
+                .send_to_peer(ReplicationResponse::new(
+                    log_idx,
+                    rejection_reason,
+                    &self.replication,
+                ))
                 .await;
         }
     }
@@ -459,7 +463,7 @@ impl ClusterActor {
 
     async fn send_to_replicas(&mut self, msg: impl Into<QueryIO> + Send + Clone) {
         self.replicas_mut()
-            .map(|(peer, _)| peer.write_io(msg.clone()))
+            .map(|(peer, _)| peer.send_to_peer(msg.clone()))
             .collect::<FuturesUnordered<_>>()
             .for_each(|_| async {})
             .await;
@@ -494,7 +498,7 @@ impl ClusterActor {
 
         println!("[INFO] Running for election term {}", self.replication.term);
         self.replicas_mut()
-            .map(|(peer, _)| peer.write_io(request_vote.clone()))
+            .map(|(peer, _)| peer.send_to_peer(request_vote.clone()))
             .collect::<FuturesUnordered<_>>()
             .for_each(|_| async {})
             .await;
@@ -513,7 +517,7 @@ impl ClusterActor {
         let Some(peer) = self.find_replica_mut(&request_vote.candidate_id) else {
             return;
         };
-        let _ = peer.write_io(RequestVoteReply { term, vote_granted: grant_vote }).await;
+        let _ = peer.send_to_peer(RequestVoteReply { term, vote_granted: grant_vote }).await;
     }
 
     pub(crate) async fn tally_vote(&mut self, logger: &ReplicatedLogs<impl TWriteAheadLog>) {
@@ -525,7 +529,7 @@ impl ClusterActor {
         let msg =
             self.replication.default_heartbeat(0, logger.last_log_index, logger.last_log_term);
         self.replicas_mut()
-            .map(|(peer, _)| peer.write_io(AppendEntriesRPC(msg.clone())))
+            .map(|(peer, _)| peer.send_to_peer(AppendEntriesRPC(msg.clone())))
             .collect::<FuturesUnordered<_>>()
             .for_each(|_| async {})
             .await;
