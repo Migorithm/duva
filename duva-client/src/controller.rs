@@ -1,7 +1,9 @@
 use crate::broker::Broker;
 use crate::broker::BrokerMessage;
 use crate::cli_input::Input;
+use crate::command::ClientInputKind;
 use duva::domains::IoError;
+use duva::domains::query_parsers::query_io::QueryIO;
 use duva::prelude::tokio;
 use duva::prelude::tokio::io::AsyncWriteExt;
 use duva::prelude::tokio::net::tcp::OwnedReadHalf;
@@ -36,6 +38,74 @@ impl<T> ClientController<T> {
         };
         tokio::spawn(broker.run());
         Self { broker_tx, target: editor }
+    }
+
+    pub fn print_res(&self, kind: ClientInputKind, query_io: QueryIO) {
+        use ClientInputKind::*;
+        match kind {
+            Ping | Get | IndexGet | Echo | Config | Save | Info | ClusterForget | Role
+            | ReplicaOf | ClusterInfo => match query_io {
+                QueryIO::Null => println!("(nil)"),
+                QueryIO::SimpleString(value) => println!("{value}"),
+                QueryIO::BulkString(value) => println!("{value}"),
+                QueryIO::Err(value) => {
+                    println!("(error) {value}");
+                },
+                _err => {
+                    println!("Unexpected response format");
+                },
+            },
+            Del | Exists => {
+                let QueryIO::SimpleString(value) = query_io else {
+                    println!("Unexpected response format");
+                    return;
+                };
+                let deleted_count = value.parse::<u64>().unwrap();
+                println!("(integer) {}", deleted_count);
+            },
+            Set => {
+                match query_io {
+                    QueryIO::SimpleString(_) => {
+                        println!("OK");
+                        return;
+                    },
+                    QueryIO::Err(value) => {
+                        println!("(error) {value}");
+                        return;
+                    },
+                    _ => {
+                        println!("Unexpected response format");
+                        return;
+                    },
+                };
+            },
+            Keys => {
+                let QueryIO::Array(value) = query_io else {
+                    println!("Unexpected response format");
+                    return;
+                };
+                for (i, item) in value.into_iter().enumerate() {
+                    let QueryIO::BulkString(value) = item else {
+                        println!("Unexpected response format");
+                        break;
+                    };
+                    println!("{i}) \"{value}\"");
+                }
+            },
+            ClusterNodes => {
+                let QueryIO::Array(value) = query_io else {
+                    println!("Unexpected response format");
+                    return;
+                };
+                for item in value {
+                    let QueryIO::BulkString(value) = item else {
+                        println!("Unexpected response format");
+                        break;
+                    };
+                    println!("{value}");
+                }
+            },
+        }
     }
 }
 

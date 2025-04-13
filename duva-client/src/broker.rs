@@ -1,6 +1,5 @@
 use crate::cli_input::Input;
 use crate::cli_input::InputQueue;
-
 use crate::command::ClientInputKind;
 use crate::controller::CommandToServer;
 use crate::controller::MsgToServer;
