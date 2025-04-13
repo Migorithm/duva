@@ -184,7 +184,12 @@ mod tests {
         let (encoded, _): (WriteOperation, usize) =
             bincode::decode_from_slice(&buf[1..], bincode::config::standard()).unwrap();
 
-        assert_eq!(encoded.request.key(), vec!["foo"]);
+        let key = match encoded.request {
+            WriteRequest::Set { key, .. } => key,
+            WriteRequest::SetWithExpiry { key, .. } => key,
+            WriteRequest::Delete { keys: key } => key[0].clone(),
+        };
+        assert_eq!(key, "foo");
 
         Ok(())
     }

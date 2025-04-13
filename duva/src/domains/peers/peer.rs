@@ -19,7 +19,7 @@ pub(crate) struct Peer {
 }
 
 impl Peer {
-    pub fn new(
+    pub(crate) fn new(
         addr: String,
         w: OwnedWriteHalf,
         kind: PeerState,
@@ -34,7 +34,10 @@ impl Peer {
         }
     }
 
-    pub(crate) async fn write_io(&mut self, io: impl Into<QueryIO> + Send) -> Result<(), IoError> {
+    pub(crate) async fn send_to_peer(
+        &mut self,
+        io: impl Into<QueryIO> + Send,
+    ) -> Result<(), IoError> {
         self.w_conn.stream.write_io(io).await
     }
 
