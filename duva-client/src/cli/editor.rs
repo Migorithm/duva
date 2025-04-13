@@ -24,7 +24,7 @@ pub fn create() -> Editor<DuvaHinter, SQLiteHistory> {
 pub struct DuvaHinter {
     // It's simple example of rustyline, for more efficient, please use ** radix trie **
     default_hints: HashSet<CommandHint>,
-    dynamic_hints: HashMap<&'static str, Vec<(&'static str, usize)>>,
+    dynamic_hints: HashMap<&'static str, Vec<DynamicHint>>,
 }
 
 #[derive(Hash, Debug, PartialEq, Eq)]
@@ -76,25 +76,48 @@ impl Hinter for DuvaHinter {
         let args_count = parts.len() - 1;
         let ends_with_space = line.ends_with(" ");
 
-        // Look up the command in our patterns
         if let Some(patterns) = self.dynamic_hints.get(command.to_lowercase().as_str()) {
-            for (hint_text, required_args) in patterns {
-                // This prevents shwowing hints when we have more args than required
-                if args_count != *required_args {
+            for hint in patterns {
+                // Skip if we have more args than required (unless it's a repeating pattern)
+                if args_count > hint.args_required && !hint.repeat_last_arg {
                     continue;
                 }
 
-                if ends_with_space {
-                    if *required_args == 0 {
-                        // For commands with no args yet provided
-                        return Some(CommandHint::new(hint_text, ""));
-                    }
-                    // When we have required args and line ends with space
-                    return Some(CommandHint::new(hint_text, ""));
+                // For repeating patterns, show the hint after reaching minimum args
+                if hint.repeat_last_arg && args_count >= hint.args_required {
+                    let hint_text = if hint.args_required == 0 && args_count == 0 {
+                        hint.hint_text
+                    } else {
+                        // After first argument, show just the repeating part
+                        hint.hint_text
+                            .split_once(' ')
+                            .map(|(_, rest)| rest)
+                            .unwrap_or(hint.hint_text)
+                    };
+
+                    return Some(CommandHint::new(
+                        if ends_with_space {
+                            hint_text.to_string()
+                        } else {
+                            format!(" {}", hint_text)
+                        }
+                        .as_str(),
+                        "",
+                    ));
                 }
 
-                // hint should be shown after a space
-                return Some(CommandHint::new(format!(" {}", hint_text).as_str(), ""));
+                // Original behavior for non-repeating patterns
+                if args_count == hint.args_required {
+                    return Some(CommandHint::new(
+                        if ends_with_space {
+                            hint.hint_text.to_string()
+                        } else {
+                            format!(" {}", hint.hint_text)
+                        }
+                        .as_str(),
+                        "",
+                    ));
+                }
             }
         }
 
@@ -124,23 +147,44 @@ fn default_hints() -> HashSet<CommandHint> {
     set.insert(CommandHint::new("keys pattern", "keys "));
     set.insert(CommandHint::new("info [section]", ""));
     set.insert(CommandHint::new("info replication", ""));
+    set.insert(CommandHint::new("exists key [key ...]", "exists "));
+    set.insert(CommandHint::new("del key [key ...]", "del "));
 
     set
 }
 
-fn dynamic_hints() -> HashMap<&'static str, Vec<(&'static str, usize)>> {
-    // Command pattern definitions - mapping commands to their expected arguments
-    [
-        // (command, [(hint_text, args_required), ...])
-        ("set", vec![("key value", 0), ("value", 1), ("[px expr]", 2), ("expr", 3)]),
-        ("cluster forget", vec![("node", 0)]),
-        ("keys", vec![("pattern", 0)]),
-        ("get", vec![("key", 0)]),
-        // Add more commands here as needed
-    ]
-    .iter()
-    .cloned()
-    .collect()
+struct DynamicHint {
+    hint_text: &'static str,
+    args_required: usize,
+    repeat_last_arg: bool, // New flag to indicate repeating pattern
+}
+
+macro_rules! hint {
+    ($text:expr, $args:expr) => {
+        DynamicHint { hint_text: $text, args_required: $args, repeat_last_arg: false }
+    };
+    ($text:expr, $args:expr, repeat) => {
+        DynamicHint { hint_text: $text, args_required: $args, repeat_last_arg: true }
+    };
+}
+
+fn dynamic_hints() -> HashMap<&'static str, Vec<DynamicHint>> {
+    let mut map = HashMap::new();
+    // Helper macro to reduce boilerplate
+
+    // Command pattern definitions
+    map.insert(
+        "set",
+        vec![hint!("key value", 0), hint!("value", 1), hint!("[px expr]", 2), hint!("expr", 3)],
+    );
+
+    map.insert("cluster forget", vec![hint!("node", 0)]);
+    map.insert("keys", vec![hint!("pattern", 0)]);
+    map.insert("get", vec![hint!("key", 0)]);
+    map.insert("exists", vec![hint!("key [key ...]", 0, repeat), hint!("[key ...]", 1, repeat)]);
+    map.insert("del", vec![hint!("key [key ...]", 0, repeat), hint!("[key ...]", 1, repeat)]);
+
+    map
 }
 
 impl Highlighter for DuvaHinter {
