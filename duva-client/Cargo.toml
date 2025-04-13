@@ -16,4 +16,9 @@ rustyline = { version = "15.0.0", features = [
 [[bin]]
 name = "cli"
 path = "src/cli/main.rs"
+required-features = ["cli"]
 # cargo run -p duva-client --bin cli -- --port 6000
+
+
+[features]
+cli = [] # Define a feature for the CLI binary

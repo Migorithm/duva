@@ -360,311 +360,327 @@ impl<T> DerefMut for BytesDecoder<'_, T> {
     }
 }
 
-#[test]
-fn test_size_decoding() {
-    static V1: [u8; 1] = [0x0D];
-    static V2: [u8; 2] = [0x42, 0xBC];
-    static V3: [u8; 5] = [0x80, 0x00, 0x00, 0x42, 0x68];
-    static V4: [u8; 2] = [0xC0, 0x0A];
+#[cfg(test)]
+mod test {
+    use super::*;
 
-    let mut example1: BytesDecoder<DecoderInit> = (&V1 as &'static [u8]).into();
-    let mut example2: BytesDecoder<DecoderInit> = (&V2 as &'static [u8]).into();
-    let mut example3: BytesDecoder<DecoderInit> = (&V3 as &'static [u8]).into();
-    let mut example4: BytesDecoder<DecoderInit> = (&V4 as &'static [u8]).into();
-
-    assert_eq!(example1.size_decode(), Some(13));
-    assert_eq!(example2.size_decode(), Some(700));
-    assert_eq!(example3.size_decode(), Some(17000));
-    assert_eq!(example4.size_decode(), None);
-}
-
-#[test]
-fn test_integer_decoding() {
-    static V1: [u8; 2] = [0xC0, 0x0A];
-    static V2: [u8; 3] = [0xC1, 0x39, 0x30];
-    static V3: [u8; 5] = [0xC2, 0xEA, 0x17, 0x3E, 0x67];
-
-    let mut example1: BytesDecoder<DecoderInit> = (&V1 as &'static [u8]).into();
-    let mut example2: BytesDecoder<DecoderInit> = (&V2 as &'static [u8]).into();
-    let mut example3: BytesDecoder<DecoderInit> = (&V3 as &'static [u8]).into();
-
-    assert_eq!(example1.integer_decode(), Some("10".to_string()));
-    assert_eq!(example2.integer_decode(), Some("12345".to_string()));
-    assert_eq!(example3.integer_decode(), Some("1732122602".to_string()));
-}
-
-#[test]
-fn test_string_decoding() {
-    static V1: [u8; 14] =
-        [0x0D, 0x48, 0x65, 0x6C, 0x6C, 0x6F, 0x2C, 0x20, 0x57, 0x6F, 0x72, 0x6C, 0x64, 0x21];
-    let mut example1: BytesDecoder<DecoderInit> = (&V1 as &'static [u8]).into();
-
-    static V2: [u8; 6] = [0x42, 0x0A, 0x54, 0x65, 0x73, 0x74];
-    let mut example2: BytesDecoder<DecoderInit> = (&V2 as &'static [u8]).into();
-
-    assert_eq!(example1.string_decode(), Some("Hello, World!".to_string()));
-    assert_eq!(example2.string_decode(), None);
-}
-
-#[test]
-fn test_decoding() {
-    // "Hello, World!"
-    static V1: [u8; 14] =
-        [0x0D, 0x48, 0x65, 0x6C, 0x6C, 0x6F, 0x2C, 0x20, 0x57, 0x6F, 0x72, 0x6C, 0x64, 0x21];
-
-    let mut example1: BytesDecoder<DecoderInit> = (&V1 as &'static [u8]).into();
-
-    static V2: [u8; 6] = [0x42, 0x0A, 0x54, 0x65, 0x73, 0x74];
-    // "Test", with size 10 (although more bytes needed)
-    let mut example2: BytesDecoder<DecoderInit> = (&V2 as &'static [u8]).into();
-
-    assert!(example1.string_decode().is_some());
-    assert!(example2.string_decode().is_none()); // due to insufficient bytes
-}
-
-#[test]
-fn test_decode_multiple_strings() {
-    // "abc" and "def"
-    static V1: [u8; 8] = [0x03, 0x61, 0x62, 0x63, 0x03, 0x64, 0x65, 0x66];
-
-    let mut encoded: BytesDecoder<DecoderInit> = (&V1 as &'static [u8]).into();
-    let decoded = encoded.string_decode();
-    assert_eq!(decoded, Some("abc".to_string()));
-    let decoded = encoded.string_decode();
-    assert_eq!(decoded, Some("def".to_string()));
-}
-
-#[test]
-fn test_database_section_extractor() {
-    let data = &[
-        0xFE, 0x00, 0xFB, 0x03, 0x02, 0x00, 0x06, 0x66, 0x6F, 0x6F, 0x62, 0x61, 0x72, 0x06, 0x62,
-        0x61, 0x7A, 0x71, 0x75, 0x78, 0xFC, 0x15, 0x72, 0xE7, 0x07, 0x8F, 0x01, 0x00, 0x00, 0x00,
-        0x03, 0x66, 0x6F, 0x6F, 0x03, 0x62, 0x61, 0x72, 0xFD, 0x52, 0xED, 0x2A, 0x66, 0x00, 0x03,
-        0x62, 0x61, 0x7A, 0x03, 0x71, 0x75, 0x78,
-    ];
-
-    let mut bytes_handler = BytesDecoder::<MetadataReady> {
-        data,
-        state: MetadataReady {
-            metadata: Metadata { repl_id: ReplicationId::Undecided, repl_offset: 0 },
-            header: "".into(),
-        },
-    };
-
-    let db_section: SubDatabase = bytes_handler.extract_section().unwrap();
-    assert_eq!(db_section.index, 0);
-    assert_eq!(db_section.storage.len(), 3);
-
-    match &db_section.storage[0] {
-        CacheEntry::KeyValue(key, value) => {
-            assert_eq!(key, "foobar");
-            assert_eq!(value, "bazqux");
-        },
-        _ => panic!("Expected KeyValueExpiry"),
+    fn as_str(cache_entry: &CacheEntry) -> &str {
+        match cache_entry {
+            CacheEntry::KeyValue(_, value) => value,
+            CacheEntry::KeyValueExpiry(_, value, _) => value,
+        }
     }
 
-    match &db_section.storage[1] {
-        CacheEntry::KeyValueExpiry(key, value, expiry) => {
-            assert_eq!(key, "foo");
-            assert_eq!(value, "bar");
-            assert_eq!(expiry, &StoredDuration::Milliseconds(1713824559637).to_datetime());
-        },
-        _ => panic!("Expected KeyValueExpiry"),
-    }
-}
+    #[test]
+    fn test_size_decoding() {
+        static V1: [u8; 1] = [0x0D];
+        static V2: [u8; 2] = [0x42, 0xBC];
+        static V3: [u8; 5] = [0x80, 0x00, 0x00, 0x42, 0x68];
+        static V4: [u8; 2] = [0xC0, 0x0A];
 
-#[test]
-fn test_non_expiry_key_value_pair() {
-    let mut bytes_handler = BytesDecoder::<MetadataReady> {
-        data: &[0x00, 0x03, 0x62, 0x61, 0x7A, 0x03, 0x71, 0x75, 0x78],
-        state: MetadataReady {
-            metadata: Metadata { repl_id: ReplicationId::Undecided, repl_offset: 0 },
-            header: "".into(),
-        },
-    };
+        let mut example1: BytesDecoder<DecoderInit> = (&V1 as &'static [u8]).into();
+        let mut example2: BytesDecoder<DecoderInit> = (&V2 as &'static [u8]).into();
+        let mut example3: BytesDecoder<DecoderInit> = (&V3 as &'static [u8]).into();
+        let mut example4: BytesDecoder<DecoderInit> = (&V4 as &'static [u8]).into();
 
-    let key_value = bytes_handler.try_key_value().expect("Failed to extract key value expiry");
-
-    match key_value {
-        CacheEntry::KeyValue(key, value) => {
-            assert_eq!(key, "baz");
-            assert_eq!(value, "qux");
-        },
-        _ => panic!("Expected KeyValue"),
+        assert_eq!(example1.size_decode(), Some(13));
+        assert_eq!(example2.size_decode(), Some(700));
+        assert_eq!(example3.size_decode(), Some(17000));
+        assert_eq!(example4.size_decode(), None);
     }
 
-    assert!(bytes_handler.data.is_empty());
-}
+    #[test]
+    fn test_integer_decoding() {
+        static V1: [u8; 2] = [0xC0, 0x0A];
+        static V2: [u8; 3] = [0xC1, 0x39, 0x30];
+        static V3: [u8; 5] = [0xC2, 0xEA, 0x17, 0x3E, 0x67];
 
-#[test]
-fn test_with_milliseconds_expiry_key_value_pair() {
-    let mut bytes_handler = BytesDecoder::<MetadataReady> {
-        data: &[
-            0xFC, 0x15, 0x72, 0xE7, 0x07, 0x8F, 0x01, 0x00, 0x00, 0x00, 0x03, 0x62, 0x61, 0x7A,
-            0x03, 0x71, 0x75, 0x78,
-        ],
-        state: MetadataReady {
-            metadata: Metadata { repl_id: ReplicationId::Undecided, repl_offset: 0 },
-            header: "".into(),
-        },
-    };
+        let mut example1: BytesDecoder<DecoderInit> = (&V1 as &'static [u8]).into();
+        let mut example2: BytesDecoder<DecoderInit> = (&V2 as &'static [u8]).into();
+        let mut example3: BytesDecoder<DecoderInit> = (&V3 as &'static [u8]).into();
 
-    let key_value = bytes_handler.try_key_value().unwrap();
-
-    assert_eq!(key_value.key(), "baz");
-    assert_eq!(key_value.value(), "qux");
-    assert!(key_value.expiry().is_some());
-    assert!(bytes_handler.data.is_empty());
-}
-
-#[test]
-fn test_with_seconds_expiry_key_value_pair() {
-    let mut bytes_handler = BytesDecoder::<MetadataReady> {
-        data: &[0xFD, 0x52, 0xED, 0x2A, 0x66, 0x00, 0x03, 0x62, 0x61, 0x7A, 0x03, 0x71, 0x75, 0x78],
-        state: MetadataReady {
-            metadata: Metadata { repl_id: ReplicationId::Undecided, repl_offset: 0 },
-            header: "".into(),
-        },
-    };
-
-    let key_value = bytes_handler.try_key_value().unwrap();
-    assert_eq!(key_value.key(), "baz");
-    assert_eq!(key_value.value(), "qux");
-    assert!(key_value.expiry().is_some());
-}
-
-#[test]
-fn test_invalid_expiry_key_value_pair() {
-    let mut bytes_handler = BytesDecoder::<MetadataReady> {
-        data: &[0xFF, 0x52, 0xED, 0x2A, 0x66, 0x00, 0x03, 0x62, 0x61, 0x7A, 0x03, 0x71, 0x75, 0x78],
-        state: MetadataReady {
-            metadata: Metadata { repl_id: ReplicationId::Undecided, repl_offset: 0 },
-            header: "".into(),
-        },
-    };
-
-    let result = bytes_handler.try_key_value();
-    assert!(result.is_err());
-    assert_eq!(bytes_handler.data.len(), 14);
-}
-
-#[test]
-fn test_header_loading() {
-    let decoder = BytesDecoder::<DecoderInit> {
-        data: &[HEADER_MAGIC_STRING.as_bytes(), VERSION.as_bytes()].concat(),
-        state: Default::default(),
-    };
-    let header = decoder.load_header().unwrap();
-
-    assert_eq!(header.state, HeaderReady(HEADER_MAGIC_STRING.to_string() + VERSION));
-}
-
-#[test]
-fn test_header_loading_data_length_error() {
-    let data = vec![0x52, 0x45, 0x44, 0x49, 0x53];
-    let data: BytesDecoder<DecoderInit> = data.as_slice().into();
-
-    let result = data.load_header();
-    assert!(result.is_err());
-}
-
-#[test]
-fn test_metadata_loading_no_metadata() {
-    let data = vec![
-        0xFE, 0x00, 0xFB, 0x03, 0x02, 0x00, 0x06, 0x66, 0x6F, 0x6F, 0x62, 0x61, 0x72, 0x06, 0x62,
-        0x61, 0x7A, 0x03, 0x71, 0x75, 0x78,
-    ];
-    let bytes_handler =
-        BytesDecoder::<HeaderReady> { data: data.as_slice().into(), state: Default::default() };
-
-    let metadata = bytes_handler.load_metadata().unwrap();
-    assert_eq!(
-        metadata.state.metadata,
-        Metadata { repl_id: ReplicationId::Undecided, repl_offset: Default::default() }
-    );
-}
-
-#[test]
-fn test_database_loading() {
-    let data = vec![
-        0xFE, 0x00, 0xFB, 0x03, 0x02, 0x00, 0x06, 0x66, 0x6F, 0x6F, 0x62, 0x61, 0x72, 0x06, 0x62,
-        0x61, 0x7A, 0x71, 0x75, 0x78, 0xFC, 0x15, 0x72, 0xE7, 0x07, 0x8F, 0x01, 0x00, 0x00, 0x00,
-        0x03, 0x66, 0x6F, 0x6F, 0x03, 0x62, 0x61, 0x72, 0xFD, 0x52, 0xED, 0x2A, 0x66, 0x00, 0x03,
-        0x62, 0x61, 0x7A, 0x03, 0x71, 0x75, 0x78, 0xFF, 0x89, 0x3B, 0xB7, 0x4E, 0xF8, 0x0F, 0x77,
-        0x19,
-    ];
-    let bytes_handler = BytesDecoder::<MetadataReady> {
-        data: data.as_slice().into(),
-        state: MetadataReady {
-            metadata: Metadata { repl_id: ReplicationId::Undecided, repl_offset: 0 },
-            header: "".into(),
-        },
-    };
-
-    let rdb_file = bytes_handler.load_database().unwrap();
-    assert_eq!(rdb_file.database.len(), 1);
-    assert_eq!(rdb_file.database[0].index, 0);
-    assert_eq!(rdb_file.database[0].storage.len(), 3);
-    assert_eq!(rdb_file.checksum, vec![0x89, 0x3B, 0xB7, 0x4E, 0xF8, 0x0F, 0x77, 0x19]);
-}
-
-// ! Most important test for the BytesEndec implementation in decoding path.
-#[test]
-fn test_loading_all() {
-    const M_KEY: u8 = 0xFA;
-
-    const R_ID_SIZE: u8 = 0x28;
-    const D_KEY: u8 = 0xFE;
-
-    let mut data = Vec::new();
-    data.extend_from_slice(HEADER_MAGIC_STRING.as_bytes());
-    data.extend_from_slice(VERSION.as_bytes());
-
-    data.extend_from_slice(&[
-        // Metadata
-        //* repl-id
-        M_KEY, 0x07, //size of key
-        0x72, 0x65, 0x70, 0x6c, 0x2d, 0x69, 0x64, R_ID_SIZE, // size of value(hex 28 = 40)
-        0x34, 0x32, 0x30, 0x64, 0x64, 0x37, 0x65, 0x33, 0x32, 0x34, 0x63, 0x33, 0x61, 0x36, 0x33,
-        0x37, 0x31, 0x62, 0x31, 0x30, 0x33, 0x31, 0x32, 0x39, 0x63, 0x65, 0x62, 0x65, 0x36, 0x65,
-        0x32, 0x35, 0x61, 0x32, 0x37, 0x30, 0x66, 0x39, 0x66, 0x64, //*
-        M_KEY, 0x0B, //size of key - repl-offset
-        0x72, 0x65, 0x70, 0x6C, 0x2D, 0x6F, 0x66, 0x66, 0x73, 0x65, 0x74,
-        0xC2, //size of offset
-        0xA1, 0xC3, 0x83, 0x00, // Database
-        D_KEY, 0x00, 0xFB, 0x02, 0x00, 0x00, 0x04, 0x66, 0x6F, 0x6F, 0x32, 0x04, 0x62, 0x61, 0x72,
-        0x32, 0x00, 0x03, 0x66, 0x6F, 0x6F, 0x03, 0x62, 0x61, 0x72, 0xFF, 0x60, 0x82, 0x9C, 0xF8,
-        0xFB, 0x2E, 0x7F, 0xEB,
-    ]);
-    let bytes_handler =
-        BytesDecoder::<DecoderInit> { data: data.as_slice().into(), state: Default::default() };
-
-    let rdb_file =
-        bytes_handler.load_header().unwrap().load_metadata().unwrap().load_database().unwrap();
-
-    assert_eq!(rdb_file.header, HEADER_MAGIC_STRING.to_string() + VERSION);
-    assert_eq!(rdb_file.database.len(), 1);
-    assert_eq!(rdb_file.database[0].index, 0);
-    assert_eq!(rdb_file.database[0].storage.len(), 2);
-    match rdb_file.database[0].storage[0] {
-        CacheEntry::KeyValue(ref key, ref value) => {
-            assert_eq!(key, "foo2");
-            assert_eq!(value, "bar2");
-        },
-        _ => panic!("Expected KeyValue"),
-    }
-    match rdb_file.database[0].storage[1] {
-        CacheEntry::KeyValue(ref key, ref value) => {
-            assert_eq!(key, "foo");
-            assert_eq!(value, "bar");
-        },
-        _ => panic!("Expected KeyValue"),
+        assert_eq!(example1.integer_decode(), Some("10".to_string()));
+        assert_eq!(example2.integer_decode(), Some("12345".to_string()));
+        assert_eq!(example3.integer_decode(), Some("1732122602".to_string()));
     }
 
-    assert_eq!(rdb_file.checksum, vec![0x60, 0x82, 0x9C, 0xF8, 0xFB, 0x2E, 0x7F, 0xEB]);
-    assert_eq!(
-        rdb_file.metadata.repl_id,
-        ReplicationId::Key("420dd7e324c3a6371b103129cebe6e25a270f9fd".into())
-    );
-    assert_eq!(rdb_file.metadata.repl_offset, 8635297);
+    #[test]
+    fn test_string_decoding() {
+        static V1: [u8; 14] =
+            [0x0D, 0x48, 0x65, 0x6C, 0x6C, 0x6F, 0x2C, 0x20, 0x57, 0x6F, 0x72, 0x6C, 0x64, 0x21];
+        let mut example1: BytesDecoder<DecoderInit> = (&V1 as &'static [u8]).into();
+
+        static V2: [u8; 6] = [0x42, 0x0A, 0x54, 0x65, 0x73, 0x74];
+        let mut example2: BytesDecoder<DecoderInit> = (&V2 as &'static [u8]).into();
+
+        assert_eq!(example1.string_decode(), Some("Hello, World!".to_string()));
+        assert_eq!(example2.string_decode(), None);
+    }
+
+    #[test]
+    fn test_decoding() {
+        // "Hello, World!"
+        static V1: [u8; 14] =
+            [0x0D, 0x48, 0x65, 0x6C, 0x6C, 0x6F, 0x2C, 0x20, 0x57, 0x6F, 0x72, 0x6C, 0x64, 0x21];
+
+        let mut example1: BytesDecoder<DecoderInit> = (&V1 as &'static [u8]).into();
+
+        static V2: [u8; 6] = [0x42, 0x0A, 0x54, 0x65, 0x73, 0x74];
+        // "Test", with size 10 (although more bytes needed)
+        let mut example2: BytesDecoder<DecoderInit> = (&V2 as &'static [u8]).into();
+
+        assert!(example1.string_decode().is_some());
+        assert!(example2.string_decode().is_none()); // due to insufficient bytes
+    }
+
+    #[test]
+    fn test_decode_multiple_strings() {
+        // "abc" and "def"
+        static V1: [u8; 8] = [0x03, 0x61, 0x62, 0x63, 0x03, 0x64, 0x65, 0x66];
+
+        let mut encoded: BytesDecoder<DecoderInit> = (&V1 as &'static [u8]).into();
+        let decoded = encoded.string_decode();
+        assert_eq!(decoded, Some("abc".to_string()));
+        let decoded = encoded.string_decode();
+        assert_eq!(decoded, Some("def".to_string()));
+    }
+
+    #[test]
+    fn test_database_section_extractor() {
+        let data = &[
+            0xFE, 0x00, 0xFB, 0x03, 0x02, 0x00, 0x06, 0x66, 0x6F, 0x6F, 0x62, 0x61, 0x72, 0x06,
+            0x62, 0x61, 0x7A, 0x71, 0x75, 0x78, 0xFC, 0x15, 0x72, 0xE7, 0x07, 0x8F, 0x01, 0x00,
+            0x00, 0x00, 0x03, 0x66, 0x6F, 0x6F, 0x03, 0x62, 0x61, 0x72, 0xFD, 0x52, 0xED, 0x2A,
+            0x66, 0x00, 0x03, 0x62, 0x61, 0x7A, 0x03, 0x71, 0x75, 0x78,
+        ];
+
+        let mut bytes_handler = BytesDecoder::<MetadataReady> {
+            data,
+            state: MetadataReady {
+                metadata: Metadata { repl_id: ReplicationId::Undecided, repl_offset: 0 },
+                header: "".into(),
+            },
+        };
+
+        let db_section: SubDatabase = bytes_handler.extract_section().unwrap();
+        assert_eq!(db_section.index, 0);
+        assert_eq!(db_section.storage.len(), 3);
+
+        match &db_section.storage[0] {
+            CacheEntry::KeyValue(key, value) => {
+                assert_eq!(key, "foobar");
+                assert_eq!(value, "bazqux");
+            },
+            _ => panic!("Expected KeyValueExpiry"),
+        }
+
+        match &db_section.storage[1] {
+            CacheEntry::KeyValueExpiry(key, value, expiry) => {
+                assert_eq!(key, "foo");
+                assert_eq!(value, "bar");
+                assert_eq!(expiry, &StoredDuration::Milliseconds(1713824559637).to_datetime());
+            },
+            _ => panic!("Expected KeyValueExpiry"),
+        }
+    }
+
+    #[test]
+    fn test_non_expiry_key_value_pair() {
+        let mut bytes_handler = BytesDecoder::<MetadataReady> {
+            data: &[0x00, 0x03, 0x62, 0x61, 0x7A, 0x03, 0x71, 0x75, 0x78],
+            state: MetadataReady {
+                metadata: Metadata { repl_id: ReplicationId::Undecided, repl_offset: 0 },
+                header: "".into(),
+            },
+        };
+
+        let key_value = bytes_handler.try_key_value().expect("Failed to extract key value expiry");
+
+        match key_value {
+            CacheEntry::KeyValue(key, value) => {
+                assert_eq!(key, "baz");
+                assert_eq!(value, "qux");
+            },
+            _ => panic!("Expected KeyValue"),
+        }
+
+        assert!(bytes_handler.data.is_empty());
+    }
+
+    #[test]
+    fn test_with_milliseconds_expiry_key_value_pair() {
+        let mut bytes_handler = BytesDecoder::<MetadataReady> {
+            data: &[
+                0xFC, 0x15, 0x72, 0xE7, 0x07, 0x8F, 0x01, 0x00, 0x00, 0x00, 0x03, 0x62, 0x61, 0x7A,
+                0x03, 0x71, 0x75, 0x78,
+            ],
+            state: MetadataReady {
+                metadata: Metadata { repl_id: ReplicationId::Undecided, repl_offset: 0 },
+                header: "".into(),
+            },
+        };
+
+        let key_value = bytes_handler.try_key_value().unwrap();
+
+        assert_eq!(key_value.key(), "baz");
+        assert_eq!(as_str(&key_value), "qux");
+        assert!(key_value.expiry().is_some());
+        assert!(bytes_handler.data.is_empty());
+    }
+
+    #[test]
+    fn test_with_seconds_expiry_key_value_pair() {
+        let mut bytes_handler = BytesDecoder::<MetadataReady> {
+            data: &[
+                0xFD, 0x52, 0xED, 0x2A, 0x66, 0x00, 0x03, 0x62, 0x61, 0x7A, 0x03, 0x71, 0x75, 0x78,
+            ],
+            state: MetadataReady {
+                metadata: Metadata { repl_id: ReplicationId::Undecided, repl_offset: 0 },
+                header: "".into(),
+            },
+        };
+
+        let key_value = bytes_handler.try_key_value().unwrap();
+        assert_eq!(key_value.key(), "baz");
+        assert_eq!(as_str(&key_value), "qux");
+        assert!(key_value.expiry().is_some());
+    }
+
+    #[test]
+    fn test_invalid_expiry_key_value_pair() {
+        let mut bytes_handler = BytesDecoder::<MetadataReady> {
+            data: &[
+                0xFF, 0x52, 0xED, 0x2A, 0x66, 0x00, 0x03, 0x62, 0x61, 0x7A, 0x03, 0x71, 0x75, 0x78,
+            ],
+            state: MetadataReady {
+                metadata: Metadata { repl_id: ReplicationId::Undecided, repl_offset: 0 },
+                header: "".into(),
+            },
+        };
+
+        let result = bytes_handler.try_key_value();
+        assert!(result.is_err());
+        assert_eq!(bytes_handler.data.len(), 14);
+    }
+
+    #[test]
+    fn test_header_loading() {
+        let decoder = BytesDecoder::<DecoderInit> {
+            data: &[HEADER_MAGIC_STRING.as_bytes(), VERSION.as_bytes()].concat(),
+            state: Default::default(),
+        };
+        let header = decoder.load_header().unwrap();
+
+        assert_eq!(header.state, HeaderReady(HEADER_MAGIC_STRING.to_string() + VERSION));
+    }
+
+    #[test]
+    fn test_header_loading_data_length_error() {
+        let data = vec![0x52, 0x45, 0x44, 0x49, 0x53];
+        let data: BytesDecoder<DecoderInit> = data.as_slice().into();
+
+        let result = data.load_header();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_metadata_loading_no_metadata() {
+        let data = vec![
+            0xFE, 0x00, 0xFB, 0x03, 0x02, 0x00, 0x06, 0x66, 0x6F, 0x6F, 0x62, 0x61, 0x72, 0x06,
+            0x62, 0x61, 0x7A, 0x03, 0x71, 0x75, 0x78,
+        ];
+        let bytes_handler =
+            BytesDecoder::<HeaderReady> { data: data.as_slice().into(), state: Default::default() };
+
+        let metadata = bytes_handler.load_metadata().unwrap();
+        assert_eq!(
+            metadata.state.metadata,
+            Metadata { repl_id: ReplicationId::Undecided, repl_offset: Default::default() }
+        );
+    }
+
+    #[test]
+    fn test_database_loading() {
+        let data = vec![
+            0xFE, 0x00, 0xFB, 0x03, 0x02, 0x00, 0x06, 0x66, 0x6F, 0x6F, 0x62, 0x61, 0x72, 0x06,
+            0x62, 0x61, 0x7A, 0x71, 0x75, 0x78, 0xFC, 0x15, 0x72, 0xE7, 0x07, 0x8F, 0x01, 0x00,
+            0x00, 0x00, 0x03, 0x66, 0x6F, 0x6F, 0x03, 0x62, 0x61, 0x72, 0xFD, 0x52, 0xED, 0x2A,
+            0x66, 0x00, 0x03, 0x62, 0x61, 0x7A, 0x03, 0x71, 0x75, 0x78, 0xFF, 0x89, 0x3B, 0xB7,
+            0x4E, 0xF8, 0x0F, 0x77, 0x19,
+        ];
+        let bytes_handler = BytesDecoder::<MetadataReady> {
+            data: data.as_slice().into(),
+            state: MetadataReady {
+                metadata: Metadata { repl_id: ReplicationId::Undecided, repl_offset: 0 },
+                header: "".into(),
+            },
+        };
+
+        let rdb_file = bytes_handler.load_database().unwrap();
+        assert_eq!(rdb_file.database.len(), 1);
+        assert_eq!(rdb_file.database[0].index, 0);
+        assert_eq!(rdb_file.database[0].storage.len(), 3);
+        assert_eq!(rdb_file.checksum, vec![0x89, 0x3B, 0xB7, 0x4E, 0xF8, 0x0F, 0x77, 0x19]);
+    }
+
+    // ! Most important test for the BytesEndec implementation in decoding path.
+    #[test]
+    fn test_loading_all() {
+        const M_KEY: u8 = 0xFA;
+
+        const R_ID_SIZE: u8 = 0x28;
+        const D_KEY: u8 = 0xFE;
+
+        let mut data = Vec::new();
+        data.extend_from_slice(HEADER_MAGIC_STRING.as_bytes());
+        data.extend_from_slice(VERSION.as_bytes());
+
+        data.extend_from_slice(&[
+            // Metadata
+            //* repl-id
+            M_KEY, 0x07, //size of key
+            0x72, 0x65, 0x70, 0x6c, 0x2d, 0x69, 0x64, R_ID_SIZE, // size of value(hex 28 = 40)
+            0x34, 0x32, 0x30, 0x64, 0x64, 0x37, 0x65, 0x33, 0x32, 0x34, 0x63, 0x33, 0x61, 0x36,
+            0x33, 0x37, 0x31, 0x62, 0x31, 0x30, 0x33, 0x31, 0x32, 0x39, 0x63, 0x65, 0x62, 0x65,
+            0x36, 0x65, 0x32, 0x35, 0x61, 0x32, 0x37, 0x30, 0x66, 0x39, 0x66, 0x64, //*
+            M_KEY, 0x0B, //size of key - repl-offset
+            0x72, 0x65, 0x70, 0x6C, 0x2D, 0x6F, 0x66, 0x66, 0x73, 0x65, 0x74,
+            0xC2, //size of offset
+            0xA1, 0xC3, 0x83, 0x00, // Database
+            D_KEY, 0x00, 0xFB, 0x02, 0x00, 0x00, 0x04, 0x66, 0x6F, 0x6F, 0x32, 0x04, 0x62, 0x61,
+            0x72, 0x32, 0x00, 0x03, 0x66, 0x6F, 0x6F, 0x03, 0x62, 0x61, 0x72, 0xFF, 0x60, 0x82,
+            0x9C, 0xF8, 0xFB, 0x2E, 0x7F, 0xEB,
+        ]);
+        let bytes_handler =
+            BytesDecoder::<DecoderInit> { data: data.as_slice().into(), state: Default::default() };
+
+        let rdb_file =
+            bytes_handler.load_header().unwrap().load_metadata().unwrap().load_database().unwrap();
+
+        assert_eq!(rdb_file.header, HEADER_MAGIC_STRING.to_string() + VERSION);
+        assert_eq!(rdb_file.database.len(), 1);
+        assert_eq!(rdb_file.database[0].index, 0);
+        assert_eq!(rdb_file.database[0].storage.len(), 2);
+        match rdb_file.database[0].storage[0] {
+            CacheEntry::KeyValue(ref key, ref value) => {
+                assert_eq!(key, "foo2");
+                assert_eq!(value, "bar2");
+            },
+            _ => panic!("Expected KeyValue"),
+        }
+        match rdb_file.database[0].storage[1] {
+            CacheEntry::KeyValue(ref key, ref value) => {
+                assert_eq!(key, "foo");
+                assert_eq!(value, "bar");
+            },
+            _ => panic!("Expected KeyValue"),
+        }
+
+        assert_eq!(rdb_file.checksum, vec![0x60, 0x82, 0x9C, 0xF8, 0xFB, 0x2E, 0x7F, 0xEB]);
+        assert_eq!(
+            rdb_file.metadata.repl_id,
+            ReplicationId::Key("420dd7e324c3a6371b103129cebe6e25a270f9fd".into())
+        );
+        assert_eq!(rdb_file.metadata.repl_offset, 8635297);
+    }
 }

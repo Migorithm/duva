@@ -1,12 +1,12 @@
 mod cli;
+
 mod editor;
 
 use clap::Parser;
 use duva::prelude::tokio::{self, sync::oneshot};
 use duva_client::{
     broker::BrokerMessage,
-    cli_input::{Input, render_return_per_input},
-    command::{separate_command_and_args, validate_input},
+    command::{Input, separate_command_and_args, validate_input},
     controller::ClientController,
 };
 
@@ -41,7 +41,7 @@ async fn main() {
                     .send(BrokerMessage::from_command(cmd.into(), args, input))
                     .await;
                 let (kind, query_io) = rx.await.unwrap();
-                render_return_per_input(kind, query_io);
+                controller.print_res(kind, query_io);
             },
             Err(e) => {
                 println!("{}", e);

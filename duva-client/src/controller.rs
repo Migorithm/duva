@@ -1,17 +1,13 @@
+use std::fmt::Display;
+
 use crate::broker::Broker;
 use crate::broker::BrokerMessage;
-use crate::cli_input::Input;
-use duva::domains::IoError;
+use crate::command::ClientInputKind;
+use duva::domains::query_parsers::query_io::QueryIO;
 use duva::prelude::tokio;
-use duva::prelude::tokio::io::AsyncWriteExt;
-use duva::prelude::tokio::net::tcp::OwnedReadHalf;
-use duva::prelude::tokio::net::tcp::OwnedWriteHalf;
 use duva::prelude::tokio::sync::mpsc::Sender;
-use duva::prelude::tokio::sync::oneshot;
 use duva::prelude::uuid::Uuid;
-use duva::services::interface::TRead;
 
-// TODO Read actor and Write actor
 pub struct ClientController<T> {
     pub broker_tx: Sender<BrokerMessage>,
     pub target: T,
@@ -37,106 +33,101 @@ impl<T> ClientController<T> {
         tokio::spawn(broker.run());
         Self { broker_tx, target: editor }
     }
-}
 
-pub struct ServerStreamReader(pub(crate) OwnedReadHalf);
-impl ServerStreamReader {
-    pub fn run(
-        mut self,
-        controller_sender: tokio::sync::mpsc::Sender<BrokerMessage>,
-    ) -> oneshot::Sender<()> {
-        let (kill_trigger, kill_switch) = tokio::sync::oneshot::channel::<()>();
-
-        let future = async move {
-            let controller_sender = controller_sender.clone();
-
-            loop {
-                match self.0.read_values().await {
-                    Ok(query_ios) => {
-                        for query_io in query_ios {
-                            if controller_sender
-                                .send(BrokerMessage::FromServer(Ok(query_io)))
-                                .await
-                                .is_err()
-                            {
-                                break;
-                            }
-                        }
-                    },
-                    Err(IoError::ConnectionAborted) | Err(IoError::ConnectionReset) => {
-                        let _ = controller_sender
-                            .send(BrokerMessage::FromServer(Err(IoError::ConnectionAborted)))
-                            .await;
-                        println!("Connection reset or aborted");
-                        break;
-                    },
-
-                    Err(e) => {
-                        if controller_sender.send(BrokerMessage::FromServer(Err(e))).await.is_err()
-                        {
-                            break;
-                        }
-                    },
+    fn render_return(&self, kind: ClientInputKind, query_io: QueryIO) -> Response {
+        use ClientInputKind::*;
+        match kind {
+            Ping | Get | Echo | Config | Info | ClusterForget | Role | ReplicaOf | ClusterInfo => {
+                match query_io {
+                    QueryIO::Null => Response::Null,
+                    QueryIO::SimpleString(value) => Response::String(value),
+                    QueryIO::BulkString(value) => Response::String(value),
+                    QueryIO::Err(value) => Response::Error(value),
+                    _err => Response::FormatError,
                 }
-            }
-        };
-        tokio::spawn(async move {
-            tokio::select! {
-                _ = future => {}
-                _ = kill_switch => {}
-            }
-        });
-        kill_trigger
-    }
-}
-
-pub struct CommandToServer {
-    pub command: String,
-    pub args: Vec<String>,
-    pub input: Input,
-}
-
-pub struct ServerStreamWriter(pub(crate) OwnedWriteHalf);
-
-impl ServerStreamWriter {
-    pub async fn write_all(&mut self, buf: &[u8]) -> Result<(), String> {
-        if let Err(e) = self.0.write_all(buf).await {
-            return Err(format!("Failed to send command: {}", e));
-        }
-
-        if let Err(e) = self.0.flush().await {
-            return Err(format!("Failed to flush stream: {}", e));
-        }
-        Ok(())
-    }
-
-    pub async fn flush(&mut self) -> Result<(), String> {
-        if let Err(e) = self.0.flush().await {
-            return Err(format!("Failed to flush stream: {}", e));
-        }
-        Ok(())
-    }
-
-    pub fn run(mut self) -> tokio::sync::mpsc::Sender<MsgToServer> {
-        let (tx, mut rx) = tokio::sync::mpsc::channel::<MsgToServer>(100);
-
-        tokio::spawn(async move {
-            while let Some(sendable) = rx.recv().await {
-                match sendable {
-                    MsgToServer::Command(cmd) => {
-                        if let Err(e) = self.write_all(&cmd).await {
-                            println!("{e}");
-                        };
-                    },
-                    MsgToServer::Stop => break,
+            },
+            Del | Exists => {
+                let QueryIO::SimpleString(value) = query_io else {
+                    return Response::FormatError;
+                };
+                let deleted_count = value.parse::<u64>().unwrap();
+                Response::Integer(deleted_count)
+            },
+            Save => {
+                let QueryIO::Null = query_io else {
+                    return Response::FormatError;
+                };
+                Response::Null
+            },
+            Set => match query_io {
+                QueryIO::SimpleString(_) => Response::String("OK".into()),
+                QueryIO::Err(value) => Response::Error(value),
+                _ => {
+                    return Response::FormatError;
+                },
+            },
+            Keys => {
+                let QueryIO::Array(value) = query_io else {
+                    return Response::FormatError;
+                };
+                let mut keys = Vec::new();
+                for (i, item) in value.into_iter().enumerate() {
+                    let QueryIO::BulkString(value) = item else {
+                        return Response::FormatError;
+                    };
+                    keys.push(Response::String(format!("{i}) \"{value}\"")));
                 }
-            }
-        });
-        tx
+                Response::Array(keys)
+            },
+            ClusterNodes => {
+                let QueryIO::Array(value) = query_io else {
+                    return Response::FormatError;
+                };
+                let mut nodes = Vec::new();
+                for item in value {
+                    let QueryIO::BulkString(value) = item else {
+                        return Response::FormatError;
+                    };
+                    nodes.push(Response::String(value));
+                }
+                Response::Array(nodes)
+            },
+        }
+    }
+
+    #[cfg_attr(not(feature = "cli"), allow(unused))]
+    pub fn print_res(&self, kind: ClientInputKind, query_io: QueryIO) {
+        println!("{}", self.render_return(kind, query_io));
     }
 }
 
-pub enum MsgToServer {
-    Command(Vec<u8>),
-    Stop,
+enum Response {
+    Null,
+    FormatError,
+    String(String),
+    Integer(u64),
+    Error(String),
+    Array(Vec<Response>),
+}
+
+impl Display for Response {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Response::Null => write!(f, "(nil)"),
+            Response::FormatError => write!(f, "Unexpected response format"),
+            Response::String(value) => write!(f, "{value}"),
+            Response::Integer(value) => write!(f, "(integer) {value}"),
+            Response::Error(value) => write!(f, "(error) {value}"),
+            Response::Array(responses) => {
+                let mut iter = responses.iter().peekable();
+                while let Some(response) = iter.next() {
+                    write!(f, "{}", response)?;
+                    if iter.peek().is_some() {
+                        writeln!(f)?; // Add newline only between items, not at the end
+                    }
+                }
+                Ok(())
+            },
+        }
+    }
 }

@@ -5,7 +5,6 @@ use crate::{
             replication::ReplicationState,
         },
         peers::identifier::PeerIdentifier,
-        query_parsers::QueryIO,
     },
     make_smart_pointer,
 };

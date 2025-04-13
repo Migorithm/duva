@@ -1,11 +1,8 @@
-use crate::cli_input::Input;
-use crate::cli_input::InputQueue;
-
+mod input_queue;
+mod read_stream;
+mod write_stream;
 use crate::command::ClientInputKind;
-use crate::controller::CommandToServer;
-use crate::controller::MsgToServer;
-use crate::controller::ServerStreamReader;
-use crate::controller::ServerStreamWriter;
+use crate::command::Input;
 use duva::domains::cluster_actors::heartbeats::scheduler::LEADER_HEARTBEAT_INTERVAL_MAX;
 use duva::domains::{IoError, query_parsers::query_io::QueryIO};
 use duva::prelude::PeerIdentifier;
@@ -18,6 +15,10 @@ use duva::{
     clients::authentications::{AuthRequest, AuthResponse},
     services::interface::TSerdeReadWrite,
 };
+use input_queue::InputQueue;
+use read_stream::ServerStreamReader;
+use write_stream::MsgToServer;
+use write_stream::ServerStreamWriter;
 
 pub struct Broker {
     pub(crate) tx: Sender<BrokerMessage>,
@@ -114,10 +115,9 @@ impl Broker {
         server_addr: &str,
         auth_request: Option<AuthRequest>,
     ) -> Result<(ServerStreamReader, ServerStreamWriter, AuthResponse), IoError> {
-        let mut stream =
-            TcpStream::connect(server_addr).await.map_err(|e| IoError::ConnectionRefused)?;
-        stream.serialized_write(auth_request.unwrap_or(AuthRequest::default())).await.unwrap(); // client_id not exist
+        let mut stream = TcpStream::connect(server_addr).await.unwrap();
 
+        stream.serialized_write(auth_request.unwrap_or(AuthRequest::default())).await.unwrap(); // client_id not exist
         let auth_response: AuthResponse = stream.deserialized_read().await?;
         let (r, w) = stream.into_split();
         Ok((ServerStreamReader(r), ServerStreamWriter(w), auth_response))
@@ -170,4 +170,10 @@ impl BrokerMessage {
             input,
         })
     }
+}
+
+pub struct CommandToServer {
+    pub command: String,
+    pub args: Vec<String>,
+    pub input: Input,
 }
