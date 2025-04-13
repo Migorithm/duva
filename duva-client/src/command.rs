@@ -122,7 +122,6 @@ pub fn validate_input(action: &str, args: &[&str]) -> Result<ClientInputKind, St
 pub enum ClientInputKind {
     Ping,
     Get,
-    IndexGet,
     Set,
     Del,
     Echo,

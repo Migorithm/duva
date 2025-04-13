@@ -36,8 +36,8 @@ impl<T> ClientController<T> {
     pub fn print_res(&self, kind: ClientInputKind, query_io: QueryIO) {
         use ClientInputKind::*;
         match kind {
-            Ping | Get | IndexGet | Echo | Config | Save | Info | ClusterForget | Role
-            | ReplicaOf | ClusterInfo => match query_io {
+            Ping | Get | Echo | Config | Save | Info | ClusterForget | Role | ReplicaOf
+            | ClusterInfo => match query_io {
                 QueryIO::Null => println!("(nil)"),
                 QueryIO::SimpleString(value) => println!("{value}"),
                 QueryIO::BulkString(value) => println!("{value}"),
