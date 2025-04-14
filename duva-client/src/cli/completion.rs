@@ -28,7 +28,6 @@ fn new_pair(word: &str) -> Pair {
     Pair { display: word.to_string(), replacement: word.to_string() }
 }
 
-// Implement Completer for DuvaHinter manually since we need custom logic
 impl Completer for DuvaHinter {
     type Candidate = Pair;
 
@@ -38,118 +37,88 @@ impl Completer for DuvaHinter {
         pos: usize,
         _ctx: &Context<'_>,
     ) -> Result<(usize, Vec<Self::Candidate>), ReadlineError> {
-        // Split the line by whitespace to get the command and its arguments
-        let parts: Vec<&str> = line[..pos].split_whitespace().collect();
-
-        // Start of the completion range
+        // Calculate the start of the current word
         let start = if line[..pos].ends_with(' ') {
             pos
         } else {
-            let mut start = 0;
-            for (i, c) in line[..pos].char_indices().rev() {
-                if c.is_whitespace() {
-                    start = i + 1;
-                    break;
-                }
-            }
-            start
+            line[..pos].rfind(' ').map_or(0, |i| i + 1)
         };
+
+        // Get the text before the start of the current word
+        let before_start = &line[..start];
+        // Split into previous words
+        let previous_words: Vec<&str> = before_start.trim().split_whitespace().collect();
+        // Get the current prefix being typed
+        let current_prefix = &line[start..pos];
 
         let mut candidates = Vec::new();
 
-        // Complete commands only if we're at the first word or starting a new word after completed command
-        if parts.is_empty() || (parts.len() == 1 && !line[..pos].ends_with(' ')) {
-            let word = parts.get(0).map_or("", |s| *s);
-
-            // Suggest commands that start with the current word
+        if previous_words.is_empty() {
+            // Suggest top-level commands that start with current_prefix
             for cmd in self.commands {
-                if cmd.starts_with(word) && !cmd.contains(' ') {
-                    candidates.push(Pair {
-                        display: cmd.to_string(),
-                        replacement: word.to_string() + cmd[word.len()..].to_string().as_str(),
-                    });
+                if cmd.starts_with(current_prefix) {
+                    candidates
+                        .push(Pair { display: cmd.to_string(), replacement: cmd.to_string() });
                 }
             }
-        }
-        // Complete subcommands
-        else if parts.len() == 1 && line[..pos].ends_with(' ') {
-            let command = parts[0].to_lowercase();
-
+        } else {
+            let command = previous_words[0].to_lowercase();
             match command.as_str() {
                 "cluster" => {
-                    candidates.push(new_pair("info"));
-                    candidates.push(new_pair("nodes"));
-                    candidates.push(new_pair("forget"));
+                    if previous_words.len() == 1 {
+                        // Suggest subcommands for cluster that start with current_prefix
+                        let subcommands = ["info", "nodes", "forget"];
+                        candidates.extend(
+                            subcommands
+                                .iter()
+                                .filter(|s| s.starts_with(current_prefix))
+                                .map(|s| new_pair(s)),
+                        );
+                    } else if previous_words.len() == 2 {
+                        let subcommand = previous_words[1].to_lowercase();
+                        if subcommand == "forget" {
+                            // Suggest "node" for cluster forget
+                            candidates.push(new_pair("node"));
+                        }
+                    }
                 },
                 "info" => {
-                    candidates.push(new_pair("replication"));
-                    candidates.push(new_pair("section"));
+                    if previous_words.len() == 1 {
+                        // Suggest subcommands for info that start with current_prefix
+                        let subcommands = ["replication", "section"];
+                        candidates.extend(
+                            subcommands
+                                .iter()
+                                .filter(|s| s.starts_with(current_prefix))
+                                .map(|s| new_pair(s)),
+                        );
+                    }
                 },
                 "set" => {
-                    candidates.push(new_pair("key"));
+                    if previous_words.len() == 1 {
+                        // Suggest "key" after set
+                        candidates.push(new_pair("key"));
+                    } else if previous_words.len() == 2 {
+                        // Suggest "value" after set key
+                        candidates.push(new_pair("value"));
+                    } else if previous_words.len() == 3 {
+                        // Suggest "px expr" after set key value
+                        candidates.push(new_pair("px expr"));
+                    }
                 },
-                "get" => {
-                    candidates.push(new_pair("key"));
-                },
-                "exists" | "del" => {
-                    candidates.push(new_pair("key"));
+                "get" | "exists" | "del" => {
+                    if previous_words.len() >= 1 {
+                        // Suggest "key" for these commands
+                        candidates.push(new_pair("key"));
+                    }
                 },
                 "keys" => {
-                    candidates.push(new_pair("pattern"));
-                },
-                _ => {},
-            }
-        }
-        // Handle special completion for multi-word commands
-        else if parts.len() == 2 && !line[..pos].ends_with(' ') {
-            let command = parts[0].to_lowercase();
-            let subcommand_prefix = parts[1];
-
-            let mut closure = |subcommands: &[&str]| {
-                for subcommand in subcommands {
-                    if subcommand.starts_with(subcommand_prefix) {
-                        candidates.push(Pair {
-                            display: subcommand.to_string(),
-                            replacement: subcommand.to_string()
-                                + subcommand[subcommand.len()..].to_string().as_str(),
-                        });
+                    if previous_words.len() == 1 {
+                        // Suggest "pattern" after keys
+                        candidates.push(new_pair("pattern"));
                     }
-                }
-            };
-
-            match command.as_str() {
-                "cluster" => {
-                    let subcommands = ["info", "nodes", "forget"];
-                    closure(&subcommands);
-                },
-                "info" => {
-                    let subcommands = ["replication"];
-                    closure(&subcommands);
                 },
                 _ => {},
-            }
-        }
-        // Context-specific argument completion
-        else if parts.len() >= 2 && line[..pos].ends_with(' ') {
-            let command = parts[0].to_lowercase();
-            let subcommand = parts.get(1).map(|s| s.to_lowercase());
-
-            // Handle completing node argument for "cluster forget"
-            if command == "cluster" && subcommand == Some("forget".to_string()) {
-                candidates
-                    .push(Pair { display: "node".to_string(), replacement: "node".to_string() });
-            }
-            // Handle "set" command argument completion
-            else if command == "set" {
-                if parts.len() == 2 {
-                    candidates.push(new_pair("value"));
-                } else if parts.len() == 3 {
-                    candidates.push(new_pair("px expr"));
-                }
-            }
-            // Multiple key arguments
-            else if command == "exists" || command == "del" {
-                candidates.push(new_pair("key"));
             }
         }
 
