@@ -259,7 +259,7 @@ impl ClusterActor {
         callback: tokio::sync::oneshot::Sender<ConsensusClientResponse>,
         session_req: Option<SessionRequest>,
     ) {
-        let (prev_log_index, prev_term) = (logger.last_log_index, dbg!(logger.last_log_term));
+        let (prev_log_index, prev_term) = (logger.last_log_index, logger.last_log_term);
         let append_entries = match self.try_create_append_entries(logger, &log).await {
             Ok(entries) => entries,
             Err(err) => {

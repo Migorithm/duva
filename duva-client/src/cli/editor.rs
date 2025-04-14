@@ -1,30 +1,40 @@
+use rustyline::completion::Completer;
+use rustyline::completion::Pair;
+use rustyline::error::ReadlineError;
 use rustyline::highlight::Highlighter;
 use rustyline::{
-    Completer, Config, Context, Editor, Helper, Validator,
+    Config, Context, Editor, Helper, Validator,
     hint::{Hint, Hinter},
     sqlite_history::SQLiteHistory,
 };
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 
+use crate::completion::COMMANDS;
+
 pub fn create() -> Editor<DuvaHinter, SQLiteHistory> {
-    let editor_conf = Config::builder().auto_add_history(true).build();
+    let editor_conf = Config::builder()
+        .auto_add_history(true)
+        .completion_type(rustyline::CompletionType::List)
+        .build();
     let history =
         rustyline::sqlite_history::SQLiteHistory::open(editor_conf, "duva-cli.hist").unwrap();
     let mut editor = Editor::with_history(editor_conf, history).unwrap();
     editor.set_helper(Some(DuvaHinter {
         default_hints: default_hints(),
         dynamic_hints: dynamic_hints(),
+        commands: COMMANDS,
     }));
 
     editor
 }
 
-#[derive(Completer, Helper, Validator)]
+#[derive(Helper, Validator)]
 pub struct DuvaHinter {
     // It's simple example of rustyline, for more efficient, please use ** radix trie **
     default_hints: HashSet<CommandHint>,
     dynamic_hints: HashMap<&'static str, Vec<DynamicHint>>,
+    pub(crate) commands: &'static [&'static str],
 }
 
 #[derive(Hash, Debug, PartialEq, Eq)]

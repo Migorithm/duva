@@ -1,5 +1,6 @@
 mod cli;
 
+pub mod completion;
 mod editor;
 
 use clap::Parser;
