@@ -13,6 +13,10 @@ rustyline = { version = "15.0.0", features = [
 ] }
 
 
+termion = "4.0.5"
+figlet-rs = "0.1.5"
+
+
 [[bin]]
 name = "cli"
 path = "src/cli/main.rs"

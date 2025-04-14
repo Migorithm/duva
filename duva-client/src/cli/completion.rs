@@ -24,8 +24,13 @@ pub(crate) static COMMANDS: &[&str] = &[
     "info replication",
 ];
 
-fn new_pair(word: &str) -> Pair {
-    Pair { display: word.to_string(), replacement: word.to_string() }
+macro_rules! new_pair {
+    ($display:expr) => {
+        Pair { display: $display.to_string(), replacement: $display.to_string() }
+    };
+    ($display:expr, $replacement: expr) => {
+        Pair { display: $display.to_string(), replacement: $replacement.to_string() }
+    };
 }
 
 impl Completer for DuvaHinter {
@@ -74,13 +79,13 @@ impl Completer for DuvaHinter {
                         subcommands
                             .iter()
                             .filter(|s| s.starts_with(current_prefix))
-                            .map(|s| new_pair(s)),
+                            .map(|s| new_pair!(s)),
                     );
                 } else if previous_words.len() == 2 {
                     let subcommand = previous_words[1].to_lowercase();
                     if subcommand == "forget" {
                         // Suggest "node" for cluster forget
-                        candidates.push(new_pair("node"));
+                        candidates.push(new_pair!("node"));
                     }
                 }
             },
@@ -92,32 +97,32 @@ impl Completer for DuvaHinter {
                         subcommands
                             .iter()
                             .filter(|s| s.starts_with(current_prefix))
-                            .map(|s| new_pair(s)),
+                            .map(|s| new_pair!(s)),
                     );
                 }
             },
             "set" => {
                 if previous_words.len() == 1 {
                     // Suggest "key" after set
-                    candidates.push(new_pair("key"));
+                    candidates.push(new_pair!("key"));
                 } else if previous_words.len() == 2 {
                     // Suggest "value" after set key
-                    candidates.push(new_pair("value"));
+                    candidates.push(new_pair!("value"));
                 } else if previous_words.len() == 3 {
                     // Suggest "px expr" after set key value
-                    candidates.push(new_pair("px expr"));
+                    candidates.push(new_pair!("px expr"));
                 }
             },
             "get" | "exists" | "del" => {
                 if previous_words.len() >= 1 {
                     // Suggest "key" for these commands
-                    candidates.push(new_pair("key"));
+                    candidates.push(new_pair!("key"));
                 }
             },
             "keys" => {
                 if previous_words.len() == 1 {
                     // Suggest "pattern" after keys
-                    candidates.push(new_pair("pattern"));
+                    candidates.push(new_pair!("pattern"));
                 }
             },
             _ => {},

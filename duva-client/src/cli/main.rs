@@ -10,11 +10,18 @@ use duva_client::{
     command::{Input, separate_command_and_args, validate_input},
     controller::ClientController,
 };
+use figlet_rs::FIGfont;
+use termion::{clear, cursor};
 
 const PROMPT: &str = "duva-cli> ";
 
 #[tokio::main]
 async fn main() {
+    print!("{}{}", clear::All, cursor::Goto(1, 1));
+    let standard_font = FIGfont::standard().unwrap();
+    let figure = standard_font.convert("Duva cli").unwrap();
+    println!("{}", figure);
+
     let cli = cli::Cli::parse();
     let mut controller = ClientController::new(editor::create(), &cli.address()).await;
 
