@@ -1,7 +1,7 @@
 mod cli;
-
 pub mod completion;
 mod editor;
+mod hints;
 
 use clap::Parser;
 use duva::prelude::tokio::{self, sync::oneshot};
