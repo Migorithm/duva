@@ -1,1 +1,5 @@
-{}
+{
+    "rust-analyzer.cargo.features": [
+        "cli"
+    ],
+}
