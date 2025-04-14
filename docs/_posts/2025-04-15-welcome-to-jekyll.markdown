@@ -2,7 +2,7 @@
 layout: post
 title:  "Auto completion & suggestion now supported!"
 date:   2025-04-15 00:34:01 +0900
-categories: duva update
+categories: posts
 ---
 
 We’re excited to announce that Duva now supports **autocompletion and suggestion** in its CLI! 🎉 This feature makes it easier and faster to use Duva’s commands, especially for new users or those working with complex commands.

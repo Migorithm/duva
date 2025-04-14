@@ -2,8 +2,9 @@ title: Duva - Distributed Cache Server
 email: saka90030@gmail.com
 description: >-
   Duva is a distributed cache server built for efficient and scalable key-value store operations using Actor models, written in Rust. Explore its features, architecture, and how to get started!
-baseurl: "" # the subpath of your site, e.g. /blog
-url: "http://localhost:4000" # for local testing
+
+baseurl: "/duva" # The subpath of your site
+url: "https://migorithm.github.io" # The base hostname for your site
 
 github_username: migorithm
 

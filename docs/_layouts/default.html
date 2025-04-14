@@ -20,9 +20,13 @@
         <!-- Sidebar -->
         <aside class="sidebar">
             <ul>
-                <li><a href="/">Blog</a></li>
-                <li><a href="/about/">About</a></li>
-                <li><a href="/commands/">Commands</a></li>
+                <li><a href="{{ '/' | relative_url }}" {% if page.url=="/" %}class="active" {% endif %}>Home</a></li>
+                <li><a href="{{ '/update/' | relative_url }}" {% if page.url contains "/duva/update/" %}class="active"
+                        {% endif %}>Blog</a></li>
+                <li><a href="{{ '/about/' | relative_url }}" {% if page.url=="/about" %}class="active" {% endif
+                        %}>About</a></li>
+                <li><a href="{{ '/commands/' | relative_url }}" {% if page.url contains "/commands" %}class="active" {%
+                        endif %}>Commands</a></li>
             </ul>
         </aside>
         <!-- Main content -->
