@@ -61,65 +61,66 @@ impl Completer for DuvaHinter {
                         .push(Pair { display: cmd.to_string(), replacement: cmd.to_string() });
                 }
             }
-        } else {
-            let command = previous_words[0].to_lowercase();
-            match command.as_str() {
-                "cluster" => {
-                    if previous_words.len() == 1 {
-                        // Suggest subcommands for cluster that start with current_prefix
-                        let subcommands = ["info", "nodes", "forget"];
-                        candidates.extend(
-                            subcommands
-                                .iter()
-                                .filter(|s| s.starts_with(current_prefix))
-                                .map(|s| new_pair(s)),
-                        );
-                    } else if previous_words.len() == 2 {
-                        let subcommand = previous_words[1].to_lowercase();
-                        if subcommand == "forget" {
-                            // Suggest "node" for cluster forget
-                            candidates.push(new_pair("node"));
-                        }
+            return Ok((start, candidates));
+        }
+
+        let command = previous_words[0].to_lowercase();
+        match command.as_str() {
+            "cluster" => {
+                if previous_words.len() == 1 {
+                    // Suggest subcommands for cluster that start with current_prefix
+                    let subcommands = ["info", "nodes", "forget"];
+                    candidates.extend(
+                        subcommands
+                            .iter()
+                            .filter(|s| s.starts_with(current_prefix))
+                            .map(|s| new_pair(s)),
+                    );
+                } else if previous_words.len() == 2 {
+                    let subcommand = previous_words[1].to_lowercase();
+                    if subcommand == "forget" {
+                        // Suggest "node" for cluster forget
+                        candidates.push(new_pair("node"));
                     }
-                },
-                "info" => {
-                    if previous_words.len() == 1 {
-                        // Suggest subcommands for info that start with current_prefix
-                        let subcommands = ["replication", "section"];
-                        candidates.extend(
-                            subcommands
-                                .iter()
-                                .filter(|s| s.starts_with(current_prefix))
-                                .map(|s| new_pair(s)),
-                        );
-                    }
-                },
-                "set" => {
-                    if previous_words.len() == 1 {
-                        // Suggest "key" after set
-                        candidates.push(new_pair("key"));
-                    } else if previous_words.len() == 2 {
-                        // Suggest "value" after set key
-                        candidates.push(new_pair("value"));
-                    } else if previous_words.len() == 3 {
-                        // Suggest "px expr" after set key value
-                        candidates.push(new_pair("px expr"));
-                    }
-                },
-                "get" | "exists" | "del" => {
-                    if previous_words.len() >= 1 {
-                        // Suggest "key" for these commands
-                        candidates.push(new_pair("key"));
-                    }
-                },
-                "keys" => {
-                    if previous_words.len() == 1 {
-                        // Suggest "pattern" after keys
-                        candidates.push(new_pair("pattern"));
-                    }
-                },
-                _ => {},
-            }
+                }
+            },
+            "info" => {
+                if previous_words.len() == 1 {
+                    // Suggest subcommands for info that start with current_prefix
+                    let subcommands = ["replication", "section"];
+                    candidates.extend(
+                        subcommands
+                            .iter()
+                            .filter(|s| s.starts_with(current_prefix))
+                            .map(|s| new_pair(s)),
+                    );
+                }
+            },
+            "set" => {
+                if previous_words.len() == 1 {
+                    // Suggest "key" after set
+                    candidates.push(new_pair("key"));
+                } else if previous_words.len() == 2 {
+                    // Suggest "value" after set key
+                    candidates.push(new_pair("value"));
+                } else if previous_words.len() == 3 {
+                    // Suggest "px expr" after set key value
+                    candidates.push(new_pair("px expr"));
+                }
+            },
+            "get" | "exists" | "del" => {
+                if previous_words.len() >= 1 {
+                    // Suggest "key" for these commands
+                    candidates.push(new_pair("key"));
+                }
+            },
+            "keys" => {
+                if previous_words.len() == 1 {
+                    // Suggest "pattern" after keys
+                    candidates.push(new_pair("pattern"));
+                }
+            },
+            _ => {},
         }
 
         Ok((start, candidates))

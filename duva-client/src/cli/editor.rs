@@ -1,6 +1,3 @@
-use rustyline::completion::Completer;
-use rustyline::completion::Pair;
-use rustyline::error::ReadlineError;
 use rustyline::highlight::Highlighter;
 use rustyline::{
     Config, Context, Editor, Helper, Validator,
@@ -15,7 +12,7 @@ use crate::completion::COMMANDS;
 pub fn create() -> Editor<DuvaHinter, SQLiteHistory> {
     let editor_conf = Config::builder()
         .auto_add_history(true)
-        .completion_type(rustyline::CompletionType::List)
+        .completion_type(rustyline::CompletionType::Circular)
         .build();
     let history =
         rustyline::sqlite_history::SQLiteHistory::open(editor_conf, "duva-cli.hist").unwrap();
