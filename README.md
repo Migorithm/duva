@@ -4,6 +4,7 @@ Duva is a distributed cache server aimed at efficient and scalable key-value sto
 ## cli support
 - Auto suggestion
 - Auto completion
+
 https://github.com/user-attachments/assets/d14a85a7-5edb-4466-8bd0-f538b3d7d27d
 
 
