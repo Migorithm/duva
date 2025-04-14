@@ -1,29 +1,38 @@
 ---
 layout: post
-title:  "Welcome to Jekyll!"
+title:  "Auto completion & suggestion now supported!"
 date:   2025-04-15 00:34:01 +0900
-categories: jekyll update
+categories: duva update
 ---
-You’ll find this post in your `_posts` directory. Go ahead and edit it and re-build the site to see your changes. You can rebuild the site in many different ways, but the most common way is to run `jekyll serve`, which launches a web server and auto-regenerates your site when a file is updated.
 
-Jekyll requires blog post files to be named according to the following format:
+We’re excited to announce that Duva now supports **autocompletion and suggestion** in its CLI! 🎉 This feature makes it easier and faster to use Duva’s commands, especially for new users or those working with complex commands.
 
-`YEAR-MONTH-DAY-title.MARKUP`
+### What’s New?
 
-Where `YEAR` is a four-digit number, `MONTH` and `DAY` are both two-digit numbers, and `MARKUP` is the file extension representing the format used in the file. After that, include the necessary front matter. Take a look at the source for this post to get an idea about how it works.
+With autocompletion, you can start typing a command, and Duva will suggest the full syntax, including arguments. For example:
 
-Jekyll also offers powerful support for code snippets:
+- Type <code>SET</code>, and Duva suggests <code>SET key value [PX milliseconds]</code>.
+- Type <code>GET</code>, and it completes to <code>GET key</code> — perfect for quick lookups.
 
-{% highlight ruby %}
-def print_hi(name)
-  puts "Hi, #{name}"
-end
-print_hi('Tom')
-#=> prints 'Hi, Tom' to STDOUT.
-{% endhighlight %}
+Here’s how it looks in action (suggested text is shown in <span class="suggestion-preview">gray</span>):
 
-Check out the [Jekyll docs][jekyll-docs] for more info on how to get the most out of Jekyll. File all bugs/feature requests at [Jekyll’s GitHub repo][jekyll-gh]. If you have questions, you can ask them on [Jekyll Talk][jekyll-talk].
+<div class="command-example">
+<pre>
+SET m<span class="suggestion">ykey "value" [PX milliseconds]</span>
+</pre>
+</div>
 
-[jekyll-docs]: https://jekyllrb.com/docs/home
-[jekyll-gh]:   https://github.com/jekyll/jekyll
-[jekyll-talk]: https://talk.jekyllrb.com/
+<div class="command-example">
+<pre>
+GET k<span class="suggestion">ey</span>
+</pre>
+</div>
+
+This feature ensures smooth and responsive suggestions as you type. Whether you’re setting a key with an expiration time or retrieving keys with a pattern, autocompletion has you covered.
+
+### Try It Out
+
+Autocompletion is available for all commands listed in our [Commands documentation](/commands/). Check out the full list to explore commands like <code>SET</code>, <code>GET</code>, <code>KEYS</code>, and <code>SAVE</code>, along with their syntax and examples.
+
+
+

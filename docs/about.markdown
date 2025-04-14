@@ -1,18 +1,23 @@
 ---
 layout: default
-title: About Duva
+title: About
 permalink: /about/
 ---
 
-## About Duva
 
 Duva is a distributed cache server built for fast and scalable key-value storage. Written in Rust and using the Actor model, it’s designed for high concurrency, fault tolerance, and distributed systems.
+
+
+<br><br>
 
 ### Why Duva?
 
 - **High Concurrency**: Handles thousands of concurrent operations.
 - **Fault Tolerance**: Reliable with failure detection and recovery.
 - **Scalable**: Works across multiple servers with ease.
+
+<br><br>
+
 
 ### Key Features
 
@@ -21,6 +26,8 @@ Duva is a distributed cache server built for fast and scalable key-value storage
 - **Persistence**: Save data to RDB or Append-Only Files.
 - **Clustering**: Supports replication, failure detection, and node liveness checks.
 - **RESP Protocol**: Compatible with Redis-like commands.
+
+<br><br>
 
 ### Get Involved
 
