@@ -25,9 +25,11 @@ collections:
 
 # Minima theme customizations
 minima:
-  skin: dark # Use a dark theme to match the techy vibe of Duva
+  
   social_links:
     - { platform: github, user_url: "https://github.com/migorithm" }
+  custom_styles:
+    - "/assets/css/custom.css"
 
 # Exclude unnecessary files
 exclude:

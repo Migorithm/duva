@@ -7,9 +7,12 @@ syntax: GET key
 Retrieves the value stored at the specified key. Returns `nil` if the key does not exist or has expired.
 
 ### Example
-```sh
+<div class="command-example">
+<pre>
 GET mykey
-```
+</pre>
+</div>
+
 If `mykey` was set to `"hello"`, this returns `"hello"`.
 
 ### Notes

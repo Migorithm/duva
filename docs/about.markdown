@@ -1,5 +1,5 @@
 ---
-layout: page
+layout: default
 title: About Duva
 permalink: /about/
 ---
@@ -24,4 +24,4 @@ Duva is a distributed cache server built for fast and scalable key-value storage
 
 ### Get Involved
 
-Duva is open-source under the Apache License 2.0. Want to contribute? Visit the [GitHub repository](https://github.com/migorithm) to learn more or submit a pull request!
+Duva is open-source under the Apache License 2.0. Want to contribute? Visit the [GitHub repository](https://github.com/migorithm/duva) to learn more or submit a pull request!

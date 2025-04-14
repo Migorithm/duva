@@ -7,9 +7,11 @@ syntax: KEYS pattern
 Returns a list of keys that match the given pattern. Supports simple glob-style patterns.
 
 ### Example
-```sh
+<div class="command-example">
+<pre>
 KEYS my*
-```
+</pre>
+</div>
 
 
 Returns all keys starting with `my`, such as `mykey`, `mykey2`.

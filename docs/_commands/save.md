@@ -6,10 +6,7 @@ syntax: SAVE
 ---
 Persists the current cache data to a file (e.g., an RDB file) for durability.
 
-### Example
-```sh
-SAVE
-```
+
 Dumps the current data to the configured file path.
 
 ### Notes

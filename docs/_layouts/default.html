@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <title>{{ page.title }} | {{ site.title }}</title>
+    <!-- Include Google Fonts -->
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap">
+    <!-- Include Minima's default head (which includes main.css) -->
+    {% include head.html %}
+    <!-- Include your custom CSS after Minima's styles -->
+    <link rel="stylesheet" href="{{ '/assets/css/custom.css' | relative_url }}">
+    <!-- Include Jekyll SEO tag for better search engine optimization -->
+    {% seo %}
+</head>
+
+<body>
+
+    <div class="container">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <h2>Duva Documentation</h2>
+            <ul>
+                <li><a href="/">Home</a></li>
+                <li><a href="/about/">About Duva</a></li>
+                <li><a href="/commands/">Commands</a></li>
+            </ul>
+        </aside>
+        <!-- Main content -->
+        <main class="content">
+            <header>
+                <h1>{{ site.title }}</h1>
+            </header>
+            {{ content }}
+        </main>
+    </div>
+</body>
+
+</html>
