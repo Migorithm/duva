@@ -1,55 +1,36 @@
-# Welcome to Jekyll!
-#
-# This config file is meant for settings that affect your whole blog, values
-# which you are expected to set up once and rarely edit after that. If you find
-# yourself editing this file very often, consider using Jekyll's data files
-# feature for the data you need to update frequently.
-#
-# For technical reasons, this file is *NOT* reloaded automatically when you use
-# 'bundle exec jekyll serve'. If you change this file, please restart the server process.
-#
-# If you need help with YAML syntax, here are some quick references for you:
-# https://learn-the-web.algonquindesign.ca/topics/markdown-yaml-cheat-sheet/#yaml
-# https://learnxinyminutes.com/docs/yaml/
-#
-# Site settings
-# These are used to personalize your new site. If you look in the HTML files,
-# you will see them accessed via {{ site.title }}, {{ site.email }}, and so on.
-# You can create any custom variable you would like, and they will be accessible
-# in the templates via {{ site.myvariable }}.
-
-title: Duva
+title: Duva - Distributed Cache Server
 email: saka90030@gmail.com
-description: >- # this means to ignore newlines until "baseurl:"
-  Write an awesome description for your new site here. You can edit this
-  line in _config.yml. It will appear in your document head meta (for
-  Google search results) and in your feed.xml site description.
+description: >-
+  Duva is a distributed cache server built for efficient and scalable key-value store operations using Actor models, written in Rust. Explore its features, architecture, and how to get started!
 baseurl: "" # the subpath of your site, e.g. /blog
 url: "http://localhost:4000" # for local testing
-twitter_username: jekyllrb
-github_username:  jekyll
+
+github_username: migorithm
 
 # Build settings
 theme: minima
 plugins:
   - jekyll-feed
+  - jekyll-seo-tag # Improves SEO for better search engine visibility
 
-# Exclude from processing.
-# The following items will not be processed, by default.
-# Any item listed under the `exclude:` key here will be automatically added to
-# the internal "default list".
-#
-# Excluded items can be processed by explicitly listing the directories or
-# their entries' file path in the `include:` list.
-#
-# exclude:
-#   - .sass-cache/
-#   - .jekyll-cache/
-#   - gemfiles/
-#   - Gemfile
-#   - Gemfile.lock
-#   - node_modules/
-#   - vendor/bundle/
-#   - vendor/cache/
-#   - vendor/gems/
-#   - vendor/ruby/
+header_pages:
+
+  - commands.markdown
+  - about.markdown
+
+collections:
+  commands:
+    output: true
+    permalink: /commands/:name/
+
+# Minima theme customizations
+minima:
+  skin: dark # Use a dark theme to match the techy vibe of Duva
+  social_links:
+    - { platform: github, user_url: "https://github.com/migorithm" }
+
+# Exclude unnecessary files
+exclude:
+  - Gemfile
+  - Gemfile.lock
+  - README.md
