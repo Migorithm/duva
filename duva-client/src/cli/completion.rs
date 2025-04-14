@@ -21,6 +21,7 @@ pub(crate) static COMMANDS: &[&str] = &[
     "cluster info",
     "cluster nodes",
     "cluster forget",
+    "info replication",
 ];
 
 // Implement Completer for DuvaHinter manually since we need custom logic
@@ -124,6 +125,18 @@ impl Completer for DuvaHinter {
             match command.as_str() {
                 "cluster" => {
                     let subcommands = ["info", "nodes", "forget"];
+                    for &subcommand in &subcommands {
+                        if subcommand.starts_with(subcommand_prefix) {
+                            candidates.push(Pair {
+                                display: subcommand.to_string(),
+                                replacement: subcommand.to_string()
+                                    + subcommand[subcommand.len()..].to_string().as_str(),
+                            });
+                        }
+                    }
+                },
+                "info" => {
+                    let subcommands = ["replication"];
                     for &subcommand in &subcommands {
                         if subcommand.starts_with(subcommand_prefix) {
                             candidates.push(Pair {
