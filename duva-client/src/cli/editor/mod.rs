@@ -1,9 +1,10 @@
+mod completion;
+mod hints;
+use completion::COMMANDS;
+use hints::{CommandHint, DynamicHint, default_hints, dynamic_hints};
 use rustyline::{Config, Editor, Helper, Validator, sqlite_history::SQLiteHistory};
 
 use std::collections::{HashMap, HashSet};
-
-use crate::completion::COMMANDS;
-use crate::hints::{CommandHint, DynamicHint, default_hints, dynamic_hints};
 
 pub fn create() -> Editor<DuvaHinter, SQLiteHistory> {
     let editor_conf = Config::builder()
