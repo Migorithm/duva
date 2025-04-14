@@ -1,31 +1,12 @@
 use rustyline::highlight::Highlighter;
 use rustyline::{
-    Completer, Config, Context, Editor, Helper, Validator,
+    Context,
     hint::{Hint, Hinter},
-    sqlite_history::SQLiteHistory,
 };
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 
-pub fn create() -> Editor<DuvaHinter, SQLiteHistory> {
-    let editor_conf = Config::builder().auto_add_history(true).build();
-    let history =
-        rustyline::sqlite_history::SQLiteHistory::open(editor_conf, "duva-cli.hist").unwrap();
-    let mut editor = Editor::with_history(editor_conf, history).unwrap();
-    editor.set_helper(Some(DuvaHinter {
-        default_hints: default_hints(),
-        dynamic_hints: dynamic_hints(),
-    }));
-
-    editor
-}
-
-#[derive(Completer, Helper, Validator)]
-pub struct DuvaHinter {
-    // It's simple example of rustyline, for more efficient, please use ** radix trie **
-    default_hints: HashSet<CommandHint>,
-    dynamic_hints: HashMap<&'static str, Vec<DynamicHint>>,
-}
+use crate::editor::DuvaHinter;
 
 #[derive(Hash, Debug, PartialEq, Eq)]
 pub struct CommandHint {
@@ -135,7 +116,7 @@ impl Hinter for DuvaHinter {
     }
 }
 
-fn default_hints() -> HashSet<CommandHint> {
+pub(crate) fn default_hints() -> HashSet<CommandHint> {
     let mut set = HashSet::new();
     set.insert(CommandHint::new("get key", "get "));
     set.insert(CommandHint::new("set key value", "set "));
@@ -153,7 +134,7 @@ fn default_hints() -> HashSet<CommandHint> {
     set
 }
 
-struct DynamicHint {
+pub(crate) struct DynamicHint {
     hint_text: &'static str,
     args_required: usize,
     repeat_last_arg: bool, // New flag to indicate repeating pattern
@@ -168,7 +149,7 @@ macro_rules! hint {
     };
 }
 
-fn dynamic_hints() -> HashMap<&'static str, Vec<DynamicHint>> {
+pub(crate) fn dynamic_hints() -> HashMap<&'static str, Vec<DynamicHint>> {
     let mut map = HashMap::new();
     // Helper macro to reduce boilerplate
 

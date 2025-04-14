@@ -119,6 +119,9 @@ impl Display for Response {
             Response::Integer(value) => write!(f, "(integer) {value}"),
             Response::Error(value) => write!(f, "(error) {value}"),
             Response::Array(responses) => {
+                if responses.is_empty() {
+                    return write!(f, "(empty array)");
+                }
                 let mut iter = responses.iter().peekable();
                 while let Some(response) = iter.next() {
                     write!(f, "{}", response)?;
