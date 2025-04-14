@@ -1,6 +1,6 @@
 title: Duva
 description: Strongly consistent key-value store written in Rust
-url: "https://migorithm.github.io/duva"  # The base hostname of your site
+url: "https://migorithm.github.io"  # The base hostname of your site
 
 plugins:
   - jekyll-feed
