@@ -1,0 +1,28 @@
+---
+layout: default
+---
+<h1>{{ page.title }}</h1>
+<p>{{ page.description }}</p>
+
+<h2>Syntax</h2>
+<pre>{{ page.syntax }}</pre>
+
+{% if page.arguments %}
+<h2>Arguments</h2>
+<ul>
+    {% for arg in page.arguments %}
+    <li><strong>{{ arg.name }}</strong> ({{ arg.type }}): {{ arg.description }}</li>
+    {% endfor %}
+</ul>
+{% endif %}
+
+{% if page.examples %}
+<h2>Examples</h2>
+<ul>
+    {% for example in page.examples %}
+    <li><code>{{ example.command }}</code>: {{ example.description }}</li>
+    {% endfor %}
+</ul>
+{% endif %}
+
+{{ content }}
