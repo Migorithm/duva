@@ -1,0 +1,4 @@
+title: Duva
+description: Strongly consistent key-value store written in Rust
+plugins:
+  - jekyll-feed
