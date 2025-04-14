@@ -14,10 +14,7 @@ const PROMPT: &str = "duva-cli> ";
 
 #[tokio::main]
 async fn main() {
-    print!("{}{}", clear::All, cursor::Goto(1, 1));
-    let standard_font = FIGfont::standard().unwrap();
-    let figure = standard_font.convert("Duva cli").unwrap();
-    println!("{}", figure);
+    clear_and_make_ascii_art();
 
     let cli = cli::Cli::parse();
     let mut controller = ClientController::new(editor::create(), &cli.address()).await;
@@ -53,4 +50,11 @@ async fn main() {
             },
         }
     }
+}
+
+fn clear_and_make_ascii_art() {
+    print!("{}{}", clear::All, cursor::Goto(1, 1));
+    let standard_font = FIGfont::standard().unwrap();
+    let figure = standard_font.convert("Duva cli").unwrap();
+    println!("{}", figure);
 }
