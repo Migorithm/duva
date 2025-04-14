@@ -9,6 +9,15 @@ We’re excited to announce that Duva now supports **autocompletion and suggesti
 
 ### What’s New?
 
+<video class="demo-video" controls>
+  <source src="https://github.com/user-attachments/assets/d14a85a7-5edb-4466-8bd0-f538b3d7d27d" type="video/mp4">
+  Your browser does not support the video tag.
+</video>
+
+
+<br>
+
+
 With autocompletion, you can start typing a command, and Duva will suggest the full syntax, including arguments. For example:
 
 - Type <code>SET</code>, and Duva suggests <code>SET key value [PX milliseconds]</code>.
@@ -27,6 +36,8 @@ SET m<span class="suggestion">ykey "value" [PX milliseconds]</span>
 GET k<span class="suggestion">ey</span>
 </pre>
 </div>
+
+
 
 This feature ensures smooth and responsive suggestions as you type. Whether you’re setting a key with an expiration time or retrieving keys with a pattern, autocompletion has you covered.
 

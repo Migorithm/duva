@@ -4,7 +4,7 @@ title: Commands
 permalink: /commands/
 ---
 
-## Duva Commands
+## Commands
 
 
 Below is a list of all supported commands in Duva. Click on a command to learn more about its usage and examples.
