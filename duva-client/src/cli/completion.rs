@@ -24,6 +24,10 @@ pub(crate) static COMMANDS: &[&str] = &[
     "info replication",
 ];
 
+fn new_pair(word: &str) -> Pair {
+    Pair { display: word.to_string(), replacement: word.to_string() }
+}
+
 // Implement Completer for DuvaHinter manually since we need custom logic
 impl Completer for DuvaHinter {
     type Candidate = Pair;
@@ -73,46 +77,25 @@ impl Completer for DuvaHinter {
 
             match command.as_str() {
                 "cluster" => {
-                    candidates.push(Pair {
-                        display: "info".to_string(),
-                        replacement: "info".to_string(),
-                    });
-                    candidates.push(Pair {
-                        display: "nodes".to_string(),
-                        replacement: "nodes".to_string(),
-                    });
-                    candidates.push(Pair {
-                        display: "forget".to_string(),
-                        replacement: "forget".to_string(),
-                    });
+                    candidates.push(new_pair("info"));
+                    candidates.push(new_pair("nodes"));
+                    candidates.push(new_pair("forget"));
                 },
                 "info" => {
-                    candidates.push(Pair {
-                        display: "replication".to_string(),
-                        replacement: "replication".to_string(),
-                    });
-                    candidates.push(Pair {
-                        display: "section".to_string(),
-                        replacement: "section".to_string(),
-                    });
+                    candidates.push(new_pair("replication"));
+                    candidates.push(new_pair("section"));
                 },
                 "set" => {
-                    candidates
-                        .push(Pair { display: "key".to_string(), replacement: "key".to_string() });
+                    candidates.push(new_pair("key"));
                 },
                 "get" => {
-                    candidates
-                        .push(Pair { display: "key".to_string(), replacement: "key".to_string() });
+                    candidates.push(new_pair("key"));
                 },
                 "exists" | "del" => {
-                    candidates
-                        .push(Pair { display: "key".to_string(), replacement: "key".to_string() });
+                    candidates.push(new_pair("key"));
                 },
                 "keys" => {
-                    candidates.push(Pair {
-                        display: "pattern".to_string(),
-                        replacement: "pattern".to_string(),
-                    });
+                    candidates.push(new_pair("pattern"));
                 },
                 _ => {},
             }
@@ -122,30 +105,26 @@ impl Completer for DuvaHinter {
             let command = parts[0].to_lowercase();
             let subcommand_prefix = parts[1];
 
+            let mut closure = |subcommands: &[&str]| {
+                for subcommand in subcommands {
+                    if subcommand.starts_with(subcommand_prefix) {
+                        candidates.push(Pair {
+                            display: subcommand.to_string(),
+                            replacement: subcommand.to_string()
+                                + subcommand[subcommand.len()..].to_string().as_str(),
+                        });
+                    }
+                }
+            };
+
             match command.as_str() {
                 "cluster" => {
                     let subcommands = ["info", "nodes", "forget"];
-                    for &subcommand in &subcommands {
-                        if subcommand.starts_with(subcommand_prefix) {
-                            candidates.push(Pair {
-                                display: subcommand.to_string(),
-                                replacement: subcommand.to_string()
-                                    + subcommand[subcommand.len()..].to_string().as_str(),
-                            });
-                        }
-                    }
+                    closure(&subcommands);
                 },
                 "info" => {
                     let subcommands = ["replication"];
-                    for &subcommand in &subcommands {
-                        if subcommand.starts_with(subcommand_prefix) {
-                            candidates.push(Pair {
-                                display: subcommand.to_string(),
-                                replacement: subcommand.to_string()
-                                    + subcommand[subcommand.len()..].to_string().as_str(),
-                            });
-                        }
-                    }
+                    closure(&subcommands);
                 },
                 _ => {},
             }
@@ -163,21 +142,14 @@ impl Completer for DuvaHinter {
             // Handle "set" command argument completion
             else if command == "set" {
                 if parts.len() == 2 {
-                    candidates.push(Pair {
-                        display: "value".to_string(),
-                        replacement: "value".to_string(),
-                    });
+                    candidates.push(new_pair("value"));
                 } else if parts.len() == 3 {
-                    candidates.push(Pair {
-                        display: "px expr".to_string(),
-                        replacement: "px expr".to_string(),
-                    });
+                    candidates.push(new_pair("px expr"));
                 }
             }
             // Multiple key arguments
             else if command == "exists" || command == "del" {
-                candidates
-                    .push(Pair { display: "key".to_string(), replacement: "key".to_string() });
+                candidates.push(new_pair("key"));
             }
         }
 
