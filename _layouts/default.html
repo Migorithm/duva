@@ -6,23 +6,23 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ page.title }} | {{ site.title }}</title>
     {% seo %}
-    <link rel="stylesheet" href="/assets/css/styles.css">
+    <link rel="stylesheet" href="{{ site.baseurl }}/assets/css/styles.css">
 </head>
 
 <body>
     <header>
-        <h1><a href="/">{{ site.title }}</a></h1>
+        <h1><a href="{{ site.baseurl }}/">{{ site.title }}</a></h1>
         <nav>
-            <a href="/">Home</a>
-            <a href="/commands/">Commands</a>
-            <a href="/about/">About</a>
+            <a href="{{ site.baseurl }}/">Home</a>
+            <a href="{{ site.baseurl }}/commands/">Commands</a>
+            <a href="{{ site.baseurl }}/about/">About</a>
         </nav>
     </header>
     <main>
         {{ content }}
     </main>
     <footer>
-        <p>&copy; {{ site.time | date: '%Y' }} {{ site.title }}</p>
+        <p>© {{ site.time | date: '%Y' }} {{ site.title }}</p>
     </footer>
 </body>
 

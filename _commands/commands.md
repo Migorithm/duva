@@ -11,5 +11,5 @@ This page lists all available commands in Duva, a distributed cache server. Each
 | Command | Description |
 |---------|-------------|
 {% for command in site.commands %}
-| [{{ command.title }}](/commands/{{ command.title | downcase }}) | {{ command.description }} |
+| [{{ command.title }}]({{ site.baseurl }}/commands/{{ command.title | downcase }}) | {{ command.description }} |
 {% endfor %}
