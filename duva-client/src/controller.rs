@@ -46,13 +46,31 @@ impl<T> ClientController<T> {
                     _err => Response::FormatError,
                 }
             },
-            Del | Exists | Incr => {
+            Del | Exists => {
                 let QueryIO::SimpleString(value) = query_io else {
                     return Response::FormatError;
                 };
                 match value.parse::<u64>() {
                     Ok(int) => Response::Integer(int),
-                    Err(_) => Response::Error("value is not an integer or out of range".into()),
+                    Err(_) => Response::Error("ERR value is not an integer or out of range".into()),
+                }
+            },
+            Incr => {
+                match query_io {
+                    QueryIO::SimpleString(value) => {
+                        let s: Option<&str> =
+                            value.split('-').next().unwrap_or_default().rsplit(':').next(); // format: s:value-idx:index_num
+
+                        Response::Integer(s.unwrap().parse::<u64>().unwrap())
+                    },
+                    QueryIO::Err(value) => {
+                        return Response::Error(
+                            "ERR value is not an integer or out of range".into(),
+                        );
+                    },
+                    _ => {
+                        return Response::FormatError;
+                    },
                 }
             },
             Save => {

@@ -42,9 +42,12 @@ impl CacheManager {
         }
     }
 
-    pub(crate) async fn route_get(&self, key: String) -> Result<Option<String>> {
+    pub(crate) async fn route_get(&self, key: impl AsRef<str>) -> Result<Option<String>> {
         let (tx, rx) = tokio::sync::oneshot::channel();
-        self.select_shard(&key).send(CacheCommand::Get { key, callback: tx }).await?;
+        let key_ref = key.as_ref();
+        self.select_shard(key_ref)
+            .send(CacheCommand::Get { key: key_ref.into(), callback: tx })
+            .await?;
 
         Ok(rx.await?)
     }
