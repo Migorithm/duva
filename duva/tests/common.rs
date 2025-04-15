@@ -314,6 +314,8 @@ impl Client {
             &port.to_string(),
         ]);
 
+        command.env("DUVA_ENV", "test");
+
         Client {
             child: command
                 .stdin(Stdio::piped())

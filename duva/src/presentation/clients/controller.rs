@@ -69,9 +69,9 @@ impl ClientController {
 
                 QueryIO::Null
             },
-            ClientAction::Get { key } => self.cache_manager.route_get(key).await?,
+            ClientAction::Get { key } => self.cache_manager.route_get(key).await?.into(),
             ClientAction::IndexGet { key, index } => {
-                self.cache_manager.route_index_get(key, index).await?
+                self.cache_manager.route_index_get(key, index).await?.into()
             },
             ClientAction::Keys { pattern } => self.cache_manager.route_keys(pattern).await?,
             ClientAction::Config { key, value } => {
@@ -121,6 +121,13 @@ impl ClientController {
             ClientAction::Role => {
                 let role = self.cluster_communication_manager.role();
                 QueryIO::SimpleString(role.await?)
+            },
+            ClientAction::Incr { key } => {
+                let value = self.cache_manager.route_get(key.clone()).await?;
+                // TODO reconnaissance query maybe required
+                // OPTION 1: store operation with delta change
+                // OPTION 2: query first and get the current value, store the new value based on the calculation
+                todo!();
             },
         };
         Ok(response)

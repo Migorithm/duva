@@ -53,8 +53,15 @@ async fn main() {
 }
 
 fn clear_and_make_ascii_art() {
-    print!("{}{}", clear::All, cursor::Goto(1, 1));
-    let standard_font = FIGfont::standard().unwrap();
-    let figure = standard_font.convert("Duva cli").unwrap();
-    println!("{}", figure);
+    let is_test_env = std::env::var("DUVA_ENV").unwrap_or_default() == "test";
+    if is_test_env {
+        return;
+    }
+    #[cfg(not(test))]
+    {
+        print!("{}{}", clear::All, cursor::Goto(1, 1));
+        let standard_font = FIGfont::standard().unwrap();
+        let figure = standard_font.convert("Duva cli").unwrap();
+        println!("{}", figure);
+    }
 }

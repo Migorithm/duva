@@ -42,7 +42,7 @@ impl CacheManager {
         }
     }
 
-    pub(crate) async fn route_get(&self, key: String) -> Result<QueryIO> {
+    pub(crate) async fn route_get(&self, key: String) -> Result<Option<String>> {
         let (tx, rx) = tokio::sync::oneshot::channel();
         self.select_shard(&key).send(CacheCommand::Get { key, callback: tx }).await?;
 
@@ -215,7 +215,7 @@ impl CacheManager {
         hasher.finish() as usize % self.inboxes.len()
     }
 
-    pub(crate) async fn route_index_get(&self, key: String, index: u64) -> Result<QueryIO> {
+    pub(crate) async fn route_index_get(&self, key: String, index: u64) -> Result<Option<String>> {
         let (tx, rx) = tokio::sync::oneshot::channel();
         self.select_shard(&key)
             .send(CacheCommand::IndexGet { key, read_idx: index, callback: tx })
