@@ -179,6 +179,14 @@ impl From<Option<CacheValue>> for QueryIO {
         }
     }
 }
+impl From<Option<String>> for QueryIO {
+    fn from(v: Option<String>) -> Self {
+        match v {
+            Some(v) => QueryIO::BulkString(v),
+            None => QueryIO::Null,
+        }
+    }
+}
 
 impl From<QueryIO> for Bytes {
     fn from(value: QueryIO) -> Self {

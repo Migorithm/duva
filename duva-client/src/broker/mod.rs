@@ -56,18 +56,15 @@ impl Broker {
                         println!("Failed to send response to input callback");
                     });
                 },
-                BrokerMessage::FromServer(Err(e)) => {
-                    println!("Error: {}", e);
-                    match e {
-                        IoError::ConnectionAborted | IoError::ConnectionReset => {
-                            tokio::time::sleep(tokio::time::Duration::from_millis(
-                                LEADER_HEARTBEAT_INTERVAL_MAX,
-                            ))
-                            .await;
-                            self.discover_leader().await.unwrap();
-                        },
-                        _ => {},
-                    }
+                BrokerMessage::FromServer(Err(e)) => match e {
+                    IoError::ConnectionAborted | IoError::ConnectionReset => {
+                        tokio::time::sleep(tokio::time::Duration::from_millis(
+                            LEADER_HEARTBEAT_INTERVAL_MAX,
+                        ))
+                        .await;
+                        self.discover_leader().await.unwrap();
+                    },
+                    _ => {},
                 },
                 BrokerMessage::ToServer(command) => {
                     let cmd = self.build_command(&command.command, command.args);

@@ -3,8 +3,6 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use tokio::sync::oneshot::Sender;
 
-use crate::domains::query_parsers::QueryIO;
-
 pub struct ReadQueue {
     pub(crate) hwm: Arc<AtomicU64>,
     inner: HashMap<u64, Vec<DeferredRead>>,
@@ -12,7 +10,7 @@ pub struct ReadQueue {
 
 pub(crate) struct DeferredRead {
     pub(crate) key: String,
-    pub(crate) callback: Sender<QueryIO>,
+    pub(crate) callback: Sender<Option<String>>,
 }
 
 impl ReadQueue {
@@ -27,8 +25,8 @@ impl ReadQueue {
         &mut self,
         read_idx: u64,
         key: &str,
-        callback: Sender<QueryIO>,
-    ) -> Option<Sender<QueryIO>> {
+        callback: Sender<Option<String>>,
+    ) -> Option<Sender<Option<String>>> {
         let current_hwm = self.hwm.load(Ordering::Relaxed);
         if current_hwm < read_idx {
             self.push(read_idx, DeferredRead { key: key.into(), callback });

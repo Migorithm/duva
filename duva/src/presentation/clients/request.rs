@@ -23,6 +23,7 @@ pub(crate) enum ClientAction {
     ReplicaOf(PeerIdentifier),
     Exists { keys: Vec<String> },
     Role,
+    Incr { key: String },
 }
 
 impl ClientAction {

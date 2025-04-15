@@ -59,6 +59,7 @@ impl ServerEnv {
 
 // Let the OS assign a free port dynamically to reduce port conflicts:
 pub fn get_available_port() -> u16 {
+    let ok_range = 0..55000;
     loop {
         let port = TcpListener::bind("127.0.0.1:0")
             .expect("Failed to bind to a random port")
@@ -66,7 +67,7 @@ pub fn get_available_port() -> u16 {
             .unwrap()
             .port();
 
-        if (49152..55000).contains(&port) {
+        if ok_range.contains(&port) {
             return port;
         }
     }
@@ -313,6 +314,8 @@ impl Client {
             "--port",
             &port.to_string(),
         ]);
+
+        command.env("DUVA_ENV", "test");
 
         Client {
             child: command
