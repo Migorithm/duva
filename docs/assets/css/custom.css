@@ -199,3 +199,71 @@ code {
     background-color: #e0e0e0;
     color: #ff5555;
 }
+
+
+/* Intro section */
+.intro {
+    font-size: 1.1em;
+    line-height: 1.7;
+    margin-bottom: 2em;
+    color: #444;
+    /* Slightly darker than body text */
+}
+
+/* Feature sections */
+.feature-section {
+    margin-bottom: 2.5em;
+}
+
+.feature-section h3 {
+    font-family: 'Quicksand', sans-serif;
+    color: #ff5555;
+    /* Red accent for headings */
+    font-size: 1.4em;
+    margin-bottom: 0.8em;
+}
+
+.feature-section ul {
+    padding-left: 1.2em;
+}
+
+.feature-section li {
+    margin-bottom: 0.5em;
+    list-style-type: none;
+}
+
+.feature-section li:before {
+    content: "•";
+    color: #ff5555;
+    /* Red bullets */
+    display: inline-block;
+    width: 1em;
+    margin-left: -1em;
+}
+
+/* Quick links */
+.quick-links a {
+    color: #ff5555;
+    /* Red links */
+    text-decoration: none;
+    transition: color 0.3s ease;
+}
+
+.quick-links a:hover {
+    color: #ff7777;
+    /* Lighter red on hover */
+}
+
+/* Call-to-action (GitHub link) */
+.cta {
+    background-color: #f9f9f9;
+    padding: 1.5em;
+    border-radius: 8px;
+    border-left: 4px solid #ff5555;
+    /* Red accent bar */
+}
+
+.cta a {
+    color: #ff5555;
+    font-weight: 500;
+}
