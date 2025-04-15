@@ -41,13 +41,13 @@ impl ClientController {
             ClientAction::Set { key, value } => {
                 let cache_entry = CacheEntry::KeyValue(key.to_owned(), value.to_string());
                 self.cache_manager.route_set(cache_entry).await?;
-                QueryIO::SimpleString(format!("OK RINDEX {}", current_index.unwrap()))
+                QueryIO::SimpleString(format!("s:{}-idx:{}", value, current_index.unwrap()))
             },
             ClientAction::SetWithExpiry { key, value, expiry } => {
                 let cache_entry =
                     CacheEntry::KeyValueExpiry(key.to_owned(), value.to_string(), expiry);
                 self.cache_manager.route_set(cache_entry).await?;
-                QueryIO::SimpleString(format!("OK RINDEX {}", current_index.unwrap()))
+                QueryIO::SimpleString(format!("s:{}-idx:{}", value, current_index.unwrap()))
             },
             ClientAction::Save => {
                 let file_path = self.config_manager.get_filepath().await?;
@@ -69,9 +69,9 @@ impl ClientController {
 
                 QueryIO::Null
             },
-            ClientAction::Get { key } => self.cache_manager.route_get(key).await?,
+            ClientAction::Get { key } => self.cache_manager.route_get(key).await?.into(),
             ClientAction::IndexGet { key, index } => {
-                self.cache_manager.route_index_get(key, index).await?
+                self.cache_manager.route_index_get(key, index).await?.into()
             },
             ClientAction::Keys { pattern } => self.cache_manager.route_keys(pattern).await?,
             ClientAction::Config { key, value } => {
@@ -122,6 +122,7 @@ impl ClientController {
                 let role = self.cluster_communication_manager.role();
                 QueryIO::SimpleString(role.await?)
             },
+            _ => QueryIO::Err("Invalid command".into()),
         };
         Ok(response)
     }
@@ -131,7 +132,11 @@ impl ClientController {
         &self,
         mut requests: Vec<ClientRequest>,
     ) -> anyhow::Result<Vec<QueryIO>> {
-        let consensus = try_join_all(requests.iter_mut().map(|r| self.maybe_consensus(r))).await?;
+        let consensus = try_join_all(requests.iter_mut().map(|r| async {
+            self.resolve_key_dependent_action(r).await?;
+            self.maybe_consensus(r).await
+        }))
+        .await?;
 
         // apply write operation to the state machine if it's a write request
         let mut results = Vec::with_capacity(requests.len());
@@ -143,6 +148,37 @@ impl ClientController {
             results.push(res);
         }
         Ok(results)
+    }
+    async fn resolve_key_dependent_action(
+        &self,
+        request: &mut ClientRequest,
+    ) -> anyhow::Result<()> {
+        let key_val = match &mut request.action {
+            ClientAction::Incr { key } => {
+                if let Some(v) = self.cache_manager.route_get(&key).await? {
+                    // Parse current value to u64, add 1, and handle errors
+                    let num = v.parse::<u64>().map_err(|e| {
+                        anyhow::anyhow!("Failed to parse value for key {}: {}", key, e)
+                    })?;
+                    // Handle potential overflow
+                    let incremented = num
+                        .checked_add(1)
+                        .ok_or_else(|| anyhow::anyhow!("Overflow error for key {}", key))?;
+
+                    Some((key, incremented.to_string()))
+                } else {
+                    Some((key, "1".to_string()))
+                }
+            },
+
+            // Add other cases here for future store operations
+            _ => None,
+        };
+        if let Some((key, value)) = key_val {
+            // If a value was returned, update the request action
+            request.action = ClientAction::Set { key: key.clone(), value };
+        }
+        Ok(())
     }
 
     pub(crate) async fn maybe_consensus(

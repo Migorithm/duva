@@ -67,8 +67,8 @@ impl CacheActor {
             let _ = callback.send(false);
         }
     }
-    pub(crate) fn get(&self, key: &str, callback: oneshot::Sender<QueryIO>) {
-        let _ = callback.send(self.cache.get(key).cloned().into());
+    pub(crate) fn get(&self, key: &str, callback: oneshot::Sender<Option<String>>) {
+        let _ = callback.send(self.cache.get(key).map(|v| v.value().to_string()));
     }
 
     pub(crate) fn set(&mut self, cache_entry: CacheEntry) {

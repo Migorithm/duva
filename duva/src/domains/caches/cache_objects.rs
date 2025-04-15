@@ -55,6 +55,12 @@ impl CacheValue {
     pub(crate) fn has_expiry(&self) -> bool {
         matches!(self, CacheValue::ValueWithExpiry(_, _))
     }
+    pub(crate) fn value(&self) -> &str {
+        match self {
+            CacheValue::Value(v) => v,
+            CacheValue::ValueWithExpiry(v, _) => v,
+        }
+    }
 
     pub(crate) fn to_cache_entry(&self, key: &str) -> CacheEntry {
         match self {

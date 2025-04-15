@@ -7,8 +7,6 @@ use duva_client::{
     command::{Input, separate_command_and_args, validate_input},
     controller::ClientController,
 };
-use figlet_rs::FIGfont;
-use termion::{clear, cursor};
 
 const PROMPT: &str = "duva-cli> ";
 
@@ -53,8 +51,17 @@ async fn main() {
 }
 
 fn clear_and_make_ascii_art() {
-    print!("{}{}", clear::All, cursor::Goto(1, 1));
-    let standard_font = FIGfont::standard().unwrap();
-    let figure = standard_font.convert("Duva cli").unwrap();
-    println!("{}", figure);
+    let is_test_env = std::env::var("DUVA_ENV").unwrap_or_default() == "test";
+    if is_test_env {
+        return;
+    }
+    #[cfg(not(test))]
+    {
+        use figlet_rs::FIGfont;
+        use termion::{clear, cursor};
+        print!("{}{}", clear::All, cursor::Goto(1, 1));
+        let standard_font = FIGfont::standard().unwrap();
+        let figure = standard_font.convert("Duva cli").unwrap();
+        println!("{}", figure);
+    }
 }

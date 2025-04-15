@@ -95,10 +95,15 @@ mod test {
                 .await
                 .unwrap();
         }
-        async fn get(&self, key: String, callback: oneshot::Sender<QueryIO>) {
+        async fn get(&self, key: String, callback: oneshot::Sender<Option<String>>) {
             self.0.send(CacheCommand::Get { key, callback }).await.unwrap();
         }
-        async fn index_get(&self, key: String, read_idx: u64, callback: oneshot::Sender<QueryIO>) {
+        async fn index_get(
+            &self,
+            key: String,
+            read_idx: u64,
+            callback: oneshot::Sender<Option<String>>,
+        ) {
             self.0.send(CacheCommand::IndexGet { key, read_idx, callback }).await.unwrap();
         }
         async fn ping(&self) {
@@ -170,13 +175,11 @@ mod test {
         cache.index_get(key.clone(), 0, tx1).await;
         cache.index_get(key.clone(), 1, tx2).await;
 
-        let expected_res = QueryIO::BulkString(value.clone().into());
-
         // THEN
         let res1 = tokio::spawn(rx1);
         let res2 = tokio::spawn(rx2);
 
-        assert_eq!(res1.await.unwrap().unwrap(), expected_res.clone());
+        assert_eq!(res1.await.unwrap().unwrap(), Some(value.clone()));
 
         let timeout = timeout(Duration::from_millis(1000), res2);
         assert!(timeout.await.is_err());
@@ -212,7 +215,7 @@ mod test {
         cache.ping().await;
 
         // THEN
-        assert_eq!(task.await.unwrap().unwrap(), QueryIO::BulkString(value.clone().into()));
+        assert_eq!(task.await.unwrap().unwrap(), value.clone().into());
     }
 
     #[tokio::test]
@@ -235,11 +238,11 @@ mod test {
         let (tx, rx) = oneshot::channel();
         cache.get("key".to_string().clone(), tx).await;
         let result = rx.await.unwrap();
-        assert_eq!(result, QueryIO::Null);
+        assert_eq!(result, None);
 
         let (tx, rx) = oneshot::channel();
         cache.get("key1".to_string().clone(), tx).await;
         let result = rx.await.unwrap();
-        assert_eq!(result, QueryIO::Null);
+        assert_eq!(result, None);
     }
 }
