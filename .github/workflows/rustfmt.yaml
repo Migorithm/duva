@@ -1,6 +1,7 @@
 name: Rust Format Check
 
 on:
+  workflow_dispatch:
   pull_request:
     branches: ["master"]
 
