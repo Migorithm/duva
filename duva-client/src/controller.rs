@@ -46,12 +46,14 @@ impl<T> ClientController<T> {
                     _err => Response::FormatError,
                 }
             },
-            Del | Exists => {
+            Del | Exists | Incr => {
                 let QueryIO::SimpleString(value) = query_io else {
                     return Response::FormatError;
                 };
-                let deleted_count = value.parse::<u64>().unwrap();
-                Response::Integer(deleted_count)
+                match value.parse::<u64>() {
+                    Ok(int) => Response::Integer(int),
+                    Err(_) => Response::Error("value is not an integer or out of range".into()),
+                }
             },
             Save => {
                 let QueryIO::Null = query_io else {

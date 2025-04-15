@@ -135,6 +135,7 @@ pub enum ClientInputKind {
     Exists,
     ReplicaOf,
     Role,
+    Incr,
 }
 
 #[derive(Debug)]
