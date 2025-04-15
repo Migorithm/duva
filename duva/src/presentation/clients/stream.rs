@@ -79,6 +79,8 @@ impl ClientStreamReader {
                     if err.should_break() {
                         eprintln!("[INFO] {}", err);
                         return;
+                    } else {
+                        let _ = sender.send(QueryIO::Err(err.to_string())).await;
                     }
                 },
             }
