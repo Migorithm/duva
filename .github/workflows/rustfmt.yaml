@@ -3,7 +3,11 @@ name: Rust Format Check
 on:
   workflow_dispatch:
   pull_request:
-    branches: ["master"]
+    branches:
+      - "master"
+      - "hotfix/*"
+      - "fix/*"
+      - "feat/*"
 
 env:
   CARGO_TERM_COLOR: always
