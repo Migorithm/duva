@@ -23,12 +23,16 @@ It offers several advantages, and the following is a non-exhaustive list of pros
 ### Features
 The following features have been implemented so far:
 
-- Core Commands
+- Core Commands inspired by Redis
     - SET: Store a key-value pair.
         - Expiration: Set a time-to-live (TTL) for keys.
     - GET: Retrieve the value associated with a key.
     - KEYS (with pattern matching): Retrieve keys matching specific patterns.
     - SAVE: dump data to the designated file path
+    - EXISTS
+    - DEL
+    - INCR
+    - ...
     
 
 - Advanced Features
