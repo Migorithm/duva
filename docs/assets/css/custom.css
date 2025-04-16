@@ -1,0 +1,269 @@
+/* Reset some default styles for consistency */
+body {
+    font-family: 'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-weight: 400;
+    /* Regular weight for body text */
+    font-size: 16px;
+    /* Slightly larger for readability */
+    line-height: 1.6;
+    /* Better spacing */
+    color: #333333;
+    /* Dark text for light theme */
+    background-color: #f5f5f5;
+    /* Light background like Redis */
+    margin: 0;
+}
+
+/* Container for sidebar and content */
+.container {
+    display: flex;
+    min-height: 100vh;
+}
+
+/* Sidebar styles */
+.sidebar {
+    width: 250px;
+    background-color: #ffffff;
+    padding: 20px;
+    border-right: 1px solid #e0e0e0;
+}
+
+.sidebar h2 {
+    font-family: 'Quicksand', sans-serif;
+    /* Playful font for headings */
+    font-size: 1.4em;
+    font-weight: 500;
+    /* Medium weight, less heavy */
+    color: #333333;
+    margin-bottom: 20px;
+    letter-spacing: 1px;
+    /* More spacing for a youthful look */
+}
+
+.sidebar ul {
+    list-style-type: none;
+    padding: 0;
+}
+
+.sidebar ul li {
+    margin-bottom: 10px;
+}
+
+.sidebar ul li a {
+    color: #ff5555;
+    /* Brighter red for a youthful pop */
+    text-decoration: none;
+    font-weight: 400;
+    /* Regular weight for links */
+    transition: color 0.3s ease;
+    /* Smooth hover transition */
+}
+
+.sidebar ul li a:hover {
+    color: #ff7777;
+    /* Lighter red on hover */
+    text-decoration: none;
+    /* Remove underline for a cleaner look */
+}
+
+/* Main content styles */
+.content {
+    flex: 1;
+    padding: 20px 40px;
+}
+
+.content header {
+    margin-bottom: 20px;
+}
+
+.content header h1 {
+    font-family: 'Quicksand', sans-serif;
+    /* Playful font for headings */
+    font-size: 2em;
+    /* Slightly larger for emphasis */
+    font-weight: 500;
+    /* Medium weight, less heavy */
+    color: #333333;
+    letter-spacing: 1px;
+}
+
+/* Command list on /commands/ */
+main h2 {
+    font-family: 'Quicksand', sans-serif;
+    font-size: 1.6em;
+    font-weight: 500;
+    /* Medium weight */
+    color: #333333;
+    margin-bottom: 20px;
+    letter-spacing: 1px;
+}
+
+main ul {
+    list-style-type: none;
+    padding: 0;
+}
+
+main ul li {
+    margin-bottom: 15px;
+}
+
+main ul li a {
+    color: #ff5555;
+    /* Brighter red for command links */
+    text-decoration: none;
+    font-weight: 500;
+    /* Medium weight for command names */
+    transition: color 0.3s ease;
+}
+
+main ul li a:hover {
+    color: #ff7777;
+    text-decoration: none;
+    /* Remove underline for a cleaner look */
+}
+
+/* Style for individual command pages */
+main h1 {
+    font-family: 'Quicksand', sans-serif;
+    font-size: 2.2em;
+    /* Slightly larger for command titles */
+    font-weight: 500;
+    /* Medium weight */
+    color: #333333;
+    margin-bottom: 0.5em;
+    letter-spacing: 1px;
+}
+
+/* Style for the command syntax <pre> block */
+pre {
+    background-color: #f6f6f6;
+    padding: 12px 16px;
+    border-radius: 8px;
+    /* More rounded */
+    font-family: 'JetBrains Mono', 'SFMono-Regular', 'Consolas', 'Liberation Mono', monospace;
+    font-weight: 400;
+    font-size: 0.9em;
+    color: #333333;
+    border: 1px solid #e0e0e0;
+    line-height: 1.5;
+    overflow-x: auto;
+}
+
+/* Style for inline code */
+code {
+    background-color: #f0f0f0;
+    padding: 2px 4px;
+    border-radius: 3px;
+    color: #ff5555;
+    /* Brighter red for inline code */
+    font-family: 'JetBrains Mono', 'SFMono-Regular', 'Consolas', 'Liberation Mono', monospace;
+    font-weight: 400;
+}
+
+/* Style for example sections */
+.command-example pre {
+    background-color: #333333;
+    color: #ffffff;
+    border-left: 4px solid #ff5555;
+    /* Brighter red accent */
+}
+
+/* Style for suggested text in <pre> blocks */
+.command-example pre .suggestion {
+    color: #aaaaaa;
+    /* Light gray for suggestions */
+}
+
+/* Style for the inline "gray" preview in the post */
+.suggestion-preview {
+    color: #aaaaaa;
+    font-style: italic;
+}
+
+/* Style for the autocompletion note */
+.autocomplete-note {
+    background-color: #f0f0f0;
+    padding: 12px 16px;
+    border-radius: 8px;
+    /* More rounded */
+    border-left: 4px solid #ff5555;
+    margin-bottom: 20px;
+    color: #333333;
+}
+
+.autocomplete-note p {
+    margin: 0;
+}
+
+.autocomplete-note code {
+    background-color: #e0e0e0;
+    color: #ff5555;
+}
+
+
+/* Intro section */
+.intro {
+    font-size: 1.1em;
+    line-height: 1.7;
+    margin-bottom: 2em;
+    color: #444;
+    /* Slightly darker than body text */
+}
+
+/* Feature sections */
+.feature-section {
+    margin-bottom: 2.5em;
+}
+
+.feature-section h3 {
+    font-family: 'Quicksand', sans-serif;
+    color: #ff5555;
+    /* Red accent for headings */
+    font-size: 1.4em;
+    margin-bottom: 0.8em;
+}
+
+.feature-section ul {
+    padding-left: 1.2em;
+}
+
+.feature-section li {
+    margin-bottom: 0.5em;
+    list-style-type: none;
+}
+
+.feature-section li:before {
+    content: "•";
+    color: #ff5555;
+    /* Red bullets */
+    display: inline-block;
+    width: 1em;
+    margin-left: -1em;
+}
+
+/* Quick links */
+.quick-links a {
+    color: #ff5555;
+    /* Red links */
+    text-decoration: none;
+    transition: color 0.3s ease;
+}
+
+.quick-links a:hover {
+    color: #ff7777;
+    /* Lighter red on hover */
+}
+
+/* Call-to-action (GitHub link) */
+.cta {
+    background-color: #f9f9f9;
+    padding: 1.5em;
+    border-radius: 8px;
+    border-left: 4px solid #ff5555;
+    /* Red accent bar */
+}
+
+.cta a {
+    color: #ff5555;
+    font-weight: 500;
+}

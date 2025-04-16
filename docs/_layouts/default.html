@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <title>{{ page.title }} | {{ site.title }}</title>
+    <!-- Include Google Fonts -->
+    <link rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500&family=Quicksand:wght@400;500;600&family=JetBrains+Mono:wght@400;700&display=swap">
+    <!-- Include Minima's default head (which includes main.css) -->
+    {% include head.html %}
+    <!-- Include your custom CSS after Minima's styles -->
+    <link rel="stylesheet" href="{{ '/assets/css/custom.css' | relative_url }}">
+    <!-- Include Jekyll SEO tag for better search engine optimization -->
+    {% seo %}
+</head>
+
+<body>
+    <div class="container">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <ul>
+                <li><a href="{{ '/' | relative_url }}" {% if page.url contains "/" %}class="active" {% endif
+                        %}>About</a>
+                </li>
+                <li><a href="{{ '/update/' | relative_url }}" {% if page.url contains "/duva/update/" %}class="active"
+                        {% endif %}>Blog</a></li>
+
+                <li><a href="{{ '/commands/' | relative_url }}" {% if page.url contains "/commands" %}class="active" {%
+                        endif %}>Commands</a></li>
+            </ul>
+        </aside>
+        <!-- Main content -->
+        <main class="content">
+            <header>
+                <h1>{{ site.title }}</h1>
+            </header>
+            {{ content }}
+        </main>
+    </div>
+</body>
+
+</html>

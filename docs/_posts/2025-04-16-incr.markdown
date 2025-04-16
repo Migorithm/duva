@@ -1,0 +1,108 @@
+---
+layout: post
+title: "Read-Before-Write: The Secret to Safe INCR Operations"
+date: 2025-04-16 00:00:01 +0900
+categories: posts
+---
+
+<div class="post-content">
+  <h2>Read-Before-Write: The Secret to Safe INCR Operations</h2>
+
+  <p>In distributed systems, idempotent operations are crucial for maintaining consistency and reliability. This blog post explores how we implement idempotent cache operations, with a particular focus on increment operations that require special handling.</p>
+
+  <h3>The Challenge of Idempotency</h3>
+
+  <p>When building distributed systems, network failures, timeouts, and retries are inevitable. If an operation is executed multiple times due to retries, it should produce the same result as if it had been executed only once. This property is called idempotency.</p>
+
+  <p>While operations like "set" are naturally idempotent (setting a key to "5" multiple times results in the same state), increment operations are not. If we blindly increment a counter multiple times due to retries, we'll end up with an incorrect value.</p>
+
+  <h3>Our Solution: Transform Increments to Sets</h3>
+
+  <p>Our approach involves transforming increment operations into set operations based on the current value:</p>
+
+  <div class="command-example">
+    <pre>
+    function resolveKeyDependentAction(request):
+    if request.action is INCREMENT:
+        currentValue = cacheManager.get(request.action.key)
+        newValue = currentValue ? parseToNumber(currentValue) + 1 : 1
+        request.action = SET(request.action.key, newValue)
+    // Other cases and error handling omitted...
+    </pre>
+  </div>
+
+  <p>This pattern allows us to read the current value, compute the new value, and replace the increment operation with a set operation. The result? If the operation is retried, it will read the same value and set it to the same result, ensuring idempotency.</p>
+
+  <h3>Extensibility for Other Operations</h3>
+
+  <p>This pattern can be extended to other non-idempotent operations like:</p>
+  
+  <ul>
+    <li>Decrement operations</li>
+    <li>Append operations</li>
+    <li>Any operation that depends on the current state</li>
+  </ul>
+
+  <h3>Error Handling Considerations</h3>
+
+  <p>Our implementation includes careful error handling for potential issues:</p>
+
+  <ol>
+    <li><strong>Value parsing errors</strong>: If the value isn't a valid number</li>
+    <li><strong>Overflow/underflow</strong>: If incrementing/decrementing would exceed the type limits</li>
+    <li><strong>Network errors</strong>: When retrieving the current value fails</li>
+  </ol>
+
+  <div class="autocomplete-note">
+    <p><strong>Note:</strong> The <code>INCR</code> command in our system automatically handles unsigned integer overflow by returning an error when exceeding 18446744073709551615.</p>
+  </div>
+
+  <h3>Performance Implications</h3>
+
+  <p>This approach does introduce an additional read operation before the write, which affects performance. However, the consistency guarantees it provides typically outweigh this cost in distributed systems where reliability is paramount.</p>
+
+  <h3>Conclusion</h3>
+
+  <p>Ensuring idempotency in distributed cache operations is essential for building reliable systems. By transforming non-idempotent operations like increments into idempotent set operations based on the current state, we can maintain consistency even in the face of retries and network failures.</p>
+
+  <p>This pattern isn't limited to just increment operations—it provides a template for handling any operation that depends on the current state while ensuring idempotency. As distributed systems grow more complex, these kinds of reliability patterns become increasingly valuable.</p>
+</div>
+
+<style>
+  .post-content {
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 20px;
+  }
+  
+  .post-content h2 {
+    font-family: 'Quicksand', sans-serif;
+    font-size: 1.8em;
+    color: #ff5555;
+    margin-top: 1.5em;
+    border-bottom: 1px solid #e0e0e0;
+    padding-bottom: 0.3em;
+  }
+  
+  .post-content h3 {
+    font-family: 'Quicksand', sans-serif;
+    font-size: 1.4em;
+    color: #333333;
+    margin-top: 1.2em;
+  }
+  
+  .post-content ul, 
+  .post-content ol {
+    margin-left: 1.5em;
+    line-height: 1.6;
+  }
+  
+  .post-content li {
+    margin-bottom: 0.5em;
+  }
+  
+  .post-content p {
+    margin-bottom: 1.2em;
+    line-height: 1.6;
+  }
+</style>
