@@ -51,13 +51,27 @@ pub enum PeerState {
 
 impl PeerState {
     pub fn decide_peer_kind(my_repl_id: &ReplicationId, peer_info: &ConnectedPeerInfo) -> Self {
-        if peer_info.replid == ReplicationId::Undecided {
+        println!(
+            "[DEBUG] decide_peer_kind called for peer {:?}. My ReplId: {:?}, Peer ReplId: {:?}",
+            peer_info.id, my_repl_id, peer_info.replid
+        );
+
+        let decided_state = if peer_info.replid == ReplicationId::Undecided {
+            println!("[DEBUG] Peer ReplId is Undecided. Classifying as Replica.");
             PeerState::Replica { match_index: peer_info.hwm, replid: my_repl_id.clone() }
+        } else if my_repl_id == &ReplicationId::Undecided {
+            println!("[DEBUG] My ReplId is Undecided. Classifying as Replica.");
+            PeerState::Replica { match_index: peer_info.hwm, replid: peer_info.replid.clone() }
         } else if my_repl_id == &peer_info.replid {
+            println!("[DEBUG] ReplIds match. Classifying as Replica.");
             PeerState::Replica { match_index: peer_info.hwm, replid: peer_info.replid.clone() }
         } else {
+            println!("[DEBUG] ReplIds do NOT match. Classifying as NonDataPeer.");
             PeerState::NonDataPeer { match_index: peer_info.hwm, replid: peer_info.replid.clone() }
-        }
+        };
+
+        println!("[DEBUG] Decided PeerState for {:?}: {:?}", peer_info.id, decided_state);
+        decided_state
     }
 
     pub fn decrease_match_index(&mut self) {
