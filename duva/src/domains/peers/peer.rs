@@ -4,7 +4,6 @@ use crate::domains::cluster_actors::replication::ReplicationId;
 use crate::domains::peers::connected_types::WriteConnected;
 use crate::domains::query_parsers::QueryIO;
 use crate::services::interface::TWrite;
-
 use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
 use tokio::task::JoinHandle;
 use tokio::time::Instant;
@@ -54,11 +53,6 @@ impl PeerState {
         my_repl_id: &ReplicationId,
         peer_info: &ConnectedPeerInfo,
     ) -> Self {
-        println!(
-            "[DEBUG] decide_peer_kind called for peer {:?}. My ReplId: {:?}, Peer ReplId: {:?}",
-            peer_info.id, my_repl_id, peer_info.replid
-        );
-
         match (my_repl_id, &peer_info.replid) {
             // Peer is undecided - assign as replica with our replication ID
             (_, ReplicationId::Undecided) => {
