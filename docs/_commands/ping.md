@@ -1,7 +1,7 @@
 ---
 title: PING
 layout: command
-description: Increase value for the key when it is parsable to integer
+description: Returns PONG if no argument is provided
 syntax: PING
 ---
 
