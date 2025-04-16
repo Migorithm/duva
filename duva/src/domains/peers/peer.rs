@@ -59,7 +59,7 @@ impl PeerState {
             peer_info.id, my_repl_id, peer_info.replid
         );
 
-        let peer_state = match (my_repl_id, &peer_info.replid) {
+        match (my_repl_id, &peer_info.replid) {
             // Peer is undecided - assign as replica with our replication ID
             (_, ReplicationId::Undecided) => {
                 PeerState::Replica { match_index: peer_info.hwm, replid: my_repl_id.clone() }
@@ -77,8 +77,7 @@ impl PeerState {
                 match_index: peer_info.hwm,
                 replid: peer_info.replid.clone(),
             },
-        };
-        peer_state
+        }
     }
 
     pub(crate) fn decrease_match_index(&mut self) {
