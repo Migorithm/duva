@@ -1,4 +1,4 @@
-use crate::domains::peers::identifier::PeerIdentifier;
+use crate::domains::{cluster_actors::replication::Role, peers::identifier::PeerIdentifier};
 
 #[derive(Debug, Clone)]
 pub(crate) enum ElectionState {
@@ -8,10 +8,10 @@ pub(crate) enum ElectionState {
 }
 
 impl ElectionState {
-    pub(crate) fn new(role: &str) -> Self {
+    pub(crate) fn new(role: &Role) -> Self {
         match role {
-            "leader" => ElectionState::Leader,
-            _ => ElectionState::Follower { voted_for: None },
+            Role::Leader => ElectionState::Leader,
+            Role::Follower => ElectionState::Follower { voted_for: None },
         }
     }
     pub(crate) fn become_leader(&mut self) {
