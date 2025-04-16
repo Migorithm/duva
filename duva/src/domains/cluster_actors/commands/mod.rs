@@ -2,7 +2,7 @@ mod election;
 pub(crate) mod types;
 mod write_con;
 use super::{
-    replication::{HeartBeatMessage, ReplicationId, ReplicationState},
+    replication::{HeartBeatMessage, ReplicationId, ReplicationState, Role},
     session::SessionRequest,
 };
 use crate::domains::append_only_files::WriteOperation;
@@ -44,7 +44,7 @@ pub(crate) enum ClusterCommand {
     VoteElection(RequestVote),
     ApplyElectionVote(RequestVoteReply),
     ClusterHeartBeat(HeartBeatMessage),
-    GetRole(tokio::sync::oneshot::Sender<String>),
+    GetRole(tokio::sync::oneshot::Sender<Role>),
     SubscribeToTopologyChange(
         tokio::sync::oneshot::Sender<tokio::sync::broadcast::Receiver<Vec<PeerIdentifier>>>,
     ),

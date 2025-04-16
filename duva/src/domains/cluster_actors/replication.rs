@@ -11,7 +11,7 @@ use std::sync::atomic::Ordering;
 pub(crate) struct ReplicationState {
     pub(crate) replid: ReplicationId, // The replication ID of the master example: 8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb
     pub(crate) hwm: Arc<AtomicU64>,   // high water mark (commit idx)
-    pub(crate) role: String,
+    pub(crate) role: Role,
 
     pub(crate) self_host: String,
     pub(crate) self_port: u16,
@@ -32,7 +32,7 @@ impl ReplicationState {
             ReplicationId::Undecided
         };
 
-        let role = if replicaof.is_some() { "follower".to_string() } else { "leader".to_string() };
+        let role = if replicaof.is_some() { Role::Follower } else { Role::Leader };
         let replication = ReplicationState {
             is_leader_mode: replicaof.is_none(),
             election_state: ElectionState::new(&role),
@@ -129,10 +129,10 @@ impl ReplicationState {
     pub(super) fn become_follower(&mut self, leader_id: Option<PeerIdentifier>) {
         self.election_state = ElectionState::Follower { voted_for: leader_id };
         self.is_leader_mode = false;
-        self.role = "follower".to_string();
+        self.role = Role::Follower;
     }
     pub(super) fn become_leader(&mut self) {
-        self.role = "leader".to_string();
+        self.role = Role::Leader;
         self.is_leader_mode = true;
         self.election_state.become_leader();
     }
@@ -177,6 +177,21 @@ impl From<String> for ReplicationId {
         match value.as_str() {
             "?" => ReplicationId::Undecided,
             _ => ReplicationId::Key(value),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Role {
+    Leader,
+    Follower,
+}
+
+impl Display for Role {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Role::Leader => write!(f, "leader"),
+            Role::Follower => write!(f, "follower"),
         }
     }
 }

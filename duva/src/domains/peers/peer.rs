@@ -4,7 +4,6 @@ use crate::domains::cluster_actors::replication::ReplicationId;
 use crate::domains::peers::connected_types::WriteConnected;
 use crate::domains::query_parsers::QueryIO;
 use crate::services::interface::TWrite;
-
 use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
 use tokio::task::JoinHandle;
 use tokio::time::Instant;
@@ -53,17 +52,32 @@ pub enum PeerState {
 }
 
 impl PeerState {
-    pub fn decide_peer_kind(my_repl_id: &ReplicationId, peer_info: &ConnectedPeerInfo) -> Self {
-        if peer_info.replid == ReplicationId::Undecided {
-            PeerState::Replica { match_index: peer_info.hwm, replid: my_repl_id.clone() }
-        } else if my_repl_id == &peer_info.replid {
-            PeerState::Replica { match_index: peer_info.hwm, replid: peer_info.replid.clone() }
-        } else {
-            PeerState::NonDataPeer { match_index: peer_info.hwm, replid: peer_info.replid.clone() }
+    pub(crate) fn decide_peer_kind(
+        my_repl_id: &ReplicationId,
+        peer_info: &ConnectedPeerInfo,
+    ) -> Self {
+        match (my_repl_id, &peer_info.replid) {
+            // Peer is undecided - assign as replica with our replication ID
+            (_, ReplicationId::Undecided) => {
+                PeerState::Replica { match_index: peer_info.hwm, replid: my_repl_id.clone() }
+            },
+            // I am undecided - adopt peer's replication ID
+            (ReplicationId::Undecided, _) => {
+                PeerState::Replica { match_index: peer_info.hwm, replid: peer_info.replid.clone() }
+            },
+            // Matching replication IDs - regular replica
+            (my_id, peer_id) if my_id == peer_id => {
+                PeerState::Replica { match_index: peer_info.hwm, replid: peer_info.replid.clone() }
+            },
+            // Different replication IDs - non-data peer
+            _ => PeerState::NonDataPeer {
+                match_index: peer_info.hwm,
+                replid: peer_info.replid.clone(),
+            },
         }
     }
 
-    pub fn decrease_match_index(&mut self) {
+    pub(crate) fn decrease_match_index(&mut self) {
         match self {
             PeerState::Replica { match_index, .. } => *match_index -= 1,
             PeerState::NonDataPeer { match_index, .. } => *match_index -= 1,
