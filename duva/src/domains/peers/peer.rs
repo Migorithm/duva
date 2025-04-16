@@ -50,31 +50,38 @@ pub enum PeerState {
 }
 
 impl PeerState {
-    pub fn decide_peer_kind(my_repl_id: &ReplicationId, peer_info: &ConnectedPeerInfo) -> Self {
+    pub(crate) fn decide_peer_kind(
+        my_repl_id: &ReplicationId,
+        peer_info: &ConnectedPeerInfo,
+    ) -> Self {
         println!(
             "[DEBUG] decide_peer_kind called for peer {:?}. My ReplId: {:?}, Peer ReplId: {:?}",
             peer_info.id, my_repl_id, peer_info.replid
         );
 
-        let decided_state = if peer_info.replid == ReplicationId::Undecided {
-            println!("[DEBUG] Peer ReplId is Undecided. Classifying as Replica.");
-            PeerState::Replica { match_index: peer_info.hwm, replid: my_repl_id.clone() }
-        } else if my_repl_id == &ReplicationId::Undecided {
-            println!("[DEBUG] My ReplId is Undecided. Classifying as Replica.");
-            PeerState::Replica { match_index: peer_info.hwm, replid: peer_info.replid.clone() }
-        } else if my_repl_id == &peer_info.replid {
-            println!("[DEBUG] ReplIds match. Classifying as Replica.");
-            PeerState::Replica { match_index: peer_info.hwm, replid: peer_info.replid.clone() }
-        } else {
-            println!("[DEBUG] ReplIds do NOT match. Classifying as NonDataPeer.");
-            PeerState::NonDataPeer { match_index: peer_info.hwm, replid: peer_info.replid.clone() }
+        let peer_state = match (my_repl_id, &peer_info.replid) {
+            // Peer is undecided - assign as replica with our replication ID
+            (_, ReplicationId::Undecided) => {
+                PeerState::Replica { match_index: peer_info.hwm, replid: my_repl_id.clone() }
+            },
+            // I am undecided - adopt peer's replication ID
+            (ReplicationId::Undecided, _) => {
+                PeerState::Replica { match_index: peer_info.hwm, replid: peer_info.replid.clone() }
+            },
+            // Matching replication IDs - regular replica
+            (my_id, peer_id) if my_id == peer_id => {
+                PeerState::Replica { match_index: peer_info.hwm, replid: peer_info.replid.clone() }
+            },
+            // Different replication IDs - non-data peer
+            _ => PeerState::NonDataPeer {
+                match_index: peer_info.hwm,
+                replid: peer_info.replid.clone(),
+            },
         };
-
-        println!("[DEBUG] Decided PeerState for {:?}: {:?}", peer_info.id, decided_state);
-        decided_state
+        peer_state
     }
 
-    pub fn decrease_match_index(&mut self) {
+    pub(crate) fn decrease_match_index(&mut self) {
         match self {
             PeerState::Replica { match_index, .. } => *match_index -= 1,
             PeerState::NonDataPeer { match_index, .. } => *match_index -= 1,

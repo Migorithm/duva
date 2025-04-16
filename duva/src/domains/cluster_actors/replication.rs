@@ -7,21 +7,6 @@ use std::sync::Arc;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Role {
-    Leader,
-    Follower,
-}
-
-impl Display for Role {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Role::Leader => write!(f, "leader"),
-            Role::Follower => write!(f, "follower"),
-        }
-    }
-}
-
 #[derive(Debug, Clone)]
 pub(crate) struct ReplicationState {
     pub(crate) replid: ReplicationId, // The replication ID of the master example: 8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb
@@ -192,6 +177,21 @@ impl From<String> for ReplicationId {
         match value.as_str() {
             "?" => ReplicationId::Undecided,
             _ => ReplicationId::Key(value),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Role {
+    Leader,
+    Follower,
+}
+
+impl Display for Role {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Role::Leader => write!(f, "leader"),
+            Role::Follower => write!(f, "follower"),
         }
     }
 }
