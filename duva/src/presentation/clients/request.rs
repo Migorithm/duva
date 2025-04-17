@@ -5,7 +5,7 @@ use crate::domains::{
 use chrono::{DateTime, Utc};
 
 #[derive(Clone, Debug)]
-pub(crate) enum ClientAction {
+pub enum ClientAction {
     Ping,
     Echo(String),
     Config { key: String, value: String },
