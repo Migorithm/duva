@@ -32,6 +32,7 @@ The following features have been implemented so far:
     - EXISTS
     - DEL
     - INCR
+    - DECR
     - ...
     
 
