@@ -18,6 +18,7 @@ pub(crate) static COMMANDS: &[&str] = &[
     "exists",
     "del",
     "incr",
+    "decr",
     // subcommands
     "cluster info",
     "cluster nodes",
@@ -120,7 +121,7 @@ impl Completer for DuvaHinter {
                     candidates.push(new_pair!("key"));
                 }
             },
-            "get" | "incr" => {
+            "get" | "incr" | "decr" => {
                 if previous_words.len() == 1 {
                     // Suggest "index" after get key
                     candidates.push(new_pair!("key"));

@@ -24,6 +24,7 @@ pub(crate) enum ClientAction {
     Exists { keys: Vec<String> },
     Role,
     Incr { key: String },
+    Decr { key: String },
 }
 
 impl ClientAction {
@@ -43,6 +44,13 @@ impl ClientAction {
             },
             ClientAction::Delete { keys } => Some(WriteRequest::Delete { keys: keys.clone() }),
             _ => None,
+        }
+    }
+    pub(crate) fn delta(&self) -> i64 {
+        match self {
+            ClientAction::Incr { .. } => 1,
+            ClientAction::Decr { .. } => -1,
+            _ => 0,
         }
     }
 }

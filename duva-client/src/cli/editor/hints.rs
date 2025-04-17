@@ -122,6 +122,7 @@ pub(crate) fn default_hints() -> HashSet<CommandHint> {
     set.insert(CommandHint::new("set key value", "set "));
     set.insert(CommandHint::new("set key value [px expr]", "set "));
     set.insert(CommandHint::new("incr key", "incr "));
+    set.insert(CommandHint::new("decr key", "decr "));
     set.insert(CommandHint::new("cluster info", "cluster "));
     set.insert(CommandHint::new("cluster nodes", "cluster "));
     set.insert(CommandHint::new("cluster forget node", "cluster "));
@@ -183,6 +184,6 @@ impl Highlighter for DuvaHinter {
     }
 
     fn highlight_hint<'h>(&self, hint: &'h str) -> Cow<'h, str> {
-        Cow::Owned(format!("\x1b[1;30m{hint}\x1b[m"))
+        Cow::Owned(format!("\x1b[38;5;245m{hint}\x1b[m"))
     }
 }

@@ -16,7 +16,7 @@ pub enum IoError {
     TimedOut,
     #[error("Read")]
     Read,
-    #[error("Custom error: {0}")]
+    #[error("{0}")]
     Custom(String),
 }
 

@@ -10,6 +10,7 @@ use crate::domains::saves::actor::SaveTarget;
 use crate::presentation::clients::request::ClientAction;
 use crate::presentation::clusters::communication_manager::ClusterCommunicationManager;
 use crate::presentation::clusters::connection_manager::ClusterConnectionManager;
+use anyhow::Context;
 use futures::future::try_join_all;
 use std::sync::atomic::Ordering;
 
@@ -41,13 +42,13 @@ impl ClientController {
             ClientAction::Set { key, value } => {
                 let cache_entry = CacheEntry::KeyValue(key.to_owned(), value.to_string());
                 self.cache_manager.route_set(cache_entry).await?;
-                QueryIO::SimpleString(format!("s:{}-idx:{}", value, current_index.unwrap()))
+                QueryIO::SimpleString(format!("s:{}|idx:{}", value, current_index.unwrap()))
             },
             ClientAction::SetWithExpiry { key, value, expiry } => {
                 let cache_entry =
                     CacheEntry::KeyValueExpiry(key.to_owned(), value.to_string(), expiry);
                 self.cache_manager.route_set(cache_entry).await?;
-                QueryIO::SimpleString(format!("s:{}-idx:{}", value, current_index.unwrap()))
+                QueryIO::SimpleString(format!("s:{}|idx:{}", value, current_index.unwrap()))
             },
             ClientAction::Save => {
                 let file_path = self.config_manager.get_filepath().await?;
@@ -153,31 +154,31 @@ impl ClientController {
         &self,
         request: &mut ClientRequest,
     ) -> anyhow::Result<()> {
-        let key_val = match &mut request.action {
-            ClientAction::Incr { key } => {
+        match &request.action {
+            ClientAction::Incr { key } | ClientAction::Decr { key } => {
                 if let Some(v) = self.cache_manager.route_get(&key).await? {
                     // Parse current value to u64, add 1, and handle errors
-                    let num = v.parse::<u64>().map_err(|e| {
-                        anyhow::anyhow!("Failed to parse value for key {}: {}", key, e)
-                    })?;
+                    let num =
+                        v.parse::<i64>().context("ERR value is not an integer or out of range")?;
                     // Handle potential overflow
                     let incremented = num
-                        .checked_add(1)
-                        .ok_or_else(|| anyhow::anyhow!("Overflow error for key {}", key))?;
+                        .checked_add(request.action.delta())
+                        .context("ERR value is not an integer or out of range")?;
 
-                    Some((key, incremented.to_string()))
+                    request.action =
+                        ClientAction::Set { key: key.clone(), value: incremented.to_string() };
                 } else {
-                    Some((key, "1".to_string()))
+                    request.action = ClientAction::Set {
+                        key: key.clone(),
+                        value: (0 + request.action.delta()).to_string(),
+                    };
                 }
             },
 
             // Add other cases here for future store operations
-            _ => None,
+            _ => {},
         };
-        if let Some((key, value)) = key_val {
-            // If a value was returned, update the request action
-            request.action = ClientAction::Set { key: key.clone(), value };
-        }
+
         Ok(())
     }
 
