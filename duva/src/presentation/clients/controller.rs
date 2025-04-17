@@ -153,7 +153,7 @@ impl ClientController {
         &self,
         request: &mut ClientRequest,
     ) -> anyhow::Result<()> {
-        let key_val = match &request.action {
+        match &request.action {
             ClientAction::Incr { key } | ClientAction::Decr { key } => {
                 let delta = request.action.incremental_change();
 
@@ -167,19 +167,18 @@ impl ClientController {
                         anyhow::anyhow!("ERR value is not an integer or out of range")
                     })?;
 
-                    Some((key, incremented.to_string()))
+                    request.action =
+                        ClientAction::Set { key: key.clone(), value: incremented.to_string() };
                 } else {
-                    Some((key, (0 + delta).to_string()))
+                    request.action =
+                        ClientAction::Set { key: key.clone(), value: (0 + delta).to_string() };
                 }
             },
 
             // Add other cases here for future store operations
-            _ => None,
+            _ => {},
         };
-        if let Some((key, value)) = key_val {
-            // If a value was returned, update the request action
-            request.action = ClientAction::Set { key: key.clone(), value };
-        }
+
         Ok(())
     }
 
