@@ -59,7 +59,7 @@ impl<T> ClientController<T> {
                 match query_io {
                     QueryIO::SimpleString(value) => {
                         let s: Option<&str> =
-                            value.split('-').next().unwrap_or_default().rsplit(':').next(); // format: s:value-idx:index_num
+                            value.split('|').next().unwrap_or_default().rsplit(':').next(); // format: s:value-idx:index_num
 
                         Response::Integer(s.unwrap().parse::<i64>().unwrap())
                     },

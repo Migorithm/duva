@@ -46,6 +46,13 @@ impl ClientAction {
             _ => None,
         }
     }
+    pub(crate) fn incremental_change(&self) -> i64 {
+        match self {
+            ClientAction::Incr { key } => 1,
+            ClientAction::Decr { key } => -1,
+            _ => 0,
+        }
+    }
 }
 
 #[derive(Clone, Debug)]

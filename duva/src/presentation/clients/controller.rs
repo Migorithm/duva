@@ -41,13 +41,13 @@ impl ClientController {
             ClientAction::Set { key, value } => {
                 let cache_entry = CacheEntry::KeyValue(key.to_owned(), value.to_string());
                 self.cache_manager.route_set(cache_entry).await?;
-                QueryIO::SimpleString(format!("s:{}-idx:{}", value, current_index.unwrap()))
+                QueryIO::SimpleString(format!("s:{}|idx:{}", value, current_index.unwrap()))
             },
             ClientAction::SetWithExpiry { key, value, expiry } => {
                 let cache_entry =
                     CacheEntry::KeyValueExpiry(key.to_owned(), value.to_string(), expiry);
                 self.cache_manager.route_set(cache_entry).await?;
-                QueryIO::SimpleString(format!("s:{}-idx:{}", value, current_index.unwrap()))
+                QueryIO::SimpleString(format!("s:{}|idx:{}", value, current_index.unwrap()))
             },
             ClientAction::Save => {
                 let file_path = self.config_manager.get_filepath().await?;
@@ -153,8 +153,10 @@ impl ClientController {
         &self,
         request: &mut ClientRequest,
     ) -> anyhow::Result<()> {
-        let key_val = match &mut request.action {
-            ClientAction::Incr { key } => {
+        let key_val = match &request.action {
+            ClientAction::Incr { key } | ClientAction::Decr { key } => {
+                let delta = request.action.incremental_change();
+
                 if let Some(v) = self.cache_manager.route_get(&key).await? {
                     // Parse current value to u64, add 1, and handle errors
                     let num = v.parse::<i64>().map_err(|e| {
@@ -162,12 +164,12 @@ impl ClientController {
                     })?;
                     // Handle potential overflow
                     let incremented = num
-                        .checked_add(1)
+                        .checked_add(delta)
                         .ok_or_else(|| anyhow::anyhow!("Overflow error for key {}", key))?;
 
                     Some((key, incremented.to_string()))
                 } else {
-                    Some((key, "1".to_string()))
+                    Some((key, (0 + delta).to_string()))
                 }
             },
 
