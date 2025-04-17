@@ -63,10 +63,6 @@ pub struct ClientRequest {
 }
 
 impl ClientRequest {
-    pub fn new(action: ClientAction, session_req: Option<SessionRequest>) -> Self {
-        Self { action, session_req }
-    }
-
     pub fn from_user_input(
         value: Vec<QueryIO>,
         session_req: Option<SessionRequest>,
@@ -75,11 +71,11 @@ impl ClientRequest {
         let command = values.next().ok_or(anyhow::anyhow!("Unexpected command format"))?;
         let (command, args) = (command, values.collect::<Vec<_>>());
 
-        Ok(ClientRequest::new(
-            extract_action(&command, &args.iter().map(|s| s.as_str()).collect::<Vec<_>>())
+        Ok(ClientRequest {
+            action: extract_action(&command, &args.iter().map(|s| s.as_str()).collect::<Vec<_>>())
                 .map_err(|e| anyhow::anyhow!(e))?,
             session_req,
-        ))
+        })
     }
 }
 
