@@ -1,10 +1,13 @@
 mod cli;
 mod editor;
 use clap::Parser;
-use duva::prelude::tokio::{self, sync::oneshot};
+use duva::{
+    prelude::tokio::{self, sync::oneshot},
+    presentation::clients::request::extract_action,
+};
 use duva_client::{
     broker::BrokerMessage,
-    command::{Input, separate_command_and_args, validate_input},
+    command::{Input, separate_command_and_args},
     controller::ClientController,
 };
 
@@ -32,7 +35,7 @@ async fn main() {
         // and the rest are arguments
         let (cmd, args) = separate_command_and_args(args);
 
-        match validate_input(cmd, &args) {
+        match extract_action(cmd, &args) {
             Ok(input) => {
                 let (tx, rx) = oneshot::channel();
                 let input = Input::new(input, tx);
