@@ -155,23 +155,23 @@ impl ClientController {
     ) -> anyhow::Result<()> {
         match &request.action {
             ClientAction::Incr { key } | ClientAction::Decr { key } => {
-                let delta = request.action.incremental_change();
-
                 if let Some(v) = self.cache_manager.route_get(&key).await? {
                     // Parse current value to u64, add 1, and handle errors
                     let num = v.parse::<i64>().map_err(|_| {
                         anyhow::anyhow!("ERR value is not an integer or out of range")
                     })?;
                     // Handle potential overflow
-                    let incremented = num.checked_add(delta).ok_or_else(|| {
+                    let incremented = num.checked_add(request.action.delta()).ok_or_else(|| {
                         anyhow::anyhow!("ERR value is not an integer or out of range")
                     })?;
 
                     request.action =
                         ClientAction::Set { key: key.clone(), value: incremented.to_string() };
                 } else {
-                    request.action =
-                        ClientAction::Set { key: key.clone(), value: (0 + delta).to_string() };
+                    request.action = ClientAction::Set {
+                        key: key.clone(),
+                        value: (0 + request.action.delta()).to_string(),
+                    };
                 }
             },
 

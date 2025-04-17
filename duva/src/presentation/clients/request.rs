@@ -46,7 +46,7 @@ impl ClientAction {
             _ => None,
         }
     }
-    pub(crate) fn incremental_change(&self) -> i64 {
+    pub(crate) fn delta(&self) -> i64 {
         match self {
             ClientAction::Incr { .. } => 1,
             ClientAction::Decr { .. } => -1,
