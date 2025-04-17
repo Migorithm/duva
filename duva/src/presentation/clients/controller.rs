@@ -10,6 +10,7 @@ use crate::domains::saves::actor::SaveTarget;
 use crate::presentation::clients::request::ClientAction;
 use crate::presentation::clusters::communication_manager::ClusterCommunicationManager;
 use crate::presentation::clusters::connection_manager::ClusterConnectionManager;
+use anyhow::Context;
 use futures::future::try_join_all;
 use std::sync::atomic::Ordering;
 
@@ -157,13 +158,12 @@ impl ClientController {
             ClientAction::Incr { key } | ClientAction::Decr { key } => {
                 if let Some(v) = self.cache_manager.route_get(&key).await? {
                     // Parse current value to u64, add 1, and handle errors
-                    let num = v.parse::<i64>().map_err(|_| {
-                        anyhow::anyhow!("ERR value is not an integer or out of range")
-                    })?;
+                    let num =
+                        v.parse::<i64>().context("ERR value is not an integer or out of range")?;
                     // Handle potential overflow
-                    let incremented = num.checked_add(request.action.delta()).ok_or_else(|| {
-                        anyhow::anyhow!("ERR value is not an integer or out of range")
-                    })?;
+                    let incremented = num
+                        .checked_add(request.action.delta())
+                        .context("ERR value is not an integer or out of range")?;
 
                     request.action =
                         ClientAction::Set { key: key.clone(), value: incremented.to_string() };
