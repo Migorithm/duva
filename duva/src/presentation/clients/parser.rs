@@ -54,6 +54,7 @@ pub fn parse_query(
         },
         ("role", []) => ClientAction::Role,
         ("incr", [key]) => ClientAction::Incr { key: key.to_string() },
+        ("decr", [key]) => ClientAction::Decr { key: key.to_string() },
 
         _ => return Err(anyhow::anyhow!("Invalid command")),
     };
