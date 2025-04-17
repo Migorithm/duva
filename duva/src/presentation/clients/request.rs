@@ -24,6 +24,7 @@ pub(crate) enum ClientAction {
     Exists { keys: Vec<String> },
     Role,
     Incr { key: String },
+    Decr { key: String },
 }
 
 impl ClientAction {

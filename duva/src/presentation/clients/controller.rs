@@ -157,7 +157,7 @@ impl ClientController {
             ClientAction::Incr { key } => {
                 if let Some(v) = self.cache_manager.route_get(&key).await? {
                     // Parse current value to u64, add 1, and handle errors
-                    let num = v.parse::<u64>().map_err(|e| {
+                    let num = v.parse::<i64>().map_err(|e| {
                         anyhow::anyhow!("Failed to parse value for key {}: {}", key, e)
                     })?;
                     // Handle potential overflow

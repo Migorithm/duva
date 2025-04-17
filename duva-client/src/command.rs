@@ -117,6 +117,12 @@ pub fn validate_input(action: &str, args: &[&str]) -> Result<ClientInputKind, St
             }
             Ok(ClientInputKind::Incr)
         },
+        "DECR" => {
+            if args.len() != 1 {
+                return Err("(error) ERR wrong number of arguments for 'decr' command".to_string());
+            }
+            Ok(ClientInputKind::Decr)
+        },
         // Add other commands as needed
         unknown_cmd => Err(format!(
             "(error) ERR unknown command '{unknown_cmd}', with args beginning with {}",
@@ -143,6 +149,7 @@ pub enum ClientInputKind {
     ReplicaOf,
     Role,
     Incr,
+    Decr,
 }
 
 #[derive(Debug)]

@@ -50,23 +50,21 @@ impl<T> ClientController<T> {
                 let QueryIO::SimpleString(value) = query_io else {
                     return Response::FormatError;
                 };
-                match value.parse::<u64>() {
+                match value.parse::<i64>() {
                     Ok(int) => Response::Integer(int),
                     Err(_) => Response::Error("ERR value is not an integer or out of range".into()),
                 }
             },
-            Incr => {
+            Incr | Decr => {
                 match query_io {
                     QueryIO::SimpleString(value) => {
                         let s: Option<&str> =
                             value.split('-').next().unwrap_or_default().rsplit(':').next(); // format: s:value-idx:index_num
 
-                        Response::Integer(s.unwrap().parse::<u64>().unwrap())
+                        Response::Integer(s.unwrap().parse::<i64>().unwrap())
                     },
                     QueryIO::Err(value) => {
-                        return Response::Error(
-                            "ERR value is not an integer or out of range".into(),
-                        );
+                        return Response::Error(value);
                     },
                     _ => {
                         return Response::FormatError;
@@ -125,7 +123,7 @@ enum Response {
     Null,
     FormatError,
     String(String),
-    Integer(u64),
+    Integer(i64),
     Error(String),
     Array(Vec<Response>),
 }
