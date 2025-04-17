@@ -159,13 +159,13 @@ impl ClientController {
 
                 if let Some(v) = self.cache_manager.route_get(&key).await? {
                     // Parse current value to u64, add 1, and handle errors
-                    let num = v.parse::<i64>().map_err(|e| {
-                        anyhow::anyhow!("Failed to parse value for key {}: {}", key, e)
+                    let num = v.parse::<i64>().map_err(|_| {
+                        anyhow::anyhow!("ERR value is not an integer or out of range")
                     })?;
                     // Handle potential overflow
-                    let incremented = num
-                        .checked_add(delta)
-                        .ok_or_else(|| anyhow::anyhow!("Overflow error for key {}", key))?;
+                    let incremented = num.checked_add(delta).ok_or_else(|| {
+                        anyhow::anyhow!("ERR value is not an integer or out of range")
+                    })?;
 
                     Some((key, incremented.to_string()))
                 } else {
