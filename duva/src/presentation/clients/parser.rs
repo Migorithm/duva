@@ -44,13 +44,17 @@ pub fn extract_client_action(action: &str, args: &[&str]) -> anyhow::Result<Clie
             }
         },
         "GET" => {
-            if args.len() != 1 {
+            if args.len() == 1 {
+                Ok(ClientAction::Get { key: args[0].to_string() })
+            } else if args.len() == 2 {
+                Ok(ClientAction::IndexGet { key: args[0].to_string(), index: args[1].parse()? })
+            } else {
                 return Err(anyhow::anyhow!(
                     "(error) ERR wrong number of arguments for 'get' command"
                 ));
             }
-            Ok(ClientAction::Get { key: args[0].to_string() })
         },
+
         "KEYS" => {
             if args.len() != 1 {
                 return Err(anyhow::anyhow!(
