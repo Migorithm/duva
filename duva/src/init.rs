@@ -1,8 +1,4 @@
-use std::str::FromStr;
-
-use uuid::Uuid;
-
-use crate::{domains::cluster_actors::replication::NodeInfo, env_var, prelude::PeerIdentifier};
+use crate::{domains::peers::cluster_peer::ClusterPeer, env_var, prelude::PeerIdentifier};
 
 pub struct Environment {
     pub seed_server: Option<PeerIdentifier>,
@@ -39,7 +35,7 @@ impl Environment {
         });
 
         // read topology path
-        let tops = NodeInfo::read_and_prioritize_nodes(&tpp);
+        let tops = ClusterPeer::render_node_infos(&tpp);
         // TODO
 
         Self {

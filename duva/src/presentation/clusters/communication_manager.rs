@@ -2,7 +2,7 @@ use crate::{
     domains::{
         cluster_actors::{
             commands::{ClusterCommand, SyncLogs},
-            replication::{ReplicationState, Role},
+            replication::{ReplicationRole, ReplicationState},
         },
         peers::identifier::PeerIdentifier,
     },
@@ -75,7 +75,7 @@ impl ClusterCommunicationManager {
         Ok(rx.await?)
     }
 
-    pub(crate) async fn role(&self) -> anyhow::Result<Role> {
+    pub(crate) async fn role(&self) -> anyhow::Result<ReplicationRole> {
         let (tx, rx) = tokio::sync::oneshot::channel();
         self.send(ClusterCommand::GetRole(tx)).await?;
         Ok(rx.await?)
