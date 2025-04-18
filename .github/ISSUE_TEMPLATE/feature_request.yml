@@ -1,0 +1,31 @@
+name: Feature Request
+description: Use this template for proposing new features or enhancements.
+title: "feat: <short summary here>"
+labels: [feat]
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: What is this feature about? What problem does it solve?
+      placeholder: |
+        Describe the feature and its purpose.
+
+  - type: textarea
+    id: acceptance-criteria
+    attributes:
+      label: Acceptance Criteria
+      description: List what needs to be true or working for this feature to be considered complete.
+      placeholder: |
+        - The node reads from the topology file on reboot.
+        - If any peer is reachable, join the cluster.
+        - If no peers are reachable, become standalone leader.
+
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes
+      description: Any relevant implementation notes, edge cases, or technical considerations.
+      placeholder: |
+        - Current topology file format is line-based with address, node ID, and shard slot.
+        - Consider fallback behaviors for stale data.
