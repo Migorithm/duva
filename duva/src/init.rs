@@ -112,8 +112,11 @@ fn read_and_prioritize_nodes(path: &str) -> Vec<NodeInfo> {
         None => return vec![], // No myself ID, no valid peers
     };
 
-    let mut nodes: Vec<NodeInfo> =
-        lines.into_iter().filter_map(|line| parse_node_info(line, &my_repl_id)).collect();
+    let mut nodes: Vec<NodeInfo> = lines
+        .into_iter()
+        .filter_map(|line| parse_node_info(line, &my_repl_id))
+        .filter(|node| !node.is_myself) // 🧼 Exclude self
+        .collect();
 
     nodes.sort_by_key(|n| n.priority);
     nodes
@@ -139,8 +142,8 @@ fn test_prioritize_nodes_with_myself() {
     let nodes = read_and_prioritize_nodes(temp_file.path().to_str().unwrap());
 
     // There should be 3 nodes, all with priority 0 (same ID as myself)
-    assert_eq!(nodes.len(), 5);
-    assert_eq!(nodes.iter().filter(|n| n.priority == 0).count(), 3);
+    assert_eq!(nodes.len(), 4);
+    assert_eq!(nodes.iter().filter(|n| n.priority == 0).count(), 2);
     assert_eq!(nodes.iter().filter(|n| n.priority == 1).count(), 2);
 
     // Optionally print for debugging
