@@ -2,10 +2,10 @@ mod election;
 pub(crate) mod types;
 mod write_con;
 use super::{
-    replication::{HeartBeatMessage, ReplicationId, ReplicationState, ReplicationRole},
+    replication::{HeartBeatMessage, ReplicationId, ReplicationRole, ReplicationState},
     session::SessionRequest,
 };
-use crate::domains::append_only_files::WriteOperation;
+use crate::domains::{append_only_files::WriteOperation, peers::cluster_peer::ClusterPeer};
 pub(crate) use election::*;
 pub(crate) use types::*;
 pub(crate) use write_con::*;
@@ -38,7 +38,7 @@ pub(crate) enum ClusterCommand {
     AppendEntriesRPC(HeartBeatMessage),
 
     SendAppendEntriesRPC,
-    ClusterNodes(tokio::sync::oneshot::Sender<Vec<String>>),
+    ClusterNodes(tokio::sync::oneshot::Sender<Vec<ClusterPeer>>),
     FetchCurrentState(tokio::sync::oneshot::Sender<SyncLogs>),
     StartLeaderElection,
     VoteElection(RequestVote),

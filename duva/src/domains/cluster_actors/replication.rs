@@ -3,6 +3,7 @@ use uuid::Uuid;
 use super::consensus::ElectionState;
 pub(crate) use super::heartbeats::heartbeat::BannedPeer;
 pub(crate) use super::heartbeats::heartbeat::HeartBeatMessage;
+use crate::domains::peers::cluster_peer::ClusterPeer;
 use crate::domains::peers::identifier::PeerIdentifier;
 use std::fmt::Display;
 use std::str::FromStr;
@@ -52,9 +53,9 @@ impl ReplicationState {
         replication
     }
 
-    pub(crate) fn self_info(&self) -> String {
+    pub(crate) fn self_info(&self) -> ClusterPeer {
         let self_id = self.self_identifier();
-        format!("{} myself,{} 0", self_id, self.replid)
+        ClusterPeer::new(&self_id, &self.replid, true, 0)
     }
 
     pub(crate) fn self_identifier(&self) -> PeerIdentifier {

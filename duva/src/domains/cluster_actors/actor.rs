@@ -21,6 +21,7 @@ use crate::domains::append_only_files::WriteRequest;
 use crate::domains::append_only_files::interfaces::TWriteAheadLog;
 use crate::domains::append_only_files::logger::ReplicatedLogs;
 use crate::domains::cluster_actors::consensus::ElectionState;
+use crate::domains::peers::cluster_peer::ClusterPeer;
 use crate::domains::{caches::cache_manager::CacheManager, query_parsers::QueryIO};
 use std::iter;
 use std::sync::atomic::Ordering;
@@ -111,7 +112,12 @@ impl ClusterActor {
 
     pub(crate) async fn snapshot_topology(&self) {
         // TODO: consider single writer access to file
-        let topology = self.cluster_nodes().join("\r\n");
+        let topology = self
+            .cluster_nodes()
+            .into_iter()
+            .map(|cn| cn.to_string())
+            .collect::<Vec<_>>()
+            .join("\r\n");
 
         let _ = tokio::fs::write(&self.topology_path, topology).await;
     }
@@ -469,15 +475,18 @@ impl ClusterActor {
             .await;
     }
 
-    pub(crate) fn cluster_nodes(&self) -> Vec<String> {
+    pub(crate) fn cluster_nodes(&self) -> Vec<ClusterPeer> {
         self.members
             .values()
             .map(|peer| match &peer.kind {
                 PeerState::Replica { match_index: _, replid } => {
-                    format!("{} {} 0", peer.addr, replid)
+                    ClusterPeer::new(&peer.addr, replid, false, 0)
+
+                    // format!("{} {} 0", peer.addr, replid)
                 },
                 PeerState::NonDataPeer { replid, match_index: _ } => {
-                    format!("{} {} 0", peer.addr, replid)
+                    ClusterPeer::new(&peer.addr, replid, false, 1)
+                    // format!("{} {} 0", peer.addr, replid)
                 },
             })
             .chain(std::iter::once(self.replication.self_info()))
@@ -1433,18 +1442,42 @@ mod test {
 
         // WHEN
         let res = cluster_actor.cluster_nodes();
-
+        let repl_id = cluster_actor.replication.replid.clone();
         assert_eq!(res.len(), 6);
 
         for value in [
-            format!("127.0.0.1:6379 {} 0", repl_id),
-            format!("127.0.0.1:6380 {} 0", repl_id),
-            format!("{} {} 0", second_shard_leader_identifier, second_shard_repl_id),
-            format!("127.0.0.1:2655 {} 0", second_shard_repl_id),
-            format!("127.0.0.1:2653 {} 0", second_shard_repl_id),
-            format!("127.0.0.1:8080 myself,{} 0", repl_id),
+            &ClusterPeer::parse_node_info(
+                &format!("127.0.0.1:6379 {} 0", repl_id),
+                &repl_id.to_string(),
+            )
+            .unwrap(),
+            &ClusterPeer::parse_node_info(
+                &format!("127.0.0.1:6380 {} 0", repl_id),
+                &repl_id.to_string(),
+            )
+            .unwrap(),
+            &ClusterPeer::parse_node_info(
+                &format!("{} {} 0", second_shard_leader_identifier, second_shard_repl_id),
+                &repl_id.to_string(),
+            )
+            .unwrap(),
+            &ClusterPeer::parse_node_info(
+                &format!("127.0.0.1:2655 {} 0", second_shard_repl_id),
+                &repl_id.to_string(),
+            )
+            .unwrap(),
+            &ClusterPeer::parse_node_info(
+                &format!("127.0.0.1:2653 {} 0", second_shard_repl_id),
+                &repl_id.to_string(),
+            )
+            .unwrap(),
+            &ClusterPeer::parse_node_info(
+                &format!("localhost:8080 myself,{} 0", repl_id),
+                &repl_id.to_string(),
+            )
+            .unwrap(),
         ] {
-            assert!(res.contains(&value));
+            assert!(res.contains(value));
         }
     }
 
@@ -1485,18 +1518,19 @@ mod test {
         let kill_switch = ClusterListener::new(
             r,
             cluster_actor.self_handler.clone(),
-            PeerIdentifier("foo".into()),
+            PeerIdentifier("127.0.0.1:3849".into()),
         );
 
         let peer = Peer::new(
-            "foo".to_string(),
+            "127.0.0.1:3849".to_string(),
             x,
             PeerState::Replica { match_index: 0, replid: ReplicationId::Key(repl_id.to_string()) },
             kill_switch,
         );
 
         // WHEN
-        let add_peer_cmd = AddPeer { peer_id: PeerIdentifier(String::from("foo")), peer };
+        let add_peer_cmd =
+            AddPeer { peer_id: PeerIdentifier(String::from("127.0.0.1:3849")), peer };
         cluster_actor.add_peer(add_peer_cmd).await;
         cluster_actor.snapshot_topology().await;
 
@@ -1509,7 +1543,7 @@ mod test {
         assert_eq!(cluster_nodes.len(), 2);
 
         for value in [
-            format!("foo {} 0", repl_id),
+            format!("127.0.0.1:3849 {} 0", repl_id),
             format!("{} myself,{} 0", cluster_actor.replication.self_identifier(), repl_id),
         ] {
             assert!(cluster_nodes.contains(&value));

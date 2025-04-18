@@ -35,7 +35,7 @@ impl Environment {
         });
 
         // read topology path
-        let tops = ClusterPeer::render_node_infos(&tpp);
+        let tops = ClusterPeer::from_file(&tpp);
         // TODO
 
         Self {

@@ -1,19 +1,24 @@
-use std::str::FromStr;
+use crate::{domains::cluster_actors::replication::ReplicationId, prelude::PeerIdentifier};
 
-use uuid::Uuid;
-
-use crate::prelude::PeerIdentifier;
-
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, bincode::Encode, bincode::Decode)]
 pub struct ClusterPeer {
     bind_addr: PeerIdentifier,
-    repl_id: Uuid,
+    repl_id: String,
     is_myself: bool,
     priority: u8, // lower value = higher priority
 }
 
 impl ClusterPeer {
-    fn parse_node_info(line: &str, myself_id: Uuid) -> Option<ClusterPeer> {
+    pub fn new(bind_addr: &str, repl_id: &ReplicationId, is_myself: bool, priority: u8) -> Self {
+        Self {
+            bind_addr: bind_addr.to_string().into(),
+            repl_id: repl_id.to_string(),
+            is_myself,
+            priority,
+        }
+    }
+
+    pub(crate) fn parse_node_info(line: &str, self_repl_id: &str) -> Option<ClusterPeer> {
         let parts: Vec<&str> = line.trim().split_whitespace().collect();
         if parts.len() != 3 {
             return None;
@@ -23,17 +28,17 @@ impl ClusterPeer {
         let raw_id = parts[1];
         let id_parts: Vec<&str> = raw_id.split(',').collect();
 
-        let (is_myself, id) = if id_parts.len() == 2 {
-            (id_parts[0] == "myself", Uuid::from_str(id_parts[1]).unwrap())
+        let (is_myself, repl_id) = if id_parts.len() == 2 {
+            (id_parts[0] == "myself", id_parts[1].to_string())
         } else {
-            (false, Uuid::from_str(id_parts[0]).unwrap())
+            (false, id_parts[0].to_string())
         };
 
-        let priority = if id == myself_id { 0 } else { 1 };
+        let priority = if repl_id == self_repl_id { 0 } else { 1 };
 
-        Some(ClusterPeer { bind_addr: address, repl_id: id, is_myself, priority })
+        Some(ClusterPeer { bind_addr: address, repl_id, is_myself, priority })
     }
-    pub(crate) fn render_node_infos(path: &str) -> Vec<ClusterPeer> {
+    pub(crate) fn from_file(path: &str) -> Vec<ClusterPeer> {
         let contents = std::fs::read_to_string(path).unwrap_or_default();
 
         let lines: Vec<&str> = contents.lines().filter(|line| !line.trim().is_empty()).collect();
@@ -56,18 +61,27 @@ impl ClusterPeer {
         });
 
         let my_repl_id = match my_repl_id {
-            Some(id) => Uuid::from_str(&id).unwrap(),
+            Some(id) => id,
             None => return vec![], // No myself ID, no valid peers
         };
 
         let mut nodes: Vec<ClusterPeer> = lines
             .into_iter()
-            .filter_map(|line| ClusterPeer::parse_node_info(line, my_repl_id))
+            .filter_map(|line| ClusterPeer::parse_node_info(line, &my_repl_id))
             .filter(|node| !node.is_myself) // 🧼 Exclude self
             .collect();
 
         nodes.sort_by_key(|n| n.priority);
         nodes
+    }
+}
+impl std::fmt::Display for ClusterPeer {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if self.is_myself {
+            write!(f, "{} myself,{} 0", self.bind_addr, self.repl_id)
+        } else {
+            write!(f, "{} {} 0", self.bind_addr, self.repl_id)
+        }
     }
 }
 
@@ -88,7 +102,7 @@ fn test_prioritize_nodes_with_myself() {
     write!(temp_file, "{}", file_content).expect("Failed to write to temp file");
 
     // Read and prioritize nodes
-    let nodes = ClusterPeer::render_node_infos(temp_file.path().to_str().unwrap());
+    let nodes = ClusterPeer::from_file(temp_file.path().to_str().unwrap());
 
     // There should be 3 nodes, all with priority 0 (same ID as myself)
     assert_eq!(nodes.len(), 4);

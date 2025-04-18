@@ -4,7 +4,7 @@ use crate::{
             commands::{ClusterCommand, SyncLogs},
             replication::{ReplicationRole, ReplicationState},
         },
-        peers::identifier::PeerIdentifier,
+        peers::{cluster_peer::ClusterPeer, identifier::PeerIdentifier},
     },
     make_smart_pointer,
 };
@@ -63,7 +63,7 @@ impl ClusterCommunicationManager {
         let _ = rx.await;
     }
 
-    pub(crate) async fn cluster_nodes(&self) -> anyhow::Result<Vec<String>> {
+    pub(crate) async fn cluster_nodes(&self) -> anyhow::Result<Vec<ClusterPeer>> {
         let (tx, rx) = tokio::sync::oneshot::channel();
         self.send(ClusterCommand::ClusterNodes(tx)).await?;
         Ok(rx.await?)

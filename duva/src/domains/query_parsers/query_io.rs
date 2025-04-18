@@ -413,8 +413,11 @@ impl From<Vec<PeerIdentifier>> for QueryIO {
 }
 #[cfg(test)]
 mod test {
+    use uuid::Uuid;
+
     use crate::domains::cluster_actors::commands::RejectionReason;
     use crate::domains::cluster_actors::replication::{HeartBeatMessage, ReplicationId};
+    use crate::domains::peers::cluster_peer::ClusterPeer;
     use crate::domains::peers::identifier::PeerIdentifier;
     use crate::domains::{
         append_only_files::WriteRequest, cluster_actors::replication::BannedPeer,
@@ -613,12 +616,27 @@ mod test {
                 },
             ],
             cluster_nodes: vec![
-                "127.0.0.1:30004 follower 127.0.0.1:30001".into(),
-                "127.0.0.1:30002 ? - 5461-10922".into(),
-                "127.0.0.1:30003 ? - 10923-16383".into(),
-                "127.0.0.1:30005 follower 127.0.0.1:30002".into(),
-                "127.0.0.1:30006 follower 127.0.0.1:30003".into(),
-                "127.0.0.1:30001 myself,? - 0-5460".into(),
+                ClusterPeer::new(
+                    "127.0.0.1:30004",
+                    &ReplicationId::Key(Uuid::now_v7().to_string()),
+                    false,
+                    0,
+                ),
+                ClusterPeer::new("127.0.0.1:30002", &ReplicationId::Undecided, false, 0),
+                ClusterPeer::new("127.0.0.1:30003", &ReplicationId::Undecided, false, 0),
+                ClusterPeer::new(
+                    "127.0.0.1:30005",
+                    &ReplicationId::Key(Uuid::now_v7().to_string()),
+                    false,
+                    0,
+                ),
+                ClusterPeer::new(
+                    "127.0.0.1:30006",
+                    &ReplicationId::Key(Uuid::now_v7().to_string()),
+                    false,
+                    0,
+                ),
+                ClusterPeer::new("127.0.0.1:30001", &ReplicationId::Undecided, true, 0),
             ],
         };
         let replicate = QueryIO::AppendEntriesRPC(AppendEntriesRPC(heartbeat));
