@@ -1,7 +1,7 @@
 mod input_queue;
 mod read_stream;
 mod write_stream;
-use crate::command::ClientInputKind;
+
 use crate::command::Input;
 use duva::domains::cluster_actors::heartbeats::scheduler::LEADER_HEARTBEAT_INTERVAL_MAX;
 use duva::domains::{IoError, query_parsers::query_io::QueryIO};
@@ -11,6 +11,7 @@ use duva::prelude::tokio::net::TcpStream;
 use duva::prelude::tokio::sync::mpsc::Receiver;
 use duva::prelude::tokio::sync::mpsc::Sender;
 use duva::prelude::uuid::Uuid;
+use duva::presentation::clients::request::ClientAction;
 use duva::{
     clients::authentications::{AuthRequest, AuthResponse},
     services::interface::TSerdeReadWrite,
@@ -89,8 +90,8 @@ impl Broker {
         command
     }
 
-    fn need_index_increase(&mut self, kind: &ClientInputKind, query_io: &QueryIO) -> Option<u64> {
-        if matches!(kind, ClientInputKind::Set | ClientInputKind::Del) {
+    fn need_index_increase(&mut self, kind: &ClientAction, query_io: &QueryIO) -> Option<u64> {
+        if matches!(kind, ClientAction::Set { .. } | ClientAction::Delete { .. }) {
             if let QueryIO::SimpleString(v) = query_io {
                 let rindex = v.split_whitespace().last().unwrap();
                 return rindex.parse::<u64>().ok();
@@ -99,9 +100,9 @@ impl Broker {
         None
     }
 
-    fn may_update_request_id(&mut self, input: &ClientInputKind) {
+    fn may_update_request_id(&mut self, input: &ClientAction) {
         match input {
-            ClientInputKind::Set | ClientInputKind::Del | ClientInputKind::Save => {
+            ClientAction::Set { .. } | ClientAction::Delete { .. } | ClientAction::Save => {
                 self.request_id += 1;
             },
             _ => {},

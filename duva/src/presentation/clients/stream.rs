@@ -1,4 +1,4 @@
-use super::{ClientController, parser::parse_query, request::ClientRequest};
+use super::{ClientController, request::ClientRequest};
 use crate::{
     domains::{IoError, cluster_actors::session::SessionRequest, query_parsers::QueryIO},
     prelude::PeerIdentifier,
@@ -22,28 +22,21 @@ impl ClientStreamReader {
             .into_iter()
             .map(|query_io| match query_io {
                 QueryIO::Array(value) => {
-                    let (command, args) = Self::extract_command_args(value)?;
-                    parse_query(None, command.to_lowercase(), args)
-                        .map_err(|e| IoError::Custom(e.to_string()))
+                    let req = ClientRequest::from_user_input(value, None)
+                        .map_err(|e| IoError::Custom(e.to_string()))?;
+                    Ok(req)
                 },
                 QueryIO::SessionRequest { request_id, value } => {
-                    let (command, args) = Self::extract_command_args(value)?;
-                    parse_query(
+                    let req = ClientRequest::from_user_input(
+                        value,
                         Some(SessionRequest::new(request_id, self.client_id)),
-                        command.to_lowercase(),
-                        args,
                     )
-                    .map_err(|e| IoError::Custom(e.to_string()))
+                    .map_err(|e| IoError::Custom(e.to_string()))?;
+                    Ok(req)
                 },
                 _ => Err(IoError::Custom("Unexpected command format".to_string())),
             })
             .collect()
-    }
-    fn extract_command_args(values: Vec<QueryIO>) -> Result<(String, Vec<String>), IoError> {
-        let mut values = values.into_iter().flat_map(|v| v.unpack_single_entry::<String>());
-        let command =
-            values.next().ok_or(IoError::Custom("Unexpected command format".to_string()))?;
-        Ok((command, values.collect()))
     }
 
     pub(crate) async fn handle_client_stream(

@@ -2,11 +2,12 @@ use std::fmt::Display;
 
 use crate::broker::Broker;
 use crate::broker::BrokerMessage;
-use crate::command::ClientInputKind;
+
 use duva::domains::query_parsers::query_io::QueryIO;
 use duva::prelude::tokio;
 use duva::prelude::tokio::sync::mpsc::Sender;
 use duva::prelude::uuid::Uuid;
+use duva::presentation::clients::request::ClientAction;
 
 pub struct ClientController<T> {
     pub broker_tx: Sender<BrokerMessage>,
@@ -34,19 +35,26 @@ impl<T> ClientController<T> {
         Self { broker_tx, target: editor }
     }
 
-    fn render_return(&self, kind: ClientInputKind, query_io: QueryIO) -> Response {
-        use ClientInputKind::*;
+    fn render_return(&self, kind: ClientAction, query_io: QueryIO) -> Response {
+        use ClientAction::*;
         match kind {
-            Ping | Get | Echo | Config | Info | ClusterForget | Role | ReplicaOf | ClusterInfo => {
-                match query_io {
-                    QueryIO::Null => Response::Null,
-                    QueryIO::SimpleString(value) => Response::String(value),
-                    QueryIO::BulkString(value) => Response::String(value),
-                    QueryIO::Err(value) => Response::Error(value),
-                    _err => Response::FormatError,
-                }
+            Ping
+            | Get { .. }
+            | IndexGet { .. }
+            | Echo { .. }
+            | Config { .. }
+            | Info { .. }
+            | ClusterForget { .. }
+            | Role
+            | ReplicaOf { .. }
+            | ClusterInfo => match query_io {
+                QueryIO::Null => Response::Null,
+                QueryIO::SimpleString(value) => Response::String(value),
+                QueryIO::BulkString(value) => Response::String(value),
+                QueryIO::Err(value) => Response::Error(value),
+                _err => Response::FormatError,
             },
-            Del | Exists => {
+            Delete { .. } | Exists { .. } => {
                 let QueryIO::SimpleString(value) = query_io else {
                     return Response::FormatError;
                 };
@@ -55,7 +63,7 @@ impl<T> ClientController<T> {
                     Err(_) => Response::Error("ERR value is not an integer or out of range".into()),
                 }
             },
-            Incr | Decr => {
+            Incr { .. } | Decr { .. } => {
                 match query_io {
                     QueryIO::SimpleString(value) => {
                         let s: Option<&str> =
@@ -77,14 +85,14 @@ impl<T> ClientController<T> {
                 };
                 Response::Null
             },
-            Set => match query_io {
+            Set { .. } | SetWithExpiry { .. } => match query_io {
                 QueryIO::SimpleString(_) => Response::String("OK".into()),
                 QueryIO::Err(value) => Response::Error(value),
                 _ => {
                     return Response::FormatError;
                 },
             },
-            Keys => {
+            Keys { .. } => {
                 let QueryIO::Array(value) = query_io else {
                     return Response::FormatError;
                 };
@@ -114,7 +122,7 @@ impl<T> ClientController<T> {
     }
 
     #[cfg_attr(not(feature = "cli"), allow(unused))]
-    pub fn print_res(&self, kind: ClientInputKind, query_io: QueryIO) {
+    pub fn print_res(&self, kind: ClientAction, query_io: QueryIO) {
         println!("{}", self.render_return(kind, query_io));
     }
 }

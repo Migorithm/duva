@@ -78,7 +78,7 @@ mod test {
     use crate::domains::caches::cache_objects::CacheEntry;
     use crate::domains::caches::command::CacheCommand;
     use crate::domains::caches::read_queue::ReadQueue;
-    use crate::domains::query_parsers::QueryIO;
+
     use chrono::Utc;
     use std::sync::Arc;
     use std::sync::atomic::AtomicU64;
