@@ -1,3 +1,7 @@
+use std::str::FromStr;
+
+use uuid::Uuid;
+
 use crate::{env_var, prelude::PeerIdentifier};
 
 pub struct Environment {
@@ -55,8 +59,8 @@ impl Environment {
 
 #[derive(Debug, Clone)]
 struct NodeInfo {
-    address: String,
-    id: String,
+    bind_addr: PeerIdentifier,
+    repl_id: Uuid,
     is_myself: bool,
     priority: u8, // lower value = higher priority
 }
@@ -64,25 +68,25 @@ struct NodeInfo {
 /// 127.0.0.1:6000 0196477d-f227-72f2-81eb-6a3703076de8 0
 /// 127.0.0.1:6001 0196477d-f227-72f2-81eb-6a3703076de8 0
 /// 127.0.0.1:6002 myself,0196477d-f227-72f2-81eb-6a3703076de8 0
-fn parse_node_info(line: &str, myself_id: &str) -> Option<NodeInfo> {
+fn parse_node_info(line: &str, myself_id: Uuid) -> Option<NodeInfo> {
     let parts: Vec<&str> = line.trim().split_whitespace().collect();
     if parts.len() != 3 {
         return None;
     }
 
-    let address = parts[0].to_string();
+    let address = parts[0].to_string().into();
     let raw_id = parts[1];
     let id_parts: Vec<&str> = raw_id.split(',').collect();
 
     let (is_myself, id) = if id_parts.len() == 2 {
-        (id_parts[0] == "myself", id_parts[1].to_string())
+        (id_parts[0] == "myself", Uuid::from_str(id_parts[1]).unwrap())
     } else {
-        (false, id_parts[0].to_string())
+        (false, Uuid::from_str(id_parts[0]).unwrap())
     };
 
     let priority = if id == myself_id { 0 } else { 1 };
 
-    Some(NodeInfo { address, id, is_myself, priority })
+    Some(NodeInfo { bind_addr: address, repl_id: id, is_myself, priority })
 }
 
 fn read_and_prioritize_nodes(path: &str) -> Vec<NodeInfo> {
@@ -108,13 +112,13 @@ fn read_and_prioritize_nodes(path: &str) -> Vec<NodeInfo> {
     });
 
     let my_repl_id = match my_repl_id {
-        Some(id) => id,
+        Some(id) => Uuid::from_str(&id).unwrap(),
         None => return vec![], // No myself ID, no valid peers
     };
 
     let mut nodes: Vec<NodeInfo> = lines
         .into_iter()
-        .filter_map(|line| parse_node_info(line, &my_repl_id))
+        .filter_map(|line| parse_node_info(line, my_repl_id))
         .filter(|node| !node.is_myself) // 🧼 Exclude self
         .collect();
 
