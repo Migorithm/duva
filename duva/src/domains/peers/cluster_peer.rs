@@ -2,14 +2,19 @@ use crate::{domains::cluster_actors::replication::ReplicationId, prelude::PeerId
 
 #[derive(Debug, Clone, PartialEq, bincode::Encode, bincode::Decode)]
 pub struct ClusterNode {
-    bind_addr: PeerIdentifier,
+    pub(crate) bind_addr: PeerIdentifier,
     repl_id: String,
     is_myself: bool,
     priority: u8, // lower value = higher priority
 }
 
 impl ClusterNode {
-    pub fn new(bind_addr: &str, repl_id: &ReplicationId, is_myself: bool, priority: u8) -> Self {
+    pub(crate) fn new(
+        bind_addr: &str,
+        repl_id: &ReplicationId,
+        is_myself: bool,
+        priority: u8,
+    ) -> Self {
         Self {
             bind_addr: bind_addr.to_string().into(),
             repl_id: repl_id.to_string(),
@@ -39,6 +44,7 @@ impl ClusterNode {
         Some(ClusterNode { bind_addr: address, repl_id, is_myself, priority })
     }
     pub(crate) fn from_file(path: &str) -> Vec<ClusterNode> {
+        println!("Reading cluster nodes from file: {}", path);
         let contents = std::fs::read_to_string(path).unwrap_or_default();
 
         let lines: Vec<&str> = contents.lines().filter(|line| !line.trim().is_empty()).collect();

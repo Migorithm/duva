@@ -46,7 +46,7 @@ impl Environment {
             hf_mills: hf,
             ttl_mills: ttl,
             append_only,
-            topology_path: dbg!(tpp),
+            topology_path: tpp,
             pre_connected_peers,
         }
     }
