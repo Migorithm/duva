@@ -1,7 +1,8 @@
-use crate::{env_var, prelude::PeerIdentifier};
+use crate::{domains::peers::cluster_peer::ClusterNode, env_var, prelude::PeerIdentifier};
 
 pub struct Environment {
     pub seed_server: Option<PeerIdentifier>,
+    pub pre_connected_peers: Vec<ClusterNode>,
     pub dir: String,
     pub dbfilename: String,
     pub port: u16,
@@ -33,6 +34,9 @@ impl Environment {
             host_and_port.split_once(':').map(|(host, port)| format!("{}:{}", host, port).into())
         });
 
+        // read topology path
+        let pre_connected_peers = ClusterNode::from_file(&tpp);
+
         Self {
             seed_server: replicaof,
             dir,
@@ -42,7 +46,8 @@ impl Environment {
             hf_mills: hf,
             ttl_mills: ttl,
             append_only,
-            topology_path: tpp,
+            topology_path: dbg!(tpp),
+            pre_connected_peers,
         }
     }
 }

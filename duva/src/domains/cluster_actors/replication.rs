@@ -1,8 +1,12 @@
+use uuid::Uuid;
+
 use super::consensus::ElectionState;
 pub(crate) use super::heartbeats::heartbeat::BannedPeer;
 pub(crate) use super::heartbeats::heartbeat::HeartBeatMessage;
+use crate::domains::peers::cluster_peer::ClusterNode;
 use crate::domains::peers::identifier::PeerIdentifier;
 use std::fmt::Display;
+use std::str::FromStr;
 use std::sync::Arc;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
@@ -11,7 +15,7 @@ use std::sync::atomic::Ordering;
 pub(crate) struct ReplicationState {
     pub(crate) replid: ReplicationId, // The replication ID of the master example: 8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb
     pub(crate) hwm: Arc<AtomicU64>,   // high water mark (commit idx)
-    pub(crate) role: Role,
+    pub(crate) role: ReplicationRole,
 
     pub(crate) self_host: String,
     pub(crate) self_port: u16,
@@ -32,7 +36,8 @@ impl ReplicationState {
             ReplicationId::Undecided
         };
 
-        let role = if replicaof.is_some() { Role::Follower } else { Role::Leader };
+        let role =
+            if replicaof.is_some() { ReplicationRole::Follower } else { ReplicationRole::Leader };
         let replication = ReplicationState {
             is_leader_mode: replicaof.is_none(),
             election_state: ElectionState::new(&role),
@@ -48,9 +53,9 @@ impl ReplicationState {
         replication
     }
 
-    pub(crate) fn self_info(&self) -> String {
+    pub(crate) fn self_info(&self) -> ClusterNode {
         let self_id = self.self_identifier();
-        format!("{} myself,{} 0", self_id, self.replid)
+        ClusterNode::new(&self_id, &self.replid, true, 0)
     }
 
     pub(crate) fn self_identifier(&self) -> PeerIdentifier {
@@ -129,10 +134,10 @@ impl ReplicationState {
     pub(super) fn become_follower(&mut self, leader_id: Option<PeerIdentifier>) {
         self.election_state = ElectionState::Follower { voted_for: leader_id };
         self.is_leader_mode = false;
-        self.role = Role::Follower;
+        self.role = ReplicationRole::Follower;
     }
     pub(super) fn become_leader(&mut self) {
-        self.role = Role::Leader;
+        self.role = ReplicationRole::Leader;
         self.is_leader_mode = true;
         self.election_state.become_leader();
     }
@@ -182,16 +187,16 @@ impl From<String> for ReplicationId {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Role {
+pub enum ReplicationRole {
     Leader,
     Follower,
 }
 
-impl Display for Role {
+impl Display for ReplicationRole {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Role::Leader => write!(f, "leader"),
-            Role::Follower => write!(f, "follower"),
+            ReplicationRole::Leader => write!(f, "leader"),
+            ReplicationRole::Follower => write!(f, "follower"),
         }
     }
 }
