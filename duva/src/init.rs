@@ -2,7 +2,7 @@ use crate::{domains::peers::cluster_peer::ClusterNode, env_var, prelude::PeerIde
 
 pub struct Environment {
     pub seed_server: Option<PeerIdentifier>,
-    pub pre_connected_peers: Vec<PeerIdentifier>,
+    pub pre_connected_peers: Vec<ClusterNode>,
     pub dir: String,
     pub dbfilename: String,
     pub port: u16,
@@ -35,8 +35,7 @@ impl Environment {
         });
 
         // read topology path
-        let tops = ClusterNode::from_file(&tpp);
-        // TODO
+        let pre_connected_peers = ClusterNode::from_file(&tpp);
 
         Self {
             seed_server: replicaof,
@@ -48,7 +47,7 @@ impl Environment {
             ttl_mills: ttl,
             append_only,
             topology_path: dbg!(tpp),
-            pre_connected_peers: vec![],
+            pre_connected_peers,
         }
     }
 }

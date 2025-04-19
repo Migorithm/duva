@@ -75,6 +75,7 @@ impl ClusterNode {
         nodes
     }
 }
+
 impl std::fmt::Display for ClusterNode {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if self.is_myself {
