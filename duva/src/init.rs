@@ -1,4 +1,4 @@
-use crate::{domains::peers::cluster_peer::ClusterPeer, env_var, prelude::PeerIdentifier};
+use crate::{domains::peers::cluster_peer::ClusterNode, env_var, prelude::PeerIdentifier};
 
 pub struct Environment {
     pub seed_server: Option<PeerIdentifier>,
@@ -35,7 +35,7 @@ impl Environment {
         });
 
         // read topology path
-        let tops = ClusterPeer::from_file(&tpp);
+        let tops = ClusterNode::from_file(&tpp);
         // TODO
 
         Self {

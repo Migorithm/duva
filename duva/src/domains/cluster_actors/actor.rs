@@ -21,7 +21,7 @@ use crate::domains::append_only_files::WriteRequest;
 use crate::domains::append_only_files::interfaces::TWriteAheadLog;
 use crate::domains::append_only_files::logger::ReplicatedLogs;
 use crate::domains::cluster_actors::consensus::ElectionState;
-use crate::domains::peers::cluster_peer::ClusterPeer;
+use crate::domains::peers::cluster_peer::ClusterNode;
 use crate::domains::{caches::cache_manager::CacheManager, query_parsers::QueryIO};
 use std::iter;
 use std::sync::atomic::Ordering;
@@ -475,17 +475,17 @@ impl ClusterActor {
             .await;
     }
 
-    pub(crate) fn cluster_nodes(&self) -> Vec<ClusterPeer> {
+    pub(crate) fn cluster_nodes(&self) -> Vec<ClusterNode> {
         self.members
             .values()
             .map(|peer| match &peer.kind {
                 PeerState::Replica { match_index: _, replid } => {
-                    ClusterPeer::new(&peer.addr, replid, false, 0)
+                    ClusterNode::new(&peer.addr, replid, false, 0)
 
                     // format!("{} {} 0", peer.addr, replid)
                 },
                 PeerState::NonDataPeer { replid, match_index: _ } => {
-                    ClusterPeer::new(&peer.addr, replid, false, 1)
+                    ClusterNode::new(&peer.addr, replid, false, 1)
                     // format!("{} {} 0", peer.addr, replid)
                 },
             })
@@ -1446,32 +1446,32 @@ mod test {
         assert_eq!(res.len(), 6);
 
         for value in [
-            &ClusterPeer::parse_node_info(
+            &ClusterNode::parse_node_info(
                 &format!("127.0.0.1:6379 {} 0", repl_id),
                 &repl_id.to_string(),
             )
             .unwrap(),
-            &ClusterPeer::parse_node_info(
+            &ClusterNode::parse_node_info(
                 &format!("127.0.0.1:6380 {} 0", repl_id),
                 &repl_id.to_string(),
             )
             .unwrap(),
-            &ClusterPeer::parse_node_info(
+            &ClusterNode::parse_node_info(
                 &format!("{} {} 0", second_shard_leader_identifier, second_shard_repl_id),
                 &repl_id.to_string(),
             )
             .unwrap(),
-            &ClusterPeer::parse_node_info(
+            &ClusterNode::parse_node_info(
                 &format!("127.0.0.1:2655 {} 0", second_shard_repl_id),
                 &repl_id.to_string(),
             )
             .unwrap(),
-            &ClusterPeer::parse_node_info(
+            &ClusterNode::parse_node_info(
                 &format!("127.0.0.1:2653 {} 0", second_shard_repl_id),
                 &repl_id.to_string(),
             )
             .unwrap(),
-            &ClusterPeer::parse_node_info(
+            &ClusterNode::parse_node_info(
                 &format!("localhost:8080 myself,{} 0", repl_id),
                 &repl_id.to_string(),
             )

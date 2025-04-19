@@ -5,7 +5,7 @@ use super::{
     replication::{HeartBeatMessage, ReplicationId, ReplicationRole, ReplicationState},
     session::SessionRequest,
 };
-use crate::domains::{append_only_files::WriteOperation, peers::cluster_peer::ClusterPeer};
+use crate::domains::{append_only_files::WriteOperation, peers::cluster_peer::ClusterNode};
 pub(crate) use election::*;
 pub(crate) use types::*;
 pub(crate) use write_con::*;
@@ -38,7 +38,7 @@ pub(crate) enum ClusterCommand {
     AppendEntriesRPC(HeartBeatMessage),
 
     SendAppendEntriesRPC,
-    ClusterNodes(tokio::sync::oneshot::Sender<Vec<ClusterPeer>>),
+    ClusterNodes(tokio::sync::oneshot::Sender<Vec<ClusterNode>>),
     FetchCurrentState(tokio::sync::oneshot::Sender<SyncLogs>),
     StartLeaderElection,
     VoteElection(RequestVote),

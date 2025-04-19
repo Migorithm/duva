@@ -1,7 +1,7 @@
 use crate::domains::{
     append_only_files::WriteOperation,
     cluster_actors::replication::ReplicationId,
-    peers::{cluster_peer::ClusterPeer, identifier::PeerIdentifier},
+    peers::{cluster_peer::ClusterNode, identifier::PeerIdentifier},
 };
 
 #[derive(Debug, Clone, PartialEq, bincode::Encode, bincode::Decode)]
@@ -14,7 +14,7 @@ pub(crate) struct HeartBeatMessage {
     pub(crate) hop_count: u8,
     pub(crate) ban_list: Vec<BannedPeer>,
     pub(crate) append_entries: Vec<WriteOperation>,
-    pub(crate) cluster_nodes: Vec<ClusterPeer>,
+    pub(crate) cluster_nodes: Vec<ClusterNode>,
     pub(crate) prev_log_index: u64, //index of log entry immediately preceding new ones
     pub(crate) prev_log_term: u64,  //term of prev_log_index entry
 }
@@ -24,7 +24,7 @@ impl HeartBeatMessage {
         self
     }
 
-    pub(crate) fn set_cluster_nodes(mut self, cluster_nodes: Vec<ClusterPeer>) -> Self {
+    pub(crate) fn set_cluster_nodes(mut self, cluster_nodes: Vec<ClusterNode>) -> Self {
         self.cluster_nodes = cluster_nodes;
         self
     }

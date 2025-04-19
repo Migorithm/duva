@@ -1,14 +1,14 @@
 use crate::{domains::cluster_actors::replication::ReplicationId, prelude::PeerIdentifier};
 
 #[derive(Debug, Clone, PartialEq, bincode::Encode, bincode::Decode)]
-pub struct ClusterPeer {
+pub struct ClusterNode {
     bind_addr: PeerIdentifier,
     repl_id: String,
     is_myself: bool,
     priority: u8, // lower value = higher priority
 }
 
-impl ClusterPeer {
+impl ClusterNode {
     pub fn new(bind_addr: &str, repl_id: &ReplicationId, is_myself: bool, priority: u8) -> Self {
         Self {
             bind_addr: bind_addr.to_string().into(),
@@ -18,7 +18,7 @@ impl ClusterPeer {
         }
     }
 
-    pub(crate) fn parse_node_info(line: &str, self_repl_id: &str) -> Option<ClusterPeer> {
+    pub(crate) fn parse_node_info(line: &str, self_repl_id: &str) -> Option<ClusterNode> {
         let parts: Vec<&str> = line.trim().split_whitespace().collect();
         if parts.len() != 3 {
             return None;
@@ -36,9 +36,9 @@ impl ClusterPeer {
 
         let priority = if repl_id == self_repl_id { 0 } else { 1 };
 
-        Some(ClusterPeer { bind_addr: address, repl_id, is_myself, priority })
+        Some(ClusterNode { bind_addr: address, repl_id, is_myself, priority })
     }
-    pub(crate) fn from_file(path: &str) -> Vec<ClusterPeer> {
+    pub(crate) fn from_file(path: &str) -> Vec<ClusterNode> {
         let contents = std::fs::read_to_string(path).unwrap_or_default();
 
         let lines: Vec<&str> = contents.lines().filter(|line| !line.trim().is_empty()).collect();
@@ -65,9 +65,9 @@ impl ClusterPeer {
             None => return vec![], // No myself ID, no valid peers
         };
 
-        let mut nodes: Vec<ClusterPeer> = lines
+        let mut nodes: Vec<ClusterNode> = lines
             .into_iter()
-            .filter_map(|line| ClusterPeer::parse_node_info(line, &my_repl_id))
+            .filter_map(|line| ClusterNode::parse_node_info(line, &my_repl_id))
             .filter(|node| !node.is_myself) // 🧼 Exclude self
             .collect();
 
@@ -75,7 +75,7 @@ impl ClusterPeer {
         nodes
     }
 }
-impl std::fmt::Display for ClusterPeer {
+impl std::fmt::Display for ClusterNode {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if self.is_myself {
             write!(f, "{} myself,{} 0", self.bind_addr, self.repl_id)
@@ -102,7 +102,7 @@ fn test_prioritize_nodes_with_myself() {
     write!(temp_file, "{}", file_content).expect("Failed to write to temp file");
 
     // Read and prioritize nodes
-    let nodes = ClusterPeer::from_file(temp_file.path().to_str().unwrap());
+    let nodes = ClusterNode::from_file(temp_file.path().to_str().unwrap());
 
     // There should be 3 nodes, all with priority 0 (same ID as myself)
     assert_eq!(nodes.len(), 4);
