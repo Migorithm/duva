@@ -49,9 +49,9 @@ impl Environment {
 
         let repl_id = if replicaof.is_none() {
             ReplicationId::Key(
-                pre_connected_peers
+                dbg!(&pre_connected_peers)
                     .iter()
-                    .filter(|p| p.priority == 1)
+                    .filter(|p| p.priority == 0)
                     .map(|p| p.repl_id.clone())
                     .next()
                     .unwrap_or_else(|| Uuid::now_v7().to_string()),

@@ -481,12 +481,9 @@ impl ClusterActor {
             .map(|peer| match &peer.kind {
                 PeerState::Replica { match_index: _, replid } => {
                     ClusterNode::new(&peer.addr, replid, false, 0)
-
-                    // format!("{} {} 0", peer.addr, replid)
                 },
                 PeerState::NonDataPeer { replid, match_index: _ } => {
                     ClusterNode::new(&peer.addr, replid, false, 1)
-                    // format!("{} {} 0", peer.addr, replid)
                 },
             })
             .chain(std::iter::once(self.replication.self_info()))
