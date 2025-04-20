@@ -1,4 +1,6 @@
-use crate::domains::{cluster_actors::replication::ReplicationRole, peers::identifier::PeerIdentifier};
+use crate::domains::{
+    cluster_actors::replication::ReplicationRole, peers::identifier::PeerIdentifier,
+};
 
 #[derive(Debug, Clone)]
 pub(crate) enum ElectionState {
