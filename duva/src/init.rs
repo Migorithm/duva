@@ -49,7 +49,7 @@ impl Environment {
 
         let repl_id = if replicaof.is_none() {
             ReplicationId::Key(
-                dbg!(&pre_connected_peers)
+                pre_connected_peers
                     .iter()
                     .filter(|p| p.priority == NodeKind::Replica)
                     .map(|p| p.repl_id.clone())
@@ -67,7 +67,7 @@ impl Environment {
                 ReplicationRole::Follower
             },
             seed_server: replicaof,
-            repl_id: dbg!(repl_id),
+            repl_id,
             dir,
             dbfilename,
             port,
