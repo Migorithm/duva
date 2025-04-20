@@ -22,6 +22,7 @@ use crate::domains::append_only_files::interfaces::TWriteAheadLog;
 use crate::domains::append_only_files::logger::ReplicatedLogs;
 use crate::domains::cluster_actors::consensus::ElectionState;
 use crate::domains::peers::cluster_peer::ClusterNode;
+use crate::domains::peers::cluster_peer::NodeKind;
 use crate::domains::{caches::cache_manager::CacheManager, query_parsers::QueryIO};
 use std::iter;
 use std::sync::atomic::Ordering;
@@ -480,10 +481,10 @@ impl ClusterActor {
             .values()
             .map(|peer| match &peer.kind {
                 PeerState::Replica { match_index: _, replid } => {
-                    ClusterNode::new(&peer.addr, replid, false, 0)
+                    ClusterNode::new(&peer.addr, replid, false, NodeKind::Replica)
                 },
                 PeerState::NonDataPeer { replid, match_index: _ } => {
-                    ClusterNode::new(&peer.addr, replid, false, 1)
+                    ClusterNode::new(&peer.addr, replid, false, NodeKind::NonData)
                 },
             })
             .chain(std::iter::once(self.replication.self_info()))

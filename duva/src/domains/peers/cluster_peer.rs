@@ -5,7 +5,13 @@ pub struct ClusterNode {
     pub(crate) bind_addr: PeerIdentifier,
     pub(crate) repl_id: String,
     is_myself: bool,
-    pub(crate) priority: u8, // lower value = higher priority
+    pub(crate) priority: NodeKind, // lower value = higher priority
+}
+
+#[derive(Debug, Clone, PartialEq, bincode::Encode, bincode::Decode)]
+pub(crate) enum NodeKind {
+    Replica,
+    NonData,
 }
 
 impl ClusterNode {
@@ -13,7 +19,7 @@ impl ClusterNode {
         bind_addr: &str,
         repl_id: &ReplicationId,
         is_myself: bool,
-        priority: u8,
+        priority: NodeKind,
     ) -> Self {
         Self {
             bind_addr: bind_addr.to_string().into(),
@@ -39,7 +45,7 @@ impl ClusterNode {
             (false, id_parts[0].to_string())
         };
 
-        let priority = if repl_id == self_repl_id { 0 } else { 1 };
+        let priority = if repl_id == self_repl_id { NodeKind::Replica } else { NodeKind::NonData };
 
         Some(ClusterNode { bind_addr: address, repl_id, is_myself, priority })
     }
@@ -77,7 +83,10 @@ impl ClusterNode {
             .filter(|node| !node.is_myself) // 🧼 Exclude self
             .collect();
 
-        nodes.sort_by_key(|n| n.priority);
+        nodes.sort_by_key(|n| match n.priority {
+            NodeKind::Replica => 0,
+            NodeKind::NonData => 1,
+        });
         nodes
     }
 }
@@ -113,8 +122,8 @@ fn test_prioritize_nodes_with_myself() {
 
     // There should be 3 nodes, all with priority 0 (same ID as myself)
     assert_eq!(nodes.len(), 4);
-    assert_eq!(nodes.iter().filter(|n| n.priority == 0).count(), 2);
-    assert_eq!(nodes.iter().filter(|n| n.priority == 1).count(), 2);
+    assert_eq!(nodes.iter().filter(|n| n.priority == NodeKind::NonData).count(), 2);
+    assert_eq!(nodes.iter().filter(|n| n.priority == NodeKind::Replica).count(), 2);
 
     // Optionally print for debugging
     for node in nodes {
