@@ -57,50 +57,42 @@ macro_rules! from_to {
         }
     };
 }
-
-/// to get the environment variable and the default value
 #[macro_export]
 macro_rules! env_var {
     (
-        {
-            $($env_name:ident),*
+        defaults: {
+            $($name:ident : $type:ty = $default:expr),* $(,)?
+        },
+        optional: {
+            $($opt_name:ident),* $(,)?
         }
-        $({
-            $($default:ident = $default_value:expr),*
-        })?
     ) => {
         $(
-            // Initialize the variable with the environment variable or the default value.
-            let mut $env_name = std::env::var(stringify!($env_name))
-                .ok();
+            let mut $name: $type = $default;
+        )*
+
+        $(
+            let mut $opt_name: Option<String> = std::env::var(stringify!($opt_name)).ok();
         )*
 
         let mut args = std::env::args().skip(1);
-        $(
-            $(let mut $default = $default_value;)*
-        )?
-
-        while let Some(arg) = args.next(){
-            match arg.as_str(){
+        while let Some(arg) = args.next() {
+            match arg.as_str() {
                 $(
-                    concat!("--", stringify!($env_name)) => {
-                    if let Some(value) = args.next(){
-                        $env_name = Some(value.parse().unwrap());
-                    }
-                })*
-                $(
-                    $(
-                        concat!("--", stringify!($default)) => {
-                        if let Some(value) = args.next(){
-                            $default = value.parse().expect("Default value must be given");
+                    concat!("--", stringify!($name)) => {
+                        if let Some(val) = args.next() {
+                            $name = val.parse::<$type>().expect("Failed to parse argument");
                         }
-                    })*
-                )?
-
-
-                _ => {
-                    eprintln!("Unexpected argument: {}", arg);
-                }
+                    }
+                )*
+                $(
+                    concat!("--", stringify!($opt_name)) => {
+                        if let Some(val) = args.next() {
+                            $opt_name = Some(val);
+                        }
+                    }
+                )*
+                _ => eprintln!("Unexpected argument: {}", arg),
             }
         }
     };

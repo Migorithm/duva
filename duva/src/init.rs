@@ -22,38 +22,36 @@ pub struct Environment {
     pub append_only: bool,
     pub topology_path: String,
 }
-
 impl Environment {
     pub fn new() -> Self {
         env_var!(
-            {
+            defaults: {
+                port: u16 = 6379,
+                host: String = "127.0.0.1".to_string(),
+                dir: String = ".".to_string(),
+                dbfilename: String = "dump.rdb".to_string(),
+                hf: u64 = 1000,
+                ttl: u128 = 60000,
+                append_only: bool = false,
+                tpp: String = "duva.tp".to_string()
+            },
+            optional: {
                 replicaof
             }
-            {
-                port = 6379,
-                host = "127.0.0.1".to_string(),
-                dir = ".".to_string(),
-                dbfilename = "dump.rdb".to_string(),
-                hf = 1000,
-                ttl = 60000,
-                append_only = false,
-                tpp = "duva.tp".to_string() // topology path
-            }
         );
-        let replicaof = replicaof.and_then(|host_and_port| {
-            host_and_port.split_once(':').map(|(host, port)| format!("{}:{}", host, port).into())
+
+        let replicaof = replicaof.and_then(|s| {
+            s.split_once(':').map(|(host, port)| format!("{}:{}", host, port).into())
         });
 
-        // read topology path
         let pre_connected_peers = ClusterNode::from_file(&tpp);
 
         let repl_id = if replicaof.is_none() {
             ReplicationId::Key(
                 pre_connected_peers
                     .iter()
-                    .filter(|p| p.priority == NodeKind::Replica)
+                    .find(|p| p.priority == NodeKind::Replica)
                     .map(|p| p.repl_id.clone())
-                    .next()
                     .unwrap_or_else(|| Uuid::now_v7().to_string()),
             )
         } else {

@@ -6,15 +6,19 @@ use duva::domains::cluster_actors::heartbeats::scheduler::LEADER_HEARTBEAT_INTER
 #[tokio::test]
 async fn test_leader_election() {
     // GIVEN
-    let mut leader_p = spawn_server_process(&ServerEnv::default());
+    let leaver_env = ServerEnv::default().with_topology_path("test_leader_election-leader.tp");
+    let mut leader_p = spawn_server_process(&leaver_env);
 
-    let mut follower_p1 = spawn_server_process(
-        &ServerEnv::default().with_leader_bind_addr(leader_p.bind_addr().into()),
-    );
+    let follower_env1 = ServerEnv::default()
+        .with_leader_bind_addr(leader_p.bind_addr().into())
+        .with_topology_path("test_leader_election-follower1.tp");
+    let mut follower_p1 = spawn_server_process(&follower_env1);
 
-    let mut follower_p2 = spawn_server_process(
-        &ServerEnv::default().with_leader_bind_addr(leader_p.bind_addr().into()),
-    );
+    let follower_env2 = ServerEnv::default()
+        .with_leader_bind_addr(leader_p.bind_addr().into())
+        .with_topology_path("test_leader_election-follower2.tp");
+
+    let mut follower_p2 = spawn_server_process(&follower_env2);
     const DEFAULT_HOP_COUNT: usize = 0;
     const TIMEOUT_IN_MILLIS: u128 = 2000;
     let processes = &mut [&mut leader_p, &mut follower_p1, &mut follower_p2];
@@ -43,15 +47,19 @@ async fn test_leader_election() {
 #[tokio::test]
 async fn test_set_twice_after_election() {
     // GIVEN
-    let mut leader_p = spawn_server_process(&ServerEnv::default());
+    let leaver_env =
+        ServerEnv::default().with_topology_path("test_set_twice_after_election-leader.tp");
+    let mut leader_p = spawn_server_process(&leaver_env);
 
-    let mut follower_p1 = spawn_server_process(
-        &ServerEnv::default().with_leader_bind_addr(leader_p.bind_addr().into()),
-    );
+    let follower_env1 = ServerEnv::default()
+        .with_leader_bind_addr(leader_p.bind_addr().into())
+        .with_topology_path("test_set_twice_after_election-follower1.tp");
+    let mut follower_p1 = spawn_server_process(&follower_env1);
 
-    let mut follower_p2 = spawn_server_process(
-        &ServerEnv::default().with_leader_bind_addr(leader_p.bind_addr().into()),
-    );
+    let follower_env2 = ServerEnv::default()
+        .with_leader_bind_addr(leader_p.bind_addr().into())
+        .with_topology_path("test_set_twice_after_election-follower2.tp");
+    let mut follower_p2 = spawn_server_process(&follower_env2);
     const DEFAULT_HOP_COUNT: usize = 0;
     const TIMEOUT_IN_MILLIS: u128 = 2000;
     let processes = &mut [&mut leader_p, &mut follower_p1, &mut follower_p2];
@@ -81,15 +89,19 @@ async fn test_set_twice_after_election() {
 #[tokio::test]
 async fn test_leader_election_twice() {
     // GIVEN
-    let mut leader_p = spawn_server_process(&ServerEnv::default());
+    let leaver_env =
+        ServerEnv::default().with_topology_path("test_leader_election_twice-leader.tp");
+    let mut leader_p = spawn_server_process(&leaver_env);
 
-    let mut follower_p1 = spawn_server_process(
-        &ServerEnv::default().with_leader_bind_addr(leader_p.bind_addr().into()),
-    );
+    let follower_env1 = ServerEnv::default()
+        .with_leader_bind_addr(leader_p.bind_addr().into())
+        .with_topology_path("test_leader_election_twice-follower1.tp");
+    let mut follower_p1 = spawn_server_process(&follower_env1);
 
-    let mut follower_p2 = spawn_server_process(
-        &ServerEnv::default().with_leader_bind_addr(leader_p.bind_addr().into()),
-    );
+    let follower_env2 = ServerEnv::default()
+        .with_leader_bind_addr(leader_p.bind_addr().into())
+        .with_topology_path("test_leader_election_twice-follower2.tp");
+    let mut follower_p2 = spawn_server_process(&follower_env2);
     const DEFAULT_HOP_COUNT: usize = 0;
     const TIMEOUT_IN_MILLIS: u128 = 2000;
     let processes = &mut [&mut leader_p, &mut follower_p1, &mut follower_p2];
@@ -108,8 +120,11 @@ async fn test_leader_election_twice() {
             processes.push(f);
             continue;
         }
-        let new_process =
-            spawn_server_process(&ServerEnv::default().with_leader_bind_addr(f.bind_addr().into()));
+
+        let follower_env3 = ServerEnv::default()
+            .with_leader_bind_addr(f.bind_addr().into())
+            .with_topology_path("test_leader_election_twice-follower3.tp");
+        let new_process = spawn_server_process(&follower_env3);
         sleep(Duration::from_millis(LEADER_HEARTBEAT_INTERVAL_MAX));
 
         // WHEN
