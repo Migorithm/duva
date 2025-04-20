@@ -74,6 +74,7 @@ impl StartUpFacade {
                 .discover_cluster(self.config_manager.port, seed_server)
                 .await?;
         } else {
+            // TODO BUG! when tried first, it failed and tried again, it works?!
             for pre_connected in env.pre_connected_peers {
                 self.registry
                     .cluster_connection_manager()
