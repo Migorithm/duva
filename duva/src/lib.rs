@@ -74,7 +74,6 @@ impl StartUpFacade {
                 .discover_cluster(self.config_manager.port, seed_server)
                 .await?;
         } else {
-            //TODO solve double leader issue
             for pre_connected in env.pre_connected_peers {
                 self.registry
                     .cluster_connection_manager()

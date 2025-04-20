@@ -48,7 +48,14 @@ impl Environment {
         let pre_connected_peers = ClusterNode::from_file(&tpp);
 
         let repl_id = if replicaof.is_none() {
-            ReplicationId::Key(Uuid::now_v7().to_string())
+            ReplicationId::Key(
+                pre_connected_peers
+                    .iter()
+                    .filter(|p| p.priority == 1)
+                    .map(|p| p.repl_id.clone())
+                    .next()
+                    .unwrap_or_else(|| Uuid::now_v7().to_string()),
+            )
         } else {
             ReplicationId::Undecided
         };
@@ -60,7 +67,7 @@ impl Environment {
                 ReplicationRole::Follower
             },
             seed_server: replicaof,
-            repl_id,
+            repl_id: dbg!(repl_id),
             dir,
             dbfilename,
             port,
