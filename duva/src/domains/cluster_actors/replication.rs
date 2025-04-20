@@ -26,17 +26,14 @@ pub(crate) struct ReplicationState {
 }
 
 impl ReplicationState {
-    pub(crate) fn new(replicaof: Option<PeerIdentifier>, self_host: &str, self_port: u16) -> Self {
-        let replid = if replicaof.is_none() {
-            ReplicationId::Key(uuid::Uuid::now_v7().to_string())
-        } else {
-            ReplicationId::Undecided
-        };
-
-        let role =
-            if replicaof.is_some() { ReplicationRole::Follower } else { ReplicationRole::Leader };
+    pub(crate) fn new(
+        replid: ReplicationId,
+        role: ReplicationRole,
+        self_host: &str,
+        self_port: u16,
+    ) -> Self {
         let replication = ReplicationState {
-            is_leader_mode: replicaof.is_none(),
+            is_leader_mode: role == ReplicationRole::Leader,
             election_state: ElectionState::new(&role),
             role,
             replid,
@@ -201,7 +198,12 @@ impl Display for ReplicationRole {
 #[test]
 fn test_cloning_replication_state() {
     //GIVEN
-    let replication_state = ReplicationState::new(None, "ads", 1231);
+    let replication_state = ReplicationState::new(
+        ReplicationId::Key("dsd".into()),
+        ReplicationRole::Leader,
+        "ads",
+        1231,
+    );
     let cloned = replication_state.clone();
 
     //WHEN

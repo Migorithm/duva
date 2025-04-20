@@ -1,8 +1,18 @@
-use crate::{domains::peers::cluster_peer::ClusterNode, env_var, prelude::PeerIdentifier};
+use crate::{
+    domains::{
+        cluster_actors::replication::{ReplicationId, ReplicationRole},
+        peers::cluster_peer::ClusterNode,
+    },
+    env_var,
+    prelude::PeerIdentifier,
+};
+use uuid::Uuid;
 
 pub struct Environment {
     pub seed_server: Option<PeerIdentifier>,
     pub pre_connected_peers: Vec<ClusterNode>,
+    pub(crate) repl_id: ReplicationId,
+    pub(crate) role: ReplicationRole,
     pub dir: String,
     pub dbfilename: String,
     pub port: u16,
@@ -37,8 +47,20 @@ impl Environment {
         // read topology path
         let pre_connected_peers = ClusterNode::from_file(&tpp);
 
+        let repl_id = if replicaof.is_none() {
+            ReplicationId::Key(Uuid::now_v7().to_string())
+        } else {
+            ReplicationId::Undecided
+        };
+
         Self {
+            role: if replicaof.is_none() && pre_connected_peers.is_empty() {
+                ReplicationRole::Leader
+            } else {
+                ReplicationRole::Follower
+            },
             seed_server: replicaof,
+            repl_id,
             dir,
             dbfilename,
             port,

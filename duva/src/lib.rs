@@ -44,7 +44,8 @@ make_smart_pointer!(StartUpFacade, ActorRegistry => registry);
 
 impl StartUpFacade {
     pub fn new(config_manager: ConfigManager, env: &Environment, wal: impl TWriteAheadLog) -> Self {
-        let replication_state = ReplicationState::new(env.seed_server.clone(), &env.host, env.port);
+        let replication_state =
+            ReplicationState::new(env.repl_id.clone(), env.role.clone(), &env.host, env.port);
         let cache_manager = CacheManager::run_cache_actors(replication_state.hwm.clone());
         let cluster_actor_handler = ClusterActor::run(
             env.ttl_mills,
@@ -74,7 +75,7 @@ impl StartUpFacade {
                 .await?;
         } else {
             //TODO solve double leader issue
-            for pre_connected in dbg!(env.pre_connected_peers) {
+            for pre_connected in env.pre_connected_peers {
                 self.registry
                     .cluster_connection_manager()
                     .discover_cluster(self.config_manager.port, pre_connected.bind_addr)

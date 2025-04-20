@@ -651,6 +651,7 @@ mod test {
     use crate::domains::caches::cache_objects::CacheEntry;
     use crate::domains::caches::command::CacheCommand;
     use crate::domains::cluster_actors::commands::ClusterCommand;
+    use crate::domains::cluster_actors::replication::ReplicationRole;
     use crate::presentation::clusters::listeners::listener::ClusterListener;
     use std::ops::Range;
     use std::time::Duration;
@@ -691,7 +692,12 @@ mod test {
     }
 
     fn cluster_actor_create_helper() -> ClusterActor {
-        let replication = ReplicationState::new(None, "localhost", 8080);
+        let replication = ReplicationState::new(
+            ReplicationId::Key("master".into()),
+            ReplicationRole::Leader,
+            "localhost",
+            8080,
+        );
         ClusterActor::new(100, replication, 100, "duva.tp".into())
     }
 

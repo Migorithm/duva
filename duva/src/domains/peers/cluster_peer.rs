@@ -3,9 +3,9 @@ use crate::{domains::cluster_actors::replication::ReplicationId, prelude::PeerId
 #[derive(Debug, Clone, PartialEq, bincode::Encode, bincode::Decode)]
 pub struct ClusterNode {
     pub(crate) bind_addr: PeerIdentifier,
-    repl_id: String,
+    pub(crate) repl_id: String,
     is_myself: bool,
-    priority: u8, // lower value = higher priority
+    pub(crate) priority: u8, // lower value = higher priority
 }
 
 impl ClusterNode {
