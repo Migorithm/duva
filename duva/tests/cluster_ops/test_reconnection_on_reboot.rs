@@ -25,7 +25,11 @@ async fn test() {
     repl_p.wait_for_message(&leader_p.heartbeat_msg(0), 1).unwrap();
     leader_p.wait_for_message(&repl_p.heartbeat_msg(0), 1).unwrap();
 
-    let mut other_h = Client::new(repl_env.port);
-    let cluster_info = other_h.send_and_get("CLUSTER INFO".as_bytes(), 1);
-    assert_eq!(cluster_info.first().unwrap(), "cluster_known_nodes:1");
+    let mut cli_to_follower = Client::new(repl_env.port);
+    let role = cli_to_follower.send_and_get("ROLE".as_bytes(), 1);
+    assert_eq!(role, vec!["follower".to_string()]);
+
+    let mut cli_to_leader = Client::new(leader_p.port);
+    let role = cli_to_leader.send_and_get("ROLE".as_bytes(), 1);
+    assert_eq!(role, vec!["leader".to_string()]);
 }
