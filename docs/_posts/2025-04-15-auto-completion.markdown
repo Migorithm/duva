@@ -43,7 +43,7 @@ This feature ensures smooth and responsive suggestions as you type. Whether youâ
 
 ### Try It Out
 
-Autocompletion is available for all commands listed in our [Commands documentation](/commands/). Check out the full list to explore commands like <code>SET</code>, <code>GET</code>, <code>KEYS</code>, and <code>SAVE</code>, along with their syntax and examples.
+Autocompletion is available for all commands listed in our [Commands documentation](/duva/commands/). Check out the full list to explore commands like <code>SET</code>, <code>GET</code>, <code>KEYS</code>, and <code>SAVE</code>, along with their syntax and examples.
 
 
 
