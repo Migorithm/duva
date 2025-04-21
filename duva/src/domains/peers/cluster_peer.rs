@@ -35,22 +35,31 @@ impl ClusterNode {
             return None;
         }
 
-        let address = parts[0].to_string().into();
-        let raw_id = parts[1];
-        let id_parts: Vec<&str> = raw_id.split(',').collect();
-
-        let (is_myself, repl_id) = if id_parts.len() == 2 {
-            (id_parts[0] == "myself", id_parts[1].to_string())
-        } else {
-            (false, id_parts[0].to_string())
+        let id_parts: Vec<_> = parts[1].split(',').collect();
+        let (is_myself, repl_id) = match id_parts.as_slice() {
+            ["myself", id] => (true, id.to_string()),
+            [id] => (false, id.to_string()),
+            _ => return None,
         };
 
         let priority = if repl_id == self_repl_id { NodeKind::Replica } else { NodeKind::NonData };
 
-        Some(ClusterNode { bind_addr: address, repl_id, is_myself, priority })
+        Some(Self { bind_addr: parts[0].to_string().into(), repl_id, is_myself, priority })
     }
     pub(crate) fn from_file(path: &str) -> Vec<ClusterNode> {
         println!("Reading cluster nodes from file: {}", path);
+
+        let Ok(metadata) = std::fs::metadata(path) else {
+            return vec![];
+        };
+        let Ok(modified) = metadata.modified() else {
+            return vec![];
+        };
+        if modified.elapsed().unwrap_or_default().as_secs() > 300 {
+            // File is too old, ignoring
+            return vec![];
+        }
+
         let contents = std::fs::read_to_string(path).unwrap_or_default();
 
         let lines: Vec<&str> = contents.lines().filter(|line| !line.trim().is_empty()).collect();
