@@ -8,6 +8,7 @@ use std::net::TcpListener;
 use std::process::{Child, Command, Stdio};
 use std::thread::sleep;
 use std::time::{Duration, Instant};
+use uuid::Uuid;
 
 pub struct ServerEnv {
     pub port: u16,
@@ -28,7 +29,7 @@ impl Default for ServerEnv {
             hf: 100,
             ttl: 1500,
             use_wal: false,
-            topology_path: TopologyPath(None),
+            topology_path: TopologyPath(Uuid::now_v7().to_string()),
         }
     }
 }
@@ -52,7 +53,7 @@ impl ServerEnv {
         self
     }
     pub fn with_topology_path(mut self, topology_path: impl Into<String>) -> Self {
-        self.topology_path = TopologyPath(Some(topology_path.into()));
+        self.topology_path = TopologyPath(topology_path.into());
         self
     }
 }
@@ -88,14 +89,10 @@ impl Drop for FileName {
     }
 }
 
-pub struct TopologyPath(pub Option<String>);
+pub struct TopologyPath(pub String);
 impl Drop for TopologyPath {
     fn drop(&mut self) {
-        if let Some(topology_path) = self.0.as_ref() {
-            let _ = std::fs::remove_file(topology_path);
-        } else {
-            let _ = std::fs::remove_file("duva.tp");
-        }
+        let _ = std::fs::remove_file(&self.0);
     }
 }
 
@@ -199,7 +196,7 @@ pub fn run_server_process(env: &ServerEnv) -> TestProcessChild {
         "--use_wal",
         &env.use_wal.to_string(),
         "--tpp",
-        &env.topology_path.0.as_ref().unwrap_or(&"duva.tp".to_string()),
+        &env.topology_path.0,
     ]);
 
     if let Some(replicaof) = env.leader_bind_addr.as_ref() {

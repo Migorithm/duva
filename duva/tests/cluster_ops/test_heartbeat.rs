@@ -8,27 +8,20 @@ async fn test_heartbeat_hop_count_decreases_over_time() {
     const TIMEOUT_IN_MILLIS: u128 = 2000;
     // GIVEN
 
-    let env = ServerEnv::default()
-        .with_topology_path("test_heartbeat_hop_count_decreases_over_time-leader.tp");
+    let env = ServerEnv::default();
     let mut leader_p = spawn_server_process(&env);
     let leader_bind_addr = leader_p.bind_addr().clone();
-    let repl_env = ServerEnv::default()
-        .with_leader_bind_addr(leader_bind_addr.clone().into())
-        .with_topology_path("test_heartbeat_hop_count_decreases_over_time-follower.tp");
+    let repl_env = ServerEnv::default().with_leader_bind_addr(leader_bind_addr.clone().into());
     let mut follower_p1 = spawn_server_process(&repl_env);
 
-    let repl_env2 = ServerEnv::default()
-        .with_leader_bind_addr(leader_bind_addr.clone().into())
-        .with_topology_path("test_heartbeat_hop_count_decreases_over_time-follower2.tp");
+    let repl_env2 = ServerEnv::default().with_leader_bind_addr(leader_bind_addr.clone().into());
     let mut follower_p2 = spawn_server_process(&repl_env2);
     let mut processes = vec![&mut leader_p, &mut follower_p1, &mut follower_p2];
 
     check_internodes_communication(&mut processes, DEFAULT_HOP_COUNT, TIMEOUT_IN_MILLIS).unwrap();
 
     // WHEN run Third follower
-    let repl_env3 = ServerEnv::default()
-        .with_leader_bind_addr(leader_bind_addr.clone().into())
-        .with_topology_path("test_heartbeat_hop_count_decreases_over_time-follower3.tp");
+    let repl_env3 = ServerEnv::default().with_leader_bind_addr(leader_bind_addr.clone().into());
     let mut follower_p3 = spawn_server_process(&repl_env3);
     processes.push(&mut follower_p3);
 

@@ -3,14 +3,12 @@ use crate::common::{Client, ServerEnv, spawn_server_process};
 #[tokio::test]
 async fn test_cluster_topology_change_when_new_node_added() {
     // GIVEN
-    let env = ServerEnv::default().with_topology_path("test_leader.tp");
+    let env = ServerEnv::default();
     let mut leader_p = spawn_server_process(&env);
 
     let cmd = "cluster info";
 
-    let repl_env = ServerEnv::default()
-        .with_leader_bind_addr(leader_p.bind_addr().into())
-        .with_topology_path("test_repl.tp");
+    let repl_env = ServerEnv::default().with_leader_bind_addr(leader_p.bind_addr().into());
     let mut repl_p = spawn_server_process(&repl_env);
     repl_p.wait_for_message(&leader_p.heartbeat_msg(0), 1).unwrap();
     leader_p.wait_for_message(&repl_p.heartbeat_msg(0), 1).unwrap();
@@ -20,9 +18,7 @@ async fn test_cluster_topology_change_when_new_node_added() {
     assert_eq!(cluster_info, vec!["cluster_known_nodes:1".to_string()]);
 
     // // WHEN -- new replica is added
-    let repl_env2 = ServerEnv::default()
-        .with_leader_bind_addr(leader_p.bind_addr().into())
-        .with_topology_path("test_repl2.tp");
+    let repl_env2 = ServerEnv::default().with_leader_bind_addr(leader_p.bind_addr().into());
     let mut new_repl_p = spawn_server_process(&repl_env2);
     new_repl_p.wait_for_message(&leader_p.heartbeat_msg(0), 1).unwrap();
 
@@ -34,7 +30,7 @@ async fn test_cluster_topology_change_when_new_node_added() {
     assert_eq!(nodes.len(), 3);
 
     let mut leader_nodes = Vec::new();
-    tokio::fs::read_to_string("test_leader.tp")
+    tokio::fs::read_to_string(&env.topology_path.0)
         .await
         .unwrap()
         .lines()
