@@ -27,7 +27,6 @@ impl ClusterCommunicationManager {
     pub(crate) async fn accept_inbound_stream(
         &self,
         mut peer_stream: InboundStream,
-        ccm: ClusterCommunicationManager,
     ) -> anyhow::Result<()> {
         let connected_peer_info = peer_stream.recv_handshake().await?;
 
@@ -35,7 +34,7 @@ impl ClusterCommunicationManager {
 
         let (callback, rx) = tokio::sync::oneshot::channel();
         let add_peer_cmd =
-            peer_stream.prepare_add_peer_cmd(ccm, connected_peer_info, callback).await?;
+            peer_stream.prepare_add_peer_cmd(self.clone(), connected_peer_info, callback).await?;
         self.0.send(add_peer_cmd).await?;
         rx.await?;
         Ok(())

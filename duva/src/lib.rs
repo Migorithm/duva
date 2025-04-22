@@ -21,6 +21,7 @@ use prelude::PeerIdentifier;
 use presentation::clients::ClientController;
 use presentation::clients::authenticate;
 
+use presentation::clusters::communication_manager::ClusterCommunicationManager;
 use presentation::clusters::inbound::stream::InboundStream;
 
 use tokio::net::TcpListener;
@@ -60,7 +61,11 @@ impl StartUpFacade {
             wal,
         );
 
-        let registry = ActorRegistry { cluster_actor_handler, config_manager, cache_manager };
+        let registry = ActorRegistry {
+            cluster_communication_manager: ClusterCommunicationManager(cluster_actor_handler),
+            config_manager,
+            cache_manager,
+        };
 
         StartUpFacade { registry }
     }
@@ -73,14 +78,14 @@ impl StartUpFacade {
 
         self.initialize_with_snapshot().await?;
         if let Some(seed_server) = env.seed_server {
-            self.registry.cluster_communication_manager().discover_cluster(seed_server).await?;
+            self.registry.cluster_communication_manager.discover_cluster(seed_server).await?;
         } else {
             // TODO reconnection failure? - if all fail, the server should be leader?
 
             for pre_connected in env.pre_connected_peers {
                 if let Ok(()) = self
                     .registry
-                    .cluster_communication_manager()
+                    .cluster_communication_manager
                     .discover_cluster(pre_connected.bind_addr)
                     .await
                 {
@@ -107,17 +112,13 @@ impl StartUpFacade {
                 // ? how do we know if incoming connection is from a peer or replica?
                 Ok((peer_stream, _socket_addr)) => {
                     tokio::spawn({
-                        let ccm = registry.cluster_communication_manager();
+                        let ccm = registry.cluster_communication_manager.clone();
                         let current_repo_info = ccm.replication_info().await?;
 
                         let inbound_stream = InboundStream::new(peer_stream, current_repo_info);
 
-                        let connection_manager = registry.cluster_communication_manager();
-
                         async move {
-                            if let Err(err) =
-                                connection_manager.accept_inbound_stream(inbound_stream, ccm).await
-                            {
+                            if let Err(err) = ccm.accept_inbound_stream(inbound_stream).await {
                                 println!("[ERROR] Failed to accept peer connection: {:?}", err);
                             }
                         }
@@ -140,10 +141,10 @@ impl StartUpFacade {
         let mut conn_handlers: Vec<tokio::task::JoinHandle<()>> = Vec::with_capacity(100);
 
         while let Ok((stream, _)) = client_stream_listener.accept().await {
-            let mut peers = self.registry.cluster_communication_manager().get_peers().await?;
+            let mut peers = self.registry.cluster_communication_manager.get_peers().await?;
             peers.push(PeerIdentifier(self.registry.config_manager.bind_addr()));
 
-            let is_leader = self.registry.cluster_communication_manager().role().await?
+            let is_leader = self.registry.cluster_communication_manager.role().await?
                 == ReplicationRole::Leader;
             let Ok((reader, writer)) = authenticate(stream, peers, is_leader).await else {
                 eprintln!("[ERROR] Failed to authenticate client stream");
@@ -151,7 +152,7 @@ impl StartUpFacade {
             };
 
             let topology_observer =
-                self.registry.cluster_communication_manager().subscribe_topology_change().await?;
+                self.registry.cluster_communication_manager.subscribe_topology_change().await?;
             let write_handler = writer.run(topology_observer);
 
             conn_handlers.push(tokio::spawn(reader.handle_client_stream(
@@ -169,7 +170,7 @@ impl StartUpFacade {
             let (repl_id, hwm) = snapshot.extract_replication_info();
             // Reconnection case - set the replication info
             self.registry
-                .cluster_actor_handler
+                .cluster_communication_manager
                 .send(ClusterCommand::SetReplicationInfo { replid: repl_id, hwm })
                 .await?;
             self.registry.cache_manager.apply_snapshot(snapshot).await?;

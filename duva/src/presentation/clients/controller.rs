@@ -24,7 +24,7 @@ pub(crate) struct ClientController {
 impl ClientController {
     pub(crate) fn new(actor_registry: ActorRegistry) -> Self {
         Self {
-            cluster_communication_manager: actor_registry.cluster_communication_manager(),
+            cluster_communication_manager: actor_registry.cluster_communication_manager.clone(),
             cache_manager: actor_registry.cache_manager,
             config_manager: actor_registry.config_manager,
         }
