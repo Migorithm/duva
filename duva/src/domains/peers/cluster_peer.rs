@@ -111,7 +111,7 @@ impl std::fmt::Display for ClusterNode {
 }
 
 #[test]
-fn test_prioritize_nodes_with_myself() {
+fn test_prioritize_nodes_with_same_replid() {
     use std::io::Write;
 
     let file_content = r#"
