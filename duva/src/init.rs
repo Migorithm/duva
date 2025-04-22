@@ -6,6 +6,7 @@ use crate::{
     env_var,
     prelude::PeerIdentifier,
 };
+use tokio::fs::OpenOptions;
 use uuid::Uuid;
 
 pub struct Environment {
@@ -20,10 +21,11 @@ pub struct Environment {
     pub hf_mills: u64,
     pub ttl_mills: u128,
     pub append_only: bool,
-    pub topology_path: String,
+    pub topology_file_handler: Option<tokio::fs::File>,
 }
+
 impl Environment {
-    pub fn init() -> Self {
+    pub async fn init() -> Self {
         env_var!(
             defaults: {
                 port: u16 = 6379,
@@ -40,29 +42,11 @@ impl Environment {
             }
         );
 
-        let replicaof = replicaof.and_then(|s| {
-            s.split_once(':').map(|(host, port)| format!("{}:{}", host, port).into())
-        });
-
+        let replicaof = Self::parse_replicaof(replicaof);
         let pre_connected_peers = ClusterNode::from_file(&tpp);
-
-        let repl_id = if replicaof.is_none() {
-            ReplicationId::Key(
-                pre_connected_peers
-                    .iter()
-                    .find(|p| p.priority == NodeKind::Replica)
-                    .map(|p| p.repl_id.clone())
-                    .unwrap_or_else(|| Uuid::now_v7().to_string()),
-            )
-        } else {
-            ReplicationId::Undecided
-        };
-
-        let role = if replicaof.is_none() && pre_connected_peers.is_empty() {
-            ReplicationRole::Leader
-        } else {
-            ReplicationRole::Follower
-        };
+        let repl_id = Self::determine_repl_id(replicaof.as_ref(), &pre_connected_peers);
+        let role = Self::determine_role(replicaof.as_ref(), &pre_connected_peers);
+        let topology_file_handler = Self::open_topology_file(tpp).await;
 
         Self {
             role,
@@ -75,8 +59,45 @@ impl Environment {
             hf_mills: hf,
             ttl_mills: ttl,
             append_only,
-            topology_path: tpp,
+            topology_file_handler: Some(topology_file_handler),
             pre_connected_peers,
         }
+    }
+
+    fn determine_repl_id(
+        replicaof: Option<&PeerIdentifier>,
+        pre_connected_peers: &[ClusterNode],
+    ) -> ReplicationId {
+        if replicaof.is_none() {
+            ReplicationId::Key(
+                pre_connected_peers
+                    .iter()
+                    .find(|p| p.priority == NodeKind::Replica)
+                    .map(|p| p.repl_id.clone())
+                    .unwrap_or_else(|| Uuid::now_v7().to_string()),
+            )
+        } else {
+            ReplicationId::Undecided
+        }
+    }
+
+    fn determine_role(
+        replicaof: Option<&PeerIdentifier>,
+        pre_connected_peers: &[ClusterNode],
+    ) -> ReplicationRole {
+        if replicaof.is_none() && pre_connected_peers.is_empty() {
+            ReplicationRole::Leader
+        } else {
+            ReplicationRole::Follower
+        }
+    }
+
+    async fn open_topology_file(tpp: String) -> tokio::fs::File {
+        OpenOptions::new().create(true).write(true).truncate(true).open(tpp).await.unwrap()
+    }
+
+    fn parse_replicaof(replicaof: Option<String>) -> Option<PeerIdentifier> {
+        replicaof
+            .and_then(|s| s.split_once(':').map(|(host, port)| format!("{}:{}", host, port).into()))
     }
 }

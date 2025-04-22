@@ -1,4 +1,4 @@
-use tokio::fs::OpenOptions;
+use tokio::fs::File;
 use tokio::io::AsyncSeekExt;
 use tokio::io::AsyncWriteExt;
 
@@ -45,11 +45,11 @@ pub struct ClusterActor {
 }
 
 impl ClusterActor {
-    pub(crate) async fn new(
+    pub(crate) fn new(
         node_timeout: u128,
         init_repl_info: ReplicationState,
         heartbeat_interval_in_mills: u64,
-        topology_path: String,
+        topology_file_handler: File,
     ) -> Self {
         let (self_handler, receiver) = tokio::sync::mpsc::channel(100);
         let heartbeat_scheduler = HeartBeatScheduler::run(
@@ -59,13 +59,6 @@ impl ClusterActor {
         );
 
         let (tx, _) = tokio::sync::broadcast::channel::<Vec<PeerIdentifier>>(100);
-        let topology_file_handler = OpenOptions::new()
-            .create(true)
-            .write(true)
-            .truncate(true)
-            .open(topology_path)
-            .await
-            .unwrap();
 
         Self {
             heartbeat_scheduler,
@@ -666,6 +659,7 @@ mod test {
     use crate::presentation::clusters::listeners::listener::ClusterListener;
     use std::ops::Range;
     use std::time::Duration;
+    use tokio::fs::OpenOptions;
     use tokio::net::TcpListener;
     use tokio::net::TcpStream;
     use tokio::sync::mpsc::channel;
@@ -709,7 +703,16 @@ mod test {
             "localhost",
             8080,
         );
-        ClusterActor::new(100, replication, 100, "duva.tp".into()).await
+
+        let topology_file_handler = OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(true)
+            .open("duva.tp")
+            .await
+            .unwrap();
+
+        ClusterActor::new(100, replication, 100, topology_file_handler)
     }
 
     async fn cluster_member_create_helper(
