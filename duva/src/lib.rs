@@ -73,17 +73,15 @@ impl StartUpFacade {
 
         self.initialize_with_snapshot().await?;
         if let Some(seed_server) = env.seed_server {
-            self.registry
-                .cluster_connection_manager()
-                .discover_cluster(self.config_manager.port, seed_server)
-                .await?;
+            self.registry.cluster_communication_manager().discover_cluster(seed_server).await?;
         } else {
             // TODO reconnection failure? - if all fail, the server should be leader?
+
             for pre_connected in env.pre_connected_peers {
                 if let Ok(()) = self
                     .registry
-                    .cluster_connection_manager()
-                    .discover_cluster(self.config_manager.port, pre_connected.bind_addr)
+                    .cluster_communication_manager()
+                    .discover_cluster(pre_connected.bind_addr)
                     .await
                 {
                     break;

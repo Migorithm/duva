@@ -178,6 +178,9 @@ impl ClusterActor {
         &mut self,
         connect_to: PeerIdentifier,
     ) -> anyhow::Result<Vec<PeerIdentifier>> {
+        if self.members.contains_key(&connect_to) {
+            return Ok(vec![]);
+        }
         let stream = OutboundStream::new(connect_to, self.replication.clone())
             .await?
             .initiate_handshake(self.replication.self_port)
