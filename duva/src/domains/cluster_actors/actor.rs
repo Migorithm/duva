@@ -1,3 +1,7 @@
+use tokio::fs::OpenOptions;
+use tokio::io::AsyncSeekExt;
+use tokio::io::AsyncWriteExt;
+
 use super::commands::AddPeer;
 use super::commands::ClusterCommand;
 use super::commands::ConsensusClientResponse;
@@ -36,12 +40,12 @@ pub struct ClusterActor {
     pub(crate) receiver: tokio::sync::mpsc::Receiver<ClusterCommand>,
     pub(crate) self_handler: tokio::sync::mpsc::Sender<ClusterCommand>,
     pub(crate) heartbeat_scheduler: HeartBeatScheduler,
-    pub(crate) topology_path: String,
+    pub(crate) topology_file_handler: tokio::fs::File,
     pub(crate) node_change_broadcast: tokio::sync::broadcast::Sender<Vec<PeerIdentifier>>,
 }
 
 impl ClusterActor {
-    pub(crate) fn new(
+    pub(crate) async fn new(
         node_timeout: u128,
         init_repl_info: ReplicationState,
         heartbeat_interval_in_mills: u64,
@@ -55,6 +59,13 @@ impl ClusterActor {
         );
 
         let (tx, _) = tokio::sync::broadcast::channel::<Vec<PeerIdentifier>>(100);
+        let topology_file_handler = OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(true)
+            .open(topology_path)
+            .await
+            .unwrap();
 
         Self {
             heartbeat_scheduler,
@@ -64,7 +75,7 @@ impl ClusterActor {
             self_handler,
             members: BTreeMap::new(),
             consensus_tracker: LogConsensusTracker::default(),
-            topology_path,
+            topology_file_handler,
             node_change_broadcast: tx,
         }
     }
@@ -111,7 +122,7 @@ impl ClusterActor {
         }
     }
 
-    pub(crate) async fn snapshot_topology(&self) {
+    pub(crate) async fn snapshot_topology(&mut self) -> anyhow::Result<()> {
         // TODO: consider single writer access to file
         let topology = self
             .cluster_nodes()
@@ -119,8 +130,10 @@ impl ClusterActor {
             .map(|cn| cn.to_string())
             .collect::<Vec<_>>()
             .join("\r\n");
-
-        let _ = tokio::fs::write(&self.topology_path, topology).await;
+        self.topology_file_handler.seek(std::io::SeekFrom::Start(0)).await?;
+        self.topology_file_handler.set_len(topology.len() as u64).await?;
+        self.topology_file_handler.write_all(topology.as_bytes()).await?;
+        Ok(())
     }
 
     pub(crate) async fn add_peer(&mut self, add_peer_cmd: AddPeer) {
@@ -689,14 +702,14 @@ mod test {
         }
     }
 
-    fn cluster_actor_create_helper() -> ClusterActor {
+    async fn cluster_actor_create_helper() -> ClusterActor {
         let replication = ReplicationState::new(
             ReplicationId::Key("master".into()),
             ReplicationRole::Leader,
             "localhost",
             8080,
         );
-        ClusterActor::new(100, replication, 100, "duva.tp".into())
+        ClusterActor::new(100, replication, 100, "duva.tp".into()).await
     }
 
     async fn cluster_member_create_helper(
@@ -777,7 +790,7 @@ mod test {
     async fn leader_consensus_tracker_not_changed_when_followers_not_exist() {
         // GIVEN
         let mut logger = ReplicatedLogs::new(InMemoryWAL::default(), 0, 0);
-        let mut cluster_actor = cluster_actor_create_helper();
+        let mut cluster_actor = cluster_actor_create_helper().await;
         let (tx, rx) = tokio::sync::oneshot::channel();
 
         // WHEN
@@ -800,7 +813,7 @@ mod test {
         // GIVEN
         let mut logger = ReplicatedLogs::new(InMemoryWAL::default(), 0, 0);
 
-        let mut cluster_actor = cluster_actor_create_helper();
+        let mut cluster_actor = cluster_actor_create_helper().await;
 
         // - add 5 followers
         let (cluster_sender, _) = tokio::sync::mpsc::channel(100);
@@ -836,7 +849,7 @@ mod test {
     async fn test_leader_req_consensus_early_return_when_already_processed_session_req_given() {
         // GIVEN
         let logger = ReplicatedLogs::new(InMemoryWAL::default(), 0, 0);
-        let cluster_actor = cluster_actor_create_helper();
+        let cluster_actor = cluster_actor_create_helper().await;
 
         let cache_manager = CacheManager { inboxes: vec![] };
 
@@ -867,7 +880,7 @@ mod test {
         // GIVEN
         let mut sessions = ClientSessions::default();
         let mut logger = ReplicatedLogs::new(InMemoryWAL::default(), 0, 0);
-        let mut cluster_actor = cluster_actor_create_helper();
+        let mut cluster_actor = cluster_actor_create_helper().await;
 
         let (cluster_sender, _) = tokio::sync::mpsc::channel(100);
 
@@ -920,7 +933,7 @@ mod test {
         // GIVEN
         let mut sessions = ClientSessions::default();
         let mut logger = ReplicatedLogs::new(InMemoryWAL::default(), 0, 0);
-        let mut cluster_actor = cluster_actor_create_helper();
+        let mut cluster_actor = cluster_actor_create_helper().await;
 
         let (cluster_sender, _) = tokio::sync::mpsc::channel(100);
 
@@ -991,7 +1004,7 @@ mod test {
         // GIVEN
         let mut logger = ReplicatedLogs::new(InMemoryWAL::default(), 0, 0);
 
-        let mut cluster_actor = cluster_actor_create_helper();
+        let mut cluster_actor = cluster_actor_create_helper().await;
 
         let (cluster_sender, _) = tokio::sync::mpsc::channel(100);
         let cache_manager = CacheManager { inboxes: vec![] };
@@ -1047,7 +1060,7 @@ mod test {
     async fn follower_cluster_actor_replicate_log() {
         // GIVEN
         let mut logger = ReplicatedLogs::new(InMemoryWAL::default(), 0, 0);
-        let mut cluster_actor = cluster_actor_create_helper();
+        let mut cluster_actor = cluster_actor_create_helper().await;
         // WHEN - term
         let heartbeat = heartbeat_create_helper(
             0,
@@ -1078,7 +1091,7 @@ mod test {
         // GIVEN
         let mut logger = ReplicatedLogs::new(InMemoryWAL::default(), 0, 0);
         let (cache_handler, mut receiver) = tokio::sync::mpsc::channel(100);
-        let mut cluster_actor = cluster_actor_create_helper();
+        let mut cluster_actor = cluster_actor_create_helper().await;
 
         let heartbeat = heartbeat_create_helper(
             0,
@@ -1119,7 +1132,7 @@ mod test {
     async fn test_apply_multiple_committed_entries() {
         // GIVEN
         let mut logger = ReplicatedLogs::new(InMemoryWAL::default(), 0, 0);
-        let mut cluster_actor = cluster_actor_create_helper();
+        let mut cluster_actor = cluster_actor_create_helper().await;
 
         // Add multiple entries
         let entries = vec![
@@ -1172,7 +1185,7 @@ mod test {
     async fn test_partial_commit_with_new_entries() {
         // GIVEN
         let mut logger = ReplicatedLogs::new(InMemoryWAL::default(), 0, 0);
-        let mut cluster_actor = cluster_actor_create_helper();
+        let mut cluster_actor = cluster_actor_create_helper().await;
 
         // First, append some entries
         let first_entries = vec![
@@ -1227,7 +1240,7 @@ mod test {
         // GIVEN
         let mut logger = ReplicatedLogs::new(InMemoryWAL::default(), 0, 0);
 
-        let mut cluster_actor = cluster_actor_create_helper();
+        let mut cluster_actor = cluster_actor_create_helper().await;
 
         // Log two entries but don't commit them yet
         let heartbeat = heartbeat_create_helper(
@@ -1296,7 +1309,7 @@ mod test {
         ]);
 
         let mut logger = ReplicatedLogs::new(inmemory, 3, 1);
-        let mut cluster_actor = cluster_actor_create_helper();
+        let mut cluster_actor = cluster_actor_create_helper().await;
 
         assert_eq!(logger.target.writer.len(), 2);
 
@@ -1321,7 +1334,7 @@ mod test {
     async fn follower_accepts_entries_with_empty_log_and_prev_log_index_zero() {
         // GIVEN: A follower with an empty log
         let mut logger = ReplicatedLogs::new(InMemoryWAL::default(), 0, 0);
-        let mut cluster_actor = cluster_actor_create_helper();
+        let mut cluster_actor = cluster_actor_create_helper().await;
 
         // WHEN: Leader sends entries with prev_log_index=0
         let mut heartbeat = heartbeat_create_helper(
@@ -1341,7 +1354,7 @@ mod test {
     async fn follower_rejects_entries_with_empty_log_and_prev_log_index_nonzero() {
         // GIVEN: A follower with an empty log
         let mut logger = ReplicatedLogs::new(InMemoryWAL::default(), 0, 0);
-        let mut cluster_actor = cluster_actor_create_helper();
+        let mut cluster_actor = cluster_actor_create_helper().await;
 
         // WHEN: Leader sends entries with prev_log_index=1
         let mut heartbeat = heartbeat_create_helper(
@@ -1371,7 +1384,7 @@ mod test {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let bind_addr = listener.local_addr().unwrap();
 
-        let mut cluster_actor = cluster_actor_create_helper();
+        let mut cluster_actor = cluster_actor_create_helper().await;
 
         let repl_id = cluster_actor.replication.replid.clone();
 
@@ -1465,15 +1478,15 @@ mod test {
     #[tokio::test]
     async fn test_store_current_topology() {
         // GIVEN
-        let mut cluster_actor = cluster_actor_create_helper();
+        let mut cluster_actor = cluster_actor_create_helper().await;
         let path = "test_store_current_topology.tp";
-        cluster_actor.topology_path = path.into();
+        cluster_actor.topology_file_handler = tokio::fs::File::create(path).await.unwrap();
 
         let repl_id = cluster_actor.replication.replid.clone();
         let self_id = cluster_actor.replication.self_identifier();
 
         // WHEN
-        cluster_actor.snapshot_topology().await;
+        cluster_actor.snapshot_topology().await.unwrap();
 
         // THEN
         let topology = tokio::fs::read_to_string(path).await.unwrap();
@@ -1486,9 +1499,9 @@ mod test {
     #[tokio::test]
     async fn test_snapshot_topology_after_add_peer() {
         // GIVEN
-        let mut cluster_actor = cluster_actor_create_helper();
+        let mut cluster_actor = cluster_actor_create_helper().await;
         let path = "test_snapshot_topology_after_add_peer.tp";
-        cluster_actor.topology_path = path.into();
+        cluster_actor.topology_file_handler = tokio::fs::File::create(path).await.unwrap();
 
         let repl_id = cluster_actor.replication.replid.clone();
 
@@ -1513,7 +1526,7 @@ mod test {
         let add_peer_cmd =
             AddPeer { peer_id: PeerIdentifier(String::from("127.0.0.1:3849")), peer };
         cluster_actor.add_peer(add_peer_cmd).await;
-        cluster_actor.snapshot_topology().await;
+        cluster_actor.snapshot_topology().await.unwrap();
 
         // THEN
         let topology = tokio::fs::read_to_string(path).await.unwrap();

@@ -43,7 +43,11 @@ pub struct StartUpFacade {
 make_smart_pointer!(StartUpFacade, ActorRegistry => registry);
 
 impl StartUpFacade {
-    pub fn new(config_manager: ConfigManager, env: &Environment, wal: impl TWriteAheadLog) -> Self {
+    pub async fn new(
+        config_manager: ConfigManager,
+        env: &Environment,
+        wal: impl TWriteAheadLog,
+    ) -> Self {
         let replication_state =
             ReplicationState::new(env.repl_id.clone(), env.role.clone(), &env.host, env.port);
         let cache_manager = CacheManager::run_cache_actors(replication_state.hwm.clone());
@@ -54,7 +58,8 @@ impl StartUpFacade {
             replication_state,
             cache_manager.clone(),
             wal,
-        );
+        )
+        .await;
 
         let registry = ActorRegistry { cluster_actor_handler, config_manager, cache_manager };
 
