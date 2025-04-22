@@ -6,17 +6,13 @@ use duva::domains::cluster_actors::heartbeats::scheduler::LEADER_HEARTBEAT_INTER
 #[tokio::test]
 async fn test_leader_election() {
     // GIVEN
-    let leaver_env = ServerEnv::default().with_topology_path("test_leader_election-leader.tp");
+    let leaver_env = ServerEnv::default();
     let mut leader_p = spawn_server_process(&leaver_env);
 
-    let follower_env1 = ServerEnv::default()
-        .with_leader_bind_addr(leader_p.bind_addr().into())
-        .with_topology_path("test_leader_election-follower1.tp");
+    let follower_env1 = ServerEnv::default().with_leader_bind_addr(leader_p.bind_addr().into());
     let mut follower_p1 = spawn_server_process(&follower_env1);
 
-    let follower_env2 = ServerEnv::default()
-        .with_leader_bind_addr(leader_p.bind_addr().into())
-        .with_topology_path("test_leader_election-follower2.tp");
+    let follower_env2 = ServerEnv::default().with_leader_bind_addr(leader_p.bind_addr().into());
 
     let mut follower_p2 = spawn_server_process(&follower_env2);
     const DEFAULT_HOP_COUNT: usize = 0;
@@ -47,18 +43,13 @@ async fn test_leader_election() {
 #[tokio::test]
 async fn test_set_twice_after_election() {
     // GIVEN
-    let leaver_env =
-        ServerEnv::default().with_topology_path("test_set_twice_after_election-leader.tp");
+    let leaver_env = ServerEnv::default();
     let mut leader_p = spawn_server_process(&leaver_env);
 
-    let follower_env1 = ServerEnv::default()
-        .with_leader_bind_addr(leader_p.bind_addr().into())
-        .with_topology_path("test_set_twice_after_election-follower1.tp");
+    let follower_env1 = ServerEnv::default().with_leader_bind_addr(leader_p.bind_addr().into());
     let mut follower_p1 = spawn_server_process(&follower_env1);
 
-    let follower_env2 = ServerEnv::default()
-        .with_leader_bind_addr(leader_p.bind_addr().into())
-        .with_topology_path("test_set_twice_after_election-follower2.tp");
+    let follower_env2 = ServerEnv::default().with_leader_bind_addr(leader_p.bind_addr().into());
     let mut follower_p2 = spawn_server_process(&follower_env2);
     const DEFAULT_HOP_COUNT: usize = 0;
     const TIMEOUT_IN_MILLIS: u128 = 2000;
@@ -89,18 +80,13 @@ async fn test_set_twice_after_election() {
 #[tokio::test]
 async fn test_leader_election_twice() {
     // GIVEN
-    let leaver_env =
-        ServerEnv::default().with_topology_path("test_leader_election_twice-leader.tp");
+    let leaver_env = ServerEnv::default();
     let mut leader_p = spawn_server_process(&leaver_env);
 
-    let follower_env1 = ServerEnv::default()
-        .with_leader_bind_addr(leader_p.bind_addr().into())
-        .with_topology_path("test_leader_election_twice-follower1.tp");
+    let follower_env1 = ServerEnv::default().with_leader_bind_addr(leader_p.bind_addr().into());
     let mut follower_p1 = spawn_server_process(&follower_env1);
 
-    let follower_env2 = ServerEnv::default()
-        .with_leader_bind_addr(leader_p.bind_addr().into())
-        .with_topology_path("test_leader_election_twice-follower2.tp");
+    let follower_env2 = ServerEnv::default().with_leader_bind_addr(leader_p.bind_addr().into());
     let mut follower_p2 = spawn_server_process(&follower_env2);
     const DEFAULT_HOP_COUNT: usize = 0;
     const TIMEOUT_IN_MILLIS: u128 = 2000;
@@ -121,9 +107,7 @@ async fn test_leader_election_twice() {
             continue;
         }
 
-        let follower_env3 = ServerEnv::default()
-            .with_leader_bind_addr(f.bind_addr().into())
-            .with_topology_path("test_leader_election_twice-follower3.tp");
+        let follower_env3 = ServerEnv::default().with_leader_bind_addr(f.bind_addr().into());
         let new_process = spawn_server_process(&follower_env3);
         sleep(Duration::from_millis(LEADER_HEARTBEAT_INTERVAL_MAX));
 
