@@ -43,7 +43,7 @@ impl<T> ClientController<T> {
             | IndexGet { .. }
             | Echo { .. }
             | Config { .. }
-            | Info { .. }
+            | Info
             | ClusterForget { .. }
             | Role
             | ReplicaOf { .. }
@@ -71,12 +71,9 @@ impl<T> ClientController<T> {
 
                         Response::Integer(s.unwrap().parse::<i64>().unwrap())
                     },
-                    QueryIO::Err(value) => {
-                        return Response::Error(value);
-                    },
-                    _ => {
-                        return Response::FormatError;
-                    },
+                    QueryIO::Err(value) => Response::Error(value),
+
+                    _ => Response::FormatError,
                 }
             },
             Save => {
@@ -88,9 +85,7 @@ impl<T> ClientController<T> {
             Set { .. } | SetWithExpiry { .. } => match query_io {
                 QueryIO::SimpleString(_) => Response::String("OK".into()),
                 QueryIO::Err(value) => Response::Error(value),
-                _ => {
-                    return Response::FormatError;
-                },
+                _ => Response::FormatError,
             },
             Keys { .. } => {
                 let QueryIO::Array(value) = query_io else {

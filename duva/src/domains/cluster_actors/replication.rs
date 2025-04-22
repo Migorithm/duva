@@ -33,7 +33,7 @@ impl ReplicationState {
         self_host: &str,
         self_port: u16,
     ) -> Self {
-        let replication = ReplicationState {
+        ReplicationState {
             is_leader_mode: role == ReplicationRole::Leader,
             election_state: ElectionState::new(&role),
             role,
@@ -43,9 +43,7 @@ impl ReplicationState {
             self_host: self_host.to_string(),
             self_port,
             ban_list: Default::default(),
-        };
-
-        replication
+        }
     }
 
     pub(crate) fn self_info(&self) -> ClusterNode {

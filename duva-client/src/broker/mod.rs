@@ -115,7 +115,7 @@ impl Broker {
     ) -> Result<(ServerStreamReader, ServerStreamWriter, AuthResponse), IoError> {
         let mut stream = TcpStream::connect(server_addr).await.unwrap();
 
-        stream.serialized_write(auth_request.unwrap_or(AuthRequest::default())).await.unwrap(); // client_id not exist
+        stream.serialized_write(auth_request.unwrap_or_default()).await.unwrap(); // client_id not exist
         let auth_response: AuthResponse = stream.deserialized_read().await?;
         let (r, w) = stream.into_split();
         Ok((ServerStreamReader(r), ServerStreamWriter(w), auth_response))
@@ -163,7 +163,7 @@ pub enum BrokerMessage {
 impl BrokerMessage {
     pub fn from_command(command: String, args: Vec<&str>, input: Input) -> Self {
         BrokerMessage::ToServer(CommandToServer {
-            command: command.into(),
+            command,
             args: args.iter().map(|s| s.to_string()).collect(),
             input,
         })

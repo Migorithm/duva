@@ -175,7 +175,7 @@ impl ClientController {
                 } else {
                     request.action = ClientAction::Set {
                         key: key.clone(),
-                        value: (0 + request.action.delta()).to_string(),
+                        value: request.action.delta().to_string(),
                     };
                 }
             },

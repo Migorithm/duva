@@ -30,7 +30,7 @@ impl ClusterNode {
     }
 
     pub(crate) fn parse_node_info(line: &str, self_repl_id: &str) -> Option<ClusterNode> {
-        let parts: Vec<&str> = line.trim().split_whitespace().collect();
+        let parts: Vec<&str> = line.split_whitespace().collect();
         if parts.len() != 3 {
             return None;
         }
@@ -66,7 +66,7 @@ impl ClusterNode {
 
         // Find the line with "myself" to get the ID
         let my_repl_id = lines.iter().find_map(|line| {
-            let parts: Vec<&str> = line.trim().split_whitespace().collect();
+            let parts: Vec<&str> = line.split_whitespace().collect();
             if parts.len() != 3 {
                 return None;
             }

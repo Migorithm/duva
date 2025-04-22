@@ -23,7 +23,7 @@ pub struct Environment {
     pub topology_path: String,
 }
 impl Environment {
-    pub fn new() -> Self {
+    pub fn init() -> Self {
         env_var!(
             defaults: {
                 port: u16 = 6379,

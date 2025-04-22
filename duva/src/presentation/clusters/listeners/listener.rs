@@ -12,7 +12,7 @@ pub(crate) struct ClusterListener {
 }
 
 impl ClusterListener {
-    pub fn new(
+    pub fn spawn(
         read_connected: OwnedReadHalf,
         cluster_handler: Sender<ClusterCommand>,
         listening_to: PeerIdentifier,

@@ -152,7 +152,7 @@ impl InboundStream {
             }
         }
 
-        let kill_switch = ClusterListener::new(self.r, ccm.0, connected_peer_info.id.clone());
+        let kill_switch = ClusterListener::spawn(self.r, ccm.0, connected_peer_info.id.clone());
 
         let peer = Peer::new((connected_peer_info.id).to_string(), self.w, peer_state, kill_switch);
 

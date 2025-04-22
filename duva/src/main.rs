@@ -7,7 +7,7 @@ use duva::{
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     // bootstrap dependencies
-    let env = Environment::new();
+    let env = Environment::init();
     let config_manager = ConfigManager::new(
         ConfigActor::new(env.dir.clone(), env.dbfilename.clone()),
         env.host.clone(),
