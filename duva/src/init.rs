@@ -58,12 +58,14 @@ impl Environment {
             ReplicationId::Undecided
         };
 
+        let role = if replicaof.is_none() && pre_connected_peers.is_empty() {
+            ReplicationRole::Leader
+        } else {
+            ReplicationRole::Follower
+        };
+
         Self {
-            role: if replicaof.is_none() && pre_connected_peers.is_empty() {
-                ReplicationRole::Leader
-            } else {
-                ReplicationRole::Follower
-            },
+            role,
             seed_server: replicaof,
             repl_id,
             dir,
