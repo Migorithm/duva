@@ -21,7 +21,7 @@ pub struct Environment {
     pub hf_mills: u64,
     pub ttl_mills: u128,
     pub append_only: bool,
-    pub topology_file_handler: Option<tokio::fs::File>,
+    pub topology_writer: Option<tokio::fs::File>,
 }
 
 impl Environment {
@@ -46,7 +46,7 @@ impl Environment {
         let pre_connected_peers = ClusterNode::from_file(&tpp);
         let repl_id = Self::determine_repl_id(replicaof.as_ref(), &pre_connected_peers);
         let role = Self::determine_role(replicaof.as_ref(), &pre_connected_peers);
-        let topology_file_handler = Self::open_topology_file(tpp).await;
+        let topology_writer = Self::open_topology_file(tpp).await;
 
         Self {
             role,
@@ -59,7 +59,7 @@ impl Environment {
             hf_mills: hf,
             ttl_mills: ttl,
             append_only,
-            topology_file_handler: Some(topology_file_handler),
+            topology_writer: Some(topology_writer),
             pre_connected_peers,
         }
     }

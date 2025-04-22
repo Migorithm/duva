@@ -53,7 +53,7 @@ impl StartUpFacade {
         let cache_manager = CacheManager::run_cache_actors(replication_state.hwm.clone());
         let cluster_actor_handler = ClusterActor::run(
             env.ttl_mills,
-            env.topology_file_handler.take().unwrap(),
+            env.topology_writer.take().unwrap(),
             env.hf_mills,
             replication_state,
             cache_manager.clone(),

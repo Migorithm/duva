@@ -40,7 +40,7 @@ pub struct ClusterActor {
     pub(crate) receiver: tokio::sync::mpsc::Receiver<ClusterCommand>,
     pub(crate) self_handler: tokio::sync::mpsc::Sender<ClusterCommand>,
     pub(crate) heartbeat_scheduler: HeartBeatScheduler,
-    pub(crate) topology_file_handler: tokio::fs::File,
+    pub(crate) topology_writer: tokio::fs::File,
     pub(crate) node_change_broadcast: tokio::sync::broadcast::Sender<Vec<PeerIdentifier>>,
 }
 
@@ -49,7 +49,7 @@ impl ClusterActor {
         node_timeout: u128,
         init_repl_info: ReplicationState,
         heartbeat_interval_in_mills: u64,
-        topology_file_handler: File,
+        topology_writer: File,
     ) -> Self {
         let (self_handler, receiver) = tokio::sync::mpsc::channel(100);
         let heartbeat_scheduler = HeartBeatScheduler::run(
@@ -68,7 +68,7 @@ impl ClusterActor {
             self_handler,
             members: BTreeMap::new(),
             consensus_tracker: LogConsensusTracker::default(),
-            topology_file_handler,
+            topology_writer,
             node_change_broadcast: tx,
         }
     }
@@ -123,9 +123,9 @@ impl ClusterActor {
             .map(|cn| cn.to_string())
             .collect::<Vec<_>>()
             .join("\r\n");
-        self.topology_file_handler.seek(std::io::SeekFrom::Start(0)).await?;
-        self.topology_file_handler.set_len(topology.len() as u64).await?;
-        self.topology_file_handler.write_all(topology.as_bytes()).await?;
+        self.topology_writer.seek(std::io::SeekFrom::Start(0)).await?;
+        self.topology_writer.set_len(topology.len() as u64).await?;
+        self.topology_writer.write_all(topology.as_bytes()).await?;
         Ok(())
     }
 
@@ -704,7 +704,7 @@ mod test {
             8080,
         );
 
-        let topology_file_handler = OpenOptions::new()
+        let topology_writer = OpenOptions::new()
             .create(true)
             .write(true)
             .truncate(true)
@@ -712,7 +712,7 @@ mod test {
             .await
             .unwrap();
 
-        ClusterActor::new(100, replication, 100, topology_file_handler)
+        ClusterActor::new(100, replication, 100, topology_writer)
     }
 
     async fn cluster_member_create_helper(
@@ -1483,7 +1483,7 @@ mod test {
         // GIVEN
         let mut cluster_actor = cluster_actor_create_helper().await;
         let path = "test_store_current_topology.tp";
-        cluster_actor.topology_file_handler = tokio::fs::File::create(path).await.unwrap();
+        cluster_actor.topology_writer = tokio::fs::File::create(path).await.unwrap();
 
         let repl_id = cluster_actor.replication.replid.clone();
         let self_id = cluster_actor.replication.self_identifier();
@@ -1504,7 +1504,7 @@ mod test {
         // GIVEN
         let mut cluster_actor = cluster_actor_create_helper().await;
         let path = "test_snapshot_topology_after_add_peer.tp";
-        cluster_actor.topology_file_handler = tokio::fs::File::create(path).await.unwrap();
+        cluster_actor.topology_writer = tokio::fs::File::create(path).await.unwrap();
 
         let repl_id = cluster_actor.replication.replid.clone();
 
