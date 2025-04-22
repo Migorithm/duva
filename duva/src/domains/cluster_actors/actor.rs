@@ -1359,18 +1359,9 @@ mod test {
         assert_eq!(logger.last_log_index, 0); // Log should remain unchanged
     }
 
-    /*
-    cluster nodes should return the following:
-    127.0.0.1:30004 x 10923-16383
-    127.0.0.1:30002 y 5461-10922
-    127.0.0.1:30003 x 10923-16383
-    127.0.0.1:30005 z 0-5460
-    127.0.0.1:30006 z 0-5460
-    127.0.0.1:30001 myself,y 5461-10922
-    <ip:port> <flags> <repl_id> <coverage(shard)>
-         */
     #[tokio::test]
     async fn test_cluster_nodes() {
+        use std::io::Write;
         use tokio::net::TcpListener;
         // GIVEN
 
@@ -1452,39 +1443,22 @@ mod test {
         let repl_id = cluster_actor.replication.replid.clone();
         assert_eq!(res.len(), 6);
 
-        for value in [
-            &ClusterNode::parse_node_info(
-                &format!("127.0.0.1:6379 {} 0", repl_id),
-                &repl_id.to_string(),
-            )
-            .unwrap(),
-            &ClusterNode::parse_node_info(
-                &format!("127.0.0.1:6380 {} 0", repl_id),
-                &repl_id.to_string(),
-            )
-            .unwrap(),
-            &ClusterNode::parse_node_info(
-                &format!("{} {} 0", second_shard_leader_identifier, second_shard_repl_id),
-                &repl_id.to_string(),
-            )
-            .unwrap(),
-            &ClusterNode::parse_node_info(
-                &format!("127.0.0.1:2655 {} 0", second_shard_repl_id),
-                &repl_id.to_string(),
-            )
-            .unwrap(),
-            &ClusterNode::parse_node_info(
-                &format!("127.0.0.1:2653 {} 0", second_shard_repl_id),
-                &repl_id.to_string(),
-            )
-            .unwrap(),
-            &ClusterNode::parse_node_info(
-                &format!("localhost:8080 myself,{} 0", repl_id),
-                &repl_id.to_string(),
-            )
-            .unwrap(),
-        ] {
-            assert!(res.contains(value));
+        let file_content = format!(
+            r#"
+        127.0.0.1:6379 {repl_id} 0
+        127.0.0.1:6380 {repl_id} 0
+        {second_shard_leader_identifier} {second_shard_repl_id} 0
+        127.0.0.1:2655 {second_shard_repl_id} 0
+        127.0.0.1:2653 {second_shard_repl_id} 0
+        localhost:8080 myself,{repl_id} 0
+        "#
+        );
+        let mut temp_file = tempfile::NamedTempFile::new().expect("Failed to create temp file");
+        write!(temp_file, "{}", file_content).expect("Failed to write to temp file");
+        let nodes = ClusterNode::from_file(temp_file.path().to_str().unwrap());
+
+        for value in nodes {
+            assert!(res.contains(&value));
         }
     }
 
