@@ -1,4 +1,5 @@
 use crate::{
+    InboundStream,
     domains::{
         cluster_actors::{
             commands::{ClusterCommand, SyncLogs},
@@ -21,6 +22,23 @@ impl ClusterCommunicationManager {
         self.send(ClusterCommand::GetPeers(tx)).await?;
         let peers = rx.await?;
         Ok(peers)
+    }
+
+    pub(crate) async fn accept_inbound_stream(
+        &self,
+        mut peer_stream: InboundStream,
+        ccm: ClusterCommunicationManager,
+    ) -> anyhow::Result<()> {
+        let connected_peer_info = peer_stream.recv_handshake().await?;
+
+        peer_stream.disseminate_peers(self.get_peers().await?).await?;
+
+        let (callback, rx) = tokio::sync::oneshot::channel();
+        let add_peer_cmd =
+            peer_stream.prepare_add_peer_cmd(ccm, connected_peer_info, callback).await?;
+        self.0.send(add_peer_cmd).await?;
+        rx.await?;
+        Ok(())
     }
 
     pub(crate) async fn discover_cluster(&self, connect_to: PeerIdentifier) -> anyhow::Result<()> {

@@ -112,7 +112,7 @@ impl StartUpFacade {
 
                         let inbound_stream = InboundStream::new(peer_stream, current_repo_info);
 
-                        let connection_manager = registry.cluster_connection_manager();
+                        let connection_manager = registry.cluster_communication_manager();
 
                         async move {
                             if let Err(err) =
