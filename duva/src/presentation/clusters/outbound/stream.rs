@@ -26,7 +26,7 @@ pub(crate) struct OutboundStream {
     w: OwnedWriteHalf,
     pub(crate) my_repl_info: ReplicationState,
 
-    connected_node_info: Option<ConnectedPeerInfo>,
+    pub(crate) connected_node_info: Option<ConnectedPeerInfo>,
     connect_to: PeerIdentifier,
 }
 
@@ -123,8 +123,7 @@ impl OutboundStream {
     pub(crate) fn create_peer_cmd(
         self,
         cluster_actor_handler: Sender<ClusterCommand>,
-        sender: tokio::sync::oneshot::Sender<()>,
-    ) -> anyhow::Result<(ClusterCommand, Vec<PeerIdentifier>)> {
+    ) -> anyhow::Result<(AddPeer, Vec<PeerIdentifier>)> {
         let mut connection_info =
             self.connected_node_info.context("Connected node info not found")?;
         let peer_list = connection_info.list_peer_binding_addrs();
@@ -139,6 +138,6 @@ impl OutboundStream {
             kill_switch,
         );
 
-        Ok((ClusterCommand::AddPeer(AddPeer { peer_id: self.connect_to, peer }, sender), peer_list))
+        Ok((AddPeer { peer_id: self.connect_to, peer }, peer_list))
     }
 }

@@ -1,3 +1,4 @@
+use anyhow::Context;
 use tokio::fs::File;
 use tokio::io::AsyncSeekExt;
 use tokio::io::AsyncWriteExt;
@@ -28,6 +29,7 @@ use crate::domains::cluster_actors::consensus::ElectionState;
 use crate::domains::peers::cluster_peer::ClusterNode;
 use crate::domains::peers::cluster_peer::NodeKind;
 use crate::domains::{caches::cache_manager::CacheManager, query_parsers::QueryIO};
+use crate::presentation::clusters::outbound::stream::OutboundStream;
 use std::iter;
 use std::sync::atomic::Ordering;
 
@@ -157,6 +159,29 @@ impl ClusterActor {
             return Some(());
         }
         None
+    }
+
+    async fn connect_to_server(&mut self, connect_to: PeerIdentifier) -> anyhow::Result<()> {
+        let stream = OutboundStream::new(connect_to, self.replication.clone())
+            .await?
+            .initiate_handshake(self.replication.self_port)
+            .await?;
+
+        if stream.my_repl_info.replid == ReplicationId::Undecided {
+            let connected_node_info = stream
+                .connected_node_info
+                .as_ref()
+                .context("Connected node info not found. Cannot set replication id")?;
+
+            self.replication.replid = connected_node_info.replid.clone();
+            self.replication.hwm.store(connected_node_info.hwm, Ordering::Release);
+        }
+
+        let (add_peer, peer_list) = stream.create_peer_cmd(self.self_handler.clone())?;
+
+        self.add_peer(add_peer).await;
+
+        Ok(())
     }
 
     pub(crate) fn set_replication_info(&mut self, leader_repl_id: ReplicationId, hwm: u64) {

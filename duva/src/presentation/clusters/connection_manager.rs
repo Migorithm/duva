@@ -60,14 +60,15 @@ impl ClusterConnectionManager {
         }
 
         let replication_info = self.replication_info().await?;
-        let (add_peer_cmd, peer_list) = OutboundStream::new(connect_to, replication_info)
+        let stream = OutboundStream::new(connect_to, replication_info)
             .await?
             .initiate_handshake(self_port)
             .await?
             .set_replication_info(&self)
-            .await?
-            .create_peer_cmd(self.handler(), callback)?;
-        self.send(add_peer_cmd).await?;
+            .await?;
+
+        let (add_peer_cmd, peer_list) = stream.create_peer_cmd(self.handler())?;
+        self.send(ClusterCommand::AddPeer(add_peer_cmd, callback)).await?;
 
         Ok(peer_list)
     }
