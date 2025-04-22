@@ -136,6 +136,7 @@ impl InboundStream {
         PeerState::decide_peer_kind(&self.self_repl_info.replid, connected_peer_info)
     }
 
+    //TODO refactor - move into domain
     pub(crate) async fn prepare_add_peer_cmd(
         mut self,
         ccm: ClusterCommunicationManager,

@@ -24,6 +24,7 @@ impl ClusterCommunicationManager {
         Ok(peers)
     }
 
+    //TODO refactor - move into domain
     pub(crate) async fn accept_inbound_stream(
         &self,
         mut peer_stream: InboundStream,
