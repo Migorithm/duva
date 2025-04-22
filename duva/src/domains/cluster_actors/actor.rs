@@ -21,6 +21,8 @@ use crate::domains::append_only_files::WriteRequest;
 use crate::domains::append_only_files::interfaces::TWriteAheadLog;
 use crate::domains::append_only_files::logger::ReplicatedLogs;
 use crate::domains::cluster_actors::consensus::ElectionState;
+use crate::domains::peers::cluster_peer::ClusterNode;
+use crate::domains::peers::cluster_peer::NodeKind;
 use crate::domains::{caches::cache_manager::CacheManager, query_parsers::QueryIO};
 use std::iter;
 use std::sync::atomic::Ordering;
@@ -111,7 +113,12 @@ impl ClusterActor {
 
     pub(crate) async fn snapshot_topology(&self) {
         // TODO: consider single writer access to file
-        let topology = self.cluster_nodes().join("\r\n");
+        let topology = self
+            .cluster_nodes()
+            .into_iter()
+            .map(|cn| cn.to_string())
+            .collect::<Vec<_>>()
+            .join("\r\n");
 
         let _ = tokio::fs::write(&self.topology_path, topology).await;
     }
@@ -469,15 +476,15 @@ impl ClusterActor {
             .await;
     }
 
-    pub(crate) fn cluster_nodes(&self) -> Vec<String> {
+    pub(crate) fn cluster_nodes(&self) -> Vec<ClusterNode> {
         self.members
             .values()
             .map(|peer| match &peer.kind {
                 PeerState::Replica { match_index: _, replid } => {
-                    format!("{} {} 0", peer.addr, replid)
+                    ClusterNode::new(&peer.addr, replid, false, NodeKind::Replica)
                 },
                 PeerState::NonDataPeer { replid, match_index: _ } => {
-                    format!("{} {} 0", peer.addr, replid)
+                    ClusterNode::new(&peer.addr, replid, false, NodeKind::NonData)
                 },
             })
             .chain(std::iter::once(self.replication.self_info()))
@@ -642,6 +649,7 @@ mod test {
     use crate::domains::caches::cache_objects::CacheEntry;
     use crate::domains::caches::command::CacheCommand;
     use crate::domains::cluster_actors::commands::ClusterCommand;
+    use crate::domains::cluster_actors::replication::ReplicationRole;
     use crate::presentation::clusters::listeners::listener::ClusterListener;
     use std::ops::Range;
     use std::time::Duration;
@@ -682,7 +690,12 @@ mod test {
     }
 
     fn cluster_actor_create_helper() -> ClusterActor {
-        let replication = ReplicationState::new(None, "localhost", 8080);
+        let replication = ReplicationState::new(
+            ReplicationId::Key("master".into()),
+            ReplicationRole::Leader,
+            "localhost",
+            8080,
+        );
         ClusterActor::new(100, replication, 100, "duva.tp".into())
     }
 
@@ -700,7 +713,7 @@ mod test {
         for port in num_stream {
             let key = PeerIdentifier::new("localhost", port);
             let (r, x) = TcpStream::connect(bind_addr).await.unwrap().into_split();
-            let kill_switch = ClusterListener::new(r, cluster_sender.clone(), key.clone());
+            let kill_switch = ClusterListener::spawn(r, cluster_sender.clone(), key.clone());
             actor.members.insert(
                 PeerIdentifier::new("localhost", port),
                 Peer::new(
@@ -1375,7 +1388,7 @@ mod test {
         for port in [6379, 6380] {
             let key = PeerIdentifier::new("localhost", port);
             let (r, x) = TcpStream::connect(bind_addr).await.unwrap().into_split();
-            let kill_switch = ClusterListener::new(r, cluster_sender.clone(), key.clone());
+            let kill_switch = ClusterListener::spawn(r, cluster_sender.clone(), key.clone());
             cluster_actor.members.insert(
                 key.clone(),
                 Peer::new(
@@ -1395,8 +1408,11 @@ mod test {
 
         // leader for different shard?
         let (r, x) = TcpStream::connect(bind_addr).await.unwrap().into_split();
-        let kill_switch =
-            ClusterListener::new(r, cluster_sender.clone(), second_shard_leader_identifier.clone());
+        let kill_switch = ClusterListener::spawn(
+            r,
+            cluster_sender.clone(),
+            second_shard_leader_identifier.clone(),
+        );
 
         cluster_actor.members.insert(
             second_shard_leader_identifier.clone(),
@@ -1415,7 +1431,7 @@ mod test {
         for port in [2655, 2653] {
             let key = PeerIdentifier::new("localhost", port);
             let (r, x) = TcpStream::connect(bind_addr).await.unwrap().into_split();
-            let kill_switch = ClusterListener::new(r, cluster_sender.clone(), key.clone());
+            let kill_switch = ClusterListener::spawn(r, cluster_sender.clone(), key.clone());
 
             cluster_actor.members.insert(
                 key.clone(),
@@ -1433,18 +1449,42 @@ mod test {
 
         // WHEN
         let res = cluster_actor.cluster_nodes();
-
+        let repl_id = cluster_actor.replication.replid.clone();
         assert_eq!(res.len(), 6);
 
         for value in [
-            format!("127.0.0.1:6379 {} 0", repl_id),
-            format!("127.0.0.1:6380 {} 0", repl_id),
-            format!("{} {} 0", second_shard_leader_identifier, second_shard_repl_id),
-            format!("127.0.0.1:2655 {} 0", second_shard_repl_id),
-            format!("127.0.0.1:2653 {} 0", second_shard_repl_id),
-            format!("127.0.0.1:8080 myself,{} 0", repl_id),
+            &ClusterNode::parse_node_info(
+                &format!("127.0.0.1:6379 {} 0", repl_id),
+                &repl_id.to_string(),
+            )
+            .unwrap(),
+            &ClusterNode::parse_node_info(
+                &format!("127.0.0.1:6380 {} 0", repl_id),
+                &repl_id.to_string(),
+            )
+            .unwrap(),
+            &ClusterNode::parse_node_info(
+                &format!("{} {} 0", second_shard_leader_identifier, second_shard_repl_id),
+                &repl_id.to_string(),
+            )
+            .unwrap(),
+            &ClusterNode::parse_node_info(
+                &format!("127.0.0.1:2655 {} 0", second_shard_repl_id),
+                &repl_id.to_string(),
+            )
+            .unwrap(),
+            &ClusterNode::parse_node_info(
+                &format!("127.0.0.1:2653 {} 0", second_shard_repl_id),
+                &repl_id.to_string(),
+            )
+            .unwrap(),
+            &ClusterNode::parse_node_info(
+                &format!("localhost:8080 myself,{} 0", repl_id),
+                &repl_id.to_string(),
+            )
+            .unwrap(),
         ] {
-            assert!(res.contains(&value));
+            assert!(res.contains(value));
         }
     }
 
@@ -1482,21 +1522,22 @@ mod test {
         let bind_addr = listener.local_addr().unwrap();
         let (r, x) = TcpStream::connect(bind_addr).await.unwrap().into_split();
 
-        let kill_switch = ClusterListener::new(
+        let kill_switch = ClusterListener::spawn(
             r,
             cluster_actor.self_handler.clone(),
-            PeerIdentifier("foo".into()),
+            PeerIdentifier("127.0.0.1:3849".into()),
         );
 
         let peer = Peer::new(
-            "foo".to_string(),
+            "127.0.0.1:3849".to_string(),
             x,
             PeerState::Replica { match_index: 0, replid: ReplicationId::Key(repl_id.to_string()) },
             kill_switch,
         );
 
         // WHEN
-        let add_peer_cmd = AddPeer { peer_id: PeerIdentifier(String::from("foo")), peer };
+        let add_peer_cmd =
+            AddPeer { peer_id: PeerIdentifier(String::from("127.0.0.1:3849")), peer };
         cluster_actor.add_peer(add_peer_cmd).await;
         cluster_actor.snapshot_topology().await;
 
@@ -1509,7 +1550,7 @@ mod test {
         assert_eq!(cluster_nodes.len(), 2);
 
         for value in [
-            format!("foo {} 0", repl_id),
+            format!("127.0.0.1:3849 {} 0", repl_id),
             format!("{} myself,{} 0", cluster_actor.replication.self_identifier(), repl_id),
         ] {
             assert!(cluster_nodes.contains(&value));

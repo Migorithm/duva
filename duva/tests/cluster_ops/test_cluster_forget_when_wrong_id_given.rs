@@ -6,7 +6,8 @@ use crate::common::{Client, ServerEnv, spawn_server_process};
 async fn test_cluster_forget_node_return_error_when_wrong_id_given() {
     // GIVEN
 
-    let env = ServerEnv::default();
+    let env = ServerEnv::default()
+        .with_topology_path("test_cluster_forget_node_return_error_when_wrong_id_given.tp");
     let leader_p = spawn_server_process(&env);
 
     // WHEN

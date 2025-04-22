@@ -98,7 +98,7 @@ pub fn extract_action(action: &str, args: &[&str]) -> anyhow::Result<ClientActio
             Ok(ClientAction::SetWithExpiry {
                 key: args[0].to_string(),
                 value: args[1].to_string(),
-                expiry: extract_expiry(&args[3])?,
+                expiry: extract_expiry(args[3])?,
             })
         },
 
@@ -132,7 +132,7 @@ pub fn extract_action(action: &str, args: &[&str]) -> anyhow::Result<ClientActio
                     "(error) ERR wrong number of arguments for 'exists' command"
                 ));
             }
-            Ok(ClientAction::Delete { keys: args.into_iter().map(|s| s.to_string()).collect() })
+            Ok(ClientAction::Delete { keys: args.iter().map(|s| s.to_string()).collect() })
         },
         "EXISTS" => {
             if args.is_empty() {
@@ -140,7 +140,7 @@ pub fn extract_action(action: &str, args: &[&str]) -> anyhow::Result<ClientActio
                     "(error) ERR wrong number of arguments for 'exists' command"
                 ));
             }
-            Ok(ClientAction::Exists { keys: args.into_iter().map(|s| s.to_string()).collect() })
+            Ok(ClientAction::Exists { keys: args.iter().map(|s| s.to_string()).collect() })
         },
 
         "PING" => {
@@ -186,7 +186,7 @@ pub fn extract_action(action: &str, args: &[&str]) -> anyhow::Result<ClientActio
                     }
                     Ok(ClientAction::ClusterForget(args[1].to_string().into()))
                 },
-                _ => return Err(anyhow::anyhow!("(error) ERR unknown subcommand")),
+                _ => Err(anyhow::anyhow!("(error) ERR unknown subcommand")),
             }
         },
         "REPLICAOF" => {
@@ -240,7 +240,7 @@ pub fn extract_action(action: &str, args: &[&str]) -> anyhow::Result<ClientActio
         // Add other commands as needed
         unknown_cmd => Err(anyhow::anyhow!(
             "(error) ERR unknown command '{unknown_cmd}', with args beginning with {}",
-            args.into_iter().map(|s| format!("'{s}'")).collect::<Vec<_>>().join(" ")
+            args.iter().map(|s| format!("'{s}'")).collect::<Vec<_>>().join(" ")
         )),
     }
 }

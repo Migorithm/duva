@@ -2,9 +2,9 @@ use crate::{
     domains::{
         cluster_actors::{
             commands::{ClusterCommand, SyncLogs},
-            replication::{ReplicationState, Role},
+            replication::{ReplicationRole, ReplicationState},
         },
-        peers::identifier::PeerIdentifier,
+        peers::{cluster_peer::ClusterNode, identifier::PeerIdentifier},
     },
     make_smart_pointer,
 };
@@ -63,7 +63,7 @@ impl ClusterCommunicationManager {
         let _ = rx.await;
     }
 
-    pub(crate) async fn cluster_nodes(&self) -> anyhow::Result<Vec<String>> {
+    pub(crate) async fn cluster_nodes(&self) -> anyhow::Result<Vec<ClusterNode>> {
         let (tx, rx) = tokio::sync::oneshot::channel();
         self.send(ClusterCommand::ClusterNodes(tx)).await?;
         Ok(rx.await?)
@@ -75,7 +75,7 @@ impl ClusterCommunicationManager {
         Ok(rx.await?)
     }
 
-    pub(crate) async fn role(&self) -> anyhow::Result<Role> {
+    pub(crate) async fn role(&self) -> anyhow::Result<ReplicationRole> {
         let (tx, rx) = tokio::sync::oneshot::channel();
         self.send(ClusterCommand::GetRole(tx)).await?;
         Ok(rx.await?)

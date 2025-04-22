@@ -130,7 +130,7 @@ impl OutboundStream {
         let peer_list = connection_info.list_peer_binding_addrs();
 
         let kill_switch =
-            ClusterListener::new(self.r, cluster_actor_handler, self.connect_to.clone());
+            ClusterListener::spawn(self.r, cluster_actor_handler, self.connect_to.clone());
 
         let peer = Peer::new(
             (*self.connect_to).clone(),

@@ -100,9 +100,14 @@ impl ClientController {
             ClientAction::ClusterInfo => {
                 self.cluster_communication_manager.cluster_info().await?.into()
             },
-            ClientAction::ClusterNodes => {
-                self.cluster_communication_manager.cluster_nodes().await?.into()
-            },
+            ClientAction::ClusterNodes => self
+                .cluster_communication_manager
+                .cluster_nodes()
+                .await?
+                .into_iter()
+                .map(|peer| peer.to_string())
+                .collect::<Vec<_>>()
+                .into(),
             ClientAction::ClusterForget(peer_identifier) => {
                 match self.cluster_communication_manager.forget_peer(peer_identifier).await {
                     Ok(true) => QueryIO::SimpleString("OK".into()),
@@ -170,7 +175,7 @@ impl ClientController {
                 } else {
                     request.action = ClientAction::Set {
                         key: key.clone(),
-                        value: (0 + request.action.delta()).to_string(),
+                        value: request.action.delta().to_string(),
                     };
                 }
             },

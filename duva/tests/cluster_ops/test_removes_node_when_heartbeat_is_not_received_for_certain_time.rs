@@ -3,10 +3,16 @@ use crate::common::{Client, ServerEnv, spawn_server_process};
 #[tokio::test]
 async fn test_removes_node_when_heartbeat_is_not_received_for_certain_time() {
     // GIVEN
-    let env = ServerEnv::default();
+    let env = ServerEnv::default().with_topology_path(
+        "test_removes_node_when_heartbeat_is_not_received_for_certain_time-leader.tp",
+    );
+
     let mut leader_p = spawn_server_process(&env);
 
-    let repl_env = ServerEnv::default().with_leader_bind_addr(leader_p.bind_addr().into());
+    let repl_env =
+        ServerEnv::default().with_leader_bind_addr(leader_p.bind_addr().into()).with_topology_path(
+            "test_removes_node_when_heartbeat_is_not_received_for_certain_time-follower.tp",
+        );
     let mut repl_p = spawn_server_process(&repl_env);
 
     repl_p.wait_for_message(&leader_p.heartbeat_msg(0), 1).unwrap();

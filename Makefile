@@ -7,28 +7,20 @@ tp = duva.tp
 
 leader:
 	@echo '🔧 Setting up replication with leader on port $(p) and follower on port $(rp)...'
-	@mkdir -p local_test/leader
-	@echo '🚀 Starting leader node in local_test/leader...'
-	@cd local_test/leader && cargo run --bin duva -- --port $(p)
-
-leader-tp:
-	@mkdir -p local_test/leader
-	@cd local_test/leader && cargo run --bin duva -- --port $(p) --topology_path $(tp)
+	@mkdir -p local_test
+	@echo '🚀 Starting leader node in local_test...'
+	@cd local_test && cargo run --bin duva -- --port $(p) --tpp $(tp)
 
 leader-aof:
 	@echo '🔧 Setting up replication with leader on port $(p) and follower on port $(rp)...'
-	@mkdir -p local_test/leader
-	@echo '🚀 Starting leader node in local_test/leader...'
-	@cd local_test/leader && cargo run --bin duva -- --port $(p) --append_only true
+	@mkdir -p local_test
+	@echo '🚀 Starting leader node in local_test...'
+	@cd local_test && cargo run --bin duva -- --port $(p) --append_only true
 
 follower:
-	@echo '🚀 Starting follower node in local_test/follower...'
-	@mkdir -p local_test/follower
-	@cd local_test/follower && cargo run --bin duva -- --port $(rp) --replicaof 127.0.0.1:$(p)
-
-follower-tp:
-	@mkdir -p local_test/follower
-	@cd local_test/follower && cargo run --bin duva -- --port $(rp) --replicaof 127.0.0.1:$(p) --topology_path $(tp)
+	@echo '🚀 Starting follower node in local_test...'
+	@mkdir -p local_test
+	@cd local_test && cargo run --bin duva -- --port $(rp) --replicaof 127.0.0.1:$(p) --tpp $(tp)
 
 
 cli:

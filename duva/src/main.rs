@@ -7,7 +7,7 @@ use duva::{
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     // bootstrap dependencies
-    let env = Environment::new();
+    let env = Environment::init();
     let config_manager = ConfigManager::new(
         ConfigActor::new(env.dir.clone(), env.dbfilename.clone()),
         env.host.clone(),
@@ -18,10 +18,10 @@ async fn main() -> anyhow::Result<()> {
     if env.append_only {
         let local_aof = LocalWAL::new(env.dbfilename.to_string() + ".wal").await?;
         let start_up_runner = StartUpFacade::new(config_manager, &env, local_aof);
-        start_up_runner.run(env.seed_server).await
+        start_up_runner.run(env).await
     } else {
         let in_memory_aof = InMemoryWAL::default();
         let start_up_runner = StartUpFacade::new(config_manager, &env, in_memory_aof);
-        start_up_runner.run(env.seed_server).await
+        start_up_runner.run(env).await
     }
 }

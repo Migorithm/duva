@@ -12,8 +12,8 @@ use domains::append_only_files::interfaces::TWriteAheadLog;
 use domains::caches::cache_manager::CacheManager;
 use domains::cluster_actors::ClusterActor;
 use domains::cluster_actors::commands::ClusterCommand;
+use domains::cluster_actors::replication::ReplicationRole;
 use domains::cluster_actors::replication::ReplicationState;
-use domains::cluster_actors::replication::Role;
 use domains::config_actors::config_manager::ConfigManager;
 use domains::saves::snapshot::snapshot_loader::SnapshotLoader;
 pub use init::Environment;
@@ -44,7 +44,8 @@ make_smart_pointer!(StartUpFacade, ActorRegistry => registry);
 
 impl StartUpFacade {
     pub fn new(config_manager: ConfigManager, env: &Environment, wal: impl TWriteAheadLog) -> Self {
-        let replication_state = ReplicationState::new(env.seed_server.clone(), &env.host, env.port);
+        let replication_state =
+            ReplicationState::new(env.repl_id.clone(), env.role.clone(), &env.host, env.port);
         let cache_manager = CacheManager::run_cache_actors(replication_state.hwm.clone());
         let cluster_actor_handler = ClusterActor::run(
             env.ttl_mills,
@@ -60,18 +61,30 @@ impl StartUpFacade {
         StartUpFacade { registry }
     }
 
-    pub async fn run(self, seed_server: Option<PeerIdentifier>) -> Result<()> {
+    pub async fn run(self, env: Environment) -> Result<()> {
         tokio::spawn(Self::start_accepting_peer_connections(
             self.config_manager.peer_bind_addr(),
             self.registry.clone(),
         ));
 
         self.initialize_with_snapshot().await?;
-        if let Some(seed_server) = seed_server {
+        if let Some(seed_server) = env.seed_server {
             self.registry
                 .cluster_connection_manager()
                 .discover_cluster(self.config_manager.port, seed_server)
                 .await?;
+        } else {
+            // TODO reconnection failure? - if all fail, the server should be leader?
+            for pre_connected in env.pre_connected_peers {
+                if let Ok(()) = self
+                    .registry
+                    .cluster_connection_manager()
+                    .discover_cluster(self.config_manager.port, pre_connected.bind_addr)
+                    .await
+                {
+                    break;
+                }
+            }
         }
         self.start_receiving_client_streams().await
     }
@@ -128,8 +141,8 @@ impl StartUpFacade {
             let mut peers = self.registry.cluster_communication_manager().get_peers().await?;
             peers.push(PeerIdentifier(self.registry.config_manager.bind_addr()));
 
-            let is_leader =
-                self.registry.cluster_communication_manager().role().await? == Role::Leader;
+            let is_leader = self.registry.cluster_communication_manager().role().await?
+                == ReplicationRole::Leader;
             let Ok((reader, writer)) = authenticate(stream, peers, is_leader).await else {
                 eprintln!("[ERROR] Failed to authenticate client stream");
                 continue;

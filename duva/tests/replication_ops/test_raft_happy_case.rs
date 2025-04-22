@@ -4,14 +4,17 @@ use crate::common::{Client, ServerEnv, spawn_server_process};
 async fn test_set_operation_reaches_to_all_replicas() {
     // GIVEN
 
-    let env = ServerEnv::default();
+    let env = ServerEnv::default()
+        .with_topology_path("test_set_operation_reaches_to_all_replicas-leader.tp");
+
     // loads the leader/follower processes
     let mut leader_p = spawn_server_process(&env);
     let mut client_handler = Client::new(leader_p.port);
 
     let repl_env = ServerEnv::default()
         .with_leader_bind_addr(leader_p.bind_addr().into())
-        .with_file_name("follower_dbfilename");
+        .with_file_name("follower_dbfilename")
+        .with_topology_path("test_set_operation_reaches_to_all_replicas-follower.tp");
 
     let mut repl_p = spawn_server_process(&repl_env);
 

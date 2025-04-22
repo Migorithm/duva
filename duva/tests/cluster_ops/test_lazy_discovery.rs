@@ -3,18 +3,19 @@ use crate::common::{Client, ServerEnv, spawn_server_process};
 #[tokio::test]
 async fn test_lazy_discovery_of_leader() {
     // GIVEN
-    let target_env = ServerEnv::default();
-    let target_p = spawn_server_process(&target_env);
+    let target_env = ServerEnv::default().with_topology_path("test_lazy_discovery_of_leader.tp");
+    let leader_p = spawn_server_process(&target_env);
 
-    let mut target_h = Client::new(target_p.port);
+    let mut target_h = Client::new(leader_p.port);
 
     target_h.send_and_get("SET key value".as_bytes(), 1);
     target_h.send_and_get("SET key2 value2".as_bytes(), 1);
     assert_eq!(target_h.send_and_get("KEYS *".as_bytes(), 2), vec!["0) \"key\"", "1) \"key2\""]);
 
-    let other_env = ServerEnv::default();
-    let other_p = spawn_server_process(&other_env);
-    let mut other_h = Client::new(other_p.port);
+    let replica_env = ServerEnv::default()
+        .with_topology_path("test_snapshot_persists_and_recovers_state-replica.tp");
+    let replica_p = spawn_server_process(&replica_env);
+    let mut other_h = Client::new(replica_p.port);
 
     other_h.send_and_get("SET other value".as_bytes(), 1);
     other_h.send_and_get("SET other2 value2".as_bytes(), 1);
@@ -27,7 +28,7 @@ async fn test_lazy_discovery_of_leader() {
 
     // WHEN
     assert_eq!(
-        target_h.send_and_get(format!("REPLICAOF 127.0.0.1 {}", &other_env.port).as_bytes(), 1),
+        target_h.send_and_get(format!("REPLICAOF 127.0.0.1 {}", &replica_env.port).as_bytes(), 1),
         ["OK".to_string(),]
     );
 

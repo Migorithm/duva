@@ -235,6 +235,6 @@ impl CacheManager {
         )
         .await;
 
-        join_all(rxs.into_iter().map(|rx| rx)).await;
+        join_all(rxs.into_iter()).await;
     }
 }
