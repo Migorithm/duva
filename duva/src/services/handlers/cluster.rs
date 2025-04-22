@@ -23,7 +23,7 @@ impl ClusterActor {
             match command {
                 ClusterCommand::AddPeer(add_peer_cmd, callback) => {
                     self.add_peer(add_peer_cmd).await;
-                    self.snapshot_topology().await;
+                    let _ = self.snapshot_topology().await;
                     let _ = callback.send(());
                 },
                 ClusterCommand::GetPeers(callback) => {
@@ -133,14 +133,15 @@ impl ClusterActor {
 
     pub(crate) fn run(
         node_timeout: u128,
-        topology_path: String,
+        topology_writer: tokio::fs::File,
         heartbeat_interval: u64,
         init_replication: ReplicationState,
         cache_manager: CacheManager,
         wal: impl TWriteAheadLog,
     ) -> Sender<ClusterCommand> {
         let cluster_actor =
-            ClusterActor::new(node_timeout, init_replication, heartbeat_interval, topology_path);
+            ClusterActor::new(node_timeout, init_replication, heartbeat_interval, topology_writer);
+
         let actor_handler = cluster_actor.self_handler.clone();
         tokio::spawn(cluster_actor.handle(wal, cache_manager, ClientSessions::default()));
         actor_handler

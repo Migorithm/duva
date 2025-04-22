@@ -7,7 +7,7 @@ use duva::{
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     // bootstrap dependencies
-    let env = Environment::init();
+    let mut env = Environment::init().await;
     let config_manager = ConfigManager::new(
         ConfigActor::new(env.dir.clone(), env.dbfilename.clone()),
         env.host.clone(),
@@ -15,13 +15,14 @@ async fn main() -> anyhow::Result<()> {
     );
 
     // ! should we support type erasure?
+
     if env.append_only {
         let local_aof = LocalWAL::new(env.dbfilename.to_string() + ".wal").await?;
-        let start_up_runner = StartUpFacade::new(config_manager, &env, local_aof);
+        let start_up_runner = StartUpFacade::new(config_manager, &mut env, local_aof);
         start_up_runner.run(env).await
     } else {
         let in_memory_aof = InMemoryWAL::default();
-        let start_up_runner = StartUpFacade::new(config_manager, &env, in_memory_aof);
+        let start_up_runner = StartUpFacade::new(config_manager, &mut env, in_memory_aof);
         start_up_runner.run(env).await
     }
 }
