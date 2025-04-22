@@ -22,7 +22,7 @@ impl ClusterActor {
         while let Some(command) = self.receiver.recv().await {
             match command {
                 ClusterCommand::DiscoverCluster { connect_to, callback } => {
-                    if let Ok(()) = self.discover_cluster(connect_to).await {
+                    if self.discover_cluster(connect_to).await.is_ok() {
                         let _ = self.snapshot_topology().await;
                     };
                     let _ = callback.send(());
