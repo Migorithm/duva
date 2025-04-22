@@ -30,6 +30,7 @@ use crate::domains::peers::cluster_peer::ClusterNode;
 use crate::domains::peers::cluster_peer::NodeKind;
 use crate::domains::{caches::cache_manager::CacheManager, query_parsers::QueryIO};
 use crate::presentation::clusters::outbound::stream::OutboundStream;
+use std::collections::VecDeque;
 use std::iter;
 use std::sync::atomic::Ordering;
 
@@ -161,7 +162,22 @@ impl ClusterActor {
         None
     }
 
-    async fn connect_to_server(&mut self, connect_to: PeerIdentifier) -> anyhow::Result<()> {
+    pub(crate) async fn discover_cluster(
+        &mut self,
+        connect_to: PeerIdentifier,
+    ) -> anyhow::Result<()> {
+        let mut queue = VecDeque::from(vec![connect_to.clone()]);
+        while let Some(connect_to) = queue.pop_front() {
+            queue.extend(self.connect_to_server(connect_to).await?);
+        }
+
+        Ok(())
+    }
+
+    async fn connect_to_server(
+        &mut self,
+        connect_to: PeerIdentifier,
+    ) -> anyhow::Result<Vec<PeerIdentifier>> {
         let stream = OutboundStream::new(connect_to, self.replication.clone())
             .await?
             .initiate_handshake(self.replication.self_port)
@@ -181,7 +197,7 @@ impl ClusterActor {
 
         self.add_peer(add_peer).await;
 
-        Ok(())
+        Ok(peer_list)
     }
 
     pub(crate) fn set_replication_info(&mut self, leader_repl_id: ReplicationId, hwm: u64) {
