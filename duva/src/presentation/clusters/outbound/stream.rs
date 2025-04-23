@@ -8,7 +8,7 @@ use crate::domains::peers::identifier::PeerIdentifier;
 use crate::domains::peers::peer::Peer;
 use crate::domains::peers::peer::PeerState;
 use crate::domains::query_parsers::QueryIO;
-use crate::presentation::clusters::connection_manager::ClusterConnectionManager;
+
 use crate::presentation::clusters::listeners::listener::ClusterListener;
 use crate::services::interface::TRead;
 use crate::services::interface::TWrite;
@@ -26,7 +26,7 @@ pub(crate) struct OutboundStream {
     w: OwnedWriteHalf,
     pub(crate) my_repl_info: ReplicationState,
 
-    connected_node_info: Option<ConnectedPeerInfo>,
+    pub(crate) connected_node_info: Option<ConnectedPeerInfo>,
     connect_to: PeerIdentifier,
 }
 
@@ -101,30 +101,11 @@ impl OutboundStream {
         self.w.write_io(QueryIO::SimpleString("OK".to_string())).await?;
         Ok(())
     }
-    pub(crate) async fn set_replication_info(
-        self,
-        cluster_manager: &ClusterConnectionManager,
-    ) -> anyhow::Result<Self> {
-        if self.my_repl_info.replid == ReplicationId::Undecided {
-            let connected_node_info = self
-                .connected_node_info
-                .as_ref()
-                .context("Connected node info not found. Cannot set replication id")?;
 
-            cluster_manager
-                .send(ClusterCommand::SetReplicationInfo {
-                    replid: connected_node_info.replid.clone(),
-                    hwm: self.my_repl_info.hwm.load(Ordering::Acquire),
-                })
-                .await?;
-        }
-        Ok(self)
-    }
     pub(crate) fn create_peer_cmd(
         self,
         cluster_actor_handler: Sender<ClusterCommand>,
-        sender: tokio::sync::oneshot::Sender<()>,
-    ) -> anyhow::Result<(ClusterCommand, Vec<PeerIdentifier>)> {
+    ) -> anyhow::Result<(AddPeer, Vec<PeerIdentifier>)> {
         let mut connection_info =
             self.connected_node_info.context("Connected node info not found")?;
         let peer_list = connection_info.list_peer_binding_addrs();
@@ -139,6 +120,6 @@ impl OutboundStream {
             kill_switch,
         );
 
-        Ok((ClusterCommand::AddPeer(AddPeer { peer_id: self.connect_to, peer }, sender), peer_list))
+        Ok((AddPeer { peer_id: self.connect_to, peer }, peer_list))
     }
 }

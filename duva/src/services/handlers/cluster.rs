@@ -1,10 +1,7 @@
-use std::sync::atomic::Ordering;
-
 use crate::domains::append_only_files::interfaces::TWriteAheadLog;
 use crate::domains::append_only_files::logger::ReplicatedLogs;
 use crate::domains::caches::cache_manager::CacheManager;
 use crate::domains::cluster_actors::commands::{ClusterCommand, ConsensusClientResponse};
-
 use crate::domains::cluster_actors::replication::ReplicationState;
 use crate::domains::cluster_actors::session::ClientSessions;
 use crate::domains::cluster_actors::{ClusterActor, FANOUT};
@@ -21,11 +18,19 @@ impl ClusterActor {
 
         while let Some(command) = self.receiver.recv().await {
             match command {
-                ClusterCommand::AddPeer(add_peer_cmd, callback) => {
-                    self.add_peer(add_peer_cmd).await;
-                    let _ = self.snapshot_topology().await;
+                ClusterCommand::DiscoverCluster { connect_to, callback } => {
+                    if self.discover_cluster(connect_to).await.is_ok() {
+                        let _ = self.snapshot_topology().await;
+                    };
                     let _ = callback.send(());
                 },
+
+                ClusterCommand::AcceptPeer { stream } => {
+                    if let Ok(()) = self.accept_inbound_stream(stream, &logger).await {
+                        let _ = self.snapshot_topology().await;
+                    };
+                },
+
                 ClusterCommand::GetPeers(callback) => {
                     let _ = callback.send(self.members.keys().cloned().collect::<Vec<_>>());
                 },
@@ -98,10 +103,6 @@ impl ClusterActor {
                         continue;
                     }
                     self.install_leader_state(logs, &cache_manager).await;
-                },
-                ClusterCommand::FetchCurrentState(sender) => {
-                    let logs = logger.range(0, self.replication.hwm.load(Ordering::Acquire));
-                    let _ = sender.send(logs.into());
                 },
                 ClusterCommand::StartLeaderElection => {
                     self.run_for_election(&mut logger).await;

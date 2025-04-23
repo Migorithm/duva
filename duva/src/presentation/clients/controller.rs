@@ -9,7 +9,7 @@ use crate::domains::query_parsers::QueryIO;
 use crate::domains::saves::actor::SaveTarget;
 use crate::presentation::clients::request::ClientAction;
 use crate::presentation::clusters::communication_manager::ClusterCommunicationManager;
-use crate::presentation::clusters::connection_manager::ClusterConnectionManager;
+
 use anyhow::Context;
 use futures::future::try_join_all;
 use std::sync::atomic::Ordering;
@@ -24,7 +24,7 @@ pub(crate) struct ClientController {
 impl ClientController {
     pub(crate) fn new(actor_registry: ActorRegistry) -> Self {
         Self {
-            cluster_communication_manager: actor_registry.cluster_communication_manager(),
+            cluster_communication_manager: actor_registry.cluster_communication_manager.clone(),
             cache_manager: actor_registry.cache_manager,
             config_manager: actor_registry.config_manager,
         }
@@ -118,9 +118,7 @@ impl ClientController {
             ClientAction::ReplicaOf(peer_identifier) => {
                 self.cluster_communication_manager.replicaof(peer_identifier.clone()).await;
 
-                ClusterConnectionManager(self.cluster_communication_manager.clone())
-                    .discover_cluster(self.config_manager.port, peer_identifier)
-                    .await?;
+                self.cluster_communication_manager.discover_cluster(peer_identifier).await?;
 
                 QueryIO::SimpleString("OK".into())
             },

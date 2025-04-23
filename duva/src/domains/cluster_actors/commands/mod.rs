@@ -7,6 +7,7 @@ use super::{
 };
 use crate::domains::{append_only_files::WriteOperation, peers::cluster_peer::ClusterNode};
 pub(crate) use election::*;
+use tokio::net::TcpStream;
 pub(crate) use types::*;
 pub(crate) use write_con::*;
 
@@ -14,7 +15,14 @@ use crate::domains::{append_only_files::WriteRequest, peers::identifier::PeerIde
 
 #[derive(Debug)]
 pub(crate) enum ClusterCommand {
-    AddPeer(AddPeer, tokio::sync::oneshot::Sender<()>),
+    DiscoverCluster {
+        connect_to: PeerIdentifier,
+        callback: tokio::sync::oneshot::Sender<()>,
+    },
+    AcceptPeer {
+        stream: TcpStream,
+    },
+
     GetPeers(tokio::sync::oneshot::Sender<Vec<PeerIdentifier>>),
     ReplicationInfo(tokio::sync::oneshot::Sender<ReplicationState>),
 
@@ -39,7 +47,6 @@ pub(crate) enum ClusterCommand {
 
     SendAppendEntriesRPC,
     ClusterNodes(tokio::sync::oneshot::Sender<Vec<ClusterNode>>),
-    FetchCurrentState(tokio::sync::oneshot::Sender<SyncLogs>),
     StartLeaderElection,
     VoteElection(RequestVote),
     ApplyElectionVote(RequestVoteReply),

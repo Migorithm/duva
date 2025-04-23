@@ -1,7 +1,3 @@
-use tokio::fs::File;
-use tokio::io::AsyncSeekExt;
-use tokio::io::AsyncWriteExt;
-
 use super::commands::AddPeer;
 use super::commands::ClusterCommand;
 use super::commands::ConsensusClientResponse;
@@ -9,6 +5,7 @@ use super::commands::RejectionReason;
 use super::commands::ReplicationResponse;
 use super::commands::RequestVote;
 use super::commands::RequestVoteReply;
+use super::commands::SyncLogs;
 use super::heartbeats::heartbeat::AppendEntriesRPC;
 use super::heartbeats::heartbeat::ClusterHeartBeat;
 use super::heartbeats::scheduler::HeartBeatScheduler;
@@ -20,6 +17,7 @@ use super::replication::time_in_secs;
 use super::session::ClientSessions;
 use super::session::SessionRequest;
 use super::*;
+use crate::InboundStream;
 use crate::domains::append_only_files::WriteOperation;
 use crate::domains::append_only_files::WriteRequest;
 use crate::domains::append_only_files::interfaces::TWriteAheadLog;
@@ -28,8 +26,17 @@ use crate::domains::cluster_actors::consensus::ElectionState;
 use crate::domains::peers::cluster_peer::ClusterNode;
 use crate::domains::peers::cluster_peer::NodeKind;
 use crate::domains::{caches::cache_manager::CacheManager, query_parsers::QueryIO};
+use crate::presentation::clusters::listeners::listener::ClusterListener;
+use crate::presentation::clusters::outbound::stream::OutboundStream;
+use crate::services::interface::TWrite;
+use anyhow::Context;
+use std::collections::VecDeque;
 use std::iter;
 use std::sync::atomic::Ordering;
+use tokio::fs::File;
+use tokio::io::AsyncSeekExt;
+use tokio::io::AsyncWriteExt;
+use tokio::net::TcpStream;
 
 #[derive(Debug)]
 pub struct ClusterActor {
@@ -129,14 +136,14 @@ impl ClusterActor {
         Ok(())
     }
 
-    pub(crate) async fn add_peer(&mut self, add_peer_cmd: AddPeer) {
-        let AddPeer { peer_id: peer_addr, peer } = add_peer_cmd;
+    async fn add_peer(&mut self, add_peer_cmd: AddPeer) {
+        let AddPeer { peer_id, peer } = add_peer_cmd;
 
-        self.replication.remove_from_ban_list(&peer_addr);
+        self.replication.remove_from_ban_list(&peer_id);
 
         // If the map did have this key present, the value is updated, and the old
         // value is returned. The key is not updated,
-        if let Some(existing_peer) = self.members.insert(peer_addr, peer) {
+        if let Some(existing_peer) = self.members.insert(peer_id, peer) {
             existing_peer.kill().await;
         }
 
@@ -157,6 +164,78 @@ impl ClusterActor {
             return Some(());
         }
         None
+    }
+
+    pub(crate) async fn discover_cluster(
+        &mut self,
+        connect_to: PeerIdentifier,
+    ) -> anyhow::Result<()> {
+        let mut queue = VecDeque::from(vec![connect_to.clone()]);
+        while let Some(connect_to) = queue.pop_front() {
+            queue.extend(self.connect_to_server(connect_to).await?);
+        }
+
+        Ok(())
+    }
+
+    // TODO tidy up
+    pub(crate) async fn accept_inbound_stream(
+        &mut self,
+        peer_stream: TcpStream,
+        logger: &ReplicatedLogs<impl TWriteAheadLog>,
+    ) -> anyhow::Result<()> {
+        let mut peer_stream = InboundStream::new(peer_stream, self.replication.clone());
+        let connected_peer_info = peer_stream.recv_handshake().await?;
+
+        peer_stream.disseminate_peers(self.members.keys().cloned().collect::<Vec<_>>()).await?;
+
+        let peer_state = peer_stream.decide_peer_kind(&connected_peer_info);
+        if let PeerState::Replica { .. } = &peer_state {
+            if let ReplicationId::Undecided = connected_peer_info.replid {
+                let logs = SyncLogs(logger.range(0, self.replication.hwm.load(Ordering::Acquire)));
+                peer_stream.w.write_io(logs).await?;
+            }
+        }
+        let kill_switch = ClusterListener::spawn(
+            peer_stream.r,
+            self.self_handler.clone(),
+            connected_peer_info.id.clone(),
+        );
+
+        let peer =
+            Peer::new(connected_peer_info.id.to_string(), peer_stream.w, peer_state, kill_switch);
+        self.add_peer(AddPeer { peer_id: connected_peer_info.id, peer }).await;
+
+        Ok(())
+    }
+
+    async fn connect_to_server(
+        &mut self,
+        connect_to: PeerIdentifier,
+    ) -> anyhow::Result<Vec<PeerIdentifier>> {
+        if self.members.contains_key(&connect_to) {
+            return Ok(vec![]);
+        }
+        let stream = OutboundStream::new(connect_to, self.replication.clone())
+            .await?
+            .initiate_handshake(self.replication.self_port)
+            .await?;
+
+        if stream.my_repl_info.replid == ReplicationId::Undecided {
+            let connected_node_info = stream
+                .connected_node_info
+                .as_ref()
+                .context("Connected node info not found. Cannot set replication id")?;
+
+            self.replication.replid = connected_node_info.replid.clone();
+            self.replication.hwm.store(connected_node_info.hwm, Ordering::Release);
+        }
+
+        let (add_peer, peer_list) = stream.create_peer_cmd(self.self_handler.clone())?;
+
+        self.add_peer(add_peer).await;
+
+        Ok(peer_list)
     }
 
     pub(crate) fn set_replication_info(&mut self, leader_repl_id: ReplicationId, hwm: u64) {

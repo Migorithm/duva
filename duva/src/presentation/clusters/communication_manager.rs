@@ -1,7 +1,7 @@
 use crate::{
     domains::{
         cluster_actors::{
-            commands::{ClusterCommand, SyncLogs},
+            commands::ClusterCommand,
             replication::{ReplicationRole, ReplicationState},
         },
         peers::{cluster_peer::ClusterNode, identifier::PeerIdentifier},
@@ -21,6 +21,13 @@ impl ClusterCommunicationManager {
         self.send(ClusterCommand::GetPeers(tx)).await?;
         let peers = rx.await?;
         Ok(peers)
+    }
+
+    pub(crate) async fn discover_cluster(&self, connect_to: PeerIdentifier) -> anyhow::Result<()> {
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        self.send(ClusterCommand::DiscoverCluster { connect_to, callback: tx }).await?;
+        rx.await?;
+        Ok(())
     }
 
     pub(crate) async fn replication_info(&self) -> anyhow::Result<ReplicationState> {
@@ -66,12 +73,6 @@ impl ClusterCommunicationManager {
     pub(crate) async fn cluster_nodes(&self) -> anyhow::Result<Vec<ClusterNode>> {
         let (tx, rx) = tokio::sync::oneshot::channel();
         self.send(ClusterCommand::ClusterNodes(tx)).await?;
-        Ok(rx.await?)
-    }
-
-    pub(crate) async fn fetch_logs_for_sync(&self) -> anyhow::Result<SyncLogs> {
-        let (tx, rx) = tokio::sync::oneshot::channel();
-        self.send(ClusterCommand::FetchCurrentState(tx)).await?;
         Ok(rx.await?)
     }
 
