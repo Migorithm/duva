@@ -111,14 +111,10 @@ impl StartUpFacade {
                 Ok((peer_stream, _socket_addr)) => {
                     tokio::spawn({
                         let ccm = registry.cluster_communication_manager.clone();
-                        let current_repo_info = ccm.replication_info().await?;
-
-                        let inbound_stream = InboundStream::new(peer_stream, current_repo_info);
 
                         async move {
-                            if let Err(err) = ccm
-                                .send(ClusterCommand::AcceptPeer { stream: inbound_stream })
-                                .await
+                            if let Err(err) =
+                                ccm.send(ClusterCommand::AcceptPeer { stream: peer_stream }).await
                             {
                                 println!("[ERROR] Failed to accept peer connection: {:?}", err);
                             }

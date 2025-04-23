@@ -1,8 +1,3 @@
-use anyhow::Context;
-use tokio::fs::File;
-use tokio::io::AsyncSeekExt;
-use tokio::io::AsyncWriteExt;
-
 use super::commands::AddPeer;
 use super::commands::ClusterCommand;
 use super::commands::ConsensusClientResponse;
@@ -34,9 +29,14 @@ use crate::domains::{caches::cache_manager::CacheManager, query_parsers::QueryIO
 use crate::presentation::clusters::listeners::listener::ClusterListener;
 use crate::presentation::clusters::outbound::stream::OutboundStream;
 use crate::services::interface::TWrite;
+use anyhow::Context;
 use std::collections::VecDeque;
 use std::iter;
 use std::sync::atomic::Ordering;
+use tokio::fs::File;
+use tokio::io::AsyncSeekExt;
+use tokio::io::AsyncWriteExt;
+use tokio::net::TcpStream;
 
 #[derive(Debug)]
 pub struct ClusterActor {
@@ -180,9 +180,10 @@ impl ClusterActor {
 
     pub(crate) async fn accept_inbound_stream(
         &mut self,
-        mut peer_stream: InboundStream,
+        peer_stream: TcpStream,
         logger: &ReplicatedLogs<impl TWriteAheadLog>,
     ) -> anyhow::Result<()> {
+        let mut peer_stream = InboundStream::new(peer_stream, self.replication.clone());
         let connected_peer_info = peer_stream.recv_handshake().await?;
 
         peer_stream.disseminate_peers(self.members.keys().cloned().collect::<Vec<_>>()).await?;
