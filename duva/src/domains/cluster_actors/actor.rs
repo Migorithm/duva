@@ -5,13 +5,10 @@ use super::commands::RejectionReason;
 use super::commands::ReplicationResponse;
 use super::commands::RequestVote;
 use super::commands::RequestVoteReply;
-use super::commands::SyncLogs;
 use super::heartbeats::heartbeat::AppendEntriesRPC;
 use super::heartbeats::heartbeat::ClusterHeartBeat;
 use super::heartbeats::scheduler::HeartBeatScheduler;
-use super::listener::PeerListener;
 use super::peer_connections::inbound::stream::InboundStream;
-
 use super::peer_connections::outbound::stream::OutboundStream;
 use super::replication::BannedPeer;
 use super::replication::HeartBeatMessage;
@@ -21,7 +18,6 @@ use super::replication::time_in_secs;
 use super::session::ClientSessions;
 use super::session::SessionRequest;
 use super::*;
-
 use crate::domains::append_only_files::WriteOperation;
 use crate::domains::append_only_files::WriteRequest;
 use crate::domains::append_only_files::interfaces::TWriteAheadLog;
@@ -29,10 +25,7 @@ use crate::domains::append_only_files::logger::ReplicatedLogs;
 use crate::domains::cluster_actors::consensus::ElectionState;
 use crate::domains::peers::cluster_peer::ClusterNode;
 use crate::domains::peers::cluster_peer::NodeKind;
-use crate::domains::peers::identifier;
 use crate::domains::{caches::cache_manager::CacheManager, query_parsers::QueryIO};
-
-use crate::services::interface::TWrite;
 use anyhow::Context;
 use std::collections::VecDeque;
 use std::iter;
@@ -178,21 +171,6 @@ impl ClusterActor {
         while let Some(connect_to) = queue.pop_front() {
             queue.extend(self.connect_to_server(connect_to).await?);
         }
-
-        Ok(())
-    }
-
-    pub(crate) async fn accept_inbound_stream(
-        &mut self,
-        peer_stream: TcpStream,
-        logger: &ReplicatedLogs<impl TWriteAheadLog>,
-    ) -> anyhow::Result<()> {
-        let mut inbound_stream = InboundStream::new(peer_stream, self.replication.clone());
-        inbound_stream.recv_handshake().await?;
-        inbound_stream.disseminate_peers(self.members.keys().cloned().collect::<Vec<_>>()).await?;
-        inbound_stream.try_sync_for_replica(logger).await?;
-        self.add_peer(inbound_stream.into_add_peer(self.self_handler.clone())?).await;
-
         Ok(())
     }
 
@@ -205,7 +183,7 @@ impl ClusterActor {
         }
         let stream = OutboundStream::new(connect_to, self.replication.clone())
             .await?
-            .initiate_handshake(self.replication.self_port)
+            .make_handshake(self.replication.self_port)
             .await?;
 
         if stream.my_repl_info.replid == ReplicationId::Undecided {
@@ -223,6 +201,21 @@ impl ClusterActor {
         self.add_peer(add_peer).await;
 
         Ok(peer_list)
+    }
+
+    pub(crate) async fn accept_inbound_stream(
+        &mut self,
+        peer_stream: TcpStream,
+        logger: &ReplicatedLogs<impl TWriteAheadLog>,
+    ) -> anyhow::Result<()> {
+        let mut inbound_stream = InboundStream::new(peer_stream, self.replication.clone());
+        inbound_stream.recv_handshake().await?;
+        inbound_stream.disseminate_peers(self.members.keys().cloned().collect::<Vec<_>>()).await?;
+        inbound_stream.try_sync_for_replica(logger).await?;
+        let add_peer_cmd = inbound_stream.into_add_peer(self.self_handler.clone())?;
+        self.add_peer(add_peer_cmd).await;
+
+        Ok(())
     }
 
     pub(crate) fn set_replication_info(&mut self, leader_repl_id: ReplicationId, hwm: u64) {
@@ -721,6 +714,7 @@ mod test {
     use crate::domains::caches::cache_objects::CacheEntry;
     use crate::domains::caches::command::CacheCommand;
     use crate::domains::cluster_actors::commands::ClusterCommand;
+    use crate::domains::cluster_actors::listener::PeerListener;
     use crate::domains::cluster_actors::replication::ReplicationRole;
 
     use std::ops::Range;

@@ -45,7 +45,7 @@ impl OutboundStream {
             connect_to: connect_to.to_string().into(),
         })
     }
-    pub async fn initiate_handshake(mut self, self_port: u16) -> anyhow::Result<Self> {
+    pub async fn make_handshake(mut self, self_port: u16) -> anyhow::Result<Self> {
         // Trigger
         self.w.write(write_array!("PING")).await?;
         let mut ok_count = 0;
