@@ -76,21 +76,28 @@ impl StartUpFacade {
         ));
 
         self.initialize_with_snapshot().await?;
-        if let Some(seed_server) = env.seed_server {
-            self.registry.cluster_communication_manager.discover_cluster(seed_server).await?;
-        } else {
-            for pre_connected in env.pre_connected_peers {
-                if let Ok(()) = self
-                    .registry
-                    .cluster_communication_manager
-                    .discover_cluster(pre_connected.bind_addr)
-                    .await
-                {
-                    break;
-                }
+        self.discover_cluster(env).await?;
+        self.start_receiving_client_streams().await
+    }
+
+    async fn discover_cluster(&self, env: Environment) -> Result<(), anyhow::Error> {
+        if let Some(seed) = env.seed_server {
+            return self.registry.cluster_communication_manager.discover_cluster(seed).await;
+        }
+
+        for peer in env.pre_connected_peers {
+            if self
+                .registry
+                .cluster_communication_manager
+                .discover_cluster(peer.bind_addr)
+                .await
+                .is_ok()
+            {
+                break;
             }
         }
-        self.start_receiving_client_streams().await
+
+        Ok(())
     }
 
     async fn start_accepting_peer_connections(
@@ -132,6 +139,7 @@ impl StartUpFacade {
         println!("start listening on {}", self.config_manager.bind_addr());
         let mut conn_handlers: Vec<tokio::task::JoinHandle<()>> = Vec::with_capacity(100);
 
+        //TODO refactor: authentication should be simplified
         while let Ok((stream, _)) = client_stream_listener.accept().await {
             let mut peers = self.registry.cluster_communication_manager.get_peers().await?;
             peers.push(PeerIdentifier(self.registry.config_manager.bind_addr()));

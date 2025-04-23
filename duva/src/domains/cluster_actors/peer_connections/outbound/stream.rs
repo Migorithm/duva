@@ -59,11 +59,11 @@ impl OutboundStream {
             let res = self.r.read_values().await?;
             for query in res {
                 match ConnectionResponse::try_from(query)? {
-                    ConnectionResponse::PONG => {
+                    ConnectionResponse::Pong => {
                         let msg = write_array!("REPLCONF", "listening-port", self_port.to_string());
                         self.w.write(msg).await?
                     },
-                    ConnectionResponse::OK => {
+                    ConnectionResponse::Ok => {
                         ok_count += 1;
                         let msg = {
                             match ok_count {
@@ -79,13 +79,13 @@ impl OutboundStream {
                         }?;
                         self.w.write(msg).await?
                     },
-                    ConnectionResponse::FULLRESYNC { id, repl_id, offset } => {
+                    ConnectionResponse::FullResync { id, repl_id, offset } => {
                         connection_info.replid = ReplicationId::Key(repl_id);
                         connection_info.hwm = offset;
                         connection_info.id = id.into();
                         self.reply_with_ok().await?;
                     },
-                    ConnectionResponse::PEERS(peer_list) => {
+                    ConnectionResponse::Peers(peer_list) => {
                         connection_info.peer_list = peer_list;
                         self.connected_node_info = Some(connection_info);
                         self.reply_with_ok().await?;

@@ -195,9 +195,7 @@ impl ClusterActor {
         }
 
         let (add_peer, peer_list) = stream.create_peer_cmd(self.self_handler.clone())?;
-
         self.add_peer(add_peer).await;
-
         Ok(peer_list)
     }
 
@@ -212,7 +210,6 @@ impl ClusterActor {
         inbound_stream.try_sync_for_replica(logger).await?;
         let add_peer_cmd = inbound_stream.into_add_peer(self.self_handler.clone())?;
         self.add_peer(add_peer_cmd).await;
-
         Ok(())
     }
 
