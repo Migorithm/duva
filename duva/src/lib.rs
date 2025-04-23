@@ -116,7 +116,10 @@ impl StartUpFacade {
                         let inbound_stream = InboundStream::new(peer_stream, current_repo_info);
 
                         async move {
-                            if let Err(err) = ccm.accept_inbound_stream(inbound_stream).await {
+                            if let Err(err) = ccm
+                                .send(ClusterCommand::AcceptPeer { stream: inbound_stream })
+                                .await
+                            {
                                 println!("[ERROR] Failed to accept peer connection: {:?}", err);
                             }
                         }

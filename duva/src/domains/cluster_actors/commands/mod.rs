@@ -5,7 +5,10 @@ use super::{
     replication::{HeartBeatMessage, ReplicationId, ReplicationRole, ReplicationState},
     session::SessionRequest,
 };
-use crate::domains::{append_only_files::WriteOperation, peers::cluster_peer::ClusterNode};
+use crate::{
+    InboundStream,
+    domains::{append_only_files::WriteOperation, peers::cluster_peer::ClusterNode},
+};
 pub(crate) use election::*;
 pub(crate) use types::*;
 pub(crate) use write_con::*;
@@ -17,6 +20,9 @@ pub(crate) enum ClusterCommand {
     DiscoverCluster {
         connect_to: PeerIdentifier,
         callback: tokio::sync::oneshot::Sender<()>,
+    },
+    AcceptPeer {
+        stream: InboundStream,
     },
     AddPeer(AddPeer, tokio::sync::oneshot::Sender<()>),
     GetPeers(tokio::sync::oneshot::Sender<Vec<PeerIdentifier>>),

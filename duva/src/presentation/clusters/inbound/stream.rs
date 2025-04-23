@@ -20,9 +20,10 @@ use tokio::net::tcp::OwnedReadHalf;
 use tokio::net::tcp::OwnedWriteHalf;
 
 // The following is used only when the node is in leader mode
+#[derive(Debug)]
 pub(crate) struct InboundStream {
-    r: OwnedReadHalf,
-    w: OwnedWriteHalf,
+    pub(crate) r: OwnedReadHalf,
+    pub(crate) w: OwnedWriteHalf,
     pub(crate) self_repl_info: ReplicationState,
 }
 
@@ -133,28 +134,5 @@ impl InboundStream {
 
     pub(crate) fn decide_peer_kind(&self, connected_peer_info: &ConnectedPeerInfo) -> PeerState {
         PeerState::decide_peer_kind(&self.self_repl_info.replid, connected_peer_info)
-    }
-
-    //TODO refactor - move into domain
-    pub(crate) async fn prepare_add_peer_cmd(
-        mut self,
-        ccm: ClusterCommunicationManager,
-        connected_peer_info: ConnectedPeerInfo,
-    ) -> anyhow::Result<AddPeer> {
-        let peer_state = self.decide_peer_kind(&connected_peer_info);
-
-        // conditional sync
-        if let PeerState::Replica { .. } = &peer_state {
-            if let ReplicationId::Undecided = connected_peer_info.replid {
-                let logs = ccm.fetch_logs_for_sync().await?;
-                self.w.write_io(logs).await?;
-            }
-        }
-
-        let kill_switch = ClusterListener::spawn(self.r, ccm.0, connected_peer_info.id.clone());
-
-        let peer = Peer::new(connected_peer_info.id.to_string(), self.w, peer_state, kill_switch);
-
-        Ok(AddPeer { peer_id: connected_peer_info.id, peer })
     }
 }

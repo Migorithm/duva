@@ -10,6 +10,7 @@ use super::commands::RejectionReason;
 use super::commands::ReplicationResponse;
 use super::commands::RequestVote;
 use super::commands::RequestVoteReply;
+use super::commands::SyncLogs;
 use super::heartbeats::heartbeat::AppendEntriesRPC;
 use super::heartbeats::heartbeat::ClusterHeartBeat;
 use super::heartbeats::scheduler::HeartBeatScheduler;
@@ -21,6 +22,7 @@ use super::replication::time_in_secs;
 use super::session::ClientSessions;
 use super::session::SessionRequest;
 use super::*;
+use crate::InboundStream;
 use crate::domains::append_only_files::WriteOperation;
 use crate::domains::append_only_files::WriteRequest;
 use crate::domains::append_only_files::interfaces::TWriteAheadLog;
@@ -29,7 +31,9 @@ use crate::domains::cluster_actors::consensus::ElectionState;
 use crate::domains::peers::cluster_peer::ClusterNode;
 use crate::domains::peers::cluster_peer::NodeKind;
 use crate::domains::{caches::cache_manager::CacheManager, query_parsers::QueryIO};
+use crate::presentation::clusters::listeners::listener::ClusterListener;
 use crate::presentation::clusters::outbound::stream::OutboundStream;
+use crate::services::interface::TWrite;
 use std::collections::VecDeque;
 use std::iter;
 use std::sync::atomic::Ordering;
@@ -170,6 +174,35 @@ impl ClusterActor {
         while let Some(connect_to) = queue.pop_front() {
             queue.extend(self.connect_to_server(connect_to).await?);
         }
+
+        Ok(())
+    }
+
+    pub(crate) async fn accept_inbound_stream(
+        &mut self,
+        mut peer_stream: InboundStream,
+        logger: &ReplicatedLogs<impl TWriteAheadLog>,
+    ) -> anyhow::Result<()> {
+        let connected_peer_info = peer_stream.recv_handshake().await?;
+
+        peer_stream.disseminate_peers(self.members.keys().cloned().collect::<Vec<_>>()).await?;
+
+        let peer_state = peer_stream.decide_peer_kind(&connected_peer_info);
+        if let PeerState::Replica { .. } = &peer_state {
+            if let ReplicationId::Undecided = connected_peer_info.replid {
+                let logs = SyncLogs(logger.range(0, self.replication.hwm.load(Ordering::Acquire)));
+                peer_stream.w.write_io(logs).await?;
+            }
+        }
+        let kill_switch = ClusterListener::spawn(
+            peer_stream.r,
+            self.self_handler.clone(),
+            connected_peer_info.id.clone(),
+        );
+
+        let peer =
+            Peer::new(connected_peer_info.id.to_string(), peer_stream.w, peer_state, kill_switch);
+        self.add_peer(AddPeer { peer_id: connected_peer_info.id, peer }).await;
 
         Ok(())
     }

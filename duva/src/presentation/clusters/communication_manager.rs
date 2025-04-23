@@ -24,23 +24,6 @@ impl ClusterCommunicationManager {
         Ok(peers)
     }
 
-    //TODO refactor - move into domain
-    pub(crate) async fn accept_inbound_stream(
-        &self,
-        mut peer_stream: InboundStream,
-    ) -> anyhow::Result<()> {
-        let connected_peer_info = peer_stream.recv_handshake().await?;
-
-        peer_stream.disseminate_peers(self.get_peers().await?).await?;
-
-        let (callback, rx) = tokio::sync::oneshot::channel();
-        let add_peer_cmd =
-            peer_stream.prepare_add_peer_cmd(self.clone(), connected_peer_info).await?;
-        self.send(ClusterCommand::AddPeer(add_peer_cmd, callback)).await?;
-        rx.await?;
-        Ok(())
-    }
-
     pub(crate) async fn discover_cluster(&self, connect_to: PeerIdentifier) -> anyhow::Result<()> {
         let (tx, rx) = tokio::sync::oneshot::channel();
         self.send(ClusterCommand::DiscoverCluster { connect_to, callback: tx }).await?;

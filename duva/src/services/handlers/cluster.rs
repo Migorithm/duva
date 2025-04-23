@@ -27,6 +27,13 @@ impl ClusterActor {
                     };
                     let _ = callback.send(());
                 },
+
+                ClusterCommand::AcceptPeer { stream } => {
+                    if let Ok(()) = self.accept_inbound_stream(stream, &logger).await {
+                        let _ = self.snapshot_topology().await;
+                    };
+                },
+
                 ClusterCommand::AddPeer(add_peer_cmd, callback) => {
                     self.add_peer(add_peer_cmd).await;
                     let _ = self.snapshot_topology().await;
