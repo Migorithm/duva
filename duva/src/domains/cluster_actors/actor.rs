@@ -191,9 +191,7 @@ impl ClusterActor {
                 .connected_node_info
                 .as_ref()
                 .context("Connected node info not found. Cannot set replication id")?;
-
-            self.replication.replid = connected_node_info.replid.clone();
-            self.replication.hwm.store(connected_node_info.hwm, Ordering::Release);
+            self.set_replication_info(connected_node_info.replid.clone(), connected_node_info.hwm);
         }
 
         let (add_peer, peer_list) = stream.create_peer_cmd(self.self_handler.clone())?;

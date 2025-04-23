@@ -25,7 +25,6 @@ pub(crate) struct OutboundStream {
     r: OwnedReadHalf,
     w: OwnedWriteHalf,
     pub(crate) my_repl_info: ReplicationState,
-
     pub(crate) connected_node_info: Option<ConnectedPeerInfo>,
     connect_to: PeerIdentifier,
 }
