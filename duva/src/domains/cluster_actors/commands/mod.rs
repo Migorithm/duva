@@ -24,7 +24,7 @@ pub(crate) enum ClusterCommand {
     AcceptPeer {
         stream: InboundStream,
     },
-    AddPeer(AddPeer, tokio::sync::oneshot::Sender<()>),
+
     GetPeers(tokio::sync::oneshot::Sender<Vec<PeerIdentifier>>),
     ReplicationInfo(tokio::sync::oneshot::Sender<ReplicationState>),
 
@@ -49,7 +49,6 @@ pub(crate) enum ClusterCommand {
 
     SendAppendEntriesRPC,
     ClusterNodes(tokio::sync::oneshot::Sender<Vec<ClusterNode>>),
-    FetchCurrentState(tokio::sync::oneshot::Sender<SyncLogs>),
     StartLeaderElection,
     VoteElection(RequestVote),
     ApplyElectionVote(RequestVoteReply),

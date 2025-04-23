@@ -136,14 +136,14 @@ impl ClusterActor {
         Ok(())
     }
 
-    pub(crate) async fn add_peer(&mut self, add_peer_cmd: AddPeer) {
-        let AddPeer { peer_id: peer_addr, peer } = add_peer_cmd;
+    async fn add_peer(&mut self, add_peer_cmd: AddPeer) {
+        let AddPeer { peer_id, peer } = add_peer_cmd;
 
-        self.replication.remove_from_ban_list(&peer_addr);
+        self.replication.remove_from_ban_list(&peer_id);
 
         // If the map did have this key present, the value is updated, and the old
         // value is returned. The key is not updated,
-        if let Some(existing_peer) = self.members.insert(peer_addr, peer) {
+        if let Some(existing_peer) = self.members.insert(peer_id, peer) {
             existing_peer.kill().await;
         }
 

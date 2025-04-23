@@ -1,17 +1,12 @@
 use super::request::HandShakeRequest;
 use super::request::HandShakeRequestEnum;
 use crate::domains::IoError;
-use crate::domains::cluster_actors::commands::AddPeer;
 use crate::domains::cluster_actors::replication::ReplicationId;
 use crate::domains::cluster_actors::replication::ReplicationState;
 use crate::domains::peers::connected_peer_info::ConnectedPeerInfo;
 use crate::domains::peers::identifier::PeerIdentifier;
-use crate::domains::peers::peer::Peer;
 use crate::domains::peers::peer::PeerState;
 use crate::domains::query_parsers::QueryIO;
-use crate::presentation::clusters::communication_manager::ClusterCommunicationManager;
-use crate::presentation::clusters::listeners::listener::ClusterListener;
-
 use crate::services::interface::TRead;
 use crate::services::interface::TWrite;
 use std::sync::atomic::Ordering;

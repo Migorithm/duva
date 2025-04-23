@@ -1,8 +1,7 @@
 use crate::{
-    InboundStream,
     domains::{
         cluster_actors::{
-            commands::{ClusterCommand, SyncLogs},
+            commands::ClusterCommand,
             replication::{ReplicationRole, ReplicationState},
         },
         peers::{cluster_peer::ClusterNode, identifier::PeerIdentifier},
@@ -74,12 +73,6 @@ impl ClusterCommunicationManager {
     pub(crate) async fn cluster_nodes(&self) -> anyhow::Result<Vec<ClusterNode>> {
         let (tx, rx) = tokio::sync::oneshot::channel();
         self.send(ClusterCommand::ClusterNodes(tx)).await?;
-        Ok(rx.await?)
-    }
-
-    pub(crate) async fn fetch_logs_for_sync(&self) -> anyhow::Result<SyncLogs> {
-        let (tx, rx) = tokio::sync::oneshot::channel();
-        self.send(ClusterCommand::FetchCurrentState(tx)).await?;
         Ok(rx.await?)
     }
 
