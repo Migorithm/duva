@@ -132,6 +132,7 @@ pub(crate) fn default_hints() -> HashSet<CommandHint> {
     set.insert(CommandHint::new("info replication", ""));
     set.insert(CommandHint::new("exists key [key ...]", "exists "));
     set.insert(CommandHint::new("del key [key ...]", "del "));
+    set.insert(CommandHint::new("ttl key", "ttl "));
 
     set
 }

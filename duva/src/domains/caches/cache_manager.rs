@@ -23,6 +23,8 @@ use std::{hash::Hasher, iter::Zip};
 use tokio::sync::oneshot::Sender;
 use tokio::task::JoinHandle;
 
+use super::cache_objects::CacheValue;
+
 type OneShotSender<T> = tokio::sync::oneshot::Sender<T>;
 type OneShotReceiverJoinHandle<T> =
     tokio::task::JoinHandle<std::result::Result<T, tokio::sync::oneshot::error::RecvError>>;
@@ -42,7 +44,7 @@ impl CacheManager {
         }
     }
 
-    pub(crate) async fn route_get(&self, key: impl AsRef<str>) -> Result<Option<String>> {
+    pub(crate) async fn route_get(&self, key: impl AsRef<str>) -> Result<Option<CacheValue>> {
         let (tx, rx) = tokio::sync::oneshot::channel();
         let key_ref = key.as_ref();
         self.select_shard(key_ref)
@@ -82,14 +84,14 @@ impl CacheManager {
     pub(crate) async fn apply_log(&self, msg: WriteRequest) -> Result<()> {
         match msg {
             WriteRequest::Set { key, value } => {
-                self.route_set(CacheEntry::KeyValue(key, value)).await?;
+                self.route_set(CacheEntry::KeyValue { key, value }).await?;
             },
             WriteRequest::SetWithExpiry { key, value, expires_at } => {
-                self.route_set(CacheEntry::KeyValueExpiry(
+                self.route_set(CacheEntry::KeyValueExpiry {
                     key,
                     value,
-                    StoredDuration::Milliseconds(expires_at).to_datetime(),
-                ))
+                    expiry: StoredDuration::Milliseconds(expires_at).to_datetime(),
+                })
                 .await?;
             },
             WriteRequest::Delete { keys } => {
@@ -218,7 +220,11 @@ impl CacheManager {
         hasher.finish() as usize % self.inboxes.len()
     }
 
-    pub(crate) async fn route_index_get(&self, key: String, index: u64) -> Result<Option<String>> {
+    pub(crate) async fn route_index_get(
+        &self,
+        key: String,
+        index: u64,
+    ) -> Result<Option<CacheValue>> {
         let (tx, rx) = tokio::sync::oneshot::channel();
         self.select_shard(&key)
             .send(CacheCommand::IndexGet { key, read_idx: index, callback: tx })
@@ -236,5 +242,16 @@ impl CacheManager {
         .await;
 
         join_all(rxs.into_iter()).await;
+    }
+
+    pub(crate) async fn route_ttl(&self, key: String) -> Result<String> {
+        let Ok(Some(CacheValue::ValueWithExpiry { expiry, .. })) = self.route_get(key).await else {
+            return Ok("-1".to_string());
+        };
+
+        let now = Utc::now();
+        let ttl_in_sec = expiry.signed_duration_since(now).num_seconds();
+        let ttl = if ttl_in_sec < 0 { "-1".to_string() } else { ttl_in_sec.to_string() };
+        Ok(ttl)
     }
 }

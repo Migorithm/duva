@@ -1167,7 +1167,7 @@ mod test {
         let task = tokio::spawn(async move {
             while let Some(message) = receiver.recv().await {
                 match message {
-                    CacheCommand::Set { cache_entry: CacheEntry::KeyValue(key, value) } => {
+                    CacheCommand::Set { cache_entry: CacheEntry::KeyValue { key, value } } => {
                         assert_eq!(value, "bar");
                         if key == "foo2" {
                             break;
@@ -1212,7 +1212,8 @@ mod test {
             let mut applied_keys = Vec::new();
 
             while let Some(message) = rx.recv().await {
-                if let CacheCommand::Set { cache_entry: CacheEntry::KeyValue(key, _) } = message {
+                if let CacheCommand::Set { cache_entry: CacheEntry::KeyValue { key, .. } } = message
+                {
                     applied_keys.push(key);
                     if applied_keys.len() == 3 {
                         break;
@@ -1263,7 +1264,8 @@ mod test {
             let mut applied_keys = Vec::new();
 
             while let Some(message) = rx.recv().await {
-                if let CacheCommand::Set { cache_entry: CacheEntry::KeyValue(key, _) } = message {
+                if let CacheCommand::Set { cache_entry: CacheEntry::KeyValue { key, .. } } = message
+                {
                     applied_keys.push(key);
                     if applied_keys.len() == 1 {
                         break;
@@ -1322,7 +1324,7 @@ mod test {
 
             while let Some(message) = rx.recv().await {
                 match message {
-                    CacheCommand::Set { cache_entry: CacheEntry::KeyValue(key, value) } => {
+                    CacheCommand::Set { cache_entry: CacheEntry::KeyValue { key, value } } => {
                         if key == "foo" {
                             received_foo = true;
                             assert_eq!(value, "bar");

@@ -40,13 +40,17 @@ impl ClientController {
             ClientAction::Ping => QueryIO::SimpleString("PONG".into()),
             ClientAction::Echo(val) => QueryIO::BulkString(val),
             ClientAction::Set { key, value } => {
-                let cache_entry = CacheEntry::KeyValue(key.to_owned(), value.to_string());
+                let cache_entry =
+                    CacheEntry::KeyValue { key: key.to_owned(), value: value.to_string() };
                 self.cache_manager.route_set(cache_entry).await?;
                 QueryIO::SimpleString(format!("s:{}|idx:{}", value, current_index.unwrap()))
             },
             ClientAction::SetWithExpiry { key, value, expiry } => {
-                let cache_entry =
-                    CacheEntry::KeyValueExpiry(key.to_owned(), value.to_string(), expiry);
+                let cache_entry = CacheEntry::KeyValueExpiry {
+                    key: key.to_owned(),
+                    value: value.to_string(),
+                    expiry,
+                };
                 self.cache_manager.route_set(cache_entry).await?;
                 QueryIO::SimpleString(format!("s:{}|idx:{}", value, current_index.unwrap()))
             },
@@ -126,8 +130,12 @@ impl ClientController {
                 let role = self.cluster_communication_manager.role();
                 QueryIO::SimpleString(role.await?.to_string())
             },
+            ClientAction::Ttl { key } => {
+                QueryIO::SimpleString(self.cache_manager.route_ttl(key).await?)
+            },
             _ => QueryIO::Err("Invalid command".into()),
         };
+
         Ok(response)
     }
 
@@ -161,8 +169,10 @@ impl ClientController {
             ClientAction::Incr { key } | ClientAction::Decr { key } => {
                 if let Some(v) = self.cache_manager.route_get(&key).await? {
                     // Parse current value to u64, add 1, and handle errors
-                    let num =
-                        v.parse::<i64>().context("ERR value is not an integer or out of range")?;
+                    let num = v
+                        .value()
+                        .parse::<i64>()
+                        .context("ERR value is not an integer or out of range")?;
                     // Handle potential overflow
                     let incremented = num
                         .checked_add(request.action.delta())

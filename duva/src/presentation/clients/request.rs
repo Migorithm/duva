@@ -26,6 +26,7 @@ pub enum ClientAction {
     Role,
     Incr { key: String },
     Decr { key: String },
+    Ttl { key: String },
 }
 
 impl ClientAction {
@@ -82,9 +83,32 @@ impl ClientRequest {
 pub fn extract_action(action: &str, args: &[&str]) -> anyhow::Result<ClientAction> {
     // Check for invalid characters in command parts
     // Command-specific validation
-    match action.to_uppercase().as_str() {
+    let cmd = action.to_uppercase();
+
+    let require_exact_args = |count: usize| {
+        if args.len() != count {
+            Err(anyhow::anyhow!(
+                "(error) ERR wrong number of arguments for '{}' command",
+                cmd.to_lowercase()
+            ))
+        } else {
+            Ok(())
+        }
+    };
+    let require_non_empty_args = || {
+        if args.is_empty() {
+            Err(anyhow::anyhow!(
+                "(error) ERR wrong number of arguments for '{}' command",
+                cmd.to_lowercase()
+            ))
+        } else {
+            Ok(())
+        }
+    };
+
+    match cmd.as_str() {
         "SET" => {
-            if !(args.len() == 2 || (args.len() == 4 && args[2].to_uppercase() == "PX")) {
+            if !(args.len() == 2 || (args.len() == 4 && args[2].eq_ignore_ascii_case("PX"))) {
                 return Err(anyhow::anyhow!(
                     "(error) ERR wrong number of arguments for 'set' command"
                 ));
@@ -115,11 +139,8 @@ pub fn extract_action(action: &str, args: &[&str]) -> anyhow::Result<ClientActio
         },
 
         "KEYS" => {
-            if args.len() != 1 {
-                return Err(anyhow::anyhow!(
-                    "(error) ERR wrong number of arguments for 'keys' command"
-                ));
-            }
+            require_exact_args(1)?;
+
             if args[0] == "*" {
                 Ok(ClientAction::Keys { pattern: None })
             } else {
@@ -127,54 +148,29 @@ pub fn extract_action(action: &str, args: &[&str]) -> anyhow::Result<ClientActio
             }
         },
         "DEL" => {
-            if args.is_empty() {
-                return Err(anyhow::anyhow!(
-                    "(error) ERR wrong number of arguments for 'exists' command"
-                ));
-            }
+            require_non_empty_args()?;
             Ok(ClientAction::Delete { keys: args.iter().map(|s| s.to_string()).collect() })
         },
         "EXISTS" => {
-            if args.is_empty() {
-                return Err(anyhow::anyhow!(
-                    "(error) ERR wrong number of arguments for 'exists' command"
-                ));
-            }
+            require_non_empty_args()?;
             Ok(ClientAction::Exists { keys: args.iter().map(|s| s.to_string()).collect() })
         },
 
         "PING" => {
-            if !args.is_empty() {
-                return Err(anyhow::anyhow!(
-                    "(error) ERR wrong number of arguments for 'ping' command"
-                ));
-            }
+            require_exact_args(0)?;
             Ok(ClientAction::Ping)
         },
         "ECHO" => {
-            if args.len() != 1 {
-                return Err(anyhow::anyhow!(
-                    "(error) ERR wrong number of arguments for 'echo' command"
-                ));
-            }
+            require_exact_args(1)?;
             Ok(ClientAction::Echo(args[0].to_string()))
         },
         "INFO" => {
-            if args.is_empty() {
-                return Err(anyhow::anyhow!(
-                    "(error) ERR wrong number of arguments for 'info' command"
-                ));
-            }
+            require_non_empty_args()?;
             Ok(ClientAction::Info)
         },
 
         "CLUSTER" => {
-            if args.is_empty() {
-                return Err(anyhow::anyhow!(
-                    "(error) ERR wrong number of arguments for 'cluster' command"
-                ));
-            }
-
+            require_non_empty_args()?;
             match args[0].to_uppercase().as_str() {
                 "NODES" => Ok(ClientAction::ClusterNodes),
                 "INFO" => Ok(ClientAction::ClusterInfo),
@@ -190,52 +186,32 @@ pub fn extract_action(action: &str, args: &[&str]) -> anyhow::Result<ClientActio
             }
         },
         "REPLICAOF" => {
-            if args.len() != 2 {
-                return Err(anyhow::anyhow!(
-                    "(error) ERR wrong number of arguments for 'replicaof' command"
-                ));
-            }
+            require_exact_args(2)?;
             Ok(ClientAction::ReplicaOf(PeerIdentifier::new(args[0], args[1].parse()?)))
         },
         "ROLE" => {
-            if !args.is_empty() {
-                return Err(anyhow::anyhow!(
-                    "(error) ERR wrong number of argument for 'role' command"
-                ));
-            }
+            require_exact_args(0)?;
             Ok(ClientAction::Role)
         },
         "CONFIG" => {
-            if args.len() != 2 {
-                return Err(anyhow::anyhow!(
-                    "(error) ERR wrong number of arguments for 'config' command"
-                ));
-            }
+            require_exact_args(2)?;
             Ok(ClientAction::Config { key: args[0].to_string(), value: args[1].to_string() })
         },
         "SAVE" => {
-            if !args.is_empty() {
-                return Err(anyhow::anyhow!(
-                    "(error) ERR wrong number of arguments for 'save' command"
-                ));
-            }
+            require_exact_args(0)?;
             Ok(ClientAction::Save)
         },
         "INCR" => {
-            if args.len() != 1 {
-                return Err(anyhow::anyhow!(
-                    "(error) ERR wrong number of arguments for 'incr' command"
-                ));
-            }
+            require_exact_args(1)?;
             Ok(ClientAction::Incr { key: args[0].to_string() })
         },
         "DECR" => {
-            if args.len() != 1 {
-                return Err(anyhow::anyhow!(
-                    "(error) ERR wrong number of arguments for 'decr' command"
-                ));
-            }
+            require_exact_args(1)?;
             Ok(ClientAction::Decr { key: args[0].to_string() })
+        },
+        "TTL" => {
+            require_exact_args(1)?;
+            Ok(ClientAction::Ttl { key: args[0].to_string() })
         },
         // Add other commands as needed
         unknown_cmd => Err(anyhow::anyhow!(
