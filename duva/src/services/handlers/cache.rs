@@ -76,6 +76,7 @@ mod test {
     use crate::domains::caches::actor::CacheActor;
     use crate::domains::caches::actor::CacheDb;
     use crate::domains::caches::cache_objects::CacheEntry;
+    use crate::domains::caches::cache_objects::CacheValue;
     use crate::domains::caches::command::CacheCommand;
     use crate::domains::caches::read_queue::ReadQueue;
 
@@ -95,14 +96,14 @@ mod test {
                 .await
                 .unwrap();
         }
-        async fn get(&self, key: String, callback: oneshot::Sender<Option<String>>) {
+        async fn get(&self, key: String, callback: oneshot::Sender<Option<CacheValue>>) {
             self.0.send(CacheCommand::Get { key, callback }).await.unwrap();
         }
         async fn index_get(
             &self,
             key: String,
             read_idx: u64,
-            callback: oneshot::Sender<Option<String>>,
+            callback: oneshot::Sender<Option<CacheValue>>,
         ) {
             self.0.send(CacheCommand::IndexGet { key, read_idx, callback }).await.unwrap();
         }
@@ -183,7 +184,7 @@ mod test {
         let res1 = tokio::spawn(rx1);
         let res2 = tokio::spawn(rx2);
 
-        assert_eq!(res1.await.unwrap().unwrap(), Some(value.clone()));
+        assert_eq!(res1.await.unwrap().unwrap(), Some(CacheValue::Value(value.clone())));
 
         let timeout = timeout(Duration::from_millis(1000), res2);
         assert!(timeout.await.is_err());
@@ -219,7 +220,7 @@ mod test {
         cache.ping().await;
 
         // THEN
-        assert_eq!(task.await.unwrap().unwrap(), value.clone().into());
+        assert_eq!(task.await.unwrap().unwrap(), Some(CacheValue::Value(value.clone())));
     }
 
     #[tokio::test]

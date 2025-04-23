@@ -63,7 +63,7 @@ impl<T> ClientController<T> {
                     Err(_) => Response::Error("ERR value is not an integer or out of range".into()),
                 }
             },
-            Incr { .. } | Decr { .. } => {
+            Incr { .. } | Decr { .. } | Ttl { .. } => {
                 match query_io {
                     QueryIO::SimpleString(value) => {
                         let s: Option<&str> =

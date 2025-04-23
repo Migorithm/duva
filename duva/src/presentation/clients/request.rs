@@ -26,6 +26,7 @@ pub enum ClientAction {
     Role,
     Incr { key: String },
     Decr { key: String },
+    Ttl { key: String },
 }
 
 impl ClientAction {
@@ -82,9 +83,10 @@ impl ClientRequest {
 pub fn extract_action(action: &str, args: &[&str]) -> anyhow::Result<ClientAction> {
     // Check for invalid characters in command parts
     // Command-specific validation
+
     match action.to_uppercase().as_str() {
         "SET" => {
-            if !(args.len() == 2 || (args.len() == 4 && args[2].to_uppercase() == "PX")) {
+            if !(args.len() == 2 || (args.len() == 4 && args[2].eq_ignore_ascii_case("PX"))) {
                 return Err(anyhow::anyhow!(
                     "(error) ERR wrong number of arguments for 'set' command"
                 ));
@@ -236,6 +238,14 @@ pub fn extract_action(action: &str, args: &[&str]) -> anyhow::Result<ClientActio
                 ));
             }
             Ok(ClientAction::Decr { key: args[0].to_string() })
+        },
+        "TTL" => {
+            if args.len() != 1 {
+                return Err(anyhow::anyhow!(
+                    "(error) ERR wrong number of arguments for 'ttl' command"
+                ));
+            }
+            Ok(ClientAction::Ttl { key: args[0].to_string() })
         },
         // Add other commands as needed
         unknown_cmd => Err(anyhow::anyhow!(
