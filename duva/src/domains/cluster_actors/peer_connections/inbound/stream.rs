@@ -1,6 +1,9 @@
 use super::request::HandShakeRequest;
 use super::request::HandShakeRequestEnum;
 use crate::domains::IoError;
+use crate::domains::append_only_files::interfaces::TWriteAheadLog;
+use crate::domains::append_only_files::logger::ReplicatedLogs;
+use crate::domains::cluster_actors::commands::SyncLogs;
 use crate::domains::cluster_actors::replication::ReplicationId;
 use crate::domains::cluster_actors::replication::ReplicationState;
 use crate::domains::peers::connected_peer_info::ConnectedPeerInfo;
@@ -140,6 +143,25 @@ impl InboundStream {
         if val.to_lowercase() != "ok" {
             return Err(anyhow::anyhow!("Invalid response"));
         }
+        Ok(())
+    }
+
+    pub(crate) async fn try_sync_for_replica(
+        &mut self,
+        logger: &ReplicatedLogs<impl TWriteAheadLog>,
+    ) -> Result<(), anyhow::Error> {
+        let connected_info = self.connected_peer_info.as_ref().context("set by now")?;
+
+        if let PeerState::Replica { .. } =
+            connected_info.decide_peer_kind(&self.self_repl_info.replid)
+        {
+            if let ReplicationId::Undecided = connected_info.replid {
+                let logs =
+                    SyncLogs(logger.range(0, self.self_repl_info.hwm.load(Ordering::Acquire)));
+                self.w.write_io(logs).await?;
+            }
+        };
+
         Ok(())
     }
 }

@@ -189,10 +189,8 @@ impl ClusterActor {
     ) -> anyhow::Result<()> {
         let mut inbound_stream = InboundStream::new(peer_stream, self.replication.clone());
         inbound_stream.recv_handshake().await?;
-
         inbound_stream.disseminate_peers(self.members.keys().cloned().collect::<Vec<_>>()).await?;
-
-        self.try_sync_for_replica(logger, &mut inbound_stream).await?;
+        inbound_stream.try_sync_for_replica(logger).await?;
 
         let identifier = inbound_stream.id()?;
         let peer_state = inbound_stream.peer_state()?;
@@ -202,27 +200,6 @@ impl ClusterActor {
 
         let peer = Peer::new(identifier.to_string(), inbound_stream.w, peer_state, kill_switch);
         self.add_peer(AddPeer { peer_id: identifier, peer }).await;
-
-        Ok(())
-    }
-
-    async fn try_sync_for_replica(
-        &mut self,
-        logger: &ReplicatedLogs<impl TWriteAheadLog>,
-        peer_stream: &mut InboundStream,
-    ) -> Result<(), anyhow::Error> {
-        let connected_info = peer_stream.connected_peer_info.as_ref().context("set by now")?;
-
-        if let PeerState::Replica { .. } =
-            connected_info.decide_peer_kind(&peer_stream.self_repl_info.replid)
-        {
-            if let ReplicationId::Undecided = connected_info.replid {
-                let logs = SyncLogs(
-                    logger.range(0, peer_stream.self_repl_info.hwm.load(Ordering::Acquire)),
-                );
-                peer_stream.w.write_io(logs).await?;
-            }
-        };
 
         Ok(())
     }
