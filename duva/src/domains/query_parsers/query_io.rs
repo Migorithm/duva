@@ -174,7 +174,7 @@ impl From<Option<CacheValue>> for QueryIO {
     fn from(v: Option<CacheValue>) -> Self {
         match v {
             Some(CacheValue::Value(v)) => QueryIO::BulkString(v),
-            Some(CacheValue::ValueWithExpiry(v, _exp)) => QueryIO::BulkString(v), // todo need to revisit
+            Some(CacheValue::ValueWithExpiry { value: v, .. }) => QueryIO::BulkString(v), // todo need to revisit
             None => QueryIO::Null,
         }
     }

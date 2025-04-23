@@ -15,11 +15,11 @@ impl CacheEntry {
     pub(crate) fn encode_with_key(&self) -> Result<Vec<u8>> {
         let mut result = Vec::new();
         match self {
-            CacheEntry::KeyValue(key, value) => {
+            CacheEntry::KeyValue { key, value } => {
                 result.push(STRING_VALUE_TYPE_INDICATOR);
                 result.extend_from_slice(&encode_key_value(key, value)?);
             },
-            CacheEntry::KeyValueExpiry(key, value, expiry) => {
+            CacheEntry::KeyValueExpiry { key, value, expiry } => {
                 let milli_seconds = expiry.timestamp_millis();
                 result.push(EXPIRY_TIME_IN_MILLISECONDS_INDICATOR);
                 result.extend_from_slice(&milli_seconds.to_le_bytes());
@@ -290,7 +290,7 @@ mod test {
 
     #[test]
     fn test_cache_value_encode() {
-        let value = CacheEntry::KeyValue("key".to_string(), "value".to_string());
+        let value = CacheEntry::KeyValue { key: "key".to_string(), value: "value".to_string() };
         let encoded = value.encode_with_key().unwrap();
         let expected = vec![
             STRING_VALUE_TYPE_INDICATOR,
@@ -310,11 +310,11 @@ mod test {
 
     #[test]
     fn test_cache_value_with_expiry_milliseconds() {
-        let kvs = CacheEntry::KeyValueExpiry(
-            "key".to_string(),
-            "value".to_string(),
-            StoredDuration::Milliseconds(1713824559637).to_datetime(),
-        );
+        let kvs = CacheEntry::KeyValueExpiry {
+            key: "key".to_string(),
+            value: "value".to_string(),
+            expiry: StoredDuration::Milliseconds(1713824559637).to_datetime(),
+        };
 
         let encoded = kvs.encode_with_key().unwrap();
         let expected = vec![

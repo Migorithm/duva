@@ -91,7 +91,7 @@ mod test {
     impl S {
         async fn set(&self, key: String, value: String) {
             self.0
-                .send(CacheCommand::Set { cache_entry: CacheEntry::KeyValue(key, value) })
+                .send(CacheCommand::Set { cache_entry: CacheEntry::KeyValue { key, value } })
                 .await
                 .unwrap();
         }
@@ -132,9 +132,13 @@ mod test {
             let value = format!("value{}", i);
             tx.send(CacheCommand::Set {
                 cache_entry: if i & 1 == 0 {
-                    CacheEntry::KeyValueExpiry(key, value, Utc::now() + Duration::from_secs(10))
+                    CacheEntry::KeyValueExpiry {
+                        key,
+                        value,
+                        expiry: Utc::now() + Duration::from_secs(10),
+                    }
                 } else {
-                    CacheEntry::KeyValue(key, value)
+                    CacheEntry::KeyValue { key, value }
                 },
             })
             .await

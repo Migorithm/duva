@@ -287,8 +287,8 @@ impl BytesDecoder<'_, MetadataReady> {
                     let (key, value) = self.try_extract_key_value()?;
 
                     return match expiry {
-                        Some(expiry) => Ok(CacheEntry::KeyValueExpiry(key, value, expiry)),
-                        None => Ok(CacheEntry::KeyValue(key, value)),
+                        Some(expiry) => Ok(CacheEntry::KeyValueExpiry { key, value, expiry }),
+                        None => Ok(CacheEntry::KeyValue { key, value }),
                     };
                 },
                 _ => {
@@ -366,8 +366,8 @@ mod test {
 
     fn as_str(cache_entry: &CacheEntry) -> &str {
         match cache_entry {
-            CacheEntry::KeyValue(_, value) => value,
-            CacheEntry::KeyValueExpiry(_, value, _) => value,
+            CacheEntry::KeyValue { value, .. } => value,
+            CacheEntry::KeyValueExpiry { value, .. } => value,
         }
     }
 
@@ -467,7 +467,7 @@ mod test {
         assert_eq!(db_section.storage.len(), 3);
 
         match &db_section.storage[0] {
-            CacheEntry::KeyValue(key, value) => {
+            CacheEntry::KeyValue { key, value } => {
                 assert_eq!(key, "foobar");
                 assert_eq!(value, "bazqux");
             },
@@ -475,7 +475,7 @@ mod test {
         }
 
         match &db_section.storage[1] {
-            CacheEntry::KeyValueExpiry(key, value, expiry) => {
+            CacheEntry::KeyValueExpiry { key, value, expiry } => {
                 assert_eq!(key, "foo");
                 assert_eq!(value, "bar");
                 assert_eq!(expiry, &StoredDuration::Milliseconds(1713824559637).to_datetime());
@@ -497,7 +497,7 @@ mod test {
         let key_value = bytes_handler.try_key_value().expect("Failed to extract key value expiry");
 
         match key_value {
-            CacheEntry::KeyValue(key, value) => {
+            CacheEntry::KeyValue { key, value } => {
                 assert_eq!(key, "baz");
                 assert_eq!(value, "qux");
             },
@@ -662,14 +662,14 @@ mod test {
         assert_eq!(rdb_file.database[0].index, 0);
         assert_eq!(rdb_file.database[0].storage.len(), 2);
         match rdb_file.database[0].storage[0] {
-            CacheEntry::KeyValue(ref key, ref value) => {
+            CacheEntry::KeyValue { ref key, ref value } => {
                 assert_eq!(key, "foo2");
                 assert_eq!(value, "bar2");
             },
             _ => panic!("Expected KeyValue"),
         }
         match rdb_file.database[0].storage[1] {
-            CacheEntry::KeyValue(ref key, ref value) => {
+            CacheEntry::KeyValue { ref key, ref value } => {
                 assert_eq!(key, "foo");
                 assert_eq!(value, "bar");
             },

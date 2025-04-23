@@ -40,13 +40,17 @@ impl ClientController {
             ClientAction::Ping => QueryIO::SimpleString("PONG".into()),
             ClientAction::Echo(val) => QueryIO::BulkString(val),
             ClientAction::Set { key, value } => {
-                let cache_entry = CacheEntry::KeyValue(key.to_owned(), value.to_string());
+                let cache_entry =
+                    CacheEntry::KeyValue { key: key.to_owned(), value: value.to_string() };
                 self.cache_manager.route_set(cache_entry).await?;
                 QueryIO::SimpleString(format!("s:{}|idx:{}", value, current_index.unwrap()))
             },
             ClientAction::SetWithExpiry { key, value, expiry } => {
-                let cache_entry =
-                    CacheEntry::KeyValueExpiry(key.to_owned(), value.to_string(), expiry);
+                let cache_entry = CacheEntry::KeyValueExpiry {
+                    key: key.to_owned(),
+                    value: value.to_string(),
+                    expiry,
+                };
                 self.cache_manager.route_set(cache_entry).await?;
                 QueryIO::SimpleString(format!("s:{}|idx:{}", value, current_index.unwrap()))
             },
