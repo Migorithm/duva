@@ -1,17 +1,26 @@
-use super::*;
-use crate::domains::cluster_actors::commands::ClusterCommand;
+use crate::{
+    domains::{
+        cluster_actors::commands::{ClusterCommand, PeerListenerCommand},
+        peers::{connected_types::ReadConnected, peer::ListeningActorKillTrigger},
+    },
+    prelude::PeerIdentifier,
+    services::interface::TRead,
+};
+use tokio::{net::tcp::OwnedReadHalf, select, sync::mpsc::Sender};
 
 #[cfg(test)]
 static ATOMIC: std::sync::atomic::AtomicI16 = std::sync::atomic::AtomicI16::new(0);
 
+pub(crate) type ReactorKillSwitch = tokio::sync::oneshot::Receiver<()>;
+
 #[derive(Debug)]
-pub(crate) struct ClusterListener {
+pub(crate) struct PeerListener {
     pub(crate) read_connected: ReadConnected,
     pub(crate) cluster_handler: Sender<ClusterCommand>,
     pub(crate) listening_to: PeerIdentifier,
 }
 
-impl ClusterListener {
+impl PeerListener {
     pub fn spawn(
         read_connected: OwnedReadHalf,
         cluster_handler: Sender<ClusterCommand>,
@@ -26,13 +35,13 @@ impl ClusterListener {
         ListeningActorKillTrigger::new(kill_trigger, tokio::spawn(listener.listen(kill_switch)))
     }
 
-    pub(crate) async fn read_command(&mut self) -> anyhow::Result<Vec<PeerInput>> {
+    pub(crate) async fn read_command(&mut self) -> anyhow::Result<Vec<PeerListenerCommand>> {
         self.read_connected
             .stream
             .read_values()
             .await?
             .into_iter()
-            .map(PeerInput::try_from)
+            .map(PeerListenerCommand::try_from)
             .collect::<Result<_, _>>()
     }
     pub(crate) async fn listen(mut self, rx: ReactorKillSwitch) -> OwnedReadHalf {
@@ -50,35 +59,35 @@ impl ClusterListener {
 
             for cmd in cmds {
                 match cmd {
-                    PeerInput::AppendEntriesRPC(hb) => {
+                    PeerListenerCommand::AppendEntriesRPC(hb) => {
                         println!("[INFO] from {}, hc:{}", hb.from, hb.hop_count);
                         let _ =
                             self.cluster_handler.send(ClusterCommand::AppendEntriesRPC(hb)).await;
                     },
-                    PeerInput::ClusterHeartBeat(hb) => {
+                    PeerListenerCommand::ClusterHeartBeat(hb) => {
                         println!("[INFO] from {}, hc:{}", hb.from, hb.hop_count);
                         let _ =
                             self.cluster_handler.send(ClusterCommand::ClusterHeartBeat(hb)).await;
                     },
-                    PeerInput::FullSync(logs) => {
+                    PeerListenerCommand::FullSync(logs) => {
                         let _ = self
                             .cluster_handler
                             .send(ClusterCommand::InstallLeaderState(logs))
                             .await;
                     },
-                    PeerInput::Acks(items) => {
+                    PeerListenerCommand::Acks(items) => {
                         let _ = self
                             .cluster_handler
                             .send(ClusterCommand::ReplicationResponse(items))
                             .await;
                     },
-                    PeerInput::RequestVote(request_vote) => {
+                    PeerListenerCommand::RequestVote(request_vote) => {
                         let _ = self
                             .cluster_handler
                             .send(ClusterCommand::VoteElection(request_vote))
                             .await;
                     },
-                    PeerInput::RequestVoteReply(reply) => {
+                    PeerListenerCommand::RequestVoteReply(reply) => {
                         let _ = self
                             .cluster_handler
                             .send(ClusterCommand::ApplyElectionVote(reply))

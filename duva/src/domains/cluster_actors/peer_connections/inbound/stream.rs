@@ -5,7 +5,6 @@ use crate::domains::cluster_actors::replication::ReplicationId;
 use crate::domains::cluster_actors::replication::ReplicationState;
 use crate::domains::peers::connected_peer_info::ConnectedPeerInfo;
 use crate::domains::peers::identifier::PeerIdentifier;
-use crate::domains::peers::peer::PeerState;
 use crate::domains::query_parsers::QueryIO;
 use crate::services::interface::TRead;
 use crate::services::interface::TWrite;
@@ -125,9 +124,5 @@ impl InboundStream {
             return Err(anyhow::anyhow!("Invalid response"));
         }
         Ok(())
-    }
-
-    pub(crate) fn decide_peer_kind(&self, connected_peer_info: &ConnectedPeerInfo) -> PeerState {
-        PeerState::decide_peer_kind(&self.self_repl_info.replid, connected_peer_info)
     }
 }

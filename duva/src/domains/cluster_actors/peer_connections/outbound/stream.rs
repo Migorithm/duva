@@ -1,15 +1,15 @@
 use super::response::ConnectionResponse;
 use crate::domains::cluster_actors::commands::AddPeer;
 use crate::domains::cluster_actors::commands::ClusterCommand;
+
+use crate::domains::cluster_actors::listener::PeerListener;
 use crate::domains::cluster_actors::replication::ReplicationId;
 use crate::domains::cluster_actors::replication::ReplicationState;
 use crate::domains::peers::connected_peer_info::ConnectedPeerInfo;
 use crate::domains::peers::identifier::PeerIdentifier;
 use crate::domains::peers::peer::Peer;
-use crate::domains::peers::peer::PeerState;
 use crate::domains::query_parsers::QueryIO;
 
-use crate::presentation::clusters::listeners::listener::ClusterListener;
 use crate::services::interface::TRead;
 use crate::services::interface::TWrite;
 use crate::write_array;
@@ -111,12 +111,12 @@ impl OutboundStream {
         let peer_list = connection_info.list_peer_binding_addrs();
 
         let kill_switch =
-            ClusterListener::spawn(self.r, cluster_actor_handler, self.connect_to.clone());
+            PeerListener::spawn(self.r, cluster_actor_handler, self.connect_to.clone());
 
         let peer = Peer::new(
             (*self.connect_to).clone(),
             self.w,
-            PeerState::decide_peer_kind(&self.my_repl_info.replid, &connection_info),
+            connection_info.decide_peer_kind(&self.my_repl_info.replid),
             kill_switch,
         );
 
