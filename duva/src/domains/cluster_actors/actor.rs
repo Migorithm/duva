@@ -5,10 +5,11 @@ use super::commands::RejectionReason;
 use super::commands::ReplicationResponse;
 use super::commands::RequestVote;
 use super::commands::RequestVoteReply;
-use super::commands::SyncLogs;
 use super::heartbeats::heartbeat::AppendEntriesRPC;
 use super::heartbeats::heartbeat::ClusterHeartBeat;
 use super::heartbeats::scheduler::HeartBeatScheduler;
+use super::peer_connections::inbound::stream::InboundStream;
+use super::peer_connections::outbound::stream::OutboundStream;
 use super::replication::BannedPeer;
 use super::replication::HeartBeatMessage;
 use super::replication::ReplicationId;
@@ -17,7 +18,6 @@ use super::replication::time_in_secs;
 use super::session::ClientSessions;
 use super::session::SessionRequest;
 use super::*;
-use crate::InboundStream;
 use crate::domains::append_only_files::WriteOperation;
 use crate::domains::append_only_files::WriteRequest;
 use crate::domains::append_only_files::interfaces::TWriteAheadLog;
@@ -26,9 +26,6 @@ use crate::domains::cluster_actors::consensus::ElectionState;
 use crate::domains::peers::cluster_peer::ClusterNode;
 use crate::domains::peers::cluster_peer::NodeKind;
 use crate::domains::{caches::cache_manager::CacheManager, query_parsers::QueryIO};
-use crate::presentation::clusters::listeners::listener::ClusterListener;
-use crate::presentation::clusters::outbound::stream::OutboundStream;
-use crate::services::interface::TWrite;
 use anyhow::Context;
 use std::collections::VecDeque;
 use std::iter;
@@ -174,38 +171,6 @@ impl ClusterActor {
         while let Some(connect_to) = queue.pop_front() {
             queue.extend(self.connect_to_server(connect_to).await?);
         }
-
-        Ok(())
-    }
-
-    // TODO tidy up
-    pub(crate) async fn accept_inbound_stream(
-        &mut self,
-        peer_stream: TcpStream,
-        logger: &ReplicatedLogs<impl TWriteAheadLog>,
-    ) -> anyhow::Result<()> {
-        let mut peer_stream = InboundStream::new(peer_stream, self.replication.clone());
-        let connected_peer_info = peer_stream.recv_handshake().await?;
-
-        peer_stream.disseminate_peers(self.members.keys().cloned().collect::<Vec<_>>()).await?;
-
-        let peer_state = peer_stream.decide_peer_kind(&connected_peer_info);
-        if let PeerState::Replica { .. } = &peer_state {
-            if let ReplicationId::Undecided = connected_peer_info.replid {
-                let logs = SyncLogs(logger.range(0, self.replication.hwm.load(Ordering::Acquire)));
-                peer_stream.w.write_io(logs).await?;
-            }
-        }
-        let kill_switch = ClusterListener::spawn(
-            peer_stream.r,
-            self.self_handler.clone(),
-            connected_peer_info.id.clone(),
-        );
-
-        let peer =
-            Peer::new(connected_peer_info.id.to_string(), peer_stream.w, peer_state, kill_switch);
-        self.add_peer(AddPeer { peer_id: connected_peer_info.id, peer }).await;
-
         Ok(())
     }
 
@@ -218,7 +183,7 @@ impl ClusterActor {
         }
         let stream = OutboundStream::new(connect_to, self.replication.clone())
             .await?
-            .initiate_handshake(self.replication.self_port)
+            .make_handshake(self.replication.self_port)
             .await?;
 
         if stream.my_repl_info.replid == ReplicationId::Undecided {
@@ -226,16 +191,26 @@ impl ClusterActor {
                 .connected_node_info
                 .as_ref()
                 .context("Connected node info not found. Cannot set replication id")?;
-
-            self.replication.replid = connected_node_info.replid.clone();
-            self.replication.hwm.store(connected_node_info.hwm, Ordering::Release);
+            self.set_replication_info(connected_node_info.replid.clone(), connected_node_info.hwm);
         }
 
         let (add_peer, peer_list) = stream.create_peer_cmd(self.self_handler.clone())?;
-
         self.add_peer(add_peer).await;
-
         Ok(peer_list)
+    }
+
+    pub(crate) async fn accept_inbound_stream(
+        &mut self,
+        peer_stream: TcpStream,
+        logger: &ReplicatedLogs<impl TWriteAheadLog>,
+    ) -> anyhow::Result<()> {
+        let mut inbound_stream = InboundStream::new(peer_stream, self.replication.clone());
+        inbound_stream.recv_handshake().await?;
+        inbound_stream.disseminate_peers(self.members.keys().cloned().collect::<Vec<_>>()).await?;
+        inbound_stream.try_sync_for_replica(logger).await?;
+        let add_peer_cmd = inbound_stream.into_add_peer(self.self_handler.clone())?;
+        self.add_peer(add_peer_cmd).await;
+        Ok(())
     }
 
     pub(crate) fn set_replication_info(&mut self, leader_repl_id: ReplicationId, hwm: u64) {
@@ -734,8 +709,9 @@ mod test {
     use crate::domains::caches::cache_objects::CacheEntry;
     use crate::domains::caches::command::CacheCommand;
     use crate::domains::cluster_actors::commands::ClusterCommand;
+    use crate::domains::cluster_actors::listener::PeerListener;
     use crate::domains::cluster_actors::replication::ReplicationRole;
-    use crate::presentation::clusters::listeners::listener::ClusterListener;
+
     use std::ops::Range;
     use std::time::Duration;
     use tokio::fs::OpenOptions;
@@ -808,7 +784,7 @@ mod test {
         for port in num_stream {
             let key = PeerIdentifier::new("localhost", port);
             let (r, x) = TcpStream::connect(bind_addr).await.unwrap().into_split();
-            let kill_switch = ClusterListener::spawn(r, cluster_sender.clone(), key.clone());
+            let kill_switch = PeerListener::spawn(r, cluster_sender.clone(), key.clone());
             actor.members.insert(
                 PeerIdentifier::new("localhost", port),
                 Peer::new(
@@ -1474,7 +1450,7 @@ mod test {
         for port in [6379, 6380] {
             let key = PeerIdentifier::new("localhost", port);
             let (r, x) = TcpStream::connect(bind_addr).await.unwrap().into_split();
-            let kill_switch = ClusterListener::spawn(r, cluster_sender.clone(), key.clone());
+            let kill_switch = PeerListener::spawn(r, cluster_sender.clone(), key.clone());
             cluster_actor.members.insert(
                 key.clone(),
                 Peer::new(
@@ -1494,11 +1470,8 @@ mod test {
 
         // leader for different shard?
         let (r, x) = TcpStream::connect(bind_addr).await.unwrap().into_split();
-        let kill_switch = ClusterListener::spawn(
-            r,
-            cluster_sender.clone(),
-            second_shard_leader_identifier.clone(),
-        );
+        let kill_switch =
+            PeerListener::spawn(r, cluster_sender.clone(), second_shard_leader_identifier.clone());
 
         cluster_actor.members.insert(
             second_shard_leader_identifier.clone(),
@@ -1517,7 +1490,7 @@ mod test {
         for port in [2655, 2653] {
             let key = PeerIdentifier::new("localhost", port);
             let (r, x) = TcpStream::connect(bind_addr).await.unwrap().into_split();
-            let kill_switch = ClusterListener::spawn(r, cluster_sender.clone(), key.clone());
+            let kill_switch = PeerListener::spawn(r, cluster_sender.clone(), key.clone());
 
             cluster_actor.members.insert(
                 key.clone(),
@@ -1591,7 +1564,7 @@ mod test {
         let bind_addr = listener.local_addr().unwrap();
         let (r, x) = TcpStream::connect(bind_addr).await.unwrap().into_split();
 
-        let kill_switch = ClusterListener::spawn(
+        let kill_switch = PeerListener::spawn(
             r,
             cluster_actor.self_handler.clone(),
             PeerIdentifier("127.0.0.1:3849".into()),

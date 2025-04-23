@@ -1,14 +1,22 @@
 use super::request::HandShakeRequest;
 use super::request::HandShakeRequestEnum;
+use crate::ClusterCommand;
 use crate::domains::IoError;
+use crate::domains::append_only_files::interfaces::TWriteAheadLog;
+use crate::domains::append_only_files::logger::ReplicatedLogs;
+use crate::domains::cluster_actors::commands::AddPeer;
+use crate::domains::cluster_actors::commands::SyncLogs;
+use crate::domains::cluster_actors::listener::PeerListener;
 use crate::domains::cluster_actors::replication::ReplicationId;
 use crate::domains::cluster_actors::replication::ReplicationState;
 use crate::domains::peers::connected_peer_info::ConnectedPeerInfo;
 use crate::domains::peers::identifier::PeerIdentifier;
+use crate::domains::peers::peer::Peer;
 use crate::domains::peers::peer::PeerState;
 use crate::domains::query_parsers::QueryIO;
 use crate::services::interface::TRead;
 use crate::services::interface::TWrite;
+use anyhow::Context;
 use std::sync::atomic::Ordering;
 use tokio::net::TcpStream;
 use tokio::net::tcp::OwnedReadHalf;
@@ -20,14 +28,15 @@ pub(crate) struct InboundStream {
     pub(crate) r: OwnedReadHalf,
     pub(crate) w: OwnedWriteHalf,
     pub(crate) self_repl_info: ReplicationState,
+    pub(crate) connected_peer_info: Option<ConnectedPeerInfo>,
 }
 
 impl InboundStream {
     pub(crate) fn new(stream: TcpStream, self_repl_info: ReplicationState) -> Self {
         let (read, write) = stream.into_split();
-        Self { r: read, w: write, self_repl_info }
+        Self { r: read, w: write, self_repl_info, connected_peer_info: None }
     }
-    pub(crate) async fn recv_handshake(&mut self) -> anyhow::Result<ConnectedPeerInfo> {
+    pub(crate) async fn recv_handshake(&mut self) -> anyhow::Result<()> {
         self.recv_ping().await?;
 
         let port = self.recv_replconf_listening_port().await?;
@@ -39,12 +48,26 @@ impl InboundStream {
         let (peer_leader_repl_id, peer_hwm) = self.recv_psync().await?;
 
         let addr = self.r.peer_addr().map_err(|error| Into::<IoError>::into(error.kind()))?;
-        Ok(ConnectedPeerInfo {
+
+        self.connected_peer_info = Some(ConnectedPeerInfo {
             id: PeerIdentifier::new(&addr.ip().to_string(), port),
             replid: peer_leader_repl_id,
             hwm: peer_hwm,
             peer_list: vec![],
-        })
+        });
+
+        Ok(())
+    }
+
+    pub(crate) fn id(&self) -> anyhow::Result<PeerIdentifier> {
+        Ok(self.connected_peer_info.as_ref().context("set by now")?.id.clone())
+    }
+    pub(crate) fn peer_state(&self) -> anyhow::Result<PeerState> {
+        Ok(self
+            .connected_peer_info
+            .as_ref()
+            .context("set by now")?
+            .decide_peer_kind(&self.self_repl_info.replid))
     }
 
     async fn recv_ping(&mut self) -> anyhow::Result<()> {
@@ -127,7 +150,36 @@ impl InboundStream {
         Ok(())
     }
 
-    pub(crate) fn decide_peer_kind(&self, connected_peer_info: &ConnectedPeerInfo) -> PeerState {
-        PeerState::decide_peer_kind(&self.self_repl_info.replid, connected_peer_info)
+    pub(crate) async fn try_sync_for_replica(
+        &mut self,
+        logger: &ReplicatedLogs<impl TWriteAheadLog>,
+    ) -> Result<(), anyhow::Error> {
+        let connected_info = self.connected_peer_info.as_ref().context("set by now")?;
+
+        if let PeerState::Replica { .. } =
+            connected_info.decide_peer_kind(&self.self_repl_info.replid)
+        {
+            if let ReplicationId::Undecided = connected_info.replid {
+                let logs =
+                    SyncLogs(logger.range(0, self.self_repl_info.hwm.load(Ordering::Acquire)));
+                self.w.write_io(logs).await?;
+            }
+        };
+
+        Ok(())
+    }
+
+    pub(crate) fn into_add_peer(
+        self,
+        actor_handler: tokio::sync::mpsc::Sender<ClusterCommand>,
+    ) -> anyhow::Result<AddPeer> {
+        let identifier = self.id()?;
+        let peer_state = self.peer_state()?;
+        let kill_switch = PeerListener::spawn(self.r, actor_handler, identifier.clone());
+
+        Ok(AddPeer {
+            peer: Peer::new(identifier.to_string(), self.w, peer_state, kill_switch),
+            peer_id: identifier,
+        })
     }
 }

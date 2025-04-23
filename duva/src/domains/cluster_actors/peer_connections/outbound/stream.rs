@@ -1,15 +1,15 @@
 use super::response::ConnectionResponse;
 use crate::domains::cluster_actors::commands::AddPeer;
 use crate::domains::cluster_actors::commands::ClusterCommand;
+
+use crate::domains::cluster_actors::listener::PeerListener;
 use crate::domains::cluster_actors::replication::ReplicationId;
 use crate::domains::cluster_actors::replication::ReplicationState;
 use crate::domains::peers::connected_peer_info::ConnectedPeerInfo;
 use crate::domains::peers::identifier::PeerIdentifier;
 use crate::domains::peers::peer::Peer;
-use crate::domains::peers::peer::PeerState;
 use crate::domains::query_parsers::QueryIO;
 
-use crate::presentation::clusters::listeners::listener::ClusterListener;
 use crate::services::interface::TRead;
 use crate::services::interface::TWrite;
 use crate::write_array;
@@ -25,7 +25,6 @@ pub(crate) struct OutboundStream {
     r: OwnedReadHalf,
     w: OwnedWriteHalf,
     pub(crate) my_repl_info: ReplicationState,
-
     pub(crate) connected_node_info: Option<ConnectedPeerInfo>,
     connect_to: PeerIdentifier,
 }
@@ -45,7 +44,7 @@ impl OutboundStream {
             connect_to: connect_to.to_string().into(),
         })
     }
-    pub async fn initiate_handshake(mut self, self_port: u16) -> anyhow::Result<Self> {
+    pub async fn make_handshake(mut self, self_port: u16) -> anyhow::Result<Self> {
         // Trigger
         self.w.write(write_array!("PING")).await?;
         let mut ok_count = 0;
@@ -60,11 +59,11 @@ impl OutboundStream {
             let res = self.r.read_values().await?;
             for query in res {
                 match ConnectionResponse::try_from(query)? {
-                    ConnectionResponse::PONG => {
+                    ConnectionResponse::Pong => {
                         let msg = write_array!("REPLCONF", "listening-port", self_port.to_string());
                         self.w.write(msg).await?
                     },
-                    ConnectionResponse::OK => {
+                    ConnectionResponse::Ok => {
                         ok_count += 1;
                         let msg = {
                             match ok_count {
@@ -80,13 +79,13 @@ impl OutboundStream {
                         }?;
                         self.w.write(msg).await?
                     },
-                    ConnectionResponse::FULLRESYNC { id, repl_id, offset } => {
+                    ConnectionResponse::FullResync { id, repl_id, offset } => {
                         connection_info.replid = ReplicationId::Key(repl_id);
                         connection_info.hwm = offset;
                         connection_info.id = id.into();
                         self.reply_with_ok().await?;
                     },
-                    ConnectionResponse::PEERS(peer_list) => {
+                    ConnectionResponse::Peers(peer_list) => {
                         connection_info.peer_list = peer_list;
                         self.connected_node_info = Some(connection_info);
                         self.reply_with_ok().await?;
@@ -111,12 +110,12 @@ impl OutboundStream {
         let peer_list = connection_info.list_peer_binding_addrs();
 
         let kill_switch =
-            ClusterListener::spawn(self.r, cluster_actor_handler, self.connect_to.clone());
+            PeerListener::spawn(self.r, cluster_actor_handler, self.connect_to.clone());
 
         let peer = Peer::new(
             (*self.connect_to).clone(),
             self.w,
-            PeerState::decide_peer_kind(&self.my_repl_info.replid, &connection_info),
+            connection_info.decide_peer_kind(&self.my_repl_info.replid),
             kill_switch,
         );
 

@@ -1,0 +1,60 @@
+use tokio::net::TcpStream;
+
+use crate::{
+    ReplicationState,
+    domains::{
+        append_only_files::{WriteOperation, WriteRequest},
+        cluster_actors::{
+            replication::{HeartBeatMessage, ReplicationId, ReplicationRole},
+            session::SessionRequest,
+        },
+        peers::cluster_peer::ClusterNode,
+    },
+    prelude::PeerIdentifier,
+};
+
+use super::{ConsensusClientResponse, ReplicationResponse, RequestVote, RequestVoteReply};
+
+#[derive(Debug)]
+pub(crate) enum ClusterCommand {
+    DiscoverCluster {
+        connect_to: PeerIdentifier,
+        callback: tokio::sync::oneshot::Sender<()>,
+    },
+    AcceptPeer {
+        stream: TcpStream,
+    },
+
+    GetPeers(tokio::sync::oneshot::Sender<Vec<PeerIdentifier>>),
+    ReplicationInfo(tokio::sync::oneshot::Sender<ReplicationState>),
+
+    SetReplicationInfo {
+        replid: ReplicationId,
+        hwm: u64,
+    },
+    InstallLeaderState(Vec<WriteOperation>),
+    SendClusterHeatBeat,
+    ForgetPeer(PeerIdentifier, tokio::sync::oneshot::Sender<Option<()>>),
+    ReplicaOf(PeerIdentifier, tokio::sync::oneshot::Sender<()>),
+    LeaderReqConsensus {
+        log: WriteRequest,
+        callback: tokio::sync::oneshot::Sender<ConsensusClientResponse>,
+        session_req: Option<SessionRequest>,
+    },
+    ReplicationResponse(ReplicationResponse),
+    SendCommitHeartBeat {
+        log_idx: u64,
+    },
+    AppendEntriesRPC(HeartBeatMessage),
+
+    SendAppendEntriesRPC,
+    ClusterNodes(tokio::sync::oneshot::Sender<Vec<ClusterNode>>),
+    StartLeaderElection,
+    VoteElection(RequestVote),
+    ApplyElectionVote(RequestVoteReply),
+    ClusterHeartBeat(HeartBeatMessage),
+    GetRole(tokio::sync::oneshot::Sender<ReplicationRole>),
+    SubscribeToTopologyChange(
+        tokio::sync::oneshot::Sender<tokio::sync::broadcast::Receiver<Vec<PeerIdentifier>>>,
+    ),
+}
