@@ -5,9 +5,11 @@ use crate::domains::cluster_actors::replication::ReplicationId;
 use crate::domains::cluster_actors::replication::ReplicationState;
 use crate::domains::peers::connected_peer_info::ConnectedPeerInfo;
 use crate::domains::peers::identifier::PeerIdentifier;
+use crate::domains::peers::peer::PeerState;
 use crate::domains::query_parsers::QueryIO;
 use crate::services::interface::TRead;
 use crate::services::interface::TWrite;
+use anyhow::Context;
 use std::sync::atomic::Ordering;
 use tokio::net::TcpStream;
 use tokio::net::tcp::OwnedReadHalf;
@@ -19,14 +21,15 @@ pub(crate) struct InboundStream {
     pub(crate) r: OwnedReadHalf,
     pub(crate) w: OwnedWriteHalf,
     pub(crate) self_repl_info: ReplicationState,
+    pub(crate) connected_peer_info: Option<ConnectedPeerInfo>,
 }
 
 impl InboundStream {
     pub(crate) fn new(stream: TcpStream, self_repl_info: ReplicationState) -> Self {
         let (read, write) = stream.into_split();
-        Self { r: read, w: write, self_repl_info }
+        Self { r: read, w: write, self_repl_info, connected_peer_info: None }
     }
-    pub(crate) async fn recv_handshake(&mut self) -> anyhow::Result<ConnectedPeerInfo> {
+    pub(crate) async fn recv_handshake(&mut self) -> anyhow::Result<()> {
         self.recv_ping().await?;
 
         let port = self.recv_replconf_listening_port().await?;
@@ -38,12 +41,26 @@ impl InboundStream {
         let (peer_leader_repl_id, peer_hwm) = self.recv_psync().await?;
 
         let addr = self.r.peer_addr().map_err(|error| Into::<IoError>::into(error.kind()))?;
-        Ok(ConnectedPeerInfo {
+
+        self.connected_peer_info = Some(ConnectedPeerInfo {
             id: PeerIdentifier::new(&addr.ip().to_string(), port),
             replid: peer_leader_repl_id,
             hwm: peer_hwm,
             peer_list: vec![],
-        })
+        });
+
+        Ok(())
+    }
+
+    pub(crate) fn id(&self) -> anyhow::Result<PeerIdentifier> {
+        Ok(self.connected_peer_info.as_ref().context("set by now")?.id.clone())
+    }
+    pub(crate) fn peer_state(&self) -> anyhow::Result<PeerState> {
+        Ok(self
+            .connected_peer_info
+            .as_ref()
+            .context("set by now")?
+            .decide_peer_kind(&self.self_repl_info.replid))
     }
 
     async fn recv_ping(&mut self) -> anyhow::Result<()> {

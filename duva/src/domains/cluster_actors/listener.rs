@@ -32,7 +32,9 @@ impl PeerListener {
             listening_to,
         };
         let (kill_trigger, kill_switch) = tokio::sync::oneshot::channel();
-        ListeningActorKillTrigger::new(kill_trigger, tokio::spawn(listener.listen(kill_switch)))
+        let handle = tokio::spawn(listener.listen(kill_switch));
+
+        ListeningActorKillTrigger::new(kill_trigger, handle)
     }
 
     pub(crate) async fn read_command(&mut self) -> anyhow::Result<Vec<PeerListenerCommand>> {

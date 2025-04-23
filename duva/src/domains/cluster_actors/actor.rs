@@ -29,6 +29,7 @@ use crate::domains::append_only_files::logger::ReplicatedLogs;
 use crate::domains::cluster_actors::consensus::ElectionState;
 use crate::domains::peers::cluster_peer::ClusterNode;
 use crate::domains::peers::cluster_peer::NodeKind;
+use crate::domains::peers::identifier;
 use crate::domains::{caches::cache_manager::CacheManager, query_parsers::QueryIO};
 
 use crate::services::interface::TWrite;
@@ -186,24 +187,21 @@ impl ClusterActor {
         peer_stream: TcpStream,
         logger: &ReplicatedLogs<impl TWriteAheadLog>,
     ) -> anyhow::Result<()> {
-        let mut peer_stream = InboundStream::new(peer_stream, self.replication.clone());
-        let connected_peer_info = peer_stream.recv_handshake().await?;
+        let mut inbound_stream = InboundStream::new(peer_stream, self.replication.clone());
+        inbound_stream.recv_handshake().await?;
 
-        peer_stream.disseminate_peers(self.members.keys().cloned().collect::<Vec<_>>()).await?;
+        inbound_stream.disseminate_peers(self.members.keys().cloned().collect::<Vec<_>>()).await?;
 
-        let peer_state = connected_peer_info.decide_peer_kind(&self.replication.replid);
+        self.try_sync_for_replica(logger, &mut inbound_stream).await?;
 
-        self.try_sync_for_replica(logger, &mut peer_stream, &connected_peer_info).await?;
+        let identifier = inbound_stream.id()?;
+        let peer_state = inbound_stream.peer_state()?;
 
-        let kill_switch = PeerListener::spawn(
-            peer_stream.r,
-            self.self_handler.clone(),
-            connected_peer_info.id.clone(),
-        );
+        let kill_switch =
+            PeerListener::spawn(inbound_stream.r, self.self_handler.clone(), identifier.clone());
 
-        let peer =
-            Peer::new(connected_peer_info.id.to_string(), peer_stream.w, peer_state, kill_switch);
-        self.add_peer(AddPeer { peer_id: connected_peer_info.id, peer }).await;
+        let peer = Peer::new(identifier.to_string(), inbound_stream.w, peer_state, kill_switch);
+        self.add_peer(AddPeer { peer_id: identifier, peer }).await;
 
         Ok(())
     }
@@ -212,13 +210,16 @@ impl ClusterActor {
         &mut self,
         logger: &ReplicatedLogs<impl TWriteAheadLog>,
         peer_stream: &mut InboundStream,
-        connected_peer_info: &crate::domains::peers::connected_peer_info::ConnectedPeerInfo,
     ) -> Result<(), anyhow::Error> {
+        let connected_info = peer_stream.connected_peer_info.as_ref().context("set by now")?;
+
         if let PeerState::Replica { .. } =
-            connected_peer_info.decide_peer_kind(&self.replication.replid)
+            connected_info.decide_peer_kind(&peer_stream.self_repl_info.replid)
         {
-            if let ReplicationId::Undecided = connected_peer_info.replid {
-                let logs = SyncLogs(logger.range(0, self.replication.hwm.load(Ordering::Acquire)));
+            if let ReplicationId::Undecided = connected_info.replid {
+                let logs = SyncLogs(
+                    logger.range(0, peer_stream.self_repl_info.hwm.load(Ordering::Acquire)),
+                );
                 peer_stream.w.write_io(logs).await?;
             }
         };
