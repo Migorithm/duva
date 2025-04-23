@@ -15,4 +15,5 @@ async fn test_ttl() {
 
     // THEN
     assert_eq!(res, vec!["(integer) 4"]);
+    assert_eq!(h.send_and_get("TTL non_existing_key", 1), vec!["(integer) -1"]);
 }
