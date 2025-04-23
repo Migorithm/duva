@@ -191,15 +191,7 @@ impl ClusterActor {
         inbound_stream.recv_handshake().await?;
         inbound_stream.disseminate_peers(self.members.keys().cloned().collect::<Vec<_>>()).await?;
         inbound_stream.try_sync_for_replica(logger).await?;
-
-        let identifier = inbound_stream.id()?;
-        let peer_state = inbound_stream.peer_state()?;
-
-        let kill_switch =
-            PeerListener::spawn(inbound_stream.r, self.self_handler.clone(), identifier.clone());
-
-        let peer = Peer::new(identifier.to_string(), inbound_stream.w, peer_state, kill_switch);
-        self.add_peer(AddPeer { peer_id: identifier, peer }).await;
+        self.add_peer(inbound_stream.into_add_peer(self.self_handler.clone())?).await;
 
         Ok(())
     }

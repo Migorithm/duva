@@ -1,13 +1,17 @@
 use super::request::HandShakeRequest;
 use super::request::HandShakeRequestEnum;
+use crate::ClusterCommand;
 use crate::domains::IoError;
 use crate::domains::append_only_files::interfaces::TWriteAheadLog;
 use crate::domains::append_only_files::logger::ReplicatedLogs;
+use crate::domains::cluster_actors::commands::AddPeer;
 use crate::domains::cluster_actors::commands::SyncLogs;
+use crate::domains::cluster_actors::listener::PeerListener;
 use crate::domains::cluster_actors::replication::ReplicationId;
 use crate::domains::cluster_actors::replication::ReplicationState;
 use crate::domains::peers::connected_peer_info::ConnectedPeerInfo;
 use crate::domains::peers::identifier::PeerIdentifier;
+use crate::domains::peers::peer::Peer;
 use crate::domains::peers::peer::PeerState;
 use crate::domains::query_parsers::QueryIO;
 use crate::services::interface::TRead;
@@ -163,5 +167,19 @@ impl InboundStream {
         };
 
         Ok(())
+    }
+
+    pub(crate) fn into_add_peer(
+        self,
+        actor_handler: tokio::sync::mpsc::Sender<ClusterCommand>,
+    ) -> anyhow::Result<AddPeer> {
+        let identifier = self.id()?;
+        let peer_state = self.peer_state()?;
+        let kill_switch = PeerListener::spawn(self.r, actor_handler, identifier.clone());
+
+        Ok(AddPeer {
+            peer: Peer::new(identifier.to_string(), self.w, peer_state, kill_switch),
+            peer_id: identifier,
+        })
     }
 }
