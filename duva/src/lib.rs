@@ -135,12 +135,12 @@ impl StartUpFacade {
 
     /// Run while loop accepting stream and if the sentinel is received, abort the tasks
     async fn start_receiving_client_streams(self) -> anyhow::Result<()> {
-        let client_stream_listener = TcpListener::bind(&self.config_manager.bind_addr()).await?;
+        let listener = TcpListener::bind(&self.config_manager.bind_addr()).await?;
         println!("start listening on {}", self.config_manager.bind_addr());
-        let mut conn_handlers: Vec<tokio::task::JoinHandle<()>> = Vec::with_capacity(100);
+        let mut handles = Vec::with_capacity(100);
 
         //TODO refactor: authentication should be simplified
-        while let Ok((stream, _)) = client_stream_listener.accept().await {
+        while let Ok((stream, _)) = listener.accept().await {
             let mut peers = self.registry.cluster_communication_manager.get_peers().await?;
             peers.push(PeerIdentifier(self.registry.config_manager.bind_addr()));
 
@@ -151,11 +151,11 @@ impl StartUpFacade {
                 continue;
             };
 
-            let topology_observer =
+            let observer =
                 self.registry.cluster_communication_manager.subscribe_topology_change().await?;
-            let write_handler = writer.run(topology_observer);
+            let write_handler = writer.run(observer);
 
-            conn_handlers.push(tokio::spawn(reader.handle_client_stream(
+            handles.push(tokio::spawn(reader.handle_client_stream(
                 ClientController::new(self.registry.clone()),
                 write_handler.clone(),
             )));
