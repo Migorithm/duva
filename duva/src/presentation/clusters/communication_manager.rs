@@ -36,7 +36,7 @@ impl ClusterCommunicationManager {
         let (callback, rx) = tokio::sync::oneshot::channel();
         let add_peer_cmd =
             peer_stream.prepare_add_peer_cmd(self.clone(), connected_peer_info).await?;
-        self.0.send(ClusterCommand::AddPeer(add_peer_cmd, callback)).await?;
+        self.send(ClusterCommand::AddPeer(add_peer_cmd, callback)).await?;
         rx.await?;
         Ok(())
     }

@@ -2,7 +2,6 @@ use super::request::HandShakeRequest;
 use super::request::HandShakeRequestEnum;
 use crate::domains::IoError;
 use crate::domains::cluster_actors::commands::AddPeer;
-use crate::domains::cluster_actors::commands::ClusterCommand;
 use crate::domains::cluster_actors::replication::ReplicationId;
 use crate::domains::cluster_actors::replication::ReplicationState;
 use crate::domains::peers::connected_peer_info::ConnectedPeerInfo;
@@ -154,7 +153,7 @@ impl InboundStream {
 
         let kill_switch = ClusterListener::spawn(self.r, ccm.0, connected_peer_info.id.clone());
 
-        let peer = Peer::new((connected_peer_info.id).to_string(), self.w, peer_state, kill_switch);
+        let peer = Peer::new(connected_peer_info.id.to_string(), self.w, peer_state, kill_switch);
 
         Ok(AddPeer { peer_id: connected_peer_info.id, peer })
     }
