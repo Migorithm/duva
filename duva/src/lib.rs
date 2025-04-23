@@ -109,17 +109,13 @@ impl StartUpFacade {
             match peer_listener.accept().await {
                 // ? how do we know if incoming connection is from a peer or replica?
                 Ok((peer_stream, _socket_addr)) => {
-                    tokio::spawn({
-                        let ccm = registry.cluster_communication_manager.clone();
-
-                        async move {
-                            if let Err(err) =
-                                ccm.send(ClusterCommand::AcceptPeer { stream: peer_stream }).await
-                            {
-                                println!("[ERROR] Failed to accept peer connection: {:?}", err);
-                            }
-                        }
-                    });
+                    if let Err(err) = registry
+                        .cluster_communication_manager
+                        .send(ClusterCommand::AcceptPeer { stream: peer_stream })
+                        .await
+                    {
+                        println!("[ERROR] Failed to accept peer connection: {:?}", err);
+                    }
                 },
 
                 Err(err) => {

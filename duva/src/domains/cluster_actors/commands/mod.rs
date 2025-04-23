@@ -5,10 +5,7 @@ use super::{
     replication::{HeartBeatMessage, ReplicationId, ReplicationRole, ReplicationState},
     session::SessionRequest,
 };
-use crate::{
-    InboundStream,
-    domains::{append_only_files::WriteOperation, peers::cluster_peer::ClusterNode},
-};
+use crate::domains::{append_only_files::WriteOperation, peers::cluster_peer::ClusterNode};
 pub(crate) use election::*;
 use tokio::net::TcpStream;
 pub(crate) use types::*;
