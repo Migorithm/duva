@@ -141,8 +141,7 @@ impl InboundStream {
         mut self,
         ccm: ClusterCommunicationManager,
         connected_peer_info: ConnectedPeerInfo,
-        callback: tokio::sync::oneshot::Sender<()>,
-    ) -> anyhow::Result<ClusterCommand> {
+    ) -> anyhow::Result<AddPeer> {
         let peer_state = self.decide_peer_kind(&connected_peer_info);
 
         // conditional sync
@@ -157,6 +156,6 @@ impl InboundStream {
 
         let peer = Peer::new((connected_peer_info.id).to_string(), self.w, peer_state, kill_switch);
 
-        Ok(ClusterCommand::AddPeer(AddPeer { peer_id: connected_peer_info.id, peer }, callback))
+        Ok(AddPeer { peer_id: connected_peer_info.id, peer })
     }
 }
