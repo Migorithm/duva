@@ -1,5 +1,3 @@
-use duva::domains::cluster_actors::heartbeats::scheduler::LEADER_HEARTBEAT_INTERVAL_MAX;
-
 use crate::common::{Client, ServerEnv, check_internodes_communication, spawn_server_process};
 
 #[tokio::test]

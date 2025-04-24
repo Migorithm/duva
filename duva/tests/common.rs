@@ -5,10 +5,10 @@ use duva::domains::query_parsers::query_io::QueryIO;
 use duva::make_smart_pointer;
 use std::net::TcpListener;
 use std::process::Stdio;
-use std::time::{Duration, Instant};
 use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncWriteExt, BufReader};
 use tokio::process::{Child, ChildStdout, Command};
 use tokio::time::sleep;
+use tokio::time::{Duration, Instant};
 use uuid::Uuid;
 
 pub struct ServerEnv {
@@ -113,12 +113,6 @@ pub async fn spawn_server_process(env: &ServerEnv) -> TestProcessChild {
     process
 }
 
-impl Drop for TestProcessChild {
-    fn drop(&mut self) {
-        let _ = self.terminate();
-    }
-}
-
 impl TestProcessChild {
     pub fn bind_addr(&self) -> String {
         format!("127.0.0.1:{}", self.port)
@@ -143,6 +137,11 @@ impl TestProcessChild {
 
     /// Attempts to gracefully terminate the process, falling back to force kill if necessary
     pub async fn terminate(&mut self) -> std::io::Result<()> {
+        if self.process.id().is_none() {
+            // Do nothing if already terminated
+            return Ok(());
+        }
+
         // First try graceful shutdown
         // Give the process some time to shutdown gracefully
         let timeout = Duration::from_secs(1);
@@ -181,6 +180,12 @@ impl TestProcessChild {
         let read = self.process.stdout.as_mut().unwrap();
 
         wait_for_message(read, target, target_count, Some(wait_for)).await
+    }
+}
+
+impl Drop for TestProcessChild {
+    fn drop(&mut self) {
+        let _ = self.terminate();
     }
 }
 
@@ -367,11 +372,21 @@ impl Client {
         }
         res
     }
+
+    pub async fn terminate(&mut self) -> std::io::Result<()> {
+        if self.child.id().is_none() {
+            // Do nothing if already terminated
+            return Ok(());
+        }
+        let _ = self.child.kill().await?;
+        let _ = self.child.wait().await?;
+
+        Ok(())
+    }
 }
 
 impl Drop for Client {
     fn drop(&mut self) {
-        let _ = self.child.kill();
-        let _ = self.child.wait();
+        let _ = self.terminate();
     }
 }
