@@ -3,11 +3,11 @@ use tokio::net::TcpStream;
 use crate::{
     ReplicationState,
     domains::{
-        append_only_files::{WriteOperation, WriteRequest},
         cluster_actors::{
             replication::{HeartBeatMessage, ReplicationId, ReplicationRole},
             session::SessionRequest,
         },
+        operation_logs::{WriteOperation, WriteRequest},
         peers::cluster_peer::ClusterNode,
     },
     prelude::PeerIdentifier,

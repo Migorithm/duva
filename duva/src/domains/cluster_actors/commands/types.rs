@@ -1,6 +1,6 @@
 use crate::{
     domains::{
-        append_only_files::WriteOperation,
+        operation_logs::WriteOperation,
         peers::{identifier::PeerIdentifier, peer::Peer},
     },
     from_to,

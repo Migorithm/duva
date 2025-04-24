@@ -1,6 +1,6 @@
 use duva::{
     Environment, StartUpFacade,
-    adapters::wal::{local_wal::LocalWAL, memory_wal::InMemoryWAL},
+    adapters::op_logs::{disk_based::FileOpLogs, memory_based::MemoryOpLogs},
     domains::config_actors::{actor::ConfigActor, config_manager::ConfigManager},
 };
 
@@ -17,11 +17,11 @@ async fn main() -> anyhow::Result<()> {
     // ! should we support type erasure?
 
     if env.append_only {
-        let local_aof = LocalWAL::new(env.dbfilename.to_string() + ".wal").await?;
+        let local_aof = FileOpLogs::new(env.dbfilename.to_string() + ".wal").await?;
         let start_up_runner = StartUpFacade::new(config_manager, &mut env, local_aof);
         start_up_runner.run(env).await
     } else {
-        let in_memory_aof = InMemoryWAL::default();
+        let in_memory_aof = MemoryOpLogs::default();
         let start_up_runner = StartUpFacade::new(config_manager, &mut env, in_memory_aof);
         start_up_runner.run(env).await
     }

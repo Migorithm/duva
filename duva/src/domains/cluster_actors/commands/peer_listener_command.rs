@@ -1,9 +1,9 @@
 use crate::domains::{
-    append_only_files::WriteOperation,
     cluster_actors::{
         commands::{ReplicationResponse, RequestVote, RequestVoteReply},
         replication::HeartBeatMessage,
     },
+    operation_logs::WriteOperation,
     query_parsers::{QueryIO, deserialize},
 };
 
