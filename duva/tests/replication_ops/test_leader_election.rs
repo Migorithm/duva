@@ -1,4 +1,4 @@
-use std::{thread::sleep, time::Duration};
+use tokio::time::{Duration, sleep};
 
 use crate::common::{Client, ServerEnv, check_internodes_communication, spawn_server_process};
 use duva::domains::cluster_actors::heartbeats::scheduler::LEADER_HEARTBEAT_INTERVAL_MAX;

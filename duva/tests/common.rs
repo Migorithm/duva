@@ -5,10 +5,10 @@ use duva::domains::query_parsers::query_io::QueryIO;
 use duva::make_smart_pointer;
 use std::net::TcpListener;
 use std::process::Stdio;
-use std::thread::sleep;
 use std::time::{Duration, Instant};
 use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncWriteExt, BufReader};
 use tokio::process::{Child, ChildStdout, Command};
+use tokio::time::sleep;
 use uuid::Uuid;
 
 pub struct ServerEnv {
@@ -151,7 +151,7 @@ impl TestProcessChild {
         while start.elapsed() < timeout {
             match self.process.try_wait()? {
                 Some(_) => return Ok(()),
-                None => sleep(Duration::from_millis(100)),
+                None => sleep(Duration::from_millis(100)).await,
             }
         }
 
