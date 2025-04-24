@@ -230,19 +230,24 @@ async fn wait_for_message<T: AsyncRead + Unpin>(
 ) -> anyhow::Result<()> {
     let internal_count = Instant::now();
     let mut buf = BufReader::new(read).lines();
-    let mut cnt = 1;
+    let mut cnt = target_count;
+
+    assert_eq!(target.len(), target_count);
 
     let mut current_target = target.remove(0);
     while let Some(line) = buf.next_line().await? {
         if line.starts_with(current_target) {
-            if cnt == target_count {
+            cnt -= 1;
+
+            if cnt == 0 {
                 if target.is_empty() {
-                    break;
+                    return Ok(());
+                } else {
+                    return Err(anyhow::anyhow!("Targets remain after target_count exhausted"));
                 }
-                current_target = target.remove(0);
-            } else {
-                cnt += 1;
             }
+
+            current_target = target.remove(0);
         }
 
         if let Some(timeout) = timeout_in_millis {
@@ -252,7 +257,7 @@ async fn wait_for_message<T: AsyncRead + Unpin>(
         }
     }
 
-    Ok(())
+    return Err(anyhow::anyhow!("Error was found until reading nextline"));
 }
 
 pub fn array(arr: Vec<&str>) -> Bytes {
