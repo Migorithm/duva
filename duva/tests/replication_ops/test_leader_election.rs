@@ -22,7 +22,7 @@ async fn test_leader_election() {
 
     // WHEN
     leader_p.kill().await.unwrap();
-    sleep(Duration::from_millis(LEADER_HEARTBEAT_INTERVAL_MAX));
+    sleep(Duration::from_millis(LEADER_HEARTBEAT_INTERVAL_MAX)).await;
 
     // THEN
     let mut flag = false;
@@ -58,7 +58,7 @@ async fn test_set_twice_after_election() {
 
     // WHEN
     leader_p.kill().await.unwrap();
-    sleep(Duration::from_millis(LEADER_HEARTBEAT_INTERVAL_MAX));
+    sleep(Duration::from_millis(LEADER_HEARTBEAT_INTERVAL_MAX)).await;
 
     let mut flag = false;
     for f in [&follower_p1, &follower_p2] {
