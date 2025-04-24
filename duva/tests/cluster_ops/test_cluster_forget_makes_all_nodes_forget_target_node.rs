@@ -1,3 +1,5 @@
+use duva::domains::cluster_actors::heartbeats::scheduler::LEADER_HEARTBEAT_INTERVAL_MAX;
+
 use crate::common::{Client, ServerEnv, check_internodes_communication, spawn_server_process};
 
 #[tokio::test]
@@ -24,33 +26,19 @@ async fn test_cluster_forget_makes_all_nodes_forget_target_node() {
     .unwrap();
 
     // WHEN
-    const TIMEOUT_IN_MILLIS: u128 = 500;
-    let never_arrivable_msg = repl_p.heartbeat_msg(1);
     let mut client_handler = Client::new(leader_p.port);
     let replica_id = repl_p.bind_addr();
-
     let response1 = client_handler.send_and_get(format!("cluster forget {}", &replica_id), 1);
-    let response2 = client_handler.send_and_get("cluster info", 1);
+    assert_eq!(response1, vec!["OK"]);
 
     // THEN
-    assert_eq!(response1.first().unwrap(), "OK");
+    let response2 = client_handler.send_and_get("cluster info", 1);
     assert_eq!(response2.first().unwrap(), "cluster_known_nodes:1");
 
-    // leader_p and repl_p2 doesn't get message from repl_p2
-    let h1 = std::thread::spawn({
-        let never_arrivable_msg = never_arrivable_msg.clone();
-        move || {
-            leader_p.timed_wait_for_message(
-                vec![&never_arrivable_msg],
-                HOP_COUNT,
-                TIMEOUT_IN_MILLIS,
-            )
-        }
-    });
-    let h2 = std::thread::spawn(move || {
-        repl_p2.timed_wait_for_message(vec![&never_arrivable_msg], HOP_COUNT, TIMEOUT_IN_MILLIS)
-    });
+    let mut repl_cli = Client::new(repl_p2.port);
 
-    assert!(h1.join().unwrap().is_err());
-    assert!(h2.join().unwrap().is_err());
+    // ! time buffer for the heartbeat message to be sent
+    tokio::time::sleep(std::time::Duration::from_millis(LEADER_HEARTBEAT_INTERVAL_MAX + 1)).await;
+    let response2 = repl_cli.send_and_get("cluster info", 1);
+    assert_eq!(response2.first().unwrap(), "cluster_known_nodes:1");
 }
