@@ -4,7 +4,7 @@ use crate::{domains::cluster_actors::replication::ReplicationId, prelude::PeerId
 pub struct ClusterNode {
     pub(crate) bind_addr: PeerIdentifier,
     pub(crate) repl_id: String,
-    is_myself: bool,
+    pub(crate) is_myself: bool,
     pub(crate) priority: NodeKind, // lower value = higher priority
 }
 
