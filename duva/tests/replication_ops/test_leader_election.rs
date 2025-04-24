@@ -95,7 +95,7 @@ async fn test_leader_election_twice() {
 
     // !first leader is killed -> election happens
     leader_p.kill().await.unwrap();
-    sleep(Duration::from_millis(LEADER_HEARTBEAT_INTERVAL_MAX));
+    sleep(Duration::from_millis(LEADER_HEARTBEAT_INTERVAL_MAX)).await;
 
     let mut processes = vec![];
 
@@ -109,12 +109,12 @@ async fn test_leader_election_twice() {
 
         let follower_env3 = ServerEnv::default().with_leader_bind_addr(f.bind_addr().into());
         let new_process = spawn_server_process(&follower_env3).await;
-        sleep(Duration::from_millis(LEADER_HEARTBEAT_INTERVAL_MAX));
+        sleep(Duration::from_millis(LEADER_HEARTBEAT_INTERVAL_MAX)).await;
 
         // WHEN
         // ! second leader is killed -> election happens
         f.kill().await.unwrap();
-        sleep(Duration::from_millis(LEADER_HEARTBEAT_INTERVAL_MAX));
+        sleep(Duration::from_millis(LEADER_HEARTBEAT_INTERVAL_MAX)).await;
         processes.push(new_process);
     }
     assert_eq!(processes.len(), 2);
@@ -122,8 +122,8 @@ async fn test_leader_election_twice() {
     let mut flag = false;
     for f in processes.iter() {
         let mut handler = Client::new(f.port);
-        let res = handler.send_and_get("info replication", 4);
-        if res.await.contains(&"role:leader".to_string()) {
+        let res = handler.send_and_get("info replication", 4).await;
+        if res.contains(&"role:leader".to_string()) {
             flag = true;
             break;
         }
