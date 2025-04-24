@@ -44,20 +44,19 @@ impl ClusterActor {
                     self.set_replication_info(leader_repl_id, hwm);
                 },
                 ClusterCommand::SendClusterHeatBeat => {
-                    let hop_count = Self::hop_count(FANOUT, self.members.len());
-                    self.send_cluster_heartbeat(hop_count, &logger).await;
-
                     // ! remove idle peers based on ttl.
                     // ! The following may need to be moved else where to avoid blocking the main loop
                     self.remove_idle_peers().await;
+                    let hop_count = Self::hop_count(FANOUT, self.members.len());
+                    self.send_cluster_heartbeat(hop_count, &logger).await;
                 },
                 ClusterCommand::ClusterHeartBeat(mut heartbeat) => {
                     if self.replication.in_ban_list(&heartbeat.from) {
                         continue;
                     }
+                    self.apply_ban_list(std::mem::take(&mut heartbeat.ban_list)).await;
                     self.gossip(heartbeat.hop_count, &logger).await;
                     self.update_on_hertbeat_message(&heartbeat.from, heartbeat.hwm);
-                    self.apply_ban_list(std::mem::take(&mut heartbeat.ban_list)).await;
                 },
                 ClusterCommand::ForgetPeer(peer_addr, sender) => {
                     if let Ok(Some(())) = self.forget_peer(peer_addr).await {

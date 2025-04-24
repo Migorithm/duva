@@ -231,6 +231,10 @@ impl ClusterActor {
             .map(|(id, _)| id.clone())
             .collect::<Vec<_>>();
 
+        self.remove_peers(to_be_removed).await;
+    }
+
+    async fn remove_peers(&mut self, to_be_removed: Vec<PeerIdentifier>) {
         for peer_id in to_be_removed {
             self.remove_peer(&peer_id).await;
         }
@@ -274,17 +278,16 @@ impl ClusterActor {
         let current_time_in_sec = time_in_secs().unwrap();
         self.replication.ban_list.retain(|node| current_time_in_sec - node.ban_time < 60);
     }
-    async fn remove_banned_peers(&mut self) {
-        let ban_list = self.replication.ban_list.clone();
-        for banned_peer in ban_list {
-            let _ = self.remove_peer(&banned_peer.p_id).await;
-        }
-    }
 
     pub(crate) async fn apply_ban_list(&mut self, ban_list: Vec<BannedPeer>) {
         self.merge_ban_list(ban_list);
         self.retain_only_recent_banned_nodes();
-        self.remove_banned_peers().await;
+
+        // the following should be removed immediately
+        let to_be_removed =
+            self.replication.ban_list.iter().map(|node| node.p_id.clone()).collect::<Vec<_>>();
+
+        self.remove_peers(to_be_removed).await;
     }
 
     pub(crate) fn update_on_hertbeat_message(&mut self, from: &PeerIdentifier, log_index: u64) {
