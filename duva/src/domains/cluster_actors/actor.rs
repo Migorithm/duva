@@ -249,7 +249,6 @@ impl ClusterActor {
         if hop_count == 0 {
             return;
         };
-        let hop_count = hop_count - 1;
         self.send_cluster_heartbeat(hop_count, logger).await;
     }
 
@@ -703,6 +702,29 @@ impl ClusterActor {
         self.set_replication_info(ReplicationId::Undecided, 0);
         self.heartbeat_scheduler.turn_follower_mode().await;
     }
+
+    pub(crate) async fn may_reconnect(&mut self, cluster_nodes: Vec<ClusterNode>) {
+        let peers = cluster_nodes
+            .into_iter()
+            .filter(|n| n.bind_addr != self.replication.self_identifier())
+            .filter(|p| !self.members.contains_key(&p.bind_addr))
+            .map(|node| node.bind_addr)
+            .collect::<Vec<_>>();
+        if peers.is_empty() {
+            return;
+        }
+
+        for peer in peers {
+            if self.replication.in_ban_list(&peer) {
+                continue;
+            }
+
+            if self.discover_cluster(peer).await.is_ok() {
+                let _ = self.snapshot_topology().await;
+                break;
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -722,6 +744,7 @@ mod test {
     use std::ops::Range;
     use std::time::Duration;
     use tokio::fs::OpenOptions;
+
     use tokio::net::TcpListener;
     use tokio::net::TcpStream;
     use tokio::sync::mpsc::channel;
@@ -1608,5 +1631,42 @@ mod test {
         }
 
         tokio::fs::remove_file(path).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_reconnection_on_gossip() {
+        // GIVEN
+        let mut cluster_actor = cluster_actor_create_helper().await;
+
+        // * run listener to see if connection is attempted
+        let listener = TcpListener::bind("127.0.0.1:44455").await.unwrap(); // ! Beaware that this is cluster port
+        let bind_addr = listener.local_addr().unwrap();
+
+        let mut replication_state = cluster_actor.replication.clone();
+        replication_state.is_leader_mode = false;
+
+        let (tx, rx) = tokio::sync::oneshot::channel();
+
+        // Spawn the listener task
+        let handle = tokio::spawn(async move {
+            let (stream, _) = listener.accept().await.unwrap();
+            let mut inbound_stream = InboundStream::new(stream, replication_state.clone());
+            if inbound_stream.recv_handshake().await.is_ok() {
+                let _ = tx.send(());
+            };
+        });
+
+        // WHEN - try to reconnect
+        cluster_actor
+            .may_reconnect(vec![ClusterNode {
+                bind_addr: PeerIdentifier::new("127.0.0.1", bind_addr.port() - 10000),
+                repl_id: cluster_actor.replication.replid.clone().to_string(),
+                is_myself: false,
+                priority: NodeKind::Replica,
+            }])
+            .await;
+
+        assert!(handle.await.is_ok());
+        assert!(rx.await.is_ok());
     }
 }

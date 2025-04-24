@@ -55,6 +55,7 @@ impl ClusterActor {
                         continue;
                     }
                     self.apply_ban_list(std::mem::take(&mut heartbeat.ban_list)).await;
+                    self.may_reconnect(heartbeat.cluster_nodes).await;
                     self.gossip(heartbeat.hop_count, &logger).await;
                     self.update_on_hertbeat_message(&heartbeat.from, heartbeat.hwm);
                 },
