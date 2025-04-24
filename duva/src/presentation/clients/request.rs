@@ -1,5 +1,5 @@
 use crate::domains::{
-    append_only_files::WriteRequest, cluster_actors::session::SessionRequest,
+    cluster_actors::session::SessionRequest, operation_logs::WriteRequest,
     peers::identifier::PeerIdentifier, query_parsers::QueryIO,
 };
 use anyhow::Context;
