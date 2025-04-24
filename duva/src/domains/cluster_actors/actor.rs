@@ -703,7 +703,7 @@ impl ClusterActor {
         self.heartbeat_scheduler.turn_follower_mode().await;
     }
 
-    pub(crate) async fn may_reconnect(&mut self, cluster_nodes: Vec<ClusterNode>) {
+    pub(crate) async fn join_peer_network_if_absent(&mut self, cluster_nodes: Vec<ClusterNode>) {
         let peers = cluster_nodes
             .into_iter()
             .filter(|n| n.bind_addr != self.replication.self_identifier())
@@ -1658,7 +1658,7 @@ mod test {
 
         // WHEN - try to reconnect
         cluster_actor
-            .may_reconnect(vec![ClusterNode {
+            .join_peer_network_if_absent(vec![ClusterNode {
                 bind_addr: PeerIdentifier::new("127.0.0.1", bind_addr.port() - 10000),
                 repl_id: cluster_actor.replication.replid.clone().to_string(),
                 is_myself: false,
