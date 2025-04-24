@@ -2,7 +2,7 @@ use crate::domains::caches::cache_objects::CacheValue;
 use crate::domains::cluster_actors::commands::{ReplicationResponse, RequestVoteReply, SyncLogs};
 use crate::domains::cluster_actors::heartbeats::heartbeat::{AppendEntriesRPC, ClusterHeartBeat};
 
-use crate::domains::{append_only_files::WriteOperation, cluster_actors::commands::RequestVote};
+use crate::domains::{cluster_actors::commands::RequestVote, operation_logs::WriteOperation};
 use crate::prelude::PeerIdentifier;
 
 use anyhow::{Context, Result};
@@ -419,9 +419,7 @@ mod test {
     use crate::domains::cluster_actors::replication::{HeartBeatMessage, ReplicationId};
     use crate::domains::peers::cluster_peer::{ClusterNode, NodeKind};
     use crate::domains::peers::identifier::PeerIdentifier;
-    use crate::domains::{
-        append_only_files::WriteRequest, cluster_actors::replication::BannedPeer,
-    };
+    use crate::domains::{cluster_actors::replication::BannedPeer, operation_logs::WriteRequest};
 
     use super::*;
 

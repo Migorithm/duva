@@ -1,6 +1,6 @@
 use crate::domains::{
-    append_only_files::WriteOperation,
     cluster_actors::replication::ReplicationId,
+    operation_logs::WriteOperation,
     peers::{cluster_peer::ClusterNode, identifier::PeerIdentifier},
 };
 

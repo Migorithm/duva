@@ -1,6 +1,6 @@
 #![allow(dead_code, unused_variables)]
-use crate::domains::append_only_files::interfaces::TWriteAheadLog;
-use crate::domains::append_only_files::{WriteOperation, WriteRequest};
+use crate::domains::operation_logs::interfaces::TWriteAheadLog;
+use crate::domains::operation_logs::{WriteOperation, WriteRequest};
 use anyhow::Result;
 use bytes::BytesMut;
 use std::path::{Path, PathBuf};
@@ -8,14 +8,14 @@ use tokio::fs::{File, OpenOptions};
 use tokio::io::{AsyncReadExt, AsyncWriteExt, BufReader, BufWriter};
 
 /// A local write-ahead-log file (WAL) implementation.
-pub struct LocalWAL {
+pub struct FileOpLogs {
     /// The file path where the WAL data is stored.
     path: PathBuf,
     /// A buffered writer for the underlying file.
     writer: BufWriter<File>,
 }
 
-impl LocalWAL {
+impl FileOpLogs {
     /// Creates a new `LocalAof` by opening the specified `path`.
     ///
     /// # Errors
@@ -29,7 +29,7 @@ impl LocalWAL {
     }
 }
 
-impl TWriteAheadLog for LocalWAL {
+impl TWriteAheadLog for FileOpLogs {
     /// Appends a single `WriteOperation` to the file.
     ///
     /// # Errors
@@ -131,7 +131,7 @@ mod tests {
         let path = dir.path().join("local.wal");
 
         assert!(!path.exists());
-        assert!(LocalWAL::new(&path).await.is_ok());
+        assert!(FileOpLogs::new(&path).await.is_ok());
         assert!(path.exists());
 
         Ok(())
@@ -147,7 +147,7 @@ mod tests {
         tokio::fs::File::create(&path).await?;
         assert!(path.exists());
 
-        assert!(LocalWAL::new(&path).await.is_ok());
+        assert!(FileOpLogs::new(&path).await.is_ok());
         assert!(path.exists());
 
         Ok(())
@@ -159,7 +159,7 @@ mod tests {
         let path = dir.path().join("invalid/local.wal");
 
         assert!(!path.exists());
-        assert!(LocalWAL::new(&path).await.is_err());
+        assert!(FileOpLogs::new(&path).await.is_err());
 
         Ok(())
     }
@@ -169,7 +169,7 @@ mod tests {
         let dir = TempDir::new()?;
         let path = dir.path().join("local.wal");
 
-        let mut wal = LocalWAL::new(&path).await?;
+        let mut wal = FileOpLogs::new(&path).await?;
 
         let request = WriteRequest::Set { key: "foo".into(), value: "bar".into() };
         let write_op = WriteOperation { request, log_index: 0, term: 0 };
@@ -199,7 +199,7 @@ mod tests {
         let path = dir.path().join("local.wal");
 
         {
-            let mut wal = LocalWAL::new(&path).await?;
+            let mut wal = FileOpLogs::new(&path).await?;
             wal.append(WriteOperation {
                 request: WriteRequest::Set { key: "a".into(), value: "a".into() },
                 log_index: 0,
@@ -220,7 +220,7 @@ mod tests {
             .await?;
         }
 
-        let mut wal = LocalWAL::new(&path).await?;
+        let mut wal = FileOpLogs::new(&path).await?;
         let mut ops = Vec::new();
 
         wal.replay(|op| {
@@ -265,7 +265,7 @@ mod tests {
 
         // Append three ops.
         {
-            let mut wal = LocalWAL::new(&path).await?;
+            let mut wal = FileOpLogs::new(&path).await?;
             wal.append(WriteOperation {
                 request: WriteRequest::Set { key: "a".into(), value: "a".into() },
                 log_index: 0,
@@ -299,7 +299,7 @@ mod tests {
             file.write_all(&data).await?;
         }
 
-        let mut wal = LocalWAL::new(&path).await?;
+        let mut wal = FileOpLogs::new(&path).await?;
         let mut ops = Vec::new();
 
         assert!(

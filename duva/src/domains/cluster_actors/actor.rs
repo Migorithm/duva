@@ -19,11 +19,11 @@ use super::replication::time_in_secs;
 use super::session::ClientSessions;
 use super::session::SessionRequest;
 use super::*;
-use crate::domains::append_only_files::WriteOperation;
-use crate::domains::append_only_files::WriteRequest;
-use crate::domains::append_only_files::interfaces::TWriteAheadLog;
-use crate::domains::append_only_files::logger::ReplicatedLogs;
 use crate::domains::cluster_actors::consensus::ElectionState;
+use crate::domains::operation_logs::WriteOperation;
+use crate::domains::operation_logs::WriteRequest;
+use crate::domains::operation_logs::interfaces::TWriteAheadLog;
+use crate::domains::operation_logs::logger::ReplicatedLogs;
 use crate::domains::peers::cluster_peer::ClusterNode;
 use crate::domains::peers::cluster_peer::NodeKind;
 use crate::domains::{caches::cache_manager::CacheManager, query_parsers::QueryIO};
@@ -706,15 +706,15 @@ impl ClusterActor {
 #[allow(unused_variables)]
 mod test {
     use super::*;
-    use crate::adapters::wal::memory_wal::InMemoryWAL;
-    use crate::domains::append_only_files::WriteOperation;
-    use crate::domains::append_only_files::WriteRequest;
+    use crate::adapters::op_logs::memory_based::MemoryOpLogs;
     use crate::domains::caches::actor::CacheCommandSender;
     use crate::domains::caches::cache_objects::CacheEntry;
     use crate::domains::caches::command::CacheCommand;
     use crate::domains::cluster_actors::commands::ClusterCommand;
     use crate::domains::cluster_actors::listener::PeerListener;
     use crate::domains::cluster_actors::replication::ReplicationRole;
+    use crate::domains::operation_logs::WriteOperation;
+    use crate::domains::operation_logs::WriteRequest;
 
     use std::ops::Range;
     use std::time::Duration;
@@ -851,7 +851,7 @@ mod test {
     #[tokio::test]
     async fn leader_consensus_tracker_not_changed_when_followers_not_exist() {
         // GIVEN
-        let mut logger = ReplicatedLogs::new(InMemoryWAL::default(), 0, 0);
+        let mut logger = ReplicatedLogs::new(MemoryOpLogs::default(), 0, 0);
         let mut cluster_actor = cluster_actor_create_helper().await;
         let (tx, rx) = tokio::sync::oneshot::channel();
 
@@ -873,7 +873,7 @@ mod test {
     #[tokio::test]
     async fn req_consensus_inserts_consensus_voting() {
         // GIVEN
-        let mut logger = ReplicatedLogs::new(InMemoryWAL::default(), 0, 0);
+        let mut logger = ReplicatedLogs::new(MemoryOpLogs::default(), 0, 0);
 
         let mut cluster_actor = cluster_actor_create_helper().await;
 
@@ -910,7 +910,7 @@ mod test {
     #[tokio::test]
     async fn test_leader_req_consensus_early_return_when_already_processed_session_req_given() {
         // GIVEN
-        let logger = ReplicatedLogs::new(InMemoryWAL::default(), 0, 0);
+        let logger = ReplicatedLogs::new(MemoryOpLogs::default(), 0, 0);
         let cluster_actor = cluster_actor_create_helper().await;
 
         let cache_manager = CacheManager { inboxes: vec![] };
@@ -922,7 +922,7 @@ mod test {
         // WHEN - session request is already processed
         sessions.set_response(Some(client_req.clone()));
         let handler = cluster_actor.self_handler.clone();
-        tokio::spawn(cluster_actor.handle(InMemoryWAL::default(), cache_manager, sessions));
+        tokio::spawn(cluster_actor.handle(MemoryOpLogs::default(), cache_manager, sessions));
         let (tx, rx) = tokio::sync::oneshot::channel();
         handler
             .send(ClusterCommand::LeaderReqConsensus {
@@ -941,7 +941,7 @@ mod test {
     async fn test_consensus_voting_deleted_when_consensus_reached() {
         // GIVEN
         let mut sessions = ClientSessions::default();
-        let mut logger = ReplicatedLogs::new(InMemoryWAL::default(), 0, 0);
+        let mut logger = ReplicatedLogs::new(MemoryOpLogs::default(), 0, 0);
         let mut cluster_actor = cluster_actor_create_helper().await;
 
         let (cluster_sender, _) = tokio::sync::mpsc::channel(100);
@@ -994,7 +994,7 @@ mod test {
     async fn test_same_voter_can_vote_only_once() {
         // GIVEN
         let mut sessions = ClientSessions::default();
-        let mut logger = ReplicatedLogs::new(InMemoryWAL::default(), 0, 0);
+        let mut logger = ReplicatedLogs::new(MemoryOpLogs::default(), 0, 0);
         let mut cluster_actor = cluster_actor_create_helper().await;
 
         let (cluster_sender, _) = tokio::sync::mpsc::channel(100);
@@ -1034,7 +1034,7 @@ mod test {
     #[tokio::test]
     async fn logger_create_entries_from_lowest() {
         // GIVEN
-        let mut logger = ReplicatedLogs::new(InMemoryWAL::default(), 0, 0);
+        let mut logger = ReplicatedLogs::new(MemoryOpLogs::default(), 0, 0);
 
         let test_logs = vec![
             write_operation_create_helper(1, 0, "foo", "bar"),
@@ -1064,7 +1064,7 @@ mod test {
     #[tokio::test]
     async fn generate_follower_entries() {
         // GIVEN
-        let mut logger = ReplicatedLogs::new(InMemoryWAL::default(), 0, 0);
+        let mut logger = ReplicatedLogs::new(MemoryOpLogs::default(), 0, 0);
 
         let mut cluster_actor = cluster_actor_create_helper().await;
 
@@ -1121,7 +1121,7 @@ mod test {
     #[tokio::test]
     async fn follower_cluster_actor_replicate_log() {
         // GIVEN
-        let mut logger = ReplicatedLogs::new(InMemoryWAL::default(), 0, 0);
+        let mut logger = ReplicatedLogs::new(MemoryOpLogs::default(), 0, 0);
         let mut cluster_actor = cluster_actor_create_helper().await;
         // WHEN - term
         let heartbeat = heartbeat_create_helper(
@@ -1151,7 +1151,7 @@ mod test {
     #[tokio::test]
     async fn follower_cluster_actor_replicate_state() {
         // GIVEN
-        let mut logger = ReplicatedLogs::new(InMemoryWAL::default(), 0, 0);
+        let mut logger = ReplicatedLogs::new(MemoryOpLogs::default(), 0, 0);
         let (cache_handler, mut receiver) = tokio::sync::mpsc::channel(100);
         let mut cluster_actor = cluster_actor_create_helper().await;
 
@@ -1193,7 +1193,7 @@ mod test {
     #[tokio::test]
     async fn test_apply_multiple_committed_entries() {
         // GIVEN
-        let mut logger = ReplicatedLogs::new(InMemoryWAL::default(), 0, 0);
+        let mut logger = ReplicatedLogs::new(MemoryOpLogs::default(), 0, 0);
         let mut cluster_actor = cluster_actor_create_helper().await;
 
         // Add multiple entries
@@ -1247,7 +1247,7 @@ mod test {
     #[tokio::test]
     async fn test_partial_commit_with_new_entries() {
         // GIVEN
-        let mut logger = ReplicatedLogs::new(InMemoryWAL::default(), 0, 0);
+        let mut logger = ReplicatedLogs::new(MemoryOpLogs::default(), 0, 0);
         let mut cluster_actor = cluster_actor_create_helper().await;
 
         // First, append some entries
@@ -1302,7 +1302,7 @@ mod test {
     #[tokio::test]
     async fn follower_cluster_actor_replicate_state_only_upto_hwm() {
         // GIVEN
-        let mut logger = ReplicatedLogs::new(InMemoryWAL::default(), 0, 0);
+        let mut logger = ReplicatedLogs::new(MemoryOpLogs::default(), 0, 0);
 
         let mut cluster_actor = cluster_actor_create_helper().await;
 
@@ -1364,7 +1364,7 @@ mod test {
     #[tokio::test]
     async fn follower_truncates_log_on_term_mismatch() {
         // GIVEN: A follower with an existing log entry at index 1, term 1
-        let mut inmemory = InMemoryWAL::default();
+        let mut inmemory = MemoryOpLogs::default();
         //prefill
 
         inmemory.writer.extend(vec![
@@ -1397,7 +1397,7 @@ mod test {
     #[tokio::test]
     async fn follower_accepts_entries_with_empty_log_and_prev_log_index_zero() {
         // GIVEN: A follower with an empty log
-        let mut logger = ReplicatedLogs::new(InMemoryWAL::default(), 0, 0);
+        let mut logger = ReplicatedLogs::new(MemoryOpLogs::default(), 0, 0);
         let mut cluster_actor = cluster_actor_create_helper().await;
 
         // WHEN: Leader sends entries with prev_log_index=0
@@ -1417,7 +1417,7 @@ mod test {
     #[tokio::test]
     async fn follower_rejects_entries_with_empty_log_and_prev_log_index_nonzero() {
         // GIVEN: A follower with an empty log
-        let mut logger = ReplicatedLogs::new(InMemoryWAL::default(), 0, 0);
+        let mut logger = ReplicatedLogs::new(MemoryOpLogs::default(), 0, 0);
         let mut cluster_actor = cluster_actor_create_helper().await;
 
         // WHEN: Leader sends entries with prev_log_index=1
