@@ -242,13 +242,14 @@ impl ClusterActor {
 
     pub(crate) async fn gossip(
         &mut self,
-        hop_count: u8,
+        mut hop_count: u8,
         logger: &ReplicatedLogs<impl TWriteAheadLog>,
     ) {
         // If hop_count is 0, don't send the message to other peers
         if hop_count == 0 {
             return;
         };
+        hop_count -= 1;
         self.send_cluster_heartbeat(hop_count, logger).await;
     }
 
