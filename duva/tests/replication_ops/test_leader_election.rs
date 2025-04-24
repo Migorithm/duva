@@ -7,28 +7,28 @@ use duva::domains::cluster_actors::heartbeats::scheduler::LEADER_HEARTBEAT_INTER
 async fn test_leader_election() {
     // GIVEN
     let leaver_env = ServerEnv::default();
-    let mut leader_p = spawn_server_process(&leaver_env);
+    let mut leader_p = spawn_server_process(&leaver_env).await;
 
     let follower_env1 = ServerEnv::default().with_leader_bind_addr(leader_p.bind_addr().into());
-    let mut follower_p1 = spawn_server_process(&follower_env1);
+    let mut follower_p1 = spawn_server_process(&follower_env1).await;
 
     let follower_env2 = ServerEnv::default().with_leader_bind_addr(leader_p.bind_addr().into());
 
-    let mut follower_p2 = spawn_server_process(&follower_env2);
+    let mut follower_p2 = spawn_server_process(&follower_env2).await;
     const DEFAULT_HOP_COUNT: usize = 0;
     const TIMEOUT_IN_MILLIS: u128 = 2000;
     let processes = &mut [&mut leader_p, &mut follower_p1, &mut follower_p2];
-    check_internodes_communication(processes, DEFAULT_HOP_COUNT, TIMEOUT_IN_MILLIS).unwrap();
+    check_internodes_communication(processes, DEFAULT_HOP_COUNT, TIMEOUT_IN_MILLIS).await.unwrap();
 
     // WHEN
-    leader_p.kill().unwrap();
+    leader_p.kill().await.unwrap();
     sleep(Duration::from_millis(LEADER_HEARTBEAT_INTERVAL_MAX));
 
     // THEN
     let mut flag = false;
     for f in [&follower_p1, &follower_p2] {
         let mut handler = Client::new(f.port);
-        let response1 = handler.send_and_get("info replication", 4);
+        let response1 = handler.send_and_get("info replication", 4).await;
         if response1.contains(&"role:leader".to_string()) {
             flag = true;
             break;
@@ -44,30 +44,30 @@ async fn test_leader_election() {
 async fn test_set_twice_after_election() {
     // GIVEN
     let leaver_env = ServerEnv::default();
-    let mut leader_p = spawn_server_process(&leaver_env);
+    let mut leader_p = spawn_server_process(&leaver_env).await;
 
     let follower_env1 = ServerEnv::default().with_leader_bind_addr(leader_p.bind_addr().into());
-    let mut follower_p1 = spawn_server_process(&follower_env1);
+    let mut follower_p1 = spawn_server_process(&follower_env1).await;
 
     let follower_env2 = ServerEnv::default().with_leader_bind_addr(leader_p.bind_addr().into());
-    let mut follower_p2 = spawn_server_process(&follower_env2);
+    let mut follower_p2 = spawn_server_process(&follower_env2).await;
     const DEFAULT_HOP_COUNT: usize = 0;
     const TIMEOUT_IN_MILLIS: u128 = 2000;
     let processes = &mut [&mut leader_p, &mut follower_p1, &mut follower_p2];
-    check_internodes_communication(processes, DEFAULT_HOP_COUNT, TIMEOUT_IN_MILLIS).unwrap();
+    check_internodes_communication(processes, DEFAULT_HOP_COUNT, TIMEOUT_IN_MILLIS).await.unwrap();
 
     // WHEN
-    leader_p.kill().unwrap();
+    leader_p.kill().await.unwrap();
     sleep(Duration::from_millis(LEADER_HEARTBEAT_INTERVAL_MAX));
 
     let mut flag = false;
     for f in [&follower_p1, &follower_p2] {
         let mut handler = Client::new(f.port);
-        let res = handler.send_and_get("info replication", 4);
+        let res = handler.send_and_get("info replication", 4).await;
         if res.contains(&"role:leader".to_string()) {
             // THEN - one of the replicas should become the leader
-            assert_eq!(handler.send_and_get("set 1 2", 1).first().unwrap(), "OK");
-            assert_eq!(handler.send_and_get("set 2 3", 1).first().unwrap(), "OK");
+            assert_eq!(handler.send_and_get("set 1 2", 1).await.first().unwrap(), "OK");
+            assert_eq!(handler.send_and_get("set 2 3", 1).await.first().unwrap(), "OK");
 
             flag = true;
             break;
@@ -81,39 +81,39 @@ async fn test_set_twice_after_election() {
 async fn test_leader_election_twice() {
     // GIVEN
     let leaver_env = ServerEnv::default();
-    let mut leader_p = spawn_server_process(&leaver_env);
+    let mut leader_p = spawn_server_process(&leaver_env).await;
 
     let follower_env1 = ServerEnv::default().with_leader_bind_addr(leader_p.bind_addr().into());
-    let mut follower_p1 = spawn_server_process(&follower_env1);
+    let mut follower_p1 = spawn_server_process(&follower_env1).await;
 
     let follower_env2 = ServerEnv::default().with_leader_bind_addr(leader_p.bind_addr().into());
-    let mut follower_p2 = spawn_server_process(&follower_env2);
+    let mut follower_p2 = spawn_server_process(&follower_env2).await;
     const DEFAULT_HOP_COUNT: usize = 0;
     const TIMEOUT_IN_MILLIS: u128 = 2000;
     let processes = &mut [&mut leader_p, &mut follower_p1, &mut follower_p2];
-    check_internodes_communication(processes, DEFAULT_HOP_COUNT, TIMEOUT_IN_MILLIS).unwrap();
+    check_internodes_communication(processes, DEFAULT_HOP_COUNT, TIMEOUT_IN_MILLIS).await.unwrap();
 
     // !first leader is killed -> election happens
-    leader_p.kill().unwrap();
+    leader_p.kill().await.unwrap();
     sleep(Duration::from_millis(LEADER_HEARTBEAT_INTERVAL_MAX));
 
     let mut processes = vec![];
 
     for mut f in [follower_p1, follower_p2] {
         let mut handler = Client::new(f.port);
-        let res = handler.send_and_get("info replication", 4);
+        let res = handler.send_and_get("info replication", 4).await;
         if !res.contains(&"role:leader".to_string()) {
             processes.push(f);
             continue;
         }
 
         let follower_env3 = ServerEnv::default().with_leader_bind_addr(f.bind_addr().into());
-        let new_process = spawn_server_process(&follower_env3);
+        let new_process = spawn_server_process(&follower_env3).await;
         sleep(Duration::from_millis(LEADER_HEARTBEAT_INTERVAL_MAX));
 
         // WHEN
         // ! second leader is killed -> election happens
-        f.kill().unwrap();
+        f.kill().await.unwrap();
         sleep(Duration::from_millis(LEADER_HEARTBEAT_INTERVAL_MAX));
         processes.push(new_process);
     }
@@ -123,7 +123,7 @@ async fn test_leader_election_twice() {
     for f in processes.iter() {
         let mut handler = Client::new(f.port);
         let res = handler.send_and_get("info replication", 4);
-        if res.contains(&"role:leader".to_string()) {
+        if res.await.contains(&"role:leader".to_string()) {
             flag = true;
             break;
         }

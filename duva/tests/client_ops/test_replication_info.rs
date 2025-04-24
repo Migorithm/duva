@@ -9,11 +9,11 @@ use crate::common::{Client, ServerEnv, spawn_server_process};
 async fn test_replication_info() {
     // GIVEN
     let env = ServerEnv::default();
-    let process = spawn_server_process(&env);
+    let process = spawn_server_process(&env).await;
     let mut h = Client::new(process.port);
 
     // WHEN
-    let res = h.send_and_get("INFO replication", 4);
+    let res = h.send_and_get("INFO replication", 4).await;
 
     // THEN
     assert_eq!(res[0], "role:leader");
