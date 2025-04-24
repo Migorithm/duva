@@ -13,6 +13,7 @@ use super::peer_connections::outbound::stream::OutboundStream;
 use super::replication::BannedPeer;
 use super::replication::HeartBeatMessage;
 use super::replication::ReplicationId;
+use super::replication::ReplicationRole;
 use super::replication::ReplicationState;
 use super::replication::time_in_secs;
 use super::session::ClientSessions;
@@ -620,24 +621,27 @@ impl ClusterActor {
         if heartbeat_hwm > old_hwm {
             println!("[INFO] Received commit offset {}", heartbeat_hwm);
 
-            let new_hwm = std::cmp::min(heartbeat_hwm, wal.last_log_index);
-            self.replication.hwm.store(new_hwm, Ordering::Release);
+            for log_index in (old_hwm + 1)..=heartbeat_hwm {
+                let Some(log) = wal.read_at(log_index).await else {
+                    println!("[ERROR] log has never been replicated!");
+                    return;
+                };
 
-            // Apply all newly committed entries to state machine
-            for log_index in (old_hwm + 1)..=new_hwm {
-                if let Some(log) = wal.read_at(log_index).await {
-                    match cache_manager.apply_log(log.request).await {
-                        Ok(_) => {},
-                        Err(e) => println!("[ERROR] Failed to apply log: {:?}", e),
-                    }
+                if let Err(e) = cache_manager.apply_log(log.request).await {
+                    println!("[ERROR] Failed to apply log: {:?}", e);
+                    return; // Stop on first error
                 }
             }
+            self.replication.hwm.store(heartbeat_hwm, Ordering::Release);
         }
     }
 
     pub(crate) fn maybe_update_term(&mut self, new_term: u64) {
         if new_term > self.replication.term {
             self.replication.term = new_term;
+            self.replication.election_state = ElectionState::Follower { voted_for: None };
+            self.replication.is_leader_mode = false;
+            self.replication.role = ReplicationRole::Follower;
         }
     }
 
@@ -662,7 +666,7 @@ impl ClusterActor {
     /// 1) on follower's consensus rejection when term is not matched
     /// 2) step down operation is given from user
     pub(crate) async fn step_down(&mut self) {
-        self.replication.become_follower(None);
+        self.replication.vote_for(None);
         self.heartbeat_scheduler.turn_follower_mode().await;
     }
 
@@ -692,7 +696,7 @@ impl ClusterActor {
     }
 
     pub(crate) async fn replicaof(&mut self, peer_addr: PeerIdentifier) {
-        self.replication.become_follower(Some(peer_addr));
+        self.replication.vote_for(Some(peer_addr));
         self.set_replication_info(ReplicationId::Undecided, 0);
         self.heartbeat_scheduler.turn_follower_mode().await;
     }

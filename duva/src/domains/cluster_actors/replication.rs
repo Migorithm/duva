@@ -119,15 +119,14 @@ impl ReplicationState {
         if !(self.election_state.is_votable(candidate_id) && self.term < election_term) {
             return false;
         }
-        self.become_follower(Some(candidate_id.clone()));
+        self.vote_for(Some(candidate_id.clone()));
         self.term = election_term;
         true
     }
 
-    pub(super) fn become_follower(&mut self, leader_id: Option<PeerIdentifier>) {
+    pub(super) fn vote_for(&mut self, leader_id: Option<PeerIdentifier>) {
         self.election_state = ElectionState::Follower { voted_for: leader_id };
         self.is_leader_mode = false;
-        self.role = ReplicationRole::Follower;
     }
     pub(super) fn become_leader(&mut self) {
         self.role = ReplicationRole::Leader;
