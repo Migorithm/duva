@@ -10,7 +10,6 @@ pub(crate) enum CacheCommand {
     Delete { key: String, callback: oneshot::Sender<bool> },
     IndexGet { key: String, read_idx: u64, callback: oneshot::Sender<Option<CacheValue>> },
     Ping,
-    StopSentinel,
     Drop { callback: oneshot::Sender<()> },
     Exists { key: String, callback: oneshot::Sender<bool> },
 }

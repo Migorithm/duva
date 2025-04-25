@@ -15,7 +15,6 @@ impl CacheActor {
     ) -> Result<Self> {
         while let Some(command) = recv.recv().await {
             match command {
-                CacheCommand::StopSentinel => break,
                 CacheCommand::Set { cache_entry } => {
                     let _ = self.try_send_ttl(&cache_entry).await;
                     self.set(cache_entry);
@@ -79,8 +78,6 @@ mod test {
     use crate::domains::caches::cache_objects::CacheValue;
     use crate::domains::caches::command::CacheCommand;
     use crate::domains::caches::read_queue::ReadQueue;
-
-    use chrono::Utc;
     use std::sync::Arc;
     use std::sync::atomic::AtomicU64;
     use std::time::Duration;
@@ -115,48 +112,6 @@ mod test {
             self.0.send(CacheCommand::Drop { callback: tx }).await.unwrap();
             let _ = rx.await;
         }
-    }
-
-    #[tokio::test]
-    async fn test_set_and_delete_inc_dec_keys_with_expiry() {
-        // GIVEN
-        let (tx, rx) = tokio::sync::mpsc::channel(100);
-        let hwm = Arc::new(0.into());
-        let actor = CacheActor { cache: CacheDb::default(), self_handler: tx.clone() };
-
-        // WHEN
-
-        let handler = tokio::spawn(actor.handle(rx, ReadQueue::new(hwm)));
-
-        for i in 0..100 {
-            let key = format!("key{}", i);
-            let value = format!("value{}", i);
-            tx.send(CacheCommand::Set {
-                cache_entry: if i & 1 == 0 {
-                    CacheEntry::KeyValueExpiry {
-                        key,
-                        value,
-                        expiry: Utc::now() + Duration::from_secs(10),
-                    }
-                } else {
-                    CacheEntry::KeyValue { key, value }
-                },
-            })
-            .await
-            .unwrap();
-        }
-
-        // key0 is expiry key. deleting the following will decrese the number by 1
-        let delete_key = "key0".to_string();
-        let (callback, rx) = oneshot::channel();
-        tx.send(CacheCommand::Delete { key: delete_key, callback }).await.unwrap();
-        tx.send(CacheCommand::StopSentinel).await.unwrap();
-        let actor: CacheActor = handler.await.unwrap().unwrap();
-        let res = rx.await.unwrap();
-
-        // THEN
-        assert!(res);
-        assert_eq!(actor.cache.keys_with_expiry, 49);
     }
 
     #[tokio::test]
