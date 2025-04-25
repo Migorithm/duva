@@ -97,7 +97,6 @@ impl FileOpLogs {
         let mut segments = Vec::new();
         for segment_path in segment_paths.iter().take(segment_paths.len().saturating_sub(1)) {
             let segment = Segment::from_path(segment_path).await?;
-
             segments.push(segment);
         }
 
@@ -306,32 +305,10 @@ impl TWriteAheadLog for FileOpLogs {
         Ok(())
     }
 
+    // TODO overwrite doesn't mean to remove file and create new one.
+    // It means to truncate the active segment and write the new operations to it in the context of replicated log
+    // it means trait signature should be changed
     async fn overwrite(&mut self, ops: Vec<WriteOperation>) -> Result<()> {
-        // Clear all segments
-        for segment in &self.segments {
-            tokio::fs::remove_file(&segment.path).await?;
-        }
-        self.segments.clear();
-
-        // Reset active segment
-
-        tokio::fs::remove_file(&self.active_segment.path).await?;
-        let _ = OpenOptions::new()
-            .create(true)
-            .append(true)
-            .read(true)
-            .open(&self.active_segment.path)
-            .await?;
-        self.active_segment = Segment {
-            path: self.active_segment.path.clone(),
-            start_index: 0,
-            end_index: 0,
-            size: 0,
-        };
-
-        // Write new operations
-        self.append_many(ops).await?;
-
         Ok(())
     }
 
