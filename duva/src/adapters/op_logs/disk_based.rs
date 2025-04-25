@@ -33,8 +33,44 @@ struct Segment {
 }
 
 impl Segment {
-    fn new(path: PathBuf) -> Self {
+    async fn new(path: PathBuf) -> Self {
+        let _file = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .read(true)
+            .open(&path)
+            .await
+            .context(format!("Failed to create initial segment '{}'", path.display()))
+            .unwrap();
+
         Self { path, start_index: 0, end_index: 0, size: 0 }
+    }
+
+    async fn from_path(path: &PathBuf) -> Result<Self> {
+        // Read the last segment file to get its metadata
+        let file = OpenOptions::new()
+            .read(true)
+            .open(&path)
+            .await
+            .context(format!("Failed to open segment '{}'", path.display()))?;
+
+        let mut reader = BufReader::new(file);
+        let mut buf = Vec::new();
+        reader.read_to_end(&mut buf).await?;
+
+        // Parse the segment file to get operations
+        let bytes = Bytes::copy_from_slice(&buf[..]);
+        let operations = WriteRequest::deserialize(bytes)?;
+
+        // Calculate segment metadata
+        let size = buf.len();
+
+        Ok(Segment {
+            path: path.clone(),
+            start_index: operations.first().map(|op| op.log_index).unwrap_or(0),
+            end_index: operations.last().map(|op| op.log_index).unwrap_or(0),
+            size,
+        })
     }
 
     async fn create_writer(&self) -> Result<BufWriter<File>> {
@@ -65,24 +101,9 @@ impl FileOpLogs {
         // Load all segments except the last one (which is the active segment)
         let mut segments = Vec::new();
         for segment_path in segment_paths.iter().take(segment_paths.len().saturating_sub(1)) {
-            let file = OpenOptions::new()
-                .read(true)
-                .open(segment_path)
-                .await
-                .context(format!("Failed to open segment '{}'", segment_path.display()))?;
+            let segment = Segment::from_path(segment_path).await?;
 
-            let mut reader = BufReader::new(file);
-            let mut buf = Vec::new();
-            reader.read_to_end(&mut buf).await?;
-
-            let bytes = Bytes::copy_from_slice(&buf[..]);
-            let operations = WriteRequest::deserialize(bytes)?;
-
-            let start_index = operations.first().map(|op| op.log_index).unwrap_or(0);
-            let end_index = operations.last().map(|op| op.log_index).unwrap_or(0);
-            let size = buf.len();
-
-            segments.push(Segment { path: segment_path.clone(), start_index, end_index, size });
+            segments.push(segment);
         }
 
         Ok(Self { path, active_segment, segments, writer })
@@ -148,45 +169,12 @@ impl FileOpLogs {
         let (active_segment, writer) = if segment_paths.is_empty() {
             // No segments exist — create initial segment
             let segment_path = path.join("segment_0.oplog");
-            let _file = OpenOptions::new()
-                .create(true)
-                .append(true)
-                .read(true)
-                .open(&segment_path)
-                .await
-                .context(format!(
-                    "Failed to create initial segment '{}'",
-                    segment_path.display()
-                ))?;
-
-            let segment = Segment::new(segment_path);
+            let segment = Segment::new(segment_path).await;
 
             (Some(segment), None)
         } else {
             // Segments exist — use the last one as active
-            let last_path = segment_paths.last().unwrap().clone();
-
-            // Read the last segment file to get its metadata
-            let file = OpenOptions::new()
-                .read(true)
-                .open(&last_path)
-                .await
-                .context(format!("Failed to open segment '{}'", last_path.display()))?;
-
-            let mut reader = BufReader::new(file);
-            let mut buf = Vec::new();
-            reader.read_to_end(&mut buf).await?;
-
-            // Parse the segment file to get operations
-            let bytes = Bytes::copy_from_slice(&buf[..]);
-            let operations = WriteRequest::deserialize(bytes)?;
-
-            // Calculate segment metadata
-            let start_index = operations.first().map(|op| op.log_index).unwrap_or(0);
-            let end_index = operations.last().map(|op| op.log_index).unwrap_or(0);
-            let size = buf.len();
-
-            let segment = Segment { path: last_path, start_index, end_index, size };
+            let segment = Segment::from_path(segment_paths.last().unwrap()).await?;
 
             (Some(segment), None)
         };
