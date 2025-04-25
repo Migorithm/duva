@@ -194,7 +194,8 @@ impl From<QueryIO> for Bytes {
     }
 }
 
-pub fn deserialize(buffer: BytesMut) -> Result<(QueryIO, usize)> {
+pub fn deserialize(buffer: impl Into<Bytes>) -> Result<(QueryIO, usize)> {
+    let buffer: Bytes = buffer.into();
     match buffer[0] as char {
         SIMPLE_STRING_PREFIX => {
             let (bytes, len) = parse_simple_string(buffer)?;
@@ -229,18 +230,18 @@ pub fn deserialize(buffer: BytesMut) -> Result<(QueryIO, usize)> {
 }
 
 // +PING\r\n
-pub(crate) fn parse_simple_string(buffer: BytesMut) -> Result<(String, usize)> {
+pub(crate) fn parse_simple_string(buffer: Bytes) -> Result<(String, usize)> {
     let (line, len) =
-        read_until_crlf(&buffer[1..].into()).ok_or(anyhow::anyhow!("Invalid simple string"))?;
+        read_until_crlf(&buffer.slice(1..)).ok_or(anyhow::anyhow!("Invalid simple string"))?;
     Ok((line, len + 1))
 }
 
-fn parse_array(buffer: BytesMut) -> Result<(QueryIO, usize)> {
+fn parse_array(buffer: Bytes) -> Result<(QueryIO, usize)> {
     let mut offset = 0;
     offset += 1;
 
-    let (count_bytes, count_len) = read_until_crlf(&BytesMut::from(&buffer[offset..]))
-        .ok_or(anyhow::anyhow!("Invalid array length"))?;
+    let (count_bytes, count_len) =
+        read_until_crlf(&buffer.slice(offset..)).ok_or(anyhow::anyhow!("Invalid array length"))?;
     offset += count_len;
 
     let array_len = count_bytes.parse()?;
@@ -248,7 +249,7 @@ fn parse_array(buffer: BytesMut) -> Result<(QueryIO, usize)> {
     let mut elements = Vec::with_capacity(array_len);
 
     for _ in 0..array_len {
-        let (element, len) = deserialize(BytesMut::from(&buffer[offset..]))?;
+        let (element, len) = deserialize(buffer.slice(offset..))?;
         offset += len;
         elements.push(element);
     }
@@ -256,21 +257,21 @@ fn parse_array(buffer: BytesMut) -> Result<(QueryIO, usize)> {
     Ok((QueryIO::Array(elements), offset))
 }
 
-fn parse_session_request(buffer: BytesMut) -> Result<(QueryIO, usize)> {
+fn parse_session_request(buffer: Bytes) -> Result<(QueryIO, usize)> {
     let mut offset = 0;
     // ! to advance '!'
     offset += 1;
 
-    let (count_bytes, count_len) = read_until_crlf(&BytesMut::from(&buffer[offset..]))
-        .ok_or(anyhow::anyhow!("Invalid array length"))?;
+    let (count_bytes, count_len) =
+        read_until_crlf(&buffer.slice(offset..)).ok_or(anyhow::anyhow!("Invalid array length"))?;
     offset += count_len;
     let request_id = count_bytes.parse()?;
 
     // ! to advance '$'
     offset += 1;
 
-    let (count_bytes, count_len) = read_until_crlf(&BytesMut::from(&buffer[offset..]))
-        .ok_or(anyhow::anyhow!("Invalid array length"))?;
+    let (count_bytes, count_len) =
+        read_until_crlf(&buffer.slice(offset..)).ok_or(anyhow::anyhow!("Invalid array length"))?;
     offset += count_len;
 
     let array_len = count_bytes.parse()?;
@@ -278,44 +279,45 @@ fn parse_session_request(buffer: BytesMut) -> Result<(QueryIO, usize)> {
     let mut elements = Vec::with_capacity(array_len);
 
     for _ in 0..array_len {
-        let (element, len) = deserialize(BytesMut::from(&buffer[offset..]))?;
+        let (element, len) = deserialize(buffer.slice(offset..))?;
         offset += len;
         elements.push(element);
     }
     Ok((QueryIO::SessionRequest { request_id, value: elements }, offset))
 }
 
-pub fn parse_custom_type<T>(buffer: BytesMut) -> Result<(QueryIO, usize)>
+pub fn parse_custom_type<T>(buffer: Bytes) -> Result<(QueryIO, usize)>
 where
     T: bincode::Decode<()> + Into<QueryIO>,
 {
-    let (encoded, len): (T, usize) = bincode::decode_from_slice(&buffer[1..], SERDE_CONFIG)
-        .map_err(|err| anyhow::anyhow!("Failed to decode heartbeat message: {:?}", err))?;
+    let (encoded, len): (T, usize) =
+        bincode::decode_from_slice(&buffer.slice(1..), SERDE_CONFIG)
+            .map_err(|err| anyhow::anyhow!("Failed to decode heartbeat message: {:?}", err))?;
     Ok((encoded.into(), len + 1))
 }
 
-fn parse_bulk_string(buffer: BytesMut) -> Result<(String, usize)> {
+fn parse_bulk_string(buffer: Bytes) -> Result<(String, usize)> {
     let (line, mut len) =
-        read_until_crlf(&buffer[1..].into()).ok_or(anyhow::anyhow!("Invalid bulk string"))?;
+        read_until_crlf(&buffer.slice(1..)).ok_or(anyhow::anyhow!("Invalid bulk string"))?;
 
     // Adjust `len` to include the initial line and calculate `bulk_str_len`
     len += 1;
 
     let content_len: usize = line.parse()?;
-    let (line, total_len) = read_content_until_crlf(&buffer[len..].into(), content_len)
+    let (line, total_len) = read_content_until_crlf(&buffer.slice(len..), content_len)
         .context("Invalid BulkString format!")?;
     Ok((line, len + total_len))
 }
 
-fn parse_file(buffer: BytesMut) -> Result<(Bytes, usize)> {
+fn parse_file(buffer: Bytes) -> Result<(Bytes, usize)> {
     let (line, mut len) =
-        read_until_crlf(&buffer[1..].into()).ok_or(anyhow::anyhow!("Invalid bulk string"))?;
+        read_until_crlf(&buffer.slice(1..)).ok_or(anyhow::anyhow!("Invalid bulk string"))?;
 
     // Adjust `len` to include the initial line and calculate `bulk_str_len`
     len += 1;
     let content_len: usize = line.parse()?;
 
-    let file_content = &buffer[len..(len + content_len)];
+    let file_content = &buffer.slice(len..(len + content_len));
 
     let file = file_content
         .chunks(2)
@@ -325,7 +327,7 @@ fn parse_file(buffer: BytesMut) -> Result<(Bytes, usize)> {
     Ok((file, len + content_len))
 }
 pub(super) fn read_content_until_crlf(
-    buffer: &BytesMut,
+    buffer: &Bytes,
     content_len: usize,
 ) -> Option<(String, usize)> {
     if buffer.len() < content_len + 2 {
@@ -333,17 +335,17 @@ pub(super) fn read_content_until_crlf(
     }
     if buffer[content_len] == b'\r' && buffer[content_len + 1] == b'\n' {
         return Some((
-            String::from_utf8_lossy(&buffer[0..content_len]).to_string(),
+            String::from_utf8_lossy(&buffer.slice(0..content_len)).to_string(),
             content_len + 2,
         ));
     }
     None
 }
 
-pub(super) fn read_until_crlf(buffer: &BytesMut) -> Option<(String, usize)> {
+pub(super) fn read_until_crlf(buffer: &Bytes) -> Option<(String, usize)> {
     for i in 1..buffer.len() {
         if buffer[i - 1] == b'\r' && buffer[i] == b'\n' {
-            return Some((String::from_utf8_lossy(&buffer[0..(i - 1)]).to_string(), i + 1));
+            return Some((String::from_utf8_lossy(&buffer.slice(0..(i - 1))).to_string(), i + 1));
         }
     }
     None
@@ -426,7 +428,7 @@ mod test {
     #[test]
     fn test_deserialize_simple_string() {
         // GIVEN
-        let buffer = BytesMut::from("+OK\r\n");
+        let buffer = Bytes::from("+OK\r\n");
 
         // WHEN
         let (value, len) = parse_simple_string(buffer).unwrap();
@@ -439,7 +441,7 @@ mod test {
     #[test]
     fn test_deserialize_simple_string_ping() {
         // GIVEN
-        let buffer = BytesMut::from("+PING\r\n");
+        let buffer = Bytes::from("+PING\r\n");
 
         // WHEN
         let (value, len) = deserialize(buffer).unwrap();
@@ -452,7 +454,7 @@ mod test {
     #[test]
     fn test_deserialize_bulk_string() {
         // GIVEN
-        let buffer = BytesMut::from("$5\r\nhello\r\n");
+        let buffer = Bytes::from("$5\r\nhello\r\n");
 
         // WHEN
         let (value, len) = deserialize(buffer).unwrap();
@@ -465,7 +467,7 @@ mod test {
     #[test]
     fn test_deserialize_bulk_string_empty() {
         // GIVEN
-        let buffer = BytesMut::from("$0\r\n\r\n");
+        let buffer = Bytes::from("$0\r\n\r\n");
 
         // WHEN
         let (value, len) = deserialize(buffer).unwrap();
@@ -478,7 +480,7 @@ mod test {
     #[test]
     fn test_deserialize_array() {
         // GIVEN
-        let buffer = BytesMut::from("*2\r\n$5\r\nhello\r\n$5\r\nworld\r\n");
+        let buffer = Bytes::from("*2\r\n$5\r\nhello\r\n$5\r\nworld\r\n");
 
         // WHEN
         let (value, len) = deserialize(buffer).unwrap();
@@ -497,7 +499,7 @@ mod test {
     #[test]
     fn test_deserialize_session_request() {
         // GIVEN
-        let buffer = BytesMut::from("!30\r\n*2\r\n$5\r\nhello\r\n$5\r\nworld\r\n");
+        let buffer = Bytes::from("!30\r\n*2\r\n$5\r\nhello\r\n$5\r\nworld\r\n");
 
         // WHEN
         let (value, len) = deserialize(buffer).unwrap();
@@ -535,9 +537,8 @@ mod test {
         // GIVEN
         let file = QueryIO::File("hello".into());
         let serialized = file.serialize();
-        let buffer = BytesMut::from_iter(serialized);
         // WHEN
-        let (value, _) = deserialize(buffer).unwrap();
+        let (value, _) = deserialize(serialized).unwrap();
 
         // THEN
         assert_eq!(value, QueryIO::File("hello".into()));
@@ -554,7 +555,7 @@ mod test {
 
         // WHEN
         let serialized = op.clone().serialize();
-        let (deserialized, _) = deserialize(serialized.clone().into()).unwrap();
+        let (deserialized, _) = deserialize(serialized.clone()).unwrap();
 
         // THEN
         assert_eq!(deserialized, op);
@@ -573,7 +574,7 @@ mod test {
 
         // WHEN
         let serialized = acks.clone().serialize();
-        let (deserialized, _) = deserialize(BytesMut::from(serialized)).unwrap();
+        let (deserialized, _) = deserialize(serialized).unwrap();
 
         // THEN
         assert_eq!(deserialized, acks);
@@ -657,7 +658,7 @@ mod test {
         // WHEN
         let serialized = replicate.clone().serialize();
 
-        let (value, _) = deserialize(BytesMut::from(serialized)).unwrap();
+        let (value, _) = deserialize(serialized).unwrap();
 
         // THEN
         assert_eq!(value, replicate);
@@ -676,7 +677,7 @@ mod test {
 
         // WHEN
         let serialized = request_vote.clone().serialize();
-        let (deserialized, _) = deserialize(BytesMut::from(serialized)).unwrap();
+        let (deserialized, _) = deserialize(serialized).unwrap();
 
         // THEN
         assert_eq!(deserialized, request_vote);
@@ -690,7 +691,7 @@ mod test {
 
         // WHEN
         let serialized = request_vote_reply.clone().serialize();
-        let (deserialized, _) = deserialize(BytesMut::from(serialized)).unwrap();
+        let (deserialized, _) = deserialize(serialized).unwrap();
 
         // THEN
         assert_eq!(deserialized, request_vote_reply);
@@ -705,7 +706,7 @@ mod test {
 
         //WHEN
         let serialized = query_io.clone().serialize();
-        let (deserialized, _) = deserialize(BytesMut::from(serialized)).unwrap();
+        let (deserialized, _) = deserialize(serialized).unwrap();
         let QueryIO::TopologyChange(deserialized_topology) = deserialized else {
             panic!("Expected a TopologyChange");
         };

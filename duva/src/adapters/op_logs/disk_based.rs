@@ -2,7 +2,7 @@
 use crate::domains::operation_logs::interfaces::TWriteAheadLog;
 use crate::domains::operation_logs::{WriteOperation, WriteRequest};
 use anyhow::Result;
-use bytes::BytesMut;
+use bytes::{Bytes, BytesMut};
 use std::path::{Path, PathBuf};
 use tokio::fs::{File, OpenOptions};
 use tokio::io::{AsyncReadExt, AsyncWriteExt, BufReader, BufWriter};
@@ -75,7 +75,7 @@ impl TWriteAheadLog for FileOpLogs {
 
         reader.read_to_end(&mut buf).await?;
 
-        let bytes = BytesMut::from(&buf[..]);
+        let bytes = Bytes::copy_from_slice(&buf[..]);
 
         for op in WriteRequest::deserialize(bytes)? {
             f(op);
