@@ -302,5 +302,11 @@ Future enhancements will include:
 ### Contributing
 Contributions are welcome! Please fork the repository and submit a pull request for review.
 
+Currently branch rule is enforcing that your branch matches a pattern that one of below:
+- "master"
+- "hotfix/*"
+- "fix/*"
+- "feat/*"
+
 ### License
 This project is licensed under the Apache License 2.0. See the [LICENSE](./LICENSE) file for details.
