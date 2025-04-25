@@ -290,8 +290,9 @@ pub fn parse_custom_type<T>(buffer: Bytes) -> Result<(QueryIO, usize)>
 where
     T: bincode::Decode<()> + Into<QueryIO>,
 {
-    let (encoded, len): (T, usize) = bincode::decode_from_slice(&buffer[1..], SERDE_CONFIG)
-        .map_err(|err| anyhow::anyhow!("Failed to decode heartbeat message: {:?}", err))?;
+    let (encoded, len): (T, usize) =
+        bincode::decode_from_slice(&buffer.slice(1..), SERDE_CONFIG)
+            .map_err(|err| anyhow::anyhow!("Failed to decode heartbeat message: {:?}", err))?;
     Ok((encoded.into(), len + 1))
 }
 
@@ -316,7 +317,7 @@ fn parse_file(buffer: Bytes) -> Result<(Bytes, usize)> {
     len += 1;
     let content_len: usize = line.parse()?;
 
-    let file_content = &buffer[len..(len + content_len)];
+    let file_content = &buffer.slice(len..(len + content_len));
 
     let file = file_content
         .chunks(2)
@@ -334,7 +335,7 @@ pub(super) fn read_content_until_crlf(
     }
     if buffer[content_len] == b'\r' && buffer[content_len + 1] == b'\n' {
         return Some((
-            String::from_utf8_lossy(&buffer[0..content_len]).to_string(),
+            String::from_utf8_lossy(&buffer.slice(0..content_len)).to_string(),
             content_len + 2,
         ));
     }
@@ -344,7 +345,7 @@ pub(super) fn read_content_until_crlf(
 pub(super) fn read_until_crlf(buffer: &Bytes) -> Option<(String, usize)> {
     for i in 1..buffer.len() {
         if buffer[i - 1] == b'\r' && buffer[i] == b'\n' {
-            return Some((String::from_utf8_lossy(&buffer[0..(i - 1)]).to_string(), i + 1));
+            return Some((String::from_utf8_lossy(&buffer.slice(0..(i - 1))).to_string(), i + 1));
         }
     }
     None
