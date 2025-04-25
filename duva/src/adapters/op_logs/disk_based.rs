@@ -1048,4 +1048,85 @@ mod tests {
         let result = op_logs2.range(u64::MIN, 0).await;
         assert!(result.is_empty());
     }
+
+    // --- Tests for read_at ---
+
+    #[tokio::test]
+    async fn test_read_at_empty_log() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path();
+        let op_logs = FileOpLogs::new(&path).await.unwrap();
+
+        let op = op_logs.read_at(0).await;
+        assert!(op.is_none());
+
+        let op = op_logs.read_at(100).await;
+        assert!(op.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_read_at_single_segment() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path();
+        let mut op_logs = FileOpLogs::new(&path).await.unwrap();
+
+        let ops_to_append = create_ops(0, 5, 1); // Indices 0-4
+        op_logs.append_many(ops_to_append.clone()).await.unwrap();
+
+        // Read existing ops
+        let op0 = op_logs.read_at(0).await;
+        assert_eq!(op0, Some(ops_to_append[0].clone()));
+
+        let op3 = op_logs.read_at(3).await;
+        assert_eq!(op3, Some(ops_to_append[3].clone()));
+
+        let op4 = op_logs.read_at(4).await;
+        assert_eq!(op4, Some(ops_to_append[4].clone()));
+
+        // Read non-existing ops
+        let op5 = op_logs.read_at(5).await;
+        assert!(op5.is_none());
+
+        let op100 = op_logs.read_at(100).await;
+        assert!(op100.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_read_at_multiple_segments() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path();
+        let mut op_logs = FileOpLogs::new(&path).await.unwrap();
+
+        let ops_seg1 = create_ops(0, 10, 1); // Ops 0-9
+        op_logs.append_many(ops_seg1.clone()).await.unwrap();
+        op_logs.rotate_segment().await.unwrap(); // segment_0 (0-9) sealed
+
+        let ops_seg2 = create_ops(10, 10, 2); // Ops 10-19
+        op_logs.append_many(ops_seg2.clone()).await.unwrap();
+        op_logs.rotate_segment().await.unwrap(); // segment_1 (10-19) sealed
+
+        let ops_active = create_ops(20, 5, 3); // Ops 20-24
+        op_logs.append_many(ops_active.clone()).await.unwrap(); // segment_2 (20-24) active
+
+        // Read from first sealed segment
+        let op_s1_5 = op_logs.read_at(5).await;
+        assert_eq!(op_s1_5, Some(ops_seg1[5].clone()));
+
+        // Read from second sealed segment
+        let op_s2_15 = op_logs.read_at(15).await;
+        assert_eq!(op_s2_15, Some(ops_seg2[5].clone())); // Index 15 is the 6th op in ops_seg2 (index 5)
+
+        // Read from active segment
+        let op_active_22 = op_logs.read_at(22).await;
+        assert_eq!(op_active_22, Some(ops_active[2].clone())); // Index 22 is the 3rd op in ops_active (index 2)
+
+        // Read non-existing ops
+        let op_nonexistent = op_logs.read_at(100).await;
+        assert!(op_nonexistent.is_none());
+
+        let op_between = op_logs.read_at(9).await; // Should find index 9 (last in seg1)
+        assert_eq!(op_between, Some(ops_seg1[9].clone()));
+        let op_between_start = op_logs.read_at(10).await; // Should find index 10 (first in seg2)
+        assert_eq!(op_between_start, Some(ops_seg2[0].clone()));
+    }
 }
