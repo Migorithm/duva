@@ -15,13 +15,8 @@ const SEGMENT_SIZE: usize = 1024 * 1024; // 1MB per segment
 pub struct FileOpLogs {
     /// The directory where all segment files are stored, or the file path if not using segments
     path: PathBuf,
-    /// The current active segment (only used in segmented mode)
-    active_segment: Option<Segment>,
-    /// List of all segments in order (only used in segmented mode)
+    active_segment: Segment,
     segments: Vec<Segment>,
-
-    /// The writer for non-segmented mode
-    writer: Option<BufWriter<File>>,
 }
 
 #[derive(Clone)]
@@ -95,7 +90,7 @@ impl FileOpLogs {
         // Detect and sort existing segment files
         let segment_paths = Self::detect_and_sort_existing_segments(&path).await?;
 
-        let (active_segment, writer) =
+        let active_segment =
             Self::take_last_segment_otherwise_init(&path, segment_paths.clone()).await?;
 
         // Load all segments except the last one (which is the active segment)
@@ -106,7 +101,7 @@ impl FileOpLogs {
             segments.push(segment);
         }
 
-        Ok(Self { path, active_segment, segments, writer })
+        Ok(Self { path, active_segment, segments })
     }
     async fn validate_folder(path: &PathBuf) -> Result<(), anyhow::Error> {
         Ok(match tokio::fs::metadata(path).await {
@@ -165,46 +160,41 @@ impl FileOpLogs {
     async fn take_last_segment_otherwise_init(
         path: &PathBuf,
         segment_paths: Vec<PathBuf>,
-    ) -> Result<(Option<Segment>, Option<BufWriter<File>>), anyhow::Error> {
-        let (active_segment, writer) = if segment_paths.is_empty() {
+    ) -> Result<Segment, anyhow::Error> {
+        let active_segment = if segment_paths.is_empty() {
             // No segments exist — create initial segment
             let segment_path = path.join("segment_0.oplog");
             let segment = Segment::new(segment_path).await;
-
-            (Some(segment), None)
+            segment
         } else {
             // Segments exist — use the last one as active
             let segment = Segment::from_path(segment_paths.last().unwrap()).await?;
-
-            (Some(segment), None)
+            segment
         };
-        Ok((active_segment, writer))
+        Ok(active_segment)
     }
 
     async fn rotate_segment(&mut self) -> Result<()> {
-        if let Some(active_segment) = &self.active_segment {
-            // Close current segment
-            if let Some(mut writer) = active_segment.create_writer().await.ok() {
-                writer.flush().await?;
-                writer.get_mut().sync_all().await?;
-            }
-
-            // Add to segments list
-            self.segments.push(active_segment.clone());
-
-            // Create new segment
-            let next_index = self.segments.len();
-            let segment_path = self.path.join(format!("segment_{}.oplog", next_index));
-            let _ =
-                OpenOptions::new().create(true).append(true).read(true).open(&segment_path).await?;
-
-            self.active_segment = Some(Segment {
-                path: segment_path,
-                start_index: active_segment.end_index + 1,
-                end_index: active_segment.end_index,
-                size: 0,
-            });
+        // Close current segment
+        if let Some(mut writer) = self.active_segment.create_writer().await.ok() {
+            writer.flush().await?;
+            writer.get_mut().sync_all().await?;
         }
+
+        // Add to segments list
+        self.segments.push(self.active_segment.clone());
+
+        // Create new segment
+        let next_index = self.segments.len();
+        let segment_path = self.path.join(format!("segment_{}.oplog", next_index));
+        let _ = OpenOptions::new().create(true).append(true).read(true).open(&segment_path).await?;
+
+        self.active_segment = Segment {
+            path: segment_path,
+            start_index: self.active_segment.end_index + 1,
+            end_index: self.active_segment.end_index,
+            size: 0,
+        };
 
         Ok(())
     }
@@ -218,27 +208,21 @@ impl TWriteAheadLog for FileOpLogs {
     /// Returns an error if writing to or syncing the underlying file fails.
     async fn append(&mut self, op: WriteOperation) -> Result<()> {
         // Check if we need to rotate
-        if let Some(active_segment) = &self.active_segment {
-            if active_segment.size >= SEGMENT_SIZE {
-                self.rotate_segment().await?;
-            }
+        if self.active_segment.size >= SEGMENT_SIZE {
+            self.rotate_segment().await?;
         }
 
         // Write operation to current segment
         let log_index = op.log_index;
         let serialized = op.serialize();
 
-        if let Some(active_segment) = &self.active_segment {
-            let mut writer = active_segment.create_writer().await?;
-            writer.write_all(&serialized).await?;
-            writer.flush().await?;
-            writer.get_mut().sync_all().await?;
+        let mut writer = self.active_segment.create_writer().await?;
+        writer.write_all(&serialized).await?;
+        writer.flush().await?;
+        writer.get_mut().sync_all().await?;
 
-            if let Some(active_segment) = &mut self.active_segment {
-                active_segment.size += serialized.len();
-                active_segment.end_index = log_index;
-            }
-        }
+        self.active_segment.size += serialized.len();
+        self.active_segment.end_index = log_index;
 
         Ok(())
     }
@@ -261,12 +245,11 @@ impl TWriteAheadLog for FileOpLogs {
         }
 
         // Check active segment
-        if let Some(active_segment) = &self.active_segment {
-            if active_segment.end_index >= start_exclusive
-                && active_segment.start_index <= end_inclusive
-            {
-                // TODO: Implement reading from active segment
-            }
+
+        if self.active_segment.end_index >= start_exclusive
+            && self.active_segment.start_index <= end_inclusive
+        {
+            // TODO: Implement reading from active segment
         }
 
         result
@@ -295,16 +278,15 @@ impl TWriteAheadLog for FileOpLogs {
         }
 
         // Replay active segment
-        if let Some(active_segment) = &self.active_segment {
-            let file = OpenOptions::new().read(true).open(&active_segment.path).await?;
-            let mut reader = BufReader::new(file);
-            let mut buf = Vec::new();
-            reader.read_to_end(&mut buf).await?;
 
-            let bytes = Bytes::copy_from_slice(&buf[..]);
-            for op in WriteRequest::deserialize(bytes)? {
-                f(op);
-            }
+        let file = OpenOptions::new().read(true).open(&self.active_segment.path).await?;
+        let mut reader = BufReader::new(file);
+        let mut buf = Vec::new();
+        reader.read_to_end(&mut buf).await?;
+
+        let bytes = Bytes::copy_from_slice(&buf[..]);
+        for op in WriteRequest::deserialize(bytes)? {
+            f(op);
         }
 
         Ok(())
@@ -316,11 +298,9 @@ impl TWriteAheadLog for FileOpLogs {
     ///
     /// Returns an error if either flush or sync fails.
     async fn fsync(&mut self) -> Result<()> {
-        if let Some(active_segment) = &self.active_segment {
-            if let Some(mut writer) = active_segment.create_writer().await.ok() {
-                writer.flush().await?;
-                writer.get_mut().sync_all().await?;
-            }
+        if let Some(mut writer) = self.active_segment.create_writer().await.ok() {
+            writer.flush().await?;
+            writer.get_mut().sync_all().await?;
         }
 
         Ok(())
@@ -334,21 +314,20 @@ impl TWriteAheadLog for FileOpLogs {
         self.segments.clear();
 
         // Reset active segment
-        if let Some(active_segment) = &self.active_segment {
-            tokio::fs::remove_file(&active_segment.path).await?;
-            let _ = OpenOptions::new()
-                .create(true)
-                .append(true)
-                .read(true)
-                .open(&active_segment.path)
-                .await?;
-            self.active_segment = Some(Segment {
-                path: active_segment.path.clone(),
-                start_index: 0,
-                end_index: 0,
-                size: 0,
-            });
-        }
+
+        tokio::fs::remove_file(&self.active_segment.path).await?;
+        let _ = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .read(true)
+            .open(&self.active_segment.path)
+            .await?;
+        self.active_segment = Segment {
+            path: self.active_segment.path.clone(),
+            start_index: 0,
+            end_index: 0,
+            size: 0,
+        };
 
         // Write new operations
         self.append_many(ops).await?;
@@ -365,12 +344,10 @@ impl TWriteAheadLog for FileOpLogs {
         }
 
         // Check active segment
-        if let Some(active_segment) = &self.active_segment {
-            if active_segment.start_index <= prev_log_index
-                && active_segment.end_index >= prev_log_index
-            {
-                // TODO: Implement reading specific operation from active segment
-            }
+        if self.active_segment.start_index <= prev_log_index
+            && self.active_segment.end_index >= prev_log_index
+        {
+            // TODO: Implement reading specific operation from active segment
         }
 
         None
@@ -379,15 +356,13 @@ impl TWriteAheadLog for FileOpLogs {
     fn log_start_index(&self) -> u64 {
         if let Some(first_segment) = self.segments.first() {
             first_segment.start_index
-        } else if let Some(active_segment) = &self.active_segment {
-            active_segment.start_index
         } else {
-            0
+            self.active_segment.start_index
         }
     }
 
     fn is_empty(&self) -> bool {
-        self.segments.is_empty() && self.active_segment.as_ref().map_or(true, |s| s.size == 0)
+        self.segments.is_empty() && self.active_segment.size == 0
     }
 
     async fn truncate_after(&mut self, log_index: u64) {
@@ -395,10 +370,10 @@ impl TWriteAheadLog for FileOpLogs {
         self.segments.retain(|segment| segment.end_index <= log_index);
 
         // If active segment needs truncation
-        if let Some(active_segment) = &self.active_segment {
-            if active_segment.start_index <= log_index && active_segment.end_index > log_index {
-                // TODO: Implement truncation of active segment
-            }
+
+        if self.active_segment.start_index <= log_index && self.active_segment.end_index > log_index
+        {
+            // TODO: Implement truncation of active segment
         }
     }
 }
@@ -608,8 +583,8 @@ mod tests {
         let wal = FileOpLogs::new(&path).await?;
 
         // THEN
-        assert!(wal.active_segment.is_some());
-        let segment = wal.active_segment.as_ref().unwrap();
+
+        let segment = wal.active_segment;
         assert_eq!(segment.start_index, 0);
         assert_eq!(segment.end_index, 0);
         assert_eq!(segment.size, 0);
@@ -643,11 +618,11 @@ mod tests {
         }
 
         // WHEN
-        let wal = FileOpLogs::new(&path).await?;
+        let op_logs = FileOpLogs::new(&path).await?;
 
         // THEN
-        assert!(wal.active_segment.is_some());
-        let segment = wal.active_segment.as_ref().unwrap();
+
+        let segment = op_logs.active_segment;
         assert_eq!(segment.start_index, 10);
         assert_eq!(segment.end_index, 11);
         assert!(segment.size > 0);
@@ -699,16 +674,15 @@ mod tests {
         }
 
         // WHEN
-        let mut wal = FileOpLogs::new(&path).await?;
+        let mut op_logs = FileOpLogs::new(&path).await?;
 
         // THEN
-        assert!(wal.active_segment.is_some());
-        let segment = wal.active_segment.as_ref().unwrap();
-        assert_eq!(segment.start_index, 100);
-        assert_eq!(segment.end_index, 100);
-        assert!(segment.size > 0);
-        assert!(segment.path.exists());
-        assert!(segment.path.ends_with("segment_1.oplog"));
+
+        assert_eq!(op_logs.active_segment.start_index, 100);
+        assert_eq!(op_logs.active_segment.end_index, 100);
+        assert!(op_logs.active_segment.size > 0);
+        assert!(op_logs.active_segment.path.exists());
+        assert!(op_logs.active_segment.path.ends_with("segment_1.oplog"));
 
         // Verify previous segment exists
         let prev_segment_path = path.join("segment_0.oplog");
@@ -716,7 +690,7 @@ mod tests {
 
         // Verify we can read operations from both segments
         let mut ops = Vec::new();
-        wal.replay(|op| ops.push(op)).await?;
+        op_logs.replay(|op| ops.push(op)).await?;
         assert_eq!(ops.len(), 101);
 
         Ok(())
