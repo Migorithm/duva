@@ -19,7 +19,7 @@ pub struct FileOpLogs {
     segments: Vec<Segment>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 struct Segment {
     path: PathBuf,
     start_index: u64,
@@ -39,6 +39,25 @@ impl Segment {
             .unwrap();
 
         Self { path, start_index: 0, end_index: 0, size: 0 }
+    }
+
+    // Helper to read all operations from a segment file
+    async fn read_operations(&self) -> Result<Vec<WriteOperation>> {
+        let file = OpenOptions::new()
+            .read(true)
+            .open(&self.path)
+            .await
+            .context(format!("Failed to open segment for reading: {}", self.path.display()))?;
+        let mut reader = BufReader::new(file);
+        let mut buf = Vec::new();
+        reader.read_to_end(&mut buf).await?;
+
+        if buf.is_empty() {
+            return Ok(Vec::new()); // Return empty vec for empty files
+        }
+
+        let bytes = Bytes::copy_from_slice(&buf[..]);
+        WriteRequest::deserialize(bytes) // Assuming this returns Result<Vec<WriteOperation>>
     }
 
     async fn from_path(path: &PathBuf) -> Result<Self> {
@@ -233,23 +252,38 @@ impl TWriteAheadLog for FileOpLogs {
         Ok(())
     }
 
-    fn range(&self, start_exclusive: u64, end_inclusive: u64) -> Vec<WriteOperation> {
-        let result = Vec::new();
+    async fn range(&self, start_exclusive: u64, end_inclusive: u64) -> Vec<WriteOperation> {
+        let mut result = Vec::new();
 
-        // Find segments that contain the range
+        // Iterate through sealed segments
         for segment in &self.segments {
-            if segment.end_index >= start_exclusive && segment.start_index <= end_inclusive {
-                // TODO: Implement reading from segment file
+            // Check for overlap: segment ends AFTER start_exclusive AND segment starts BEFORE or AT end_inclusive
+            if segment.end_index > start_exclusive && segment.start_index <= end_inclusive {
+                let operations = segment.read_operations().await.unwrap();
+                // Filter operations within the requested range
+                result.extend(
+                    operations.into_iter().filter(|op| {
+                        op.log_index > start_exclusive && op.log_index <= end_inclusive
+                    }),
+                );
             }
         }
 
-        // Check active segment
-
-        if self.active_segment.end_index >= start_exclusive
+        // Check the active segment
+        if self.active_segment.end_index > start_exclusive
             && self.active_segment.start_index <= end_inclusive
         {
-            // TODO: Implement reading from active segment
+            let operations = self.active_segment.read_operations().await.unwrap();
+            // Filter operations within the requested range
+            result.extend(
+                operations
+                    .into_iter()
+                    .filter(|op| op.log_index > start_exclusive && op.log_index <= end_inclusive),
+            );
         }
+
+        // Sort the results by log index to ensure correct order (should be mostly sorted by segment reading, but good practice)
+        result.sort_by_key(|op| op.log_index);
 
         result
     }
@@ -265,26 +299,15 @@ impl TWriteAheadLog for FileOpLogs {
     {
         // Replay all segments in order
         for segment in &self.segments {
-            let file = OpenOptions::new().read(true).open(&segment.path).await?;
-            let mut reader = BufReader::new(file);
-            let mut buf = Vec::new();
-            reader.read_to_end(&mut buf).await?;
-
-            let bytes = Bytes::copy_from_slice(&buf[..]);
-            for op in WriteRequest::deserialize(bytes)? {
+            let operations = segment.read_operations().await?;
+            for op in operations {
                 f(op);
             }
         }
 
         // Replay active segment
-
-        let file = OpenOptions::new().read(true).open(&self.active_segment.path).await?;
-        let mut reader = BufReader::new(file);
-        let mut buf = Vec::new();
-        reader.read_to_end(&mut buf).await?;
-
-        let bytes = Bytes::copy_from_slice(&buf[..]);
-        for op in WriteRequest::deserialize(bytes)? {
+        let active_operations = self.active_segment.read_operations().await?;
+        for op in active_operations {
             f(op);
         }
 
@@ -297,10 +320,10 @@ impl TWriteAheadLog for FileOpLogs {
     ///
     /// Returns an error if either flush or sync fails.
     async fn fsync(&mut self) -> Result<()> {
-        if let Some(mut writer) = self.active_segment.create_writer().await.ok() {
-            writer.flush().await?;
-            writer.get_mut().sync_all().await?;
-        }
+        // Open in append mode to get a file handle to the active segment
+        let mut file = OpenOptions::new().append(true).open(&self.active_segment.path).await?;
+        file.flush().await?;
+        file.sync_all().await?;
 
         Ok(())
     }
@@ -333,19 +356,32 @@ impl TWriteAheadLog for FileOpLogs {
         Ok(())
     }
 
-    async fn read_at(&self, prev_log_index: u64) -> Option<WriteOperation> {
-        // Find the segment containing the index
+    async fn read_at(&self, log_index: u64) -> Option<WriteOperation> {
+        // Search sealed segments first
         for segment in &self.segments {
-            if segment.start_index <= prev_log_index && segment.end_index >= prev_log_index {
-                // TODO: Implement reading specific operation from segment
+            if segment.start_index <= log_index && segment.end_index >= log_index {
+                let operations = segment.read_operations().await.unwrap();
+                // Find the specific operation by index
+                if let Some(op) = operations.into_iter().find(|op| op.log_index == log_index) {
+                    return Some(op);
+                }
+                // If index was within the segment's *declared* range but not found
+                // during deserialization, something is wrong or the index is missing.
+                // Continue searching other segments just in case (though it shouldn't happen
+                // with correct log index assignment). Or return None immediately if index must be unique.
+                // Assuming index is unique across the log, we can return None here.
+                // For robustness, let's continue searching the active segment.
             }
         }
 
-        // Check active segment
-        if self.active_segment.start_index <= prev_log_index
-            && self.active_segment.end_index >= prev_log_index
+        // Search active segment
+        if self.active_segment.start_index <= log_index
+            && self.active_segment.end_index >= log_index
         {
-            // TODO: Implement reading specific operation from active segment
+            let operations = self.active_segment.read_operations().await.unwrap();
+            if let Some(op) = operations.into_iter().find(|op| op.log_index == log_index) {
+                return Some(op);
+            }
         }
 
         None
@@ -877,5 +913,139 @@ mod tests {
         assert_eq!(ops[999], new_ops[999]);
 
         Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_range_empty_log() -> Result<()> {
+        let dir = TempDir::new()?;
+        let path = dir.path();
+        let op_logs = FileOpLogs::new(&path).await?;
+
+        let range_result = op_logs.range(0, 10).await;
+        assert!(range_result.is_empty());
+
+        let range_result = op_logs.range(10, 20).await;
+        assert!(range_result.is_empty());
+        Ok(())
+    }
+
+    // Helper to create dummy operations
+    fn create_ops(start_index: u64, count: usize, term: u64) -> Vec<WriteOperation> {
+        (0..count)
+            .map(|i| WriteOperation {
+                request: WriteRequest::Set {
+                    key: format!("key_{}", start_index + i as u64).into(),
+                    value: format!("value_{}", start_index + i as u64).into(),
+                },
+                log_index: start_index + i as u64,
+                term,
+            })
+            .collect()
+    }
+    #[tokio::test]
+    async fn test_range_single_segment() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path();
+        let mut op_logs = FileOpLogs::new(&path).await.unwrap();
+
+        let ops_to_append = create_ops(0, 6, 1); // Indices 0, 1, 2, 3, 4, 5
+        op_logs.append_many(ops_to_append.clone()).await.unwrap();
+
+        // Range fully within the segment (1 < i <= 3) -> 2, 3
+        let result = op_logs.range(1, 3).await;
+        assert_eq!(result.len(), 2);
+        assert_eq!(result[0].log_index, 2);
+        assert_eq!(result[1].log_index, 3);
+
+        // Range covering start (0 < i <= 2) -> 1, 2
+        let result = op_logs.range(0, 2).await;
+        assert_eq!(result.len(), 2);
+        assert_eq!(result[0].log_index, 1);
+        assert_eq!(result[1].log_index, 2);
+
+        // Range covering end (3 < i <= 5) -> 4, 5
+        let result = op_logs.range(3, 5).await;
+        assert_eq!(result.len(), 2);
+        assert_eq!(result[0].log_index, 4);
+        assert_eq!(result[1].log_index, 5);
+
+        // Range covering entire segment (u64::MIN < i <= 5) -> 1, 2, 3, 4, 5 (if log starts at 0)
+        // If log starts at 0, u64::MIN is 0, so we need i > 0.
+        let result = op_logs.range(u64::MIN, 5).await; // Should get 1, 2, 3, 4, 5
+        assert_eq!(result.len(), 5);
+        assert_eq!(result[0].log_index, 1);
+        assert_eq!(result[4].log_index, 5);
+
+        // Range entirely before (10 < i <= 15) -> empty
+        let result = op_logs.range(10, 15).await;
+        assert!(result.is_empty());
+
+        // Range entirely after (5 < i <= 10) -> empty (since max index is 5)
+        let result = op_logs.range(5, 10).await;
+        assert!(result.is_empty());
+
+        // Range with start_exclusive equal to end_inclusive (2 < i <= 2) -> empty
+        let result = op_logs.range(2, 2).await;
+        assert!(result.is_empty());
+
+        // Range with start_exclusive + 1 == end_inclusive (2 < i <= 3) -> 3
+        let result = op_logs.range(2, 3).await;
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].log_index, 3);
+    }
+
+    #[tokio::test]
+    async fn test_range_multiple_segments() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path();
+        let mut op_logs2 = FileOpLogs::new(&path).await.unwrap();
+
+        let ops_seg1 = create_ops(0, 10, 1); // Ops 0-9
+        op_logs2.append_many(ops_seg1.clone()).await.unwrap();
+        op_logs2.rotate_segment().await.unwrap(); // segment_0 (0-9) sealed
+
+        let ops_seg2 = create_ops(10, 10, 2); // Ops 10-19
+        op_logs2.append_many(ops_seg2.clone()).await.unwrap();
+        op_logs2.rotate_segment().await.unwrap(); // segment_1 (10-19) sealed
+
+        let ops_active = create_ops(20, 5, 3); // Ops 20-24
+        op_logs2.append_many(ops_active.clone()).await.unwrap(); // segment_2 (20-24) active
+
+        println!("Segments for multi-segment test: {:?}", op_logs2.segments);
+        println!("Active segment for multi-segment test: {:?}", op_logs2.active_segment);
+
+        // Range across sealed segments (5 < i <= 15) -> 6..=15
+        let result = op_logs2.range(5, 15).await;
+        assert_eq!(result.len(), 10);
+        assert_eq!(result[0].log_index, 6);
+        assert_eq!(result[9].log_index, 15);
+
+        // Range across sealed and active segments (18 < i <= 22) -> 19..=22
+        let result = op_logs2.range(18, 22).await;
+        assert_eq!(result.len(), 4);
+        assert_eq!(result[0].log_index, 19);
+        assert_eq!(result[3].log_index, 22);
+
+        // Range covering last ops in sealed and first ops in active (9 < i <= 21) -> 10..=21
+        let result = op_logs2.range(9, 21).await;
+        assert_eq!(result.len(), 12);
+        assert_eq!(result[0].log_index, 10);
+        assert_eq!(result[11].log_index, 21);
+
+        // Range covering everything (u64::MIN < i <= 24) -> 1..=24 (if log starts at 0)
+        let result = op_logs2.range(u64::MIN, 24).await;
+        assert_eq!(result.len(), 24); // Indices 1 through 24 (24 ops)
+        assert_eq!(result[0].log_index, 1);
+        assert_eq!(result[23].log_index, 24);
+
+        // Range starting mid-segment (12 < i <= 20) -> 13..=20
+        let result = op_logs2.range(12, 20).await;
+        assert_eq!(result.len(), 8);
+        assert_eq!(result[0].log_index, 13);
+        assert_eq!(result[7].log_index, 20);
+
+        // Range up to the first element (u64::MIN < i <= 0) -> empty (since i must be > 0)
+        let result = op_logs2.range(u64::MIN, 0).await;
+        assert!(result.is_empty());
     }
 }

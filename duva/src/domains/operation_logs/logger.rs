@@ -21,11 +21,11 @@ impl<T: TWriteAheadLog> ReplicatedLogs<T> {
         self.write_single_entry(log, term).await?;
 
         if low_watermark.is_none() {
-            return Ok(self.from(current_idx));
+            return Ok(self.from(current_idx).await);
         }
 
         let mut logs = Vec::with_capacity((self.last_log_index - low_watermark.unwrap()) as usize);
-        logs.extend(self.from(low_watermark.unwrap()));
+        logs.extend(self.from(low_watermark.unwrap()).await);
 
         // ! Last log term must be updated because
         // ! log consistency check is based on previous log term and index
@@ -66,12 +66,16 @@ impl<T: TWriteAheadLog> ReplicatedLogs<T> {
         self.target.follower_full_sync(ops).await?;
         Ok(())
     }
-    pub(crate) fn range(&self, start_exclusive: u64, end_inclusive: u64) -> Vec<WriteOperation> {
-        self.target.range(start_exclusive, end_inclusive)
+    pub(crate) async fn range(
+        &self,
+        start_exclusive: u64,
+        end_inclusive: u64,
+    ) -> Vec<WriteOperation> {
+        self.target.range(start_exclusive, end_inclusive).await
     }
 
-    fn from(&self, start_exclusive: u64) -> Vec<WriteOperation> {
-        self.target.range(start_exclusive, self.last_log_index)
+    async fn from(&self, start_exclusive: u64) -> Vec<WriteOperation> {
+        self.target.range(start_exclusive, self.last_log_index).await
     }
 
     pub(crate) async fn read_at(&self, prev_log_index: u64) -> Option<WriteOperation> {

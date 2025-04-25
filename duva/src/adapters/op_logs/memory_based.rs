@@ -38,7 +38,7 @@ impl TWriteAheadLog for MemoryOpLogs {
         Ok(())
     }
 
-    fn range(&self, start_exclusive: u64, end_inclusive: u64) -> Vec<WriteOperation> {
+    async fn range(&self, start_exclusive: u64, end_inclusive: u64) -> Vec<WriteOperation> {
         self.writer
             .iter()
             .filter(|op| start_exclusive < op.log_index && op.log_index <= end_inclusive)
