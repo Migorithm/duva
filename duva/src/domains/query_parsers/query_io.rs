@@ -231,8 +231,8 @@ pub fn deserialize(buffer: impl Into<Bytes>) -> Result<(QueryIO, usize)> {
 
 // +PING\r\n
 pub(crate) fn parse_simple_string(buffer: Bytes) -> Result<(String, usize)> {
-    let (line, len) =
-        read_until_crlf(&buffer.slice(1..)).ok_or(anyhow::anyhow!("Invalid simple string"))?;
+    let (line, len) = read_until_crlf_exclusive(&buffer.slice(1..))
+        .ok_or(anyhow::anyhow!("Invalid simple string"))?;
     Ok((line, len + 1))
 }
 
@@ -240,8 +240,8 @@ fn parse_array(buffer: Bytes) -> Result<(QueryIO, usize)> {
     let mut offset = 0;
     offset += 1;
 
-    let (count_bytes, count_len) =
-        read_until_crlf(&buffer.slice(offset..)).ok_or(anyhow::anyhow!("Invalid array length"))?;
+    let (count_bytes, count_len) = read_until_crlf_exclusive(&buffer.slice(offset..))
+        .ok_or(anyhow::anyhow!("Invalid array length"))?;
     offset += count_len;
 
     let array_len = count_bytes.parse()?;
@@ -262,16 +262,16 @@ fn parse_session_request(buffer: Bytes) -> Result<(QueryIO, usize)> {
     // ! to advance '!'
     offset += 1;
 
-    let (count_bytes, count_len) =
-        read_until_crlf(&buffer.slice(offset..)).ok_or(anyhow::anyhow!("Invalid array length"))?;
+    let (count_bytes, count_len) = read_until_crlf_exclusive(&buffer.slice(offset..))
+        .ok_or(anyhow::anyhow!("Invalid array length"))?;
     offset += count_len;
     let request_id = count_bytes.parse()?;
 
     // ! to advance '$'
     offset += 1;
 
-    let (count_bytes, count_len) =
-        read_until_crlf(&buffer.slice(offset..)).ok_or(anyhow::anyhow!("Invalid array length"))?;
+    let (count_bytes, count_len) = read_until_crlf_exclusive(&buffer.slice(offset..))
+        .ok_or(anyhow::anyhow!("Invalid array length"))?;
     offset += count_len;
 
     let array_len = count_bytes.parse()?;
@@ -297,8 +297,8 @@ where
 }
 
 fn parse_bulk_string(buffer: Bytes) -> Result<(String, usize)> {
-    let (line, mut len) =
-        read_until_crlf(&buffer.slice(1..)).ok_or(anyhow::anyhow!("Invalid bulk string"))?;
+    let (line, mut len) = read_until_crlf_exclusive(&buffer.slice(1..))
+        .ok_or(anyhow::anyhow!("Invalid bulk string"))?;
 
     // Adjust `len` to include the initial line and calculate `bulk_str_len`
     len += 1;
@@ -310,8 +310,8 @@ fn parse_bulk_string(buffer: Bytes) -> Result<(String, usize)> {
 }
 
 fn parse_file(buffer: Bytes) -> Result<(Bytes, usize)> {
-    let (line, mut len) =
-        read_until_crlf(&buffer.slice(1..)).ok_or(anyhow::anyhow!("Invalid bulk string"))?;
+    let (line, mut len) = read_until_crlf_exclusive(&buffer.slice(1..))
+        .ok_or(anyhow::anyhow!("Invalid bulk string"))?;
 
     // Adjust `len` to include the initial line and calculate `bulk_str_len`
     len += 1;
@@ -342,8 +342,9 @@ pub(super) fn read_content_until_crlf(
     None
 }
 
+/// None if crlf not found.
 #[inline]
-pub(super) fn read_until_crlf(buffer: &Bytes) -> Option<(String, usize)> {
+pub(super) fn read_until_crlf_exclusive(buffer: &Bytes) -> Option<(String, usize)> {
     memchr::memmem::find(&buffer, b"\r\n")
         .map(|i| (String::from_utf8_lossy(&buffer.slice(0..i)).to_string(), i + 2))
 }
