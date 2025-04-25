@@ -306,6 +306,30 @@ impl TWriteAheadLog for FileOpLogs {
     }
 
     async fn follower_full_sync(&mut self, ops: Vec<WriteOperation>) -> Result<()> {
+        // Clear all existing segments
+        for segment in &self.segments {
+            if segment.path.exists() {
+                tokio::fs::remove_file(&segment.path).await?;
+            }
+        }
+        self.segments.clear();
+
+        // Clear and reset active segment
+        if self.active_segment.path.exists() {
+            tokio::fs::remove_file(&self.active_segment.path).await?;
+        }
+
+        // Create new segment with a unique name to avoid conflicts
+        let segment_path = self.path.join("segment_0.oplog");
+        let file =
+            OpenOptions::new().create(true).write(true).truncate(true).open(&segment_path).await?;
+        file.sync_all().await?;
+
+        self.active_segment = Segment { path: segment_path, start_index: 0, end_index: 0, size: 0 };
+
+        // Write new operations
+        self.append_many(ops).await?;
+
         Ok(())
     }
 
@@ -692,6 +716,165 @@ mod tests {
 
         // WHEN/THEN
         assert!(FileOpLogs::new(&path).await.is_err());
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_follower_full_sync_replaces_all_segments() -> Result<()> {
+        // GIVEN
+        let dir = TempDir::new()?;
+        let path = dir.path();
+
+        // Create initial segments with some operations
+        let mut op_logs = FileOpLogs::new(&path).await?;
+        for i in 0..100 {
+            // Append 100 ops to segment_0.oplog
+            op_logs
+                .append(WriteOperation {
+                    request: WriteRequest::Set {
+                        key: format!("key_{}", i).into(),
+                        value: format!("value_{}", i).into(),
+                    },
+                    log_index: i as u64,
+                    term: 1,
+                })
+                .await?;
+        }
+        // Rotate segment_0.oplog into sealed segments, create segment_1.oplog
+        op_logs.rotate_segment().await?;
+        // Append one more op to segment_1.oplog
+        op_logs
+            .append(WriteOperation {
+                request: WriteRequest::Set { key: "new".into(), value: "value".into() },
+                log_index: 100, // Note: This index might be wrong if 0..99 filled the segment exactly.
+                // The log_index should ideally be sequential across segments.
+                // If op 99 was the last in segment_0, this should be 100.
+                term: 1,
+            })
+            .await?;
+
+        // Store the paths of existing segments before sync
+        // We collect these mainly for informational purposes or debugging now,
+        // as the assertion checking their non-existence will be removed.
+        let old_segment_paths: Vec<_> = op_logs
+            .segments
+            .iter()
+            .map(|s| s.path.clone())
+            .chain(std::iter::once(op_logs.active_segment.path.clone()))
+            .collect();
+
+        // Verify files exist before sync (optional, but good for confirming setup)
+        for path in &old_segment_paths {
+            assert!(path.exists(), "File should exist before sync: {}", path.display());
+        }
+        println!("Old segments before sync: {:?}", old_segment_paths);
+
+        // WHEN
+        let new_ops = vec![
+            WriteOperation {
+                request: WriteRequest::Set { key: "a".into(), value: "a".into() },
+                log_index: 0,
+                term: 2,
+            },
+            WriteOperation {
+                request: WriteRequest::Set { key: "b".into(), value: "b".into() },
+                log_index: 1,
+                term: 2,
+            },
+        ];
+        op_logs.follower_full_sync(new_ops.clone()).await?;
+
+        // THEN
+        // Verify the state of the log after sync
+        assert_eq!(op_logs.segments.len(), 0, "Sealed segments should be empty after sync");
+
+        // Verify the new active segment
+        assert_eq!(
+            op_logs.active_segment.start_index, 0,
+            "New active segment should start at index 0"
+        );
+        assert_eq!(op_logs.active_segment.end_index, 1, "New active segment should end at index 1"); // Assuming new_ops has length 2 and indices 0 and 1
+        assert!(op_logs.active_segment.size > 0, "New active segment should have data");
+        assert!(op_logs.active_segment.path.exists(), "New active segment file should exist");
+        assert!(
+            op_logs.active_segment.path.ends_with("segment_0.oplog"),
+            "New active segment path should be segment_0.oplog"
+        );
+
+        // Explicitly check that the *original* segment_1.oplog is gone.
+        // segment_0.oplog will exist, but it's the *new* one.
+        let original_segment_1_path = path.join("segment_1.oplog");
+        assert!(!original_segment_1_path.exists(), "Original segment_1.oplog should be deleted");
+
+        // Verify log contents by replaying
+        let mut ops = Vec::new();
+        op_logs.replay(|op| ops.push(op)).await?;
+        assert_eq!(ops.len(), 2, "Log should contain exactly 2 operations after sync");
+        assert_eq!(ops[0], new_ops[0], "First replayed op should match first new op");
+        assert_eq!(ops[1], new_ops[1], "Second replayed op should match second new op");
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_follower_full_sync_handles_empty_ops() -> Result<()> {
+        // GIVEN
+        let dir = TempDir::new()?;
+        let path = dir.path();
+
+        // Create initial segments with some operations
+        let mut op_logs = FileOpLogs::new(&path).await?;
+        op_logs
+            .append(WriteOperation {
+                request: WriteRequest::Set { key: "a".into(), value: "a".into() },
+                log_index: 0,
+                term: 1,
+            })
+            .await?;
+
+        // WHEN
+        op_logs.follower_full_sync(Vec::new()).await?;
+
+        // THEN
+        assert_eq!(op_logs.segments.len(), 0);
+        assert_eq!(op_logs.active_segment.start_index, 0);
+        assert_eq!(op_logs.active_segment.end_index, 0);
+        assert_eq!(op_logs.active_segment.size, 0);
+
+        let mut ops = Vec::new();
+        op_logs.replay(|op| ops.push(op)).await?;
+        assert!(ops.is_empty());
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_follower_full_sync_handles_large_number_of_ops() -> Result<()> {
+        // GIVEN
+        let dir = TempDir::new()?;
+        let path = dir.path();
+        let mut op_logs = FileOpLogs::new(&path).await?;
+
+        // WHEN
+        let new_ops: Vec<_> = (0..1000)
+            .map(|i| WriteOperation {
+                request: WriteRequest::Set {
+                    key: format!("key_{}", i).into(),
+                    value: format!("value_{}", i).into(),
+                },
+                log_index: i as u64,
+                term: 2,
+            })
+            .collect();
+        op_logs.follower_full_sync(new_ops.clone()).await?;
+
+        // THEN
+        let mut ops = Vec::new();
+        op_logs.replay(|op| ops.push(op)).await?;
+        assert_eq!(ops.len(), 1000);
+        assert_eq!(ops[0], new_ops[0]);
+        assert_eq!(ops[999], new_ops[999]);
 
         Ok(())
     }
