@@ -11,6 +11,7 @@ on:
       - "hotfix/*"
       - "fix/*"
       - "feat/*"
+      - "chore/*"
 
 env:
   CARGO_TERM_COLOR: always
