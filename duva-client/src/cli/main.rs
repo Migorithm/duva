@@ -60,9 +60,13 @@ fn clear_and_make_ascii_art() {
     }
     #[cfg(not(test))]
     {
+        use crossterm::ExecutableCommand;
         use figlet_rs::FIGfont;
-        use termion::{clear, cursor};
-        print!("{}{}", clear::All, cursor::Goto(1, 1));
+        std::io::stdout()
+            .execute(crossterm::terminal::Clear(crossterm::terminal::ClearType::All))
+            .unwrap()
+            .execute(crossterm::cursor::MoveTo(1, 1))
+            .unwrap();
         let standard_font = FIGfont::standard().unwrap();
         let figure = standard_font.convert("Duva cli").unwrap();
         println!("{}", figure);

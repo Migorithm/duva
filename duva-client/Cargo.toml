@@ -12,8 +12,7 @@ rustyline = { version = "15.0.0", features = [
     "derive",
 ] }
 
-
-termion = "4.0.5"
+crossterm = "0.29.0"
 figlet-rs = "0.1.5"
 
 
