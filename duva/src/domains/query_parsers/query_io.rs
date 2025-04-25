@@ -342,13 +342,10 @@ pub(super) fn read_content_until_crlf(
     None
 }
 
+#[inline]
 pub(super) fn read_until_crlf(buffer: &Bytes) -> Option<(String, usize)> {
-    for i in 1..buffer.len() {
-        if buffer[i - 1] == b'\r' && buffer[i] == b'\n' {
-            return Some((String::from_utf8_lossy(&buffer.slice(0..(i - 1))).to_string(), i + 1));
-        }
-    }
-    None
+    memchr::memmem::find(&buffer, b"\r\n")
+        .map(|i| (String::from_utf8_lossy(&buffer.slice(0..i)).to_string(), i + 2))
 }
 
 fn serialize_with_bincode<T: bincode::Encode>(prefix: char, arg: &T) -> Bytes {
