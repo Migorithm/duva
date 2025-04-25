@@ -307,6 +307,7 @@ Currently branch rule is enforcing that your branch matches a pattern that one o
 - "hotfix/*"
 - "fix/*"
 - "feat/*"
+- "chore/*"
 
 ### License
 This project is licensed under the Apache License 2.0. See the [LICENSE](./LICENSE) file for details.
