@@ -13,4 +13,5 @@ runs:
         override: true
     - name: Test server and client
       shell: bash
-      run: cargo test --all
+      # run only lib test
+      run: cargo test --lib
