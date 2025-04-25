@@ -33,7 +33,7 @@ impl TWriteAheadLog for MemoryOpLogs {
         Ok(())
     }
 
-    async fn overwrite(&mut self, ops: Vec<WriteOperation>) -> Result<()> {
+    async fn follower_full_sync(&mut self, ops: Vec<WriteOperation>) -> Result<()> {
         self.writer = ops;
         Ok(())
     }

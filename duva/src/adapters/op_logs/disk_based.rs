@@ -305,10 +305,7 @@ impl TWriteAheadLog for FileOpLogs {
         Ok(())
     }
 
-    // TODO overwrite doesn't mean to remove file and create new one.
-    // It means to truncate the active segment and write the new operations to it in the context of replicated log
-    // it means trait signature should be changed
-    async fn overwrite(&mut self, ops: Vec<WriteOperation>) -> Result<()> {
+    async fn follower_full_sync(&mut self, ops: Vec<WriteOperation>) -> Result<()> {
         Ok(())
     }
 

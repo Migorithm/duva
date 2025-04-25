@@ -21,7 +21,11 @@ pub trait TWriteAheadLog: Send + Sync + 'static {
     /// Forces pending writes to be physically recorded on disk.
     fn fsync(&mut self) -> impl Future<Output = Result<()>> + Send;
 
-    fn overwrite(&mut self, ops: Vec<WriteOperation>) -> impl Future<Output = Result<()>> + Send;
+    // follower operation when replicating all the logs from leader
+    fn follower_full_sync(
+        &mut self,
+        ops: Vec<WriteOperation>,
+    ) -> impl Future<Output = Result<()>> + Send;
 
     fn read_at(&self, prev_log_index: u64) -> impl Future<Output = Option<WriteOperation>> + Send;
 

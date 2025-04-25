@@ -99,7 +99,7 @@ impl ClusterActor {
                     self.send_leader_heartbeat(&logger).await;
                 },
                 ClusterCommand::InstallLeaderState(logs) => {
-                    if logger.follower_install_logs(logs.clone()).await.is_err() {
+                    if logger.follower_full_sync(logs.clone()).await.is_err() {
                         continue;
                     }
                     self.install_leader_state(logs, &cache_manager).await;

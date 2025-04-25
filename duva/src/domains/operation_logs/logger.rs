@@ -58,12 +58,12 @@ impl<T: TWriteAheadLog> ReplicatedLogs<T> {
         Ok(self.last_log_index)
     }
 
-    pub(crate) async fn follower_install_logs(
+    pub(crate) async fn follower_full_sync(
         &mut self,
         ops: Vec<WriteOperation>,
     ) -> anyhow::Result<()> {
         self.update_metadata(&ops);
-        self.target.overwrite(ops).await?;
+        self.target.follower_full_sync(ops).await?;
         Ok(())
     }
     pub(crate) fn range(&self, start_exclusive: u64, end_inclusive: u64) -> Vec<WriteOperation> {
