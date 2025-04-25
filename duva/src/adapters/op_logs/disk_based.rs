@@ -60,14 +60,32 @@ impl FileOpLogs {
         let segment_paths = Self::detect_and_sort_existing_segments(&path).await?;
 
         let (active_segment, writer) =
-            Self::take_last_segment_otherwise_init(&path, segment_paths).await?;
+            Self::take_last_segment_otherwise_init(&path, segment_paths.clone()).await?;
 
-        Ok(Self {
-            path,
-            active_segment,
-            segments: vec![], // You can later load all segments here
-            writer,
-        })
+        // Load all segments except the last one (which is the active segment)
+        let mut segments = Vec::new();
+        for segment_path in segment_paths.iter().take(segment_paths.len().saturating_sub(1)) {
+            let file = OpenOptions::new()
+                .read(true)
+                .open(segment_path)
+                .await
+                .context(format!("Failed to open segment '{}'", segment_path.display()))?;
+
+            let mut reader = BufReader::new(file);
+            let mut buf = Vec::new();
+            reader.read_to_end(&mut buf).await?;
+
+            let bytes = Bytes::copy_from_slice(&buf[..]);
+            let operations = WriteRequest::deserialize(bytes)?;
+
+            let start_index = operations.first().map(|op| op.log_index).unwrap_or(0);
+            let end_index = operations.last().map(|op| op.log_index).unwrap_or(0);
+            let size = buf.len();
+
+            segments.push(Segment { path: segment_path.clone(), start_index, end_index, size });
+        }
+
+        Ok(Self { path, active_segment, segments, writer })
     }
     async fn validate_folder(path: &PathBuf) -> Result<(), anyhow::Error> {
         Ok(match tokio::fs::metadata(path).await {
@@ -147,7 +165,29 @@ impl FileOpLogs {
         } else {
             // Segments exist — use the last one as active
             let last_path = segment_paths.last().unwrap().clone();
-            let segment = Segment::new(last_path);
+
+            // Read the last segment file to get its metadata
+            let file = OpenOptions::new()
+                .read(true)
+                .open(&last_path)
+                .await
+                .context(format!("Failed to open segment '{}'", last_path.display()))?;
+
+            let mut reader = BufReader::new(file);
+            let mut buf = Vec::new();
+            reader.read_to_end(&mut buf).await?;
+
+            // Parse the segment file to get operations
+            let bytes = Bytes::copy_from_slice(&buf[..]);
+            let operations = WriteRequest::deserialize(bytes)?;
+
+            // Calculate segment metadata
+            let start_index = operations.first().map(|op| op.log_index).unwrap_or(0);
+            let end_index = operations.last().map(|op| op.log_index).unwrap_or(0);
+            let size = buf.len();
+
+            let segment = Segment { path: last_path, start_index, end_index, size };
+
             (Some(segment), None)
         };
         Ok((active_segment, writer))
@@ -566,6 +606,156 @@ mod tests {
                 term: 0
             }
         );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_new_creates_initial_segment() -> Result<()> {
+        // GIVEN
+        let dir = TempDir::new()?;
+        let path = dir.path();
+
+        // WHEN
+        let wal = FileOpLogs::new(&path).await?;
+
+        // THEN
+        assert!(wal.active_segment.is_some());
+        let segment = wal.active_segment.as_ref().unwrap();
+        assert_eq!(segment.start_index, 0);
+        assert_eq!(segment.end_index, 0);
+        assert_eq!(segment.size, 0);
+        assert!(segment.path.exists());
+        assert!(segment.path.ends_with("segment_0.oplog"));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_new_loads_existing_segment_metadata() -> Result<()> {
+        // GIVEN
+        let dir = TempDir::new()?;
+        let path = dir.path();
+
+        // Create initial segment with some operations
+        {
+            let mut wal = FileOpLogs::new(&path).await?;
+            wal.append(WriteOperation {
+                request: WriteRequest::Set { key: "a".into(), value: "a".into() },
+                log_index: 10,
+                term: 1,
+            })
+            .await?;
+            wal.append(WriteOperation {
+                request: WriteRequest::Set { key: "b".into(), value: "b".into() },
+                log_index: 11,
+                term: 1,
+            })
+            .await?;
+        }
+
+        // WHEN
+        let wal = FileOpLogs::new(&path).await?;
+
+        // THEN
+        assert!(wal.active_segment.is_some());
+        let segment = wal.active_segment.as_ref().unwrap();
+        assert_eq!(segment.start_index, 10);
+        assert_eq!(segment.end_index, 11);
+        assert!(segment.size > 0);
+        assert!(segment.path.exists());
+        assert!(segment.path.ends_with("segment_0.oplog"));
+
+        // Verify we can read the operations
+        let file = OpenOptions::new().read(true).open(&segment.path).await?;
+        let mut reader = BufReader::new(file);
+        let mut buf = Vec::new();
+        reader.read_to_end(&mut buf).await?;
+        let bytes = Bytes::copy_from_slice(&buf[..]);
+        let operations = WriteRequest::deserialize(bytes)?;
+        assert_eq!(operations.len(), 2);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_new_handles_multiple_segments() -> Result<()> {
+        // GIVEN
+        let dir = TempDir::new()?;
+        let path = dir.path();
+
+        // Create multiple segments by forcing rotation
+        {
+            let mut wal = FileOpLogs::new(&path).await?;
+            // Fill first segment
+            for i in 0..100 {
+                wal.append(WriteOperation {
+                    request: WriteRequest::Set {
+                        key: format!("key_{}", i).into(),
+                        value: format!("value_{}", i).into(),
+                    },
+                    log_index: i as u64,
+                    term: 1,
+                })
+                .await?;
+            }
+            // Force rotation
+            wal.rotate_segment().await?;
+            // Add to new segment
+            wal.append(WriteOperation {
+                request: WriteRequest::Set { key: "new".into(), value: "value".into() },
+                log_index: 100,
+                term: 1,
+            })
+            .await?;
+        }
+
+        // WHEN
+        let mut wal = FileOpLogs::new(&path).await?;
+
+        // THEN
+        assert!(wal.active_segment.is_some());
+        let segment = wal.active_segment.as_ref().unwrap();
+        assert_eq!(segment.start_index, 100);
+        assert_eq!(segment.end_index, 100);
+        assert!(segment.size > 0);
+        assert!(segment.path.exists());
+        assert!(segment.path.ends_with("segment_1.oplog"));
+
+        // Verify previous segment exists
+        let prev_segment_path = path.join("segment_0.oplog");
+        assert!(prev_segment_path.exists());
+
+        // Verify we can read operations from both segments
+        let mut ops = Vec::new();
+        wal.replay(|op| ops.push(op)).await?;
+        assert_eq!(ops.len(), 101);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_new_handles_corrupted_segment() -> Result<()> {
+        // GIVEN
+        let dir = TempDir::new()?;
+        let path = dir.path();
+
+        // Create a segment and corrupt it
+        let mut wal = FileOpLogs::new(&path).await?;
+        wal.append(WriteOperation {
+            request: WriteRequest::Set { key: "good".into(), value: "data".into() },
+            log_index: 0,
+            term: 1,
+        })
+        .await?;
+
+        // Corrupt the segment file
+        let segment_path = path.join("segment_0.oplog");
+        let mut file = OpenOptions::new().write(true).open(&segment_path).await?;
+        file.write_all(b"corrupted data").await?;
+
+        // WHEN/THEN
+        assert!(FileOpLogs::new(&path).await.is_err());
 
         Ok(())
     }
