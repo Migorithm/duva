@@ -65,7 +65,7 @@ fn clear_and_make_ascii_art() {
         std::io::stdout()
             .execute(crossterm::terminal::Clear(crossterm::terminal::ClearType::All))
             .unwrap()
-            .execute(crossterm::cursor::MoveTo(1, 1))
+            .execute(crossterm::cursor::MoveTo(0, 0))
             .unwrap();
         let standard_font = FIGfont::standard().unwrap();
         let figure = standard_font.convert("Duva cli").unwrap();
