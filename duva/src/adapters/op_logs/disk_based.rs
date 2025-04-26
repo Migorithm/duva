@@ -1185,4 +1185,187 @@ mod tests {
         let op_between_start = op_logs.read_at(10).await; // Should find index 10 (first in seg2)
         assert_eq!(op_between_start, Some(ops_seg2[0].clone()));
     }
+
+    #[tokio::test]
+    async fn test_index_data_accuracy() -> Result<()> {
+        let dir = TempDir::new()?;
+        let path = dir.path();
+        let mut op_logs = FileOpLogs::new(&path).await?;
+
+        // Write some operations
+        let ops = vec![
+            WriteOperation {
+                request: WriteRequest::Set { key: "key1".into(), value: "value1".into() },
+                log_index: 1,
+                term: 1,
+            },
+            WriteOperation {
+                request: WriteRequest::Set { key: "key2".into(), value: "value2".into() },
+                log_index: 2,
+                term: 1,
+            },
+        ];
+
+        // Append operations
+        for op in ops.clone() {
+            op_logs.append(op).await?;
+        }
+
+        // Verify index data is correctly maintained
+        assert_eq!(op_logs.active_segment.index_data.len(), 2);
+        assert_eq!(op_logs.active_segment.index_data[0], (1, 0));
+        assert!(op_logs.active_segment.index_data[1].0 == 2);
+        assert!(op_logs.active_segment.index_data[1].1 > 0);
+
+        // Verify we can read operations using the index
+        let read_op1 = op_logs.read_at(1).await;
+        let read_op2 = op_logs.read_at(2).await;
+
+        assert!(read_op1.is_some());
+        assert!(read_op2.is_some());
+        assert_eq!(read_op1.unwrap().log_index, 1);
+        assert_eq!(read_op2.unwrap().log_index, 2);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_index_data_after_rotation() -> Result<()> {
+        let dir = TempDir::new()?;
+        let path = dir.path();
+        let mut op_logs = FileOpLogs::new(&path).await?;
+
+        // Fill first segment
+        for i in 0..100 {
+            op_logs
+                .append(WriteOperation {
+                    request: WriteRequest::Set {
+                        key: format!("key_{}", i).into(),
+                        value: format!("value_{}", i).into(),
+                    },
+                    log_index: i as u64,
+                    term: 1,
+                })
+                .await?;
+        }
+
+        // Force rotation
+        op_logs.rotate_segment().await?;
+
+        // Verify index data in sealed segment
+        let sealed_segment = &op_logs.segments[0];
+        assert_eq!(sealed_segment.index_data.len(), 100);
+        assert_eq!(sealed_segment.index_data[0], (0, 0));
+        assert!(sealed_segment.index_data[99].0 == 99);
+
+        // Add to new segment
+        op_logs
+            .append(WriteOperation {
+                request: WriteRequest::Set { key: "new".into(), value: "value".into() },
+                log_index: 100,
+                term: 1,
+            })
+            .await?;
+
+        // Verify index data in active segment
+        assert_eq!(op_logs.active_segment.index_data.len(), 1);
+        assert_eq!(op_logs.active_segment.index_data[0], (100, 0));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_index_data_recovery() -> Result<()> {
+        let dir = TempDir::new()?;
+        let path = dir.path();
+
+        // Create initial log with some operations
+        {
+            let mut op_logs = FileOpLogs::new(&path).await?;
+            for i in 0..50 {
+                op_logs
+                    .append(WriteOperation {
+                        request: WriteRequest::Set {
+                            key: format!("key_{}", i).into(),
+                            value: format!("value_{}", i).into(),
+                        },
+                        log_index: i as u64,
+                        term: 1,
+                    })
+                    .await?;
+            }
+        }
+
+        // Reopen the log
+        let op_logs = FileOpLogs::new(&path).await?;
+
+        // Verify index data was recovered correctly
+        assert_eq!(op_logs.active_segment.index_data.len(), 50);
+        for i in 0..50 {
+            assert_eq!(op_logs.active_segment.index_data[i].0, i as u64);
+        }
+
+        // Verify we can read operations using the recovered index
+        for i in 0..50 {
+            let op = op_logs.read_at(i as u64).await;
+            assert!(op.is_some());
+            assert_eq!(op.unwrap().log_index, i as u64);
+        }
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_index_data_after_full_sync() -> Result<()> {
+        let dir = TempDir::new()?;
+        let path = dir.path();
+        let mut op_logs = FileOpLogs::new(&path).await?;
+
+        // Create some initial operations
+        for i in 0..10 {
+            op_logs
+                .append(WriteOperation {
+                    request: WriteRequest::Set {
+                        key: format!("key_{}", i).into(),
+                        value: format!("value_{}", i).into(),
+                    },
+                    log_index: i as u64,
+                    term: 1,
+                })
+                .await?;
+        }
+
+        // Perform full sync with new operations
+        let new_ops = vec![
+            WriteOperation {
+                request: WriteRequest::Set { key: "a".into(), value: "a".into() },
+                log_index: 0,
+                term: 2,
+            },
+            WriteOperation {
+                request: WriteRequest::Set { key: "b".into(), value: "b".into() },
+                log_index: 1,
+                term: 2,
+            },
+        ];
+
+        op_logs.follower_full_sync(new_ops.clone()).await?;
+
+        // Verify index data after full sync
+        assert_eq!(op_logs.active_segment.index_data.len(), 2);
+        assert_eq!(op_logs.active_segment.index_data[0], (0, 0));
+        assert!(op_logs.active_segment.index_data[1].0 == 1);
+        assert!(op_logs.active_segment.index_data[1].1 > 0);
+
+        // Verify we can read operations using the new index
+        let read_op0 = op_logs.read_at(0).await;
+        let read_op1 = op_logs.read_at(1).await;
+
+        assert!(read_op0.is_some());
+        assert!(read_op1.is_some());
+        assert_eq!(read_op0.unwrap().log_index, 0);
+        assert_eq!(read_op1.unwrap().log_index, 1);
+
+        Ok(())
+    }
 }
