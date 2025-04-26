@@ -405,19 +405,12 @@ impl TWriteAheadLog for FileOpLogs {
         }
 
         // Sort the results by log index to ensure correct order
-        // This sort is necessary because operations are collected segment by segment
-        // and read_ops_from_reader reads sequentially, but different segments' data
-        // needs to be merged.
         result.sort_by_key(|op| op.log_index);
 
         result
     }
 
     /// Replays all existing operations in the WAL, invoking a callback for each.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if reading or deserializing from the file fails.
     async fn replay<F>(&mut self, mut f: F) -> Result<()>
     where
         F: FnMut(WriteOperation) + Send,
@@ -440,10 +433,7 @@ impl TWriteAheadLog for FileOpLogs {
     }
 
     /// Forces any buffered data to be written to disk.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if either flush or sync fails.
+
     async fn fsync(&mut self) -> Result<()> {
         // Open in append mode to get a file handle to the active segment
         let mut file = OpenOptions::new().append(true).open(&self.active_segment.path).await?;
