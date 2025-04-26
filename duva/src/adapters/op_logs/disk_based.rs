@@ -7,7 +7,7 @@ use regex::Regex;
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 use tokio::fs::{File, OpenOptions};
-use tokio::io::{AsyncReadExt, AsyncWriteExt, BufReader, BufWriter};
+use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt, BufReader, BufWriter};
 
 const SEGMENT_SIZE: usize = 1024 * 1024; // 1MB per segment
 
@@ -25,6 +25,11 @@ struct Segment {
     start_index: u64,
     end_index: u64,
     size: usize,
+
+    // * In-memory cache for the index. Maps log_index to byte_offset in the data file.
+    // ! For very large logs, this might need optimization
+    // !(e.g., sparse index, memory-mapped index files).
+    index_data: Vec<(u64, usize)>,
 }
 
 impl Segment {
@@ -38,10 +43,9 @@ impl Segment {
             .context(format!("Failed to create initial segment '{}'", path.display()))
             .unwrap();
 
-        Self { path, start_index: 0, end_index: 0, size: 0 }
+        Self { path, start_index: 0, end_index: 0, size: 0, index_data: Vec::new() }
     }
 
-    // Helper to read all operations from a segment file
     async fn read_operations(&self) -> Result<Vec<WriteOperation>> {
         let file = OpenOptions::new()
             .read(true)
@@ -61,7 +65,6 @@ impl Segment {
     }
 
     async fn from_path(path: &PathBuf) -> Result<Self> {
-        // Read the last segment file to get its metadata
         let file = OpenOptions::new()
             .read(true)
             .open(&path)
@@ -72,24 +75,59 @@ impl Segment {
         let mut buf = Vec::new();
         reader.read_to_end(&mut buf).await?;
 
-        // Parse the segment file to get operations
+        // Parse the segment file to get operations and build index
         let bytes = Bytes::copy_from_slice(&buf[..]);
         let operations = WriteRequest::deserialize(bytes)?;
 
-        // Calculate segment metadata
-        let size = buf.len();
+        let mut current_offset = 0;
+        let mut index_data = Vec::new();
+
+        // Build index_data by calculating offsets for each operation
+        for op in operations.iter() {
+            index_data.push((op.log_index, current_offset));
+            // Each operation is prefixed with REPLICATE_PREFIX (1 byte) and followed by serialized data
+            let serialized = op.clone().serialize();
+            current_offset += serialized.len();
+        }
 
         Ok(Segment {
             path: path.clone(),
             start_index: operations.first().map(|op| op.log_index).unwrap_or(0),
             end_index: operations.last().map(|op| op.log_index).unwrap_or(0),
-            size,
+            size: buf.len(),
+            index_data,
         })
     }
 
     async fn create_writer(&self) -> Result<BufWriter<File>> {
         let file = OpenOptions::new().create(true).append(true).read(true).open(&self.path).await?;
         Ok(BufWriter::new(file))
+    }
+
+    // Add method to update index on append
+    fn update_index(&mut self, op_index: u64) {
+        self.index_data.push((op_index, self.size));
+    }
+
+    // Add method to find byte offset for a log index
+    fn find_offset(&self, log_index: u64) -> Option<usize> {
+        self.index_data.iter().find(|(idx, _)| *idx == log_index).map(|(_, offset)| *offset)
+    }
+
+    // Add method to read operation at specific offset
+    async fn read_at_offset(&self, offset: usize) -> Result<WriteOperation> {
+        let file = OpenOptions::new().read(true).open(&self.path).await?;
+
+        let mut reader = BufReader::new(file);
+        reader.seek(std::io::SeekFrom::Start(offset as u64)).await?;
+
+        let mut buf = Vec::new();
+        reader.read_to_end(&mut buf).await?;
+
+        let bytes = Bytes::copy_from_slice(&buf);
+        let operations = WriteRequest::deserialize(bytes)?;
+
+        operations.into_iter().next().ok_or_else(|| anyhow::anyhow!("No operation found at offset"))
     }
 }
 
@@ -212,6 +250,7 @@ impl FileOpLogs {
             start_index: self.active_segment.end_index + 1,
             end_index: self.active_segment.end_index,
             size: 0,
+            index_data: Vec::new(),
         };
 
         Ok(())
@@ -230,8 +269,11 @@ impl TWriteAheadLog for FileOpLogs {
             self.rotate_segment().await?;
         }
 
-        // Write operation to current segment
         let log_index = op.log_index;
+
+        // Update index before writing
+        self.active_segment.index_data.push((log_index, self.active_segment.size));
+
         let serialized = op.serialize();
 
         let mut writer = self.active_segment.create_writer().await?;
@@ -328,59 +370,22 @@ impl TWriteAheadLog for FileOpLogs {
         Ok(())
     }
 
-    async fn follower_full_sync(&mut self, ops: Vec<WriteOperation>) -> Result<()> {
-        // Clear all existing segments
-        for segment in &self.segments {
-            if segment.path.exists() {
-                tokio::fs::remove_file(&segment.path).await?;
-            }
-        }
-        self.segments.clear();
-
-        // Clear and reset active segment
-        if self.active_segment.path.exists() {
-            tokio::fs::remove_file(&self.active_segment.path).await?;
-        }
-
-        // Create new segment with a unique name to avoid conflicts
-        let segment_path = self.path.join("segment_0.oplog");
-        let file =
-            OpenOptions::new().create(true).write(true).truncate(true).open(&segment_path).await?;
-        file.sync_all().await?;
-
-        self.active_segment = Segment { path: segment_path, start_index: 0, end_index: 0, size: 0 };
-
-        // Write new operations
-        self.append_many(ops).await?;
-
-        Ok(())
-    }
-
     async fn read_at(&self, log_index: u64) -> Option<WriteOperation> {
-        // Search sealed segments first
+        // First check sealed segments
         for segment in &self.segments {
             if segment.start_index <= log_index && segment.end_index >= log_index {
-                let operations = segment.read_operations().await.unwrap();
-                // Find the specific operation by index
-                if let Some(op) = operations.into_iter().find(|op| op.log_index == log_index) {
-                    return Some(op);
+                if let Some(offset) = segment.find_offset(log_index) {
+                    return segment.read_at_offset(offset).await.ok();
                 }
-                // If index was within the segment's *declared* range but not found
-                // during deserialization, something is wrong or the index is missing.
-                // Continue searching other segments just in case (though it shouldn't happen
-                // with correct log index assignment). Or return None immediately if index must be unique.
-                // Assuming index is unique across the log, we can return None here.
-                // For robustness, let's continue searching the active segment.
             }
         }
 
-        // Search active segment
+        // Then check active segment
         if self.active_segment.start_index <= log_index
             && self.active_segment.end_index >= log_index
         {
-            let operations = self.active_segment.read_operations().await.unwrap();
-            if let Some(op) = operations.into_iter().find(|op| op.log_index == log_index) {
-                return Some(op);
+            if let Some(offset) = self.active_segment.find_offset(log_index) {
+                return self.active_segment.read_at_offset(offset).await.ok();
             }
         }
 
@@ -409,6 +414,57 @@ impl TWriteAheadLog for FileOpLogs {
         {
             // TODO: Implement truncation of active segment
         }
+    }
+
+    async fn follower_full_sync(&mut self, ops: Vec<WriteOperation>) -> Result<()> {
+        // Clear all existing segments
+        for segment in &self.segments {
+            if segment.path.exists() {
+                tokio::fs::remove_file(&segment.path).await?;
+            }
+        }
+        self.segments.clear();
+
+        // Clear and reset active segment
+        if self.active_segment.path.exists() {
+            tokio::fs::remove_file(&self.active_segment.path).await?;
+        }
+
+        // Create new segment with a unique name to avoid conflicts
+        let segment_path = self.path.join("segment_0.oplog");
+        let file =
+            OpenOptions::new().create(true).write(true).truncate(true).open(&segment_path).await?;
+        file.sync_all().await?;
+
+        let mut new_segment = Segment {
+            path: segment_path,
+            start_index: ops.first().map(|op| op.log_index).unwrap_or(0),
+            end_index: ops.last().map(|op| op.log_index).unwrap_or(0),
+            size: 0,
+            index_data: Vec::new(),
+        };
+
+        // Write all operations to the new segment
+        let mut writer = new_segment.create_writer().await?;
+        let mut current_offset = 0;
+
+        for op in ops.iter() {
+            let serialized = op.clone().serialize();
+            new_segment.index_data.push((op.log_index, current_offset));
+            current_offset += serialized.len();
+            writer.write_all(&serialized).await?;
+        }
+
+        writer.flush().await?;
+        writer.get_mut().sync_all().await?;
+
+        // Update segment metadata
+        new_segment.size = current_offset;
+
+        // Replace existing segments with the new one
+        self.active_segment = new_segment;
+
+        Ok(())
     }
 }
 
