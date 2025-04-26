@@ -29,7 +29,18 @@ struct Segment {
     // * In-memory cache for the index. Maps log_index to byte_offset in the data file.
     // ! For very large logs, this might need optimization
     // !(e.g., sparse index, memory-mapped index files).
-    index_data: Vec<(u64, usize)>,
+    lookups: Vec<LookupIndex>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct LookupIndex {
+    log_index: u64,
+    byte_offset: usize,
+}
+impl LookupIndex {
+    fn new(log_index: u64, byte_offset: usize) -> Self {
+        Self { log_index, byte_offset }
+    }
 }
 
 impl Segment {
@@ -43,7 +54,7 @@ impl Segment {
             .context(format!("Failed to create initial segment '{}'", path.display()))
             .unwrap();
 
-        Self { path, start_index: 0, end_index: 0, size: 0, index_data: Vec::new() }
+        Self { path, start_index: 0, end_index: 0, size: 0, lookups: Vec::new() }
     }
 
     async fn read_operations(&self) -> Result<Vec<WriteOperation>> {
@@ -84,7 +95,7 @@ impl Segment {
 
         // Build index_data by calculating offsets for each operation
         for op in operations.iter() {
-            index_data.push((op.log_index, current_offset));
+            index_data.push(LookupIndex::new(op.log_index, current_offset));
             // Each operation is prefixed with REPLICATE_PREFIX (1 byte) and followed by serialized data
             let serialized = op.clone().serialize();
             current_offset += serialized.len();
@@ -95,7 +106,7 @@ impl Segment {
             start_index: operations.first().map(|op| op.log_index).unwrap_or(0),
             end_index: operations.last().map(|op| op.log_index).unwrap_or(0),
             size: buf.len(),
-            index_data,
+            lookups: index_data,
         })
     }
 
@@ -106,12 +117,15 @@ impl Segment {
 
     // Add method to update index on append
     fn update_index(&mut self, op_index: u64) {
-        self.index_data.push((op_index, self.size));
+        self.lookups.push(LookupIndex::new(op_index, self.size));
     }
 
     // Add method to find byte offset for a log index
     fn find_offset(&self, log_index: u64) -> Option<usize> {
-        self.index_data.iter().find(|(idx, _)| *idx == log_index).map(|(_, offset)| *offset)
+        self.lookups
+            .iter()
+            .find(|index| index.log_index == log_index)
+            .map(|index| index.byte_offset)
     }
 
     // Add method to read operation at specific offset
@@ -250,19 +264,53 @@ impl FileOpLogs {
             start_index: self.active_segment.end_index + 1,
             end_index: self.active_segment.end_index,
             size: 0,
-            index_data: Vec::new(),
+            lookups: Vec::new(),
         };
 
         Ok(())
+    }
+
+    async fn create_reader(&self, segment_path: &PathBuf) -> Result<BufReader<File>> {
+        let file = OpenOptions::new().read(true).open(segment_path).await?;
+        Ok(BufReader::new(file))
+    }
+
+    async fn read_ops_from_reader(
+        &self,
+        reader: &mut BufReader<File>,
+        start_exclusive: u64,
+        end_inclusive: u64,
+    ) -> Result<Vec<WriteOperation>> {
+        let mut collected_ops = Vec::new();
+        let mut buffer = Vec::new(); // Buffer to hold bytes for deserialization
+
+        reader.read_to_end(&mut buffer).await?;
+
+        if buffer.is_empty() {
+            return Ok(collected_ops);
+        }
+
+        let bytes = Bytes::copy_from_slice(&buffer);
+        // Assuming deserialize can handle a buffer with multiple concatenated operations
+        let operations_in_buffer = WriteRequest::deserialize(bytes)?;
+
+        for op in operations_in_buffer {
+            if op.log_index > end_inclusive {
+                // Reached beyond the end of the desired range
+                break;
+            }
+            if op.log_index > start_exclusive {
+                // Operation is within the desired range
+                collected_ops.push(op);
+            }
+        }
+
+        Ok(collected_ops)
     }
 }
 
 impl TWriteAheadLog for FileOpLogs {
     /// Appends a single `WriteOperation` to the file.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if writing to or syncing the underlying file fails.
     async fn append(&mut self, op: WriteOperation) -> Result<()> {
         // Check if we need to rotate
         if self.active_segment.size >= SEGMENT_SIZE {
@@ -272,7 +320,7 @@ impl TWriteAheadLog for FileOpLogs {
         let log_index = op.log_index;
 
         // Update index before writing
-        self.active_segment.index_data.push((log_index, self.active_segment.size));
+        self.active_segment.lookups.push(LookupIndex::new(log_index, self.active_segment.size));
 
         let serialized = op.serialize();
 
@@ -297,34 +345,69 @@ impl TWriteAheadLog for FileOpLogs {
     async fn range(&self, start_exclusive: u64, end_inclusive: u64) -> Vec<WriteOperation> {
         let mut result = Vec::new();
 
-        // Iterate through sealed segments
-        for segment in &self.segments {
-            // Check for overlap: segment ends AFTER start_exclusive AND segment starts BEFORE or AT end_inclusive
-            if segment.end_index > start_exclusive && segment.start_index <= end_inclusive {
-                let operations = segment.read_operations().await.unwrap();
-                // Filter operations within the requested range
-                result.extend(
-                    operations.into_iter().filter(|op| {
-                        op.log_index > start_exclusive && op.log_index <= end_inclusive
-                    }),
-                );
+        // sealed + active segments for iteration
+        let all_segments = self.segments.iter().chain(std::iter::once(&self.active_segment));
+
+        for segment in all_segments {
+            // Optimization: Check for potential overlap first
+            if !(segment.end_index > start_exclusive && segment.start_index <= end_inclusive) {
+                continue;
+            }
+
+            // Find the index in index_data for the first log entry >= start_exclusive + 1
+            let start_log_index_in_segment = start_exclusive.checked_add(1).unwrap_or(u64::MAX); // Avoid overflow
+
+            // Find the position in index_data where log_index is >= start_log_index_in_segment
+            // Use binary search on the sorted index_data for efficiency
+            let starting_idx_in_index = segment
+                .lookups
+                .binary_search_by(|index| index.log_index.cmp(&start_log_index_in_segment))
+                .unwrap_or_else(|pos| pos); // If not found, pos is where it would be inserted
+
+            if starting_idx_in_index < segment.lookups.len() {
+                let start_byte_offset = segment.lookups[starting_idx_in_index].byte_offset;
+
+                // Open the file and seek to the calculated byte offset
+                if let Ok(file) = OpenOptions::new().read(true).open(&segment.path).await {
+                    let mut reader = BufReader::new(file);
+                    if reader.seek(std::io::SeekFrom::Start(start_byte_offset as u64)).await.is_ok()
+                    {
+                        // Read operations sequentially from this point
+                        if let Ok(ops) = self
+                            .read_ops_from_reader(&mut reader, start_exclusive, end_inclusive)
+                            .await
+                        {
+                            result.extend(ops);
+                        }
+                        // else: Handle error during reading ops from reader
+                    }
+                    // else: Handle error seeking
+                }
+                // else: Handle error opening file
+            } else if start_log_index_in_segment <= segment.start_index {
+                // If the desired start index is before or at the beginning of the segment,
+                // we should start reading from the beginning of the segment file (offset 0)
+                // if the segment also overlaps with the end_inclusive range.
+                if segment.start_index <= end_inclusive {
+                    if let Ok(file) = OpenOptions::new().read(true).open(&segment.path).await {
+                        let mut reader = BufReader::new(file); // Starts at offset 0
+                        if let Ok(ops) = self
+                            .read_ops_from_reader(&mut reader, start_exclusive, end_inclusive)
+                            .await
+                        {
+                            result.extend(ops);
+                        }
+                        // else: Handle error during reading ops from reader
+                    }
+                    // else: Handle error opening file
+                }
             }
         }
 
-        // Check the active segment
-        if self.active_segment.end_index > start_exclusive
-            && self.active_segment.start_index <= end_inclusive
-        {
-            let operations = self.active_segment.read_operations().await.unwrap();
-            // Filter operations within the requested range
-            result.extend(
-                operations
-                    .into_iter()
-                    .filter(|op| op.log_index > start_exclusive && op.log_index <= end_inclusive),
-            );
-        }
-
-        // Sort the results by log index to ensure correct order (should be mostly sorted by segment reading, but good practice)
+        // Sort the results by log index to ensure correct order
+        // This sort is necessary because operations are collected segment by segment
+        // and read_ops_from_reader reads sequentially, but different segments' data
+        // needs to be merged.
         result.sort_by_key(|op| op.log_index);
 
         result
@@ -441,7 +524,7 @@ impl TWriteAheadLog for FileOpLogs {
             start_index: ops.first().map(|op| op.log_index).unwrap_or(0),
             end_index: ops.last().map(|op| op.log_index).unwrap_or(0),
             size: 0,
-            index_data: Vec::new(),
+            lookups: Vec::new(),
         };
 
         // Write all operations to the new segment
@@ -450,7 +533,7 @@ impl TWriteAheadLog for FileOpLogs {
 
         for op in ops.iter() {
             let serialized = op.clone().serialize();
-            new_segment.index_data.push((op.log_index, current_offset));
+            new_segment.lookups.push(LookupIndex::new(op.log_index, current_offset));
             current_offset += serialized.len();
             writer.write_all(&serialized).await?;
         }
@@ -1212,10 +1295,10 @@ mod tests {
         }
 
         // Verify index data is correctly maintained
-        assert_eq!(op_logs.active_segment.index_data.len(), 2);
-        assert_eq!(op_logs.active_segment.index_data[0], (1, 0));
-        assert!(op_logs.active_segment.index_data[1].0 == 2);
-        assert!(op_logs.active_segment.index_data[1].1 > 0);
+        assert_eq!(op_logs.active_segment.lookups.len(), 2);
+        assert_eq!(op_logs.active_segment.lookups[0], LookupIndex::new(1, 0));
+        assert!(op_logs.active_segment.lookups[1].log_index == 2);
+        assert!(op_logs.active_segment.lookups[1].byte_offset > 0);
 
         // Verify we can read operations using the index
         let read_op1 = op_logs.read_at(1).await;
@@ -1254,9 +1337,9 @@ mod tests {
 
         // Verify index data in sealed segment
         let sealed_segment = &op_logs.segments[0];
-        assert_eq!(sealed_segment.index_data.len(), 100);
-        assert_eq!(sealed_segment.index_data[0], (0, 0));
-        assert!(sealed_segment.index_data[99].0 == 99);
+        assert_eq!(sealed_segment.lookups.len(), 100);
+        assert_eq!(sealed_segment.lookups[0], LookupIndex::new(0, 0));
+        assert!(sealed_segment.lookups[99].log_index == 99);
 
         // Add to new segment
         op_logs
@@ -1268,8 +1351,8 @@ mod tests {
             .await?;
 
         // Verify index data in active segment
-        assert_eq!(op_logs.active_segment.index_data.len(), 1);
-        assert_eq!(op_logs.active_segment.index_data[0], (100, 0));
+        assert_eq!(op_logs.active_segment.lookups.len(), 1);
+        assert_eq!(op_logs.active_segment.lookups[0], LookupIndex::new(100, 0));
 
         Ok(())
     }
@@ -1300,9 +1383,9 @@ mod tests {
         let op_logs = FileOpLogs::new(&path).await?;
 
         // Verify index data was recovered correctly
-        assert_eq!(op_logs.active_segment.index_data.len(), 50);
+        assert_eq!(op_logs.active_segment.lookups.len(), 50);
         for i in 0..50 {
-            assert_eq!(op_logs.active_segment.index_data[i].0, i as u64);
+            assert_eq!(op_logs.active_segment.lookups[i].log_index, i as u64);
         }
 
         // Verify we can read operations using the recovered index
@@ -1352,10 +1435,10 @@ mod tests {
         op_logs.follower_full_sync(new_ops.clone()).await?;
 
         // Verify index data after full sync
-        assert_eq!(op_logs.active_segment.index_data.len(), 2);
-        assert_eq!(op_logs.active_segment.index_data[0], (0, 0));
-        assert!(op_logs.active_segment.index_data[1].0 == 1);
-        assert!(op_logs.active_segment.index_data[1].1 > 0);
+        assert_eq!(op_logs.active_segment.lookups.len(), 2);
+        assert_eq!(op_logs.active_segment.lookups[0], LookupIndex::new(0, 0));
+        assert!(op_logs.active_segment.lookups[1].log_index == 1);
+        assert!(op_logs.active_segment.lookups[1].byte_offset > 0);
 
         // Verify we can read operations using the new index
         let read_op0 = op_logs.read_at(0).await;
