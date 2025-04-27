@@ -37,6 +37,9 @@ impl Peer {
     pub(crate) fn kind(&self) -> &NodeKind {
         &self.peer_state.node_kind
     }
+    pub(crate) fn match_index(&self) -> u64 {
+        self.peer_state.match_index
+    }
 
     pub(crate) async fn send_to_peer(
         &mut self,

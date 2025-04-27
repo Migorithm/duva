@@ -87,7 +87,7 @@ impl ClusterActor {
 
     pub(crate) fn replicas(&self) -> impl Iterator<Item = (&PeerIdentifier, &Peer, u64)> {
         self.members.iter().filter_map(|(id, peer)| match peer.kind() {
-            NodeKind::Replica => Some((id, peer, peer.peer_state.match_index)),
+            NodeKind::Replica => Some((id, peer, peer.match_index())),
             _ => None,
         })
     }
@@ -95,7 +95,7 @@ impl ClusterActor {
     pub(crate) fn replicas_mut(&mut self) -> impl Iterator<Item = (&mut Peer, u64)> {
         self.members.values_mut().filter_map(|peer| match peer.kind() {
             NodeKind::Replica => {
-                let match_index = peer.peer_state.match_index;
+                let match_index = peer.match_index();
                 Some((peer, match_index))
             },
             _ => None,
@@ -393,7 +393,7 @@ impl ClusterActor {
         self.members
             .values()
             .filter_map(|peer| match peer.kind() {
-                NodeKind::Replica => Some(peer.peer_state.match_index),
+                NodeKind::Replica => Some(peer.match_index()),
                 _ => None,
             })
             .min()
