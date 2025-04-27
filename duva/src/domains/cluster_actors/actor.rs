@@ -1167,7 +1167,7 @@ mod test {
         // THEN
         assert_eq!(cluster_actor.replication.hwm.load(Ordering::Relaxed), 0);
         assert_eq!(logger.last_log_index, 2);
-        let logs = logger.range(0, 2);
+        let logs = logger.range(0, 2).await;
         assert_eq!(logs.len(), 2);
         assert_eq!(logs[0].log_index, 1);
         assert_eq!(logs[1].log_index, 2);
