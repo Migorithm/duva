@@ -87,14 +87,14 @@ impl ClusterActor {
 
     pub(crate) fn replicas(&self) -> impl Iterator<Item = (&PeerIdentifier, &Peer, u64)> {
         self.members.iter().filter_map(|(id, peer)| {
-            (peer.kind() == &NodeKind::Replica).then(|| (id, peer, peer.match_index()))
+            (peer.kind() == &NodeKind::Replica).then_some((id, peer, peer.match_index()))
         })
     }
 
     pub(crate) fn replicas_mut(&mut self) -> impl Iterator<Item = (&mut Peer, u64)> {
         self.members.values_mut().filter_map(|peer| {
             let match_index = peer.match_index();
-            (peer.kind() == &NodeKind::Replica).then(|| (peer, match_index))
+            (peer.kind() == &NodeKind::Replica).then_some((peer, match_index))
         })
     }
 
@@ -542,7 +542,7 @@ impl ClusterActor {
     pub(crate) fn cluster_nodes(&self) -> Vec<ClusterNode> {
         self.members
             .values()
-            .map(|peer| ClusterNode::from_peer(&peer))
+            .map(ClusterNode::from_peer)
             .chain(std::iter::once(self.replication.self_info()))
             .collect()
     }

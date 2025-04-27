@@ -174,7 +174,7 @@ impl FileOpLogs {
         Ok(Self { path, active_segment, segments })
     }
     async fn validate_folder(path: &PathBuf) -> Result<(), anyhow::Error> {
-        Ok(match tokio::fs::metadata(path).await {
+        match tokio::fs::metadata(path).await {
             Ok(metadata) => {
                 if !metadata.is_dir() {
                     return Err(anyhow::anyhow!(
@@ -191,7 +191,9 @@ impl FileOpLogs {
             Err(e) => {
                 return Err(e).context(format!("Failed to access path '{}'", path.display()));
             },
-        })
+        }
+
+        Ok(())
     }
 
     async fn detect_and_sort_existing_segments(
@@ -228,25 +230,23 @@ impl FileOpLogs {
     }
 
     async fn take_last_segment_otherwise_init(
-        path: &PathBuf,
+        path: &Path,
         segment_paths: Vec<PathBuf>,
     ) -> Result<Segment, anyhow::Error> {
         let active_segment = if segment_paths.is_empty() {
             // No segments exist — create initial segment
             let segment_path = path.join("segment_0.oplog");
-            let segment = Segment::new(segment_path).await;
-            segment
+            Segment::new(segment_path).await
         } else {
             // Segments exist — use the last one as active
-            let segment = Segment::from_path(segment_paths.last().unwrap()).await?;
-            segment
+            Segment::from_path(segment_paths.last().unwrap()).await?
         };
         Ok(active_segment)
     }
 
     async fn rotate_segment(&mut self) -> Result<()> {
         // Close current segment
-        if let Some(mut writer) = self.active_segment.create_writer().await.ok() {
+        if let Ok(mut writer) = self.active_segment.create_writer().await {
             writer.flush().await?;
             writer.get_mut().sync_all().await?;
         }
@@ -433,7 +433,6 @@ impl TWriteAheadLog for FileOpLogs {
     }
 
     /// Forces any buffered data to be written to disk.
-
     async fn fsync(&mut self) -> Result<()> {
         // Open in append mode to get a file handle to the active segment
         let mut file = OpenOptions::new().append(true).open(&self.active_segment.path).await?;

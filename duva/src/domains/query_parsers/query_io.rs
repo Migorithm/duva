@@ -345,7 +345,7 @@ pub(super) fn read_content_until_crlf(
 /// None if crlf not found.
 #[inline]
 pub(super) fn read_until_crlf_exclusive(buffer: &Bytes) -> Option<(String, usize)> {
-    memchr::memmem::find(&buffer, b"\r\n")
+    memchr::memmem::find(buffer, b"\r\n")
         .map(|i| (String::from_utf8_lossy(&buffer.slice(0..i)).to_string(), i + 2))
 }
 
