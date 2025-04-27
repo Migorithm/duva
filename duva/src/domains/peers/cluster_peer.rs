@@ -1,5 +1,7 @@
 use crate::{domains::cluster_actors::replication::ReplicationId, prelude::PeerIdentifier};
 
+use super::peer::Peer;
+
 #[derive(Debug, Clone, PartialEq, bincode::Encode, bincode::Decode)]
 pub struct ClusterNode {
     pub(crate) bind_addr: PeerIdentifier,
@@ -27,6 +29,10 @@ impl ClusterNode {
             is_myself,
             priority,
         }
+    }
+
+    pub(crate) fn from_peer(peer: &Peer) -> Self {
+        Self::new(&peer.addr, &peer.peer_state.replid, false, peer.kind().clone())
     }
 
     pub(crate) fn parse_node_info(line: &str, self_repl_id: &str) -> Option<ClusterNode> {

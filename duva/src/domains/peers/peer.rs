@@ -7,20 +7,22 @@ use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
 use tokio::task::JoinHandle;
 use tokio::time::Instant;
 
+use super::cluster_peer::NodeKind;
+
 #[derive(Debug)]
 pub(crate) struct Peer {
     pub(crate) addr: String,
     pub(crate) w_conn: WriteConnected,
     pub(crate) listener_kill_trigger: ListeningActorKillTrigger,
     pub(crate) last_seen: Instant,
-    pub kind: PeerState,
+    pub(crate) peer_state: PeerState,
 }
 
 impl Peer {
     pub(crate) fn new(
         addr: String,
         w: OwnedWriteHalf,
-        kind: PeerState,
+        state: PeerState,
         listener_kill_trigger: ListeningActorKillTrigger,
     ) -> Self {
         Self {
@@ -28,8 +30,15 @@ impl Peer {
             w_conn: WriteConnected::new(w),
             listener_kill_trigger,
             last_seen: Instant::now(),
-            kind,
+            peer_state: state,
         }
+    }
+
+    pub(crate) fn kind(&self) -> &NodeKind {
+        &self.peer_state.node_kind
+    }
+    pub(crate) fn match_index(&self) -> u64 {
+        self.peer_state.match_index
     }
 
     pub(crate) async fn send_to_peer(
@@ -45,17 +54,15 @@ impl Peer {
 }
 
 #[derive(Clone, Debug)]
-pub enum PeerState {
-    Replica { match_index: u64, replid: ReplicationId },
-    NonDataPeer { match_index: u64, replid: ReplicationId },
+pub struct PeerState {
+    pub(crate) match_index: u64,
+    pub(crate) replid: ReplicationId,
+    pub(crate) node_kind: NodeKind,
 }
 
 impl PeerState {
-    pub(crate) fn decrease_match_index(&mut self) {
-        match self {
-            PeerState::Replica { match_index, .. } => *match_index -= 1,
-            PeerState::NonDataPeer { match_index, .. } => *match_index -= 1,
-        }
+    pub(crate) fn new(match_index: u64, replid: ReplicationId, node_kind: NodeKind) -> Self {
+        Self { match_index, replid, node_kind }
     }
 }
 
