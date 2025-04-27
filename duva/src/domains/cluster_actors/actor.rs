@@ -86,16 +86,16 @@ impl ClusterActor {
     }
 
     pub(crate) fn replicas(&self) -> impl Iterator<Item = (&PeerIdentifier, &Peer, u64)> {
-        self.members.iter().filter_map(|(id, peer)| match &peer.node_kind {
-            NodeKind::Replica => Some((id, peer, peer.match_index)),
+        self.members.iter().filter_map(|(id, peer)| match &peer.peer_state.node_kind {
+            NodeKind::Replica => Some((id, peer, peer.peer_state.match_index)),
             _ => None,
         })
     }
 
     pub(crate) fn replicas_mut(&mut self) -> impl Iterator<Item = (&mut Peer, u64)> {
-        self.members.values_mut().filter_map(|peer| match peer.node_kind.clone() {
+        self.members.values_mut().filter_map(|peer| match peer.peer_state.node_kind.clone() {
             NodeKind::Replica => {
-                let match_index = peer.match_index;
+                let match_index = peer.peer_state.match_index;
                 Some((peer, match_index))
             },
             _ => None,
@@ -103,7 +103,9 @@ impl ClusterActor {
     }
 
     fn find_replica_mut(&mut self, peer_id: &PeerIdentifier) -> Option<&mut Peer> {
-        self.members.get_mut(peer_id).filter(|peer| matches!(peer.node_kind, NodeKind::Replica))
+        self.members
+            .get_mut(peer_id)
+            .filter(|peer| matches!(peer.peer_state.node_kind, NodeKind::Replica))
     }
 
     pub(crate) async fn send_cluster_heartbeat(
@@ -297,8 +299,8 @@ impl ClusterActor {
         if let Some(peer) = self.members.get_mut(from) {
             peer.last_seen = Instant::now();
 
-            if let NodeKind::Replica = &mut peer.node_kind {
-                peer.match_index = log_index;
+            if let NodeKind::Replica = &mut peer.peer_state.node_kind {
+                peer.peer_state.match_index = log_index;
             }
         }
     }
@@ -392,8 +394,8 @@ impl ClusterActor {
     pub(crate) fn take_low_watermark(&self) -> Option<u64> {
         self.members
             .values()
-            .filter_map(|peer| match &peer.node_kind {
-                NodeKind::Replica => Some(peer.match_index),
+            .filter_map(|peer| match &peer.peer_state.node_kind {
+                NodeKind::Replica => Some(peer.peer_state.match_index),
                 _ => None,
             })
             .min()
@@ -546,12 +548,12 @@ impl ClusterActor {
     pub(crate) fn cluster_nodes(&self) -> Vec<ClusterNode> {
         self.members
             .values()
-            .map(|peer| match &peer.node_kind {
+            .map(|peer| match &peer.peer_state.node_kind {
                 NodeKind::Replica => {
-                    ClusterNode::new(&peer.addr, &peer.replid, false, NodeKind::Replica)
+                    ClusterNode::new(&peer.addr, &peer.peer_state.replid, false, NodeKind::Replica)
                 },
                 NodeKind::NonData => {
-                    ClusterNode::new(&peer.addr, &peer.replid, false, NodeKind::NonData)
+                    ClusterNode::new(&peer.addr, &peer.peer_state.replid, false, NodeKind::NonData)
                 },
             })
             .chain(std::iter::once(self.replication.self_info()))
@@ -697,7 +699,7 @@ impl ClusterActor {
 
     fn decrease_match_index(&mut self, from: &PeerIdentifier) {
         if let Some(peer) = self.members.get_mut(from) {
-            peer.match_index -= 1;
+            peer.peer_state.match_index -= 1;
         }
     }
 
@@ -744,6 +746,7 @@ mod test {
     use crate::domains::cluster_actors::replication::ReplicationRole;
     use crate::domains::operation_logs::WriteOperation;
     use crate::domains::operation_logs::WriteRequest;
+    use crate::domains::peers::peer::PeerState;
 
     use std::ops::Range;
     use std::time::Duration;
@@ -824,10 +827,11 @@ mod test {
                 Peer::new(
                     key.to_string(),
                     x,
-                    PeerState::Replica {
-                        match_index: follower_hwm,
-                        replid: ReplicationId::Key("localhost".to_string().into()),
-                    },
+                    PeerState::new(
+                        follower_hwm,
+                        ReplicationId::Key("localhost".to_string().into()),
+                        NodeKind::Replica,
+                    ),
                     kill_switch,
                 ),
             );
@@ -1492,7 +1496,7 @@ mod test {
                 Peer::new(
                     key.to_string(),
                     x,
-                    PeerState::Replica { match_index: 0, replid: repl_id.clone() },
+                    PeerState::new(0, repl_id.clone(), NodeKind::Replica),
                     kill_switch,
                 ),
             );
@@ -1514,10 +1518,11 @@ mod test {
             Peer::new(
                 (*second_shard_leader_identifier).clone(),
                 x,
-                PeerState::NonDataPeer {
-                    replid: ReplicationId::Key(second_shard_repl_id.to_string()),
-                    match_index: 0,
-                },
+                PeerState::new(
+                    0,
+                    ReplicationId::Key(second_shard_repl_id.to_string()),
+                    NodeKind::NonData,
+                ),
                 kill_switch,
             ),
         );
@@ -1533,10 +1538,11 @@ mod test {
                 Peer::new(
                     key.to_string(),
                     x,
-                    PeerState::NonDataPeer {
-                        replid: ReplicationId::Key(second_shard_repl_id.to_string()),
-                        match_index: 0,
-                    },
+                    PeerState::new(
+                        0,
+                        ReplicationId::Key(second_shard_repl_id.to_string()),
+                        NodeKind::NonData,
+                    ),
                     kill_switch,
                 ),
             );
@@ -1609,7 +1615,7 @@ mod test {
         let peer = Peer::new(
             "127.0.0.1:3849".to_string(),
             x,
-            PeerState::Replica { match_index: 0, replid: ReplicationId::Key(repl_id.to_string()) },
+            PeerState::new(0, ReplicationId::Key(repl_id.to_string()), NodeKind::Replica),
             kill_switch,
         );
 

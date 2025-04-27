@@ -16,32 +16,22 @@ pub(crate) struct Peer {
     pub(crate) listener_kill_trigger: ListeningActorKillTrigger,
     pub(crate) last_seen: Instant,
 
-    pub(crate) match_index: u64,
-    pub(crate) replid: ReplicationId,
-    pub(crate) node_kind: NodeKind,
+    pub(crate) peer_state: PeerState,
 }
 
 impl Peer {
     pub(crate) fn new(
         addr: String,
         w: OwnedWriteHalf,
-        kind: PeerState,
+        state: PeerState,
         listener_kill_trigger: ListeningActorKillTrigger,
     ) -> Self {
-        let (match_index, replid, node_kind) = match kind {
-            PeerState::Replica { match_index, replid } => (match_index, replid, NodeKind::Replica),
-            PeerState::NonDataPeer { match_index, replid } => {
-                (match_index, replid, NodeKind::NonData)
-            },
-        };
         Self {
             addr,
             w_conn: WriteConnected::new(w),
             listener_kill_trigger,
             last_seen: Instant::now(),
-            match_index,
-            replid,
-            node_kind,
+            peer_state: state,
         }
     }
 
@@ -58,9 +48,16 @@ impl Peer {
 }
 
 #[derive(Clone, Debug)]
-pub enum PeerState {
-    Replica { match_index: u64, replid: ReplicationId },
-    NonDataPeer { match_index: u64, replid: ReplicationId },
+pub struct PeerState {
+    pub(crate) match_index: u64,
+    pub(crate) replid: ReplicationId,
+    pub(crate) node_kind: NodeKind,
+}
+
+impl PeerState {
+    pub(crate) fn new(match_index: u64, replid: ReplicationId, node_kind: NodeKind) -> Self {
+        Self { match_index, replid, node_kind }
+    }
 }
 
 #[derive(Debug)]

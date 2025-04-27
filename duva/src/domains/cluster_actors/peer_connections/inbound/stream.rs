@@ -9,6 +9,7 @@ use crate::domains::cluster_actors::replication::ReplicationId;
 use crate::domains::cluster_actors::replication::ReplicationState;
 use crate::domains::operation_logs::interfaces::TWriteAheadLog;
 use crate::domains::operation_logs::logger::ReplicatedLogs;
+use crate::domains::peers::cluster_peer::NodeKind;
 use crate::domains::peers::connected_peer_info::ConnectedPeerInfo;
 use crate::domains::peers::identifier::PeerIdentifier;
 use crate::domains::peers::peer::Peer;
@@ -156,8 +157,8 @@ impl InboundStream {
     ) -> Result<(), anyhow::Error> {
         let connected_info = self.connected_peer_info.as_ref().context("set by now")?;
 
-        if let PeerState::Replica { .. } =
-            connected_info.decide_peer_kind(&self.self_repl_info.replid)
+        if let NodeKind::Replica =
+            connected_info.decide_peer_kind(&self.self_repl_info.replid).node_kind
         {
             if let ReplicationId::Undecided = connected_info.replid {
                 let logs = SyncLogs(
