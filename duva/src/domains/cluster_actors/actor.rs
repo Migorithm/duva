@@ -86,19 +86,15 @@ impl ClusterActor {
     }
 
     pub(crate) fn replicas(&self) -> impl Iterator<Item = (&PeerIdentifier, &Peer, u64)> {
-        self.members.iter().filter_map(|(id, peer)| match peer.kind() {
-            NodeKind::Replica => Some((id, peer, peer.match_index())),
-            _ => None,
+        self.members.iter().filter_map(|(id, peer)| {
+            (peer.kind() == &NodeKind::Replica).then(|| (id, peer, peer.match_index()))
         })
     }
 
     pub(crate) fn replicas_mut(&mut self) -> impl Iterator<Item = (&mut Peer, u64)> {
-        self.members.values_mut().filter_map(|peer| match peer.kind() {
-            NodeKind::Replica => {
-                let match_index = peer.match_index();
-                Some((peer, match_index))
-            },
-            _ => None,
+        self.members.values_mut().filter_map(|peer| {
+            let match_index = peer.match_index();
+            (peer.kind() == &NodeKind::Replica).then(|| (peer, match_index))
         })
     }
 
@@ -546,14 +542,7 @@ impl ClusterActor {
     pub(crate) fn cluster_nodes(&self) -> Vec<ClusterNode> {
         self.members
             .values()
-            .map(|peer| match &peer.kind() {
-                NodeKind::Replica => {
-                    ClusterNode::new(&peer.addr, &peer.peer_state.replid, false, NodeKind::Replica)
-                },
-                NodeKind::NonData => {
-                    ClusterNode::new(&peer.addr, &peer.peer_state.replid, false, NodeKind::NonData)
-                },
-            })
+            .map(|peer| ClusterNode::from_peer(&peer))
             .chain(std::iter::once(self.replication.self_info()))
             .collect()
     }
