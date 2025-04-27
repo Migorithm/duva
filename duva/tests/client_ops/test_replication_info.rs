@@ -6,18 +6,20 @@
 use crate::common::{Client, ServerEnv, spawn_server_process};
 
 #[tokio::test]
-async fn test_replication_info() {
+async fn test_replication_info() -> anyhow::Result<()> {
     // GIVEN
     let env = ServerEnv::default();
-    let process = spawn_server_process(&env);
+    let process = spawn_server_process(&env).await?;
     let mut h = Client::new(process.port);
 
     // WHEN
-    let res = h.send_and_get("INFO replication", 4);
+    let res = h.send_and_get("INFO replication", 4).await;
 
     // THEN
     assert_eq!(res[0], "role:leader");
     assert!(res[1].starts_with("leader_repl_id:"));
     assert_eq!(res[2], "high_watermark:0");
     assert_eq!(res[3], format!("self_identifier:127.0.0.1:{}", env.port));
+
+    Ok(())
 }

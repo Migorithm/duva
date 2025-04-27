@@ -3,11 +3,12 @@
 use bytes::Bytes;
 use duva::domains::query_parsers::query_io::QueryIO;
 use duva::make_smart_pointer;
-use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpListener;
-use std::process::{Child, Command, Stdio};
-use std::thread::sleep;
-use std::time::{Duration, Instant};
+use std::process::Stdio;
+use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncWriteExt, BufReader};
+use tokio::process::{Child, ChildStdout, Command};
+use tokio::time::sleep;
+use tokio::time::{Duration, Instant};
 use uuid::Uuid;
 
 pub struct ServerEnv {
@@ -96,25 +97,18 @@ impl Drop for TopologyPath {
     }
 }
 
-pub fn spawn_server_process(env: &ServerEnv) -> TestProcessChild {
+pub async fn spawn_server_process(env: &ServerEnv) -> anyhow::Result<TestProcessChild> {
     println!("Starting server on port {}", env.port);
     let mut process = run_server_process(&env);
 
     wait_for_message(
         process.process.stdout.as_mut().unwrap(),
         vec![format!("listening peer connection on 127.0.0.1:{}...", env.port + 10000).as_str()],
-        1,
-        Some(20000),
+        Some(10000),
     )
-    .unwrap();
+    .await?;
 
-    process
-}
-
-impl Drop for TestProcessChild {
-    fn drop(&mut self) {
-        let _ = self.terminate();
-    }
+    Ok(process)
 }
 
 impl TestProcessChild {
@@ -140,7 +134,12 @@ impl TestProcessChild {
     }
 
     /// Attempts to gracefully terminate the process, falling back to force kill if necessary
-    pub fn terminate(&mut self) -> std::io::Result<()> {
+    pub async fn terminate(&mut self) -> std::io::Result<()> {
+        if self.process.id().is_none() {
+            // Do nothing if already terminated
+            return Ok(());
+        }
+
         // First try graceful shutdown
         // Give the process some time to shutdown gracefully
         let timeout = Duration::from_secs(1);
@@ -149,32 +148,38 @@ impl TestProcessChild {
         while start.elapsed() < timeout {
             match self.process.try_wait()? {
                 Some(_) => return Ok(()),
-                None => sleep(Duration::from_millis(100)),
+                None => sleep(Duration::from_millis(100)).await,
             }
         }
 
         // Force kill if still running
-        self.process.kill()?;
-        self.process.wait()?;
+        self.process.kill().await?;
+        self.process.wait().await?;
 
         Ok(())
     }
 
-    pub fn wait_for_message(&mut self, target: &str, target_count: usize) -> anyhow::Result<()> {
+    pub async fn wait_for_message(&mut self, target: &str) -> anyhow::Result<()> {
         let read = self.process.stdout.as_mut().unwrap();
 
-        wait_for_message(read, vec![target], target_count, None)
+        wait_for_message(read, vec![target], None).await
     }
 
-    pub fn timed_wait_for_message(
+    pub async fn timed_wait_for_message(
         &mut self,
         target: Vec<&str>,
-        target_count: usize,
+
         wait_for: u128,
     ) -> anyhow::Result<()> {
         let read = self.process.stdout.as_mut().unwrap();
 
-        wait_for_message(read, target, target_count, Some(wait_for))
+        wait_for_message(read, target, Some(wait_for)).await
+    }
+}
+
+impl Drop for TestProcessChild {
+    fn drop(&mut self) {
+        let _ = self.terminate();
     }
 }
 
@@ -216,27 +221,30 @@ pub fn run_server_process(env: &ServerEnv) -> TestProcessChild {
     )
 }
 
-fn wait_for_message<T: Read>(
+async fn wait_for_message<T: AsyncRead + Unpin>(
     read: &mut T,
     mut target: Vec<&str>,
-    target_count: usize,
+
     timeout_in_millis: Option<u128>,
 ) -> anyhow::Result<()> {
     let internal_count = Instant::now();
     let mut buf = BufReader::new(read).lines();
-    let mut cnt = 1;
+    let mut cnt = target.len();
 
     let mut current_target = target.remove(0);
-    while let Some(Ok(line)) = buf.next() {
+    while let Some(line) = buf.next_line().await? {
         if line.starts_with(current_target) {
-            if cnt == target_count {
+            cnt -= 1;
+
+            if cnt == 0 {
                 if target.is_empty() {
-                    break;
+                    return Ok(());
+                } else {
+                    return Err(anyhow::anyhow!("Targets remain after target_count exhausted"));
                 }
-                current_target = target.remove(0);
-            } else {
-                cnt += 1;
             }
+
+            current_target = target.remove(0);
         }
 
         if let Some(timeout) = timeout_in_millis {
@@ -246,7 +254,7 @@ fn wait_for_message<T: Read>(
         }
     }
 
-    Ok(())
+    return Err(anyhow::anyhow!("Error was found until reading nextline"));
 }
 
 pub fn array(arr: Vec<&str>) -> Bytes {
@@ -263,7 +271,7 @@ pub fn session_request(request_id: u64, arr: Vec<&str>) -> Bytes {
 }
 
 /// Check if all processes can communicate with each other
-pub fn check_internodes_communication(
+pub async fn check_internodes_communication(
     processes: &mut [&mut TestProcessChild],
     hop_count: usize,
     time_out: u128,
@@ -285,7 +293,7 @@ pub fn check_internodes_communication(
 
         // Then wait for all messages
         for msg in messages {
-            processes[i].timed_wait_for_message(vec![&msg], 1, time_out)?;
+            processes[i].timed_wait_for_message(vec![&msg], time_out).await?;
         }
     }
     Ok(())
@@ -293,7 +301,7 @@ pub fn check_internodes_communication(
 
 pub struct Client {
     pub child: Child,
-    reader: Option<BufReader<std::process::ChildStdout>>,
+    reader: Option<BufReader<ChildStdout>>,
 }
 
 impl Client {
@@ -324,15 +332,15 @@ impl Client {
         }
     }
 
-    pub fn send(&mut self, command: &[u8]) -> anyhow::Result<()> {
+    pub async fn send(&mut self, command: &[u8]) -> anyhow::Result<()> {
         let stdin = self.child.stdin.as_mut().unwrap();
-        stdin.write_all(command)?;
-        stdin.write_all(b"\r\n")?;
-        stdin.flush()?;
+        stdin.write_all(command).await?;
+        stdin.write_all(b"\r\n").await?;
+        stdin.flush().await?;
         Ok(())
     }
 
-    pub fn read(&mut self) -> Result<String, ()> {
+    pub async fn read(&mut self) -> Result<String, ()> {
         // Initialize reader if it doesn't exist
         if self.reader.is_none() {
             self.reader = Some(BufReader::new(self.child.stdout.take().unwrap()));
@@ -340,27 +348,37 @@ impl Client {
 
         let reader = self.reader.as_mut().unwrap();
         let mut line = String::new();
-        reader.read_line(&mut line).map_err(|_| ())?;
+        reader.read_line(&mut line).await.map_err(|_| ())?;
         Ok(line.trim().to_string())
     }
 
-    pub fn send_and_get(&mut self, command: impl AsRef<[u8]>, mut cnt: u16) -> Vec<String> {
-        self.send(command.as_ref()).unwrap();
+    pub async fn send_and_get(&mut self, command: impl AsRef<[u8]>, mut cnt: u16) -> Vec<String> {
+        self.send(command.as_ref()).await.unwrap();
 
         let mut res = vec![];
         while cnt > 0 {
             cnt -= 1;
-            if let Ok(line) = self.read() {
+            if let Ok(line) = self.read().await {
                 res.push(line);
             }
         }
         res
     }
+
+    pub async fn terminate(&mut self) -> std::io::Result<()> {
+        if self.child.id().is_none() {
+            // Do nothing if already terminated
+            return Ok(());
+        }
+        let _ = self.child.kill().await?;
+        let _ = self.child.wait().await?;
+
+        Ok(())
+    }
 }
 
 impl Drop for Client {
     fn drop(&mut self) {
-        let _ = self.child.kill();
-        let _ = self.child.wait();
+        let _ = self.terminate();
     }
 }
