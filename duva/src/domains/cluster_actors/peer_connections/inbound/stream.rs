@@ -160,8 +160,9 @@ impl InboundStream {
             connected_info.decide_peer_kind(&self.self_repl_info.replid)
         {
             if let ReplicationId::Undecided = connected_info.replid {
-                let logs =
-                    SyncLogs(logger.range(0, self.self_repl_info.hwm.load(Ordering::Acquire)));
+                let logs = SyncLogs(
+                    logger.range(0, self.self_repl_info.hwm.load(Ordering::Acquire)).await,
+                );
                 self.w.write_io(logs).await?;
             }
         };

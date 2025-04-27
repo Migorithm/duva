@@ -10,7 +10,11 @@ pub trait TWriteAheadLog: Send + Sync + 'static {
 
     // Retrieve logs that fall between the current 'commit' index and target 'log' index
     // NOT async as it is expected to be infallible and memory operation.
-    fn range(&self, start_exclusive: u64, end_inclusive: u64) -> Vec<WriteOperation>;
+    fn range(
+        &self,
+        start_exclusive: u64,
+        end_inclusive: u64,
+    ) -> impl Future<Output = Vec<WriteOperation>> + Send;
 
     /// Replays all logged operations from the beginning of the WAL, calling the provided callback `f` for each operation.
     /// The callback `f(WriteOperation)` receives each operation in the order it was appended.
@@ -21,7 +25,11 @@ pub trait TWriteAheadLog: Send + Sync + 'static {
     /// Forces pending writes to be physically recorded on disk.
     fn fsync(&mut self) -> impl Future<Output = Result<()>> + Send;
 
-    fn overwrite(&mut self, ops: Vec<WriteOperation>) -> impl Future<Output = Result<()>> + Send;
+    // follower operation when replicating all the logs from leader
+    fn follower_full_sync(
+        &mut self,
+        ops: Vec<WriteOperation>,
+    ) -> impl Future<Output = Result<()>> + Send;
 
     fn read_at(&self, prev_log_index: u64) -> impl Future<Output = Option<WriteOperation>> + Send;
 
