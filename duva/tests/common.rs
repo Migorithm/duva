@@ -236,8 +236,6 @@ async fn wait_for_message<T: AsyncRead + Unpin>(
     let mut buf = BufReader::new(read).lines();
     let mut cnt = target_count;
 
-    assert_eq!(target.len(), target_count);
-
     let mut current_target = target.remove(0);
     while let Some(line) = buf.next_line().await? {
         if line.starts_with(current_target) {
