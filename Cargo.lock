@@ -342,6 +342,7 @@ dependencies = [
  "bytes",
  "chrono",
  "futures",
+ "memchr",
  "memmap2",
  "rand",
  "regex",
