@@ -10,8 +10,8 @@ async fn test_removes_node_when_heartbeat_is_not_received_for_certain_time() -> 
     let repl_env = ServerEnv::default().with_leader_bind_addr(leader_p.bind_addr().into());
     let mut repl_p = spawn_server_process(&repl_env).await?;
 
-    repl_p.wait_for_message(&leader_p.heartbeat_msg(0), 1).await?;
-    leader_p.wait_for_message(&repl_p.heartbeat_msg(0), 1).await?;
+    repl_p.wait_for_message(&leader_p.heartbeat_msg(0)).await?;
+    leader_p.wait_for_message(&repl_p.heartbeat_msg(0)).await?;
 
     let mut h = Client::new(leader_p.port);
     let cmd = "cluster info";

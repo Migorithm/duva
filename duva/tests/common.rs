@@ -104,7 +104,6 @@ pub async fn spawn_server_process(env: &ServerEnv) -> anyhow::Result<TestProcess
     wait_for_message(
         process.process.stdout.as_mut().unwrap(),
         vec![format!("listening peer connection on 127.0.0.1:{}...", env.port + 10000).as_str()],
-        1,
         Some(10000),
     )
     .await?;
@@ -160,25 +159,21 @@ impl TestProcessChild {
         Ok(())
     }
 
-    pub async fn wait_for_message(
-        &mut self,
-        target: &str,
-        target_count: usize,
-    ) -> anyhow::Result<()> {
+    pub async fn wait_for_message(&mut self, target: &str) -> anyhow::Result<()> {
         let read = self.process.stdout.as_mut().unwrap();
 
-        wait_for_message(read, vec![target], target_count, None).await
+        wait_for_message(read, vec![target], None).await
     }
 
     pub async fn timed_wait_for_message(
         &mut self,
         target: Vec<&str>,
-        target_count: usize,
+
         wait_for: u128,
     ) -> anyhow::Result<()> {
         let read = self.process.stdout.as_mut().unwrap();
 
-        wait_for_message(read, target, target_count, Some(wait_for)).await
+        wait_for_message(read, target, Some(wait_for)).await
     }
 }
 
@@ -229,12 +224,12 @@ pub fn run_server_process(env: &ServerEnv) -> TestProcessChild {
 async fn wait_for_message<T: AsyncRead + Unpin>(
     read: &mut T,
     mut target: Vec<&str>,
-    target_count: usize,
+
     timeout_in_millis: Option<u128>,
 ) -> anyhow::Result<()> {
     let internal_count = Instant::now();
     let mut buf = BufReader::new(read).lines();
-    let mut cnt = target_count;
+    let mut cnt = target.len();
 
     let mut current_target = target.remove(0);
     while let Some(line) = buf.next_line().await? {
@@ -298,7 +293,7 @@ pub async fn check_internodes_communication(
 
         // Then wait for all messages
         for msg in messages {
-            processes[i].timed_wait_for_message(vec![&msg], 1, time_out).await?;
+            processes[i].timed_wait_for_message(vec![&msg], time_out).await?;
         }
     }
     Ok(())

@@ -11,8 +11,8 @@ async fn test_reconnection_on_reboot() -> anyhow::Result<()> {
     let repl_env = ServerEnv::default().with_leader_bind_addr(leader_p.bind_addr().into());
     let mut repl_p = spawn_server_process(&repl_env).await?;
 
-    repl_p.wait_for_message(&leader_p.heartbeat_msg(0), 1).await?;
-    leader_p.wait_for_message(&repl_p.heartbeat_msg(0), 1).await?;
+    repl_p.wait_for_message(&leader_p.heartbeat_msg(0)).await?;
+    leader_p.wait_for_message(&repl_p.heartbeat_msg(0)).await?;
 
     repl_p.kill().await?;
 
@@ -21,8 +21,8 @@ async fn test_reconnection_on_reboot() -> anyhow::Result<()> {
     let mut repl_p = spawn_server_process(&repl_env).await?;
 
     //THEN
-    repl_p.wait_for_message(&leader_p.heartbeat_msg(0), 1).await?;
-    leader_p.wait_for_message(&repl_p.heartbeat_msg(0), 1).await?;
+    repl_p.wait_for_message(&leader_p.heartbeat_msg(0)).await?;
+    leader_p.wait_for_message(&repl_p.heartbeat_msg(0)).await?;
 
     let mut cli_to_follower = Client::new(repl_env.port);
     let role = cli_to_follower.send_and_get("ROLE".as_bytes(), 1).await;
