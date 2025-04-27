@@ -10,8 +10,8 @@ async fn test_removes_node_when_heartbeat_is_not_received_for_certain_time() -> 
     let repl_env = ServerEnv::default().with_leader_bind_addr(leader_p.bind_addr().into());
     let mut repl_p = spawn_server_process(&repl_env).await?;
 
-    repl_p.wait_for_message(&leader_p.heartbeat_msg(0), 1).await.unwrap();
-    leader_p.wait_for_message(&repl_p.heartbeat_msg(0), 1).await.unwrap();
+    repl_p.wait_for_message(&leader_p.heartbeat_msg(0), 1).await?;
+    leader_p.wait_for_message(&repl_p.heartbeat_msg(0), 1).await?;
 
     let mut h = Client::new(leader_p.port);
     let cmd = "cluster info";
@@ -19,7 +19,7 @@ async fn test_removes_node_when_heartbeat_is_not_received_for_certain_time() -> 
     assert_eq!(cluster_info.await.first().unwrap(), "cluster_known_nodes:1");
 
     // WHEN
-    repl_p.kill().await.unwrap();
+    repl_p.kill().await?;
     tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
     let cluster_info = h.send_and_get(cmd, 1);
 

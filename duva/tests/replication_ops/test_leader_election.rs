@@ -18,10 +18,10 @@ async fn test_leader_election() -> anyhow::Result<()> {
     const DEFAULT_HOP_COUNT: usize = 0;
     const TIMEOUT_IN_MILLIS: u128 = 2000;
     let processes = &mut [&mut leader_p, &mut follower_p1, &mut follower_p2];
-    check_internodes_communication(processes, DEFAULT_HOP_COUNT, TIMEOUT_IN_MILLIS).await.unwrap();
+    check_internodes_communication(processes, DEFAULT_HOP_COUNT, TIMEOUT_IN_MILLIS).await?;
 
     // WHEN
-    leader_p.kill().await.unwrap();
+    leader_p.kill().await?;
     sleep(Duration::from_millis(LEADER_HEARTBEAT_INTERVAL_MAX)).await;
 
     // THEN
@@ -98,7 +98,7 @@ async fn test_leader_election_twice() -> anyhow::Result<()> {
     check_internodes_communication(processes, DEFAULT_HOP_COUNT, TIMEOUT_IN_MILLIS).await?;
 
     // !first leader is killed -> election happens
-    leader_p.kill().await.unwrap();
+    leader_p.kill().await?;
     sleep(Duration::from_millis(LEADER_HEARTBEAT_INTERVAL_MAX)).await;
 
     let mut processes = vec![];

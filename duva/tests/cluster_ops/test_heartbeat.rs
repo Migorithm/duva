@@ -55,7 +55,7 @@ async fn test_heartbeat_hop_count_starts_with_0() -> anyhow::Result<()> {
     let processes = &mut [&mut leader_p, &mut follower_p1, &mut follower_p2];
     // THEN
 
-    check_internodes_communication(processes, DEFAULT_HOP_COUNT, TIMEOUT_IN_MILLIS).await.unwrap();
+    check_internodes_communication(processes, DEFAULT_HOP_COUNT, TIMEOUT_IN_MILLIS).await?;
 
     // no node should have hop_count 1
     let res =
