@@ -4,12 +4,12 @@ use crate::common::{Client, ServerEnv, spawn_server_process};
 async fn test_cluster_topology_change_when_new_node_added() {
     // GIVEN
     let env = ServerEnv::default();
-    let mut leader_p = spawn_server_process(&env).await;
+    let mut leader_p = spawn_server_process(&env).await?;
 
     let cmd = "cluster info";
 
     let repl_env = ServerEnv::default().with_leader_bind_addr(leader_p.bind_addr().into());
-    let mut repl_p = spawn_server_process(&repl_env).await;
+    let mut repl_p = spawn_server_process(&repl_env).await?;
     repl_p.wait_for_message(&leader_p.heartbeat_msg(0), 1).await.unwrap();
     leader_p.wait_for_message(&repl_p.heartbeat_msg(0), 1).await.unwrap();
 
@@ -19,7 +19,7 @@ async fn test_cluster_topology_change_when_new_node_added() {
 
     // // WHEN -- new replica is added
     let repl_env2 = ServerEnv::default().with_leader_bind_addr(leader_p.bind_addr().into());
-    let mut new_repl_p = spawn_server_process(&repl_env2).await;
+    let mut new_repl_p = spawn_server_process(&repl_env2).await?;
     new_repl_p.wait_for_message(&leader_p.heartbeat_msg(0), 1).await.unwrap();
 
     //THEN

@@ -8,7 +8,7 @@ use std::time::UNIX_EPOCH;
 async fn test_snapshot_persists_and_recovers_state() {
     // GIVEN
     let env = ServerEnv::default().with_file_name(create_unique_file_name("test_save_dump"));
-    let mut leader_process = spawn_server_process(&env).await;
+    let mut leader_process = spawn_server_process(&env).await?;
 
     let mut h = Client::new(leader_process.port);
 
@@ -35,7 +35,7 @@ async fn test_snapshot_persists_and_recovers_state() {
     let _ = leader_process.terminate().await;
 
     // run server with the same file name
-    let new_process = spawn_server_process(&env).await;
+    let new_process = spawn_server_process(&env).await?;
 
     // wait for the server to start
     tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;

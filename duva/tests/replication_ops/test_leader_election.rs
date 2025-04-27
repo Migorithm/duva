@@ -7,14 +7,14 @@ use duva::domains::cluster_actors::heartbeats::scheduler::LEADER_HEARTBEAT_INTER
 async fn test_leader_election() {
     // GIVEN
     let leaver_env = ServerEnv::default();
-    let mut leader_p = spawn_server_process(&leaver_env).await;
+    let mut leader_p = spawn_server_process(&leaver_env).await?;
 
     let follower_env1 = ServerEnv::default().with_leader_bind_addr(leader_p.bind_addr().into());
-    let mut follower_p1 = spawn_server_process(&follower_env1).await;
+    let mut follower_p1 = spawn_server_process(&follower_env1).await?;
 
     let follower_env2 = ServerEnv::default().with_leader_bind_addr(leader_p.bind_addr().into());
 
-    let mut follower_p2 = spawn_server_process(&follower_env2).await;
+    let mut follower_p2 = spawn_server_process(&follower_env2).await?;
     const DEFAULT_HOP_COUNT: usize = 0;
     const TIMEOUT_IN_MILLIS: u128 = 2000;
     let processes = &mut [&mut leader_p, &mut follower_p1, &mut follower_p2];
@@ -44,20 +44,20 @@ async fn test_leader_election() {
 async fn test_set_twice_after_election() {
     // GIVEN
     let leaver_env = ServerEnv::default();
-    let mut leader_p = spawn_server_process(&leaver_env).await;
+    let mut leader_p = spawn_server_process(&leaver_env).await?;
 
     let follower_env1 = ServerEnv::default().with_leader_bind_addr(leader_p.bind_addr().into());
-    let mut follower_p1 = spawn_server_process(&follower_env1).await;
+    let mut follower_p1 = spawn_server_process(&follower_env1).await?;
 
     let follower_env2 = ServerEnv::default().with_leader_bind_addr(leader_p.bind_addr().into());
-    let mut follower_p2 = spawn_server_process(&follower_env2).await;
+    let mut follower_p2 = spawn_server_process(&follower_env2).await?;
     const DEFAULT_HOP_COUNT: usize = 0;
     const TIMEOUT_IN_MILLIS: u128 = 2000;
     let processes = &mut [&mut leader_p, &mut follower_p1, &mut follower_p2];
-    check_internodes_communication(processes, DEFAULT_HOP_COUNT, TIMEOUT_IN_MILLIS).await.unwrap();
+    check_internodes_communication(processes, DEFAULT_HOP_COUNT, TIMEOUT_IN_MILLIS).await?;
 
     // WHEN
-    leader_p.kill().await.unwrap();
+    leader_p.kill().await?;
     sleep(Duration::from_millis(LEADER_HEARTBEAT_INTERVAL_MAX)).await;
 
     let mut flag = false;
@@ -81,17 +81,17 @@ async fn test_set_twice_after_election() {
 async fn test_leader_election_twice() {
     // GIVEN
     let leaver_env = ServerEnv::default();
-    let mut leader_p = spawn_server_process(&leaver_env).await;
+    let mut leader_p = spawn_server_process(&leaver_env).await?;
 
     let follower_env1 = ServerEnv::default().with_leader_bind_addr(leader_p.bind_addr().into());
-    let mut follower_p1 = spawn_server_process(&follower_env1).await;
+    let mut follower_p1 = spawn_server_process(&follower_env1).await?;
 
     let follower_env2 = ServerEnv::default().with_leader_bind_addr(leader_p.bind_addr().into());
-    let mut follower_p2 = spawn_server_process(&follower_env2).await;
+    let mut follower_p2 = spawn_server_process(&follower_env2).await?;
     const DEFAULT_HOP_COUNT: usize = 0;
     const TIMEOUT_IN_MILLIS: u128 = 2000;
     let processes = &mut [&mut leader_p, &mut follower_p1, &mut follower_p2];
-    check_internodes_communication(processes, DEFAULT_HOP_COUNT, TIMEOUT_IN_MILLIS).await.unwrap();
+    check_internodes_communication(processes, DEFAULT_HOP_COUNT, TIMEOUT_IN_MILLIS).await?;
 
     // !first leader is killed -> election happens
     leader_p.kill().await.unwrap();
@@ -108,12 +108,12 @@ async fn test_leader_election_twice() {
         }
 
         let follower_env3 = ServerEnv::default().with_leader_bind_addr(f.bind_addr().into());
-        let new_process = spawn_server_process(&follower_env3).await;
+        let new_process = spawn_server_process(&follower_env3).await?;
         sleep(Duration::from_millis(LEADER_HEARTBEAT_INTERVAL_MAX)).await;
 
         // WHEN
         // ! second leader is killed -> election happens
-        f.kill().await.unwrap();
+        f.kill().await?;
         sleep(Duration::from_millis(LEADER_HEARTBEAT_INTERVAL_MAX)).await;
         processes.push(new_process);
     }

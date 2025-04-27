@@ -10,7 +10,7 @@ use crate::common::{Client, ServerEnv, spawn_server_process};
 async fn test_config_get_dir() {
     // GIVEN
     let env = ServerEnv::default();
-    let process = spawn_server_process(&env).await;
+    let process = spawn_server_process(&env).await?;
 
     sleep(Duration::from_millis(500)).await;
     let mut h = Client::new(process.port);

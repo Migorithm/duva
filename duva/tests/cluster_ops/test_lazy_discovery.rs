@@ -4,7 +4,7 @@ use crate::common::{Client, ServerEnv, spawn_server_process};
 async fn test_lazy_discovery_of_leader() {
     // GIVEN
     let target_env = ServerEnv::default();
-    let leader_p = spawn_server_process(&target_env).await;
+    let leader_p = spawn_server_process(&target_env).await?;
 
     let mut target_h = Client::new(leader_p.port);
 
@@ -16,7 +16,7 @@ async fn test_lazy_discovery_of_leader() {
     );
 
     let replica_env = ServerEnv::default();
-    let replica_p = spawn_server_process(&replica_env).await;
+    let replica_p = spawn_server_process(&replica_env).await?;
     let mut other_h = Client::new(replica_p.port);
 
     other_h.send_and_get("SET other value".as_bytes(), 1).await;

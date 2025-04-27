@@ -97,7 +97,7 @@ impl Drop for TopologyPath {
     }
 }
 
-pub async fn spawn_server_process(env: &ServerEnv) -> TestProcessChild {
+pub async fn spawn_server_process(env: &ServerEnv) -> anyhow::Result<TestProcessChild> {
     println!("Starting server on port {}", env.port);
     let mut process = run_server_process(&env);
 
@@ -107,8 +107,7 @@ pub async fn spawn_server_process(env: &ServerEnv) -> TestProcessChild {
         1,
         Some(10000),
     )
-    .await
-    .unwrap();
+    .await?;
 
     process
 }

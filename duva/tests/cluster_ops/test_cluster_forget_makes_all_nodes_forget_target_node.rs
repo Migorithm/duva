@@ -6,23 +6,22 @@ async fn test_cluster_forget_makes_all_nodes_forget_target_node() {
     const HOP_COUNT: usize = 0;
 
     let env = ServerEnv::default().with_ttl(500).with_hf(2);
-    let mut leader_p = spawn_server_process(&env).await;
+    let mut leader_p = spawn_server_process(&env).await?;
 
     let repl_env =
         ServerEnv::default().with_leader_bind_addr(leader_p.bind_addr().clone()).with_hf(10);
-    let mut repl_p = spawn_server_process(&repl_env).await;
+    let mut repl_p = spawn_server_process(&repl_env).await?;
 
     let repl_env2 =
         ServerEnv::default().with_leader_bind_addr(leader_p.bind_addr().clone()).with_hf(10);
-    let mut repl_p2 = spawn_server_process(&repl_env2).await;
+    let mut repl_p2 = spawn_server_process(&repl_env2).await?;
 
     check_internodes_communication(
         &mut [&mut leader_p, &mut repl_p, &mut repl_p2],
         HOP_COUNT,
         1000,
     )
-    .await
-    .unwrap();
+    .await?;
 
     // WHEN
     let mut client_handler = Client::new(leader_p.port);
