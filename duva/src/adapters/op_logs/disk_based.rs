@@ -11,7 +11,7 @@ use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt, BufReader, BufWriter}
 
 const SEGMENT_SIZE: usize = 1024 * 1024; // 1MB per segment
 
-/// A local write-ahead-log file (WAL) implementation using segmented logs.
+/// A local write-ahead-log file (op_logs) implementation using segmented logs.
 pub struct FileOpLogs {
     /// The directory where all segment files are stored, or the file path if not using segments
     path: PathBuf,
@@ -410,7 +410,7 @@ impl TWriteAheadLog for FileOpLogs {
         result
     }
 
-    /// Replays all existing operations in the WAL, invoking a callback for each.
+    /// Replays all existing operations in the op_logs, invoking a callback for each.
     async fn replay<F>(&mut self, mut f: F) -> Result<()>
     where
         F: FnMut(WriteOperation) + Send,
@@ -548,7 +548,7 @@ mod tests {
     use tempfile::TempDir;
 
     #[tokio::test]
-    async fn test_new_creates_aof() -> Result<()> {
+    async fn test_new_creates_oplogs() -> Result<()> {
         // GIVEN
         let dir = TempDir::new()?;
         let path = dir.path().join("local.oplog");
@@ -568,13 +568,13 @@ mod tests {
         // GIVEN
         let dir = TempDir::new().unwrap();
         let path = dir.path();
-        let mut wal = FileOpLogs::new(&path).await.unwrap();
+        let mut op_logs = FileOpLogs::new(&path).await.unwrap();
         let request = WriteRequest::Set { key: "foo".into(), value: "bar".into() };
         let write_op = WriteOperation { request, log_index: 0, term: 0 };
 
         // WHEN
-        wal.append(write_op).await.unwrap();
-        drop(wal);
+        op_logs.append(write_op).await.unwrap();
+        drop(op_logs);
 
         // THEN
         let mut file = tokio::fs::File::open(&path.join("segment_0.oplog")).await.unwrap();
@@ -743,11 +743,11 @@ mod tests {
         let path = dir.path();
 
         // WHEN
-        let wal = FileOpLogs::new(&path).await?;
+        let op_logs = FileOpLogs::new(&path).await?;
 
         // THEN
 
-        let segment = wal.active_segment;
+        let segment = op_logs.active_segment;
         assert_eq!(segment.start_index, 0);
         assert_eq!(segment.end_index, 0);
         assert_eq!(segment.size, 0);
@@ -765,19 +765,21 @@ mod tests {
 
         // Create initial segment with some operations
         {
-            let mut wal = FileOpLogs::new(&path).await?;
-            wal.append(WriteOperation {
-                request: WriteRequest::Set { key: "a".into(), value: "a".into() },
-                log_index: 10,
-                term: 1,
-            })
-            .await?;
-            wal.append(WriteOperation {
-                request: WriteRequest::Set { key: "b".into(), value: "b".into() },
-                log_index: 11,
-                term: 1,
-            })
-            .await?;
+            let mut op_logs = FileOpLogs::new(&path).await?;
+            op_logs
+                .append(WriteOperation {
+                    request: WriteRequest::Set { key: "a".into(), value: "a".into() },
+                    log_index: 10,
+                    term: 1,
+                })
+                .await?;
+            op_logs
+                .append(WriteOperation {
+                    request: WriteRequest::Set { key: "b".into(), value: "b".into() },
+                    log_index: 11,
+                    term: 1,
+                })
+                .await?;
         }
 
         // WHEN
@@ -812,28 +814,30 @@ mod tests {
 
         // Create multiple segments by forcing rotation
         {
-            let mut wal = FileOpLogs::new(&path).await?;
+            let mut op_logs = FileOpLogs::new(&path).await?;
             // Fill first segment
             for i in 0..100 {
-                wal.append(WriteOperation {
-                    request: WriteRequest::Set {
-                        key: format!("key_{}", i).into(),
-                        value: format!("value_{}", i).into(),
-                    },
-                    log_index: i as u64,
+                op_logs
+                    .append(WriteOperation {
+                        request: WriteRequest::Set {
+                            key: format!("key_{}", i).into(),
+                            value: format!("value_{}", i).into(),
+                        },
+                        log_index: i as u64,
+                        term: 1,
+                    })
+                    .await?;
+            }
+            // Force rotation
+            op_logs.rotate_segment().await?;
+            // Add to new segment
+            op_logs
+                .append(WriteOperation {
+                    request: WriteRequest::Set { key: "new".into(), value: "value".into() },
+                    log_index: 100,
                     term: 1,
                 })
                 .await?;
-            }
-            // Force rotation
-            wal.rotate_segment().await?;
-            // Add to new segment
-            wal.append(WriteOperation {
-                request: WriteRequest::Set { key: "new".into(), value: "value".into() },
-                log_index: 100,
-                term: 1,
-            })
-            .await?;
         }
 
         // WHEN
@@ -866,13 +870,14 @@ mod tests {
         let path = dir.path();
 
         // Create a segment and corrupt it
-        let mut wal = FileOpLogs::new(&path).await?;
-        wal.append(WriteOperation {
-            request: WriteRequest::Set { key: "good".into(), value: "data".into() },
-            log_index: 0,
-            term: 1,
-        })
-        .await?;
+        let mut op_logs = FileOpLogs::new(&path).await?;
+        op_logs
+            .append(WriteOperation {
+                request: WriteRequest::Set { key: "good".into(), value: "data".into() },
+                log_index: 0,
+                term: 1,
+            })
+            .await?;
 
         // Corrupt the segment file
         let segment_path = path.join("segment_0.oplog");
