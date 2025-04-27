@@ -1,3 +1,5 @@
+use duva::domains::cluster_actors::heartbeats::scheduler::LEADER_HEARTBEAT_INTERVAL_MAX;
+
 use crate::common::{Client, ServerEnv, check_internodes_communication, spawn_server_process};
 
 #[tokio::test]
@@ -33,14 +35,12 @@ async fn test_cluster_forget_makes_all_nodes_forget_target_node() -> anyhow::Res
     let response2 = client_handler.send_and_get("cluster info", 1).await;
     assert_eq!(response2.first().unwrap(), "cluster_known_nodes:1");
 
-    // leader_p and repl_p2 doesn't get message from repl_p2
-    let f1 =
-        leader_p.timed_wait_for_message(vec![&never_arrivable_msg], HOP_COUNT, TIMEOUT_IN_MILLIS);
-    let f2 =
-        repl_p2.timed_wait_for_message(vec![&never_arrivable_msg], HOP_COUNT, TIMEOUT_IN_MILLIS);
+    let mut repl_cli = Client::new(repl_p2.port);
 
-    assert!(f1.await.is_err());
-    assert!(f2.await.is_err());
+    tokio::time::sleep(std::time::Duration::from_millis(LEADER_HEARTBEAT_INTERVAL_MAX + 1)).await;
+
+    let response2 = repl_cli.send_and_get("cluster info", 1).await;
+    assert_eq!(response2.first().unwrap(), "cluster_known_nodes:1");
 
     Ok(())
 }
