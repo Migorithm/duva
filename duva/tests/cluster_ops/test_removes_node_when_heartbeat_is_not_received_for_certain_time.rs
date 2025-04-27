@@ -24,7 +24,7 @@ async fn test_removes_node_when_heartbeat_is_not_received_for_certain_time() -> 
     let cluster_info = h.send_and_get(cmd, 1);
 
     //THEN
-    assert_eq!(cluster_info.await.first().unwrap(), "cluster_known_nodes:0")
+    assert_eq!(cluster_info.await.first().unwrap(), "cluster_known_nodes:0");
 
     Ok(())
 }
