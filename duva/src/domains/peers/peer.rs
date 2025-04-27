@@ -15,7 +15,6 @@ pub(crate) struct Peer {
     pub(crate) w_conn: WriteConnected,
     pub(crate) listener_kill_trigger: ListeningActorKillTrigger,
     pub(crate) last_seen: Instant,
-
     pub(crate) peer_state: PeerState,
 }
 
@@ -33,6 +32,10 @@ impl Peer {
             last_seen: Instant::now(),
             peer_state: state,
         }
+    }
+
+    pub(crate) fn kind(&self) -> &NodeKind {
+        &self.peer_state.node_kind
     }
 
     pub(crate) async fn send_to_peer(

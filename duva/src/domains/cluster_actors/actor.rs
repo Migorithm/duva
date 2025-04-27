@@ -86,14 +86,14 @@ impl ClusterActor {
     }
 
     pub(crate) fn replicas(&self) -> impl Iterator<Item = (&PeerIdentifier, &Peer, u64)> {
-        self.members.iter().filter_map(|(id, peer)| match &peer.peer_state.node_kind {
+        self.members.iter().filter_map(|(id, peer)| match peer.kind() {
             NodeKind::Replica => Some((id, peer, peer.peer_state.match_index)),
             _ => None,
         })
     }
 
     pub(crate) fn replicas_mut(&mut self) -> impl Iterator<Item = (&mut Peer, u64)> {
-        self.members.values_mut().filter_map(|peer| match peer.peer_state.node_kind.clone() {
+        self.members.values_mut().filter_map(|peer| match peer.kind() {
             NodeKind::Replica => {
                 let match_index = peer.peer_state.match_index;
                 Some((peer, match_index))
@@ -103,9 +103,7 @@ impl ClusterActor {
     }
 
     fn find_replica_mut(&mut self, peer_id: &PeerIdentifier) -> Option<&mut Peer> {
-        self.members
-            .get_mut(peer_id)
-            .filter(|peer| matches!(peer.peer_state.node_kind, NodeKind::Replica))
+        self.members.get_mut(peer_id).filter(|peer| peer.kind() == &NodeKind::Replica)
     }
 
     pub(crate) async fn send_cluster_heartbeat(
@@ -299,7 +297,7 @@ impl ClusterActor {
         if let Some(peer) = self.members.get_mut(from) {
             peer.last_seen = Instant::now();
 
-            if let NodeKind::Replica = &mut peer.peer_state.node_kind {
+            if let NodeKind::Replica = peer.kind() {
                 peer.peer_state.match_index = log_index;
             }
         }
@@ -394,7 +392,7 @@ impl ClusterActor {
     pub(crate) fn take_low_watermark(&self) -> Option<u64> {
         self.members
             .values()
-            .filter_map(|peer| match &peer.peer_state.node_kind {
+            .filter_map(|peer| match peer.kind() {
                 NodeKind::Replica => Some(peer.peer_state.match_index),
                 _ => None,
             })
@@ -548,7 +546,7 @@ impl ClusterActor {
     pub(crate) fn cluster_nodes(&self) -> Vec<ClusterNode> {
         self.members
             .values()
-            .map(|peer| match &peer.peer_state.node_kind {
+            .map(|peer| match &peer.kind() {
                 NodeKind::Replica => {
                     ClusterNode::new(&peer.addr, &peer.peer_state.replid, false, NodeKind::Replica)
                 },
