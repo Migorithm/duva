@@ -1,5 +1,5 @@
 use crate::domains::query_parsers::{QueryIO, deserialize};
-use bytes::{Bytes, BytesMut};
+use bytes::Bytes;
 
 #[derive(Debug, Clone, PartialEq, Eq, bincode::Encode, bincode::Decode)]
 pub struct WriteOperation {
@@ -25,8 +25,9 @@ impl WriteOperation {
 
 impl WriteRequest {
     /// Deserialize `WriteOperation`s from the given bytes.
-    pub(crate) fn deserialize(mut bytes: BytesMut) -> anyhow::Result<Vec<WriteOperation>> {
+    pub(crate) fn deserialize(bytes: impl Into<Bytes>) -> anyhow::Result<Vec<WriteOperation>> {
         let mut ops: Vec<WriteOperation> = Vec::new();
+        let mut bytes = bytes.into();
 
         while !bytes.is_empty() {
             let (query, consumed) = deserialize(bytes.clone())?;

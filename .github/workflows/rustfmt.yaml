@@ -1,8 +1,13 @@
 name: Rust Format Check
 
 on:
+  workflow_dispatch:
   pull_request:
-    branches: [ "master" ]
+    branches:
+      - "**"   # match any branch
+  push:
+    branches:
+      - "**"   # match any branch
 
 env:
   CARGO_TERM_COLOR: always
@@ -20,3 +25,5 @@ jobs:
           override: true
       - name: Run rustfmt
         run: cargo fmt --all -- --check
+      - name: Run cargo check
+        run: cargo check --all-targets

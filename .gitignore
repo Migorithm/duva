@@ -15,3 +15,7 @@ duva-cli.hist
 duva.tp
 duva-cli
 duva-server
+
+test*.rdb
+
+*-*-*-*-*

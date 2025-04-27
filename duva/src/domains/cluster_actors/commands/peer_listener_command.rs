@@ -22,7 +22,6 @@ impl TryFrom<QueryIO> for PeerListenerCommand {
     fn try_from(query: QueryIO) -> anyhow::Result<Self> {
         match query {
             QueryIO::File(data) => {
-                let data = data.into();
                 let Ok((QueryIO::Array(array), _)) = deserialize(data) else {
                     return Err(anyhow::anyhow!("Invalid data"));
                 };
