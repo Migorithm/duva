@@ -25,13 +25,13 @@ async fn test_set_operation_reaches_to_all_replicas() -> anyhow::Result<()> {
     //THEN - run the following together
     let f1 = repl_p.timed_wait_for_message(
         vec!["[INFO] Received log entry with log index up to 1", "[INFO] Received commit offset 1"],
-        1,
+        2,
         2000,
     );
 
     let f2 = leader_p.timed_wait_for_message(
         vec!["[INFO] Received acks for log index num: 1", "[INFO] log 1 commited"],
-        1,
+        2,
         2000,
     );
 
