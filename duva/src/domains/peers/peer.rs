@@ -7,13 +7,18 @@ use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
 use tokio::task::JoinHandle;
 use tokio::time::Instant;
 
+use super::cluster_peer::NodeKind;
+
 #[derive(Debug)]
 pub(crate) struct Peer {
     pub(crate) addr: String,
     pub(crate) w_conn: WriteConnected,
     pub(crate) listener_kill_trigger: ListeningActorKillTrigger,
     pub(crate) last_seen: Instant,
-    pub kind: PeerState,
+
+    pub(crate) match_index: u64,
+    pub(crate) replid: ReplicationId,
+    pub(crate) node_kind: NodeKind,
 }
 
 impl Peer {
@@ -23,12 +28,20 @@ impl Peer {
         kind: PeerState,
         listener_kill_trigger: ListeningActorKillTrigger,
     ) -> Self {
+        let (match_index, replid, node_kind) = match kind {
+            PeerState::Replica { match_index, replid } => (match_index, replid, NodeKind::Replica),
+            PeerState::NonDataPeer { match_index, replid } => {
+                (match_index, replid, NodeKind::NonData)
+            },
+        };
         Self {
             addr,
             w_conn: WriteConnected::new(w),
             listener_kill_trigger,
             last_seen: Instant::now(),
-            kind,
+            match_index,
+            replid,
+            node_kind,
         }
     }
 
@@ -48,15 +61,6 @@ impl Peer {
 pub enum PeerState {
     Replica { match_index: u64, replid: ReplicationId },
     NonDataPeer { match_index: u64, replid: ReplicationId },
-}
-
-impl PeerState {
-    pub(crate) fn decrease_match_index(&mut self) {
-        match self {
-            PeerState::Replica { match_index, .. } => *match_index -= 1,
-            PeerState::NonDataPeer { match_index, .. } => *match_index -= 1,
-        }
-    }
 }
 
 #[derive(Debug)]

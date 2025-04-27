@@ -86,21 +86,24 @@ impl ClusterActor {
     }
 
     pub(crate) fn replicas(&self) -> impl Iterator<Item = (&PeerIdentifier, &Peer, u64)> {
-        self.members.iter().filter_map(|(id, peer)| match &peer.kind {
-            PeerState::Replica { match_index: hwm, .. } => Some((id, peer, *hwm)),
+        self.members.iter().filter_map(|(id, peer)| match &peer.node_kind {
+            NodeKind::Replica => Some((id, peer, peer.match_index)),
             _ => None,
         })
     }
 
     pub(crate) fn replicas_mut(&mut self) -> impl Iterator<Item = (&mut Peer, u64)> {
-        self.members.values_mut().filter_map(|peer| match peer.kind.clone() {
-            PeerState::Replica { match_index: hwm, .. } => Some((peer, hwm)),
+        self.members.values_mut().filter_map(|peer| match peer.node_kind.clone() {
+            NodeKind::Replica => {
+                let match_index = peer.match_index;
+                Some((peer, match_index))
+            },
             _ => None,
         })
     }
 
     fn find_replica_mut(&mut self, peer_id: &PeerIdentifier) -> Option<&mut Peer> {
-        self.members.get_mut(peer_id).filter(|peer| matches!(peer.kind, PeerState::Replica { .. }))
+        self.members.get_mut(peer_id).filter(|peer| matches!(peer.node_kind, NodeKind::Replica))
     }
 
     pub(crate) async fn send_cluster_heartbeat(
@@ -294,8 +297,8 @@ impl ClusterActor {
         if let Some(peer) = self.members.get_mut(from) {
             peer.last_seen = Instant::now();
 
-            if let PeerState::Replica { match_index, .. } = &mut peer.kind {
-                *match_index = log_index;
+            if let NodeKind::Replica = &mut peer.node_kind {
+                peer.match_index = log_index;
             }
         }
     }
@@ -389,8 +392,8 @@ impl ClusterActor {
     pub(crate) fn take_low_watermark(&self) -> Option<u64> {
         self.members
             .values()
-            .filter_map(|peer| match &peer.kind {
-                PeerState::Replica { match_index: watermark, .. } => Some(*watermark),
+            .filter_map(|peer| match &peer.node_kind {
+                NodeKind::Replica => Some(peer.match_index),
                 _ => None,
             })
             .min()
@@ -498,9 +501,9 @@ impl ClusterActor {
             return Err(RejectionReason::LogInconsistency); // Log empty but leader expects an entry
         }
 
-        // Case 2: Previous index is before the log’s start (compacted/truncated)
+        // Case 2: Previous index is before the log's start (compacted/truncated)
         if prev_log_index < wal.log_start_index() {
-            println!("[ERROR] Previous log index is before the log’s start");
+            println!("[ERROR] Previous log index is before the log's start");
             return Err(RejectionReason::LogInconsistency); // Leader references an old, unavailable entry
         }
 
@@ -543,12 +546,12 @@ impl ClusterActor {
     pub(crate) fn cluster_nodes(&self) -> Vec<ClusterNode> {
         self.members
             .values()
-            .map(|peer| match &peer.kind {
-                PeerState::Replica { match_index: _, replid } => {
-                    ClusterNode::new(&peer.addr, replid, false, NodeKind::Replica)
+            .map(|peer| match &peer.node_kind {
+                NodeKind::Replica => {
+                    ClusterNode::new(&peer.addr, &peer.replid, false, NodeKind::Replica)
                 },
-                PeerState::NonDataPeer { replid, match_index: _ } => {
-                    ClusterNode::new(&peer.addr, replid, false, NodeKind::NonData)
+                NodeKind::NonData => {
+                    ClusterNode::new(&peer.addr, &peer.replid, false, NodeKind::NonData)
                 },
             })
             .chain(std::iter::once(self.replication.self_info()))
@@ -694,7 +697,7 @@ impl ClusterActor {
 
     fn decrease_match_index(&mut self, from: &PeerIdentifier) {
         if let Some(peer) = self.members.get_mut(from) {
-            peer.kind.decrease_match_index();
+            peer.match_index -= 1;
         }
     }
 
