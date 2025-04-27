@@ -104,7 +104,7 @@ pub fn spawn_server_process(env: &ServerEnv) -> TestProcessChild {
         process.process.stdout.as_mut().unwrap(),
         vec![format!("listening peer connection on 127.0.0.1:{}...", env.port + 10000).as_str()],
         1,
-        Some(100000),
+        Some(20000),
     )
     .unwrap();
 
