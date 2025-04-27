@@ -1,7 +1,7 @@
 use crate::common::{Client, ServerEnv, spawn_server_process};
 
 #[tokio::test]
-async fn test_keys() {
+async fn test_keys() -> anyhow::Result<()> {
     // GIVEN
     let env = ServerEnv::default();
     let process = spawn_server_process(&env).await?;
@@ -19,4 +19,6 @@ async fn test_keys() {
     let res = h.send_and_get("KEYS *", 500).await;
 
     assert!(res.len() >= num_keys_to_store as usize);
+
+    Ok(())
 }

@@ -1,7 +1,7 @@
 use crate::common::{Client, ServerEnv, check_internodes_communication, spawn_server_process};
 
 #[tokio::test]
-async fn test_full_sync_on_newly_added_replica() {
+async fn test_full_sync_on_newly_added_replica() -> anyhow::Result<()> {
     // GIVEN
     let env = ServerEnv::default();
     // Start the leader server as a child process
@@ -19,4 +19,6 @@ async fn test_full_sync_on_newly_added_replica() {
     // THEN
     let mut client_to_repl = Client::new(replica_process.port);
     assert_eq!(client_to_repl.send_and_get("KEYS *", 1).await, vec!["0) \"foo\""]);
+
+    Ok(())
 }

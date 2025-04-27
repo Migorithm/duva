@@ -1,7 +1,7 @@
 use crate::common::{Client, ServerEnv, spawn_server_process};
 
 #[tokio::test]
-async fn test_incr() {
+async fn test_incr() -> anyhow::Result<()> {
     // GIVEN
     let env = ServerEnv::default();
     let process = spawn_server_process(&env).await?;
@@ -34,4 +34,6 @@ async fn test_incr() {
         h.send_and_get("INCR d", 1).await,
         vec!["(error) ERR value is not an integer or out of range"]
     );
+
+    Ok(())
 }

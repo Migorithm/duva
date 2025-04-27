@@ -6,7 +6,7 @@
 use crate::common::{Client, ServerEnv, spawn_server_process};
 
 #[tokio::test]
-async fn test_replication_info() {
+async fn test_replication_info() -> anyhow::Result<()> {
     // GIVEN
     let env = ServerEnv::default();
     let process = spawn_server_process(&env).await?;
@@ -20,4 +20,6 @@ async fn test_replication_info() {
     assert!(res[1].starts_with("leader_repl_id:"));
     assert_eq!(res[2], "high_watermark:0");
     assert_eq!(res[3], format!("self_identifier:127.0.0.1:{}", env.port));
+
+    Ok(())
 }

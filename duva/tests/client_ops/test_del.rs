@@ -5,7 +5,7 @@
 use crate::common::{Client, ServerEnv, spawn_server_process};
 
 #[tokio::test]
-async fn test_del() {
+async fn test_del() -> anyhow::Result<()> {
     // GIVEN
     let env = ServerEnv::default();
     let process = spawn_server_process(&env).await?;
@@ -22,4 +22,6 @@ async fn test_del() {
     // THEN
     let res = h.send_and_get("GET somanyrand", 1).await;
     assert_eq!(res, vec!["(nil)"]);
+
+    Ok(())
 }

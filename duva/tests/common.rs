@@ -109,7 +109,7 @@ pub async fn spawn_server_process(env: &ServerEnv) -> anyhow::Result<TestProcess
     )
     .await?;
 
-    process
+    Ok(process)
 }
 
 impl TestProcessChild {

@@ -1,7 +1,7 @@
 use crate::common::{Client, ServerEnv, spawn_server_process};
 
 #[tokio::test]
-async fn test_lazy_discovery_of_leader() {
+async fn test_lazy_discovery_of_leader() -> anyhow::Result<()> {
     // GIVEN
     let target_env = ServerEnv::default();
     let leader_p = spawn_server_process(&target_env).await?;
@@ -49,4 +49,6 @@ async fn test_lazy_discovery_of_leader() {
         target_h.send_and_get("KEYS *".as_bytes(), 2).await,
         vec!["0) \"other2\"", "1) \"other\""]
     );
+
+    Ok(())
 }

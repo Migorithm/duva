@@ -1,7 +1,7 @@
 use crate::common::{Client, ServerEnv, spawn_server_process};
 
 #[tokio::test]
-async fn test_cluster_topology_change_when_new_node_added() {
+async fn test_cluster_topology_change_when_new_node_added() -> anyhow::Result<()> {
     // GIVEN
     let env = ServerEnv::default();
     let mut leader_p = spawn_server_process(&env).await?;
@@ -39,4 +39,6 @@ async fn test_cluster_topology_change_when_new_node_added() {
     for node in leader_nodes {
         assert!(nodes.contains(&node));
     }
+
+    Ok(())
 }

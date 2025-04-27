@@ -2,7 +2,7 @@
 use crate::common::{Client, ServerEnv, spawn_server_process};
 
 #[tokio::test]
-async fn test() {
+async fn test_reconnection_on_reboot() -> anyhow::Result<()> {
     // GIVEN
     let env = ServerEnv::default();
 
@@ -31,4 +31,6 @@ async fn test() {
     let mut cli_to_leader = Client::new(leader_p.port);
     let role = cli_to_leader.send_and_get("ROLE".as_bytes(), 1).await;
     assert_eq!(role, vec!["leader".to_string()]);
+
+    Ok(())
 }

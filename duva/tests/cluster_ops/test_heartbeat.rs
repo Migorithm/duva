@@ -4,7 +4,7 @@
 use crate::common::{ServerEnv, check_internodes_communication, spawn_server_process};
 
 #[tokio::test]
-async fn test_heartbeat_hop_count_decreases_over_time() {
+async fn test_heartbeat_hop_count_decreases_over_time() -> anyhow::Result<()> {
     const DEFAULT_HOP_COUNT: usize = 0;
     const TIMEOUT_IN_MILLIS: u128 = 2000;
     // GIVEN
@@ -33,10 +33,12 @@ async fn test_heartbeat_hop_count_decreases_over_time() {
         check_internodes_communication(&mut processes, DEFAULT_HOP_COUNT + 1, TIMEOUT_IN_MILLIS)
             .await;
     assert!(res.is_ok());
+
+    Ok(())
 }
 
 #[tokio::test]
-async fn test_heartbeat_hop_count_starts_with_0() {
+async fn test_heartbeat_hop_count_starts_with_0() -> anyhow::Result<()> {
     const DEFAULT_HOP_COUNT: usize = 0;
     const TIMEOUT_IN_MILLIS: u128 = 2000;
 
@@ -59,4 +61,6 @@ async fn test_heartbeat_hop_count_starts_with_0() {
     let res =
         check_internodes_communication(processes, DEFAULT_HOP_COUNT + 1, TIMEOUT_IN_MILLIS).await;
     assert!(res.is_err());
+
+    Ok(())
 }

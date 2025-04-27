@@ -1,7 +1,7 @@
 use crate::common::{Client, ServerEnv, spawn_server_process};
 
 #[tokio::test]
-async fn test_set_operation_reaches_to_all_replicas() {
+async fn test_set_operation_reaches_to_all_replicas() -> anyhow::Result<()> {
     // GIVEN
 
     let env = ServerEnv::default();
@@ -37,4 +37,6 @@ async fn test_set_operation_reaches_to_all_replicas() {
 
     f1.await?;
     f2.await?;
+
+    Ok(())
 }

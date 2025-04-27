@@ -3,7 +3,7 @@
 use crate::common::{Client, ServerEnv, spawn_server_process};
 
 #[tokio::test]
-async fn test_cluster_forget_node_return_error_when_wrong_id_given() {
+async fn test_cluster_forget_node_return_error_when_wrong_id_given() -> anyhow::Result<()> {
     // GIVEN
 
     let env = ServerEnv::default();
@@ -23,4 +23,6 @@ async fn test_cluster_forget_node_return_error_when_wrong_id_given() {
 
     // THEN
     assert_eq!(cluster_info.first().unwrap(), "cluster_known_nodes:0");
+
+    Ok(())
 }

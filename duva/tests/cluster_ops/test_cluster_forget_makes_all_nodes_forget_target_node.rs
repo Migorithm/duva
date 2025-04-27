@@ -1,7 +1,7 @@
 use crate::common::{Client, ServerEnv, check_internodes_communication, spawn_server_process};
 
 #[tokio::test]
-async fn test_cluster_forget_makes_all_nodes_forget_target_node() {
+async fn test_cluster_forget_makes_all_nodes_forget_target_node() -> anyhow::Result<()> {
     // GIVEN
     const HOP_COUNT: usize = 0;
 
@@ -41,4 +41,6 @@ async fn test_cluster_forget_makes_all_nodes_forget_target_node() {
 
     assert!(f1.await.is_err());
     assert!(f2.await.is_err());
+
+    Ok(())
 }

@@ -4,7 +4,7 @@ use crate::common::{Client, ServerEnv, check_internodes_communication, spawn_ser
 use duva::domains::cluster_actors::heartbeats::scheduler::LEADER_HEARTBEAT_INTERVAL_MAX;
 
 #[tokio::test]
-async fn test_leader_election() {
+async fn test_leader_election() -> anyhow::Result<()> {
     // GIVEN
     let leaver_env = ServerEnv::default();
     let mut leader_p = spawn_server_process(&leaver_env).await?;
@@ -35,13 +35,15 @@ async fn test_leader_election() {
         }
     }
     assert!(flag, "No leader found after the first leader was killed");
+
+    Ok(())
 }
 
 // ! EDGE case : when last_log_term is not updated, after the election, first write operation succeeds but second one doesn't
 // ! This is because the leader doesn't have the last_log_term of the first write operation
 // ! This test is to see if the leader can set the value twice after the election
 #[tokio::test]
-async fn test_set_twice_after_election() {
+async fn test_set_twice_after_election() -> anyhow::Result<()> {
     // GIVEN
     let leaver_env = ServerEnv::default();
     let mut leader_p = spawn_server_process(&leaver_env).await?;
@@ -74,11 +76,13 @@ async fn test_set_twice_after_election() {
         }
     }
     assert!(flag, "No leader found after the first leader was killed");
+
+    Ok(())
 }
 
 /// following test is to see if election works even after the first election.
 #[tokio::test]
-async fn test_leader_election_twice() {
+async fn test_leader_election_twice() -> anyhow::Result<()> {
     // GIVEN
     let leaver_env = ServerEnv::default();
     let mut leader_p = spawn_server_process(&leaver_env).await?;
@@ -129,4 +133,6 @@ async fn test_leader_election_twice() {
         }
     }
     assert!(flag, "No leader found after the second leader was killed");
+
+    Ok(())
 }

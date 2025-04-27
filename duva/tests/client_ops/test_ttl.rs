@@ -1,7 +1,7 @@
 use crate::common::{Client, ServerEnv, spawn_server_process};
 
 #[tokio::test]
-async fn test_ttl() {
+async fn test_ttl() -> anyhow::Result<()> {
     // GIVEN
     let env = ServerEnv::default();
     let process = spawn_server_process(&env).await?;
@@ -16,4 +16,6 @@ async fn test_ttl() {
     // THEN
     assert_eq!(res, vec!["(integer) 4"]);
     assert_eq!(h.send_and_get("TTL non_existing_key", 1).await, vec!["(integer) -1"]);
+
+    Ok(())
 }

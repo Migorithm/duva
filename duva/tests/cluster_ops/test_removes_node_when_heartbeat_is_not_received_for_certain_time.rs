@@ -1,7 +1,7 @@
 use crate::common::{Client, ServerEnv, spawn_server_process};
 
 #[tokio::test]
-async fn test_removes_node_when_heartbeat_is_not_received_for_certain_time() {
+async fn test_removes_node_when_heartbeat_is_not_received_for_certain_time() -> anyhow::Result<()> {
     // GIVEN
     let env = ServerEnv::default();
 
@@ -25,4 +25,6 @@ async fn test_removes_node_when_heartbeat_is_not_received_for_certain_time() {
 
     //THEN
     assert_eq!(cluster_info.await.first().unwrap(), "cluster_known_nodes:0")
+
+    Ok(())
 }
