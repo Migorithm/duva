@@ -158,8 +158,7 @@ impl InboundStream {
     ) -> Result<(), anyhow::Error> {
         let connected_info = self.connected_peer_info.as_ref().context("set by now")?;
 
-        if let NodeKind::Replica =
-            connected_info.decide_peer_kind(&self.self_repl_info.replid).node_kind
+        if let NodeKind::Replica = connected_info.decide_peer_kind(&self.self_repl_info.replid).kind
         {
             if let ReplicationId::Undecided = connected_info.replid {
                 let logs = SyncLogs(

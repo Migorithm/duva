@@ -15,7 +15,7 @@ pub(crate) struct Peer {
     pub(crate) w_conn: WriteConnected,
     pub(crate) listener_kill_trigger: ListeningActorKillTrigger,
     pub(crate) last_seen: Instant,
-    peer_state: PeerState,
+    state: PeerState,
 }
 
 impl Peer {
@@ -28,21 +28,21 @@ impl Peer {
             w_conn: WriteConnected::new(w),
             listener_kill_trigger,
             last_seen: Instant::now(),
-            peer_state: state,
+            state,
         }
     }
     pub(crate) fn state(&self) -> &PeerState {
-        &self.peer_state
+        &self.state
     }
 
     pub(crate) fn kind(&self) -> &NodeKind {
-        &self.peer_state.node_kind
+        &self.state.kind
     }
     pub(crate) fn match_index(&self) -> u64 {
-        self.peer_state.match_index
+        self.state.match_index
     }
     pub(crate) fn set_match_index(&mut self, match_index: u64) {
-        self.peer_state.match_index = match_index;
+        self.state.match_index = match_index;
     }
 
     pub(crate) async fn send_to_peer(
@@ -62,17 +62,12 @@ pub struct PeerState {
     pub(crate) addr: PeerIdentifier,
     pub(crate) match_index: u64,
     pub(crate) replid: ReplicationId,
-    pub(crate) node_kind: NodeKind,
+    pub(crate) kind: NodeKind,
 }
 
 impl PeerState {
-    pub(crate) fn new(
-        id: &str,
-        match_index: u64,
-        replid: ReplicationId,
-        node_kind: NodeKind,
-    ) -> Self {
-        Self { addr: id.bind_addr().into(), match_index, replid, node_kind }
+    pub(crate) fn new(id: &str, match_index: u64, replid: ReplicationId, kind: NodeKind) -> Self {
+        Self { addr: id.bind_addr().into(), match_index, replid, kind }
     }
 
     pub(crate) fn parse_node_info(line: &str, self_repl_id: &str) -> Option<PeerState> {
@@ -93,8 +88,8 @@ impl PeerState {
         Some(Self {
             addr: parts[0].bind_addr().into(),
             replid: repl_id.into(),
-            node_kind: if is_myself { NodeKind::Myself } else { priority },
-            match_index: 0,
+            kind: if is_myself { NodeKind::Myself } else { priority },
+            match_index: 0, // TODO perhaps we should set this to the last known match index
         })
     }
 
@@ -139,10 +134,10 @@ impl PeerState {
         let mut nodes: Vec<Self> = lines
             .into_iter()
             .filter_map(|line| Self::parse_node_info(line, &my_repl_id))
-            .filter(|node| node.node_kind != NodeKind::Myself) // 🧼 Exclude self
+            .filter(|node| node.kind != NodeKind::Myself) // 🧼 Exclude self
             .collect();
 
-        nodes.sort_by_key(|n| match n.node_kind {
+        nodes.sort_by_key(|n| match n.kind {
             NodeKind::Replica => 0,
             NodeKind::NonData => 1,
             NodeKind::Myself => 2,
@@ -153,7 +148,7 @@ impl PeerState {
 
 impl std::fmt::Display for PeerState {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self.node_kind {
+        match self.kind {
             NodeKind::Replica => write!(f, "{} {} 0", self.addr, self.replid),
             NodeKind::NonData => write!(f, "{} {} 0", self.addr, self.replid),
             NodeKind::Myself => write!(f, "{} myself,{} 0", self.addr, self.replid),
@@ -207,8 +202,8 @@ fn test_prioritize_nodes_with_same_replid() {
 
     // There should be 3 nodes, all with priority 0 (same ID as myself)
     assert_eq!(nodes.len(), 4);
-    assert_eq!(nodes.iter().filter(|n| n.node_kind == NodeKind::NonData).count(), 2);
-    assert_eq!(nodes.iter().filter(|n| n.node_kind == NodeKind::Replica).count(), 2);
+    assert_eq!(nodes.iter().filter(|n| n.kind == NodeKind::NonData).count(), 2);
+    assert_eq!(nodes.iter().filter(|n| n.kind == NodeKind::Replica).count(), 2);
 
     // Optionally print for debugging
     for node in nodes {

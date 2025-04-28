@@ -72,7 +72,7 @@ impl Environment {
             ReplicationId::Key(
                 pre_connected_peers
                     .iter()
-                    .find(|p| p.node_kind == NodeKind::Replica)
+                    .find(|p| p.kind == NodeKind::Replica)
                     .map(|p| p.replid.to_string())
                     .unwrap_or_else(|| Uuid::now_v7().to_string()),
             )
