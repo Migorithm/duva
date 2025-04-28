@@ -1,0 +1,30 @@
+---
+title: Consistent Hashing
+---
+sequenceDiagram
+    actor U as User
+    
+    Box Library #lightblue
+    participant D as Client
+    participant T as TopologyData
+    end
+
+    participant S as Server    
+
+    D -->S: Connection established
+    D -->S : Observe Topology Change
+
+    Note over S: TopologyMedata<br>S1: 1234<br>S2: 2345<br>S3: 5340
+
+    S --)D : Push Topology Change
+
+    U->>D: set("key","value")
+    D->>D: hash("key") -> 0x123
+    D->>T: get_nodde_for(0x123)
+    T->>T: sort_tokens : [1234, 2345, 5340]
+    T->>D: return_node(0x123) -> 1234
+    D->>S: set("key","value") -> 1234
+    S->>D: Ok
+    D->>U: Ok
+    
+
