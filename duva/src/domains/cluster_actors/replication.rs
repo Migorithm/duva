@@ -1,9 +1,10 @@
 use super::consensus::ElectionState;
 pub(crate) use super::heartbeats::heartbeat::BannedPeer;
 pub(crate) use super::heartbeats::heartbeat::HeartBeatMessage;
-use crate::domains::peers::cluster_peer::ClusterNode;
-use crate::domains::peers::cluster_peer::NodeKind;
+
 use crate::domains::peers::identifier::PeerIdentifier;
+use crate::domains::peers::peer::NodeKind;
+use crate::domains::peers::peer::PeerState;
 use std::fmt::Display;
 use std::sync::Arc;
 use std::sync::atomic::AtomicU64;
@@ -46,9 +47,15 @@ impl ReplicationState {
         }
     }
 
-    pub(crate) fn self_info(&self) -> ClusterNode {
+    pub(crate) fn self_info(&self) -> PeerState {
         let self_id = self.self_identifier();
-        ClusterNode::new(&self_id, &self.replid, true, NodeKind::Replica)
+
+        PeerState::new(
+            &self_id,
+            self.hwm.load(Ordering::Relaxed),
+            self.replid.clone(),
+            NodeKind::Myself,
+        )
     }
 
     pub(crate) fn self_identifier(&self) -> PeerIdentifier {

@@ -24,8 +24,9 @@ use crate::domains::operation_logs::WriteOperation;
 use crate::domains::operation_logs::WriteRequest;
 use crate::domains::operation_logs::interfaces::TWriteAheadLog;
 use crate::domains::operation_logs::logger::ReplicatedLogs;
-use crate::domains::peers::cluster_peer::ClusterNode;
-use crate::domains::peers::cluster_peer::NodeKind;
+
+use crate::domains::peers::peer::NodeKind;
+use crate::domains::peers::peer::PeerState;
 use crate::domains::{caches::cache_manager::CacheManager, query_parsers::QueryIO};
 use anyhow::Context;
 use std::collections::VecDeque;
@@ -294,7 +295,7 @@ impl ClusterActor {
             peer.last_seen = Instant::now();
 
             if let NodeKind::Replica = peer.kind() {
-                peer.peer_state.match_index = log_index;
+                peer.set_match_index(log_index);
             }
         }
     }
@@ -539,10 +540,10 @@ impl ClusterActor {
             .await;
     }
 
-    pub(crate) fn cluster_nodes(&self) -> Vec<ClusterNode> {
+    pub(crate) fn cluster_nodes(&self) -> Vec<PeerState> {
         self.members
             .values()
-            .map(ClusterNode::from_peer)
+            .map(|p| p.state().clone())
             .chain(std::iter::once(self.replication.self_info()))
             .collect()
     }
@@ -686,7 +687,7 @@ impl ClusterActor {
 
     fn decrease_match_index(&mut self, from: &PeerIdentifier) {
         if let Some(peer) = self.members.get_mut(from) {
-            peer.peer_state.match_index -= 1;
+            peer.set_match_index(peer.match_index() - 1);
         }
     }
 
@@ -696,12 +697,12 @@ impl ClusterActor {
         self.heartbeat_scheduler.turn_follower_mode().await;
     }
 
-    pub(crate) async fn join_peer_network_if_absent(&mut self, cluster_nodes: Vec<ClusterNode>) {
+    pub(crate) async fn join_peer_network_if_absent(&mut self, cluster_nodes: Vec<PeerState>) {
         let peers = cluster_nodes
             .into_iter()
-            .filter(|n| n.bind_addr != self.replication.self_identifier())
-            .filter(|p| !self.members.contains_key(&p.bind_addr))
-            .map(|node| node.bind_addr)
+            .filter(|n| n.addr != self.replication.self_identifier())
+            .filter(|p| !self.members.contains_key(&p.addr))
+            .map(|node| node.addr)
             .collect::<Vec<_>>();
         if peers.is_empty() {
             return;
@@ -812,9 +813,9 @@ mod test {
             actor.members.insert(
                 PeerIdentifier::new("localhost", port),
                 Peer::new(
-                    key.to_string(),
                     x,
                     PeerState::new(
+                        &format!("localhost:{}", port),
                         follower_hwm,
                         ReplicationId::Key("localhost".to_string().into()),
                         NodeKind::Replica,
@@ -1475,15 +1476,14 @@ mod test {
 
         // followers
         for port in [6379, 6380] {
-            let key = PeerIdentifier::new("localhost", port);
+            let key = PeerIdentifier::new("127.0.0.1", port);
             let (r, x) = TcpStream::connect(bind_addr).await.unwrap().into_split();
             let kill_switch = PeerListener::spawn(r, cluster_sender.clone(), key.clone());
             cluster_actor.members.insert(
                 key.clone(),
                 Peer::new(
-                    key.to_string(),
                     x,
-                    PeerState::new(0, repl_id.clone(), NodeKind::Replica),
+                    PeerState::new(&key, 0, repl_id.clone(), NodeKind::Replica),
                     kill_switch,
                 ),
             );
@@ -1503,9 +1503,9 @@ mod test {
         cluster_actor.members.insert(
             second_shard_leader_identifier.clone(),
             Peer::new(
-                (*second_shard_leader_identifier).clone(),
                 x,
                 PeerState::new(
+                    &second_shard_leader_identifier,
                     0,
                     ReplicationId::Key(second_shard_repl_id.to_string()),
                     NodeKind::NonData,
@@ -1516,16 +1516,16 @@ mod test {
 
         // follower for different shard
         for port in [2655, 2653] {
-            let key = PeerIdentifier::new("localhost", port);
+            let key = PeerIdentifier::new("127.0.0.1", port);
             let (r, x) = TcpStream::connect(bind_addr).await.unwrap().into_split();
             let kill_switch = PeerListener::spawn(r, cluster_sender.clone(), key.clone());
 
             cluster_actor.members.insert(
                 key.clone(),
                 Peer::new(
-                    key.to_string(),
                     x,
                     PeerState::new(
+                        &key,
                         0,
                         ReplicationId::Key(second_shard_repl_id.to_string()),
                         NodeKind::NonData,
@@ -1552,7 +1552,7 @@ mod test {
         );
         let mut temp_file = tempfile::NamedTempFile::new().expect("Failed to create temp file");
         write!(temp_file, "{}", file_content).expect("Failed to write to temp file");
-        let nodes = ClusterNode::from_file(temp_file.path().to_str().unwrap());
+        let nodes = PeerState::from_file(temp_file.path().to_str().unwrap());
 
         for value in nodes {
             assert!(res.contains(&value));
@@ -1600,9 +1600,13 @@ mod test {
         );
 
         let peer = Peer::new(
-            "127.0.0.1:3849".to_string(),
             x,
-            PeerState::new(0, ReplicationId::Key(repl_id.to_string()), NodeKind::Replica),
+            PeerState::new(
+                "127.0.0.1:3849",
+                0,
+                ReplicationId::Key(repl_id.to_string()),
+                NodeKind::Replica,
+            ),
             kill_switch,
         );
 
@@ -1655,12 +1659,12 @@ mod test {
 
         // WHEN - try to reconnect
         cluster_actor
-            .join_peer_network_if_absent(vec![ClusterNode {
-                bind_addr: PeerIdentifier::new("127.0.0.1", bind_addr.port() - 10000),
-                repl_id: cluster_actor.replication.replid.clone().to_string(),
-                is_myself: false,
-                priority: NodeKind::Replica,
-            }])
+            .join_peer_network_if_absent(vec![PeerState::new(
+                &format!("127.0.0.1:{}", bind_addr.port() - 10000),
+                0,
+                cluster_actor.replication.replid.clone(),
+                NodeKind::Replica,
+            )])
             .await;
 
         assert!(handle.await.is_ok());

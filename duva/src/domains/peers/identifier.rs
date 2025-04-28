@@ -8,9 +8,23 @@ impl PeerIdentifier {
     pub(crate) fn new(host: &str, port: u16) -> Self {
         Self(format!("{}:{}", host, port))
     }
+}
 
-    pub(crate) fn cluster_bind_addr(&self) -> String {
-        self.0
+pub trait TPeerAddress {
+    fn bind_addr(&self) -> String;
+    fn cluster_bind_addr(&self) -> String;
+}
+impl<T: AsRef<str>> TPeerAddress for T {
+    fn bind_addr(&self) -> String {
+        self.as_ref()
+            .rsplit_once(':')
+            .map(|(host, port)| {
+                format!("{}:{}", parse_address(host).unwrap(), port.parse::<u16>().unwrap())
+            })
+            .unwrap()
+    }
+    fn cluster_bind_addr(&self) -> String {
+        self.as_ref()
             .rsplit_once(':')
             .map(|(host, port)| {
                 format!("{}:{}", parse_address(host).unwrap(), port.parse::<u16>().unwrap() + 10000)
@@ -19,7 +33,7 @@ impl PeerIdentifier {
     }
 }
 
-fn parse_address(addr: &str) -> Option<std::net::IpAddr> {
+pub(crate) fn parse_address(addr: &str) -> Option<std::net::IpAddr> {
     match addr.to_lowercase().as_str() {
         // IPv4 127.0.0.1 variants
         "127.0.0.1" | "localhost" => {

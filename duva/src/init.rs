@@ -1,7 +1,7 @@
 use crate::{
     domains::{
         cluster_actors::replication::{ReplicationId, ReplicationRole},
-        peers::cluster_peer::{ClusterNode, NodeKind},
+        peers::peer::{NodeKind, PeerState},
     },
     env_var,
     prelude::PeerIdentifier,
@@ -11,7 +11,7 @@ use uuid::Uuid;
 
 pub struct Environment {
     pub seed_server: Option<PeerIdentifier>,
-    pub pre_connected_peers: Vec<ClusterNode>,
+    pub pre_connected_peers: Vec<PeerState>,
     pub(crate) repl_id: ReplicationId,
     pub(crate) role: ReplicationRole,
     pub dir: String,
@@ -43,7 +43,7 @@ impl Environment {
         );
 
         let replicaof = Self::parse_replicaof(replicaof);
-        let pre_connected_peers = ClusterNode::from_file(&tpp);
+        let pre_connected_peers = PeerState::from_file(&tpp);
         let repl_id = Self::determine_repl_id(replicaof.as_ref(), &pre_connected_peers);
         let role = Self::determine_role(replicaof.as_ref(), &pre_connected_peers);
         let topology_writer = Self::open_topology_file(tpp).await;
@@ -66,14 +66,14 @@ impl Environment {
 
     fn determine_repl_id(
         replicaof: Option<&PeerIdentifier>,
-        pre_connected_peers: &[ClusterNode],
+        pre_connected_peers: &[PeerState],
     ) -> ReplicationId {
         if replicaof.is_none() {
             ReplicationId::Key(
                 pre_connected_peers
                     .iter()
-                    .find(|p| p.priority == NodeKind::Replica)
-                    .map(|p| p.repl_id.clone())
+                    .find(|p| p.kind == NodeKind::Replica)
+                    .map(|p| p.replid.to_string())
                     .unwrap_or_else(|| Uuid::now_v7().to_string()),
             )
         } else {
@@ -83,7 +83,7 @@ impl Environment {
 
     fn determine_role(
         replicaof: Option<&PeerIdentifier>,
-        pre_connected_peers: &[ClusterNode],
+        pre_connected_peers: &[PeerState],
     ) -> ReplicationRole {
         if replicaof.is_none() && pre_connected_peers.is_empty() {
             ReplicationRole::Leader

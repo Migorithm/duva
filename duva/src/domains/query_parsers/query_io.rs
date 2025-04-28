@@ -417,8 +417,9 @@ mod test {
 
     use crate::domains::cluster_actors::commands::RejectionReason;
     use crate::domains::cluster_actors::replication::{HeartBeatMessage, ReplicationId};
-    use crate::domains::peers::cluster_peer::{ClusterNode, NodeKind};
+
     use crate::domains::peers::identifier::PeerIdentifier;
+    use crate::domains::peers::peer::{NodeKind, PeerState};
     use crate::domains::{cluster_actors::replication::BannedPeer, operation_logs::WriteRequest};
 
     use super::*;
@@ -613,42 +614,27 @@ mod test {
                 },
             ],
             cluster_nodes: vec![
-                ClusterNode::new(
+                PeerState::new(
                     "127.0.0.1:30004",
-                    &ReplicationId::Key(Uuid::now_v7().to_string()),
-                    false,
+                    0,
+                    ReplicationId::Key(Uuid::now_v7().to_string()),
                     NodeKind::Replica,
                 ),
-                ClusterNode::new(
-                    "127.0.0.1:30002",
-                    &ReplicationId::Undecided,
-                    false,
-                    NodeKind::Replica,
-                ),
-                ClusterNode::new(
-                    "127.0.0.1:30003",
-                    &ReplicationId::Undecided,
-                    false,
-                    NodeKind::Replica,
-                ),
-                ClusterNode::new(
+                PeerState::new("127.0.0.1:30002", 0, ReplicationId::Undecided, NodeKind::Replica),
+                PeerState::new("127.0.0.1:30003", 0, ReplicationId::Undecided, NodeKind::Replica),
+                PeerState::new(
                     "127.0.0.1:30005",
-                    &ReplicationId::Key(Uuid::now_v7().to_string()),
-                    false,
+                    0,
+                    ReplicationId::Key(Uuid::now_v7().to_string()),
                     NodeKind::Replica,
                 ),
-                ClusterNode::new(
+                PeerState::new(
                     "127.0.0.1:30006",
-                    &ReplicationId::Key(Uuid::now_v7().to_string()),
-                    false,
+                    0,
+                    ReplicationId::Key(Uuid::now_v7().to_string()),
                     NodeKind::Replica,
                 ),
-                ClusterNode::new(
-                    "127.0.0.1:30001",
-                    &ReplicationId::Undecided,
-                    true,
-                    NodeKind::Replica,
-                ),
+                PeerState::new("127.0.0.1:30001", 0, ReplicationId::Undecided, NodeKind::Myself),
             ],
         };
         let replicate = QueryIO::AppendEntriesRPC(AppendEntriesRPC(heartbeat));
