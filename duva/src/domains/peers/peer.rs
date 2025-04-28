@@ -72,6 +72,7 @@ impl PeerState {
 pub(crate) enum NodeKind {
     Replica,
     NonData,
+    Myself,
 }
 
 #[derive(Debug)]

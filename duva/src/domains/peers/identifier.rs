@@ -1,5 +1,3 @@
-use std::fmt::Display;
-
 use crate::{from_to, make_smart_pointer};
 
 #[derive(

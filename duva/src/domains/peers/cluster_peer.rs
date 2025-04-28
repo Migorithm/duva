@@ -9,27 +9,22 @@ use super::{
 pub struct ClusterNode {
     pub(crate) bind_addr: PeerIdentifier,
     pub(crate) repl_id: String,
-    pub(crate) is_myself: bool,
-    pub(crate) kind: NodeKind, // lower value = higher priority
+
+    pub(crate) kind: NodeKind,
 }
 
 impl ClusterNode {
-    pub(crate) fn new(
-        bind_addr: &str,
-        repl_id: &ReplicationId,
-        is_myself: bool,
-        priority: NodeKind,
-    ) -> Self {
+    pub(crate) fn new(bind_addr: &str, repl_id: &ReplicationId, priority: NodeKind) -> Self {
         Self {
             bind_addr: bind_addr.to_string().into(),
             repl_id: repl_id.to_string(),
-            is_myself,
+
             kind: priority,
         }
     }
 
     pub(crate) fn from_peer(peer: &Peer) -> Self {
-        Self::new(&peer.peer_state.addr, &peer.peer_state.replid, false, peer.kind().clone())
+        Self::new(&peer.peer_state.addr, &peer.peer_state.replid, peer.kind().clone())
     }
 
     pub(crate) fn parse_node_info(line: &str, self_repl_id: &str) -> Option<ClusterNode> {
@@ -47,7 +42,11 @@ impl ClusterNode {
 
         let priority = if repl_id == self_repl_id { NodeKind::Replica } else { NodeKind::NonData };
 
-        Some(Self { bind_addr: parts[0].bind_addr().into(), repl_id, is_myself, kind: priority })
+        Some(Self {
+            bind_addr: parts[0].bind_addr().into(),
+            repl_id,
+            kind: if is_myself { NodeKind::Myself } else { priority },
+        })
     }
     pub(crate) fn from_file(path: &str) -> Vec<ClusterNode> {
         let Ok(metadata) = std::fs::metadata(path) else {
@@ -90,12 +89,13 @@ impl ClusterNode {
         let mut nodes: Vec<ClusterNode> = lines
             .into_iter()
             .filter_map(|line| ClusterNode::parse_node_info(line, &my_repl_id))
-            .filter(|node| !node.is_myself) // 🧼 Exclude self
+            .filter(|node| node.kind != NodeKind::Myself) // 🧼 Exclude self
             .collect();
 
         nodes.sort_by_key(|n| match n.kind {
             NodeKind::Replica => 0,
             NodeKind::NonData => 1,
+            NodeKind::Myself => 2,
         });
         nodes
     }
@@ -103,10 +103,10 @@ impl ClusterNode {
 
 impl std::fmt::Display for ClusterNode {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if self.is_myself {
-            write!(f, "{} myself,{} 0", self.bind_addr, self.repl_id)
-        } else {
-            write!(f, "{} {} 0", self.bind_addr, self.repl_id)
+        match self.kind {
+            NodeKind::Replica => write!(f, "{} {} 0", self.bind_addr, self.repl_id),
+            NodeKind::NonData => write!(f, "{} {} 0", self.bind_addr, self.repl_id),
+            NodeKind::Myself => write!(f, "{} myself,{} 0", self.bind_addr, self.repl_id),
         }
     }
 }

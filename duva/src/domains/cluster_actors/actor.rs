@@ -1662,7 +1662,6 @@ mod test {
             .join_peer_network_if_absent(vec![ClusterNode {
                 bind_addr: PeerIdentifier::new("127.0.0.1", bind_addr.port() - 10000),
                 repl_id: cluster_actor.replication.replid.clone().to_string(),
-                is_myself: false,
                 kind: NodeKind::Replica,
             }])
             .await;

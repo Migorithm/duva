@@ -49,7 +49,7 @@ impl ReplicationState {
 
     pub(crate) fn self_info(&self) -> ClusterNode {
         let self_id = self.self_identifier();
-        ClusterNode::new(&self_id, &self.replid, true, NodeKind::Replica)
+        ClusterNode::new(&self_id, &self.replid, NodeKind::Myself)
     }
 
     pub(crate) fn self_identifier(&self) -> PeerIdentifier {
