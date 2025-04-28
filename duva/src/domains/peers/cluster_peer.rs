@@ -1,19 +1,16 @@
 use crate::{domains::cluster_actors::replication::ReplicationId, prelude::PeerIdentifier};
 
-use super::peer::Peer;
+use super::{
+    identifier::TPeerAddress,
+    peer::{NodeKind, Peer},
+};
 
 #[derive(Debug, Clone, PartialEq, bincode::Encode, bincode::Decode)]
 pub struct ClusterNode {
     pub(crate) bind_addr: PeerIdentifier,
     pub(crate) repl_id: String,
     pub(crate) is_myself: bool,
-    pub(crate) priority: NodeKind, // lower value = higher priority
-}
-
-#[derive(Debug, Clone, PartialEq, bincode::Encode, bincode::Decode)]
-pub(crate) enum NodeKind {
-    Replica,
-    NonData,
+    pub(crate) kind: NodeKind, // lower value = higher priority
 }
 
 impl ClusterNode {
@@ -27,12 +24,12 @@ impl ClusterNode {
             bind_addr: bind_addr.to_string().into(),
             repl_id: repl_id.to_string(),
             is_myself,
-            priority,
+            kind: priority,
         }
     }
 
     pub(crate) fn from_peer(peer: &Peer) -> Self {
-        Self::new(&peer.addr, &peer.peer_state.replid, false, peer.kind().clone())
+        Self::new(&peer.peer_state.addr, &peer.peer_state.replid, false, peer.kind().clone())
     }
 
     pub(crate) fn parse_node_info(line: &str, self_repl_id: &str) -> Option<ClusterNode> {
@@ -50,11 +47,9 @@ impl ClusterNode {
 
         let priority = if repl_id == self_repl_id { NodeKind::Replica } else { NodeKind::NonData };
 
-        Some(Self { bind_addr: parts[0].to_string().into(), repl_id, is_myself, priority })
+        Some(Self { bind_addr: parts[0].bind_addr().into(), repl_id, is_myself, kind: priority })
     }
     pub(crate) fn from_file(path: &str) -> Vec<ClusterNode> {
-        println!("Reading cluster nodes from file: {}", path);
-
         let Ok(metadata) = std::fs::metadata(path) else {
             return vec![];
         };
@@ -98,7 +93,7 @@ impl ClusterNode {
             .filter(|node| !node.is_myself) // 🧼 Exclude self
             .collect();
 
-        nodes.sort_by_key(|n| match n.priority {
+        nodes.sort_by_key(|n| match n.kind {
             NodeKind::Replica => 0,
             NodeKind::NonData => 1,
         });
@@ -137,8 +132,8 @@ fn test_prioritize_nodes_with_same_replid() {
 
     // There should be 3 nodes, all with priority 0 (same ID as myself)
     assert_eq!(nodes.len(), 4);
-    assert_eq!(nodes.iter().filter(|n| n.priority == NodeKind::NonData).count(), 2);
-    assert_eq!(nodes.iter().filter(|n| n.priority == NodeKind::Replica).count(), 2);
+    assert_eq!(nodes.iter().filter(|n| n.kind == NodeKind::NonData).count(), 2);
+    assert_eq!(nodes.iter().filter(|n| n.kind == NodeKind::Replica).count(), 2);
 
     // Optionally print for debugging
     for node in nodes {

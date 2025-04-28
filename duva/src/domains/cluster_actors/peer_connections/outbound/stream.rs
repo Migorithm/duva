@@ -7,6 +7,7 @@ use crate::domains::cluster_actors::replication::ReplicationId;
 use crate::domains::cluster_actors::replication::ReplicationState;
 use crate::domains::peers::connected_peer_info::ConnectedPeerInfo;
 use crate::domains::peers::identifier::PeerIdentifier;
+use crate::domains::peers::identifier::TPeerAddress;
 use crate::domains::peers::peer::Peer;
 use crate::domains::query_parsers::QueryIO;
 
@@ -113,7 +114,6 @@ impl OutboundStream {
             PeerListener::spawn(self.r, cluster_actor_handler, self.connect_to.clone());
 
         let peer = Peer::new(
-            (*self.connect_to).clone(),
             self.w,
             connection_info.decide_peer_kind(&self.my_repl_info.replid),
             kill_switch,

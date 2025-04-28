@@ -25,7 +25,8 @@ use crate::domains::operation_logs::WriteRequest;
 use crate::domains::operation_logs::interfaces::TWriteAheadLog;
 use crate::domains::operation_logs::logger::ReplicatedLogs;
 use crate::domains::peers::cluster_peer::ClusterNode;
-use crate::domains::peers::cluster_peer::NodeKind;
+
+use crate::domains::peers::peer::NodeKind;
 use crate::domains::{caches::cache_manager::CacheManager, query_parsers::QueryIO};
 use anyhow::Context;
 use std::collections::VecDeque;
@@ -812,9 +813,9 @@ mod test {
             actor.members.insert(
                 PeerIdentifier::new("localhost", port),
                 Peer::new(
-                    key.to_string(),
                     x,
                     PeerState::new(
+                        PeerIdentifier::new("localhost", port),
                         follower_hwm,
                         ReplicationId::Key("localhost".to_string().into()),
                         NodeKind::Replica,
@@ -1475,15 +1476,14 @@ mod test {
 
         // followers
         for port in [6379, 6380] {
-            let key = PeerIdentifier::new("localhost", port);
+            let key = PeerIdentifier::new("127.0.0.1", port);
             let (r, x) = TcpStream::connect(bind_addr).await.unwrap().into_split();
             let kill_switch = PeerListener::spawn(r, cluster_sender.clone(), key.clone());
             cluster_actor.members.insert(
                 key.clone(),
                 Peer::new(
-                    key.to_string(),
                     x,
-                    PeerState::new(0, repl_id.clone(), NodeKind::Replica),
+                    PeerState::new(key, 0, repl_id.clone(), NodeKind::Replica),
                     kill_switch,
                 ),
             );
@@ -1503,9 +1503,9 @@ mod test {
         cluster_actor.members.insert(
             second_shard_leader_identifier.clone(),
             Peer::new(
-                (*second_shard_leader_identifier).clone(),
                 x,
                 PeerState::new(
+                    second_shard_leader_identifier.clone(),
                     0,
                     ReplicationId::Key(second_shard_repl_id.to_string()),
                     NodeKind::NonData,
@@ -1516,16 +1516,16 @@ mod test {
 
         // follower for different shard
         for port in [2655, 2653] {
-            let key = PeerIdentifier::new("localhost", port);
+            let key = PeerIdentifier::new("127.0.0.1", port);
             let (r, x) = TcpStream::connect(bind_addr).await.unwrap().into_split();
             let kill_switch = PeerListener::spawn(r, cluster_sender.clone(), key.clone());
 
             cluster_actor.members.insert(
                 key.clone(),
                 Peer::new(
-                    key.to_string(),
                     x,
                     PeerState::new(
+                        key,
                         0,
                         ReplicationId::Key(second_shard_repl_id.to_string()),
                         NodeKind::NonData,
@@ -1600,9 +1600,13 @@ mod test {
         );
 
         let peer = Peer::new(
-            "127.0.0.1:3849".to_string(),
             x,
-            PeerState::new(0, ReplicationId::Key(repl_id.to_string()), NodeKind::Replica),
+            PeerState::new(
+                "127.0.0.1:3849".to_string().into(),
+                0,
+                ReplicationId::Key(repl_id.to_string()),
+                NodeKind::Replica,
+            ),
             kill_switch,
         );
 
@@ -1659,7 +1663,7 @@ mod test {
                 bind_addr: PeerIdentifier::new("127.0.0.1", bind_addr.port() - 10000),
                 repl_id: cluster_actor.replication.replid.clone().to_string(),
                 is_myself: false,
-                priority: NodeKind::Replica,
+                kind: NodeKind::Replica,
             }])
             .await;
 

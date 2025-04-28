@@ -9,7 +9,8 @@ use crate::domains::cluster_actors::replication::ReplicationId;
 use crate::domains::cluster_actors::replication::ReplicationState;
 use crate::domains::operation_logs::interfaces::TWriteAheadLog;
 use crate::domains::operation_logs::logger::ReplicatedLogs;
-use crate::domains::peers::cluster_peer::NodeKind;
+use crate::domains::peers::peer::NodeKind;
+
 use crate::domains::peers::connected_peer_info::ConnectedPeerInfo;
 use crate::domains::peers::identifier::PeerIdentifier;
 use crate::domains::peers::peer::Peer;
@@ -179,9 +180,6 @@ impl InboundStream {
         let peer_state = self.peer_state()?;
         let kill_switch = PeerListener::spawn(self.r, actor_handler, identifier.clone());
 
-        Ok(AddPeer {
-            peer: Peer::new(identifier.to_string(), self.w, peer_state, kill_switch),
-            peer_id: identifier,
-        })
+        Ok(AddPeer { peer: Peer::new(self.w, peer_state, kill_switch), peer_id: identifier })
     }
 }

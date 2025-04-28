@@ -2,16 +2,14 @@ use crate::domains::IoError;
 use crate::domains::cluster_actors::replication::ReplicationId;
 use crate::domains::peers::connected_types::WriteConnected;
 use crate::domains::query_parsers::QueryIO;
+use crate::prelude::PeerIdentifier;
 use crate::services::interface::TWrite;
 use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
 use tokio::task::JoinHandle;
 use tokio::time::Instant;
 
-use super::cluster_peer::NodeKind;
-
 #[derive(Debug)]
 pub(crate) struct Peer {
-    pub(crate) addr: String,
     pub(crate) w_conn: WriteConnected,
     pub(crate) listener_kill_trigger: ListeningActorKillTrigger,
     pub(crate) last_seen: Instant,
@@ -20,13 +18,11 @@ pub(crate) struct Peer {
 
 impl Peer {
     pub(crate) fn new(
-        addr: String,
         w: OwnedWriteHalf,
         state: PeerState,
         listener_kill_trigger: ListeningActorKillTrigger,
     ) -> Self {
         Self {
-            addr,
             w_conn: WriteConnected::new(w),
             listener_kill_trigger,
             last_seen: Instant::now(),
@@ -55,15 +51,27 @@ impl Peer {
 
 #[derive(Clone, Debug)]
 pub struct PeerState {
+    pub(crate) addr: PeerIdentifier,
     pub(crate) match_index: u64,
     pub(crate) replid: ReplicationId,
     pub(crate) node_kind: NodeKind,
 }
 
 impl PeerState {
-    pub(crate) fn new(match_index: u64, replid: ReplicationId, node_kind: NodeKind) -> Self {
-        Self { match_index, replid, node_kind }
+    pub(crate) fn new(
+        id: PeerIdentifier,
+        match_index: u64,
+        replid: ReplicationId,
+        node_kind: NodeKind,
+    ) -> Self {
+        Self { addr: id, match_index, replid, node_kind }
     }
+}
+
+#[derive(Debug, Clone, PartialEq, bincode::Encode, bincode::Decode)]
+pub(crate) enum NodeKind {
+    Replica,
+    NonData,
 }
 
 #[derive(Debug)]

@@ -417,8 +417,9 @@ mod test {
 
     use crate::domains::cluster_actors::commands::RejectionReason;
     use crate::domains::cluster_actors::replication::{HeartBeatMessage, ReplicationId};
-    use crate::domains::peers::cluster_peer::{ClusterNode, NodeKind};
+    use crate::domains::peers::cluster_peer::ClusterNode;
     use crate::domains::peers::identifier::PeerIdentifier;
+    use crate::domains::peers::peer::NodeKind;
     use crate::domains::{cluster_actors::replication::BannedPeer, operation_logs::WriteRequest};
 
     use super::*;

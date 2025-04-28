@@ -2,8 +2,9 @@ use super::consensus::ElectionState;
 pub(crate) use super::heartbeats::heartbeat::BannedPeer;
 pub(crate) use super::heartbeats::heartbeat::HeartBeatMessage;
 use crate::domains::peers::cluster_peer::ClusterNode;
-use crate::domains::peers::cluster_peer::NodeKind;
+
 use crate::domains::peers::identifier::PeerIdentifier;
+use crate::domains::peers::peer::NodeKind;
 use std::fmt::Display;
 use std::sync::Arc;
 use std::sync::atomic::AtomicU64;

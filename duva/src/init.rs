@@ -1,7 +1,7 @@
 use crate::{
     domains::{
         cluster_actors::replication::{ReplicationId, ReplicationRole},
-        peers::cluster_peer::{ClusterNode, NodeKind},
+        peers::{cluster_peer::ClusterNode, peer::NodeKind},
     },
     env_var,
     prelude::PeerIdentifier,
@@ -72,7 +72,7 @@ impl Environment {
             ReplicationId::Key(
                 pre_connected_peers
                     .iter()
-                    .find(|p| p.priority == NodeKind::Replica)
+                    .find(|p| p.kind == NodeKind::Replica)
                     .map(|p| p.repl_id.clone())
                     .unwrap_or_else(|| Uuid::now_v7().to_string()),
             )
