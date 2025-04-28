@@ -86,12 +86,7 @@ impl StartUpFacade {
         }
 
         for peer in env.pre_connected_peers {
-            if self
-                .registry
-                .cluster_communication_manager
-                .discover_cluster(peer.bind_addr)
-                .await
-                .is_ok()
+            if self.registry.cluster_communication_manager.discover_cluster(peer.addr).await.is_ok()
             {
                 break;
             }

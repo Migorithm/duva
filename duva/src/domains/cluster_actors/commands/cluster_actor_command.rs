@@ -8,7 +8,7 @@ use crate::{
             session::SessionRequest,
         },
         operation_logs::{WriteOperation, WriteRequest},
-        peers::cluster_peer::ClusterNode,
+        peers::peer::PeerState,
     },
     prelude::PeerIdentifier,
 };
@@ -48,7 +48,7 @@ pub(crate) enum ClusterCommand {
     AppendEntriesRPC(HeartBeatMessage),
 
     SendAppendEntriesRPC,
-    ClusterNodes(tokio::sync::oneshot::Sender<Vec<ClusterNode>>),
+    ClusterNodes(tokio::sync::oneshot::Sender<Vec<PeerState>>),
     StartLeaderElection,
     VoteElection(RequestVote),
     ApplyElectionVote(RequestVoteReply),
