@@ -2,6 +2,7 @@ mod test_config_get_dir;
 mod test_del;
 mod test_exists;
 
+mod test_append;
 mod test_decr;
 mod test_incr;
 mod test_keys;

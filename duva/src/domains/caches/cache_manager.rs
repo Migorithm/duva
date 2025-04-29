@@ -59,6 +59,11 @@ impl CacheManager {
         Ok(())
     }
 
+    pub(crate) async fn route_append(&self, kvs: CacheEntry) -> Result<()> {
+        self.select_shard(kvs.key()).send(CacheCommand::Append { cache_entry: kvs }).await?;
+        Ok(())
+    }
+
     pub(crate) async fn route_save(
         &self,
         save_target: SaveTarget,
@@ -93,6 +98,9 @@ impl CacheManager {
                     expiry: StoredDuration::Milliseconds(expires_at).to_datetime(),
                 })
                 .await?;
+            },
+            WriteRequest::Append { key, value } => {
+                self.route_set(CacheEntry::Append { key, value }).await?;
             },
             WriteRequest::Delete { keys } => {
                 self.route_delete(keys).await?;

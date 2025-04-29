@@ -587,6 +587,7 @@ mod tests {
         let key = match encoded.request {
             WriteRequest::Set { key, .. } => key,
             WriteRequest::SetWithExpiry { key, .. } => key,
+            WriteRequest::Append { key, .. } => key,
             WriteRequest::Delete { keys: key } => key[0].clone(),
         };
         assert_eq!(key, "foo");

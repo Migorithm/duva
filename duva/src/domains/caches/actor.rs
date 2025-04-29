@@ -80,6 +80,18 @@ impl CacheActor {
                 self.cache.keys_with_expiry += 1;
                 self.cache.insert(key.clone(), CacheValue::ValueWithExpiry { value, expiry });
             },
+            CacheEntry::Append { key, value } => {
+                // Do not handle previous value's expiry here: Existing Expiry is invalidated implicitly.
+                let prev = self
+                    .cache
+                    .get(&key)
+                    .unwrap_or(&CacheValue::Value("".to_string()))
+                    .value()
+                    .to_string();
+
+                let appended = prev + &value;
+                self.cache.insert(key, CacheValue::Value(appended));
+            },
         }
     }
 

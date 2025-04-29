@@ -14,6 +14,7 @@ pub struct WriteOperation {
 pub enum WriteRequest {
     Set { key: String, value: String },
     SetWithExpiry { key: String, value: String, expires_at: u64 },
+    Append { key: String, value: String },
     Delete { keys: Vec<String> },
 }
 

@@ -15,7 +15,7 @@ impl CacheActor {
     ) -> Result<Self> {
         while let Some(command) = recv.recv().await {
             match command {
-                CacheCommand::Set { cache_entry } => {
+                CacheCommand::Set { cache_entry } | CacheCommand::Append { cache_entry } => {
                     let _ = self.try_send_ttl(&cache_entry).await;
                     self.set(cache_entry);
                 },

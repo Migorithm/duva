@@ -87,6 +87,11 @@ impl<T> ClientController<T> {
                 QueryIO::Err(value) => Response::Error(value),
                 _ => Response::FormatError,
             },
+            Append { .. } => match query_io {
+                QueryIO::SimpleString(_) => Response::String("OK".into()),
+                QueryIO::Err(value) => Response::Error(value),
+                _ => Response::FormatError,
+            },
             Keys { .. } => {
                 let QueryIO::Array(value) = query_io else {
                     return Response::FormatError;

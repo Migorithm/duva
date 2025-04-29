@@ -368,6 +368,7 @@ mod test {
         match cache_entry {
             CacheEntry::KeyValue { value, .. } => value,
             CacheEntry::KeyValueExpiry { value, .. } => value,
+            CacheEntry::Append { value, .. } => value,
         }
     }
 

@@ -54,6 +54,12 @@ impl ClientController {
                 self.cache_manager.route_set(cache_entry).await?;
                 QueryIO::SimpleString(format!("s:{}|idx:{}", value, current_index.unwrap()))
             },
+            ClientAction::Append { key, value } => {
+                let cache_entry: CacheEntry =
+                    CacheEntry::Append { key: key.to_owned(), value: value.to_string() };
+                self.cache_manager.route_append(cache_entry).await?;
+                QueryIO::SimpleString(format!("s:{}|idx:{}", value, current_index.unwrap()))
+            },
             ClientAction::Save => {
                 let file_path = self.config_manager.get_filepath().await?;
                 let file = tokio::fs::OpenOptions::new()
