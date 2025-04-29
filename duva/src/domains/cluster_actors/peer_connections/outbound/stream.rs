@@ -1,5 +1,5 @@
 use super::response::ConnectionResponse;
-use crate::domains::cluster_actors::commands::AddPeer;
+
 use crate::domains::cluster_actors::commands::ClusterCommand;
 
 use crate::domains::cluster_actors::listener::PeerListener;
@@ -105,7 +105,7 @@ impl OutboundStream {
     pub(crate) fn create_peer_cmd(
         self,
         cluster_actor_handler: Sender<ClusterCommand>,
-    ) -> anyhow::Result<(AddPeer, Vec<PeerIdentifier>)> {
+    ) -> anyhow::Result<(Peer, Vec<PeerIdentifier>)> {
         let mut connection_info =
             self.connected_node_info.context("Connected node info not found")?;
         let peer_list = connection_info.list_peer_binding_addrs();
@@ -119,6 +119,6 @@ impl OutboundStream {
             kill_switch,
         );
 
-        Ok((AddPeer { peer_id: self.connect_to, peer }, peer_list))
+        Ok((peer, peer_list))
     }
 }

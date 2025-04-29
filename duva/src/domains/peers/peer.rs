@@ -31,6 +31,9 @@ impl Peer {
             state,
         }
     }
+    pub(crate) fn id(&self) -> &PeerIdentifier {
+        &self.state.addr
+    }
     pub(crate) fn state(&self) -> &PeerState {
         &self.state
     }
