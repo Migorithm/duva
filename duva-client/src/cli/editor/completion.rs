@@ -11,6 +11,7 @@ use crate::editor::DuvaHinter;
 pub(crate) static COMMANDS: &[&str] = &[
     "get",
     "set",
+    "append",
     "cluster",
     "ping",
     "keys",
