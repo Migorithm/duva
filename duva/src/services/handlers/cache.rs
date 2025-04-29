@@ -139,7 +139,7 @@ mod test {
         let res1 = tokio::spawn(rx1);
         let res2 = tokio::spawn(rx2);
 
-        assert_eq!(res1.await.unwrap().unwrap(), Some(CacheValue::Value(value.clone())));
+        assert_eq!(res1.await.unwrap().unwrap(), Some(CacheValue::new(value.clone())));
 
         let timeout = timeout(Duration::from_millis(1000), res2);
         assert!(timeout.await.is_err());
@@ -175,7 +175,7 @@ mod test {
         cache.ping().await;
 
         // THEN
-        assert_eq!(task.await.unwrap().unwrap(), Some(CacheValue::Value(value.clone())));
+        assert_eq!(task.await.unwrap().unwrap(), Some(CacheValue::new(value.clone())));
     }
 
     #[tokio::test]
