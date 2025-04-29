@@ -12,14 +12,15 @@ async fn test_append() -> anyhow::Result<()> {
 
     let mut h = Client::new(process.port);
 
-    // WHEN - set key with expiry
+    // WHEN - append first value
     assert_eq!(h.send_and_get("APPEND appended_one Hello", 1).await, vec!["OK"]);
+    // THEN
     let res = h.send_and_get("GET appended_one", 1).await;
     assert_eq!(res, vec!["Hello"]);
 
-    // THEN
-
+    // WHEN - append second value
     assert_eq!(h.send_and_get("APPEND appended_one World!", 1).await, vec!["OK"]);
+    // THEN
     let res = h.send_and_get("GET appended_one", 1).await;
     assert_eq!(res, vec!["HelloWorld!"]);
 
