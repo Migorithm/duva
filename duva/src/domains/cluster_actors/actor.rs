@@ -1471,6 +1471,7 @@ mod test {
         let bind_addr = listener.local_addr().unwrap();
 
         let mut cluster_actor = cluster_actor_create_helper().await;
+        cluster_actor.replication.hwm.store(15, Ordering::Release);
 
         let repl_id = cluster_actor.replication.replid.clone();
 
@@ -1483,7 +1484,12 @@ mod test {
                 key.clone(),
                 Peer::new(
                     x,
-                    PeerState::new(&key, 0, repl_id.clone(), NodeKind::Replica),
+                    PeerState::new(
+                        &key,
+                        cluster_actor.replication.hwm.load(Ordering::Relaxed),
+                        repl_id.clone(),
+                        NodeKind::Replica,
+                    ),
                     kill_switch,
                 ),
             );
@@ -1542,12 +1548,12 @@ mod test {
 
         let file_content = format!(
             r#"
-        127.0.0.1:6379 {repl_id} 0
-        127.0.0.1:6380 {repl_id} 0
-        {second_shard_leader_identifier} {second_shard_repl_id} 0
-        127.0.0.1:2655 {second_shard_repl_id} 0
-        127.0.0.1:2653 {second_shard_repl_id} 0
-        localhost:8080 myself,{repl_id} 0
+        127.0.0.1:6379 {repl_id} 0 15
+        127.0.0.1:6380 {repl_id} 0 15
+        {second_shard_leader_identifier} {second_shard_repl_id} 0 0
+        127.0.0.1:2655 {second_shard_repl_id} 0 0
+        127.0.0.1:2653 {second_shard_repl_id} 0 0
+        localhost:8080 myself,{repl_id} 0 15
         "#
         );
         let mut temp_file = tempfile::NamedTempFile::new().expect("Failed to create temp file");
@@ -1568,13 +1574,14 @@ mod test {
 
         let repl_id = cluster_actor.replication.replid.clone();
         let self_id = cluster_actor.replication.self_identifier();
+        let hwm = cluster_actor.replication.hwm.load(Ordering::Relaxed);
 
         // WHEN
         cluster_actor.snapshot_topology().await.unwrap();
 
         // THEN
         let topology = tokio::fs::read_to_string(path).await.unwrap();
-        let expected_topology = format!("{} myself,{} 0", self_id, repl_id);
+        let expected_topology = format!("{} myself,{} 0 {}", self_id, repl_id, hwm);
         assert_eq!(topology, expected_topology);
 
         tokio::fs::remove_file(path).await.unwrap();
@@ -1624,9 +1631,11 @@ mod test {
         cluster_nodes.dedup();
         assert_eq!(cluster_nodes.len(), 2);
 
+        let hwm = cluster_actor.replication.hwm.load(Ordering::Relaxed);
+
         for value in [
-            format!("127.0.0.1:3849 {} 0", repl_id),
-            format!("{} myself,{} 0", cluster_actor.replication.self_identifier(), repl_id),
+            format!("127.0.0.1:3849 {} 0 {}", repl_id, hwm),
+            format!("{} myself,{} 0 {}", cluster_actor.replication.self_identifier(), repl_id, hwm),
         ] {
             assert!(cluster_nodes.contains(&value));
         }
