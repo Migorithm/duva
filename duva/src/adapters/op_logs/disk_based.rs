@@ -94,17 +94,17 @@ impl Segment {
         let mut index_data = Vec::new();
 
         // Build index_data by calculating offsets for each operation
-        for op in operations.iter() {
+        for op in operations.into_iter() {
             index_data.push(LookupIndex::new(op.log_index, current_offset));
             // Each operation is prefixed with REPLICATE_PREFIX (1 byte) and followed by serialized data
-            let serialized = op.clone().serialize();
+            let serialized = op.serialize();
             current_offset += serialized.len();
         }
 
         Ok(Segment {
             path: path.clone(),
-            start_index: operations.first().map(|op| op.log_index).unwrap_or(0),
-            end_index: operations.last().map(|op| op.log_index).unwrap_or(0),
+            start_index: index_data.first().map(|op| op.log_index).unwrap_or(0),
+            end_index: index_data.last().map(|op| op.log_index).unwrap_or(0),
             size: buf.len(),
             lookups: index_data,
         })
@@ -520,9 +520,10 @@ impl TWriteAheadLog for FileOpLogs {
         let mut writer = new_segment.create_writer().await?;
         let mut current_offset = 0;
 
-        for op in ops.iter() {
-            let serialized = op.clone().serialize();
-            new_segment.lookups.push(LookupIndex::new(op.log_index, current_offset));
+        for op in ops.into_iter() {
+            let log_index = op.log_index;
+            let serialized = op.serialize();
+            new_segment.lookups.push(LookupIndex::new(log_index, current_offset));
             current_offset += serialized.len();
             writer.write_all(&serialized).await?;
         }
