@@ -1,4 +1,3 @@
-use super::commands::AddPeer;
 use super::commands::ClusterCommand;
 use super::commands::ConsensusClientResponse;
 use super::commands::RejectionReason;
@@ -134,14 +133,12 @@ impl ClusterActor {
         Ok(())
     }
 
-    async fn add_peer(&mut self, add_peer_cmd: AddPeer) {
-        let AddPeer { peer_id, peer } = add_peer_cmd;
-
-        self.replication.remove_from_ban_list(&peer_id);
+    async fn add_peer(&mut self, peer: Peer) {
+        self.replication.remove_from_ban_list(&peer.id());
 
         // If the map did have this key present, the value is updated, and the old
         // value is returned. The key is not updated,
-        if let Some(existing_peer) = self.members.insert(peer_id, peer) {
+        if let Some(existing_peer) = self.members.insert(peer.id().clone(), peer) {
             existing_peer.kill().await;
         }
 
@@ -1618,9 +1615,7 @@ mod test {
         );
 
         // WHEN
-        let add_peer_cmd =
-            AddPeer { peer_id: PeerIdentifier(String::from("127.0.0.1:3849")), peer };
-        cluster_actor.add_peer(add_peer_cmd).await;
+        cluster_actor.add_peer(peer).await;
         cluster_actor.snapshot_topology().await.unwrap();
 
         // THEN
