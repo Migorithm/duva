@@ -70,71 +70,53 @@ impl PeerState {
         Self { addr: id.bind_addr().into(), match_index, replid, kind }
     }
 
-    pub(crate) fn parse_node_info(line: &str, self_repl_id: &str) -> Option<PeerState> {
+    pub(crate) fn parse_node_info(line: &str, self_repl_id: &str) -> Option<Self> {
         let parts: Vec<&str> = line.split_whitespace().collect();
-        if parts.len() != 4 {
-            return None;
-        }
 
-        let id_parts: Vec<_> = parts[1].split(',').collect();
-        let (is_myself, repl_id) = match id_parts.as_slice() {
-            ["myself", id] => (true, id.to_string()),
-            [id] => (false, id.to_string()),
-            _ => return None,
+        let [addr, id_part, _, match_index] = parts[..] else {
+            return None;
         };
 
-        let priority = if repl_id == self_repl_id { NodeKind::Replica } else { NodeKind::NonData };
+        let (is_myself, repl_id) = Self::parse_id_part(id_part)?;
+        let kind = Self::determine_node_kind(&repl_id, self_repl_id, is_myself);
+        let match_index = match_index.parse().unwrap_or_default();
 
-        Some(Self {
-            addr: parts[0].bind_addr().into(),
-            replid: repl_id.into(),
-            kind: if is_myself { NodeKind::Myself } else { priority },
-            match_index: parts[3].parse().unwrap_or_default(),
-        })
+        Some(Self { addr: addr.bind_addr().into(), replid: repl_id.into(), kind, match_index })
+    }
+
+    fn parse_id_part(id_part: &str) -> Option<(bool, String)> {
+        let id_parts: Vec<_> = id_part.split(',').collect();
+        match id_parts.as_slice() {
+            ["myself", id] => Some((true, id.to_string())),
+            [id] => Some((false, id.to_string())),
+            _ => None,
+        }
+    }
+
+    fn determine_node_kind(repl_id: &str, self_repl_id: &str, is_myself: bool) -> NodeKind {
+        if is_myself {
+            NodeKind::Myself
+        } else if repl_id == self_repl_id {
+            NodeKind::Replica
+        } else {
+            NodeKind::NonData
+        }
     }
 
     pub(crate) fn from_file(path: &str) -> Vec<Self> {
-        let Ok(metadata) = std::fs::metadata(path) else {
+        let Some(contents) = Self::read_file_if_valid(path) else {
             return vec![];
         };
-        let Ok(modified) = metadata.modified() else {
+
+        let Some(my_repl_id) = Self::extract_my_repl_id(&contents) else {
             return vec![];
         };
-        if modified.elapsed().unwrap_or_default().as_secs() > 300 {
-            // File is too old, ignoring
-            return vec![];
-        }
 
-        let contents = std::fs::read_to_string(path).unwrap_or_default();
-
-        let lines: Vec<&str> = contents.lines().filter(|line| !line.trim().is_empty()).collect();
-
-        // Find the line with "myself" to get the ID
-        let my_repl_id = lines.iter().find_map(|line| {
-            let parts: Vec<&str> = line.split_whitespace().collect();
-            if parts.len() != 4 {
-                return None;
-            }
-
-            let raw_id = parts[1];
-            let id_parts: Vec<&str> = raw_id.split(',').collect();
-
-            if id_parts.len() == 2 && id_parts[0] == "myself" {
-                Some(id_parts[1].to_string())
-            } else {
-                None
-            }
-        });
-
-        let my_repl_id = match my_repl_id {
-            Some(id) => id,
-            None => return vec![], // No myself ID, no valid peers
-        };
-
-        let mut nodes: Vec<Self> = lines
-            .into_iter()
+        let mut nodes: Vec<Self> = contents
+            .lines()
+            .filter(|line| !line.trim().is_empty())
             .filter_map(|line| Self::parse_node_info(line, &my_repl_id))
-            .filter(|node| node.kind != NodeKind::Myself) // 🧼 Exclude self
+            .filter(|node| node.kind != NodeKind::Myself)
             .collect();
 
         nodes.sort_by_key(|n| match n.kind {
@@ -143,6 +125,29 @@ impl PeerState {
             NodeKind::Myself => 2,
         });
         nodes
+    }
+
+    fn read_file_if_valid(path: &str) -> Option<String> {
+        let metadata = std::fs::metadata(path).ok()?;
+        let modified = metadata.modified().ok()?;
+
+        if modified.elapsed().unwrap_or_default().as_secs() > 300 {
+            return None;
+        }
+
+        std::fs::read_to_string(path).ok()
+    }
+
+    fn extract_my_repl_id(contents: &str) -> Option<String> {
+        contents.lines().filter(|line| !line.trim().is_empty()).find_map(|line| {
+            let parts: Vec<&str> = line.split_whitespace().collect();
+            for part in parts {
+                if part.contains("myself,") {
+                    return Some(part[7..].to_string());
+                }
+            }
+            None
+        })
     }
 }
 
