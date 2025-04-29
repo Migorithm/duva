@@ -74,11 +74,11 @@ impl CacheActor {
     pub(crate) fn set(&mut self, cache_entry: CacheEntry) {
         match cache_entry {
             CacheEntry::KeyValue { key, value } => {
-                self.cache.insert(key, CacheValue::Value(value));
+                self.cache.insert(key, CacheValue::new(value));
             },
             CacheEntry::KeyValueExpiry { key, value, expiry } => {
                 self.cache.keys_with_expiry += 1;
-                self.cache.insert(key.clone(), CacheValue::ValueWithExpiry { value, expiry });
+                self.cache.insert(key.clone(), CacheValue::new(value).with_expiry(expiry));
             },
         }
     }
