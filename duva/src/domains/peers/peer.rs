@@ -72,7 +72,7 @@ impl PeerState {
 
     pub(crate) fn parse_node_info(line: &str, self_repl_id: &str) -> Option<PeerState> {
         let parts: Vec<&str> = line.split_whitespace().collect();
-        if parts.len() != 3 {
+        if parts.len() != 4 {
             return None;
         }
 
@@ -89,7 +89,7 @@ impl PeerState {
             addr: parts[0].bind_addr().into(),
             replid: repl_id.into(),
             kind: if is_myself { NodeKind::Myself } else { priority },
-            match_index: 0, // TODO perhaps we should set this to the last known match index
+            match_index: parts[3].parse().unwrap_or_default(),
         })
     }
 
@@ -112,7 +112,7 @@ impl PeerState {
         // Find the line with "myself" to get the ID
         let my_repl_id = lines.iter().find_map(|line| {
             let parts: Vec<&str> = line.split_whitespace().collect();
-            if parts.len() != 3 {
+            if parts.len() != 4 {
                 return None;
             }
 
@@ -149,9 +149,11 @@ impl PeerState {
 impl std::fmt::Display for PeerState {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self.kind {
-            NodeKind::Replica => write!(f, "{} {} 0", self.addr, self.replid),
-            NodeKind::NonData => write!(f, "{} {} 0", self.addr, self.replid),
-            NodeKind::Myself => write!(f, "{} myself,{} 0", self.addr, self.replid),
+            NodeKind::Replica => write!(f, "{} {} 0 {}", self.addr, self.replid, self.match_index),
+            NodeKind::NonData => write!(f, "{} {} 0 {}", self.addr, self.replid, self.match_index),
+            NodeKind::Myself => {
+                write!(f, "{} myself,{} 0 {}", self.addr, self.replid, self.match_index)
+            },
         }
     }
 }
@@ -186,11 +188,11 @@ fn test_prioritize_nodes_with_same_replid() {
     use std::io::Write;
 
     let file_content = r#"
-    127.0.0.1:6000 0196477d-f227-72f2-81eb-6a3703076de8 0
-    127.0.0.1:6001 0196477d-f227-72f2-81eb-6a3703076de8 0
-    127.0.0.1:6002 myself,0196477d-f227-72f2-81eb-6a3703076de8 0
-    127.0.0.1:6003 99999999-aaaa-bbbb-cccc-111111111111 0
-    127.0.0.1:6004 deadbeef-dead-beef-dead-beefdeadbeef 0
+    127.0.0.1:6000 0196477d-f227-72f2-81eb-6a3703076de8 0 11
+    127.0.0.1:6001 0196477d-f227-72f2-81eb-6a3703076de8 0 13
+    127.0.0.1:6002 myself,0196477d-f227-72f2-81eb-6a3703076de8 0 15
+    127.0.0.1:6003 99999999-aaaa-bbbb-cccc-111111111111 0 5
+    127.0.0.1:6004 deadbeef-dead-beef-dead-beefdeadbeef 0 5
     "#;
 
     // Create temp file and write content
@@ -200,7 +202,7 @@ fn test_prioritize_nodes_with_same_replid() {
     // Read and prioritize nodes
     let nodes = PeerState::from_file(temp_file.path().to_str().unwrap());
 
-    // There should be 3 nodes, all with priority 0 (same ID as myself)
+    // There should be 4 nodes, all with priority 0 (same ID as myself)
     assert_eq!(nodes.len(), 4);
     assert_eq!(nodes.iter().filter(|n| n.kind == NodeKind::NonData).count(), 2);
     assert_eq!(nodes.iter().filter(|n| n.kind == NodeKind::Replica).count(), 2);
