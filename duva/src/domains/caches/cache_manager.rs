@@ -100,7 +100,7 @@ impl CacheManager {
                 .await?;
             },
             WriteRequest::Append { key, value } => {
-                self.route_set(CacheEntry::Append { key, value }).await?;
+                self.route_append(CacheEntry::Append { key, value }).await?;
             },
             WriteRequest::Delete { keys } => {
                 self.route_delete(keys).await?;
