@@ -3,7 +3,6 @@ use super::request::HandShakeRequestEnum;
 use crate::ClusterCommand;
 use crate::domains::IoError;
 
-use crate::domains::cluster_actors::commands::SyncLogs;
 use crate::domains::cluster_actors::listener::PeerListener;
 use crate::domains::cluster_actors::replication::ReplicationId;
 use crate::domains::cluster_actors::replication::ReplicationState;
@@ -161,9 +160,7 @@ impl InboundStream {
         if let NodeKind::Replica = connected_info.decide_peer_kind(&self.self_repl_info.replid).kind
         {
             if let ReplicationId::Undecided = connected_info.replid {
-                let logs = SyncLogs(
-                    logger.range(0, self.self_repl_info.hwm.load(Ordering::Acquire)).await,
-                );
+                let logs = logger.range(0, self.self_repl_info.hwm.load(Ordering::Acquire)).await;
                 self.w.write_io(logs).await?;
             }
         };
