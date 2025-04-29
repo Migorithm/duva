@@ -49,29 +49,32 @@ impl CacheEntry {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
-pub(crate) enum CacheValue {
-    Value(String),
-    ValueWithExpiry { value: String, expiry: DateTime<Utc> },
+pub(crate) struct CacheValue {
+    pub(crate) value: String,
+    pub(crate) expiry: Option<DateTime<Utc>>,
 }
 impl CacheValue {
+    pub(crate) fn new(value: String) -> Self {
+        Self { value, expiry: None }
+    }
+    pub(crate) fn with_expiry(self, expiry: DateTime<Utc>) -> Self {
+        Self { expiry: Some(expiry), ..self }
+    }
     pub(crate) fn has_expiry(&self) -> bool {
-        matches!(self, CacheValue::ValueWithExpiry { .. })
+        self.expiry.is_some()
     }
     pub(crate) fn value(&self) -> &str {
-        match self {
-            CacheValue::Value(v) => v,
-            CacheValue::ValueWithExpiry { value: v, .. } => v,
-        }
+        &self.value
     }
 
     pub(crate) fn to_cache_entry(&self, key: &str) -> CacheEntry {
-        match self {
-            CacheValue::Value(v) => CacheEntry::KeyValue { key: key.into(), value: v.into() },
-            CacheValue::ValueWithExpiry { value: v, expiry } => CacheEntry::KeyValueExpiry {
+        match self.expiry {
+            Some(expiry) => CacheEntry::KeyValueExpiry {
                 key: key.to_string(),
-                value: v.clone(),
-                expiry: *expiry,
+                value: self.value.clone(),
+                expiry,
             },
+            None => CacheEntry::KeyValue { key: key.to_string(), value: self.value.clone() },
         }
     }
 }

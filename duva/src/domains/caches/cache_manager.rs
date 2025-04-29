@@ -253,12 +253,12 @@ impl CacheManager {
     }
 
     pub(crate) async fn route_ttl(&self, key: String) -> Result<String> {
-        let Ok(Some(CacheValue::ValueWithExpiry { expiry, .. })) = self.route_get(key).await else {
+        let Ok(Some(CacheValue { expiry: Some(exp), .. })) = self.route_get(key).await else {
             return Ok("-1".to_string());
         };
 
         let now = Utc::now();
-        let ttl_in_sec = expiry.signed_duration_since(now).num_seconds();
+        let ttl_in_sec = exp.signed_duration_since(now).num_seconds();
         let ttl = if ttl_in_sec < 0 { "-1".to_string() } else { ttl_in_sec.to_string() };
         Ok(ttl)
     }

@@ -173,8 +173,7 @@ impl From<Vec<String>> for QueryIO {
 impl From<Option<CacheValue>> for QueryIO {
     fn from(v: Option<CacheValue>) -> Self {
         match v {
-            Some(CacheValue::Value(v)) => QueryIO::BulkString(v),
-            Some(CacheValue::ValueWithExpiry { value: v, .. }) => QueryIO::BulkString(v), // todo need to revisit
+            Some(cache_value) => QueryIO::BulkString(cache_value.value),
             None => QueryIO::Null,
         }
     }
