@@ -173,7 +173,7 @@ impl ClientController {
             .await?;
 
         match rx.await? {
-            //TODO remove option
+            //TODO how can we allow for early return?
             ConsensusClientResponse::LogIndex(log_index) => Ok(log_index),
             ConsensusClientResponse::Err(err) => Err(anyhow::anyhow!(err)),
         }

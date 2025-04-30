@@ -450,6 +450,7 @@ impl ClusterActor {
     ) {
         // * logging case
         if self.try_replicate_logs(wal, &mut heartbeat).await.is_err() {
+            eprintln!("[ERROR] Failed to replicate logs");
             return;
         };
 
@@ -615,7 +616,7 @@ impl ClusterActor {
             println!("[INFO] Received commit offset {}", heartbeat_hwm);
 
             for log_index in (old_hwm + 1)..=heartbeat_hwm {
-                let Some(log) = wal.read_at(log_index).await else {
+                let Some(log) = wal.read_at(dbg!(log_index)).await else {
                     println!("[ERROR] log has never been replicated!");
                     return;
                 };
