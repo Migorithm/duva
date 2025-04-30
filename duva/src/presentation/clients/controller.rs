@@ -173,7 +173,7 @@ impl ClientController {
             })
             .await?;
 
-        Ok(rx.await??)
+        rx.await?
     }
 
     async fn maybe_send_commit(&self, log_index_num: Option<u64>) -> anyhow::Result<()> {
