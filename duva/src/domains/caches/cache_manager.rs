@@ -103,20 +103,13 @@ impl CacheManager {
 
     pub(crate) async fn apply_log(&self, msg: WriteRequest, log_index: u64) -> Result<()> {
         match msg {
-            WriteRequest::Set { key, value } => {
-                self.route_set(key, value, None, log_index).await?;
-            },
-            WriteRequest::SetWithExpiry { key, value, expires_at } => {
-                self.route_set(
-                    key,
-                    value,
-                    Some(StoredDuration::Milliseconds(expires_at).to_datetime()),
-                    log_index,
-                )
-                .await?;
-            },
-            WriteRequest::Append { key, value } => {
-                self.route_append(CacheEntry::Append { key, value }).await?;
+            WriteRequest::Set { key, value, expires_at } => {
+                let expiry = if let Some(expires_at) = expires_at {
+                    Some(StoredDuration::Milliseconds(expires_at).to_datetime())
+                } else {
+                    None
+                };
+                self.route_set(key, value, expiry, log_index).await?;
             },
             WriteRequest::Delete { keys } => {
                 self.route_delete(keys).await?;
