@@ -33,7 +33,6 @@ impl ClientController {
         cmd: ClientAction,
         current_index: Option<u64>,
     ) -> anyhow::Result<QueryIO> {
-        // TODO if it is persistence operation, get the key and hash, take the appropriate sender, send it;
         let response = match cmd {
             ClientAction::Ping => QueryIO::SimpleString("PONG".into()),
             ClientAction::Echo(val) => QueryIO::BulkString(val),

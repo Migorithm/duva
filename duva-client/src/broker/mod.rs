@@ -13,7 +13,7 @@ use duva::prelude::tokio::sync::mpsc::Sender;
 use duva::prelude::uuid::Uuid;
 use duva::presentation::clients::request::ClientAction;
 use duva::{
-    clients::authentications::{AuthRequest, AuthResponse},
+    prelude::{AuthRequest, AuthResponse},
     services::interface::TSerdeReadWrite,
 };
 use input_queue::InputQueue;
