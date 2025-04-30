@@ -54,13 +54,6 @@ impl ClientAction {
             _ => None,
         }
     }
-    pub(crate) fn delta(&self) -> i64 {
-        match self {
-            ClientAction::Incr { .. } => 1,
-            ClientAction::Decr { .. } => -1,
-            _ => 0,
-        }
-    }
 }
 
 #[derive(Clone, Debug)]

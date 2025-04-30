@@ -15,7 +15,6 @@ impl TWriteAheadLog for MemoryOpLogs {
     }
     async fn append_many(&mut self, ops: Vec<WriteOperation>) -> Result<()> {
         self.writer.extend(ops);
-
         Ok(())
     }
 
