@@ -133,7 +133,7 @@ impl ClusterActor {
     }
 
     async fn add_peer(&mut self, peer: Peer) {
-        self.replication.remove_from_ban_list(&peer.id());
+        self.replication.remove_from_ban_list(peer.id());
 
         // If the map did have this key present, the value is updated, and the old
         // value is returned. The key is not updated,
@@ -1010,7 +1010,7 @@ mod test {
         assert_eq!(cluster_actor.consensus_tracker.len(), 0);
         assert_eq!(logger.last_log_index, 1);
 
-        client_wait.await.unwrap();
+        client_wait.await.unwrap().unwrap();
         assert!(sessions.is_processed(&Some(client_request))); // * session_request_is_marked_as_processed
     }
 
