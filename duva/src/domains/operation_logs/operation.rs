@@ -41,4 +41,13 @@ impl WriteRequest {
         }
         Ok(ops)
     }
+
+    pub(crate) fn key(&self) -> String {
+        match self {
+            WriteRequest::Set { key, .. } => key.clone(),
+            WriteRequest::Delete { keys, .. } => keys[0].clone(),
+            WriteRequest::Incr { key, .. } => key.clone(),
+            WriteRequest::Decr { key, .. } => key.clone(),
+        }
+    }
 }

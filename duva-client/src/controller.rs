@@ -73,6 +73,8 @@ impl<T> ClientController<T> {
                     },
                     QueryIO::Err(value) => Response::Error(value),
 
+                    QueryIO::BulkString(value) => Response::Integer(value.parse::<i64>().unwrap()),
+
                     _ => Response::FormatError,
                 }
             },

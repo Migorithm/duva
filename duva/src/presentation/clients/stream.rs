@@ -44,25 +44,25 @@ impl ClientStreamReader {
         handler: ClientController,
         sender: Sender<QueryIO>,
     ) {
-        loop {
+        'l: loop {
             match self.extract_query().await {
                 Ok(requests) => {
-                    let results = match handler.maybe_consensus_then_execute(requests).await {
-                        Ok(results) => results,
+                    for req in requests.into_iter() {
+                        match handler.maybe_consensus_then_execute(req).await {
+                            Ok(res) => {
+                                if sender.send(res).await.is_err() {
+                                    break 'l;
+                                }
+                            },
 
-                        // ! One of the following errors can be returned:
-                        // ! consensus or handler or commit
-                        Err(e) => {
-                            eprintln!("[ERROR] {:?}", e);
-                            let _ = sender.send(QueryIO::Err(e.to_string())).await;
-                            continue;
-                        },
-                    };
-
-                    for res in results {
-                        if sender.send(res).await.is_err() {
-                            break;
-                        }
+                            // ! One of the following errors can be returned:
+                            // ! consensus or handler or commit
+                            Err(e) => {
+                                eprintln!("[ERROR] {:?}", e);
+                                let _ = sender.send(QueryIO::Err(e.to_string())).await;
+                                continue;
+                            },
+                        };
                     }
                 },
 

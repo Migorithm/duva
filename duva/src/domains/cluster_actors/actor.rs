@@ -133,7 +133,7 @@ impl ClusterActor {
     }
 
     async fn add_peer(&mut self, peer: Peer) {
-        self.replication.remove_from_ban_list(&peer.id());
+        self.replication.remove_from_ban_list(peer.id());
 
         // If the map did have this key present, the value is updated, and the old
         // value is returned. The key is not updated,
@@ -299,22 +299,17 @@ impl ClusterActor {
         &mut self,
         logger: &mut ReplicatedLogs<impl TWriteAheadLog>,
         log: &WriteRequest,
-    ) -> Result<Vec<WriteOperation>, ConsensusClientResponse> {
+    ) -> Result<Vec<WriteOperation>, String> {
         if !self.replication.is_leader_mode {
-            return Err(ConsensusClientResponse::Err("Write given to follower".into()));
+            return Err("Write given to follower".into());
         }
 
         let Ok(append_entries) = logger
             .leader_write_entries(log, self.take_low_watermark(), self.replication.term)
             .await
         else {
-            return Err(ConsensusClientResponse::Err("Write operation failed".into()));
+            return Err("Write operation failed".into());
         };
-
-        // Skip consensus for no replicas
-        if self.replicas().count() == 0 {
-            return Err(ConsensusClientResponse::LogIndex(Some(logger.last_log_index)));
-        }
 
         Ok(append_entries)
     }
@@ -323,17 +318,23 @@ impl ClusterActor {
         &mut self,
         logger: &mut ReplicatedLogs<impl TWriteAheadLog>,
         log: WriteRequest,
-        callback: tokio::sync::oneshot::Sender<ConsensusClientResponse>,
+        callback: tokio::sync::oneshot::Sender<anyhow::Result<ConsensusClientResponse>>,
         session_req: Option<SessionRequest>,
     ) {
         let (prev_log_index, prev_term) = (logger.last_log_index, logger.last_log_term);
         let append_entries = match self.try_create_append_entries(logger, &log).await {
             Ok(entries) => entries,
             Err(err) => {
-                let _ = callback.send(err);
+                let _ = callback.send(Err(anyhow::anyhow!(err)));
                 return;
             },
         };
+
+        // Skip consensus for no replicas
+        if self.replicas().count() == 0 {
+            callback.send(Ok(ConsensusClientResponse::LogIndex(logger.last_log_index.into()))).ok();
+            return;
+        }
 
         self.consensus_tracker.add(
             logger.last_log_index,
@@ -410,7 +411,7 @@ impl ClusterActor {
             return;
         }
         sessions.set_response(consensus.session_req.take());
-        let _ = consensus.callback.send(ConsensusClientResponse::LogIndex(Some(res.log_idx)));
+        let _ = consensus.callback.send(Ok(ConsensusClientResponse::LogIndex(res.log_idx.into())));
     }
 
     // After send_ack: Leader updates its knowledge of follower's progress
@@ -945,7 +946,11 @@ mod test {
         let (tx, rx) = tokio::sync::oneshot::channel();
         handler
             .send(ClusterCommand::LeaderReqConsensus {
-                log: WriteRequest::Set { key: "foo".into(), value: "bar".into(), expires_at: None },
+                request: WriteRequest::Set {
+                    key: "foo".into(),
+                    value: "bar".into(),
+                    expires_at: None,
+                },
                 callback: tx,
                 session_req: Some(client_req),
             })
@@ -953,7 +958,7 @@ mod test {
             .unwrap();
 
         // THEN
-        rx.await.unwrap();
+        rx.await.unwrap().unwrap();
     }
 
     #[tokio::test]
@@ -1005,7 +1010,7 @@ mod test {
         assert_eq!(cluster_actor.consensus_tracker.len(), 0);
         assert_eq!(logger.last_log_index, 1);
 
-        client_wait.await.unwrap();
+        client_wait.await.unwrap().unwrap();
         assert!(sessions.is_processed(&Some(client_request))); // * session_request_is_marked_as_processed
     }
 
