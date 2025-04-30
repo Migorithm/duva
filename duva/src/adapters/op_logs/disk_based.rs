@@ -547,6 +547,14 @@ mod tests {
     use anyhow::Result;
     use tempfile::TempDir;
 
+    fn set_helper(index: u64, term: u64) -> WriteOperation {
+        WriteOperation {
+            request: WriteRequest::Set { key: "foo".into(), value: "bar".into(), expires_at: None },
+            log_index: index,
+            term,
+        }
+    }
+
     #[tokio::test]
     async fn test_new_creates_oplogs() -> Result<()> {
         // GIVEN
@@ -598,42 +606,10 @@ mod tests {
         let path = dir.path().join("local.oplog");
 
         // WHEN
-        {
-            let mut op_logs = FileOpLogs::new(&path).await?;
-            op_logs
-                .append(WriteOperation {
-                    request: WriteRequest::Set {
-                        key: "a".into(),
-                        value: "a".into(),
-                        expires_at: None,
-                    },
-                    log_index: 0,
-                    term: 0,
-                })
-                .await?;
-            op_logs
-                .append(WriteOperation {
-                    request: WriteRequest::Set {
-                        key: "b".into(),
-                        value: "b".into(),
-                        expires_at: None,
-                    },
-                    log_index: 1,
-                    term: 0,
-                })
-                .await?;
-            op_logs
-                .append(WriteOperation {
-                    request: WriteRequest::Set {
-                        key: "c".into(),
-                        value: "c".into(),
-                        expires_at: None,
-                    },
-                    log_index: 2,
-                    term: 1,
-                })
-                .await?;
-        }
+        let mut op_logs = FileOpLogs::new(&path).await?;
+        op_logs.append(set_helper(0, 0)).await?;
+        op_logs.append(set_helper(1, 0)).await?;
+        op_logs.append(set_helper(2, 1)).await?;
 
         let mut op_logs = FileOpLogs::new(&path).await?;
         let mut ops = Vec::new();
@@ -646,30 +622,9 @@ mod tests {
 
         // THEN
         assert_eq!(ops.len(), 3);
-        assert_eq!(
-            ops[0],
-            WriteOperation {
-                request: WriteRequest::Set { key: "a".into(), value: "a".into(), expires_at: None },
-                log_index: 0,
-                term: 0
-            }
-        );
-        assert_eq!(
-            ops[1],
-            WriteOperation {
-                request: WriteRequest::Set { key: "b".into(), value: "b".into(), expires_at: None },
-                log_index: 1,
-                term: 0
-            }
-        );
-        assert_eq!(
-            ops[2],
-            WriteOperation {
-                request: WriteRequest::Set { key: "c".into(), value: "c".into(), expires_at: None },
-                log_index: 2,
-                term: 1
-            }
-        );
+        assert_eq!(ops[0], set_helper(0, 0));
+        assert_eq!(ops[1], set_helper(1, 0));
+        assert_eq!(ops[2], set_helper(2, 1));
 
         Ok(())
     }
@@ -685,39 +640,9 @@ mod tests {
         // Append three ops.
         {
             let mut op_logs = FileOpLogs::new(&path).await?;
-            op_logs
-                .append(WriteOperation {
-                    request: WriteRequest::Set {
-                        key: "a".into(),
-                        value: "a".into(),
-                        expires_at: None,
-                    },
-                    log_index: 0,
-                    term: 0,
-                })
-                .await?;
-            op_logs
-                .append(WriteOperation {
-                    request: WriteRequest::Set {
-                        key: "b".into(),
-                        value: "b".into(),
-                        expires_at: None,
-                    },
-                    log_index: 1,
-                    term: 0,
-                })
-                .await?;
-            op_logs
-                .append(WriteOperation {
-                    request: WriteRequest::Set {
-                        key: "c".into(),
-                        value: "c".into(),
-                        expires_at: None,
-                    },
-                    log_index: 2,
-                    term: 1,
-                })
-                .await?;
+            op_logs.append(set_helper(0, 0)).await?;
+            op_logs.append(set_helper(1, 0)).await?;
+            op_logs.append(set_helper(2, 1)).await?;
         }
 
         // Corrupt file content by truncating to the first half.
@@ -747,14 +672,7 @@ mod tests {
 
         // THEN
         assert_eq!(ops.len(), 1);
-        assert_eq!(
-            ops[0],
-            WriteOperation {
-                request: WriteRequest::Set { key: "a".into(), value: "a".into(), expires_at: None },
-                log_index: 0,
-                term: 0
-            }
-        );
+        assert_eq!(ops[0], set_helper(0, 0));
 
         Ok(())
     }
@@ -789,28 +707,8 @@ mod tests {
         // Create initial segment with some operations
         {
             let mut op_logs = FileOpLogs::new(&path).await?;
-            op_logs
-                .append(WriteOperation {
-                    request: WriteRequest::Set {
-                        key: "a".into(),
-                        value: "a".into(),
-                        expires_at: None,
-                    },
-                    log_index: 10,
-                    term: 1,
-                })
-                .await?;
-            op_logs
-                .append(WriteOperation {
-                    request: WriteRequest::Set {
-                        key: "b".into(),
-                        value: "b".into(),
-                        expires_at: None,
-                    },
-                    log_index: 11,
-                    term: 1,
-                })
-                .await?;
+            op_logs.append(set_helper(10, 1)).await?;
+            op_logs.append(set_helper(11, 1)).await?;
         }
 
         // WHEN
@@ -844,37 +742,36 @@ mod tests {
         let path = dir.path();
 
         // Create multiple segments by forcing rotation
-        {
-            let mut op_logs = FileOpLogs::new(&path).await?;
-            // Fill first segment
-            for i in 0..100 {
-                op_logs
-                    .append(WriteOperation {
-                        request: WriteRequest::Set {
-                            key: format!("key_{}", i).into(),
-                            value: format!("value_{}", i).into(),
-                            expires_at: None,
-                        },
-                        log_index: i as u64,
-                        term: 1,
-                    })
-                    .await?;
-            }
-            // Force rotation
-            op_logs.rotate_segment().await?;
-            // Add to new segment
+
+        let mut op_logs = FileOpLogs::new(&path).await?;
+        // Fill first segment
+        for i in 0..100 {
             op_logs
                 .append(WriteOperation {
                     request: WriteRequest::Set {
-                        key: "new".into(),
-                        value: "value".into(),
+                        key: format!("key_{}", i).into(),
+                        value: format!("value_{}", i).into(),
                         expires_at: None,
                     },
-                    log_index: 100,
+                    log_index: i as u64,
                     term: 1,
                 })
                 .await?;
         }
+        // Force rotation
+        op_logs.rotate_segment().await?;
+        // Add to new segment
+        op_logs
+            .append(WriteOperation {
+                request: WriteRequest::Set {
+                    key: "new".into(),
+                    value: "value".into(),
+                    expires_at: None,
+                },
+                log_index: 100,
+                term: 1,
+            })
+            .await?;
 
         // WHEN
         let mut op_logs = FileOpLogs::new(&path).await?;
@@ -907,17 +804,7 @@ mod tests {
 
         // Create a segment and corrupt it
         let mut op_logs = FileOpLogs::new(&path).await?;
-        op_logs
-            .append(WriteOperation {
-                request: WriteRequest::Set {
-                    key: "good".into(),
-                    value: "data".into(),
-                    expires_at: None,
-                },
-                log_index: 0,
-                term: 1,
-            })
-            .await?;
+        op_logs.append(set_helper(0, 1)).await?;
 
         // Corrupt the segment file
         let segment_path = path.join("segment_0.oplog");
@@ -986,18 +873,7 @@ mod tests {
         println!("Old segments before sync: {:?}", old_segment_paths);
 
         // WHEN
-        let new_ops = vec![
-            WriteOperation {
-                request: WriteRequest::Set { key: "a".into(), value: "a".into(), expires_at: None },
-                log_index: 0,
-                term: 2,
-            },
-            WriteOperation {
-                request: WriteRequest::Set { key: "b".into(), value: "b".into(), expires_at: None },
-                log_index: 1,
-                term: 2,
-            },
-        ];
+        let new_ops = vec![set_helper(0, 2), set_helper(1, 2)];
         op_logs.follower_full_sync(new_ops.clone()).await?;
 
         // THEN
@@ -1040,13 +916,7 @@ mod tests {
 
         // Create initial segments with some operations
         let mut op_logs = FileOpLogs::new(&path).await?;
-        op_logs
-            .append(WriteOperation {
-                request: WriteRequest::Set { key: "a".into(), value: "a".into(), expires_at: None },
-                log_index: 0,
-                term: 1,
-            })
-            .await?;
+        op_logs.append(set_helper(0, 1)).await?;
 
         // WHEN
         op_logs.follower_full_sync(Vec::new()).await?;
@@ -1318,26 +1188,7 @@ mod tests {
         let mut op_logs = FileOpLogs::new(&path).await?;
 
         // Write some operations
-        let ops = vec![
-            WriteOperation {
-                request: WriteRequest::Set {
-                    key: "key1".into(),
-                    value: "value1".into(),
-                    expires_at: None,
-                },
-                log_index: 1,
-                term: 1,
-            },
-            WriteOperation {
-                request: WriteRequest::Set {
-                    key: "key2".into(),
-                    value: "value2".into(),
-                    expires_at: None,
-                },
-                log_index: 2,
-                term: 1,
-            },
-        ];
+        let ops = vec![set_helper(1, 1), set_helper(2, 1)];
 
         // Append operations
         for op in ops.clone() {
@@ -1476,18 +1327,7 @@ mod tests {
         }
 
         // Perform full sync with new operations
-        let new_ops = vec![
-            WriteOperation {
-                request: WriteRequest::Set { key: "a".into(), value: "a".into(), expires_at: None },
-                log_index: 0,
-                term: 2,
-            },
-            WriteOperation {
-                request: WriteRequest::Set { key: "b".into(), value: "b".into(), expires_at: None },
-                log_index: 1,
-                term: 2,
-            },
-        ];
+        let new_ops = vec![set_helper(0, 2), set_helper(1, 2)];
 
         op_logs.follower_full_sync(new_ops.clone()).await?;
 
