@@ -45,7 +45,6 @@ impl InboundStream {
         // TODO find use of capa?
         let _capa_val_vec = self.recv_replconf_capa().await?;
 
-        // TODO check repl_id is '?' or of mine. If not, consider incoming as peer
         let (peer_leader_repl_id, peer_hwm) = self.recv_psync().await?;
 
         let addr = self.r.peer_addr().map_err(|error| Into::<IoError>::into(error.kind()))?;

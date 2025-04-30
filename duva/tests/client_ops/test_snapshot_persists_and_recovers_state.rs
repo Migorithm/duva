@@ -3,7 +3,6 @@ use crate::common::{ServerEnv, spawn_server_process};
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 
-// TODO response cannot be deterministic!
 #[tokio::test]
 async fn test_snapshot_persists_and_recovers_state() -> anyhow::Result<()> {
     // GIVEN
