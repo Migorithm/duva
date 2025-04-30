@@ -569,7 +569,8 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let path = dir.path();
         let mut op_logs = FileOpLogs::new(&path).await.unwrap();
-        let request = WriteRequest::Set { key: "foo".into(), value: "bar".into() };
+        let request =
+            WriteRequest::Set { key: "foo".into(), value: "bar".into(), expires_at: None };
         let write_op = WriteOperation { request, log_index: 0, term: 0 };
 
         // WHEN
@@ -601,21 +602,33 @@ mod tests {
             let mut op_logs = FileOpLogs::new(&path).await?;
             op_logs
                 .append(WriteOperation {
-                    request: WriteRequest::Set { key: "a".into(), value: "a".into() },
+                    request: WriteRequest::Set {
+                        key: "a".into(),
+                        value: "a".into(),
+                        expires_at: None,
+                    },
                     log_index: 0,
                     term: 0,
                 })
                 .await?;
             op_logs
                 .append(WriteOperation {
-                    request: WriteRequest::Set { key: "b".into(), value: "b".into() },
+                    request: WriteRequest::Set {
+                        key: "b".into(),
+                        value: "b".into(),
+                        expires_at: None,
+                    },
                     log_index: 1,
                     term: 0,
                 })
                 .await?;
             op_logs
                 .append(WriteOperation {
-                    request: WriteRequest::Set { key: "c".into(), value: "c".into() },
+                    request: WriteRequest::Set {
+                        key: "c".into(),
+                        value: "c".into(),
+                        expires_at: None,
+                    },
                     log_index: 2,
                     term: 1,
                 })
@@ -636,7 +649,7 @@ mod tests {
         assert_eq!(
             ops[0],
             WriteOperation {
-                request: WriteRequest::Set { key: "a".into(), value: "a".into() },
+                request: WriteRequest::Set { key: "a".into(), value: "a".into(), expires_at: None },
                 log_index: 0,
                 term: 0
             }
@@ -644,7 +657,7 @@ mod tests {
         assert_eq!(
             ops[1],
             WriteOperation {
-                request: WriteRequest::Set { key: "b".into(), value: "b".into() },
+                request: WriteRequest::Set { key: "b".into(), value: "b".into(), expires_at: None },
                 log_index: 1,
                 term: 0
             }
@@ -652,7 +665,7 @@ mod tests {
         assert_eq!(
             ops[2],
             WriteOperation {
-                request: WriteRequest::Set { key: "c".into(), value: "c".into() },
+                request: WriteRequest::Set { key: "c".into(), value: "c".into(), expires_at: None },
                 log_index: 2,
                 term: 1
             }
@@ -674,21 +687,33 @@ mod tests {
             let mut op_logs = FileOpLogs::new(&path).await?;
             op_logs
                 .append(WriteOperation {
-                    request: WriteRequest::Set { key: "a".into(), value: "a".into() },
+                    request: WriteRequest::Set {
+                        key: "a".into(),
+                        value: "a".into(),
+                        expires_at: None,
+                    },
                     log_index: 0,
                     term: 0,
                 })
                 .await?;
             op_logs
                 .append(WriteOperation {
-                    request: WriteRequest::Set { key: "b".into(), value: "b".into() },
+                    request: WriteRequest::Set {
+                        key: "b".into(),
+                        value: "b".into(),
+                        expires_at: None,
+                    },
                     log_index: 1,
                     term: 0,
                 })
                 .await?;
             op_logs
                 .append(WriteOperation {
-                    request: WriteRequest::Set { key: "c".into(), value: "c".into() },
+                    request: WriteRequest::Set {
+                        key: "c".into(),
+                        value: "c".into(),
+                        expires_at: None,
+                    },
                     log_index: 2,
                     term: 1,
                 })
@@ -725,7 +750,7 @@ mod tests {
         assert_eq!(
             ops[0],
             WriteOperation {
-                request: WriteRequest::Set { key: "a".into(), value: "a".into() },
+                request: WriteRequest::Set { key: "a".into(), value: "a".into(), expires_at: None },
                 log_index: 0,
                 term: 0
             }
@@ -766,14 +791,22 @@ mod tests {
             let mut op_logs = FileOpLogs::new(&path).await?;
             op_logs
                 .append(WriteOperation {
-                    request: WriteRequest::Set { key: "a".into(), value: "a".into() },
+                    request: WriteRequest::Set {
+                        key: "a".into(),
+                        value: "a".into(),
+                        expires_at: None,
+                    },
                     log_index: 10,
                     term: 1,
                 })
                 .await?;
             op_logs
                 .append(WriteOperation {
-                    request: WriteRequest::Set { key: "b".into(), value: "b".into() },
+                    request: WriteRequest::Set {
+                        key: "b".into(),
+                        value: "b".into(),
+                        expires_at: None,
+                    },
                     log_index: 11,
                     term: 1,
                 })
@@ -820,6 +853,7 @@ mod tests {
                         request: WriteRequest::Set {
                             key: format!("key_{}", i).into(),
                             value: format!("value_{}", i).into(),
+                            expires_at: None,
                         },
                         log_index: i as u64,
                         term: 1,
@@ -831,7 +865,11 @@ mod tests {
             // Add to new segment
             op_logs
                 .append(WriteOperation {
-                    request: WriteRequest::Set { key: "new".into(), value: "value".into() },
+                    request: WriteRequest::Set {
+                        key: "new".into(),
+                        value: "value".into(),
+                        expires_at: None,
+                    },
                     log_index: 100,
                     term: 1,
                 })
@@ -871,7 +909,11 @@ mod tests {
         let mut op_logs = FileOpLogs::new(&path).await?;
         op_logs
             .append(WriteOperation {
-                request: WriteRequest::Set { key: "good".into(), value: "data".into() },
+                request: WriteRequest::Set {
+                    key: "good".into(),
+                    value: "data".into(),
+                    expires_at: None,
+                },
                 log_index: 0,
                 term: 1,
             })
@@ -903,6 +945,7 @@ mod tests {
                     request: WriteRequest::Set {
                         key: format!("key_{}", i).into(),
                         value: format!("value_{}", i).into(),
+                        expires_at: None,
                     },
                     log_index: i as u64,
                     term: 1,
@@ -914,7 +957,11 @@ mod tests {
         // Append one more op to segment_1.oplog
         op_logs
             .append(WriteOperation {
-                request: WriteRequest::Set { key: "new".into(), value: "value".into() },
+                request: WriteRequest::Set {
+                    key: "new".into(),
+                    value: "value".into(),
+                    expires_at: None,
+                },
                 log_index: 100, // Note: This index might be wrong if 0..99 filled the segment exactly.
                 // The log_index should ideally be sequential across segments.
                 // If op 99 was the last in segment_0, this should be 100.
@@ -941,12 +988,12 @@ mod tests {
         // WHEN
         let new_ops = vec![
             WriteOperation {
-                request: WriteRequest::Set { key: "a".into(), value: "a".into() },
+                request: WriteRequest::Set { key: "a".into(), value: "a".into(), expires_at: None },
                 log_index: 0,
                 term: 2,
             },
             WriteOperation {
-                request: WriteRequest::Set { key: "b".into(), value: "b".into() },
+                request: WriteRequest::Set { key: "b".into(), value: "b".into(), expires_at: None },
                 log_index: 1,
                 term: 2,
             },
@@ -995,7 +1042,7 @@ mod tests {
         let mut op_logs = FileOpLogs::new(&path).await?;
         op_logs
             .append(WriteOperation {
-                request: WriteRequest::Set { key: "a".into(), value: "a".into() },
+                request: WriteRequest::Set { key: "a".into(), value: "a".into(), expires_at: None },
                 log_index: 0,
                 term: 1,
             })
@@ -1030,6 +1077,7 @@ mod tests {
                 request: WriteRequest::Set {
                     key: format!("key_{}", i).into(),
                     value: format!("value_{}", i).into(),
+                    expires_at: None,
                 },
                 log_index: i as u64,
                 term: 2,
@@ -1068,6 +1116,7 @@ mod tests {
                 request: WriteRequest::Set {
                     key: format!("key_{}", start_index + i as u64).into(),
                     value: format!("value_{}", start_index + i as u64).into(),
+                    expires_at: None,
                 },
                 log_index: start_index + i as u64,
                 term,
@@ -1271,12 +1320,20 @@ mod tests {
         // Write some operations
         let ops = vec![
             WriteOperation {
-                request: WriteRequest::Set { key: "key1".into(), value: "value1".into() },
+                request: WriteRequest::Set {
+                    key: "key1".into(),
+                    value: "value1".into(),
+                    expires_at: None,
+                },
                 log_index: 1,
                 term: 1,
             },
             WriteOperation {
-                request: WriteRequest::Set { key: "key2".into(), value: "value2".into() },
+                request: WriteRequest::Set {
+                    key: "key2".into(),
+                    value: "value2".into(),
+                    expires_at: None,
+                },
                 log_index: 2,
                 term: 1,
             },
@@ -1318,6 +1375,7 @@ mod tests {
                     request: WriteRequest::Set {
                         key: format!("key_{}", i).into(),
                         value: format!("value_{}", i).into(),
+                        expires_at: None,
                     },
                     log_index: i as u64,
                     term: 1,
@@ -1337,7 +1395,11 @@ mod tests {
         // Add to new segment
         op_logs
             .append(WriteOperation {
-                request: WriteRequest::Set { key: "new".into(), value: "value".into() },
+                request: WriteRequest::Set {
+                    key: "new".into(),
+                    value: "value".into(),
+                    expires_at: None,
+                },
                 log_index: 100,
                 term: 1,
             })
@@ -1364,6 +1426,7 @@ mod tests {
                         request: WriteRequest::Set {
                             key: format!("key_{}", i).into(),
                             value: format!("value_{}", i).into(),
+                            expires_at: None,
                         },
                         log_index: i as u64,
                         term: 1,
@@ -1404,6 +1467,7 @@ mod tests {
                     request: WriteRequest::Set {
                         key: format!("key_{}", i).into(),
                         value: format!("value_{}", i).into(),
+                        expires_at: None,
                     },
                     log_index: i as u64,
                     term: 1,
@@ -1414,12 +1478,12 @@ mod tests {
         // Perform full sync with new operations
         let new_ops = vec![
             WriteOperation {
-                request: WriteRequest::Set { key: "a".into(), value: "a".into() },
+                request: WriteRequest::Set { key: "a".into(), value: "a".into(), expires_at: None },
                 log_index: 0,
                 term: 2,
             },
             WriteOperation {
-                request: WriteRequest::Set { key: "b".into(), value: "b".into() },
+                request: WriteRequest::Set { key: "b".into(), value: "b".into(), expires_at: None },
                 log_index: 1,
                 term: 2,
             },

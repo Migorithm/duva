@@ -12,8 +12,7 @@ pub struct WriteOperation {
 /// Client request is converted to WriteOperation and then it turns into WriteOp when it gets offset
 #[derive(Debug, Clone, PartialEq, Eq, bincode::Encode, bincode::Decode)]
 pub enum WriteRequest {
-    Set { key: String, value: String },
-    SetWithExpiry { key: String, value: String, expires_at: u64 },
+    Set { key: String, value: String, expires_at: Option<u64> },
     Delete { keys: Vec<String> },
     Decr { key: String, delta: i64 },
     Incr { key: String, delta: i64 },
