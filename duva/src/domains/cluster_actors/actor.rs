@@ -616,14 +616,14 @@ impl ClusterActor {
             println!("[INFO] Received commit offset {}", heartbeat_hwm);
 
             for log_index in (old_hwm + 1)..=heartbeat_hwm {
-                let Some(log) = wal.read_at(dbg!(log_index)).await else {
+                let Some(log) = wal.read_at(log_index).await else {
                     println!("[ERROR] log has never been replicated!");
                     return;
                 };
 
                 if let Err(e) = cache_manager.apply_log(log.request, log_index).await {
-                    println!("[ERROR] Failed to apply log: {:?}", e);
-                    return; // Stop on first error
+                    // ! DON'T PANIC - post validation is where we just don't update state
+                    println!("[ERROR] Failed to apply log: {e}")
                 }
             }
             self.replication.hwm.store(heartbeat_hwm, Ordering::Release);
