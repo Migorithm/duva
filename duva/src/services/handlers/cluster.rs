@@ -70,8 +70,8 @@ impl ClusterActor {
                     // TODO if continued, it shouldn't proceed and commit.
                     if client_sessions.is_processed(&session_req) {
                         // TODO is it okay to send current log index?
-                        let _ = callback
-                            .send(ConsensusClientResponse::LogIndex(Some(logger.last_log_index)));
+                        let _ =
+                            callback.send(ConsensusClientResponse::LogIndex(logger.last_log_index));
                         continue;
                     };
 

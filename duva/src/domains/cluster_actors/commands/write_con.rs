@@ -4,7 +4,7 @@ use crate::domains::{
 
 #[derive(Debug)]
 pub(crate) enum ConsensusClientResponse {
-    LogIndex(Option<u64>),
+    LogIndex(u64),
     Err(String),
 }
 
