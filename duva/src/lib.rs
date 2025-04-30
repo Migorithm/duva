@@ -27,14 +27,15 @@ use tokio::net::TcpListener;
 
 pub mod prelude {
     pub use crate::domains::peers::identifier::PeerIdentifier;
+    pub use crate::presentation::clients::AuthRequest;
+    pub use crate::presentation::clients::AuthResponse;
+
     pub use anyhow;
     pub use bytes;
     pub use bytes::BytesMut;
     pub use tokio;
     pub use uuid;
 }
-
-pub mod clients;
 
 // * StartUp Facade that manages invokes subsystems
 pub struct StartUpFacade {

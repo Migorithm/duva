@@ -120,7 +120,6 @@ impl ClusterActor {
     }
 
     pub(crate) async fn snapshot_topology(&mut self) -> anyhow::Result<()> {
-        // TODO: consider single writer access to file
         let topology = self
             .cluster_nodes()
             .into_iter()

@@ -1,5 +1,4 @@
 use crate::{
-    clients::authentications::{AuthRequest, AuthResponse},
     domains::IoError,
     prelude::PeerIdentifier,
     presentation::clients::stream::{ClientStreamReader, ClientStreamWriter},
@@ -17,7 +16,6 @@ pub(crate) async fn authenticate(
 
     let client_id = match auth_req.client_id {
         Some(client_id) => {
-            // TODO check if the given client_id has been tracked
             Uuid::parse_str(&client_id).map_err(|e| IoError::Custom(e.to_string()))?
         },
         None => Uuid::now_v7(),
@@ -37,4 +35,18 @@ pub(crate) async fn authenticate(
     let sender = ClientStreamWriter(w);
 
     Ok((reader, sender))
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default, bincode::Decode, bincode::Encode)]
+pub struct AuthRequest {
+    pub client_id: Option<String>,
+    pub request_id: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default, bincode::Decode, bincode::Encode)]
+pub struct AuthResponse {
+    pub client_id: String,
+    pub request_id: u64,
+    pub cluster_nodes: Vec<PeerIdentifier>,
+    pub connected_to_leader: bool,
 }
