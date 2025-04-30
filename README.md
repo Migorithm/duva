@@ -1,5 +1,7 @@
 
-<img src="https://github.com/user-attachments/assets/1d3b2071-be76-4473-af30-594dc6e88951" width="300" />
+<img src="https://github.com/user-attachments/assets/8da30f31-b0bd-401b-b06f-94572d3cc24c" width="300" />
+
+
 
 ## [Documentation](https://migorithm.github.io/duva/) 
 Duva is a distributed cache server aimed at efficient and scalable key-value store operations using Actor models, written in Rust
