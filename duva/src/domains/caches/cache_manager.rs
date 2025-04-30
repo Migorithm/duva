@@ -115,10 +115,10 @@ impl CacheManager {
                 self.route_delete(keys).await?;
             },
             WriteRequest::Decr { key, delta } => {
-                self.route_decr(key, delta, log_index).await?;
+                self.route_numeric_delta(key, delta, log_index).await?;
             },
             WriteRequest::Incr { key, delta } => {
-                self.route_incr(key, delta, log_index).await?;
+                self.route_numeric_delta(key, delta, log_index).await?;
             },
         };
 
@@ -275,15 +275,15 @@ impl CacheManager {
         Ok(ttl)
     }
 
-    pub(crate) async fn route_incr(
+    pub(crate) async fn route_numeric_delta(
         &self,
         key: String,
         arg: i64,
         current_idx: u64,
     ) -> Result<String> {
         let Some(v) = self.route_get(&key).await? else {
-            self.route_set(key, 1.to_string(), None, current_idx).await?;
-            return Ok("1".to_string());
+            self.route_set(key, arg.to_string(), None, current_idx).await?;
+            return Ok(arg.to_string());
         };
         let num =
             v.value().parse::<i64>().context("ERR value is not an integer or out of range")?;
@@ -294,25 +294,5 @@ impl CacheManager {
             .to_string();
         self.route_set(key, incremented.clone(), None, current_idx).await?;
         Ok(incremented)
-    }
-
-    pub(crate) async fn route_decr(
-        &self,
-        key: String,
-        arg: i64,
-        current_idx: u64,
-    ) -> Result<String> {
-        let Some(v) = self.route_get(&key).await? else {
-            return Ok(self.route_set(key, "-1".to_string(), None, current_idx).await?);
-        };
-        let num =
-            v.value().parse::<i64>().context("ERR value is not an integer or out of range")?;
-        // Handle potential overflow
-        let incremented = num
-            .checked_sub(arg)
-            .context("ERR value is not an integer or out of range")?
-            .to_string();
-
-        Ok(self.route_set(key, incremented, None, current_idx).await?)
     }
 }
