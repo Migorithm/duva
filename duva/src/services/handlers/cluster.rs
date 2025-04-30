@@ -66,16 +66,18 @@ impl ClusterActor {
                         let _ = sender.send(None);
                     }
                 },
-                ClusterCommand::LeaderReqConsensus { log, callback, session_req } => {
+                ClusterCommand::LeaderReqConsensus { request, callback, session_req } => {
                     // TODO if continued, it shouldn't proceed and commit.
                     if client_sessions.is_processed(&session_req) {
                         // TODO is it okay to send current log index?
-                        let _ =
-                            callback.send(ConsensusClientResponse::LogIndex(logger.last_log_index));
+                        let _ = callback.send(Ok(ConsensusClientResponse::AlreadyProcessed {
+                            key: request.key(),
+                            index: logger.last_log_index,
+                        }));
                         continue;
                     };
 
-                    self.req_consensus(&mut logger, log, callback, session_req).await;
+                    self.req_consensus(&mut logger, request, callback, session_req).await;
                 },
                 ClusterCommand::AppendEntriesRPC(heartbeat) => {
                     if self.check_term_outdated(&heartbeat, &logger).await {

@@ -9,7 +9,6 @@ use crate::domains::saves::actor::SaveTarget;
 use crate::presentation::clients::request::ClientAction;
 use crate::presentation::clusters::communication_manager::ClusterCommunicationManager;
 
-use futures::future::try_join_all;
 use std::sync::atomic::Ordering;
 
 #[derive(Clone)]
@@ -134,48 +133,47 @@ impl ClientController {
         Ok(response)
     }
 
-    // Manage the client requests & consensus
     pub(crate) async fn maybe_consensus_then_execute(
         &self,
-        mut requests: Vec<ClientRequest>,
-    ) -> anyhow::Result<Vec<QueryIO>> {
-        let consensus = try_join_all(requests.iter_mut().map(|r| self.maybe_consensus(r))).await?;
+        mut request: ClientRequest,
+    ) -> anyhow::Result<QueryIO> {
+        let consensus_res = self.maybe_consensus(&mut request).await?;
 
-        // apply write operation to the state machine if it's a write request
-        let mut results = Vec::with_capacity(requests.len());
-        for (request, log_index_num) in requests.into_iter().zip(consensus.into_iter()) {
-            let (res, _) = tokio::try_join!(
-                self.handle(request.action, log_index_num),
-                self.maybe_send_commit(log_index_num)
-            )?;
-            results.push(res);
+        match consensus_res {
+            ConsensusClientResponse::AlreadyProcessed { key, index } => {
+                // * Conversion! request has already been processed so we need to convert it to get
+                request.action = ClientAction::IndexGet { key, index };
+                self.handle(request.action, Some(index)).await
+            },
+            ConsensusClientResponse::LogIndex(optional_idx) => {
+                let (res, _) = tokio::try_join!(
+                    self.handle(request.action, optional_idx),
+                    self.maybe_send_commit(optional_idx)
+                )?;
+                Ok(res)
+            },
         }
-        Ok(results)
     }
 
-    pub(crate) async fn maybe_consensus(
+    async fn maybe_consensus(
         &self,
         request: &mut ClientRequest,
-    ) -> anyhow::Result<Option<u64>> {
+    ) -> anyhow::Result<ConsensusClientResponse> {
         // If the request doesn't require consensus, return Ok
         let Some(log) = request.action.to_write_request() else {
-            return Ok(None);
+            return Ok(ConsensusClientResponse::LogIndex(None));
         };
 
         let (tx, rx) = tokio::sync::oneshot::channel();
         self.cluster_communication_manager
             .send(ClusterCommand::LeaderReqConsensus {
-                log,
+                request: log,
                 callback: tx,
                 session_req: request.session_req.take(),
             })
             .await?;
 
-        match rx.await? {
-            //TODO how can we allow for early return?
-            ConsensusClientResponse::LogIndex(log_index) => Ok(Some(log_index)),
-            ConsensusClientResponse::Err(err) => Err(anyhow::anyhow!(err)),
-        }
+        Ok(rx.await??)
     }
 
     async fn maybe_send_commit(&self, log_index_num: Option<u64>) -> anyhow::Result<()> {
