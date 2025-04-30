@@ -9,7 +9,9 @@ use crate::domains::saves::actor::SaveActor;
 use crate::domains::saves::actor::SaveTarget;
 use crate::domains::saves::endec::StoredDuration;
 use crate::domains::saves::snapshot::Snapshot;
+use anyhow::Context;
 use anyhow::Result;
+use chrono::DateTime;
 use chrono::Utc;
 use futures::StreamExt;
 use futures::future::join_all;
@@ -54,9 +56,22 @@ impl CacheManager {
         Ok(rx.await?)
     }
 
-    pub(crate) async fn route_set(&self, kvs: CacheEntry) -> Result<()> {
+    pub(crate) async fn route_set(
+        &self,
+        key: String,
+        value: String,
+        expiry: Option<DateTime<Utc>>,
+        current_idx: u64,
+    ) -> Result<String> {
+        let kvs = match expiry {
+            Some(expiry) => {
+                CacheEntry::KeyValueExpiry { key: key.to_owned(), value: value.clone(), expiry }
+            },
+            None => CacheEntry::KeyValue { key: key.to_owned(), value: value.clone() },
+        };
+
         self.select_shard(kvs.key()).send(CacheCommand::Set { cache_entry: kvs }).await?;
-        Ok(())
+        Ok(format!("s:{}|idx:{}", value, current_idx))
     }
 
     pub(crate) async fn route_save(
@@ -81,21 +96,28 @@ impl CacheManager {
         Ok(tokio::spawn(save_actor.run(inbox)))
     }
 
-    pub(crate) async fn apply_log(&self, msg: WriteRequest) -> Result<()> {
+    pub(crate) async fn apply_log(&self, msg: WriteRequest, log_index: u64) -> Result<()> {
         match msg {
             WriteRequest::Set { key, value } => {
-                self.route_set(CacheEntry::KeyValue { key, value }).await?;
+                self.route_set(key, value, None, log_index).await?;
             },
             WriteRequest::SetWithExpiry { key, value, expires_at } => {
-                self.route_set(CacheEntry::KeyValueExpiry {
+                self.route_set(
                     key,
                     value,
-                    expiry: StoredDuration::Milliseconds(expires_at).to_datetime(),
-                })
+                    Some(StoredDuration::Milliseconds(expires_at).to_datetime()),
+                    log_index,
+                )
                 .await?;
             },
             WriteRequest::Delete { keys } => {
                 self.route_delete(keys).await?;
+            },
+            WriteRequest::Decr { key, delta } => {
+                self.route_decr(key, delta, log_index).await?;
+            },
+            WriteRequest::Incr { key, delta } => {
+                self.route_incr(key, delta, log_index).await?;
             },
         };
 
@@ -123,13 +145,10 @@ impl CacheManager {
         Ok(QueryIO::Array(keys))
     }
     pub(crate) async fn apply_snapshot(&self, snapshot: Snapshot) -> Result<()> {
-        join_all(
-            snapshot
-                .key_values()
-                .into_iter()
-                .filter(|kvc| kvc.is_valid(&Utc::now()))
-                .map(|kvs| self.route_set(kvs)),
-        )
+        // * Here, no need to think about index as it is to update state and no return is required
+        join_all(snapshot.key_values().into_iter().filter(|kvc| kvc.is_valid(&Utc::now())).map(
+            |kvs| self.route_set(kvs.key().to_string(), kvs.value().to_string(), kvs.expiry(), 0),
+        ))
         .await;
 
         // TODO let's find the way to test without adding the following code - echo
@@ -253,5 +272,46 @@ impl CacheManager {
         let ttl_in_sec = exp.signed_duration_since(now).num_seconds();
         let ttl = if ttl_in_sec < 0 { "-1".to_string() } else { ttl_in_sec.to_string() };
         Ok(ttl)
+    }
+
+    pub(crate) async fn route_incr(
+        &self,
+        key: String,
+        arg: i64,
+        current_idx: u64,
+    ) -> Result<String> {
+        let Some(v) = self.route_get(&key).await? else {
+            self.route_set(key, 1.to_string(), None, current_idx).await?;
+            return Ok("1".to_string());
+        };
+        let num =
+            v.value().parse::<i64>().context("ERR value is not an integer or out of range")?;
+        // Handle potential overflow
+        let incremented = num
+            .checked_add(arg)
+            .context("ERR value is not an integer or out of range")?
+            .to_string();
+        self.route_set(key, incremented.clone(), None, current_idx).await?;
+        Ok(incremented)
+    }
+
+    pub(crate) async fn route_decr(
+        &self,
+        key: String,
+        arg: i64,
+        current_idx: u64,
+    ) -> Result<String> {
+        let Some(v) = self.route_get(&key).await? else {
+            return Ok(self.route_set(key, "-1".to_string(), None, current_idx).await?);
+        };
+        let num =
+            v.value().parse::<i64>().context("ERR value is not an integer or out of range")?;
+        // Handle potential overflow
+        let incremented = num
+            .checked_sub(arg)
+            .context("ERR value is not an integer or out of range")?
+            .to_string();
+
+        Ok(self.route_set(key, incremented, None, current_idx).await?)
     }
 }

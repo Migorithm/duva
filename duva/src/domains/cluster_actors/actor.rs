@@ -362,7 +362,7 @@ impl ClusterActor {
         }
         let last_log_idx = logs.last().unwrap().log_index;
         for log in logs {
-            let _ = cache_manager.apply_log(log.request).await;
+            let _ = cache_manager.apply_log(log.request, log.log_index).await;
         }
         self.replication.hwm.store(last_log_idx, Ordering::Release);
     }
@@ -620,7 +620,7 @@ impl ClusterActor {
                     return;
                 };
 
-                if let Err(e) = cache_manager.apply_log(log.request).await {
+                if let Err(e) = cache_manager.apply_log(log.request, log_index).await {
                     println!("[ERROR] Failed to apply log: {:?}", e);
                     return; // Stop on first error
                 }

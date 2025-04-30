@@ -10,7 +10,6 @@ use crate::domains::saves::actor::SaveTarget;
 use crate::presentation::clients::request::ClientAction;
 use crate::presentation::clusters::communication_manager::ClusterCommunicationManager;
 
-use anyhow::Context;
 use futures::future::try_join_all;
 use std::sync::atomic::Ordering;
 
@@ -39,21 +38,14 @@ impl ClientController {
         let response = match cmd {
             ClientAction::Ping => QueryIO::SimpleString("PONG".into()),
             ClientAction::Echo(val) => QueryIO::BulkString(val),
-            ClientAction::Set { key, value } => {
-                let cache_entry =
-                    CacheEntry::KeyValue { key: key.to_owned(), value: value.to_string() };
-                self.cache_manager.route_set(cache_entry).await?;
-                QueryIO::SimpleString(format!("s:{}|idx:{}", value, current_index.unwrap()))
-            },
-            ClientAction::SetWithExpiry { key, value, expiry } => {
-                let cache_entry = CacheEntry::KeyValueExpiry {
-                    key: key.to_owned(),
-                    value: value.to_string(),
-                    expiry,
-                };
-                self.cache_manager.route_set(cache_entry).await?;
-                QueryIO::SimpleString(format!("s:{}|idx:{}", value, current_index.unwrap()))
-            },
+            ClientAction::Set { key, value } => QueryIO::SimpleString(
+                self.cache_manager.route_set(key, value, None, current_index.unwrap()).await?,
+            ),
+            ClientAction::SetWithExpiry { key, value, expiry } => QueryIO::SimpleString(
+                self.cache_manager
+                    .route_set(key, value, Some(expiry), current_index.unwrap())
+                    .await?,
+            ),
             ClientAction::Save => {
                 let file_path = self.config_manager.get_filepath().await?;
                 let file = tokio::fs::OpenOptions::new()
@@ -133,7 +125,12 @@ impl ClientController {
             ClientAction::Ttl { key } => {
                 QueryIO::SimpleString(self.cache_manager.route_ttl(key).await?)
             },
-            _ => QueryIO::Err("Invalid command".into()),
+            ClientAction::Incr { key } => QueryIO::SimpleString(
+                self.cache_manager.route_incr(key, 1, current_index.unwrap()).await?,
+            ),
+            ClientAction::Decr { key } => QueryIO::SimpleString(
+                self.cache_manager.route_decr(key, 1, current_index.unwrap()).await?,
+            ),
         };
 
         Ok(response)
@@ -144,11 +141,7 @@ impl ClientController {
         &self,
         mut requests: Vec<ClientRequest>,
     ) -> anyhow::Result<Vec<QueryIO>> {
-        let consensus = try_join_all(requests.iter_mut().map(|r| async {
-            self.resolve_key_dependent_action(r).await?;
-            self.maybe_consensus(r).await
-        }))
-        .await?;
+        let consensus = try_join_all(requests.iter_mut().map(|r| self.maybe_consensus(r))).await?;
 
         // apply write operation to the state machine if it's a write request
         let mut results = Vec::with_capacity(requests.len());
@@ -160,39 +153,6 @@ impl ClientController {
             results.push(res);
         }
         Ok(results)
-    }
-    async fn resolve_key_dependent_action(
-        &self,
-        request: &mut ClientRequest,
-    ) -> anyhow::Result<()> {
-        match &request.action {
-            ClientAction::Incr { key } | ClientAction::Decr { key } => {
-                if let Some(v) = self.cache_manager.route_get(&key).await? {
-                    // Parse current value to u64, add 1, and handle errors
-                    let num = v
-                        .value()
-                        .parse::<i64>()
-                        .context("ERR value is not an integer or out of range")?;
-                    // Handle potential overflow
-                    let incremented = num
-                        .checked_add(request.action.delta())
-                        .context("ERR value is not an integer or out of range")?;
-
-                    request.action =
-                        ClientAction::Set { key: key.clone(), value: incremented.to_string() };
-                } else {
-                    request.action = ClientAction::Set {
-                        key: key.clone(),
-                        value: request.action.delta().to_string(),
-                    };
-                }
-            },
-
-            // Add other cases here for future store operations
-            _ => {},
-        };
-
-        Ok(())
     }
 
     pub(crate) async fn maybe_consensus(

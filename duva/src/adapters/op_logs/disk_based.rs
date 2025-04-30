@@ -584,10 +584,8 @@ mod tests {
         let (encoded, _): (WriteOperation, usize) =
             bincode::decode_from_slice(&buf[1..], bincode::config::standard()).unwrap();
 
-        let key = match encoded.request {
-            WriteRequest::Set { key, .. } => key,
-            WriteRequest::SetWithExpiry { key, .. } => key,
-            WriteRequest::Delete { keys: key } => key[0].clone(),
+        let WriteRequest::Set { key, .. } = encoded.request else {
+            panic!("Expected a Set request");
         };
         assert_eq!(key, "foo");
     }
