@@ -67,9 +67,8 @@ impl ClusterActor {
                     }
                 },
                 ClusterCommand::LeaderReqConsensus { request, callback, session_req } => {
-                    // TODO if continued, it shouldn't proceed and commit.
                     if client_sessions.is_processed(&session_req) {
-                        // TODO is it okay to send current log index?
+                        // TODO mapping between early returned values to client result
                         let _ = callback.send(Ok(ConsensusClientResponse::AlreadyProcessed {
                             key: request.key(),
                             index: logger.last_log_index,
