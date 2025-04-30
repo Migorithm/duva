@@ -102,7 +102,11 @@ impl Broker {
 
     fn may_update_request_id(&mut self, input: &ClientAction) {
         match input {
-            ClientAction::Set { .. } | ClientAction::Delete { .. } | ClientAction::Save => {
+            ClientAction::Set { .. }
+            | ClientAction::Delete { .. }
+            | ClientAction::Save
+            | ClientAction::Incr { .. }
+            | ClientAction::Decr { .. } => {
                 self.request_id += 1;
             },
             _ => {},

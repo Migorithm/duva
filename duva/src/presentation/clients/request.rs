@@ -33,26 +33,21 @@ impl ClientAction {
     pub fn to_write_request(&self) -> Option<WriteRequest> {
         match self {
             ClientAction::Set { key, value } => {
-                Some(WriteRequest::Set { key: key.clone(), value: value.clone() })
+                Some(WriteRequest::Set { key: key.clone(), value: value.clone(), expires_at: None })
             },
             ClientAction::SetWithExpiry { key, value, expiry } => {
                 let expires_at = expiry.timestamp_millis() as u64;
 
-                Some(WriteRequest::SetWithExpiry {
+                Some(WriteRequest::Set {
                     key: key.clone(),
                     value: value.clone(),
-                    expires_at,
+                    expires_at: Some(expires_at),
                 })
             },
             ClientAction::Delete { keys } => Some(WriteRequest::Delete { keys: keys.clone() }),
+            ClientAction::Incr { key } => Some(WriteRequest::Incr { key: key.clone(), delta: 1 }),
+            ClientAction::Decr { key } => Some(WriteRequest::Decr { key: key.clone(), delta: 1 }),
             _ => None,
-        }
-    }
-    pub(crate) fn delta(&self) -> i64 {
-        match self {
-            ClientAction::Incr { .. } => 1,
-            ClientAction::Decr { .. } => -1,
-            _ => 0,
         }
     }
 }

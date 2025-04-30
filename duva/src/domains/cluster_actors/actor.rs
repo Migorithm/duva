@@ -362,7 +362,7 @@ impl ClusterActor {
         }
         let last_log_idx = logs.last().unwrap().log_index;
         for log in logs {
-            let _ = cache_manager.apply_log(log.request).await;
+            let _ = cache_manager.apply_log(log.request, log.log_index).await;
         }
         self.replication.hwm.store(last_log_idx, Ordering::Release);
     }
@@ -450,6 +450,7 @@ impl ClusterActor {
     ) {
         // * logging case
         if self.try_replicate_logs(wal, &mut heartbeat).await.is_err() {
+            eprintln!("[ERROR] Failed to replicate logs");
             return;
         };
 
@@ -620,9 +621,9 @@ impl ClusterActor {
                     return;
                 };
 
-                if let Err(e) = cache_manager.apply_log(log.request).await {
-                    println!("[ERROR] Failed to apply log: {:?}", e);
-                    return; // Stop on first error
+                if let Err(e) = cache_manager.apply_log(log.request, log_index).await {
+                    // ! DON'T PANIC - post validation is where we just don't update state
+                    println!("[ERROR] Failed to apply log: {e}")
                 }
             }
             self.replication.hwm.store(heartbeat_hwm, Ordering::Release);
@@ -750,7 +751,7 @@ mod test {
     ) -> WriteOperation {
         WriteOperation {
             log_index: index_num.into(),
-            request: WriteRequest::Set { key: key.into(), value: value.into() },
+            request: WriteRequest::Set { key: key.into(), value: value.into(), expires_at: None },
             term,
         }
     }
@@ -878,7 +879,7 @@ mod test {
         cluster_actor
             .req_consensus(
                 &mut logger,
-                WriteRequest::Set { key: "foo".into(), value: "bar".into() },
+                WriteRequest::Set { key: "foo".into(), value: "bar".into(), expires_at: None },
                 tx,
                 None,
             )
@@ -910,7 +911,7 @@ mod test {
         cluster_actor
             .req_consensus(
                 &mut logger,
-                WriteRequest::Set { key: "foo".into(), value: "bar".into() },
+                WriteRequest::Set { key: "foo".into(), value: "bar".into(), expires_at: None },
                 tx,
                 Some(session_request.clone()),
             )
@@ -945,7 +946,7 @@ mod test {
         let (tx, rx) = tokio::sync::oneshot::channel();
         handler
             .send(ClusterCommand::LeaderReqConsensus {
-                log: WriteRequest::Set { key: "foo".into(), value: "bar".into() },
+                log: WriteRequest::Set { key: "foo".into(), value: "bar".into(), expires_at: None },
                 callback: tx,
                 session_req: Some(client_req),
             })
@@ -976,7 +977,7 @@ mod test {
         cluster_actor
             .req_consensus(
                 &mut logger,
-                WriteRequest::Set { key: "foo".into(), value: "bar".into() },
+                WriteRequest::Set { key: "foo".into(), value: "bar".into(), expires_at: None },
                 client_request_sender,
                 Some(client_request.clone()),
             )
@@ -1027,7 +1028,7 @@ mod test {
         cluster_actor
             .req_consensus(
                 &mut logger,
-                WriteRequest::Set { key: "foo".into(), value: "bar".into() },
+                WriteRequest::Set { key: "foo".into(), value: "bar".into(), expires_at: None },
                 client_request_sender,
                 None,
             )
@@ -1066,7 +1067,7 @@ mod test {
         const LOWEST_FOLLOWER_COMMIT_INDEX: u64 = 2;
         let logs = logger
             .leader_write_entries(
-                &WriteRequest::Set { key: "foo4".into(), value: "bar".into() },
+                &WriteRequest::Set { key: "foo4".into(), value: "bar".into(), expires_at: None },
                 Some(LOWEST_FOLLOWER_COMMIT_INDEX),
                 0,
             )
@@ -1118,7 +1119,7 @@ mod test {
         let lowest_hwm = cluster_actor.take_low_watermark();
         let append_entries = logger
             .leader_write_entries(
-                &WriteRequest::Set { key: "foo4".into(), value: "bar".into() },
+                &WriteRequest::Set { key: "foo4".into(), value: "bar".into(), expires_at: None },
                 lowest_hwm,
                 0,
             )
@@ -1163,8 +1164,14 @@ mod test {
         assert_eq!(logs.len(), 2);
         assert_eq!(logs[0].log_index, 1);
         assert_eq!(logs[1].log_index, 2);
-        assert_eq!(logs[0].request, WriteRequest::Set { key: "foo".into(), value: "bar".into() });
-        assert_eq!(logs[1].request, WriteRequest::Set { key: "foo2".into(), value: "bar".into() });
+        assert_eq!(
+            logs[0].request,
+            WriteRequest::Set { key: "foo".into(), value: "bar".into(), expires_at: None }
+        );
+        assert_eq!(
+            logs[1].request,
+            WriteRequest::Set { key: "foo2".into(), value: "bar".into(), expires_at: None }
+        );
     }
 
     #[tokio::test]

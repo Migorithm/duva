@@ -546,7 +546,7 @@ mod test {
     fn test_write_operation_to_binary_back_to_itself() {
         // GIVEN
         let op = QueryIO::WriteOperation(WriteOperation {
-            request: WriteRequest::Set { key: "foo".into(), value: "bar".into() },
+            request: WriteRequest::Set { key: "foo".into(), value: "bar".into(), expires_at: None },
             log_index: 1,
             term: 0,
         });
@@ -598,15 +598,19 @@ mod test {
             ban_list: banned_list,
             append_entries: vec![
                 WriteOperation {
-                    request: WriteRequest::Set { key: "foo".into(), value: "bar".into() },
+                    request: WriteRequest::Set {
+                        key: "foo".into(),
+                        value: "bar".into(),
+                        expires_at: None,
+                    },
                     log_index: 1,
                     term: 0,
                 },
                 WriteOperation {
-                    request: WriteRequest::SetWithExpiry {
+                    request: WriteRequest::Set {
                         key: "foo".into(),
                         value: "bar".into(),
-                        expires_at: 323232,
+                        expires_at: Some(323232),
                     },
                     log_index: 2,
                     term: 1,
