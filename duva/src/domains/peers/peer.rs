@@ -75,6 +75,9 @@ impl PeerState {
 
     pub(crate) fn parse_node_info(line: &str, self_repl_id: &str) -> Option<Self> {
         let parts: Vec<&str> = line.split_whitespace().collect();
+        if parts.len() != 4 {
+            return None;
+        }
 
         let [addr, id_part, _, match_index] = parts[..] else {
             return None;
@@ -88,11 +91,10 @@ impl PeerState {
     }
 
     fn parse_id_part(id_part: &str) -> Option<(bool, String)> {
-        let id_parts: Vec<_> = id_part.split(',').collect();
-        match id_parts.as_slice() {
-            ["myself", id] => Some((true, id.to_string())),
-            [id] => Some((false, id.to_string())),
-            _ => None,
+        if id_part.contains("myself,") {
+            Some((true, id_part[7..].to_string()))
+        } else {
+            Some((false, id_part.to_string()))
         }
     }
 

@@ -1,7 +1,6 @@
 use super::request::ClientRequest;
 use crate::actor_registry::ActorRegistry;
 use crate::domains::caches::cache_manager::CacheManager;
-use crate::domains::caches::cache_objects::CacheEntry;
 use crate::domains::cluster_actors::commands::{ClusterCommand, ConsensusClientResponse};
 use crate::domains::config_actors::command::ConfigResponse;
 use crate::domains::config_actors::config_manager::ConfigManager;
