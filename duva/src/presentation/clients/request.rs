@@ -49,6 +49,8 @@ impl ClientAction {
                 Some(WriteRequest::Append { key: key.clone(), value: value.clone() })
             },
             ClientAction::Delete { keys } => Some(WriteRequest::Delete { keys: keys.clone() }),
+            ClientAction::Incr { key } => Some(WriteRequest::Incr { key: key.clone(), delta: 1 }),
+            ClientAction::Decr { key } => Some(WriteRequest::Decr { key: key.clone(), delta: 1 }),
             _ => None,
         }
     }

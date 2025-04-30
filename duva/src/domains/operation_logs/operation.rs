@@ -16,6 +16,8 @@ pub enum WriteRequest {
     SetWithExpiry { key: String, value: String, expires_at: u64 },
     Append { key: String, value: String },
     Delete { keys: Vec<String> },
+    Decr { key: String, delta: i64 },
+    Incr { key: String, delta: i64 },
 }
 
 impl WriteOperation {
