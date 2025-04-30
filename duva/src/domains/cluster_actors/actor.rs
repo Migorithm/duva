@@ -313,7 +313,7 @@ impl ClusterActor {
 
         // Skip consensus for no replicas
         if self.replicas().count() == 0 {
-            return Err(ConsensusClientResponse::LogIndex(Some(logger.last_log_index)));
+            return Err(ConsensusClientResponse::LogIndex(logger.last_log_index));
         }
 
         Ok(append_entries)
@@ -410,7 +410,7 @@ impl ClusterActor {
             return;
         }
         sessions.set_response(consensus.session_req.take());
-        let _ = consensus.callback.send(ConsensusClientResponse::LogIndex(Some(res.log_idx)));
+        let _ = consensus.callback.send(ConsensusClientResponse::LogIndex(res.log_idx));
     }
 
     // After send_ack: Leader updates its knowledge of follower's progress
