@@ -4,8 +4,8 @@ use crate::domains::{
 
 #[derive(Debug)]
 pub(crate) enum ConsensusClientResponse {
-    LogIndex(u64),
-    Err(String),
+    AlreadyProcessed { key: String, index: u64 },
+    LogIndex(Option<u64>),
 }
 
 #[derive(Debug, Clone, PartialEq, bincode::Decode, bincode::Encode)]
