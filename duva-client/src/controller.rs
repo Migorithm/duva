@@ -27,7 +27,7 @@ impl<T> ClientController<T> {
             to_server: w.run(),
             client_id: Uuid::parse_str(&auth_response.client_id).unwrap(),
             request_id: auth_response.request_id,
-            latest_known_index: 0,
+
             cluster_nodes: auth_response.cluster_nodes,
             read_kill_switch: Some(r.run(broker_tx.clone())),
         };

@@ -27,7 +27,6 @@ pub struct Broker {
     pub(crate) to_server: Sender<MsgToServer>,
     pub(crate) client_id: Uuid,
     pub(crate) request_id: u64,
-    pub(crate) latest_known_index: u64,
     pub(crate) cluster_nodes: Vec<PeerIdentifier>,
     pub(crate) read_kill_switch: Option<tokio::sync::oneshot::Sender<()>>,
 }
@@ -46,12 +45,7 @@ impl Broker {
                         continue;
                     };
 
-                    if let Some(index) = self.need_index_increase(&input.kind, &query_io) {
-                        if index > self.latest_known_index {
-                            self.latest_known_index = index;
-                        }
-                    }
-                    self.may_update_request_id(&input.kind);
+                    self.update_req_id(&input.kind, &query_io);
 
                     input.callback.send((input.kind, query_io)).unwrap_or_else(|_| {
                         println!("Failed to send response to input callback");
@@ -68,7 +62,7 @@ impl Broker {
                     _ => {},
                 },
                 BrokerMessage::ToServer(command) => {
-                    let cmd = self.build_command(&command.command, command.args);
+                    let cmd = self.build_command_with_request_id(&command.command, command.args);
                     if let Err(e) =
                         self.to_server.send(MsgToServer::Command(cmd.as_bytes().to_vec())).await
                     {
@@ -80,7 +74,7 @@ impl Broker {
         }
     }
 
-    pub fn build_command(&self, cmd: &str, args: Vec<String>) -> String {
+    pub fn build_command_with_request_id(&self, cmd: &str, args: Vec<String>) -> String {
         // Build the valid RESP command
         let mut command =
             format!("!{}\r\n*{}\r\n${}\r\n{}\r\n", self.request_id, args.len() + 1, cmd.len(), cmd);
@@ -90,27 +84,27 @@ impl Broker {
         command
     }
 
-    fn need_index_increase(&mut self, kind: &ClientAction, query_io: &QueryIO) -> Option<u64> {
-        if matches!(kind, ClientAction::Set { .. } | ClientAction::Delete { .. }) {
-            if let QueryIO::SimpleString(v) = query_io {
-                let rindex = v.split_whitespace().last().unwrap();
-                return rindex.parse::<u64>().ok();
-            }
-        }
-        None
-    }
-
-    fn may_update_request_id(&mut self, input: &ClientAction) {
-        match input {
+    // TODO The current implementation requires some refactoring.
+    // * Current rule: s:value-idx:index_num
+    fn update_req_id(&mut self, kind: &ClientAction, query_io: &QueryIO) {
+        if matches!(
+            kind,
             ClientAction::Set { .. }
-            | ClientAction::Delete { .. }
-            | ClientAction::Save
-            | ClientAction::Incr { .. }
-            | ClientAction::Decr { .. } => {
-                self.request_id += 1;
-            },
-            _ => {},
-        }
+                | ClientAction::Delete { .. }
+                | ClientAction::Incr { .. }
+                | ClientAction::Decr { .. }
+                | ClientAction::Ttl { .. }
+                | ClientAction::Save
+        ) {
+            if let QueryIO::SimpleString(v) = query_io {
+                let s = v.split('|').last().unwrap();
+                if let Some(index) = s.split(':').last().unwrap().parse::<u64>().ok() {
+                    if index > self.request_id {
+                        self.request_id = index;
+                    }
+                }
+            }
+        };
     }
 
     pub(crate) async fn authenticate(
