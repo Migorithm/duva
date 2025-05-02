@@ -91,6 +91,7 @@ impl HashRing {
     }
 
     /// Retrieves all nodes responsible for keys in the range from `start_key` to `end_key`.
+    /// This is NOT for lexicographical range queries.
     ///
     /// # Arguments
     /// * `start_key` - The starting key of the range.
