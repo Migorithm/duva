@@ -117,6 +117,7 @@ impl CacheManager {
 
                 self.route_set(key, value, expiry, log_index).await?;
             },
+
             WriteRequest::Delete { keys } => {
                 self.route_delete(keys).await?;
             },
