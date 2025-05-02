@@ -276,7 +276,7 @@ impl CacheManager {
         current_idx: u64,
     ) -> Result<String> {
         let Some(v) = self.route_get(&key).await? else {
-            return Ok(self.route_set(key, arg.to_string(), None, current_idx).await?);
+            return self.route_set(key, arg.to_string(), None, current_idx).await;
         };
         let num =
             v.value().parse::<i64>().context("ERR value is not an integer or out of range")?;
@@ -285,6 +285,6 @@ impl CacheManager {
             .checked_add(arg)
             .context("ERR value is not an integer or out of range")?
             .to_string();
-        Ok(self.route_set(key, incremented, None, current_idx).await?)
+        self.route_set(key, incremented, None, current_idx).await
     }
 }
