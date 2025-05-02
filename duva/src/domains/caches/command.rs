@@ -5,7 +5,6 @@ use tokio::sync::{mpsc, oneshot};
 pub(crate) enum CacheCommand {
     Set { cache_entry: CacheEntry },
     Save { outbox: mpsc::Sender<SaveCommand> },
-    Append { cache_entry: CacheEntry },
     Get { key: String, callback: oneshot::Sender<Option<CacheValue>> },
     Keys { pattern: Option<String>, callback: oneshot::Sender<QueryIO> },
     Delete { key: String, callback: oneshot::Sender<bool> },

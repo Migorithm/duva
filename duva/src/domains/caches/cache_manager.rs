@@ -74,9 +74,17 @@ impl CacheManager {
         Ok(format!("s:{}|idx:{}", value, current_idx))
     }
 
-    pub(crate) async fn route_append(&self, kvs: CacheEntry) -> Result<()> {
-        self.select_shard(kvs.key()).send(CacheCommand::Append { cache_entry: kvs }).await?;
-        Ok(())
+    pub(crate) async fn route_append(
+        &self,
+        key: String,
+        value: String,
+        current_idx: u64,
+    ) -> Result<String> {
+        let Some(prev) = self.route_get(&key).await? else {
+            return Ok(self.route_set(key, value, None, current_idx).await?);
+        };
+        let concatted = prev.value + &value;
+        Ok(self.route_set(key, concatted, None, current_idx).await?)
     }
 
     pub(crate) async fn route_save(
@@ -111,6 +119,9 @@ impl CacheManager {
             },
             WriteRequest::Delete { keys } => {
                 self.route_delete(keys).await?;
+            },
+            WriteRequest::Append { key, value } => {
+                self.route_append(key, value, log_index).await?;
             },
             WriteRequest::Decr { key, delta } => {
                 self.route_numeric_delta(key, delta, log_index).await?;

@@ -6,7 +6,6 @@ use std::time::Duration;
 pub enum CacheEntry {
     KeyValue { key: String, value: String },
     KeyValueExpiry { key: String, value: String, expiry: DateTime<Utc> },
-    Append { key: String, value: String },
 }
 
 impl CacheEntry {
@@ -28,7 +27,6 @@ impl CacheEntry {
         match &self {
             CacheEntry::KeyValue { key, .. } => key,
             CacheEntry::KeyValueExpiry { key, .. } => key,
-            CacheEntry::Append { key, .. } => key,
         }
     }
     pub(crate) fn value(&self) -> &str {

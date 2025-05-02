@@ -27,10 +27,6 @@ impl CacheEntry {
                 result.push(STRING_VALUE_TYPE_INDICATOR);
                 result.extend_from_slice(&encode_key_value(key, value)?);
             },
-            CacheEntry::Append { key, value } => {
-                result.push(STRING_VALUE_TYPE_INDICATOR);
-                result.extend_from_slice(&encode_key_value(key, value)?);
-            },
         }
         Ok(result)
     }
