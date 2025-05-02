@@ -17,15 +17,16 @@ pub struct HashRing {
     vnode_num: usize, // Number of virtual nodes to create for each physical node.
 }
 
+#[inline]
+fn hash(value: &str) -> u32 {
+    let mut hasher = DefaultHasher::new();
+    value.hash(&mut hasher);
+    hasher.finish() as u32
+}
+
 impl HashRing {
     pub fn new(vnode_num: usize) -> Self {
         Self { vnodes: BTreeMap::new(), pnodes: HashMap::new(), vnode_num }
-    }
-
-    fn hash<T: Hash>(&self, value: &T) -> u32 {
-        let mut hasher = DefaultHasher::new();
-        value.hash(&mut hasher);
-        hasher.finish() as u32
     }
 
     pub fn add_node(&mut self, peer_state: PeerState) {
@@ -34,7 +35,7 @@ impl HashRing {
         // Create virtual nodes for better distribution
         for i in 0..self.vnode_num {
             let virtual_node_id = format!("{}-{}", pnode_id, i);
-            let hash = self.hash(&virtual_node_id);
+            let hash = hash(&virtual_node_id);
 
             self.vnodes.insert(hash, pnode_id.clone());
         }
@@ -51,8 +52,8 @@ impl HashRing {
         self.pnodes.remove(pnode_id);
     }
 
-    pub fn get_node_for_key(&self, key: impl Into<String>) -> Option<&PeerIdentifier> {
-        let hash = self.hash(&key.into());
+    pub fn get_node_for_key(&self, key: &str) -> Option<&PeerIdentifier> {
+        let hash = hash(key);
 
         // * Find the first virtual node that's greater than or equal to the key's hash
         self.vnodes
