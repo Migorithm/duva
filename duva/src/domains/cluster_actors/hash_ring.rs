@@ -1,7 +1,7 @@
 use crate::domains::peers::peer::PeerState;
 use crate::prelude::PeerIdentifier;
 use std::collections::hash_map::DefaultHasher;
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap};
 use std::hash::{Hash, Hasher};
 
 /// A consistent hashing ring for distributing keys across nodes.
@@ -9,42 +9,25 @@ use std::hash::{Hash, Hasher};
 /// The `HashRing` maps keys to physical nodes using virtual nodes to ensure
 /// even distribution. Each physical node is represented by multiple virtual
 /// nodes on the ring, determined by `vnode_num`.
+///
+#[derive(Debug)]
 pub struct HashRing {
     vnodes: BTreeMap<u32, PeerIdentifier>,
     pnodes: HashMap<PeerIdentifier, PeerState>,
-    vnode_num: usize,
+    vnode_num: usize, // Number of virtual nodes to create for each physical node.
 }
 
 impl HashRing {
-    /// Creates a new `HashRing` with the specified number of virtual nodes per physical node.
-    ///
-    /// # Arguments
-    /// * `virtual_nodes_per_physical` - Number of virtual nodes to create for each physical node.
-    pub fn new(virtual_nodes_per_physical: usize) -> Self {
-        Self {
-            vnodes: BTreeMap::new(),
-            pnodes: HashMap::new(),
-            vnode_num: virtual_nodes_per_physical,
-        }
+    pub fn new(vnode_num: usize) -> Self {
+        Self { vnodes: BTreeMap::new(), pnodes: HashMap::new(), vnode_num }
     }
 
-    /// Computes a 32-bit hash for a given value.
-    ///
-    /// # Arguments
-    /// * `value` - The value to hash.
-    ///
-    /// # Returns
-    /// A `u32` hash value.
     fn hash<T: Hash>(&self, value: &T) -> u32 {
         let mut hasher = DefaultHasher::new();
         value.hash(&mut hasher);
         hasher.finish() as u32
     }
 
-    /// Adds a physical node to the hash ring, creating its virtual nodes.
-    ///
-    /// # Arguments
-    /// * `node` - The `PeerState` of the node to add.
     pub fn add_node(&mut self, peer_state: PeerState) {
         let pnode_id = peer_state.addr.clone();
 
@@ -60,10 +43,6 @@ impl HashRing {
         self.pnodes.insert(pnode_id, peer_state);
     }
 
-    /// Removes a physical node and its virtual nodes from the hash ring.
-    ///
-    /// # Arguments
-    /// * `node_id` - The identifier of the node to remove.
     pub fn remove_node(&mut self, pnode_id: &PeerIdentifier) {
         // Remove all virtual nodes for this physical node
         self.vnodes.retain(|_, peer_id| peer_id != pnode_id);
@@ -72,74 +51,15 @@ impl HashRing {
         self.pnodes.remove(pnode_id);
     }
 
-    /// Retrieves the node responsible for a given key.
-    ///
-    /// # Arguments
-    /// * `key` - The key to find the responsible node for.
-    ///
-    /// # Returns
-    /// An `Option` containing a reference to the `PeerState` of the responsible node, or `None` if the ring is empty.
     pub fn get_node_for_key(&self, key: impl Into<String>) -> Option<&PeerIdentifier> {
         let hash = self.hash(&key.into());
 
-        // Find the first virtual node that's greater than or equal to the key's hash
+        // * Find the first virtual node that's greater than or equal to the key's hash
         self.vnodes
             .range(hash..)
             .next()
             .or_else(|| self.vnodes.first_key_value())
             .map(|(_, peer_id)| peer_id)
-    }
-
-    /// Retrieves all nodes responsible for keys in the range from `start_key` to `end_key`.
-    /// This is NOT for lexicographical range queries.
-    ///
-    /// # Arguments
-    /// * `start_key` - The starting key of the range.
-    /// * `end_key` - The ending key of the range.
-    ///
-    /// # Returns
-    /// A vector of references to the `PeerState` of nodes responsible for the key range.
-    pub fn get_nodes_for_key_range(&self, start_key: &str, end_key: &str) -> Vec<&PeerState> {
-        let start_hash = self.hash(&start_key.to_string());
-        let end_hash = self.hash(&end_key.to_string());
-
-        let mut node_ids = HashSet::new();
-
-        // Include the node responsible for start_key
-        if let Some(p1) = self.get_node_for_key(start_key) {
-            node_ids.insert(p1.clone());
-        }
-
-        // Collect nodes with virtual nodes in the hash range
-        if start_hash > end_hash {
-            // Wrap-around case
-            for (_, peer_id) in self.vnodes.range(start_hash..) {
-                node_ids.insert(peer_id.clone());
-            }
-            for (_, peer_id) in self.vnodes.range(..=end_hash) {
-                node_ids.insert(peer_id.clone());
-            }
-        } else {
-            // Normal case
-            for (_, peer_id) in self.vnodes.range(start_hash..=end_hash) {
-                node_ids.insert(peer_id.clone());
-            }
-        }
-
-        // Convert node IDs to PeerState references
-        node_ids.iter().filter_map(|id| self.pnodes.get(id).map(|state| state)).collect()
-    }
-
-    /// Returns the distribution of virtual nodes across physical nodes.
-    ///
-    /// # Returns
-    /// A `HashMap` mapping each "physical" node to the number of virtual nodes it owns.
-    pub fn get_node_distribution(&self) -> HashMap<PeerIdentifier, usize> {
-        let mut distribution = HashMap::new();
-        for peer_id in self.vnodes.values() {
-            *distribution.entry(peer_id.clone()).or_insert(0) += 1;
-        }
-        distribution
     }
 
     #[cfg(test)]
@@ -160,6 +80,8 @@ impl HashRing {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashSet;
+
     use super::*;
     use crate::domains::cluster_actors::replication::ReplicationId;
     use crate::domains::peers::peer::NodeKind;
@@ -208,77 +130,26 @@ mod tests {
     }
 
     #[test]
-    fn test_node_distribution() {
-        let mut ring = HashRing::new(3);
-        let node1 = create_test_node("127.0.0.1:6379");
-        let node2 = create_test_node("127.0.0.1:6380");
-        let node3 = create_test_node("127.0.0.1:6381");
-
-        ring.add_node(node1);
-        ring.add_node(node2);
-        ring.add_node(node3);
-
-        let distribution = ring.get_node_distribution();
-        assert_eq!(distribution.len(), 3);
-        assert!(distribution.values().all(|&count| count == 3));
-    }
-
-    #[test]
-    fn test_key_range_distribution() {
-        let mut ring = HashRing::new(3);
-        let node1 = create_test_node("127.0.0.1:6379");
-        let node2 = create_test_node("127.0.0.1:6380");
-        let node3 = create_test_node("127.0.0.1:6381");
-
-        ring.add_node(node1);
-        ring.add_node(node2);
-        ring.add_node(node3);
-
-        let nodes = ring.get_nodes_for_key_range("a", "z");
-        assert!(!nodes.is_empty());
-        assert!(nodes.len() <= 3);
-
-        let nodes_wrap = ring.get_nodes_for_key_range("z", "a");
-        assert!(!nodes_wrap.is_empty());
-        assert!(nodes_wrap.len() <= 3);
-
-        let nodes_same = ring.get_nodes_for_key_range("a", "a");
-        assert!(!nodes_same.is_empty());
-        assert!(nodes_same.len() <= 3);
-
-        let unique_nodes: HashSet<_> = nodes.iter().map(|n| &n.addr).collect();
-        assert_eq!(unique_nodes.len(), nodes.len());
-
-        let added_nodes: HashSet<_> = vec![
-            "127.0.0.1:6379".to_string(),
-            "127.0.0.1:6380".to_string(),
-            "127.0.0.1:6381".to_string(),
-        ]
-        .into_iter()
-        .collect();
-
-        for node in nodes {
-            assert!(added_nodes.contains(&node.addr.to_string()));
-        }
-    }
-
-    #[test]
     fn test_consistent_hashing() {
-        let mut ring = HashRing::new(3);
+        let mut ring = HashRing::new(256);
         let node1 = create_test_node("127.0.0.1:6379");
         let node2 = create_test_node("127.0.0.1:6380");
+        let node3 = create_test_node("127.0.0.1:6389");
 
         ring.add_node(node1);
         ring.add_node(node2);
+        ring.add_node(node3);
 
         let key = "test_key";
-        let node1 = ring.get_node_for_key(key);
-        let node2 = ring.get_node_for_key(key);
-        assert_eq!(node1, node2);
+        let node_got1 = ring.get_node_for_key(key);
+        let node_got2 = ring.get_node_for_key(key);
+
+        assert_eq!(node_got1, node_got2);
     }
 
     #[test]
     fn test_node_removal_redistribution() {
+        // GIVEN: Create a hash ring with 3 nodes
         let mut ring = HashRing::new(3);
         let node1 = create_test_node("127.0.0.1:6379");
         let node2 = create_test_node("127.0.0.1:6380");
@@ -288,6 +159,7 @@ mod tests {
         ring.add_node(node2);
         ring.add_node(node3);
 
+        // Record initial key distribution
         let mut before_removal = Vec::new();
         for i in 0..100 {
             let key = format!("key{}", i);
@@ -296,8 +168,10 @@ mod tests {
             }
         }
 
+        // WHEN Remove one node
         ring.remove_node(&"127.0.0.1:6379".to_string().into());
 
+        // keys are accessed again
         let mut redistributed = 0;
         for (key, old_addr) in before_removal {
             if let Some(new_node) = ring.get_node_for_key(&key) {
@@ -307,8 +181,9 @@ mod tests {
             }
         }
 
-        assert!(redistributed > 0);
-        assert!(redistributed < 100);
+        //THEN
+        assert!(redistributed > 0); // Some keys must be redistributed
+        assert!(redistributed < 100); // But not all keys should be redistributed
     }
 
     #[test]
@@ -321,6 +196,7 @@ mod tests {
         let virtual_nodes = ring.get_virtual_nodes();
         assert_eq!(virtual_nodes.len(), 3);
 
+        // remove duplicate
         let physical_nodes: HashSet<_> =
             virtual_nodes.iter().map(|(_, peer_id)| *peer_id).collect();
         assert_eq!(physical_nodes.len(), 1);
