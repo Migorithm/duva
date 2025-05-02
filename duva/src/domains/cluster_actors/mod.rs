@@ -9,6 +9,7 @@ use tokio::time::Instant;
 pub mod actor;
 pub mod commands;
 pub mod consensus;
+pub(crate) mod hash_ring;
 pub mod heartbeats;
 mod listener;
 pub(crate) mod peer_connections;
