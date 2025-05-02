@@ -16,33 +16,6 @@ pub struct HashRing {
     vnode_num: usize, // Number of virtual nodes to create for each physical node.
 }
 
-#[inline]
-fn fnv_1a_hash(value: &str) -> u64 {
-    // Using FNV-1a hash algorithm which is:
-    // - Fast
-    // - Good distribution
-    // - Deterministic
-    const FNV_PRIME: u64 = 1099511628211;
-    const FNV_OFFSET_BASIS: u64 = 14695981039346656037;
-
-    let mut hash = Wrapping(FNV_OFFSET_BASIS);
-
-    for byte in value.bytes() {
-        hash ^= Wrapping(byte as u64);
-        hash *= Wrapping(FNV_PRIME);
-    }
-
-    // Final mixing steps (inspired by MurmurHash3 finalizer)
-    let mut h = hash.0;
-    h ^= h >> 33;
-    h = h.wrapping_mul(0xff51afd7ed558ccd);
-    h ^= h >> 33;
-    h = h.wrapping_mul(0xc4ceb9fe1a85ec53);
-    h ^= h >> 33;
-
-    h
-}
-
 impl HashRing {
     pub fn new(vnode_num: usize) -> Self {
         Self { vnodes: BTreeMap::new(), pnodes: HashMap::new(), vnode_num }
@@ -96,6 +69,33 @@ impl HashRing {
     fn get_vnode_count(&self) -> usize {
         self.vnodes.len()
     }
+}
+
+#[inline]
+fn fnv_1a_hash(value: &str) -> u64 {
+    // Using FNV-1a hash algorithm which is:
+    // - Fast
+    // - Good distribution
+    // - Deterministic
+    const FNV_PRIME: u64 = 1099511628211;
+    const FNV_OFFSET_BASIS: u64 = 14695981039346656037;
+
+    let mut hash = Wrapping(FNV_OFFSET_BASIS);
+
+    for byte in value.bytes() {
+        hash ^= Wrapping(byte as u64);
+        hash *= Wrapping(FNV_PRIME);
+    }
+
+    // Final mixing steps (inspired by MurmurHash3 finalizer)
+    let mut h = hash.0;
+    h ^= h >> 33;
+    h = h.wrapping_mul(0xff51afd7ed558ccd);
+    h ^= h >> 33;
+    h = h.wrapping_mul(0xc4ceb9fe1a85ec53);
+    h ^= h >> 33;
+
+    h
 }
 
 #[cfg(test)]
