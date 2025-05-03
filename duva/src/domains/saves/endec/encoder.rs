@@ -132,7 +132,7 @@ mod test {
         cluster_actors::replication::ReplicationId,
         saves::endec::{
             StoredDuration,
-            decoder::{byte_decoder::BytesDecoder, states::DecoderInit},
+            decoder::{BytesDecoder, DecoderInit},
         },
     };
 

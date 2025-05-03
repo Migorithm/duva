@@ -1,4 +1,3 @@
-use super::states::{DecoderInit, HeaderReady, MetadataReady};
 use crate::domains::caches::cache_objects::{CacheEntry, CacheValue};
 use crate::domains::cluster_actors::replication::ReplicationId;
 use crate::domains::saves::endec::{
@@ -336,6 +335,17 @@ impl BytesDecoder<'_, MetadataReady> {
 
         Ok(checksum)
     }
+}
+
+#[derive(Default)]
+pub struct DecoderInit;
+
+#[derive(Default, PartialEq, Eq, Debug)]
+pub struct HeaderReady(pub(crate) String);
+
+pub struct MetadataReady {
+    pub(crate) metadata: Metadata,
+    pub(crate) header: String,
 }
 
 impl<'a> From<&'a [u8]> for BytesDecoder<'a, DecoderInit> {

@@ -1,5 +1,5 @@
 use super::Snapshot;
-use crate::domains::saves::endec::decoder::{byte_decoder::BytesDecoder, states::DecoderInit};
+use crate::domains::saves::endec::decoder::{BytesDecoder, DecoderInit};
 
 pub(crate) struct SnapshotLoader {}
 
