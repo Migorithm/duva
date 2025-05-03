@@ -1,6 +1,5 @@
 use super::states::{DecoderInit, HeaderReady, MetadataReady};
-
-use crate::domains::caches::cache_objects::CacheEntry;
+use crate::domains::caches::cache_objects::{CacheEntry, CacheValue};
 use crate::domains::cluster_actors::replication::ReplicationId;
 use crate::domains::saves::endec::{
     DATABASE_SECTION_INDICATOR, DATABASE_TABLE_SIZE_INDICATOR,
@@ -285,11 +284,8 @@ impl BytesDecoder<'_, MetadataReady> {
                 //0b11111110
                 STRING_VALUE_TYPE_INDICATOR => {
                     let (key, value) = self.try_extract_key_value()?;
-
-                    return match expiry {
-                        Some(expiry) => Ok(CacheEntry::KeyValueExpiry { key, value, expiry }),
-                        None => Ok(CacheEntry::KeyValue { key, value }),
-                    };
+                    let cache_value = CacheValue::new(value).with_expiry(expiry);
+                    return Ok(CacheEntry::new(key, cache_value));
                 },
                 _ => {
                     return Err(anyhow::anyhow!("Invalid key value pair"));
@@ -365,10 +361,7 @@ mod test {
     use super::*;
 
     fn as_str(cache_entry: &CacheEntry) -> &str {
-        match cache_entry {
-            CacheEntry::KeyValue { value, .. } => value,
-            CacheEntry::KeyValueExpiry { value, .. } => value,
-        }
+        cache_entry.value()
     }
 
     #[test]
@@ -466,22 +459,18 @@ mod test {
         assert_eq!(db_section.index, 0);
         assert_eq!(db_section.storage.len(), 3);
 
-        match &db_section.storage[0] {
-            CacheEntry::KeyValue { key, value } => {
-                assert_eq!(key, "foobar");
-                assert_eq!(value, "bazqux");
-            },
-            _ => panic!("Expected KeyValueExpiry"),
-        }
+        let cache_entry = &db_section.storage[0];
+        assert_eq!(cache_entry.key(), "foobar");
+        assert_eq!(cache_entry.value(), "bazqux");
 
-        match &db_section.storage[1] {
-            CacheEntry::KeyValueExpiry { key, value, expiry } => {
-                assert_eq!(key, "foo");
-                assert_eq!(value, "bar");
-                assert_eq!(expiry, &StoredDuration::Milliseconds(1713824559637).to_datetime());
-            },
-            _ => panic!("Expected KeyValueExpiry"),
-        }
+        let cache_entry = &db_section.storage[1];
+        assert_eq!(cache_entry.key(), "foo");
+        assert_eq!(cache_entry.value(), "bar");
+        assert!(cache_entry.expiry().is_some());
+        assert_eq!(
+            cache_entry.expiry().unwrap(),
+            StoredDuration::Milliseconds(1713824559637).to_datetime()
+        );
     }
 
     #[test]
@@ -495,14 +484,9 @@ mod test {
         };
 
         let key_value = bytes_handler.try_key_value().expect("Failed to extract key value expiry");
-
-        match key_value {
-            CacheEntry::KeyValue { key, value } => {
-                assert_eq!(key, "baz");
-                assert_eq!(value, "qux");
-            },
-            _ => panic!("Expected KeyValue"),
-        }
+        assert_eq!(key_value.key(), "baz");
+        assert_eq!(key_value.value(), "qux");
+        assert!(key_value.expiry().is_none());
 
         assert!(bytes_handler.data.is_empty());
     }
@@ -661,20 +645,15 @@ mod test {
         assert_eq!(rdb_file.database.len(), 1);
         assert_eq!(rdb_file.database[0].index, 0);
         assert_eq!(rdb_file.database[0].storage.len(), 2);
-        match rdb_file.database[0].storage[0] {
-            CacheEntry::KeyValue { ref key, ref value } => {
-                assert_eq!(key, "foo2");
-                assert_eq!(value, "bar2");
-            },
-            _ => panic!("Expected KeyValue"),
-        }
-        match rdb_file.database[0].storage[1] {
-            CacheEntry::KeyValue { ref key, ref value } => {
-                assert_eq!(key, "foo");
-                assert_eq!(value, "bar");
-            },
-            _ => panic!("Expected KeyValue"),
-        }
+
+        let cache_entry = &rdb_file.database[0].storage[0];
+        assert_eq!(cache_entry.key(), "foo2");
+        assert_eq!(cache_entry.value(), "bar2");
+
+        let cache_entry = &rdb_file.database[0].storage[1];
+        assert_eq!(cache_entry.key(), "foo");
+        assert_eq!(cache_entry.value(), "bar");
+        assert!(cache_entry.expiry().is_none());
 
         assert_eq!(rdb_file.checksum, vec![0x60, 0x82, 0x9C, 0xF8, 0xFB, 0x2E, 0x7F, 0xEB]);
         assert_eq!(
