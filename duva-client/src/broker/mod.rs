@@ -97,8 +97,8 @@ impl Broker {
                 | ClientAction::Save
         ) {
             if let QueryIO::SimpleString(v) = query_io {
-                let s = v.split('|').last().unwrap();
-                if let Some(index) = s.split(':').last().unwrap().parse::<u64>().ok() {
+                let s = v.split('|').next_back().unwrap();
+                if let Ok(index) = s.split(':').next_back().unwrap().parse::<u64>() {
                     if index > self.request_id {
                         self.request_id = index;
                     }
