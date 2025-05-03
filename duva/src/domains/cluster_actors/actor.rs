@@ -725,7 +725,6 @@ mod test {
     use super::*;
     use crate::adapters::op_logs::memory_based::MemoryOpLogs;
     use crate::domains::caches::actor::CacheCommandSender;
-    use crate::domains::caches::cache_objects::CacheEntry;
     use crate::domains::caches::command::CacheCommand;
     use crate::domains::cluster_actors::commands::ClusterCommand;
     use crate::domains::cluster_actors::listener::PeerListener;
@@ -1201,8 +1200,9 @@ mod test {
         let task = tokio::spawn(async move {
             while let Some(message) = receiver.recv().await {
                 match message {
-                    CacheCommand::Set { cache_entry: CacheEntry::KeyValue { key, value } } => {
-                        assert_eq!(value, "bar");
+                    CacheCommand::Set { cache_entry } => {
+                        let (key, value) = cache_entry.destructure();
+                        assert_eq!(value.value(), "bar");
                         if key == "foo2" {
                             break;
                         }
@@ -1246,9 +1246,8 @@ mod test {
             let mut applied_keys = Vec::new();
 
             while let Some(message) = rx.recv().await {
-                if let CacheCommand::Set { cache_entry: CacheEntry::KeyValue { key, .. } } = message
-                {
-                    applied_keys.push(key);
+                if let CacheCommand::Set { cache_entry } = message {
+                    applied_keys.push(cache_entry.key().to_string());
                     if applied_keys.len() == 3 {
                         break;
                     }
@@ -1298,9 +1297,8 @@ mod test {
             let mut applied_keys = Vec::new();
 
             while let Some(message) = rx.recv().await {
-                if let CacheCommand::Set { cache_entry: CacheEntry::KeyValue { key, .. } } = message
-                {
-                    applied_keys.push(key);
+                if let CacheCommand::Set { cache_entry } = message {
+                    applied_keys.push(cache_entry.key().to_string());
                     if applied_keys.len() == 1 {
                         break;
                     }
@@ -1358,10 +1356,11 @@ mod test {
 
             while let Some(message) = rx.recv().await {
                 match message {
-                    CacheCommand::Set { cache_entry: CacheEntry::KeyValue { key, value } } => {
+                    CacheCommand::Set { cache_entry } => {
+                        let (key, value) = cache_entry.destructure();
                         if key == "foo" {
                             received_foo = true;
-                            assert_eq!(value, "bar");
+                            assert_eq!(value.value(), "bar");
                         } else if key == "foo2" {
                             // This should not happen in our test
                             panic!("foo2 should not be applied yet");

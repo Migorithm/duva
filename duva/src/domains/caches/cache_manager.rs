@@ -63,12 +63,8 @@ impl CacheManager {
         expiry: Option<DateTime<Utc>>,
         current_idx: u64,
     ) -> Result<String> {
-        let kvs = match expiry {
-            Some(expiry) => {
-                CacheEntry::KeyValueExpiry { key: key.to_owned(), value: value.clone(), expiry }
-            },
-            None => CacheEntry::KeyValue { key: key.to_owned(), value: value.clone() },
-        };
+        let cache_value = CacheValue::new(value.clone()).with_expiry(expiry);
+        let kvs = CacheEntry::new(key, cache_value);
 
         self.select_shard(kvs.key()).send(CacheCommand::Set { cache_entry: kvs }).await?;
         Ok(format!("s:{}|idx:{}", value, current_idx))

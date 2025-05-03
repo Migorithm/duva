@@ -14,20 +14,17 @@ use anyhow::Result;
 impl CacheEntry {
     pub(crate) fn encode_with_key(&self) -> Result<Vec<u8>> {
         let mut result = Vec::new();
-        match self {
-            CacheEntry::KeyValue { key, value } => {
-                result.push(STRING_VALUE_TYPE_INDICATOR);
-                result.extend_from_slice(&encode_key_value(key, value)?);
-            },
-            CacheEntry::KeyValueExpiry { key, value, expiry } => {
-                let milli_seconds = expiry.timestamp_millis();
-                result.push(EXPIRY_TIME_IN_MILLISECONDS_INDICATOR);
-                result.extend_from_slice(&milli_seconds.to_le_bytes());
 
-                result.push(STRING_VALUE_TYPE_INDICATOR);
-                result.extend_from_slice(&encode_key_value(key, value)?);
-            },
+        let (key, value) = self.clone().destructure();
+        if let Some(expiry) = value.expiry {
+            let milli_seconds = expiry.timestamp_millis();
+            result.push(EXPIRY_TIME_IN_MILLISECONDS_INDICATOR);
+            result.extend_from_slice(&milli_seconds.to_le_bytes());
         }
+
+        result.push(STRING_VALUE_TYPE_INDICATOR);
+        result.extend_from_slice(&encode_key_value(&key, value.value())?);
+
         Ok(result)
     }
 }
@@ -131,6 +128,7 @@ fn encode_size(size: usize) -> Result<Vec<u8>> {
 #[cfg(test)]
 mod test {
     use crate::domains::{
+        caches::cache_objects::CacheValue,
         cluster_actors::replication::ReplicationId,
         saves::endec::{
             StoredDuration,
@@ -290,7 +288,7 @@ mod test {
 
     #[test]
     fn test_cache_value_encode() {
-        let value = CacheEntry::KeyValue { key: "key".to_string(), value: "value".to_string() };
+        let value = CacheEntry::new("key".to_string(), CacheValue::new("value".to_string()));
         let encoded = value.encode_with_key().unwrap();
         let expected = vec![
             STRING_VALUE_TYPE_INDICATOR,
@@ -310,11 +308,11 @@ mod test {
 
     #[test]
     fn test_cache_value_with_expiry_milliseconds() {
-        let kvs = CacheEntry::KeyValueExpiry {
-            key: "key".to_string(),
-            value: "value".to_string(),
-            expiry: StoredDuration::Milliseconds(1713824559637).to_datetime(),
-        };
+        let kvs = CacheEntry::new(
+            "key".to_string(),
+            CacheValue::new("value".to_string())
+                .with_expiry(Some(StoredDuration::Milliseconds(1713824559637).to_datetime())),
+        );
 
         let encoded = kvs.encode_with_key().unwrap();
         let expected = vec![

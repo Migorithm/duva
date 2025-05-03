@@ -72,15 +72,11 @@ impl CacheActor {
     }
 
     pub(crate) fn set(&mut self, cache_entry: CacheEntry) {
-        match cache_entry {
-            CacheEntry::KeyValue { key, value } => {
-                self.cache.insert(key, CacheValue::new(value));
-            },
-            CacheEntry::KeyValueExpiry { key, value, expiry } => {
-                self.cache.keys_with_expiry += 1;
-                self.cache.insert(key.clone(), CacheValue::new(value).with_expiry(expiry));
-            },
+        let (key, value) = cache_entry.destructure();
+        if value.has_expiry() {
+            self.cache.keys_with_expiry += 1;
         }
+        self.cache.insert(key, value);
     }
 
     pub(crate) async fn try_send_ttl(&self, cache_entry: &CacheEntry) -> anyhow::Result<()> {
