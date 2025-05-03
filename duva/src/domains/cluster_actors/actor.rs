@@ -4,7 +4,6 @@ use super::commands::RejectionReason;
 use super::commands::ReplicationResponse;
 use super::commands::RequestVote;
 use super::commands::RequestVoteReply;
-use super::hash_ring::HashRing;
 use super::heartbeats::heartbeat::AppendEntriesRPC;
 use super::heartbeats::heartbeat::ClusterHeartBeat;
 use super::heartbeats::scheduler::HeartBeatScheduler;
@@ -48,7 +47,6 @@ pub struct ClusterActor {
     pub(crate) heartbeat_scheduler: HeartBeatScheduler,
     pub(crate) topology_writer: tokio::fs::File,
     pub(crate) node_change_broadcast: tokio::sync::broadcast::Sender<Vec<PeerIdentifier>>,
-    pub(crate) hash_ring: HashRing,
 }
 
 impl ClusterActor {
@@ -77,7 +75,6 @@ impl ClusterActor {
             consensus_tracker: LogConsensusTracker::default(),
             topology_writer,
             node_change_broadcast: tx,
-            hash_ring: HashRing::new(3), // Default to 3 virtual nodes per physical node
         }
     }
 
@@ -719,20 +716,6 @@ impl ClusterActor {
                 break;
             }
         }
-    }
-
-    // Add method to handle node changes in the hash ring
-    fn update_hash_ring(&mut self, peer_id: &PeerIdentifier, is_removal: bool) {
-        if is_removal {
-            self.hash_ring.remove_node(peer_id);
-        } else if let Some(peer) = self.members.get(peer_id) {
-            self.hash_ring.add_node(peer.state().clone());
-        }
-    }
-
-    // Add method to get responsible node for a key
-    fn get_responsible_node(&self, key: &str) -> Option<&PeerIdentifier> {
-        self.hash_ring.get_node_for_key(key)
     }
 }
 

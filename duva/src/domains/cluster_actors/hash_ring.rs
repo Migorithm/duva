@@ -2,7 +2,6 @@ use crate::domains::peers::peer::PeerState;
 use crate::prelude::PeerIdentifier;
 use std::collections::{BTreeMap, HashMap};
 use std::num::Wrapping;
-
 /// A consistent hashing ring for distributing keys across nodes.
 ///
 /// The `HashRing` maps keys to physical nodes using virtual nodes to ensure
