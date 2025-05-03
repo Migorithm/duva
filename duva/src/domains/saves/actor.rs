@@ -2,7 +2,7 @@ use std::collections::VecDeque;
 
 use super::{
     command::SaveCommand,
-    endec::encoder::byte_encoder::{
+    endec::encoder::{
         encode_checksum, encode_database_info, encode_database_table_size, encode_header,
         encode_metadata,
     },
