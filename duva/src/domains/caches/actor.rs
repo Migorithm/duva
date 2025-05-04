@@ -1,9 +1,12 @@
 use super::cache_objects::{CacheEntry, CacheValue};
 use super::command::CacheCommand;
 use crate::domains::caches::read_queue::ReadQueue;
+use crate::domains::cluster_actors::hash_ring::fnv_1a_hash;
 use crate::domains::query_parsers::QueryIO;
 use crate::make_smart_pointer;
+
 use std::collections::HashMap;
+use std::ops::Range;
 use std::sync::Arc;
 use std::sync::atomic::AtomicU64;
 use tokio::sync::mpsc::{self, Sender};
@@ -12,13 +15,6 @@ use tokio::sync::oneshot;
 pub struct CacheActor {
     pub(crate) cache: CacheDb,
     pub(crate) self_handler: Sender<CacheCommand>,
-}
-
-#[derive(Default)]
-pub(crate) struct CacheDb {
-    inner: HashMap<String, CacheValue>,
-    // OPTIMIZATION: Add a counter to keep track of the number of keys with expiry
-    pub(crate) keys_with_expiry: usize,
 }
 
 impl CacheActor {
@@ -95,8 +91,76 @@ impl CacheActor {
     }
 }
 
+#[derive(Default)]
+pub(crate) struct CacheDb {
+    inner: HashMap<String, CacheValue>,
+    // OPTIMIZATION: Add a counter to keep track of the number of keys with expiry
+    pub(crate) keys_with_expiry: usize,
+}
+
+impl CacheDb {
+    /// Extracts (removes) keys and values that fall within the specified token ranges.
+    /// This is a mutable operation that modifies the cache by taking out relevant entries.
+    ///
+    /// # Returns
+    /// A HashMap containing the extracted keys and values
+    pub(crate) fn extract_keys_for_ranges(
+        &mut self,
+        token_ranges: Vec<Range<u64>>,
+    ) -> HashMap<String, CacheValue> {
+        // If no ranges, return empty HashMap
+        if token_ranges.is_empty() {
+            return HashMap::new();
+        }
+
+        // Identify keys that fall within the specified ranges
+        let mut keys_to_extract = Vec::new();
+
+        for (key, _value) in self.iter() {
+            let key_hash = fnv_1a_hash(key);
+
+            // Check if this key's hash falls within any of the specified ranges
+            for range in &token_ranges {
+                if key_hash >= range.start && key_hash < range.end {
+                    keys_to_extract.push(key.clone());
+                    break; // No need to check other ranges once we've found a match
+                }
+            }
+        }
+
+        // Extract the identified keys and values
+        let mut extracted = HashMap::new();
+
+        for key in keys_to_extract {
+            if let Some(value) = self.remove(&key) {
+                // Update the keys_with_expiry counter if this key had an expiry
+                if value.expiry.is_some() {
+                    self.keys_with_expiry -= 1;
+                }
+
+                extracted.insert(key, value);
+            }
+        }
+
+        extracted
+    }
+}
 #[derive(Clone, Debug)]
 pub(crate) struct CacheCommandSender(pub(crate) mpsc::Sender<CacheCommand>);
 
 make_smart_pointer!(CacheCommandSender, mpsc::Sender<CacheCommand>);
 make_smart_pointer!(CacheDb, HashMap<String, CacheValue> => inner);
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_extract_keys_for_ranges_empty() {
+        let mut cache = CacheDb::default();
+        let ranges: Vec<Range<u64>> = Vec::new();
+
+        let result = cache.extract_keys_for_ranges(ranges);
+        assert!(result.is_empty());
+    }
+}

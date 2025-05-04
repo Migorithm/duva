@@ -132,7 +132,7 @@ impl HashRing {
 }
 
 #[inline]
-fn fnv_1a_hash(value: &str) -> u64 {
+pub(crate) fn fnv_1a_hash(value: &str) -> u64 {
     // Using FNV-1a hash algorithm which is:
     // - Fast
     // - Good distribution
