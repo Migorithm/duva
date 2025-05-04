@@ -153,6 +153,8 @@ make_smart_pointer!(CacheDb, HashMap<String, CacheValue> => inner);
 
 #[cfg(test)]
 mod tests {
+    use chrono::Utc;
+
     use super::*;
 
     #[test]
@@ -162,5 +164,76 @@ mod tests {
 
         let result = cache.extract_keys_for_ranges(ranges);
         assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_extract_keys_for_ranges_no_matches() {
+        let mut cache = CacheDb::default();
+        cache.inner.insert("key1".to_string(), CacheValue::new("value".to_string()));
+
+        // Create a range that doesn't include our key's hash
+        let key_hash = fnv_1a_hash("key1");
+        let ranges = vec![(key_hash + 1000)..u64::MAX];
+
+        let result = cache.extract_keys_for_ranges(ranges);
+        assert!(result.is_empty());
+        assert_eq!(cache.inner.len(), 1); // Cache still has our key
+    }
+
+    #[test]
+    fn test_extract_keys_for_ranges_with_matches() {
+        let mut cache = CacheDb::default();
+
+        // Add several keys to the cache
+        for i in 0..10 {
+            let key = format!("key{}", i);
+            let has_expiry = i % 2 == 0;
+
+            cache.inner.insert(
+                key,
+                CacheValue::new(format!("value{}", i)).with_expiry(if has_expiry {
+                    Some(Utc::now())
+                } else {
+                    None
+                }),
+            );
+
+            if has_expiry {
+                cache.keys_with_expiry += 1;
+            }
+        }
+
+        assert_eq!(cache.inner.len(), 10);
+        assert_eq!(cache.keys_with_expiry, 5); // Keys 0, 2, 4, 6, 8 have expiry
+
+        // Create ranges to extract specific keys (using their hash values)
+        let mut ranges = Vec::new();
+        for i in 0..5 {
+            let key = format!("key{}", i);
+            let key_hash = fnv_1a_hash(&key);
+            ranges.push(key_hash..key_hash + 1); // Range that contains just this key's hash
+        }
+
+        // Extract keys 0-4
+        let extracted = cache.extract_keys_for_ranges(ranges);
+
+        // Verify extraction
+        assert_eq!(extracted.len(), 5);
+        for i in 0..5 {
+            let key = format!("key{}", i);
+            assert!(extracted.contains_key(&key));
+            assert!(!cache.inner.contains_key(&key));
+        }
+
+        // Verify remaining cache
+        assert_eq!(cache.inner.len(), 5);
+        for i in 5..10 {
+            let key = format!("key{}", i);
+            assert!(cache.inner.contains_key(&key));
+        }
+
+        // Verify keys_with_expiry counter was updated correctly
+        // We should have removed keys 0, 2, 4 with expiry, so count should be reduced by 3
+        assert_eq!(cache.keys_with_expiry, 2); // Only keys 6, 8 remain with expiry
     }
 }
