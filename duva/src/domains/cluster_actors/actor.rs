@@ -521,13 +521,15 @@ impl ClusterActor {
     pub(crate) async fn send_leader_heartbeat(
         &mut self,
         logger: &ReplicatedLogs<impl TWriteAheadLog>,
+        client_sessions: &ClientSessions,
     ) {
-        self.send_to_replicas(AppendEntriesRPC(self.replication.default_heartbeat(
-            0,
-            logger.last_log_index,
-            logger.last_log_term,
-        )))
-        .await;
+        let session_info = client_sessions.extract_session_info();
+        let heartbeat = self
+            .replication
+            .default_heartbeat(0, logger.last_log_index, logger.last_log_term)
+            .set_client_sessions(session_info);
+
+        self.send_to_replicas(AppendEntriesRPC(heartbeat)).await;
     }
 
     async fn send_to_replicas(&mut self, msg: impl Into<QueryIO> + Send + Clone) {
@@ -733,6 +735,7 @@ mod test {
     use crate::domains::operation_logs::WriteRequest;
     use crate::domains::peers::peer::PeerState;
 
+    use std::collections::HashMap;
     use std::ops::Range;
     use std::time::Duration;
     use tokio::fs::OpenOptions;
@@ -766,6 +769,7 @@ mod test {
             prev_log_term: 0,
             append_entries: op_logs,
             ban_list: vec![],
+            client_sessions: HashMap::new(),
             from: PeerIdentifier::new("localhost", 8080),
             replid: ReplicationId::Key("localhost".to_string().into()),
             hop_count: 0,

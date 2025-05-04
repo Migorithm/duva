@@ -16,10 +16,11 @@ rand = "0.9.0"                                      # async networking
 futures = "0.3.31"                                  # async networking
 memmap2 = "0.9.5"                                   # memory mapping
 chrono = "0.4.40"
-bincode = { version = "2.0.1" }                     # serialization
-uuid = { version = "1.16.0", features = ["v7"] }    # unique id generation
+bincode = { version = "2.0.1", features = ["serde"] }                     # serialization
+uuid = { version = "1.16.0", features = ["v7", "serde"] }    # unique id generation
 memchr = "2.7.4"
 regex = "1.11.1"
+serde = { version = "1.0.219", features = ["derive"] }
 
 [dev-dependencies]
 tempfile = "3.19.1"

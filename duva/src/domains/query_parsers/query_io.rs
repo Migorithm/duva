@@ -596,6 +596,7 @@ mod test {
             replid: leader.clone(),
             hop_count: 2,
             ban_list: banned_list,
+            client_sessions: Default::default(),
             append_entries: vec![
                 WriteOperation {
                     request: WriteRequest::Set {
