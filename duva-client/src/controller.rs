@@ -90,7 +90,7 @@ impl<T> ClientController<T> {
                 _ => Response::FormatError,
             },
             Append { .. } => match query_io {
-                QueryIO::SimpleString(_) => Response::String("OK".into()),
+                QueryIO::SimpleString(value) => Response::String(value.len().to_string()),
                 QueryIO::Err(value) => Response::Error(value),
                 _ => Response::FormatError,
             },
