@@ -38,6 +38,11 @@ sequenceDiagram
 
     Note over A,B: Now, A and B have disjoint<br>token ranges<br>0..5000 and 5001..10000 respectively
 
+    critical Rebalancing!
+        A ->> B: Migrate data
+    end
+
+    
     A -->> A: Unlock pending requests
     alt Request's key is in A's range
         A ->> A: Process request
@@ -45,6 +50,7 @@ sequenceDiagram
     else Request's key is in B's range
         A -->> C1: (Moved) error
     end
+
 
 
 
