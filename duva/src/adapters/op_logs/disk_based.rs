@@ -11,7 +11,7 @@ use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt, BufReader, BufWriter}
 
 const SEGMENT_SIZE: usize = 1024 * 1024; // 1MB per segment
 
-/// A local write-ahead-log file (op_logs) implementation using segmented logs.
+/// A local write-ahead-log (WAL) file (op_logs) implementation using segmented logs.
 pub struct FileOpLogs {
     /// The directory where all segment files are stored, or the file path if not using segments
     path: PathBuf,
@@ -147,6 +147,7 @@ impl Segment {
 
 impl FileOpLogs {
     /// Creates a new `FileOpLogs` by opening the specified `path`.
+    ///
     /// If the path is a directory, it will use segmented logs.
     /// If the path is a file, it will use a single file.
     ///
@@ -173,6 +174,7 @@ impl FileOpLogs {
 
         Ok(Self { path, active_segment, segments })
     }
+
     async fn validate_folder(path: &PathBuf) -> Result<(), anyhow::Error> {
         match tokio::fs::metadata(path).await {
             Ok(metadata) => {
@@ -268,11 +270,6 @@ impl FileOpLogs {
         };
 
         Ok(())
-    }
-
-    async fn create_reader(&self, segment_path: &PathBuf) -> Result<BufReader<File>> {
-        let file = OpenOptions::new().read(true).open(segment_path).await?;
-        Ok(BufReader::new(file))
     }
 
     async fn read_ops_from_reader(
@@ -579,7 +576,7 @@ mod tests {
         let mut op_logs = FileOpLogs::new(&path).await.unwrap();
         let request =
             WriteRequest::Set { key: "foo".into(), value: "bar".into(), expires_at: None };
-        let write_op = WriteOperation { request, log_index: 0, term: 0 };
+        let write_op = WriteOperation { request: request.clone(), log_index: 0, term: 0 };
 
         // WHEN
         op_logs.append(write_op).await.unwrap();
@@ -593,10 +590,7 @@ mod tests {
         let (encoded, _): (WriteOperation, usize) =
             bincode::decode_from_slice(&buf[1..], bincode::config::standard()).unwrap();
 
-        let WriteRequest::Set { key, .. } = encoded.request else {
-            panic!("Expected a Set request");
-        };
-        assert_eq!(key, "foo");
+        assert_eq!(encoded.request, request);
     }
 
     #[tokio::test]
@@ -993,6 +987,7 @@ mod tests {
             })
             .collect()
     }
+
     #[tokio::test]
     async fn test_range_single_segment() {
         let dir = TempDir::new().unwrap();
