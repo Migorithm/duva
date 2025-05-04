@@ -4,6 +4,8 @@ use uuid::Uuid;
 
 use crate::make_smart_pointer;
 
+use super::heartbeats::heartbeat::ClientSessionInfo;
+
 #[derive(Default)]
 pub(crate) struct ClientSessions(HashMap<Uuid, Session>);
 
@@ -48,5 +50,36 @@ impl ClientSessions {
             .or_insert(Session { last_accessed: Default::default(), processed_req_id: None });
         entry.last_accessed = Utc::now();
         entry.processed_req_id = Some(session_req.request_id);
+    }
+    pub(crate) fn extract_session_info(&self) -> HashMap<Uuid, ClientSessionInfo> {
+        self.iter()
+            .filter_map(|(client_id, session)| {
+                session.processed_req_id.map(|processed_req_id| {
+                    let timestamp = session.last_accessed.timestamp_millis() as u64;
+                    (
+                        *client_id,
+                        ClientSessionInfo {
+                            client_id: client_id.clone(),
+                            processed_req_id,
+                            timestamp,
+                        },
+                    )
+                })
+            })
+            .collect()
+    }
+    pub(crate) fn merge_session_info(&mut self, remote_sessions: HashMap<Uuid, ClientSessionInfo>) {
+        for (client_id, remote_info) in remote_sessions {
+            let local_session = self
+                .entry(client_id)
+                .or_insert(Session { last_accessed: Default::default(), processed_req_id: None });
+
+            let remote_time = DateTime::<Utc>::from_timestamp_millis(remote_info.timestamp as i64)
+                .unwrap_or_default();
+            if remote_time > local_session.last_accessed {
+                local_session.last_accessed = remote_time;
+                local_session.processed_req_id = Some(remote_info.processed_req_id);
+            }
+        }
     }
 }

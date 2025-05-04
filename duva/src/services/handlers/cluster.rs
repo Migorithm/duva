@@ -54,6 +54,12 @@ impl ClusterActor {
                     if self.replication.in_ban_list(&heartbeat.from) {
                         continue;
                     }
+
+                    // merge session info
+                    if !heartbeat.client_sessions.is_empty() {
+                        client_sessions.merge_session_info(heartbeat.client_sessions);
+                    }
+
                     self.apply_ban_list(std::mem::take(&mut heartbeat.ban_list)).await;
                     self.join_peer_network_if_absent(heartbeat.cluster_nodes).await;
                     self.gossip(heartbeat.hop_count, &logger).await;
@@ -99,7 +105,7 @@ impl ClusterActor {
                     self.send_commit_heartbeat(offset).await;
                 },
                 ClusterCommand::SendAppendEntriesRPC => {
-                    self.send_leader_heartbeat(&logger).await;
+                    self.send_leader_heartbeat(&logger, &client_sessions).await;
                 },
                 ClusterCommand::InstallLeaderState(logs) => {
                     if logger.follower_full_sync(logs.clone()).await.is_err() {

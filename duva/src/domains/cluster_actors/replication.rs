@@ -5,6 +5,7 @@ pub(crate) use super::heartbeats::heartbeat::HeartBeatMessage;
 use crate::domains::peers::identifier::PeerIdentifier;
 use crate::domains::peers::peer::NodeKind;
 use crate::domains::peers::peer::PeerState;
+use std::collections::HashMap;
 use std::fmt::Display;
 use std::sync::Arc;
 use std::sync::atomic::AtomicU64;
@@ -96,6 +97,7 @@ impl ReplicationState {
             ban_list: self.ban_list.clone(),
             append_entries: vec![],
             cluster_nodes: vec![],
+            client_sessions: HashMap::new(),
             prev_log_index,
             prev_log_term,
         }
