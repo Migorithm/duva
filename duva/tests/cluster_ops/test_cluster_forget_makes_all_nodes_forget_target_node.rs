@@ -2,20 +2,25 @@ use duva::domains::cluster_actors::heartbeats::scheduler::LEADER_HEARTBEAT_INTER
 
 use crate::common::{Client, ServerEnv, check_internodes_communication, spawn_server_process};
 
-#[tokio::test]
-async fn test_cluster_forget_makes_all_nodes_forget_target_node() -> anyhow::Result<()> {
+async fn run_cluster_forget_makes_all_nodes_forget_target_node(
+    with_append_only: bool,
+) -> anyhow::Result<()> {
     // GIVEN
     const HOP_COUNT: usize = 0;
 
-    let env = ServerEnv::default().with_ttl(500).with_hf(2);
+    let env = ServerEnv::default().with_ttl(500).with_hf(2).with_append_only(with_append_only);
     let mut leader_p = spawn_server_process(&env).await?;
 
-    let repl_env =
-        ServerEnv::default().with_leader_bind_addr(leader_p.bind_addr().clone()).with_hf(10);
+    let repl_env = ServerEnv::default()
+        .with_leader_bind_addr(leader_p.bind_addr().clone())
+        .with_hf(10)
+        .with_append_only(with_append_only);
     let mut repl_p = spawn_server_process(&repl_env).await?;
 
-    let repl_env2 =
-        ServerEnv::default().with_leader_bind_addr(leader_p.bind_addr().clone()).with_hf(10);
+    let repl_env2 = ServerEnv::default()
+        .with_leader_bind_addr(leader_p.bind_addr().clone())
+        .with_hf(10)
+        .with_append_only(with_append_only);
     let mut repl_p2 = spawn_server_process(&repl_env2).await?;
 
     check_internodes_communication(
@@ -41,6 +46,14 @@ async fn test_cluster_forget_makes_all_nodes_forget_target_node() -> anyhow::Res
 
     let response2 = repl_cli.send_and_get("cluster info", 1).await;
     assert_eq!(response2.first().unwrap(), "cluster_known_nodes:1");
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_cluster_forget_makes_all_nodes_forget_target_node() -> anyhow::Result<()> {
+    run_cluster_forget_makes_all_nodes_forget_target_node(false).await?;
+    run_cluster_forget_makes_all_nodes_forget_target_node(true).await?;
 
     Ok(())
 }

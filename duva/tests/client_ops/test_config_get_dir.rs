@@ -6,10 +6,8 @@ use tokio::time::sleep;
 
 use crate::common::{Client, ServerEnv, spawn_server_process};
 
-#[tokio::test]
-async fn test_config_get_dir() -> anyhow::Result<()> {
+async fn run_config_get_dir(env: ServerEnv) -> anyhow::Result<()> {
     // GIVEN
-    let env = ServerEnv::default();
     let process = spawn_server_process(&env).await?;
 
     sleep(Duration::from_millis(500)).await;
@@ -19,7 +17,16 @@ async fn test_config_get_dir() -> anyhow::Result<()> {
     let res = h.send_and_get("CONFIG get dir", 1).await;
 
     // THEN
-    assert_eq!(res.first().unwrap(), "dir .");
+    assert_eq!(res.first().unwrap(), &format!("dir {}", env.dir.path().display()));
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_config_get_dir() -> anyhow::Result<()> {
+    for env in [ServerEnv::default(), ServerEnv::default().with_append_only(true)] {
+        run_config_get_dir(env).await?;
+    }
 
     Ok(())
 }

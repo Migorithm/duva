@@ -1,13 +1,15 @@
 use crate::common::{Client, ServerEnv, spawn_server_process};
 
-#[tokio::test]
-async fn test_removes_node_when_heartbeat_is_not_received_for_certain_time() -> anyhow::Result<()> {
+async fn run_removes_node_when_heartbeat_is_not_received_for_certain_time(
+    with_append_only: bool,
+) -> anyhow::Result<()> {
     // GIVEN
-    let env = ServerEnv::default();
-
+    let env = ServerEnv::default().with_append_only(with_append_only);
     let mut leader_p = spawn_server_process(&env).await?;
 
-    let repl_env = ServerEnv::default().with_leader_bind_addr(leader_p.bind_addr().into());
+    let repl_env = ServerEnv::default()
+        .with_leader_bind_addr(leader_p.bind_addr())
+        .with_append_only(with_append_only);
     let mut repl_p = spawn_server_process(&repl_env).await?;
 
     repl_p.wait_for_message(&leader_p.heartbeat_msg(0)).await?;
@@ -25,6 +27,14 @@ async fn test_removes_node_when_heartbeat_is_not_received_for_certain_time() -> 
 
     //THEN
     assert_eq!(cluster_info.await.first().unwrap(), "cluster_known_nodes:0");
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_removes_node_when_heartbeat_is_not_received_for_certain_time() -> anyhow::Result<()> {
+    run_removes_node_when_heartbeat_is_not_received_for_certain_time(false).await?;
+    run_removes_node_when_heartbeat_is_not_received_for_certain_time(true).await?;
 
     Ok(())
 }

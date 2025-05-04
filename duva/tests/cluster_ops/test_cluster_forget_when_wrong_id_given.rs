@@ -2,11 +2,11 @@
 /// In other words the specified node is removed from the nodes table of the node receiving the command.
 use crate::common::{Client, ServerEnv, spawn_server_process};
 
-#[tokio::test]
-async fn test_cluster_forget_node_return_error_when_wrong_id_given() -> anyhow::Result<()> {
+async fn run_cluster_forget_node_return_error_when_wrong_id_given(
+    env: ServerEnv,
+) -> anyhow::Result<()> {
     // GIVEN
 
-    let env = ServerEnv::default();
     let leader_p = spawn_server_process(&env).await?;
 
     // WHEN
@@ -23,6 +23,15 @@ async fn test_cluster_forget_node_return_error_when_wrong_id_given() -> anyhow::
 
     // THEN
     assert_eq!(cluster_info.first().unwrap(), "cluster_known_nodes:0");
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_cluster_forget_node_return_error_when_wrong_id_given() -> anyhow::Result<()> {
+    for env in [ServerEnv::default(), ServerEnv::default().with_append_only(true)] {
+        run_cluster_forget_node_return_error_when_wrong_id_given(env).await?;
+    }
 
     Ok(())
 }

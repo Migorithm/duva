@@ -4,10 +4,8 @@
 /// After 300ms, we get the key again and check if the value is not returned (-1)
 use crate::common::{Client, ServerEnv, spawn_server_process};
 
-#[tokio::test]
-async fn test_set_get() -> anyhow::Result<()> {
+async fn run_set_get(env: ServerEnv) -> anyhow::Result<()> {
     // GIVEN
-    let env = ServerEnv::default();
     let process = spawn_server_process(&env).await?;
 
     let mut h = Client::new(process.port);
@@ -22,6 +20,15 @@ async fn test_set_get() -> anyhow::Result<()> {
 
     let res = h.send_and_get("GET somanyrand", 1).await;
     assert_eq!(res, vec!["(nil)"]);
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_set_get() -> anyhow::Result<()> {
+    for env in [ServerEnv::default(), ServerEnv::default().with_append_only(true)] {
+        run_set_get(env).await?;
+    }
 
     Ok(())
 }

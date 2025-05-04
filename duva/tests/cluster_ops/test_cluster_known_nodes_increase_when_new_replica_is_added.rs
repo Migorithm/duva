@@ -1,14 +1,17 @@
 use crate::common::{Client, ServerEnv, spawn_server_process};
 
-#[tokio::test]
-async fn test_cluster_topology_change_when_new_node_added() -> anyhow::Result<()> {
+async fn run_cluster_topology_change_when_new_node_added(
+    with_append_only: bool,
+) -> anyhow::Result<()> {
     // GIVEN
-    let env = ServerEnv::default();
+    let env = ServerEnv::default().with_append_only(with_append_only);
     let mut leader_p = spawn_server_process(&env).await?;
 
     let cmd = "cluster info";
 
-    let repl_env = ServerEnv::default().with_leader_bind_addr(leader_p.bind_addr().into());
+    let repl_env = ServerEnv::default()
+        .with_leader_bind_addr(leader_p.bind_addr())
+        .with_append_only(with_append_only);
     let mut repl_p = spawn_server_process(&repl_env).await?;
     repl_p.wait_for_message(&leader_p.heartbeat_msg(0)).await?;
     leader_p.wait_for_message(&repl_p.heartbeat_msg(0)).await?;
@@ -18,7 +21,9 @@ async fn test_cluster_topology_change_when_new_node_added() -> anyhow::Result<()
     assert_eq!(cluster_info, vec!["cluster_known_nodes:1".to_string()]);
 
     // // WHEN -- new replica is added
-    let repl_env2 = ServerEnv::default().with_leader_bind_addr(leader_p.bind_addr().into());
+    let repl_env2 = ServerEnv::default()
+        .with_leader_bind_addr(leader_p.bind_addr())
+        .with_append_only(with_append_only);
     let mut new_repl_p = spawn_server_process(&repl_env2).await?;
     new_repl_p.wait_for_message(&leader_p.heartbeat_msg(0)).await?;
 
@@ -30,7 +35,7 @@ async fn test_cluster_topology_change_when_new_node_added() -> anyhow::Result<()
     assert_eq!(nodes.len(), 3);
 
     let mut leader_nodes = Vec::new();
-    tokio::fs::read_to_string(&env.topology_path.0)
+    tokio::fs::read_to_string(&env.topology_path)
         .await
         .unwrap()
         .lines()
@@ -39,6 +44,14 @@ async fn test_cluster_topology_change_when_new_node_added() -> anyhow::Result<()
     for node in leader_nodes {
         assert!(nodes.contains(&node));
     }
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_cluster_topology_change_when_new_node_added() -> anyhow::Result<()> {
+    run_cluster_topology_change_when_new_node_added(false).await?;
+    run_cluster_topology_change_when_new_node_added(true).await?;
 
     Ok(())
 }

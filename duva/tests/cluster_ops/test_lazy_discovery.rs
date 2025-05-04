@@ -1,10 +1,9 @@
 use crate::common::{Client, ServerEnv, spawn_server_process};
 
-#[tokio::test]
-async fn test_lazy_discovery_of_leader() -> anyhow::Result<()> {
+async fn run_lazy_discovery_of_leader(with_append_only: bool) -> anyhow::Result<()> {
     // GIVEN
-    let target_env = ServerEnv::default();
-    let leader_p = spawn_server_process(&target_env).await?;
+    let env = ServerEnv::default().with_append_only(with_append_only);
+    let leader_p = spawn_server_process(&env).await?;
 
     let mut target_h = Client::new(leader_p.port);
 
@@ -15,7 +14,7 @@ async fn test_lazy_discovery_of_leader() -> anyhow::Result<()> {
         vec!["0) \"key\"", "1) \"key2\""]
     );
 
-    let replica_env = ServerEnv::default();
+    let replica_env = ServerEnv::default().with_append_only(with_append_only);
     let replica_p = spawn_server_process(&replica_env).await?;
     let mut other_h = Client::new(replica_p.port);
 
@@ -38,6 +37,9 @@ async fn test_lazy_discovery_of_leader() -> anyhow::Result<()> {
         ["OK".to_string(),]
     );
 
+    // TODO(dpark): Would there be a way to perform a closed-loop wait?
+    tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+
     // THEN
     assert_eq!(
         other_h.send_and_get("CLUSTER INFO".as_bytes(), 1).await,
@@ -48,6 +50,14 @@ async fn test_lazy_discovery_of_leader() -> anyhow::Result<()> {
         target_h.send_and_get("KEYS *".as_bytes(), 2).await,
         vec!["0) \"other2\"", "1) \"other\""]
     );
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_lazy_discovery_of_leader() -> anyhow::Result<()> {
+    run_lazy_discovery_of_leader(false).await?;
+    run_lazy_discovery_of_leader(true).await?;
 
     Ok(())
 }
