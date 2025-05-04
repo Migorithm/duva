@@ -104,13 +104,10 @@ impl CacheDb {
     ///
     /// # Returns
     /// A HashMap containing the extracted keys and values
-    pub(crate) fn extract_keys_for_ranges(
-        &mut self,
-        token_ranges: Vec<Range<u64>>,
-    ) -> HashMap<String, CacheValue> {
+    pub(crate) fn take_subset(&mut self, token_ranges: Vec<Range<u64>>) -> CacheDb {
         // If no ranges, return empty HashMap
         if token_ranges.is_empty() {
-            return HashMap::new();
+            return CacheDb::default();
         }
 
         // Identify keys that fall within the specified ranges
@@ -130,19 +127,19 @@ impl CacheDb {
 
         // Extract the identified keys and values
         let mut extracted = HashMap::new();
-
+        let mut extracted_keys_with_expiry = 0;
         for key in keys_to_extract {
             if let Some(value) = self.remove(&key) {
                 // Update the keys_with_expiry counter if this key had an expiry
                 if value.expiry.is_some() {
                     self.keys_with_expiry -= 1;
+                    extracted_keys_with_expiry += 1;
                 }
 
                 extracted.insert(key, value);
             }
         }
-
-        extracted
+        CacheDb { inner: extracted, keys_with_expiry: extracted_keys_with_expiry }
     }
 }
 #[derive(Clone, Debug)]
@@ -162,7 +159,7 @@ mod tests {
         let mut cache = CacheDb::default();
         let ranges: Vec<Range<u64>> = Vec::new();
 
-        let result = cache.extract_keys_for_ranges(ranges);
+        let result = cache.take_subset(ranges);
         assert!(result.is_empty());
     }
 
@@ -175,7 +172,7 @@ mod tests {
         let key_hash = fnv_1a_hash("key1");
         let ranges = vec![(key_hash + 1000)..u64::MAX];
 
-        let result = cache.extract_keys_for_ranges(ranges);
+        let result = cache.take_subset(ranges);
         assert!(result.is_empty());
         assert_eq!(cache.inner.len(), 1); // Cache still has our key
     }
@@ -215,7 +212,7 @@ mod tests {
         }
 
         // Extract keys 0-4
-        let extracted = cache.extract_keys_for_ranges(ranges);
+        let extracted = cache.take_subset(ranges);
 
         // Verify extraction
         assert_eq!(extracted.len(), 5);
@@ -235,5 +232,6 @@ mod tests {
         // Verify keys_with_expiry counter was updated correctly
         // We should have removed keys 0, 2, 4 with expiry, so count should be reduced by 3
         assert_eq!(cache.keys_with_expiry, 2); // Only keys 6, 8 remain with expiry
+        assert_eq!(extracted.keys_with_expiry, 3); // Keys 0, 2, 4 had expiry
     }
 }
