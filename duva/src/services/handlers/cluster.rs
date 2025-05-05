@@ -1,9 +1,5 @@
-use std::collections::VecDeque;
-
 use crate::domains::caches::cache_manager::CacheManager;
-use crate::domains::cluster_actors::commands::{
-    ClusterCommand, ConsensusClientResponse, ConsensusRequest,
-};
+use crate::domains::cluster_actors::commands::{ClusterCommand, ConsensusClientResponse};
 use crate::domains::cluster_actors::replication::ReplicationState;
 use crate::domains::cluster_actors::session::ClientSessions;
 use crate::domains::cluster_actors::{ClusterActor, FANOUT};

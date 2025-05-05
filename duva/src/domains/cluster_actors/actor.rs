@@ -746,11 +746,13 @@ mod test {
     use crate::domains::peers::peer::PeerState;
     use std::ops::Range;
     use std::time::Duration;
+    use tempfile::TempDir;
     use tokio::fs::OpenOptions;
 
     use tokio::net::TcpListener;
     use tokio::net::TcpStream;
     use tokio::sync::mpsc::channel;
+    use tokio::time::timeout;
     use uuid::Uuid;
 
     fn write_operation_create_helper(
@@ -791,14 +793,11 @@ mod test {
             "localhost",
             8080,
         );
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("duva.tp");
 
-        let topology_writer = OpenOptions::new()
-            .create(true)
-            .write(true)
-            .truncate(true)
-            .open("duva.tp")
-            .await
-            .unwrap();
+        let topology_writer =
+            OpenOptions::new().create(true).write(true).truncate(true).open(path).await.unwrap();
 
         ClusterActor::new(100, replication, 100, topology_writer)
     }
@@ -1694,6 +1693,26 @@ mod test {
 
     #[tokio::test]
     async fn test_requests_pending() {
-        // TODO
+        // GIVEN
+        let mut cluster_actor = cluster_actor_create_helper().await;
+        cluster_actor.pending_requests = Some(Default::default());
+
+        let mut logger = ReplicatedLogs::new(MemoryOpLogs::default(), 0, 0);
+
+        //WHEN
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        let write_r =
+            WriteRequest::Set { key: "foo".into(), value: "bar".into(), expires_at: None };
+        let con_req = ConsensusRequest::new(write_r.clone(), tx, None);
+
+        cluster_actor.req_consensus(&mut logger, con_req).await;
+
+        // THEN
+        assert!(timeout(Duration::from_millis(200), rx).await.is_err());
+        assert_eq!(cluster_actor.pending_requests.as_ref().unwrap().len(), 1);
+        assert_eq!(
+            cluster_actor.pending_requests.as_mut().unwrap().pop_front().unwrap().request,
+            write_r
+        );
     }
 }
