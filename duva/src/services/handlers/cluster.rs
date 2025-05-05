@@ -1,5 +1,9 @@
+use std::collections::VecDeque;
+
 use crate::domains::caches::cache_manager::CacheManager;
-use crate::domains::cluster_actors::commands::{ClusterCommand, ConsensusClientResponse};
+use crate::domains::cluster_actors::commands::{
+    ClusterCommand, ConsensusClientResponse, ConsensusRequest,
+};
 use crate::domains::cluster_actors::replication::ReplicationState;
 use crate::domains::cluster_actors::session::ClientSessions;
 use crate::domains::cluster_actors::{ClusterActor, FANOUT};
@@ -15,6 +19,8 @@ impl ClusterActor {
         mut client_sessions: ClientSessions,
     ) -> anyhow::Result<Self> {
         let mut logger = ReplicatedLogs::new(wal, 0, 0);
+
+        let mut pending_requests = VecDeque::<ConsensusRequest>::new();
 
         while let Some(command) = self.receiver.recv().await {
             match command {
@@ -66,17 +72,21 @@ impl ClusterActor {
                         let _ = sender.send(None);
                     }
                 },
-                ClusterCommand::LeaderReqConsensus { request, callback, session_req } => {
-                    if client_sessions.is_processed(&session_req) {
+                ClusterCommand::LeaderReqConsensus(req) => {
+                    if self.is_pending {
+                        pending_requests.push_back(req);
+                        continue;
+                    }
+                    if client_sessions.is_processed(&req.session_req) {
                         // TODO mapping between early returned values to client result
-                        let _ = callback.send(Ok(ConsensusClientResponse::AlreadyProcessed {
-                            key: request.key(),
+                        let _ = req.callback.send(Ok(ConsensusClientResponse::AlreadyProcessed {
+                            key: req.request.key(),
                             index: logger.last_log_index,
                         }));
                         continue;
                     };
 
-                    self.req_consensus(&mut logger, request, callback, session_req).await;
+                    self.req_consensus(&mut logger, req).await;
                 },
                 ClusterCommand::AppendEntriesRPC(heartbeat) => {
                     if self.check_term_outdated(&heartbeat, &logger).await {

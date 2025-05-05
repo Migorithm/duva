@@ -1,5 +1,6 @@
 use super::commands::ClusterCommand;
 use super::commands::ConsensusClientResponse;
+use super::commands::ConsensusRequest;
 use super::commands::RejectionReason;
 use super::commands::ReplicationResponse;
 use super::commands::RequestVote;
@@ -16,7 +17,7 @@ use super::replication::ReplicationRole;
 use super::replication::ReplicationState;
 use super::replication::time_in_secs;
 use super::session::ClientSessions;
-use super::session::SessionRequest;
+
 use super::*;
 use crate::domains::cluster_actors::consensus::ElectionState;
 use crate::domains::operation_logs::WriteOperation;
@@ -47,6 +48,7 @@ pub struct ClusterActor {
     pub(crate) heartbeat_scheduler: HeartBeatScheduler,
     pub(crate) topology_writer: tokio::fs::File,
     pub(crate) node_change_broadcast: tokio::sync::broadcast::Sender<Vec<PeerIdentifier>>,
+    pub(crate) is_pending: bool,
 }
 
 impl ClusterActor {
@@ -75,6 +77,7 @@ impl ClusterActor {
             consensus_tracker: LogConsensusTracker::default(),
             topology_writer,
             node_change_broadcast: tx,
+            is_pending: false,
         }
     }
 
@@ -317,30 +320,30 @@ impl ClusterActor {
     pub(crate) async fn req_consensus(
         &mut self,
         logger: &mut ReplicatedLogs<impl TWriteAheadLog>,
-        log: WriteRequest,
-        callback: tokio::sync::oneshot::Sender<anyhow::Result<ConsensusClientResponse>>,
-        session_req: Option<SessionRequest>,
+        req: ConsensusRequest,
     ) {
         let (prev_log_index, prev_term) = (logger.last_log_index, logger.last_log_term);
-        let append_entries = match self.try_create_append_entries(logger, &log).await {
+        let append_entries = match self.try_create_append_entries(logger, &req.request).await {
             Ok(entries) => entries,
             Err(err) => {
-                let _ = callback.send(Err(anyhow::anyhow!(err)));
+                let _ = req.callback.send(Err(anyhow::anyhow!(err)));
                 return;
             },
         };
 
         // Skip consensus for no replicas
         if self.replicas().count() == 0 {
-            callback.send(Ok(ConsensusClientResponse::LogIndex(logger.last_log_index.into()))).ok();
+            req.callback
+                .send(Ok(ConsensusClientResponse::LogIndex(logger.last_log_index.into())))
+                .ok();
             return;
         }
 
         self.consensus_tracker.add(
             logger.last_log_index,
-            callback,
+            req.callback,
             self.replicas().count(),
-            session_req,
+            req.session_req,
         );
 
         // dbg!(self.replicas().count()); // CHECKED. replica count right.
@@ -722,17 +725,18 @@ impl ClusterActor {
 #[cfg(test)]
 #[allow(unused_variables)]
 mod test {
+    use super::session::SessionRequest;
     use super::*;
     use crate::adapters::op_logs::memory_based::MemoryOpLogs;
     use crate::domains::caches::actor::CacheCommandSender;
     use crate::domains::caches::command::CacheCommand;
     use crate::domains::cluster_actors::commands::ClusterCommand;
+    use crate::domains::cluster_actors::commands::ConsensusRequest;
     use crate::domains::cluster_actors::listener::PeerListener;
     use crate::domains::cluster_actors::replication::ReplicationRole;
     use crate::domains::operation_logs::WriteOperation;
     use crate::domains::operation_logs::WriteRequest;
     use crate::domains::peers::peer::PeerState;
-
     use std::ops::Range;
     use std::time::Duration;
     use tokio::fs::OpenOptions;
@@ -874,15 +878,14 @@ mod test {
         let mut cluster_actor = cluster_actor_create_helper().await;
         let (tx, rx) = tokio::sync::oneshot::channel();
 
+        let consensus_request = ConsensusRequest::new(
+            WriteRequest::Set { key: "foo".into(), value: "bar".into(), expires_at: None },
+            tx,
+            None,
+        );
+
         // WHEN
-        cluster_actor
-            .req_consensus(
-                &mut logger,
-                WriteRequest::Set { key: "foo".into(), value: "bar".into(), expires_at: None },
-                tx,
-                None,
-            )
-            .await;
+        cluster_actor.req_consensus(&mut logger, consensus_request).await;
 
         // THEN
         assert_eq!(cluster_actor.consensus_tracker.len(), 0);
@@ -906,15 +909,14 @@ mod test {
         let (tx, _) = tokio::sync::oneshot::channel();
         let client_id = Uuid::now_v7();
         let session_request = SessionRequest::new(1, client_id);
+        let consensus_request = ConsensusRequest::new(
+            WriteRequest::Set { key: "foo".into(), value: "bar".into(), expires_at: None },
+            tx,
+            Some(session_request.clone()),
+        );
+
         // WHEN
-        cluster_actor
-            .req_consensus(
-                &mut logger,
-                WriteRequest::Set { key: "foo".into(), value: "bar".into(), expires_at: None },
-                tx,
-                Some(session_request.clone()),
-            )
-            .await;
+        cluster_actor.req_consensus(&mut logger, consensus_request).await;
 
         // THEN
         assert_eq!(cluster_actor.consensus_tracker.len(), 1);
@@ -944,7 +946,7 @@ mod test {
         tokio::spawn(cluster_actor.handle(MemoryOpLogs::default(), cache_manager, sessions));
         let (tx, rx) = tokio::sync::oneshot::channel();
         handler
-            .send(ClusterCommand::LeaderReqConsensus {
+            .send(ClusterCommand::LeaderReqConsensus(ConsensusRequest {
                 request: WriteRequest::Set {
                     key: "foo".into(),
                     value: "bar".into(),
@@ -952,7 +954,7 @@ mod test {
                 },
                 callback: tx,
                 session_req: Some(client_req),
-            })
+            }))
             .await
             .unwrap();
 
@@ -977,14 +979,13 @@ mod test {
 
         let client_id = Uuid::now_v7();
         let client_request = SessionRequest::new(3, client_id);
-        cluster_actor
-            .req_consensus(
-                &mut logger,
-                WriteRequest::Set { key: "foo".into(), value: "bar".into(), expires_at: None },
-                client_request_sender,
-                Some(client_request.clone()),
-            )
-            .await;
+        let consensus_request = ConsensusRequest::new(
+            WriteRequest::Set { key: "foo".into(), value: "bar".into(), expires_at: None },
+            client_request_sender,
+            Some(client_request.clone()),
+        );
+
+        cluster_actor.req_consensus(&mut logger, consensus_request).await;
 
         // WHEN
         let follower_res = ReplicationResponse {
@@ -1028,14 +1029,13 @@ mod test {
             .await;
         let (client_request_sender, client_wait) = tokio::sync::oneshot::channel();
 
-        cluster_actor
-            .req_consensus(
-                &mut logger,
-                WriteRequest::Set { key: "foo".into(), value: "bar".into(), expires_at: None },
-                client_request_sender,
-                None,
-            )
-            .await;
+        let consensus_request = ConsensusRequest::new(
+            WriteRequest::Set { key: "foo".into(), value: "bar".into(), expires_at: None },
+            client_request_sender,
+            None,
+        );
+
+        cluster_actor.req_consensus(&mut logger, consensus_request).await;
 
         // WHEN
         assert_eq!(cluster_actor.consensus_tracker.len(), 1);

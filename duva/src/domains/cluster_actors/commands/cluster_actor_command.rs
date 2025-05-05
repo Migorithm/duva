@@ -36,11 +36,7 @@ pub(crate) enum ClusterCommand {
     SendClusterHeatBeat,
     ForgetPeer(PeerIdentifier, tokio::sync::oneshot::Sender<Option<()>>),
     ReplicaOf(PeerIdentifier, tokio::sync::oneshot::Sender<()>),
-    LeaderReqConsensus {
-        request: WriteRequest,
-        callback: tokio::sync::oneshot::Sender<anyhow::Result<ConsensusClientResponse>>,
-        session_req: Option<SessionRequest>,
-    },
+    LeaderReqConsensus(ConsensusRequest),
     ReplicationResponse(ReplicationResponse),
     SendCommitHeartBeat {
         log_idx: u64,
@@ -57,4 +53,26 @@ pub(crate) enum ClusterCommand {
     SubscribeToTopologyChange(
         tokio::sync::oneshot::Sender<tokio::sync::broadcast::Receiver<Vec<PeerIdentifier>>>,
     ),
+}
+
+#[derive(Debug)]
+pub(crate) struct ConsensusRequest {
+    pub(crate) request: WriteRequest,
+    pub(crate) callback: tokio::sync::oneshot::Sender<anyhow::Result<ConsensusClientResponse>>,
+    pub(crate) session_req: Option<SessionRequest>,
+}
+impl ConsensusRequest {
+    pub(crate) fn new(
+        request: WriteRequest,
+        callback: tokio::sync::oneshot::Sender<anyhow::Result<ConsensusClientResponse>>,
+        session_req: Option<SessionRequest>,
+    ) -> Self {
+        Self { request, callback, session_req }
+    }
+}
+
+impl From<ConsensusRequest> for ClusterCommand {
+    fn from(request: ConsensusRequest) -> Self {
+        Self::LeaderReqConsensus(request)
+    }
 }
