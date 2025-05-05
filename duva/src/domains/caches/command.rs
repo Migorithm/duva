@@ -12,4 +12,5 @@ pub(crate) enum CacheCommand {
     Ping,
     Drop { callback: oneshot::Sender<()> },
     Exists { key: String, callback: oneshot::Sender<bool> },
+    NumericDetla { key: String, delta: i64, callback: oneshot::Sender<anyhow::Result<i64>> },
 }
