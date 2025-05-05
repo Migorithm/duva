@@ -1,31 +1,41 @@
 ---
-title: Partial Sync when commit was made
+title: Partial Sync 
 ---
 sequenceDiagram
+    Actor C as Client
     participant L as Leader
     participant F as Follower
     participant SF as Second Follower
-    L ->> L: Save Empty Dump with (Id, Peer Identifier)
-    F ->> L: Connect
-    L ->> F: Receive Snapshot
-    F ->> F: Save Dump from Leader
-    SF ->> L: Connect
-    L ->> SF: Receive Snapshot
-    SF ->> SF: Save Dump from Leader
-    L ->> L: append entry * 5
-    L ->> F: Replicate
-    L ->> SF: Replicate
     
-    L ->> L: Create Snapshot (until hwm 5)
-    L ->> F: Create Snapshot 
-    L ->> SF : Create Snapshot
+    Note over L,SF : Connection established
 
-    break
-        SF --> SF: Second Follower Crashed
+    C->>L: set x 1 (log 1)
+
+    par 
+        L->>F: replicate x 1
+    and
+        L->>SF: replicate x 1
     end
 
-    L ->> L: append entry * 3
-    L ->> F: Replicate
+    C->>L: set y 1 (log 2)
 
-    SF ->> L: Connect (replid: leader_repl_id, hwm:5, term: 1)
-    L ->> SF: Receive Snapshot (hwm: 5)
+    break
+        SF --x SF: crash
+    end
+    L->>F: replicate y 1
+
+    L -x SF: replicate y 1
+
+
+    SF -->> SF: recover
+    SF -->> L: Join
+    L -->> L: store watermark for Second Follower (1)
+
+
+    L --> L : create append entries individually for each follower
+    par 
+        L ->> SF : send AppendRPC WITH log 2
+    and
+        L ->> F : send AppendRPC WITHOUT log
+    end
+

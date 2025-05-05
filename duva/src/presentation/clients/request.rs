@@ -127,7 +127,7 @@ pub fn extract_action(action: &str, args: &[&str]) -> anyhow::Result<ClientActio
         },
 
         "APPEND" => {
-            if !(args.len() == 2) {
+            if args.len() != 2 {
                 return Err(anyhow::anyhow!(
                     "(error) ERR wrong number of arguments for 'append' command"
                 ));

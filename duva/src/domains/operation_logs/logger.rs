@@ -1,3 +1,5 @@
+use crate::domains::cluster_actors::replication;
+
 use super::{WriteOperation, WriteRequest, interfaces::TWriteAheadLog};
 
 pub(crate) struct ReplicatedLogs<T: TWriteAheadLog> {
@@ -11,33 +13,40 @@ impl<T: TWriteAheadLog> ReplicatedLogs<T> {
         Self { target, last_log_index, last_log_term }
     }
 
-    pub(crate) async fn leader_write_entries(
-        &mut self,
-        log: &WriteRequest,
+    pub(crate) async fn list_append_log_entries(
+        &self,
         low_watermark: Option<u64>,
-        term: u64,
-    ) -> anyhow::Result<Vec<WriteOperation>> {
+    ) -> Vec<WriteOperation> {
         let current_idx = self.last_log_index;
-        self.write_single_entry(log, term).await?;
-
         if low_watermark.is_none() {
-            return Ok(self.from(current_idx).await);
+            return self.from(current_idx).await;
         }
-
         let mut logs = Vec::with_capacity((self.last_log_index - low_watermark.unwrap()) as usize);
         logs.extend(self.from(low_watermark.unwrap()).await);
 
-        // ! Last log term must be updated because
-        // ! log consistency check is based on previous log term and index
-        self.last_log_term = term;
-        Ok(logs)
+        logs
     }
 
-    async fn write_single_entry(&mut self, log: &WriteRequest, term: u64) -> anyhow::Result<()> {
-        let op =
-            WriteOperation { request: log.clone(), log_index: (self.last_log_index + 1), term };
+    pub(crate) async fn write_single_entry(
+        &mut self,
+        log: &WriteRequest,
+        repl_state: &replication::ReplicationState,
+    ) -> anyhow::Result<()> {
+        if !repl_state.is_leader_mode {
+            return Err(anyhow::anyhow!("Write given to follower"));
+        }
+
+        let op = WriteOperation {
+            request: log.clone(),
+            log_index: (self.last_log_index + 1),
+            term: repl_state.term,
+        };
         self.target.append(op).await?;
         self.last_log_index += 1;
+
+        // ! Last log term must be updated because
+        // ! log consistency check is based on previous log term and index
+        self.last_log_term = repl_state.term;
         Ok(())
     }
 
@@ -78,8 +87,8 @@ impl<T: TWriteAheadLog> ReplicatedLogs<T> {
         self.target.range(start_exclusive, self.last_log_index).await
     }
 
-    pub(crate) async fn read_at(&self, prev_log_index: u64) -> Option<WriteOperation> {
-        self.target.read_at(prev_log_index).await
+    pub(crate) async fn read_at(&self, at: u64) -> Option<WriteOperation> {
+        self.target.read_at(at).await
     }
 
     pub(crate) fn log_start_index(&self) -> u64 {

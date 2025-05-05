@@ -21,7 +21,7 @@ use super::session::ClientSessions;
 use super::*;
 use crate::domains::cluster_actors::consensus::ElectionState;
 use crate::domains::operation_logs::WriteOperation;
-use crate::domains::operation_logs::WriteRequest;
+
 use crate::domains::operation_logs::interfaces::TWriteAheadLog;
 use crate::domains::operation_logs::logger::ReplicatedLogs;
 
@@ -301,24 +301,6 @@ impl ClusterActor {
             }
         }
     }
-    pub(crate) async fn try_create_append_entries(
-        &mut self,
-        logger: &mut ReplicatedLogs<impl TWriteAheadLog>,
-        log: &WriteRequest,
-    ) -> Result<Vec<WriteOperation>, String> {
-        if !self.replication.is_leader_mode {
-            return Err("Write given to follower".into());
-        }
-
-        let Ok(append_entries) = logger
-            .leader_write_entries(log, self.take_low_watermark(), self.replication.term)
-            .await
-        else {
-            return Err("Write operation failed".into());
-        };
-
-        Ok(append_entries)
-    }
 
     pub(crate) async fn req_consensus(
         &mut self,
@@ -329,13 +311,11 @@ impl ClusterActor {
             pending_requests.push_back(req);
             return;
         }
-        let (prev_log_index, prev_term) = (logger.last_log_index, logger.last_log_term);
-        let append_entries = match self.try_create_append_entries(logger, &req.request).await {
-            Ok(entries) => entries,
-            Err(err) => {
-                let _ = req.callback.send(Err(anyhow::anyhow!(err)));
-                return;
-            },
+
+        // * Check if the request has already been processed
+        if let Err(err) = logger.write_single_entry(&req.request, &self.replication).await {
+            let _ = req.callback.send(Err(anyhow::anyhow!(err)));
+            return;
         };
 
         // Skip consensus for no replicas
@@ -353,8 +333,15 @@ impl ClusterActor {
             req.session_req,
         );
 
-        // dbg!(self.replicas().count()); // CHECKED. replica count right.
-        self.generate_follower_entries(append_entries, prev_log_index, prev_term)
+        self.send_append_entries_to_replicas(logger).await;
+    }
+
+    async fn send_append_entries_to_replicas(
+        &mut self,
+        logger: &ReplicatedLogs<impl TWriteAheadLog>,
+    ) {
+        self.iter_follower_append_entries(logger)
+            .await
             .map(|(peer, hb)| peer.send_to_peer(AppendEntriesRPC(hb)))
             .collect::<FuturesUnordered<_>>()
             .for_each(|_| async {})
@@ -377,20 +364,69 @@ impl ClusterActor {
         self.replication.hwm.store(last_log_idx, Ordering::Release);
     }
 
-    /// create entries per follower.
-    pub(crate) fn generate_follower_entries(
+    /// Creates individualized append entries messages for each follower.
+    ///
+    /// This function generates customized heartbeat messages containing only the log entries
+    /// that each specific follower needs based on their current high watermark.
+    ///
+    /// For each follower:
+    /// - Filters entries to include only those the follower doesn't have
+    /// - Sets correct previous log information based on follower's replication state:
+    ///   - If follower needs all entries: Uses backup entry or defaults to (0,0)
+    ///   - Otherwise: Uses the last entry the follower already has
+    /// - Creates a tailored heartbeat message with exactly the entries needed
+    ///
+    /// Returns an iterator yielding tuples of mutable peer references and their
+    /// customized heartbeat messages.
+    async fn iter_follower_append_entries(
         &mut self,
-        append_entries: Vec<WriteOperation>,
-        prev_log_index: u64,
-        prev_term: u64,
-    ) -> impl Iterator<Item = (&mut Peer, HeartBeatMessage)> {
+        logger: &ReplicatedLogs<impl TWriteAheadLog>,
+    ) -> Box<dyn Iterator<Item = (&mut Peer, HeartBeatMessage)> + '_> {
+        let lowest_watermark = self.take_low_watermark();
+
+        let append_entries = logger.list_append_log_entries(lowest_watermark).await;
+
         let default_heartbeat: HeartBeatMessage =
-            self.replication.default_heartbeat(0, prev_log_index, prev_term);
-        self.replicas_mut().map(move |(peer, hwm)| {
+            self.replication.default_heartbeat(0, logger.last_log_index, logger.last_log_term);
+
+        // Handle empty entries case
+        if append_entries.is_empty() {
+            return Box::new(
+                self.replicas_mut().map(move |(peer, _)| (peer, default_heartbeat.clone())),
+            );
+        }
+
+        // If we have entries, find the entry before the first one to use as backup
+        // TODO perhaps we can get backup entry while getting append_entries?
+        let backup_entry = logger.read_at(append_entries[0].log_index - 1).await;
+
+        let iterator = self.replicas_mut().map(move |(peer, hwm)| {
             let logs =
                 append_entries.iter().filter(|op| op.log_index > hwm).cloned().collect::<Vec<_>>();
-            (peer, default_heartbeat.clone().set_append_entries(logs))
-        })
+
+            // Create base heartbeat
+            let mut heart_beat = default_heartbeat.clone();
+
+            if logs.len() == append_entries.len() {
+                // Follower needs all entries, use backup entry
+                if let Some(backup_entry) = backup_entry.as_ref() {
+                    heart_beat.prev_log_index = backup_entry.log_index;
+                    heart_beat.prev_log_term = backup_entry.term;
+                } else {
+                    heart_beat.prev_log_index = 0;
+                    heart_beat.prev_log_term = 0;
+                }
+            } else {
+                // Follower has some entries already, use the last one it has
+                let last_log = &append_entries[append_entries.len() - logs.len() - 1];
+                heart_beat.prev_log_index = last_log.log_index;
+                heart_beat.prev_log_term = last_log.term;
+            }
+            let heart_beat = heart_beat.set_append_entries(logs);
+            (peer, heart_beat)
+        });
+
+        Box::new(iterator)
     }
 
     pub(crate) fn take_low_watermark(&self) -> Option<u64> {
@@ -425,7 +461,7 @@ impl ClusterActor {
     }
 
     // After send_ack: Leader updates its knowledge of follower's progress
-    async fn send_ack(
+    async fn report_replica_lag(
         &mut self,
         send_to: &PeerIdentifier,
         log_idx: u64,
@@ -465,7 +501,8 @@ impl ClusterActor {
         };
 
         // * state machine case
-        self.replicate_state(heartbeat.hwm, wal, cache_manager).await;
+        //TODO when sync was not made, it needs to notify leader so the leader can re-send the logs by downgrading the match index
+        self.replicate_state(heartbeat, wal, cache_manager).await;
     }
 
     async fn try_replicate_logs(
@@ -480,14 +517,14 @@ impl ClusterActor {
         if let Err(e) =
             self.ensure_prev_consistency(wal, rpc.prev_log_index, rpc.prev_log_term).await
         {
-            self.send_ack(&rpc.from, wal.last_log_index, e).await;
+            self.report_replica_lag(&rpc.from, wal.last_log_index, e).await;
             return Err(anyhow::anyhow!("Fail fail to append"));
         }
 
         let match_index =
             wal.follower_write_entries(std::mem::take(&mut rpc.append_entries)).await?;
 
-        self.send_ack(&rpc.from, match_index, RejectionReason::None).await;
+        self.report_replica_lag(&rpc.from, match_index, RejectionReason::None).await;
         Ok(())
     }
 
@@ -532,12 +569,11 @@ impl ClusterActor {
         &mut self,
         logger: &ReplicatedLogs<impl TWriteAheadLog>,
     ) {
-        self.send_to_replicas(AppendEntriesRPC(self.replication.default_heartbeat(
-            0,
-            logger.last_log_index,
-            logger.last_log_term,
-        )))
-        .await;
+        if self.replicas().count() == 0 {
+            return;
+        }
+
+        self.send_append_entries_to_replicas(logger).await;
     }
 
     async fn send_to_replicas(&mut self, msg: impl Into<QueryIO> + Send + Clone) {
@@ -617,16 +653,22 @@ impl ClusterActor {
 
     async fn replicate_state(
         &mut self,
-        heartbeat_hwm: u64,
+        heartbeat: HeartBeatMessage,
         wal: &mut ReplicatedLogs<impl TWriteAheadLog>,
         cache_manager: &CacheManager,
     ) {
         let old_hwm = self.replication.hwm.load(Ordering::Acquire);
-        if heartbeat_hwm > old_hwm {
-            println!("[INFO] Received commit offset {}", heartbeat_hwm);
+        if heartbeat.hwm > old_hwm {
+            println!("[INFO] Received commit offset {}", heartbeat.hwm);
 
-            for log_index in (old_hwm + 1)..=heartbeat_hwm {
+            for log_index in (old_hwm + 1)..=heartbeat.hwm {
                 let Some(log) = wal.read_at(log_index).await else {
+                    self.report_replica_lag(
+                        &heartbeat.from,
+                        wal.last_log_index,
+                        RejectionReason::LogInconsistency,
+                    )
+                    .await;
                     println!("[ERROR] log has never been replicated!");
                     return;
                 };
@@ -636,7 +678,7 @@ impl ClusterActor {
                     println!("[ERROR] Failed to apply log: {e}")
                 }
             }
-            self.replication.hwm.store(heartbeat_hwm, Ordering::Release);
+            self.replication.hwm.store(heartbeat.hwm, Ordering::Release);
         }
     }
 
@@ -655,7 +697,7 @@ impl ClusterActor {
         wal: &ReplicatedLogs<impl TWriteAheadLog>,
     ) -> bool {
         if heartbeat.term < self.replication.term {
-            self.send_ack(
+            self.report_replica_lag(
                 &heartbeat.from,
                 wal.last_log_index,
                 RejectionReason::ReceiverHasHigherTerm,
@@ -687,6 +729,8 @@ impl ClusterActor {
         match repl_res.rej_reason {
             RejectionReason::ReceiverHasHigherTerm => self.step_down().await,
             RejectionReason::LogInconsistency => {
+                eprintln!("[ERROR] Log inconsistency, reverting match index");
+                //TODO we can refactor this to set match index to given log index from the follower
                 self.decrease_match_index(&repl_res.from);
             },
             RejectionReason::None => (),
@@ -695,7 +739,7 @@ impl ClusterActor {
 
     fn decrease_match_index(&mut self, from: &PeerIdentifier) {
         if let Some(peer) = self.members.get_mut(from) {
-            peer.set_match_index(peer.match_index() - 1);
+            peer.set_match_index(peer.match_index().saturating_sub(1));
         }
     }
 
@@ -1074,14 +1118,18 @@ mod test {
 
         // WHEN
         const LOWEST_FOLLOWER_COMMIT_INDEX: u64 = 2;
-        let logs = logger
-            .leader_write_entries(
-                &WriteRequest::Set { key: "foo4".into(), value: "bar".into(), expires_at: None },
-                Some(LOWEST_FOLLOWER_COMMIT_INDEX),
-                0,
-            )
-            .await
-            .unwrap();
+        let repl_state = ReplicationState::new(
+            ReplicationId::Key("master".into()),
+            ReplicationRole::Leader,
+            "localhost",
+            8080,
+        );
+        repl_state.hwm.store(LOWEST_FOLLOWER_COMMIT_INDEX, Ordering::Release);
+
+        let log = &WriteRequest::Set { key: "foo4".into(), value: "bar".into(), expires_at: None };
+        logger.write_single_entry(log, &repl_state).await.unwrap();
+
+        let logs = logger.list_append_log_entries(Some(LOWEST_FOLLOWER_COMMIT_INDEX)).await;
 
         // THEN
         assert_eq!(logs.len(), 2);
@@ -1091,7 +1139,7 @@ mod test {
     }
 
     #[tokio::test]
-    async fn generate_follower_entries() {
+    async fn test_generate_follower_entries() {
         // GIVEN
         let mut logger = ReplicatedLogs::new(MemoryOpLogs::default(), 0, 0);
 
@@ -1126,20 +1174,17 @@ mod test {
 
         // * add new log - this must create entries that are greater than 3
         let lowest_hwm = cluster_actor.take_low_watermark();
-        let append_entries = logger
-            .leader_write_entries(
+
+        logger
+            .write_single_entry(
                 &WriteRequest::Set { key: "foo4".into(), value: "bar".into(), expires_at: None },
-                lowest_hwm,
-                0,
+                &cluster_actor.replication,
             )
             .await
             .unwrap();
 
-        // THEN
-        assert_eq!(append_entries.len(), 3);
-
         let entries =
-            cluster_actor.generate_follower_entries(append_entries, 3, 0).collect::<Vec<_>>();
+            cluster_actor.iter_follower_append_entries(&mut logger).await.collect::<Vec<_>>();
 
         // * for old followers must have 1 entry
         assert_eq!(entries.iter().filter(|(_, hb)| hb.append_entries.len() == 1).count(), 5);

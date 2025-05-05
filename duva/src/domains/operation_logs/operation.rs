@@ -43,6 +43,7 @@ impl WriteRequest {
         Ok(ops)
     }
 
+    // TODO refactor into returning &str
     pub(crate) fn key(&self) -> String {
         match self {
             WriteRequest::Set { key, .. } => key.clone(),
