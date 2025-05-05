@@ -27,7 +27,7 @@ async fn test_append() -> anyhow::Result<()> {
     // WHEN - append second value
     assert_eq!(
         h.send_and_get(format!("APPEND appended_one {second}"), 1).await,
-        vec![second.len().to_string()]
+        vec![(first.len() + second.len()).to_string()]
     );
     // THEN
     let res = h.send_and_get("GET appended_one", 1).await;
