@@ -52,6 +52,7 @@ The following features have been implemented so far:
         - Append Only File
         - <img width="1520" alt="Screenshot 2024-11-23 at 12 02 05 AM" src="https://github.com/user-attachments/assets/0d8b75f6-7a40-4854-9da2-ba98c0ecc3de">
     - Full File Synchronization to Replica
+    - Partial sync for reconcilation
     - Failure detection
     - Cluster node liveness check
     - RYOW consistency
@@ -175,6 +176,49 @@ sequenceDiagram
 
     SF ->> L: Connect (replid: leader_repl_id, hwm:5, term: 1)
     L ->> SF: Receive Snapshot (hwm: 5)
+```
+
+
+#### Partial synchronization for reconcilation
+```mermaid
+sequenceDiagram
+    Actor C as Client
+    participant L as Leader
+    participant F as Follower
+    participant SF as Second Follower
+    
+    Note over L,SF : Connection established
+
+    C->>L: set x 1 (log 1)
+
+    par 
+        L->>F: replicate x 1
+    and
+        L->>SF: replicate x 1
+    end
+
+    C->>L: set y 1 (log 2)
+
+    break
+        SF --x SF: crash
+    end
+    L->>F: replicate y 1
+
+    L -x SF: replicate y 1
+
+
+    SF -->> SF: recover
+    SF -->> L: Join
+    L -->> L: store watermark for Second Follower (1)
+
+
+    L --> L : create append entries individually for each follower
+    par 
+        L ->> SF : send AppendRPC WITH log 2
+    and
+        L ->> F : send AppendRPC WITHOUT log
+    end
+
 ```
 
 #### Push-based topology change notification
