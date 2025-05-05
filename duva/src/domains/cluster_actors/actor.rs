@@ -48,7 +48,10 @@ pub struct ClusterActor {
     pub(crate) heartbeat_scheduler: HeartBeatScheduler,
     pub(crate) topology_writer: tokio::fs::File,
     pub(crate) node_change_broadcast: tokio::sync::broadcast::Sender<Vec<PeerIdentifier>>,
-    pub(crate) is_pending: bool,
+
+    // * Pending requests are used to store requests that are received while the actor is in the process of election/cluster rebalancing.
+    // * These requests will be processed once the actor is back to a stable state.
+    pub(crate) pending_requests: Option<VecDeque<ConsensusRequest>>,
 }
 
 impl ClusterActor {
@@ -77,7 +80,7 @@ impl ClusterActor {
             consensus_tracker: LogConsensusTracker::default(),
             topology_writer,
             node_change_broadcast: tx,
-            is_pending: false,
+            pending_requests: None,
         }
     }
 
@@ -322,6 +325,10 @@ impl ClusterActor {
         logger: &mut ReplicatedLogs<impl TWriteAheadLog>,
         req: ConsensusRequest,
     ) {
+        if let Some(pending_requests) = self.pending_requests.as_mut() {
+            pending_requests.push_back(req);
+            return;
+        }
         let (prev_log_index, prev_term) = (logger.last_log_index, logger.last_log_term);
         let append_entries = match self.try_create_append_entries(logger, &req.request).await {
             Ok(entries) => entries,
@@ -1683,5 +1690,10 @@ mod test {
 
         assert!(handle.await.is_ok());
         assert!(rx.await.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_requests_pending() {
+        // TODO
     }
 }

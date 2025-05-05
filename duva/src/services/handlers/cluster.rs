@@ -20,8 +20,6 @@ impl ClusterActor {
     ) -> anyhow::Result<Self> {
         let mut logger = ReplicatedLogs::new(wal, 0, 0);
 
-        let mut pending_requests = VecDeque::<ConsensusRequest>::new();
-
         while let Some(command) = self.receiver.recv().await {
             match command {
                 ClusterCommand::DiscoverCluster { connect_to, callback } => {
@@ -73,10 +71,11 @@ impl ClusterActor {
                     }
                 },
                 ClusterCommand::LeaderReqConsensus(req) => {
-                    if self.is_pending {
+                    if let Some(pending_requests) = self.pending_requests.as_mut() {
                         pending_requests.push_back(req);
                         continue;
                     }
+
                     if client_sessions.is_processed(&req.session_req) {
                         // TODO mapping between early returned values to client result
                         let _ = req.callback.send(Ok(ConsensusClientResponse::AlreadyProcessed {
