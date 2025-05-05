@@ -2,12 +2,12 @@
 title: Consistent Hashing - server side
 ---
 sequenceDiagram
-    participant C1 as Client
+    participant C1 as ClientGroupA
     
     participant A as Replica Set A
     participant B as Replica Set B
     
-    participant C2 as ClientB
+    participant C2 as ClientGroupB
 
 
     Note over A,B : At this point, A and B<br>Both manages full range of data<br>Let's say from 0..10000
@@ -15,7 +15,7 @@ sequenceDiagram
     C1 --> A: connection established
     C2 --> B: connection established
 
-
+    C2 ->> B: Cluster Meet A
     par
     B ->> A : Join cluster
     and

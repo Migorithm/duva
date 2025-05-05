@@ -66,17 +66,22 @@ impl ClusterActor {
                         let _ = sender.send(None);
                     }
                 },
-                ClusterCommand::LeaderReqConsensus { request, callback, session_req } => {
-                    if client_sessions.is_processed(&session_req) {
+                ClusterCommand::LeaderReqConsensus(req) => {
+                    if let Some(pending_requests) = self.pending_requests.as_mut() {
+                        pending_requests.push_back(req);
+                        continue;
+                    }
+
+                    if client_sessions.is_processed(&req.session_req) {
                         // TODO mapping between early returned values to client result
-                        let _ = callback.send(Ok(ConsensusClientResponse::AlreadyProcessed {
-                            key: request.key(),
+                        let _ = req.callback.send(Ok(ConsensusClientResponse::AlreadyProcessed {
+                            key: req.request.key(),
                             index: logger.last_log_index,
                         }));
                         continue;
                     };
 
-                    self.req_consensus(&mut logger, request, callback, session_req).await;
+                    self.req_consensus(&mut logger, req).await;
                 },
                 ClusterCommand::AppendEntriesRPC(heartbeat) => {
                     if self.check_term_outdated(&heartbeat, &logger).await {
