@@ -271,8 +271,7 @@ impl CacheManager {
         self.select_shard(key.as_str())
             .send(CacheCommand::Append { key, value, callback: tx })
             .await?;
-        let current = rx.await?;
-        Ok(current?)
+        rx.await?
     }
 
     pub(crate) async fn route_numeric_delta(
