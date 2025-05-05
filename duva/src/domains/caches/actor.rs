@@ -99,7 +99,7 @@ impl CacheActor {
     ) {
         let callback_val = match self.cache.entry(key.clone()) {
             Entry::Occupied(mut entry) => {
-                if let Some(value) = entry.get().value.parse::<i64>().ok() {
+                if let Ok(value) = entry.get().value.parse::<i64>() {
                     let diff = value + delta;
                     entry.insert(CacheValue::new(diff.to_string()));
                     Ok(diff)
