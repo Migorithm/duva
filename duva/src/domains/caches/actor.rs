@@ -91,6 +91,28 @@ impl CacheActor {
         Ok(())
     }
 
+    pub(crate) fn append(
+        &mut self,
+        key: String,
+        value: String,
+        callback: oneshot::Sender<anyhow::Result<usize>>,
+    ) {
+        let callback_val = match self.cache.entry(key.clone()) {
+            Entry::Occupied(mut entry) => {
+                let prev = entry.get().value.clone();
+                let concatted = prev + &value;
+                entry.insert(CacheValue::new(concatted.clone()));
+                Ok(concatted.len())
+            },
+            Entry::Vacant(entry) => {
+                entry.insert(CacheValue::new(value.clone()));
+                Ok(value.len())
+            },
+        };
+
+        let _ = callback.send(callback_val);
+    }
+
     pub(crate) fn numeric_delta(
         &mut self,
         key: String,

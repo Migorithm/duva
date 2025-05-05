@@ -9,7 +9,6 @@ use crate::domains::saves::actor::SaveActor;
 use crate::domains::saves::actor::SaveTarget;
 use crate::domains::saves::endec::StoredDuration;
 use crate::domains::saves::snapshot::Snapshot;
-use anyhow::Context;
 use anyhow::Result;
 use chrono::DateTime;
 use chrono::Utc;
@@ -69,22 +68,6 @@ impl CacheManager {
         self.select_shard(kvs.key()).send(CacheCommand::Set { cache_entry: kvs }).await?;
         Ok(format!("s:{}|idx:{}", value, current_idx))
     }
-
-    pub(crate) async fn route_append(
-        &self,
-        key: String,
-        value: String,
-        current_idx: u64,
-    ) -> Result<usize> {
-        let Some(prev) = self.route_get(&key).await? else {
-            self.route_set(key, value.clone(), None, current_idx).await?;
-            return Ok(value.len());
-        };
-        let concatted = prev.value + &value;
-        self.route_set(key, concatted.clone(), None, current_idx).await?;
-        Ok(concatted.len())
-    }
-
     pub(crate) async fn route_save(
         &self,
         save_target: SaveTarget,
@@ -120,7 +103,7 @@ impl CacheManager {
                 self.route_delete(keys).await?;
             },
             WriteRequest::Append { key, value } => {
-                self.route_append(key, value, log_index).await?;
+                self.route_append(key, value).await?;
             },
             WriteRequest::Decr { key, delta } => {
                 self.route_numeric_delta(key, delta, log_index).await?;
@@ -281,6 +264,15 @@ impl CacheManager {
         let ttl_in_sec = exp.signed_duration_since(now).num_seconds();
         let ttl = if ttl_in_sec < 0 { "-1".to_string() } else { ttl_in_sec.to_string() };
         Ok(ttl)
+    }
+
+    pub(crate) async fn route_append(&self, key: String, value: String) -> Result<usize> {
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        self.select_shard(key.as_str())
+            .send(CacheCommand::Append { key, value, callback: tx })
+            .await?;
+        let current = rx.await?;
+        Ok(current?)
     }
 
     pub(crate) async fn route_numeric_delta(
