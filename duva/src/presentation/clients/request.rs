@@ -13,6 +13,7 @@ pub enum ClientAction {
     Get { key: String },
     IndexGet { key: String, index: u64 },
     Set { key: String, value: String },
+    Append { key: String, value: String },
     SetWithExpiry { key: String, value: String, expiry: DateTime<Utc> },
     Keys { pattern: Option<String> },
     Delete { keys: Vec<String> },
@@ -44,6 +45,9 @@ impl ClientAction {
                     value: value.clone(),
                     expires_at: Some(expires_at),
                 })
+            },
+            ClientAction::Append { key, value } => {
+                Some(WriteRequest::Append { key: key.clone(), value: value.clone() })
             },
             ClientAction::Delete { keys } => Some(WriteRequest::Delete { keys: keys.clone() }),
             ClientAction::Incr { key } => Some(WriteRequest::Incr { key: key.clone(), delta: 1 }),
@@ -120,6 +124,15 @@ pub fn extract_action(action: &str, args: &[&str]) -> anyhow::Result<ClientActio
                 value: args[1].to_string(),
                 expiry: extract_expiry(args[3])?,
             })
+        },
+
+        "APPEND" => {
+            if !(args.len() == 2) {
+                return Err(anyhow::anyhow!(
+                    "(error) ERR wrong number of arguments for 'append' command"
+                ));
+            }
+            Ok(ClientAction::Append { key: args[0].to_string(), value: args[1].to_string() })
         },
 
         "GET" => {

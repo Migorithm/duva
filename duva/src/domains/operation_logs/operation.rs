@@ -14,6 +14,7 @@ pub struct WriteOperation {
 pub enum WriteRequest {
     Set { key: String, value: String, expires_at: Option<u64> },
     Delete { keys: Vec<String> },
+    Append { key: String, value: String },
     Decr { key: String, delta: i64 },
     Incr { key: String, delta: i64 },
 }
@@ -46,6 +47,7 @@ impl WriteRequest {
         match self {
             WriteRequest::Set { key, .. } => key.clone(),
             WriteRequest::Delete { keys, .. } => keys[0].clone(),
+            WriteRequest::Append { key, .. } => key.clone(),
             WriteRequest::Incr { key, .. } => key.clone(),
             WriteRequest::Decr { key, .. } => key.clone(),
         }
