@@ -385,7 +385,6 @@ impl ClusterActor {
         let lowest_watermark = self.take_low_watermark();
 
         let append_entries = logger.list_append_log_entries(lowest_watermark).await;
-        // TODO this is per follower!
 
         let default_heartbeat: HeartBeatMessage =
             self.replication.default_heartbeat(0, logger.last_log_index, logger.last_log_term);
@@ -731,6 +730,7 @@ impl ClusterActor {
             RejectionReason::ReceiverHasHigherTerm => self.step_down().await,
             RejectionReason::LogInconsistency => {
                 eprintln!("[ERROR] Log inconsistency, reverting match index");
+                //TODO we can refactor this to set match index to given log index from the follower
                 self.decrease_match_index(&repl_res.from);
             },
             RejectionReason::None => (),
