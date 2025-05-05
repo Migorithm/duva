@@ -43,6 +43,9 @@ impl ClientController {
                     .route_set(key, value, Some(expiry), current_index.unwrap())
                     .await?,
             ),
+            ClientAction::Append { key, value } => QueryIO::SimpleString(
+                self.cache_manager.route_append(key, value).await?.to_string(),
+            ),
             ClientAction::Save => {
                 let file_path = self.config_manager.get_filepath().await?;
                 let file = tokio::fs::OpenOptions::new()
