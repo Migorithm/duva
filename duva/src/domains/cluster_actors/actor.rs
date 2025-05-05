@@ -465,7 +465,8 @@ impl ClusterActor {
         };
 
         // * state machine case
-        self.replicate_state(heartbeat.hwm, wal, cache_manager).await;
+        //TODO when sync was not made, it needs to notify leader so the leader can re-send the logs by downgrading the match index
+        self.replicate_state(heartbeat, wal, cache_manager).await;
     }
 
     async fn try_replicate_logs(
@@ -617,15 +618,15 @@ impl ClusterActor {
 
     async fn replicate_state(
         &mut self,
-        heartbeat_hwm: u64,
+        heartbeat: HeartBeatMessage,
         wal: &mut ReplicatedLogs<impl TWriteAheadLog>,
         cache_manager: &CacheManager,
     ) {
         let old_hwm = self.replication.hwm.load(Ordering::Acquire);
-        if heartbeat_hwm > old_hwm {
-            println!("[INFO] Received commit offset {}", heartbeat_hwm);
+        if heartbeat.hwm > old_hwm {
+            println!("[INFO] Received commit offset {}", heartbeat.hwm);
 
-            for log_index in (old_hwm + 1)..=heartbeat_hwm {
+            for log_index in (old_hwm + 1)..=heartbeat.hwm {
                 let Some(log) = wal.read_at(log_index).await else {
                     println!("[ERROR] log has never been replicated!");
                     return;
@@ -636,7 +637,7 @@ impl ClusterActor {
                     println!("[ERROR] Failed to apply log: {e}")
                 }
             }
-            self.replication.hwm.store(heartbeat_hwm, Ordering::Release);
+            self.replication.hwm.store(heartbeat.hwm, Ordering::Release);
         }
     }
 
