@@ -79,12 +79,14 @@ impl CacheManager {
         key: String,
         value: String,
         current_idx: u64,
-    ) -> Result<String> {
+    ) -> Result<usize> {
         let Some(prev) = self.route_get(&key).await? else {
-            return Ok(self.route_set(key, value, None, current_idx).await?);
+            self.route_set(key, value.clone(), None, current_idx).await?;
+            return Ok(value.len());
         };
         let concatted = prev.value + &value;
-        Ok(self.route_set(key, concatted, None, current_idx).await?)
+        self.route_set(key, concatted.clone(), None, current_idx).await?;
+        Ok(concatted.len())
     }
 
     pub(crate) async fn route_save(

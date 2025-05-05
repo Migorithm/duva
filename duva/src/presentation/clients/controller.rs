@@ -44,7 +44,10 @@ impl ClientController {
                     .await?,
             ),
             ClientAction::Append { key, value } => QueryIO::SimpleString(
-                self.cache_manager.route_append(key, value, current_index.unwrap()).await?,
+                self.cache_manager
+                    .route_append(key, value, current_index.unwrap())
+                    .await?
+                    .to_string(),
             ),
             ClientAction::Save => {
                 let file_path = self.config_manager.get_filepath().await?;
