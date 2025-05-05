@@ -12,14 +12,23 @@ async fn test_append() -> anyhow::Result<()> {
 
     let mut h = Client::new(process.port);
 
+    let first = "Hello";
+    let second = "World!";
+
     // WHEN - append first value
-    assert_eq!(h.send_and_get("APPEND appended_one Hello", 1).await, vec!["OK"]);
+    assert_eq!(
+        h.send_and_get(format!("APPEND appended_one {first}"), 1).await,
+        vec![first.len().to_string()]
+    );
     // THEN
     let res = h.send_and_get("GET appended_one", 1).await;
     assert_eq!(res, vec!["Hello"]);
 
     // WHEN - append second value
-    assert_eq!(h.send_and_get("APPEND appended_one World!", 1).await, vec!["OK"]);
+    assert_eq!(
+        h.send_and_get(format!("APPEND appended_one {second}"), 1).await,
+        vec![second.len().to_string()]
+    );
     // THEN
     let res = h.send_and_get("GET appended_one", 1).await;
     assert_eq!(res, vec!["HelloWorld!"]);
