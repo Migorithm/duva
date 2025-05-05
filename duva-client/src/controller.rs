@@ -47,8 +47,7 @@ impl<T> ClientController<T> {
             | ClusterForget { .. }
             | Role
             | ReplicaOf { .. }
-            | ClusterInfo
-            | ClusterMeet { .. } => match query_io {
+            | ClusterInfo => match query_io {
                 QueryIO::Null => Response::Null,
                 QueryIO::SimpleString(value) => Response::String(value),
                 QueryIO::BulkString(value) => Response::String(value),
@@ -85,7 +84,7 @@ impl<T> ClientController<T> {
                 };
                 Response::Null
             },
-            Set { .. } | SetWithExpiry { .. } => match query_io {
+            Set { .. } | SetWithExpiry { .. } | ClusterMeet { .. } => match query_io {
                 QueryIO::SimpleString(_) => Response::String("OK".into()),
                 QueryIO::Err(value) => Response::Error(value),
                 _ => Response::FormatError,
