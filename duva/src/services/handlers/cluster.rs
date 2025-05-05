@@ -83,15 +83,7 @@ impl ClusterActor {
 
                     self.req_consensus(&mut logger, req).await;
                 },
-                ClusterCommand::AppendEntriesRPC(heartbeat) => {
-                    if self.check_term_outdated(&heartbeat, &logger).await {
-                        continue;
-                    };
 
-                    self.reset_election_timeout(&heartbeat.from);
-                    self.maybe_update_term(heartbeat.term);
-                    self.replicate(&mut logger, heartbeat, &cache_manager).await;
-                },
                 ClusterCommand::ReplicationResponse(repl_res) => {
                     if !repl_res.is_granted() {
                         self.handle_repl_rejection(repl_res).await;
@@ -105,6 +97,16 @@ impl ClusterActor {
                 },
                 ClusterCommand::SendAppendEntriesRPC => {
                     self.send_leader_heartbeat(&logger).await;
+                },
+
+                ClusterCommand::AppendEntriesRPC(heartbeat) => {
+                    if self.check_term_outdated(&heartbeat, &logger).await {
+                        continue;
+                    };
+
+                    self.reset_election_timeout(&heartbeat.from);
+                    self.maybe_update_term(heartbeat.term);
+                    self.replicate(&mut logger, heartbeat, &cache_manager).await;
                 },
                 ClusterCommand::InstallLeaderState(logs) => {
                     if logger.follower_full_sync(logs.clone()).await.is_err() {

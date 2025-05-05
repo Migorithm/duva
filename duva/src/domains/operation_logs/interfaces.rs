@@ -33,7 +33,7 @@ pub trait TWriteAheadLog: Send + Sync + 'static {
     ) -> impl Future<Output = Result<()>> + Send;
 
     /// Retrieves the log at a given index.
-    fn read_at(&self, prev_log_index: u64) -> impl Future<Output = Option<WriteOperation>> + Send;
+    fn read_at(&self, at: u64) -> impl Future<Output = Option<WriteOperation>> + Send;
 
     /// If the log has been compacted (e.g., via snapshots), `log_start_index` will be greater than 1, meaning earlier entries have been processed.
     fn log_start_index(&self) -> u64;
