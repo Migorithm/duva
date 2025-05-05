@@ -48,7 +48,7 @@ impl CacheActor {
                         })
                         .await?;
                     for chunk in self.cache.iter().collect::<Vec<_>>().chunks(10) {
-                        outbox.send(SaveCommand::SaveChunk(CacheEntry::new(chunk))).await?;
+                        outbox.send(SaveCommand::SaveChunk(CacheEntry::from_slice(chunk))).await?;
                     }
                     // finalize the save operation
                     outbox.send(SaveCommand::StopSentinel).await?;
@@ -89,7 +89,9 @@ mod test {
     impl S {
         async fn set(&self, key: String, value: String) {
             self.0
-                .send(CacheCommand::Set { cache_entry: CacheEntry::KeyValue { key, value } })
+                .send(CacheCommand::Set {
+                    cache_entry: CacheEntry::new(key, CacheValue::new(value)),
+                })
                 .await
                 .unwrap();
         }

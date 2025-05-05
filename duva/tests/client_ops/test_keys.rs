@@ -1,9 +1,7 @@
 use crate::common::{Client, ServerEnv, spawn_server_process};
 
-#[tokio::test]
-async fn test_keys() -> anyhow::Result<()> {
+async fn run_keys(env: ServerEnv) -> anyhow::Result<()> {
     // GIVEN
-    let env = ServerEnv::default();
     let process = spawn_server_process(&env).await?;
 
     let mut h = Client::new(process.port);
@@ -19,6 +17,15 @@ async fn test_keys() -> anyhow::Result<()> {
     let res = h.send_and_get("KEYS *", 500).await;
 
     assert!(res.len() >= num_keys_to_store as usize);
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_keys() -> anyhow::Result<()> {
+    for env in [ServerEnv::default(), ServerEnv::default().with_append_only(true)] {
+        run_keys(env).await?;
+    }
 
     Ok(())
 }

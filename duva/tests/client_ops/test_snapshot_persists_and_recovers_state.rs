@@ -3,10 +3,8 @@ use crate::common::{ServerEnv, spawn_server_process};
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 
-#[tokio::test]
-async fn test_snapshot_persists_and_recovers_state() -> anyhow::Result<()> {
+async fn run_snapshot_persists_and_recovers_state(env: ServerEnv) -> anyhow::Result<()> {
     // GIVEN
-    let env = ServerEnv::default().with_file_name(create_unique_file_name("test_save_dump"));
     let mut leader_process = spawn_server_process(&env).await?;
 
     let mut h = Client::new(leader_process.port);
@@ -56,4 +54,18 @@ fn create_unique_file_name(function_name: &str) -> String {
     let timestamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
 
     format!("test_{}_{}.rdb", function_name, timestamp)
+}
+
+#[tokio::test]
+async fn test_snapshot_persists_and_recovers_state() -> anyhow::Result<()> {
+    for env in [
+        ServerEnv::default().with_file_name(create_unique_file_name("test_save_dump")),
+        ServerEnv::default()
+            .with_file_name(create_unique_file_name("test_save_dump"))
+            .with_append_only(true),
+    ] {
+        run_snapshot_persists_and_recovers_state(env).await?;
+    }
+
+    Ok(())
 }

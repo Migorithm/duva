@@ -28,6 +28,7 @@ pub enum ClientAction {
     Incr { key: String },
     Decr { key: String },
     Ttl { key: String },
+    ClusterMeet(PeerIdentifier),
 }
 
 impl ClientAction {
@@ -189,6 +190,14 @@ pub fn extract_action(action: &str, args: &[&str]) -> anyhow::Result<ClientActio
                         ));
                     }
                     Ok(ClientAction::ClusterForget(args[1].to_string().into()))
+                },
+                "MEET" => {
+                    if args.len() != 2 {
+                        return Err(anyhow::anyhow!(
+                            "(error) ERR wrong number of arguments for 'cluster meet' command"
+                        ));
+                    }
+                    Ok(ClientAction::ClusterMeet(args[1].to_string().into()))
                 },
                 _ => Err(anyhow::anyhow!("(error) ERR unknown subcommand")),
             }

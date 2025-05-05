@@ -76,8 +76,8 @@ use chrono::{DateTime, Utc};
 // Safe conversion from a slice to an array of a specific size.
 use std::ops::RangeInclusive;
 
-pub mod decoder;
-pub mod encoder;
+pub(crate) mod decoder;
+pub(crate) mod encoder;
 
 const HEADER_MAGIC_STRING: &str = "DUVA";
 const VERSION: &str = "0001";

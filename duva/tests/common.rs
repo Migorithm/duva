@@ -4,7 +4,9 @@ use bytes::Bytes;
 use duva::domains::query_parsers::query_io::QueryIO;
 use duva::make_smart_pointer;
 use std::net::TcpListener;
+use std::path::{Path, PathBuf};
 use std::process::Stdio;
+use tempfile::TempDir;
 use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncWriteExt, BufReader};
 use tokio::process::{Child, ChildStdout, Command};
 use tokio::time::sleep;
@@ -17,20 +19,26 @@ pub struct ServerEnv {
     pub leader_bind_addr: Option<String>,
     pub hf: u128,
     pub ttl: u128,
-    pub use_wal: bool,
-    pub topology_path: TopologyPath,
+    pub append_only: bool,
+    // Owns and cleans the directory.
+    pub dir: TempDir,
+    pub topology_path: PathBuf,
 }
 
 impl Default for ServerEnv {
     fn default() -> Self {
+        let dir = TempDir::new().unwrap();
+        let topology_path = dir.path().join(Uuid::now_v7().to_string());
+
         ServerEnv {
             port: get_available_port(),
             file_name: FileName(None),
             leader_bind_addr: None,
             hf: 100,
             ttl: 1500,
-            use_wal: false,
-            topology_path: TopologyPath(Uuid::now_v7().to_string()),
+            append_only: false,
+            dir,
+            topology_path,
         }
     }
 }
@@ -53,8 +61,12 @@ impl ServerEnv {
         self.ttl = ttl;
         self
     }
-    pub fn with_topology_path(mut self, topology_path: impl Into<String>) -> Self {
-        self.topology_path = TopologyPath(topology_path.into());
+    pub fn with_topology_path(mut self, topology_path: impl AsRef<Path>) -> Self {
+        self.topology_path = topology_path.as_ref().to_path_buf();
+        self
+    }
+    pub fn with_append_only(mut self, append_only: bool) -> Self {
+        self.append_only = append_only;
         self
     }
 }
@@ -82,24 +94,17 @@ impl Drop for FileName {
         if let Some(file_name) = self.0.as_ref() {
             // remove if exists
             let _ = std::fs::remove_file(file_name);
-            let _ = std::fs::remove_file(format!("{}.wal", file_name));
+            let _ = std::fs::remove_file(format!("{}.oplog", file_name));
         } else {
             // remove if exists
-            let _ = std::fs::remove_file("dump.rdb.wal");
+            let _ = std::fs::remove_file("dump.rdb.oplog");
         }
-    }
-}
-
-pub struct TopologyPath(pub String);
-impl Drop for TopologyPath {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_file(&self.0);
     }
 }
 
 pub async fn spawn_server_process(env: &ServerEnv) -> anyhow::Result<TestProcessChild> {
     println!("Starting server on port {}", env.port);
-    let mut process = run_server_process(&env);
+    let mut process = run_server_process(env);
 
     wait_for_message(
         process.process.stdout.as_mut().unwrap(),
@@ -198,17 +203,19 @@ pub fn run_server_process(env: &ServerEnv) -> TestProcessChild {
         &env.hf.to_string(),
         "--ttl",
         &env.ttl.to_string(),
-        "--use_wal",
-        &env.use_wal.to_string(),
+        "--append_only",
+        &env.append_only.to_string(),
+        "--dir",
+        env.dir.path().to_str().unwrap(),
         "--tpp",
-        &env.topology_path.0,
+        env.topology_path.as_path().to_str().unwrap(),
     ]);
 
     if let Some(replicaof) = env.leader_bind_addr.as_ref() {
-        command.args(["--replicaof", &replicaof]);
+        command.args(["--replicaof", replicaof]);
     }
     if let Some(file_name) = env.file_name.0.as_ref() {
-        command.args(["--dbfilename", &file_name]);
+        command.args(["--dbfilename", file_name]);
     }
 
     TestProcessChild::new(
@@ -254,18 +261,17 @@ async fn wait_for_message<T: AsyncRead + Unpin>(
         }
     }
 
-    return Err(anyhow::anyhow!("Error was found until reading nextline"));
+    Err(anyhow::anyhow!("Error was found until reading nextline"))
 }
 
 pub fn array(arr: Vec<&str>) -> Bytes {
-    QueryIO::Array(arr.iter().map(|s| QueryIO::BulkString(s.to_string().into())).collect())
-        .serialize()
+    QueryIO::Array(arr.iter().map(|s| QueryIO::BulkString(s.to_string())).collect()).serialize()
 }
 
 pub fn session_request(request_id: u64, arr: Vec<&str>) -> Bytes {
     QueryIO::SessionRequest {
         request_id,
-        value: arr.iter().map(|s| QueryIO::BulkString(s.to_string().into())).collect(),
+        value: arr.iter().map(|s| QueryIO::BulkString(s.to_string())).collect(),
     }
     .serialize()
 }
@@ -282,13 +288,9 @@ pub async fn check_internodes_communication(
             .iter()
             .enumerate()
             .filter(|&(j, _)| j != i)
-            .map(|(_, target)| {
-                (0..hop_count + 1)
-                    .into_iter()
-                    .map(|_| target.heartbeat_msg(hop_count))
-                    .collect::<Vec<String>>()
+            .flat_map(|(_, target)| {
+                (0..hop_count + 1).map(|_| target.heartbeat_msg(hop_count)).collect::<Vec<String>>()
             })
-            .flatten()
             .collect();
 
         // Then wait for all messages

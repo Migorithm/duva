@@ -84,7 +84,7 @@ impl<T> ClientController<T> {
                 };
                 Response::Null
             },
-            Set { .. } | SetWithExpiry { .. } => match query_io {
+            Set { .. } | SetWithExpiry { .. } | ClusterMeet { .. } => match query_io {
                 QueryIO::SimpleString(_) => Response::String("OK".into()),
                 QueryIO::Err(value) => Response::Error(value),
                 _ => Response::FormatError,

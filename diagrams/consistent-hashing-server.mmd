@@ -1,0 +1,74 @@
+---
+title: Consistent Hashing - server side
+---
+sequenceDiagram
+    participant C1 as Client
+    
+    participant A as Replica Set A
+    participant B as Replica Set B
+    
+    participant C2 as ClientB
+
+
+    Note over A,B : At this point, A and B<br>Both manages full range of data<br>Let's say from 0..10000
+    
+    C1 --> A: connection established
+    C2 --> B: connection established
+
+
+    par
+    B ->> A : Join cluster
+    and
+    critical 
+        C2 --x B: Request pending
+    end
+    end
+
+    critical 
+        C1 --x A: Request pending
+    end
+    A -->> A: Rearrange tokens
+
+
+    par notify cluster peers
+    A --) B : Notify token map update
+    and notify connected clients
+    A --) C1 : Notify token map update
+    end
+
+    Note over A,B: Now, A and B have disjoint<br>token ranges<br>0..5000 and 5001..10000 respectively
+
+    critical Rebalancing!
+        A ->> B: Migrate data
+    end
+
+    
+    A -->> A: Unlock pending requests
+    alt Request's key is in A's range
+        A ->> A: Process request
+        A -->> C1: Response
+    else Request's key is in B's range
+        A -->> C1: (Moved) error
+    end
+
+
+
+
+    B --) C2 : Notify token map update
+    B -->> B: Unlock pending requests
+
+    alt Request's key is in B's range
+        B ->> B: Process request
+        B -->> C2: Response
+    else Request's key is in A's range
+        B -->> C2: (Moved) error
+    end
+
+
+    
+    
+
+
+    
+
+    

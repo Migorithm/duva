@@ -114,6 +114,9 @@ impl ClientController {
                     Err(e) => QueryIO::Err(e.to_string()),
                 }
             },
+            ClientAction::ClusterMeet(peer_identifier) => {
+                todo!()
+            },
             ClientAction::ReplicaOf(peer_identifier) => {
                 self.cluster_communication_manager.replicaof(peer_identifier.clone()).await;
 

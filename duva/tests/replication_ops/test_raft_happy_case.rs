@@ -1,18 +1,17 @@
 use crate::common::{Client, ServerEnv, spawn_server_process};
 
-#[tokio::test]
-async fn test_set_operation_reaches_to_all_replicas() -> anyhow::Result<()> {
+async fn run_set_operation_reaches_to_all_replicas(with_append_only: bool) -> anyhow::Result<()> {
     // GIVEN
-
-    let env = ServerEnv::default();
+    let env = ServerEnv::default().with_append_only(with_append_only);
 
     // loads the leader/follower processes
     let mut leader_p = spawn_server_process(&env).await?;
     let mut client_handler = Client::new(leader_p.port);
 
     let repl_env = ServerEnv::default()
-        .with_leader_bind_addr(leader_p.bind_addr().into())
-        .with_file_name("follower_dbfilename");
+        .with_leader_bind_addr(leader_p.bind_addr())
+        .with_file_name("follower_dbfilename")
+        .with_append_only(with_append_only);
 
     let mut repl_p = spawn_server_process(&repl_env).await?;
 
@@ -35,6 +34,14 @@ async fn test_set_operation_reaches_to_all_replicas() -> anyhow::Result<()> {
 
     f1.await?;
     f2.await?;
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_set_operation_reaches_to_all_replicas() -> anyhow::Result<()> {
+    run_set_operation_reaches_to_all_replicas(false).await?;
+    run_set_operation_reaches_to_all_replicas(true).await?;
 
     Ok(())
 }
