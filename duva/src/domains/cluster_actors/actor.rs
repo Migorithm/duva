@@ -364,7 +364,20 @@ impl ClusterActor {
         self.replication.hwm.store(last_log_idx, Ordering::Release);
     }
 
-    /// create entries per follower.
+    /// Creates individualized append entries messages for each follower.
+    ///
+    /// This function generates customized heartbeat messages containing only the log entries
+    /// that each specific follower needs based on their current high watermark.
+    ///
+    /// For each follower:
+    /// - Filters entries to include only those the follower doesn't have
+    /// - Sets correct previous log information based on follower's replication state:
+    ///   - If follower needs all entries: Uses backup entry or defaults to (0,0)
+    ///   - Otherwise: Uses the last entry the follower already has
+    /// - Creates a tailored heartbeat message with exactly the entries needed
+    ///
+    /// Returns an iterator yielding tuples of mutable peer references and their
+    /// customized heartbeat messages.
     async fn iter_follower_append_entries(
         &mut self,
         logger: &ReplicatedLogs<impl TWriteAheadLog>,
