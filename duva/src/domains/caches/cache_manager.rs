@@ -289,16 +289,11 @@ impl CacheManager {
         arg: i64,
         current_idx: u64,
     ) -> Result<String> {
-        let Some(v) = self.route_get(&key).await? else {
-            return self.route_set(key, arg.to_string(), None, current_idx).await;
-        };
-        let num =
-            v.value().parse::<i64>().context("ERR value is not an integer or out of range")?;
-        // Handle potential overflow
-        let incremented = num
-            .checked_add(arg)
-            .context("ERR value is not an integer or out of range")?
-            .to_string();
-        self.route_set(key, incremented, None, current_idx).await
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        self.select_shard(key.as_str())
+            .send(CacheCommand::NumericDetla { key, delta: arg, callback: tx })
+            .await?;
+        let current = rx.await?;
+        Ok(format!("s:{}|idx:{}", current?, current_idx))
     }
 }

@@ -6,6 +6,7 @@ use crate::domains::query_parsers::QueryIO;
 use crate::make_smart_pointer;
 
 use std::collections::HashMap;
+use std::collections::hash_map::Entry;
 use std::ops::Range;
 use std::sync::Arc;
 use std::sync::atomic::AtomicU64;
@@ -88,6 +89,31 @@ impl CacheActor {
             }
         });
         Ok(())
+    }
+
+    pub(crate) fn numeric_delta(
+        &mut self,
+        key: String,
+        delta: i64,
+        callback: oneshot::Sender<anyhow::Result<i64>>,
+    ) {
+        let callback_val = match self.cache.entry(key.clone()) {
+            Entry::Occupied(mut entry) => {
+                if let Some(value) = entry.get().value.parse::<i64>().ok() {
+                    let diff = value + delta;
+                    entry.insert(CacheValue::new(diff.to_string()));
+                    Ok(diff)
+                } else {
+                    Err(anyhow::anyhow!("ERR value is not an integer or out of range"))
+                }
+            },
+            Entry::Vacant(entry) => {
+                entry.insert(CacheValue::new(delta.to_string()));
+                Ok(delta)
+            },
+        };
+
+        let _ = callback.send(callback_val);
     }
 }
 

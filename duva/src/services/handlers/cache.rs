@@ -64,6 +64,9 @@ impl CacheActor {
                     self.cache.clear();
                     let _ = callback.send(());
                 },
+                CacheCommand::NumericDetla { key, delta, callback } => {
+                    self.numeric_delta(key, delta, callback);
+                },
             }
         }
         Ok(self)
