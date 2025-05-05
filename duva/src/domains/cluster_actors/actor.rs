@@ -365,7 +365,7 @@ impl ClusterActor {
     }
 
     /// create entries per follower.
-    pub(crate) async fn iter_follower_append_entries(
+    async fn iter_follower_append_entries(
         &mut self,
         logger: &ReplicatedLogs<impl TWriteAheadLog>,
     ) -> Box<dyn Iterator<Item = (&mut Peer, HeartBeatMessage)> + '_> {
