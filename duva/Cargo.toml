@@ -23,3 +23,8 @@ regex = "1.11.1"
 
 [dev-dependencies]
 tempfile = "3.19.1"
+criterion = "0.5"
+
+[[bench]]
+name = "benchmark"
+harness = false
