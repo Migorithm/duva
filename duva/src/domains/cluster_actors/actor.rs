@@ -38,6 +38,7 @@ use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
 use tracing::debug;
 use tracing::error;
+use tracing::info;
 
 #[derive(Debug)]
 pub struct ClusterActor {
@@ -355,7 +356,7 @@ impl ClusterActor {
         logs: Vec<WriteOperation>,
         cache_manager: &CacheManager,
     ) {
-        println!("[INFO] Received Leader State - length {}", logs.len());
+        debug!("Received Leader State - length {}", logs.len());
         if logs.is_empty() {
             return;
         }
@@ -451,7 +452,7 @@ impl ClusterActor {
         };
 
         if consensus.votable(&res.from) {
-            println!("[INFO] Received acks for log index num: {}", res.log_idx);
+            info!("Received acks for log index num: {}", res.log_idx);
             consensus.increase_vote(res.from);
         }
         if consensus.cnt < consensus.get_required_votes() {
@@ -542,23 +543,23 @@ impl ClusterActor {
             if prev_log_index == 0 {
                 return Ok(()); // First entry, no previous log to check
             }
-            println!("[ERROR] Log is empty but leader expects an entry");
+            error!("Log is empty but leader expects an entry");
             return Err(RejectionReason::LogInconsistency); // Log empty but leader expects an entry
         }
 
         // Case 2: Previous index is before the log's start (compacted/truncated)
         if prev_log_index < wal.log_start_index() {
-            println!("[ERROR] Previous log index is before the log's start");
+            error!("Previous log index is before the log's start");
             return Err(RejectionReason::LogInconsistency); // Leader references an old, unavailable entry
         }
 
         // * Raft followers should truncate their log starting at prev_log_index + 1 and then append the new entries
         // * Just returning an error is breaking consistency
         if let Some(prev_entry) = wal.read_at(prev_log_index).await {
-            println!("[INFO] Previous log entry: {:?}", prev_entry);
+            debug!("Previous log entry: {:?}", prev_entry);
             if prev_entry.term != prev_log_term {
                 // ! Term mismatch -> triggers log truncation
-                println!("[ERROR] Term mismatch: {} != {}", prev_entry.term, prev_log_term);
+                error!("Term mismatch: {} != {}", prev_entry.term, prev_log_term);
                 wal.truncate_after(prev_log_index).await;
 
                 return Err(RejectionReason::LogInconsistency);
@@ -607,7 +608,7 @@ impl ClusterActor {
         let request_vote =
             RequestVote::new(&self.replication, logger.last_log_index, logger.last_log_index);
 
-        println!("[INFO] Running for election term {}", self.replication.term);
+        info!("Running for election term {}", self.replication.term);
         self.replicas_mut()
             .map(|(peer, _)| peer.send_to_peer(request_vote.clone()))
             .collect::<FuturesUnordered<_>>()
@@ -619,8 +620,8 @@ impl ClusterActor {
         let grant_vote = current_log_idx <= request_vote.last_log_index
             && self.replication.may_become_follower(&request_vote.candidate_id, request_vote.term);
 
-        println!(
-            "[INFO] Voting for {} with term {} and granted: {}",
+        info!(
+            "Voting for {} with term {} and granted: {}",
             request_vote.candidate_id, request_vote.term, grant_vote
         );
 
@@ -672,13 +673,13 @@ impl ClusterActor {
                         RejectionReason::LogInconsistency,
                     )
                     .await;
-                    println!("[ERROR] log has never been replicated!");
+                    error!("log has never been replicated!");
                     return;
                 };
 
                 if let Err(e) = cache_manager.apply_log(log.request, log_index).await {
                     // ! DON'T PANIC - post validation is where we just don't update state
-                    println!("[ERROR] Failed to apply log: {e}")
+                    error!("failed to apply log: {e}")
                 }
             }
             self.replication.hwm.store(heartbeat.hwm, Ordering::Release);
@@ -720,7 +721,7 @@ impl ClusterActor {
     }
 
     async fn become_leader(&mut self) {
-        eprintln!("\x1b[32m[INFO] Election succeeded\x1b[0m");
+        info!("\x1b[32mElection succeeded\x1b[0m");
         self.replication.become_leader();
         self.heartbeat_scheduler.turn_leader_mode().await;
     }
@@ -732,7 +733,7 @@ impl ClusterActor {
         match repl_res.rej_reason {
             RejectionReason::ReceiverHasHigherTerm => self.step_down().await,
             RejectionReason::LogInconsistency => {
-                eprintln!("[ERROR] Log inconsistency, reverting match index");
+                eprintln!("Log inconsistency, reverting match index");
                 //TODO we can refactor this to set match index to given log index from the follower
                 self.decrease_match_index(&repl_res.from);
             },

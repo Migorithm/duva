@@ -1,6 +1,7 @@
 use crate::domains::cluster_actors::commands::ClusterCommand;
 use std::{ops::Range, time::Duration};
 use tokio::{select, sync::mpsc::Sender, time::interval};
+use tracing::warn;
 const LEADER_HEARTBEAT_INTERVAL: u64 = 300;
 pub const LEADER_HEARTBEAT_INTERVAL_MAX: u64 = LEADER_HEARTBEAT_INTERVAL * 5;
 const LEADER_HEARTBEAT_INTERVAL_RANGE: Range<u64> =
@@ -86,7 +87,7 @@ impl HeartBeatScheduler {
                         }
                     },
                     _ =  tokio::time::sleep(Duration::from_millis(rand::random_range(LEADER_HEARTBEAT_INTERVAL_RANGE)))=>{
-                        eprintln!("\x1b[33m[WARN] Election timeout\x1b[0m");
+                        warn!("\x1b[33mElection timeout\x1b[0m");
                         let _ = cluster_handler.send(ClusterCommand::StartLeaderElection).await;
 
                     }

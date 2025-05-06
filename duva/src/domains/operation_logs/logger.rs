@@ -1,3 +1,5 @@
+use tracing::debug;
+
 use crate::domains::cluster_actors::replication;
 
 use super::{WriteOperation, WriteRequest, interfaces::TWriteAheadLog};
@@ -63,7 +65,7 @@ impl<T: TWriteAheadLog> ReplicatedLogs<T> {
 
         self.target.append_many(new_entries).await?;
 
-        println!("[INFO] Received log entry with log index up to {}", self.last_log_index);
+        debug!("Received log entry with log index up to {}", self.last_log_index);
         Ok(self.last_log_index)
     }
 

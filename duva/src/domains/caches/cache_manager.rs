@@ -16,6 +16,8 @@ use futures::StreamExt;
 use futures::future::join_all;
 use futures::stream::FuturesUnordered;
 use tokio::sync::oneshot::error::RecvError;
+use tracing::debug;
+use tracing::info;
 
 use std::sync::Arc;
 use std::sync::atomic::AtomicU64;
@@ -144,7 +146,6 @@ impl CacheManager {
         .await;
 
         // TODO let's find the way to test without adding the following code - echo
-        // Only for debugging and test
         if let Ok(QueryIO::Array(data)) = self.route_keys(None).await {
             let mut keys = vec![];
             for key in data {
@@ -153,7 +154,8 @@ impl CacheManager {
                 };
                 keys.push(key);
             }
-            println!("[INFO] Full Sync Keys: {:?}", keys);
+
+            debug!("Full Sync Keys: {:?}", keys);
         }
         Ok(())
     }
