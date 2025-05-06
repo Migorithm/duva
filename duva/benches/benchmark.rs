@@ -1,8 +1,13 @@
+mod benchmark_query;
+
 use criterion::{Criterion, criterion_group, criterion_main};
 
-fn bench_test(c: &mut Criterion) {
-    c.bench_function("Test Bench", |b| b.iter(|| ()));
-}
-
-criterion_group!(benches, bench_test);
+criterion_group!(
+    benches,
+    benchmark_query::serialize_null,
+    benchmark_query::serialize_file,
+    benchmark_query::serialize_simple_string,
+    benchmark_query::serialize_bulk_string,
+    benchmark_query::serialize_array,
+);
 criterion_main!(benches);
