@@ -10,7 +10,7 @@ use tokio::fs::try_exists;
 use tokio::sync::mpsc::Sender;
 use tokio::sync::oneshot;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct ConfigManager {
     pub(crate) config: Sender<ConfigMessage>,
     pub(crate) startup_time: DateTime<Utc>,

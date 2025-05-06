@@ -1,3 +1,5 @@
+use tracing::{debug, info, instrument};
+
 use super::request::ClientRequest;
 use crate::actor_registry::ActorRegistry;
 use crate::domains::caches::cache_manager::CacheManager;
@@ -13,7 +15,7 @@ use crate::presentation::clusters::communication_manager::ClusterCommunicationMa
 
 use std::sync::atomic::Ordering;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub(crate) struct ClientController {
     pub(crate) cache_manager: CacheManager,
     pub(crate) config_manager: ConfigManager,
@@ -141,6 +143,7 @@ impl ClientController {
         Ok(response)
     }
 
+    #[instrument(skip(self, request))]
     pub(crate) async fn maybe_consensus_then_execute(
         &self,
         mut request: ClientRequest,
@@ -180,8 +183,11 @@ impl ClientController {
         rx.await?
     }
 
+    #[instrument(skip(self))]
     async fn maybe_send_commit(&self, log_index_num: Option<u64>) -> anyhow::Result<()> {
         if let Some(log_idx) = log_index_num {
+            debug!("Sending commit heartbeat with log index: {}", log_idx);
+
             self.cluster_communication_manager
                 .send(ClusterCommand::SendCommitHeartBeat { log_idx })
                 .await?;
