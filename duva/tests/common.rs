@@ -122,7 +122,7 @@ impl TestProcessChild {
     }
 
     pub fn heartbeat_msg(&self, expected_count: usize) -> String {
-        format!("[INFO] from {}, hc:{}", self.bind_addr(), expected_count)
+        format!("from {}, hc:{}", self.bind_addr(), expected_count)
     }
 }
 // scan for available port

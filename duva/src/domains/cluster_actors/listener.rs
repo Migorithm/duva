@@ -7,6 +7,7 @@ use crate::{
     services::interface::TRead,
 };
 use tokio::{net::tcp::OwnedReadHalf, select, sync::mpsc::Sender};
+use tracing::debug;
 
 #[cfg(test)]
 static ATOMIC: std::sync::atomic::AtomicI16 = std::sync::atomic::AtomicI16::new(0);
@@ -62,12 +63,12 @@ impl PeerListener {
             for cmd in cmds {
                 match cmd {
                     PeerListenerCommand::AppendEntriesRPC(hb) => {
-                        println!("[INFO] from {}, hc:{}", hb.from, hb.hop_count);
+                        debug!("from {}, hc:{}", hb.from, hb.hop_count);
                         let _ =
                             self.cluster_handler.send(ClusterCommand::AppendEntriesRPC(hb)).await;
                     },
                     PeerListenerCommand::ClusterHeartBeat(hb) => {
-                        println!("[INFO] from {}, hc:{}", hb.from, hb.hop_count);
+                        debug!("from {}, hc:{}", hb.from, hb.hop_count);
                         let _ =
                             self.cluster_handler.send(ClusterCommand::ClusterHeartBeat(hb)).await;
                     },
