@@ -10,7 +10,7 @@ use crate::{
 };
 use tokio::sync::mpsc::Sender;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub(crate) struct ClusterCommunicationManager(pub(crate) Sender<ClusterCommand>);
 
 make_smart_pointer!(ClusterCommunicationManager, Sender<ClusterCommand>);

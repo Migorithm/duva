@@ -25,6 +25,10 @@ use presentation::clusters::communication_manager::ClusterCommunicationManager;
 
 use tokio::net::TcpListener;
 
+use tracing::error;
+use tracing::info;
+use tracing::instrument;
+
 pub mod prelude {
     pub use crate::domains::peers::identifier::PeerIdentifier;
     pub use crate::presentation::clients::AuthRequest;
@@ -130,9 +134,11 @@ impl StartUpFacade {
     }
 
     /// Run while loop accepting stream and if the sentinel is received, abort the tasks
+
+    #[instrument(skip(self))]
     async fn start_receiving_client_streams(self) -> anyhow::Result<()> {
         let listener = TcpListener::bind(&self.config_manager.bind_addr()).await?;
-        println!("start listening on {}", self.config_manager.bind_addr());
+        info!("start listening on {}", self.config_manager.bind_addr());
         let mut handles = Vec::with_capacity(100);
 
         //TODO refactor: authentication should be simplified
@@ -140,10 +146,10 @@ impl StartUpFacade {
             let mut peers = self.registry.cluster_communication_manager.get_peers().await?;
             peers.push(PeerIdentifier(self.registry.config_manager.bind_addr()));
 
-            let is_leader = self.registry.cluster_communication_manager.role().await?
+            let is_leader: bool = self.registry.cluster_communication_manager.role().await?
                 == ReplicationRole::Leader;
             let Ok((reader, writer)) = authenticate(stream, peers, is_leader).await else {
-                eprintln!("[ERROR] Failed to authenticate client stream");
+                error!("Failed to authenticate client stream");
                 continue;
             };
 

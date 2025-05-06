@@ -36,6 +36,8 @@ use tokio::fs::File;
 use tokio::io::AsyncSeekExt;
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
+use tracing::debug;
+use tracing::error;
 
 #[derive(Debug)]
 pub struct ClusterActor {
@@ -484,7 +486,8 @@ impl ClusterActor {
 
         let message: HeartBeatMessage =
             self.replication.default_heartbeat(0, offset, self.replication.term);
-        println!("[INFO] log {} commited", message.hwm);
+
+        debug!("log {} commited", message.hwm);
         self.send_to_replicas(AppendEntriesRPC(message)).await;
     }
 
@@ -496,7 +499,7 @@ impl ClusterActor {
     ) {
         // * logging case
         if self.try_replicate_logs(wal, &mut heartbeat).await.is_err() {
-            eprintln!("[ERROR] Failed to replicate logs");
+            error!("Failed to replicate logs");
             return;
         };
 
@@ -659,7 +662,7 @@ impl ClusterActor {
     ) {
         let old_hwm = self.replication.hwm.load(Ordering::Acquire);
         if heartbeat.hwm > old_hwm {
-            println!("[INFO] Received commit offset {}", heartbeat.hwm);
+            debug!("Received commit offset {}", heartbeat.hwm);
 
             for log_index in (old_hwm + 1)..=heartbeat.hwm {
                 let Some(log) = wal.read_at(log_index).await else {

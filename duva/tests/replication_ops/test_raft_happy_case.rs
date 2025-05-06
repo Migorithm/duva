@@ -23,14 +23,12 @@ async fn run_set_operation_reaches_to_all_replicas(with_append_only: bool) -> an
 
     //THEN - run the following together
     let f1 = repl_p.timed_wait_for_message(
-        vec!["[INFO] Received log entry with log index up to 1", "[INFO] Received commit offset 1"],
+        vec!["Received log entry with log index up to 1", "Received commit offset 1"],
         2000,
     );
 
-    let f2 = leader_p.timed_wait_for_message(
-        vec!["[INFO] Received acks for log index num: 1", "[INFO] log 1 commited"],
-        2000,
-    );
+    let f2 = leader_p
+        .timed_wait_for_message(vec!["Received acks for log index num: 1", "log 1 commited"], 2000);
 
     f1.await?;
     f2.await?;

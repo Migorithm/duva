@@ -8,6 +8,7 @@ use tokio::{
     net::tcp::{OwnedReadHalf, OwnedWriteHalf},
     sync::mpsc::Sender,
 };
+use tracing::{error, instrument};
 use uuid::Uuid;
 pub struct ClientStreamReader {
     pub(crate) r: OwnedReadHalf,
@@ -15,6 +16,46 @@ pub struct ClientStreamReader {
 }
 
 impl ClientStreamReader {
+    #[instrument(skip(self, handler, sender),fields(client_id= %self.client_id))]
+    pub(crate) async fn handle_client_stream(
+        mut self,
+        handler: ClientController,
+        sender: Sender<QueryIO>,
+    ) {
+        'l: loop {
+            match self.extract_query().await {
+                Ok(requests) => {
+                    for req in requests.into_iter() {
+                        match handler.maybe_consensus_then_execute(req).await {
+                            Ok(res) => {
+                                if sender.send(res).await.is_err() {
+                                    break 'l;
+                                }
+                            },
+
+                            // ! One of the following errors can be returned:
+                            // ! consensus or handler or commit
+                            Err(e) => {
+                                error!("{:?}", e);
+                                let _ = sender.send(QueryIO::Err(e.to_string())).await;
+                                continue;
+                            },
+                        };
+                    }
+                },
+
+                Err(err) => {
+                    error!("{}", err);
+                    if err.should_break() {
+                        return;
+                    } else {
+                        let _ = sender.send(QueryIO::Err(err.to_string())).await;
+                    }
+                },
+            }
+        }
+    }
+
     pub(crate) async fn extract_query(&mut self) -> Result<Vec<ClientRequest>, IoError> {
         let query_ios = self.r.read_values().await?;
 
@@ -37,45 +78,6 @@ impl ClientStreamReader {
                 _ => Err(IoError::Custom("Unexpected command format".to_string())),
             })
             .collect()
-    }
-
-    pub(crate) async fn handle_client_stream(
-        mut self,
-        handler: ClientController,
-        sender: Sender<QueryIO>,
-    ) {
-        'l: loop {
-            match self.extract_query().await {
-                Ok(requests) => {
-                    for req in requests.into_iter() {
-                        match handler.maybe_consensus_then_execute(req).await {
-                            Ok(res) => {
-                                if sender.send(res).await.is_err() {
-                                    break 'l;
-                                }
-                            },
-
-                            // ! One of the following errors can be returned:
-                            // ! consensus or handler or commit
-                            Err(e) => {
-                                eprintln!("[ERROR] {:?}", e);
-                                let _ = sender.send(QueryIO::Err(e.to_string())).await;
-                                continue;
-                            },
-                        };
-                    }
-                },
-
-                Err(err) => {
-                    if err.should_break() {
-                        eprintln!("[INFO] {}", err);
-                        return;
-                    } else {
-                        let _ = sender.send(QueryIO::Err(err.to_string())).await;
-                    }
-                },
-            }
-        }
     }
 }
 

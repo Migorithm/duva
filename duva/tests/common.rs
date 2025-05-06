@@ -240,7 +240,7 @@ async fn wait_for_message<T: AsyncRead + Unpin>(
 
     let mut current_target = target.remove(0);
     while let Some(line) = buf.next_line().await? {
-        if line.starts_with(current_target) {
+        if line.contains(current_target) {
             cnt -= 1;
 
             if cnt == 0 {
