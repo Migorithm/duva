@@ -25,6 +25,7 @@ use presentation::clusters::communication_manager::ClusterCommunicationManager;
 
 use tokio::net::TcpListener;
 
+use tracing::debug;
 use tracing::error;
 use tracing::info;
 use tracing::instrument;
@@ -33,7 +34,6 @@ pub mod prelude {
     pub use crate::domains::peers::identifier::PeerIdentifier;
     pub use crate::presentation::clients::AuthRequest;
     pub use crate::presentation::clients::AuthResponse;
-
     pub use anyhow;
     pub use bytes;
     pub use bytes::BytesMut;
@@ -100,31 +100,31 @@ impl StartUpFacade {
         Ok(())
     }
 
+    #[instrument(skip_all)]
     async fn start_accepting_peer_connections(
         peer_bind_addr: String,
         registry: ActorRegistry,
     ) -> Result<()> {
-        let peer_listener = TcpListener::bind(&peer_bind_addr)
-            .await
-            .expect("[ERROR] Failed to bind to peer address for listening");
+        let peer_listener = TcpListener::bind(&peer_bind_addr).await.unwrap();
 
-        println!("Starting to accept peer connections");
-        println!("listening peer connection on {}...", peer_bind_addr);
+        debug!("listening peer connection on {}...", peer_bind_addr);
 
         loop {
             match peer_listener.accept().await {
                 // ? how do we know if incoming connection is from a peer or replica?
                 Ok((peer_stream, _socket_addr)) => {
-                    if let Err(err) = registry
+                    if registry
                         .cluster_communication_manager
                         .send(ClusterCommand::AcceptPeer { stream: peer_stream })
                         .await
+                        .is_err()
                     {
-                        println!("[ERROR] Failed to accept peer connection: {:?}", err);
+                        error!("Failed to accept peer connection");
                     }
                 },
 
                 Err(err) => {
+                    error!("Failed to accept peer connection: {:?}", err);
                     if Into::<IoError>::into(err.kind()).should_break() {
                         break Ok(());
                     }

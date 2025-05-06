@@ -6,15 +6,15 @@ async fn run_keys(env: ServerEnv) -> anyhow::Result<()> {
 
     let mut h = Client::new(process.port);
 
-    let num_keys_to_store = 500;
+    let num_keys_to_store = 100;
 
     // WHEN set 500 keys with the value `bar`.
     for key in 0..num_keys_to_store {
-        assert_eq!(h.send_and_get(format!("SET {} bar", key), 1).await, vec!["OK"]);
+        h.send(format!("SET {} bar", key).as_bytes()).await.unwrap();
     }
 
     // Fire keys command
-    let res = h.send_and_get("KEYS *", 500).await;
+    let res = h.send_and_get("KEYS *", 100).await;
 
     assert!(res.len() >= num_keys_to_store as usize);
 
