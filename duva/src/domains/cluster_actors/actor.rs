@@ -192,12 +192,12 @@ impl ClusterActor {
             .make_handshake(self.replication.self_port)
             .await?;
 
-        if stream.my_repl_info.replid == ReplicationId::Undecided {
+        if self.replication.replid == ReplicationId::Undecided {
             let connected_node_info = stream
                 .connected_node_info
                 .as_ref()
                 .context("Connected node info not found. Cannot set replication id")?;
-            self.set_replication_info(connected_node_info.replid.clone(), connected_node_info.hwm);
+            self.set_repl_id(connected_node_info.replid.clone());
         }
 
         let (add_peer, peer_list) = stream.create_peer_cmd(self.self_handler.clone())?;
@@ -213,15 +213,14 @@ impl ClusterActor {
         let mut inbound_stream = InboundStream::new(peer_stream, self.replication.clone());
         inbound_stream.recv_handshake().await?;
         inbound_stream.disseminate_peers(self.members.keys().cloned().collect::<Vec<_>>()).await?;
-        inbound_stream.try_sync_for_replica(logger).await?;
+
         let add_peer_cmd = inbound_stream.into_add_peer(self.self_handler.clone())?;
         self.add_peer(add_peer_cmd).await;
         Ok(())
     }
 
-    pub(crate) fn set_replication_info(&mut self, leader_repl_id: ReplicationId, hwm: u64) {
+    pub(crate) fn set_repl_id(&mut self, leader_repl_id: ReplicationId) {
         self.replication.replid = leader_repl_id;
-        self.replication.hwm.store(hwm, Ordering::Release);
     }
 
     /// Remove the peers that are idle for more than ttl_mills
@@ -298,10 +297,6 @@ impl ClusterActor {
     pub(crate) fn update_on_hertbeat_message(&mut self, from: &PeerIdentifier, log_index: u64) {
         if let Some(peer) = self.members.get_mut(from) {
             peer.last_seen = Instant::now();
-
-            if let NodeKind::Replica = peer.kind() {
-                peer.set_match_index(log_index);
-            }
         }
     }
 
@@ -349,22 +344,6 @@ impl ClusterActor {
             .collect::<FuturesUnordered<_>>()
             .for_each(|_| async {})
             .await;
-    }
-
-    pub(crate) async fn install_leader_state(
-        &mut self,
-        logs: Vec<WriteOperation>,
-        cache_manager: &CacheManager,
-    ) {
-        debug!("Received Leader State - length {}", logs.len());
-        if logs.is_empty() {
-            return;
-        }
-        let last_log_idx = logs.last().unwrap().log_index;
-        for log in logs {
-            let _ = cache_manager.apply_log(log.request, log.log_index).await;
-        }
-        self.replication.hwm.store(last_log_idx, Ordering::Release);
     }
 
     /// Creates individualized append entries messages for each follower.
@@ -453,12 +432,19 @@ impl ClusterActor {
 
         if consensus.votable(&res.from) {
             info!("Received acks for log index num: {}", res.log_idx);
+            if let Some(peer) = self.members.get_mut(&res.from) {
+                peer.set_match_index(res.log_idx);
+            }
             consensus.increase_vote(res.from);
         }
         if consensus.cnt < consensus.get_required_votes() {
             self.consensus_tracker.insert(res.log_idx, consensus);
             return;
         }
+
+        // * Increase the high water mark
+        self.replication.hwm.fetch_add(1, Ordering::Relaxed);
+
         sessions.set_response(consensus.session_req.take());
         let _ = consensus.callback.send(Ok(ConsensusClientResponse::LogIndex(res.log_idx.into())));
     }
@@ -481,31 +467,17 @@ impl ClusterActor {
         }
     }
 
-    pub(crate) async fn send_commit_heartbeat(&mut self, offset: u64) {
-        // TODO is there any case where I can use offset input?
-        self.replication.hwm.fetch_add(1, Ordering::Relaxed);
-
-        let message: HeartBeatMessage =
-            self.replication.default_heartbeat(0, offset, self.replication.term);
-
-        debug!("log {} commited", message.hwm);
-        self.send_to_replicas(AppendEntriesRPC(message)).await;
-    }
-
     pub(crate) async fn replicate(
         &mut self,
         wal: &mut ReplicatedLogs<impl TWriteAheadLog>,
         mut heartbeat: HeartBeatMessage,
         cache_manager: &CacheManager,
     ) {
-        // * logging case
+        // * write logs
         if self.try_replicate_logs(wal, &mut heartbeat).await.is_err() {
             error!("Failed to replicate logs");
             return;
         };
-
-        // * state machine case
-        //TODO when sync was not made, it needs to notify leader so the leader can re-send the logs by downgrading the match index
         self.replicate_state(heartbeat, wal, cache_manager).await;
     }
 
@@ -514,7 +486,12 @@ impl ClusterActor {
         wal: &mut ReplicatedLogs<impl TWriteAheadLog>,
         rpc: &mut HeartBeatMessage,
     ) -> anyhow::Result<()> {
-        if rpc.append_entries.is_empty() {
+        let entries = std::mem::take(&mut rpc.append_entries)
+            .into_iter()
+            .filter(|log| log.log_index > wal.last_log_index)
+            .collect::<Vec<_>>();
+
+        if entries.is_empty() {
             return Ok(());
         }
 
@@ -525,8 +502,7 @@ impl ClusterActor {
             return Err(anyhow::anyhow!("Fail fail to append"));
         }
 
-        let match_index =
-            wal.follower_write_entries(std::mem::take(&mut rpc.append_entries)).await?;
+        let match_index = wal.follower_write_entries(entries).await?;
 
         self.report_replica_lag(&rpc.from, match_index, RejectionReason::None).await;
         Ok(())
@@ -538,19 +514,13 @@ impl ClusterActor {
         prev_log_index: u64,
         prev_log_term: u64,
     ) -> Result<(), RejectionReason> {
-        // Case 1: Empty log
+        // Case: Empty log
         if wal.is_empty() {
             if prev_log_index == 0 {
                 return Ok(()); // First entry, no previous log to check
             }
             error!("Log is empty but leader expects an entry");
             return Err(RejectionReason::LogInconsistency); // Log empty but leader expects an entry
-        }
-
-        // Case 2: Previous index is before the log's start (compacted/truncated)
-        if prev_log_index < wal.log_start_index() {
-            error!("Previous log index is before the log's start");
-            return Err(RejectionReason::LogInconsistency); // Leader references an old, unavailable entry
         }
 
         // * Raft followers should truncate their log starting at prev_log_index + 1 and then append the new entries
@@ -578,14 +548,6 @@ impl ClusterActor {
         }
 
         self.send_append_entries_to_replicas(logger).await;
-    }
-
-    async fn send_to_replicas(&mut self, msg: impl Into<QueryIO> + Send + Clone) {
-        self.replicas_mut()
-            .map(|(peer, _)| peer.send_to_peer(msg.clone()))
-            .collect::<FuturesUnordered<_>>()
-            .for_each(|_| async {})
-            .await;
     }
 
     pub(crate) fn cluster_nodes(&self) -> Vec<PeerState> {
@@ -657,18 +619,18 @@ impl ClusterActor {
 
     async fn replicate_state(
         &mut self,
-        heartbeat: HeartBeatMessage,
+        leader_hwm: HeartBeatMessage,
         wal: &mut ReplicatedLogs<impl TWriteAheadLog>,
         cache_manager: &CacheManager,
     ) {
         let old_hwm = self.replication.hwm.load(Ordering::Acquire);
-        if heartbeat.hwm > old_hwm {
-            debug!("Received commit offset {}", heartbeat.hwm);
+        if leader_hwm.hwm > old_hwm {
+            debug!("Received commit offset {}", leader_hwm.hwm);
 
-            for log_index in (old_hwm + 1)..=heartbeat.hwm {
+            for log_index in (old_hwm + 1)..=leader_hwm.hwm {
                 let Some(log) = wal.read_at(log_index).await else {
                     self.report_replica_lag(
-                        &heartbeat.from,
+                        &leader_hwm.from,
                         wal.last_log_index,
                         RejectionReason::LogInconsistency,
                     )
@@ -682,7 +644,7 @@ impl ClusterActor {
                     error!("failed to apply log: {e}")
                 }
             }
-            self.replication.hwm.store(heartbeat.hwm, Ordering::Release);
+            self.replication.hwm.store(leader_hwm.hwm, Ordering::Release);
         }
     }
 
@@ -735,22 +697,27 @@ impl ClusterActor {
             RejectionReason::LogInconsistency => {
                 eprintln!("Log inconsistency, reverting match index");
                 //TODO we can refactor this to set match index to given log index from the follower
-                self.decrease_match_index(&repl_res.from);
+                self.decrease_match_index(&repl_res.from, repl_res.log_idx);
             },
             RejectionReason::None => (),
         }
     }
 
-    fn decrease_match_index(&mut self, from: &PeerIdentifier) {
+    // TODO current_log_idx - 1?
+    fn decrease_match_index(&mut self, from: &PeerIdentifier, current_log_idx: u64) {
         if let Some(peer) = self.members.get_mut(from) {
-            peer.set_match_index(peer.match_index().saturating_sub(1));
+            peer.set_match_index(current_log_idx);
         }
     }
 
+    //TODO replication after replicaof is not made. Investigation required
     pub(crate) async fn replicaof(&mut self, peer_addr: PeerIdentifier) {
-        self.replication.vote_for(Some(peer_addr));
-        self.set_replication_info(ReplicationId::Undecided, 0);
+        self.replication.vote_for(Some(peer_addr.clone()));
+        self.replication.hwm.store(0, Ordering::Release);
+
+        self.set_repl_id(ReplicationId::Undecided);
         self.heartbeat_scheduler.turn_follower_mode().await;
+        let _ = self.discover_cluster(peer_addr).await;
     }
 
     pub(crate) async fn join_peer_network_if_absent(&mut self, cluster_nodes: Vec<PeerState>) {
@@ -1447,7 +1414,7 @@ mod test {
 
     #[tokio::test]
     async fn follower_truncates_log_on_term_mismatch() {
-        // GIVEN: A follower with an existing log entry at index 1, term 1
+        // GIVEN: A follower with an existing log entry at index  term 1
         let mut inmemory = MemoryOpLogs::default();
         //prefill
 
@@ -1466,7 +1433,7 @@ mod test {
         let mut heartbeat = heartbeat_create_helper(
             2,
             0,
-            vec![write_operation_create_helper(2, 0, "key2", "val2")],
+            vec![write_operation_create_helper(4, 0, "key2", "val2")],
         );
         heartbeat.prev_log_term = 0;
         heartbeat.prev_log_index = 2;

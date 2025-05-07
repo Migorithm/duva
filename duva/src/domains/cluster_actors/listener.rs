@@ -72,12 +72,6 @@ impl PeerListener {
                         let _ =
                             self.cluster_handler.send(ClusterCommand::ClusterHeartBeat(hb)).await;
                     },
-                    PeerListenerCommand::FullSync(logs) => {
-                        let _ = self
-                            .cluster_handler
-                            .send(ClusterCommand::InstallLeaderState(logs))
-                            .await;
-                    },
                     PeerListenerCommand::Acks(items) => {
                         let _ = self
                             .cluster_handler

@@ -20,7 +20,7 @@ async fn run_cluster_topology_change_when_new_node_added(
     let cluster_info = client_handler.send_and_get(cmd.as_bytes(), 1).await;
     assert_eq!(cluster_info, vec!["cluster_known_nodes:1".to_string()]);
 
-    // // WHEN -- new replica is added
+    // WHEN -- new replica is added
     let repl_env2 = ServerEnv::default()
         .with_leader_bind_addr(leader_p.bind_addr())
         .with_append_only(with_append_only);

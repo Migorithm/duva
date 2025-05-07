@@ -1,3 +1,7 @@
+use std::time::Duration;
+
+use duva::domains::cluster_actors::heartbeats::scheduler::LEADER_HEARTBEAT_INTERVAL_MAX;
+
 use crate::common::{Client, ServerEnv, spawn_server_process};
 
 async fn run_set_operation_reaches_to_all_replicas(with_append_only: bool) -> anyhow::Result<()> {
@@ -21,17 +25,12 @@ async fn run_set_operation_reaches_to_all_replicas(with_append_only: bool) -> an
     // WHEN -- set operation is made
     client_handler.send_and_get("SET foo bar", 1).await;
 
-    //THEN - run the following together
-    let f1 = repl_p.timed_wait_for_message(
-        vec!["Received log entry with log index up to 1", "Received commit offset 1"],
-        2000,
-    );
+    //THEN
+    tokio::time::sleep(Duration::from_millis(LEADER_HEARTBEAT_INTERVAL_MAX * 2)).await;
 
-    let f2 = leader_p
-        .timed_wait_for_message(vec!["Received acks for log index num: 1", "log 1 commited"], 2000);
-
-    f1.await?;
-    f2.await?;
+    let mut client = Client::new(repl_p.port);
+    let res = client.send_and_get("GET foo", 1).await;
+    assert_eq!(res, vec!["bar"]);
 
     Ok(())
 }

@@ -121,8 +121,6 @@ impl ClientController {
             ClientAction::ReplicaOf(peer_identifier) => {
                 self.cluster_communication_manager.replicaof(peer_identifier.clone()).await;
 
-                self.cluster_communication_manager.discover_cluster(peer_identifier).await?;
-
                 QueryIO::SimpleString("OK".into())
             },
             ClientAction::Role => {
@@ -157,11 +155,7 @@ impl ClientController {
                 self.handle(request.action, Some(index)).await
             },
             ConsensusClientResponse::LogIndex(optional_idx) => {
-                let (res, _) = tokio::try_join!(
-                    self.handle(request.action, optional_idx),
-                    self.maybe_send_commit(optional_idx)
-                )?;
-                Ok(res)
+                self.handle(request.action, optional_idx).await
             },
         }
     }
@@ -181,17 +175,5 @@ impl ClientController {
             .await?;
 
         rx.await?
-    }
-
-    #[instrument(skip(self))]
-    async fn maybe_send_commit(&self, log_index_num: Option<u64>) -> anyhow::Result<()> {
-        if let Some(log_idx) = log_index_num {
-            debug!("Sending commit heartbeat with log index: {}", log_idx);
-
-            self.cluster_communication_manager
-                .send(ClusterCommand::SendCommitHeartBeat { log_idx })
-                .await?;
-        }
-        Ok(())
     }
 }

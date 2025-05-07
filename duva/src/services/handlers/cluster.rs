@@ -41,7 +41,7 @@ impl ClusterActor {
                     let _ = sender.send(self.replication.clone());
                 },
                 ClusterCommand::SetReplicationInfo { replid: leader_repl_id, hwm } => {
-                    self.set_replication_info(leader_repl_id, hwm);
+                    self.set_repl_id(leader_repl_id);
                 },
                 ClusterCommand::SendClusterHeatBeat => {
                     // ! remove idle peers based on ttl.
@@ -92,9 +92,7 @@ impl ClusterActor {
                     self.update_on_hertbeat_message(&repl_res.from, repl_res.log_idx);
                     self.track_replication_progress(repl_res, &mut client_sessions);
                 },
-                ClusterCommand::SendCommitHeartBeat { log_idx: offset } => {
-                    self.send_commit_heartbeat(offset).await;
-                },
+
                 ClusterCommand::SendAppendEntriesRPC => {
                     self.send_leader_heartbeat(&logger).await;
                 },
@@ -108,12 +106,6 @@ impl ClusterActor {
                     self.maybe_update_term(heartbeat.term);
                     self.replicate(&mut logger, heartbeat, &cache_manager).await;
                 },
-                ClusterCommand::InstallLeaderState(logs) => {
-                    if logger.follower_full_sync(logs.clone()).await.is_err() {
-                        continue;
-                    }
-                    self.install_leader_state(logs, &cache_manager).await;
-                },
                 ClusterCommand::StartLeaderElection => {
                     self.run_for_election(&mut logger).await;
                 },
@@ -126,10 +118,10 @@ impl ClusterActor {
                     }
                     self.tally_vote(&logger).await;
                 },
-                ClusterCommand::ReplicaOf(peer_addr, callback) => {
+                ClusterCommand::ReplicaOf(peer_addr) => {
                     cache_manager.drop_cache().await;
+                    logger.reset_metadata();
                     self.replicaof(peer_addr).await;
-                    let _ = callback.send(());
                 },
                 ClusterCommand::GetRole(sender) => {
                     let _ = sender.send(self.replication.role.clone());
