@@ -17,7 +17,6 @@ use futures::future::join_all;
 use futures::stream::FuturesUnordered;
 use tokio::sync::oneshot::error::RecvError;
 use tracing::debug;
-use tracing::info;
 
 use std::sync::Arc;
 use std::sync::atomic::AtomicU64;

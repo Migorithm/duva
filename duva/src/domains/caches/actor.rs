@@ -4,10 +4,7 @@ use crate::domains::caches::read_queue::ReadQueue;
 use crate::domains::cluster_actors::hash_ring::fnv_1a_hash;
 use crate::domains::query_parsers::QueryIO;
 use crate::make_smart_pointer;
-
-use anyhow::Context;
 use std::collections::HashMap;
-use std::collections::hash_map::Entry;
 use std::ops::Range;
 use std::sync::Arc;
 use std::sync::atomic::AtomicU64;
