@@ -716,8 +716,8 @@ impl ClusterActor {
         self.replication.hwm.store(0, Ordering::Release);
 
         self.set_repl_id(ReplicationId::Undecided);
-        self.heartbeat_scheduler.turn_follower_mode().await;
         let _ = self.discover_cluster(peer_addr).await;
+        self.heartbeat_scheduler.turn_follower_mode().await;
     }
 
     pub(crate) async fn join_peer_network_if_absent(&mut self, cluster_nodes: Vec<PeerState>) {
