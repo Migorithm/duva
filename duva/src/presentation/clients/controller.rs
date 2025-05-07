@@ -1,4 +1,4 @@
-use tracing::{debug, info, instrument};
+use tracing::{debug, instrument};
 
 use super::request::ClientRequest;
 use crate::actor_registry::ActorRegistry;
