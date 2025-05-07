@@ -2,7 +2,7 @@ use crate::domains::caches::actor::CacheActor;
 use crate::domains::caches::cache_objects::CacheEntry;
 use crate::domains::caches::command::CacheCommand;
 use crate::domains::caches::read_queue::{DeferredRead, ReadQueue};
-use crate::domains::query_parsers::QueryIO;
+
 use crate::domains::saves::command::SaveCommand;
 use anyhow::Result;
 use tokio::sync::mpsc::Receiver;
@@ -27,12 +27,8 @@ impl CacheActor {
                         self.get(&key, callback);
                     }
                 },
-                CacheCommand::Keys { pattern, callback: sender } => {
-                    let ks: Vec<_> = self.keys_stream(pattern).collect();
-
-                    sender
-                        .send(QueryIO::Array(ks))
-                        .map_err(|_| anyhow::anyhow!("Error sending keys"))?;
+                CacheCommand::Keys { pattern, callback } => {
+                    self.keys(pattern, callback);
                 },
                 CacheCommand::Delete { key, callback } => {
                     self.delete(key, callback);
