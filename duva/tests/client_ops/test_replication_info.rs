@@ -4,13 +4,13 @@
 /// *2\r\n$3\r\ndir\r\n$4\r\n/tmp\r\n
 use crate::common::{Client, ServerEnv, spawn_server_process};
 
-async fn run_replication_info(env: ServerEnv) -> anyhow::Result<()> {
+fn run_replication_info(env: ServerEnv) -> anyhow::Result<()> {
     // GIVEN
-    let process = spawn_server_process(&env).await?;
+    let process = spawn_server_process(&env, false)?;
     let mut h = Client::new(process.port);
 
     // WHEN
-    let res = h.send_and_get("INFO replication", 4).await;
+    let res = h.send_and_get("INFO replication", 4);
 
     // THEN
     assert_eq!(res[0], "role:leader");
@@ -21,10 +21,10 @@ async fn run_replication_info(env: ServerEnv) -> anyhow::Result<()> {
     Ok(())
 }
 
-#[tokio::test]
-async fn test_replication_info() -> anyhow::Result<()> {
+#[test]
+fn test_replication_info() -> anyhow::Result<()> {
     for env in [ServerEnv::default(), ServerEnv::default().with_append_only(true)] {
-        run_replication_info(env).await?;
+        run_replication_info(env)?;
     }
 
     Ok(())
