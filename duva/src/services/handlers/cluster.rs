@@ -120,8 +120,8 @@ impl ClusterActor {
                 },
                 ClusterCommand::ReplicaOf(peer_addr) => {
                     cache_manager.drop_cache().await;
-                    logger.reset_metadata();
-                    self.replicaof(peer_addr).await;
+
+                    self.replicaof(peer_addr, &mut logger).await;
                 },
                 ClusterCommand::GetRole(sender) => {
                     let _ = sender.send(self.replication.role.clone());

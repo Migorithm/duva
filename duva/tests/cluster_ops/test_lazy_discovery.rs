@@ -32,7 +32,8 @@ async fn run_lazy_discovery_of_leader(with_append_only: bool) -> anyhow::Result<
     );
 
     // TODO(dpark): Would there be a way to perform a closed-loop wait?
-    tokio::time::sleep(tokio::time::Duration::from_millis(LEADER_HEARTBEAT_INTERVAL_MAX * 2)).await;
+    tokio::time::sleep(tokio::time::Duration::from_millis(LEADER_HEARTBEAT_INTERVAL_MAX + 15))
+        .await;
 
     // THEN
     assert_eq!(target_h.send_and_get("GET other".as_bytes(), 1).await, vec!["value"]);

@@ -147,7 +147,7 @@ impl ClientController {
         mut request: ClientRequest,
     ) -> anyhow::Result<QueryIO> {
         let consensus_res = self.maybe_consensus(&mut request).await?;
-
+        debug!("Consensus response: {:?}", consensus_res);
         match consensus_res {
             ConsensusClientResponse::AlreadyProcessed { key, index } => {
                 // * Conversion! request has already been processed so we need to convert it to get

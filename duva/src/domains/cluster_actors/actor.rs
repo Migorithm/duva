@@ -316,8 +316,9 @@ impl ClusterActor {
             return;
         };
 
-        // Skip consensus for no replicas
         if self.replicas().count() == 0 {
+            // * If there are no replicas, we can send the response immediately
+            self.replication.hwm.fetch_add(1, Ordering::Relaxed);
             req.callback
                 .send(Ok(ConsensusClientResponse::LogIndex(logger.last_log_index.into())))
                 .ok();
@@ -711,10 +712,14 @@ impl ClusterActor {
     }
 
     //TODO replication after replicaof is not made. Investigation required
-    pub(crate) async fn replicaof(&mut self, peer_addr: PeerIdentifier) {
+    pub(crate) async fn replicaof(
+        &mut self,
+        peer_addr: PeerIdentifier,
+        logger: &mut ReplicatedLogs<impl TWriteAheadLog>,
+    ) {
+        logger.reset_metadata();
         self.replication.vote_for(Some(peer_addr.clone()));
         self.replication.hwm.store(0, Ordering::Release);
-
         self.set_repl_id(ReplicationId::Undecided);
         let _ = self.discover_cluster(peer_addr).await;
         self.heartbeat_scheduler.turn_follower_mode().await;
