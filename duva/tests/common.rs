@@ -5,13 +5,14 @@ use bytes::Bytes;
 use duva::domains::query_parsers::query_io::QueryIO;
 use duva::make_smart_pointer;
 
+use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpListener;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
+use std::process::{Child, ChildStdout, Command};
+use std::thread::sleep;
 use tempfile::TempDir;
-use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncWriteExt, BufReader};
-use tokio::process::{Child, ChildStdout, Command};
-use tokio::time::sleep;
+
 use tokio::time::{Duration, Instant};
 use uuid::Uuid;
 
@@ -104,7 +105,7 @@ impl Drop for FileName {
     }
 }
 
-pub async fn spawn_server_process(
+pub fn spawn_server_process(
     env: &ServerEnv,
     stdout_enabled: bool,
 ) -> anyhow::Result<TestProcessChild> {
@@ -118,8 +119,7 @@ pub async fn spawn_server_process(
                 format!("listening peer connection on 127.0.0.1:{}...", env.port + 10000).as_str(),
             ],
             Some(10000),
-        )
-        .await?;
+        )?;
         process
     } else {
         let process = run_server_process(env, Stdio::null());
@@ -130,7 +130,7 @@ pub async fn spawn_server_process(
             cnt -= 1;
             std::thread::sleep(std::time::Duration::from_millis(100));
             if let Ok(mut child) = std::panic::catch_unwind(|| Client::new(process.port)) {
-                let res = child.send_and_get("PING", 1).await;
+                let res = child.send_and_get("PING", 1);
                 if res != vec!["PONG"] {
                     continue;
                 }
@@ -167,12 +167,7 @@ impl TestProcessChild {
     }
 
     /// Attempts to gracefully terminate the process, falling back to force kill if necessary
-    pub async fn terminate(&mut self) -> std::io::Result<()> {
-        if self.process.id().is_none() {
-            // Do nothing if already terminated
-            return Ok(());
-        }
-
+    pub fn terminate(&mut self) -> std::io::Result<()> {
         // First try graceful shutdown
         // Give the process some time to shutdown gracefully
         let timeout = Duration::from_secs(1);
@@ -181,24 +176,24 @@ impl TestProcessChild {
         while start.elapsed() < timeout {
             match self.process.try_wait()? {
                 Some(_) => return Ok(()),
-                None => sleep(Duration::from_millis(100)).await,
+                None => sleep(Duration::from_millis(100)),
             }
         }
 
         // Force kill if still running
-        self.process.kill().await?;
-        self.process.wait().await?;
+        self.process.kill()?;
+        self.process.wait()?;
 
         Ok(())
     }
 
-    pub async fn wait_for_message(&mut self, target: &str) -> anyhow::Result<()> {
+    pub fn wait_for_message(&mut self, target: &str) -> anyhow::Result<()> {
         let read = self.process.stdout.as_mut().unwrap();
 
-        wait_for_message(read, vec![target], None).await
+        wait_for_message(read, vec![target], None)
     }
 
-    pub async fn timed_wait_for_message(
+    pub fn timed_wait_for_message(
         &mut self,
         target: Vec<&str>,
 
@@ -206,7 +201,7 @@ impl TestProcessChild {
     ) -> anyhow::Result<()> {
         let read = self.process.stdout.as_mut().unwrap();
 
-        wait_for_message(read, target, Some(wait_for)).await
+        wait_for_message(read, target, Some(wait_for))
     }
 }
 
@@ -256,7 +251,7 @@ pub fn run_server_process(env: &ServerEnv, std_option: Stdio) -> TestProcessChil
     )
 }
 
-async fn wait_for_message<T: AsyncRead + Unpin>(
+fn wait_for_message<T: Read + Unpin>(
     read: &mut T,
     mut target: Vec<&str>,
 
@@ -267,7 +262,7 @@ async fn wait_for_message<T: AsyncRead + Unpin>(
     let mut cnt = target.len();
 
     let mut current_target = target.remove(0);
-    while let Some(line) = buf.next_line().await? {
+    while let Some(Ok(line)) = buf.next() {
         if line.contains(current_target) {
             cnt -= 1;
 
@@ -305,7 +300,7 @@ pub fn session_request(request_id: u64, arr: Vec<&str>) -> Bytes {
 }
 
 /// Check if all processes can communicate with each other
-pub async fn check_internodes_communication(
+pub fn check_internodes_communication(
     processes: &mut [&mut TestProcessChild],
     hop_count: usize,
     time_out: u128,
@@ -323,7 +318,7 @@ pub async fn check_internodes_communication(
 
         // Then wait for all messages
         for msg in messages {
-            processes[i].timed_wait_for_message(vec![&msg], time_out).await?;
+            processes[i].timed_wait_for_message(vec![&msg], time_out)?;
         }
     }
     Ok(())
@@ -351,15 +346,15 @@ impl Client {
         }
     }
 
-    pub async fn send(&mut self, command: &[u8]) -> anyhow::Result<()> {
+    pub fn send(&mut self, command: &[u8]) -> anyhow::Result<()> {
         let stdin = self.child.stdin.as_mut().unwrap();
-        stdin.write_all(command).await?;
-        stdin.write_all(b"\r\n").await?;
-        stdin.flush().await?;
+        stdin.write_all(command)?;
+        stdin.write_all(b"\r\n")?;
+        stdin.flush()?;
         Ok(())
     }
 
-    pub async fn read(&mut self) -> Result<String, ()> {
+    pub fn read(&mut self) -> Result<String, ()> {
         // Initialize reader if it doesn't exist
         if self.reader.is_none() {
             self.reader = Some(BufReader::new(self.child.stdout.take().unwrap()));
@@ -367,30 +362,26 @@ impl Client {
 
         let reader = self.reader.as_mut().unwrap();
         let mut line = String::new();
-        reader.read_line(&mut line).await.map_err(|_| ())?;
+        reader.read_line(&mut line).map_err(|_| ())?;
         Ok(line.trim().to_string())
     }
 
-    pub async fn send_and_get(&mut self, command: impl AsRef<[u8]>, mut cnt: u16) -> Vec<String> {
-        self.send(command.as_ref()).await.unwrap();
+    pub fn send_and_get(&mut self, command: impl AsRef<[u8]>, mut cnt: u16) -> Vec<String> {
+        self.send(command.as_ref()).unwrap();
 
         let mut res = vec![];
         while cnt > 0 {
             cnt -= 1;
-            if let Ok(line) = self.read().await {
+            if let Ok(line) = self.read() {
                 res.push(line);
             }
         }
         res
     }
 
-    pub async fn terminate(&mut self) -> std::io::Result<()> {
-        if self.child.id().is_none() {
-            // Do nothing if already terminated
-            return Ok(());
-        }
-        let _ = self.child.kill().await?;
-        let _ = self.child.wait().await?;
+    pub fn terminate(&mut self) -> std::io::Result<()> {
+        let _ = self.child.kill()?;
+        let _ = self.child.wait()?;
 
         Ok(())
     }

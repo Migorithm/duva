@@ -4,11 +4,11 @@
 /// After immediately, we append latter string with used key before and check if it's result same as concatted one
 use crate::common::{Client, ServerEnv, spawn_server_process};
 
-#[tokio::test]
-async fn test_append() -> anyhow::Result<()> {
+#[test]
+fn test_append() -> anyhow::Result<()> {
     // GIVEN
     let env = ServerEnv::default();
-    let process = spawn_server_process(&env, false).await?;
+    let process = spawn_server_process(&env, false)?;
 
     let mut h = Client::new(process.port);
 
@@ -17,20 +17,20 @@ async fn test_append() -> anyhow::Result<()> {
 
     // WHEN - append first value
     assert_eq!(
-        h.send_and_get(format!("APPEND appended_one {first}"), 1).await,
+        h.send_and_get(format!("APPEND appended_one {first}"), 1),
         vec![first.len().to_string()]
     );
     // THEN
-    let res = h.send_and_get("GET appended_one", 1).await;
+    let res = h.send_and_get("GET appended_one", 1);
     assert_eq!(res, vec!["Hello"]);
 
     // WHEN - append second value
     assert_eq!(
-        h.send_and_get(format!("APPEND appended_one {second}"), 1).await,
+        h.send_and_get(format!("APPEND appended_one {second}"), 1),
         vec![(first.len() + second.len()).to_string()]
     );
     // THEN
-    let res = h.send_and_get("GET appended_one", 1).await;
+    let res = h.send_and_get("GET appended_one", 1);
     assert_eq!(res, vec!["HelloWorld!"]);
 
     Ok(())
