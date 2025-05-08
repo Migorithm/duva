@@ -30,7 +30,7 @@ pub(crate) enum ClusterCommand {
 
     SendClusterHeatBeat,
     ForgetPeer(PeerIdentifier, tokio::sync::oneshot::Sender<Option<()>>),
-    ReplicaOf(PeerIdentifier),
+    ReplicaOf(PeerIdentifier, tokio::sync::oneshot::Sender<()>),
     LeaderReqConsensus(ConsensusRequest),
     ReplicationResponse(ReplicationResponse),
     AppendEntriesRPC(HeartBeatMessage),

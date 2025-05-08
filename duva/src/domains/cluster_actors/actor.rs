@@ -722,11 +722,14 @@ impl ClusterActor {
         peer_addr: PeerIdentifier,
         logger: &mut ReplicatedLogs<impl TWriteAheadLog>,
     ) {
-        logger.reset_metadata();
+        logger.reset().await;
         self.replication.vote_for(Some(peer_addr.clone()));
         self.replication.hwm.store(0, Ordering::Release);
+        self.replication.is_leader_mode = false;
+        self.replication.role = ReplicationRole::Follower;
         self.set_repl_id(ReplicationId::Undecided);
         let _ = self.discover_cluster(peer_addr).await;
+
         self.heartbeat_scheduler.turn_follower_mode().await;
     }
 

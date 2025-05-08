@@ -107,8 +107,9 @@ impl<T: TWriteAheadLog> ReplicatedLogs<T> {
         self.last_log_term = last_entry.term;
     }
 
-    pub(crate) fn reset_metadata(&mut self) {
+    pub(crate) async fn reset(&mut self) {
         self.last_log_index = 0;
         self.last_log_term = 0;
+        self.truncate_after(0).await
     }
 }

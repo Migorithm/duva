@@ -4,40 +4,44 @@ use crate::common::{Client, ServerEnv, spawn_server_process};
 
 async fn run_lazy_discovery_of_leader(with_append_only: bool) -> anyhow::Result<()> {
     // GIVEN
-    let env = ServerEnv::default().with_append_only(with_append_only);
-    let leader_p = spawn_server_process(&env).await?;
+    let env1 = ServerEnv::default().with_append_only(with_append_only);
+    let p1 = spawn_server_process(&env1).await?;
 
-    let mut target_h = Client::new(leader_p.port);
+    let mut p1_h = Client::new(p1.port);
 
-    target_h.send_and_get("SET key value", 1).await;
-    target_h.send_and_get("SET key2 value2", 1).await;
-    assert_eq!(target_h.send_and_get("KEYS *", 2).await, vec!["0) \"key\"", "1) \"key2\""]);
+    p1_h.send_and_get("set key 1", 1).await;
+    p1_h.send_and_get("set key2 2", 1).await;
+    assert_eq!(p1_h.send_and_get("KEYS *", 2).await, vec!["0) \"key\"", "1) \"key2\""]);
 
-    let replica_env = ServerEnv::default().with_append_only(with_append_only);
-    let replica_p = spawn_server_process(&replica_env).await?;
-    let mut other_h = Client::new(replica_p.port);
+    let env2 = ServerEnv::default().with_append_only(with_append_only);
+    let p2 = spawn_server_process(&env2).await?;
 
-    other_h.send_and_get("SET other value", 1).await;
-    other_h.send_and_get("SET other2 value2", 1).await;
-
-    let cluster_info = other_h.send_and_get("CLUSTER INFO", 1).await;
-    assert_eq!(cluster_info.first().unwrap(), "cluster_known_nodes:0");
-
-    assert_eq!(other_h.send_and_get("KEYS *", 2).await, vec!["0) \"other2\"", "1) \"other\""]);
+    let mut p2_h = Client::new(p2.port);
+    p2_h.send_and_get("set other value", 1).await;
+    p2_h.send_and_get("set other2 value2", 1).await;
+    assert_eq!(p2_h.send_and_get("KEYS *", 2).await, vec!["0) \"other2\"", "1) \"other\""]);
 
     // WHEN
     assert_eq!(
-        target_h.send_and_get(format!("REPLICAOF 127.0.0.1 {}", &replica_env.port), 1).await,
+        p1_h.send_and_get(format!("REPLICAOF 127.0.0.1 {}", &env2.port), 1).await,
         ["OK".to_string(),]
     );
 
     // TODO(dpark): Would there be a way to perform a closed-loop wait?
-    tokio::time::sleep(tokio::time::Duration::from_millis(LEADER_HEARTBEAT_INTERVAL_MAX + 15))
-        .await;
+    tokio::time::sleep(std::time::Duration::from_millis(LEADER_HEARTBEAT_INTERVAL_MAX * 2)).await;
 
     // THEN
-    assert_eq!(target_h.send_and_get("GET other".as_bytes(), 1).await, vec!["value"]);
-    assert_eq!(target_h.send_and_get("GET other2".as_bytes(), 1).await, vec!["value2"]);
+    assert_eq!(p1_h.send_and_get("role", 1).await, vec!["follower"]);
+    assert_eq!(p2_h.send_and_get("role", 1).await, vec!["leader"]);
+
+    assert_eq!(p1_h.send_and_get("get key", 1).await, vec!["(nil)"]);
+    assert_eq!(p1_h.send_and_get("get key2", 1).await, vec!["(nil)"]);
+    assert_eq!(p1_h.send_and_get("get other", 1).await, vec!["value"]);
+    assert_eq!(p1_h.send_and_get("get other2", 1).await, vec!["value2"]);
+    assert_eq!(p2_h.send_and_get("get key", 1).await, vec!["(nil)"]);
+    assert_eq!(p2_h.send_and_get("get key2", 1).await, vec!["(nil)"]);
+    assert_eq!(p2_h.send_and_get("get other", 1).await, vec!["value"]);
+    assert_eq!(p2_h.send_and_get("get other2", 1).await, vec!["value2"]);
 
     Ok(())
 }
