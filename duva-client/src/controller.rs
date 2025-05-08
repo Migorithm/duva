@@ -123,7 +123,6 @@ impl<T> ClientController<T> {
         }
     }
 
-    #[cfg_attr(not(feature = "cli"), allow(unused))]
     pub fn print_res(&self, kind: ClientAction, query_io: QueryIO) {
         println!("{}", self.render_return(kind, query_io));
     }
