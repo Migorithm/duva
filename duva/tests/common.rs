@@ -309,14 +309,7 @@ pub struct Client {
 impl Client {
     pub fn new(port: u16) -> Client {
         let mut command = Command::new("cargo");
-        command.args([
-            "run",
-            "-p",
-            "duva-client",
-            "--",
-            "--port",
-            &port.to_string(),
-        ]);
+        command.args(["run", "-p", "duva-client", "--", "--port", &port.to_string()]);
 
         command.env("DUVA_ENV", "test");
 
