@@ -55,15 +55,12 @@ impl<T: TWriteAheadLog> ReplicatedLogs<T> {
     // FOLLOWER side operation
     pub(crate) async fn follower_write_entries(
         &mut self,
-        append_entries: Vec<WriteOperation>,
+        entries: Vec<WriteOperation>,
     ) -> anyhow::Result<u64> {
         // Filter and append entries in a single operation
-        let new_entries: Vec<_> =
-            append_entries.into_iter().filter(|log| log.log_index > self.last_log_index).collect();
+        self.update_metadata(&entries);
 
-        self.update_metadata(&new_entries);
-
-        self.target.append_many(new_entries).await?;
+        self.target.append_many(entries).await?;
 
         debug!("Received log entry with log index up to {}", self.last_log_index);
         Ok(self.last_log_index)
@@ -93,10 +90,6 @@ impl<T: TWriteAheadLog> ReplicatedLogs<T> {
         self.target.read_at(at).await
     }
 
-    pub(crate) fn log_start_index(&self) -> u64 {
-        self.target.log_start_index()
-    }
-
     pub(crate) fn is_empty(&self) -> bool {
         self.target.is_empty()
     }
@@ -112,5 +105,11 @@ impl<T: TWriteAheadLog> ReplicatedLogs<T> {
         let last_entry = new_entries.last().unwrap();
         self.last_log_index = last_entry.log_index;
         self.last_log_term = last_entry.term;
+    }
+
+    pub(crate) async fn reset(&mut self) {
+        self.last_log_index = 0;
+        self.last_log_term = 0;
+        self.truncate_after(0).await
     }
 }

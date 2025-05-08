@@ -7,7 +7,7 @@ use crate::{
             replication::{HeartBeatMessage, ReplicationId, ReplicationRole},
             session::SessionRequest,
         },
-        operation_logs::{WriteOperation, WriteRequest},
+        operation_logs::WriteRequest,
         peers::peer::PeerState,
     },
     prelude::PeerIdentifier,
@@ -28,19 +28,11 @@ pub(crate) enum ClusterCommand {
     GetPeers(tokio::sync::oneshot::Sender<Vec<PeerIdentifier>>),
     ReplicationInfo(tokio::sync::oneshot::Sender<ReplicationState>),
 
-    SetReplicationInfo {
-        replid: ReplicationId,
-        hwm: u64,
-    },
-    InstallLeaderState(Vec<WriteOperation>),
     SendClusterHeatBeat,
     ForgetPeer(PeerIdentifier, tokio::sync::oneshot::Sender<Option<()>>),
     ReplicaOf(PeerIdentifier, tokio::sync::oneshot::Sender<()>),
     LeaderReqConsensus(ConsensusRequest),
     ReplicationResponse(ReplicationResponse),
-    SendCommitHeartBeat {
-        log_idx: u64,
-    },
     AppendEntriesRPC(HeartBeatMessage),
 
     SendAppendEntriesRPC,
@@ -53,6 +45,10 @@ pub(crate) enum ClusterCommand {
     SubscribeToTopologyChange(
         tokio::sync::oneshot::Sender<tokio::sync::broadcast::Receiver<Vec<PeerIdentifier>>>,
     ),
+    StoreSnapshotMetadata {
+        replid: ReplicationId,
+        hwm: u64,
+    },
 }
 
 #[derive(Debug)]

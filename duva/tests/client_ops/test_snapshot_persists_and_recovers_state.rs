@@ -26,16 +26,11 @@ async fn run_snapshot_persists_and_recovers_state(env: ServerEnv) -> anyhow::Res
     // WHEN
     assert_eq!(h.send_and_get("SAVE", 1).await, vec!["(nil)"]);
 
-    // wait for the file to be created
-    tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
     // kill leader process
     let _ = leader_process.terminate().await;
 
     // run server with the same file name
     let new_process = spawn_server_process(&env).await?;
-
-    // wait for the server to start
-    tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
 
     let mut client = Client::new(new_process.port);
 

@@ -3,9 +3,7 @@ use tracing::{debug, instrument};
 use super::request::ClientRequest;
 use crate::actor_registry::ActorRegistry;
 use crate::domains::caches::cache_manager::CacheManager;
-use crate::domains::cluster_actors::commands::{
-    ClusterCommand, ConsensusClientResponse, ConsensusRequest,
-};
+use crate::domains::cluster_actors::commands::{ConsensusClientResponse, ConsensusRequest};
 use crate::domains::config_actors::command::ConfigResponse;
 use crate::domains::config_actors::config_manager::ConfigManager;
 use crate::domains::query_parsers::QueryIO;
@@ -121,8 +119,6 @@ impl ClientController {
             ClientAction::ReplicaOf(peer_identifier) => {
                 self.cluster_communication_manager.replicaof(peer_identifier.clone()).await;
 
-                self.cluster_communication_manager.discover_cluster(peer_identifier).await?;
-
                 QueryIO::SimpleString("OK".into())
             },
             ClientAction::Role => {
@@ -149,7 +145,7 @@ impl ClientController {
         mut request: ClientRequest,
     ) -> anyhow::Result<QueryIO> {
         let consensus_res = self.maybe_consensus(&mut request).await?;
-
+        debug!("Consensus response: {:?}", consensus_res);
         match consensus_res {
             ConsensusClientResponse::AlreadyProcessed { key, index } => {
                 // * Conversion! request has already been processed so we need to convert it to get
@@ -157,11 +153,7 @@ impl ClientController {
                 self.handle(request.action, Some(index)).await
             },
             ConsensusClientResponse::LogIndex(optional_idx) => {
-                let (res, _) = tokio::try_join!(
-                    self.handle(request.action, optional_idx),
-                    self.maybe_send_commit(optional_idx)
-                )?;
-                Ok(res)
+                self.handle(request.action, optional_idx).await
             },
         }
     }
@@ -181,17 +173,5 @@ impl ClientController {
             .await?;
 
         rx.await?
-    }
-
-    #[instrument(skip(self))]
-    async fn maybe_send_commit(&self, log_index_num: Option<u64>) -> anyhow::Result<()> {
-        if let Some(log_idx) = log_index_num {
-            debug!("Sending commit heartbeat with log index: {}", log_idx);
-
-            self.cluster_communication_manager
-                .send(ClusterCommand::SendCommitHeartBeat { log_idx })
-                .await?;
-        }
-        Ok(())
     }
 }

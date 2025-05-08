@@ -24,13 +24,11 @@ impl ClusterActor {
                     };
                     let _ = callback.send(());
                 },
-
                 ClusterCommand::AcceptPeer { stream } => {
                     if let Ok(()) = self.accept_inbound_stream(stream, &logger).await {
                         let _ = self.snapshot_topology().await;
                     };
                 },
-
                 ClusterCommand::GetPeers(callback) => {
                     let _ = callback.send(self.members.keys().cloned().collect::<Vec<_>>());
                 },
@@ -40,8 +38,8 @@ impl ClusterActor {
                 ClusterCommand::ReplicationInfo(sender) => {
                     let _ = sender.send(self.replication.clone());
                 },
-                ClusterCommand::SetReplicationInfo { replid: leader_repl_id, hwm } => {
-                    self.set_replication_info(leader_repl_id, hwm);
+                ClusterCommand::StoreSnapshotMetadata { replid, hwm } => {
+                    self.store_snapshot_metadata(replid, hwm);
                 },
                 ClusterCommand::SendClusterHeatBeat => {
                     // ! remove idle peers based on ttl.
@@ -83,7 +81,6 @@ impl ClusterActor {
 
                     self.req_consensus(&mut logger, req).await;
                 },
-
                 ClusterCommand::ReplicationResponse(repl_res) => {
                     if !repl_res.is_granted() {
                         self.handle_repl_rejection(repl_res).await;
@@ -92,13 +89,9 @@ impl ClusterActor {
                     self.update_on_hertbeat_message(&repl_res.from, repl_res.log_idx);
                     self.track_replication_progress(repl_res, &mut client_sessions);
                 },
-                ClusterCommand::SendCommitHeartBeat { log_idx: offset } => {
-                    self.send_commit_heartbeat(offset).await;
-                },
                 ClusterCommand::SendAppendEntriesRPC => {
                     self.send_leader_heartbeat(&logger).await;
                 },
-
                 ClusterCommand::AppendEntriesRPC(heartbeat) => {
                     if self.check_term_outdated(&heartbeat, &logger).await {
                         continue;
@@ -107,12 +100,6 @@ impl ClusterActor {
                     self.reset_election_timeout(&heartbeat.from);
                     self.maybe_update_term(heartbeat.term);
                     self.replicate(&mut logger, heartbeat, &cache_manager).await;
-                },
-                ClusterCommand::InstallLeaderState(logs) => {
-                    if logger.follower_full_sync(logs.clone()).await.is_err() {
-                        continue;
-                    }
-                    self.install_leader_state(logs, &cache_manager).await;
                 },
                 ClusterCommand::StartLeaderElection => {
                     self.run_for_election(&mut logger).await;
@@ -128,8 +115,9 @@ impl ClusterActor {
                 },
                 ClusterCommand::ReplicaOf(peer_addr, callback) => {
                     cache_manager.drop_cache().await;
-                    self.replicaof(peer_addr).await;
+                    self.replicaof(peer_addr, &mut logger).await;
                     let _ = callback.send(());
+                    let _ = self.snapshot_topology().await;
                 },
                 ClusterCommand::GetRole(sender) => {
                     let _ = sender.send(self.replication.role.clone());
