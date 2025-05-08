@@ -17,17 +17,13 @@ use super::replication::ReplicationRole;
 use super::replication::ReplicationState;
 use super::replication::time_in_secs;
 use super::session::ClientSessions;
-
 use super::*;
+use crate::domains::caches::cache_manager::CacheManager;
 use crate::domains::cluster_actors::consensus::ElectionState;
-use crate::domains::operation_logs::WriteOperation;
-
 use crate::domains::operation_logs::interfaces::TWriteAheadLog;
 use crate::domains::operation_logs::logger::ReplicatedLogs;
-
 use crate::domains::peers::peer::NodeKind;
 use crate::domains::peers::peer::PeerState;
-use crate::domains::{caches::cache_manager::CacheManager, query_parsers::QueryIO};
 use anyhow::Context;
 use std::collections::VecDeque;
 use std::iter;
