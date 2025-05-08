@@ -4,6 +4,7 @@ use crate::broker::Broker;
 use crate::broker::BrokerMessage;
 
 use duva::domains::query_parsers::query_io::QueryIO;
+use duva::prelude::anyhow;
 use duva::prelude::tokio;
 use duva::prelude::tokio::sync::mpsc::Sender;
 use duva::prelude::uuid::Uuid;
@@ -15,8 +16,8 @@ pub struct ClientController<T> {
 }
 
 impl<T> ClientController<T> {
-    pub async fn new(editor: T, server_addr: &str) -> Self {
-        let (r, w, mut auth_response) = Broker::authenticate(server_addr, None).await.unwrap();
+    pub async fn new(editor: T, server_addr: &str) -> anyhow::Result<Self> {
+        let (r, w, mut auth_response) = Broker::authenticate(server_addr, None).await?;
 
         auth_response.cluster_nodes.push(server_addr.to_string().into());
         let (broker_tx, rx) = tokio::sync::mpsc::channel::<BrokerMessage>(100);
@@ -32,7 +33,7 @@ impl<T> ClientController<T> {
             read_kill_switch: Some(r.run(broker_tx.clone())),
         };
         tokio::spawn(broker.run());
-        Self { broker_tx, target: editor }
+        Ok(Self { broker_tx, target: editor })
     }
 
     fn render_return(&self, kind: ClientAction, query_io: QueryIO) -> Response {

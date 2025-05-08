@@ -1,15 +1,14 @@
-/// issue: 297
 use crate::common::{Client, ServerEnv, spawn_server_process};
 
 async fn run_reconnection_on_reboot(with_append_only: bool) -> anyhow::Result<()> {
     // GIVEN
     let env1 = ServerEnv::default().with_append_only(with_append_only);
-    let mut p1 = spawn_server_process(&env1).await?;
+    let mut p1 = spawn_server_process(&env1, true).await?;
 
     let env2 = ServerEnv::default()
         .with_leader_bind_addr(p1.bind_addr())
         .with_append_only(with_append_only);
-    let mut p2 = spawn_server_process(&env2).await?;
+    let mut p2 = spawn_server_process(&env2, true).await?;
 
     p2.wait_for_message(&p1.heartbeat_msg(0)).await?;
     p1.wait_for_message(&p2.heartbeat_msg(0)).await?;
@@ -27,7 +26,7 @@ async fn run_reconnection_on_reboot(with_append_only: bool) -> anyhow::Result<()
         .with_topology_path(env2.topology_path)
         .with_append_only(with_append_only);
 
-    p2 = spawn_server_process(&env2).await?;
+    p2 = spawn_server_process(&env2, true).await?;
 
     //THEN
 

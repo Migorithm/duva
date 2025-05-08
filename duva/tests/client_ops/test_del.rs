@@ -6,7 +6,7 @@ use crate::common::{Client, ServerEnv, spawn_server_process};
 
 async fn run_del(env: ServerEnv) -> anyhow::Result<()> {
     // GIVEN
-    let process = spawn_server_process(&env).await?;
+    let process = spawn_server_process(&env, false).await?;
 
     let mut h = Client::new(process.port);
     assert_eq!(h.send_and_get("SET a b", 1).await, vec!["OK"]);

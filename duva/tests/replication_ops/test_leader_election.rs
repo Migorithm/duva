@@ -6,18 +6,18 @@ use duva::domains::cluster_actors::heartbeats::scheduler::LEADER_HEARTBEAT_INTER
 async fn run_leader_election(with_append_only: bool) -> anyhow::Result<()> {
     // GIVEN
     let leader_env = ServerEnv::default().with_append_only(with_append_only);
-    let mut leader_p = spawn_server_process(&leader_env).await?;
+    let mut leader_p = spawn_server_process(&leader_env, true).await?;
 
     let follower_env1 = ServerEnv::default()
         .with_leader_bind_addr(leader_p.bind_addr())
         .with_append_only(with_append_only);
-    let mut follower_p1 = spawn_server_process(&follower_env1).await?;
+    let mut follower_p1 = spawn_server_process(&follower_env1, true).await?;
 
     let follower_env2 = ServerEnv::default()
         .with_leader_bind_addr(leader_p.bind_addr())
         .with_append_only(with_append_only);
 
-    let mut follower_p2 = spawn_server_process(&follower_env2).await?;
+    let mut follower_p2 = spawn_server_process(&follower_env2, true).await?;
     const DEFAULT_HOP_COUNT: usize = 0;
     const TIMEOUT_IN_MILLIS: u128 = 2000;
     let processes = &mut [&mut leader_p, &mut follower_p1, &mut follower_p2];
@@ -48,17 +48,17 @@ async fn run_leader_election(with_append_only: bool) -> anyhow::Result<()> {
 async fn run_set_twice_after_election(with_append_only: bool) -> anyhow::Result<()> {
     // GIVEN
     let leader_env = ServerEnv::default().with_append_only(with_append_only);
-    let mut leader_p = spawn_server_process(&leader_env).await?;
+    let mut leader_p = spawn_server_process(&leader_env, true).await?;
 
     let follower_env1 = ServerEnv::default()
         .with_leader_bind_addr(leader_p.bind_addr())
         .with_append_only(with_append_only);
-    let mut follower_p1 = spawn_server_process(&follower_env1).await?;
+    let mut follower_p1 = spawn_server_process(&follower_env1, true).await?;
 
     let follower_env2 = ServerEnv::default()
         .with_leader_bind_addr(leader_p.bind_addr())
         .with_append_only(with_append_only);
-    let mut follower_p2 = spawn_server_process(&follower_env2).await?;
+    let mut follower_p2 = spawn_server_process(&follower_env2, true).await?;
     const DEFAULT_HOP_COUNT: usize = 0;
     const TIMEOUT_IN_MILLIS: u128 = 2000;
     let processes = &mut [&mut leader_p, &mut follower_p1, &mut follower_p2];
@@ -90,17 +90,17 @@ async fn run_set_twice_after_election(with_append_only: bool) -> anyhow::Result<
 async fn run_leader_election_twice(with_append_only: bool) -> anyhow::Result<()> {
     // GIVEN
     let leader_env = ServerEnv::default().with_append_only(with_append_only);
-    let mut leader_p = spawn_server_process(&leader_env).await?;
+    let mut leader_p = spawn_server_process(&leader_env, true).await?;
 
     let follower_env1 = ServerEnv::default()
         .with_leader_bind_addr(leader_p.bind_addr())
         .with_append_only(with_append_only);
-    let mut follower_p1 = spawn_server_process(&follower_env1).await?;
+    let mut follower_p1 = spawn_server_process(&follower_env1, true).await?;
 
     let follower_env2 = ServerEnv::default()
         .with_leader_bind_addr(leader_p.bind_addr())
         .with_append_only(with_append_only);
-    let mut follower_p2 = spawn_server_process(&follower_env2).await?;
+    let mut follower_p2 = spawn_server_process(&follower_env2, true).await?;
     const DEFAULT_HOP_COUNT: usize = 0;
     const TIMEOUT_IN_MILLIS: u128 = 2000;
     let processes = &mut [&mut leader_p, &mut follower_p1, &mut follower_p2];
@@ -123,7 +123,7 @@ async fn run_leader_election_twice(with_append_only: bool) -> anyhow::Result<()>
         let follower_env3 = ServerEnv::default()
             .with_leader_bind_addr(f.bind_addr())
             .with_append_only(with_append_only);
-        let new_process = spawn_server_process(&follower_env3).await?;
+        let new_process = spawn_server_process(&follower_env3, true).await?;
         sleep(Duration::from_millis(LEADER_HEARTBEAT_INTERVAL_MAX)).await;
 
         // WHEN

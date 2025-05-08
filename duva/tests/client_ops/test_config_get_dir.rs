@@ -8,7 +8,7 @@ use crate::common::{Client, ServerEnv, spawn_server_process};
 
 async fn run_config_get_dir(env: ServerEnv) -> anyhow::Result<()> {
     // GIVEN
-    let process = spawn_server_process(&env).await?;
+    let process = spawn_server_process(&env, false).await?;
 
     sleep(Duration::from_millis(500)).await;
     let mut h = Client::new(process.port);

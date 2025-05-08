@@ -2,7 +2,7 @@ use crate::common::{Client, ServerEnv, spawn_server_process};
 
 async fn run_incr(env: ServerEnv) -> anyhow::Result<()> {
     // GIVEN
-    let process = spawn_server_process(&env).await?;
+    let process = spawn_server_process(&env, false).await?;
 
     let mut h = Client::new(process.port);
 

@@ -111,7 +111,8 @@ impl Broker {
         server_addr: &str,
         auth_request: Option<AuthRequest>,
     ) -> Result<(ServerStreamReader, ServerStreamWriter, AuthResponse), IoError> {
-        let mut stream = TcpStream::connect(server_addr).await.unwrap();
+        let mut stream =
+            TcpStream::connect(server_addr).await.map_err(|_| IoError::NotConnected)?;
 
         stream.serialized_write(auth_request.unwrap_or_default()).await.unwrap(); // client_id not exist
         let auth_response: AuthResponse = stream.deserialized_read().await?;

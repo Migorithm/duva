@@ -2,7 +2,10 @@ mod cli;
 mod editor;
 use clap::Parser;
 use duva::{
-    prelude::tokio::{self, sync::oneshot},
+    prelude::{
+        anyhow,
+        tokio::{self, sync::oneshot},
+    },
     presentation::clients::request::extract_action,
 };
 use duva_client::{
@@ -14,11 +17,11 @@ use duva_client::{
 const PROMPT: &str = "duva-cli> ";
 
 #[tokio::main]
-async fn main() {
+async fn main() -> anyhow::Result<()> {
     clear_and_make_ascii_art();
 
     let cli = cli::Cli::parse();
-    let mut controller = ClientController::new(editor::create(), &cli.address()).await;
+    let mut controller = ClientController::new(editor::create(), &cli.address()).await?;
 
     loop {
         let readline = controller.target.readline(PROMPT).unwrap_or_else(|_| std::process::exit(0));
@@ -51,6 +54,7 @@ async fn main() {
             },
         }
     }
+    Ok(())
 }
 
 fn clear_and_make_ascii_art() {

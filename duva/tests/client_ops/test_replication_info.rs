@@ -6,7 +6,7 @@ use crate::common::{Client, ServerEnv, spawn_server_process};
 
 async fn run_replication_info(env: ServerEnv) -> anyhow::Result<()> {
     // GIVEN
-    let process = spawn_server_process(&env).await?;
+    let process = spawn_server_process(&env, false).await?;
     let mut h = Client::new(process.port);
 
     // WHEN

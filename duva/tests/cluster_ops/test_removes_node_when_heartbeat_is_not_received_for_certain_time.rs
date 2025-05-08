@@ -5,12 +5,12 @@ async fn run_removes_node_when_heartbeat_is_not_received_for_certain_time(
 ) -> anyhow::Result<()> {
     // GIVEN
     let env = ServerEnv::default().with_append_only(with_append_only);
-    let mut leader_p = spawn_server_process(&env).await?;
+    let mut leader_p = spawn_server_process(&env, true).await?;
 
     let repl_env = ServerEnv::default()
         .with_leader_bind_addr(leader_p.bind_addr())
         .with_append_only(with_append_only);
-    let mut repl_p = spawn_server_process(&repl_env).await?;
+    let mut repl_p = spawn_server_process(&repl_env, true).await?;
 
     repl_p.wait_for_message(&leader_p.heartbeat_msg(0)).await?;
     leader_p.wait_for_message(&repl_p.heartbeat_msg(0)).await?;

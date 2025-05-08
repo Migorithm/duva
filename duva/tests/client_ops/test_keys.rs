@@ -2,11 +2,11 @@ use crate::common::{Client, ServerEnv, spawn_server_process};
 
 async fn run_keys(env: ServerEnv) -> anyhow::Result<()> {
     // GIVEN
-    let process = spawn_server_process(&env).await?;
+    let process = spawn_server_process(&env, false).await?;
 
     let mut h = Client::new(process.port);
 
-    let num_keys_to_store = 124;
+    let num_keys_to_store = 2000;
 
     // WHEN set 500 keys with the value `bar`.
     for key in 0..num_keys_to_store {

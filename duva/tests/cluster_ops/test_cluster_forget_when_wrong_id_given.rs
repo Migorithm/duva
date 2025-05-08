@@ -7,7 +7,7 @@ async fn run_cluster_forget_node_return_error_when_wrong_id_given(
 ) -> anyhow::Result<()> {
     // GIVEN
 
-    let leader_p = spawn_server_process(&env).await?;
+    let leader_p = spawn_server_process(&env, true).await?;
 
     // WHEN
     let mut client_handler = Client::new(leader_p.port);

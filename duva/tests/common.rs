@@ -1,8 +1,10 @@
 #![allow(dead_code, unused_variables)]
 
 use bytes::Bytes;
+
 use duva::domains::query_parsers::query_io::QueryIO;
 use duva::make_smart_pointer;
+
 use std::net::TcpListener;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
@@ -102,16 +104,42 @@ impl Drop for FileName {
     }
 }
 
-pub async fn spawn_server_process(env: &ServerEnv) -> anyhow::Result<TestProcessChild> {
+pub async fn spawn_server_process(
+    env: &ServerEnv,
+    stdout_enabled: bool,
+) -> anyhow::Result<TestProcessChild> {
     println!("Starting server on port {}", env.port);
-    let mut process = run_server_process(env);
 
-    wait_for_message(
-        process.process.stdout.as_mut().unwrap(),
-        vec![format!("listening peer connection on 127.0.0.1:{}...", env.port + 10000).as_str()],
-        Some(10000),
-    )
-    .await?;
+    let process = if stdout_enabled {
+        let mut process = run_server_process(env, Stdio::piped());
+        wait_for_message(
+            process.process.stdout.as_mut().unwrap(),
+            vec![
+                format!("listening peer connection on 127.0.0.1:{}...", env.port + 10000).as_str(),
+            ],
+            Some(10000),
+        )
+        .await?;
+        process
+    } else {
+        let process = run_server_process(env, Stdio::null());
+
+        // catch panic 10 times
+        let mut cnt = 50;
+        while cnt > 0 {
+            cnt -= 1;
+            std::thread::sleep(std::time::Duration::from_millis(100));
+            if let Ok(mut child) = std::panic::catch_unwind(|| Client::new(process.port)) {
+                let res = child.send_and_get("PING", 1).await;
+                if res != vec!["PONG"] {
+                    continue;
+                }
+                break;
+            }
+        }
+
+        process
+    };
 
     Ok(process)
 }
@@ -190,7 +218,7 @@ impl Drop for TestProcessChild {
 
 make_smart_pointer!(TestProcessChild, Child => process);
 
-pub fn run_server_process(env: &ServerEnv) -> TestProcessChild {
+pub fn run_server_process(env: &ServerEnv, std_option: Stdio) -> TestProcessChild {
     let mut command = Command::new("cargo");
     command.args([
         "run",
@@ -220,8 +248,8 @@ pub fn run_server_process(env: &ServerEnv) -> TestProcessChild {
 
     TestProcessChild::new(
         command
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
+            .stdout(std_option)
+            .stderr(Stdio::null())
             .spawn()
             .expect("Failed to start server process"),
         env.port,

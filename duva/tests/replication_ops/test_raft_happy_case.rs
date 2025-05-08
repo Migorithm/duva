@@ -9,7 +9,7 @@ async fn run_set_operation_reaches_to_all_replicas(with_append_only: bool) -> an
     let env = ServerEnv::default().with_append_only(with_append_only);
 
     // loads the leader/follower processes
-    let mut leader_p = spawn_server_process(&env).await?;
+    let mut leader_p = spawn_server_process(&env, true).await?;
     let mut client_handler = Client::new(leader_p.port);
 
     let repl_env = ServerEnv::default()
@@ -17,7 +17,7 @@ async fn run_set_operation_reaches_to_all_replicas(with_append_only: bool) -> an
         .with_file_name("follower_dbfilename")
         .with_append_only(with_append_only);
 
-    let mut repl_p = spawn_server_process(&repl_env).await?;
+    let mut repl_p = spawn_server_process(&repl_env, true).await?;
 
     repl_p.wait_for_message(&leader_p.heartbeat_msg(0)).await?;
     leader_p.wait_for_message(&repl_p.heartbeat_msg(0)).await?;

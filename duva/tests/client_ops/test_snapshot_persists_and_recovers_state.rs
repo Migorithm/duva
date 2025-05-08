@@ -5,7 +5,7 @@ use std::time::UNIX_EPOCH;
 
 async fn run_snapshot_persists_and_recovers_state(env: ServerEnv) -> anyhow::Result<()> {
     // GIVEN
-    let mut leader_process = spawn_server_process(&env).await?;
+    let mut leader_process = spawn_server_process(&env, false).await?;
 
     let mut h = Client::new(leader_process.port);
 
@@ -30,7 +30,7 @@ async fn run_snapshot_persists_and_recovers_state(env: ServerEnv) -> anyhow::Res
     let _ = leader_process.terminate().await;
 
     // run server with the same file name
-    let new_process = spawn_server_process(&env).await?;
+    let new_process = spawn_server_process(&env, false).await?;
 
     let mut client = Client::new(new_process.port);
 
