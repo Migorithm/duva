@@ -1,11 +1,9 @@
-use duva::domains::cluster_actors::heartbeats::scheduler::LEADER_HEARTBEAT_INTERVAL_MAX;
-
 use crate::common::{Client, ServerEnv, spawn_server_process};
 
 async fn run_lazy_discovery_of_leader(with_append_only: bool) -> anyhow::Result<()> {
     // GIVEN
     let env1 = ServerEnv::default().with_append_only(with_append_only);
-    let p1 = spawn_server_process(&env1).await?;
+    let mut p1 = spawn_server_process(&env1).await?;
 
     let mut p1_h = Client::new(p1.port);
 
@@ -32,14 +30,20 @@ async fn run_lazy_discovery_of_leader(with_append_only: bool) -> anyhow::Result<
     // THEN
     assert_eq!(p1_h.send_and_get("role", 1).await, vec!["follower"]);
     assert_eq!(p2_h.send_and_get("role", 1).await, vec!["leader"]);
-    // assert_eq!(p1_h.send_and_get("get key", 1).await, vec!["(nil)"]);
-    // assert_eq!(p1_h.send_and_get("get key2", 1).await, vec!["(nil)"]);
-    // assert_eq!(p1_h.send_and_get("get other", 1).await, vec!["value"]);
-    // assert_eq!(p1_h.send_and_get("get other2", 1).await, vec!["value2"]);
-    // assert_eq!(p2_h.send_and_get("get key", 1).await, vec!["(nil)"]);
-    // assert_eq!(p2_h.send_and_get("get key2", 1).await, vec!["(nil)"]);
-    // assert_eq!(p2_h.send_and_get("get other", 1).await, vec!["value"]);
-    // assert_eq!(p2_h.send_and_get("get other2", 1).await, vec!["value2"]);
+
+    // * Following is required to test replicaof successuflly update topology changes
+    p1.terminate().await?;
+    let new_env_with_same_topology = ServerEnv::default()
+        .with_topology_path(env1.topology_path)
+        .with_append_only(with_append_only);
+    let p1 = spawn_server_process(&new_env_with_same_topology).await?;
+
+    let mut p1_h = Client::new(p1.port);
+    assert_eq!(p1_h.send_and_get("get key", 1).await, vec!["(nil)"]);
+    assert_eq!(p1_h.send_and_get("get key2", 1).await, vec!["(nil)"]);
+    assert_eq!(p1_h.send_and_get("get other", 1).await, vec!["value"]);
+    assert_eq!(p1_h.send_and_get("get other2", 1).await, vec!["value2"]);
+
     Ok(())
 }
 

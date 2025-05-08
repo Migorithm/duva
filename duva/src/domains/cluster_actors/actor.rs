@@ -302,6 +302,7 @@ impl ClusterActor {
     pub(crate) fn update_on_hertbeat_message(&mut self, from: &PeerIdentifier, log_index: u64) {
         if let Some(peer) = self.members.get_mut(from) {
             peer.last_seen = Instant::now();
+            peer.set_match_index(log_index);
         }
     }
 
@@ -440,6 +441,7 @@ impl ClusterActor {
             info!("Received acks for log index num: {}", res.log_idx);
             if let Some(peer) = self.members.get_mut(&res.from) {
                 peer.set_match_index(res.log_idx);
+                peer.last_seen = Instant::now();
             }
             consensus.increase_vote(res.from);
         }
