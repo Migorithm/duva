@@ -28,10 +28,6 @@ pub(crate) enum ClusterCommand {
     GetPeers(tokio::sync::oneshot::Sender<Vec<PeerIdentifier>>),
     ReplicationInfo(tokio::sync::oneshot::Sender<ReplicationState>),
 
-    SetReplicationInfo {
-        replid: ReplicationId,
-        hwm: u64,
-    },
     SendClusterHeatBeat,
     ForgetPeer(PeerIdentifier, tokio::sync::oneshot::Sender<Option<()>>),
     ReplicaOf(PeerIdentifier),
@@ -49,6 +45,10 @@ pub(crate) enum ClusterCommand {
     SubscribeToTopologyChange(
         tokio::sync::oneshot::Sender<tokio::sync::broadcast::Receiver<Vec<PeerIdentifier>>>,
     ),
+    StoreSnapshotMetadata {
+        replid: ReplicationId,
+        hwm: u64,
+    },
 }
 
 #[derive(Debug)]

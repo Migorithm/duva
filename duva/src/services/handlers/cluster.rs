@@ -24,13 +24,11 @@ impl ClusterActor {
                     };
                     let _ = callback.send(());
                 },
-
                 ClusterCommand::AcceptPeer { stream } => {
                     if let Ok(()) = self.accept_inbound_stream(stream, &logger).await {
                         let _ = self.snapshot_topology().await;
                     };
                 },
-
                 ClusterCommand::GetPeers(callback) => {
                     let _ = callback.send(self.members.keys().cloned().collect::<Vec<_>>());
                 },
@@ -40,8 +38,8 @@ impl ClusterActor {
                 ClusterCommand::ReplicationInfo(sender) => {
                     let _ = sender.send(self.replication.clone());
                 },
-                ClusterCommand::SetReplicationInfo { replid: leader_repl_id, hwm } => {
-                    self.set_repl_id(leader_repl_id);
+                ClusterCommand::StoreSnapshotMetadata { replid, hwm } => {
+                    self.store_snapshot_metadata(replid, hwm);
                 },
                 ClusterCommand::SendClusterHeatBeat => {
                     // ! remove idle peers based on ttl.
@@ -83,7 +81,6 @@ impl ClusterActor {
 
                     self.req_consensus(&mut logger, req).await;
                 },
-
                 ClusterCommand::ReplicationResponse(repl_res) => {
                     if !repl_res.is_granted() {
                         self.handle_repl_rejection(repl_res).await;
@@ -92,11 +89,9 @@ impl ClusterActor {
                     self.update_on_hertbeat_message(&repl_res.from, repl_res.log_idx);
                     self.track_replication_progress(repl_res, &mut client_sessions);
                 },
-
                 ClusterCommand::SendAppendEntriesRPC => {
                     self.send_leader_heartbeat(&logger).await;
                 },
-
                 ClusterCommand::AppendEntriesRPC(heartbeat) => {
                     if self.check_term_outdated(&heartbeat, &logger).await {
                         continue;

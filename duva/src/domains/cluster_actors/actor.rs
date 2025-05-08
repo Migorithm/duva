@@ -219,8 +219,13 @@ impl ClusterActor {
         Ok(())
     }
 
-    pub(crate) fn set_repl_id(&mut self, leader_repl_id: ReplicationId) {
+    fn set_repl_id(&mut self, leader_repl_id: ReplicationId) {
         self.replication.replid = leader_repl_id;
+    }
+
+    pub(crate) fn store_snapshot_metadata(&mut self, replid: ReplicationId, hwm: u64) {
+        self.set_repl_id(replid);
+        self.replication.hwm.store(hwm, Ordering::Release);
     }
 
     /// Remove the peers that are idle for more than ttl_mills
