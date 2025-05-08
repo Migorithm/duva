@@ -25,4 +25,4 @@ follower:
 
 cli:
 	@echo '🚀 Starting client in local_test/cli...'
-	cargo run -p duva-client --bin cli --features cli -- --port $(p)
+	cargo run -p duva-client -- --port $(p)
