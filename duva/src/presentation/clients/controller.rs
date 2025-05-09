@@ -117,8 +117,11 @@ impl ClientController {
                 todo!()
             },
             ClientAction::ReplicaOf(peer_identifier) => {
-                self.cluster_communication_manager.replicaof(peer_identifier.clone()).await;
-
+                if let Err(err) =
+                    self.cluster_communication_manager.replicaof(peer_identifier.clone()).await
+                {
+                    return Ok(QueryIO::Err(err.to_string()));
+                }
                 QueryIO::SimpleString("OK".into())
             },
             ClientAction::Role => {

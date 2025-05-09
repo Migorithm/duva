@@ -24,6 +24,7 @@ use crate::domains::operation_logs::interfaces::TWriteAheadLog;
 use crate::domains::operation_logs::logger::ReplicatedLogs;
 use crate::domains::peers::peer::NodeKind;
 use crate::domains::peers::peer::PeerState;
+use crate::err;
 use anyhow::Context;
 use std::collections::VecDeque;
 use std::iter;
@@ -683,6 +684,7 @@ impl ClusterActor {
     /// 2) step down operation is given from user
     pub(crate) async fn step_down(&mut self) {
         self.replication.vote_for(None);
+        self.replication.is_leader_mode = false;
         self.heartbeat_scheduler.turn_follower_mode().await;
     }
 
@@ -714,21 +716,24 @@ impl ClusterActor {
         }
     }
 
-    //TODO replication after replicaof is not made. Investigation required
+    // * Forces the current node to become a replica of the given peer.
     pub(crate) async fn replicaof(
         &mut self,
         peer_addr: PeerIdentifier,
         logger: &mut ReplicatedLogs<impl TWriteAheadLog>,
-    ) {
-        logger.reset().await;
-        self.replication.vote_for(Some(peer_addr.clone()));
-        self.replication.hwm.store(0, Ordering::Release);
-        self.replication.is_leader_mode = false;
-        self.replication.role = ReplicationRole::Follower;
-        self.set_repl_id(ReplicationId::Undecided);
-        let _ = self.discover_cluster(peer_addr).await;
+    ) -> anyhow::Result<()> {
+        if self.replication.self_identifier() == peer_addr {
+            err!("invalid operation: cannot replicate to self")?;
+        }
 
-        self.heartbeat_scheduler.turn_follower_mode().await;
+        logger.reset().await;
+        self.replication.hwm.store(0, Ordering::Release);
+        self.set_repl_id(ReplicationId::Undecided);
+        if self.replication.is_leader_mode {
+            self.step_down().await;
+        }
+        let _ = self.discover_cluster(peer_addr).await;
+        Ok(())
     }
 
     pub(crate) async fn join_peer_network_if_absent(&mut self, cluster_nodes: Vec<PeerState>) {
