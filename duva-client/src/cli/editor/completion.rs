@@ -27,6 +27,7 @@ pub(crate) static COMMANDS: &[&str] = &[
     "cluster forget",
     "cluster meet",
     "info replication",
+    "replicaof",
 ];
 
 macro_rules! new_pair {
@@ -134,6 +135,15 @@ impl Completer for DuvaHinter {
                 if previous_words.len() == 1 {
                     // Suggest "pattern" after keys
                     candidates.push(new_pair!("pattern"));
+                }
+            },
+            "replicaof" => {
+                if previous_words.len() == 1 {
+                    // Suggest "host port" after replicaof
+                    candidates.push(new_pair!("host"));
+                } else if previous_words.len() == 2 {
+                    // Suggest "port" after replicaof host
+                    candidates.push(new_pair!("port"));
                 }
             },
             _ => {},
