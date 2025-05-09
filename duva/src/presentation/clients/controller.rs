@@ -1,5 +1,3 @@
-use tracing::{debug, instrument};
-
 use super::request::ClientRequest;
 use crate::actor_registry::ActorRegistry;
 use crate::domains::caches::cache_manager::CacheManager;
@@ -10,8 +8,8 @@ use crate::domains::query_parsers::QueryIO;
 use crate::domains::saves::actor::SaveTarget;
 use crate::presentation::clients::request::ClientAction;
 use crate::presentation::clusters::communication_manager::ClusterCommunicationManager;
-
 use std::sync::atomic::Ordering;
+use tracing::{debug, instrument};
 
 #[derive(Clone, Debug)]
 pub(crate) struct ClientController {
@@ -75,7 +73,6 @@ impl ClientController {
             ClientAction::Keys { pattern } => self.cache_manager.route_keys(pattern).await?,
             ClientAction::Config { key, value } => {
                 let res = self.config_manager.route_get((key, value)).await?;
-
                 match res {
                     ConfigResponse::Dir(value) => QueryIO::SimpleString(format!("dir {}", value)),
                     ConfigResponse::DbFileName(value) => QueryIO::SimpleString(value),
@@ -117,11 +114,7 @@ impl ClientController {
                 todo!()
             },
             ClientAction::ReplicaOf(peer_identifier) => {
-                if let Err(err) =
-                    self.cluster_communication_manager.replicaof(peer_identifier.clone()).await
-                {
-                    return Ok(QueryIO::Err(err.to_string()));
-                }
+                self.cluster_communication_manager.replicaof(peer_identifier.clone()).await?;
                 QueryIO::SimpleString("OK".into())
             },
             ClientAction::Role => {
