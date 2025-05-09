@@ -13,7 +13,7 @@ fn run_set_operation_reaches_to_all_replicas(with_append_only: bool) -> anyhow::
     let mut client_handler = Client::new(leader_p.port);
 
     let repl_env = ServerEnv::default()
-        .with_leader_bind_addr(leader_p.bind_addr())
+        .with_bind_addr(leader_p.bind_addr())
         .with_file_name("follower_dbfilename")
         .with_append_only(with_append_only);
 

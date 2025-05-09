@@ -10,7 +10,7 @@ fn run_removes_node_when_heartbeat_is_not_received_for_certain_time(
     let mut leader_p = spawn_server_process(&env, true)?;
 
     let repl_env = ServerEnv::default()
-        .with_leader_bind_addr(leader_p.bind_addr())
+        .with_bind_addr(leader_p.bind_addr())
         .with_append_only(with_append_only);
     let mut repl_p = spawn_server_process(&repl_env, true)?;
 

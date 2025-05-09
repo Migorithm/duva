@@ -1,33 +1,18 @@
 use duva::domains::cluster_actors::heartbeats::scheduler::LEADER_HEARTBEAT_INTERVAL_MAX;
 
-use crate::common::{Client, ServerEnv, check_internodes_communication, spawn_server_process};
+use crate::common::{Client, ServerEnv, form_cluster};
 
 fn run_cluster_forget_makes_all_nodes_forget_target_node(
     with_append_only: bool,
 ) -> anyhow::Result<()> {
     // GIVEN
-    const HOP_COUNT: usize = 0;
 
-    let env = ServerEnv::default().with_ttl(500).with_hf(2).with_append_only(with_append_only);
-    let mut leader_p = spawn_server_process(&env, true)?;
+    let mut env = ServerEnv::default().with_ttl(500).with_hf(2).with_append_only(with_append_only);
+    let mut repl_env = ServerEnv::default().with_hf(10).with_append_only(with_append_only);
+    let mut repl_env2 = ServerEnv::default().with_hf(10).with_append_only(with_append_only);
 
-    let repl_env = ServerEnv::default()
-        .with_leader_bind_addr(leader_p.bind_addr().clone())
-        .with_hf(10)
-        .with_append_only(with_append_only);
-    let mut repl_p = spawn_server_process(&repl_env, true)?;
-
-    let repl_env2 = ServerEnv::default()
-        .with_leader_bind_addr(leader_p.bind_addr().clone())
-        .with_hf(10)
-        .with_append_only(with_append_only);
-    let mut repl_p2 = spawn_server_process(&repl_env2, true)?;
-
-    check_internodes_communication(
-        &mut [&mut leader_p, &mut repl_p, &mut repl_p2],
-        HOP_COUNT,
-        1000,
-    )?;
+    let [leader_p, repl_p, repl_p2] =
+        form_cluster(&mut [&mut env, &mut repl_env, &mut repl_env2], true);
 
     // WHEN
     let mut client_handler = Client::new(leader_p.port);

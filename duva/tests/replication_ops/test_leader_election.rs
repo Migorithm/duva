@@ -9,12 +9,12 @@ fn run_leader_election(with_append_only: bool) -> anyhow::Result<()> {
     let mut leader_p = spawn_server_process(&leader_env, true)?;
 
     let follower_env1 = ServerEnv::default()
-        .with_leader_bind_addr(leader_p.bind_addr())
+        .with_bind_addr(leader_p.bind_addr())
         .with_append_only(with_append_only);
     let mut follower_p1 = spawn_server_process(&follower_env1, true)?;
 
     let follower_env2 = ServerEnv::default()
-        .with_leader_bind_addr(leader_p.bind_addr())
+        .with_bind_addr(leader_p.bind_addr())
         .with_append_only(with_append_only);
 
     let mut follower_p2 = spawn_server_process(&follower_env2, true)?;
@@ -51,12 +51,12 @@ fn run_set_twice_after_election(with_append_only: bool) -> anyhow::Result<()> {
     let mut leader_p = spawn_server_process(&leader_env, true)?;
 
     let follower_env1 = ServerEnv::default()
-        .with_leader_bind_addr(leader_p.bind_addr())
+        .with_bind_addr(leader_p.bind_addr())
         .with_append_only(with_append_only);
     let mut follower_p1 = spawn_server_process(&follower_env1, true)?;
 
     let follower_env2 = ServerEnv::default()
-        .with_leader_bind_addr(leader_p.bind_addr())
+        .with_bind_addr(leader_p.bind_addr())
         .with_append_only(with_append_only);
     let mut follower_p2 = spawn_server_process(&follower_env2, true)?;
     const DEFAULT_HOP_COUNT: usize = 0;
@@ -93,12 +93,12 @@ fn run_leader_election_twice(with_append_only: bool) -> anyhow::Result<()> {
     let mut leader_p = spawn_server_process(&leader_env, true)?;
 
     let follower_env1 = ServerEnv::default()
-        .with_leader_bind_addr(leader_p.bind_addr())
+        .with_bind_addr(leader_p.bind_addr())
         .with_append_only(with_append_only);
     let mut follower_p1 = spawn_server_process(&follower_env1, true)?;
 
     let follower_env2 = ServerEnv::default()
-        .with_leader_bind_addr(leader_p.bind_addr())
+        .with_bind_addr(leader_p.bind_addr())
         .with_append_only(with_append_only);
     let mut follower_p2 = spawn_server_process(&follower_env2, true)?;
     const DEFAULT_HOP_COUNT: usize = 0;
@@ -120,9 +120,8 @@ fn run_leader_election_twice(with_append_only: bool) -> anyhow::Result<()> {
             continue;
         }
 
-        let follower_env3 = ServerEnv::default()
-            .with_leader_bind_addr(f.bind_addr())
-            .with_append_only(with_append_only);
+        let follower_env3 =
+            ServerEnv::default().with_bind_addr(f.bind_addr()).with_append_only(with_append_only);
         let new_process = spawn_server_process(&follower_env3, true)?;
         sleep(Duration::from_millis(LEADER_HEARTBEAT_INTERVAL_MAX));
 

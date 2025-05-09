@@ -151,7 +151,7 @@ impl CacheDb {
 
             // Check if this key's hash falls within any of the specified ranges
             for range in &token_ranges {
-                if key_hash >= range.start && key_hash < range.end {
+                if range.contains(&key_hash) {
                     keys_to_extract.push(key.clone());
                     break; // No need to check other ranges once we've found a match
                 }

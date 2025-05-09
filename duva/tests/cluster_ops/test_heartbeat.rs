@@ -13,12 +13,12 @@ fn run_heartbeat_hop_count_decreases_over_time(with_append_only: bool) -> anyhow
     let mut leader_p = spawn_server_process(&env, true)?;
     let leader_bind_addr = leader_p.bind_addr().clone();
     let repl_env = ServerEnv::default()
-        .with_leader_bind_addr(leader_bind_addr.clone())
+        .with_bind_addr(leader_bind_addr.clone())
         .with_append_only(with_append_only);
     let mut follower_p1 = spawn_server_process(&repl_env, true)?;
 
     let repl_env2 = ServerEnv::default()
-        .with_leader_bind_addr(leader_bind_addr.clone())
+        .with_bind_addr(leader_bind_addr.clone())
         .with_append_only(with_append_only);
     let mut follower_p2 = spawn_server_process(&repl_env2, true)?;
     let mut processes = vec![&mut leader_p, &mut follower_p1, &mut follower_p2];
@@ -27,7 +27,7 @@ fn run_heartbeat_hop_count_decreases_over_time(with_append_only: bool) -> anyhow
 
     // WHEN run Third follower
     let repl_env3 = ServerEnv::default()
-        .with_leader_bind_addr(leader_bind_addr.clone())
+        .with_bind_addr(leader_bind_addr.clone())
         .with_append_only(with_append_only);
     let mut follower_p3 = spawn_server_process(&repl_env3, true)?;
     processes.push(&mut follower_p3);
@@ -50,11 +50,11 @@ fn run_heartbeat_hop_count_starts_with_0(with_append_only: bool) -> anyhow::Resu
 
     // WHEN
     let repl_env = ServerEnv::default()
-        .with_leader_bind_addr(leader_p.bind_addr())
+        .with_bind_addr(leader_p.bind_addr())
         .with_append_only(with_append_only);
     let mut follower_p1 = spawn_server_process(&repl_env, true)?;
     let repl_env2 = ServerEnv::default()
-        .with_leader_bind_addr(leader_p.bind_addr())
+        .with_bind_addr(leader_p.bind_addr())
         .with_append_only(with_append_only);
     let mut follower_p2 = spawn_server_process(&repl_env2, true)?;
 

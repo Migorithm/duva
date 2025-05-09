@@ -8,7 +8,7 @@ fn run_cluster_topology_change_when_new_node_added(with_append_only: bool) -> an
     let cmd = "cluster info";
 
     let repl_env = ServerEnv::default()
-        .with_leader_bind_addr(leader_p.bind_addr())
+        .with_bind_addr(leader_p.bind_addr())
         .with_append_only(with_append_only);
     let mut repl_p = spawn_server_process(&repl_env, true)?;
     repl_p.wait_for_message(&leader_p.heartbeat_msg(0))?;
@@ -20,7 +20,7 @@ fn run_cluster_topology_change_when_new_node_added(with_append_only: bool) -> an
 
     // WHEN -- new replica is added
     let repl_env2 = ServerEnv::default()
-        .with_leader_bind_addr(leader_p.bind_addr())
+        .with_bind_addr(leader_p.bind_addr())
         .with_append_only(with_append_only);
     let mut new_repl_p = spawn_server_process(&repl_env2, true)?;
     new_repl_p.wait_for_message(&leader_p.heartbeat_msg(0))?;

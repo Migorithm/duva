@@ -6,6 +6,7 @@ use duva::domains::query_parsers::query_io::QueryIO;
 use duva::make_smart_pointer;
 
 use std::io::{BufRead, BufReader, Read, Write};
+use std::mem::MaybeUninit;
 use std::net::TcpListener;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
@@ -52,7 +53,7 @@ impl ServerEnv {
         self
     }
 
-    pub fn with_leader_bind_addr(mut self, leader_bind_addr: String) -> Self {
+    pub fn with_bind_addr(mut self, leader_bind_addr: String) -> Self {
         self.leader_bind_addr = Some(leader_bind_addr);
         self
     }
@@ -390,5 +391,43 @@ impl Client {
 impl Drop for Client {
     fn drop(&mut self) {
         let _ = self.terminate();
+    }
+}
+
+pub fn form_cluster<const T: usize>(
+    envs: &mut [&mut ServerEnv; T],
+    stdout_enabled: bool,
+) -> [TestProcessChild; T] {
+    // Using MaybeUninit to create an uninitialized array
+    let mut processes: [MaybeUninit<TestProcessChild>; T] =
+        unsafe { MaybeUninit::uninit().assume_init() };
+
+    // Initialize the leader
+    let leader_p = spawn_server_process(&envs[0], stdout_enabled).unwrap();
+    let leader_bind_addr = leader_p.bind_addr();
+    processes[0].write(leader_p);
+
+    // Initialize replicas
+    for i in 1..T {
+        envs[i].leader_bind_addr = Some(leader_bind_addr.clone());
+        let repl_p = spawn_server_process(&envs[i], stdout_enabled).unwrap();
+        processes[i].write(repl_p);
+    }
+
+    let mut process_refs =
+        unsafe { processes.iter_mut().map(|p| &mut *(p.as_mut_ptr())).collect::<Vec<_>>() };
+
+    check_internodes_communication(&mut process_refs, 0, 1000).unwrap();
+
+    // Convert the array of MaybeUninit to an initialized array safely
+    unsafe {
+        // Create a ManuallyDrop to prevent double-free when array is moved out
+        let mut manual_drop = std::mem::ManuallyDrop::new(processes);
+
+        // Get a pointer to the underlying array and reinterpret it
+        let ptr = manual_drop.as_mut_ptr() as *mut [TestProcessChild; T];
+
+        // Read from the pointer to get the initialized array
+        ptr.read()
     }
 }

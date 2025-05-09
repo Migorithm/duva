@@ -5,9 +5,8 @@ fn run_reconnection_on_reboot(with_append_only: bool) -> anyhow::Result<()> {
     let env1 = ServerEnv::default().with_append_only(with_append_only);
     let mut p1 = spawn_server_process(&env1, true)?;
 
-    let env2 = ServerEnv::default()
-        .with_leader_bind_addr(p1.bind_addr())
-        .with_append_only(with_append_only);
+    let env2 =
+        ServerEnv::default().with_bind_addr(p1.bind_addr()).with_append_only(with_append_only);
     let mut p2 = spawn_server_process(&env2, true)?;
 
     p2.wait_for_message(&p1.heartbeat_msg(0))?;
