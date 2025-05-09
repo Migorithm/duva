@@ -205,7 +205,6 @@ impl ClusterActor {
     pub(crate) async fn accept_inbound_stream(
         &mut self,
         peer_stream: TcpStream,
-        logger: &ReplicatedLogs<impl TWriteAheadLog>,
     ) -> anyhow::Result<()> {
         let mut inbound_stream = InboundStream::new(peer_stream, self.replication.clone());
         inbound_stream.recv_handshake().await?;
@@ -721,11 +720,7 @@ impl ClusterActor {
         &mut self,
         peer_addr: PeerIdentifier,
         logger: &mut ReplicatedLogs<impl TWriteAheadLog>,
-    ) -> anyhow::Result<()> {
-        if self.replication.self_identifier() == peer_addr {
-            err!("invalid operation: cannot replicate to self")?;
-        }
-
+    ) {
         logger.reset().await;
         self.replication.hwm.store(0, Ordering::Release);
         self.set_repl_id(ReplicationId::Undecided);
@@ -733,7 +728,6 @@ impl ClusterActor {
             self.step_down().await;
         }
         let _ = self.discover_cluster(peer_addr).await;
-        Ok(())
     }
 
     pub(crate) async fn join_peer_network_if_absent(&mut self, cluster_nodes: Vec<PeerState>) {

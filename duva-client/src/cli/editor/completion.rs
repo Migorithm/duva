@@ -58,7 +58,7 @@ impl Completer for DuvaHinter {
         // Get the text before the start of the current word
         let before_start = &line[..start];
         // Split into previous words
-        let previous_words: Vec<&str> = before_start.trim().split_whitespace().collect();
+        let previous_words: Vec<&str> = before_start.split_whitespace().collect();
         // Get the current prefix being typed
         let current_prefix = &line[start..pos];
 
@@ -120,7 +120,7 @@ impl Completer for DuvaHinter {
                 }
             },
             "exists" | "del" => {
-                if previous_words.len() >= 1 {
+                if !previous_words.is_empty() {
                     // Suggest "key" for these commands
                     candidates.push(new_pair!("key"));
                 }
