@@ -8,7 +8,7 @@ use tokio::{
     net::tcp::{OwnedReadHalf, OwnedWriteHalf},
     sync::mpsc::Sender,
 };
-use tracing::{error, instrument};
+use tracing::{error, instrument, warn};
 use uuid::Uuid;
 pub struct ClientStreamReader {
     pub(crate) r: OwnedReadHalf,
@@ -28,7 +28,9 @@ impl ClientStreamReader {
                     for req in requests.into_iter() {
                         match handler.maybe_consensus_then_execute(req).await {
                             Ok(res) => {
+                                warn!("over here1");
                                 if sender.send(res).await.is_err() {
+                                    warn!("over here2");
                                     break 'l;
                                 }
                             },

@@ -27,6 +27,7 @@ pub(crate) static COMMANDS: &[&str] = &[
     "cluster forget",
     "cluster meet",
     "info replication",
+    "replicaof",
 ];
 
 macro_rules! new_pair {
@@ -57,7 +58,7 @@ impl Completer for DuvaHinter {
         // Get the text before the start of the current word
         let before_start = &line[..start];
         // Split into previous words
-        let previous_words: Vec<&str> = before_start.trim().split_whitespace().collect();
+        let previous_words: Vec<&str> = before_start.split_whitespace().collect();
         // Get the current prefix being typed
         let current_prefix = &line[start..pos];
 
@@ -119,7 +120,7 @@ impl Completer for DuvaHinter {
                 }
             },
             "exists" | "del" => {
-                if previous_words.len() >= 1 {
+                if !previous_words.is_empty() {
                     // Suggest "key" for these commands
                     candidates.push(new_pair!("key"));
                 }
@@ -134,6 +135,15 @@ impl Completer for DuvaHinter {
                 if previous_words.len() == 1 {
                     // Suggest "pattern" after keys
                     candidates.push(new_pair!("pattern"));
+                }
+            },
+            "replicaof" => {
+                if previous_words.len() == 1 {
+                    // Suggest "host port" after replicaof
+                    candidates.push(new_pair!("host"));
+                } else if previous_words.len() == 2 {
+                    // Suggest "port" after replicaof host
+                    candidates.push(new_pair!("port"));
                 }
             },
             _ => {},

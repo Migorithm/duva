@@ -54,3 +54,31 @@ fn test_lazy_discovery_of_leader() -> anyhow::Result<()> {
 
     Ok(())
 }
+
+fn run_invalid_replicaof(with_append_only: bool) -> anyhow::Result<()> {
+    // GIVEN
+    let env1 = ServerEnv::default().with_append_only(with_append_only);
+    let p1 = spawn_server_process(&env1, true)?;
+
+    let mut p1_h = Client::new(p1.port);
+
+    p1_h.send_and_get("set key 1", 1);
+
+    // WHEN
+    assert_eq!(
+        p1_h.send_and_get(format!("REPLICAOF 127.0.0.1 {}", &env1.port), 1),
+        ["(error) invalid operation: cannot replicate to self".to_string(),]
+    );
+
+    assert_eq!(p1_h.send_and_get("get key", 1), vec!["1"]);
+
+    Ok(())
+}
+
+#[test]
+fn test_run_invalid_replicaof() -> anyhow::Result<()> {
+    run_invalid_replicaof(false)?;
+    run_invalid_replicaof(true)?;
+
+    Ok(())
+}

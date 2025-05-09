@@ -5,6 +5,7 @@ use crate::domains::cluster_actors::session::ClientSessions;
 use crate::domains::cluster_actors::{ClusterActor, FANOUT};
 use crate::domains::operation_logs::interfaces::TWriteAheadLog;
 use crate::domains::operation_logs::logger::ReplicatedLogs;
+use crate::err;
 use tokio::sync::mpsc::Sender;
 
 impl ClusterActor {
@@ -25,7 +26,7 @@ impl ClusterActor {
                     let _ = callback.send(());
                 },
                 ClusterCommand::AcceptPeer { stream } => {
-                    if let Ok(()) = self.accept_inbound_stream(stream, &logger).await {
+                    if let Ok(()) = self.accept_inbound_stream(stream).await {
                         let _ = self.snapshot_topology().await;
                     };
                 },
@@ -114,10 +115,12 @@ impl ClusterActor {
                     self.tally_vote(&logger).await;
                 },
                 ClusterCommand::ReplicaOf(peer_addr, callback) => {
+                    if self.replication.self_identifier() == peer_addr {
+                        let _ = callback.send(err!("invalid operation: cannot replicate to self"));
+                        continue;
+                    }
                     cache_manager.drop_cache().await;
-                    self.replicaof(peer_addr, &mut logger).await;
-                    let _ = callback.send(());
-                    let _ = self.snapshot_topology().await;
+                    self.replicaof(peer_addr, &mut logger, callback).await;
                 },
                 ClusterCommand::GetRole(sender) => {
                     let _ = sender.send(self.replication.role.clone());

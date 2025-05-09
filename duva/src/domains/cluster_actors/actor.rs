@@ -204,7 +204,6 @@ impl ClusterActor {
     pub(crate) async fn accept_inbound_stream(
         &mut self,
         peer_stream: TcpStream,
-        logger: &ReplicatedLogs<impl TWriteAheadLog>,
     ) -> anyhow::Result<()> {
         let mut inbound_stream = InboundStream::new(peer_stream, self.replication.clone());
         inbound_stream.recv_handshake().await?;
@@ -714,21 +713,21 @@ impl ClusterActor {
         }
     }
 
-    //TODO replication after replicaof is not made. Investigation required
+    // * Forces the current node to become a replica of the given peer.
     pub(crate) async fn replicaof(
         &mut self,
         peer_addr: PeerIdentifier,
         logger: &mut ReplicatedLogs<impl TWriteAheadLog>,
+        callback: tokio::sync::oneshot::Sender<anyhow::Result<()>>,
     ) {
         logger.reset().await;
-        self.replication.vote_for(Some(peer_addr.clone()));
         self.replication.hwm.store(0, Ordering::Release);
-        self.replication.is_leader_mode = false;
-        self.replication.role = ReplicationRole::Follower;
         self.set_repl_id(ReplicationId::Undecided);
-        let _ = self.discover_cluster(peer_addr).await;
+        self.step_down().await;
 
-        self.heartbeat_scheduler.turn_follower_mode().await;
+        let _ = self.discover_cluster(peer_addr).await;
+        let _ = self.snapshot_topology().await;
+        let _ = callback.send(Ok(()));
     }
 
     pub(crate) async fn join_peer_network_if_absent(&mut self, cluster_nodes: Vec<PeerState>) {

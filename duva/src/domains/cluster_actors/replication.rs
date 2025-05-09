@@ -133,12 +133,17 @@ impl ReplicationState {
 
     pub(super) fn vote_for(&mut self, leader_id: Option<PeerIdentifier>) {
         self.election_state = ElectionState::Follower { voted_for: leader_id };
-        self.is_leader_mode = false;
+        self.set_follower_mode();
     }
     pub(super) fn become_leader(&mut self) {
         self.role = ReplicationRole::Leader;
         self.is_leader_mode = true;
         self.election_state.become_leader();
+    }
+
+    fn set_follower_mode(&mut self) {
+        self.is_leader_mode = false;
+        self.role = ReplicationRole::Follower;
     }
 }
 
