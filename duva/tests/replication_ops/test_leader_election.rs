@@ -1,27 +1,16 @@
 use std::{thread::sleep, time::Duration};
 
-use crate::common::{Client, ServerEnv, check_internodes_communication, spawn_server_process};
+use crate::common::{Client, ServerEnv, form_cluster, spawn_server_process};
 use duva::domains::cluster_actors::heartbeats::scheduler::LEADER_HEARTBEAT_INTERVAL_MAX;
 
 fn run_leader_election(with_append_only: bool) -> anyhow::Result<()> {
     // GIVEN
-    let leader_env = ServerEnv::default().with_append_only(with_append_only);
-    let mut leader_p = spawn_server_process(&leader_env, true)?;
+    let mut leader_env = ServerEnv::default().with_append_only(with_append_only);
+    let mut follower_env1 = ServerEnv::default().with_append_only(with_append_only);
+    let mut follower_env2 = ServerEnv::default().with_append_only(with_append_only);
 
-    let follower_env1 = ServerEnv::default()
-        .with_bind_addr(leader_p.bind_addr())
-        .with_append_only(with_append_only);
-    let mut follower_p1 = spawn_server_process(&follower_env1, true)?;
-
-    let follower_env2 = ServerEnv::default()
-        .with_bind_addr(leader_p.bind_addr())
-        .with_append_only(with_append_only);
-
-    let mut follower_p2 = spawn_server_process(&follower_env2, true)?;
-    const DEFAULT_HOP_COUNT: usize = 0;
-    const TIMEOUT_IN_MILLIS: u128 = 2000;
-    let processes = &mut [&mut leader_p, &mut follower_p1, &mut follower_p2];
-    check_internodes_communication(processes, DEFAULT_HOP_COUNT, TIMEOUT_IN_MILLIS)?;
+    let [mut leader_p, follower_p1, follower_p2] =
+        form_cluster(&mut [&mut leader_env, &mut follower_env1, &mut follower_env2], true);
 
     // WHEN
     leader_p.kill()?;
@@ -47,22 +36,12 @@ fn run_leader_election(with_append_only: bool) -> anyhow::Result<()> {
 // ! This test is to see if the leader can set the value twice after the election
 fn run_set_twice_after_election(with_append_only: bool) -> anyhow::Result<()> {
     // GIVEN
-    let leader_env = ServerEnv::default().with_append_only(with_append_only);
-    let mut leader_p = spawn_server_process(&leader_env, true)?;
+    let mut leader_env = ServerEnv::default().with_append_only(with_append_only);
+    let mut follower_env1 = ServerEnv::default().with_append_only(with_append_only);
+    let mut follower_env2 = ServerEnv::default().with_append_only(with_append_only);
 
-    let follower_env1 = ServerEnv::default()
-        .with_bind_addr(leader_p.bind_addr())
-        .with_append_only(with_append_only);
-    let mut follower_p1 = spawn_server_process(&follower_env1, true)?;
-
-    let follower_env2 = ServerEnv::default()
-        .with_bind_addr(leader_p.bind_addr())
-        .with_append_only(with_append_only);
-    let mut follower_p2 = spawn_server_process(&follower_env2, true)?;
-    const DEFAULT_HOP_COUNT: usize = 0;
-    const TIMEOUT_IN_MILLIS: u128 = 2000;
-    let processes = &mut [&mut leader_p, &mut follower_p1, &mut follower_p2];
-    check_internodes_communication(processes, DEFAULT_HOP_COUNT, TIMEOUT_IN_MILLIS)?;
+    let [mut leader_p, follower_p1, follower_p2] =
+        form_cluster(&mut [&mut leader_env, &mut follower_env1, &mut follower_env2], true);
 
     // WHEN
     leader_p.kill()?;
@@ -89,22 +68,12 @@ fn run_set_twice_after_election(with_append_only: bool) -> anyhow::Result<()> {
 /// following test is to see if election works even after the first election.
 fn run_leader_election_twice(with_append_only: bool) -> anyhow::Result<()> {
     // GIVEN
-    let leader_env = ServerEnv::default().with_append_only(with_append_only);
-    let mut leader_p = spawn_server_process(&leader_env, true)?;
+    let mut leader_env = ServerEnv::default().with_append_only(with_append_only);
+    let mut follower_env1 = ServerEnv::default().with_append_only(with_append_only);
+    let mut follower_env2 = ServerEnv::default().with_append_only(with_append_only);
 
-    let follower_env1 = ServerEnv::default()
-        .with_bind_addr(leader_p.bind_addr())
-        .with_append_only(with_append_only);
-    let mut follower_p1 = spawn_server_process(&follower_env1, true)?;
-
-    let follower_env2 = ServerEnv::default()
-        .with_bind_addr(leader_p.bind_addr())
-        .with_append_only(with_append_only);
-    let mut follower_p2 = spawn_server_process(&follower_env2, true)?;
-    const DEFAULT_HOP_COUNT: usize = 0;
-    const TIMEOUT_IN_MILLIS: u128 = 2000;
-    let processes = &mut [&mut leader_p, &mut follower_p1, &mut follower_p2];
-    check_internodes_communication(processes, DEFAULT_HOP_COUNT, TIMEOUT_IN_MILLIS)?;
+    let [mut leader_p, follower_p1, follower_p2] =
+        form_cluster(&mut [&mut leader_env, &mut follower_env1, &mut follower_env2], true);
 
     // !first leader is killed -> election happens
     leader_p.kill()?;
