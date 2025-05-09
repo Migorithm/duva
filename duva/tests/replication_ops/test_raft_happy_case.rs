@@ -18,7 +18,7 @@ fn run_set_operation_reaches_to_all_replicas(with_append_only: bool) -> anyhow::
     client_handler.send_and_get("SET foo bar", 1);
 
     //THEN
-    sleep(Duration::from_millis(LEADER_HEARTBEAT_INTERVAL_MAX * 2));
+    sleep(Duration::from_millis(LEADER_HEARTBEAT_INTERVAL_MAX + 15));
 
     let mut client = Client::new(repl_p.port);
     let res = client.send_and_get("GET foo", 1);
