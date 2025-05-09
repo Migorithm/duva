@@ -1,21 +1,15 @@
 use std::{thread::sleep, time::Duration};
 
-use crate::common::{Client, ServerEnv, spawn_server_process};
+use crate::common::{Client, ServerEnv, form_cluster};
 
 fn run_removes_node_when_heartbeat_is_not_received_for_certain_time(
     with_append_only: bool,
 ) -> anyhow::Result<()> {
     // GIVEN
-    let env = ServerEnv::default().with_append_only(with_append_only);
-    let mut leader_p = spawn_server_process(&env, true)?;
+    let mut env = ServerEnv::default().with_append_only(with_append_only);
+    let mut repl_env = ServerEnv::default().with_append_only(with_append_only);
 
-    let repl_env = ServerEnv::default()
-        .with_bind_addr(leader_p.bind_addr())
-        .with_append_only(with_append_only);
-    let mut repl_p = spawn_server_process(&repl_env, true)?;
-
-    repl_p.wait_for_message(&leader_p.heartbeat_msg(0))?;
-    leader_p.wait_for_message(&repl_p.heartbeat_msg(0))?;
+    let [leader_p, mut repl_p] = form_cluster(&mut [&mut env, &mut repl_env], true);
 
     let mut h = Client::new(leader_p.port);
     let cmd = "cluster info";

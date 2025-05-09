@@ -48,6 +48,11 @@ impl Default for ServerEnv {
 }
 
 impl ServerEnv {
+    // Create a new ServerEnv with a unique port
+    pub fn clone(self) -> Self {
+        ServerEnv { port: get_available_port(), ..self }
+    }
+
     pub fn with_file_name(mut self, file_name: impl Into<String>) -> Self {
         self.file_name = FileName(Some(file_name.into()));
         self
