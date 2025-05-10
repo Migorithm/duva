@@ -135,7 +135,8 @@ impl CacheActor {
             .or_insert(CacheValue { value: "0".to_string(), expiry: None });
 
         let Ok(curr) = val.value.parse::<i64>() else {
-            let _ = callback.send(Err(anyhow::anyhow!("ERR value is not an integer or out of range")));
+            let _ =
+                callback.send(Err(anyhow::anyhow!("ERR value is not an integer or out of range")));
             return;
         };
 
@@ -155,7 +156,8 @@ impl CacheActor {
             .or_insert(CacheValue { value: "0".to_string(), expiry: None });
 
         let Ok(curr) = val.value.parse::<i64>() else {
-            let _ = callback.send(Err(anyhow::anyhow!("ERR value is not an integer or out of range")));
+            let _ =
+                callback.send(Err(anyhow::anyhow!("ERR value is not an integer or out of range")));
             return;
         };
 

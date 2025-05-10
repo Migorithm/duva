@@ -44,4 +44,4 @@ fn test_incrby() -> anyhow::Result<()> {
         run_incrby(env)?;
     }
     Ok(())
-} 
+}
