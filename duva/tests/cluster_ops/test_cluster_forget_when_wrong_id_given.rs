@@ -10,16 +10,12 @@ fn run_cluster_forget_node_return_error_when_wrong_id_given(env: ServerEnv) -> a
     let mut client_handler = Client::new(leader_p.port);
     let replica_id = "localhost:19933";
     let cmd = format!("cluster forget {}", &replica_id);
-    let cluster_info = client_handler.send_and_get(&cmd, 1);
 
     // THEN
-    assert_eq!(cluster_info.first().unwrap(), "(error) No such peer");
+    assert_eq!(client_handler.send_and_get(&cmd, 1), vec!["(error) No such peer"]);
 
-    // WHEN
-    let cluster_info = client_handler.send_and_get("cluster info", 1);
-
-    // THEN
-    assert_eq!(cluster_info.first().unwrap(), "cluster_known_nodes:0");
+    // WHEN & THEN
+    assert_eq!(client_handler.send_and_get("cluster info", 1), vec!["cluster_known_nodes:0"]);
 
     Ok(())
 }

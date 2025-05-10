@@ -16,8 +16,8 @@ fn run_set_get(env: ServerEnv) -> anyhow::Result<()> {
     assert_eq!(res, vec!["bar"]);
 
     std::thread::sleep(std::time::Duration::from_millis(300));
-    // THEN
 
+    // THEN
     let res = h.send_and_get("GET somanyrand", 1);
     assert_eq!(res, vec!["(nil)"]);
 
