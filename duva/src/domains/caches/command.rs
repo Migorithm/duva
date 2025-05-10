@@ -14,4 +14,6 @@ pub(crate) enum CacheCommand {
     Exists { key: String, callback: oneshot::Sender<bool> },
     Append { key: String, value: String, callback: oneshot::Sender<anyhow::Result<usize>> },
     NumericDetla { key: String, delta: i64, callback: oneshot::Sender<anyhow::Result<i64>> },
+    IncrBy { key: String, increment: i64, callback: oneshot::Sender<anyhow::Result<i64>> },
+    DecrBy { key: String, decrement: i64, callback: oneshot::Sender<anyhow::Result<i64>> },
 }
