@@ -288,4 +288,20 @@ impl CacheManager {
         let current = rx.await?;
         Ok(format!("s:{}|idx:{}", current?, current_idx))
     }
+
+    pub(crate) async fn route_incrby(&self, key: String, increment: i64) -> Result<i64> {
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        self.select_shard(key.as_str())
+            .send(CacheCommand::IncrBy { key, increment, callback: tx })
+            .await?;
+        rx.await?
+    }
+
+    pub(crate) async fn route_decrby(&self, key: String, decrement: i64) -> Result<i64> {
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        self.select_shard(key.as_str())
+            .send(CacheCommand::DecrBy { key, decrement, callback: tx })
+            .await?;
+        rx.await?
+    }
 }
