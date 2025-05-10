@@ -6,7 +6,7 @@ fn run_cluster_topology_change_when_new_node_added(with_append_only: bool) -> an
     let mut repl_env = ServerEnv::default().with_append_only(with_append_only);
 
     // Form cluster with leader and replica
-    let [leader_p, _] = form_cluster([&mut env, &mut repl_env], true);
+    let [leader_p, _repl_p] = form_cluster([&mut env, &mut repl_env], true);
 
     let cmd = "cluster info";
 
@@ -28,15 +28,10 @@ fn run_cluster_topology_change_when_new_node_added(with_append_only: bool) -> an
     let nodes = client_handler.send_and_get("cluster nodes", 3);
     assert_eq!(nodes.len(), 3);
 
-    let mut leader_nodes = Vec::new();
     std::fs::read_to_string(&env.topology_path)
         .unwrap()
         .lines()
-        .for_each(|line| leader_nodes.push(line.to_string()));
-
-    for node in leader_nodes {
-        assert!(nodes.contains(&node));
-    }
+        .for_each(|line| assert!(nodes.contains(&line.to_string())));
 
     Ok(())
 }

@@ -202,11 +202,9 @@ impl TestProcessChild {
     pub fn timed_wait_for_message(
         &mut self,
         target: Vec<&str>,
-
         wait_for: u128,
     ) -> anyhow::Result<()> {
         let read = self.process.stdout.as_mut().unwrap();
-
         wait_for_message(read, target, Some(wait_for))
     }
 }
