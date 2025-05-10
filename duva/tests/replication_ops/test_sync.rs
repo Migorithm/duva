@@ -12,7 +12,7 @@ fn run_full_sync_on_newly_added_replica(with_append_only: bool) -> anyhow::Resul
 
     // WHEN run replica
     let repl_env = ServerEnv::default()
-        .with_leader_bind_addr(leader_p.bind_addr())
+        .with_bind_addr(leader_p.bind_addr())
         .with_append_only(with_append_only);
 
     let mut replica_process = spawn_server_process(&repl_env, true)?;

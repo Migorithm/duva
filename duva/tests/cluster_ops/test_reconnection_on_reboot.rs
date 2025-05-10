@@ -1,14 +1,12 @@
-use crate::common::{Client, ServerEnv, spawn_server_process};
+use crate::common::{Client, ServerEnv, form_cluster, spawn_server_process};
 
 fn run_reconnection_on_reboot(with_append_only: bool) -> anyhow::Result<()> {
     // GIVEN
-    let env1 = ServerEnv::default().with_append_only(with_append_only);
-    let mut p1 = spawn_server_process(&env1, true)?;
+    let mut env1 = ServerEnv::default().with_append_only(with_append_only);
+    let mut env2 = ServerEnv::default().with_append_only(with_append_only);
 
-    let env2 = ServerEnv::default()
-        .with_leader_bind_addr(p1.bind_addr())
-        .with_append_only(with_append_only);
-    let mut p2 = spawn_server_process(&env2, true)?;
+    // Form cluster with leader and replica
+    let [mut p1, mut p2] = form_cluster([&mut env1, &mut env2], true);
 
     p2.wait_for_message(&p1.heartbeat_msg(0))?;
     p1.wait_for_message(&p2.heartbeat_msg(0))?;
@@ -21,11 +19,9 @@ fn run_reconnection_on_reboot(with_append_only: bool) -> anyhow::Result<()> {
     drop(cli_to_p1);
 
     p2.kill()?;
-    // WHEN running repl without p1 bind address
-    let env2 = ServerEnv::default()
-        .with_topology_path(env2.topology_path)
-        .with_append_only(with_append_only);
 
+    // WHEN running repl without p1 bind address
+    let env2 = env2.clone();
     p2 = spawn_server_process(&env2, true)?;
 
     //THEN
