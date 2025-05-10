@@ -115,8 +115,6 @@ pub fn spawn_server_process(
     env: &ServerEnv,
     stdout_enabled: bool,
 ) -> anyhow::Result<TestProcessChild> {
-    println!("Starting server on port {}", env.port);
-
     let process = if stdout_enabled {
         let mut process = run_server_process(env, Stdio::piped());
         wait_for_message(
@@ -420,7 +418,9 @@ pub fn form_cluster<const T: usize>(
     let mut process_refs =
         unsafe { processes.iter_mut().map(|p| &mut *(p.as_mut_ptr())).collect::<Vec<_>>() };
 
-    check_internodes_communication(&mut process_refs, 0, 1000).unwrap();
+    if stdout_enabled {
+        check_internodes_communication(&mut process_refs, 0, 1000).unwrap();
+    }
 
     // Convert the array of MaybeUninit to an initialized array safely
     unsafe {

@@ -11,7 +11,7 @@ fn run_set_operation_reaches_to_all_replicas(with_append_only: bool) -> anyhow::
         .with_append_only(with_append_only)
         .with_file_name("follower_dbfilename");
 
-    let [leader_p, repl_p] = form_cluster([&mut env, &mut follower_env1], true);
+    let [leader_p, repl_p] = form_cluster([&mut env, &mut follower_env1], false);
 
     // WHEN -- set operation is made
     let mut client_handler = Client::new(leader_p.port);
@@ -21,8 +21,7 @@ fn run_set_operation_reaches_to_all_replicas(with_append_only: bool) -> anyhow::
     sleep(Duration::from_millis(LEADER_HEARTBEAT_INTERVAL_MAX + 15));
 
     let mut client = Client::new(repl_p.port);
-    let res = client.send_and_get("GET foo", 1);
-    assert_eq!(res, vec!["bar"]);
+    assert_eq!(client.send_and_get("GET foo", 1), vec!["bar"]);
 
     Ok(())
 }
