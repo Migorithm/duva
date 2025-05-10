@@ -4,7 +4,9 @@ mod test_exists;
 
 mod test_append;
 mod test_decr;
+mod test_decrby;
 mod test_incr;
+mod test_incrby;
 mod test_keys;
 mod test_replication_info;
 mod test_set_get;

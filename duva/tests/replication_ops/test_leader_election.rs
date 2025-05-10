@@ -10,7 +10,7 @@ fn run_leader_election(with_append_only: bool) -> anyhow::Result<()> {
     let mut follower_env2 = ServerEnv::default().with_append_only(with_append_only);
 
     let [mut leader_p, follower_p1, follower_p2] =
-        form_cluster([&mut leader_env, &mut follower_env1, &mut follower_env2], true);
+        form_cluster([&mut leader_env, &mut follower_env1, &mut follower_env2], false);
 
     // WHEN
     leader_p.kill()?;
@@ -20,8 +20,8 @@ fn run_leader_election(with_append_only: bool) -> anyhow::Result<()> {
     let mut flag = false;
     for f in [&follower_p1, &follower_p2] {
         let mut handler = Client::new(f.port);
-        let response1 = handler.send_and_get("info replication", 4);
-        if response1.contains(&"role:leader".to_string()) {
+        let res = handler.send_and_get("info replication", 4);
+        if res.contains(&"role:leader".to_string()) {
             flag = true;
             break;
         }
@@ -41,7 +41,7 @@ fn run_set_twice_after_election(with_append_only: bool) -> anyhow::Result<()> {
     let mut follower_env2 = ServerEnv::default().with_append_only(with_append_only);
 
     let [mut leader_p, follower_p1, follower_p2] =
-        form_cluster([&mut leader_env, &mut follower_env1, &mut follower_env2], true);
+        form_cluster([&mut leader_env, &mut follower_env1, &mut follower_env2], false);
 
     // WHEN
     leader_p.kill()?;
@@ -73,7 +73,7 @@ fn run_leader_election_twice(with_append_only: bool) -> anyhow::Result<()> {
     let mut follower_env2 = ServerEnv::default().with_append_only(with_append_only);
 
     let [mut leader_p, follower_p1, follower_p2] =
-        form_cluster([&mut leader_env, &mut follower_env1, &mut follower_env2], true);
+        form_cluster([&mut leader_env, &mut follower_env1, &mut follower_env2], false);
 
     // !first leader is killed -> election happens
     leader_p.kill()?;
@@ -91,7 +91,7 @@ fn run_leader_election_twice(with_append_only: bool) -> anyhow::Result<()> {
 
         let follower_env3 =
             ServerEnv::default().with_bind_addr(f.bind_addr()).with_append_only(with_append_only);
-        let new_process = spawn_server_process(&follower_env3, true)?;
+        let new_process = spawn_server_process(&follower_env3, false)?;
         sleep(Duration::from_millis(LEADER_HEARTBEAT_INTERVAL_MAX));
 
         // WHEN

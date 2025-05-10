@@ -29,6 +29,8 @@ pub enum ClientAction {
     Decr { key: String },
     Ttl { key: String },
     ClusterMeet(PeerIdentifier),
+    IncrBy { key: String, increment: i64 },
+    DecrBy { key: String, decrement: i64 },
 }
 
 impl ClientAction {
@@ -229,6 +231,20 @@ pub fn extract_action(action: &str, args: &[&str]) -> anyhow::Result<ClientActio
         "TTL" => {
             require_exact_args(1)?;
             Ok(ClientAction::Ttl { key: args[0].to_string() })
+        },
+        "INCRBY" => {
+            require_exact_args(2)?;
+
+            let key = args[0].to_string();
+            let increment = args[1].parse()?;
+            Ok(ClientAction::IncrBy { key, increment })
+        },
+        "DECRBY" => {
+            require_exact_args(2)?;
+
+            let key = args[0].to_string();
+            let decrement = args[1].parse()?;
+            Ok(ClientAction::DecrBy { key, decrement })
         },
         // Add other commands as needed
         unknown_cmd => Err(anyhow::anyhow!(

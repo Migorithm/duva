@@ -122,6 +122,46 @@ impl CacheActor {
         let _ = callback.send(Ok(curr + delta));
         val.value = (curr + delta).to_string();
     }
+
+    pub(crate) fn incr_by(
+        &mut self,
+        key: String,
+        increment: i64,
+        callback: oneshot::Sender<anyhow::Result<i64>>,
+    ) {
+        let val = self
+            .cache
+            .entry(key.clone())
+            .or_insert(CacheValue { value: "0".to_string(), expiry: None });
+
+        let Ok(curr) = val.value.parse::<i64>() else {
+            let _ = callback.send(Err(anyhow::anyhow!("ERR value is not an integer or out of range")));
+            return;
+        };
+
+        let _ = callback.send(Ok(curr + increment));
+        val.value = (curr + increment).to_string();
+    }
+
+    pub(crate) fn decr_by(
+        &mut self,
+        key: String,
+        decrement: i64,
+        callback: oneshot::Sender<anyhow::Result<i64>>,
+    ) {
+        let val = self
+            .cache
+            .entry(key.clone())
+            .or_insert(CacheValue { value: "0".to_string(), expiry: None });
+
+        let Ok(curr) = val.value.parse::<i64>() else {
+            let _ = callback.send(Err(anyhow::anyhow!("ERR value is not an integer or out of range")));
+            return;
+        };
+
+        let _ = callback.send(Ok(curr - decrement));
+        val.value = (curr - decrement).to_string();
+    }
 }
 
 #[derive(Default)]
@@ -174,7 +214,9 @@ impl CacheDb {
         }
         CacheDb { inner: extracted, keys_with_expiry: extracted_keys_with_expiry }
     }
+
 }
+
 #[derive(Clone, Debug)]
 pub(crate) struct CacheCommandSender(pub(crate) mpsc::Sender<CacheCommand>);
 
