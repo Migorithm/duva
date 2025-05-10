@@ -6,7 +6,7 @@ fn run_cluster_topology_change_when_new_node_added(with_append_only: bool) -> an
     let mut repl_env = ServerEnv::default().with_append_only(with_append_only);
 
     // Form cluster with leader and replica
-    let [leader_p, _] = form_cluster(&mut [&mut env, &mut repl_env], true);
+    let [leader_p, _] = form_cluster([&mut env, &mut repl_env], true);
 
     let cmd = "cluster info";
 

@@ -10,7 +10,7 @@ fn run_leader_election(with_append_only: bool) -> anyhow::Result<()> {
     let mut follower_env2 = ServerEnv::default().with_append_only(with_append_only);
 
     let [mut leader_p, follower_p1, follower_p2] =
-        form_cluster(&mut [&mut leader_env, &mut follower_env1, &mut follower_env2], true);
+        form_cluster([&mut leader_env, &mut follower_env1, &mut follower_env2], true);
 
     // WHEN
     leader_p.kill()?;
@@ -41,7 +41,7 @@ fn run_set_twice_after_election(with_append_only: bool) -> anyhow::Result<()> {
     let mut follower_env2 = ServerEnv::default().with_append_only(with_append_only);
 
     let [mut leader_p, follower_p1, follower_p2] =
-        form_cluster(&mut [&mut leader_env, &mut follower_env1, &mut follower_env2], true);
+        form_cluster([&mut leader_env, &mut follower_env1, &mut follower_env2], true);
 
     // WHEN
     leader_p.kill()?;
@@ -73,7 +73,7 @@ fn run_leader_election_twice(with_append_only: bool) -> anyhow::Result<()> {
     let mut follower_env2 = ServerEnv::default().with_append_only(with_append_only);
 
     let [mut leader_p, follower_p1, follower_p2] =
-        form_cluster(&mut [&mut leader_env, &mut follower_env1, &mut follower_env2], true);
+        form_cluster([&mut leader_env, &mut follower_env1, &mut follower_env2], true);
 
     // !first leader is killed -> election happens
     leader_p.kill()?;

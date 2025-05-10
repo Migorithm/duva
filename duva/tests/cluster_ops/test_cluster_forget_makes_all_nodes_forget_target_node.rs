@@ -11,8 +11,7 @@ fn run_cluster_forget_makes_all_nodes_forget_target_node(
     let mut repl_env = ServerEnv::default().with_hf(10).with_append_only(with_append_only);
     let mut repl_env2 = ServerEnv::default().with_hf(10).with_append_only(with_append_only);
 
-    let [leader_p, repl_p, repl_p2] =
-        form_cluster(&mut [&mut env, &mut repl_env, &mut repl_env2], true);
+    let [leader_p, repl_p, repl_p2] = form_cluster([&mut env, &mut repl_env, &mut repl_env2], true);
 
     // WHEN
     let mut client_handler = Client::new(leader_p.port);

@@ -400,7 +400,7 @@ impl Drop for Client {
 }
 
 pub fn form_cluster<const T: usize>(
-    envs: &mut [&mut ServerEnv; T],
+    envs: [&mut ServerEnv; T],
     stdout_enabled: bool,
 ) -> [TestProcessChild; T] {
     // Using MaybeUninit to create an uninitialized array

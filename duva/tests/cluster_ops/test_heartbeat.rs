@@ -15,7 +15,7 @@ fn run_heartbeat_hop_count_decreases_over_time(with_append_only: bool) -> anyhow
     let mut repl_env2 = ServerEnv::default().with_append_only(with_append_only);
 
     // Form cluster with leader and replica
-    let cluster = form_cluster(&mut [&mut env, &mut repl_env, &mut repl_env2], true);
+    let cluster = form_cluster([&mut env, &mut repl_env, &mut repl_env2], true);
 
     // WHEN run third follower
     let repl_env3 = ServerEnv::default()
@@ -48,7 +48,7 @@ fn run_heartbeat_hop_count_starts_with_0(with_append_only: bool) -> anyhow::Resu
 
     // WHEN
     // Form cluster with leader and replica
-    let mut cluster = form_cluster(&mut [&mut env, &mut repl_env, &mut repl_env2], true);
+    let mut cluster = form_cluster([&mut env, &mut repl_env, &mut repl_env2], true);
 
     // THEN
     // ! no node should have hop_count 1

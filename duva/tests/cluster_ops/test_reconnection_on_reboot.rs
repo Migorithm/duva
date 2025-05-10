@@ -6,7 +6,7 @@ fn run_reconnection_on_reboot(with_append_only: bool) -> anyhow::Result<()> {
     let mut env2 = ServerEnv::default().with_append_only(with_append_only);
 
     // Form cluster with leader and replica
-    let [mut p1, mut p2] = form_cluster(&mut [&mut env1, &mut env2], true);
+    let [mut p1, mut p2] = form_cluster([&mut env1, &mut env2], true);
 
     p2.wait_for_message(&p1.heartbeat_msg(0))?;
     p1.wait_for_message(&p2.heartbeat_msg(0))?;
