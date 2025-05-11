@@ -166,6 +166,8 @@ pub(crate) fn dynamic_hints() -> HashMap<&'static str, Vec<DynamicHint>> {
         vec![hint!("key value", 0), hint!("value", 1), hint!("[px expr]", 2), hint!("expr", 3)],
     );
     map.insert("append", vec![hint!("key value", 0), hint!("value", 1)]);
+    map.insert("incrby", vec![hint!("key increment", 0), hint!("increment", 1)]);
+    map.insert("decrby", vec![hint!("key decrement", 0), hint!("decrement", 1)]);
 
     map.insert("cluster forget", vec![hint!("node", 0)]);
     map.insert("cluster meet", vec![hint!("node", 0)]);
