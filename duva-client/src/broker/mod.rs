@@ -95,6 +95,8 @@ impl Broker {
                 | ClientAction::Decr { .. }
                 | ClientAction::Ttl { .. }
                 | ClientAction::Save
+                | ClientAction::DecrBy { .. }
+                | ClientAction::IncrBy { .. }
         ) {
             if let QueryIO::SimpleString(v) = query_io {
                 let s = v.split('|').next_back().unwrap();
