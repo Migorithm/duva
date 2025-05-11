@@ -107,7 +107,7 @@ impl CacheManager {
                 self.route_append(key, value).await?;
             },
             WriteRequest::Decr { key, delta } => {
-                self.route_numeric_delta(key, delta, log_index).await?;
+                self.route_numeric_delta(key, -delta, log_index).await?;
             },
             WriteRequest::Incr { key, delta } => {
                 self.route_numeric_delta(key, delta, log_index).await?;

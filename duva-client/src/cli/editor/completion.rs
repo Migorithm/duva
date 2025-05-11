@@ -19,7 +19,9 @@ pub(crate) static COMMANDS: &[&str] = &[
     "exists",
     "del",
     "incr",
+    "incrby",
     "decr",
+    "decrby",
     "ttl",
     // subcommands
     "cluster info",
@@ -117,6 +119,20 @@ impl Completer for DuvaHinter {
                 } else if previous_words.len() == 3 {
                     // Suggest "px expr" after set key value
                     candidates.push(new_pair!("px expr"));
+                }
+            },
+
+            "incrby" | "decrby" => {
+                if previous_words.len() == 1 {
+                    // Suggest "key" after set
+                    candidates.push(new_pair!("key"));
+                } else if previous_words.len() == 2 {
+                    // Suggest "value" after set key
+                    if command == "incrby" {
+                        candidates.push(new_pair!("increment"));
+                    } else {
+                        candidates.push(new_pair!("decrement"));
+                    }
                 }
             },
             "exists" | "del" => {

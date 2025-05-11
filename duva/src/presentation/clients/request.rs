@@ -29,6 +29,8 @@ pub enum ClientAction {
     Decr { key: String },
     Ttl { key: String },
     ClusterMeet(PeerIdentifier),
+    IncrBy { key: String, increment: i64 },
+    DecrBy { key: String, decrement: i64 },
 }
 
 impl ClientAction {
@@ -52,8 +54,28 @@ impl ClientAction {
             ClientAction::Delete { keys } => Some(WriteRequest::Delete { keys: keys.clone() }),
             ClientAction::Incr { key } => Some(WriteRequest::Incr { key: key.clone(), delta: 1 }),
             ClientAction::Decr { key } => Some(WriteRequest::Decr { key: key.clone(), delta: 1 }),
+            ClientAction::IncrBy { key, increment } => {
+                Some(WriteRequest::Incr { key: key.clone(), delta: *increment })
+            },
+            ClientAction::DecrBy { key, decrement } => {
+                Some(WriteRequest::Decr { key: key.clone(), delta: *decrement })
+            },
             _ => None,
         }
+    }
+
+    pub fn is_updating_action(&self) -> bool {
+        matches!(
+            self,
+            ClientAction::Set { .. }
+                | ClientAction::Append { .. }
+                | ClientAction::Delete { .. }
+                | ClientAction::Incr { .. }
+                | ClientAction::Decr { .. }
+                | ClientAction::IncrBy { .. }
+                | ClientAction::DecrBy { .. }
+                | ClientAction::Save
+        )
     }
 }
 
@@ -229,6 +251,20 @@ pub fn extract_action(action: &str, args: &[&str]) -> anyhow::Result<ClientActio
         "TTL" => {
             require_exact_args(1)?;
             Ok(ClientAction::Ttl { key: args[0].to_string() })
+        },
+        "INCRBY" => {
+            require_exact_args(2)?;
+
+            let key = args[0].to_string();
+            let increment = args[1].parse()?;
+            Ok(ClientAction::IncrBy { key, increment })
+        },
+        "DECRBY" => {
+            require_exact_args(2)?;
+
+            let key = args[0].to_string();
+            let decrement = args[1].parse()?;
+            Ok(ClientAction::DecrBy { key, decrement })
         },
         // Add other commands as needed
         unknown_cmd => Err(anyhow::anyhow!(
