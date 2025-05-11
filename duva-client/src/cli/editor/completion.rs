@@ -109,7 +109,7 @@ impl Completer for DuvaHinter {
                     );
                 }
             },
-            "set" => {
+            "set" | "incrby" | "decrby" => {
                 if previous_words.len() == 1 {
                     // Suggest "key" after set
                     candidates.push(new_pair!("key"));
