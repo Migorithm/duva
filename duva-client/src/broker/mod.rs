@@ -45,7 +45,9 @@ impl Broker {
                         continue;
                     };
 
-                    self.update_req_id(&input.kind, &query_io);
+                    if let Some(index) = self.extract_req_id(&input.kind, &query_io) {
+                        self.request_id = index;
+                    };
 
                     input.callback.send((input.kind, query_io)).unwrap_or_else(|_| {
                         println!("Failed to send response to input callback");
@@ -86,27 +88,20 @@ impl Broker {
 
     // TODO The current implementation requires some refactoring.
     // * Current rule: s:value-idx:index_num
-    fn update_req_id(&mut self, kind: &ClientAction, query_io: &QueryIO) {
-        if matches!(
-            kind,
-            ClientAction::Set { .. }
-                | ClientAction::Delete { .. }
-                | ClientAction::Incr { .. }
-                | ClientAction::Decr { .. }
-                | ClientAction::Ttl { .. }
-                | ClientAction::Save
-                | ClientAction::DecrBy { .. }
-                | ClientAction::IncrBy { .. }
-        ) {
-            if let QueryIO::SimpleString(v) = query_io {
-                let s = v.split('|').next_back().unwrap();
-                if let Ok(index) = s.split(':').next_back().unwrap().parse::<u64>() {
-                    if index > self.request_id {
-                        self.request_id = index;
-                    }
-                }
-            }
-        };
+    fn extract_req_id(&mut self, kind: &ClientAction, query_io: &QueryIO) -> Option<u64> {
+        if !kind.is_updating_action() {
+            return None;
+        }
+        match query_io {
+            QueryIO::SimpleString(v) => v
+                .rsplit('|')
+                .next()
+                .and_then(|s| s.rsplit(':').next())
+                .and_then(|id| id.parse::<u64>().ok())
+                .filter(|&id| id > self.request_id),
+            QueryIO::Err(_) => Some(self.request_id + 1),
+            _ => None,
+        }
     }
 
     pub(crate) async fn authenticate(

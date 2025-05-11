@@ -63,6 +63,20 @@ impl ClientAction {
             _ => None,
         }
     }
+
+    pub fn is_updating_action(&self) -> bool {
+        matches!(
+            self,
+            ClientAction::Set { .. }
+                | ClientAction::Append { .. }
+                | ClientAction::Delete { .. }
+                | ClientAction::Incr { .. }
+                | ClientAction::Decr { .. }
+                | ClientAction::IncrBy { .. }
+                | ClientAction::DecrBy { .. }
+                | ClientAction::Save
+        )
+    }
 }
 
 #[derive(Clone, Debug)]
