@@ -131,10 +131,14 @@ impl ClientController {
                 self.cache_manager.route_numeric_delta(key, -1, current_index.unwrap()).await?,
             ),
             ClientAction::IncrBy { key, increment } => QueryIO::SimpleString(
-                self.cache_manager.route_incrby(key, increment).await?.to_string(),
+                self.cache_manager
+                    .route_numeric_delta(key, increment, current_index.unwrap())
+                    .await?,
             ),
             ClientAction::DecrBy { key, decrement } => QueryIO::SimpleString(
-                self.cache_manager.route_decrby(key, decrement).await?.to_string(),
+                self.cache_manager
+                    .route_numeric_delta(key, -decrement, current_index.unwrap())
+                    .await?,
             ),
         };
 

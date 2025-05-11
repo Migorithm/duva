@@ -15,9 +15,10 @@ fn run_decrby(env: ServerEnv) -> anyhow::Result<()> {
     // WHEN: Decrement existing value
     assert_eq!(h.send_and_get("SET b 10", 1), vec!["OK"]);
     assert_eq!(h.send_and_get("DECRBY b 5", 1), vec!["(integer) 5"]);
+    assert_eq!(h.send_and_get("DECRBY b 5", 1), vec!["(integer) 0"]);
 
     // THEN
-    assert_eq!(h.send_and_get("GET b", 1), vec!["5"]);
+    assert_eq!(h.send_and_get("GET b", 1), vec!["0"]);
 
     // WHEN: Try to decrement non-integer value
     assert_eq!(h.send_and_get("SET c not_a_number", 1), vec!["OK"]);

@@ -66,12 +66,6 @@ impl CacheActor {
                 CacheCommand::NumericDetla { key, delta, callback } => {
                     self.numeric_delta(key, delta, callback);
                 },
-                CacheCommand::IncrBy { key, increment, callback } => {
-                    self.incr_by(key, increment, callback);
-                },
-                CacheCommand::DecrBy { key, decrement, callback } => {
-                    self.decr_by(key, decrement, callback);
-                },
             }
         }
         Ok(self)

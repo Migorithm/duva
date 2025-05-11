@@ -19,7 +19,9 @@ pub(crate) static COMMANDS: &[&str] = &[
     "exists",
     "del",
     "incr",
+    "incrby",
     "decr",
+    "decrby",
     "ttl",
     // subcommands
     "cluster info",

@@ -15,9 +15,10 @@ fn run_incrby(env: ServerEnv) -> anyhow::Result<()> {
     // WHEN: Increment existing value
     assert_eq!(h.send_and_get("SET b 10", 1), vec!["OK"]);
     assert_eq!(h.send_and_get("INCRBY b 5", 1), vec!["(integer) 15"]);
+    assert_eq!(h.send_and_get("INCRBY b 5", 1), vec!["(integer) 20"]);
 
     // THEN
-    assert_eq!(h.send_and_get("GET b", 1), vec!["15"]);
+    assert_eq!(h.send_and_get("GET b", 1), vec!["20"]);
 
     // WHEN: Try to increment non-integer value
     assert_eq!(h.send_and_get("SET c not_a_number", 1), vec!["OK"]);
