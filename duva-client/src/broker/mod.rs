@@ -86,13 +86,16 @@ impl Broker {
         command
     }
 
-    // TODO The current implementation requires some refactoring.
-    // * Current rule: s:value-idx:index_num
+    // ! CONSIDER IDEMPOTENCY RULE
+    // !
+    // ! If request is updating action yet receive error, we need to increase the request id
+    // ! otherwise, server will not be able to process the next command
     fn extract_req_id(&mut self, kind: &ClientAction, query_io: &QueryIO) -> Option<u64> {
         if !kind.is_updating_action() {
             return None;
         }
         match query_io {
+            // * Current rule: s:value-idx:index_num
             QueryIO::SimpleString(v) => v
                 .rsplit('|')
                 .next()
