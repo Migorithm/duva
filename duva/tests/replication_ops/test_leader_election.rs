@@ -20,7 +20,7 @@ fn run_leader_election(with_append_only: bool) -> anyhow::Result<()> {
     let mut flag = false;
     for f in [&follower_p1, &follower_p2] {
         let mut handler = Client::new(f.port);
-        let res = handler.send_and_get("info replication", 4);
+        let res = handler.send_and_get_vec("info replication", 4);
         if res.contains(&"role:leader".to_string()) {
             flag = true;
             break;
@@ -50,11 +50,11 @@ fn run_set_twice_after_election(with_append_only: bool) -> anyhow::Result<()> {
     let mut flag = false;
     for f in [&follower_p1, &follower_p2] {
         let mut handler = Client::new(f.port);
-        let res = handler.send_and_get("info replication", 4);
+        let res = handler.send_and_get_vec("info replication", 4);
         if res.contains(&"role:leader".to_string()) {
             // THEN - one of the replicas should become the leader
-            assert_eq!(handler.send_and_get("set 1 2", 1).first().unwrap(), "OK");
-            assert_eq!(handler.send_and_get("set 2 3", 1).first().unwrap(), "OK");
+            assert_eq!(handler.send_and_get("set 1 2"), "OK");
+            assert_eq!(handler.send_and_get("set 2 3"), "OK");
 
             flag = true;
             break;
@@ -83,7 +83,7 @@ fn run_leader_election_twice(with_append_only: bool) -> anyhow::Result<()> {
 
     for mut f in [follower_p1, follower_p2] {
         let mut handler = Client::new(f.port);
-        let res = handler.send_and_get("info replication", 4);
+        let res = handler.send_and_get_vec("info replication", 4);
         if !res.contains(&"role:leader".to_string()) {
             processes.push(f);
             continue;
@@ -105,7 +105,7 @@ fn run_leader_election_twice(with_append_only: bool) -> anyhow::Result<()> {
     let mut flag = false;
     for f in processes.iter() {
         let mut handler = Client::new(f.port);
-        let res = handler.send_and_get("info replication", 4);
+        let res = handler.send_and_get_vec("info replication", 4);
         if res.contains(&"role:leader".to_string()) {
             flag = true;
             break;

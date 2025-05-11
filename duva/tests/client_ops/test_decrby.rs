@@ -6,35 +6,32 @@ fn run_decrby(env: ServerEnv) -> anyhow::Result<()> {
     let mut h = Client::new(process.port);
 
     // WHEN: Basic decrement
-    assert_eq!(h.send_and_get("SET a 10", 1), vec!["OK"]);
-    assert_eq!(h.send_and_get("DECRBY a 5", 1), vec!["(integer) 5"]);
+    assert_eq!(h.send_and_get("SET a 10"), "OK");
+    assert_eq!(h.send_and_get("DECRBY a 5"), "(integer) 5");
 
     // THEN
-    assert_eq!(h.send_and_get("GET a", 1), vec!["5"]);
+    assert_eq!(h.send_and_get("GET a"), "5");
 
     // WHEN: Decrement existing value
-    assert_eq!(h.send_and_get("SET b 10", 1), vec!["OK"]);
-    assert_eq!(h.send_and_get("DECRBY b 5", 1), vec!["(integer) 5"]);
-    assert_eq!(h.send_and_get("DECRBY b 5", 1), vec!["(integer) 0"]);
+    assert_eq!(h.send_and_get("SET b 10"), "OK");
+    assert_eq!(h.send_and_get("DECRBY b 5"), "(integer) 5");
+    assert_eq!(h.send_and_get("DECRBY b 5"), "(integer) 0");
 
     // THEN
-    assert_eq!(h.send_and_get("GET b", 1), vec!["0"]);
+    assert_eq!(h.send_and_get("GET b"), "0");
 
     // WHEN: Try to decrement non-integer value
-    assert_eq!(h.send_and_get("SET c not_a_number", 1), vec!["OK"]);
+    assert_eq!(h.send_and_get("SET c not_a_number"), "OK");
 
     // THEN
-    assert_eq!(
-        h.send_and_get("DECRBY c 1", 1),
-        vec!["(error) ERR value is not an integer or out of range"]
-    );
+    assert_eq!(h.send_and_get("DECRBY c 1"), "(error) ERR value is not an integer or out of range");
 
     // WHEN: Decrement with negative value (should increment)
-    assert_eq!(h.send_and_get("SET d 5", 1), vec!["OK"]);
-    assert_eq!(h.send_and_get("DECRBY d -3", 1), vec!["(integer) 8"]);
+    assert_eq!(h.send_and_get("SET d 5"), "OK");
+    assert_eq!(h.send_and_get("DECRBY d -3"), "(integer) 8");
 
     // THEN
-    assert_eq!(h.send_and_get("GET d", 1), vec!["8"]);
+    assert_eq!(h.send_and_get("GET d"), "8");
 
     Ok(())
 }

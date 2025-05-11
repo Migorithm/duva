@@ -7,13 +7,13 @@ fn run_ttl(env: ServerEnv) -> anyhow::Result<()> {
     let mut h = Client::new(process.port);
 
     // WHEN - set key with expiry
-    assert_eq!(h.send_and_get("SET somanyrand bar PX 5000", 1), vec!["OK"]);
+    assert_eq!(h.send_and_get("SET somanyrand bar PX 5000"), "OK");
     std::thread::sleep(tokio::time::Duration::from_millis(10)); // slight delay so seconds gets floored
-    let res = h.send_and_get("TTL somanyrand", 1);
+    let res = h.send_and_get("TTL somanyrand");
 
     // THEN
-    assert_eq!(res, vec!["(integer) 4"]);
-    assert_eq!(h.send_and_get("TTL non_existing_key", 1), vec!["(integer) -1"]);
+    assert_eq!(res, "(integer) 4");
+    assert_eq!(h.send_and_get("TTL non_existing_key"), "(integer) -1");
 
     Ok(())
 }

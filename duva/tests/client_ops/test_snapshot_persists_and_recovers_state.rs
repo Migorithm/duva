@@ -10,16 +10,16 @@ fn run_snapshot_persists_and_recovers_state(env: ServerEnv) -> anyhow::Result<()
     let mut h = Client::new(leader_process.port);
 
     // WHEN
-    let res = h.send_and_get("SET foo bar", 1);
-    assert_eq!(res, vec!["OK"]);
-    assert_eq!(h.send_and_get("SET foo2 bar2 PX 9999999999", 1), vec!["OK"]);
-    assert_eq!(h.send_and_get("KEYS *", 2), vec!["0) \"foo2\"", "1) \"foo\""]);
+    let res = h.send_and_get("SET foo bar");
+    assert_eq!(res, "OK");
+    assert_eq!(h.send_and_get("SET foo2 bar2 PX 9999999999"), "OK");
+    assert_eq!(h.send_and_get_vec("KEYS *", 2), vec!["0) \"foo2\"", "1) \"foo\""]);
 
     // pre load replication info for comparison
-    let old_info = h.send_and_get("INFO replication", 4);
+    let old_info = h.send_and_get_vec("INFO replication", 4);
 
     // WHEN
-    assert_eq!(h.send_and_get("SAVE", 1), vec!["(nil)"]);
+    assert_eq!(h.send_and_get("SAVE"), "(nil)");
 
     // kill leader process
     let _ = leader_process.terminate();
@@ -28,10 +28,10 @@ fn run_snapshot_persists_and_recovers_state(env: ServerEnv) -> anyhow::Result<()
     let new_process = spawn_server_process(&env, false)?;
 
     let mut client = Client::new(new_process.port);
-    assert_eq!(client.send_and_get("KEYS *", 2), vec!["0) \"foo2\"", "1) \"foo\""]);
+    assert_eq!(client.send_and_get_vec("KEYS *", 2), vec!["0) \"foo2\"", "1) \"foo\""]);
 
     // replication info
-    let new_info = client.send_and_get("INFO replication", 4);
+    let new_info = client.send_and_get_vec("INFO replication", 4);
 
     // THEN
     assert_eq!(old_info, new_info);

@@ -12,10 +12,10 @@ fn run_config_get_dir(env: ServerEnv) -> anyhow::Result<()> {
     let mut h = Client::new(process.port);
 
     // WHEN
-    let res = h.send_and_get("CONFIG get dir", 1);
+    let res = h.send_and_get("CONFIG get dir");
 
     // THEN
-    assert_eq!(res.first().unwrap(), &format!("dir {}", env.dir.path().display()));
+    assert_eq!(res, format!("dir {}", env.dir.path().display()));
 
     Ok(())
 }

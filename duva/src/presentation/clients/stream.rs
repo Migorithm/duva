@@ -8,7 +8,7 @@ use tokio::{
     net::tcp::{OwnedReadHalf, OwnedWriteHalf},
     sync::mpsc::Sender,
 };
-use tracing::{error, instrument, warn};
+use tracing::{error, instrument};
 use uuid::Uuid;
 pub struct ClientStreamReader {
     pub(crate) r: OwnedReadHalf,
