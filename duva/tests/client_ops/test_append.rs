@@ -16,22 +16,19 @@ fn test_append() -> anyhow::Result<()> {
     let second = "World!";
 
     // WHEN - append first value
-    assert_eq!(
-        h.send_and_get(format!("APPEND appended_one {first}"), 1),
-        vec![first.len().to_string()]
-    );
+    assert_eq!(h.send_and_get(format!("APPEND appended_one {first}")), first.len().to_string());
     // THEN
-    let res = h.send_and_get("GET appended_one", 1);
-    assert_eq!(res, vec!["Hello"]);
+    let res = h.send_and_get("GET appended_one");
+    assert_eq!(res, "Hello");
 
     // WHEN - append second value
     assert_eq!(
-        h.send_and_get(format!("APPEND appended_one {second}"), 1),
-        vec![(first.len() + second.len()).to_string()]
+        h.send_and_get(format!("APPEND appended_one {second}")),
+        (first.len() + second.len()).to_string()
     );
     // THEN
-    let res = h.send_and_get("GET appended_one", 1);
-    assert_eq!(res, vec!["HelloWorld!"]);
+    let res = h.send_and_get("GET appended_one");
+    assert_eq!(res, "HelloWorld!");
 
     Ok(())
 }

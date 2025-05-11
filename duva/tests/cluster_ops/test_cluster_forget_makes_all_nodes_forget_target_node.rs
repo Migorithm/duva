@@ -16,18 +16,18 @@ fn run_cluster_forget_makes_all_nodes_forget_target_node(
     // WHEN
     let mut client_handler = Client::new(leader_p.port);
     assert_eq!(
-        client_handler.send_and_get(format!("cluster forget {}", &repl_p.bind_addr()), 1),
-        vec!["OK"]
+        client_handler.send_and_get(format!("cluster forget {}", &repl_p.bind_addr())),
+        "OK"
     );
 
     // THEN
-    assert_eq!(client_handler.send_and_get("cluster info", 1), vec!["cluster_known_nodes:1"]);
+    assert_eq!(client_handler.send_and_get_vec("cluster info", 1), vec!["cluster_known_nodes:1"]);
 
     let mut repl_cli = Client::new(repl_p2.port);
 
     std::thread::sleep(std::time::Duration::from_millis(LEADER_HEARTBEAT_INTERVAL_MAX + 1));
 
-    assert_eq!(repl_cli.send_and_get("cluster info", 1), vec!["cluster_known_nodes:1"]);
+    assert_eq!(repl_cli.send_and_get_vec("cluster info", 1), vec!["cluster_known_nodes:1"]);
 
     Ok(())
 }

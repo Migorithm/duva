@@ -12,14 +12,14 @@ fn run_removes_node_when_heartbeat_is_not_received_for_certain_time(
     let [leader_p, mut repl_p] = form_cluster([&mut env, &mut repl_env], false);
 
     let mut h = Client::new(leader_p.port);
-    assert_eq!(h.send_and_get("cluster info", 1), vec!["cluster_known_nodes:1"]);
+    assert_eq!(h.send_and_get_vec("cluster info", 1), vec!["cluster_known_nodes:1"]);
 
     // WHEN
     repl_p.kill()?;
     sleep(Duration::from_secs(2));
 
     //THEN
-    assert_eq!(h.send_and_get("cluster info", 1), vec!["cluster_known_nodes:0"]);
+    assert_eq!(h.send_and_get_vec("cluster info", 1), vec!["cluster_known_nodes:0"]);
 
     Ok(())
 }

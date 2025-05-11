@@ -9,17 +9,17 @@ fn run_del(env: ServerEnv) -> anyhow::Result<()> {
     let process = spawn_server_process(&env, false)?;
 
     let mut h = Client::new(process.port);
-    assert_eq!(h.send_and_get("SET a b", 1), vec!["OK"]);
-    assert_eq!(h.send_and_get("SET c d", 1), vec!["OK"]);
+    assert_eq!(h.send_and_get("SET a b"), "OK");
+    assert_eq!(h.send_and_get("SET c d"), "OK");
 
     // WHEN - set key with expiry
-    assert_eq!(h.send_and_get("del a c d", 1), vec!["(integer) 2"]);
+    assert_eq!(h.send_and_get("del a c d"), "(integer) 2");
 
-    assert_eq!(h.send_and_get("get a", 1), vec!["(nil)"]);
+    assert_eq!(h.send_and_get("get a"), "(nil)");
 
     // THEN
-    let res = h.send_and_get("GET somanyrand", 1);
-    assert_eq!(res, vec!["(nil)"]);
+    let res = h.send_and_get("GET somanyrand");
+    assert_eq!(res, "(nil)");
 
     Ok(())
 }

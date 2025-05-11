@@ -11,15 +11,15 @@ fn run_set_get(env: ServerEnv) -> anyhow::Result<()> {
     let mut h = Client::new(process.port);
 
     // WHEN - set key with expiry
-    assert_eq!(h.send_and_get("SET somanyrand bar PX 300", 1), vec!["OK"]);
-    let res = h.send_and_get("GET somanyrand", 1);
-    assert_eq!(res, vec!["bar"]);
+    assert_eq!(h.send_and_get("SET somanyrand bar PX 300"), "OK");
+    let res = h.send_and_get("GET somanyrand");
+    assert_eq!(res, "bar");
 
     std::thread::sleep(std::time::Duration::from_millis(300));
 
     // THEN
-    let res = h.send_and_get("GET somanyrand", 1);
-    assert_eq!(res, vec!["(nil)"]);
+    let res = h.send_and_get("GET somanyrand");
+    assert_eq!(res, "(nil)");
 
     Ok(())
 }

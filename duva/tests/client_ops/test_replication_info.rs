@@ -10,7 +10,7 @@ fn run_replication_info(env: ServerEnv) -> anyhow::Result<()> {
     let mut h = Client::new(process.port);
 
     // WHEN
-    let res = h.send_and_get("INFO replication", 4);
+    let res = h.send_and_get_vec("INFO replication", 4);
 
     // THEN
     assert_eq!(res[0], "role:leader");

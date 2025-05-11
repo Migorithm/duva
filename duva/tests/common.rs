@@ -4,10 +4,12 @@ use bytes::Bytes;
 
 use duva::domains::query_parsers::query_io::QueryIO;
 use duva::make_smart_pointer;
+use rand::distr::uniform::SampleBorrow;
 
 use std::io::{BufRead, BufReader, Read, Write};
 use std::mem::MaybeUninit;
 use std::net::TcpListener;
+use std::os::fd::{AsRawFd, BorrowedFd, RawFd};
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::process::{Child, ChildStdout, Command};
@@ -134,7 +136,7 @@ pub fn spawn_server_process(
             cnt -= 1;
             std::thread::sleep(std::time::Duration::from_millis(100));
             if let Ok(mut child) = std::panic::catch_unwind(|| Client::new(process.port)) {
-                let res = child.send_and_get("PING", 1);
+                let res = child.send_and_get_vec("PING", 1);
                 if res != vec!["PONG"] {
                     continue;
                 }
@@ -368,7 +370,7 @@ impl Client {
         Ok(line.trim().to_string())
     }
 
-    pub fn send_and_get(&mut self, command: impl AsRef<[u8]>, mut cnt: u16) -> Vec<String> {
+    pub fn send_and_get_vec(&mut self, command: impl AsRef<[u8]>, mut cnt: u16) -> Vec<String> {
         self.send(command.as_ref()).unwrap();
 
         let mut res = vec![];
@@ -379,6 +381,14 @@ impl Client {
             }
         }
         res
+    }
+    pub fn send_and_get(&mut self, command: impl AsRef<[u8]>) -> String {
+        self.send(command.as_ref()).unwrap();
+        loop {
+            if let Ok(line) = self.read() {
+                return line;
+            }
+        }
     }
 
     pub fn terminate(&mut self) -> std::io::Result<()> {

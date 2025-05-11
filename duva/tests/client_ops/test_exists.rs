@@ -9,14 +9,14 @@ fn run_exists(env: ServerEnv) -> anyhow::Result<()> {
     let process = spawn_server_process(&env, false)?;
 
     let mut h = Client::new(process.port);
-    assert_eq!(h.send_and_get("SET a b", 1), vec!["OK"]);
+    assert_eq!(h.send_and_get("SET a b"), "OK");
 
-    assert_eq!(h.send_and_get("SET c d", 1), vec!["OK"]);
+    assert_eq!(h.send_and_get("SET c d"), "OK");
 
     // WHEN & THEN
-    assert_eq!(h.send_and_get("exists a c d", 1), vec!["(integer) 2"]);
+    assert_eq!(h.send_and_get("exists a c d"), "(integer) 2");
 
-    assert_eq!(h.send_and_get("exists x", 1), vec!["(integer) 0"]);
+    assert_eq!(h.send_and_get("exists x"), "(integer) 0");
 
     Ok(())
 }

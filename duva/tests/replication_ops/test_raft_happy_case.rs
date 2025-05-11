@@ -15,13 +15,13 @@ fn run_set_operation_reaches_to_all_replicas(with_append_only: bool) -> anyhow::
 
     // WHEN -- set operation is made
     let mut client_handler = Client::new(leader_p.port);
-    client_handler.send_and_get("SET foo bar", 1);
+    client_handler.send_and_get("SET foo bar");
 
     //THEN
     sleep(Duration::from_millis(LEADER_HEARTBEAT_INTERVAL_MAX + 15));
 
     let mut client = Client::new(repl_p.port);
-    assert_eq!(client.send_and_get("GET foo", 1), vec!["bar"]);
+    assert_eq!(client.send_and_get("GET foo"), "bar");
 
     Ok(())
 }
