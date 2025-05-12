@@ -58,6 +58,7 @@ impl ClusterActor {
                     self.gossip(heartbeat.hop_count, &logger).await;
                     self.update_on_hertbeat_message(&heartbeat.from, heartbeat.hwm);
                 },
+
                 ClusterCommand::ForgetPeer(peer_addr, sender) => {
                     if let Ok(Some(())) = self.forget_peer(peer_addr).await {
                         let _ = sender.send(Some(()));
@@ -66,8 +67,8 @@ impl ClusterActor {
                     }
                 },
                 ClusterCommand::LeaderReqConsensus(req) => {
-                    if let Some(pending_requests) = self.pending_requests.as_mut() {
-                        pending_requests.push_back(req);
+                    if !self.replication.is_leader_mode {
+                        let _ = req.callback.send(err!("Write given to follower"));
                         continue;
                     }
 
@@ -79,7 +80,6 @@ impl ClusterActor {
                         }));
                         continue;
                     };
-
                     self.req_consensus(&mut logger, req).await;
                 },
                 ClusterCommand::ReplicationResponse(repl_res) => {
@@ -124,10 +124,15 @@ impl ClusterActor {
                 },
 
                 ClusterCommand::ClusterMeet(peer_addr, callback) => {
-                    if self.replication.self_identifier() == peer_addr {
-                        let _ = callback.send(err!("invalid operation: cannot join self"));
+                    if !self.replication.is_leader_mode
+                        || self.replication.self_identifier() == peer_addr
+                    {
+                        let _ = callback
+                            .send(err!("wrong address or invalid state for cluster meet command"));
                         continue;
                     }
+
+                    self.cluster_meet(peer_addr, callback).await;
                 },
 
                 ClusterCommand::GetRole(sender) => {

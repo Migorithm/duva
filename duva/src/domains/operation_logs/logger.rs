@@ -32,23 +32,19 @@ impl<T: TWriteAheadLog> ReplicatedLogs<T> {
     pub(crate) async fn write_single_entry(
         &mut self,
         log: &WriteRequest,
-        repl_state: &replication::ReplicationState,
+        current_term: u64,
     ) -> anyhow::Result<()> {
-        if !repl_state.is_leader_mode {
-            return Err(anyhow::anyhow!("Write given to follower"));
-        }
-
         let op = WriteOperation {
             request: log.clone(),
             log_index: (self.last_log_index + 1),
-            term: repl_state.term,
+            term: current_term,
         };
         self.target.append(op).await?;
         self.last_log_index += 1;
 
         // ! Last log term must be updated because
         // ! log consistency check is based on previous log term and index
-        self.last_log_term = repl_state.term;
+        self.last_log_term = current_term;
         Ok(())
     }
 

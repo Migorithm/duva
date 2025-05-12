@@ -312,7 +312,7 @@ impl ClusterActor {
         }
 
         // * Check if the request has already been processed
-        if let Err(err) = logger.write_single_entry(&req.request, &self.replication).await {
+        if let Err(err) = logger.write_single_entry(&req.request, self.replication.term).await {
             let _ = req.callback.send(Err(anyhow::anyhow!(err)));
             return;
         };
@@ -730,6 +730,22 @@ impl ClusterActor {
         let _ = callback.send(Ok(()));
     }
 
+    /// Join existing cluster or node as partition leader
+
+    /// * Leader validation must be on write request kind
+    ///
+    /// 0. Determine how are we going to do with existing logs/states if any?
+    /// 1. discover cluster
+    /// 2. replica-to-replica connection will be made through gossip(Done)
+    ///
+    pub(crate) async fn cluster_meet(
+        &self,
+        peer_addr: PeerIdentifier,
+        callback: tokio::sync::oneshot::Sender<Result<(), anyhow::Error>>,
+    ) {
+        todo!()
+    }
+
     pub(crate) async fn join_peer_network_if_absent(&mut self, cluster_nodes: Vec<PeerState>) {
         let peers = cluster_nodes
             .into_iter()
@@ -1108,7 +1124,7 @@ mod test {
         repl_state.hwm.store(LOWEST_FOLLOWER_COMMIT_INDEX, Ordering::Release);
 
         let log = &WriteRequest::Set { key: "foo4".into(), value: "bar".into(), expires_at: None };
-        logger.write_single_entry(log, &repl_state).await.unwrap();
+        logger.write_single_entry(log, repl_state.term).await.unwrap();
 
         let logs = logger.list_append_log_entries(Some(LOWEST_FOLLOWER_COMMIT_INDEX)).await;
 
@@ -1159,7 +1175,7 @@ mod test {
         logger
             .write_single_entry(
                 &WriteRequest::Set { key: "foo4".into(), value: "bar".into(), expires_at: None },
-                &cluster_actor.replication,
+                cluster_actor.replication.term,
             )
             .await
             .unwrap();
