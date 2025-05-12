@@ -123,7 +123,7 @@ impl ClusterActor {
                     self.replicaof(peer_addr, &mut logger, callback).await;
                 },
 
-                ClusterCommand::ClusterMeet(peer_identifier, sender) => todo!(),
+                ClusterCommand::ClusterMeet(peer_identifier, sender) => unimplemented!(),
                 ClusterCommand::GetRole(sender) => {
                     let _ = sender.send(self.replication.role.clone());
                 },
