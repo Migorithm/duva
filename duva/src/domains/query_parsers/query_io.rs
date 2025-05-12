@@ -1,13 +1,12 @@
 use crate::domains::caches::cache_objects::CacheValue;
 use crate::domains::cluster_actors::commands::{ReplicationResponse, RequestVoteReply};
 use crate::domains::cluster_actors::heartbeats::heartbeat::{AppendEntriesRPC, ClusterHeartBeat};
-
 use crate::domains::{cluster_actors::commands::RequestVote, operation_logs::WriteOperation};
 use crate::prelude::PeerIdentifier;
-
 use anyhow::{Context, Result};
 use bytes::{Bytes, BytesMut};
 use std::fmt::Write;
+
 // ! CURRENTLY, only ascii unicode(0-127) is supported
 const FILE_PREFIX: char = '\u{0066}';
 const SIMPLE_STRING_PREFIX: char = '+';
@@ -412,7 +411,7 @@ impl From<Vec<PeerIdentifier>> for QueryIO {
 }
 
 impl From<()> for QueryIO {
-    fn from(value: ()) -> Self {
+    fn from(_: ()) -> Self {
         QueryIO::Null
     }
 }

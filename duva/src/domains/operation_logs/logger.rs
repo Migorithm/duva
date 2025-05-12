@@ -1,8 +1,5 @@
-use tracing::debug;
-
-use crate::domains::cluster_actors::replication;
-
 use super::{WriteOperation, WriteRequest, interfaces::TWriteAheadLog};
+use tracing::debug;
 
 pub(crate) struct ReplicatedLogs<T: TWriteAheadLog> {
     pub(crate) target: T,

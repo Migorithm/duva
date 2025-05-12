@@ -732,8 +732,6 @@ impl ClusterActor {
 
     /// Join existing cluster or node as partition leader
 
-    /// * Leader validation must be on write request kind
-    ///
     /// 0. Determine how are we going to do with existing logs/states if any?
     /// 1. discover cluster
     /// 2. replica-to-replica connection will be made through gossip(Done)
