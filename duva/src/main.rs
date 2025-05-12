@@ -15,7 +15,7 @@ async fn main() -> anyhow::Result<()> {
     );
 
     //tracing-subscriber::FmtSubscriber, which prints formatted traces to standard output.
-    tracing_subscriber::FmtSubscriber::builder().with_max_level(tracing::Level::DEBUG).init(); // Initialize the subscriber
+    tracing_subscriber::FmtSubscriber::builder().with_max_level(env.log_level).init(); // Initialize the subscriber
 
     // ! should we support type erasure?
 
