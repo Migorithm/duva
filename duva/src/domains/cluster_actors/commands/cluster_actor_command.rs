@@ -49,7 +49,7 @@ pub(crate) enum ClusterCommand {
         replid: ReplicationId,
         hwm: u64,
     },
-    ClusterMeet(PeerIdentifier, tokio::sync::oneshot::Sender<()>),
+    ClusterMeet(PeerIdentifier, tokio::sync::oneshot::Sender<anyhow::Result<()>>),
 }
 
 #[derive(Debug)]

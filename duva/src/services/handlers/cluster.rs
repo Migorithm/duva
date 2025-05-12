@@ -123,7 +123,13 @@ impl ClusterActor {
                     self.replicaof(peer_addr, &mut logger, callback).await;
                 },
 
-                ClusterCommand::ClusterMeet(peer_identifier, sender) => unimplemented!(),
+                ClusterCommand::ClusterMeet(peer_addr, callback) => {
+                    if self.replication.self_identifier() == peer_addr {
+                        let _ = callback.send(err!("invalid operation: cannot join self"));
+                        continue;
+                    }
+                },
+
                 ClusterCommand::GetRole(sender) => {
                     let _ = sender.send(self.replication.role.clone());
                 },
