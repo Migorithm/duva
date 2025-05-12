@@ -70,6 +70,12 @@ impl ClusterCommunicationManager {
         rx.await?
     }
 
+    pub(crate) async fn cluster_meet(&self, peer_identifier: PeerIdentifier) -> anyhow::Result<()> {
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        let _ = self.send(ClusterCommand::ClusterMeet(peer_identifier, tx)).await;
+        Ok(rx.await?)
+    }
+
     pub(crate) async fn cluster_nodes(&self) -> anyhow::Result<Vec<PeerState>> {
         let (tx, rx) = tokio::sync::oneshot::channel();
         self.send(ClusterCommand::ClusterNodes(tx)).await?;

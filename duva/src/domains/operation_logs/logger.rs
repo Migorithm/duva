@@ -74,6 +74,7 @@ impl<T: TWriteAheadLog> ReplicatedLogs<T> {
         self.target.follower_full_sync(ops).await?;
         Ok(())
     }
+
     pub(crate) async fn range(
         &self,
         start_exclusive: u64,

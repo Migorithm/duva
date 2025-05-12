@@ -410,6 +410,12 @@ impl From<Vec<PeerIdentifier>> for QueryIO {
         QueryIO::TopologyChange(value)
     }
 }
+
+impl From<()> for QueryIO {
+    fn from(value: ()) -> Self {
+        QueryIO::Null
+    }
+}
 #[cfg(test)]
 mod test {
     use uuid::Uuid;

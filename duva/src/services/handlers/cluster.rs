@@ -122,6 +122,8 @@ impl ClusterActor {
                     cache_manager.drop_cache().await;
                     self.replicaof(peer_addr, &mut logger, callback).await;
                 },
+
+                ClusterCommand::ClusterMeet(peer_identifier, sender) => todo!(),
                 ClusterCommand::GetRole(sender) => {
                     let _ = sender.send(self.replication.role.clone());
                 },

@@ -111,7 +111,7 @@ impl ClientController {
                 }
             },
             ClientAction::ClusterMeet(peer_identifier) => {
-                todo!()
+                self.cluster_communication_manager.cluster_meet(peer_identifier).await?.into()
             },
             ClientAction::ReplicaOf(peer_identifier) => {
                 self.cluster_communication_manager.replicaof(peer_identifier.clone()).await?;
