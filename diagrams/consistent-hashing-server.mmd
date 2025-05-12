@@ -16,20 +16,20 @@ sequenceDiagram
     C2 --> B: connection established
 
     C2 ->> B: Cluster Meet A
-    par
-    B ->> A : Join cluster
-    and
-    critical 
-        C2 --x B: Request pending
-    end
-    end
 
-    critical 
-        C1 --x A: Request pending
-    end
+    B -->> B : Block requests
+    B ->> A : Join cluster
+    A -->> A: Block requests
     A -->> A: Rearrange tokens
 
+    note over A,B : Both A and B WILL NOT<br>process write operations
 
+    A ->> B : Notify number of partitions and its number of keys to be sent from A to B
+    B -->> B : Internally store number paritions and keys to receive from each shard  
+
+
+
+    
     par notify cluster peers
     A --) B : Notify token map update
     and notify connected clients
@@ -38,11 +38,25 @@ sequenceDiagram
 
     Note over A,B: Now, A and B have disjoint<br>token ranges<br>0..5000 and 5001..10000 respectively
 
-    critical Rebalancing!
-        A ->> B: Migrate data
+    critical 
+        A ->> B: Migrate data (batch)
+
+        par
+            Note left of A: Point-in-time snapshot is required<br>So we don't need to full migrate logs
+            A -->> A: Snaphsot and drop logs
+        and 
+            B -->> B: Deduct number of keys to be received from partition A
+        end
     end
 
+
+    Note over B : B expects keys to be sent<br>from all the partitions(not only from A)
     
+    opt If all key arrived
+        B -->> B: Snapshot and drop logs
+        B -->> B: Unblock write operations
+    end
+
     A -->> A: Unlock pending requests
     alt Request's key is in A's range
         A ->> A: Process request
