@@ -22,6 +22,7 @@ pub struct Environment {
     pub ttl_mills: u128,
     pub append_only: bool,
     pub topology_writer: Option<tokio::fs::File>,
+    pub log_level: tracing::Level,
 }
 
 impl Environment {
@@ -35,7 +36,8 @@ impl Environment {
                 hf: u64 = 1000,
                 ttl: u128 = 60000,
                 append_only: bool = false,
-                tpp: String = "duva.tp".to_string()
+                tpp: String = "duva.tp".to_string(),
+                log_level : tracing::Level = tracing::Level::INFO,
             },
             optional: {
                 replicaof
@@ -61,6 +63,7 @@ impl Environment {
             append_only,
             topology_writer: Some(topology_writer),
             pre_connected_peers,
+            log_level,
         }
     }
 

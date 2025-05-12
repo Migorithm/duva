@@ -236,6 +236,8 @@ pub fn run_server_process(env: &ServerEnv, std_option: Stdio) -> TestProcessChil
         env.dir.path().to_str().unwrap(),
         "--tpp",
         env.topology_path.as_path().to_str().unwrap(),
+        "--log_level",
+        "debug",
     ]);
 
     if let Some(replicaof) = env.leader_bind_addr.as_ref() {
