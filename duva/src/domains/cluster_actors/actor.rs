@@ -198,7 +198,7 @@ impl ClusterActor {
 
         let state = connection_info.decide_peer_kind(&self.replication.replid);
         let peer_list = connection_info.list_peer_binding_addrs();
-        let switch = PeerListener::spawn(stream.r, self.self_handler.clone(), stream.connect_to);
+        let switch = PeerListener::spawn(stream.r, self.self_handler.clone(), connection_info.id);
 
         self.add_peer(Peer::new(stream.w, state, switch)).await;
         Ok(peer_list)
