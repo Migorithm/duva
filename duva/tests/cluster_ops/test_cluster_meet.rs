@@ -1,4 +1,4 @@
-use crate::common::{Client, ServerEnv, form_cluster, spawn_server_process};
+use crate::common::{Client, ServerEnv, form_cluster};
 
 fn run_cluster_meet(append_only: bool) -> anyhow::Result<()> {
     // GIVEN
@@ -8,9 +8,12 @@ fn run_cluster_meet(append_only: bool) -> anyhow::Result<()> {
     );
     let [_leader_p, _repl_p] = form_cluster([&mut env, &mut env2], false);
 
-    // WHEN - load up standalone replica set
-    let env3 = ServerEnv::default();
-    let _test_p = spawn_server_process(&env3, false).unwrap();
+    // WHEN - load up replica set
+    let (mut env3, mut env4) = (
+        ServerEnv::default().with_append_only(append_only),
+        ServerEnv::default().with_append_only(append_only),
+    );
+    let [_leader_p2, _repl_p2] = form_cluster([&mut env3, &mut env4], false);
 
     let mut client_handler = Client::new(env3.port);
     let cmd = format!("cluster meet localhost:{}", env.port);
@@ -19,9 +22,13 @@ fn run_cluster_meet(append_only: bool) -> anyhow::Result<()> {
     assert_eq!(client_handler.send_and_get(&cmd), "OK");
 
     // WHEN & THEN
-    assert_eq!(client_handler.send_and_get_vec("cluster info", 1), vec!["cluster_known_nodes:2"]);
+    assert_eq!(client_handler.send_and_get_vec("cluster info", 1), vec!["cluster_known_nodes:3"]);
     assert_eq!(client_handler.send_and_get("role"), "leader");
 
+    // WHEN query is given to joining replica
+    let mut replica_handler = Client::new(env4.port);
+    assert_eq!(replica_handler.send_and_get_vec("cluster info", 1), vec!["cluster_known_nodes:3"]);
+    assert_eq!(replica_handler.send_and_get("role"), "follower");
     Ok(())
 }
 
