@@ -8,6 +8,7 @@ use super::commands::RequestVoteReply;
 use super::heartbeats::heartbeat::AppendEntriesRPC;
 use super::heartbeats::heartbeat::ClusterHeartBeat;
 use super::heartbeats::scheduler::HeartBeatScheduler;
+use super::listener::PeerListener;
 use super::peer_connections::inbound::stream::InboundStream;
 use super::peer_connections::outbound::stream::OutboundStream;
 use super::replication::BannedPeer;
@@ -171,7 +172,9 @@ impl ClusterActor {
     ) -> anyhow::Result<()> {
         let mut queue = VecDeque::from(vec![connect_to.clone()]);
         while let Some(connect_to) = queue.pop_front() {
-            queue.extend(self.connect_to_server(connect_to).await?);
+            if !self.members.contains_key(&connect_to) {
+                queue.extend(self.connect_to_server(connect_to).await?);
+            }
         }
         Ok(())
     }
@@ -183,7 +186,7 @@ impl ClusterActor {
         if self.members.contains_key(&connect_to) {
             return Ok(vec![]);
         }
-        let stream = OutboundStream::new(connect_to, self.replication.clone())
+        let mut stream = OutboundStream::new(connect_to, self.replication.clone())
             .await?
             .make_handshake(self.replication.self_port)
             .await?;
@@ -196,8 +199,12 @@ impl ClusterActor {
             self.set_repl_id(connected_node_info.replid.clone());
         }
 
-        let (add_peer, peer_list) = stream.create_peer_cmd(self.self_handler.clone())?;
-        self.add_peer(add_peer).await;
+        let mut connection_info = stream.take_connection_info()?;
+        let state = connection_info.decide_peer_kind(&self.replication.replid);
+        let peer_list = connection_info.list_peer_binding_addrs();
+        let switch = PeerListener::spawn(stream.r, self.self_handler.clone(), stream.connect_to);
+
+        self.add_peer(Peer::new(stream.w, state, switch)).await;
         Ok(peer_list)
     }
 
@@ -749,17 +756,17 @@ impl ClusterActor {
     }
 
     pub(crate) async fn join_peer_network_if_absent(&mut self, cluster_nodes: Vec<PeerState>) {
-        let peers = cluster_nodes
+        let peers_to_connect = cluster_nodes
             .into_iter()
             .filter(|n| n.addr != self.replication.self_identifier())
             .filter(|p| !self.members.contains_key(&p.addr))
             .map(|node| node.addr)
             .collect::<Vec<_>>();
-        if peers.is_empty() {
+        if peers_to_connect.is_empty() {
             return;
         }
-
-        for peer in peers {
+        info!("peers to connect detected {:?}", peers_to_connect);
+        for peer in peers_to_connect {
             if self.replication.in_ban_list(&peer) {
                 continue;
             }

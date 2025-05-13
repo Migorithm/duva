@@ -7,6 +7,7 @@ use crate::domains::operation_logs::interfaces::TWriteAheadLog;
 use crate::domains::operation_logs::logger::ReplicatedLogs;
 use crate::err;
 use tokio::sync::mpsc::Sender;
+use tracing::info;
 
 impl ClusterActor {
     pub(crate) async fn handle(
@@ -91,6 +92,7 @@ impl ClusterActor {
                     self.track_replication_progress(repl_res, &mut client_sessions);
                 },
                 ClusterCommand::SendAppendEntriesRPC => {
+                    info!("current_replica {:?}", self.replicas().map(|x| x.0).collect::<Vec<_>>());
                     self.send_leader_heartbeat(&logger).await;
                 },
                 ClusterCommand::AppendEntriesRPC(heartbeat) => {
@@ -103,6 +105,7 @@ impl ClusterActor {
                     self.replicate(&mut logger, heartbeat, &cache_manager).await;
                 },
                 ClusterCommand::StartLeaderElection => {
+                    info!("current members {:?}", self.members.keys());
                     self.run_for_election(&mut logger).await;
                 },
                 ClusterCommand::VoteElection(request_vote) => {
