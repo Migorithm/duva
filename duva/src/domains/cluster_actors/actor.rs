@@ -742,7 +742,7 @@ impl ClusterActor {
         self.pending_requests = Some(VecDeque::new());
 
         // TODO set up number of partitions and its number of keys to be send from A to B
-        // Should it be done in handshake?
+        // Should it be done in handshake? No because perhaps WHEN TO MIGRATE will be revisited
         let _ = self.discover_cluster(peer_addr).await;
         let _ = self.snapshot_topology().await;
         let _ = callback.send(Ok(()));

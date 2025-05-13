@@ -6,3 +6,4 @@ mod test_removes_node_when_heartbeat_is_not_received_for_certain_time;
 
 mod test_lazy_discovery;
 mod test_reconnection_on_reboot;
+mod test_cluster_meet;
