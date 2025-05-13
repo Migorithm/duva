@@ -731,17 +731,21 @@ impl ClusterActor {
     }
 
     /// Join existing cluster or node as partition leader
-
-    /// 0. Determine how are we going to do with existing logs/states if any?
+    /// 0. blocking requests
     /// 1. discover cluster
     /// 2. replica-to-replica connection will be made through gossip(Done)
-    ///
     pub(crate) async fn cluster_meet(
-        &self,
+        &mut self,
         peer_addr: PeerIdentifier,
         callback: tokio::sync::oneshot::Sender<Result<(), anyhow::Error>>,
     ) {
-        todo!()
+        self.pending_requests = Some(VecDeque::new());
+
+        // TODO set up number of partitions and its number of keys to be send from A to B
+        // Should it be done in handshake?
+        let _ = self.discover_cluster(peer_addr).await;
+        let _ = self.snapshot_topology().await;
+        let _ = callback.send(Ok(()));
     }
 
     pub(crate) async fn join_peer_network_if_absent(&mut self, cluster_nodes: Vec<PeerState>) {

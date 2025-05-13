@@ -131,7 +131,6 @@ impl ClusterActor {
                             .send(err!("wrong address or invalid state for cluster meet command"));
                         continue;
                     }
-
                     self.cluster_meet(peer_addr, callback).await;
                 },
 
