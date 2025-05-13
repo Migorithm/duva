@@ -191,15 +191,11 @@ impl ClusterActor {
             .make_handshake(self.replication.self_port)
             .await?;
 
+        let mut connection_info = stream.take_connection_info()?;
         if self.replication.replid == ReplicationId::Undecided {
-            let connected_node_info = stream
-                .connected_node_info
-                .as_ref()
-                .context("Connected node info not found. Cannot set replication id")?;
-            self.set_repl_id(connected_node_info.replid.clone());
+            self.set_repl_id(connection_info.replid.clone());
         }
 
-        let mut connection_info = stream.take_connection_info()?;
         let state = connection_info.decide_peer_kind(&self.replication.replid);
         let peer_list = connection_info.list_peer_binding_addrs();
         let switch = PeerListener::spawn(stream.r, self.self_handler.clone(), stream.connect_to);
