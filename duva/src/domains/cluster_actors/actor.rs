@@ -8,6 +8,7 @@ use super::commands::RequestVoteReply;
 use super::heartbeats::heartbeat::AppendEntriesRPC;
 use super::heartbeats::heartbeat::ClusterHeartBeat;
 use super::heartbeats::scheduler::HeartBeatScheduler;
+use super::listener::PeerListener;
 use super::peer_connections::inbound::stream::InboundStream;
 use super::peer_connections::outbound::stream::OutboundStream;
 use super::replication::BannedPeer;
@@ -24,7 +25,6 @@ use crate::domains::operation_logs::interfaces::TWriteAheadLog;
 use crate::domains::operation_logs::logger::ReplicatedLogs;
 use crate::domains::peers::peer::NodeKind;
 use crate::domains::peers::peer::PeerState;
-use anyhow::Context;
 use std::collections::VecDeque;
 use std::iter;
 use std::sync::atomic::Ordering;
@@ -171,7 +171,12 @@ impl ClusterActor {
     ) -> anyhow::Result<()> {
         let mut queue = VecDeque::from(vec![connect_to.clone()]);
         while let Some(connect_to) = queue.pop_front() {
-            queue.extend(self.connect_to_server(connect_to).await?);
+            info!("PEER TO CONNECT DETECTED {}", connect_to);
+            info!("Current members {:?}", self.members.keys());
+            if !self.members.contains_key(&connect_to) {
+                info!("CONNECTING TO.. {:?}", connect_to);
+                queue.extend(self.connect_to_server(connect_to).await?);
+            }
         }
         Ok(())
     }
@@ -183,21 +188,21 @@ impl ClusterActor {
         if self.members.contains_key(&connect_to) {
             return Ok(vec![]);
         }
-        let stream = OutboundStream::new(connect_to, self.replication.clone())
+        let mut stream = OutboundStream::new(connect_to, self.replication.clone())
             .await?
             .make_handshake(self.replication.self_port)
             .await?;
 
+        let mut connection_info = stream.take_connection_info()?;
         if self.replication.replid == ReplicationId::Undecided {
-            let connected_node_info = stream
-                .connected_node_info
-                .as_ref()
-                .context("Connected node info not found. Cannot set replication id")?;
-            self.set_repl_id(connected_node_info.replid.clone());
+            self.set_repl_id(connection_info.replid.clone());
         }
 
-        let (add_peer, peer_list) = stream.create_peer_cmd(self.self_handler.clone())?;
-        self.add_peer(add_peer).await;
+        let state = connection_info.decide_peer_kind(&self.replication.replid);
+        let peer_list = connection_info.list_peer_binding_addrs();
+        let switch = PeerListener::spawn(stream.r, self.self_handler.clone(), connection_info.id);
+
+        self.add_peer(Peer::new(stream.w, state, switch)).await;
         Ok(peer_list)
     }
 
@@ -312,7 +317,7 @@ impl ClusterActor {
         }
 
         // * Check if the request has already been processed
-        if let Err(err) = logger.write_single_entry(&req.request, &self.replication).await {
+        if let Err(err) = logger.write_single_entry(&req.request, self.replication.term).await {
             let _ = req.callback.send(Err(anyhow::anyhow!(err)));
             return;
         };
@@ -730,18 +735,36 @@ impl ClusterActor {
         let _ = callback.send(Ok(()));
     }
 
+    /// Join existing cluster or node as partition leader
+    /// 0. blocking requests
+    /// 1. discover cluster
+    /// 2. replica-to-replica connection will be made through gossip(Done)
+    pub(crate) async fn cluster_meet(
+        &mut self,
+        peer_addr: PeerIdentifier,
+        callback: tokio::sync::oneshot::Sender<Result<(), anyhow::Error>>,
+    ) {
+        self.pending_requests = Some(VecDeque::new());
+
+        // TODO set up number of partitions and its number of keys to be send from A to B
+        // Should it be done in handshake? No because perhaps WHEN TO MIGRATE will be revisited
+        let _ = self.discover_cluster(peer_addr).await;
+        let _ = self.snapshot_topology().await;
+        let _ = callback.send(Ok(()));
+    }
+
     pub(crate) async fn join_peer_network_if_absent(&mut self, cluster_nodes: Vec<PeerState>) {
-        let peers = cluster_nodes
+        let peers_to_connect = cluster_nodes
             .into_iter()
             .filter(|n| n.addr != self.replication.self_identifier())
             .filter(|p| !self.members.contains_key(&p.addr))
             .map(|node| node.addr)
             .collect::<Vec<_>>();
-        if peers.is_empty() {
+        if peers_to_connect.is_empty() {
             return;
         }
 
-        for peer in peers {
+        for peer in peers_to_connect {
             if self.replication.in_ban_list(&peer) {
                 continue;
             }
@@ -1108,7 +1131,7 @@ mod test {
         repl_state.hwm.store(LOWEST_FOLLOWER_COMMIT_INDEX, Ordering::Release);
 
         let log = &WriteRequest::Set { key: "foo4".into(), value: "bar".into(), expires_at: None };
-        logger.write_single_entry(log, &repl_state).await.unwrap();
+        logger.write_single_entry(log, repl_state.term).await.unwrap();
 
         let logs = logger.list_append_log_entries(Some(LOWEST_FOLLOWER_COMMIT_INDEX)).await;
 
@@ -1159,7 +1182,7 @@ mod test {
         logger
             .write_single_entry(
                 &WriteRequest::Set { key: "foo4".into(), value: "bar".into(), expires_at: None },
-                &cluster_actor.replication,
+                cluster_actor.replication.term,
             )
             .await
             .unwrap();

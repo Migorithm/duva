@@ -4,5 +4,6 @@ mod test_cluster_known_nodes_increase_when_new_replica_is_added;
 mod test_heartbeat;
 mod test_removes_node_when_heartbeat_is_not_received_for_certain_time;
 
+mod test_cluster_meet;
 mod test_lazy_discovery;
 mod test_reconnection_on_reboot;

@@ -7,6 +7,7 @@ use crate::domains::operation_logs::interfaces::TWriteAheadLog;
 use crate::domains::operation_logs::logger::ReplicatedLogs;
 use crate::err;
 use tokio::sync::mpsc::Sender;
+use tracing::info;
 
 impl ClusterActor {
     pub(crate) async fn handle(
@@ -58,6 +59,7 @@ impl ClusterActor {
                     self.gossip(heartbeat.hop_count, &logger).await;
                     self.update_on_hertbeat_message(&heartbeat.from, heartbeat.hwm);
                 },
+
                 ClusterCommand::ForgetPeer(peer_addr, sender) => {
                     if let Ok(Some(())) = self.forget_peer(peer_addr).await {
                         let _ = sender.send(Some(()));
@@ -66,8 +68,8 @@ impl ClusterActor {
                     }
                 },
                 ClusterCommand::LeaderReqConsensus(req) => {
-                    if let Some(pending_requests) = self.pending_requests.as_mut() {
-                        pending_requests.push_back(req);
+                    if !self.replication.is_leader_mode {
+                        let _ = req.callback.send(err!("Write given to follower"));
                         continue;
                     }
 
@@ -79,7 +81,6 @@ impl ClusterActor {
                         }));
                         continue;
                     };
-
                     self.req_consensus(&mut logger, req).await;
                 },
                 ClusterCommand::ReplicationResponse(repl_res) => {
@@ -91,6 +92,7 @@ impl ClusterActor {
                     self.track_replication_progress(repl_res, &mut client_sessions);
                 },
                 ClusterCommand::SendAppendEntriesRPC => {
+                    info!("current_replica {:?}", self.replicas().map(|x| x.0).collect::<Vec<_>>());
                     self.send_leader_heartbeat(&logger).await;
                 },
                 ClusterCommand::AppendEntriesRPC(heartbeat) => {
@@ -122,6 +124,18 @@ impl ClusterActor {
                     cache_manager.drop_cache().await;
                     self.replicaof(peer_addr, &mut logger, callback).await;
                 },
+
+                ClusterCommand::ClusterMeet(peer_addr, callback) => {
+                    if !self.replication.is_leader_mode
+                        || self.replication.self_identifier() == peer_addr
+                    {
+                        let _ = callback
+                            .send(err!("wrong address or invalid state for cluster meet command"));
+                        continue;
+                    }
+                    self.cluster_meet(peer_addr, callback).await;
+                },
+
                 ClusterCommand::GetRole(sender) => {
                     let _ = sender.send(self.replication.role.clone());
                 },

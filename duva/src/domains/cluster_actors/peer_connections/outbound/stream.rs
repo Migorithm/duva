@@ -1,14 +1,10 @@
 use super::response::ConnectionResponse;
-
-use crate::domains::cluster_actors::commands::ClusterCommand;
-
-use crate::domains::cluster_actors::listener::PeerListener;
 use crate::domains::cluster_actors::replication::ReplicationId;
 use crate::domains::cluster_actors::replication::ReplicationState;
 use crate::domains::peers::connected_peer_info::ConnectedPeerInfo;
 use crate::domains::peers::identifier::PeerIdentifier;
 use crate::domains::peers::identifier::TPeerAddress;
-use crate::domains::peers::peer::Peer;
+
 use crate::domains::query_parsers::QueryIO;
 
 use crate::services::interface::TRead;
@@ -19,15 +15,14 @@ use std::sync::atomic::Ordering;
 use tokio::net::TcpStream;
 use tokio::net::tcp::OwnedReadHalf;
 use tokio::net::tcp::OwnedWriteHalf;
-use tokio::sync::mpsc::Sender;
 
 // The following is used only when the node is in follower mode
 pub(crate) struct OutboundStream {
-    r: OwnedReadHalf,
-    w: OwnedWriteHalf,
+    pub(crate) r: OwnedReadHalf,
+    pub(crate) w: OwnedWriteHalf,
     pub(crate) my_repl_info: ReplicationState,
     pub(crate) connected_node_info: Option<ConnectedPeerInfo>,
-    connect_to: PeerIdentifier,
+    pub(crate) connect_to: PeerIdentifier,
 }
 
 impl OutboundStream {
@@ -102,23 +97,7 @@ impl OutboundStream {
         Ok(())
     }
 
-    pub(crate) fn create_peer_cmd(
-        self,
-        cluster_actor_handler: Sender<ClusterCommand>,
-    ) -> anyhow::Result<(Peer, Vec<PeerIdentifier>)> {
-        let mut connection_info =
-            self.connected_node_info.context("Connected node info not found")?;
-        let peer_list = connection_info.list_peer_binding_addrs();
-
-        let kill_switch =
-            PeerListener::spawn(self.r, cluster_actor_handler, self.connect_to.clone());
-
-        let peer = Peer::new(
-            self.w,
-            connection_info.decide_peer_kind(&self.my_repl_info.replid),
-            kill_switch,
-        );
-
-        Ok((peer, peer_list))
+    pub(crate) fn take_connection_info(&mut self) -> anyhow::Result<ConnectedPeerInfo> {
+        Ok(self.connected_node_info.take().context("Connected node info not found")?)
     }
 }
