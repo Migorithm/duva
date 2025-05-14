@@ -21,7 +21,7 @@ impl ClusterActor {
         while let Some(command) = self.receiver.recv().await {
             match command {
                 ClusterCommand::DiscoverCluster { connect_to, callback } => {
-                    if self.discover_cluster(connect_to).await.is_ok() {
+                    if self.connect_to_server(connect_to).await.is_ok() {
                         let _ = self.snapshot_topology().await;
                     };
                     let _ = callback.send(());
@@ -140,6 +140,9 @@ impl ClusterActor {
                     let _ = sender.send(self.node_change_broadcast.subscribe());
                 },
                 ClusterCommand::AddPeer(peer) => self.add_peer(peer).await,
+                ClusterCommand::FollowerSetReplId(replication_id) => {
+                    self.set_repl_id(replication_id)
+                },
             }
         }
         Ok(self)

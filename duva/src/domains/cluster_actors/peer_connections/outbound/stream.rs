@@ -1,12 +1,17 @@
 use super::response::ConnectionResponse;
+use crate::domains::cluster_actors::listener::PeerListener;
 use crate::domains::cluster_actors::replication::ReplicationId;
 use crate::domains::cluster_actors::replication::ReplicationState;
 use crate::domains::peers::connected_peer_info::ConnectedPeerInfo;
+use crate::domains::peers::connected_types::ReadConnected;
 use crate::domains::peers::identifier::PeerIdentifier;
 use crate::domains::peers::identifier::TPeerAddress;
 
+use crate::domains::peers::peer::ListeningActorKillTrigger;
+use crate::domains::peers::peer::Peer;
 use crate::domains::query_parsers::QueryIO;
 
+use crate::ClusterCommand;
 use crate::services::interface::TRead;
 use crate::services::interface::TWrite;
 use crate::write_array;
@@ -40,7 +45,7 @@ impl OutboundStream {
             connect_to: connect_to.to_string().into(),
         })
     }
-    pub async fn make_handshake(mut self, self_port: u16) -> anyhow::Result<Self> {
+    pub async fn make_handshake(&mut self, self_port: u16) -> anyhow::Result<()> {
         // Trigger
         self.w.write(write_array!("PING")).await?;
         let mut ok_count = 0;
@@ -85,7 +90,7 @@ impl OutboundStream {
                         connection_info.peer_list = peer_list;
                         self.connected_node_info = Some(connection_info);
                         self.reply_with_ok().await?;
-                        return Ok(self);
+                        return Ok(());
                     },
                 }
             }
@@ -99,5 +104,35 @@ impl OutboundStream {
 
     pub(crate) fn take_connection_info(&mut self) -> anyhow::Result<ConnectedPeerInfo> {
         Ok(self.connected_node_info.take().context("Connected node info not found")?)
+    }
+
+    pub(crate) async fn add_peer(
+        mut self,
+        self_port: u16,
+        cluster_handler: tokio::sync::mpsc::Sender<ClusterCommand>,
+    ) -> anyhow::Result<()> {
+        self.make_handshake(self_port).await?;
+        let connection_info = self.take_connection_info()?;
+        if self.my_repl_info.replid == ReplicationId::Undecided {
+            let _ = cluster_handler
+                .send(ClusterCommand::FollowerSetReplId(connection_info.replid.clone()))
+                .await;
+        }
+        let peer_state = connection_info.decide_peer_kind(&self.my_repl_info.replid);
+
+        let (kill_trigger, kill_switch) = tokio::sync::oneshot::channel();
+        let handle = tokio::spawn(
+            PeerListener {
+                read_connected: ReadConnected::new(self.r),
+                cluster_handler: cluster_handler.clone(),
+                listening_to: connection_info.id.clone(),
+            }
+            .listen(kill_switch),
+        );
+
+        let peer =
+            Peer::new(self.w, peer_state, ListeningActorKillTrigger::new(kill_trigger, handle));
+        let _ = cluster_handler.send(ClusterCommand::AddPeer(peer)).await;
+        Ok(())
     }
 }

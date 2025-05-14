@@ -2,6 +2,7 @@ use crate::{
     domains::{
         cluster_actors::commands::{ClusterCommand, PeerListenerCommand},
         peers::{
+            connected_peer_info::ConnectedPeerInfo,
             connected_types::ReadConnected,
             peer::{ListeningActorKillTrigger, Peer},
         },
@@ -9,14 +10,10 @@ use crate::{
     prelude::PeerIdentifier,
     services::interface::TRead,
 };
-use tokio::{
-    net::tcp::{OwnedReadHalf, OwnedWriteHalf},
-    select,
-    sync::mpsc::Sender,
-};
+use tokio::{net::tcp::OwnedReadHalf, select, sync::mpsc::Sender};
 use tracing::debug;
 
-use super::peer_connections::inbound::stream::InboundStream;
+use super::peer_connections::{inbound::stream::InboundStream, outbound::stream::OutboundStream};
 
 #[cfg(test)]
 static ATOMIC: std::sync::atomic::AtomicI16 = std::sync::atomic::AtomicI16::new(0);
@@ -64,7 +61,6 @@ impl PeerListener {
             .listen(kill_switch),
         );
         let kill_switch = ListeningActorKillTrigger::new(kill_trigger, handle);
-
         Ok(Peer::new(inbound_stream.w, peer_state, kill_switch))
     }
 

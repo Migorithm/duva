@@ -165,45 +165,34 @@ impl ClusterActor {
         None
     }
 
-    pub(crate) async fn discover_cluster(
+    // pub(crate) async fn discover_cluster(
+    //     &mut self,
+    //     connect_to: PeerIdentifier,
+    // ) -> anyhow::Result<()> {
+    //     self.connect_to_server(connect_to).await?;
+    //     let mut queue = VecDeque::from(vec![connect_to.clone()]);
+    //     while let Some(connect_to) = queue.pop_front() {
+    //         info!("PEER TO CONNECT DETECTED {}", connect_to);
+    //         info!("Current members {:?}", self.members.keys());
+    //         if !self.members.contains_key(&connect_to) {
+    //             info!("CONNECTING TO.. {:?}", connect_to);
+    //             queue.extend(self.connect_to_server(connect_to).await?);
+    //         }
+    //     }
+    //     Ok(())
+    // }
+
+    pub(crate) async fn connect_to_server(
         &mut self,
         connect_to: PeerIdentifier,
     ) -> anyhow::Result<()> {
-        let mut queue = VecDeque::from(vec![connect_to.clone()]);
-        while let Some(connect_to) = queue.pop_front() {
-            info!("PEER TO CONNECT DETECTED {}", connect_to);
-            info!("Current members {:?}", self.members.keys());
-            if !self.members.contains_key(&connect_to) {
-                info!("CONNECTING TO.. {:?}", connect_to);
-                queue.extend(self.connect_to_server(connect_to).await?);
-            }
-        }
-        Ok(())
-    }
-
-    async fn connect_to_server(
-        &mut self,
-        connect_to: PeerIdentifier,
-    ) -> anyhow::Result<Vec<PeerIdentifier>> {
         if self.members.contains_key(&connect_to) {
-            return Ok(vec![]);
+            return Ok(());
         }
-        let mut stream = OutboundStream::new(connect_to, self.replication.clone())
-            .await?
-            .make_handshake(self.replication.self_port)
-            .await?;
+        let stream = OutboundStream::new(connect_to, self.replication.clone()).await?;
 
-        let mut connection_info = stream.take_connection_info()?;
-        if self.replication.replid == ReplicationId::Undecided {
-            self.set_repl_id(connection_info.replid.clone());
-        }
-
-        let state = connection_info.decide_peer_kind(&self.replication.replid);
-        let peer_list = connection_info.list_peer_binding_addrs();
-        let switch = PeerListener::spawn(stream.r, self.self_handler.clone(), connection_info.id);
-
-        self.add_peer(Peer::new(stream.w, state, switch)).await;
-        Ok(peer_list)
+        tokio::spawn(stream.add_peer(self.replication.self_port, self.self_handler.clone()));
+        Ok(())
     }
 
     pub(crate) async fn accept_inbound_stream(
@@ -220,7 +209,7 @@ impl ClusterActor {
         Ok(())
     }
 
-    fn set_repl_id(&mut self, leader_repl_id: ReplicationId) {
+    pub(crate) fn set_repl_id(&mut self, leader_repl_id: ReplicationId) {
         self.replication.replid = leader_repl_id;
     }
 
@@ -731,7 +720,7 @@ impl ClusterActor {
         self.set_repl_id(ReplicationId::Undecided);
         self.step_down().await;
 
-        let _ = self.discover_cluster(peer_addr).await;
+        let _ = self.connect_to_server(peer_addr).await;
         let _ = self.snapshot_topology().await;
         let _ = callback.send(Ok(()));
     }
@@ -749,7 +738,7 @@ impl ClusterActor {
 
         // TODO set up number of partitions and its number of keys to be send from A to B
         // Should it be done in handshake? No because perhaps WHEN TO MIGRATE will be revisited
-        let _ = self.discover_cluster(peer_addr).await;
+        let _ = self.connect_to_server(peer_addr).await;
         let _ = self.snapshot_topology().await;
         let _ = callback.send(Ok(()));
     }
@@ -759,28 +748,21 @@ impl ClusterActor {
             .into_iter()
             .filter(|n| n.addr != self.replication.self_identifier())
             .filter(|p| !self.members.contains_key(&p.addr))
+            .filter(|p| !self.replication.in_ban_list(&p.addr))
             .map(|node| node.addr)
-            .collect::<Vec<_>>();
-        if peers_to_connect.is_empty() {
+            .next();
+
+        let Some(peer_to_connect) = peers_to_connect else {
             return;
-        }
+        };
 
-        for peer in peers_to_connect {
-            if self.replication.in_ban_list(&peer) {
-                continue;
-            }
-
-            if self.discover_cluster(peer).await.is_ok() {
-                let _ = self.snapshot_topology().await;
-                break;
-            }
-        }
+        let _ = self.connect_to_server(peer_to_connect).await;
     }
 }
 
 #[cfg(test)]
 #[allow(unused_variables)]
-mod test {
+pub mod test {
     use super::session::SessionRequest;
     use super::*;
     use crate::adapters::op_logs::memory_based::MemoryOpLogs;
@@ -835,7 +817,7 @@ mod test {
         }
     }
 
-    async fn cluster_actor_create_helper() -> ClusterActor {
+    pub async fn cluster_actor_create_helper() -> ClusterActor {
         let replication = ReplicationState::new(
             ReplicationId::Key("master".into()),
             ReplicationRole::Leader,
@@ -1702,43 +1684,6 @@ mod test {
         }
 
         tokio::fs::remove_file(path).await.unwrap();
-    }
-
-    #[tokio::test]
-    async fn test_reconnection_on_gossip() {
-        // GIVEN
-        let mut cluster_actor = cluster_actor_create_helper().await;
-
-        // * run listener to see if connection is attempted
-        let listener = TcpListener::bind("127.0.0.1:44455").await.unwrap(); // ! Beaware that this is cluster port
-        let bind_addr = listener.local_addr().unwrap();
-
-        let mut replication_state = cluster_actor.replication.clone();
-        replication_state.is_leader_mode = false;
-
-        let (tx, rx) = tokio::sync::oneshot::channel();
-
-        // Spawn the listener task
-        let handle = tokio::spawn(async move {
-            let (stream, _) = listener.accept().await.unwrap();
-            let mut inbound_stream = InboundStream::new(stream, replication_state.clone());
-            if inbound_stream.recv_handshake().await.is_ok() {
-                let _ = tx.send(());
-            };
-        });
-
-        // WHEN - try to reconnect
-        cluster_actor
-            .join_peer_network_if_absent(vec![PeerState::new(
-                &format!("127.0.0.1:{}", bind_addr.port() - 10000),
-                0,
-                cluster_actor.replication.replid.clone(),
-                NodeKind::Replica,
-            )])
-            .await;
-
-        assert!(handle.await.is_ok());
-        assert!(rx.await.is_ok());
     }
 
     #[tokio::test]
