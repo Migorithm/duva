@@ -7,7 +7,7 @@ use crate::domains::cluster_actors::replication::ReplicationId;
 use crate::domains::cluster_actors::replication::ReplicationState;
 use crate::domains::peers::connected_peer_info::ConnectedPeerInfo;
 use crate::domains::peers::identifier::PeerIdentifier;
-use crate::domains::peers::peer::Peer;
+
 use crate::domains::peers::peer::PeerState;
 use crate::domains::query_parsers::QueryIO;
 use crate::services::interface::TRead;
@@ -153,7 +153,6 @@ impl InboundStream {
         self.recv_handshake().await?;
         self.disseminate_peers(members).await?;
         let peer = PeerListener::spawn_from_inbound_stream(self, cluster_handler.clone()).await?;
-
         let _ = cluster_handler.send(ClusterCommand::AddPeer(peer)).await;
         Ok(())
     }
