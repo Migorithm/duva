@@ -102,10 +102,6 @@ impl OutboundStream {
         Ok(())
     }
 
-    fn take_connection_info(&mut self) -> anyhow::Result<ConnectedPeerInfo> {
-        Ok(self.connected_node_info.take().context("Connected node info not found")?)
-    }
-
     pub(crate) async fn add_peer(
         mut self,
         self_port: u16,
@@ -113,7 +109,8 @@ impl OutboundStream {
         optional_callback: Option<tokio::sync::oneshot::Sender<anyhow::Result<()>>>,
     ) -> anyhow::Result<()> {
         self.make_handshake(self_port).await?;
-        let connection_info = self.take_connection_info()?;
+        let connection_info =
+            self.connected_node_info.take().context("Connected node info not found")?;
         if self.my_repl_info.replid == ReplicationId::Undecided {
             let _ = cluster_handler
                 .send(ClusterCommand::FollowerSetReplId(connection_info.replid.clone()))
