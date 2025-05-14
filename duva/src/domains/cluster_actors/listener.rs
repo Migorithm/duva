@@ -1,11 +1,7 @@
-use super::peer_connections::inbound::stream::InboundStream;
 use crate::{
     domains::{
         cluster_actors::commands::{ClusterCommand, PeerListenerCommand},
-        peers::{
-            connected_types::ReadConnected,
-            peer::{ListeningActorKillTrigger, Peer},
-        },
+        peers::{connected_types::ReadConnected, peer::ListeningActorKillTrigger},
     },
     prelude::PeerIdentifier,
     services::interface::TRead,
