@@ -8,7 +8,7 @@ use tokio::{
     net::tcp::{OwnedReadHalf, OwnedWriteHalf},
     sync::mpsc::Sender,
 };
-use tracing::{error, instrument};
+use tracing::{debug, error, instrument, trace};
 use uuid::Uuid;
 pub struct ClientStreamReader {
     pub(crate) r: OwnedReadHalf,
@@ -25,7 +25,9 @@ impl ClientStreamReader {
         'l: loop {
             match self.extract_query().await {
                 Ok(requests) => {
+                    debug!("Received {} requests", requests.len());
                     for req in requests.into_iter() {
+                        trace!(?req, "Processing request");
                         match handler.maybe_consensus_then_execute(req).await {
                             Ok(res) => {
                                 if sender.send(res).await.is_err() {
@@ -42,6 +44,7 @@ impl ClientStreamReader {
                             },
                         };
                     }
+                    debug!("Finished processing requests");
                 },
 
                 Err(err) => {

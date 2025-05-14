@@ -7,7 +7,8 @@ use crate::domains::operation_logs::interfaces::TWriteAheadLog;
 use crate::domains::operation_logs::logger::ReplicatedLogs;
 use crate::err;
 use tokio::sync::mpsc::Sender;
-use tracing::{error, info};
+
+use tracing::{error, info, trace};
 
 impl ClusterActor {
     pub(crate) async fn handle(
@@ -19,6 +20,7 @@ impl ClusterActor {
         let mut logger = ReplicatedLogs::new(wal, 0, 0);
 
         while let Some(command) = self.receiver.recv().await {
+            trace!(?command, "Cluster command received");
             match command {
                 ClusterCommand::DiscoverCluster { connect_to, callback } => {
                     if let Err(e) = self.connect_to_server(connect_to, Some(callback)).await {
@@ -149,6 +151,7 @@ impl ClusterActor {
                     self.set_repl_id(replication_id)
                 },
             }
+            trace!("Cluster command processed");
         }
         Ok(self)
     }

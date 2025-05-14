@@ -11,7 +11,7 @@ use crate::{
     services::interface::TRead,
 };
 use tokio::{net::tcp::OwnedReadHalf, select, sync::mpsc::Sender};
-use tracing::debug;
+use tracing::{debug, trace};
 
 use super::peer_connections::{inbound::stream::InboundStream, outbound::stream::OutboundStream};
 
@@ -83,6 +83,7 @@ impl PeerListener {
     }
     async fn listen_peer(&mut self) {
         while let Ok(cmds) = self.read_command().await {
+            trace!(?cmds, "Received command from peer");
             #[cfg(test)]
             ATOMIC.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 

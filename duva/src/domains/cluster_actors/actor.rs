@@ -8,7 +8,6 @@ use super::commands::RequestVoteReply;
 use super::heartbeats::heartbeat::AppendEntriesRPC;
 use super::heartbeats::heartbeat::ClusterHeartBeat;
 use super::heartbeats::scheduler::HeartBeatScheduler;
-use super::listener::PeerListener;
 use super::peer_connections::inbound::stream::InboundStream;
 use super::peer_connections::outbound::stream::OutboundStream;
 use super::replication::BannedPeer;
