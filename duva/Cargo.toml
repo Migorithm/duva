@@ -25,3 +25,8 @@ tracing-subscriber = "0.3.19"
 
 [dev-dependencies]
 tempfile = "3.19.1"
+criterion = "0.5"
+
+[[bench]]
+name = "benchmark"
+harness = false
