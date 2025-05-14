@@ -24,6 +24,7 @@ use crate::domains::operation_logs::interfaces::TWriteAheadLog;
 use crate::domains::operation_logs::logger::ReplicatedLogs;
 use crate::domains::peers::peer::NodeKind;
 use crate::domains::peers::peer::PeerState;
+use crate::err;
 use std::collections::VecDeque;
 use std::iter;
 use std::sync::atomic::Ordering;
@@ -163,45 +164,29 @@ impl ClusterActor {
         None
     }
 
-    // pub(crate) async fn discover_cluster(
-    //     &mut self,
-    //     connect_to: PeerIdentifier,
-    // ) -> anyhow::Result<()> {
-    //     self.connect_to_server(connect_to).await?;
-    //     let mut queue = VecDeque::from(vec![connect_to.clone()]);
-    //     while let Some(connect_to) = queue.pop_front() {
-    //         info!("PEER TO CONNECT DETECTED {}", connect_to);
-    //         info!("Current members {:?}", self.members.keys());
-    //         if !self.members.contains_key(&connect_to) {
-    //             info!("CONNECTING TO.. {:?}", connect_to);
-    //             queue.extend(self.connect_to_server(connect_to).await?);
-    //         }
-    //     }
-    //     Ok(())
-    // }
-
     pub(crate) async fn connect_to_server(
         &mut self,
         connect_to: PeerIdentifier,
         optional_callback: Option<tokio::sync::oneshot::Sender<anyhow::Result<()>>>,
-    ) -> anyhow::Result<()> {
-        if self.members.contains_key(&connect_to) {
-            return Ok(());
-        }
-        let stream = OutboundStream::new(connect_to, self.replication.clone()).await?;
+    ) {
+        let stream = match OutboundStream::new(connect_to, self.replication.clone()).await {
+            Ok(stream) => stream,
+            Err(e) => {
+                if let Some(cb) = optional_callback {
+                    let _ = cb.send(err!(e));
+                }
+                return;
+            },
+        };
 
         tokio::spawn(stream.add_peer(
             self.replication.self_port,
             self.self_handler.clone(),
             optional_callback,
         ));
-        Ok(())
     }
 
-    pub(crate) async fn accept_inbound_stream(
-        &mut self,
-        peer_stream: TcpStream,
-    ) -> anyhow::Result<()> {
+    pub(crate) async fn accept_inbound_stream(&mut self, peer_stream: TcpStream) {
         let inbound_stream = InboundStream::new(peer_stream, self.replication.clone());
         tokio::spawn(
             inbound_stream.add_peer(
@@ -209,7 +194,6 @@ impl ClusterActor {
                 self.self_handler.clone(),
             ),
         );
-        Ok(())
     }
 
     pub(crate) fn set_repl_id(&mut self, leader_repl_id: ReplicationId) {

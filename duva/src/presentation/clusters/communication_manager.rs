@@ -23,9 +23,9 @@ impl ClusterCommunicationManager {
         Ok(peers)
     }
 
-    pub(crate) async fn discover_cluster(&self, connect_to: PeerIdentifier) -> anyhow::Result<()> {
+    pub(crate) async fn connect_to_server(&self, connect_to: PeerIdentifier) -> anyhow::Result<()> {
         let (tx, rx) = tokio::sync::oneshot::channel();
-        self.send(ClusterCommand::DiscoverCluster { connect_to, callback: tx }).await?;
+        self.send(ClusterCommand::ConnectToServer { connect_to, callback: tx }).await?;
         rx.await??;
         Ok(())
     }

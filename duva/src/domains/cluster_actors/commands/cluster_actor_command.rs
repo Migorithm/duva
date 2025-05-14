@@ -17,7 +17,7 @@ use super::{ConsensusClientResponse, ReplicationResponse, RequestVote, RequestVo
 
 #[derive(Debug)]
 pub(crate) enum ClusterCommand {
-    DiscoverCluster {
+    ConnectToServer {
         connect_to: PeerIdentifier,
         callback: tokio::sync::oneshot::Sender<anyhow::Result<()>>,
     },

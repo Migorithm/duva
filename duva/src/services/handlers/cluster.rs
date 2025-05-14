@@ -7,8 +7,7 @@ use crate::domains::operation_logs::interfaces::TWriteAheadLog;
 use crate::domains::operation_logs::logger::ReplicatedLogs;
 use crate::err;
 use tokio::sync::mpsc::Sender;
-
-use tracing::{error, info, trace};
+use tracing::{info, trace};
 
 impl ClusterActor {
     pub(crate) async fn handle(
@@ -22,15 +21,11 @@ impl ClusterActor {
         while let Some(command) = self.receiver.recv().await {
             trace!(?command, "Cluster command received");
             match command {
-                ClusterCommand::DiscoverCluster { connect_to, callback } => {
-                    if let Err(e) = self.connect_to_server(connect_to, Some(callback)).await {
-                        error!("{e}");
-                    };
+                ClusterCommand::ConnectToServer { connect_to, callback } => {
+                    self.connect_to_server(connect_to, Some(callback)).await;
                 },
                 ClusterCommand::AcceptPeer { stream } => {
-                    if let Err(e) = self.accept_inbound_stream(stream).await {
-                        error!("{e}");
-                    }
+                    self.accept_inbound_stream(stream).await;
                 },
                 ClusterCommand::GetPeers(callback) => {
                     let _ = callback.send(self.members.keys().cloned().collect::<Vec<_>>());
