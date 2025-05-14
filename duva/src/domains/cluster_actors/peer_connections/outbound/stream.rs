@@ -3,11 +3,8 @@ use crate::domains::cluster_actors::listener::PeerListener;
 use crate::domains::cluster_actors::replication::ReplicationId;
 use crate::domains::cluster_actors::replication::ReplicationState;
 use crate::domains::peers::connected_peer_info::ConnectedPeerInfo;
-use crate::domains::peers::connected_types::ReadConnected;
 use crate::domains::peers::identifier::PeerIdentifier;
 use crate::domains::peers::identifier::TPeerAddress;
-
-use crate::domains::peers::peer::ListeningActorKillTrigger;
 use crate::domains::peers::peer::Peer;
 use crate::domains::query_parsers::QueryIO;
 
@@ -46,7 +43,7 @@ impl OutboundStream {
             connect_to: connect_to.to_string().into(),
         })
     }
-    pub async fn make_handshake(&mut self, self_port: u16) -> anyhow::Result<()> {
+    async fn make_handshake(&mut self, self_port: u16) -> anyhow::Result<()> {
         // Trigger
         self.w.write(write_array!("PING")).await?;
         let mut ok_count = 0;
@@ -105,7 +102,7 @@ impl OutboundStream {
         Ok(())
     }
 
-    pub(crate) fn take_connection_info(&mut self) -> anyhow::Result<ConnectedPeerInfo> {
+    fn take_connection_info(&mut self) -> anyhow::Result<ConnectedPeerInfo> {
         Ok(self.connected_node_info.take().context("Connected node info not found")?)
     }
 
@@ -122,20 +119,11 @@ impl OutboundStream {
                 .send(ClusterCommand::FollowerSetReplId(connection_info.replid.clone()))
                 .await;
         }
+
         let peer_state = connection_info.decide_peer_kind(&self.my_repl_info.replid);
+        let kill_switch = PeerListener::spawn(self.r, cluster_handler.clone(), self.connect_to);
+        let peer = Peer::new(self.w, peer_state, kill_switch);
 
-        let (kill_trigger, kill_switch) = tokio::sync::oneshot::channel();
-        let handle = tokio::spawn(
-            PeerListener {
-                read_connected: ReadConnected::new(self.r),
-                cluster_handler: cluster_handler.clone(),
-                listening_to: connection_info.id.clone(),
-            }
-            .listen(kill_switch),
-        );
-
-        let peer =
-            Peer::new(self.w, peer_state, ListeningActorKillTrigger::new(kill_trigger, handle));
         let _ = cluster_handler.send(ClusterCommand::AddPeer(peer, optional_callback)).await;
         Ok(())
     }

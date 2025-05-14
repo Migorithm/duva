@@ -2,6 +2,7 @@ use super::request::HandShakeRequest;
 use super::request::HandShakeRequestEnum;
 use crate::ClusterCommand;
 use crate::domains::IoError;
+use crate::domains::peers::peer::Peer;
 
 use crate::domains::cluster_actors::listener::PeerListener;
 use crate::domains::cluster_actors::replication::ReplicationId;
@@ -149,7 +150,11 @@ impl InboundStream {
     ) -> anyhow::Result<()> {
         self.recv_handshake().await?;
         self.disseminate_peers(members).await?;
-        let peer = PeerListener::spawn_from_inbound_stream(self, cluster_handler.clone()).await?;
+
+        let identifier = self.id()?;
+        let peer_state = self.peer_state()?;
+        let kill_switch = PeerListener::spawn(self.r, cluster_handler.clone(), identifier);
+        let peer = Peer::new(self.w, peer_state, kill_switch);
         let _ = cluster_handler.send(ClusterCommand::AddPeer(peer, None)).await;
         Ok(())
     }
