@@ -113,7 +113,6 @@ impl StartUpFacade {
             match peer_listener.accept().await {
                 // ? how do we know if incoming connection is from a peer or replica?
                 Ok((peer_stream, _socket_addr)) => {
-                    info!("stream conneted from {:?}", peer_stream.peer_addr());
                     if registry
                         .cluster_communication_manager
                         .send(ClusterCommand::AcceptPeer { stream: peer_stream })

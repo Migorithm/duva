@@ -105,7 +105,6 @@ impl ClusterActor {
                     self.replicate(&mut logger, heartbeat, &cache_manager).await;
                 },
                 ClusterCommand::StartLeaderElection => {
-                    info!("current members {:?}", self.members.keys());
                     self.run_for_election(&mut logger).await;
                 },
                 ClusterCommand::VoteElection(request_vote) => {
