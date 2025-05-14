@@ -150,7 +150,7 @@ impl InboundStream {
         self.recv_handshake().await?;
         self.disseminate_peers(members).await?;
         let peer = PeerListener::spawn_from_inbound_stream(self, cluster_handler.clone()).await?;
-        let _ = cluster_handler.send(ClusterCommand::AddPeer(peer)).await;
+        let _ = cluster_handler.send(ClusterCommand::AddPeer(peer, None)).await;
         Ok(())
     }
 }

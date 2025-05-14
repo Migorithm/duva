@@ -110,6 +110,7 @@ impl OutboundStream {
         mut self,
         self_port: u16,
         cluster_handler: tokio::sync::mpsc::Sender<ClusterCommand>,
+        optional_callback: Option<tokio::sync::oneshot::Sender<anyhow::Result<()>>>,
     ) -> anyhow::Result<()> {
         self.make_handshake(self_port).await?;
         let connection_info = self.take_connection_info()?;
@@ -132,7 +133,7 @@ impl OutboundStream {
 
         let peer =
             Peer::new(self.w, peer_state, ListeningActorKillTrigger::new(kill_trigger, handle));
-        let _ = cluster_handler.send(ClusterCommand::AddPeer(peer)).await;
+        let _ = cluster_handler.send(ClusterCommand::AddPeer(peer, optional_callback)).await;
         Ok(())
     }
 }

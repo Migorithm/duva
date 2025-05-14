@@ -145,7 +145,6 @@ impl ClusterActor {
         if let Some(existing_peer) = self.members.insert(peer.id().clone(), peer) {
             existing_peer.kill().await;
         }
-
         self.node_change_broadcast
             .send(
                 self.members
@@ -185,13 +184,18 @@ impl ClusterActor {
     pub(crate) async fn connect_to_server(
         &mut self,
         connect_to: PeerIdentifier,
+        optional_callback: Option<tokio::sync::oneshot::Sender<anyhow::Result<()>>>,
     ) -> anyhow::Result<()> {
         if self.members.contains_key(&connect_to) {
             return Ok(());
         }
         let stream = OutboundStream::new(connect_to, self.replication.clone()).await?;
 
-        tokio::spawn(stream.add_peer(self.replication.self_port, self.self_handler.clone()));
+        tokio::spawn(stream.add_peer(
+            self.replication.self_port,
+            self.self_handler.clone(),
+            optional_callback,
+        ));
         Ok(())
     }
 
@@ -720,9 +724,8 @@ impl ClusterActor {
         self.set_repl_id(ReplicationId::Undecided);
         self.step_down().await;
 
-        let _ = self.connect_to_server(peer_addr).await;
+        let _ = self.connect_to_server(peer_addr, Some(callback)).await;
         let _ = self.snapshot_topology().await;
-        let _ = callback.send(Ok(()));
     }
 
     /// Join existing cluster or node as partition leader
@@ -732,15 +735,14 @@ impl ClusterActor {
     pub(crate) async fn cluster_meet(
         &mut self,
         peer_addr: PeerIdentifier,
-        callback: tokio::sync::oneshot::Sender<Result<(), anyhow::Error>>,
+        callback: tokio::sync::oneshot::Sender<anyhow::Result<()>>,
     ) {
         self.pending_requests = Some(VecDeque::new());
 
         // TODO set up number of partitions and its number of keys to be send from A to B
         // Should it be done in handshake? No because perhaps WHEN TO MIGRATE will be revisited
-        let _ = self.connect_to_server(peer_addr).await;
+        let _ = self.connect_to_server(peer_addr, Some(callback)).await;
         let _ = self.snapshot_topology().await;
-        let _ = callback.send(Ok(()));
     }
 
     pub(crate) async fn join_peer_network_if_absent(&mut self, cluster_nodes: Vec<PeerState>) {
@@ -756,7 +758,7 @@ impl ClusterActor {
             return;
         };
 
-        let _ = self.connect_to_server(peer_to_connect).await;
+        let _ = self.connect_to_server(peer_to_connect, None).await;
     }
 }
 

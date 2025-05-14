@@ -19,7 +19,7 @@ use super::{ConsensusClientResponse, ReplicationResponse, RequestVote, RequestVo
 pub(crate) enum ClusterCommand {
     DiscoverCluster {
         connect_to: PeerIdentifier,
-        callback: tokio::sync::oneshot::Sender<()>,
+        callback: tokio::sync::oneshot::Sender<anyhow::Result<()>>,
     },
     AcceptPeer {
         stream: TcpStream,
@@ -50,7 +50,7 @@ pub(crate) enum ClusterCommand {
         hwm: u64,
     },
     ClusterMeet(PeerIdentifier, tokio::sync::oneshot::Sender<anyhow::Result<()>>),
-    AddPeer(Peer),
+    AddPeer(Peer, Option<tokio::sync::oneshot::Sender<anyhow::Result<()>>>),
     FollowerSetReplId(ReplicationId),
 }
 

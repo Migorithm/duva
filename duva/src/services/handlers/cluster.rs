@@ -7,7 +7,7 @@ use crate::domains::operation_logs::interfaces::TWriteAheadLog;
 use crate::domains::operation_logs::logger::ReplicatedLogs;
 use crate::err;
 use tokio::sync::mpsc::Sender;
-use tracing::info;
+use tracing::{error, info};
 
 impl ClusterActor {
     pub(crate) async fn handle(
@@ -21,15 +21,14 @@ impl ClusterActor {
         while let Some(command) = self.receiver.recv().await {
             match command {
                 ClusterCommand::DiscoverCluster { connect_to, callback } => {
-                    if self.connect_to_server(connect_to).await.is_ok() {
-                        let _ = self.snapshot_topology().await;
+                    if let Err(e) = self.connect_to_server(connect_to, Some(callback)).await {
+                        error!("{e}");
                     };
-                    let _ = callback.send(());
                 },
                 ClusterCommand::AcceptPeer { stream } => {
-                    if let Ok(()) = self.accept_inbound_stream(stream).await {
-                        let _ = self.snapshot_topology().await;
-                    };
+                    if let Err(e) = self.accept_inbound_stream(stream).await {
+                        error!("{e}");
+                    }
                 },
                 ClusterCommand::GetPeers(callback) => {
                     let _ = callback.send(self.members.keys().cloned().collect::<Vec<_>>());
@@ -139,7 +138,13 @@ impl ClusterActor {
                 ClusterCommand::SubscribeToTopologyChange(sender) => {
                     let _ = sender.send(self.node_change_broadcast.subscribe());
                 },
-                ClusterCommand::AddPeer(peer) => self.add_peer(peer).await,
+                ClusterCommand::AddPeer(peer, optional_callback) => {
+                    self.add_peer(peer).await;
+                    if let Some(cb) = optional_callback {
+                        let _ = cb.send(Ok(()));
+                        let _ = self.snapshot_topology().await;
+                    }
+                },
                 ClusterCommand::FollowerSetReplId(replication_id) => {
                     self.set_repl_id(replication_id)
                 },
