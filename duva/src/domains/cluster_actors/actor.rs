@@ -137,7 +137,7 @@ impl ClusterActor {
         Ok(())
     }
 
-    async fn add_peer(&mut self, peer: Peer) {
+    pub(crate) async fn add_peer(&mut self, peer: Peer) {
         self.replication.remove_from_ban_list(peer.id());
 
         // If the map did have this key present, the value is updated, and the old
@@ -210,12 +210,13 @@ impl ClusterActor {
         &mut self,
         peer_stream: TcpStream,
     ) -> anyhow::Result<()> {
-        let mut inbound_stream = InboundStream::new(peer_stream, self.replication.clone());
-        inbound_stream.recv_handshake().await?;
-        inbound_stream.disseminate_peers(self.members.keys().cloned().collect::<Vec<_>>()).await?;
-
-        let add_peer_cmd = inbound_stream.into_add_peer(self.self_handler.clone())?;
-        self.add_peer(add_peer_cmd).await;
+        let inbound_stream = InboundStream::new(peer_stream, self.replication.clone());
+        tokio::spawn(
+            inbound_stream.add_peer(
+                self.members.keys().cloned().collect::<Vec<_>>(),
+                self.self_handler.clone(),
+            ),
+        );
         Ok(())
     }
 

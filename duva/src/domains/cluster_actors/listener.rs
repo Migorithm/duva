@@ -1,13 +1,22 @@
 use crate::{
     domains::{
         cluster_actors::commands::{ClusterCommand, PeerListenerCommand},
-        peers::{connected_types::ReadConnected, peer::ListeningActorKillTrigger},
+        peers::{
+            connected_types::ReadConnected,
+            peer::{ListeningActorKillTrigger, Peer},
+        },
     },
     prelude::PeerIdentifier,
     services::interface::TRead,
 };
-use tokio::{net::tcp::OwnedReadHalf, select, sync::mpsc::Sender};
+use tokio::{
+    net::tcp::{OwnedReadHalf, OwnedWriteHalf},
+    select,
+    sync::mpsc::Sender,
+};
 use tracing::debug;
+
+use super::peer_connections::inbound::stream::InboundStream;
 
 #[cfg(test)]
 static ATOMIC: std::sync::atomic::AtomicI16 = std::sync::atomic::AtomicI16::new(0);
@@ -36,6 +45,27 @@ impl PeerListener {
         let handle = tokio::spawn(listener.listen(kill_switch));
 
         ListeningActorKillTrigger::new(kill_trigger, handle)
+    }
+
+    pub async fn spawn_from_inbound_stream(
+        inbound_stream: InboundStream,
+        cluster_handler: Sender<ClusterCommand>,
+    ) -> anyhow::Result<Peer> {
+        let identifier = inbound_stream.id()?;
+        let peer_state = inbound_stream.peer_state()?;
+
+        let (kill_trigger, kill_switch) = tokio::sync::oneshot::channel();
+        let handle = tokio::spawn(
+            Self {
+                read_connected: ReadConnected::new(inbound_stream.r),
+                cluster_handler,
+                listening_to: identifier.clone(),
+            }
+            .listen(kill_switch),
+        );
+        let kill_switch = ListeningActorKillTrigger::new(kill_trigger, handle);
+
+        Ok(Peer::new(inbound_stream.w, peer_state, kill_switch))
     }
 
     pub(crate) async fn read_command(&mut self) -> anyhow::Result<Vec<PeerListenerCommand>> {

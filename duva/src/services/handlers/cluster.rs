@@ -59,7 +59,6 @@ impl ClusterActor {
                     self.gossip(heartbeat.hop_count, &logger).await;
                     self.update_on_hertbeat_message(&heartbeat.from, heartbeat.hwm);
                 },
-
                 ClusterCommand::ForgetPeer(peer_addr, sender) => {
                     if let Ok(Some(())) = self.forget_peer(peer_addr).await {
                         let _ = sender.send(Some(()));
@@ -124,7 +123,6 @@ impl ClusterActor {
                     cache_manager.drop_cache().await;
                     self.replicaof(peer_addr, &mut logger, callback).await;
                 },
-
                 ClusterCommand::ClusterMeet(peer_addr, callback) => {
                     if !self.replication.is_leader_mode
                         || self.replication.self_identifier() == peer_addr
@@ -135,13 +133,13 @@ impl ClusterActor {
                     }
                     self.cluster_meet(peer_addr, callback).await;
                 },
-
                 ClusterCommand::GetRole(sender) => {
                     let _ = sender.send(self.replication.role.clone());
                 },
                 ClusterCommand::SubscribeToTopologyChange(sender) => {
                     let _ = sender.send(self.node_change_broadcast.subscribe());
                 },
+                ClusterCommand::AddPeer(peer) => self.add_peer(peer).await,
             }
         }
         Ok(self)

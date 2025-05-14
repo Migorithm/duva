@@ -8,7 +8,7 @@ use crate::{
             session::SessionRequest,
         },
         operation_logs::WriteRequest,
-        peers::peer::PeerState,
+        peers::peer::{Peer, PeerState},
     },
     prelude::PeerIdentifier,
 };
@@ -50,6 +50,7 @@ pub(crate) enum ClusterCommand {
         hwm: u64,
     },
     ClusterMeet(PeerIdentifier, tokio::sync::oneshot::Sender<anyhow::Result<()>>),
+    AddPeer(Peer),
 }
 
 #[derive(Debug)]

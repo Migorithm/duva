@@ -145,14 +145,16 @@ impl InboundStream {
         Ok(())
     }
 
-    pub(crate) fn into_add_peer(
-        self,
-        actor_handler: tokio::sync::mpsc::Sender<ClusterCommand>,
-    ) -> anyhow::Result<Peer> {
-        let identifier = self.id()?;
-        let peer_state = self.peer_state()?;
-        let kill_switch = PeerListener::spawn(self.r, actor_handler, identifier.clone());
+    pub(crate) async fn add_peer(
+        mut self,
+        members: Vec<PeerIdentifier>,
+        cluster_handler: tokio::sync::mpsc::Sender<ClusterCommand>,
+    ) -> anyhow::Result<()> {
+        self.recv_handshake().await?;
+        self.disseminate_peers(members).await?;
+        let peer = PeerListener::spawn_from_inbound_stream(self, cluster_handler.clone()).await?;
 
-        Ok(Peer::new(self.w, peer_state, kill_switch))
+        let _ = cluster_handler.send(ClusterCommand::AddPeer(peer)).await;
+        Ok(())
     }
 }
