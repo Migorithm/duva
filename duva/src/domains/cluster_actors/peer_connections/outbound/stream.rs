@@ -111,13 +111,14 @@ impl OutboundStream {
         self.make_handshake(self_port).await?;
         let connection_info =
             self.connected_node_info.take().context("Connected node info not found")?;
+
         if self.my_repl_info.replid == ReplicationId::Undecided {
             let _ = cluster_handler
                 .send(ClusterCommand::FollowerSetReplId(connection_info.replid.clone()))
                 .await;
         }
-
         let peer_state = connection_info.decide_peer_kind(&self.my_repl_info.replid);
+
         let kill_switch = PeerListener::spawn(self.r, cluster_handler.clone(), self.connect_to);
         let peer = Peer::new(self.w, peer_state, kill_switch);
 
