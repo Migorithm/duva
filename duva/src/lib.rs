@@ -107,12 +107,12 @@ impl StartUpFacade {
     ) -> Result<()> {
         let peer_listener = TcpListener::bind(&peer_bind_addr).await.unwrap();
 
-        debug!("listening peer connection on {}...", peer_bind_addr);
-
+        info!("listening peer connection on {}...", peer_bind_addr);
         loop {
             match peer_listener.accept().await {
                 // ? how do we know if incoming connection is from a peer or replica?
-                Ok((peer_stream, _socket_addr)) => {
+                Ok((peer_stream, socket_addr)) => {
+                    debug!("Accepted peer connection: {}", socket_addr);
                     if registry
                         .cluster_communication_manager
                         .send(ClusterCommand::AcceptPeer { stream: peer_stream })
