@@ -176,6 +176,7 @@ impl ClusterActor {
             if !self.members.contains_key(&connect_to) {
                 info!("CONNECTING TO.. {:?}", connect_to);
                 queue.extend(self.connect_to_server(connect_to).await?);
+                info!("CONNECT SUCCESSFUL");
             }
         }
         Ok(())
@@ -192,6 +193,7 @@ impl ClusterActor {
             .await?
             .make_handshake(self.replication.self_port)
             .await?;
+        debug!("Handshake completed");
 
         let mut connection_info = stream.take_connection_info()?;
         if self.replication.replid == ReplicationId::Undecided {

@@ -15,6 +15,7 @@ use std::sync::atomic::Ordering;
 use tokio::net::TcpStream;
 use tokio::net::tcp::OwnedReadHalf;
 use tokio::net::tcp::OwnedWriteHalf;
+use tracing::trace;
 
 // The following is used only when the node is in follower mode
 pub(crate) struct OutboundStream {
@@ -52,7 +53,9 @@ impl OutboundStream {
         };
 
         loop {
+            trace!("Waiting for handshake response");
             let res = self.r.read_values().await?;
+            trace!(?res, "Received handshake response");
             for query in res {
                 match ConnectionResponse::try_from(query)? {
                     ConnectionResponse::Pong => {
