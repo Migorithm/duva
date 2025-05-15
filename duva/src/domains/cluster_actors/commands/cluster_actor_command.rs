@@ -21,7 +21,7 @@ pub(crate) enum ClusterCommand {
         connect_to: PeerIdentifier,
         callback: tokio::sync::oneshot::Sender<anyhow::Result<()>>,
     },
-    AcceptPeer {
+    AcceptInboundPeer {
         stream: TcpStream,
     },
 

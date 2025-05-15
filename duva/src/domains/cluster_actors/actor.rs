@@ -25,6 +25,7 @@ use crate::domains::operation_logs::logger::ReplicatedLogs;
 use crate::domains::peers::peer::NodeKind;
 use crate::domains::peers::peer::PeerState;
 use crate::err;
+use rand::Rng;
 use std::collections::VecDeque;
 use std::iter;
 use std::sync::atomic::Ordering;
@@ -158,8 +159,8 @@ impl ClusterActor {
         let _ = self.snapshot_topology().await;
     }
     pub(crate) async fn remove_peer(&mut self, peer_addr: &PeerIdentifier) -> Option<()> {
-        warn!("{} is being removed!", peer_addr);
         if let Some(peer) = self.members.remove(peer_addr) {
+            warn!("{} is being removed!", peer_addr);
             // stop the runnin process and take the connection in case topology changes are made
             let _read_connected = peer.kill().await;
             return Some(());
@@ -744,6 +745,10 @@ impl ClusterActor {
             return;
         };
 
+        // TODO this should be refactored by assigning random id to each peer
+        // add random delay to avoid thundering herd problem
+        let delay = rand::rng().random_range(0..300);
+        tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
         let _ = self.connect_to_server(peer_to_connect, None).await;
     }
 }

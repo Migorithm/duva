@@ -24,7 +24,7 @@ impl ClusterActor {
                 ClusterCommand::ConnectToServer { connect_to, callback } => {
                     self.connect_to_server(connect_to, Some(callback)).await;
                 },
-                ClusterCommand::AcceptPeer { stream } => {
+                ClusterCommand::AcceptInboundPeer { stream } => {
                     self.accept_inbound_stream(stream).await;
                 },
                 ClusterCommand::GetPeers(callback) => {

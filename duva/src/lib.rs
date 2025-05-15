@@ -116,7 +116,7 @@ impl StartUpFacade {
                     debug!("Accepted peer connection: {}", socket_addr);
                     if registry
                         .cluster_communication_manager
-                        .send(ClusterCommand::AcceptPeer { stream: peer_stream })
+                        .send(ClusterCommand::AcceptInboundPeer { stream: peer_stream })
                         .await
                         .is_err()
                     {

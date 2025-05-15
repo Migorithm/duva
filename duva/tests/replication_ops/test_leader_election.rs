@@ -77,6 +77,9 @@ fn run_leader_election_twice(with_append_only: bool) -> anyhow::Result<()> {
 
     // !first leader is killed -> election happens
     leader_p.kill()?;
+    let mut tmp_h = Client::new(follower_p1.port);
+    tmp_h.send_and_get(format!("cluster forget 127.0.0.1:{}", leader_p.port));
+
     sleep(Duration::from_millis(LEADER_HEARTBEAT_INTERVAL_MAX));
 
     let mut processes = vec![];
@@ -93,6 +96,9 @@ fn run_leader_election_twice(with_append_only: bool) -> anyhow::Result<()> {
             ServerEnv::default().with_bind_addr(f.bind_addr()).with_append_only(with_append_only);
         let new_process = spawn_server_process(&follower_env3, false)?;
         sleep(Duration::from_millis(LEADER_HEARTBEAT_INTERVAL_MAX));
+
+        let mut tmp_h = Client::new(follower_env3.port);
+        tmp_h.send_and_get(format!("cluster forget 127.0.0.1:{}", f.port));
 
         // WHEN
         // ! second leader is killed -> election happens
