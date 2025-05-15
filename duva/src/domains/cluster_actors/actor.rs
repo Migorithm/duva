@@ -559,6 +559,7 @@ impl ClusterActor {
             RequestVote::new(&self.replication, logger.last_log_index, logger.last_log_index);
 
         info!("Running for election term {}", self.replication.term);
+        info!("number of members {}", self.members.iter().count());
         self.replicas_mut()
             .map(|(peer, _)| peer.send_to_peer(request_vote.clone()))
             .collect::<FuturesUnordered<_>>()
@@ -676,7 +677,9 @@ impl ClusterActor {
         self.heartbeat_scheduler.turn_leader_mode().await;
     }
     fn become_candidate(&mut self) {
-        self.replication.become_candidate(self.replicas().count() as u8);
+        let replica_count = self.replicas().count() as u8;
+        self.replication.term += 1;
+        self.replication.election_state.become_candidate(replica_count);
     }
 
     pub(crate) async fn handle_repl_rejection(&mut self, repl_res: ReplicationResponse) {
