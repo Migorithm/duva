@@ -1,3 +1,5 @@
+use tracing::warn;
+
 use crate::domains::{
     cluster_actors::replication::ReplicationRole, peers::identifier::PeerIdentifier,
 };
@@ -20,13 +22,14 @@ impl ElectionState {
         *self = ElectionState::Leader;
     }
     pub(crate) fn become_candidate(&mut self, replica_count: u8) {
-        *self = ElectionState::Candidate { voting: Some(ElectionVoting { cnt: 0, replica_count }) };
+        *self = ElectionState::Candidate { voting: Some(ElectionVoting::new(replica_count)) };
     }
 
-    pub(crate) fn is_votable(&self, candidiate_id: &PeerIdentifier) -> bool {
+    pub(crate) fn is_votable(&self, candidate_id: &PeerIdentifier) -> bool {
         match self {
-            ElectionState::Follower { voted_for } => {
-                voted_for.is_none() || voted_for.as_ref() == Some(candidiate_id)
+            ElectionState::Follower { voted_for } => match voted_for {
+                None => true,
+                Some(id) => id == candidate_id,
             },
             _ => false,
         }
@@ -51,6 +54,10 @@ pub(crate) struct ElectionVoting {
 }
 
 impl ElectionVoting {
+    pub(crate) fn new(replica_count: u8) -> Self {
+        // ! one for selv vote
+        Self { cnt: 1, replica_count }
+    }
     fn get_required_votes(&self) -> u8 {
         (self.replica_count + 1).div_ceil(2)
     }
@@ -58,9 +65,14 @@ impl ElectionVoting {
         self.cnt += 1;
 
         let required_count = self.get_required_votes();
+
         if self.cnt >= required_count {
             return None;
         }
+        warn!(
+            "Voting not finished yet, curent count{}, required count{}",
+            self.cnt, required_count
+        );
         Some(self)
     }
 }

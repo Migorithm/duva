@@ -565,7 +565,10 @@ impl ClusterActor {
 
     pub(crate) async fn vote_election(&mut self, request_vote: RequestVote, current_log_idx: u64) {
         let grant_vote = current_log_idx <= request_vote.last_log_index
-            && self.replication.may_become_follower(&request_vote.candidate_id, request_vote.term);
+            && self.replication.become_follower_if_term_higher_and_votable(
+                &request_vote.candidate_id,
+                request_vote.term,
+            );
 
         info!(
             "Voting for {} with term {} and granted: {}",
