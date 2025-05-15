@@ -7,7 +7,7 @@ use crate::domains::operation_logs::interfaces::TWriteAheadLog;
 use crate::domains::operation_logs::logger::ReplicatedLogs;
 use crate::err;
 use tokio::sync::mpsc::Sender;
-use tracing::{debug, info, trace};
+use tracing::{debug, trace};
 
 impl ClusterActor {
     pub(crate) async fn handle(

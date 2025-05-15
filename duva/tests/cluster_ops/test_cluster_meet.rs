@@ -22,6 +22,8 @@ fn run_cluster_meet(append_only: bool) -> anyhow::Result<()> {
     assert_eq!(client_handler.send_and_get(&cmd), "OK");
 
     // WHEN & THEN
+    // backoff time
+    std::thread::sleep(std::time::Duration::from_millis(3000));
     assert_eq!(client_handler.send_and_get_vec("cluster info", 1), vec!["cluster_known_nodes:3"]);
     assert_eq!(client_handler.send_and_get("role"), "leader");
 
