@@ -35,6 +35,7 @@ use tokio::net::TcpStream;
 use tracing::debug;
 use tracing::error;
 use tracing::info;
+use tracing::warn;
 
 #[derive(Debug)]
 pub struct ClusterActor {
@@ -157,6 +158,7 @@ impl ClusterActor {
         let _ = self.snapshot_topology().await;
     }
     pub(crate) async fn remove_peer(&mut self, peer_addr: &PeerIdentifier) -> Option<()> {
+        warn!("{} is being removed!", peer_addr);
         if let Some(peer) = self.members.remove(peer_addr) {
             // stop the runnin process and take the connection in case topology changes are made
             let _read_connected = peer.kill().await;
