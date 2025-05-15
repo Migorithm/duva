@@ -7,7 +7,7 @@ use crate::domains::operation_logs::interfaces::TWriteAheadLog;
 use crate::domains::operation_logs::logger::ReplicatedLogs;
 use crate::err;
 use tokio::sync::mpsc::Sender;
-use tracing::{info, trace};
+use tracing::{debug, info, trace};
 
 impl ClusterActor {
     pub(crate) async fn handle(
@@ -48,6 +48,7 @@ impl ClusterActor {
                 },
                 ClusterCommand::ClusterHeartBeat(mut heartbeat) => {
                     if self.replication.in_ban_list(&heartbeat.from) {
+                        debug!("{} in the ban list", heartbeat.from);
                         continue;
                     }
                     self.apply_ban_list(std::mem::take(&mut heartbeat.ban_list)).await;
@@ -87,7 +88,7 @@ impl ClusterActor {
                     self.track_replication_progress(repl_res, &mut client_sessions);
                 },
                 ClusterCommand::SendAppendEntriesRPC => {
-                    info!("current_replica {:?}", self.replicas().map(|x| x.0).collect::<Vec<_>>());
+                    debug!("replica num {:?}", self.replicas().count());
                     self.send_leader_heartbeat(&logger).await;
                 },
                 ClusterCommand::AppendEntriesRPC(heartbeat) => {
@@ -139,7 +140,6 @@ impl ClusterActor {
                     self.add_peer(peer).await;
                     if let Some(cb) = optional_callback {
                         let _ = cb.send(Ok(()));
-                        let _ = self.snapshot_topology().await;
                     }
                 },
                 ClusterCommand::FollowerSetReplId(replication_id) => {

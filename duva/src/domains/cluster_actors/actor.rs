@@ -154,6 +154,7 @@ impl ClusterActor {
                     .collect(),
             )
             .ok();
+        let _ = self.snapshot_topology().await;
     }
     pub(crate) async fn remove_peer(&mut self, peer_addr: &PeerIdentifier) -> Option<()> {
         if let Some(peer) = self.members.remove(peer_addr) {
@@ -708,7 +709,6 @@ impl ClusterActor {
         self.step_down().await;
 
         let _ = self.connect_to_server(peer_addr, Some(callback)).await;
-        let _ = self.snapshot_topology().await;
     }
 
     /// Join existing cluster or node as partition leader
@@ -725,7 +725,6 @@ impl ClusterActor {
         // TODO set up number of partitions and its number of keys to be send from A to B
         // Should it be done in handshake? No because perhaps WHEN TO MIGRATE will be revisited
         let _ = self.connect_to_server(peer_addr, Some(callback)).await;
-        let _ = self.snapshot_topology().await;
     }
 
     pub(crate) async fn join_peer_network_if_absent(&mut self, cluster_nodes: Vec<PeerState>) {
