@@ -94,11 +94,5 @@ impl PeerListener {
                 }
             }
         }
-        // let (tx, rx) = tokio::sync::oneshot::channel();
-        // let _ = self
-        //     .cluster_handler
-        //     .send(ClusterCommand::ForgetPeer(self.listening_to.clone(), tx))
-        //     .await;
-        // rx.await.ok();
     }
 }
