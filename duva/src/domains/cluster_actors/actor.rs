@@ -550,10 +550,6 @@ impl ClusterActor {
         &mut self,
         logger: &mut ReplicatedLogs<impl TWriteAheadLog>,
     ) {
-        let ElectionState::Follower { voted_for: None } = &self.replication.election_state else {
-            return;
-        };
-
         self.become_candidate();
         let request_vote =
             RequestVote::new(&self.replication, logger.last_log_index, logger.last_log_index);
