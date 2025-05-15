@@ -113,11 +113,6 @@ impl ReplicationState {
         }
     }
 
-    pub(crate) fn become_candidate(&mut self, replica_count: u8) {
-        self.term += 1;
-
-        self.election_state.become_candidate(replica_count);
-    }
     pub(crate) fn may_become_follower(
         &mut self,
         candidate_id: &PeerIdentifier,
