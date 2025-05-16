@@ -22,13 +22,32 @@ fn run_cluster_meet(append_only: bool) -> anyhow::Result<()> {
     assert_eq!(client_handler.send_and_get(&cmd), "OK");
 
     // WHEN & THEN
-    assert_eq!(client_handler.send_and_get_vec("cluster info", 1), vec!["cluster_known_nodes:3"]);
-    assert_eq!(client_handler.send_and_get("role"), "leader");
+    let mut success_cnt = 0;
+    // backoff time try for 3 seconds
+    let until = std::time::Instant::now() + std::time::Duration::from_secs(3);
+    while until > std::time::Instant::now() {
+        let res = client_handler.send_and_get_vec("cluster info", 1);
+        if res.contains(&"cluster_known_nodes:3".to_string()) {
+            assert_eq!(client_handler.send_and_get("role"), "leader");
+            success_cnt += 1;
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
 
-    // WHEN query is given to joining replica
     let mut replica_handler = Client::new(env4.port);
-    assert_eq!(replica_handler.send_and_get_vec("cluster info", 1), vec!["cluster_known_nodes:3"]);
-    assert_eq!(replica_handler.send_and_get("role"), "follower");
+    // WHEN query is given to joining replica
+    while until > std::time::Instant::now() {
+        let res = replica_handler.send_and_get_vec("cluster info", 1);
+        if res.contains(&"cluster_known_nodes:3".to_string()) {
+            assert_eq!(replica_handler.send_and_get("role"), "follower");
+            success_cnt += 1;
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+
+    assert_eq!(success_cnt, 2, "Cluster meet failed to add new nodes");
     Ok(())
 }
 

@@ -2,12 +2,13 @@ use super::request::HandShakeRequest;
 use super::request::HandShakeRequestEnum;
 use crate::ClusterCommand;
 use crate::domains::IoError;
+use crate::domains::peers::peer::Peer;
+
 use crate::domains::cluster_actors::listener::PeerListener;
 use crate::domains::cluster_actors::replication::ReplicationId;
 use crate::domains::cluster_actors::replication::ReplicationState;
 use crate::domains::peers::connected_peer_info::ConnectedPeerInfo;
 use crate::domains::peers::identifier::PeerIdentifier;
-use crate::domains::peers::peer::Peer;
 use crate::domains::peers::peer::PeerState;
 use crate::domains::query_parsers::QueryIO;
 use crate::services::interface::TRead;
@@ -32,7 +33,7 @@ impl InboundStream {
         let (read, write) = stream.into_split();
         Self { r: read, w: write, self_repl_info, connected_peer_info: None }
     }
-    pub(crate) async fn recv_handshake(&mut self) -> anyhow::Result<()> {
+    async fn recv_handshake(&mut self) -> anyhow::Result<()> {
         self.recv_ping().await?;
 
         let port = self.recv_replconf_listening_port().await?;
@@ -116,10 +117,7 @@ impl InboundStream {
         HandShakeRequest::new(query_io.swap_remove(0))
     }
 
-    pub(crate) async fn disseminate_peers(
-        &mut self,
-        peers: Vec<PeerIdentifier>,
-    ) -> anyhow::Result<()> {
+    async fn disseminate_peers(&mut self, peers: Vec<PeerIdentifier>) -> anyhow::Result<()> {
         self.w
             .write(QueryIO::SimpleString(format!(
                 "PEERS {}",
@@ -145,14 +143,64 @@ impl InboundStream {
         Ok(())
     }
 
-    pub(crate) fn into_add_peer(
-        self,
-        actor_handler: tokio::sync::mpsc::Sender<ClusterCommand>,
-    ) -> anyhow::Result<Peer> {
+    pub(crate) async fn add_peer(
+        mut self,
+        members: Vec<PeerIdentifier>,
+        cluster_handler: tokio::sync::mpsc::Sender<ClusterCommand>,
+    ) -> anyhow::Result<()> {
+        self.recv_handshake().await?;
+        self.disseminate_peers(members).await?;
+
         let identifier = self.id()?;
         let peer_state = self.peer_state()?;
-        let kill_switch = PeerListener::spawn(self.r, actor_handler, identifier.clone());
+        let kill_switch = PeerListener::spawn(self.r, cluster_handler.clone(), identifier);
+        let peer = Peer::new(self.w, peer_state, kill_switch);
+        let _ = cluster_handler.send(ClusterCommand::AddPeer(peer, None)).await;
+        Ok(())
+    }
+}
 
-        Ok(Peer::new(self.w, peer_state, kill_switch))
+#[cfg(test)]
+mod test {
+    use crate::domains::peers::peer::NodeKind;
+    use tokio::net::TcpListener;
+
+    use super::*;
+    #[tokio::test]
+    async fn test_reconnection_on_gossip() {
+        use crate::domains::cluster_actors::actor::test::cluster_actor_create_helper;
+        // GIVEN
+        let mut cluster_actor = cluster_actor_create_helper().await;
+
+        // * run listener to see if connection is attempted
+        let listener = TcpListener::bind("127.0.0.1:44455").await.unwrap(); // ! Beaware that this is cluster port
+        let bind_addr = listener.local_addr().unwrap();
+
+        let mut replication_state = cluster_actor.replication.clone();
+        replication_state.is_leader_mode = false;
+
+        let (tx, rx) = tokio::sync::oneshot::channel();
+
+        // Spawn the listener task
+        let handle = tokio::spawn(async move {
+            let (stream, _) = listener.accept().await.unwrap();
+            let mut inbound_stream = InboundStream::new(stream, replication_state.clone());
+            if inbound_stream.recv_handshake().await.is_ok() {
+                let _ = tx.send(());
+            };
+        });
+
+        // WHEN - try to reconnect
+        cluster_actor
+            .join_peer_network_if_absent(vec![PeerState::new(
+                &format!("127.0.0.1:{}", bind_addr.port() - 10000),
+                0,
+                cluster_actor.replication.replid.clone(),
+                NodeKind::Replica,
+            )])
+            .await;
+
+        assert!(handle.await.is_ok());
+        assert!(rx.await.is_ok());
     }
 }

@@ -8,7 +8,7 @@ use crate::{
             session::SessionRequest,
         },
         operation_logs::WriteRequest,
-        peers::peer::PeerState,
+        peers::peer::{Peer, PeerState},
     },
     prelude::PeerIdentifier,
 };
@@ -17,11 +17,11 @@ use super::{ConsensusClientResponse, ReplicationResponse, RequestVote, RequestVo
 
 #[derive(Debug)]
 pub(crate) enum ClusterCommand {
-    DiscoverCluster {
+    ConnectToServer {
         connect_to: PeerIdentifier,
-        callback: tokio::sync::oneshot::Sender<()>,
+        callback: tokio::sync::oneshot::Sender<anyhow::Result<()>>,
     },
-    AcceptPeer {
+    AcceptInboundPeer {
         stream: TcpStream,
     },
 
@@ -50,6 +50,8 @@ pub(crate) enum ClusterCommand {
         hwm: u64,
     },
     ClusterMeet(PeerIdentifier, tokio::sync::oneshot::Sender<anyhow::Result<()>>),
+    AddPeer(Peer, Option<tokio::sync::oneshot::Sender<anyhow::Result<()>>>),
+    FollowerSetReplId(ReplicationId),
 }
 
 #[derive(Debug)]

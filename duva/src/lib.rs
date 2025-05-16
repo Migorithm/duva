@@ -87,13 +87,14 @@ impl StartUpFacade {
 
     async fn discover_cluster(&self, env: Environment) -> Result<(), anyhow::Error> {
         if let Some(seed) = env.seed_server {
-            return self.registry.cluster_communication_manager.discover_cluster(seed).await;
+            return self.registry.cluster_communication_manager.connect_to_server(seed).await;
         }
 
         for peer in env.pre_connected_peers {
-            if self.registry.cluster_communication_manager.discover_cluster(peer.addr).await.is_ok()
+            if let Err(err) =
+                self.registry.cluster_communication_manager.connect_to_server(peer.addr).await
             {
-                break;
+                error!("{err}");
             }
         }
 
@@ -115,7 +116,7 @@ impl StartUpFacade {
                     debug!("Accepted peer connection: {}", socket_addr);
                     if registry
                         .cluster_communication_manager
-                        .send(ClusterCommand::AcceptPeer { stream: peer_stream })
+                        .send(ClusterCommand::AcceptInboundPeer { stream: peer_stream })
                         .await
                         .is_err()
                     {

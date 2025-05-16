@@ -7,7 +7,7 @@ use crate::domains::operation_logs::interfaces::TWriteAheadLog;
 use crate::domains::operation_logs::logger::ReplicatedLogs;
 use crate::err;
 use tokio::sync::mpsc::Sender;
-use tracing::{info, trace};
+use tracing::{debug, trace};
 
 impl ClusterActor {
     pub(crate) async fn handle(
@@ -21,16 +21,11 @@ impl ClusterActor {
         while let Some(command) = self.receiver.recv().await {
             trace!(?command, "Cluster command received");
             match command {
-                ClusterCommand::DiscoverCluster { connect_to, callback } => {
-                    if self.discover_cluster(connect_to).await.is_ok() {
-                        let _ = self.snapshot_topology().await;
-                    };
-                    let _ = callback.send(());
+                ClusterCommand::ConnectToServer { connect_to, callback } => {
+                    self.connect_to_server(connect_to, Some(callback)).await;
                 },
-                ClusterCommand::AcceptPeer { stream } => {
-                    if let Ok(()) = self.accept_inbound_stream(stream).await {
-                        let _ = self.snapshot_topology().await;
-                    };
+                ClusterCommand::AcceptInboundPeer { stream } => {
+                    self.accept_inbound_stream(stream).await;
                 },
                 ClusterCommand::GetPeers(callback) => {
                     let _ = callback.send(self.members.keys().cloned().collect::<Vec<_>>());
@@ -53,6 +48,7 @@ impl ClusterActor {
                 },
                 ClusterCommand::ClusterHeartBeat(mut heartbeat) => {
                     if self.replication.in_ban_list(&heartbeat.from) {
+                        debug!("{} in the ban list", heartbeat.from);
                         continue;
                     }
                     self.apply_ban_list(std::mem::take(&mut heartbeat.ban_list)).await;
@@ -60,7 +56,6 @@ impl ClusterActor {
                     self.gossip(heartbeat.hop_count, &logger).await;
                     self.update_on_hertbeat_message(&heartbeat.from, heartbeat.hwm);
                 },
-
                 ClusterCommand::ForgetPeer(peer_addr, sender) => {
                     if let Ok(Some(())) = self.forget_peer(peer_addr).await {
                         let _ = sender.send(Some(()));
@@ -93,7 +88,7 @@ impl ClusterActor {
                     self.track_replication_progress(repl_res, &mut client_sessions);
                 },
                 ClusterCommand::SendAppendEntriesRPC => {
-                    info!("current_replica {:?}", self.replicas().map(|x| x.0).collect::<Vec<_>>());
+                    debug!("replica num {:?}", self.replicas().count());
                     self.send_leader_heartbeat(&logger).await;
                 },
                 ClusterCommand::AppendEntriesRPC(heartbeat) => {
@@ -125,7 +120,6 @@ impl ClusterActor {
                     cache_manager.drop_cache().await;
                     self.replicaof(peer_addr, &mut logger, callback).await;
                 },
-
                 ClusterCommand::ClusterMeet(peer_addr, callback) => {
                     if !self.replication.is_leader_mode
                         || self.replication.self_identifier() == peer_addr
@@ -136,12 +130,20 @@ impl ClusterActor {
                     }
                     self.cluster_meet(peer_addr, callback).await;
                 },
-
                 ClusterCommand::GetRole(sender) => {
                     let _ = sender.send(self.replication.role.clone());
                 },
                 ClusterCommand::SubscribeToTopologyChange(sender) => {
                     let _ = sender.send(self.node_change_broadcast.subscribe());
+                },
+                ClusterCommand::AddPeer(peer, optional_callback) => {
+                    self.add_peer(peer).await;
+                    if let Some(cb) = optional_callback {
+                        let _ = cb.send(Ok(()));
+                    }
+                },
+                ClusterCommand::FollowerSetReplId(replication_id) => {
+                    self.set_repl_id(replication_id)
                 },
             }
             trace!("Cluster command processed");

@@ -113,21 +113,28 @@ impl ReplicationState {
         }
     }
 
-    pub(crate) fn become_candidate(&mut self, replica_count: u8) {
-        self.term += 1;
-
-        self.election_state.become_candidate(replica_count);
-    }
-    pub(crate) fn may_become_follower(
+    pub(crate) fn become_follower_if_term_higher_and_votable(
         &mut self,
         candidate_id: &PeerIdentifier,
         election_term: u64,
     ) -> bool {
-        if !(self.election_state.is_votable(candidate_id) && self.term < election_term) {
+        // If the candidate's term is less than mine → reject
+        if election_term < self.term {
             return false;
         }
+
+        // When a node sees a higher term, it must forget any vote it cast in a prior term, because:
+        if election_term > self.term {
+            self.term = election_term;
+            self.vote_for(None);
+        }
+
+        if !self.election_state.is_votable(candidate_id) {
+            return false;
+        }
+
         self.vote_for(Some(candidate_id.clone()));
-        self.term = election_term;
+
         true
     }
 

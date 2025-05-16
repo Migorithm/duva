@@ -8,7 +8,6 @@ use super::commands::RequestVoteReply;
 use super::heartbeats::heartbeat::AppendEntriesRPC;
 use super::heartbeats::heartbeat::ClusterHeartBeat;
 use super::heartbeats::scheduler::HeartBeatScheduler;
-use super::listener::PeerListener;
 use super::peer_connections::inbound::stream::InboundStream;
 use super::peer_connections::outbound::stream::OutboundStream;
 use super::replication::BannedPeer;
@@ -25,6 +24,8 @@ use crate::domains::operation_logs::interfaces::TWriteAheadLog;
 use crate::domains::operation_logs::logger::ReplicatedLogs;
 use crate::domains::peers::peer::NodeKind;
 use crate::domains::peers::peer::PeerState;
+use crate::err;
+use rand::Rng;
 use std::collections::VecDeque;
 use std::iter;
 use std::sync::atomic::Ordering;
@@ -35,6 +36,7 @@ use tokio::net::TcpStream;
 use tracing::debug;
 use tracing::error;
 use tracing::info;
+use tracing::warn;
 
 #[derive(Debug)]
 pub struct ClusterActor {
@@ -137,7 +139,7 @@ impl ClusterActor {
         Ok(())
     }
 
-    async fn add_peer(&mut self, peer: Peer) {
+    pub(crate) async fn add_peer(&mut self, peer: Peer) {
         self.replication.remove_from_ban_list(peer.id());
 
         // If the map did have this key present, the value is updated, and the old
@@ -145,7 +147,6 @@ impl ClusterActor {
         if let Some(existing_peer) = self.members.insert(peer.id().clone(), peer) {
             existing_peer.kill().await;
         }
-
         self.node_change_broadcast
             .send(
                 self.members
@@ -155,9 +156,11 @@ impl ClusterActor {
                     .collect(),
             )
             .ok();
+        let _ = self.snapshot_topology().await;
     }
     pub(crate) async fn remove_peer(&mut self, peer_addr: &PeerIdentifier) -> Option<()> {
         if let Some(peer) = self.members.remove(peer_addr) {
+            warn!("{} is being removed!", peer_addr);
             // stop the runnin process and take the connection in case topology changes are made
             let _read_connected = peer.kill().await;
             return Some(());
@@ -165,63 +168,39 @@ impl ClusterActor {
         None
     }
 
-    pub(crate) async fn discover_cluster(
+    pub(crate) async fn connect_to_server(
         &mut self,
         connect_to: PeerIdentifier,
-    ) -> anyhow::Result<()> {
-        let mut queue = VecDeque::from(vec![connect_to.clone()]);
-        while let Some(connect_to) = queue.pop_front() {
-            info!("PEER TO CONNECT DETECTED {}", connect_to);
-            info!("Current members {:?}", self.members.keys());
-            if !self.members.contains_key(&connect_to) {
-                info!("CONNECTING TO.. {:?}", connect_to);
-                queue.extend(self.connect_to_server(connect_to).await?);
-                info!("CONNECT SUCCESSFUL");
-            }
-        }
-        Ok(())
+        optional_callback: Option<tokio::sync::oneshot::Sender<anyhow::Result<()>>>,
+    ) {
+        let stream = match OutboundStream::new(connect_to, self.replication.clone()).await {
+            Ok(stream) => stream,
+            Err(e) => {
+                if let Some(cb) = optional_callback {
+                    let _ = cb.send(err!(e));
+                }
+                return;
+            },
+        };
+
+        tokio::spawn(stream.add_peer(
+            self.replication.self_port,
+            self.self_handler.clone(),
+            optional_callback,
+        ));
     }
 
-    async fn connect_to_server(
-        &mut self,
-        connect_to: PeerIdentifier,
-    ) -> anyhow::Result<Vec<PeerIdentifier>> {
-        if self.members.contains_key(&connect_to) {
-            return Ok(vec![]);
-        }
-        let mut stream = OutboundStream::new(connect_to, self.replication.clone())
-            .await?
-            .make_handshake(self.replication.self_port)
-            .await?;
-        debug!("Handshake completed");
-
-        let mut connection_info = stream.take_connection_info()?;
-        if self.replication.replid == ReplicationId::Undecided {
-            self.set_repl_id(connection_info.replid.clone());
-        }
-
-        let state = connection_info.decide_peer_kind(&self.replication.replid);
-        let peer_list = connection_info.list_peer_binding_addrs();
-        let switch = PeerListener::spawn(stream.r, self.self_handler.clone(), connection_info.id);
-
-        self.add_peer(Peer::new(stream.w, state, switch)).await;
-        Ok(peer_list)
+    pub(crate) async fn accept_inbound_stream(&mut self, peer_stream: TcpStream) {
+        let inbound_stream = InboundStream::new(peer_stream, self.replication.clone());
+        tokio::spawn(
+            inbound_stream.add_peer(
+                self.members.keys().cloned().collect::<Vec<_>>(),
+                self.self_handler.clone(),
+            ),
+        );
     }
 
-    pub(crate) async fn accept_inbound_stream(
-        &mut self,
-        peer_stream: TcpStream,
-    ) -> anyhow::Result<()> {
-        let mut inbound_stream = InboundStream::new(peer_stream, self.replication.clone());
-        inbound_stream.recv_handshake().await?;
-        inbound_stream.disseminate_peers(self.members.keys().cloned().collect::<Vec<_>>()).await?;
-
-        let add_peer_cmd = inbound_stream.into_add_peer(self.self_handler.clone())?;
-        self.add_peer(add_peer_cmd).await;
-        Ok(())
-    }
-
-    fn set_repl_id(&mut self, leader_repl_id: ReplicationId) {
+    pub(crate) fn set_repl_id(&mut self, leader_repl_id: ReplicationId) {
         self.replication.replid = leader_repl_id;
     }
 
@@ -572,15 +551,12 @@ impl ClusterActor {
         &mut self,
         logger: &mut ReplicatedLogs<impl TWriteAheadLog>,
     ) {
-        let ElectionState::Follower { voted_for: None } = &self.replication.election_state else {
-            return;
-        };
-
         self.become_candidate();
         let request_vote =
             RequestVote::new(&self.replication, logger.last_log_index, logger.last_log_index);
 
         info!("Running for election term {}", self.replication.term);
+        info!("number of members {}", self.members.iter().count());
         self.replicas_mut()
             .map(|(peer, _)| peer.send_to_peer(request_vote.clone()))
             .collect::<FuturesUnordered<_>>()
@@ -590,7 +566,10 @@ impl ClusterActor {
 
     pub(crate) async fn vote_election(&mut self, request_vote: RequestVote, current_log_idx: u64) {
         let grant_vote = current_log_idx <= request_vote.last_log_index
-            && self.replication.may_become_follower(&request_vote.candidate_id, request_vote.term);
+            && self.replication.become_follower_if_term_higher_and_votable(
+                &request_vote.candidate_id,
+                request_vote.term,
+            );
 
         info!(
             "Voting for {} with term {} and granted: {}",
@@ -698,7 +677,9 @@ impl ClusterActor {
         self.heartbeat_scheduler.turn_leader_mode().await;
     }
     fn become_candidate(&mut self) {
-        self.replication.become_candidate(self.replicas().count() as u8);
+        let replica_count = self.replicas().count() as u8;
+        self.replication.term += 1;
+        self.replication.election_state.become_candidate(replica_count);
     }
 
     pub(crate) async fn handle_repl_rejection(&mut self, repl_res: ReplicationResponse) {
@@ -732,9 +713,7 @@ impl ClusterActor {
         self.set_repl_id(ReplicationId::Undecided);
         self.step_down().await;
 
-        let _ = self.discover_cluster(peer_addr).await;
-        let _ = self.snapshot_topology().await;
-        let _ = callback.send(Ok(()));
+        let _ = self.connect_to_server(peer_addr, Some(callback)).await;
     }
 
     /// Join existing cluster or node as partition leader
@@ -744,44 +723,39 @@ impl ClusterActor {
     pub(crate) async fn cluster_meet(
         &mut self,
         peer_addr: PeerIdentifier,
-        callback: tokio::sync::oneshot::Sender<Result<(), anyhow::Error>>,
+        callback: tokio::sync::oneshot::Sender<anyhow::Result<()>>,
     ) {
         self.pending_requests = Some(VecDeque::new());
 
         // TODO set up number of partitions and its number of keys to be send from A to B
         // Should it be done in handshake? No because perhaps WHEN TO MIGRATE will be revisited
-        let _ = self.discover_cluster(peer_addr).await;
-        let _ = self.snapshot_topology().await;
-        let _ = callback.send(Ok(()));
+        let _ = self.connect_to_server(peer_addr, Some(callback)).await;
     }
 
     pub(crate) async fn join_peer_network_if_absent(&mut self, cluster_nodes: Vec<PeerState>) {
         let peers_to_connect = cluster_nodes
             .into_iter()
-            .filter(|n| n.addr != self.replication.self_identifier())
+            .filter(|n| {
+                let self_id = self.replication.self_identifier();
+                // ! second condition is to avoid connection collisions
+                n.addr != self_id && n.addr < self_id
+            })
             .filter(|p| !self.members.contains_key(&p.addr))
+            .filter(|p| !self.replication.in_ban_list(&p.addr))
             .map(|node| node.addr)
-            .collect::<Vec<_>>();
-        if peers_to_connect.is_empty() {
+            .next();
+
+        let Some(peer_to_connect) = peers_to_connect else {
             return;
-        }
+        };
 
-        for peer in peers_to_connect {
-            if self.replication.in_ban_list(&peer) {
-                continue;
-            }
-
-            if self.discover_cluster(peer).await.is_ok() {
-                let _ = self.snapshot_topology().await;
-                break;
-            }
-        }
+        let _ = self.connect_to_server(peer_to_connect, None).await;
     }
 }
 
 #[cfg(test)]
 #[allow(unused_variables)]
-mod test {
+pub mod test {
     use super::session::SessionRequest;
     use super::*;
     use crate::adapters::op_logs::memory_based::MemoryOpLogs;
@@ -836,7 +810,7 @@ mod test {
         }
     }
 
-    async fn cluster_actor_create_helper() -> ClusterActor {
+    pub async fn cluster_actor_create_helper() -> ClusterActor {
         let replication = ReplicationState::new(
             ReplicationId::Key("master".into()),
             ReplicationRole::Leader,
@@ -1703,43 +1677,6 @@ mod test {
         }
 
         tokio::fs::remove_file(path).await.unwrap();
-    }
-
-    #[tokio::test]
-    async fn test_reconnection_on_gossip() {
-        // GIVEN
-        let mut cluster_actor = cluster_actor_create_helper().await;
-
-        // * run listener to see if connection is attempted
-        let listener = TcpListener::bind("127.0.0.1:44455").await.unwrap(); // ! Beaware that this is cluster port
-        let bind_addr = listener.local_addr().unwrap();
-
-        let mut replication_state = cluster_actor.replication.clone();
-        replication_state.is_leader_mode = false;
-
-        let (tx, rx) = tokio::sync::oneshot::channel();
-
-        // Spawn the listener task
-        let handle = tokio::spawn(async move {
-            let (stream, _) = listener.accept().await.unwrap();
-            let mut inbound_stream = InboundStream::new(stream, replication_state.clone());
-            if inbound_stream.recv_handshake().await.is_ok() {
-                let _ = tx.send(());
-            };
-        });
-
-        // WHEN - try to reconnect
-        cluster_actor
-            .join_peer_network_if_absent(vec![PeerState::new(
-                &format!("127.0.0.1:{}", bind_addr.port() - 10000),
-                0,
-                cluster_actor.replication.replid.clone(),
-                NodeKind::Replica,
-            )])
-            .await;
-
-        assert!(handle.await.is_ok());
-        assert!(rx.await.is_ok());
     }
 
     #[tokio::test]

@@ -22,7 +22,7 @@ pub(crate) struct PeerListener {
 }
 
 impl PeerListener {
-    pub fn spawn(
+    pub(crate) fn spawn(
         read_connected: OwnedReadHalf,
         cluster_handler: Sender<ClusterCommand>,
         listening_to: PeerIdentifier,
@@ -94,11 +94,5 @@ impl PeerListener {
                 }
             }
         }
-        let (tx, rx) = tokio::sync::oneshot::channel();
-        let _ = self
-            .cluster_handler
-            .send(ClusterCommand::ForgetPeer(self.listening_to.clone(), tx))
-            .await;
-        rx.await.ok();
     }
 }

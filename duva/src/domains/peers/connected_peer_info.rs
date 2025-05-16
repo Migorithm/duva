@@ -14,10 +14,6 @@ pub(crate) struct ConnectedPeerInfo {
 }
 
 impl ConnectedPeerInfo {
-    pub(crate) fn list_peer_binding_addrs(&mut self) -> Vec<PeerIdentifier> {
-        std::mem::take(&mut self.peer_list).into_iter().map(Into::into).collect::<Vec<_>>()
-    }
-
     pub(crate) fn decide_peer_kind(&self, my_repl_id: &ReplicationId) -> PeerState {
         match (my_repl_id, &self.replid) {
             // Peer is undecided - assign as replica with our replication ID
