@@ -735,7 +735,11 @@ impl ClusterActor {
     pub(crate) async fn join_peer_network_if_absent(&mut self, cluster_nodes: Vec<PeerState>) {
         let peers_to_connect = cluster_nodes
             .into_iter()
-            .filter(|n| n.addr != self.replication.self_identifier())
+            .filter(|n| {
+                let self_id = self.replication.self_identifier();
+                // ! second condition is to avoid connection collisions
+                n.addr != self_id && n.addr < self_id
+            })
             .filter(|p| !self.members.contains_key(&p.addr))
             .filter(|p| !self.replication.in_ban_list(&p.addr))
             .map(|node| node.addr)
@@ -745,10 +749,6 @@ impl ClusterActor {
             return;
         };
 
-        // TODO this should be refactored by assigning random id to each peer
-        // add random delay to avoid thundering herd problem
-        let delay = rand::rng().random_range(0..300);
-        tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
         let _ = self.connect_to_server(peer_to_connect, None).await;
     }
 }

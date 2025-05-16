@@ -426,7 +426,7 @@ pub fn form_cluster<const T: usize>(
         unsafe { processes.iter_mut().map(|p| &mut *(p.as_mut_ptr())).collect::<Vec<_>>() };
 
     if stdout_enabled {
-        check_internodes_communication(&mut process_refs, 0, 10000).unwrap();
+        check_internodes_communication(&mut process_refs, 0, 1000).unwrap();
     }
 
     // Convert the array of MaybeUninit to an initialized array safely

@@ -65,3 +65,19 @@ impl std::fmt::Display for PeerIdentifier {
         )
     }
 }
+
+#[test]
+fn test_peer_identifier() {
+    let peer = PeerIdentifier::new("127.0.0.1", 1234);
+    let peer2 = PeerIdentifier::new("127.0.0.3", 1234);
+
+    assert!(peer < peer2);
+}
+
+#[test]
+fn test_peer_identifier2() {
+    let peer = PeerIdentifier::new("127.0.0.1", 1234);
+    let peer2 = PeerIdentifier::new("127.0.0.1", 1235);
+
+    assert!(peer < peer2);
+}
