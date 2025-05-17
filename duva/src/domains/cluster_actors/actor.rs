@@ -121,7 +121,7 @@ impl ClusterActor {
         );
 
         for peer in self.members.values_mut() {
-            let _ = peer.send_to_peer(msg.clone()).await;
+            let _ = peer.send(msg.clone()).await;
         }
     }
 
@@ -331,7 +331,7 @@ impl ClusterActor {
     ) {
         self.iter_follower_append_entries(logger)
             .await
-            .map(|(peer, hb)| peer.send_to_peer(AppendEntriesRPC(hb)))
+            .map(|(peer, hb)| peer.send(AppendEntriesRPC(hb)))
             .collect::<FuturesUnordered<_>>()
             .for_each(|_| async {})
             .await;
@@ -448,15 +448,13 @@ impl ClusterActor {
         log_idx: u64,
         rejection_reason: RejectionReason,
     ) {
-        if let Some(leader) = self.members.get_mut(send_to) {
-            let _ = leader
-                .send_to_peer(ReplicationResponse::new(
-                    log_idx,
-                    rejection_reason,
-                    &self.replication,
-                ))
-                .await;
-        }
+        let Some(leader) = self.members.get_mut(send_to) else {
+            return;
+        };
+
+        let _ = leader
+            .send(ReplicationResponse::new(log_idx, rejection_reason, &self.replication))
+            .await;
     }
 
     pub(crate) async fn replicate(
@@ -466,14 +464,14 @@ impl ClusterActor {
         cache_manager: &CacheManager,
     ) {
         // * write logs
-        if self.try_replicate_logs(wal, &mut heartbeat).await.is_err() {
+        if self.replicate_log_entries(wal, &mut heartbeat).await.is_err() {
             error!("Failed to replicate logs");
             return;
         };
         self.replicate_state(heartbeat, wal, cache_manager).await;
     }
 
-    async fn try_replicate_logs(
+    async fn replicate_log_entries(
         &mut self,
         wal: &mut ReplicatedLogs<impl TWriteAheadLog>,
         rpc: &mut HeartBeatMessage,
@@ -561,7 +559,7 @@ impl ClusterActor {
             RequestVote::new(&self.replication, logger.last_log_index, logger.last_log_index);
 
         self.replicas_mut()
-            .map(|(peer, _)| peer.send_to_peer(request_vote.clone()))
+            .map(|(peer, _)| peer.send(request_vote.clone()))
             .collect::<FuturesUnordered<_>>()
             .for_each(|_| async {})
             .await;
@@ -583,7 +581,7 @@ impl ClusterActor {
         let Some(peer) = self.find_replica_mut(&request_vote.candidate_id) else {
             return;
         };
-        let _ = peer.send_to_peer(RequestVoteReply { term, vote_granted: grant_vote }).await;
+        let _ = peer.send(RequestVoteReply { term, vote_granted: grant_vote }).await;
     }
 
     pub(crate) async fn tally_vote(&mut self, logger: &ReplicatedLogs<impl TWriteAheadLog>) {
@@ -595,7 +593,7 @@ impl ClusterActor {
         let msg =
             self.replication.default_heartbeat(0, logger.last_log_index, logger.last_log_term);
         self.replicas_mut()
-            .map(|(peer, _)| peer.send_to_peer(AppendEntriesRPC(msg.clone())))
+            .map(|(peer, _)| peer.send(AppendEntriesRPC(msg.clone())))
             .collect::<FuturesUnordered<_>>()
             .for_each(|_| async {})
             .await;
@@ -1450,7 +1448,7 @@ pub mod test {
         heartbeat.prev_log_term = 0;
         heartbeat.prev_log_index = 2;
 
-        let result = cluster_actor.try_replicate_logs(&mut logger, &mut heartbeat).await;
+        let result = cluster_actor.replicate_log_entries(&mut logger, &mut heartbeat).await;
 
         // THEN: Expect truncation and rejection
         assert_eq!(logger.target.writer.len(), 1);
@@ -1470,7 +1468,7 @@ pub mod test {
             vec![write_operation_create_helper(1, 0, "key1", "val1")],
         );
 
-        let result = cluster_actor.try_replicate_logs(&mut logger, &mut heartbeat).await;
+        let result = cluster_actor.replicate_log_entries(&mut logger, &mut heartbeat).await;
 
         // THEN: Entries are accepted
         assert!(result.is_ok(), "Should accept entries with prev_log_index=0 on empty log");
@@ -1492,7 +1490,7 @@ pub mod test {
         heartbeat.prev_log_index = 1;
         heartbeat.prev_log_term = 1;
 
-        let result = cluster_actor.try_replicate_logs(&mut logger, &mut heartbeat).await;
+        let result = cluster_actor.replicate_log_entries(&mut logger, &mut heartbeat).await;
 
         // THEN: Entries are rejected
         assert!(result.is_err(), "Should reject entries with prev_log_index > 0 on empty log");
