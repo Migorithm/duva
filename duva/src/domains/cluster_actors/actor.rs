@@ -25,7 +25,6 @@ use crate::domains::operation_logs::logger::ReplicatedLogs;
 use crate::domains::peers::peer::NodeKind;
 use crate::domains::peers::peer::PeerState;
 use crate::err;
-use rand::Rng;
 use std::collections::VecDeque;
 use std::iter;
 use std::sync::atomic::Ordering;
@@ -158,7 +157,7 @@ impl ClusterActor {
             .ok();
         let _ = self.snapshot_topology().await;
     }
-    pub(crate) async fn remove_peer(&mut self, peer_addr: &PeerIdentifier) -> Option<()> {
+    async fn remove_peer(&mut self, peer_addr: &PeerIdentifier) -> Option<()> {
         if let Some(peer) = self.members.remove(peer_addr) {
             warn!("{} is being removed!", peer_addr);
             // stop the runnin process and take the connection in case topology changes are made
@@ -214,18 +213,14 @@ impl ClusterActor {
         // loop over members, if ttl is expired, remove the member
         let now = Instant::now();
 
-        let to_be_removed = self
+        for peer_id in self
             .members
             .iter()
             .filter(|&(_, peer)| now.duration_since(peer.last_seen).as_millis() > self.node_timeout)
-            .map(|(id, _)| id.clone())
-            .collect::<Vec<_>>();
-
-        self.remove_peers(to_be_removed).await;
-    }
-
-    async fn remove_peers(&mut self, to_be_removed: Vec<PeerIdentifier>) {
-        for peer_id in to_be_removed {
+            .map(|(id, _)| id)
+            .cloned()
+            .collect::<Vec<_>>()
+        {
             self.remove_peer(&peer_id).await;
         }
     }
@@ -247,9 +242,10 @@ impl ClusterActor {
         &mut self,
         peer_addr: PeerIdentifier,
     ) -> anyhow::Result<Option<()>> {
-        self.replication.ban_peer(&peer_addr)?;
+        let res = self.remove_peer(&peer_addr).await;
+        self.replication.ban_list.push(BannedPeer { p_id: peer_addr, ban_time: time_in_secs()? });
 
-        Ok(self.remove_peer(&peer_addr).await)
+        Ok(res)
     }
 
     fn merge_ban_list(&mut self, ban_list: Vec<BannedPeer>) {
@@ -263,21 +259,16 @@ impl ClusterActor {
             .sort_by_key(|node| (node.p_id.clone(), std::cmp::Reverse(node.ban_time)));
         self.replication.ban_list.dedup_by_key(|node| node.p_id.clone());
     }
-    fn retain_only_recent_banned_nodes(&mut self) {
-        // remove the nodes that are banned for more than 60 seconds
-        let current_time_in_sec = time_in_secs().unwrap();
-        self.replication.ban_list.retain(|node| current_time_in_sec - node.ban_time < 60);
-    }
 
     pub(crate) async fn apply_ban_list(&mut self, ban_list: Vec<BannedPeer>) {
         self.merge_ban_list(ban_list);
-        self.retain_only_recent_banned_nodes();
+        // retain_only_recent_banned_nodes
+        let current_time_in_sec = time_in_secs().unwrap();
+        self.replication.ban_list.retain(|node| current_time_in_sec - node.ban_time < 60);
 
-        // the following should be removed immediately
-        let to_be_removed =
-            self.replication.ban_list.iter().map(|node| node.p_id.clone()).collect::<Vec<_>>();
-
-        self.remove_peers(to_be_removed).await;
+        for banned_peer in self.replication.ban_list.iter().cloned().collect::<Vec<_>>() {
+            self.remove_peer(&banned_peer.p_id).await;
+        }
     }
 
     pub(crate) fn update_on_hertbeat_message(&mut self, from: &PeerIdentifier, log_index: u64) {
@@ -551,12 +542,12 @@ impl ClusterActor {
         &mut self,
         logger: &mut ReplicatedLogs<impl TWriteAheadLog>,
     ) {
+        info!("Running for election term {}", self.replication.term);
+
         self.become_candidate();
         let request_vote =
             RequestVote::new(&self.replication, logger.last_log_index, logger.last_log_index);
 
-        info!("Running for election term {}", self.replication.term);
-        info!("number of members {}", self.members.iter().count());
         self.replicas_mut()
             .map(|(peer, _)| peer.send_to_peer(request_vote.clone()))
             .collect::<FuturesUnordered<_>>()
