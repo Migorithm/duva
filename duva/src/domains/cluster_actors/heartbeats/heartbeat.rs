@@ -30,10 +30,21 @@ impl HeartBeatMessage {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, bincode::Encode, bincode::Decode)]
+#[derive(Debug, Clone, Eq, PartialOrd, Ord, bincode::Encode, bincode::Decode, Hash)]
 pub struct BannedPeer {
     pub(crate) p_id: PeerIdentifier,
     pub(crate) ban_time: u64,
+}
+impl PartialEq for BannedPeer {
+    fn eq(&self, other: &Self) -> bool {
+        self.p_id == other.p_id
+    }
+}
+
+impl std::borrow::Borrow<PeerIdentifier> for BannedPeer {
+    fn borrow(&self) -> &PeerIdentifier {
+        &self.p_id
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, bincode::Encode, bincode::Decode)]

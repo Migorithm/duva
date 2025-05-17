@@ -3,7 +3,6 @@ use crate::{
         cluster_actors::commands::{ClusterCommand, PeerListenerCommand},
         peers::{connected_types::ReadConnected, peer::ListeningActorKillTrigger},
     },
-    prelude::PeerIdentifier,
     services::interface::TRead,
 };
 use tokio::{net::tcp::OwnedReadHalf, select, sync::mpsc::Sender};
@@ -18,20 +17,14 @@ pub(crate) type ReactorKillSwitch = tokio::sync::oneshot::Receiver<()>;
 pub(crate) struct PeerListener {
     pub(crate) read_connected: ReadConnected,
     pub(crate) cluster_handler: Sender<ClusterCommand>,
-    pub(crate) listening_to: PeerIdentifier,
 }
 
 impl PeerListener {
     pub(crate) fn spawn(
         read_connected: OwnedReadHalf,
         cluster_handler: Sender<ClusterCommand>,
-        listening_to: PeerIdentifier,
     ) -> ListeningActorKillTrigger {
-        let listener = Self {
-            read_connected: ReadConnected::new(read_connected),
-            cluster_handler,
-            listening_to,
-        };
+        let listener = Self { read_connected: ReadConnected::new(read_connected), cluster_handler };
         let (kill_trigger, kill_switch) = tokio::sync::oneshot::channel();
         let handle = tokio::spawn(listener.listen(kill_switch));
 

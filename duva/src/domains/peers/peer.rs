@@ -48,10 +48,7 @@ impl Peer {
         self.state.match_index = match_index;
     }
 
-    pub(crate) async fn send_to_peer(
-        &mut self,
-        io: impl Into<QueryIO> + Send,
-    ) -> Result<(), IoError> {
+    pub(crate) async fn send(&mut self, io: impl Into<QueryIO> + Send) -> Result<(), IoError> {
         self.w_conn.stream.write_io(io).await
     }
 

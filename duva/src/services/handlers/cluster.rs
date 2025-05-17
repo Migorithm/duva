@@ -88,8 +88,7 @@ impl ClusterActor {
                     self.track_replication_progress(repl_res, &mut client_sessions);
                 },
                 ClusterCommand::SendAppendEntriesRPC => {
-                    debug!("replica num {:?}", self.replicas().count());
-                    self.send_leader_heartbeat(&logger).await;
+                    self.send_rpc(&logger).await;
                 },
                 ClusterCommand::AppendEntriesRPC(heartbeat) => {
                     if self.check_term_outdated(&heartbeat, &logger).await {

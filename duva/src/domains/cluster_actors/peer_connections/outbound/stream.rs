@@ -25,7 +25,6 @@ pub(crate) struct OutboundStream {
     pub(crate) w: OwnedWriteHalf,
     pub(crate) my_repl_info: ReplicationState,
     pub(crate) connected_node_info: Option<ConnectedPeerInfo>,
-    pub(crate) connect_to: PeerIdentifier,
 }
 
 impl OutboundStream {
@@ -35,13 +34,7 @@ impl OutboundStream {
     ) -> anyhow::Result<Self> {
         let stream = TcpStream::connect(&connect_to.cluster_bind_addr()).await?;
         let (read, write) = stream.into_split();
-        Ok(OutboundStream {
-            r: read,
-            w: write,
-            my_repl_info,
-            connected_node_info: None,
-            connect_to: connect_to.to_string().into(),
-        })
+        Ok(OutboundStream { r: read, w: write, my_repl_info, connected_node_info: None })
     }
     async fn make_handshake(&mut self, self_port: u16) -> anyhow::Result<()> {
         // Trigger
@@ -119,7 +112,7 @@ impl OutboundStream {
         }
         let peer_state = connection_info.decide_peer_kind(&self.my_repl_info.replid);
 
-        let kill_switch = PeerListener::spawn(self.r, cluster_handler.clone(), self.connect_to);
+        let kill_switch = PeerListener::spawn(self.r, cluster_handler.clone());
         let peer = Peer::new(self.w, peer_state, kill_switch);
 
         let _ = cluster_handler.send(ClusterCommand::AddPeer(peer, optional_callback)).await;

@@ -25,7 +25,6 @@ use crate::domains::operation_logs::logger::ReplicatedLogs;
 use crate::domains::peers::peer::NodeKind;
 use crate::domains::peers::peer::PeerState;
 use crate::err;
-use rand::Rng;
 use std::collections::VecDeque;
 use std::iter;
 use std::sync::atomic::Ordering;
@@ -122,7 +121,7 @@ impl ClusterActor {
         );
 
         for peer in self.members.values_mut() {
-            let _ = peer.send_to_peer(msg.clone()).await;
+            let _ = peer.send(msg.clone()).await;
         }
     }
 
@@ -140,13 +139,19 @@ impl ClusterActor {
     }
 
     pub(crate) async fn add_peer(&mut self, peer: Peer) {
-        self.replication.remove_from_ban_list(peer.id());
+        self.replication.ban_list.remove(peer.id());
 
         // If the map did have this key present, the value is updated, and the old
         // value is returned. The key is not updated,
         if let Some(existing_peer) = self.members.insert(peer.id().clone(), peer) {
             existing_peer.kill().await;
         }
+        self.broadcast_topology_change();
+        let _ = self.snapshot_topology().await;
+    }
+
+    // * Broadcasts the current topology to all connected clients
+    fn broadcast_topology_change(&mut self) {
         self.node_change_broadcast
             .send(
                 self.members
@@ -156,9 +161,8 @@ impl ClusterActor {
                     .collect(),
             )
             .ok();
-        let _ = self.snapshot_topology().await;
     }
-    pub(crate) async fn remove_peer(&mut self, peer_addr: &PeerIdentifier) -> Option<()> {
+    async fn remove_peer(&mut self, peer_addr: &PeerIdentifier) -> Option<()> {
         if let Some(peer) = self.members.remove(peer_addr) {
             warn!("{} is being removed!", peer_addr);
             // stop the runnin process and take the connection in case topology changes are made
@@ -214,18 +218,14 @@ impl ClusterActor {
         // loop over members, if ttl is expired, remove the member
         let now = Instant::now();
 
-        let to_be_removed = self
+        for peer_id in self
             .members
             .iter()
             .filter(|&(_, peer)| now.duration_since(peer.last_seen).as_millis() > self.node_timeout)
-            .map(|(id, _)| id.clone())
-            .collect::<Vec<_>>();
-
-        self.remove_peers(to_be_removed).await;
-    }
-
-    async fn remove_peers(&mut self, to_be_removed: Vec<PeerIdentifier>) {
-        for peer_id in to_be_removed {
+            .map(|(id, _)| id)
+            .cloned()
+            .collect::<Vec<_>>()
+        {
             self.remove_peer(&peer_id).await;
         }
     }
@@ -247,37 +247,40 @@ impl ClusterActor {
         &mut self,
         peer_addr: PeerIdentifier,
     ) -> anyhow::Result<Option<()>> {
-        self.replication.ban_peer(&peer_addr)?;
+        let res = self.remove_peer(&peer_addr).await;
+        self.replication.ban_list.insert(BannedPeer { p_id: peer_addr, ban_time: time_in_secs()? });
 
-        Ok(self.remove_peer(&peer_addr).await)
+        Ok(res)
     }
 
     fn merge_ban_list(&mut self, ban_list: Vec<BannedPeer>) {
         if ban_list.is_empty() {
             return;
         }
-        // merge, deduplicate and retain the latest
-        self.replication.ban_list.extend(ban_list);
-        self.replication
-            .ban_list
-            .sort_by_key(|node| (node.p_id.clone(), std::cmp::Reverse(node.ban_time)));
-        self.replication.ban_list.dedup_by_key(|node| node.p_id.clone());
-    }
-    fn retain_only_recent_banned_nodes(&mut self) {
-        // remove the nodes that are banned for more than 60 seconds
-        let current_time_in_sec = time_in_secs().unwrap();
-        self.replication.ban_list.retain(|node| current_time_in_sec - node.ban_time < 60);
+
+        // Retain the latest
+        for banned_peer in ban_list {
+            let ban_list = &mut self.replication.ban_list;
+
+            if let Some(existing) = ban_list.take(&banned_peer) {
+                let newer =
+                    if banned_peer.ban_time > existing.ban_time { banned_peer } else { existing };
+                ban_list.insert(newer);
+            } else {
+                ban_list.insert(banned_peer);
+            }
+        }
     }
 
     pub(crate) async fn apply_ban_list(&mut self, ban_list: Vec<BannedPeer>) {
         self.merge_ban_list(ban_list);
-        self.retain_only_recent_banned_nodes();
+        // retain_only_recent_banned_nodes
+        let current_time_in_sec = time_in_secs().unwrap();
+        self.replication.ban_list.retain(|node| current_time_in_sec - node.ban_time < 60);
 
-        // the following should be removed immediately
-        let to_be_removed =
-            self.replication.ban_list.iter().map(|node| node.p_id.clone()).collect::<Vec<_>>();
-
-        self.remove_peers(to_be_removed).await;
+        for banned_peer in self.replication.ban_list.iter().cloned().collect::<Vec<_>>() {
+            self.remove_peer(&banned_peer.p_id).await;
+        }
     }
 
     pub(crate) fn update_on_hertbeat_message(&mut self, from: &PeerIdentifier, log_index: u64) {
@@ -319,16 +322,13 @@ impl ClusterActor {
             req.session_req,
         );
 
-        self.send_append_entries_to_replicas(logger).await;
+        self.send_rpc_to_replicas(logger).await;
     }
 
-    async fn send_append_entries_to_replicas(
-        &mut self,
-        logger: &ReplicatedLogs<impl TWriteAheadLog>,
-    ) {
+    async fn send_rpc_to_replicas(&mut self, logger: &ReplicatedLogs<impl TWriteAheadLog>) {
         self.iter_follower_append_entries(logger)
             .await
-            .map(|(peer, hb)| peer.send_to_peer(AppendEntriesRPC(hb)))
+            .map(|(peer, hb)| peer.send(AppendEntriesRPC(hb)))
             .collect::<FuturesUnordered<_>>()
             .for_each(|_| async {})
             .await;
@@ -445,15 +445,13 @@ impl ClusterActor {
         log_idx: u64,
         rejection_reason: RejectionReason,
     ) {
-        if let Some(leader) = self.members.get_mut(send_to) {
-            let _ = leader
-                .send_to_peer(ReplicationResponse::new(
-                    log_idx,
-                    rejection_reason,
-                    &self.replication,
-                ))
-                .await;
-        }
+        let Some(leader) = self.members.get_mut(send_to) else {
+            return;
+        };
+
+        let _ = leader
+            .send(ReplicationResponse::new(log_idx, rejection_reason, &self.replication))
+            .await;
     }
 
     pub(crate) async fn replicate(
@@ -463,14 +461,14 @@ impl ClusterActor {
         cache_manager: &CacheManager,
     ) {
         // * write logs
-        if self.try_replicate_logs(wal, &mut heartbeat).await.is_err() {
+        if self.replicate_log_entries(wal, &mut heartbeat).await.is_err() {
             error!("Failed to replicate logs");
             return;
         };
         self.replicate_state(heartbeat, wal, cache_manager).await;
     }
 
-    async fn try_replicate_logs(
+    async fn replicate_log_entries(
         &mut self,
         wal: &mut ReplicatedLogs<impl TWriteAheadLog>,
         rpc: &mut HeartBeatMessage,
@@ -528,15 +526,11 @@ impl ClusterActor {
         Ok(())
     }
 
-    pub(crate) async fn send_leader_heartbeat(
-        &mut self,
-        logger: &ReplicatedLogs<impl TWriteAheadLog>,
-    ) {
+    pub(crate) async fn send_rpc(&mut self, logger: &ReplicatedLogs<impl TWriteAheadLog>) {
         if self.replicas().count() == 0 {
             return;
         }
-
-        self.send_append_entries_to_replicas(logger).await;
+        self.send_rpc_to_replicas(logger).await;
     }
 
     pub(crate) fn cluster_nodes(&self) -> Vec<PeerState> {
@@ -551,14 +545,14 @@ impl ClusterActor {
         &mut self,
         logger: &mut ReplicatedLogs<impl TWriteAheadLog>,
     ) {
+        info!("Running for election term {}", self.replication.term);
+
         self.become_candidate();
         let request_vote =
             RequestVote::new(&self.replication, logger.last_log_index, logger.last_log_index);
 
-        info!("Running for election term {}", self.replication.term);
-        info!("number of members {}", self.members.iter().count());
         self.replicas_mut()
-            .map(|(peer, _)| peer.send_to_peer(request_vote.clone()))
+            .map(|(peer, _)| peer.send(request_vote.clone()))
             .collect::<FuturesUnordered<_>>()
             .for_each(|_| async {})
             .await;
@@ -580,7 +574,7 @@ impl ClusterActor {
         let Some(peer) = self.find_replica_mut(&request_vote.candidate_id) else {
             return;
         };
-        let _ = peer.send_to_peer(RequestVoteReply { term, vote_granted: grant_vote }).await;
+        let _ = peer.send(RequestVoteReply { term, vote_granted: grant_vote }).await;
     }
 
     pub(crate) async fn tally_vote(&mut self, logger: &ReplicatedLogs<impl TWriteAheadLog>) {
@@ -592,7 +586,7 @@ impl ClusterActor {
         let msg =
             self.replication.default_heartbeat(0, logger.last_log_index, logger.last_log_term);
         self.replicas_mut()
-            .map(|(peer, _)| peer.send_to_peer(AppendEntriesRPC(msg.clone())))
+            .map(|(peer, _)| peer.send(AppendEntriesRPC(msg.clone())))
             .collect::<FuturesUnordered<_>>()
             .for_each(|_| async {})
             .await;
@@ -840,7 +834,7 @@ pub mod test {
         for port in num_stream {
             let key = PeerIdentifier::new("localhost", port);
             let (r, x) = TcpStream::connect(bind_addr).await.unwrap().into_split();
-            let kill_switch = PeerListener::spawn(r, cluster_sender.clone(), key.clone());
+            let kill_switch = PeerListener::spawn(r, cluster_sender.clone());
             actor.members.insert(
                 PeerIdentifier::new("localhost", port),
                 Peer::new(
@@ -1447,7 +1441,7 @@ pub mod test {
         heartbeat.prev_log_term = 0;
         heartbeat.prev_log_index = 2;
 
-        let result = cluster_actor.try_replicate_logs(&mut logger, &mut heartbeat).await;
+        let result = cluster_actor.replicate_log_entries(&mut logger, &mut heartbeat).await;
 
         // THEN: Expect truncation and rejection
         assert_eq!(logger.target.writer.len(), 1);
@@ -1467,7 +1461,7 @@ pub mod test {
             vec![write_operation_create_helper(1, 0, "key1", "val1")],
         );
 
-        let result = cluster_actor.try_replicate_logs(&mut logger, &mut heartbeat).await;
+        let result = cluster_actor.replicate_log_entries(&mut logger, &mut heartbeat).await;
 
         // THEN: Entries are accepted
         assert!(result.is_ok(), "Should accept entries with prev_log_index=0 on empty log");
@@ -1489,7 +1483,7 @@ pub mod test {
         heartbeat.prev_log_index = 1;
         heartbeat.prev_log_term = 1;
 
-        let result = cluster_actor.try_replicate_logs(&mut logger, &mut heartbeat).await;
+        let result = cluster_actor.replicate_log_entries(&mut logger, &mut heartbeat).await;
 
         // THEN: Entries are rejected
         assert!(result.is_err(), "Should reject entries with prev_log_index > 0 on empty log");
@@ -1517,7 +1511,7 @@ pub mod test {
         for port in [6379, 6380] {
             let key = PeerIdentifier::new("127.0.0.1", port);
             let (r, x) = TcpStream::connect(bind_addr).await.unwrap().into_split();
-            let kill_switch = PeerListener::spawn(r, cluster_sender.clone(), key.clone());
+            let kill_switch = PeerListener::spawn(r, cluster_sender.clone());
             cluster_actor.members.insert(
                 key.clone(),
                 Peer::new(
@@ -1541,8 +1535,7 @@ pub mod test {
 
         // leader for different shard?
         let (r, x) = TcpStream::connect(bind_addr).await.unwrap().into_split();
-        let kill_switch =
-            PeerListener::spawn(r, cluster_sender.clone(), second_shard_leader_identifier.clone());
+        let kill_switch = PeerListener::spawn(r, cluster_sender.clone());
 
         cluster_actor.members.insert(
             second_shard_leader_identifier.clone(),
@@ -1562,7 +1555,7 @@ pub mod test {
         for port in [2655, 2653] {
             let key = PeerIdentifier::new("127.0.0.1", port);
             let (r, x) = TcpStream::connect(bind_addr).await.unwrap().into_split();
-            let kill_switch = PeerListener::spawn(r, cluster_sender.clone(), key.clone());
+            let kill_switch = PeerListener::spawn(r, cluster_sender.clone());
 
             cluster_actor.members.insert(
                 key.clone(),
@@ -1638,11 +1631,7 @@ pub mod test {
         let bind_addr = listener.local_addr().unwrap();
         let (r, x) = TcpStream::connect(bind_addr).await.unwrap().into_split();
 
-        let kill_switch = PeerListener::spawn(
-            r,
-            cluster_actor.self_handler.clone(),
-            PeerIdentifier("127.0.0.1:3849".into()),
-        );
+        let kill_switch = PeerListener::spawn(r, cluster_actor.self_handler.clone());
 
         let peer = Peer::new(
             x,
