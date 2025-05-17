@@ -322,13 +322,10 @@ impl ClusterActor {
             req.session_req,
         );
 
-        self.send_append_entries_to_replicas(logger).await;
+        self.send_rpc_to_replicas(logger).await;
     }
 
-    async fn send_append_entries_to_replicas(
-        &mut self,
-        logger: &ReplicatedLogs<impl TWriteAheadLog>,
-    ) {
+    async fn send_rpc_to_replicas(&mut self, logger: &ReplicatedLogs<impl TWriteAheadLog>) {
         self.iter_follower_append_entries(logger)
             .await
             .map(|(peer, hb)| peer.send(AppendEntriesRPC(hb)))
@@ -529,15 +526,11 @@ impl ClusterActor {
         Ok(())
     }
 
-    pub(crate) async fn send_leader_heartbeat(
-        &mut self,
-        logger: &ReplicatedLogs<impl TWriteAheadLog>,
-    ) {
+    pub(crate) async fn send_rpc(&mut self, logger: &ReplicatedLogs<impl TWriteAheadLog>) {
         if self.replicas().count() == 0 {
             return;
         }
-
-        self.send_append_entries_to_replicas(logger).await;
+        self.send_rpc_to_replicas(logger).await;
     }
 
     pub(crate) fn cluster_nodes(&self) -> Vec<PeerState> {
