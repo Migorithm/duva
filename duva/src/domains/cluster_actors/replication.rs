@@ -5,6 +5,7 @@ pub(crate) use super::heartbeats::heartbeat::HeartBeatMessage;
 use crate::domains::peers::identifier::PeerIdentifier;
 use crate::domains::peers::peer::NodeKind;
 use crate::domains::peers::peer::PeerState;
+use std::collections::HashSet;
 use std::fmt::Display;
 use std::sync::Arc;
 use std::sync::atomic::AtomicU64;
@@ -21,7 +22,7 @@ pub(crate) struct ReplicationState {
 
     // * state is shared among peers
     pub(crate) term: u64,
-    pub(crate) ban_list: Vec<BannedPeer>,
+    pub(crate) ban_list: HashSet<BannedPeer>,
 
     pub(crate) election_state: ElectionState,
     pub(crate) is_leader_mode: bool,
@@ -72,13 +73,8 @@ impl ReplicationState {
     }
 
     pub(crate) fn in_ban_list(&self, peer_identifier: &PeerIdentifier) -> bool {
-        if let Ok(current_time_in_sec) = time_in_secs() {
-            self.ban_list.iter().any(|node| {
-                &node.p_id == peer_identifier && current_time_in_sec - node.ban_time < 60
-            })
-        } else {
-            false
-        }
+        let Ok(current_time) = time_in_secs() else { return false };
+        self.ban_list.get(peer_identifier).map_or(false, |node| current_time - node.ban_time < 60)
     }
 
     pub(crate) fn default_heartbeat(
@@ -93,18 +89,11 @@ impl ReplicationState {
             hwm: self.hwm.load(Ordering::Relaxed),
             replid: self.replid.clone(),
             hop_count,
-            ban_list: self.ban_list.clone(),
+            ban_list: self.ban_list.iter().cloned().collect(),
             append_entries: vec![],
             cluster_nodes: vec![],
             prev_log_index,
             prev_log_term,
-        }
-    }
-
-    pub(crate) fn remove_from_ban_list(&mut self, peer_addr: &PeerIdentifier) {
-        let idx = self.ban_list.iter().position(|node| &node.p_id == peer_addr);
-        if let Some(idx) = idx {
-            self.ban_list.swap_remove(idx);
         }
     }
 

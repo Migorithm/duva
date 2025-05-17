@@ -8,8 +8,10 @@ fn run_cluster_forget_makes_all_nodes_forget_target_node(
     // GIVEN
 
     let mut env = ServerEnv::default().with_ttl(500).with_hf(2).with_append_only(with_append_only);
-    let mut repl_env = ServerEnv::default().with_hf(10).with_append_only(with_append_only);
-    let mut repl_env2 = ServerEnv::default().with_hf(10).with_append_only(with_append_only);
+    let mut repl_env =
+        ServerEnv::default().with_ttl(500).with_hf(2).with_append_only(with_append_only);
+    let mut repl_env2 =
+        ServerEnv::default().with_ttl(500).with_hf(2).with_append_only(with_append_only);
 
     let [leader_p, repl_p, repl_p2] = form_cluster([&mut env, &mut repl_env, &mut repl_env2], true);
 

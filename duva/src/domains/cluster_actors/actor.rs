@@ -139,7 +139,7 @@ impl ClusterActor {
     }
 
     pub(crate) async fn add_peer(&mut self, peer: Peer) {
-        self.replication.remove_from_ban_list(peer.id());
+        self.replication.ban_list.remove(peer.id());
 
         // If the map did have this key present, the value is updated, and the old
         // value is returned. The key is not updated,
@@ -150,6 +150,7 @@ impl ClusterActor {
         let _ = self.snapshot_topology().await;
     }
 
+    // * Broadcasts the current topology to all connected clients
     fn broadcast_topology_change(&mut self) {
         self.node_change_broadcast
             .send(
@@ -247,7 +248,7 @@ impl ClusterActor {
         peer_addr: PeerIdentifier,
     ) -> anyhow::Result<Option<()>> {
         let res = self.remove_peer(&peer_addr).await;
-        self.replication.ban_list.push(BannedPeer { p_id: peer_addr, ban_time: time_in_secs()? });
+        self.replication.ban_list.insert(BannedPeer { p_id: peer_addr, ban_time: time_in_secs()? });
 
         Ok(res)
     }
@@ -256,12 +257,19 @@ impl ClusterActor {
         if ban_list.is_empty() {
             return;
         }
-        // merge, deduplicate and retain the latest
-        self.replication.ban_list.extend(ban_list);
-        self.replication
-            .ban_list
-            .sort_by_key(|node| (node.p_id.clone(), std::cmp::Reverse(node.ban_time)));
-        self.replication.ban_list.dedup_by_key(|node| node.p_id.clone());
+
+        // Retain the latest
+        for banned_peer in ban_list {
+            let ban_list = &mut self.replication.ban_list;
+
+            if let Some(existing) = ban_list.take(&banned_peer) {
+                let newer =
+                    if banned_peer.ban_time > existing.ban_time { banned_peer } else { existing };
+                ban_list.insert(newer);
+            } else {
+                ban_list.insert(banned_peer);
+            }
+        }
     }
 
     pub(crate) async fn apply_ban_list(&mut self, ban_list: Vec<BannedPeer>) {
