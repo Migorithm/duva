@@ -78,7 +78,7 @@ impl From<ConsensusRequest> for ClusterCommand {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LazyOption {
     Lazy,
     Eager,

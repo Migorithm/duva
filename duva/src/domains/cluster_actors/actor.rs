@@ -1,6 +1,7 @@
 use super::commands::ClusterCommand;
 use super::commands::ConsensusClientResponse;
 use super::commands::ConsensusRequest;
+use super::commands::LazyOption;
 use super::commands::RejectionReason;
 use super::commands::ReplicationResponse;
 use super::commands::RequestVote;
@@ -718,15 +719,20 @@ impl ClusterActor {
     pub(crate) async fn cluster_meet(
         &mut self,
         peer_addr: PeerIdentifier,
+        lazy_option: LazyOption,
         callback: tokio::sync::oneshot::Sender<anyhow::Result<()>>,
     ) {
-        // TODO following should be optional - Eagerly or Lazily
+        let _ = self.connect_to_server(peer_addr.clone(), Some(callback)).await;
 
-        // self.pending_requests = Some(VecDeque::new());
+        if lazy_option == LazyOption::Eager {
+            self.pending_requests = Some(VecDeque::new());
+            self.request_rebalance(peer_addr).await;
+        }
+    }
 
-        // TODO set up number of partitions and its number of keys to be send from A to B
-        // Should it be done in handshake? No because perhaps WHEN TO MIGRATE will be revisited
-        let _ = self.connect_to_server(peer_addr, Some(callback)).await;
+    // Ask the given peer to act as rebalancing coordinator
+    async fn request_rebalance(&self, peer_addr: PeerIdentifier) {
+        todo!()
     }
 
     pub(crate) async fn join_peer_network_if_absent(&mut self, cluster_nodes: Vec<PeerState>) {

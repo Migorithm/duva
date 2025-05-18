@@ -127,7 +127,7 @@ impl ClusterActor {
                             .send(err!("wrong address or invalid state for cluster meet command"));
                         continue;
                     }
-                    self.cluster_meet(peer_addr, callback).await;
+                    self.cluster_meet(peer_addr, lazy_option, callback).await;
                 },
                 ClusterCommand::GetRole(sender) => {
                     let _ = sender.send(self.replication.role.clone());
