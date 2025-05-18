@@ -1,8 +1,8 @@
 use crate::{
     domains::IoError,
+    domains::TSerdeReadWrite,
     prelude::PeerIdentifier,
     presentation::clients::stream::{ClientStreamReader, ClientStreamWriter},
-    services::interface::TSerdeReadWrite,
 };
 use tokio::net::TcpStream;
 use uuid::Uuid;

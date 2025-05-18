@@ -3,6 +3,7 @@ pub struct ConfigActor {
     pub(crate) dir: &'static str,
     pub dbfilename: &'static str,
 }
+
 impl ConfigActor {
     pub fn new(dir: String, dbfilename: String) -> Self {
         Self {

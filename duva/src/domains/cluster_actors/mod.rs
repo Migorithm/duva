@@ -11,10 +11,9 @@ pub mod commands;
 pub mod consensus;
 pub(crate) mod hash_ring;
 pub mod heartbeats;
-mod listener;
-pub(crate) mod peer_connections;
-pub mod replication;
-pub mod session;
 
+pub mod replication;
+mod service;
+pub mod session;
 pub const FANOUT: usize = 2;
 pub use actor::ClusterActor;

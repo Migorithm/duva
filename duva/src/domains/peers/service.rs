@@ -1,9 +1,11 @@
 use crate::{
+    domains::interface::TRead,
     domains::{
-        cluster_actors::commands::{ClusterCommand, PeerListenerCommand},
-        peers::{connected_types::ReadConnected, peer::ListeningActorKillTrigger},
+        cluster_actors::commands::ClusterCommand,
+        peers::{
+            PeerListenerCommand, connected_types::ReadConnected, peer::ListeningActorKillTrigger,
+        },
     },
-    services::interface::TRead,
 };
 use tokio::{net::tcp::OwnedReadHalf, select, sync::mpsc::Sender};
 use tracing::{debug, trace};
@@ -21,10 +23,10 @@ pub(crate) struct PeerListener {
 
 impl PeerListener {
     pub(crate) fn spawn(
-        read_connected: OwnedReadHalf,
+        read_connected: impl Into<ReadConnected>,
         cluster_handler: Sender<ClusterCommand>,
     ) -> ListeningActorKillTrigger {
-        let listener = Self { read_connected: ReadConnected::new(read_connected), cluster_handler };
+        let listener = Self { read_connected: read_connected.into(), cluster_handler };
         let (kill_trigger, kill_switch) = tokio::sync::oneshot::channel();
         let handle = tokio::spawn(listener.listen(kill_switch));
 
@@ -33,7 +35,6 @@ impl PeerListener {
 
     pub(crate) async fn read_command(&mut self) -> anyhow::Result<Vec<PeerListenerCommand>> {
         self.read_connected
-            .stream
             .read_values()
             .await?
             .into_iter()
@@ -42,9 +43,9 @@ impl PeerListener {
     }
     pub(crate) async fn listen(mut self, rx: ReactorKillSwitch) -> OwnedReadHalf {
         let connected = select! {
-            _ = self.listen_peer() => self.read_connected.stream,
+            _ = self.listen_peer() => self.read_connected.0,
             // If the kill switch is triggered, return the connected stream so the caller can decide what to do with it
-            _ = rx => self.read_connected.stream
+            _ = rx => self.read_connected.0
         };
         connected
     }

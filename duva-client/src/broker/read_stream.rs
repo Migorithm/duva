@@ -1,7 +1,7 @@
 use duva::{
     domains::IoError,
+    domains::interface::TRead,
     prelude::tokio::{self, net::tcp::OwnedReadHalf, sync::oneshot},
-    services::interface::TRead,
 };
 
 use crate::broker::BrokerMessage;

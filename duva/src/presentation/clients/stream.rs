@@ -1,8 +1,8 @@
 use super::{ClientController, request::ClientRequest};
 use crate::{
+    domains::interface::{TRead, TWrite},
     domains::{IoError, cluster_actors::session::SessionRequest, query_parsers::QueryIO},
     prelude::PeerIdentifier,
-    services::interface::{TRead, TWrite},
 };
 use tokio::{
     net::tcp::{OwnedReadHalf, OwnedWriteHalf},

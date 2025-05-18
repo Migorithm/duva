@@ -8,7 +8,7 @@ use anyhow::Result;
 use tokio::sync::mpsc::Receiver;
 
 impl CacheActor {
-    pub(crate) async fn handle(
+    pub(super) async fn handle(
         mut self,
         mut recv: Receiver<CacheCommand>,
         mut rq: ReadQueue,

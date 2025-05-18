@@ -4,7 +4,7 @@ pub mod domains;
 mod init;
 pub mod macros;
 pub mod presentation;
-pub mod services;
+
 use actor_registry::ActorRegistry;
 use anyhow::Result;
 use domains::IoError;

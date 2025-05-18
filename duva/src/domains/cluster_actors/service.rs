@@ -10,7 +10,7 @@ use tokio::sync::mpsc::Sender;
 use tracing::{debug, trace};
 
 impl ClusterActor {
-    pub(crate) async fn handle(
+    pub(super) async fn handle(
         mut self,
         wal: impl TWriteAheadLog,
         cache_manager: CacheManager,
