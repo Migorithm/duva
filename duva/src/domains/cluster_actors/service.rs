@@ -119,7 +119,7 @@ impl ClusterActor {
                     cache_manager.drop_cache().await;
                     self.replicaof(peer_addr, &mut logger, callback).await;
                 },
-                ClusterCommand::ClusterMeet(peer_addr, callback) => {
+                ClusterCommand::ClusterMeet(peer_addr, lazy_option, callback) => {
                     if !self.replication.is_leader_mode
                         || self.replication.self_identifier() == peer_addr
                     {

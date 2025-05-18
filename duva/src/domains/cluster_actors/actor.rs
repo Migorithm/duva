@@ -720,7 +720,9 @@ impl ClusterActor {
         peer_addr: PeerIdentifier,
         callback: tokio::sync::oneshot::Sender<anyhow::Result<()>>,
     ) {
-        self.pending_requests = Some(VecDeque::new());
+        // TODO following should be optional - Eagerly or Lazily
+
+        // self.pending_requests = Some(VecDeque::new());
 
         // TODO set up number of partitions and its number of keys to be send from A to B
         // Should it be done in handshake? No because perhaps WHEN TO MIGRATE will be revisited

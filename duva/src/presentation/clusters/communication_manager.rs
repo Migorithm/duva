@@ -1,7 +1,7 @@
 use crate::{
     domains::{
         cluster_actors::{
-            commands::ClusterCommand,
+            commands::{ClusterCommand, LazyOption},
             replication::{ReplicationRole, ReplicationState},
         },
         peers::{identifier::PeerIdentifier, peer::PeerState},
@@ -70,9 +70,13 @@ impl ClusterCommunicationManager {
         rx.await?
     }
 
-    pub(crate) async fn cluster_meet(&self, peer_identifier: PeerIdentifier) -> anyhow::Result<()> {
+    pub(crate) async fn cluster_meet(
+        &self,
+        peer_identifier: PeerIdentifier,
+        lazy_option: LazyOption,
+    ) -> anyhow::Result<()> {
         let (tx, rx) = tokio::sync::oneshot::channel();
-        let _ = self.send(ClusterCommand::ClusterMeet(peer_identifier, tx)).await;
+        let _ = self.send(ClusterCommand::ClusterMeet(peer_identifier, lazy_option, tx)).await;
         rx.await?
     }
 

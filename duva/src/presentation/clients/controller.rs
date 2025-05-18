@@ -110,9 +110,11 @@ impl ClientController {
                     Err(e) => QueryIO::Err(e.to_string()),
                 }
             },
-            ClientAction::ClusterMeet(peer_identifier) => {
-                self.cluster_communication_manager.cluster_meet(peer_identifier).await?.into()
-            },
+            ClientAction::ClusterMeet(peer_identifier, option) => self
+                .cluster_communication_manager
+                .cluster_meet(peer_identifier, option)
+                .await?
+                .into(),
             ClientAction::ReplicaOf(peer_identifier) => {
                 self.cluster_communication_manager.replicaof(peer_identifier.clone()).await?;
                 QueryIO::SimpleString("OK".into())
