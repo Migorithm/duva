@@ -4,8 +4,8 @@ use crate::domains::cluster_actors::replication::ReplicationState;
 use crate::domains::peers::connected_peer_info::ConnectedPeerInfo;
 use crate::domains::peers::identifier::PeerIdentifier;
 use crate::domains::peers::identifier::TPeerAddress;
-use crate::domains::peers::listener::PeerListener;
 use crate::domains::peers::peer::Peer;
+use crate::domains::peers::service::PeerListener;
 use crate::domains::query_parsers::QueryIO;
 
 use crate::ClusterCommand;

@@ -1,7 +1,9 @@
 use crate::{
     domains::{
-        cluster_actors::commands::{ClusterCommand, PeerListenerCommand},
-        peers::{connected_types::ReadConnected, peer::ListeningActorKillTrigger},
+        cluster_actors::commands::ClusterCommand,
+        peers::{
+            PeerListenerCommand, connected_types::ReadConnected, peer::ListeningActorKillTrigger,
+        },
     },
     services::interface::TRead,
 };

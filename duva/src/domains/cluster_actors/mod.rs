@@ -12,7 +12,6 @@ pub mod consensus;
 pub(crate) mod hash_ring;
 pub mod heartbeats;
 
-pub(crate) mod peer_connections;
 pub mod replication;
 mod service;
 pub mod session;
