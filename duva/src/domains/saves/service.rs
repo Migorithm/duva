@@ -1,6 +1,5 @@
-use tokio::sync::mpsc::Receiver;
-
 use crate::domains::saves::{actor::SaveActor, command::SaveCommand};
+use tokio::sync::mpsc::Receiver;
 
 impl SaveActor {
     pub async fn run(mut self, mut inbox: Receiver<SaveCommand>) -> anyhow::Result<Self> {

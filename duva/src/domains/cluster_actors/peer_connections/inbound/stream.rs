@@ -4,11 +4,11 @@ use crate::ClusterCommand;
 use crate::domains::IoError;
 use crate::domains::peers::peer::Peer;
 
-use crate::domains::cluster_actors::listener::PeerListener;
 use crate::domains::cluster_actors::replication::ReplicationId;
 use crate::domains::cluster_actors::replication::ReplicationState;
 use crate::domains::peers::connected_peer_info::ConnectedPeerInfo;
 use crate::domains::peers::identifier::PeerIdentifier;
+use crate::domains::peers::listener::PeerListener;
 use crate::domains::peers::peer::PeerState;
 use crate::domains::query_parsers::QueryIO;
 use crate::services::interface::TRead;

@@ -757,10 +757,10 @@ pub mod test {
     use crate::domains::caches::command::CacheCommand;
     use crate::domains::cluster_actors::commands::ClusterCommand;
     use crate::domains::cluster_actors::commands::ConsensusRequest;
-    use crate::domains::cluster_actors::listener::PeerListener;
     use crate::domains::cluster_actors::replication::ReplicationRole;
     use crate::domains::operation_logs::WriteOperation;
     use crate::domains::operation_logs::WriteRequest;
+    use crate::domains::peers::listener::PeerListener;
     use crate::domains::peers::peer::PeerState;
     use std::ops::Range;
     use std::time::Duration;
