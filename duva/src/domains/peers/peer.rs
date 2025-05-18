@@ -1,10 +1,10 @@
 use crate::domains::IoError;
 use crate::domains::cluster_actors::replication::ReplicationId;
+use crate::domains::interface::TWrite;
 use crate::domains::peers::connected_types::WriteConnected;
 use crate::domains::query_parsers::QueryIO;
 use crate::prelude::PeerIdentifier;
-use crate::services::interface::TWrite;
-use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
+use tokio::net::tcp::OwnedReadHalf;
 use tokio::task::JoinHandle;
 use tokio::time::Instant;
 
@@ -20,16 +20,11 @@ pub(crate) struct Peer {
 
 impl Peer {
     pub(crate) fn new(
-        w: OwnedWriteHalf,
+        w: impl Into<WriteConnected>,
         state: PeerState,
         listener_kill_trigger: ListeningActorKillTrigger,
     ) -> Self {
-        Self {
-            w_conn: WriteConnected::new(w),
-            listener_kill_trigger,
-            last_seen: Instant::now(),
-            state,
-        }
+        Self { w_conn: w.into(), listener_kill_trigger, last_seen: Instant::now(), state }
     }
     pub(crate) fn id(&self) -> &PeerIdentifier {
         &self.state.addr
@@ -49,7 +44,7 @@ impl Peer {
     }
 
     pub(crate) async fn send(&mut self, io: impl Into<QueryIO> + Send) -> Result<(), IoError> {
-        self.w_conn.stream.write_io(io).await
+        self.w_conn.write_io(io).await
     }
 
     pub(crate) async fn kill(self) -> OwnedReadHalf {

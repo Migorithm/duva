@@ -1,28 +1,14 @@
 use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
 
-#[derive(Debug)]
-pub(crate) struct WriteConnected {
-    pub(crate) stream: OwnedWriteHalf,
-}
-impl WriteConnected {
-    pub(crate) fn new(stream: OwnedWriteHalf) -> Self {
-        Self { stream }
-    }
-}
+use crate::{from_to, make_smart_pointer};
 
 #[derive(Debug)]
-pub(crate) struct ReadConnected {
-    pub(crate) stream: OwnedReadHalf,
-}
+pub(crate) struct WriteConnected(pub(crate) OwnedWriteHalf);
+make_smart_pointer!(WriteConnected, OwnedWriteHalf);
+from_to!(OwnedWriteHalf, WriteConnected);
 
-impl ReadConnected {
-    pub(crate) fn new(stream: OwnedReadHalf) -> Self {
-        Self { stream }
-    }
-}
+#[derive(Debug)]
+pub(crate) struct ReadConnected(pub(crate) OwnedReadHalf);
 
-impl From<OwnedWriteHalf> for WriteConnected {
-    fn from(w: OwnedWriteHalf) -> WriteConnected {
-        WriteConnected { stream: w }
-    }
-}
+make_smart_pointer!(ReadConnected, OwnedReadHalf);
+from_to!(OwnedReadHalf, ReadConnected);

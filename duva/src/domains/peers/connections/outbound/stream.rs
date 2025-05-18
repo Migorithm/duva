@@ -9,8 +9,8 @@ use crate::domains::peers::service::PeerListener;
 use crate::domains::query_parsers::QueryIO;
 
 use crate::ClusterCommand;
-use crate::services::interface::TRead;
-use crate::services::interface::TWrite;
+use crate::domains::interface::TRead;
+use crate::domains::interface::TWrite;
 use crate::write_array;
 use anyhow::Context;
 use std::sync::atomic::Ordering;

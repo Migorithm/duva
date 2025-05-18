@@ -1,7 +1,7 @@
 use crate::domains::IoError;
+use crate::domains::interface::{TGetPeerIp, TRead, TSerdeReadWrite, TWrite};
 use crate::domains::query_parsers::query_io::SERDE_CONFIG;
 use crate::domains::query_parsers::{QueryIO, deserialize};
-use crate::services::interface::{TGetPeerIp, TRead, TSerdeReadWrite, TWrite};
 use bytes::{Bytes, BytesMut};
 use std::io::ErrorKind;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
