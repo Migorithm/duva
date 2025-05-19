@@ -2,13 +2,13 @@ use crate::{
     domains::interface::TRead,
     domains::{
         cluster_actors::ClusterCommand,
-        peers::{
-            PeerListenerCommand, connected_types::ReadConnected, peer::ListeningActorKillTrigger,
-        },
+        peers::{PeerListenerCommand, peer::ListeningActorKillTrigger},
     },
 };
 use tokio::{net::tcp::OwnedReadHalf, select, sync::mpsc::Sender};
 use tracing::{debug, trace};
+
+use super::connections::connected_types::ReadConnected;
 
 #[cfg(test)]
 static ATOMIC: std::sync::atomic::AtomicI16 = std::sync::atomic::AtomicI16::new(0);
@@ -68,10 +68,8 @@ impl PeerListener {
                             self.cluster_handler.send(ClusterCommand::ClusterHeartBeat(hb)).await;
                     },
                     PeerListenerCommand::Acks(items) => {
-                        let _ = self
-                            .cluster_handler
-                            .send(ClusterCommand::ReplicationResponse(items))
-                            .await;
+                        let _ =
+                            self.cluster_handler.send(ClusterCommand::ReplicationAck(items)).await;
                     },
                     PeerListenerCommand::RequestVote(request_vote) => {
                         let _ = self

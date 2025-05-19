@@ -18,7 +18,7 @@ use crate::domains::operation_logs::logger::ReplicatedLogs;
 use crate::domains::peers::command::BannedPeer;
 use crate::domains::peers::command::HeartBeat;
 use crate::domains::peers::command::RejectionReason;
-use crate::domains::peers::command::ReplicationResponse;
+use crate::domains::peers::command::ReplicationAck;
 use crate::domains::peers::command::RequestVote;
 use crate::domains::peers::command::RequestVoteReply;
 use crate::domains::peers::connections::inbound::stream::InboundStream;
@@ -413,7 +413,7 @@ impl ClusterActor {
 
     pub(crate) fn track_replication_progress(
         &mut self,
-        res: ReplicationResponse,
+        res: ReplicationAck,
         sessions: &mut ClientSessions,
     ) {
         let Some(mut consensus) = self.consensus_tracker.remove(&res.log_idx) else {
@@ -451,9 +451,8 @@ impl ClusterActor {
             return;
         };
 
-        let _ = leader
-            .send(ReplicationResponse::new(log_idx, rejection_reason, &self.replication))
-            .await;
+        let _ =
+            leader.send(ReplicationAck::new(log_idx, rejection_reason, &self.replication)).await;
     }
 
     pub(crate) async fn replicate(
@@ -678,7 +677,7 @@ impl ClusterActor {
         self.replication.election_state.become_candidate(replica_count);
     }
 
-    pub(crate) async fn handle_repl_rejection(&mut self, repl_res: ReplicationResponse) {
+    pub(crate) async fn handle_repl_rejection(&mut self, repl_res: ReplicationAck) {
         match repl_res.rej_reason {
             RejectionReason::ReceiverHasHigherTerm => self.step_down().await,
             RejectionReason::LogInconsistency => {
@@ -1014,7 +1013,7 @@ pub mod test {
         cluster_actor.req_consensus(&mut logger, consensus_request).await;
 
         // WHEN
-        let follower_res = ReplicationResponse {
+        let follower_res = ReplicationAck {
             log_idx: 1,
             term: 0,
             rej_reason: RejectionReason::None,
@@ -1065,7 +1064,7 @@ pub mod test {
 
         // WHEN
         assert_eq!(cluster_actor.consensus_tracker.len(), 1);
-        let follower_res = ReplicationResponse {
+        let follower_res = ReplicationAck {
             log_idx: 1,
             term: 0,
             rej_reason: RejectionReason::None,

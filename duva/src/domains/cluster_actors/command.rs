@@ -11,7 +11,7 @@ use crate::{
         },
         operation_logs::WriteRequest,
         peers::{
-            command::{HeartBeat, ReplicationResponse, RequestVote, RequestVoteReply},
+            command::{HeartBeat, ReplicationAck, RequestVote, RequestVoteReply},
             peer::{Peer, PeerState},
         },
     },
@@ -35,7 +35,7 @@ pub(crate) enum ClusterCommand {
     ForgetPeer(PeerIdentifier, tokio::sync::oneshot::Sender<Option<()>>),
     ReplicaOf(PeerIdentifier, tokio::sync::oneshot::Sender<anyhow::Result<()>>),
     LeaderReqConsensus(ConsensusRequest),
-    ReplicationResponse(ReplicationResponse),
+    ReplicationAck(ReplicationAck),
     AppendEntriesRPC(HeartBeat),
 
     SendAppendEntriesRPC,

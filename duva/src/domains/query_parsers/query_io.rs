@@ -1,8 +1,6 @@
 use crate::domains::caches::cache_objects::CacheValue;
 use crate::domains::operation_logs::WriteOperation;
-use crate::domains::peers::command::{
-    HeartBeat, ReplicationResponse, RequestVote, RequestVoteReply,
-};
+use crate::domains::peers::command::{HeartBeat, ReplicationAck, RequestVote, RequestVoteReply};
 use crate::prelude::PeerIdentifier;
 use anyhow::{Context, Result};
 use bytes::{Bytes, BytesMut};
@@ -50,7 +48,7 @@ pub enum QueryIO {
     AppendEntriesRPC(HeartBeat),
     ClusterHeartBeat(HeartBeat),
     WriteOperation(WriteOperation),
-    ConsensusFollowerResponse(ReplicationResponse),
+    Ack(ReplicationAck),
     RequestVote(RequestVote),
     RequestVoteReply(RequestVoteReply),
 
@@ -114,9 +112,7 @@ impl QueryIO {
             QueryIO::WriteOperation(write_operation) => {
                 serialize_with_bincode(REPLICATE_PREFIX, &write_operation)
             },
-            QueryIO::ConsensusFollowerResponse(items) => {
-                serialize_with_bincode(ACKS_PREFIX, &items)
-            },
+            QueryIO::Ack(items) => serialize_with_bincode(ACKS_PREFIX, &items),
             QueryIO::RequestVote(request_vote) => {
                 serialize_with_bincode(REQUEST_VOTE_PREFIX, &request_vote)
             },
@@ -225,7 +221,7 @@ pub fn deserialize(buffer: impl Into<Bytes>) -> Result<(QueryIO, usize)> {
             Ok((QueryIO::ClusterHeartBeat(heartbeat), len))
         },
         REPLICATE_PREFIX => parse_custom_type::<WriteOperation>(buffer),
-        ACKS_PREFIX => parse_custom_type::<ReplicationResponse>(buffer),
+        ACKS_PREFIX => parse_custom_type::<ReplicationAck>(buffer),
         REQUEST_VOTE_PREFIX => parse_custom_type::<RequestVote>(buffer),
         REQUEST_VOTE_REPLY_PREFIX => parse_custom_type::<RequestVoteReply>(buffer),
         TOPOLOGY_CHANGE_PREFIX => parse_custom_type::<Vec<PeerIdentifier>>(buffer),
@@ -388,9 +384,9 @@ impl From<Vec<WriteOperation>> for QueryIO {
     }
 }
 
-impl From<ReplicationResponse> for QueryIO {
-    fn from(value: ReplicationResponse) -> Self {
-        QueryIO::ConsensusFollowerResponse(value)
+impl From<ReplicationAck> for QueryIO {
+    fn from(value: ReplicationAck) -> Self {
+        QueryIO::Ack(value)
     }
 }
 
@@ -569,13 +565,13 @@ mod test {
     #[test]
     fn test_acks_to_binary_back_to_acks() {
         // GIVEN
-        let follower_res = ReplicationResponse {
+        let follower_res = ReplicationAck {
             term: 0,
             rej_reason: RejectionReason::None,
             log_idx: 2,
             from: PeerIdentifier("repl1".into()),
         };
-        let acks = QueryIO::ConsensusFollowerResponse(follower_res);
+        let acks = QueryIO::Ack(follower_res);
 
         // WHEN
         let serialized = acks.clone().serialize();

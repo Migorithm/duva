@@ -79,7 +79,7 @@ impl ClusterActor {
                     };
                     self.req_consensus(&mut logger, req).await;
                 },
-                ClusterCommand::ReplicationResponse(repl_res) => {
+                ClusterCommand::ReplicationAck(repl_res) => {
                     if !repl_res.is_granted() {
                         self.handle_repl_rejection(repl_res).await;
                         continue;

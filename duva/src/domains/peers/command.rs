@@ -6,7 +6,7 @@ pub(crate) use peer_messages::*;
 pub(crate) enum PeerListenerCommand {
     AppendEntriesRPC(HeartBeat),
     ClusterHeartBeat(HeartBeat),
-    Acks(ReplicationResponse),
+    Acks(ReplicationAck),
     RequestVote(RequestVote),
     RequestVoteReply(RequestVoteReply),
 }
@@ -17,7 +17,7 @@ impl TryFrom<QueryIO> for PeerListenerCommand {
         match query {
             QueryIO::AppendEntriesRPC(peer_state) => Ok(Self::AppendEntriesRPC(peer_state)),
             QueryIO::ClusterHeartBeat(heartbeat) => Ok(Self::ClusterHeartBeat(heartbeat)),
-            QueryIO::ConsensusFollowerResponse(acks) => Ok(PeerListenerCommand::Acks(acks)),
+            QueryIO::Ack(acks) => Ok(PeerListenerCommand::Acks(acks)),
             QueryIO::RequestVote(vote) => Ok(PeerListenerCommand::RequestVote(vote)),
             QueryIO::RequestVoteReply(reply) => Ok(PeerListenerCommand::RequestVoteReply(reply)),
             _ => Err(anyhow::anyhow!("Invalid data")),
@@ -26,12 +26,12 @@ impl TryFrom<QueryIO> for PeerListenerCommand {
 }
 
 mod peer_messages {
+    use super::*;
     use crate::domains::{
         cluster_actors::replication::ReplicationId, operation_logs::WriteOperation,
         peers::peer::PeerState,
     };
 
-    use super::*;
     #[derive(Clone, Debug, PartialEq, bincode::Encode, bincode::Decode)]
     pub struct RequestVote {
         pub(crate) term: u64, // current term of the candidate. Without it, the old leader wouldn't be able to step down gracefully.
@@ -61,7 +61,7 @@ mod peer_messages {
     }
 
     #[derive(Debug, Clone, PartialEq, bincode::Decode, bincode::Encode)]
-    pub struct ReplicationResponse {
+    pub struct ReplicationAck {
         pub(crate) log_idx: u64,
         pub(crate) term: u64,
         pub(crate) rej_reason: RejectionReason,
@@ -75,7 +75,7 @@ mod peer_messages {
         None,
     }
 
-    impl ReplicationResponse {
+    impl ReplicationAck {
         pub(crate) fn new(
             log_idx: u64,
             rej_reason: RejectionReason,
@@ -95,7 +95,6 @@ mod peer_messages {
     }
 
     #[derive(Debug, Clone, PartialEq, bincode::Encode, bincode::Decode)]
-
     pub struct HeartBeat {
         pub(crate) from: PeerIdentifier,
         pub(crate) term: u64,
