@@ -1,11 +1,10 @@
-use super::commands::ClusterCommand;
-use super::commands::ConsensusClientResponse;
-use super::commands::ConsensusRequest;
-use super::commands::LazyOption;
+use super::ClusterCommand;
+use super::ConsensusClientResponse;
+use super::ConsensusRequest;
+use super::LazyOption;
 
-use super::heartbeats::scheduler::HeartBeatScheduler;
-use super::replication::BannedPeer;
-use super::replication::HeartBeat;
+use super::heartbeat_scheduler::HeartBeatScheduler;
+
 use super::replication::ReplicationId;
 use super::replication::ReplicationRole;
 use super::replication::ReplicationState;
@@ -16,6 +15,8 @@ use crate::domains::caches::cache_manager::CacheManager;
 use crate::domains::cluster_actors::consensus::ElectionState;
 use crate::domains::operation_logs::interfaces::TWriteAheadLog;
 use crate::domains::operation_logs::logger::ReplicatedLogs;
+use crate::domains::peers::command::BannedPeer;
+use crate::domains::peers::command::HeartBeat;
 use crate::domains::peers::command::RejectionReason;
 use crate::domains::peers::command::ReplicationResponse;
 use crate::domains::peers::command::RequestVote;
@@ -761,8 +762,7 @@ pub mod test {
     use crate::adapters::op_logs::memory_based::MemoryOpLogs;
     use crate::domains::caches::actor::CacheCommandSender;
     use crate::domains::caches::command::CacheCommand;
-    use crate::domains::cluster_actors::commands::ClusterCommand;
-    use crate::domains::cluster_actors::commands::ConsensusRequest;
+
     use crate::domains::cluster_actors::replication::ReplicationRole;
     use crate::domains::operation_logs::WriteOperation;
     use crate::domains::operation_logs::WriteRequest;

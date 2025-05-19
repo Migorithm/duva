@@ -1,8 +1,8 @@
 use crate::domains::caches::cache_objects::CacheValue;
-
-use crate::domains::cluster_actors::replication::HeartBeat;
 use crate::domains::operation_logs::WriteOperation;
-use crate::domains::peers::command::{ReplicationResponse, RequestVote, RequestVoteReply};
+use crate::domains::peers::command::{
+    HeartBeat, ReplicationResponse, RequestVote, RequestVoteReply,
+};
 use crate::prelude::PeerIdentifier;
 use anyhow::{Context, Result};
 use bytes::{Bytes, BytesMut};
@@ -421,12 +421,12 @@ impl From<()> for QueryIO {
 mod test {
     use uuid::Uuid;
 
-    use crate::domains::cluster_actors::replication::{HeartBeat, ReplicationId};
+    use crate::domains::cluster_actors::replication::ReplicationId;
 
-    use crate::domains::peers::command::RejectionReason;
+    use crate::domains::operation_logs::WriteRequest;
+    use crate::domains::peers::command::{BannedPeer, RejectionReason};
     use crate::domains::peers::identifier::PeerIdentifier;
     use crate::domains::peers::peer::{NodeKind, PeerState};
-    use crate::domains::{cluster_actors::replication::BannedPeer, operation_logs::WriteRequest};
 
     use super::*;
 

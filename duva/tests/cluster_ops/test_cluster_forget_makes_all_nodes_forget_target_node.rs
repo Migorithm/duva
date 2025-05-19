@@ -1,4 +1,4 @@
-use duva::domains::cluster_actors::heartbeats::scheduler::LEADER_HEARTBEAT_INTERVAL_MAX;
+use duva::prelude::LEADER_HEARTBEAT_INTERVAL_MAX;
 
 use crate::common::{Client, ServerEnv, form_cluster};
 

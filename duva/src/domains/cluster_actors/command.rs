@@ -6,12 +6,12 @@ use crate::{
     ReplicationState,
     domains::{
         cluster_actors::{
-            replication::{HeartBeat, ReplicationId, ReplicationRole},
+            replication::{ReplicationId, ReplicationRole},
             session::SessionRequest,
         },
         operation_logs::WriteRequest,
         peers::{
-            command::{ReplicationResponse, RequestVote, RequestVoteReply},
+            command::{HeartBeat, ReplicationResponse, RequestVote, RequestVoteReply},
             peer::{Peer, PeerState},
         },
     },

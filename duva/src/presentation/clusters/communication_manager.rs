@@ -1,8 +1,8 @@
 use crate::{
     domains::{
         cluster_actors::{
-            commands::{ClusterCommand, LazyOption},
             replication::{ReplicationRole, ReplicationState},
+            {ClusterCommand, LazyOption},
         },
         peers::{identifier::PeerIdentifier, peer::PeerState},
     },

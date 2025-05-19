@@ -1,7 +1,7 @@
 use crate::{
     domains::interface::TRead,
     domains::{
-        cluster_actors::commands::ClusterCommand,
+        cluster_actors::ClusterCommand,
         peers::{
             PeerListenerCommand, connected_types::ReadConnected, peer::ListeningActorKillTrigger,
         },
