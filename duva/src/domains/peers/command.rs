@@ -3,29 +3,33 @@ use crate::{ReplicationState, domains::query_parsers::QueryIO, prelude::PeerIden
 pub(crate) use peer_messages::*;
 
 #[derive(Debug)]
-pub(crate) enum PeerListenerCommand {
+pub(crate) enum PeerMessage {
     AppendEntriesRPC(HeartBeat),
     ClusterHeartBeat(HeartBeat),
-    Acks(ReplicationAck),
+    AckReplication(ReplicationAck),
     RequestVote(RequestVote),
-    RequestVoteReply(RequestVoteReply),
+    ElectionVoteReply(ElectionVote),
+    TriggerRebalance,
 }
 
-impl TryFrom<QueryIO> for PeerListenerCommand {
+impl TryFrom<QueryIO> for PeerMessage {
     type Error = anyhow::Error;
     fn try_from(query: QueryIO) -> anyhow::Result<Self> {
         match query {
             QueryIO::AppendEntriesRPC(peer_state) => Ok(Self::AppendEntriesRPC(peer_state)),
             QueryIO::ClusterHeartBeat(heartbeat) => Ok(Self::ClusterHeartBeat(heartbeat)),
-            QueryIO::Ack(acks) => Ok(PeerListenerCommand::Acks(acks)),
-            QueryIO::RequestVote(vote) => Ok(PeerListenerCommand::RequestVote(vote)),
-            QueryIO::RequestVoteReply(reply) => Ok(PeerListenerCommand::RequestVoteReply(reply)),
+            QueryIO::Ack(acks) => Ok(PeerMessage::AckReplication(acks)),
+            QueryIO::RequestVote(vote) => Ok(PeerMessage::RequestVote(vote)),
+            QueryIO::RequestVoteReply(reply) => Ok(PeerMessage::ElectionVoteReply(reply)),
+            QueryIO::TriggerRebalance => Ok(PeerMessage::TriggerRebalance),
             _ => Err(anyhow::anyhow!("Invalid data")),
         }
     }
 }
 
 mod peer_messages {
+    use std::hash::Hash;
+
     use super::*;
     use crate::domains::{
         cluster_actors::replication::ReplicationId, operation_logs::WriteOperation,
@@ -55,7 +59,7 @@ mod peer_messages {
     }
 
     #[derive(Clone, Debug, PartialEq, bincode::Encode, bincode::Decode)]
-    pub struct RequestVoteReply {
+    pub struct ElectionVote {
         pub(crate) term: u64,
         pub(crate) vote_granted: bool,
     }
@@ -119,7 +123,7 @@ mod peer_messages {
         }
     }
 
-    #[derive(Debug, Clone, Eq, PartialOrd, Ord, bincode::Encode, bincode::Decode, Hash)]
+    #[derive(Debug, Clone, Eq, PartialOrd, Ord, bincode::Encode, bincode::Decode)]
     pub struct BannedPeer {
         pub(crate) p_id: PeerIdentifier,
         pub(crate) ban_time: u64,
@@ -127,6 +131,11 @@ mod peer_messages {
     impl PartialEq for BannedPeer {
         fn eq(&self, other: &Self) -> bool {
             self.p_id == other.p_id
+        }
+    }
+    impl Hash for BannedPeer {
+        fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+            self.p_id.hash(state);
         }
     }
 

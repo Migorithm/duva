@@ -6,7 +6,7 @@ use crate::common::{Client, ServerEnv, spawn_server_process};
 
 fn run_exists(env: ServerEnv) -> anyhow::Result<()> {
     // GIVEN
-    let process = spawn_server_process(&env, false)?;
+    let process = spawn_server_process(&env)?;
 
     let mut h = Client::new(process.port);
     assert_eq!(h.send_and_get("SET a b"), "OK");

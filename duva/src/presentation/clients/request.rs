@@ -230,14 +230,11 @@ pub fn extract_action(action: &str, args: &[&str]) -> anyhow::Result<ClientActio
                             "(error) ERR wrong arguments for 'cluster meet' command, expected 'lazy' or 'eager'"
                         )?;
 
-                        return Ok(ClientAction::ClusterMeet(
-                            args[1].to_string().into(),
-                            lazy_option,
-                        ));
+                        Ok(ClientAction::ClusterMeet(args[1].to_string().into(), lazy_option))
                     } else {
-                        return Err(anyhow::anyhow!(
+                        Err(anyhow::anyhow!(
                             "(error) ERR wrong number of arguments for 'cluster meet' command"
-                        ));
+                        ))
                     }
                 },
                 _ => Err(anyhow::anyhow!("(error) ERR unknown subcommand")),

@@ -6,14 +6,14 @@ fn run_cluster_meet(append_only: bool) -> anyhow::Result<()> {
         ServerEnv::default().with_append_only(append_only),
         ServerEnv::default().with_append_only(append_only),
     );
-    let [_leader_p, _repl_p] = form_cluster([&mut env, &mut env2], false);
+    let [_leader_p, _repl_p] = form_cluster([&mut env, &mut env2]);
 
     // WHEN - load up replica set
     let (mut env3, mut env4) = (
         ServerEnv::default().with_append_only(append_only),
         ServerEnv::default().with_append_only(append_only),
     );
-    let [_leader_p2, _repl_p2] = form_cluster([&mut env3, &mut env4], false);
+    let [_leader_p2, _repl_p2] = form_cluster([&mut env3, &mut env4]);
 
     let mut client_handler = Client::new(env3.port);
     let cmd = format!("cluster meet localhost:{}", env.port);

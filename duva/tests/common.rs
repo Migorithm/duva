@@ -2,7 +2,7 @@
 use bytes::Bytes;
 use duva::domains::query_parsers::query_io::QueryIO;
 use duva::make_smart_pointer;
-use std::io::{BufRead, BufReader, Read, Write};
+use std::io::{BufRead, BufReader, Write};
 use std::mem::MaybeUninit;
 use std::net::TcpListener;
 use std::path::{Path, PathBuf};
@@ -11,7 +11,7 @@ use std::process::{Child, ChildStdout, Command};
 use std::thread::sleep;
 use tempfile::TempDir;
 
-use tokio::time::{Duration, Instant};
+use tokio::time::Duration;
 use uuid::Uuid;
 
 pub struct ServerEnv {
@@ -108,39 +108,22 @@ impl Drop for FileName {
     }
 }
 
-pub fn spawn_server_process(
-    env: &ServerEnv,
-    stdout_enabled: bool,
-) -> anyhow::Result<TestProcessChild> {
-    let process = if stdout_enabled {
-        let mut process = run_server_process(env, Stdio::piped());
-        wait_for_message(
-            process.process.stdout.as_mut().unwrap(),
-            vec![
-                format!("listening peer connection on 127.0.0.1:{}...", env.port + 10000).as_str(),
-            ],
-            Some(10000),
-        )?;
-        process
-    } else {
-        let process = run_server_process(env, Stdio::null());
+pub fn spawn_server_process(env: &ServerEnv) -> anyhow::Result<TestProcessChild> {
+    let process = run_server_process(env, Stdio::null());
 
-        // catch panic 10 times
-        let mut cnt = 50;
-        while cnt > 0 {
-            cnt -= 1;
-            std::thread::sleep(std::time::Duration::from_millis(100));
-            if let Ok(mut child) = std::panic::catch_unwind(|| Client::new(process.port)) {
-                let res = child.send_and_get_vec("PING", 1);
-                if res != vec!["PONG"] {
-                    continue;
-                }
-                break;
+    // catch panic 10 times
+    let mut cnt = 50;
+    while cnt > 0 {
+        cnt -= 1;
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        if let Ok(mut child) = std::panic::catch_unwind(|| Client::new(process.port)) {
+            let res = child.send_and_get_vec("PING", 1);
+            if res != vec!["PONG"] {
+                continue;
             }
+            break;
         }
-
-        process
-    };
+    }
 
     Ok(process)
 }
@@ -186,21 +169,6 @@ impl TestProcessChild {
         self.process.wait()?;
 
         Ok(())
-    }
-
-    pub fn wait_for_message(&mut self, target: &str) -> anyhow::Result<()> {
-        let read = self.process.stdout.as_mut().unwrap();
-
-        wait_for_message(read, vec![target], None)
-    }
-
-    pub fn timed_wait_for_message(
-        &mut self,
-        target: Vec<&str>,
-        wait_for: u128,
-    ) -> anyhow::Result<()> {
-        let read = self.process.stdout.as_mut().unwrap();
-        wait_for_message(read, target, Some(wait_for))
     }
 }
 
@@ -252,42 +220,6 @@ pub fn run_server_process(env: &ServerEnv, std_option: Stdio) -> TestProcessChil
     )
 }
 
-fn wait_for_message<T: Read + Unpin>(
-    read: &mut T,
-    mut target: Vec<&str>,
-
-    timeout_in_millis: Option<u128>,
-) -> anyhow::Result<()> {
-    let internal_count = Instant::now();
-    let mut buf = BufReader::new(read).lines();
-    let mut cnt = target.len();
-
-    let mut current_target = target.remove(0);
-    while let Some(Ok(line)) = buf.next() {
-        if line.contains(current_target) {
-            cnt -= 1;
-
-            if cnt == 0 {
-                if target.is_empty() {
-                    return Ok(());
-                } else {
-                    return Err(anyhow::anyhow!("Targets remain after target_count exhausted"));
-                }
-            }
-
-            current_target = target.remove(0);
-        }
-
-        if let Some(timeout) = timeout_in_millis {
-            if internal_count.elapsed().as_millis() > timeout {
-                return Err(anyhow::anyhow!("Timeout waiting for message"));
-            }
-        }
-    }
-
-    Err(anyhow::anyhow!("Error was found until reading nextline"))
-}
-
 pub fn array(arr: Vec<&str>) -> Bytes {
     QueryIO::Array(arr.iter().map(|s| QueryIO::BulkString(s.to_string())).collect()).serialize()
 }
@@ -298,31 +230,6 @@ pub fn session_request(request_id: u64, arr: Vec<&str>) -> Bytes {
         value: arr.iter().map(|s| QueryIO::BulkString(s.to_string())).collect(),
     }
     .serialize()
-}
-
-/// Check if all processes can communicate with each other
-pub fn check_internodes_communication(
-    processes: &mut [&mut TestProcessChild],
-    hop_count: usize,
-    time_out: u128,
-) -> anyhow::Result<()> {
-    for i in 0..processes.len() {
-        // First get the message from all other processes
-        let messages: Vec<_> = processes
-            .iter()
-            .enumerate()
-            .filter(|&(j, _)| j != i)
-            .flat_map(|(_, target)| {
-                (0..hop_count + 1).map(|_| target.heartbeat_msg(hop_count)).collect::<Vec<String>>()
-            })
-            .collect();
-
-        // Then wait for all messages
-        for msg in messages {
-            processes[i].timed_wait_for_message(vec![&msg], time_out)?;
-        }
-    }
-    Ok(())
 }
 
 pub struct Client {
@@ -402,32 +309,25 @@ impl Drop for Client {
     }
 }
 
-pub fn form_cluster<const T: usize>(
-    envs: [&mut ServerEnv; T],
-    stdout_enabled: bool,
-) -> [TestProcessChild; T] {
+pub fn form_cluster<const T: usize>(envs: [&mut ServerEnv; T]) -> [TestProcessChild; T] {
     // Using MaybeUninit to create an uninitialized array
     let mut processes: [MaybeUninit<TestProcessChild>; T] =
         unsafe { MaybeUninit::uninit().assume_init() };
 
     // Initialize the leader
-    let leader_p = spawn_server_process(&envs[0], stdout_enabled).unwrap();
+    let leader_p = spawn_server_process(&envs[0]).unwrap();
     let leader_bind_addr = leader_p.bind_addr();
     processes[0].write(leader_p);
 
     // Initialize replicas
     for i in 1..T {
         envs[i].leader_bind_addr = Some(leader_bind_addr.clone());
-        let repl_p = spawn_server_process(&envs[i], stdout_enabled).unwrap();
+        let repl_p = spawn_server_process(&envs[i]).unwrap();
         processes[i].write(repl_p);
     }
 
-    let mut process_refs =
+    let process_refs =
         unsafe { processes.iter_mut().map(|p| &mut *(p.as_mut_ptr())).collect::<Vec<_>>() };
-
-    if stdout_enabled {
-        check_internodes_communication(&mut process_refs, 0, 1000).unwrap();
-    }
 
     // Convert the array of MaybeUninit to an initialized array safely
     unsafe {

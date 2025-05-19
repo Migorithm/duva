@@ -6,7 +6,7 @@ fn run_reconnection_on_reboot(with_append_only: bool) -> anyhow::Result<()> {
     let mut env2 = ServerEnv::default().with_append_only(with_append_only);
 
     // Form cluster with leader and replica
-    let [p1, mut p2] = form_cluster([&mut env1, &mut env2], false);
+    let [p1, mut p2] = form_cluster([&mut env1, &mut env2]);
 
     // Set some values
     let mut cli_to_p1 = Client::new(p1.port);
@@ -19,7 +19,7 @@ fn run_reconnection_on_reboot(with_append_only: bool) -> anyhow::Result<()> {
 
     // WHEN running repl without p1 bind address
     let env2 = env2.clone();
-    p2 = spawn_server_process(&env2, true)?;
+    p2 = spawn_server_process(&env2)?;
 
     //THEN
 

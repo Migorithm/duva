@@ -5,6 +5,7 @@ use crate::domains::cluster_actors::{ClusterActor, FANOUT};
 use crate::domains::cluster_actors::{ClusterCommand, ConsensusClientResponse};
 use crate::domains::operation_logs::interfaces::TWriteAheadLog;
 use crate::domains::operation_logs::logger::ReplicatedLogs;
+use crate::domains::peers::PeerMessage;
 use crate::err;
 use tokio::sync::mpsc::Sender;
 use tracing::{debug, trace};
@@ -46,16 +47,7 @@ impl ClusterActor {
                     let hop_count = Self::hop_count(FANOUT, self.members.len());
                     self.send_cluster_heartbeat(hop_count, &logger).await;
                 },
-                ClusterCommand::ClusterHeartBeat(mut heartbeat) => {
-                    if self.replication.in_ban_list(&heartbeat.from) {
-                        debug!("{} in the ban list", heartbeat.from);
-                        continue;
-                    }
-                    self.apply_ban_list(std::mem::take(&mut heartbeat.ban_list)).await;
-                    self.join_peer_network_if_absent(heartbeat.cluster_nodes).await;
-                    self.gossip(heartbeat.hop_count, &logger).await;
-                    self.update_on_hertbeat_message(&heartbeat.from, heartbeat.hwm);
-                },
+
                 ClusterCommand::ForgetPeer(peer_addr, sender) => {
                     if let Ok(Some(())) = self.forget_peer(peer_addr).await {
                         let _ = sender.send(Some(()));
@@ -79,38 +71,11 @@ impl ClusterActor {
                     };
                     self.req_consensus(&mut logger, req).await;
                 },
-                ClusterCommand::ReplicationAck(repl_res) => {
-                    if !repl_res.is_granted() {
-                        self.handle_repl_rejection(repl_res).await;
-                        continue;
-                    }
-                    self.update_on_hertbeat_message(&repl_res.from, repl_res.log_idx);
-                    self.track_replication_progress(repl_res, &mut client_sessions);
-                },
-                ClusterCommand::SendAppendEntriesRPC => {
-                    self.send_rpc(&logger).await;
-                },
-                ClusterCommand::AppendEntriesRPC(heartbeat) => {
-                    if self.check_term_outdated(&heartbeat, &logger).await {
-                        continue;
-                    };
 
-                    self.reset_election_timeout(&heartbeat.from);
-                    self.maybe_update_term(heartbeat.term);
-                    self.replicate(&mut logger, heartbeat, &cache_manager).await;
-                },
                 ClusterCommand::StartLeaderElection => {
                     self.run_for_election(&mut logger).await;
                 },
-                ClusterCommand::VoteElection(request_vote) => {
-                    self.vote_election(request_vote, logger.last_log_index).await;
-                },
-                ClusterCommand::ApplyElectionVote(request_vote_reply) => {
-                    if !request_vote_reply.vote_granted {
-                        continue;
-                    }
-                    self.tally_vote(&logger).await;
-                },
+
                 ClusterCommand::ReplicaOf(peer_addr, callback) => {
                     if self.replication.self_identifier() == peer_addr {
                         let _ = callback.send(err!("invalid operation: cannot replicate to self"));
@@ -143,6 +108,59 @@ impl ClusterActor {
                 },
                 ClusterCommand::FollowerSetReplId(replication_id) => {
                     self.set_repl_id(replication_id)
+                },
+
+                ClusterCommand::SendAppendEntriesRPC => {
+                    self.send_rpc(&logger).await;
+                },
+
+                ClusterCommand::FromPeer(peer_message) => {
+                    use PeerMessage::*;
+
+                    match peer_message {
+                        ClusterHeartBeat(mut heartbeat) => {
+                            if self.replication.in_ban_list(&heartbeat.from) {
+                                debug!("{} in the ban list", heartbeat.from);
+                                continue;
+                            }
+                            self.apply_ban_list(std::mem::take(&mut heartbeat.ban_list)).await;
+                            self.join_peer_network_if_absent(heartbeat.cluster_nodes).await;
+                            self.gossip(heartbeat.hop_count, &logger).await;
+                            self.update_on_hertbeat_message(&heartbeat.from, heartbeat.hwm);
+                        },
+                        RequestVote(request_vote) => {
+                            self.vote_election(request_vote, logger.last_log_index).await;
+                        },
+                        AckReplication(repl_res) => {
+                            if !repl_res.is_granted() {
+                                self.handle_repl_rejection(repl_res).await;
+                                continue;
+                            }
+                            self.update_on_hertbeat_message(&repl_res.from, repl_res.log_idx);
+                            self.track_replication_progress(repl_res, &mut client_sessions);
+                        },
+
+                        AppendEntriesRPC(heartbeat) => {
+                            if self.check_term_outdated(&heartbeat, &logger).await {
+                                continue;
+                            };
+
+                            self.reset_election_timeout(&heartbeat.from);
+                            self.maybe_update_term(heartbeat.term);
+                            self.replicate(&mut logger, heartbeat, &cache_manager).await;
+                        },
+
+                        ElectionVoteReply(request_vote_reply) => {
+                            if !request_vote_reply.vote_granted {
+                                continue;
+                            }
+                            self.tally_vote(&logger).await;
+                        },
+
+                        TriggerRebalance => {
+                            // self.trigger_rebalance().await;
+                        },
+                    }
                 },
             }
             trace!("Cluster command processed");

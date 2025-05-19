@@ -74,7 +74,7 @@ impl ReplicationState {
 
     pub(crate) fn in_ban_list(&self, peer_identifier: &PeerIdentifier) -> bool {
         let Ok(current_time) = time_in_secs() else { return false };
-        self.ban_list.get(peer_identifier).map_or(false, |node| current_time - node.ban_time < 60)
+        self.ban_list.get(peer_identifier).is_some_and(|node| current_time - node.ban_time < 60)
     }
 
     pub(crate) fn default_heartbeat(

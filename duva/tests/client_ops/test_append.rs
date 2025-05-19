@@ -8,7 +8,7 @@ use crate::common::{Client, ServerEnv, spawn_server_process};
 fn test_append() -> anyhow::Result<()> {
     // GIVEN
     let env = ServerEnv::default();
-    let process = spawn_server_process(&env, false)?;
+    let process = spawn_server_process(&env)?;
 
     let mut h = Client::new(process.port);
 
