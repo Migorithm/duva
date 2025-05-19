@@ -2,9 +2,7 @@ use super::ClusterCommand;
 use super::ConsensusClientResponse;
 use super::ConsensusRequest;
 use super::LazyOption;
-
 use super::heartbeat_scheduler::HeartBeatScheduler;
-
 use super::replication::ReplicationId;
 use super::replication::ReplicationRole;
 use super::replication::ReplicationState;

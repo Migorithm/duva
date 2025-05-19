@@ -55,6 +55,7 @@ pub(crate) enum ClusterCommand {
     ClusterMeet(PeerIdentifier, LazyOption, tokio::sync::oneshot::Sender<anyhow::Result<()>>),
     AddPeer(Peer, Option<tokio::sync::oneshot::Sender<anyhow::Result<()>>>),
     FollowerSetReplId(ReplicationId),
+    TriggerRebalance,
 }
 
 #[derive(Debug)]

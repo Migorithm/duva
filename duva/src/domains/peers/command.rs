@@ -3,23 +3,25 @@ use crate::{ReplicationState, domains::query_parsers::QueryIO, prelude::PeerIden
 pub(crate) use peer_messages::*;
 
 #[derive(Debug)]
-pub(crate) enum PeerListenerCommand {
+pub(crate) enum PeerMessage {
     AppendEntriesRPC(HeartBeat),
     ClusterHeartBeat(HeartBeat),
     Acks(ReplicationAck),
     RequestVote(RequestVote),
     RequestVoteReply(RequestVoteReply),
+    TriggerRebalance,
 }
 
-impl TryFrom<QueryIO> for PeerListenerCommand {
+impl TryFrom<QueryIO> for PeerMessage {
     type Error = anyhow::Error;
     fn try_from(query: QueryIO) -> anyhow::Result<Self> {
         match query {
             QueryIO::AppendEntriesRPC(peer_state) => Ok(Self::AppendEntriesRPC(peer_state)),
             QueryIO::ClusterHeartBeat(heartbeat) => Ok(Self::ClusterHeartBeat(heartbeat)),
-            QueryIO::Ack(acks) => Ok(PeerListenerCommand::Acks(acks)),
-            QueryIO::RequestVote(vote) => Ok(PeerListenerCommand::RequestVote(vote)),
-            QueryIO::RequestVoteReply(reply) => Ok(PeerListenerCommand::RequestVoteReply(reply)),
+            QueryIO::Ack(acks) => Ok(PeerMessage::Acks(acks)),
+            QueryIO::RequestVote(vote) => Ok(PeerMessage::RequestVote(vote)),
+            QueryIO::RequestVoteReply(reply) => Ok(PeerMessage::RequestVoteReply(reply)),
+            QueryIO::TriggerRebalance => Ok(PeerMessage::TriggerRebalance),
             _ => Err(anyhow::anyhow!("Invalid data")),
         }
     }

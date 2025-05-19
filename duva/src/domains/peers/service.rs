@@ -2,7 +2,7 @@ use crate::{
     domains::interface::TRead,
     domains::{
         cluster_actors::ClusterCommand,
-        peers::{PeerListenerCommand, peer::ListeningActorKillTrigger},
+        peers::{PeerMessage, peer::ListeningActorKillTrigger},
     },
 };
 use tokio::{net::tcp::OwnedReadHalf, select, sync::mpsc::Sender};
@@ -33,12 +33,12 @@ impl PeerListener {
         ListeningActorKillTrigger::new(kill_trigger, handle)
     }
 
-    pub(crate) async fn read_command(&mut self) -> anyhow::Result<Vec<PeerListenerCommand>> {
+    pub(crate) async fn read_command(&mut self) -> anyhow::Result<Vec<PeerMessage>> {
         self.read_connected
             .read_values()
             .await?
             .into_iter()
-            .map(PeerListenerCommand::try_from)
+            .map(PeerMessage::try_from)
             .collect::<Result<_, _>>()
     }
     pub(crate) async fn listen(mut self, rx: ReactorKillSwitch) -> OwnedReadHalf {
@@ -57,31 +57,34 @@ impl PeerListener {
 
             for cmd in cmds {
                 match cmd {
-                    PeerListenerCommand::AppendEntriesRPC(hb) => {
+                    PeerMessage::AppendEntriesRPC(hb) => {
                         debug!("from {}, hc:{}", hb.from, hb.hop_count);
                         let _ =
                             self.cluster_handler.send(ClusterCommand::AppendEntriesRPC(hb)).await;
                     },
-                    PeerListenerCommand::ClusterHeartBeat(hb) => {
+                    PeerMessage::ClusterHeartBeat(hb) => {
                         debug!("from {}, hc:{}", hb.from, hb.hop_count);
                         let _ =
                             self.cluster_handler.send(ClusterCommand::ClusterHeartBeat(hb)).await;
                     },
-                    PeerListenerCommand::Acks(items) => {
+                    PeerMessage::Acks(items) => {
                         let _ =
                             self.cluster_handler.send(ClusterCommand::ReplicationAck(items)).await;
                     },
-                    PeerListenerCommand::RequestVote(request_vote) => {
+                    PeerMessage::RequestVote(request_vote) => {
                         let _ = self
                             .cluster_handler
                             .send(ClusterCommand::VoteElection(request_vote))
                             .await;
                     },
-                    PeerListenerCommand::RequestVoteReply(reply) => {
+                    PeerMessage::RequestVoteReply(reply) => {
                         let _ = self
                             .cluster_handler
                             .send(ClusterCommand::ApplyElectionVote(reply))
                             .await;
+                    },
+                    PeerMessage::TriggerRebalance => {
+                        let _ = self.cluster_handler.send(ClusterCommand::TriggerRebalance).await;
                     },
                 }
             }

@@ -144,6 +144,9 @@ impl ClusterActor {
                 ClusterCommand::FollowerSetReplId(replication_id) => {
                     self.set_repl_id(replication_id)
                 },
+                ClusterCommand::TriggerRebalance => {
+                    // self.trigger_rebalance().await;
+                },
             }
             trace!("Cluster command processed");
         }
