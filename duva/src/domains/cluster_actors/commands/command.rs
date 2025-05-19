@@ -11,14 +11,14 @@ use crate::{
         },
         operation_logs::WriteRequest,
         peers::{
-            command::{RequestVote, RequestVoteReply},
+            command::{ReplicationResponse, RequestVote, RequestVoteReply},
             peer::{Peer, PeerState},
         },
     },
     prelude::PeerIdentifier,
 };
 
-use super::{ConsensusClientResponse, ReplicationResponse};
+use super::ConsensusClientResponse;
 
 #[derive(Debug)]
 pub(crate) enum ClusterCommand {

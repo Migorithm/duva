@@ -2,8 +2,6 @@ use super::commands::ClusterCommand;
 use super::commands::ConsensusClientResponse;
 use super::commands::ConsensusRequest;
 use super::commands::LazyOption;
-use super::commands::RejectionReason;
-use super::commands::ReplicationResponse;
 
 use super::heartbeats::scheduler::HeartBeatScheduler;
 use super::replication::BannedPeer;
@@ -18,6 +16,8 @@ use crate::domains::caches::cache_manager::CacheManager;
 use crate::domains::cluster_actors::consensus::ElectionState;
 use crate::domains::operation_logs::interfaces::TWriteAheadLog;
 use crate::domains::operation_logs::logger::ReplicatedLogs;
+use crate::domains::peers::command::RejectionReason;
+use crate::domains::peers::command::ReplicationResponse;
 use crate::domains::peers::command::RequestVote;
 use crate::domains::peers::command::RequestVoteReply;
 use crate::domains::peers::connections::inbound::stream::InboundStream;
