@@ -1,6 +1,6 @@
 use crate::domains::caches::cache_objects::CacheValue;
 use crate::domains::operation_logs::WriteOperation;
-use crate::domains::peers::command::{HeartBeat, ReplicationAck, RequestVote, ElectionVote};
+use crate::domains::peers::command::{ElectionVote, HeartBeat, ReplicationAck, RequestVote};
 use crate::prelude::PeerIdentifier;
 use anyhow::{Context, Result};
 use bytes::{Bytes, BytesMut};
