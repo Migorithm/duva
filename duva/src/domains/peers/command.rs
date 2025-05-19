@@ -28,6 +28,8 @@ impl TryFrom<QueryIO> for PeerMessage {
 }
 
 mod peer_messages {
+    use std::hash::Hash;
+
     use super::*;
     use crate::domains::{
         cluster_actors::replication::ReplicationId, operation_logs::WriteOperation,
@@ -121,7 +123,7 @@ mod peer_messages {
         }
     }
 
-    #[derive(Debug, Clone, Eq, PartialOrd, Ord, bincode::Encode, bincode::Decode, Hash)]
+    #[derive(Debug, Clone, Eq, PartialOrd, Ord, bincode::Encode, bincode::Decode)]
     pub struct BannedPeer {
         pub(crate) p_id: PeerIdentifier,
         pub(crate) ban_time: u64,
@@ -129,6 +131,11 @@ mod peer_messages {
     impl PartialEq for BannedPeer {
         fn eq(&self, other: &Self) -> bool {
             self.p_id == other.p_id
+        }
+    }
+    impl Hash for BannedPeer {
+        fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+            self.p_id.hash(state);
         }
     }
 
