@@ -28,28 +28,40 @@ pub(crate) enum ClusterCommand {
         stream: TcpStream,
     },
 
-    GetPeers(tokio::sync::oneshot::Sender<Vec<PeerIdentifier>>),
-    ReplicationInfo(tokio::sync::oneshot::Sender<ReplicationState>),
     SendClusterHeatBeat,
-    ForgetPeer(PeerIdentifier, tokio::sync::oneshot::Sender<Option<()>>),
-    ReplicaOf(PeerIdentifier, tokio::sync::oneshot::Sender<anyhow::Result<()>>),
-    LeaderReqConsensus(ConsensusRequest),
     SendAppendEntriesRPC,
-    ClusterNodes(tokio::sync::oneshot::Sender<Vec<PeerState>>),
     StartLeaderElection,
 
-    GetRole(tokio::sync::oneshot::Sender<ReplicationRole>),
-    SubscribeToTopologyChange(
-        tokio::sync::oneshot::Sender<tokio::sync::broadcast::Receiver<Vec<PeerIdentifier>>>,
-    ),
     StoreSnapshotMetadata {
         replid: ReplicationId,
         hwm: u64,
     },
-    ClusterMeet(PeerIdentifier, LazyOption, tokio::sync::oneshot::Sender<anyhow::Result<()>>),
+
     AddPeer(Peer, Option<tokio::sync::oneshot::Sender<anyhow::Result<()>>>),
     FollowerSetReplId(ReplicationId),
+    FromClient(ClientMessage),
     FromPeer(PeerMessage),
+}
+
+#[derive(Debug)]
+pub enum ClientMessage {
+    GetPeers(tokio::sync::oneshot::Sender<Vec<PeerIdentifier>>),
+    ReplicationInfo(tokio::sync::oneshot::Sender<ReplicationState>),
+    ForgetPeer(PeerIdentifier, tokio::sync::oneshot::Sender<Option<()>>),
+    ReplicaOf(PeerIdentifier, tokio::sync::oneshot::Sender<anyhow::Result<()>>),
+    LeaderReqConsensus(ConsensusRequest),
+    ClusterNodes(tokio::sync::oneshot::Sender<Vec<PeerState>>),
+    GetRole(tokio::sync::oneshot::Sender<ReplicationRole>),
+    SubscribeToTopologyChange(
+        tokio::sync::oneshot::Sender<tokio::sync::broadcast::Receiver<Vec<PeerIdentifier>>>,
+    ),
+    ClusterMeet(PeerIdentifier, LazyOption, tokio::sync::oneshot::Sender<anyhow::Result<()>>),
+}
+
+impl From<ClientMessage> for ClusterCommand {
+    fn from(msg: ClientMessage) -> Self {
+        ClusterCommand::FromClient(msg)
+    }
 }
 
 #[derive(Debug)]
@@ -65,12 +77,6 @@ impl ConsensusRequest {
         session_req: Option<SessionRequest>,
     ) -> Self {
         Self { request, callback, session_req }
-    }
-}
-
-impl From<ConsensusRequest> for ClusterCommand {
-    fn from(request: ConsensusRequest) -> Self {
-        Self::LeaderReqConsensus(request)
     }
 }
 

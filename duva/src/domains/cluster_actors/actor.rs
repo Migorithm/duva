@@ -969,7 +969,7 @@ pub mod test {
         tokio::spawn(cluster_actor.handle(MemoryOpLogs::default(), cache_manager, sessions));
         let (tx, rx) = tokio::sync::oneshot::channel();
         handler
-            .send(ClusterCommand::LeaderReqConsensus(ConsensusRequest {
+            .send(ClusterCommand::FromClient(ClientMessage::LeaderReqConsensus(ConsensusRequest {
                 request: WriteRequest::Set {
                     key: "foo".into(),
                     value: "bar".into(),
@@ -977,7 +977,7 @@ pub mod test {
                 },
                 callback: tx,
                 session_req: Some(client_req),
-            }))
+            })))
             .await
             .unwrap();
 

@@ -1,7 +1,8 @@
 use super::request::ClientRequest;
+
 use crate::actor_registry::ActorRegistry;
 use crate::domains::caches::cache_manager::CacheManager;
-use crate::domains::cluster_actors::{ConsensusClientResponse, ConsensusRequest};
+use crate::domains::cluster_actors::{ClientMessage, ConsensusClientResponse, ConsensusRequest};
 use crate::domains::config_actors::command::ConfigResponse;
 use crate::domains::config_actors::config_manager::ConfigManager;
 use crate::domains::query_parsers::QueryIO;
@@ -177,7 +178,14 @@ impl ClientController {
 
         let (tx, rx) = tokio::sync::oneshot::channel();
         self.cluster_communication_manager
-            .send(ConsensusRequest::new(log, tx, request.session_req.take()).into())
+            .send(
+                ClientMessage::LeaderReqConsensus(ConsensusRequest::new(
+                    log,
+                    tx,
+                    request.session_req.take(),
+                ))
+                .into(),
+            )
             .await?;
 
         rx.await?

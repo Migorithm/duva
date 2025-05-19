@@ -1,7 +1,7 @@
 use crate::domains::caches::cache_manager::CacheManager;
 use crate::domains::cluster_actors::replication::ReplicationState;
 use crate::domains::cluster_actors::session::ClientSessions;
-use crate::domains::cluster_actors::{ClusterActor, FANOUT};
+use crate::domains::cluster_actors::{ClientMessage, ClusterActor, FANOUT};
 use crate::domains::cluster_actors::{ClusterCommand, ConsensusClientResponse};
 use crate::domains::operation_logs::interfaces::TWriteAheadLog;
 use crate::domains::operation_logs::logger::ReplicatedLogs;
@@ -28,15 +28,7 @@ impl ClusterActor {
                 ClusterCommand::AcceptInboundPeer { stream } => {
                     self.accept_inbound_stream(stream).await;
                 },
-                ClusterCommand::GetPeers(callback) => {
-                    let _ = callback.send(self.members.keys().cloned().collect::<Vec<_>>());
-                },
-                ClusterCommand::ClusterNodes(callback) => {
-                    let _ = callback.send(self.cluster_nodes());
-                },
-                ClusterCommand::ReplicationInfo(sender) => {
-                    let _ = sender.send(self.replication.clone());
-                },
+
                 ClusterCommand::StoreSnapshotMetadata { replid, hwm } => {
                     self.store_snapshot_metadata(replid, hwm);
                 },
@@ -48,58 +40,10 @@ impl ClusterActor {
                     self.send_cluster_heartbeat(hop_count, &logger).await;
                 },
 
-                ClusterCommand::ForgetPeer(peer_addr, sender) => {
-                    if let Ok(Some(())) = self.forget_peer(peer_addr).await {
-                        let _ = sender.send(Some(()));
-                    } else {
-                        let _ = sender.send(None);
-                    }
-                },
-                ClusterCommand::LeaderReqConsensus(req) => {
-                    if !self.replication.is_leader_mode {
-                        let _ = req.callback.send(err!("Write given to follower"));
-                        continue;
-                    }
-
-                    if client_sessions.is_processed(&req.session_req) {
-                        // TODO mapping between early returned values to client result
-                        let _ = req.callback.send(Ok(ConsensusClientResponse::AlreadyProcessed {
-                            key: req.request.key(),
-                            index: logger.last_log_index,
-                        }));
-                        continue;
-                    };
-                    self.req_consensus(&mut logger, req).await;
-                },
-
                 ClusterCommand::StartLeaderElection => {
                     self.run_for_election(&mut logger).await;
                 },
 
-                ClusterCommand::ReplicaOf(peer_addr, callback) => {
-                    if self.replication.self_identifier() == peer_addr {
-                        let _ = callback.send(err!("invalid operation: cannot replicate to self"));
-                        continue;
-                    }
-                    cache_manager.drop_cache().await;
-                    self.replicaof(peer_addr, &mut logger, callback).await;
-                },
-                ClusterCommand::ClusterMeet(peer_addr, lazy_option, callback) => {
-                    if !self.replication.is_leader_mode
-                        || self.replication.self_identifier() == peer_addr
-                    {
-                        let _ = callback
-                            .send(err!("wrong address or invalid state for cluster meet command"));
-                        continue;
-                    }
-                    self.cluster_meet(peer_addr, lazy_option, callback).await;
-                },
-                ClusterCommand::GetRole(sender) => {
-                    let _ = sender.send(self.replication.role.clone());
-                },
-                ClusterCommand::SubscribeToTopologyChange(sender) => {
-                    let _ = sender.send(self.node_change_broadcast.subscribe());
-                },
                 ClusterCommand::AddPeer(peer, optional_callback) => {
                     self.add_peer(peer).await;
                     if let Some(cb) = optional_callback {
@@ -112,6 +56,74 @@ impl ClusterActor {
 
                 ClusterCommand::SendAppendEntriesRPC => {
                     self.send_rpc(&logger).await;
+                },
+
+                ClusterCommand::FromClient(client_message) => {
+                    use ClientMessage::*;
+
+                    match client_message {
+                        GetPeers(callback) => {
+                            let _ = callback.send(self.members.keys().cloned().collect::<Vec<_>>());
+                        },
+                        ClusterNodes(callback) => {
+                            let _ = callback.send(self.cluster_nodes());
+                        },
+                        ReplicationInfo(sender) => {
+                            let _ = sender.send(self.replication.clone());
+                        },
+                        ForgetPeer(peer_addr, sender) => {
+                            if let Ok(Some(())) = self.forget_peer(peer_addr).await {
+                                let _ = sender.send(Some(()));
+                            } else {
+                                let _ = sender.send(None);
+                            }
+                        },
+                        LeaderReqConsensus(req) => {
+                            if !self.replication.is_leader_mode {
+                                let _ = req.callback.send(err!("Write given to follower"));
+                                continue;
+                            }
+
+                            if client_sessions.is_processed(&req.session_req) {
+                                // TODO mapping between early returned values to client result
+                                let _ = req.callback.send(Ok(
+                                    ConsensusClientResponse::AlreadyProcessed {
+                                        key: req.request.key(),
+                                        index: logger.last_log_index,
+                                    },
+                                ));
+                                continue;
+                            };
+                            self.req_consensus(&mut logger, req).await;
+                        },
+
+                        ReplicaOf(peer_addr, callback) => {
+                            if self.replication.self_identifier() == peer_addr {
+                                let _ = callback
+                                    .send(err!("invalid operation: cannot replicate to self"));
+                                continue;
+                            }
+                            cache_manager.drop_cache().await;
+                            self.replicaof(peer_addr, &mut logger, callback).await;
+                        },
+                        ClusterMeet(peer_addr, lazy_option, callback) => {
+                            if !self.replication.is_leader_mode
+                                || self.replication.self_identifier() == peer_addr
+                            {
+                                let _ = callback.send(err!(
+                                    "wrong address or invalid state for cluster meet command"
+                                ));
+                                continue;
+                            }
+                            self.cluster_meet(peer_addr, lazy_option, callback).await;
+                        },
+                        GetRole(sender) => {
+                            let _ = sender.send(self.replication.role.clone());
+                        },
+                        SubscribeToTopologyChange(sender) => {
+                            let _ = sender.send(self.node_change_broadcast.subscribe());
+                        },
+                    }
                 },
 
                 ClusterCommand::FromPeer(peer_message) => {
