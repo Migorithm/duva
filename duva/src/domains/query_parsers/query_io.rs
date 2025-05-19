@@ -1,7 +1,6 @@
 use crate::domains::caches::cache_objects::CacheValue;
-use crate::domains::cluster_actors::commands::{ReplicationResponse, RequestVoteReply};
-use crate::domains::cluster_actors::heartbeats::heartbeat::{AppendEntriesRPC, ClusterHeartBeat};
-use crate::domains::{cluster_actors::commands::RequestVote, operation_logs::WriteOperation};
+use crate::domains::operation_logs::WriteOperation;
+use crate::domains::peers::command::{HeartBeat, ReplicationAck, RequestVote, RequestVoteReply};
 use crate::prelude::PeerIdentifier;
 use anyhow::{Context, Result};
 use bytes::{Bytes, BytesMut};
@@ -46,10 +45,10 @@ pub enum QueryIO {
 
     // custom types
     File(Bytes),
-    AppendEntriesRPC(AppendEntriesRPC),
-    ClusterHeartBeat(ClusterHeartBeat),
+    AppendEntriesRPC(HeartBeat),
+    ClusterHeartBeat(HeartBeat),
     WriteOperation(WriteOperation),
-    ConsensusFollowerResponse(ReplicationResponse),
+    Ack(ReplicationAck),
     RequestVote(RequestVote),
     RequestVoteReply(RequestVoteReply),
 
@@ -113,9 +112,7 @@ impl QueryIO {
             QueryIO::WriteOperation(write_operation) => {
                 serialize_with_bincode(REPLICATE_PREFIX, &write_operation)
             },
-            QueryIO::ConsensusFollowerResponse(items) => {
-                serialize_with_bincode(ACKS_PREFIX, &items)
-            },
+            QueryIO::Ack(items) => serialize_with_bincode(ACKS_PREFIX, &items),
             QueryIO::RequestVote(request_vote) => {
                 serialize_with_bincode(REQUEST_VOTE_PREFIX, &request_vote)
             },
@@ -215,10 +212,16 @@ pub fn deserialize(buffer: impl Into<Bytes>) -> Result<(QueryIO, usize)> {
         },
         NULL_PREFIX => Ok((QueryIO::Null, 1)),
 
-        APPEND_ENTRY_RPC_PREFIX => parse_custom_type::<AppendEntriesRPC>(buffer),
-        CLUSTER_HEARTBEAT_PREFIX => parse_custom_type::<ClusterHeartBeat>(buffer),
+        APPEND_ENTRY_RPC_PREFIX => {
+            let (heartbeat, len) = parse_heartbeat(buffer)?;
+            Ok((QueryIO::AppendEntriesRPC(heartbeat), len))
+        },
+        CLUSTER_HEARTBEAT_PREFIX => {
+            let (heartbeat, len) = parse_heartbeat(buffer)?;
+            Ok((QueryIO::ClusterHeartBeat(heartbeat), len))
+        },
         REPLICATE_PREFIX => parse_custom_type::<WriteOperation>(buffer),
-        ACKS_PREFIX => parse_custom_type::<ReplicationResponse>(buffer),
+        ACKS_PREFIX => parse_custom_type::<ReplicationAck>(buffer),
         REQUEST_VOTE_PREFIX => parse_custom_type::<RequestVote>(buffer),
         REQUEST_VOTE_REPLY_PREFIX => parse_custom_type::<RequestVoteReply>(buffer),
         TOPOLOGY_CHANGE_PREFIX => parse_custom_type::<Vec<PeerIdentifier>>(buffer),
@@ -292,6 +295,13 @@ where
         bincode::decode_from_slice(&buffer.slice(1..), SERDE_CONFIG)
             .map_err(|err| anyhow::anyhow!("Failed to decode heartbeat message: {:?}", err))?;
     Ok((encoded.into(), len + 1))
+}
+
+fn parse_heartbeat(buffer: Bytes) -> Result<(HeartBeat, usize)> {
+    let (encoded, len): (HeartBeat, usize) =
+        bincode::decode_from_slice(&buffer.slice(1..), SERDE_CONFIG)
+            .map_err(|err| anyhow::anyhow!("Failed to decode heartbeat message: {:?}", err))?;
+    Ok((encoded, len + 1))
 }
 
 fn parse_bulk_string(buffer: Bytes) -> Result<(String, usize)> {
@@ -374,21 +384,9 @@ impl From<Vec<WriteOperation>> for QueryIO {
     }
 }
 
-impl From<AppendEntriesRPC> for QueryIO {
-    fn from(value: AppendEntriesRPC) -> Self {
-        QueryIO::AppendEntriesRPC(value)
-    }
-}
-
-impl From<ClusterHeartBeat> for QueryIO {
-    fn from(value: ClusterHeartBeat) -> Self {
-        QueryIO::ClusterHeartBeat(value)
-    }
-}
-
-impl From<ReplicationResponse> for QueryIO {
-    fn from(value: ReplicationResponse) -> Self {
-        QueryIO::ConsensusFollowerResponse(value)
+impl From<ReplicationAck> for QueryIO {
+    fn from(value: ReplicationAck) -> Self {
+        QueryIO::Ack(value)
     }
 }
 
@@ -419,12 +417,12 @@ impl From<()> for QueryIO {
 mod test {
     use uuid::Uuid;
 
-    use crate::domains::cluster_actors::commands::RejectionReason;
-    use crate::domains::cluster_actors::replication::{HeartBeatMessage, ReplicationId};
+    use crate::domains::cluster_actors::replication::ReplicationId;
 
+    use crate::domains::operation_logs::WriteRequest;
+    use crate::domains::peers::command::{BannedPeer, RejectionReason};
     use crate::domains::peers::identifier::PeerIdentifier;
     use crate::domains::peers::peer::{NodeKind, PeerState};
-    use crate::domains::{cluster_actors::replication::BannedPeer, operation_logs::WriteRequest};
 
     use super::*;
 
@@ -567,13 +565,13 @@ mod test {
     #[test]
     fn test_acks_to_binary_back_to_acks() {
         // GIVEN
-        let follower_res = ReplicationResponse {
+        let follower_res = ReplicationAck {
             term: 0,
             rej_reason: RejectionReason::None,
             log_idx: 2,
             from: PeerIdentifier("repl1".into()),
         };
-        let acks = QueryIO::ConsensusFollowerResponse(follower_res);
+        let acks = QueryIO::Ack(follower_res);
 
         // WHEN
         let serialized = acks.clone().serialize();
@@ -592,7 +590,7 @@ mod test {
             BannedPeer { p_id: PeerIdentifier("banned1".into()), ban_time: 3553 },
             BannedPeer { p_id: PeerIdentifier("banned2".into()), ban_time: 3556 },
         ];
-        let heartbeat = HeartBeatMessage {
+        let heartbeat = HeartBeat {
             from: me.clone(),
             term: 1,
             prev_log_index: 0,
@@ -645,7 +643,7 @@ mod test {
                 PeerState::new("127.0.0.1:30001", 0, ReplicationId::Undecided, NodeKind::Myself),
             ],
         };
-        let replicate = QueryIO::AppendEntriesRPC(AppendEntriesRPC(heartbeat));
+        let replicate = QueryIO::AppendEntriesRPC(heartbeat);
 
         // WHEN
         let serialized = replicate.clone().serialize();

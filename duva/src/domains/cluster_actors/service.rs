@@ -1,8 +1,8 @@
 use crate::domains::caches::cache_manager::CacheManager;
-use crate::domains::cluster_actors::commands::{ClusterCommand, ConsensusClientResponse};
 use crate::domains::cluster_actors::replication::ReplicationState;
 use crate::domains::cluster_actors::session::ClientSessions;
 use crate::domains::cluster_actors::{ClusterActor, FANOUT};
+use crate::domains::cluster_actors::{ClusterCommand, ConsensusClientResponse};
 use crate::domains::operation_logs::interfaces::TWriteAheadLog;
 use crate::domains::operation_logs::logger::ReplicatedLogs;
 use crate::err;
@@ -79,7 +79,7 @@ impl ClusterActor {
                     };
                     self.req_consensus(&mut logger, req).await;
                 },
-                ClusterCommand::ReplicationResponse(repl_res) => {
+                ClusterCommand::ReplicationAck(repl_res) => {
                     if !repl_res.is_granted() {
                         self.handle_repl_rejection(repl_res).await;
                         continue;

@@ -10,7 +10,7 @@ use anyhow::Result;
 use domains::IoError;
 use domains::caches::cache_manager::CacheManager;
 use domains::cluster_actors::ClusterActor;
-use domains::cluster_actors::commands::ClusterCommand;
+use domains::cluster_actors::ClusterCommand;
 use domains::cluster_actors::replication::ReplicationRole;
 use domains::cluster_actors::replication::ReplicationState;
 use domains::config_actors::config_manager::ConfigManager;
@@ -31,6 +31,7 @@ use tracing::info;
 use tracing::instrument;
 
 pub mod prelude {
+    pub use crate::domains::cluster_actors::heartbeat_scheduler::LEADER_HEARTBEAT_INTERVAL_MAX;
     pub use crate::domains::peers::identifier::PeerIdentifier;
     pub use crate::presentation::clients::AuthRequest;
     pub use crate::presentation::clients::AuthResponse;

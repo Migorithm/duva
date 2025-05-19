@@ -1,4 +1,4 @@
-use crate::domains::cluster_actors::commands::ClusterCommand;
+use crate::domains::cluster_actors::ClusterCommand;
 use std::{ops::Range, time::Duration};
 use tokio::{select, sync::mpsc::Sender, time::interval};
 use tracing::warn;

@@ -7,10 +7,11 @@ use futures::stream::FuturesUnordered;
 use std::collections::BTreeMap;
 use tokio::time::Instant;
 pub mod actor;
-pub mod commands;
+mod command;
+pub(crate) use command::*;
 pub mod consensus;
 pub(crate) mod hash_ring;
-pub mod heartbeats;
+pub mod heartbeat_scheduler;
 
 pub mod replication;
 mod service;

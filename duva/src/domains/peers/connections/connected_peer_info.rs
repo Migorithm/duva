@@ -1,8 +1,9 @@
-use crate::domains::cluster_actors::replication::ReplicationId;
-
-use super::{
-    identifier::PeerIdentifier,
-    peer::{NodeKind, PeerState},
+use crate::{
+    domains::{
+        cluster_actors::replication::ReplicationId,
+        peers::peer::{NodeKind, PeerState},
+    },
+    prelude::PeerIdentifier,
 };
 
 #[derive(Debug, Clone, Default)]

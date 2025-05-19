@@ -6,16 +6,17 @@ use crate::{
     ReplicationState,
     domains::{
         cluster_actors::{
-            replication::{HeartBeatMessage, ReplicationId, ReplicationRole},
+            replication::{ReplicationId, ReplicationRole},
             session::SessionRequest,
         },
         operation_logs::WriteRequest,
-        peers::peer::{Peer, PeerState},
+        peers::{
+            command::{HeartBeat, ReplicationAck, RequestVote, RequestVoteReply},
+            peer::{Peer, PeerState},
+        },
     },
     prelude::PeerIdentifier,
 };
-
-use super::{ConsensusClientResponse, ReplicationResponse, RequestVote, RequestVoteReply};
 
 #[derive(Debug)]
 pub(crate) enum ClusterCommand {
@@ -34,15 +35,15 @@ pub(crate) enum ClusterCommand {
     ForgetPeer(PeerIdentifier, tokio::sync::oneshot::Sender<Option<()>>),
     ReplicaOf(PeerIdentifier, tokio::sync::oneshot::Sender<anyhow::Result<()>>),
     LeaderReqConsensus(ConsensusRequest),
-    ReplicationResponse(ReplicationResponse),
-    AppendEntriesRPC(HeartBeatMessage),
+    ReplicationAck(ReplicationAck),
+    AppendEntriesRPC(HeartBeat),
 
     SendAppendEntriesRPC,
     ClusterNodes(tokio::sync::oneshot::Sender<Vec<PeerState>>),
     StartLeaderElection,
     VoteElection(RequestVote),
     ApplyElectionVote(RequestVoteReply),
-    ClusterHeartBeat(HeartBeatMessage),
+    ClusterHeartBeat(HeartBeat),
     GetRole(tokio::sync::oneshot::Sender<ReplicationRole>),
     SubscribeToTopologyChange(
         tokio::sync::oneshot::Sender<tokio::sync::broadcast::Receiver<Vec<PeerIdentifier>>>,
@@ -76,6 +77,12 @@ impl From<ConsensusRequest> for ClusterCommand {
     fn from(request: ConsensusRequest) -> Self {
         Self::LeaderReqConsensus(request)
     }
+}
+
+#[derive(Debug)]
+pub(crate) enum ConsensusClientResponse {
+    AlreadyProcessed { key: String, index: u64 },
+    LogIndex(Option<u64>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

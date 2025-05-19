@@ -2,13 +2,14 @@ use super::request::HandShakeRequest;
 use super::request::HandShakeRequestEnum;
 use crate::ClusterCommand;
 use crate::domains::IoError;
+use crate::domains::peers::connections::connected_peer_info::ConnectedPeerInfo;
 use crate::domains::peers::peer::Peer;
 
 use crate::domains::cluster_actors::replication::ReplicationId;
 use crate::domains::cluster_actors::replication::ReplicationState;
 use crate::domains::interface::TRead;
 use crate::domains::interface::TWrite;
-use crate::domains::peers::connected_peer_info::ConnectedPeerInfo;
+
 use crate::domains::peers::identifier::PeerIdentifier;
 use crate::domains::peers::peer::PeerState;
 use crate::domains::peers::service::PeerListener;

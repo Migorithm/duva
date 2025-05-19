@@ -1,13 +1,14 @@
 use crate::domains::IoError;
 use crate::domains::cluster_actors::replication::ReplicationId;
 use crate::domains::interface::TWrite;
-use crate::domains::peers::connected_types::WriteConnected;
+
 use crate::domains::query_parsers::QueryIO;
 use crate::prelude::PeerIdentifier;
 use tokio::net::tcp::OwnedReadHalf;
 use tokio::task::JoinHandle;
 use tokio::time::Instant;
 
+use super::connections::connected_types::WriteConnected;
 use super::identifier::TPeerAddress;
 
 #[derive(Debug)]

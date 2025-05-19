@@ -1,7 +1,7 @@
 use std::{thread::sleep, time::Duration};
 
 use crate::common::{Client, ServerEnv, form_cluster, spawn_server_process};
-use duva::domains::cluster_actors::heartbeats::scheduler::LEADER_HEARTBEAT_INTERVAL_MAX;
+use duva::prelude::LEADER_HEARTBEAT_INTERVAL_MAX;
 
 fn run_leader_election(with_append_only: bool) -> anyhow::Result<()> {
     // GIVEN
