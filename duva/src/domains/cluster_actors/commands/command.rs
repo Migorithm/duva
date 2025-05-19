@@ -18,8 +18,6 @@ use crate::{
     prelude::PeerIdentifier,
 };
 
-use super::ConsensusClientResponse;
-
 #[derive(Debug)]
 pub(crate) enum ClusterCommand {
     ConnectToServer {
@@ -79,6 +77,12 @@ impl From<ConsensusRequest> for ClusterCommand {
     fn from(request: ConsensusRequest) -> Self {
         Self::LeaderReqConsensus(request)
     }
+}
+
+#[derive(Debug)]
+pub(crate) enum ConsensusClientResponse {
+    AlreadyProcessed { key: String, index: u64 },
+    LogIndex(Option<u64>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
