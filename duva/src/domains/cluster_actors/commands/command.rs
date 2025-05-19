@@ -1,3 +1,5 @@
+use std::str::FromStr;
+
 use tokio::net::TcpStream;
 
 use crate::{
@@ -49,7 +51,7 @@ pub(crate) enum ClusterCommand {
         replid: ReplicationId,
         hwm: u64,
     },
-    ClusterMeet(PeerIdentifier, tokio::sync::oneshot::Sender<anyhow::Result<()>>),
+    ClusterMeet(PeerIdentifier, LazyOption, tokio::sync::oneshot::Sender<anyhow::Result<()>>),
     AddPeer(Peer, Option<tokio::sync::oneshot::Sender<anyhow::Result<()>>>),
     FollowerSetReplId(ReplicationId),
 }
@@ -73,5 +75,23 @@ impl ConsensusRequest {
 impl From<ConsensusRequest> for ClusterCommand {
     fn from(request: ConsensusRequest) -> Self {
         Self::LeaderReqConsensus(request)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum LazyOption {
+    Lazy,
+    Eager,
+}
+
+impl FromStr for LazyOption {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "lazy" => Ok(LazyOption::Lazy),
+            "eager" => Ok(LazyOption::Eager),
+            _ => Err(anyhow::anyhow!("Invalid value for LazyOption")),
+        }
     }
 }

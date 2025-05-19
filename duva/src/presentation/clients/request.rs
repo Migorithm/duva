@@ -1,6 +1,10 @@
+use std::str::FromStr;
+
 use crate::domains::{
-    cluster_actors::session::SessionRequest, operation_logs::WriteRequest,
-    peers::identifier::PeerIdentifier, query_parsers::QueryIO,
+    cluster_actors::{commands::LazyOption, session::SessionRequest},
+    operation_logs::WriteRequest,
+    peers::identifier::PeerIdentifier,
+    query_parsers::QueryIO,
 };
 use anyhow::Context;
 use chrono::{DateTime, Utc};
@@ -28,7 +32,7 @@ pub enum ClientAction {
     Incr { key: String },
     Decr { key: String },
     Ttl { key: String },
-    ClusterMeet(PeerIdentifier),
+    ClusterMeet(PeerIdentifier, LazyOption),
     IncrBy { key: String, increment: i64 },
     DecrBy { key: String, decrement: i64 },
 }
@@ -214,12 +218,27 @@ pub fn extract_action(action: &str, args: &[&str]) -> anyhow::Result<ClientActio
                     Ok(ClientAction::ClusterForget(args[1].to_string().into()))
                 },
                 "MEET" => {
-                    if args.len() != 2 {
+                    if args.len() == 2 {
+                        return Ok(ClientAction::ClusterMeet(
+                            args[1].to_string().into(),
+                            LazyOption::Lazy,
+                        ));
+                    }
+                    if args.len() == 3 {
+                        // args[2].parse()? should be either lazy or eager
+                        let lazy_option:LazyOption =FromStr::from_str(args[2]).context(
+                            "(error) ERR wrong arguments for 'cluster meet' command, expected 'lazy' or 'eager'"
+                        )?;
+
+                        return Ok(ClientAction::ClusterMeet(
+                            args[1].to_string().into(),
+                            lazy_option,
+                        ));
+                    } else {
                         return Err(anyhow::anyhow!(
                             "(error) ERR wrong number of arguments for 'cluster meet' command"
                         ));
                     }
-                    Ok(ClientAction::ClusterMeet(args[1].to_string().into()))
                 },
                 _ => Err(anyhow::anyhow!("(error) ERR unknown subcommand")),
             }
