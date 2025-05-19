@@ -4,14 +4,10 @@ use super::commands::ConsensusRequest;
 use super::commands::LazyOption;
 use super::commands::RejectionReason;
 use super::commands::ReplicationResponse;
-use super::commands::RequestVote;
-use super::commands::RequestVoteReply;
 
-use super::heartbeats::heartbeat::AppendEntriesRPC;
-use super::heartbeats::heartbeat::ClusterHeartBeat;
 use super::heartbeats::scheduler::HeartBeatScheduler;
 use super::replication::BannedPeer;
-use super::replication::HeartBeatMessage;
+use super::replication::HeartBeat;
 use super::replication::ReplicationId;
 use super::replication::ReplicationRole;
 use super::replication::ReplicationState;
@@ -22,10 +18,13 @@ use crate::domains::caches::cache_manager::CacheManager;
 use crate::domains::cluster_actors::consensus::ElectionState;
 use crate::domains::operation_logs::interfaces::TWriteAheadLog;
 use crate::domains::operation_logs::logger::ReplicatedLogs;
+use crate::domains::peers::command::RequestVote;
+use crate::domains::peers::command::RequestVoteReply;
 use crate::domains::peers::connections::inbound::stream::InboundStream;
 use crate::domains::peers::connections::outbound::stream::OutboundStream;
 use crate::domains::peers::peer::NodeKind;
 use crate::domains::peers::peer::PeerState;
+use crate::domains::query_parsers::QueryIO;
 use crate::err;
 use std::collections::VecDeque;
 use std::iter;
@@ -116,7 +115,7 @@ impl ClusterActor {
         logger: &ReplicatedLogs<impl TWriteAheadLog>,
     ) {
         // TODO randomly choose the peer to send the message
-        let msg = ClusterHeartBeat(
+        let msg = QueryIO::ClusterHeartBeat(
             self.replication
                 .default_heartbeat(hop_count, logger.last_log_index, logger.last_log_term)
                 .set_cluster_nodes(self.cluster_nodes()),
@@ -330,7 +329,7 @@ impl ClusterActor {
     async fn send_rpc_to_replicas(&mut self, logger: &ReplicatedLogs<impl TWriteAheadLog>) {
         self.iter_follower_append_entries(logger)
             .await
-            .map(|(peer, hb)| peer.send(AppendEntriesRPC(hb)))
+            .map(|(peer, hb)| peer.send(QueryIO::AppendEntriesRPC(hb)))
             .collect::<FuturesUnordered<_>>()
             .for_each(|_| async {})
             .await;
@@ -353,12 +352,12 @@ impl ClusterActor {
     async fn iter_follower_append_entries(
         &mut self,
         logger: &ReplicatedLogs<impl TWriteAheadLog>,
-    ) -> Box<dyn Iterator<Item = (&mut Peer, HeartBeatMessage)> + '_> {
+    ) -> Box<dyn Iterator<Item = (&mut Peer, HeartBeat)> + '_> {
         let lowest_watermark = self.take_low_watermark();
 
         let append_entries = logger.list_append_log_entries(lowest_watermark).await;
 
-        let default_heartbeat: HeartBeatMessage =
+        let default_heartbeat: HeartBeat =
             self.replication.default_heartbeat(0, logger.last_log_index, logger.last_log_term);
 
         // Handle empty entries case
@@ -459,7 +458,7 @@ impl ClusterActor {
     pub(crate) async fn replicate(
         &mut self,
         wal: &mut ReplicatedLogs<impl TWriteAheadLog>,
-        mut heartbeat: HeartBeatMessage,
+        mut heartbeat: HeartBeat,
         cache_manager: &CacheManager,
     ) {
         // * write logs
@@ -473,7 +472,7 @@ impl ClusterActor {
     async fn replicate_log_entries(
         &mut self,
         wal: &mut ReplicatedLogs<impl TWriteAheadLog>,
-        rpc: &mut HeartBeatMessage,
+        rpc: &mut HeartBeat,
     ) -> anyhow::Result<()> {
         let entries = std::mem::take(&mut rpc.append_entries)
             .into_iter()
@@ -588,7 +587,7 @@ impl ClusterActor {
         let msg =
             self.replication.default_heartbeat(0, logger.last_log_index, logger.last_log_term);
         self.replicas_mut()
-            .map(|(peer, _)| peer.send(AppendEntriesRPC(msg.clone())))
+            .map(|(peer, _)| peer.send(QueryIO::AppendEntriesRPC(msg.clone())))
             .collect::<FuturesUnordered<_>>()
             .for_each(|_| async {})
             .await;
@@ -604,7 +603,7 @@ impl ClusterActor {
 
     async fn replicate_state(
         &mut self,
-        leader_hwm: HeartBeatMessage,
+        leader_hwm: HeartBeat,
         wal: &mut ReplicatedLogs<impl TWriteAheadLog>,
         cache_manager: &CacheManager,
     ) {
@@ -644,7 +643,7 @@ impl ClusterActor {
 
     pub(crate) async fn check_term_outdated(
         &mut self,
-        heartbeat: &HeartBeatMessage,
+        heartbeat: &HeartBeat,
         wal: &ReplicatedLogs<impl TWriteAheadLog>,
     ) -> bool {
         if heartbeat.term < self.replication.term {
@@ -712,10 +711,6 @@ impl ClusterActor {
         let _ = self.connect_to_server(peer_addr, Some(callback)).await;
     }
 
-    /// Join existing cluster or node as partition leader
-    /// 0. blocking requests
-    /// 1. discover cluster
-    /// 2. replica-to-replica connection will be made through gossip(Done)
     pub(crate) async fn cluster_meet(
         &mut self,
         peer_addr: PeerIdentifier,
@@ -723,16 +718,18 @@ impl ClusterActor {
         callback: tokio::sync::oneshot::Sender<anyhow::Result<()>>,
     ) {
         let _ = self.connect_to_server(peer_addr.clone(), Some(callback)).await;
-
         if lazy_option == LazyOption::Eager {
-            self.pending_requests = Some(VecDeque::new());
             self.request_rebalance(peer_addr).await;
         }
     }
 
     // Ask the given peer to act as rebalancing coordinator
-    async fn request_rebalance(&self, peer_addr: PeerIdentifier) {
-        todo!()
+    async fn request_rebalance(&mut self, peer_addr: PeerIdentifier) {
+        // Block subsequent requests until the cluster is rebalanced
+        self.pending_requests = Some(VecDeque::new());
+        if let Some(peer) = self.members.get_mut(&peer_addr) {
+            // let _ = peer.send(ClusterCommand::Rebalance).await;
+        }
     }
 
     pub(crate) async fn join_peer_network_if_absent(&mut self, cluster_nodes: Vec<PeerState>) {
@@ -794,12 +791,8 @@ pub mod test {
             term,
         }
     }
-    fn heartbeat_create_helper(
-        term: u64,
-        hwm: u64,
-        op_logs: Vec<WriteOperation>,
-    ) -> HeartBeatMessage {
-        HeartBeatMessage {
+    fn heartbeat_create_helper(term: u64, hwm: u64, op_logs: Vec<WriteOperation>) -> HeartBeat {
+        HeartBeat {
             term,
             hwm,
             prev_log_index: if !op_logs.is_empty() { op_logs[0].log_index - 1 } else { 0 },

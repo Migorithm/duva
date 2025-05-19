@@ -6,7 +6,7 @@ use crate::domains::{
 
 #[derive(Debug, Clone, PartialEq, bincode::Encode, bincode::Decode)]
 
-pub(crate) struct HeartBeatMessage {
+pub struct HeartBeat {
     pub(crate) from: PeerIdentifier,
     pub(crate) term: u64,
     pub(crate) hwm: u64,
@@ -18,7 +18,7 @@ pub(crate) struct HeartBeatMessage {
     pub(crate) prev_log_index: u64, //index of log entry immediately preceding new ones
     pub(crate) prev_log_term: u64,  //term of prev_log_index entry
 }
-impl HeartBeatMessage {
+impl HeartBeat {
     pub(crate) fn set_append_entries(mut self, entries: Vec<WriteOperation>) -> Self {
         self.append_entries = entries;
         self
@@ -46,8 +46,3 @@ impl std::borrow::Borrow<PeerIdentifier> for BannedPeer {
         &self.p_id
     }
 }
-
-#[derive(Debug, Clone, PartialEq, bincode::Encode, bincode::Decode)]
-pub struct AppendEntriesRPC(pub(crate) HeartBeatMessage);
-#[derive(Debug, Clone, PartialEq, bincode::Encode, bincode::Decode)]
-pub struct ClusterHeartBeat(pub(crate) HeartBeatMessage);

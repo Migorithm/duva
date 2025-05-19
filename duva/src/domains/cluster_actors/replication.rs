@@ -1,6 +1,6 @@
 use super::consensus::ElectionState;
 pub(crate) use super::heartbeats::heartbeat::BannedPeer;
-pub(crate) use super::heartbeats::heartbeat::HeartBeatMessage;
+pub(crate) use super::heartbeats::heartbeat::HeartBeat;
 
 use crate::domains::peers::identifier::PeerIdentifier;
 use crate::domains::peers::peer::NodeKind;
@@ -82,8 +82,8 @@ impl ReplicationState {
         hop_count: u8,
         prev_log_index: u64,
         prev_log_term: u64,
-    ) -> HeartBeatMessage {
-        HeartBeatMessage {
+    ) -> HeartBeat {
+        HeartBeat {
             from: self.self_identifier(),
             term: self.term,
             hwm: self.hwm.load(Ordering::Relaxed),
