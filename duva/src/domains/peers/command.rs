@@ -6,9 +6,9 @@ pub(crate) use peer_messages::*;
 pub(crate) enum PeerMessage {
     AppendEntriesRPC(HeartBeat),
     ClusterHeartBeat(HeartBeat),
-    Acks(ReplicationAck),
+    AckReplication(ReplicationAck),
     RequestVote(RequestVote),
-    RequestVoteReply(RequestVoteReply),
+    ElectionVoteReply(ElectionVote),
     TriggerRebalance,
 }
 
@@ -18,9 +18,9 @@ impl TryFrom<QueryIO> for PeerMessage {
         match query {
             QueryIO::AppendEntriesRPC(peer_state) => Ok(Self::AppendEntriesRPC(peer_state)),
             QueryIO::ClusterHeartBeat(heartbeat) => Ok(Self::ClusterHeartBeat(heartbeat)),
-            QueryIO::Ack(acks) => Ok(PeerMessage::Acks(acks)),
+            QueryIO::Ack(acks) => Ok(PeerMessage::AckReplication(acks)),
             QueryIO::RequestVote(vote) => Ok(PeerMessage::RequestVote(vote)),
-            QueryIO::RequestVoteReply(reply) => Ok(PeerMessage::RequestVoteReply(reply)),
+            QueryIO::RequestVoteReply(reply) => Ok(PeerMessage::ElectionVoteReply(reply)),
             QueryIO::TriggerRebalance => Ok(PeerMessage::TriggerRebalance),
             _ => Err(anyhow::anyhow!("Invalid data")),
         }
@@ -57,7 +57,7 @@ mod peer_messages {
     }
 
     #[derive(Clone, Debug, PartialEq, bincode::Encode, bincode::Decode)]
-    pub struct RequestVoteReply {
+    pub struct ElectionVote {
         pub(crate) term: u64,
         pub(crate) vote_granted: bool,
     }

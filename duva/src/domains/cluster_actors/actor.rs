@@ -14,11 +14,11 @@ use crate::domains::cluster_actors::consensus::ElectionState;
 use crate::domains::operation_logs::interfaces::TWriteAheadLog;
 use crate::domains::operation_logs::logger::ReplicatedLogs;
 use crate::domains::peers::command::BannedPeer;
+use crate::domains::peers::command::ElectionVote;
 use crate::domains::peers::command::HeartBeat;
 use crate::domains::peers::command::RejectionReason;
 use crate::domains::peers::command::ReplicationAck;
 use crate::domains::peers::command::RequestVote;
-use crate::domains::peers::command::RequestVoteReply;
 use crate::domains::peers::connections::inbound::stream::InboundStream;
 use crate::domains::peers::connections::outbound::stream::OutboundStream;
 use crate::domains::peers::peer::NodeKind;
@@ -573,7 +573,7 @@ impl ClusterActor {
         let Some(peer) = self.find_replica_mut(&request_vote.candidate_id) else {
             return;
         };
-        let _ = peer.send(RequestVoteReply { term, vote_granted: grant_vote }).await;
+        let _ = peer.send(ElectionVote { term, vote_granted: grant_vote }).await;
     }
 
     pub(crate) async fn tally_vote(&mut self, logger: &ReplicatedLogs<impl TWriteAheadLog>) {

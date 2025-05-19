@@ -11,7 +11,7 @@ use crate::{
         },
         operation_logs::WriteRequest,
         peers::{
-            command::{HeartBeat, ReplicationAck, RequestVote, RequestVoteReply},
+            PeerMessage,
             peer::{Peer, PeerState},
         },
     },
@@ -30,20 +30,14 @@ pub(crate) enum ClusterCommand {
 
     GetPeers(tokio::sync::oneshot::Sender<Vec<PeerIdentifier>>),
     ReplicationInfo(tokio::sync::oneshot::Sender<ReplicationState>),
-
     SendClusterHeatBeat,
     ForgetPeer(PeerIdentifier, tokio::sync::oneshot::Sender<Option<()>>),
     ReplicaOf(PeerIdentifier, tokio::sync::oneshot::Sender<anyhow::Result<()>>),
     LeaderReqConsensus(ConsensusRequest),
-    ReplicationAck(ReplicationAck),
-    AppendEntriesRPC(HeartBeat),
-
     SendAppendEntriesRPC,
     ClusterNodes(tokio::sync::oneshot::Sender<Vec<PeerState>>),
     StartLeaderElection,
-    VoteElection(RequestVote),
-    ApplyElectionVote(RequestVoteReply),
-    ClusterHeartBeat(HeartBeat),
+
     GetRole(tokio::sync::oneshot::Sender<ReplicationRole>),
     SubscribeToTopologyChange(
         tokio::sync::oneshot::Sender<tokio::sync::broadcast::Receiver<Vec<PeerIdentifier>>>,
@@ -55,7 +49,7 @@ pub(crate) enum ClusterCommand {
     ClusterMeet(PeerIdentifier, LazyOption, tokio::sync::oneshot::Sender<anyhow::Result<()>>),
     AddPeer(Peer, Option<tokio::sync::oneshot::Sender<anyhow::Result<()>>>),
     FollowerSetReplId(ReplicationId),
-    TriggerRebalance,
+    FromPeer(PeerMessage),
 }
 
 #[derive(Debug)]

@@ -56,37 +56,8 @@ impl PeerListener {
             ATOMIC.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
             for cmd in cmds {
-                match cmd {
-                    PeerMessage::AppendEntriesRPC(hb) => {
-                        debug!("from {}, hc:{}", hb.from, hb.hop_count);
-                        let _ =
-                            self.cluster_handler.send(ClusterCommand::AppendEntriesRPC(hb)).await;
-                    },
-                    PeerMessage::ClusterHeartBeat(hb) => {
-                        debug!("from {}, hc:{}", hb.from, hb.hop_count);
-                        let _ =
-                            self.cluster_handler.send(ClusterCommand::ClusterHeartBeat(hb)).await;
-                    },
-                    PeerMessage::Acks(items) => {
-                        let _ =
-                            self.cluster_handler.send(ClusterCommand::ReplicationAck(items)).await;
-                    },
-                    PeerMessage::RequestVote(request_vote) => {
-                        let _ = self
-                            .cluster_handler
-                            .send(ClusterCommand::VoteElection(request_vote))
-                            .await;
-                    },
-                    PeerMessage::RequestVoteReply(reply) => {
-                        let _ = self
-                            .cluster_handler
-                            .send(ClusterCommand::ApplyElectionVote(reply))
-                            .await;
-                    },
-                    PeerMessage::TriggerRebalance => {
-                        let _ = self.cluster_handler.send(ClusterCommand::TriggerRebalance).await;
-                    },
-                }
+                debug!(?cmd);
+                let _ = self.cluster_handler.send(ClusterCommand::FromPeer(cmd)).await;
             }
         }
     }

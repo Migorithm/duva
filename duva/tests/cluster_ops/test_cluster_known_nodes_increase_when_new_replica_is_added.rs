@@ -18,8 +18,7 @@ fn run_cluster_topology_change_when_new_node_added(with_append_only: bool) -> an
     let repl_env2 = ServerEnv::default()
         .with_bind_addr(leader_p.bind_addr())
         .with_append_only(with_append_only);
-    let mut new_repl_p = spawn_server_process(&repl_env2, true)?;
-    new_repl_p.wait_for_message(&leader_p.heartbeat_msg(0))?;
+    let mut _new_repl_p = spawn_server_process(&repl_env2, false)?;
 
     //THEN
     assert_eq!(

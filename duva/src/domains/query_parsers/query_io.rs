@@ -1,6 +1,6 @@
 use crate::domains::caches::cache_objects::CacheValue;
 use crate::domains::operation_logs::WriteOperation;
-use crate::domains::peers::command::{HeartBeat, ReplicationAck, RequestVote, RequestVoteReply};
+use crate::domains::peers::command::{HeartBeat, ReplicationAck, RequestVote, ElectionVote};
 use crate::prelude::PeerIdentifier;
 use anyhow::{Context, Result};
 use bytes::{Bytes, BytesMut};
@@ -51,7 +51,7 @@ pub enum QueryIO {
     WriteOperation(WriteOperation),
     Ack(ReplicationAck),
     RequestVote(RequestVote),
-    RequestVoteReply(RequestVoteReply),
+    RequestVoteReply(ElectionVote),
 
     TopologyChange(Vec<PeerIdentifier>),
     TriggerRebalance,
@@ -226,7 +226,7 @@ pub fn deserialize(buffer: impl Into<Bytes>) -> Result<(QueryIO, usize)> {
         REPLICATE_PREFIX => parse_custom_type::<WriteOperation>(buffer),
         ACKS_PREFIX => parse_custom_type::<ReplicationAck>(buffer),
         REQUEST_VOTE_PREFIX => parse_custom_type::<RequestVote>(buffer),
-        REQUEST_VOTE_REPLY_PREFIX => parse_custom_type::<RequestVoteReply>(buffer),
+        REQUEST_VOTE_REPLY_PREFIX => parse_custom_type::<ElectionVote>(buffer),
         TOPOLOGY_CHANGE_PREFIX => parse_custom_type::<Vec<PeerIdentifier>>(buffer),
         TRIGGER_REBALANCE_PREFIX => Ok((QueryIO::TriggerRebalance, 1)),
 
@@ -400,8 +400,8 @@ impl From<RequestVote> for QueryIO {
     }
 }
 
-impl From<RequestVoteReply> for QueryIO {
-    fn from(value: RequestVoteReply) -> Self {
+impl From<ElectionVote> for QueryIO {
+    fn from(value: ElectionVote) -> Self {
         QueryIO::RequestVoteReply(value)
     }
 }
@@ -680,7 +680,7 @@ mod test {
     #[test]
     fn test_request_vote_reply_to_binary_back_to_request_vote_reply() {
         // GIVEN
-        let request_vote_reply = RequestVoteReply { term: 1, vote_granted: true };
+        let request_vote_reply = ElectionVote { term: 1, vote_granted: true };
         let request_vote_reply = QueryIO::RequestVoteReply(request_vote_reply);
 
         // WHEN

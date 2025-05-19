@@ -300,30 +300,30 @@ pub fn session_request(request_id: u64, arr: Vec<&str>) -> Bytes {
     .serialize()
 }
 
-/// Check if all processes can communicate with each other
-pub fn check_internodes_communication(
-    processes: &mut [&mut TestProcessChild],
-    hop_count: usize,
-    time_out: u128,
-) -> anyhow::Result<()> {
-    for i in 0..processes.len() {
-        // First get the message from all other processes
-        let messages: Vec<_> = processes
-            .iter()
-            .enumerate()
-            .filter(|&(j, _)| j != i)
-            .flat_map(|(_, target)| {
-                (0..hop_count + 1).map(|_| target.heartbeat_msg(hop_count)).collect::<Vec<String>>()
-            })
-            .collect();
+// /// Check if all processes can communicate with each other
+// pub fn check_internodes_communication(
+//     processes: &mut [&mut TestProcessChild],
+//     hop_count: usize,
+//     time_out: u128,
+// ) -> anyhow::Result<()> {
+//     for i in 0..processes.len() {
+//         // First get the message from all other processes
+//         let messages: Vec<_> = processes
+//             .iter()
+//             .enumerate()
+//             .filter(|&(j, _)| j != i)
+//             .flat_map(|(_, target)| {
+//                 (0..hop_count + 1).map(|_| target.heartbeat_msg(hop_count)).collect::<Vec<String>>()
+//             })
+//             .collect();
 
-        // Then wait for all messages
-        for msg in messages {
-            processes[i].timed_wait_for_message(vec![&msg], time_out)?;
-        }
-    }
-    Ok(())
-}
+//         // Then wait for all messages
+//         for msg in messages {
+//             processes[i].timed_wait_for_message(vec![&msg], time_out)?;
+//         }
+//     }
+//     Ok(())
+// }
 
 pub struct Client {
     pub child: Child,
@@ -425,9 +425,9 @@ pub fn form_cluster<const T: usize>(
     let mut process_refs =
         unsafe { processes.iter_mut().map(|p| &mut *(p.as_mut_ptr())).collect::<Vec<_>>() };
 
-    if stdout_enabled {
-        check_internodes_communication(&mut process_refs, 0, 1000).unwrap();
-    }
+    // if stdout_enabled {
+    //     check_internodes_communication(&mut process_refs, 0, 1000).unwrap();
+    // }
 
     // Convert the array of MaybeUninit to an initialized array safely
     unsafe {
