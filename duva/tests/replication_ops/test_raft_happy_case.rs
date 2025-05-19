@@ -11,7 +11,7 @@ fn run_set_operation_reaches_to_all_replicas(with_append_only: bool) -> anyhow::
         .with_append_only(with_append_only)
         .with_file_name("follower_dbfilename");
 
-    let [leader_p, repl_p] = form_cluster([&mut env, &mut follower_env1], false);
+    let [leader_p, repl_p] = form_cluster([&mut env, &mut follower_env1]);
 
     // WHEN -- set operation is made
     let mut client_handler = Client::new(leader_p.port);

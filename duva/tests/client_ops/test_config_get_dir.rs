@@ -6,7 +6,7 @@ use crate::common::{Client, ServerEnv, spawn_server_process};
 
 fn run_config_get_dir(env: ServerEnv) -> anyhow::Result<()> {
     // GIVEN
-    let process = spawn_server_process(&env, false)?;
+    let process = spawn_server_process(&env)?;
 
     sleep(Duration::from_millis(500));
     let mut h = Client::new(process.port);

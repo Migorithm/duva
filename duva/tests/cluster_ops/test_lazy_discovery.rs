@@ -3,7 +3,7 @@ use crate::common::{Client, ServerEnv, spawn_server_process};
 fn run_lazy_discovery_of_leader(with_append_only: bool) -> anyhow::Result<()> {
     // GIVEN
     let env1 = ServerEnv::default().with_append_only(with_append_only);
-    let mut p1 = spawn_server_process(&env1, false)?;
+    let mut p1 = spawn_server_process(&env1)?;
 
     let mut p1_h = Client::new(p1.port);
 
@@ -12,7 +12,7 @@ fn run_lazy_discovery_of_leader(with_append_only: bool) -> anyhow::Result<()> {
     assert_eq!(p1_h.send_and_get_vec("KEYS *", 2), vec!["0) \"key\"", "1) \"key2\""]);
 
     let env2 = ServerEnv::default().with_append_only(with_append_only);
-    let p2 = spawn_server_process(&env2, false)?;
+    let p2 = spawn_server_process(&env2)?;
 
     let mut p2_h = Client::new(p2.port);
     p2_h.send_and_get_vec("set other value", 1);
@@ -36,7 +36,7 @@ fn run_lazy_discovery_of_leader(with_append_only: bool) -> anyhow::Result<()> {
     let new_env_with_same_topology = ServerEnv::default()
         .with_topology_path(env1.topology_path)
         .with_append_only(with_append_only);
-    let p1 = spawn_server_process(&new_env_with_same_topology, true)?;
+    let p1 = spawn_server_process(&new_env_with_same_topology)?;
 
     let mut p1_h = Client::new(p1.port);
     assert_eq!(p1_h.send_and_get_vec("get key", 1), vec!["(nil)"]);
@@ -58,7 +58,7 @@ fn test_lazy_discovery_of_leader() -> anyhow::Result<()> {
 fn run_invalid_replicaof(with_append_only: bool) -> anyhow::Result<()> {
     // GIVEN
     let env1 = ServerEnv::default().with_append_only(with_append_only);
-    let p1 = spawn_server_process(&env1, false)?;
+    let p1 = spawn_server_process(&env1)?;
 
     let mut p1_h = Client::new(p1.port);
 

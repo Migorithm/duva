@@ -5,7 +5,7 @@ use std::time::UNIX_EPOCH;
 
 fn run_snapshot_persists_and_recovers_state(env: ServerEnv) -> anyhow::Result<()> {
     // GIVEN
-    let mut leader_process = spawn_server_process(&env, false)?;
+    let mut leader_process = spawn_server_process(&env)?;
 
     let mut h = Client::new(leader_process.port);
 
@@ -25,7 +25,7 @@ fn run_snapshot_persists_and_recovers_state(env: ServerEnv) -> anyhow::Result<()
     let _ = leader_process.terminate();
 
     // run server with the same file name
-    let new_process = spawn_server_process(&env, false)?;
+    let new_process = spawn_server_process(&env)?;
 
     let mut client = Client::new(new_process.port);
     assert_eq!(client.send_and_get_vec("KEYS *", 2), vec!["0) \"foo2\"", "1) \"foo\""]);

@@ -5,7 +5,7 @@ fn run_full_sync_on_newly_added_replica(with_append_only: bool) -> anyhow::Resul
     let env = ServerEnv::default().with_append_only(with_append_only);
 
     // Start the leader server as a child process
-    let leader_p = spawn_server_process(&env, false)?;
+    let leader_p = spawn_server_process(&env)?;
     let mut h = Client::new(leader_p.port);
 
     h.send_and_get("SET foo bar");
@@ -15,7 +15,7 @@ fn run_full_sync_on_newly_added_replica(with_append_only: bool) -> anyhow::Resul
         .with_bind_addr(leader_p.bind_addr())
         .with_append_only(with_append_only);
 
-    let replica_process = spawn_server_process(&repl_env, false)?;
+    let replica_process = spawn_server_process(&repl_env)?;
 
     // THEN
     let mut client_to_repl = Client::new(replica_process.port);

@@ -5,7 +5,7 @@ fn run_incr(with_append_only: bool) -> anyhow::Result<()> {
     let mut env = ServerEnv::default().with_append_only(with_append_only);
     let mut env2 = ServerEnv::default().with_append_only(with_append_only);
 
-    let [leader_p, follower_p] = form_cluster([&mut env, &mut env2], false);
+    let [leader_p, follower_p] = form_cluster([&mut env, &mut env2]);
 
     let mut h = Client::new(leader_p.port);
     let mut h2 = Client::new(follower_p.port);

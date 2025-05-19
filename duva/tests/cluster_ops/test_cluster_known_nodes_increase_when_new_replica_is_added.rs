@@ -6,7 +6,7 @@ fn run_cluster_topology_change_when_new_node_added(with_append_only: bool) -> an
     let mut repl_env = ServerEnv::default().with_append_only(with_append_only);
 
     // Form cluster with leader and replica
-    let [leader_p, _repl_p] = form_cluster([&mut env, &mut repl_env], true);
+    let [leader_p, _repl_p] = form_cluster([&mut env, &mut repl_env]);
 
     let mut client_handler = Client::new(leader_p.port);
     assert_eq!(
@@ -18,7 +18,7 @@ fn run_cluster_topology_change_when_new_node_added(with_append_only: bool) -> an
     let repl_env2 = ServerEnv::default()
         .with_bind_addr(leader_p.bind_addr())
         .with_append_only(with_append_only);
-    let mut _new_repl_p = spawn_server_process(&repl_env2, false)?;
+    let mut _new_repl_p = spawn_server_process(&repl_env2)?;
 
     //THEN
     assert_eq!(

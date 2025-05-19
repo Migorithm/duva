@@ -4,7 +4,7 @@ use crate::common::{Client, ServerEnv, spawn_server_process};
 
 fn run_cluster_forget_node_return_error_when_wrong_id_given(env: ServerEnv) -> anyhow::Result<()> {
     // GIVEN
-    let leader_p = spawn_server_process(&env, true)?;
+    let leader_p = spawn_server_process(&env)?;
 
     // WHEN
     let mut client_handler = Client::new(leader_p.port);
