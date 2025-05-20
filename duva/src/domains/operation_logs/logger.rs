@@ -1,6 +1,7 @@
 use super::{WriteOperation, WriteRequest, interfaces::TWriteAheadLog};
 use tracing::debug;
 
+#[derive(Debug)]
 pub(crate) struct ReplicatedLogs<T: TWriteAheadLog> {
     pub(crate) target: T,
     pub(crate) last_log_index: u64,
