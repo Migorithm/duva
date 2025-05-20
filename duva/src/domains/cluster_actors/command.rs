@@ -20,26 +20,26 @@ use crate::{
 
 #[derive(Debug)]
 pub(crate) enum ClusterCommand {
-    FromSelf(SelfGeneratedMessage),
-    FromHeartBeatScheduler(HeartBeatSchedulerMessage),
-    FromClient(ClientMessage),
-    FromPeer(PeerMessage),
+    ConnectionReq(ConnectionMessage),
+    Scheduler(SchedulerMessage),
+    Client(ClientMessage),
+    Peer(PeerMessage),
 }
 
 #[derive(Debug)]
-pub enum HeartBeatSchedulerMessage {
+pub enum SchedulerMessage {
     SendClusterHeatBeat,
     SendAppendEntriesRPC,
     StartLeaderElection,
 }
-impl From<HeartBeatSchedulerMessage> for ClusterCommand {
-    fn from(msg: HeartBeatSchedulerMessage) -> Self {
-        ClusterCommand::FromHeartBeatScheduler(msg)
+impl From<SchedulerMessage> for ClusterCommand {
+    fn from(msg: SchedulerMessage) -> Self {
+        ClusterCommand::Scheduler(msg)
     }
 }
 
 #[derive(Debug)]
-pub enum SelfGeneratedMessage {
+pub enum ConnectionMessage {
     ConnectToServer {
         connect_to: PeerIdentifier,
         callback: tokio::sync::oneshot::Sender<anyhow::Result<()>>,
@@ -55,9 +55,9 @@ pub enum SelfGeneratedMessage {
     AddPeer(Peer, Option<tokio::sync::oneshot::Sender<anyhow::Result<()>>>),
     FollowerSetReplId(ReplicationId),
 }
-impl From<SelfGeneratedMessage> for ClusterCommand {
-    fn from(msg: SelfGeneratedMessage) -> Self {
-        ClusterCommand::FromSelf(msg)
+impl From<ConnectionMessage> for ClusterCommand {
+    fn from(msg: ConnectionMessage) -> Self {
+        ClusterCommand::ConnectionReq(msg)
     }
 }
 
@@ -78,7 +78,7 @@ pub enum ClientMessage {
 
 impl From<ClientMessage> for ClusterCommand {
     fn from(msg: ClientMessage) -> Self {
-        ClusterCommand::FromClient(msg)
+        ClusterCommand::Client(msg)
     }
 }
 

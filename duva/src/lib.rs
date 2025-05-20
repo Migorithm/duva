@@ -11,7 +11,7 @@ use domains::IoError;
 use domains::caches::cache_manager::CacheManager;
 use domains::cluster_actors::ClusterActor;
 use domains::cluster_actors::ClusterCommand;
-use domains::cluster_actors::SelfGeneratedMessage;
+use domains::cluster_actors::ConnectionMessage;
 use domains::cluster_actors::replication::ReplicationRole;
 use domains::cluster_actors::replication::ReplicationState;
 use domains::config_actors::config_manager::ConfigManager;
@@ -119,7 +119,7 @@ impl StartUpFacade {
                     if registry
                         .cluster_communication_manager
                         .send(
-                            SelfGeneratedMessage::AcceptInboundPeer { stream: peer_stream }.into(),
+                            ConnectionMessage::AcceptInboundPeer { stream: peer_stream }.into(),
                         )
                         .await
                         .is_err()
@@ -171,6 +171,7 @@ impl StartUpFacade {
         Ok(())
     }
 
+    // Refactiring : this should run before cluster actor runs
     async fn initialize_with_snapshot(&self) -> Result<()> {
         if let Some(filepath) = self.registry.config_manager.try_filepath().await? {
             let snapshot = SnapshotLoader::load_from_filepath(filepath).await?;
@@ -178,7 +179,7 @@ impl StartUpFacade {
             // Reconnection case - set the replication info
             self.registry
                 .cluster_communication_manager
-                .send(SelfGeneratedMessage::StoreSnapshotMetadata { replid: repl_id, hwm }.into())
+                .send(ConnectionMessage::StoreSnapshotMetadata { replid: repl_id, hwm }.into())
                 .await?;
             self.registry.cache_manager.apply_snapshot(snapshot).await?;
         }

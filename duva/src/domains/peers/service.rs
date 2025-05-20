@@ -57,7 +57,7 @@ impl PeerListener {
 
             for cmd in cmds {
                 debug!(?cmd);
-                let _ = self.cluster_handler.send(ClusterCommand::FromPeer(cmd)).await;
+                let _ = self.cluster_handler.send(ClusterCommand::Peer(cmd)).await;
             }
         }
     }

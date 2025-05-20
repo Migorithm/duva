@@ -2,7 +2,7 @@ use crate::domains::caches::cache_manager::CacheManager;
 use crate::domains::cluster_actors::replication::ReplicationState;
 use crate::domains::cluster_actors::session::ClientSessions;
 use crate::domains::cluster_actors::{
-    ClientMessage, ClusterActor, FANOUT, HeartBeatSchedulerMessage, SelfGeneratedMessage,
+    ClientMessage, ClusterActor, ConnectionMessage, FANOUT, SchedulerMessage,
 };
 use crate::domains::cluster_actors::{ClusterCommand, ConsensusClientResponse};
 use crate::domains::operation_logs::interfaces::TWriteAheadLog;
@@ -24,8 +24,8 @@ impl ClusterActor {
         while let Some(command) = self.receiver.recv().await {
             trace!(?command, "Cluster command received");
             match command {
-                ClusterCommand::FromHeartBeatScheduler(msg) => {
-                    use HeartBeatSchedulerMessage::*;
+                ClusterCommand::Scheduler(msg) => {
+                    use SchedulerMessage::*;
                     match msg {
                         SendClusterHeatBeat => {
                             // ! remove idle peers based on ttl.
@@ -42,7 +42,7 @@ impl ClusterActor {
                         },
                     }
                 },
-                ClusterCommand::FromClient(client_message) => {
+                ClusterCommand::Client(client_message) => {
                     use ClientMessage::*;
 
                     match client_message {
@@ -109,7 +109,7 @@ impl ClusterActor {
                         },
                     }
                 },
-                ClusterCommand::FromPeer(peer_message) => {
+                ClusterCommand::Peer(peer_message) => {
                     use PeerMessage::*;
 
                     match peer_message {
@@ -157,8 +157,8 @@ impl ClusterActor {
                         },
                     }
                 },
-                ClusterCommand::FromSelf(self_generated_message) => {
-                    use SelfGeneratedMessage::*;
+                ClusterCommand::ConnectionReq(self_generated_message) => {
+                    use ConnectionMessage::*;
 
                     match self_generated_message {
                         ConnectToServer { connect_to, callback } => {

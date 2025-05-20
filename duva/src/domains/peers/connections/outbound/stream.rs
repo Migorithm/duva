@@ -1,5 +1,5 @@
 use super::response::ConnectionResponse;
-use crate::domains::cluster_actors::SelfGeneratedMessage;
+use crate::domains::cluster_actors::ConnectionMessage;
 use crate::domains::cluster_actors::replication::ReplicationId;
 use crate::domains::cluster_actors::replication::ReplicationState;
 use crate::domains::peers::connections::connected_peer_info::ConnectedPeerInfo;
@@ -109,7 +109,7 @@ impl OutboundStream {
         if self.my_repl_info.replid == ReplicationId::Undecided {
             let _ = cluster_handler
                 .send(
-                    SelfGeneratedMessage::FollowerSetReplId(connection_info.replid.clone()).into(),
+                    ConnectionMessage::FollowerSetReplId(connection_info.replid.clone()).into(),
                 )
                 .await;
         }
@@ -119,7 +119,7 @@ impl OutboundStream {
         let peer = Peer::new(self.w, peer_state, kill_switch);
 
         let _ = cluster_handler
-            .send(SelfGeneratedMessage::AddPeer(peer, optional_callback).into())
+            .send(ConnectionMessage::AddPeer(peer, optional_callback).into())
             .await;
         Ok(())
     }
