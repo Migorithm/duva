@@ -1,20 +1,20 @@
-mod actor_registry;
 pub mod adapters;
 pub mod domains;
 mod init;
 pub mod macros;
 pub mod presentation;
-
-use actor_registry::ActorRegistry;
 use anyhow::Result;
 use domains::IoError;
 use domains::caches::cache_manager::CacheManager;
 use domains::cluster_actors::ClusterActor;
-use domains::cluster_actors::ClusterCommand;
+use domains::cluster_actors::ConnectionMessage;
+use domains::cluster_actors::replication::ReplicationId;
 use domains::cluster_actors::replication::ReplicationRole;
 use domains::cluster_actors::replication::ReplicationState;
 use domains::config_actors::config_manager::ConfigManager;
 use domains::operation_logs::interfaces::TWriteAheadLog;
+use domains::peers::peer::NodeKind;
+use domains::saves::snapshot::Snapshot;
 use domains::saves::snapshot::snapshot_loader::SnapshotLoader;
 pub use init::Environment;
 use prelude::PeerIdentifier;
@@ -29,6 +29,7 @@ use tracing::debug;
 use tracing::error;
 use tracing::info;
 use tracing::instrument;
+use uuid::Uuid;
 
 pub mod prelude {
     pub use crate::domains::cluster_actors::heartbeat_scheduler::LEADER_HEARTBEAT_INTERVAL_MAX;
@@ -43,20 +44,54 @@ pub mod prelude {
 }
 
 // * StartUp Facade that manages invokes subsystems
+#[derive(Clone)]
 pub struct StartUpFacade {
-    registry: ActorRegistry,
+    cluster_communication_manager: ClusterCommunicationManager,
+    config_manager: ConfigManager,
+    cache_manager: CacheManager,
 }
-make_smart_pointer!(StartUpFacade, ActorRegistry => registry);
 
 impl StartUpFacade {
+    // Refactiring : this should run before cluster actor runs
+    fn initialize_with_snapshot(env: &Environment) -> Snapshot {
+        let path_str = format!("{}/{}", env.dir, env.dbfilename);
+        let path = std::path::Path::new(path_str.as_str());
+
+        // todo if tpp was modified AFTER snapshot was created, we need to update the repl id
+        let _repl_id_from_topp = if env.seed_server.is_none() {
+            ReplicationId::Key(
+                env.pre_connected_peers
+                    .iter()
+                    .find(|p| p.kind == NodeKind::Replica)
+                    .map(|p| p.replid.to_string())
+                    .unwrap_or_else(|| Uuid::now_v7().to_string()),
+            )
+        } else {
+            ReplicationId::Undecided
+        };
+
+        if let Ok(true) = path.try_exists() {
+            let snapshot = SnapshotLoader::load_from_filepath(path).unwrap();
+
+            return snapshot;
+        }
+
+        Snapshot::default()
+    }
+
     pub fn new(
         config_manager: ConfigManager,
         env: &mut Environment,
         wal: impl TWriteAheadLog,
     ) -> Self {
+        let snapshot_info = Self::initialize_with_snapshot(env);
+        let (r_id, hwm) = snapshot_info.extract_replication_info();
+
         let replication_state =
-            ReplicationState::new(env.repl_id.clone(), env.role.clone(), &env.host, env.port);
+            ReplicationState::new(r_id, env.role.clone(), &env.host, env.port, hwm);
         let cache_manager = CacheManager::run_cache_actors(replication_state.hwm.clone());
+        tokio::spawn(cache_manager.clone().apply_snapshot(snapshot_info.key_values()));
+
         let cluster_actor_handler = ClusterActor::run(
             env.ttl_mills,
             env.topology_writer.take().unwrap(),
@@ -66,34 +101,30 @@ impl StartUpFacade {
             wal,
         );
 
-        let registry = ActorRegistry {
+        StartUpFacade {
             cluster_communication_manager: ClusterCommunicationManager(cluster_actor_handler),
             config_manager,
             cache_manager,
-        };
-
-        StartUpFacade { registry }
+        }
     }
 
     pub async fn run(self, env: Environment) -> Result<()> {
         tokio::spawn(Self::start_accepting_peer_connections(
             self.config_manager.peer_bind_addr(),
-            self.registry.clone(),
+            self.cluster_communication_manager.clone(),
         ));
 
-        self.initialize_with_snapshot().await?;
         self.discover_cluster(env).await?;
         self.start_receiving_client_streams().await
     }
 
     async fn discover_cluster(&self, env: Environment) -> Result<(), anyhow::Error> {
         if let Some(seed) = env.seed_server {
-            return self.registry.cluster_communication_manager.connect_to_server(seed).await;
+            return self.cluster_communication_manager.connect_to_server(seed).await;
         }
 
         for peer in env.pre_connected_peers {
-            if let Err(err) =
-                self.registry.cluster_communication_manager.connect_to_server(peer.addr).await
+            if let Err(err) = self.cluster_communication_manager.connect_to_server(peer.addr).await
             {
                 error!("{err}");
             }
@@ -105,7 +136,7 @@ impl StartUpFacade {
     #[instrument(skip_all)]
     async fn start_accepting_peer_connections(
         peer_bind_addr: String,
-        registry: ActorRegistry,
+        cluster_communication_manager: ClusterCommunicationManager,
     ) -> Result<()> {
         let peer_listener = TcpListener::bind(&peer_bind_addr).await.unwrap();
 
@@ -115,9 +146,8 @@ impl StartUpFacade {
                 // ? how do we know if incoming connection is from a peer or replica?
                 Ok((peer_stream, socket_addr)) => {
                     debug!("Accepted peer connection: {}", socket_addr);
-                    if registry
-                        .cluster_communication_manager
-                        .send(ClusterCommand::AcceptInboundPeer { stream: peer_stream })
+                    if cluster_communication_manager
+                        .send(ConnectionMessage::AcceptInboundPeer { stream: peer_stream })
                         .await
                         .is_err()
                     {
@@ -145,40 +175,32 @@ impl StartUpFacade {
 
         //TODO refactor: authentication should be simplified
         while let Ok((stream, _)) = listener.accept().await {
-            let mut peers = self.registry.cluster_communication_manager.get_peers().await?;
-            peers.push(PeerIdentifier(self.registry.config_manager.bind_addr()));
+            let mut peers = self.cluster_communication_manager.get_peers().await?;
+            peers.push(PeerIdentifier(self.config_manager.bind_addr()));
 
-            let is_leader: bool = self.registry.cluster_communication_manager.role().await?
-                == ReplicationRole::Leader;
+            let is_leader: bool =
+                self.cluster_communication_manager.role().await? == ReplicationRole::Leader;
             let Ok((reader, writer)) = authenticate(stream, peers, is_leader).await else {
                 error!("Failed to authenticate client stream");
                 continue;
             };
 
-            let observer =
-                self.registry.cluster_communication_manager.subscribe_topology_change().await?;
+            let observer = self.cluster_communication_manager.subscribe_topology_change().await?;
             let write_handler = writer.run(observer);
 
-            handles.push(tokio::spawn(reader.handle_client_stream(
-                ClientController::new(self.registry.clone()),
-                write_handler.clone(),
-            )));
+            handles.push(tokio::spawn(
+                reader.handle_client_stream(self.client_controller(), write_handler.clone()),
+            ));
         }
 
         Ok(())
     }
 
-    async fn initialize_with_snapshot(&self) -> Result<()> {
-        if let Some(filepath) = self.registry.config_manager.try_filepath().await? {
-            let snapshot = SnapshotLoader::load_from_filepath(filepath).await?;
-            let (repl_id, hwm) = snapshot.extract_replication_info();
-            // Reconnection case - set the replication info
-            self.registry
-                .cluster_communication_manager
-                .send(ClusterCommand::StoreSnapshotMetadata { replid: repl_id, hwm })
-                .await?;
-            self.registry.cache_manager.apply_snapshot(snapshot).await?;
+    pub(crate) fn client_controller(&self) -> ClientController {
+        ClientController {
+            cluster_communication_manager: self.cluster_communication_manager.clone(),
+            cache_manager: self.cache_manager.clone(),
+            config_manager: self.config_manager.clone(),
         }
-        Ok(())
     }
 }

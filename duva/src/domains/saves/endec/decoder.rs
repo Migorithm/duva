@@ -167,7 +167,7 @@ impl<'a> BytesDecoder<'a, DecoderInit> {
 
 impl<'a> BytesDecoder<'a, HeaderReady> {
     pub fn load_metadata(mut self) -> Result<BytesDecoder<'a, MetadataReady>> {
-        let mut metadata = Metadata { repl_id: ReplicationId::Undecided, repl_offset: 0 };
+        let mut metadata = Metadata { repl_id: ReplicationId::Undecided, log_idx: 0 };
         while self.check_indicator(METADATA_SECTION_INDICATOR) {
             let (key, value) = self
                 .try_extract_metadata_key_value()
@@ -176,7 +176,7 @@ impl<'a> BytesDecoder<'a, HeaderReady> {
             match key.as_str() {
                 "repl-id" => metadata.repl_id = ReplicationId::Key(value),
                 "repl-offset" => {
-                    metadata.repl_offset = value.parse().context("repl-offset parse fail")?
+                    metadata.log_idx = value.parse().context("repl-offset parse fail")?
                 },
                 var => {
                     println!("Unknown metadata key: {}", var);
@@ -460,7 +460,7 @@ mod test {
         let mut bytes_handler = BytesDecoder::<MetadataReady> {
             data,
             state: MetadataReady {
-                metadata: Metadata { repl_id: ReplicationId::Undecided, repl_offset: 0 },
+                metadata: Metadata { repl_id: ReplicationId::Undecided, log_idx: 0 },
                 header: "".into(),
             },
         };
@@ -488,7 +488,7 @@ mod test {
         let mut bytes_handler = BytesDecoder::<MetadataReady> {
             data: &[0x00, 0x03, 0x62, 0x61, 0x7A, 0x03, 0x71, 0x75, 0x78],
             state: MetadataReady {
-                metadata: Metadata { repl_id: ReplicationId::Undecided, repl_offset: 0 },
+                metadata: Metadata { repl_id: ReplicationId::Undecided, log_idx: 0 },
                 header: "".into(),
             },
         };
@@ -509,7 +509,7 @@ mod test {
                 0x03, 0x71, 0x75, 0x78,
             ],
             state: MetadataReady {
-                metadata: Metadata { repl_id: ReplicationId::Undecided, repl_offset: 0 },
+                metadata: Metadata { repl_id: ReplicationId::Undecided, log_idx: 0 },
                 header: "".into(),
             },
         };
@@ -529,7 +529,7 @@ mod test {
                 0xFD, 0x52, 0xED, 0x2A, 0x66, 0x00, 0x03, 0x62, 0x61, 0x7A, 0x03, 0x71, 0x75, 0x78,
             ],
             state: MetadataReady {
-                metadata: Metadata { repl_id: ReplicationId::Undecided, repl_offset: 0 },
+                metadata: Metadata { repl_id: ReplicationId::Undecided, log_idx: 0 },
                 header: "".into(),
             },
         };
@@ -547,7 +547,7 @@ mod test {
                 0xFF, 0x52, 0xED, 0x2A, 0x66, 0x00, 0x03, 0x62, 0x61, 0x7A, 0x03, 0x71, 0x75, 0x78,
             ],
             state: MetadataReady {
-                metadata: Metadata { repl_id: ReplicationId::Undecided, repl_offset: 0 },
+                metadata: Metadata { repl_id: ReplicationId::Undecided, log_idx: 0 },
                 header: "".into(),
             },
         };
@@ -589,7 +589,7 @@ mod test {
         let metadata = bytes_handler.load_metadata().unwrap();
         assert_eq!(
             metadata.state.metadata,
-            Metadata { repl_id: ReplicationId::Undecided, repl_offset: Default::default() }
+            Metadata { repl_id: ReplicationId::Undecided, log_idx: Default::default() }
         );
     }
 
@@ -605,7 +605,7 @@ mod test {
         let bytes_handler = BytesDecoder::<MetadataReady> {
             data: data.as_slice().into(),
             state: MetadataReady {
-                metadata: Metadata { repl_id: ReplicationId::Undecided, repl_offset: 0 },
+                metadata: Metadata { repl_id: ReplicationId::Undecided, log_idx: 0 },
                 header: "".into(),
             },
         };
@@ -670,6 +670,6 @@ mod test {
             rdb_file.metadata.repl_id,
             ReplicationId::Key("420dd7e324c3a6371b103129cebe6e25a270f9fd".into())
         );
-        assert_eq!(rdb_file.metadata.repl_offset, 8635297);
+        assert_eq!(rdb_file.metadata.log_idx, 8635297);
     }
 }

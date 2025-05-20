@@ -1,16 +1,16 @@
 use super::response::ConnectionResponse;
+use crate::domains::cluster_actors::ConnectionMessage;
+use crate::domains::cluster_actors::actor::ClusterCommandHandler;
 use crate::domains::cluster_actors::replication::ReplicationId;
 use crate::domains::cluster_actors::replication::ReplicationState;
+use crate::domains::interface::TRead;
+use crate::domains::interface::TWrite;
 use crate::domains::peers::connections::connected_peer_info::ConnectedPeerInfo;
 use crate::domains::peers::identifier::PeerIdentifier;
 use crate::domains::peers::identifier::TPeerAddress;
 use crate::domains::peers::peer::Peer;
 use crate::domains::peers::service::PeerListener;
 use crate::domains::query_parsers::QueryIO;
-
-use crate::ClusterCommand;
-use crate::domains::interface::TRead;
-use crate::domains::interface::TWrite;
 use crate::write_array;
 use anyhow::Context;
 use std::sync::atomic::Ordering;
@@ -98,7 +98,7 @@ impl OutboundStream {
     pub(crate) async fn add_peer(
         mut self,
         self_port: u16,
-        cluster_handler: tokio::sync::mpsc::Sender<ClusterCommand>,
+        cluster_handler: ClusterCommandHandler,
         optional_callback: Option<tokio::sync::oneshot::Sender<anyhow::Result<()>>>,
     ) -> anyhow::Result<()> {
         self.make_handshake(self_port).await?;
@@ -107,7 +107,7 @@ impl OutboundStream {
 
         if self.my_repl_info.replid == ReplicationId::Undecided {
             let _ = cluster_handler
-                .send(ClusterCommand::FollowerSetReplId(connection_info.replid.clone()))
+                .send(ConnectionMessage::FollowerSetReplId(connection_info.replid.clone()))
                 .await;
         }
         let peer_state = connection_info.decide_peer_kind(&self.my_repl_info.replid);
@@ -115,7 +115,7 @@ impl OutboundStream {
         let kill_switch = PeerListener::spawn(self.r, cluster_handler.clone());
         let peer = Peer::new(self.w, peer_state, kill_switch);
 
-        let _ = cluster_handler.send(ClusterCommand::AddPeer(peer, optional_callback)).await;
+        let _ = cluster_handler.send(ConnectionMessage::AddPeer(peer, optional_callback)).await;
         Ok(())
     }
 }

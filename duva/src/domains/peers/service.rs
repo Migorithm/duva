@@ -1,11 +1,9 @@
-use crate::{
-    domains::interface::TRead,
-    domains::{
-        cluster_actors::ClusterCommand,
-        peers::{PeerMessage, peer::ListeningActorKillTrigger},
-    },
+use crate::domains::{
+    cluster_actors::{ClusterCommand, actor::ClusterCommandHandler},
+    interface::TRead,
+    peers::{PeerMessage, peer::ListeningActorKillTrigger},
 };
-use tokio::{net::tcp::OwnedReadHalf, select, sync::mpsc::Sender};
+use tokio::{net::tcp::OwnedReadHalf, select};
 use tracing::{debug, trace};
 
 use super::connections::connected_types::ReadConnected;
@@ -18,13 +16,13 @@ pub(crate) type ReactorKillSwitch = tokio::sync::oneshot::Receiver<()>;
 #[derive(Debug)]
 pub(crate) struct PeerListener {
     pub(crate) read_connected: ReadConnected,
-    pub(crate) cluster_handler: Sender<ClusterCommand>,
+    pub(crate) cluster_handler: ClusterCommandHandler,
 }
 
 impl PeerListener {
     pub(crate) fn spawn(
         read_connected: impl Into<ReadConnected>,
-        cluster_handler: Sender<ClusterCommand>,
+        cluster_handler: ClusterCommandHandler,
     ) -> ListeningActorKillTrigger {
         let listener = Self { read_connected: read_connected.into(), cluster_handler };
         let (kill_trigger, kill_switch) = tokio::sync::oneshot::channel();
@@ -57,7 +55,7 @@ impl PeerListener {
 
             for cmd in cmds {
                 debug!(?cmd);
-                let _ = self.cluster_handler.send(ClusterCommand::FromPeer(cmd)).await;
+                let _ = self.cluster_handler.send(ClusterCommand::Peer(cmd)).await;
             }
         }
     }

@@ -1,6 +1,5 @@
 use super::request::ClientRequest;
 
-use crate::actor_registry::ActorRegistry;
 use crate::domains::caches::cache_manager::CacheManager;
 use crate::domains::cluster_actors::{ClientMessage, ConsensusClientResponse, ConsensusRequest};
 use crate::domains::config_actors::command::ConfigResponse;
@@ -20,14 +19,6 @@ pub(crate) struct ClientController {
 }
 
 impl ClientController {
-    pub(crate) fn new(actor_registry: ActorRegistry) -> Self {
-        Self {
-            cluster_communication_manager: actor_registry.cluster_communication_manager.clone(),
-            cache_manager: actor_registry.cache_manager,
-            config_manager: actor_registry.config_manager,
-        }
-    }
-
     pub(crate) async fn handle(
         &self,
         cmd: ClientAction,
@@ -178,14 +169,11 @@ impl ClientController {
 
         let (tx, rx) = tokio::sync::oneshot::channel();
         self.cluster_communication_manager
-            .send(
-                ClientMessage::LeaderReqConsensus(ConsensusRequest::new(
-                    log,
-                    tx,
-                    request.session_req.take(),
-                ))
-                .into(),
-            )
+            .send(ClientMessage::LeaderReqConsensus(ConsensusRequest::new(
+                log,
+                tx,
+                request.session_req.take(),
+            )))
             .await?;
 
         rx.await?

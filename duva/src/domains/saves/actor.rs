@@ -32,8 +32,7 @@ impl SaveActor {
     }
 
     pub async fn encode_meta(&mut self) -> anyhow::Result<()> {
-        let metadata =
-            Metadata { repl_id: self.meta.repl_id.clone(), repl_offset: self.meta.offset };
+        let metadata = Metadata { repl_id: self.meta.repl_id.clone(), log_idx: self.meta.offset };
         let meta = [encode_header()?, encode_metadata(metadata)?, encode_database_info(0)?];
         self.target.write(&meta.concat()).await?;
         Ok(())

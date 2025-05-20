@@ -1,38 +1,38 @@
 use crate::{
     domains::{
         cluster_actors::{
-            ClientMessage, ClusterCommand, LazyOption,
+            ClientMessage, ConnectionMessage, LazyOption,
+            actor::ClusterCommandHandler,
             replication::{ReplicationRole, ReplicationState},
         },
         peers::{identifier::PeerIdentifier, peer::PeerState},
     },
     make_smart_pointer,
 };
-use tokio::sync::mpsc::Sender;
 
 #[derive(Clone, Debug)]
-pub(crate) struct ClusterCommunicationManager(pub(crate) Sender<ClusterCommand>);
+pub(crate) struct ClusterCommunicationManager(pub(crate) ClusterCommandHandler);
 
-make_smart_pointer!(ClusterCommunicationManager, Sender<ClusterCommand>);
+make_smart_pointer!(ClusterCommunicationManager, ClusterCommandHandler);
 
 impl ClusterCommunicationManager {
     pub(crate) async fn get_peers(&self) -> anyhow::Result<Vec<PeerIdentifier>> {
         let (tx, rx) = tokio::sync::oneshot::channel();
-        self.send(ClientMessage::GetPeers(tx).into()).await?;
+        self.send(ClientMessage::GetPeers(tx)).await?;
         let peers = rx.await?;
         Ok(peers)
     }
 
     pub(crate) async fn connect_to_server(&self, connect_to: PeerIdentifier) -> anyhow::Result<()> {
         let (tx, rx) = tokio::sync::oneshot::channel();
-        self.send(ClusterCommand::ConnectToServer { connect_to, callback: tx }).await?;
+        self.send(ConnectionMessage::ConnectToServer { connect_to, callback: tx }).await?;
         rx.await??;
         Ok(())
     }
 
     pub(crate) async fn replication_info(&self) -> anyhow::Result<ReplicationState> {
         let (tx, rx) = tokio::sync::oneshot::channel();
-        self.send(ClientMessage::ReplicationInfo(tx).into()).await?;
+        self.send(ClientMessage::ReplicationInfo(tx)).await?;
         Ok(rx.await?)
     }
 
@@ -58,14 +58,14 @@ impl ClusterCommunicationManager {
         peer_identifier: PeerIdentifier,
     ) -> anyhow::Result<bool> {
         let (tx, rx) = tokio::sync::oneshot::channel::<Option<()>>();
-        self.send(ClientMessage::ForgetPeer(peer_identifier, tx).into()).await?;
+        self.send(ClientMessage::ForgetPeer(peer_identifier, tx)).await?;
         let Some(_) = rx.await? else { return Ok(false) };
         Ok(true)
     }
 
     pub(crate) async fn replicaof(&self, peer_identifier: PeerIdentifier) -> anyhow::Result<()> {
         let (tx, rx) = tokio::sync::oneshot::channel();
-        let _ = self.send(ClientMessage::ReplicaOf(peer_identifier, tx).into()).await;
+        let _ = self.send(ClientMessage::ReplicaOf(peer_identifier, tx)).await;
 
         rx.await?
     }
@@ -76,20 +76,19 @@ impl ClusterCommunicationManager {
         lazy_option: LazyOption,
     ) -> anyhow::Result<()> {
         let (tx, rx) = tokio::sync::oneshot::channel();
-        let _ =
-            self.send(ClientMessage::ClusterMeet(peer_identifier, lazy_option, tx).into()).await;
+        let _ = self.send(ClientMessage::ClusterMeet(peer_identifier, lazy_option, tx)).await;
         rx.await?
     }
 
     pub(crate) async fn cluster_nodes(&self) -> anyhow::Result<Vec<PeerState>> {
         let (tx, rx) = tokio::sync::oneshot::channel();
-        self.send(ClientMessage::ClusterNodes(tx).into()).await?;
+        self.send(ClientMessage::ClusterNodes(tx)).await?;
         Ok(rx.await?)
     }
 
     pub(crate) async fn role(&self) -> anyhow::Result<ReplicationRole> {
         let (tx, rx) = tokio::sync::oneshot::channel();
-        self.send(ClientMessage::GetRole(tx).into()).await?;
+        self.send(ClientMessage::GetRole(tx)).await?;
         Ok(rx.await?)
     }
 
@@ -97,7 +96,7 @@ impl ClusterCommunicationManager {
         &self,
     ) -> anyhow::Result<tokio::sync::broadcast::Receiver<Vec<PeerIdentifier>>> {
         let (tx, rx) = tokio::sync::oneshot::channel();
-        let _ = self.send(ClientMessage::SubscribeToTopologyChange(tx).into()).await;
+        let _ = self.send(ClientMessage::SubscribeToTopologyChange(tx)).await;
         Ok(rx.await?)
     }
 }
