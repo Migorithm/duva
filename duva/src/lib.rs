@@ -176,7 +176,7 @@ impl StartUpFacade {
         Ok(())
     }
 
-    pub(crate) fn client_controller(&self) -> ClientController {
+    fn client_controller(&self) -> ClientController {
         ClientController {
             cluster_communication_manager: self.cluster_communication_manager.clone(),
             cache_manager: self.cache_manager.clone(),
