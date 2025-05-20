@@ -4,9 +4,10 @@ use uuid::Uuid;
 
 use crate::make_smart_pointer;
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub(crate) struct ClientSessions(HashMap<Uuid, Session>);
 
+#[derive(Default, Debug)]
 pub(crate) struct Session {
     last_accessed: DateTime<Utc>,
     processed_req_id: Option<u64>,

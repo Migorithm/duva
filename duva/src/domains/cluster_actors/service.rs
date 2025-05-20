@@ -1,27 +1,19 @@
 use crate::domains::caches::cache_manager::CacheManager;
 use crate::domains::cluster_actors::replication::ReplicationState;
-use crate::domains::cluster_actors::session::ClientSessions;
 use crate::domains::cluster_actors::{
     ClientMessage, ClusterActor, ConnectionMessage, FANOUT, SchedulerMessage,
 };
 use crate::domains::cluster_actors::{ClusterCommand, ConsensusClientResponse};
 use crate::domains::operation_logs::interfaces::TWriteAheadLog;
-use crate::domains::operation_logs::logger::ReplicatedLogs;
+
 use crate::domains::peers::PeerMessage;
 use crate::err;
 use tracing::{debug, trace};
 
 use super::actor::ClusterCommandHandler;
 
-impl ClusterActor {
-    pub(super) async fn handle(
-        mut self,
-        wal: impl TWriteAheadLog,
-        cache_manager: CacheManager,
-        mut client_sessions: ClientSessions,
-    ) -> anyhow::Result<Self> {
-        let mut logger = ReplicatedLogs::new(wal, 0, 0);
-
+impl<T: TWriteAheadLog> ClusterActor<T> {
+    pub(super) async fn handle(mut self, cache_manager: CacheManager) -> anyhow::Result<Self> {
         while let Some(command) = self.receiver.recv().await {
             trace!(?command, "Cluster command received");
             match command {
@@ -33,13 +25,13 @@ impl ClusterActor {
                             // ! The following may need to be moved else where to avoid blocking the main loop
                             self.remove_idle_peers().await;
                             let hop_count = Self::hop_count(FANOUT, self.members.len());
-                            self.send_cluster_heartbeat(hop_count, &logger).await;
+                            self.send_cluster_heartbeat(hop_count).await;
                         },
                         | SendAppendEntriesRPC => {
-                            self.send_rpc(&logger).await;
+                            self.send_rpc().await;
                         },
                         | StartLeaderElection => {
-                            self.run_for_election(&mut logger).await;
+                            self.run_for_election().await;
                         },
                     }
                 },
@@ -69,17 +61,17 @@ impl ClusterActor {
                                 continue;
                             }
 
-                            if client_sessions.is_processed(&req.session_req) {
+                            if self.client_sessions.is_processed(&req.session_req) {
                                 // TODO mapping between early returned values to client result
                                 let _ = req.callback.send(Ok(
                                     ConsensusClientResponse::AlreadyProcessed {
                                         key: req.request.key(),
-                                        index: logger.last_log_index,
+                                        index: self.logger.last_log_index,
                                     },
                                 ));
                                 continue;
                             };
-                            self.req_consensus(&mut logger, req).await;
+                            self.req_consensus(req).await;
                         },
 
                         | ReplicaOf(peer_addr, callback) => {
@@ -88,8 +80,9 @@ impl ClusterActor {
                                     .send(err!("invalid operation: cannot replicate to self"));
                                 continue;
                             }
+
                             cache_manager.drop_cache().await;
-                            self.replicaof(peer_addr, &mut logger, callback).await;
+                            self.replicaof(peer_addr, callback).await;
                         },
                         | ClusterMeet(peer_addr, lazy_option, callback) => {
                             if !self.replication.is_leader_mode
@@ -121,11 +114,11 @@ impl ClusterActor {
                             }
                             self.apply_ban_list(std::mem::take(&mut heartbeat.ban_list)).await;
                             self.join_peer_network_if_absent(heartbeat.cluster_nodes).await;
-                            self.gossip(heartbeat.hop_count, &logger).await;
+                            self.gossip(heartbeat.hop_count).await;
                             self.update_on_hertbeat_message(&heartbeat.from, heartbeat.hwm);
                         },
                         | RequestVote(request_vote) => {
-                            self.vote_election(request_vote, logger.last_log_index).await;
+                            self.vote_election(request_vote).await;
                         },
                         | AckReplication(repl_res) => {
                             if !repl_res.is_granted() {
@@ -133,24 +126,24 @@ impl ClusterActor {
                                 continue;
                             }
                             self.update_on_hertbeat_message(&repl_res.from, repl_res.log_idx);
-                            self.track_replication_progress(repl_res, &mut client_sessions);
+                            self.track_replication_progress(repl_res);
                         },
 
                         | AppendEntriesRPC(heartbeat) => {
-                            if self.check_term_outdated(&heartbeat, &logger).await {
+                            if self.check_term_outdated(&heartbeat).await {
                                 continue;
                             };
 
                             self.reset_election_timeout(&heartbeat.from);
                             self.maybe_update_term(heartbeat.term);
-                            self.replicate(&mut logger, heartbeat, &cache_manager).await;
+                            self.replicate(heartbeat, &cache_manager).await;
                         },
 
                         | ElectionVoteReply(request_vote_reply) => {
                             if !request_vote_reply.vote_granted {
                                 continue;
                             }
-                            self.tally_vote(&logger).await;
+                            self.tally_vote().await;
                         },
 
                         | TriggerRebalance => {
@@ -190,13 +183,18 @@ impl ClusterActor {
         heartbeat_interval: u64,
         init_replication: ReplicationState,
         cache_manager: CacheManager,
-        wal: impl TWriteAheadLog,
+        wal: T,
     ) -> ClusterCommandHandler {
-        let cluster_actor =
-            ClusterActor::new(node_timeout, init_replication, heartbeat_interval, topology_writer);
+        let cluster_actor = ClusterActor::new(
+            node_timeout,
+            init_replication,
+            heartbeat_interval,
+            topology_writer,
+            wal,
+        );
 
         let actor_handler = cluster_actor.self_handler.clone();
-        tokio::spawn(cluster_actor.handle(wal, cache_manager, ClientSessions::default()));
+        tokio::spawn(cluster_actor.handle(cache_manager));
         actor_handler
     }
 }
