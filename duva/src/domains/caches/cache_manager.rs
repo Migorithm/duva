@@ -8,7 +8,7 @@ use crate::domains::query_parsers::QueryIO;
 use crate::domains::saves::actor::SaveActor;
 use crate::domains::saves::actor::SaveTarget;
 use crate::domains::saves::endec::StoredDuration;
-use crate::domains::saves::snapshot::Snapshot;
+
 use anyhow::Result;
 use chrono::DateTime;
 use chrono::Utc;
@@ -39,11 +39,13 @@ pub(crate) struct CacheManager {
 impl CacheManager {
     pub(crate) fn run_cache_actors(hwm: Arc<AtomicU64>) -> CacheManager {
         const NUM_OF_PERSISTENCE: usize = 10;
-        CacheManager {
+        let cache_manager = CacheManager {
             inboxes: (0..NUM_OF_PERSISTENCE)
                 .map(|_| CacheActor::run(hwm.clone()))
                 .collect::<Vec<_>>(),
-        }
+        };
+
+        cache_manager
     }
 
     pub(crate) async fn route_get(&self, key: impl AsRef<str>) -> Result<Option<CacheValue>> {
@@ -137,11 +139,11 @@ impl CacheManager {
         }
         Ok(QueryIO::Array(keys))
     }
-    pub(crate) async fn apply_snapshot(&self, snapshot: Snapshot) -> Result<()> {
+    pub(crate) async fn apply_snapshot(self, key_values: Vec<CacheEntry>) -> Result<()> {
         // * Here, no need to think about index as it is to update state and no return is required
-        join_all(snapshot.key_values().into_iter().filter(|kvc| kvc.is_valid(&Utc::now())).map(
-            |kvs| self.route_set(kvs.key().to_string(), kvs.value().to_string(), kvs.expiry(), 0),
-        ))
+        join_all(key_values.into_iter().filter(|kvc| kvc.is_valid(&Utc::now())).map(|kvs| {
+            self.route_set(kvs.key().to_string(), kvs.value().to_string(), kvs.expiry(), 0)
+        }))
         .await;
 
         // TODO let's find the way to test without adding the following code - echo

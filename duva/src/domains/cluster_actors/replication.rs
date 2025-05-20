@@ -34,13 +34,14 @@ impl ReplicationState {
         role: ReplicationRole,
         self_host: &str,
         self_port: u16,
+        hwm: u64,
     ) -> Self {
         ReplicationState {
             is_leader_mode: role == ReplicationRole::Leader,
             election_state: ElectionState::new(&role),
             role,
             replid,
-            hwm: Arc::new(0.into()),
+            hwm: Arc::new(hwm.into()),
             term: 0,
             self_host: self_host.to_string(),
             self_port,
@@ -204,6 +205,7 @@ fn test_cloning_replication_state() {
         ReplicationRole::Leader,
         "ads",
         1231,
+        0,
     );
     let cloned = replication_state.clone();
 

@@ -48,10 +48,6 @@ pub enum ConnectionMessage {
         stream: TcpStream,
     },
 
-    StoreSnapshotMetadata {
-        replid: ReplicationId,
-        hwm: u64,
-    },
     AddPeer(Peer, Option<tokio::sync::oneshot::Sender<anyhow::Result<()>>>),
     FollowerSetReplId(ReplicationId),
 }

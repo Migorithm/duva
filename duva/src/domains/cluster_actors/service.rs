@@ -168,9 +168,6 @@ impl ClusterActor {
                         AcceptInboundPeer { stream } => {
                             self.accept_inbound_stream(stream).await;
                         },
-                        StoreSnapshotMetadata { replid, hwm } => {
-                            self.store_snapshot_metadata(replid, hwm);
-                        },
 
                         AddPeer(peer, optional_callback) => {
                             self.add_peer(peer).await;

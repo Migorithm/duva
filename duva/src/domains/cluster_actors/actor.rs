@@ -219,11 +219,6 @@ impl ClusterActor {
         self.replication.replid = leader_repl_id;
     }
 
-    pub(crate) fn store_snapshot_metadata(&mut self, replid: ReplicationId, hwm: u64) {
-        self.set_repl_id(replid);
-        self.replication.hwm.store(hwm, Ordering::Release);
-    }
-
     /// Remove the peers that are idle for more than ttl_mills
     pub(crate) async fn remove_idle_peers(&mut self) {
         // loop over members, if ttl is expired, remove the member
@@ -820,6 +815,7 @@ pub mod test {
             ReplicationRole::Leader,
             "localhost",
             8080,
+            0,
         );
         let dir = TempDir::new().unwrap();
         let path = dir.path().join("duva.tp");
@@ -1125,6 +1121,7 @@ pub mod test {
             ReplicationRole::Leader,
             "localhost",
             8080,
+            0,
         );
         repl_state.hwm.store(LOWEST_FOLLOWER_COMMIT_INDEX, Ordering::Release);
 
