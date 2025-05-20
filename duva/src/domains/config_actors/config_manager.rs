@@ -43,12 +43,12 @@ impl ConfigManager {
             return Ok(None);
         };
         match try_exists(&file_path).await {
-            Ok(true) => Ok(Some(file_path)),
-            Ok(false) => {
+            | Ok(true) => Ok(Some(file_path)),
+            | Ok(false) => {
                 println!("File does not exist");
                 Ok(None)
             },
-            Err(_) => {
+            | Err(_) => {
                 println!("Error in try_filepath");
                 Ok(None)
             }, // Not given a dbfilename
@@ -65,9 +65,9 @@ impl ConfigManager {
 
     pub(crate) async fn route_get(&self, cmd: (String, String)) -> anyhow::Result<ConfigResponse> {
         let resource = match (cmd.0.to_lowercase().as_str(), cmd.1.to_lowercase().as_str()) {
-            ("get", "dir") => ConfigResource::Dir,
-            ("get", "dbfilename") => ConfigResource::DbFileName,
-            _ => Err(anyhow::anyhow!("Invalid command"))?,
+            | ("get", "dir") => ConfigResource::Dir,
+            | ("get", "dbfilename") => ConfigResource::DbFileName,
+            | _ => Err(anyhow::anyhow!("Invalid command"))?,
         };
         let res = self.route_query(resource).await?;
         Ok(res)

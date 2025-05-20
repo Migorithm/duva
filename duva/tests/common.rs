@@ -159,8 +159,8 @@ impl TestProcessChild {
 
         while start.elapsed() < timeout {
             match self.process.try_wait()? {
-                Some(_) => return Ok(()),
-                None => sleep(Duration::from_millis(100)),
+                | Some(_) => return Ok(()),
+                | None => sleep(Duration::from_millis(100)),
             }
         }
 

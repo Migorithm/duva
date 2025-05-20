@@ -14,8 +14,8 @@ pub(crate) enum ElectionState {
 impl ElectionState {
     pub(crate) fn new(role: &ReplicationRole) -> Self {
         match role {
-            ReplicationRole::Leader => ElectionState::Leader,
-            ReplicationRole::Follower => ElectionState::Follower { voted_for: None },
+            | ReplicationRole::Leader => ElectionState::Leader,
+            | ReplicationRole::Follower => ElectionState::Follower { voted_for: None },
         }
     }
     pub(crate) fn become_leader(&mut self) {
@@ -27,11 +27,11 @@ impl ElectionState {
 
     pub(crate) fn is_votable(&self, candidate_id: &PeerIdentifier) -> bool {
         match self {
-            ElectionState::Follower { voted_for } => match voted_for {
-                None => true,
-                Some(id) => id == candidate_id,
+            | ElectionState::Follower { voted_for } => match voted_for {
+                | None => true,
+                | Some(id) => id == candidate_id,
             },
-            _ => false,
+            | _ => false,
         }
     }
 

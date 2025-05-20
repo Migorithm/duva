@@ -1,5 +1,4 @@
 use super::consensus::ElectionState;
-
 use crate::domains::peers::command::BannedPeer;
 use crate::domains::peers::command::HeartBeat;
 use crate::domains::peers::identifier::PeerIdentifier;
@@ -158,8 +157,8 @@ pub(crate) enum ReplicationId {
 impl Display for ReplicationId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            ReplicationId::Undecided => write!(f, "?"),
-            ReplicationId::Key(key) => write!(f, "{}", key),
+            | ReplicationId::Undecided => write!(f, "?"),
+            | ReplicationId::Key(key) => write!(f, "{}", key),
         }
     }
 }
@@ -167,8 +166,8 @@ impl Display for ReplicationId {
 impl From<ReplicationId> for String {
     fn from(value: ReplicationId) -> Self {
         match value {
-            ReplicationId::Undecided => "?".to_string(),
-            ReplicationId::Key(key) => key,
+            | ReplicationId::Undecided => "?".to_string(),
+            | ReplicationId::Key(key) => key,
         }
     }
 }
@@ -176,8 +175,8 @@ impl From<ReplicationId> for String {
 impl From<String> for ReplicationId {
     fn from(value: String) -> Self {
         match value.as_str() {
-            "?" => ReplicationId::Undecided,
-            _ => ReplicationId::Key(value),
+            | "?" => ReplicationId::Undecided,
+            | _ => ReplicationId::Key(value),
         }
     }
 }
@@ -191,8 +190,8 @@ pub enum ReplicationRole {
 impl Display for ReplicationRole {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            ReplicationRole::Leader => write!(f, "leader"),
-            ReplicationRole::Follower => write!(f, "follower"),
+            | ReplicationRole::Leader => write!(f, "leader"),
+            | ReplicationRole::Follower => write!(f, "follower"),
         }
     }
 }

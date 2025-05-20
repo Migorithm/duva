@@ -118,9 +118,9 @@ impl PeerState {
             .collect();
 
         nodes.sort_by_key(|n| match n.kind {
-            NodeKind::Replica => 0,
-            NodeKind::NonData => 1,
-            NodeKind::Myself => 2,
+            | NodeKind::Replica => 0,
+            | NodeKind::NonData => 1,
+            | NodeKind::Myself => 2,
         });
         nodes
     }
@@ -152,9 +152,10 @@ impl PeerState {
 impl std::fmt::Display for PeerState {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self.kind {
-            NodeKind::Replica => write!(f, "{} {} 0 {}", self.addr, self.replid, self.match_index),
-            NodeKind::NonData => write!(f, "{} {} 0 {}", self.addr, self.replid, self.match_index),
-            NodeKind::Myself => {
+            | NodeKind::Replica | NodeKind::NonData => {
+                write!(f, "{} {} 0 {}", self.addr, self.replid, self.match_index)
+            },
+            | NodeKind::Myself => {
                 write!(f, "{} myself,{} 0 {}", self.addr, self.replid, self.match_index)
             },
         }

@@ -39,7 +39,7 @@ async fn main() -> anyhow::Result<()> {
         let (cmd, args) = separate_command_and_args(args);
 
         match extract_action(cmd, &args) {
-            Ok(input) => {
+            | Ok(input) => {
                 let (tx, rx) = oneshot::channel();
                 let input = Input::new(input, tx);
                 let _ = controller
@@ -49,7 +49,7 @@ async fn main() -> anyhow::Result<()> {
                 let (kind, query_io) = rx.await.unwrap();
                 controller.print_res(kind, query_io);
             },
-            Err(e) => {
+            | Err(e) => {
                 println!("{}", e);
             },
         }

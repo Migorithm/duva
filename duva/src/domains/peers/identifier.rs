@@ -36,15 +36,15 @@ impl<T: AsRef<str>> TPeerAddress for T {
 pub(crate) fn parse_address(addr: &str) -> Option<std::net::IpAddr> {
     match addr.to_lowercase().as_str() {
         // IPv4 127.0.0.1 variants
-        "127.0.0.1" | "localhost" => {
+        | "127.0.0.1" | "localhost" => {
             Some(std::net::IpAddr::V4(std::net::Ipv4Addr::new(127, 0, 0, 1)))
         },
         // IPv6 127.0.0.1 variants
-        "::1" | "[::1]" | "0:0:0:0:0:0:0:1" => {
+        | "::1" | "[::1]" | "0:0:0:0:0:0:0:1" => {
             Some(std::net::IpAddr::V6(std::net::Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1)))
         },
         // Try to parse anything else as an IP address
-        other => other.parse().ok(),
+        | other => other.parse().ok(),
     }
 }
 

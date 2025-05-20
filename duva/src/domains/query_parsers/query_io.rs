@@ -60,14 +60,14 @@ pub enum QueryIO {
 impl QueryIO {
     pub fn serialize(self) -> Bytes {
         match self {
-            QueryIO::Null => NULL_PREFIX.to_string().into(),
-            QueryIO::SimpleString(s) => {
+            | QueryIO::Null => NULL_PREFIX.to_string().into(),
+            | QueryIO::SimpleString(s) => {
                 let mut buffer =
                     String::with_capacity(SIMPLE_STRING_PREFIX.len_utf8() + s.len() + 2);
                 write!(&mut buffer, "{}{}\r\n", SIMPLE_STRING_PREFIX, s).unwrap();
                 buffer.into()
             },
-            QueryIO::BulkString(s) => {
+            | QueryIO::BulkString(s) => {
                 let mut byte_mut = BytesMut::with_capacity(1 + 1 + s.len() + 4);
                 byte_mut.extend_from_slice(BULK_STRING_PREFIX.encode_utf8(&mut [0; 4]).as_bytes());
                 byte_mut.extend_from_slice(s.len().to_string().as_bytes());
@@ -76,7 +76,7 @@ impl QueryIO {
                 byte_mut.extend_from_slice(b"\r\n");
                 byte_mut.freeze()
             },
-            QueryIO::File(f) => {
+            | QueryIO::File(f) => {
                 let file_len = f.len() * 2;
                 let mut hex_file = String::with_capacity(file_len + file_len.to_string().len() + 2);
 
@@ -88,7 +88,7 @@ impl QueryIO {
 
                 hex_file.into()
             },
-            QueryIO::Array(array) => {
+            | QueryIO::Array(array) => {
                 let mut buffer = BytesMut::with_capacity(
                     // Rough estimate of needed capacity
                     array.len() * 32 + 1 + array.len(),
@@ -101,33 +101,33 @@ impl QueryIO {
                 }
                 buffer.freeze()
             },
-            QueryIO::SessionRequest { request_id, value } => {
+            | QueryIO::SessionRequest { request_id, value } => {
                 let mut buffer = BytesMut::with_capacity(32 + 1 + value.len() * 32);
                 buffer.extend_from_slice(format!("!{}\r\n", request_id).as_bytes());
                 buffer.extend_from_slice(&QueryIO::Array(value).serialize());
                 buffer.freeze()
             },
-            QueryIO::Err(e) => Bytes::from([ERR_PREFIX.to_string(), e, "\r\n".into()].concat()),
-            QueryIO::AppendEntriesRPC(heartbeat) => {
+            | QueryIO::Err(e) => Bytes::from([ERR_PREFIX.to_string(), e, "\r\n".into()].concat()),
+            | QueryIO::AppendEntriesRPC(heartbeat) => {
                 serialize_with_bincode(APPEND_ENTRY_RPC_PREFIX, &heartbeat)
             },
-            QueryIO::WriteOperation(write_operation) => {
+            | QueryIO::WriteOperation(write_operation) => {
                 serialize_with_bincode(REPLICATE_PREFIX, &write_operation)
             },
-            QueryIO::Ack(items) => serialize_with_bincode(ACKS_PREFIX, &items),
-            QueryIO::RequestVote(request_vote) => {
+            | QueryIO::Ack(items) => serialize_with_bincode(ACKS_PREFIX, &items),
+            | QueryIO::RequestVote(request_vote) => {
                 serialize_with_bincode(REQUEST_VOTE_PREFIX, &request_vote)
             },
-            QueryIO::RequestVoteReply(request_vote_reply) => {
+            | QueryIO::RequestVoteReply(request_vote_reply) => {
                 serialize_with_bincode(REQUEST_VOTE_REPLY_PREFIX, &request_vote_reply)
             },
-            QueryIO::ClusterHeartBeat(heart_beat_message) => {
+            | QueryIO::ClusterHeartBeat(heart_beat_message) => {
                 serialize_with_bincode(CLUSTER_HEARTBEAT_PREFIX, &heart_beat_message)
             },
-            QueryIO::TopologyChange(peer_identifiers) => {
+            | QueryIO::TopologyChange(peer_identifiers) => {
                 serialize_with_bincode(TOPOLOGY_CHANGE_PREFIX, &peer_identifiers)
             },
-            QueryIO::TriggerRebalance => serialize_with_bincode(TRIGGER_REBALANCE_PREFIX, &()),
+            | QueryIO::TriggerRebalance => serialize_with_bincode(TRIGGER_REBALANCE_PREFIX, &()),
         }
     }
 
@@ -136,9 +136,9 @@ impl QueryIO {
         T: std::str::FromStr<Err: std::error::Error + Sync + Send + 'static>,
     {
         match self {
-            QueryIO::BulkString(s) => Ok(String::from_utf8(s.into())?.parse::<T>()?),
+            | QueryIO::BulkString(s) => Ok(String::from_utf8(s.into())?.parse::<T>()?),
 
-            _ => Err(anyhow::anyhow!("Expected command to be a bulk string")),
+            | _ => Err(anyhow::anyhow!("Expected command to be a bulk string")),
         }
     }
 
@@ -172,16 +172,16 @@ impl From<Vec<String>> for QueryIO {
 impl From<Option<CacheValue>> for QueryIO {
     fn from(v: Option<CacheValue>) -> Self {
         match v {
-            Some(cache_value) => QueryIO::BulkString(cache_value.value),
-            None => QueryIO::Null,
+            | Some(cache_value) => QueryIO::BulkString(cache_value.value),
+            | None => QueryIO::Null,
         }
     }
 }
 impl From<Option<String>> for QueryIO {
     fn from(v: Option<String>) -> Self {
         match v {
-            Some(v) => QueryIO::BulkString(v),
-            None => QueryIO::Null,
+            | Some(v) => QueryIO::BulkString(v),
+            | None => QueryIO::Null,
         }
     }
 }
@@ -195,42 +195,42 @@ impl From<QueryIO> for Bytes {
 pub fn deserialize(buffer: impl Into<Bytes>) -> Result<(QueryIO, usize)> {
     let buffer: Bytes = buffer.into();
     match buffer[0] as char {
-        SIMPLE_STRING_PREFIX => {
+        | SIMPLE_STRING_PREFIX => {
             let (bytes, len) = parse_simple_string(buffer)?;
             Ok((QueryIO::SimpleString(bytes), len))
         },
-        ARRAY_PREFIX => parse_array(buffer),
-        SESSION_REQUEST_PREFIX => parse_session_request(buffer),
-        BULK_STRING_PREFIX => {
+        | ARRAY_PREFIX => parse_array(buffer),
+        | SESSION_REQUEST_PREFIX => parse_session_request(buffer),
+        | BULK_STRING_PREFIX => {
             let (bytes, len) = parse_bulk_string(buffer)?;
             Ok((QueryIO::BulkString(bytes), len))
         },
-        FILE_PREFIX => {
+        | FILE_PREFIX => {
             let (bytes, len) = parse_file(buffer)?;
             Ok((QueryIO::File(bytes), len))
         },
-        ERR_PREFIX => {
+        | ERR_PREFIX => {
             let (bytes, len) = parse_simple_string(buffer)?;
             Ok((QueryIO::Err(bytes), len))
         },
-        NULL_PREFIX => Ok((QueryIO::Null, 1)),
+        | NULL_PREFIX => Ok((QueryIO::Null, 1)),
 
-        APPEND_ENTRY_RPC_PREFIX => {
+        | APPEND_ENTRY_RPC_PREFIX => {
             let (heartbeat, len) = parse_heartbeat(buffer)?;
             Ok((QueryIO::AppendEntriesRPC(heartbeat), len))
         },
-        CLUSTER_HEARTBEAT_PREFIX => {
+        | CLUSTER_HEARTBEAT_PREFIX => {
             let (heartbeat, len) = parse_heartbeat(buffer)?;
             Ok((QueryIO::ClusterHeartBeat(heartbeat), len))
         },
-        REPLICATE_PREFIX => parse_custom_type::<WriteOperation>(buffer),
-        ACKS_PREFIX => parse_custom_type::<ReplicationAck>(buffer),
-        REQUEST_VOTE_PREFIX => parse_custom_type::<RequestVote>(buffer),
-        REQUEST_VOTE_REPLY_PREFIX => parse_custom_type::<ElectionVote>(buffer),
-        TOPOLOGY_CHANGE_PREFIX => parse_custom_type::<Vec<PeerIdentifier>>(buffer),
-        TRIGGER_REBALANCE_PREFIX => Ok((QueryIO::TriggerRebalance, 1)),
+        | REPLICATE_PREFIX => parse_custom_type::<WriteOperation>(buffer),
+        | ACKS_PREFIX => parse_custom_type::<ReplicationAck>(buffer),
+        | REQUEST_VOTE_PREFIX => parse_custom_type::<RequestVote>(buffer),
+        | REQUEST_VOTE_REPLY_PREFIX => parse_custom_type::<ElectionVote>(buffer),
+        | TOPOLOGY_CHANGE_PREFIX => parse_custom_type::<Vec<PeerIdentifier>>(buffer),
+        | TRIGGER_REBALANCE_PREFIX => Ok((QueryIO::TriggerRebalance, 1)),
 
-        _ => Err(anyhow::anyhow!("Not a known value type {:?}", buffer)),
+        | _ => Err(anyhow::anyhow!("Not a known value type {:?}", buffer)),
     }
 }
 

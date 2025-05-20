@@ -189,8 +189,8 @@ impl ClusterActor {
         optional_callback: Option<tokio::sync::oneshot::Sender<anyhow::Result<()>>>,
     ) {
         let stream = match OutboundStream::new(connect_to, self.replication.clone()).await {
-            Ok(stream) => stream,
-            Err(e) => {
+            | Ok(stream) => stream,
+            | Err(e) => {
                 if let Some(cb) = optional_callback {
                     let _ = cb.send(err!(e));
                 }
@@ -409,8 +409,8 @@ impl ClusterActor {
         self.members
             .values()
             .filter_map(|peer| match peer.kind() {
-                NodeKind::Replica => Some(peer.match_index()),
-                _ => None,
+                | NodeKind::Replica => Some(peer.match_index()),
+                | _ => None,
             })
             .min()
     }
@@ -683,13 +683,13 @@ impl ClusterActor {
 
     pub(crate) async fn handle_repl_rejection(&mut self, repl_res: ReplicationAck) {
         match repl_res.rej_reason {
-            RejectionReason::ReceiverHasHigherTerm => self.step_down().await,
-            RejectionReason::LogInconsistency => {
+            | RejectionReason::ReceiverHasHigherTerm => self.step_down().await,
+            | RejectionReason::LogInconsistency => {
                 eprintln!("Log inconsistency, reverting match index");
                 //TODO we can refactor this to set match index to given log index from the follower
                 self.decrease_match_index(&repl_res.from, repl_res.log_idx);
             },
-            RejectionReason::None => (),
+            | RejectionReason::None => (),
         }
     }
 
@@ -1256,14 +1256,14 @@ pub mod test {
         let task = tokio::spawn(async move {
             while let Some(message) = receiver.recv().await {
                 match message {
-                    CacheCommand::Set { cache_entry } => {
+                    | CacheCommand::Set { cache_entry } => {
                         let (key, value) = cache_entry.destructure();
                         assert_eq!(value.value(), "bar");
                         if key == "foo2" {
                             break;
                         }
                     },
-                    _ => continue,
+                    | _ => continue,
                 }
             }
         });
@@ -1412,7 +1412,7 @@ pub mod test {
 
             while let Some(message) = rx.recv().await {
                 match message {
-                    CacheCommand::Set { cache_entry } => {
+                    | CacheCommand::Set { cache_entry } => {
                         let (key, value) = cache_entry.destructure();
                         if key == "foo" {
                             received_foo = true;
@@ -1422,7 +1422,7 @@ pub mod test {
                             panic!("foo2 should not be applied yet");
                         }
                     },
-                    _ => continue,
+                    | _ => continue,
                 }
             }
 

@@ -61,13 +61,13 @@ impl<T: AsyncReadExt + std::marker::Unpin + Sync + Send> TRead for T {
 
         while !remaining_buffer.is_empty() {
             match deserialize(remaining_buffer.clone()) {
-                Ok((query_io, consumed)) => {
+                | Ok((query_io, consumed)) => {
                     parsed_values.push(query_io);
 
                     // * Remove the parsed portion from the buffer
                     remaining_buffer = remaining_buffer.split_off(consumed);
                 },
-                Err(e) => {
+                | Err(e) => {
                     // Handle parsing errors
                     // You might want to log the error or handle it differently based on your use case
                     return Err(IoError::Custom(format!("Parsing error: {:?}", e)));
@@ -111,13 +111,13 @@ impl TGetPeerIp for tokio::net::TcpStream {
 impl From<ErrorKind> for IoError {
     fn from(value: ErrorKind) -> Self {
         match value {
-            ErrorKind::ConnectionRefused => IoError::ConnectionRefused,
-            ErrorKind::ConnectionReset => IoError::ConnectionReset,
-            ErrorKind::ConnectionAborted => IoError::ConnectionAborted,
-            ErrorKind::NotConnected => IoError::NotConnected,
-            ErrorKind::BrokenPipe => IoError::BrokenPipe,
-            ErrorKind::TimedOut => IoError::TimedOut,
-            _ => {
+            | ErrorKind::ConnectionRefused => IoError::ConnectionRefused,
+            | ErrorKind::ConnectionReset => IoError::ConnectionReset,
+            | ErrorKind::ConnectionAborted => IoError::ConnectionAborted,
+            | ErrorKind::NotConnected => IoError::NotConnected,
+            | ErrorKind::BrokenPipe => IoError::BrokenPipe,
+            | ErrorKind::TimedOut => IoError::TimedOut,
+            | _ => {
                 eprintln!("unknown error: {:?}", value);
                 IoError::Custom(format!("unknown error: {:?}", value))
             },

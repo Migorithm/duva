@@ -48,38 +48,37 @@ impl OutboundStream {
         };
 
         loop {
-            trace!("Waiting for handshake response");
             let res = self.r.read_values().await?;
             trace!(?res, "Received handshake response");
             for query in res {
                 match ConnectionResponse::try_from(query)? {
-                    ConnectionResponse::Pong => {
+                    | ConnectionResponse::Pong => {
                         let msg = write_array!("REPLCONF", "listening-port", self_port.to_string());
                         self.w.write(msg).await?
                     },
-                    ConnectionResponse::Ok => {
+                    | ConnectionResponse::Ok => {
                         ok_count += 1;
                         let msg = {
                             match ok_count {
-                                1 => Ok(write_array!("REPLCONF", "capa", "psync2")),
+                                | 1 => Ok(write_array!("REPLCONF", "capa", "psync2")),
                                 // "?" here means the server is undecided about their leader. and -1 is the offset that follower is aware of
-                                2 => Ok(write_array!(
+                                | 2 => Ok(write_array!(
                                     "PSYNC",
                                     self.my_repl_info.replid.clone(),
                                     self.my_repl_info.hwm.load(Ordering::Acquire).to_string()
                                 )),
-                                _ => Err(anyhow::anyhow!("Unexpected OK count")),
+                                | _ => Err(anyhow::anyhow!("Unexpected OK count")),
                             }
                         }?;
                         self.w.write(msg).await?
                     },
-                    ConnectionResponse::FullResync { id, repl_id, offset } => {
+                    | ConnectionResponse::FullResync { id, repl_id, offset } => {
                         connection_info.replid = ReplicationId::Key(repl_id);
                         connection_info.hwm = offset;
                         connection_info.id = id.into();
                         self.reply_with_ok().await?;
                     },
-                    ConnectionResponse::Peers(peer_list) => {
+                    | ConnectionResponse::Peers(peer_list) => {
                         connection_info.peer_list = peer_list;
                         self.connected_node_info = Some(connection_info);
                         self.reply_with_ok().await?;

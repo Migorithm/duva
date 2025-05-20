@@ -25,45 +25,45 @@ impl ClusterActor {
         while let Some(command) = self.receiver.recv().await {
             trace!(?command, "Cluster command received");
             match command {
-                ClusterCommand::Scheduler(msg) => {
+                | ClusterCommand::Scheduler(msg) => {
                     use SchedulerMessage::*;
                     match msg {
-                        SendClusterHeatBeat => {
+                        | SendClusterHeatBeat => {
                             // ! remove idle peers based on ttl.
                             // ! The following may need to be moved else where to avoid blocking the main loop
                             self.remove_idle_peers().await;
                             let hop_count = Self::hop_count(FANOUT, self.members.len());
                             self.send_cluster_heartbeat(hop_count, &logger).await;
                         },
-                        SendAppendEntriesRPC => {
+                        | SendAppendEntriesRPC => {
                             self.send_rpc(&logger).await;
                         },
-                        StartLeaderElection => {
+                        | StartLeaderElection => {
                             self.run_for_election(&mut logger).await;
                         },
                     }
                 },
-                ClusterCommand::Client(client_message) => {
+                | ClusterCommand::Client(client_message) => {
                     use ClientMessage::*;
 
                     match client_message {
-                        GetPeers(callback) => {
+                        | GetPeers(callback) => {
                             let _ = callback.send(self.members.keys().cloned().collect::<Vec<_>>());
                         },
-                        ClusterNodes(callback) => {
+                        | ClusterNodes(callback) => {
                             let _ = callback.send(self.cluster_nodes());
                         },
-                        ReplicationInfo(sender) => {
+                        | ReplicationInfo(sender) => {
                             let _ = sender.send(self.replication.clone());
                         },
-                        ForgetPeer(peer_addr, sender) => {
+                        | ForgetPeer(peer_addr, sender) => {
                             if let Ok(Some(())) = self.forget_peer(peer_addr).await {
                                 let _ = sender.send(Some(()));
                             } else {
                                 let _ = sender.send(None);
                             }
                         },
-                        LeaderReqConsensus(req) => {
+                        | LeaderReqConsensus(req) => {
                             if !self.replication.is_leader_mode {
                                 let _ = req.callback.send(err!("Write given to follower"));
                                 continue;
@@ -82,7 +82,7 @@ impl ClusterActor {
                             self.req_consensus(&mut logger, req).await;
                         },
 
-                        ReplicaOf(peer_addr, callback) => {
+                        | ReplicaOf(peer_addr, callback) => {
                             if self.replication.self_identifier() == peer_addr {
                                 let _ = callback
                                     .send(err!("invalid operation: cannot replicate to self"));
@@ -91,7 +91,7 @@ impl ClusterActor {
                             cache_manager.drop_cache().await;
                             self.replicaof(peer_addr, &mut logger, callback).await;
                         },
-                        ClusterMeet(peer_addr, lazy_option, callback) => {
+                        | ClusterMeet(peer_addr, lazy_option, callback) => {
                             if !self.replication.is_leader_mode
                                 || self.replication.self_identifier() == peer_addr
                             {
@@ -102,19 +102,19 @@ impl ClusterActor {
                             }
                             self.cluster_meet(peer_addr, lazy_option, callback).await;
                         },
-                        GetRole(sender) => {
+                        | GetRole(sender) => {
                             let _ = sender.send(self.replication.role.clone());
                         },
-                        SubscribeToTopologyChange(sender) => {
+                        | SubscribeToTopologyChange(sender) => {
                             let _ = sender.send(self.node_change_broadcast.subscribe());
                         },
                     }
                 },
-                ClusterCommand::Peer(peer_message) => {
+                | ClusterCommand::Peer(peer_message) => {
                     use PeerMessage::*;
 
                     match peer_message {
-                        ClusterHeartBeat(mut heartbeat) => {
+                        | ClusterHeartBeat(mut heartbeat) => {
                             if self.replication.in_ban_list(&heartbeat.from) {
                                 debug!("{} in the ban list", heartbeat.from);
                                 continue;
@@ -124,10 +124,10 @@ impl ClusterActor {
                             self.gossip(heartbeat.hop_count, &logger).await;
                             self.update_on_hertbeat_message(&heartbeat.from, heartbeat.hwm);
                         },
-                        RequestVote(request_vote) => {
+                        | RequestVote(request_vote) => {
                             self.vote_election(request_vote, logger.last_log_index).await;
                         },
-                        AckReplication(repl_res) => {
+                        | AckReplication(repl_res) => {
                             if !repl_res.is_granted() {
                                 self.handle_repl_rejection(repl_res).await;
                                 continue;
@@ -136,7 +136,7 @@ impl ClusterActor {
                             self.track_replication_progress(repl_res, &mut client_sessions);
                         },
 
-                        AppendEntriesRPC(heartbeat) => {
+                        | AppendEntriesRPC(heartbeat) => {
                             if self.check_term_outdated(&heartbeat, &logger).await {
                                 continue;
                             };
@@ -146,36 +146,36 @@ impl ClusterActor {
                             self.replicate(&mut logger, heartbeat, &cache_manager).await;
                         },
 
-                        ElectionVoteReply(request_vote_reply) => {
+                        | ElectionVoteReply(request_vote_reply) => {
                             if !request_vote_reply.vote_granted {
                                 continue;
                             }
                             self.tally_vote(&logger).await;
                         },
 
-                        TriggerRebalance => {
+                        | TriggerRebalance => {
                             // self.trigger_rebalance().await;
                         },
                     }
                 },
-                ClusterCommand::ConnectionReq(self_generated_message) => {
+                | ClusterCommand::ConnectionReq(self_generated_message) => {
                     use ConnectionMessage::*;
 
                     match self_generated_message {
-                        ConnectToServer { connect_to, callback } => {
+                        | ConnectToServer { connect_to, callback } => {
                             self.connect_to_server(connect_to, Some(callback)).await;
                         },
-                        AcceptInboundPeer { stream } => {
+                        | AcceptInboundPeer { stream } => {
                             self.accept_inbound_stream(stream).await;
                         },
 
-                        AddPeer(peer, optional_callback) => {
+                        | AddPeer(peer, optional_callback) => {
                             self.add_peer(peer).await;
                             if let Some(cb) = optional_callback {
                                 let _ = cb.send(Ok(()));
                             }
                         },
-                        FollowerSetReplId(replication_id) => self.set_repl_id(replication_id),
+                        | FollowerSetReplId(replication_id) => self.set_repl_id(replication_id),
                     }
                 },
             }
