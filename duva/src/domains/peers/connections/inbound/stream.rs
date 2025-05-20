@@ -1,8 +1,9 @@
 use super::request::HandShakeRequest;
 use super::request::HandShakeRequestEnum;
-use crate::ClusterCommand;
+
 use crate::domains::IoError;
 use crate::domains::cluster_actors::ConnectionMessage;
+use crate::domains::cluster_actors::actor::ClusterCommandHandler;
 use crate::domains::peers::connections::connected_peer_info::ConnectedPeerInfo;
 use crate::domains::peers::peer::Peer;
 
@@ -145,7 +146,7 @@ impl InboundStream {
     pub(crate) async fn add_peer(
         mut self,
         members: Vec<PeerIdentifier>,
-        cluster_handler: tokio::sync::mpsc::Sender<ClusterCommand>,
+        cluster_handler: ClusterCommandHandler,
     ) -> anyhow::Result<()> {
         self.recv_handshake().await?;
         self.disseminate_peers(members).await?;
@@ -153,7 +154,7 @@ impl InboundStream {
         let peer_state = self.peer_state()?;
         let kill_switch = PeerListener::spawn(self.r, cluster_handler.clone());
         let peer = Peer::new(self.w, peer_state, kill_switch);
-        let _ = cluster_handler.send(ConnectionMessage::AddPeer(peer, None).into()).await;
+        let _ = cluster_handler.send(ConnectionMessage::AddPeer(peer, None)).await;
         Ok(())
     }
 }

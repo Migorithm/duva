@@ -178,14 +178,11 @@ impl ClientController {
 
         let (tx, rx) = tokio::sync::oneshot::channel();
         self.cluster_communication_manager
-            .send(
-                ClientMessage::LeaderReqConsensus(ConsensusRequest::new(
-                    log,
-                    tx,
-                    request.session_req.take(),
-                ))
-                .into(),
-            )
+            .send(ClientMessage::LeaderReqConsensus(ConsensusRequest::new(
+                log,
+                tx,
+                request.session_req.take(),
+            )))
             .await?;
 
         rx.await?

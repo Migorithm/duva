@@ -118,7 +118,7 @@ impl StartUpFacade {
                     debug!("Accepted peer connection: {}", socket_addr);
                     if registry
                         .cluster_communication_manager
-                        .send(ConnectionMessage::AcceptInboundPeer { stream: peer_stream }.into())
+                        .send(ConnectionMessage::AcceptInboundPeer { stream: peer_stream })
                         .await
                         .is_err()
                     {
@@ -177,7 +177,7 @@ impl StartUpFacade {
             // Reconnection case - set the replication info
             self.registry
                 .cluster_communication_manager
-                .send(ConnectionMessage::StoreSnapshotMetadata { replid: repl_id, hwm }.into())
+                .send(ConnectionMessage::StoreSnapshotMetadata { replid: repl_id, hwm })
                 .await?;
             self.registry.cache_manager.apply_snapshot(snapshot).await?;
         }

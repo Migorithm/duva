@@ -44,7 +44,7 @@ pub struct ClusterActor {
     pub(crate) node_timeout: u128,
     pub(crate) consensus_tracker: LogConsensusTracker,
     pub(crate) receiver: tokio::sync::mpsc::Receiver<ClusterCommand>,
-    pub(crate) self_handler: tokio::sync::mpsc::Sender<ClusterCommand>,
+    pub(crate) self_handler: ClusterCommandHandler,
     pub(crate) heartbeat_scheduler: HeartBeatScheduler,
     pub(crate) topology_writer: tokio::fs::File,
     pub(crate) node_change_broadcast: tokio::sync::broadcast::Sender<Vec<PeerIdentifier>>,
@@ -52,6 +52,17 @@ pub struct ClusterActor {
     // * Pending requests are used to store requests that are received while the actor is in the process of election/cluster rebalancing.
     // * These requests will be processed once the actor is back to a stable state.
     pub(crate) pending_requests: Option<VecDeque<ConsensusRequest>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ClusterCommandHandler(tokio::sync::mpsc::Sender<ClusterCommand>);
+impl ClusterCommandHandler {
+    pub(crate) async fn send(
+        &self,
+        cmd: impl Into<ClusterCommand>,
+    ) -> Result<(), tokio::sync::mpsc::error::SendError<ClusterCommand>> {
+        self.0.send(cmd.into()).await
+    }
 }
 
 impl ClusterActor {
@@ -75,7 +86,7 @@ impl ClusterActor {
             replication: init_repl_info,
             node_timeout,
             receiver,
-            self_handler,
+            self_handler: ClusterCommandHandler(self_handler),
             members: BTreeMap::new(),
             consensus_tracker: LogConsensusTracker::default(),
             topology_writer,
@@ -822,7 +833,7 @@ pub mod test {
     async fn cluster_member_create_helper(
         actor: &mut ClusterActor,
         num_stream: Range<u16>,
-        cluster_sender: tokio::sync::mpsc::Sender<ClusterCommand>,
+        cluster_sender: ClusterCommandHandler,
         cache_manager: CacheManager,
         follower_hwm: u64,
     ) {
@@ -926,8 +937,14 @@ pub mod test {
         let (cluster_sender, _) = tokio::sync::mpsc::channel(100);
         let cache_manager = CacheManager { inboxes: vec![] };
 
-        cluster_member_create_helper(&mut cluster_actor, 0..5, cluster_sender, cache_manager, 0)
-            .await;
+        cluster_member_create_helper(
+            &mut cluster_actor,
+            0..5,
+            ClusterCommandHandler(cluster_sender),
+            cache_manager,
+            0,
+        )
+        .await;
 
         let (tx, _) = tokio::sync::oneshot::channel();
         let client_id = Uuid::now_v7();
@@ -996,8 +1013,14 @@ pub mod test {
 
         // - add followers to create quorum
         let cache_manager = CacheManager { inboxes: vec![] };
-        cluster_member_create_helper(&mut cluster_actor, 0..4, cluster_sender, cache_manager, 0)
-            .await;
+        cluster_member_create_helper(
+            &mut cluster_actor,
+            0..4,
+            ClusterCommandHandler(cluster_sender),
+            cache_manager,
+            0,
+        )
+        .await;
         let (client_request_sender, client_wait) = tokio::sync::oneshot::channel();
 
         let client_id = Uuid::now_v7();
@@ -1048,8 +1071,14 @@ pub mod test {
 
         // - add followers to create quorum
         let cache_manager = CacheManager { inboxes: vec![] };
-        cluster_member_create_helper(&mut cluster_actor, 0..4, cluster_sender, cache_manager, 0)
-            .await;
+        cluster_member_create_helper(
+            &mut cluster_actor,
+            0..4,
+            ClusterCommandHandler(cluster_sender),
+            cache_manager,
+            0,
+        )
+        .await;
         let (client_request_sender, client_wait) = tokio::sync::oneshot::channel();
 
         let consensus_request = ConsensusRequest::new(
@@ -1123,7 +1152,7 @@ pub mod test {
         cluster_member_create_helper(
             &mut cluster_actor,
             0..5,
-            cluster_sender.clone(),
+            ClusterCommandHandler(cluster_sender.clone()),
             cache_manager,
             3,
         )
@@ -1142,8 +1171,14 @@ pub mod test {
         //WHEN
         // *add lagged followers with its commit index being 1
         let cache_manager = CacheManager { inboxes: vec![] };
-        cluster_member_create_helper(&mut cluster_actor, 5..7, cluster_sender, cache_manager, 1)
-            .await;
+        cluster_member_create_helper(
+            &mut cluster_actor,
+            5..7,
+            ClusterCommandHandler(cluster_sender),
+            cache_manager,
+            1,
+        )
+        .await;
 
         // * add new log - this must create entries that are greater than 3
         let lowest_hwm = cluster_actor.take_low_watermark();
@@ -1510,7 +1545,7 @@ pub mod test {
         for port in [6379, 6380] {
             let key = PeerIdentifier::new("127.0.0.1", port);
             let (r, x) = TcpStream::connect(bind_addr).await.unwrap().into_split();
-            let kill_switch = PeerListener::spawn(r, cluster_sender.clone());
+            let kill_switch = PeerListener::spawn(r, ClusterCommandHandler(cluster_sender.clone()));
             cluster_actor.members.insert(
                 key.clone(),
                 Peer::new(
@@ -1534,7 +1569,7 @@ pub mod test {
 
         // leader for different shard?
         let (r, x) = TcpStream::connect(bind_addr).await.unwrap().into_split();
-        let kill_switch = PeerListener::spawn(r, cluster_sender.clone());
+        let kill_switch = PeerListener::spawn(r, ClusterCommandHandler(cluster_sender.clone()));
 
         cluster_actor.members.insert(
             second_shard_leader_identifier.clone(),
@@ -1554,7 +1589,7 @@ pub mod test {
         for port in [2655, 2653] {
             let key = PeerIdentifier::new("127.0.0.1", port);
             let (r, x) = TcpStream::connect(bind_addr).await.unwrap().into_split();
-            let kill_switch = PeerListener::spawn(r, cluster_sender.clone());
+            let kill_switch = PeerListener::spawn(r, ClusterCommandHandler(cluster_sender.clone()));
 
             cluster_actor.members.insert(
                 key.clone(),

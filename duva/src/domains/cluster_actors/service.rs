@@ -9,8 +9,9 @@ use crate::domains::operation_logs::interfaces::TWriteAheadLog;
 use crate::domains::operation_logs::logger::ReplicatedLogs;
 use crate::domains::peers::PeerMessage;
 use crate::err;
-use tokio::sync::mpsc::Sender;
 use tracing::{debug, trace};
+
+use super::actor::ClusterCommandHandler;
 
 impl ClusterActor {
     pub(super) async fn handle(
@@ -193,7 +194,7 @@ impl ClusterActor {
         init_replication: ReplicationState,
         cache_manager: CacheManager,
         wal: impl TWriteAheadLog,
-    ) -> Sender<ClusterCommand> {
+    ) -> ClusterCommandHandler {
         let cluster_actor =
             ClusterActor::new(node_timeout, init_replication, heartbeat_interval, topology_writer);
 
