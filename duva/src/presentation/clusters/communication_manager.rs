@@ -1,7 +1,7 @@
 use crate::{
     domains::{
         cluster_actors::{
-            ClientMessage, ClusterCommand, LazyOption,
+            ClientMessage, ClusterCommand, LazyOption, SelfGeneratedMessage,
             replication::{ReplicationRole, ReplicationState},
         },
         peers::{identifier::PeerIdentifier, peer::PeerState},
@@ -25,7 +25,8 @@ impl ClusterCommunicationManager {
 
     pub(crate) async fn connect_to_server(&self, connect_to: PeerIdentifier) -> anyhow::Result<()> {
         let (tx, rx) = tokio::sync::oneshot::channel();
-        self.send(ClusterCommand::ConnectToServer { connect_to, callback: tx }).await?;
+        self.send(SelfGeneratedMessage::ConnectToServer { connect_to, callback: tx }.into())
+            .await?;
         rx.await??;
         Ok(())
     }

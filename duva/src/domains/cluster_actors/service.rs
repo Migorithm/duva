@@ -1,7 +1,9 @@
 use crate::domains::caches::cache_manager::CacheManager;
 use crate::domains::cluster_actors::replication::ReplicationState;
 use crate::domains::cluster_actors::session::ClientSessions;
-use crate::domains::cluster_actors::{ClientMessage, ClusterActor, FANOUT};
+use crate::domains::cluster_actors::{
+    ClientMessage, ClusterActor, FANOUT, HeartBeatSchedulerMessage, SelfGeneratedMessage,
+};
 use crate::domains::cluster_actors::{ClusterCommand, ConsensusClientResponse};
 use crate::domains::operation_logs::interfaces::TWriteAheadLog;
 use crate::domains::operation_logs::logger::ReplicatedLogs;
@@ -22,42 +24,24 @@ impl ClusterActor {
         while let Some(command) = self.receiver.recv().await {
             trace!(?command, "Cluster command received");
             match command {
-                ClusterCommand::ConnectToServer { connect_to, callback } => {
-                    self.connect_to_server(connect_to, Some(callback)).await;
-                },
-                ClusterCommand::AcceptInboundPeer { stream } => {
-                    self.accept_inbound_stream(stream).await;
-                },
-
-                ClusterCommand::StoreSnapshotMetadata { replid, hwm } => {
-                    self.store_snapshot_metadata(replid, hwm);
-                },
-                ClusterCommand::SendClusterHeatBeat => {
-                    // ! remove idle peers based on ttl.
-                    // ! The following may need to be moved else where to avoid blocking the main loop
-                    self.remove_idle_peers().await;
-                    let hop_count = Self::hop_count(FANOUT, self.members.len());
-                    self.send_cluster_heartbeat(hop_count, &logger).await;
-                },
-
-                ClusterCommand::StartLeaderElection => {
-                    self.run_for_election(&mut logger).await;
-                },
-
-                ClusterCommand::AddPeer(peer, optional_callback) => {
-                    self.add_peer(peer).await;
-                    if let Some(cb) = optional_callback {
-                        let _ = cb.send(Ok(()));
+                ClusterCommand::FromHeartBeatScheduler(msg) => {
+                    use HeartBeatSchedulerMessage::*;
+                    match msg {
+                        SendClusterHeatBeat => {
+                            // ! remove idle peers based on ttl.
+                            // ! The following may need to be moved else where to avoid blocking the main loop
+                            self.remove_idle_peers().await;
+                            let hop_count = Self::hop_count(FANOUT, self.members.len());
+                            self.send_cluster_heartbeat(hop_count, &logger).await;
+                        },
+                        SendAppendEntriesRPC => {
+                            self.send_rpc(&logger).await;
+                        },
+                        StartLeaderElection => {
+                            self.run_for_election(&mut logger).await;
+                        },
                     }
                 },
-                ClusterCommand::FollowerSetReplId(replication_id) => {
-                    self.set_repl_id(replication_id)
-                },
-
-                ClusterCommand::SendAppendEntriesRPC => {
-                    self.send_rpc(&logger).await;
-                },
-
                 ClusterCommand::FromClient(client_message) => {
                     use ClientMessage::*;
 
@@ -125,7 +109,6 @@ impl ClusterActor {
                         },
                     }
                 },
-
                 ClusterCommand::FromPeer(peer_message) => {
                     use PeerMessage::*;
 
@@ -172,6 +155,29 @@ impl ClusterActor {
                         TriggerRebalance => {
                             // self.trigger_rebalance().await;
                         },
+                    }
+                },
+                ClusterCommand::FromSelf(self_generated_message) => {
+                    use SelfGeneratedMessage::*;
+
+                    match self_generated_message {
+                        ConnectToServer { connect_to, callback } => {
+                            self.connect_to_server(connect_to, Some(callback)).await;
+                        },
+                        AcceptInboundPeer { stream } => {
+                            self.accept_inbound_stream(stream).await;
+                        },
+                        StoreSnapshotMetadata { replid, hwm } => {
+                            self.store_snapshot_metadata(replid, hwm);
+                        },
+
+                        AddPeer(peer, optional_callback) => {
+                            self.add_peer(peer).await;
+                            if let Some(cb) = optional_callback {
+                                let _ = cb.send(Ok(()));
+                            }
+                        },
+                        FollowerSetReplId(replication_id) => self.set_repl_id(replication_id),
                     }
                 },
             }

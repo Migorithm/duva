@@ -2,6 +2,7 @@ use super::request::HandShakeRequest;
 use super::request::HandShakeRequestEnum;
 use crate::ClusterCommand;
 use crate::domains::IoError;
+use crate::domains::cluster_actors::SelfGeneratedMessage;
 use crate::domains::peers::connections::connected_peer_info::ConnectedPeerInfo;
 use crate::domains::peers::peer::Peer;
 
@@ -152,7 +153,7 @@ impl InboundStream {
         let peer_state = self.peer_state()?;
         let kill_switch = PeerListener::spawn(self.r, cluster_handler.clone());
         let peer = Peer::new(self.w, peer_state, kill_switch);
-        let _ = cluster_handler.send(ClusterCommand::AddPeer(peer, None)).await;
+        let _ = cluster_handler.send(SelfGeneratedMessage::AddPeer(peer, None).into()).await;
         Ok(())
     }
 }

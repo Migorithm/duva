@@ -11,6 +11,7 @@ use domains::IoError;
 use domains::caches::cache_manager::CacheManager;
 use domains::cluster_actors::ClusterActor;
 use domains::cluster_actors::ClusterCommand;
+use domains::cluster_actors::SelfGeneratedMessage;
 use domains::cluster_actors::replication::ReplicationRole;
 use domains::cluster_actors::replication::ReplicationState;
 use domains::config_actors::config_manager::ConfigManager;
@@ -117,7 +118,9 @@ impl StartUpFacade {
                     debug!("Accepted peer connection: {}", socket_addr);
                     if registry
                         .cluster_communication_manager
-                        .send(ClusterCommand::AcceptInboundPeer { stream: peer_stream })
+                        .send(
+                            SelfGeneratedMessage::AcceptInboundPeer { stream: peer_stream }.into(),
+                        )
                         .await
                         .is_err()
                     {
@@ -175,7 +178,7 @@ impl StartUpFacade {
             // Reconnection case - set the replication info
             self.registry
                 .cluster_communication_manager
-                .send(ClusterCommand::StoreSnapshotMetadata { replid: repl_id, hwm })
+                .send(SelfGeneratedMessage::StoreSnapshotMetadata { replid: repl_id, hwm }.into())
                 .await?;
             self.registry.cache_manager.apply_snapshot(snapshot).await?;
         }

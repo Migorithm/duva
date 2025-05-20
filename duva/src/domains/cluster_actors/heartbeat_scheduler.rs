@@ -2,6 +2,8 @@ use crate::domains::cluster_actors::ClusterCommand;
 use std::{ops::Range, time::Duration};
 use tokio::{select, sync::mpsc::Sender, time::interval};
 use tracing::warn;
+
+use super::HeartBeatSchedulerMessage;
 const LEADER_HEARTBEAT_INTERVAL: u64 = 300;
 pub const LEADER_HEARTBEAT_INTERVAL_MAX: u64 = LEADER_HEARTBEAT_INTERVAL * 5;
 const LEADER_HEARTBEAT_INTERVAL_RANGE: Range<u64> =
@@ -42,7 +44,8 @@ impl HeartBeatScheduler {
             async move {
                 loop {
                     heartbeat_interval.tick().await;
-                    let _ = handler.send(ClusterCommand::SendClusterHeatBeat).await;
+                    let _ =
+                        handler.send(HeartBeatSchedulerMessage::SendClusterHeatBeat.into()).await;
                 }
             }
         });
@@ -63,7 +66,7 @@ impl HeartBeatScheduler {
                 _ = async {
                     loop {
                         itv.tick().await;
-                        let _ = cluster_handler.send(ClusterCommand::SendAppendEntriesRPC).await;
+                        let _ = cluster_handler.send(HeartBeatSchedulerMessage::SendAppendEntriesRPC.into()).await;
                     }
                 } => {},
             }
@@ -88,7 +91,7 @@ impl HeartBeatScheduler {
                     },
                     _ =  tokio::time::sleep(Duration::from_millis(rand::random_range(LEADER_HEARTBEAT_INTERVAL_RANGE)))=>{
                         warn!("\x1b[33mElection timeout\x1b[0m");
-                        let _ = cluster_handler.send(ClusterCommand::StartLeaderElection).await;
+                        let _ = cluster_handler.send(HeartBeatSchedulerMessage::StartLeaderElection.into()).await;
 
                     }
                 }
@@ -191,7 +194,11 @@ mod tests {
             while let Some(cmd) = rx.recv().await {
                 assert!(matches!(
                     cmd,
-                    ClusterCommand::SendAppendEntriesRPC | ClusterCommand::SendClusterHeatBeat
+                    ClusterCommand::FromHeartBeatScheduler(
+                        HeartBeatSchedulerMessage::SendAppendEntriesRPC
+                    ) | ClusterCommand::FromHeartBeatScheduler(
+                        HeartBeatSchedulerMessage::SendClusterHeatBeat
+                    )
                 ));
                 count += 1;
                 if count >= 2 {
@@ -216,7 +223,12 @@ mod tests {
         let received = timeout(Duration::from_millis(250), async {
             let mut count = 0;
             while let Some(cmd) = rx.recv().await {
-                assert!(matches!(cmd, ClusterCommand::SendAppendEntriesRPC));
+                assert!(matches!(
+                    cmd,
+                    ClusterCommand::FromHeartBeatScheduler(
+                        HeartBeatSchedulerMessage::SendAppendEntriesRPC
+                    )
+                ));
                 count += 1;
                 if count >= 2 {
                     break;
@@ -259,7 +271,12 @@ mod tests {
             .expect("Timeout waiting for election");
 
         assert!(
-            matches!(election_triggered, Some(ClusterCommand::StartLeaderElection)),
+            matches!(
+                election_triggered,
+                Some(ClusterCommand::FromHeartBeatScheduler(
+                    HeartBeatSchedulerMessage::StartLeaderElection
+                ))
+            ),
             "Should trigger election after timeout"
         );
     }

@@ -20,6 +20,26 @@ use crate::{
 
 #[derive(Debug)]
 pub(crate) enum ClusterCommand {
+    FromSelf(SelfGeneratedMessage),
+    FromHeartBeatScheduler(HeartBeatSchedulerMessage),
+    FromClient(ClientMessage),
+    FromPeer(PeerMessage),
+}
+
+#[derive(Debug)]
+pub enum HeartBeatSchedulerMessage {
+    SendClusterHeatBeat,
+    SendAppendEntriesRPC,
+    StartLeaderElection,
+}
+impl From<HeartBeatSchedulerMessage> for ClusterCommand {
+    fn from(msg: HeartBeatSchedulerMessage) -> Self {
+        ClusterCommand::FromHeartBeatScheduler(msg)
+    }
+}
+
+#[derive(Debug)]
+pub enum SelfGeneratedMessage {
     ConnectToServer {
         connect_to: PeerIdentifier,
         callback: tokio::sync::oneshot::Sender<anyhow::Result<()>>,
@@ -28,19 +48,17 @@ pub(crate) enum ClusterCommand {
         stream: TcpStream,
     },
 
-    SendClusterHeatBeat,
-    SendAppendEntriesRPC,
-    StartLeaderElection,
-
     StoreSnapshotMetadata {
         replid: ReplicationId,
         hwm: u64,
     },
-
     AddPeer(Peer, Option<tokio::sync::oneshot::Sender<anyhow::Result<()>>>),
     FollowerSetReplId(ReplicationId),
-    FromClient(ClientMessage),
-    FromPeer(PeerMessage),
+}
+impl From<SelfGeneratedMessage> for ClusterCommand {
+    fn from(msg: SelfGeneratedMessage) -> Self {
+        ClusterCommand::FromSelf(msg)
+    }
 }
 
 #[derive(Debug)]
