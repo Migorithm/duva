@@ -52,6 +52,7 @@ pub struct ClusterActor {
     // * Pending requests are used to store requests that are received while the actor is in the process of election/cluster rebalancing.
     // * These requests will be processed once the actor is back to a stable state.
     pub(crate) pending_requests: Option<VecDeque<ConsensusRequest>>,
+    pub(crate) client_sessions: ClientSessions,
 }
 
 #[derive(Debug, Clone)]
@@ -92,6 +93,7 @@ impl ClusterActor {
             topology_writer,
             node_change_broadcast: tx,
             pending_requests: None,
+            client_sessions: ClientSessions::default(),
         }
     }
 
@@ -415,11 +417,7 @@ impl ClusterActor {
             .min()
     }
 
-    pub(crate) fn track_replication_progress(
-        &mut self,
-        res: ReplicationAck,
-        sessions: &mut ClientSessions,
-    ) {
+    pub(crate) fn track_replication_progress(&mut self, res: ReplicationAck) {
         let Some(mut consensus) = self.consensus_tracker.remove(&res.log_idx) else {
             return;
         };
@@ -440,7 +438,7 @@ impl ClusterActor {
         // * Increase the high water mark
         self.replication.hwm.fetch_add(1, Ordering::Relaxed);
 
-        sessions.set_response(consensus.session_req.take());
+        self.client_sessions.set_response(consensus.session_req.take());
         let _ = consensus.callback.send(Ok(ConsensusClientResponse::LogIndex(res.log_idx.into())));
     }
 
@@ -968,18 +966,17 @@ pub mod test {
     async fn test_leader_req_consensus_early_return_when_already_processed_session_req_given() {
         // GIVEN
         let logger = ReplicatedLogs::new(MemoryOpLogs::default(), 0, 0);
-        let cluster_actor = cluster_actor_create_helper().await;
+        let mut cluster_actor = cluster_actor_create_helper().await;
 
         let cache_manager = CacheManager { inboxes: vec![] };
 
-        let mut sessions = ClientSessions::default();
         let client_id = Uuid::now_v7();
         let client_req = SessionRequest::new(1, client_id);
 
         // WHEN - session request is already processed
-        sessions.set_response(Some(client_req.clone()));
+        cluster_actor.client_sessions.set_response(Some(client_req.clone()));
         let handler = cluster_actor.self_handler.clone();
-        tokio::spawn(cluster_actor.handle(MemoryOpLogs::default(), cache_manager, sessions));
+        tokio::spawn(cluster_actor.handle(MemoryOpLogs::default(), cache_manager));
         let (tx, rx) = tokio::sync::oneshot::channel();
         handler
             .send(ClusterCommand::Client(ClientMessage::LeaderReqConsensus(ConsensusRequest {
@@ -1001,7 +998,7 @@ pub mod test {
     #[tokio::test]
     async fn test_consensus_voting_deleted_when_consensus_reached() {
         // GIVEN
-        let mut sessions = ClientSessions::default();
+
         let mut logger = ReplicatedLogs::new(MemoryOpLogs::default(), 0, 0);
         let mut cluster_actor = cluster_actor_create_helper().await;
 
@@ -1036,30 +1033,28 @@ pub mod test {
             rej_reason: RejectionReason::None,
             from: PeerIdentifier("".into()),
         };
-        cluster_actor
-            .track_replication_progress(follower_res.clone().set_from("repl1"), &mut sessions);
-        cluster_actor
-            .track_replication_progress(follower_res.clone().set_from("repl2"), &mut sessions);
+        cluster_actor.track_replication_progress(follower_res.clone().set_from("repl1"));
+        cluster_actor.track_replication_progress(follower_res.clone().set_from("repl2"));
 
         // up to this point, tracker hold the consensus
         assert_eq!(cluster_actor.consensus_tracker.len(), 1);
         assert_eq!(cluster_actor.consensus_tracker.get(&1).unwrap().voters.len(), 2);
 
         // ! Majority votes made
-        cluster_actor.track_replication_progress(follower_res.set_from("repl3"), &mut sessions);
+        cluster_actor.track_replication_progress(follower_res.set_from("repl3"));
 
         // THEN
         assert_eq!(cluster_actor.consensus_tracker.len(), 0);
         assert_eq!(logger.last_log_index, 1);
 
         client_wait.await.unwrap().unwrap();
-        assert!(sessions.is_processed(&Some(client_request))); // * session_request_is_marked_as_processed
+        assert!(cluster_actor.client_sessions.is_processed(&Some(client_request))); // * session_request_is_marked_as_processed
     }
 
     #[tokio::test]
     async fn test_same_voter_can_vote_only_once() {
         // GIVEN
-        let mut sessions = ClientSessions::default();
+
         let mut logger = ReplicatedLogs::new(MemoryOpLogs::default(), 0, 0);
         let mut cluster_actor = cluster_actor_create_helper().await;
 
@@ -1093,9 +1088,9 @@ pub mod test {
             rej_reason: RejectionReason::None,
             from: PeerIdentifier("repl1".into()), //TODO Must be changed if "update_match_index" becomes idempotent operation on peer id
         };
-        cluster_actor.track_replication_progress(follower_res.clone(), &mut sessions);
-        cluster_actor.track_replication_progress(follower_res.clone(), &mut sessions);
-        cluster_actor.track_replication_progress(follower_res.clone(), &mut sessions);
+        cluster_actor.track_replication_progress(follower_res.clone());
+        cluster_actor.track_replication_progress(follower_res.clone());
+        cluster_actor.track_replication_progress(follower_res.clone());
 
         // THEN - no change in consensus tracker even though the same voter voted multiple times
         assert_eq!(cluster_actor.consensus_tracker.len(), 1);

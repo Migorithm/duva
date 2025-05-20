@@ -1,6 +1,5 @@
 use crate::domains::caches::cache_manager::CacheManager;
 use crate::domains::cluster_actors::replication::ReplicationState;
-use crate::domains::cluster_actors::session::ClientSessions;
 use crate::domains::cluster_actors::{
     ClientMessage, ClusterActor, ConnectionMessage, FANOUT, SchedulerMessage,
 };
@@ -18,7 +17,6 @@ impl ClusterActor {
         mut self,
         wal: impl TWriteAheadLog,
         cache_manager: CacheManager,
-        mut client_sessions: ClientSessions,
     ) -> anyhow::Result<Self> {
         let mut logger = ReplicatedLogs::new(wal, 0, 0);
 
@@ -69,7 +67,7 @@ impl ClusterActor {
                                 continue;
                             }
 
-                            if client_sessions.is_processed(&req.session_req) {
+                            if self.client_sessions.is_processed(&req.session_req) {
                                 // TODO mapping between early returned values to client result
                                 let _ = req.callback.send(Ok(
                                     ConsensusClientResponse::AlreadyProcessed {
@@ -133,7 +131,7 @@ impl ClusterActor {
                                 continue;
                             }
                             self.update_on_hertbeat_message(&repl_res.from, repl_res.log_idx);
-                            self.track_replication_progress(repl_res, &mut client_sessions);
+                            self.track_replication_progress(repl_res);
                         },
 
                         | AppendEntriesRPC(heartbeat) => {
@@ -196,7 +194,7 @@ impl ClusterActor {
             ClusterActor::new(node_timeout, init_replication, heartbeat_interval, topology_writer);
 
         let actor_handler = cluster_actor.self_handler.clone();
-        tokio::spawn(cluster_actor.handle(wal, cache_manager, ClientSessions::default()));
+        tokio::spawn(cluster_actor.handle(wal, cache_manager));
         actor_handler
     }
 }
