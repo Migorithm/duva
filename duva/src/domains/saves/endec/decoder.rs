@@ -67,12 +67,12 @@ impl<T> BytesDecoder<'_, T> {
     pub fn size_decode(&mut self) -> Option<usize> {
         if let Some(first_byte) = self.first() {
             match first_byte >> 6 {
-                0b00 => {
+                | 0b00 => {
                     let size = (first_byte & 0x3F) as usize;
                     self.skip(1);
                     Some(size)
                 },
-                0b01 => {
+                | 0b01 => {
                     if self.len() < 2 {
                         return None;
                     }
@@ -80,7 +80,7 @@ impl<T> BytesDecoder<'_, T> {
                     self.skip(2);
                     Some(size)
                 },
-                0b10 => {
+                | 0b10 => {
                     if self.len() < 5 {
                         return None;
                     }
@@ -92,7 +92,7 @@ impl<T> BytesDecoder<'_, T> {
                     self.skip(5);
                     Some(size)
                 },
-                _ => None,
+                | _ => None,
             }
         } else {
             None
@@ -103,26 +103,26 @@ impl<T> BytesDecoder<'_, T> {
         if let Some(first_byte) = self.first() {
             match first_byte {
                 // 0b11000000: 8-bit integer
-                0xC0 => {
+                | 0xC0 => {
                     let value = i8::from_le_bytes([self[1]]).to_string();
                     self.skip(2);
                     return Some(value);
                 },
-                0xC1 => {
+                | 0xC1 => {
                     if self.len() >= 3 {
                         let value = i16::from_le_bytes(extract_range(self, 1..=2)?).to_string();
                         self.skip(3);
                         return Some(value);
                     }
                 },
-                0xC2 => {
+                | 0xC2 => {
                     if self.len() >= 5 {
                         let value = i32::from_le_bytes(extract_range(self, 1..=4)?).to_string();
                         self.skip(5);
                         return Some(value);
                     }
                 },
-                _ => return None,
+                | _ => return None,
             }
         }
         None
@@ -174,11 +174,11 @@ impl<'a> BytesDecoder<'a, HeaderReady> {
                 .context("metadata loading: key value extraction failed")?;
 
             match key.as_str() {
-                "repl-id" => metadata.repl_id = ReplicationId::Key(value),
-                "repl-offset" => {
+                | "repl-id" => metadata.repl_id = ReplicationId::Key(value),
+                | "repl-offset" => {
                     metadata.log_idx = value.parse().context("repl-offset parse fail")?
                 },
-                var => {
+                | var => {
                     println!("Unknown metadata key: {}", var);
                 },
             }
@@ -219,13 +219,13 @@ impl BytesDecoder<'_, MetadataReady> {
 
         while let Some(identifier) = self.first() {
             match *identifier {
-                DATABASE_SECTION_INDICATOR => {
+                | DATABASE_SECTION_INDICATOR => {
                     self.try_set_index(&mut builder)?;
                 },
-                DATABASE_TABLE_SIZE_INDICATOR => {
+                | DATABASE_TABLE_SIZE_INDICATOR => {
                     self.try_set_table_sizes(&mut builder)?;
                 },
-                _ => {
+                | _ => {
                     if self.should_stop_extending_storage(&mut builder)? {
                         break;
                     }
@@ -273,20 +273,20 @@ impl BytesDecoder<'_, MetadataReady> {
         while self.len() > 0 {
             match self[0] {
                 //0b11111100
-                EXPIRY_TIME_IN_MILLISECONDS_INDICATOR => {
+                | EXPIRY_TIME_IN_MILLISECONDS_INDICATOR => {
                     expiry = Some(self.try_extract_expiry_time_in_milliseconds()?.to_datetime());
                 },
                 //0b11111101
-                EXPIRY_TIME_IN_SECONDS_INDICATOR => {
+                | EXPIRY_TIME_IN_SECONDS_INDICATOR => {
                     expiry = Some(self.try_extract_expiry_time_in_seconds()?.to_datetime());
                 },
                 //0b11111110
-                STRING_VALUE_TYPE_INDICATOR => {
+                | STRING_VALUE_TYPE_INDICATOR => {
                     let (key, value) = self.try_extract_key_value()?;
                     let cache_value = CacheValue::new(value).with_expiry(expiry);
                     return Ok(CacheEntry::new(key, cache_value));
                 },
-                _ => {
+                | _ => {
                     return Err(anyhow::anyhow!("Invalid key value pair"));
                 },
             }

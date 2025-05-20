@@ -25,20 +25,20 @@ impl ClientController {
         current_index: Option<u64>,
     ) -> anyhow::Result<QueryIO> {
         let response = match cmd {
-            ClientAction::Ping => QueryIO::SimpleString("PONG".into()),
-            ClientAction::Echo(val) => QueryIO::BulkString(val),
-            ClientAction::Set { key, value } => QueryIO::SimpleString(
+            | ClientAction::Ping => QueryIO::SimpleString("PONG".into()),
+            | ClientAction::Echo(val) => QueryIO::BulkString(val),
+            | ClientAction::Set { key, value } => QueryIO::SimpleString(
                 self.cache_manager.route_set(key, value, None, current_index.unwrap()).await?,
             ),
-            ClientAction::SetWithExpiry { key, value, expiry } => QueryIO::SimpleString(
+            | ClientAction::SetWithExpiry { key, value, expiry } => QueryIO::SimpleString(
                 self.cache_manager
                     .route_set(key, value, Some(expiry), current_index.unwrap())
                     .await?,
             ),
-            ClientAction::Append { key, value } => QueryIO::SimpleString(
+            | ClientAction::Append { key, value } => QueryIO::SimpleString(
                 self.cache_manager.route_append(key, value).await?.to_string(),
             ),
-            ClientAction::Save => {
+            | ClientAction::Save => {
                 let file_path = self.config_manager.get_filepath().await?;
                 let file = tokio::fs::OpenOptions::new()
                     .write(true)
@@ -58,36 +58,36 @@ impl ClientController {
 
                 QueryIO::Null
             },
-            ClientAction::Get { key } => self.cache_manager.route_get(key).await?.into(),
-            ClientAction::IndexGet { key, index } => {
+            | ClientAction::Get { key } => self.cache_manager.route_get(key).await?.into(),
+            | ClientAction::IndexGet { key, index } => {
                 self.cache_manager.route_index_get(key, index).await?.into()
             },
-            ClientAction::Keys { pattern } => self.cache_manager.route_keys(pattern).await?,
-            ClientAction::Config { key, value } => {
+            | ClientAction::Keys { pattern } => self.cache_manager.route_keys(pattern).await?,
+            | ClientAction::Config { key, value } => {
                 let res = self.config_manager.route_get((key, value)).await?;
                 match res {
-                    ConfigResponse::Dir(value) => QueryIO::SimpleString(format!("dir {}", value)),
-                    ConfigResponse::DbFileName(value) => QueryIO::SimpleString(value),
-                    _ => QueryIO::Err("Invalid operation".into()),
+                    | ConfigResponse::Dir(value) => QueryIO::SimpleString(format!("dir {}", value)),
+                    | ConfigResponse::DbFileName(value) => QueryIO::SimpleString(value),
+                    | _ => QueryIO::Err("Invalid operation".into()),
                 }
             },
-            ClientAction::Delete { keys } => {
+            | ClientAction::Delete { keys } => {
                 QueryIO::SimpleString(self.cache_manager.route_delete(keys).await?.to_string())
             },
-            ClientAction::Exists { keys } => {
+            | ClientAction::Exists { keys } => {
                 QueryIO::SimpleString(self.cache_manager.route_exists(keys).await?.to_string())
             },
-            ClientAction::Info => QueryIO::BulkString(
+            | ClientAction::Info => QueryIO::BulkString(
                 self.cluster_communication_manager
                     .replication_info()
                     .await?
                     .vectorize()
                     .join("\r\n"),
             ),
-            ClientAction::ClusterInfo => {
+            | ClientAction::ClusterInfo => {
                 self.cluster_communication_manager.cluster_info().await?.into()
             },
-            ClientAction::ClusterNodes => self
+            | ClientAction::ClusterNodes => self
                 .cluster_communication_manager
                 .cluster_nodes()
                 .await?
@@ -95,41 +95,41 @@ impl ClientController {
                 .map(|peer| peer.to_string())
                 .collect::<Vec<_>>()
                 .into(),
-            ClientAction::ClusterForget(peer_identifier) => {
+            | ClientAction::ClusterForget(peer_identifier) => {
                 match self.cluster_communication_manager.forget_peer(peer_identifier).await {
-                    Ok(true) => QueryIO::SimpleString("OK".into()),
-                    Ok(false) => QueryIO::Err("No such peer".into()),
-                    Err(e) => QueryIO::Err(e.to_string()),
+                    | Ok(true) => QueryIO::SimpleString("OK".into()),
+                    | Ok(false) => QueryIO::Err("No such peer".into()),
+                    | Err(e) => QueryIO::Err(e.to_string()),
                 }
             },
-            ClientAction::ClusterMeet(peer_identifier, option) => self
+            | ClientAction::ClusterMeet(peer_identifier, option) => self
                 .cluster_communication_manager
                 .cluster_meet(peer_identifier, option)
                 .await?
                 .into(),
-            ClientAction::ReplicaOf(peer_identifier) => {
+            | ClientAction::ReplicaOf(peer_identifier) => {
                 self.cluster_communication_manager.replicaof(peer_identifier.clone()).await?;
                 QueryIO::SimpleString("OK".into())
             },
-            ClientAction::Role => {
+            | ClientAction::Role => {
                 let role = self.cluster_communication_manager.role();
                 QueryIO::SimpleString(role.await?.to_string())
             },
-            ClientAction::Ttl { key } => {
+            | ClientAction::Ttl { key } => {
                 QueryIO::SimpleString(self.cache_manager.route_ttl(key).await?)
             },
-            ClientAction::Incr { key } => QueryIO::SimpleString(
+            | ClientAction::Incr { key } => QueryIO::SimpleString(
                 self.cache_manager.route_numeric_delta(key, 1, current_index.unwrap()).await?,
             ),
-            ClientAction::Decr { key } => QueryIO::SimpleString(
+            | ClientAction::Decr { key } => QueryIO::SimpleString(
                 self.cache_manager.route_numeric_delta(key, -1, current_index.unwrap()).await?,
             ),
-            ClientAction::IncrBy { key, increment } => QueryIO::SimpleString(
+            | ClientAction::IncrBy { key, increment } => QueryIO::SimpleString(
                 self.cache_manager
                     .route_numeric_delta(key, increment, current_index.unwrap())
                     .await?,
             ),
-            ClientAction::DecrBy { key, decrement } => QueryIO::SimpleString(
+            | ClientAction::DecrBy { key, decrement } => QueryIO::SimpleString(
                 self.cache_manager
                     .route_numeric_delta(key, -decrement, current_index.unwrap())
                     .await?,
@@ -147,12 +147,12 @@ impl ClientController {
         let consensus_res = self.maybe_consensus(&mut request).await?;
         debug!("Consensus response: {:?}", consensus_res);
         match consensus_res {
-            ConsensusClientResponse::AlreadyProcessed { key, index } => {
+            | ConsensusClientResponse::AlreadyProcessed { key, index } => {
                 // * Conversion! request has already been processed so we need to convert it to get
                 request.action = ClientAction::IndexGet { key, index };
                 self.handle(request.action, Some(index)).await
             },
-            ConsensusClientResponse::LogIndex(optional_idx) => {
+            | ConsensusClientResponse::LogIndex(optional_idx) => {
                 self.handle(request.action, optional_idx).await
             },
         }

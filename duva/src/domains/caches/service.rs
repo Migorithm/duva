@@ -15,28 +15,28 @@ impl CacheActor {
     ) -> Result<Self> {
         while let Some(command) = recv.recv().await {
             match command {
-                CacheCommand::Set { cache_entry } => {
+                | CacheCommand::Set { cache_entry } => {
                     let _ = self.try_send_ttl(&cache_entry).await;
                     self.set(cache_entry);
                 },
-                CacheCommand::Get { key, callback } => {
+                | CacheCommand::Get { key, callback } => {
                     self.get(&key, callback);
                 },
-                CacheCommand::IndexGet { key, read_idx, callback } => {
+                | CacheCommand::IndexGet { key, read_idx, callback } => {
                     if let Some(callback) = rq.defer_if_stale(read_idx, &key, callback) {
                         self.get(&key, callback);
                     }
                 },
-                CacheCommand::Keys { pattern, callback } => {
+                | CacheCommand::Keys { pattern, callback } => {
                     self.keys(pattern, callback);
                 },
-                CacheCommand::Delete { key, callback } => {
+                | CacheCommand::Delete { key, callback } => {
                     self.delete(key, callback);
                 },
-                CacheCommand::Exists { key, callback } => {
+                | CacheCommand::Exists { key, callback } => {
                     self.exists(key, callback);
                 },
-                CacheCommand::Save { outbox } => {
+                | CacheCommand::Save { outbox } => {
                     outbox
                         .send(SaveCommand::LocalShardSize {
                             table_size: self.len(),
@@ -49,21 +49,21 @@ impl CacheActor {
                     // finalize the save operation
                     outbox.send(SaveCommand::StopSentinel).await?;
                 },
-                CacheCommand::Ping => {
+                | CacheCommand::Ping => {
                     if let Some(pending_rqs) = rq.take_pending_requests() {
                         for DeferredRead { key, callback } in pending_rqs {
                             self.get(&key, callback);
                         }
                     };
                 },
-                CacheCommand::Drop { callback } => {
+                | CacheCommand::Drop { callback } => {
                     self.cache.clear();
                     let _ = callback.send(());
                 },
-                CacheCommand::Append { key, value, callback } => {
+                | CacheCommand::Append { key, value, callback } => {
                     self.append(key, value, callback);
                 },
-                CacheCommand::NumericDetla { key, delta, callback } => {
+                | CacheCommand::NumericDetla { key, delta, callback } => {
                     self.numeric_delta(key, delta, callback);
                 },
             }

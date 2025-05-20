@@ -36,11 +36,11 @@ impl Broker {
         let mut queue = InputQueue::default();
         while let Some(msg) = self.rx.recv().await {
             match msg {
-                BrokerMessage::FromServer(Ok(QueryIO::TopologyChange(topology))) => {
+                | BrokerMessage::FromServer(Ok(QueryIO::TopologyChange(topology))) => {
                     self.cluster_nodes = topology;
                 },
 
-                BrokerMessage::FromServer(Ok(query_io)) => {
+                | BrokerMessage::FromServer(Ok(query_io)) => {
                     let Some(input) = queue.pop() else {
                         continue;
                     };
@@ -53,17 +53,17 @@ impl Broker {
                         println!("Failed to send response to input callback");
                     });
                 },
-                BrokerMessage::FromServer(Err(e)) => match e {
-                    IoError::ConnectionAborted | IoError::ConnectionReset => {
+                | BrokerMessage::FromServer(Err(e)) => match e {
+                    | IoError::ConnectionAborted | IoError::ConnectionReset => {
                         tokio::time::sleep(tokio::time::Duration::from_millis(
                             LEADER_HEARTBEAT_INTERVAL_MAX,
                         ))
                         .await;
                         self.discover_leader().await.unwrap();
                     },
-                    _ => {},
+                    | _ => {},
                 },
-                BrokerMessage::ToServer(command) => {
+                | BrokerMessage::ToServer(command) => {
                     let cmd = self.build_command_with_request_id(&command.command, command.args);
                     if let Err(e) =
                         self.to_server.send(MsgToServer::Command(cmd.as_bytes().to_vec())).await
@@ -96,14 +96,14 @@ impl Broker {
         }
         match query_io {
             // * Current rule: s:value-idx:index_num
-            QueryIO::SimpleString(v) => v
+            | QueryIO::SimpleString(v) => v
                 .rsplit('|')
                 .next()
                 .and_then(|s| s.rsplit(':').next())
                 .and_then(|id| id.parse::<u64>().ok())
                 .filter(|&id| id > self.request_id),
-            QueryIO::Err(_) => Some(self.request_id + 1),
-            _ => None,
+            | QueryIO::Err(_) => Some(self.request_id + 1),
+            | _ => None,
         }
     }
 

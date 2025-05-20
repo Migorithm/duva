@@ -16,13 +16,13 @@ impl TryFrom<QueryIO> for PeerMessage {
     type Error = anyhow::Error;
     fn try_from(query: QueryIO) -> anyhow::Result<Self> {
         match query {
-            QueryIO::AppendEntriesRPC(peer_state) => Ok(Self::AppendEntriesRPC(peer_state)),
-            QueryIO::ClusterHeartBeat(heartbeat) => Ok(Self::ClusterHeartBeat(heartbeat)),
-            QueryIO::Ack(acks) => Ok(PeerMessage::AckReplication(acks)),
-            QueryIO::RequestVote(vote) => Ok(PeerMessage::RequestVote(vote)),
-            QueryIO::RequestVoteReply(reply) => Ok(PeerMessage::ElectionVoteReply(reply)),
-            QueryIO::TriggerRebalance => Ok(PeerMessage::TriggerRebalance),
-            _ => Err(anyhow::anyhow!("Invalid data")),
+            | QueryIO::AppendEntriesRPC(peer_state) => Ok(Self::AppendEntriesRPC(peer_state)),
+            | QueryIO::ClusterHeartBeat(heartbeat) => Ok(Self::ClusterHeartBeat(heartbeat)),
+            | QueryIO::Ack(acks) => Ok(PeerMessage::AckReplication(acks)),
+            | QueryIO::RequestVote(vote) => Ok(PeerMessage::RequestVote(vote)),
+            | QueryIO::RequestVoteReply(reply) => Ok(PeerMessage::ElectionVoteReply(reply)),
+            | QueryIO::TriggerRebalance => Ok(PeerMessage::TriggerRebalance),
+            | _ => Err(anyhow::anyhow!("Invalid data")),
         }
     }
 }

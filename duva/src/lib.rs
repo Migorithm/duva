@@ -144,7 +144,7 @@ impl StartUpFacade {
         loop {
             match peer_listener.accept().await {
                 // ? how do we know if incoming connection is from a peer or replica?
-                Ok((peer_stream, socket_addr)) => {
+                | Ok((peer_stream, socket_addr)) => {
                     debug!("Accepted peer connection: {}", socket_addr);
                     if cluster_communication_manager
                         .send(ConnectionMessage::AcceptInboundPeer { stream: peer_stream })
@@ -155,7 +155,7 @@ impl StartUpFacade {
                     }
                 },
 
-                Err(err) => {
+                | Err(err) => {
                     error!("Failed to accept peer connection: {:?}", err);
                     if Into::<IoError>::into(err.kind()).should_break() {
                         break Ok(());

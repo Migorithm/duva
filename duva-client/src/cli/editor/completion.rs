@@ -79,7 +79,7 @@ impl Completer for DuvaHinter {
 
         let command = previous_words[0].to_lowercase();
         match command.as_str() {
-            "cluster" => {
+            | "cluster" => {
                 if previous_words.len() == 1 {
                     // Suggest subcommands for cluster that start with current_prefix
                     let subcommands = ["info", "nodes", "forget", "meet"];
@@ -97,7 +97,7 @@ impl Completer for DuvaHinter {
                     }
                 }
             },
-            "info" => {
+            | "info" => {
                 if previous_words.len() == 1 {
                     // Suggest subcommands for info that start with current_prefix
                     let subcommands = ["replication", "section"];
@@ -109,7 +109,7 @@ impl Completer for DuvaHinter {
                     );
                 }
             },
-            "set" => {
+            | "set" => {
                 if previous_words.len() == 1 {
                     // Suggest "key" after set
                     candidates.push(new_pair!("key"));
@@ -122,7 +122,7 @@ impl Completer for DuvaHinter {
                 }
             },
 
-            "incrby" | "decrby" => {
+            | "incrby" | "decrby" => {
                 if previous_words.len() == 1 {
                     // Suggest "key" after set
                     candidates.push(new_pair!("key"));
@@ -135,25 +135,25 @@ impl Completer for DuvaHinter {
                     }
                 }
             },
-            "exists" | "del" => {
+            | "exists" | "del" => {
                 if !previous_words.is_empty() {
                     // Suggest "key" for these commands
                     candidates.push(new_pair!("key"));
                 }
             },
-            "get" | "incr" | "decr" | "ttl" => {
+            | "get" | "incr" | "decr" | "ttl" => {
                 if previous_words.len() == 1 {
                     // Suggest "index" after get key
                     candidates.push(new_pair!("key"));
                 }
             },
-            "keys" => {
+            | "keys" => {
                 if previous_words.len() == 1 {
                     // Suggest "pattern" after keys
                     candidates.push(new_pair!("pattern"));
                 }
             },
-            "replicaof" => {
+            | "replicaof" => {
                 if previous_words.len() == 1 {
                     // Suggest "host port" after replicaof
                     candidates.push(new_pair!("host"));
@@ -162,7 +162,7 @@ impl Completer for DuvaHinter {
                     candidates.push(new_pair!("port"));
                 }
             },
-            _ => {},
+            | _ => {},
         }
 
         Ok((start, candidates))

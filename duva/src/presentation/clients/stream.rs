@@ -24,12 +24,12 @@ impl ClientStreamReader {
     ) {
         'l: loop {
             match self.extract_query().await {
-                Ok(requests) => {
+                | Ok(requests) => {
                     debug!("Received {} requests", requests.len());
                     for req in requests.into_iter() {
                         trace!(?req, "Processing request");
                         match handler.maybe_consensus_then_execute(req).await {
-                            Ok(res) => {
+                            | Ok(res) => {
                                 if sender.send(res).await.is_err() {
                                     break 'l;
                                 }
@@ -37,7 +37,7 @@ impl ClientStreamReader {
 
                             // ! One of the following errors can be returned:
                             // ! consensus or handler or commit
-                            Err(e) => {
+                            | Err(e) => {
                                 error!("{:?}", e);
                                 let _ = sender.send(QueryIO::Err(e.to_string())).await;
                                 continue;
@@ -47,7 +47,7 @@ impl ClientStreamReader {
                     debug!("Finished processing requests");
                 },
 
-                Err(err) => {
+                | Err(err) => {
                     error!("{}", err);
                     if err.should_break() {
                         return;
@@ -65,12 +65,12 @@ impl ClientStreamReader {
         query_ios
             .into_iter()
             .map(|query_io| match query_io {
-                QueryIO::Array(value) => {
+                | QueryIO::Array(value) => {
                     let req = ClientRequest::from_user_input(value, None)
                         .map_err(|e| IoError::Custom(e.to_string()))?;
                     Ok(req)
                 },
-                QueryIO::SessionRequest { request_id, value } => {
+                | QueryIO::SessionRequest { request_id, value } => {
                     let req = ClientRequest::from_user_input(
                         value,
                         Some(SessionRequest::new(request_id, self.client_id)),
@@ -78,7 +78,7 @@ impl ClientStreamReader {
                     .map_err(|e| IoError::Custom(e.to_string()))?;
                     Ok(req)
                 },
-                _ => Err(IoError::Custom("Unexpected command format".to_string())),
+                | _ => Err(IoError::Custom("Unexpected command format".to_string())),
             })
             .collect()
     }
