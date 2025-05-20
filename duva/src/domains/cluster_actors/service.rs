@@ -86,8 +86,10 @@ impl ClusterActor {
                                     .send(err!("invalid operation: cannot replicate to self"));
                                 continue;
                             }
+
                             cache_manager.drop_cache().await;
-                            self.replicaof(peer_addr, &mut logger, callback).await;
+                            logger.reset().await;
+                            self.replicaof(peer_addr, callback).await;
                         },
                         | ClusterMeet(peer_addr, lazy_option, callback) => {
                             if !self.replication.is_leader_mode

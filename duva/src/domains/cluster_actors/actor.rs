@@ -702,10 +702,9 @@ impl ClusterActor {
     pub(crate) async fn replicaof(
         &mut self,
         peer_addr: PeerIdentifier,
-        logger: &mut ReplicatedLogs<impl TWriteAheadLog>,
+
         callback: tokio::sync::oneshot::Sender<anyhow::Result<()>>,
     ) {
-        logger.reset().await;
         self.replication.hwm.store(0, Ordering::Release);
         self.set_repl_id(ReplicationId::Undecided);
         self.step_down().await;
