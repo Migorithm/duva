@@ -2,17 +2,18 @@ use super::{WriteOperation, WriteRequest, interfaces::TWriteAheadLog};
 use tracing::debug;
 
 #[derive(Debug)]
-pub(crate) struct ReplicatedLogs<T: TWriteAheadLog> {
+pub(crate) struct ReplicatedLogs<T> {
     pub(crate) target: T,
     pub(crate) last_log_index: u64,
     pub(crate) last_log_term: u64,
 }
-
-impl<T: TWriteAheadLog> ReplicatedLogs<T> {
+impl<T> ReplicatedLogs<T> {
     pub fn new(target: T, last_log_index: u64, last_log_term: u64) -> Self {
         Self { target, last_log_index, last_log_term }
     }
+}
 
+impl<T: TWriteAheadLog> ReplicatedLogs<T> {
     pub(crate) async fn list_append_log_entries(
         &self,
         low_watermark: Option<u64>,

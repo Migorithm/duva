@@ -38,7 +38,7 @@ use tracing::info;
 use tracing::warn;
 
 #[derive(Debug)]
-pub struct ClusterActor<T: TWriteAheadLog> {
+pub struct ClusterActor<T> {
     pub(crate) members: BTreeMap<PeerIdentifier, Peer>,
     pub(crate) replication: ReplicationState,
     pub(crate) node_timeout: u128,
