@@ -57,7 +57,7 @@ impl StartUpFacade {
         let path_str = format!("{}/{}", env.dir, env.dbfilename);
         let path = std::path::Path::new(path_str.as_str());
 
-        // determine_repl_id
+        // todo if tpp was modified AFTER snapshot was created, we need to update the repl id
         let _repl_id_from_topp = if env.seed_server.is_none() {
             ReplicationId::Key(
                 env.pre_connected_peers
@@ -71,10 +71,8 @@ impl StartUpFacade {
         };
 
         if let Ok(true) = path.try_exists() {
-            //TODO snapshot also has repl id from snapshot
             let snapshot = SnapshotLoader::load_from_filepath(path).unwrap();
-            // let (repl_id, hwm) = snapshot.extract_replication_info();
-            // Reconnection case - set the replication info
+
             return snapshot;
         }
 
