@@ -39,13 +39,11 @@ pub(crate) struct CacheManager {
 impl CacheManager {
     pub(crate) fn run_cache_actors(hwm: Arc<AtomicU64>) -> CacheManager {
         const NUM_OF_PERSISTENCE: usize = 10;
-        let cache_manager = CacheManager {
+        CacheManager {
             inboxes: (0..NUM_OF_PERSISTENCE)
                 .map(|_| CacheActor::run(hwm.clone()))
                 .collect::<Vec<_>>(),
-        };
-
-        cache_manager
+        }
     }
 
     pub(crate) async fn route_get(&self, key: impl AsRef<str>) -> Result<Option<CacheValue>> {
