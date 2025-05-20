@@ -3,7 +3,7 @@ use crate::domains::{
     interface::TRead,
     peers::{PeerMessage, peer::ListeningActorKillTrigger},
 };
-use tokio::{net::tcp::OwnedReadHalf, select, sync::mpsc::Sender};
+use tokio::{net::tcp::OwnedReadHalf, select};
 use tracing::{debug, trace};
 
 use super::connections::connected_types::ReadConnected;
