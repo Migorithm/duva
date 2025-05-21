@@ -141,13 +141,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             },
 
             | AppendEntriesRPC(heartbeat) => {
-                if self.check_term_outdated(&heartbeat).await {
-                    return;
-                };
-
-                self.reset_election_timeout(&heartbeat.from);
-                self.maybe_update_term(heartbeat.term);
-                self.replicate(heartbeat, cache_manager).await;
+                self.append_entries_rpc(cache_manager, heartbeat).await;
             },
 
             | ElectionVoteReply(request_vote_reply) => {

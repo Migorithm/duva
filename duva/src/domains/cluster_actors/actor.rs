@@ -464,12 +464,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             leader.send(ReplicationAck::new(log_idx, rejection_reason, &self.replication)).await;
     }
 
-    pub(crate) async fn replicate(
-        &mut self,
-
-        mut heartbeat: HeartBeat,
-        cache_manager: &CacheManager,
-    ) {
+    async fn replicate(&mut self, mut heartbeat: HeartBeat, cache_manager: &CacheManager) {
         // * write logs
         if self.replicate_log_entries(&mut heartbeat).await.is_err() {
             error!("Failed to replicate logs");
@@ -588,6 +583,18 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         self.update_on_hertbeat_message(&repl_res.from, repl_res.log_idx);
         self.track_replication_progress(repl_res);
     }
+    pub(crate) async fn append_entries_rpc(
+        &mut self,
+        cache_manager: &CacheManager,
+        heartbeat: crate::domains::peers::command::HeartBeat,
+    ) {
+        if self.check_term_outdated(&heartbeat).await {
+            return;
+        };
+        self.reset_election_timeout(&heartbeat.from);
+        self.maybe_update_term(heartbeat.term);
+        self.replicate(heartbeat, cache_manager).await;
+    }
 
     pub(crate) async fn tally_vote(&mut self) {
         if !self.replication.election_state.may_become_leader() {
@@ -607,7 +614,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             .await;
     }
 
-    pub(crate) fn reset_election_timeout(&mut self, leader_id: &PeerIdentifier) {
+    fn reset_election_timeout(&mut self, leader_id: &PeerIdentifier) {
         if let Some(peer) = self.members.get_mut(leader_id) {
             peer.last_seen = Instant::now();
         }
@@ -641,7 +648,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         }
     }
 
-    pub(crate) fn maybe_update_term(&mut self, new_term: u64) {
+    fn maybe_update_term(&mut self, new_term: u64) {
         if new_term > self.replication.term {
             self.replication.term = new_term;
             self.replication.election_state = ElectionState::Follower { voted_for: None };
@@ -650,7 +657,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         }
     }
 
-    pub(crate) async fn check_term_outdated(&mut self, heartbeat: &HeartBeat) -> bool {
+    async fn check_term_outdated(&mut self, heartbeat: &HeartBeat) -> bool {
         if heartbeat.term < self.replication.term {
             self.report_replica_lag(
                 &heartbeat.from,
