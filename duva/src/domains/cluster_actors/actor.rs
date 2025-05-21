@@ -239,7 +239,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         }
     }
 
-    pub(crate) async fn gossip(&mut self, mut hop_count: u8) {
+    async fn gossip(&mut self, mut hop_count: u8) {
         // If hop_count is 0, don't send the message to other peers
         if hop_count == 0 {
             return;
@@ -277,7 +277,18 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         }
     }
 
-    pub(crate) async fn apply_ban_list(&mut self, ban_list: Vec<BannedPeer>) {
+    pub(crate) async fn handle_cluster_heartbeat(&mut self, mut heartbeat: HeartBeat) {
+        if self.replication.in_ban_list(&heartbeat.from) {
+            debug!("{} in the ban list", heartbeat.from);
+            return;
+        }
+        self.apply_ban_list(std::mem::take(&mut heartbeat.ban_list)).await;
+        self.join_peer_network_if_absent(heartbeat.cluster_nodes).await;
+        self.gossip(heartbeat.hop_count).await;
+        self.update_on_hertbeat_message(&heartbeat.from, heartbeat.hwm);
+    }
+
+    async fn apply_ban_list(&mut self, ban_list: Vec<BannedPeer>) {
         self.merge_ban_list(ban_list);
         // retain_only_recent_banned_nodes
         let current_time_in_sec = time_in_secs().unwrap();
@@ -288,7 +299,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         }
     }
 
-    pub(crate) fn update_on_hertbeat_message(&mut self, from: &PeerIdentifier, log_index: u64) {
+    fn update_on_hertbeat_message(&mut self, from: &PeerIdentifier, log_index: u64) {
         if let Some(peer) = self.members.get_mut(from) {
             peer.last_seen = Instant::now();
             peer.set_match_index(log_index);
@@ -296,6 +307,19 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     }
 
     pub(crate) async fn req_consensus(&mut self, req: ConsensusRequest) {
+        if !self.replication.is_leader_mode {
+            let _ = req.callback.send(err!("Write given to follower"));
+            return;
+        }
+        if self.client_sessions.is_processed(&req.session_req) {
+            // TODO mapping between early returned values to client result
+            let _ = req.callback.send(Ok(ConsensusClientResponse::AlreadyProcessed {
+                key: req.request.key(),
+                index: self.logger.last_log_index,
+            }));
+            return;
+        };
+
         if let Some(pending_requests) = self.pending_requests.as_mut() {
             pending_requests.push_back(req);
             return;
@@ -413,7 +437,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             .min()
     }
 
-    pub(crate) fn track_replication_progress(&mut self, res: ReplicationAck) {
+    fn track_replication_progress(&mut self, res: ReplicationAck) {
         let Some(mut consensus) = self.consensus_tracker.remove(&res.log_idx) else {
             return;
         };
@@ -453,12 +477,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             leader.send(ReplicationAck::new(log_idx, rejection_reason, &self.replication)).await;
     }
 
-    pub(crate) async fn replicate(
-        &mut self,
-
-        mut heartbeat: HeartBeat,
-        cache_manager: &CacheManager,
-    ) {
+    async fn replicate(&mut self, mut heartbeat: HeartBeat, cache_manager: &CacheManager) {
         // * write logs
         if self.replicate_log_entries(&mut heartbeat).await.is_err() {
             error!("Failed to replicate logs");
@@ -569,8 +588,31 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         };
         let _ = peer.send(ElectionVote { term, vote_granted: grant_vote }).await;
     }
+    pub(crate) async fn ack_replication(&mut self, repl_res: ReplicationAck) {
+        if !repl_res.is_granted() {
+            self.handle_repl_rejection(repl_res).await;
+            return;
+        }
+        self.update_on_hertbeat_message(&repl_res.from, repl_res.log_idx);
+        self.track_replication_progress(repl_res);
+    }
+    pub(crate) async fn append_entries_rpc(
+        &mut self,
+        cache_manager: &CacheManager,
+        heartbeat: crate::domains::peers::command::HeartBeat,
+    ) {
+        if self.check_term_outdated(&heartbeat).await {
+            return;
+        };
+        self.reset_election_timeout(&heartbeat.from);
+        self.maybe_update_term(heartbeat.term);
+        self.replicate(heartbeat, cache_manager).await;
+    }
 
-    pub(crate) async fn tally_vote(&mut self) {
+    pub(crate) async fn receive_election_vote(&mut self, election_vote: ElectionVote) {
+        if !election_vote.vote_granted {
+            return;
+        }
         if !self.replication.election_state.may_become_leader() {
             return;
         }
@@ -588,7 +630,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             .await;
     }
 
-    pub(crate) fn reset_election_timeout(&mut self, leader_id: &PeerIdentifier) {
+    fn reset_election_timeout(&mut self, leader_id: &PeerIdentifier) {
         if let Some(peer) = self.members.get_mut(leader_id) {
             peer.last_seen = Instant::now();
         }
@@ -622,7 +664,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         }
     }
 
-    pub(crate) fn maybe_update_term(&mut self, new_term: u64) {
+    fn maybe_update_term(&mut self, new_term: u64) {
         if new_term > self.replication.term {
             self.replication.term = new_term;
             self.replication.election_state = ElectionState::Follower { voted_for: None };
@@ -631,7 +673,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         }
     }
 
-    pub(crate) async fn check_term_outdated(&mut self, heartbeat: &HeartBeat) -> bool {
+    async fn check_term_outdated(&mut self, heartbeat: &HeartBeat) -> bool {
         if heartbeat.term < self.replication.term {
             self.report_replica_lag(
                 &heartbeat.from,
@@ -663,7 +705,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         self.replication.election_state.become_candidate(replica_count);
     }
 
-    pub(crate) async fn handle_repl_rejection(&mut self, repl_res: ReplicationAck) {
+    async fn handle_repl_rejection(&mut self, repl_res: ReplicationAck) {
         match repl_res.rej_reason {
             | RejectionReason::ReceiverHasHigherTerm => self.step_down().await,
             | RejectionReason::LogInconsistency => {
@@ -702,6 +744,11 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         lazy_option: LazyOption,
         callback: tokio::sync::oneshot::Sender<anyhow::Result<()>>,
     ) {
+        if !self.replication.is_leader_mode || self.replication.self_identifier() == peer_addr {
+            let _ = callback.send(err!("wrong address or invalid state for cluster meet command"));
+            return;
+        }
+
         let _ = self.connect_to_server(peer_addr.clone(), Some(callback)).await;
         if lazy_option == LazyOption::Eager {
             self.request_rebalance(peer_addr).await;
@@ -717,7 +764,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         }
     }
 
-    pub(crate) async fn join_peer_network_if_absent(&mut self, cluster_nodes: Vec<PeerState>) {
+    async fn join_peer_network_if_absent(&mut self, cluster_nodes: Vec<PeerState>) {
         let peers_to_connect = cluster_nodes
             .into_iter()
             .filter(|n| {
@@ -1683,5 +1730,43 @@ pub mod test {
             cluster_actor.pending_requests.as_mut().unwrap().pop_front().unwrap().request,
             write_r
         );
+    }
+
+    #[tokio::test]
+    async fn test_reconnection_on_gossip() {
+        use crate::domains::cluster_actors::actor::test::cluster_actor_create_helper;
+        // GIVEN
+        let mut cluster_actor = cluster_actor_create_helper().await;
+
+        // * run listener to see if connection is attempted
+        let listener = TcpListener::bind("127.0.0.1:44455").await.unwrap(); // ! Beaware that this is cluster port
+        let bind_addr = listener.local_addr().unwrap();
+
+        let mut replication_state = cluster_actor.replication.clone();
+        replication_state.is_leader_mode = false;
+
+        let (tx, rx) = tokio::sync::oneshot::channel();
+
+        // Spawn the listener task
+        let handle = tokio::spawn(async move {
+            let (stream, _) = listener.accept().await.unwrap();
+            let mut inbound_stream = InboundStream::new(stream, replication_state.clone());
+            if inbound_stream.recv_handshake().await.is_ok() {
+                let _ = tx.send(());
+            };
+        });
+
+        // WHEN - try to reconnect
+        cluster_actor
+            .join_peer_network_if_absent(vec![PeerState::new(
+                &format!("127.0.0.1:{}", bind_addr.port() - 10000),
+                0,
+                cluster_actor.replication.replid.clone(),
+                NodeKind::Replica,
+            )])
+            .await;
+
+        assert!(handle.await.is_ok());
+        assert!(rx.await.is_ok());
     }
 }
