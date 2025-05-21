@@ -8,7 +8,7 @@ use crate::domains::operation_logs::interfaces::TWriteAheadLog;
 
 use crate::domains::peers::PeerMessage;
 use crate::err;
-use tracing::trace;
+use tracing::{instrument, trace};
 
 use super::actor::ClusterCommandHandler;
 
@@ -53,6 +53,8 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             },
         }
     }
+
+    #[instrument(skip(self, cache_manager))]
     async fn process_client_message(
         &mut self,
         cache_manager: &CacheManager,
@@ -134,6 +136,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         }
     }
 
+    #[instrument(level = tracing::Level::DEBUG, skip(self, conn_msg))]
     async fn process_connection_message(&mut self, conn_msg: ConnectionMessage) {
         use ConnectionMessage::*;
 
