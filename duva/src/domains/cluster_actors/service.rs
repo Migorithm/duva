@@ -130,26 +130,14 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         use PeerMessage::*;
 
         match peer_message {
-            | ClusterHeartBeat(mut heartbeat) => {
-                if self.replication.in_ban_list(&heartbeat.from) {
-                    debug!("{} in the ban list", heartbeat.from);
-                    return;
-                }
-                self.apply_ban_list(std::mem::take(&mut heartbeat.ban_list)).await;
-                self.join_peer_network_if_absent(heartbeat.cluster_nodes).await;
-                self.gossip(heartbeat.hop_count).await;
-                self.update_on_hertbeat_message(&heartbeat.from, heartbeat.hwm);
+            | ClusterHeartBeat(heartbeat) => {
+                self.handle_cluster_heartbeat(heartbeat).await;
             },
             | RequestVote(request_vote) => {
                 self.vote_election(request_vote).await;
             },
             | AckReplication(repl_res) => {
-                if !repl_res.is_granted() {
-                    self.handle_repl_rejection(repl_res).await;
-                    return;
-                }
-                self.update_on_hertbeat_message(&repl_res.from, repl_res.log_idx);
-                self.track_replication_progress(repl_res);
+                self.ack_replication(repl_res).await;
             },
 
             | AppendEntriesRPC(heartbeat) => {
