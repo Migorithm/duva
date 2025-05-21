@@ -8,6 +8,7 @@ use crate::domains::operation_logs::interfaces::TWriteAheadLog;
 
 use crate::domains::peers::PeerMessage;
 use crate::err;
+use crate::prelude::PeerIdentifier;
 use tracing::{instrument, trace};
 
 use super::actor::ClusterCommandHandler;
@@ -24,7 +25,8 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
                     self.process_client_message(&cache_manager, client_message).await
                 },
                 | ClusterCommand::Peer(peer_message) => {
-                    self.process_peer_message(&cache_manager, peer_message).await;
+                    self.process_peer_message(&cache_manager, peer_message.msg, peer_message.from)
+                        .await;
                 },
                 | ClusterCommand::ConnectionReq(conn_msg) => {
                     self.process_connection_message(conn_msg).await;
@@ -108,6 +110,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         &mut self,
         cache_manager: &CacheManager,
         peer_message: PeerMessage,
+        from: PeerIdentifier,
     ) {
         use PeerMessage::*;
 
@@ -130,8 +133,8 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
                 self.receive_election_vote(request_vote_reply).await;
             },
 
-            | TriggerRebalance => {
-                // self.trigger_rebalance().await;
+            | StartRebalance => {
+                self.start_rebalance(from).await;
             },
         }
     }

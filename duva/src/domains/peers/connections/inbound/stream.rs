@@ -58,7 +58,7 @@ impl InboundStream {
         Ok(())
     }
 
-    pub(crate) fn peer_state(&self) -> anyhow::Result<PeerState> {
+    pub(crate) fn connected_peer_state(&self) -> anyhow::Result<PeerState> {
         Ok(self
             .connected_peer_info
             .as_ref()
@@ -151,8 +151,9 @@ impl InboundStream {
         self.recv_handshake().await?;
         self.disseminate_peers(members).await?;
 
-        let peer_state = self.peer_state()?;
-        let kill_switch = PeerListener::spawn(self.r, cluster_handler.clone());
+        let peer_state = self.connected_peer_state()?;
+        let kill_switch =
+            PeerListener::spawn(self.r, cluster_handler.clone(), peer_state.addr.clone());
         let peer = Peer::new(self.w, peer_state, kill_switch);
         let _ = cluster_handler.send(ConnectionMessage::AddPeer(peer, None)).await;
         Ok(())

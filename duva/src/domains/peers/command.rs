@@ -1,6 +1,16 @@
-use crate::{ReplicationState, domains::query_parsers::QueryIO, prelude::PeerIdentifier};
+use crate::{
+    ReplicationState,
+    domains::{cluster_actors::ClusterCommand, query_parsers::QueryIO},
+    prelude::PeerIdentifier,
+};
 
 pub(crate) use peer_messages::*;
+
+#[derive(Debug)]
+pub(crate) struct PeerCommand {
+    pub(crate) from: PeerIdentifier,
+    pub(crate) msg: PeerMessage,
+}
 
 #[derive(Debug)]
 pub(crate) enum PeerMessage {
@@ -9,7 +19,7 @@ pub(crate) enum PeerMessage {
     AckReplication(ReplicationAck),
     RequestVote(RequestVote),
     ElectionVoteReply(ElectionVote),
-    TriggerRebalance,
+    StartRebalance,
 }
 
 impl TryFrom<QueryIO> for PeerMessage {
@@ -21,9 +31,15 @@ impl TryFrom<QueryIO> for PeerMessage {
             | QueryIO::Ack(acks) => Ok(PeerMessage::AckReplication(acks)),
             | QueryIO::RequestVote(vote) => Ok(PeerMessage::RequestVote(vote)),
             | QueryIO::RequestVoteReply(reply) => Ok(PeerMessage::ElectionVoteReply(reply)),
-            | QueryIO::TriggerRebalance => Ok(PeerMessage::TriggerRebalance),
+            | QueryIO::StartRebalance => Ok(PeerMessage::StartRebalance),
             | _ => Err(anyhow::anyhow!("Invalid data")),
         }
+    }
+}
+
+impl From<PeerCommand> for ClusterCommand {
+    fn from(cmd: PeerCommand) -> Self {
+        ClusterCommand::Peer(cmd)
     }
 }
 

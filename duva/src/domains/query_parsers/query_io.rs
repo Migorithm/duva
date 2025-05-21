@@ -14,7 +14,7 @@ const ARRAY_PREFIX: char = '*';
 const APPEND_ENTRY_RPC_PREFIX: char = '^';
 const CLUSTER_HEARTBEAT_PREFIX: char = 'c';
 const TOPOLOGY_CHANGE_PREFIX: char = 't';
-const TRIGGER_REBALANCE_PREFIX: char = 'T';
+const START_REBALANCE_PREFIX: char = 'T';
 const REPLICATE_PREFIX: char = '#';
 const ACKS_PREFIX: char = '@';
 const REQUEST_VOTE_PREFIX: char = 'v';
@@ -54,7 +54,7 @@ pub enum QueryIO {
     RequestVoteReply(ElectionVote),
 
     TopologyChange(Vec<PeerIdentifier>),
-    TriggerRebalance,
+    StartRebalance,
 }
 
 impl QueryIO {
@@ -127,7 +127,7 @@ impl QueryIO {
             | QueryIO::TopologyChange(peer_identifiers) => {
                 serialize_with_bincode(TOPOLOGY_CHANGE_PREFIX, &peer_identifiers)
             },
-            | QueryIO::TriggerRebalance => serialize_with_bincode(TRIGGER_REBALANCE_PREFIX, &()),
+            | QueryIO::StartRebalance => serialize_with_bincode(START_REBALANCE_PREFIX, &()),
         }
     }
 
@@ -228,7 +228,7 @@ pub fn deserialize(buffer: impl Into<Bytes>) -> Result<(QueryIO, usize)> {
         | REQUEST_VOTE_PREFIX => parse_custom_type::<RequestVote>(buffer),
         | REQUEST_VOTE_REPLY_PREFIX => parse_custom_type::<ElectionVote>(buffer),
         | TOPOLOGY_CHANGE_PREFIX => parse_custom_type::<Vec<PeerIdentifier>>(buffer),
-        | TRIGGER_REBALANCE_PREFIX => Ok((QueryIO::TriggerRebalance, 1)),
+        | START_REBALANCE_PREFIX => Ok((QueryIO::StartRebalance, 1)),
 
         | _ => Err(anyhow::anyhow!("Not a known value type {:?}", buffer)),
     }
@@ -711,7 +711,7 @@ mod test {
     #[test]
     fn test_trigger_rebalance_serde() {
         //GIVEN
-        let query_io = QueryIO::TriggerRebalance;
+        let query_io = QueryIO::StartRebalance;
 
         //WHEN
         let serialized = query_io.clone().serialize();

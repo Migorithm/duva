@@ -5,6 +5,7 @@ use crate::domains::cluster_actors::{
 };
 use crate::domains::operation_logs::WriteRequest;
 use crate::domains::peers::PeerMessage;
+use crate::domains::peers::command::PeerCommand;
 use crate::domains::peers::peer::{Peer, PeerState};
 use crate::prelude::PeerIdentifier;
 use std::str::FromStr;
@@ -15,7 +16,7 @@ pub(crate) enum ClusterCommand {
     ConnectionReq(ConnectionMessage),
     Scheduler(SchedulerMessage),
     Client(ClientMessage),
-    Peer(PeerMessage),
+    Peer(PeerCommand),
 }
 
 #[derive(Debug)]
