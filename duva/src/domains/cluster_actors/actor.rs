@@ -13,6 +13,7 @@ use crate::domains::caches::cache_manager::CacheManager;
 use crate::domains::cluster_actors::consensus::ElectionState;
 use crate::domains::operation_logs::interfaces::TWriteAheadLog;
 use crate::domains::operation_logs::logger::ReplicatedLogs;
+use crate::domains::peers::PeerMessage;
 use crate::domains::peers::command::BannedPeer;
 use crate::domains::peers::command::ElectionVote;
 use crate::domains::peers::command::HeartBeat;
@@ -35,6 +36,7 @@ use tokio::net::TcpStream;
 use tracing::debug;
 use tracing::error;
 use tracing::info;
+use tracing::instrument;
 use tracing::warn;
 
 #[derive(Debug)]
@@ -152,6 +154,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         Ok(())
     }
 
+    #[instrument(level = "debug", skip(self, peer),fields(peer_id = %peer.id()))]
     pub(crate) async fn add_peer(&mut self, peer: Peer) {
         self.replication.ban_list.remove(peer.id());
 
@@ -186,6 +189,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         None
     }
 
+    #[instrument(level = "debug", skip(self, optional_callback))]
     pub(crate) async fn connect_to_server(
         &mut self,
         connect_to: PeerIdentifier,
@@ -208,6 +212,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         ));
     }
 
+    #[instrument(level = "debug", skip(self, peer_stream))]
     pub(crate) async fn accept_inbound_stream(&mut self, peer_stream: TcpStream) {
         let inbound_stream = InboundStream::new(peer_stream, self.replication.clone());
         tokio::spawn(
@@ -223,6 +228,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     }
 
     /// Remove the peers that are idle for more than ttl_mills
+    #[instrument(level = tracing::Level::DEBUG, skip(self))]
     pub(crate) async fn remove_idle_peers(&mut self) {
         // loop over members, if ttl is expired, remove the member
         let now = Instant::now();
@@ -277,9 +283,9 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         }
     }
 
+    #[instrument(level = tracing::Level::DEBUG, skip(self, heartbeat), fields(peer_id = %heartbeat.from))]
     pub(crate) async fn handle_cluster_heartbeat(&mut self, mut heartbeat: HeartBeat) {
         if self.replication.in_ban_list(&heartbeat.from) {
-            debug!("{} in the ban list", heartbeat.from);
             return;
         }
         self.apply_ban_list(std::mem::take(&mut heartbeat.ban_list)).await;
@@ -538,6 +544,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         Ok(())
     }
 
+    #[instrument(level = tracing::Level::DEBUG, skip(self))]
     pub(crate) async fn send_rpc(&mut self) {
         if self.replicas().count() == 0 {
             return;
@@ -553,8 +560,9 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             .collect()
     }
 
+    #[instrument(level = tracing::Level::DEBUG, skip(self))]
     pub(crate) async fn run_for_election(&mut self) {
-        info!("Running for election term {}", self.replication.term);
+        warn!("Running for election term {}", self.replication.term);
 
         self.become_candidate();
         let request_vote = RequestVote::new(
@@ -570,6 +578,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             .await;
     }
 
+    #[instrument(level = tracing::Level::DEBUG, skip(self, request_vote))]
     pub(crate) async fn vote_election(&mut self, request_vote: RequestVote) {
         let grant_vote = self.logger.last_log_index <= request_vote.last_log_index
             && self.replication.become_follower_if_term_higher_and_votable(
@@ -588,6 +597,8 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         };
         let _ = peer.send(ElectionVote { term, vote_granted: grant_vote }).await;
     }
+
+    #[instrument(level = tracing::Level::DEBUG, skip(self, repl_res), fields(peer_id = %repl_res.from))]
     pub(crate) async fn ack_replication(&mut self, repl_res: ReplicationAck) {
         if !repl_res.is_granted() {
             self.handle_repl_rejection(repl_res).await;
@@ -596,10 +607,12 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         self.update_on_hertbeat_message(&repl_res.from, repl_res.log_idx);
         self.track_replication_progress(repl_res);
     }
+
+    #[instrument(level = tracing::Level::DEBUG, skip(self, cache_manager,heartbeat), fields(peer_id = %heartbeat.from))]
     pub(crate) async fn append_entries_rpc(
         &mut self,
         cache_manager: &CacheManager,
-        heartbeat: crate::domains::peers::command::HeartBeat,
+        heartbeat: HeartBeat,
     ) {
         if self.check_term_outdated(&heartbeat).await {
             return;
@@ -609,6 +622,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         self.replicate(heartbeat, cache_manager).await;
     }
 
+    #[instrument(level = tracing::Level::DEBUG, skip(self, election_vote))]
     pub(crate) async fn receive_election_vote(&mut self, election_vote: ElectionVote) {
         if !election_vote.vote_granted {
             return;
@@ -751,16 +765,12 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
         let _ = self.connect_to_server(peer_addr.clone(), Some(callback)).await;
         if lazy_option == LazyOption::Eager {
-            self.request_rebalance(peer_addr).await;
-        }
-    }
+            self.pending_requests = Some(VecDeque::new());
 
-    // Ask the given peer to act as rebalancing coordinator
-    async fn request_rebalance(&mut self, peer_addr: PeerIdentifier) {
-        // Block subsequent requests until the cluster is rebalanced
-        self.pending_requests = Some(VecDeque::new());
-        if let Some(peer) = self.members.get_mut(&peer_addr) {
-            // let _ = peer.send(ClusterCommand::Rebalance).await;
+            // Ask the given peer to act as rebalancing coordinator
+            if let Some(peer) = self.members.get_mut(&peer_addr) {
+                let _ = peer.send(QueryIO::TriggerRebalance).await;
+            }
         }
     }
 

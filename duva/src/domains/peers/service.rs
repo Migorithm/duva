@@ -4,7 +4,6 @@ use crate::domains::{
     peers::{PeerMessage, peer::ListeningActorKillTrigger},
 };
 use tokio::{net::tcp::OwnedReadHalf, select};
-use tracing::{debug, trace};
 
 use super::connections::connected_types::ReadConnected;
 
@@ -49,12 +48,10 @@ impl PeerListener {
     }
     async fn listen_peer(&mut self) {
         while let Ok(cmds) = self.read_command().await {
-            trace!(?cmds, "Received command from peer");
             #[cfg(test)]
             ATOMIC.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
             for cmd in cmds {
-                debug!(?cmd);
                 let _ = self.cluster_handler.send(ClusterCommand::Peer(cmd)).await;
             }
         }
