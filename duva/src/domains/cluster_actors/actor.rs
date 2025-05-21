@@ -596,7 +596,10 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         self.replicate(heartbeat, cache_manager).await;
     }
 
-    pub(crate) async fn tally_vote(&mut self) {
+    pub(crate) async fn receive_election_vote(&mut self, election_vote: ElectionVote) {
+        if !election_vote.vote_granted {
+            return;
+        }
         if !self.replication.election_state.may_become_leader() {
             return;
         }

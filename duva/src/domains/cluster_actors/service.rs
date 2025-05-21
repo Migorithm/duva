@@ -145,10 +145,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             },
 
             | ElectionVoteReply(request_vote_reply) => {
-                if !request_vote_reply.vote_granted {
-                    return;
-                }
-                self.tally_vote().await;
+                self.receive_election_vote(request_vote_reply).await;
             },
 
             | TriggerRebalance => {
