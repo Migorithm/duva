@@ -307,6 +307,19 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     }
 
     pub(crate) async fn req_consensus(&mut self, req: ConsensusRequest) {
+        if !self.replication.is_leader_mode {
+            let _ = req.callback.send(err!("Write given to follower"));
+            return;
+        }
+        if self.client_sessions.is_processed(&req.session_req) {
+            // TODO mapping between early returned values to client result
+            let _ = req.callback.send(Ok(ConsensusClientResponse::AlreadyProcessed {
+                key: req.request.key(),
+                index: self.logger.last_log_index,
+            }));
+            return;
+        };
+
         if let Some(pending_requests) = self.pending_requests.as_mut() {
             pending_requests.push_back(req);
             return;
@@ -731,6 +744,11 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         lazy_option: LazyOption,
         callback: tokio::sync::oneshot::Sender<anyhow::Result<()>>,
     ) {
+        if !self.replication.is_leader_mode || self.replication.self_identifier() == peer_addr {
+            let _ = callback.send(err!("wrong address or invalid state for cluster meet command"));
+            return;
+        }
+
         let _ = self.connect_to_server(peer_addr.clone(), Some(callback)).await;
         if lazy_option == LazyOption::Eager {
             self.request_rebalance(peer_addr).await;

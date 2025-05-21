@@ -1,14 +1,14 @@
 use crate::domains::caches::cache_manager::CacheManager;
+use crate::domains::cluster_actors::ClusterCommand;
 use crate::domains::cluster_actors::replication::ReplicationState;
 use crate::domains::cluster_actors::{
     ClientMessage, ClusterActor, ConnectionMessage, FANOUT, SchedulerMessage,
 };
-use crate::domains::cluster_actors::{ClusterCommand, ConsensusClientResponse};
 use crate::domains::operation_logs::interfaces::TWriteAheadLog;
 
 use crate::domains::peers::PeerMessage;
 use crate::err;
-use tracing::{debug, trace};
+use tracing::trace;
 
 use super::actor::ClusterCommandHandler;
 
@@ -78,19 +78,6 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
                 }
             },
             | LeaderReqConsensus(req) => {
-                if !self.replication.is_leader_mode {
-                    let _ = req.callback.send(err!("Write given to follower"));
-                    return;
-                }
-
-                if self.client_sessions.is_processed(&req.session_req) {
-                    // TODO mapping between early returned values to client result
-                    let _ = req.callback.send(Ok(ConsensusClientResponse::AlreadyProcessed {
-                        key: req.request.key(),
-                        index: self.logger.last_log_index,
-                    }));
-                    return;
-                };
                 self.req_consensus(req).await;
             },
 
@@ -104,13 +91,6 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
                 self.replicaof(peer_addr, callback).await;
             },
             | ClusterMeet(peer_addr, lazy_option, callback) => {
-                if !self.replication.is_leader_mode
-                    || self.replication.self_identifier() == peer_addr
-                {
-                    let _ = callback
-                        .send(err!("wrong address or invalid state for cluster meet command"));
-                    return;
-                }
                 self.cluster_meet(peer_addr, lazy_option, callback).await;
             },
             | GetRole(sender) => {
