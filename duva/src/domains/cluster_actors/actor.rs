@@ -2,6 +2,7 @@ use super::ClusterCommand;
 use super::ConsensusClientResponse;
 use super::ConsensusRequest;
 use super::LazyOption;
+use super::hash_ring::HashRing;
 use super::heartbeat_scheduler::HeartBeatScheduler;
 use super::replication::ReplicationId;
 use super::replication::ReplicationRole;
@@ -13,7 +14,6 @@ use crate::domains::caches::cache_manager::CacheManager;
 use crate::domains::cluster_actors::consensus::ElectionState;
 use crate::domains::operation_logs::interfaces::TWriteAheadLog;
 use crate::domains::operation_logs::logger::ReplicatedLogs;
-use crate::domains::peers::PeerMessage;
 use crate::domains::peers::command::BannedPeer;
 use crate::domains::peers::command::ElectionVote;
 use crate::domains::peers::command::HeartBeat;
@@ -56,6 +56,7 @@ pub struct ClusterActor<T> {
     pub(crate) pending_requests: Option<VecDeque<ConsensusRequest>>,
     pub(crate) client_sessions: ClientSessions,
     pub(crate) logger: ReplicatedLogs<T>,
+    pub(crate) hash_ring: HashRing,
 }
 
 #[derive(Debug, Clone)]
@@ -101,6 +102,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
             // todo initial value setting
             logger: ReplicatedLogs::new(log_writer, 0, 0),
+            hash_ring: HashRing::new(256),
         }
     }
 
@@ -769,7 +771,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
             // Ask the given peer to act as rebalancing coordinator
             if let Some(peer) = self.members.get_mut(&peer_addr) {
-                let _ = peer.send(QueryIO::TriggerRebalance).await;
+                let _ = peer.send(QueryIO::StartRebalance).await;
             }
         }
     }
@@ -792,6 +794,11 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         };
 
         let _ = self.connect_to_server(peer_to_connect, None).await;
+    }
+
+    #[instrument(level = tracing::Level::DEBUG, skip(self), fields(request_from = %from))]
+    pub(crate) async fn start_rebalance(&mut self, from: PeerIdentifier) {
+        // using self.hash_ring, start rebalancing
     }
 }
 
@@ -878,7 +885,7 @@ pub mod test {
         for port in num_stream {
             let key = PeerIdentifier::new("localhost", port);
             let (r, x) = TcpStream::connect(bind_addr).await.unwrap().into_split();
-            let kill_switch = PeerListener::spawn(r, cluster_sender.clone());
+            let kill_switch = PeerListener::spawn(r, cluster_sender.clone(), key.clone());
             actor.members.insert(
                 PeerIdentifier::new("localhost", port),
                 Peer::new(
@@ -1562,7 +1569,8 @@ pub mod test {
         for port in [6379, 6380] {
             let key = PeerIdentifier::new("127.0.0.1", port);
             let (r, x) = TcpStream::connect(bind_addr).await.unwrap().into_split();
-            let kill_switch = PeerListener::spawn(r, ClusterCommandHandler(cluster_sender.clone()));
+            let kill_switch =
+                PeerListener::spawn(r, ClusterCommandHandler(cluster_sender.clone()), key.clone());
             cluster_actor.members.insert(
                 key.clone(),
                 Peer::new(
@@ -1586,7 +1594,11 @@ pub mod test {
 
         // leader for different shard?
         let (r, x) = TcpStream::connect(bind_addr).await.unwrap().into_split();
-        let kill_switch = PeerListener::spawn(r, ClusterCommandHandler(cluster_sender.clone()));
+        let kill_switch = PeerListener::spawn(
+            r,
+            ClusterCommandHandler(cluster_sender.clone()),
+            second_shard_leader_identifier.clone(),
+        );
 
         cluster_actor.members.insert(
             second_shard_leader_identifier.clone(),
@@ -1606,7 +1618,8 @@ pub mod test {
         for port in [2655, 2653] {
             let key = PeerIdentifier::new("127.0.0.1", port);
             let (r, x) = TcpStream::connect(bind_addr).await.unwrap().into_split();
-            let kill_switch = PeerListener::spawn(r, ClusterCommandHandler(cluster_sender.clone()));
+            let kill_switch =
+                PeerListener::spawn(r, ClusterCommandHandler(cluster_sender.clone()), key.clone());
 
             cluster_actor.members.insert(
                 key.clone(),
@@ -1682,7 +1695,11 @@ pub mod test {
         let bind_addr = listener.local_addr().unwrap();
         let (r, x) = TcpStream::connect(bind_addr).await.unwrap().into_split();
 
-        let kill_switch = PeerListener::spawn(r, cluster_actor.self_handler.clone());
+        let kill_switch = PeerListener::spawn(
+            r,
+            cluster_actor.self_handler.clone(),
+            PeerIdentifier("127.0.0.1:3849".into()),
+        );
 
         let peer = Peer::new(
             x,
