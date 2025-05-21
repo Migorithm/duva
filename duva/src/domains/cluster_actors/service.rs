@@ -8,7 +8,7 @@ use crate::domains::operation_logs::interfaces::TWriteAheadLog;
 
 use crate::domains::peers::PeerMessage;
 use crate::err;
-use tracing::{info, instrument, trace};
+use tracing::{instrument, trace};
 
 use super::actor::ClusterCommandHandler;
 
@@ -35,7 +35,6 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         Ok(self)
     }
 
-    #[instrument(level = tracing::Level::DEBUG, skip(self))]
     async fn process_scheduler_message(&mut self, msg: SchedulerMessage) {
         use SchedulerMessage::*;
         match msg {
@@ -105,7 +104,6 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         }
     }
 
-    #[instrument(level = tracing::Level::DEBUG, skip(self, cache_manager, peer_message))]
     async fn process_peer_message(
         &mut self,
         cache_manager: &CacheManager,
