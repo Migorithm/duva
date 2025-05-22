@@ -1,6 +1,6 @@
 use crate::{
     domains::{
-        cluster_actors::{ClusterCommand, actor::ClusterCommandHandler},
+        cluster_actors::actor::ClusterCommandHandler,
         interface::TRead,
         peers::{PeerMessage, peer::ListeningActorKillTrigger},
     },

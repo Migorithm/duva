@@ -1,6 +1,5 @@
-use crate::domains::peers::peer::PeerState;
 use crate::prelude::PeerIdentifier;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashSet};
 use std::num::Wrapping;
 use std::ops::Range;
 /// A consistent hashing ring for distributing keys across nodes.
@@ -12,28 +11,26 @@ use std::ops::Range;
 #[derive(Debug)]
 pub struct HashRing {
     vnodes: BTreeMap<u64, PeerIdentifier>,
-    pnodes: HashMap<PeerIdentifier, PeerState>,
+    pnodes: HashSet<PeerIdentifier>,
     vnode_num: usize, // Number of virtual nodes to create for each physical node.
 }
 
 impl HashRing {
     pub fn new(vnode_num: usize) -> Self {
-        Self { vnodes: BTreeMap::new(), pnodes: HashMap::new(), vnode_num }
+        Self { vnodes: BTreeMap::new(), pnodes: HashSet::new(), vnode_num }
     }
 
-    pub fn add_node(&mut self, peer_state: PeerState) {
-        let pnode_id = peer_state.addr.clone();
-
+    pub fn add_node(&mut self, peer_id: PeerIdentifier) {
         // Create virtual nodes for better distribution
         for i in 0..self.vnode_num {
-            let virtual_node_id = format!("{}-{}", pnode_id, i);
+            let virtual_node_id = format!("{}-{}", peer_id, i);
             let hash = fnv_1a_hash(&virtual_node_id);
 
-            self.vnodes.insert(hash, pnode_id.clone());
+            self.vnodes.insert(hash, peer_id.clone());
         }
 
         // Update physical node mapping
-        self.pnodes.insert(pnode_id, peer_state);
+        self.pnodes.insert(peer_id);
     }
 
     pub fn remove_node(&mut self, pnode_id: &PeerIdentifier) {
@@ -60,7 +57,7 @@ impl HashRing {
     /// for all tokens >= start_hash and < end_hash.
     pub fn get_token_ranges_for_node(&self, node_id: &PeerIdentifier) -> Vec<Range<u64>> {
         // If node doesn't exist or the ring is empty, return empty vector
-        if !self.pnodes.contains_key(node_id) || self.vnodes.is_empty() {
+        if !self.pnodes.contains(node_id) || self.vnodes.is_empty() {
             return Vec::new();
         }
 
@@ -160,15 +157,8 @@ pub(crate) fn fnv_1a_hash(value: &str) -> u64 {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashSet;
-
     use super::*;
-    use crate::domains::cluster_actors::replication::ReplicationId;
-    use crate::domains::peers::peer::NodeKind;
-
-    fn create_test_node(addr: &str) -> PeerState {
-        PeerState::new(addr, 0, ReplicationId::Key("test".to_string()), NodeKind::Replica)
-    }
+    use std::collections::HashSet;
 
     #[test]
     fn test_hash_deterministic() {
@@ -289,14 +279,13 @@ mod tests {
     #[test]
     fn test_add_and_remove_node() {
         let mut ring = HashRing::new(3);
-        let node = create_test_node("127.0.0.1:6379");
-        let node_id = node.addr.clone();
+        let node = PeerIdentifier("127.0.0.1:6379".into());
 
-        ring.add_node(node);
+        ring.add_node(node.clone());
         assert_eq!(ring.get_pnode_count(), 1);
         assert_eq!(ring.get_vnode_count(), 3);
 
-        ring.remove_node(&node_id);
+        ring.remove_node(&node);
         assert_eq!(ring.get_pnode_count(), 0);
         assert_eq!(ring.get_vnode_count(), 0);
     }
@@ -304,8 +293,8 @@ mod tests {
     #[test]
     fn test_get_node_for_key() {
         let mut ring = HashRing::new(3);
-        let node = create_test_node("127.0.0.1:6379");
-        ring.add_node(node);
+        let node = PeerIdentifier("127.0.0.1:6379".into());
+        ring.add_node(node.clone());
 
         let key = "test_key";
         let node = ring.get_node_for_key(key);
@@ -315,8 +304,8 @@ mod tests {
     #[test]
     fn test_multiple_nodes() {
         let mut ring = HashRing::new(3);
-        let node1 = create_test_node("127.0.0.1:6379");
-        let node2 = create_test_node("127.0.0.1:6380");
+        let node1 = PeerIdentifier("127.0.0.1:6379".into());
+        let node2 = PeerIdentifier("127.0.0.1:6380".into());
 
         ring.add_node(node1);
         ring.add_node(node2);
@@ -328,9 +317,9 @@ mod tests {
     #[test]
     fn test_consistent_hashing() {
         let mut ring = HashRing::new(256);
-        let node1 = create_test_node("127.0.0.1:6379");
-        let node2 = create_test_node("127.0.0.1:6380");
-        let node3 = create_test_node("127.0.0.1:6389");
+        let node1 = PeerIdentifier("127.0.0.1:6379".into());
+        let node2 = PeerIdentifier("127.0.0.1:6380".into());
+        let node3 = PeerIdentifier("127.0.0.1:6389".into());
 
         ring.add_node(node1);
         ring.add_node(node2);
@@ -347,9 +336,9 @@ mod tests {
     fn test_node_removal_redistribution() {
         // GIVEN: Create a hash ring with 3 nodes
         let mut ring = HashRing::new(3);
-        let node1 = create_test_node("127.0.0.1:6379");
-        let node2 = create_test_node("127.0.0.1:6380");
-        let node3 = create_test_node("127.0.0.1:6381");
+        let node1 = PeerIdentifier("127.0.0.1:6379".into());
+        let node2 = PeerIdentifier("127.0.0.1:6380".into());
+        let node3 = PeerIdentifier("127.0.0.1:6381".into());
 
         ring.add_node(node1);
         ring.add_node(node2);
@@ -385,9 +374,9 @@ mod tests {
     #[test]
     fn test_virtual_node_consistency() {
         let mut ring = HashRing::new(3);
-        let node = create_test_node("127.0.0.1:6379");
-        let node_id = node.addr.clone();
-        ring.add_node(node);
+        let node = PeerIdentifier("127.0.0.1:6379".into());
+
+        ring.add_node(node.clone());
 
         let virtual_nodes = ring.get_virtual_nodes();
         assert_eq!(virtual_nodes.len(), 3);
@@ -396,7 +385,7 @@ mod tests {
         let physical_nodes: HashSet<_> =
             virtual_nodes.iter().map(|(_, peer_id)| *peer_id).collect();
         assert_eq!(physical_nodes.len(), 1);
-        assert!(physical_nodes.contains(&node_id));
+        assert!(physical_nodes.contains(&node));
     }
 
     #[test]
@@ -411,7 +400,7 @@ mod tests {
     fn test_get_token_ranges_nonexistent_node() {
         let mut ring = HashRing::new(10);
 
-        ring.add_node(create_test_node("127.0.0.1:6349"));
+        ring.add_node(PeerIdentifier("127.0.0.1:6349".into()));
 
         // Try to get ranges for a node that doesn't exist
         let ranges = ring.get_token_ranges_for_node(&"127.0.0.1:7777".to_string().into());
@@ -422,7 +411,7 @@ mod tests {
     fn test_get_token_ranges_single_node() {
         let mut ring = HashRing::new(256);
         let node_id = "127.0.0.1:6349";
-        ring.add_node(create_test_node(&node_id));
+        ring.add_node(PeerIdentifier(node_id.into()));
 
         let ranges = ring.get_token_ranges_for_node(&node_id.to_string().into());
 
@@ -438,14 +427,14 @@ mod tests {
     #[test]
     fn test_get_token_ranges_multiple_nodes() {
         let mut ring = HashRing::new(256);
-        let node1 = "127.0.0.1:6349".to_string();
-        let node2 = "127.0.0.1:6350".to_string();
+        let node1 = PeerIdentifier("127.0.0.1:6349".to_string());
+        let node2 = PeerIdentifier("127.0.0.1:6350".to_string());
 
-        ring.add_node(create_test_node(&node1));
-        ring.add_node(create_test_node(&node2));
+        ring.add_node(node1.clone());
+        ring.add_node(node2.clone());
 
-        let ranges1 = ring.get_token_ranges_for_node(&node1.into());
-        let ranges2 = ring.get_token_ranges_for_node(&node2.into());
+        let ranges1 = ring.get_token_ranges_for_node(&node1);
+        let ranges2 = ring.get_token_ranges_for_node(&node2);
 
         // Verify ranges are non-empty
         assert!(!ranges1.is_empty());
@@ -478,21 +467,21 @@ mod tests {
     #[test]
     fn test_ranges_after_node_removal() {
         let mut ring = HashRing::new(3);
-        let node1 = "127.0.0.1:6349".to_string();
-        let node2 = "127.0.0.1:6350".to_string();
-        let node3 = "127.0.0.1:6351".to_string();
+        let node1 = PeerIdentifier("127.0.0.1:6349".to_string());
+        let node2 = PeerIdentifier("127.0.0.1:6350".to_string());
+        let node3 = PeerIdentifier("127.0.0.1:6351".to_string());
 
         // Add three nodes
-        ring.add_node(create_test_node(&node1));
-        ring.add_node(create_test_node(&node2));
-        ring.add_node(create_test_node(&node3));
+        ring.add_node(node1.clone());
+        ring.add_node(node2.clone());
+        ring.add_node(node3.clone());
 
         // Get initial ranges
-        let initial_ranges1 = ring.get_token_ranges_for_node(&node1.clone().into());
-        let initial_ranges2 = ring.get_token_ranges_for_node(&node2.clone().into());
+        let initial_ranges1 = ring.get_token_ranges_for_node(&node1);
+        let initial_ranges2 = ring.get_token_ranges_for_node(&node2);
 
         // Remove node3
-        ring.remove_node(&node3.clone().into());
+        ring.remove_node(&node3);
 
         // Get updated ranges
         let updated_ranges1 = ring.get_token_ranges_for_node(&node1.into());
