@@ -4,7 +4,6 @@ use crate::domains::cluster_actors::{
     session::SessionRequest,
 };
 use crate::domains::operation_logs::WriteRequest;
-use crate::domains::peers::PeerMessage;
 use crate::domains::peers::command::PeerCommand;
 use crate::domains::peers::peer::{Peer, PeerState};
 use crate::prelude::PeerIdentifier;

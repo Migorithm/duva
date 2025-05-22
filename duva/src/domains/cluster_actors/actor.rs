@@ -86,6 +86,8 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         );
 
         let (tx, _) = tokio::sync::broadcast::channel::<Vec<PeerIdentifier>>(100);
+        let mut hash_ring = HashRing::new(256);
+        hash_ring.add_node(init_repl_info.self_identifier());
 
         Self {
             heartbeat_scheduler,
@@ -102,7 +104,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
             // todo initial value setting
             logger: ReplicatedLogs::new(log_writer, 0, 0),
-            hash_ring: HashRing::new(256),
+            hash_ring,
         }
     }
 
