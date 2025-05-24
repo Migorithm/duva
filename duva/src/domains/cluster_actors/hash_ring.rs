@@ -7,22 +7,20 @@ use std::ops::Range;
 /// The `HashRing` maps keys to physical nodes using virtual nodes to ensure
 /// even distribution. Each physical node is represented by multiple virtual
 /// nodes on the ring, determined by `vnode_num`.
-///
-#[derive(Debug)]
+
+// Number of virtual nodes to create for each physical node.
+const V_NODE_NUM: u16 = 256;
+
+#[derive(Debug, Default)]
 pub struct HashRing {
     vnodes: BTreeMap<u64, PeerIdentifier>,
     pnodes: HashSet<PeerIdentifier>,
-    vnode_num: usize, // Number of virtual nodes to create for each physical node.
 }
 
 impl HashRing {
-    pub fn new(vnode_num: usize) -> Self {
-        Self { vnodes: BTreeMap::new(), pnodes: HashSet::new(), vnode_num }
-    }
-
     pub fn add_node(&mut self, peer_id: PeerIdentifier) {
         // Create virtual nodes for better distribution
-        for i in 0..self.vnode_num {
+        for i in 0..V_NODE_NUM {
             let virtual_node_id = format!("{}-{}", peer_id, i);
             let hash = fnv_1a_hash(&virtual_node_id);
 
@@ -278,7 +276,7 @@ mod tests {
 
     #[test]
     fn test_add_and_remove_node() {
-        let mut ring = HashRing::new(3);
+        let mut ring = HashRing::default();
         let node = PeerIdentifier("127.0.0.1:6379".into());
 
         ring.add_node(node.clone());
@@ -292,7 +290,7 @@ mod tests {
 
     #[test]
     fn test_get_node_for_key() {
-        let mut ring = HashRing::new(3);
+        let mut ring = HashRing::default();
         let node = PeerIdentifier("127.0.0.1:6379".into());
         ring.add_node(node.clone());
 
@@ -303,7 +301,7 @@ mod tests {
 
     #[test]
     fn test_multiple_nodes() {
-        let mut ring = HashRing::new(3);
+        let mut ring = HashRing::default();
         let node1 = PeerIdentifier("127.0.0.1:6379".into());
         let node2 = PeerIdentifier("127.0.0.1:6380".into());
 
@@ -316,7 +314,7 @@ mod tests {
 
     #[test]
     fn test_consistent_hashing() {
-        let mut ring = HashRing::new(256);
+        let mut ring = HashRing::default();
         let node1 = PeerIdentifier("127.0.0.1:6379".into());
         let node2 = PeerIdentifier("127.0.0.1:6380".into());
         let node3 = PeerIdentifier("127.0.0.1:6389".into());
@@ -335,7 +333,7 @@ mod tests {
     #[test]
     fn test_node_removal_redistribution() {
         // GIVEN: Create a hash ring with 3 nodes
-        let mut ring = HashRing::new(3);
+        let mut ring = HashRing::default();
         let node1 = PeerIdentifier("127.0.0.1:6379".into());
         let node2 = PeerIdentifier("127.0.0.1:6380".into());
         let node3 = PeerIdentifier("127.0.0.1:6381".into());
@@ -373,7 +371,7 @@ mod tests {
 
     #[test]
     fn test_virtual_node_consistency() {
-        let mut ring = HashRing::new(3);
+        let mut ring = HashRing::default();
         let node = PeerIdentifier("127.0.0.1:6379".into());
 
         ring.add_node(node.clone());
@@ -390,7 +388,7 @@ mod tests {
 
     #[test]
     fn test_empty_ring() {
-        let ring = HashRing::new(3);
+        let ring = HashRing::default();
         assert_eq!(ring.get_pnode_count(), 0);
         assert_eq!(ring.get_vnode_count(), 0);
         assert!(ring.get_node_for_key("test").is_none());
@@ -398,7 +396,7 @@ mod tests {
 
     #[test]
     fn test_get_token_ranges_nonexistent_node() {
-        let mut ring = HashRing::new(10);
+        let mut ring = HashRing::default();
 
         ring.add_node(PeerIdentifier("127.0.0.1:6349".into()));
 
@@ -409,7 +407,7 @@ mod tests {
 
     #[test]
     fn test_get_token_ranges_single_node() {
-        let mut ring = HashRing::new(256);
+        let mut ring = HashRing::default();
         let node_id = "127.0.0.1:6349";
         ring.add_node(PeerIdentifier(node_id.into()));
 
@@ -426,7 +424,7 @@ mod tests {
 
     #[test]
     fn test_get_token_ranges_multiple_nodes() {
-        let mut ring = HashRing::new(256);
+        let mut ring = HashRing::default();
         let node1 = PeerIdentifier("127.0.0.1:6349".to_string());
         let node2 = PeerIdentifier("127.0.0.1:6350".to_string());
 
@@ -466,7 +464,7 @@ mod tests {
 
     #[test]
     fn test_ranges_after_node_removal() {
-        let mut ring = HashRing::new(3);
+        let mut ring = HashRing::default();
         let node1 = PeerIdentifier("127.0.0.1:6349".to_string());
         let node2 = PeerIdentifier("127.0.0.1:6350".to_string());
         let node3 = PeerIdentifier("127.0.0.1:6351".to_string());

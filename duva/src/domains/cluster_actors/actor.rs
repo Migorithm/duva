@@ -28,6 +28,7 @@ use crate::domains::query_parsers::QueryIO;
 use crate::err;
 use std::collections::VecDeque;
 use std::iter;
+use std::ops::Range;
 use std::sync::atomic::Ordering;
 use tokio::fs::File;
 use tokio::io::AsyncSeekExt;
@@ -86,7 +87,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         );
 
         let (tx, _) = tokio::sync::broadcast::channel::<Vec<PeerIdentifier>>(100);
-        let mut hash_ring = HashRing::new(256);
+        let mut hash_ring = HashRing::default();
         hash_ring.add_node(init_repl_info.self_identifier());
 
         Self {
@@ -108,6 +109,9 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         }
     }
 
+    pub(crate) fn coverage(&self) -> Vec<Range<u64>> {
+        self.hash_ring.get_token_ranges_for_node(&self.replication.self_identifier())
+    }
     pub(crate) fn hop_count(fanout: usize, node_count: usize) -> u8 {
         if node_count <= fanout {
             return 0;
@@ -663,13 +667,13 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
             for log_index in (old_hwm + 1)..=leader_hwm.hwm {
                 let Some(log) = self.logger.read_at(log_index).await else {
+                    error!("log has never been replicated!");
                     self.report_replica_lag(
                         &leader_hwm.from,
                         self.logger.last_log_index,
                         RejectionReason::LogInconsistency,
                     )
                     .await;
-                    error!("log has never been replicated!");
                     return;
                 };
 
