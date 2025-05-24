@@ -2,6 +2,7 @@ use crate::prelude::PeerIdentifier;
 use std::collections::{BTreeMap, HashSet};
 use std::num::Wrapping;
 use std::ops::Range;
+use std::rc::Rc;
 /// A consistent hashing ring for distributing keys across nodes.
 ///
 /// The `HashRing` maps keys to physical nodes using virtual nodes to ensure
@@ -13,27 +14,32 @@ const V_NODE_NUM: u16 = 256;
 
 #[derive(Debug, Default)]
 pub struct HashRing {
-    vnodes: BTreeMap<u64, PeerIdentifier>,
-    pnodes: HashSet<PeerIdentifier>,
+    vnodes: BTreeMap<u64, Rc<PeerIdentifier>>,
+    pnodes: HashSet<Rc<PeerIdentifier>>,
 }
+
+// ! SAFETY: HashRing is supposed to be used in a single-threaded context
+// ! with cluster actor as the actor is the access point to the ring.
+unsafe impl Send for HashRing {}
 
 impl HashRing {
     pub fn add_node(&mut self, peer_id: PeerIdentifier) {
+        let rc_peer = Rc::new(peer_id.clone());
         // Create virtual nodes for better distribution
         for i in 0..V_NODE_NUM {
             let virtual_node_id = format!("{}-{}", peer_id, i);
             let hash = fnv_1a_hash(&virtual_node_id);
 
-            self.vnodes.insert(hash, peer_id.clone());
+            self.vnodes.insert(hash, rc_peer.clone());
         }
 
         // Update physical node mapping
-        self.pnodes.insert(peer_id);
+        self.pnodes.insert(rc_peer);
     }
 
     pub fn remove_node(&mut self, pnode_id: &PeerIdentifier) {
         // Remove all virtual nodes for this physical node
-        self.vnodes.retain(|_, peer_id| peer_id != pnode_id);
+        self.vnodes.retain(|_, peer_id| peer_id.as_ref() != pnode_id);
 
         // Remove the physical node
         self.pnodes.remove(pnode_id);
@@ -47,7 +53,7 @@ impl HashRing {
             .range(hash..)
             .next()
             .or_else(|| self.vnodes.first_key_value())
-            .map(|(_, peer_id)| peer_id)
+            .map(|(_, peer_id)| peer_id.as_ref())
     }
 
     /// Returns the token ranges that a specific node covers in the hash ring.
@@ -60,7 +66,7 @@ impl HashRing {
         }
 
         // Get all vnodes in order
-        let vnodes: Vec<(&u64, &PeerIdentifier)> = self.vnodes.iter().collect();
+        let vnodes: Vec<(&u64, &std::rc::Rc<PeerIdentifier>)> = self.vnodes.iter().collect();
         let mut ranges = Vec::<Range<u64>>::new();
 
         // Find ranges where this node is responsible
@@ -69,7 +75,7 @@ impl HashRing {
             let current_node = vnodes[i].1;
 
             // Skip if this vnode doesn't belong to our target node
-            if current_node != node_id {
+            if current_node.as_ref() != node_id {
                 continue;
             }
 
@@ -111,7 +117,7 @@ impl HashRing {
     }
 
     #[cfg(test)]
-    fn get_virtual_nodes(&self) -> Vec<(&u64, &PeerIdentifier)> {
+    fn get_virtual_nodes(&self) -> Vec<(&u64, &std::rc::Rc<PeerIdentifier>)> {
         self.vnodes.iter().collect()
     }
 
@@ -380,10 +386,10 @@ mod tests {
         assert_eq!(virtual_nodes.len(), 3);
 
         // remove duplicate
-        let physical_nodes: HashSet<_> =
-            virtual_nodes.iter().map(|(_, peer_id)| *peer_id).collect();
+        let physical_nodes: HashSet<&PeerIdentifier> =
+            virtual_nodes.iter().map(|(_, peer_id)| peer_id.as_ref()).collect();
         assert_eq!(physical_nodes.len(), 1);
-        assert!(physical_nodes.contains(&node));
+        assert!(physical_nodes.contains::<PeerIdentifier>(&node));
     }
 
     #[test]
