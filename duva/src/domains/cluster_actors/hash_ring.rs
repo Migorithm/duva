@@ -1,5 +1,6 @@
+use crate::ReplicationId;
 use crate::prelude::PeerIdentifier;
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, HashMap};
 use std::num::Wrapping;
 use std::ops::Range;
 use std::rc::Rc;
@@ -14,8 +15,9 @@ const V_NODE_NUM: u16 = 256;
 
 #[derive(Debug, Default)]
 pub struct HashRing {
-    vnodes: BTreeMap<u64, Rc<PeerIdentifier>>,
-    pnodes: HashSet<Rc<PeerIdentifier>>,
+    vnodes: BTreeMap<u64, Rc<ReplicationId>>,
+    // TODO value in the following map must be replaced when election happens
+    pnodes: HashMap<ReplicationId, PeerIdentifier>,
 }
 
 // ! SAFETY: HashRing is supposed to be used in a single-threaded context
@@ -23,26 +25,30 @@ pub struct HashRing {
 unsafe impl Send for HashRing {}
 
 impl HashRing {
-    pub fn add_node(&mut self, peer_id: PeerIdentifier) {
-        let rc_peer = Rc::new(peer_id.clone());
+    pub fn add_partition(&mut self, repl_id: ReplicationId, leader_id: PeerIdentifier) {
+        self.pnodes.insert(repl_id.clone(), leader_id);
+
+        let repl_id = Rc::new(repl_id.clone());
         // Create virtual nodes for better distribution
         for i in 0..V_NODE_NUM {
-            let virtual_node_id = format!("{}-{}", peer_id, i);
+            let virtual_node_id = format!("{}-{}", repl_id, i);
             let hash = fnv_1a_hash(&virtual_node_id);
 
-            self.vnodes.insert(hash, rc_peer.clone());
+            self.vnodes.insert(hash, repl_id.clone());
         }
 
         // Update physical node mapping
-        self.pnodes.insert(rc_peer);
     }
 
-    pub fn remove_node(&mut self, pnode_id: &PeerIdentifier) {
+    /// The following method will be invoked when:
+    /// - ClusterForget command is received
+    /// - node is identified as dead/idle
+    pub(super) fn remove_partition(&mut self, target_repl_id: &ReplicationId) {
         // Remove all virtual nodes for this physical node
-        self.vnodes.retain(|_, peer_id| peer_id.as_ref() != pnode_id);
+        self.vnodes.retain(|_, repl_id| repl_id.as_ref() != target_repl_id);
 
         // Remove the physical node
-        self.pnodes.remove(pnode_id);
+        self.pnodes.remove(target_repl_id);
     }
 
     pub fn get_node_for_key(&self, key: &str) -> Option<&PeerIdentifier> {
@@ -54,19 +60,20 @@ impl HashRing {
             .next()
             .or_else(|| self.vnodes.first_key_value())
             .map(|(_, peer_id)| peer_id.as_ref())
+            .and_then(|peer_id| self.pnodes.get(peer_id))
     }
 
     /// Returns the token ranges that a specific node covers in the hash ring.
     /// Each range is represented as (start_hash, end_hash), where the node is responsible
     /// for all tokens >= start_hash and < end_hash.
-    pub fn get_token_ranges_for_node(&self, node_id: &PeerIdentifier) -> Vec<Range<u64>> {
+    pub fn get_token_ranges_for_partition(&self, repl_id: &ReplicationId) -> Vec<Range<u64>> {
         // If node doesn't exist or the ring is empty, return empty vector
-        if !self.pnodes.contains(node_id) || self.vnodes.is_empty() {
+        if !self.pnodes.contains_key(repl_id) || self.vnodes.is_empty() {
             return Vec::new();
         }
 
         // Get all vnodes in order
-        let vnodes: Vec<(&u64, &std::rc::Rc<PeerIdentifier>)> = self.vnodes.iter().collect();
+        let vnodes: Vec<(&u64, &std::rc::Rc<ReplicationId>)> = self.vnodes.iter().collect();
         let mut ranges = Vec::<Range<u64>>::new();
 
         // Find ranges where this node is responsible
@@ -75,7 +82,7 @@ impl HashRing {
             let current_node = vnodes[i].1;
 
             // Skip if this vnode doesn't belong to our target node
-            if current_node.as_ref() != node_id {
+            if current_node.as_ref() != repl_id {
                 continue;
             }
 
@@ -117,7 +124,7 @@ impl HashRing {
     }
 
     #[cfg(test)]
-    fn get_virtual_nodes(&self) -> Vec<(&u64, &std::rc::Rc<PeerIdentifier>)> {
+    fn get_virtual_nodes(&self) -> Vec<(&u64, &std::rc::Rc<ReplicationId>)> {
         self.vnodes.iter().collect()
     }
 
@@ -284,12 +291,13 @@ mod tests {
     fn test_add_and_remove_node() {
         let mut ring = HashRing::default();
         let node = PeerIdentifier("127.0.0.1:6379".into());
+        let repl_id = ReplicationId::Key(uuid::Uuid::now_v7().to_string());
 
-        ring.add_node(node.clone());
+        ring.add_partition(repl_id.clone(), node.clone());
         assert_eq!(ring.get_pnode_count(), 1);
-        assert_eq!(ring.get_vnode_count(), 3);
+        assert_eq!(ring.get_vnode_count(), 256);
 
-        ring.remove_node(&node);
+        ring.remove_partition(&repl_id);
         assert_eq!(ring.get_pnode_count(), 0);
         assert_eq!(ring.get_vnode_count(), 0);
     }
@@ -298,7 +306,8 @@ mod tests {
     fn test_get_node_for_key() {
         let mut ring = HashRing::default();
         let node = PeerIdentifier("127.0.0.1:6379".into());
-        ring.add_node(node.clone());
+        let repl_id = ReplicationId::Key(uuid::Uuid::now_v7().to_string());
+        ring.add_partition(repl_id.clone(), node.clone());
 
         let key = "test_key";
         let node = ring.get_node_for_key(key);
@@ -309,13 +318,15 @@ mod tests {
     fn test_multiple_nodes() {
         let mut ring = HashRing::default();
         let node1 = PeerIdentifier("127.0.0.1:6379".into());
+        let repl_id1 = ReplicationId::Key(uuid::Uuid::now_v7().to_string());
         let node2 = PeerIdentifier("127.0.0.1:6380".into());
+        let repl_id2 = ReplicationId::Key(uuid::Uuid::now_v7().to_string());
 
-        ring.add_node(node1);
-        ring.add_node(node2);
+        ring.add_partition(repl_id1, node1);
+        ring.add_partition(repl_id2, node2);
 
         assert_eq!(ring.get_pnode_count(), 2);
-        assert_eq!(ring.get_vnode_count(), 6);
+        assert_eq!(ring.get_vnode_count(), 512);
     }
 
     #[test]
@@ -325,9 +336,9 @@ mod tests {
         let node2 = PeerIdentifier("127.0.0.1:6380".into());
         let node3 = PeerIdentifier("127.0.0.1:6389".into());
 
-        ring.add_node(node1);
-        ring.add_node(node2);
-        ring.add_node(node3);
+        ring.add_partition(ReplicationId::Key(uuid::Uuid::now_v7().to_string()), node1);
+        ring.add_partition(ReplicationId::Key(uuid::Uuid::now_v7().to_string()), node2);
+        ring.add_partition(ReplicationId::Key(uuid::Uuid::now_v7().to_string()), node3);
 
         let key = "test_key";
         let node_got1 = ring.get_node_for_key(key);
@@ -344,9 +355,10 @@ mod tests {
         let node2 = PeerIdentifier("127.0.0.1:6380".into());
         let node3 = PeerIdentifier("127.0.0.1:6381".into());
 
-        ring.add_node(node1);
-        ring.add_node(node2);
-        ring.add_node(node3);
+        let repl_id = ReplicationId::Key(uuid::Uuid::now_v7().to_string());
+        ring.add_partition(repl_id.clone(), node1);
+        ring.add_partition(ReplicationId::Key(uuid::Uuid::now_v7().to_string()), node2);
+        ring.add_partition(ReplicationId::Key(uuid::Uuid::now_v7().to_string()), node3);
 
         // Record initial key distribution
         let mut before_removal = Vec::new();
@@ -358,7 +370,7 @@ mod tests {
         }
 
         // WHEN Remove one node
-        ring.remove_node(&"127.0.0.1:6379".to_string().into());
+        ring.remove_partition(&repl_id);
 
         // keys are accessed again
         let mut redistributed = 0;
@@ -380,16 +392,17 @@ mod tests {
         let mut ring = HashRing::default();
         let node = PeerIdentifier("127.0.0.1:6379".into());
 
-        ring.add_node(node.clone());
+        let repl_id = ReplicationId::Key(uuid::Uuid::now_v7().to_string());
+        ring.add_partition(repl_id.clone(), node.clone());
 
         let virtual_nodes = ring.get_virtual_nodes();
-        assert_eq!(virtual_nodes.len(), 3);
+        assert_eq!(virtual_nodes.len(), 256);
 
         // remove duplicate
-        let physical_nodes: HashSet<&PeerIdentifier> =
+        let physical_nodes: HashSet<&ReplicationId> =
             virtual_nodes.iter().map(|(_, peer_id)| peer_id.as_ref()).collect();
         assert_eq!(physical_nodes.len(), 1);
-        assert!(physical_nodes.contains::<PeerIdentifier>(&node));
+        assert!(physical_nodes.contains::<ReplicationId>(&repl_id));
     }
 
     #[test]
@@ -403,11 +416,11 @@ mod tests {
     #[test]
     fn test_get_token_ranges_nonexistent_node() {
         let mut ring = HashRing::default();
-
-        ring.add_node(PeerIdentifier("127.0.0.1:6349".into()));
+        let repl_id = ReplicationId::Key(uuid::Uuid::now_v7().to_string());
+        ring.add_partition(repl_id.clone(), PeerIdentifier("127.0.0.1:6349".into()));
 
         // Try to get ranges for a node that doesn't exist
-        let ranges = ring.get_token_ranges_for_node(&"127.0.0.1:7777".to_string().into());
+        let ranges = ring.get_token_ranges_for_partition(&"127.0.0.1:7777".to_string().into());
         assert_eq!(ranges.len(), 0);
     }
 
@@ -415,9 +428,10 @@ mod tests {
     fn test_get_token_ranges_single_node() {
         let mut ring = HashRing::default();
         let node_id = "127.0.0.1:6349";
-        ring.add_node(PeerIdentifier(node_id.into()));
+        let repl_id = ReplicationId::Key(uuid::Uuid::now_v7().to_string());
+        ring.add_partition(repl_id.clone(), PeerIdentifier(node_id.into()));
 
-        let ranges = ring.get_token_ranges_for_node(&node_id.to_string().into());
+        let ranges = ring.get_token_ranges_for_partition(&repl_id);
 
         // A single node should own the entire hash space
         // But might be split into multiple ranges because of virtual nodes
@@ -432,13 +446,14 @@ mod tests {
     fn test_get_token_ranges_multiple_nodes() {
         let mut ring = HashRing::default();
         let node1 = PeerIdentifier("127.0.0.1:6349".to_string());
+        let repl_id1 = ReplicationId::Key(uuid::Uuid::now_v7().to_string());
         let node2 = PeerIdentifier("127.0.0.1:6350".to_string());
+        let repl_id2 = ReplicationId::Key(uuid::Uuid::now_v7().to_string());
 
-        ring.add_node(node1.clone());
-        ring.add_node(node2.clone());
-
-        let ranges1 = ring.get_token_ranges_for_node(&node1);
-        let ranges2 = ring.get_token_ranges_for_node(&node2);
+        ring.add_partition(repl_id1.clone(), node1.clone());
+        ring.add_partition(repl_id2.clone(), node2.clone());
+        let ranges1 = ring.get_token_ranges_for_partition(&repl_id1);
+        let ranges2 = ring.get_token_ranges_for_partition(&repl_id2);
 
         // Verify ranges are non-empty
         assert!(!ranges1.is_empty());
@@ -472,27 +487,30 @@ mod tests {
     fn test_ranges_after_node_removal() {
         let mut ring = HashRing::default();
         let node1 = PeerIdentifier("127.0.0.1:6349".to_string());
+        let repl_id1 = ReplicationId::Key(uuid::Uuid::now_v7().to_string());
         let node2 = PeerIdentifier("127.0.0.1:6350".to_string());
+        let repl_id2 = ReplicationId::Key(uuid::Uuid::now_v7().to_string());
         let node3 = PeerIdentifier("127.0.0.1:6351".to_string());
+        let repl_id3 = ReplicationId::Key(uuid::Uuid::now_v7().to_string());
 
         // Add three nodes
-        ring.add_node(node1.clone());
-        ring.add_node(node2.clone());
-        ring.add_node(node3.clone());
+        ring.add_partition(repl_id1.clone(), node1.clone());
+        ring.add_partition(repl_id2.clone(), node2.clone());
+        ring.add_partition(repl_id3.clone(), node3.clone());
 
         // Get initial ranges
-        let initial_ranges1 = ring.get_token_ranges_for_node(&node1);
-        let initial_ranges2 = ring.get_token_ranges_for_node(&node2);
+        let initial_ranges1 = ring.get_token_ranges_for_partition(&repl_id1);
+        let initial_ranges2 = ring.get_token_ranges_for_partition(&repl_id2);
 
         // Remove node3
-        ring.remove_node(&node3);
+        ring.remove_partition(&repl_id3);
 
         // Get updated ranges
-        let updated_ranges1 = ring.get_token_ranges_for_node(&node1.into());
-        let updated_ranges2 = ring.get_token_ranges_for_node(&node2.into());
+        let updated_ranges1 = ring.get_token_ranges_for_partition(&repl_id1);
+        let updated_ranges2 = ring.get_token_ranges_for_partition(&repl_id2);
 
         // Verify node3 has no ranges
-        let ranges3 = ring.get_token_ranges_for_node(&node3.into());
+        let ranges3 = ring.get_token_ranges_for_partition(&repl_id3);
         assert_eq!(ranges3.len(), 0);
 
         // The remaining nodes should split the entire hash space

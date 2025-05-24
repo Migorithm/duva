@@ -88,7 +88,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
         let (tx, _) = tokio::sync::broadcast::channel::<Vec<PeerIdentifier>>(100);
         let mut hash_ring = HashRing::default();
-        hash_ring.add_node(init_repl_info.self_identifier());
+        hash_ring.add_partition(init_repl_info.replid.clone(), init_repl_info.self_identifier());
 
         Self {
             heartbeat_scheduler,
@@ -110,7 +110,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     }
 
     pub(crate) fn coverage(&self) -> Vec<Range<u64>> {
-        self.hash_ring.get_token_ranges_for_node(&self.replication.self_identifier())
+        self.hash_ring.get_token_ranges_for_partition(&self.replication.replid)
     }
     pub(crate) fn hop_count(fanout: usize, node_count: usize) -> u8 {
         if node_count <= fanout {

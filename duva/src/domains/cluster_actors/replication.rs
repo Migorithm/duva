@@ -146,7 +146,7 @@ pub(crate) fn time_in_secs() -> anyhow::Result<u64> {
 }
 
 #[derive(
-    Debug, Clone, PartialEq, Default, Eq, PartialOrd, Ord, bincode::Encode, bincode::Decode,
+    Debug, Clone, PartialEq, Default, Eq, PartialOrd, Ord, bincode::Encode, bincode::Decode, Hash,
 )]
 pub(crate) enum ReplicationId {
     #[default]
