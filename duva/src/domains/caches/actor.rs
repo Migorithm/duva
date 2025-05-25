@@ -8,19 +8,19 @@ use std::collections::HashMap;
 use std::ops::Range;
 use std::sync::Arc;
 use std::sync::atomic::AtomicU64;
-use tokio::sync::mpsc::{self, Sender};
+use tokio::sync::mpsc::{self};
 use tokio::sync::oneshot;
 
 pub struct CacheActor {
     pub(crate) cache: CacheDb,
-    pub(crate) self_handler: Sender<CacheCommand>,
+    pub(crate) self_handler: CacheCommandSender,
 }
 
 impl CacheActor {
     pub(crate) fn run(hwm: Arc<AtomicU64>) -> CacheCommandSender {
         let (tx, cache_actor_inbox) = mpsc::channel(100);
         tokio::spawn(
-            Self { cache: CacheDb::default(), self_handler: tx.clone() }
+            Self { cache: CacheDb::default(), self_handler: CacheCommandSender(tx.clone()) }
                 .handle(cache_actor_inbox, ReadQueue::new(hwm)),
         );
         CacheCommandSender(tx)
