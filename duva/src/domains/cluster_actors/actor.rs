@@ -173,6 +173,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     }
 
     // * Broadcasts the current topology to all connected clients
+    // TODO hashring information should be included in the broadcast so clients can update their routing tables
     fn broadcast_topology_change(&mut self) {
         self.node_change_broadcast
             .send(
@@ -189,6 +190,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             warn!("{} is being removed!", peer_addr);
             // stop the runnin process and take the connection in case topology changes are made
             let _read_connected = peer.kill().await;
+            self.broadcast_topology_change();
             return Some(());
         }
         None
