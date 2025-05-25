@@ -19,7 +19,7 @@ pub struct HashRing {
     vnodes: BTreeMap<u64, Rc<ReplicationId>>,
     // TODO value in the following map must be replaced when election happens
     pnodes: HashMap<ReplicationId, PeerIdentifier>,
-    last_modified: u64,
+    last_modified: u128,
 }
 
 // ! SAFETY: HashRing is supposed to be used in a single-threaded context
@@ -31,7 +31,7 @@ impl HashRing {
         self.last_modified = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
-            .as_millis() as u64;
+            .as_millis();
     }
 
     pub fn add_partition(&mut self, repl_id: ReplicationId, leader_id: PeerIdentifier) {
