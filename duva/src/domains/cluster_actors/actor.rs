@@ -205,7 +205,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         None
     }
 
-    #[instrument(level = "debug", skip(self, optional_callback))]
+    #[instrument(skip(self, optional_callback))]
     pub(crate) async fn connect_to_server(
         &mut self,
         connect_to: PeerIdentifier,
@@ -764,8 +764,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         self.replication.hwm.store(0, Ordering::Release);
         self.set_repl_id(ReplicationId::Undecided);
         self.step_down().await;
-
-        let _ = self.connect_to_server(peer_addr, Some(callback)).await;
+        self.connect_to_server(peer_addr, Some(callback)).await;
     }
 
     pub(crate) async fn cluster_meet(
@@ -779,12 +778,13 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             return;
         }
 
-        let _ = self.connect_to_server(peer_addr.clone(), Some(callback)).await;
+        self.connect_to_server(peer_addr.clone(), Some(callback)).await;
         if lazy_option == LazyOption::Eager {
             self.block_write_reqs();
 
             // Ask the given peer to act as rebalancing coordinator
             if let Some(peer) = self.members.get_mut(&peer_addr) {
+                // TODO perhaps add some jitter to avoid collisions
                 let _ = peer.send(QueryIO::StartRebalance).await;
             }
         }
@@ -807,7 +807,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             return;
         };
 
-        let _ = self.connect_to_server(peer_to_connect, None).await;
+        self.connect_to_server(peer_to_connect, None).await;
     }
 
     #[instrument(level = tracing::Level::DEBUG, skip(self), fields(request_from = %request_from))]
