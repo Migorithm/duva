@@ -777,26 +777,35 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             let _ = cl_cb.send(err!("wrong address or invalid state for cluster meet command"));
             return;
         }
+
+        // ! intercept the callback to ensure that the connection is established before sending the rebalance request
         let (res_callback, conn_awaiter) = tokio::sync::oneshot::channel();
         self.connect_to_server(peer_addr.clone(), Some(res_callback)).await;
 
-        // ! synchronization required here to ensure that the connection is established before sending the rebalance request
-        tokio::spawn({
-            let h = self.self_handler.clone();
-            async move {
-                if let Ok(Err(err)) = conn_awaiter.await {
-                    cl_cb.send(Err(err)).ok();
-                } else {
-                    cl_cb.send(Ok(())).ok();
-                };
-                h.send(SchedulerMessage::RebalanceRequest {
-                    request_to: peer_addr.clone(),
-                    lazy_option,
-                })
-                .await
-                .ok();
-            }
-        });
+        tokio::spawn(Self::registr_delayed_schedule(
+            self.self_handler.clone(),
+            conn_awaiter,
+            cl_cb,
+            SchedulerMessage::RebalanceRequest { request_to: peer_addr, lazy_option },
+        ));
+    }
+
+    // synchronization required here to ensure that the connection is established before sending the rebalance request
+    async fn registr_delayed_schedule<C>(
+        cluster_sender: ClusterCommandHandler,
+        awaiter: tokio::sync::oneshot::Receiver<anyhow::Result<C>>,
+        callback: tokio::sync::oneshot::Sender<anyhow::Result<C>>,
+        schedule_cmd: SchedulerMessage,
+    ) where
+        C: Send + Sync + 'static,
+    {
+        let result = awaiter.await.unwrap_or_else(|_| Err(anyhow::anyhow!("Channel closed")));
+        let _ = callback.send(result);
+        // Send schedule command regardless of callback result
+        if let Err(e) = cluster_sender.send(schedule_cmd).await {
+            // Consider logging this error instead of silently ignoring
+            error!("Failed to send schedule command: {}", e);
+        }
     }
 
     pub(crate) async fn rebalance_request(
