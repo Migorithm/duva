@@ -782,7 +782,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         let (res_callback, conn_awaiter) = tokio::sync::oneshot::channel();
         self.connect_to_server(peer_addr.clone(), Some(res_callback)).await;
 
-        tokio::spawn(Self::registr_delayed_schedule(
+        tokio::spawn(Self::register_delayed_schedule(
             self.self_handler.clone(),
             conn_awaiter,
             cl_cb,
@@ -791,7 +791,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     }
 
     // synchronization required here to ensure that the connection is established before sending the rebalance request
-    async fn registr_delayed_schedule<C>(
+    async fn register_delayed_schedule<C>(
         cluster_sender: ClusterCommandHandler,
         awaiter: tokio::sync::oneshot::Receiver<anyhow::Result<C>>,
         callback: tokio::sync::oneshot::Sender<anyhow::Result<C>>,
