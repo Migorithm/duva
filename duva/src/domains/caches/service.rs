@@ -75,6 +75,7 @@ impl CacheActor {
 #[cfg(test)]
 mod test {
     use crate::domains::caches::actor::CacheActor;
+    use crate::domains::caches::actor::CacheCommandSender;
     use crate::domains::caches::actor::CacheDb;
     use crate::domains::caches::cache_objects::CacheEntry;
     use crate::domains::caches::cache_objects::CacheValue;
@@ -124,8 +125,11 @@ mod test {
         let (cache, rx) = tokio::sync::mpsc::channel(100);
         let hwm: Arc<AtomicU64> = Arc::new(0.into());
         tokio::spawn(
-            CacheActor { cache: CacheDb::default(), self_handler: cache.clone() }
-                .handle(rx, ReadQueue::new(hwm.clone())),
+            CacheActor {
+                cache: CacheDb::default(),
+                self_handler: CacheCommandSender(cache.clone()),
+            }
+            .handle(rx, ReadQueue::new(hwm.clone())),
         );
         // WHEN
         let cache = S(cache);
@@ -155,8 +159,11 @@ mod test {
         let (cache, rx) = tokio::sync::mpsc::channel(100);
         let hwm: Arc<AtomicU64> = Arc::new(0.into());
         tokio::spawn(
-            CacheActor { cache: CacheDb::default(), self_handler: cache.clone() }
-                .handle(rx, ReadQueue::new(hwm.clone())),
+            CacheActor {
+                cache: CacheDb::default(),
+                self_handler: CacheCommandSender(cache.clone()),
+            }
+            .handle(rx, ReadQueue::new(hwm.clone())),
         );
 
         let cache = S(cache);
@@ -188,8 +195,11 @@ mod test {
         let (cache, rx) = tokio::sync::mpsc::channel(100);
         let hwm: Arc<AtomicU64> = Arc::new(0.into());
         tokio::spawn(
-            CacheActor { cache: CacheDb::default(), self_handler: cache.clone() }
-                .handle(rx, ReadQueue::new(hwm.clone())),
+            CacheActor {
+                cache: CacheDb::default(),
+                self_handler: CacheCommandSender(cache.clone()),
+            }
+            .handle(rx, ReadQueue::new(hwm.clone())),
         );
         // WHEN
         let cache = S(cache);

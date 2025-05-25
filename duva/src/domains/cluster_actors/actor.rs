@@ -28,7 +28,7 @@ use crate::domains::query_parsers::QueryIO;
 use crate::err;
 use std::collections::VecDeque;
 use std::iter;
-use std::ops::Range;
+
 use std::sync::atomic::Ordering;
 use tokio::fs::File;
 use tokio::io::AsyncSeekExt;
@@ -109,9 +109,6 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         }
     }
 
-    pub(crate) fn coverage(&self) -> Vec<Range<u64>> {
-        self.hash_ring.get_token_ranges_for_partition(&self.replication.replid)
-    }
     pub(crate) fn hop_count(fanout: usize, node_count: usize) -> u8 {
         if node_count <= fanout {
             return 0;

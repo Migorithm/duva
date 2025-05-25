@@ -1,14 +1,15 @@
+/// A consistent hashing ring for distributing keys across nodes.
+///
+/// The `HashRing` maps keys to physical nodes using virtual nodes to ensure
+/// even distribution. Each physical node is represented by multiple virtual
+/// nodes on the ring, determined by `vnode_num`.
+///
 use crate::ReplicationId;
 use crate::prelude::PeerIdentifier;
 use std::collections::{BTreeMap, HashMap};
 use std::num::Wrapping;
 use std::ops::Range;
 use std::rc::Rc;
-/// A consistent hashing ring for distributing keys across nodes.
-///
-/// The `HashRing` maps keys to physical nodes using virtual nodes to ensure
-/// even distribution. Each physical node is represented by multiple virtual
-/// nodes on the ring, determined by `vnode_num`.
 
 // Number of virtual nodes to create for each physical node.
 const V_NODE_NUM: u16 = 256;
