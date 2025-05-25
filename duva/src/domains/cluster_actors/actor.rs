@@ -771,20 +771,44 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         &mut self,
         peer_addr: PeerIdentifier,
         lazy_option: LazyOption,
-        callback: tokio::sync::oneshot::Sender<anyhow::Result<()>>,
+        cl_cb: tokio::sync::oneshot::Sender<anyhow::Result<()>>,
     ) {
         if !self.replication.is_leader_mode || self.replication.self_identifier() == peer_addr {
-            let _ = callback.send(err!("wrong address or invalid state for cluster meet command"));
+            let _ = cl_cb.send(err!("wrong address or invalid state for cluster meet command"));
             return;
         }
+        let (res_callback, conn_awaiter) = tokio::sync::oneshot::channel();
+        self.connect_to_server(peer_addr.clone(), Some(res_callback)).await;
 
-        self.connect_to_server(peer_addr.clone(), Some(callback)).await;
+        // ! synchronization required here to ensure that the connection is established before sending the rebalance request
+        tokio::spawn({
+            let h = self.self_handler.clone();
+            async move {
+                if let Ok(Err(err)) = conn_awaiter.await {
+                    cl_cb.send(Err(err)).ok();
+                } else {
+                    cl_cb.send(Ok(())).ok();
+                };
+                h.send(SchedulerMessage::RebalanceRequest {
+                    request_to: peer_addr.clone(),
+                    lazy_option,
+                })
+                .await
+                .ok();
+            }
+        });
+    }
+
+    pub(crate) async fn rebalance_request(
+        &mut self,
+        request_to: PeerIdentifier,
+        lazy_option: LazyOption,
+    ) {
         if lazy_option == LazyOption::Eager {
+            // * If lazy option is set, we just send the request and don't wait for the response
             self.block_write_reqs();
-
             // Ask the given peer to act as rebalancing coordinator
-            if let Some(peer) = self.members.get_mut(&peer_addr) {
-                // TODO perhaps add some jitter to avoid collisions
+            if let Some(peer) = self.members.get_mut(&request_to) {
                 let _ = peer.send(QueryIO::StartRebalance).await;
             }
         }
