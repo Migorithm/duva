@@ -23,6 +23,7 @@ pub enum SchedulerMessage {
     SendClusterHeatBeat,
     SendAppendEntriesRPC,
     StartLeaderElection,
+    RebalanceRequest { request_to: PeerIdentifier, lazy_option: LazyOption },
 }
 impl From<SchedulerMessage> for ClusterCommand {
     fn from(msg: SchedulerMessage) -> Self {

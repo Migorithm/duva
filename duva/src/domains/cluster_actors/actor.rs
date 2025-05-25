@@ -159,6 +159,13 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         Ok(())
     }
 
+    // ! BLOCK subsequent requests until rebalance is done
+    fn block_write_reqs(&mut self) {
+        if self.pending_requests.is_none() {
+            self.pending_requests = Some(VecDeque::new());
+        }
+    }
+
     #[instrument(level = "debug", skip(self, peer),fields(peer_id = %peer.id()))]
     pub(crate) async fn add_peer(&mut self, peer: Peer) {
         self.replication.ban_list.remove(peer.id());
@@ -168,12 +175,15 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         if let Some(existing_peer) = self.members.insert(peer.id().clone(), peer) {
             existing_peer.kill().await;
         }
+
         self.broadcast_topology_change();
+
         let _ = self.snapshot_topology().await;
     }
 
     // * Broadcasts the current topology to all connected clients
-    fn broadcast_topology_change(&mut self) {
+    // TODO hashring information should be included in the broadcast so clients can update their routing tables
+    fn broadcast_topology_change(&self) {
         self.node_change_broadcast
             .send(
                 self.members
@@ -189,12 +199,13 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             warn!("{} is being removed!", peer_addr);
             // stop the runnin process and take the connection in case topology changes are made
             let _read_connected = peer.kill().await;
+            self.broadcast_topology_change();
             return Some(());
         }
         None
     }
 
-    #[instrument(level = "debug", skip(self, optional_callback))]
+    #[instrument(skip(self, optional_callback))]
     pub(crate) async fn connect_to_server(
         &mut self,
         connect_to: PeerIdentifier,
@@ -753,27 +764,60 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         self.replication.hwm.store(0, Ordering::Release);
         self.set_repl_id(ReplicationId::Undecided);
         self.step_down().await;
-
-        let _ = self.connect_to_server(peer_addr, Some(callback)).await;
+        self.connect_to_server(peer_addr, Some(callback)).await;
     }
 
     pub(crate) async fn cluster_meet(
         &mut self,
         peer_addr: PeerIdentifier,
         lazy_option: LazyOption,
-        callback: tokio::sync::oneshot::Sender<anyhow::Result<()>>,
+        cl_cb: tokio::sync::oneshot::Sender<anyhow::Result<()>>,
     ) {
         if !self.replication.is_leader_mode || self.replication.self_identifier() == peer_addr {
-            let _ = callback.send(err!("wrong address or invalid state for cluster meet command"));
+            let _ = cl_cb.send(err!("wrong address or invalid state for cluster meet command"));
             return;
         }
 
-        let _ = self.connect_to_server(peer_addr.clone(), Some(callback)).await;
-        if lazy_option == LazyOption::Eager {
-            self.pending_requests = Some(VecDeque::new());
+        // ! intercept the callback to ensure that the connection is established before sending the rebalance request
+        let (res_callback, conn_awaiter) = tokio::sync::oneshot::channel();
+        self.connect_to_server(peer_addr.clone(), Some(res_callback)).await;
 
+        tokio::spawn(Self::register_delayed_schedule(
+            self.self_handler.clone(),
+            conn_awaiter,
+            cl_cb,
+            SchedulerMessage::RebalanceRequest { request_to: peer_addr, lazy_option },
+        ));
+    }
+
+    // synchronization required here to ensure that the connection is established before sending the rebalance request
+    async fn register_delayed_schedule<C>(
+        cluster_sender: ClusterCommandHandler,
+        awaiter: tokio::sync::oneshot::Receiver<anyhow::Result<C>>,
+        callback: tokio::sync::oneshot::Sender<anyhow::Result<C>>,
+        schedule_cmd: SchedulerMessage,
+    ) where
+        C: Send + Sync + 'static,
+    {
+        let result = awaiter.await.unwrap_or_else(|_| Err(anyhow::anyhow!("Channel closed")));
+        let _ = callback.send(result);
+        // Send schedule command regardless of callback result
+        if let Err(e) = cluster_sender.send(schedule_cmd).await {
+            // Consider logging this error instead of silently ignoring
+            error!("Failed to send schedule command: {}", e);
+        }
+    }
+
+    pub(crate) async fn rebalance_request(
+        &mut self,
+        request_to: PeerIdentifier,
+        lazy_option: LazyOption,
+    ) {
+        if lazy_option == LazyOption::Eager {
+            // * If lazy option is set, we just send the request and don't wait for the response
+            self.block_write_reqs();
             // Ask the given peer to act as rebalancing coordinator
-            if let Some(peer) = self.members.get_mut(&peer_addr) {
+            if let Some(peer) = self.members.get_mut(&request_to) {
                 let _ = peer.send(QueryIO::StartRebalance).await;
             }
         }
@@ -796,12 +840,17 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             return;
         };
 
-        let _ = self.connect_to_server(peer_to_connect, None).await;
+        self.connect_to_server(peer_to_connect, None).await;
     }
 
-    #[instrument(level = tracing::Level::DEBUG, skip(self), fields(request_from = %from))]
-    pub(crate) async fn start_rebalance(&mut self, from: PeerIdentifier) {
-        // using self.hash_ring, start rebalancing
+    #[instrument(level = tracing::Level::DEBUG, skip(self), fields(request_from = %request_from))]
+    pub(crate) async fn start_rebalance(&mut self, request_from: PeerIdentifier) {
+        let Some(member) = self.members.get(&request_from) else {
+            error!("Received rebalance request from unknown peer: {}", request_from);
+            return;
+        };
+
+        self.block_write_reqs();
     }
 }
 

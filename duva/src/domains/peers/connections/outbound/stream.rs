@@ -37,7 +37,6 @@ impl OutboundStream {
         Ok(OutboundStream { r: read, w: write, my_repl_info, connected_node_info: None })
     }
     async fn make_handshake(&mut self, self_port: u16) -> anyhow::Result<()> {
-        // Trigger
         self.w.write(write_array!("PING")).await?;
         let mut ok_count = 0;
         let mut connection_info = ConnectedPeerInfo {

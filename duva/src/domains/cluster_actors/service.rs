@@ -53,6 +53,9 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             | StartLeaderElection => {
                 self.run_for_election().await;
             },
+            | RebalanceRequest { request_to, lazy_option } => {
+                self.rebalance_request(request_to, lazy_option).await;
+            },
         }
     }
 
