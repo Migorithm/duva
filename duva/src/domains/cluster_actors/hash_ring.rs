@@ -14,11 +14,12 @@ use std::rc::Rc;
 // Number of virtual nodes to create for each physical node.
 const V_NODE_NUM: u16 = 256;
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, bincode::Decode, bincode::Encode, Clone, PartialEq, Eq)]
 pub struct HashRing {
     vnodes: BTreeMap<u64, Rc<ReplicationId>>,
     // TODO value in the following map must be replaced when election happens
     pnodes: HashMap<ReplicationId, PeerIdentifier>,
+    last_modified: u64,
 }
 
 // ! SAFETY: HashRing is supposed to be used in a single-threaded context
@@ -26,6 +27,13 @@ pub struct HashRing {
 unsafe impl Send for HashRing {}
 
 impl HashRing {
+    fn update_last_modified(&mut self) {
+        self.last_modified = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as u64;
+    }
+
     pub fn add_partition(&mut self, repl_id: ReplicationId, leader_id: PeerIdentifier) {
         self.pnodes.insert(repl_id.clone(), leader_id);
 
@@ -38,7 +46,7 @@ impl HashRing {
             self.vnodes.insert(hash, repl_id.clone());
         }
 
-        // Update physical node mapping
+        self.update_last_modified();
     }
 
     /// The following method will be invoked when:
@@ -50,6 +58,8 @@ impl HashRing {
 
         // Remove the physical node
         self.pnodes.remove(target_repl_id);
+
+        self.update_last_modified();
     }
 
     pub fn get_node_for_key(&self, key: &str) -> Option<&PeerIdentifier> {
@@ -170,7 +180,7 @@ pub(crate) fn fnv_1a_hash(value: &str) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::HashSet;
+    use std::{collections::HashSet, thread::sleep, time::Duration};
 
     #[test]
     fn test_hash_deterministic() {
@@ -291,16 +301,21 @@ mod tests {
     #[test]
     fn test_add_and_remove_node() {
         let mut ring = HashRing::default();
+        let modified_time = ring.last_modified;
         let node = PeerIdentifier("127.0.0.1:6379".into());
         let repl_id = ReplicationId::Key(uuid::Uuid::now_v7().to_string());
 
         ring.add_partition(repl_id.clone(), node.clone());
+        let modified_time_after_add = ring.last_modified;
         assert_eq!(ring.get_pnode_count(), 1);
         assert_eq!(ring.get_vnode_count(), 256);
+        assert!(modified_time < modified_time_after_add);
 
+        sleep(Duration::from_millis(1)); // Ensure time has changed
         ring.remove_partition(&repl_id);
         assert_eq!(ring.get_pnode_count(), 0);
         assert_eq!(ring.get_vnode_count(), 0);
+        assert!(ring.last_modified > modified_time_after_add);
     }
 
     #[test]
