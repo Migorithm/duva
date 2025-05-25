@@ -27,6 +27,9 @@ pub struct HashRing {
 unsafe impl Send for HashRing {}
 
 impl HashRing {
+    pub(super) fn exists(&self, replid: &ReplicationId) -> bool {
+        self.pnodes.contains_key(replid)
+    }
     fn update_last_modified(&mut self) {
         self.last_modified = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -542,6 +545,18 @@ mod tests {
         // should redistribute the hash space)
         assert_ne!(initial_ranges1, updated_ranges1);
         assert_ne!(initial_ranges2, updated_ranges2);
+    }
+
+    #[test]
+    fn test_exists() {
+        let mut ring = HashRing::default();
+        let repl_id = ReplicationId::Key(uuid::Uuid::now_v7().to_string());
+        let node = PeerIdentifier("127.0.0.1:3499".to_string());
+        ring.add_partition(repl_id.clone(), node.clone());
+        assert!(ring.exists(&repl_id));
+
+        ring.remove_partition(&repl_id);
+        assert!(!ring.exists(&repl_id));
     }
 
     // Helper function to check if two ranges overlap

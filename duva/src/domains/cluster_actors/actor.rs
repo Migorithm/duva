@@ -159,6 +159,13 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         Ok(())
     }
 
+    // ! BLOCK subsequent requests until rebalance is done
+    fn block_write_reqs(&mut self) {
+        if self.pending_requests.is_none() {
+            self.pending_requests = Some(VecDeque::new());
+        }
+    }
+
     #[instrument(level = "debug", skip(self, peer),fields(peer_id = %peer.id()))]
     pub(crate) async fn add_peer(&mut self, peer: Peer) {
         self.replication.ban_list.remove(peer.id());
@@ -774,7 +781,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
         let _ = self.connect_to_server(peer_addr.clone(), Some(callback)).await;
         if lazy_option == LazyOption::Eager {
-            self.pending_requests = Some(VecDeque::new());
+            self.block_write_reqs();
 
             // Ask the given peer to act as rebalancing coordinator
             if let Some(peer) = self.members.get_mut(&peer_addr) {
@@ -803,9 +810,14 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         let _ = self.connect_to_server(peer_to_connect, None).await;
     }
 
-    #[instrument(level = tracing::Level::DEBUG, skip(self), fields(request_from = %from))]
-    pub(crate) async fn start_rebalance(&mut self, from: PeerIdentifier) {
-        // using self.hash_ring, start rebalancing
+    #[instrument(level = tracing::Level::DEBUG, skip(self), fields(request_from = %request_from))]
+    pub(crate) async fn start_rebalance(&mut self, request_from: PeerIdentifier) {
+        let Some(member) = self.members.get(&request_from) else {
+            error!("Received rebalance request from unknown peer: {}", request_from);
+            return;
+        };
+
+        self.block_write_reqs();
     }
 }
 

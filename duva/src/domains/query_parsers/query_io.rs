@@ -709,7 +709,7 @@ mod test {
     }
 
     #[test]
-    fn test_trigger_rebalance_serde() {
+    fn test_start_rebalance_serde() {
         //GIVEN
         let query_io = QueryIO::StartRebalance;
 
