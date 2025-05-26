@@ -25,9 +25,10 @@ pub struct HashRing {
 // ! SAFETY: HashRing is supposed to be used in a single-threaded context
 // ! with cluster actor as the actor is the access point to the ring.
 unsafe impl Send for HashRing {}
+unsafe impl Sync for HashRing {}
 
 impl HashRing {
-    pub(super) fn exists(&self, replid: &ReplicationId) -> bool {
+    fn exists(&self, replid: &ReplicationId) -> bool {
         self.pnodes.contains_key(replid)
     }
     fn update_last_modified(&mut self) {
@@ -37,7 +38,16 @@ impl HashRing {
             .as_millis();
     }
 
-    pub fn add_partition(&mut self, repl_id: ReplicationId, leader_id: PeerIdentifier) {
+    /// Adds a new partition to the hash ring if it doesn't already exist.
+    pub fn add_partition_if_not_exists(
+        &mut self,
+        repl_id: ReplicationId,
+        leader_id: PeerIdentifier,
+    ) -> Option<()> {
+        if self.exists(&repl_id) {
+            return None;
+        }
+
         self.pnodes.insert(repl_id.clone(), leader_id);
 
         let repl_id = Rc::new(repl_id.clone());
@@ -50,6 +60,8 @@ impl HashRing {
         }
 
         self.update_last_modified();
+
+        Some(())
     }
 
     /// The following method will be invoked when:
@@ -82,7 +94,7 @@ impl HashRing {
     /// for all tokens >= start_hash and < end_hash.
     pub fn get_token_ranges_for_partition(&self, repl_id: &ReplicationId) -> Vec<Range<u64>> {
         // If node doesn't exist or the ring is empty, return empty vector
-        if !self.pnodes.contains_key(repl_id) || self.vnodes.is_empty() {
+        if !self.exists(repl_id) || self.vnodes.is_empty() {
             return Vec::new();
         }
 
@@ -138,17 +150,17 @@ impl HashRing {
     }
 
     #[cfg(test)]
-    fn get_virtual_nodes(&self) -> Vec<(&u64, &std::rc::Rc<ReplicationId>)> {
+    pub(crate) fn get_virtual_nodes(&self) -> Vec<(&u64, &std::rc::Rc<ReplicationId>)> {
         self.vnodes.iter().collect()
     }
 
     #[cfg(test)]
-    fn get_pnode_count(&self) -> usize {
+    pub(crate) fn get_pnode_count(&self) -> usize {
         self.pnodes.len()
     }
 
     #[cfg(test)]
-    fn get_vnode_count(&self) -> usize {
+    pub(crate) fn get_vnode_count(&self) -> usize {
         self.vnodes.len()
     }
 }
@@ -308,7 +320,7 @@ mod tests {
         let node = PeerIdentifier("127.0.0.1:6379".into());
         let repl_id = ReplicationId::Key(uuid::Uuid::now_v7().to_string());
 
-        ring.add_partition(repl_id.clone(), node.clone());
+        ring.add_partition_if_not_exists(repl_id.clone(), node.clone());
         let modified_time_after_add = ring.last_modified;
         assert_eq!(ring.get_pnode_count(), 1);
         assert_eq!(ring.get_vnode_count(), 256);
@@ -326,7 +338,7 @@ mod tests {
         let mut ring = HashRing::default();
         let node = PeerIdentifier("127.0.0.1:6379".into());
         let repl_id = ReplicationId::Key(uuid::Uuid::now_v7().to_string());
-        ring.add_partition(repl_id.clone(), node.clone());
+        ring.add_partition_if_not_exists(repl_id.clone(), node.clone());
 
         let key = "test_key";
         let node = ring.get_node_for_key(key);
@@ -341,8 +353,8 @@ mod tests {
         let node2 = PeerIdentifier("127.0.0.1:6380".into());
         let repl_id2 = ReplicationId::Key(uuid::Uuid::now_v7().to_string());
 
-        ring.add_partition(repl_id1, node1);
-        ring.add_partition(repl_id2, node2);
+        ring.add_partition_if_not_exists(repl_id1, node1);
+        ring.add_partition_if_not_exists(repl_id2, node2);
 
         assert_eq!(ring.get_pnode_count(), 2);
         assert_eq!(ring.get_vnode_count(), 512);
@@ -355,9 +367,18 @@ mod tests {
         let node2 = PeerIdentifier("127.0.0.1:6380".into());
         let node3 = PeerIdentifier("127.0.0.1:6389".into());
 
-        ring.add_partition(ReplicationId::Key(uuid::Uuid::now_v7().to_string()), node1);
-        ring.add_partition(ReplicationId::Key(uuid::Uuid::now_v7().to_string()), node2);
-        ring.add_partition(ReplicationId::Key(uuid::Uuid::now_v7().to_string()), node3);
+        ring.add_partition_if_not_exists(
+            ReplicationId::Key(uuid::Uuid::now_v7().to_string()),
+            node1,
+        );
+        ring.add_partition_if_not_exists(
+            ReplicationId::Key(uuid::Uuid::now_v7().to_string()),
+            node2,
+        );
+        ring.add_partition_if_not_exists(
+            ReplicationId::Key(uuid::Uuid::now_v7().to_string()),
+            node3,
+        );
 
         let key = "test_key";
         let node_got1 = ring.get_node_for_key(key);
@@ -375,9 +396,15 @@ mod tests {
         let node3 = PeerIdentifier("127.0.0.1:6381".into());
 
         let repl_id = ReplicationId::Key(uuid::Uuid::now_v7().to_string());
-        ring.add_partition(repl_id.clone(), node1);
-        ring.add_partition(ReplicationId::Key(uuid::Uuid::now_v7().to_string()), node2);
-        ring.add_partition(ReplicationId::Key(uuid::Uuid::now_v7().to_string()), node3);
+        ring.add_partition_if_not_exists(repl_id.clone(), node1);
+        ring.add_partition_if_not_exists(
+            ReplicationId::Key(uuid::Uuid::now_v7().to_string()),
+            node2,
+        );
+        ring.add_partition_if_not_exists(
+            ReplicationId::Key(uuid::Uuid::now_v7().to_string()),
+            node3,
+        );
 
         // Record initial key distribution
         let mut before_removal = Vec::new();
@@ -412,7 +439,7 @@ mod tests {
         let node = PeerIdentifier("127.0.0.1:6379".into());
 
         let repl_id = ReplicationId::Key(uuid::Uuid::now_v7().to_string());
-        ring.add_partition(repl_id.clone(), node.clone());
+        ring.add_partition_if_not_exists(repl_id.clone(), node.clone());
 
         let virtual_nodes = ring.get_virtual_nodes();
         assert_eq!(virtual_nodes.len(), 256);
@@ -436,7 +463,7 @@ mod tests {
     fn test_get_token_ranges_nonexistent_node() {
         let mut ring = HashRing::default();
         let repl_id = ReplicationId::Key(uuid::Uuid::now_v7().to_string());
-        ring.add_partition(repl_id.clone(), PeerIdentifier("127.0.0.1:6349".into()));
+        ring.add_partition_if_not_exists(repl_id.clone(), PeerIdentifier("127.0.0.1:6349".into()));
 
         // Try to get ranges for a node that doesn't exist
         let ranges = ring.get_token_ranges_for_partition(&"127.0.0.1:7777".to_string().into());
@@ -448,7 +475,7 @@ mod tests {
         let mut ring = HashRing::default();
         let node_id = "127.0.0.1:6349";
         let repl_id = ReplicationId::Key(uuid::Uuid::now_v7().to_string());
-        ring.add_partition(repl_id.clone(), PeerIdentifier(node_id.into()));
+        ring.add_partition_if_not_exists(repl_id.clone(), PeerIdentifier(node_id.into()));
 
         let ranges = ring.get_token_ranges_for_partition(&repl_id);
 
@@ -469,8 +496,8 @@ mod tests {
         let node2 = PeerIdentifier("127.0.0.1:6350".to_string());
         let repl_id2 = ReplicationId::Key(uuid::Uuid::now_v7().to_string());
 
-        ring.add_partition(repl_id1.clone(), node1.clone());
-        ring.add_partition(repl_id2.clone(), node2.clone());
+        ring.add_partition_if_not_exists(repl_id1.clone(), node1.clone());
+        ring.add_partition_if_not_exists(repl_id2.clone(), node2.clone());
         let ranges1 = ring.get_token_ranges_for_partition(&repl_id1);
         let ranges2 = ring.get_token_ranges_for_partition(&repl_id2);
 
@@ -513,9 +540,9 @@ mod tests {
         let repl_id3 = ReplicationId::Key(uuid::Uuid::now_v7().to_string());
 
         // Add three nodes
-        ring.add_partition(repl_id1.clone(), node1.clone());
-        ring.add_partition(repl_id2.clone(), node2.clone());
-        ring.add_partition(repl_id3.clone(), node3.clone());
+        ring.add_partition_if_not_exists(repl_id1.clone(), node1.clone());
+        ring.add_partition_if_not_exists(repl_id2.clone(), node2.clone());
+        ring.add_partition_if_not_exists(repl_id3.clone(), node3.clone());
 
         // Get initial ranges
         let initial_ranges1 = ring.get_token_ranges_for_partition(&repl_id1);
@@ -548,15 +575,38 @@ mod tests {
     }
 
     #[test]
-    fn test_exists() {
+    fn test_eq_works_deterministically() {
         let mut ring = HashRing::default();
         let repl_id = ReplicationId::Key(uuid::Uuid::now_v7().to_string());
         let node = PeerIdentifier("127.0.0.1:3499".to_string());
-        ring.add_partition(repl_id.clone(), node.clone());
-        assert!(ring.exists(&repl_id));
+        ring.add_partition_if_not_exists(repl_id.clone(), node.clone());
+
+        let mut ring_to_compare = HashRing::default();
+        ring_to_compare.add_partition_if_not_exists(repl_id.clone(), node.clone());
+        assert_eq!(ring, ring_to_compare);
 
         ring.remove_partition(&repl_id);
-        assert!(!ring.exists(&repl_id));
+        assert_ne!(ring, ring_to_compare);
+
+        ring_to_compare.remove_partition(&repl_id);
+        assert_eq!(ring, ring_to_compare);
+    }
+
+    #[test]
+    fn test_idempotent_addition() {
+        let mut ring = HashRing::default();
+        let repl_id = ReplicationId::Key(uuid::Uuid::now_v7().to_string());
+        let node = PeerIdentifier("127.0.0.1:3499".to_string());
+        let is_added = ring.add_partition_if_not_exists(repl_id.clone(), node.clone());
+        assert!(is_added.is_some());
+
+        let ring_to_compare = ring.clone(); // Clone to avoid borrowing issues
+
+        // Adding the same node again should not change the ring
+        let is_added = ring.add_partition_if_not_exists(repl_id.clone(), node.clone());
+        assert!(is_added.is_none());
+
+        assert_eq!(ring, ring_to_compare);
     }
 
     // Helper function to check if two ranges overlap

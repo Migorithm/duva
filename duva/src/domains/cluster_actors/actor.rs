@@ -88,7 +88,10 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
         let (tx, _) = tokio::sync::broadcast::channel::<Vec<PeerIdentifier>>(100);
         let mut hash_ring = HashRing::default();
-        hash_ring.add_partition(init_repl_info.replid.clone(), init_repl_info.self_identifier());
+        hash_ring.add_partition_if_not_exists(
+            init_repl_info.replid.clone(),
+            init_repl_info.self_identifier(),
+        );
 
         Self {
             heartbeat_scheduler,
@@ -133,16 +136,9 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         self.members.get_mut(peer_id).filter(|peer| peer.kind() == &NodeKind::Replica)
     }
 
-    pub(crate) async fn send_cluster_heartbeat(&mut self, hop_count: u8) {
-        // TODO randomly choose the peer to send the message
-        let msg = QueryIO::ClusterHeartBeat(
-            self.replication
-                .default_heartbeat(hop_count, self.logger.last_log_index, self.logger.last_log_term)
-                .set_cluster_nodes(self.cluster_nodes()),
-        );
-
+    async fn send_heartbeat(&mut self, heartbeat: HeartBeat) {
         for peer in self.members.values_mut() {
-            let _ = peer.send(msg.clone()).await;
+            let _ = peer.send(heartbeat.clone()).await;
         }
     }
 
@@ -166,7 +162,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         }
     }
 
-    #[instrument(level = "debug", skip(self, peer),fields(peer_id = %peer.id()))]
+    #[instrument(level = tracing::Level::DEBUG, skip(self, peer),fields(peer_id = %peer.id()))]
     pub(crate) async fn add_peer(&mut self, peer: Peer) {
         self.replication.ban_list.remove(peer.id());
 
@@ -228,7 +224,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         ));
     }
 
-    #[instrument(level = "debug", skip(self, peer_stream))]
+    #[instrument(level = tracing::Level::DEBUG, skip(self, peer_stream))]
     pub(crate) async fn accept_inbound_stream(&mut self, peer_stream: TcpStream) {
         let inbound_stream = InboundStream::new(peer_stream, self.replication.clone());
         tokio::spawn(
@@ -260,6 +256,14 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             self.remove_peer(&peer_id).await;
         }
     }
+    pub(crate) async fn send_periodic_heartbeat(&mut self) {
+        let hop_count = Self::hop_count(FANOUT, self.members.len());
+        let hb = self
+            .replication
+            .default_heartbeat(hop_count, self.logger.last_log_index, self.logger.last_log_term)
+            .set_cluster_nodes(self.cluster_nodes());
+        self.send_heartbeat(hb).await;
+    }
 
     async fn gossip(&mut self, mut hop_count: u8) {
         // If hop_count is 0, don't send the message to other peers
@@ -267,7 +271,12 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             return;
         };
         hop_count -= 1;
-        self.send_cluster_heartbeat(hop_count).await;
+
+        let hb = self
+            .replication
+            .default_heartbeat(hop_count, self.logger.last_log_index, self.logger.last_log_term)
+            .set_cluster_nodes(self.cluster_nodes());
+        self.send_heartbeat(hb).await;
     }
 
     pub(crate) async fn forget_peer(
@@ -576,7 +585,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             .collect()
     }
 
-    #[instrument(level = tracing::Level::DEBUG, skip(self))]
+    #[instrument(level = tracing::Level::INFO, skip(self))]
     pub(crate) async fn run_for_election(&mut self) {
         warn!("Running for election term {}", self.replication.term);
 
@@ -594,7 +603,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             .await;
     }
 
-    #[instrument(level = tracing::Level::DEBUG, skip(self, request_vote))]
+    #[instrument(level = tracing::Level::INFO, skip(self, request_vote))]
     pub(crate) async fn vote_election(&mut self, request_vote: RequestVote) {
         let grant_vote = self.logger.last_log_index <= request_vote.last_log_index
             && self.replication.become_follower_if_term_higher_and_votable(
@@ -603,8 +612,8 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             );
 
         info!(
-            "Voting for {} with term {} and granted: {}",
-            request_vote.candidate_id, request_vote.term, grant_vote
+            "Voting for {} with term {} and granted: {grant_vote}",
+            request_vote.candidate_id, request_vote.term
         );
 
         let term = self.replication.term;
@@ -790,7 +799,6 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         ));
     }
 
-    // synchronization required here to ensure that the connection is established before sending the rebalance request
     async fn register_delayed_schedule<C>(
         cluster_sender: ClusterCommandHandler,
         awaiter: tokio::sync::oneshot::Receiver<anyhow::Result<C>>,
@@ -843,14 +851,32 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         self.connect_to_server(peer_to_connect, None).await;
     }
 
-    #[instrument(level = tracing::Level::DEBUG, skip(self), fields(request_from = %request_from))]
+    #[instrument(level = tracing::Level::INFO, skip(self), fields(request_from = %request_from))]
     pub(crate) async fn start_rebalance(&mut self, request_from: PeerIdentifier) {
         let Some(member) = self.members.get(&request_from) else {
             error!("Received rebalance request from unknown peer: {}", request_from);
             return;
         };
 
-        self.block_write_reqs();
+        if self
+            .hash_ring
+            .add_partition_if_not_exists(member.replid().clone(), member.id().clone())
+            .is_some()
+        {
+            warn!("Rebalancing started! subsequent writes will be blocked until rebalance is done");
+            self.block_write_reqs();
+        };
+
+        let hb = self
+            .replication
+            .default_heartbeat(
+                Self::hop_count(FANOUT, self.members.len()),
+                self.logger.last_log_index,
+                self.logger.last_log_term,
+            )
+            .set_hashring(self.hash_ring.clone());
+
+        self.send_heartbeat(hb).await;
     }
 }
 
@@ -862,7 +888,6 @@ pub mod test {
     use crate::adapters::op_logs::memory_based::MemoryOpLogs;
     use crate::domains::caches::actor::CacheCommandSender;
     use crate::domains::caches::command::CacheCommand;
-
     use crate::domains::cluster_actors::replication::ReplicationRole;
     use crate::domains::operation_logs::WriteOperation;
     use crate::domains::operation_logs::WriteRequest;
@@ -872,7 +897,6 @@ pub mod test {
     use std::time::Duration;
     use tempfile::TempDir;
     use tokio::fs::OpenOptions;
-
     use tokio::net::TcpListener;
     use tokio::net::TcpStream;
     use tokio::sync::mpsc::channel;
@@ -903,6 +927,7 @@ pub mod test {
             replid: ReplicationId::Key("localhost".to_string().into()),
             hop_count: 0,
             cluster_nodes: vec![],
+            hashring: None,
         }
     }
 

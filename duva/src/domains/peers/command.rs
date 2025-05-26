@@ -48,7 +48,8 @@ mod peer_messages {
 
     use super::*;
     use crate::domains::{
-        cluster_actors::replication::ReplicationId, operation_logs::WriteOperation,
+        cluster_actors::{hash_ring::HashRing, replication::ReplicationId},
+        operation_logs::WriteOperation,
         peers::peer::PeerState,
     };
 
@@ -126,6 +127,7 @@ mod peer_messages {
         pub(crate) cluster_nodes: Vec<PeerState>,
         pub(crate) prev_log_index: u64, //index of log entry immediately preceding new ones
         pub(crate) prev_log_term: u64,  //term of prev_log_index entry
+        pub(crate) hashring: Option<HashRing>,
     }
     impl HeartBeat {
         pub(crate) fn set_append_entries(mut self, entries: Vec<WriteOperation>) -> Self {
@@ -136,6 +138,10 @@ mod peer_messages {
         pub(crate) fn set_cluster_nodes(mut self, cluster_nodes: Vec<PeerState>) -> Self {
             self.cluster_nodes = cluster_nodes;
             self
+        }
+
+        pub(crate) fn set_hashring(&self, ring: HashRing) -> Self {
+            Self { hashring: Some(ring), ..self.clone() }
         }
     }
 

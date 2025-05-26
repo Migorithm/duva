@@ -69,10 +69,7 @@ impl ElectionVoting {
         if self.cnt >= required_count {
             return None;
         }
-        warn!(
-            "Voting not finished yet, curent count{}, required count{}",
-            self.cnt, required_count
-        );
+        warn!("Voting not finished yet, curent count{}, required count{required_count}", self.cnt);
         Some(self)
     }
 }

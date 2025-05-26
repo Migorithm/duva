@@ -94,6 +94,7 @@ impl ReplicationState {
             cluster_nodes: vec![],
             prev_log_index,
             prev_log_term,
+            hashring: None,
         }
     }
 

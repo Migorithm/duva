@@ -417,10 +417,17 @@ impl From<()> for QueryIO {
         QueryIO::Null
     }
 }
+
+impl From<HeartBeat> for QueryIO {
+    fn from(value: HeartBeat) -> Self {
+        QueryIO::ClusterHeartBeat(value)
+    }
+}
 #[cfg(test)]
 mod test {
     use uuid::Uuid;
 
+    use crate::domains::cluster_actors::hash_ring::HashRing;
     use crate::domains::cluster_actors::replication::ReplicationId;
 
     use crate::domains::operation_logs::WriteRequest;
@@ -646,6 +653,7 @@ mod test {
                 ),
                 PeerState::new("127.0.0.1:30001", 0, ReplicationId::Undecided, NodeKind::Myself),
             ],
+            hashring: None,
         };
         let replicate = QueryIO::AppendEntriesRPC(heartbeat);
 
@@ -719,5 +727,48 @@ mod test {
 
         //THEN
         assert_eq!(deserialized, query_io);
+    }
+
+    #[test]
+    fn test_heartbeat_include_hashring() {
+        // GIVEN
+        let mut ring = HashRing::default();
+        ring.add_partition_if_not_exists(
+            ReplicationId::Key(Uuid::now_v7().to_string()),
+            PeerIdentifier::new("127.0.1:3344".into(), 0),
+        );
+
+        let heartbeat = HeartBeat {
+            from: PeerIdentifier::new("127.0.0.1:3344".into(), 0),
+            term: 1,
+            prev_log_index: 0,
+            prev_log_term: 1,
+            hwm: 5,
+            replid: ReplicationId::Key(Uuid::now_v7().to_string()),
+            hop_count: 2,
+            ban_list: vec![],
+            append_entries: vec![],
+            cluster_nodes: vec![],
+            hashring: Some(ring),
+        };
+
+        let query_io = QueryIO::ClusterHeartBeat(heartbeat.clone());
+
+        // WHEN
+        let serialized = query_io.clone().serialize();
+        let (deserialized, _) = deserialize(serialized).unwrap();
+        let QueryIO::ClusterHeartBeat(deserialized_heartbeat) = deserialized else {
+            panic!("Expected a ClusterHeartBeat");
+        };
+
+        // THEN -- ring should be included in the heartbeat
+        assert_eq!(deserialized_heartbeat.hashring, heartbeat.hashring);
+        let ring_to_cmp = heartbeat.hashring.unwrap();
+        let deserialized_ring = deserialized_heartbeat.hashring.unwrap();
+        assert_eq!(deserialized_ring.get_pnode_count(), ring_to_cmp.get_pnode_count());
+
+        assert_eq!(deserialized_ring, ring_to_cmp);
+        assert!(ring_to_cmp.get_virtual_nodes().len() > 0);
+        assert!(deserialized_ring.get_virtual_nodes().len() > 0);
     }
 }

@@ -58,7 +58,7 @@ impl StartUpFacade {
         let path = std::path::Path::new(path_str.as_str());
 
         // todo if tpp was modified AFTER snapshot was created, we need to update the repl id
-        let _repl_id_from_topp = if env.seed_server.is_none() {
+        let repl_id_from_topp = if env.seed_server.is_none() {
             ReplicationId::Key(
                 env.pre_connected_peers
                     .iter()
@@ -72,11 +72,10 @@ impl StartUpFacade {
 
         if let Ok(true) = path.try_exists() {
             let snapshot = SnapshotLoader::load_from_filepath(path).unwrap();
-
             return snapshot;
         }
 
-        Snapshot::default()
+        Snapshot::default_with_repl_id(repl_id_from_topp)
     }
 
     pub fn new(
@@ -166,7 +165,7 @@ impl StartUpFacade {
 
     /// Run while loop accepting stream and if the sentinel is received, abort the tasks
 
-    #[instrument(skip(self))]
+    #[instrument(level = tracing::Level::DEBUG, skip(self))]
     async fn start_receiving_client_streams(self) -> anyhow::Result<()> {
         let listener = TcpListener::bind(&self.config_manager.bind_addr()).await?;
         info!("start listening on {}", self.config_manager.bind_addr());

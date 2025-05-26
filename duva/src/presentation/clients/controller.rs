@@ -138,7 +138,7 @@ impl ClientController {
         Ok(response)
     }
 
-    #[instrument(skip(self, request))]
+    #[instrument(level = tracing::Level::DEBUG , skip(self, request))]
     pub(crate) async fn maybe_consensus_then_execute(
         &self,
         mut request: ClientRequest,
