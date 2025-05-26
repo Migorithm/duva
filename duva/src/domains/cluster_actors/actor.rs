@@ -88,7 +88,10 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
         let (tx, _) = tokio::sync::broadcast::channel::<Vec<PeerIdentifier>>(100);
         let mut hash_ring = HashRing::default();
-        hash_ring.add_partition(init_repl_info.replid.clone(), init_repl_info.self_identifier());
+        hash_ring.add_partition_if_not_exists(
+            init_repl_info.replid.clone(),
+            init_repl_info.self_identifier(),
+        );
 
         Self {
             heartbeat_scheduler,
@@ -790,7 +793,6 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         ));
     }
 
-    // synchronization required here to ensure that the connection is established before sending the rebalance request
     async fn register_delayed_schedule<C>(
         cluster_sender: ClusterCommandHandler,
         awaiter: tokio::sync::oneshot::Receiver<anyhow::Result<C>>,
@@ -849,6 +851,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             error!("Received rebalance request from unknown peer: {}", request_from);
             return;
         };
+        self.hash_ring.add_partition_if_not_exists(member.replid().clone(), member.id().clone());
 
         self.block_write_reqs();
     }
@@ -862,7 +865,6 @@ pub mod test {
     use crate::adapters::op_logs::memory_based::MemoryOpLogs;
     use crate::domains::caches::actor::CacheCommandSender;
     use crate::domains::caches::command::CacheCommand;
-
     use crate::domains::cluster_actors::replication::ReplicationRole;
     use crate::domains::operation_logs::WriteOperation;
     use crate::domains::operation_logs::WriteRequest;
@@ -872,7 +874,6 @@ pub mod test {
     use std::time::Duration;
     use tempfile::TempDir;
     use tokio::fs::OpenOptions;
-
     use tokio::net::TcpListener;
     use tokio::net::TcpStream;
     use tokio::sync::mpsc::channel;

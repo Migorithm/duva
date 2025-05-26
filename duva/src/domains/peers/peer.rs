@@ -33,6 +33,9 @@ impl Peer {
     pub(crate) fn state(&self) -> &PeerState {
         &self.state
     }
+    pub(crate) fn replid(&self) -> &ReplicationId {
+        &self.state.replid
+    }
 
     pub(crate) fn kind(&self) -> &NodeKind {
         &self.state.kind
