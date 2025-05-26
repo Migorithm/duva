@@ -851,9 +851,16 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             error!("Received rebalance request from unknown peer: {}", request_from);
             return;
         };
-        self.hash_ring.add_partition_if_not_exists(member.replid().clone(), member.id().clone());
 
-        self.block_write_reqs();
+        if self
+            .hash_ring
+            .add_partition_if_not_exists(member.replid().clone(), member.id().clone())
+            .is_some()
+        {
+            self.block_write_reqs();
+        };
+
+        // propagate the rebalance request to all replicas
     }
 }
 

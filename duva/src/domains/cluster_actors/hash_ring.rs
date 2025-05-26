@@ -42,9 +42,9 @@ impl HashRing {
         &mut self,
         repl_id: ReplicationId,
         leader_id: PeerIdentifier,
-    ) {
+    ) -> Option<()> {
         if self.pnodes.contains_key(&repl_id) {
-            return;
+            return None;
         }
 
         self.pnodes.insert(repl_id.clone(), leader_id);
@@ -59,6 +59,8 @@ impl HashRing {
         }
 
         self.update_last_modified();
+
+        Some(())
     }
 
     /// The following method will be invoked when:
@@ -606,11 +608,15 @@ mod tests {
         let mut ring = HashRing::default();
         let repl_id = ReplicationId::Key(uuid::Uuid::now_v7().to_string());
         let node = PeerIdentifier("127.0.0.1:3499".to_string());
-        ring.add_partition_if_not_exists(repl_id.clone(), node.clone());
+        let is_added = ring.add_partition_if_not_exists(repl_id.clone(), node.clone());
+        assert!(is_added.is_some());
+
         let ring_to_compare = ring.clone(); // Clone to avoid borrowing issues
 
         // Adding the same node again should not change the ring
-        ring.add_partition_if_not_exists(repl_id.clone(), node.clone());
+        let is_added = ring.add_partition_if_not_exists(repl_id.clone(), node.clone());
+        assert!(is_added.is_none());
+
         assert_eq!(ring, ring_to_compare);
     }
 
