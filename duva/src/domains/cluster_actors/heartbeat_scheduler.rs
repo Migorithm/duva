@@ -44,7 +44,7 @@ impl HeartBeatScheduler {
             async move {
                 loop {
                     heartbeat_interval.tick().await;
-                    let _ = handler.send(SchedulerMessage::SendClusterHeatBeat.into()).await;
+                    let _ = handler.send(SchedulerMessage::SendPeriodicHeatBeat.into()).await;
                 }
             }
         });
@@ -194,7 +194,7 @@ mod tests {
                 assert!(matches!(
                     cmd,
                     ClusterCommand::Scheduler(SchedulerMessage::SendAppendEntriesRPC)
-                        | ClusterCommand::Scheduler(SchedulerMessage::SendClusterHeatBeat)
+                        | ClusterCommand::Scheduler(SchedulerMessage::SendPeriodicHeatBeat)
                 ));
                 count += 1;
                 if count >= 2 {

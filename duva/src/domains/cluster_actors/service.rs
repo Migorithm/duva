@@ -2,7 +2,7 @@ use crate::domains::caches::cache_manager::CacheManager;
 use crate::domains::cluster_actors::ClusterCommand;
 use crate::domains::cluster_actors::replication::ReplicationState;
 use crate::domains::cluster_actors::{
-    ClientMessage, ClusterActor, ConnectionMessage, FANOUT, SchedulerMessage,
+    ClientMessage, ClusterActor, ConnectionMessage, SchedulerMessage,
 };
 use crate::domains::operation_logs::interfaces::TWriteAheadLog;
 
@@ -40,12 +40,11 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     async fn process_scheduler_message(&mut self, msg: SchedulerMessage) {
         use SchedulerMessage::*;
         match msg {
-            | SendClusterHeatBeat => {
+            | SendPeriodicHeatBeat => {
                 // ! remove idle peers based on ttl.
                 // ! The following may need to be moved else where to avoid blocking the main loop
                 self.remove_idle_peers().await;
-                let hop_count = Self::hop_count(FANOUT, self.members.len());
-                self.send_cluster_heartbeat(hop_count).await;
+                self.send_periodic_heartbeat().await;
             },
             | SendAppendEntriesRPC => {
                 self.send_rpc().await;

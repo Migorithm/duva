@@ -25,6 +25,7 @@ pub struct HashRing {
 // ! SAFETY: HashRing is supposed to be used in a single-threaded context
 // ! with cluster actor as the actor is the access point to the ring.
 unsafe impl Send for HashRing {}
+unsafe impl Sync for HashRing {}
 
 impl HashRing {
     fn exists(&self, replid: &ReplicationId) -> bool {
@@ -149,17 +150,17 @@ impl HashRing {
     }
 
     #[cfg(test)]
-    fn get_virtual_nodes(&self) -> Vec<(&u64, &std::rc::Rc<ReplicationId>)> {
+    pub(crate) fn get_virtual_nodes(&self) -> Vec<(&u64, &std::rc::Rc<ReplicationId>)> {
         self.vnodes.iter().collect()
     }
 
     #[cfg(test)]
-    fn get_pnode_count(&self) -> usize {
+    pub(crate) fn get_pnode_count(&self) -> usize {
         self.pnodes.len()
     }
 
     #[cfg(test)]
-    fn get_vnode_count(&self) -> usize {
+    pub(crate) fn get_vnode_count(&self) -> usize {
         self.vnodes.len()
     }
 }

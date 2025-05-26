@@ -136,16 +136,9 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         self.members.get_mut(peer_id).filter(|peer| peer.kind() == &NodeKind::Replica)
     }
 
-    pub(crate) async fn send_cluster_heartbeat(&mut self, hop_count: u8) {
-        // TODO randomly choose the peer to send the message
-        let msg = QueryIO::ClusterHeartBeat(
-            self.replication
-                .default_heartbeat(hop_count, self.logger.last_log_index, self.logger.last_log_term)
-                .set_cluster_nodes(self.cluster_nodes()),
-        );
-
+    async fn send_heartbeat(&mut self, heartbeat: HeartBeat) {
         for peer in self.members.values_mut() {
-            let _ = peer.send(msg.clone()).await;
+            let _ = peer.send(heartbeat.clone()).await;
         }
     }
 
@@ -263,6 +256,14 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             self.remove_peer(&peer_id).await;
         }
     }
+    pub(crate) async fn send_periodic_heartbeat(&mut self) {
+        let hop_count = Self::hop_count(FANOUT, self.members.len());
+        let hb = self
+            .replication
+            .default_heartbeat(hop_count, self.logger.last_log_index, self.logger.last_log_term)
+            .set_cluster_nodes(self.cluster_nodes());
+        self.send_heartbeat(hb).await;
+    }
 
     async fn gossip(&mut self, mut hop_count: u8) {
         // If hop_count is 0, don't send the message to other peers
@@ -270,7 +271,12 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             return;
         };
         hop_count -= 1;
-        self.send_cluster_heartbeat(hop_count).await;
+
+        let hb = self
+            .replication
+            .default_heartbeat(hop_count, self.logger.last_log_index, self.logger.last_log_term)
+            .set_cluster_nodes(self.cluster_nodes());
+        self.send_heartbeat(hb).await;
     }
 
     pub(crate) async fn forget_peer(
@@ -860,7 +866,16 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             self.block_write_reqs();
         };
 
-        // propagate the rebalance request to all replicas
+        let hb = self
+            .replication
+            .default_heartbeat(
+                Self::hop_count(FANOUT, self.members.len()),
+                self.logger.last_log_index,
+                self.logger.last_log_term,
+            )
+            .set_hashring(self.hash_ring.clone());
+
+        self.send_heartbeat(hb).await;
     }
 }
 
@@ -911,6 +926,7 @@ pub mod test {
             replid: ReplicationId::Key("localhost".to_string().into()),
             hop_count: 0,
             cluster_nodes: vec![],
+            hashring: None,
         }
     }
 

@@ -20,7 +20,7 @@ pub(crate) enum ClusterCommand {
 
 #[derive(Debug)]
 pub enum SchedulerMessage {
-    SendClusterHeatBeat,
+    SendPeriodicHeatBeat,
     SendAppendEntriesRPC,
     StartLeaderElection,
     RebalanceRequest { request_to: PeerIdentifier, lazy_option: LazyOption },
