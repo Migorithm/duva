@@ -863,6 +863,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             .add_partition_if_not_exists(member.replid().clone(), member.id().clone())
             .is_some()
         {
+            warn!("Rebalancing started! subsequent writes will be blocked until rebalance is done");
             self.block_write_reqs();
         };
 

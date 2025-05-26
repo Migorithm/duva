@@ -14,7 +14,7 @@ fn run_leader_election(with_append_only: bool) -> anyhow::Result<()> {
 
     // WHEN
     leader_p.kill()?;
-    sleep(Duration::from_millis(LEADER_HEARTBEAT_INTERVAL_MAX));
+    sleep(Duration::from_millis(LEADER_HEARTBEAT_INTERVAL_MAX + 15));
 
     // THEN
     let mut flag = false;
