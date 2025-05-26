@@ -559,6 +559,24 @@ mod tests {
         assert!(!ring.exists(&repl_id));
     }
 
+    #[test]
+    fn test_eq() {
+        let mut ring = HashRing::default();
+        let repl_id = ReplicationId::Key(uuid::Uuid::now_v7().to_string());
+        let node = PeerIdentifier("127.0.0.1:3499".to_string());
+        ring.add_partition(repl_id.clone(), node.clone());
+
+        let mut ring_to_compare = HashRing::default();
+        ring_to_compare.add_partition(repl_id.clone(), node.clone());
+        assert_eq!(ring, ring_to_compare);
+
+        ring.remove_partition(&repl_id);
+        assert_ne!(ring, ring_to_compare);
+
+        ring_to_compare.remove_partition(&repl_id);
+        assert_eq!(ring, ring_to_compare);
+    }
+
     // Helper function to check if two ranges overlap
     fn ranges_overlap(range1: &Range<u64>, range2: &Range<u64>) -> bool {
         let (start1, end1) = (range1.start, range1.end);
