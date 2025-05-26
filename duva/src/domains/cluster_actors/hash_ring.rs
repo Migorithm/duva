@@ -560,7 +560,7 @@ mod tests {
     }
 
     #[test]
-    fn test_eq() {
+    fn test_eq_works_deterministically() {
         let mut ring = HashRing::default();
         let repl_id = ReplicationId::Key(uuid::Uuid::now_v7().to_string());
         let node = PeerIdentifier("127.0.0.1:3499".to_string());
