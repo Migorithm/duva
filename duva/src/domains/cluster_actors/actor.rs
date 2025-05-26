@@ -851,7 +851,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         self.connect_to_server(peer_to_connect, None).await;
     }
 
-    #[instrument(level = tracing::Level::DEBUG, skip(self), fields(request_from = %request_from))]
+    #[instrument(level = tracing::Level::INFO, skip(self), fields(request_from = %request_from))]
     pub(crate) async fn start_rebalance(&mut self, request_from: PeerIdentifier) {
         let Some(member) = self.members.get(&request_from) else {
             error!("Received rebalance request from unknown peer: {}", request_from);
@@ -860,10 +860,10 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
         if self
             .hash_ring
-            .add_partition_if_not_exists(member.replid().clone(), member.id().clone())
+            .add_partition_if_not_exists(dbg!(member.replid().clone()), dbg!(member.id().clone()))
             .is_some()
         {
-            warn!("Rebalancing started! subsequent writes will be blocked until rebalance is done");
+            info!("Rebalancing started! subsequent writes will be blocked until rebalance is done");
             self.block_write_reqs();
         };
 

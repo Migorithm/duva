@@ -28,6 +28,10 @@ impl Snapshot {
     pub(crate) fn extract_replication_info(&self) -> (ReplicationId, u64) {
         (self.metadata.repl_id.clone(), self.metadata.log_idx)
     }
+
+    pub(crate) fn default_with_repl_id(repl_id: ReplicationId) -> Self {
+        Self { metadata: Metadata { repl_id, log_idx: Default::default() }, ..Default::default() }
+    }
 }
 
 #[derive(Debug, PartialEq, Default)]
