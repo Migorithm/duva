@@ -58,7 +58,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         }
     }
 
-    #[instrument(skip(self, cache_manager))]
+    #[instrument(level = tracing::Level::DEBUG, skip(self, cache_manager))]
     async fn process_client_message(
         &mut self,
         cache_manager: &CacheManager,

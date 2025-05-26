@@ -16,7 +16,7 @@ pub struct ClientStreamReader {
 }
 
 impl ClientStreamReader {
-    #[instrument(skip(self, handler, sender),fields(client_id= %self.client_id))]
+    #[instrument(level = tracing::Level::DEBUG, skip(self, handler, sender),fields(client_id= %self.client_id))]
     pub(crate) async fn handle_client_stream(
         mut self,
         handler: ClientController,

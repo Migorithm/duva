@@ -44,7 +44,7 @@ impl HashRing {
         repl_id: ReplicationId,
         leader_id: PeerIdentifier,
     ) -> Option<()> {
-        if dbg!(self.exists(&repl_id)) {
+        if self.exists(&repl_id) {
             return None;
         }
 

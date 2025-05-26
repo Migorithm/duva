@@ -162,7 +162,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         }
     }
 
-    #[instrument(level = "debug", skip(self, peer),fields(peer_id = %peer.id()))]
+    #[instrument(level = tracing::Level::DEBUG, skip(self, peer),fields(peer_id = %peer.id()))]
     pub(crate) async fn add_peer(&mut self, peer: Peer) {
         self.replication.ban_list.remove(peer.id());
 
@@ -224,7 +224,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         ));
     }
 
-    #[instrument(level = "debug", skip(self, peer_stream))]
+    #[instrument(level = tracing::Level::DEBUG, skip(self, peer_stream))]
     pub(crate) async fn accept_inbound_stream(&mut self, peer_stream: TcpStream) {
         let inbound_stream = InboundStream::new(peer_stream, self.replication.clone());
         tokio::spawn(
@@ -585,7 +585,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             .collect()
     }
 
-    #[instrument(level = tracing::Level::DEBUG, skip(self))]
+    #[instrument(level = tracing::Level::INFO, skip(self))]
     pub(crate) async fn run_for_election(&mut self) {
         warn!("Running for election term {}", self.replication.term);
 
@@ -603,7 +603,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             .await;
     }
 
-    #[instrument(level = tracing::Level::DEBUG, skip(self, request_vote))]
+    #[instrument(level = tracing::Level::INFO, skip(self, request_vote))]
     pub(crate) async fn vote_election(&mut self, request_vote: RequestVote) {
         let grant_vote = self.logger.last_log_index <= request_vote.last_log_index
             && self.replication.become_follower_if_term_higher_and_votable(
@@ -612,8 +612,8 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             );
 
         info!(
-            "Voting for {} with term {} and granted: {}",
-            request_vote.candidate_id, request_vote.term, grant_vote
+            "Voting for {} with term {} and granted: {grant_vote}",
+            request_vote.candidate_id, request_vote.term
         );
 
         let term = self.replication.term;
@@ -860,10 +860,10 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
         if self
             .hash_ring
-            .add_partition_if_not_exists(dbg!(member.replid().clone()), dbg!(member.id().clone()))
+            .add_partition_if_not_exists(member.replid().clone(), member.id().clone())
             .is_some()
         {
-            info!("Rebalancing started! subsequent writes will be blocked until rebalance is done");
+            warn!("Rebalancing started! subsequent writes will be blocked until rebalance is done");
             self.block_write_reqs();
         };
 

@@ -165,7 +165,7 @@ impl StartUpFacade {
 
     /// Run while loop accepting stream and if the sentinel is received, abort the tasks
 
-    #[instrument(skip(self))]
+    #[instrument(level = tracing::Level::DEBUG, skip(self))]
     async fn start_receiving_client_streams(self) -> anyhow::Result<()> {
         let listener = TcpListener::bind(&self.config_manager.bind_addr()).await?;
         info!("start listening on {}", self.config_manager.bind_addr());

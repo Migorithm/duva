@@ -16,9 +16,14 @@ async fn main() -> anyhow::Result<()> {
     );
 
     //tracing-subscriber::FmtSubscriber, which prints formatted traces to standard output.
+    let span_events = if env.log_level <= tracing::Level::DEBUG {
+        FmtSpan::ENTER | FmtSpan::CLOSE // Detailed logging in debug mode
+    } else {
+        FmtSpan::CLOSE // Only timing info in production
+    };
     tracing_subscriber::FmtSubscriber::builder()
         .with_max_level(env.log_level)
-        .with_span_events(FmtSpan::ENTER | FmtSpan::CLOSE)
+        .with_span_events(span_events)
         .init(); // Initialize the subscriber
 
     // ! should we support type erasure?
