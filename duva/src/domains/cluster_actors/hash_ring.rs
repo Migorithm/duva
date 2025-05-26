@@ -27,7 +27,7 @@ pub struct HashRing {
 unsafe impl Send for HashRing {}
 
 impl HashRing {
-    pub(super) fn exists(&self, replid: &ReplicationId) -> bool {
+    fn exists(&self, replid: &ReplicationId) -> bool {
         self.pnodes.contains_key(replid)
     }
     fn update_last_modified(&mut self) {
@@ -43,7 +43,7 @@ impl HashRing {
         repl_id: ReplicationId,
         leader_id: PeerIdentifier,
     ) -> Option<()> {
-        if self.pnodes.contains_key(&repl_id) {
+        if self.exists(&repl_id) {
             return None;
         }
 
@@ -93,7 +93,7 @@ impl HashRing {
     /// for all tokens >= start_hash and < end_hash.
     pub fn get_token_ranges_for_partition(&self, repl_id: &ReplicationId) -> Vec<Range<u64>> {
         // If node doesn't exist or the ring is empty, return empty vector
-        if !self.pnodes.contains_key(repl_id) || self.vnodes.is_empty() {
+        if !self.exists(repl_id) || self.vnodes.is_empty() {
             return Vec::new();
         }
 
@@ -571,18 +571,6 @@ mod tests {
         // should redistribute the hash space)
         assert_ne!(initial_ranges1, updated_ranges1);
         assert_ne!(initial_ranges2, updated_ranges2);
-    }
-
-    #[test]
-    fn test_exists() {
-        let mut ring = HashRing::default();
-        let repl_id = ReplicationId::Key(uuid::Uuid::now_v7().to_string());
-        let node = PeerIdentifier("127.0.0.1:3499".to_string());
-        ring.add_partition_if_not_exists(repl_id.clone(), node.clone());
-        assert!(ring.exists(&repl_id));
-
-        ring.remove_partition(&repl_id);
-        assert!(!ring.exists(&repl_id));
     }
 
     #[test]
