@@ -1,38 +1,23 @@
+use std::fmt::Debug;
+
 use crate::domains::{IoError, query_parsers::QueryIO};
-use bytes::{Bytes, BytesMut};
+use bytes::BytesMut;
 
-pub trait TRead {
-    fn read_bytes(
-        &mut self,
-        buf: &mut BytesMut,
-    ) -> impl std::future::Future<Output = Result<(), IoError>> + Send;
+#[async_trait::async_trait]
+pub trait TRead: Send + Sync + Debug + 'static {
+    async fn read_bytes(&mut self, buf: &mut BytesMut) -> Result<(), IoError>;
 
-    fn read_values(&mut self) -> impl std::future::Future<Output = Result<Vec<QueryIO>, IoError>>;
+    async fn read_values(&mut self) -> Result<Vec<QueryIO>, IoError>;
 }
 
-pub(crate) trait TWrite {
-    fn write(
-        &mut self,
-        buf: impl Into<Bytes> + Send,
-    ) -> impl std::future::Future<Output = Result<(), IoError>> + Send;
-
-    fn write_io(
-        &mut self,
-        io: impl Into<QueryIO> + Send,
-    ) -> impl std::future::Future<Output = Result<(), IoError>> + Send;
+#[async_trait::async_trait]
+pub(crate) trait TWrite: Send + Sync + Debug + 'static {
+    async fn write(&mut self, io: QueryIO) -> Result<(), IoError>;
 }
 
+#[async_trait::async_trait]
 pub trait TSerdeReadWrite {
-    fn serialized_write(
-        &mut self,
-        buf: impl bincode::Encode + Send,
-    ) -> impl std::future::Future<Output = Result<(), IoError>> + Send;
+    async fn serialized_write(&mut self, buf: impl bincode::Encode + Send) -> Result<(), IoError>;
 
-    fn deserialized_read<U: bincode::Decode<()> + Send>(
-        &mut self,
-    ) -> impl std::future::Future<Output = Result<U, IoError>> + Send;
-}
-
-pub trait TGetPeerIp {
-    fn get_peer_ip(&self) -> Result<String, IoError>;
+    async fn deserialized_read<U: bincode::Decode<()> + Send>(&mut self) -> Result<U, IoError>;
 }

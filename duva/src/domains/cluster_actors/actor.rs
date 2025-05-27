@@ -886,19 +886,26 @@ pub mod test {
     use super::session::SessionRequest;
     use super::*;
     use crate::adapters::op_logs::memory_based::MemoryOpLogs;
+    use crate::domains::IoError;
+    use crate::domains::TRead;
+    use crate::domains::TWrite;
     use crate::domains::caches::actor::CacheCommandSender;
     use crate::domains::caches::command::CacheCommand;
     use crate::domains::cluster_actors::replication::ReplicationRole;
     use crate::domains::operation_logs::WriteOperation;
     use crate::domains::operation_logs::WriteRequest;
+    use crate::domains::peers::connections::connected_types::ReadConnected;
+    use crate::domains::peers::connections::connected_types::WriteConnected;
     use crate::domains::peers::peer::PeerState;
     use crate::domains::peers::service::PeerListener;
-    use std::ops::Range;
+    use bytes::BytesMut;
+    use std::sync::Arc;
     use std::time::Duration;
     use tempfile::TempDir;
     use tokio::fs::OpenOptions;
     use tokio::net::TcpListener;
-    use tokio::net::TcpStream;
+
+    use tokio::sync::Mutex;
     use tokio::sync::mpsc::channel;
     use tokio::time::timeout;
     use uuid::Uuid;
@@ -915,6 +922,7 @@ pub mod test {
             term,
         }
     }
+
     fn heartbeat_create_helper(term: u64, hwm: u64, op_logs: Vec<WriteOperation>) -> HeartBeat {
         HeartBeat {
             term,
@@ -931,6 +939,24 @@ pub mod test {
         }
     }
 
+    fn create_peer_helper(
+        cluster_sender: &tokio::sync::mpsc::Sender<ClusterCommand>,
+        hwm: u64,
+        repl_id: &ReplicationId,
+        port: u16,
+        node_kind: NodeKind,
+    ) -> (PeerIdentifier, Peer) {
+        let key = PeerIdentifier::new("127.0.0.1", port);
+        let fake_buf = FakeReadWrite::new();
+        let kill_switch = PeerListener::spawn(
+            fake_buf.clone(),
+            ClusterCommandHandler(cluster_sender.clone()),
+            key.clone(),
+        );
+        let peer =
+            Peer::new(fake_buf, PeerState::new(&key, hwm, repl_id.clone(), node_kind), kill_switch);
+        (key, peer)
+    }
     pub async fn cluster_actor_create_helper() -> ClusterActor<MemoryOpLogs> {
         let replication = ReplicationState::new(
             ReplicationId::Key("master".into()),
@@ -948,25 +974,59 @@ pub mod test {
         ClusterActor::new(100, replication, 100, topology_writer, MemoryOpLogs::default())
     }
 
-    async fn cluster_member_create_helper(
+    #[derive(Debug, Clone)]
+    struct FakeReadWrite(Arc<Mutex<VecDeque<QueryIO>>>);
+
+    impl FakeReadWrite {
+        fn new() -> Self {
+            Self(Arc::new(Mutex::new(VecDeque::new())))
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl TWrite for FakeReadWrite {
+        async fn write(&mut self, io: QueryIO) -> Result<(), IoError> {
+            let mut guard = self.0.lock().await;
+            guard.push_back(io);
+            Ok(())
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl TRead for FakeReadWrite {
+        async fn read_bytes(&mut self, buf: &mut BytesMut) -> Result<(), IoError> {
+            Ok(())
+        }
+
+        async fn read_values(&mut self) -> Result<Vec<QueryIO>, IoError> {
+            let mut values = Vec::new();
+            let mut guard = self.0.lock().await;
+
+            values.extend(guard.drain(..));
+            Ok(values)
+        }
+    }
+
+    fn cluster_member_create_helper(
         actor: &mut ClusterActor<MemoryOpLogs>,
-        num_stream: Range<u16>,
+        fake_bufs: Vec<FakeReadWrite>,
         cluster_sender: ClusterCommandHandler,
         cache_manager: CacheManager,
         follower_hwm: u64,
     ) {
-        use tokio::net::TcpListener;
-        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let bind_addr = listener.local_addr().unwrap();
-
-        for port in num_stream {
+        for fake_b in fake_bufs.into_iter() {
+            let port = rand::random::<u16>();
             let key = PeerIdentifier::new("localhost", port);
-            let (r, x) = TcpStream::connect(bind_addr).await.unwrap().into_split();
-            let kill_switch = PeerListener::spawn(r, cluster_sender.clone(), key.clone());
+
+            let kill_switch = PeerListener::spawn(
+                ReadConnected(Box::new(fake_b.clone())),
+                cluster_sender.clone(),
+                key.clone(),
+            );
             actor.members.insert(
                 PeerIdentifier::new("localhost", port),
                 Peer::new(
-                    x,
+                    WriteConnected(Box::new(fake_b.clone())),
                     PeerState::new(
                         &format!("localhost:{}", port),
                         follower_hwm,
@@ -977,6 +1037,18 @@ pub mod test {
                 ),
             );
         }
+    }
+
+    fn consensus_request_create_helper(
+        tx: tokio::sync::oneshot::Sender<Result<ConsensusClientResponse, anyhow::Error>>,
+        session_req: Option<SessionRequest>,
+    ) -> ConsensusRequest {
+        let consensus_request = ConsensusRequest::new(
+            WriteRequest::Set { key: "foo".into(), value: "bar".into(), expires_at: None },
+            tx,
+            session_req,
+        );
+        consensus_request
     }
 
     #[tokio::test]
@@ -1029,11 +1101,7 @@ pub mod test {
         let mut cluster_actor = cluster_actor_create_helper().await;
         let (tx, rx) = tokio::sync::oneshot::channel();
 
-        let consensus_request = ConsensusRequest::new(
-            WriteRequest::Set { key: "foo".into(), value: "bar".into(), expires_at: None },
-            tx,
-            None,
-        );
+        let consensus_request = consensus_request_create_helper(tx, None);
 
         // WHEN
         cluster_actor.req_consensus(consensus_request).await;
@@ -1052,15 +1120,14 @@ pub mod test {
         // - add 5 followers
         let (cluster_sender, _) = tokio::sync::mpsc::channel(100);
         let cache_manager = CacheManager { inboxes: vec![] };
-
+        let follower_buffs = (0..5).map(|_| FakeReadWrite::new()).collect::<Vec<_>>();
         cluster_member_create_helper(
             &mut cluster_actor,
-            0..5,
+            follower_buffs.clone(),
             ClusterCommandHandler(cluster_sender),
             cache_manager,
             0,
-        )
-        .await;
+        );
 
         let (tx, _) = tokio::sync::oneshot::channel();
         let client_id = Uuid::now_v7();
@@ -1082,6 +1149,13 @@ pub mod test {
             cluster_actor.consensus_tracker.get(&1).unwrap().session_req.as_ref().unwrap().clone(), //* session_request_is_saved_on_tracker
             session_request
         );
+
+        // check on follower_buffs
+        for follower in follower_buffs {
+            let mut guard = follower.0.lock().await;
+            assert_eq!(guard.len(), 1);
+            assert!(matches!(guard.pop_front().unwrap(), QueryIO::AppendEntriesRPC(_)));
+        }
     }
 
     #[tokio::test]
@@ -1125,23 +1199,20 @@ pub mod test {
 
         // - add followers to create quorum
         let cache_manager = CacheManager { inboxes: vec![] };
+        let follower_buffs = (0..4).map(|_| FakeReadWrite::new()).collect::<Vec<_>>();
         cluster_member_create_helper(
             &mut cluster_actor,
-            0..4,
+            follower_buffs.clone(),
             ClusterCommandHandler(cluster_sender),
             cache_manager,
             0,
-        )
-        .await;
+        );
         let (client_request_sender, client_wait) = tokio::sync::oneshot::channel();
 
         let client_id = Uuid::now_v7();
         let client_request = SessionRequest::new(3, client_id);
-        let consensus_request = ConsensusRequest::new(
-            WriteRequest::Set { key: "foo".into(), value: "bar".into(), expires_at: None },
-            client_request_sender,
-            Some(client_request.clone()),
-        );
+        let consensus_request =
+            consensus_request_create_helper(client_request_sender, Some(client_request.clone()));
 
         cluster_actor.req_consensus(consensus_request).await;
 
@@ -1179,21 +1250,17 @@ pub mod test {
 
         // - add followers to create quorum
         let cache_manager = CacheManager { inboxes: vec![] };
+        let follower_buffs = (0..4).map(|_| FakeReadWrite::new()).collect::<Vec<_>>();
         cluster_member_create_helper(
             &mut cluster_actor,
-            0..4,
+            follower_buffs.clone(),
             ClusterCommandHandler(cluster_sender),
             cache_manager,
             0,
-        )
-        .await;
+        );
         let (client_request_sender, client_wait) = tokio::sync::oneshot::channel();
 
-        let consensus_request = ConsensusRequest::new(
-            WriteRequest::Set { key: "foo".into(), value: "bar".into(), expires_at: None },
-            client_request_sender,
-            None,
-        );
+        let consensus_request = consensus_request_create_helper(client_request_sender, None);
 
         cluster_actor.req_consensus(consensus_request).await;
 
@@ -1203,7 +1270,7 @@ pub mod test {
             log_idx: 1,
             term: 0,
             rej_reason: RejectionReason::None,
-            from: PeerIdentifier("repl1".into()), //TODO Must be changed if "update_match_index" becomes idempotent operation on peer id
+            from: PeerIdentifier("repl1".into()),
         };
         cluster_actor.track_replication_progress(follower_res.clone());
         cluster_actor.track_replication_progress(follower_res.clone());
@@ -1255,15 +1322,15 @@ pub mod test {
         let mut cluster_actor = cluster_actor_create_helper().await;
 
         let (cluster_sender, _) = tokio::sync::mpsc::channel(100);
+        let follower_buffs = (0..5).map(|_| FakeReadWrite::new()).collect::<Vec<_>>();
         let cache_manager = CacheManager { inboxes: vec![] };
         cluster_member_create_helper(
             &mut cluster_actor,
-            0..5,
+            follower_buffs.clone(),
             ClusterCommandHandler(cluster_sender.clone()),
             cache_manager,
             3,
-        )
-        .await;
+        );
 
         let test_logs = vec![
             write_operation_create_helper(1, 0, "foo", "bar"),
@@ -1278,14 +1345,14 @@ pub mod test {
         //WHEN
         // *add lagged followers with its commit index being 1
         let cache_manager = CacheManager { inboxes: vec![] };
+        let follower_buffs = (5..7).map(|_| FakeReadWrite::new()).collect::<Vec<_>>();
         cluster_member_create_helper(
             &mut cluster_actor,
-            5..7,
+            follower_buffs,
             ClusterCommandHandler(cluster_sender),
             cache_manager,
             1,
-        )
-        .await;
+        );
 
         // * add new log - this must create entries that are greater than 3
         let lowest_hwm = cluster_actor.take_low_watermark();
@@ -1628,14 +1695,10 @@ pub mod test {
     #[tokio::test]
     async fn test_cluster_nodes() {
         use std::io::Write;
-        use tokio::net::TcpListener;
-        // GIVEN
 
+        // GIVEN
         let (cluster_sender, _) = tokio::sync::mpsc::channel(100);
         let cache_manager = CacheManager { inboxes: vec![] };
-
-        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let bind_addr = listener.local_addr().unwrap();
 
         let mut cluster_actor = cluster_actor_create_helper().await;
         cluster_actor.replication.hwm.store(15, Ordering::Release);
@@ -1644,73 +1707,39 @@ pub mod test {
 
         // followers
         for port in [6379, 6380] {
-            let key = PeerIdentifier::new("127.0.0.1", port);
-            let (r, x) = TcpStream::connect(bind_addr).await.unwrap().into_split();
-            let kill_switch =
-                PeerListener::spawn(r, ClusterCommandHandler(cluster_sender.clone()), key.clone());
-            cluster_actor.members.insert(
-                key.clone(),
-                Peer::new(
-                    x,
-                    PeerState::new(
-                        &key,
-                        cluster_actor.replication.hwm.load(Ordering::Relaxed),
-                        repl_id.clone(),
-                        NodeKind::Replica,
-                    ),
-                    kill_switch,
-                ),
+            let (key, peer) = create_peer_helper(
+                &cluster_sender,
+                cluster_actor.replication.hwm.load(Ordering::Relaxed),
+                &repl_id,
+                port,
+                NodeKind::Replica,
             );
+            cluster_actor.members.insert(key.clone(), peer);
         }
 
-        let listener_for_second_shard = TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let bind_addr_for_second_shard = listener_for_second_shard.local_addr().unwrap();
-        let second_shard_leader_identifier: PeerIdentifier =
-            listener_for_second_shard.local_addr().unwrap().to_string().into();
-        let second_shard_repl_id = uuid::Uuid::now_v7();
-
-        // leader for different shard?
-        let (r, x) = TcpStream::connect(bind_addr).await.unwrap().into_split();
-        let kill_switch = PeerListener::spawn(
-            r,
-            ClusterCommandHandler(cluster_sender.clone()),
-            second_shard_leader_identifier.clone(),
+        // leader for different shard
+        let second_shard_repl_id = ReplicationId::Key(uuid::Uuid::now_v7().to_string());
+        let second_shard_leader_port = rand::random::<u16>();
+        let (second_shard_leader_identifier, second_peer) = create_peer_helper(
+            &cluster_sender,
+            0,
+            &second_shard_repl_id,
+            second_shard_leader_port,
+            NodeKind::NonData,
         );
 
-        cluster_actor.members.insert(
-            second_shard_leader_identifier.clone(),
-            Peer::new(
-                x,
-                PeerState::new(
-                    &second_shard_leader_identifier,
-                    0,
-                    ReplicationId::Key(second_shard_repl_id.to_string()),
-                    NodeKind::NonData,
-                ),
-                kill_switch,
-            ),
-        );
+        cluster_actor.members.insert(second_shard_leader_identifier.clone(), second_peer);
 
         // follower for different shard
         for port in [2655, 2653] {
-            let key = PeerIdentifier::new("127.0.0.1", port);
-            let (r, x) = TcpStream::connect(bind_addr).await.unwrap().into_split();
-            let kill_switch =
-                PeerListener::spawn(r, ClusterCommandHandler(cluster_sender.clone()), key.clone());
-
-            cluster_actor.members.insert(
-                key.clone(),
-                Peer::new(
-                    x,
-                    PeerState::new(
-                        &key,
-                        0,
-                        ReplicationId::Key(second_shard_repl_id.to_string()),
-                        NodeKind::NonData,
-                    ),
-                    kill_switch,
-                ),
+            let (key, peer) = create_peer_helper(
+                &cluster_sender,
+                0,
+                &second_shard_repl_id,
+                port,
+                NodeKind::NonData,
             );
+            cluster_actor.members.insert(key, peer);
         }
 
         // WHEN
@@ -1728,6 +1757,7 @@ pub mod test {
         localhost:8080 myself,{repl_id} 0 15
         "#
         );
+
         let mut temp_file = tempfile::NamedTempFile::new().expect("Failed to create temp file");
         write!(temp_file, "{}", file_content).expect("Failed to write to temp file");
         let nodes = PeerState::from_file(temp_file.path().to_str().unwrap());
@@ -1768,18 +1798,15 @@ pub mod test {
 
         let repl_id = cluster_actor.replication.replid.clone();
 
-        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let bind_addr = listener.local_addr().unwrap();
-        let (r, x) = TcpStream::connect(bind_addr).await.unwrap().into_split();
-
+        let fake_buf = FakeReadWrite::new();
         let kill_switch = PeerListener::spawn(
-            r,
+            fake_buf.clone(),
             cluster_actor.self_handler.clone(),
             PeerIdentifier("127.0.0.1:3849".into()),
         );
 
         let peer = Peer::new(
-            x,
+            fake_buf,
             PeerState::new(
                 "127.0.0.1:3849",
                 0,
@@ -1817,7 +1844,7 @@ pub mod test {
     async fn test_requests_pending() {
         // GIVEN
         let mut cluster_actor = cluster_actor_create_helper().await;
-        cluster_actor.pending_requests = Some(Default::default());
+        cluster_actor.block_write_reqs();
 
         //WHEN
         let (tx, rx) = tokio::sync::oneshot::channel();

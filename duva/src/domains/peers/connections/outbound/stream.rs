@@ -6,6 +6,7 @@ use crate::domains::cluster_actors::replication::ReplicationState;
 use crate::domains::interface::TRead;
 use crate::domains::interface::TWrite;
 use crate::domains::peers::connections::connected_peer_info::ConnectedPeerInfo;
+use crate::domains::peers::connections::connected_types::WriteConnected;
 use crate::domains::peers::identifier::PeerIdentifier;
 use crate::domains::peers::identifier::TPeerAddress;
 use crate::domains::peers::peer::Peer;
@@ -89,7 +90,7 @@ impl OutboundStream {
     }
 
     async fn reply_with_ok(&mut self) -> anyhow::Result<()> {
-        self.w.write_io(QueryIO::SimpleString("OK".to_string())).await?;
+        self.w.write(QueryIO::SimpleString("OK".to_string())).await?;
         Ok(())
     }
 
@@ -112,7 +113,7 @@ impl OutboundStream {
 
         let kill_switch =
             PeerListener::spawn(self.r, cluster_handler.clone(), peer_state.addr.clone());
-        let peer = Peer::new(self.w, peer_state, kill_switch);
+        let peer = Peer::new(WriteConnected(Box::new(self.w)), peer_state, kill_switch);
 
         let _ = cluster_handler.send(ConnectionMessage::AddPeer(peer, optional_callback)).await;
         Ok(())

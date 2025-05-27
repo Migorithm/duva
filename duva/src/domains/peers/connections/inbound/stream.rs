@@ -5,6 +5,7 @@ use crate::domains::IoError;
 use crate::domains::cluster_actors::ConnectionMessage;
 use crate::domains::cluster_actors::actor::ClusterCommandHandler;
 use crate::domains::peers::connections::connected_peer_info::ConnectedPeerInfo;
+use crate::domains::peers::connections::connected_types::WriteConnected;
 use crate::domains::peers::peer::Peer;
 
 use crate::domains::cluster_actors::replication::ReplicationId;
@@ -154,7 +155,7 @@ impl InboundStream {
         let peer_state = self.connected_peer_state()?;
         let kill_switch =
             PeerListener::spawn(self.r, cluster_handler.clone(), peer_state.addr.clone());
-        let peer = Peer::new(self.w, peer_state, kill_switch);
+        let peer = Peer::new(WriteConnected(Box::new(self.w)), peer_state, kill_switch);
         let _ = cluster_handler.send(ConnectionMessage::AddPeer(peer, None)).await;
         Ok(())
     }
