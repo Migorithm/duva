@@ -1709,7 +1709,7 @@ pub mod test {
             cluster_actor.members.insert(
                 key.clone(),
                 Peer::new(
-                    x.into(),
+                    x,
                     PeerState::new(
                         &key,
                         cluster_actor.replication.hwm.load(Ordering::Relaxed),
@@ -1738,7 +1738,7 @@ pub mod test {
         cluster_actor.members.insert(
             second_shard_leader_identifier.clone(),
             Peer::new(
-                x.into(),
+                x,
                 PeerState::new(
                     &second_shard_leader_identifier,
                     0,
@@ -1759,7 +1759,7 @@ pub mod test {
             cluster_actor.members.insert(
                 key.clone(),
                 Peer::new(
-                    x.into(),
+                    x,
                     PeerState::new(
                         &key,
                         0,
@@ -1826,18 +1826,15 @@ pub mod test {
 
         let repl_id = cluster_actor.replication.replid.clone();
 
-        let listener: TcpListener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let bind_addr = listener.local_addr().unwrap();
-        let (r, x) = TcpStream::connect(bind_addr).await.unwrap().into_split();
-
+        let fake_buf = FakeReadWrite::new();
         let kill_switch = PeerListener::spawn(
-            r,
+            fake_buf.clone(),
             cluster_actor.self_handler.clone(),
             PeerIdentifier("127.0.0.1:3849".into()),
         );
 
         let peer = Peer::new(
-            x.into(),
+            fake_buf,
             PeerState::new(
                 "127.0.0.1:3849",
                 0,
@@ -1875,7 +1872,7 @@ pub mod test {
     async fn test_requests_pending() {
         // GIVEN
         let mut cluster_actor = cluster_actor_create_helper().await;
-        cluster_actor.pending_requests = Some(Default::default());
+        cluster_actor.block_write_reqs();
 
         //WHEN
         let (tx, rx) = tokio::sync::oneshot::channel();

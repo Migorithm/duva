@@ -17,7 +17,7 @@ pub(crate) struct Peer {
 
 impl Peer {
     pub(crate) fn new(
-        w: WriteConnected,
+        w: impl Into<WriteConnected>,
         state: PeerState,
         listener_kill_trigger: ListeningActorKillTrigger,
     ) -> Self {

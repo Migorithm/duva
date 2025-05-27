@@ -20,9 +20,8 @@ impl From<Box<dyn TWrite>> for WriteConnected {
         Self(value)
     }
 }
-
-impl From<OwnedWriteHalf> for WriteConnected {
-    fn from(value: OwnedWriteHalf) -> Self {
+impl<T: TWrite> From<T> for WriteConnected {
+    fn from(value: T) -> Self {
         Self(Box::new(value))
     }
 }
@@ -42,8 +41,8 @@ impl std::ops::DerefMut for ReadConnected {
     }
 }
 
-impl From<OwnedReadHalf> for ReadConnected {
-    fn from(value: OwnedReadHalf) -> Self {
+impl<T: TRead> From<T> for ReadConnected {
+    fn from(value: T) -> Self {
         Self(Box::new(value))
     }
 }
