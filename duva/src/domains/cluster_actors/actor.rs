@@ -164,7 +164,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
     #[instrument(level = tracing::Level::DEBUG, skip(self, peer),fields(peer_id = %peer.id()))]
     pub(crate) async fn add_peer(&mut self, peer: Peer) {
-        self.replication.ban_list.remove(peer.id());
+        self.replication.banlist.remove(peer.id());
 
         // If the map did have this key present, the value is updated, and the old
         // value is returned. The key is not updated,
@@ -282,19 +282,14 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         peer_addr: PeerIdentifier,
     ) -> anyhow::Result<Option<()>> {
         let res = self.remove_peer(&peer_addr).await;
-        self.replication.ban_list.insert(BannedPeer { p_id: peer_addr, ban_time: time_in_secs()? });
+        self.replication.banlist.insert(BannedPeer { p_id: peer_addr, ban_time: time_in_secs()? });
 
         Ok(res)
     }
 
-    fn merge_ban_list(&mut self, ban_list: Vec<BannedPeer>) {
-        if ban_list.is_empty() {
-            return;
-        }
-
-        // Retain the latest
+    fn merge_banlist(&mut self, ban_list: Vec<BannedPeer>) {
         for banned_peer in ban_list {
-            let ban_list = &mut self.replication.ban_list;
+            let ban_list = &mut self.replication.banlist;
 
             if let Some(existing) = ban_list.take(&banned_peer) {
                 let newer =
@@ -311,19 +306,18 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         if self.replication.in_ban_list(&heartbeat.from) {
             return;
         }
-        self.apply_ban_list(std::mem::take(&mut heartbeat.ban_list)).await;
+        self.apply_banlist(std::mem::take(&mut heartbeat.ban_list)).await;
         self.join_peer_network_if_absent(heartbeat.cluster_nodes).await;
         self.gossip(heartbeat.hop_count).await;
         self.update_on_hertbeat_message(&heartbeat.from, heartbeat.hwm);
     }
 
-    async fn apply_ban_list(&mut self, ban_list: Vec<BannedPeer>) {
-        self.merge_ban_list(ban_list);
-        // retain_only_recent_banned_nodes
-        let current_time_in_sec = time_in_secs().unwrap();
-        self.replication.ban_list.retain(|node| current_time_in_sec - node.ban_time < 60);
+    async fn apply_banlist(&mut self, ban_list: Vec<BannedPeer>) {
+        self.merge_banlist(ban_list);
 
-        for banned_peer in self.replication.ban_list.iter().cloned().collect::<Vec<_>>() {
+        let current_time_in_sec = time_in_secs().unwrap();
+        self.replication.banlist.retain(|node| current_time_in_sec - node.ban_time < 60);
+        for banned_peer in self.replication.banlist.iter().cloned().collect::<Vec<_>>() {
             self.remove_peer(&banned_peer.p_id).await;
         }
     }

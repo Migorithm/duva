@@ -21,7 +21,7 @@ pub(crate) struct ReplicationState {
 
     // * state is shared among peers
     pub(crate) term: u64,
-    pub(crate) ban_list: HashSet<BannedPeer>,
+    pub(crate) banlist: HashSet<BannedPeer>,
 
     pub(crate) election_state: ElectionState,
     pub(crate) is_leader_mode: bool,
@@ -44,7 +44,7 @@ impl ReplicationState {
             term: 0,
             self_host: self_host.to_string(),
             self_port,
-            ban_list: Default::default(),
+            banlist: Default::default(),
         }
     }
 
@@ -74,7 +74,7 @@ impl ReplicationState {
 
     pub(crate) fn in_ban_list(&self, peer_identifier: &PeerIdentifier) -> bool {
         let Ok(current_time) = time_in_secs() else { return false };
-        self.ban_list.get(peer_identifier).is_some_and(|node| current_time - node.ban_time < 60)
+        self.banlist.get(peer_identifier).is_some_and(|node| current_time - node.ban_time < 60)
     }
 
     pub(crate) fn default_heartbeat(
@@ -89,7 +89,7 @@ impl ReplicationState {
             hwm: self.hwm.load(Ordering::Relaxed),
             replid: self.replid.clone(),
             hop_count,
-            ban_list: self.ban_list.iter().cloned().collect(),
+            ban_list: self.banlist.iter().cloned().collect(),
             append_entries: vec![],
             cluster_nodes: vec![],
             prev_log_index,
