@@ -2,17 +2,13 @@ use crate::domains::IoError;
 use crate::domains::interface::{TGetPeerIp, TRead, TSerdeReadWrite, TWrite};
 use crate::domains::query_parsers::query_io::SERDE_CONFIG;
 use crate::domains::query_parsers::{QueryIO, deserialize};
-use bytes::{Bytes, BytesMut};
+use bytes::BytesMut;
 use std::fmt::Debug;
 use std::io::ErrorKind;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 #[async_trait::async_trait]
 impl<T: AsyncWriteExt + std::marker::Unpin + Sync + Send + Debug + 'static> TWrite for T {
-    async fn write(&mut self, buf: Bytes) -> Result<(), IoError> {
-        self.write_all(&buf).await.map_err(|e| Into::<IoError>::into(e.kind()))
-    }
-
     async fn write_io(&mut self, io: QueryIO) -> Result<(), IoError> {
         self.write_all(&io.serialize()).await.map_err(|e| Into::<IoError>::into(e.kind()))
     }

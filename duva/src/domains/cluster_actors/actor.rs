@@ -986,9 +986,6 @@ pub mod test {
 
     #[async_trait::async_trait]
     impl TWrite for FakeReadWrite {
-        async fn write(&mut self, buf: Bytes) -> Result<(), IoError> {
-            Ok(())
-        }
         async fn write_io(&mut self, io: QueryIO) -> Result<(), IoError> {
             let mut guard = self.0.lock().await;
             guard.push_back(io);
