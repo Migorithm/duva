@@ -71,7 +71,7 @@ impl InboundStream {
         let cmd = self.extract_cmd().await?;
         cmd.match_query(HandShakeRequestEnum::Ping)?;
 
-        self.w.write(QueryIO::SimpleString("PONG".into()).into()).await?;
+        self.w.write_io(QueryIO::SimpleString("PONG".into())).await?;
         Ok(())
     }
 
@@ -80,7 +80,7 @@ impl InboundStream {
 
         let port = cmd.extract_listening_port()?;
 
-        self.w.write(QueryIO::SimpleString("OK".into()).into()).await?;
+        self.w.write_io(QueryIO::SimpleString("OK".into())).await?;
 
         Ok(port)
     }
@@ -88,7 +88,7 @@ impl InboundStream {
     async fn recv_replconf_capa(&mut self) -> anyhow::Result<Vec<(String, String)>> {
         let mut cmd = self.extract_cmd().await?;
         let capa_val_vec = cmd.extract_capa()?;
-        self.w.write(QueryIO::SimpleString("OK".into()).into()).await?;
+        self.w.write_io(QueryIO::SimpleString("OK".into())).await?;
         Ok(capa_val_vec)
     }
     async fn recv_psync(&mut self) -> anyhow::Result<(ReplicationId, u64)> {
@@ -104,13 +104,10 @@ impl InboundStream {
         );
 
         self.w
-            .write(
-                QueryIO::SimpleString(format!(
-                    "FULLRESYNC {} {} {}",
-                    id, self_leader_replid, self_leader_repl_offset
-                ))
-                .into(),
-            )
+            .write_io(QueryIO::SimpleString(format!(
+                "FULLRESYNC {} {} {}",
+                id, self_leader_replid, self_leader_repl_offset
+            )))
             .await?;
         self.recv_ok().await?;
         Ok((inbound_repl_id, offset))
@@ -123,13 +120,10 @@ impl InboundStream {
 
     async fn disseminate_peers(&mut self, peers: Vec<PeerIdentifier>) -> anyhow::Result<()> {
         self.w
-            .write(
-                QueryIO::SimpleString(format!(
-                    "PEERS {}",
-                    peers.into_iter().map(|x| x.0).collect::<Vec<String>>().join(" ")
-                ))
-                .into(),
-            )
+            .write_io(QueryIO::SimpleString(format!(
+                "PEERS {}",
+                peers.into_iter().map(|x| x.0).collect::<Vec<String>>().join(" ")
+            )))
             .await?;
 
         self.recv_ok().await?;

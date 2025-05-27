@@ -1277,7 +1277,7 @@ pub mod test {
             log_idx: 1,
             term: 0,
             rej_reason: RejectionReason::None,
-            from: PeerIdentifier("repl1".into()), //TODO Must be changed if "update_match_index" becomes idempotent operation on peer id
+            from: PeerIdentifier("repl1".into()),
         };
         cluster_actor.track_replication_progress(follower_res.clone());
         cluster_actor.track_replication_progress(follower_res.clone());
