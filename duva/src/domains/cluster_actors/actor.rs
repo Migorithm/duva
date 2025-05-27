@@ -898,7 +898,6 @@ pub mod test {
     use crate::domains::peers::connections::connected_types::WriteConnected;
     use crate::domains::peers::peer::PeerState;
     use crate::domains::peers::service::PeerListener;
-    use bytes::Bytes;
     use bytes::BytesMut;
     use std::sync::Arc;
     use std::time::Duration;
@@ -1008,7 +1007,7 @@ pub mod test {
         }
     }
 
-    async fn cluster_member_create_helper(
+    fn cluster_member_create_helper(
         actor: &mut ClusterActor<MemoryOpLogs>,
         fake_bufs: Vec<FakeReadWrite>,
         cluster_sender: ClusterCommandHandler,
@@ -1128,8 +1127,7 @@ pub mod test {
             ClusterCommandHandler(cluster_sender),
             cache_manager,
             0,
-        )
-        .await;
+        );
 
         let (tx, _) = tokio::sync::oneshot::channel();
         let client_id = Uuid::now_v7();
@@ -1208,8 +1206,7 @@ pub mod test {
             ClusterCommandHandler(cluster_sender),
             cache_manager,
             0,
-        )
-        .await;
+        );
         let (client_request_sender, client_wait) = tokio::sync::oneshot::channel();
 
         let client_id = Uuid::now_v7();
@@ -1260,8 +1257,7 @@ pub mod test {
             ClusterCommandHandler(cluster_sender),
             cache_manager,
             0,
-        )
-        .await;
+        );
         let (client_request_sender, client_wait) = tokio::sync::oneshot::channel();
 
         let consensus_request = consensus_request_create_helper(client_request_sender, None);
@@ -1334,8 +1330,7 @@ pub mod test {
             ClusterCommandHandler(cluster_sender.clone()),
             cache_manager,
             3,
-        )
-        .await;
+        );
 
         let test_logs = vec![
             write_operation_create_helper(1, 0, "foo", "bar"),
@@ -1357,8 +1352,7 @@ pub mod test {
             ClusterCommandHandler(cluster_sender),
             cache_manager,
             1,
-        )
-        .await;
+        );
 
         // * add new log - this must create entries that are greater than 3
         let lowest_hwm = cluster_actor.take_low_watermark();
