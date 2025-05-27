@@ -14,7 +14,7 @@ use std::rc::Rc;
 // Number of virtual nodes to create for each physical node.
 const V_NODE_NUM: u16 = 256;
 
-#[derive(Debug, Default, bincode::Decode, bincode::Encode, Clone, PartialEq, Eq)]
+#[derive(Debug, Default, bincode::Decode, bincode::Encode, Clone, Eq)]
 pub struct HashRing {
     vnodes: BTreeMap<u64, Rc<ReplicationId>>,
     // TODO value in the following map must be replaced when election happens
@@ -190,6 +190,12 @@ pub(crate) fn fnv_1a_hash(value: &str) -> u64 {
     h ^= h >> 33;
 
     h
+}
+
+impl PartialEq for HashRing {
+    fn eq(&self, other: &Self) -> bool {
+        self.vnodes == other.vnodes && self.pnodes == other.pnodes
+    }
 }
 
 #[cfg(test)]
@@ -575,23 +581,23 @@ mod tests {
     }
 
     //TODO last_modified can be different. Perhaps equality should not include it?
-    // #[test]
-    // fn test_eq_works_deterministically() {
-    //     let mut ring = HashRing::default();
-    //     let repl_id = ReplicationId::Key("dsdsdds".to_string());
-    //     let node = PeerIdentifier("127.0.0.1:3499".to_string());
-    //     ring.add_partition_if_not_exists(repl_id.clone(), node.clone());
+    #[test]
+    fn test_eq_works_deterministically() {
+        let mut ring = HashRing::default();
+        let repl_id = ReplicationId::Key("dsdsdds".to_string());
+        let node = PeerIdentifier("127.0.0.1:3499".to_string());
+        ring.add_partition_if_not_exists(repl_id.clone(), node.clone());
 
-    //     let mut ring_to_compare = HashRing::default();
-    //     ring_to_compare.add_partition_if_not_exists(repl_id.clone(), node.clone());
-    //     assert_eq!(ring, ring_to_compare);
+        let mut ring_to_compare = HashRing::default();
+        ring_to_compare.add_partition_if_not_exists(repl_id.clone(), node.clone());
+        assert_eq!(ring, ring_to_compare);
 
-    //     ring.remove_partition(&repl_id);
-    //     assert_ne!(ring, ring_to_compare);
+        ring.remove_partition(&repl_id);
+        assert_ne!(ring, ring_to_compare);
 
-    //     ring_to_compare.remove_partition(&repl_id);
-    //     assert_eq!(ring, ring_to_compare);
-    // }
+        ring_to_compare.remove_partition(&repl_id);
+        assert_eq!(ring, ring_to_compare);
+    }
 
     #[test]
     fn test_idempotent_addition() {
