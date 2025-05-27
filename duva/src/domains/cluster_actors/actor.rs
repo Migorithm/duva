@@ -131,12 +131,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
     pub(crate) fn accept_inbound_stream(&mut self, peer_stream: TcpStream) {
         let inbound_stream = InboundStream::new(peer_stream, self.replication.clone());
-        tokio::spawn(
-            inbound_stream.add_peer(
-                self.members.keys().cloned().collect::<Vec<_>>(),
-                self.self_handler.clone(),
-            ),
-        );
+        tokio::spawn(inbound_stream.add_peer(self.self_handler.clone()));
     }
 
     pub(crate) fn set_repl_id(&mut self, leader_repl_id: ReplicationId) {

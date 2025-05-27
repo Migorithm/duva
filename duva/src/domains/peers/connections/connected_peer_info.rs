@@ -11,7 +11,6 @@ pub(crate) struct ConnectedPeerInfo {
     pub(crate) id: PeerIdentifier,
     pub(crate) replid: ReplicationId,
     pub(crate) hwm: u64,
-    pub(crate) peer_list: Vec<String>,
 }
 
 impl ConnectedPeerInfo {

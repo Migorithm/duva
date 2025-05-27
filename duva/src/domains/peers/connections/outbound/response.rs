@@ -7,7 +7,6 @@ pub enum ConnectionResponse {
     Pong,
     Ok,
     FullResync { id: String, repl_id: String, offset: u64 },
-    Peers(Vec<String>),
 }
 
 impl TryFrom<String> for ConnectionResponse {
@@ -33,16 +32,6 @@ impl TryFrom<String> for ConnectionResponse {
                     repl_id: repl_id.to_string(),
                     offset,
                 })
-            },
-
-            | peer_msg if peer_msg.starts_with("peers ") => {
-                let res = peer_msg
-                    .trim_start_matches("peers ")
-                    .split_whitespace()
-                    .map(|x| x.to_string())
-                    .collect::<Vec<_>>();
-
-                Ok(ConnectionResponse::Peers(res))
             },
 
             | invalid_value => {
