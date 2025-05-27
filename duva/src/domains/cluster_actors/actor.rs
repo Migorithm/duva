@@ -378,13 +378,21 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         request_to: PeerIdentifier,
         lazy_option: LazyOption,
     ) {
+        // * If lazy option is set, we just send the request and don't wait for the response
+        // Ask the given peer to act as rebalancing coordinator
         if lazy_option == LazyOption::Eager {
-            // * If lazy option is set, we just send the request and don't wait for the response
-            self.block_write_reqs();
-            // Ask the given peer to act as rebalancing coordinator
-            if let Some(peer) = self.members.get_mut(&request_to) {
-                let _ = peer.send(QueryIO::StartRebalance).await;
+            let Some(peer) = self.members.get(&request_to) else {
+                return;
+            };
+            if peer.is_replica() {
+                warn!("Cannot rebalance to a replica: {}", request_to);
+                return;
             }
+
+            self.block_write_reqs();
+
+            let peer = self.members.get_mut(&request_to).unwrap();
+            let _ = peer.send(QueryIO::StartRebalance).await;
         }
     }
 
@@ -898,8 +906,7 @@ pub mod test {
     use crate::domains::cluster_actors::replication::ReplicationRole;
     use crate::domains::operation_logs::WriteOperation;
     use crate::domains::operation_logs::WriteRequest;
-    use crate::domains::peers::connections::connected_types::ReadConnected;
-    use crate::domains::peers::connections::connected_types::WriteConnected;
+    use crate::domains::peers::connections::connection_types::ReadConnected;
     use crate::domains::peers::peer::PeerState;
     use crate::domains::peers::service::PeerListener;
     use bytes::BytesMut;
@@ -944,19 +951,16 @@ pub mod test {
     }
 
     fn create_peer_helper(
-        cluster_sender: &tokio::sync::mpsc::Sender<ClusterCommand>,
+        cluster_sender: ClusterCommandHandler,
         hwm: u64,
         repl_id: &ReplicationId,
         port: u16,
         node_kind: NodeKind,
+        fake_buf: FakeReadWrite,
     ) -> (PeerIdentifier, Peer) {
         let key = PeerIdentifier::new("127.0.0.1", port);
-        let fake_buf = FakeReadWrite::new();
-        let kill_switch = PeerListener::spawn(
-            fake_buf.clone(),
-            ClusterCommandHandler(cluster_sender.clone()),
-            key.clone(),
-        );
+
+        let kill_switch = PeerListener::spawn(fake_buf.clone(), cluster_sender, key.clone());
         let peer =
             Peer::new(fake_buf, PeerState::new(&key, hwm, repl_id.clone(), node_kind), kill_switch);
         (key, peer)
@@ -1701,7 +1705,6 @@ pub mod test {
         use std::io::Write;
 
         // GIVEN
-        let (cluster_sender, _) = tokio::sync::mpsc::channel(100);
         let cache_manager = CacheManager { inboxes: vec![] };
 
         let mut cluster_actor = cluster_actor_create_helper().await;
@@ -1712,11 +1715,12 @@ pub mod test {
         // followers
         for port in [6379, 6380] {
             let (key, peer) = create_peer_helper(
-                &cluster_sender,
+                cluster_actor.self_handler.clone(),
                 cluster_actor.replication.hwm.load(Ordering::Relaxed),
                 &repl_id,
                 port,
                 NodeKind::Replica,
+                FakeReadWrite::new(),
             );
             cluster_actor.members.insert(key.clone(), peer);
         }
@@ -1725,11 +1729,12 @@ pub mod test {
         let second_shard_repl_id = ReplicationId::Key(uuid::Uuid::now_v7().to_string());
         let second_shard_leader_port = rand::random::<u16>();
         let (second_shard_leader_identifier, second_peer) = create_peer_helper(
-            &cluster_sender,
+            cluster_actor.self_handler.clone(),
             0,
             &second_shard_repl_id,
             second_shard_leader_port,
             NodeKind::NonData,
+            FakeReadWrite::new(),
         );
 
         cluster_actor.members.insert(second_shard_leader_identifier.clone(), second_peer);
@@ -1737,11 +1742,12 @@ pub mod test {
         // follower for different shard
         for port in [2655, 2653] {
             let (key, peer) = create_peer_helper(
-                &cluster_sender,
+                cluster_actor.self_handler.clone(),
                 0,
                 &second_shard_repl_id,
                 port,
                 NodeKind::NonData,
+                FakeReadWrite::new(),
             );
             cluster_actor.members.insert(key, peer);
         }
@@ -1903,5 +1909,95 @@ pub mod test {
 
         assert!(handle.await.is_ok());
         assert!(rx.await.is_ok());
+    }
+
+    // ! When LazyOption is Lazy, rebalance request should not block
+    #[tokio::test]
+    async fn test_rebalance_request_with_lazy() {
+        // GIVEN
+        let mut cluster_actor = cluster_actor_create_helper().await;
+
+        // WHEN
+        let request_to = PeerIdentifier("127.0.0.1:6559".into());
+        let lazy_o = LazyOption::Lazy;
+        cluster_actor.rebalance_request(request_to, lazy_o).await;
+
+        // THEN
+        assert!(cluster_actor.pending_requests.is_none())
+    }
+
+    // ! when member has not been connected, ignore
+    #[tokio::test]
+    async fn test_rebalance_request_before_member_connected() {
+        // GIVEN
+        let mut cluster_actor = cluster_actor_create_helper().await;
+
+        // WHEN
+        let request_to = PeerIdentifier("127.0.0.1:6559".into());
+        let lazy_o = LazyOption::Eager;
+        cluster_actor.rebalance_request(request_to, lazy_o).await;
+
+        // THEN
+        assert!(cluster_actor.pending_requests.is_none())
+    }
+
+    // ! rebalance request to replica should be ignored
+    #[tokio::test]
+    async fn test_rebalance_request_to_replica() {
+        // GIVEN
+        let mut cluster_actor = cluster_actor_create_helper().await;
+        let buf = FakeReadWrite::new();
+        let (peer_id, peer) = create_peer_helper(
+            cluster_actor.self_handler.clone(),
+            0,
+            &cluster_actor.replication.replid,
+            6559,
+            NodeKind::Replica,
+            buf.clone(),
+        );
+        cluster_actor.members.insert(peer_id, peer);
+
+        // WHEN
+        let request_to = PeerIdentifier("127.0.0.1:6559".into());
+        let lazy_o = LazyOption::Eager;
+        cluster_actor.rebalance_request(request_to.clone(), lazy_o).await;
+
+        // THEN
+        assert!(cluster_actor.pending_requests.is_none());
+
+        let msg = buf.0.lock().await.pop_front();
+        assert!(msg.is_none());
+    }
+
+    // * happy path
+    // - NonData Peer
+    // - Eager LazyOption
+    // - member connected
+    #[tokio::test]
+    async fn test_rebalance_request_happypath() {
+        // GIVEN
+        let mut cluster_actor = cluster_actor_create_helper().await;
+        let buf = FakeReadWrite::new();
+        let (peer_id, peer) = create_peer_helper(
+            cluster_actor.self_handler.clone(),
+            0,
+            &cluster_actor.replication.replid,
+            6559,
+            NodeKind::NonData,
+            buf.clone(),
+        );
+        cluster_actor.members.insert(peer_id, peer);
+
+        // WHEN
+        let request_to = PeerIdentifier("127.0.0.1:6559".into());
+        let lazy_o = LazyOption::Eager;
+        cluster_actor.rebalance_request(request_to.clone(), lazy_o).await;
+
+        // THEN
+        assert!(cluster_actor.pending_requests.is_some());
+
+        let msg = buf.0.lock().await.pop_front();
+        assert!(msg.is_some());
+        assert_eq!(msg.unwrap(), QueryIO::StartRebalance);
     }
 }
