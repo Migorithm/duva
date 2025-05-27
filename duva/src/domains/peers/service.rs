@@ -6,7 +6,7 @@ use crate::{
     },
     prelude::PeerIdentifier,
 };
-use tokio::{net::tcp::OwnedReadHalf, select};
+use tokio::select;
 
 use super::{command::PeerCommand, connections::connected_types::ReadConnected};
 
@@ -43,7 +43,7 @@ impl PeerListener {
             .map(PeerMessage::try_from)
             .collect::<Result<_, _>>()
     }
-    async fn listen(mut self, rx: ReactorKillSwitch) -> OwnedReadHalf {
+    async fn listen(mut self, rx: ReactorKillSwitch) -> Box<dyn TRead> {
         let connected = select! {
             _ = self.start() => self.read_connected.0,
             // If the kill switch is triggered, return the connected stream so the caller can decide what to do with it

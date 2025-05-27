@@ -1,6 +1,6 @@
 use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
 
-use crate::{domains::TWrite, from_to, make_smart_pointer};
+use crate::domains::{TRead, TWrite};
 
 #[derive(Debug)]
 pub(crate) struct WriteConnected(pub(crate) Box<dyn TWrite>);
@@ -28,7 +28,22 @@ impl From<OwnedWriteHalf> for WriteConnected {
 }
 
 #[derive(Debug)]
-pub(crate) struct ReadConnected(pub(crate) OwnedReadHalf);
+pub(crate) struct ReadConnected(pub(crate) Box<dyn TRead>);
 
-make_smart_pointer!(ReadConnected, OwnedReadHalf);
-from_to!(OwnedReadHalf, ReadConnected);
+impl std::ops::Deref for ReadConnected {
+    type Target = Box<dyn TRead>;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+impl std::ops::DerefMut for ReadConnected {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+impl From<OwnedReadHalf> for ReadConnected {
+    fn from(value: OwnedReadHalf) -> Self {
+        Self(Box::new(value))
+    }
+}
