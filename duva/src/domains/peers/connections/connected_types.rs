@@ -6,6 +6,7 @@ use crate::{
 #[derive(Debug)]
 pub(crate) struct WriteConnected(pub(crate) Box<dyn TWrite>);
 make_smart_pointer!(WriteConnected, Box<dyn TWrite>);
+
 impl<T: TWrite> From<T> for WriteConnected {
     fn from(value: T) -> Self {
         Self(Box::new(value))

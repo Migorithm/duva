@@ -1030,7 +1030,7 @@ pub mod test {
             actor.members.insert(
                 PeerIdentifier::new("localhost", port),
                 Peer::new(
-                    WriteConnected(Box::new(fake_b.clone())),
+                    fake_b.clone(),
                     PeerState::new(
                         &format!("localhost:{}", port),
                         follower_hwm,
