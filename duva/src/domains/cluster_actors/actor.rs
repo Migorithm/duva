@@ -72,7 +72,78 @@ impl ClusterCommandHandler {
 }
 
 impl<T: TWriteAheadLog> ClusterActor<T> {
-    pub(crate) fn new(
+    pub(crate) fn run(
+        node_timeout: u128,
+        topology_writer: tokio::fs::File,
+        heartbeat_interval: u64,
+        init_replication: ReplicationState,
+        cache_manager: CacheManager,
+        wal: T,
+    ) -> ClusterCommandHandler {
+        let cluster_actor = ClusterActor::new(
+            node_timeout,
+            init_replication,
+            heartbeat_interval,
+            topology_writer,
+            wal,
+        );
+        let actor_handler = cluster_actor.self_handler.clone();
+        tokio::spawn(cluster_actor.handle(cache_manager));
+        actor_handler
+    }
+
+    #[instrument(level = tracing::Level::DEBUG, skip(self, peer),fields(peer_id = %peer.id()))]
+    pub(crate) async fn add_peer(&mut self, peer: Peer) {
+        self.replication.banlist.remove(peer.id());
+
+        // If the map did have this key present, the value is updated, and the old
+        // value is returned. The key is not updated,
+        if let Some(existing_peer) = self.members.insert(peer.id().clone(), peer) {
+            existing_peer.kill().await;
+        }
+
+        self.broadcast_topology_change();
+        let _ = self.snapshot_topology().await;
+    }
+
+    #[instrument(skip(self, optional_callback))]
+    pub(crate) async fn connect_to_server(
+        &mut self,
+        connect_to: PeerIdentifier,
+        optional_callback: Option<tokio::sync::oneshot::Sender<anyhow::Result<()>>>,
+    ) {
+        let stream = match OutboundStream::new(connect_to, self.replication.clone()).await {
+            | Ok(stream) => stream,
+            | Err(e) => {
+                if let Some(cb) = optional_callback {
+                    let _ = cb.send(err!(e));
+                }
+                return;
+            },
+        };
+
+        tokio::spawn(stream.add_peer(
+            self.replication.self_port,
+            self.self_handler.clone(),
+            optional_callback,
+        ));
+    }
+
+    pub(crate) fn accept_inbound_stream(&mut self, peer_stream: TcpStream) {
+        let inbound_stream = InboundStream::new(peer_stream, self.replication.clone());
+        tokio::spawn(
+            inbound_stream.add_peer(
+                self.members.keys().cloned().collect::<Vec<_>>(),
+                self.self_handler.clone(),
+            ),
+        );
+    }
+
+    pub(crate) fn set_repl_id(&mut self, leader_repl_id: ReplicationId) {
+        self.replication.replid = leader_repl_id;
+    }
+
+    fn new(
         node_timeout: u128,
         init_repl_state: ReplicationState,
         heartbeat_interval_in_mills: u64,
@@ -110,6 +181,244 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             logger: ReplicatedLogs::new(log_writer, 0, 0),
             pending_requests: None,
         }
+    }
+
+    #[instrument(level = tracing::Level::DEBUG, skip(self))]
+    pub(crate) async fn send_cluster_heartbeat(&mut self) {
+        self.remove_idle_peers().await;
+
+        let hop_count = Self::hop_count(FANOUT, self.members.len());
+        let hb = self
+            .replication
+            .default_heartbeat(hop_count, self.logger.last_log_index, self.logger.last_log_term)
+            .set_cluster_nodes(self.cluster_nodes());
+        self.send_heartbeat(hb).await;
+    }
+
+    pub(crate) async fn forget_peer(
+        &mut self,
+        peer_addr: PeerIdentifier,
+    ) -> anyhow::Result<Option<()>> {
+        let res = self.remove_peer(&peer_addr).await;
+        self.replication.banlist.insert(BannedPeer { p_id: peer_addr, ban_time: time_in_secs()? });
+
+        Ok(res)
+    }
+
+    #[instrument(level = tracing::Level::DEBUG, skip(self, heartbeat), fields(peer_id = %heartbeat.from))]
+    pub(crate) async fn receive_cluster_heartbeat(&mut self, mut heartbeat: HeartBeat) {
+        if self.replication.in_ban_list(&heartbeat.from) {
+            return;
+        }
+        self.apply_banlist(std::mem::take(&mut heartbeat.ban_list)).await;
+        self.join_peer_network_if_absent(heartbeat.cluster_nodes).await;
+        self.gossip(heartbeat.hop_count).await;
+        self.update_on_hertbeat_message(&heartbeat.from, heartbeat.hwm);
+    }
+
+    pub(crate) async fn req_consensus(&mut self, req: ConsensusRequest) {
+        if !self.replication.is_leader_mode {
+            let _ = req.callback.send(err!("Write given to follower"));
+            return;
+        }
+        if self.client_sessions.is_processed(&req.session_req) {
+            // TODO mapping between early returned values to client result
+            let _ = req.callback.send(Ok(ConsensusClientResponse::AlreadyProcessed {
+                key: req.request.key(),
+                index: self.logger.last_log_index,
+            }));
+            return;
+        };
+
+        if let Some(pending_requests) = self.pending_requests.as_mut() {
+            pending_requests.push_back(req);
+            return;
+        }
+
+        // * Check if the request has already been processed
+        if let Err(err) = self.logger.write_single_entry(&req.request, self.replication.term).await
+        {
+            let _ = req.callback.send(Err(anyhow::anyhow!(err)));
+            return;
+        };
+
+        if self.replicas().count() == 0 {
+            // * If there are no replicas, we can send the response immediately
+            self.replication.hwm.fetch_add(1, Ordering::Relaxed);
+            req.callback
+                .send(Ok(ConsensusClientResponse::LogIndex(self.logger.last_log_index.into())))
+                .ok();
+            return;
+        }
+
+        self.consensus_tracker.add(
+            self.logger.last_log_index,
+            req.callback,
+            self.replicas().count(),
+            req.session_req,
+        );
+
+        self.send_rpc_to_replicas().await;
+    }
+
+    #[instrument(level = tracing::Level::DEBUG, skip(self))]
+    pub(crate) async fn send_rpc(&mut self) {
+        if self.replicas().count() == 0 {
+            return;
+        }
+        self.send_rpc_to_replicas().await;
+    }
+
+    pub(crate) fn cluster_nodes(&self) -> Vec<PeerState> {
+        self.members
+            .values()
+            .map(|p| p.state().clone())
+            .chain(std::iter::once(self.replication.self_info()))
+            .collect()
+    }
+    #[instrument(level = tracing::Level::INFO, skip(self, request_vote))]
+    pub(crate) async fn vote_election(&mut self, request_vote: RequestVote) {
+        let grant_vote = self.logger.last_log_index <= request_vote.last_log_index
+            && self.replication.become_follower_if_term_higher_and_votable(
+                &request_vote.candidate_id,
+                request_vote.term,
+            );
+
+        info!(
+            "Voting for {} with term {} and granted: {grant_vote}",
+            request_vote.candidate_id, request_vote.term
+        );
+
+        let term = self.replication.term;
+        let Some(peer) = self.find_replica_mut(&request_vote.candidate_id) else {
+            return;
+        };
+        let _ = peer.send(ElectionVote { term, vote_granted: grant_vote }).await;
+    }
+
+    #[instrument(level = tracing::Level::DEBUG, skip(self, repl_res), fields(peer_id = %repl_res.from))]
+    pub(crate) async fn ack_replication(&mut self, repl_res: ReplicationAck) {
+        if !repl_res.is_granted() {
+            self.handle_repl_rejection(repl_res).await;
+            return;
+        }
+        self.update_on_hertbeat_message(&repl_res.from, repl_res.log_idx);
+        self.track_replication_progress(repl_res);
+    }
+
+    #[instrument(level = tracing::Level::DEBUG, skip(self, cache_manager,heartbeat), fields(peer_id = %heartbeat.from))]
+    pub(crate) async fn append_entries_rpc(
+        &mut self,
+        cache_manager: &CacheManager,
+        heartbeat: HeartBeat,
+    ) {
+        if self.check_term_outdated(&heartbeat).await {
+            return;
+        };
+        self.reset_election_timeout(&heartbeat.from);
+        self.maybe_update_term(heartbeat.term);
+        self.replicate(heartbeat, cache_manager).await;
+    }
+
+    #[instrument(level = tracing::Level::DEBUG, skip(self, election_vote))]
+    pub(crate) async fn receive_election_vote(&mut self, election_vote: ElectionVote) {
+        if !election_vote.vote_granted {
+            return;
+        }
+        if !self.replication.election_state.may_become_leader() {
+            return;
+        }
+        self.become_leader().await;
+
+        let msg = self.replication.default_heartbeat(
+            0,
+            self.logger.last_log_index,
+            self.logger.last_log_term,
+        );
+        self.replicas_mut()
+            .map(|(peer, _)| peer.send(QueryIO::AppendEntriesRPC(msg.clone())))
+            .collect::<FuturesUnordered<_>>()
+            .for_each(|_| async {})
+            .await;
+    }
+
+    // * Forces the current node to become a replica of the given peer.
+    pub(crate) async fn replicaof(
+        &mut self,
+        peer_addr: PeerIdentifier,
+        callback: tokio::sync::oneshot::Sender<anyhow::Result<()>>,
+    ) {
+        self.logger.reset().await;
+        self.replication.hwm.store(0, Ordering::Release);
+        self.set_repl_id(ReplicationId::Undecided);
+        self.step_down().await;
+        self.connect_to_server(peer_addr, Some(callback)).await;
+    }
+
+    pub(crate) async fn cluster_meet(
+        &mut self,
+        peer_addr: PeerIdentifier,
+        lazy_option: LazyOption,
+        cl_cb: tokio::sync::oneshot::Sender<anyhow::Result<()>>,
+    ) {
+        if !self.replication.is_leader_mode || self.replication.self_identifier() == peer_addr {
+            let _ = cl_cb.send(err!("wrong address or invalid state for cluster meet command"));
+            return;
+        }
+
+        // ! intercept the callback to ensure that the connection is established before sending the rebalance request
+        let (res_callback, conn_awaiter) = tokio::sync::oneshot::channel();
+        self.connect_to_server(peer_addr.clone(), Some(res_callback)).await;
+
+        tokio::spawn(Self::register_delayed_schedule(
+            self.self_handler.clone(),
+            conn_awaiter,
+            cl_cb,
+            SchedulerMessage::RebalanceRequest { request_to: peer_addr, lazy_option },
+        ));
+    }
+
+    pub(crate) async fn rebalance_request(
+        &mut self,
+        request_to: PeerIdentifier,
+        lazy_option: LazyOption,
+    ) {
+        if lazy_option == LazyOption::Eager {
+            // * If lazy option is set, we just send the request and don't wait for the response
+            self.block_write_reqs();
+            // Ask the given peer to act as rebalancing coordinator
+            if let Some(peer) = self.members.get_mut(&request_to) {
+                let _ = peer.send(QueryIO::StartRebalance).await;
+            }
+        }
+    }
+
+    #[instrument(level = tracing::Level::INFO, skip(self), fields(request_from = %request_from))]
+    pub(crate) async fn start_rebalance(&mut self, request_from: PeerIdentifier) {
+        let Some(member) = self.members.get(&request_from) else {
+            error!("Received rebalance request from unknown peer: {}", request_from);
+            return;
+        };
+
+        if self
+            .hash_ring
+            .add_partition_if_not_exists(member.replid().clone(), member.id().clone())
+            .is_some()
+        {
+            warn!("Rebalancing started! subsequent writes will be blocked until rebalance is done");
+            self.block_write_reqs();
+        };
+
+        let hb = self
+            .replication
+            .default_heartbeat(
+                Self::hop_count(FANOUT, self.members.len()),
+                self.logger.last_log_index,
+                self.logger.last_log_term,
+            )
+            .set_hashring(self.hash_ring.clone());
+
+        self.send_heartbeat(hb).await;
     }
 
     fn hop_count(fanout: usize, node_count: usize) -> u8 {
@@ -162,20 +471,6 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         }
     }
 
-    #[instrument(level = tracing::Level::DEBUG, skip(self, peer),fields(peer_id = %peer.id()))]
-    pub(crate) async fn add_peer(&mut self, peer: Peer) {
-        self.replication.banlist.remove(peer.id());
-
-        // If the map did have this key present, the value is updated, and the old
-        // value is returned. The key is not updated,
-        if let Some(existing_peer) = self.members.insert(peer.id().clone(), peer) {
-            existing_peer.kill().await;
-        }
-
-        self.broadcast_topology_change();
-        let _ = self.snapshot_topology().await;
-    }
-
     // * Broadcasts the current topology to all connected clients
     // TODO hashring information should be included in the broadcast so clients can update their routing tables
     fn broadcast_topology_change(&self) {
@@ -200,46 +495,8 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         None
     }
 
-    #[instrument(skip(self, optional_callback))]
-    pub(crate) async fn connect_to_server(
-        &mut self,
-        connect_to: PeerIdentifier,
-        optional_callback: Option<tokio::sync::oneshot::Sender<anyhow::Result<()>>>,
-    ) {
-        let stream = match OutboundStream::new(connect_to, self.replication.clone()).await {
-            | Ok(stream) => stream,
-            | Err(e) => {
-                if let Some(cb) = optional_callback {
-                    let _ = cb.send(err!(e));
-                }
-                return;
-            },
-        };
-
-        tokio::spawn(stream.add_peer(
-            self.replication.self_port,
-            self.self_handler.clone(),
-            optional_callback,
-        ));
-    }
-
-    pub(crate) fn accept_inbound_stream(&mut self, peer_stream: TcpStream) {
-        let inbound_stream = InboundStream::new(peer_stream, self.replication.clone());
-        tokio::spawn(
-            inbound_stream.add_peer(
-                self.members.keys().cloned().collect::<Vec<_>>(),
-                self.self_handler.clone(),
-            ),
-        );
-    }
-
-    pub(crate) fn set_repl_id(&mut self, leader_repl_id: ReplicationId) {
-        self.replication.replid = leader_repl_id;
-    }
-
-    /// Remove the peers that are idle for more than ttl_mills
-    #[instrument(level = tracing::Level::DEBUG, skip(self))]
-    pub(crate) async fn remove_idle_peers(&mut self) {
+    //  remove idle peers based on ttl.
+    async fn remove_idle_peers(&mut self) {
         // loop over members, if ttl is expired, remove the member
         let now = Instant::now();
 
@@ -253,14 +510,6 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         {
             self.remove_peer(&peer_id).await;
         }
-    }
-    pub(crate) async fn send_periodic_heartbeat(&mut self) {
-        let hop_count = Self::hop_count(FANOUT, self.members.len());
-        let hb = self
-            .replication
-            .default_heartbeat(hop_count, self.logger.last_log_index, self.logger.last_log_term)
-            .set_cluster_nodes(self.cluster_nodes());
-        self.send_heartbeat(hb).await;
     }
 
     async fn gossip(&mut self, mut hop_count: u8) {
@@ -277,17 +526,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         self.send_heartbeat(hb).await;
     }
 
-    pub(crate) async fn forget_peer(
-        &mut self,
-        peer_addr: PeerIdentifier,
-    ) -> anyhow::Result<Option<()>> {
-        let res = self.remove_peer(&peer_addr).await;
-        self.replication.banlist.insert(BannedPeer { p_id: peer_addr, ban_time: time_in_secs()? });
-
-        Ok(res)
-    }
-
-    fn merge_banlist(&mut self, ban_list: Vec<BannedPeer>) {
+    async fn apply_banlist(&mut self, ban_list: Vec<BannedPeer>) {
         for banned_peer in ban_list {
             let ban_list = &mut self.replication.banlist;
 
@@ -299,21 +538,6 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
                 ban_list.insert(banned_peer);
             }
         }
-    }
-
-    #[instrument(level = tracing::Level::DEBUG, skip(self, heartbeat), fields(peer_id = %heartbeat.from))]
-    pub(crate) async fn handle_cluster_heartbeat(&mut self, mut heartbeat: HeartBeat) {
-        if self.replication.in_ban_list(&heartbeat.from) {
-            return;
-        }
-        self.apply_banlist(std::mem::take(&mut heartbeat.ban_list)).await;
-        self.join_peer_network_if_absent(heartbeat.cluster_nodes).await;
-        self.gossip(heartbeat.hop_count).await;
-        self.update_on_hertbeat_message(&heartbeat.from, heartbeat.hwm);
-    }
-
-    async fn apply_banlist(&mut self, ban_list: Vec<BannedPeer>) {
-        self.merge_banlist(ban_list);
 
         let current_time_in_sec = time_in_secs().unwrap();
         self.replication.banlist.retain(|node| current_time_in_sec - node.ban_time < 60);
@@ -327,51 +551,6 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             peer.last_seen = Instant::now();
             peer.set_match_index(log_index);
         }
-    }
-
-    pub(crate) async fn req_consensus(&mut self, req: ConsensusRequest) {
-        if !self.replication.is_leader_mode {
-            let _ = req.callback.send(err!("Write given to follower"));
-            return;
-        }
-        if self.client_sessions.is_processed(&req.session_req) {
-            // TODO mapping between early returned values to client result
-            let _ = req.callback.send(Ok(ConsensusClientResponse::AlreadyProcessed {
-                key: req.request.key(),
-                index: self.logger.last_log_index,
-            }));
-            return;
-        };
-
-        if let Some(pending_requests) = self.pending_requests.as_mut() {
-            pending_requests.push_back(req);
-            return;
-        }
-
-        // * Check if the request has already been processed
-        if let Err(err) = self.logger.write_single_entry(&req.request, self.replication.term).await
-        {
-            let _ = req.callback.send(Err(anyhow::anyhow!(err)));
-            return;
-        };
-
-        if self.replicas().count() == 0 {
-            // * If there are no replicas, we can send the response immediately
-            self.replication.hwm.fetch_add(1, Ordering::Relaxed);
-            req.callback
-                .send(Ok(ConsensusClientResponse::LogIndex(self.logger.last_log_index.into())))
-                .ok();
-            return;
-        }
-
-        self.consensus_tracker.add(
-            self.logger.last_log_index,
-            req.callback,
-            self.replicas().count(),
-            req.session_req,
-        );
-
-        self.send_rpc_to_replicas().await;
     }
 
     async fn send_rpc_to_replicas(&mut self) {
@@ -561,22 +740,6 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         Ok(())
     }
 
-    #[instrument(level = tracing::Level::DEBUG, skip(self))]
-    pub(crate) async fn send_rpc(&mut self) {
-        if self.replicas().count() == 0 {
-            return;
-        }
-        self.send_rpc_to_replicas().await;
-    }
-
-    pub(crate) fn cluster_nodes(&self) -> Vec<PeerState> {
-        self.members
-            .values()
-            .map(|p| p.state().clone())
-            .chain(std::iter::once(self.replication.self_info()))
-            .collect()
-    }
-
     #[instrument(level = tracing::Level::INFO, skip(self))]
     pub(crate) async fn run_for_election(&mut self) {
         warn!("Running for election term {}", self.replication.term);
@@ -590,72 +753,6 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
         self.replicas_mut()
             .map(|(peer, _)| peer.send(request_vote.clone()))
-            .collect::<FuturesUnordered<_>>()
-            .for_each(|_| async {})
-            .await;
-    }
-
-    #[instrument(level = tracing::Level::INFO, skip(self, request_vote))]
-    pub(crate) async fn vote_election(&mut self, request_vote: RequestVote) {
-        let grant_vote = self.logger.last_log_index <= request_vote.last_log_index
-            && self.replication.become_follower_if_term_higher_and_votable(
-                &request_vote.candidate_id,
-                request_vote.term,
-            );
-
-        info!(
-            "Voting for {} with term {} and granted: {grant_vote}",
-            request_vote.candidate_id, request_vote.term
-        );
-
-        let term = self.replication.term;
-        let Some(peer) = self.find_replica_mut(&request_vote.candidate_id) else {
-            return;
-        };
-        let _ = peer.send(ElectionVote { term, vote_granted: grant_vote }).await;
-    }
-
-    #[instrument(level = tracing::Level::DEBUG, skip(self, repl_res), fields(peer_id = %repl_res.from))]
-    pub(crate) async fn ack_replication(&mut self, repl_res: ReplicationAck) {
-        if !repl_res.is_granted() {
-            self.handle_repl_rejection(repl_res).await;
-            return;
-        }
-        self.update_on_hertbeat_message(&repl_res.from, repl_res.log_idx);
-        self.track_replication_progress(repl_res);
-    }
-
-    #[instrument(level = tracing::Level::DEBUG, skip(self, cache_manager,heartbeat), fields(peer_id = %heartbeat.from))]
-    pub(crate) async fn append_entries_rpc(
-        &mut self,
-        cache_manager: &CacheManager,
-        heartbeat: HeartBeat,
-    ) {
-        if self.check_term_outdated(&heartbeat).await {
-            return;
-        };
-        self.reset_election_timeout(&heartbeat.from);
-        self.maybe_update_term(heartbeat.term);
-        self.replicate(heartbeat, cache_manager).await;
-    }
-
-    #[instrument(level = tracing::Level::DEBUG, skip(self, election_vote))]
-    pub(crate) async fn receive_election_vote(&mut self, election_vote: ElectionVote) {
-        if !election_vote.vote_granted {
-            return;
-        }
-        if !self.replication.election_state.may_become_leader() {
-            return;
-        }
-        self.become_leader().await;
-
-        let msg = self.replication.default_heartbeat(
-            0,
-            self.logger.last_log_index,
-            self.logger.last_log_term,
-        );
-        self.replicas_mut()
-            .map(|(peer, _)| peer.send(QueryIO::AppendEntriesRPC(msg.clone())))
             .collect::<FuturesUnordered<_>>()
             .for_each(|_| async {})
             .await;
@@ -754,42 +851,6 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         }
     }
 
-    // * Forces the current node to become a replica of the given peer.
-    pub(crate) async fn replicaof(
-        &mut self,
-        peer_addr: PeerIdentifier,
-        callback: tokio::sync::oneshot::Sender<anyhow::Result<()>>,
-    ) {
-        self.logger.reset().await;
-        self.replication.hwm.store(0, Ordering::Release);
-        self.set_repl_id(ReplicationId::Undecided);
-        self.step_down().await;
-        self.connect_to_server(peer_addr, Some(callback)).await;
-    }
-
-    pub(crate) async fn cluster_meet(
-        &mut self,
-        peer_addr: PeerIdentifier,
-        lazy_option: LazyOption,
-        cl_cb: tokio::sync::oneshot::Sender<anyhow::Result<()>>,
-    ) {
-        if !self.replication.is_leader_mode || self.replication.self_identifier() == peer_addr {
-            let _ = cl_cb.send(err!("wrong address or invalid state for cluster meet command"));
-            return;
-        }
-
-        // ! intercept the callback to ensure that the connection is established before sending the rebalance request
-        let (res_callback, conn_awaiter) = tokio::sync::oneshot::channel();
-        self.connect_to_server(peer_addr.clone(), Some(res_callback)).await;
-
-        tokio::spawn(Self::register_delayed_schedule(
-            self.self_handler.clone(),
-            conn_awaiter,
-            cl_cb,
-            SchedulerMessage::RebalanceRequest { request_to: peer_addr, lazy_option },
-        ));
-    }
-
     async fn register_delayed_schedule<C>(
         cluster_sender: ClusterCommandHandler,
         awaiter: tokio::sync::oneshot::Receiver<anyhow::Result<C>>,
@@ -804,21 +865,6 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         if let Err(e) = cluster_sender.send(schedule_cmd).await {
             // Consider logging this error instead of silently ignoring
             error!("Failed to send schedule command: {}", e);
-        }
-    }
-
-    pub(crate) async fn rebalance_request(
-        &mut self,
-        request_to: PeerIdentifier,
-        lazy_option: LazyOption,
-    ) {
-        if lazy_option == LazyOption::Eager {
-            // * If lazy option is set, we just send the request and don't wait for the response
-            self.block_write_reqs();
-            // Ask the given peer to act as rebalancing coordinator
-            if let Some(peer) = self.members.get_mut(&request_to) {
-                let _ = peer.send(QueryIO::StartRebalance).await;
-            }
         }
     }
 
@@ -840,34 +886,6 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         };
 
         self.connect_to_server(peer_to_connect, None).await;
-    }
-
-    #[instrument(level = tracing::Level::INFO, skip(self), fields(request_from = %request_from))]
-    pub(crate) async fn start_rebalance(&mut self, request_from: PeerIdentifier) {
-        let Some(member) = self.members.get(&request_from) else {
-            error!("Received rebalance request from unknown peer: {}", request_from);
-            return;
-        };
-
-        if self
-            .hash_ring
-            .add_partition_if_not_exists(member.replid().clone(), member.id().clone())
-            .is_some()
-        {
-            warn!("Rebalancing started! subsequent writes will be blocked until rebalance is done");
-            self.block_write_reqs();
-        };
-
-        let hb = self
-            .replication
-            .default_heartbeat(
-                Self::hop_count(FANOUT, self.members.len()),
-                self.logger.last_log_index,
-                self.logger.last_log_term,
-            )
-            .set_hashring(self.hash_ring.clone());
-
-        self.send_heartbeat(hb).await;
     }
 }
 

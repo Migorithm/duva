@@ -1,6 +1,6 @@
 use crate::domains::caches::cache_manager::CacheManager;
 use crate::domains::cluster_actors::ClusterCommand;
-use crate::domains::cluster_actors::replication::ReplicationState;
+
 use crate::domains::cluster_actors::{
     ClientMessage, ClusterActor, ConnectionMessage, SchedulerMessage,
 };
@@ -10,8 +10,6 @@ use crate::domains::peers::PeerMessage;
 use crate::err;
 use crate::prelude::PeerIdentifier;
 use tracing::{instrument, trace};
-
-use super::actor::ClusterCommandHandler;
 
 impl<T: TWriteAheadLog> ClusterActor<T> {
     pub(super) async fn handle(mut self, cache_manager: CacheManager) -> anyhow::Result<Self> {
@@ -41,10 +39,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         use SchedulerMessage::*;
         match msg {
             | SendPeriodicHeatBeat => {
-                // ! remove idle peers based on ttl.
-                // ! The following may need to be moved else where to avoid blocking the main loop
-                self.remove_idle_peers().await;
-                self.send_periodic_heartbeat().await;
+                self.send_cluster_heartbeat().await;
             },
             | SendAppendEntriesRPC => {
                 self.send_rpc().await;
@@ -118,7 +113,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
         match peer_message {
             | ClusterHeartBeat(heartbeat) => {
-                self.handle_cluster_heartbeat(heartbeat).await;
+                self.receive_cluster_heartbeat(heartbeat).await;
             },
             | RequestVote(request_vote) => {
                 self.vote_election(request_vote).await;
@@ -161,26 +156,5 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             },
             | FollowerSetReplId(replication_id) => self.set_repl_id(replication_id),
         }
-    }
-
-    pub(crate) fn run(
-        node_timeout: u128,
-        topology_writer: tokio::fs::File,
-        heartbeat_interval: u64,
-        init_replication: ReplicationState,
-        cache_manager: CacheManager,
-        wal: T,
-    ) -> ClusterCommandHandler {
-        let cluster_actor = ClusterActor::new(
-            node_timeout,
-            init_replication,
-            heartbeat_interval,
-            topology_writer,
-            wal,
-        );
-
-        let actor_handler = cluster_actor.self_handler.clone();
-        tokio::spawn(cluster_actor.handle(cache_manager));
-        actor_handler
     }
 }
