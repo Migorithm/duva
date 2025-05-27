@@ -1,7 +1,7 @@
 use std::fmt::Debug;
 
 use crate::domains::{IoError, query_parsers::QueryIO};
-use bytes::{Bytes, BytesMut};
+use bytes::BytesMut;
 
 #[async_trait::async_trait]
 pub trait TRead: Send + Sync + Debug + 'static {
@@ -20,8 +20,4 @@ pub trait TSerdeReadWrite {
     async fn serialized_write(&mut self, buf: impl bincode::Encode + Send) -> Result<(), IoError>;
 
     async fn deserialized_read<U: bincode::Decode<()> + Send>(&mut self) -> Result<U, IoError>;
-}
-
-pub trait TGetPeerIp {
-    fn get_peer_ip(&self) -> Result<String, IoError>;
 }

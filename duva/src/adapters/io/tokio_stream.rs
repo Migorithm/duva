@@ -1,5 +1,5 @@
 use crate::domains::IoError;
-use crate::domains::interface::{TGetPeerIp, TRead, TSerdeReadWrite, TWrite};
+use crate::domains::interface::{TRead, TSerdeReadWrite, TWrite};
 use crate::domains::query_parsers::query_io::SERDE_CONFIG;
 use crate::domains::query_parsers::{QueryIO, deserialize};
 use bytes::BytesMut;
@@ -98,13 +98,6 @@ where
             .map_err(|e| IoError::Custom(e.to_string()))?;
 
         Ok(auth_request)
-    }
-}
-
-impl TGetPeerIp for tokio::net::TcpStream {
-    fn get_peer_ip(&self) -> Result<String, IoError> {
-        let addr = self.peer_addr().map_err(|error| Into::<IoError>::into(error.kind()))?;
-        Ok(addr.ip().to_string())
     }
 }
 
