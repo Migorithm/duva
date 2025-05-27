@@ -1911,8 +1911,9 @@ pub mod test {
         assert!(rx.await.is_ok());
     }
 
+    // ! When LazyOption is Lazy, rebalance request should not block
     #[tokio::test]
-    async fn test_rebalance_request_wih_lazyoption_should_not_block() {
+    async fn test_rebalance_request_with_lazy() {
         // GIVEN
         let mut cluster_actor = cluster_actor_create_helper().await;
 
@@ -1925,8 +1926,9 @@ pub mod test {
         assert!(cluster_actor.pending_requests.is_none())
     }
 
+    // ! when member has not been connected, ignore
     #[tokio::test]
-    async fn test_rebalance_request_with_no_memeber_found_should_not_block() {
+    async fn test_rebalance_request_before_member_connected() {
         // GIVEN
         let mut cluster_actor = cluster_actor_create_helper().await;
 
@@ -1939,8 +1941,9 @@ pub mod test {
         assert!(cluster_actor.pending_requests.is_none())
     }
 
+    // ! rebalance request to replica should be ignored
     #[tokio::test]
-    async fn test_rebalance_request_to_replica_should_not_trigger_rebalance() {
+    async fn test_rebalance_request_to_replica() {
         // GIVEN
         let mut cluster_actor = cluster_actor_create_helper().await;
         let buf = FakeReadWrite::new();
@@ -1966,8 +1969,12 @@ pub mod test {
         assert!(msg.is_none());
     }
 
+    // * happy path
+    // - NonData Peer
+    // - Eager LazyOption
+    // - member connected
     #[tokio::test]
-    async fn test_rebalance_request_with_valid_state_send_rebalance_req() {
+    async fn test_rebalance_request_happypath() {
         // GIVEN
         let mut cluster_actor = cluster_actor_create_helper().await;
         let buf = FakeReadWrite::new();
