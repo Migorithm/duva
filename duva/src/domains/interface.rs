@@ -12,7 +12,7 @@ pub trait TRead: Send + Sync + Debug + 'static {
 
 #[async_trait::async_trait]
 pub(crate) trait TWrite: Send + Sync + Debug + 'static {
-    async fn write_io(&mut self, io: QueryIO) -> Result<(), IoError>;
+    async fn write(&mut self, io: QueryIO) -> Result<(), IoError>;
 }
 
 #[async_trait::async_trait]

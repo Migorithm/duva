@@ -44,7 +44,7 @@ impl Peer {
     }
 
     pub(crate) async fn send(&mut self, io: impl Into<QueryIO> + Send) -> Result<(), IoError> {
-        self.w_conn.write_io(io.into()).await
+        self.w_conn.write(io.into()).await
     }
 
     pub(crate) async fn kill(self) -> Box<dyn TRead> {

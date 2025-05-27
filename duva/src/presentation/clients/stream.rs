@@ -87,7 +87,7 @@ impl ClientStreamReader {
 pub struct ClientStreamWriter(pub(crate) OwnedWriteHalf);
 impl ClientStreamWriter {
     pub(crate) async fn write(&mut self, query_io: QueryIO) -> Result<(), IoError> {
-        self.0.write_io(query_io).await
+        self.0.write(query_io).await
     }
 
     pub(crate) fn run(

@@ -38,7 +38,7 @@ impl OutboundStream {
         Ok(OutboundStream { r: read, w: write, my_repl_info, connected_node_info: None })
     }
     async fn make_handshake(&mut self, self_port: u16) -> anyhow::Result<()> {
-        self.w.write_io(write_array!("PING")).await?;
+        self.w.write(write_array!("PING")).await?;
         let mut ok_count = 0;
         let mut connection_info = ConnectedPeerInfo {
             id: Default::default(),
@@ -54,7 +54,7 @@ impl OutboundStream {
                 match ConnectionResponse::try_from(query)? {
                     | ConnectionResponse::Pong => {
                         let msg = write_array!("REPLCONF", "listening-port", self_port.to_string());
-                        self.w.write_io(msg).await?
+                        self.w.write(msg).await?
                     },
                     | ConnectionResponse::Ok => {
                         ok_count += 1;
@@ -70,7 +70,7 @@ impl OutboundStream {
                                 | _ => Err(anyhow::anyhow!("Unexpected OK count")),
                             }
                         }?;
-                        self.w.write_io(msg).await?
+                        self.w.write(msg).await?
                     },
                     | ConnectionResponse::FullResync { id, repl_id, offset } => {
                         connection_info.replid = ReplicationId::Key(repl_id);
@@ -90,7 +90,7 @@ impl OutboundStream {
     }
 
     async fn reply_with_ok(&mut self) -> anyhow::Result<()> {
-        self.w.write_io(QueryIO::SimpleString("OK".to_string())).await?;
+        self.w.write(QueryIO::SimpleString("OK".to_string())).await?;
         Ok(())
     }
 

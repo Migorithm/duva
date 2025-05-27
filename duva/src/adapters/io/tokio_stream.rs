@@ -9,7 +9,7 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 #[async_trait::async_trait]
 impl<T: AsyncWriteExt + std::marker::Unpin + Sync + Send + Debug + 'static> TWrite for T {
-    async fn write_io(&mut self, io: QueryIO) -> Result<(), IoError> {
+    async fn write(&mut self, io: QueryIO) -> Result<(), IoError> {
         self.write_all(&io.serialize()).await.map_err(|e| Into::<IoError>::into(e.kind()))
     }
 }
