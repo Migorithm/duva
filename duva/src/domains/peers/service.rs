@@ -8,7 +8,7 @@ use crate::{
 };
 use tokio::select;
 
-use super::{command::PeerCommand, connections::connected_types::ReadConnected};
+use super::{command::PeerCommand, connections::connection_types::ReadConnected};
 
 #[cfg(test)]
 static ATOMIC: std::sync::atomic::AtomicI16 = std::sync::atomic::AtomicI16::new(0);

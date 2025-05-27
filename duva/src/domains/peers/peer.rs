@@ -1,4 +1,4 @@
-use super::connections::connected_types::WriteConnected;
+use super::connections::connection_types::WriteConnected;
 use super::identifier::TPeerAddress;
 use crate::domains::cluster_actors::replication::ReplicationId;
 use crate::domains::query_parsers::QueryIO;
@@ -49,6 +49,10 @@ impl Peer {
 
     pub(crate) async fn kill(self) -> Box<dyn TRead> {
         self.listener_kill_trigger.kill().await
+    }
+
+    pub(crate) fn is_replica(&self) -> bool {
+        self.state.kind == NodeKind::Replica
     }
 }
 
