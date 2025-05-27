@@ -22,10 +22,10 @@ use tracing::trace;
 
 // The following is used only when the node is in follower mode
 pub(crate) struct OutboundStream {
-    pub(crate) r: OwnedReadHalf,
-    pub(crate) w: OwnedWriteHalf,
-    pub(crate) my_repl_info: ReplicationState,
-    pub(crate) connected_node_info: Option<ConnectedPeerInfo>,
+    r: OwnedReadHalf,
+    w: OwnedWriteHalf,
+    my_repl_info: ReplicationState,
+    connected_node_info: Option<ConnectedPeerInfo>,
 }
 
 impl OutboundStream {
@@ -44,7 +44,6 @@ impl OutboundStream {
             id: Default::default(),
             replid: Default::default(),
             hwm: Default::default(),
-            peer_list: Default::default(),
         };
 
         loop {
@@ -76,10 +75,6 @@ impl OutboundStream {
                         connection_info.replid = ReplicationId::Key(repl_id);
                         connection_info.hwm = offset;
                         connection_info.id = id.into();
-                        self.reply_with_ok().await?;
-                    },
-                    | ConnectionResponse::Peers(peer_list) => {
-                        connection_info.peer_list = peer_list;
                         self.connected_node_info = Some(connection_info);
                         self.reply_with_ok().await?;
                         return Ok(());

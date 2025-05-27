@@ -26,10 +26,10 @@ use tokio::net::tcp::OwnedWriteHalf;
 // The following is used only when the node is in leader mode
 #[derive(Debug)]
 pub(crate) struct InboundStream {
-    pub(crate) r: OwnedReadHalf,
-    pub(crate) w: OwnedWriteHalf,
-    pub(crate) self_repl_info: ReplicationState,
-    pub(crate) connected_peer_info: Option<ConnectedPeerInfo>,
+    r: OwnedReadHalf,
+    w: OwnedWriteHalf,
+    self_repl_info: ReplicationState,
+    connected_peer_info: Option<ConnectedPeerInfo>,
 }
 
 impl InboundStream {
@@ -53,7 +53,6 @@ impl InboundStream {
             id: PeerIdentifier::new(&addr.ip().to_string(), port),
             replid: peer_leader_repl_id,
             hwm: peer_hwm,
-            peer_list: vec![],
         });
 
         Ok(())
@@ -117,19 +116,6 @@ impl InboundStream {
         let mut query_io = self.r.read_values().await?;
         HandShakeRequest::new(query_io.swap_remove(0))
     }
-
-    async fn disseminate_peers(&mut self, peers: Vec<PeerIdentifier>) -> anyhow::Result<()> {
-        self.w
-            .write(QueryIO::SimpleString(format!(
-                "PEERS {}",
-                peers.into_iter().map(|x| x.0).collect::<Vec<String>>().join(" ")
-            )))
-            .await?;
-
-        self.recv_ok().await?;
-        Ok(())
-    }
-
     async fn recv_ok(&mut self) -> anyhow::Result<()> {
         let mut query_io = self.r.read_values().await?;
         let Some(query) = query_io.pop() else {
@@ -146,11 +132,10 @@ impl InboundStream {
 
     pub(crate) async fn add_peer(
         mut self,
-        members: Vec<PeerIdentifier>,
+
         cluster_handler: ClusterCommandHandler,
     ) -> anyhow::Result<()> {
         self.recv_handshake().await?;
-        self.disseminate_peers(members).await?;
 
         let peer_state = self.connected_peer_state()?;
         let kill_switch =
