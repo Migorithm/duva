@@ -74,7 +74,7 @@ impl ClusterCommandHandler {
 impl<T: TWriteAheadLog> ClusterActor<T> {
     pub(crate) fn new(
         node_timeout: u128,
-        init_repl_info: ReplicationState,
+        init_repl_state: ReplicationState,
         heartbeat_interval_in_mills: u64,
         topology_writer: File,
         log_writer: T,
@@ -82,33 +82,33 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         let (self_handler, receiver) = tokio::sync::mpsc::channel(100);
         let heartbeat_scheduler = HeartBeatScheduler::run(
             self_handler.clone(),
-            init_repl_info.is_leader_mode,
+            init_repl_state.is_leader_mode,
             heartbeat_interval_in_mills,
         );
 
         let (tx, _) = tokio::sync::broadcast::channel::<Vec<PeerIdentifier>>(100);
         let mut hash_ring = HashRing::default();
         hash_ring.add_partition_if_not_exists(
-            init_repl_info.replid.clone(),
-            init_repl_info.self_identifier(),
+            init_repl_state.replid.clone(),
+            init_repl_state.self_identifier(),
         );
 
         Self {
             heartbeat_scheduler,
-            replication: init_repl_info,
+            replication: init_repl_state,
             node_timeout,
             receiver,
             self_handler: ClusterCommandHandler(self_handler),
-            members: BTreeMap::new(),
-            consensus_tracker: LogConsensusTracker::default(),
             topology_writer,
             node_change_broadcast: tx,
-            pending_requests: None,
+            hash_ring,
+            members: BTreeMap::new(),
+            consensus_tracker: LogConsensusTracker::default(),
             client_sessions: ClientSessions::default(),
 
             // todo initial value setting
             logger: ReplicatedLogs::new(log_writer, 0, 0),
-            hash_ring,
+            pending_requests: None,
         }
     }
 
@@ -119,9 +119,9 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         node_count.ilog(fanout) as u8
     }
 
-    fn replicas(&self) -> impl Iterator<Item = (&PeerIdentifier, &Peer, u64)> {
+    fn replicas(&self) -> impl Iterator<Item = (&PeerIdentifier, u64)> {
         self.members.iter().filter_map(|(id, peer)| {
-            (peer.kind() == &NodeKind::Replica).then_some((id, peer, peer.match_index()))
+            (peer.kind() == &NodeKind::Replica).then_some((id, peer.match_index()))
         })
     }
 
