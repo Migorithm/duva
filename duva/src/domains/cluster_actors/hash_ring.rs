@@ -580,7 +580,6 @@ mod tests {
         assert_ne!(initial_ranges2, updated_ranges2);
     }
 
-    //TODO last_modified can be different. Perhaps equality should not include it?
     #[test]
     fn test_eq_works_deterministically() {
         let mut ring = HashRing::default();

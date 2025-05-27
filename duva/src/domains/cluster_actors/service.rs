@@ -150,7 +150,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
                 self.connect_to_server(connect_to, Some(callback)).await;
             },
             | AcceptInboundPeer { stream } => {
-                self.accept_inbound_stream(stream).await;
+                self.accept_inbound_stream(stream);
             },
 
             | AddPeer(peer, optional_callback) => {

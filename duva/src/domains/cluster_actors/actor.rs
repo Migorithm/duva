@@ -112,20 +112,20 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         }
     }
 
-    pub(crate) fn hop_count(fanout: usize, node_count: usize) -> u8 {
+    fn hop_count(fanout: usize, node_count: usize) -> u8 {
         if node_count <= fanout {
             return 0;
         }
         node_count.ilog(fanout) as u8
     }
 
-    pub(crate) fn replicas(&self) -> impl Iterator<Item = (&PeerIdentifier, &Peer, u64)> {
+    fn replicas(&self) -> impl Iterator<Item = (&PeerIdentifier, &Peer, u64)> {
         self.members.iter().filter_map(|(id, peer)| {
             (peer.kind() == &NodeKind::Replica).then_some((id, peer, peer.match_index()))
         })
     }
 
-    pub(crate) fn replicas_mut(&mut self) -> impl Iterator<Item = (&mut Peer, u64)> {
+    fn replicas_mut(&mut self) -> impl Iterator<Item = (&mut Peer, u64)> {
         self.members.values_mut().filter_map(|peer| {
             let match_index = peer.match_index();
             (peer.kind() == &NodeKind::Replica).then_some((peer, match_index))
@@ -142,7 +142,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         }
     }
 
-    pub(crate) async fn snapshot_topology(&mut self) -> anyhow::Result<()> {
+    async fn snapshot_topology(&mut self) -> anyhow::Result<()> {
         let topology = self
             .cluster_nodes()
             .into_iter()
@@ -173,7 +173,6 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         }
 
         self.broadcast_topology_change();
-
         let _ = self.snapshot_topology().await;
     }
 
@@ -224,8 +223,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         ));
     }
 
-    #[instrument(level = tracing::Level::DEBUG, skip(self, peer_stream))]
-    pub(crate) async fn accept_inbound_stream(&mut self, peer_stream: TcpStream) {
+    pub(crate) fn accept_inbound_stream(&mut self, peer_stream: TcpStream) {
         let inbound_stream = InboundStream::new(peer_stream, self.replication.clone());
         tokio::spawn(
             inbound_stream.add_peer(
@@ -458,7 +456,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         Box::new(iterator)
     }
 
-    pub(crate) fn take_low_watermark(&self) -> Option<u64> {
+    fn take_low_watermark(&self) -> Option<u64> {
         self.members
             .values()
             .filter_map(|peer| match peer.kind() {
@@ -728,7 +726,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     /// Used when:
     /// 1) on follower's consensus rejection when term is not matched
     /// 2) step down operation is given from user
-    pub(crate) async fn step_down(&mut self) {
+    async fn step_down(&mut self) {
         self.replication.vote_for(None);
         self.heartbeat_scheduler.turn_follower_mode().await;
     }
@@ -756,7 +754,6 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         }
     }
 
-    // TODO current_log_idx - 1?
     fn decrease_match_index(&mut self, from: &PeerIdentifier, current_log_idx: u64) {
         if let Some(peer) = self.members.get_mut(from) {
             peer.set_match_index(current_log_idx);
