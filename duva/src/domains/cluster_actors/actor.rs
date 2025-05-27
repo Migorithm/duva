@@ -905,7 +905,7 @@ pub mod test {
     use tempfile::TempDir;
     use tokio::fs::OpenOptions;
     use tokio::net::TcpListener;
-    use tokio::net::TcpStream;
+
     use tokio::sync::Mutex;
     use tokio::sync::mpsc::channel;
     use tokio::time::timeout;
@@ -940,6 +940,24 @@ pub mod test {
         }
     }
 
+    fn create_peer_helper(
+        cluster_sender: &tokio::sync::mpsc::Sender<ClusterCommand>,
+        hwm: u64,
+        repl_id: &ReplicationId,
+        port: u16,
+        node_kind: NodeKind,
+    ) -> (PeerIdentifier, Peer) {
+        let key = PeerIdentifier::new("127.0.0.1", port);
+        let fake_buf = FakeReadWrite::new();
+        let kill_switch = PeerListener::spawn(
+            fake_buf.clone(),
+            ClusterCommandHandler(cluster_sender.clone()),
+            key.clone(),
+        );
+        let peer =
+            Peer::new(fake_buf, PeerState::new(&key, hwm, repl_id.clone(), node_kind), kill_switch);
+        (key, peer)
+    }
     pub async fn cluster_actor_create_helper() -> ClusterActor<MemoryOpLogs> {
         let replication = ReplicationState::new(
             ReplicationId::Key("master".into()),
@@ -1686,14 +1704,10 @@ pub mod test {
     #[tokio::test]
     async fn test_cluster_nodes() {
         use std::io::Write;
-        use tokio::net::TcpListener;
-        // GIVEN
 
+        // GIVEN
         let (cluster_sender, _) = tokio::sync::mpsc::channel(100);
         let cache_manager = CacheManager { inboxes: vec![] };
-
-        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let bind_addr = listener.local_addr().unwrap();
 
         let mut cluster_actor = cluster_actor_create_helper().await;
         cluster_actor.replication.hwm.store(15, Ordering::Release);
@@ -1702,73 +1716,39 @@ pub mod test {
 
         // followers
         for port in [6379, 6380] {
-            let key = PeerIdentifier::new("127.0.0.1", port);
-            let (r, x) = TcpStream::connect(bind_addr).await.unwrap().into_split();
-            let kill_switch =
-                PeerListener::spawn(r, ClusterCommandHandler(cluster_sender.clone()), key.clone());
-            cluster_actor.members.insert(
-                key.clone(),
-                Peer::new(
-                    x,
-                    PeerState::new(
-                        &key,
-                        cluster_actor.replication.hwm.load(Ordering::Relaxed),
-                        repl_id.clone(),
-                        NodeKind::Replica,
-                    ),
-                    kill_switch,
-                ),
+            let (key, peer) = create_peer_helper(
+                &cluster_sender,
+                cluster_actor.replication.hwm.load(Ordering::Relaxed),
+                &repl_id,
+                port,
+                NodeKind::Replica,
             );
+            cluster_actor.members.insert(key.clone(), peer);
         }
 
-        let listener_for_second_shard = TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let bind_addr_for_second_shard = listener_for_second_shard.local_addr().unwrap();
-        let second_shard_leader_identifier: PeerIdentifier =
-            listener_for_second_shard.local_addr().unwrap().to_string().into();
-        let second_shard_repl_id = uuid::Uuid::now_v7();
-
-        // leader for different shard?
-        let (r, x) = TcpStream::connect(bind_addr).await.unwrap().into_split();
-        let kill_switch = PeerListener::spawn(
-            r,
-            ClusterCommandHandler(cluster_sender.clone()),
-            second_shard_leader_identifier.clone(),
+        // leader for different shard
+        let second_shard_repl_id = ReplicationId::Key(uuid::Uuid::now_v7().to_string());
+        let second_shard_leader_port = rand::random::<u16>();
+        let (second_shard_leader_identifier, second_peer) = create_peer_helper(
+            &cluster_sender,
+            0,
+            &second_shard_repl_id,
+            second_shard_leader_port,
+            NodeKind::NonData,
         );
 
-        cluster_actor.members.insert(
-            second_shard_leader_identifier.clone(),
-            Peer::new(
-                x,
-                PeerState::new(
-                    &second_shard_leader_identifier,
-                    0,
-                    ReplicationId::Key(second_shard_repl_id.to_string()),
-                    NodeKind::NonData,
-                ),
-                kill_switch,
-            ),
-        );
+        cluster_actor.members.insert(second_shard_leader_identifier.clone(), second_peer);
 
         // follower for different shard
         for port in [2655, 2653] {
-            let key = PeerIdentifier::new("127.0.0.1", port);
-            let (r, x) = TcpStream::connect(bind_addr).await.unwrap().into_split();
-            let kill_switch =
-                PeerListener::spawn(r, ClusterCommandHandler(cluster_sender.clone()), key.clone());
-
-            cluster_actor.members.insert(
-                key.clone(),
-                Peer::new(
-                    x,
-                    PeerState::new(
-                        &key,
-                        0,
-                        ReplicationId::Key(second_shard_repl_id.to_string()),
-                        NodeKind::NonData,
-                    ),
-                    kill_switch,
-                ),
+            let (key, peer) = create_peer_helper(
+                &cluster_sender,
+                0,
+                &second_shard_repl_id,
+                port,
+                NodeKind::NonData,
             );
+            cluster_actor.members.insert(key, peer);
         }
 
         // WHEN
@@ -1786,6 +1766,7 @@ pub mod test {
         localhost:8080 myself,{repl_id} 0 15
         "#
         );
+
         let mut temp_file = tempfile::NamedTempFile::new().expect("Failed to create temp file");
         write!(temp_file, "{}", file_content).expect("Failed to write to temp file");
         let nodes = PeerState::from_file(temp_file.path().to_str().unwrap());
