@@ -6,6 +6,7 @@ use crate::domains::cluster_actors::replication::ReplicationState;
 use crate::domains::interface::TRead;
 use crate::domains::interface::TWrite;
 use crate::domains::peers::connections::connected_peer_info::ConnectedPeerInfo;
+use crate::domains::peers::connections::connected_types::WriteConnected;
 use crate::domains::peers::identifier::PeerIdentifier;
 use crate::domains::peers::identifier::TPeerAddress;
 use crate::domains::peers::peer::Peer;
@@ -37,7 +38,7 @@ impl OutboundStream {
         Ok(OutboundStream { r: read, w: write, my_repl_info, connected_node_info: None })
     }
     async fn make_handshake(&mut self, self_port: u16) -> anyhow::Result<()> {
-        self.w.write(write_array!("PING")).await?;
+        self.w.write(write_array!("PING").into()).await?;
         let mut ok_count = 0;
         let mut connection_info = ConnectedPeerInfo {
             id: Default::default(),
@@ -53,7 +54,7 @@ impl OutboundStream {
                 match ConnectionResponse::try_from(query)? {
                     | ConnectionResponse::Pong => {
                         let msg = write_array!("REPLCONF", "listening-port", self_port.to_string());
-                        self.w.write(msg).await?
+                        self.w.write(msg.into()).await?
                     },
                     | ConnectionResponse::Ok => {
                         ok_count += 1;
@@ -69,7 +70,7 @@ impl OutboundStream {
                                 | _ => Err(anyhow::anyhow!("Unexpected OK count")),
                             }
                         }?;
-                        self.w.write(msg).await?
+                        self.w.write(msg.into()).await?
                     },
                     | ConnectionResponse::FullResync { id, repl_id, offset } => {
                         connection_info.replid = ReplicationId::Key(repl_id);
@@ -112,7 +113,7 @@ impl OutboundStream {
 
         let kill_switch =
             PeerListener::spawn(self.r, cluster_handler.clone(), peer_state.addr.clone());
-        let peer = Peer::new(self.w, peer_state, kill_switch);
+        let peer = Peer::new(WriteConnected(Box::new(self.w)), peer_state, kill_switch);
 
         let _ = cluster_handler.send(ConnectionMessage::AddPeer(peer, optional_callback)).await;
         Ok(())

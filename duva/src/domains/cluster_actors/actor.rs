@@ -966,7 +966,7 @@ pub mod test {
             actor.members.insert(
                 PeerIdentifier::new("localhost", port),
                 Peer::new(
-                    x,
+                    x.into(),
                     PeerState::new(
                         &format!("localhost:{}", port),
                         follower_hwm,
@@ -1651,7 +1651,7 @@ pub mod test {
             cluster_actor.members.insert(
                 key.clone(),
                 Peer::new(
-                    x,
+                    x.into(),
                     PeerState::new(
                         &key,
                         cluster_actor.replication.hwm.load(Ordering::Relaxed),
@@ -1680,7 +1680,7 @@ pub mod test {
         cluster_actor.members.insert(
             second_shard_leader_identifier.clone(),
             Peer::new(
-                x,
+                x.into(),
                 PeerState::new(
                     &second_shard_leader_identifier,
                     0,
@@ -1701,7 +1701,7 @@ pub mod test {
             cluster_actor.members.insert(
                 key.clone(),
                 Peer::new(
-                    x,
+                    x.into(),
                     PeerState::new(
                         &key,
                         0,
@@ -1779,7 +1779,7 @@ pub mod test {
         );
 
         let peer = Peer::new(
-            x,
+            x.into(),
             PeerState::new(
                 "127.0.0.1:3849",
                 0,

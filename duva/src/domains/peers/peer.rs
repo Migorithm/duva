@@ -21,7 +21,7 @@ pub(crate) struct Peer {
 
 impl Peer {
     pub(crate) fn new(
-        w: impl Into<WriteConnected>,
+        w: WriteConnected,
         state: PeerState,
         listener_kill_trigger: ListeningActorKillTrigger,
     ) -> Self {
@@ -48,7 +48,7 @@ impl Peer {
     }
 
     pub(crate) async fn send(&mut self, io: impl Into<QueryIO> + Send) -> Result<(), IoError> {
-        self.w_conn.write_io(io).await
+        self.w_conn.write_io(io.into()).await
     }
 
     pub(crate) async fn kill(self) -> OwnedReadHalf {

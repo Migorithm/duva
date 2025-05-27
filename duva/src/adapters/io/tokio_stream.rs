@@ -3,20 +3,23 @@ use crate::domains::interface::{TGetPeerIp, TRead, TSerdeReadWrite, TWrite};
 use crate::domains::query_parsers::query_io::SERDE_CONFIG;
 use crate::domains::query_parsers::{QueryIO, deserialize};
 use bytes::{Bytes, BytesMut};
+use std::fmt::Debug;
 use std::io::ErrorKind;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
-impl<T: AsyncWriteExt + std::marker::Unpin + Sync + Send> TWrite for T {
-    async fn write(&mut self, buf: impl Into<Bytes>) -> Result<(), IoError> {
-        self.write_all(&buf.into()).await.map_err(|e| Into::<IoError>::into(e.kind()))
+#[async_trait::async_trait]
+impl<T: AsyncWriteExt + std::marker::Unpin + Sync + Send + Debug + 'static> TWrite for T {
+    async fn write(&mut self, buf: Bytes) -> Result<(), IoError> {
+        self.write_all(&buf).await.map_err(|e| Into::<IoError>::into(e.kind()))
     }
 
-    async fn write_io(&mut self, io: impl Into<QueryIO>) -> Result<(), IoError> {
-        self.write_all(&io.into().serialize()).await.map_err(|e| Into::<IoError>::into(e.kind()))
+    async fn write_io(&mut self, io: QueryIO) -> Result<(), IoError> {
+        self.write_all(&io.serialize()).await.map_err(|e| Into::<IoError>::into(e.kind()))
     }
 }
 
-impl<T: AsyncReadExt + std::marker::Unpin + Sync + Send> TRead for T {
+#[async_trait::async_trait]
+impl<T: AsyncReadExt + std::marker::Unpin + Sync + Send + Debug + 'static> TRead for T {
     // TCP doesn't inherently delimit messages.
     // The data arrives in a continuous stream of bytes. And
     // we might not receive all the data in one go.
@@ -78,7 +81,8 @@ impl<T: AsyncReadExt + std::marker::Unpin + Sync + Send> TRead for T {
     }
 }
 
-impl<T: AsyncWriteExt + std::marker::Unpin + Sync + Send> TSerdeReadWrite for T
+#[async_trait::async_trait]
+impl<T: AsyncWriteExt + std::marker::Unpin + Sync + Send + Debug + 'static> TSerdeReadWrite for T
 where
     T: AsyncWriteExt + AsyncReadExt + std::marker::Unpin + Sync + Send,
 {

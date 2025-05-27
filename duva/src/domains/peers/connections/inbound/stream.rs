@@ -5,6 +5,7 @@ use crate::domains::IoError;
 use crate::domains::cluster_actors::ConnectionMessage;
 use crate::domains::cluster_actors::actor::ClusterCommandHandler;
 use crate::domains::peers::connections::connected_peer_info::ConnectedPeerInfo;
+use crate::domains::peers::connections::connected_types::WriteConnected;
 use crate::domains::peers::peer::Peer;
 
 use crate::domains::cluster_actors::replication::ReplicationId;
@@ -70,7 +71,7 @@ impl InboundStream {
         let cmd = self.extract_cmd().await?;
         cmd.match_query(HandShakeRequestEnum::Ping)?;
 
-        self.w.write(QueryIO::SimpleString("PONG".into())).await?;
+        self.w.write(QueryIO::SimpleString("PONG".into()).into()).await?;
         Ok(())
     }
 
@@ -79,7 +80,7 @@ impl InboundStream {
 
         let port = cmd.extract_listening_port()?;
 
-        self.w.write(QueryIO::SimpleString("OK".into())).await?;
+        self.w.write(QueryIO::SimpleString("OK".into()).into()).await?;
 
         Ok(port)
     }
@@ -87,7 +88,7 @@ impl InboundStream {
     async fn recv_replconf_capa(&mut self) -> anyhow::Result<Vec<(String, String)>> {
         let mut cmd = self.extract_cmd().await?;
         let capa_val_vec = cmd.extract_capa()?;
-        self.w.write(QueryIO::SimpleString("OK".into())).await?;
+        self.w.write(QueryIO::SimpleString("OK".into()).into()).await?;
         Ok(capa_val_vec)
     }
     async fn recv_psync(&mut self) -> anyhow::Result<(ReplicationId, u64)> {
@@ -103,10 +104,13 @@ impl InboundStream {
         );
 
         self.w
-            .write(QueryIO::SimpleString(format!(
-                "FULLRESYNC {} {} {}",
-                id, self_leader_replid, self_leader_repl_offset
-            )))
+            .write(
+                QueryIO::SimpleString(format!(
+                    "FULLRESYNC {} {} {}",
+                    id, self_leader_replid, self_leader_repl_offset
+                ))
+                .into(),
+            )
             .await?;
         self.recv_ok().await?;
         Ok((inbound_repl_id, offset))
@@ -119,10 +123,13 @@ impl InboundStream {
 
     async fn disseminate_peers(&mut self, peers: Vec<PeerIdentifier>) -> anyhow::Result<()> {
         self.w
-            .write(QueryIO::SimpleString(format!(
-                "PEERS {}",
-                peers.into_iter().map(|x| x.0).collect::<Vec<String>>().join(" ")
-            )))
+            .write(
+                QueryIO::SimpleString(format!(
+                    "PEERS {}",
+                    peers.into_iter().map(|x| x.0).collect::<Vec<String>>().join(" ")
+                ))
+                .into(),
+            )
             .await?;
 
         self.recv_ok().await?;
@@ -154,7 +161,7 @@ impl InboundStream {
         let peer_state = self.connected_peer_state()?;
         let kill_switch =
             PeerListener::spawn(self.r, cluster_handler.clone(), peer_state.addr.clone());
-        let peer = Peer::new(self.w, peer_state, kill_switch);
+        let peer = Peer::new(WriteConnected(Box::new(self.w)), peer_state, kill_switch);
         let _ = cluster_handler.send(ConnectionMessage::AddPeer(peer, None)).await;
         Ok(())
     }
