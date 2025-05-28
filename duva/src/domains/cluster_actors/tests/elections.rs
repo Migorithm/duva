@@ -68,3 +68,42 @@ async fn test_run_for_election_no_replicas() {
         ElectionState::Candidate { voting: Some(ElectionVoting { cnt: 1, replica_count: 0 }) }
     ));
 }
+
+#[tokio::test]
+async fn test_vote_election_grant_vote() {
+    // GIVEN: A follower actor
+    let mut follower_actor = cluster_actor_create_helper().await;
+    let initial_term = follower_actor.replication.term;
+    follower_actor.replication.role = ReplicationRole::Follower;
+
+    let candidate_id = PeerIdentifier::new("127.0.0.1", 8011);
+    let candidate_fake_buf = add_replica_helper(&mut follower_actor, 8011);
+
+    // Candidate's log is up-to-date or newer, and term is higher
+    let request_vote = RequestVote {
+        term: initial_term + 1,
+        candidate_id: candidate_id.clone(),
+        last_log_index: 1, // Same log index
+        last_log_term: 1,  // Same log term
+    };
+
+    // WHEN
+    follower_actor.vote_election(request_vote.clone()).await;
+
+    // THEN: Follower should grant the vote and update its state
+    assert_eq!(follower_actor.replication.term, initial_term + 1);
+    assert!(matches!(
+        follower_actor.replication.election_state,
+        ElectionState::Follower { voted_for: Some(..) }
+    ));
+    assert_eq!(follower_actor.replication.role, ReplicationRole::Follower); // Stays follower
+
+    // Check message sent to candidate
+    let sent_msg = candidate_fake_buf.0.lock().await.pop_front().unwrap();
+    if let QueryIO::RequestVoteReply(ev) = sent_msg {
+        assert!(ev.vote_granted);
+        assert_eq!(ev.term, initial_term + 1);
+    } else {
+        panic!("Expected ElectionVote, got {:?}", sent_msg);
+    }
+}
