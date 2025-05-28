@@ -403,6 +403,11 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             return;
         };
 
+        if member.is_replica() {
+            error!("Cannot rebalance to a replica: {}", request_from);
+            return;
+        }
+
         if self
             .hash_ring
             .add_partition_if_not_exists(member.replid().clone(), member.id().clone())
@@ -2013,6 +2018,32 @@ pub mod test {
         // No pending requests should be created since the member is not connected
         assert!(cluster_actor.pending_requests.is_none());
         // No message should be sent to the peer
+    }
+
+    // ! Failcase
+    #[tokio::test]
+    async fn test_start_rebalance_to_replica() {
+        // GIVEN
+        let mut cluster_actor = cluster_actor_create_helper().await;
+        let buf = FakeReadWrite::new();
+        let (peer_id, peer) = create_peer_helper(
+            cluster_actor.self_handler.clone(),
+            0,
+            &cluster_actor.replication.replid.clone(),
+            6559,
+            NodeKind::Replica,
+            buf.clone(),
+        );
+
+        cluster_actor.add_peer(peer).await;
+
+        // WHEN
+        cluster_actor.start_rebalance(peer_id).await;
+
+        // THEN
+        assert!(cluster_actor.pending_requests.is_none());
+        let msg = buf.0.lock().await.pop_front();
+        assert!(msg.is_none());
     }
 
     #[tokio::test]
