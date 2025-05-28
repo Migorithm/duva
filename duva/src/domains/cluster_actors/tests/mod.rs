@@ -84,6 +84,20 @@ fn create_peer_helper(
         Peer::new(fake_buf, PeerState::new(&key, hwm, repl_id.clone(), node_kind), kill_switch);
     (key, peer)
 }
+
+fn add_replica_helper(actor: &mut ClusterActor<MemoryOpLogs>, port: u16) -> FakeReadWrite {
+    let buf = FakeReadWrite::new();
+    let (id, peer) = create_peer_helper(
+        actor.self_handler.clone(),
+        0,
+        &actor.replication.replid,
+        port,
+        NodeKind::Replica,
+        buf.clone(),
+    );
+    actor.members.insert(id, peer);
+    buf
+}
 pub async fn cluster_actor_create_helper() -> ClusterActor<MemoryOpLogs> {
     let replication = ReplicationState::new(
         ReplicationId::Key("master".into()),
