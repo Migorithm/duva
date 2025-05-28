@@ -133,7 +133,7 @@ impl TWrite for FakeReadWrite {
 
 #[async_trait::async_trait]
 impl TRead for FakeReadWrite {
-    async fn read_bytes(&mut self, buf: &mut BytesMut) -> Result<(), IoError> {
+    async fn read_bytes(&mut self, _buf: &mut BytesMut) -> Result<(), IoError> {
         Ok(())
     }
 
@@ -277,7 +277,7 @@ async fn test_store_current_topology() {
     let hwm = cluster_actor.replication.hwm.load(Ordering::Relaxed);
 
     // WHEN
-    cluster_actor.snapshot_topology().await.unwrap();
+    cluster_actor.test_snapshot_topology().await.unwrap();
 
     // THEN
     let topology = tokio::fs::read_to_string(path).await.unwrap();
@@ -316,7 +316,7 @@ async fn test_snapshot_topology_after_add_peer() {
 
     // WHEN
     cluster_actor.add_peer(peer).await;
-    cluster_actor.snapshot_topology().await.unwrap();
+    cluster_actor.test_snapshot_topology().await.unwrap();
 
     // THEN
     let topology = tokio::fs::read_to_string(path).await.unwrap();
@@ -341,7 +341,7 @@ async fn test_snapshot_topology_after_add_peer() {
 async fn test_requests_pending() {
     // GIVEN
     let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
-    cluster_actor.block_write_reqs();
+    cluster_actor.test_block_write_reqs();
 
     //WHEN
     let (tx, rx) = tokio::sync::oneshot::channel();
@@ -384,7 +384,7 @@ async fn test_reconnection_on_gossip() {
 
     // WHEN - try to reconnect
     cluster_actor
-        .join_peer_network_if_absent(vec![PeerState::new(
+        .test_join_peer_network_if_absent(vec![PeerState::new(
             &format!("127.0.0.1:{}", bind_addr.port() - 10000),
             0,
             cluster_actor.replication.replid.clone(),
