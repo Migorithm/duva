@@ -38,7 +38,7 @@ async fn logger_create_entries_from_lowest() {
 #[tokio::test]
 async fn test_generate_follower_entries() {
     // GIVEN
-    let mut cluster_actor = cluster_actor_create_helper().await;
+    let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
 
     let (cluster_sender, _) = tokio::sync::mpsc::channel(100);
     let follower_buffs = (0..5).map(|_| FakeReadWrite::new()).collect::<Vec<_>>();
@@ -91,7 +91,7 @@ async fn test_generate_follower_entries() {
 #[tokio::test]
 async fn follower_cluster_actor_replicate_log() {
     // GIVEN
-    let mut cluster_actor = cluster_actor_create_helper().await;
+    let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
     // WHEN - term
     let heartbeat = heartbeat_create_helper(
         0,
@@ -127,7 +127,7 @@ async fn follower_cluster_actor_replicate_log() {
 async fn follower_cluster_actor_replicate_state() {
     // GIVEN
     let (cache_handler, mut receiver) = tokio::sync::mpsc::channel(100);
-    let mut cluster_actor = cluster_actor_create_helper().await;
+    let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
 
     let heartbeat = heartbeat_create_helper(
         0,
@@ -168,7 +168,7 @@ async fn follower_cluster_actor_replicate_state() {
 #[tokio::test]
 async fn follower_cluster_actor_replicate_state_only_upto_hwm() {
     // GIVEN
-    let mut cluster_actor = cluster_actor_create_helper().await;
+    let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
 
     // Log two entries but don't commit them yet
     let heartbeat = heartbeat_create_helper(
@@ -229,7 +229,7 @@ async fn follower_cluster_actor_replicate_state_only_upto_hwm() {
 #[tokio::test]
 async fn test_apply_multiple_committed_entries() {
     // GIVEN
-    let mut cluster_actor = cluster_actor_create_helper().await;
+    let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
 
     // Add multiple entries
     let entries = vec![
@@ -281,7 +281,7 @@ async fn test_apply_multiple_committed_entries() {
 #[tokio::test]
 async fn test_partial_commit_with_new_entries() {
     // GIVEN
-    let mut cluster_actor = cluster_actor_create_helper().await;
+    let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
 
     // First, append some entries
     let first_entries = vec![
@@ -344,7 +344,7 @@ async fn follower_truncates_log_on_term_mismatch() {
 
     let logger = ReplicatedLogs::new(inmemory, 3, 1);
 
-    let mut cluster_actor = cluster_actor_create_helper().await;
+    let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
     cluster_actor.logger = logger;
 
     // Simulate an initial log entry at index 1, term 1
@@ -365,7 +365,7 @@ async fn follower_truncates_log_on_term_mismatch() {
 async fn follower_accepts_entries_with_empty_log_and_prev_log_index_zero() {
     // GIVEN: A follower with an empty log
 
-    let mut cluster_actor = cluster_actor_create_helper().await;
+    let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
 
     // WHEN: Leader sends entries with prev_log_index=0
     let mut heartbeat =
@@ -382,7 +382,7 @@ async fn follower_accepts_entries_with_empty_log_and_prev_log_index_zero() {
 async fn follower_rejects_entries_with_empty_log_and_prev_log_index_nonzero() {
     // GIVEN: A follower with an empty log
 
-    let mut cluster_actor = cluster_actor_create_helper().await;
+    let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
 
     // WHEN: Leader sends entries with prev_log_index=1
     let mut heartbeat =
@@ -401,7 +401,7 @@ async fn follower_rejects_entries_with_empty_log_and_prev_log_index_nonzero() {
 async fn req_consensus_inserts_consensus_voting() {
     // GIVEN
 
-    let mut cluster_actor = cluster_actor_create_helper().await;
+    let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
 
     // - add 5 followers
     let (cluster_sender, _) = tokio::sync::mpsc::channel(100);
@@ -437,7 +437,7 @@ async fn req_consensus_inserts_consensus_voting() {
 
     // check on follower_buffs
     for follower in follower_buffs {
-        let mut guard = follower.0.lock().await;
+        let mut guard = follower.lock().await;
         assert_eq!(guard.len(), 1);
         assert!(matches!(guard.pop_front().unwrap(), QueryIO::AppendEntriesRPC(_)));
     }
@@ -446,7 +446,7 @@ async fn req_consensus_inserts_consensus_voting() {
 #[tokio::test]
 async fn test_leader_req_consensus_early_return_when_already_processed_session_req_given() {
     // GIVEN
-    let mut cluster_actor = cluster_actor_create_helper().await;
+    let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
 
     let cache_manager = CacheManager { inboxes: vec![] };
 
@@ -474,7 +474,7 @@ async fn test_leader_req_consensus_early_return_when_already_processed_session_r
 #[tokio::test]
 async fn test_consensus_voting_deleted_when_consensus_reached() {
     // GIVEN
-    let mut cluster_actor = cluster_actor_create_helper().await;
+    let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
 
     let (cluster_sender, _) = tokio::sync::mpsc::channel(100);
 
@@ -524,7 +524,7 @@ async fn test_consensus_voting_deleted_when_consensus_reached() {
 #[tokio::test]
 async fn test_same_voter_can_vote_only_once() {
     // GIVEN
-    let mut cluster_actor = cluster_actor_create_helper().await;
+    let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
 
     let (cluster_sender, _) = tokio::sync::mpsc::channel(100);
 
@@ -562,7 +562,7 @@ async fn test_same_voter_can_vote_only_once() {
 #[tokio::test]
 async fn leader_consensus_tracker_not_changed_when_followers_not_exist() {
     // GIVEN
-    let mut cluster_actor = cluster_actor_create_helper().await;
+    let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
     let (tx, rx) = tokio::sync::oneshot::channel();
 
     let consensus_request = consensus_request_create_helper(tx, None);

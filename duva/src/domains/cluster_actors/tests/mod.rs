@@ -26,6 +26,7 @@ use crate::domains::peers::connections::inbound::stream::InboundStream;
 use crate::domains::peers::peer::PeerState;
 use crate::domains::peers::service::PeerListener;
 use crate::domains::query_parsers::QueryIO;
+use crate::make_smart_pointer;
 use bytes::BytesMut;
 use std::collections::VecDeque;
 use std::sync::Arc;
@@ -95,17 +96,13 @@ fn add_replica_helper(actor: &mut ClusterActor<MemoryOpLogs>, port: u16) -> Fake
         NodeKind::Replica,
         buf.clone(),
     );
+
     actor.members.insert(id, peer);
     buf
 }
-pub async fn cluster_actor_create_helper() -> ClusterActor<MemoryOpLogs> {
-    let replication = ReplicationState::new(
-        ReplicationId::Key("master".into()),
-        ReplicationRole::Leader,
-        "localhost",
-        8080,
-        0,
-    );
+pub async fn cluster_actor_create_helper(role: ReplicationRole) -> ClusterActor<MemoryOpLogs> {
+    let replication =
+        ReplicationState::new(ReplicationId::Key("master".into()), role, "localhost", 8080, 0);
     let dir = TempDir::new().unwrap();
     let path = dir.path().join("duva.tp");
 
@@ -117,6 +114,7 @@ pub async fn cluster_actor_create_helper() -> ClusterActor<MemoryOpLogs> {
 
 #[derive(Debug, Clone)]
 struct FakeReadWrite(Arc<Mutex<VecDeque<QueryIO>>>);
+make_smart_pointer!(FakeReadWrite, Arc<Mutex<VecDeque<QueryIO>>>);
 
 impl FakeReadWrite {
     fn new() -> Self {
@@ -197,7 +195,7 @@ async fn test_cluster_nodes() {
     use std::io::Write;
 
     // GIVEN
-    let mut cluster_actor = cluster_actor_create_helper().await;
+    let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
     cluster_actor.replication.hwm.store(15, Ordering::Release);
 
     let repl_id = cluster_actor.replication.replid.clone();
@@ -270,7 +268,7 @@ async fn test_cluster_nodes() {
 #[tokio::test]
 async fn test_store_current_topology() {
     // GIVEN
-    let mut cluster_actor = cluster_actor_create_helper().await;
+    let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
     let path = "test_store_current_topology.tp";
     cluster_actor.topology_writer = tokio::fs::File::create(path).await.unwrap();
 
@@ -292,7 +290,7 @@ async fn test_store_current_topology() {
 #[tokio::test]
 async fn test_snapshot_topology_after_add_peer() {
     // GIVEN
-    let mut cluster_actor = cluster_actor_create_helper().await;
+    let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
     let path = "test_snapshot_topology_after_add_peer.tp";
     cluster_actor.topology_writer = tokio::fs::File::create(path).await.unwrap();
 
@@ -342,7 +340,7 @@ async fn test_snapshot_topology_after_add_peer() {
 #[tokio::test]
 async fn test_requests_pending() {
     // GIVEN
-    let mut cluster_actor = cluster_actor_create_helper().await;
+    let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
     cluster_actor.block_write_reqs();
 
     //WHEN
@@ -364,7 +362,7 @@ async fn test_requests_pending() {
 #[tokio::test]
 async fn test_reconnection_on_gossip() {
     // GIVEN
-    let mut cluster_actor = cluster_actor_create_helper().await;
+    let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
 
     // * run listener to see if connection is attempted
     let listener = TcpListener::bind("127.0.0.1:44455").await.unwrap(); // ! Beaware that this is cluster port
@@ -402,7 +400,7 @@ async fn test_reconnection_on_gossip() {
 #[tokio::test]
 async fn test_rebalance_request_with_lazy() {
     // GIVEN
-    let mut cluster_actor = cluster_actor_create_helper().await;
+    let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
 
     // WHEN
     let request_to = PeerIdentifier("127.0.0.1:6559".into());
@@ -417,7 +415,7 @@ async fn test_rebalance_request_with_lazy() {
 #[tokio::test]
 async fn test_rebalance_request_before_member_connected() {
     // GIVEN
-    let mut cluster_actor = cluster_actor_create_helper().await;
+    let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
 
     // WHEN
     let request_to = PeerIdentifier("127.0.0.1:6559".into());
@@ -432,7 +430,7 @@ async fn test_rebalance_request_before_member_connected() {
 #[tokio::test]
 async fn test_rebalance_request_to_replica() {
     // GIVEN
-    let mut cluster_actor = cluster_actor_create_helper().await;
+    let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
     let buf = FakeReadWrite::new();
     let (peer_id, peer) = create_peer_helper(
         cluster_actor.self_handler.clone(),
@@ -463,7 +461,7 @@ async fn test_rebalance_request_to_replica() {
 #[tokio::test]
 async fn test_rebalance_request_happypath() {
     // GIVEN
-    let mut cluster_actor = cluster_actor_create_helper().await;
+    let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
     let buf = FakeReadWrite::new();
     let (peer_id, peer) = create_peer_helper(
         cluster_actor.self_handler.clone(),
@@ -491,7 +489,7 @@ async fn test_rebalance_request_happypath() {
 #[tokio::test]
 async fn test_start_rebalance_before_connection_is_made() {
     // GIVEN
-    let mut cluster_actor = cluster_actor_create_helper().await;
+    let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
 
     // WHEN
     cluster_actor.start_rebalance(PeerIdentifier("127.0.0.1:6559".into())).await;
@@ -506,7 +504,7 @@ async fn test_start_rebalance_before_connection_is_made() {
 #[tokio::test]
 async fn test_start_rebalance_to_replica() {
     // GIVEN
-    let mut cluster_actor = cluster_actor_create_helper().await;
+    let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
     let buf = FakeReadWrite::new();
     let (peer_id, peer) = create_peer_helper(
         cluster_actor.self_handler.clone(),
@@ -531,7 +529,7 @@ async fn test_start_rebalance_to_replica() {
 #[tokio::test]
 async fn test_start_rebalance_happy_path() {
     // GIVEN
-    let mut cluster_actor = cluster_actor_create_helper().await;
+    let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
     let buf = FakeReadWrite::new();
     let (peer_id, peer) = create_peer_helper(
         cluster_actor.self_handler.clone(),
@@ -565,7 +563,7 @@ async fn test_start_rebalance_happy_path() {
 #[tokio::test]
 async fn test_start_rebalance_should_be_idempotent() {
     // GIVEN
-    let mut cluster_actor = cluster_actor_create_helper().await;
+    let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
     let buf = FakeReadWrite::new();
     let (peer_id, peer) = create_peer_helper(
         cluster_actor.self_handler.clone(),
