@@ -148,3 +148,31 @@ async fn test_vote_election_deny_vote_older_log() {
     assert!(!ev.vote_granted);
     assert_eq!(ev.term, initial_term);
 }
+
+#[tokio::test]
+async fn test_vote_election_deny_vote_lower_candidate_term() {
+    let follower_term = 3;
+    let mut follower_actor = cluster_actor_create_helper(ReplicationRole::Follower).await;
+    follower_actor.replication.term = follower_term;
+    let candidate_id = PeerIdentifier::new("127.0.0.1", 8031);
+    let candidate_fake_buf = add_replica_helper(&mut follower_actor, 8031);
+
+    let request_vote = RequestVote {
+        term: follower_term - 1, // Candidate term is lower
+        candidate_id: candidate_id.clone(),
+        last_log_index: 1,
+        last_log_term: follower_term - 1,
+    };
+
+    follower_actor.vote_election(request_vote.clone()).await;
+
+    assert_eq!(follower_actor.replication.term, follower_term); // Term does not change
+
+    let sent_msg = candidate_fake_buf.lock().await.pop_front().unwrap();
+    let QueryIO::RequestVoteReply(ev) = sent_msg else {
+        panic!("Expected ElectionVote, got {:?}", sent_msg);
+    };
+
+    assert!(!ev.vote_granted);
+    assert_eq!(ev.term, follower_term); // Follower replies with its own term
+}
