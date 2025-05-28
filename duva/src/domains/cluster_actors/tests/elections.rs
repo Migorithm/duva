@@ -1,6 +1,7 @@
 use super::*;
 use crate::domains::cluster_actors::consensus::ElectionState;
 use crate::domains::cluster_actors::consensus::ElectionVoting;
+use crate::domains::peers::command::ElectionVote;
 use crate::domains::peers::command::RequestVote;
 
 #[tokio::test]
@@ -175,4 +176,42 @@ async fn test_vote_election_deny_vote_lower_candidate_term() {
 
     assert!(!ev.vote_granted);
     assert_eq!(ev.term, follower_term); // Follower replies with its own term
+}
+
+#[tokio::test]
+async fn test_receive_election_vote_candidate_wins_election() {
+    // GIVEN: A candidate actor needing one more vote to win (2 replicas + self = 3 total, needs 2 votes)
+    let candidate_term = 3;
+    let mut candidate_actor = cluster_actor_create_helper(ReplicationRole::Follower).await;
+
+    // Manually set up as candidate that has run for election
+    candidate_actor.replication.term = candidate_term;
+
+    let voting = ElectionVoting::new(2);
+
+    candidate_actor.replication.election_state = ElectionState::Candidate { voting: Some(voting) };
+
+    // Add a mock replica to send initial heartbeat to
+    let replica1_fake_buf = add_replica_helper(&mut candidate_actor, 8051);
+
+    let election_vote = ElectionVote { term: candidate_term, vote_granted: true };
+
+    // WHEN: Candidate receives the winning vote
+    candidate_actor.receive_election_vote(election_vote).await;
+
+    // THEN: Candidate should become Leader
+    assert!(candidate_actor.replication.is_leader_mode);
+    assert_eq!(candidate_actor.replication.role, ReplicationRole::Leader);
+    assert_eq!(candidate_actor.replication.term, candidate_term); // Term remains the same as election term
+
+    // THEN: Initial heartbeat should be sent to the replica
+    // The receive_election_vote calls become_leader, which sends an AppendEntriesRPC
+    let sent_msg = replica1_fake_buf.lock().await.pop_front().unwrap();
+    match sent_msg {
+        | QueryIO::AppendEntriesRPC(hb) => {
+            assert_eq!(hb.term, candidate_term);
+            assert_eq!(hb.from, candidate_actor.replication.self_identifier());
+        },
+        | _ => panic!("Expected AppendEntriesRPC (heartbeat), got {:?}", sent_msg),
+    }
 }
