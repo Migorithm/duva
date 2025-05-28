@@ -215,3 +215,25 @@ async fn test_receive_election_vote_candidate_wins_election() {
         | _ => panic!("Expected AppendEntriesRPC (heartbeat), got {:?}", sent_msg),
     }
 }
+
+#[tokio::test]
+async fn test_receive_election_vote_candidate_gets_vote_not_enough_to_win() {
+    let candidate_term = 3;
+    let mut candidate_actor = cluster_actor_create_helper(ReplicationRole::Follower).await;
+    candidate_actor.replication.term = candidate_term;
+
+    candidate_actor.replication.election_state =
+        ElectionState::Candidate { voting: Some(ElectionVoting::new(5)) };
+
+    let election_vote = ElectionVote { term: candidate_term, vote_granted: true };
+
+    candidate_actor.receive_election_vote(election_vote).await;
+
+    assert_eq!(candidate_actor.replication.role, ReplicationRole::Follower); // Stays follower
+
+    if let ElectionState::Candidate { voting } = candidate_actor.replication.election_state {
+        assert_eq!(voting.unwrap().cnt, 2);
+    } else {
+        panic!("Expected candidate state");
+    }
+}
