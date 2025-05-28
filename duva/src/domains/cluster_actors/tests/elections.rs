@@ -1,6 +1,7 @@
 use super::*;
-use crate::domains::cluster_actors::consensus::ElectionState;
-use crate::domains::cluster_actors::consensus::ElectionVoting;
+
+use crate::domains::cluster_actors::consensus::election::ElectionState;
+use crate::domains::cluster_actors::consensus::election::ElectionVoting;
 use crate::domains::peers::command::ElectionVote;
 use crate::domains::peers::command::RequestVote;
 

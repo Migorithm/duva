@@ -2,6 +2,7 @@ use super::ClusterCommand;
 use super::ConsensusClientResponse;
 use super::ConsensusRequest;
 use super::LazyOption;
+use super::consensus::election::ElectionState;
 use super::hash_ring::HashRing;
 use super::heartbeat_scheduler::HeartBeatScheduler;
 use super::replication::ReplicationId;
@@ -10,9 +11,9 @@ use super::replication::ReplicationState;
 use super::replication::time_in_secs;
 use super::session::ClientSessions;
 use super::*;
-use crate::adapters::op_logs::memory_based::MemoryOpLogs;
+
 use crate::domains::caches::cache_manager::CacheManager;
-use crate::domains::cluster_actors::consensus::ElectionState;
+
 use crate::domains::operation_logs::interfaces::TWriteAheadLog;
 use crate::domains::operation_logs::logger::ReplicatedLogs;
 use crate::domains::peers::command::BannedPeer;
@@ -900,6 +901,8 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
 #[cfg(test)]
 pub mod cluster_actor_setups {
+    use crate::adapters::op_logs::memory_based::MemoryOpLogs;
+
     use super::*;
 
     #[cfg(test)]
