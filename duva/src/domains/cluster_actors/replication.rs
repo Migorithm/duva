@@ -49,7 +49,7 @@ impl ReplicationState {
         }
     }
 
-    pub(crate) fn self_info(&self) -> PeerState {
+    pub(super) fn self_info(&self) -> PeerState {
         let self_id = self.self_identifier();
 
         PeerState::new(
@@ -73,12 +73,12 @@ impl ReplicationState {
         ]
     }
 
-    pub(crate) fn in_ban_list(&self, peer_identifier: &PeerIdentifier) -> bool {
+    pub(super) fn in_ban_list(&self, peer_identifier: &PeerIdentifier) -> bool {
         let Ok(current_time) = time_in_secs() else { return false };
         self.banlist.get(peer_identifier).is_some_and(|node| current_time - node.ban_time < 60)
     }
 
-    pub(crate) fn default_heartbeat(
+    pub(super) fn default_heartbeat(
         &self,
         hop_count: u8,
         prev_log_index: u64,
@@ -99,7 +99,7 @@ impl ReplicationState {
         }
     }
 
-    pub(crate) fn become_follower_if_term_higher_and_votable(
+    pub(super) fn become_follower_if_term_higher_and_votable(
         &mut self,
         candidate_id: &PeerIdentifier,
         election_term: u64,
