@@ -12,11 +12,11 @@ pub(crate) struct CacheDb {
     pub(crate) keys_with_expiry: usize,
 }
 pub(crate) struct Iter<'a> {
-    inner: std::collections::hash_map::Iter<'a, u64, CacheValue>,
+    inner: std::collections::hash_map::Iter<'a, String, u64>,
     parent: &'a CacheDb,
 }
 pub(crate) struct IterMut<'a> {
-    inner: std::collections::hash_map::IterMut<'a, u64, CacheValue>,
+    inner: std::collections::hash_map::Iter<'a, String, u64>,
     parent: &'a mut CacheDb,
 }
 pub(crate) struct Values<'a> {
@@ -32,8 +32,8 @@ pub(crate) struct KeysMut<'a> {
     inner: IterMut<'a>,
 }
 pub(crate) enum Entry<'a> {
-    Occupied(std::collections::hash_map::OccupiedEntry<'a, String, CacheValue>),
-    Vacant(std::collections::hash_map::VacantEntry<'a, String, CacheValue>),
+    Occupied { key: String, value: &'a mut CacheValue },
+    Vacant { key: String, parent: &'a mut CacheDb },
 }
 struct NoneHasher;
 struct NoneHasherInner(u64);
@@ -227,8 +227,123 @@ impl CacheDb {
         }
         self.head = Some(id);
     }
+    #[inline]
+    pub fn iter(&self) -> Iter<'_> {
+        Iter { inner: self.key_map.iter(), parent: self }
+    }
+    #[inline]
+    pub fn iter_mut(&mut self) -> IterMut<'_> {
+        let parent = self as *mut CacheDb;
+        // SAFETY: to make lifetime work
+        let parent = unsafe { &mut *parent };
+        let inner = self.key_map.iter();
+        IterMut { inner, parent }
+    }
+    /// entry API: 키가 있으면 Occupied, 없으면 Vacant 판별
+    pub fn entry(&mut self, key: String) -> Entry<'_> {
+        if let Some(&id) = self.key_map.get(&key) {
+            self.move_to_head(id);
+            Entry::Occupied { key, value: self.map.get_mut(&id).unwrap() }
+        } else {
+            Entry::Vacant { key, parent: self }
+        }
+    }
+    #[inline]
+    pub fn values(&self) -> Values<'_> {
+        Values { inner: self.iter() }
+    }
+    #[inline]
+    pub fn values_mut(&mut self) -> ValuesMut<'_> {
+        ValuesMut { inner: self.iter_mut() }
+    }
+    #[inline]
+    pub fn keys(&self) -> Keys<'_> {
+        Keys { inner: self.iter() }
+    }
+    #[inline]
+    pub fn keys_mut(&mut self) -> KeysMut<'_> {
+        KeysMut { inner: self.iter_mut() }
+    }
 }
+impl<'a> Entry<'a> {
+    #[inline]
+    fn insert_parent(parent: &'a mut CacheDb, k: String, v: CacheValue) -> &'a mut CacheValue {
+        let id = fnv_1a_hash(&k);
+        if parent.map.contains_key(&id) {
+            parent.map.insert(id, v);
+            parent.move_to_head(id);
+        } else {
+            if v.expiry.is_some() {
+                parent.keys_with_expiry += 1;
+            }
+            parent.map.insert(id, v.clone());
+            parent.key_map.insert(k.clone(), id);
+            parent.push_front(id);
+        }
+        parent.map.get_mut(&id).expect("Key should exist after insertion")
+    }
+    #[inline]
+    pub fn key(&self) -> &String {
+        match self {
+            | Entry::Occupied { key, .. } | Entry::Vacant { key, .. } => key,
+        }
+    }
 
+    #[inline]
+    pub fn or_insert(self, default: CacheValue) -> &'a mut CacheValue {
+        match self {
+            | Entry::Occupied { value, .. } => value,
+            | Entry::Vacant { key, parent } => Self::insert_parent(parent, key, default),
+        }
+    }
+
+    #[inline]
+    pub fn or_insert_with<F: FnOnce() -> CacheValue>(self, f: F) -> &'a mut CacheValue {
+        match self {
+            | Entry::Occupied { value, .. } => value,
+            | Entry::Vacant { key, parent } => {
+                let val = f();
+                Self::insert_parent(parent, key, val)
+            },
+        }
+    }
+
+    #[inline]
+    pub fn or_insert_with_key<F: FnOnce(&String) -> CacheValue>(self, f: F) -> &'a mut CacheValue {
+        match self {
+            | Entry::Occupied { value, .. } => value,
+            | Entry::Vacant { key, parent } => {
+                let val = f(&key);
+                Self::insert_parent(parent, key, val)
+            },
+        }
+    }
+
+    #[inline]
+    pub fn and_modify<F: FnOnce(&mut CacheValue)>(self, f: F) -> Entry<'a> {
+        match self {
+            | Entry::Occupied { key, value } => {
+                f(value);
+                Entry::Occupied { key, value }
+            },
+            | Entry::Vacant { key, parent } => Entry::Vacant { key, parent },
+        }
+    }
+
+    #[inline]
+    pub fn insert_entry(self, new_val: CacheValue) -> Entry<'a> {
+        match self {
+            | Entry::Occupied { key, value } => {
+                *value = new_val;
+                Entry::Occupied { key, value }
+            },
+            | Entry::Vacant { key, parent } => {
+                let v = Self::insert_parent(parent, key.clone(), new_val);
+                Entry::Occupied { key, value: v }
+            },
+        }
+    }
+}
 impl Default for CacheDb {
     fn default() -> Self {
         CacheDb {
@@ -239,6 +354,52 @@ impl Default for CacheDb {
             tail: None,
             keys_with_expiry: 0,
         }
+    }
+}
+
+impl<'a> Iterator for Iter<'a> {
+    type Item = (&'a String, &'a CacheValue);
+    fn next(&mut self) -> Option<Self::Item> {
+        let (key, &id) = self.inner.next()?;
+        self.parent.map.get(&id).map(|v| (key, v))
+    }
+}
+
+impl<'a> Iterator for IterMut<'a> {
+    type Item = (&'a String, &'a mut CacheValue);
+    fn next(&mut self) -> Option<Self::Item> {
+        let (key, &id) = self.inner.next()?;
+        let ptr = self.parent as *mut CacheDb;
+        // SAFETY: to make lifetime work
+        unsafe { (*ptr).map.get_mut(&id).map(|v| (key, v)) }
+    }
+}
+
+impl<'a> Iterator for Values<'a> {
+    type Item = &'a CacheValue;
+    fn next(&mut self) -> Option<Self::Item> {
+        self.inner.next().map(|(_, v)| v)
+    }
+}
+
+impl<'a> Iterator for ValuesMut<'a> {
+    type Item = &'a mut CacheValue;
+    fn next(&mut self) -> Option<Self::Item> {
+        self.inner.next().map(|(_, v)| v)
+    }
+}
+
+impl<'a> Iterator for Keys<'a> {
+    type Item = &'a String;
+    fn next(&mut self) -> Option<Self::Item> {
+        self.inner.next().map(|(k, _)| k)
+    }
+}
+
+impl<'a> Iterator for KeysMut<'a> {
+    type Item = &'a String;
+    fn next(&mut self) -> Option<Self::Item> {
+        self.inner.next().map(|(k, _)| k)
     }
 }
 
