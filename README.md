@@ -4,69 +4,86 @@
 
 
 
-
-## [Documentation](https://migorithm.github.io/duva/) 
-Duva is a distributed cache server aimed at efficient and scalable key-value store operations using Actor models, written in Rust
-
-## cli support
-- Auto suggestion
-- Auto completion
+## 📚[Documentation](https://migorithm.github.io/duva/) 
+**Duva** is a distributed cache server designed for high performance and scalability. 
+It uses the Actor model to manage concurrency, clustering, and consistency, and is built in Rust.
 
 https://github.com/user-attachments/assets/d14a85a7-5edb-4466-8bd0-f538b3d7d27d
 
 
-### Why the Actor model?
-Designed to handle concurrent, distributed, and scalable systems, it models independent units of computation (actors) that communicate solely via message passing. 
-It offers several advantages, and the following is a non-exhaustive list of pros
-- High concurrency: Systems requiring thousands or millions of lightweight concurrent entities.
-- Event-driven architecture: Applications that rely on asynchronous event processing.
-- Distributed systems: Systems spanning multiple servers or nodes.
-- Fault tolerance: Systems where reliability and recovery from failure are critical.
 
-### Conventions Used in This Project
-`-er` or `-Actor` postfix are used in this project to denote it works as either transient or long-running actor
+## Why the Actor model?
+The Actor model is well-suited for concurrent, distributed, and event-driven systems. 
+It enables high scalability by modeling independent units of computation (actors) that communicate via message passing.<br>
+
+Key benefits:
+- High concurrency: Supports millions of lightweight concurrent entities.
+- Event-driven: Naturally fits asynchronous message handling.
+- Distributed-friendly: Ideal for systems spanning nodes or data centers.
+- Fault-tolerant: Isolates failures and recovers gracefully.
 
 
-### Features
+
+
+## 💡 Features
 The following features have been implemented so far:
 
 - Core Commands inspired by Redis
-    - SET: Store a key-value pair.
-        - Expiration: Set a time-to-live (TTL) for keys.
-    - GET: Retrieve the value associated with a key.
-    - KEYS (with pattern matching): Retrieve keys matching specific patterns.
-    - SAVE: dump data to the designated file path
-    - EXISTS
-    - DEL
-    - INCR
-    - DECR
-    - ...
+    - `SET` with optional TTL
+    - `GET`
+    - `KEYS` (supports glob patterns)
+    - `SAVE`
+    - `EXISTS`
+    - `DEL`
+    - `INCR`
+    - `DECR`
+    - `CLUSTER MEET`
+    - `CLUSTER FORGET`
+    - ...and more
     
 
 - Advanced Features
     - Auto Deletion: Automatically remove expired keys.
     - Local Sharding: Efficiently manage data distribution across local actors.
-    - Configuration Settings: Customize server behavior with adjustable configurations.
+    - Configurable server behavior
     - Persistence:
-        - Dump data into an rdb file (similar to Redis’ dump.rdb).
-        - Append Only File
+        - RDB-like dump (SAVE)
+        - Append Only File (AOF) logging
         - <img width="1520" alt="Screenshot 2024-11-23 at 12 02 05 AM" src="https://github.com/user-attachments/assets/0d8b75f6-7a40-4854-9da2-ba98c0ecc3de">
-    - Full File Synchronization to Replica
-    - Partial sync for reconcilation
-    - Failure detection
-    - Cluster node liveness check
-    - RYOW consistency
-    - Follower reads
-    - push-based topology change notification
+        - Replicated log (in-memory & disk-backed)
+    - 🔄 Replica Sync (full + partial)
+    - Failure detection via Gossip
+    - Follower reads with RYOW consistency 
+    - Push-based topology change notification
 
 
 - Protocol Support
-    - RESP Protocol: Fully implemented for parsing client requests, ensuring compatibility with Redis-like commands.
+    - RESP Protocol: fully supported for wire compatibility
 
 
 
-### Diagrams
-#### Client request control
+## 📑 ReplicatedLogs
+Duva includes two pluggable replicated log implementations:
+
+### In-Memory Log
+- Lightweight and fast
+- Ideal for testing or ephemeral environments
+- Volatile (data lost on restart)
+- Minimal latency and resource overhead
+
+### Disk-Based Segmented Log
+- Durable and production-ready
+- Implements segmented log pattern
+- Active segments for writes, rotated for archival/compaction
+- Backed by in-memory index
+- Optimizes read performance
+- Increases OS page cache hit rate
+- Supports high-throughput workloads with persistence
+- Both implementations conform to a unified interface, allowing seamless swapping depending on the environment.
+
+
+## Diagrams
+### Client request control
 ```mermaid
 sequenceDiagram
     actor C as Client
@@ -100,7 +117,8 @@ sequenceDiagram
 
 ```
 
-#### Clustering
+
+### Clustering
 ```mermaid
 
 sequenceDiagram
@@ -143,7 +161,7 @@ sequenceDiagram
 
 ```
 
-#### Synchronization on connection
+### Synchronization on connection
 There are quite a few scenarios related to this. For this, take a look at the diagram.
 The following is the partial sync scenario on startup:
 
@@ -179,7 +197,7 @@ sequenceDiagram
 ```
 
 
-#### Partial synchronization for reconcilation
+### Partial synchronization for reconcilation
 ```mermaid
 sequenceDiagram
     Actor C as Client
@@ -221,7 +239,7 @@ sequenceDiagram
 
 ```
 
-#### Push-based topology change notification
+### Push-based topology change notification
 ```mermaid
 sequenceDiagram
     actor C as Client
@@ -254,7 +272,7 @@ sequenceDiagram
 
 ```
 
-#### RYOW consistency guarantee (follower reads)
+### RYOW consistency guarantee (follower reads)
 This ensures that clients always see their most recent writes, even when reading from followers—providing a smooth, consistent user experience without unnecessary load on the leader.
 
 This ensures that clients never read stale data after a successful write, improving both performance and consistency without requiring all reads to go to the leader. With this enhancement, Project X delivers stronger guarantees, lower latency, and improved scalability🚀.
@@ -278,35 +296,21 @@ sequenceDiagram
     F->>C: X:5
 ```
 
-### Strong consistency with Raft
+## Strong consistency with Raft
 
-#### Election (normal flow)
-There are two timeout settings which control elections.
-- `Election timeout` : amount of time a follower waits until becoming a candidate, randomized to be between 150-300ms
-  - After elecction timeout, the follower becomes a candidate and start a new election term. In this case system:
-    - increases value `term` by 1
-    - starts counting voting(which is from 1 as it votes for itself)
-    - sends `Request Vote` messages to other nodes
-  - If the receiving node hasn't voted YET in this term, it votes for the candidate and resets its election timeout(and increase its `term` by 1 and mark it's voting state for candidate -> `Vote for` state).
-  - Once a candiate gets a majority of votes, it becomes a leader. 
-  
-- The leader begins sending out `Append Entries` messages to its followers, the interval of which is specified by the `heartbeat timeout`
-  - Followers get `Append Entries` and then change state from `Vote for: {node identifier}` ->  `Leader : {leader_node identifier}`
-  - The election term continues until a follower stops receiving heartbeats and becomes a candidate
+### Election (normal flow)
+- Follower becomes candidate after randomized election timeout
+- Increments term, votes for self, sends RequestVote
+- Majority wins become leader
+- Leader sends periodic AppendEntries (heartbeat)
+
+### Split-Brain Handling
+- Split votes → no winner
+- Retry election after next timeout window
 
 
-#### Election in split brain
-- If two candidates occur at the same time, it causes race. Let's say we have two candidates(A,B) and two potential followers(C,D).
-- `Request Vote` arrives at two node(C,D) 
-  - C votes for A
-  - D votes for B
-- Now, each candidate has 2 votes and can receive no more for this term.
-- Then EVERY NODES wait one more round of `election timeout` and send `Request vote` again.
-
-
-
-### Failure Detection
-The system doesn't cooridnate important decisions using the protocol using eventually consistent like gossip dissemination. 
+## Failure Detection
+The system doesn't cooridnate important decisions that rely on eventual consistency like gossip dissemination. 
 However, general information, such as node liveness can be efficiently propagated using such an algorithm.
 Duva achieves failure detection using `Gossip mechanism` which may evolve into a hybrid gossip algorithm based on `Plumtree`.
 Heartbeat frequency and timeout period before considering a node as failed are highly configurable:
@@ -317,35 +321,36 @@ Here `hf` means heartbeat is sent every 100ms.
 If a peer known to the given node has not sent a heartbeat within 1500ms (ttl), it is considered dead and removed from the list.
 
 
-
-### Getting Started
-#### Prerequisites
+## 🚀  Getting Started
+### Prerequisites
 - Rust (latest stable version)
 
 
 
-Build the project:
+### Build & Run
 
 ```sh
-cargo run
+# Standalone
+make leader
 ```
 
-If you have dump file, and you can load them up on start-up,
 ```sh
-cargo run -- --dir directory-path --dbfilename filename
+# cluster
+
+make leader p=6000 tp=repl0 
+make follower rp=6001 p=6000 tp=repl1 
+make follower rp=6002 p=6000 tp=repl2
 ```
 
 
 
-### Protocol
+## Protocol
 This server supports the RESP Protocol, enabling interaction with clients in a familiar Redis-like manner.
 
-### Roadmap
+## 🛣 Roadmap
 Future enhancements will include:
 
 - Distributed sharding
-- Replication
-    - TransactionLog
 - Pub/Sub support
 - More advanced data types (e.g., lists, sets, hashes)
 - Write-through / read-through support
