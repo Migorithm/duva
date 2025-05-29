@@ -18,3 +18,6 @@ mod service;
 pub mod session;
 pub const FANOUT: usize = 2;
 pub use actor::ClusterActor;
+
+#[cfg(test)]
+mod tests;
