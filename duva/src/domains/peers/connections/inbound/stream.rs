@@ -13,7 +13,7 @@ use crate::domains::peers::identifier::PeerIdentifier;
 use crate::domains::peers::peer::Peer;
 use crate::domains::peers::peer::PeerState;
 use crate::domains::peers::service::PeerListener;
-use crate::domains::query_parsers::QueryIO;
+use crate::domains::QueryIO;
 use anyhow::Context;
 use std::sync::atomic::Ordering;
 use tokio::net::TcpStream;

@@ -1,6 +1,6 @@
 use std::fmt::Debug;
 
-use crate::domains::{IoError, query_parsers::QueryIO};
+use crate::domains::{IoError, QueryIO};
 use bytes::BytesMut;
 
 #[async_trait::async_trait]

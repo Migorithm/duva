@@ -1,7 +1,7 @@
 use crate::domains::IoError;
 use crate::domains::interface::{TRead, TSerdeReadWrite, TWrite};
-use crate::domains::query_parsers::query_io::SERDE_CONFIG;
-use crate::domains::query_parsers::{QueryIO, deserialize};
+use crate::domains::query_io::SERDE_CONFIG;
+use crate::domains::{QueryIO, deserialize};
 use bytes::BytesMut;
 use std::fmt::Debug;
 use std::io::ErrorKind;

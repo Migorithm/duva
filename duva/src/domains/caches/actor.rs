@@ -2,7 +2,7 @@ use super::cache_objects::{CacheEntry, CacheValue};
 use super::command::CacheCommand;
 use crate::domains::caches::read_queue::ReadQueue;
 use crate::domains::cluster_actors::hash_ring::fnv_1a_hash;
-use crate::domains::query_parsers::QueryIO;
+use crate::domains::QueryIO;
 use crate::make_smart_pointer;
 use std::collections::HashMap;
 use std::ops::Range;

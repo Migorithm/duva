@@ -11,7 +11,7 @@ use crate::domains::peers::identifier::PeerIdentifier;
 use crate::domains::peers::identifier::TPeerAddress;
 use crate::domains::peers::peer::Peer;
 use crate::domains::peers::service::PeerListener;
-use crate::domains::query_parsers::QueryIO;
+use crate::domains::QueryIO;
 use crate::write_array;
 use anyhow::Context;
 use std::sync::atomic::Ordering;

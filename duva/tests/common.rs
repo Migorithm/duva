@@ -1,6 +1,6 @@
 #![allow(dead_code, unused_variables)]
 use bytes::Bytes;
-use duva::domains::query_parsers::query_io::QueryIO;
+use duva::domains::query_io::QueryIO;
 use duva::make_smart_pointer;
 use std::io::{BufRead, BufReader, Write};
 use std::mem::MaybeUninit;

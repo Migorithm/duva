@@ -3,7 +3,7 @@ use crate::domains::caches::cache_manager::CacheManager;
 use crate::domains::cluster_actors::{ClientMessage, ConsensusClientResponse, ConsensusRequest};
 use crate::domains::config_actors::command::ConfigResponse;
 use crate::domains::config_actors::config_manager::ConfigManager;
-use crate::domains::query_parsers::QueryIO;
+use crate::domains::QueryIO;
 use crate::domains::saves::actor::SaveTarget;
 use crate::presentation::clients::request::ClientAction;
 use crate::presentation::clusters::communication_manager::ClusterCommunicationManager;

@@ -1,4 +1,4 @@
-use crate::domains::query_parsers::{QueryIO, deserialize};
+use crate::domains::{QueryIO, deserialize};
 use bytes::Bytes;
 
 #[derive(Debug, Clone, PartialEq, Eq, bincode::Encode, bincode::Decode)]

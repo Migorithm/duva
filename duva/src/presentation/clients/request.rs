@@ -4,7 +4,7 @@ use crate::domains::{
     cluster_actors::{LazyOption, session::SessionRequest},
     operation_logs::WriteRequest,
     peers::identifier::PeerIdentifier,
-    query_parsers::QueryIO,
+    QueryIO,
 };
 use anyhow::Context;
 use chrono::{DateTime, Utc};

@@ -4,7 +4,7 @@ use crate::domains::caches::cache_objects::CacheEntry;
 use crate::domains::caches::command::CacheCommand;
 use crate::domains::cluster_actors::replication::ReplicationId;
 use crate::domains::operation_logs::WriteRequest;
-use crate::domains::query_parsers::QueryIO;
+use crate::domains::QueryIO;
 use crate::domains::saves::actor::SaveActor;
 use crate::domains::saves::actor::SaveTarget;
 use crate::domains::saves::endec::StoredDuration;

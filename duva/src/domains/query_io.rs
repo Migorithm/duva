@@ -27,7 +27,7 @@ pub(crate) const SERDE_CONFIG: bincode::config::Configuration = bincode::config:
 #[macro_export]
 macro_rules! write_array {
     ($($x:expr),*) => {
-        $crate::domains::query_parsers::QueryIO::Array(vec![$($crate::domains::query_parsers::QueryIO::BulkString($x.into())),*])
+        $crate::domains::QueryIO::Array(vec![$($crate::domains::QueryIO::BulkString($x.into())),*])
     };
 }
 
