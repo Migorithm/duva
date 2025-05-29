@@ -1,7 +1,7 @@
 use super::{ClientController, request::ClientRequest};
 use crate::{
     domains::interface::{TRead, TWrite},
-    domains::{IoError, cluster_actors::session::SessionRequest, QueryIO},
+    domains::{IoError, QueryIO, cluster_actors::session::SessionRequest},
     prelude::PeerIdentifier,
 };
 use tokio::{

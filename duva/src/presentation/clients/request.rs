@@ -1,10 +1,10 @@
 use std::str::FromStr;
 
 use crate::domains::{
+    QueryIO,
     cluster_actors::{LazyOption, session::SessionRequest},
     operation_logs::WriteRequest,
     peers::identifier::PeerIdentifier,
-    QueryIO,
 };
 use anyhow::Context;
 use chrono::{DateTime, Utc};
