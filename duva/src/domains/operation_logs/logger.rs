@@ -38,6 +38,7 @@ impl<T: TWriteAheadLog> ReplicatedLogs<T> {
             log_index: (self.last_log_index + 1),
             term: current_term,
         };
+
         self.target.append(op).await?;
         self.last_log_index += 1;
 
