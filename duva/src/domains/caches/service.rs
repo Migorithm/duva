@@ -76,7 +76,7 @@ impl CacheActor {
 mod test {
     use crate::domains::caches::actor::CacheActor;
     use crate::domains::caches::actor::CacheCommandSender;
-    use crate::domains::caches::actor::CacheDb;
+    use crate::domains::caches::cache_db::CacheDb;
     use crate::domains::caches::cache_objects::CacheEntry;
     use crate::domains::caches::cache_objects::CacheValue;
     use crate::domains::caches::command::CacheCommand;
