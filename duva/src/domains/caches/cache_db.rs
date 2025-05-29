@@ -154,11 +154,15 @@ impl CacheDb {
     }
     #[inline]
     pub fn insert(&mut self, key: String, value: CacheValue) {
-        let id = fnv_1a_hash(&key);
-        if self.map.contains_key(&id) {
-            self.map.insert(id, value);
-            self.move_to_head(id);
+        if let Some(&existing_id) = self.key_map.get(&key) {
+            self.map.insert(existing_id, value);
+            self.move_to_head(existing_id);
         } else {
+            // Detect empty key
+            let mut id = fnv_1a_hash(&key);
+            while self.map.contains_key(&id) {
+                id = id.wrapping_add(1);
+            }
             if value.expiry.is_some() {
                 self.keys_with_expiry += 1;
             }
@@ -268,18 +272,24 @@ impl CacheDb {
 impl<'a> Entry<'a> {
     #[inline]
     fn insert_parent(parent: &'a mut CacheDb, k: String, v: CacheValue) -> &'a mut CacheValue {
-        let id = fnv_1a_hash(&k);
-        if parent.map.contains_key(&id) {
-            parent.map.insert(id, v);
-            parent.move_to_head(id);
+        let id = if let Some(&existing_id) = parent.key_map.get(&k) {
+            parent.map.insert(existing_id, v);
+            parent.move_to_head(existing_id);
+            existing_id
         } else {
+            // Detect empty key
+            let mut hash = fnv_1a_hash(&k);
+            while parent.map.contains_key(&hash) {
+                hash = hash.wrapping_add(1);
+            }
             if v.expiry.is_some() {
                 parent.keys_with_expiry += 1;
             }
-            parent.map.insert(id, v.clone());
-            parent.key_map.insert(k.clone(), id);
-            parent.push_front(id);
-        }
+            parent.map.insert(hash, v.clone());
+            parent.key_map.insert(k.clone(), hash);
+            parent.push_front(hash);
+            hash
+        };
         parent.map.get_mut(&id).expect("Key should exist after insertion")
     }
     #[inline]
