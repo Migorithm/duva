@@ -1,14 +1,58 @@
-use crate::{
-    domains::{caches::cache_objects::CacheValue, cluster_actors::hash_ring::fnv_1a_hash},
-    make_smart_pointer,
-};
+use crate::domains::{caches::cache_objects::CacheValue, cluster_actors::hash_ring::fnv_1a_hash};
 use std::{collections::HashMap, ops::Range};
+use tracing::error;
 
-#[derive(Default)]
 pub(crate) struct CacheDb {
-    inner: HashMap<String, CacheValue>,
+    map: HashMap<u64, CacheValue, NoneHasher>,
+    key_map: HashMap<String, u64>,
+    links: HashMap<u64, (Option<u64>, Option<u64>), NoneHasher>, // (prev, next)
+    head: Option<u64>,
+    tail: Option<u64>,
     // OPTIMIZATION: Add a counter to keep track of the number of keys with expiry
     pub(crate) keys_with_expiry: usize,
+}
+pub(crate) struct Iter<'a> {
+    inner: std::collections::hash_map::Iter<'a, u64, CacheValue>,
+    parent: &'a CacheDb,
+}
+pub(crate) struct IterMut<'a> {
+    inner: std::collections::hash_map::IterMut<'a, u64, CacheValue>,
+    parent: &'a mut CacheDb,
+}
+pub(crate) struct Values<'a> {
+    inner: Iter<'a>,
+}
+pub(crate) struct ValuesMut<'a> {
+    inner: IterMut<'a>,
+}
+pub(crate) struct Keys<'a> {
+    inner: Iter<'a>,
+}
+pub(crate) struct KeysMut<'a> {
+    inner: IterMut<'a>,
+}
+pub(crate) enum Entry<'a> {
+    Occupied(std::collections::hash_map::OccupiedEntry<'a, String, CacheValue>),
+    Vacant(std::collections::hash_map::VacantEntry<'a, String, CacheValue>),
+}
+struct NoneHasher;
+struct NoneHasherInner(u64);
+impl std::hash::BuildHasher for NoneHasher {
+    type Hasher = NoneHasherInner;
+
+    fn build_hasher(&self) -> Self::Hasher {
+        NoneHasherInner(0)
+    }
+}
+impl std::hash::Hasher for NoneHasherInner {
+    fn write(&mut self, bytes: &[u8]) {
+        for byte in bytes {
+            self.0 = self.0.wrapping_mul(31).wrapping_add(*byte as u64);
+        }
+    }
+    fn finish(&self) -> u64 {
+        self.0
+    }
 }
 
 impl CacheDb {
@@ -24,39 +68,179 @@ impl CacheDb {
         }
 
         // Identify keys that fall within the specified ranges
-        let mut keys_to_extract = Vec::new();
+        let mut hashes_to_extract = Vec::new();
 
-        for (key, _value) in self.iter() {
-            let key_hash = fnv_1a_hash(key);
-
+        for key_hash in self.map.keys() {
             // Check if this key's hash falls within any of the specified ranges
             for range in &token_ranges {
                 if range.contains(&key_hash) {
-                    keys_to_extract.push(key.clone());
+                    hashes_to_extract.push(*key_hash);
                     break; // No need to check other ranges once we've found a match
                 }
             }
         }
 
-        // Extract the identified keys and values
-        let mut extracted = HashMap::new();
-        let mut extracted_keys_with_expiry = 0;
-        for key in keys_to_extract {
-            if let Some(value) = self.remove(&key) {
-                // Update the keys_with_expiry counter if this key had an expiry
-                if value.expiry.is_some() {
-                    self.keys_with_expiry -= 1;
-                    extracted_keys_with_expiry += 1;
-                }
+        // Extract the identified keys and values into a fresh CacheDb
+        let mut extracted_map = HashMap::with_hasher(NoneHasher);
+        let mut extracted_key_map = HashMap::new();
+        let mut extracted_expiry_count = 0;
+        let head = hashes_to_extract.first().cloned();
+        let tail = hashes_to_extract.last().cloned();
+        let links = hashes_to_extract.iter().enumerate().fold(
+            HashMap::with_hasher(NoneHasher),
+            |mut acc, (i, &hash)| {
+                let prev = if i == 0 { None } else { Some(hashes_to_extract[i - 1]) };
+                let next = if i == hashes_to_extract.len() - 1 {
+                    None
+                } else {
+                    Some(hashes_to_extract[i + 1])
+                };
+                acc.insert(hash, (prev, next));
+                acc
+            },
+        );
+        for hash in hashes_to_extract {
+            let Some(value) = self.map.remove(&hash) else {
+                error!("CacheDb: Key not found in map");
+                continue;
+            };
+            let Some(key) = self
+                .key_map
+                .iter()
+                .find_map(|(k, &v)| if v == hash { Some(k.clone()) } else { None })
+            else {
+                error!("CacheDb: Key not found in key_map for the given hash");
+                continue;
+            };
+            self.key_map.remove(&key);
+            if value.expiry.is_some() {
+                extracted_expiry_count += 1;
+            }
+            extracted_map.insert(hash, value);
+            extracted_key_map.insert(key, hash);
+        }
+        CacheDb {
+            map: extracted_map,
+            key_map: extracted_key_map,
+            links,
+            head,
+            tail,
+            keys_with_expiry: extracted_expiry_count,
+        }
+    }
 
-                extracted.insert(key, value);
+    #[inline]
+    pub fn len(&self) -> usize {
+        self.map.len()
+    }
+    #[inline]
+    pub fn is_exist(&self, key: &str) -> bool {
+        self.key_map.contains_key(key)
+    }
+    #[inline]
+    pub fn get(&self, key: &str) -> Option<&CacheValue> {
+        // SAFETY: mut needed by refreshing LRU order. it won't change inner data
+        unsafe { std::mem::transmute::<&Self, &mut Self>(self).get_mut(key) }
+            .map(|v| v as &CacheValue)
+    }
+    #[inline]
+    pub fn get_mut(&mut self, key: &str) -> Option<&mut CacheValue> {
+        if let Some(&id) = self.key_map.get(key) {
+            self.move_to_head(id);
+            self.map.get_mut(&id)
+        } else {
+            None
+        }
+    }
+    #[inline]
+    pub fn insert(&mut self, key: String, value: CacheValue) {
+        let id = fnv_1a_hash(&key);
+        if self.map.contains_key(&id) {
+            self.map.insert(id, value);
+            self.move_to_head(id);
+        } else {
+            if value.expiry.is_some() {
+                self.keys_with_expiry += 1;
+            }
+            self.map.insert(id, value.clone());
+            self.key_map.insert(key, id);
+            self.push_front(id);
+        }
+    }
+    #[inline]
+    pub fn remove(&mut self, key: &str) -> Option<CacheValue> {
+        if let Some(&id) = self.key_map.get(key) {
+            let val = self.map.remove(&id)?;
+            self.detach(id);
+            self.key_map.remove(key); // 정확히 하나만 제거
+            if val.expiry.is_some() {
+                self.keys_with_expiry -= 1;
+            }
+            Some(val)
+        } else {
+            None
+        }
+    }
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.map.is_empty()
+    }
+    #[inline]
+    pub fn contains_key(&self, key: &str) -> bool {
+        self.key_map.contains_key(key)
+    }
+
+    // LRU list helpers
+    fn move_to_head(&mut self, id: u64) {
+        self.detach(id);
+        self.push_front(id);
+    }
+    #[inline]
+    fn detach(&mut self, id: u64) {
+        if let Some((prev, next)) = self.links.remove(&id) {
+            if let Some(p) = prev {
+                if let Some(entry) = self.links.get_mut(&p) {
+                    entry.1 = next;
+                }
+            } else {
+                self.head = next;
+            }
+            if let Some(n) = next {
+                if let Some(entry) = self.links.get_mut(&n) {
+                    entry.0 = prev;
+                }
+            } else {
+                self.tail = prev;
             }
         }
-        CacheDb { inner: extracted, keys_with_expiry: extracted_keys_with_expiry }
+    }
+    #[inline]
+    fn push_front(&mut self, id: u64) {
+        let old_head = self.head;
+        self.links.insert(id, (None, old_head));
+        if let Some(h) = old_head {
+            if let Some(entry) = self.links.get_mut(&h) {
+                entry.0 = Some(id);
+            }
+        } else {
+            self.tail = Some(id);
+        }
+        self.head = Some(id);
     }
 }
 
-make_smart_pointer!(CacheDb, HashMap<String, CacheValue> => inner);
+impl Default for CacheDb {
+    fn default() -> Self {
+        CacheDb {
+            map: HashMap::with_hasher(NoneHasher),
+            key_map: HashMap::new(),
+            links: HashMap::with_hasher(NoneHasher),
+            head: None,
+            tail: None,
+            keys_with_expiry: 0,
+        }
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -78,7 +262,7 @@ mod tests {
     #[test]
     fn test_extract_keys_for_ranges_no_matches() {
         let mut cache = CacheDb::default();
-        cache.inner.insert("key1".to_string(), CacheValue::new("value".to_string()));
+        cache.insert("key1".to_string(), CacheValue::new("value".to_string()));
 
         // Create a range that doesn't include our key's hash
         let key_hash = fnv_1a_hash("key1");
@@ -86,7 +270,7 @@ mod tests {
 
         let result = cache.take_subset(ranges);
         assert!(result.is_empty());
-        assert_eq!(cache.inner.len(), 1); // Cache still has our key
+        assert_eq!(cache.len(), 1); // Cache still has our key
     }
 
     #[test]
@@ -98,7 +282,7 @@ mod tests {
             let key = format!("key{}", i);
             let has_expiry = i % 2 == 0;
 
-            cache.inner.insert(
+            cache.insert(
                 key,
                 CacheValue::new(format!("value{}", i)).with_expiry(if has_expiry {
                     Some(Utc::now())
@@ -112,7 +296,7 @@ mod tests {
             }
         }
 
-        assert_eq!(cache.inner.len(), 10);
+        assert_eq!(cache.len(), 10);
         assert_eq!(cache.keys_with_expiry, 5); // Keys 0, 2, 4, 6, 8 have expiry
 
         // Create ranges to extract specific keys (using their hash values)
@@ -131,19 +315,28 @@ mod tests {
         for i in 0..5 {
             let key = format!("key{}", i);
             assert!(extracted.contains_key(&key));
-            assert!(!cache.inner.contains_key(&key));
+            assert!(!cache.contains_key(&key));
         }
 
         // Verify remaining cache
-        assert_eq!(cache.inner.len(), 5);
+        assert_eq!(cache.len(), 5);
         for i in 5..10 {
             let key = format!("key{}", i);
-            assert!(cache.inner.contains_key(&key));
+            assert!(cache.contains_key(&key));
         }
 
         // Verify keys_with_expiry counter was updated correctly
         // We should have removed keys 0, 2, 4 with expiry, so count should be reduced by 3
         assert_eq!(cache.keys_with_expiry, 2); // Only keys 6, 8 remain with expiry
         assert_eq!(extracted.keys_with_expiry, 3); // Keys 0, 2, 4 had expiry
+    }
+    #[test]
+    fn test_none_hasher() {
+        let hasher = NoneHasher;
+        for _ in 0..100 {
+            let now = rand::random::<u64>();
+            let h = std::hash::BuildHasher::hash_one(&hasher, now);
+            assert_eq!(h, now);
+        }
     }
 }
