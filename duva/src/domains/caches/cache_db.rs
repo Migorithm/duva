@@ -1,5 +1,7 @@
+#![allow(dead_code)]
+
 use crate::domains::{caches::cache_objects::CacheValue, cluster_actors::hash_ring::fnv_1a_hash};
-use std::{collections::HashMap, ops::Range};
+use std::{collections::HashMap, marker::PhantomData, ops::Range};
 use tracing::error;
 
 pub(crate) struct CacheDb {
@@ -36,20 +38,85 @@ pub(crate) enum Entry<'a> {
     Vacant { key: String, parent: &'a mut CacheDb },
 }
 struct NoneHasher;
-struct NoneHasherInner(u64);
 impl std::hash::BuildHasher for NoneHasher {
-    type Hasher = NoneHasherInner;
+    type Hasher = NoHashHasher<u64>;
 
     fn build_hasher(&self) -> Self::Hasher {
-        NoneHasherInner(0)
+        NoHashHasher(0, PhantomData)
     }
 }
-impl std::hash::Hasher for NoneHasherInner {
-    fn write(&mut self, bytes: &[u8]) {
-        for byte in bytes {
-            self.0 = self.0.wrapping_mul(31).wrapping_add(*byte as u64);
-        }
+
+// SOURCE: https://crates.io/crates/nohash-hasher
+struct NoHashHasher<T>(u64, PhantomData<T>);
+
+impl<T> std::fmt::Debug for NoHashHasher<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        f.debug_tuple("NoHashHasher").field(&self.0).finish()
     }
+}
+
+impl<T> Default for NoHashHasher<T> {
+    fn default() -> Self {
+        NoHashHasher(0, PhantomData)
+    }
+}
+
+impl<T> Clone for NoHashHasher<T> {
+    fn clone(&self) -> Self {
+        NoHashHasher(self.0, self.1)
+    }
+}
+
+impl<T> Copy for NoHashHasher<T> {}
+trait NoHashTarget {}
+
+impl NoHashTarget for u8 {}
+impl NoHashTarget for u16 {}
+impl NoHashTarget for u32 {}
+impl NoHashTarget for u64 {}
+impl NoHashTarget for usize {}
+impl NoHashTarget for i8 {}
+impl NoHashTarget for i16 {}
+impl NoHashTarget for i32 {}
+impl NoHashTarget for i64 {}
+impl NoHashTarget for isize {}
+impl<T: NoHashTarget> std::hash::Hasher for NoHashHasher<T> {
+    fn write(&mut self, _: &[u8]) {
+        panic!("Invalid use of NoHashHasher")
+    }
+
+    fn write_u8(&mut self, n: u8) {
+        self.0 = u64::from(n)
+    }
+    fn write_u16(&mut self, n: u16) {
+        self.0 = u64::from(n)
+    }
+    fn write_u32(&mut self, n: u32) {
+        self.0 = u64::from(n)
+    }
+    fn write_u64(&mut self, n: u64) {
+        self.0 = n
+    }
+    fn write_usize(&mut self, n: usize) {
+        self.0 = n as u64
+    }
+
+    fn write_i8(&mut self, n: i8) {
+        self.0 = n as u64
+    }
+    fn write_i16(&mut self, n: i16) {
+        self.0 = n as u64
+    }
+    fn write_i32(&mut self, n: i32) {
+        self.0 = n as u64
+    }
+    fn write_i64(&mut self, n: i64) {
+        self.0 = n as u64
+    }
+    fn write_isize(&mut self, n: isize) {
+        self.0 = n as u64
+    }
+
     fn finish(&self) -> u64 {
         self.0
     }
@@ -140,6 +207,7 @@ impl CacheDb {
     #[inline]
     pub fn get(&self, key: &str) -> Option<&CacheValue> {
         // SAFETY: mut needed by refreshing LRU order. it won't change inner data
+        #[allow(mutable_transmutes)]
         unsafe { std::mem::transmute::<&Self, &mut Self>(self).get_mut(key) }
             .map(|v| v as &CacheValue)
     }
@@ -243,7 +311,7 @@ impl CacheDb {
         let inner = self.key_map.iter();
         IterMut { inner, parent }
     }
-    /// entry API: 키가 있으면 Occupied, 없으면 Vacant 판별
+    #[inline]
     pub fn entry(&mut self, key: String) -> Entry<'_> {
         if let Some(&id) = self.key_map.get(&key) {
             self.move_to_head(id);
@@ -267,6 +335,15 @@ impl CacheDb {
     #[inline]
     pub fn keys_mut(&mut self) -> KeysMut<'_> {
         KeysMut { inner: self.iter_mut() }
+    }
+    #[inline]
+    pub fn clear(&mut self) {
+        self.map.clear();
+        self.key_map.clear();
+        self.links.clear();
+        self.head = None;
+        self.tail = None;
+        self.keys_with_expiry = 0;
     }
 }
 impl<'a> Entry<'a> {
