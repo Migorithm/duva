@@ -4,7 +4,7 @@ mod write_stream;
 
 use crate::command::Input;
 
-use duva::domains::{IoError, query_parsers::query_io::QueryIO};
+use duva::domains::{IoError, query_io::QueryIO};
 use duva::prelude::tokio;
 use duva::prelude::tokio::net::TcpStream;
 use duva::prelude::tokio::sync::mpsc::Receiver;

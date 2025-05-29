@@ -1,4 +1,5 @@
 use super::response::ConnectionResponse;
+use crate::domains::QueryIO;
 use crate::domains::cluster_actors::ConnectionMessage;
 use crate::domains::cluster_actors::actor::ClusterCommandHandler;
 use crate::domains::cluster_actors::replication::ReplicationId;
@@ -11,7 +12,6 @@ use crate::domains::peers::identifier::PeerIdentifier;
 use crate::domains::peers::identifier::TPeerAddress;
 use crate::domains::peers::peer::Peer;
 use crate::domains::peers::service::PeerListener;
-use crate::domains::query_parsers::QueryIO;
 use crate::write_array;
 use anyhow::Context;
 use std::sync::atomic::Ordering;

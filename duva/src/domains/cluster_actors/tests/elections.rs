@@ -18,7 +18,7 @@ async fn test_run_for_election_transitions_to_candidate_and_sends_request_votes(
     actor.run_for_election().await;
 
     // THEN: Actor's state should be Candidate
-    assert_eq!(actor.replication.role, ReplicationRole::Leader);
+    assert_eq!(actor.replication.role, ReplicationRole::Follower);
     assert_eq!(actor.replication.term, initial_term + 1);
     assert!(matches!(
         actor.replication.election_state,

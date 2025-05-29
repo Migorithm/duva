@@ -1,7 +1,7 @@
 use super::connections::connection_types::WriteConnected;
 use super::identifier::TPeerAddress;
+use crate::domains::QueryIO;
 use crate::domains::cluster_actors::replication::ReplicationId;
-use crate::domains::query_parsers::QueryIO;
 use crate::domains::{IoError, TRead};
 use crate::prelude::PeerIdentifier;
 use tokio::task::JoinHandle;

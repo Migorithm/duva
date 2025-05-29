@@ -3,7 +3,7 @@ use std::fmt::Display;
 use crate::broker::Broker;
 use crate::broker::BrokerMessage;
 
-use duva::domains::query_parsers::query_io::QueryIO;
+use duva::domains::query_io::QueryIO;
 use duva::prelude::anyhow;
 use duva::prelude::tokio;
 use duva::prelude::tokio::sync::mpsc::Sender;

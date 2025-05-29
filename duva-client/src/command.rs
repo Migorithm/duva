@@ -1,5 +1,5 @@
 use duva::{
-    domains::query_parsers::query_io::QueryIO, prelude::tokio::sync::oneshot,
+    domains::query_io::QueryIO, prelude::tokio::sync::oneshot,
     presentation::clients::request::ClientAction,
 };
 

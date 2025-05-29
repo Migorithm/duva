@@ -14,6 +14,7 @@ use super::*;
 
 use crate::domains::caches::cache_manager::CacheManager;
 
+use crate::domains::QueryIO;
 use crate::domains::operation_logs::interfaces::TWriteAheadLog;
 use crate::domains::operation_logs::logger::ReplicatedLogs;
 use crate::domains::peers::command::BannedPeer;
@@ -26,7 +27,6 @@ use crate::domains::peers::connections::inbound::stream::InboundStream;
 use crate::domains::peers::connections::outbound::stream::OutboundStream;
 use crate::domains::peers::peer::NodeKind;
 use crate::domains::peers::peer::PeerState;
-use crate::domains::query_parsers::QueryIO;
 use crate::err;
 use std::collections::VecDeque;
 use std::iter;
