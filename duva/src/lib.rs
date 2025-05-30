@@ -1,6 +1,6 @@
 pub mod adapters;
+mod config;
 pub mod domains;
-mod init;
 pub mod macros;
 pub mod presentation;
 use anyhow::Result;
@@ -12,11 +12,11 @@ use domains::cluster_actors::replication::ReplicationId;
 use domains::cluster_actors::replication::ReplicationRole;
 use domains::cluster_actors::replication::ReplicationState;
 
+pub use config::Environment;
 use domains::operation_logs::interfaces::TWriteAheadLog;
 use domains::peers::peer::NodeKind;
 use domains::saves::snapshot::Snapshot;
 use domains::saves::snapshot::snapshot_loader::SnapshotLoader;
-pub use init::Environment;
 use prelude::PeerIdentifier;
 use presentation::clients::ClientController;
 use presentation::clients::authenticate;
@@ -32,7 +32,7 @@ use tracing::info;
 use tracing::instrument;
 use uuid::Uuid;
 
-pub use init::ENV;
+pub use config::ENV;
 pub mod prelude {
     pub use crate::domains::cluster_actors::heartbeat_scheduler::LEADER_HEARTBEAT_INTERVAL_MAX;
     pub use crate::domains::peers::identifier::PeerIdentifier;
