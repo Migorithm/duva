@@ -1,19 +1,26 @@
 #![allow(dead_code)]
 
 use crate::domains::{caches::cache_objects::CacheValue, cluster_actors::hash_ring::fnv_1a_hash};
-use std::{collections::HashMap, marker::PhantomData, ops::Range};
+use std::{cell::UnsafeCell, collections::HashMap, marker::PhantomData, ops::Range};
 use tracing::error;
 
 pub(crate) struct CacheDb {
     map: HashMap<u64, CacheValue, NoneHasher>,
     key_map: HashMap<String, u64>,
-    links: HashMap<u64, (Option<u64>, Option<u64>), NoneHasher>, // (prev, next)
+    links: HashMap<u64, UnsafeCell<(Option<NodeRelation>, Option<NodeRelation>)>, NoneHasher>, // (prev, next)
     head: Option<u64>,
     tail: Option<u64>,
     capacity: usize,
     // OPTIMIZATION: Add a counter to keep track of the number of keys with expiry
     keys_with_expiry: usize,
 }
+#[derive(Clone, Copy)]
+struct NodeRelation {
+    target_hash: u64,
+    ptr: *mut (Option<NodeRelation>, Option<NodeRelation>),
+}
+unsafe impl Send for CacheDb {}
+unsafe impl Sync for CacheDb {}
 pub(crate) struct Iter<'a> {
     inner: std::collections::hash_map::Iter<'a, String, u64>,
     parent: &'a CacheDb,
@@ -174,7 +181,22 @@ impl CacheDb {
                 } else {
                     Some(hashes_to_extract[i + 1])
                 };
-                acc.insert(hash, (prev, next));
+                let prev = prev.map(|x| NodeRelation {
+                    target_hash: x,
+                    ptr: acc
+                        .get(&x)
+                        .map(|x: &UnsafeCell<(Option<NodeRelation>, Option<NodeRelation>)>| x.get())
+                        .unwrap(),
+                });
+                let next = next.map(|x| NodeRelation {
+                    target_hash: x,
+                    ptr: self
+                        .links
+                        .get(&x)
+                        .map(|x: &UnsafeCell<(Option<NodeRelation>, Option<NodeRelation>)>| x.get())
+                        .unwrap(),
+                });
+                acc.insert(hash, UnsafeCell::new((prev, next)));
                 acc
             },
         );
@@ -266,7 +288,7 @@ impl CacheDb {
         if let Some(&id) = self.key_map.get(key) {
             let val = self.map.remove(&id)?;
             self.detach(id);
-            self.key_map.remove(key); // 정확히 하나만 제거
+            self.key_map.remove(key);
             if val.has_expiry() {
                 self.keys_with_expiry -= 1;
             }
@@ -284,11 +306,39 @@ impl CacheDb {
         self.key_map.contains_key(key)
     }
 
-    // LRU list helpers
-    fn move_to_head(&mut self, id: u64) {
-        self.detach(id);
-        self.push_front(id);
+    /* LRU list helpers */
+    #[inline]
+    fn move_to_head(&mut self, hash: u64) {
+        if self.head == Some(hash) {
+            return;
+        }
+        let old_head = self.head.expect("Head Must be set");
+        let old_head_link = self.head.and_then(|x| self.links.get(&x).map(|x| x.get())).unwrap();
+        if let Some(target) = self.links.get_mut(&hash) {
+            /* Update prev and next */
+            let (prev, next) = target.get_mut();
+            // Prev's next pointing to target's next
+            if let Some(p) = prev {
+                unsafe { *p.ptr }.1 = *next;
+            }
+            // Next's prev pointing to target's prev
+            if let Some(n) = next {
+                unsafe { *n.ptr }.0 = *prev;
+            } else {
+                // Set tail if next is None
+                self.tail = prev.map(|x| x.target_hash);
+            }
+            /* Move to head */
+            // Head's prev pointing to target
+            unsafe { *old_head_link }.0 =
+                Some(NodeRelation { target_hash: hash, ptr: target.get() });
+            // Target's next pointing to old head
+            target.get_mut().1 = Some(NodeRelation { target_hash: old_head, ptr: old_head_link });
+            target.get_mut().0 = None;
+            self.head = Some(hash);
+        }
     }
+    /// Remove element and update links
     fn remove_tail(&mut self) {
         if let Some(tail_id) = self.tail {
             self.detach(tail_id);
@@ -303,37 +353,46 @@ impl CacheDb {
             self.key_map.retain(|_, &mut v| v != tail_id);
         }
     }
+    /// 1. detach the link from the list
+    /// 2. access prev and next with ptr
+    /// 3. update prev and next links, head and tail too
+    /// 4. drop the link
     #[inline]
-    fn detach(&mut self, id: u64) {
-        if let Some((prev, next)) = self.links.remove(&id) {
+    fn detach(&mut self, hash: u64) {
+        if let Some(mut target) = self.links.remove(&hash) {
+            let (prev, next) = target.get_mut();
+            // Prev's next pointing to target's next
             if let Some(p) = prev {
-                if let Some(entry) = self.links.get_mut(&p) {
-                    entry.1 = next;
-                }
+                unsafe { *p.ptr }.1 = *next;
             } else {
-                self.head = next;
+                // Set head if prev is None
+                self.head = next.map(|x| x.target_hash);
             }
+            // Next's prev pointing to target's prev
             if let Some(n) = next {
-                if let Some(entry) = self.links.get_mut(&n) {
-                    entry.0 = prev;
-                }
+                unsafe { *n.ptr }.0 = *prev;
             } else {
-                self.tail = prev;
+                // Set tail if next is None
+                self.tail = prev.map(|x| x.target_hash);
             }
         }
     }
     #[inline]
-    fn push_front(&mut self, id: u64) {
-        let old_head = self.head;
-        self.links.insert(id, (None, old_head));
-        if let Some(h) = old_head {
-            if let Some(entry) = self.links.get_mut(&h) {
-                entry.0 = Some(id);
-            }
+    fn push_front(&mut self, hash: u64) {
+        let old_head_link = self.head.and_then(|head| self.links.get(&head).map(|x| x.get()));
+        let old_head = self
+            .head
+            .map(|x| NodeRelation { target_hash: x, ptr: old_head_link.expect("Link not found") });
+        let new_head_link = UnsafeCell::new((None, old_head));
+        let new_head_link_ptr = new_head_link.get();
+        self.links.insert(hash, new_head_link);
+        if let Some(relation) = old_head {
+            unsafe { *relation.ptr }.0 =
+                Some(NodeRelation { target_hash: hash, ptr: new_head_link_ptr });
         } else {
-            self.tail = Some(id);
+            self.tail = Some(hash);
         }
-        self.head = Some(id);
+        self.head = Some(hash);
     }
     #[inline]
     pub fn iter(&self) -> Iter<'_> {
