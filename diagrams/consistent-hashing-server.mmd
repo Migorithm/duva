@@ -24,14 +24,15 @@ sequenceDiagram
 
     note over A,B : Both A and B WILL NOT<br>process write operations
 
-    A ->> B : Notify number of partitions and its number of keys to be sent from A to B
-    B -->> B : Internally store number paritions and keys to receive from each shard  
-
-
-
+    
     
     par notify cluster peers
+
+    
     A --) B : Notify token map update
+    B -->> B : Make migration plan for other partitions.<br>For example, B may have held keys from 3000-5000 which now belong to A.
+
+
     and notify connected clients
     A --) C1 : Notify token map update
     end
@@ -39,44 +40,29 @@ sequenceDiagram
     Note over A,B: Now, A and B have disjoint<br>token ranges<br>0..5000 and 5001..10000 respectively
 
     critical 
-        A ->> B: Migrate data (batch)
+    C1 ->> A: Request (key 1000)
 
+        Note over A, B: Point-in-time snapshot is required<br>So we don't need to full migrate logs
         par
-            Note left of A: Point-in-time snapshot is required<br>So we don't need to full migrate logs
+            A --) B: Migrate data (batch). If there are other partitions, A will send them too.
+            B --) A: Ack migration
             A -->> A: Snaphsot and drop logs
+            A -->> A: Unlock pending requests
+            alt Request's key is in A's range
+                A ->> A: Process request
+                A -->> C1: Response
+            else Request's key is in B's range
+                A -->> C1: (Moved) error
+            end
+
         and 
-            B -->> B: Deduct number of keys to be received from partition A
+            B --) A: Migrate data (batch). If there are other partitions, B will send them too.
+            A --) B: Ack migration
+            B -->> B: Snaphsot and drop logs
+            B -->> B: Unlock pending requests
         end
     end
 
-
-    Note over B : B expects keys to be sent<br>from all the partitions(not only from A)
-    
-    opt If all key arrived
-        B -->> B: Snapshot and drop logs
-        B -->> B: Unblock write operations
-    end
-
-    A -->> A: Unlock pending requests
-    alt Request's key is in A's range
-        A ->> A: Process request
-        A -->> C1: Response
-    else Request's key is in B's range
-        A -->> C1: (Moved) error
-    end
-
-
-
-
-    B --) C2 : Notify token map update
-    B -->> B: Unlock pending requests
-
-    alt Request's key is in B's range
-        B ->> B: Process request
-        B -->> C2: Response
-    else Request's key is in A's range
-        B -->> C2: (Moved) error
-    end
 
 
     
