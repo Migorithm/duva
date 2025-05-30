@@ -537,7 +537,7 @@ async fn test_same_voter_can_vote_only_once() {
         ClusterCommandHandler(cluster_sender),
         0,
     );
-    let (client_request_sender, client_wait) = tokio::sync::oneshot::channel();
+    let (client_request_sender, _client_wait) = tokio::sync::oneshot::channel();
 
     let consensus_request = consensus_request_create_helper(client_request_sender, None);
 
