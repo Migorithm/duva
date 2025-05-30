@@ -10,6 +10,7 @@ pub(crate) struct CacheDb {
     links: HashMap<u64, (Option<u64>, Option<u64>), NoneHasher>, // (prev, next)
     head: Option<u64>,
     tail: Option<u64>,
+    capacity: usize,
     // OPTIMIZATION: Add a counter to keep track of the number of keys with expiry
     keys_with_expiry: usize,
 }
@@ -123,6 +124,17 @@ impl<T: NoHashTarget> std::hash::Hasher for NoHashHasher<T> {
 }
 
 impl CacheDb {
+    pub fn with_capacity(capacity: usize) -> Self {
+        CacheDb {
+            map: HashMap::with_hasher(NoneHasher),
+            key_map: HashMap::new(),
+            links: HashMap::with_hasher(NoneHasher),
+            head: None,
+            tail: None,
+            keys_with_expiry: 0,
+            capacity,
+        }
+    }
     /// Extracts (removes) keys and values that fall within the specified token ranges.
     /// This is a mutable operation that modifies the cache by taking out relevant entries.
     ///
@@ -131,7 +143,7 @@ impl CacheDb {
     pub(crate) fn take_subset(&mut self, token_ranges: Vec<Range<u64>>) -> CacheDb {
         // If no ranges, return empty HashMap
         if token_ranges.is_empty() {
-            return CacheDb::default();
+            return CacheDb::with_capacity(self.capacity);
         }
 
         // Identify keys that fall within the specified ranges
@@ -193,6 +205,7 @@ impl CacheDb {
             links,
             head,
             tail,
+            capacity: self.capacity,
             keys_with_expiry: extracted_expiry_count,
         }
     }
@@ -230,6 +243,10 @@ impl CacheDb {
             self.map.insert(existing_id, value);
             self.move_to_head(existing_id);
         } else {
+            // Remove tail if exceeding capacity
+            if self.map.len() >= self.capacity {
+                self.remove_tail();
+            }
             // Detect empty key
             let mut id = fnv_1a_hash(&key);
             while self.map.contains_key(&id) {
@@ -270,6 +287,13 @@ impl CacheDb {
     fn move_to_head(&mut self, id: u64) {
         self.detach(id);
         self.push_front(id);
+    }
+    fn remove_tail(&mut self) {
+        if let Some(tail_id) = self.tail {
+            self.detach(tail_id);
+            self.map.remove(&tail_id);
+            self.key_map.retain(|_, &mut v| v != tail_id);
+        }
     }
     #[inline]
     fn detach(&mut self, id: u64) {
@@ -358,6 +382,10 @@ impl<'a> Entry<'a> {
             parent.move_to_head(existing_id);
             existing_id
         } else {
+            // Remove tail if exceeding capacity
+            if parent.map.len() >= parent.capacity {
+                parent.remove_tail();
+            }
             // Detect empty key
             let mut hash = fnv_1a_hash(&k);
             while parent.map.contains_key(&hash) {
@@ -435,18 +463,6 @@ impl<'a> Entry<'a> {
         }
     }
 }
-impl Default for CacheDb {
-    fn default() -> Self {
-        CacheDb {
-            map: HashMap::with_hasher(NoneHasher),
-            key_map: HashMap::new(),
-            links: HashMap::with_hasher(NoneHasher),
-            head: None,
-            tail: None,
-            keys_with_expiry: 0,
-        }
-    }
-}
 
 impl<'a> Iterator for Iter<'a> {
     type Item = (&'a String, &'a CacheValue);
@@ -504,7 +520,7 @@ mod tests {
 
     #[test]
     fn test_extract_keys_for_ranges_empty() {
-        let mut cache = CacheDb::default();
+        let mut cache = CacheDb::with_capacity(100);
         let ranges: Vec<Range<u64>> = Vec::new();
 
         let result = cache.take_subset(ranges);
@@ -513,7 +529,7 @@ mod tests {
 
     #[test]
     fn test_extract_keys_for_ranges_no_matches() {
-        let mut cache = CacheDb::default();
+        let mut cache = CacheDb::with_capacity(100);
         cache.insert("key1".to_string(), CacheValue::new("value".to_string()));
 
         // Create a range that doesn't include our key's hash
@@ -527,7 +543,7 @@ mod tests {
 
     #[test]
     fn test_extract_keys_for_ranges_with_matches() {
-        let mut cache = CacheDb::default();
+        let mut cache = CacheDb::with_capacity(100);
 
         // Add several keys to the cache
         for i in 0..10 {

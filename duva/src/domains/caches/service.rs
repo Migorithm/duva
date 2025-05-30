@@ -126,7 +126,7 @@ mod test {
         let hwm: Arc<AtomicU64> = Arc::new(0.into());
         tokio::spawn(
             CacheActor {
-                cache: CacheDb::default(),
+                cache: CacheDb::with_capacity(1000),
                 self_handler: CacheCommandSender(cache.clone()),
             }
             .handle(rx, ReadQueue::new(hwm.clone())),
@@ -160,7 +160,7 @@ mod test {
         let hwm: Arc<AtomicU64> = Arc::new(0.into());
         tokio::spawn(
             CacheActor {
-                cache: CacheDb::default(),
+                cache: CacheDb::with_capacity(1000),
                 self_handler: CacheCommandSender(cache.clone()),
             }
             .handle(rx, ReadQueue::new(hwm.clone())),
@@ -196,7 +196,7 @@ mod test {
         let hwm: Arc<AtomicU64> = Arc::new(0.into());
         tokio::spawn(
             CacheActor {
-                cache: CacheDb::default(),
+                cache: CacheDb::with_capacity(1000),
                 self_handler: CacheCommandSender(cache.clone()),
             }
             .handle(rx, ReadQueue::new(hwm.clone())),
