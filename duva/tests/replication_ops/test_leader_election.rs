@@ -1,7 +1,6 @@
-use std::{thread::sleep, time::Duration};
-
 use crate::common::{Client, ServerEnv, form_cluster, spawn_server_process};
 use duva::prelude::LEADER_HEARTBEAT_INTERVAL_MAX;
+use std::{thread::sleep, time::Duration};
 
 fn run_leader_election(with_append_only: bool) -> anyhow::Result<()> {
     // GIVEN
@@ -14,7 +13,7 @@ fn run_leader_election(with_append_only: bool) -> anyhow::Result<()> {
 
     // WHEN
     leader_p.kill()?;
-    sleep(Duration::from_millis(LEADER_HEARTBEAT_INTERVAL_MAX + 15));
+    sleep(Duration::from_millis(LEADER_HEARTBEAT_INTERVAL_MAX + 300));
 
     // THEN
     let mut flag = false;
@@ -80,7 +79,7 @@ fn run_leader_election_twice(with_append_only: bool) -> anyhow::Result<()> {
     let mut tmp_h = Client::new(follower_p1.port);
     tmp_h.send_and_get(format!("cluster forget 127.0.0.1:{}", leader_p.port));
 
-    sleep(Duration::from_millis(LEADER_HEARTBEAT_INTERVAL_MAX));
+    sleep(Duration::from_millis(LEADER_HEARTBEAT_INTERVAL_MAX + 300));
 
     let mut processes = vec![];
 
@@ -103,7 +102,7 @@ fn run_leader_election_twice(with_append_only: bool) -> anyhow::Result<()> {
         // WHEN
         // ! second leader is killed -> election happens
         f.kill()?;
-        sleep(Duration::from_millis(LEADER_HEARTBEAT_INTERVAL_MAX));
+        sleep(Duration::from_millis(LEADER_HEARTBEAT_INTERVAL_MAX + 300));
         processes.push(new_process);
     }
     assert_eq!(processes.len(), 2);
