@@ -182,6 +182,7 @@ impl CacheDb {
             self.key_map.remove(&key);
             if value.has_expiry() {
                 extracted_expiry_count += 1;
+                self.keys_with_expiry -= 1;
             }
             extracted_map.insert(hash, value);
             extracted_key_map.insert(key, hash);
