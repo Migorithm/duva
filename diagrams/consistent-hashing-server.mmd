@@ -43,9 +43,14 @@ sequenceDiagram
     C1 ->> A: Request (key 1000)
 
         Note over A, B: Point-in-time snapshot is required<br>So we don't need to full migrate logs
-        par
-            A --) B: Migrate data (batch). If there are other partitions, A will send them too.
-            B --) A: Ack migration
+        
+        A --> B: Migrate data (batch). If there are other partitions, A will send them too.
+        B --> A: Migrate data (batch). If there are other partitions, B will send them too.
+
+        %% The following may involves multi step migrations depending on the size of data
+        B <<-->> A: Mutual Ack migration
+
+        par 
             A -->> A: Snaphsot and drop logs
             A -->> A: Unlock pending requests
             alt Request's key is in A's range
@@ -54,10 +59,7 @@ sequenceDiagram
             else Request's key is in B's range
                 A -->> C1: (Moved) error
             end
-
-        and 
-            B --) A: Migrate data (batch). If there are other partitions, B will send them too.
-            A --) B: Ack migration
+        and
             B -->> B: Snaphsot and drop logs
             B -->> B: Unlock pending requests
         end
