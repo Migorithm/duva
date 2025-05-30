@@ -291,7 +291,14 @@ impl CacheDb {
     fn remove_tail(&mut self) {
         if let Some(tail_id) = self.tail {
             self.detach(tail_id);
-            self.map.remove(&tail_id);
+            let v = self.map.remove(&tail_id);
+            if let Some(val) = v {
+                if val.has_expiry() {
+                    self.keys_with_expiry -= 1;
+                }
+            } else {
+                error!("CacheDb: Tail ID not found in map");
+            }
             self.key_map.retain(|_, &mut v| v != tail_id);
         }
     }
@@ -602,5 +609,92 @@ mod tests {
             let h = std::hash::BuildHasher::hash_one(&hasher, now);
             assert_eq!(h, now);
         }
+    }
+    #[test]
+    fn test_lru_with_expiry() {
+        let mut cache = CacheDb::with_capacity(3);
+        let expiry = Some(Utc::now() + chrono::Duration::minutes(10));
+        assert_eq!(cache.capacity, 3);
+
+        for i in 0..3 {
+            cache.insert(
+                format!("key{}", i),
+                CacheValue::new(format!("value{}", i)).with_expiry(expiry),
+            );
+        }
+        assert_eq!(cache.len(), 3);
+        assert_eq!(cache.keys_with_expiry(), 3);
+
+        cache.insert(
+            "key999".to_string(),
+            CacheValue::new("value3".to_string()).with_expiry(expiry),
+        );
+        assert_eq!(cache.len(), 3);
+        assert_eq!(cache.keys_with_expiry(), 3);
+
+        cache
+            .entry("key998".to_string())
+            .or_insert_with(|| CacheValue::new("value4".to_string()).with_expiry(expiry));
+        assert_eq!(cache.len(), 3);
+        assert_eq!(cache.keys_with_expiry(), 3);
+
+        assert!(cache.is_exist("key2"));
+    }
+    #[test]
+    fn test_get_insert_remove_entry() {
+        let mut cache = CacheDb::with_capacity(100);
+        let expiry = Some(Utc::now() + chrono::Duration::minutes(10));
+
+        assert!(cache.get("key1").is_none());
+
+        cache.insert("key1".to_string(), CacheValue::new("value1".to_string()).with_expiry(expiry));
+        assert_eq!(cache.len(), 1);
+        assert_eq!(cache.keys_with_expiry(), 1);
+        assert!(cache.get("key1").is_some());
+
+        cache.insert("key1".to_string(), CacheValue::new("value2".to_string()).with_expiry(expiry));
+        assert_eq!(cache.len(), 1);
+        assert_eq!(cache.keys_with_expiry(), 1);
+
+        cache.insert("key2".to_string(), CacheValue::new("value3".to_string()).with_expiry(expiry));
+        assert_eq!(cache.len(), 2);
+        assert_eq!(cache.keys_with_expiry(), 2);
+
+        assert!(cache.remove("key1").is_some());
+        assert_eq!(cache.len(), 1);
+        assert_eq!(cache.keys_with_expiry(), 1);
+
+        for i in 0..100 {
+            cache.insert(
+                format!("key{}", i),
+                CacheValue::new(format!("value{}", i)).with_expiry(expiry),
+            );
+        }
+        assert_eq!(cache.len(), 100);
+        assert_eq!(cache.keys_with_expiry(), 100);
+
+        let mut count = 0;
+        cache.iter().for_each(|_| count += 1);
+        assert_eq!(count, 100);
+
+        cache.entry("key50".to_string()).and_modify(|v| {
+            v.value = "modified_value".to_string();
+        });
+        assert_eq!(cache.get("key50").unwrap().value(), "modified_value");
+
+        cache.entry("key50".to_string()).or_insert(CacheValue::new("new_value".to_string()));
+        assert_eq!(cache.get("key50").unwrap().value(), "modified_value");
+
+        cache.entry("key999".to_string()).and_modify(|v| {
+            v.value = "modified_value".to_string();
+        });
+        assert!(cache.get("key999").is_none());
+
+        assert_eq!(cache.len(), 100);
+        assert_eq!(cache.keys_with_expiry(), 100);
+        cache.clear();
+        assert!(cache.is_empty());
+        assert_eq!(cache.len(), 0);
+        assert_eq!(cache.keys_with_expiry(), 0);
     }
 }
