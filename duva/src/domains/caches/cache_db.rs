@@ -11,7 +11,7 @@ pub(crate) struct CacheDb {
     head: Option<u64>,
     tail: Option<u64>,
     // OPTIMIZATION: Add a counter to keep track of the number of keys with expiry
-    pub(crate) keys_with_expiry: usize,
+    keys_with_expiry: usize,
 }
 pub(crate) struct Iter<'a> {
     inner: std::collections::hash_map::Iter<'a, String, u64>,
@@ -180,7 +180,7 @@ impl CacheDb {
                 continue;
             };
             self.key_map.remove(&key);
-            if value.expiry.is_some() {
+            if value.has_expiry() {
                 extracted_expiry_count += 1;
             }
             extracted_map.insert(hash, value);
@@ -194,6 +194,9 @@ impl CacheDb {
             tail,
             keys_with_expiry: extracted_expiry_count,
         }
+    }
+    pub(crate) fn keys_with_expiry(&self) -> usize {
+        self.keys_with_expiry
     }
 
     #[inline]
@@ -231,7 +234,7 @@ impl CacheDb {
             while self.map.contains_key(&id) {
                 id = id.wrapping_add(1);
             }
-            if value.expiry.is_some() {
+            if value.has_expiry() {
                 self.keys_with_expiry += 1;
             }
             self.map.insert(id, value.clone());
@@ -245,7 +248,7 @@ impl CacheDb {
             let val = self.map.remove(&id)?;
             self.detach(id);
             self.key_map.remove(key); // 정확히 하나만 제거
-            if val.expiry.is_some() {
+            if val.has_expiry() {
                 self.keys_with_expiry -= 1;
             }
             Some(val)
@@ -359,7 +362,7 @@ impl<'a> Entry<'a> {
             while parent.map.contains_key(&hash) {
                 hash = hash.wrapping_add(1);
             }
-            if v.expiry.is_some() {
+            if v.has_expiry() {
                 parent.keys_with_expiry += 1;
             }
             parent.map.insert(hash, v.clone());
@@ -538,14 +541,10 @@ mod tests {
                     None
                 }),
             );
-
-            if has_expiry {
-                cache.keys_with_expiry += 1;
-            }
         }
 
         assert_eq!(cache.len(), 10);
-        assert_eq!(cache.keys_with_expiry, 5); // Keys 0, 2, 4, 6, 8 have expiry
+        assert_eq!(cache.keys_with_expiry(), 5); // Keys 0, 2, 4, 6, 8 have expiry
 
         // Create ranges to extract specific keys (using their hash values)
         let mut ranges = Vec::new();

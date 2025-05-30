@@ -28,7 +28,7 @@ impl CacheActor {
         self.cache.len()
     }
     pub(crate) fn keys_with_expiry(&self) -> usize {
-        self.cache.keys_with_expiry
+        self.cache.keys_with_expiry()
     }
 
     pub(crate) fn keys(&self, pattern: Option<String>, callback: oneshot::Sender<QueryIO>) {
@@ -46,10 +46,7 @@ impl CacheActor {
         let _ = callback.send(QueryIO::Array(keys));
     }
     pub(crate) fn delete(&mut self, key: String, callback: oneshot::Sender<bool>) {
-        if let Some(value) = self.cache.remove(&key) {
-            if value.has_expiry() {
-                self.cache.keys_with_expiry -= 1;
-            }
+        if let Some(_value) = self.cache.remove(&key) {
             let _ = callback.send(true);
         } else {
             let _ = callback.send(false);
@@ -64,9 +61,6 @@ impl CacheActor {
 
     pub(crate) fn set(&mut self, cache_entry: CacheEntry) {
         let (key, value) = cache_entry.destructure();
-        if value.has_expiry() {
-            self.cache.keys_with_expiry += 1;
-        }
         self.cache.insert(key, value);
     }
 
