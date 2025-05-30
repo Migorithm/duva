@@ -2,9 +2,8 @@ use super::request::ClientRequest;
 use crate::domains::QueryIO;
 use crate::domains::caches::cache_manager::CacheManager;
 use crate::domains::cluster_actors::{ClientMessage, ConsensusClientResponse, ConsensusRequest};
-use crate::domains::config_actors::command::ConfigResponse;
-use crate::domains::config_actors::config_manager::ConfigManager;
 use crate::domains::saves::actor::SaveTarget;
+use crate::init::ENV;
 use crate::presentation::clients::request::ClientAction;
 use crate::presentation::clusters::communication_manager::ClusterCommunicationManager;
 use std::sync::atomic::Ordering;
@@ -13,7 +12,6 @@ use tracing::{debug, instrument};
 #[derive(Clone, Debug)]
 pub(crate) struct ClientController {
     pub(crate) cache_manager: CacheManager,
-    pub(crate) config_manager: ConfigManager,
     pub(crate) cluster_communication_manager: ClusterCommunicationManager,
 }
 
@@ -38,7 +36,7 @@ impl ClientController {
                 self.cache_manager.route_append(key, value).await?.to_string(),
             ),
             | ClientAction::Save => {
-                let file_path = self.config_manager.get_filepath().await?;
+                let file_path = ENV.get_filepath();
                 let file = tokio::fs::OpenOptions::new()
                     .write(true)
                     .truncate(true)
@@ -63,11 +61,10 @@ impl ClientController {
             },
             | ClientAction::Keys { pattern } => self.cache_manager.route_keys(pattern).await?,
             | ClientAction::Config { key, value } => {
-                let res = self.config_manager.route_get((key, value)).await?;
-                match res {
-                    | ConfigResponse::Dir(value) => QueryIO::SimpleString(format!("dir {}", value)),
-                    | ConfigResponse::DbFileName(value) => QueryIO::SimpleString(value),
-                    | _ => QueryIO::Err("Invalid operation".into()),
+                match (key.to_lowercase().as_str(), value.to_lowercase().as_str()) {
+                    | ("get", "dir") => format!("dir {}", ENV.dir).into(),
+                    | ("get", "dbfilename") => ENV.dbfilename.clone().into(),
+                    | _ => Err(anyhow::anyhow!("Invalid command"))?,
                 }
             },
             | ClientAction::Delete { keys } => {

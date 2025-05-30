@@ -1,3 +1,5 @@
+use std::sync::LazyLock;
+
 use crate::{
     domains::{cluster_actors::replication::ReplicationRole, peers::peer::PeerState},
     env_var,
@@ -16,12 +18,12 @@ pub struct Environment {
     pub hf_mills: u64,
     pub ttl_mills: u128,
     pub append_only: bool,
-    pub topology_writer: Option<tokio::fs::File>,
+    pub tpp: String,
     pub log_level: tracing::Level,
 }
 
 impl Environment {
-    pub async fn init() -> Self {
+    pub fn init() -> Self {
         env_var!(
             defaults: {
                 port: u16 = 6379,
@@ -43,7 +45,6 @@ impl Environment {
         let pre_connected_peers = PeerState::from_file(&tpp);
 
         let role = Self::determine_role(replicaof.as_ref(), &pre_connected_peers);
-        let topology_writer = Self::open_topology_file(tpp).await;
 
         Self {
             role,
@@ -55,7 +56,7 @@ impl Environment {
             hf_mills: hf,
             ttl_mills: ttl,
             append_only,
-            topology_writer: Some(topology_writer),
+            tpp,
             pre_connected_peers,
             log_level,
         }
@@ -72,7 +73,7 @@ impl Environment {
         }
     }
 
-    async fn open_topology_file(tpp: String) -> tokio::fs::File {
+    pub async fn open_topology_file(tpp: String) -> tokio::fs::File {
         OpenOptions::new().create(true).write(true).truncate(true).open(tpp).await.unwrap()
     }
 
@@ -80,4 +81,17 @@ impl Environment {
         replicaof
             .and_then(|s| s.split_once(':').map(|(host, port)| format!("{}:{}", host, port).into()))
     }
+    pub(crate) fn get_filepath(&self) -> String {
+        format!("{}/{}", self.dir, self.dbfilename)
+    }
+
+    pub(crate) fn bind_addr(&self) -> String {
+        format!("{}:{}", self.host, self.port)
+    }
+
+    pub(crate) fn peer_bind_addr(&self) -> String {
+        format!("{}:{}", self.host, self.port + 10000)
+    }
 }
+
+pub static ENV: LazyLock<Environment> = LazyLock::new(Environment::init);
