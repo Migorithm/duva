@@ -168,11 +168,9 @@ async fn test_start_rebalance_should_be_idempotent() {
 }
 
 #[tokio::test]
-#[should_panic]
-
 async fn test_make_migration_plan_happypath() {
     // GIVEN
-    let heartbeat_receiving_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
+    let mut heartbeat_receiving_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
     let last_modified = heartbeat_receiving_actor.hash_ring.last_modified;
 
     // this hash ring is the one for coordinating node
@@ -192,6 +190,7 @@ async fn test_make_migration_plan_happypath() {
     heartbeat_receiving_actor.test_make_migration_plan_if_valid(Some(hash_ring.clone())).await;
 
     // THEN - it should create a migration plan
+    assert!(heartbeat_receiving_actor.pending_requests.is_some());
     assert_eq!(heartbeat_receiving_actor.hash_ring, hash_ring);
     assert_ne!(heartbeat_receiving_actor.hash_ring.last_modified, last_modified);
 }
@@ -199,7 +198,7 @@ async fn test_make_migration_plan_happypath() {
 #[tokio::test]
 async fn test_make_migration_plan_when_given_hashring_is_same() {
     // GIVEN
-    let heartbeat_receiving_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
+    let mut heartbeat_receiving_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
     let last_modified = heartbeat_receiving_actor.hash_ring.last_modified;
 
     // WHEN - now, when heartbeat receiving actor hashring info (through heartbeat)
@@ -214,7 +213,7 @@ async fn test_make_migration_plan_when_given_hashring_is_same() {
 #[tokio::test]
 async fn test_make_migration_plan_when_no_hashring_given() {
     // GIVEN
-    let heartbeat_receiving_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
+    let mut heartbeat_receiving_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
     let last_modified = heartbeat_receiving_actor.hash_ring.last_modified;
 
     // WHEN - now, when heartbeat receiving actor hashring info (through heartbeat)
@@ -227,7 +226,7 @@ async fn test_make_migration_plan_when_no_hashring_given() {
 #[tokio::test]
 async fn test_make_migration_plan_when_last_modified_is_lower_than_its_own() {
     // GIVEN
-    let heartbeat_receiving_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
+    let mut heartbeat_receiving_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
     let last_modified = heartbeat_receiving_actor.hash_ring.last_modified;
 
     let mut hash_ring = HashRing::default();

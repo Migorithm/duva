@@ -899,7 +899,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         self.connect_to_server(peer_to_connect, None).await;
     }
 
-    async fn make_migration_plan_if_valid(&self, hashring: Option<HashRing>) {
+    async fn make_migration_plan_if_valid(&mut self, hashring: Option<HashRing>) {
         let Some(ring) = hashring else {
             return;
         };
@@ -909,6 +909,11 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         if ring.last_modified < self.hash_ring.last_modified {
             warn!("Received outdated hashring, ignoring");
             return;
+        }
+
+        // * If the hashring is valid, make a plan to migrate data for each paritition
+        if let None = self.pending_requests {
+            self.pending_requests = Some(VecDeque::new());
         }
     }
 }
@@ -1035,7 +1040,10 @@ pub mod cluster_actor_setups {
             self.iter_follower_append_entries().await
         }
 
-        pub(crate) async fn test_make_migration_plan_if_valid(&self, hashring: Option<HashRing>) {
+        pub(crate) async fn test_make_migration_plan_if_valid(
+            &mut self,
+            hashring: Option<HashRing>,
+        ) {
             self.make_migration_plan_if_valid(hashring).await;
         }
     }
