@@ -911,12 +911,87 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
 #[cfg(test)]
 pub mod cluster_actor_setups {
-    use crate::adapters::op_logs::memory_based::MemoryOpLogs;
+    use std::sync::Arc;
+
+    use crate::{
+        adapters::op_logs::memory_based::MemoryOpLogs,
+        domains::{IoError, TRead, TWrite, peers::service::PeerListener},
+        make_smart_pointer,
+    };
 
     use super::*;
+    use bytes::BytesMut;
+    use tokio::sync::Mutex;
+    #[derive(Debug, Clone)]
+    pub struct FakeReadWrite(Arc<Mutex<VecDeque<QueryIO>>>);
+    make_smart_pointer!(FakeReadWrite, Arc<Mutex<VecDeque<QueryIO>>>);
+
+    impl FakeReadWrite {
+        pub fn new() -> Self {
+            Self(Arc::new(Mutex::new(VecDeque::new())))
+        }
+    }
+    #[async_trait::async_trait]
+    impl TWrite for FakeReadWrite {
+        async fn write(&mut self, io: QueryIO) -> Result<(), IoError> {
+            let mut guard = self.0.lock().await;
+            guard.push_back(io);
+            Ok(())
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl TRead for FakeReadWrite {
+        async fn read_bytes(&mut self, _buf: &mut BytesMut) -> Result<(), IoError> {
+            Ok(())
+        }
+
+        async fn read_values(&mut self) -> Result<Vec<QueryIO>, IoError> {
+            let mut values = Vec::new();
+            let mut guard = self.0.lock().await;
+
+            values.extend(guard.drain(..));
+            Ok(values)
+        }
+    }
+
+    pub(crate) fn create_peer_helper(
+        cluster_sender: ClusterCommandHandler,
+        hwm: u64,
+        repl_id: &ReplicationId,
+        port: u16,
+        node_kind: NodeKind,
+        fake_buf: FakeReadWrite,
+    ) -> (PeerIdentifier, Peer) {
+        let key = PeerIdentifier::new("127.0.0.1", port);
+
+        let kill_switch = PeerListener::spawn(fake_buf.clone(), cluster_sender, key.clone());
+        let peer =
+            Peer::new(fake_buf, PeerState::new(&key, hwm, repl_id.clone(), node_kind), kill_switch);
+        (key, peer)
+    }
 
     #[cfg(test)]
     impl<T: TWriteAheadLog> ClusterActor<T> {
+        pub(crate) fn test_add_peer(
+            &mut self,
+            port: u16,
+            kind: NodeKind,
+            repl_id: Option<ReplicationId>,
+        ) -> (FakeReadWrite, PeerIdentifier) {
+            let buf = FakeReadWrite::new();
+            let (id, peer) = create_peer_helper(
+                self.self_handler.clone(),
+                0,
+                &repl_id.unwrap_or_else(|| self.replication.replid.clone()),
+                port,
+                kind,
+                buf.clone(),
+            );
+
+            self.members.insert(id.clone(), peer);
+            (buf, id)
+        }
         // COPY of block_write_reqs for testing
         pub(crate) fn test_block_write_reqs(&mut self) {
             self.block_write_reqs();

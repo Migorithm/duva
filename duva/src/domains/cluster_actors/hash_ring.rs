@@ -19,7 +19,7 @@ pub struct HashRing {
     vnodes: BTreeMap<u64, Rc<ReplicationId>>,
     // TODO value in the following map must be replaced when election happens
     pnodes: HashMap<ReplicationId, PeerIdentifier>,
-    last_modified: u128,
+    pub(crate) last_modified: u128,
 }
 
 // ! SAFETY: HashRing is supposed to be used in a single-threaded context
