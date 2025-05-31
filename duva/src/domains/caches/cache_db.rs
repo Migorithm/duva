@@ -102,6 +102,17 @@ impl CacheDb {
         self.keys_with_expiry -= extracted_expiry_count;
         let head = extracted_map.values().next().map(|v| v.get() as *mut CacheDbNode);
         let tail = extracted_map.values().last().map(|v| v.get() as *mut CacheDbNode);
+        // Reconnect nodes
+        extracted_map.values_mut().fold(None, |prev, v| {
+            let v_ptr = v.get();
+            let v_ref = v.get_mut();
+            if let Some(prev_node) = prev {
+                v_ref.prev = Some(prev_node);
+                unsafe { (*prev_node).next = Some(v_ptr) };
+            }
+            v_ref.next = None;
+            Some(v_ptr)
+        });
         CacheDb {
             map: extracted_map,
             head,
@@ -193,8 +204,8 @@ impl CacheDb {
         }
 
         let node = unsafe { &mut *node };
-        let prev = node.prev.take();
-        let next = node.next.take();
+        let prev = node.prev;
+        let next = node.next;
         if let Some(prev_node) = prev {
             unsafe { (*prev_node).next = next };
         }
@@ -208,6 +219,8 @@ impl CacheDb {
             unsafe { (*old_head_node).prev = Some(node) };
             node.next = Some(old_head_node);
         }
+        node.prev = None;
+        self.head = Some(node);
     }
     /// Remove element and update links
     fn remove_tail(&mut self) {
@@ -232,22 +245,18 @@ impl CacheDb {
     #[inline]
     fn detach(&mut self, node: *mut CacheDbNode) {
         let node = unsafe { &mut *node };
-        if let Some(prev) = node.prev.take() {
+        if let Some(prev) = node.prev {
             unsafe { (*prev).next = node.next };
         } else {
             self.head = node.next;
         }
-        if let Some(next) = node.next.take() {
+        if let Some(next) = node.next {
             unsafe { (*next).prev = node.prev };
         } else {
             self.tail = node.prev;
         }
         node.prev = None;
         node.next = None;
-        if self.is_empty() {
-            self.head = None;
-            self.tail = None;
-        }
     }
     #[inline]
     fn push_front(&mut self, node: *mut CacheDbNode) {
@@ -305,6 +314,54 @@ impl CacheDb {
         self.head = None;
         self.tail = None;
         self.keys_with_expiry = 0;
+    }
+    pub fn validate(&self) -> bool {
+        if self.map.is_empty() {
+            return self.head.is_none() && self.tail.is_none();
+        }
+        if self.head.is_none() || self.tail.is_none() {
+            error!("CacheDb: Inconsistent state, head or tail is None while map is not empty");
+            return false;
+        }
+        // Check head
+        let head = self.head.unwrap();
+        if unsafe { &*head }.prev.is_some() {
+            error!("CacheDb: Head node has a previous pointer");
+            return false;
+        }
+        let mut current = unsafe { &*head }.next;
+        let mut before = head;
+        let mut count = 1;
+        while let Some(node_ptr) = current {
+            count += 1;
+            let node = unsafe { &*node_ptr };
+            if node.prev.is_none() || before != node.prev.unwrap() {
+                error!(
+                    "CacheDb: Node does not have a valid previous pointer or it does not match the expected previous node"
+                );
+                return false;
+            }
+            if node.next.is_some() {
+                if let Some(next_ptr) = node.next {
+                    before = node_ptr;
+                    current = Some(next_ptr);
+                } else {
+                    error!("CacheDb: Node has next pointer but it is None");
+                    return false;
+                }
+            } else {
+                if self.tail.unwrap() != node_ptr {
+                    error!("CacheDb: Tail pointer does not match last node");
+                    return false;
+                }
+                break;
+            }
+        }
+        if count != self.map.len() {
+            error!("CacheDb: Node count does not match map length");
+            return false;
+        }
+        true
     }
 }
 impl<'a> Entry<'a> {
@@ -478,6 +535,8 @@ mod tests {
         let result = cache.take_subset(ranges);
         assert!(result.is_empty());
         assert_eq!(cache.len(), 1); // Cache still has our key
+
+        assert!(cache.validate(), "CacheDb validation failed");
     }
 
     #[test]
@@ -532,6 +591,9 @@ mod tests {
         // We should have removed keys 0, 2, 4 with expiry, so count should be reduced by 3
         assert_eq!(cache.keys_with_expiry, 2); // Only keys 6, 8 remain with expiry
         assert_eq!(extracted.keys_with_expiry, 3); // Keys 0, 2, 4 had expiry
+
+        assert!(cache.validate(), "CacheDb validation failed");
+        assert!(extracted.validate(), "Extracted CacheDb validation failed");
     }
     #[test]
     fn test_lru_with_expiry() {
@@ -562,6 +624,8 @@ mod tests {
         assert_eq!(cache.keys_with_expiry(), 3);
 
         assert!(cache.is_exist("key2"));
+
+        assert!(cache.validate(), "CacheDb validation failed");
     }
     #[test]
     fn test_get_insert_remove_entry() {
@@ -612,6 +676,8 @@ mod tests {
             v.value = "modified_value".to_string();
         });
         assert!(cache.get("key999").is_none());
+
+        assert!(cache.validate(), "CacheDb validation failed");
 
         assert_eq!(cache.len(), 100);
         assert_eq!(cache.keys_with_expiry(), 100);
