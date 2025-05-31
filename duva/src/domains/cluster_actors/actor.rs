@@ -899,6 +899,12 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         self.connect_to_server(peer_to_connect, None).await;
     }
 
+    // * If the hashring is valid, make a plan to migrate data for each paritition
+    // 1. Partition Analysis - Compare the old and new hash rings to identify ranges where ownership has changed by examining all partition boundaries from both rings.
+    // 2. Migration Tasks - Create structured migration tasks containing the hash range, source/destination nodes, and actual keys that need to move.
+    // 3. Efficient Range Detection - Use the ring structure to find ownership changes by sampling mid-points of ranges rather than checking every possible hash value.
+    // 4. Key Discovery - The get_keys_in_range function needs to be implemented based on your actual data storage to find keys whose hashes fall within specific ranges.
+    // 5. Execution Strategy - Provides both queuing (for batch processing) and immediate execution options for migration tasks.
     async fn make_migration_plan_if_valid(&mut self, hashring: Option<HashRing>) {
         let Some(ring) = hashring else {
             return;
@@ -910,8 +916,6 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             warn!("Received outdated hashring, ignoring");
             return;
         }
-
-        // * If the hashring is valid, make a plan to migrate data for each paritition
         if let None = self.pending_requests {
             self.pending_requests = Some(VecDeque::new());
         }

@@ -1,3 +1,5 @@
+use tracing::{info, warn};
+
 /// A consistent hashing ring for distributing keys across nodes.
 ///
 /// The `HashRing` maps keys to physical nodes using virtual nodes to ensure
@@ -79,14 +81,57 @@ impl HashRing {
 
     pub fn get_node_for_key(&self, key: &str) -> Option<&PeerIdentifier> {
         let hash = fnv_1a_hash(key);
+        self.find_node(hash)
+    }
 
-        // * Find the first virtual node that's greater than or equal to the key's hash
+    fn find_node(&self, hash: u64) -> Option<&PeerIdentifier> {
+        // Find the first vnode with hash >= target hash
         self.vnodes
             .range(hash..)
             .next()
-            .or_else(|| self.vnodes.first_key_value())
-            .map(|(_, peer_id)| peer_id.as_ref())
+            .or_else(|| self.vnodes.iter().next()) // wrap around to first node
+            .map(|(_, node_id)| node_id.as_ref())
             .and_then(|peer_id| self.pnodes.get(peer_id))
+    }
+
+    pub(crate) async fn create_migration_plan(
+        &self,
+        new_ring: &HashRing,
+        keys: Vec<String>,
+    ) -> Vec<MigrationTask> {
+        let mut migration_tasks = Vec::new();
+
+        // Get all token positions from both rings as partition boundaries
+        let mut tokens: Vec<u64> =
+            self.vnodes.keys().chain(new_ring.vnodes.keys()).cloned().collect();
+        tokens.sort();
+        tokens.dedup();
+
+        // Check each partition for ownership changes
+        for (i, &token) in tokens.iter().enumerate() {
+            let prev_token = if i == 0 { tokens[tokens.len() - 1] } else { tokens[i - 1] };
+            let (start, end) = (prev_token.wrapping_add(1), token);
+
+            if let (Some(old_owner), Some(new_owner)) =
+                (self.find_node(token), new_ring.find_node(token))
+            {
+                // If both old and new owners exist, we need to check if ownership changed
+                if old_owner != new_owner {
+                    // Node ownership changed for this partition
+                    // Need to migrate data from old node to new node
+                    let affected_keys = filter_keys_in_partition(&keys, start, end);
+                    if !affected_keys.is_empty() {
+                        migration_tasks.push(MigrationTask {
+                            partition_range: (start, end),
+                            from_node: old_owner.clone(),
+                            to_node: new_owner.clone(),
+                            keys_to_migrate: affected_keys,
+                        });
+                    }
+                }
+            }
+        }
+        migration_tasks
     }
 
     /// Returns the token ranges that a specific node covers in the hash ring.
@@ -165,6 +210,27 @@ impl HashRing {
     }
 }
 
+fn filter_keys_in_partition(
+    keys: &[String],
+    partition_start: u64,
+    partition_end: u64,
+) -> Vec<String> {
+    keys.iter()
+        .filter(|key| {
+            let key_hash = fnv_1a_hash(key);
+            // Check if key hash falls in range (partition_start, partition_end]
+            // Handle wrap-around case where start > end
+            if partition_start < partition_end {
+                key_hash > partition_start && key_hash <= partition_end
+            } else {
+                // Wrap-around: key is either > start OR <= end
+                key_hash > partition_start || key_hash <= partition_end
+            }
+        })
+        .cloned()
+        .collect()
+}
+
 #[inline]
 pub(crate) fn fnv_1a_hash(value: &str) -> u64 {
     // Using FNV-1a hash algorithm which is:
@@ -190,6 +256,14 @@ pub(crate) fn fnv_1a_hash(value: &str) -> u64 {
     h ^= h >> 33;
 
     h
+}
+
+#[derive(Debug, Clone)]
+pub struct MigrationTask {
+    pub partition_range: (u64, u64), // (start_hash, end_hash)
+    pub from_node: PeerIdentifier,
+    pub to_node: PeerIdentifier,
+    pub keys_to_migrate: Vec<String>, // actual keys in this range
 }
 
 impl PartialEq for HashRing {
@@ -646,5 +720,30 @@ mod tests {
                 *total_coverage += (u64::MAX - range.start + 1) + range.end;
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod migration_tests {
+    use uuid::Uuid;
+
+    use super::*;
+    use crate::ReplicationId;
+    use crate::prelude::PeerIdentifier;
+
+    // Migration plan tests
+
+    #[tokio::test]
+    async fn test_no_migration_when_rings_identical() {
+        let mut ring = HashRing::default();
+        ring.add_partition_if_not_exists(
+            ReplicationId::Key(Uuid::now_v7().to_string()),
+            PeerIdentifier("127.0.0.1:6379".into()),
+        );
+
+        let keys = vec!["key1".to_string(), "key2".to_string()];
+        let tasks = ring.create_migration_plan(&ring, keys).await;
+
+        assert!(tasks.is_empty(), "Identical rings should require no migration");
     }
 }
