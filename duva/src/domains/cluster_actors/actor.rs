@@ -906,6 +906,10 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         if ring == self.hash_ring {
             return;
         }
+        if ring.last_modified < self.hash_ring.last_modified {
+            warn!("Received outdated hashring, ignoring");
+            return;
+        }
     }
 }
 

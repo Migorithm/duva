@@ -1,4 +1,5 @@
 use core::hash;
+use std::time::SystemTime;
 
 use crate::domains::cluster_actors::hash_ring::HashRing;
 
@@ -217,8 +218,25 @@ async fn test_make_migration_plan_when_no_hashring_given() {
     let heartbeat_receiving_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
     let last_modified = heartbeat_receiving_actor.hash_ring.last_modified;
 
+    let hash_ring = heartbeat_receiving_actor.hash_ring.clone();
     // WHEN - now, when heartbeat receiving actor hashring info (through heartbeat)
     heartbeat_receiving_actor.test_make_migration_plan_if_valid(None).await;
+
+    // THEN no change should be made
+    assert_eq!(heartbeat_receiving_actor.hash_ring.last_modified, last_modified);
+}
+
+#[tokio::test]
+async fn test_make_migration_plan_when_last_modified_is_lower_than_its_own() {
+    // GIVEN
+    let heartbeat_receiving_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
+    let last_modified = heartbeat_receiving_actor.hash_ring.last_modified;
+
+    let mut hash_ring = HashRing::default();
+    hash_ring.last_modified = last_modified - 1;
+
+    // WHEN - now, when heartbeat receiving actor hashring info (through heartbeat)
+    heartbeat_receiving_actor.test_make_migration_plan_if_valid(Some(hash_ring)).await;
 
     // THEN no change should be made
     assert_eq!(heartbeat_receiving_actor.hash_ring.last_modified, last_modified);
