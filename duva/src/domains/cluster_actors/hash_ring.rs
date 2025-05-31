@@ -8,7 +8,6 @@ use crate::ReplicationId;
 use crate::prelude::PeerIdentifier;
 use std::collections::{BTreeMap, HashMap};
 use std::num::Wrapping;
-use std::ops::Range;
 use std::rc::Rc;
 
 // Number of virtual nodes to create for each physical node.
@@ -19,7 +18,7 @@ pub struct HashRing {
     vnodes: BTreeMap<u64, Rc<ReplicationId>>,
     // TODO value in the following map must be replaced when election happens
     pnodes: HashMap<ReplicationId, PeerIdentifier>,
-    last_modified: u128,
+    pub(crate) last_modified: u128,
 }
 
 // ! SAFETY: HashRing is supposed to be used in a single-threaded context
@@ -77,76 +76,53 @@ impl HashRing {
         self.update_last_modified();
     }
 
-    pub fn get_node_for_key(&self, key: &str) -> Option<&PeerIdentifier> {
-        let hash = fnv_1a_hash(key);
-
-        // * Find the first virtual node that's greater than or equal to the key's hash
+    fn find_node(&self, hash: u64) -> Option<&ReplicationId> {
+        // Find the first vnode with hash >= target hash
         self.vnodes
             .range(hash..)
             .next()
-            .or_else(|| self.vnodes.first_key_value())
-            .map(|(_, peer_id)| peer_id.as_ref())
-            .and_then(|peer_id| self.pnodes.get(peer_id))
+            .or_else(|| self.vnodes.iter().next()) // wrap around to first node
+            .map(|(_, node_id)| node_id.as_ref())
     }
 
-    /// Returns the token ranges that a specific node covers in the hash ring.
-    /// Each range is represented as (start_hash, end_hash), where the node is responsible
-    /// for all tokens >= start_hash and < end_hash.
-    pub fn get_token_ranges_for_partition(&self, repl_id: &ReplicationId) -> Vec<Range<u64>> {
-        // If node doesn't exist or the ring is empty, return empty vector
-        if !self.exists(repl_id) || self.vnodes.is_empty() {
-            return Vec::new();
-        }
+    pub(crate) async fn create_migration_tasks(
+        &self,
+        new_ring: &HashRing,
+        keys: Vec<String>,
+    ) -> Vec<MigrationTask> {
+        let mut migration_tasks = Vec::new();
 
-        // Get all vnodes in order
-        let vnodes: Vec<(&u64, &std::rc::Rc<ReplicationId>)> = self.vnodes.iter().collect();
-        let mut ranges = Vec::<Range<u64>>::new();
+        // Get all token positions from both rings as partition boundaries
+        let mut tokens: Vec<u64> =
+            self.vnodes.keys().chain(new_ring.vnodes.keys()).cloned().collect();
+        tokens.sort();
+        tokens.dedup();
 
-        // Find ranges where this node is responsible
-        for i in 0..vnodes.len() {
-            let current_hash = *vnodes[i].0;
-            let current_node = vnodes[i].1;
+        // Check each partition for ownership changes
+        for (i, &token) in tokens.iter().enumerate() {
+            let prev_token = if i == 0 { tokens[tokens.len() - 1] } else { tokens[i - 1] };
+            let (start, end) = (prev_token.wrapping_add(1), token);
 
-            // Skip if this vnode doesn't belong to our target node
-            if current_node.as_ref() != repl_id {
-                continue;
-            }
-
-            // Calculate the previous hash (which is the start of this range)
-            // If this is the first entry, use the last entry's hash
-            let prev_idx = if i == 0 { vnodes.len() - 1 } else { i - 1 };
-            let start_hash = *vnodes[prev_idx].0 + 1; // Start just after previous node's hash
-
-            // The end of the range is this node's hash
-            let end_hash = current_hash + 1; // +1 because ranges are exclusive at the high end
-
-            // * Handling wrap-around case
-            if start_hash <= end_hash {
-                ranges.push(start_hash..end_hash);
-            } else {
-                // Split into two ranges: from start to max u64, and from 0 to end
-                ranges.push(start_hash..u64::MAX);
-                ranges.push(0..end_hash);
-            }
-        }
-
-        // Merge contiguous ranges
-        ranges.sort_by_key(|r| r.start);
-        let mut merged_ranges = Vec::<Range<u64>>::new();
-
-        for range in ranges {
-            if let Some(last) = merged_ranges.last_mut() {
-                // If this range starts right after the previous one ends
-                if last.end == range.start {
-                    let new_range = last.start..range.end;
-                    *last = new_range;
-                    continue;
+            if let (Some(old_owner), Some(new_owner)) =
+                (self.find_node(token), new_ring.find_node(token))
+            {
+                // If both old and new owners exist, we need to check if ownership changed
+                if old_owner != new_owner {
+                    // Node ownership changed for this partition
+                    // Need to migrate data from old node to new node
+                    let affected_keys = filter_keys_in_partition(&keys, start, end);
+                    if !affected_keys.is_empty() {
+                        migration_tasks.push(MigrationTask {
+                            partition_range: (start, end),
+                            from_node: old_owner.clone(),
+                            to_node: new_owner.clone(),
+                            keys_to_migrate: affected_keys,
+                        });
+                    }
                 }
             }
-            merged_ranges.push(range);
         }
-
-        merged_ranges
+        migration_tasks
     }
 
     #[cfg(test)]
@@ -163,6 +139,33 @@ impl HashRing {
     pub(crate) fn get_vnode_count(&self) -> usize {
         self.vnodes.len()
     }
+
+    #[cfg(test)]
+    fn get_node_for_key(&self, key: &str) -> Option<&ReplicationId> {
+        let hash = fnv_1a_hash(key);
+        self.find_node(hash)
+    }
+}
+
+fn filter_keys_in_partition(
+    keys: &[String],
+    partition_start: u64,
+    partition_end: u64,
+) -> Vec<String> {
+    keys.iter()
+        .filter(|key| {
+            let key_hash = fnv_1a_hash(key);
+            // Check if key hash falls in range (partition_start, partition_end]
+            // Handle wrap-around case where start > end
+            if partition_start < partition_end {
+                key_hash > partition_start && key_hash <= partition_end
+            } else {
+                // Wrap-around: key is either > start OR <= end
+                key_hash > partition_start || key_hash <= partition_end
+            }
+        })
+        .cloned()
+        .collect()
 }
 
 #[inline]
@@ -190,6 +193,14 @@ pub(crate) fn fnv_1a_hash(value: &str) -> u64 {
     h ^= h >> 33;
 
     h
+}
+
+#[derive(Debug, Clone)]
+pub struct MigrationTask {
+    pub partition_range: (u64, u64), // (start_hash, end_hash)
+    pub from_node: ReplicationId,
+    pub to_node: ReplicationId,
+    pub keys_to_migrate: Vec<String>, // actual keys in this range
 }
 
 impl PartialEq for HashRing {
@@ -466,121 +477,6 @@ mod tests {
     }
 
     #[test]
-    fn test_get_token_ranges_nonexistent_node() {
-        let mut ring = HashRing::default();
-        let repl_id = ReplicationId::Key(uuid::Uuid::now_v7().to_string());
-        ring.add_partition_if_not_exists(repl_id.clone(), PeerIdentifier("127.0.0.1:6349".into()));
-
-        // Try to get ranges for a node that doesn't exist
-        let ranges = ring.get_token_ranges_for_partition(&"127.0.0.1:7777".to_string().into());
-        assert_eq!(ranges.len(), 0);
-    }
-
-    #[test]
-    fn test_get_token_ranges_single_node() {
-        let mut ring = HashRing::default();
-        let node_id = "127.0.0.1:6349";
-        let repl_id = ReplicationId::Key(uuid::Uuid::now_v7().to_string());
-        ring.add_partition_if_not_exists(repl_id.clone(), PeerIdentifier(node_id.into()));
-
-        let ranges = ring.get_token_ranges_for_partition(&repl_id);
-
-        // A single node should own the entire hash space
-        // But might be split into multiple ranges because of virtual nodes
-        let mut total_coverage: u64 = 0;
-        calculate_total_coverage(&ranges, &mut total_coverage);
-
-        // Should own the entire hash space
-        assert_eq!(total_coverage, u64::MAX);
-    }
-
-    #[test]
-    fn test_get_token_ranges_multiple_nodes() {
-        let mut ring = HashRing::default();
-        let node1 = PeerIdentifier("127.0.0.1:6349".to_string());
-        let repl_id1 = ReplicationId::Key(uuid::Uuid::now_v7().to_string());
-        let node2 = PeerIdentifier("127.0.0.1:6350".to_string());
-        let repl_id2 = ReplicationId::Key(uuid::Uuid::now_v7().to_string());
-
-        ring.add_partition_if_not_exists(repl_id1.clone(), node1.clone());
-        ring.add_partition_if_not_exists(repl_id2.clone(), node2.clone());
-        let ranges1 = ring.get_token_ranges_for_partition(&repl_id1);
-        let ranges2 = ring.get_token_ranges_for_partition(&repl_id2);
-
-        // Verify ranges are non-empty
-        assert!(!ranges1.is_empty());
-        assert!(!ranges2.is_empty());
-
-        // Calculate total coverage
-        let mut total_coverage1: u64 = 0;
-        let mut total_coverage2: u64 = 0;
-
-        calculate_total_coverage(&ranges1, &mut total_coverage1);
-        calculate_total_coverage(&ranges2, &mut total_coverage2);
-
-        // Combined coverage should be the entire hash space
-        assert_eq!(total_coverage1 + total_coverage2, u64::MAX);
-
-        // Verify no overlapping ranges
-        for range1 in &ranges1 {
-            for range2 in &ranges2 {
-                // Check if ranges overlap
-                assert!(
-                    !ranges_overlap(range1, range2),
-                    "Ranges overlap: {:?} and {:?}",
-                    range1,
-                    range2
-                );
-            }
-        }
-    }
-
-    #[test]
-    fn test_ranges_after_node_removal() {
-        let mut ring = HashRing::default();
-        let node1 = PeerIdentifier("127.0.0.1:6349".to_string());
-        let repl_id1 = ReplicationId::Key(uuid::Uuid::now_v7().to_string());
-        let node2 = PeerIdentifier("127.0.0.1:6350".to_string());
-        let repl_id2 = ReplicationId::Key(uuid::Uuid::now_v7().to_string());
-        let node3 = PeerIdentifier("127.0.0.1:6351".to_string());
-        let repl_id3 = ReplicationId::Key(uuid::Uuid::now_v7().to_string());
-
-        // Add three nodes
-        ring.add_partition_if_not_exists(repl_id1.clone(), node1.clone());
-        ring.add_partition_if_not_exists(repl_id2.clone(), node2.clone());
-        ring.add_partition_if_not_exists(repl_id3.clone(), node3.clone());
-
-        // Get initial ranges
-        let initial_ranges1 = ring.get_token_ranges_for_partition(&repl_id1);
-        let initial_ranges2 = ring.get_token_ranges_for_partition(&repl_id2);
-
-        // Remove node3
-        ring.remove_partition(&repl_id3);
-
-        // Get updated ranges
-        let updated_ranges1 = ring.get_token_ranges_for_partition(&repl_id1);
-        let updated_ranges2 = ring.get_token_ranges_for_partition(&repl_id2);
-
-        // Verify node3 has no ranges
-        let ranges3 = ring.get_token_ranges_for_partition(&repl_id3);
-        assert_eq!(ranges3.len(), 0);
-
-        // The remaining nodes should split the entire hash space
-        let mut total_coverage: u64 = 0;
-
-        calculate_total_coverage(&updated_ranges1, &mut total_coverage);
-        calculate_total_coverage(&updated_ranges2, &mut total_coverage);
-
-        // Should own the entire hash space
-        assert_eq!(total_coverage, u64::MAX);
-
-        // Verify the ranges have changed (this is expected as removing a node
-        // should redistribute the hash space)
-        assert_ne!(initial_ranges1, updated_ranges1);
-        assert_ne!(initial_ranges2, updated_ranges2);
-    }
-
-    #[test]
     fn test_eq_works_deterministically() {
         let mut ring = HashRing::default();
         let repl_id = ReplicationId::Key("dsdsdds".to_string());
@@ -614,37 +510,298 @@ mod tests {
 
         assert_eq!(ring, ring_to_compare);
     }
+}
 
-    // Helper function to check if two ranges overlap
-    fn ranges_overlap(range1: &Range<u64>, range2: &Range<u64>) -> bool {
-        let (start1, end1) = (range1.start, range1.end);
-        let (start2, end2) = (range2.start, range2.end);
+#[cfg(test)]
+mod migration_tests {
+    use std::collections::HashMap;
 
-        // Handle normal ranges
-        if start1 < end1 && start2 < end2 {
-            return start1 < end2 && end1 > start2;
-        }
+    use uuid::Uuid;
 
-        // Handle wrap-around ranges
-        if start1 >= end1 {
-            return start2 < end1 || end2 > start1;
-        }
+    use super::*;
+    use crate::ReplicationId;
+    use crate::prelude::PeerIdentifier;
 
-        if start2 >= end2 {
-            return start1 < end2 || end1 > start2;
-        }
-
-        false
+    // Migration plan tests
+    fn replid_create_helper(repl_id: &str) -> ReplicationId {
+        ReplicationId::Key(repl_id.to_string())
     }
 
-    fn calculate_total_coverage(ranges: &Vec<Range<u64>>, total_coverage: &mut u64) {
-        for range in ranges {
-            if range.end > range.start {
-                *total_coverage += range.end - range.start;
-            } else {
-                // Handle wrap-around case
-                *total_coverage += (u64::MAX - range.start + 1) + range.end;
+    #[tokio::test]
+    async fn test_no_migration_when_rings_identical() {
+        let mut ring = HashRing::default();
+        ring.add_partition_if_not_exists(
+            ReplicationId::Key(Uuid::now_v7().to_string()),
+            PeerIdentifier("127.0.0.1:6379".into()),
+        );
+
+        let keys = vec!["key1".to_string(), "key2".to_string()];
+        let tasks = ring.create_migration_tasks(&ring, keys).await;
+
+        assert!(tasks.is_empty(), "Identical rings should require no migration");
+    }
+
+    #[tokio::test]
+    async fn test_single_node_ownership_change() {
+        // Test scenario: 3 nodes in ring, one node (node2) is replaced by node4
+        // node1 and node3 remain unchanged
+        let replid1 = replid_create_helper("node1");
+        let replid2 = replid_create_helper("node2");
+        let replid3 = replid_create_helper("node3");
+        let replid4 = replid_create_helper("node4");
+
+        // Create old ring with 3 nodes using realistic hash ring
+        let mut old_ring = HashRing::default();
+        old_ring.add_partition_if_not_exists(replid1.clone(), PeerIdentifier("peer1".into()));
+        old_ring.add_partition_if_not_exists(replid2.clone(), PeerIdentifier("peer2".into()));
+        old_ring.add_partition_if_not_exists(replid3.clone(), PeerIdentifier("peer3".into()));
+
+        // Create new ring where node2 is replaced by node4
+        let mut new_ring = HashRing::default();
+        new_ring.add_partition_if_not_exists(replid1.clone(), PeerIdentifier("peer1".into()));
+        new_ring.add_partition_if_not_exists(replid4.clone(), PeerIdentifier("peer4".into())); // node2 -> node4
+        new_ring.add_partition_if_not_exists(replid3.clone(), PeerIdentifier("peer3".into()));
+
+        // Generate a set of test keys
+        let test_keys: Vec<String> = (0..10000).map(|i| format!("test_key_{}", i)).collect();
+
+        // Identify ownership in both rings
+        let mut old_ownership = HashMap::new();
+        let mut new_ownership = HashMap::new();
+
+        for key in &test_keys {
+            old_ownership.insert(key.clone(), old_ring.get_node_for_key(key).unwrap().clone());
+            new_ownership.insert(key.clone(), new_ring.get_node_for_key(key).unwrap().clone());
+        }
+
+        // Find keys that changed ownership
+        let mut expected_migrations = HashMap::<(ReplicationId, ReplicationId), Vec<String>>::new();
+
+        for key in &test_keys {
+            let (old_owner, new_owner) =
+                (old_ownership.get(key).unwrap(), new_ownership.get(key).unwrap());
+
+            if old_ownership.get(key) != new_ownership.get(key) {
+                let migration_key = (old_owner.clone(), new_owner.clone());
+                expected_migrations.entry(migration_key).or_default().push(key.clone());
             }
         }
+
+        // Create migration plan
+        let tasks = old_ring.create_migration_tasks(&new_ring, test_keys.clone()).await;
+
+        // Verify that we have migration tasks if and only if there are ownership changes
+        assert!(!tasks.is_empty(), "Should have migration tasks when ownership changes");
+
+        // Collect actual migrations from tasks
+        let mut actual_migrations = HashMap::<(ReplicationId, ReplicationId), Vec<String>>::new();
+
+        for task in &tasks {
+            let migration_key = (task.from_node.clone(), task.to_node.clone());
+            actual_migrations
+                .entry(migration_key)
+                .or_default()
+                .extend(task.keys_to_migrate.clone());
+        }
+
+        // Verify that actual migrations match expected migrations
+        for ((from_node, to_node), expected_keys) in &expected_migrations {
+            let actual_keys = actual_migrations.get(&(from_node.clone(), to_node.clone())).unwrap();
+            assert_eq!(actual_keys.len(), expected_keys.len());
+            let mut ak = actual_keys.clone();
+            let mut ek = expected_keys.clone();
+            ak.sort();
+            ek.sort();
+            assert_eq!(ak, ek);
+        }
+
+        // Verify no unexpected migrations
+        for ((from_node, to_node), actual_keys) in &actual_migrations {
+            if !expected_migrations.contains_key(&(from_node.clone(), to_node.clone())) {
+                panic!(
+                    "Unexpected migration from {} to {} for keys {:?}",
+                    from_node, to_node, actual_keys
+                );
+            }
+        }
+
+        // Verify total count
+        let total_expected: usize = expected_migrations.values().map(|v| v.len()).sum();
+        let total_actual: usize = tasks.iter().map(|t| t.keys_to_migrate.len()).sum();
+        assert_eq!(
+            total_actual, total_expected,
+            "Total migrated keys should match expected migrations"
+        );
+
+        // Additional verification: node2 should not exist in new ring, node4 should not exist in old ring
+        for key in &test_keys {
+            // In old ring, node4 shouldn't own any keys (it doesn't exist)
+            if let Some(old_owner) = old_ring.get_node_for_key(key) {
+                assert_ne!(*old_owner, replid4, "Node4 shouldn't exist in old ring");
+            }
+
+            // In new ring, node2 shouldn't own any keys (it was removed)
+            if let Some(new_owner) = new_ring.get_node_for_key(key) {
+                assert_ne!(*new_owner, replid2, "Node2 shouldn't exist in new ring");
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn test_multiple_ownership_changes() {
+        // Test scenario: 4 nodes in ring, replace 2 nodes simultaneously
+        // node1 -> node5, node2 -> node6, node3 and node4 remain unchanged
+        let replid1 = replid_create_helper("node1");
+        let replid2 = replid_create_helper("node2");
+        let replid3 = replid_create_helper("node3");
+        let replid4 = replid_create_helper("node4");
+        let replid5 = replid_create_helper("node5");
+        let replid6 = replid_create_helper("node6");
+
+        // Create old ring with 4 nodes
+        let mut old_ring = HashRing::default();
+        old_ring.add_partition_if_not_exists(replid1.clone(), PeerIdentifier("peer1".into()));
+        old_ring.add_partition_if_not_exists(replid2.clone(), PeerIdentifier("peer2".into()));
+        old_ring.add_partition_if_not_exists(replid3.clone(), PeerIdentifier("peer3".into()));
+        old_ring.add_partition_if_not_exists(replid4.clone(), PeerIdentifier("peer4".into()));
+
+        // Create new ring where node1->node5 and node2->node6, but node3 and node4 remain
+        let mut new_ring = HashRing::default();
+        new_ring.add_partition_if_not_exists(replid5.clone(), PeerIdentifier("peer5".into())); // node1 -> node5
+        new_ring.add_partition_if_not_exists(replid6.clone(), PeerIdentifier("peer6".into())); // node2 -> node6
+        new_ring.add_partition_if_not_exists(replid3.clone(), PeerIdentifier("peer3".into())); // node3 stays
+        new_ring.add_partition_if_not_exists(replid4.clone(), PeerIdentifier("peer4".into())); // node4 stays
+
+        // Generate a large set of test keys for comprehensive testing
+        let test_keys: Vec<String> = (0..5000).map(|i| format!("test_key_{}", i)).collect();
+
+        // Identify ownership in both rings
+        let mut old_ownership = HashMap::new();
+        let mut new_ownership = HashMap::new();
+
+        for key in &test_keys {
+            old_ownership.insert(key.clone(), old_ring.get_node_for_key(key).unwrap().clone());
+            new_ownership.insert(key.clone(), new_ring.get_node_for_key(key).unwrap().clone());
+        }
+
+        // Find keys that changed ownership
+        let mut expected_migrations = HashMap::<(ReplicationId, ReplicationId), Vec<String>>::new();
+
+        for key in &test_keys {
+            let (old_owner, new_owner) =
+                (old_ownership.get(key).unwrap(), new_ownership.get(key).unwrap());
+
+            if old_ownership.get(key) != new_ownership.get(key) {
+                let migration_key = (old_owner.clone(), new_owner.clone());
+                expected_migrations.entry(migration_key).or_default().push(key.clone());
+            }
+        }
+
+        // Create migration plan
+        let tasks = old_ring.create_migration_tasks(&new_ring, test_keys.clone()).await;
+
+        // Should have migration tasks since we replaced multiple nodes
+        assert!(!tasks.is_empty(), "Should have migration tasks when multiple nodes change");
+
+        // Collect actual migrations from tasks
+        let mut actual_migrations = HashMap::<(ReplicationId, ReplicationId), Vec<String>>::new();
+
+        for task in &tasks {
+            let migration_key = (task.from_node.clone(), task.to_node.clone());
+            actual_migrations
+                .entry(migration_key)
+                .or_default()
+                .extend(task.keys_to_migrate.clone());
+        }
+
+        // Verify that actual migrations match expected migrations exactly
+        for ((from_node, to_node), expected_keys) in &expected_migrations {
+            let actual_keys = actual_migrations.get(&(from_node.clone(), to_node.clone())).unwrap();
+
+            assert_eq!(actual_keys.len(), expected_keys.len(),);
+
+            // Sort both lists and compare for exact match
+            let mut actual_sorted = actual_keys.clone();
+            let mut expected_sorted = expected_keys.clone();
+            actual_sorted.sort();
+            expected_sorted.sort();
+
+            assert_eq!(actual_sorted, expected_sorted,);
+        }
+
+        // Verify no unexpected migrations
+        for ((from_node, to_node), actual_keys) in &actual_migrations {
+            assert!(expected_migrations.contains_key(&(from_node.clone(), to_node.clone())));
+        }
+
+        // Verify total count
+        let total_expected: usize = expected_migrations.values().map(|v| v.len()).sum();
+        let total_actual: usize = tasks.iter().map(|t| t.keys_to_migrate.len()).sum();
+        assert_eq!(total_actual, total_expected,);
+
+        // Verify that we actually have multiple different migration paths (multiple ownership changes)
+        assert!(expected_migrations.len() >= 2,);
+
+        // Additional verification: removed nodes shouldn't exist in new ring, added nodes shouldn't exist in old ring
+        for key in &test_keys {
+            // In old ring, new nodes shouldn't own any keys (they don't exist)
+            if let Some(old_owner) = old_ring.get_node_for_key(key) {
+                assert_ne!(*old_owner, replid5, "Node5 shouldn't exist in old ring");
+                assert_ne!(*old_owner, replid6, "Node6 shouldn't exist in old ring");
+            }
+
+            // In new ring, removed nodes shouldn't own any keys
+            if let Some(new_owner) = new_ring.get_node_for_key(key) {
+                assert_ne!(*new_owner, replid1, "Node1 shouldn't exist in new ring");
+                assert_ne!(*new_owner, replid2, "Node2 shouldn't exist in new ring");
+            }
+        }
+
+        // Verify that both unchanged nodes (node3, node4) still exist and own some keys in the new ring
+        let mut node3_key_count = 0;
+        let mut node4_key_count = 0;
+
+        for key in &test_keys {
+            if let Some(new_owner) = new_ring.get_node_for_key(key) {
+                if *new_owner == replid3 {
+                    node3_key_count += 1;
+                } else if *new_owner == replid4 {
+                    node4_key_count += 1;
+                }
+            }
+        }
+
+        // Both unchanged nodes should still own some keys (they weren't removed)
+        assert!(node3_key_count > 0, "Node3 should still own some keys in new ring");
+        assert!(node4_key_count > 0, "Node4 should still own some keys in new ring");
+
+        println!("Migration summary:");
+        for ((from, to), keys) in &expected_migrations {
+            println!("  {} -> {}: {} keys", from, to, keys.len());
+        }
+        println!("  Node3 keys in new ring: {}", node3_key_count);
+        println!("  Node4 keys in new ring: {}", node4_key_count);
+        println!("  Total test keys: {}", test_keys.len());
+    }
+
+    #[tokio::test]
+    async fn test_empty_keys_migration_plan() {
+        // Test with empty keys list
+        let mut old_ring = HashRing::default();
+        let mut new_ring = HashRing::default();
+
+        let node1 = PeerIdentifier("127.0.0.1:6379".into());
+        let node2 = PeerIdentifier("127.0.0.1:6380".into());
+        let repl_id1 = ReplicationId::Key(Uuid::now_v7().to_string());
+        let repl_id2 = ReplicationId::Key(Uuid::now_v7().to_string());
+
+        old_ring.add_partition_if_not_exists(repl_id1, node1);
+        new_ring.add_partition_if_not_exists(repl_id2, node2);
+
+        let empty_keys: Vec<String> = Vec::new();
+        let tasks = old_ring.create_migration_tasks(&new_ring, empty_keys).await;
+
+        // Should return empty migration tasks since no keys to migrate
+        assert!(tasks.is_empty(), "Empty keys should result in no migration tasks");
     }
 }

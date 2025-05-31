@@ -6,48 +6,25 @@ async fn test_cluster_nodes() {
 
     // GIVEN
     let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
-    cluster_actor.replication.hwm.store(15, Ordering::Release);
-
-    let repl_id = cluster_actor.replication.replid.clone();
 
     // followers
     for port in [6379, 6380] {
-        let (key, peer) = create_peer_helper(
-            cluster_actor.self_handler.clone(),
-            cluster_actor.replication.hwm.load(Ordering::Relaxed),
-            &repl_id,
-            port,
-            NodeKind::Replica,
-            FakeReadWrite::new(),
-        );
-        cluster_actor.members.insert(key.clone(), peer);
+        cluster_actor.test_add_peer(port, NodeKind::Replica, None);
     }
 
     // leader for different shard
     let second_shard_repl_id = ReplicationId::Key(uuid::Uuid::now_v7().to_string());
     let second_shard_leader_port = rand::random::<u16>();
-    let (second_shard_leader_identifier, second_peer) = create_peer_helper(
-        cluster_actor.self_handler.clone(),
-        0,
-        &second_shard_repl_id,
+
+    let (_, second_shard_leader_identifier) = cluster_actor.test_add_peer(
         second_shard_leader_port,
         NodeKind::NonData,
-        FakeReadWrite::new(),
+        Some(second_shard_repl_id.clone()),
     );
-
-    cluster_actor.members.insert(second_shard_leader_identifier.clone(), second_peer);
 
     // follower for different shard
     for port in [2655, 2653] {
-        let (key, peer) = create_peer_helper(
-            cluster_actor.self_handler.clone(),
-            0,
-            &second_shard_repl_id,
-            port,
-            NodeKind::NonData,
-            FakeReadWrite::new(),
-        );
-        cluster_actor.members.insert(key, peer);
+        cluster_actor.test_add_peer(port, NodeKind::NonData, Some(second_shard_repl_id.clone()));
     }
 
     // WHEN
@@ -57,12 +34,12 @@ async fn test_cluster_nodes() {
 
     let file_content = format!(
         r#"
-        127.0.0.1:6379 {repl_id} 0 15
-        127.0.0.1:6380 {repl_id} 0 15
+        127.0.0.1:6379 {repl_id} 0 0
+        127.0.0.1:6380 {repl_id} 0 0
         {second_shard_leader_identifier} {second_shard_repl_id} 0 0
         127.0.0.1:2655 {second_shard_repl_id} 0 0
         127.0.0.1:2653 {second_shard_repl_id} 0 0
-        localhost:8080 myself,{repl_id} 0 15
+        localhost:8080 myself,{repl_id} 0 0
         "#
     );
 
