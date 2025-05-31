@@ -1,5 +1,3 @@
-use tracing::{info, warn};
-
 /// A consistent hashing ring for distributing keys across nodes.
 ///
 /// The `HashRing` maps keys to physical nodes using virtual nodes to ensure
@@ -10,7 +8,6 @@ use crate::ReplicationId;
 use crate::prelude::PeerIdentifier;
 use std::collections::{BTreeMap, HashMap};
 use std::num::Wrapping;
-use std::ops::Range;
 use std::rc::Rc;
 
 // Number of virtual nodes to create for each physical node.
@@ -79,11 +76,6 @@ impl HashRing {
         self.update_last_modified();
     }
 
-    pub fn get_node_for_key(&self, key: &str) -> Option<&ReplicationId> {
-        let hash = fnv_1a_hash(key);
-        self.find_node(hash)
-    }
-
     fn find_node(&self, hash: u64) -> Option<&ReplicationId> {
         // Find the first vnode with hash >= target hash
         self.vnodes
@@ -133,66 +125,6 @@ impl HashRing {
         migration_tasks
     }
 
-    /// Returns the token ranges that a specific node covers in the hash ring.
-    /// Each range is represented as (start_hash, end_hash), where the node is responsible
-    /// for all tokens >= start_hash and < end_hash.
-    pub fn get_token_ranges_for_partition(&self, repl_id: &ReplicationId) -> Vec<Range<u64>> {
-        // If node doesn't exist or the ring is empty, return empty vector
-        if !self.exists(repl_id) || self.vnodes.is_empty() {
-            return Vec::new();
-        }
-
-        // Get all vnodes in order
-        let vnodes: Vec<(&u64, &std::rc::Rc<ReplicationId>)> = self.vnodes.iter().collect();
-        let mut ranges = Vec::<Range<u64>>::new();
-
-        // Find ranges where this node is responsible
-        for i in 0..vnodes.len() {
-            let current_hash = *vnodes[i].0;
-            let current_node = vnodes[i].1;
-
-            // Skip if this vnode doesn't belong to our target node
-            if current_node.as_ref() != repl_id {
-                continue;
-            }
-
-            // Calculate the previous hash (which is the start of this range)
-            // If this is the first entry, use the last entry's hash
-            let prev_idx = if i == 0 { vnodes.len() - 1 } else { i - 1 };
-            let start_hash = *vnodes[prev_idx].0 + 1; // Start just after previous node's hash
-
-            // The end of the range is this node's hash
-            let end_hash = current_hash + 1; // +1 because ranges are exclusive at the high end
-
-            // * Handling wrap-around case
-            if start_hash <= end_hash {
-                ranges.push(start_hash..end_hash);
-            } else {
-                // Split into two ranges: from start to max u64, and from 0 to end
-                ranges.push(start_hash..u64::MAX);
-                ranges.push(0..end_hash);
-            }
-        }
-
-        // Merge contiguous ranges
-        ranges.sort_by_key(|r| r.start);
-        let mut merged_ranges = Vec::<Range<u64>>::new();
-
-        for range in ranges {
-            if let Some(last) = merged_ranges.last_mut() {
-                // If this range starts right after the previous one ends
-                if last.end == range.start {
-                    let new_range = last.start..range.end;
-                    *last = new_range;
-                    continue;
-                }
-            }
-            merged_ranges.push(range);
-        }
-
-        merged_ranges
-    }
-
     #[cfg(test)]
     pub(crate) fn get_virtual_nodes(&self) -> Vec<(&u64, &std::rc::Rc<ReplicationId>)> {
         self.vnodes.iter().collect()
@@ -206,6 +138,12 @@ impl HashRing {
     #[cfg(test)]
     pub(crate) fn get_vnode_count(&self) -> usize {
         self.vnodes.len()
+    }
+
+    #[cfg(test)]
+    fn get_node_for_key(&self, key: &str) -> Option<&ReplicationId> {
+        let hash = fnv_1a_hash(key);
+        self.find_node(hash)
     }
 }
 
@@ -539,121 +477,6 @@ mod tests {
     }
 
     #[test]
-    fn test_get_token_ranges_nonexistent_node() {
-        let mut ring = HashRing::default();
-        let repl_id = ReplicationId::Key(uuid::Uuid::now_v7().to_string());
-        ring.add_partition_if_not_exists(repl_id.clone(), PeerIdentifier("127.0.0.1:6349".into()));
-
-        // Try to get ranges for a node that doesn't exist
-        let ranges = ring.get_token_ranges_for_partition(&"127.0.0.1:7777".to_string().into());
-        assert_eq!(ranges.len(), 0);
-    }
-
-    #[test]
-    fn test_get_token_ranges_single_node() {
-        let mut ring = HashRing::default();
-        let node_id = "127.0.0.1:6349";
-        let repl_id = ReplicationId::Key(uuid::Uuid::now_v7().to_string());
-        ring.add_partition_if_not_exists(repl_id.clone(), PeerIdentifier(node_id.into()));
-
-        let ranges = ring.get_token_ranges_for_partition(&repl_id);
-
-        // A single node should own the entire hash space
-        // But might be split into multiple ranges because of virtual nodes
-        let mut total_coverage: u64 = 0;
-        calculate_total_coverage(&ranges, &mut total_coverage);
-
-        // Should own the entire hash space
-        assert_eq!(total_coverage, u64::MAX);
-    }
-
-    #[test]
-    fn test_get_token_ranges_multiple_nodes() {
-        let mut ring = HashRing::default();
-        let node1 = PeerIdentifier("127.0.0.1:6349".to_string());
-        let repl_id1 = ReplicationId::Key(uuid::Uuid::now_v7().to_string());
-        let node2 = PeerIdentifier("127.0.0.1:6350".to_string());
-        let repl_id2 = ReplicationId::Key(uuid::Uuid::now_v7().to_string());
-
-        ring.add_partition_if_not_exists(repl_id1.clone(), node1.clone());
-        ring.add_partition_if_not_exists(repl_id2.clone(), node2.clone());
-        let ranges1 = ring.get_token_ranges_for_partition(&repl_id1);
-        let ranges2 = ring.get_token_ranges_for_partition(&repl_id2);
-
-        // Verify ranges are non-empty
-        assert!(!ranges1.is_empty());
-        assert!(!ranges2.is_empty());
-
-        // Calculate total coverage
-        let mut total_coverage1: u64 = 0;
-        let mut total_coverage2: u64 = 0;
-
-        calculate_total_coverage(&ranges1, &mut total_coverage1);
-        calculate_total_coverage(&ranges2, &mut total_coverage2);
-
-        // Combined coverage should be the entire hash space
-        assert_eq!(total_coverage1 + total_coverage2, u64::MAX);
-
-        // Verify no overlapping ranges
-        for range1 in &ranges1 {
-            for range2 in &ranges2 {
-                // Check if ranges overlap
-                assert!(
-                    !ranges_overlap(range1, range2),
-                    "Ranges overlap: {:?} and {:?}",
-                    range1,
-                    range2
-                );
-            }
-        }
-    }
-
-    #[test]
-    fn test_ranges_after_node_removal() {
-        let mut ring = HashRing::default();
-        let node1 = PeerIdentifier("127.0.0.1:6349".to_string());
-        let repl_id1 = ReplicationId::Key(uuid::Uuid::now_v7().to_string());
-        let node2 = PeerIdentifier("127.0.0.1:6350".to_string());
-        let repl_id2 = ReplicationId::Key(uuid::Uuid::now_v7().to_string());
-        let node3 = PeerIdentifier("127.0.0.1:6351".to_string());
-        let repl_id3 = ReplicationId::Key(uuid::Uuid::now_v7().to_string());
-
-        // Add three nodes
-        ring.add_partition_if_not_exists(repl_id1.clone(), node1.clone());
-        ring.add_partition_if_not_exists(repl_id2.clone(), node2.clone());
-        ring.add_partition_if_not_exists(repl_id3.clone(), node3.clone());
-
-        // Get initial ranges
-        let initial_ranges1 = ring.get_token_ranges_for_partition(&repl_id1);
-        let initial_ranges2 = ring.get_token_ranges_for_partition(&repl_id2);
-
-        // Remove node3
-        ring.remove_partition(&repl_id3);
-
-        // Get updated ranges
-        let updated_ranges1 = ring.get_token_ranges_for_partition(&repl_id1);
-        let updated_ranges2 = ring.get_token_ranges_for_partition(&repl_id2);
-
-        // Verify node3 has no ranges
-        let ranges3 = ring.get_token_ranges_for_partition(&repl_id3);
-        assert_eq!(ranges3.len(), 0);
-
-        // The remaining nodes should split the entire hash space
-        let mut total_coverage: u64 = 0;
-
-        calculate_total_coverage(&updated_ranges1, &mut total_coverage);
-        calculate_total_coverage(&updated_ranges2, &mut total_coverage);
-
-        // Should own the entire hash space
-        assert_eq!(total_coverage, u64::MAX);
-
-        // Verify the ranges have changed (this is expected as removing a node
-        // should redistribute the hash space)
-        assert_ne!(initial_ranges1, updated_ranges1);
-        assert_ne!(initial_ranges2, updated_ranges2);
-    }
-
-    #[test]
     fn test_eq_works_deterministically() {
         let mut ring = HashRing::default();
         let repl_id = ReplicationId::Key("dsdsdds".to_string());
@@ -686,39 +509,6 @@ mod tests {
         assert!(is_added.is_none());
 
         assert_eq!(ring, ring_to_compare);
-    }
-
-    // Helper function to check if two ranges overlap
-    fn ranges_overlap(range1: &Range<u64>, range2: &Range<u64>) -> bool {
-        let (start1, end1) = (range1.start, range1.end);
-        let (start2, end2) = (range2.start, range2.end);
-
-        // Handle normal ranges
-        if start1 < end1 && start2 < end2 {
-            return start1 < end2 && end1 > start2;
-        }
-
-        // Handle wrap-around ranges
-        if start1 >= end1 {
-            return start2 < end1 || end2 > start1;
-        }
-
-        if start2 >= end2 {
-            return start1 < end2 || end1 > start2;
-        }
-
-        false
-    }
-
-    fn calculate_total_coverage(ranges: &Vec<Range<u64>>, total_coverage: &mut u64) {
-        for range in ranges {
-            if range.end > range.start {
-                *total_coverage += range.end - range.start;
-            } else {
-                // Handle wrap-around case
-                *total_coverage += (u64::MAX - range.start + 1) + range.end;
-            }
-        }
     }
 }
 
