@@ -211,6 +211,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         self.join_peer_network_if_absent(heartbeat.cluster_nodes).await;
         self.gossip(heartbeat.hop_count).await;
         self.update_on_hertbeat_message(&heartbeat.from, heartbeat.hwm);
+        self.make_migration_plan_if_valid(heartbeat.hashring).await;
     }
 
     pub(crate) async fn req_consensus(&mut self, req: ConsensusRequest) {
@@ -897,6 +898,15 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
         self.connect_to_server(peer_to_connect, None).await;
     }
+
+    async fn make_migration_plan_if_valid(&self, hashring: Option<HashRing>) {
+        let Some(ring) = hashring else {
+            return;
+        };
+        if ring == self.hash_ring {
+            return;
+        }
+    }
 }
 
 #[cfg(test)]
@@ -944,6 +954,10 @@ pub mod cluster_actor_setups {
             &mut self,
         ) -> Box<dyn Iterator<Item = (&mut Peer, HeartBeat)> + '_> {
             self.iter_follower_append_entries().await
+        }
+
+        pub(crate) async fn test_make_migration_plan_if_valid(&self, hashring: Option<HashRing>) {
+            self.make_migration_plan_if_valid(hashring).await;
         }
     }
     #[tokio::test]
