@@ -168,7 +168,7 @@ async fn test_start_rebalance_should_be_idempotent() {
 }
 
 #[tokio::test]
-#[should_panic(expected = "not yet implemented")]
+#[should_panic(expected = "hash ring should be updated")]
 async fn test_make_migration_plan_happypath() {
     // GIVEN
     let mut heartbeat_receiving_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
@@ -192,8 +192,11 @@ async fn test_make_migration_plan_happypath() {
 
     // THEN - it should create a migration plan
     assert!(heartbeat_receiving_actor.pending_requests.is_some());
-    assert_eq!(heartbeat_receiving_actor.hash_ring, hash_ring);
-    assert_ne!(heartbeat_receiving_actor.hash_ring.last_modified, last_modified);
+    assert_eq!(heartbeat_receiving_actor.hash_ring, hash_ring, "hash ring should be updated");
+    assert_ne!(
+        heartbeat_receiving_actor.hash_ring.last_modified, last_modified,
+        "last modified should be updated"
+    );
 }
 
 #[tokio::test]

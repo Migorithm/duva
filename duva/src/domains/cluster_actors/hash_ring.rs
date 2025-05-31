@@ -93,7 +93,7 @@ impl HashRing {
             .map(|(_, node_id)| node_id.as_ref())
     }
 
-    pub(crate) async fn create_migration_plan(
+    pub(crate) async fn create_migration_tasks(
         &self,
         new_ring: &HashRing,
         keys: Vec<String>,
@@ -746,7 +746,7 @@ mod migration_tests {
         );
 
         let keys = vec!["key1".to_string(), "key2".to_string()];
-        let tasks = ring.create_migration_plan(&ring, keys).await;
+        let tasks = ring.create_migration_tasks(&ring, keys).await;
 
         assert!(tasks.is_empty(), "Identical rings should require no migration");
     }
@@ -798,7 +798,7 @@ mod migration_tests {
         }
 
         // Create migration plan
-        let tasks = old_ring.create_migration_plan(&new_ring, test_keys.clone()).await;
+        let tasks = old_ring.create_migration_tasks(&new_ring, test_keys.clone()).await;
 
         // Verify that we have migration tasks if and only if there are ownership changes
         assert!(!tasks.is_empty(), "Should have migration tasks when ownership changes");
@@ -908,7 +908,7 @@ mod migration_tests {
         }
 
         // Create migration plan
-        let tasks = old_ring.create_migration_plan(&new_ring, test_keys.clone()).await;
+        let tasks = old_ring.create_migration_tasks(&new_ring, test_keys.clone()).await;
 
         // Should have migration tasks since we replaced multiple nodes
         assert!(!tasks.is_empty(), "Should have migration tasks when multiple nodes change");
@@ -1009,7 +1009,7 @@ mod migration_tests {
         new_ring.add_partition_if_not_exists(repl_id2, node2);
 
         let empty_keys: Vec<String> = Vec::new();
-        let tasks = old_ring.create_migration_plan(&new_ring, empty_keys).await;
+        let tasks = old_ring.create_migration_tasks(&new_ring, empty_keys).await;
 
         // Should return empty migration tasks since no keys to migrate
         assert!(tasks.is_empty(), "Empty keys should result in no migration tasks");

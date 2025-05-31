@@ -919,6 +919,8 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         if let None = self.pending_requests {
             self.pending_requests = Some(VecDeque::new());
         }
+
+        let migration_tasks = self.hash_ring.create_migration_tasks(&ring, vec![]).await;
     }
 }
 
