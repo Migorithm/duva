@@ -1,32 +1,33 @@
 #![allow(dead_code)]
+#![allow(mutable_transmutes)]
 
 use crate::domains::{caches::cache_objects::CacheValue, cluster_actors::hash_ring::fnv_1a_hash};
-use std::{cell::UnsafeCell, collections::HashMap, marker::PhantomData, ops::Range};
+use std::{cell::UnsafeCell, collections::HashMap, ops::Range, pin::Pin};
 use tracing::error;
 
 pub(crate) struct CacheDb {
-    map: HashMap<u64, CacheValue, NoneHasher>,
-    key_map: HashMap<String, u64>,
-    links: HashMap<u64, UnsafeCell<(Option<NodeRelation>, Option<NodeRelation>)>, NoneHasher>, // (prev, next)
-    head: Option<u64>,
-    tail: Option<u64>,
+    map: HashMap<String, Pin<Box<UnsafeCell<CacheDbNode>>>>,
+    head: Option<*mut CacheDbNode>,
+    tail: Option<*mut CacheDbNode>,
     capacity: usize,
     // OPTIMIZATION: Add a counter to keep track of the number of keys with expiry
     keys_with_expiry: usize,
 }
-#[derive(Clone, Copy)]
-struct NodeRelation {
-    target_hash: u64,
-    ptr: *mut (Option<NodeRelation>, Option<NodeRelation>),
+#[derive(Clone)]
+struct CacheDbNode {
+    key: String,
+    value: Box<CacheValue>,
+    prev: Option<*mut CacheDbNode>,
+    next: Option<*mut CacheDbNode>,
 }
 unsafe impl Send for CacheDb {}
 unsafe impl Sync for CacheDb {}
 pub(crate) struct Iter<'a> {
-    inner: std::collections::hash_map::Iter<'a, String, u64>,
+    inner: std::collections::hash_map::Iter<'a, String, Pin<Box<UnsafeCell<CacheDbNode>>>>,
     parent: &'a CacheDb,
 }
 pub(crate) struct IterMut<'a> {
-    inner: std::collections::hash_map::Iter<'a, String, u64>,
+    inner: std::collections::hash_map::IterMut<'a, String, Pin<Box<UnsafeCell<CacheDbNode>>>>,
     parent: &'a mut CacheDb,
 }
 pub(crate) struct Values<'a> {
@@ -41,101 +42,16 @@ pub(crate) struct Keys<'a> {
 pub(crate) struct KeysMut<'a> {
     inner: IterMut<'a>,
 }
+#[allow(private_interfaces)]
 pub(crate) enum Entry<'a> {
-    Occupied { key: String, value: &'a mut CacheValue },
+    Occupied { key: String, value: *mut CacheDbNode },
     Vacant { key: String, parent: &'a mut CacheDb },
-}
-struct NoneHasher;
-impl std::hash::BuildHasher for NoneHasher {
-    type Hasher = NoHashHasher<u64>;
-
-    fn build_hasher(&self) -> Self::Hasher {
-        NoHashHasher(0, PhantomData)
-    }
-}
-
-// SOURCE: https://crates.io/crates/nohash-hasher
-struct NoHashHasher<T>(u64, PhantomData<T>);
-
-impl<T> std::fmt::Debug for NoHashHasher<T> {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        f.debug_tuple("NoHashHasher").field(&self.0).finish()
-    }
-}
-
-impl<T> Default for NoHashHasher<T> {
-    fn default() -> Self {
-        NoHashHasher(0, PhantomData)
-    }
-}
-
-impl<T> Clone for NoHashHasher<T> {
-    fn clone(&self) -> Self {
-        NoHashHasher(self.0, self.1)
-    }
-}
-
-impl<T> Copy for NoHashHasher<T> {}
-trait NoHashTarget {}
-
-impl NoHashTarget for u8 {}
-impl NoHashTarget for u16 {}
-impl NoHashTarget for u32 {}
-impl NoHashTarget for u64 {}
-impl NoHashTarget for usize {}
-impl NoHashTarget for i8 {}
-impl NoHashTarget for i16 {}
-impl NoHashTarget for i32 {}
-impl NoHashTarget for i64 {}
-impl NoHashTarget for isize {}
-impl<T: NoHashTarget> std::hash::Hasher for NoHashHasher<T> {
-    fn write(&mut self, _: &[u8]) {
-        panic!("Invalid use of NoHashHasher")
-    }
-
-    fn write_u8(&mut self, n: u8) {
-        self.0 = u64::from(n)
-    }
-    fn write_u16(&mut self, n: u16) {
-        self.0 = u64::from(n)
-    }
-    fn write_u32(&mut self, n: u32) {
-        self.0 = u64::from(n)
-    }
-    fn write_u64(&mut self, n: u64) {
-        self.0 = n
-    }
-    fn write_usize(&mut self, n: usize) {
-        self.0 = n as u64
-    }
-
-    fn write_i8(&mut self, n: i8) {
-        self.0 = n as u64
-    }
-    fn write_i16(&mut self, n: i16) {
-        self.0 = n as u64
-    }
-    fn write_i32(&mut self, n: i32) {
-        self.0 = n as u64
-    }
-    fn write_i64(&mut self, n: i64) {
-        self.0 = n as u64
-    }
-    fn write_isize(&mut self, n: isize) {
-        self.0 = n as u64
-    }
-
-    fn finish(&self) -> u64 {
-        self.0
-    }
 }
 
 impl CacheDb {
     pub fn with_capacity(capacity: usize) -> Self {
         CacheDb {
-            map: HashMap::with_hasher(NoneHasher),
-            key_map: HashMap::new(),
-            links: HashMap::with_hasher(NoneHasher),
+            map: HashMap::with_capacity(capacity + 10),
             head: None,
             tail: None,
             keys_with_expiry: 0,
@@ -152,80 +68,42 @@ impl CacheDb {
         if token_ranges.is_empty() {
             return CacheDb::with_capacity(self.capacity);
         }
+        let gen_default = || {
+            Box::pin(UnsafeCell::new(CacheDbNode {
+                key: String::new(),
+                value: Box::new(CacheValue { value: String::new(), expiry: None }),
+                prev: None,
+                next: None,
+            }))
+        };
 
-        // Identify keys that fall within the specified ranges
-        let mut hashes_to_extract = Vec::new();
-
-        for key_hash in self.map.keys() {
-            // Check if this key's hash falls within any of the specified ranges
-            for range in &token_ranges {
-                if range.contains(&key_hash) {
-                    hashes_to_extract.push(*key_hash);
-                    break; // No need to check other ranges once we've found a match
-                }
-            }
-        }
-
-        // Extract the identified keys and values into a fresh CacheDb
-        let mut extracted_map = HashMap::with_hasher(NoneHasher);
-        let mut extracted_key_map = HashMap::new();
+        let mut extracted_map = HashMap::new();
         let mut extracted_expiry_count = 0;
-        let head = hashes_to_extract.first().cloned();
-        let tail = hashes_to_extract.last().cloned();
-        let links = hashes_to_extract.iter().enumerate().fold(
-            HashMap::with_hasher(NoneHasher),
-            |mut acc, (i, &hash)| {
-                let prev = if i == 0 { None } else { Some(hashes_to_extract[i - 1]) };
-                let next = if i == hashes_to_extract.len() - 1 {
-                    None
-                } else {
-                    Some(hashes_to_extract[i + 1])
-                };
-                let prev = prev.map(|x| NodeRelation {
-                    target_hash: x,
-                    ptr: acc
-                        .get(&x)
-                        .map(|x: &UnsafeCell<(Option<NodeRelation>, Option<NodeRelation>)>| x.get())
-                        .unwrap(),
-                });
-                let next = next.map(|x| NodeRelation {
-                    target_hash: x,
-                    ptr: self
-                        .links
-                        .get(&x)
-                        .map(|x: &UnsafeCell<(Option<NodeRelation>, Option<NodeRelation>)>| x.get())
-                        .unwrap(),
-                });
-                acc.insert(hash, UnsafeCell::new((prev, next)));
-                acc
-            },
-        );
-        for hash in hashes_to_extract {
-            let Some(value) = self.map.remove(&hash) else {
-                error!("CacheDb: Key not found in map");
-                continue;
-            };
-            let Some(key) = self
-                .key_map
-                .iter()
-                .find_map(|(k, &v)| if v == hash { Some(k.clone()) } else { None })
-            else {
-                error!("CacheDb: Key not found in key_map for the given hash");
-                continue;
-            };
-            self.key_map.remove(&key);
-            self.detach(hash);
-            if value.has_expiry() {
-                extracted_expiry_count += 1;
-                self.keys_with_expiry -= 1;
+        let self_mut = unsafe { std::mem::transmute::<&Self, &mut Self>(self) };
+        self.map.retain(|_, v| {
+            let node = unsafe { &*v.get() };
+            let is_extract_target = token_ranges.iter().any(|range| {
+                let hash = fnv_1a_hash(&node.key);
+                range.contains(&hash)
+            });
+
+            if is_extract_target {
+                self_mut.detach(v.get());
+                if v.get_mut().value.has_expiry() {
+                    extracted_expiry_count += 1;
+                }
+                let mut value = gen_default();
+                std::mem::swap(&mut value, v);
+                extracted_map.insert(node.key.clone(), value);
             }
-            extracted_map.insert(hash, value);
-            extracted_key_map.insert(key, hash);
-        }
+
+            !is_extract_target
+        });
+        self.keys_with_expiry -= extracted_expiry_count;
+        let head = extracted_map.values().next().map(|v| v.get() as *mut CacheDbNode);
+        let tail = extracted_map.values().last().map(|v| v.get() as *mut CacheDbNode);
         CacheDb {
             map: extracted_map,
-            key_map: extracted_key_map,
-            links,
             head,
             tail,
             capacity: self.capacity,
@@ -242,57 +120,57 @@ impl CacheDb {
     }
     #[inline]
     pub fn is_exist(&self, key: &str) -> bool {
-        self.key_map.contains_key(key)
+        self.map.contains_key(key)
     }
     #[inline]
     pub fn get(&self, key: &str) -> Option<&CacheValue> {
         // SAFETY: mut needed by refreshing LRU order. it won't change inner data
-        #[allow(mutable_transmutes)]
         unsafe { std::mem::transmute::<&Self, &mut Self>(self).get_mut(key) }
             .map(|v| v as &CacheValue)
     }
     #[inline]
     pub fn get_mut(&mut self, key: &str) -> Option<&mut CacheValue> {
-        if let Some(&id) = self.key_map.get(key) {
-            self.move_to_head(id);
-            self.map.get_mut(&id)
+        let self_mut = unsafe { std::mem::transmute::<&Self, &mut Self>(self) };
+        if let Some(node) = self.map.get_mut(key) {
+            self_mut.move_to_head(node.get());
+            Some(node.get_mut().value.as_mut())
         } else {
             None
         }
     }
     #[inline]
     pub fn insert(&mut self, key: String, value: CacheValue) {
-        if let Some(&existing_id) = self.key_map.get(&key) {
-            self.map.insert(existing_id, value);
-            self.move_to_head(existing_id);
+        let self_mut = unsafe { std::mem::transmute::<&Self, &mut Self>(self) };
+        if let Some(existing_node) = self.map.get_mut(&key) {
+            existing_node.get_mut().value = Box::new(value);
+            self_mut.move_to_head(existing_node.get());
         } else {
             // Remove tail if exceeding capacity
             if self.map.len() >= self.capacity {
                 self.remove_tail();
             }
-            // Detect empty key
-            let mut id = fnv_1a_hash(&key);
-            while self.map.contains_key(&id) {
-                id = id.wrapping_add(1);
-            }
             if value.has_expiry() {
                 self.keys_with_expiry += 1;
             }
-            self.map.insert(id, value.clone());
-            self.key_map.insert(key, id);
-            self.push_front(id);
+            let value = Box::pin(UnsafeCell::new(CacheDbNode {
+                key: key.clone(),
+                value: Box::new(value),
+                prev: None,
+                next: None,
+            }));
+            self.push_front(value.get());
+            self.map.insert(key, value);
         }
     }
     #[inline]
     pub fn remove(&mut self, key: &str) -> Option<CacheValue> {
-        if let Some(&id) = self.key_map.get(key) {
-            let val = self.map.remove(&id)?;
-            self.detach(id);
-            self.key_map.remove(key);
-            if val.has_expiry() {
+        if let Some(mut node) = self.map.remove(key) {
+            self.detach(node.get());
+            if node.get_mut().value.has_expiry() {
                 self.keys_with_expiry -= 1;
             }
-            Some(val)
+            let value = Pin::into_inner(node).into_inner().value;
+            Some(*value)
         } else {
             None
         }
@@ -303,114 +181,104 @@ impl CacheDb {
     }
     #[inline]
     pub fn contains_key(&self, key: &str) -> bool {
-        self.key_map.contains_key(key)
+        self.map.contains_key(key)
     }
 
     /* LRU list helpers */
     #[inline]
-    fn move_to_head(&mut self, hash: u64) {
-        if self.head == Some(hash) {
+    fn move_to_head(&mut self, node: *mut CacheDbNode) {
+        if self.head == Some(node) {
+            // Already at head, no need to move
             return;
         }
-        let old_head = self.head.expect("Head Must be set");
-        let old_head_link = self.head.and_then(|x| self.links.get(&x).map(|x| x.get())).unwrap();
-        if let Some(target) = self.links.get_mut(&hash) {
-            /* Update prev and next */
-            let (prev, next) = target.get_mut();
-            // Prev's next pointing to target's next
-            if let Some(p) = prev {
-                unsafe { *p.ptr }.1 = *next;
-            }
-            // Next's prev pointing to target's prev
-            if let Some(n) = next {
-                unsafe { *n.ptr }.0 = *prev;
-            } else {
-                // Set tail if next is None
-                self.tail = prev.map(|x| x.target_hash);
-            }
-            /* Move to head */
-            // Head's prev pointing to target
-            unsafe { *old_head_link }.0 =
-                Some(NodeRelation { target_hash: hash, ptr: target.get() });
-            // Target's next pointing to old head
-            target.get_mut().1 = Some(NodeRelation { target_hash: old_head, ptr: old_head_link });
-            target.get_mut().0 = None;
-            self.head = Some(hash);
+
+        let node = unsafe { &mut *node };
+        let prev = node.prev.take();
+        let next = node.next.take();
+        if let Some(prev_node) = prev {
+            unsafe { (*prev_node).next = next };
+        }
+        if let Some(next_node) = next {
+            unsafe { (*next_node).prev = prev };
+        } else {
+            self.tail = node.prev;
+        }
+        let old_head = self.head.take();
+        if let Some(old_head_node) = old_head {
+            unsafe { (*old_head_node).prev = Some(node) };
+            node.next = Some(old_head_node);
         }
     }
     /// Remove element and update links
     fn remove_tail(&mut self) {
-        if let Some(tail_id) = self.tail {
-            self.detach(tail_id);
-            let v = self.map.remove(&tail_id);
-            if let Some(val) = v {
-                if val.has_expiry() {
-                    self.keys_with_expiry -= 1;
-                }
+        if let Some(tail) = self.tail {
+            let tail_node = unsafe { &mut *tail };
+            if let Some(prev) = tail_node.prev {
+                unsafe { (*prev).next = None };
+                self.tail = Some(prev);
             } else {
-                error!("CacheDb: Tail ID not found in map");
+                self.head = None;
+                self.tail = None;
             }
-            self.key_map.retain(|_, &mut v| v != tail_id);
-        }
-    }
-    /// 1. detach the link from the list
-    /// 2. access prev and next with ptr
-    /// 3. update prev and next links, head and tail too
-    /// 4. drop the link
-    #[inline]
-    fn detach(&mut self, hash: u64) {
-        if let Some(mut target) = self.links.remove(&hash) {
-            let (prev, next) = target.get_mut();
-            // Prev's next pointing to target's next
-            if let Some(p) = prev {
-                unsafe { *p.ptr }.1 = *next;
-            } else {
-                // Set head if prev is None
-                self.head = next.map(|x| x.target_hash);
+            self.map.remove(&tail_node.key);
+            if tail_node.value.has_expiry() {
+                self.keys_with_expiry -= 1;
             }
-            // Next's prev pointing to target's prev
-            if let Some(n) = next {
-                unsafe { *n.ptr }.0 = *prev;
-            } else {
-                // Set tail if next is None
-                self.tail = prev.map(|x| x.target_hash);
-            }
-        }
-    }
-    #[inline]
-    fn push_front(&mut self, hash: u64) {
-        let old_head_link = self.head.and_then(|head| self.links.get(&head).map(|x| x.get()));
-        let old_head = self
-            .head
-            .map(|x| NodeRelation { target_hash: x, ptr: old_head_link.expect("Link not found") });
-        let new_head_link = UnsafeCell::new((None, old_head));
-        let new_head_link_ptr = new_head_link.get();
-        self.links.insert(hash, new_head_link);
-        if let Some(relation) = old_head {
-            unsafe { *relation.ptr }.0 =
-                Some(NodeRelation { target_hash: hash, ptr: new_head_link_ptr });
         } else {
-            self.tail = Some(hash);
+            error!("CacheDb: Attempted to remove tail from an empty cache");
         }
-        self.head = Some(hash);
+    }
+    /// detach never remove element from map
+    #[inline]
+    fn detach(&mut self, node: *mut CacheDbNode) {
+        let node = unsafe { &mut *node };
+        if let Some(prev) = node.prev.take() {
+            unsafe { (*prev).next = node.next };
+        } else {
+            self.head = node.next;
+        }
+        if let Some(next) = node.next.take() {
+            unsafe { (*next).prev = node.prev };
+        } else {
+            self.tail = node.prev;
+        }
+        node.prev = None;
+        node.next = None;
+        if self.is_empty() {
+            self.head = None;
+            self.tail = None;
+        }
+    }
+    #[inline]
+    fn push_front(&mut self, node: *mut CacheDbNode) {
+        let node = unsafe { &mut *node };
+        node.prev = None;
+        node.next = self.head;
+        if let Some(old_head) = self.head {
+            unsafe { (*old_head).prev = Some(node) };
+        } else {
+            self.tail = Some(node);
+        }
+        self.head = Some(node);
     }
     #[inline]
     pub fn iter(&self) -> Iter<'_> {
-        Iter { inner: self.key_map.iter(), parent: self }
+        Iter { inner: self.map.iter(), parent: self }
     }
     #[inline]
     pub fn iter_mut(&mut self) -> IterMut<'_> {
         let parent = self as *mut CacheDb;
         // SAFETY: to make lifetime work
         let parent = unsafe { &mut *parent };
-        let inner = self.key_map.iter();
+        let inner = self.map.iter_mut();
         IterMut { inner, parent }
     }
     #[inline]
     pub fn entry(&mut self, key: String) -> Entry<'_> {
-        if let Some(&id) = self.key_map.get(&key) {
-            self.move_to_head(id);
-            Entry::Occupied { key, value: self.map.get_mut(&id).unwrap() }
+        if let Some(node) = self.map.get(&key) {
+            let node = node.get();
+            self.move_to_head(node);
+            Entry::Occupied { key, value: node }
         } else {
             Entry::Vacant { key, parent: self }
         }
@@ -434,8 +302,6 @@ impl CacheDb {
     #[inline]
     pub fn clear(&mut self) {
         self.map.clear();
-        self.key_map.clear();
-        self.links.clear();
         self.head = None;
         self.tail = None;
         self.keys_with_expiry = 0;
@@ -443,30 +309,33 @@ impl CacheDb {
 }
 impl<'a> Entry<'a> {
     #[inline]
-    fn insert_parent(parent: &'a mut CacheDb, k: String, v: CacheValue) -> &'a mut CacheValue {
-        let id = if let Some(&existing_id) = parent.key_map.get(&k) {
-            parent.map.insert(existing_id, v);
-            parent.move_to_head(existing_id);
-            existing_id
+    fn insert_parent(
+        parent: &'a mut CacheDb,
+        k: String,
+        v: CacheValue,
+    ) -> &'a mut Pin<Box<UnsafeCell<CacheDbNode>>> {
+        let parent_copy = unsafe { std::mem::transmute::<&mut CacheDb, &mut CacheDb>(parent) };
+        if let Some(existing_node) = parent.map.get_mut(&k) {
+            existing_node.get_mut().value = Box::new(v);
+            parent_copy.move_to_head(existing_node.get());
+            existing_node
         } else {
             // Remove tail if exceeding capacity
-            if parent.map.len() >= parent.capacity {
-                parent.remove_tail();
-            }
-            // Detect empty key
-            let mut hash = fnv_1a_hash(&k);
-            while parent.map.contains_key(&hash) {
-                hash = hash.wrapping_add(1);
+            if parent_copy.map.len() >= parent.capacity {
+                parent_copy.remove_tail();
             }
             if v.has_expiry() {
                 parent.keys_with_expiry += 1;
             }
-            parent.map.insert(hash, v.clone());
-            parent.key_map.insert(k.clone(), hash);
-            parent.push_front(hash);
-            hash
-        };
-        parent.map.get_mut(&id).expect("Key should exist after insertion")
+            let v = Box::pin(UnsafeCell::new(CacheDbNode {
+                key: k.clone(),
+                value: Box::new(v),
+                prev: None,
+                next: None,
+            }));
+            parent_copy.push_front(v.get());
+            parent_copy.map.entry(k).or_insert(v)
+        }
     }
     #[inline]
     pub fn key(&self) -> &String {
@@ -478,18 +347,20 @@ impl<'a> Entry<'a> {
     #[inline]
     pub fn or_insert(self, default: CacheValue) -> &'a mut CacheValue {
         match self {
-            | Entry::Occupied { value, .. } => value,
-            | Entry::Vacant { key, parent } => Self::insert_parent(parent, key, default),
+            | Entry::Occupied { value, .. } => unsafe { &mut *value }.value.as_mut(),
+            | Entry::Vacant { key, parent } => {
+                Self::insert_parent(parent, key, default).get_mut().value.as_mut()
+            },
         }
     }
 
     #[inline]
     pub fn or_insert_with<F: FnOnce() -> CacheValue>(self, f: F) -> &'a mut CacheValue {
         match self {
-            | Entry::Occupied { value, .. } => value,
+            | Entry::Occupied { value, .. } => unsafe { &mut *value }.value.as_mut(),
             | Entry::Vacant { key, parent } => {
                 let val = f();
-                Self::insert_parent(parent, key, val)
+                Self::insert_parent(parent, key, val).get_mut().value.as_mut()
             },
         }
     }
@@ -497,10 +368,10 @@ impl<'a> Entry<'a> {
     #[inline]
     pub fn or_insert_with_key<F: FnOnce(&String) -> CacheValue>(self, f: F) -> &'a mut CacheValue {
         match self {
-            | Entry::Occupied { value, .. } => value,
+            | Entry::Occupied { value, .. } => unsafe { &mut *value }.value.as_mut(),
             | Entry::Vacant { key, parent } => {
                 let val = f(&key);
-                Self::insert_parent(parent, key, val)
+                Self::insert_parent(parent, key, val).get_mut().value.as_mut()
             },
         }
     }
@@ -509,7 +380,8 @@ impl<'a> Entry<'a> {
     pub fn and_modify<F: FnOnce(&mut CacheValue)>(self, f: F) -> Entry<'a> {
         match self {
             | Entry::Occupied { key, value } => {
-                f(value);
+                let value = unsafe { &mut *value };
+                f(&mut value.value);
                 Entry::Occupied { key, value }
             },
             | Entry::Vacant { key, parent } => Entry::Vacant { key, parent },
@@ -520,12 +392,12 @@ impl<'a> Entry<'a> {
     pub fn insert_entry(self, new_val: CacheValue) -> Entry<'a> {
         match self {
             | Entry::Occupied { key, value } => {
-                *value = new_val;
+                unsafe { &mut *value }.value = Box::new(new_val);
                 Entry::Occupied { key, value }
             },
             | Entry::Vacant { key, parent } => {
                 let v = Self::insert_parent(parent, key.clone(), new_val);
-                Entry::Occupied { key, value: v }
+                Entry::Occupied { key, value: v.get() }
             },
         }
     }
@@ -534,18 +406,18 @@ impl<'a> Entry<'a> {
 impl<'a> Iterator for Iter<'a> {
     type Item = (&'a String, &'a CacheValue);
     fn next(&mut self) -> Option<Self::Item> {
-        let (key, &id) = self.inner.next()?;
-        self.parent.map.get(&id).map(|v| (key, v))
+        self.inner.next().map(|(k, v)| {
+            // SAFETY: Access data of UnsafeCell
+            let value = unsafe { &*v.get() };
+            (k, value.value.as_ref())
+        })
     }
 }
 
 impl<'a> Iterator for IterMut<'a> {
     type Item = (&'a String, &'a mut CacheValue);
     fn next(&mut self) -> Option<Self::Item> {
-        let (key, &id) = self.inner.next()?;
-        let ptr = self.parent as *mut CacheDb;
-        // SAFETY: to make lifetime work
-        unsafe { (*ptr).map.get_mut(&id).map(|v| (key, v)) }
+        self.inner.next().map(|(k, v)| (k, v.get_mut().value.as_mut()))
     }
 }
 
@@ -660,15 +532,6 @@ mod tests {
         // We should have removed keys 0, 2, 4 with expiry, so count should be reduced by 3
         assert_eq!(cache.keys_with_expiry, 2); // Only keys 6, 8 remain with expiry
         assert_eq!(extracted.keys_with_expiry, 3); // Keys 0, 2, 4 had expiry
-    }
-    #[test]
-    fn test_none_hasher() {
-        let hasher = NoneHasher;
-        for _ in 0..100 {
-            let now = rand::random::<u64>();
-            let h = std::hash::BuildHasher::hash_one(&hasher, now);
-            assert_eq!(h, now);
-        }
     }
     #[test]
     fn test_lru_with_expiry() {
