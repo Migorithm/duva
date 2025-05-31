@@ -1,6 +1,3 @@
-use core::hash;
-use std::time::SystemTime;
-
 use crate::domains::cluster_actors::hash_ring::HashRing;
 
 use super::*;
@@ -220,7 +217,6 @@ async fn test_make_migration_plan_when_no_hashring_given() {
     let heartbeat_receiving_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
     let last_modified = heartbeat_receiving_actor.hash_ring.last_modified;
 
-    let hash_ring = heartbeat_receiving_actor.hash_ring.clone();
     // WHEN - now, when heartbeat receiving actor hashring info (through heartbeat)
     heartbeat_receiving_actor.test_make_migration_plan_if_valid(None).await;
 
