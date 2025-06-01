@@ -542,6 +542,27 @@ mod migration_tests {
     }
 
     #[tokio::test]
+    async fn test_empty_keys_migration_plan() {
+        // Test with empty keys list
+        let mut old_ring = HashRing::default();
+        let mut new_ring = HashRing::default();
+
+        let node1 = PeerIdentifier("127.0.0.1:6379".into());
+        let node2 = PeerIdentifier("127.0.0.1:6380".into());
+        let repl_id1 = ReplicationId::Key(Uuid::now_v7().to_string());
+        let repl_id2 = ReplicationId::Key(Uuid::now_v7().to_string());
+
+        old_ring.add_partition_if_not_exists(repl_id1, node1);
+        new_ring.add_partition_if_not_exists(repl_id2, node2);
+
+        let empty_keys: Vec<String> = Vec::new();
+        let tasks = old_ring.create_migration_tasks(&new_ring, empty_keys).await;
+
+        // Should return empty migration tasks since no keys to migrate
+        assert!(tasks.is_empty(), "Empty keys should result in no migration tasks");
+    }
+
+    #[tokio::test]
     async fn test_single_node_ownership_change() {
         // Test scenario: 3 nodes in ring, one node (node2) is replaced by node4
         // node1 and node3 remain unchanged
@@ -782,26 +803,5 @@ mod migration_tests {
         println!("  Node3 keys in new ring: {}", node3_key_count);
         println!("  Node4 keys in new ring: {}", node4_key_count);
         println!("  Total test keys: {}", test_keys.len());
-    }
-
-    #[tokio::test]
-    async fn test_empty_keys_migration_plan() {
-        // Test with empty keys list
-        let mut old_ring = HashRing::default();
-        let mut new_ring = HashRing::default();
-
-        let node1 = PeerIdentifier("127.0.0.1:6379".into());
-        let node2 = PeerIdentifier("127.0.0.1:6380".into());
-        let repl_id1 = ReplicationId::Key(Uuid::now_v7().to_string());
-        let repl_id2 = ReplicationId::Key(Uuid::now_v7().to_string());
-
-        old_ring.add_partition_if_not_exists(repl_id1, node1);
-        new_ring.add_partition_if_not_exists(repl_id2, node2);
-
-        let empty_keys: Vec<String> = Vec::new();
-        let tasks = old_ring.create_migration_tasks(&new_ring, empty_keys).await;
-
-        // Should return empty migration tasks since no keys to migrate
-        assert!(tasks.is_empty(), "Empty keys should result in no migration tasks");
     }
 }

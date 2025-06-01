@@ -26,16 +26,14 @@ sequenceDiagram
 
     
     
-    par notify cluster peers
+    
 
     
     A --) B : Notify token map update
     B -->> B : Make migration plan for other partitions.<br>For example, B may have held keys from 3000-5000 which now belong to A.
 
 
-    and notify connected clients
-    A --) C1 : Notify token map update
-    end
+    
 
     Note over A,B: Now, A and B have disjoint<br>token ranges<br>0..5000 and 5001..10000 respectively
 
@@ -59,9 +57,11 @@ sequenceDiagram
             else Request's key is in B's range
                 A -->> C1: (Moved) error
             end
+            A --) C1 : Notify token map update
         and
             B -->> B: Snaphsot and drop logs
             B -->> B: Unlock pending requests
+            B -->> C2 : Notify token map update
         end
     end
 
