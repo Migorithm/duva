@@ -22,47 +22,34 @@ from_to!(*mut CacheDbNode, NodeRawPtr);
 make_smart_pointer!(NodeRawPtr, *mut CacheDbNode);
 
 impl NodeRawPtr {
-    // Helper to set a node's 'prev' pointer
     #[inline]
     fn set_node_prev_link(self, new_prev: Option<NodeRawPtr>) {
-        // SAFETY: The caller guarantees `node_ptr` is valid and uniquely mutable.
         unsafe {
             (*self.0).prev = new_prev;
         }
     }
-
-    // Helper to set a node's 'next' pointer
     #[inline]
     fn set_node_next_link(self, new_next: Option<NodeRawPtr>) {
-        // SAFETY: The caller guarantees `node_ptr` is valid and uniquely mutable.
         unsafe {
             (*self.0).next = new_next;
         }
     }
 
-    // Helper to get a node's 'prev' pointer (safely)
     #[inline]
     fn get_node_prev_link(self) -> Option<NodeRawPtr> {
-        // SAFETY: This only reads a field, no mutable access, so a shared reference is fine.
-        // The raw pointer itself is not dereferenced here, only copied.
         unsafe { (*(self.0)).prev.clone() }
     }
 
-    // Helper to get a node's 'next' pointer (safely)
     #[inline]
     fn get_node_next_link(self) -> Option<NodeRawPtr> {
-        // SAFETY: This only reads a field, no mutable access, so a shared reference is fine.
-        // The raw pointer itself is not dereferenced here, only copied.
         unsafe { (*self.0).next.clone() }
     }
-
+    #[inline]
     fn as_ref(&self) -> &CacheDbNode {
-        // SAFETY: This is safe as long as the pointer is valid and not aliased.
         unsafe { &*self.0 }
     }
-
+    #[inline]
     fn value_mut(&mut self) -> &mut CacheValue {
-        // SAFETY: This is safe as long as the pointer is valid and not aliased.
         unsafe { (&mut *self.0).value.as_mut() }
     }
 }
@@ -225,7 +212,7 @@ impl CacheDb {
             let mut node_ptr: NodeRawPtr = existing_node.get().into();
 
             *node_ptr.value_mut() = value;
-            self.move_to_head(node_ptr.into());
+            self.move_to_head(node_ptr);
         } else {
             if self.map.len() >= self.capacity {
                 self.remove_tail();
