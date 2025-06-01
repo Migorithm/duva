@@ -1,6 +1,6 @@
 use bytes::Bytes;
 use criterion::{Criterion, black_box};
-use duva::domains::query_parsers::query_io::QueryIO;
+use duva::domains::query_io::QueryIO;
 use std::iter::repeat_n;
 
 pub fn serialize_null(c: &mut Criterion) {
