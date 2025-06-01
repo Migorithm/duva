@@ -42,7 +42,10 @@ impl CacheDb {
     ///
     /// # Returns
     /// A HashMap containing the extracted keys and values
-    pub(crate) fn take_subset(&mut self, token_ranges: Vec<Range<u64>>) -> CacheDb {
+    pub(crate) fn copy_subset_per_token_ranges(
+        &mut self,
+        token_ranges: Vec<Range<u64>>,
+    ) -> CacheDb {
         if token_ranges.is_empty() {
             return CacheDb::with_capacity(self.capacity);
         }
@@ -120,13 +123,9 @@ impl CacheDb {
     pub fn is_exist(&self, key: &str) -> bool {
         self.map.contains_key(key)
     }
-    #[inline]
-    pub fn get(&mut self, key: &str) -> Option<&CacheValue> {
-        self.get_mut(key).map(|v| v as &CacheValue)
-    }
 
     #[inline]
-    pub fn get_mut(&mut self, key: &str) -> Option<&mut CacheValue> {
+    pub fn lookup(&mut self, key: &str) -> Option<&mut CacheValue> {
         if let Some(node) = self.map.get_mut(key) {
             let mut node_ptr: NodeRawPtr = node.get().into();
             self.move_to_head(node_ptr);
@@ -183,11 +182,10 @@ impl CacheDb {
         self.map.contains_key(key)
     }
 
-    // Detach given node from the linked list and move it to the head
     #[inline]
     fn move_to_head(&mut self, node: NodeRawPtr) {
-        if self.head == Some(node) {
-            // Already at head, no need to move
+        // ealry return if already at head or only one element
+        if self.head == Some(node) || self.map.len() <= 1 {
             return;
         }
         self.detach(node);
@@ -199,7 +197,6 @@ impl CacheDb {
         self.head = Some(node);
     }
 
-    /// Remove element and update links
     #[inline]
     fn remove_tail(&mut self) {
         if let Some(tail) = self.tail {
@@ -216,7 +213,7 @@ impl CacheDb {
             self.map.remove(&tail.as_ref().key);
         }
     }
-    /// detach never remove element from map
+
     #[inline]
     fn detach(&mut self, node_ptr: NodeRawPtr) {
         let prev_ptr = node_ptr.get_node_prev_link();

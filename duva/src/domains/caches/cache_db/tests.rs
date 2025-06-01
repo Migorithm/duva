@@ -7,7 +7,7 @@ fn test_extract_keys_for_ranges_empty() {
     let mut cache = CacheDb::with_capacity(100);
     let ranges: Vec<Range<u64>> = Vec::new();
 
-    let result = cache.take_subset(ranges);
+    let result = cache.copy_subset_per_token_ranges(ranges);
     assert!(result.is_empty());
 }
 
@@ -20,7 +20,7 @@ fn test_extract_keys_for_ranges_no_matches() {
     let key_hash = fnv_1a_hash("key1");
     let ranges = vec![(key_hash + 1000)..u64::MAX];
 
-    let result = cache.take_subset(ranges);
+    let result = cache.copy_subset_per_token_ranges(ranges);
     assert!(result.is_empty());
     assert_eq!(cache.len(), 1); // Cache still has our key
 
@@ -58,7 +58,7 @@ fn test_extract_keys_for_ranges_with_matches() {
     }
 
     // Extract keys 0-4
-    let extracted = cache.take_subset(ranges);
+    let extracted = cache.copy_subset_per_token_ranges(ranges);
 
     // Verify extraction
     assert_eq!(extracted.len(), 5);
@@ -117,12 +117,12 @@ fn test_get_insert_remove_entry() {
     let mut cache = CacheDb::with_capacity(100);
     let expiry = Some(Utc::now() + chrono::Duration::minutes(10));
 
-    assert!(cache.get("key1").is_none());
+    assert!(cache.lookup("key1").is_none());
 
     cache.insert("key1".to_string(), CacheValue::new("value1".to_string()).with_expiry(expiry));
     assert_eq!(cache.len(), 1);
     assert_eq!(cache.keys_with_expiry(), 1);
-    assert!(cache.get("key1").is_some());
+    assert!(cache.lookup("key1").is_some());
 
     cache.insert("key1".to_string(), CacheValue::new("value2".to_string()).with_expiry(expiry));
     assert_eq!(cache.len(), 1);
@@ -152,15 +152,15 @@ fn test_get_insert_remove_entry() {
     cache.entry("key50".to_string()).and_modify(|v| {
         v.value = "modified_value".to_string();
     });
-    assert_eq!(cache.get("key50").unwrap().value(), "modified_value");
+    assert_eq!(cache.lookup("key50").unwrap().value(), "modified_value");
 
     cache.entry("key50".to_string()).or_insert(CacheValue::new("new_value".to_string()));
-    assert_eq!(cache.get("key50").unwrap().value(), "modified_value");
+    assert_eq!(cache.lookup("key50").unwrap().value(), "modified_value");
 
     cache.entry("key999".to_string()).and_modify(|v| {
         v.value = "modified_value".to_string();
     });
-    assert!(cache.get("key999").is_none());
+    assert!(cache.lookup("key999").is_none());
 
     assert!(cache.validate(), "CacheDb validation failed");
 
