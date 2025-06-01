@@ -8,7 +8,7 @@ use crate::{
 use std::{cell::UnsafeCell, collections::HashMap, ops::Range, pin::Pin};
 
 pub(crate) struct CacheDb {
-    map: HashMap<String, Pin<Box<UnsafeCell<CacheDbNode>>>>,
+    map: HashMap<String, Pin<Box<UnsafeCell<CacheNode>>>>,
     head: Option<NodeRawPtr>,
     tail: Option<NodeRawPtr>,
     capacity: usize,
@@ -17,9 +17,9 @@ pub(crate) struct CacheDb {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct NodeRawPtr(*mut CacheDbNode);
-from_to!(*mut CacheDbNode, NodeRawPtr);
-make_smart_pointer!(NodeRawPtr, *mut CacheDbNode);
+struct NodeRawPtr(*mut CacheNode);
+from_to!(*mut CacheNode, NodeRawPtr);
+make_smart_pointer!(NodeRawPtr, *mut CacheNode);
 
 impl NodeRawPtr {
     #[inline]
@@ -45,17 +45,22 @@ impl NodeRawPtr {
         unsafe { (*self.0).next.clone() }
     }
     #[inline]
-    fn as_ref(&self) -> &CacheDbNode {
+    fn as_ref(&self) -> &CacheNode {
         unsafe { &*self.0 }
     }
+
+    // ! SAFETY: The caller guarantees `ptr` is valid and non-aliased for a mutable reference.
+    // ! The `'static` lifetime is a lie, but necessary for the compiler to accept the returned
+    // ! reference. The true lifetime must be managed by the caller.(This pattern is common
+    // ! when encapsulating raw pointer usage.)
     #[inline]
-    fn value_mut(&mut self) -> &mut CacheValue {
+    fn value_mut(&mut self) -> &'static mut CacheValue {
         unsafe { (&mut *self.0).value.as_mut() }
     }
 }
 
 #[derive(Clone)]
-struct CacheDbNode {
+struct CacheNode {
     key: String,
     value: Box<CacheValue>,
     prev: Option<NodeRawPtr>,
@@ -65,11 +70,11 @@ struct CacheDbNode {
 unsafe impl Send for CacheDb {}
 unsafe impl Sync for CacheDb {}
 pub(crate) struct Iter<'a> {
-    inner: std::collections::hash_map::Iter<'a, String, Pin<Box<UnsafeCell<CacheDbNode>>>>,
+    inner: std::collections::hash_map::Iter<'a, String, Pin<Box<UnsafeCell<CacheNode>>>>,
     parent: &'a CacheDb,
 }
 pub(crate) struct IterMut<'a> {
-    inner: std::collections::hash_map::IterMut<'a, String, Pin<Box<UnsafeCell<CacheDbNode>>>>,
+    inner: std::collections::hash_map::IterMut<'a, String, Pin<Box<UnsafeCell<CacheNode>>>>,
     parent: &'a mut CacheDb,
 }
 pub(crate) struct Values<'a> {
@@ -193,14 +198,12 @@ impl CacheDb {
         self.get_mut(key).map(|v| v as &CacheValue)
     }
 
-    // Explicitly takes &mut self, no transmute needed.
     #[inline]
     pub fn get_mut(&mut self, key: &str) -> Option<&mut CacheValue> {
         if let Some(node) = self.map.get_mut(key) {
-            // Safely get the raw pointer from Pin<Box<UnsafeCell<T>>>
-            let node_ptr = node.get();
-            self.move_to_head(node_ptr.into()); // This still has internal unsafe.
-            Some(unsafe { &mut *node_ptr }.value.as_mut()) // Unsafe: Dereferencing raw pointer
+            let mut node_ptr: NodeRawPtr = node.get().into();
+            self.move_to_head(node_ptr);
+            Some(node_ptr.value_mut())
         } else {
             None
         }
@@ -220,7 +223,7 @@ impl CacheDb {
             if value.has_expiry() {
                 self.keys_with_expiry += 1;
             }
-            let new_node = Box::pin(UnsafeCell::new(CacheDbNode {
+            let new_node = Box::pin(UnsafeCell::new(CacheNode {
                 key: key.clone(),
                 value: Box::new(value),
                 prev: None,
@@ -273,19 +276,17 @@ impl CacheDb {
     #[inline]
     fn remove_tail(&mut self) {
         if let Some(tail) = self.tail {
-            let tail_node = unsafe { &mut *tail.0 };
-            if let Some(prev) = tail_node.prev {
+            if let Some(prev) = tail.get_node_prev_link() {
                 prev.set_node_next_link(None);
-
                 self.tail = Some(prev);
             } else {
                 self.head = None;
                 self.tail = None;
             }
-            if tail_node.value.has_expiry() {
+            if tail.as_ref().value.has_expiry() {
                 self.keys_with_expiry -= 1;
             }
-            self.map.remove(&tail_node.key);
+            self.map.remove(&tail.as_ref().key);
         }
     }
     /// detach never remove element from map
@@ -311,8 +312,10 @@ impl CacheDb {
     #[inline]
     fn push_front(&mut self, node_ptr: NodeRawPtr) {
         let prev_head = self.head.take();
+
         node_ptr.set_node_prev_link(None);
         node_ptr.set_node_next_link(prev_head);
+
         if let Some(oh_ptr) = prev_head {
             oh_ptr.set_node_prev_link(Some(node_ptr));
         } else {
@@ -425,7 +428,7 @@ impl<'a> Entry<'a> {
         parent: &'a mut CacheDb,
         k: String,
         v: CacheValue,
-    ) -> &'a mut Pin<Box<UnsafeCell<CacheDbNode>>> {
+    ) -> &'a mut Pin<Box<UnsafeCell<CacheNode>>> {
         let parent_copy = unsafe { std::mem::transmute::<&mut CacheDb, &mut CacheDb>(parent) };
         if let Some(existing_node) = parent.map.get_mut(&k) {
             existing_node.get_mut().value = Box::new(v);
@@ -439,7 +442,7 @@ impl<'a> Entry<'a> {
             if v.has_expiry() {
                 parent.keys_with_expiry += 1;
             }
-            let v = Box::pin(UnsafeCell::new(CacheDbNode {
+            let v = Box::pin(UnsafeCell::new(CacheNode {
                 key: k.clone(),
                 value: Box::new(v),
                 prev: None,
