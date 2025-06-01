@@ -1,46 +1,46 @@
-use crate::common::{Client, ServerEnv, spawn_server_process};
+use crate::common::{Client, ServerEnv, form_cluster};
 
-async fn run_decr(env: ServerEnv) -> anyhow::Result<()> {
+fn run_decr(with_append_only: bool) -> anyhow::Result<()> {
     // GIVEN
-    let process = spawn_server_process(&env).await?;
+    let mut env = ServerEnv::default().with_append_only(with_append_only);
+    let mut env2 = ServerEnv::default().with_append_only(with_append_only);
 
-    let mut h = Client::new(process.port);
+    let [leader_p, follower_p] = form_cluster([&mut env, &mut env2]);
 
-    // WHEN
-    assert_eq!(h.send_and_get("DECR a", 1).await, vec!["(integer) -1"]);
-    assert_eq!(h.send_and_get("DECR a", 1).await, vec!["(integer) -2"]);
-    assert_eq!(h.send_and_get("DECR a", 1).await, vec!["(integer) -3"]);
+    let mut h = Client::new(leader_p.port);
+    let mut h2: Client = Client::new(follower_p.port);
 
-    // THEN
-    assert_eq!(h.send_and_get("GET a", 1).await, vec!["-3"]);
-    assert_eq!(h.send_and_get("INCR b", 1).await, vec!["(integer) 1"]);
-    assert_eq!(h.send_and_get("DECR b", 1).await, vec!["(integer) 0"]);
+    // WHEN & THEN - happy case
+    assert_eq!(h.send_and_get("DECR a"), "(integer) -1");
+    assert_eq!(h.send_and_get("DECR a"), "(integer) -2");
+    assert_eq!(h.send_and_get("DECR a"), "(integer) -3");
+    assert_eq!(h.send_and_get("GET a"), "-3");
 
-    // WHEN
-    assert_eq!(h.send_and_get("SET c adsds", 1).await, vec!["OK"]);
+    // THEN & THEN - increase and decrease
+    assert_eq!(h.send_and_get("INCR b"), "(integer) 1");
+    assert_eq!(h.send_and_get("DECR b"), "(integer) 0");
 
-    // THEN
-    assert_eq!(
-        h.send_and_get("DECR c", 1).await,
-        vec!["(error) ERR value is not an integer or out of range"]
-    );
+    // WHEN & THEN- operation on string
+    assert_eq!(h.send_and_get("SET c adsds"), "OK");
+    assert_eq!(h.send_and_get("DECR c"), "(error) ERR value is not an integer or out of range");
 
-    // WHEN - out of range
-    assert_eq!(h.send_and_get("SET d 92233720368547332375808", 1).await, vec!["OK"]);
-    // THEN
-    assert_eq!(
-        h.send_and_get("DECR d", 1).await,
-        vec!["(error) ERR value is not an integer or out of range"]
-    );
+    // WHEN & THEN- out of range
+    assert_eq!(h.send_and_get("SET d 92233720368547332375808"), "OK");
+    assert_eq!(h.send_and_get("DECR d"), "(error) ERR value is not an integer or out of range");
+
+    // WHEN & THEN- getting values from follower
+    assert_eq!(h2.send_and_get("GET a"), "-3");
+    assert_eq!(h2.send_and_get("GET b"), "0");
+    assert_eq!(h2.send_and_get("GET c"), "adsds");
+    assert_eq!(h2.send_and_get("GET d"), "92233720368547332375808");
 
     Ok(())
 }
 
-#[tokio::test]
-async fn test_decr() -> anyhow::Result<()> {
-    for env in [ServerEnv::default(), ServerEnv::default().with_append_only(true)] {
-        run_decr(env).await?;
-    }
+#[test]
+fn test_decr() -> anyhow::Result<()> {
+    run_decr(false)?;
+    run_decr(true)?;
 
     Ok(())
 }

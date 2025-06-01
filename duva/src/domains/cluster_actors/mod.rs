@@ -7,14 +7,17 @@ use futures::stream::FuturesUnordered;
 use std::collections::BTreeMap;
 use tokio::time::Instant;
 pub mod actor;
-pub mod commands;
+mod command;
+pub(crate) use command::*;
 pub mod consensus;
 pub(crate) mod hash_ring;
-pub mod heartbeats;
-mod listener;
-pub(crate) mod peer_connections;
-pub mod replication;
-pub mod session;
+pub mod heartbeat_scheduler;
 
+pub mod replication;
+mod service;
+pub mod session;
 pub const FANOUT: usize = 2;
 pub use actor::ClusterActor;
+
+#[cfg(test)]
+mod tests;

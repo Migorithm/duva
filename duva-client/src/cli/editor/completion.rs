@@ -19,7 +19,9 @@ pub(crate) static COMMANDS: &[&str] = &[
     "exists",
     "del",
     "incr",
+    "incrby",
     "decr",
+    "decrby",
     "ttl",
     // subcommands
     "cluster info",
@@ -27,6 +29,7 @@ pub(crate) static COMMANDS: &[&str] = &[
     "cluster forget",
     "cluster meet",
     "info replication",
+    "replicaof",
 ];
 
 macro_rules! new_pair {
@@ -57,7 +60,7 @@ impl Completer for DuvaHinter {
         // Get the text before the start of the current word
         let before_start = &line[..start];
         // Split into previous words
-        let previous_words: Vec<&str> = before_start.trim().split_whitespace().collect();
+        let previous_words: Vec<&str> = before_start.split_whitespace().collect();
         // Get the current prefix being typed
         let current_prefix = &line[start..pos];
 
@@ -76,7 +79,7 @@ impl Completer for DuvaHinter {
 
         let command = previous_words[0].to_lowercase();
         match command.as_str() {
-            "cluster" => {
+            | "cluster" => {
                 if previous_words.len() == 1 {
                     // Suggest subcommands for cluster that start with current_prefix
                     let subcommands = ["info", "nodes", "forget", "meet"];
@@ -94,7 +97,7 @@ impl Completer for DuvaHinter {
                     }
                 }
             },
-            "info" => {
+            | "info" => {
                 if previous_words.len() == 1 {
                     // Suggest subcommands for info that start with current_prefix
                     let subcommands = ["replication", "section"];
@@ -106,7 +109,7 @@ impl Completer for DuvaHinter {
                     );
                 }
             },
-            "set" => {
+            | "set" => {
                 if previous_words.len() == 1 {
                     // Suggest "key" after set
                     candidates.push(new_pair!("key"));
@@ -118,25 +121,48 @@ impl Completer for DuvaHinter {
                     candidates.push(new_pair!("px expr"));
                 }
             },
-            "exists" | "del" => {
-                if previous_words.len() >= 1 {
+
+            | "incrby" | "decrby" => {
+                if previous_words.len() == 1 {
+                    // Suggest "key" after set
+                    candidates.push(new_pair!("key"));
+                } else if previous_words.len() == 2 {
+                    // Suggest "value" after set key
+                    if command == "incrby" {
+                        candidates.push(new_pair!("increment"));
+                    } else {
+                        candidates.push(new_pair!("decrement"));
+                    }
+                }
+            },
+            | "exists" | "del" => {
+                if !previous_words.is_empty() {
                     // Suggest "key" for these commands
                     candidates.push(new_pair!("key"));
                 }
             },
-            "get" | "incr" | "decr" | "ttl" => {
+            | "get" | "incr" | "decr" | "ttl" => {
                 if previous_words.len() == 1 {
                     // Suggest "index" after get key
                     candidates.push(new_pair!("key"));
                 }
             },
-            "keys" => {
+            | "keys" => {
                 if previous_words.len() == 1 {
                     // Suggest "pattern" after keys
                     candidates.push(new_pair!("pattern"));
                 }
             },
-            _ => {},
+            | "replicaof" => {
+                if previous_words.len() == 1 {
+                    // Suggest "host port" after replicaof
+                    candidates.push(new_pair!("host"));
+                } else if previous_words.len() == 2 {
+                    // Suggest "port" after replicaof host
+                    candidates.push(new_pair!("port"));
+                }
+            },
+            | _ => {},
         }
 
         Ok((start, candidates))

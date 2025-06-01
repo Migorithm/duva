@@ -1,28 +1,26 @@
 use super::cache_objects::{CacheEntry, CacheValue};
 use super::command::CacheCommand;
+use crate::domains::QueryIO;
 use crate::domains::caches::read_queue::ReadQueue;
 use crate::domains::cluster_actors::hash_ring::fnv_1a_hash;
-use crate::domains::query_parsers::QueryIO;
 use crate::make_smart_pointer;
-
 use std::collections::HashMap;
-use std::collections::hash_map::Entry;
 use std::ops::Range;
 use std::sync::Arc;
 use std::sync::atomic::AtomicU64;
-use tokio::sync::mpsc::{self, Sender};
+use tokio::sync::mpsc::{self};
 use tokio::sync::oneshot;
 
 pub struct CacheActor {
     pub(crate) cache: CacheDb,
-    pub(crate) self_handler: Sender<CacheCommand>,
+    pub(crate) self_handler: CacheCommandSender,
 }
 
 impl CacheActor {
     pub(crate) fn run(hwm: Arc<AtomicU64>) -> CacheCommandSender {
         let (tx, cache_actor_inbox) = mpsc::channel(100);
         tokio::spawn(
-            Self { cache: CacheDb::default(), self_handler: tx.clone() }
+            Self { cache: CacheDb::default(), self_handler: CacheCommandSender(tx.clone()) }
                 .handle(cache_actor_inbox, ReadQueue::new(hwm)),
         );
         CacheCommandSender(tx)
@@ -35,17 +33,19 @@ impl CacheActor {
         self.cache.keys_with_expiry
     }
 
-    pub(crate) fn keys_stream(
-        &self,
-        pattern: Option<String>,
-    ) -> impl Iterator<Item = QueryIO> + '_ {
-        self.cache.keys().filter_map(move |k| {
-            if pattern.as_ref().is_none_or(|p| k.contains(p)) {
-                Some(QueryIO::BulkString(k.clone()))
-            } else {
-                None
-            }
-        })
+    pub(crate) fn keys(&self, pattern: Option<String>, callback: oneshot::Sender<QueryIO>) {
+        let keys = self
+            .cache
+            .keys()
+            .filter_map(move |k| {
+                if pattern.as_ref().is_none_or(|p| k.contains(p)) {
+                    Some(QueryIO::BulkString(k.clone()))
+                } else {
+                    None
+                }
+            })
+            .collect();
+        let _ = callback.send(QueryIO::Array(keys));
     }
     pub(crate) fn delete(&mut self, key: String, callback: oneshot::Sender<bool>) {
         if let Some(value) = self.cache.remove(&key) {
@@ -58,11 +58,7 @@ impl CacheActor {
         }
     }
     pub(crate) fn exists(&self, key: String, callback: oneshot::Sender<bool>) {
-        if self.cache.get(&key).is_some() {
-            let _ = callback.send(true);
-        } else {
-            let _ = callback.send(false);
-        }
+        let _ = callback.send(self.cache.get(&key).is_some());
     }
     pub(crate) fn get(&self, key: &str, callback: oneshot::Sender<Option<CacheValue>>) {
         let _ = callback.send(self.cache.get(key).cloned());
@@ -112,23 +108,19 @@ impl CacheActor {
         delta: i64,
         callback: oneshot::Sender<anyhow::Result<i64>>,
     ) {
-        let callback_val = match self.cache.entry(key.clone()) {
-            Entry::Occupied(mut entry) => {
-                if let Ok(value) = entry.get().value.parse::<i64>() {
-                    let diff = value + delta;
-                    entry.insert(CacheValue::new(diff.to_string()));
-                    Ok(diff)
-                } else {
-                    Err(anyhow::anyhow!("ERR value is not an integer or out of range"))
-                }
-            },
-            Entry::Vacant(entry) => {
-                entry.insert(CacheValue::new(delta.to_string()));
-                Ok(delta)
-            },
+        let val = self
+            .cache
+            .entry(key.clone())
+            .or_insert(CacheValue { value: "0".to_string(), expiry: None });
+
+        let Ok(curr) = val.value.parse::<i64>() else {
+            let _ =
+                callback.send(Err(anyhow::anyhow!("ERR value is not an integer or out of range")));
+            return;
         };
 
-        let _ = callback.send(callback_val);
+        let _ = callback.send(Ok(curr + delta));
+        val.value = (curr + delta).to_string();
     }
 }
 
@@ -159,7 +151,7 @@ impl CacheDb {
 
             // Check if this key's hash falls within any of the specified ranges
             for range in &token_ranges {
-                if key_hash >= range.start && key_hash < range.end {
+                if range.contains(&key_hash) {
                     keys_to_extract.push(key.clone());
                     break; // No need to check other ranges once we've found a match
                 }

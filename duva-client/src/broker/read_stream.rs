@@ -1,7 +1,7 @@
 use duva::{
     domains::IoError,
+    domains::interface::TRead,
     prelude::tokio::{self, net::tcp::OwnedReadHalf, sync::oneshot},
-    services::interface::TRead,
 };
 
 use crate::broker::BrokerMessage;
@@ -19,7 +19,7 @@ impl ServerStreamReader {
 
             loop {
                 match self.0.read_values().await {
-                    Ok(query_ios) => {
+                    | Ok(query_ios) => {
                         for query_io in query_ios {
                             if controller_sender
                                 .send(BrokerMessage::FromServer(Ok(query_io)))
@@ -30,7 +30,7 @@ impl ServerStreamReader {
                             }
                         }
                     },
-                    Err(IoError::ConnectionAborted) | Err(IoError::ConnectionReset) => {
+                    | Err(IoError::ConnectionAborted) | Err(IoError::ConnectionReset) => {
                         let _ = controller_sender
                             .send(BrokerMessage::FromServer(Err(IoError::ConnectionAborted)))
                             .await;
@@ -38,7 +38,7 @@ impl ServerStreamReader {
                         break;
                     },
 
-                    Err(e) => {
+                    | Err(e) => {
                         if controller_sender.send(BrokerMessage::FromServer(Err(e))).await.is_err()
                         {
                             break;

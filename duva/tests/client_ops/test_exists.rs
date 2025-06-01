@@ -4,27 +4,27 @@
 /// After 300ms, we get the key again and check if the value is not returned (-1)
 use crate::common::{Client, ServerEnv, spawn_server_process};
 
-async fn run_exists(env: ServerEnv) -> anyhow::Result<()> {
+fn run_exists(env: ServerEnv) -> anyhow::Result<()> {
     // GIVEN
-    let process = spawn_server_process(&env).await?;
+    let process = spawn_server_process(&env)?;
 
     let mut h = Client::new(process.port);
-    assert_eq!(h.send_and_get("SET a b", 1).await, vec!["OK"]);
+    assert_eq!(h.send_and_get("SET a b"), "OK");
 
-    assert_eq!(h.send_and_get("SET c d", 1).await, vec!["OK"]);
+    assert_eq!(h.send_and_get("SET c d"), "OK");
 
     // WHEN & THEN
-    assert_eq!(h.send_and_get("exists a c d", 1).await, vec!["(integer) 2"]);
+    assert_eq!(h.send_and_get("exists a c d"), "(integer) 2");
 
-    assert_eq!(h.send_and_get("exists x", 1).await, vec!["(integer) 0"]);
+    assert_eq!(h.send_and_get("exists x"), "(integer) 0");
 
     Ok(())
 }
 
-#[tokio::test]
-async fn test_exists() -> anyhow::Result<()> {
+#[test]
+fn test_exists() -> anyhow::Result<()> {
     for env in [ServerEnv::default(), ServerEnv::default().with_append_only(true)] {
-        run_exists(env).await?;
+        run_exists(env)?;
     }
 
     Ok(())

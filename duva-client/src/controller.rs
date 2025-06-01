@@ -3,7 +3,8 @@ use std::fmt::Display;
 use crate::broker::Broker;
 use crate::broker::BrokerMessage;
 
-use duva::domains::query_parsers::query_io::QueryIO;
+use duva::domains::query_io::QueryIO;
+use duva::prelude::anyhow;
 use duva::prelude::tokio;
 use duva::prelude::tokio::sync::mpsc::Sender;
 use duva::prelude::uuid::Uuid;
@@ -15,8 +16,8 @@ pub struct ClientController<T> {
 }
 
 impl<T> ClientController<T> {
-    pub async fn new(editor: T, server_addr: &str) -> Self {
-        let (r, w, mut auth_response) = Broker::authenticate(server_addr, None).await.unwrap();
+    pub async fn new(editor: T, server_addr: &str) -> anyhow::Result<Self> {
+        let (r, w, mut auth_response) = Broker::authenticate(server_addr, None).await?;
 
         auth_response.cluster_nodes.push(server_addr.to_string().into());
         let (broker_tx, rx) = tokio::sync::mpsc::channel::<BrokerMessage>(100);
@@ -32,13 +33,13 @@ impl<T> ClientController<T> {
             read_kill_switch: Some(r.run(broker_tx.clone())),
         };
         tokio::spawn(broker.run());
-        Self { broker_tx, target: editor }
+        Ok(Self { broker_tx, target: editor })
     }
 
     fn render_return(&self, kind: ClientAction, query_io: QueryIO) -> Response {
         use ClientAction::*;
         match kind {
-            Ping
+            | Ping
             | Get { .. }
             | IndexGet { .. }
             | Echo { .. }
@@ -48,53 +49,62 @@ impl<T> ClientController<T> {
             | Role
             | ReplicaOf { .. }
             | ClusterInfo => match query_io {
-                QueryIO::Null => Response::Null,
-                QueryIO::SimpleString(value) => Response::String(value),
-                QueryIO::BulkString(value) => Response::String(value),
-                QueryIO::Err(value) => Response::Error(value),
-                _err => Response::FormatError,
+                | QueryIO::Null => Response::Null,
+                | QueryIO::SimpleString(value) => Response::String(value),
+                | QueryIO::BulkString(value) => Response::String(value),
+                | QueryIO::Err(value) => Response::Error(value),
+                | _err => Response::FormatError,
             },
-            Delete { .. } | Exists { .. } => {
+            | Delete { .. } | Exists { .. } => {
                 let QueryIO::SimpleString(value) = query_io else {
                     return Response::FormatError;
                 };
                 match value.parse::<i64>() {
-                    Ok(int) => Response::Integer(int),
-                    Err(_) => Response::Error("ERR value is not an integer or out of range".into()),
+                    | Ok(int) => Response::Integer(int),
+                    | Err(_) => {
+                        Response::Error("ERR value is not an integer or out of range".into())
+                    },
                 }
             },
-            Incr { .. } | Decr { .. } | Ttl { .. } => {
+            | Incr { .. } | Decr { .. } | Ttl { .. } | IncrBy { .. } | DecrBy { .. } => {
                 match query_io {
-                    QueryIO::SimpleString(value) => {
+                    | QueryIO::SimpleString(value) => {
                         let s: Option<&str> =
                             value.split('|').next().unwrap_or_default().rsplit(':').next(); // format: s:value-idx:index_num
 
                         Response::Integer(s.unwrap().parse::<i64>().unwrap())
                     },
-                    QueryIO::Err(value) => Response::Error(value),
+                    | QueryIO::Err(value) => Response::Error(value),
 
-                    QueryIO::BulkString(value) => Response::Integer(value.parse::<i64>().unwrap()),
+                    | QueryIO::BulkString(value) => {
+                        Response::Integer(value.parse::<i64>().unwrap())
+                    },
 
-                    _ => Response::FormatError,
+                    | _ => Response::FormatError,
                 }
             },
-            Save => {
+            | Save => {
                 let QueryIO::Null = query_io else {
                     return Response::FormatError;
                 };
                 Response::Null
             },
-            Set { .. } | SetWithExpiry { .. } | ClusterMeet { .. } => match query_io {
-                QueryIO::SimpleString(_) => Response::String("OK".into()),
-                QueryIO::Err(value) => Response::Error(value),
-                _ => Response::FormatError,
+            | Set { .. } | SetWithExpiry { .. } => match query_io {
+                | QueryIO::SimpleString(_) => Response::String("OK".into()),
+                | QueryIO::Err(value) => Response::Error(value),
+                | _ => Response::FormatError,
             },
-            Append { .. } => match query_io {
-                QueryIO::SimpleString(value) => Response::String(value.to_string()),
-                QueryIO::Err(value) => Response::Error(value),
-                _ => Response::FormatError,
+            | ClusterMeet { .. } => match query_io {
+                | QueryIO::Null => Response::String("OK".into()),
+                | QueryIO::Err(value) => Response::Error(value),
+                | _ => Response::FormatError,
             },
-            Keys { .. } => {
+            | Append { .. } => match query_io {
+                | QueryIO::SimpleString(value) => Response::String(value.to_string()),
+                | QueryIO::Err(value) => Response::Error(value),
+                | _ => Response::FormatError,
+            },
+            | Keys { .. } => {
                 let QueryIO::Array(value) = query_io else {
                     return Response::FormatError;
                 };
@@ -107,7 +117,7 @@ impl<T> ClientController<T> {
                 }
                 Response::Array(keys)
             },
-            ClusterNodes => {
+            | ClusterNodes => {
                 let QueryIO::Array(value) = query_io else {
                     return Response::FormatError;
                 };
@@ -123,7 +133,6 @@ impl<T> ClientController<T> {
         }
     }
 
-    #[cfg_attr(not(feature = "cli"), allow(unused))]
     pub fn print_res(&self, kind: ClientAction, query_io: QueryIO) {
         println!("{}", self.render_return(kind, query_io));
     }
@@ -141,12 +150,12 @@ enum Response {
 impl Display for Response {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Response::Null => write!(f, "(nil)"),
-            Response::FormatError => write!(f, "Unexpected response format"),
-            Response::String(value) => write!(f, "{value}"),
-            Response::Integer(value) => write!(f, "(integer) {value}"),
-            Response::Error(value) => write!(f, "(error) {value}"),
-            Response::Array(responses) => {
+            | Response::Null => write!(f, "(nil)"),
+            | Response::FormatError => write!(f, "Unexpected response format"),
+            | Response::String(value) => write!(f, "{value}"),
+            | Response::Integer(value) => write!(f, "(integer) {value}"),
+            | Response::Error(value) => write!(f, "(error) {value}"),
+            | Response::Array(responses) => {
                 if responses.is_empty() {
                     return write!(f, "(empty array)");
                 }

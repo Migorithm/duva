@@ -1,4 +1,4 @@
-use crate::domains::query_parsers::{QueryIO, deserialize};
+use crate::domains::{QueryIO, deserialize};
 use bytes::Bytes;
 
 #[derive(Debug, Clone, PartialEq, Eq, bincode::Encode, bincode::Decode)]
@@ -46,11 +46,11 @@ impl WriteRequest {
     // TODO refactor into returning &str
     pub(crate) fn key(&self) -> String {
         match self {
-            WriteRequest::Set { key, .. } => key.clone(),
-            WriteRequest::Delete { keys, .. } => keys[0].clone(),
-            WriteRequest::Append { key, .. } => key.clone(),
-            WriteRequest::Incr { key, .. } => key.clone(),
-            WriteRequest::Decr { key, .. } => key.clone(),
+            | WriteRequest::Set { key, .. } => key.clone(),
+            | WriteRequest::Delete { keys, .. } => keys[0].clone(),
+            | WriteRequest::Append { key, .. } => key.clone(),
+            | WriteRequest::Incr { key, .. } => key.clone(),
+            | WriteRequest::Decr { key, .. } => key.clone(),
         }
     }
 }

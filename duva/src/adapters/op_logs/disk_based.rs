@@ -177,7 +177,7 @@ impl FileOpLogs {
 
     async fn validate_folder(path: &PathBuf) -> Result<(), anyhow::Error> {
         match tokio::fs::metadata(path).await {
-            Ok(metadata) => {
+            | Ok(metadata) => {
                 if !metadata.is_dir() {
                     return Err(anyhow::anyhow!(
                         "Path '{}' exists but is not a directory",
@@ -185,12 +185,12 @@ impl FileOpLogs {
                     ));
                 }
             },
-            Err(e) if e.kind() == ErrorKind::NotFound => {
+            | Err(e) if e.kind() == ErrorKind::NotFound => {
                 tokio::fs::create_dir_all(path)
                     .await
                     .context(format!("Failed to create directory '{}'", path.display()))?;
             },
-            Err(e) => {
+            | Err(e) => {
                 return Err(e).context(format!("Failed to access path '{}'", path.display()));
             },
         }

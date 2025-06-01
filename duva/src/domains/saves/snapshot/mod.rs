@@ -4,7 +4,7 @@ use crate::domains::{
 };
 
 #[allow(dead_code)]
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct Snapshot {
     pub(crate) header: String,
     pub(crate) metadata: Metadata,
@@ -26,14 +26,18 @@ impl Snapshot {
     }
 
     pub(crate) fn extract_replication_info(&self) -> (ReplicationId, u64) {
-        (self.metadata.repl_id.clone(), self.metadata.repl_offset)
+        (self.metadata.repl_id.clone(), self.metadata.log_idx)
+    }
+
+    pub(crate) fn default_with_repl_id(repl_id: ReplicationId) -> Self {
+        Self { metadata: Metadata { repl_id, log_idx: Default::default() }, ..Default::default() }
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Default)]
 pub struct Metadata {
     pub(crate) repl_id: ReplicationId,
-    pub(crate) repl_offset: u64,
+    pub(crate) log_idx: u64,
 }
 
 #[derive(Debug)]

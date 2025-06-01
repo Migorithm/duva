@@ -16,53 +16,55 @@ sequenceDiagram
     C2 --> B: connection established
 
     C2 ->> B: Cluster Meet A
-    par
-    B ->> A : Join cluster
-    and
-    critical 
-        C2 --x B: Request pending
-    end
-    end
 
-    critical 
-        C1 --x A: Request pending
-    end
+    B -->> B : Block requests
+    B ->> A : Join cluster
+    A -->> A: Block requests
     A -->> A: Rearrange tokens
 
+    note over A,B : Both A and B WILL NOT<br>process write operations
 
+    
+    
     par notify cluster peers
+
+    
     A --) B : Notify token map update
+    B -->> B : Make migration plan for other partitions.<br>For example, B may have held keys from 3000-5000 which now belong to A.
+
+
     and notify connected clients
     A --) C1 : Notify token map update
     end
 
     Note over A,B: Now, A and B have disjoint<br>token ranges<br>0..5000 and 5001..10000 respectively
 
-    critical Rebalancing!
-        A ->> B: Migrate data
+    critical 
+    C1 ->> A: Request (key 1000)
+
+        Note over A, B: Point-in-time snapshot is required<br>So we don't need to full migrate logs
+        
+        A --> B: Migrate data (batch). If there are other partitions, A will send them too.
+        B --> A: Migrate data (batch). If there are other partitions, B will send them too.
+
+        %% The following may involves multi step migrations depending on the size of data
+        B <<-->> A: Mutual Ack migration
+
+        par 
+            A -->> A: Snaphsot and drop logs
+            A -->> A: Unlock pending requests
+            alt Request's key is in A's range
+                A ->> A: Process request
+                A -->> C1: Response
+            else Request's key is in B's range
+                A -->> C1: (Moved) error
+            end
+        and
+            B -->> B: Snaphsot and drop logs
+            B -->> B: Unlock pending requests
+        end
     end
 
-    
-    A -->> A: Unlock pending requests
-    alt Request's key is in A's range
-        A ->> A: Process request
-        A -->> C1: Response
-    else Request's key is in B's range
-        A -->> C1: (Moved) error
-    end
-
-
-
-
-    B --) C2 : Notify token map update
-    B -->> B: Unlock pending requests
-
-    alt Request's key is in B's range
-        B ->> B: Process request
-        B -->> C2: Response
-    else Request's key is in A's range
-        B -->> C2: (Moved) error
-    end
 
 
     

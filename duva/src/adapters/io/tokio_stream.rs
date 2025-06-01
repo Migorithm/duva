@@ -1,22 +1,21 @@
 use crate::domains::IoError;
-use crate::domains::query_parsers::query_io::SERDE_CONFIG;
-use crate::domains::query_parsers::{QueryIO, deserialize};
-use crate::services::interface::{TGetPeerIp, TRead, TSerdeReadWrite, TWrite};
-use bytes::{Bytes, BytesMut};
+use crate::domains::interface::{TRead, TSerdeReadWrite, TWrite};
+use crate::domains::query_io::SERDE_CONFIG;
+use crate::domains::{QueryIO, deserialize};
+use bytes::BytesMut;
+use std::fmt::Debug;
 use std::io::ErrorKind;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
-impl<T: AsyncWriteExt + std::marker::Unpin + Sync + Send> TWrite for T {
-    async fn write(&mut self, buf: impl Into<Bytes>) -> Result<(), IoError> {
-        self.write_all(&buf.into()).await.map_err(|e| Into::<IoError>::into(e.kind()))
-    }
-
-    async fn write_io(&mut self, io: impl Into<QueryIO>) -> Result<(), IoError> {
-        self.write_all(&io.into().serialize()).await.map_err(|e| Into::<IoError>::into(e.kind()))
+#[async_trait::async_trait]
+impl<T: AsyncWriteExt + std::marker::Unpin + Sync + Send + Debug + 'static> TWrite for T {
+    async fn write(&mut self, io: QueryIO) -> Result<(), IoError> {
+        self.write_all(&io.serialize()).await.map_err(|e| Into::<IoError>::into(e.kind()))
     }
 }
 
-impl<T: AsyncReadExt + std::marker::Unpin + Sync + Send> TRead for T {
+#[async_trait::async_trait]
+impl<T: AsyncReadExt + std::marker::Unpin + Sync + Send + Debug + 'static> TRead for T {
     // TCP doesn't inherently delimit messages.
     // The data arrives in a continuous stream of bytes. And
     // we might not receive all the data in one go.
@@ -61,13 +60,13 @@ impl<T: AsyncReadExt + std::marker::Unpin + Sync + Send> TRead for T {
 
         while !remaining_buffer.is_empty() {
             match deserialize(remaining_buffer.clone()) {
-                Ok((query_io, consumed)) => {
+                | Ok((query_io, consumed)) => {
                     parsed_values.push(query_io);
 
                     // * Remove the parsed portion from the buffer
                     remaining_buffer = remaining_buffer.split_off(consumed);
                 },
-                Err(e) => {
+                | Err(e) => {
                     // Handle parsing errors
                     // You might want to log the error or handle it differently based on your use case
                     return Err(IoError::Custom(format!("Parsing error: {:?}", e)));
@@ -78,7 +77,8 @@ impl<T: AsyncReadExt + std::marker::Unpin + Sync + Send> TRead for T {
     }
 }
 
-impl<T: AsyncWriteExt + std::marker::Unpin + Sync + Send> TSerdeReadWrite for T
+#[async_trait::async_trait]
+impl<T: AsyncWriteExt + std::marker::Unpin + Sync + Send + Debug + 'static> TSerdeReadWrite for T
 where
     T: AsyncWriteExt + AsyncReadExt + std::marker::Unpin + Sync + Send,
 {
@@ -101,23 +101,16 @@ where
     }
 }
 
-impl TGetPeerIp for tokio::net::TcpStream {
-    fn get_peer_ip(&self) -> Result<String, IoError> {
-        let addr = self.peer_addr().map_err(|error| Into::<IoError>::into(error.kind()))?;
-        Ok(addr.ip().to_string())
-    }
-}
-
 impl From<ErrorKind> for IoError {
     fn from(value: ErrorKind) -> Self {
         match value {
-            ErrorKind::ConnectionRefused => IoError::ConnectionRefused,
-            ErrorKind::ConnectionReset => IoError::ConnectionReset,
-            ErrorKind::ConnectionAborted => IoError::ConnectionAborted,
-            ErrorKind::NotConnected => IoError::NotConnected,
-            ErrorKind::BrokenPipe => IoError::BrokenPipe,
-            ErrorKind::TimedOut => IoError::TimedOut,
-            _ => {
+            | ErrorKind::ConnectionRefused => IoError::ConnectionRefused,
+            | ErrorKind::ConnectionReset => IoError::ConnectionReset,
+            | ErrorKind::ConnectionAborted => IoError::ConnectionAborted,
+            | ErrorKind::NotConnected => IoError::NotConnected,
+            | ErrorKind::BrokenPipe => IoError::BrokenPipe,
+            | ErrorKind::TimedOut => IoError::TimedOut,
+            | _ => {
                 eprintln!("unknown error: {:?}", value);
                 IoError::Custom(format!("unknown error: {:?}", value))
             },

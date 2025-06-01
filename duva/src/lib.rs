@@ -1,35 +1,43 @@
-mod actor_registry;
 pub mod adapters;
+mod config;
 pub mod domains;
-mod init;
 pub mod macros;
 pub mod presentation;
-pub mod services;
-use actor_registry::ActorRegistry;
 use anyhow::Result;
 use domains::IoError;
 use domains::caches::cache_manager::CacheManager;
 use domains::cluster_actors::ClusterActor;
-use domains::cluster_actors::commands::ClusterCommand;
+use domains::cluster_actors::ConnectionMessage;
+use domains::cluster_actors::replication::ReplicationId;
 use domains::cluster_actors::replication::ReplicationRole;
 use domains::cluster_actors::replication::ReplicationState;
-use domains::config_actors::config_manager::ConfigManager;
+
+pub use config::Environment;
 use domains::operation_logs::interfaces::TWriteAheadLog;
+use domains::peers::peer::NodeKind;
+use domains::saves::snapshot::Snapshot;
 use domains::saves::snapshot::snapshot_loader::SnapshotLoader;
-pub use init::Environment;
 use prelude::PeerIdentifier;
 use presentation::clients::ClientController;
 use presentation::clients::authenticate;
 
 use presentation::clusters::communication_manager::ClusterCommunicationManager;
 
+use tokio::fs::File;
 use tokio::net::TcpListener;
 
+use tracing::debug;
+use tracing::error;
+use tracing::info;
+use tracing::instrument;
+use uuid::Uuid;
+
+pub use config::ENV;
 pub mod prelude {
+    pub use crate::domains::cluster_actors::heartbeat_scheduler::LEADER_HEARTBEAT_INTERVAL_MAX;
     pub use crate::domains::peers::identifier::PeerIdentifier;
     pub use crate::presentation::clients::AuthRequest;
     pub use crate::presentation::clients::AuthResponse;
-
     pub use anyhow;
     pub use bytes;
     pub use bytes::BytesMut;
@@ -38,89 +46,113 @@ pub mod prelude {
 }
 
 // * StartUp Facade that manages invokes subsystems
+#[derive(Clone)]
 pub struct StartUpFacade {
-    registry: ActorRegistry,
+    cluster_communication_manager: ClusterCommunicationManager,
+    cache_manager: CacheManager,
 }
-make_smart_pointer!(StartUpFacade, ActorRegistry => registry);
 
 impl StartUpFacade {
-    pub fn new(
-        config_manager: ConfigManager,
-        env: &mut Environment,
-        wal: impl TWriteAheadLog,
-    ) -> Self {
+    // Refactiring : this should run before cluster actor runs
+    fn initialize_with_snapshot() -> Snapshot {
+        let path_str = format!("{}/{}", ENV.dir, ENV.dbfilename);
+        let path = std::path::Path::new(path_str.as_str());
+
+        // todo if tpp was modified AFTER snapshot was created, we need to update the repl id
+        let repl_id_from_topp = if ENV.seed_server.is_none() {
+            ReplicationId::Key(
+                ENV.pre_connected_peers
+                    .iter()
+                    .find(|p| p.kind == NodeKind::Replica)
+                    .map(|p| p.replid.to_string())
+                    .unwrap_or_else(|| Uuid::now_v7().to_string()),
+            )
+        } else {
+            ReplicationId::Undecided
+        };
+
+        if let Ok(true) = path.try_exists() {
+            let snapshot = SnapshotLoader::load_from_filepath(path).unwrap();
+            return snapshot;
+        }
+
+        Snapshot::default_with_repl_id(repl_id_from_topp)
+    }
+
+    pub fn new(wal: impl TWriteAheadLog, writer: File) -> Self {
+        let snapshot_info = Self::initialize_with_snapshot();
+        let (r_id, hwm) = snapshot_info.extract_replication_info();
+
         let replication_state =
-            ReplicationState::new(env.repl_id.clone(), env.role.clone(), &env.host, env.port);
+            ReplicationState::new(r_id, ENV.role.clone(), &ENV.host, ENV.port, hwm);
         let cache_manager = CacheManager::run_cache_actors(replication_state.hwm.clone());
+        tokio::spawn(cache_manager.clone().apply_snapshot(snapshot_info.key_values()));
+
         let cluster_actor_handler = ClusterActor::run(
-            env.ttl_mills,
-            env.topology_writer.take().unwrap(),
-            env.hf_mills,
+            ENV.ttl_mills,
+            writer,
+            ENV.hf_mills,
             replication_state,
             cache_manager.clone(),
             wal,
         );
 
-        let registry = ActorRegistry {
+        StartUpFacade {
             cluster_communication_manager: ClusterCommunicationManager(cluster_actor_handler),
-            config_manager,
-            cache_manager,
-        };
 
-        StartUpFacade { registry }
+            cache_manager,
+        }
     }
 
-    pub async fn run(self, env: Environment) -> Result<()> {
+    pub async fn run(self) -> Result<()> {
         tokio::spawn(Self::start_accepting_peer_connections(
-            self.config_manager.peer_bind_addr(),
-            self.registry.clone(),
+            ENV.peer_bind_addr(),
+            self.cluster_communication_manager.clone(),
         ));
 
-        self.initialize_with_snapshot().await?;
-        self.discover_cluster(env).await?;
+        self.discover_cluster().await?;
         self.start_receiving_client_streams().await
     }
 
-    async fn discover_cluster(&self, env: Environment) -> Result<(), anyhow::Error> {
-        if let Some(seed) = env.seed_server {
-            return self.registry.cluster_communication_manager.discover_cluster(seed).await;
+    async fn discover_cluster(&self) -> Result<(), anyhow::Error> {
+        if let Some(seed) = ENV.seed_server.as_ref() {
+            return self.cluster_communication_manager.connect_to_server(seed.clone()).await;
         }
 
-        for peer in env.pre_connected_peers {
-            if self.registry.cluster_communication_manager.discover_cluster(peer.addr).await.is_ok()
+        for peer in ENV.pre_connected_peers.iter() {
+            if let Err(err) =
+                self.cluster_communication_manager.connect_to_server(peer.addr.clone()).await
             {
-                break;
+                error!("{err}");
             }
         }
 
         Ok(())
     }
 
+    #[instrument(skip_all)]
     async fn start_accepting_peer_connections(
         peer_bind_addr: String,
-        registry: ActorRegistry,
+        cluster_communication_manager: ClusterCommunicationManager,
     ) -> Result<()> {
-        let peer_listener = TcpListener::bind(&peer_bind_addr)
-            .await
-            .expect("[ERROR] Failed to bind to peer address for listening");
+        let peer_listener = TcpListener::bind(&peer_bind_addr).await.unwrap();
 
-        println!("Starting to accept peer connections");
-        println!("listening peer connection on {}...", peer_bind_addr);
-
+        info!("listening peer connection on {}...", peer_bind_addr);
         loop {
             match peer_listener.accept().await {
-                // ? how do we know if incoming connection is from a peer or replica?
-                Ok((peer_stream, _socket_addr)) => {
-                    if let Err(err) = registry
-                        .cluster_communication_manager
-                        .send(ClusterCommand::AcceptPeer { stream: peer_stream })
+                | Ok((peer_stream, socket_addr)) => {
+                    debug!("Accepted peer connection: {}", socket_addr);
+                    if cluster_communication_manager
+                        .send(ConnectionMessage::AcceptInboundPeer { stream: peer_stream })
                         .await
+                        .is_err()
                     {
-                        println!("[ERROR] Failed to accept peer connection: {:?}", err);
+                        error!("Failed to accept peer connection");
                     }
                 },
 
-                Err(err) => {
+                | Err(err) => {
+                    error!("Failed to accept peer connection: {:?}", err);
                     if Into::<IoError>::into(err.kind()).should_break() {
                         break Ok(());
                     }
@@ -130,47 +162,40 @@ impl StartUpFacade {
     }
 
     /// Run while loop accepting stream and if the sentinel is received, abort the tasks
+
+    #[instrument(level = tracing::Level::DEBUG, skip(self))]
     async fn start_receiving_client_streams(self) -> anyhow::Result<()> {
-        let listener = TcpListener::bind(&self.config_manager.bind_addr()).await?;
-        println!("start listening on {}", self.config_manager.bind_addr());
+        let listener = TcpListener::bind(ENV.bind_addr()).await?;
+        info!("start listening on {}", ENV.bind_addr());
         let mut handles = Vec::with_capacity(100);
 
         //TODO refactor: authentication should be simplified
         while let Ok((stream, _)) = listener.accept().await {
-            let mut peers = self.registry.cluster_communication_manager.get_peers().await?;
-            peers.push(PeerIdentifier(self.registry.config_manager.bind_addr()));
+            let mut peers = self.cluster_communication_manager.get_peers().await?;
+            peers.push(PeerIdentifier(ENV.bind_addr()));
 
-            let is_leader = self.registry.cluster_communication_manager.role().await?
-                == ReplicationRole::Leader;
+            let is_leader: bool =
+                self.cluster_communication_manager.role().await? == ReplicationRole::Leader;
             let Ok((reader, writer)) = authenticate(stream, peers, is_leader).await else {
-                eprintln!("[ERROR] Failed to authenticate client stream");
+                error!("Failed to authenticate client stream");
                 continue;
             };
 
-            let observer =
-                self.registry.cluster_communication_manager.subscribe_topology_change().await?;
+            let observer = self.cluster_communication_manager.subscribe_topology_change().await?;
             let write_handler = writer.run(observer);
 
-            handles.push(tokio::spawn(reader.handle_client_stream(
-                ClientController::new(self.registry.clone()),
-                write_handler.clone(),
-            )));
+            handles.push(tokio::spawn(
+                reader.handle_client_stream(self.client_controller(), write_handler.clone()),
+            ));
         }
 
         Ok(())
     }
 
-    async fn initialize_with_snapshot(&self) -> Result<()> {
-        if let Some(filepath) = self.registry.config_manager.try_filepath().await? {
-            let snapshot = SnapshotLoader::load_from_filepath(filepath).await?;
-            let (repl_id, hwm) = snapshot.extract_replication_info();
-            // Reconnection case - set the replication info
-            self.registry
-                .cluster_communication_manager
-                .send(ClusterCommand::SetReplicationInfo { replid: repl_id, hwm })
-                .await?;
-            self.registry.cache_manager.apply_snapshot(snapshot).await?;
+    pub(crate) fn client_controller(&self) -> ClientController {
+        ClientController {
+            cluster_communication_manager: self.cluster_communication_manager.clone(),
+            cache_manager: self.cache_manager.clone(),
         }
-        Ok(())
     }
 }

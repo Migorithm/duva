@@ -1,14 +1,14 @@
+use crate::domains::QueryIO;
 use crate::domains::caches::actor::CacheActor;
 use crate::domains::caches::actor::CacheCommandSender;
 use crate::domains::caches::cache_objects::CacheEntry;
 use crate::domains::caches::command::CacheCommand;
 use crate::domains::cluster_actors::replication::ReplicationId;
 use crate::domains::operation_logs::WriteRequest;
-use crate::domains::query_parsers::QueryIO;
 use crate::domains::saves::actor::SaveActor;
 use crate::domains::saves::actor::SaveTarget;
 use crate::domains::saves::endec::StoredDuration;
-use crate::domains::saves::snapshot::Snapshot;
+
 use anyhow::Result;
 use chrono::DateTime;
 use chrono::Utc;
@@ -16,6 +16,7 @@ use futures::StreamExt;
 use futures::future::join_all;
 use futures::stream::FuturesUnordered;
 use tokio::sync::oneshot::error::RecvError;
+use tracing::debug;
 
 use std::sync::Arc;
 use std::sync::atomic::AtomicU64;
@@ -92,23 +93,23 @@ impl CacheManager {
 
     pub(crate) async fn apply_log(&self, msg: WriteRequest, log_index: u64) -> Result<()> {
         match msg {
-            WriteRequest::Set { key, value, expires_at } => {
+            | WriteRequest::Set { key, value, expires_at } => {
                 let expiry = expires_at
                     .map(|expires_at| StoredDuration::Milliseconds(expires_at).to_datetime());
 
                 self.route_set(key, value, expiry, log_index).await?;
             },
 
-            WriteRequest::Delete { keys } => {
+            | WriteRequest::Delete { keys } => {
                 self.route_delete(keys).await?;
             },
-            WriteRequest::Append { key, value } => {
+            | WriteRequest::Append { key, value } => {
                 self.route_append(key, value).await?;
             },
-            WriteRequest::Decr { key, delta } => {
-                self.route_numeric_delta(key, delta, log_index).await?;
+            | WriteRequest::Decr { key, delta } => {
+                self.route_numeric_delta(key, -delta, log_index).await?;
             },
-            WriteRequest::Incr { key, delta } => {
+            | WriteRequest::Incr { key, delta } => {
                 self.route_numeric_delta(key, delta, log_index).await?;
             },
         };
@@ -136,15 +137,14 @@ impl CacheManager {
         }
         Ok(QueryIO::Array(keys))
     }
-    pub(crate) async fn apply_snapshot(&self, snapshot: Snapshot) -> Result<()> {
+    pub(crate) async fn apply_snapshot(self, key_values: Vec<CacheEntry>) -> Result<()> {
         // * Here, no need to think about index as it is to update state and no return is required
-        join_all(snapshot.key_values().into_iter().filter(|kvc| kvc.is_valid(&Utc::now())).map(
-            |kvs| self.route_set(kvs.key().to_string(), kvs.value().to_string(), kvs.expiry(), 0),
-        ))
+        join_all(key_values.into_iter().filter(|kvc| kvc.is_valid(&Utc::now())).map(|kvs| {
+            self.route_set(kvs.key().to_string(), kvs.value().to_string(), kvs.expiry(), 0)
+        }))
         .await;
 
         // TODO let's find the way to test without adding the following code - echo
-        // Only for debugging and test
         if let Ok(QueryIO::Array(data)) = self.route_keys(None).await {
             let mut keys = vec![];
             for key in data {
@@ -153,7 +153,8 @@ impl CacheManager {
                 };
                 keys.push(key);
             }
-            println!("[INFO] Full Sync Keys: {:?}", keys);
+
+            debug!("Full Sync Keys: {:?}", keys);
         }
         Ok(())
     }

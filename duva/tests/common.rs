@@ -1,16 +1,17 @@
 #![allow(dead_code, unused_variables)]
-
 use bytes::Bytes;
-use duva::domains::query_parsers::query_io::QueryIO;
+use duva::domains::query_io::QueryIO;
 use duva::make_smart_pointer;
+use std::io::{BufRead, BufReader, Write};
+use std::mem::MaybeUninit;
 use std::net::TcpListener;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
+use std::process::{Child, ChildStdout, Command};
+use std::thread::sleep;
 use tempfile::TempDir;
-use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncWriteExt, BufReader};
-use tokio::process::{Child, ChildStdout, Command};
-use tokio::time::sleep;
-use tokio::time::{Duration, Instant};
+
+use tokio::time::Duration;
 use uuid::Uuid;
 
 pub struct ServerEnv {
@@ -44,12 +45,17 @@ impl Default for ServerEnv {
 }
 
 impl ServerEnv {
+    // Create a new ServerEnv with a unique port
+    pub fn clone(self) -> Self {
+        ServerEnv { port: get_available_port(), ..self }
+    }
+
     pub fn with_file_name(mut self, file_name: impl Into<String>) -> Self {
         self.file_name = FileName(Some(file_name.into()));
         self
     }
 
-    pub fn with_leader_bind_addr(mut self, leader_bind_addr: String) -> Self {
+    pub fn with_bind_addr(mut self, leader_bind_addr: String) -> Self {
         self.leader_bind_addr = Some(leader_bind_addr);
         self
     }
@@ -102,16 +108,22 @@ impl Drop for FileName {
     }
 }
 
-pub async fn spawn_server_process(env: &ServerEnv) -> anyhow::Result<TestProcessChild> {
-    println!("Starting server on port {}", env.port);
-    let mut process = run_server_process(env);
+pub fn spawn_server_process(env: &ServerEnv) -> anyhow::Result<TestProcessChild> {
+    let process = run_server_process(env, Stdio::null());
 
-    wait_for_message(
-        process.process.stdout.as_mut().unwrap(),
-        vec![format!("listening peer connection on 127.0.0.1:{}...", env.port + 10000).as_str()],
-        Some(10000),
-    )
-    .await?;
+    // catch panic 10 times
+    let mut cnt = 50;
+    while cnt > 0 {
+        cnt -= 1;
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        if let Ok(mut child) = std::panic::catch_unwind(|| Client::new(process.port)) {
+            let res = child.send_and_get_vec("PING", 1);
+            if res != vec!["PONG"] {
+                continue;
+            }
+            break;
+        }
+    }
 
     Ok(process)
 }
@@ -122,7 +134,7 @@ impl TestProcessChild {
     }
 
     pub fn heartbeat_msg(&self, expected_count: usize) -> String {
-        format!("[INFO] from {}, hc:{}", self.bind_addr(), expected_count)
+        format!("from {}, hc:{}", self.bind_addr(), expected_count)
     }
 }
 // scan for available port
@@ -139,12 +151,7 @@ impl TestProcessChild {
     }
 
     /// Attempts to gracefully terminate the process, falling back to force kill if necessary
-    pub async fn terminate(&mut self) -> std::io::Result<()> {
-        if self.process.id().is_none() {
-            // Do nothing if already terminated
-            return Ok(());
-        }
-
+    pub fn terminate(&mut self) -> std::io::Result<()> {
         // First try graceful shutdown
         // Give the process some time to shutdown gracefully
         let timeout = Duration::from_secs(1);
@@ -152,33 +159,16 @@ impl TestProcessChild {
 
         while start.elapsed() < timeout {
             match self.process.try_wait()? {
-                Some(_) => return Ok(()),
-                None => sleep(Duration::from_millis(100)).await,
+                | Some(_) => return Ok(()),
+                | None => sleep(Duration::from_millis(100)),
             }
         }
 
         // Force kill if still running
-        self.process.kill().await?;
-        self.process.wait().await?;
+        self.process.kill()?;
+        self.process.wait()?;
 
         Ok(())
-    }
-
-    pub async fn wait_for_message(&mut self, target: &str) -> anyhow::Result<()> {
-        let read = self.process.stdout.as_mut().unwrap();
-
-        wait_for_message(read, vec![target], None).await
-    }
-
-    pub async fn timed_wait_for_message(
-        &mut self,
-        target: Vec<&str>,
-
-        wait_for: u128,
-    ) -> anyhow::Result<()> {
-        let read = self.process.stdout.as_mut().unwrap();
-
-        wait_for_message(read, target, Some(wait_for)).await
     }
 }
 
@@ -190,7 +180,7 @@ impl Drop for TestProcessChild {
 
 make_smart_pointer!(TestProcessChild, Child => process);
 
-pub fn run_server_process(env: &ServerEnv) -> TestProcessChild {
+pub fn run_server_process(env: &ServerEnv, std_option: Stdio) -> TestProcessChild {
     let mut command = Command::new("cargo");
     command.args([
         "run",
@@ -209,6 +199,8 @@ pub fn run_server_process(env: &ServerEnv) -> TestProcessChild {
         env.dir.path().to_str().unwrap(),
         "--tpp",
         env.topology_path.as_path().to_str().unwrap(),
+        "--log_level",
+        "debug",
     ]);
 
     if let Some(replicaof) = env.leader_bind_addr.as_ref() {
@@ -220,48 +212,12 @@ pub fn run_server_process(env: &ServerEnv) -> TestProcessChild {
 
     TestProcessChild::new(
         command
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
+            .stdout(std_option)
+            .stderr(Stdio::null())
             .spawn()
             .expect("Failed to start server process"),
         env.port,
     )
-}
-
-async fn wait_for_message<T: AsyncRead + Unpin>(
-    read: &mut T,
-    mut target: Vec<&str>,
-
-    timeout_in_millis: Option<u128>,
-) -> anyhow::Result<()> {
-    let internal_count = Instant::now();
-    let mut buf = BufReader::new(read).lines();
-    let mut cnt = target.len();
-
-    let mut current_target = target.remove(0);
-    while let Some(line) = buf.next_line().await? {
-        if line.starts_with(current_target) {
-            cnt -= 1;
-
-            if cnt == 0 {
-                if target.is_empty() {
-                    return Ok(());
-                } else {
-                    return Err(anyhow::anyhow!("Targets remain after target_count exhausted"));
-                }
-            }
-
-            current_target = target.remove(0);
-        }
-
-        if let Some(timeout) = timeout_in_millis {
-            if internal_count.elapsed().as_millis() > timeout {
-                return Err(anyhow::anyhow!("Timeout waiting for message"));
-            }
-        }
-    }
-
-    Err(anyhow::anyhow!("Error was found until reading nextline"))
 }
 
 pub fn array(arr: Vec<&str>) -> Bytes {
@@ -276,31 +232,6 @@ pub fn session_request(request_id: u64, arr: Vec<&str>) -> Bytes {
     .serialize()
 }
 
-/// Check if all processes can communicate with each other
-pub async fn check_internodes_communication(
-    processes: &mut [&mut TestProcessChild],
-    hop_count: usize,
-    time_out: u128,
-) -> anyhow::Result<()> {
-    for i in 0..processes.len() {
-        // First get the message from all other processes
-        let messages: Vec<_> = processes
-            .iter()
-            .enumerate()
-            .filter(|&(j, _)| j != i)
-            .flat_map(|(_, target)| {
-                (0..hop_count + 1).map(|_| target.heartbeat_msg(hop_count)).collect::<Vec<String>>()
-            })
-            .collect();
-
-        // Then wait for all messages
-        for msg in messages {
-            processes[i].timed_wait_for_message(vec![&msg], time_out).await?;
-        }
-    }
-    Ok(())
-}
-
 pub struct Client {
     pub child: Child,
     reader: Option<BufReader<ChildStdout>>,
@@ -309,18 +240,7 @@ pub struct Client {
 impl Client {
     pub fn new(port: u16) -> Client {
         let mut command = Command::new("cargo");
-        command.args([
-            "run",
-            "-p",
-            "duva-client",
-            "--bin",
-            "cli",
-            "--features",
-            "cli",
-            "--",
-            "--port",
-            &port.to_string(),
-        ]);
+        command.args(["run", "-p", "duva-client", "--", "--port", &port.to_string()]);
 
         command.env("DUVA_ENV", "test");
 
@@ -334,15 +254,15 @@ impl Client {
         }
     }
 
-    pub async fn send(&mut self, command: &[u8]) -> anyhow::Result<()> {
+    pub fn send(&mut self, command: &[u8]) -> anyhow::Result<()> {
         let stdin = self.child.stdin.as_mut().unwrap();
-        stdin.write_all(command).await?;
-        stdin.write_all(b"\r\n").await?;
-        stdin.flush().await?;
+        stdin.write_all(command)?;
+        stdin.write_all(b"\r\n")?;
+        stdin.flush()?;
         Ok(())
     }
 
-    pub async fn read(&mut self) -> Result<String, ()> {
+    pub fn read(&mut self) -> Result<String, ()> {
         // Initialize reader if it doesn't exist
         if self.reader.is_none() {
             self.reader = Some(BufReader::new(self.child.stdout.take().unwrap()));
@@ -350,30 +270,34 @@ impl Client {
 
         let reader = self.reader.as_mut().unwrap();
         let mut line = String::new();
-        reader.read_line(&mut line).await.map_err(|_| ())?;
+        reader.read_line(&mut line).map_err(|_| ())?;
         Ok(line.trim().to_string())
     }
 
-    pub async fn send_and_get(&mut self, command: impl AsRef<[u8]>, mut cnt: u16) -> Vec<String> {
-        self.send(command.as_ref()).await.unwrap();
+    pub fn send_and_get_vec(&mut self, command: impl AsRef<[u8]>, mut cnt: u32) -> Vec<String> {
+        self.send(command.as_ref()).unwrap();
 
         let mut res = vec![];
         while cnt > 0 {
             cnt -= 1;
-            if let Ok(line) = self.read().await {
+            if let Ok(line) = self.read() {
                 res.push(line);
             }
         }
         res
     }
-
-    pub async fn terminate(&mut self) -> std::io::Result<()> {
-        if self.child.id().is_none() {
-            // Do nothing if already terminated
-            return Ok(());
+    pub fn send_and_get(&mut self, command: impl AsRef<[u8]>) -> String {
+        self.send(command.as_ref()).unwrap();
+        loop {
+            if let Ok(line) = self.read() {
+                return line;
+            }
         }
-        let _ = self.child.kill().await?;
-        let _ = self.child.wait().await?;
+    }
+
+    pub fn terminate(&mut self) -> std::io::Result<()> {
+        let _ = self.child.kill()?;
+        let _ = self.child.wait()?;
 
         Ok(())
     }
@@ -382,5 +306,38 @@ impl Client {
 impl Drop for Client {
     fn drop(&mut self) {
         let _ = self.terminate();
+    }
+}
+
+pub fn form_cluster<const T: usize>(envs: [&mut ServerEnv; T]) -> [TestProcessChild; T] {
+    // Using MaybeUninit to create an uninitialized array
+    let mut processes: [MaybeUninit<TestProcessChild>; T] =
+        unsafe { MaybeUninit::uninit().assume_init() };
+
+    // Initialize the leader
+    let leader_p = spawn_server_process(&envs[0]).unwrap();
+    let leader_bind_addr = leader_p.bind_addr();
+    processes[0].write(leader_p);
+
+    // Initialize replicas
+    for i in 1..T {
+        envs[i].leader_bind_addr = Some(leader_bind_addr.clone());
+        let repl_p = spawn_server_process(&envs[i]).unwrap();
+        processes[i].write(repl_p);
+    }
+
+    let process_refs =
+        unsafe { processes.iter_mut().map(|p| &mut *(p.as_mut_ptr())).collect::<Vec<_>>() };
+
+    // Convert the array of MaybeUninit to an initialized array safely
+    unsafe {
+        // Create a ManuallyDrop to prevent double-free when array is moved out
+        let mut manual_drop = std::mem::ManuallyDrop::new(processes);
+
+        // Get a pointer to the underlying array and reinterpret it
+        let ptr = manual_drop.as_mut_ptr() as *mut [TestProcessChild; T];
+
+        // Read from the pointer to get the initialized array
+        ptr.read()
     }
 }

@@ -1,8 +1,8 @@
 use crate::{
     domains::IoError,
+    domains::TSerdeReadWrite,
     prelude::PeerIdentifier,
     presentation::clients::stream::{ClientStreamReader, ClientStreamWriter},
-    services::interface::TSerdeReadWrite,
 };
 use tokio::net::TcpStream;
 use uuid::Uuid;
@@ -15,10 +15,10 @@ pub(crate) async fn authenticate(
     let auth_req: AuthRequest = stream.deserialized_read().await?;
 
     let client_id = match auth_req.client_id {
-        Some(client_id) => {
+        | Some(client_id) => {
             Uuid::parse_str(&client_id).map_err(|e| IoError::Custom(e.to_string()))?
         },
-        None => Uuid::now_v7(),
+        | None => Uuid::now_v7(),
     };
 
     stream

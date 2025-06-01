@@ -1,18 +1,19 @@
-use crate::domains::cluster_actors::replication;
-
 use super::{WriteOperation, WriteRequest, interfaces::TWriteAheadLog};
+use tracing::debug;
 
-pub(crate) struct ReplicatedLogs<T: TWriteAheadLog> {
+#[derive(Debug)]
+pub(crate) struct ReplicatedLogs<T> {
     pub(crate) target: T,
     pub(crate) last_log_index: u64,
     pub(crate) last_log_term: u64,
 }
-
-impl<T: TWriteAheadLog> ReplicatedLogs<T> {
+impl<T> ReplicatedLogs<T> {
     pub fn new(target: T, last_log_index: u64, last_log_term: u64) -> Self {
         Self { target, last_log_index, last_log_term }
     }
+}
 
+impl<T: TWriteAheadLog> ReplicatedLogs<T> {
     pub(crate) async fn list_append_log_entries(
         &self,
         low_watermark: Option<u64>,
@@ -30,40 +31,34 @@ impl<T: TWriteAheadLog> ReplicatedLogs<T> {
     pub(crate) async fn write_single_entry(
         &mut self,
         log: &WriteRequest,
-        repl_state: &replication::ReplicationState,
+        current_term: u64,
     ) -> anyhow::Result<()> {
-        if !repl_state.is_leader_mode {
-            return Err(anyhow::anyhow!("Write given to follower"));
-        }
-
         let op = WriteOperation {
             request: log.clone(),
             log_index: (self.last_log_index + 1),
-            term: repl_state.term,
+            term: current_term,
         };
+
         self.target.append(op).await?;
         self.last_log_index += 1;
 
         // ! Last log term must be updated because
         // ! log consistency check is based on previous log term and index
-        self.last_log_term = repl_state.term;
+        self.last_log_term = current_term;
         Ok(())
     }
 
     // FOLLOWER side operation
     pub(crate) async fn follower_write_entries(
         &mut self,
-        append_entries: Vec<WriteOperation>,
+        entries: Vec<WriteOperation>,
     ) -> anyhow::Result<u64> {
         // Filter and append entries in a single operation
-        let new_entries: Vec<_> =
-            append_entries.into_iter().filter(|log| log.log_index > self.last_log_index).collect();
+        self.update_metadata(&entries);
 
-        self.update_metadata(&new_entries);
+        self.target.append_many(entries).await?;
 
-        self.target.append_many(new_entries).await?;
-
-        println!("[INFO] Received log entry with log index up to {}", self.last_log_index);
+        debug!("Received log entry with log index up to {}", self.last_log_index);
         Ok(self.last_log_index)
     }
 
@@ -75,6 +70,7 @@ impl<T: TWriteAheadLog> ReplicatedLogs<T> {
         self.target.follower_full_sync(ops).await?;
         Ok(())
     }
+
     pub(crate) async fn range(
         &self,
         start_exclusive: u64,
@@ -89,10 +85,6 @@ impl<T: TWriteAheadLog> ReplicatedLogs<T> {
 
     pub(crate) async fn read_at(&self, at: u64) -> Option<WriteOperation> {
         self.target.read_at(at).await
-    }
-
-    pub(crate) fn log_start_index(&self) -> u64 {
-        self.target.log_start_index()
     }
 
     pub(crate) fn is_empty(&self) -> bool {
@@ -110,5 +102,11 @@ impl<T: TWriteAheadLog> ReplicatedLogs<T> {
         let last_entry = new_entries.last().unwrap();
         self.last_log_index = last_entry.log_index;
         self.last_log_term = last_entry.term;
+    }
+
+    pub(crate) async fn reset(&mut self) {
+        self.last_log_index = 0;
+        self.last_log_term = 0;
+        self.truncate_after(0).await
     }
 }

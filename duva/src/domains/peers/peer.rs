@@ -1,14 +1,11 @@
-use crate::domains::IoError;
+use super::connections::connection_types::WriteConnected;
+use super::identifier::TPeerAddress;
+use crate::domains::QueryIO;
 use crate::domains::cluster_actors::replication::ReplicationId;
-use crate::domains::peers::connected_types::WriteConnected;
-use crate::domains::query_parsers::QueryIO;
+use crate::domains::{IoError, TRead};
 use crate::prelude::PeerIdentifier;
-use crate::services::interface::TWrite;
-use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
 use tokio::task::JoinHandle;
 use tokio::time::Instant;
-
-use super::identifier::TPeerAddress;
 
 #[derive(Debug)]
 pub(crate) struct Peer {
@@ -20,22 +17,20 @@ pub(crate) struct Peer {
 
 impl Peer {
     pub(crate) fn new(
-        w: OwnedWriteHalf,
+        w: impl Into<WriteConnected>,
         state: PeerState,
         listener_kill_trigger: ListeningActorKillTrigger,
     ) -> Self {
-        Self {
-            w_conn: WriteConnected::new(w),
-            listener_kill_trigger,
-            last_seen: Instant::now(),
-            state,
-        }
+        Self { w_conn: w.into(), listener_kill_trigger, last_seen: Instant::now(), state }
     }
     pub(crate) fn id(&self) -> &PeerIdentifier {
         &self.state.addr
     }
     pub(crate) fn state(&self) -> &PeerState {
         &self.state
+    }
+    pub(crate) fn replid(&self) -> &ReplicationId {
+        &self.state.replid
     }
 
     pub(crate) fn kind(&self) -> &NodeKind {
@@ -48,15 +43,16 @@ impl Peer {
         self.state.match_index = match_index;
     }
 
-    pub(crate) async fn send_to_peer(
-        &mut self,
-        io: impl Into<QueryIO> + Send,
-    ) -> Result<(), IoError> {
-        self.w_conn.stream.write_io(io).await
+    pub(crate) async fn send(&mut self, io: impl Into<QueryIO> + Send) -> Result<(), IoError> {
+        self.w_conn.write(io.into()).await
     }
 
-    pub(crate) async fn kill(self) -> OwnedReadHalf {
+    pub(crate) async fn kill(self) -> Box<dyn TRead> {
         self.listener_kill_trigger.kill().await
+    }
+
+    pub(crate) fn is_replica(&self) -> bool {
+        self.state.kind == NodeKind::Replica
     }
 }
 
@@ -125,9 +121,9 @@ impl PeerState {
             .collect();
 
         nodes.sort_by_key(|n| match n.kind {
-            NodeKind::Replica => 0,
-            NodeKind::NonData => 1,
-            NodeKind::Myself => 2,
+            | NodeKind::Replica => 0,
+            | NodeKind::NonData => 1,
+            | NodeKind::Myself => 2,
         });
         nodes
     }
@@ -159,9 +155,10 @@ impl PeerState {
 impl std::fmt::Display for PeerState {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self.kind {
-            NodeKind::Replica => write!(f, "{} {} 0 {}", self.addr, self.replid, self.match_index),
-            NodeKind::NonData => write!(f, "{} {} 0 {}", self.addr, self.replid, self.match_index),
-            NodeKind::Myself => {
+            | NodeKind::Replica | NodeKind::NonData => {
+                write!(f, "{} {} 0 {}", self.addr, self.replid, self.match_index)
+            },
+            | NodeKind::Myself => {
                 write!(f, "{} myself,{} 0 {}", self.addr, self.replid, self.match_index)
             },
         }
@@ -178,16 +175,16 @@ pub(crate) enum NodeKind {
 #[derive(Debug)]
 pub(crate) struct ListeningActorKillTrigger(
     tokio::sync::oneshot::Sender<()>,
-    JoinHandle<OwnedReadHalf>,
+    JoinHandle<Box<dyn TRead>>,
 );
 impl ListeningActorKillTrigger {
     pub(crate) fn new(
         kill_trigger: tokio::sync::oneshot::Sender<()>,
-        listning_task: JoinHandle<OwnedReadHalf>,
+        listning_task: JoinHandle<Box<dyn TRead>>,
     ) -> Self {
         Self(kill_trigger, listning_task)
     }
-    pub(crate) async fn kill(self) -> OwnedReadHalf {
+    pub(crate) async fn kill(self) -> Box<dyn TRead> {
         let _ = self.0.send(());
         self.1.await.unwrap()
     }

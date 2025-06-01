@@ -97,3 +97,13 @@ macro_rules! env_var {
         }
     };
 }
+
+/// This macro is used to create a new error with a message and log it using tracing::error.
+/// It takes a single argument, which is the error message.
+#[macro_export]
+macro_rules! err {
+    ($msg:expr) => {{
+        tracing::error!("{}: {}", $msg, file!());
+        Err(anyhow::anyhow!($msg))
+    }};
+}

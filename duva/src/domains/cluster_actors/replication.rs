@@ -1,14 +1,15 @@
-use super::consensus::ElectionState;
-pub(crate) use super::heartbeats::heartbeat::BannedPeer;
-pub(crate) use super::heartbeats::heartbeat::HeartBeatMessage;
-
+use crate::domains::peers::command::BannedPeer;
+use crate::domains::peers::command::HeartBeat;
 use crate::domains::peers::identifier::PeerIdentifier;
 use crate::domains::peers::peer::NodeKind;
 use crate::domains::peers::peer::PeerState;
+use std::collections::HashSet;
 use std::fmt::Display;
 use std::sync::Arc;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
+
+use super::consensus::election::ElectionState;
 
 #[derive(Debug, Clone)]
 pub(crate) struct ReplicationState {
@@ -21,7 +22,7 @@ pub(crate) struct ReplicationState {
 
     // * state is shared among peers
     pub(crate) term: u64,
-    pub(crate) ban_list: Vec<BannedPeer>,
+    pub(crate) banlist: HashSet<BannedPeer>,
 
     pub(crate) election_state: ElectionState,
     pub(crate) is_leader_mode: bool,
@@ -33,21 +34,22 @@ impl ReplicationState {
         role: ReplicationRole,
         self_host: &str,
         self_port: u16,
+        hwm: u64,
     ) -> Self {
         ReplicationState {
             is_leader_mode: role == ReplicationRole::Leader,
             election_state: ElectionState::new(&role),
             role,
             replid,
-            hwm: Arc::new(0.into()),
+            hwm: Arc::new(hwm.into()),
             term: 0,
             self_host: self_host.to_string(),
             self_port,
-            ban_list: Default::default(),
+            banlist: Default::default(),
         }
     }
 
-    pub(crate) fn self_info(&self) -> PeerState {
+    pub(super) fn self_info(&self) -> PeerState {
         let self_id = self.self_identifier();
 
         PeerState::new(
@@ -71,74 +73,70 @@ impl ReplicationState {
         ]
     }
 
-    pub(crate) fn in_ban_list(&self, peer_identifier: &PeerIdentifier) -> bool {
-        if let Ok(current_time_in_sec) = time_in_secs() {
-            self.ban_list.iter().any(|node| {
-                &node.p_id == peer_identifier && current_time_in_sec - node.ban_time < 60
-            })
-        } else {
-            false
-        }
+    pub(super) fn in_ban_list(&self, peer_identifier: &PeerIdentifier) -> bool {
+        let Ok(current_time) = time_in_secs() else { return false };
+        self.banlist.get(peer_identifier).is_some_and(|node| current_time - node.ban_time < 60)
     }
 
-    pub(crate) fn default_heartbeat(
+    pub(super) fn default_heartbeat(
         &self,
         hop_count: u8,
         prev_log_index: u64,
         prev_log_term: u64,
-    ) -> HeartBeatMessage {
-        HeartBeatMessage {
+    ) -> HeartBeat {
+        HeartBeat {
             from: self.self_identifier(),
             term: self.term,
             hwm: self.hwm.load(Ordering::Relaxed),
             replid: self.replid.clone(),
             hop_count,
-            ban_list: self.ban_list.clone(),
+            ban_list: self.banlist.iter().cloned().collect(),
             append_entries: vec![],
             cluster_nodes: vec![],
             prev_log_index,
             prev_log_term,
+            hashring: None,
         }
     }
 
-    pub(crate) fn ban_peer(&mut self, p_id: &PeerIdentifier) -> anyhow::Result<()> {
-        self.ban_list.push(BannedPeer { p_id: p_id.clone(), ban_time: time_in_secs()? });
-        Ok(())
-    }
-
-    pub(crate) fn remove_from_ban_list(&mut self, peer_addr: &PeerIdentifier) {
-        let idx = self.ban_list.iter().position(|node| &node.p_id == peer_addr);
-        if let Some(idx) = idx {
-            self.ban_list.swap_remove(idx);
-        }
-    }
-
-    pub(crate) fn become_candidate(&mut self, replica_count: u8) {
-        self.term += 1;
-
-        self.election_state.become_candidate(replica_count);
-    }
-    pub(crate) fn may_become_follower(
+    pub(super) fn become_follower_if_term_higher_and_votable(
         &mut self,
         candidate_id: &PeerIdentifier,
         election_term: u64,
     ) -> bool {
-        if !(self.election_state.is_votable(candidate_id) && self.term < election_term) {
+        // If the candidate's term is less than mine → reject
+        if election_term < self.term {
             return false;
         }
+
+        // When a node sees a higher term, it must forget any vote it cast in a prior term, because:
+        if election_term > self.term {
+            self.term = election_term;
+            self.vote_for(None);
+        }
+
+        if !self.election_state.is_votable(candidate_id) {
+            return false;
+        }
+
         self.vote_for(Some(candidate_id.clone()));
-        self.term = election_term;
+
         true
     }
 
     pub(super) fn vote_for(&mut self, leader_id: Option<PeerIdentifier>) {
         self.election_state = ElectionState::Follower { voted_for: leader_id };
-        self.is_leader_mode = false;
+        self.set_follower_mode();
     }
     pub(super) fn become_leader(&mut self) {
         self.role = ReplicationRole::Leader;
         self.is_leader_mode = true;
         self.election_state.become_leader();
+    }
+
+    fn set_follower_mode(&mut self) {
+        self.is_leader_mode = false;
+        self.role = ReplicationRole::Follower;
     }
 }
 
@@ -150,7 +148,7 @@ pub(crate) fn time_in_secs() -> anyhow::Result<u64> {
 }
 
 #[derive(
-    Debug, Clone, PartialEq, Default, Eq, PartialOrd, Ord, bincode::Encode, bincode::Decode,
+    Debug, Clone, PartialEq, Default, Eq, PartialOrd, Ord, bincode::Encode, bincode::Decode, Hash,
 )]
 pub(crate) enum ReplicationId {
     #[default]
@@ -161,8 +159,8 @@ pub(crate) enum ReplicationId {
 impl Display for ReplicationId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            ReplicationId::Undecided => write!(f, "?"),
-            ReplicationId::Key(key) => write!(f, "{}", key),
+            | ReplicationId::Undecided => write!(f, "?"),
+            | ReplicationId::Key(key) => write!(f, "{}", key),
         }
     }
 }
@@ -170,8 +168,8 @@ impl Display for ReplicationId {
 impl From<ReplicationId> for String {
     fn from(value: ReplicationId) -> Self {
         match value {
-            ReplicationId::Undecided => "?".to_string(),
-            ReplicationId::Key(key) => key,
+            | ReplicationId::Undecided => "?".to_string(),
+            | ReplicationId::Key(key) => key,
         }
     }
 }
@@ -179,8 +177,8 @@ impl From<ReplicationId> for String {
 impl From<String> for ReplicationId {
     fn from(value: String) -> Self {
         match value.as_str() {
-            "?" => ReplicationId::Undecided,
-            _ => ReplicationId::Key(value),
+            | "?" => ReplicationId::Undecided,
+            | _ => ReplicationId::Key(value),
         }
     }
 }
@@ -194,8 +192,8 @@ pub enum ReplicationRole {
 impl Display for ReplicationRole {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            ReplicationRole::Leader => write!(f, "leader"),
-            ReplicationRole::Follower => write!(f, "follower"),
+            | ReplicationRole::Leader => write!(f, "leader"),
+            | ReplicationRole::Follower => write!(f, "follower"),
         }
     }
 }
@@ -208,6 +206,7 @@ fn test_cloning_replication_state() {
         ReplicationRole::Leader,
         "ads",
         1231,
+        0,
     );
     let cloned = replication_state.clone();
 

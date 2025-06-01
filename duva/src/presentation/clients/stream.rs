@@ -1,13 +1,14 @@
 use super::{ClientController, request::ClientRequest};
 use crate::{
-    domains::{IoError, cluster_actors::session::SessionRequest, query_parsers::QueryIO},
+    domains::interface::{TRead, TWrite},
+    domains::{IoError, QueryIO, cluster_actors::session::SessionRequest},
     prelude::PeerIdentifier,
-    services::interface::{TRead, TWrite},
 };
 use tokio::{
     net::tcp::{OwnedReadHalf, OwnedWriteHalf},
     sync::mpsc::Sender,
 };
+use tracing::{debug, error, instrument, trace};
 use uuid::Uuid;
 pub struct ClientStreamReader {
     pub(crate) r: OwnedReadHalf,
@@ -15,30 +16,7 @@ pub struct ClientStreamReader {
 }
 
 impl ClientStreamReader {
-    pub(crate) async fn extract_query(&mut self) -> Result<Vec<ClientRequest>, IoError> {
-        let query_ios = self.r.read_values().await?;
-
-        query_ios
-            .into_iter()
-            .map(|query_io| match query_io {
-                QueryIO::Array(value) => {
-                    let req = ClientRequest::from_user_input(value, None)
-                        .map_err(|e| IoError::Custom(e.to_string()))?;
-                    Ok(req)
-                },
-                QueryIO::SessionRequest { request_id, value } => {
-                    let req = ClientRequest::from_user_input(
-                        value,
-                        Some(SessionRequest::new(request_id, self.client_id)),
-                    )
-                    .map_err(|e| IoError::Custom(e.to_string()))?;
-                    Ok(req)
-                },
-                _ => Err(IoError::Custom("Unexpected command format".to_string())),
-            })
-            .collect()
-    }
-
+    #[instrument(level = tracing::Level::DEBUG, skip(self, handler, sender),fields(client_id= %self.client_id))]
     pub(crate) async fn handle_client_stream(
         mut self,
         handler: ClientController,
@@ -46,10 +24,12 @@ impl ClientStreamReader {
     ) {
         'l: loop {
             match self.extract_query().await {
-                Ok(requests) => {
+                | Ok(requests) => {
+                    debug!("Received {} requests", requests.len());
                     for req in requests.into_iter() {
+                        trace!(?req, "Processing request");
                         match handler.maybe_consensus_then_execute(req).await {
-                            Ok(res) => {
+                            | Ok(res) => {
                                 if sender.send(res).await.is_err() {
                                     break 'l;
                                 }
@@ -57,18 +37,19 @@ impl ClientStreamReader {
 
                             // ! One of the following errors can be returned:
                             // ! consensus or handler or commit
-                            Err(e) => {
-                                eprintln!("[ERROR] {:?}", e);
+                            | Err(e) => {
+                                error!("{:?}", e);
                                 let _ = sender.send(QueryIO::Err(e.to_string())).await;
                                 continue;
                             },
                         };
                     }
+                    debug!("Finished processing requests");
                 },
 
-                Err(err) => {
+                | Err(err) => {
+                    error!("{}", err);
                     if err.should_break() {
-                        eprintln!("[INFO] {}", err);
                         return;
                     } else {
                         let _ = sender.send(QueryIO::Err(err.to_string())).await;
@@ -76,6 +57,30 @@ impl ClientStreamReader {
                 },
             }
         }
+    }
+
+    pub(crate) async fn extract_query(&mut self) -> Result<Vec<ClientRequest>, IoError> {
+        let query_ios = self.r.read_values().await?;
+
+        query_ios
+            .into_iter()
+            .map(|query_io| match query_io {
+                | QueryIO::Array(value) => {
+                    let req = ClientRequest::from_user_input(value, None)
+                        .map_err(|e| IoError::Custom(e.to_string()))?;
+                    Ok(req)
+                },
+                | QueryIO::SessionRequest { request_id, value } => {
+                    let req = ClientRequest::from_user_input(
+                        value,
+                        Some(SessionRequest::new(request_id, self.client_id)),
+                    )
+                    .map_err(|e| IoError::Custom(e.to_string()))?;
+                    Ok(req)
+                },
+                | _ => Err(IoError::Custom("Unexpected command format".to_string())),
+            })
+            .collect()
     }
 }
 

@@ -123,11 +123,14 @@ pub(crate) fn default_hints() -> HashSet<CommandHint> {
     set.insert(CommandHint::new("set key value [px expr]", "set "));
     set.insert(CommandHint::new("append key value", "append "));
     set.insert(CommandHint::new("incr key", "incr "));
+    set.insert(CommandHint::new("incrby key value", "incrby "));
     set.insert(CommandHint::new("decr key", "decr "));
+    set.insert(CommandHint::new("decrby key value", "decrby "));
     set.insert(CommandHint::new("cluster info", "cluster "));
     set.insert(CommandHint::new("cluster nodes", "cluster "));
     set.insert(CommandHint::new("cluster forget node", "cluster "));
-    set.insert(CommandHint::new("cluster meet node", "cluster "));
+
+    set.insert(CommandHint::new("cluster meet node [lazy|eager]", "cluster "));
     set.insert(CommandHint::new("ping", ""));
     set.insert(CommandHint::new("keys pattern", "keys "));
     set.insert(CommandHint::new("info [section]", ""));
@@ -135,6 +138,7 @@ pub(crate) fn default_hints() -> HashSet<CommandHint> {
     set.insert(CommandHint::new("exists key [key ...]", "exists "));
     set.insert(CommandHint::new("del key [key ...]", "del "));
     set.insert(CommandHint::new("ttl key", "ttl "));
+    set.insert(CommandHint::new("replicaof host port", "replicaof "));
 
     set
 }
@@ -163,13 +167,16 @@ pub(crate) fn dynamic_hints() -> HashMap<&'static str, Vec<DynamicHint>> {
         vec![hint!("key value", 0), hint!("value", 1), hint!("[px expr]", 2), hint!("expr", 3)],
     );
     map.insert("append", vec![hint!("key value", 0), hint!("value", 1)]);
+    map.insert("incrby", vec![hint!("key increment", 0), hint!("increment", 1)]);
+    map.insert("decrby", vec![hint!("key decrement", 0), hint!("decrement", 1)]);
 
     map.insert("cluster forget", vec![hint!("node", 0)]);
-    map.insert("cluster meet", vec![hint!("node", 0)]);
+    map.insert("cluster meet", vec![hint!("node [lazy|eager]", 0), hint!("[lazy|eager]", 1)]);
     map.insert("keys", vec![hint!("pattern", 0)]);
     map.insert("get", vec![hint!("key", 0)]);
     map.insert("exists", vec![hint!("key [key ...]", 0, repeat), hint!("[key ...]", 1, repeat)]);
     map.insert("del", vec![hint!("key [key ...]", 0, repeat), hint!("[key ...]", 1, repeat)]);
+    map.insert("replicaof", vec![hint!("host port", 0), hint!("port", 1)]);
 
     map
 }

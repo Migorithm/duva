@@ -41,7 +41,7 @@ pub(crate) fn encode_metadata(metadata: Metadata) -> Result<Vec<u8>> {
     result.push(METADATA_SECTION_INDICATOR);
     result.extend_from_slice(&encode_key_value("repl-id", &metadata.repl_id.to_string())?);
     result.push(METADATA_SECTION_INDICATOR);
-    result.extend_from_slice(&encode_key_value("repl-offset", &metadata.repl_offset.to_string())?);
+    result.extend_from_slice(&encode_key_value("repl-offset", &metadata.log_idx.to_string())?);
     Ok(result)
 }
 pub(crate) fn encode_database_info(index: usize) -> Result<Vec<u8>> {
@@ -350,7 +350,7 @@ mod test {
     #[test]
     fn test_encode_metadata() {
         let metadata =
-            Metadata { repl_id: ReplicationId::Key("key1".to_string().into()), repl_offset: 123 };
+            Metadata { repl_id: ReplicationId::Key("key1".to_string().into()), log_idx: 123 };
         let encoded = encode_metadata(metadata).unwrap();
         let expected = vec![
             METADATA_SECTION_INDICATOR,

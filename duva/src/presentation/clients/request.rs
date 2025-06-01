@@ -1,6 +1,10 @@
+use std::str::FromStr;
+
 use crate::domains::{
-    cluster_actors::session::SessionRequest, operation_logs::WriteRequest,
-    peers::identifier::PeerIdentifier, query_parsers::QueryIO,
+    QueryIO,
+    cluster_actors::{LazyOption, session::SessionRequest},
+    operation_logs::WriteRequest,
+    peers::identifier::PeerIdentifier,
 };
 use anyhow::Context;
 use chrono::{DateTime, Utc};
@@ -28,16 +32,18 @@ pub enum ClientAction {
     Incr { key: String },
     Decr { key: String },
     Ttl { key: String },
-    ClusterMeet(PeerIdentifier),
+    ClusterMeet(PeerIdentifier, LazyOption),
+    IncrBy { key: String, increment: i64 },
+    DecrBy { key: String, decrement: i64 },
 }
 
 impl ClientAction {
     pub fn to_write_request(&self) -> Option<WriteRequest> {
         match self {
-            ClientAction::Set { key, value } => {
+            | ClientAction::Set { key, value } => {
                 Some(WriteRequest::Set { key: key.clone(), value: value.clone(), expires_at: None })
             },
-            ClientAction::SetWithExpiry { key, value, expiry } => {
+            | ClientAction::SetWithExpiry { key, value, expiry } => {
                 let expires_at = expiry.timestamp_millis() as u64;
 
                 Some(WriteRequest::Set {
@@ -46,14 +52,34 @@ impl ClientAction {
                     expires_at: Some(expires_at),
                 })
             },
-            ClientAction::Append { key, value } => {
+            | ClientAction::Append { key, value } => {
                 Some(WriteRequest::Append { key: key.clone(), value: value.clone() })
             },
-            ClientAction::Delete { keys } => Some(WriteRequest::Delete { keys: keys.clone() }),
-            ClientAction::Incr { key } => Some(WriteRequest::Incr { key: key.clone(), delta: 1 }),
-            ClientAction::Decr { key } => Some(WriteRequest::Decr { key: key.clone(), delta: 1 }),
-            _ => None,
+            | ClientAction::Delete { keys } => Some(WriteRequest::Delete { keys: keys.clone() }),
+            | ClientAction::Incr { key } => Some(WriteRequest::Incr { key: key.clone(), delta: 1 }),
+            | ClientAction::Decr { key } => Some(WriteRequest::Decr { key: key.clone(), delta: 1 }),
+            | ClientAction::IncrBy { key, increment } => {
+                Some(WriteRequest::Incr { key: key.clone(), delta: *increment })
+            },
+            | ClientAction::DecrBy { key, decrement } => {
+                Some(WriteRequest::Decr { key: key.clone(), delta: *decrement })
+            },
+            | _ => None,
         }
+    }
+
+    pub fn is_updating_action(&self) -> bool {
+        matches!(
+            self,
+            ClientAction::Set { .. }
+                | ClientAction::Append { .. }
+                | ClientAction::Delete { .. }
+                | ClientAction::Incr { .. }
+                | ClientAction::Decr { .. }
+                | ClientAction::IncrBy { .. }
+                | ClientAction::DecrBy { .. }
+                | ClientAction::Save
+        )
     }
 }
 
@@ -107,7 +133,7 @@ pub fn extract_action(action: &str, args: &[&str]) -> anyhow::Result<ClientActio
     };
 
     match cmd.as_str() {
-        "SET" => {
+        | "SET" => {
             if !(args.len() == 2 || (args.len() == 4 && args[2].eq_ignore_ascii_case("PX"))) {
                 return Err(anyhow::anyhow!(
                     "(error) ERR wrong number of arguments for 'set' command"
@@ -126,7 +152,7 @@ pub fn extract_action(action: &str, args: &[&str]) -> anyhow::Result<ClientActio
             })
         },
 
-        "APPEND" => {
+        | "APPEND" => {
             if args.len() != 2 {
                 return Err(anyhow::anyhow!(
                     "(error) ERR wrong number of arguments for 'append' command"
@@ -135,7 +161,7 @@ pub fn extract_action(action: &str, args: &[&str]) -> anyhow::Result<ClientActio
             Ok(ClientAction::Append { key: args[0].to_string(), value: args[1].to_string() })
         },
 
-        "GET" => {
+        | "GET" => {
             if args.len() == 1 {
                 Ok(ClientAction::Get { key: args[0].to_string() })
             } else if args.len() == 2 {
@@ -147,7 +173,7 @@ pub fn extract_action(action: &str, args: &[&str]) -> anyhow::Result<ClientActio
             }
         },
 
-        "KEYS" => {
+        | "KEYS" => {
             require_exact_args(1)?;
 
             if args[0] == "*" {
@@ -156,34 +182,34 @@ pub fn extract_action(action: &str, args: &[&str]) -> anyhow::Result<ClientActio
                 Ok(ClientAction::Keys { pattern: Some(args[0].to_string()) })
             }
         },
-        "DEL" => {
+        | "DEL" => {
             require_non_empty_args()?;
             Ok(ClientAction::Delete { keys: args.iter().map(|s| s.to_string()).collect() })
         },
-        "EXISTS" => {
+        | "EXISTS" => {
             require_non_empty_args()?;
             Ok(ClientAction::Exists { keys: args.iter().map(|s| s.to_string()).collect() })
         },
 
-        "PING" => {
+        | "PING" => {
             require_exact_args(0)?;
             Ok(ClientAction::Ping)
         },
-        "ECHO" => {
+        | "ECHO" => {
             require_exact_args(1)?;
             Ok(ClientAction::Echo(args[0].to_string()))
         },
-        "INFO" => {
+        | "INFO" => {
             require_non_empty_args()?;
             Ok(ClientAction::Info)
         },
 
-        "CLUSTER" => {
+        | "CLUSTER" => {
             require_non_empty_args()?;
             match args[0].to_uppercase().as_str() {
-                "NODES" => Ok(ClientAction::ClusterNodes),
-                "INFO" => Ok(ClientAction::ClusterInfo),
-                "FORGET" => {
+                | "NODES" => Ok(ClientAction::ClusterNodes),
+                | "INFO" => Ok(ClientAction::ClusterInfo),
+                | "FORGET" => {
                     if args.len() != 2 {
                         return Err(anyhow::anyhow!(
                             "(error) ERR wrong number of arguments for 'cluster forget' command"
@@ -191,47 +217,73 @@ pub fn extract_action(action: &str, args: &[&str]) -> anyhow::Result<ClientActio
                     }
                     Ok(ClientAction::ClusterForget(args[1].to_string().into()))
                 },
-                "MEET" => {
-                    if args.len() != 2 {
-                        return Err(anyhow::anyhow!(
-                            "(error) ERR wrong number of arguments for 'cluster meet' command"
+                | "MEET" => {
+                    if args.len() == 2 {
+                        return Ok(ClientAction::ClusterMeet(
+                            args[1].to_string().into(),
+                            LazyOption::Lazy,
                         ));
                     }
-                    Ok(ClientAction::ClusterMeet(args[1].to_string().into()))
+                    if args.len() == 3 {
+                        // args[2].parse()? should be either lazy or eager
+                        let lazy_option:LazyOption =FromStr::from_str(args[2]).context(
+                            "(error) ERR wrong arguments for 'cluster meet' command, expected 'lazy' or 'eager'"
+                        )?;
+
+                        Ok(ClientAction::ClusterMeet(args[1].to_string().into(), lazy_option))
+                    } else {
+                        Err(anyhow::anyhow!(
+                            "(error) ERR wrong number of arguments for 'cluster meet' command"
+                        ))
+                    }
                 },
-                _ => Err(anyhow::anyhow!("(error) ERR unknown subcommand")),
+                | _ => Err(anyhow::anyhow!("(error) ERR unknown subcommand")),
             }
         },
-        "REPLICAOF" => {
+        | "REPLICAOF" => {
             require_exact_args(2)?;
             Ok(ClientAction::ReplicaOf(PeerIdentifier::new(args[0], args[1].parse()?)))
         },
-        "ROLE" => {
+        | "ROLE" => {
             require_exact_args(0)?;
             Ok(ClientAction::Role)
         },
-        "CONFIG" => {
+        | "CONFIG" => {
             require_exact_args(2)?;
             Ok(ClientAction::Config { key: args[0].to_string(), value: args[1].to_string() })
         },
-        "SAVE" => {
+        | "SAVE" => {
             require_exact_args(0)?;
             Ok(ClientAction::Save)
         },
-        "INCR" => {
+        | "INCR" => {
             require_exact_args(1)?;
             Ok(ClientAction::Incr { key: args[0].to_string() })
         },
-        "DECR" => {
+        | "DECR" => {
             require_exact_args(1)?;
             Ok(ClientAction::Decr { key: args[0].to_string() })
         },
-        "TTL" => {
+        | "TTL" => {
             require_exact_args(1)?;
             Ok(ClientAction::Ttl { key: args[0].to_string() })
         },
+        | "INCRBY" => {
+            require_exact_args(2)?;
+
+            let key = args[0].to_string();
+            let increment = args[1].parse()?;
+            Ok(ClientAction::IncrBy { key, increment })
+        },
+        | "DECRBY" => {
+            require_exact_args(2)?;
+
+            let key = args[0].to_string();
+            let decrement = args[1].parse()?;
+            Ok(ClientAction::DecrBy { key, decrement })
+        },
         // Add other commands as needed
-        unknown_cmd => Err(anyhow::anyhow!(
+        | unknown_cmd => Err(anyhow::anyhow!(
             "(error) ERR unknown command '{unknown_cmd}', with args beginning with {}",
             args.iter().map(|s| format!("'{s}'")).collect::<Vec<_>>().join(" ")
         )),

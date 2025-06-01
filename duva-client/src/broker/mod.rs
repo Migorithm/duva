@@ -3,18 +3,18 @@ mod read_stream;
 mod write_stream;
 
 use crate::command::Input;
-use duva::domains::cluster_actors::heartbeats::scheduler::LEADER_HEARTBEAT_INTERVAL_MAX;
-use duva::domains::{IoError, query_parsers::query_io::QueryIO};
-use duva::prelude::PeerIdentifier;
+
+use duva::domains::{IoError, query_io::QueryIO};
 use duva::prelude::tokio;
 use duva::prelude::tokio::net::TcpStream;
 use duva::prelude::tokio::sync::mpsc::Receiver;
 use duva::prelude::tokio::sync::mpsc::Sender;
 use duva::prelude::uuid::Uuid;
+use duva::prelude::{LEADER_HEARTBEAT_INTERVAL_MAX, PeerIdentifier};
 use duva::presentation::clients::request::ClientAction;
 use duva::{
+    domains::TSerdeReadWrite,
     prelude::{AuthRequest, AuthResponse},
-    services::interface::TSerdeReadWrite,
 };
 use input_queue::InputQueue;
 use read_stream::ServerStreamReader;
@@ -36,32 +36,34 @@ impl Broker {
         let mut queue = InputQueue::default();
         while let Some(msg) = self.rx.recv().await {
             match msg {
-                BrokerMessage::FromServer(Ok(QueryIO::TopologyChange(topology))) => {
+                | BrokerMessage::FromServer(Ok(QueryIO::TopologyChange(topology))) => {
                     self.cluster_nodes = topology;
                 },
 
-                BrokerMessage::FromServer(Ok(query_io)) => {
+                | BrokerMessage::FromServer(Ok(query_io)) => {
                     let Some(input) = queue.pop() else {
                         continue;
                     };
 
-                    self.update_req_id(&input.kind, &query_io);
+                    if let Some(index) = self.extract_req_id(&input.kind, &query_io) {
+                        self.request_id = index;
+                    };
 
                     input.callback.send((input.kind, query_io)).unwrap_or_else(|_| {
                         println!("Failed to send response to input callback");
                     });
                 },
-                BrokerMessage::FromServer(Err(e)) => match e {
-                    IoError::ConnectionAborted | IoError::ConnectionReset => {
+                | BrokerMessage::FromServer(Err(e)) => match e {
+                    | IoError::ConnectionAborted | IoError::ConnectionReset => {
                         tokio::time::sleep(tokio::time::Duration::from_millis(
                             LEADER_HEARTBEAT_INTERVAL_MAX,
                         ))
                         .await;
                         self.discover_leader().await.unwrap();
                     },
-                    _ => {},
+                    | _ => {},
                 },
-                BrokerMessage::ToServer(command) => {
+                | BrokerMessage::ToServer(command) => {
                     let cmd = self.build_command_with_request_id(&command.command, command.args);
                     if let Err(e) =
                         self.to_server.send(MsgToServer::Command(cmd.as_bytes().to_vec())).await
@@ -84,34 +86,33 @@ impl Broker {
         command
     }
 
-    // TODO The current implementation requires some refactoring.
-    // * Current rule: s:value-idx:index_num
-    fn update_req_id(&mut self, kind: &ClientAction, query_io: &QueryIO) {
-        if matches!(
-            kind,
-            ClientAction::Set { .. }
-                | ClientAction::Delete { .. }
-                | ClientAction::Incr { .. }
-                | ClientAction::Decr { .. }
-                | ClientAction::Ttl { .. }
-                | ClientAction::Save
-        ) {
-            if let QueryIO::SimpleString(v) = query_io {
-                let s = v.split('|').next_back().unwrap();
-                if let Ok(index) = s.split(':').next_back().unwrap().parse::<u64>() {
-                    if index > self.request_id {
-                        self.request_id = index;
-                    }
-                }
-            }
-        };
+    // ! CONSIDER IDEMPOTENCY RULE
+    // !
+    // ! If request is updating action yet receive error, we need to increase the request id
+    // ! otherwise, server will not be able to process the next command
+    fn extract_req_id(&mut self, kind: &ClientAction, query_io: &QueryIO) -> Option<u64> {
+        if !kind.is_updating_action() {
+            return None;
+        }
+        match query_io {
+            // * Current rule: s:value-idx:index_num
+            | QueryIO::SimpleString(v) => v
+                .rsplit('|')
+                .next()
+                .and_then(|s| s.rsplit(':').next())
+                .and_then(|id| id.parse::<u64>().ok())
+                .filter(|&id| id > self.request_id),
+            | QueryIO::Err(_) => Some(self.request_id + 1),
+            | _ => None,
+        }
     }
 
     pub(crate) async fn authenticate(
         server_addr: &str,
         auth_request: Option<AuthRequest>,
     ) -> Result<(ServerStreamReader, ServerStreamWriter, AuthResponse), IoError> {
-        let mut stream = TcpStream::connect(server_addr).await.unwrap();
+        let mut stream =
+            TcpStream::connect(server_addr).await.map_err(|_| IoError::NotConnected)?;
 
         stream.serialized_write(auth_request.unwrap_or_default()).await.unwrap(); // client_id not exist
         let auth_response: AuthResponse = stream.deserialized_read().await?;
