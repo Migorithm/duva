@@ -315,7 +315,8 @@ impl CacheDb {
         self.tail = None;
         self.keys_with_expiry = 0;
     }
-    pub fn validate(&self) -> bool {
+    #[cfg(test)]
+    fn validate(&self) -> bool {
         if self.map.is_empty() {
             return self.head.is_none() && self.tail.is_none();
         }
