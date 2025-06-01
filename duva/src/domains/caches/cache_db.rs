@@ -233,10 +233,10 @@ impl CacheDb {
                 self.head = None;
                 self.tail = None;
             }
-            self.map.remove(&tail_node.key);
             if tail_node.value.has_expiry() {
                 self.keys_with_expiry -= 1;
             }
+            self.map.remove(&tail_node.key);
         } else {
             error!("CacheDb: Attempted to remove tail from an empty cache");
         }
