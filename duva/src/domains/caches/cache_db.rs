@@ -5,7 +5,7 @@ use crate::{
     domains::{caches::cache_objects::CacheValue, cluster_actors::hash_ring::fnv_1a_hash},
     from_to, make_smart_pointer,
 };
-use std::{cell::UnsafeCell, collections::HashMap, ops::Range, pin::Pin};
+use std::{cell::UnsafeCell, collections::HashMap, ops::Range, pin::Pin, ptr::NonNull};
 
 pub(crate) struct CacheDb {
     map: HashMap<String, Pin<Box<UnsafeCell<CacheNode>>>>,
@@ -17,36 +17,46 @@ pub(crate) struct CacheDb {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct NodeRawPtr(*mut CacheNode);
-from_to!(*mut CacheNode, NodeRawPtr);
-make_smart_pointer!(NodeRawPtr, *mut CacheNode);
+struct NodeRawPtr(NonNull<CacheNode>);
+from_to!(NonNull<CacheNode>, NodeRawPtr);
+make_smart_pointer!(NodeRawPtr, NonNull<CacheNode>);
+
+impl From<*mut CacheNode> for NodeRawPtr {
+    fn from(ptr: *mut CacheNode) -> Self {
+        // SAFETY: The pointer obtained from `Pin<Box<UnsafeCell<CacheNode>>>.get()`
+        // is guaranteed to be non-null because it originates from a Box.
+        // If ptr were from a source that could be null, `NonNull::new(ptr).expect(...)`
+        // would be a safer alternative.
+        unsafe { NodeRawPtr(NonNull::new_unchecked(ptr)) }
+    }
+}
 
 impl NodeRawPtr {
     #[inline]
     fn set_node_prev_link(self, new_prev: Option<NodeRawPtr>) {
         unsafe {
-            (*self.0).prev = new_prev;
+            (*self.0.as_ptr()).prev = new_prev;
         }
     }
     #[inline]
     fn set_node_next_link(self, new_next: Option<NodeRawPtr>) {
         unsafe {
-            (*self.0).next = new_next;
+            (*self.0.as_ptr()).next = new_next;
         }
     }
 
     #[inline]
     fn get_node_prev_link(self) -> Option<NodeRawPtr> {
-        unsafe { (*(self.0)).prev.clone() }
+        unsafe { (*(self.0.as_ptr())).prev.clone() }
     }
 
     #[inline]
     fn get_node_next_link(self) -> Option<NodeRawPtr> {
-        unsafe { (*self.0).next.clone() }
+        unsafe { (*self.0.as_ptr()).next.clone() }
     }
     #[inline]
     fn as_ref(&self) -> &CacheNode {
-        unsafe { &*self.0 }
+        unsafe { &*self.0.as_ref() }
     }
 
     // ! SAFETY: The caller guarantees `ptr` is valid and non-aliased for a mutable reference.
@@ -55,7 +65,7 @@ impl NodeRawPtr {
     // ! when encapsulating raw pointer usage.)
     #[inline]
     fn value_mut(&mut self) -> &'static mut CacheValue {
-        unsafe { (&mut *self.0).value.as_mut() }
+        unsafe { (&mut *self.0.as_ptr()).value.as_mut() }
     }
 }
 
@@ -118,10 +128,6 @@ impl CacheDb {
         let mut extracted_map = HashMap::new();
         let mut extracted_expiry_count = 0;
 
-        // Use `drain_filter` if it were stable, or iterate and remove.
-        // `retain` is good, but we need to move the ownership of Pin<Box<UnsafeCell<CacheDbNode>>> out.
-        // This requires an UNSAFE block for accessing inner data or temporary transmute if we keep `retain`.
-        // A safer way is to iterate, collect, and then remove.
         let mut keys_to_extract = Vec::new();
         for (key, node_pin_box) in self.map.iter() {
             let node_ptr: NodeRawPtr = node_pin_box.get().into();
@@ -138,7 +144,7 @@ impl CacheDb {
         for key in keys_to_extract {
             if let Some(node_pin_box) = self.map.remove(&key) {
                 let node_ptr: NodeRawPtr = node_pin_box.get().into();
-                self.detach(node_ptr.into()); // This modifies the linked list's pointers, still unsafe internally.
+                self.detach(node_ptr.into());
                 if node_ptr.as_ref().value.has_expiry() {
                     extracted_expiry_count += 1;
                 }
@@ -149,7 +155,6 @@ impl CacheDb {
         self.keys_with_expiry -= extracted_expiry_count;
 
         // Reconstructing head/tail for the extracted map.
-        // This part also involves unsafe raw pointer manipulation to build the new linked list.
         let mut current_extracted_head: Option<NodeRawPtr> = None;
         let mut current_extracted_tail: Option<NodeRawPtr> = None;
         let mut prev_node_ptr: Option<NodeRawPtr> = None;
@@ -229,7 +234,7 @@ impl CacheDb {
                 prev: None,
                 next: None,
             }));
-            self.push_front(new_node.get().into()); // This has internal unsafe
+            self.push_front(new_node.get().into());
             self.map.insert(key, new_node);
         }
     }
@@ -383,30 +388,29 @@ impl CacheDb {
         }
         // Check head
         let head = self.head.unwrap();
-        if unsafe { &*head.0 }.prev.is_some() {
+
+        if head.get_node_prev_link().is_some() {
             error!("CacheDb: Head node has a previous pointer");
             return false;
         }
-        let mut current = unsafe { &*head.0 }.next;
+        let mut current = head.get_node_next_link();
         let mut before = head;
         let mut count = 1;
         while let Some(node_ptr) = current {
             count += 1;
-            let node = unsafe { &*node_ptr.0 };
-            if node.prev.is_none() || before != node.prev.unwrap() {
+
+            if node_ptr.get_node_prev_link().is_none()
+                || before != node_ptr.get_node_prev_link().unwrap()
+            {
                 error!(
                     "CacheDb: Node does not have a valid previous pointer or it does not match the expected previous node"
                 );
                 return false;
             }
-            if node.next.is_some() {
-                if let Some(next_ptr) = node.next {
-                    before = node_ptr;
-                    current = Some(next_ptr);
-                } else {
-                    error!("CacheDb: Node has next pointer but it is None");
-                    return false;
-                }
+            if node_ptr.get_node_next_link().is_some() {
+                let next_ptr = node_ptr.get_node_next_link().unwrap();
+                before = node_ptr;
+                current = Some(next_ptr);
             } else {
                 if self.tail.unwrap() != node_ptr {
                     error!("CacheDb: Tail pointer does not match last node");
@@ -462,7 +466,7 @@ impl<'a> Entry<'a> {
     #[inline]
     pub fn or_insert(self, default: CacheValue) -> &'a mut CacheValue {
         match self {
-            | Entry::Occupied { value, .. } => unsafe { &mut *value.0 }.value.as_mut(),
+            | Entry::Occupied { mut value, .. } => value.value_mut(),
             | Entry::Vacant { key, parent } => {
                 Self::insert_parent(parent, key, default).get_mut().value.as_mut()
             },
@@ -472,7 +476,7 @@ impl<'a> Entry<'a> {
     #[inline]
     pub fn or_insert_with<F: FnOnce() -> CacheValue>(self, f: F) -> &'a mut CacheValue {
         match self {
-            | Entry::Occupied { value, .. } => unsafe { &mut *value.0 }.value.as_mut(),
+            | Entry::Occupied { mut value, .. } => value.value_mut(),
             | Entry::Vacant { key, parent } => {
                 let val = f();
                 Self::insert_parent(parent, key, val).get_mut().value.as_mut()
@@ -483,7 +487,7 @@ impl<'a> Entry<'a> {
     #[inline]
     pub fn or_insert_with_key<F: FnOnce(&String) -> CacheValue>(self, f: F) -> &'a mut CacheValue {
         match self {
-            | Entry::Occupied { value, .. } => unsafe { &mut *value.0 }.value.as_mut(),
+            | Entry::Occupied { mut value, .. } => value.value_mut(),
             | Entry::Vacant { key, parent } => {
                 let val = f(&key);
                 Self::insert_parent(parent, key, val).get_mut().value.as_mut()
@@ -494,8 +498,8 @@ impl<'a> Entry<'a> {
     #[inline]
     pub fn and_modify<F: FnOnce(&mut CacheValue)>(self, f: F) -> Entry<'a> {
         match self {
-            | Entry::Occupied { key, value } => {
-                f(&mut unsafe { &mut *value.0 }.value);
+            | Entry::Occupied { key, mut value } => {
+                f(value.value_mut());
                 Entry::Occupied { key, value }
             },
             | Entry::Vacant { key, parent } => Entry::Vacant { key, parent },
@@ -505,8 +509,8 @@ impl<'a> Entry<'a> {
     #[inline]
     pub fn insert_entry(self, new_val: CacheValue) -> Entry<'a> {
         match self {
-            | Entry::Occupied { key, value } => {
-                unsafe { &mut *value.0 }.value = Box::new(new_val);
+            | Entry::Occupied { key, mut value } => {
+                *value.value_mut() = new_val;
                 Entry::Occupied { key, value }
             },
             | Entry::Vacant { key, parent } => {
@@ -565,11 +569,9 @@ impl<'a> Iterator for KeysMut<'a> {
 
 #[cfg(test)]
 mod tests {
-    use chrono::Utc;
-
-    use crate::domains::cluster_actors::hash_ring::fnv_1a_hash;
-
     use super::*;
+    use crate::domains::cluster_actors::hash_ring::fnv_1a_hash;
+    use chrono::Utc;
 
     #[test]
     fn test_extract_keys_for_ranges_empty() {
