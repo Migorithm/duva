@@ -1,11 +1,18 @@
 #![allow(dead_code)]
 #![allow(mutable_transmutes)]
+mod iter;
+use iter::*;
+mod cache_node;
+use cache_node::*;
+#[cfg(test)]
+mod tests;
+use crate::domains::caches::cache_objects::CacheValue;
+use crate::domains::cluster_actors::hash_ring::fnv_1a_hash;
 
-use crate::{
-    domains::{caches::cache_objects::CacheValue, cluster_actors::hash_ring::fnv_1a_hash},
-    from_to, make_smart_pointer,
-};
-use std::{cell::UnsafeCell, collections::HashMap, ops::Range, pin::Pin, ptr::NonNull};
+use std::cell::UnsafeCell;
+use std::collections::HashMap;
+use std::ops::Range;
+use std::pin::Pin;
 
 pub(crate) struct CacheDb {
     map: HashMap<String, Pin<Box<UnsafeCell<CacheNode>>>>,
@@ -16,89 +23,9 @@ pub(crate) struct CacheDb {
     keys_with_expiry: usize,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct NodeRawPtr(NonNull<CacheNode>);
-from_to!(NonNull<CacheNode>, NodeRawPtr);
-make_smart_pointer!(NodeRawPtr, NonNull<CacheNode>);
-
-impl From<*mut CacheNode> for NodeRawPtr {
-    fn from(ptr: *mut CacheNode) -> Self {
-        // SAFETY: The pointer obtained from `Pin<Box<UnsafeCell<CacheNode>>>.get()`
-        // is guaranteed to be non-null because it originates from a Box.
-        // If ptr were from a source that could be null, `NonNull::new(ptr).expect(...)`
-        // would be a safer alternative.
-        unsafe { NodeRawPtr(NonNull::new_unchecked(ptr)) }
-    }
-}
-
-impl NodeRawPtr {
-    #[inline]
-    fn set_node_prev_link(self, new_prev: Option<NodeRawPtr>) {
-        unsafe {
-            (*self.0.as_ptr()).prev = new_prev;
-        }
-    }
-    #[inline]
-    fn set_node_next_link(self, new_next: Option<NodeRawPtr>) {
-        unsafe {
-            (*self.0.as_ptr()).next = new_next;
-        }
-    }
-
-    #[inline]
-    fn get_node_prev_link(self) -> Option<NodeRawPtr> {
-        unsafe { (*(self.0.as_ptr())).prev.clone() }
-    }
-
-    #[inline]
-    fn get_node_next_link(self) -> Option<NodeRawPtr> {
-        unsafe { (*self.0.as_ptr()).next.clone() }
-    }
-    #[inline]
-    fn as_ref(&self) -> &CacheNode {
-        unsafe { &*self.0.as_ref() }
-    }
-
-    // ! SAFETY: The caller guarantees `ptr` is valid and non-aliased for a mutable reference.
-    // ! The `'static` lifetime is a lie, but necessary for the compiler to accept the returned
-    // ! reference. The true lifetime must be managed by the caller.(This pattern is common
-    // ! when encapsulating raw pointer usage.)
-    #[inline]
-    fn value_mut(&mut self) -> &'static mut CacheValue {
-        unsafe { (&mut *self.0.as_ptr()).value.as_mut() }
-    }
-}
-
-#[derive(Clone)]
-struct CacheNode {
-    key: String,
-    value: Box<CacheValue>,
-    prev: Option<NodeRawPtr>,
-    next: Option<NodeRawPtr>,
-}
-
 unsafe impl Send for CacheDb {}
 unsafe impl Sync for CacheDb {}
-pub(crate) struct Iter<'a> {
-    inner: std::collections::hash_map::Iter<'a, String, Pin<Box<UnsafeCell<CacheNode>>>>,
-    parent: &'a CacheDb,
-}
-pub(crate) struct IterMut<'a> {
-    inner: std::collections::hash_map::IterMut<'a, String, Pin<Box<UnsafeCell<CacheNode>>>>,
-    parent: &'a mut CacheDb,
-}
-pub(crate) struct Values<'a> {
-    inner: Iter<'a>,
-}
-pub(crate) struct ValuesMut<'a> {
-    inner: IterMut<'a>,
-}
-pub(crate) struct Keys<'a> {
-    inner: Iter<'a>,
-}
-pub(crate) struct KeysMut<'a> {
-    inner: IterMut<'a>,
-}
+
 #[allow(private_interfaces)]
 pub(crate) enum Entry<'a> {
     Occupied { key: String, value: NodeRawPtr },
@@ -518,231 +445,5 @@ impl<'a> Entry<'a> {
                 Entry::Occupied { key, value: v.get().into() }
             },
         }
-    }
-}
-
-impl<'a> Iterator for Iter<'a> {
-    type Item = (&'a String, &'a CacheValue);
-    fn next(&mut self) -> Option<Self::Item> {
-        self.inner.next().map(|(k, v)| {
-            // SAFETY: Access data of UnsafeCell
-            let value = unsafe { &*v.get() };
-            (k, value.value.as_ref())
-        })
-    }
-}
-
-impl<'a> Iterator for IterMut<'a> {
-    type Item = (&'a String, &'a mut CacheValue);
-    fn next(&mut self) -> Option<Self::Item> {
-        self.inner.next().map(|(k, v)| (k, v.get_mut().value.as_mut()))
-    }
-}
-
-impl<'a> Iterator for Values<'a> {
-    type Item = &'a CacheValue;
-    fn next(&mut self) -> Option<Self::Item> {
-        self.inner.next().map(|(_, v)| v)
-    }
-}
-
-impl<'a> Iterator for ValuesMut<'a> {
-    type Item = &'a mut CacheValue;
-    fn next(&mut self) -> Option<Self::Item> {
-        self.inner.next().map(|(_, v)| v)
-    }
-}
-
-impl<'a> Iterator for Keys<'a> {
-    type Item = &'a String;
-    fn next(&mut self) -> Option<Self::Item> {
-        self.inner.next().map(|(k, _)| k)
-    }
-}
-
-impl<'a> Iterator for KeysMut<'a> {
-    type Item = &'a String;
-    fn next(&mut self) -> Option<Self::Item> {
-        self.inner.next().map(|(k, _)| k)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::domains::cluster_actors::hash_ring::fnv_1a_hash;
-    use chrono::Utc;
-
-    #[test]
-    fn test_extract_keys_for_ranges_empty() {
-        let mut cache = CacheDb::with_capacity(100);
-        let ranges: Vec<Range<u64>> = Vec::new();
-
-        let result = cache.take_subset(ranges);
-        assert!(result.is_empty());
-    }
-
-    #[test]
-    fn test_extract_keys_for_ranges_no_matches() {
-        let mut cache = CacheDb::with_capacity(100);
-        cache.insert("key1".to_string(), CacheValue::new("value".to_string()));
-
-        // Create a range that doesn't include our key's hash
-        let key_hash = fnv_1a_hash("key1");
-        let ranges = vec![(key_hash + 1000)..u64::MAX];
-
-        let result = cache.take_subset(ranges);
-        assert!(result.is_empty());
-        assert_eq!(cache.len(), 1); // Cache still has our key
-
-        assert!(cache.validate(), "CacheDb validation failed");
-    }
-
-    #[test]
-    fn test_extract_keys_for_ranges_with_matches() {
-        let mut cache = CacheDb::with_capacity(100);
-
-        // Add several keys to the cache
-        for i in 0..10 {
-            let key = format!("key{}", i);
-            let has_expiry = i % 2 == 0;
-
-            cache.insert(
-                key,
-                CacheValue::new(format!("value{}", i)).with_expiry(if has_expiry {
-                    Some(Utc::now())
-                } else {
-                    None
-                }),
-            );
-        }
-
-        assert_eq!(cache.len(), 10);
-        assert_eq!(cache.keys_with_expiry(), 5); // Keys 0, 2, 4, 6, 8 have expiry
-
-        // Create ranges to extract specific keys (using their hash values)
-        let mut ranges = Vec::new();
-        for i in 0..5 {
-            let key = format!("key{}", i);
-            let key_hash = fnv_1a_hash(&key);
-            ranges.push(key_hash..key_hash + 1); // Range that contains just this key's hash
-        }
-
-        // Extract keys 0-4
-        let extracted = cache.take_subset(ranges);
-
-        // Verify extraction
-        assert_eq!(extracted.len(), 5);
-        for i in 0..5 {
-            let key = format!("key{}", i);
-            assert!(extracted.contains_key(&key));
-            assert!(!cache.contains_key(&key));
-        }
-
-        // Verify remaining cache
-        assert_eq!(cache.len(), 5);
-        for i in 5..10 {
-            let key = format!("key{}", i);
-            assert!(cache.contains_key(&key));
-        }
-
-        // Verify keys_with_expiry counter was updated correctly
-        // We should have removed keys 0, 2, 4 with expiry, so count should be reduced by 3
-        assert_eq!(cache.keys_with_expiry, 2); // Only keys 6, 8 remain with expiry
-        assert_eq!(extracted.keys_with_expiry, 3); // Keys 0, 2, 4 had expiry
-
-        assert!(cache.validate(), "CacheDb validation failed");
-        assert!(extracted.validate(), "Extracted CacheDb validation failed");
-    }
-    #[test]
-    fn test_lru_with_expiry() {
-        let mut cache = CacheDb::with_capacity(3);
-        let expiry = Some(Utc::now() + chrono::Duration::minutes(10));
-        assert_eq!(cache.capacity, 3);
-
-        for i in 0..3 {
-            cache.insert(
-                format!("key{}", i),
-                CacheValue::new(format!("value{}", i)).with_expiry(expiry),
-            );
-        }
-        assert_eq!(cache.len(), 3);
-        assert_eq!(cache.keys_with_expiry(), 3);
-
-        cache.insert(
-            "key999".to_string(),
-            CacheValue::new("value3".to_string()).with_expiry(expiry),
-        );
-        assert_eq!(cache.len(), 3);
-        assert_eq!(cache.keys_with_expiry(), 3);
-
-        cache
-            .entry("key998".to_string())
-            .or_insert_with(|| CacheValue::new("value4".to_string()).with_expiry(expiry));
-        assert_eq!(cache.len(), 3);
-        assert_eq!(cache.keys_with_expiry(), 3);
-
-        assert!(cache.is_exist("key2"));
-
-        assert!(cache.validate(), "CacheDb validation failed");
-    }
-    #[test]
-    fn test_get_insert_remove_entry() {
-        let mut cache = CacheDb::with_capacity(100);
-        let expiry = Some(Utc::now() + chrono::Duration::minutes(10));
-
-        assert!(cache.get("key1").is_none());
-
-        cache.insert("key1".to_string(), CacheValue::new("value1".to_string()).with_expiry(expiry));
-        assert_eq!(cache.len(), 1);
-        assert_eq!(cache.keys_with_expiry(), 1);
-        assert!(cache.get("key1").is_some());
-
-        cache.insert("key1".to_string(), CacheValue::new("value2".to_string()).with_expiry(expiry));
-        assert_eq!(cache.len(), 1);
-        assert_eq!(cache.keys_with_expiry(), 1);
-
-        cache.insert("key2".to_string(), CacheValue::new("value3".to_string()).with_expiry(expiry));
-        assert_eq!(cache.len(), 2);
-        assert_eq!(cache.keys_with_expiry(), 2);
-
-        assert!(cache.remove("key1").is_some());
-        assert_eq!(cache.len(), 1);
-        assert_eq!(cache.keys_with_expiry(), 1);
-
-        for i in 0..100 {
-            cache.insert(
-                format!("key{}", i),
-                CacheValue::new(format!("value{}", i)).with_expiry(expiry),
-            );
-        }
-        assert_eq!(cache.len(), 100);
-        assert_eq!(cache.keys_with_expiry(), 100);
-
-        let mut count = 0;
-        cache.iter().for_each(|_| count += 1);
-        assert_eq!(count, 100);
-
-        cache.entry("key50".to_string()).and_modify(|v| {
-            v.value = "modified_value".to_string();
-        });
-        assert_eq!(cache.get("key50").unwrap().value(), "modified_value");
-
-        cache.entry("key50".to_string()).or_insert(CacheValue::new("new_value".to_string()));
-        assert_eq!(cache.get("key50").unwrap().value(), "modified_value");
-
-        cache.entry("key999".to_string()).and_modify(|v| {
-            v.value = "modified_value".to_string();
-        });
-        assert!(cache.get("key999").is_none());
-
-        assert!(cache.validate(), "CacheDb validation failed");
-
-        assert_eq!(cache.len(), 100);
-        assert_eq!(cache.keys_with_expiry(), 100);
-        cache.clear();
-        assert!(cache.is_empty());
-        assert_eq!(cache.len(), 0);
-        assert_eq!(cache.keys_with_expiry(), 0);
     }
 }
