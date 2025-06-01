@@ -64,63 +64,78 @@ impl CacheDb {
     /// # Returns
     /// A HashMap containing the extracted keys and values
     pub(crate) fn take_subset(&mut self, token_ranges: Vec<Range<u64>>) -> CacheDb {
-        // If no ranges, return empty HashMap
         if token_ranges.is_empty() {
             return CacheDb::with_capacity(self.capacity);
         }
-        let gen_default = || {
-            Box::pin(UnsafeCell::new(CacheDbNode {
-                key: String::new(),
-                value: Box::new(CacheValue { value: String::new(), expiry: None }),
-                prev: None,
-                next: None,
-            }))
-        };
 
         let mut extracted_map = HashMap::new();
         let mut extracted_expiry_count = 0;
-        let self_mut = unsafe { std::mem::transmute::<&Self, &mut Self>(self) };
-        self.map.retain(|_, v| {
-            let node = unsafe { &*v.get() };
+
+        // Use `drain_filter` if it were stable, or iterate and remove.
+        // `retain` is good, but we need to move the ownership of Pin<Box<UnsafeCell<CacheDbNode>>> out.
+        // This requires an UNSAFE block for accessing inner data or temporary transmute if we keep `retain`.
+        // A safer way is to iterate, collect, and then remove.
+        let mut keys_to_extract = Vec::new();
+        for (key, node_pin_box) in self.map.iter() {
+            let node_ptr = node_pin_box.get();
+            let node = unsafe { &*node_ptr }; // Unsafe: Dereferencing raw pointer from UnsafeCell
             let is_extract_target = token_ranges.iter().any(|range| {
                 let hash = fnv_1a_hash(&node.key);
                 range.contains(&hash)
             });
 
             if is_extract_target {
-                self_mut.detach(v.get());
-                if v.get_mut().value.has_expiry() {
+                keys_to_extract.push(key.clone());
+            }
+        }
+
+        for key in keys_to_extract {
+            if let Some(node_pin_box) = self.map.remove(&key) {
+                // Now that we own node_pin_box, we can safely detach and move its contents.
+                // The `detach` function still needs to work with raw pointers for the linked list.
+                // It's called with the raw pointer obtained from the owned `node_pin_box`.
+                let node_ptr = node_pin_box.get();
+                self.detach(node_ptr); // This modifies the linked list's pointers, still unsafe internally.
+
+                let node_ref = unsafe { &mut *node_ptr }; // Unsafe: Dereferencing raw pointer
+                if node_ref.value.has_expiry() {
                     extracted_expiry_count += 1;
                 }
-                let mut value = gen_default();
-                std::mem::swap(&mut value, v);
-                extracted_map.insert(node.key.clone(), value);
+                extracted_map.insert(key, node_pin_box);
             }
+        }
 
-            !is_extract_target
-        });
         self.keys_with_expiry -= extracted_expiry_count;
-        let head = extracted_map.values().next().map(|v| v.get() as *mut CacheDbNode);
-        let tail = extracted_map.values().last().map(|v| v.get() as *mut CacheDbNode);
-        // Reconnect nodes
-        extracted_map.values_mut().fold(None, |prev, v| {
-            let v_ptr = v.get();
-            let v_ref = v.get_mut();
-            if let Some(prev_node) = prev {
-                v_ref.prev = Some(prev_node);
-                unsafe { (*prev_node).next = Some(v_ptr) };
+
+        // Reconstructing head/tail for the extracted map.
+        // This part also involves unsafe raw pointer manipulation to build the new linked list.
+        let mut current_extracted_head: Option<*mut CacheDbNode> = None;
+        let mut current_extracted_tail: Option<*mut CacheDbNode> = None;
+
+        for (i, node_pin_box) in extracted_map.values_mut().enumerate() {
+            let node_ptr = node_pin_box.get();
+            let node_ref = unsafe { &mut *node_ptr }; // Unsafe: Dereferencing raw pointer
+
+            if i == 0 {
+                current_extracted_head = Some(node_ptr);
+                node_ref.prev = None;
+            } else if let Some(prev_tail_ptr) = current_extracted_tail {
+                unsafe { (*prev_tail_ptr).next = Some(node_ptr) }; // Unsafe: Dereferencing raw pointer
+                node_ref.prev = Some(prev_tail_ptr);
             }
-            v_ref.next = None;
-            Some(v_ptr)
-        });
+            node_ref.next = None;
+            current_extracted_tail = Some(node_ptr);
+        }
+
         CacheDb {
             map: extracted_map,
-            head,
-            tail,
+            head: current_extracted_head,
+            tail: current_extracted_tail,
             capacity: self.capacity,
             keys_with_expiry: extracted_expiry_count,
         }
     }
+
     pub(crate) fn keys_with_expiry(&self) -> usize {
         self.keys_with_expiry
     }
@@ -134,45 +149,51 @@ impl CacheDb {
         self.map.contains_key(key)
     }
     #[inline]
-    pub fn get(&self, key: &str) -> Option<&CacheValue> {
-        // SAFETY: mut needed by refreshing LRU order. it won't change inner data
-        unsafe { std::mem::transmute::<&Self, &mut Self>(self).get_mut(key) }
-            .map(|v| v as &CacheValue)
+    pub fn get(&mut self, key: &str) -> Option<&CacheValue> {
+        self.get_mut(key).map(|v| v as &CacheValue)
     }
+
+    // Explicitly takes &mut self, no transmute needed.
     #[inline]
     pub fn get_mut(&mut self, key: &str) -> Option<&mut CacheValue> {
-        let self_mut = unsafe { std::mem::transmute::<&Self, &mut Self>(self) };
         if let Some(node) = self.map.get_mut(key) {
-            self_mut.move_to_head(node.get());
-            Some(node.get_mut().value.as_mut())
+            // Safely get the raw pointer from Pin<Box<UnsafeCell<T>>>
+            let node_ptr = node.get();
+            self.move_to_head(node_ptr); // This still has internal unsafe.
+            Some(unsafe { &mut *node_ptr }.value.as_mut()) // Unsafe: Dereferencing raw pointer
         } else {
             None
         }
     }
+
     #[inline]
     pub fn insert(&mut self, key: String, value: CacheValue) {
-        let self_mut = unsafe { std::mem::transmute::<&Self, &mut Self>(self) };
         if let Some(existing_node) = self.map.get_mut(&key) {
-            existing_node.get_mut().value = Box::new(value);
-            self_mut.move_to_head(existing_node.get());
+            let node_ptr = existing_node.get();
+            // Directly access the mutable inner value via UnsafeCell.get_mut().
+            // This is 'unsafe' in principle as it relies on the safety guarantees of UnsafeCell usage,
+            // but the direct access to `get_mut()` is part of the API.
+            unsafe { &mut *node_ptr }.value = Box::new(value);
+            self.move_to_head(node_ptr);
         } else {
-            // Remove tail if exceeding capacity
             if self.map.len() >= self.capacity {
                 self.remove_tail();
             }
             if value.has_expiry() {
                 self.keys_with_expiry += 1;
             }
-            let value = Box::pin(UnsafeCell::new(CacheDbNode {
+            let new_node = Box::pin(UnsafeCell::new(CacheDbNode {
                 key: key.clone(),
                 value: Box::new(value),
                 prev: None,
                 next: None,
             }));
-            self.push_front(value.get());
-            self.map.insert(key, value);
+            let node_ptr = new_node.get(); // Get the raw pointer before insertion
+            self.push_front(node_ptr); // This has internal unsafe
+            self.map.insert(key, new_node);
         }
     }
+
     #[inline]
     pub fn remove(&mut self, key: &str) -> Option<CacheValue> {
         if let Some(mut node) = self.map.remove(key) {
@@ -195,33 +216,23 @@ impl CacheDb {
         self.map.contains_key(key)
     }
 
-    /* LRU list helpers */
+    // Detach given node from the linked list and move it to the head
     #[inline]
     fn move_to_head(&mut self, node: *mut CacheDbNode) {
         if self.head == Some(node) {
             // Already at head, no need to move
             return;
         }
+        self.detach(node);
 
-        let node = unsafe { &mut *node };
-        let prev = node.prev;
-        let next = node.next;
-        if let Some(prev_node) = prev {
-            unsafe { (*prev_node).next = next };
-        }
-        if let Some(next_node) = next {
-            unsafe { (*next_node).prev = prev };
-        } else {
-            self.tail = node.prev;
-        }
-        let old_head = self.head.take();
-        if let Some(old_head_node) = old_head {
+        if let Some(old_head_node) = self.head.take() {
+            let node: &mut CacheDbNode = unsafe { &mut *node }; // SAFETY: Dereferencing raw pointer
             unsafe { (*old_head_node).prev = Some(node) };
             node.next = Some(old_head_node);
         }
-        node.prev = None;
         self.head = Some(node);
     }
+
     /// Remove element and update links
     fn remove_tail(&mut self) {
         if let Some(tail) = self.tail {
@@ -270,6 +281,7 @@ impl CacheDb {
         }
         self.head = Some(node);
     }
+
     #[inline]
     pub fn iter(&self) -> Iter<'_> {
         Iter { inner: self.map.iter(), parent: self }

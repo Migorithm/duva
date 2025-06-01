@@ -55,10 +55,10 @@ impl CacheActor {
             let _ = callback.send(false);
         }
     }
-    pub(crate) fn exists(&self, key: String, callback: oneshot::Sender<bool>) {
+    pub(crate) fn exists(&mut self, key: String, callback: oneshot::Sender<bool>) {
         let _ = callback.send(self.cache.get(&key).is_some());
     }
-    pub(crate) fn get(&self, key: &str, callback: oneshot::Sender<Option<CacheValue>>) {
+    pub(crate) fn get(&mut self, key: &str, callback: oneshot::Sender<Option<CacheValue>>) {
         let _ = callback.send(self.cache.get(key).cloned());
     }
 
