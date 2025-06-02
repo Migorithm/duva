@@ -1,7 +1,10 @@
 use super::{ClientController, request::ClientRequest};
 use crate::{
-    domains::interface::{TRead, TWrite},
-    domains::{IoError, QueryIO, cluster_actors::session::SessionRequest},
+    domains::{
+        IoError, QueryIO,
+        cluster_actors::SessionRequest,
+        interface::{TRead, TWrite},
+    },
     prelude::PeerIdentifier,
 };
 use tokio::{

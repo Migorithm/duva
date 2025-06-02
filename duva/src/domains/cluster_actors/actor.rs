@@ -4,12 +4,13 @@ use super::ConsensusRequest;
 use super::LazyOption;
 use super::consensus::election::ElectionState;
 use super::hash_ring::HashRing;
-use super::heartbeat_scheduler::HeartBeatScheduler;
+pub mod client_sessions;
+pub(crate) mod heartbeat_scheduler;
+
 use super::replication::ReplicationId;
 use super::replication::ReplicationRole;
 use super::replication::ReplicationState;
 use super::replication::time_in_secs;
-use super::session::ClientSessions;
 use super::*;
 
 use crate::domains::caches::cache_manager::CacheManager;
@@ -31,6 +32,8 @@ use crate::err;
 use std::collections::VecDeque;
 use std::iter;
 
+use client_sessions::ClientSessions;
+use heartbeat_scheduler::HeartBeatScheduler;
 use std::sync::atomic::Ordering;
 use tokio::fs::File;
 use tokio::io::AsyncSeekExt;
@@ -41,6 +44,8 @@ use tracing::error;
 use tracing::info;
 use tracing::instrument;
 use tracing::warn;
+#[cfg(test)]
+mod tests;
 
 #[derive(Debug)]
 pub struct ClusterActor<T> {
@@ -922,179 +927,5 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
         // TODO replcae vec with actual keys
         let _migration_tasks = self.hash_ring.create_migration_tasks(&ring, vec![]).await;
-    }
-}
-
-#[cfg(test)]
-pub mod cluster_actor_setups {
-    use std::sync::Arc;
-
-    use crate::{
-        adapters::op_logs::memory_based::MemoryOpLogs,
-        domains::{IoError, TRead, TWrite, peers::service::PeerListener},
-        make_smart_pointer,
-    };
-
-    use super::*;
-    use bytes::BytesMut;
-    use tokio::sync::Mutex;
-    #[derive(Debug, Clone)]
-    pub struct FakeReadWrite(Arc<Mutex<VecDeque<QueryIO>>>);
-    make_smart_pointer!(FakeReadWrite, Arc<Mutex<VecDeque<QueryIO>>>);
-
-    impl FakeReadWrite {
-        pub fn new() -> Self {
-            Self(Arc::new(Mutex::new(VecDeque::new())))
-        }
-    }
-    #[async_trait::async_trait]
-    impl TWrite for FakeReadWrite {
-        async fn write(&mut self, io: QueryIO) -> Result<(), IoError> {
-            let mut guard = self.0.lock().await;
-            guard.push_back(io);
-            Ok(())
-        }
-    }
-
-    #[async_trait::async_trait]
-    impl TRead for FakeReadWrite {
-        async fn read_bytes(&mut self, _buf: &mut BytesMut) -> Result<(), IoError> {
-            Ok(())
-        }
-
-        async fn read_values(&mut self) -> Result<Vec<QueryIO>, IoError> {
-            let mut values = Vec::new();
-            let mut guard = self.0.lock().await;
-
-            values.extend(guard.drain(..));
-            Ok(values)
-        }
-    }
-
-    pub(crate) fn create_peer_helper(
-        cluster_sender: ClusterCommandHandler,
-        hwm: u64,
-        repl_id: &ReplicationId,
-        port: u16,
-        node_kind: NodeKind,
-        fake_buf: FakeReadWrite,
-    ) -> (PeerIdentifier, Peer) {
-        let key = PeerIdentifier::new("127.0.0.1", port);
-
-        let kill_switch = PeerListener::spawn(fake_buf.clone(), cluster_sender, key.clone());
-        let peer =
-            Peer::new(fake_buf, PeerState::new(&key, hwm, repl_id.clone(), node_kind), kill_switch);
-        (key, peer)
-    }
-
-    #[cfg(test)]
-    impl<T: TWriteAheadLog> ClusterActor<T> {
-        pub(crate) fn test_add_peer(
-            &mut self,
-            port: u16,
-            kind: NodeKind,
-            repl_id: Option<ReplicationId>,
-        ) -> (FakeReadWrite, PeerIdentifier) {
-            let buf = FakeReadWrite::new();
-            let (id, peer) = create_peer_helper(
-                self.self_handler.clone(),
-                0,
-                &repl_id.unwrap_or_else(|| self.replication.replid.clone()),
-                port,
-                kind,
-                buf.clone(),
-            );
-
-            self.members.insert(id.clone(), peer);
-            (buf, id)
-        }
-        // COPY of block_write_reqs for testing
-        pub(crate) fn test_block_write_reqs(&mut self) {
-            self.block_write_reqs();
-        }
-
-        pub(crate) fn test_track_replication_progress(&mut self, res: ReplicationAck) {
-            self.track_replication_progress(res);
-        }
-
-        pub(crate) async fn test_replicate_log_entries(
-            &mut self,
-            rpc: &mut HeartBeat,
-        ) -> anyhow::Result<()> {
-            self.replicate_log_entries(rpc).await
-        }
-
-        pub(crate) async fn test_replicate(
-            &mut self,
-            heartbeat: HeartBeat,
-            cache_manager: &CacheManager,
-        ) {
-            self.replicate(heartbeat, cache_manager).await;
-        }
-        pub(crate) async fn test_join_peer_network_if_absent(
-            &mut self,
-            cluster_nodes: Vec<PeerState>,
-        ) {
-            self.join_peer_network_if_absent(cluster_nodes).await;
-        }
-        pub(crate) async fn test_snapshot_topology(&mut self) -> anyhow::Result<()> {
-            self.snapshot_topology().await
-        }
-
-        pub(crate) async fn test_iter_follower_append_entries(
-            &mut self,
-        ) -> Box<dyn Iterator<Item = (&mut Peer, HeartBeat)> + '_> {
-            self.iter_follower_append_entries().await
-        }
-
-        pub(crate) async fn test_make_migration_tasks_if_valid(
-            &mut self,
-            hashring: Option<HashRing>,
-        ) {
-            self.make_migration_tasks_if_valid(hashring).await;
-        }
-    }
-    #[tokio::test]
-    async fn test_hop_count_when_one() {
-        // GIVEN
-        let fanout = 2;
-
-        // WHEN
-        let hop_count = ClusterActor::<MemoryOpLogs>::hop_count(fanout, 1);
-        // THEN
-        assert_eq!(hop_count, 0);
-    }
-
-    #[tokio::test]
-    async fn test_hop_count_when_two() {
-        // GIVEN
-        let fanout = 2;
-
-        // WHEN
-        let hop_count = ClusterActor::<MemoryOpLogs>::hop_count(fanout, 2);
-        // THEN
-        assert_eq!(hop_count, 0);
-    }
-
-    #[tokio::test]
-    async fn test_hop_count_when_three() {
-        // GIVEN
-        let fanout = 2;
-
-        // WHEN
-        let hop_count = ClusterActor::<MemoryOpLogs>::hop_count(fanout, 3);
-        // THEN
-        assert_eq!(hop_count, 1);
-    }
-
-    #[tokio::test]
-    async fn test_hop_count_when_thirty() {
-        // GIVEN
-        let fanout = 2;
-
-        // WHEN
-        let hop_count = ClusterActor::<MemoryOpLogs>::hop_count(fanout, 30);
-        // THEN
-        assert_eq!(hop_count, 4);
     }
 }

@@ -1,14 +1,12 @@
 use crate::ReplicationState;
-use crate::domains::cluster_actors::{
-    replication::{ReplicationId, ReplicationRole},
-    session::SessionRequest,
-};
+use crate::domains::cluster_actors::replication::{ReplicationId, ReplicationRole};
 use crate::domains::operation_logs::WriteRequest;
 use crate::domains::peers::command::PeerCommand;
 use crate::domains::peers::peer::{Peer, PeerState};
 use crate::prelude::PeerIdentifier;
 use std::str::FromStr;
 use tokio::net::TcpStream;
+use uuid::Uuid;
 
 #[derive(Debug)]
 pub(crate) enum ClusterCommand {
@@ -108,5 +106,16 @@ impl FromStr for LazyOption {
             | "eager" => Ok(LazyOption::Eager),
             | _ => Err(anyhow::anyhow!("Invalid value for LazyOption")),
         }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct SessionRequest {
+    pub(crate) request_id: u64,
+    pub(crate) client_id: Uuid,
+}
+impl SessionRequest {
+    pub(crate) fn new(request_id: u64, client_id: Uuid) -> Self {
+        Self { request_id, client_id }
     }
 }

@@ -64,7 +64,7 @@ async fn test_store_current_topology() {
     let hwm = cluster_actor.replication.hwm.load(Ordering::Relaxed);
 
     // WHEN
-    cluster_actor.test_snapshot_topology().await.unwrap();
+    cluster_actor.snapshot_topology().await.unwrap();
 
     // THEN
     let topology = tokio::fs::read_to_string(path).await.unwrap();
@@ -75,10 +75,10 @@ async fn test_store_current_topology() {
 }
 
 #[tokio::test]
-async fn test_snapshot_topology_after_add_peer() {
+async fn snapshot_topology_after_add_peer() {
     // GIVEN
     let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
-    let path = "test_snapshot_topology_after_add_peer.tp";
+    let path = "snapshot_topology_after_add_peer.tp";
     cluster_actor.topology_writer = tokio::fs::File::create(path).await.unwrap();
 
     let repl_id = cluster_actor.replication.replid.clone();
@@ -103,7 +103,7 @@ async fn test_snapshot_topology_after_add_peer() {
 
     // WHEN
     cluster_actor.add_peer(peer).await;
-    cluster_actor.test_snapshot_topology().await.unwrap();
+    cluster_actor.snapshot_topology().await.unwrap();
 
     // THEN
     let topology = tokio::fs::read_to_string(path).await.unwrap();
@@ -149,7 +149,7 @@ async fn test_reconnection_on_gossip() {
 
     // WHEN - try to reconnect
     cluster_actor
-        .test_join_peer_network_if_absent(vec![PeerState::new(
+        .join_peer_network_if_absent(vec![PeerState::new(
             &format!("127.0.0.1:{}", bind_addr.port() - 10000),
             0,
             cluster_actor.replication.replid.clone(),

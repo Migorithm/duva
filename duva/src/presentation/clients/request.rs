@@ -2,7 +2,7 @@ use std::str::FromStr;
 
 use crate::domains::{
     QueryIO,
-    cluster_actors::{LazyOption, session::SessionRequest},
+    cluster_actors::{LazyOption, SessionRequest},
     operation_logs::WriteRequest,
     peers::identifier::PeerIdentifier,
 };

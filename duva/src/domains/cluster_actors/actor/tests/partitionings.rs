@@ -188,7 +188,7 @@ async fn test_make_migration_plan_happypath() {
     );
 
     // WHEN - now, when heartbeat receiving actor hashring info (through heartbeat)
-    heartbeat_receiving_actor.test_make_migration_tasks_if_valid(Some(hash_ring.clone())).await;
+    heartbeat_receiving_actor.make_migration_tasks_if_valid(Some(hash_ring.clone())).await;
 
     // THEN - it should create a migration plan
     assert!(heartbeat_receiving_actor.pending_requests.is_some());
@@ -207,7 +207,7 @@ async fn test_make_migration_plan_when_given_hashring_is_same() {
 
     // WHEN - now, when heartbeat receiving actor hashring info (through heartbeat)
     heartbeat_receiving_actor
-        .test_make_migration_tasks_if_valid(Some(heartbeat_receiving_actor.hash_ring.clone()))
+        .make_migration_tasks_if_valid(Some(heartbeat_receiving_actor.hash_ring.clone()))
         .await;
 
     // THEN no change should be made
@@ -221,7 +221,7 @@ async fn test_make_migration_plan_when_no_hashring_given() {
     let last_modified = heartbeat_receiving_actor.hash_ring.last_modified;
 
     // WHEN - now, when heartbeat receiving actor hashring info (through heartbeat)
-    heartbeat_receiving_actor.test_make_migration_tasks_if_valid(None).await;
+    heartbeat_receiving_actor.make_migration_tasks_if_valid(None).await;
 
     // THEN no change should be made
     assert_eq!(heartbeat_receiving_actor.hash_ring.last_modified, last_modified);
@@ -237,7 +237,7 @@ async fn test_make_migration_plan_when_last_modified_is_lower_than_its_own() {
     hash_ring.last_modified = last_modified - 1;
 
     // WHEN - now, when heartbeat receiving actor hashring info (through heartbeat)
-    heartbeat_receiving_actor.test_make_migration_tasks_if_valid(Some(hash_ring)).await;
+    heartbeat_receiving_actor.make_migration_tasks_if_valid(Some(hash_ring)).await;
 
     // THEN no change should be made
     assert_eq!(heartbeat_receiving_actor.hash_ring.last_modified, last_modified);

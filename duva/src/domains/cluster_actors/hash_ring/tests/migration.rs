@@ -229,7 +229,7 @@ async fn test_multiple_ownership_changes() {
     }
 
     // Verify no unexpected migrations
-    for ((from_node, to_node), actual_keys) in &actual_migrations {
+    for ((from_node, to_node), _actual_keys) in &actual_migrations {
         assert!(expected_migrations.contains_key(&(from_node.clone(), to_node.clone())));
     }
 

@@ -1,30 +1,17 @@
+use crate::{domains::cluster_actors::SessionRequest, make_smart_pointer};
 use chrono::{DateTime, Utc};
 use std::collections::HashMap;
 use uuid::Uuid;
 
-use crate::make_smart_pointer;
-
 #[derive(Default, Debug)]
 pub(crate) struct ClientSessions(HashMap<Uuid, Session>);
+make_smart_pointer!(ClientSessions,HashMap<Uuid, Session>);
 
 #[derive(Default, Debug)]
 pub(crate) struct Session {
     last_accessed: DateTime<Utc>,
     processed_req_id: Option<u64>,
 }
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct SessionRequest {
-    pub(crate) request_id: u64,
-    pub(crate) client_id: Uuid,
-}
-impl SessionRequest {
-    pub(crate) fn new(request_id: u64, client_id: Uuid) -> Self {
-        Self { request_id, client_id }
-    }
-}
-
-make_smart_pointer!(ClientSessions,HashMap<Uuid, Session>);
 
 impl ClientSessions {
     pub(crate) fn is_processed(&self, client_req: &Option<SessionRequest>) -> bool {

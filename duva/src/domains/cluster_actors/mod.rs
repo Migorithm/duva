@@ -11,13 +11,9 @@ mod command;
 pub(crate) use command::*;
 pub mod consensus;
 pub(crate) mod hash_ring;
-pub mod heartbeat_scheduler;
 
 pub mod replication;
 mod service;
-pub mod session;
+
 pub const FANOUT: usize = 2;
 pub use actor::ClusterActor;
-
-#[cfg(test)]
-mod tests;
