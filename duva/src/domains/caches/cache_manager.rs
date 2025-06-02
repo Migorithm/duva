@@ -1,4 +1,3 @@
-use crate::domains::QueryIO;
 use crate::domains::caches::actor::CacheActor;
 use crate::domains::caches::actor::CacheCommandSender;
 use crate::domains::caches::cache_objects::CacheEntry;
@@ -122,7 +121,7 @@ impl CacheManager {
         join_all(self.inboxes.iter().map(|shard| shard.send(CacheCommand::Ping))).await;
     }
 
-    pub(crate) async fn route_keys(&self, pattern: Option<String>) -> QueryIO {
+    pub(crate) async fn route_keys(&self, pattern: Option<String>) -> Vec<String> {
         let (senders, receivers) = self.oneshot_channels();
 
         // send keys to shards
@@ -135,7 +134,7 @@ impl CacheManager {
                 res.extend(keys)
             }
         }
-        QueryIO::Array(res.into_iter().map(|key| QueryIO::BulkString(key)).collect())
+        res
     }
     pub(crate) async fn apply_snapshot(self, key_values: Vec<CacheEntry>) -> Result<()> {
         // * Here, no need to think about index as it is to update state and no return is required
@@ -144,18 +143,9 @@ impl CacheManager {
         }))
         .await;
 
-        // TODO let's find the way to test without adding the following code - echo
-        if let QueryIO::Array(data) = self.route_keys(None).await {
-            let mut keys = vec![];
-            for key in data {
-                let QueryIO::BulkString(key) = key else {
-                    continue;
-                };
-                keys.push(key);
-            }
+        let keys = self.route_keys(None).await;
+        debug!("Full Sync Keys: {:?}", keys);
 
-            debug!("Full Sync Keys: {:?}", keys);
-        }
         Ok(())
     }
 

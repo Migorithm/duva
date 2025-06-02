@@ -1,6 +1,5 @@
 use super::cache_objects::{CacheEntry, CacheValue};
 use super::command::CacheCommand;
-use crate::domains::QueryIO;
 use crate::domains::caches::cache_db::CacheDb;
 use crate::domains::caches::read_queue::ReadQueue;
 use crate::make_smart_pointer;
