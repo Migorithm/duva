@@ -61,7 +61,7 @@ impl ClientController {
             },
             | ClientAction::Keys { pattern } => {
                 let res = self.cache_manager.route_keys(pattern).await;
-                QueryIO::Array(res.into_iter().map(|key| QueryIO::BulkString(key)).collect())
+                QueryIO::Array(res.into_iter().map(QueryIO::BulkString).collect())
             },
             | ClientAction::Config { key, value } => {
                 match (key.to_lowercase().as_str(), value.to_lowercase().as_str()) {
