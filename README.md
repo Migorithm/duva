@@ -55,6 +55,7 @@ The following features have been implemented so far:
     - Failure detection via Gossip
     - Follower reads with RYOW consistency 
     - Push-based topology change notification
+    - Eviction Policy - LRU(default)
 
 
 - Protocol Support
