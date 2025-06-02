@@ -934,6 +934,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         }
 
         // TODO replcae vec with actual keys
+        let keys = cache_manager.route_keys(None).await;
         let _migration_tasks = self.hash_ring.create_migration_tasks(&ring, vec![]).await;
     }
 }

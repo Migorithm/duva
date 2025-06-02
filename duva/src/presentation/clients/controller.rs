@@ -59,7 +59,7 @@ impl ClientController {
             | ClientAction::IndexGet { key, index } => {
                 self.cache_manager.route_index_get(key, index).await?.into()
             },
-            | ClientAction::Keys { pattern } => self.cache_manager.route_keys(pattern).await?,
+            | ClientAction::Keys { pattern } => self.cache_manager.route_keys(pattern).await,
             | ClientAction::Config { key, value } => {
                 match (key.to_lowercase().as_str(), value.to_lowercase().as_str()) {
                     | ("get", "dir") => format!("dir {}", ENV.dir).into(),

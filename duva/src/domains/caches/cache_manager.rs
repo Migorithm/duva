@@ -122,7 +122,7 @@ impl CacheManager {
         join_all(self.inboxes.iter().map(|shard| shard.send(CacheCommand::Ping))).await;
     }
 
-    pub(crate) async fn route_keys(&self, pattern: Option<String>) -> Result<QueryIO> {
+    pub(crate) async fn route_keys(&self, pattern: Option<String>) -> QueryIO {
         let (senders, receivers) = self.oneshot_channels();
 
         // send keys to shards
@@ -131,11 +131,11 @@ impl CacheManager {
         });
         let mut keys = Vec::new();
         for v in receivers {
-            if let Ok(QueryIO::Array(v)) = v.await? {
+            if let Ok(Ok(QueryIO::Array(v))) = v.await {
                 keys.extend(v)
             }
         }
-        Ok(QueryIO::Array(keys))
+        QueryIO::Array(keys)
     }
     pub(crate) async fn apply_snapshot(self, key_values: Vec<CacheEntry>) -> Result<()> {
         // * Here, no need to think about index as it is to update state and no return is required
@@ -145,7 +145,7 @@ impl CacheManager {
         .await;
 
         // TODO let's find the way to test without adding the following code - echo
-        if let Ok(QueryIO::Array(data)) = self.route_keys(None).await {
+        if let QueryIO::Array(data) = self.route_keys(None).await {
             let mut keys = vec![];
             for key in data {
                 let QueryIO::BulkString(key) = key else {
