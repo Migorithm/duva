@@ -113,7 +113,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
         match peer_message {
             | ClusterHeartBeat(heartbeat) => {
-                self.receive_cluster_heartbeat(heartbeat).await;
+                self.receive_cluster_heartbeat(heartbeat, cache_manager).await;
             },
             | RequestVote(request_vote) => {
                 self.vote_election(request_vote).await;

@@ -207,8 +207,12 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         Ok(res)
     }
 
-    #[instrument(level = tracing::Level::DEBUG, skip(self, heartbeat), fields(peer_id = %heartbeat.from))]
-    pub(crate) async fn receive_cluster_heartbeat(&mut self, mut heartbeat: HeartBeat) {
+    #[instrument(level = tracing::Level::DEBUG, skip(self, heartbeat,cache_manager), fields(peer_id = %heartbeat.from))]
+    pub(crate) async fn receive_cluster_heartbeat(
+        &mut self,
+        mut heartbeat: HeartBeat,
+        cache_manager: &CacheManager,
+    ) {
         if self.replication.in_ban_list(&heartbeat.from) {
             return;
         }
@@ -216,7 +220,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         self.join_peer_network_if_absent(heartbeat.cluster_nodes).await;
         self.gossip(heartbeat.hop_count).await;
         self.update_on_hertbeat_message(&heartbeat.from, heartbeat.hwm);
-        self.make_migration_tasks_if_valid(heartbeat.hashring).await;
+        self.make_migration_tasks_if_valid(heartbeat.hashring, cache_manager).await;
     }
 
     pub(crate) async fn req_consensus(&mut self, req: ConsensusRequest) {
@@ -910,7 +914,11 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     // 3. Efficient Range Detection - Use the ring structure to find ownership changes by sampling mid-points of ranges rather than checking every possible hash value.
     // 4. Key Discovery - The get_keys_in_range function needs to be implemented based on your actual data storage to find keys whose hashes fall within specific ranges.
     // 5. Execution Strategy - Provides both queuing (for batch processing) and immediate execution options for migration tasks.
-    async fn make_migration_tasks_if_valid(&mut self, hashring: Option<HashRing>) {
+    async fn make_migration_tasks_if_valid(
+        &mut self,
+        hashring: Option<HashRing>,
+        cache_manager: &CacheManager,
+    ) {
         let Some(ring) = hashring else {
             return;
         };

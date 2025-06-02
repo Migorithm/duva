@@ -42,7 +42,7 @@ impl HashRing {
     }
 
     /// Adds a new partition to the hash ring if it doesn't already exist.
-    pub fn add_partition_if_not_exists(
+    pub(crate) fn add_partition_if_not_exists(
         &mut self,
         repl_id: ReplicationId,
         leader_id: PeerIdentifier,
