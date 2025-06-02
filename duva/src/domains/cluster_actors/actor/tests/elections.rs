@@ -11,8 +11,8 @@ async fn test_run_for_election_transitions_to_candidate_and_sends_request_votes(
 
     let mut actor = cluster_actor_create_helper(ReplicationRole::Follower).await;
     let initial_term = actor.replication.term;
-    let fakebuf1 = add_replica_helper(&mut actor, 8001);
-    let fakebug2 = add_replica_helper(&mut actor, 8002);
+    let (fakebuf1, _) = actor.test_add_peer(8001, NodeKind::Replica, None);
+    let (fakebuf2, _) = actor.test_add_peer(8002, NodeKind::Replica, None);
 
     // WHEN: The actor runs for election
     actor.run_for_election().await;
@@ -40,7 +40,7 @@ async fn test_run_for_election_transitions_to_candidate_and_sends_request_votes(
         panic!("Expected RequestVote, got {:?}", msg1);
     }
 
-    let msg2 = fakebug2.lock().await.pop_front().unwrap();
+    let msg2 = fakebuf2.lock().await.pop_front().unwrap();
     if let QueryIO::RequestVote(rv) = msg2 {
         assert_eq!(rv, expected_request_vote);
     } else {
@@ -75,8 +75,8 @@ async fn test_vote_election_grant_vote() {
     let mut follower_actor = cluster_actor_create_helper(ReplicationRole::Follower).await;
     let initial_term = follower_actor.replication.term;
 
-    let candidate_id = PeerIdentifier::new("127.0.0.1", 8011);
-    let candidate_fake_buf = add_replica_helper(&mut follower_actor, 8011);
+    let (candidate_fake_buf, candidate_id) =
+        follower_actor.test_add_peer(8011, NodeKind::Replica, None);
 
     // Candidate's log is up-to-date or newer, and term is higher
     let request_vote = RequestVote {
@@ -123,8 +123,8 @@ async fn test_vote_election_deny_vote_older_log() {
         .await
         .unwrap(); // Follower log: idx 2, term 2
 
-    let candidate_id = PeerIdentifier::new("127.0.0.1", 8021);
-    let candidate_fake_buf = add_replica_helper(&mut follower_actor, 8021);
+    let (candidate_fake_buf, candidate_id) =
+        follower_actor.test_add_peer(8031, NodeKind::Replica, None);
 
     let request_vote = RequestVote {
         // Candidate log: idx 1, term 2 (older)
@@ -156,8 +156,9 @@ async fn test_vote_election_deny_vote_lower_candidate_term() {
     let follower_term = 3;
     let mut follower_actor = cluster_actor_create_helper(ReplicationRole::Follower).await;
     follower_actor.replication.term = follower_term;
-    let candidate_id = PeerIdentifier::new("127.0.0.1", 8031);
-    let candidate_fake_buf = add_replica_helper(&mut follower_actor, 8031);
+
+    let (candidate_fake_buf, candidate_id) =
+        follower_actor.test_add_peer(8031, NodeKind::Replica, None);
 
     let request_vote = RequestVote {
         term: follower_term - 1, // Candidate term is lower
@@ -193,7 +194,7 @@ async fn test_receive_election_vote_candidate_wins_election() {
     candidate_actor.replication.election_state = ElectionState::Candidate { voting: Some(voting) };
 
     // Add a mock replica to send initial heartbeat to
-    let replica1_fake_buf = add_replica_helper(&mut candidate_actor, 8051);
+    let (replica1_fake_buf, _) = candidate_actor.test_add_peer(8051, NodeKind::Replica, None);
 
     let election_vote = ElectionVote { term: candidate_term, vote_granted: true };
 

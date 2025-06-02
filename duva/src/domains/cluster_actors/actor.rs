@@ -4,12 +4,13 @@ use super::ConsensusRequest;
 use super::LazyOption;
 use super::consensus::election::ElectionState;
 use super::hash_ring::HashRing;
-use super::heartbeat_scheduler::HeartBeatScheduler;
+pub mod client_sessions;
+pub(crate) mod heartbeat_scheduler;
+
 use super::replication::ReplicationId;
 use super::replication::ReplicationRole;
 use super::replication::ReplicationState;
 use super::replication::time_in_secs;
-use super::session::ClientSessions;
 use super::*;
 
 use crate::domains::caches::cache_manager::CacheManager;
@@ -31,6 +32,8 @@ use crate::err;
 use std::collections::VecDeque;
 use std::iter;
 
+use client_sessions::ClientSessions;
+use heartbeat_scheduler::HeartBeatScheduler;
 use std::sync::atomic::Ordering;
 use tokio::fs::File;
 use tokio::io::AsyncSeekExt;
@@ -41,6 +44,8 @@ use tracing::error;
 use tracing::info;
 use tracing::instrument;
 use tracing::warn;
+#[cfg(test)]
+mod tests;
 
 #[derive(Debug)]
 pub struct ClusterActor<T> {
@@ -202,8 +207,12 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         Ok(res)
     }
 
-    #[instrument(level = tracing::Level::DEBUG, skip(self, heartbeat), fields(peer_id = %heartbeat.from))]
-    pub(crate) async fn receive_cluster_heartbeat(&mut self, mut heartbeat: HeartBeat) {
+    #[instrument(level = tracing::Level::DEBUG, skip(self, heartbeat,cache_manager), fields(peer_id = %heartbeat.from))]
+    pub(crate) async fn receive_cluster_heartbeat(
+        &mut self,
+        mut heartbeat: HeartBeat,
+        cache_manager: &CacheManager,
+    ) {
         if self.replication.in_ban_list(&heartbeat.from) {
             return;
         }
@@ -211,6 +220,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         self.join_peer_network_if_absent(heartbeat.cluster_nodes).await;
         self.gossip(heartbeat.hop_count).await;
         self.update_on_hertbeat_message(&heartbeat.from, heartbeat.hwm);
+        self.make_migration_tasks_if_valid(heartbeat.hashring, cache_manager).await;
     }
 
     pub(crate) async fn req_consensus(&mut self, req: ConsensusRequest) {
@@ -897,96 +907,33 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
         self.connect_to_server(peer_to_connect, None).await;
     }
-}
 
-#[cfg(test)]
-pub mod cluster_actor_setups {
-    use crate::adapters::op_logs::memory_based::MemoryOpLogs;
-
-    use super::*;
-
-    #[cfg(test)]
-    impl<T: TWriteAheadLog> ClusterActor<T> {
-        // COPY of block_write_reqs for testing
-        pub(crate) fn test_block_write_reqs(&mut self) {
-            self.block_write_reqs();
+    // * If the hashring is valid, make a plan to migrate data for each paritition
+    // 1. Partition Analysis - Compare the old and new hash rings to identify ranges where ownership has changed by examining all partition boundaries from both rings.
+    // 2. Migration Tasks - Create structured migration tasks containing the hash range, source/destination nodes, and actual keys that need to move.
+    // 3. Efficient Range Detection - Use the ring structure to find ownership changes by sampling mid-points of ranges rather than checking every possible hash value.
+    // 4. Key Discovery - The get_keys_in_range function needs to be implemented based on your actual data storage to find keys whose hashes fall within specific ranges.
+    // 5. Execution Strategy - Provides both queuing (for batch processing) and immediate execution options for migration tasks.
+    async fn make_migration_tasks_if_valid(
+        &mut self,
+        hashring: Option<HashRing>,
+        cache_manager: &CacheManager,
+    ) {
+        let Some(ring) = hashring else {
+            return;
+        };
+        if ring == self.hash_ring {
+            return;
+        }
+        if ring.last_modified < self.hash_ring.last_modified {
+            warn!("Received outdated hashring, ignoring");
+            return;
+        }
+        if let None = self.pending_requests {
+            self.pending_requests = Some(VecDeque::new());
         }
 
-        pub(crate) fn test_track_replication_progress(&mut self, res: ReplicationAck) {
-            self.track_replication_progress(res);
-        }
-
-        pub(crate) async fn test_replicate_log_entries(
-            &mut self,
-            rpc: &mut HeartBeat,
-        ) -> anyhow::Result<()> {
-            self.replicate_log_entries(rpc).await
-        }
-
-        pub(crate) async fn test_replicate(
-            &mut self,
-            heartbeat: HeartBeat,
-            cache_manager: &CacheManager,
-        ) {
-            self.replicate(heartbeat, cache_manager).await;
-        }
-        pub(crate) async fn test_join_peer_network_if_absent(
-            &mut self,
-            cluster_nodes: Vec<PeerState>,
-        ) {
-            self.join_peer_network_if_absent(cluster_nodes).await;
-        }
-        pub(crate) async fn test_snapshot_topology(&mut self) -> anyhow::Result<()> {
-            self.snapshot_topology().await
-        }
-
-        pub(crate) async fn test_iter_follower_append_entries(
-            &mut self,
-        ) -> Box<dyn Iterator<Item = (&mut Peer, HeartBeat)> + '_> {
-            self.iter_follower_append_entries().await
-        }
-    }
-    #[tokio::test]
-    async fn test_hop_count_when_one() {
-        // GIVEN
-        let fanout = 2;
-
-        // WHEN
-        let hop_count = ClusterActor::<MemoryOpLogs>::hop_count(fanout, 1);
-        // THEN
-        assert_eq!(hop_count, 0);
-    }
-
-    #[tokio::test]
-    async fn test_hop_count_when_two() {
-        // GIVEN
-        let fanout = 2;
-
-        // WHEN
-        let hop_count = ClusterActor::<MemoryOpLogs>::hop_count(fanout, 2);
-        // THEN
-        assert_eq!(hop_count, 0);
-    }
-
-    #[tokio::test]
-    async fn test_hop_count_when_three() {
-        // GIVEN
-        let fanout = 2;
-
-        // WHEN
-        let hop_count = ClusterActor::<MemoryOpLogs>::hop_count(fanout, 3);
-        // THEN
-        assert_eq!(hop_count, 1);
-    }
-
-    #[tokio::test]
-    async fn test_hop_count_when_thirty() {
-        // GIVEN
-        let fanout = 2;
-
-        // WHEN
-        let hop_count = ClusterActor::<MemoryOpLogs>::hop_count(fanout, 30);
-        // THEN
-        assert_eq!(hop_count, 4);
+        // TODO replcae vec with actual keys
+        let _migration_tasks = self.hash_ring.create_migration_tasks(&ring, vec![]).await;
     }
 }

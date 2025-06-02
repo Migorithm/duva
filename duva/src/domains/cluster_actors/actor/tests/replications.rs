@@ -80,7 +80,7 @@ async fn test_generate_follower_entries() {
         .await
         .unwrap();
 
-    let entries = cluster_actor.test_iter_follower_append_entries().await.collect::<Vec<_>>();
+    let entries = cluster_actor.iter_follower_append_entries().await.collect::<Vec<_>>();
 
     // * for old followers must have 1 entry
     assert_eq!(entries.iter().filter(|(_, hb)| hb.append_entries.len() == 1).count(), 5);
@@ -104,7 +104,7 @@ async fn follower_cluster_actor_replicate_log() {
     let cache_manager = CacheManager {
         inboxes: (0..10).map(|_| CacheCommandSender(channel(10).0)).collect::<Vec<_>>(),
     };
-    cluster_actor.test_replicate(heartbeat, &cache_manager).await;
+    cluster_actor.replicate(heartbeat, &cache_manager).await;
 
     // THEN
     assert_eq!(cluster_actor.replication.hwm.load(Ordering::Relaxed), 0);
@@ -139,7 +139,7 @@ async fn follower_cluster_actor_replicate_state() {
     );
 
     let cache_manager = CacheManager { inboxes: vec![CacheCommandSender(cache_handler)] };
-    cluster_actor.test_replicate(heartbeat, &cache_manager).await;
+    cluster_actor.replicate(heartbeat, &cache_manager).await;
 
     // WHEN - commit until 2
     let task = tokio::spawn(async move {
@@ -157,7 +157,7 @@ async fn follower_cluster_actor_replicate_state() {
         }
     });
     let heartbeat = heartbeat_create_helper(0, 2, vec![]);
-    cluster_actor.test_replicate(heartbeat, &cache_manager).await;
+    cluster_actor.replicate(heartbeat, &cache_manager).await;
 
     // THEN
     assert_eq!(cluster_actor.replication.hwm.load(Ordering::Relaxed), 2);
@@ -184,7 +184,7 @@ async fn follower_cluster_actor_replicate_state_only_upto_hwm() {
     let cache_manager = CacheManager { inboxes: vec![CacheCommandSender(tx)] };
 
     // This just appends the entries to the log but doesn't commit them
-    cluster_actor.test_replicate(heartbeat, &cache_manager).await;
+    cluster_actor.replicate(heartbeat, &cache_manager).await;
 
     // WHEN - commit only up to index 1
     let task = tokio::spawn(async move {
@@ -212,7 +212,7 @@ async fn follower_cluster_actor_replicate_state_only_upto_hwm() {
     // Send a heartbeat with hwm=1 to commit only the first entry
     const HWM: u64 = 1;
     let heartbeat = heartbeat_create_helper(0, HWM, vec![]);
-    cluster_actor.test_replicate(heartbeat, &cache_manager).await;
+    cluster_actor.replicate(heartbeat, &cache_manager).await;
 
     // THEN
     // Give the task a chance to process the message
@@ -244,7 +244,7 @@ async fn test_apply_multiple_committed_entries() {
     let cache_manager = CacheManager { inboxes: vec![CacheCommandSender(tx)] };
 
     // First append entries but don't commit
-    cluster_actor.test_replicate(heartbeat, &cache_manager).await;
+    cluster_actor.replicate(heartbeat, &cache_manager).await;
 
     // Create a task to monitor applied entries
     let monitor_task = tokio::spawn(async move {
@@ -265,7 +265,7 @@ async fn test_apply_multiple_committed_entries() {
     // WHEN - commit all entries
     let commit_heartbeat = heartbeat_create_helper(1, 3, vec![]);
 
-    cluster_actor.test_replicate(commit_heartbeat, &cache_manager).await;
+    cluster_actor.replicate(commit_heartbeat, &cache_manager).await;
 
     // THEN
     // Verify that all entries were committed and applied in order
@@ -294,7 +294,7 @@ async fn test_partial_commit_with_new_entries() {
     let (tx, mut rx) = tokio::sync::mpsc::channel(100);
     let cache_manager = CacheManager { inboxes: vec![CacheCommandSender(tx)] };
 
-    cluster_actor.test_replicate(first_heartbeat, &cache_manager).await;
+    cluster_actor.replicate(first_heartbeat, &cache_manager).await;
 
     // Create a task to monitor applied entries
     let monitor_task = tokio::spawn(async move {
@@ -317,7 +317,7 @@ async fn test_partial_commit_with_new_entries() {
 
     let second_heartbeat = heartbeat_create_helper(1, 1, second_entries);
 
-    cluster_actor.test_replicate(second_heartbeat, &cache_manager).await;
+    cluster_actor.replicate(second_heartbeat, &cache_manager).await;
 
     // THEN
     // Verify that only key1 was applied
@@ -354,7 +354,7 @@ async fn follower_truncates_log_on_term_mismatch() {
     heartbeat.prev_log_term = 0;
     heartbeat.prev_log_index = 2;
 
-    let result = cluster_actor.test_replicate_log_entries(&mut heartbeat).await;
+    let result = cluster_actor.replicate_log_entries(&mut heartbeat).await;
 
     // THEN: Expect truncation and rejection
     assert_eq!(cluster_actor.logger.target.writer.len(), 1);
@@ -371,7 +371,7 @@ async fn follower_accepts_entries_with_empty_log_and_prev_log_index_zero() {
     let mut heartbeat =
         heartbeat_create_helper(1, 0, vec![write_operation_create_helper(1, 0, "key1", "val1")]);
 
-    let result = cluster_actor.test_replicate_log_entries(&mut heartbeat).await;
+    let result = cluster_actor.replicate_log_entries(&mut heartbeat).await;
 
     // THEN: Entries are accepted
     assert!(result.is_ok(), "Should accept entries with prev_log_index=0 on empty log");
@@ -390,7 +390,7 @@ async fn follower_rejects_entries_with_empty_log_and_prev_log_index_nonzero() {
     heartbeat.prev_log_index = 1;
     heartbeat.prev_log_term = 1;
 
-    let result = cluster_actor.test_replicate_log_entries(&mut heartbeat).await;
+    let result = cluster_actor.replicate_log_entries(&mut heartbeat).await;
 
     // THEN: Entries are rejected
     assert!(result.is_err(), "Should reject entries with prev_log_index > 0 on empty log");
@@ -503,15 +503,15 @@ async fn test_consensus_voting_deleted_when_consensus_reached() {
         rej_reason: RejectionReason::None,
         from: PeerIdentifier("".into()),
     };
-    cluster_actor.test_track_replication_progress(follower_res.clone().set_from("repl1"));
-    cluster_actor.test_track_replication_progress(follower_res.clone().set_from("repl2"));
+    cluster_actor.track_replication_progress(follower_res.clone().set_from("repl1"));
+    cluster_actor.track_replication_progress(follower_res.clone().set_from("repl2"));
 
     // up to this point, tracker hold the consensus
     assert_eq!(cluster_actor.consensus_tracker.len(), 1);
     assert_eq!(cluster_actor.consensus_tracker.get(&1).unwrap().voters.len(), 2);
 
     // ! Majority votes made
-    cluster_actor.test_track_replication_progress(follower_res.set_from("repl3"));
+    cluster_actor.track_replication_progress(follower_res.set_from("repl3"));
 
     // THEN
     assert_eq!(cluster_actor.consensus_tracker.len(), 0);
@@ -551,9 +551,9 @@ async fn test_same_voter_can_vote_only_once() {
         rej_reason: RejectionReason::None,
         from: PeerIdentifier("repl1".into()),
     };
-    cluster_actor.test_track_replication_progress(follower_res.clone());
-    cluster_actor.test_track_replication_progress(follower_res.clone());
-    cluster_actor.test_track_replication_progress(follower_res.clone());
+    cluster_actor.track_replication_progress(follower_res.clone());
+    cluster_actor.track_replication_progress(follower_res.clone());
+    cluster_actor.track_replication_progress(follower_res.clone());
 
     // THEN - no change in consensus tracker even though the same voter voted multiple times
     assert_eq!(cluster_actor.consensus_tracker.len(), 1);

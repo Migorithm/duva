@@ -4,17 +4,14 @@ mod partitionings;
 mod replications;
 #[allow(unused_variables)]
 use super::actor::ClusterCommandHandler;
-use super::session::SessionRequest;
+
 use super::*;
 use crate::CacheManager;
 use crate::NodeKind;
 use crate::ReplicationId;
 use crate::ReplicationState;
 use crate::adapters::op_logs::memory_based::MemoryOpLogs;
-use crate::domains::IoError;
 use crate::domains::QueryIO;
-use crate::domains::TRead;
-use crate::domains::TWrite;
 use crate::domains::caches::actor::CacheCommandSender;
 use crate::domains::caches::command::CacheCommand;
 use crate::domains::cluster_actors::replication::ReplicationRole;
@@ -28,20 +25,73 @@ use crate::domains::peers::connections::connection_types::ReadConnected;
 use crate::domains::peers::connections::inbound::stream::InboundStream;
 use crate::domains::peers::peer::PeerState;
 use crate::domains::peers::service::PeerListener;
-use crate::make_smart_pointer;
-use bytes::BytesMut;
-use std::collections::VecDeque;
-use std::sync::Arc;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
 use tempfile::TempDir;
 use tokio::fs::OpenOptions;
 use tokio::net::TcpListener;
 
-use tokio::sync::Mutex;
 use tokio::sync::mpsc::channel;
 use tokio::time::timeout;
 use uuid::Uuid;
+
+use std::sync::Arc;
+
+use crate::{
+    domains::{IoError, TRead, TWrite},
+    make_smart_pointer,
+};
+
+use bytes::BytesMut;
+use tokio::sync::Mutex;
+#[derive(Debug, Clone)]
+pub struct FakeReadWrite(Arc<Mutex<VecDeque<QueryIO>>>);
+make_smart_pointer!(FakeReadWrite, Arc<Mutex<VecDeque<QueryIO>>>);
+
+impl FakeReadWrite {
+    pub fn new() -> Self {
+        Self(Arc::new(Mutex::new(VecDeque::new())))
+    }
+}
+#[async_trait::async_trait]
+impl TWrite for FakeReadWrite {
+    async fn write(&mut self, io: QueryIO) -> Result<(), IoError> {
+        let mut guard = self.0.lock().await;
+        guard.push_back(io);
+        Ok(())
+    }
+}
+
+#[async_trait::async_trait]
+impl TRead for FakeReadWrite {
+    async fn read_bytes(&mut self, _buf: &mut BytesMut) -> Result<(), IoError> {
+        Ok(())
+    }
+
+    async fn read_values(&mut self) -> Result<Vec<QueryIO>, IoError> {
+        let mut values = Vec::new();
+        let mut guard = self.0.lock().await;
+
+        values.extend(guard.drain(..));
+        Ok(values)
+    }
+}
+
+pub(crate) fn create_peer_helper(
+    cluster_sender: ClusterCommandHandler,
+    hwm: u64,
+    repl_id: &ReplicationId,
+    port: u16,
+    node_kind: NodeKind,
+    fake_buf: FakeReadWrite,
+) -> (PeerIdentifier, Peer) {
+    let key = PeerIdentifier::new("127.0.0.1", port);
+
+    let kill_switch = PeerListener::spawn(fake_buf.clone(), cluster_sender, key.clone());
+    let peer =
+        Peer::new(fake_buf, PeerState::new(&key, hwm, repl_id.clone(), node_kind), kill_switch);
+    (key, peer)
+}
 
 fn write_operation_create_helper(
     index_num: u64,
@@ -72,36 +122,6 @@ fn heartbeat_create_helper(term: u64, hwm: u64, op_logs: Vec<WriteOperation>) ->
     }
 }
 
-fn create_peer_helper(
-    cluster_sender: ClusterCommandHandler,
-    hwm: u64,
-    repl_id: &ReplicationId,
-    port: u16,
-    node_kind: NodeKind,
-    fake_buf: FakeReadWrite,
-) -> (PeerIdentifier, Peer) {
-    let key = PeerIdentifier::new("127.0.0.1", port);
-
-    let kill_switch = PeerListener::spawn(fake_buf.clone(), cluster_sender, key.clone());
-    let peer =
-        Peer::new(fake_buf, PeerState::new(&key, hwm, repl_id.clone(), node_kind), kill_switch);
-    (key, peer)
-}
-
-fn add_replica_helper(actor: &mut ClusterActor<MemoryOpLogs>, port: u16) -> FakeReadWrite {
-    let buf = FakeReadWrite::new();
-    let (id, peer) = create_peer_helper(
-        actor.self_handler.clone(),
-        0,
-        &actor.replication.replid,
-        port,
-        NodeKind::Replica,
-        buf.clone(),
-    );
-
-    actor.members.insert(id, peer);
-    buf
-}
 pub async fn cluster_actor_create_helper(role: ReplicationRole) -> ClusterActor<MemoryOpLogs> {
     let replication =
         ReplicationState::new(ReplicationId::Key("master".into()), role, "localhost", 8080, 0);
@@ -112,40 +132,6 @@ pub async fn cluster_actor_create_helper(role: ReplicationRole) -> ClusterActor<
         OpenOptions::new().create(true).write(true).truncate(true).open(path).await.unwrap();
 
     ClusterActor::new(100, replication, 100, topology_writer, MemoryOpLogs::default())
-}
-
-#[derive(Debug, Clone)]
-struct FakeReadWrite(Arc<Mutex<VecDeque<QueryIO>>>);
-make_smart_pointer!(FakeReadWrite, Arc<Mutex<VecDeque<QueryIO>>>);
-
-impl FakeReadWrite {
-    fn new() -> Self {
-        Self(Arc::new(Mutex::new(VecDeque::new())))
-    }
-}
-
-#[async_trait::async_trait]
-impl TWrite for FakeReadWrite {
-    async fn write(&mut self, io: QueryIO) -> Result<(), IoError> {
-        let mut guard = self.0.lock().await;
-        guard.push_back(io);
-        Ok(())
-    }
-}
-
-#[async_trait::async_trait]
-impl TRead for FakeReadWrite {
-    async fn read_bytes(&mut self, _buf: &mut BytesMut) -> Result<(), IoError> {
-        Ok(())
-    }
-
-    async fn read_values(&mut self) -> Result<Vec<QueryIO>, IoError> {
-        let mut values = Vec::new();
-        let mut guard = self.0.lock().await;
-
-        values.extend(guard.drain(..));
-        Ok(values)
-    }
 }
 
 fn cluster_member_create_helper(
@@ -192,6 +178,29 @@ fn consensus_request_create_helper(
     consensus_request
 }
 
+#[cfg(test)]
+impl<T: TWriteAheadLog> ClusterActor<T> {
+    pub(crate) fn test_add_peer(
+        &mut self,
+        port: u16,
+        kind: NodeKind,
+        repl_id: Option<ReplicationId>,
+    ) -> (FakeReadWrite, PeerIdentifier) {
+        let buf = FakeReadWrite::new();
+        let (id, peer) = create_peer_helper(
+            self.self_handler.clone(),
+            0,
+            &repl_id.unwrap_or_else(|| self.replication.replid.clone()),
+            port,
+            kind,
+            buf.clone(),
+        );
+
+        self.members.insert(id.clone(), peer);
+        (buf, id)
+    }
+}
+
 #[tokio::test]
 async fn test_requests_pending() {
     // GIVEN
@@ -201,7 +210,7 @@ async fn test_requests_pending() {
     let con_req = ConsensusRequest::new(write_r.clone(), tx, None);
 
     //WHEN
-    cluster_actor.test_block_write_reqs();
+    cluster_actor.block_write_reqs();
     cluster_actor.req_consensus(con_req).await;
 
     // THEN
@@ -211,4 +220,48 @@ async fn test_requests_pending() {
         cluster_actor.pending_requests.as_mut().unwrap().pop_front().unwrap().request,
         write_r
     );
+}
+
+#[tokio::test]
+async fn test_hop_count_when_one() {
+    // GIVEN
+    let fanout = 2;
+
+    // WHEN
+    let hop_count = ClusterActor::<MemoryOpLogs>::hop_count(fanout, 1);
+    // THEN
+    assert_eq!(hop_count, 0);
+}
+
+#[tokio::test]
+async fn test_hop_count_when_two() {
+    // GIVEN
+    let fanout = 2;
+
+    // WHEN
+    let hop_count = ClusterActor::<MemoryOpLogs>::hop_count(fanout, 2);
+    // THEN
+    assert_eq!(hop_count, 0);
+}
+
+#[tokio::test]
+async fn test_hop_count_when_three() {
+    // GIVEN
+    let fanout = 2;
+
+    // WHEN
+    let hop_count = ClusterActor::<MemoryOpLogs>::hop_count(fanout, 3);
+    // THEN
+    assert_eq!(hop_count, 1);
+}
+
+#[tokio::test]
+async fn test_hop_count_when_thirty() {
+    // GIVEN
+    let fanout = 2;
+
+    // WHEN
+    let hop_count = ClusterActor::<MemoryOpLogs>::hop_count(fanout, 30);
+    // THEN
+    assert_eq!(hop_count, 4);
 }

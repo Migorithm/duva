@@ -6,48 +6,25 @@ async fn test_cluster_nodes() {
 
     // GIVEN
     let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
-    cluster_actor.replication.hwm.store(15, Ordering::Release);
-
-    let repl_id = cluster_actor.replication.replid.clone();
 
     // followers
     for port in [6379, 6380] {
-        let (key, peer) = create_peer_helper(
-            cluster_actor.self_handler.clone(),
-            cluster_actor.replication.hwm.load(Ordering::Relaxed),
-            &repl_id,
-            port,
-            NodeKind::Replica,
-            FakeReadWrite::new(),
-        );
-        cluster_actor.members.insert(key.clone(), peer);
+        cluster_actor.test_add_peer(port, NodeKind::Replica, None);
     }
 
     // leader for different shard
     let second_shard_repl_id = ReplicationId::Key(uuid::Uuid::now_v7().to_string());
     let second_shard_leader_port = rand::random::<u16>();
-    let (second_shard_leader_identifier, second_peer) = create_peer_helper(
-        cluster_actor.self_handler.clone(),
-        0,
-        &second_shard_repl_id,
+
+    let (_, second_shard_leader_identifier) = cluster_actor.test_add_peer(
         second_shard_leader_port,
         NodeKind::NonData,
-        FakeReadWrite::new(),
+        Some(second_shard_repl_id.clone()),
     );
-
-    cluster_actor.members.insert(second_shard_leader_identifier.clone(), second_peer);
 
     // follower for different shard
     for port in [2655, 2653] {
-        let (key, peer) = create_peer_helper(
-            cluster_actor.self_handler.clone(),
-            0,
-            &second_shard_repl_id,
-            port,
-            NodeKind::NonData,
-            FakeReadWrite::new(),
-        );
-        cluster_actor.members.insert(key, peer);
+        cluster_actor.test_add_peer(port, NodeKind::NonData, Some(second_shard_repl_id.clone()));
     }
 
     // WHEN
@@ -57,12 +34,12 @@ async fn test_cluster_nodes() {
 
     let file_content = format!(
         r#"
-        127.0.0.1:6379 {repl_id} 0 15
-        127.0.0.1:6380 {repl_id} 0 15
+        127.0.0.1:6379 {repl_id} 0 0
+        127.0.0.1:6380 {repl_id} 0 0
         {second_shard_leader_identifier} {second_shard_repl_id} 0 0
         127.0.0.1:2655 {second_shard_repl_id} 0 0
         127.0.0.1:2653 {second_shard_repl_id} 0 0
-        localhost:8080 myself,{repl_id} 0 15
+        localhost:8080 myself,{repl_id} 0 0
         "#
     );
 
@@ -87,7 +64,7 @@ async fn test_store_current_topology() {
     let hwm = cluster_actor.replication.hwm.load(Ordering::Relaxed);
 
     // WHEN
-    cluster_actor.test_snapshot_topology().await.unwrap();
+    cluster_actor.snapshot_topology().await.unwrap();
 
     // THEN
     let topology = tokio::fs::read_to_string(path).await.unwrap();
@@ -98,10 +75,10 @@ async fn test_store_current_topology() {
 }
 
 #[tokio::test]
-async fn test_snapshot_topology_after_add_peer() {
+async fn snapshot_topology_after_add_peer() {
     // GIVEN
     let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
-    let path = "test_snapshot_topology_after_add_peer.tp";
+    let path = "snapshot_topology_after_add_peer.tp";
     cluster_actor.topology_writer = tokio::fs::File::create(path).await.unwrap();
 
     let repl_id = cluster_actor.replication.replid.clone();
@@ -126,7 +103,7 @@ async fn test_snapshot_topology_after_add_peer() {
 
     // WHEN
     cluster_actor.add_peer(peer).await;
-    cluster_actor.test_snapshot_topology().await.unwrap();
+    cluster_actor.snapshot_topology().await.unwrap();
 
     // THEN
     let topology = tokio::fs::read_to_string(path).await.unwrap();
@@ -172,7 +149,7 @@ async fn test_reconnection_on_gossip() {
 
     // WHEN - try to reconnect
     cluster_actor
-        .test_join_peer_network_if_absent(vec![PeerState::new(
+        .join_peer_network_if_absent(vec![PeerState::new(
             &format!("127.0.0.1:{}", bind_addr.port() - 10000),
             0,
             cluster_actor.replication.replid.clone(),

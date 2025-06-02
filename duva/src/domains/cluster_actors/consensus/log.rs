@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::{
     domains::{
-        cluster_actors::{ConsensusClientResponse, session::SessionRequest},
+        cluster_actors::{ConsensusClientResponse, SessionRequest},
         peers::identifier::PeerIdentifier,
     },
     make_smart_pointer,
