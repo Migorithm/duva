@@ -929,11 +929,11 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             warn!("Received outdated hashring, ignoring");
             return;
         }
-        if let None = self.pending_requests {
+        if self.pending_requests.is_none() {
             self.pending_requests = Some(VecDeque::new());
         }
 
-        // TODO replcae vec with actual keys
-        let _migration_tasks = self.hash_ring.create_migration_tasks(&ring, vec![]).await;
+        let keys = cache_manager.route_keys(None).await;
+        let _migration_tasks = self.hash_ring.create_migration_tasks(&ring, keys).await;
     }
 }

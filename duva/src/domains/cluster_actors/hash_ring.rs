@@ -10,7 +10,9 @@ use std::collections::{BTreeMap, HashMap};
 
 use std::rc::Rc;
 mod hash_func;
+mod migration_task;
 pub(crate) use hash_func::fnv_1a_hash;
+pub(crate) use migration_task::MigrationTask;
 #[cfg(test)]
 mod tests;
 
@@ -24,11 +26,6 @@ pub struct HashRing {
     pnodes: HashMap<ReplicationId, PeerIdentifier>,
     pub(crate) last_modified: u128,
 }
-
-// ! SAFETY: HashRing is supposed to be used in a single-threaded context
-// ! with cluster actor as the actor is the access point to the ring.
-unsafe impl Send for HashRing {}
-unsafe impl Sync for HashRing {}
 
 impl HashRing {
     fn exists(&self, replid: &ReplicationId) -> bool {
@@ -172,13 +169,10 @@ fn filter_keys_in_partition(
         .collect()
 }
 
-#[derive(Debug, Clone)]
-pub struct MigrationTask {
-    pub partition_range: (u64, u64), // (start_hash, end_hash)
-    pub from_node: ReplicationId,
-    pub to_node: ReplicationId,
-    pub keys_to_migrate: Vec<String>, // actual keys in this range
-}
+// ! SAFETY: HashRing is supposed to be used in a single-threaded context
+// ! with cluster actor as the actor is the access point to the ring.
+unsafe impl Send for HashRing {}
+unsafe impl Sync for HashRing {}
 
 impl PartialEq for HashRing {
     fn eq(&self, other: &Self) -> bool {

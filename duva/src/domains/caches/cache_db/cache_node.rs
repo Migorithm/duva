@@ -41,16 +41,16 @@ impl NodeRawPtr {
 
     #[inline]
     pub(super) fn get_node_prev_link(self) -> Option<NodeRawPtr> {
-        unsafe { (*(self.0.as_ptr())).prev.clone() }
+        unsafe { (*(self.0.as_ptr())).prev }
     }
 
     #[inline]
     pub(super) fn get_node_next_link(self) -> Option<NodeRawPtr> {
-        unsafe { (*self.0.as_ptr()).next.clone() }
+        unsafe { (*self.0.as_ptr()).next }
     }
     #[inline]
     pub(super) fn as_ref(&self) -> &CacheNode {
-        unsafe { &*self.0.as_ref() }
+        unsafe { self.0.as_ref() }
     }
 
     // ! SAFETY: The caller guarantees `ptr` is valid and non-aliased for a mutable reference.
@@ -59,6 +59,6 @@ impl NodeRawPtr {
     // ! when encapsulating raw pointer usage.)
     #[inline]
     pub(super) fn value_mut(&mut self) -> &'static mut CacheValue {
-        unsafe { (&mut *self.0.as_ptr()).value.as_mut() }
+        unsafe { (*self.0.as_ptr()).value.as_mut() }
     }
 }

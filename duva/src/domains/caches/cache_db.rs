@@ -70,7 +70,7 @@ impl CacheDb {
         for key in keys_to_extract {
             if let Some(node_pin_box) = self.map.remove(&key) {
                 let node_ptr: NodeRawPtr = node_pin_box.get().into();
-                self.detach(node_ptr.into());
+                self.detach(node_ptr);
                 if node_ptr.as_ref().value.has_expiry() {
                     extracted_expiry_count += 1;
                 }
@@ -88,19 +88,19 @@ impl CacheDb {
         for node_pin_box in extracted_map.values_mut() {
             let node_ptr: NodeRawPtr = node_pin_box.get().into();
             if current_extracted_head.is_none() {
-                current_extracted_head = Some(node_ptr.into());
+                current_extracted_head = Some(node_ptr);
                 node_ptr.set_node_prev_link(None);
             } else {
                 // SAFETY: `prev_node_ptr` is valid and `node_ptr` is valid.
-                if let Some(p_ptr) = prev_node_ptr.clone() {
+                if let Some(p_ptr) = prev_node_ptr {
                     p_ptr.set_node_next_link(node_ptr.into());
                 }
                 node_ptr.set_node_prev_link(prev_node_ptr);
             }
             // SAFETY: `node_ptr` is valid.
             node_ptr.set_node_next_link(None);
-            current_extracted_tail = Some(node_ptr.into());
-            prev_node_ptr = Some(node_ptr.into());
+            current_extracted_tail = Some(node_ptr);
+            prev_node_ptr = Some(node_ptr);
         }
 
         CacheDb {
