@@ -34,19 +34,15 @@ impl CacheActor {
         self.cache.keys_with_expiry()
     }
 
-    pub(crate) fn keys(&self, pattern: Option<String>, callback: oneshot::Sender<QueryIO>) {
+    pub(crate) fn keys(&self, pattern: Option<String>, callback: oneshot::Sender<Vec<String>>) {
         let keys = self
             .cache
             .keys()
             .filter_map(move |k| {
-                if pattern.as_ref().is_none_or(|p| k.contains(p)) {
-                    Some(QueryIO::BulkString(k.clone()))
-                } else {
-                    None
-                }
+                if pattern.as_ref().is_none_or(|p| k.contains(p)) { Some(k.clone()) } else { None }
             })
             .collect();
-        let _ = callback.send(QueryIO::Array(keys));
+        let _ = callback.send(keys);
     }
     pub(crate) fn delete(&mut self, key: String, callback: oneshot::Sender<bool>) {
         if let Some(_value) = self.cache.remove(&key) {

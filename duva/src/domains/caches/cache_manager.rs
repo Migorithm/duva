@@ -129,13 +129,13 @@ impl CacheManager {
         self.chain(senders).for_each(|(shard, sender)| {
             tokio::spawn(Self::send_keys_to_shard(shard.clone(), pattern.clone(), sender));
         });
-        let mut keys = Vec::new();
+        let mut res = Vec::new();
         for v in receivers {
-            if let Ok(Ok(QueryIO::Array(v))) = v.await {
-                keys.extend(v)
+            if let Ok(Ok(keys)) = v.await {
+                res.extend(keys)
             }
         }
-        QueryIO::Array(keys)
+        QueryIO::Array(res.into_iter().map(|key| QueryIO::BulkString(key)).collect())
     }
     pub(crate) async fn apply_snapshot(self, key_values: Vec<CacheEntry>) -> Result<()> {
         // * Here, no need to think about index as it is to update state and no return is required
@@ -183,7 +183,7 @@ impl CacheManager {
     async fn send_keys_to_shard(
         shard: CacheCommandSender,
         pattern: Option<String>,
-        tx: OneShotSender<QueryIO>,
+        tx: OneShotSender<Vec<String>>,
     ) -> Result<()> {
         Ok(shard.send(CacheCommand::Keys { pattern: pattern.clone(), callback: tx }).await?)
     }
