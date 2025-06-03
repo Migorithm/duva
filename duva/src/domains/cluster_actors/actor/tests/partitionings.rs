@@ -279,6 +279,7 @@ async fn test_schedule_migrations_happypath() {
                 else {
                     panic!()
                 };
+                assert_eq!(batch.target_repl, ReplicationId::Key("my_test_key".to_string()));
                 batch.tasks.iter().for_each(|task| {
                     atom.0.fetch_add(task.keys_to_migrate.len() as i32, Ordering::Relaxed);
                     atom.1.fetch_add(1, Ordering::Relaxed);

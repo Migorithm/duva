@@ -114,7 +114,6 @@ impl HashRing {
                     if !affected_keys.is_empty() {
                         migration_tasks.entry(new_owner.clone()).or_default().push(MigrationTask {
                             task_id: (start, end),
-                            to: new_owner.clone(),
                             keys_to_migrate: affected_keys,
                         });
                     }
