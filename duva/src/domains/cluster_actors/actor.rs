@@ -961,7 +961,9 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
                 break;
             }
         }
+        // ! async - synchronization is required over here.
         let _ = handler.send(SchedulerMessage::MigrateKeys(batch)).await;
+
         // Recursive call - to avoid infinite size futures, use box
         // Pin<T> is a wrapper that prevents the wrapped value from being moved.
         Box::pin(Self::migrate_keys(handler, migration_tasks)).await;
