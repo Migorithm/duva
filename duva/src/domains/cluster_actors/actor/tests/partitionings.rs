@@ -257,7 +257,7 @@ async fn test_make_migration_plan_when_last_modified_is_lower_than_its_own() {
 }
 
 #[tokio::test]
-async fn test_migrate_batch_keys_happypath() {
+async fn test_migrate_keys_happypath() {
     // GIVEN
     let (tx, mut rx) = tokio::sync::mpsc::channel(10);
     let fake_handler = ClusterCommandHandler(tx);
@@ -272,6 +272,7 @@ async fn test_migrate_batch_keys_happypath() {
         let atom = atom.clone();
         async move {
             while let Some(msg) = rx.recv().await {
+                // ! First check, message must be Scheduler Message
                 let ClusterCommand::Scheduler(SchedulerMessage::MigrateBatchKeys(batch, tx)) = msg
                 else {
                     panic!()
