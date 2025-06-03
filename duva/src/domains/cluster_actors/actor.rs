@@ -983,7 +983,9 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         tasks: MigrationBatch,
         callback: tokio::sync::oneshot::Sender<Result<(), anyhow::Error>>,
     ) {
-        // self.current_migration_batch = Some(tasks.id);
+        // find current target
+        // register batch id & callback
+        // send key values with hash range
         todo!()
     }
 }
