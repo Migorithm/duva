@@ -960,8 +960,12 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         }
         // ! synchronization is required here.
         let (tx, rx) = tokio::sync::oneshot::channel();
-        let _ =
-            handler.send(SchedulerMessage::MigrateBatchKeys(MigrationBatch::new(tasks), tx)).await;
+        let _ = handler
+            .send(SchedulerMessage::MigrateBatchKeys(
+                MigrationBatch::new(target_replid.clone(), tasks),
+                tx,
+            ))
+            .await;
 
         let _ = rx.await.unwrap_or_else(|_| Err(anyhow::anyhow!("Channel closed")));
 

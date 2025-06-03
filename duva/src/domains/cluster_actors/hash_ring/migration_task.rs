@@ -20,10 +20,11 @@ pub(crate) struct BatchId(Uuid);
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct MigrationBatch {
     pub(crate) id: BatchId,
+    pub(crate) target_repl: ReplicationId,
     pub(crate) tasks: Vec<MigrationTask>,
 }
 impl MigrationBatch {
-    pub(crate) fn new(tasks: Vec<MigrationTask>) -> Self {
-        Self { id: BatchId(uuid::Uuid::now_v7()), tasks }
+    pub(crate) fn new(target_repl: ReplicationId, tasks: Vec<MigrationTask>) -> Self {
+        Self { id: BatchId(uuid::Uuid::now_v7()), target_repl, tasks }
     }
 }
