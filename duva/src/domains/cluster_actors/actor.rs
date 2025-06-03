@@ -958,6 +958,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
                 break;
             }
         }
+
         // ! synchronization is required here.
         let (tx, rx) = tokio::sync::oneshot::channel();
         let _ = handler
@@ -973,8 +974,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             migration_plans.insert(target_replid, migration_tasks);
         }
 
-        // Recursive call - to avoid infinite size futures, use box
-        // Pin<T> is a wrapper that prevents the wrapped value from being moved.
+        // * Recursive Case
         Box::pin(Self::schedule_migrations(handler, migration_plans)).await;
     }
 
