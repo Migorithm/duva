@@ -973,4 +973,13 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         // Pin<T> is a wrapper that prevents the wrapped value from being moved.
         Box::pin(Self::schedule_migrations(handler, migration_tasks)).await;
     }
+
+    pub(crate) async fn migrate_keys(
+        &self,
+        tasks: MigrationBatch,
+        callback: tokio::sync::oneshot::Sender<Result<(), anyhow::Error>>,
+    ) {
+        // self.current_migration_batch = Some(tasks.id);
+        todo!()
+    }
 }

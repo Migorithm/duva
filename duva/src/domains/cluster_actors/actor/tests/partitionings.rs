@@ -1,8 +1,6 @@
 use std::sync::atomic::AtomicI32;
 
-use crate::domains::cluster_actors::hash_ring::{
-    HashRing, MigrationTask, tests::migration_task_create_helper,
-};
+use crate::domains::cluster_actors::hash_ring::{HashRing, tests::migration_task_create_helper};
 
 use super::*;
 

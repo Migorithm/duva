@@ -80,14 +80,13 @@ async fn test_single_node_ownership_change() {
     }
 
     // Find keys that changed ownership
-    let mut expected_migrations = HashMap::<(ReplicationId, ReplicationId), Vec<String>>::new();
+    let mut expected_migrations = HashMap::<ReplicationId, Vec<String>>::new();
 
     for key in &test_keys {
-        let (old_owner, new_owner) =
-            (old_ownership.get(key).unwrap(), new_ownership.get(key).unwrap());
+        let new_owner = new_ownership.get(key).unwrap();
 
         if old_ownership.get(key) != new_ownership.get(key) {
-            let migration_key = (old_owner.clone(), new_owner.clone());
+            let migration_key = new_owner.clone();
             expected_migrations.entry(migration_key).or_default().push(key.clone());
         }
     }
@@ -99,16 +98,16 @@ async fn test_single_node_ownership_change() {
     assert!(!tasks.is_empty(), "Should have migration tasks when ownership changes");
 
     // Collect actual migrations from tasks
-    let mut actual_migrations = HashMap::<(ReplicationId, ReplicationId), Vec<String>>::new();
+    let mut actual_migrations = HashMap::<ReplicationId, Vec<String>>::new();
 
     for task in &tasks {
-        let migration_key = (task.from_node.clone(), task.to_node.clone());
+        let migration_key = task.to.clone();
         actual_migrations.entry(migration_key).or_default().extend(task.keys_to_migrate.clone());
     }
 
     // Verify that actual migrations match expected migrations
-    for ((from_node, to_node), expected_keys) in &expected_migrations {
-        let actual_keys = actual_migrations.get(&(from_node.clone(), to_node.clone())).unwrap();
+    for (to_node, expected_keys) in &expected_migrations {
+        let actual_keys = actual_migrations.get(&to_node.clone()).unwrap();
         assert_eq!(actual_keys.len(), expected_keys.len());
         let mut ak = actual_keys.clone();
         let mut ek = expected_keys.clone();
@@ -118,12 +117,9 @@ async fn test_single_node_ownership_change() {
     }
 
     // Verify no unexpected migrations
-    for ((from_node, to_node), actual_keys) in &actual_migrations {
-        if !expected_migrations.contains_key(&(from_node.clone(), to_node.clone())) {
-            panic!(
-                "Unexpected migration from {} to {} for keys {:?}",
-                from_node, to_node, actual_keys
-            );
+    for (to_node, actual_keys) in &actual_migrations {
+        if !expected_migrations.contains_key(&to_node.clone()) {
+            panic!("Unexpected migration  to {} for keys {:?}", to_node, actual_keys);
         }
     }
 
@@ -187,14 +183,13 @@ async fn test_multiple_ownership_changes() {
     }
 
     // Find keys that changed ownership
-    let mut expected_migrations = HashMap::<(ReplicationId, ReplicationId), Vec<String>>::new();
+    let mut expected_migrations = HashMap::<ReplicationId, Vec<String>>::new();
 
     for key in &test_keys {
-        let (old_owner, new_owner) =
-            (old_ownership.get(key).unwrap(), new_ownership.get(key).unwrap());
+        let new_owner = new_ownership.get(key).unwrap();
 
         if old_ownership.get(key) != new_ownership.get(key) {
-            let migration_key = (old_owner.clone(), new_owner.clone());
+            let migration_key = new_owner.clone();
             expected_migrations.entry(migration_key).or_default().push(key.clone());
         }
     }
@@ -206,16 +201,16 @@ async fn test_multiple_ownership_changes() {
     assert!(!tasks.is_empty(), "Should have migration tasks when multiple nodes change");
 
     // Collect actual migrations from tasks
-    let mut actual_migrations = HashMap::<(ReplicationId, ReplicationId), Vec<String>>::new();
+    let mut actual_migrations = HashMap::<ReplicationId, Vec<String>>::new();
 
     for task in &tasks {
-        let migration_key = (task.from_node.clone(), task.to_node.clone());
+        let migration_key = task.to.clone();
         actual_migrations.entry(migration_key).or_default().extend(task.keys_to_migrate.clone());
     }
 
     // Verify that actual migrations match expected migrations exactly
-    for ((from_node, to_node), expected_keys) in &expected_migrations {
-        let actual_keys = actual_migrations.get(&(from_node.clone(), to_node.clone())).unwrap();
+    for (to_node, expected_keys) in &expected_migrations {
+        let actual_keys = actual_migrations.get(&to_node.clone()).unwrap();
 
         assert_eq!(actual_keys.len(), expected_keys.len(),);
 
@@ -229,8 +224,8 @@ async fn test_multiple_ownership_changes() {
     }
 
     // Verify no unexpected migrations
-    for ((from_node, to_node), _actual_keys) in &actual_migrations {
-        assert!(expected_migrations.contains_key(&(from_node.clone(), to_node.clone())));
+    for (to_node, _actual_keys) in &actual_migrations {
+        assert!(expected_migrations.contains_key(&to_node.clone()));
     }
 
     // Verify total count
@@ -275,8 +270,8 @@ async fn test_multiple_ownership_changes() {
     assert!(node4_key_count > 0, "Node4 should still own some keys in new ring");
 
     println!("Migration summary:");
-    for ((from, to), keys) in &expected_migrations {
-        println!("  {} -> {}: {} keys", from, to, keys.len());
+    for (to, keys) in &expected_migrations {
+        println!("  to {}: {} keys", to, keys.len());
     }
     println!("  Node3 keys in new ring: {}", node3_key_count);
     println!("  Node4 keys in new ring: {}", node4_key_count);

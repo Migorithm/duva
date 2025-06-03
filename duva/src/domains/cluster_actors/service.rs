@@ -50,7 +50,9 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             | RebalanceRequest { request_to, lazy_option } => {
                 self.rebalance_request(request_to, lazy_option).await;
             },
-            | MigrateBatchKeys(tasks, callback) => todo!(),
+            | MigrateBatchKeys(tasks, callback) => {
+                self.migrate_keys(tasks, callback).await;
+            },
         }
     }
 
