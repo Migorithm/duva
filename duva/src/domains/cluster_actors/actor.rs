@@ -16,6 +16,7 @@ use super::*;
 use crate::domains::caches::cache_manager::CacheManager;
 
 use crate::domains::QueryIO;
+use crate::domains::cluster_actors::hash_ring::MigrationBatch;
 use crate::domains::operation_logs::interfaces::TWriteAheadLog;
 use crate::domains::operation_logs::logger::ReplicatedLogs;
 use crate::domains::peers::command::BannedPeer;
@@ -31,7 +32,6 @@ use crate::domains::peers::peer::PeerState;
 use crate::err;
 use std::collections::VecDeque;
 use std::iter;
-use std::pin::Pin;
 
 use client_sessions::ClientSessions;
 use heartbeat_scheduler::HeartBeatScheduler;
@@ -953,16 +953,19 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
         // 100+- keys at a time
         let mut num = 0;
-        let mut batch = Vec::new();
+        let mut tasks = Vec::new();
         while let Some(task) = migration_tasks.pop() {
             num += task.len();
-            batch.push(task);
+            tasks.push(task);
             if num > 100 {
                 break;
             }
         }
-        // ! async - synchronization is required over here.
-        let _ = handler.send(SchedulerMessage::MigrateKeys(batch)).await;
+        // ! async - synchronization is required here.
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        let _ =
+            handler.send(SchedulerMessage::MigrateBatchKeys(MigrationBatch::new(tasks), tx)).await;
+        let _ = rx.await.unwrap_or_else(|_| Err(anyhow::anyhow!("Channel closed")));
 
         // Recursive call - to avoid infinite size futures, use box
         // Pin<T> is a wrapper that prevents the wrapped value from being moved.

@@ -5,7 +5,7 @@
 /// nodes on the ring, determined by `vnode_num`.
 ///
 use crate::ReplicationId;
-use crate::domains::cluster_actors::hash_ring::migration_task::TaskId;
+
 use crate::prelude::PeerIdentifier;
 use std::collections::{BTreeMap, HashMap};
 
@@ -13,7 +13,8 @@ use std::rc::Rc;
 mod hash_func;
 mod migration_task;
 pub(crate) use hash_func::fnv_1a_hash;
-pub(crate) use migration_task::MigrationTask;
+pub(crate) use migration_task::*;
+
 #[cfg(test)]
 mod tests;
 
@@ -115,7 +116,7 @@ impl HashRing {
                     let affected_keys = filter_keys_in_partition(&keys, start, end);
                     if !affected_keys.is_empty() {
                         migration_tasks.push(MigrationTask {
-                            task_id: TaskId::new(start, end),
+                            task_id: (start, end),
                             from_node: old_owner.clone(),
                             to_node: new_owner.clone(),
                             keys_to_migrate: affected_keys,
