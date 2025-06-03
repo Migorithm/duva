@@ -948,25 +948,25 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     ) {
         //* Base case
         if migration_tasks.is_empty() {
+            // ! Snapshot should be done on reception, not on send.
             return;
         }
 
-        // 100+- keys at a time
         let mut num = 0;
         let mut tasks = Vec::new();
         while let Some(task) = migration_tasks.pop() {
-            num += task.len();
+            num += task.key_len();
             tasks.push(task);
+            // 100 < keys at a time
             if num > 100 {
                 break;
             }
         }
-        // ! async - synchronization is required here.
+        // ! synchronization is required here.
         let (tx, rx) = tokio::sync::oneshot::channel();
         let _ =
             handler.send(SchedulerMessage::MigrateBatchKeys(MigrationBatch::new(tasks), tx)).await;
 
-        // ! One after the other
         let _ = rx.await.unwrap_or_else(|_| Err(anyhow::anyhow!("Channel closed")));
 
         // Recursive call - to avoid infinite size futures, use box

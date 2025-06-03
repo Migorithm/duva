@@ -11,7 +11,7 @@ pub(crate) struct MigrationTask {
 }
 
 impl MigrationTask {
-    pub(crate) fn len(&self) -> usize {
+    pub(crate) fn key_len(&self) -> usize {
         self.keys_to_migrate.len()
     }
 }
