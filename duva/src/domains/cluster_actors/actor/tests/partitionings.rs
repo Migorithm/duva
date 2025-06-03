@@ -1,4 +1,8 @@
-use crate::domains::cluster_actors::hash_ring::HashRing;
+use std::sync::atomic::AtomicI32;
+
+use crate::domains::cluster_actors::hash_ring::{
+    HashRing, MigrationTask, tests::migration_task_create_helper,
+};
 
 use super::*;
 
@@ -250,4 +254,42 @@ async fn test_make_migration_plan_when_last_modified_is_lower_than_its_own() {
 
     // THEN no change should be made
     assert_eq!(heartbeat_receiving_actor.hash_ring.last_modified, last_modified);
+}
+
+#[tokio::test]
+async fn test_migrate_batch_keys_happypath() {
+    // GIVEN
+    let (tx, mut rx) = tokio::sync::mpsc::channel(10);
+    let fake_handler = ClusterCommandHandler(tx);
+
+    // Create dummy tasks
+    let tasks = vec![migration_task_create_helper(0, 100), migration_task_create_helper(101, 102)];
+
+    // WHEN - first being number of keys, second being number of batches
+    let atom = Arc::new((AtomicI32::new(0), AtomicI32::new(0)));
+
+    tokio::spawn({
+        let atom = atom.clone();
+        async move {
+            while let Some(msg) = rx.recv().await {
+                let ClusterCommand::Scheduler(SchedulerMessage::MigrateBatchKeys(batch, tx)) = msg
+                else {
+                    panic!()
+                };
+                batch.tasks.iter().for_each(|task| {
+                    atom.0.fetch_add(task.keys_to_migrate.len() as i32, Ordering::Relaxed);
+                    atom.1.fetch_add(1, Ordering::Relaxed);
+                });
+                let _ = tx.send(Ok(()));
+            }
+        }
+    });
+
+    ClusterActor::<MemoryOpLogs>::migrate_keys(fake_handler, tasks).await;
+
+    while atom.0.load(Ordering::Relaxed) != 101 {
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+
+    assert_eq!(atom.1.load(Ordering::Relaxed), 2);
 }

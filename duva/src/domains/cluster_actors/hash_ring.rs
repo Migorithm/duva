@@ -16,7 +16,7 @@ pub(crate) use hash_func::fnv_1a_hash;
 pub(crate) use migration_task::*;
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;
 
 // Number of virtual nodes to create for each physical node.
 const V_NODE_NUM: u16 = 256;

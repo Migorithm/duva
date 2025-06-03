@@ -965,6 +965,8 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         let (tx, rx) = tokio::sync::oneshot::channel();
         let _ =
             handler.send(SchedulerMessage::MigrateBatchKeys(MigrationBatch::new(tasks), tx)).await;
+
+        // ! One after the other
         let _ = rx.await.unwrap_or_else(|_| Err(anyhow::anyhow!("Channel closed")));
 
         // Recursive call - to avoid infinite size futures, use box

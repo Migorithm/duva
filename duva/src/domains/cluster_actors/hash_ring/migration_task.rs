@@ -4,10 +4,10 @@ use crate::ReplicationId;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct MigrationTask {
-    pub(super) task_id: (u64, u64), // (start_hash, end_hash)
-    pub(super) from_node: ReplicationId,
-    pub(super) to_node: ReplicationId,
-    pub(super) keys_to_migrate: Vec<String>, // actual keys in this range
+    pub(crate) task_id: (u64, u64), // (start_hash, end_hash)
+    pub(crate) from_node: ReplicationId,
+    pub(crate) to_node: ReplicationId,
+    pub(crate) keys_to_migrate: Vec<String>, // actual keys in this range
 }
 
 impl MigrationTask {
