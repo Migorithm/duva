@@ -113,6 +113,7 @@ impl CacheManager {
             },
         };
 
+        // * This is to wake up the cache actors to process the pending read requests
         self.pings().await;
 
         Ok(())

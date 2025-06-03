@@ -31,6 +31,7 @@ use crate::domains::peers::peer::PeerState;
 use crate::err;
 use std::collections::VecDeque;
 use std::iter;
+use std::pin::Pin;
 
 use client_sessions::ClientSessions;
 use heartbeat_scheduler::HeartBeatScheduler;
@@ -934,6 +935,35 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         }
 
         let keys = cache_manager.route_keys(None).await;
-        let _migration_tasks = self.hash_ring.create_migration_tasks(&ring, keys).await;
+
+        let migration_tasks: Vec<hash_ring::MigrationTask> =
+            self.hash_ring.create_migration_tasks(&ring, keys).await;
+
+        tokio::spawn(Self::migrate_keys(self.self_handler.clone(), migration_tasks));
+    }
+
+    async fn migrate_keys(
+        handler: ClusterCommandHandler,
+        mut migration_tasks: Vec<hash_ring::MigrationTask>,
+    ) {
+        //* Base case
+        if migration_tasks.is_empty() {
+            return;
+        }
+
+        // 100+- keys at a time
+        let mut num = 0;
+        let mut batch = Vec::new();
+        while let Some(task) = migration_tasks.pop() {
+            num += task.len();
+            batch.push(task);
+            if num > 100 {
+                break;
+            }
+        }
+        let _ = handler.send(SchedulerMessage::MigrateKeys(batch)).await;
+        // Recursive call - to avoid infinite size futures, use box
+        // Pin<T> is a wrapper that prevents the wrapped value from being moved.
+        Box::pin(Self::migrate_keys(handler, migration_tasks)).await;
     }
 }

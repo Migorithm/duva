@@ -1,4 +1,5 @@
 use crate::ReplicationState;
+use crate::domains::cluster_actors::hash_ring::MigrationTask;
 use crate::domains::cluster_actors::replication::{ReplicationId, ReplicationRole};
 use crate::domains::operation_logs::WriteRequest;
 use crate::domains::peers::command::PeerCommand;
@@ -22,6 +23,7 @@ pub enum SchedulerMessage {
     SendAppendEntriesRPC,
     StartLeaderElection,
     RebalanceRequest { request_to: PeerIdentifier, lazy_option: LazyOption },
+    MigrateKeys(Vec<MigrationTask>),
 }
 impl From<SchedulerMessage> for ClusterCommand {
     fn from(msg: SchedulerMessage) -> Self {
