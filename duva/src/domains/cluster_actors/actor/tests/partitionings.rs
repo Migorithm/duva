@@ -261,7 +261,11 @@ async fn test_schedule_migrations_happypath() {
     let fake_handler = ClusterCommandHandler(tx);
 
     // Create dummy tasks
-    let tasks = vec![migration_task_create_helper(0, 100), migration_task_create_helper(101, 102)];
+    let mut migration_plans = BTreeMap::new();
+    migration_plans.insert(
+        ReplicationId::Key("my_test_key".to_string()),
+        vec![migration_task_create_helper(0, 100), migration_task_create_helper(101, 102)],
+    );
 
     // WHEN - first being number of keys, second being number of batches
     let atom = Arc::new((AtomicI32::new(0), AtomicI32::new(0)));
@@ -284,7 +288,7 @@ async fn test_schedule_migrations_happypath() {
         }
     });
 
-    ClusterActor::<MemoryOpLogs>::schedule_migrations(fake_handler, tasks).await;
+    ClusterActor::<MemoryOpLogs>::schedule_migrations(fake_handler, migration_plans).await;
 
     while atom.0.load(Ordering::Relaxed) != 101 {
         tokio::time::sleep(Duration::from_millis(10)).await;

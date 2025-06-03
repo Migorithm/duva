@@ -92,17 +92,17 @@ async fn test_single_node_ownership_change() {
     }
 
     // Create migration plan
-    let tasks = old_ring.create_migration_tasks(&new_ring, test_keys.clone()).await;
+    let migration_plans = old_ring.create_migration_tasks(&new_ring, test_keys.clone()).await;
 
     // Verify that we have migration tasks if and only if there are ownership changes
-    assert!(!tasks.is_empty(), "Should have migration tasks when ownership changes");
+    assert!(!migration_plans.is_empty(), "Should have migration tasks when ownership changes");
 
     // Collect actual migrations from tasks
     let mut actual_migrations = HashMap::<ReplicationId, Vec<String>>::new();
 
-    for task in &tasks {
-        let migration_key = task.to.clone();
-        actual_migrations.entry(migration_key).or_default().extend(task.keys_to_migrate.clone());
+    for (replid, tasks) in &migration_plans {
+        let keys = tasks.iter().map(|t| t.keys_to_migrate.clone()).flatten().collect::<Vec<_>>();
+        actual_migrations.entry(replid.clone()).or_default().extend(keys);
     }
 
     // Verify that actual migrations match expected migrations
@@ -125,7 +125,10 @@ async fn test_single_node_ownership_change() {
 
     // Verify total count
     let total_expected: usize = expected_migrations.values().map(|v| v.len()).sum();
-    let total_actual: usize = tasks.iter().map(|t| t.keys_to_migrate.len()).sum();
+    let total_actual: usize = migration_plans
+        .iter()
+        .map(|(_, tasks)| tasks.iter().map(|t| t.keys_to_migrate.len()).sum::<usize>())
+        .sum();
     assert_eq!(
         total_actual, total_expected,
         "Total migrated keys should match expected migrations"
@@ -195,17 +198,17 @@ async fn test_multiple_ownership_changes() {
     }
 
     // Create migration plan
-    let tasks = old_ring.create_migration_tasks(&new_ring, test_keys.clone()).await;
+    let migration_plans = old_ring.create_migration_tasks(&new_ring, test_keys.clone()).await;
 
     // Should have migration tasks since we replaced multiple nodes
-    assert!(!tasks.is_empty(), "Should have migration tasks when multiple nodes change");
+    assert!(!migration_plans.is_empty(), "Should have migration tasks when multiple nodes change");
 
     // Collect actual migrations from tasks
     let mut actual_migrations = HashMap::<ReplicationId, Vec<String>>::new();
 
-    for task in &tasks {
-        let migration_key = task.to.clone();
-        actual_migrations.entry(migration_key).or_default().extend(task.keys_to_migrate.clone());
+    for (replid, tasks) in &migration_plans {
+        let keys = tasks.iter().map(|t| t.keys_to_migrate.clone()).flatten().collect::<Vec<_>>();
+        actual_migrations.entry(replid.clone()).or_default().extend(keys);
     }
 
     // Verify that actual migrations match expected migrations exactly
@@ -230,7 +233,10 @@ async fn test_multiple_ownership_changes() {
 
     // Verify total count
     let total_expected: usize = expected_migrations.values().map(|v| v.len()).sum();
-    let total_actual: usize = tasks.iter().map(|t| t.keys_to_migrate.len()).sum();
+    let total_actual: usize = migration_plans
+        .iter()
+        .map(|(_, tasks)| tasks.iter().map(|t| t.keys_to_migrate.len()).sum::<usize>())
+        .sum();
     assert_eq!(total_actual, total_expected,);
 
     // Verify that we actually have multiple different migration paths (multiple ownership changes)

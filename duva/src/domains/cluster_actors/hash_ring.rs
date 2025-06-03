@@ -3,12 +3,9 @@
 /// The `HashRing` maps keys to physical nodes using virtual nodes to ensure
 /// even distribution. Each physical node is represented by multiple virtual
 /// nodes on the ring, determined by `vnode_num`.
-///
 use crate::ReplicationId;
-
 use crate::prelude::PeerIdentifier;
 use std::collections::{BTreeMap, HashMap};
-
 use std::rc::Rc;
 mod hash_func;
 mod migration_task;
@@ -92,8 +89,8 @@ impl HashRing {
         &self,
         new_ring: &HashRing,
         keys: Vec<String>,
-    ) -> Vec<MigrationTask> {
-        let mut migration_tasks = Vec::new();
+    ) -> BTreeMap<ReplicationId, Vec<MigrationTask>> {
+        let mut migration_tasks: BTreeMap<ReplicationId, Vec<MigrationTask>> = BTreeMap::new();
 
         // Get all token positions from both rings as partition boundaries
         let mut tokens: Vec<u64> =
@@ -115,7 +112,7 @@ impl HashRing {
                     // Need to migrate data from old node to new node
                     let affected_keys = filter_keys_in_partition(&keys, start, end);
                     if !affected_keys.is_empty() {
-                        migration_tasks.push(MigrationTask {
+                        migration_tasks.entry(new_owner.clone()).or_default().push(MigrationTask {
                             task_id: (start, end),
                             to: new_owner.clone(),
                             keys_to_migrate: affected_keys,

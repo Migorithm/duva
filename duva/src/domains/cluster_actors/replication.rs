@@ -1,3 +1,4 @@
+use super::consensus::election::ElectionState;
 use crate::domains::peers::command::BannedPeer;
 use crate::domains::peers::command::HeartBeat;
 use crate::domains::peers::identifier::PeerIdentifier;
@@ -8,8 +9,6 @@ use std::fmt::Display;
 use std::sync::Arc;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
-
-use super::consensus::election::ElectionState;
 
 #[derive(Debug, Clone)]
 pub(crate) struct ReplicationState {

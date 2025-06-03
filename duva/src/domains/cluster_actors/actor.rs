@@ -6,16 +6,13 @@ use super::consensus::election::ElectionState;
 use super::hash_ring::HashRing;
 pub mod client_sessions;
 pub(crate) mod heartbeat_scheduler;
-
 use super::replication::ReplicationId;
 use super::replication::ReplicationRole;
 use super::replication::ReplicationState;
 use super::replication::time_in_secs;
 use super::*;
-
-use crate::domains::caches::cache_manager::CacheManager;
-
 use crate::domains::QueryIO;
+use crate::domains::caches::cache_manager::CacheManager;
 use crate::domains::cluster_actors::hash_ring::MigrationBatch;
 use crate::domains::operation_logs::interfaces::TWriteAheadLog;
 use crate::domains::operation_logs::logger::ReplicatedLogs;
@@ -30,11 +27,11 @@ use crate::domains::peers::connections::outbound::stream::OutboundStream;
 use crate::domains::peers::peer::NodeKind;
 use crate::domains::peers::peer::PeerState;
 use crate::err;
-use std::collections::VecDeque;
-use std::iter;
-
 use client_sessions::ClientSessions;
 use heartbeat_scheduler::HeartBeatScheduler;
+use std::collections::HashMap;
+use std::collections::VecDeque;
+use std::iter;
 use std::sync::atomic::Ordering;
 use tokio::fs::File;
 use tokio::io::AsyncSeekExt;
@@ -936,24 +933,23 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
         let keys = cache_manager.route_keys(None).await;
 
-        let migration_tasks: Vec<hash_ring::MigrationTask> =
-            self.hash_ring.create_migration_tasks(&ring, keys).await;
+        let migration_tasks = self.hash_ring.create_migration_tasks(&ring, keys).await;
 
         tokio::spawn(Self::schedule_migrations(self.self_handler.clone(), migration_tasks));
     }
 
     async fn schedule_migrations(
         handler: ClusterCommandHandler,
-        mut migration_tasks: Vec<hash_ring::MigrationTask>,
+        mut migration_plans: BTreeMap<ReplicationId, Vec<hash_ring::MigrationTask>>,
     ) {
         //* Base case
-        if migration_tasks.is_empty() {
-            // ! Snapshot should be done on reception, not on send.
+        let Some((target_replid, mut migration_tasks)) = migration_plans.pop_last() else {
             return;
-        }
+        };
 
         let mut num = 0;
         let mut tasks = Vec::new();
+
         while let Some(task) = migration_tasks.pop() {
             num += task.key_len();
             tasks.push(task);
@@ -969,9 +965,13 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
         let _ = rx.await.unwrap_or_else(|_| Err(anyhow::anyhow!("Channel closed")));
 
+        if !migration_tasks.is_empty() {
+            migration_plans.insert(target_replid, migration_tasks);
+        }
+
         // Recursive call - to avoid infinite size futures, use box
         // Pin<T> is a wrapper that prevents the wrapped value from being moved.
-        Box::pin(Self::schedule_migrations(handler, migration_tasks)).await;
+        Box::pin(Self::schedule_migrations(handler, migration_plans)).await;
     }
 
     pub(crate) async fn migrate_keys(
