@@ -6,16 +6,14 @@ use super::consensus::election::ElectionState;
 use super::hash_ring::HashRing;
 pub mod client_sessions;
 pub(crate) mod heartbeat_scheduler;
-
 use super::replication::ReplicationId;
 use super::replication::ReplicationRole;
 use super::replication::ReplicationState;
 use super::replication::time_in_secs;
 use super::*;
-
-use crate::domains::caches::cache_manager::CacheManager;
-
 use crate::domains::QueryIO;
+use crate::domains::caches::cache_manager::CacheManager;
+use crate::domains::cluster_actors::hash_ring::MigrationBatch;
 use crate::domains::operation_logs::interfaces::TWriteAheadLog;
 use crate::domains::operation_logs::logger::ReplicatedLogs;
 use crate::domains::peers::command::BannedPeer;
@@ -29,11 +27,11 @@ use crate::domains::peers::connections::outbound::stream::OutboundStream;
 use crate::domains::peers::peer::NodeKind;
 use crate::domains::peers::peer::PeerState;
 use crate::err;
-use std::collections::VecDeque;
-use std::iter;
-
 use client_sessions::ClientSessions;
 use heartbeat_scheduler::HeartBeatScheduler;
+use std::collections::HashMap;
+use std::collections::VecDeque;
+use std::iter;
 use std::sync::atomic::Ordering;
 use tokio::fs::File;
 use tokio::io::AsyncSeekExt;
@@ -934,6 +932,60 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         }
 
         let keys = cache_manager.route_keys(None).await;
-        let _migration_tasks = self.hash_ring.create_migration_tasks(&ring, keys).await;
+
+        let migration_tasks = self.hash_ring.create_migration_tasks(&ring, keys).await;
+
+        tokio::spawn(Self::schedule_migrations(self.self_handler.clone(), migration_tasks));
+    }
+
+    async fn schedule_migrations(
+        handler: ClusterCommandHandler,
+        mut migration_plans: BTreeMap<ReplicationId, Vec<hash_ring::MigrationTask>>,
+    ) {
+        //* Base case
+        let Some((target_replid, mut migration_tasks)) = migration_plans.pop_last() else {
+            return;
+        };
+
+        let mut num = 0;
+        let mut tasks = Vec::new();
+
+        while let Some(task) = migration_tasks.pop() {
+            num += task.key_len();
+            tasks.push(task);
+            // 100 < keys at a time
+            if num > 100 {
+                break;
+            }
+        }
+
+        // ! synchronization is required here.
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        let _ = handler
+            .send(SchedulerMessage::MigrateBatchKeys(
+                MigrationBatch::new(target_replid.clone(), tasks),
+                tx,
+            ))
+            .await;
+
+        let _ = rx.await.unwrap_or_else(|_| Err(anyhow::anyhow!("Channel closed")));
+
+        if !migration_tasks.is_empty() {
+            migration_plans.insert(target_replid, migration_tasks);
+        }
+
+        // * Recursive Case
+        Box::pin(Self::schedule_migrations(handler, migration_plans)).await;
+    }
+
+    pub(crate) async fn migrate_keys(
+        &self,
+        tasks: MigrationBatch,
+        callback: tokio::sync::oneshot::Sender<Result<(), anyhow::Error>>,
+    ) {
+        // find current target
+        // register batch id & callback
+        // send key values with hash range
+        todo!()
     }
 }

@@ -1,11 +1,10 @@
 use crate::domains::caches::cache_manager::CacheManager;
+use crate::domains::cluster_actors::ClientMessage;
+use crate::domains::cluster_actors::ClusterActor;
 use crate::domains::cluster_actors::ClusterCommand;
-
-use crate::domains::cluster_actors::{
-    ClientMessage, ClusterActor, ConnectionMessage, SchedulerMessage,
-};
+use crate::domains::cluster_actors::ConnectionMessage;
+use crate::domains::cluster_actors::SchedulerMessage;
 use crate::domains::operation_logs::interfaces::TWriteAheadLog;
-
 use crate::domains::peers::PeerMessage;
 use crate::err;
 use crate::prelude::PeerIdentifier;
@@ -49,6 +48,9 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             },
             | RebalanceRequest { request_to, lazy_option } => {
                 self.rebalance_request(request_to, lazy_option).await;
+            },
+            | MigrateBatchKeys(tasks, callback) => {
+                self.migrate_keys(tasks, callback).await;
             },
         }
     }

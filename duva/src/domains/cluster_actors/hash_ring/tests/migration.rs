@@ -49,110 +49,92 @@ async fn test_empty_keys_migration_plan() {
 #[tokio::test]
 async fn test_single_node_ownership_change() {
     // Test scenario: 3 nodes in ring, one node (node2) is replaced by node4
-    // node1 and node3 remain unchanged
     let replid1 = replid_create_helper("node1");
     let replid2 = replid_create_helper("node2");
     let replid3 = replid_create_helper("node3");
     let replid4 = replid_create_helper("node4");
 
-    // Create old ring with 3 nodes using realistic hash ring
+    // Setup old ring
     let mut old_ring = HashRing::default();
     old_ring.add_partition_if_not_exists(replid1.clone(), PeerIdentifier("peer1".into()));
     old_ring.add_partition_if_not_exists(replid2.clone(), PeerIdentifier("peer2".into()));
     old_ring.add_partition_if_not_exists(replid3.clone(), PeerIdentifier("peer3".into()));
 
-    // Create new ring where node2 is replaced by node4
+    // Setup new ring
     let mut new_ring = HashRing::default();
     new_ring.add_partition_if_not_exists(replid1.clone(), PeerIdentifier("peer1".into()));
     new_ring.add_partition_if_not_exists(replid4.clone(), PeerIdentifier("peer4".into())); // node2 -> node4
     new_ring.add_partition_if_not_exists(replid3.clone(), PeerIdentifier("peer3".into()));
 
-    // Generate a set of test keys
     let test_keys: Vec<String> = (0..10000).map(|i| format!("test_key_{}", i)).collect();
 
-    // Identify ownership in both rings
-    let mut old_ownership = HashMap::new();
-    let mut new_ownership = HashMap::new();
-
+    // Identify expected migrations
+    let mut expected_migrations = HashMap::<ReplicationId, Vec<String>>::new();
     for key in &test_keys {
-        old_ownership.insert(key.clone(), old_ring.get_node_for_key(key).unwrap().clone());
-        new_ownership.insert(key.clone(), new_ring.get_node_for_key(key).unwrap().clone());
-    }
-
-    // Find keys that changed ownership
-    let mut expected_migrations = HashMap::<(ReplicationId, ReplicationId), Vec<String>>::new();
-
-    for key in &test_keys {
-        let (old_owner, new_owner) =
-            (old_ownership.get(key).unwrap(), new_ownership.get(key).unwrap());
-
-        if old_ownership.get(key) != new_ownership.get(key) {
-            let migration_key = (old_owner.clone(), new_owner.clone());
-            expected_migrations.entry(migration_key).or_default().push(key.clone());
+        let old_owner = old_ring.get_node_for_key(key).unwrap();
+        let new_owner = new_ring.get_node_for_key(key).unwrap();
+        if old_owner != new_owner {
+            expected_migrations.entry(new_owner.clone()).or_default().push(key.clone());
         }
     }
+    expected_migrations.values_mut().for_each(|keys| keys.sort()); // Sort for consistent comparison
 
-    // Create migration plan
-    let tasks = old_ring.create_migration_tasks(&new_ring, test_keys.clone()).await;
-
-    // Verify that we have migration tasks if and only if there are ownership changes
-    assert!(!tasks.is_empty(), "Should have migration tasks when ownership changes");
-
-    // Collect actual migrations from tasks
-    let mut actual_migrations = HashMap::<(ReplicationId, ReplicationId), Vec<String>>::new();
-
-    for task in &tasks {
-        let migration_key = (task.from_node.clone(), task.to_node.clone());
-        actual_migrations.entry(migration_key).or_default().extend(task.keys_to_migrate.clone());
+    // Create and collect actual migration tasks
+    let migration_plans = old_ring.create_migration_tasks(&new_ring, test_keys.clone()).await;
+    let mut actual_migrations = HashMap::<ReplicationId, Vec<String>>::new();
+    for (replid, tasks) in &migration_plans {
+        actual_migrations
+            .entry(replid.clone())
+            .or_default()
+            .extend(tasks.iter().flat_map(|t| t.keys_to_migrate.clone()));
     }
+    actual_migrations.values_mut().for_each(|keys| keys.sort()); // Sort for consistent comparison
 
-    // Verify that actual migrations match expected migrations
-    for ((from_node, to_node), expected_keys) in &expected_migrations {
-        let actual_keys = actual_migrations.get(&(from_node.clone(), to_node.clone())).unwrap();
-        assert_eq!(actual_keys.len(), expected_keys.len());
-        let mut ak = actual_keys.clone();
-        let mut ek = expected_keys.clone();
-        ak.sort();
-        ek.sort();
-        assert_eq!(ak, ek);
+    // Assertions for migrations
+    assert!(!migration_plans.is_empty(), "Should have migration tasks when ownership changes");
+    assert_eq!(
+        actual_migrations.len(),
+        expected_migrations.len(),
+        "Number of migration targets should match."
+    );
+    for (to_node, expected_keys) in &expected_migrations {
+        assert_eq!(
+            actual_migrations.get(to_node),
+            Some(expected_keys),
+            "Keys for node {:?} do not match",
+            to_node
+        );
     }
-
-    // Verify no unexpected migrations
-    for ((from_node, to_node), actual_keys) in &actual_migrations {
-        if !expected_migrations.contains_key(&(from_node.clone(), to_node.clone())) {
-            panic!(
-                "Unexpected migration from {} to {} for keys {:?}",
-                from_node, to_node, actual_keys
-            );
-        }
+    for (to_node, actual_keys) in &actual_migrations {
+        assert!(
+            expected_migrations.contains_key(to_node),
+            "Unexpected migration to {} for keys {:?}",
+            to_node,
+            actual_keys
+        );
     }
-
-    // Verify total count
     let total_expected: usize = expected_migrations.values().map(|v| v.len()).sum();
-    let total_actual: usize = tasks.iter().map(|t| t.keys_to_migrate.len()).sum();
+    let total_actual: usize = actual_migrations.values().map(|v| v.len()).sum();
     assert_eq!(
         total_actual, total_expected,
         "Total migrated keys should match expected migrations"
     );
+    assert!(total_actual > 0, "There should be actual migrations.");
 
-    // Additional verification: node2 should not exist in new ring, node4 should not exist in old ring
+    // Additional node existence verification
     for key in &test_keys {
-        // In old ring, node4 shouldn't own any keys (it doesn't exist)
         if let Some(old_owner) = old_ring.get_node_for_key(key) {
-            assert_ne!(*old_owner, replid4, "Node4 shouldn't exist in old ring");
+            assert_ne!(*old_owner, replid4, "Node4 shouldn't exist in old ring or own keys");
         }
-
-        // In new ring, node2 shouldn't own any keys (it was removed)
         if let Some(new_owner) = new_ring.get_node_for_key(key) {
-            assert_ne!(*new_owner, replid2, "Node2 shouldn't exist in new ring");
+            assert_ne!(*new_owner, replid2, "Node2 shouldn't exist in new ring or own keys");
         }
     }
 }
 
 #[tokio::test]
 async fn test_multiple_ownership_changes() {
-    // Test scenario: 4 nodes in ring, replace 2 nodes simultaneously
-    // node1 -> node5, node2 -> node6, node3 and node4 remain unchanged
+    // Test scenario: 4 nodes, replace 2 (node1->node5, node2->node6), node3 and node4 remain
     let replid1 = replid_create_helper("node1");
     let replid2 = replid_create_helper("node2");
     let replid3 = replid_create_helper("node3");
@@ -160,125 +142,104 @@ async fn test_multiple_ownership_changes() {
     let replid5 = replid_create_helper("node5");
     let replid6 = replid_create_helper("node6");
 
-    // Create old ring with 4 nodes
+    // Setup old ring
     let mut old_ring = HashRing::default();
     old_ring.add_partition_if_not_exists(replid1.clone(), PeerIdentifier("peer1".into()));
     old_ring.add_partition_if_not_exists(replid2.clone(), PeerIdentifier("peer2".into()));
     old_ring.add_partition_if_not_exists(replid3.clone(), PeerIdentifier("peer3".into()));
     old_ring.add_partition_if_not_exists(replid4.clone(), PeerIdentifier("peer4".into()));
 
-    // Create new ring where node1->node5 and node2->node6, but node3 and node4 remain
+    // Setup new ring
     let mut new_ring = HashRing::default();
-    new_ring.add_partition_if_not_exists(replid5.clone(), PeerIdentifier("peer5".into())); // node1 -> node5
-    new_ring.add_partition_if_not_exists(replid6.clone(), PeerIdentifier("peer6".into())); // node2 -> node6
-    new_ring.add_partition_if_not_exists(replid3.clone(), PeerIdentifier("peer3".into())); // node3 stays
-    new_ring.add_partition_if_not_exists(replid4.clone(), PeerIdentifier("peer4".into())); // node4 stays
+    new_ring.add_partition_if_not_exists(replid5.clone(), PeerIdentifier("peer5".into()));
+    new_ring.add_partition_if_not_exists(replid6.clone(), PeerIdentifier("peer6".into()));
+    new_ring.add_partition_if_not_exists(replid3.clone(), PeerIdentifier("peer3".into()));
+    new_ring.add_partition_if_not_exists(replid4.clone(), PeerIdentifier("peer4".into()));
 
-    // Generate a large set of test keys for comprehensive testing
     let test_keys: Vec<String> = (0..5000).map(|i| format!("test_key_{}", i)).collect();
 
-    // Identify ownership in both rings
-    let mut old_ownership = HashMap::new();
-    let mut new_ownership = HashMap::new();
-
+    // Identify expected migrations
+    let mut expected_migrations = HashMap::<ReplicationId, Vec<String>>::new();
     for key in &test_keys {
-        old_ownership.insert(key.clone(), old_ring.get_node_for_key(key).unwrap().clone());
-        new_ownership.insert(key.clone(), new_ring.get_node_for_key(key).unwrap().clone());
-    }
-
-    // Find keys that changed ownership
-    let mut expected_migrations = HashMap::<(ReplicationId, ReplicationId), Vec<String>>::new();
-
-    for key in &test_keys {
-        let (old_owner, new_owner) =
-            (old_ownership.get(key).unwrap(), new_ownership.get(key).unwrap());
-
-        if old_ownership.get(key) != new_ownership.get(key) {
-            let migration_key = (old_owner.clone(), new_owner.clone());
-            expected_migrations.entry(migration_key).or_default().push(key.clone());
+        let old_owner = old_ring.get_node_for_key(key).unwrap();
+        let new_owner = new_ring.get_node_for_key(key).unwrap();
+        if old_owner != new_owner {
+            expected_migrations.entry(new_owner.clone()).or_default().push(key.clone());
         }
     }
+    expected_migrations.values_mut().for_each(|keys| keys.sort()); // Sort for consistent comparison
 
-    // Create migration plan
-    let tasks = old_ring.create_migration_tasks(&new_ring, test_keys.clone()).await;
-
-    // Should have migration tasks since we replaced multiple nodes
-    assert!(!tasks.is_empty(), "Should have migration tasks when multiple nodes change");
-
-    // Collect actual migrations from tasks
-    let mut actual_migrations = HashMap::<(ReplicationId, ReplicationId), Vec<String>>::new();
-
-    for task in &tasks {
-        let migration_key = (task.from_node.clone(), task.to_node.clone());
-        actual_migrations.entry(migration_key).or_default().extend(task.keys_to_migrate.clone());
+    // Create and collect actual migration tasks
+    let migration_plans = old_ring.create_migration_tasks(&new_ring, test_keys.clone()).await;
+    let mut actual_migrations = HashMap::<ReplicationId, Vec<String>>::new();
+    for (replid, tasks) in &migration_plans {
+        actual_migrations
+            .entry(replid.clone())
+            .or_default()
+            .extend(tasks.iter().flat_map(|t| t.keys_to_migrate.clone()));
     }
+    actual_migrations.values_mut().for_each(|keys| keys.sort()); // Sort for consistent comparison
 
-    // Verify that actual migrations match expected migrations exactly
-    for ((from_node, to_node), expected_keys) in &expected_migrations {
-        let actual_keys = actual_migrations.get(&(from_node.clone(), to_node.clone())).unwrap();
-
-        assert_eq!(actual_keys.len(), expected_keys.len(),);
-
-        // Sort both lists and compare for exact match
-        let mut actual_sorted = actual_keys.clone();
-        let mut expected_sorted = expected_keys.clone();
-        actual_sorted.sort();
-        expected_sorted.sort();
-
-        assert_eq!(actual_sorted, expected_sorted,);
+    // Assertions for migrations
+    assert!(!migration_plans.is_empty(), "Should have migration tasks when multiple nodes change");
+    assert_eq!(
+        actual_migrations.len(),
+        expected_migrations.len(),
+        "Number of migration targets should match."
+    );
+    for (to_node, expected_keys) in &expected_migrations {
+        assert_eq!(
+            actual_migrations.get(to_node),
+            Some(expected_keys),
+            "Keys for node {:?} do not match",
+            to_node
+        );
     }
-
-    // Verify no unexpected migrations
-    for ((from_node, to_node), _actual_keys) in &actual_migrations {
-        assert!(expected_migrations.contains_key(&(from_node.clone(), to_node.clone())));
+    for (to_node, actual_keys) in &actual_migrations {
+        assert!(
+            expected_migrations.contains_key(to_node),
+            "Unexpected migration to {} for keys {:?}",
+            to_node,
+            actual_keys
+        );
     }
-
-    // Verify total count
     let total_expected: usize = expected_migrations.values().map(|v| v.len()).sum();
-    let total_actual: usize = tasks.iter().map(|t| t.keys_to_migrate.len()).sum();
-    assert_eq!(total_actual, total_expected,);
+    let total_actual: usize = actual_migrations.values().map(|v| v.len()).sum();
+    assert_eq!(
+        total_actual, total_expected,
+        "Total migrated keys should match expected migrations"
+    );
+    assert!(total_actual > 0, "There should be actual migrations.");
 
-    // Verify that we actually have multiple different migration paths (multiple ownership changes)
-    assert!(expected_migrations.len() >= 2,);
+    assert!(expected_migrations.len() >= 2, "Expected multiple different migration paths");
 
-    // Additional verification: removed nodes shouldn't exist in new ring, added nodes shouldn't exist in old ring
+    // Additional node existence verification
     for key in &test_keys {
-        // In old ring, new nodes shouldn't own any keys (they don't exist)
         if let Some(old_owner) = old_ring.get_node_for_key(key) {
             assert_ne!(*old_owner, replid5, "Node5 shouldn't exist in old ring");
             assert_ne!(*old_owner, replid6, "Node6 shouldn't exist in old ring");
         }
-
-        // In new ring, removed nodes shouldn't own any keys
         if let Some(new_owner) = new_ring.get_node_for_key(key) {
             assert_ne!(*new_owner, replid1, "Node1 shouldn't exist in new ring");
             assert_ne!(*new_owner, replid2, "Node2 shouldn't exist in new ring");
         }
     }
 
-    // Verify that both unchanged nodes (node3, node4) still exist and own some keys in the new ring
-    let mut node3_key_count = 0;
-    let mut node4_key_count = 0;
-
+    // Verify that both unchanged nodes (node3, node4) still exist and own some keys
+    let mut node_key_counts = HashMap::new();
     for key in &test_keys {
         if let Some(new_owner) = new_ring.get_node_for_key(key) {
-            if *new_owner == replid3 {
-                node3_key_count += 1;
-            } else if *new_owner == replid4 {
-                node4_key_count += 1;
-            }
+            *node_key_counts.entry(new_owner.clone()).or_insert(0) += 1;
         }
     }
-
-    // Both unchanged nodes should still own some keys (they weren't removed)
-    assert!(node3_key_count > 0, "Node3 should still own some keys in new ring");
-    assert!(node4_key_count > 0, "Node4 should still own some keys in new ring");
+    assert!(node_key_counts.get(&replid3).unwrap_or(&0) > &0, "Node3 should still own some keys");
+    assert!(node_key_counts.get(&replid4).unwrap_or(&0) > &0, "Node4 should still own some keys");
 
     println!("Migration summary:");
-    for ((from, to), keys) in &expected_migrations {
-        println!("  {} -> {}: {} keys", from, to, keys.len());
+    for (to, keys) in &expected_migrations {
+        println!("  to {}: {} keys", to, keys.len());
     }
-    println!("  Node3 keys in new ring: {}", node3_key_count);
-    println!("  Node4 keys in new ring: {}", node4_key_count);
+    println!("  Node3 keys in new ring: {}", node_key_counts.get(&replid3).unwrap_or(&0));
+    println!("  Node4 keys in new ring: {}", node_key_counts.get(&replid4).unwrap_or(&0));
     println!("  Total test keys: {}", test_keys.len());
 }
