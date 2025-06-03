@@ -257,7 +257,7 @@ async fn test_make_migration_plan_when_last_modified_is_lower_than_its_own() {
 }
 
 #[tokio::test]
-async fn test_migrate_keys_happypath() {
+async fn test_schedule_migrations_happypath() {
     // GIVEN
     let (tx, mut rx) = tokio::sync::mpsc::channel(10);
     let fake_handler = ClusterCommandHandler(tx);
@@ -286,7 +286,7 @@ async fn test_migrate_keys_happypath() {
         }
     });
 
-    ClusterActor::<MemoryOpLogs>::migrate_keys(fake_handler, tasks).await;
+    ClusterActor::<MemoryOpLogs>::schedule_migrations(fake_handler, tasks).await;
 
     while atom.0.load(Ordering::Relaxed) != 101 {
         tokio::time::sleep(Duration::from_millis(10)).await;

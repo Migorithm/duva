@@ -939,10 +939,10 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         let migration_tasks: Vec<hash_ring::MigrationTask> =
             self.hash_ring.create_migration_tasks(&ring, keys).await;
 
-        tokio::spawn(Self::migrate_keys(self.self_handler.clone(), migration_tasks));
+        tokio::spawn(Self::schedule_migrations(self.self_handler.clone(), migration_tasks));
     }
 
-    async fn migrate_keys(
+    async fn schedule_migrations(
         handler: ClusterCommandHandler,
         mut migration_tasks: Vec<hash_ring::MigrationTask>,
     ) {
@@ -971,6 +971,6 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
         // Recursive call - to avoid infinite size futures, use box
         // Pin<T> is a wrapper that prevents the wrapped value from being moved.
-        Box::pin(Self::migrate_keys(handler, migration_tasks)).await;
+        Box::pin(Self::schedule_migrations(handler, migration_tasks)).await;
     }
 }
