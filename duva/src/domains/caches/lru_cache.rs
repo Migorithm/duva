@@ -15,7 +15,7 @@
 ///
 /// Memory locality: Nodes are in slab, likely packed close together.
 /// No heap allocation on put/get, just reuse slab slots.
-/// Stable indices: You don’t deal with pointer safety or pinning.
+/// Stable indices: You don't deal with pointer safety or pinning.
 /// No fragmentation: The slab reuses freed slots.
 /// Predictable memory usage: Great for embedded or low-latency apps.
 use std::collections::{HashMap, VecDeque};
@@ -65,20 +65,21 @@ impl<T: Clone> Slab<T> {
 }
 
 #[derive(Debug, Clone)]
-struct Node<K: Debug> {
+struct Node<K: Debug + Clone> {
     key: K,
     value: CacheValue,
     prev: Option<usize>, // pointer
     next: Option<usize>, // pointer
 }
 
-struct LruCache<K: Eq + std::hash::Hash + Debug> {
+pub struct LruCache<K: Eq + std::hash::Hash + Debug + Clone> {
     map: HashMap<K, usize>, // Key -> slab index
     slab: Slab<Node<K>>,    // stable storage
     head: Option<usize>,    // most recently used (MRU)
     tail: Option<usize>,    // least recently used (LRU)
     capacity: usize,
     current_size: usize,
+    pub(crate) keys_with_expiry: usize, // Placeholder for future use
 }
 
 impl<K: Eq + Hash + Clone + Debug> LruCache<K> {
@@ -90,6 +91,26 @@ impl<K: Eq + Hash + Clone + Debug> LruCache<K> {
             tail: None,
             capacity,
             current_size: 0,
+            keys_with_expiry: 0, // Placeholder for future use
+        }
+    }
+    pub fn len(&self) -> usize {
+        self.current_size
+    }
+
+    pub(crate) fn keys(&self) -> impl Iterator<Item = &K> {
+        self.map.keys()
+    }
+
+    pub fn iter(&self) -> LruIter<K> {
+        LruIter { cache: self, current: self.head }
+    }
+
+    pub fn entry(&mut self, key: K) -> Entry<K> {
+        if let Some(&index) = self.map.get(&key) {
+            Entry::Occupied(OccupiedEntry { cache: self, index })
+        } else {
+            Entry::Vacant(VacantEntry { cache: self, key })
         }
     }
 
@@ -146,6 +167,53 @@ impl<K: Eq + Hash + Clone + Debug> LruCache<K> {
         }
     }
 
+    pub fn clear(&mut self) {
+        self.map.clear();
+        self.slab = Slab::with_capacity(self.capacity);
+        self.head = None;
+        self.tail = None;
+        self.current_size = 0;
+        self.keys_with_expiry = 0; // Reset expiry count
+    }
+
+    pub fn remove(&mut self, key: &K) -> Option<CacheValue> {
+        if let Some(&index) = self.map.get(key) {
+            // Remove from map
+            self.map.remove(key);
+
+            // Remove from slab
+            let node = self.slab.remove(index)?;
+            self.current_size -= 1;
+
+            // Update head and tail pointers
+            if self.head == Some(index) {
+                self.head = node.next; // Move head to next
+            }
+            if self.tail == Some(index) {
+                self.tail = node.prev; // Move tail to prev
+            }
+
+            // Update neighbors' pointers
+            if let Some(prev_idx) = node.prev {
+                if let Some(prev_node) = self.slab.get_mut(prev_idx) {
+                    prev_node.next = node.next;
+                }
+            }
+            if let Some(next_idx) = node.next {
+                if let Some(next_node) = self.slab.get_mut(next_idx) {
+                    next_node.prev = node.prev;
+                }
+            }
+
+            if node.value.has_expiry() {
+                self.keys_with_expiry -= 1; // Decrement if this node had an expiry
+            }
+            Some(node.value)
+        } else {
+            None
+        }
+    }
+
     pub fn put(&mut self, key: K, value: CacheValue) {
         if let Some(&index) = self.map.get(&key) {
             // Update existing node
@@ -153,25 +221,26 @@ impl<K: Eq + Hash + Clone + Debug> LruCache<K> {
             node.value = value;
             self.move_to_head(index);
         } else {
-            // Evict if necessary
             if self.current_size >= self.capacity {
                 if let Some(tail_idx) = self.tail {
-                    // Get the key and prev pointer before removing the node
-                    let (tail_key, prev_idx) = {
+                    let (tail_key, prev_idx, had_expiry) = {
                         let tail_node = self.slab.get(tail_idx).expect("Tail node not found");
-                        (tail_node.key.clone(), tail_node.prev)
+                        (tail_node.key.clone(), tail_node.prev, tail_node.value.has_expiry())
                     };
 
                     self.map.remove(&tail_key);
                     self.slab.remove(tail_idx);
 
-                    // Update tail
+                    // Decrement keys_with_expiry if the evicted node had an expiry
+                    if had_expiry {
+                        self.keys_with_expiry -= 1;
+                    }
+
                     self.tail = prev_idx;
                     if let Some(new_tail_idx) = self.tail {
                         let new_tail = self.slab.get_mut(new_tail_idx).expect("New tail not found");
                         new_tail.next = None;
                     } else {
-                        // List is now empty
                         self.head = None;
                     }
 
@@ -179,43 +248,79 @@ impl<K: Eq + Hash + Clone + Debug> LruCache<K> {
                 }
             }
 
-            // Insert new node
+            if value.has_expiry() {
+                self.keys_with_expiry += 1;
+            }
             let new_node = Node { key: key.clone(), value, prev: None, next: None };
-
             let new_idx = self.slab.insert(new_node).expect("Slab should have space");
             self.map.insert(key, new_idx);
             self.current_size += 1;
             self.move_to_head(new_idx);
         }
     }
+}
 
-    #[cfg(test)]
-    fn debug_print_list(&self) {
-        println!("--- LRU List (MRU to LRU) ---");
-        let mut current = self.head;
-        let mut count = 0;
-        while let Some(idx) = current {
-            if let Some(node) = self.slab.get(idx) {
-                print!("({}, {}) -> ", format!("{:?}", node.key), format!("{:?}", node.value));
-                current = node.next;
-                count += 1;
-            } else {
-                println!("Error: Node not found at index {}", idx);
-                break;
-            }
-            if count > self.capacity * 2 {
-                println!("... (list too long, potential cycle)");
-                break;
-            }
+pub(crate) struct LruIter<'a, K: Eq + Hash + Debug + Clone> {
+    pub(crate) cache: &'a LruCache<K>,
+    pub(crate) current: Option<usize>,
+}
+
+impl<'a, K: Eq + Hash + Debug + Clone> Iterator for LruIter<'a, K> {
+    type Item = (&'a K, &'a CacheValue);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let index = self.current?;
+        let node = self.cache.slab.get(index)?;
+
+        self.current = node.next; // advance for next iteration
+        Some((&node.key, &node.value))
+    }
+}
+
+pub(crate) enum Entry<'a, K: Eq + Hash + Debug + Clone> {
+    Occupied(OccupiedEntry<'a, K>),
+    Vacant(VacantEntry<'a, K>),
+}
+
+impl<'a, K: Eq + Hash + Debug + Clone> Entry<'a, K> {
+    pub fn or_insert(self, default: CacheValue) -> &'a mut CacheValue {
+        match self {
+            | Entry::Occupied(entry) => entry.into_mut(),
+            | Entry::Vacant(entry) => entry.insert(default),
         }
-        println!("None");
-        println!("Head: {:?}, Tail: {:?}, Size: {}", self.head, self.tail, self.current_size);
-        println!("------------------------------");
+    }
+}
+
+pub(crate) struct OccupiedEntry<'a, K: Eq + Hash + Debug + Clone> {
+    cache: &'a mut LruCache<K>,
+    index: usize,
+}
+
+impl<'a, K: Eq + Hash + Debug + Clone> OccupiedEntry<'a, K> {
+    pub fn into_mut(self) -> &'a mut CacheValue {
+        self.cache.move_to_head(self.index);
+        &mut self.cache.slab.get_mut(self.index).expect("Node not found").value
+    }
+}
+
+pub(crate) struct VacantEntry<'a, K: Eq + Hash + Debug + Clone> {
+    cache: &'a mut LruCache<K>,
+    key: K,
+}
+
+impl<'a, K: Eq + Hash + Debug + Clone> VacantEntry<'a, K> {
+    pub fn insert(self, value: CacheValue) -> &'a mut CacheValue {
+        self.cache.put(self.key.clone(), value);
+        // Get the index of the newly inserted key (which should be at head)
+        let index = *self.cache.map.get(&self.key).expect("Key should exist after put");
+        &mut self.cache.slab.get_mut(index).expect("Node not found").value
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use chrono::Utc;
+
     use super::*;
 
     #[test]
@@ -278,5 +383,221 @@ mod tests {
         assert_eq!(cache.get(&2), None); // No 2 yet
         cache.put(2, CacheValue::new("B".into()));
         assert_eq!(cache.get(&3), None); // No 3 yet
+    }
+
+    #[test]
+    fn test_lru_remove_key() {
+        let mut cache = LruCache::new(3);
+        cache.put(1, CacheValue::new("one".into()));
+        cache.put(2, CacheValue::new("two".into()));
+        cache.put(3, CacheValue::new("three".into()));
+
+        // Remove middle key
+        let removed = cache.remove(&2);
+        assert_eq!(removed, Some(CacheValue::new("two".into())));
+        assert_eq!(cache.get(&2), None);
+        assert_eq!(cache.len(), 2);
+
+        // Remaining keys should still be accessible
+        assert_eq!(cache.get(&1), Some(&CacheValue::new("one".into())));
+        assert_eq!(cache.get(&3), Some(&CacheValue::new("three".into())));
+    }
+
+    #[test]
+    fn test_lru_remove_head_tail_update() {
+        let mut cache = LruCache::new(2);
+        cache.put(1, CacheValue::new("one".into()));
+        cache.put(2, CacheValue::new("two".into())); // MRU
+
+        // Remove MRU
+        assert_eq!(cache.head, Some(*cache.map.get(&2).unwrap()));
+        cache.remove(&2);
+        assert_eq!(cache.head, Some(*cache.map.get(&1).unwrap()));
+
+        // Remove last remaining
+        cache.remove(&1);
+        assert_eq!(cache.head, None);
+        assert_eq!(cache.tail, None);
+        assert_eq!(cache.len(), 0);
+    }
+
+    #[test]
+    fn test_iter_empty_cache() {
+        let cache = LruCache::<i32>::new(3);
+        let items: Vec<_> = cache.iter().collect();
+        assert_eq!(items.len(), 0);
+    }
+
+    #[test]
+    fn test_iter_single_item() {
+        let mut cache = LruCache::new(3);
+        cache.put(1, CacheValue::new("one".into()));
+
+        let items: Vec<_> = cache.iter().collect();
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0], (&1, &CacheValue::new("one".into())));
+    }
+
+    #[test]
+    fn test_iter_multiple_items_mru_order() {
+        let mut cache = LruCache::new(3);
+        cache.put(1, CacheValue::new("one".into()));
+        cache.put(2, CacheValue::new("two".into()));
+        cache.put(3, CacheValue::new("three".into()));
+
+        // Should iterate from MRU (3) to LRU (1)
+        let items: Vec<_> = cache.iter().collect();
+        assert_eq!(items.len(), 3);
+        assert_eq!(items[0], (&3, &CacheValue::new("three".into()))); // MRU
+        assert_eq!(items[1], (&2, &CacheValue::new("two".into())));
+        assert_eq!(items[2], (&1, &CacheValue::new("one".into()))); // LRU
+    }
+
+    #[test]
+    fn test_iter_after_access_reorders() {
+        let mut cache = LruCache::new(3);
+        cache.put(1, CacheValue::new("one".into()));
+        cache.put(2, CacheValue::new("two".into()));
+        cache.put(3, CacheValue::new("three".into()));
+
+        // Access key 1, making it MRU
+        let _ = cache.get(&1);
+
+        // Should iterate from MRU (1) to LRU (2)
+        let items: Vec<_> = cache.iter().collect();
+        assert_eq!(items.len(), 3);
+        assert_eq!(items[0], (&1, &CacheValue::new("one".into()))); // Now MRU
+        assert_eq!(items[1], (&3, &CacheValue::new("three".into())));
+        assert_eq!(items[2], (&2, &CacheValue::new("two".into()))); // Now LRU
+    }
+
+    #[test]
+    fn test_iter_doesnt_modify_cache() {
+        let mut cache = LruCache::new(3);
+        cache.put(1, CacheValue::new("one".into()));
+        cache.put(2, CacheValue::new("two".into()));
+
+        // Store original state
+        let original_len = cache.len();
+        let original_head = cache.head;
+        let original_tail = cache.tail;
+
+        // Iterate over cache
+        let _items: Vec<_> = cache.iter().collect();
+
+        // Verify cache state unchanged
+        assert_eq!(cache.len(), original_len);
+        assert_eq!(cache.head, original_head);
+        assert_eq!(cache.tail, original_tail);
+    }
+
+    #[test]
+    fn test_entry_vacant_or_insert() {
+        let mut cache = LruCache::new(3);
+
+        // Insert new key via entry
+        let value = cache.entry(1).or_insert(CacheValue::new("one".into()));
+        assert_eq!(value, &mut CacheValue::new("one".into()));
+        assert_eq!(cache.len(), 1);
+
+        // Verify it was actually inserted
+        assert_eq!(cache.get(&1), Some(&CacheValue::new("one".into())));
+    }
+
+    #[test]
+    fn test_entry_occupied_or_insert() {
+        let mut cache = LruCache::new(3);
+        cache.put(1, CacheValue::new("original".into()));
+
+        // Try to insert via entry - should return existing value
+        let value = cache.entry(1).or_insert(CacheValue::new("new".into()));
+        assert_eq!(value, &mut CacheValue::new("original".into()));
+        assert_eq!(cache.len(), 1);
+
+        // Verify original value is unchanged
+        assert_eq!(cache.get(&1), Some(&CacheValue::new("original".into())));
+    }
+
+    #[test]
+    fn test_entry_occupied_moves_to_head() {
+        let mut cache = LruCache::new(3);
+        cache.put(1, CacheValue::new("one".into()));
+        cache.put(2, CacheValue::new("two".into()));
+        cache.put(3, CacheValue::new("three".into()));
+
+        // Access key 1 via entry - should move it to head
+        let _value = cache.entry(1).or_insert(CacheValue::new("unused".into()));
+
+        // Verify order changed (1 should now be MRU)
+        let items: Vec<_> = cache.iter().collect();
+        assert_eq!(items[0], (&1, &CacheValue::new("one".into()))); // Now MRU
+    }
+
+    #[test]
+    fn test_entry_mutable_reference_modification() {
+        let mut cache = LruCache::new(3);
+
+        // Insert and modify via entry
+        {
+            let value = cache.entry(1).or_insert(CacheValue::new("original".into()));
+            value.value = "modified".to_string();
+        }
+
+        // Verify modification persisted
+        assert_eq!(cache.get(&1), Some(&CacheValue::new("modified".into())));
+    }
+
+    #[test]
+    fn test_entry_multiple_operations() {
+        let mut cache = LruCache::new(2);
+
+        // Insert first key
+        cache.entry(1).or_insert(CacheValue::new("one".into()));
+
+        // Insert second key
+        cache.entry(2).or_insert(CacheValue::new("two".into()));
+
+        // Modify first key via entry (should move to head)
+        {
+            let value = cache.entry(1).or_insert(CacheValue::new("unused".into()));
+            value.value = "one_modified".to_string();
+        }
+
+        // Insert third key (should evict key 2, since 1 is now MRU)
+        cache.entry(3).or_insert(CacheValue::new("three".into()));
+
+        // Verify state
+        assert_eq!(cache.len(), 2);
+        assert_eq!(cache.get(&1), Some(&CacheValue::new("one_modified".into())));
+        assert_eq!(cache.get(&2), None); // Should be evicted
+        assert_eq!(cache.get(&3), Some(&CacheValue::new("three".into())));
+    }
+
+    #[test]
+    fn test_lru_with_expiry() {
+        let mut cache = LruCache::new(3);
+        let expiry = Some(Utc::now() + chrono::Duration::minutes(10));
+        assert_eq!(cache.capacity, 3);
+
+        for i in 0..3 {
+            cache.put(
+                format!("key{}", i),
+                CacheValue::new(format!("value{}", i)).with_expiry(expiry),
+            );
+        }
+        assert_eq!(cache.len(), 3);
+        assert_eq!(cache.keys_with_expiry, 3);
+
+        cache.put("key999".to_string(), CacheValue::new("value3".to_string()).with_expiry(expiry));
+        assert_eq!(cache.len(), 3);
+        assert_eq!(cache.keys_with_expiry, 3);
+
+        cache
+            .entry("key998".to_string())
+            .or_insert(CacheValue::new("value4".to_string()).with_expiry(expiry));
+        assert_eq!(cache.len(), 3);
+        assert_eq!(cache.keys_with_expiry, 3);
+
+        assert!(cache.get(&"key2".to_string()).is_some());
     }
 }

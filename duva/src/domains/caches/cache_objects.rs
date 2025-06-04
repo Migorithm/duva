@@ -52,7 +52,7 @@ impl CacheEntry {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
-pub(crate) struct CacheValue {
+pub struct CacheValue {
     pub(crate) value: String,
     pub(crate) expiry: Option<DateTime<Utc>>,
 }

@@ -1,6 +1,7 @@
 use super::cache_objects::{CacheEntry, CacheValue};
 use super::command::CacheCommand;
-use crate::domains::caches::cache_db::CacheDb;
+
+use crate::domains::caches::lru_cache::LruCache;
 use crate::domains::caches::read_queue::ReadQueue;
 use crate::make_smart_pointer;
 use std::sync::Arc;
@@ -9,7 +10,7 @@ use tokio::sync::mpsc::{self};
 use tokio::sync::oneshot;
 
 pub struct CacheActor {
-    pub(crate) cache: CacheDb,
+    pub(crate) cache: LruCache<String>,
     pub(crate) self_handler: CacheCommandSender,
 }
 
@@ -17,11 +18,8 @@ impl CacheActor {
     pub(crate) fn run(hwm: Arc<AtomicU64>) -> CacheCommandSender {
         let (tx, cache_actor_inbox) = mpsc::channel(100);
         tokio::spawn(
-            Self {
-                cache: CacheDb::with_capacity(1000),
-                self_handler: CacheCommandSender(tx.clone()),
-            }
-            .handle(cache_actor_inbox, ReadQueue::new(hwm)),
+            Self { cache: LruCache::new(1000), self_handler: CacheCommandSender(tx.clone()) }
+                .handle(cache_actor_inbox, ReadQueue::new(hwm)),
         );
         CacheCommandSender(tx)
     }
@@ -30,7 +28,7 @@ impl CacheActor {
         self.cache.len()
     }
     pub(crate) fn keys_with_expiry(&self) -> usize {
-        self.cache.keys_with_expiry()
+        self.cache.keys_with_expiry
     }
 
     pub(crate) fn keys(&self, pattern: Option<String>, callback: oneshot::Sender<Vec<String>>) {
@@ -51,15 +49,15 @@ impl CacheActor {
         }
     }
     pub(crate) fn exists(&mut self, key: String, callback: oneshot::Sender<bool>) {
-        let _ = callback.send(self.cache.lookup(&key).is_some());
+        let _ = callback.send(self.cache.get(&key).is_some());
     }
-    pub(crate) fn get(&mut self, key: &str, callback: oneshot::Sender<Option<CacheValue>>) {
-        let _ = callback.send(self.cache.lookup(key).cloned());
+    pub(crate) fn get(&mut self, key: String, callback: oneshot::Sender<Option<CacheValue>>) {
+        let _ = callback.send(self.cache.get(&key).cloned());
     }
 
     pub(crate) fn set(&mut self, cache_entry: CacheEntry) {
         let (key, value) = cache_entry.destructure();
-        self.cache.insert(key, value);
+        self.cache.put(key, value);
     }
 
     pub(crate) async fn try_send_ttl(&self, cache_entry: &CacheEntry) -> anyhow::Result<()> {

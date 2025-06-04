@@ -20,11 +20,11 @@ impl CacheActor {
                     self.set(cache_entry);
                 },
                 | CacheCommand::Get { key, callback } => {
-                    self.get(&key, callback);
+                    self.get(key, callback);
                 },
                 | CacheCommand::IndexGet { key, read_idx, callback } => {
                     if let Some(callback) = rq.defer_if_stale(read_idx, &key, callback) {
-                        self.get(&key, callback);
+                        self.get(key, callback);
                     }
                 },
                 | CacheCommand::Keys { pattern, callback } => {
@@ -43,6 +43,7 @@ impl CacheActor {
                             expiry_size: self.keys_with_expiry(),
                         })
                         .await?;
+
                     for chunk in self.cache.iter().collect::<Vec<_>>().chunks(10) {
                         outbox.send(SaveCommand::SaveChunk(CacheEntry::from_slice(chunk))).await?;
                     }
@@ -52,7 +53,7 @@ impl CacheActor {
                 | CacheCommand::Ping => {
                     if let Some(pending_rqs) = rq.take_pending_requests() {
                         for DeferredRead { key, callback } in pending_rqs {
-                            self.get(&key, callback);
+                            self.get(key, callback);
                         }
                     };
                 },
@@ -76,10 +77,11 @@ impl CacheActor {
 mod test {
     use crate::domains::caches::actor::CacheActor;
     use crate::domains::caches::actor::CacheCommandSender;
-    use crate::domains::caches::cache_db::CacheDb;
+
     use crate::domains::caches::cache_objects::CacheEntry;
     use crate::domains::caches::cache_objects::CacheValue;
     use crate::domains::caches::command::CacheCommand;
+    use crate::domains::caches::lru_cache::LruCache;
     use crate::domains::caches::read_queue::ReadQueue;
     use std::sync::Arc;
     use std::sync::atomic::AtomicU64;
@@ -126,7 +128,7 @@ mod test {
         let hwm: Arc<AtomicU64> = Arc::new(0.into());
         tokio::spawn(
             CacheActor {
-                cache: CacheDb::with_capacity(1000),
+                cache: LruCache::new(1000),
                 self_handler: CacheCommandSender(cache.clone()),
             }
             .handle(rx, ReadQueue::new(hwm.clone())),
@@ -160,7 +162,7 @@ mod test {
         let hwm: Arc<AtomicU64> = Arc::new(0.into());
         tokio::spawn(
             CacheActor {
-                cache: CacheDb::with_capacity(1000),
+                cache: LruCache::new(1000),
                 self_handler: CacheCommandSender(cache.clone()),
             }
             .handle(rx, ReadQueue::new(hwm.clone())),
@@ -196,7 +198,7 @@ mod test {
         let hwm: Arc<AtomicU64> = Arc::new(0.into());
         tokio::spawn(
             CacheActor {
-                cache: CacheDb::with_capacity(1000),
+                cache: LruCache::new(1000),
                 self_handler: CacheCommandSender(cache.clone()),
             }
             .handle(rx, ReadQueue::new(hwm.clone())),

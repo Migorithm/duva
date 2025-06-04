@@ -29,7 +29,7 @@ use crate::domains::peers::peer::PeerState;
 use crate::err;
 use client_sessions::ClientSessions;
 use heartbeat_scheduler::HeartBeatScheduler;
-use std::collections::HashMap;
+
 use std::collections::VecDeque;
 use std::iter;
 use std::sync::atomic::Ordering;
