@@ -10,7 +10,7 @@ use tokio::sync::mpsc::{self};
 use tokio::sync::oneshot;
 
 pub struct CacheActor {
-    pub(crate) cache: LruCache<String>,
+    pub(crate) cache: LruCache<String, CacheValue>,
     pub(crate) self_handler: CacheCommandSender,
 }
 

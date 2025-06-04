@@ -1,29 +1,31 @@
-///       +-------------------+
-///       | HashMap<K, usize>  |
-///       |(key -> slab idx)   |
-///       +----------+--------+
-///                  |
-///                  v
-///       +------------------------+
-///       |      Slab<Node<K, V>>  |
-///       +------------------------+
-///                  |
-///                  v
-///  +------+ <-> +------+ <-> +------+
-///  | Node |     | Node |     | Node |     <- Usage order (MRU <-> LRU)
-///  +------+     +------+     +------+
+/// LRU Cache Implementation using Slab for stable memory layout
 ///
-/// Memory locality: Nodes are in slab, likely packed close together.
-/// No heap allocation on put/get, just reuse slab slots.
-/// Stable indices: You don't deal with pointer safety or pinning.
-/// No fragmentation: The slab reuses freed slots.
-/// Predictable memory usage: Great for embedded or low-latency apps.
+/// A "slab" is a contiguous block of memory (often consisting of one or more physical pages)
+/// that is allocated to a specific cache. This slab is then divided into a number of fixed-size slots,
+/// each capable of holding an object of the type managed by that cache.
+///
+/// ```text
+///       +-------------------+
+///       | HashMap<K, usize> |
+///       | (key -> slab idx) |
+///       +---------+---------+
+///                 |
+///                 v
+///      +----------------------+
+///      |    Slab<Node<K, V>>  |
+///      +----------+-----------+
+///                 |
+///                 v
+///  +------+ <-> +------+ <-> +------+
+///  | Node |     | Node |     | Node |    <- Usage order (MRU <-> LRU)
+///  +------+     +------+     +------+
+/// ```
 use std::collections::{HashMap, VecDeque};
 use std::fmt::Debug;
 use std::hash::Hash;
 use std::vec;
 
-use crate::domains::caches::cache_objects::CacheValue;
+use crate::domains::caches::cache_objects::{CacheValue, THasExpiry};
 
 #[derive(Debug, Clone)]
 struct Slab<T> {
@@ -65,24 +67,24 @@ impl<T: Clone> Slab<T> {
 }
 
 #[derive(Debug, Clone)]
-struct Node<K: Debug + Clone> {
+struct Node<K: Debug + Clone, V: Debug + Clone> {
     key: K,
-    value: CacheValue,
+    value: V,
     prev: Option<usize>, // pointer
     next: Option<usize>, // pointer
 }
 
-pub struct LruCache<K: Eq + std::hash::Hash + Debug + Clone> {
+pub struct LruCache<K: Eq + std::hash::Hash + Debug + Clone, V: Debug + Clone> {
     map: HashMap<K, usize>, // Key -> slab index
-    slab: Slab<Node<K>>,    // stable storage
-    head: Option<usize>,    // most recently used (MRU)
-    tail: Option<usize>,    // least recently used (LRU)
+    slab: Slab<Node<K, V>>,
+    head: Option<usize>, // most recently used (MRU)
+    tail: Option<usize>, // least recently used (LRU)
     capacity: usize,
     current_size: usize,
     pub(crate) keys_with_expiry: usize, // Placeholder for future use
 }
 
-impl<K: Eq + Hash + Clone + Debug> LruCache<K> {
+impl<K: Eq + Hash + Clone + Debug, V: Debug + Clone + THasExpiry> LruCache<K, V> {
     pub fn new(capacity: usize) -> Self {
         LruCache {
             map: HashMap::with_capacity(capacity),
@@ -102,11 +104,11 @@ impl<K: Eq + Hash + Clone + Debug> LruCache<K> {
         self.map.keys()
     }
 
-    pub fn iter(&self) -> LruIter<K> {
+    pub fn iter(&self) -> LruIter<K, V> {
         LruIter { cache: self, current: self.head }
     }
 
-    pub fn entry(&mut self, key: K) -> Entry<K> {
+    pub fn entry(&mut self, key: K) -> Entry<K, V> {
         if let Some(&index) = self.map.get(&key) {
             Entry::Occupied(OccupiedEntry { cache: self, index })
         } else {
@@ -158,7 +160,7 @@ impl<K: Eq + Hash + Clone + Debug> LruCache<K> {
         self.head = Some(index);
     }
 
-    pub fn get(&mut self, key: &K) -> Option<&CacheValue> {
+    pub fn get(&mut self, key: &K) -> Option<&V> {
         if let Some(&index) = self.map.get(key) {
             self.move_to_head(index);
             Some(&self.slab.get(index).expect("Node not found").value)
@@ -176,7 +178,7 @@ impl<K: Eq + Hash + Clone + Debug> LruCache<K> {
         self.keys_with_expiry = 0; // Reset expiry count
     }
 
-    pub fn remove(&mut self, key: &K) -> Option<CacheValue> {
+    pub fn remove(&mut self, key: &K) -> Option<V> {
         if let Some(&index) = self.map.get(key) {
             // Remove from map
             self.map.remove(key);
@@ -214,7 +216,7 @@ impl<K: Eq + Hash + Clone + Debug> LruCache<K> {
         }
     }
 
-    pub fn put(&mut self, key: K, value: CacheValue) {
+    pub fn put(&mut self, key: K, value: V) {
         if let Some(&index) = self.map.get(&key) {
             // Update existing node
             let node = self.slab.get_mut(index).expect("Node not found");
@@ -260,13 +262,13 @@ impl<K: Eq + Hash + Clone + Debug> LruCache<K> {
     }
 }
 
-pub(crate) struct LruIter<'a, K: Eq + Hash + Debug + Clone> {
-    pub(crate) cache: &'a LruCache<K>,
+pub(crate) struct LruIter<'a, K: Eq + Hash + Debug + Clone, V: Debug + Clone> {
+    pub(crate) cache: &'a LruCache<K, V>,
     pub(crate) current: Option<usize>,
 }
 
-impl<'a, K: Eq + Hash + Debug + Clone> Iterator for LruIter<'a, K> {
-    type Item = (&'a K, &'a CacheValue);
+impl<'a, K: Eq + Hash + Debug + Clone, V: Debug + Clone> Iterator for LruIter<'a, K, V> {
+    type Item = (&'a K, &'a V);
 
     fn next(&mut self) -> Option<Self::Item> {
         let index = self.current?;
@@ -277,13 +279,13 @@ impl<'a, K: Eq + Hash + Debug + Clone> Iterator for LruIter<'a, K> {
     }
 }
 
-pub(crate) enum Entry<'a, K: Eq + Hash + Debug + Clone> {
-    Occupied(OccupiedEntry<'a, K>),
-    Vacant(VacantEntry<'a, K>),
+pub(crate) enum Entry<'a, K: Eq + Hash + Debug + Clone, V: Debug + Clone> {
+    Occupied(OccupiedEntry<'a, K, V>),
+    Vacant(VacantEntry<'a, K, V>),
 }
 
-impl<'a, K: Eq + Hash + Debug + Clone> Entry<'a, K> {
-    pub fn or_insert(self, default: CacheValue) -> &'a mut CacheValue {
+impl<'a, K: Eq + Hash + Debug + Clone, V: Debug + Clone + THasExpiry> Entry<'a, K, V> {
+    pub fn or_insert(self, default: V) -> &'a mut V {
         match self {
             | Entry::Occupied(entry) => entry.into_mut(),
             | Entry::Vacant(entry) => entry.insert(default),
@@ -291,25 +293,25 @@ impl<'a, K: Eq + Hash + Debug + Clone> Entry<'a, K> {
     }
 }
 
-pub(crate) struct OccupiedEntry<'a, K: Eq + Hash + Debug + Clone> {
-    cache: &'a mut LruCache<K>,
+pub(crate) struct OccupiedEntry<'a, K: Eq + Hash + Debug + Clone, V: Debug + Clone> {
+    cache: &'a mut LruCache<K, V>,
     index: usize,
 }
 
-impl<'a, K: Eq + Hash + Debug + Clone> OccupiedEntry<'a, K> {
-    pub fn into_mut(self) -> &'a mut CacheValue {
+impl<'a, K: Eq + Hash + Debug + Clone, V: Debug + Clone + THasExpiry> OccupiedEntry<'a, K, V> {
+    pub fn into_mut(self) -> &'a mut V {
         self.cache.move_to_head(self.index);
         &mut self.cache.slab.get_mut(self.index).expect("Node not found").value
     }
 }
 
-pub(crate) struct VacantEntry<'a, K: Eq + Hash + Debug + Clone> {
-    cache: &'a mut LruCache<K>,
+pub(crate) struct VacantEntry<'a, K: Eq + Hash + Debug + Clone, V: Debug + Clone> {
+    cache: &'a mut LruCache<K, V>,
     key: K,
 }
 
-impl<'a, K: Eq + Hash + Debug + Clone> VacantEntry<'a, K> {
-    pub fn insert(self, value: CacheValue) -> &'a mut CacheValue {
+impl<'a, K: Eq + Hash + Debug + Clone, V: Debug + Clone + THasExpiry> VacantEntry<'a, K, V> {
+    pub fn insert(self, value: V) -> &'a mut V {
         self.cache.put(self.key.clone(), value);
         // Get the index of the newly inserted key (which should be at head)
         let index = *self.cache.map.get(&self.key).expect("Key should exist after put");
@@ -423,7 +425,7 @@ mod tests {
 
     #[test]
     fn test_iter_empty_cache() {
-        let cache = LruCache::<i32>::new(3);
+        let cache = LruCache::<i32, CacheValue>::new(3);
         let items: Vec<_> = cache.iter().collect();
         assert_eq!(items.len(), 0);
     }
