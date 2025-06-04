@@ -25,7 +25,7 @@ use std::fmt::Debug;
 use std::hash::Hash;
 use std::vec;
 
-use crate::domains::caches::cache_objects::{CacheValue, THasExpiry};
+use crate::domains::caches::cache_objects::THasExpiry;
 
 #[derive(Debug, Clone)]
 struct Slab<T> {
@@ -321,95 +321,101 @@ impl<'a, K: Eq + Hash + Debug + Clone, V: Debug + Clone + THasExpiry> VacantEntr
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+    use crate::domains::caches::cache_objects::CacheValue;
     use chrono::Utc;
 
-    use super::*;
+    impl THasExpiry for &'static str {
+        fn has_expiry(&self) -> bool {
+            false
+        }
+    }
 
     #[test]
     fn test_lru_basic() {
         let mut cache = LruCache::new(2);
 
-        cache.put(1, CacheValue::new("one".to_string()));
-        cache.put(2, CacheValue::new("two".to_string()));
+        cache.put(1, "one");
+        cache.put(2, "two");
 
-        assert_eq!(cache.get(&1), Some(&CacheValue::new("one".into()))); // 1 is now MRU
-        assert_eq!(cache.get(&2), Some(&CacheValue::new("two".into()))); // 2 is now MRU (list: 2 -> 1)
+        assert_eq!(cache.get(&1), Some(&"one")); // 1 is now MRU
+        assert_eq!(cache.get(&2), Some(&"two")); // 2 is now MRU (list: 2 -> 1)
 
-        cache.put(3, CacheValue::new("three".into())); // Evicts 1 (LRU)
+        cache.put(3, "three"); // Evicts 1 (LRU)
         assert_eq!(cache.get(&1), None);
-        assert_eq!(cache.get(&2), Some(&CacheValue::new("two".into()))); // 2 is now LRU
-        assert_eq!(cache.get(&3), Some(&CacheValue::new("three".into()))); // 3 is MRU (list: 3 -> 2)
+        assert_eq!(cache.get(&2), Some(&"two")); // 2 is now LRU
+        assert_eq!(cache.get(&3), Some(&"three")); // 3 is MRU (list: 3 -> 2)
 
-        cache.put(4, CacheValue::new("four".into())); // Evicts 2 (LRU)
+        cache.put(4, "four"); // Evicts 2 (LRU)
         assert_eq!(cache.get(&2), None);
-        assert_eq!(cache.get(&3), Some(&CacheValue::new("three".into()))); // 3 is LRU
-        assert_eq!(cache.get(&4), Some(&CacheValue::new("four".into()))); // 4 is MRU (list: 4 -> 3)
+        assert_eq!(cache.get(&3), Some(&"three")); // 3 is LRU
+        assert_eq!(cache.get(&4), Some(&"four")); // 4 is MRU (list: 4 -> 3)
     }
 
     #[test]
     fn test_lru_update_existing() {
         let mut cache = LruCache::new(2);
-        cache.put(1, CacheValue::new("one".to_string()));
-        cache.put(2, CacheValue::new("two".to_string()));
+        cache.put(1, "one");
+        cache.put(2, "two");
 
-        assert_eq!(cache.get(&1), Some(&CacheValue::new("one".into()))); // 1 is now MRU
+        assert_eq!(cache.get(&1), Some(&"one")); // 1 is now MRU
 
-        cache.put(2, CacheValue::new("updated_two".into())); // Update value, 2 becomes MRU. List: 2 -> 1
-        assert_eq!(cache.get(&2), Some(&CacheValue::new("updated_two".into()))); // 2 is now MRU
-        assert_eq!(cache.get(&1), Some(&CacheValue::new("one".into()))); // 1 is now MRU
+        cache.put(2, "updated_two"); // Update value, 2 becomes MRU. List: 2 -> 1
+        assert_eq!(cache.get(&2), Some(&"updated_two")); // 2 is now MRU
+        assert_eq!(cache.get(&1), Some(&"one")); // 1 is now MRU
 
-        cache.put(3, CacheValue::new("three".into())); // Evicts 2. List: 3 -> 1
+        cache.put(3, "three"); // Evicts 2. List: 3 -> 1
         assert_eq!(cache.get(&2), None);
-        assert_eq!(cache.get(&1), Some(&CacheValue::new("one".into()))); // 1 is now MRU
-        assert_eq!(cache.get(&3), Some(&CacheValue::new("three".into())));
+        assert_eq!(cache.get(&1), Some(&"one")); // 1 is now MRU
+        assert_eq!(cache.get(&3), Some(&"three"));
     }
 
     #[test]
     fn test_lru_capacity_one() {
         let mut cache = LruCache::new(1);
-        cache.put(1, CacheValue::new("one".to_string()));
-        assert_eq!(cache.get(&1), Some(&CacheValue::new("one".into())));
+        cache.put(1, "one");
+        assert_eq!(cache.get(&1), Some(&"one"));
 
-        cache.put(2, CacheValue::new("two".into())); // Evicts 1
+        cache.put(2, "two"); // Evicts 1
         assert_eq!(cache.get(&1), None);
-        assert_eq!(cache.get(&2), Some(&CacheValue::new("two".into())));
+        assert_eq!(cache.get(&2), Some(&"two"));
 
-        cache.put(2, CacheValue::new("updated_two".into())); // Update existing
-        assert_eq!(cache.get(&2), Some(&CacheValue::new("updated_two".into()))); // Still "two"
+        cache.put(2, "updated_two"); // Update existing
+        assert_eq!(cache.get(&2), Some(&"updated_two")); // Still "two"
     }
 
     #[test]
     fn test_lru_get_non_existent() {
         let mut cache = LruCache::new(2);
-        cache.put(1, CacheValue::new("A".into()));
+        cache.put(1, "A");
         assert_eq!(cache.get(&2), None); // No 2 yet
-        cache.put(2, CacheValue::new("B".into()));
+        cache.put(2, "B");
         assert_eq!(cache.get(&3), None); // No 3 yet
     }
 
     #[test]
     fn test_lru_remove_key() {
         let mut cache = LruCache::new(3);
-        cache.put(1, CacheValue::new("one".into()));
-        cache.put(2, CacheValue::new("two".into()));
-        cache.put(3, CacheValue::new("three".into()));
+        cache.put(1, "one");
+        cache.put(2, "two");
+        cache.put(3, "three");
 
         // Remove middle key
         let removed = cache.remove(&2);
-        assert_eq!(removed, Some(CacheValue::new("two".into())));
+        assert_eq!(removed, Some("two"));
         assert_eq!(cache.get(&2), None);
         assert_eq!(cache.len(), 2);
 
         // Remaining keys should still be accessible
-        assert_eq!(cache.get(&1), Some(&CacheValue::new("one".into())));
-        assert_eq!(cache.get(&3), Some(&CacheValue::new("three".into())));
+        assert_eq!(cache.get(&1), Some(&"one"));
+        assert_eq!(cache.get(&3), Some(&"three"));
     }
 
     #[test]
     fn test_lru_remove_head_tail_update() {
         let mut cache = LruCache::new(2);
-        cache.put(1, CacheValue::new("one".into()));
-        cache.put(2, CacheValue::new("two".into())); // MRU
+        cache.put(1, "one");
+        cache.put(2, "two"); // MRU
 
         // Remove MRU
         assert_eq!(cache.head, Some(*cache.map.get(&2).unwrap()));
@@ -498,41 +504,41 @@ mod tests {
         let mut cache = LruCache::new(3);
 
         // Insert new key via entry
-        let value = cache.entry(1).or_insert(CacheValue::new("one".into()));
-        assert_eq!(value, &mut CacheValue::new("one".into()));
+        let value = cache.entry(1).or_insert("one");
+        assert_eq!(value, &mut "one");
         assert_eq!(cache.len(), 1);
 
         // Verify it was actually inserted
-        assert_eq!(cache.get(&1), Some(&CacheValue::new("one".into())));
+        assert_eq!(cache.get(&1), Some(&"one"));
     }
 
     #[test]
     fn test_entry_occupied_or_insert() {
         let mut cache = LruCache::new(3);
-        cache.put(1, CacheValue::new("original".into()));
+        cache.put(1, "original");
 
         // Try to insert via entry - should return existing value
-        let value = cache.entry(1).or_insert(CacheValue::new("new".into()));
-        assert_eq!(value, &mut CacheValue::new("original".into()));
+        let value = cache.entry(1).or_insert("new");
+        assert_eq!(value, &mut "original");
         assert_eq!(cache.len(), 1);
 
         // Verify original value is unchanged
-        assert_eq!(cache.get(&1), Some(&CacheValue::new("original".into())));
+        assert_eq!(cache.get(&1), Some(&"original"));
     }
 
     #[test]
     fn test_entry_occupied_moves_to_head() {
         let mut cache = LruCache::new(3);
-        cache.put(1, CacheValue::new("one".into()));
-        cache.put(2, CacheValue::new("two".into()));
-        cache.put(3, CacheValue::new("three".into()));
+        cache.put(1, "one");
+        cache.put(2, "two");
+        cache.put(3, "three");
 
         // Access key 1 via entry - should move it to head
-        let _value = cache.entry(1).or_insert(CacheValue::new("unused".into()));
+        let _value = cache.entry(1).or_insert("unused");
 
         // Verify order changed (1 should now be MRU)
         let items: Vec<_> = cache.iter().collect();
-        assert_eq!(items[0], (&1, &CacheValue::new("one".into()))); // Now MRU
+        assert_eq!(items[0], (&1, &"one"));
     }
 
     #[test]
