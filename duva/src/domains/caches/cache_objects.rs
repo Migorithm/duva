@@ -52,7 +52,7 @@ impl CacheEntry {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
-pub(crate) struct CacheValue {
+pub struct CacheValue {
     pub(crate) value: String,
     pub(crate) expiry: Option<DateTime<Utc>>,
 }
@@ -63,14 +63,22 @@ impl CacheValue {
     pub(crate) fn with_expiry(self, expiry: Option<DateTime<Utc>>) -> Self {
         Self { expiry, ..self }
     }
-    pub(crate) fn has_expiry(&self) -> bool {
-        self.expiry.is_some()
-    }
+
     pub(crate) fn value(&self) -> &str {
         &self.value
     }
 
     pub(crate) fn to_cache_entry(&self, key: &str) -> CacheEntry {
         CacheEntry { key: key.to_string(), value: self.clone() }
+    }
+}
+
+pub(crate) trait THasExpiry {
+    fn has_expiry(&self) -> bool;
+}
+
+impl THasExpiry for CacheValue {
+    fn has_expiry(&self) -> bool {
+        self.expiry.is_some()
     }
 }
