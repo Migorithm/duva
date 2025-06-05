@@ -17,9 +17,11 @@ use crate::domains::caches::cache_objects::CacheEntry;
 use crate::domains::cluster_actors::hash_ring::MigrationBatch;
 use crate::domains::operation_logs::interfaces::TWriteAheadLog;
 use crate::domains::operation_logs::logger::ReplicatedLogs;
+use crate::domains::peers::PeerMessage;
 use crate::domains::peers::command::BannedPeer;
 use crate::domains::peers::command::ElectionVote;
 use crate::domains::peers::command::HeartBeat;
+use crate::domains::peers::command::MigrateBatch;
 use crate::domains::peers::command::RejectionReason;
 use crate::domains::peers::command::ReplicationAck;
 use crate::domains::peers::command::RequestVote;
@@ -1019,7 +1021,11 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             return;
         };
 
-        // target_peer.send(ClusterCommand::MigrateBatch()).await;
+        let _ = target_peer
+            .send(MigrateBatch { batch_id: batch.id, cache_entries: cache_entries_to_migrate })
+            .await;
+
+        let _ = callback.send(Ok(()));
     }
 
     /// Helper function to find the peer identifier for a given replication ID

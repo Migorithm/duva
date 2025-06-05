@@ -13,7 +13,7 @@ impl MigrationTask {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, bincode::Encode, bincode::Decode)]
-pub(crate) struct BatchId(String);
+pub(crate) struct BatchId(pub(crate) String);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct MigrationBatch {
