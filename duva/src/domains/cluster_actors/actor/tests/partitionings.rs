@@ -1,10 +1,13 @@
 use std::sync::Arc;
 use std::sync::atomic::AtomicI32;
+use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
 use tokio::time::Instant;
 
-use crate::domains::cluster_actors::hash_ring::{HashRing, tests::migration_task_create_helper};
+use crate::domains::cluster_actors::hash_ring::{
+    HashRing, MigrationTask, tests::migration_task_create_helper,
+};
 
 use super::*;
 
@@ -533,4 +536,142 @@ async fn test_schedule_migrations_callback_error_response() {
     // THEN - should handle error response gracefully
     ClusterActor::<MemoryOpLogs>::schedule_migrations(fake_handler, migration_plans).await;
     // If we reach this point, the function handled the error response gracefully
+}
+
+// Tests for migrate_keys function
+
+#[tokio::test]
+async fn test_migrate_keys_target_peer_not_found() {
+    // GIVEN
+    let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
+    let hwm = Arc::new(AtomicU64::new(0));
+    let cache_manager = CacheManager::run_cache_actors(hwm);
+
+    let tasks = MigrationBatch::new(
+        ReplicationId::Key("non_existent_peer".to_string()),
+        vec![migration_task_create_helper(0, 5)],
+    );
+
+    let (callback_tx, callback_rx) = tokio::sync::oneshot::channel();
+
+    // WHEN
+    cluster_actor.migrate_keys(tasks, &cache_manager, callback_tx).await;
+
+    // THEN
+    let result = callback_rx.await.unwrap();
+    assert!(result.is_err());
+    assert!(result.unwrap_err().to_string().contains("Target peer not found"));
+}
+
+#[tokio::test]
+async fn test_migrate_keys_finds_target_peer() {
+    // GIVEN
+    let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
+    let hwm = Arc::new(AtomicU64::new(0));
+    let cache_manager = CacheManager::run_cache_actors(hwm);
+
+    // Add a peer with a specific replication ID
+    let target_repl_id = ReplicationId::Key("target_repl_123".to_string());
+    let (_, _) = cluster_actor.test_add_peer(6560, NodeKind::NonData, Some(target_repl_id.clone()));
+
+    let tasks = MigrationBatch::new(target_repl_id, vec![migration_task_create_helper(0, 3)]);
+
+    let (callback_tx, callback_rx) = tokio::sync::oneshot::channel();
+
+    // WHEN
+    cluster_actor.migrate_keys(tasks, &cache_manager, callback_tx).await;
+
+    // THEN
+    let result = callback_rx.await.unwrap();
+    assert!(result.is_ok(), "Migration should succeed when target peer is found");
+}
+
+#[tokio::test]
+async fn test_migrate_keys_with_empty_tasks() {
+    // GIVEN
+    let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
+    let hwm = Arc::new(AtomicU64::new(0));
+    let cache_manager = CacheManager::run_cache_actors(hwm);
+
+    let target_repl_id = ReplicationId::Key("empty_target".to_string());
+    let (_, _) = cluster_actor.test_add_peer(6563, NodeKind::NonData, Some(target_repl_id.clone()));
+
+    let tasks = MigrationBatch::new(target_repl_id, vec![]); // Empty tasks
+
+    let (callback_tx, callback_rx) = tokio::sync::oneshot::channel();
+
+    // WHEN
+    cluster_actor.migrate_keys(tasks, &cache_manager, callback_tx).await;
+
+    // THEN
+    let result = callback_rx.await.unwrap();
+    assert!(result.is_ok(), "Migration should succeed even with empty tasks");
+}
+
+#[tokio::test]
+async fn test_find_target_peer_for_replication() {
+    // GIVEN
+    let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
+
+    let repl_id_1 = ReplicationId::Key("repl_1".to_string());
+    let repl_id_2 = ReplicationId::Key("repl_2".to_string());
+
+    let (_, peer_id_1) =
+        cluster_actor.test_add_peer(6561, NodeKind::NonData, Some(repl_id_1.clone()));
+    let (_, peer_id_2) =
+        cluster_actor.test_add_peer(6562, NodeKind::NonData, Some(repl_id_2.clone()));
+
+    // WHEN & THEN
+    assert_eq!(cluster_actor.find_target_peer_for_replication(&repl_id_1), Some(&peer_id_1));
+    assert_eq!(cluster_actor.find_target_peer_for_replication(&repl_id_2), Some(&peer_id_2));
+
+    let non_existent_repl = ReplicationId::Key("non_existent".to_string());
+    assert_eq!(cluster_actor.find_target_peer_for_replication(&non_existent_repl), None);
+}
+
+#[tokio::test]
+async fn test_migrate_keys_retrieves_actual_data() {
+    // GIVEN
+    let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
+
+    // Create a cache manager with actual cache actors
+    let hwm = Arc::new(AtomicU64::new(0));
+    let cache_manager = CacheManager::run_cache_actors(hwm);
+
+    // Add a peer with a specific replication ID
+    let target_repl_id = ReplicationId::Key("data_target".to_string());
+    let (_, _) = cluster_actor.test_add_peer(6564, NodeKind::NonData, Some(target_repl_id.clone()));
+
+    // Set up some test data in the cache
+    let test_keys = vec!["test_key_1".to_string(), "test_key_2".to_string()];
+    cache_manager
+        .route_set("test_key_1".to_string(), "value_1".to_string(), None, 1)
+        .await
+        .unwrap();
+    cache_manager
+        .route_set("test_key_2".to_string(), "value_2".to_string(), None, 2)
+        .await
+        .unwrap();
+
+    // Create migration tasks with the test keys
+    let migration_task = MigrationTask { task_id: (0, 100), keys_to_migrate: test_keys.clone() };
+    let tasks = MigrationBatch::new(target_repl_id, vec![migration_task]);
+
+    let (callback_tx, callback_rx) = tokio::sync::oneshot::channel();
+
+    // WHEN
+    cluster_actor.migrate_keys(tasks, &cache_manager, callback_tx).await;
+
+    // THEN
+    let result = callback_rx.await.unwrap();
+    assert!(result.is_ok(), "Migration should succeed when data is available");
+
+    // Verify the data is still in cache (migration doesn't remove it yet)
+    let retrieved_value_1 = cache_manager.route_get("test_key_1").await.unwrap();
+    let retrieved_value_2 = cache_manager.route_get("test_key_2").await.unwrap();
+
+    assert!(retrieved_value_1.is_some());
+    assert!(retrieved_value_2.is_some());
+    assert_eq!(retrieved_value_1.unwrap().value(), "value_1");
+    assert_eq!(retrieved_value_2.unwrap().value(), "value_2");
 }

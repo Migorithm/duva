@@ -13,6 +13,7 @@ use super::replication::time_in_secs;
 use super::*;
 use crate::domains::QueryIO;
 use crate::domains::caches::cache_manager::CacheManager;
+use crate::domains::caches::cache_objects::CacheEntry;
 use crate::domains::cluster_actors::hash_ring::MigrationBatch;
 use crate::domains::operation_logs::interfaces::TWriteAheadLog;
 use crate::domains::operation_logs::logger::ReplicatedLogs;
@@ -980,13 +981,55 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     }
 
     pub(crate) async fn migrate_keys(
-        &self,
-        tasks: MigrationBatch,
+        &mut self,
+        batch: MigrationBatch,
+        cache_manager: &CacheManager,
         callback: tokio::sync::oneshot::Sender<Result<(), anyhow::Error>>,
     ) {
-        // find current target
-        // register batch id & callback
-        // send key values with hash range
-        todo!()
+        // 1. Find target peer based on replication ID
+        let Some(peer_id) = self.find_target_peer_for_replication(&batch.target_repl).cloned()
+        else {
+            let _ = callback.send(Err(anyhow::anyhow!("Target peer not found for replication ID")));
+            return;
+        };
+
+        // 2. Retrieve key-value data from cache
+        let mut cache_entries_to_migrate = Vec::new();
+        let mut failed_keys: Vec<String> = Vec::new();
+
+        for key in batch.tasks.iter().flat_map(|task| task.keys_to_migrate.iter().cloned()) {
+            let Ok(Some(value)) = cache_manager.route_get(key.clone()).await else {
+                failed_keys.push(key.clone());
+                continue;
+            };
+            cache_entries_to_migrate.push(CacheEntry::new(key, value));
+        }
+
+        // 3. This should never happen
+        if cache_entries_to_migrate.is_empty() {
+            let error = anyhow::anyhow!("Target peer {} disappeared during migration", peer_id);
+            let _ = callback.send(Err(error));
+            return;
+        }
+
+        // 4Get mutable reference to the target peer
+        let Some(target_peer) = self.members.get_mut(&peer_id) else {
+            let error = anyhow::anyhow!("Target peer {} disappeared during migration", peer_id);
+            let _ = callback.send(Err(error));
+            return;
+        };
+
+        // target_peer.send(ClusterCommand::MigrateBatch()).await;
+    }
+
+    /// Helper function to find the peer identifier for a given replication ID
+    fn find_target_peer_for_replication(
+        &self,
+        target_repl_id: &ReplicationId,
+    ) -> Option<&PeerIdentifier> {
+        self.members
+            .iter()
+            .find(|(_, peer)| peer.replid() == target_repl_id)
+            .map(|(peer_id, _)| peer_id)
     }
 }

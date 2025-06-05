@@ -1,5 +1,4 @@
 use crate::ReplicationId;
-use uuid::Uuid;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct MigrationTask {
@@ -13,8 +12,8 @@ impl MigrationTask {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub(crate) struct BatchId(Uuid);
+#[derive(Debug, Clone, PartialEq, Eq, Hash, bincode::Encode, bincode::Decode)]
+pub(crate) struct BatchId(String);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct MigrationBatch {
@@ -24,6 +23,6 @@ pub(crate) struct MigrationBatch {
 }
 impl MigrationBatch {
     pub(crate) fn new(target_repl: ReplicationId, tasks: Vec<MigrationTask>) -> Self {
-        Self { id: BatchId(uuid::Uuid::now_v7()), target_repl, tasks }
+        Self { id: BatchId(uuid::Uuid::now_v7().to_string()), target_repl, tasks }
     }
 }

@@ -20,6 +20,7 @@ pub(crate) enum PeerMessage {
     RequestVote(RequestVote),
     ElectionVoteReply(ElectionVote),
     StartRebalance,
+    MigrateBatch(MigrateBatch),
 }
 
 impl TryFrom<QueryIO> for PeerMessage {
@@ -48,7 +49,11 @@ mod peer_messages {
 
     use super::*;
     use crate::domains::{
-        cluster_actors::{hash_ring::HashRing, replication::ReplicationId},
+        caches::cache_objects::CacheEntry,
+        cluster_actors::{
+            hash_ring::{BatchId, HashRing},
+            replication::ReplicationId,
+        },
         operation_logs::WriteOperation,
         peers::peer::PeerState,
     };
@@ -165,5 +170,11 @@ mod peer_messages {
         fn borrow(&self) -> &PeerIdentifier {
             &self.p_id
         }
+    }
+
+    #[derive(Debug, Clone, PartialEq, bincode::Encode, bincode::Decode)]
+    pub struct MigrateBatch {
+        pub(crate) batch_id: BatchId,
+        pub(crate) cache_entries: Vec<CacheEntry>,
     }
 }
