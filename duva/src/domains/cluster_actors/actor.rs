@@ -968,6 +968,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             ))
             .await;
 
+        // TODO continue on error. Perhaps we need to consider tracking failed batches.
         let _ = rx.await.unwrap_or_else(|_| Err(anyhow::anyhow!("Channel closed")));
 
         if !migration_tasks.is_empty() {
