@@ -3,7 +3,7 @@ use bincode::{
     BorrowDecode,
     error::{DecodeError, EncodeError},
 };
-use chrono::{DateTime, TimeZone, Utc};
+use chrono::{DateTime, Utc};
 use std::time::Duration;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -117,7 +117,7 @@ impl<'de, Ctx> BorrowDecode<'de, Ctx> for CacheEntry {
 impl bincode::Encode for CacheValue {
     fn encode<E: bincode::enc::Encoder>(&self, encoder: &mut E) -> Result<(), EncodeError> {
         bincode::Encode::encode(&self.value, encoder)?;
-        let expiry_timestamp = self.expiry.map(|dt| dt.timestamp());
+        let expiry_timestamp = self.expiry.map(|dt| dt.timestamp_millis());
         bincode::Encode::encode(&expiry_timestamp, encoder)?;
         Ok(())
     }
@@ -127,7 +127,7 @@ impl<Ctx> bincode::Decode<Ctx> for CacheValue {
     fn decode<D: bincode::de::Decoder>(decoder: &mut D) -> Result<Self, DecodeError> {
         let value: String = bincode::Decode::decode(decoder)?;
         let expiry_timestamp: Option<i64> = bincode::Decode::decode(decoder)?;
-        let expiry = expiry_timestamp.map(|ts| Utc.timestamp_opt(ts, 0).single().unwrap());
+        let expiry = expiry_timestamp.map(|ts| DateTime::from_timestamp_millis(ts).unwrap());
         Ok(CacheValue { value, expiry })
     }
 }
@@ -138,7 +138,74 @@ impl<'de, Ctx> BorrowDecode<'de, Ctx> for CacheValue {
     ) -> Result<Self, DecodeError> {
         let value: String = BorrowDecode::borrow_decode(decoder)?;
         let expiry_timestamp: Option<i64> = BorrowDecode::borrow_decode(decoder)?;
-        let expiry = expiry_timestamp.map(|ts| Utc.timestamp_opt(ts, 0).single().unwrap());
+        let expiry = expiry_timestamp.map(|ts| DateTime::from_timestamp_millis(ts).unwrap());
         Ok(CacheValue { value, expiry })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use bincode::{decode_from_slice, encode_to_vec};
+    use chrono::{DateTime, Utc};
+
+    #[test]
+    fn test_cache_value_encode_decode_with_expiry() {
+        //GIVEN -  Create a CacheValue with expiry (using millisecond precision to match our serialization)
+        let expiry_millis = (Utc::now() + chrono::Duration::hours(1)).timestamp_millis();
+        let expiry_time = DateTime::from_timestamp_millis(expiry_millis).unwrap();
+        let original_value =
+            CacheValue::new("test_value".to_string()).with_expiry(Some(expiry_time));
+
+        // WHEN
+        let encoded = encode_to_vec(&original_value, bincode::config::standard()).unwrap();
+
+        let (decoded_value, _): (CacheValue, usize) =
+            decode_from_slice(&encoded, bincode::config::standard()).unwrap();
+
+        // THEN - Verify the decoded value matches the original
+        assert_eq!(decoded_value.value, original_value.value);
+        assert_eq!(decoded_value.expiry, original_value.expiry);
+        assert_eq!(decoded_value, original_value);
+    }
+
+    #[test]
+    fn test_cache_value_encode_decode_without_expiry() {
+        // GIVEN - Create a CacheValue without expiry
+        let original_value = CacheValue::new("test_value_no_expiry".to_string());
+
+        // Encode the value
+        let encoded = encode_to_vec(&original_value, bincode::config::standard()).unwrap();
+
+        // Decode the value back
+        let (decoded_value, _): (CacheValue, usize) =
+            decode_from_slice(&encoded, bincode::config::standard()).unwrap();
+
+        // Verify the decoded value matches the original
+        assert_eq!(decoded_value.value, original_value.value);
+        assert_eq!(decoded_value.expiry, None);
+        assert_eq!(decoded_value, original_value);
+    }
+
+    #[test]
+    fn test_cache_entry_encode_decode_with_expiry() {
+        // Create a CacheEntry with expiry (using millisecond precision to match our serialization)
+        let expiry_millis = (Utc::now() + chrono::Duration::minutes(30)).timestamp_millis();
+        let expiry_time = DateTime::from_timestamp_millis(expiry_millis).unwrap();
+        let cache_value = CacheValue::new("entry_value".to_string()).with_expiry(Some(expiry_time));
+        let original_entry = CacheEntry::new("test_key".to_string(), cache_value);
+
+        // Encode the entry
+        let encoded = encode_to_vec(&original_entry, bincode::config::standard()).unwrap();
+
+        // Decode the entry back
+        let (decoded_entry, _): (CacheEntry, usize) =
+            decode_from_slice(&encoded, bincode::config::standard()).unwrap();
+
+        // Verify the decoded entry matches the original
+        assert_eq!(decoded_entry.key(), original_entry.key());
+        assert_eq!(decoded_entry.value(), original_entry.value());
+        assert_eq!(decoded_entry.expiry(), original_entry.expiry());
+        assert_eq!(decoded_entry, original_entry);
     }
 }
