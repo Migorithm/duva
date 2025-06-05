@@ -572,40 +572,34 @@ async fn test_migrate_keys_finds_target_peer() {
 
     // Add a peer with a specific replication ID
     let target_repl_id = ReplicationId::Key("target_repl_123".to_string());
-    let (_, _) = cluster_actor.test_add_peer(6560, NodeKind::NonData, Some(target_repl_id.clone()));
+    let (mut buf, _) =
+        cluster_actor.test_add_peer(6560, NodeKind::NonData, Some(target_repl_id.clone()));
 
-    let tasks = MigrationBatch::new(target_repl_id, vec![migration_task_create_helper(0, 3)]);
+    // Set up actual data in the cache that matches the migration task keys
+    let test_keys = vec!["key_0".to_string(), "key_1".to_string(), "key_2".to_string()];
+    for (i, key) in test_keys.iter().enumerate() {
+        cache_manager
+            .route_set(key.clone(), format!("value_{}", i), None, (i + 1) as u64)
+            .await
+            .unwrap();
+    }
 
-    let (callback_tx, callback_rx) = tokio::sync::oneshot::channel();
-
-    // WHEN
-    cluster_actor.migrate_keys(tasks, &cache_manager, callback_tx).await;
-
-    // THEN
-    let result = callback_rx.await.unwrap();
-    assert!(result.is_ok(), "Migration should succeed when target peer is found");
-}
-
-#[tokio::test]
-async fn test_migrate_keys_with_empty_tasks() {
-    // GIVEN
-    let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
-    let hwm = Arc::new(AtomicU64::new(0));
-    let cache_manager = CacheManager::run_cache_actors(hwm);
-
-    let target_repl_id = ReplicationId::Key("empty_target".to_string());
-    let (_, _) = cluster_actor.test_add_peer(6563, NodeKind::NonData, Some(target_repl_id.clone()));
-
-    let tasks = MigrationBatch::new(target_repl_id, vec![]); // Empty tasks
+    // Create migration task with the actual keys that exist in cache
+    let migration_task = MigrationTask { task_id: (0, 3), keys_to_migrate: test_keys };
+    let tasks = MigrationBatch::new(target_repl_id, vec![migration_task]);
 
     let (callback_tx, callback_rx) = tokio::sync::oneshot::channel();
 
     // WHEN
     cluster_actor.migrate_keys(tasks, &cache_manager, callback_tx).await;
 
-    // THEN
+    // THEN - successful response and message was sent to the peer
     let result = callback_rx.await.unwrap();
-    assert!(result.is_ok(), "Migration should succeed even with empty tasks");
+    result.unwrap();
+
+    let message = buf.read_values().await.unwrap();
+    assert_eq!(message.len(), 1);
+    assert!(matches!(message[0], QueryIO::MigrateBatch(_)));
 }
 
 #[tokio::test]

@@ -1009,7 +1009,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
         // 3. This should never happen
         if cache_entries_to_migrate.is_empty() {
-            let error = anyhow::anyhow!("Target peer {} disappeared during migration", peer_id);
+            let error = anyhow::anyhow!("No keys to migrate");
             let _ = callback.send(Err(error));
             return;
         }
@@ -1021,6 +1021,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             return;
         };
 
+        //TODO store batch id somewhere so when peer ack, we can remove it from the map
         let _ = target_peer
             .send(MigrateBatch { batch_id: batch.id, cache_entries: cache_entries_to_migrate })
             .await;
