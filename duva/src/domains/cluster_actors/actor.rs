@@ -995,8 +995,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         callback: tokio::sync::oneshot::Sender<Result<(), anyhow::Error>>,
     ) {
         // 1. Find target peer based on replication ID
-        let Some(peer_id) = self.find_target_peer_for_replication(&target.target_repl).cloned()
-        else {
+        let Some(peer_id) = self.peerid_by_replid(&target.target_repl).cloned() else {
             let _ = callback.send(Err(anyhow::anyhow!("Target peer not found for replication ID")));
             return;
         };
@@ -1005,6 +1004,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         let mut cache_entries_to_migrate = Vec::new();
         let mut failed_keys: Vec<String> = Vec::new();
 
+        // TODO get keys?
         for key in target.tasks.iter().flat_map(|task| task.keys_to_migrate.iter().cloned()) {
             let Ok(Some(value)) = cache_manager.route_get(key.clone()).await else {
                 failed_keys.push(key.clone());
@@ -1013,13 +1013,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             cache_entries_to_migrate.push(CacheEntry::new(key, value));
         }
 
-        // 3. This should never happen
-        if cache_entries_to_migrate.is_empty() {
-            let _ = callback.send(Err(anyhow::anyhow!("No keys to migrate")));
-            return;
-        }
-
-        // 4Get mutable reference to the target peer
+        // 3 Get mutable reference to the target peer
         let Some(target_peer) = self.members.get_mut(&peer_id) else {
             let _ = callback
                 .send(Err(anyhow::anyhow!("Target peer {} disappeared during migration", peer_id)));
@@ -1038,10 +1032,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     }
 
     /// Helper function to find the peer identifier for a given replication ID
-    fn find_target_peer_for_replication(
-        &self,
-        target_repl_id: &ReplicationId,
-    ) -> Option<&PeerIdentifier> {
+    fn peerid_by_replid(&self, target_repl_id: &ReplicationId) -> Option<&PeerIdentifier> {
         self.members
             .iter()
             .find(|(_, peer)| peer.replid() == target_repl_id)

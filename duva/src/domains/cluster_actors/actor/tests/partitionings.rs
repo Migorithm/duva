@@ -582,18 +582,18 @@ async fn test_find_target_peer_for_replication() {
         cluster_actor.test_add_peer(6562, NodeKind::NonData, Some(repl_id_2.clone()));
 
     // WHEN & THEN
-    assert_eq!(cluster_actor.find_target_peer_for_replication(&repl_id_1), Some(&peer_id_1));
-    assert_eq!(cluster_actor.find_target_peer_for_replication(&repl_id_2), Some(&peer_id_2));
+    assert_eq!(cluster_actor.peerid_by_replid(&repl_id_1), Some(&peer_id_1));
+    assert_eq!(cluster_actor.peerid_by_replid(&repl_id_2), Some(&peer_id_2));
 
     let non_existent_repl = ReplicationId::Key("non_existent".to_string());
-    assert_eq!(cluster_actor.find_target_peer_for_replication(&non_existent_repl), None);
+    assert_eq!(cluster_actor.peerid_by_replid(&non_existent_repl), None);
 }
 
 #[tokio::test]
 async fn test_migrate_keys_retrieves_actual_data() {
     // GIVEN
     let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
-    cluster_actor.pending_migrations = Some(HashMap::new());
+    cluster_actor.block_write_reqs();
 
     // Create a cache manager with actual cache actors
     let hwm = Arc::new(AtomicU64::new(0));
@@ -638,7 +638,6 @@ async fn test_migrate_keys_retrieves_actual_data() {
     assert_eq!(retrieved_value_2.unwrap().value(), "value_2");
 
     // callback will not be called because migration is not completed
-
     let result = tokio::time::timeout(Duration::from_millis(100), callback_rx).await;
     assert!(result.is_err());
 }
