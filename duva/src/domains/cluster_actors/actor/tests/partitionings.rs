@@ -282,7 +282,8 @@ async fn test_schedule_migrations_happypath() {
         async move {
             while let Some(msg) = rx.recv().await {
                 // ! First check, message must be Scheduler Message
-                let ClusterCommand::Scheduler(SchedulerMessage::MigrateBatchKeys(batch, tx)) = msg
+                let ClusterCommand::Scheduler(SchedulerMessage::ScheduleMigrationTarget(batch, tx)) =
+                    msg
                 else {
                     panic!()
                 };
@@ -353,7 +354,8 @@ async fn test_schedule_migrations_multiple_replication_ids() {
         let received_messages = received_messages.clone();
         async move {
             while let Some(msg) = rx.recv().await {
-                let ClusterCommand::Scheduler(SchedulerMessage::MigrateBatchKeys(batch, tx)) = msg
+                let ClusterCommand::Scheduler(SchedulerMessage::ScheduleMigrationTarget(batch, tx)) =
+                    msg
                 else {
                     panic!("Expected MigrateBatchKeys message");
                 };
@@ -401,7 +403,8 @@ async fn test_schedule_migrations_large_task_batching() {
         let batch_info = batch_info.clone();
         async move {
             while let Some(msg) = rx.recv().await {
-                let ClusterCommand::Scheduler(SchedulerMessage::MigrateBatchKeys(batch, tx)) = msg
+                let ClusterCommand::Scheduler(SchedulerMessage::ScheduleMigrationTarget(batch, tx)) =
+                    msg
                 else {
                     panic!("Expected MigrateBatchKeys message");
                 };
@@ -462,7 +465,8 @@ async fn test_schedule_migrations_synchronization() {
         let response_delay = response_delay.clone();
         async move {
             while let Some(msg) = rx.recv().await {
-                let ClusterCommand::Scheduler(SchedulerMessage::MigrateBatchKeys(_, tx)) = msg
+                let ClusterCommand::Scheduler(SchedulerMessage::ScheduleMigrationTarget(_, tx)) =
+                    msg
                 else {
                     panic!("Expected MigrateBatchKeys message");
                 };
@@ -524,7 +528,8 @@ async fn test_schedule_migrations_callback_error_response() {
     // WHEN - simulate error response from migration handler
     tokio::spawn(async move {
         while let Some(msg) = rx.recv().await {
-            let ClusterCommand::Scheduler(SchedulerMessage::MigrateBatchKeys(_, tx)) = msg else {
+            let ClusterCommand::Scheduler(SchedulerMessage::ScheduleMigrationTarget(_, tx)) = msg
+            else {
                 panic!("Expected MigrateBatchKeys message");
             };
 
@@ -547,7 +552,7 @@ async fn test_migrate_keys_target_peer_not_found() {
     let hwm = Arc::new(AtomicU64::new(0));
     let cache_manager = CacheManager::run_cache_actors(hwm);
 
-    let tasks = MigrationBatch::new(
+    let tasks = MigrationTarget::new(
         ReplicationId::Key("non_existent_peer".to_string()),
         vec![migration_task_create_helper(0, 5)],
     );
@@ -555,51 +560,12 @@ async fn test_migrate_keys_target_peer_not_found() {
     let (callback_tx, callback_rx) = tokio::sync::oneshot::channel();
 
     // WHEN
-    cluster_actor.migrate_keys(tasks, &cache_manager, callback_tx).await;
+    cluster_actor.migrate_batch(tasks, &cache_manager, callback_tx).await;
 
     // THEN
     let result = callback_rx.await.unwrap();
     assert!(result.is_err());
     assert!(result.unwrap_err().to_string().contains("Target peer not found"));
-}
-
-#[tokio::test]
-async fn test_migrate_keys_finds_target_peer() {
-    // GIVEN
-    let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
-    let hwm = Arc::new(AtomicU64::new(0));
-    let cache_manager = CacheManager::run_cache_actors(hwm);
-
-    // Add a peer with a specific replication ID
-    let target_repl_id = ReplicationId::Key("target_repl_123".to_string());
-    let (mut buf, _) =
-        cluster_actor.test_add_peer(6560, NodeKind::NonData, Some(target_repl_id.clone()));
-
-    // Set up actual data in the cache that matches the migration task keys
-    let test_keys = vec!["key_0".to_string(), "key_1".to_string(), "key_2".to_string()];
-    for (i, key) in test_keys.iter().enumerate() {
-        cache_manager
-            .route_set(key.clone(), format!("value_{}", i), None, (i + 1) as u64)
-            .await
-            .unwrap();
-    }
-
-    // Create migration task with the actual keys that exist in cache
-    let migration_task = MigrationTask { task_id: (0, 3), keys_to_migrate: test_keys };
-    let tasks = MigrationBatch::new(target_repl_id, vec![migration_task]);
-
-    let (callback_tx, callback_rx) = tokio::sync::oneshot::channel();
-
-    // WHEN
-    cluster_actor.migrate_keys(tasks, &cache_manager, callback_tx).await;
-
-    // THEN - successful response and message was sent to the peer
-    let result = callback_rx.await.unwrap();
-    result.unwrap();
-
-    let message = buf.read_values().await.unwrap();
-    assert_eq!(message.len(), 1);
-    assert!(matches!(message[0], QueryIO::MigrateBatch(_)));
 }
 
 #[tokio::test]
@@ -627,6 +593,7 @@ async fn test_find_target_peer_for_replication() {
 async fn test_migrate_keys_retrieves_actual_data() {
     // GIVEN
     let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
+    cluster_actor.pending_migrations = Some(HashMap::new());
 
     // Create a cache manager with actual cache actors
     let hwm = Arc::new(AtomicU64::new(0));
@@ -649,16 +616,17 @@ async fn test_migrate_keys_retrieves_actual_data() {
 
     // Create migration tasks with the test keys
     let migration_task = MigrationTask { task_id: (0, 100), keys_to_migrate: test_keys.clone() };
-    let tasks = MigrationBatch::new(target_repl_id, vec![migration_task]);
+    let tasks = MigrationTarget::new(target_repl_id, vec![migration_task]);
 
     let (callback_tx, callback_rx) = tokio::sync::oneshot::channel();
 
     // WHEN
-    cluster_actor.migrate_keys(tasks, &cache_manager, callback_tx).await;
+    cluster_actor.migrate_batch(tasks, &cache_manager, callback_tx).await;
 
     // THEN
-    let result = callback_rx.await.unwrap();
-    assert!(result.is_ok(), "Migration should succeed when data is available");
+    // 1. pending_migrations should be set
+    let pending_migrations = cluster_actor.pending_migrations.unwrap();
+    assert_eq!(pending_migrations.len(), 1);
 
     // Verify the data is still in cache (migration doesn't remove it yet)
     let retrieved_value_1 = cache_manager.route_get("test_key_1").await.unwrap();
@@ -668,4 +636,9 @@ async fn test_migrate_keys_retrieves_actual_data() {
     assert!(retrieved_value_2.is_some());
     assert_eq!(retrieved_value_1.unwrap().value(), "value_1");
     assert_eq!(retrieved_value_2.unwrap().value(), "value_2");
+
+    // callback will not be called because migration is not completed
+
+    let result = tokio::time::timeout(Duration::from_millis(100), callback_rx).await;
+    assert!(result.is_err());
 }

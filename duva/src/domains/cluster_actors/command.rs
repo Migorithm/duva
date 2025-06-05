@@ -1,5 +1,5 @@
 use crate::ReplicationState;
-use crate::domains::cluster_actors::hash_ring::MigrationBatch;
+use crate::domains::cluster_actors::hash_ring::MigrationTarget;
 use crate::domains::cluster_actors::replication::{ReplicationId, ReplicationRole};
 use crate::domains::operation_logs::WriteRequest;
 use crate::domains::peers::command::PeerCommand;
@@ -23,7 +23,7 @@ pub enum SchedulerMessage {
     SendAppendEntriesRPC,
     StartLeaderElection,
     RebalanceRequest { request_to: PeerIdentifier, lazy_option: LazyOption },
-    MigrateBatchKeys(MigrationBatch, tokio::sync::oneshot::Sender<anyhow::Result<()>>),
+    ScheduleMigrationTarget(MigrationTarget, tokio::sync::oneshot::Sender<anyhow::Result<()>>),
 }
 impl From<SchedulerMessage> for ClusterCommand {
     fn from(msg: SchedulerMessage) -> Self {
