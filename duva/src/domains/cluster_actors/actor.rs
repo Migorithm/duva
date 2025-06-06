@@ -16,6 +16,7 @@ use crate::domains::caches::cache_manager::CacheManager;
 use crate::domains::caches::cache_objects::CacheEntry;
 use crate::domains::cluster_actors::hash_ring::BatchId;
 use crate::domains::cluster_actors::hash_ring::MigrationTarget;
+use crate::domains::cluster_actors::hash_ring::MigrationTask;
 use crate::domains::operation_logs::interfaces::TWriteAheadLog;
 use crate::domains::operation_logs::logger::ReplicatedLogs;
 
@@ -961,12 +962,10 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
                     }
                 }
 
-                let migration_target =
-                    MigrationTarget::new(target_replid.clone(), batch_to_migrate);
-
                 // Spawn each batch as a separate task for parallel execution
                 batch_handles.push(tokio::spawn(Self::schedule_migration_target(
-                    migration_target,
+                    target_replid.clone(),
+                    batch_to_migrate,
                     self.self_handler.clone(),
                 )));
             }
@@ -983,11 +982,17 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     }
 
     async fn schedule_migration_target(
-        migration_target: MigrationTarget,
+        target_replid: ReplicationId,
+        batch_to_migrate: Vec<MigrationTask>,
         handler: ClusterCommandHandler,
     ) -> anyhow::Result<()> {
         let (tx, rx) = tokio::sync::oneshot::channel();
-        handler.send(SchedulerMessage::ScheduleMigrationTarget(migration_target, tx)).await?;
+        handler
+            .send(SchedulerMessage::ScheduleMigrationTarget(
+                MigrationTarget::new(target_replid, batch_to_migrate),
+                tx,
+            ))
+            .await?;
         rx.await.unwrap_or_else(|_| Err(anyhow::anyhow!("Channel closed")))
     }
 

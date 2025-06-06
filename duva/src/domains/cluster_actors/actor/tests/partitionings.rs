@@ -264,10 +264,8 @@ async fn test_send_migrate_and_wait_happypath() {
     let fake_handler = ClusterCommandHandler(tx);
 
     // Create dummy task
-    let migration_target = MigrationTarget::new(
-        ReplicationId::Key("my_test_key".to_string()),
-        vec![migration_task_create_helper(0, 100)],
-    );
+    let target_replid = ReplicationId::Key("my_test_key".to_string());
+    let batch_to_migrate = vec![migration_task_create_helper(0, 100)];
 
     // WHEN
     tokio::spawn({
@@ -287,9 +285,12 @@ async fn test_send_migrate_and_wait_happypath() {
         }
     });
 
-    let result =
-        ClusterActor::<MemoryOpLogs>::schedule_migration_target(migration_target, fake_handler)
-            .await;
+    let result = ClusterActor::<MemoryOpLogs>::schedule_migration_target(
+        target_replid,
+        batch_to_migrate,
+        fake_handler,
+    )
+    .await;
 
     // THEN
     assert!(result.is_ok());
@@ -301,17 +302,18 @@ async fn test_send_migrate_and_wait_channel_error() {
     let (tx, rx) = tokio::sync::mpsc::channel(10);
     let fake_handler = ClusterCommandHandler(tx);
 
-    let migration_target = MigrationTarget::new(
-        ReplicationId::Key("error_test".to_string()),
-        vec![migration_task_create_helper(0, 10)],
-    );
+    let target_replid = ReplicationId::Key("error_test".to_string());
+    let batch_to_migrate = vec![migration_task_create_helper(0, 10)];
 
     // WHEN - drop receiver to simulate channel closure
     drop(rx);
 
-    let result =
-        ClusterActor::<MemoryOpLogs>::schedule_migration_target(migration_target, fake_handler)
-            .await;
+    let result = ClusterActor::<MemoryOpLogs>::schedule_migration_target(
+        target_replid,
+        batch_to_migrate,
+        fake_handler,
+    )
+    .await;
 
     // THEN - should handle gracefully with error
     assert!(result.is_err());
@@ -324,10 +326,8 @@ async fn test_send_migrate_and_wait_callback_error() {
     let (tx, mut rx) = tokio::sync::mpsc::channel(10);
     let fake_handler = ClusterCommandHandler(tx);
 
-    let migration_target = MigrationTarget::new(
-        ReplicationId::Key("error_response_test".to_string()),
-        vec![migration_task_create_helper(0, 10)],
-    );
+    let target_replid = ReplicationId::Key("error_response_test".to_string());
+    let batch_to_migrate = vec![migration_task_create_helper(0, 10)];
 
     // WHEN - simulate error response from migration handler
     tokio::spawn(async move {
@@ -343,9 +343,12 @@ async fn test_send_migrate_and_wait_callback_error() {
         }
     });
 
-    let result =
-        ClusterActor::<MemoryOpLogs>::schedule_migration_target(migration_target, fake_handler)
-            .await;
+    let result = ClusterActor::<MemoryOpLogs>::schedule_migration_target(
+        target_replid,
+        batch_to_migrate,
+        fake_handler,
+    )
+    .await;
 
     // THEN - should return the error
     assert!(result.is_err());
