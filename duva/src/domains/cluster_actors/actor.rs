@@ -227,7 +227,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         self.join_peer_network_if_absent(heartbeat.cluster_nodes).await;
         self.gossip(heartbeat.hop_count).await;
         self.update_on_hertbeat_message(&heartbeat.from, heartbeat.hwm);
-        self.make_migration_tasks_if_valid(heartbeat.hashring, cache_manager).await;
+        self.schedule_migration_if_valid(heartbeat.hashring, cache_manager).await;
     }
 
     pub(crate) async fn req_consensus(&mut self, req: ConsensusRequest) {
@@ -922,14 +922,11 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     // 3. Efficient Range Detection - Use the ring structure to find ownership changes by sampling mid-points of ranges rather than checking every possible hash value.
     // 4. Key Discovery - The get_keys_in_range function needs to be implemented based on your actual data storage to find keys whose hashes fall within specific ranges.
     // 5. Execution Strategy - Provides both queuing (for batch processing) and immediate execution options for migration tasks.
-    async fn make_migration_tasks_if_valid(
+    async fn schedule_migration_if_valid(
         &mut self,
         hashring: Option<HashRing>,
         cache_manager: &CacheManager,
     ) {
-        use futures::stream::FuturesUnordered;
-        use futures::stream::StreamExt;
-
         let Some(ring) = hashring else {
             return;
         };
