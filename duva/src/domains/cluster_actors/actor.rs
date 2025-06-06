@@ -932,6 +932,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         let Some(ring) = hashring else {
             return;
         };
+
         if ring == self.hash_ring {
             return;
         }
@@ -947,7 +948,6 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         let mut batch_handles = FuturesUnordered::new();
 
         for (target_replid, mut migration_tasks) in migration_plans {
-            // Create batches and spawn each one directly
             while !migration_tasks.is_empty() {
                 let mut num = 0;
                 let mut batch_to_migrate = Vec::new();
@@ -972,13 +972,15 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
                 batch_handles.push(batch_handle);
             }
         }
-        while let Some(batch_result) = batch_handles.next().await {
-            match batch_result {
-                | Ok(Ok(())) => {}, // Success case
-                | Ok(Err(e)) => error!("Migration batch failed: {}", e),
-                | Err(_) => error!("Migration batch failed: Batch task panicked"),
-            }
-        }
+
+        // Process all batches
+        batch_handles
+            .for_each(|result| async {
+                if let Err(e) = result {
+                    error!("Migration batch panicked: {}", e);
+                }
+            })
+            .await;
     }
 
     async fn schedule_migration_target(
