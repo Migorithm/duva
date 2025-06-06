@@ -926,6 +926,9 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         hashring: Option<HashRing>,
         cache_manager: &CacheManager,
     ) {
+        use futures::stream::FuturesUnordered;
+        use futures::stream::StreamExt;
+
         let Some(ring) = hashring else {
             return;
         };
@@ -942,21 +945,6 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
         let keys = cache_manager.route_keys(None).await;
         let migration_plans = self.hash_ring.create_migration_tasks(&ring, keys).await;
-
-        Self::schedule_migrations(self.self_handler.clone(), migration_plans).await;
-    }
-
-    // * This function is used to schedule migrations for each target.
-    // All batches spawn simultaneously:
-    // - Target A→B batch1, batch2, batch3
-    // - Target A→C batch1, batch2
-    // - Target A→D batch1
-    async fn schedule_migrations(
-        handler: ClusterCommandHandler,
-        migration_plans: BTreeMap<ReplicationId, Vec<hash_ring::MigrationTask>>,
-    ) {
-        use futures::stream::FuturesUnordered;
-        use futures::stream::StreamExt;
         let mut batch_handles = FuturesUnordered::new();
 
         for (target_replid, mut migration_tasks) in migration_plans {
@@ -978,30 +966,13 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
                     MigrationTarget::new(target_replid.clone(), batch_to_migrate);
 
                 // Spawn each batch as a separate task for parallel execution
-                let handler = handler.clone();
-                let target_replid_for_error = target_replid.clone();
-                let batch_handle = tokio::spawn(async move {
-                    let (tx, rx) = tokio::sync::oneshot::channel();
-
-                    let send_result = handler
-                        .send(SchedulerMessage::ScheduleMigrationTarget(migration_target, tx))
-                        .await;
-
-                    if send_result.is_err() {
-                        return Err(anyhow::anyhow!(
-                            "Failed to schedule migration batch for {}",
-                            target_replid_for_error
-                        ));
-                    }
-
-                    rx.await.unwrap_or_else(|_| Err(anyhow::anyhow!("Channel closed")))
-                });
-
+                let batch_handle = tokio::spawn(Self::send_migrate_and_wait(
+                    migration_target,
+                    self.self_handler.clone(),
+                ));
                 batch_handles.push(batch_handle);
             }
         }
-
-        // Await all batch tasks across all targets
         while let Some(batch_result) = batch_handles.next().await {
             if let Err(e) =
                 batch_result.unwrap_or_else(|_| Err(anyhow::anyhow!("Batch task panicked")))
@@ -1010,6 +981,15 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
                 // Continue with other batches even if one fails
             }
         }
+    }
+
+    async fn send_migrate_and_wait(
+        migration_target: MigrationTarget,
+        handler: ClusterCommandHandler,
+    ) -> anyhow::Result<()> {
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        handler.send(SchedulerMessage::ScheduleMigrationTarget(migration_target, tx)).await?;
+        rx.await.unwrap_or_else(|_| Err(anyhow::anyhow!("Channel closed")))
     }
 
     pub(crate) async fn migrate_batch(
