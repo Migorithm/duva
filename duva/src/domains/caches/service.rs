@@ -20,11 +20,11 @@ impl CacheActor {
                     self.set(cache_entry);
                 },
                 | CacheCommand::Get { key, callback } => {
-                    self.get(key, callback);
+                    self.get(&key, callback);
                 },
                 | CacheCommand::IndexGet { key, read_idx, callback } => {
                     if let Some(callback) = rq.defer_if_stale(read_idx, &key, callback) {
-                        self.get(key, callback);
+                        self.get(&key, callback);
                     }
                 },
                 | CacheCommand::Keys { pattern, callback } => {
@@ -53,7 +53,7 @@ impl CacheActor {
                 | CacheCommand::Ping => {
                     if let Some(pending_rqs) = rq.take_pending_requests() {
                         for DeferredRead { key, callback } in pending_rqs {
-                            self.get(key, callback);
+                            self.get(&key, callback);
                         }
                     };
                 },

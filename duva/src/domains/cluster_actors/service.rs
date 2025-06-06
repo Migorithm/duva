@@ -16,7 +16,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             trace!(?command, "Cluster command received");
             match command {
                 | ClusterCommand::Scheduler(msg) => {
-                    self.process_scheduler_message(msg).await;
+                    self.process_scheduler_message(msg, &cache_manager).await;
                 },
                 | ClusterCommand::Client(client_message) => {
                     self.process_client_message(&cache_manager, client_message).await
@@ -34,7 +34,11 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         Ok(self)
     }
 
-    async fn process_scheduler_message(&mut self, msg: SchedulerMessage) {
+    async fn process_scheduler_message(
+        &mut self,
+        msg: SchedulerMessage,
+        cache_manager: &CacheManager,
+    ) {
         use SchedulerMessage::*;
         match msg {
             | SendPeriodicHeatBeat => {
@@ -49,8 +53,8 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             | RebalanceRequest { request_to, lazy_option } => {
                 self.rebalance_request(request_to, lazy_option).await;
             },
-            | MigrateBatchKeys(tasks, callback) => {
-                self.migrate_keys(tasks, callback).await;
+            | ScheduleMigrationBatch(tasks, callback) => {
+                self.migrate_batch(tasks, cache_manager, callback).await;
             },
         }
     }
@@ -123,18 +127,16 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             | AckReplication(repl_res) => {
                 self.ack_replication(repl_res).await;
             },
-
             | AppendEntriesRPC(heartbeat) => {
                 self.append_entries_rpc(cache_manager, heartbeat).await;
             },
-
             | ElectionVoteReply(request_vote_reply) => {
                 self.receive_election_vote(request_vote_reply).await;
             },
-
             | StartRebalance => {
                 self.start_rebalance(from).await;
             },
+            | MigrateBatch(migrate_batch) => todo!(),
         }
     }
 

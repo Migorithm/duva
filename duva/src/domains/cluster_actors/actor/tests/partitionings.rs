@@ -1,10 +1,9 @@
+use crate::domains::cluster_actors::hash_ring::{
+    HashRing, MigrationTask, tests::migration_task_create_helper,
+};
 use std::sync::Arc;
-use std::sync::atomic::AtomicI32;
-use std::sync::atomic::Ordering;
+use std::sync::atomic::AtomicU64;
 use std::time::Duration;
-use tokio::time::Instant;
-
-use crate::domains::cluster_actors::hash_ring::{HashRing, tests::migration_task_create_helper};
 
 use super::*;
 
@@ -196,7 +195,7 @@ async fn test_make_migration_plan_happypath() {
     // WHEN - now, when heartbeat receiving actor hashring info (through heartbeat)
     let cache_manager = CacheManager { inboxes: vec![] };
     heartbeat_receiving_actor
-        .make_migration_tasks_if_valid(Some(hash_ring.clone()), &cache_manager)
+        .schedule_migration_if_required(Some(hash_ring.clone()), &cache_manager)
         .await;
 
     // THEN - it should create a migration plan
@@ -217,7 +216,7 @@ async fn test_make_migration_plan_when_given_hashring_is_same() {
     // WHEN - now, when heartbeat receiving actor hashring info (through heartbeat)
     let cache_manager = CacheManager { inboxes: vec![] };
     heartbeat_receiving_actor
-        .make_migration_tasks_if_valid(
+        .schedule_migration_if_required(
             Some(heartbeat_receiving_actor.hash_ring.clone()),
             &cache_manager,
         )
@@ -235,7 +234,7 @@ async fn test_make_migration_plan_when_no_hashring_given() {
 
     // WHEN - now, when heartbeat receiving actor hashring info (through heartbeat)
     let cache_manager = CacheManager { inboxes: vec![] };
-    heartbeat_receiving_actor.make_migration_tasks_if_valid(None, &cache_manager).await;
+    heartbeat_receiving_actor.schedule_migration_if_required(None, &cache_manager).await;
 
     // THEN no change should be made
     assert_eq!(heartbeat_receiving_actor.hash_ring.last_modified, last_modified);
@@ -252,285 +251,205 @@ async fn test_make_migration_plan_when_last_modified_is_lower_than_its_own() {
 
     // WHEN - now, when heartbeat receiving actor hashring info (through heartbeat)
     let cache_manager = CacheManager { inboxes: vec![] };
-    heartbeat_receiving_actor.make_migration_tasks_if_valid(Some(hash_ring), &cache_manager).await;
+    heartbeat_receiving_actor.schedule_migration_if_required(Some(hash_ring), &cache_manager).await;
 
     // THEN no change should be made
     assert_eq!(heartbeat_receiving_actor.hash_ring.last_modified, last_modified);
 }
 
 #[tokio::test]
-async fn test_schedule_migrations_happypath() {
+async fn test_send_migrate_and_wait_happypath() {
     // GIVEN
     let (tx, mut rx) = tokio::sync::mpsc::channel(10);
     let fake_handler = ClusterCommandHandler(tx);
 
-    // Create dummy tasks
-    let mut migration_plans = BTreeMap::new();
-    migration_plans.insert(
-        ReplicationId::Key("my_test_key".to_string()),
-        vec![migration_task_create_helper(0, 100), migration_task_create_helper(101, 102)],
-    );
+    // Create dummy task
+    let target_replid = ReplicationId::Key("my_test_key".to_string());
+    let batch_to_migrate = vec![migration_task_create_helper(0, 100)];
 
-    // WHEN - first being number of keys, second being number of batches
-    let atom = Arc::new((AtomicI32::new(0), AtomicI32::new(0)));
-
+    // WHEN
     tokio::spawn({
-        let atom = atom.clone();
         async move {
             while let Some(msg) = rx.recv().await {
                 // ! First check, message must be Scheduler Message
-                let ClusterCommand::Scheduler(SchedulerMessage::MigrateBatchKeys(batch, tx)) = msg
+                let ClusterCommand::Scheduler(SchedulerMessage::ScheduleMigrationBatch(
+                    batch,
+                    callback,
+                )) = msg
                 else {
                     panic!()
                 };
                 assert_eq!(batch.target_repl, ReplicationId::Key("my_test_key".to_string()));
-                batch.tasks.iter().for_each(|task| {
-                    atom.0.fetch_add(task.keys_to_migrate.len() as i32, Ordering::Relaxed);
-                    atom.1.fetch_add(1, Ordering::Relaxed);
-                });
-                let _ = tx.send(Ok(()));
+                let _ = callback.send(Ok(()));
             }
         }
     });
 
-    ClusterActor::<MemoryOpLogs>::schedule_migrations(fake_handler, migration_plans).await;
+    let result = ClusterActor::<MemoryOpLogs>::schedule_migration_target(
+        target_replid,
+        batch_to_migrate,
+        fake_handler,
+    )
+    .await;
 
-    while atom.0.load(Ordering::Relaxed) != 101 {
-        tokio::time::sleep(Duration::from_millis(10)).await;
-    }
-
-    assert_eq!(atom.1.load(Ordering::Relaxed), 2);
+    // THEN
+    assert!(result.is_ok());
 }
 
 #[tokio::test]
-async fn test_schedule_migrations_empty_plans() {
-    // GIVEN
-    let (tx, mut rx) = tokio::sync::mpsc::channel(10);
-    let fake_handler = ClusterCommandHandler(tx);
-
-    let migration_plans = BTreeMap::new(); // Empty migration plans
-
-    // WHEN
-    ClusterActor::<MemoryOpLogs>::schedule_migrations(fake_handler, migration_plans).await;
-
-    // THEN - function should return immediately for empty plans
-    // Verify this by checking that receiving with a short timeout gives us None
-    let result = tokio::time::timeout(Duration::from_millis(10), rx.recv()).await;
-    assert!(
-        result.is_err() || result.unwrap().is_none(),
-        "No messages should be sent for empty migration plans"
-    );
-}
-
-#[tokio::test]
-async fn test_schedule_migrations_multiple_replication_ids() {
-    // GIVEN
-    let (tx, mut rx) = tokio::sync::mpsc::channel(20);
-    let fake_handler = ClusterCommandHandler(tx);
-
-    // Create migration plans for multiple replication IDs
-    let mut migration_plans = BTreeMap::new();
-    migration_plans.insert(
-        ReplicationId::Key("repl_1".to_string()),
-        vec![migration_task_create_helper(0, 50)],
-    );
-    migration_plans.insert(
-        ReplicationId::Key("repl_2".to_string()),
-        vec![migration_task_create_helper(0, 30)],
-    );
-    migration_plans.insert(
-        ReplicationId::Key("repl_3".to_string()),
-        vec![migration_task_create_helper(0, 20)],
-    );
-
-    // WHEN
-    let received_messages = Arc::new(tokio::sync::Mutex::new(Vec::new()));
-
-    tokio::spawn({
-        let received_messages = received_messages.clone();
-        async move {
-            while let Some(msg) = rx.recv().await {
-                let ClusterCommand::Scheduler(SchedulerMessage::MigrateBatchKeys(batch, tx)) = msg
-                else {
-                    panic!("Expected MigrateBatchKeys message");
-                };
-
-                received_messages.lock().await.push(batch.target_repl.clone());
-                let _ = tx.send(Ok(()));
-            }
-        }
-    });
-
-    ClusterActor::<MemoryOpLogs>::schedule_migrations(fake_handler, migration_plans).await;
-
-    // Give some time for messages to be processed
-    tokio::time::sleep(Duration::from_millis(100)).await;
-
-    // THEN - should receive messages for all replication IDs
-    let messages = received_messages.lock().await;
-    assert_eq!(messages.len(), 3);
-    assert!(messages.contains(&ReplicationId::Key("repl_1".to_string())));
-    assert!(messages.contains(&ReplicationId::Key("repl_2".to_string())));
-    assert!(messages.contains(&ReplicationId::Key("repl_3".to_string())));
-}
-
-#[tokio::test]
-async fn test_schedule_migrations_large_task_batching() {
-    // GIVEN
-    let (tx, mut rx) = tokio::sync::mpsc::channel(10);
-    let fake_handler = ClusterCommandHandler(tx);
-
-    // Create a large task that should be split into multiple batches (>100 keys total)
-    let mut migration_plans = BTreeMap::new();
-    migration_plans.insert(
-        ReplicationId::Key("large_repl".to_string()),
-        vec![
-            migration_task_create_helper(0, 80),    // 80 keys (0..80)
-            migration_task_create_helper(81, 160),  // 79 keys (81..160)
-            migration_task_create_helper(161, 200), // 39 keys (161..200)
-        ],
-    );
-
-    // WHEN
-    let batch_info = Arc::new(tokio::sync::Mutex::new(Vec::new()));
-
-    tokio::spawn({
-        let batch_info = batch_info.clone();
-        async move {
-            while let Some(msg) = rx.recv().await {
-                let ClusterCommand::Scheduler(SchedulerMessage::MigrateBatchKeys(batch, tx)) = msg
-                else {
-                    panic!("Expected MigrateBatchKeys message");
-                };
-
-                let total_keys: usize =
-                    batch.tasks.iter().map(|task| task.keys_to_migrate.len()).sum();
-                batch_info.lock().await.push((batch.target_repl.clone(), total_keys));
-                let _ = tx.send(Ok(()));
-            }
-        }
-    });
-
-    ClusterActor::<MemoryOpLogs>::schedule_migrations(fake_handler, migration_plans).await;
-
-    // Give some time for messages to be processed
-    tokio::time::sleep(Duration::from_millis(100)).await;
-
-    // THEN - should receive multiple batches
-    let batches = batch_info.lock().await;
-
-    // The algorithm processes tasks in reverse order (pop_last from BTreeMap, pop from Vec)
-    // So it processes: task3(39), task2(79), task1(80)
-    // Batch 1: task3(39) + task2(79) = 118 keys (stops when adding task1 would exceed 100)
-    // Batch 2: task1(80) = 80 keys
-    let expected_batches = vec![118, 80]; // First batch: task3+task2, Second batch: task1
-
-    assert_eq!(batches.len(), 2, "Should have exactly 2 batches");
-
-    let actual_key_counts: Vec<usize> = batches.iter().map(|(_, count)| *count).collect();
-    assert_eq!(actual_key_counts, expected_batches, "Batch sizes should match expected pattern");
-
-    // All batches should be for the same replication ID
-    for (repl_id, _) in &*batches {
-        assert_eq!(repl_id, &ReplicationId::Key("large_repl".to_string()));
-    }
-
-    // Total keys should be preserved
-    let total_keys: usize = batches.iter().map(|(_, count)| count).sum();
-    assert_eq!(total_keys, 198, "Total keys should be preserved across batches: 80+79+39=198");
-}
-
-#[tokio::test]
-async fn test_schedule_migrations_synchronization() {
-    // GIVEN
-    let (tx, mut rx) = tokio::sync::mpsc::channel(10);
-    let fake_handler = ClusterCommandHandler(tx);
-
-    let mut migration_plans = BTreeMap::new();
-    migration_plans.insert(
-        ReplicationId::Key("sync_test".to_string()),
-        vec![migration_task_create_helper(0, 10)],
-    );
-
-    // WHEN - simulate slow response to test synchronization
-    let response_delay = Arc::new(AtomicI32::new(0));
-
-    tokio::spawn({
-        let response_delay = response_delay.clone();
-        async move {
-            while let Some(msg) = rx.recv().await {
-                let ClusterCommand::Scheduler(SchedulerMessage::MigrateBatchKeys(_, tx)) = msg
-                else {
-                    panic!("Expected MigrateBatchKeys message");
-                };
-
-                response_delay.fetch_add(1, Ordering::Relaxed);
-
-                // Introduce delay to test synchronization
-                tokio::time::sleep(Duration::from_millis(50)).await;
-                let _ = tx.send(Ok(()));
-            }
-        }
-    });
-
-    let start_time = Instant::now();
-    ClusterActor::<MemoryOpLogs>::schedule_migrations(fake_handler, migration_plans).await;
-    let elapsed = start_time.elapsed();
-
-    // THEN - should wait for response before completing
-    assert!(elapsed >= Duration::from_millis(45), "Should wait for synchronization");
-    assert_eq!(
-        response_delay.load(Ordering::Relaxed),
-        1,
-        "Should have received exactly one message"
-    );
-}
-
-#[tokio::test]
-async fn test_schedule_migrations_channel_error_handling() {
+async fn test_send_migrate_and_wait_channel_error() {
     // GIVEN
     let (tx, rx) = tokio::sync::mpsc::channel(10);
     let fake_handler = ClusterCommandHandler(tx);
 
-    let mut migration_plans = BTreeMap::new();
-    migration_plans.insert(
-        ReplicationId::Key("error_test".to_string()),
-        vec![migration_task_create_helper(0, 10)],
-    );
+    let target_replid = ReplicationId::Key("error_test".to_string());
+    let batch_to_migrate = vec![migration_task_create_helper(0, 10)];
 
     // WHEN - drop receiver to simulate channel closure
     drop(rx);
 
-    // THEN - should handle gracefully without panicking
-    ClusterActor::<MemoryOpLogs>::schedule_migrations(fake_handler, migration_plans).await;
-    // If we reach this point, the function handled the error gracefully
+    let result = ClusterActor::<MemoryOpLogs>::schedule_migration_target(
+        target_replid,
+        batch_to_migrate,
+        fake_handler,
+    )
+    .await;
+
+    // THEN - should handle gracefully with error
+    assert!(result.is_err());
+    assert_eq!(result.unwrap_err().to_string(), "channel closed");
 }
 
 #[tokio::test]
-async fn test_schedule_migrations_callback_error_response() {
+async fn test_send_migrate_and_wait_callback_error() {
     // GIVEN
     let (tx, mut rx) = tokio::sync::mpsc::channel(10);
     let fake_handler = ClusterCommandHandler(tx);
 
-    let mut migration_plans = BTreeMap::new();
-    migration_plans.insert(
-        ReplicationId::Key("error_response_test".to_string()),
-        vec![migration_task_create_helper(0, 10)],
-    );
+    let target_replid = ReplicationId::Key("error_response_test".to_string());
+    let batch_to_migrate = vec![migration_task_create_helper(0, 10)];
 
     // WHEN - simulate error response from migration handler
     tokio::spawn(async move {
         while let Some(msg) = rx.recv().await {
-            let ClusterCommand::Scheduler(SchedulerMessage::MigrateBatchKeys(_, tx)) = msg else {
+            let ClusterCommand::Scheduler(SchedulerMessage::ScheduleMigrationBatch(_, callback)) =
+                msg
+            else {
                 panic!("Expected MigrateBatchKeys message");
             };
 
             // Send error response
-            let _ = tx.send(Err(anyhow::anyhow!("Simulated migration error")));
+            let _ = callback.send(Err(anyhow::anyhow!("Simulated migration error")));
         }
     });
 
-    // THEN - should handle error response gracefully
-    ClusterActor::<MemoryOpLogs>::schedule_migrations(fake_handler, migration_plans).await;
-    // If we reach this point, the function handled the error response gracefully
+    let result = ClusterActor::<MemoryOpLogs>::schedule_migration_target(
+        target_replid,
+        batch_to_migrate,
+        fake_handler,
+    )
+    .await;
+
+    // THEN - should return the error
+    assert!(result.is_err());
+    assert!(result.unwrap_err().to_string().contains("Simulated migration error"));
+}
+
+// Tests for migrate_keys function
+
+#[tokio::test]
+async fn test_migrate_keys_target_peer_not_found() {
+    // GIVEN
+    let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
+    let hwm = Arc::new(AtomicU64::new(0));
+    let cache_manager = CacheManager::run_cache_actors(hwm);
+
+    let tasks = MigrationTarget::new(
+        ReplicationId::Key("non_existent_peer".to_string()),
+        vec![migration_task_create_helper(0, 5)],
+    );
+
+    let (callback_tx, callback_rx) = tokio::sync::oneshot::channel();
+
+    // WHEN
+    cluster_actor.migrate_batch(tasks, &cache_manager, callback_tx).await;
+
+    // THEN
+    let result = callback_rx.await.unwrap();
+    assert!(result.is_err());
+    assert!(result.unwrap_err().to_string().contains("Target peer not found"));
+}
+
+#[tokio::test]
+async fn test_find_target_peer_for_replication() {
+    // GIVEN
+    let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
+
+    let repl_id_1 = ReplicationId::Key("repl_1".to_string());
+    let repl_id_2 = ReplicationId::Key("repl_2".to_string());
+
+    let (_, peer_id_1) =
+        cluster_actor.test_add_peer(6561, NodeKind::NonData, Some(repl_id_1.clone()));
+    let (_, peer_id_2) =
+        cluster_actor.test_add_peer(6562, NodeKind::NonData, Some(repl_id_2.clone()));
+
+    // WHEN & THEN
+    assert_eq!(cluster_actor.peerid_by_replid(&repl_id_1), Some(&peer_id_1));
+    assert_eq!(cluster_actor.peerid_by_replid(&repl_id_2), Some(&peer_id_2));
+
+    let non_existent_repl = ReplicationId::Key("non_existent".to_string());
+    assert_eq!(cluster_actor.peerid_by_replid(&non_existent_repl), None);
+}
+
+#[tokio::test]
+async fn test_migrate_keys_retrieves_actual_data() {
+    // GIVEN
+    let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
+    cluster_actor.block_write_reqs();
+
+    // Create a cache manager with actual cache actors
+    let hwm = Arc::new(AtomicU64::new(0));
+    let cache_manager = CacheManager::run_cache_actors(hwm);
+
+    // Add a peer with a specific replication ID
+    let target_repl_id = ReplicationId::Key("data_target".to_string());
+    let (_, _) = cluster_actor.test_add_peer(6564, NodeKind::NonData, Some(target_repl_id.clone()));
+
+    // Set up some test data in the cache
+    let test_keys = vec!["test_key_1".to_string(), "test_key_2".to_string()];
+    cache_manager
+        .route_set("test_key_1".to_string(), "value_1".to_string(), None, 1)
+        .await
+        .unwrap();
+    cache_manager
+        .route_set("test_key_2".to_string(), "value_2".to_string(), None, 2)
+        .await
+        .unwrap();
+
+    // Create migration tasks with the test keys
+    let migration_task = MigrationTask { task_id: (0, 100), keys_to_migrate: test_keys.clone() };
+    let tasks = MigrationTarget::new(target_repl_id, vec![migration_task]);
+
+    let (callback_tx, callback_rx) = tokio::sync::oneshot::channel();
+
+    // WHEN
+    cluster_actor.migrate_batch(tasks, &cache_manager, callback_tx).await;
+
+    // THEN
+    // 1. pending_migrations should be set
+    let pending_migrations = cluster_actor.pending_migrations.unwrap();
+    assert_eq!(pending_migrations.len(), 1);
+
+    // Verify the data is still in cache (migration doesn't remove it yet)
+    let retrieved_value_1 = cache_manager.route_get("test_key_1").await.unwrap();
+    let retrieved_value_2 = cache_manager.route_get("test_key_2").await.unwrap();
+
+    assert!(retrieved_value_1.is_some());
+    assert!(retrieved_value_2.is_some());
+    assert_eq!(retrieved_value_1.unwrap().value(), "value_1");
+    assert_eq!(retrieved_value_2.unwrap().value(), "value_2");
+
+    // callback will not be called because migration is not completed
+    let result = tokio::time::timeout(Duration::from_millis(100), callback_rx).await;
+    assert!(result.is_err());
 }

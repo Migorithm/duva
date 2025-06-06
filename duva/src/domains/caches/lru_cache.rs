@@ -1,3 +1,4 @@
+use std::borrow::Borrow;
 /// LRU Cache Implementation using Slab for stable memory layout
 ///
 /// A "slab" is a contiguous block of memory (often consisting of one or more physical pages)
@@ -160,7 +161,11 @@ impl<K: Eq + Hash + Clone + Debug, V: Debug + Clone + THasExpiry> LruCache<K, V>
         self.head = Some(index);
     }
 
-    pub fn get(&mut self, key: &K) -> Option<&V> {
+    pub fn get<Q>(&mut self, key: &Q) -> Option<&V>
+    where
+        K: Borrow<Q>,
+        Q: Hash + Eq + ?Sized,
+    {
         if let Some(&index) = self.map.get(key) {
             self.move_to_head(index);
             Some(&self.slab.get(index).expect("Node not found").value)
@@ -606,6 +611,6 @@ mod tests {
         assert_eq!(cache.len(), 3);
         assert_eq!(cache.keys_with_expiry, 3);
 
-        assert!(cache.get(&"key2".to_string()).is_some());
+        assert!(cache.get("key2").is_some());
     }
 }

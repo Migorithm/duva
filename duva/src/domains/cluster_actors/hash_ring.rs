@@ -85,7 +85,7 @@ impl HashRing {
             .map(|(_, node_id)| node_id.as_ref())
     }
 
-    pub(crate) async fn create_migration_tasks(
+    pub(crate) fn create_migration_tasks(
         &self,
         new_ring: &HashRing,
         keys: Vec<String>,

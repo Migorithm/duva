@@ -1,6 +1,8 @@
 use crate::domains::caches::cache_objects::CacheValue;
 use crate::domains::operation_logs::WriteOperation;
-use crate::domains::peers::command::{ElectionVote, HeartBeat, ReplicationAck, RequestVote};
+use crate::domains::peers::command::{
+    ElectionVote, HeartBeat, MigrateBatch, ReplicationAck, RequestVote,
+};
 use crate::prelude::PeerIdentifier;
 use anyhow::{Context, Result};
 use bytes::{Bytes, BytesMut};
@@ -20,6 +22,8 @@ const ACKS_PREFIX: char = '@';
 const REQUEST_VOTE_PREFIX: char = 'v';
 const REQUEST_VOTE_REPLY_PREFIX: char = 'r';
 const SESSION_REQUEST_PREFIX: char = '!';
+const MIGRATE_BATCH_PREFIX: char = 'm';
+
 const ERR_PREFIX: char = '-';
 const NULL_PREFIX: char = '\u{0000}';
 pub(crate) const SERDE_CONFIG: bincode::config::Configuration = bincode::config::standard();
@@ -55,6 +59,7 @@ pub enum QueryIO {
 
     TopologyChange(Vec<PeerIdentifier>),
     StartRebalance,
+    MigrateBatch(MigrateBatch),
 }
 
 impl QueryIO {
@@ -128,6 +133,9 @@ impl QueryIO {
                 serialize_with_bincode(TOPOLOGY_CHANGE_PREFIX, &peer_identifiers)
             },
             | QueryIO::StartRebalance => serialize_with_bincode(START_REBALANCE_PREFIX, &()),
+            | QueryIO::MigrateBatch(migrate_batch) => {
+                serialize_with_bincode(MIGRATE_BATCH_PREFIX, &migrate_batch)
+            },
         }
     }
 
@@ -229,6 +237,7 @@ pub fn deserialize(buffer: impl Into<Bytes>) -> Result<(QueryIO, usize)> {
         | REQUEST_VOTE_REPLY_PREFIX => parse_custom_type::<ElectionVote>(buffer),
         | TOPOLOGY_CHANGE_PREFIX => parse_custom_type::<Vec<PeerIdentifier>>(buffer),
         | START_REBALANCE_PREFIX => Ok((QueryIO::StartRebalance, 1)),
+        | MIGRATE_BATCH_PREFIX => parse_custom_type::<MigrateBatch>(buffer),
 
         | _ => Err(anyhow::anyhow!("Not a known value type {:?}", buffer)),
     }
@@ -423,11 +432,18 @@ impl From<HeartBeat> for QueryIO {
         QueryIO::ClusterHeartBeat(value)
     }
 }
+impl From<MigrateBatch> for QueryIO {
+    fn from(value: MigrateBatch) -> Self {
+        QueryIO::MigrateBatch(value)
+    }
+}
+
 #[cfg(test)]
 mod test {
     use uuid::Uuid;
 
-    use crate::domains::cluster_actors::hash_ring::HashRing;
+    use crate::domains::caches::cache_objects::CacheEntry;
+    use crate::domains::cluster_actors::hash_ring::{BatchId, HashRing};
     use crate::domains::cluster_actors::replication::ReplicationId;
 
     use crate::domains::operation_logs::WriteRequest;
@@ -770,5 +786,27 @@ mod test {
         assert_eq!(deserialized_ring, ring_to_cmp);
         assert!(ring_to_cmp.get_virtual_nodes().len() > 0);
         assert!(deserialized_ring.get_virtual_nodes().len() > 0);
+    }
+
+    #[test]
+    fn test_migrate_batch_serde() {
+        // GIVEN
+        let migrate_batch = MigrateBatch {
+            batch_id: BatchId(Uuid::now_v7().to_string()),
+            cache_entries: vec![CacheEntry::new("foo".into(), CacheValue::new("bar".into()))],
+        };
+        let query_io = QueryIO::MigrateBatch(migrate_batch.clone());
+
+        // WHEN
+        let serialized = query_io.clone().serialize();
+        let (deserialized, _) = deserialize(serialized).unwrap();
+
+        // THEN
+        assert_eq!(deserialized, query_io);
+        let QueryIO::MigrateBatch(deserialized_migrate_batch) = deserialized else {
+            panic!("Expected a MigrateBatch");
+        };
+        assert_eq!(deserialized_migrate_batch.batch_id, migrate_batch.batch_id);
+        assert_eq!(deserialized_migrate_batch.cache_entries, migrate_batch.cache_entries);
     }
 }
