@@ -945,7 +945,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         let keys = cache_manager.route_keys(None).await;
         let migration_plans = self.hash_ring.create_migration_tasks(&ring, keys);
 
-        let mut batch_handles = FuturesUnordered::new();
+        let batch_handles = FuturesUnordered::new();
 
         for (target_replid, mut migration_tasks) in migration_plans {
             while !migration_tasks.is_empty() {
@@ -965,11 +965,10 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
                     MigrationTarget::new(target_replid.clone(), batch_to_migrate);
 
                 // Spawn each batch as a separate task for parallel execution
-                let batch_handle = tokio::spawn(Self::schedule_migration_target(
+                batch_handles.push(tokio::spawn(Self::schedule_migration_target(
                     migration_target,
                     self.self_handler.clone(),
-                ));
-                batch_handles.push(batch_handle);
+                )));
             }
         }
 
