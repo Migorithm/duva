@@ -288,7 +288,8 @@ async fn test_send_migrate_and_wait_happypath() {
     });
 
     let result =
-        ClusterActor::<MemoryOpLogs>::send_migrate_and_wait(migration_target, fake_handler).await;
+        ClusterActor::<MemoryOpLogs>::schedule_migration_target(migration_target, fake_handler)
+            .await;
 
     // THEN
     assert!(result.is_ok());
@@ -309,7 +310,8 @@ async fn test_send_migrate_and_wait_channel_error() {
     drop(rx);
 
     let result =
-        ClusterActor::<MemoryOpLogs>::send_migrate_and_wait(migration_target, fake_handler).await;
+        ClusterActor::<MemoryOpLogs>::schedule_migration_target(migration_target, fake_handler)
+            .await;
 
     // THEN - should handle gracefully with error
     assert!(result.is_err());
@@ -342,7 +344,8 @@ async fn test_send_migrate_and_wait_callback_error() {
     });
 
     let result =
-        ClusterActor::<MemoryOpLogs>::send_migrate_and_wait(migration_target, fake_handler).await;
+        ClusterActor::<MemoryOpLogs>::schedule_migration_target(migration_target, fake_handler)
+            .await;
 
     // THEN - should return the error
     assert!(result.is_err());

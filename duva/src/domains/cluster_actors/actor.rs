@@ -939,12 +939,11 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             warn!("Received outdated hashring, ignoring");
             return;
         }
-        if self.pending_requests.is_none() {
-            self.pending_requests = Some(VecDeque::new());
-        }
+        self.pending_requests.get_or_insert_with(VecDeque::new);
 
         let keys = cache_manager.route_keys(None).await;
-        let migration_plans = self.hash_ring.create_migration_tasks(&ring, keys).await;
+        let migration_plans = self.hash_ring.create_migration_tasks(&ring, keys);
+
         let mut batch_handles = FuturesUnordered::new();
 
         for (target_replid, mut migration_tasks) in migration_plans {
@@ -966,7 +965,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
                     MigrationTarget::new(target_replid.clone(), batch_to_migrate);
 
                 // Spawn each batch as a separate task for parallel execution
-                let batch_handle = tokio::spawn(Self::send_migrate_and_wait(
+                let batch_handle = tokio::spawn(Self::schedule_migration_target(
                     migration_target,
                     self.self_handler.clone(),
                 ));
@@ -974,16 +973,15 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             }
         }
         while let Some(batch_result) = batch_handles.next().await {
-            if let Err(e) =
-                batch_result.unwrap_or_else(|_| Err(anyhow::anyhow!("Batch task panicked")))
-            {
-                error!("Migration batch failed: {}", e);
-                // Continue with other batches even if one fails
+            match batch_result {
+                | Ok(Ok(())) => {}, // Success case
+                | Ok(Err(e)) => error!("Migration batch failed: {}", e),
+                | Err(_) => error!("Migration batch failed: Batch task panicked"),
             }
         }
     }
 
-    async fn send_migrate_and_wait(
+    async fn schedule_migration_target(
         migration_target: MigrationTarget,
         handler: ClusterCommandHandler,
     ) -> anyhow::Result<()> {
