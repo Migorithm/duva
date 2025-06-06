@@ -939,10 +939,8 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             return;
         }
         self.pending_requests.get_or_insert_with(VecDeque::new);
-
         let keys = cache_manager.route_keys(None).await;
         let migration_plans = self.hash_ring.create_migration_tasks(&ring, keys);
-
         let batch_handles = FuturesUnordered::new();
 
         for (target_replid, mut migration_tasks) in migration_plans {
