@@ -941,51 +941,75 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         }
 
         let keys = cache_manager.route_keys(None).await;
+        let migration_plans = self.hash_ring.create_migration_tasks(&ring, keys).await;
 
-        let migration_tasks = self.hash_ring.create_migration_tasks(&ring, keys).await;
-
-        tokio::spawn(Self::schedule_migrations(self.self_handler.clone(), migration_tasks));
+        Self::schedule_migrations(self.self_handler.clone(), migration_plans).await;
     }
 
+    // * This function is used to schedule migrations for each target.
+    // All batches spawn simultaneously:
+    // - Target A→B batch1, batch2, batch3
+    // - Target A→C batch1, batch2
+    // - Target A→D batch1
     async fn schedule_migrations(
         handler: ClusterCommandHandler,
-        mut migration_plans: BTreeMap<ReplicationId, Vec<hash_ring::MigrationTask>>,
+        migration_plans: BTreeMap<ReplicationId, Vec<hash_ring::MigrationTask>>,
     ) {
-        //* Base case
-        let Some((target_replid, mut migration_tasks)) = migration_plans.pop_last() else {
-            return;
-        };
+        use futures::stream::FuturesUnordered;
+        use futures::stream::StreamExt;
+        let mut batch_handles = FuturesUnordered::new();
 
-        let mut num = 0;
-        let mut tasks = Vec::new();
+        for (target_replid, mut migration_tasks) in migration_plans {
+            // Create batches and spawn each one directly
+            while !migration_tasks.is_empty() {
+                let mut num = 0;
+                let mut batch_to_migrate = Vec::new();
 
-        while let Some(task) = migration_tasks.pop() {
-            num += task.key_len();
-            tasks.push(task);
-            // 100 < keys at a time
-            if num > 100 {
-                break;
+                // Create a batch of tasks up to a certain size.
+                while let Some(task) = migration_tasks.pop() {
+                    num += task.key_len();
+                    batch_to_migrate.push(task);
+                    if num > 100 {
+                        break;
+                    }
+                }
+
+                let migration_target =
+                    MigrationTarget::new(target_replid.clone(), batch_to_migrate);
+
+                // Spawn each batch as a separate task for parallel execution
+                let handler = handler.clone();
+                let target_replid_for_error = target_replid.clone();
+                let batch_handle = tokio::spawn(async move {
+                    let (tx, rx) = tokio::sync::oneshot::channel();
+
+                    let send_result = handler
+                        .send(SchedulerMessage::ScheduleMigrationTarget(migration_target, tx))
+                        .await;
+
+                    if send_result.is_err() {
+                        return Err(anyhow::anyhow!(
+                            "Failed to schedule migration batch for {}",
+                            target_replid_for_error
+                        ));
+                    }
+
+                    rx.await.unwrap_or_else(|_| Err(anyhow::anyhow!("Channel closed")))
+                });
+
+                batch_handles.push(batch_handle);
             }
         }
 
-        // ! synchronization is required here.
-        let (tx, rx) = tokio::sync::oneshot::channel();
-        let _ = handler
-            .send(SchedulerMessage::ScheduleMigrationTarget(
-                MigrationTarget::new(target_replid.clone(), tasks),
-                tx,
-            ))
-            .await;
-
-        // TODO continue on error. Perhaps we need to consider tracking failed batches.
-        let _ = rx.await.unwrap_or_else(|_| Err(anyhow::anyhow!("Channel closed")));
-
-        if !migration_tasks.is_empty() {
-            migration_plans.insert(target_replid, migration_tasks);
+        // Await all batch tasks across all targets
+        while let Some(batch_result) = batch_handles.next().await {
+            if let Err(e) =
+                batch_result.unwrap_or_else(|_| Err(anyhow::anyhow!("Batch task panicked")))
+            {
+                error!("Migration batch failed: {}", e);
+                // Continue with other batches even if one fails
+            }
         }
-
-        // * Recursive Case
-        Box::pin(Self::schedule_migrations(handler, migration_plans)).await;
     }
 
     pub(crate) async fn migrate_batch(
@@ -1004,7 +1028,6 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         let mut cache_entries_to_migrate = Vec::new();
         let mut failed_keys: Vec<String> = Vec::new();
 
-        // TODO get keys?
         for key in target.tasks.iter().flat_map(|task| task.keys_to_migrate.iter().cloned()) {
             let Ok(Some(value)) = cache_manager.route_get(key.clone()).await else {
                 failed_keys.push(key.clone());
@@ -1013,7 +1036,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             cache_entries_to_migrate.push(CacheEntry::new(key, value));
         }
 
-        // 3 Get mutable reference to the target peer
+        // 3. Get mutable reference to the target peer
         let Some(target_peer) = self.members.get_mut(&peer_id) else {
             let _ = callback
                 .send(Err(anyhow::anyhow!("Target peer {} disappeared during migration", peer_id)));
@@ -1031,7 +1054,6 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             .await;
     }
 
-    /// Helper function to find the peer identifier for a given replication ID
     fn peerid_by_replid(&self, target_repl_id: &ReplicationId) -> Option<&PeerIdentifier> {
         self.members
             .iter()
