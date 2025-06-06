@@ -195,7 +195,7 @@ async fn test_make_migration_plan_happypath() {
     // WHEN - now, when heartbeat receiving actor hashring info (through heartbeat)
     let cache_manager = CacheManager { inboxes: vec![] };
     heartbeat_receiving_actor
-        .schedule_migration_if_valid(Some(hash_ring.clone()), &cache_manager)
+        .schedule_migration_if_required(Some(hash_ring.clone()), &cache_manager)
         .await;
 
     // THEN - it should create a migration plan
@@ -216,7 +216,7 @@ async fn test_make_migration_plan_when_given_hashring_is_same() {
     // WHEN - now, when heartbeat receiving actor hashring info (through heartbeat)
     let cache_manager = CacheManager { inboxes: vec![] };
     heartbeat_receiving_actor
-        .schedule_migration_if_valid(
+        .schedule_migration_if_required(
             Some(heartbeat_receiving_actor.hash_ring.clone()),
             &cache_manager,
         )
@@ -234,7 +234,7 @@ async fn test_make_migration_plan_when_no_hashring_given() {
 
     // WHEN - now, when heartbeat receiving actor hashring info (through heartbeat)
     let cache_manager = CacheManager { inboxes: vec![] };
-    heartbeat_receiving_actor.schedule_migration_if_valid(None, &cache_manager).await;
+    heartbeat_receiving_actor.schedule_migration_if_required(None, &cache_manager).await;
 
     // THEN no change should be made
     assert_eq!(heartbeat_receiving_actor.hash_ring.last_modified, last_modified);
@@ -251,7 +251,7 @@ async fn test_make_migration_plan_when_last_modified_is_lower_than_its_own() {
 
     // WHEN - now, when heartbeat receiving actor hashring info (through heartbeat)
     let cache_manager = CacheManager { inboxes: vec![] };
-    heartbeat_receiving_actor.schedule_migration_if_valid(Some(hash_ring), &cache_manager).await;
+    heartbeat_receiving_actor.schedule_migration_if_required(Some(hash_ring), &cache_manager).await;
 
     // THEN no change should be made
     assert_eq!(heartbeat_receiving_actor.hash_ring.last_modified, last_modified);
@@ -272,7 +272,7 @@ async fn test_send_migrate_and_wait_happypath() {
         async move {
             while let Some(msg) = rx.recv().await {
                 // ! First check, message must be Scheduler Message
-                let ClusterCommand::Scheduler(SchedulerMessage::ScheduleMigrationTarget(
+                let ClusterCommand::Scheduler(SchedulerMessage::ScheduleMigrationBatch(
                     batch,
                     callback,
                 )) = msg
@@ -332,7 +332,7 @@ async fn test_send_migrate_and_wait_callback_error() {
     // WHEN - simulate error response from migration handler
     tokio::spawn(async move {
         while let Some(msg) = rx.recv().await {
-            let ClusterCommand::Scheduler(SchedulerMessage::ScheduleMigrationTarget(_, callback)) =
+            let ClusterCommand::Scheduler(SchedulerMessage::ScheduleMigrationBatch(_, callback)) =
                 msg
             else {
                 panic!("Expected MigrateBatchKeys message");
