@@ -1054,20 +1054,22 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         cache_manager: &CacheManager,
         from: PeerIdentifier,
     ) {
-        let Some(peer) = self.members.get_mut(&from) else { return };
+        let Some(peer) = self.members.get_mut(&from) else {
+            return;
+        };
         let ack = MigrationBatchAck::new(migrate_batch.batch_id);
 
         // Validation against the now-updated hash ring - check if all keys belong to this node
-        if !self.hash_ring.verify_key_belongs_to_node(
-            &migrate_batch.cache_entries.iter().map(|e| e.key()).collect::<Vec<_>>(),
-            &self.replication.replid,
-        ) {
+        let keys_to_validate: Vec<&str> =
+            migrate_batch.cache_entries.iter().map(|entry| entry.key()).collect();
+
+        if !self.hash_ring.verify_key_belongs_to_node(&keys_to_validate, &from) {
             error!("Received batch contains keys that do not belong to this node");
             let _ = peer.send(ack).await;
             return;
         }
 
-        for entry in migrate_batch.cache_entries {
+        for entry in migrate_batch.cache_entries.into_iter() {
             if let Err(e) = cache_manager.route_direct_set(entry).await {
                 error!("Failed to apply migrated key: {}", e);
                 let _ = peer.send(ack).await;

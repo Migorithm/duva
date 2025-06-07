@@ -76,7 +76,7 @@ impl HashRing {
         self.update_last_modified();
     }
 
-    fn find_node(&self, hash: u64) -> Option<&ReplicationId> {
+    fn find_replid(&self, hash: u64) -> Option<&ReplicationId> {
         // Find the first vnode with hash >= target hash
         self.vnodes
             .range(hash..)
@@ -85,11 +85,22 @@ impl HashRing {
             .map(|(_, node_id)| node_id.as_ref())
     }
 
-    pub(crate) fn verify_key_belongs_to_node(&self, keys: &[&str], node: &ReplicationId) -> bool {
-        keys.iter().all(|key| {
-            let key_hash = fnv_1a_hash(key);
-            self.find_node(key_hash) == Some(node)
-        })
+    fn find_node(&self, hash: u64) -> Option<&PeerIdentifier> {
+        // Find the first vnode with hash >= target hash
+        let Some(replid) = self.find_replid(hash) else {
+            return None;
+        };
+        self.pnodes.get(replid).map(|id| id)
+    }
+
+    /// Verifies that all given keys belong to the specified node according to the hash ring
+    pub(crate) fn verify_key_belongs_to_node(
+        &self,
+        keys: &[&str],
+        expected_node: &PeerIdentifier,
+    ) -> bool {
+        keys.iter()
+            .all(|key| self.find_node(fnv_1a_hash(key)).map_or(false, |node| node == expected_node))
     }
 
     pub(crate) fn create_migration_tasks(
@@ -111,7 +122,7 @@ impl HashRing {
             let (start, end) = (prev_token.wrapping_add(1), token);
 
             if let (Some(old_owner), Some(new_owner)) =
-                (self.find_node(token), new_ring.find_node(token))
+                (self.find_replid(token), new_ring.find_replid(token))
             {
                 // If both old and new owners exist, we need to check if ownership changed
                 if old_owner != new_owner {
@@ -148,7 +159,7 @@ impl HashRing {
     #[cfg(test)]
     fn get_node_for_key(&self, key: &str) -> Option<&ReplicationId> {
         let hash = fnv_1a_hash(key);
-        self.find_node(hash)
+        self.find_replid(hash)
     }
 }
 

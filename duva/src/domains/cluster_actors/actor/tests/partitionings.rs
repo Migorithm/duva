@@ -1,6 +1,10 @@
+use crate::domains::QueryIO;
+use crate::domains::caches::cache_objects::{CacheEntry, CacheValue};
+use crate::domains::cluster_actors::hash_ring::BatchId;
 use crate::domains::cluster_actors::hash_ring::{
     HashRing, MigrationTask, tests::migration_task_create_helper,
 };
+use crate::domains::peers::command::MigrateBatch;
 use std::sync::Arc;
 use std::sync::atomic::AtomicU64;
 use std::time::Duration;
@@ -451,4 +455,128 @@ async fn test_migrate_keys_retrieves_actual_data() {
     // callback will not be called because migration is not completed
     let result = tokio::time::timeout(Duration::from_millis(100), callback_rx).await;
     assert!(result.is_err());
+}
+
+#[tokio::test]
+async fn test_receive_batch_success_path() {
+    // GIVEN
+    let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
+    let hwm = Arc::new(AtomicU64::new(0));
+    let cache_manager = CacheManager::run_cache_actors(hwm);
+
+    let peer_replid = ReplicationId::Key("repl_id_for_other_node".to_string());
+    let (message_buf, sender_peer_id) =
+        cluster_actor.test_add_peer(6567, NodeKind::NonData, Some(peer_replid.clone()));
+    cluster_actor
+        .hash_ring
+        .add_partition_if_not_exists(peer_replid.clone(), sender_peer_id.clone());
+
+    // Create cache entries that belong to this node
+    let cache_entries = vec![
+        CacheEntry::new("success_key1".to_string(), CacheValue::new("value1".to_string())),
+        CacheEntry::new("success_key2".to_string(), CacheValue::new("value2".to_string())),
+    ];
+    let test_batch_id = BatchId("success_test".into());
+    let migrate_batch =
+        MigrateBatch { batch_id: test_batch_id.clone(), cache_entries: cache_entries.clone() };
+
+    // WHEN
+    cluster_actor.receive_batch(migrate_batch, &cache_manager, sender_peer_id).await;
+
+    // THEN - should send success acknowledgement
+    tokio::time::sleep(Duration::from_millis(100)).await; // Give more time for async operations
+
+    let sent_messages = message_buf.lock().await;
+
+    assert_eq!(sent_messages.len(), 1, "Expected exactly one message to be sent");
+
+    let message = sent_messages.front().unwrap();
+    let QueryIO::MigrationBatchAck(ack) = message else {
+        panic!("Expected MigrationBatchAck message, got: {:?}", message);
+    };
+
+    assert_eq!(ack.batch_id, test_batch_id);
+    assert!(ack.success, "Should send success acknowledgement");
+
+    // Verify the keys were actually stored in the cache
+    let retrieved_value1 = cache_manager.route_get("success_key1").await.unwrap();
+    let retrieved_value2 = cache_manager.route_get("success_key2").await.unwrap();
+
+    assert!(retrieved_value1.is_some());
+    assert!(retrieved_value2.is_some());
+    assert_eq!(retrieved_value1.unwrap().value(), "value1");
+    assert_eq!(retrieved_value2.unwrap().value(), "value2");
+}
+
+// Tests for receive_batch function
+#[tokio::test]
+async fn test_receive_batch_validation_failure_keys_not_belonging_to_node() {
+    // GIVEN
+    let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
+    let hwm = Arc::new(AtomicU64::new(0));
+    let cache_manager = CacheManager::run_cache_actors(hwm);
+
+    // Add a peer to send the batch from
+    let (message_buf, sender_peer_id) = cluster_actor.test_add_peer(6565, NodeKind::NonData, None);
+
+    // Create a hash ring where another node is responsible for the keys
+    let mut hash_ring = HashRing::default();
+    let other_node_replid = ReplicationId::Key("other_node".to_string());
+    hash_ring
+        .add_partition_if_not_exists(other_node_replid, PeerIdentifier("127.0.0.1:5000".into()));
+    cluster_actor.hash_ring = hash_ring;
+
+    // Create cache entries that should belong to the other node
+    // ! it doesn't guarantee that the keys will be taken by other node, but it's a good test case
+    let cache_entries = vec![
+        CacheEntry::new("key1".to_string(), CacheValue::new("value1".to_string())),
+        CacheEntry::new("key2".to_string(), CacheValue::new("value2".to_string())),
+    ];
+
+    let test_batch_id = BatchId("validation_test".into());
+    let migrate_batch = MigrateBatch { batch_id: test_batch_id.clone(), cache_entries };
+
+    // WHEN
+    cluster_actor.receive_batch(migrate_batch, &cache_manager, sender_peer_id).await;
+
+    // THEN - should send failure acknowledgement
+    let sent_messages = message_buf.lock().await;
+    assert_eq!(sent_messages.len(), 1);
+
+    let message = sent_messages.front().unwrap();
+    let QueryIO::MigrationBatchAck(ack) = message else {
+        panic!("Expected MigrationBatchAck message");
+    };
+    assert_eq!(ack.batch_id, test_batch_id);
+    assert!(!ack.success, "Should send failure acknowledgement for validation failure");
+}
+
+#[tokio::test]
+async fn test_receive_batch_empty_cache_entries() {
+    // GIVEN
+    let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
+    let hwm = Arc::new(AtomicU64::new(0));
+    let cache_manager = CacheManager::run_cache_actors(hwm);
+
+    let (message_buf, sender_peer_id) = cluster_actor.test_add_peer(6568, NodeKind::NonData, None);
+
+    let migrate_batch = MigrateBatch {
+        batch_id: BatchId("empty_test".into()),
+        cache_entries: vec![], // Empty cache entries
+    };
+
+    // WHEN
+    cluster_actor.receive_batch(migrate_batch, &cache_manager, sender_peer_id).await;
+
+    // THEN - should send success acknowledgement for empty batch
+    let sent_messages = message_buf.lock().await;
+    assert_eq!(sent_messages.len(), 1);
+
+    let message = sent_messages.front().unwrap();
+    let QueryIO::MigrationBatchAck(ack) = message else {
+        panic!("Expected MigrationBatchAck message");
+    };
+
+    assert_eq!(ack.batch_id.0, "empty_test");
+    assert!(ack.success, "Should send success acknowledgement for empty batch");
 }
