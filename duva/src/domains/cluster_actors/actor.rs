@@ -33,6 +33,7 @@ use crate::domains::peers::peer::NodeKind;
 use crate::domains::peers::peer::PeerState;
 use crate::err;
 use client_sessions::ClientSessions;
+use futures::future::join_all;
 use heartbeat_scheduler::HeartBeatScheduler;
 
 use std::collections::HashMap;
@@ -1047,7 +1048,6 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             .map(|(peer_id, _)| peer_id)
     }
 
-    //TODO Test
     pub(crate) async fn receive_batch(
         &mut self,
         migrate_batch: MigrateBatch,
@@ -1069,13 +1069,13 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             return;
         }
 
-        for entry in migrate_batch.cache_entries.into_iter() {
-            if let Err(e) = cache_manager.route_direct_set(entry).await {
-                error!("Failed to apply migrated key: {}", e);
-                let _ = peer.send(ack).await;
-                return;
-            }
-        }
+        join_all(
+            migrate_batch
+                .cache_entries
+                .into_iter()
+                .map(|entry| cache_manager.route_direct_set(entry)),
+        )
+        .await;
 
         let _ = peer.send(ack.turn_success()).await;
     }
