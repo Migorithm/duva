@@ -85,6 +85,13 @@ impl HashRing {
             .map(|(_, node_id)| node_id.as_ref())
     }
 
+    pub(crate) fn verify_key_belongs_to_node(&self, keys: &[&str], node: &ReplicationId) -> bool {
+        keys.iter().all(|key| {
+            let key_hash = fnv_1a_hash(key);
+            self.find_node(key_hash) == Some(node)
+        })
+    }
+
     pub(crate) fn create_migration_tasks(
         &self,
         new_ring: &HashRing,

@@ -187,6 +187,16 @@ mod peer_messages {
         pub(crate) success: bool,
     }
 
+    impl MigrationBatchAck {
+        pub(crate) fn new(batch_id: BatchId) -> Self {
+            Self { batch_id, success: false }
+        }
+
+        pub(crate) fn turn_success(self) -> Self {
+            Self { success: true, ..self }
+        }
+    }
+
     impl From<MigrationBatchAck> for QueryIO {
         fn from(value: MigrationBatchAck) -> Self {
             QueryIO::MigrationBatchAck(value)
