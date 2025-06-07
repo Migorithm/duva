@@ -64,6 +64,12 @@ impl CacheManager {
         self.select_shard(kvs.key()).send(CacheCommand::Set { cache_entry: kvs }).await?;
         Ok(format!("s:{}|idx:{}", value, current_idx))
     }
+
+    pub(crate) async fn route_direct_set(&self, cache_entry: CacheEntry) -> Result<()> {
+        self.select_shard(cache_entry.key()).send(CacheCommand::Set { cache_entry }).await?;
+        Ok(())
+    }
+
     pub(crate) async fn route_save(
         &self,
         save_target: SaveTarget,

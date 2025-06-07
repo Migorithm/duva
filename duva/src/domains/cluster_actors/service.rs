@@ -136,7 +136,12 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             | StartRebalance => {
                 self.start_rebalance(from).await;
             },
-            | MigrateBatch(migrate_batch) => todo!(),
+            | ReceiveBatch(migrate_batch) => {
+                self.receive_batch(migrate_batch, cache_manager, from).await;
+            },
+            | MigrationBatchAck(migration_batch_ack) => {
+                self.handle_migration_ack(migration_batch_ack).await;
+            },
         }
     }
 

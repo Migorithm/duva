@@ -106,4 +106,8 @@ macro_rules! err {
         tracing::error!("{}: {}", $msg, file!());
         Err(anyhow::anyhow!($msg))
     }};
+    ($msg:expr, $($arg:tt)*) => {{
+        tracing::error!("{}: {}", $msg, file!());
+        Err(anyhow::anyhow!($msg, $($arg)*))
+    }};
 }
