@@ -1098,7 +1098,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
     //TODO Test
     fn unblock_write_reqs_if_done(&mut self) {
-        let migrations_done = self.pending_migrations.as_ref().map_or(true, |p| p.is_empty());
+        let migrations_done = self.pending_migrations.as_ref().is_none_or(|p| p.is_empty());
 
         if migrations_done {
             if let Some(mut pending_reqs) = self.pending_requests.take() {

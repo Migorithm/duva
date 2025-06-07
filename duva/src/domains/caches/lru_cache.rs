@@ -43,9 +43,8 @@ impl<T: Clone> Slab<T> {
     }
 
     fn insert(&mut self, value: T) -> Option<usize> {
-        self.free_list.pop_front().map(|idx| {
+        self.free_list.pop_front().inspect(|&idx| {
             self.data[idx] = Some(value);
-            idx
         })
     }
 
