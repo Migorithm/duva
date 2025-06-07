@@ -181,6 +181,7 @@ async fn test_schedule_migration_if_required_when_noplan_is_made() {
     // GIVEN
     let mut heartbeat_receiving_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
     let last_modified = heartbeat_receiving_actor.hash_ring.last_modified;
+    tokio::time::sleep(Duration::from_millis(1)).await; // ! sleep to make sure last_modified is updated
 
     // this hash ring is the one for coordinating node
     let mut hash_ring = HashRing::default();
