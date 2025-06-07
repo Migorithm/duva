@@ -69,10 +69,9 @@ impl TRead for FakeReadWrite {
     }
 
     async fn read_values(&mut self) -> Result<Vec<QueryIO>, IoError> {
-        let mut values = Vec::new();
-        let mut guard = self.0.lock().await;
-
-        values.extend(guard.drain(..));
+        let guard = self.0.lock().await;
+        // ! it doesn't empty the buffer, so we can test the buffer later on
+        let values = guard.clone().drain(..).collect();
         Ok(values)
     }
 }
