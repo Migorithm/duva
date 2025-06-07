@@ -949,11 +949,6 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         // migration tasks are sent.
         self.hash_ring = new_ring;
 
-        if migration_plans.is_empty() {
-            self.unblock_write_reqs_if_done();
-            return;
-        }
-
         let batch_handles = FuturesUnordered::new();
 
         for (target_replid, mut migration_tasks) in migration_plans {
@@ -987,6 +982,8 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
                 }
             })
             .await;
+
+        self.unblock_write_reqs_if_done();
     }
 
     async fn schedule_migration_target(
@@ -1073,8 +1070,6 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
                 error!("Failed to send migration ack to peer {}: {}", from, e);
             }
         }
-
-        self.unblock_write_reqs_if_done();
     }
 
     //TODO Test
