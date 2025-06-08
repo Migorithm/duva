@@ -602,15 +602,16 @@ async fn test_unblock_write_reqs_if_done_when_no_pending_migrations() {
     // Add some pending requests
     let (tx1, _rx1) = tokio::sync::oneshot::channel();
     let (tx2, _rx2) = tokio::sync::oneshot::channel();
-    let write_req1 =
-        WriteRequest::Set { key: "key1".into(), value: "value1".into(), expires_at: None };
-    let write_req2 =
-        WriteRequest::Set { key: "key2".into(), value: "value2".into(), expires_at: None };
-    let req1 = ConsensusRequest::new(write_req1, tx1, None);
-    let req2 = ConsensusRequest::new(write_req2, tx2, None);
-
-    cluster_actor.pending_requests.as_mut().unwrap().push_back(req1);
-    cluster_actor.pending_requests.as_mut().unwrap().push_back(req2);
+    cluster_actor
+        .pending_requests
+        .as_mut()
+        .unwrap()
+        .push_back(consensus_request_create_helper(tx1, None));
+    cluster_actor
+        .pending_requests
+        .as_mut()
+        .unwrap()
+        .push_back(consensus_request_create_helper(tx2, None));
 
     // Clear pending migrations (simulating all migrations are done)
     cluster_actor.pending_migrations = Some(HashMap::new());
@@ -633,10 +634,11 @@ async fn test_unblock_write_reqs_if_done_when_migrations_still_pending() {
 
     // Add some pending requests
     let (tx, _rx) = tokio::sync::oneshot::channel();
-    let write_req =
-        WriteRequest::Set { key: "key1".into(), value: "value1".into(), expires_at: None };
-    let req = ConsensusRequest::new(write_req, tx, None);
-    cluster_actor.pending_requests.as_mut().unwrap().push_back(req);
+    cluster_actor
+        .pending_requests
+        .as_mut()
+        .unwrap()
+        .push_back(consensus_request_create_helper(tx, None));
 
     // Add pending migration (simulating migration still in progress)
     let (migration_tx, _migration_rx) = tokio::sync::oneshot::channel();
@@ -686,10 +688,11 @@ async fn test_unblock_write_reqs_if_done_multiple_times() {
 
     // Add a pending request
     let (tx, _rx) = tokio::sync::oneshot::channel();
-    let write_req =
-        WriteRequest::Set { key: "key1".into(), value: "value1".into(), expires_at: None };
-    let req = ConsensusRequest::new(write_req, tx, None);
-    cluster_actor.pending_requests.as_mut().unwrap().push_back(req);
+    cluster_actor
+        .pending_requests
+        .as_mut()
+        .unwrap()
+        .push_back(consensus_request_create_helper(tx, None));
 
     // Set migrations as done
     cluster_actor.pending_migrations = Some(HashMap::new());
