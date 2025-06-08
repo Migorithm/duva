@@ -429,12 +429,16 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             return;
         }
 
-        if let Some(new_hash_ring) =
-            self.hash_ring.add_partition_if_not_exists(member.replid().clone(), member.id().clone())
-        {
-            warn!("Rebalancing started! subsequent writes will be blocked until rebalance is done");
-            self.block_write_reqs();
+        let Some(new_hash_ring) = self
+            .hash_ring
+            .add_partition_if_not_exists(member.replid().clone(), member.id().clone())
+        else {
+            return;
         };
+
+        warn!("Rebalancing started! subsequent writes will be blocked until rebalance is done");
+        self.block_write_reqs();
+
         let hb = self
             .replication
             .default_heartbeat(
@@ -442,7 +446,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
                 self.logger.last_log_index,
                 self.logger.last_log_term,
             )
-            .set_hashring(self.hash_ring.clone());
+            .set_hashring(new_hash_ring.clone());
 
         self.send_heartbeat(hb).await;
     }

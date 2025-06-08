@@ -143,7 +143,7 @@ async fn test_start_rebalance_happy_path() {
     };
     assert!(hb.hashring.is_some());
     assert_eq!(cluster_actor.hash_ring.get_pnode_count(), 1);
-    assert_eq!(cluster_actor.hash_ring, hb.hashring.unwrap());
+    assert_ne!(cluster_actor.hash_ring, hb.hashring.unwrap());
 }
 
 #[tokio::test]
