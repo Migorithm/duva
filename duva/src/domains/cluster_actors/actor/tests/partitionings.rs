@@ -3,6 +3,8 @@ use crate::domains::cluster_actors::hash_ring::BatchId;
 use crate::domains::cluster_actors::hash_ring::{
     HashRing, MigrationTask, tests::migration_task_create_helper,
 };
+use crate::domains::peers::PeerMessage;
+use crate::domains::peers::command::PeerCommand;
 use std::collections::HashMap;
 use std::time::Duration;
 
@@ -649,4 +651,66 @@ async fn test_handle_migration_ack_success_case_with_pending_reqs_and_migration(
     // Since this was the last migration, both should be None now
     assert!(cluster_actor.pending_requests.is_none());
     assert!(cluster_actor.pending_migrations.is_none());
+}
+
+// Verify that the start_rebalance -> schedule_migration_if_required flow works end-to-end.
+#[tokio::test]
+async fn test_start_rebalance_schedules_migration_batches() {
+    // GIVEN
+    let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
+    let keys = vec!["test_key_1".to_string(), "test_key_2".to_string()];
+    let (_hwm, cache_manager) = cache_manager_create_helper_with_keys(keys).await;
+
+    // Add a peer with a different replication ID that will trigger migration
+    let target_repl_id = ReplicationId::Key(uuid::Uuid::now_v7().to_string());
+    let (target_peer_message_buf, peer_id) =
+        cluster_actor.test_add_peer(6570, NodeKind::NonData, Some(target_repl_id.clone()));
+
+    // Start the cluster actor in a background task so it can process scheduler messages
+    let handler = cluster_actor.self_handler.clone();
+    tokio::spawn(cluster_actor.handle(cache_manager.clone()));
+
+    // WHEN - call start_rebalance which should trigger the full migration flow
+    handler
+        .send(ClusterCommand::Peer(PeerCommand {
+            from: peer_id.clone(),
+            msg: PeerMessage::StartRebalance,
+        }))
+        .await
+        .unwrap();
+
+    // Give some time for the async migration tasks to complete
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    // THEN - verify that the target peer received a heartbeat with the new hash ring
+    let sent_messages = target_peer_message_buf.lock().await;
+
+    assert!(!sent_messages.is_empty(), "Target peer should have received messages");
+
+    // Look for ClusterHeartBeat messages
+    let heartbeat_messages: Vec<_> = sent_messages
+        .iter()
+        .filter_map(|msg| if let QueryIO::ClusterHeartBeat(hb) = msg { Some(hb) } else { None })
+        .collect();
+
+    // Look for MigrateBatch messages
+    let migrate_batch_messages: Vec<_> = sent_messages
+        .iter()
+        .filter_map(|msg| if let QueryIO::MigrateBatch(batch) = msg { Some(batch) } else { None })
+        .collect();
+
+    // Verify that a heartbeat with the new hash ring was sent
+    assert!(!heartbeat_messages.is_empty(), "Target peer should have received heartbeat message");
+    let heartbeat = heartbeat_messages.first().unwrap();
+    assert!(heartbeat.hashring.is_some(), "Heartbeat should contain the new hash ring");
+    assert_eq!(
+        heartbeat.hashring.as_ref().unwrap().get_pnode_count(),
+        2,
+        "Hash ring should have 2 partitions"
+    );
+
+    assert!(
+        !migrate_batch_messages.is_empty(),
+        "Target peer should have received migrate batch message"
+    );
 }

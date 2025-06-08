@@ -453,6 +453,8 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             .set_hashring(new_hash_ring.clone());
 
         self.send_heartbeat(hb).await;
+
+        //TODO this flow has not been tested. need to see if migration batch is scheduled.
         self.schedule_migration_if_required(Some(new_hash_ring), cache_manager).await;
     }
 

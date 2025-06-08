@@ -185,6 +185,18 @@ pub(crate) fn cache_manager_create_helper() -> (Arc<AtomicU64>, CacheManager) {
     (hwm, cache_manager)
 }
 
+pub(crate) async fn cache_manager_create_helper_with_keys(
+    keys: Vec<String>,
+) -> (Arc<AtomicU64>, CacheManager) {
+    let hwm = Arc::new(AtomicU64::new(0));
+    let cache_manager = CacheManager::run_cache_actors(hwm.clone());
+    for key in keys.clone() {
+        cache_manager.route_set(key, "value".to_string(), None, 1).await.unwrap();
+    }
+    hwm.store(keys.len() as u64, Ordering::Relaxed);
+    (hwm, cache_manager)
+}
+
 // Helper function to setup blocked cluster actor with pending requests
 pub(crate) async fn setup_blocked_cluster_actor_with_requests(
     num_requests: usize,
