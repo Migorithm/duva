@@ -167,11 +167,12 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         );
 
         let (tx, _) = tokio::sync::broadcast::channel::<Vec<PeerIdentifier>>(100);
-        let mut hash_ring = HashRing::default();
-        hash_ring.add_partition_if_not_exists(
-            init_repl_state.replid.clone(),
-            init_repl_state.self_identifier(),
-        );
+        let hash_ring = HashRing::default()
+            .add_partition_if_not_exists(
+                init_repl_state.replid.clone(),
+                init_repl_state.self_identifier(),
+            )
+            .unwrap();
 
         Self {
             heartbeat_scheduler,
@@ -428,15 +429,12 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             return;
         }
 
-        if self
-            .hash_ring
-            .add_partition_if_not_exists(member.replid().clone(), member.id().clone())
-            .is_some()
+        if let Some(new_hash_ring) =
+            self.hash_ring.add_partition_if_not_exists(member.replid().clone(), member.id().clone())
         {
             warn!("Rebalancing started! subsequent writes will be blocked until rebalance is done");
             self.block_write_reqs();
         };
-
         let hb = self
             .replication
             .default_heartbeat(
@@ -925,11 +923,6 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     }
 
     // * If the hashring is valid, make a plan to migrate data for each paritition
-    // 1. Partition Analysis - Compare the old and new hash rings to identify ranges where ownership has changed by examining all partition boundaries from both rings.
-    // 2. Migration Tasks - Create structured migration tasks containing the hash range, source/destination nodes, and actual keys that need to move.
-    // 3. Efficient Range Detection - Use the ring structure to find ownership changes by sampling mid-points of ranges rather than checking every possible hash value.
-    // 4. Key Discovery - The get_keys_in_range function needs to be implemented based on your actual data storage to find keys whose hashes fall within specific ranges.
-    // 5. Execution Strategy - Provides both queuing (for batch processing) and immediate execution options for migration tasks.
     async fn schedule_migration_if_required(
         &mut self,
         hashring: Option<HashRing>,
@@ -975,7 +968,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
                 }
 
                 // Spawn each batch as a separate task for parallel execution
-                batch_handles.push(tokio::spawn(Self::schedule_migration_target(
+                batch_handles.push(tokio::spawn(Self::schedule_migration_in_batch(
                     target_replid.clone(),
                     batch_to_migrate,
                     self.self_handler.clone(),
@@ -993,7 +986,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             .await;
     }
 
-    async fn schedule_migration_target(
+    async fn schedule_migration_in_batch(
         target_replid: ReplicationId,
         batch_to_migrate: Vec<MigrationTask>,
         handler: ClusterCommandHandler,

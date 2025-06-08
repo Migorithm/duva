@@ -37,17 +37,18 @@ impl HashRing {
             .as_millis();
     }
 
-    /// Adds a new partition to the hash ring if it doesn't already exist.
+    // Adds a new partition to the existing ring and returns a new ring if the partition doesn't already exist.
     pub(crate) fn add_partition_if_not_exists(
-        &mut self,
+        &self,
         repl_id: ReplicationId,
         leader_id: PeerIdentifier,
-    ) -> Option<()> {
+    ) -> Option<HashRing> {
         if self.exists(&repl_id) {
             return None;
         }
 
-        self.pnodes.insert(repl_id.clone(), leader_id);
+        let mut res = self.clone();
+        res.pnodes.insert(repl_id.clone(), leader_id);
 
         let repl_id = Rc::new(repl_id.clone());
         // Create virtual nodes for better distribution
@@ -55,12 +56,12 @@ impl HashRing {
             let virtual_node_id = format!("{}-{}", repl_id, i);
             let hash = fnv_1a_hash(&virtual_node_id);
 
-            self.vnodes.insert(hash, repl_id.clone());
+            res.vnodes.insert(hash, repl_id.clone());
         }
 
-        self.update_last_modified();
+        res.update_last_modified();
 
-        Some(())
+        Some(res)
     }
 
     /// The following method will be invoked when:

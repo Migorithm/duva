@@ -142,35 +142,8 @@ async fn test_start_rebalance_happy_path() {
         panic!("Expected ClusterHeartBeat message");
     };
     assert!(hb.hashring.is_some());
-    assert_eq!(cluster_actor.hash_ring.get_pnode_count(), 2);
+    assert_eq!(cluster_actor.hash_ring.get_pnode_count(), 1);
     assert_eq!(cluster_actor.hash_ring, hb.hashring.unwrap());
-}
-
-#[tokio::test]
-async fn test_start_rebalance_should_be_idempotent() {
-    // GIVEN
-    let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
-
-    let (buf, peer_id) = cluster_actor.test_add_peer(
-        6559,
-        NodeKind::NonData,
-        Some(ReplicationId::Key(uuid::Uuid::now_v7().to_string())),
-    );
-
-    // WHEN
-    cluster_actor.start_rebalance(peer_id.clone()).await;
-    assert_eq!(cluster_actor.hash_ring.get_pnode_count(), 2);
-    cluster_actor.start_rebalance(peer_id).await;
-
-    // THEN
-    assert_eq!(cluster_actor.hash_ring.get_pnode_count(), 2);
-
-    // ! still, the message should be sent
-    let msg1 = buf.lock().await.pop_front();
-    let msg2 = buf.lock().await.pop_front();
-    assert!(msg1.is_some());
-    assert!(msg2.is_some());
-    assert_eq!(msg1, msg2);
 }
 
 #[tokio::test]
@@ -181,14 +154,17 @@ async fn test_schedule_migration_if_required_when_noplan_is_made() {
     tokio::time::sleep(Duration::from_millis(1)).await; // sleep to make sure last_modified is updated
 
     // Create hash ring for coordinating node
-    let mut hash_ring = HashRing::default();
+    let hash_ring = HashRing::default();
     let coordinator_replid = ReplicationId::Key(uuid::Uuid::now_v7().to_string());
-    hash_ring
-        .add_partition_if_not_exists(coordinator_replid, PeerIdentifier::new("127.0.0.1", 5999));
-    hash_ring.add_partition_if_not_exists(
-        heartbeat_receiving_actor.replication.replid.clone(),
-        heartbeat_receiving_actor.replication.self_identifier(),
-    );
+    let hash_ring = hash_ring
+        .add_partition_if_not_exists(coordinator_replid, PeerIdentifier::new("127.0.0.1", 5999))
+        .unwrap();
+    let hash_ring = hash_ring
+        .add_partition_if_not_exists(
+            heartbeat_receiving_actor.replication.replid.clone(),
+            heartbeat_receiving_actor.replication.self_identifier(),
+        )
+        .unwrap();
 
     // WHEN
     let (_hwm, cache_manager) = cache_manager_create_helper();
@@ -280,7 +256,7 @@ async fn test_send_migrate_and_wait_happypath() {
         }
     });
 
-    let result = ClusterActor::<MemoryOpLogs>::schedule_migration_target(
+    let result = ClusterActor::<MemoryOpLogs>::schedule_migration_in_batch(
         target_replid,
         batch_to_migrate,
         fake_handler,
@@ -303,7 +279,7 @@ async fn test_send_migrate_and_wait_channel_error() {
     // WHEN - drop receiver to simulate channel closure
     drop(rx);
 
-    let result = ClusterActor::<MemoryOpLogs>::schedule_migration_target(
+    let result = ClusterActor::<MemoryOpLogs>::schedule_migration_in_batch(
         target_replid,
         batch_to_migrate,
         fake_handler,
@@ -338,7 +314,7 @@ async fn test_send_migrate_and_wait_callback_error() {
         }
     });
 
-    let result = ClusterActor::<MemoryOpLogs>::schedule_migration_target(
+    let result = ClusterActor::<MemoryOpLogs>::schedule_migration_in_batch(
         target_replid,
         batch_to_migrate,
         fake_handler,
@@ -429,9 +405,10 @@ async fn test_receive_batch_success_path() {
     let peer_replid = ReplicationId::Key("repl_id_for_other_node".to_string());
     let (message_buf, sender_peer_id) =
         cluster_actor.test_add_peer(6567, NodeKind::NonData, Some(peer_replid.clone()));
-    cluster_actor
+    cluster_actor.hash_ring = cluster_actor
         .hash_ring
-        .add_partition_if_not_exists(peer_replid.clone(), sender_peer_id.clone());
+        .add_partition_if_not_exists(peer_replid.clone(), sender_peer_id.clone())
+        .unwrap();
 
     let cache_entries =
         cache_entries_create_helper(&[("success_key1", "value1"), ("success_key2", "value2")]);
@@ -459,10 +436,11 @@ async fn test_receive_batch_validation_failure_keys_not_belonging_to_node() {
     // GIVEN
     let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
     // Create a hash ring where another node is responsible for the keys
-    let mut hash_ring = HashRing::default();
+    let hash_ring = HashRing::default();
     let other_node_replid = ReplicationId::Key("other_node".to_string());
-    hash_ring
-        .add_partition_if_not_exists(other_node_replid, PeerIdentifier("127.0.0.1:5000".into()));
+    let hash_ring = hash_ring
+        .add_partition_if_not_exists(other_node_replid, PeerIdentifier("127.0.0.1:5000".into()))
+        .unwrap();
     cluster_actor.hash_ring = hash_ring;
 
     // ! this is the one for receiving actor

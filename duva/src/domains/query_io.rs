@@ -753,11 +753,12 @@ mod test {
     #[test]
     fn test_heartbeat_include_hashring() {
         // GIVEN
-        let mut ring = HashRing::default();
-        ring.add_partition_if_not_exists(
-            ReplicationId::Key(Uuid::now_v7().to_string()),
-            PeerIdentifier::new("127.0.1:3344".into(), 0),
-        );
+        let ring = HashRing::default()
+            .add_partition_if_not_exists(
+                ReplicationId::Key(Uuid::now_v7().to_string()),
+                PeerIdentifier::new("127.0.1:3344".into(), 0),
+            )
+            .unwrap();
 
         let heartbeat = HeartBeat {
             from: PeerIdentifier::new("127.0.0.1:3344".into(), 0),
