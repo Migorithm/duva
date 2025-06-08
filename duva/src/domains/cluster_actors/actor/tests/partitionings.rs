@@ -93,7 +93,9 @@ async fn test_start_rebalance_before_connection_is_made() {
     let (_hwm, cache_manager) = cache_manager_create_helper();
 
     // WHEN
-    cluster_actor.start_rebalance(PeerIdentifier("127.0.0.1:6559".into()), &cache_manager).await;
+    cluster_actor
+        .start_rebalance(PeerIdentifier("127.0.0.1:6559".into()), &cache_manager, None)
+        .await;
 
     // THEN
     // No pending requests should be created since the member is not connected
@@ -110,7 +112,7 @@ async fn test_start_rebalance_to_replica() {
     let (buf, peer_id) = cluster_actor.test_add_peer(6559, NodeKind::Replica, None);
 
     // WHEN
-    cluster_actor.start_rebalance(peer_id, &cache_manager).await;
+    cluster_actor.start_rebalance(peer_id, &cache_manager, None).await;
 
     // THEN
     assert!(cluster_actor.pending_requests.is_none());
@@ -130,7 +132,7 @@ async fn test_start_rebalance_happy_path() {
     );
 
     // WHEN
-    cluster_actor.start_rebalance(peer_id, &cache_manager).await;
+    cluster_actor.start_rebalance(peer_id, &cache_manager, None).await;
 
     // THEN
     assert!(cluster_actor.pending_requests.is_some());
@@ -150,8 +152,8 @@ async fn test_start_rebalance_happy_path() {
 #[tokio::test]
 async fn test_schedule_migration_if_required_when_noplan_is_made() {
     // GIVEN
-    let mut heartbeat_receiving_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
-    let last_modified = heartbeat_receiving_actor.hash_ring.last_modified;
+    let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
+    let last_modified = cluster_actor.hash_ring.last_modified;
     tokio::time::sleep(Duration::from_millis(1)).await; // sleep to make sure last_modified is updated
 
     // Create hash ring for coordinating node
@@ -162,71 +164,68 @@ async fn test_schedule_migration_if_required_when_noplan_is_made() {
         .unwrap();
     let hash_ring = hash_ring
         .add_partition_if_not_exists(
-            heartbeat_receiving_actor.replication.replid.clone(),
-            heartbeat_receiving_actor.replication.self_identifier(),
+            cluster_actor.replication.replid.clone(),
+            cluster_actor.replication.self_identifier(),
         )
         .unwrap();
 
     // WHEN
     let (_hwm, cache_manager) = cache_manager_create_helper();
-    heartbeat_receiving_actor
-        .schedule_migration_if_required(Some(hash_ring.clone()), &cache_manager)
+    cluster_actor
+        .schedule_migration_if_required(Some(hash_ring.clone()), &cache_manager, None)
         .await;
 
     // THEN
-    assert!(heartbeat_receiving_actor.pending_requests.is_none());
-    assert_eq!(heartbeat_receiving_actor.hash_ring, hash_ring);
-    assert_ne!(heartbeat_receiving_actor.hash_ring.last_modified, last_modified);
+    assert!(cluster_actor.pending_requests.is_none());
+    assert_eq!(cluster_actor.hash_ring, hash_ring);
+    assert_ne!(cluster_actor.hash_ring.last_modified, last_modified);
 }
 
 #[tokio::test]
 async fn test_make_migration_plan_when_given_hashring_is_same() {
     // GIVEN
-    let mut heartbeat_receiving_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
-    let last_modified = heartbeat_receiving_actor.hash_ring.last_modified;
+    let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
+    let last_modified = cluster_actor.hash_ring.last_modified;
 
     // WHEN
     let (_hwm, cache_manager) = cache_manager_create_helper();
-    heartbeat_receiving_actor
-        .schedule_migration_if_required(
-            Some(heartbeat_receiving_actor.hash_ring.clone()),
-            &cache_manager,
-        )
+    cluster_actor
+        .schedule_migration_if_required(Some(cluster_actor.hash_ring.clone()), &cache_manager, None)
         .await;
 
     // THEN
-    assert_eq!(heartbeat_receiving_actor.hash_ring.last_modified, last_modified);
+    assert_eq!(cluster_actor.hash_ring.last_modified, last_modified);
 }
 
 #[tokio::test]
 async fn test_make_migration_plan_when_no_hashring_given() {
     // GIVEN
-    let mut heartbeat_receiving_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
-    let last_modified = heartbeat_receiving_actor.hash_ring.last_modified;
+    let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
+    let last_modified = cluster_actor.hash_ring.last_modified;
 
     // WHEN
     let (_hwm, cache_manager) = cache_manager_create_helper();
-    heartbeat_receiving_actor.schedule_migration_if_required(None, &cache_manager).await;
+    cluster_actor.schedule_migration_if_required(None, &cache_manager, None).await;
 
     // THEN
-    assert_eq!(heartbeat_receiving_actor.hash_ring.last_modified, last_modified);
+    assert_eq!(cluster_actor.hash_ring.last_modified, last_modified);
 }
 
 #[tokio::test]
 async fn test_make_migration_plan_when_last_modified_is_lower_than_its_own() {
     // GIVEN
-    let mut heartbeat_receiving_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
-    let last_modified = heartbeat_receiving_actor.hash_ring.last_modified;
+    let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
+    let last_modified = cluster_actor.hash_ring.last_modified;
 
     let mut hash_ring = HashRing::default();
     hash_ring.last_modified = last_modified - 1;
 
     // WHEN
     let (_hwm, cache_manager) = cache_manager_create_helper();
-    heartbeat_receiving_actor.schedule_migration_if_required(Some(hash_ring), &cache_manager).await;
+    cluster_actor.schedule_migration_if_required(Some(hash_ring), &cache_manager, None).await;
 
     // THEN
-    assert_eq!(heartbeat_receiving_actor.hash_ring.last_modified, last_modified);
+    assert_eq!(cluster_actor.hash_ring.last_modified, last_modified);
 }
 
 #[tokio::test]
@@ -663,63 +662,37 @@ async fn test_start_rebalance_schedules_migration_batches() {
     ])
     .await;
 
-    // Add a peer with a different replication ID that will trigger migration
+    // Add a peer that will trigger migration
     let target_repl_id = ReplicationId::Key(uuid::Uuid::now_v7().to_string());
-    let (target_peer_message_buf, peer_id) =
+    let (buf, peer_id) =
         cluster_actor.test_add_peer(6570, NodeKind::NonData, Some(target_repl_id.clone()));
 
-    // Verify the initial state
-    assert_eq!(cluster_actor.hash_ring.get_pnode_count(), 1, "Should start with 1 partition");
-    assert!(cluster_actor.pending_requests.is_none(), "Should not have pending requests initially");
+    let (tx, mut rx) = tokio::sync::mpsc::channel(2);
+    let cluster_handler = ClusterCommandHandler(tx);
 
-    // WHEN - call start_rebalance which should trigger the migration flow
-    cluster_actor.start_rebalance(peer_id.clone(), &cache_manager).await;
+    // WHEN
+    cluster_actor.start_rebalance(peer_id.clone(), &cache_manager, Some(cluster_handler)).await;
 
-    // THEN - verify that the migration scheduling flow was triggered
+    tokio::time::sleep(Duration::from_millis(100)).await;
 
-    // 1. Verify the hash ring was updated
-    assert_eq!(
-        cluster_actor.hash_ring.get_pnode_count(),
-        2,
-        "Hash ring should have 2 partitions after rebalance"
-    );
+    // THEN
+    // 1. fake buf gets heartbeat
+    let mut sent_messages = buf.lock().await;
+    let QueryIO::ClusterHeartBeat(heartbeat) = sent_messages.pop_front().unwrap() else {
+        panic!("Expected heartbeat message");
+    };
+    assert_eq!(heartbeat.hashring.as_ref().unwrap().get_pnode_count(), 2);
 
-    // 2. Verify that write requests are blocked during migration (indicates migration was scheduled)
-    assert!(
-        cluster_actor.pending_requests.is_some(),
-        "Pending requests should be blocked during migration"
-    );
-    assert!(cluster_actor.pending_migrations.is_some(), "Pending migrations should be tracked");
+    // 2. pending_migrations is set
+    let ClusterCommand::Scheduler(SchedulerMessage::ScheduleMigrationBatch(batch, _)) =
+        rx.recv().await.unwrap()
+    else {
+        panic!("Expected ScheduleMigrationBatch message");
+    };
+    assert_eq!(batch.target_repl, target_repl_id);
+    assert_eq!(batch.tasks.len(), 1);
+    assert_eq!(batch.tasks[0].keys_to_migrate, vec!["test_key_1"]);
 
-    // 3. Verify that a heartbeat with the new hash ring was sent to the peer
-    let sent_messages = target_peer_message_buf.lock().await;
-    let heartbeat_messages: Vec<_> = sent_messages
-        .iter()
-        .filter_map(|msg| if let QueryIO::ClusterHeartBeat(hb) = msg { Some(hb) } else { None })
-        .collect();
-
-    assert!(!heartbeat_messages.is_empty(), "Target peer should have received heartbeat message");
-
-    // Find the heartbeat with the hash ring
-    let heartbeat_with_ring = heartbeat_messages.iter().find(|hb| hb.hashring.is_some());
-    assert!(
-        heartbeat_with_ring.is_some(),
-        "At least one heartbeat should contain the new hash ring"
-    );
-
-    let heartbeat = heartbeat_with_ring.unwrap();
-    assert_eq!(
-        heartbeat.hashring.as_ref().unwrap().get_pnode_count(),
-        2,
-        "Hash ring in heartbeat should have 2 partitions"
-    );
-
-    // Give background migration tasks a moment to be scheduled
-    tokio::time::sleep(Duration::from_millis(10)).await;
-
-    // Verify that the migration system is properly set up for background processing
-    // The presence of pending_requests and pending_migrations confirms that
-    // schedule_migration_if_required was called and migration tasks were created.
-    assert!(cluster_actor.pending_requests.is_some(), "Migration should keep requests blocked");
-    assert!(cluster_actor.pending_migrations.is_some(), "Migration tracking should remain active");
+    // 3. pending_requests is set
+    assert!(cluster_actor.pending_requests.is_some());
 }

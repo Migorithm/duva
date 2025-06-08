@@ -229,7 +229,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         self.join_peer_network_if_absent(heartbeat.cluster_nodes).await;
         self.gossip(heartbeat.hop_count).await;
         self.update_on_hertbeat_message(&heartbeat.from, heartbeat.hwm);
-        self.schedule_migration_if_required(heartbeat.hashring, cache_manager).await;
+        self.schedule_migration_if_required(heartbeat.hashring, cache_manager, None).await;
     }
 
     pub(crate) async fn req_consensus(&mut self, req: ConsensusRequest) {
@@ -422,6 +422,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         &mut self,
         request_from: PeerIdentifier,
         cache_manager: &CacheManager,
+        cluster_handler: Option<ClusterCommandHandler>,
     ) {
         let Some(member) = self.members.get(&request_from) else {
             error!("Received rebalance request from unknown peer: {}", request_from);
@@ -453,7 +454,12 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             .set_hashring(new_hash_ring.clone());
 
         self.send_heartbeat(hb).await;
-        self.schedule_migration_if_required(Some(new_hash_ring), cache_manager).await;
+        self.schedule_migration_if_required(
+            Some(new_hash_ring),
+            cache_manager,
+            cluster_handler.clone(),
+        )
+        .await;
     }
 
     fn hop_count(fanout: usize, node_count: usize) -> u8 {
@@ -936,6 +942,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         &mut self,
         hashring: Option<HashRing>,
         cache_manager: &CacheManager,
+        cluster_handler: Option<ClusterCommandHandler>,
     ) {
         let Some(new_ring) = hashring else {
             return;
@@ -980,7 +987,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
                 batch_handles.push(tokio::spawn(Self::schedule_migration_in_batch(
                     target_replid.clone(),
                     batch_to_migrate,
-                    self.self_handler.clone(),
+                    cluster_handler.clone().unwrap_or(self.self_handler.clone()),
                 )));
             }
         }
