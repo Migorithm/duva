@@ -188,7 +188,7 @@ mod peer_messages {
     }
 
     impl MigrationBatchAck {
-        pub(crate) fn new(batch_id: BatchId) -> Self {
+        pub(crate) fn new_with_reject(batch_id: BatchId) -> Self {
             Self { batch_id, success: false }
         }
 

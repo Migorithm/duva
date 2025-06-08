@@ -1057,7 +1057,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         let Some(peer) = self.members.get_mut(&from) else {
             return;
         };
-        let ack = MigrationBatchAck::new(migrate_batch.batch_id);
+        let ack = MigrationBatchAck::new_with_reject(migrate_batch.batch_id);
 
         // Validation against the now-updated hash ring - check if all keys belong to this node
         let keys_to_validate: Vec<&str> =
@@ -1099,7 +1099,6 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         self.unblock_write_reqs_if_done();
     }
 
-    //TODO Test
     fn unblock_write_reqs_if_done(&mut self) {
         let migrations_done = self.pending_migrations.as_ref().is_none_or(|p| p.is_empty());
 
@@ -1107,19 +1106,22 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             if let Some(mut pending_reqs) = self.pending_requests.take() {
                 info!("All migrations complete, processing pending requests.");
                 self.pending_migrations = None;
-
-                let self_handler = self.self_handler.clone();
-                tokio::spawn(async move {
-                    while let Some(req) = pending_reqs.pop_front() {
-                        if self_handler
-                            .send(ClusterCommand::Client(ClientMessage::LeaderReqConsensus(req)))
-                            .await
-                            .is_err()
-                        {
-                            error!("Failed to re-queue pending request after migration");
+                if !pending_reqs.is_empty() {
+                    let self_handler = self.self_handler.clone();
+                    tokio::spawn(async move {
+                        while let Some(req) = pending_reqs.pop_front() {
+                            if self_handler
+                                .send(ClusterCommand::Client(ClientMessage::LeaderReqConsensus(
+                                    req,
+                                )))
+                                .await
+                                .is_err()
+                            {
+                                error!("Failed to re-queue pending request after migration");
+                            }
                         }
-                    }
-                });
+                    });
+                }
             }
         }
     }

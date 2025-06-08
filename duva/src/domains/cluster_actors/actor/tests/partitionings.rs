@@ -5,6 +5,7 @@ use crate::domains::cluster_actors::hash_ring::{
     HashRing, MigrationTask, tests::migration_task_create_helper,
 };
 use crate::domains::peers::command::MigrateBatch;
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::AtomicU64;
 use std::time::Duration;
@@ -197,9 +198,10 @@ async fn test_schedule_migration_if_required_when_noplan_is_made() {
     );
 
     // WHEN - now, when heartbeat receiving actor hashring info (through heartbeat)
-    let cache_manager = CacheManager { inboxes: vec![] };
+    let hwm = Arc::new(AtomicU64::new(0));
+    let _cache_manager = CacheManager::run_cache_actors(hwm);
     heartbeat_receiving_actor
-        .schedule_migration_if_required(Some(hash_ring.clone()), &cache_manager)
+        .schedule_migration_if_required(Some(hash_ring.clone()), &_cache_manager)
         .await;
 
     // THEN - it should create a migration plan
@@ -218,11 +220,12 @@ async fn test_make_migration_plan_when_given_hashring_is_same() {
     let last_modified = heartbeat_receiving_actor.hash_ring.last_modified;
 
     // WHEN - now, when heartbeat receiving actor hashring info (through heartbeat)
-    let cache_manager = CacheManager { inboxes: vec![] };
+    let hwm = Arc::new(AtomicU64::new(0));
+    let _cache_manager = CacheManager::run_cache_actors(hwm);
     heartbeat_receiving_actor
         .schedule_migration_if_required(
             Some(heartbeat_receiving_actor.hash_ring.clone()),
-            &cache_manager,
+            &_cache_manager,
         )
         .await;
 
@@ -237,8 +240,9 @@ async fn test_make_migration_plan_when_no_hashring_given() {
     let last_modified = heartbeat_receiving_actor.hash_ring.last_modified;
 
     // WHEN - now, when heartbeat receiving actor hashring info (through heartbeat)
-    let cache_manager = CacheManager { inboxes: vec![] };
-    heartbeat_receiving_actor.schedule_migration_if_required(None, &cache_manager).await;
+    let hwm = Arc::new(AtomicU64::new(0));
+    let _cache_manager = CacheManager::run_cache_actors(hwm);
+    heartbeat_receiving_actor.schedule_migration_if_required(None, &_cache_manager).await;
 
     // THEN no change should be made
     assert_eq!(heartbeat_receiving_actor.hash_ring.last_modified, last_modified);
@@ -254,8 +258,11 @@ async fn test_make_migration_plan_when_last_modified_is_lower_than_its_own() {
     hash_ring.last_modified = last_modified - 1;
 
     // WHEN - now, when heartbeat receiving actor hashring info (through heartbeat)
-    let cache_manager = CacheManager { inboxes: vec![] };
-    heartbeat_receiving_actor.schedule_migration_if_required(Some(hash_ring), &cache_manager).await;
+    let hwm = Arc::new(AtomicU64::new(0));
+    let _cache_manager = CacheManager::run_cache_actors(hwm);
+    heartbeat_receiving_actor
+        .schedule_migration_if_required(Some(hash_ring), &_cache_manager)
+        .await;
 
     // THEN no change should be made
     assert_eq!(heartbeat_receiving_actor.hash_ring.last_modified, last_modified);
@@ -366,7 +373,7 @@ async fn test_migrate_keys_target_peer_not_found() {
     // GIVEN
     let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
     let hwm = Arc::new(AtomicU64::new(0));
-    let cache_manager = CacheManager::run_cache_actors(hwm);
+    let _cache_manager = CacheManager::run_cache_actors(hwm);
 
     let tasks = MigrationTarget::new(
         ReplicationId::Key("non_existent_peer".to_string()),
@@ -376,7 +383,7 @@ async fn test_migrate_keys_target_peer_not_found() {
     let (callback_tx, callback_rx) = tokio::sync::oneshot::channel();
 
     // WHEN
-    cluster_actor.migrate_batch(tasks, &cache_manager, callback_tx).await;
+    cluster_actor.migrate_batch(tasks, &_cache_manager, callback_tx).await;
 
     // THEN
     let result = callback_rx.await.unwrap();
@@ -463,7 +470,7 @@ async fn test_receive_batch_success_path() {
     // GIVEN
     let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
     let hwm = Arc::new(AtomicU64::new(0));
-    let cache_manager = CacheManager::run_cache_actors(hwm);
+    let _cache_manager = CacheManager::run_cache_actors(hwm);
 
     let peer_replid = ReplicationId::Key("repl_id_for_other_node".to_string());
     let (message_buf, sender_peer_id) =
@@ -482,7 +489,7 @@ async fn test_receive_batch_success_path() {
         MigrateBatch { batch_id: test_batch_id.clone(), cache_entries: cache_entries.clone() };
 
     // WHEN
-    cluster_actor.receive_batch(migrate_batch, &cache_manager, sender_peer_id).await;
+    cluster_actor.receive_batch(migrate_batch, &_cache_manager, sender_peer_id).await;
 
     // THEN - should send success acknowledgement
     tokio::time::sleep(Duration::from_millis(100)).await; // Give more time for async operations
@@ -500,8 +507,8 @@ async fn test_receive_batch_success_path() {
     assert!(ack.success, "Should send success acknowledgement");
 
     // Verify the keys were actually stored in the cache
-    let retrieved_value1 = cache_manager.route_get("success_key1").await.unwrap();
-    let retrieved_value2 = cache_manager.route_get("success_key2").await.unwrap();
+    let retrieved_value1 = _cache_manager.route_get("success_key1").await.unwrap();
+    let retrieved_value2 = _cache_manager.route_get("success_key2").await.unwrap();
 
     assert!(retrieved_value1.is_some());
     assert!(retrieved_value2.is_some());
@@ -515,7 +522,7 @@ async fn test_receive_batch_validation_failure_keys_not_belonging_to_node() {
     // GIVEN
     let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
     let hwm = Arc::new(AtomicU64::new(0));
-    let cache_manager = CacheManager::run_cache_actors(hwm);
+    let _cache_manager = CacheManager::run_cache_actors(hwm);
 
     // Add a peer to send the batch from
     let (message_buf, sender_peer_id) = cluster_actor.test_add_peer(6565, NodeKind::NonData, None);
@@ -538,7 +545,7 @@ async fn test_receive_batch_validation_failure_keys_not_belonging_to_node() {
     let migrate_batch = MigrateBatch { batch_id: test_batch_id.clone(), cache_entries };
 
     // WHEN
-    cluster_actor.receive_batch(migrate_batch, &cache_manager, sender_peer_id).await;
+    cluster_actor.receive_batch(migrate_batch, &_cache_manager, sender_peer_id).await;
 
     // THEN - should send failure acknowledgement
     let sent_messages = message_buf.lock().await;
@@ -557,7 +564,7 @@ async fn test_receive_batch_empty_cache_entries() {
     // GIVEN
     let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
     let hwm = Arc::new(AtomicU64::new(0));
-    let cache_manager = CacheManager::run_cache_actors(hwm);
+    let _cache_manager = CacheManager::run_cache_actors(hwm);
 
     let (message_buf, sender_peer_id) = cluster_actor.test_add_peer(6568, NodeKind::NonData, None);
 
@@ -567,7 +574,7 @@ async fn test_receive_batch_empty_cache_entries() {
     };
 
     // WHEN
-    cluster_actor.receive_batch(migrate_batch, &cache_manager, sender_peer_id).await;
+    cluster_actor.receive_batch(migrate_batch, &_cache_manager, sender_peer_id).await;
 
     // THEN - should send success acknowledgement for empty batch
     let sent_messages = message_buf.lock().await;
@@ -580,4 +587,120 @@ async fn test_receive_batch_empty_cache_entries() {
 
     assert_eq!(ack.batch_id.0, "empty_test");
     assert!(ack.success, "Should send success acknowledgement for empty batch");
+}
+
+#[tokio::test]
+async fn test_unblock_write_reqs_if_done_when_no_pending_migrations() {
+    // GIVEN
+    let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
+    let hwm = Arc::new(AtomicU64::new(0));
+    let _cache_manager = CacheManager::run_cache_actors(hwm);
+
+    // Block write requests first
+    cluster_actor.block_write_reqs();
+
+    // Add some pending requests
+    let (tx1, _rx1) = tokio::sync::oneshot::channel();
+    let (tx2, _rx2) = tokio::sync::oneshot::channel();
+    let write_req1 =
+        WriteRequest::Set { key: "key1".into(), value: "value1".into(), expires_at: None };
+    let write_req2 =
+        WriteRequest::Set { key: "key2".into(), value: "value2".into(), expires_at: None };
+    let req1 = ConsensusRequest::new(write_req1, tx1, None);
+    let req2 = ConsensusRequest::new(write_req2, tx2, None);
+
+    cluster_actor.pending_requests.as_mut().unwrap().push_back(req1);
+    cluster_actor.pending_requests.as_mut().unwrap().push_back(req2);
+
+    // Clear pending migrations (simulating all migrations are done)
+    cluster_actor.pending_migrations = Some(HashMap::new());
+
+    // WHEN
+    cluster_actor.unblock_write_reqs_if_done();
+
+    // THEN
+    assert!(cluster_actor.pending_requests.is_none());
+    assert!(cluster_actor.pending_migrations.is_none());
+}
+
+#[tokio::test]
+async fn test_unblock_write_reqs_if_done_when_migrations_still_pending() {
+    // GIVEN
+    let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
+
+    // Block write requests
+    cluster_actor.block_write_reqs();
+
+    // Add some pending requests
+    let (tx, _rx) = tokio::sync::oneshot::channel();
+    let write_req =
+        WriteRequest::Set { key: "key1".into(), value: "value1".into(), expires_at: None };
+    let req = ConsensusRequest::new(write_req, tx, None);
+    cluster_actor.pending_requests.as_mut().unwrap().push_back(req);
+
+    // Add pending migration (simulating migration still in progress)
+    let (migration_tx, _migration_rx) = tokio::sync::oneshot::channel();
+    let batch_id = BatchId("test_batch".into());
+    cluster_actor.pending_migrations.as_mut().unwrap().insert(batch_id, migration_tx);
+
+    // WHEN
+    cluster_actor.unblock_write_reqs_if_done();
+
+    // THEN
+    // Nothing should change - requests should remain blocked
+    assert!(cluster_actor.pending_requests.is_some());
+    assert_eq!(cluster_actor.pending_requests.as_ref().unwrap().len(), 1);
+    assert!(cluster_actor.pending_migrations.is_some());
+    assert_eq!(cluster_actor.pending_migrations.as_ref().unwrap().len(), 1);
+}
+
+#[tokio::test]
+async fn test_unblock_write_reqs_if_done_when_not_blocked() {
+    // GIVEN
+    let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
+
+    // Don't block write requests (pending_requests should be None)
+    assert!(cluster_actor.pending_requests.is_none());
+
+    // Set migrations as done
+    cluster_actor.pending_migrations = Some(HashMap::new());
+
+    // WHEN
+    cluster_actor.unblock_write_reqs_if_done();
+
+    // THEN
+    // Should not crash and state should remain stable
+    // pending_migrations should NOT be set to None since there were no pending_requests to process
+    assert!(cluster_actor.pending_requests.is_none());
+    assert!(cluster_actor.pending_migrations.is_some());
+    assert!(cluster_actor.pending_migrations.as_ref().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn test_unblock_write_reqs_if_done_multiple_times() {
+    // GIVEN
+    let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
+
+    // Block write requests
+    cluster_actor.block_write_reqs();
+
+    // Add a pending request
+    let (tx, _rx) = tokio::sync::oneshot::channel();
+    let write_req =
+        WriteRequest::Set { key: "key1".into(), value: "value1".into(), expires_at: None };
+    let req = ConsensusRequest::new(write_req, tx, None);
+    cluster_actor.pending_requests.as_mut().unwrap().push_back(req);
+
+    // Set migrations as done
+    cluster_actor.pending_migrations = Some(HashMap::new());
+
+    // WHEN - call unblock multiple times
+    cluster_actor.unblock_write_reqs_if_done();
+    cluster_actor.unblock_write_reqs_if_done();
+    cluster_actor.unblock_write_reqs_if_done();
+
+    // THEN
+    // Should be idempotent - no issues with multiple calls
+    assert!(cluster_actor.pending_requests.is_none());
+    assert!(cluster_actor.pending_migrations.is_none());
 }
