@@ -358,7 +358,7 @@ async fn test_migrate_keys_target_peer_not_found() {
     let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
     let (_hwm, cache_manager) = cache_manager_create_helper();
 
-    let tasks = MigrationTarget::new(
+    let tasks = MigrationBatch::new(
         ReplicationId::Key("non_existent_peer".to_string()),
         vec![migration_task_create_helper(0, 5)],
     );
@@ -397,7 +397,7 @@ async fn test_migrate_keys_retrieves_actual_data() {
         task_id: (0, 100),
         keys_to_migrate: vec!["test_key_1".to_string(), "test_key_2".to_string()],
     };
-    let tasks = MigrationTarget::new(target_repl_id, vec![migration_task]);
+    let tasks = MigrationBatch::new(target_repl_id, vec![migration_task]);
     let (callback_tx, callback_rx) = tokio::sync::oneshot::channel();
 
     // WHEN
@@ -580,4 +580,94 @@ async fn test_find_target_peer_for_replication() {
         cluster_actor.peerid_by_replid(&ReplicationId::Key("non_existent".to_string())),
         None
     );
+}
+
+#[tokio::test]
+async fn test_handle_migration_ack_failure() {
+    // GIVEN
+    let mut cluster_actor = setup_blocked_cluster_actor_with_requests(1).await;
+
+    let (callback_tx, callback_rx) = tokio::sync::oneshot::channel();
+    let batch_id = BatchId("failure_batch".into());
+
+    // Ensure pending_migrations is set up
+    assert!(cluster_actor.pending_migrations.is_some());
+    cluster_actor.pending_migrations.as_mut().unwrap().insert(batch_id.clone(), callback_tx);
+
+    let ack = MigrationBatchAck::new_with_reject(batch_id.clone());
+
+    // WHEN
+    let result = cluster_actor.handle_migration_ack(ack).await;
+
+    // THEN
+    assert!(result.is_some()); // Method should return Some(())
+
+    // Verify callback was called with error
+    let callback_result = callback_rx.await.unwrap();
+    assert!(callback_result.is_err());
+    assert!(
+        callback_result
+            .unwrap_err()
+            .to_string()
+            .contains("Failed to send migration completion signal for batch failure_batch")
+    );
+
+    // Verify migrations are completed - pending_migrations should be None when all migrations are done
+    assert!(cluster_actor.pending_migrations.is_none());
+}
+
+#[tokio::test]
+async fn test_handle_migration_ack_batch_id_not_found() {
+    // GIVEN
+    let mut cluster_actor = setup_blocked_cluster_actor_with_requests(1).await;
+
+    let (callback_tx, _callback_rx) = tokio::sync::oneshot::channel();
+    let existing_batch_id = BatchId("existing_batch".into());
+    cluster_actor.pending_migrations.as_mut().unwrap().insert(existing_batch_id, callback_tx);
+
+    let non_existent_batch_id = BatchId("non_existent_batch".into());
+    let ack = MigrationBatchAck { batch_id: non_existent_batch_id, success: true };
+
+    // WHEN
+    let result = cluster_actor.handle_migration_ack(ack).await;
+
+    // THEN
+    assert!(result.is_none()); // Method should return None when batch ID is not found
+
+    // Verify existing batch is still there
+    assert_eq!(cluster_actor.pending_migrations.as_ref().unwrap().len(), 1);
+}
+
+#[tokio::test]
+async fn test_handle_migration_ack_success_case_with_pending_reqs_and_migration() {
+    // GIVEN
+    let mut cluster_actor = setup_blocked_cluster_actor_with_requests(2).await;
+
+    // Add the last pending migration
+    let (callback_tx, callback_rx) = tokio::sync::oneshot::channel();
+    let batch_id = BatchId("last_batch".into());
+    cluster_actor.pending_migrations.as_mut().unwrap().insert(batch_id.clone(), callback_tx);
+
+    let ack = MigrationBatchAck { batch_id, success: true };
+
+    // Verify initially blocked
+    assert!(cluster_actor.pending_requests.is_some());
+    assert_eq!(cluster_actor.pending_requests.as_ref().unwrap().len(), 2);
+    assert!(cluster_actor.pending_migrations.is_some());
+    assert_eq!(cluster_actor.pending_migrations.as_ref().unwrap().len(), 1);
+
+    // WHEN
+    let result = cluster_actor.handle_migration_ack(ack).await;
+
+    // THEN
+    assert!(result.is_some());
+
+    // Verify callback was successful
+    let callback_result = callback_rx.await.unwrap();
+    assert!(callback_result.is_ok());
+
+    // Verify unblock_write_reqs_if_done was called and requests were unblocked
+    // Since this was the last migration, both should be None now
+    assert!(cluster_actor.pending_requests.is_none());
+    assert!(cluster_actor.pending_migrations.is_none());
 }

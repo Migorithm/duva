@@ -15,7 +15,7 @@ use crate::domains::QueryIO;
 use crate::domains::caches::cache_manager::CacheManager;
 use crate::domains::caches::cache_objects::CacheEntry;
 use crate::domains::cluster_actors::hash_ring::BatchId;
-use crate::domains::cluster_actors::hash_ring::MigrationTarget;
+use crate::domains::cluster_actors::hash_ring::MigrationBatch;
 use crate::domains::cluster_actors::hash_ring::MigrationTask;
 use crate::domains::operation_logs::interfaces::TWriteAheadLog;
 use crate::domains::operation_logs::logger::ReplicatedLogs;
@@ -984,13 +984,14 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
         // Process all batches
         batch_handles
-            .for_each(|result| async {
+            .for_each(|result: Result<Result<(), anyhow::Error>, tokio::task::JoinError>| async {
                 if let Err(e) = result {
                     error!("Migration batch panicked: {}", e);
                 }
             })
             .await;
 
+        // ! this is the one that unblocks the write requests in case
         self.unblock_write_reqs_if_done();
     }
 
@@ -1002,7 +1003,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         let (tx, rx) = tokio::sync::oneshot::channel();
         handler
             .send(SchedulerMessage::ScheduleMigrationBatch(
-                MigrationTarget::new(target_replid, batch_to_migrate),
+                MigrationBatch::new(target_replid, batch_to_migrate),
                 tx,
             ))
             .await?;
@@ -1011,7 +1012,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
     pub(crate) async fn migrate_batch(
         &mut self,
-        target: MigrationTarget,
+        target: MigrationBatch,
         cache_manager: &CacheManager,
         callback: tokio::sync::oneshot::Sender<Result<(), anyhow::Error>>,
     ) {
@@ -1080,7 +1081,6 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         let _ = peer.send(ack.turn_success()).await;
     }
 
-    //TODO Test
     pub(crate) async fn handle_migration_ack(&mut self, ack: MigrationBatchAck) -> Option<()> {
         let pending = self.pending_migrations.as_mut()?;
         let callback = pending.remove(&ack.batch_id)?;
