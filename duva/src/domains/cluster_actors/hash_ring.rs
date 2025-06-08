@@ -154,7 +154,7 @@ impl HashRing {
     }
 
     #[cfg(test)]
-    fn get_node_for_key(&self, key: &str) -> Option<&ReplicationId> {
+    pub(crate) fn get_node_for_key(&self, key: &str) -> Option<&ReplicationId> {
         let hash = fnv_1a_hash(key);
         self.find_replid(hash)
     }

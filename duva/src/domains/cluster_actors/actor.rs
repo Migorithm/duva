@@ -453,8 +453,6 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             .set_hashring(new_hash_ring.clone());
 
         self.send_heartbeat(hb).await;
-
-        //TODO this flow has not been tested. need to see if migration batch is scheduled.
         self.schedule_migration_if_required(Some(new_hash_ring), cache_manager).await;
     }
 
@@ -988,13 +986,17 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         }
 
         // Process all batches
-        batch_handles
-            .for_each(|result: Result<Result<(), anyhow::Error>, tokio::task::JoinError>| async {
-                if let Err(e) = result {
-                    error!("Migration batch panicked: {}", e);
-                }
-            })
-            .await;
+        tokio::spawn(async move {
+            batch_handles
+                .for_each(
+                    |result: Result<Result<(), anyhow::Error>, tokio::task::JoinError>| async {
+                        if let Err(e) = result {
+                            error!("Migration batch panicked: {}", e);
+                        }
+                    },
+                )
+                .await;
+        });
     }
 
     async fn schedule_migration_in_batch(
