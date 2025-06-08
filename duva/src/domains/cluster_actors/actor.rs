@@ -1081,22 +1081,21 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     }
 
     //TODO Test
-    pub(crate) async fn handle_migration_ack(&mut self, ack: MigrationBatchAck) {
-        info!("Received migration ack for batch {}: success={}", ack.batch_id.0, ack.success);
+    pub(crate) async fn handle_migration_ack(&mut self, ack: MigrationBatchAck) -> Option<()> {
+        let pending = self.pending_migrations.as_mut()?;
+        let callback = pending.remove(&ack.batch_id)?;
 
-        let Some(pending) = self.pending_migrations.as_mut() else { return };
-        let Some(callback) = pending.remove(&ack.batch_id) else {
-            info!("Received migration ack for batch:{} alrady completed", ack.batch_id.0);
-            return;
+        let result = if ack.success {
+            Ok(())
+        } else {
+            err!("Failed to send migration completion signal for batch {}", ack.batch_id.0)
         };
-
-        let result =
-            if ack.success { Ok(()) } else { Err(anyhow::anyhow!("Migration batch failed")) };
         if callback.send(result).is_err() {
-            error!("Failed to send migration completion signal for batch {}", ack.batch_id.0);
+            return None;
         }
 
         self.unblock_write_reqs_if_done();
+        Some(())
     }
 
     fn unblock_write_reqs_if_done(&mut self) {
