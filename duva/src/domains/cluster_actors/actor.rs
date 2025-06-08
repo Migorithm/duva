@@ -418,7 +418,11 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     }
 
     #[instrument(level = tracing::Level::INFO, skip(self), fields(request_from = %request_from))]
-    pub(crate) async fn start_rebalance(&mut self, request_from: PeerIdentifier) {
+    pub(crate) async fn start_rebalance(
+        &mut self,
+        request_from: PeerIdentifier,
+        cache_manager: &CacheManager,
+    ) {
         let Some(member) = self.members.get(&request_from) else {
             error!("Received rebalance request from unknown peer: {}", request_from);
             return;
@@ -449,6 +453,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             .set_hashring(new_hash_ring.clone());
 
         self.send_heartbeat(hb).await;
+        self.schedule_migration_if_required(Some(new_hash_ring), cache_manager).await;
     }
 
     fn hop_count(fanout: usize, node_count: usize) -> u8 {

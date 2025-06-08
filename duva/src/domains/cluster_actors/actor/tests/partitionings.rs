@@ -90,9 +90,10 @@ async fn test_rebalance_request_happypath() {
 async fn test_start_rebalance_before_connection_is_made() {
     // GIVEN
     let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
+    let (_hwm, cache_manager) = cache_manager_create_helper();
 
     // WHEN
-    cluster_actor.start_rebalance(PeerIdentifier("127.0.0.1:6559".into())).await;
+    cluster_actor.start_rebalance(PeerIdentifier("127.0.0.1:6559".into()), &cache_manager).await;
 
     // THEN
     // No pending requests should be created since the member is not connected
@@ -105,11 +106,11 @@ async fn test_start_rebalance_before_connection_is_made() {
 async fn test_start_rebalance_to_replica() {
     // GIVEN
     let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
-
+    let (_hwm, cache_manager) = cache_manager_create_helper();
     let (buf, peer_id) = cluster_actor.test_add_peer(6559, NodeKind::Replica, None);
 
     // WHEN
-    cluster_actor.start_rebalance(peer_id).await;
+    cluster_actor.start_rebalance(peer_id, &cache_manager).await;
 
     // THEN
     assert!(cluster_actor.pending_requests.is_none());
@@ -121,7 +122,7 @@ async fn test_start_rebalance_to_replica() {
 async fn test_start_rebalance_happy_path() {
     // GIVEN
     let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
-
+    let (_hwm, cache_manager) = cache_manager_create_helper();
     let (buf, peer_id) = cluster_actor.test_add_peer(
         6559,
         NodeKind::NonData,
@@ -129,7 +130,7 @@ async fn test_start_rebalance_happy_path() {
     );
 
     // WHEN
-    cluster_actor.start_rebalance(peer_id).await;
+    cluster_actor.start_rebalance(peer_id, &cache_manager).await;
 
     // THEN
     assert!(cluster_actor.pending_requests.is_some());
@@ -142,8 +143,8 @@ async fn test_start_rebalance_happy_path() {
         panic!("Expected ClusterHeartBeat message");
     };
     assert!(hb.hashring.is_some());
-    assert_eq!(cluster_actor.hash_ring.get_pnode_count(), 1);
-    assert_ne!(cluster_actor.hash_ring, hb.hashring.unwrap());
+    assert_eq!(cluster_actor.hash_ring.get_pnode_count(), 2);
+    assert_eq!(cluster_actor.hash_ring, hb.hashring.unwrap());
 }
 
 #[tokio::test]
