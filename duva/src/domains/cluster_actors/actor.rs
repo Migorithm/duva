@@ -473,6 +473,13 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         self.members.get_mut(peer_id).filter(|peer| peer.kind() == &NodeKind::Replica)
     }
 
+    fn peerid_by_replid(&self, target_repl_id: &ReplicationId) -> Option<&PeerIdentifier> {
+        self.members
+            .iter()
+            .find(|(_, peer)| peer.replid() == target_repl_id)
+            .map(|(peer_id, _)| peer_id)
+    }
+
     async fn send_heartbeat(&mut self, heartbeat: HeartBeat) {
         for peer in self.members.values_mut() {
             let _ = peer.send(heartbeat.clone()).await;
@@ -1008,13 +1015,13 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         cache_manager: &CacheManager,
         callback: tokio::sync::oneshot::Sender<Result<(), anyhow::Error>>,
     ) {
-        // 1. Find target peer based on replication ID
+        //  Find target peer based on replication ID
         let Some(peer_id) = self.peerid_by_replid(&target.target_repl).cloned() else {
             let _ = callback.send(err!("Target peer not found for replication ID"));
             return;
         };
 
-        // 2. Retrieve key-value data from cache
+        // Retrieve key-value data from cache
         let mut cache_entries_to_migrate = Vec::new();
 
         for key in target.tasks.iter().flat_map(|task| task.keys_to_migrate.iter().cloned()) {
@@ -1024,7 +1031,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             cache_entries_to_migrate.push(CacheEntry::new(key, value));
         }
 
-        // 3. Get mutable reference to the target peer
+        // Get mutable reference to the target peer
         let Some(target_peer) = self.members.get_mut(&peer_id) else {
             let _ = callback.send(err!("Target peer {} disappeared during migration", peer_id));
             return;
@@ -1039,13 +1046,6 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         let _ = target_peer
             .send(MigrateBatch { batch_id: target.id, cache_entries: cache_entries_to_migrate })
             .await;
-    }
-
-    fn peerid_by_replid(&self, target_repl_id: &ReplicationId) -> Option<&PeerIdentifier> {
-        self.members
-            .iter()
-            .find(|(_, peer)| peer.replid() == target_repl_id)
-            .map(|(peer_id, _)| peer_id)
     }
 
     pub(crate) async fn receive_batch(
