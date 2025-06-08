@@ -947,18 +947,19 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             return;
         }
 
-        info!("New hash ring received. Starting rebalance procedure.");
-        self.block_write_reqs();
-
         let keys = cache_manager.route_keys(None).await;
         let migration_plans = self.hash_ring.create_migration_tasks(&new_ring, keys);
 
-        // This is the critical update. The local hash ring is updated *before*
-        // migration tasks are sent.
+        // This is the critical update. The local hash ring is updated *before* migration tasks are sent.
         self.hash_ring = new_ring;
 
-        let batch_handles = FuturesUnordered::new();
+        if migration_plans.is_empty() {
+            info!("No migration tasks to schedule");
+            return;
+        }
+        self.block_write_reqs();
 
+        let batch_handles = FuturesUnordered::new();
         for (target_replid, mut migration_tasks) in migration_plans {
             while !migration_tasks.is_empty() {
                 let mut num = 0;
@@ -990,9 +991,6 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
                 }
             })
             .await;
-
-        // ! this is the one that unblocks the write requests in case
-        self.unblock_write_reqs_if_done();
     }
 
     async fn schedule_migration_target(
