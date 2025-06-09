@@ -33,6 +33,7 @@ use crate::domains::peers::peer::NodeKind;
 use crate::domains::peers::peer::PeerState;
 use crate::err;
 use client_sessions::ClientSessions;
+use futures::future::err;
 use futures::future::join_all;
 use heartbeat_scheduler::HeartBeatScheduler;
 
@@ -1127,22 +1128,21 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             if let Some(mut pending_reqs) = self.pending_requests.take() {
                 info!("All migrations complete, processing pending requests.");
                 self.pending_migrations = None;
-                if !pending_reqs.is_empty() {
-                    let self_handler = self.self_handler.clone();
-                    tokio::spawn(async move {
-                        while let Some(req) = pending_reqs.pop_front() {
-                            if self_handler
-                                .send(ClusterCommand::Client(ClientMessage::LeaderReqConsensus(
-                                    req,
-                                )))
-                                .await
-                                .is_err()
-                            {
-                                error!("Failed to re-queue pending request after migration");
-                            }
-                        }
-                    });
+
+                if pending_reqs.is_empty() {
+                    return;
                 }
+                let handler = self.self_handler.clone();
+                tokio::spawn(async move {
+                    while let Some(req) = pending_reqs.pop_front() {
+                        if let Err(err) = handler
+                            .send(ClusterCommand::Client(ClientMessage::LeaderReqConsensus(req)))
+                            .await
+                        {
+                            error!("{}", err)
+                        }
+                    }
+                });
             }
         }
     }
