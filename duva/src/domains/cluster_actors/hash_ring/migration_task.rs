@@ -21,8 +21,15 @@ pub(crate) struct MigrationBatch {
     pub(crate) target_repl: ReplicationId,
     pub(crate) tasks: Vec<MigrationTask>,
 }
+
 impl MigrationBatch {
     pub(crate) fn new(target_repl: ReplicationId, tasks: Vec<MigrationTask>) -> Self {
         Self { id: BatchId(uuid::Uuid::now_v7().to_string()), target_repl, tasks }
     }
+}
+
+#[derive(Debug)]
+pub(crate) struct PendingMigrationBatch {
+    pub(crate) callback: tokio::sync::oneshot::Sender<anyhow::Result<()>>,
+    pub(crate) keys: Vec<String>,
 }

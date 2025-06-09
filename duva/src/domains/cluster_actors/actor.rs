@@ -17,6 +17,7 @@ use crate::domains::caches::cache_objects::CacheEntry;
 use crate::domains::cluster_actors::hash_ring::BatchId;
 use crate::domains::cluster_actors::hash_ring::MigrationBatch;
 use crate::domains::cluster_actors::hash_ring::MigrationTask;
+use crate::domains::cluster_actors::hash_ring::PendingMigrationBatch;
 use crate::domains::operation_logs::interfaces::TWriteAheadLog;
 use crate::domains::operation_logs::logger::ReplicatedLogs;
 use crate::domains::peers::command::BannedPeer;
@@ -33,7 +34,6 @@ use crate::domains::peers::peer::NodeKind;
 use crate::domains::peers::peer::PeerState;
 use crate::err;
 use client_sessions::ClientSessions;
-use futures::future::err;
 use futures::future::join_all;
 use heartbeat_scheduler::HeartBeatScheduler;
 
@@ -71,8 +71,7 @@ pub struct ClusterActor<T> {
     pub(crate) logger: ReplicatedLogs<T>,
     pub(crate) hash_ring: HashRing,
     pub(crate) pending_requests: Option<VecDeque<ConsensusRequest>>,
-    pub(crate) pending_migrations:
-        Option<HashMap<BatchId, tokio::sync::oneshot::Sender<Result<(), anyhow::Error>>>>,
+    pub(crate) pending_migrations: Option<HashMap<BatchId, PendingMigrationBatch>>,
 }
 
 #[derive(Debug, Clone)]
@@ -1037,7 +1036,8 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         // Retrieve key-value data from cache
         let mut cache_entries_to_migrate = Vec::new();
 
-        for key in target.tasks.iter().flat_map(|task| task.keys_to_migrate.iter().cloned()) {
+        let keys = target.tasks.iter().flat_map(|task| task.keys_to_migrate.iter().cloned());
+        for key in keys.clone() {
             let Ok(Some(value)) = cache_manager.route_get(key.clone()).await else {
                 continue;
             };
@@ -1054,7 +1054,8 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             let _ = callback.send(err!("No pending migrations active"));
             return;
         };
-        pending_migrations.insert(target.id.clone(), callback);
+        pending_migrations
+            .insert(target.id.clone(), PendingMigrationBatch { callback, keys: keys.collect() });
 
         let _ = target_peer
             .send(MigrateBatch { batch_id: target.id, cache_entries: cache_entries_to_migrate })
@@ -1106,14 +1107,15 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
     pub(crate) async fn handle_migration_ack(&mut self, ack: MigrationBatchAck) -> Option<()> {
         let pending = self.pending_migrations.as_mut()?;
-        let callback = pending.remove(&ack.batch_id)?;
+        let pending_migration_batch = pending.remove(&ack.batch_id)?;
 
         let result = if ack.success {
+            // delete
             Ok(())
         } else {
             err!("Failed to send migration completion signal for batch {}", ack.batch_id.0)
         };
-        if callback.send(result).is_err() {
+        if pending_migration_batch.callback.send(result).is_err() {
             return None;
         }
 

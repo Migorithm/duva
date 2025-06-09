@@ -494,7 +494,11 @@ async fn test_unblock_write_reqs_if_done_when_migrations_still_pending() {
     // Add pending migration (simulating migration still in progress)
     let (migration_tx, _migration_rx) = tokio::sync::oneshot::channel();
     let batch_id = BatchId("test_batch".into());
-    cluster_actor.pending_migrations.as_mut().unwrap().insert(batch_id, migration_tx);
+    cluster_actor
+        .pending_migrations
+        .as_mut()
+        .unwrap()
+        .insert(batch_id, PendingMigrationBatch { callback: migration_tx, keys: vec![] });
 
     // WHEN
     cluster_actor.unblock_write_reqs_if_done();
@@ -568,7 +572,11 @@ async fn test_handle_migration_ack_failure() {
 
     // Ensure pending_migrations is set up
     assert!(cluster_actor.pending_migrations.is_some());
-    cluster_actor.pending_migrations.as_mut().unwrap().insert(batch_id.clone(), callback_tx);
+    cluster_actor
+        .pending_migrations
+        .as_mut()
+        .unwrap()
+        .insert(batch_id.clone(), PendingMigrationBatch { callback: callback_tx, keys: vec![] });
 
     let ack = MigrationBatchAck::with_reject(batch_id.clone());
 
@@ -599,7 +607,11 @@ async fn test_handle_migration_ack_batch_id_not_found() {
 
     let (callback_tx, _callback_rx) = tokio::sync::oneshot::channel();
     let existing_batch_id = BatchId("existing_batch".into());
-    cluster_actor.pending_migrations.as_mut().unwrap().insert(existing_batch_id, callback_tx);
+    cluster_actor
+        .pending_migrations
+        .as_mut()
+        .unwrap()
+        .insert(existing_batch_id, PendingMigrationBatch { callback: callback_tx, keys: vec![] });
 
     let non_existent_batch_id = BatchId("non_existent_batch".into());
     let ack = MigrationBatchAck { batch_id: non_existent_batch_id, success: true };
@@ -622,7 +634,11 @@ async fn test_handle_migration_ack_success_case_with_pending_reqs_and_migration(
     // Add the last pending migration
     let (callback_tx, callback_rx) = tokio::sync::oneshot::channel();
     let batch_id = BatchId("last_batch".into());
-    cluster_actor.pending_migrations.as_mut().unwrap().insert(batch_id.clone(), callback_tx);
+    cluster_actor
+        .pending_migrations
+        .as_mut()
+        .unwrap()
+        .insert(batch_id.clone(), PendingMigrationBatch { callback: callback_tx, keys: vec![] });
 
     let ack = MigrationBatchAck { batch_id, success: true };
 
