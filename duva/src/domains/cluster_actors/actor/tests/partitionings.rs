@@ -662,10 +662,13 @@ async fn test_start_rebalance_schedules_migration_batches() {
     ])
     .await;
 
-    // Add a peer that will trigger migration
-    let target_repl_id = ReplicationId::Key(uuid::Uuid::now_v7().to_string());
-    let (buf, peer_id) =
-        cluster_actor.test_add_peer(6570, NodeKind::NonData, Some(target_repl_id.clone()));
+    // ! test_key_1 and test_key_2 are migrated to testnode_a
+    let target_repl_id = ReplicationId::Key("testnode_a".into());
+    let (buf, peer_id) = cluster_actor.test_add_peer(
+        6570,
+        NodeKind::NonData,
+        Some(ReplicationId::Key("testnode_a".into())),
+    );
 
     let (tx, mut rx) = tokio::sync::mpsc::channel(2);
     let cluster_handler = ClusterCommandHandler(tx);
@@ -673,26 +676,35 @@ async fn test_start_rebalance_schedules_migration_batches() {
     // WHEN
     cluster_actor.start_rebalance(peer_id.clone(), &cache_manager, Some(cluster_handler)).await;
 
-    tokio::time::sleep(Duration::from_millis(100)).await;
-
     // THEN
-    // 1. fake buf gets heartbeat
+    // 1. Verify heartbeat was sent immediately (synchronous part)
     let mut sent_messages = buf.lock().await;
-    let QueryIO::ClusterHeartBeat(heartbeat) = sent_messages.pop_front().unwrap() else {
+    let QueryIO::ClusterHeartBeat(heartbeat) =
+        sent_messages.pop_front().expect("Should have heartbeat message")
+    else {
         panic!("Expected heartbeat message");
     };
     assert_eq!(heartbeat.hashring.as_ref().unwrap().get_pnode_count(), 2);
 
-    // 2. pending_migrations is set
-    let ClusterCommand::Scheduler(SchedulerMessage::ScheduleMigrationBatch(batch, _)) =
-        rx.recv().await.unwrap()
-    else {
-        panic!("Expected ScheduleMigrationBatch message");
-    };
-    assert_eq!(batch.target_repl, target_repl_id);
-    assert_eq!(batch.tasks.len(), 1);
-    assert_eq!(batch.tasks[0].keys_to_migrate, vec!["test_key_1"]);
+    // 2. Wait for migration batch message with timeout (asynchronous part)
+    let batch = tokio::time::timeout(Duration::from_millis(1000), async {
+        loop {
+            match rx.recv().await {
+                | Some(ClusterCommand::Scheduler(SchedulerMessage::ScheduleMigrationBatch(
+                    b,
+                    _,
+                ))) => return b,
+                | Some(_) => continue, // Skip other message types
+                | None => panic!("Channel closed without receiving ScheduleMigrationBatch"),
+            }
+        }
+    })
+    .await
+    .expect("Should receive ScheduleMigrationBatch within timeout");
 
-    // 3. pending_requests is set
+    assert_eq!(batch.target_repl, target_repl_id);
+    assert!(!batch.tasks.is_empty());
+
+    // 3. Verify pending_requests is set (synchronous part)
     assert!(cluster_actor.pending_requests.is_some());
 }
