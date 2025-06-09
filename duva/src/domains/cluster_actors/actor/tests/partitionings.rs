@@ -492,13 +492,13 @@ async fn test_unblock_write_reqs_if_done_when_migrations_still_pending() {
     let mut cluster_actor = setup_blocked_cluster_actor_with_requests(1).await;
 
     // Add pending migration (simulating migration still in progress)
-    let (migration_tx, _migration_rx) = tokio::sync::oneshot::channel();
+    let (callback, _migration_rx) = tokio::sync::oneshot::channel();
     let batch_id = BatchId("test_batch".into());
     cluster_actor
         .pending_migrations
         .as_mut()
         .unwrap()
-        .insert(batch_id, PendingMigrationBatch { callback: migration_tx, keys: vec![] });
+        .insert(batch_id, PendingMigrationBatch::new(callback, vec![]));
 
     // WHEN
     cluster_actor.unblock_write_reqs_if_done();
@@ -566,8 +566,8 @@ async fn test_find_target_peer_for_replication() {
 async fn test_handle_migration_ack_failure() {
     // GIVEN
     let mut cluster_actor = setup_blocked_cluster_actor_with_requests(1).await;
-
-    let (callback_tx, callback_rx) = tokio::sync::oneshot::channel();
+    let (_hwm, cache_manager) = cache_manager_create_helper();
+    let (callback, callback_rx) = tokio::sync::oneshot::channel();
     let batch_id = BatchId("failure_batch".into());
 
     // Ensure pending_migrations is set up
@@ -576,12 +576,12 @@ async fn test_handle_migration_ack_failure() {
         .pending_migrations
         .as_mut()
         .unwrap()
-        .insert(batch_id.clone(), PendingMigrationBatch { callback: callback_tx, keys: vec![] });
+        .insert(batch_id.clone(), PendingMigrationBatch::new(callback, vec![]));
 
     let ack = MigrationBatchAck::with_reject(batch_id.clone());
 
     // WHEN
-    let result = cluster_actor.handle_migration_ack(ack).await;
+    let result = cluster_actor.handle_migration_ack(ack, &cache_manager).await;
 
     // THEN
     assert!(result.is_some()); // Method should return Some(())
@@ -593,7 +593,7 @@ async fn test_handle_migration_ack_failure() {
         callback_result
             .unwrap_err()
             .to_string()
-            .contains("Failed to send migration completion signal for batch failure_batch")
+            .starts_with("Failed to send migration completion signal for batch")
     );
 
     // Verify migrations are completed - pending_migrations should be None when all migrations are done
@@ -604,20 +604,20 @@ async fn test_handle_migration_ack_failure() {
 async fn test_handle_migration_ack_batch_id_not_found() {
     // GIVEN
     let mut cluster_actor = setup_blocked_cluster_actor_with_requests(1).await;
-
-    let (callback_tx, _callback_rx) = tokio::sync::oneshot::channel();
+    let (_hwm, cache_manager) = cache_manager_create_helper();
+    let (callback, _callback_rx) = tokio::sync::oneshot::channel();
     let existing_batch_id = BatchId("existing_batch".into());
     cluster_actor
         .pending_migrations
         .as_mut()
         .unwrap()
-        .insert(existing_batch_id, PendingMigrationBatch { callback: callback_tx, keys: vec![] });
+        .insert(existing_batch_id, PendingMigrationBatch::new(callback, vec![]));
 
     let non_existent_batch_id = BatchId("non_existent_batch".into());
     let ack = MigrationBatchAck { batch_id: non_existent_batch_id, success: true };
 
     // WHEN
-    let result = cluster_actor.handle_migration_ack(ack).await;
+    let result = cluster_actor.handle_migration_ack(ack, &cache_manager).await;
 
     // THEN
     assert!(result.is_none()); // Method should return None when batch ID is not found
@@ -630,15 +630,15 @@ async fn test_handle_migration_ack_batch_id_not_found() {
 async fn test_handle_migration_ack_success_case_with_pending_reqs_and_migration() {
     // GIVEN
     let mut cluster_actor = setup_blocked_cluster_actor_with_requests(2).await;
-
+    let (_hwm, cache_manager) = cache_manager_create_helper();
     // Add the last pending migration
-    let (callback_tx, callback_rx) = tokio::sync::oneshot::channel();
+    let (callback, callback_rx) = tokio::sync::oneshot::channel();
     let batch_id = BatchId("last_batch".into());
     cluster_actor
         .pending_migrations
         .as_mut()
         .unwrap()
-        .insert(batch_id.clone(), PendingMigrationBatch { callback: callback_tx, keys: vec![] });
+        .insert(batch_id.clone(), PendingMigrationBatch::new(callback, vec![]));
 
     let ack = MigrationBatchAck { batch_id, success: true };
 
@@ -649,7 +649,7 @@ async fn test_handle_migration_ack_success_case_with_pending_reqs_and_migration(
     assert_eq!(cluster_actor.pending_migrations.as_ref().unwrap().len(), 1);
 
     // WHEN
-    let result = cluster_actor.handle_migration_ack(ack).await;
+    let result = cluster_actor.handle_migration_ack(ack, &cache_manager).await;
 
     // THEN
     assert!(result.is_some());

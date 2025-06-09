@@ -140,7 +140,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
                 self.receive_batch(migrate_batch, cache_manager, from).await;
             },
             | MigrationBatchAck(migration_batch_ack) => {
-                self.handle_migration_ack(migration_batch_ack).await;
+                self.handle_migration_ack(migration_batch_ack, cache_manager).await;
             },
         }
     }

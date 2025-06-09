@@ -1,3 +1,6 @@
+use crate::err;
+use tracing::error;
+
 use crate::ReplicationId;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -32,4 +35,13 @@ impl MigrationBatch {
 pub(crate) struct PendingMigrationBatch {
     pub(crate) callback: tokio::sync::oneshot::Sender<anyhow::Result<()>>,
     pub(crate) keys: Vec<String>,
+}
+
+impl PendingMigrationBatch {
+    pub(crate) fn new(
+        callback: tokio::sync::oneshot::Sender<anyhow::Result<()>>,
+        keys: Vec<String>,
+    ) -> Self {
+        Self { callback, keys }
+    }
 }

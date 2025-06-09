@@ -1055,7 +1055,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             return;
         };
         pending_migrations
-            .insert(target.id.clone(), PendingMigrationBatch { callback, keys: keys.collect() });
+            .insert(target.id.clone(), PendingMigrationBatch::new(callback, keys.collect()));
 
         let _ = target_peer
             .send(MigrateBatch { batch_id: target.id, cache_entries: cache_entries_to_migrate })
@@ -1105,18 +1105,22 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         }
     }
 
-    pub(crate) async fn handle_migration_ack(&mut self, ack: MigrationBatchAck) -> Option<()> {
+    pub(crate) async fn handle_migration_ack(
+        &mut self,
+        ack: MigrationBatchAck,
+        cache_manager: &CacheManager,
+    ) -> Option<()> {
         let pending = self.pending_migrations.as_mut()?;
         let pending_migration_batch = pending.remove(&ack.batch_id)?;
 
-        let result = if ack.success {
-            // delete
-            Ok(())
+        if ack.success {
+            let _ = cache_manager.route_delete(pending_migration_batch.keys).await;
+            let _ = pending_migration_batch.callback.send(Ok(()));
         } else {
-            err!("Failed to send migration completion signal for batch {}", ack.batch_id.0)
-        };
-        if pending_migration_batch.callback.send(result).is_err() {
-            return None;
+            // ! we may want to consider retrying the migration if it fails
+            let _ = pending_migration_batch
+                .callback
+                .send(err!("Failed to send migration completion signal for batch"));
         }
 
         self.unblock_write_reqs_if_done();
