@@ -631,14 +631,30 @@ async fn test_handle_migration_ack_success_case_with_pending_reqs_and_migration(
     // GIVEN
     let mut cluster_actor = setup_blocked_cluster_actor_with_requests(2).await;
     let (_hwm, cache_manager) = cache_manager_create_helper();
-    // Add the last pending migration
+
+    // Set up test keys in cache that will be part of the migration
+    let test_keys = vec!["migrate_key_1".to_string(), "migrate_key_2".to_string()];
+    cache_manager
+        .route_set("migrate_key_1".to_string(), "value_1".to_string(), None, 1)
+        .await
+        .unwrap();
+    cache_manager
+        .route_set("migrate_key_2".to_string(), "value_2".to_string(), None, 2)
+        .await
+        .unwrap();
+
+    // Verify keys exist before migration
+    assert!(cache_manager.route_get("migrate_key_1").await.unwrap().is_some());
+    assert!(cache_manager.route_get("migrate_key_2").await.unwrap().is_some());
+
+    // Add the last pending migration with the test keys
     let (callback, callback_rx) = tokio::sync::oneshot::channel();
     let batch_id = BatchId("last_batch".into());
     cluster_actor
         .pending_migrations
         .as_mut()
         .unwrap()
-        .insert(batch_id.clone(), PendingMigrationBatch::new(callback, vec![]));
+        .insert(batch_id.clone(), PendingMigrationBatch::new(callback, test_keys));
 
     let ack = MigrationBatchAck { batch_id, success: true };
 
@@ -657,6 +673,10 @@ async fn test_handle_migration_ack_success_case_with_pending_reqs_and_migration(
     // Verify callback was successful
     let callback_result = callback_rx.await.unwrap();
     assert!(callback_result.is_ok());
+
+    // Verify keys were deleted from cache after successful migration
+    assert!(cache_manager.route_get("migrate_key_1").await.unwrap().is_none());
+    assert!(cache_manager.route_get("migrate_key_2").await.unwrap().is_none());
 
     // Verify unblock_write_reqs_if_done was called and requests were unblocked
     // Since this was the last migration, both should be None now
