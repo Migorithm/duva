@@ -1069,7 +1069,6 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         let Some(peer) = self.members.get_mut(&from) else {
             return;
         };
-        let ack = MigrationBatchAck::new_with_reject(migrate_batch.batch_id);
 
         // Validation against the now-updated hash ring - check if all keys belong to this node
         let keys_to_validate: Vec<&str> =
@@ -1079,11 +1078,11 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             .verify_key_belongs_to_node(&keys_to_validate, &self.replication.self_identifier())
         {
             error!("Received batch contains keys that do not belong to this node");
-            let _ = peer.send(ack).await;
+            let _ = peer.send(MigrationBatchAck::with_reject(migrate_batch.batch_id.clone())).await;
             return;
         }
 
-        join_all(
+        let write_results = join_all(
             migrate_batch
                 .cache_entries
                 .into_iter()
@@ -1091,7 +1090,17 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         )
         .await;
 
-        let _ = peer.send(ack.turn_success()).await;
+        let all_successful = write_results.iter().all(|r| r.is_ok());
+
+        if all_successful {
+            let _ = peer.send(MigrationBatchAck::with_success(migrate_batch.batch_id)).await;
+        } else {
+            error!(
+                "Failed to write some keys during migration for batch {}",
+                migrate_batch.batch_id.0
+            );
+            let _ = peer.send(MigrationBatchAck::with_reject(migrate_batch.batch_id)).await;
+        }
     }
 
     pub(crate) async fn handle_migration_ack(&mut self, ack: MigrationBatchAck) -> Option<()> {

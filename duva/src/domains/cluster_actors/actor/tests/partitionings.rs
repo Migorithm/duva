@@ -570,7 +570,7 @@ async fn test_handle_migration_ack_failure() {
     assert!(cluster_actor.pending_migrations.is_some());
     cluster_actor.pending_migrations.as_mut().unwrap().insert(batch_id.clone(), callback_tx);
 
-    let ack = MigrationBatchAck::new_with_reject(batch_id.clone());
+    let ack = MigrationBatchAck::with_reject(batch_id.clone());
 
     // WHEN
     let result = cluster_actor.handle_migration_ack(ack).await;

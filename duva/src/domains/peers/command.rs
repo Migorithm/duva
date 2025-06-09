@@ -188,12 +188,12 @@ mod peer_messages {
     }
 
     impl MigrationBatchAck {
-        pub(crate) fn new_with_reject(batch_id: BatchId) -> Self {
+        pub(crate) fn with_reject(batch_id: BatchId) -> Self {
             Self { batch_id, success: false }
         }
 
-        pub(crate) fn turn_success(self) -> Self {
-            Self { success: true, ..self }
+        pub(crate) fn with_success(batch_id: BatchId) -> Self {
+            Self { success: true, batch_id }
         }
     }
 
