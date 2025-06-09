@@ -410,8 +410,7 @@ async fn test_receive_batch_success_path() {
         .add_partition_if_not_exists(peer_replid.clone(), sender_peer_id.clone())
         .unwrap();
 
-    let cache_entries =
-        cache_entries_create_helper(&[("success_key1", "value1"), ("success_key2", "value2")]);
+    let cache_entries = cache_entries_create_helper(&[("success_key3", "value2")]);
     let migrate_batch = migration_batch_create_helper("success_test", cache_entries);
 
     // WHEN
@@ -422,12 +421,11 @@ async fn test_receive_batch_success_path() {
     assert_migration_batch_ack(&message_buf, "success_test", true).await;
 
     // Verify the keys were actually stored in the cache
-    let retrieved_value1 = cache_manager.route_get("success_key1").await.unwrap();
-    let retrieved_value2 = cache_manager.route_get("success_key2").await.unwrap();
 
-    assert!(retrieved_value1.is_some());
+    let retrieved_value2 = cache_manager.route_get("success_key3").await.unwrap();
+
     assert!(retrieved_value2.is_some());
-    assert_eq!(retrieved_value1.unwrap().value(), "value1");
+
     assert_eq!(retrieved_value2.unwrap().value(), "value2");
 }
 

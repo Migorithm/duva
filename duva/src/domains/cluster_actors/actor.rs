@@ -1074,8 +1074,10 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         // Validation against the now-updated hash ring - check if all keys belong to this node
         let keys_to_validate: Vec<&str> =
             migrate_batch.cache_entries.iter().map(|entry| entry.key()).collect();
-
-        if !self.hash_ring.verify_key_belongs_to_node(&keys_to_validate, &from) {
+        if !self
+            .hash_ring
+            .verify_key_belongs_to_node(&keys_to_validate, &self.replication.self_identifier())
+        {
             error!("Received batch contains keys that do not belong to this node");
             let _ = peer.send(ack).await;
             return;
