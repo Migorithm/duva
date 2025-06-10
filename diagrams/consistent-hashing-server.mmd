@@ -25,16 +25,9 @@ sequenceDiagram
     note over A,B : Both A and B WILL NOT<br>process write operations
 
     
-    
-    
-
-    
     A --) B : Notify token map update
     B -->> B : Make migration plan for other partitions.<br>For example, B may have held keys from 3000-5000 which now belong to A.
-
-
     
-
     Note over A,B: Now, A and B have disjoint<br>token ranges<br>0..5000 and 5001..10000 respectively
 
     critical 
@@ -64,13 +57,3 @@ sequenceDiagram
             B -->> C2 : Notify token map update
         end
     end
-
-
-
-    
-    
-
-
-    
-
-    
