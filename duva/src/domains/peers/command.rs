@@ -20,7 +20,8 @@ pub(crate) enum PeerMessage {
     RequestVote(RequestVote),
     ElectionVoteReply(ElectionVote),
     StartRebalance,
-    MigrateBatch(MigrateBatch),
+    ReceiveBatch(MigrateBatch),
+    MigrationBatchAck(MigrationBatchAck),
 }
 
 impl TryFrom<QueryIO> for PeerMessage {
@@ -33,6 +34,8 @@ impl TryFrom<QueryIO> for PeerMessage {
             | QueryIO::RequestVote(vote) => Ok(PeerMessage::RequestVote(vote)),
             | QueryIO::RequestVoteReply(reply) => Ok(PeerMessage::ElectionVoteReply(reply)),
             | QueryIO::StartRebalance => Ok(PeerMessage::StartRebalance),
+            | QueryIO::MigrateBatch(batch) => Ok(PeerMessage::ReceiveBatch(batch)),
+            | QueryIO::MigrationBatchAck(ack) => Ok(PeerMessage::MigrationBatchAck(ack)),
             | _ => Err(anyhow::anyhow!("Invalid data")),
         }
     }
@@ -63,7 +66,7 @@ mod peer_messages {
         pub(crate) term: u64, // current term of the candidate. Without it, the old leader wouldn't be able to step down gracefully.
         pub(crate) candidate_id: PeerIdentifier,
         pub(crate) last_log_index: u64,
-        pub(crate) last_log_term: u64, //the term of the last log entry, used for election restrictions. If the term is low, it won’t win the election.
+        pub(crate) last_log_term: u64, //the term of the last log entry, used for election restrictions. If the term is low, it won't win the election.
     }
     impl RequestVote {
         pub(crate) fn new(
@@ -176,5 +179,27 @@ mod peer_messages {
     pub struct MigrateBatch {
         pub(crate) batch_id: BatchId,
         pub(crate) cache_entries: Vec<CacheEntry>,
+    }
+
+    #[derive(Debug, Clone, PartialEq, bincode::Encode, bincode::Decode)]
+    pub struct MigrationBatchAck {
+        pub(crate) batch_id: BatchId,
+        pub(crate) success: bool,
+    }
+
+    impl MigrationBatchAck {
+        pub(crate) fn with_reject(batch_id: BatchId) -> Self {
+            Self { batch_id, success: false }
+        }
+
+        pub(crate) fn with_success(batch_id: BatchId) -> Self {
+            Self { success: true, batch_id }
+        }
+    }
+
+    impl From<MigrationBatchAck> for QueryIO {
+        fn from(value: MigrationBatchAck) -> Self {
+            QueryIO::MigrationBatchAck(value)
+        }
     }
 }

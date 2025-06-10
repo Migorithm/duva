@@ -2,12 +2,12 @@ use super::*;
 
 #[test]
 fn test_add_and_remove_node() {
-    let mut ring = HashRing::default();
+    let ring = HashRing::default();
     let modified_time = ring.last_modified;
     let node = PeerIdentifier("127.0.0.1:6379".into());
     let repl_id = ReplicationId::Key(uuid::Uuid::now_v7().to_string());
 
-    ring.add_partition_if_not_exists(repl_id.clone(), node.clone());
+    let mut ring = ring.add_partition_if_not_exists(repl_id.clone(), node.clone()).unwrap();
     let modified_time_after_add = ring.last_modified;
     assert_eq!(ring.get_pnode_count(), 1);
     assert_eq!(ring.get_vnode_count(), 256);
@@ -22,10 +22,10 @@ fn test_add_and_remove_node() {
 
 #[test]
 fn test_get_node_for_key() {
-    let mut ring = HashRing::default();
+    let ring = HashRing::default();
     let node = PeerIdentifier("127.0.0.1:6379".into());
     let repl_id = ReplicationId::Key(uuid::Uuid::now_v7().to_string());
-    ring.add_partition_if_not_exists(repl_id.clone(), node.clone());
+    let ring = ring.add_partition_if_not_exists(repl_id.clone(), node.clone()).unwrap();
 
     let key = "test_key";
     let node = ring.get_node_for_key(key);
@@ -34,14 +34,14 @@ fn test_get_node_for_key() {
 
 #[test]
 fn test_multiple_nodes() {
-    let mut ring = HashRing::default();
+    let ring = HashRing::default();
     let node1 = PeerIdentifier("127.0.0.1:6379".into());
     let repl_id1 = ReplicationId::Key(uuid::Uuid::now_v7().to_string());
     let node2 = PeerIdentifier("127.0.0.1:6380".into());
     let repl_id2 = ReplicationId::Key(uuid::Uuid::now_v7().to_string());
 
-    ring.add_partition_if_not_exists(repl_id1, node1);
-    ring.add_partition_if_not_exists(repl_id2, node2);
+    let ring = ring.add_partition_if_not_exists(repl_id1, node1).unwrap();
+    let ring = ring.add_partition_if_not_exists(repl_id2, node2).unwrap();
 
     assert_eq!(ring.get_pnode_count(), 2);
     assert_eq!(ring.get_vnode_count(), 512);
@@ -49,14 +49,20 @@ fn test_multiple_nodes() {
 
 #[test]
 fn test_consistent_hashing() {
-    let mut ring = HashRing::default();
+    let ring = HashRing::default();
     let node1 = PeerIdentifier("127.0.0.1:6379".into());
     let node2 = PeerIdentifier("127.0.0.1:6380".into());
     let node3 = PeerIdentifier("127.0.0.1:6389".into());
 
-    ring.add_partition_if_not_exists(ReplicationId::Key(uuid::Uuid::now_v7().to_string()), node1);
-    ring.add_partition_if_not_exists(ReplicationId::Key(uuid::Uuid::now_v7().to_string()), node2);
-    ring.add_partition_if_not_exists(ReplicationId::Key(uuid::Uuid::now_v7().to_string()), node3);
+    let ring = ring
+        .add_partition_if_not_exists(ReplicationId::Key(uuid::Uuid::now_v7().to_string()), node1)
+        .unwrap();
+    let ring = ring
+        .add_partition_if_not_exists(ReplicationId::Key(uuid::Uuid::now_v7().to_string()), node2)
+        .unwrap();
+    let ring = ring
+        .add_partition_if_not_exists(ReplicationId::Key(uuid::Uuid::now_v7().to_string()), node3)
+        .unwrap();
 
     let key = "test_key";
     let node_got1 = ring.get_node_for_key(key);
@@ -68,15 +74,19 @@ fn test_consistent_hashing() {
 #[test]
 fn test_node_removal_redistribution() {
     // GIVEN: Create a hash ring with 3 nodes
-    let mut ring = HashRing::default();
+    let ring = HashRing::default();
     let node1 = PeerIdentifier("127.0.0.1:6379".into());
     let node2 = PeerIdentifier("127.0.0.1:6380".into());
     let node3 = PeerIdentifier("127.0.0.1:6381".into());
 
     let repl_id = ReplicationId::Key(uuid::Uuid::now_v7().to_string());
-    ring.add_partition_if_not_exists(repl_id.clone(), node1);
-    ring.add_partition_if_not_exists(ReplicationId::Key(uuid::Uuid::now_v7().to_string()), node2);
-    ring.add_partition_if_not_exists(ReplicationId::Key(uuid::Uuid::now_v7().to_string()), node3);
+    let ring = ring.add_partition_if_not_exists(repl_id.clone(), node1).unwrap();
+    let ring = ring
+        .add_partition_if_not_exists(ReplicationId::Key(uuid::Uuid::now_v7().to_string()), node2)
+        .unwrap();
+    let mut ring = ring
+        .add_partition_if_not_exists(ReplicationId::Key(uuid::Uuid::now_v7().to_string()), node3)
+        .unwrap();
 
     // Record initial key distribution
     let mut before_removal = Vec::new();
@@ -107,11 +117,11 @@ fn test_node_removal_redistribution() {
 
 #[test]
 fn test_virtual_node_consistency() {
-    let mut ring = HashRing::default();
+    let ring = HashRing::default();
     let node = PeerIdentifier("127.0.0.1:6379".into());
 
     let repl_id = ReplicationId::Key(uuid::Uuid::now_v7().to_string());
-    ring.add_partition_if_not_exists(repl_id.clone(), node.clone());
+    let ring = ring.add_partition_if_not_exists(repl_id.clone(), node.clone()).unwrap();
 
     let virtual_nodes = ring.get_virtual_nodes();
     assert_eq!(virtual_nodes.len(), 256);
@@ -133,11 +143,12 @@ fn test_empty_ring() {
 
 #[test]
 fn test_idempotent_addition() {
-    let mut ring = HashRing::default();
+    let ring = HashRing::default();
     let repl_id = ReplicationId::Key(uuid::Uuid::now_v7().to_string());
     let node = PeerIdentifier("127.0.0.1:3499".to_string());
-    let is_added = ring.add_partition_if_not_exists(repl_id.clone(), node.clone());
-    assert!(is_added.is_some());
+    let new_ring = ring.add_partition_if_not_exists(repl_id.clone(), node.clone());
+    assert!(new_ring.is_some());
+    let ring = new_ring.unwrap();
 
     let ring_to_compare = ring.clone(); // Clone to avoid borrowing issues
 
@@ -150,18 +161,19 @@ fn test_idempotent_addition() {
 
 #[test]
 fn test_eq_works_deterministically() {
-    let mut ring = HashRing::default();
+    let ring = HashRing::default();
     let repl_id = ReplicationId::Key("dsdsdds".to_string());
     let node = PeerIdentifier("127.0.0.1:3499".to_string());
-    ring.add_partition_if_not_exists(repl_id.clone(), node.clone());
+    let mut ring = ring.add_partition_if_not_exists(repl_id.clone(), node.clone()).unwrap();
 
-    let mut ring_to_compare = HashRing::default();
-    ring_to_compare.add_partition_if_not_exists(repl_id.clone(), node.clone());
+    let ring_to_compare =
+        HashRing::default().add_partition_if_not_exists(repl_id.clone(), node.clone()).unwrap();
     assert_eq!(ring, ring_to_compare);
 
     ring.remove_partition(&repl_id);
     assert_ne!(ring, ring_to_compare);
 
+    let mut ring_to_compare = ring_to_compare;
     ring_to_compare.remove_partition(&repl_id);
     assert_eq!(ring, ring_to_compare);
 }

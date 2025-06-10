@@ -1,7 +1,7 @@
 use crate::domains::caches::cache_objects::CacheValue;
 use crate::domains::operation_logs::WriteOperation;
 use crate::domains::peers::command::{
-    ElectionVote, HeartBeat, MigrateBatch, ReplicationAck, RequestVote,
+    ElectionVote, HeartBeat, MigrateBatch, MigrationBatchAck, ReplicationAck, RequestVote,
 };
 use crate::prelude::PeerIdentifier;
 use anyhow::{Context, Result};
@@ -23,6 +23,7 @@ const REQUEST_VOTE_PREFIX: char = 'v';
 const REQUEST_VOTE_REPLY_PREFIX: char = 'r';
 const SESSION_REQUEST_PREFIX: char = '!';
 const MIGRATE_BATCH_PREFIX: char = 'm';
+const MIGRATION_BATCH_ACK_PREFIX: char = 'M';
 
 const ERR_PREFIX: char = '-';
 const NULL_PREFIX: char = '\u{0000}';
@@ -60,6 +61,7 @@ pub enum QueryIO {
     TopologyChange(Vec<PeerIdentifier>),
     StartRebalance,
     MigrateBatch(MigrateBatch),
+    MigrationBatchAck(MigrationBatchAck),
 }
 
 impl QueryIO {
@@ -135,6 +137,9 @@ impl QueryIO {
             | QueryIO::StartRebalance => serialize_with_bincode(START_REBALANCE_PREFIX, &()),
             | QueryIO::MigrateBatch(migrate_batch) => {
                 serialize_with_bincode(MIGRATE_BATCH_PREFIX, &migrate_batch)
+            },
+            | QueryIO::MigrationBatchAck(migration_batch_ack) => {
+                serialize_with_bincode(MIGRATION_BATCH_ACK_PREFIX, &migration_batch_ack)
             },
         }
     }
@@ -238,7 +243,7 @@ pub fn deserialize(buffer: impl Into<Bytes>) -> Result<(QueryIO, usize)> {
         | TOPOLOGY_CHANGE_PREFIX => parse_custom_type::<Vec<PeerIdentifier>>(buffer),
         | START_REBALANCE_PREFIX => Ok((QueryIO::StartRebalance, 1)),
         | MIGRATE_BATCH_PREFIX => parse_custom_type::<MigrateBatch>(buffer),
-
+        | MIGRATION_BATCH_ACK_PREFIX => parse_custom_type::<MigrationBatchAck>(buffer),
         | _ => Err(anyhow::anyhow!("Not a known value type {:?}", buffer)),
     }
 }
@@ -748,11 +753,12 @@ mod test {
     #[test]
     fn test_heartbeat_include_hashring() {
         // GIVEN
-        let mut ring = HashRing::default();
-        ring.add_partition_if_not_exists(
-            ReplicationId::Key(Uuid::now_v7().to_string()),
-            PeerIdentifier::new("127.0.1:3344".into(), 0),
-        );
+        let ring = HashRing::default()
+            .add_partition_if_not_exists(
+                ReplicationId::Key(Uuid::now_v7().to_string()),
+                PeerIdentifier::new("127.0.1:3344".into(), 0),
+            )
+            .unwrap();
 
         let heartbeat = HeartBeat {
             from: PeerIdentifier::new("127.0.0.1:3344".into(), 0),
@@ -808,5 +814,25 @@ mod test {
         };
         assert_eq!(deserialized_migrate_batch.batch_id, migrate_batch.batch_id);
         assert_eq!(deserialized_migrate_batch.cache_entries, migrate_batch.cache_entries);
+    }
+
+    #[test]
+    fn test_migration_batch_ack_serde() {
+        // GIVEN
+        let migration_batch_ack =
+            MigrationBatchAck { batch_id: BatchId(Uuid::now_v7().to_string()), success: true };
+        let query_io = QueryIO::MigrationBatchAck(migration_batch_ack.clone());
+
+        // WHEN
+        let serialized = query_io.clone().serialize();
+        let (deserialized, _) = deserialize(serialized).unwrap();
+
+        // THEN
+        assert_eq!(deserialized, query_io);
+        let QueryIO::MigrationBatchAck(deserialized_migration_batch_ack) = deserialized else {
+            panic!("Expected a MigrationBatchAck");
+        };
+        assert_eq!(deserialized_migration_batch_ack.batch_id, migration_batch_ack.batch_id);
+        assert_eq!(deserialized_migration_batch_ack.success, migration_batch_ack.success);
     }
 }

@@ -134,9 +134,14 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
                 self.receive_election_vote(request_vote_reply).await;
             },
             | StartRebalance => {
-                self.start_rebalance(from).await;
+                self.start_rebalance(from, cache_manager, None).await;
             },
-            | MigrateBatch(migrate_batch) => todo!(),
+            | ReceiveBatch(migrate_batch) => {
+                self.receive_batch(migrate_batch, cache_manager, from).await;
+            },
+            | MigrationBatchAck(migration_batch_ack) => {
+                self.handle_migration_ack(migration_batch_ack, cache_manager).await;
+            },
         }
     }
 

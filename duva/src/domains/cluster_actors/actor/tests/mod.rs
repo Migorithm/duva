@@ -13,19 +13,20 @@ use crate::ReplicationState;
 use crate::adapters::op_logs::memory_based::MemoryOpLogs;
 use crate::domains::QueryIO;
 use crate::domains::caches::actor::CacheCommandSender;
+use crate::domains::caches::cache_objects::{CacheEntry, CacheValue};
 use crate::domains::caches::command::CacheCommand;
 use crate::domains::cluster_actors::replication::ReplicationRole;
 use crate::domains::operation_logs::WriteOperation;
 use crate::domains::operation_logs::WriteRequest;
 use crate::domains::operation_logs::logger::ReplicatedLogs;
-use crate::domains::peers::command::HeartBeat;
 use crate::domains::peers::command::RejectionReason;
 use crate::domains::peers::command::ReplicationAck;
+use crate::domains::peers::command::{HeartBeat, MigrateBatch};
 use crate::domains::peers::connections::connection_types::ReadConnected;
 use crate::domains::peers::connections::inbound::stream::InboundStream;
 use crate::domains::peers::peer::PeerState;
 use crate::domains::peers::service::PeerListener;
-use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 use tempfile::TempDir;
 use tokio::fs::OpenOptions;
@@ -69,10 +70,9 @@ impl TRead for FakeReadWrite {
     }
 
     async fn read_values(&mut self) -> Result<Vec<QueryIO>, IoError> {
-        let mut values = Vec::new();
-        let mut guard = self.0.lock().await;
-
-        values.extend(guard.drain(..));
+        let guard = self.0.lock().await;
+        // ! it doesn't empty the buffer, so we can test the buffer later on
+        let values = guard.clone().drain(..).collect();
         Ok(values)
     }
 }
@@ -176,6 +176,78 @@ fn consensus_request_create_helper(
         session_req,
     );
     consensus_request
+}
+
+// Helper function to create cache manager with hwm
+pub(crate) fn cache_manager_create_helper() -> (Arc<AtomicU64>, CacheManager) {
+    let hwm = Arc::new(AtomicU64::new(0));
+    let cache_manager = CacheManager::run_cache_actors(hwm.clone());
+    (hwm, cache_manager)
+}
+
+pub(crate) async fn cache_manager_create_helper_with_keys(
+    keys: Vec<String>,
+) -> (Arc<AtomicU64>, CacheManager) {
+    let hwm = Arc::new(AtomicU64::new(0));
+    let cache_manager = CacheManager::run_cache_actors(hwm.clone());
+    for key in keys.clone() {
+        cache_manager.route_set(key, "value".to_string(), None, 1).await.unwrap();
+    }
+    hwm.store(keys.len() as u64, Ordering::Relaxed);
+    (hwm, cache_manager)
+}
+
+// Helper function to setup blocked cluster actor with pending requests
+pub(crate) async fn setup_blocked_cluster_actor_with_requests(
+    num_requests: usize,
+) -> ClusterActor<MemoryOpLogs> {
+    let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
+    cluster_actor.block_write_reqs();
+
+    for _ in 0..num_requests {
+        let (tx, _rx) = tokio::sync::oneshot::channel();
+        cluster_actor
+            .pending_requests
+            .as_mut()
+            .unwrap()
+            .push_back(consensus_request_create_helper(tx, None));
+    }
+
+    cluster_actor
+}
+
+// Helper function to setup migration batch
+pub(crate) fn migration_batch_create_helper(
+    batch_id: &str,
+    cache_entries: Vec<CacheEntry>,
+) -> MigrateBatch {
+    MigrateBatch { batch_id: BatchId(batch_id.into()), cache_entries }
+}
+
+// Helper function to create cache entries
+pub(crate) fn cache_entries_create_helper(keys_values: &[(&str, &str)]) -> Vec<CacheEntry> {
+    keys_values
+        .into_iter()
+        .map(|(key, value)| CacheEntry::new(key.to_string(), CacheValue::new(value.to_string())))
+        .collect()
+}
+
+// Helper function to assert migration batch ack
+pub(crate) async fn assert_migration_batch_ack(
+    message_buf: &FakeReadWrite,
+    expected_batch_id: &str,
+    expected_success: bool,
+) {
+    let sent_messages = message_buf.lock().await;
+    assert_eq!(sent_messages.len(), 1);
+
+    let message = sent_messages.front().unwrap();
+    let QueryIO::MigrationBatchAck(ack) = message else {
+        panic!("Expected MigrationBatchAck message");
+    };
+
+    assert_eq!(ack.batch_id.0, expected_batch_id);
+    assert_eq!(ack.success, expected_success);
 }
 
 #[cfg(test)]

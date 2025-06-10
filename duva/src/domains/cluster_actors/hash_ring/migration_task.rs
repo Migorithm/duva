@@ -1,3 +1,6 @@
+use crate::err;
+use tracing::error;
+
 use crate::ReplicationId;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -16,13 +19,29 @@ impl MigrationTask {
 pub(crate) struct BatchId(pub(crate) String);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct MigrationTarget {
+pub(crate) struct MigrationBatch {
     pub(crate) id: BatchId,
     pub(crate) target_repl: ReplicationId,
     pub(crate) tasks: Vec<MigrationTask>,
 }
-impl MigrationTarget {
+
+impl MigrationBatch {
     pub(crate) fn new(target_repl: ReplicationId, tasks: Vec<MigrationTask>) -> Self {
         Self { id: BatchId(uuid::Uuid::now_v7().to_string()), target_repl, tasks }
+    }
+}
+
+#[derive(Debug)]
+pub(crate) struct PendingMigrationBatch {
+    pub(crate) callback: tokio::sync::oneshot::Sender<anyhow::Result<()>>,
+    pub(crate) keys: Vec<String>,
+}
+
+impl PendingMigrationBatch {
+    pub(crate) fn new(
+        callback: tokio::sync::oneshot::Sender<anyhow::Result<()>>,
+        keys: Vec<String>,
+    ) -> Self {
+        Self { callback, keys }
     }
 }

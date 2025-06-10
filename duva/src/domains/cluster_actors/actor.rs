@@ -15,15 +15,16 @@ use crate::domains::QueryIO;
 use crate::domains::caches::cache_manager::CacheManager;
 use crate::domains::caches::cache_objects::CacheEntry;
 use crate::domains::cluster_actors::hash_ring::BatchId;
-use crate::domains::cluster_actors::hash_ring::MigrationTarget;
+use crate::domains::cluster_actors::hash_ring::MigrationBatch;
 use crate::domains::cluster_actors::hash_ring::MigrationTask;
+use crate::domains::cluster_actors::hash_ring::PendingMigrationBatch;
 use crate::domains::operation_logs::interfaces::TWriteAheadLog;
 use crate::domains::operation_logs::logger::ReplicatedLogs;
-
 use crate::domains::peers::command::BannedPeer;
 use crate::domains::peers::command::ElectionVote;
 use crate::domains::peers::command::HeartBeat;
 use crate::domains::peers::command::MigrateBatch;
+use crate::domains::peers::command::MigrationBatchAck;
 use crate::domains::peers::command::RejectionReason;
 use crate::domains::peers::command::ReplicationAck;
 use crate::domains::peers::command::RequestVote;
@@ -33,6 +34,7 @@ use crate::domains::peers::peer::NodeKind;
 use crate::domains::peers::peer::PeerState;
 use crate::err;
 use client_sessions::ClientSessions;
+use futures::future::join_all;
 use heartbeat_scheduler::HeartBeatScheduler;
 
 use std::collections::HashMap;
@@ -69,8 +71,7 @@ pub struct ClusterActor<T> {
     pub(crate) logger: ReplicatedLogs<T>,
     pub(crate) hash_ring: HashRing,
     pub(crate) pending_requests: Option<VecDeque<ConsensusRequest>>,
-    pub(crate) pending_migrations:
-        Option<HashMap<BatchId, tokio::sync::oneshot::Sender<Result<(), anyhow::Error>>>>,
+    pub(crate) pending_migrations: Option<HashMap<BatchId, PendingMigrationBatch>>,
 }
 
 #[derive(Debug, Clone)]
@@ -166,11 +167,12 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         );
 
         let (tx, _) = tokio::sync::broadcast::channel::<Vec<PeerIdentifier>>(100);
-        let mut hash_ring = HashRing::default();
-        hash_ring.add_partition_if_not_exists(
-            init_repl_state.replid.clone(),
-            init_repl_state.self_identifier(),
-        );
+        let hash_ring = HashRing::default()
+            .add_partition_if_not_exists(
+                init_repl_state.replid.clone(),
+                init_repl_state.self_identifier(),
+            )
+            .unwrap();
 
         Self {
             heartbeat_scheduler,
@@ -227,7 +229,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         self.join_peer_network_if_absent(heartbeat.cluster_nodes).await;
         self.gossip(heartbeat.hop_count).await;
         self.update_on_hertbeat_message(&heartbeat.from, heartbeat.hwm);
-        self.schedule_migration_if_required(heartbeat.hashring, cache_manager).await;
+        self.schedule_migration_if_required(heartbeat.hashring, cache_manager, None).await;
     }
 
     pub(crate) async fn req_consensus(&mut self, req: ConsensusRequest) {
@@ -416,7 +418,12 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     }
 
     #[instrument(level = tracing::Level::INFO, skip(self), fields(request_from = %request_from))]
-    pub(crate) async fn start_rebalance(&mut self, request_from: PeerIdentifier) {
+    pub(crate) async fn start_rebalance(
+        &mut self,
+        request_from: PeerIdentifier,
+        cache_manager: &CacheManager,
+        cluster_handler: Option<ClusterCommandHandler>,
+    ) {
         let Some(member) = self.members.get(&request_from) else {
             error!("Received rebalance request from unknown peer: {}", request_from);
             return;
@@ -427,14 +434,15 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             return;
         }
 
-        if self
+        let Some(new_hash_ring) = self
             .hash_ring
             .add_partition_if_not_exists(member.replid().clone(), member.id().clone())
-            .is_some()
-        {
-            warn!("Rebalancing started! subsequent writes will be blocked until rebalance is done");
-            self.block_write_reqs();
+        else {
+            return;
         };
+
+        warn!("Rebalancing started! subsequent writes will be blocked until rebalance is done");
+        self.block_write_reqs();
 
         let hb = self
             .replication
@@ -443,9 +451,15 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
                 self.logger.last_log_index,
                 self.logger.last_log_term,
             )
-            .set_hashring(self.hash_ring.clone());
+            .set_hashring(new_hash_ring.clone());
 
         self.send_heartbeat(hb).await;
+        self.schedule_migration_if_required(
+            Some(new_hash_ring),
+            cache_manager,
+            cluster_handler.clone(),
+        )
+        .await;
     }
 
     fn hop_count(fanout: usize, node_count: usize) -> u8 {
@@ -470,6 +484,13 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
     fn find_replica_mut(&mut self, peer_id: &PeerIdentifier) -> Option<&mut Peer> {
         self.members.get_mut(peer_id).filter(|peer| peer.kind() == &NodeKind::Replica)
+    }
+
+    fn peerid_by_replid(&self, target_repl_id: &ReplicationId) -> Option<&PeerIdentifier> {
+        self.members
+            .iter()
+            .find(|(_, peer)| peer.replid() == target_repl_id)
+            .map(|(peer_id, _)| peer_id)
     }
 
     async fn send_heartbeat(&mut self, heartbeat: HeartBeat) {
@@ -917,32 +938,37 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     }
 
     // * If the hashring is valid, make a plan to migrate data for each paritition
-    // 1. Partition Analysis - Compare the old and new hash rings to identify ranges where ownership has changed by examining all partition boundaries from both rings.
-    // 2. Migration Tasks - Create structured migration tasks containing the hash range, source/destination nodes, and actual keys that need to move.
-    // 3. Efficient Range Detection - Use the ring structure to find ownership changes by sampling mid-points of ranges rather than checking every possible hash value.
-    // 4. Key Discovery - The get_keys_in_range function needs to be implemented based on your actual data storage to find keys whose hashes fall within specific ranges.
-    // 5. Execution Strategy - Provides both queuing (for batch processing) and immediate execution options for migration tasks.
     async fn schedule_migration_if_required(
         &mut self,
         hashring: Option<HashRing>,
         cache_manager: &CacheManager,
+        cluster_handler: Option<ClusterCommandHandler>,
     ) {
-        let Some(ring) = hashring else {
+        let Some(new_ring) = hashring else {
             return;
         };
 
-        if ring == self.hash_ring {
+        if new_ring == self.hash_ring {
             return;
         }
-        if ring.last_modified < self.hash_ring.last_modified {
+        if new_ring.last_modified < self.hash_ring.last_modified {
             warn!("Received outdated hashring, ignoring");
             return;
         }
-        self.pending_requests.get_or_insert_with(VecDeque::new);
-        let keys = cache_manager.route_keys(None).await;
-        let migration_plans = self.hash_ring.create_migration_tasks(&ring, keys);
-        let batch_handles = FuturesUnordered::new();
 
+        let keys = cache_manager.route_keys(None).await;
+        let migration_plans = self.hash_ring.create_migration_tasks(&new_ring, keys);
+
+        // This is the critical update. The local hash ring is updated *before* migration tasks are sent.
+        self.hash_ring = new_ring;
+
+        if migration_plans.is_empty() {
+            info!("No migration tasks to schedule");
+            return;
+        }
+        self.block_write_reqs();
+
+        let batch_handles = FuturesUnordered::new();
         for (target_replid, mut migration_tasks) in migration_plans {
             while !migration_tasks.is_empty() {
                 let mut num = 0;
@@ -958,25 +984,29 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
                 }
 
                 // Spawn each batch as a separate task for parallel execution
-                batch_handles.push(tokio::spawn(Self::schedule_migration_target(
+                batch_handles.push(tokio::spawn(Self::schedule_migration_in_batch(
                     target_replid.clone(),
                     batch_to_migrate,
-                    self.self_handler.clone(),
+                    cluster_handler.clone().unwrap_or(self.self_handler.clone()),
                 )));
             }
         }
 
         // Process all batches
-        batch_handles
-            .for_each(|result| async {
-                if let Err(e) = result {
-                    error!("Migration batch panicked: {}", e);
-                }
-            })
-            .await;
+        tokio::spawn(async move {
+            batch_handles
+                .for_each(
+                    |result: Result<Result<(), anyhow::Error>, tokio::task::JoinError>| async {
+                        if let Err(e) = result {
+                            error!("Migration batch panicked: {}", e);
+                        }
+                    },
+                )
+                .await;
+        });
     }
 
-    async fn schedule_migration_target(
+    async fn schedule_migration_in_batch(
         target_replid: ReplicationId,
         batch_to_migrate: Vec<MigrationTask>,
         handler: ClusterCommandHandler,
@@ -984,7 +1014,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         let (tx, rx) = tokio::sync::oneshot::channel();
         handler
             .send(SchedulerMessage::ScheduleMigrationBatch(
-                MigrationTarget::new(target_replid, batch_to_migrate),
+                MigrationBatch::new(target_replid, batch_to_migrate),
                 tx,
             ))
             .await?;
@@ -993,50 +1023,133 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
     pub(crate) async fn migrate_batch(
         &mut self,
-        target: MigrationTarget,
+        target: MigrationBatch,
         cache_manager: &CacheManager,
         callback: tokio::sync::oneshot::Sender<Result<(), anyhow::Error>>,
     ) {
-        // 1. Find target peer based on replication ID
+        //  Find target peer based on replication ID
         let Some(peer_id) = self.peerid_by_replid(&target.target_repl).cloned() else {
-            let _ = callback.send(Err(anyhow::anyhow!("Target peer not found for replication ID")));
+            let _ = callback.send(err!("Target peer not found for replication ID"));
             return;
         };
 
-        // 2. Retrieve key-value data from cache
+        // Retrieve key-value data from cache
         let mut cache_entries_to_migrate = Vec::new();
-        let mut failed_keys: Vec<String> = Vec::new();
 
-        for key in target.tasks.iter().flat_map(|task| task.keys_to_migrate.iter().cloned()) {
+        let keys = target.tasks.iter().flat_map(|task| task.keys_to_migrate.iter().cloned());
+        for key in keys.clone() {
             let Ok(Some(value)) = cache_manager.route_get(key.clone()).await else {
-                failed_keys.push(key.clone());
                 continue;
             };
             cache_entries_to_migrate.push(CacheEntry::new(key, value));
         }
 
-        // 3. Get mutable reference to the target peer
+        // Get mutable reference to the target peer
         let Some(target_peer) = self.members.get_mut(&peer_id) else {
-            let _ = callback
-                .send(Err(anyhow::anyhow!("Target peer {} disappeared during migration", peer_id)));
+            let _ = callback.send(err!("Target peer {} disappeared during migration", peer_id));
             return;
         };
 
         let Some(pending_migrations) = self.pending_migrations.as_mut() else {
-            let _ = callback.send(Err(anyhow::anyhow!("No pending migrations")));
+            let _ = callback.send(err!("No pending migrations active"));
             return;
         };
-        pending_migrations.insert(target.id.clone(), callback);
+        pending_migrations
+            .insert(target.id.clone(), PendingMigrationBatch::new(callback, keys.collect()));
 
         let _ = target_peer
             .send(MigrateBatch { batch_id: target.id, cache_entries: cache_entries_to_migrate })
             .await;
     }
 
-    fn peerid_by_replid(&self, target_repl_id: &ReplicationId) -> Option<&PeerIdentifier> {
-        self.members
-            .iter()
-            .find(|(_, peer)| peer.replid() == target_repl_id)
-            .map(|(peer_id, _)| peer_id)
+    pub(crate) async fn receive_batch(
+        &mut self,
+        migrate_batch: MigrateBatch,
+        cache_manager: &CacheManager,
+        from: PeerIdentifier,
+    ) {
+        let Some(peer) = self.members.get_mut(&from) else {
+            return;
+        };
+
+        // Validation against the now-updated hash ring - check if all keys belong to this node
+        let keys_to_validate: Vec<&str> =
+            migrate_batch.cache_entries.iter().map(|entry| entry.key()).collect();
+        if !self
+            .hash_ring
+            .verify_key_belongs_to_node(&keys_to_validate, &self.replication.self_identifier())
+        {
+            error!("Received batch contains keys that do not belong to this node");
+            let _ = peer.send(MigrationBatchAck::with_reject(migrate_batch.batch_id.clone())).await;
+            return;
+        }
+
+        let write_results = join_all(
+            migrate_batch
+                .cache_entries
+                .into_iter()
+                .map(|entry| cache_manager.route_direct_set(entry)),
+        )
+        .await;
+
+        let all_successful = write_results.iter().all(|r| r.is_ok());
+
+        if all_successful {
+            let _ = peer.send(MigrationBatchAck::with_success(migrate_batch.batch_id)).await;
+        } else {
+            error!(
+                "Failed to write some keys during migration for batch {}",
+                migrate_batch.batch_id.0
+            );
+            let _ = peer.send(MigrationBatchAck::with_reject(migrate_batch.batch_id)).await;
+        }
+    }
+
+    pub(crate) async fn handle_migration_ack(
+        &mut self,
+        ack: MigrationBatchAck,
+        cache_manager: &CacheManager,
+    ) -> Option<()> {
+        let pending = self.pending_migrations.as_mut()?;
+        let pending_migration_batch = pending.remove(&ack.batch_id)?;
+
+        if ack.success {
+            let _ = cache_manager.route_delete(pending_migration_batch.keys).await;
+            let _ = pending_migration_batch.callback.send(Ok(()));
+        } else {
+            // ! we may want to consider retrying the migration if it fails
+            let _ = pending_migration_batch
+                .callback
+                .send(err!("Failed to send migration completion signal for batch"));
+        }
+
+        self.unblock_write_reqs_if_done();
+        Some(())
+    }
+
+    fn unblock_write_reqs_if_done(&mut self) {
+        let migrations_done = self.pending_migrations.as_ref().is_none_or(|p| p.is_empty());
+
+        if migrations_done {
+            if let Some(mut pending_reqs) = self.pending_requests.take() {
+                info!("All migrations complete, processing pending requests.");
+                self.pending_migrations = None;
+
+                if pending_reqs.is_empty() {
+                    return;
+                }
+                let handler = self.self_handler.clone();
+                tokio::spawn(async move {
+                    while let Some(req) = pending_reqs.pop_front() {
+                        if let Err(err) = handler
+                            .send(ClusterCommand::Client(ClientMessage::LeaderReqConsensus(req)))
+                            .await
+                        {
+                            error!("{}", err)
+                        }
+                    }
+                });
+            }
+        }
     }
 }
