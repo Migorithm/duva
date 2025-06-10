@@ -129,7 +129,6 @@ impl InboundStream {
 
     pub(crate) async fn add_peer(
         mut self,
-
         cluster_handler: ClusterCommandHandler,
     ) -> anyhow::Result<()> {
         self.recv_handshake().await?;

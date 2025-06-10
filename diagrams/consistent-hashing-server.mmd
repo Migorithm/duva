@@ -49,7 +49,7 @@ sequenceDiagram
         B <<-->> A: Mutual Ack migration
 
         par 
-            A -->> A: Snaphsot and drop logs
+            A -->> A: Delete write operation (or Snaphsot and drop logs for optimization)
             A -->> A: Unlock pending requests
             alt Request's key is in A's range
                 A ->> A: Process request
@@ -59,7 +59,7 @@ sequenceDiagram
             end
             A --) C1 : Notify token map update
         and
-            B -->> B: Snaphsot and drop logs
+            B -->> B: Delete write operation (or Snaphsot and drop logs for optimization)
             B -->> B: Unlock pending requests
             B -->> C2 : Notify token map update
         end

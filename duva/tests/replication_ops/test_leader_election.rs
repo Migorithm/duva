@@ -133,7 +133,6 @@ fn test_leader_election() -> anyhow::Result<()> {
 fn test_set_twice_after_election() -> anyhow::Result<()> {
     run_set_twice_after_election(false)?;
     run_set_twice_after_election(true)?;
-
     Ok(())
 }
 
