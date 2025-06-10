@@ -56,6 +56,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             | ScheduleMigrationBatch(tasks, callback) => {
                 self.migrate_batch(tasks, cache_manager, callback).await;
             },
+            | TryUnblockWriteReqs => self.unblock_write_reqs_if_done(),
         }
     }
 
@@ -85,6 +86,10 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
                 }
             },
             | LeaderReqConsensus(req) => {
+                if let Some(pending_requests) = self.pending_requests.as_mut() {
+                    pending_requests.push_back(req);
+                    return;
+                }
                 self.req_consensus(req).await;
             },
 

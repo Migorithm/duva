@@ -24,6 +24,7 @@ pub enum SchedulerMessage {
     StartLeaderElection,
     RebalanceRequest { request_to: PeerIdentifier, lazy_option: LazyOption },
     ScheduleMigrationBatch(MigrationBatch, tokio::sync::oneshot::Sender<anyhow::Result<()>>),
+    TryUnblockWriteReqs,
 }
 impl From<SchedulerMessage> for ClusterCommand {
     fn from(msg: SchedulerMessage) -> Self {
