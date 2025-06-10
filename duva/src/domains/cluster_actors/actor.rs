@@ -12,12 +12,14 @@ use super::replication::ReplicationState;
 use super::replication::time_in_secs;
 use super::*;
 use crate::domains::QueryIO;
+use crate::domains::caches::cache_manager;
 use crate::domains::caches::cache_manager::CacheManager;
 use crate::domains::caches::cache_objects::CacheEntry;
 use crate::domains::cluster_actors::hash_ring::BatchId;
 use crate::domains::cluster_actors::hash_ring::MigrationBatch;
 use crate::domains::cluster_actors::hash_ring::MigrationTask;
 use crate::domains::cluster_actors::hash_ring::PendingMigrationBatch;
+use crate::domains::operation_logs::WriteRequest;
 use crate::domains::operation_logs::interfaces::TWriteAheadLog;
 use crate::domains::operation_logs::logger::ReplicatedLogs;
 use crate::domains::peers::command::BannedPeer;
@@ -245,11 +247,6 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             }));
             return;
         };
-
-        if let Some(pending_requests) = self.pending_requests.as_mut() {
-            pending_requests.push_back(req);
-            return;
-        }
 
         // * Check if the request has already been processed
         if let Err(err) = self.logger.write_single_entry(&req.request, self.replication.term).await
@@ -1114,8 +1111,26 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         let pending_migration_batch = pending.remove(&ack.batch_id)?;
 
         if ack.success {
-            let _ = cache_manager.route_delete(pending_migration_batch.keys).await;
-            let _ = pending_migration_batch.callback.send(Ok(()));
+            // make consensus request for delete
+            let (tx, rx) = tokio::sync::oneshot::channel();
+            let w_req = ConsensusRequest::new(
+                WriteRequest::Delete { keys: pending_migration_batch.keys.clone() },
+                tx,
+                None,
+            );
+            self.req_consensus(w_req).await;
+            // ! background synchronization is required.
+            tokio::spawn({
+                let handler = self.self_handler.clone();
+                let cache_manager = cache_manager.clone();
+                async move {
+                    if rx.await.is_ok() {
+                        let _ = cache_manager.route_delete(pending_migration_batch.keys).await; // reflect state change
+                        let _ = handler.send(SchedulerMessage::TryUnblockWriteReqs).await;
+                        let _ = pending_migration_batch.callback.send(Ok(()));
+                    }
+                }
+            });
         } else {
             // ! we may want to consider retrying the migration if it fails
             let _ = pending_migration_batch
@@ -1123,11 +1138,10 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
                 .send(err!("Failed to send migration completion signal for batch"));
         }
 
-        self.unblock_write_reqs_if_done();
         Some(())
     }
 
-    fn unblock_write_reqs_if_done(&mut self) {
+    pub(crate) fn unblock_write_reqs_if_done(&mut self) {
         let migrations_done = self.pending_migrations.as_ref().is_none_or(|p| p.is_empty());
 
         if migrations_done {

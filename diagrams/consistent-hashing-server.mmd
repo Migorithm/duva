@@ -25,16 +25,9 @@ sequenceDiagram
     note over A,B : Both A and B WILL NOT<br>process write operations
 
     
-    
-    
-
-    
     A --) B : Notify token map update
     B -->> B : Make migration plan for other partitions.<br>For example, B may have held keys from 3000-5000 which now belong to A.
-
-
     
-
     Note over A,B: Now, A and B have disjoint<br>token ranges<br>0..5000 and 5001..10000 respectively
 
     critical 
@@ -49,7 +42,7 @@ sequenceDiagram
         B <<-->> A: Mutual Ack migration
 
         par 
-            A -->> A: Snaphsot and drop logs
+            A -->> A: Delete write operation (or Snaphsot and drop logs for optimization)
             A -->> A: Unlock pending requests
             alt Request's key is in A's range
                 A ->> A: Process request
@@ -59,18 +52,8 @@ sequenceDiagram
             end
             A --) C1 : Notify token map update
         and
-            B -->> B: Snaphsot and drop logs
+            B -->> B: Delete write operation (or Snaphsot and drop logs for optimization)
             B -->> B: Unlock pending requests
             B -->> C2 : Notify token map update
         end
     end
-
-
-
-    
-    
-
-
-    
-
-    

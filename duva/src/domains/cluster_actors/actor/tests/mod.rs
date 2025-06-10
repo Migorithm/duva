@@ -274,27 +274,6 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 }
 
 #[tokio::test]
-async fn test_requests_pending() {
-    // GIVEN
-    let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
-    let (tx, rx) = tokio::sync::oneshot::channel();
-    let write_r = WriteRequest::Set { key: "foo".into(), value: "bar".into(), expires_at: None };
-    let con_req = ConsensusRequest::new(write_r.clone(), tx, None);
-
-    //WHEN
-    cluster_actor.block_write_reqs();
-    cluster_actor.req_consensus(con_req).await;
-
-    // THEN
-    assert!(timeout(Duration::from_millis(200), rx).await.is_err());
-    assert_eq!(cluster_actor.pending_requests.as_ref().unwrap().len(), 1);
-    assert_eq!(
-        cluster_actor.pending_requests.as_mut().unwrap().pop_front().unwrap().request,
-        write_r
-    );
-}
-
-#[tokio::test]
 async fn test_hop_count_when_one() {
     // GIVEN
     let fanout = 2;

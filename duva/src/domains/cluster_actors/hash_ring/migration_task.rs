@@ -1,6 +1,3 @@
-use crate::err;
-use tracing::error;
-
 use crate::ReplicationId;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
