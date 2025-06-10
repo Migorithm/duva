@@ -1127,8 +1127,8 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
                     if rx.await.is_ok() {
                         let _ = cache_manager.route_delete(pending_migration_batch.keys).await; // reflect state change
                         let _ = handler.send(SchedulerMessage::TryUnblockWriteReqs).await;
+                        let _ = pending_migration_batch.callback.send(Ok(()));
                     }
-                    let _ = pending_migration_batch.callback.send(Ok(()));
                 }
             });
         } else {
