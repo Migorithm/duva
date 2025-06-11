@@ -6,6 +6,20 @@ use bincode::{
 use chrono::{DateTime, Utc};
 use std::time::Duration;
 
+pub enum CacheValueType {
+    String,
+    None,
+}
+
+impl Into<String> for CacheValueType {
+    fn into(self) -> String {
+        match self {
+            | CacheValueType::String => "string".to_string(),
+            | CacheValueType::None => "none".to_string(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CacheEntry {
     key: String,
@@ -75,6 +89,10 @@ impl CacheValue {
 
     pub(crate) fn to_cache_entry(&self, key: &str) -> CacheEntry {
         CacheEntry { key: key.to_string(), value: self.clone() }
+    }
+
+    pub(crate) fn value_type(&self) -> CacheValueType {
+        CacheValueType::String
     }
 }
 
