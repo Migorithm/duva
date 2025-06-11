@@ -1085,6 +1085,12 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             return;
         }
 
+        // If cache entries are empty, skip consensus and directly send success ack
+        if migrate_batch.cache_entries.is_empty() {
+            let _ = peer.send(MigrationBatchAck::with_success(migrate_batch.batch_id)).await;
+            return;
+        }
+
         let (tx, rx) = tokio::sync::oneshot::channel();
         self.req_consensus(ConsensusRequest::new(
             WriteRequest::MSet { entries: migrate_batch.cache_entries.clone() },

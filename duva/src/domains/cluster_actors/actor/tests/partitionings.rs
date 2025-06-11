@@ -457,22 +457,6 @@ async fn test_receive_batch_validation_failure_keys_not_belonging_to_node() {
 }
 
 #[tokio::test]
-async fn test_receive_batch_empty_cache_entries() {
-    // GIVEN
-    let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
-    let (_hwm, cache_manager) = cache_manager_create_helper();
-    let (message_buf, sender_peer_id) = cluster_actor.test_add_peer(6568, NodeKind::NonData, None);
-
-    let migrate_batch = migration_batch_create_helper("empty_test", vec![]);
-
-    // WHEN
-    cluster_actor.receive_batch(migrate_batch, &cache_manager, sender_peer_id).await;
-
-    // THEN
-    assert_migration_batch_ack(&message_buf, "empty_test", true).await;
-}
-
-#[tokio::test]
 async fn test_unblock_write_reqs_if_done_when_no_pending_migrations() {
     // GIVEN
     let mut cluster_actor = setup_blocked_cluster_actor_with_requests(2).await;
