@@ -12,3 +12,4 @@ mod test_replication_info;
 mod test_set_get;
 mod test_snapshot_persists_and_recovers_state;
 mod test_ttl;
+mod test_type;
