@@ -397,13 +397,16 @@ async fn test_migrate_keys_retrieves_actual_data() {
 }
 
 #[tokio::test]
-async fn test_receive_batch_success_path() {
+async fn test_receive_batch_success_path_when_consensus_is_required() {
     // GIVEN
     let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
     let (_hwm, cache_manager) = cache_manager_create_helper();
-
+    let current_index = cluster_actor.logger.last_log_index;
     let peer_replid = ReplicationId::Key("repl_id_for_other_node".to_string());
-    let (message_buf, sender_peer_id) =
+
+    let (repl_buf, _) = cluster_actor.test_add_peer(6579, NodeKind::Replica, None);
+
+    let (_, sender_peer_id) =
         cluster_actor.test_add_peer(6567, NodeKind::NonData, Some(peer_replid.clone()));
     cluster_actor.hash_ring = cluster_actor
         .hash_ring
@@ -411,22 +414,56 @@ async fn test_receive_batch_success_path() {
         .unwrap();
 
     let cache_entries = cache_entries_create_helper(&[("success_key3", "value2")]);
-    let migrate_batch = migration_batch_create_helper("success_test", cache_entries);
+    let migrate_batch = migration_batch_create_helper("success_test", cache_entries.clone());
 
     // WHEN
     cluster_actor.receive_batch(migrate_batch, &cache_manager, sender_peer_id).await;
 
-    // THEN
-    tokio::time::sleep(Duration::from_millis(100)).await;
-    assert_migration_batch_ack(&message_buf, "success_test", true).await;
+    // THEN - verify that the log index is incremented
+    assert_eq!(cluster_actor.logger.last_log_index, current_index + 1);
 
-    // Verify the keys were actually stored in the cache
+    assert_expected_queryio(
+        &repl_buf,
+        QueryIO::AppendEntriesRPC(HeartBeat {
+            from: cluster_actor.replication.self_identifier(),
+            replid: cluster_actor.replication.replid.clone(),
+            append_entries: vec![WriteOperation {
+                request: WriteRequest::MSet { entries: cache_entries.clone() },
+                log_index: 1,
+                term: 0,
+            }],
+            ..Default::default()
+        }),
+    )
+    .await;
+}
 
-    let retrieved_value2 = cache_manager.route_get("success_key3").await.unwrap();
+#[tokio::test]
+async fn test_receive_batch_success_path_when_noreplica_found() {
+    // GIVEN
+    let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
+    let (_hwm, cache_manager) = cache_manager_create_helper();
+    let current_index = cluster_actor.logger.last_log_index;
+    let peer_replid = ReplicationId::Key("repl_id_for_other_node".to_string());
 
-    assert!(retrieved_value2.is_some());
+    let (_, sender_peer_id) =
+        cluster_actor.test_add_peer(6567, NodeKind::NonData, Some(peer_replid.clone()));
+    cluster_actor.hash_ring = cluster_actor
+        .hash_ring
+        .add_partition_if_not_exists(peer_replid.clone(), sender_peer_id.clone())
+        .unwrap();
 
-    assert_eq!(retrieved_value2.unwrap().value(), "value2");
+    let cache_entries =
+        cache_entries_create_helper(&[("success_key3", "value2"), ("success_key4", "value4")]);
+    let migrate_batch = migration_batch_create_helper("success_test", cache_entries.clone());
+
+    // WHEN
+    cluster_actor.receive_batch(migrate_batch, &cache_manager, sender_peer_id).await;
+
+    // THEN - verify that the log index is incremented
+    assert_eq!(cluster_actor.logger.last_log_index, current_index + 1);
+    let keys = cache_manager.route_keys(None).await;
+    assert_eq!(keys.len(), 2);
 }
 
 #[tokio::test]
@@ -453,7 +490,14 @@ async fn test_receive_batch_validation_failure_keys_not_belonging_to_node() {
     cluster_actor.receive_batch(migrate_batch, &cache_manager, sender_peer_id).await;
 
     // THEN
-    assert_migration_batch_ack(&message_buf, "validation_test", false).await;
+    assert_expected_queryio(
+        &message_buf,
+        QueryIO::MigrationBatchAck(MigrationBatchAck {
+            batch_id: BatchId("validation_test".into()),
+            success: false,
+        }),
+    )
+    .await;
 }
 
 #[tokio::test]
