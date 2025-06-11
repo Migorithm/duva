@@ -294,6 +294,16 @@ impl CacheManager {
         .await;
         Ok(())
     }
+
+    pub(crate) async fn route_mset(&self, cache_entries: Vec<CacheEntry>) {
+        join_all(cache_entries.into_iter().map(|entry| async move {
+            let _ = self
+                .select_shard(&entry.key())
+                .send(CacheCommand::Set { cache_entry: entry })
+                .await;
+        }))
+        .await;
+    }
 }
 
 #[cfg(test)]

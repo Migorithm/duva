@@ -57,6 +57,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
                 self.migrate_batch(tasks, cache_manager, callback).await;
             },
             | TryUnblockWriteReqs => self.unblock_write_reqs_if_done(),
+            | SendBatchAck { batch_id, to } => self.send_batch_ack(batch_id, to).await,
         }
     }
 
