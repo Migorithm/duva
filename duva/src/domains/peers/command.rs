@@ -123,7 +123,7 @@ mod peer_messages {
         }
     }
 
-    #[derive(Debug, Clone, PartialEq, bincode::Encode, bincode::Decode)]
+    #[derive(Debug, Clone, PartialEq, bincode::Encode, bincode::Decode, Default)]
     pub struct HeartBeat {
         pub(crate) from: PeerIdentifier,
         pub(crate) term: u64,

@@ -12,7 +12,6 @@ use super::replication::ReplicationState;
 use super::replication::time_in_secs;
 use super::*;
 use crate::domains::QueryIO;
-use crate::domains::caches::cache_manager;
 use crate::domains::caches::cache_manager::CacheManager;
 use crate::domains::caches::cache_objects::CacheEntry;
 use crate::domains::cluster_actors::hash_ring::BatchId;
@@ -36,7 +35,6 @@ use crate::domains::peers::peer::NodeKind;
 use crate::domains::peers::peer::PeerState;
 use crate::err;
 use client_sessions::ClientSessions;
-use futures::future::join_all;
 use heartbeat_scheduler::HeartBeatScheduler;
 
 use std::collections::HashMap;
@@ -1087,25 +1085,46 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             return;
         }
 
-        let write_results = join_all(
-            migrate_batch
-                .cache_entries
-                .into_iter()
-                .map(|entry| cache_manager.route_direct_set(entry)),
-        )
+        // If cache entries are empty, skip consensus and directly send success ack
+        if migrate_batch.cache_entries.is_empty() {
+            let _ = peer.send(MigrationBatchAck::with_success(migrate_batch.batch_id)).await;
+            return;
+        }
+
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        self.req_consensus(ConsensusRequest::new(
+            WriteRequest::MSet { entries: migrate_batch.cache_entries.clone() },
+            tx,
+            None,
+        ))
         .await;
 
-        let all_successful = write_results.iter().all(|r| r.is_ok());
-
-        if all_successful {
-            let _ = peer.send(MigrationBatchAck::with_success(migrate_batch.batch_id)).await;
-        } else {
-            error!(
-                "Failed to write some keys during migration for batch {}",
-                migrate_batch.batch_id.0
-            );
-            let _ = peer.send(MigrationBatchAck::with_reject(migrate_batch.batch_id)).await;
+        // * If there are no replicas, we can directly apply the state
+        if self.replicas().count() == 0 {
+            let _ = cache_manager.route_mset(migrate_batch.cache_entries.clone()).await;
         }
+
+        // * If there are replicas, we need to wait for the consensus to be applied which should be done in the background
+        tokio::spawn({
+            let handler = self.self_handler.clone();
+            let cache_manager = cache_manager.clone();
+            async move {
+                if rx.await.is_ok() {
+                    let _ = cache_manager.route_mset(migrate_batch.cache_entries.clone()).await; // reflect state change
+                    let _ = handler
+                        .send(SchedulerMessage::SendBatchAck {
+                            batch_id: migrate_batch.batch_id,
+                            to: from,
+                        })
+                        .await;
+                    return;
+                }
+                error!(
+                    "Failed to write some keys during migration for batch {}",
+                    migrate_batch.batch_id.0
+                );
+            }
+        });
     }
 
     pub(crate) async fn handle_migration_ack(
@@ -1171,5 +1190,12 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
                 });
             }
         }
+    }
+
+    pub(crate) async fn send_batch_ack(&mut self, batch_id: BatchId, to: PeerIdentifier) {
+        let Some(peer) = self.members.get_mut(&to) else {
+            return;
+        };
+        let _ = peer.send(MigrationBatchAck::with_success(batch_id)).await;
     }
 }

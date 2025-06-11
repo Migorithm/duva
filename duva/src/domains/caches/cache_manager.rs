@@ -66,11 +66,6 @@ impl CacheManager {
         Ok(format!("s:{}|idx:{}", value, current_idx))
     }
 
-    pub(crate) async fn route_direct_set(&self, cache_entry: CacheEntry) -> Result<()> {
-        self.select_shard(cache_entry.key()).send(CacheCommand::Set { cache_entry }).await?;
-        Ok(())
-    }
-
     pub(crate) async fn route_save(
         &self,
         save_target: SaveTarget,
@@ -113,7 +108,7 @@ impl CacheManager {
             | WriteRequest::Incr { key, delta } => {
                 self.route_numeric_delta(key, delta, log_index).await?;
             },
-            | WriteRequest::BulkSet { entries } => {
+            | WriteRequest::MSet { entries } => {
                 self.route_bulk_set(entries).await?;
             },
         };
@@ -288,11 +283,19 @@ impl CacheManager {
     async fn route_bulk_set(&self, entries: Vec<CacheEntry>) -> Result<()> {
         let closure = |entry| -> CacheCommand { CacheCommand::Set { cache_entry: entry } };
         FuturesOrdered::from_iter(entries.into_iter().map(|entry| async move {
-            let _ = self.select_shard(&entry.key()).send(closure(entry)).await;
+            let _ = self.select_shard(entry.key()).send(closure(entry)).await;
         }))
         .collect::<Vec<_>>()
         .await;
         Ok(())
+    }
+
+    pub(crate) async fn route_mset(&self, cache_entries: Vec<CacheEntry>) {
+        join_all(cache_entries.into_iter().map(|entry| async move {
+            let _ =
+                self.select_shard(entry.key()).send(CacheCommand::Set { cache_entry: entry }).await;
+        }))
+        .await;
     }
 }
 

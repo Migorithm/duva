@@ -31,9 +31,7 @@ use std::time::Duration;
 use tempfile::TempDir;
 use tokio::fs::OpenOptions;
 use tokio::net::TcpListener;
-
 use tokio::sync::mpsc::channel;
-use tokio::time::timeout;
 use uuid::Uuid;
 
 use std::sync::Arc;
@@ -233,21 +231,16 @@ pub(crate) fn cache_entries_create_helper(keys_values: &[(&str, &str)]) -> Vec<C
 }
 
 // Helper function to assert migration batch ack
-pub(crate) async fn assert_migration_batch_ack(
+pub(crate) async fn assert_expected_queryio(
     message_buf: &FakeReadWrite,
-    expected_batch_id: &str,
-    expected_success: bool,
+    expected_query_io: QueryIO,
 ) {
     let sent_messages = message_buf.lock().await;
     assert_eq!(sent_messages.len(), 1);
 
     let message = sent_messages.front().unwrap();
-    let QueryIO::MigrationBatchAck(ack) = message else {
-        panic!("Expected MigrationBatchAck message");
-    };
 
-    assert_eq!(ack.batch_id.0, expected_batch_id);
-    assert_eq!(ack.success, expected_success);
+    assert_eq!(message, &expected_query_io);
 }
 
 #[cfg(test)]
