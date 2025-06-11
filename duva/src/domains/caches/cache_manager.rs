@@ -1,4 +1,5 @@
 use super::cache_objects::CacheValue;
+use super::cache_objects::CacheValueType;
 use crate::domains::caches::actor::CacheActor;
 use crate::domains::caches::actor::CacheCommandSender;
 use crate::domains::caches::cache_objects::CacheEntry;
@@ -293,6 +294,16 @@ impl CacheManager {
         .collect::<Vec<_>>()
         .await;
         Ok(())
+    }
+
+    pub(crate) async fn route_type(&self, key: impl AsRef<str>) -> Result<CacheValueType> {
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        let key_ref = key.as_ref();
+        self.select_shard(key_ref)
+            .send(CacheCommand::Type { key: key_ref.into(), callback: tx })
+            .await?;
+
+        Ok(rx.await?)
     }
 }
 

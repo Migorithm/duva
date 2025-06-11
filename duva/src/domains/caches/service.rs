@@ -67,6 +67,9 @@ impl CacheActor {
                 | CacheCommand::NumericDetla { key, delta, callback } => {
                     self.numeric_delta(key, delta, callback);
                 },
+                | CacheCommand::Type { key, callback } => {
+                    self.get_type(&key, callback);
+                },
             }
         }
         Ok(self)
