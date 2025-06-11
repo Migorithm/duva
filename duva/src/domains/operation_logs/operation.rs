@@ -13,7 +13,7 @@ pub struct WriteOperation {
 #[derive(Debug, Clone, PartialEq, Eq, bincode::Encode, bincode::Decode)]
 pub enum WriteRequest {
     Set { key: String, value: String, expires_at: Option<u64> },
-    BulkSet { entries: Vec<CacheEntry> },
+    MSet { entries: Vec<CacheEntry> },
     Delete { keys: Vec<String> },
     Append { key: String, value: String },
     Decr { key: String, delta: i64 },
@@ -53,7 +53,7 @@ impl WriteRequest {
             | WriteRequest::Incr { key, .. } => Some(key),
             | WriteRequest::Decr { key, .. } => Some(key),
             | WriteRequest::Delete { .. } => None, // Multiple keys, no single representative
-            | WriteRequest::BulkSet { .. } => None, // Multiple entries, no single representative
+            | WriteRequest::MSet { .. } => None,   // Multiple entries, no single representative
         }
     }
 
@@ -66,7 +66,7 @@ impl WriteRequest {
             | WriteRequest::Incr { key, .. } => vec![key],
             | WriteRequest::Decr { key, .. } => vec![key],
             | WriteRequest::Delete { keys, .. } => keys.iter().map(|k| k.as_str()).collect(),
-            | WriteRequest::BulkSet { entries } => entries.iter().map(|e| e.key()).collect(),
+            | WriteRequest::MSet { entries } => entries.iter().map(|e| e.key()).collect(),
         }
     }
 }

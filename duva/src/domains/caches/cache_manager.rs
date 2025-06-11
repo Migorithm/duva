@@ -113,7 +113,7 @@ impl CacheManager {
             | WriteRequest::Incr { key, delta } => {
                 self.route_numeric_delta(key, delta, log_index).await?;
             },
-            | WriteRequest::BulkSet { entries } => {
+            | WriteRequest::MSet { entries } => {
                 self.route_bulk_set(entries).await?;
             },
         };
