@@ -1,4 +1,4 @@
-use crate::domains::{QueryIO, deserialize};
+use crate::domains::{QueryIO, caches::cache_objects::CacheEntry, deserialize};
 use bytes::Bytes;
 
 #[derive(Debug, Clone, PartialEq, Eq, bincode::Encode, bincode::Decode)]
@@ -13,6 +13,7 @@ pub struct WriteOperation {
 #[derive(Debug, Clone, PartialEq, Eq, bincode::Encode, bincode::Decode)]
 pub enum WriteRequest {
     Set { key: String, value: String, expires_at: Option<u64> },
+    BulkSet { entries: Vec<CacheEntry> },
     Delete { keys: Vec<String> },
     Append { key: String, value: String },
     Decr { key: String, delta: i64 },
@@ -43,14 +44,29 @@ impl WriteRequest {
         Ok(ops)
     }
 
-    // TODO refactor into returning &str
-    pub(crate) fn key(&self) -> String {
+    /// Returns a representative key for single-key operations.
+    /// Returns None for multi-key operations (Delete, BulkSet) where a single key doesn't make sense.
+    pub(crate) fn key(&self) -> Option<&str> {
         match self {
-            | WriteRequest::Set { key, .. } => key.clone(),
-            | WriteRequest::Delete { keys, .. } => keys[0].clone(),
-            | WriteRequest::Append { key, .. } => key.clone(),
-            | WriteRequest::Incr { key, .. } => key.clone(),
-            | WriteRequest::Decr { key, .. } => key.clone(),
+            | WriteRequest::Set { key, .. } => Some(key),
+            | WriteRequest::Append { key, .. } => Some(key),
+            | WriteRequest::Incr { key, .. } => Some(key),
+            | WriteRequest::Decr { key, .. } => Some(key),
+            | WriteRequest::Delete { .. } => None, // Multiple keys, no single representative
+            | WriteRequest::BulkSet { .. } => None, // Multiple entries, no single representative
+        }
+    }
+
+    /// Returns all keys involved in the operation.
+    #[allow(unused)]
+    pub(crate) fn all_keys(&self) -> Vec<&str> {
+        match self {
+            | WriteRequest::Set { key, .. } => vec![key],
+            | WriteRequest::Append { key, .. } => vec![key],
+            | WriteRequest::Incr { key, .. } => vec![key],
+            | WriteRequest::Decr { key, .. } => vec![key],
+            | WriteRequest::Delete { keys, .. } => keys.iter().map(|k| k.as_str()).collect(),
+            | WriteRequest::BulkSet { entries } => entries.iter().map(|e| e.key()).collect(),
         }
     }
 }

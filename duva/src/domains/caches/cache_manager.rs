@@ -13,6 +13,7 @@ use chrono::DateTime;
 use chrono::Utc;
 use futures::StreamExt;
 use futures::future::join_all;
+use futures::stream::FuturesOrdered;
 use futures::stream::FuturesUnordered;
 use std::sync::Arc;
 use std::sync::atomic::AtomicU64;
@@ -100,7 +101,6 @@ impl CacheManager {
 
                 self.route_set(key, value, expiry, log_index).await?;
             },
-
             | WriteRequest::Delete { keys } => {
                 self.route_delete(keys).await?;
             },
@@ -112,6 +112,9 @@ impl CacheManager {
             },
             | WriteRequest::Incr { key, delta } => {
                 self.route_numeric_delta(key, delta, log_index).await?;
+            },
+            | WriteRequest::BulkSet { entries } => {
+                self.route_bulk_set(entries).await?;
             },
         };
 
@@ -280,5 +283,85 @@ impl CacheManager {
             .await?;
         let current = rx.await?;
         Ok(format!("s:{}|idx:{}", current?, current_idx))
+    }
+
+    async fn route_bulk_set(&self, entries: Vec<CacheEntry>) -> Result<()> {
+        let closure = |entry| -> CacheCommand { CacheCommand::Set { cache_entry: entry } };
+        FuturesOrdered::from_iter(entries.into_iter().map(|entry| async move {
+            let _ = self.select_shard(&entry.key()).send(closure(entry)).await;
+        }))
+        .collect::<Vec<_>>()
+        .await;
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domains::caches::cache_objects::{CacheEntry, CacheValue};
+    use std::sync::Arc;
+    use std::sync::atomic::AtomicU64;
+
+    #[tokio::test]
+    async fn test_route_bulk_set_distribution_across_shards() {
+        // GIVEN: A CacheManager with cache actors
+        let hwm = Arc::new(AtomicU64::new(0));
+        let cache_manager = CacheManager::run_cache_actors(hwm);
+
+        // Create many entries that should be distributed across different shards
+        let entries: Vec<CacheEntry> = (0..50)
+            .map(|i| CacheEntry::new(format!("key_{}", i), CacheValue::new(format!("value_{}", i))))
+            .collect();
+
+        // WHEN: We call route_bulk_set
+        let result = cache_manager.route_bulk_set(entries).await;
+
+        // THEN: The operation should succeed
+        assert!(result.is_ok());
+
+        // AND: All entries should be retrievable
+        for i in 0..50 {
+            let key = format!("key_{}", i);
+            let expected_value = format!("value_{}", i);
+
+            let retrieved_value = cache_manager.route_get(&key).await.unwrap();
+            assert_eq!(retrieved_value, Some(CacheValue::new(expected_value)));
+        }
+    }
+
+    #[tokio::test]
+    async fn test_route_bulk_set_with_expiry() {
+        // GIVEN: A CacheManager with cache actors
+        let hwm = Arc::new(AtomicU64::new(0));
+        let cache_manager = CacheManager::run_cache_actors(hwm);
+
+        // Create entries with expiry times
+        let future_time = Utc::now() + chrono::Duration::seconds(10);
+        let entries = vec![
+            CacheEntry::new(
+                "expire_key1".to_string(),
+                CacheValue::new("expire_value1".to_string()).with_expiry(Some(future_time)),
+            ),
+            CacheEntry::new(
+                "expire_key2".to_string(),
+                CacheValue::new("expire_value2".to_string()).with_expiry(Some(future_time)),
+            ),
+        ];
+
+        // WHEN: We call route_bulk_set
+        let result = cache_manager.route_bulk_set(entries).await;
+
+        // THEN: The operation should succeed
+        assert!(result.is_ok());
+
+        // AND: Entries should be retrievable with their expiry times
+        let value1 = cache_manager.route_get("expire_key1").await.unwrap();
+        assert_eq!(value1.as_ref().unwrap().value, "expire_value1");
+        assert!(value1.as_ref().unwrap().expiry.is_some());
+
+        let value2 = cache_manager.route_get("expire_key2").await.unwrap();
+        assert_eq!(value2.as_ref().unwrap().value, "expire_value2");
+        assert!(value2.as_ref().unwrap().expiry.is_some());
     }
 }
