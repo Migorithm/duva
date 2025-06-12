@@ -33,19 +33,8 @@ async fn test_run_for_election_transitions_to_candidate_and_sends_request_votes(
         last_log_term: actor.logger.last_log_term,
     };
 
-    let msg1 = fakebuf1.lock().await.pop_front().unwrap();
-    if let QueryIO::RequestVote(rv) = msg1 {
-        assert_eq!(rv, expected_request_vote);
-    } else {
-        panic!("Expected RequestVote, got {:?}", msg1);
-    }
-
-    let msg2 = fakebuf2.lock().await.pop_front().unwrap();
-    if let QueryIO::RequestVote(rv) = msg2 {
-        assert_eq!(rv, expected_request_vote);
-    } else {
-        panic!("Expected RequestVote, got {:?}", msg2);
-    }
+    assert_expected_queryio(&fakebuf1, QueryIO::RequestVote(expected_request_vote.clone())).await;
+    assert_expected_queryio(&fakebuf2, QueryIO::RequestVote(expected_request_vote)).await;
 }
 
 #[tokio::test]
