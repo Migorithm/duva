@@ -129,13 +129,12 @@ async fn test_vote_election_deny_vote_older_log() {
         follower_actor.replication.election_state,
         ElectionState::Follower { voted_for: None }
     ));
-    let sent_msg = candidate_fake_buf.lock().await.pop_front().unwrap();
-    let QueryIO::RequestVoteReply(ev) = sent_msg else {
-        panic!("Expected ElectionVote, got {:?}", sent_msg);
-    };
 
-    assert!(!ev.vote_granted);
-    assert_eq!(ev.term, initial_term);
+    assert_expected_queryio(
+        &candidate_fake_buf,
+        QueryIO::RequestVoteReply(ElectionVote { term: initial_term, vote_granted: false }),
+    )
+    .await;
 }
 
 #[tokio::test]
@@ -158,13 +157,11 @@ async fn test_vote_election_deny_vote_lower_candidate_term() {
 
     assert_eq!(follower_actor.replication.term, follower_term); // Term does not change
 
-    let sent_msg = candidate_fake_buf.lock().await.pop_front().unwrap();
-    let QueryIO::RequestVoteReply(ev) = sent_msg else {
-        panic!("Expected ElectionVote, got {:?}", sent_msg);
-    };
-
-    assert!(!ev.vote_granted);
-    assert_eq!(ev.term, follower_term); // Follower replies with its own term
+    assert_expected_queryio(
+        &candidate_fake_buf,
+        QueryIO::RequestVoteReply(ElectionVote { term: follower_term, vote_granted: false }),
+    )
+    .await;
 }
 
 #[tokio::test]
@@ -195,14 +192,16 @@ async fn test_receive_election_vote_candidate_wins_election() {
 
     // THEN: Initial heartbeat should be sent to the replica
     // The receive_election_vote calls become_leader, which sends an AppendEntriesRPC
-    let sent_msg = replica1_fake_buf.lock().await.pop_front().unwrap();
-    match sent_msg {
-        | QueryIO::AppendEntriesRPC(hb) => {
-            assert_eq!(hb.term, candidate_term);
-            assert_eq!(hb.from, candidate_actor.replication.self_identifier());
-        },
-        | _ => panic!("Expected AppendEntriesRPC (heartbeat), got {:?}", sent_msg),
-    }
+    assert_expected_queryio(
+        &replica1_fake_buf,
+        QueryIO::AppendEntriesRPC(HeartBeat {
+            term: candidate_term,
+            from: candidate_actor.replication.self_identifier(),
+            replid: candidate_actor.replication.replid.clone(),
+            ..Default::default()
+        }),
+    )
+    .await;
 }
 
 #[tokio::test]
