@@ -33,19 +33,8 @@ async fn test_run_for_election_transitions_to_candidate_and_sends_request_votes(
         last_log_term: actor.logger.last_log_term,
     };
 
-    let msg1 = fakebuf1.lock().await.pop_front().unwrap();
-    if let QueryIO::RequestVote(rv) = msg1 {
-        assert_eq!(rv, expected_request_vote);
-    } else {
-        panic!("Expected RequestVote, got {:?}", msg1);
-    }
-
-    let msg2 = fakebuf2.lock().await.pop_front().unwrap();
-    if let QueryIO::RequestVote(rv) = msg2 {
-        assert_eq!(rv, expected_request_vote);
-    } else {
-        panic!("Expected RequestVote, got {:?}", msg2);
-    }
+    assert_expected_queryio(&fakebuf1, expected_request_vote.clone()).await;
+    assert_expected_queryio(&fakebuf2, expected_request_vote).await;
 }
 
 #[tokio::test]
@@ -98,13 +87,11 @@ async fn test_vote_election_grant_vote() {
     assert_eq!(follower_actor.replication.role, ReplicationRole::Follower); // Stays follower
 
     // Check message sent to candidate
-    let sent_msg = candidate_fake_buf.lock().await.pop_front().unwrap();
-    if let QueryIO::RequestVoteReply(ev) = sent_msg {
-        assert!(ev.vote_granted);
-        assert_eq!(ev.term, initial_term + 1);
-    } else {
-        panic!("Expected ElectionVote, got {:?}", sent_msg);
-    }
+    assert_expected_queryio(
+        &candidate_fake_buf,
+        ElectionVote { term: initial_term + 1, vote_granted: true },
+    )
+    .await;
 }
 
 #[tokio::test]
@@ -142,13 +129,12 @@ async fn test_vote_election_deny_vote_older_log() {
         follower_actor.replication.election_state,
         ElectionState::Follower { voted_for: None }
     ));
-    let sent_msg = candidate_fake_buf.lock().await.pop_front().unwrap();
-    let QueryIO::RequestVoteReply(ev) = sent_msg else {
-        panic!("Expected ElectionVote, got {:?}", sent_msg);
-    };
 
-    assert!(!ev.vote_granted);
-    assert_eq!(ev.term, initial_term);
+    assert_expected_queryio(
+        &candidate_fake_buf,
+        ElectionVote { term: initial_term, vote_granted: false },
+    )
+    .await;
 }
 
 #[tokio::test]
@@ -171,13 +157,11 @@ async fn test_vote_election_deny_vote_lower_candidate_term() {
 
     assert_eq!(follower_actor.replication.term, follower_term); // Term does not change
 
-    let sent_msg = candidate_fake_buf.lock().await.pop_front().unwrap();
-    let QueryIO::RequestVoteReply(ev) = sent_msg else {
-        panic!("Expected ElectionVote, got {:?}", sent_msg);
-    };
-
-    assert!(!ev.vote_granted);
-    assert_eq!(ev.term, follower_term); // Follower replies with its own term
+    assert_expected_queryio(
+        &candidate_fake_buf,
+        ElectionVote { term: follower_term, vote_granted: false },
+    )
+    .await;
 }
 
 #[tokio::test]
@@ -208,14 +192,16 @@ async fn test_receive_election_vote_candidate_wins_election() {
 
     // THEN: Initial heartbeat should be sent to the replica
     // The receive_election_vote calls become_leader, which sends an AppendEntriesRPC
-    let sent_msg = replica1_fake_buf.lock().await.pop_front().unwrap();
-    match sent_msg {
-        | QueryIO::AppendEntriesRPC(hb) => {
-            assert_eq!(hb.term, candidate_term);
-            assert_eq!(hb.from, candidate_actor.replication.self_identifier());
-        },
-        | _ => panic!("Expected AppendEntriesRPC (heartbeat), got {:?}", sent_msg),
-    }
+    assert_expected_queryio(
+        &replica1_fake_buf,
+        QueryIO::AppendEntriesRPC(HeartBeat {
+            term: candidate_term,
+            from: candidate_actor.replication.self_identifier(),
+            replid: candidate_actor.replication.replid.clone(),
+            ..Default::default()
+        }),
+    )
+    .await;
 }
 
 #[tokio::test]

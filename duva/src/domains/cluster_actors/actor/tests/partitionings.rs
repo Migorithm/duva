@@ -80,10 +80,7 @@ async fn test_rebalance_request_happypath() {
 
     // THEN
     assert!(cluster_actor.pending_requests.is_some());
-
-    let msg = buf.lock().await.pop_front();
-    assert!(msg.is_some());
-    assert_eq!(msg.unwrap(), QueryIO::StartRebalance);
+    assert_expected_queryio(&buf, QueryIO::StartRebalance).await;
 }
 
 #[tokio::test]
@@ -100,7 +97,6 @@ async fn test_start_rebalance_before_connection_is_made() {
     // THEN
     // No pending requests should be created since the member is not connected
     assert!(cluster_actor.pending_requests.is_none());
-    // No message should be sent to the peer
 }
 
 // ! Failcase
@@ -136,17 +132,17 @@ async fn test_start_rebalance_happy_path() {
 
     // THEN
     assert!(cluster_actor.pending_requests.is_some());
-    let msg = buf.lock().await.pop_front();
-    assert!(msg.is_some());
-    let hb = msg.unwrap();
-    assert!(matches!(hb, QueryIO::ClusterHeartBeat(..)));
 
-    let QueryIO::ClusterHeartBeat(hb) = hb else {
-        panic!("Expected ClusterHeartBeat message");
-    };
-    assert!(hb.hashring.is_some());
-    assert_eq!(cluster_actor.hash_ring.get_pnode_count(), 2);
-    assert_eq!(cluster_actor.hash_ring, hb.hashring.unwrap());
+    assert_expected_queryio(
+        &buf,
+        QueryIO::ClusterHeartBeat(HeartBeat {
+            from: cluster_actor.replication.self_identifier(),
+            hashring: Some(cluster_actor.hash_ring.clone()),
+            replid: cluster_actor.replication.replid.clone(),
+            ..Default::default()
+        }),
+    )
+    .await;
 }
 
 #[tokio::test]
@@ -492,10 +488,7 @@ async fn test_receive_batch_validation_failure_keys_not_belonging_to_node() {
     // THEN
     assert_expected_queryio(
         &message_buf,
-        QueryIO::MigrationBatchAck(MigrationBatchAck {
-            batch_id: BatchId("validation_test".into()),
-            success: false,
-        }),
+        MigrationBatchAck { batch_id: BatchId("validation_test".into()), success: false },
     )
     .await;
 }
@@ -738,13 +731,16 @@ async fn test_start_rebalance_schedules_migration_batches() {
 
     // THEN
     // 1. Verify heartbeat was sent immediately (synchronous part)
-    let mut sent_messages = buf.lock().await;
-    let QueryIO::ClusterHeartBeat(heartbeat) =
-        sent_messages.pop_front().expect("Should have heartbeat message")
-    else {
-        panic!("Expected heartbeat message");
-    };
-    assert_eq!(heartbeat.hashring.as_ref().unwrap().get_pnode_count(), 2);
+    assert_expected_queryio(
+        &buf,
+        QueryIO::ClusterHeartBeat(HeartBeat {
+            from: cluster_actor.replication.self_identifier(),
+            hashring: Some(cluster_actor.hash_ring.clone()),
+            replid: cluster_actor.replication.replid.clone(),
+            ..Default::default()
+        }),
+    )
+    .await;
 
     // 2. Wait for migration batch message with timeout (asynchronous part)
     let batch = tokio::time::timeout(Duration::from_millis(1000), async {

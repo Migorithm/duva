@@ -417,11 +417,8 @@ async fn req_consensus_inserts_consensus_voting() {
     let (tx, _) = tokio::sync::oneshot::channel();
     let client_id = Uuid::now_v7();
     let session_request = SessionRequest::new(1, client_id);
-    let consensus_request = ConsensusRequest::new(
-        WriteRequest::Set { key: "foo".into(), value: "bar".into(), expires_at: None },
-        tx,
-        Some(session_request.clone()),
-    );
+    let w_req = WriteRequest::Set { key: "foo".into(), value: "bar".into(), expires_at: None };
+    let consensus_request = ConsensusRequest::new(w_req.clone(), tx, Some(session_request.clone()));
 
     // WHEN
     cluster_actor.req_consensus(consensus_request).await;
@@ -437,9 +434,20 @@ async fn req_consensus_inserts_consensus_voting() {
 
     // check on follower_buffs
     for follower in follower_buffs {
-        let mut guard = follower.lock().await;
-        assert_eq!(guard.len(), 1);
-        assert!(matches!(guard.pop_front().unwrap(), QueryIO::AppendEntriesRPC(_)));
+        assert_expected_queryio(
+            &follower,
+            QueryIO::AppendEntriesRPC(HeartBeat {
+                from: cluster_actor.replication.self_identifier(),
+                replid: cluster_actor.replication.replid.clone(),
+                append_entries: vec![WriteOperation {
+                    request: w_req.clone(),
+                    log_index: 1,
+                    term: 0,
+                }],
+                ..Default::default()
+            }),
+        )
+        .await;
     }
 }
 
