@@ -229,7 +229,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         self.join_peer_network_if_absent(heartbeat.cluster_nodes).await;
         self.gossip(heartbeat.hop_count).await;
         self.update_on_hertbeat_message(&heartbeat.from, heartbeat.hwm);
-        self.schedule_migration_if_required(heartbeat.hashring, cache_manager, None).await;
+        self.maybe_update_hashring(heartbeat.hashring, cache_manager, None).await;
     }
 
     pub(crate) async fn req_consensus(&mut self, req: ConsensusRequest) {
@@ -418,7 +418,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         }
     }
 
-    #[instrument(level = tracing::Level::INFO, skip(self), fields(request_from = %request_from))]
+    #[instrument(level = tracing::Level::INFO, skip(self,cache_manager,cluster_handler), fields(request_from = %request_from))]
     pub(crate) async fn start_rebalance(
         &mut self,
         request_from: PeerIdentifier,
@@ -455,12 +455,8 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             .set_hashring(new_hash_ring.clone());
 
         self.send_heartbeat(hb).await;
-        self.schedule_migration_if_required(
-            Some(new_hash_ring),
-            cache_manager,
-            cluster_handler.clone(),
-        )
-        .await;
+        self.maybe_update_hashring(Some(new_hash_ring), cache_manager, cluster_handler.clone())
+            .await;
     }
 
     fn hop_count(fanout: usize, node_count: usize) -> u8 {
@@ -939,7 +935,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     }
 
     // * If the hashring is valid, make a plan to migrate data for each paritition
-    async fn schedule_migration_if_required(
+    async fn maybe_update_hashring(
         &mut self,
         hashring: Option<HashRing>,
         cache_manager: &CacheManager,
@@ -957,16 +953,27 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             return;
         }
 
+        // For replicas, just update the hash ring and wait for leader to coordinate migrations
+        if !self.replication.is_leader_mode {
+            self.hash_ring = new_ring;
+            info!("Replica updated hash ring, waiting for leader to coordinate migrations");
+            return;
+        }
+
+        // Leader-only migration coordination logic below
+        // Keep the old ring to compare with new ring for migration planning
         let keys = cache_manager.route_keys(None).await;
         let migration_plans = self.hash_ring.create_migration_tasks(&new_ring, keys);
 
-        // This is the critical update. The local hash ring is updated *before* migration tasks are sent.
+        // Update the hash ring after creating migration plans
         self.hash_ring = new_ring;
 
         if migration_plans.is_empty() {
             info!("No migration tasks to schedule");
             return;
         }
+
+        info!("Leader scheduling {} migration plan(s)", migration_plans.len());
         self.block_write_reqs();
 
         let batch_handles = FuturesUnordered::new();
