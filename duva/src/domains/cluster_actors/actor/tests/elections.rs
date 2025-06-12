@@ -87,13 +87,11 @@ async fn test_vote_election_grant_vote() {
     assert_eq!(follower_actor.replication.role, ReplicationRole::Follower); // Stays follower
 
     // Check message sent to candidate
-    let sent_msg = candidate_fake_buf.lock().await.pop_front().unwrap();
-    if let QueryIO::RequestVoteReply(ev) = sent_msg {
-        assert!(ev.vote_granted);
-        assert_eq!(ev.term, initial_term + 1);
-    } else {
-        panic!("Expected ElectionVote, got {:?}", sent_msg);
-    }
+    assert_expected_queryio(
+        &candidate_fake_buf,
+        QueryIO::RequestVoteReply(ElectionVote { term: initial_term + 1, vote_granted: true }),
+    )
+    .await;
 }
 
 #[tokio::test]
