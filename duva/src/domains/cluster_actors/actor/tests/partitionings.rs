@@ -146,7 +146,7 @@ async fn test_start_rebalance_happy_path() {
 }
 
 #[tokio::test]
-async fn test_schedule_migration_if_required_when_noplan_is_made() {
+async fn test_maybe_update_hashring_when_noplan_is_made() {
     // GIVEN
     let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
     let last_modified = cluster_actor.hash_ring.last_modified;
@@ -167,9 +167,7 @@ async fn test_schedule_migration_if_required_when_noplan_is_made() {
 
     // WHEN
     let (_hwm, cache_manager) = cache_manager_create_helper();
-    cluster_actor
-        .schedule_migration_if_required(Some(hash_ring.clone()), &cache_manager, None)
-        .await;
+    cluster_actor.maybe_update_hashring(Some(hash_ring.clone()), &cache_manager, None).await;
 
     // THEN
     assert!(cluster_actor.pending_requests.is_none());
@@ -186,7 +184,7 @@ async fn test_make_migration_plan_when_given_hashring_is_same() {
     // WHEN
     let (_hwm, cache_manager) = cache_manager_create_helper();
     cluster_actor
-        .schedule_migration_if_required(Some(cluster_actor.hash_ring.clone()), &cache_manager, None)
+        .maybe_update_hashring(Some(cluster_actor.hash_ring.clone()), &cache_manager, None)
         .await;
 
     // THEN
@@ -201,7 +199,7 @@ async fn test_make_migration_plan_when_no_hashring_given() {
 
     // WHEN
     let (_hwm, cache_manager) = cache_manager_create_helper();
-    cluster_actor.schedule_migration_if_required(None, &cache_manager, None).await;
+    cluster_actor.maybe_update_hashring(None, &cache_manager, None).await;
 
     // THEN
     assert_eq!(cluster_actor.hash_ring.last_modified, last_modified);
@@ -218,7 +216,7 @@ async fn test_make_migration_plan_when_last_modified_is_lower_than_its_own() {
 
     // WHEN
     let (_hwm, cache_manager) = cache_manager_create_helper();
-    cluster_actor.schedule_migration_if_required(Some(hash_ring), &cache_manager, None).await;
+    cluster_actor.maybe_update_hashring(Some(hash_ring), &cache_manager, None).await;
 
     // THEN
     assert_eq!(cluster_actor.hash_ring.last_modified, last_modified);
@@ -703,7 +701,7 @@ async fn test_handle_migration_ack_success_case_with_pending_reqs_and_migration(
     // assert!(cluster_actor.pending_migrations.is_none());
 }
 
-// Verify that the start_rebalance -> schedule_migration_if_required flow works.
+// Verify that the start_rebalance -> maybe_update_hashring flow works.
 // This test addresses the TODO comment: "need to see if migration batch is scheduled."
 #[tokio::test]
 async fn test_start_rebalance_schedules_migration_batches() {
