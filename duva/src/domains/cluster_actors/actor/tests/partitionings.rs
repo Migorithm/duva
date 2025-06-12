@@ -762,3 +762,39 @@ async fn test_start_rebalance_schedules_migration_batches() {
     // 3. Verify pending_requests is set (synchronous part)
     assert!(cluster_actor.pending_requests.is_some());
 }
+
+#[tokio::test]
+async fn test_maybe_update_hashring_replica_only_updates_ring() {
+    // GIVEN - Create a replica actor (not leader)
+    let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Follower).await;
+    let (_hwm, cache_manager) = cache_manager_create_helper_with_keys(vec![
+        "replica_key_1".to_string(),
+        "replica_key_2".to_string(),
+    ])
+    .await;
+
+    let original_ring = cluster_actor.hash_ring.clone();
+    let original_modified = original_ring.last_modified;
+
+    // Create a new hash ring with different configuration
+    let new_node_replid = ReplicationId::Key("new_node".to_string());
+    let new_ring = HashRing::default()
+        .add_partition_if_not_exists(new_node_replid, PeerIdentifier::new("127.0.0.1", 6000))
+        .unwrap()
+        .add_partition_if_not_exists(
+            cluster_actor.replication.replid.clone(),
+            cluster_actor.replication.self_identifier(),
+        )
+        .unwrap();
+
+    // WHEN - Replica receives hash ring update
+    cluster_actor.maybe_update_hashring(Some(new_ring.clone()), &cache_manager, None).await;
+
+    // THEN - Hash ring should be updated
+    assert_eq!(cluster_actor.hash_ring, new_ring);
+    assert_ne!(cluster_actor.hash_ring.last_modified, original_modified);
+
+    // But no migration tasks should be initiated (no pending requests/migrations)
+    assert!(cluster_actor.pending_requests.is_none());
+    assert!(cluster_actor.pending_migrations.is_none());
+}

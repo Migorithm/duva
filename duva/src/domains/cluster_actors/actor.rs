@@ -953,16 +953,27 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             return;
         }
 
+        // For replicas, just update the hash ring and wait for leader to coordinate migrations
+        if !self.replication.is_leader_mode {
+            self.hash_ring = new_ring;
+            info!("Replica updated hash ring, waiting for leader to coordinate migrations");
+            return;
+        }
+
+        // Leader-only migration coordination logic below
+        // Keep the old ring to compare with new ring for migration planning
         let keys = cache_manager.route_keys(None).await;
         let migration_plans = self.hash_ring.create_migration_tasks(&new_ring, keys);
 
-        // This is the critical update. The local hash ring is updated *before* migration tasks are sent.
+        // Update the hash ring after creating migration plans
         self.hash_ring = new_ring;
 
         if migration_plans.is_empty() {
             info!("No migration tasks to schedule");
             return;
         }
+
+        info!("Leader scheduling {} migration plan(s)", migration_plans.len());
         self.block_write_reqs();
 
         let batch_handles = FuturesUnordered::new();
