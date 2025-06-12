@@ -33,8 +33,8 @@ async fn test_run_for_election_transitions_to_candidate_and_sends_request_votes(
         last_log_term: actor.logger.last_log_term,
     };
 
-    assert_expected_queryio(&fakebuf1, QueryIO::RequestVote(expected_request_vote.clone())).await;
-    assert_expected_queryio(&fakebuf2, QueryIO::RequestVote(expected_request_vote)).await;
+    assert_expected_queryio(&fakebuf1, expected_request_vote.clone()).await;
+    assert_expected_queryio(&fakebuf2, expected_request_vote).await;
 }
 
 #[tokio::test]
@@ -89,7 +89,7 @@ async fn test_vote_election_grant_vote() {
     // Check message sent to candidate
     assert_expected_queryio(
         &candidate_fake_buf,
-        QueryIO::RequestVoteReply(ElectionVote { term: initial_term + 1, vote_granted: true }),
+        ElectionVote { term: initial_term + 1, vote_granted: true },
     )
     .await;
 }
@@ -132,7 +132,7 @@ async fn test_vote_election_deny_vote_older_log() {
 
     assert_expected_queryio(
         &candidate_fake_buf,
-        QueryIO::RequestVoteReply(ElectionVote { term: initial_term, vote_granted: false }),
+        ElectionVote { term: initial_term, vote_granted: false },
     )
     .await;
 }
@@ -159,7 +159,7 @@ async fn test_vote_election_deny_vote_lower_candidate_term() {
 
     assert_expected_queryio(
         &candidate_fake_buf,
-        QueryIO::RequestVoteReply(ElectionVote { term: follower_term, vote_granted: false }),
+        ElectionVote { term: follower_term, vote_granted: false },
     )
     .await;
 }

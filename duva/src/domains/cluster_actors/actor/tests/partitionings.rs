@@ -488,10 +488,7 @@ async fn test_receive_batch_validation_failure_keys_not_belonging_to_node() {
     // THEN
     assert_expected_queryio(
         &message_buf,
-        QueryIO::MigrationBatchAck(MigrationBatchAck {
-            batch_id: BatchId("validation_test".into()),
-            success: false,
-        }),
+        MigrationBatchAck { batch_id: BatchId("validation_test".into()), success: false },
     )
     .await;
 }

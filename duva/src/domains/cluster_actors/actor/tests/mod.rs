@@ -233,14 +233,14 @@ pub(crate) fn cache_entries_create_helper(keys_values: &[(&str, &str)]) -> Vec<C
 // Helper function to assert migration batch ack
 pub(crate) async fn assert_expected_queryio(
     message_buf: &FakeReadWrite,
-    expected_query_io: QueryIO,
+    expected_query_io: impl Into<QueryIO>,
 ) {
     let sent_messages = message_buf.lock().await;
     assert_eq!(sent_messages.len(), 1);
 
     let message = sent_messages.front().unwrap();
 
-    assert_eq!(message, &expected_query_io);
+    assert_eq!(message, &expected_query_io.into());
 }
 
 #[cfg(test)]
