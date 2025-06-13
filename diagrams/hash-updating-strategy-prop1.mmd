@@ -1,0 +1,35 @@
+---
+title: Hash Update Propagation to State Machine
+---
+%% As of today(2025-06-13), this will require removing "cache actors" 
+
+sequenceDiagram
+    Actor C as Client
+
+    ClusterActor ->> CacheManager : Hash Update
+    CacheManager ->> CacheActor : Assign HashRange 
+
+    C -->> ClusterActor : Write request
+    ClusterActor --> ClusterActor : Validate HashRange
+
+
+    alt HashRange is valid
+        Note over ClusterActor :  consensus process is omitted
+        ClusterActor ->> CacheManager : Write request
+    else HashRange is invalid
+        ClusterActor ->> C : Error (Moved) 
+    end
+
+
+    C ->> CacheManager : Get key
+    CacheManager ->> CacheActor : Get key
+    CacheActor --> CacheActor : Validate HashRange
+    alt HashRange is valid
+        Note over CacheActor :  consensus process is omitted
+        CacheActor ->> C : return 
+    else HashRange is invalid
+        CacheActor ->> C : Error (Moved) 
+    end
+    
+
+

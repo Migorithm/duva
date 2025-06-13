@@ -1,0 +1,43 @@
+sequenceDiagram
+    Actor CacheActor
+    
+
+    Note over CL : Here, CacheManager holds its internal state
+    Box  
+        Actor CL as CacheManager
+    end
+
+    
+    Actor T as ClusterActor
+    
+    T --> T : HashRing Updated
+
+    T ->> CL : Notify HashRing Update
+
+    CL ->> CL : update its state
+
+
+    Client ->> T : Write request
+    T ->> T : Validate HashRange
+    alt HashRange is valid
+        T ->> CL : Write request
+        CL ->> CacheActor : Write request
+    else HashRange is invalid
+        T ->> Client : Error (Moved) 
+    end
+
+
+    Client ->> CL : Read request
+    CL ->> CL : Validate HashRange
+    alt HashRange is valid
+        CL ->> CacheActor : Read request
+        CacheActor ->> CL : Read response
+        CL ->> Client : Read response
+    else HashRange is invalid
+        CL ->> Client : Error (Moved) 
+    end
+
+
+
+
+
