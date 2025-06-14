@@ -33,7 +33,7 @@ impl ClientController {
             | ClientAction::SetWithExpiry { key, value, expiry } => QueryIO::SimpleString(
                 self.cache_manager
                     .route_set(
-                        CacheEntry::new(key, value).with_expiry(Some(expiry)),
+                        CacheEntry::new(key, value).with_expiry(expiry),
                         current_index.unwrap(),
                     )
                     .await?,

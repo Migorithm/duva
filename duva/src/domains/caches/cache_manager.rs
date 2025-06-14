@@ -86,10 +86,12 @@ impl CacheManager {
     pub(crate) async fn apply_log(&self, msg: WriteRequest, log_index: u64) -> Result<()> {
         match msg {
             | WriteRequest::Set { key, value, expires_at } => {
-                let expiry = expires_at
-                    .map(|expires_at| StoredDuration::Milliseconds(expires_at).to_datetime());
-
-                self.route_set(CacheEntry::new(key, value).with_expiry(expiry), log_index).await?;
+                let mut cache_entry = CacheEntry::new(key, value);
+                if let Some(expires_at) = expires_at {
+                    cache_entry = cache_entry
+                        .with_expiry(StoredDuration::Milliseconds(expires_at).to_datetime());
+                }
+                self.route_set(cache_entry, log_index).await?;
             },
             | WriteRequest::Delete { keys } => {
                 self.route_delete(keys).await?;
@@ -340,8 +342,8 @@ mod tests {
         // Create entries with expiry times
         let future_time = Utc::now() + chrono::Duration::seconds(10);
         let entries = vec![
-            CacheEntry::new("expire_key1", "expire_value1").with_expiry(Some(future_time)),
-            CacheEntry::new("expire_key2", "expire_value2").with_expiry(Some(future_time)),
+            CacheEntry::new("expire_key1", "expire_value1").with_expiry(future_time),
+            CacheEntry::new("expire_key2", "expire_value2").with_expiry(future_time),
         ];
 
         // WHEN: We call route_bulk_set

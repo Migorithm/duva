@@ -21,8 +21,8 @@ impl CacheEntry {
         Self { key: key.into(), value }
     }
 
-    pub(crate) fn with_expiry(self, expiry_millis: Option<DateTime<Utc>>) -> CacheEntry {
-        CacheEntry { key: self.key, value: self.value.with_expiry(expiry_millis) }
+    pub(crate) fn with_expiry(self, expiry_millis: DateTime<Utc>) -> CacheEntry {
+        CacheEntry { key: self.key, value: self.value.with_expiry(Some(expiry_millis)) }
     }
 
     pub(crate) fn is_valid(&self, current_datetime: &DateTime<Utc>) -> bool {
@@ -201,7 +201,7 @@ mod tests {
         let expiry_millis = (Utc::now() + chrono::Duration::minutes(30)).timestamp_millis();
 
         let original_entry = CacheEntry::new("test_key", "entry_value")
-            .with_expiry(Some(DateTime::from_timestamp_millis(expiry_millis).unwrap()));
+            .with_expiry(DateTime::from_timestamp_millis(expiry_millis).unwrap());
 
         // Encode the entry
         let encoded = encode_to_vec(&original_entry, bincode::config::standard()).unwrap();
