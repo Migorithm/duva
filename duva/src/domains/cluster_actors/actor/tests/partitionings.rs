@@ -354,14 +354,8 @@ async fn test_migrate_keys_retrieves_actual_data() {
     let (_, _) = cluster_actor.test_add_peer(6564, NodeKind::NonData, Some(target_repl_id.clone()));
 
     // Set up test data in cache
-    cache_manager
-        .route_set("test_key_1".to_string(), "value_1".to_string(), None, 1)
-        .await
-        .unwrap();
-    cache_manager
-        .route_set("test_key_2".to_string(), "value_2".to_string(), None, 2)
-        .await
-        .unwrap();
+    cache_manager.route_set(CacheEntry::new("test_key_1", "value_1"), 1).await.unwrap();
+    cache_manager.route_set(CacheEntry::new("test_key_2", "value_2"), 2).await.unwrap();
 
     let migration_task = MigrationTask {
         task_id: (0, 100),
@@ -650,14 +644,8 @@ async fn test_handle_migration_ack_success_case_with_pending_reqs_and_migration(
 
     // Set up test keys in cache that will be part of the migration
     let test_keys = vec!["migrate_key_1".to_string(), "migrate_key_2".to_string()];
-    cache_manager
-        .route_set("migrate_key_1".to_string(), "value_1".to_string(), None, 1)
-        .await
-        .unwrap();
-    cache_manager
-        .route_set("migrate_key_2".to_string(), "value_2".to_string(), None, 2)
-        .await
-        .unwrap();
+    cache_manager.route_set(CacheEntry::new("migrate_key_1", "value_1"), 1).await.unwrap();
+    cache_manager.route_set(CacheEntry::new("migrate_key_2", "value_2"), 2).await.unwrap();
 
     // Verify keys exist before migration
     assert!(cache_manager.route_get("migrate_key_1").await.unwrap().is_some());

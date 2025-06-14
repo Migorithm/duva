@@ -9,7 +9,6 @@ use crate::domains::saves::actor::SaveActor;
 use crate::domains::saves::actor::SaveTarget;
 use crate::domains::saves::endec::StoredDuration;
 use anyhow::Result;
-use chrono::DateTime;
 use chrono::Utc;
 use futures::StreamExt;
 use futures::future::join_all;
@@ -54,15 +53,11 @@ impl CacheManager {
 
     pub(crate) async fn route_set(
         &self,
-        key: String,
-        value: String,
-        expiry: Option<DateTime<Utc>>,
+        cache_entry: CacheEntry,
         current_idx: u64,
     ) -> Result<String> {
-        let cache_value = CacheValue::new(value.clone()).with_expiry(expiry);
-        let kvs = CacheEntry::new(key, cache_value);
-
-        self.select_shard(kvs.key()).send(CacheCommand::Set { cache_entry: kvs }).await?;
+        let value = cache_entry.value().to_string();
+        self.select_shard(cache_entry.key()).send(CacheCommand::Set { cache_entry }).await?;
         Ok(format!("s:{}|idx:{}", value, current_idx))
     }
 
@@ -91,10 +86,12 @@ impl CacheManager {
     pub(crate) async fn apply_log(&self, msg: WriteRequest, log_index: u64) -> Result<()> {
         match msg {
             | WriteRequest::Set { key, value, expires_at } => {
-                let expiry = expires_at
-                    .map(|expires_at| StoredDuration::Milliseconds(expires_at).to_datetime());
-
-                self.route_set(key, value, expiry, log_index).await?;
+                let mut cache_entry = CacheEntry::new(key, value);
+                if let Some(expires_at) = expires_at {
+                    cache_entry = cache_entry
+                        .with_expiry(StoredDuration::Milliseconds(expires_at).to_datetime());
+                }
+                self.route_set(cache_entry, log_index).await?;
             },
             | WriteRequest::Delete { keys } => {
                 self.route_delete(keys).await?;
@@ -139,9 +136,12 @@ impl CacheManager {
     }
     pub(crate) async fn apply_snapshot(self, key_values: Vec<CacheEntry>) -> Result<()> {
         // * Here, no need to think about index as it is to update state and no return is required
-        join_all(key_values.into_iter().filter(|kvc| kvc.is_valid(&Utc::now())).map(|kvs| {
-            self.route_set(kvs.key().to_string(), kvs.value().to_string(), kvs.expiry(), 0)
-        }))
+        join_all(
+            key_values
+                .into_iter()
+                .filter(|kvc| kvc.is_valid(&Utc::now()))
+                .map(|kvs| self.route_set(kvs, 0)),
+        )
         .await;
 
         let keys = self.route_keys(None).await;
@@ -314,7 +314,7 @@ mod tests {
 
         // Create many entries that should be distributed across different shards
         let entries: Vec<CacheEntry> = (0..50)
-            .map(|i| CacheEntry::new(format!("key_{}", i), CacheValue::new(format!("value_{}", i))))
+            .map(|i| CacheEntry::new(format!("key_{}", i), format!("value_{}", i)))
             .collect();
 
         // WHEN: We call route_bulk_set
@@ -342,14 +342,8 @@ mod tests {
         // Create entries with expiry times
         let future_time = Utc::now() + chrono::Duration::seconds(10);
         let entries = vec![
-            CacheEntry::new(
-                "expire_key1".to_string(),
-                CacheValue::new("expire_value1".to_string()).with_expiry(Some(future_time)),
-            ),
-            CacheEntry::new(
-                "expire_key2".to_string(),
-                CacheValue::new("expire_value2".to_string()).with_expiry(Some(future_time)),
-            ),
+            CacheEntry::new("expire_key1", "expire_value1").with_expiry(future_time),
+            CacheEntry::new("expire_key2", "expire_value2").with_expiry(future_time),
         ];
 
         // WHEN: We call route_bulk_set
