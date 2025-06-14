@@ -799,7 +799,7 @@ mod test {
         // GIVEN
         let migrate_batch = MigrateBatch {
             batch_id: BatchId(Uuid::now_v7().to_string()),
-            cache_entries: vec![CacheEntry::new("foo".into(), "bar".into())],
+            cache_entries: vec![CacheEntry::new("foo", "bar")],
         };
         let query_io = QueryIO::MigrateBatch(migrate_batch.clone());
 

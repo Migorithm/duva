@@ -13,12 +13,12 @@ pub struct CacheEntry {
 }
 
 impl CacheEntry {
-    pub(crate) fn new(key: String, value: String) -> Self {
-        Self { key, value: CacheValue::new(value) }
+    pub(crate) fn new(key: impl Into<String>, value: impl Into<String>) -> Self {
+        Self { key: key.into(), value: CacheValue::new(value.into()) }
     }
 
-    pub(crate) fn new_with_cache_value(key: String, value: CacheValue) -> Self {
-        Self { key, value }
+    pub(crate) fn new_with_cache_value(key: impl Into<String>, value: CacheValue) -> Self {
+        Self { key: key.into(), value }
     }
 
     pub(crate) fn with_expiry(self, expiry_millis: Option<DateTime<Utc>>) -> CacheEntry {
@@ -200,7 +200,7 @@ mod tests {
         // Create a CacheEntry with expiry (using millisecond precision to match our serialization)
         let expiry_millis = (Utc::now() + chrono::Duration::minutes(30)).timestamp_millis();
 
-        let original_entry = CacheEntry::new("test_key".to_string(), "entry_value".to_string())
+        let original_entry = CacheEntry::new("test_key", "entry_value")
             .with_expiry(Some(DateTime::from_timestamp_millis(expiry_millis).unwrap()));
 
         // Encode the entry

@@ -287,7 +287,7 @@ mod test {
 
     #[test]
     fn test_cache_value_encode() {
-        let value = CacheEntry::new("key".to_string(), "value".to_string());
+        let value = CacheEntry::new("key", "value");
         let encoded = value.encode_with_key().unwrap();
         let expected = vec![
             STRING_VALUE_TYPE_INDICATOR,
@@ -307,7 +307,7 @@ mod test {
 
     #[test]
     fn test_cache_value_with_expiry_milliseconds() {
-        let kvs = CacheEntry::new("key".to_string(), "value".to_string())
+        let kvs = CacheEntry::new("key", "value")
             .with_expiry(Some(StoredDuration::Milliseconds(1713824559637).to_datetime()));
 
         let encoded = kvs.encode_with_key().unwrap();

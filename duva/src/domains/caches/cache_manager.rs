@@ -340,10 +340,8 @@ mod tests {
         // Create entries with expiry times
         let future_time = Utc::now() + chrono::Duration::seconds(10);
         let entries = vec![
-            CacheEntry::new("expire_key1".to_string(), "expire_value1".to_string())
-                .with_expiry(Some(future_time)),
-            CacheEntry::new("expire_key2".to_string(), "expire_value2".to_string())
-                .with_expiry(Some(future_time)),
+            CacheEntry::new("expire_key1", "expire_value1").with_expiry(Some(future_time)),
+            CacheEntry::new("expire_key2", "expire_value2").with_expiry(Some(future_time)),
         ];
 
         // WHEN: We call route_bulk_set
