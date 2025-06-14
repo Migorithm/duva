@@ -189,7 +189,10 @@ pub(crate) async fn cache_manager_create_helper_with_keys(
     let hwm = Arc::new(AtomicU64::new(0));
     let cache_manager = CacheManager::run_cache_actors(hwm.clone());
     for key in keys.clone() {
-        cache_manager.route_set(key, "value".to_string(), None, 1).await.unwrap();
+        cache_manager
+            .route_set(CacheEntry::new(key, CacheValue::new("value".to_string())), 1)
+            .await
+            .unwrap();
     }
     hwm.store(keys.len() as u64, Ordering::Relaxed);
     (hwm, cache_manager)

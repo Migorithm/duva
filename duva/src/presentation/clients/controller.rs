@@ -2,6 +2,7 @@ use super::request::ClientRequest;
 use crate::config::ENV;
 use crate::domains::QueryIO;
 use crate::domains::caches::cache_manager::CacheManager;
+use crate::domains::caches::cache_objects::{CacheEntry, CacheValue};
 use crate::domains::cluster_actors::{ClientMessage, ConsensusClientResponse, ConsensusRequest};
 use crate::domains::saves::actor::SaveTarget;
 use crate::presentation::clients::request::ClientAction;
@@ -25,11 +26,16 @@ impl ClientController {
             | ClientAction::Ping => QueryIO::SimpleString("PONG".into()),
             | ClientAction::Echo(val) => QueryIO::BulkString(val),
             | ClientAction::Set { key, value } => QueryIO::SimpleString(
-                self.cache_manager.route_set(key, value, None, current_index.unwrap()).await?,
+                self.cache_manager
+                    .route_set(CacheEntry::new(key, CacheValue::new(value)), current_index.unwrap())
+                    .await?,
             ),
             | ClientAction::SetWithExpiry { key, value, expiry } => QueryIO::SimpleString(
                 self.cache_manager
-                    .route_set(key, value, Some(expiry), current_index.unwrap())
+                    .route_set(
+                        CacheEntry::new(key, CacheValue::new(value).with_expiry(Some(expiry))),
+                        current_index.unwrap(),
+                    )
                     .await?,
             ),
             | ClientAction::Append { key, value } => QueryIO::SimpleString(

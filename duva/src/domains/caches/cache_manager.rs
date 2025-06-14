@@ -54,15 +54,11 @@ impl CacheManager {
 
     pub(crate) async fn route_set(
         &self,
-        key: String,
-        value: String,
-        expiry: Option<DateTime<Utc>>,
+        cache_entry: CacheEntry,
         current_idx: u64,
     ) -> Result<String> {
-        let cache_value = CacheValue::new(value.clone()).with_expiry(expiry);
-        let kvs = CacheEntry::new(key, cache_value);
-
-        self.select_shard(kvs.key()).send(CacheCommand::Set { cache_entry: kvs }).await?;
+        let value = cache_entry.value().to_string();
+        self.select_shard(cache_entry.key()).send(CacheCommand::Set { cache_entry }).await?;
         Ok(format!("s:{}|idx:{}", value, current_idx))
     }
 
@@ -94,7 +90,11 @@ impl CacheManager {
                 let expiry = expires_at
                     .map(|expires_at| StoredDuration::Milliseconds(expires_at).to_datetime());
 
-                self.route_set(key, value, expiry, log_index).await?;
+                self.route_set(
+                    CacheEntry::new(key, CacheValue::new(value).with_expiry(expiry)),
+                    log_index,
+                )
+                .await?;
             },
             | WriteRequest::Delete { keys } => {
                 self.route_delete(keys).await?;
@@ -139,9 +139,12 @@ impl CacheManager {
     }
     pub(crate) async fn apply_snapshot(self, key_values: Vec<CacheEntry>) -> Result<()> {
         // * Here, no need to think about index as it is to update state and no return is required
-        join_all(key_values.into_iter().filter(|kvc| kvc.is_valid(&Utc::now())).map(|kvs| {
-            self.route_set(kvs.key().to_string(), kvs.value().to_string(), kvs.expiry(), 0)
-        }))
+        join_all(
+            key_values
+                .into_iter()
+                .filter(|kvc| kvc.is_valid(&Utc::now()))
+                .map(|kvs| self.route_set(kvs, 0)),
+        )
         .await;
 
         let keys = self.route_keys(None).await;
