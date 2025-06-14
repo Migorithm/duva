@@ -14,7 +14,7 @@ pub struct CacheEntry {
 
 impl CacheEntry {
     pub(crate) fn new(key: impl Into<String>, value: impl Into<String>) -> Self {
-        Self { key: key.into(), value: CacheValue::new(value.into()) }
+        Self { key: key.into(), value: CacheValue::new(value) }
     }
 
     pub(crate) fn new_with_cache_value(key: impl Into<String>, value: CacheValue) -> Self {
@@ -70,8 +70,8 @@ pub struct CacheValue {
 }
 
 impl CacheValue {
-    pub(crate) fn new(value: String) -> Self {
-        Self { value, expiry: None }
+    pub(crate) fn new(value: impl Into<String>) -> Self {
+        Self { value: value.into(), expiry: None }
     }
     pub(crate) fn with_expiry(self, expiry: DateTime<Utc>) -> Self {
         Self { expiry: Some(expiry), ..self }
@@ -162,7 +162,7 @@ mod tests {
         //GIVEN -  Create a CacheValue with expiry (using millisecond precision to match our serialization)
         let expiry_millis = (Utc::now() + chrono::Duration::hours(1)).timestamp_millis();
         let expiry_time = DateTime::from_timestamp_millis(expiry_millis).unwrap();
-        let original_value = CacheValue::new("test_value".to_string()).with_expiry(expiry_time);
+        let original_value = CacheValue::new("test_value").with_expiry(expiry_time);
 
         // WHEN
         let encoded = encode_to_vec(&original_value, bincode::config::standard()).unwrap();
@@ -179,7 +179,7 @@ mod tests {
     #[test]
     fn test_cache_value_encode_decode_without_expiry() {
         // GIVEN - Create a CacheValue without expiry
-        let original_value = CacheValue::new("test_value_no_expiry".to_string());
+        let original_value = CacheValue::new("test_value_no_expiry");
 
         // Encode the value
         let encoded = encode_to_vec(&original_value, bincode::config::standard()).unwrap();

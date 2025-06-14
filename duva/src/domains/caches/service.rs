@@ -186,7 +186,7 @@ mod test {
         cache.ping().await;
 
         // THEN
-        assert_eq!(task.await.unwrap().unwrap(), Some(CacheValue::new(value.clone())));
+        assert_eq!(task.await.unwrap().unwrap(), Some(CacheValue::new(value)));
     }
 
     #[tokio::test]

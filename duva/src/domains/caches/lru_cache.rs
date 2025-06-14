@@ -443,34 +443,34 @@ mod tests {
     #[test]
     fn test_iter_single_item() {
         let mut cache = LruCache::new(3);
-        cache.put(1, CacheValue::new("one".into()));
+        cache.put(1, CacheValue::new("one"));
 
         let items: Vec<_> = cache.iter().collect();
         assert_eq!(items.len(), 1);
-        assert_eq!(items[0], (&1, &CacheValue::new("one".into())));
+        assert_eq!(items[0], (&1, &CacheValue::new("one")));
     }
 
     #[test]
     fn test_iter_multiple_items_mru_order() {
         let mut cache = LruCache::new(3);
-        cache.put(1, CacheValue::new("one".into()));
-        cache.put(2, CacheValue::new("two".into()));
-        cache.put(3, CacheValue::new("three".into()));
+        cache.put(1, CacheValue::new("one"));
+        cache.put(2, CacheValue::new("two"));
+        cache.put(3, CacheValue::new("three"));
 
         // Should iterate from MRU (3) to LRU (1)
         let items: Vec<_> = cache.iter().collect();
         assert_eq!(items.len(), 3);
-        assert_eq!(items[0], (&3, &CacheValue::new("three".into()))); // MRU
-        assert_eq!(items[1], (&2, &CacheValue::new("two".into())));
-        assert_eq!(items[2], (&1, &CacheValue::new("one".into()))); // LRU
+        assert_eq!(items[0], (&3, &CacheValue::new("three"))); // MRU
+        assert_eq!(items[1], (&2, &CacheValue::new("two")));
+        assert_eq!(items[2], (&1, &CacheValue::new("one"))); // LRU
     }
 
     #[test]
     fn test_iter_after_access_reorders() {
         let mut cache = LruCache::new(3);
-        cache.put(1, CacheValue::new("one".into()));
-        cache.put(2, CacheValue::new("two".into()));
-        cache.put(3, CacheValue::new("three".into()));
+        cache.put(1, CacheValue::new("one"));
+        cache.put(2, CacheValue::new("two"));
+        cache.put(3, CacheValue::new("three"));
 
         // Access key 1, making it MRU
         let _ = cache.get(&1);
@@ -478,16 +478,16 @@ mod tests {
         // Should iterate from MRU (1) to LRU (2)
         let items: Vec<_> = cache.iter().collect();
         assert_eq!(items.len(), 3);
-        assert_eq!(items[0], (&1, &CacheValue::new("one".into()))); // Now MRU
-        assert_eq!(items[1], (&3, &CacheValue::new("three".into())));
-        assert_eq!(items[2], (&2, &CacheValue::new("two".into()))); // Now LRU
+        assert_eq!(items[0], (&1, &CacheValue::new("one"))); // Now MRU
+        assert_eq!(items[1], (&3, &CacheValue::new("three")));
+        assert_eq!(items[2], (&2, &CacheValue::new("two"))); // Now LRU
     }
 
     #[test]
     fn test_iter_doesnt_modify_cache() {
         let mut cache = LruCache::new(3);
-        cache.put(1, CacheValue::new("one".into()));
-        cache.put(2, CacheValue::new("two".into()));
+        cache.put(1, CacheValue::new("one"));
+        cache.put(2, CacheValue::new("two"));
 
         // Store original state
         let original_len = cache.len();
@@ -551,12 +551,12 @@ mod tests {
 
         // Insert and modify via entry
         {
-            let value = cache.entry(1).or_insert(CacheValue::new("original".into()));
+            let value = cache.entry(1).or_insert(CacheValue::new("original"));
             value.value = "modified".to_string();
         }
 
         // Verify modification persisted
-        assert_eq!(cache.get(&1), Some(&CacheValue::new("modified".into())));
+        assert_eq!(cache.get(&1), Some(&CacheValue::new("modified")));
     }
 
     #[test]
@@ -564,25 +564,25 @@ mod tests {
         let mut cache = LruCache::new(2);
 
         // Insert first key
-        cache.entry(1).or_insert(CacheValue::new("one".into()));
+        cache.entry(1).or_insert(CacheValue::new("one"));
 
         // Insert second key
-        cache.entry(2).or_insert(CacheValue::new("two".into()));
+        cache.entry(2).or_insert(CacheValue::new("two"));
 
         // Modify first key via entry (should move to head)
         {
-            let value = cache.entry(1).or_insert(CacheValue::new("unused".into()));
+            let value = cache.entry(1).or_insert(CacheValue::new("unused"));
             value.value = "one_modified".to_string();
         }
 
         // Insert third key (should evict key 2, since 1 is now MRU)
-        cache.entry(3).or_insert(CacheValue::new("three".into()));
+        cache.entry(3).or_insert(CacheValue::new("three"));
 
         // Verify state
         assert_eq!(cache.len(), 2);
-        assert_eq!(cache.get(&1), Some(&CacheValue::new("one_modified".into())));
+        assert_eq!(cache.get(&1), Some(&CacheValue::new("one_modified")));
         assert_eq!(cache.get(&2), None); // Should be evicted
-        assert_eq!(cache.get(&3), Some(&CacheValue::new("three".into())));
+        assert_eq!(cache.get(&3), Some(&CacheValue::new("three")));
     }
 
     #[test]
@@ -600,13 +600,11 @@ mod tests {
         assert_eq!(cache.len(), 3);
         assert_eq!(cache.keys_with_expiry, 3);
 
-        cache.put("key999".to_string(), CacheValue::new("value3".to_string()).with_expiry(expiry));
+        cache.put("key999".to_string(), CacheValue::new("value3").with_expiry(expiry));
         assert_eq!(cache.len(), 3);
         assert_eq!(cache.keys_with_expiry, 3);
 
-        cache
-            .entry("key998".to_string())
-            .or_insert(CacheValue::new("value4".to_string()).with_expiry(expiry));
+        cache.entry("key998".to_string()).or_insert(CacheValue::new("value4").with_expiry(expiry));
         assert_eq!(cache.len(), 3);
         assert_eq!(cache.keys_with_expiry, 3);
 
