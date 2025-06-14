@@ -588,7 +588,7 @@ mod tests {
     #[test]
     fn test_lru_with_expiry() {
         let mut cache = LruCache::new(3);
-        let expiry = Some(Utc::now() + chrono::Duration::minutes(10));
+        let expiry = Utc::now() + chrono::Duration::minutes(10);
         assert_eq!(cache.capacity, 3);
 
         for i in 0..3 {

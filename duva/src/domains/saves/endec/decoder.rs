@@ -283,7 +283,10 @@ impl BytesDecoder<'_, MetadataReady> {
                 //0b11111110
                 | STRING_VALUE_TYPE_INDICATOR => {
                     let (key, value) = self.try_extract_key_value()?;
-                    let cache_value = CacheValue::new(value).with_expiry(expiry);
+                    let mut cache_value = CacheValue::new(value);
+                    if let Some(expiry) = expiry {
+                        cache_value = cache_value.with_expiry(expiry);
+                    }
                     return Ok(CacheEntry::new_with_cache_value(key, cache_value));
                 },
                 | _ => {

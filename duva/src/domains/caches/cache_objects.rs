@@ -22,7 +22,7 @@ impl CacheEntry {
     }
 
     pub(crate) fn with_expiry(self, expiry_millis: DateTime<Utc>) -> CacheEntry {
-        CacheEntry { key: self.key, value: self.value.with_expiry(Some(expiry_millis)) }
+        CacheEntry { key: self.key, value: self.value.with_expiry(expiry_millis) }
     }
 
     pub(crate) fn is_valid(&self, current_datetime: &DateTime<Utc>) -> bool {
@@ -73,8 +73,8 @@ impl CacheValue {
     pub(crate) fn new(value: String) -> Self {
         Self { value, expiry: None }
     }
-    pub(crate) fn with_expiry(self, expiry: Option<DateTime<Utc>>) -> Self {
-        Self { expiry, ..self }
+    pub(crate) fn with_expiry(self, expiry: DateTime<Utc>) -> Self {
+        Self { expiry: Some(expiry), ..self }
     }
 
     pub(crate) fn value(&self) -> &str {
@@ -162,8 +162,7 @@ mod tests {
         //GIVEN -  Create a CacheValue with expiry (using millisecond precision to match our serialization)
         let expiry_millis = (Utc::now() + chrono::Duration::hours(1)).timestamp_millis();
         let expiry_time = DateTime::from_timestamp_millis(expiry_millis).unwrap();
-        let original_value =
-            CacheValue::new("test_value".to_string()).with_expiry(Some(expiry_time));
+        let original_value = CacheValue::new("test_value".to_string()).with_expiry(expiry_time);
 
         // WHEN
         let encoded = encode_to_vec(&original_value, bincode::config::standard()).unwrap();
