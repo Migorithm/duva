@@ -284,7 +284,7 @@ impl BytesDecoder<'_, MetadataReady> {
                 | STRING_VALUE_TYPE_INDICATOR => {
                     let (key, value) = self.try_extract_key_value()?;
                     let cache_value = CacheValue::new(value).with_expiry(expiry);
-                    return Ok(CacheEntry::new(key, cache_value));
+                    return Ok(CacheEntry::new_with_cache_value(key, cache_value));
                 },
                 | _ => {
                     return Err(anyhow::anyhow!("Invalid key value pair"));

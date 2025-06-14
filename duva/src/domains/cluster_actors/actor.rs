@@ -1049,7 +1049,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             let Ok(Some(value)) = cache_manager.route_get(key.clone()).await else {
                 continue;
             };
-            cache_entries_to_migrate.push(CacheEntry::new(key, value));
+            cache_entries_to_migrate.push(CacheEntry::new_with_cache_value(key, value));
         }
 
         // Get mutable reference to the target peer

@@ -355,17 +355,11 @@ async fn test_migrate_keys_retrieves_actual_data() {
 
     // Set up test data in cache
     cache_manager
-        .route_set(
-            CacheEntry::new("test_key_1".to_string(), CacheValue::new("value_1".to_string())),
-            1,
-        )
+        .route_set(CacheEntry::new("test_key_1".to_string(), "value_1".to_string()), 1)
         .await
         .unwrap();
     cache_manager
-        .route_set(
-            CacheEntry::new("test_key_2".to_string(), CacheValue::new("value_2".to_string())),
-            2,
-        )
+        .route_set(CacheEntry::new("test_key_2".to_string(), "value_2".to_string()), 2)
         .await
         .unwrap();
 
@@ -657,17 +651,11 @@ async fn test_handle_migration_ack_success_case_with_pending_reqs_and_migration(
     // Set up test keys in cache that will be part of the migration
     let test_keys = vec!["migrate_key_1".to_string(), "migrate_key_2".to_string()];
     cache_manager
-        .route_set(
-            CacheEntry::new("migrate_key_1".to_string(), CacheValue::new("value_1".to_string())),
-            1,
-        )
+        .route_set(CacheEntry::new("migrate_key_1".to_string(), "value_1".to_string()), 1)
         .await
         .unwrap();
     cache_manager
-        .route_set(
-            CacheEntry::new("migrate_key_2".to_string(), CacheValue::new("value_2".to_string())),
-            2,
-        )
+        .route_set(CacheEntry::new("migrate_key_2".to_string(), "value_2".to_string()), 2)
         .await
         .unwrap();
 

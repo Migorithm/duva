@@ -13,7 +13,7 @@ use crate::ReplicationState;
 use crate::adapters::op_logs::memory_based::MemoryOpLogs;
 use crate::domains::QueryIO;
 use crate::domains::caches::actor::CacheCommandSender;
-use crate::domains::caches::cache_objects::{CacheEntry, CacheValue};
+use crate::domains::caches::cache_objects::CacheEntry;
 use crate::domains::caches::command::CacheCommand;
 use crate::domains::cluster_actors::replication::ReplicationRole;
 use crate::domains::operation_logs::WriteOperation;
@@ -189,10 +189,7 @@ pub(crate) async fn cache_manager_create_helper_with_keys(
     let hwm = Arc::new(AtomicU64::new(0));
     let cache_manager = CacheManager::run_cache_actors(hwm.clone());
     for key in keys.clone() {
-        cache_manager
-            .route_set(CacheEntry::new(key, CacheValue::new("value".to_string())), 1)
-            .await
-            .unwrap();
+        cache_manager.route_set(CacheEntry::new(key, "value".to_string()), 1).await.unwrap();
     }
     hwm.store(keys.len() as u64, Ordering::Relaxed);
     (hwm, cache_manager)
@@ -229,7 +226,7 @@ pub(crate) fn migration_batch_create_helper(
 pub(crate) fn cache_entries_create_helper(keys_values: &[(&str, &str)]) -> Vec<CacheEntry> {
     keys_values
         .into_iter()
-        .map(|(key, value)| CacheEntry::new(key.to_string(), CacheValue::new(value.to_string())))
+        .map(|(key, value)| CacheEntry::new(key.to_string(), value.to_string()))
         .collect()
 }
 

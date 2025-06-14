@@ -128,7 +128,6 @@ fn encode_size(size: usize) -> Result<Vec<u8>> {
 #[cfg(test)]
 mod test {
     use crate::domains::{
-        caches::cache_objects::CacheValue,
         cluster_actors::replication::ReplicationId,
         saves::endec::{
             StoredDuration,
@@ -288,7 +287,7 @@ mod test {
 
     #[test]
     fn test_cache_value_encode() {
-        let value = CacheEntry::new("key".to_string(), CacheValue::new("value".to_string()));
+        let value = CacheEntry::new("key".to_string(), "value".to_string());
         let encoded = value.encode_with_key().unwrap();
         let expected = vec![
             STRING_VALUE_TYPE_INDICATOR,
@@ -308,11 +307,8 @@ mod test {
 
     #[test]
     fn test_cache_value_with_expiry_milliseconds() {
-        let kvs = CacheEntry::new(
-            "key".to_string(),
-            CacheValue::new("value".to_string())
-                .with_expiry(Some(StoredDuration::Milliseconds(1713824559637).to_datetime())),
-        );
+        let kvs = CacheEntry::new("key".to_string(), "value".to_string())
+            .with_expiry(Some(StoredDuration::Milliseconds(1713824559637).to_datetime()));
 
         let encoded = kvs.encode_with_key().unwrap();
         let expected = vec![

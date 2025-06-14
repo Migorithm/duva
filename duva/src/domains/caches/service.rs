@@ -94,9 +94,7 @@ mod test {
     impl S {
         async fn set(&self, key: String, value: String) {
             self.0
-                .send(CacheCommand::Set {
-                    cache_entry: CacheEntry::new(key, CacheValue::new(value)),
-                })
+                .send(CacheCommand::Set { cache_entry: CacheEntry::new(key, value) })
                 .await
                 .unwrap();
         }
