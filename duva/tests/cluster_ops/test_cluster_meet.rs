@@ -18,7 +18,7 @@ fn run_cluster_meet(append_only: bool) -> anyhow::Result<()> {
     let [_leader_p2, _repl_p2] = form_cluster([&mut env3, &mut env4]);
 
     let mut client_handler = Client::new(env3.port);
-    let cmd = format!("cluster meet localhost:{}", env.port);
+    let cmd = format!("cluster meet 127.0.0.1:{}", env.port);
 
     // WHEN & THEN
     assert_eq!(client_handler.send_and_get(&cmd), "OK");
@@ -82,14 +82,14 @@ fn run_cluster_meet_with_migration(append_only: bool) -> anyhow::Result<()> {
     // Set keys in first cluster
     let mut client_handler1 = Client::new(env.port);
     for i in 0..50 {
-        let cmd = format!("set key{} value{}", i, i);
+        let cmd = format!("set {} {}", i, i);
         assert_eq!(client_handler1.send_and_get(&cmd), "OK");
     }
 
     // Set keys in second cluster
     let mut client_handler2 = Client::new(env3.port);
     for i in 50..100 {
-        let cmd = format!("set key{} value{}", i, i);
+        let cmd = format!("set {} {}", i, i);
         assert_eq!(client_handler2.send_and_get(&cmd), "OK");
     }
 
@@ -108,14 +108,14 @@ fn run_cluster_meet_with_migration(append_only: bool) -> anyhow::Result<()> {
 
     // Check keys from first node
     for i in 0..100 {
-        let cmd = format!("get key{}", i);
+        let cmd = format!("get {}", i);
         let res1 = client_handler1.send_and_get(&cmd);
         let res2 = client_handler2.send_and_get(&cmd);
-        if res1 == format!("value{}", i) {
+        if res1 == format!("{}", i) {
             keys_accessible_from_node1 += 1;
             node1_keys.push(i);
         }
-        if res2 == format!("value{}", i) {
+        if res2 == format!("{}", i) {
             keys_accessible_from_node2 += 1;
             node2_keys.push(i);
         }
@@ -130,6 +130,15 @@ fn run_cluster_meet_with_migration(append_only: bool) -> anyhow::Result<()> {
     assert!(node2_keys != (50..100).collect::<Vec<_>>());
     // verify that all keys are accessible from both nodes
     assert!(keys_accessible_from_node1 + keys_accessible_from_node2 == 100);
+
+    // verify that all keys are accessible from replicas
+    let mut client_handler3 = Client::new(env3.port);
+    for i in node2_keys {
+        let cmd = format!("get {}", i);
+        let res = client_handler3.send_and_get(&cmd);
+        assert_eq!(res, format!("{}", i));
+    }
+
     Ok(())
 }
 
