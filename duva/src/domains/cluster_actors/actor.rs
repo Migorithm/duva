@@ -1091,16 +1091,17 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             cache_entries_to_migrate.push(CacheEntry::new_with_cache_value(key, value));
         }
 
+        let Some(pending_migrations) = self.pending_migrations.as_mut() else {
+            let _ = callback.send(err!("No pending migrations active"));
+            return;
+        };
+
         // Get mutable reference to the target peer
         let Some(target_peer) = self.members.get_mut(&peer_id) else {
             let _ = callback.send(err!("Target peer {} disappeared during migration", peer_id));
             return;
         };
 
-        let Some(pending_migrations) = self.pending_migrations.as_mut() else {
-            let _ = callback.send(err!("No pending migrations active"));
-            return;
-        };
         pending_migrations
             .insert(target.id.clone(), PendingMigrationBatch::new(callback, keys.collect()));
 
@@ -1127,7 +1128,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             .verify_key_belongs_to_node(&keys_to_validate, &self.replication.self_identifier())
         {
             error!("Received batch contains keys that do not belong to this node");
-            let _ = peer.send(MigrationBatchAck::with_reject(migrate_batch.batch_id.clone())).await;
+            let _ = peer.send(MigrationBatchAck::with_reject(migrate_batch.batch_id)).await;
             return;
         }
 
@@ -1181,34 +1182,33 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         let pending = self.pending_migrations.as_mut()?;
         let pending_migration_batch = pending.remove(&ack.batch_id)?;
 
-        if ack.success {
-            // make consensus request for delete
-            let (tx, rx) = tokio::sync::oneshot::channel();
-            let w_req = ConsensusRequest::new(
-                WriteRequest::Delete { keys: pending_migration_batch.keys.clone() },
-                tx,
-                None,
-            );
-            self.req_consensus(w_req).await;
-            // ! background synchronization is required.
-            tokio::spawn({
-                let handler = self.self_handler.clone();
-                let cache_manager = cache_manager.clone();
-                async move {
-                    if rx.await.is_ok() {
-                        let _ = cache_manager.route_delete(pending_migration_batch.keys).await; // reflect state change
-                        let _ = handler.send(SchedulerMessage::TryUnblockWriteReqs).await;
-                        let _ = pending_migration_batch.callback.send(Ok(()));
-                    }
-                }
-            });
-        } else {
-            // ! we may want to consider retrying the migration if it fails
+        if !ack.success {
             let _ = pending_migration_batch
                 .callback
                 .send(err!("Failed to send migration completion signal for batch"));
+            return Some(());
         }
 
+        // make consensus request for delete
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        let w_req = ConsensusRequest::new(
+            WriteRequest::Delete { keys: pending_migration_batch.keys.clone() },
+            tx,
+            None,
+        );
+        self.req_consensus(w_req).await;
+        // ! background synchronization is required.
+        tokio::spawn({
+            let handler = self.self_handler.clone();
+            let cache_manager = cache_manager.clone();
+            async move {
+                if rx.await.is_ok() {
+                    let _ = cache_manager.route_delete(pending_migration_batch.keys).await; // reflect state change
+                    let _ = handler.send(SchedulerMessage::TryUnblockWriteReqs).await;
+                    let _ = pending_migration_batch.callback.send(Ok(()));
+                }
+            }
+        });
         Some(())
     }
 
