@@ -12,7 +12,6 @@ use anyhow::Result;
 use chrono::Utc;
 use futures::StreamExt;
 use futures::future::join_all;
-use futures::stream::FuturesOrdered;
 use futures::stream::FuturesUnordered;
 use std::sync::Arc;
 use std::sync::atomic::AtomicU64;
@@ -59,6 +58,14 @@ impl CacheManager {
         let value = cache_entry.value().to_string();
         self.select_shard(cache_entry.key()).send(CacheCommand::Set { cache_entry }).await?;
         Ok(format!("s:{}|idx:{}", value, current_idx))
+    }
+
+    pub(crate) async fn route_mset(&self, cache_entries: Vec<CacheEntry>) {
+        join_all(cache_entries.into_iter().map(|entry| async move {
+            let _ =
+                self.select_shard(entry.key()).send(CacheCommand::Set { cache_entry: entry }).await;
+        }))
+        .await;
     }
 
     pub(crate) async fn route_save(
@@ -278,14 +285,6 @@ impl CacheManager {
             .await?;
         let current = rx.await?;
         Ok(format!("s:{}|idx:{}", current?, current_idx))
-    }
-
-    pub(crate) async fn route_mset(&self, cache_entries: Vec<CacheEntry>) {
-        join_all(cache_entries.into_iter().map(|entry| async move {
-            let _ =
-                self.select_shard(entry.key()).send(CacheCommand::Set { cache_entry: entry }).await;
-        }))
-        .await;
     }
 }
 
