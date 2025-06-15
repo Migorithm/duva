@@ -47,11 +47,45 @@ impl LogConsensusVoting {
     }
 
     pub(crate) fn get_required_votes(&self) -> u8 {
-        let total_nodes = self.voters.capacity() as u8 + 1;
+        let total_nodes = self.voters.capacity() as u8 + 1; // +1 for the leader
         (total_nodes + 1).div_ceil(2)
     }
 
     pub(crate) fn votable(&self, voter: &PeerIdentifier) -> bool {
         !self.voters.contains(voter)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_get_required_votes() {
+        let test_cases = vec![
+            (0, 1), // 0 followers: total_nodes = 1 (leader), required = 1
+            (1, 2), // 1 follower: total_nodes = 2, required = 2
+            (2, 2), // 2 followers: total_nodes = 3, required = 2
+            (3, 3), // 3 followers: total_nodes = 4, required = 3
+            (4, 3), // 4 followers: total_nodes = 5, required = 3
+            (5, 4), // 5 followers: total_nodes = 6, required = 4
+        ];
+
+        for (follower_count, expected_votes) in test_cases {
+            let voting =
+                LogConsensusVoting::new(tokio::sync::oneshot::channel().0, follower_count, None);
+            assert_eq!(voting.get_required_votes(), expected_votes);
+        }
+    }
+
+    #[test]
+    fn test_get_required_votes_edge_cases() {
+        // Test with a large but safe number of followers
+        let follower_count = 100;
+        let voting =
+            LogConsensusVoting::new(tokio::sync::oneshot::channel().0, follower_count, None);
+        let total_nodes = follower_count as u8 + 1;
+        let expected_votes = (total_nodes + 1).div_ceil(2);
+        assert_eq!(voting.get_required_votes(), expected_votes);
     }
 }
