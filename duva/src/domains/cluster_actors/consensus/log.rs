@@ -38,7 +38,7 @@ impl LogConsensusVoting {
         replica_count: usize,
         session_req: Option<SessionRequest>,
     ) -> Self {
-        Self { callback, cnt: 0, voters: Vec::with_capacity(replica_count), session_req }
+        Self { callback, cnt: 1, voters: Vec::with_capacity(replica_count), session_req }
     }
 
     pub(crate) fn increase_vote(&mut self, voter: PeerIdentifier) {
@@ -47,11 +47,11 @@ impl LogConsensusVoting {
     }
 
     pub(crate) fn get_required_votes(&self) -> u8 {
-        let replica_count = self.voters.capacity() as u8;
-        (replica_count + 1).div_ceil(2)
+        let total_nodes = self.voters.capacity() as u8 + 1;
+        (total_nodes + 1).div_ceil(2)
     }
 
     pub(crate) fn votable(&self, voter: &PeerIdentifier) -> bool {
-        !self.voters.iter().any(|v| v == voter)
+        !self.voters.contains(voter)
     }
 }
