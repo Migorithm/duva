@@ -106,7 +106,7 @@ impl CacheManager {
                 self.route_numeric_delta(key, delta, log_index).await?;
             },
             | WriteRequest::MSet { entries } => {
-                self.route_bulk_set(entries).await?;
+                self.route_mset(entries).await;
             },
         };
 
@@ -280,16 +280,6 @@ impl CacheManager {
         Ok(format!("s:{}|idx:{}", current?, current_idx))
     }
 
-    async fn route_bulk_set(&self, entries: Vec<CacheEntry>) -> Result<()> {
-        let closure = |entry| -> CacheCommand { CacheCommand::Set { cache_entry: entry } };
-        FuturesOrdered::from_iter(entries.into_iter().map(|entry| async move {
-            let _ = self.select_shard(entry.key()).send(closure(entry)).await;
-        }))
-        .collect::<Vec<_>>()
-        .await;
-        Ok(())
-    }
-
     pub(crate) async fn route_mset(&self, cache_entries: Vec<CacheEntry>) {
         join_all(cache_entries.into_iter().map(|entry| async move {
             let _ =
@@ -318,11 +308,9 @@ mod tests {
             .collect();
 
         // WHEN: We call route_bulk_set
-        let result = cache_manager.route_bulk_set(entries).await;
+        cache_manager.route_mset(entries).await;
 
-        // THEN: The operation should succeed
-        assert!(result.is_ok());
-
+        // THEN
         // AND: All entries should be retrievable
         for i in 0..50 {
             let key = format!("key_{}", i);
@@ -347,10 +335,9 @@ mod tests {
         ];
 
         // WHEN: We call route_bulk_set
-        let result = cache_manager.route_bulk_set(entries).await;
+        cache_manager.route_mset(entries).await;
 
         // THEN: The operation should succeed
-        assert!(result.is_ok());
 
         // AND: Entries should be retrievable with their expiry times
         let value1 = cache_manager.route_get("expire_key1").await.unwrap();
