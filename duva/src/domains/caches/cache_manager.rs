@@ -233,12 +233,12 @@ mod tests {
     use std::sync::atomic::AtomicU64;
 
     #[tokio::test]
-    async fn test_route_bulk_set_distribution_across_shards() {
+    async fn test_route_bulk_set() {
         // GIVEN: A CacheManager with cache actors
         let hwm = Arc::new(AtomicU64::new(0));
         let cache_manager = CacheManager::run_cache_actors(hwm);
 
-        // Create many entries that should be distributed across different shards
+        // Create many entries
         let entries: Vec<CacheEntry> = (0..50)
             .map(|i| CacheEntry::new(format!("key_{}", i), format!("value_{}", i)))
             .collect();
