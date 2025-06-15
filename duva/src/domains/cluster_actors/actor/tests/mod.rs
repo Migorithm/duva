@@ -6,15 +6,15 @@ mod replications;
 use super::actor::ClusterCommandHandler;
 
 use super::*;
-use crate::CacheManager;
+
 use crate::NodeKind;
 use crate::ReplicationId;
 use crate::ReplicationState;
 use crate::adapters::op_logs::memory_based::MemoryOpLogs;
 use crate::domains::QueryIO;
-use crate::domains::caches::actor::CacheCommandSender;
+use crate::domains::caches::actor::CacheActor;
+use crate::domains::caches::cache_manager::CacheManager;
 use crate::domains::caches::cache_objects::CacheEntry;
-use crate::domains::caches::command::CacheCommand;
 use crate::domains::cluster_actors::replication::ReplicationRole;
 use crate::domains::operation_logs::WriteOperation;
 use crate::domains::operation_logs::WriteRequest;
@@ -179,7 +179,7 @@ fn consensus_request_create_helper(
 // Helper function to create cache manager with hwm
 pub(crate) fn cache_manager_create_helper() -> (Arc<AtomicU64>, CacheManager) {
     let hwm = Arc::new(AtomicU64::new(0));
-    let cache_manager = CacheManager::run_cache_actors(hwm.clone());
+    let cache_manager = CacheActor::run(hwm.clone());
     (hwm, cache_manager)
 }
 
@@ -187,7 +187,7 @@ pub(crate) async fn cache_manager_create_helper_with_keys(
     keys: Vec<String>,
 ) -> (Arc<AtomicU64>, CacheManager) {
     let hwm = Arc::new(AtomicU64::new(0));
-    let cache_manager = CacheManager::run_cache_actors(hwm.clone());
+    let cache_manager = CacheActor::run(hwm.clone());
     for key in keys.clone() {
         cache_manager.route_set(CacheEntry::new(key, "value"), 1).await.unwrap();
     }

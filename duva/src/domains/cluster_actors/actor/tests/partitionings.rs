@@ -1,12 +1,11 @@
+use super::*;
 use crate::domains::QueryIO;
 use crate::domains::cluster_actors::hash_ring::BatchId;
-use crate::domains::cluster_actors::hash_ring::{
-    HashRing, MigrationTask, tests::migration_task_create_helper,
-};
+use crate::domains::cluster_actors::hash_ring::HashRing;
+use crate::domains::cluster_actors::hash_ring::MigrationTask;
+use crate::domains::cluster_actors::hash_ring::tests::migration_task_create_helper;
 use std::collections::HashMap;
 use std::time::Duration;
-
-use super::*;
 
 // ! When LazyOption is Lazy, rebalance request should not block
 #[tokio::test]

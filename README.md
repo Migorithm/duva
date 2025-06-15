@@ -44,7 +44,6 @@ The following features have been implemented so far:
 
 - Advanced Features
     - Auto Deletion: Automatically remove expired keys.
-    - Local Sharding: Efficiently manage data distribution across local actors.
     - Configurable server behavior
     - Persistence:
         - RDB-like dump (SAVE)
