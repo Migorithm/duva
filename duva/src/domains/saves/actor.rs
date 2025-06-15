@@ -21,11 +21,11 @@ pub struct SaveActor {
 impl SaveActor {
     pub(crate) async fn new(
         target: SaveTarget,
-        num_of_shards: usize,
+
         repl_id: ReplicationId,
         current_offset: u64,
     ) -> anyhow::Result<Self> {
-        let meta = SaveMeta::new(num_of_shards, repl_id, current_offset);
+        let meta = SaveMeta::new(repl_id, current_offset);
         let mut processor = Self { target, meta };
         processor.encode_meta().await?;
         Ok(processor)
@@ -42,30 +42,23 @@ impl SaveActor {
             | SaveCommand::LocalShardSize { table_size, expiry_size } => {
                 self.meta.total_key_value_table_size += table_size;
                 self.meta.total_expires_table_size += expiry_size;
-                self.meta.num_of_saved_table_size_actor -= 1;
-                if self.meta.num_of_saved_table_size_actor == 0 {
-                    self.target
-                        .write(&encode_database_table_size(
-                            self.meta.total_key_value_table_size,
-                            self.meta.total_expires_table_size,
-                        )?)
-                        .await?;
-                }
+
+                self.target
+                    .write(&encode_database_table_size(
+                        self.meta.total_key_value_table_size,
+                        self.meta.total_expires_table_size,
+                    )?)
+                    .await?;
             },
             | SaveCommand::SaveChunk(chunk) => {
                 self.meta.chunk_queue.push_back(chunk);
-                if self.meta.num_of_saved_table_size_actor == 0 {
-                    self.encode_chunk_queue().await?;
-                }
+                self.encode_chunk_queue().await?;
             },
             | SaveCommand::StopSentinel => {
-                self.meta.num_of_cache_actors -= 1;
-                if self.meta.num_of_cache_actors == 0 {
-                    self.encode_chunk_queue().await?;
-                    let checksum = encode_checksum(&[0; 8])?;
-                    self.target.write(&checksum).await?;
-                    return Ok(true);
-                }
+                self.encode_chunk_queue().await?;
+                let checksum = encode_checksum(&[0; 8])?;
+                self.target.write(&checksum).await?;
+                return Ok(true);
             },
         }
         Ok(false)
@@ -108,23 +101,21 @@ impl SaveTarget {
 }
 
 pub struct SaveMeta {
-    pub(crate) num_of_saved_table_size_actor: usize,
     pub(crate) total_key_value_table_size: usize,
     pub(crate) total_expires_table_size: usize,
     pub(crate) chunk_queue: VecDeque<Vec<CacheEntry>>,
-    pub(crate) num_of_cache_actors: usize,
+
     pub(crate) repl_id: ReplicationId,
     pub(crate) offset: u64,
 }
 
 impl SaveMeta {
-    pub(crate) fn new(num_of_cache_actors: usize, repl_id: ReplicationId, offset: u64) -> Self {
+    pub(crate) fn new(repl_id: ReplicationId, offset: u64) -> Self {
         Self {
-            num_of_saved_table_size_actor: num_of_cache_actors,
             total_key_value_table_size: 0,
             total_expires_table_size: 0,
             chunk_queue: VecDeque::new(),
-            num_of_cache_actors,
+
             repl_id,
             offset,
         }

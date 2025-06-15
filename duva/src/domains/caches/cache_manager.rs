@@ -57,8 +57,7 @@ impl CacheManager {
         current_offset: u64,
     ) -> Result<JoinHandle<Result<SaveActor>>> {
         let (outbox, inbox) = tokio::sync::mpsc::channel(100);
-
-        let save_actor = SaveActor::new(save_target, 1, repl_id, current_offset).await?;
+        let save_actor = SaveActor::new(save_target, repl_id, current_offset).await?;
 
         let cache_handler = self.sender.clone();
         tokio::spawn(async move {
@@ -109,8 +108,7 @@ impl CacheManager {
         let (tx, rx) = tokio::sync::oneshot::channel();
         let _ = self.sender.send(CacheCommand::Keys { pattern, callback: tx }).await;
         // TODO handle unwrap
-        let keys = rx.await.unwrap();
-        keys
+        rx.await.unwrap()
     }
     pub(crate) async fn apply_snapshot(self, key_values: Vec<CacheEntry>) -> Result<()> {
         // * Here, no need to think about index as it is to update state and no return is required
