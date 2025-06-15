@@ -243,12 +243,11 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         self.maybe_update_hashring(heartbeat.hashring, cache_manager, None).await;
     }
 
-    pub(crate) async fn req_consensus(&mut self, req: ConsensusRequest) {
-        if !self.replication.is_leader_mode {
-            let _ = req.callback.send(err!("Write given to follower"));
+    pub(crate) async fn leader_req_consensus(&mut self, req: ConsensusRequest) {
+        if let Some(pending_requests) = self.pending_requests.as_mut() {
+            pending_requests.push_back(req);
             return;
         }
-
         if self.client_sessions.is_processed(&req.session_req) {
             // mapping between early returned values to client result
             // TODO "AlreadyProcessed" variant may want to receive "keys" instead of single key for bulk operations. In that case, consider using `req.request.all_keys()`
@@ -263,6 +262,25 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             }));
             return;
         };
+
+        match self.hash_ring.get_node_for_keys(&req.request.all_keys()) {
+            | Ok(replid) if replid == self.replication.replid => {
+                self.req_consensus(req).await;
+            },
+            | Ok(replid) => {
+                let _ = req.callback.send(err!("MOVED {}", replid));
+            },
+            | Err(err) => {
+                let _ = req.callback.send(err!("{}", err));
+            },
+        }
+    }
+
+    async fn req_consensus(&mut self, req: ConsensusRequest) {
+        if !self.replication.is_leader_mode {
+            let _ = req.callback.send(err!("Write given to follower"));
+            return;
+        }
 
         // * Check if the request has already been processed
         if let Err(err) = self.logger.write_single_entry(&req.request, self.replication.term).await
