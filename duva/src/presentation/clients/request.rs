@@ -35,6 +35,7 @@ pub enum ClientAction {
     ClusterMeet(PeerIdentifier, LazyOption),
     IncrBy { key: String, increment: i64 },
     DecrBy { key: String, decrement: i64 },
+    Type { key: String },
 }
 
 impl ClientAction {
@@ -281,6 +282,10 @@ pub fn extract_action(action: &str, args: &[&str]) -> anyhow::Result<ClientActio
             let key = args[0].to_string();
             let decrement = args[1].parse()?;
             Ok(ClientAction::DecrBy { key, decrement })
+        },
+        | "TYPE" => {
+            require_exact_args(1)?;
+            Ok(ClientAction::Type { key: args[0].to_string() })
         },
         // Add other commands as needed
         | unknown_cmd => Err(anyhow::anyhow!(

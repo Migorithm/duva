@@ -1,4 +1,4 @@
-use super::cache_objects::{CacheEntry, CacheValue};
+use super::cache_objects::{CacheEntry, CacheValue, CacheValueType};
 use super::command::CacheCommand;
 
 use crate::domains::caches::lru_cache::LruCache;
@@ -53,6 +53,12 @@ impl CacheActor {
     }
     pub(crate) fn get(&mut self, key: &str, callback: oneshot::Sender<Option<CacheValue>>) {
         let _ = callback.send(self.cache.get(key).cloned());
+    }
+
+    pub(crate) fn get_type(&mut self, key: &str, callback: oneshot::Sender<CacheValueType>) {
+        let _ = callback.send(
+            self.cache.get(key).map(|value| value.value_type()).unwrap_or(CacheValueType::None),
+        );
     }
 
     pub(crate) fn set(&mut self, cache_entry: CacheEntry) {

@@ -45,6 +45,7 @@ impl<T> ClientController<T> {
             | Echo { .. }
             | Config { .. }
             | Info
+            | Type { .. }
             | ClusterForget { .. }
             | Role
             | ReplicaOf { .. }

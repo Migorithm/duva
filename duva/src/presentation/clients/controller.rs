@@ -139,6 +139,9 @@ impl ClientController {
                     .route_numeric_delta(key, -decrement, current_index.unwrap())
                     .await?,
             ),
+            | ClientAction::Type { key } => {
+                QueryIO::SimpleString(self.cache_manager.route_type(key).await?.into())
+            },
         };
 
         Ok(response)
