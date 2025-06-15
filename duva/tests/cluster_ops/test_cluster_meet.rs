@@ -1,3 +1,5 @@
+use std::{thread::sleep, time::Duration};
+
 use crate::common::{Client, ServerEnv, form_cluster};
 
 fn run_cluster_meet(append_only: bool) -> anyhow::Result<()> {
@@ -58,6 +60,108 @@ fn run_cluster_meet(append_only: bool) -> anyhow::Result<()> {
 fn test_cluster_meet() -> anyhow::Result<()> {
     run_cluster_meet(false)?;
     run_cluster_meet(true)?;
+
+    Ok(())
+}
+
+fn run_cluster_meet_with_migration(append_only: bool) -> anyhow::Result<()> {
+    // GIVEN
+    let (mut env, mut env2) = (
+        ServerEnv::default().with_append_only(append_only),
+        ServerEnv::default().with_append_only(append_only),
+    );
+    let [_leader_p, _repl_p] = form_cluster([&mut env, &mut env2]);
+
+    // WHEN - load up replica set
+    let (mut env3, mut env4) = (
+        ServerEnv::default().with_append_only(append_only),
+        ServerEnv::default().with_append_only(append_only),
+    );
+    let [_leader_p2, _repl_p2] = form_cluster([&mut env3, &mut env4]);
+
+    // Set keys in first cluster
+    let mut client_handler1 = Client::new(env.port);
+    for i in 0..50 {
+        let cmd = format!("set key{} value{}", i, i);
+        assert_eq!(client_handler1.send_and_get(&cmd), "OK");
+    }
+
+    // Set keys in second cluster
+    let mut client_handler2 = Client::new(env3.port);
+    for i in 50..100 {
+        let cmd = format!("set key{} value{}", i, i);
+        assert_eq!(client_handler2.send_and_get(&cmd), "OK");
+    }
+
+    // Perform cluster meet with migration
+    let cmd = format!("cluster meet 127.0.0.1:{} eager", env.port);
+    assert_eq!(client_handler2.send_and_get(&cmd), "OK");
+
+    // Wait for cluster meet to complete and rebalancing to start
+    sleep(Duration::from_secs(2)); // Increased wait time to ensure cluster meet completes
+
+    // Verify cluster info shows correct number of nodes
+    let cluster_info = client_handler2.send_and_get_vec("cluster info", 1);
+    assert!(cluster_info.contains(&"cluster_known_nodes:3".to_string()));
+
+    // Wait for rebalancing to complete (this might take some time)
+
+    let mut keys_accessible_from_node1 = 0;
+    let mut keys_accessible_from_node2 = 0;
+    let mut node1_keys = Vec::new();
+    let mut node2_keys = Vec::new();
+
+    // Check keys from first node
+    for i in 0..100 {
+        let cmd = format!("get key{}", i);
+        let res1 = client_handler1.send_and_get(&cmd);
+        let res2 = client_handler2.send_and_get(&cmd);
+        if res1 == format!("value{}", i) {
+            keys_accessible_from_node1 += 1;
+            node1_keys.push(i);
+        }
+        if res2 == format!("value{}", i) {
+            keys_accessible_from_node2 += 1;
+            node2_keys.push(i);
+        }
+    }
+
+    // Sort the keys for easier gap detection
+    node1_keys.sort();
+    node2_keys.sort();
+
+    assert!(node1_keys != (0..50).collect::<Vec<_>>());
+    assert!(node2_keys != (50..100).collect::<Vec<_>>());
+
+    // Verify that keys were redistributed
+    assert!(keys_accessible_from_node1 + keys_accessible_from_node2 == 100);
+
+    // Verify that keys are properly dispersed (not in sequential blocks)
+    let check_dispersion = |keys: &[i32]| {
+        if keys.len() < 2 {
+            return false;
+        }
+        let mut has_gap = false;
+        for window in keys.windows(2) {
+            if window[1] - window[0] > 1 {
+                has_gap = true;
+                break;
+            }
+        }
+        has_gap
+    };
+
+    assert!(check_dispersion(&node1_keys));
+    assert!(check_dispersion(&node2_keys));
+
+    Ok(())
+}
+
+/// Test if `cluster meet {host:port} eager` triggers migration of keys from one cluster to another
+#[test]
+fn test_cluster_meet_with_migration() -> anyhow::Result<()> {
+    run_cluster_meet_with_migration(false)?;
+    run_cluster_meet_with_migration(true)?;
 
     Ok(())
 }
