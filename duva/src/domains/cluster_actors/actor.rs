@@ -148,9 +148,19 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         tokio::spawn(inbound_stream.add_peer(self.self_handler.clone()));
     }
 
-    #[instrument(level = tracing::Level::INFO, skip(self))]
-    pub(crate) fn set_repl_id(&mut self, leader_repl_id: ReplicationId) {
-        self.replication.replid = leader_repl_id;
+    #[instrument(level = tracing::Level::INFO, skip(self,replid,leader_id))]
+    pub(crate) fn follower_setup(&mut self, replid: ReplicationId, leader_id: PeerIdentifier) {
+        self.set_repl_id(replid.clone());
+        let hashring = HashRing::default();
+        let Some(new_hashring) = hashring.add_partition_if_not_exists(replid, leader_id) else {
+            return;
+        };
+        self.hash_ring = new_hashring;
+    }
+
+    pub(crate) fn set_repl_id(&mut self, replid: ReplicationId) {
+        self.replication.replid = replid;
+        // Update hash ring with leader's replication ID and identifier
     }
 
     pub(super) fn new(

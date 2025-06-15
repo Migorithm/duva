@@ -101,7 +101,10 @@ impl OutboundStream {
 
         if self.my_repl_info.replid == ReplicationId::Undecided {
             let _ = cluster_handler
-                .send(ConnectionMessage::FollowerSetReplId(connection_info.replid.clone()))
+                .send(ConnectionMessage::FollowerSetReplId(
+                    connection_info.replid.clone(),
+                    connection_info.id.clone(),
+                ))
                 .await;
         }
         let peer_state = connection_info.decide_peer_kind(&self.my_repl_info.replid);

@@ -154,25 +154,11 @@ impl HashRing {
     }
 
     pub(crate) fn get_node_for_keys(&self, keys: &[&str]) -> anyhow::Result<ReplicationId> {
-        let mut replid = None;
-        for key in keys {
-            let hash = fnv_1a_hash(key);
-            if let Some(node) = self.find_replid(hash) {
-                if replid.is_none() {
-                    replid = Some(node.clone());
-                } else if replid.as_ref() != Some(node) {
-                    return Err(anyhow::anyhow!(
-                        "Keys do not belong to the same node: {} and {}",
-                        replid.as_ref().unwrap(),
-                        node
-                    ));
-                }
-            } else {
-                return Err(anyhow::anyhow!("No node found for key: {}", key));
-            }
-        }
-
-        replid.ok_or_else(|| anyhow::anyhow!("No node found for the provided keys"))
+        // Use the first key to determine the node
+        let hash = fnv_1a_hash(keys[0]);
+        self.find_replid(hash)
+            .cloned()
+            .ok_or_else(|| anyhow::anyhow!("No node found for keys: {:?}", keys))
     }
 
     #[cfg(test)]

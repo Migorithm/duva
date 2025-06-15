@@ -181,7 +181,9 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
                     let _ = cb.send(Ok(()));
                 }
             },
-            | FollowerSetReplId(replication_id) => self.set_repl_id(replication_id),
+            | FollowerSetReplId(replication_id, leader_id) => {
+                self.follower_setup(replication_id, leader_id);
+            },
         }
     }
 }
