@@ -232,12 +232,11 @@ pub(crate) async fn assert_expected_queryio(
     message_buf: &FakeReadWrite,
     expected_query_io: impl Into<QueryIO>,
 ) {
-    let sent_messages = message_buf.lock().await;
-    assert_eq!(sent_messages.len(), 1);
+    let mut sent_messages = message_buf.lock().await;
 
-    let message = sent_messages.front().unwrap();
+    let message = sent_messages.pop_front().unwrap();
 
-    assert_eq!(message, &expected_query_io.into());
+    assert_eq!(message, expected_query_io.into());
 }
 
 #[cfg(test)]

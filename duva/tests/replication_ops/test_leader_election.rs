@@ -50,6 +50,7 @@ fn run_set_twice_after_election(with_append_only: bool) -> anyhow::Result<()> {
     for f in [&follower_p1, &follower_p2] {
         let mut handler = Client::new(f.port);
         let res = handler.send_and_get_vec("info replication", 4);
+
         if res.contains(&"role:leader".to_string()) {
             // THEN - one of the replicas should become the leader
             assert_eq!(handler.send_and_get("set 1 2"), "OK");

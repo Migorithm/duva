@@ -148,6 +148,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         tokio::spawn(inbound_stream.add_peer(self.self_handler.clone()));
     }
 
+    #[instrument(level = tracing::Level::INFO, skip(self))]
     pub(crate) fn set_repl_id(&mut self, leader_repl_id: ReplicationId) {
         self.replication.replid = leader_repl_id;
     }
@@ -237,6 +238,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             let _ = req.callback.send(err!("Write given to follower"));
             return;
         }
+
         if self.client_sessions.is_processed(&req.session_req) {
             // mapping between early returned values to client result
             // TODO "AlreadyProcessed" variant may want to receive "keys" instead of single key for bulk operations. In that case, consider using `req.request.all_keys()`
@@ -345,18 +347,27 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         if !self.replication.election_state.may_become_leader() {
             return;
         }
-        self.become_leader().await;
 
+        self.become_leader().await;
         let msg = self.replication.default_heartbeat(
             0,
             self.logger.last_log_index,
             self.logger.last_log_term,
         );
+
         self.replicas_mut()
             .map(|(peer, _)| peer.send(QueryIO::AppendEntriesRPC(msg.clone())))
             .collect::<FuturesUnordered<_>>()
             .for_each(|_| async {})
             .await;
+
+        // * update hash ring with the new leader
+        self.hash_ring.update_repl_leader(
+            dbg!(self.replication.replid.clone()),
+            self.replication.self_identifier(),
+        );
+        let msg = msg.set_hashring(self.hash_ring.clone());
+        self.send_heartbeat(msg).await;
     }
 
     // * Forces the current node to become a replica of the given peer.

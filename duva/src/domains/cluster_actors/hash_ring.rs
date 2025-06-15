@@ -153,10 +153,42 @@ impl HashRing {
         self.vnodes.len()
     }
 
+    pub(crate) fn get_node_for_keys(&self, keys: &[&str]) -> anyhow::Result<ReplicationId> {
+        let mut replid = None;
+        for key in keys {
+            let hash = fnv_1a_hash(key);
+            if let Some(node) = self.find_replid(hash) {
+                if replid.is_none() {
+                    replid = Some(node.clone());
+                } else if replid.as_ref() != Some(node) {
+                    return Err(anyhow::anyhow!(
+                        "Keys do not belong to the same node: {} and {}",
+                        replid.as_ref().unwrap(),
+                        node
+                    ));
+                }
+            } else {
+                return Err(anyhow::anyhow!("No node found for key: {}", key));
+            }
+        }
+
+        replid.ok_or_else(|| anyhow::anyhow!("No node found for the provided keys"))
+    }
+
     #[cfg(test)]
     pub(crate) fn get_node_for_key(&self, key: &str) -> Option<&ReplicationId> {
         let hash = fnv_1a_hash(key);
         self.find_replid(hash)
+    }
+
+    pub(crate) fn update_repl_leader(&mut self, replid: ReplicationId, new_pnode: PeerIdentifier) {
+        if let Some(existing_pnode) = self.pnodes.get_mut(&replid) {
+            if existing_pnode != &new_pnode {
+                // If the physical node is changing, we need to remove the old one
+                *existing_pnode = new_pnode;
+            }
+        }
+        self.update_last_modified();
     }
 }
 

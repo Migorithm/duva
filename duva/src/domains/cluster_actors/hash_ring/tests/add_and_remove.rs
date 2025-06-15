@@ -30,6 +30,7 @@ fn test_get_node_for_key() {
     let key = "test_key";
     let node = ring.get_node_for_key(key);
     assert!(node.is_some());
+    assert_eq!(*node.unwrap(), repl_id);
 }
 
 #[test]
