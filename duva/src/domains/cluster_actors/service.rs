@@ -91,7 +91,19 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
                     pending_requests.push_back(req);
                     return;
                 }
-                self.req_consensus(req).await;
+                match self.hash_ring.get_node_for_keys(&req.request.all_keys()) {
+                    | Ok(replid) if replid == self.replication.replid => {
+                        self.req_consensus(req).await;
+                    },
+                    | Ok(replid) => {
+                        let _ = req.callback.send(err!("MOVED {}", replid));
+                        return;
+                    },
+                    | Err(err) => {
+                        let _ = req.callback.send(err!("{}", err));
+                        return;
+                    },
+                }
             },
 
             | ReplicaOf(peer_addr, callback) => {
@@ -169,7 +181,9 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
                     let _ = cb.send(Ok(()));
                 }
             },
-            | FollowerSetReplId(replication_id) => self.set_repl_id(replication_id),
+            | FollowerSetReplId(replication_id, leader_id) => {
+                self.follower_setup(replication_id, leader_id);
+            },
         }
     }
 }

@@ -148,8 +148,19 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         tokio::spawn(inbound_stream.add_peer(self.self_handler.clone()));
     }
 
-    pub(crate) fn set_repl_id(&mut self, leader_repl_id: ReplicationId) {
-        self.replication.replid = leader_repl_id;
+    #[instrument(level = tracing::Level::INFO, skip(self,replid,leader_id))]
+    pub(crate) fn follower_setup(&mut self, replid: ReplicationId, leader_id: PeerIdentifier) {
+        self.set_repl_id(replid.clone());
+        let hashring = HashRing::default();
+        let Some(new_hashring) = hashring.add_partition_if_not_exists(replid, leader_id) else {
+            return;
+        };
+        self.hash_ring = new_hashring;
+    }
+
+    pub(crate) fn set_repl_id(&mut self, replid: ReplicationId) {
+        self.replication.replid = replid;
+        // Update hash ring with leader's replication ID and identifier
     }
 
     pub(super) fn new(
@@ -237,6 +248,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             let _ = req.callback.send(err!("Write given to follower"));
             return;
         }
+
         if self.client_sessions.is_processed(&req.session_req) {
             // mapping between early returned values to client result
             // TODO "AlreadyProcessed" variant may want to receive "keys" instead of single key for bulk operations. In that case, consider using `req.request.all_keys()`
@@ -345,18 +357,27 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         if !self.replication.election_state.may_become_leader() {
             return;
         }
-        self.become_leader().await;
 
+        self.become_leader().await;
         let msg = self.replication.default_heartbeat(
             0,
             self.logger.last_log_index,
             self.logger.last_log_term,
         );
+
         self.replicas_mut()
             .map(|(peer, _)| peer.send(QueryIO::AppendEntriesRPC(msg.clone())))
             .collect::<FuturesUnordered<_>>()
             .for_each(|_| async {})
             .await;
+
+        // * update hash ring with the new leader
+        self.hash_ring.update_repl_leader(
+            self.replication.replid.clone(),
+            self.replication.self_identifier(),
+        );
+        let msg = msg.set_hashring(self.hash_ring.clone());
+        self.send_heartbeat(msg).await;
     }
 
     // * Forces the current node to become a replica of the given peer.
@@ -956,7 +977,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         // For replicas, just update the hash ring and wait for leader to coordinate migrations
         if !self.replication.is_leader_mode {
             self.hash_ring = new_ring;
-            info!("Replica updated hash ring, waiting for leader to coordinate migrations");
+            info!("Replica updated hash ring");
             return;
         }
 

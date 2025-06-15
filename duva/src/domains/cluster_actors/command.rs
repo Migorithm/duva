@@ -44,7 +44,7 @@ pub enum ConnectionMessage {
     },
 
     AddPeer(Peer, Option<tokio::sync::oneshot::Sender<anyhow::Result<()>>>),
-    FollowerSetReplId(ReplicationId),
+    FollowerSetReplId(ReplicationId, PeerIdentifier),
 }
 impl From<ConnectionMessage> for ClusterCommand {
     fn from(msg: ConnectionMessage) -> Self {
