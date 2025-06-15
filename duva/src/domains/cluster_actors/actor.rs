@@ -363,7 +363,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
         // * update hash ring with the new leader
         self.hash_ring.update_repl_leader(
-            dbg!(self.replication.replid.clone()),
+            self.replication.replid.clone(),
             self.replication.self_identifier(),
         );
         let msg = msg.set_hashring(self.hash_ring.clone());
@@ -967,7 +967,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         // For replicas, just update the hash ring and wait for leader to coordinate migrations
         if !self.replication.is_leader_mode {
             self.hash_ring = new_ring;
-            info!("Replica updated hash ring, waiting for leader to coordinate migrations");
+            info!("Replica updated hash ring");
             return;
         }
 
