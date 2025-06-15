@@ -61,7 +61,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         }
     }
 
-    #[instrument(level = tracing::Level::DEBUG, skip(self, cache_manager))]
+    // #[instrument(level = tracing::Level::DEBUG, skip(self, cache_manager))]
     async fn process_client_message(
         &mut self,
         cache_manager: &CacheManager,
@@ -87,23 +87,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
                 }
             },
             | LeaderReqConsensus(req) => {
-                if let Some(pending_requests) = self.pending_requests.as_mut() {
-                    pending_requests.push_back(req);
-                    return;
-                }
-                match self.hash_ring.get_node_for_keys(&req.request.all_keys()) {
-                    | Ok(replid) if replid == self.replication.replid => {
-                        self.req_consensus(req).await;
-                    },
-                    | Ok(replid) => {
-                        let _ = req.callback.send(err!("MOVED {}", replid));
-                        return;
-                    },
-                    | Err(err) => {
-                        let _ = req.callback.send(err!("{}", err));
-                        return;
-                    },
-                }
+                self.leader_req_consensus(req).await;
             },
 
             | ReplicaOf(peer_addr, callback) => {

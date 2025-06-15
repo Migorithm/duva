@@ -581,3 +581,60 @@ async fn leader_consensus_tracker_not_changed_when_followers_not_exist() {
     assert_eq!(cluster_actor.consensus_tracker.len(), 0);
     assert_eq!(cluster_actor.logger.last_log_index, 1);
 }
+
+#[tokio::test]
+async fn test_leader_req_consensus_with_pending_requests() {
+    // GIVEN
+    let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
+
+    // Block write requests to create pending requests queue
+    cluster_actor.block_write_reqs();
+
+    assert_eq!(cluster_actor.pending_requests.as_ref().unwrap().len(), 0);
+
+    let (tx, _) = tokio::sync::oneshot::channel();
+    let consensus_request = consensus_request_create_helper(tx, None);
+
+    // WHEN - send request while write requests are blocked
+    cluster_actor.leader_req_consensus(consensus_request).await;
+
+    // THEN
+    assert!(cluster_actor.pending_requests.is_some());
+    let pending_requests = cluster_actor.pending_requests.as_ref().unwrap();
+    assert_eq!(pending_requests.len(), 1);
+    assert_eq!(cluster_actor.logger.last_log_index, 0);
+}
+
+#[tokio::test]
+async fn test_leader_req_consensus_with_processed_session() {
+    // GIVEN
+    let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
+
+    let client_id = Uuid::now_v7();
+    let session_req = SessionRequest::new(1, client_id);
+
+    // Mark the session as already processed
+    cluster_actor.client_sessions.set_response(Some(session_req.clone()));
+
+    // WHEN - send request with already processed session
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    let consensus_request = ConsensusRequest::new(
+        WriteRequest::Set { key: "test_key".into(), value: "test_value".into(), expires_at: None },
+        tx,
+        Some(session_req),
+    );
+
+    cluster_actor.leader_req_consensus(consensus_request).await;
+
+    // THEN
+    // Verify the request was not processed (no new log entry)
+    assert_eq!(cluster_actor.logger.last_log_index, 0);
+
+    // Verify the response indicates already processed
+    let ConsensusClientResponse::AlreadyProcessed { key, index } = rx.await.unwrap().unwrap()
+    else {
+        panic!("Expected AlreadyProcessed response");
+    };
+    assert_eq!(key, "test_key");
+    assert_eq!(index, 0);
+}

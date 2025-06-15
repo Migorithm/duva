@@ -89,7 +89,7 @@ impl ConsensusRequest {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub(crate) enum ConsensusClientResponse {
     AlreadyProcessed { key: String, index: u64 },
     LogIndex(Option<u64>),
