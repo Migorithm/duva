@@ -486,8 +486,7 @@ async fn test_consensus_voting_deleted_when_consensus_reached() {
 
     let (cluster_sender, _) = tokio::sync::mpsc::channel(100);
 
-    // - add followers to create quorum
-
+    // - add 4 followers to create quorum - so 2 votes are needed to reach consensus
     let follower_buffs = (0..4).map(|_| FakeReadWrite::new()).collect::<Vec<_>>();
     cluster_member_create_helper(
         &mut cluster_actor,
@@ -511,12 +510,12 @@ async fn test_consensus_voting_deleted_when_consensus_reached() {
         rej_reason: RejectionReason::None,
         from: PeerIdentifier("".into()),
     };
+    // Leader already has 1 vote, so we only need 1 more votes to reach consensus
     cluster_actor.track_replication_progress(follower_res.clone().set_from("repl1"));
-    cluster_actor.track_replication_progress(follower_res.clone().set_from("repl2"));
 
     // up to this point, tracker hold the consensus
     assert_eq!(cluster_actor.consensus_tracker.len(), 1);
-    assert_eq!(cluster_actor.consensus_tracker.get(&1).unwrap().voters.len(), 2);
+    assert_eq!(cluster_actor.consensus_tracker.get(&1).unwrap().voters.len(), 1);
 
     // ! Majority votes made
     cluster_actor.track_replication_progress(follower_res.set_from("repl3"));
