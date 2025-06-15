@@ -1,9 +1,10 @@
 use super::cache_objects::{CacheEntry, CacheValue};
 use super::command::CacheCommand;
 
+use crate::domains::caches::cache_manager::CacheManager;
 use crate::domains::caches::lru_cache::LruCache;
 use crate::domains::caches::read_queue::ReadQueue;
-use crate::make_smart_pointer;
+
 use std::sync::Arc;
 use std::sync::atomic::AtomicU64;
 use tokio::sync::mpsc::{self};
@@ -11,17 +12,17 @@ use tokio::sync::oneshot;
 
 pub struct CacheActor {
     pub(crate) cache: LruCache<String, CacheValue>,
-    pub(crate) self_handler: CacheCommandSender,
+    pub(crate) self_handler: CacheManager,
 }
 
 impl CacheActor {
-    pub(crate) fn run(hwm: Arc<AtomicU64>) -> CacheCommandSender {
+    pub(crate) fn run(hwm: Arc<AtomicU64>) -> CacheManager {
         let (tx, cache_actor_inbox) = mpsc::channel(100);
         tokio::spawn(
-            Self { cache: LruCache::new(10000), self_handler: CacheCommandSender(tx.clone()) }
+            Self { cache: LruCache::new(10000), self_handler: CacheManager(tx.clone()) }
                 .handle(cache_actor_inbox, ReadQueue::new(hwm)),
         );
-        CacheCommandSender(tx)
+        CacheManager(tx)
     }
 
     pub(crate) fn len(&self) -> usize {
@@ -111,8 +112,3 @@ impl CacheActor {
         val.value = (curr + delta).to_string();
     }
 }
-
-#[derive(Clone, Debug)]
-pub(crate) struct CacheCommandSender(pub(crate) mpsc::Sender<CacheCommand>);
-
-make_smart_pointer!(CacheCommandSender, mpsc::Sender<CacheCommand>);

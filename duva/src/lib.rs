@@ -33,6 +33,8 @@ use tracing::instrument;
 use uuid::Uuid;
 
 pub use config::ENV;
+
+use crate::domains::caches::actor::CacheActor;
 pub mod prelude {
     pub use crate::domains::cluster_actors::actor::heartbeat_scheduler::LEADER_HEARTBEAT_INTERVAL_MAX;
     pub use crate::domains::peers::identifier::PeerIdentifier;
@@ -85,7 +87,7 @@ impl StartUpFacade {
 
         let replication_state =
             ReplicationState::new(r_id, ENV.role.clone(), &ENV.host, ENV.port, hwm);
-        let cache_manager = CacheManager::run_cache_actors(replication_state.hwm.clone());
+        let cache_manager = CacheActor::run(replication_state.hwm.clone());
         tokio::spawn(cache_manager.clone().apply_snapshot(snapshot_info.key_values()));
 
         let cluster_actor_handler = ClusterActor::run(

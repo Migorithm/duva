@@ -1,6 +1,4 @@
 use super::cache_objects::CacheValue;
-use crate::domains::caches::actor::CacheActor;
-use crate::domains::caches::actor::CacheCommandSender;
 use crate::domains::caches::cache_objects::CacheEntry;
 use crate::domains::caches::command::CacheCommand;
 use crate::domains::cluster_actors::replication::ReplicationId;
@@ -8,34 +6,29 @@ use crate::domains::operation_logs::WriteRequest;
 use crate::domains::saves::actor::SaveActor;
 use crate::domains::saves::actor::SaveTarget;
 use crate::domains::saves::endec::StoredDuration;
+use crate::make_smart_pointer;
 use anyhow::Result;
 use chrono::Utc;
 use futures::StreamExt;
 use futures::future::join_all;
 use futures::stream::FuturesOrdered;
 use futures::stream::FuturesUnordered;
-use std::sync::Arc;
-use std::sync::atomic::AtomicU64;
-
+use tokio::sync::mpsc;
 use tokio::sync::oneshot::Sender;
 use tokio::sync::oneshot::error::RecvError;
 use tokio::task::JoinHandle;
 use tracing::debug;
 
 #[derive(Clone, Debug)]
-pub(crate) struct CacheManager {
-    pub(crate) sender: CacheCommandSender,
-}
+pub(crate) struct CacheManager(pub(crate) mpsc::Sender<CacheCommand>);
+
+make_smart_pointer!(CacheManager, mpsc::Sender<CacheCommand>);
 
 impl CacheManager {
-    pub(crate) fn run_cache_actors(hwm: Arc<AtomicU64>) -> CacheManager {
-        CacheManager { sender: CacheActor::run(hwm.clone()) }
-    }
-
     pub(crate) async fn route_get(&self, key: impl AsRef<str>) -> Result<Option<CacheValue>> {
         let (tx, rx) = tokio::sync::oneshot::channel();
         let key_ref = key.as_ref();
-        self.sender.send(CacheCommand::Get { key: key_ref.into(), callback: tx }).await?;
+        self.0.send(CacheCommand::Get { key: key_ref.into(), callback: tx }).await?;
 
         Ok(rx.await?)
     }
@@ -46,7 +39,7 @@ impl CacheManager {
         current_idx: u64,
     ) -> Result<String> {
         let value = cache_entry.value().to_string();
-        self.sender.send(CacheCommand::Set { cache_entry }).await?;
+        self.0.send(CacheCommand::Set { cache_entry }).await?;
         Ok(format!("s:{}|idx:{}", value, current_idx))
     }
 
@@ -59,7 +52,7 @@ impl CacheManager {
         let (outbox, inbox) = tokio::sync::mpsc::channel(100);
         let save_actor = SaveActor::new(save_target, repl_id, current_offset).await?;
 
-        let cache_handler = self.sender.clone();
+        let cache_handler = self.0.clone();
         tokio::spawn(async move {
             let _ = cache_handler.send(CacheCommand::Save { outbox }).await;
         });
@@ -101,12 +94,12 @@ impl CacheManager {
         Ok(())
     }
     async fn pings(&self) {
-        let _ = self.sender.send(CacheCommand::Ping).await;
+        let _ = self.0.send(CacheCommand::Ping).await;
     }
 
     pub(crate) async fn route_keys(&self, pattern: Option<String>) -> Vec<String> {
         let (tx, rx) = tokio::sync::oneshot::channel();
-        let _ = self.sender.send(CacheCommand::Keys { pattern, callback: tx }).await;
+        let _ = self.0.send(CacheCommand::Keys { pattern, callback: tx }).await;
         // TODO handle unwrap
         rx.await.unwrap()
     }
@@ -151,7 +144,7 @@ impl CacheManager {
         FuturesUnordered::from_iter(keys.into_iter().map(|key| {
             let (tx, rx) = tokio::sync::oneshot::channel();
             async move {
-                let _ = self.sender.send(func(key, tx)).await;
+                let _ = self.0.send(func(key, tx)).await;
                 rx.await
             }
         }))
@@ -165,14 +158,14 @@ impl CacheManager {
         index: u64,
     ) -> Result<Option<CacheValue>> {
         let (tx, rx) = tokio::sync::oneshot::channel();
-        self.sender.send(CacheCommand::IndexGet { key, read_idx: index, callback: tx }).await?;
+        self.0.send(CacheCommand::IndexGet { key, read_idx: index, callback: tx }).await?;
 
         Ok(rx.await?)
     }
 
     pub(crate) async fn drop_cache(&self) {
         let (tx, rx) = tokio::sync::oneshot::channel();
-        let _ = self.sender.send(CacheCommand::Drop { callback: tx }).await;
+        let _ = self.0.send(CacheCommand::Drop { callback: tx }).await;
         let _ = rx.await;
     }
 
@@ -189,7 +182,7 @@ impl CacheManager {
 
     pub(crate) async fn route_append(&self, key: String, value: String) -> Result<usize> {
         let (tx, rx) = tokio::sync::oneshot::channel();
-        self.sender.send(CacheCommand::Append { key, value, callback: tx }).await?;
+        self.0.send(CacheCommand::Append { key, value, callback: tx }).await?;
         rx.await?
     }
 
@@ -200,7 +193,7 @@ impl CacheManager {
         current_idx: u64,
     ) -> Result<String> {
         let (tx, rx) = tokio::sync::oneshot::channel();
-        self.sender.send(CacheCommand::NumericDetla { key, delta: arg, callback: tx }).await?;
+        self.0.send(CacheCommand::NumericDetla { key, delta: arg, callback: tx }).await?;
         let current = rx.await?;
         Ok(format!("s:{}|idx:{}", current?, current_idx))
     }
@@ -208,7 +201,7 @@ impl CacheManager {
     async fn route_bulk_set(&self, entries: Vec<CacheEntry>) -> Result<()> {
         let closure = |entry| -> CacheCommand { CacheCommand::Set { cache_entry: entry } };
         FuturesOrdered::from_iter(entries.into_iter().map(|entry| async move {
-            let _ = self.sender.send(closure(entry)).await;
+            let _ = self.0.send(closure(entry)).await;
         }))
         .collect::<Vec<_>>()
         .await;
@@ -217,7 +210,7 @@ impl CacheManager {
 
     pub(crate) async fn route_mset(&self, cache_entries: Vec<CacheEntry>) {
         join_all(cache_entries.into_iter().map(|entry| async move {
-            let _ = self.sender.send(CacheCommand::Set { cache_entry: entry }).await;
+            let _ = self.0.send(CacheCommand::Set { cache_entry: entry }).await;
         }))
         .await;
     }
@@ -226,6 +219,7 @@ impl CacheManager {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domains::caches::actor::CacheActor;
     use crate::domains::caches::cache_objects::{CacheEntry, CacheValue};
     use std::sync::Arc;
     use std::sync::atomic::AtomicU64;
@@ -234,7 +228,7 @@ mod tests {
     async fn test_route_bulk_set() {
         // GIVEN: A CacheManager with cache actors
         let hwm = Arc::new(AtomicU64::new(0));
-        let cache_manager = CacheManager::run_cache_actors(hwm);
+        let cache_manager = CacheActor::run(hwm);
 
         // Create many entries
         let entries: Vec<CacheEntry> = (0..50)
@@ -261,7 +255,7 @@ mod tests {
     async fn test_route_bulk_set_with_expiry() {
         // GIVEN: A CacheManager with cache actors
         let hwm = Arc::new(AtomicU64::new(0));
-        let cache_manager = CacheManager::run_cache_actors(hwm);
+        let cache_manager = CacheActor::run(hwm);
 
         // Create entries with expiry times
         let future_time = Utc::now() + chrono::Duration::seconds(10);

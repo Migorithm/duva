@@ -1,3 +1,5 @@
+use crate::domains::caches::command::CacheCommand;
+
 use super::*;
 
 #[tokio::test]
@@ -101,7 +103,7 @@ async fn follower_cluster_actor_replicate_log() {
             write_operation_create_helper(2, 0, "foo2", "bar"),
         ],
     );
-    let cache_manager = CacheManager { sender: CacheCommandSender(channel(10).0) };
+    let cache_manager = CacheManager(channel(10).0);
     cluster_actor.replicate(heartbeat, &cache_manager).await;
 
     // THEN
@@ -136,7 +138,7 @@ async fn follower_cluster_actor_replicate_state() {
         ],
     );
 
-    let cache_manager = CacheManager { sender: CacheCommandSender(cache_handler) };
+    let cache_manager = CacheManager(cache_handler);
     cluster_actor.replicate(heartbeat, &cache_manager).await;
 
     // WHEN - commit until 2
@@ -179,7 +181,7 @@ async fn follower_cluster_actor_replicate_state_only_upto_hwm() {
     );
 
     let (tx, mut rx) = tokio::sync::mpsc::channel(100);
-    let cache_manager = CacheManager { sender: CacheCommandSender(tx) };
+    let cache_manager = CacheManager(tx);
 
     // This just appends the entries to the log but doesn't commit them
     cluster_actor.replicate(heartbeat, &cache_manager).await;
@@ -239,7 +241,7 @@ async fn test_apply_multiple_committed_entries() {
     let heartbeat = heartbeat_create_helper(1, 0, entries);
 
     let (tx, mut rx) = tokio::sync::mpsc::channel(100);
-    let cache_manager = CacheManager { sender: CacheCommandSender(tx) };
+    let cache_manager = CacheManager(tx);
 
     // First append entries but don't commit
     cluster_actor.replicate(heartbeat, &cache_manager).await;
@@ -290,7 +292,7 @@ async fn test_partial_commit_with_new_entries() {
     let first_heartbeat = heartbeat_create_helper(1, 0, first_entries);
 
     let (tx, mut rx) = tokio::sync::mpsc::channel(100);
-    let cache_manager = CacheManager { sender: CacheCommandSender(tx) };
+    let cache_manager = CacheManager(tx);
 
     cluster_actor.replicate(first_heartbeat, &cache_manager).await;
 
@@ -454,7 +456,7 @@ async fn test_leader_req_consensus_early_return_when_already_processed_session_r
     // GIVEN
     let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
 
-    let cache_manager = CacheManager { sender: CacheCommandSender(channel(10).0) };
+    let cache_manager = CacheManager(channel(10).0);
 
     let client_id = Uuid::now_v7();
     let client_req = SessionRequest::new(1, client_id);

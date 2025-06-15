@@ -104,7 +104,6 @@ pub struct SaveMeta {
     pub(crate) total_key_value_table_size: usize,
     pub(crate) total_expires_table_size: usize,
     pub(crate) chunk_queue: VecDeque<Vec<CacheEntry>>,
-
     pub(crate) repl_id: ReplicationId,
     pub(crate) offset: u64,
 }
@@ -115,7 +114,6 @@ impl SaveMeta {
             total_key_value_table_size: 0,
             total_expires_table_size: 0,
             chunk_queue: VecDeque::new(),
-
             repl_id,
             offset,
         }
