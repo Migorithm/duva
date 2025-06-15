@@ -16,37 +16,26 @@ use futures::stream::FuturesOrdered;
 use futures::stream::FuturesUnordered;
 use std::sync::Arc;
 use std::sync::atomic::AtomicU64;
-use std::{hash::Hasher, iter::Zip};
+
 use tokio::sync::oneshot::Sender;
 use tokio::sync::oneshot::error::RecvError;
 use tokio::task::JoinHandle;
 use tracing::debug;
 
-type OneShotSender<T> = tokio::sync::oneshot::Sender<T>;
-type OneShotReceiverJoinHandle<T> =
-    tokio::task::JoinHandle<std::result::Result<T, tokio::sync::oneshot::error::RecvError>>;
-
 #[derive(Clone, Debug)]
 pub(crate) struct CacheManager {
-    pub(crate) inboxes: Vec<CacheCommandSender>,
+    pub(crate) sender: CacheCommandSender,
 }
 
 impl CacheManager {
     pub(crate) fn run_cache_actors(hwm: Arc<AtomicU64>) -> CacheManager {
-        const NUM_OF_PERSISTENCE: usize = 10;
-        CacheManager {
-            inboxes: (0..NUM_OF_PERSISTENCE)
-                .map(|_| CacheActor::run(hwm.clone()))
-                .collect::<Vec<_>>(),
-        }
+        CacheManager { sender: CacheActor::run(hwm.clone()) }
     }
 
     pub(crate) async fn route_get(&self, key: impl AsRef<str>) -> Result<Option<CacheValue>> {
         let (tx, rx) = tokio::sync::oneshot::channel();
         let key_ref = key.as_ref();
-        self.select_shard(key_ref)
-            .send(CacheCommand::Get { key: key_ref.into(), callback: tx })
-            .await?;
+        self.sender.send(CacheCommand::Get { key: key_ref.into(), callback: tx }).await?;
 
         Ok(rx.await?)
     }
@@ -57,7 +46,7 @@ impl CacheManager {
         current_idx: u64,
     ) -> Result<String> {
         let value = cache_entry.value().to_string();
-        self.select_shard(cache_entry.key()).send(CacheCommand::Set { cache_entry }).await?;
+        self.sender.send(CacheCommand::Set { cache_entry }).await?;
         Ok(format!("s:{}|idx:{}", value, current_idx))
     }
 
@@ -68,16 +57,13 @@ impl CacheManager {
         current_offset: u64,
     ) -> Result<JoinHandle<Result<SaveActor>>> {
         let (outbox, inbox) = tokio::sync::mpsc::channel(100);
-        let save_actor =
-            SaveActor::new(save_target, self.inboxes.len(), repl_id, current_offset).await?;
 
-        // get all the handlers to cache actors
-        for cache_handler in self.inboxes.iter().map(Clone::clone) {
-            let outbox = outbox.clone();
-            tokio::spawn(async move {
-                let _ = cache_handler.send(CacheCommand::Save { outbox }).await;
-            });
-        }
+        let save_actor = SaveActor::new(save_target, 1, repl_id, current_offset).await?;
+
+        let cache_handler = self.sender.clone();
+        tokio::spawn(async move {
+            let _ = cache_handler.send(CacheCommand::Save { outbox }).await;
+        });
 
         //* defaults to BGSAVE but optionally waitable
         Ok(tokio::spawn(save_actor.run(inbox)))
@@ -116,23 +102,15 @@ impl CacheManager {
         Ok(())
     }
     async fn pings(&self) {
-        join_all(self.inboxes.iter().map(|shard| shard.send(CacheCommand::Ping))).await;
+        let _ = self.sender.send(CacheCommand::Ping).await;
     }
 
     pub(crate) async fn route_keys(&self, pattern: Option<String>) -> Vec<String> {
-        let (senders, receivers) = self.oneshot_channels();
-
-        // send keys to shards
-        self.chain(senders).for_each(|(shard, sender)| {
-            tokio::spawn(Self::send_keys_to_shard(shard.clone(), pattern.clone(), sender));
-        });
-        let mut res = Vec::new();
-        for v in receivers {
-            if let Ok(Ok(keys)) = v.await {
-                res.extend(keys)
-            }
-        }
-        res
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        let _ = self.sender.send(CacheCommand::Keys { pattern, callback: tx }).await;
+        // TODO handle unwrap
+        let keys = rx.await.unwrap();
+        keys
     }
     pub(crate) async fn apply_snapshot(self, key_values: Vec<CacheEntry>) -> Result<()> {
         // * Here, no need to think about index as it is to update state and no return is required
@@ -148,35 +126,6 @@ impl CacheManager {
         debug!("Full Sync Keys: {:?}", keys);
 
         Ok(())
-    }
-
-    // Send recv handler firstly to the background and return senders and join handlers for receivers
-    fn oneshot_channels<T: Send + Sync + 'static>(
-        &self,
-    ) -> (Vec<OneShotSender<T>>, Vec<OneShotReceiverJoinHandle<T>>) {
-        (0..self.inboxes.len())
-            .map(|_| {
-                let (sender, recv) = tokio::sync::oneshot::channel();
-                let recv_handler = tokio::spawn(recv);
-                (sender, recv_handler)
-            })
-            .unzip()
-    }
-
-    fn chain<T>(
-        &self,
-        senders: Vec<Sender<T>>,
-    ) -> Zip<std::slice::Iter<'_, CacheCommandSender>, std::vec::IntoIter<Sender<T>>> {
-        self.inboxes.iter().zip(senders)
-    }
-
-    // stateless function to send keys
-    async fn send_keys_to_shard(
-        shard: CacheCommandSender,
-        pattern: Option<String>,
-        tx: OneShotSender<Vec<String>>,
-    ) -> Result<()> {
-        Ok(shard.send(CacheCommand::Keys { pattern: pattern.clone(), callback: tx }).await?)
     }
 
     pub(crate) async fn route_delete(&self, keys: Vec<String>) -> Result<u64> {
@@ -196,11 +145,6 @@ impl CacheManager {
         Ok(found as u64)
     }
 
-    pub(crate) fn select_shard(&self, key: &str) -> &CacheCommandSender {
-        let shard_key = self.take_shard_key_from_str(key);
-        &self.inboxes[shard_key]
-    }
-
     async fn send_selectively<T>(
         &self,
         keys: Vec<String>,
@@ -209,18 +153,12 @@ impl CacheManager {
         FuturesUnordered::from_iter(keys.into_iter().map(|key| {
             let (tx, rx) = tokio::sync::oneshot::channel();
             async move {
-                let _ = self.select_shard(&key).send(func(key, tx)).await;
+                let _ = self.sender.send(func(key, tx)).await;
                 rx.await
             }
         }))
         .collect::<Vec<_>>()
         .await
-    }
-
-    fn take_shard_key_from_str(&self, s: &str) -> usize {
-        let mut hasher = std::hash::DefaultHasher::new();
-        std::hash::Hash::hash(&s, &mut hasher);
-        hasher.finish() as usize % self.inboxes.len()
     }
 
     pub(crate) async fn route_index_get(
@@ -229,22 +167,15 @@ impl CacheManager {
         index: u64,
     ) -> Result<Option<CacheValue>> {
         let (tx, rx) = tokio::sync::oneshot::channel();
-        self.select_shard(&key)
-            .send(CacheCommand::IndexGet { key, read_idx: index, callback: tx })
-            .await?;
+        self.sender.send(CacheCommand::IndexGet { key, read_idx: index, callback: tx }).await?;
 
         Ok(rx.await?)
     }
 
     pub(crate) async fn drop_cache(&self) {
-        let (txs, rxs) = self.oneshot_channels();
-        join_all(
-            self.chain(txs)
-                .map(|(shard, sender)| shard.send(CacheCommand::Drop { callback: sender })),
-        )
-        .await;
-
-        join_all(rxs.into_iter()).await;
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        let _ = self.sender.send(CacheCommand::Drop { callback: tx }).await;
+        let _ = rx.await;
     }
 
     pub(crate) async fn route_ttl(&self, key: String) -> Result<String> {
@@ -260,9 +191,7 @@ impl CacheManager {
 
     pub(crate) async fn route_append(&self, key: String, value: String) -> Result<usize> {
         let (tx, rx) = tokio::sync::oneshot::channel();
-        self.select_shard(key.as_str())
-            .send(CacheCommand::Append { key, value, callback: tx })
-            .await?;
+        self.sender.send(CacheCommand::Append { key, value, callback: tx }).await?;
         rx.await?
     }
 
@@ -273,9 +202,7 @@ impl CacheManager {
         current_idx: u64,
     ) -> Result<String> {
         let (tx, rx) = tokio::sync::oneshot::channel();
-        self.select_shard(key.as_str())
-            .send(CacheCommand::NumericDetla { key, delta: arg, callback: tx })
-            .await?;
+        self.sender.send(CacheCommand::NumericDetla { key, delta: arg, callback: tx }).await?;
         let current = rx.await?;
         Ok(format!("s:{}|idx:{}", current?, current_idx))
     }
@@ -283,7 +210,7 @@ impl CacheManager {
     async fn route_bulk_set(&self, entries: Vec<CacheEntry>) -> Result<()> {
         let closure = |entry| -> CacheCommand { CacheCommand::Set { cache_entry: entry } };
         FuturesOrdered::from_iter(entries.into_iter().map(|entry| async move {
-            let _ = self.select_shard(entry.key()).send(closure(entry)).await;
+            let _ = self.sender.send(closure(entry)).await;
         }))
         .collect::<Vec<_>>()
         .await;
@@ -292,8 +219,7 @@ impl CacheManager {
 
     pub(crate) async fn route_mset(&self, cache_entries: Vec<CacheEntry>) {
         join_all(cache_entries.into_iter().map(|entry| async move {
-            let _ =
-                self.select_shard(entry.key()).send(CacheCommand::Set { cache_entry: entry }).await;
+            let _ = self.sender.send(CacheCommand::Set { cache_entry: entry }).await;
         }))
         .await;
     }
