@@ -635,6 +635,6 @@ async fn test_leader_req_consensus_with_processed_session() {
     else {
         panic!("Expected AlreadyProcessed response");
     };
-    assert_eq!(key, "test_key");
+    assert_eq!(key, "test_key".to_string());
     assert_eq!(index, 0);
 }

@@ -250,12 +250,8 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         }
         if self.client_sessions.is_processed(&req.session_req) {
             // mapping between early returned values to client result
-            // TODO "AlreadyProcessed" variant may want to receive "keys" instead of single key for bulk operations. In that case, consider using `req.request.all_keys()`
-            let key = req
-                .request
-                .key()
-                .map(|k| k.to_string())
-                .unwrap_or_else(|| format!("multi-key-op-{}", self.logger.last_log_index));
+
+            let key = req.request.all_keys().into_iter().map(String::from).collect();
             let _ = req.callback.send(Ok(ConsensusClientResponse::AlreadyProcessed {
                 key,
                 index: self.logger.last_log_index,

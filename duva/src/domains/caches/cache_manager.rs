@@ -10,6 +10,7 @@ use crate::domains::saves::actor::SaveTarget;
 use crate::domains::saves::endec::StoredDuration;
 use anyhow::Result;
 use chrono::Utc;
+use futures::SinkExt;
 use futures::StreamExt;
 use futures::future::join_all;
 use futures::stream::FuturesUnordered;
@@ -241,6 +242,32 @@ impl CacheManager {
             .await?;
 
         Ok(rx.await?)
+    }
+    pub(crate) async fn route_mget(&self, keys: Vec<String>) -> Result<Vec<Option<CacheValue>>> {
+        // Create futures for each key
+        let cap = keys.len();
+        let mut futures = Vec::with_capacity(cap);
+        for key in keys {
+            let (tx, rx) = tokio::sync::oneshot::channel();
+            let shard = self.select_shard(&key).clone();
+
+            futures.push(tokio::spawn(async move {
+                let _ = shard.send(CacheCommand::Get { key, callback: tx }).await;
+                rx.await
+            }));
+        }
+
+        // Collect all results
+        let results = join_all(futures).await;
+        let mut final_results = Vec::with_capacity(cap);
+
+        for result in results {
+            match result {
+                | Ok(Ok(value)) => final_results.push(value),
+                | _ => final_results.push(None),
+            }
+        }
+        Ok(final_results)
     }
 
     pub(crate) async fn drop_cache(&self) {
