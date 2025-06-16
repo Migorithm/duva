@@ -1,6 +1,5 @@
 mod authenticate;
 pub mod controller;
-pub mod parser;
 pub mod request;
 pub mod stream;
 pub use authenticate::AuthRequest;
