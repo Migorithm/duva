@@ -243,7 +243,7 @@ impl CacheManager {
 
         Ok(rx.await?)
     }
-    pub(crate) async fn route_mget(&self, keys: Vec<String>) -> Vec<Option<CacheValue>> {
+    pub(crate) async fn route_mget(&self, keys: Vec<String>) -> Vec<CacheEntry> {
         // Create futures for each key
         let cap = keys.len();
         let mut futures = Vec::with_capacity(cap);
@@ -252,19 +252,21 @@ impl CacheManager {
             let shard = self.select_shard(&key).clone();
 
             futures.push(tokio::spawn(async move {
-                let _ = shard.send(CacheCommand::Get { key, callback: tx }).await;
-                rx.await
+                let _ = shard.send(CacheCommand::Get { key: key.clone(), callback: tx }).await;
+
+                let Ok(Some(value)) = rx.await else {
+                    return None;
+                };
+                Some(CacheEntry::new_with_cache_value(key, value))
             }));
         }
 
-        // Collect all results
         let results = join_all(futures).await;
         let mut final_results = Vec::with_capacity(cap);
 
         for result in results {
-            match result {
-                | Ok(Ok(value)) => final_results.push(value),
-                | _ => final_results.push(None),
+            if let Ok(Some(value)) = result {
+                final_results.push(value);
             }
         }
         final_results
