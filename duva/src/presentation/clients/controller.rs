@@ -62,6 +62,14 @@ impl ClientController {
                 QueryIO::Null
             },
             | ClientAction::Get { key } => self.cache_manager.route_get(key).await?.into(),
+            | ClientAction::MGet { keys } => {
+                let res = self.cache_manager.route_mget(keys).await;
+                QueryIO::Array(
+                    res.into_iter()
+                        .map(|entry| entry.map(|entry| entry.value().to_string()).into())
+                        .collect(),
+                )
+            },
             | ClientAction::IndexGet { key, index } => {
                 self.cache_manager.route_index_get(key, index).await?.into()
             },
@@ -152,9 +160,9 @@ impl ClientController {
         let consensus_res = self.maybe_consensus(&mut request).await?;
         debug!("Consensus response: {:?}", consensus_res);
         match consensus_res {
-            | ConsensusClientResponse::AlreadyProcessed { key, index } => {
+            | ConsensusClientResponse::AlreadyProcessed { key: keys, index } => {
                 // * Conversion! request has already been processed so we need to convert it to get
-                request.action = ClientAction::IndexGet { key, index };
+                request.action = ClientAction::MGet { keys };
                 self.handle(request.action, Some(index)).await
             },
             | ConsensusClientResponse::LogIndex(optional_idx) => {

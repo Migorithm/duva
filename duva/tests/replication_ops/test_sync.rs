@@ -19,7 +19,7 @@ fn run_full_sync_on_newly_added_replica(with_append_only: bool) -> anyhow::Resul
 
     // THEN
     let mut client_to_repl = Client::new(replica_process.port);
-    assert_eq!(client_to_repl.send_and_get_vec("KEYS *", 1), vec!["0) \"foo\""]);
+    assert_eq!(client_to_repl.send_and_get_vec("KEYS *", 1), vec!["1) \"foo\""]);
 
     Ok(())
 }

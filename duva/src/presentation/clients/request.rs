@@ -15,6 +15,7 @@ pub enum ClientAction {
     Echo(String),
     Config { key: String, value: String },
     Get { key: String },
+    MGet { keys: Vec<String> },
     IndexGet { key: String, index: u64 },
     Set { key: String, value: String },
     Append { key: String, value: String },
@@ -281,6 +282,10 @@ pub fn extract_action(action: &str, args: &[&str]) -> anyhow::Result<ClientActio
             let key = args[0].to_string();
             let decrement = args[1].parse()?;
             Ok(ClientAction::DecrBy { key, decrement })
+        },
+        | "MGET" => {
+            require_non_empty_args()?;
+            Ok(ClientAction::MGet { keys: args.iter().map(|s| s.to_string()).collect() })
         },
         // Add other commands as needed
         | unknown_cmd => Err(anyhow::anyhow!(

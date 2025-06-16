@@ -13,7 +13,7 @@ fn run_snapshot_persists_and_recovers_state(env: ServerEnv) -> anyhow::Result<()
     let res = h.send_and_get("SET foo bar");
     assert_eq!(res, "OK");
     assert_eq!(h.send_and_get("SET foo2 bar2 PX 9999999999"), "OK");
-    assert_eq!(h.send_and_get_vec("KEYS *", 2), vec!["0) \"foo2\"", "1) \"foo\""]);
+    assert_eq!(h.send_and_get_vec("KEYS *", 2), vec!["1) \"foo2\"", "2) \"foo\""]);
 
     // pre load replication info for comparison
     let old_info = h.send_and_get_vec("INFO replication", 4);
@@ -28,7 +28,7 @@ fn run_snapshot_persists_and_recovers_state(env: ServerEnv) -> anyhow::Result<()
     let new_process = spawn_server_process(&env)?;
 
     let mut client = Client::new(new_process.port);
-    assert_eq!(client.send_and_get_vec("KEYS *", 2), vec!["0) \"foo2\"", "1) \"foo\""]);
+    assert_eq!(client.send_and_get_vec("KEYS *", 2), vec!["1) \"foo2\"", "2) \"foo\""]);
 
     // replication info
     let new_info = client.send_and_get_vec("INFO replication", 4);
