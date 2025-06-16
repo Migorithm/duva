@@ -243,7 +243,7 @@ impl CacheManager {
 
         Ok(rx.await?)
     }
-    pub(crate) async fn route_mget(&self, keys: Vec<String>) -> Result<Vec<Option<CacheValue>>> {
+    pub(crate) async fn route_mget(&self, keys: Vec<String>) -> Vec<Option<CacheValue>> {
         // Create futures for each key
         let cap = keys.len();
         let mut futures = Vec::with_capacity(cap);
@@ -267,7 +267,7 @@ impl CacheManager {
                 | _ => final_results.push(None),
             }
         }
-        Ok(final_results)
+        final_results
     }
 
     pub(crate) async fn drop_cache(&self) {
