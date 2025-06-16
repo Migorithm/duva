@@ -242,32 +242,18 @@ impl CacheManager {
 
         Ok(rx.await?)
     }
-    pub(crate) async fn route_mget(&self, keys: Vec<String>) -> Vec<CacheEntry> {
-        // Create futures for each key
-        let cap = keys.len();
-        let mut futures = Vec::with_capacity(cap);
-        for key in keys {
-            let (tx, rx) = tokio::sync::oneshot::channel();
+    pub(crate) async fn route_mget(&self, keys: Vec<String>) -> Vec<Option<CacheEntry>> {
+        let futures = keys.into_iter().map(|key| {
             let shard = self.select_shard(&key).clone();
-
-            futures.push(tokio::spawn(async move {
-                let _ = shard.send(CacheCommand::Get { key: key.clone(), callback: tx }).await;
-                let Ok(Some(value)) = rx.await else {
-                    return None;
-                };
+            tokio::spawn(async move {
+                let (tx, rx) = tokio::sync::oneshot::channel();
+                shard.send(CacheCommand::Get { key: key.clone(), callback: tx }).await.ok()?;
+                let value = rx.await.ok()??;
                 Some(CacheEntry::new_with_cache_value(key, value))
-            }));
-        }
+            })
+        });
 
-        let results = join_all(futures).await;
-        let mut final_results = Vec::with_capacity(cap);
-
-        for result in results {
-            if let Ok(Some(value)) = result {
-                final_results.push(value);
-            }
-        }
-        final_results
+        join_all(futures).await.into_iter().filter_map(Result::ok).collect()
     }
 
     pub(crate) async fn drop_cache(&self) {

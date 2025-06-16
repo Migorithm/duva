@@ -1083,7 +1083,8 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             .flat_map(|task| task.keys_to_migrate.iter().cloned())
             .collect::<Vec<_>>();
 
-        let cache_entries = cache_manager.route_mget(keys.clone()).await;
+        let cache_entries =
+            cache_manager.route_mget(keys.clone()).await.into_iter().flatten().collect::<Vec<_>>();
 
         let Some(pending_migrations) = self.pending_migrations.as_mut() else {
             let _ = callback.send(err!("No pending migrations active"));
