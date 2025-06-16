@@ -130,6 +130,22 @@ impl<T> ClientController<T> {
                 }
                 Response::Array(nodes)
             },
+            | MGet { .. } => {
+                let QueryIO::Array(value) = query_io else {
+                    return Response::FormatError;
+                };
+                Response::Array(
+                    value
+                        .into_iter()
+                        .map(|item| {
+                            let QueryIO::BulkString(value) = item else {
+                                return Response::FormatError;
+                            };
+                            Response::String(value)
+                        })
+                        .collect(),
+                )
+            },
         }
     }
 

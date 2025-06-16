@@ -15,6 +15,7 @@ pub enum ClientAction {
     Echo(String),
     Config { key: String, value: String },
     Get { key: String },
+    MGet { keys: Vec<String> },
     IndexGet { key: String, index: u64 },
     Set { key: String, value: String },
     Append { key: String, value: String },
