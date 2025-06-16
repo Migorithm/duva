@@ -11,7 +11,7 @@ use tokio::{
     net::tcp::{OwnedReadHalf, OwnedWriteHalf},
     sync::mpsc::Sender,
 };
-use tracing::{debug, error, instrument, trace};
+use tracing::{error, instrument, trace};
 use uuid::Uuid;
 pub struct ClientStreamReader {
     pub(crate) r: OwnedReadHalf,
@@ -25,39 +25,34 @@ impl ClientStreamReader {
         handler: ClientController,
         sender: Sender<QueryIO>,
     ) {
-        'l: loop {
-            match self.extract_query().await {
-                | Ok(requests) => {
-                    debug!("Received {} requests", requests.len());
-                    for req in requests.into_iter() {
-                        trace!(?req, "Processing request");
-                        match handler.maybe_consensus_then_execute(req).await {
-                            | Ok(res) => {
-                                if sender.send(res).await.is_err() {
-                                    break 'l;
-                                }
-                            },
-
-                            // ! One of the following errors can be returned:
-                            // ! consensus or handler or commit
-                            | Err(e) => {
-                                error!("{:?}", e);
-                                let _ = sender.send(QueryIO::Err(e.to_string())).await;
-                                continue;
-                            },
-                        };
-                    }
-                    debug!("Finished processing requests");
-                },
-
+        loop {
+            let requests = match self.extract_query().await {
+                | Ok(requests) => requests,
                 | Err(err) => {
                     error!("{}", err);
                     if err.should_break() {
                         return;
-                    } else {
-                        let _ = sender.send(QueryIO::Err(err.to_string())).await;
                     }
+                    let _ = sender.send(QueryIO::Err(err.to_string())).await;
+                    continue;
                 },
+            };
+
+            for req in requests {
+                trace!(?req, "Processing request");
+
+                let result = handler.maybe_consensus_then_execute(req).await;
+                let response = match result {
+                    | Ok(res) => res,
+                    | Err(e) => {
+                        error!("{:?}", e);
+                        QueryIO::Err(e.to_string())
+                    },
+                };
+
+                if sender.send(response).await.is_err() {
+                    return;
+                }
             }
         }
     }
@@ -67,21 +62,18 @@ impl ClientStreamReader {
 
         query_ios
             .into_iter()
-            .map(|query_io| match query_io {
-                | QueryIO::Array(value) => {
-                    let req = ClientRequest::from_user_input(value, None)
-                        .map_err(|e| IoError::Custom(e.to_string()))?;
-                    Ok(req)
-                },
-                | QueryIO::SessionRequest { request_id, value } => {
-                    let req = ClientRequest::from_user_input(
-                        value,
-                        Some(SessionRequest::new(request_id, self.client_id)),
-                    )
-                    .map_err(|e| IoError::Custom(e.to_string()))?;
-                    Ok(req)
-                },
-                | _ => Err(IoError::Custom("Unexpected command format".to_string())),
+            .map(|query_io| {
+                let (value, session_request) = match query_io {
+                    | QueryIO::Array(value) => (value, None),
+                    | QueryIO::SessionRequest { request_id, value } => {
+                        let session = SessionRequest::new(request_id, self.client_id);
+                        (value, Some(session))
+                    },
+                    | _ => return Err(IoError::Custom("Unexpected command format".to_string())),
+                };
+
+                ClientRequest::from_user_input(value, session_request)
+                    .map_err(|e| IoError::Custom(e.to_string()))
             })
             .collect()
     }
