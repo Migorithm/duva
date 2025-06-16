@@ -10,7 +10,6 @@ use crate::domains::saves::actor::SaveTarget;
 use crate::domains::saves::endec::StoredDuration;
 use anyhow::Result;
 use chrono::Utc;
-use futures::SinkExt;
 use futures::StreamExt;
 use futures::future::join_all;
 use futures::stream::FuturesUnordered;
@@ -253,7 +252,6 @@ impl CacheManager {
 
             futures.push(tokio::spawn(async move {
                 let _ = shard.send(CacheCommand::Get { key: key.clone(), callback: tx }).await;
-
                 let Ok(Some(value)) = rx.await else {
                     return None;
                 };

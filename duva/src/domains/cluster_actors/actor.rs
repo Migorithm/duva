@@ -1077,15 +1077,13 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         };
 
         // Retrieve key-value data from cache
-        let mut cache_entries_to_migrate = Vec::new();
+        let keys = target
+            .tasks
+            .iter()
+            .flat_map(|task| task.keys_to_migrate.iter().cloned())
+            .collect::<Vec<_>>();
 
-        let keys = target.tasks.iter().flat_map(|task| task.keys_to_migrate.iter().cloned());
-        for key in keys.clone() {
-            let Ok(Some(value)) = cache_manager.route_get(key.clone()).await else {
-                continue;
-            };
-            cache_entries_to_migrate.push(CacheEntry::new_with_cache_value(key, value));
-        }
+        let cache_entries = cache_manager.route_mget(keys.clone()).await;
 
         let Some(pending_migrations) = self.pending_migrations.as_mut() else {
             let _ = callback.send(err!("No pending migrations active"));
@@ -1098,12 +1096,9 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             return;
         };
 
-        pending_migrations
-            .insert(target.id.clone(), PendingMigrationBatch::new(callback, keys.collect()));
+        pending_migrations.insert(target.id.clone(), PendingMigrationBatch::new(callback, keys));
 
-        let _ = target_peer
-            .send(MigrateBatch { batch_id: target.id, cache_entries: cache_entries_to_migrate })
-            .await;
+        let _ = target_peer.send(MigrateBatch { batch_id: target.id, cache_entries }).await;
     }
 
     pub(crate) async fn receive_batch(
