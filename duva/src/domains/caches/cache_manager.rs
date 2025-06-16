@@ -242,6 +242,19 @@ impl CacheManager {
 
         Ok(rx.await?)
     }
+    pub(crate) async fn route_mget(&self, keys: Vec<String>) -> Vec<Option<CacheEntry>> {
+        let futures = keys.into_iter().map(|key| {
+            let shard = self.select_shard(&key).clone();
+            tokio::spawn(async move {
+                let (tx, rx) = tokio::sync::oneshot::channel();
+                shard.send(CacheCommand::Get { key: key.clone(), callback: tx }).await.ok()?;
+                let value = rx.await.ok()??;
+                Some(CacheEntry::new_with_cache_value(key, value))
+            })
+        });
+
+        join_all(futures).await.into_iter().filter_map(Result::ok).collect()
+    }
 
     pub(crate) async fn drop_cache(&self) {
         let (txs, rxs) = self.oneshot_channels();

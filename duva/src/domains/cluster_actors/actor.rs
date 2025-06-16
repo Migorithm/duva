@@ -13,7 +13,6 @@ use super::replication::time_in_secs;
 use super::*;
 use crate::domains::QueryIO;
 use crate::domains::caches::cache_manager::CacheManager;
-use crate::domains::caches::cache_objects::CacheEntry;
 use crate::domains::cluster_actors::hash_ring::BatchId;
 use crate::domains::cluster_actors::hash_ring::MigrationBatch;
 use crate::domains::cluster_actors::hash_ring::MigrationTask;
@@ -250,12 +249,8 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         }
         if self.client_sessions.is_processed(&req.session_req) {
             // mapping between early returned values to client result
-            // TODO "AlreadyProcessed" variant may want to receive "keys" instead of single key for bulk operations. In that case, consider using `req.request.all_keys()`
-            let key = req
-                .request
-                .key()
-                .map(|k| k.to_string())
-                .unwrap_or_else(|| format!("multi-key-op-{}", self.logger.last_log_index));
+
+            let key = req.request.all_keys().into_iter().map(String::from).collect();
             let _ = req.callback.send(Ok(ConsensusClientResponse::AlreadyProcessed {
                 key,
                 index: self.logger.last_log_index,
@@ -1081,15 +1076,14 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         };
 
         // Retrieve key-value data from cache
-        let mut cache_entries_to_migrate = Vec::new();
+        let keys = target
+            .tasks
+            .iter()
+            .flat_map(|task| task.keys_to_migrate.iter().cloned())
+            .collect::<Vec<_>>();
 
-        let keys = target.tasks.iter().flat_map(|task| task.keys_to_migrate.iter().cloned());
-        for key in keys.clone() {
-            let Ok(Some(value)) = cache_manager.route_get(key.clone()).await else {
-                continue;
-            };
-            cache_entries_to_migrate.push(CacheEntry::new_with_cache_value(key, value));
-        }
+        let cache_entries =
+            cache_manager.route_mget(keys.clone()).await.into_iter().flatten().collect::<Vec<_>>();
 
         let Some(pending_migrations) = self.pending_migrations.as_mut() else {
             let _ = callback.send(err!("No pending migrations active"));
@@ -1102,12 +1096,9 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             return;
         };
 
-        pending_migrations
-            .insert(target.id.clone(), PendingMigrationBatch::new(callback, keys.collect()));
+        pending_migrations.insert(target.id.clone(), PendingMigrationBatch::new(callback, keys));
 
-        let _ = target_peer
-            .send(MigrateBatch { batch_id: target.id, cache_entries: cache_entries_to_migrate })
-            .await;
+        let _ = target_peer.send(MigrateBatch { batch_id: target.id, cache_entries }).await;
     }
 
     pub(crate) async fn receive_batch(
