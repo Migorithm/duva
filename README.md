@@ -31,6 +31,7 @@ The following features have been implemented so far:
 - Core Commands inspired by Redis
     - `SET` with optional TTL
     - `GET`
+    - `MGET`
     - `KEYS` (supports glob patterns)
     - `SAVE`
     - `EXISTS`
@@ -56,6 +57,8 @@ The following features have been implemented so far:
     - Follower reads with RYOW consistency 
     - Push-based topology change notification
     - Eviction Policy - LRU(default)
+    - Partitioning 
+    - Rebalancing - Eager
 
 
 - Protocol Support
