@@ -10,6 +10,7 @@ use crate::editor::DuvaHinter;
 
 pub(crate) static COMMANDS: &[&str] = &[
     "get",
+    "mget",
     "set",
     "append",
     "cluster",
@@ -135,7 +136,7 @@ impl Completer for DuvaHinter {
                     }
                 }
             },
-            | "exists" | "del" => {
+            | "exists" | "del" | "mget" => {
                 if !previous_words.is_empty() {
                     // Suggest "key" for these commands
                     candidates.push(new_pair!("key"));

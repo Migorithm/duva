@@ -136,6 +136,7 @@ pub(crate) fn default_hints() -> HashSet<CommandHint> {
     set.insert(CommandHint::new("info [section]", ""));
     set.insert(CommandHint::new("info replication", ""));
     set.insert(CommandHint::new("exists key [key ...]", "exists "));
+    set.insert(CommandHint::new("mget key [key ...]", "mget "));
     set.insert(CommandHint::new("del key [key ...]", "del "));
     set.insert(CommandHint::new("ttl key", "ttl "));
     set.insert(CommandHint::new("replicaof host port", "replicaof "));
@@ -176,6 +177,7 @@ pub(crate) fn dynamic_hints() -> HashMap<&'static str, Vec<DynamicHint>> {
     map.insert("get", vec![hint!("key", 0)]);
     map.insert("exists", vec![hint!("key [key ...]", 0, repeat), hint!("[key ...]", 1, repeat)]);
     map.insert("del", vec![hint!("key [key ...]", 0, repeat), hint!("[key ...]", 1, repeat)]);
+    map.insert("mget", vec![hint!("key [key ...]", 0, repeat), hint!("[key ...]", 1, repeat)]);
     map.insert("replicaof", vec![hint!("host port", 0), hint!("port", 1)]);
 
     map

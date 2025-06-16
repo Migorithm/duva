@@ -104,7 +104,7 @@ impl<T> ClientController<T> {
                 | QueryIO::Err(value) => Response::Error(value),
                 | _ => Response::FormatError,
             },
-            | Keys { .. } => {
+            | Keys { .. } | MGet { .. } => {
                 let QueryIO::Array(value) = query_io else {
                     return Response::FormatError;
                 };
@@ -113,7 +113,7 @@ impl<T> ClientController<T> {
                     let QueryIO::BulkString(value) = item else {
                         return Response::FormatError;
                     };
-                    keys.push(Response::String(format!("{i}) \"{value}\"")));
+                    keys.push(Response::String(format!("{}) \"{value}\"", i + 1)));
                 }
                 Response::Array(keys)
             },
@@ -129,22 +129,6 @@ impl<T> ClientController<T> {
                     nodes.push(Response::String(value));
                 }
                 Response::Array(nodes)
-            },
-            | MGet { .. } => {
-                let QueryIO::Array(value) = query_io else {
-                    return Response::FormatError;
-                };
-                Response::Array(
-                    value
-                        .into_iter()
-                        .map(|item| {
-                            let QueryIO::BulkString(value) = item else {
-                                return Response::FormatError;
-                            };
-                            Response::String(value)
-                        })
-                        .collect(),
-                )
             },
         }
     }
