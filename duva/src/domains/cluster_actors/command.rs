@@ -1,6 +1,7 @@
 use crate::ReplicationState;
 use crate::domains::cluster_actors::hash_ring::{BatchId, MigrationBatch};
 use crate::domains::cluster_actors::replication::{ReplicationId, ReplicationRole};
+use crate::domains::cluster_actors::topology::Topology;
 use crate::domains::operation_logs::WriteRequest;
 use crate::domains::peers::command::PeerCommand;
 use crate::domains::peers::peer::{Peer, PeerState};
@@ -62,9 +63,10 @@ pub enum ClientMessage {
     ClusterNodes(tokio::sync::oneshot::Sender<Vec<PeerState>>),
     GetRole(tokio::sync::oneshot::Sender<ReplicationRole>),
     SubscribeToTopologyChange(
-        tokio::sync::oneshot::Sender<tokio::sync::broadcast::Receiver<Vec<PeerIdentifier>>>,
+        tokio::sync::oneshot::Sender<tokio::sync::broadcast::Receiver<Topology>>,
     ),
     ClusterMeet(PeerIdentifier, LazyOption, tokio::sync::oneshot::Sender<anyhow::Result<()>>),
+    GetTopology(tokio::sync::oneshot::Sender<Topology>),
 }
 
 impl From<ClientMessage> for ClusterCommand {

@@ -1,3 +1,4 @@
+use crate::domains::cluster_actors::topology::Topology;
 use crate::{
     domains::{
         cluster_actors::{
@@ -19,6 +20,13 @@ impl ClusterCommunicationManager {
     pub(crate) async fn get_peers(&self) -> anyhow::Result<Vec<PeerIdentifier>> {
         let (tx, rx) = tokio::sync::oneshot::channel();
         self.send(ClientMessage::GetPeers(tx)).await?;
+        let peers = rx.await?;
+        Ok(peers)
+    }
+
+    pub(crate) async fn get_topology(&self) -> anyhow::Result<Topology> {
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        self.send(ClientMessage::GetTopology(tx)).await?;
         let peers = rx.await?;
         Ok(peers)
     }
@@ -94,7 +102,7 @@ impl ClusterCommunicationManager {
 
     pub(crate) async fn subscribe_topology_change(
         &self,
-    ) -> anyhow::Result<tokio::sync::broadcast::Receiver<Vec<PeerIdentifier>>> {
+    ) -> anyhow::Result<tokio::sync::broadcast::Receiver<Topology>> {
         let (tx, rx) = tokio::sync::oneshot::channel();
         let _ = self.send(ClientMessage::SubscribeToTopologyChange(tx)).await;
         Ok(rx.await?)

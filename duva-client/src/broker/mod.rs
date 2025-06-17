@@ -10,7 +10,7 @@ use duva::prelude::tokio::net::TcpStream;
 use duva::prelude::tokio::sync::mpsc::Receiver;
 use duva::prelude::tokio::sync::mpsc::Sender;
 use duva::prelude::uuid::Uuid;
-use duva::prelude::{LEADER_HEARTBEAT_INTERVAL_MAX, PeerIdentifier};
+use duva::prelude::{LEADER_HEARTBEAT_INTERVAL_MAX, Topology};
 use duva::presentation::clients::request::ClientAction;
 use duva::{
     domains::TSerdeReadWrite,
@@ -27,7 +27,7 @@ pub struct Broker {
     pub(crate) to_server: Sender<MsgToServer>,
     pub(crate) client_id: Uuid,
     pub(crate) request_id: u64,
-    pub(crate) cluster_nodes: Vec<PeerIdentifier>,
+    pub(crate) topology: Topology,
     pub(crate) read_kill_switch: Option<tokio::sync::oneshot::Sender<()>>,
 }
 
@@ -37,7 +37,7 @@ impl Broker {
         while let Some(msg) = self.rx.recv().await {
             match msg {
                 | BrokerMessage::FromServer(Ok(QueryIO::TopologyChange(topology))) => {
-                    self.cluster_nodes = topology;
+                    self.topology = topology;
                 },
 
                 | BrokerMessage::FromServer(Ok(query_io)) => {
@@ -130,8 +130,9 @@ impl Broker {
     }
 
     // pull-based leader discovery
+    // TODO Implement leader discovery logic
     async fn discover_leader(&mut self) -> Result<(), IoError> {
-        for node in &self.cluster_nodes {
+        for node in &self.topology.connected_peers {
             tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
             println!("Trying to connect to node: {}...", node);
 
@@ -146,7 +147,7 @@ impl Broker {
             if auth_response.connected_to_leader {
                 println!("Connected to a new leader: {}", node);
                 self.replace_stream(r, w).await;
-                self.cluster_nodes = auth_response.cluster_nodes;
+                self.topology = auth_response.topology;
 
                 return Ok(());
             }

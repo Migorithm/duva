@@ -17,6 +17,7 @@ use crate::domains::cluster_actors::hash_ring::BatchId;
 use crate::domains::cluster_actors::hash_ring::MigrationBatch;
 use crate::domains::cluster_actors::hash_ring::MigrationTask;
 use crate::domains::cluster_actors::hash_ring::PendingMigrationBatch;
+use crate::domains::cluster_actors::topology::Topology;
 use crate::domains::operation_logs::WriteRequest;
 use crate::domains::operation_logs::interfaces::TWriteAheadLog;
 use crate::domains::operation_logs::logger::ReplicatedLogs;
@@ -62,7 +63,7 @@ pub struct ClusterActor<T> {
     pub(crate) self_handler: ClusterCommandHandler,
     pub(crate) heartbeat_scheduler: HeartBeatScheduler,
     pub(crate) topology_writer: tokio::fs::File,
-    pub(crate) node_change_broadcast: tokio::sync::broadcast::Sender<Vec<PeerIdentifier>>,
+    pub(crate) node_change_broadcast: tokio::sync::broadcast::Sender<Topology>,
 
     // * Pending requests are used to store requests that are received while the actor is in the process of election/cluster rebalancing.
     // * These requests will be processed once the actor is back to a stable state.
@@ -176,7 +177,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             heartbeat_interval_in_mills,
         );
 
-        let (tx, _) = tokio::sync::broadcast::channel::<Vec<PeerIdentifier>>(100);
+        let (tx, _) = tokio::sync::broadcast::channel::<Topology>(100);
         let hash_ring = HashRing::default()
             .add_partition_if_not_exists(
                 init_repl_state.replid.clone(),
@@ -554,16 +555,20 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     // * Broadcasts the current topology to all connected clients
     // TODO hashring information should be included in the broadcast so clients can update their routing tables
     fn broadcast_topology_change(&self) {
-        self.node_change_broadcast
-            .send(
-                self.members
-                    .keys()
-                    .cloned()
-                    .chain(iter::once(self.replication.self_identifier()))
-                    .collect(),
-            )
-            .ok();
+        self.node_change_broadcast.send(self.get_topology()).ok();
     }
+
+    pub(crate) fn get_topology(&self) -> Topology {
+        Topology::new(
+            self.members
+                .keys()
+                .cloned()
+                .chain(iter::once(self.replication.self_identifier()))
+                .collect(),
+            self.hash_ring.clone(),
+        )
+    }
+
     async fn remove_peer(&mut self, peer_addr: &PeerIdentifier) -> Option<()> {
         if let Some(peer) = self.members.remove(peer_addr) {
             warn!("{} is being removed!", peer_addr);
@@ -1206,6 +1211,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         let migrations_done = self.pending_migrations.as_ref().is_none_or(|p| p.is_empty());
 
         if migrations_done {
+            let _ = self.node_change_broadcast.send(self.get_topology());
             if let Some(mut pending_reqs) = self.pending_requests.take() {
                 info!("All migrations complete, processing pending requests.");
                 self.pending_migrations = None;

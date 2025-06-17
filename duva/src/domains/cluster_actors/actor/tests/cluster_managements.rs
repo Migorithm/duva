@@ -1,3 +1,5 @@
+use tokio::sync::RwLock;
+
 use super::*;
 
 #[tokio::test]
@@ -159,4 +161,42 @@ async fn test_reconnection_on_gossip() {
 
     assert!(handle.await.is_ok());
     assert!(rx.await.is_ok());
+}
+
+#[tokio::test]
+async fn test_topology_broadcast_on_hash_ring_change() {
+    // GIVEN
+    let topology = Arc::new(RwLock::new(Topology::default()));
+    let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
+    let replid = ReplicationId::Key("node1".into());
+
+    // Setup old ring
+    let hash_ring = HashRing::default()
+        .add_partition_if_not_exists(replid.clone(), PeerIdentifier("peer1".into()))
+        .unwrap();
+
+    cluster_actor.hash_ring = hash_ring.clone();
+
+    let mut subscriber = cluster_actor.node_change_broadcast.subscribe();
+
+    let task = tokio::spawn({
+        let topology = topology.clone();
+        async move {
+            while let Ok(tp) = subscriber.recv().await {
+                let mut guard = topology.write().await;
+                *guard = tp;
+                break;
+            }
+        }
+    });
+
+    cluster_actor.block_write_reqs();
+
+    // WHEN
+    cluster_actor.unblock_write_reqs_if_done();
+    let _ = task.await;
+
+    // THEN
+    let guard = topology.read().await;
+    assert_eq!(guard.hash_ring, hash_ring)
 }

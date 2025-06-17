@@ -1,11 +1,9 @@
 use super::{ClientController, request::ClientRequest};
-use crate::{
-    domains::{
-        IoError, QueryIO,
-        cluster_actors::SessionRequest,
-        interface::{TRead, TWrite},
-    },
-    prelude::PeerIdentifier,
+use crate::domains::cluster_actors::topology::Topology;
+use crate::domains::{
+    IoError, QueryIO,
+    cluster_actors::SessionRequest,
+    interface::{TRead, TWrite},
 };
 use tokio::{
     net::tcp::{OwnedReadHalf, OwnedWriteHalf},
@@ -13,6 +11,7 @@ use tokio::{
 };
 use tracing::{error, instrument, trace};
 use uuid::Uuid;
+
 pub struct ClientStreamReader {
     pub(crate) r: OwnedReadHalf,
     pub(crate) client_id: Uuid,
@@ -87,7 +86,7 @@ impl ClientStreamWriter {
 
     pub(crate) fn run(
         mut self,
-        mut topology_observer: tokio::sync::broadcast::Receiver<Vec<PeerIdentifier>>,
+        mut topology_observer: tokio::sync::broadcast::Receiver<Topology>,
     ) -> Sender<QueryIO> {
         let (tx, mut rx) = tokio::sync::mpsc::channel(100);
         tokio::spawn(async move {
@@ -103,8 +102,8 @@ impl ClientStreamWriter {
         tokio::spawn({
             let tx = tx.clone();
             async move {
-                while let Ok(peers) = topology_observer.recv().await {
-                    let _ = tx.send(QueryIO::TopologyChange(peers)).await;
+                while let Ok(topology) = topology_observer.recv().await {
+                    let _ = tx.send(QueryIO::TopologyChange(topology)).await;
                 }
             }
         });
