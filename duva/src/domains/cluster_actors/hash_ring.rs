@@ -21,7 +21,6 @@ const V_NODE_NUM: u16 = 256;
 #[derive(Debug, Default, bincode::Decode, bincode::Encode, Clone, Eq)]
 pub struct HashRing {
     vnodes: BTreeMap<u64, Rc<ReplicationId>>,
-    // TODO value in the following map must be replaced when election happens
     pnodes: HashMap<ReplicationId, PeerIdentifier>,
     pub(crate) last_modified: u128,
 }
