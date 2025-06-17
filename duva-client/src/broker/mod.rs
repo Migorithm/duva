@@ -37,7 +37,7 @@ impl Broker {
         while let Some(msg) = self.rx.recv().await {
             match msg {
                 | BrokerMessage::FromServer(Ok(QueryIO::TopologyChange(topology))) => {
-                    self.cluster_nodes = topology;
+                    self.cluster_nodes = topology.connected_peers;
                 },
 
                 | BrokerMessage::FromServer(Ok(query_io)) => {

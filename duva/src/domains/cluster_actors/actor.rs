@@ -32,6 +32,7 @@ use crate::domains::peers::connections::inbound::stream::InboundStream;
 use crate::domains::peers::connections::outbound::stream::OutboundStream;
 use crate::domains::peers::peer::NodeKind;
 use crate::domains::peers::peer::PeerState;
+use crate::domains::cluster_actors::topology::Topology;
 use crate::err;
 use client_sessions::ClientSessions;
 use heartbeat_scheduler::HeartBeatScheduler;
@@ -62,7 +63,7 @@ pub struct ClusterActor<T> {
     pub(crate) self_handler: ClusterCommandHandler,
     pub(crate) heartbeat_scheduler: HeartBeatScheduler,
     pub(crate) topology_writer: tokio::fs::File,
-    pub(crate) node_change_broadcast: tokio::sync::broadcast::Sender<Vec<PeerIdentifier>>,
+    pub(crate) node_change_broadcast: tokio::sync::broadcast::Sender<Topology>,
 
     // * Pending requests are used to store requests that are received while the actor is in the process of election/cluster rebalancing.
     // * These requests will be processed once the actor is back to a stable state.
@@ -176,7 +177,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             heartbeat_interval_in_mills,
         );
 
-        let (tx, _) = tokio::sync::broadcast::channel::<Vec<PeerIdentifier>>(100);
+        let (tx, _) = tokio::sync::broadcast::channel::<Topology>(100);
         let hash_ring = HashRing::default()
             .add_partition_if_not_exists(
                 init_repl_state.replid.clone(),
@@ -555,13 +556,14 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     // TODO hashring information should be included in the broadcast so clients can update their routing tables
     fn broadcast_topology_change(&self) {
         self.node_change_broadcast
-            .send(
+            .send(Topology::new(
                 self.members
                     .keys()
                     .cloned()
                     .chain(iter::once(self.replication.self_identifier()))
                     .collect(),
-            )
+                self.hash_ring.clone(),
+            ))
             .ok();
     }
     async fn remove_peer(&mut self, peer_addr: &PeerIdentifier) -> Option<()> {

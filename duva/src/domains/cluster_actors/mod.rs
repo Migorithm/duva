@@ -13,6 +13,7 @@ pub(crate) mod hash_ring;
 
 pub mod replication;
 mod service;
+pub(crate) mod topology;
 
 pub const FANOUT: usize = 2;
 pub use actor::ClusterActor;
