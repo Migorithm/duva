@@ -1219,6 +1219,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
                     return;
                 }
                 let handler = self.self_handler.clone();
+                // TODO Notify Clients of migration completion
                 tokio::spawn(async move {
                     while let Some(req) = pending_reqs.pop_front() {
                         if let Err(err) = handler
