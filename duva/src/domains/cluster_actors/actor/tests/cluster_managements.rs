@@ -1,5 +1,3 @@
-use std::sync::atomic::AtomicBool;
-
 use tokio::sync::RwLock;
 
 use super::*;
