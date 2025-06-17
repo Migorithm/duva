@@ -681,16 +681,9 @@ async fn test_handle_migration_ack_success_case_with_pending_reqs_and_migration(
     // Verify keys were deleted from cache after successful migration
     assert!(cache_manager.route_get("migrate_key_1").await.unwrap().is_none());
     assert!(cache_manager.route_get("migrate_key_2").await.unwrap().is_none());
-
-    // TODO - do it after making sender and receiver test double.
-    // Verify unblock_write_reqs_if_done was called and requests were unblocked
-    // Since this was the last migration, both should be None now
-    // assert!(cluster_actor.pending_requests.is_none());
-    // assert!(cluster_actor.pending_migrations.is_none());
 }
 
 // Verify that the start_rebalance -> maybe_update_hashring flow works.
-// This test addresses the TODO comment: "need to see if migration batch is scheduled."
 #[tokio::test]
 async fn test_start_rebalance_schedules_migration_batches() {
     // GIVEN

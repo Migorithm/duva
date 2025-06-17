@@ -677,7 +677,6 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         }
 
         // If we have entries, find the entry before the first one to use as backup
-        // TODO perhaps we can get backup entry while getting append_entries?
         let backup_entry = self.logger.read_at(append_entries[0].log_index - 1).await;
 
         let iterator = self.replicas_mut().map(move |(peer, hwm)| {
