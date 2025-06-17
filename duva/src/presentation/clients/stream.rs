@@ -1,9 +1,10 @@
-use super::{request::ClientRequest, ClientController};
+use super::{ClientController, request::ClientRequest};
+use crate::domains::cluster_actors::topology::Topology;
 use crate::{
     domains::{
-        cluster_actors::SessionRequest, interface::{TRead, TWrite},
-        IoError,
-        QueryIO,
+        IoError, QueryIO,
+        cluster_actors::SessionRequest,
+        interface::{TRead, TWrite},
     },
     prelude::PeerIdentifier,
 };
@@ -13,7 +14,6 @@ use tokio::{
 };
 use tracing::{error, instrument, trace};
 use uuid::Uuid;
-use crate::domains::cluster_actors::topology::Topology;
 
 pub struct ClientStreamReader {
     pub(crate) r: OwnedReadHalf,

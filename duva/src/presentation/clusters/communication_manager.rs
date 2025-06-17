@@ -1,15 +1,15 @@
+use crate::domains::cluster_actors::topology::Topology;
 use crate::{
     domains::{
         cluster_actors::{
-            actor::ClusterCommandHandler, replication::{ReplicationRole, ReplicationState}, ClientMessage,
-            ConnectionMessage,
-            LazyOption,
+            ClientMessage, ConnectionMessage, LazyOption,
+            actor::ClusterCommandHandler,
+            replication::{ReplicationRole, ReplicationState},
         },
         peers::{identifier::PeerIdentifier, peer::PeerState},
     },
     make_smart_pointer,
 };
-use crate::domains::cluster_actors::topology::Topology;
 
 #[derive(Clone, Debug)]
 pub(crate) struct ClusterCommunicationManager(pub(crate) ClusterCommandHandler);

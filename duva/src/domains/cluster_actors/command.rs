@@ -1,10 +1,10 @@
 use crate::ReplicationState;
 use crate::domains::cluster_actors::hash_ring::{BatchId, MigrationBatch};
 use crate::domains::cluster_actors::replication::{ReplicationId, ReplicationRole};
+use crate::domains::cluster_actors::topology::Topology;
 use crate::domains::operation_logs::WriteRequest;
 use crate::domains::peers::command::PeerCommand;
 use crate::domains::peers::peer::{Peer, PeerState};
-use crate::domains::cluster_actors::topology::Topology;
 use crate::prelude::PeerIdentifier;
 use std::str::FromStr;
 use tokio::net::TcpStream;
