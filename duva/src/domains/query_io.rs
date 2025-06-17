@@ -1,4 +1,6 @@
+use super::cluster_actors::hash_ring::HashRing;
 use crate::domains::caches::cache_objects::CacheValue;
+use crate::domains::cluster_actors::topology::Topology;
 use crate::domains::operation_logs::WriteOperation;
 use crate::domains::peers::command::{
     ElectionVote, HeartBeat, MigrateBatch, MigrationBatchAck, ReplicationAck, RequestVote,
@@ -58,7 +60,7 @@ pub enum QueryIO {
     RequestVote(RequestVote),
     RequestVoteReply(ElectionVote),
 
-    TopologyChange(Vec<PeerIdentifier>),
+    TopologyChange(Topology),
     StartRebalance,
     MigrateBatch(MigrateBatch),
     MigrationBatchAck(MigrationBatchAck),
@@ -131,8 +133,8 @@ impl QueryIO {
             | QueryIO::ClusterHeartBeat(heart_beat_message) => {
                 serialize_with_bincode(CLUSTER_HEARTBEAT_PREFIX, &heart_beat_message)
             },
-            | QueryIO::TopologyChange(peer_identifiers) => {
-                serialize_with_bincode(TOPOLOGY_CHANGE_PREFIX, &peer_identifiers)
+            | QueryIO::TopologyChange(topology) => {
+                serialize_with_bincode(TOPOLOGY_CHANGE_PREFIX, &topology)
             },
             | QueryIO::StartRebalance => serialize_with_bincode(START_REBALANCE_PREFIX, &()),
             | QueryIO::MigrateBatch(migrate_batch) => {
@@ -240,7 +242,7 @@ pub fn deserialize(buffer: impl Into<Bytes>) -> Result<(QueryIO, usize)> {
         | ACKS_PREFIX => parse_custom_type::<ReplicationAck>(buffer),
         | REQUEST_VOTE_PREFIX => parse_custom_type::<RequestVote>(buffer),
         | REQUEST_VOTE_REPLY_PREFIX => parse_custom_type::<ElectionVote>(buffer),
-        | TOPOLOGY_CHANGE_PREFIX => parse_custom_type::<Vec<PeerIdentifier>>(buffer),
+        | TOPOLOGY_CHANGE_PREFIX => parse_custom_type::<Topology>(buffer),
         | START_REBALANCE_PREFIX => Ok((QueryIO::StartRebalance, 1)),
         | MIGRATE_BATCH_PREFIX => parse_custom_type::<MigrateBatch>(buffer),
         | MIGRATION_BATCH_ACK_PREFIX => parse_custom_type::<MigrationBatchAck>(buffer),
@@ -420,8 +422,8 @@ impl From<ElectionVote> for QueryIO {
     }
 }
 
-impl From<Vec<PeerIdentifier>> for QueryIO {
-    fn from(value: Vec<PeerIdentifier>) -> Self {
+impl From<Topology> for QueryIO {
+    fn from(value: Topology) -> Self {
         QueryIO::TopologyChange(value)
     }
 }
@@ -723,8 +725,10 @@ mod test {
     #[test]
     fn test_topology_change_serde() {
         //GIVEN
-        let topology =
+        let connected_peers =
             vec!["127.0.0.1:6000".to_string().into(), "127.0.0.1:6001".to_string().into()];
+        let hash_ring = HashRing::default();
+        let topology = Topology::new(connected_peers, hash_ring);
         let query_io = QueryIO::TopologyChange(topology.clone());
 
         //WHEN

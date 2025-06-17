@@ -1,14 +1,15 @@
 use crate::{
     domains::{
         cluster_actors::{
-            ClientMessage, ConnectionMessage, LazyOption,
-            actor::ClusterCommandHandler,
-            replication::{ReplicationRole, ReplicationState},
+            actor::ClusterCommandHandler, replication::{ReplicationRole, ReplicationState}, ClientMessage,
+            ConnectionMessage,
+            LazyOption,
         },
         peers::{identifier::PeerIdentifier, peer::PeerState},
     },
     make_smart_pointer,
 };
+use crate::domains::cluster_actors::topology::Topology;
 
 #[derive(Clone, Debug)]
 pub(crate) struct ClusterCommunicationManager(pub(crate) ClusterCommandHandler);
@@ -94,7 +95,7 @@ impl ClusterCommunicationManager {
 
     pub(crate) async fn subscribe_topology_change(
         &self,
-    ) -> anyhow::Result<tokio::sync::broadcast::Receiver<Vec<PeerIdentifier>>> {
+    ) -> anyhow::Result<tokio::sync::broadcast::Receiver<Topology>> {
         let (tx, rx) = tokio::sync::oneshot::channel();
         let _ = self.send(ClientMessage::SubscribeToTopologyChange(tx)).await;
         Ok(rx.await?)
