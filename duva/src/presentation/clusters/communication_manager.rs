@@ -24,6 +24,13 @@ impl ClusterCommunicationManager {
         Ok(peers)
     }
 
+    pub(crate) async fn get_topology(&self) -> anyhow::Result<Topology> {
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        self.send(ClientMessage::GetTopology(tx)).await?;
+        let peers = rx.await?;
+        Ok(peers)
+    }
+
     pub(crate) async fn connect_to_server(&self, connect_to: PeerIdentifier) -> anyhow::Result<()> {
         let (tx, rx) = tokio::sync::oneshot::channel();
         self.send(ConnectionMessage::ConnectToServer { connect_to, callback: tx }).await?;

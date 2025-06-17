@@ -1,7 +1,7 @@
 use crate::domains::cluster_actors::hash_ring::HashRing;
 use crate::prelude::PeerIdentifier;
 
-#[derive(bincode::Encode, bincode::Decode, Debug, PartialEq, Clone)]
+#[derive(bincode::Encode, bincode::Decode, Debug, PartialEq, Clone, Default)]
 pub struct Topology {
     pub connected_peers: Vec<PeerIdentifier>,
     pub hash_ring: HashRing,

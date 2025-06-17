@@ -17,9 +17,8 @@ pub struct ClientController<T> {
 
 impl<T> ClientController<T> {
     pub async fn new(editor: T, server_addr: &str) -> anyhow::Result<Self> {
-        let (r, w, mut auth_response) = Broker::authenticate(server_addr, None).await?;
+        let (r, w, auth_response) = Broker::authenticate(server_addr, None).await?;
 
-        auth_response.cluster_nodes.push(server_addr.to_string().into());
         let (broker_tx, rx) = tokio::sync::mpsc::channel::<BrokerMessage>(100);
 
         let broker = Broker {
@@ -29,7 +28,7 @@ impl<T> ClientController<T> {
             client_id: Uuid::parse_str(&auth_response.client_id).unwrap(),
             request_id: auth_response.request_id,
 
-            cluster_nodes: auth_response.cluster_nodes,
+            topology: auth_response.topology,
             read_kill_switch: Some(r.run(broker_tx.clone())),
         };
         tokio::spawn(broker.run());

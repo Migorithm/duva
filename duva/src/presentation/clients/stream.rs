@@ -1,12 +1,9 @@
 use super::{ClientController, request::ClientRequest};
 use crate::domains::cluster_actors::topology::Topology;
-use crate::{
-    domains::{
-        IoError, QueryIO,
-        cluster_actors::SessionRequest,
-        interface::{TRead, TWrite},
-    },
-    prelude::PeerIdentifier,
+use crate::domains::{
+    IoError, QueryIO,
+    cluster_actors::SessionRequest,
+    interface::{TRead, TWrite},
 };
 use tokio::{
     net::tcp::{OwnedReadHalf, OwnedWriteHalf},

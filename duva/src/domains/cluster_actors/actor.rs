@@ -555,17 +555,20 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     // * Broadcasts the current topology to all connected clients
     // TODO hashring information should be included in the broadcast so clients can update their routing tables
     fn broadcast_topology_change(&self) {
-        self.node_change_broadcast
-            .send(Topology::new(
-                self.members
-                    .keys()
-                    .cloned()
-                    .chain(iter::once(self.replication.self_identifier()))
-                    .collect(),
-                self.hash_ring.clone(),
-            ))
-            .ok();
+        self.node_change_broadcast.send(self.get_topology()).ok();
     }
+
+    pub(crate) fn get_topology(&self) -> Topology {
+        Topology::new(
+            self.members
+                .keys()
+                .cloned()
+                .chain(iter::once(self.replication.self_identifier()))
+                .collect(),
+            self.hash_ring.clone(),
+        )
+    }
+
     async fn remove_peer(&mut self, peer_addr: &PeerIdentifier) -> Option<()> {
         if let Some(peer) = self.members.remove(peer_addr) {
             warn!("{} is being removed!", peer_addr);

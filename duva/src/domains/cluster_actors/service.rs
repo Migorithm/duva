@@ -108,6 +108,9 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             | SubscribeToTopologyChange(sender) => {
                 let _ = sender.send(self.node_change_broadcast.subscribe());
             },
+            | GetTopology(callback) => {
+                let _ = callback.send(self.get_topology());
+            },
         }
     }
 

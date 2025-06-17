@@ -1,7 +1,5 @@
 use crate::{
-    domains::IoError,
-    domains::TSerdeReadWrite,
-    prelude::PeerIdentifier,
+    domains::{IoError, TSerdeReadWrite, cluster_actors::topology::Topology},
     presentation::clients::stream::{ClientStreamReader, ClientStreamWriter},
 };
 use tokio::net::TcpStream;
@@ -9,7 +7,7 @@ use uuid::Uuid;
 
 pub(crate) async fn authenticate(
     mut stream: TcpStream,
-    peers: Vec<PeerIdentifier>,
+    topology: Topology,
     is_leader: bool,
 ) -> Result<(ClientStreamReader, ClientStreamWriter), IoError> {
     let auth_req: AuthRequest = stream.deserialized_read().await?;
@@ -25,7 +23,7 @@ pub(crate) async fn authenticate(
         .serialized_write(AuthResponse {
             client_id: client_id.to_string(),
             request_id: auth_req.request_id,
-            cluster_nodes: peers,
+            topology,
             connected_to_leader: is_leader,
         })
         .await?;
@@ -43,10 +41,10 @@ pub struct AuthRequest {
     pub request_id: u64,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default, bincode::Decode, bincode::Encode)]
+#[derive(Debug, Clone, Default, bincode::Decode, bincode::Encode)]
 pub struct AuthResponse {
     pub client_id: String,
     pub request_id: u64,
-    pub cluster_nodes: Vec<PeerIdentifier>,
+    pub topology: Topology,
     pub connected_to_leader: bool,
 }
