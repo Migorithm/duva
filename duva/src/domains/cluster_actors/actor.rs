@@ -1211,6 +1211,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         let migrations_done = self.pending_migrations.as_ref().is_none_or(|p| p.is_empty());
 
         if migrations_done {
+            let _ = self.node_change_broadcast.send(self.get_topology());
             if let Some(mut pending_reqs) = self.pending_requests.take() {
                 info!("All migrations complete, processing pending requests.");
                 self.pending_migrations = None;
@@ -1219,7 +1220,6 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
                     return;
                 }
                 let handler = self.self_handler.clone();
-                // TODO Notify Clients of migration completion
                 tokio::spawn(async move {
                     while let Some(req) = pending_reqs.pop_front() {
                         if let Err(err) = handler
