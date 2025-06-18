@@ -86,8 +86,12 @@ pub(crate) fn create_peer_helper(
     let key = PeerIdentifier::new("127.0.0.1", port);
 
     let kill_switch = PeerListener::spawn(fake_buf.clone(), cluster_sender, key.clone());
-    let peer =
-        Peer::new(fake_buf, PeerState::new(&key, hwm, repl_id.clone(), node_kind), kill_switch);
+    let peer = Peer::new(
+        fake_buf,
+        PeerState::new(&key, hwm, repl_id.clone(), node_kind),
+        kill_switch,
+        ReplicationRole::Follower,
+    );
     (key, peer)
 }
 
@@ -159,6 +163,7 @@ fn cluster_member_create_helper(
                     NodeKind::Replica,
                 ),
                 kill_switch,
+                ReplicationRole::Follower,
             ),
         );
     }

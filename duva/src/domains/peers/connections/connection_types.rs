@@ -1,4 +1,4 @@
-use crate::domains::cluster_actors::replication::ReplicationId;
+use crate::domains::cluster_actors::replication::{ReplicationId, ReplicationRole};
 use crate::domains::peers::peer::{NodeKind, PeerState};
 use crate::domains::{TRead, TWrite};
 use crate::prelude::PeerIdentifier;
@@ -10,6 +10,7 @@ pub(crate) struct ConnectedPeerInfo {
     pub(crate) id: PeerIdentifier,
     pub(crate) replid: ReplicationId,
     pub(crate) hwm: u64,
+    pub(crate) role: ReplicationRole,
 }
 
 impl ConnectedPeerInfo {

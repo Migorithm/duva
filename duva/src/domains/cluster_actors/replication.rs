@@ -182,10 +182,11 @@ impl From<String> for ReplicationId {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, bincode::Encode, bincode::Decode, Default)]
 pub enum ReplicationRole {
-    Leader,
+    #[default]
     Follower,
+    Leader,
 }
 
 impl Display for ReplicationRole {
@@ -193,6 +194,22 @@ impl Display for ReplicationRole {
         match self {
             | ReplicationRole::Leader => write!(f, "leader"),
             | ReplicationRole::Follower => write!(f, "follower"),
+        }
+    }
+}
+impl From<String> for ReplicationRole {
+    fn from(value: String) -> Self {
+        match value.to_lowercase().as_str() {
+            | "leader" => ReplicationRole::Leader,
+            | _ => ReplicationRole::Follower,
+        }
+    }
+}
+impl From<ReplicationRole> for String {
+    fn from(value: ReplicationRole) -> Self {
+        match value {
+            | ReplicationRole::Leader => "leader".to_string(),
+            | ReplicationRole::Follower => "follower".to_string(),
         }
     }
 }

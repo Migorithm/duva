@@ -1,7 +1,7 @@
 use super::connections::connection_types::WriteConnected;
 use super::identifier::TPeerAddress;
 use crate::domains::QueryIO;
-use crate::domains::cluster_actors::replication::ReplicationId;
+use crate::domains::cluster_actors::replication::{ReplicationId, ReplicationRole};
 use crate::domains::{IoError, TRead};
 use crate::prelude::PeerIdentifier;
 use tokio::task::JoinHandle;
@@ -13,6 +13,7 @@ pub(crate) struct Peer {
     pub(crate) listener_kill_trigger: ListeningActorKillTrigger,
     pub(crate) last_seen: Instant,
     state: PeerState,
+    pub(crate) role: ReplicationRole,
 }
 
 impl Peer {
@@ -20,8 +21,9 @@ impl Peer {
         w: impl Into<WriteConnected>,
         state: PeerState,
         listener_kill_trigger: ListeningActorKillTrigger,
+        role: ReplicationRole,
     ) -> Self {
-        Self { w_conn: w.into(), listener_kill_trigger, last_seen: Instant::now(), state }
+        Self { w_conn: w.into(), listener_kill_trigger, last_seen: Instant::now(), state, role }
     }
     pub(crate) fn id(&self) -> &PeerIdentifier {
         &self.state.addr

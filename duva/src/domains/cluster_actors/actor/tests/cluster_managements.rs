@@ -101,6 +101,7 @@ async fn snapshot_topology_after_add_peer() {
             NodeKind::Replica,
         ),
         kill_switch,
+        ReplicationRole::Follower,
     );
 
     // WHEN
