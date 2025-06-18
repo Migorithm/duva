@@ -15,7 +15,6 @@ use crate::domains::peers::identifier::PeerIdentifier;
 use crate::domains::peers::peer::Peer;
 use crate::domains::peers::peer::PeerState;
 use crate::domains::peers::service::PeerListener;
-use anyhow::Context;
 use std::sync::atomic::Ordering;
 use tokio::net::TcpStream;
 use tokio::net::tcp::OwnedReadHalf;
@@ -58,7 +57,7 @@ impl InboundStream {
     }
 
     pub(crate) fn connected_peer_state(&self) -> PeerState {
-        self.connected_peer_info.decide_peer_kind(&self.self_repl_info.replid)
+        self.connected_peer_info.decide_peer_state(&self.self_repl_info.replid)
     }
 
     async fn recv_ping(&mut self) -> anyhow::Result<()> {
@@ -134,12 +133,7 @@ impl InboundStream {
         let peer_state = self.connected_peer_state();
         let kill_switch =
             PeerListener::spawn(self.r, cluster_handler.clone(), peer_state.addr.clone());
-        let peer = Peer::new(
-            WriteConnected(Box::new(self.w)),
-            peer_state,
-            kill_switch,
-            self.connected_peer_info.role,
-        );
+        let peer = Peer::new(WriteConnected(Box::new(self.w)), peer_state, kill_switch);
         let _ = cluster_handler.send(ConnectionMessage::AddPeer(peer, None)).await;
         Ok(())
     }

@@ -13,7 +13,6 @@ pub(crate) struct Peer {
     pub(crate) listener_kill_trigger: ListeningActorKillTrigger,
     pub(crate) last_seen: Instant,
     state: PeerState,
-    pub(crate) role: ReplicationRole,
 }
 
 impl Peer {
@@ -21,9 +20,8 @@ impl Peer {
         w: impl Into<WriteConnected>,
         state: PeerState,
         listener_kill_trigger: ListeningActorKillTrigger,
-        role: ReplicationRole,
     ) -> Self {
-        Self { w_conn: w.into(), listener_kill_trigger, last_seen: Instant::now(), state, role }
+        Self { w_conn: w.into(), listener_kill_trigger, last_seen: Instant::now(), state }
     }
     pub(crate) fn id(&self) -> &PeerIdentifier {
         &self.state.addr
@@ -64,20 +62,27 @@ pub struct PeerState {
     pub(crate) match_index: u64,
     pub(crate) replid: ReplicationId,
     pub(crate) kind: NodeKind,
+    pub(crate) role: ReplicationRole,
 }
 
 impl PeerState {
-    pub(crate) fn new(id: &str, match_index: u64, replid: ReplicationId, kind: NodeKind) -> Self {
-        Self { addr: id.bind_addr().into(), match_index, replid, kind }
+    pub(crate) fn new(
+        id: &str,
+        match_index: u64,
+        replid: ReplicationId,
+        kind: NodeKind,
+        role: ReplicationRole,
+    ) -> Self {
+        Self { addr: id.bind_addr().into(), match_index, replid, kind, role }
     }
 
     pub(crate) fn parse_node_info(line: &str, self_repl_id: &str) -> Option<Self> {
         let parts: Vec<&str> = line.split_whitespace().collect();
-        if parts.len() != 4 {
+        if parts.len() != 5 {
             return None;
         }
 
-        let [addr, id_part, _, match_index] = parts[..] else {
+        let [addr, id_part, _, match_index, role] = parts[..] else {
             return None;
         };
 
@@ -85,7 +90,13 @@ impl PeerState {
         let kind = Self::determine_node_kind(&repl_id, self_repl_id, is_myself);
         let match_index = match_index.parse().unwrap_or_default();
 
-        Some(Self { addr: addr.bind_addr().into(), replid: repl_id.into(), kind, match_index })
+        Some(Self {
+            addr: addr.bind_addr().into(),
+            replid: repl_id.into(),
+            kind,
+            match_index,
+            role: role.to_string().into(),
+        })
     }
 
     fn parse_id_part(id_part: &str) -> Option<(bool, String)> {
@@ -152,16 +163,14 @@ impl PeerState {
             None
         })
     }
-}
 
-impl std::fmt::Display for PeerState {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    pub(crate) fn format(&self) -> String {
         match self.kind {
             | NodeKind::Replica | NodeKind::NonData => {
-                write!(f, "{} {} 0 {}", self.addr, self.replid, self.match_index)
+                format!("{} {} 0 {} {}", self.addr, self.replid, self.match_index, self.role)
             },
             | NodeKind::Myself => {
-                write!(f, "{} myself,{} 0 {}", self.addr, self.replid, self.match_index)
+                format!("{} myself,{} 0 {} {}", self.addr, self.replid, self.match_index, self.role)
             },
         }
     }
@@ -197,11 +206,11 @@ fn test_prioritize_nodes_with_same_replid() {
     use std::io::Write;
 
     let file_content = r#"
-    127.0.0.1:6000 0196477d-f227-72f2-81eb-6a3703076de8 0 11
-    127.0.0.1:6001 0196477d-f227-72f2-81eb-6a3703076de8 0 13
-    127.0.0.1:6002 myself,0196477d-f227-72f2-81eb-6a3703076de8 0 15
-    127.0.0.1:6003 99999999-aaaa-bbbb-cccc-111111111111 0 5
-    127.0.0.1:6004 deadbeef-dead-beef-dead-beefdeadbeef 0 5
+    127.0.0.1:6000 0196477d-f227-72f2-81eb-6a3703076de8 0 11 follower
+    127.0.0.1:6001 0196477d-f227-72f2-81eb-6a3703076de8 0 13 follower
+    127.0.0.1:6002 myself,0196477d-f227-72f2-81eb-6a3703076de8 0 15 leader
+    127.0.0.1:6003 99999999-aaaa-bbbb-cccc-111111111111 0 5 leader
+    127.0.0.1:6004 deadbeef-dead-beef-dead-beefdeadbeef 0 5 leader
     "#;
 
     // Create temp file and write content
@@ -215,6 +224,7 @@ fn test_prioritize_nodes_with_same_replid() {
     assert_eq!(nodes.len(), 4);
     assert_eq!(nodes.iter().filter(|n| n.kind == NodeKind::NonData).count(), 2);
     assert_eq!(nodes.iter().filter(|n| n.kind == NodeKind::Replica).count(), 2);
+    assert_eq!(nodes.iter().filter(|n| n.role == ReplicationRole::Leader).count(), 2);
 
     // Optionally print for debugging
     for node in nodes {

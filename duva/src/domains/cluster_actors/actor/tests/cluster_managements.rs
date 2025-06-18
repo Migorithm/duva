@@ -70,7 +70,8 @@ async fn test_store_current_topology() {
 
     // THEN
     let topology = tokio::fs::read_to_string(path).await.unwrap();
-    let expected_topology = format!("{} myself,{} 0 {}", self_id, repl_id, hwm);
+    let expected_topology =
+        format!("{} myself,{} 0 {} {}", self_id, repl_id, hwm, ReplicationRole::Leader);
     assert_eq!(topology, expected_topology);
 
     tokio::fs::remove_file(path).await.unwrap();
@@ -99,9 +100,9 @@ async fn snapshot_topology_after_add_peer() {
             0,
             ReplicationId::Key(repl_id.to_string()),
             NodeKind::Replica,
+            ReplicationRole::Follower,
         ),
         kill_switch,
-        ReplicationRole::Follower,
     );
 
     // WHEN
@@ -118,8 +119,14 @@ async fn snapshot_topology_after_add_peer() {
     let hwm = cluster_actor.replication.hwm.load(Ordering::Relaxed);
 
     for value in [
-        format!("127.0.0.1:3849 {} 0 {}", repl_id, hwm),
-        format!("{} myself,{} 0 {}", cluster_actor.replication.self_identifier(), repl_id, hwm),
+        format!("127.0.0.1:3849 {} 0 {} {}", repl_id, hwm, ReplicationRole::Follower),
+        format!(
+            "{} myself,{} 0 {} {}",
+            cluster_actor.replication.self_identifier(),
+            repl_id,
+            hwm,
+            ReplicationRole::Leader
+        ),
     ] {
         assert!(cluster_nodes.contains(&value));
     }
@@ -157,6 +164,7 @@ async fn test_reconnection_on_gossip() {
             0,
             cluster_actor.replication.replid.clone(),
             NodeKind::Replica,
+            ReplicationRole::Follower,
         )])
         .await;
 

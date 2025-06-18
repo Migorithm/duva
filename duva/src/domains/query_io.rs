@@ -449,7 +449,7 @@ mod test {
 
     use crate::domains::caches::cache_objects::CacheEntry;
     use crate::domains::cluster_actors::hash_ring::{BatchId, HashRing};
-    use crate::domains::cluster_actors::replication::ReplicationId;
+    use crate::domains::cluster_actors::replication::{ReplicationId, ReplicationRole};
 
     use crate::domains::operation_logs::WriteRequest;
     use crate::domains::peers::command::{BannedPeer, RejectionReason};
@@ -657,22 +657,43 @@ mod test {
                     0,
                     ReplicationId::Key(Uuid::now_v7().to_string()),
                     NodeKind::Replica,
+                    ReplicationRole::Follower,
                 ),
-                PeerState::new("127.0.0.1:30002", 0, ReplicationId::Undecided, NodeKind::Replica),
-                PeerState::new("127.0.0.1:30003", 0, ReplicationId::Undecided, NodeKind::Replica),
+                PeerState::new(
+                    "127.0.0.1:30002",
+                    0,
+                    ReplicationId::Undecided,
+                    NodeKind::Replica,
+                    ReplicationRole::Follower,
+                ),
+                PeerState::new(
+                    "127.0.0.1:30003",
+                    0,
+                    ReplicationId::Undecided,
+                    NodeKind::Replica,
+                    ReplicationRole::Follower,
+                ),
                 PeerState::new(
                     "127.0.0.1:30005",
                     0,
                     ReplicationId::Key(Uuid::now_v7().to_string()),
                     NodeKind::Replica,
+                    ReplicationRole::Follower,
                 ),
                 PeerState::new(
                     "127.0.0.1:30006",
                     0,
                     ReplicationId::Key(Uuid::now_v7().to_string()),
                     NodeKind::Replica,
+                    ReplicationRole::Follower,
                 ),
-                PeerState::new("127.0.0.1:30001", 0, ReplicationId::Undecided, NodeKind::Myself),
+                PeerState::new(
+                    "127.0.0.1:30001",
+                    0,
+                    ReplicationId::Undecided,
+                    NodeKind::Myself,
+                    ReplicationRole::Follower,
+                ),
             ],
             hashring: None,
         };
