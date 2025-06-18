@@ -859,7 +859,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
             for log_index in (old_hwm + 1)..=leader_hwm.hwm {
                 let Some(log) = self.logger.read_at(log_index).await else {
-                    error!("log has never been replicated!");
+                    warn!("log has never been replicated!");
                     self.report_replica_lag(
                         &leader_hwm.from,
                         self.logger.last_log_index,
@@ -922,7 +922,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         match repl_res.rej_reason {
             | RejectionReason::ReceiverHasHigherTerm => self.step_down().await,
             | RejectionReason::LogInconsistency => {
-                eprintln!("Log inconsistency, reverting match index");
+                info!("Log inconsistency, reverting match index");
                 //TODO we can refactor this to set match index to given log index from the follower
                 self.decrease_match_index(&repl_res.from, repl_res.log_idx);
             },
