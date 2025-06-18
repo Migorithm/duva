@@ -93,7 +93,7 @@ impl<T> ClientController<T> {
                 | QueryIO::Err(value) => Response::Error(value),
                 | _ => Response::FormatError,
             },
-            | ClusterMeet { .. } => match query_io {
+            | ClusterMeet { .. } | ClusterReshard => match query_io {
                 | QueryIO::Null => Response::String("OK".into()),
                 | QueryIO::Err(value) => Response::Error(value),
                 | _ => Response::FormatError,

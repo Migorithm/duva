@@ -50,7 +50,8 @@ impl ClientController {
                     .open(&file_path)
                     .await?;
 
-                let repl_info = self.cluster_communication_manager.replication_info().await?;
+                let repl_info =
+                    self.cluster_communication_manager.route_get_replication_state().await?;
                 self.cache_manager
                     .route_save(
                         SaveTarget::File(file),
@@ -92,24 +93,24 @@ impl ClientController {
             },
             | ClientAction::Info => QueryIO::BulkString(
                 self.cluster_communication_manager
-                    .replication_info()
+                    .route_get_replication_state()
                     .await?
                     .vectorize()
                     .join("\r\n"),
             ),
             | ClientAction::ClusterInfo => {
-                self.cluster_communication_manager.cluster_info().await?.into()
+                self.cluster_communication_manager.route_get_cluster_info().await?.into()
             },
             | ClientAction::ClusterNodes => self
                 .cluster_communication_manager
-                .cluster_nodes()
+                .route_cluster_nodes()
                 .await?
                 .into_iter()
                 .map(|peer| peer.to_string())
                 .collect::<Vec<_>>()
                 .into(),
             | ClientAction::ClusterForget(peer_identifier) => {
-                match self.cluster_communication_manager.forget_peer(peer_identifier).await {
+                match self.cluster_communication_manager.route_forget_peer(peer_identifier).await {
                     | Ok(true) => QueryIO::SimpleString("OK".into()),
                     | Ok(false) => QueryIO::Err("No such peer".into()),
                     | Err(e) => QueryIO::Err(e.to_string()),
@@ -117,15 +118,18 @@ impl ClientController {
             },
             | ClientAction::ClusterMeet(peer_identifier, option) => self
                 .cluster_communication_manager
-                .cluster_meet(peer_identifier, option)
+                .route_cluster_reet(peer_identifier, option)
                 .await?
                 .into(),
+            | ClientAction::ClusterReshard => {
+                self.cluster_communication_manager.route_cluster_reshard().await?.into()
+            },
             | ClientAction::ReplicaOf(peer_identifier) => {
-                self.cluster_communication_manager.replicaof(peer_identifier.clone()).await?;
+                self.cluster_communication_manager.route_replicaof(peer_identifier.clone()).await?;
                 QueryIO::SimpleString("OK".into())
             },
             | ClientAction::Role => {
-                let role = self.cluster_communication_manager.role();
+                let role = self.cluster_communication_manager.route_get_role();
                 QueryIO::SimpleString(role.await?.to_string())
             },
             | ClientAction::Ttl { key } => {
