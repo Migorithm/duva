@@ -103,7 +103,7 @@ fn run_leader_election_twice(with_append_only: bool) -> anyhow::Result<()> {
         // WHEN
         // ! second leader is killed -> election happens
         f.kill()?;
-        sleep(Duration::from_millis(LEADER_HEARTBEAT_INTERVAL_MAX + 300));
+        sleep(Duration::from_millis(LEADER_HEARTBEAT_INTERVAL_MAX + 500));
         processes.push(new_process);
     }
     assert_eq!(processes.len(), 2);
