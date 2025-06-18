@@ -144,7 +144,7 @@ async fn test_reconnection_on_gossip() {
     let bind_addr = listener.local_addr().unwrap();
 
     let mut replication_state = cluster_actor.replication.clone();
-    replication_state.is_leader_mode = false;
+    replication_state.role = ReplicationRole::Follower;
 
     let (tx, rx) = tokio::sync::oneshot::channel();
 

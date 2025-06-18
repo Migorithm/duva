@@ -24,7 +24,6 @@ pub(crate) struct ReplicationState {
     pub(crate) banlist: HashSet<BannedPeer>,
 
     pub(crate) election_state: ElectionState,
-    pub(crate) is_leader_mode: bool,
 }
 
 impl ReplicationState {
@@ -36,7 +35,6 @@ impl ReplicationState {
         hwm: u64,
     ) -> Self {
         ReplicationState {
-            is_leader_mode: role == ReplicationRole::Leader,
             election_state: ElectionState::new(&role),
             role,
             replid,
@@ -130,13 +128,15 @@ impl ReplicationState {
     }
     pub(super) fn become_leader(&mut self) {
         self.role = ReplicationRole::Leader;
-        self.is_leader_mode = true;
         self.election_state.become_leader();
     }
 
     fn set_follower_mode(&mut self) {
-        self.is_leader_mode = false;
         self.role = ReplicationRole::Follower;
+    }
+
+    pub(crate) fn is_leader(&self) -> bool {
+        self.role == ReplicationRole::Leader
     }
 }
 

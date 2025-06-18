@@ -174,7 +174,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         let (self_handler, receiver) = tokio::sync::mpsc::channel(100);
         let heartbeat_scheduler = HeartBeatScheduler::run(
             self_handler.clone(),
-            init_repl_state.is_leader_mode,
+            init_repl_state.is_leader(),
             heartbeat_interval_in_mills,
         );
 
@@ -274,7 +274,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     }
 
     async fn req_consensus(&mut self, req: ConsensusRequest) {
-        if !self.replication.is_leader_mode {
+        if !self.replication.is_leader() {
             let _ = req.callback.send(err!("Write given to follower"));
             return;
         }
@@ -414,7 +414,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         lazy_option: LazyOption,
         cl_cb: tokio::sync::oneshot::Sender<anyhow::Result<()>>,
     ) {
-        if !self.replication.is_leader_mode || self.replication.self_identifier() == peer_addr {
+        if !self.replication.is_leader() || self.replication.self_identifier() == peer_addr {
             let _ = cl_cb.send(err!("wrong address or invalid state for cluster meet command"));
             return;
         }
@@ -463,7 +463,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     ) {
         // TODO instead of relying on request_from, we should take the current leaders and if they don't exist in hashring, we should add them and start rebalance.
 
-        if !self.replication.is_leader_mode {
+        if !self.replication.is_leader() {
             error!("Follower cannot start rebalance");
             return;
         }
@@ -883,7 +883,6 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         if new_term > self.replication.term {
             self.replication.term = new_term;
             self.replication.election_state = ElectionState::Follower { voted_for: None };
-            self.replication.is_leader_mode = false;
             self.replication.role = ReplicationRole::Follower;
         }
     }
@@ -995,7 +994,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         }
 
         // For replicas, just update the hash ring and wait for leader to coordinate migrations
-        if !self.replication.is_leader_mode {
+        if !self.replication.is_leader() {
             self.hash_ring = new_ring;
             info!("Replica updated hash ring");
             return;

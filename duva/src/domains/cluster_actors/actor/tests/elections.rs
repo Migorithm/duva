@@ -186,7 +186,7 @@ async fn test_receive_election_vote_candidate_wins_election() {
     candidate_actor.receive_election_vote(election_vote).await;
 
     // THEN: Candidate should become Leader
-    assert!(candidate_actor.replication.is_leader_mode);
+    assert!(candidate_actor.replication.is_leader());
     assert_eq!(candidate_actor.replication.role, ReplicationRole::Leader);
     assert_eq!(candidate_actor.replication.term, candidate_term); // Term remains the same as election term
 
