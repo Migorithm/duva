@@ -238,9 +238,9 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             return;
         }
         self.apply_banlist(std::mem::take(&mut heartbeat.ban_list)).await;
+        self.update_cluster_members(&heartbeat.from, heartbeat.hwm, &heartbeat.cluster_nodes).await;
         self.join_peer_network_if_absent(heartbeat.cluster_nodes).await;
         self.gossip(heartbeat.hop_count).await;
-        self.update_on_hertbeat_message(&heartbeat.from, heartbeat.hwm);
         self.maybe_update_hashring(heartbeat.hashring, cache_manager, None).await;
     }
 
@@ -346,7 +346,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             self.handle_repl_rejection(repl_res).await;
             return;
         }
-        self.update_on_hertbeat_message(&repl_res.from, repl_res.log_idx);
+        self.update_peer_index(&repl_res.from, repl_res.log_idx);
         self.track_replication_progress(repl_res);
     }
 
@@ -634,7 +634,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         }
     }
 
-    fn update_on_hertbeat_message(&mut self, from: &PeerIdentifier, log_index: u64) {
+    fn update_peer_index(&mut self, from: &PeerIdentifier, log_index: u64) {
         if let Some(peer) = self.members.get_mut(from) {
             peer.last_seen = Instant::now();
             peer.set_match_index(log_index);
@@ -1241,5 +1241,21 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             return;
         };
         let _ = peer.send(MigrationBatchAck::with_success(batch_id)).await;
+    }
+
+    async fn update_cluster_members(
+        &mut self,
+        from: &PeerIdentifier,
+        hwm: u64,
+        cluster_nodes: &[PeerState],
+    ) {
+        self.update_peer_index(from, hwm);
+
+        for node in cluster_nodes.iter() {
+            self.members.get_mut(&node.addr).map(|peer| {
+                peer.last_seen = Instant::now();
+                peer.set_role(node.role.clone())
+            });
+        }
     }
 }

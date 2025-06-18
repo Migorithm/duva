@@ -54,6 +54,10 @@ impl Peer {
     pub(crate) fn is_replica(&self) -> bool {
         self.state.kind == NodeKind::Replica
     }
+
+    pub(crate) fn set_role(&mut self, role: ReplicationRole) {
+        self.state.role = role;
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, bincode::Encode, bincode::Decode)]
