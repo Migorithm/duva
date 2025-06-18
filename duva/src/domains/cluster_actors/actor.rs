@@ -460,6 +460,8 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         cache_manager: &CacheManager,
         cluster_handler: Option<ClusterCommandHandler>,
     ) {
+        // TODO instead of relying on request_from, we should take the current leaders and if they don't exist in hashring, we should add them and start rebalance.
+
         if !self.replication.is_leader_mode {
             error!("Follower cannot start rebalance");
             return;
