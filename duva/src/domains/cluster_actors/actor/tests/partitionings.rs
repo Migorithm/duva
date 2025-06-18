@@ -101,9 +101,25 @@ async fn test_start_rebalance_before_connection_is_made() {
 
 // ! Failcase
 #[tokio::test]
-async fn test_start_rebalance_to_replica() {
+async fn test_start_rebalance_from_replica() {
     // GIVEN
     let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
+    let (_hwm, cache_manager) = cache_manager_create_helper();
+    let (buf, peer_id) = cluster_actor.test_add_peer(6559, NodeKind::Replica, None);
+
+    // WHEN
+    cluster_actor.start_rebalance(peer_id, &cache_manager, None).await;
+
+    // THEN
+    assert!(cluster_actor.pending_requests.is_none());
+    let msg = buf.lock().await.pop_front();
+    assert!(msg.is_none());
+}
+
+#[tokio::test]
+async fn test_start_rebalance_to_follower() {
+    // GIVEN
+    let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Follower).await;
     let (_hwm, cache_manager) = cache_manager_create_helper();
     let (buf, peer_id) = cluster_actor.test_add_peer(6559, NodeKind::Replica, None);
 

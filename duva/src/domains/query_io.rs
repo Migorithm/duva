@@ -1,11 +1,9 @@
-use super::cluster_actors::hash_ring::HashRing;
 use crate::domains::caches::cache_objects::CacheValue;
 use crate::domains::cluster_actors::topology::Topology;
 use crate::domains::operation_logs::WriteOperation;
 use crate::domains::peers::command::{
     ElectionVote, HeartBeat, MigrateBatch, MigrationBatchAck, ReplicationAck, RequestVote,
 };
-use crate::prelude::PeerIdentifier;
 use anyhow::{Context, Result};
 use bytes::{Bytes, BytesMut};
 use std::fmt::Write;

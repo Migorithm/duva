@@ -116,12 +116,12 @@ impl StartUpFacade {
 
     async fn discover_cluster(&self) -> Result<(), anyhow::Error> {
         if let Some(seed) = ENV.seed_server.as_ref() {
-            return self.cluster_communication_manager.connect_to_server(seed.clone()).await;
+            return self.cluster_communication_manager.route_connect_to_server(seed.clone()).await;
         }
 
         for peer in ENV.pre_connected_peers.iter() {
             if let Err(err) =
-                self.cluster_communication_manager.connect_to_server(peer.addr.clone()).await
+                self.cluster_communication_manager.route_connect_to_server(peer.addr.clone()).await
             {
                 error!("{err}");
             }
@@ -171,16 +171,17 @@ impl StartUpFacade {
 
         //TODO refactor: authentication should be simplified
         while let Ok((stream, _)) = listener.accept().await {
-            let topology = self.cluster_communication_manager.get_topology().await?;
+            let topology = self.cluster_communication_manager.route_get_topology().await?;
 
-            let is_leader: bool =
-                self.cluster_communication_manager.role().await? == ReplicationRole::Leader;
+            let is_leader: bool = self.cluster_communication_manager.route_get_role().await?
+                == ReplicationRole::Leader;
             let Ok((reader, writer)) = authenticate(stream, topology, is_leader).await else {
                 error!("Failed to authenticate client stream");
                 continue;
             };
 
-            let observer = self.cluster_communication_manager.subscribe_topology_change().await?;
+            let observer =
+                self.cluster_communication_manager.route_subscribe_topology_change().await?;
             let write_handler = writer.run(observer);
 
             handles.push(tokio::spawn(

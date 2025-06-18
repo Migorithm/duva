@@ -89,7 +89,6 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             | LeaderReqConsensus(req) => {
                 self.leader_req_consensus(req).await;
             },
-
             | ReplicaOf(peer_addr, callback) => {
                 if self.replication.self_identifier() == peer_addr {
                     let _ = callback.send(err!("invalid operation: cannot replicate to self"));
@@ -102,6 +101,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             | ClusterMeet(peer_addr, lazy_option, callback) => {
                 self.cluster_meet(peer_addr, lazy_option, callback).await;
             },
+            | ClusterReshard(sender) => todo!(),
             | GetRole(sender) => {
                 let _ = sender.send(self.replication.role.clone());
             },

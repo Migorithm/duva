@@ -29,6 +29,7 @@ pub(crate) static COMMANDS: &[&str] = &[
     "cluster nodes",
     "cluster forget",
     "cluster meet",
+    "cluster reshard",
     "info replication",
     "replicaof",
 ];
@@ -83,7 +84,7 @@ impl Completer for DuvaHinter {
             | "cluster" => {
                 if previous_words.len() == 1 {
                     // Suggest subcommands for cluster that start with current_prefix
-                    let subcommands = ["info", "nodes", "forget", "meet"];
+                    let subcommands = ["info", "nodes", "forget", "meet", "reshard"];
                     candidates.extend(
                         subcommands
                             .iter()

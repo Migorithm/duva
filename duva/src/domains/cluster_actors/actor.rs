@@ -460,13 +460,19 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         cache_manager: &CacheManager,
         cluster_handler: Option<ClusterCommandHandler>,
     ) {
+        // TODO instead of relying on request_from, we should take the current leaders and if they don't exist in hashring, we should add them and start rebalance.
+
+        if !self.replication.is_leader_mode {
+            error!("Follower cannot start rebalance");
+            return;
+        }
         let Some(member) = self.members.get(&request_from) else {
             error!("Received rebalance request from unknown peer: {}", request_from);
             return;
         };
 
         if member.is_replica() {
-            error!("Cannot rebalance to a replica: {}", request_from);
+            error!("Cannot receive rebalance request from a replica: {}", request_from);
             return;
         }
 

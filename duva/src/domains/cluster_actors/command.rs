@@ -67,6 +67,7 @@ pub enum ClientMessage {
     ),
     ClusterMeet(PeerIdentifier, LazyOption, tokio::sync::oneshot::Sender<anyhow::Result<()>>),
     GetTopology(tokio::sync::oneshot::Sender<Topology>),
+    ClusterReshard(tokio::sync::oneshot::Sender<Result<(), anyhow::Error>>),
 }
 
 impl From<ClientMessage> for ClusterCommand {

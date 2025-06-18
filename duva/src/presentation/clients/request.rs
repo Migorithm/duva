@@ -27,6 +27,7 @@ pub enum ClientAction {
     ClusterInfo,
     ClusterNodes,
     ClusterForget(PeerIdentifier),
+    ClusterReshard,
     ReplicaOf(PeerIdentifier),
     Exists { keys: Vec<String> },
     Role,

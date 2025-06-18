@@ -129,7 +129,7 @@ pub(crate) fn default_hints() -> HashSet<CommandHint> {
     set.insert(CommandHint::new("cluster info", "cluster "));
     set.insert(CommandHint::new("cluster nodes", "cluster "));
     set.insert(CommandHint::new("cluster forget node", "cluster "));
-
+    set.insert(CommandHint::new("cluster reshard", "cluster "));
     set.insert(CommandHint::new("cluster meet node [lazy|eager]", "cluster "));
     set.insert(CommandHint::new("ping", ""));
     set.insert(CommandHint::new("keys pattern", "keys "));
