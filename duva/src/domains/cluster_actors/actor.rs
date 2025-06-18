@@ -636,7 +636,6 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
     fn update_peer_index(&mut self, from: &PeerIdentifier, log_index: u64) {
         if let Some(peer) = self.members.get_mut(from) {
-            peer.last_seen = Instant::now();
             peer.set_match_index(log_index);
         }
     }
@@ -1250,10 +1249,10 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         cluster_nodes: &[PeerState],
     ) {
         self.update_peer_index(from, hwm);
-
+        let now = Instant::now();
         for node in cluster_nodes.iter() {
             self.members.get_mut(&node.addr).map(|peer| {
-                peer.last_seen = Instant::now();
+                peer.last_seen = now;
                 peer.set_role(node.role.clone())
             });
         }

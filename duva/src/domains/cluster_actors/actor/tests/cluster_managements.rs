@@ -209,3 +209,29 @@ async fn test_topology_broadcast_on_hash_ring_change() {
     let guard = topology.read().await;
     assert_eq!(guard.hash_ring, hash_ring)
 }
+
+#[tokio::test]
+async fn test_update_cluster_members_updates_fields() {
+    let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
+    let (_, peer_id) = cluster_actor.test_add_peer(6379, NodeKind::NonData, None);
+    let initial = cluster_actor.members.get(&peer_id).unwrap();
+
+    let initial_last_seen = initial.last_seen;
+    let initial_role = initial.state().role.clone();
+
+    let cluster_nodes = vec![PeerState::new(
+        &peer_id,
+        100,
+        cluster_actor.replication.replid.clone(),
+        NodeKind::NonData,
+        ReplicationRole::Leader,
+    )];
+    tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+    cluster_actor.update_cluster_members(&peer_id, 123, &cluster_nodes).await;
+
+    let updated = cluster_actor.members.get(&peer_id).unwrap();
+    assert_eq!(updated.match_index(), 123);
+    assert_eq!(updated.state().role, ReplicationRole::Leader);
+    assert_ne!(updated.state().role, initial_role);
+    assert!(updated.last_seen > initial_last_seen);
+}
