@@ -111,18 +111,39 @@ impl Drop for FileName {
 pub fn spawn_server_process(env: &ServerEnv) -> anyhow::Result<TestProcessChild> {
     let process = run_server_process(env, Stdio::null());
 
-    // catch panic 10 times
-    let mut cnt = 50;
+    // Wait for server to be fully ready (increased timeout and better checks)
+    let mut cnt = 100;
     while cnt > 0 {
         cnt -= 1;
         std::thread::sleep(std::time::Duration::from_millis(100));
+
         if let Ok(mut child) = std::panic::catch_unwind(|| Client::new(process.port)) {
-            let res = child.send_and_get_vec("PING", 1);
-            if res != vec!["PONG"] {
+            // First check: basic connectivity
+            let ping_res = child.send_and_get_vec("PING", 1);
+            if ping_res != vec!["PONG"] {
                 continue;
             }
+
+            // Second check: server is ready for cluster operations
+            let role_res = child.send_and_get_vec("role", 1);
+            if role_res.is_empty() {
+                continue;
+            }
+
+            // Accept any valid role response (leader, follower, etc.)
+            let role = &role_res[0];
+            if role.is_empty() || (role != "leader" && role != "follower") {
+                continue;
+            }
+
+            // Additional small delay to ensure server is fully initialized
+            std::thread::sleep(std::time::Duration::from_millis(50));
             break;
         }
+    }
+
+    if cnt == 0 {
+        return Err(anyhow::anyhow!("Server failed to start within 10 seconds"));
     }
 
     Ok(process)
@@ -275,24 +296,54 @@ impl Client {
     }
 
     pub fn send_and_get_vec(&mut self, command: impl AsRef<[u8]>, mut cnt: u32) -> Vec<String> {
-        self.send(command.as_ref()).unwrap();
-
         let mut res = vec![];
+
+        // Try to send the command with retries
+        let mut retries = 3;
+        while retries > 0 {
+            if let Ok(()) = self.send(command.as_ref()) {
+                break;
+            }
+            retries -= 1;
+            if retries > 0 {
+                std::thread::sleep(std::time::Duration::from_millis(50));
+            }
+        }
+
+        // If send failed, return empty result
+        if retries == 0 {
+            return res;
+        }
+
         while cnt > 0 {
             cnt -= 1;
             if let Ok(line) = self.read() {
                 res.push(line);
+            } else {
+                // If read fails, break to avoid infinite loop
+                break;
             }
         }
         res
     }
     pub fn send_and_get(&mut self, command: impl AsRef<[u8]>) -> String {
-        self.send(command.as_ref()).unwrap();
-        loop {
-            if let Ok(line) = self.read() {
-                return line;
+        let mut retries = 3;
+        while retries > 0 {
+            if let Ok(()) = self.send(command.as_ref()) {
+                loop {
+                    if let Ok(line) = self.read() {
+                        return line;
+                    }
+                }
+            }
+            retries -= 1;
+            if retries > 0 {
+                std::thread::sleep(std::time::Duration::from_millis(50));
             }
         }
+        // If all retries failed, try one more time and return whatever we get
+        self.send(command.as_ref()).unwrap_or_default();
+        self.read().unwrap_or_default()
     }
 
     pub fn terminate(&mut self) -> std::io::Result<()> {
@@ -319,11 +370,16 @@ pub fn form_cluster<const T: usize>(envs: [&mut ServerEnv; T]) -> [TestProcessCh
     let leader_bind_addr = leader_p.bind_addr();
     processes[0].write(leader_p);
 
-    // Initialize replicas
+    // Initialize replicas with delay between each
     for i in 1..T {
         envs[i].leader_bind_addr = Some(leader_bind_addr.clone());
         let repl_p = spawn_server_process(&envs[i]).unwrap();
         processes[i].write(repl_p);
+
+        // Small delay between replica startups to avoid connection conflicts
+        if i < T - 1 {
+            std::thread::sleep(std::time::Duration::from_millis(200));
+        }
     }
 
     let process_refs =

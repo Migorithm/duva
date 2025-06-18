@@ -1,5 +1,8 @@
 use crate::{
-    domains::{QueryIO, cluster_actors::replication::ReplicationId},
+    domains::{
+        QueryIO,
+        cluster_actors::replication::{ReplicationId, ReplicationRole},
+    },
     from_to, make_smart_pointer,
 };
 use anyhow::Context;
@@ -84,10 +87,12 @@ impl HandShakeRequest {
         }
         Ok(capabilities)
     }
-    pub(crate) fn extract_psync(&mut self) -> anyhow::Result<(ReplicationId, u64)> {
+    pub(crate) fn extract_psync(
+        &mut self,
+    ) -> anyhow::Result<(ReplicationId, u64, ReplicationRole)> {
         self.match_query(HandShakeRequestEnum::Psync)?;
 
-        let Some([repl_id, offset]) = self.args.get_mut(..2) else {
+        let Some([repl_id, offset, role]) = self.args.get_mut(..3) else {
             return Err(anyhow::anyhow!("Invalid number of arguments"));
         };
 
@@ -95,7 +100,9 @@ impl HandShakeRequest {
 
         let offset = std::mem::take(offset).unpack_single_entry()?;
 
-        Ok((replica_id.into(), offset))
+        let role: String = std::mem::take(role).unpack_single_entry()?;
+
+        Ok((replica_id.into(), offset, role.into()))
     }
 }
 

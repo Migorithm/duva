@@ -24,7 +24,6 @@ pub(crate) struct ReplicationState {
     pub(crate) banlist: HashSet<BannedPeer>,
 
     pub(crate) election_state: ElectionState,
-    pub(crate) is_leader_mode: bool,
 }
 
 impl ReplicationState {
@@ -36,7 +35,6 @@ impl ReplicationState {
         hwm: u64,
     ) -> Self {
         ReplicationState {
-            is_leader_mode: role == ReplicationRole::Leader,
             election_state: ElectionState::new(&role),
             role,
             replid,
@@ -56,6 +54,7 @@ impl ReplicationState {
             self.hwm.load(Ordering::Relaxed),
             self.replid.clone(),
             NodeKind::Myself,
+            self.role.clone(),
         )
     }
 
@@ -129,13 +128,15 @@ impl ReplicationState {
     }
     pub(super) fn become_leader(&mut self) {
         self.role = ReplicationRole::Leader;
-        self.is_leader_mode = true;
         self.election_state.become_leader();
     }
 
     fn set_follower_mode(&mut self) {
-        self.is_leader_mode = false;
         self.role = ReplicationRole::Follower;
+    }
+
+    pub(crate) fn is_leader(&self) -> bool {
+        self.role == ReplicationRole::Leader
     }
 }
 
@@ -182,10 +183,11 @@ impl From<String> for ReplicationId {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, bincode::Encode, bincode::Decode, Default)]
 pub enum ReplicationRole {
-    Leader,
+    #[default]
     Follower,
+    Leader,
 }
 
 impl Display for ReplicationRole {
@@ -193,6 +195,22 @@ impl Display for ReplicationRole {
         match self {
             | ReplicationRole::Leader => write!(f, "leader"),
             | ReplicationRole::Follower => write!(f, "follower"),
+        }
+    }
+}
+impl From<String> for ReplicationRole {
+    fn from(value: String) -> Self {
+        match value.to_lowercase().as_str() {
+            | "leader" => ReplicationRole::Leader,
+            | _ => ReplicationRole::Follower,
+        }
+    }
+}
+impl From<ReplicationRole> for String {
+    fn from(value: ReplicationRole) -> Self {
+        match value {
+            | ReplicationRole::Leader => "leader".to_string(),
+            | ReplicationRole::Follower => "follower".to_string(),
         }
     }
 }

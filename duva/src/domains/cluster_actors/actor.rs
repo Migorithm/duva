@@ -39,6 +39,7 @@ use heartbeat_scheduler::HeartBeatScheduler;
 
 use std::collections::HashMap;
 use std::collections::VecDeque;
+use std::fmt::Debug;
 use std::iter;
 use std::sync::atomic::Ordering;
 use tokio::fs::File;
@@ -173,7 +174,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         let (self_handler, receiver) = tokio::sync::mpsc::channel(100);
         let heartbeat_scheduler = HeartBeatScheduler::run(
             self_handler.clone(),
-            init_repl_state.is_leader_mode,
+            init_repl_state.is_leader(),
             heartbeat_interval_in_mills,
         );
 
@@ -237,9 +238,9 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             return;
         }
         self.apply_banlist(std::mem::take(&mut heartbeat.ban_list)).await;
+        self.update_cluster_members(&heartbeat.from, heartbeat.hwm, &heartbeat.cluster_nodes).await;
         self.join_peer_network_if_absent(heartbeat.cluster_nodes).await;
         self.gossip(heartbeat.hop_count).await;
-        self.update_on_hertbeat_message(&heartbeat.from, heartbeat.hwm);
         self.maybe_update_hashring(heartbeat.hashring, cache_manager, None).await;
     }
 
@@ -273,7 +274,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     }
 
     async fn req_consensus(&mut self, req: ConsensusRequest) {
-        if !self.replication.is_leader_mode {
+        if !self.replication.is_leader() {
             let _ = req.callback.send(err!("Write given to follower"));
             return;
         }
@@ -345,7 +346,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             self.handle_repl_rejection(repl_res).await;
             return;
         }
-        self.update_on_hertbeat_message(&repl_res.from, repl_res.log_idx);
+        self.update_peer_index(&repl_res.from, repl_res.log_idx);
         self.track_replication_progress(repl_res);
     }
 
@@ -413,7 +414,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         lazy_option: LazyOption,
         cl_cb: tokio::sync::oneshot::Sender<anyhow::Result<()>>,
     ) {
-        if !self.replication.is_leader_mode || self.replication.self_identifier() == peer_addr {
+        if !self.replication.is_leader() || self.replication.self_identifier() == peer_addr {
             let _ = cl_cb.send(err!("wrong address or invalid state for cluster meet command"));
             return;
         }
@@ -462,7 +463,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     ) {
         // TODO instead of relying on request_from, we should take the current leaders and if they don't exist in hashring, we should add them and start rebalance.
 
-        if !self.replication.is_leader_mode {
+        if !self.replication.is_leader() {
             error!("Follower cannot start rebalance");
             return;
         }
@@ -538,12 +539,8 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     }
 
     async fn snapshot_topology(&mut self) -> anyhow::Result<()> {
-        let topology = self
-            .cluster_nodes()
-            .into_iter()
-            .map(|cn| cn.to_string())
-            .collect::<Vec<_>>()
-            .join("\r\n");
+        let topology =
+            self.cluster_nodes().into_iter().map(|cn| cn.format()).collect::<Vec<_>>().join("\r\n");
         self.topology_writer.seek(std::io::SeekFrom::Start(0)).await?;
         self.topology_writer.set_len(topology.len() as u64).await?;
         self.topology_writer.write_all(topology.as_bytes()).await?;
@@ -637,9 +634,8 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         }
     }
 
-    fn update_on_hertbeat_message(&mut self, from: &PeerIdentifier, log_index: u64) {
+    fn update_peer_index(&mut self, from: &PeerIdentifier, log_index: u64) {
         if let Some(peer) = self.members.get_mut(from) {
-            peer.last_seen = Instant::now();
             peer.set_match_index(log_index);
         }
     }
@@ -886,7 +882,6 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         if new_term > self.replication.term {
             self.replication.term = new_term;
             self.replication.election_state = ElectionState::Follower { voted_for: None };
-            self.replication.is_leader_mode = false;
             self.replication.role = ReplicationRole::Follower;
         }
     }
@@ -998,7 +993,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         }
 
         // For replicas, just update the hash ring and wait for leader to coordinate migrations
-        if !self.replication.is_leader_mode {
+        if !self.replication.is_leader() {
             self.hash_ring = new_ring;
             info!("Replica updated hash ring");
             return;
@@ -1245,5 +1240,21 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             return;
         };
         let _ = peer.send(MigrationBatchAck::with_success(batch_id)).await;
+    }
+
+    async fn update_cluster_members(
+        &mut self,
+        from: &PeerIdentifier,
+        hwm: u64,
+        cluster_nodes: &[PeerState],
+    ) {
+        self.update_peer_index(from, hwm);
+        let now = Instant::now();
+        for node in cluster_nodes.iter() {
+            self.members.get_mut(&node.addr).map(|peer| {
+                peer.last_seen = now;
+                peer.set_role(node.role.clone())
+            });
+        }
     }
 }

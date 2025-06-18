@@ -5,6 +5,7 @@ use crate::domains::QueryIO;
 use crate::domains::cluster_actors::ConnectionMessage;
 use crate::domains::cluster_actors::actor::ClusterCommandHandler;
 use crate::domains::cluster_actors::replication::ReplicationId;
+use crate::domains::cluster_actors::replication::ReplicationRole;
 use crate::domains::cluster_actors::replication::ReplicationState;
 use crate::domains::interface::TRead;
 use crate::domains::interface::TWrite;
@@ -14,7 +15,6 @@ use crate::domains::peers::identifier::PeerIdentifier;
 use crate::domains::peers::peer::Peer;
 use crate::domains::peers::peer::PeerState;
 use crate::domains::peers::service::PeerListener;
-use anyhow::Context;
 use std::sync::atomic::Ordering;
 use tokio::net::TcpStream;
 use tokio::net::tcp::OwnedReadHalf;
@@ -26,13 +26,13 @@ pub(crate) struct InboundStream {
     r: OwnedReadHalf,
     w: OwnedWriteHalf,
     self_repl_info: ReplicationState,
-    connected_peer_info: Option<ConnectedPeerInfo>,
+    connected_peer_info: ConnectedPeerInfo,
 }
 
 impl InboundStream {
     pub(crate) fn new(stream: TcpStream, self_repl_info: ReplicationState) -> Self {
         let (read, write) = stream.into_split();
-        Self { r: read, w: write, self_repl_info, connected_peer_info: None }
+        Self { r: read, w: write, self_repl_info, connected_peer_info: Default::default() }
     }
     pub(crate) async fn recv_handshake(&mut self) -> anyhow::Result<()> {
         self.recv_ping().await?;
@@ -42,25 +42,22 @@ impl InboundStream {
         // TODO find use of capa?
         let _capa_val_vec = self.recv_replconf_capa().await?;
 
-        let (peer_leader_repl_id, peer_hwm) = self.recv_psync().await?;
+        let (peer_leader_repl_id, peer_hwm, role) = self.recv_psync().await?;
 
         let addr = self.r.peer_addr().map_err(|error| Into::<IoError>::into(error.kind()))?;
 
-        self.connected_peer_info = Some(ConnectedPeerInfo {
+        self.connected_peer_info = ConnectedPeerInfo {
             id: PeerIdentifier::new(&addr.ip().to_string(), port),
             replid: peer_leader_repl_id,
             hwm: peer_hwm,
-        });
+            role,
+        };
 
         Ok(())
     }
 
-    pub(crate) fn connected_peer_state(&self) -> anyhow::Result<PeerState> {
-        Ok(self
-            .connected_peer_info
-            .as_ref()
-            .context("set by now")?
-            .decide_peer_kind(&self.self_repl_info.replid))
+    pub(crate) fn connected_peer_state(&self) -> PeerState {
+        self.connected_peer_info.decide_peer_state(&self.self_repl_info.replid)
     }
 
     async fn recv_ping(&mut self) -> anyhow::Result<()> {
@@ -87,9 +84,9 @@ impl InboundStream {
         self.w.write(QueryIO::SimpleString("OK".into())).await?;
         Ok(capa_val_vec)
     }
-    async fn recv_psync(&mut self) -> anyhow::Result<(ReplicationId, u64)> {
+    async fn recv_psync(&mut self) -> anyhow::Result<(ReplicationId, u64, ReplicationRole)> {
         let mut cmd = self.extract_cmd().await?;
-        let (inbound_repl_id, offset) = cmd.extract_psync()?;
+        let (inbound_repl_id, offset, role) = cmd.extract_psync()?;
 
         // ! Assumption, if self replid is not set at this point but still receives inbound stream, this is leader.
 
@@ -106,7 +103,7 @@ impl InboundStream {
             )))
             .await?;
         self.recv_ok().await?;
-        Ok((inbound_repl_id, offset))
+        Ok((inbound_repl_id, offset, role))
     }
 
     async fn extract_cmd(&mut self) -> anyhow::Result<HandShakeRequest> {
@@ -133,7 +130,7 @@ impl InboundStream {
     ) -> anyhow::Result<()> {
         self.recv_handshake().await?;
 
-        let peer_state = self.connected_peer_state()?;
+        let peer_state = self.connected_peer_state();
         let kill_switch =
             PeerListener::spawn(self.r, cluster_handler.clone(), peer_state.addr.clone());
         let peer = Peer::new(WriteConnected(Box::new(self.w)), peer_state, kill_switch);

@@ -44,6 +44,7 @@ impl OutboundStream {
             id: Default::default(),
             replid: Default::default(),
             hwm: Default::default(),
+            role: Default::default(),
         };
 
         loop {
@@ -64,7 +65,9 @@ impl OutboundStream {
                                 | 2 => Ok(write_array!(
                                     "PSYNC",
                                     self.my_repl_info.replid.clone(),
-                                    self.my_repl_info.hwm.load(Ordering::Acquire).to_string()
+                                    self.my_repl_info.hwm.load(Ordering::Acquire).to_string(),
+                                    //TODO
+                                    self.my_repl_info.role.clone()
                                 )),
                                 | _ => Err(anyhow::anyhow!("Unexpected OK count")),
                             }
@@ -107,7 +110,7 @@ impl OutboundStream {
                 ))
                 .await;
         }
-        let peer_state = connection_info.decide_peer_kind(&self.my_repl_info.replid);
+        let peer_state = connection_info.decide_peer_state(&self.my_repl_info.replid);
 
         let kill_switch =
             PeerListener::spawn(self.r, cluster_handler.clone(), peer_state.addr.clone());

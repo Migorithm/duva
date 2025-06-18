@@ -106,7 +106,7 @@ impl ClientController {
                 .route_cluster_nodes()
                 .await?
                 .into_iter()
-                .map(|peer| peer.to_string())
+                .map(|peer| peer.format())
                 .collect::<Vec<_>>()
                 .into(),
             | ClientAction::ClusterForget(peer_identifier) => {
