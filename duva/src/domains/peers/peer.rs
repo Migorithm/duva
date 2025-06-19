@@ -32,10 +32,6 @@ impl Peer {
     pub(crate) fn replid(&self) -> &ReplicationId {
         &self.state.replid
     }
-
-    pub(crate) fn kind(&self) -> &NodeKind {
-        &self.state.kind
-    }
     pub(crate) fn match_index(&self) -> u64 {
         self.state.match_index
     }
@@ -90,29 +86,25 @@ impl PeerState {
             return None;
         };
 
-        let repl_id = Self::parse_id_part(id_part)?;
-        let kind = Self::determine_node_kind(&repl_id, self_repl_id);
+        let repl_id = Self::extract_replid(id_part)?;
+
         let match_index = match_index.parse().unwrap_or_default();
 
         Some(Self {
             addr: addr.bind_addr().into(),
+            kind: if repl_id == self_repl_id { NodeKind::Replica } else { NodeKind::NonData },
             replid: repl_id.into(),
-            kind,
             match_index,
             role: role.to_string().into(),
         })
     }
 
-    fn parse_id_part(id_part: &str) -> Option<String> {
+    fn extract_replid(id_part: &str) -> Option<String> {
         if id_part.contains("myself,") {
             Some(id_part[7..].to_string())
         } else {
             Some(id_part.to_string())
         }
-    }
-
-    fn determine_node_kind(repl_id: &str, self_repl_id: &str) -> NodeKind {
-        if repl_id == self_repl_id { NodeKind::Replica } else { NodeKind::NonData }
     }
 
     pub(crate) fn from_file(path: &str) -> Vec<Self> {
