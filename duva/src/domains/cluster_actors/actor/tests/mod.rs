@@ -139,8 +139,8 @@ fn cluster_member_create_helper(
     actor: &mut ClusterActor<MemoryOpLogs>,
     fake_bufs: Vec<FakeReadWrite>,
     cluster_sender: ClusterCommandHandler,
-
     follower_hwm: u64,
+    replid: Option<ReplicationId>,
 ) {
     for fake_b in fake_bufs.into_iter() {
         let port = rand::random::<u16>();
@@ -158,7 +158,9 @@ fn cluster_member_create_helper(
                 PeerState::new(
                     &format!("localhost:{}", port),
                     follower_hwm,
-                    ReplicationId::Key("localhost".to_string().into()),
+                    replid
+                        .clone()
+                        .unwrap_or_else(|| ReplicationId::Key("localhost".to_string().into())),
                     NodeKind::Replica,
                     ReplicationRole::Follower,
                 ),

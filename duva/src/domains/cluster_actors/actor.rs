@@ -31,7 +31,6 @@ use crate::domains::peers::command::ReplicationAck;
 use crate::domains::peers::command::RequestVote;
 use crate::domains::peers::connections::inbound::stream::InboundStream;
 use crate::domains::peers::connections::outbound::stream::OutboundStream;
-use crate::domains::peers::peer::NodeKind;
 use crate::domains::peers::peer::PeerState;
 use crate::err;
 use client_sessions::ClientSessions;
@@ -510,19 +509,19 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
     fn replicas(&self) -> impl Iterator<Item = (&PeerIdentifier, u64)> {
         self.members.iter().filter_map(|(id, peer)| {
-            (peer.kind() == &NodeKind::Replica).then_some((id, peer.match_index()))
+            (peer.is_replica(&self.replication.replid)).then_some((id, peer.match_index()))
         })
     }
 
     fn replicas_mut(&mut self) -> impl Iterator<Item = (&mut Peer, u64)> {
         self.members.values_mut().filter_map(|peer| {
             let match_index = peer.match_index();
-            (peer.kind() == &NodeKind::Replica).then_some((peer, match_index))
+            (peer.is_replica(&self.replication.replid)).then_some((peer, match_index))
         })
     }
 
     fn find_replica_mut(&mut self, peer_id: &PeerIdentifier) -> Option<&mut Peer> {
-        self.members.get_mut(peer_id).filter(|peer| peer.kind() == &NodeKind::Replica)
+        self.members.get_mut(peer_id).filter(|peer| peer.is_replica(&self.replication.replid))
     }
 
     fn peerid_by_replid(&self, target_repl_id: &ReplicationId) -> Option<&PeerIdentifier> {
@@ -718,9 +717,12 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     fn take_low_watermark(&self) -> Option<u64> {
         self.members
             .values()
-            .filter_map(|peer| match peer.kind() {
-                | NodeKind::Replica => Some(peer.match_index()),
-                | _ => None,
+            .filter_map(|peer| {
+                if peer.is_replica(&self.replication.replid) {
+                    Some(peer.match_index())
+                } else {
+                    None
+                }
             })
             .min()
     }
