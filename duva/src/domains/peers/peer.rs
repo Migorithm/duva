@@ -90,8 +90,8 @@ impl PeerState {
             return None;
         };
 
-        let (is_myself, repl_id) = Self::parse_id_part(id_part)?;
-        let kind = Self::determine_node_kind(&repl_id, self_repl_id, is_myself);
+        let repl_id = Self::parse_id_part(id_part)?;
+        let kind = Self::determine_node_kind(&repl_id, self_repl_id);
         let match_index = match_index.parse().unwrap_or_default();
 
         Some(Self {
@@ -103,22 +103,16 @@ impl PeerState {
         })
     }
 
-    fn parse_id_part(id_part: &str) -> Option<(bool, String)> {
+    fn parse_id_part(id_part: &str) -> Option<String> {
         if id_part.contains("myself,") {
-            Some((true, id_part[7..].to_string()))
+            Some(id_part[7..].to_string())
         } else {
-            Some((false, id_part.to_string()))
+            Some(id_part.to_string())
         }
     }
 
-    fn determine_node_kind(repl_id: &str, self_repl_id: &str, is_myself: bool) -> NodeKind {
-        if is_myself {
-            NodeKind::Replica
-        } else if repl_id == self_repl_id {
-            NodeKind::Replica
-        } else {
-            NodeKind::NonData
-        }
+    fn determine_node_kind(repl_id: &str, self_repl_id: &str) -> NodeKind {
+        if repl_id == self_repl_id { NodeKind::Replica } else { NodeKind::NonData }
     }
 
     pub(crate) fn from_file(path: &str) -> Vec<Self> {
