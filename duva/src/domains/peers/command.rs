@@ -135,7 +135,7 @@ mod peer_messages {
         pub(crate) cluster_nodes: Vec<PeerState>,
         pub(crate) prev_log_index: u64, //index of log entry immediately preceding new ones
         pub(crate) prev_log_term: u64,  //term of prev_log_index entry
-        pub(crate) hashring: Option<HashRing>,
+        pub(crate) hashring: Option<Box<HashRing>>,
     }
     impl HeartBeat {
         pub(crate) fn set_append_entries(mut self, entries: Vec<WriteOperation>) -> Self {
@@ -149,7 +149,7 @@ mod peer_messages {
         }
 
         pub(crate) fn set_hashring(&self, ring: HashRing) -> Self {
-            Self { hashring: Some(ring), ..self.clone() }
+            Self { hashring: Some(Box::new(ring)), ..self.clone() }
         }
     }
 

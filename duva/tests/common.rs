@@ -115,7 +115,7 @@ pub fn spawn_server_process(env: &ServerEnv) -> anyhow::Result<TestProcessChild>
     let mut cnt = 100;
     while cnt > 0 {
         cnt -= 1;
-        std::thread::sleep(std::time::Duration::from_millis(100));
+        std::thread::sleep(std::time::Duration::from_millis(500));
 
         if let Ok(mut child) = std::panic::catch_unwind(|| Client::new(process.port)) {
             // First check: basic connectivity
