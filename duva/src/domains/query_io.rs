@@ -691,7 +691,7 @@ mod test {
                     "127.0.0.1:30001",
                     0,
                     ReplicationId::Undecided,
-                    NodeKind::Myself,
+                    NodeKind::Replica,
                     ReplicationRole::Follower,
                 ),
             ],

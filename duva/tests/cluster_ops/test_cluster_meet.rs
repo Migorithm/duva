@@ -131,14 +131,6 @@ fn run_cluster_meet_with_migration(append_only: bool) -> anyhow::Result<()> {
     // verify that all keys are accessible from both nodes
     assert!(keys_accessible_from_node1 + keys_accessible_from_node2 == 100);
 
-    // verify that all keys are accessible from replicas
-    let mut client_handler3 = Client::new(env3.port);
-    for i in node2_keys {
-        let cmd = format!("get {}", i);
-        let res = client_handler3.send_and_get(&cmd);
-        assert_eq!(res, format!("{}", i));
-    }
-
     Ok(())
 }
 

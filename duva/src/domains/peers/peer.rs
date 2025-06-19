@@ -113,7 +113,7 @@ impl PeerState {
 
     fn determine_node_kind(repl_id: &str, self_repl_id: &str, is_myself: bool) -> NodeKind {
         if is_myself {
-            NodeKind::Myself
+            NodeKind::Replica
         } else if repl_id == self_repl_id {
             NodeKind::Replica
         } else {
@@ -134,13 +134,11 @@ impl PeerState {
             .lines()
             .filter(|line| !line.trim().is_empty())
             .filter_map(|line| Self::parse_node_info(line, &my_repl_id))
-            .filter(|node| node.kind != NodeKind::Myself)
             .collect();
 
         nodes.sort_by_key(|n| match n.kind {
             | NodeKind::Replica => 0,
             | NodeKind::NonData => 1,
-            | NodeKind::Myself => 2,
         });
         nodes
     }
@@ -168,15 +166,14 @@ impl PeerState {
         })
     }
 
-    pub(crate) fn format(&self) -> String {
-        match self.kind {
-            | NodeKind::Replica | NodeKind::NonData => {
-                format!("{} {} 0 {} {}", self.addr, self.replid, self.match_index, self.role)
-            },
-            | NodeKind::Myself => {
-                format!("{} myself,{} 0 {} {}", self.addr, self.replid, self.match_index, self.role)
-            },
+    pub(crate) fn format(&self, peer_id: &PeerIdentifier) -> String {
+        if self.addr == *peer_id {
+            return format!(
+                "{} myself,{} 0 {} {}",
+                self.addr, self.replid, self.match_index, self.role
+            );
         }
+        format!("{} {} 0 {} {}", self.addr, self.replid, self.match_index, self.role)
     }
 }
 
@@ -184,7 +181,6 @@ impl PeerState {
 pub(crate) enum NodeKind {
     Replica,
     NonData,
-    Myself,
 }
 
 #[derive(Debug)]
@@ -225,10 +221,10 @@ fn test_prioritize_nodes_with_same_replid() {
     let nodes = PeerState::from_file(temp_file.path().to_str().unwrap());
 
     // There should be 4 nodes, all with priority 0 (same ID as myself)
-    assert_eq!(nodes.len(), 4);
+    assert_eq!(nodes.len(), 5);
     assert_eq!(nodes.iter().filter(|n| n.kind == NodeKind::NonData).count(), 2);
-    assert_eq!(nodes.iter().filter(|n| n.kind == NodeKind::Replica).count(), 2);
-    assert_eq!(nodes.iter().filter(|n| n.role == ReplicationRole::Leader).count(), 2);
+    assert_eq!(nodes.iter().filter(|n| n.kind == NodeKind::Replica).count(), 3);
+    assert_eq!(nodes.iter().filter(|n| n.role == ReplicationRole::Leader).count(), 3);
 
     // Optionally print for debugging
     for node in nodes {

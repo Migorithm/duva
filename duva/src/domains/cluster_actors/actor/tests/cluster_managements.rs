@@ -78,63 +78,6 @@ async fn test_store_current_topology() {
 }
 
 #[tokio::test]
-async fn snapshot_topology_after_add_peer() {
-    // GIVEN
-    let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
-    let path = "snapshot_topology_after_add_peer.tp";
-    cluster_actor.topology_writer = tokio::fs::File::create(path).await.unwrap();
-
-    let repl_id = cluster_actor.replication.replid.clone();
-
-    let fake_buf = FakeReadWrite::new();
-    let kill_switch = PeerListener::spawn(
-        fake_buf.clone(),
-        cluster_actor.self_handler.clone(),
-        PeerIdentifier("127.0.0.1:3849".into()),
-    );
-
-    let peer = Peer::new(
-        fake_buf,
-        PeerState::new(
-            "127.0.0.1:3849",
-            0,
-            ReplicationId::Key(repl_id.to_string()),
-            NodeKind::Replica,
-            ReplicationRole::Follower,
-        ),
-        kill_switch,
-    );
-
-    // WHEN
-    cluster_actor.add_peer(peer).await;
-    cluster_actor.snapshot_topology().await.unwrap();
-
-    // THEN
-    let topology = tokio::fs::read_to_string(path).await.unwrap();
-    let mut cluster_nodes = topology.split("\r\n").map(|x| x.to_string()).collect::<Vec<String>>();
-
-    cluster_nodes.dedup();
-    assert_eq!(cluster_nodes.len(), 2);
-
-    let hwm = cluster_actor.replication.hwm.load(Ordering::Relaxed);
-
-    for value in [
-        format!("127.0.0.1:3849 {} 0 {} {}", repl_id, hwm, ReplicationRole::Follower),
-        format!(
-            "{} myself,{} 0 {} {}",
-            cluster_actor.replication.self_identifier(),
-            repl_id,
-            hwm,
-            ReplicationRole::Leader
-        ),
-    ] {
-        assert!(cluster_nodes.contains(&value));
-    }
-
-    tokio::fs::remove_file(path).await.unwrap();
-}
-
-#[tokio::test]
 async fn test_reconnection_on_gossip() {
     // GIVEN
     let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;

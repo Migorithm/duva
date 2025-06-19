@@ -53,7 +53,7 @@ impl ReplicationState {
             &self_id,
             self.hwm.load(Ordering::Relaxed),
             self.replid.clone(),
-            NodeKind::Myself,
+            NodeKind::Replica,
             self.role.clone(),
         )
     }

@@ -125,7 +125,7 @@ fn heartbeat_create_helper(term: u64, hwm: u64, op_logs: Vec<WriteOperation>) ->
 
 pub async fn cluster_actor_create_helper(role: ReplicationRole) -> ClusterActor<MemoryOpLogs> {
     let replication =
-        ReplicationState::new(ReplicationId::Key("master".into()), role, "localhost", 8080, 0);
+        ReplicationState::new(ReplicationId::Key("master".into()), role, "127.0.0.1", 8080, 0);
     let dir = TempDir::new().unwrap();
     let path = dir.path().join("duva.tp");
 

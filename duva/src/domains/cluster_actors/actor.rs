@@ -538,8 +538,12 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     }
 
     async fn snapshot_topology(&mut self) -> anyhow::Result<()> {
-        let topology =
-            self.cluster_nodes().into_iter().map(|cn| cn.format()).collect::<Vec<_>>().join("\r\n");
+        let topology = self
+            .cluster_nodes()
+            .into_iter()
+            .map(|cn| cn.format(&self.replication.self_identifier()))
+            .collect::<Vec<_>>()
+            .join("\r\n");
         self.topology_writer.seek(std::io::SeekFrom::Start(0)).await?;
         self.topology_writer.set_len(topology.len() as u64).await?;
         self.topology_writer.write_all(topology.as_bytes()).await?;

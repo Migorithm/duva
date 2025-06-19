@@ -9,7 +9,7 @@ use tokio::fs::OpenOptions;
 
 pub struct Environment {
     pub seed_server: Option<PeerIdentifier>,
-    pub pre_connected_peers: Vec<PeerState>,
+    pub stored_peer_states: Vec<PeerState>,
     pub(crate) role: ReplicationRole,
     pub dir: String,
     pub dbfilename: String,
@@ -42,9 +42,8 @@ impl Environment {
         );
 
         let replicaof = Self::parse_replicaof(replicaof);
-        let pre_connected_peers = PeerState::from_file(&tpp);
-
-        let role = Self::determine_role(replicaof.as_ref(), &pre_connected_peers);
+        let stored_peer_states = PeerState::from_file(&tpp);
+        let role = Self::determine_role(replicaof.as_ref(), &stored_peer_states);
 
         Self {
             role,
@@ -57,7 +56,7 @@ impl Environment {
             ttl_mills: ttl,
             append_only,
             tpp,
-            pre_connected_peers,
+            stored_peer_states,
             log_level,
         }
     }
