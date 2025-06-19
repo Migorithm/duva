@@ -51,8 +51,8 @@ impl Peer {
         self.listener_kill_trigger.kill().await
     }
 
-    pub(crate) fn is_replica(&self) -> bool {
-        self.state.kind == NodeKind::Replica
+    pub(crate) fn is_replica(&self, replid: &ReplicationId) -> bool {
+        self.state.replid == *replid
     }
 
     pub(crate) fn set_role(&mut self, role: ReplicationRole) {

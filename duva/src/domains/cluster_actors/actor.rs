@@ -442,7 +442,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             let Some(peer) = self.members.get(&request_to) else {
                 return;
             };
-            if peer.is_replica() {
+            if peer.is_replica(&self.replication.replid) {
                 warn!("Cannot rebalance to a replica: {}", request_to);
                 return;
             }
@@ -472,7 +472,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             return;
         };
 
-        if member.is_replica() {
+        if member.is_replica(&self.replication.replid) {
             error!("Cannot receive rebalance request from a replica: {}", request_from);
             return;
         }
