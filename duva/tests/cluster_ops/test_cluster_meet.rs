@@ -129,7 +129,7 @@ fn run_cluster_meet_with_migration(append_only: bool) -> anyhow::Result<()> {
     assert!(node1_keys != (0..50).collect::<Vec<_>>());
     assert!(node2_keys != (50..100).collect::<Vec<_>>());
     // verify that all keys are accessible from both nodes
-    assert!(keys_accessible_from_node1 + keys_accessible_from_node2 == 100);
+    assert!(dbg!(keys_accessible_from_node1 + keys_accessible_from_node2) == 100);
 
     Ok(())
 }

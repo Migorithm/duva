@@ -496,8 +496,12 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             .set_hashring(new_hash_ring.clone());
 
         self.send_heartbeat(hb).await;
-        self.maybe_update_hashring(Some(new_hash_ring), cache_manager, cluster_handler.clone())
-            .await;
+        self.maybe_update_hashring(
+            Some(Box::new(new_hash_ring)),
+            cache_manager,
+            cluster_handler.clone(),
+        )
+        .await;
     }
 
     fn hop_count(fanout: usize, node_count: usize) -> u8 {
@@ -982,7 +986,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     // * If the hashring is valid, make a plan to migrate data for each paritition
     async fn maybe_update_hashring(
         &mut self,
-        hashring: Option<HashRing>,
+        hashring: Option<Box<HashRing>>,
         cache_manager: &CacheManager,
         cluster_handler: Option<ClusterCommandHandler>,
     ) {
@@ -990,7 +994,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             return;
         };
 
-        if new_ring == self.hash_ring {
+        if *new_ring == self.hash_ring {
             return;
         }
         if new_ring.last_modified < self.hash_ring.last_modified {
@@ -1000,7 +1004,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
         // For replicas, just update the hash ring and wait for leader to coordinate migrations
         if !self.replication.is_leader() {
-            self.hash_ring = new_ring;
+            self.hash_ring = *new_ring;
             info!("Replica updated hash ring");
             return;
         }
@@ -1011,7 +1015,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         let migration_plans = self.hash_ring.create_migration_tasks(&new_ring, keys);
 
         // Update the hash ring after creating migration plans
-        self.hash_ring = new_ring;
+        self.hash_ring = *new_ring;
 
         if migration_plans.is_empty() {
             info!("No migration tasks to schedule");

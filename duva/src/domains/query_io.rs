@@ -794,7 +794,7 @@ mod test {
             ban_list: vec![],
             append_entries: vec![],
             cluster_nodes: vec![],
-            hashring: Some(ring),
+            hashring: Some(Box::new(ring)),
         };
 
         let query_io = QueryIO::ClusterHeartBeat(heartbeat.clone());

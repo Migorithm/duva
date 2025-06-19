@@ -153,7 +153,7 @@ async fn test_start_rebalance_happy_path() {
         &buf,
         QueryIO::ClusterHeartBeat(HeartBeat {
             from: cluster_actor.replication.self_identifier(),
-            hashring: Some(cluster_actor.hash_ring.clone()),
+            hashring: Some(Box::new(cluster_actor.hash_ring.clone())),
             replid: cluster_actor.replication.replid.clone(),
             ..Default::default()
         }),
@@ -183,7 +183,9 @@ async fn test_maybe_update_hashring_when_noplan_is_made() {
 
     // WHEN
     let (_hwm, cache_manager) = cache_manager_create_helper();
-    cluster_actor.maybe_update_hashring(Some(hash_ring.clone()), &cache_manager, None).await;
+    cluster_actor
+        .maybe_update_hashring(Some(Box::new(hash_ring.clone())), &cache_manager, None)
+        .await;
 
     // THEN
     assert!(cluster_actor.pending_requests.is_none());
@@ -200,7 +202,11 @@ async fn test_make_migration_plan_when_given_hashring_is_same() {
     // WHEN
     let (_hwm, cache_manager) = cache_manager_create_helper();
     cluster_actor
-        .maybe_update_hashring(Some(cluster_actor.hash_ring.clone()), &cache_manager, None)
+        .maybe_update_hashring(
+            Some(Box::new(cluster_actor.hash_ring.clone())),
+            &cache_manager,
+            None,
+        )
         .await;
 
     // THEN
@@ -232,7 +238,7 @@ async fn test_make_migration_plan_when_last_modified_is_lower_than_its_own() {
 
     // WHEN
     let (_hwm, cache_manager) = cache_manager_create_helper();
-    cluster_actor.maybe_update_hashring(Some(hash_ring), &cache_manager, None).await;
+    cluster_actor.maybe_update_hashring(Some(Box::new(hash_ring)), &cache_manager, None).await;
 
     // THEN
     assert_eq!(cluster_actor.hash_ring.last_modified, last_modified);
@@ -730,7 +736,7 @@ async fn test_start_rebalance_schedules_migration_batches() {
         &buf,
         QueryIO::ClusterHeartBeat(HeartBeat {
             from: cluster_actor.replication.self_identifier(),
-            hashring: Some(cluster_actor.hash_ring.clone()),
+            hashring: Some(Box::new(cluster_actor.hash_ring.clone())),
             replid: cluster_actor.replication.replid.clone(),
             ..Default::default()
         }),
@@ -785,7 +791,9 @@ async fn test_maybe_update_hashring_replica_only_updates_ring() {
         .unwrap();
 
     // WHEN - Replica receives hash ring update
-    cluster_actor.maybe_update_hashring(Some(new_ring.clone()), &cache_manager, None).await;
+    cluster_actor
+        .maybe_update_hashring(Some(Box::new(new_ring.clone())), &cache_manager, None)
+        .await;
 
     // THEN - Hash ring should be updated
     assert_eq!(cluster_actor.hash_ring, new_ring);
