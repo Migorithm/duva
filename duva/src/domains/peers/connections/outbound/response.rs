@@ -1,12 +1,12 @@
 use anyhow::Context;
 
-use crate::domains::QueryIO;
+use crate::domains::{QueryIO, cluster_actors::replication::ReplicationRole};
 
 #[derive(Debug, PartialEq)]
 pub enum ConnectionResponse {
     Pong,
     Ok,
-    FullResync { id: String, repl_id: String, offset: u64 },
+    FullResync { id: String, repl_id: String, offset: u64, role: ReplicationRole },
 }
 
 impl TryFrom<String> for ConnectionResponse {
@@ -17,9 +17,9 @@ impl TryFrom<String> for ConnectionResponse {
             | "ok" => Ok(ConnectionResponse::Ok),
 
             | var if var.starts_with("fullresync") => {
-                let [_, id, repl_id, offset] = var
+                let [_, id, repl_id, offset, role] = var
                     .split_whitespace()
-                    .take(4)
+                    .take(5)
                     .collect::<Vec<_>>()
                     .as_slice()
                     .try_into()
@@ -31,6 +31,7 @@ impl TryFrom<String> for ConnectionResponse {
                     id: id.to_string(),
                     repl_id: repl_id.to_string(),
                     offset,
+                    role: role.to_string().into(),
                 })
             },
 

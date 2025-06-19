@@ -90,16 +90,17 @@ impl InboundStream {
 
         // ! Assumption, if self replid is not set at this point but still receives inbound stream, this is leader.
 
-        let (id, self_leader_replid, self_leader_repl_offset) = (
+        let (id, self_replid, self_repl_offset, self_role) = (
             self.self_repl_info.self_identifier(),
             self.self_repl_info.replid.clone(),
             self.self_repl_info.hwm.load(Ordering::Relaxed),
+            self.self_repl_info.role.clone(),
         );
 
         self.w
             .write(QueryIO::SimpleString(format!(
-                "FULLRESYNC {} {} {}",
-                id, self_leader_replid, self_leader_repl_offset
+                "FULLRESYNC {} {} {} {}",
+                id, self_replid, self_repl_offset, self_role
             )))
             .await?;
         self.recv_ok().await?;

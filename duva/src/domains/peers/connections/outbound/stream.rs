@@ -74,11 +74,13 @@ impl OutboundStream {
                         }?;
                         self.w.write(msg).await?
                     },
-                    | ConnectionResponse::FullResync { id, repl_id, offset } => {
+                    | ConnectionResponse::FullResync { id, repl_id, offset, role } => {
                         connection_info.replid = ReplicationId::Key(repl_id);
                         connection_info.hwm = offset;
                         connection_info.id = id.into();
+                        connection_info.role = role;
                         self.connected_node_info = Some(connection_info);
+
                         self.reply_with_ok().await?;
                         return Ok(());
                     },
