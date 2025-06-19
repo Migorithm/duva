@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::fmt::Display;
 
 use crate::broker::Broker;
@@ -31,6 +32,7 @@ impl<T> ClientController<T> {
             request_id: auth_response.request_id,
 
             topology: auth_response.topology,
+            leader_connections: HashMap::default(),
             read_kill_switch: Some(r.run(broker_tx.clone())),
         };
         tokio::spawn(broker.run());

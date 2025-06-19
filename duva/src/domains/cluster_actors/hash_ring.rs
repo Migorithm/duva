@@ -176,6 +176,11 @@ impl HashRing {
         self.pnodes.get(replid)
     }
 
+    pub fn get_node_id_for_key(&self, key: &str) -> Option<&PeerIdentifier> {
+        let hash = fnv_1a_hash(key);
+        self.find_replid(hash).and_then(|replid| self.pnodes.get(replid))
+    }
+
     pub(crate) fn update_repl_leader(&mut self, replid: ReplicationId, new_pnode: PeerIdentifier) {
         if let Some(existing_pnode) = self.pnodes.get_mut(&replid)
             && existing_pnode != &new_pnode

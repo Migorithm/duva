@@ -1,16 +1,18 @@
 mod input_queue;
 mod read_stream;
 mod write_stream;
+use std::collections::HashMap;
+
 use crate::command::Input;
 
 use duva::domains::caches::cache_manager::IndexedValueCodec;
 use duva::domains::{IoError, query_io::QueryIO};
-use duva::prelude::tokio;
 use duva::prelude::tokio::net::TcpStream;
 use duva::prelude::tokio::sync::mpsc::Receiver;
 use duva::prelude::tokio::sync::mpsc::Sender;
 use duva::prelude::uuid::Uuid;
 use duva::prelude::{LEADER_HEARTBEAT_INTERVAL_MAX, Topology};
+use duva::prelude::{PeerIdentifier, tokio};
 use duva::presentation::clients::request::ClientAction;
 use duva::{
     domains::TSerdeReadWrite,
@@ -28,6 +30,8 @@ pub struct Broker {
     pub(crate) client_id: Uuid,
     pub(crate) request_id: u64,
     pub(crate) topology: Topology,
+    pub(crate) leader_connections:
+        HashMap<PeerIdentifier, (ServerStreamReader, ServerStreamWriter)>,
     pub(crate) read_kill_switch: Option<tokio::sync::oneshot::Sender<()>>,
 }
 
@@ -38,6 +42,7 @@ impl Broker {
             match msg {
                 | BrokerMessage::FromServer(Ok(QueryIO::TopologyChange(topology))) => {
                     self.topology = topology;
+                    self.generate_leader_connections().await;
                 },
 
                 | BrokerMessage::FromServer(Ok(query_io)) => {
@@ -151,6 +156,29 @@ impl Broker {
             }
         }
         Err(IoError::Custom("No leader found in the cluster".to_string()))
+    }
+
+    async fn generate_leader_connections(&mut self) {
+        for node in &self.topology.connected_peers {
+            if self.leader_connections.contains_key(node) {
+                continue;
+            }
+            tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+            println!("Trying to connect to node: {}...", node);
+
+            let auth_req = AuthRequest {
+                client_id: Some(self.client_id.to_string()),
+                request_id: self.request_id,
+            };
+            let Ok((r, w, auth_response)) = Self::authenticate(node, Some(auth_req)).await else {
+                continue;
+            };
+            self.leader_connections.insert(node.clone(), (r, w));
+
+            if auth_response.connected_to_leader {
+                println!("Connected to leader: {}", node);
+            }
+        }
     }
 }
 
