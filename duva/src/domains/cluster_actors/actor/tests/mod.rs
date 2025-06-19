@@ -125,7 +125,7 @@ fn heartbeat_create_helper(term: u64, hwm: u64, op_logs: Vec<WriteOperation>) ->
 
 pub async fn cluster_actor_create_helper(role: ReplicationRole) -> ClusterActor<MemoryOpLogs> {
     let replication =
-        ReplicationState::new(ReplicationId::Key("master".into()), role, "localhost", 8080, 0);
+        ReplicationState::new(ReplicationId::Key("master".into()), role, "127.0.0.1", 8080, 0);
     let dir = TempDir::new().unwrap();
     let path = dir.path().join("duva.tp");
 
@@ -139,8 +139,8 @@ fn cluster_member_create_helper(
     actor: &mut ClusterActor<MemoryOpLogs>,
     fake_bufs: Vec<FakeReadWrite>,
     cluster_sender: ClusterCommandHandler,
-
     follower_hwm: u64,
+    replid: Option<ReplicationId>,
 ) {
     for fake_b in fake_bufs.into_iter() {
         let port = rand::random::<u16>();
@@ -158,7 +158,9 @@ fn cluster_member_create_helper(
                 PeerState::new(
                     &format!("localhost:{}", port),
                     follower_hwm,
-                    ReplicationId::Key("localhost".to_string().into()),
+                    replid
+                        .clone()
+                        .unwrap_or_else(|| ReplicationId::Key("localhost".to_string().into())),
                     NodeKind::Replica,
                     ReplicationRole::Follower,
                 ),

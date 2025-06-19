@@ -5,6 +5,7 @@ use crate::domains::caches::cache_manager::CacheManager;
 use crate::domains::caches::cache_objects::CacheEntry;
 use crate::domains::cluster_actors::{ClientMessage, ConsensusClientResponse, ConsensusRequest};
 use crate::domains::saves::actor::SaveTarget;
+use crate::prelude::PeerIdentifier;
 use crate::presentation::clients::request::ClientAction;
 use crate::presentation::clusters::communication_manager::ClusterCommunicationManager;
 use std::sync::atomic::Ordering;
@@ -106,7 +107,7 @@ impl ClientController {
                 .route_cluster_nodes()
                 .await?
                 .into_iter()
-                .map(|peer| peer.format())
+                .map(|peer| peer.format(&PeerIdentifier::new(&ENV.host, ENV.port)))
                 .collect::<Vec<_>>()
                 .into(),
             | ClientAction::ClusterForget(peer_identifier) => {

@@ -61,7 +61,7 @@ impl StartUpFacade {
         // todo if tpp was modified AFTER snapshot was created, we need to update the repl id
         let repl_id_from_topp = if ENV.seed_server.is_none() {
             ReplicationId::Key(
-                ENV.pre_connected_peers
+                ENV.stored_peer_states
                     .iter()
                     .find(|p| p.kind == NodeKind::Replica)
                     .map(|p| p.replid.to_string())
@@ -119,7 +119,7 @@ impl StartUpFacade {
             return self.cluster_communication_manager.route_connect_to_server(seed.clone()).await;
         }
 
-        for peer in ENV.pre_connected_peers.iter() {
+        for peer in ENV.stored_peer_states.iter() {
             if let Err(err) =
                 self.cluster_communication_manager.route_connect_to_server(peer.addr.clone()).await
             {

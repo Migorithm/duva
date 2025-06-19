@@ -39,7 +39,7 @@ async fn logger_create_entries_from_lowest() {
 async fn test_generate_follower_entries() {
     // GIVEN
     let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
-
+    let replid = cluster_actor.replication.replid.clone();
     let (cluster_sender, _) = tokio::sync::mpsc::channel(100);
     let follower_buffs = (0..5).map(|_| FakeReadWrite::new()).collect::<Vec<_>>();
 
@@ -48,6 +48,7 @@ async fn test_generate_follower_entries() {
         follower_buffs.clone(),
         ClusterCommandHandler(cluster_sender.clone()),
         3,
+        Some(replid.clone()),
     );
 
     let test_logs = vec![
@@ -68,6 +69,7 @@ async fn test_generate_follower_entries() {
         follower_buffs,
         ClusterCommandHandler(cluster_sender),
         1,
+        Some(replid),
     );
 
     // * add new log - this must create entries that are greater than 3
@@ -402,7 +404,7 @@ async fn req_consensus_inserts_consensus_voting() {
     // GIVEN
 
     let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
-
+    let replid = cluster_actor.replication.replid.clone();
     // - add 5 followers
     let (cluster_sender, _) = tokio::sync::mpsc::channel(100);
 
@@ -412,6 +414,7 @@ async fn req_consensus_inserts_consensus_voting() {
         follower_buffs.clone(),
         ClusterCommandHandler(cluster_sender),
         0,
+        Some(replid),
     );
 
     let (tx, _) = tokio::sync::oneshot::channel();
@@ -483,7 +486,7 @@ async fn test_leader_req_consensus_early_return_when_already_processed_session_r
 async fn test_consensus_voting_deleted_when_consensus_reached() {
     // GIVEN
     let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
-
+    let replid = cluster_actor.replication.replid.clone();
     let (cluster_sender, _) = tokio::sync::mpsc::channel(100);
 
     // - add 4 followers to create quorum - so 2 votes are needed to reach consensus
@@ -493,6 +496,7 @@ async fn test_consensus_voting_deleted_when_consensus_reached() {
         follower_buffs.clone(),
         ClusterCommandHandler(cluster_sender),
         0,
+        Some(replid),
     );
     let (client_request_sender, client_wait) = tokio::sync::oneshot::channel();
 
@@ -532,7 +536,7 @@ async fn test_consensus_voting_deleted_when_consensus_reached() {
 async fn test_same_voter_can_vote_only_once() {
     // GIVEN
     let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
-
+    let replid = cluster_actor.replication.replid.clone();
     let (cluster_sender, _) = tokio::sync::mpsc::channel(100);
 
     // - add followers to create quorum
@@ -543,6 +547,7 @@ async fn test_same_voter_can_vote_only_once() {
         follower_buffs.clone(),
         ClusterCommandHandler(cluster_sender),
         0,
+        Some(replid),
     );
     let (client_request_sender, _client_wait) = tokio::sync::oneshot::channel();
 

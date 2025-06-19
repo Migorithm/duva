@@ -31,7 +31,6 @@ use crate::domains::peers::command::ReplicationAck;
 use crate::domains::peers::command::RequestVote;
 use crate::domains::peers::connections::inbound::stream::InboundStream;
 use crate::domains::peers::connections::outbound::stream::OutboundStream;
-use crate::domains::peers::peer::NodeKind;
 use crate::domains::peers::peer::PeerState;
 use crate::err;
 use client_sessions::ClientSessions;
@@ -442,7 +441,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             let Some(peer) = self.members.get(&request_to) else {
                 return;
             };
-            if peer.is_replica() {
+            if peer.is_replica(&self.replication.replid) {
                 warn!("Cannot rebalance to a replica: {}", request_to);
                 return;
             }
@@ -472,7 +471,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             return;
         };
 
-        if member.is_replica() {
+        if member.is_replica(&self.replication.replid) {
             error!("Cannot receive rebalance request from a replica: {}", request_from);
             return;
         }
@@ -510,19 +509,19 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
     fn replicas(&self) -> impl Iterator<Item = (&PeerIdentifier, u64)> {
         self.members.iter().filter_map(|(id, peer)| {
-            (peer.kind() == &NodeKind::Replica).then_some((id, peer.match_index()))
+            (peer.is_replica(&self.replication.replid)).then_some((id, peer.match_index()))
         })
     }
 
     fn replicas_mut(&mut self) -> impl Iterator<Item = (&mut Peer, u64)> {
         self.members.values_mut().filter_map(|peer| {
             let match_index = peer.match_index();
-            (peer.kind() == &NodeKind::Replica).then_some((peer, match_index))
+            (peer.is_replica(&self.replication.replid)).then_some((peer, match_index))
         })
     }
 
     fn find_replica_mut(&mut self, peer_id: &PeerIdentifier) -> Option<&mut Peer> {
-        self.members.get_mut(peer_id).filter(|peer| peer.kind() == &NodeKind::Replica)
+        self.members.get_mut(peer_id).filter(|peer| peer.is_replica(&self.replication.replid))
     }
 
     fn peerid_by_replid(&self, target_repl_id: &ReplicationId) -> Option<&PeerIdentifier> {
@@ -539,8 +538,12 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     }
 
     async fn snapshot_topology(&mut self) -> anyhow::Result<()> {
-        let topology =
-            self.cluster_nodes().into_iter().map(|cn| cn.format()).collect::<Vec<_>>().join("\r\n");
+        let topology = self
+            .cluster_nodes()
+            .into_iter()
+            .map(|cn| cn.format(&self.replication.self_identifier()))
+            .collect::<Vec<_>>()
+            .join("\r\n");
         self.topology_writer.seek(std::io::SeekFrom::Start(0)).await?;
         self.topology_writer.set_len(topology.len() as u64).await?;
         self.topology_writer.write_all(topology.as_bytes()).await?;
@@ -718,9 +721,12 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     fn take_low_watermark(&self) -> Option<u64> {
         self.members
             .values()
-            .filter_map(|peer| match peer.kind() {
-                | NodeKind::Replica => Some(peer.match_index()),
-                | _ => None,
+            .filter_map(|peer| {
+                if peer.is_replica(&self.replication.replid) {
+                    Some(peer.match_index())
+                } else {
+                    None
+                }
             })
             .min()
     }
