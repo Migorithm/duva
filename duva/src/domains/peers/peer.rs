@@ -117,7 +117,7 @@ impl PeerState {
         let mut nodes: Vec<Self> = contents
             .lines()
             .filter(|line| !line.trim().is_empty())
-            .filter_map(|line| Self::parse_node_info(line))
+            .filter_map(Self::parse_node_info)
             .collect();
 
         nodes.sort_by_key(|n| n.replid.to_string() == my_repl_id);

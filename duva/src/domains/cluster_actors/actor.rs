@@ -1267,10 +1267,10 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         self.update_peer_index(from, hwm);
         let now = Instant::now();
         for node in cluster_nodes.iter() {
-            self.members.get_mut(&node.addr).map(|peer| {
+            if let Some(peer) = self.members.get_mut(&node.addr) {
                 peer.last_seen = now;
                 peer.set_role(node.role.clone())
-            });
+            }
         }
     }
 }
