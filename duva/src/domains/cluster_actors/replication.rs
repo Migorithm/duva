@@ -2,7 +2,7 @@ use super::consensus::election::ElectionState;
 use crate::domains::peers::command::BannedPeer;
 use crate::domains::peers::command::HeartBeat;
 use crate::domains::peers::identifier::PeerIdentifier;
-use crate::domains::peers::peer::NodeKind;
+
 use crate::domains::peers::peer::PeerState;
 use std::collections::HashSet;
 use std::fmt::Display;
@@ -53,7 +53,6 @@ impl ReplicationState {
             &self_id,
             self.hwm.load(Ordering::Relaxed),
             self.replid.clone(),
-            NodeKind::Replica,
             self.role.clone(),
         )
     }

@@ -61,7 +61,6 @@ pub struct PeerState {
     pub(crate) addr: PeerIdentifier,
     pub(crate) match_index: u64,
     pub(crate) replid: ReplicationId,
-    pub(crate) kind: NodeKind,
     pub(crate) role: ReplicationRole,
 }
 
@@ -70,13 +69,13 @@ impl PeerState {
         id: &str,
         match_index: u64,
         replid: ReplicationId,
-        kind: NodeKind,
+
         role: ReplicationRole,
     ) -> Self {
-        Self { addr: id.bind_addr().into(), match_index, replid, kind, role }
+        Self { addr: id.bind_addr().into(), match_index, replid, role }
     }
 
-    pub(crate) fn parse_node_info(line: &str, self_repl_id: &str) -> Option<Self> {
+    pub(crate) fn parse_node_info(line: &str) -> Option<Self> {
         let parts: Vec<&str> = line.split_whitespace().collect();
         if parts.len() != 5 {
             return None;
@@ -92,7 +91,6 @@ impl PeerState {
 
         Some(Self {
             addr: addr.bind_addr().into(),
-            kind: if repl_id == self_repl_id { NodeKind::Replica } else { NodeKind::NonData },
             replid: repl_id.into(),
             match_index,
             role: role.to_string().into(),
@@ -119,13 +117,10 @@ impl PeerState {
         let mut nodes: Vec<Self> = contents
             .lines()
             .filter(|line| !line.trim().is_empty())
-            .filter_map(|line| Self::parse_node_info(line, &my_repl_id))
+            .filter_map(Self::parse_node_info)
             .collect();
 
-        nodes.sort_by_key(|n| match n.kind {
-            | NodeKind::Replica => 0,
-            | NodeKind::NonData => 1,
-        });
+        nodes.sort_by_key(|n| n.replid.to_string() == my_repl_id);
         nodes
     }
 
@@ -161,12 +156,6 @@ impl PeerState {
         }
         format!("{} {} 0 {} {}", self.addr, self.replid, self.match_index, self.role)
     }
-}
-
-#[derive(Debug, Clone, PartialEq, bincode::Encode, bincode::Decode)]
-pub(crate) enum NodeKind {
-    Replica,
-    NonData,
 }
 
 #[derive(Debug)]
@@ -208,8 +197,8 @@ fn test_prioritize_nodes_with_same_replid() {
 
     // There should be 4 nodes, all with priority 0 (same ID as myself)
     assert_eq!(nodes.len(), 5);
-    assert_eq!(nodes.iter().filter(|n| n.kind == NodeKind::NonData).count(), 2);
-    assert_eq!(nodes.iter().filter(|n| n.kind == NodeKind::Replica).count(), 3);
+
+    assert_eq!(nodes.iter().filter(|n| n.role == ReplicationRole::Follower).count(), 2);
     assert_eq!(nodes.iter().filter(|n| n.role == ReplicationRole::Leader).count(), 3);
 
     // Optionally print for debugging

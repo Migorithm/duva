@@ -2,6 +2,7 @@ use crate::common::{Client, ServerEnv, spawn_server_process};
 
 fn run_lazy_discovery_of_leader(with_append_only: bool) -> anyhow::Result<()> {
     // GIVEN
+
     let env1 = ServerEnv::default().with_append_only(with_append_only);
     let mut p1 = spawn_server_process(&env1)?;
 
@@ -28,21 +29,25 @@ fn run_lazy_discovery_of_leader(with_append_only: bool) -> anyhow::Result<()> {
     // TODO(dpark): Would there be a way to perform a closed-loop wait?
 
     // THEN
-    assert_eq!(p1_h.send_and_get_vec("role", 1), vec!["follower"]);
-    assert_eq!(p2_h.send_and_get_vec("role", 1), vec!["leader"]);
+    assert_eq!(p1_h.send_and_get("role"), "follower");
+    assert_eq!(p2_h.send_and_get("role"), "leader");
 
     // * Following is required to test replicaof successuflly update topology changes
     p1.terminate()?;
+
     let new_env_with_same_topology = ServerEnv::default()
+        .with_port(env1.port)
         .with_topology_path(env1.topology_path)
         .with_append_only(with_append_only);
+
     let p1 = spawn_server_process(&new_env_with_same_topology)?;
 
     let mut p1_h = Client::new(p1.port);
-    assert_eq!(p1_h.send_and_get_vec("get key", 1), vec!["(nil)"]);
-    assert_eq!(p1_h.send_and_get_vec("get key2", 1), vec!["(nil)"]);
-    assert_eq!(p1_h.send_and_get_vec("get other", 1), vec!["value"]);
-    assert_eq!(p1_h.send_and_get_vec("get other2", 1), vec!["value2"]);
+
+    assert_eq!(p1_h.send_and_get("get key"), "(nil)");
+    assert_eq!(p1_h.send_and_get("get key2"), "(nil)");
+    assert_eq!(p1_h.send_and_get("get other"), "value");
+    assert_eq!(p1_h.send_and_get("get other2"), "value2");
 
     Ok(())
 }

@@ -50,6 +50,11 @@ impl ServerEnv {
         ServerEnv { port: get_available_port(), ..self }
     }
 
+    pub fn with_port(mut self, port: u16) -> Self {
+        self.port = port;
+        self
+    }
+
     pub fn with_file_name(mut self, file_name: impl Into<String>) -> Self {
         self.file_name = FileName(Some(file_name.into()));
         self
@@ -119,20 +124,18 @@ pub fn spawn_server_process(env: &ServerEnv) -> anyhow::Result<TestProcessChild>
 
         if let Ok(mut child) = std::panic::catch_unwind(|| Client::new(process.port)) {
             // First check: basic connectivity
-            let ping_res = child.send_and_get_vec("PING", 1);
-            if ping_res != vec!["PONG"] {
+            let ping_res = child.send_and_get("PING");
+            if ping_res != "PONG" {
                 continue;
             }
 
             // Second check: server is ready for cluster operations
-            let role_res = child.send_and_get_vec("role", 1);
+            let role_res: String = child.send_and_get("role");
             if role_res.is_empty() {
                 continue;
             }
 
-            // Accept any valid role response (leader, follower, etc.)
-            let role = &role_res[0];
-            if role.is_empty() || (role != "leader" && role != "follower") {
+            if role_res.is_empty() || (role_res != "leader" && role_res != "follower") {
                 continue;
             }
 

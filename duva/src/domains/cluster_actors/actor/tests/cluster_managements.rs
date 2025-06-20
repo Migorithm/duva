@@ -11,22 +11,19 @@ async fn test_cluster_nodes() {
 
     // followers
     for port in [6379, 6380] {
-        cluster_actor.test_add_peer(port, NodeKind::Replica, None);
+        cluster_actor.test_add_peer(port, None);
     }
 
     // leader for different shard
     let second_shard_repl_id = ReplicationId::Key(uuid::Uuid::now_v7().to_string());
     let second_shard_leader_port = rand::random::<u16>();
 
-    let (_, second_shard_leader_identifier) = cluster_actor.test_add_peer(
-        second_shard_leader_port,
-        NodeKind::NonData,
-        Some(second_shard_repl_id.clone()),
-    );
+    let (_, second_shard_leader_identifier) =
+        cluster_actor.test_add_peer(second_shard_leader_port, Some(second_shard_repl_id.clone()));
 
     // follower for different shard
     for port in [2655, 2653] {
-        cluster_actor.test_add_peer(port, NodeKind::NonData, Some(second_shard_repl_id.clone()));
+        cluster_actor.test_add_peer(port, Some(second_shard_repl_id.clone()));
     }
 
     // WHEN
@@ -106,7 +103,6 @@ async fn test_reconnection_on_gossip() {
             &format!("127.0.0.1:{}", bind_addr.port() - 10000),
             0,
             cluster_actor.replication.replid.clone(),
-            NodeKind::Replica,
             ReplicationRole::Follower,
         )])
         .await;
@@ -156,7 +152,7 @@ async fn test_topology_broadcast_on_hash_ring_change() {
 #[tokio::test]
 async fn test_update_cluster_members_updates_fields() {
     let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
-    let (_, peer_id) = cluster_actor.test_add_peer(6379, NodeKind::NonData, None);
+    let (_, peer_id) = cluster_actor.test_add_peer(6379, None);
     let initial = cluster_actor.members.get(&peer_id).unwrap();
 
     let initial_last_seen = initial.last_seen;
@@ -166,7 +162,6 @@ async fn test_update_cluster_members_updates_fields() {
         &peer_id,
         100,
         cluster_actor.replication.replid.clone(),
-        NodeKind::NonData,
         ReplicationRole::Leader,
     )];
     tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;

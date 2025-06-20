@@ -7,7 +7,6 @@ use super::actor::ClusterCommandHandler;
 
 use super::*;
 use crate::CacheManager;
-use crate::NodeKind;
 use crate::ReplicationId;
 use crate::ReplicationState;
 use crate::adapters::op_logs::memory_based::MemoryOpLogs;
@@ -80,17 +79,14 @@ pub(crate) fn create_peer_helper(
     hwm: u64,
     repl_id: &ReplicationId,
     port: u16,
-    node_kind: NodeKind,
+
+    role: ReplicationRole,
     fake_buf: FakeReadWrite,
 ) -> (PeerIdentifier, Peer) {
     let key = PeerIdentifier::new("127.0.0.1", port);
 
     let kill_switch = PeerListener::spawn(fake_buf.clone(), cluster_sender, key.clone());
-    let peer = Peer::new(
-        fake_buf,
-        PeerState::new(&key, hwm, repl_id.clone(), node_kind, ReplicationRole::Follower),
-        kill_switch,
-    );
+    let peer = Peer::new(fake_buf, PeerState::new(&key, hwm, repl_id.clone(), role), kill_switch);
     (key, peer)
 }
 
@@ -161,7 +157,6 @@ fn cluster_member_create_helper(
                     replid
                         .clone()
                         .unwrap_or_else(|| ReplicationId::Key("localhost".to_string().into())),
-                    NodeKind::Replica,
                     ReplicationRole::Follower,
                 ),
                 kill_switch,
@@ -250,7 +245,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     pub(crate) fn test_add_peer(
         &mut self,
         port: u16,
-        kind: NodeKind,
+
         repl_id: Option<ReplicationId>,
     ) -> (FakeReadWrite, PeerIdentifier) {
         let buf = FakeReadWrite::new();
@@ -259,7 +254,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             0,
             &repl_id.unwrap_or_else(|| self.replication.replid.clone()),
             port,
-            kind,
+            ReplicationRole::Follower,
             buf.clone(),
         );
 

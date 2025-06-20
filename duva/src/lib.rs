@@ -14,7 +14,6 @@ use domains::cluster_actors::replication::ReplicationState;
 
 pub use config::Environment;
 use domains::operation_logs::interfaces::TWriteAheadLog;
-use domains::peers::peer::NodeKind;
 use domains::saves::snapshot::Snapshot;
 use domains::saves::snapshot::snapshot_loader::SnapshotLoader;
 use presentation::clients::ClientController;
@@ -63,7 +62,7 @@ impl StartUpFacade {
             ReplicationId::Key(
                 ENV.stored_peer_states
                     .iter()
-                    .find(|p| p.kind == NodeKind::Replica)
+                    .find(|p| *p.addr == ENV.bind_addr())
                     .map(|p| p.replid.to_string())
                     .unwrap_or_else(|| Uuid::now_v7().to_string()),
             )
@@ -119,7 +118,7 @@ impl StartUpFacade {
             return self.cluster_communication_manager.route_connect_to_server(seed.clone()).await;
         }
 
-        for peer in ENV.stored_peer_states.iter() {
+        for peer in ENV.stored_peer_states.iter().filter(|p| *p.addr != ENV.bind_addr()) {
             if let Err(err) =
                 self.cluster_communication_manager.route_connect_to_server(peer.addr.clone()).await
             {

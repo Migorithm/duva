@@ -126,6 +126,12 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         connect_to: PeerIdentifier,
         optional_callback: Option<tokio::sync::oneshot::Sender<anyhow::Result<()>>>,
     ) {
+        if self.replication.self_identifier() == connect_to {
+            if let Some(cb) = optional_callback {
+                let _ = cb.send(err!("Cannot connect to myself"));
+            }
+            return;
+        }
         let stream = match OutboundStream::new(connect_to, self.replication.clone()).await {
             | Ok(stream) => stream,
             | Err(e) => {
@@ -1261,10 +1267,10 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         self.update_peer_index(from, hwm);
         let now = Instant::now();
         for node in cluster_nodes.iter() {
-            self.members.get_mut(&node.addr).map(|peer| {
+            if let Some(peer) = self.members.get_mut(&node.addr) {
                 peer.last_seen = now;
                 peer.set_role(node.role.clone())
-            });
+            }
         }
     }
 }
