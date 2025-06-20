@@ -454,7 +454,7 @@ mod test {
     use crate::domains::operation_logs::WriteRequest;
     use crate::domains::peers::command::{BannedPeer, RejectionReason};
     use crate::domains::peers::identifier::PeerIdentifier;
-    use crate::domains::peers::peer::{NodeKind, PeerState};
+    use crate::domains::peers::peer::PeerState;
 
     use super::*;
 
@@ -656,42 +656,36 @@ mod test {
                     "127.0.0.1:30004",
                     0,
                     ReplicationId::Key(Uuid::now_v7().to_string()),
-                    NodeKind::Replica,
                     ReplicationRole::Follower,
                 ),
                 PeerState::new(
                     "127.0.0.1:30002",
                     0,
                     ReplicationId::Undecided,
-                    NodeKind::Replica,
                     ReplicationRole::Follower,
                 ),
                 PeerState::new(
                     "127.0.0.1:30003",
                     0,
                     ReplicationId::Undecided,
-                    NodeKind::Replica,
                     ReplicationRole::Follower,
                 ),
                 PeerState::new(
                     "127.0.0.1:30005",
                     0,
                     ReplicationId::Key(Uuid::now_v7().to_string()),
-                    NodeKind::Replica,
                     ReplicationRole::Follower,
                 ),
                 PeerState::new(
                     "127.0.0.1:30006",
                     0,
                     ReplicationId::Key(Uuid::now_v7().to_string()),
-                    NodeKind::Replica,
                     ReplicationRole::Follower,
                 ),
                 PeerState::new(
                     "127.0.0.1:30001",
                     0,
                     ReplicationId::Undecided,
-                    NodeKind::Replica,
                     ReplicationRole::Follower,
                 ),
             ],

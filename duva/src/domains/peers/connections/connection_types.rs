@@ -1,5 +1,5 @@
 use crate::domains::cluster_actors::replication::{ReplicationId, ReplicationRole};
-use crate::domains::peers::peer::{NodeKind, PeerState};
+use crate::domains::peers::peer::PeerState;
 use crate::domains::{TRead, TWrite};
 use crate::prelude::PeerIdentifier;
 
@@ -17,37 +17,19 @@ impl ConnectedPeerInfo {
     pub(crate) fn decide_peer_state(&self, my_repl_id: &ReplicationId) -> PeerState {
         match (my_repl_id, &self.replid) {
             // Peer is undecided - assign as replica with our replication ID
-            | (_, ReplicationId::Undecided) => PeerState::new(
-                &self.id,
-                self.hwm,
-                my_repl_id.clone(),
-                NodeKind::Replica,
-                self.role.clone(),
-            ),
+            | (_, ReplicationId::Undecided) => {
+                PeerState::new(&self.id, self.hwm, my_repl_id.clone(), self.role.clone())
+            },
             // I am undecided - adopt peer's replication ID
-            | (ReplicationId::Undecided, _) => PeerState::new(
-                &self.id,
-                self.hwm,
-                self.replid.clone(),
-                NodeKind::Replica,
-                self.role.clone(),
-            ),
+            | (ReplicationId::Undecided, _) => {
+                PeerState::new(&self.id, self.hwm, self.replid.clone(), self.role.clone())
+            },
             // Matching replication IDs - regular replica
-            | (my_id, peer_id) if my_id == peer_id => PeerState::new(
-                &self.id,
-                self.hwm,
-                self.replid.clone(),
-                NodeKind::Replica,
-                self.role.clone(),
-            ),
+            | (my_id, peer_id) if my_id == peer_id => {
+                PeerState::new(&self.id, self.hwm, self.replid.clone(), self.role.clone())
+            },
             // Different replication IDs - non-data peer
-            | _ => PeerState::new(
-                &self.id,
-                self.hwm,
-                self.replid.clone(),
-                NodeKind::NonData,
-                self.role.clone(),
-            ),
+            | _ => PeerState::new(&self.id, self.hwm, self.replid.clone(), self.role.clone()),
         }
     }
 }
