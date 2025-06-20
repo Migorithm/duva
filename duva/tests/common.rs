@@ -50,6 +50,11 @@ impl ServerEnv {
         ServerEnv { port: get_available_port(), ..self }
     }
 
+    pub fn with_port(mut self, port: u16) -> Self {
+        self.port = port;
+        self
+    }
+
     pub fn with_file_name(mut self, file_name: impl Into<String>) -> Self {
         self.file_name = FileName(Some(file_name.into()));
         self
@@ -129,8 +134,6 @@ pub fn spawn_server_process(env: &ServerEnv) -> anyhow::Result<TestProcessChild>
             if role_res.is_empty() {
                 continue;
             }
-
-            // Accept any valid role response (leader, follower, etc.)
 
             if role_res.is_empty() || (role_res != "leader" && role_res != "follower") {
                 continue;

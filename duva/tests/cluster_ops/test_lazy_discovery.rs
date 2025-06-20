@@ -2,6 +2,7 @@ use crate::common::{Client, ServerEnv, spawn_server_process};
 
 fn run_lazy_discovery_of_leader(with_append_only: bool) -> anyhow::Result<()> {
     // GIVEN
+
     let env1 = ServerEnv::default().with_append_only(with_append_only);
     let mut p1 = spawn_server_process(&env1)?;
 
@@ -35,8 +36,10 @@ fn run_lazy_discovery_of_leader(with_append_only: bool) -> anyhow::Result<()> {
     p1.terminate()?;
 
     let new_env_with_same_topology = ServerEnv::default()
+        .with_port(env1.port)
         .with_topology_path(env1.topology_path)
         .with_append_only(with_append_only);
+
     let p1 = spawn_server_process(&new_env_with_same_topology)?;
 
     let mut p1_h = Client::new(p1.port);
