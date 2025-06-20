@@ -118,7 +118,7 @@ impl StartUpFacade {
             return self.cluster_communication_manager.route_connect_to_server(seed.clone()).await;
         }
 
-        for peer in ENV.stored_peer_states.iter() {
+        for peer in ENV.stored_peer_states.iter().filter(|p| *p.addr != ENV.bind_addr()) {
             if let Err(err) =
                 self.cluster_communication_manager.route_connect_to_server(peer.addr.clone()).await
             {

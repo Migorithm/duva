@@ -126,6 +126,12 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         connect_to: PeerIdentifier,
         optional_callback: Option<tokio::sync::oneshot::Sender<anyhow::Result<()>>>,
     ) {
+        if self.replication.self_identifier() == connect_to {
+            if let Some(cb) = optional_callback {
+                let _ = cb.send(err!("Cannot connect to myself"));
+            }
+            return;
+        }
         let stream = match OutboundStream::new(connect_to, self.replication.clone()).await {
             | Ok(stream) => stream,
             | Err(e) => {
