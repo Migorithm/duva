@@ -970,23 +970,26 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     }
 
     async fn join_peer_network_if_absent(&mut self, cluster_nodes: Vec<PeerState>) {
-        let peers_to_connect = cluster_nodes
-            .into_iter()
-            .filter(|n| {
-                let self_id = self.replication.self_identifier();
-                // ! second condition is to avoid connection collisions
-                n.id() != &self_id && n.id() < &self_id
-            })
-            .filter(|p| !self.members.contains_key(p.id()))
-            .filter(|p| !self.replication.in_ban_list(p.id()))
-            .map(|node| node.id().clone())
-            .next();
+        let self_id = self.replication.self_identifier();
 
-        let Some(peer_to_connect) = peers_to_connect else {
+        // Find the first suitable peer to connect to
+        for node in cluster_nodes {
+            let node_id = node.id();
+
+            // Skip if it's ourselves or has higher ID (avoid connection collisions)
+            if node_id == &self_id || node_id >= &self_id {
+                continue;
+            }
+
+            // Skip if already connected or banned
+            if self.members.contains_key(node_id) || self.replication.in_ban_list(node_id) {
+                continue;
+            }
+
+            // Found a suitable peer - connect and exit
+            self.connect_to_server(node_id.clone(), None).await;
             return;
-        };
-
-        self.connect_to_server(peer_to_connect, None).await;
+        }
     }
 
     // * If the hashring is valid, make a plan to migrate data for each paritition
