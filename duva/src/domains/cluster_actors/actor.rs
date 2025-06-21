@@ -460,10 +460,9 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         }
     }
 
-    #[instrument(level = tracing::Level::INFO, skip(self,cache_manager,cluster_handler), fields(request_from = %repl_leaders))]
+    #[instrument(level = tracing::Level::INFO, skip(self,cache_manager,cluster_handler))]
     pub(crate) async fn start_rebalance(
         &mut self,
-        repl_leaders: PeerIdentifier,
         cache_manager: &CacheManager,
         cluster_handler: Option<ClusterCommandHandler>,
     ) {
