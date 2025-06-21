@@ -473,19 +473,9 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             error!("Follower cannot start rebalance");
             return;
         }
-        let Some(member) = self.members.get(&repl_leaders) else {
-            error!("Received rebalance request from unknown peer: {}", repl_leaders);
-            return;
-        };
 
-        if member.is_replica(&self.replication.replid) {
-            error!("Cannot receive rebalance request from a replica: {}", repl_leaders);
-            return;
-        }
-
-        let Some(new_hash_ring) = self
-            .hash_ring
-            .add_partitions_if_not_exist(vec![(member.replid().clone(), member.id().clone())])
+        let Some(new_hash_ring) =
+            self.hash_ring.add_partitions_if_not_exist(self.shard_leaders().collect())
         else {
             return;
         };
