@@ -54,6 +54,10 @@ impl Peer {
     pub(crate) fn set_role(&mut self, role: ReplicationRole) {
         self.state.role = role;
     }
+
+    pub(crate) fn role(&self) -> ReplicationRole {
+        self.state.role.clone()
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, bincode::Encode, bincode::Decode)]

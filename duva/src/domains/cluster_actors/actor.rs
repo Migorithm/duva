@@ -524,6 +524,13 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         })
     }
 
+    fn shard_leaders(&self) -> impl Iterator<Item = (ReplicationId, PeerIdentifier)> {
+        self.members
+            .iter()
+            .filter(|(_, peer)| peer.role() == ReplicationRole::Leader)
+            .map(|(id, peer)| (peer.replid().clone(), id.clone()))
+    }
+
     fn replicas_mut(&mut self) -> impl Iterator<Item = (&mut Peer, u64)> {
         self.members.values_mut().filter_map(|peer| {
             let match_index = peer.match_index();
