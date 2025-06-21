@@ -36,26 +36,32 @@ impl HashRing {
             .as_millis();
     }
 
-    // Adds a new partition to the existing ring and returns a new ring if the partition doesn't already exist.
-    pub(crate) fn add_partition_if_not_exists(
+    pub(crate) fn add_partitions_if_not_exist(
         &self,
-        repl_id: ReplicationId,
-        leader_id: PeerIdentifier,
+        partitions: Vec<(ReplicationId, PeerIdentifier)>,
     ) -> Option<HashRing> {
-        if self.exists(&repl_id) {
+        // Filter out partitions that already exist
+        let new_partitions: Vec<_> =
+            partitions.into_iter().filter(|(repl_id, _)| !self.exists(repl_id)).collect();
+
+        if new_partitions.is_empty() {
             return None;
         }
 
         let mut res = self.clone();
-        res.pnodes.insert(repl_id.clone(), leader_id);
 
-        let repl_id = Rc::new(repl_id.clone());
-        // Create virtual nodes for better distribution
-        for i in 0..V_NODE_NUM {
-            let virtual_node_id = format!("{}-{}", repl_id, i);
-            let hash = fnv_1a_hash(&virtual_node_id);
+        // Add all new partitions at once
+        for (repl_id, leader_id) in new_partitions {
+            res.pnodes.insert(repl_id.clone(), leader_id);
 
-            res.vnodes.insert(hash, repl_id.clone());
+            let repl_id = Rc::new(repl_id);
+            // Create virtual nodes for better distribution
+            for i in 0..V_NODE_NUM {
+                let virtual_node_id = format!("{}-{}", repl_id, i);
+                let hash = fnv_1a_hash(&virtual_node_id);
+
+                res.vnodes.insert(hash, repl_id.clone());
+            }
         }
 
         res.update_last_modified();

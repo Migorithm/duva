@@ -1,8 +1,6 @@
 use super::*;
 use std::collections::HashMap;
 
-use uuid::Uuid;
-
 use crate::ReplicationId;
 use crate::prelude::PeerIdentifier;
 
@@ -14,12 +12,7 @@ fn replid_create_helper(repl_id: &str) -> ReplicationId {
 #[tokio::test]
 async fn test_no_migration_when_rings_identical() {
     let ring = HashRing::default();
-    let ring = ring
-        .add_partition_if_not_exists(
-            ReplicationId::Key(Uuid::now_v7().to_string()),
-            PeerIdentifier("127.0.0.1:6379".into()),
-        )
-        .unwrap();
+    let ring = ring.add_partitions_if_not_exist(vec![(replid_and_nodeid(6379))]).unwrap();
 
     let keys = vec!["key1".to_string(), "key2".to_string()];
     let tasks = ring.create_migration_tasks(&ring, keys);
@@ -33,13 +26,8 @@ async fn test_empty_keys_migration_plan() {
     let old_ring = HashRing::default();
     let new_ring = HashRing::default();
 
-    let node1 = PeerIdentifier("127.0.0.1:6379".into());
-    let node2 = PeerIdentifier("127.0.0.1:6380".into());
-    let repl_id1 = ReplicationId::Key(Uuid::now_v7().to_string());
-    let repl_id2 = ReplicationId::Key(Uuid::now_v7().to_string());
-
-    let old_ring = old_ring.add_partition_if_not_exists(repl_id1, node1).unwrap();
-    let new_ring = new_ring.add_partition_if_not_exists(repl_id2, node2).unwrap();
+    let old_ring = old_ring.add_partitions_if_not_exist(vec![replid_and_nodeid(6379)]).unwrap();
+    let new_ring = new_ring.add_partitions_if_not_exist(vec![replid_and_nodeid(6380)]).unwrap();
 
     let empty_keys: Vec<String> = Vec::new();
     let tasks = old_ring.create_migration_tasks(&new_ring, empty_keys);
@@ -51,33 +39,31 @@ async fn test_empty_keys_migration_plan() {
 #[tokio::test]
 async fn test_single_node_ownership_change() {
     // Test scenario: 3 nodes in ring, one node (node2) is replaced by node4
-    let replid1 = replid_create_helper("node1");
-    let replid2 = replid_create_helper("node2");
-    let replid3 = replid_create_helper("node3");
-    let replid4 = replid_create_helper("node4");
+
+    let (replid1, nodeid1) = replid_and_nodeid(6379);
+    let (replid2, nodeid2) = replid_and_nodeid(6380);
+    let (replid3, nodeid3) = replid_and_nodeid(6381);
+    let (replid4, nodeid4) = replid_and_nodeid(6382);
 
     // Setup old ring
     let old_ring = HashRing::default();
+
     let old_ring = old_ring
-        .add_partition_if_not_exists(replid1.clone(), PeerIdentifier("peer1".into()))
-        .unwrap();
-    let old_ring = old_ring
-        .add_partition_if_not_exists(replid2.clone(), PeerIdentifier("peer2".into()))
-        .unwrap();
-    let old_ring = old_ring
-        .add_partition_if_not_exists(replid3.clone(), PeerIdentifier("peer3".into()))
+        .add_partitions_if_not_exist(vec![
+            (replid1.clone(), nodeid1.clone()),
+            (replid2.clone(), nodeid2),
+            (replid3.clone(), nodeid3.clone()),
+        ])
         .unwrap();
 
     // Setup new ring
     let new_ring = HashRing::default();
     let new_ring = new_ring
-        .add_partition_if_not_exists(replid1.clone(), PeerIdentifier("peer1".into()))
-        .unwrap();
-    let new_ring = new_ring
-        .add_partition_if_not_exists(replid4.clone(), PeerIdentifier("peer4".into()))
-        .unwrap(); // node2 -> node4
-    let new_ring = new_ring
-        .add_partition_if_not_exists(replid3.clone(), PeerIdentifier("peer3".into()))
+        .add_partitions_if_not_exist(vec![
+            (replid1.clone(), nodeid1.clone()),
+            (replid4.clone(), nodeid4),
+            (replid3.clone(), nodeid3.clone()),
+        ])
         .unwrap();
 
     let test_keys: Vec<String> = (0..10000).map(|i| format!("test_key_{}", i)).collect();
@@ -159,33 +145,24 @@ async fn test_multiple_ownership_changes() {
     // Setup old ring
     let old_ring = HashRing::default();
     let old_ring = old_ring
-        .add_partition_if_not_exists(replid1.clone(), PeerIdentifier("peer1".into()))
-        .unwrap();
-    let old_ring = old_ring
-        .add_partition_if_not_exists(replid2.clone(), PeerIdentifier("peer2".into()))
-        .unwrap();
-    let old_ring = old_ring
-        .add_partition_if_not_exists(replid3.clone(), PeerIdentifier("peer3".into()))
-        .unwrap();
-    let old_ring = old_ring
-        .add_partition_if_not_exists(replid4.clone(), PeerIdentifier("peer4".into()))
+        .add_partitions_if_not_exist(vec![
+            (replid1.clone(), PeerIdentifier("peer1".into())),
+            (replid2.clone(), PeerIdentifier("peer2".into())),
+            (replid3.clone(), PeerIdentifier("peer3".into())),
+            (replid4.clone(), PeerIdentifier("peer4".into())),
+        ])
         .unwrap();
 
     // Setup new ring
     let new_ring = HashRing::default();
     let new_ring = new_ring
-        .add_partition_if_not_exists(replid5.clone(), PeerIdentifier("peer5".into()))
+        .add_partitions_if_not_exist(vec![
+            (replid5.clone(), PeerIdentifier("peer5".into())),
+            (replid6.clone(), PeerIdentifier("peer6".into())),
+            (replid3.clone(), PeerIdentifier("peer3".into())),
+            (replid4.clone(), PeerIdentifier("peer4".into())),
+        ])
         .unwrap();
-    let new_ring = new_ring
-        .add_partition_if_not_exists(replid6.clone(), PeerIdentifier("peer6".into()))
-        .unwrap();
-    let new_ring = new_ring
-        .add_partition_if_not_exists(replid3.clone(), PeerIdentifier("peer3".into()))
-        .unwrap();
-    let new_ring = new_ring
-        .add_partition_if_not_exists(replid4.clone(), PeerIdentifier("peer4".into()))
-        .unwrap();
-
     let test_keys: Vec<String> = (0..5000).map(|i| format!("test_key_{}", i)).collect();
 
     // Identify expected migrations

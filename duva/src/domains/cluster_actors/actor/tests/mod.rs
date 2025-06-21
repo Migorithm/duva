@@ -247,6 +247,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         port: u16,
 
         repl_id: Option<ReplicationId>,
+        is_leader: bool,
     ) -> (FakeReadWrite, PeerIdentifier) {
         let buf = FakeReadWrite::new();
         let (id, peer) = create_peer_helper(
@@ -254,7 +255,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             0,
             &repl_id.unwrap_or_else(|| self.replication.replid.clone()),
             port,
-            ReplicationRole::Follower,
+            if is_leader { ReplicationRole::Leader } else { ReplicationRole::Follower },
             buf.clone(),
         );
 

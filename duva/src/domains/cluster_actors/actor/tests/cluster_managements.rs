@@ -11,19 +11,22 @@ async fn test_cluster_nodes() {
 
     // followers
     for port in [6379, 6380] {
-        cluster_actor.test_add_peer(port, None);
+        cluster_actor.test_add_peer(port, None, false);
     }
 
     // leader for different shard
     let second_shard_repl_id = ReplicationId::Key(uuid::Uuid::now_v7().to_string());
     let second_shard_leader_port = rand::random::<u16>();
 
-    let (_, second_shard_leader_identifier) =
-        cluster_actor.test_add_peer(second_shard_leader_port, Some(second_shard_repl_id.clone()));
+    let (_, second_shard_leader_identifier) = cluster_actor.test_add_peer(
+        second_shard_leader_port,
+        Some(second_shard_repl_id.clone()),
+        true,
+    );
 
     // follower for different shard
     for port in [2655, 2653] {
-        cluster_actor.test_add_peer(port, Some(second_shard_repl_id.clone()));
+        cluster_actor.test_add_peer(port, Some(second_shard_repl_id.clone()), false);
     }
 
     // WHEN
@@ -120,7 +123,7 @@ async fn test_topology_broadcast_on_hash_ring_change() {
 
     // Setup old ring
     let hash_ring = HashRing::default()
-        .add_partition_if_not_exists(replid.clone(), PeerIdentifier("peer1".into()))
+        .add_partitions_if_not_exist(vec![(replid.clone(), PeerIdentifier("peer1".into()))])
         .unwrap();
 
     cluster_actor.hash_ring = hash_ring.clone();
@@ -152,7 +155,7 @@ async fn test_topology_broadcast_on_hash_ring_change() {
 #[tokio::test]
 async fn test_update_cluster_members_updates_fields() {
     let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
-    let (_, peer_id) = cluster_actor.test_add_peer(6379, None);
+    let (_, peer_id) = cluster_actor.test_add_peer(6379, None, false);
     let initial = cluster_actor.members.get(&peer_id).unwrap();
 
     let initial_last_seen = initial.last_seen;
@@ -172,4 +175,59 @@ async fn test_update_cluster_members_updates_fields() {
     assert_eq!(updated.state().role, ReplicationRole::Leader);
     assert_ne!(updated.state().role, initial_role);
     assert!(updated.last_seen > initial_last_seen);
+}
+
+#[tokio::test]
+async fn test_shard_leaders() {
+    // GIVEN
+    let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
+
+    // Create different replication IDs for different shards
+    let shard1_replid = ReplicationId::Key("shard1".into());
+    let shard2_replid = ReplicationId::Key("shard2".into());
+    let shard3_replid = ReplicationId::Key("shard3".into());
+
+    // Add followers (should not be included in shard_leaders)
+    for port in [6379, 6380] {
+        cluster_actor.test_add_peer(port, Some(shard1_replid.clone()), false);
+    }
+
+    // Add leaders for different shards
+    let (_, leader1_id) = cluster_actor.test_add_peer(7001, Some(shard1_replid.clone()), true);
+    let (_, leader2_id) = cluster_actor.test_add_peer(7002, Some(shard2_replid.clone()), true);
+    let (_, leader3_id) = cluster_actor.test_add_peer(7003, Some(shard3_replid.clone()), true);
+
+    // WHEN
+    let shard_leaders: Vec<(ReplicationId, PeerIdentifier)> =
+        cluster_actor.shard_leaders().collect();
+
+    // THEN
+    assert_eq!(shard_leaders.len(), 3);
+
+    // Verify all expected leaders are present
+    let expected_leaders = vec![
+        (shard1_replid.clone(), leader1_id.clone()),
+        (shard2_replid.clone(), leader2_id.clone()),
+        (shard3_replid.clone(), leader3_id.clone()),
+    ];
+
+    for expected_leader in expected_leaders {
+        assert!(
+            shard_leaders.contains(&expected_leader),
+            "Expected leader {:?} not found in shard_leaders",
+            expected_leader
+        );
+    }
+
+    // Verify no followers are included
+    for (_replid, peer_id) in shard_leaders {
+        let peer = cluster_actor.members.get(&peer_id).unwrap();
+        assert_eq!(
+            peer.role(),
+            ReplicationRole::Leader,
+            "Peer {} should be a leader but has role {:?}",
+            peer_id,
+            peer.role()
+        );
+    }
 }

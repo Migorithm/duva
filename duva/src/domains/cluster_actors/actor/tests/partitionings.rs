@@ -44,7 +44,7 @@ async fn test_rebalance_request_to_replica() {
     // GIVEN
     let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
 
-    let (buf, _) = cluster_actor.test_add_peer(6559, None);
+    let (buf, _) = cluster_actor.test_add_peer(6559, None, false);
 
     // WHEN
     let request_to = PeerIdentifier("127.0.0.1:6559".into());
@@ -67,8 +67,11 @@ async fn test_rebalance_request_happypath() {
     // GIVEN
     let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
 
-    let (buf, _) = cluster_actor
-        .test_add_peer(6559, Some(ReplicationId::Key(uuid::Uuid::now_v7().to_string())));
+    let (buf, _) = cluster_actor.test_add_peer(
+        6559,
+        Some(ReplicationId::Key(uuid::Uuid::now_v7().to_string())),
+        true,
+    );
 
     // WHEN
     let request_to = PeerIdentifier("127.0.0.1:6559".into());
@@ -87,9 +90,7 @@ async fn test_start_rebalance_before_connection_is_made() {
     let (_hwm, cache_manager) = cache_manager_create_helper();
 
     // WHEN
-    cluster_actor
-        .start_rebalance(PeerIdentifier("127.0.0.1:6559".into()), &cache_manager, None)
-        .await;
+    cluster_actor.start_rebalance(&cache_manager, None).await;
 
     // THEN
     // No pending requests should be created since the member is not connected
@@ -98,30 +99,14 @@ async fn test_start_rebalance_before_connection_is_made() {
 
 // ! Failcase
 #[tokio::test]
-async fn test_start_rebalance_from_replica() {
+async fn test_start_rebalance_only_when_replica_is_found() {
     // GIVEN
     let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
     let (_hwm, cache_manager) = cache_manager_create_helper();
-    let (buf, peer_id) = cluster_actor.test_add_peer(6559, None);
+    let (buf, _) = cluster_actor.test_add_peer(6559, None, false);
 
     // WHEN
-    cluster_actor.start_rebalance(peer_id, &cache_manager, None).await;
-
-    // THEN
-    assert!(cluster_actor.pending_requests.is_none());
-    let msg = buf.lock().await.pop_front();
-    assert!(msg.is_none());
-}
-
-#[tokio::test]
-async fn test_start_rebalance_to_follower() {
-    // GIVEN
-    let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Follower).await;
-    let (_hwm, cache_manager) = cache_manager_create_helper();
-    let (buf, peer_id) = cluster_actor.test_add_peer(6559, None);
-
-    // WHEN
-    cluster_actor.start_rebalance(peer_id, &cache_manager, None).await;
+    cluster_actor.start_rebalance(&cache_manager, None).await;
 
     // THEN
     assert!(cluster_actor.pending_requests.is_none());
@@ -134,11 +119,14 @@ async fn test_start_rebalance_happy_path() {
     // GIVEN
     let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
     let (_hwm, cache_manager) = cache_manager_create_helper();
-    let (buf, peer_id) = cluster_actor
-        .test_add_peer(6559, Some(ReplicationId::Key(uuid::Uuid::now_v7().to_string())));
+    let (buf, _) = cluster_actor.test_add_peer(
+        6559,
+        Some(ReplicationId::Key(uuid::Uuid::now_v7().to_string())),
+        true,
+    );
 
     // WHEN
-    cluster_actor.start_rebalance(peer_id, &cache_manager, None).await;
+    cluster_actor.start_rebalance(&cache_manager, None).await;
 
     // THEN
     assert!(cluster_actor.pending_requests.is_some());
@@ -165,14 +153,12 @@ async fn test_maybe_update_hashring_when_noplan_is_made() {
     // Create hash ring for coordinating node
     let hash_ring = HashRing::default();
     let coordinator_replid = ReplicationId::Key(uuid::Uuid::now_v7().to_string());
+
     let hash_ring = hash_ring
-        .add_partition_if_not_exists(coordinator_replid, PeerIdentifier::new("127.0.0.1", 5999))
-        .unwrap();
-    let hash_ring = hash_ring
-        .add_partition_if_not_exists(
-            cluster_actor.replication.replid.clone(),
-            cluster_actor.replication.self_identifier(),
-        )
+        .add_partitions_if_not_exist(vec![
+            (coordinator_replid, PeerIdentifier::new("127.0.0.1", 5999)),
+            (cluster_actor.replication.replid.clone(), cluster_actor.replication.self_identifier()),
+        ])
         .unwrap();
 
     // WHEN
@@ -367,7 +353,7 @@ async fn test_migrate_keys_retrieves_actual_data() {
 
     let (_hwm, cache_manager) = cache_manager_create_helper();
     let target_repl_id = ReplicationId::Key("data_target".to_string());
-    let (_, _) = cluster_actor.test_add_peer(6564, Some(target_repl_id.clone()));
+    let (_, _) = cluster_actor.test_add_peer(6564, Some(target_repl_id.clone()), true);
 
     // Set up test data in cache
     cache_manager.route_set(CacheEntry::new("test_key_1", "value_1"), 1).await.unwrap();
@@ -408,12 +394,12 @@ async fn test_receive_batch_success_path_when_consensus_is_required() {
     let current_index = cluster_actor.logger.last_log_index;
     let peer_replid = ReplicationId::Key("repl_id_for_other_node".to_string());
 
-    let (repl_buf, _) = cluster_actor.test_add_peer(6579, None);
+    let (repl_buf, _) = cluster_actor.test_add_peer(6579, None, false);
 
-    let (_, sender_peer_id) = cluster_actor.test_add_peer(6567, Some(peer_replid.clone()));
+    let (_, sender_peer_id) = cluster_actor.test_add_peer(6567, Some(peer_replid.clone()), true);
     cluster_actor.hash_ring = cluster_actor
         .hash_ring
-        .add_partition_if_not_exists(peer_replid.clone(), sender_peer_id.clone())
+        .add_partitions_if_not_exist(vec![(peer_replid.clone(), sender_peer_id.clone())])
         .unwrap();
 
     let cache_entries = cache_entries_create_helper(&[("success_key3", "value2")]);
@@ -449,10 +435,10 @@ async fn test_receive_batch_success_path_when_noreplica_found() {
     let current_index = cluster_actor.logger.last_log_index;
     let peer_replid = ReplicationId::Key("repl_id_for_other_node".to_string());
 
-    let (_, sender_peer_id) = cluster_actor.test_add_peer(6567, Some(peer_replid.clone()));
+    let (_, sender_peer_id) = cluster_actor.test_add_peer(6567, Some(peer_replid.clone()), true);
     cluster_actor.hash_ring = cluster_actor
         .hash_ring
-        .add_partition_if_not_exists(peer_replid.clone(), sender_peer_id.clone())
+        .add_partitions_if_not_exist(vec![(peer_replid.clone(), sender_peer_id.clone())])
         .unwrap();
 
     let cache_entries =
@@ -476,14 +462,17 @@ async fn test_receive_batch_validation_failure_keys_not_belonging_to_node() {
     let hash_ring = HashRing::default();
     let other_node_replid = ReplicationId::Key("other_node".to_string());
     let hash_ring = hash_ring
-        .add_partition_if_not_exists(other_node_replid, PeerIdentifier("127.0.0.1:5000".into()))
+        .add_partitions_if_not_exist(vec![(
+            other_node_replid,
+            PeerIdentifier("127.0.0.1:5000".into()),
+        )])
         .unwrap();
     cluster_actor.hash_ring = hash_ring;
 
     // ! this is the one for receiving actor
 
     let (_hwm, cache_manager) = cache_manager_create_helper();
-    let (message_buf, sender_peer_id) = cluster_actor.test_add_peer(6565, None);
+    let (message_buf, sender_peer_id) = cluster_actor.test_add_peer(6565, None, true);
 
     let cache_entries = cache_entries_create_helper(&[("key1", "value1"), ("key2", "value2")]);
     let migrate_batch = migration_batch_create_helper("validation_test", cache_entries);
@@ -575,8 +564,8 @@ async fn test_find_target_peer_for_replication() {
     let repl_id_1 = ReplicationId::Key("repl_1".to_string());
     let repl_id_2 = ReplicationId::Key("repl_2".to_string());
 
-    let (_, peer_id_1) = cluster_actor.test_add_peer(6561, Some(repl_id_1.clone()));
-    let (_, peer_id_2) = cluster_actor.test_add_peer(6562, Some(repl_id_2.clone()));
+    let (_, peer_id_1) = cluster_actor.test_add_peer(6561, Some(repl_id_1.clone()), true);
+    let (_, peer_id_2) = cluster_actor.test_add_peer(6562, Some(repl_id_2.clone()), true);
 
     // WHEN & THEN
     assert_eq!(cluster_actor.peerid_by_replid(&repl_id_1), Some(&peer_id_1));
@@ -708,14 +697,14 @@ async fn test_start_rebalance_schedules_migration_batches() {
 
     // ! test_key_1 and test_key_2 are migrated to testnode_a
     let target_repl_id = ReplicationId::Key("testnode_a".into());
-    let (buf, peer_id) =
-        cluster_actor.test_add_peer(6570, Some(ReplicationId::Key("testnode_a".into())));
+    let (buf, _leader_for_diff_shard) =
+        cluster_actor.test_add_peer(6570, Some(ReplicationId::Key("testnode_a".into())), true);
 
     let (tx, mut rx) = tokio::sync::mpsc::channel(2);
     let cluster_handler = ClusterCommandHandler(tx);
 
     // WHEN
-    cluster_actor.start_rebalance(peer_id.clone(), &cache_manager, Some(cluster_handler)).await;
+    cluster_actor.start_rebalance(&cache_manager, Some(cluster_handler)).await;
 
     // THEN
     // 1. Verify heartbeat was sent immediately (synchronous part)
@@ -769,12 +758,10 @@ async fn test_maybe_update_hashring_replica_only_updates_ring() {
     // Create a new hash ring with different configuration
     let new_node_replid = ReplicationId::Key("new_node".to_string());
     let new_ring = HashRing::default()
-        .add_partition_if_not_exists(new_node_replid, PeerIdentifier::new("127.0.0.1", 6000))
-        .unwrap()
-        .add_partition_if_not_exists(
-            cluster_actor.replication.replid.clone(),
-            cluster_actor.replication.self_identifier(),
-        )
+        .add_partitions_if_not_exist(vec![
+            (new_node_replid, PeerIdentifier::new("127.0.0.1", 6000)),
+            (cluster_actor.replication.replid.clone(), cluster_actor.replication.self_identifier()),
+        ])
         .unwrap();
 
     // WHEN - Replica receives hash ring update
