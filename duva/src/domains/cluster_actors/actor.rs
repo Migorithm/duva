@@ -977,8 +977,8 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
                 // ! second condition is to avoid connection collisions
                 n.id() != &self_id && n.id() < &self_id
             })
-            .filter(|p| !self.members.contains_key(&p.id()))
-            .filter(|p| !self.replication.in_ban_list(&p.id()))
+            .filter(|p| !self.members.contains_key(p.id()))
+            .filter(|p| !self.replication.in_ban_list(p.id()))
             .map(|node| node.id().clone())
             .next();
 
