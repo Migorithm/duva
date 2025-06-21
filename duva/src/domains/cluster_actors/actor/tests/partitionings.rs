@@ -165,14 +165,12 @@ async fn test_maybe_update_hashring_when_noplan_is_made() {
     // Create hash ring for coordinating node
     let hash_ring = HashRing::default();
     let coordinator_replid = ReplicationId::Key(uuid::Uuid::now_v7().to_string());
+
     let hash_ring = hash_ring
-        .add_partition_if_not_exists(coordinator_replid, PeerIdentifier::new("127.0.0.1", 5999))
-        .unwrap();
-    let hash_ring = hash_ring
-        .add_partition_if_not_exists(
-            cluster_actor.replication.replid.clone(),
-            cluster_actor.replication.self_identifier(),
-        )
+        .add_partitions_if_not_exist(vec![
+            (coordinator_replid, PeerIdentifier::new("127.0.0.1", 5999)),
+            (cluster_actor.replication.replid.clone(), cluster_actor.replication.self_identifier()),
+        ])
         .unwrap();
 
     // WHEN
@@ -413,7 +411,7 @@ async fn test_receive_batch_success_path_when_consensus_is_required() {
     let (_, sender_peer_id) = cluster_actor.test_add_peer(6567, Some(peer_replid.clone()));
     cluster_actor.hash_ring = cluster_actor
         .hash_ring
-        .add_partition_if_not_exists(peer_replid.clone(), sender_peer_id.clone())
+        .add_partitions_if_not_exist(vec![(peer_replid.clone(), sender_peer_id.clone())])
         .unwrap();
 
     let cache_entries = cache_entries_create_helper(&[("success_key3", "value2")]);
@@ -452,7 +450,7 @@ async fn test_receive_batch_success_path_when_noreplica_found() {
     let (_, sender_peer_id) = cluster_actor.test_add_peer(6567, Some(peer_replid.clone()));
     cluster_actor.hash_ring = cluster_actor
         .hash_ring
-        .add_partition_if_not_exists(peer_replid.clone(), sender_peer_id.clone())
+        .add_partitions_if_not_exist(vec![(peer_replid.clone(), sender_peer_id.clone())])
         .unwrap();
 
     let cache_entries =
@@ -476,7 +474,10 @@ async fn test_receive_batch_validation_failure_keys_not_belonging_to_node() {
     let hash_ring = HashRing::default();
     let other_node_replid = ReplicationId::Key("other_node".to_string());
     let hash_ring = hash_ring
-        .add_partition_if_not_exists(other_node_replid, PeerIdentifier("127.0.0.1:5000".into()))
+        .add_partitions_if_not_exist(vec![(
+            other_node_replid,
+            PeerIdentifier("127.0.0.1:5000".into()),
+        )])
         .unwrap();
     cluster_actor.hash_ring = hash_ring;
 
@@ -769,12 +770,10 @@ async fn test_maybe_update_hashring_replica_only_updates_ring() {
     // Create a new hash ring with different configuration
     let new_node_replid = ReplicationId::Key("new_node".to_string());
     let new_ring = HashRing::default()
-        .add_partition_if_not_exists(new_node_replid, PeerIdentifier::new("127.0.0.1", 6000))
-        .unwrap()
-        .add_partition_if_not_exists(
-            cluster_actor.replication.replid.clone(),
-            cluster_actor.replication.self_identifier(),
-        )
+        .add_partitions_if_not_exist(vec![
+            (new_node_replid, PeerIdentifier::new("127.0.0.1", 6000)),
+            (cluster_actor.replication.replid.clone(), cluster_actor.replication.self_identifier()),
+        ])
         .unwrap();
 
     // WHEN - Replica receives hash ring update

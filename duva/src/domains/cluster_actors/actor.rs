@@ -158,7 +158,8 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     pub(crate) fn follower_setup(&mut self, replid: ReplicationId, leader_id: PeerIdentifier) {
         self.set_repl_id(replid.clone());
         let hashring = HashRing::default();
-        let Some(new_hashring) = hashring.add_partition_if_not_exists(replid, leader_id) else {
+        let Some(new_hashring) = hashring.add_partitions_if_not_exist(vec![(replid, leader_id)])
+        else {
             return;
         };
         self.hash_ring = new_hashring;
@@ -185,10 +186,10 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
         let (tx, _) = tokio::sync::broadcast::channel::<Topology>(100);
         let hash_ring = HashRing::default()
-            .add_partition_if_not_exists(
+            .add_partitions_if_not_exist(vec![(
                 init_repl_state.replid.clone(),
                 init_repl_state.self_identifier(),
-            )
+            )])
             .unwrap();
 
         Self {
@@ -459,10 +460,10 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         }
     }
 
-    #[instrument(level = tracing::Level::INFO, skip(self,cache_manager,cluster_handler), fields(request_from = %request_from))]
+    #[instrument(level = tracing::Level::INFO, skip(self,cache_manager,cluster_handler), fields(request_from = %repl_leaders))]
     pub(crate) async fn start_rebalance(
         &mut self,
-        request_from: PeerIdentifier,
+        repl_leaders: PeerIdentifier,
         cache_manager: &CacheManager,
         cluster_handler: Option<ClusterCommandHandler>,
     ) {
@@ -472,19 +473,19 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             error!("Follower cannot start rebalance");
             return;
         }
-        let Some(member) = self.members.get(&request_from) else {
-            error!("Received rebalance request from unknown peer: {}", request_from);
+        let Some(member) = self.members.get(&repl_leaders) else {
+            error!("Received rebalance request from unknown peer: {}", repl_leaders);
             return;
         };
 
         if member.is_replica(&self.replication.replid) {
-            error!("Cannot receive rebalance request from a replica: {}", request_from);
+            error!("Cannot receive rebalance request from a replica: {}", repl_leaders);
             return;
         }
 
         let Some(new_hash_ring) = self
             .hash_ring
-            .add_partition_if_not_exists(member.replid().clone(), member.id().clone())
+            .add_partitions_if_not_exist(vec![(member.replid().clone(), member.id().clone())])
         else {
             return;
         };
