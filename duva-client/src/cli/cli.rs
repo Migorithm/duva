@@ -1,4 +1,5 @@
 use clap::Parser;
+use duva::prelude::PeerIdentifier;
 
 #[derive(Parser)]
 #[command(name = "redis-cli", version = "1.0", about = "A simple interactive Redis CLI in Rust")]
@@ -11,7 +12,7 @@ pub(crate) struct Cli {
 }
 
 impl Cli {
-    pub(crate) fn address(&self) -> String {
-        format!("{}:{}", self.host, self.port)
+    pub(crate) fn address(&self) -> PeerIdentifier {
+        PeerIdentifier::new(self.host.as_str(), self.port)
     }
 }
