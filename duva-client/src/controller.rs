@@ -6,6 +6,7 @@ use crate::broker::BrokerMessage;
 
 use duva::domains::caches::cache_manager::IndexedValueCodec;
 use duva::domains::query_io::QueryIO;
+use duva::prelude::PeerIdentifier;
 use duva::prelude::anyhow;
 use duva::prelude::bytes::Bytes;
 use duva::prelude::tokio;
@@ -19,7 +20,7 @@ pub struct ClientController<T> {
 }
 
 impl<T> ClientController<T> {
-    pub async fn new(editor: T, server_addr: &str) -> anyhow::Result<Self> {
+    pub async fn new(editor: T, server_addr: &PeerIdentifier) -> anyhow::Result<Self> {
         let (r, w, auth_response) = Broker::authenticate(server_addr, None).await?;
 
         let (broker_tx, rx) = tokio::sync::mpsc::channel::<BrokerMessage>(100);
