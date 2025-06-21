@@ -62,7 +62,7 @@ impl StartUpFacade {
             ReplicationId::Key(
                 ENV.stored_peer_states
                     .iter()
-                    .find(|p| *p.addr == ENV.bind_addr())
+                    .find(|p| p.is_self(ENV.bind_addr().as_str()))
                     .map(|p| p.replid.to_string())
                     .unwrap_or_else(|| Uuid::now_v7().to_string()),
             )
@@ -118,9 +118,9 @@ impl StartUpFacade {
             return self.cluster_communication_manager.route_connect_to_server(seed.clone()).await;
         }
 
-        for peer in ENV.stored_peer_states.iter().filter(|p| *p.addr != ENV.bind_addr()) {
+        for peer in ENV.stored_peer_states.iter().filter(|p| !p.is_self(&ENV.bind_addr())) {
             if let Err(err) =
-                self.cluster_communication_manager.route_connect_to_server(peer.addr.clone()).await
+                self.cluster_communication_manager.route_connect_to_server(peer.id().clone()).await
             {
                 error!("{err}");
             }

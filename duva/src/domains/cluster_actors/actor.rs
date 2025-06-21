@@ -975,11 +975,11 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             .filter(|n| {
                 let self_id = self.replication.self_identifier();
                 // ! second condition is to avoid connection collisions
-                n.addr != self_id && n.addr < self_id
+                n.id() != &self_id && n.id() < &self_id
             })
-            .filter(|p| !self.members.contains_key(&p.addr))
-            .filter(|p| !self.replication.in_ban_list(&p.addr))
-            .map(|node| node.addr)
+            .filter(|p| !self.members.contains_key(&p.id()))
+            .filter(|p| !self.replication.in_ban_list(&p.id()))
+            .map(|node| node.id().clone())
             .next();
 
         let Some(peer_to_connect) = peers_to_connect else {
@@ -1267,7 +1267,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         self.update_peer_index(from, hwm);
         let now = Instant::now();
         for node in cluster_nodes.iter() {
-            if let Some(peer) = self.members.get_mut(&node.addr) {
+            if let Some(peer) = self.members.get_mut(node.id()) {
                 peer.last_seen = now;
                 peer.set_role(node.role.clone())
             }

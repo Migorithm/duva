@@ -44,21 +44,7 @@ impl WriteRequest {
         Ok(ops)
     }
 
-    /// Returns a representative key for single-key operations.
-    /// Returns None for multi-key operations (Delete, BulkSet) where a single key doesn't make sense.
-    pub(crate) fn key(&self) -> Option<&str> {
-        match self {
-            | WriteRequest::Set { key, .. } => Some(key),
-            | WriteRequest::Append { key, .. } => Some(key),
-            | WriteRequest::Incr { key, .. } => Some(key),
-            | WriteRequest::Decr { key, .. } => Some(key),
-            | WriteRequest::Delete { .. } => None, // Multiple keys, no single representative
-            | WriteRequest::MSet { .. } => None,   // Multiple entries, no single representative
-        }
-    }
-
     /// Returns all keys involved in the operation.
-    #[allow(unused)]
     pub(crate) fn all_keys(&self) -> Vec<&str> {
         match self {
             | WriteRequest::Set { key, .. } => vec![key],

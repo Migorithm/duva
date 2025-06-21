@@ -115,7 +115,7 @@ impl OutboundStream {
         let peer_state = connection_info.decide_peer_state(&self.my_repl_info.replid);
 
         let kill_switch =
-            PeerListener::spawn(self.r, cluster_handler.clone(), peer_state.addr.clone());
+            PeerListener::spawn(self.r, cluster_handler.clone(), peer_state.id().clone());
         let peer = Peer::new(WriteConnected(Box::new(self.w)), peer_state, kill_switch);
 
         let _ = cluster_handler.send(ConnectionMessage::AddPeer(peer, optional_callback)).await;

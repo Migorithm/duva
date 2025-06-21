@@ -24,7 +24,7 @@ impl Peer {
         Self { w_conn: w.into(), listener_kill_trigger, last_seen: Instant::now(), state }
     }
     pub(crate) fn id(&self) -> &PeerIdentifier {
-        &self.state.addr
+        &self.state.id
     }
     pub(crate) fn state(&self) -> &PeerState {
         &self.state
@@ -58,7 +58,7 @@ impl Peer {
 
 #[derive(Clone, Debug, PartialEq, bincode::Encode, bincode::Decode)]
 pub struct PeerState {
-    pub(crate) addr: PeerIdentifier,
+    id: PeerIdentifier,
     pub(crate) match_index: u64,
     pub(crate) replid: ReplicationId,
     pub(crate) role: ReplicationRole,
@@ -69,10 +69,13 @@ impl PeerState {
         id: &str,
         match_index: u64,
         replid: ReplicationId,
-
         role: ReplicationRole,
     ) -> Self {
-        Self { addr: id.bind_addr().into(), match_index, replid, role }
+        Self { id: id.bind_addr().into(), match_index, replid, role }
+    }
+
+    pub(crate) fn id(&self) -> &PeerIdentifier {
+        &self.id
     }
 
     pub(crate) fn parse_node_info(line: &str) -> Option<Self> {
@@ -90,7 +93,7 @@ impl PeerState {
         let match_index = match_index.parse().unwrap_or_default();
 
         Some(Self {
-            addr: addr.bind_addr().into(),
+            id: addr.bind_addr().into(),
             replid: repl_id.into(),
             match_index,
             role: role.to_string().into(),
@@ -148,13 +151,17 @@ impl PeerState {
     }
 
     pub(crate) fn format(&self, peer_id: &PeerIdentifier) -> String {
-        if self.addr == *peer_id {
+        if self.id == *peer_id {
             return format!(
                 "{} myself,{} 0 {} {}",
-                self.addr, self.replid, self.match_index, self.role
+                self.id, self.replid, self.match_index, self.role
             );
         }
-        format!("{} {} 0 {} {}", self.addr, self.replid, self.match_index, self.role)
+        format!("{} {} 0 {} {}", self.id, self.replid, self.match_index, self.role)
+    }
+
+    pub(crate) fn is_self(&self, bind_addr: &str) -> bool {
+        self.id.bind_addr() == bind_addr
     }
 }
 
