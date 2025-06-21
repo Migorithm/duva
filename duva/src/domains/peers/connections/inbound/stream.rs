@@ -133,7 +133,7 @@ impl InboundStream {
 
         let peer_state = self.connected_peer_state();
         let kill_switch =
-            PeerListener::spawn(self.r, cluster_handler.clone(), peer_state.addr.clone());
+            PeerListener::spawn(self.r, cluster_handler.clone(), peer_state.id().clone());
         let peer = Peer::new(WriteConnected(Box::new(self.w)), peer_state, kill_switch);
         let _ = cluster_handler.send(ConnectionMessage::AddPeer(peer, None)).await;
         Ok(())
