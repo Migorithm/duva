@@ -91,33 +91,35 @@ Duva includes two pluggable replicated log implementations:
 ```mermaid
 sequenceDiagram
     actor C as Client
-    participant CC as ClientRequestController
-    participant Stream
-    participant CA as CacheActor
-    participant Config as ConfigManager
-    
+    Box Server
+        participant Listener
+        participant Stream as ClientStream
+
+        participant CL as ClusterActor
+        participant CA as CacheActor
+    end
     
     loop wait for connection
-        activate CC
-        C ->> CC: Make Stream
-        CC --) Stream : Spawn Stream
-        deactivate CC    
+        activate Listener
+        C ->> Listener: Connect
+        Listener --) Stream : Create
+        deactivate Listener
     end
 
     loop 
         Stream --)+ Stream: wait & receive request
         rect rgb(108, 161, 166)    
-            alt cache
-                Stream -) CA: route request
-                CA -) Stream: return response
-            else config
-                Stream -) Config: route request
-                Config -) Stream: return response
+
+            alt Write Request
+                Stream -->> CL: route request
+                CL -->> Stream: return response
             end
-                Stream -)- Stream: send response
-            
+            Stream -->> CA: route request
+            CA -->> Stream: return respons
+            Stream -->> C: return response
         end
     end
+
 
 ```
 
@@ -128,7 +130,6 @@ sequenceDiagram
 sequenceDiagram
     participant s as Leader    
     actor Cache
-    actor Config
     actor Cluster
     actor peer_listener
     
@@ -138,8 +139,7 @@ sequenceDiagram
 
     par 
         s-->>Cache: spawn
-    and 
-        s-->>Config: spawn
+        
     and 
         s-->>Cluster: spawn
         Cluster --> Cluster : send heartbeat
