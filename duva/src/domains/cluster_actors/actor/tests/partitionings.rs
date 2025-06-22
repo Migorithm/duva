@@ -90,7 +90,7 @@ async fn test_start_rebalance_before_connection_is_made() {
     let (_hwm, cache_manager) = cache_manager_create_helper();
 
     // WHEN
-    cluster_actor.start_rebalance(&cache_manager, None).await;
+    cluster_actor.start_rebalance(&cache_manager).await;
 
     // THEN
     // No pending requests should be created since the member is not connected
@@ -106,7 +106,7 @@ async fn test_start_rebalance_only_when_replica_is_found() {
     let (buf, _) = cluster_actor.test_add_peer(6559, None, false);
 
     // WHEN
-    cluster_actor.start_rebalance(&cache_manager, None).await;
+    cluster_actor.start_rebalance(&cache_manager).await;
 
     // THEN
     assert!(cluster_actor.pending_requests.is_none());
@@ -126,7 +126,7 @@ async fn test_start_rebalance_happy_path() {
     );
 
     // WHEN
-    cluster_actor.start_rebalance(&cache_manager, None).await;
+    cluster_actor.start_rebalance(&cache_manager).await;
 
     // THEN
     assert!(cluster_actor.pending_requests.is_some());
@@ -163,9 +163,7 @@ async fn test_maybe_update_hashring_when_noplan_is_made() {
 
     // WHEN
     let (_hwm, cache_manager) = cache_manager_create_helper();
-    cluster_actor
-        .maybe_update_hashring(Some(Box::new(hash_ring.clone())), &cache_manager, None)
-        .await;
+    cluster_actor.maybe_update_hashring(Some(Box::new(hash_ring.clone())), &cache_manager).await;
 
     // THEN
     assert!(cluster_actor.pending_requests.is_none());
@@ -182,11 +180,7 @@ async fn test_make_migration_plan_when_given_hashring_is_same() {
     // WHEN
     let (_hwm, cache_manager) = cache_manager_create_helper();
     cluster_actor
-        .maybe_update_hashring(
-            Some(Box::new(cluster_actor.hash_ring.clone())),
-            &cache_manager,
-            None,
-        )
+        .maybe_update_hashring(Some(Box::new(cluster_actor.hash_ring.clone())), &cache_manager)
         .await;
 
     // THEN
@@ -201,7 +195,7 @@ async fn test_make_migration_plan_when_no_hashring_given() {
 
     // WHEN
     let (_hwm, cache_manager) = cache_manager_create_helper();
-    cluster_actor.maybe_update_hashring(None, &cache_manager, None).await;
+    cluster_actor.maybe_update_hashring(None, &cache_manager).await;
 
     // THEN
     assert_eq!(cluster_actor.hash_ring.last_modified, last_modified);
@@ -218,7 +212,7 @@ async fn test_make_migration_plan_when_last_modified_is_lower_than_its_own() {
 
     // WHEN
     let (_hwm, cache_manager) = cache_manager_create_helper();
-    cluster_actor.maybe_update_hashring(Some(Box::new(hash_ring)), &cache_manager, None).await;
+    cluster_actor.maybe_update_hashring(Some(Box::new(hash_ring)), &cache_manager).await;
 
     // THEN
     assert_eq!(cluster_actor.hash_ring.last_modified, last_modified);
@@ -704,7 +698,8 @@ async fn test_start_rebalance_schedules_migration_batches() {
     let cluster_handler = ClusterCommandHandler(tx);
 
     // WHEN
-    cluster_actor.start_rebalance(&cache_manager, Some(cluster_handler)).await;
+    cluster_actor.self_handler = cluster_handler.clone();
+    cluster_actor.start_rebalance(&cache_manager).await;
 
     // THEN
     // 1. Verify heartbeat was sent immediately (synchronous part)
@@ -765,9 +760,7 @@ async fn test_maybe_update_hashring_replica_only_updates_ring() {
         .unwrap();
 
     // WHEN - Replica receives hash ring update
-    cluster_actor
-        .maybe_update_hashring(Some(Box::new(new_ring.clone())), &cache_manager, None)
-        .await;
+    cluster_actor.maybe_update_hashring(Some(Box::new(new_ring.clone())), &cache_manager).await;
 
     // THEN - Hash ring should be updated
     assert_eq!(cluster_actor.hash_ring, new_ring);

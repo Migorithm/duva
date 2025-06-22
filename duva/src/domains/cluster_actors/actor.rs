@@ -247,7 +247,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         self.update_cluster_members(&heartbeat.from, heartbeat.hwm, &heartbeat.cluster_nodes).await;
         self.join_peer_network_if_absent(heartbeat.cluster_nodes).await;
         self.gossip(heartbeat.hop_count).await;
-        self.maybe_update_hashring(heartbeat.hashring, cache_manager, None).await;
+        self.maybe_update_hashring(heartbeat.hashring, cache_manager).await;
     }
 
     pub(crate) async fn leader_req_consensus(&mut self, req: ConsensusRequest) {
@@ -460,12 +460,8 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         }
     }
 
-    #[instrument(level = tracing::Level::INFO, skip(self,cache_manager,cluster_handler))]
-    pub(crate) async fn start_rebalance(
-        &mut self,
-        cache_manager: &CacheManager,
-        cluster_handler: Option<ClusterCommandHandler>,
-    ) {
+    #[instrument(level = tracing::Level::INFO, skip(self,cache_manager))]
+    pub(crate) async fn start_rebalance(&mut self, cache_manager: &CacheManager) {
         // TODO instead of relying on request_from, we should take the current leaders and if they don't exist in hashring, we should add them and start rebalance.
 
         if !self.replication.is_leader() {
@@ -492,12 +488,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             .set_hashring(new_hash_ring.clone());
 
         self.send_heartbeat(hb).await;
-        self.maybe_update_hashring(
-            Some(Box::new(new_hash_ring)),
-            cache_manager,
-            cluster_handler.clone(),
-        )
-        .await;
+        self.maybe_update_hashring(Some(Box::new(new_hash_ring)), cache_manager).await;
     }
 
     fn hop_count(fanout: usize, node_count: usize) -> u8 {
@@ -994,7 +985,6 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         &mut self,
         hashring: Option<Box<HashRing>>,
         cache_manager: &CacheManager,
-        cluster_handler: Option<ClusterCommandHandler>,
     ) {
         let Some(new_ring) = hashring else {
             return;
@@ -1050,7 +1040,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
                 batch_handles.push(tokio::spawn(Self::schedule_migration_in_batch(
                     target_replid.clone(),
                     batch_to_migrate,
-                    cluster_handler.clone().unwrap_or(self.self_handler.clone()),
+                    self.self_handler.clone(),
                 )));
             }
         }

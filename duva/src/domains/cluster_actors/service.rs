@@ -61,7 +61,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         }
     }
 
-    // #[instrument(level = tracing::Level::DEBUG, skip(self, cache_manager))]
+    #[instrument(level = tracing::Level::DEBUG, skip(self, cache_manager,client_message))]
     async fn process_client_message(
         &mut self,
         cache_manager: &CacheManager,
@@ -139,7 +139,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
                 self.receive_election_vote(request_vote_reply).await;
             },
             | StartRebalance => {
-                self.start_rebalance(cache_manager, None).await;
+                self.start_rebalance(cache_manager).await;
             },
             | ReceiveBatch(migrate_batch) => {
                 self.receive_batch(migrate_batch, cache_manager, from).await;
