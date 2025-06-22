@@ -21,10 +21,7 @@ fn run_lazy_discovery_of_leader(with_append_only: bool) -> anyhow::Result<()> {
     assert_eq!(p2_h.send_and_get_vec("KEYS *", 2), vec!["1) \"other2\"", "2) \"other\""]);
 
     // WHEN
-    assert_eq!(
-        p1_h.send_and_get_vec(format!("REPLICAOF 127.0.0.1 {}", &env2.port), 1),
-        ["OK".to_string(),]
-    );
+    assert_eq!(p1_h.send_and_get(format!("REPLICAOF 127.0.0.1 {}", &env2.port)), "OK");
 
     // TODO(dpark): Would there be a way to perform a closed-loop wait?
 
