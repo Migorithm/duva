@@ -94,7 +94,6 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
                     let _ = callback.send(err!("invalid operation: cannot replicate to self"));
                     return;
                 }
-
                 cache_manager.drop_cache().await;
                 self.replicaof(peer_addr, callback).await;
             },

@@ -39,11 +39,11 @@ use heartbeat_scheduler::HeartBeatScheduler;
 use std::collections::HashMap;
 use std::collections::VecDeque;
 use std::fmt::Debug;
+use std::fs::File;
+use std::io::Seek;
+use std::io::Write;
 use std::iter;
 use std::sync::atomic::Ordering;
-use tokio::fs::File;
-use tokio::io::AsyncSeekExt;
-use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
 use tracing::debug;
 use tracing::error;
@@ -62,7 +62,7 @@ pub struct ClusterActor<T> {
     pub(crate) receiver: tokio::sync::mpsc::Receiver<ClusterCommand>,
     pub(crate) self_handler: ClusterCommandHandler,
     pub(crate) heartbeat_scheduler: HeartBeatScheduler,
-    pub(crate) topology_writer: tokio::fs::File,
+    pub(crate) topology_writer: std::fs::File,
     pub(crate) node_change_broadcast: tokio::sync::broadcast::Sender<Topology>,
 
     // * Pending requests are used to store requests that are received while the actor is in the process of election/cluster rebalancing.
@@ -88,7 +88,7 @@ impl ClusterCommandHandler {
 impl<T: TWriteAheadLog> ClusterActor<T> {
     pub(crate) fn run(
         node_timeout: u128,
-        topology_writer: tokio::fs::File,
+        topology_writer: std::fs::File,
         heartbeat_interval: u64,
         init_replication: ReplicationState,
         cache_manager: CacheManager,
@@ -542,9 +542,9 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             .map(|cn| cn.format(&self.replication.self_identifier()))
             .collect::<Vec<_>>()
             .join("\r\n");
-        self.topology_writer.seek(std::io::SeekFrom::Start(0)).await?;
-        self.topology_writer.set_len(topology.len() as u64).await?;
-        self.topology_writer.write_all(topology.as_bytes()).await?;
+        self.topology_writer.seek(std::io::SeekFrom::Start(0))?;
+        self.topology_writer.set_len(topology.len() as u64)?;
+        self.topology_writer.write_all(topology.as_bytes())?;
         Ok(())
     }
 

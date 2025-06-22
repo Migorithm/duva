@@ -5,7 +5,7 @@ use crate::{
     env_var,
     prelude::PeerIdentifier,
 };
-use tokio::fs::OpenOptions;
+use std::fs::OpenOptions;
 
 pub struct Environment {
     pub seed_server: Option<PeerIdentifier>,
@@ -72,8 +72,8 @@ impl Environment {
         }
     }
 
-    pub async fn open_topology_file(tpp: String) -> tokio::fs::File {
-        OpenOptions::new().create(true).write(true).truncate(true).open(tpp).await.unwrap()
+    pub async fn open_topology_file(tpp: String) -> std::fs::File {
+        OpenOptions::new().create(true).write(true).truncate(true).open(tpp).unwrap()
     }
 
     fn parse_replicaof(replicaof: Option<String>) -> Option<PeerIdentifier> {
