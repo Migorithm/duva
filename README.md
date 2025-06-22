@@ -259,6 +259,67 @@ sequenceDiagram
     F->>C: X:5
 ```
 
+### Partitioning 
+```mermaid
+sequenceDiagram
+    participant C1 as ClientGroupA
+    
+    participant A as Replica Set A
+    participant B as Replica Set B
+    
+    participant C2 as ClientGroupB
+
+
+    Note over A,B : At this point, A and B<br>Both manages full range of data<br>Let's say from 0..10000
+    
+    C1 --> A: connection established
+    C2 --> B: connection established
+
+    C2 ->> B: Cluster Meet A
+
+    B -->> B : Block requests
+    B ->> A : Join cluster
+    A -->> A: Block requests
+    A -->> A: Rearrange tokens
+
+    note over A,B : Both A and B WILL NOT<br>process write operations
+
+    
+    A --) B : Notify token map update
+    B -->> B : Make migration plan for other partitions.<br>For example, B may have held keys from 3000-5000 which now belong to A.
+    
+    Note over A,B: Now, A and B have disjoint<br>token ranges<br>0..5000 and 5001..10000 respectively
+
+    critical 
+    C1 ->> A: Request (key 1000)
+
+        Note over A, B: Point-in-time snapshot is required<br>So we don't need to full migrate logs
+        
+        A --> B: Migrate data (batch). If there are other partitions, A will send them too.
+        B --> A: Migrate data (batch). If there are other partitions, B will send them too.
+
+        %% The following may involves multi step migrations depending on the size of data
+        B <<-->> A: Mutual Ack migration
+
+        par 
+            A -->> A: Delete write operation (or Snaphsot and drop logs for optimization)
+            A -->> A: Unlock pending requests
+            alt Request's key is in A's range
+                A ->> A: Process request
+                A -->> C1: Response
+            else Request's key is in B's range
+                A -->> C1: (Moved) error
+            end
+            A --) C1 : Notify token map update
+        and
+            B -->> B: Delete write operation (or Snaphsot and drop logs for optimization)
+            B -->> B: Unlock pending requests
+            B -->> C2 : Notify token map update
+        end
+    end
+
+```
+
 ## Strong consistency with Raft
 
 ### Election (normal flow)
