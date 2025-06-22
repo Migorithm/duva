@@ -25,10 +25,10 @@ use crate::domains::peers::connections::connection_types::ReadConnected;
 use crate::domains::peers::connections::inbound::stream::InboundStream;
 use crate::domains::peers::peer::PeerState;
 use crate::domains::peers::service::PeerListener;
+use std::fs::OpenOptions;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 use tempfile::TempDir;
-use tokio::fs::OpenOptions;
 use tokio::net::TcpListener;
 use tokio::sync::mpsc::channel;
 use uuid::Uuid;
@@ -126,7 +126,7 @@ pub async fn cluster_actor_create_helper(role: ReplicationRole) -> ClusterActor<
     let path = dir.path().join("duva.tp");
 
     let topology_writer =
-        OpenOptions::new().create(true).write(true).truncate(true).open(path).await.unwrap();
+        OpenOptions::new().create(true).write(true).truncate(true).open(path).unwrap();
 
     ClusterActor::new(100, replication, 100, topology_writer, MemoryOpLogs::default())
 }

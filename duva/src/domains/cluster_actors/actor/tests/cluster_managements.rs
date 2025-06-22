@@ -59,7 +59,7 @@ async fn test_store_current_topology() {
     // GIVEN
     let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
     let path = "test_store_current_topology.tp";
-    cluster_actor.topology_writer = tokio::fs::File::create(path).await.unwrap();
+    cluster_actor.topology_writer = std::fs::File::create(path).unwrap();
 
     let repl_id = cluster_actor.replication.replid.clone();
     let self_id = cluster_actor.replication.self_identifier();
