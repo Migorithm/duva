@@ -8,16 +8,16 @@ fn run_lazy_discovery_of_leader(with_append_only: bool) -> anyhow::Result<()> {
 
     let mut p1_h = Client::new(p1.port);
 
-    p1_h.send_and_get_vec("set key 1", 1);
-    p1_h.send_and_get_vec("set key2 2", 1);
+    p1_h.send_and_get("set key 1");
+    p1_h.send_and_get("set key2 2");
     assert_eq!(p1_h.send_and_get_vec("KEYS *", 2), vec!["1) \"key\"", "2) \"key2\""]);
 
     let env2 = ServerEnv::default().with_append_only(with_append_only);
     let p2 = spawn_server_process(&env2)?;
 
     let mut p2_h = Client::new(p2.port);
-    p2_h.send_and_get_vec("set other value", 1);
-    p2_h.send_and_get_vec("set other2 value2", 1);
+    p2_h.send_and_get("set other value");
+    p2_h.send_and_get("set other2 value2");
     assert_eq!(p2_h.send_and_get_vec("KEYS *", 2), vec!["1) \"other2\"", "2) \"other\""]);
 
     // WHEN
