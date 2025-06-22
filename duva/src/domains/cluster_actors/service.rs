@@ -101,7 +101,10 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             | ClusterMeet(peer_addr, lazy_option, callback) => {
                 self.cluster_meet(peer_addr, lazy_option, callback).await;
             },
-            | ClusterReshard(sender) => todo!(),
+            | ClusterReshard(sender) => {
+                self.start_rebalance(cache_manager).await;
+                let _ = sender.send(Ok(()));
+            },
             | GetRole(sender) => {
                 let _ = sender.send(self.replication.role.clone());
             },
