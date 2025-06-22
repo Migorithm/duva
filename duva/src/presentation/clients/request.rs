@@ -239,6 +239,7 @@ pub fn extract_action(action: &str, args: &[&str]) -> anyhow::Result<ClientActio
                         ))
                     }
                 },
+                | "RESHARD" => Ok(ClientAction::ClusterReshard),
                 | _ => Err(anyhow::anyhow!("(error) ERR unknown subcommand")),
             }
         },
