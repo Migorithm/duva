@@ -508,12 +508,8 @@ async fn test_consensus_voting_deleted_when_consensus_reached() {
     cluster_actor.req_consensus(consensus_request).await;
 
     // WHEN
-    let follower_res = ReplicationAck {
-        log_idx: 1,
-        term: 0,
-        rej_reason: RejectionReason::None,
-        from: PeerIdentifier("".into()),
-    };
+    let follower_res =
+        ReplicationAck { log_idx: 1, term: 0, rej_reason: None, from: PeerIdentifier("".into()) };
     // Leader already has 1 vote, so we only need 1 more votes to reach consensus
     cluster_actor.track_replication_progress(follower_res.clone().set_from("repl1"));
 
@@ -560,7 +556,7 @@ async fn test_same_voter_can_vote_only_once() {
     let follower_res = ReplicationAck {
         log_idx: 1,
         term: 0,
-        rej_reason: RejectionReason::None,
+        rej_reason: None,
         from: PeerIdentifier("repl1".into()),
     };
     cluster_actor.track_replication_progress(follower_res.clone());

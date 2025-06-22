@@ -445,16 +445,14 @@ impl From<MigrateBatch> for QueryIO {
 
 #[cfg(test)]
 mod test {
-    use uuid::Uuid;
-
     use crate::domains::caches::cache_objects::CacheEntry;
     use crate::domains::cluster_actors::hash_ring::{BatchId, HashRing};
     use crate::domains::cluster_actors::replication::{ReplicationId, ReplicationRole};
-
     use crate::domains::operation_logs::WriteRequest;
-    use crate::domains::peers::command::{BannedPeer, RejectionReason};
+    use crate::domains::peers::command::BannedPeer;
     use crate::domains::peers::identifier::PeerIdentifier;
     use crate::domains::peers::peer::PeerState;
+    use uuid::Uuid;
 
     use super::*;
 
@@ -599,7 +597,7 @@ mod test {
         // GIVEN
         let follower_res = ReplicationAck {
             term: 0,
-            rej_reason: RejectionReason::None,
+            rej_reason: None,
             log_idx: 2,
             from: PeerIdentifier("repl1".into()),
         };
