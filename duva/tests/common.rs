@@ -114,7 +114,7 @@ impl Drop for FileName {
 }
 
 pub fn spawn_server_process(env: &ServerEnv) -> anyhow::Result<TestProcessChild> {
-    let process = run_server_process(env, Stdio::null());
+    let process = run_server_process(env);
 
     // Wait for server to be fully ready (increased timeout and better checks)
     let mut cnt = 100;
@@ -204,7 +204,7 @@ impl Drop for TestProcessChild {
 
 make_smart_pointer!(TestProcessChild, Child => process);
 
-pub fn run_server_process(env: &ServerEnv, std_option: Stdio) -> TestProcessChild {
+pub fn run_server_process(env: &ServerEnv) -> TestProcessChild {
     {
         static ONCE: std::sync::Once = std::sync::Once::new();
         static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
@@ -245,7 +245,7 @@ pub fn run_server_process(env: &ServerEnv, std_option: Stdio) -> TestProcessChil
 
     TestProcessChild::new(
         command
-            .stdout(std_option)
+            .stdout(Stdio::null())
             .stderr(Stdio::null())
             .spawn()
             .expect("Failed to start server process"),
