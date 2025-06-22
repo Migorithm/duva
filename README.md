@@ -124,47 +124,6 @@ sequenceDiagram
 ```
 
 
-### Clustering
-```mermaid
-
-sequenceDiagram
-    participant s as Leader    
-    actor Cache
-    actor Cluster
-    actor peer_listener
-    
-    actor client_listener
-    participant Follower
-    actor follower_listener
-
-    par 
-        s-->>Cache: spawn
-        
-    and 
-        s-->>Cluster: spawn
-        Cluster --> Cluster : send heartbeat
-        Note right of Cluster : Cluster periodically sends heartbeat to peers 
-    and
-        s -->>client_listener:spawn
-        
-    and 
-        Follower -->> follower_listener: spawn 
-        Note right of Follower : Follower also listens for incoming peer connections
-    and 
-        s-->>peer_listener: spawn
-        loop 
-            Follower -->>+ peer_listener: bind 
-            peer_listener -->- Follower: threeway handshake
-            peer_listener -->> Follower : disseminate peer infomation
-            peer_listener -->>+ Cluster : pass stream
-            Cluster -->>- Cluster : add peer
-        end
-        
-  
-    end
-
-```
-
 ### Synchronization on connection
 There are quite a few scenarios related to this. For this, take a look at the diagram.
 The following is the partial sync scenario on startup:
