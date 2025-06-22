@@ -125,10 +125,6 @@ impl ReplicationState {
         self.election_state = ElectionState::Follower { voted_for: leader_id };
         self.set_follower_mode();
     }
-    pub(super) fn become_leader(&mut self) {
-        self.role = ReplicationRole::Leader;
-        self.election_state.become_leader();
-    }
 
     fn set_follower_mode(&mut self) {
         self.role = ReplicationRole::Follower;
