@@ -205,12 +205,21 @@ impl Drop for TestProcessChild {
 make_smart_pointer!(TestProcessChild, Child => process);
 
 pub fn run_server_process(env: &ServerEnv, std_option: Stdio) -> TestProcessChild {
-    let mut command = Command::new("cargo");
+    {
+        static ONCE: std::sync::Once = std::sync::Once::new();
+        static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+        let lock = LOCK.lock().unwrap();
+        ONCE.call_once(|| {
+            let mut command = Command::new("cargo");
+            command.args(["build", "-p", "duva"]);
+            let mut process = command.stdout(Stdio::null()).stderr(Stdio::null()).spawn().unwrap();
+            process.wait().unwrap();
+        });
+    }
+    let current = std::env::current_dir().unwrap();
+    let path = current.parent().unwrap().join("target").join("debug").join("duva");
+    let mut command = Command::new(path);
     command.args([
-        "run",
-        "-p",
-        "duva",
-        "--",
         "--port",
         &env.port.to_string(),
         "--hf",
@@ -263,8 +272,22 @@ pub struct Client {
 
 impl Client {
     pub fn new(port: u16) -> Client {
-        let mut command = Command::new("cargo");
-        command.args(["run", "-p", "duva-client", "--", "--port", &port.to_string()]);
+        {
+            static ONCE: std::sync::Once = std::sync::Once::new();
+            static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+            let lock = LOCK.lock().unwrap();
+            ONCE.call_once(|| {
+                let mut command = Command::new("cargo");
+                command.args(["build", "-p", "duva-cli"]);
+                let mut process =
+                    command.stdout(Stdio::null()).stderr(Stdio::null()).spawn().unwrap();
+                process.wait().unwrap();
+            });
+        }
+        let current = std::env::current_dir().unwrap();
+        let path = current.parent().unwrap().join("target").join("debug").join("cli");
+        let mut command = Command::new(path);
+        command.args(["--port", &port.to_string()]);
 
         command.env("DUVA_ENV", "test");
 
