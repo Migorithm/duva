@@ -18,12 +18,6 @@ impl ElectionState {
             | ReplicationRole::Follower => ElectionState::Follower { voted_for: None },
         }
     }
-    pub(crate) fn become_leader(&mut self) {
-        *self = ElectionState::Leader;
-    }
-    pub(crate) fn become_candidate(&mut self, replica_count: u8) {
-        *self = ElectionState::Candidate { voting: Some(ElectionVoting::new(replica_count)) };
-    }
 
     pub(crate) fn is_votable(&self, candidate_id: &PeerIdentifier) -> bool {
         match self {
@@ -35,7 +29,7 @@ impl ElectionState {
         }
     }
 
-    pub(crate) fn may_become_leader(&mut self) -> bool {
+    pub(crate) fn can_transition_to_leader(&mut self) -> bool {
         let ElectionState::Candidate { voting } = self else { return false };
         // Try to take ownership of the current voting state
         let Some(current_voting) = voting.take() else {

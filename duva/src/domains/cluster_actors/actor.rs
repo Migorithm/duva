@@ -13,6 +13,7 @@ use super::replication::time_in_secs;
 use super::*;
 use crate::domains::QueryIO;
 use crate::domains::caches::cache_manager::CacheManager;
+use crate::domains::cluster_actors::consensus::election::ElectionVoting;
 use crate::domains::cluster_actors::hash_ring::BatchId;
 use crate::domains::cluster_actors::hash_ring::MigrationBatch;
 use crate::domains::cluster_actors::hash_ring::MigrationTask;
@@ -375,7 +376,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         if !election_vote.vote_granted {
             return;
         }
-        if !self.replication.election_state.may_become_leader() {
+        if !self.replication.election_state.can_transition_to_leader() {
             return;
         }
 
@@ -913,13 +914,16 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
     async fn become_leader(&mut self) {
         info!("\x1b[32mElection succeeded\x1b[0m");
-        self.replication.become_leader();
+
+        self.replication.role = ReplicationRole::Leader;
+        self.replication.election_state = ElectionState::Leader;
         self.heartbeat_scheduler.turn_leader_mode().await;
     }
     fn become_candidate(&mut self) {
         let replica_count = self.replicas().count() as u8;
         self.replication.term += 1;
-        self.replication.election_state.become_candidate(replica_count);
+        self.replication.election_state =
+            ElectionState::Candidate { voting: Some(ElectionVoting::new(replica_count)) };
     }
 
     async fn handle_repl_rejection(&mut self, repl_res: ReplicationAck) {
