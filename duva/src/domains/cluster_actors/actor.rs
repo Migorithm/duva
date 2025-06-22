@@ -619,7 +619,6 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     async fn apply_banlist(&mut self, ban_list: Vec<BannedPeer>) {
         for banned_peer in ban_list {
             let ban_list = &mut self.replication.banlist;
-
             if let Some(existing) = ban_list.take(&banned_peer) {
                 let newer =
                     if banned_peer.ban_time > existing.ban_time { banned_peer } else { existing };
@@ -755,19 +754,12 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         let _ = consensus.callback.send(Ok(ConsensusClientResponse::LogIndex(res.log_idx.into())));
     }
 
-    // After send_ack: Leader updates its knowledge of follower's progress
-    async fn report_replica_lag(
-        &mut self,
-        send_to: &PeerIdentifier,
-        log_idx: u64,
-        rejection_reason: RejectionReason,
-    ) {
+    // Follower notified the leader of its acknowledgment, then leader store match index for the given follower
+    async fn send_replication_ack(&mut self, send_to: &PeerIdentifier, ack: ReplicationAck) {
         let Some(leader) = self.members.get_mut(send_to) else {
             return;
         };
-
-        let _ =
-            leader.send(ReplicationAck::new(log_idx, rejection_reason, &self.replication)).await;
+        let _ = leader.send(ack).await;
     }
 
     async fn replicate(&mut self, mut heartbeat: HeartBeat, cache_manager: &CacheManager) {
@@ -790,13 +782,18 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         }
 
         if let Err(e) = self.ensure_prev_consistency(rpc.prev_log_index, rpc.prev_log_term).await {
-            self.report_replica_lag(&rpc.from, self.logger.last_log_index, e).await;
+            self.send_replication_ack(
+                &rpc.from,
+                ReplicationAck::reject(self.logger.last_log_index, e, &self.replication),
+            )
+            .await;
             return Err(anyhow::anyhow!("Fail fail to append"));
         }
 
         let match_index = self.logger.follower_write_entries(entries).await?;
 
-        self.report_replica_lag(&rpc.from, match_index, RejectionReason::None).await;
+        self.send_replication_ack(&rpc.from, ReplicationAck::ack(match_index, &self.replication))
+            .await;
         Ok(())
     }
 
@@ -865,10 +862,13 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             for log_index in (old_hwm + 1)..=leader_hwm.hwm {
                 let Some(log) = self.logger.read_at(log_index).await else {
                     warn!("log has never been replicated!");
-                    self.report_replica_lag(
+                    self.send_replication_ack(
                         &leader_hwm.from,
-                        self.logger.last_log_index,
-                        RejectionReason::LogInconsistency,
+                        ReplicationAck::reject(
+                            self.logger.last_log_index,
+                            RejectionReason::LogInconsistency,
+                            &self.replication,
+                        ),
                     )
                     .await;
                     return;
@@ -893,10 +893,13 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
     async fn check_term_outdated(&mut self, heartbeat: &HeartBeat) -> bool {
         if heartbeat.term < self.replication.term {
-            self.report_replica_lag(
+            self.send_replication_ack(
                 &heartbeat.from,
-                self.logger.last_log_index,
-                RejectionReason::ReceiverHasHigherTerm,
+                ReplicationAck::reject(
+                    self.logger.last_log_index,
+                    RejectionReason::ReceiverHasHigherTerm,
+                    &self.replication,
+                ),
             )
             .await;
             return true;
@@ -927,14 +930,17 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     }
 
     async fn handle_repl_rejection(&mut self, repl_res: ReplicationAck) {
-        match repl_res.rej_reason {
+        if repl_res.is_granted() {
+            return;
+        }
+
+        match repl_res.rej_reason.unwrap() {
             | RejectionReason::ReceiverHasHigherTerm => self.step_down().await,
             | RejectionReason::LogInconsistency => {
                 info!("Log inconsistency, reverting match index");
                 //TODO we can refactor this to set match index to given log index from the follower
                 self.decrease_match_index(&repl_res.from, repl_res.log_idx);
             },
-            | RejectionReason::None => (),
         }
     }
 

@@ -18,7 +18,6 @@ use crate::domains::cluster_actors::replication::ReplicationRole;
 use crate::domains::operation_logs::WriteOperation;
 use crate::domains::operation_logs::WriteRequest;
 use crate::domains::operation_logs::logger::ReplicatedLogs;
-use crate::domains::peers::command::RejectionReason;
 use crate::domains::peers::command::ReplicationAck;
 use crate::domains::peers::command::{HeartBeat, MigrateBatch};
 use crate::domains::peers::connections::connection_types::ReadConnected;

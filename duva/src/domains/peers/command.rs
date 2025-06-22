@@ -93,7 +93,7 @@ mod peer_messages {
     pub struct ReplicationAck {
         pub(crate) log_idx: u64,
         pub(crate) term: u64,
-        pub(crate) rej_reason: RejectionReason,
+        pub(crate) rej_reason: Option<RejectionReason>,
         pub(crate) from: PeerIdentifier,
     }
 
@@ -101,20 +101,33 @@ mod peer_messages {
     pub(crate) enum RejectionReason {
         ReceiverHasHigherTerm,
         LogInconsistency,
-        None,
     }
 
     impl ReplicationAck {
-        pub(crate) fn new(
+        pub(crate) fn ack(log_idx: u64, repl_state: &ReplicationState) -> Self {
+            Self {
+                log_idx,
+                term: repl_state.term,
+                rej_reason: None,
+                from: repl_state.self_identifier(),
+            }
+        }
+
+        pub(crate) fn reject(
             log_idx: u64,
-            rej_reason: RejectionReason,
+            reason: RejectionReason,
             repl_state: &ReplicationState,
         ) -> Self {
-            Self { log_idx, term: repl_state.term, rej_reason, from: repl_state.self_identifier() }
+            Self {
+                log_idx,
+                term: repl_state.term,
+                rej_reason: Some(reason),
+                from: repl_state.self_identifier(),
+            }
         }
 
         pub(crate) fn is_granted(&self) -> bool {
-            self.rej_reason == RejectionReason::None
+            self.rej_reason.is_none()
         }
 
         #[cfg(test)]
