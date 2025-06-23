@@ -159,6 +159,8 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     pub(crate) fn follower_setup(&mut self, replid: ReplicationId, leader_id: PeerIdentifier) {
         self.set_repl_id(replid.clone());
         let hashring = HashRing::default();
+        // TODO - the following updates hashring only for the leader and its replid with its own system time
+        // ! Which will introduce bug. instead, follower should replicate leader's hashring as it is
         let Some(new_hashring) = hashring.add_partitions_if_not_exist(vec![(replid, leader_id)])
         else {
             return;
