@@ -8,14 +8,14 @@ fn test_add_and_remove_node() {
     let repl_id = ReplicationId::Key(uuid::Uuid::now_v7().to_string());
 
     let partitions = vec![(repl_id.clone(), node.clone())];
-    let mut ring = ring.set_partitions(partitions).unwrap();
+    let ring = ring.set_partitions(partitions).unwrap();
     let modified_time_after_add = ring.last_modified;
     assert_eq!(ring.get_pnode_count(), 1);
     assert_eq!(ring.get_vnode_count(), 256);
     assert!(modified_time < modified_time_after_add);
 
     sleep(Duration::from_millis(1)); // Ensure time has changed
-    ring.remove_partition(&repl_id);
+    let ring = ring.set_partitions(vec![]).unwrap();
     assert_eq!(ring.get_pnode_count(), 0);
     assert_eq!(ring.get_vnode_count(), 0);
     assert!(ring.last_modified > modified_time_after_add);
@@ -121,12 +121,14 @@ fn test_node_removal_redistribution() {
     // GIVEN: Create a hash ring with 3 nodes
     let ring = HashRing::default();
     let (repl_id, node1) = replid_and_nodeid(6379);
+    let (repl_id2, node2) = replid_and_nodeid(6380);
+    let (repl_id3, node3) = replid_and_nodeid(6381);
 
-    let mut ring = ring
+    let ring = ring
         .set_partitions(vec![
             (repl_id.clone(), node1.clone()),
-            replid_and_nodeid(6380),
-            replid_and_nodeid(6381),
+            (repl_id2.clone(), node2.clone()),
+            (repl_id3.clone(), node3.clone()),
         ])
         .unwrap();
 
@@ -140,7 +142,13 @@ fn test_node_removal_redistribution() {
     }
 
     // WHEN Remove one node
-    ring.remove_partition(&repl_id);
+    let ring = ring
+        .clone()
+        .set_partitions(vec![
+            (repl_id2.clone(), node2.clone()), // Keep node2
+            (repl_id3.clone(), node3.clone()), // Keep node3
+        ])
+        .unwrap();
 
     // keys are accessed again
     let mut redistributed = 0;
