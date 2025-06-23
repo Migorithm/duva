@@ -107,7 +107,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         actor_handler
     }
 
-    #[instrument(level = tracing::Level::INFO, skip(self, peer),fields(peer_id = %peer.id()))]
+    #[instrument(level = tracing::Level::INFO, skip(self, peer, optional_callback),fields(peer_id = %peer.id()))]
     pub(crate) async fn add_peer(
         &mut self,
         peer: Peer,
