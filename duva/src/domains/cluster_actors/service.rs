@@ -165,13 +165,10 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             },
 
             | AddPeer(peer, optional_callback) => {
-                self.add_peer(peer).await;
-                if let Some(cb) = optional_callback {
-                    let _ = cb.send(Ok(()));
-                }
+                self.add_peer(peer, optional_callback).await;
             },
-            | FollowerSetReplId(replication_id, leader_id) => {
-                self.follower_setup(replication_id, leader_id);
+            | FollowerSetReplId(replication_id, _leader_id) => {
+                self.follower_setup(replication_id);
             },
         }
     }

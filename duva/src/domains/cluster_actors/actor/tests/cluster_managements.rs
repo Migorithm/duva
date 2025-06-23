@@ -218,3 +218,41 @@ async fn test_shard_leaders() {
         );
     }
 }
+
+#[tokio::test]
+async fn test_add_peer_for_follower_send_heartbeat() {
+    // GIVEN
+    let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
+
+    // Create a follower peer
+    let buf = FakeReadWrite::new();
+    let (_, peer) = create_peer_helper(
+        cluster_actor.self_handler.clone(),
+        0,
+        &cluster_actor.replication.replid.clone(),
+        6380,
+        ReplicationRole::Follower,
+        buf.clone(),
+    );
+    let (tx, rx) = tokio::sync::oneshot::channel();
+
+    let task = tokio::spawn(async move { rx.await.unwrap() });
+
+    // WHEN - add the follower peer
+    cluster_actor.add_peer(peer, Some(tx)).await;
+
+    // THEN - check if heartbeat is sent to the follower
+    task.await.unwrap().unwrap();
+    assert_expected_queryio(
+        &buf,
+        cluster_actor
+            .replication
+            .default_heartbeat(
+                0,
+                cluster_actor.logger.last_log_index,
+                cluster_actor.logger.last_log_term,
+            )
+            .set_hashring(cluster_actor.hash_ring.clone()),
+    )
+    .await;
+}

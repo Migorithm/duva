@@ -107,18 +107,37 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         actor_handler
     }
 
-    #[instrument(level = tracing::Level::DEBUG, skip(self, peer),fields(peer_id = %peer.id()))]
-    pub(crate) async fn add_peer(&mut self, peer: Peer) {
-        self.replication.banlist.remove(peer.id());
+    #[instrument(level = tracing::Level::INFO, skip(self, peer, optional_callback),fields(peer_id = %peer.id()))]
+    pub(crate) async fn add_peer(
+        &mut self,
+        peer: Peer,
+        optional_callback: Option<tokio::sync::oneshot::Sender<anyhow::Result<()>>>,
+    ) {
+        let peer_id = peer.id().clone();
+        self.replication.banlist.remove(&peer_id);
 
         // If the map did have this key present, the value is updated, and the old
         // value is returned. The key is not updated,
-        if let Some(existing_peer) = self.members.insert(peer.id().clone(), peer) {
+        if let Some(existing_peer) = self.members.insert(peer_id.clone(), peer) {
             existing_peer.kill().await;
         }
 
         self.broadcast_topology_change();
         let _ = self.snapshot_topology().await;
+
+        let peer = self.members.get_mut(&peer_id).unwrap();
+        if peer.is_follower(&self.replication.replid) && self.replication.is_leader() {
+            info!("Sending heartbeat to newly added follower: {}", peer_id);
+            let hb = self
+                .replication
+                .default_heartbeat(0, self.logger.last_log_index, self.logger.last_log_term)
+                .set_hashring(self.hash_ring.clone());
+            let _ = peer.send(hb).await;
+        }
+
+        if let Some(cb) = optional_callback {
+            let _ = cb.send(Ok(()));
+        }
     }
 
     #[instrument(skip(self, optional_callback))]
@@ -155,16 +174,9 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         tokio::spawn(inbound_stream.add_peer(self.self_handler.clone()));
     }
 
-    #[instrument(level = tracing::Level::INFO, skip(self,replid,leader_id))]
-    pub(crate) fn follower_setup(&mut self, replid: ReplicationId, leader_id: PeerIdentifier) {
+    #[instrument(level = tracing::Level::INFO, skip(self,replid))]
+    pub(crate) fn follower_setup(&mut self, replid: ReplicationId) {
         self.set_repl_id(replid.clone());
-        let hashring = HashRing::default();
-        // TODO - the following updates hashring only for the leader and its replid with its own system time
-        // ! Which will introduce bug. instead, follower should replicate leader's hashring as it is
-        let Some(new_hashring) = hashring.set_partitions(vec![(replid, leader_id)]) else {
-            return;
-        };
-        self.hash_ring = new_hashring;
     }
 
     pub(crate) fn set_repl_id(&mut self, replid: ReplicationId) {
@@ -187,12 +199,10 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         );
 
         let (tx, _) = tokio::sync::broadcast::channel::<Topology>(100);
-        let hash_ring = HashRing::default()
-            .set_partitions(vec![(
-                init_repl_state.replid.clone(),
-                init_repl_state.self_identifier(),
-            )])
-            .unwrap();
+        let hash_ring = HashRing::default().add_partitions(vec![(
+            init_repl_state.replid.clone(),
+            init_repl_state.self_identifier(),
+        )]);
 
         Self {
             heartbeat_scheduler,

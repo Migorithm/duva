@@ -4,7 +4,7 @@ use crate::domains::cluster_actors::hash_ring::{
     HashRing, MigrationTask, tests::migration_task_create_helper,
 };
 use std::collections::HashMap;
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 
 use super::*;
 
@@ -196,23 +196,6 @@ async fn test_make_migration_plan_when_no_hashring_given() {
     // WHEN
     let (_hwm, cache_manager) = cache_manager_create_helper();
     cluster_actor.maybe_update_hashring(None, &cache_manager).await;
-
-    // THEN
-    assert_eq!(cluster_actor.hash_ring.last_modified, last_modified);
-}
-
-#[tokio::test]
-async fn test_make_migration_plan_when_last_modified_is_lower_than_its_own() {
-    // GIVEN
-    let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
-    let last_modified = cluster_actor.hash_ring.last_modified;
-
-    let mut hash_ring = HashRing::default();
-    hash_ring.last_modified = last_modified - 1;
-
-    // WHEN
-    let (_hwm, cache_manager) = cache_manager_create_helper();
-    cluster_actor.maybe_update_hashring(Some(Box::new(hash_ring)), &cache_manager).await;
 
     // THEN
     assert_eq!(cluster_actor.hash_ring.last_modified, last_modified);

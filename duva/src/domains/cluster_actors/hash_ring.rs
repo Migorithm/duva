@@ -26,9 +26,6 @@ pub struct HashRing {
 }
 
 impl HashRing {
-    fn exists(&self, replid: &ReplicationId) -> bool {
-        self.pnodes.contains_key(replid)
-    }
     fn update_last_modified(&mut self) {
         self.last_modified = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -61,7 +58,9 @@ impl HashRing {
             }
         }
         // Create a new hash ring with only the specified partitions
-        Some(HashRing::default().add_partitions(partitions))
+        let mut ring = HashRing::default().add_partitions(partitions);
+        ring.update_last_modified();
+        Some(ring)
     }
 
     pub(crate) fn add_partitions(
@@ -80,21 +79,7 @@ impl HashRing {
                 self.vnodes.insert(hash, repl_id.clone());
             }
         }
-        self.update_last_modified();
         self
-    }
-
-    /// The following method will be invoked when:
-    /// - ClusterForget command is received
-    /// - node is identified as dead/idle
-    fn remove_partition(&mut self, target_repl_id: &ReplicationId) {
-        // Remove all virtual nodes for this physical node
-        self.vnodes.retain(|_, repl_id| repl_id.as_ref() != target_repl_id);
-
-        // Remove the physical node
-        self.pnodes.remove(target_repl_id);
-
-        self.update_last_modified();
     }
 
     fn find_replid(&self, hash: u64) -> Option<&ReplicationId> {
