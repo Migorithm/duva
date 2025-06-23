@@ -36,20 +36,6 @@ impl HashRing {
             .as_millis();
     }
 
-    pub(crate) fn add_partitions_if_not_exist(
-        &self,
-        partitions: Vec<(ReplicationId, PeerIdentifier)>,
-    ) -> Option<HashRing> {
-        // Filter out partitions that already exist
-        let new_partitions: Vec<_> =
-            partitions.into_iter().filter(|(repl_id, _)| !self.exists(repl_id)).collect();
-
-        if new_partitions.is_empty() {
-            return None;
-        }
-        Some(self.clone().add_partitions(new_partitions))
-    }
-
     /// Sets the hash ring partitions to exactly match the provided list.
     /// This method will not respect any existing partitions that are not in the given partitions
     ///

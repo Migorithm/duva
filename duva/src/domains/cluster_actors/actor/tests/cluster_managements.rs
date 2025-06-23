@@ -123,7 +123,7 @@ async fn test_topology_broadcast_on_hash_ring_change() {
 
     // Setup old ring
     let hash_ring = HashRing::default()
-        .add_partitions_if_not_exist(vec![(replid.clone(), PeerIdentifier("peer1".into()))])
+        .set_partitions(vec![(replid.clone(), PeerIdentifier("peer1".into()))])
         .unwrap();
 
     cluster_actor.hash_ring = hash_ring.clone();

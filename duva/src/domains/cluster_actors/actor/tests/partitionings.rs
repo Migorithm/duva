@@ -429,7 +429,7 @@ async fn test_receive_batch_success_path_when_noreplica_found() {
 
     let (_, sender_peer_id) = cluster_actor.test_add_peer(6567, Some(peer_replid.clone()), true);
     cluster_actor.hash_ring =
-        cluster_actor.hash_ring.add_partitions_if_not_exist(cluster_actor.shard_leaders()).unwrap();
+        cluster_actor.hash_ring.set_partitions(cluster_actor.shard_leaders()).unwrap();
 
     let cache_entries =
         cache_entries_create_helper(&[("success_key3", "value2"), ("success_key4", "value4")]);

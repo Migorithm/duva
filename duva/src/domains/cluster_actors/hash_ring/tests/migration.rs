@@ -12,7 +12,7 @@ fn replid_create_helper(repl_id: &str) -> ReplicationId {
 #[tokio::test]
 async fn test_no_migration_when_rings_identical() {
     let ring = HashRing::default();
-    let ring = ring.add_partitions_if_not_exist(vec![(replid_and_nodeid(6379))]).unwrap();
+    let ring = ring.set_partitions(vec![(replid_and_nodeid(6379))]).unwrap();
 
     let keys = vec!["key1".to_string(), "key2".to_string()];
     let tasks = ring.create_migration_tasks(&ring, keys);
@@ -26,8 +26,8 @@ async fn test_empty_keys_migration_plan() {
     let old_ring = HashRing::default();
     let new_ring = HashRing::default();
 
-    let old_ring = old_ring.add_partitions_if_not_exist(vec![replid_and_nodeid(6379)]).unwrap();
-    let new_ring = new_ring.add_partitions_if_not_exist(vec![replid_and_nodeid(6380)]).unwrap();
+    let old_ring = old_ring.set_partitions(vec![replid_and_nodeid(6379)]).unwrap();
+    let new_ring = new_ring.set_partitions(vec![replid_and_nodeid(6380)]).unwrap();
 
     let empty_keys: Vec<String> = Vec::new();
     let tasks = old_ring.create_migration_tasks(&new_ring, empty_keys);
@@ -49,7 +49,7 @@ async fn test_single_node_ownership_change() {
     let old_ring = HashRing::default();
 
     let old_ring = old_ring
-        .add_partitions_if_not_exist(vec![
+        .set_partitions(vec![
             (replid1.clone(), nodeid1.clone()),
             (replid2.clone(), nodeid2),
             (replid3.clone(), nodeid3.clone()),
@@ -59,7 +59,7 @@ async fn test_single_node_ownership_change() {
     // Setup new ring
     let new_ring = HashRing::default();
     let new_ring = new_ring
-        .add_partitions_if_not_exist(vec![
+        .set_partitions(vec![
             (replid1.clone(), nodeid1.clone()),
             (replid4.clone(), nodeid4),
             (replid3.clone(), nodeid3.clone()),
@@ -145,7 +145,7 @@ async fn test_multiple_ownership_changes() {
     // Setup old ring
     let old_ring = HashRing::default();
     let old_ring = old_ring
-        .add_partitions_if_not_exist(vec![
+        .set_partitions(vec![
             (replid1.clone(), PeerIdentifier("peer1".into())),
             (replid2.clone(), PeerIdentifier("peer2".into())),
             (replid3.clone(), PeerIdentifier("peer3".into())),
@@ -156,7 +156,7 @@ async fn test_multiple_ownership_changes() {
     // Setup new ring
     let new_ring = HashRing::default();
     let new_ring = new_ring
-        .add_partitions_if_not_exist(vec![
+        .set_partitions(vec![
             (replid5.clone(), PeerIdentifier("peer5".into())),
             (replid6.clone(), PeerIdentifier("peer6".into())),
             (replid3.clone(), PeerIdentifier("peer3".into())),

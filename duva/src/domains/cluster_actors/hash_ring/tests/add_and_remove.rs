@@ -8,7 +8,7 @@ fn test_add_and_remove_node() {
     let repl_id = ReplicationId::Key(uuid::Uuid::now_v7().to_string());
 
     let partitions = vec![(repl_id.clone(), node.clone())];
-    let mut ring = ring.add_partitions_if_not_exist(partitions).unwrap();
+    let mut ring = ring.set_partitions(partitions).unwrap();
     let modified_time_after_add = ring.last_modified;
     assert_eq!(ring.get_pnode_count(), 1);
     assert_eq!(ring.get_vnode_count(), 256);
@@ -26,7 +26,7 @@ fn test_get_node_for_key() {
     let ring = HashRing::default();
     let node = PeerIdentifier("127.0.0.1:6379".into());
     let repl_id = ReplicationId::Key(uuid::Uuid::now_v7().to_string());
-    let ring = ring.add_partitions_if_not_exist(vec![(repl_id.clone(), node.clone())]).unwrap();
+    let ring = ring.set_partitions(vec![(repl_id.clone(), node.clone())]).unwrap();
 
     let key = "test_key";
     let node = ring.get_node_for_key(key);
@@ -35,11 +35,11 @@ fn test_get_node_for_key() {
 }
 
 #[test]
-fn test_add_partitions_if_not_exist_multiple_partitions() {
+fn test_set_partitions_multiple_partitions() {
     let ring = HashRing::default();
 
     let ring = ring
-        .add_partitions_if_not_exist(vec![
+        .set_partitions(vec![
             replid_and_nodeid(6379),
             replid_and_nodeid(6380),
             replid_and_nodeid(6381),
@@ -50,11 +50,11 @@ fn test_add_partitions_if_not_exist_multiple_partitions() {
 }
 
 #[test]
-fn test_add_partitions_if_not_exist_empty_list() {
+fn test_set_partitions_empty_list() {
     let ring = HashRing::default();
     let empty_partitions: Vec<(ReplicationId, PeerIdentifier)> = vec![];
 
-    let result = ring.add_partitions_if_not_exist(empty_partitions);
+    let result = ring.set_partitions(empty_partitions);
     assert!(result.is_none()); // Should return None for empty list
 }
 
@@ -62,7 +62,7 @@ fn test_add_partitions_if_not_exist_empty_list() {
 fn test_consistent_hashing() {
     let ring = HashRing::default();
     let ring = ring
-        .add_partitions_if_not_exist(vec![
+        .set_partitions(vec![
             replid_and_nodeid(6379),
             replid_and_nodeid(6380),
             replid_and_nodeid(6381),
@@ -79,13 +79,13 @@ fn test_consistent_hashing() {
 }
 
 #[test]
-fn test_add_partitions_if_not_exist_virtual_node_consistency() {
+fn test_set_partitions_virtual_node_consistency() {
     let ring = HashRing::default();
 
     let (repl_id, node) = replid_and_nodeid(6379);
 
     let partitions = vec![(repl_id.clone(), node.clone())];
-    let ring = ring.add_partitions_if_not_exist(partitions).unwrap();
+    let ring = ring.set_partitions(partitions).unwrap();
 
     let virtual_nodes = ring.get_virtual_nodes();
     assert_eq!(virtual_nodes.len(), 256);
@@ -98,11 +98,11 @@ fn test_add_partitions_if_not_exist_virtual_node_consistency() {
 }
 
 #[test]
-fn test_add_partitions_if_not_exist_idempotent_addition() {
+fn test_set_partitions_idempotent_addition() {
     let ring = HashRing::default();
     let (repl_id, node) = replid_and_nodeid(6379);
 
-    let new_ring = ring.add_partitions_if_not_exist(vec![(repl_id.clone(), node.clone())]);
+    let new_ring = ring.set_partitions(vec![(repl_id.clone(), node.clone())]);
     assert!(new_ring.is_some());
     let ring = new_ring.unwrap();
 
@@ -110,7 +110,7 @@ fn test_add_partitions_if_not_exist_idempotent_addition() {
 
     // Adding the same partition again should not change the ring
     let partitions = vec![(repl_id.clone(), node.clone())];
-    let is_added = ring.add_partitions_if_not_exist(partitions);
+    let is_added = ring.set_partitions(partitions);
     assert!(is_added.is_none());
 
     assert_eq!(ring, ring_to_compare);
@@ -123,7 +123,7 @@ fn test_node_removal_redistribution() {
     let (repl_id, node1) = replid_and_nodeid(6379);
 
     let mut ring = ring
-        .add_partitions_if_not_exist(vec![
+        .set_partitions(vec![
             (repl_id.clone(), node1.clone()),
             replid_and_nodeid(6380),
             replid_and_nodeid(6381),

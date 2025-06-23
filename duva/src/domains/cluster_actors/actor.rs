@@ -161,8 +161,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         let hashring = HashRing::default();
         // TODO - the following updates hashring only for the leader and its replid with its own system time
         // ! Which will introduce bug. instead, follower should replicate leader's hashring as it is
-        let Some(new_hashring) = hashring.add_partitions_if_not_exist(vec![(replid, leader_id)])
-        else {
+        let Some(new_hashring) = hashring.set_partitions(vec![(replid, leader_id)]) else {
             return;
         };
         self.hash_ring = new_hashring;
@@ -189,7 +188,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
         let (tx, _) = tokio::sync::broadcast::channel::<Topology>(100);
         let hash_ring = HashRing::default()
-            .add_partitions_if_not_exist(vec![(
+            .set_partitions(vec![(
                 init_repl_state.replid.clone(),
                 init_repl_state.self_identifier(),
             )])
@@ -472,8 +471,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             return;
         }
 
-        let Some(new_hash_ring) = self.hash_ring.add_partitions_if_not_exist(self.shard_leaders())
-        else {
+        let Some(new_hash_ring) = self.hash_ring.set_partitions(self.shard_leaders()) else {
             return;
         };
 

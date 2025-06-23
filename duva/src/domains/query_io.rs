@@ -769,7 +769,7 @@ mod test {
     fn test_heartbeat_include_hashring() {
         // GIVEN
         let ring = HashRing::default()
-            .add_partitions_if_not_exist(vec![(
+            .set_partitions(vec![(
                 ReplicationId::Key(Uuid::now_v7().to_string()),
                 PeerIdentifier::new("127.0.1:3344".into(), 0),
             )])
