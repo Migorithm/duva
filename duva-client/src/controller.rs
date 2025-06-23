@@ -13,6 +13,7 @@ use duva::prelude::tokio;
 use duva::prelude::tokio::sync::mpsc::Sender;
 use duva::prelude::uuid::Uuid;
 use duva::presentation::clients::request::ClientAction;
+use crate::broker;
 
 pub struct ClientController<T> {
     pub broker_tx: Sender<BrokerMessage>,
@@ -21,21 +22,8 @@ pub struct ClientController<T> {
 
 impl<T> ClientController<T> {
     pub async fn new(editor: T, server_addr: &PeerIdentifier) -> anyhow::Result<Self> {
-        let (r, w, auth_response) = Broker::authenticate(server_addr, None).await?;
-
-        let (broker_tx, rx) = tokio::sync::mpsc::channel::<BrokerMessage>(100);
-
-        let broker = Broker {
-            tx: broker_tx.clone(),
-            rx,
-            to_server: w.run(),
-            client_id: Uuid::parse_str(&auth_response.client_id).unwrap(),
-            request_id: auth_response.request_id,
-
-            topology: auth_response.topology,
-            leader_connections: HashMap::default(),
-            read_kill_switch: Some(r.run(broker_tx.clone())),
-        };
+        let broker = Broker::new(server_addr).await?;
+        let broker_tx = broker.tx.clone();
         tokio::spawn(broker.run());
         Ok(Self { broker_tx, target: editor })
     }
