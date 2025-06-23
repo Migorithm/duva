@@ -253,6 +253,59 @@ impl Broker {
             },
         }
     }
+
+    async fn route_command_by_keys(
+        &self,
+        command: &CommandToServer,
+        keys: Vec<String>,
+    ) -> Result<(), IoError> {
+        let Some(node_id) = self
+            .topology
+            .hash_ring
+            .get_node_id_for_keys(&keys.iter().map(|key| key.as_str()).collect::<Vec<&str>>())
+        else {
+            return Err(IoError::Custom(format!("Failed to get node ids from keys {:?}", keys)));
+        };
+
+        if let Some(value) = self.send_command(command, node_id).await {
+            return value;
+        }
+        Ok(())
+    }
+
+    async fn route_command_by_key(
+        &self,
+        command: &CommandToServer,
+        key: String,
+    ) -> Result<(), IoError> {
+        let Some(node_id) = self.topology.hash_ring.get_node_id_for_key(key.as_ref()) else {
+            return Err(IoError::Custom(format!("Failed to get node id from key {}", key)));
+        };
+
+        if let Some(value) = self.send_command(command, node_id).await {
+            return value;
+        }
+        Ok(())
+    }
+
+    async fn send_command(
+        &self,
+        command: &CommandToServer,
+        node_id: &PeerIdentifier,
+    ) -> Option<Result<(), IoError>> {
+        let Some(connection) = self.leader_connections.get(node_id) else {
+            return Some(Err(IoError::Custom(format!(
+                "Failed to get connections for node id {:?}",
+                node_id
+            ))));
+        };
+        let cmd = self.build_command_with_request_id(&command.command, &command.args);
+        println!("Sending command to node id {:?}", node_id);
+        if let Err(e) = connection.send(MsgToServer::Command(cmd.as_bytes().to_vec())).await {
+            return Some(Err(IoError::Custom(format!("Failed to send command: {}", e))));
+        }
+        None
+    }
 }
 
 pub enum BrokerMessage {

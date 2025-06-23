@@ -36,6 +36,7 @@ impl ServerStreamReader {
                             Err(IoError::ConnectionAborted),
                         );
                         let _ = controller_sender.send(message).await;
+                        println!();
                         println!("Connection reset or aborted for peer: {}", peer_id);
                         break;
                     },
