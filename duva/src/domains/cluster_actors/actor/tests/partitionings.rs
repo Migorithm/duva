@@ -155,7 +155,7 @@ async fn test_maybe_update_hashring_when_noplan_is_made() {
     let coordinator_replid = ReplicationId::Key(uuid::Uuid::now_v7().to_string());
 
     let hash_ring = hash_ring
-        .add_partitions_if_not_exist(vec![
+        .set_partitions(vec![
             (coordinator_replid, PeerIdentifier::new("127.0.0.1", 5999)),
             (cluster_actor.replication.replid.clone(), cluster_actor.replication.self_identifier()),
         ])
@@ -753,7 +753,7 @@ async fn test_maybe_update_hashring_replica_only_updates_ring() {
     // Create a new hash ring with different configuration
     let new_node_replid = ReplicationId::Key("new_node".to_string());
     let new_ring = HashRing::default()
-        .add_partitions_if_not_exist(vec![
+        .set_partitions(vec![
             (new_node_replid, PeerIdentifier::new("127.0.0.1", 6000)),
             (cluster_actor.replication.replid.clone(), cluster_actor.replication.self_identifier()),
         ])
