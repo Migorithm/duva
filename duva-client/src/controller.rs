@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::fmt::Display;
 
 use crate::broker::Broker;
@@ -11,9 +10,7 @@ use duva::prelude::anyhow;
 use duva::prelude::bytes::Bytes;
 use duva::prelude::tokio;
 use duva::prelude::tokio::sync::mpsc::Sender;
-use duva::prelude::uuid::Uuid;
 use duva::presentation::clients::request::ClientAction;
-use crate::broker;
 
 pub struct ClientController<T> {
     pub broker_tx: Sender<BrokerMessage>,
