@@ -159,8 +159,9 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     pub(crate) fn follower_setup(&mut self, replid: ReplicationId, leader_id: PeerIdentifier) {
         self.set_repl_id(replid.clone());
         let hashring = HashRing::default();
-        let Some(new_hashring) = hashring.add_partitions_if_not_exist(vec![(replid, leader_id)])
-        else {
+        // TODO - the following updates hashring only for the leader and its replid with its own system time
+        // ! Which will introduce bug. instead, follower should replicate leader's hashring as it is
+        let Some(new_hashring) = hashring.set_partitions(vec![(replid, leader_id)]) else {
             return;
         };
         self.hash_ring = new_hashring;
@@ -187,7 +188,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
         let (tx, _) = tokio::sync::broadcast::channel::<Topology>(100);
         let hash_ring = HashRing::default()
-            .add_partitions_if_not_exist(vec![(
+            .set_partitions(vec![(
                 init_repl_state.replid.clone(),
                 init_repl_state.self_identifier(),
             )])
@@ -470,9 +471,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             return;
         }
 
-        let Some(new_hash_ring) =
-            self.hash_ring.add_partitions_if_not_exist(self.shard_leaders().collect())
-        else {
+        let Some(new_hash_ring) = self.hash_ring.set_partitions(self.shard_leaders()) else {
             return;
         };
 
@@ -505,11 +504,23 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         })
     }
 
-    fn shard_leaders(&self) -> impl Iterator<Item = (ReplicationId, PeerIdentifier)> {
-        self.members
+    fn shard_leaders(&self) -> Vec<(ReplicationId, PeerIdentifier)> {
+        let iter = self
+            .members
             .iter()
             .filter(|(_, peer)| peer.role() == ReplicationRole::Leader)
-            .map(|(id, peer)| (peer.replid().clone(), id.clone()))
+            .map(|(id, peer)| (peer.replid().clone(), id.clone()));
+
+        if self.replication.is_leader() {
+            // TODO incase self is leader
+            iter.chain(iter::once((
+                self.replication.replid.clone(),
+                self.replication.self_identifier(),
+            )))
+            .collect()
+        } else {
+            iter.collect()
+        }
     }
 
     fn replicas_mut(&mut self) -> impl Iterator<Item = (&mut Peer, u64)> {
