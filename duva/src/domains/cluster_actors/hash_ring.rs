@@ -189,6 +189,13 @@ impl HashRing {
         }
         self.update_last_modified();
     }
+
+    pub fn get_node_id_for_keys(&self, keys: &[&str]) -> Option<&PeerIdentifier> {
+        let Ok(repl_id) = self.get_node_for_keys(keys) else {
+            return None;
+        };
+        self.pnodes.get(&repl_id)
+    }
 }
 
 fn filter_keys_in_partition(
