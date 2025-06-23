@@ -472,8 +472,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             return;
         }
 
-        let Some(new_hash_ring) =
-            self.hash_ring.add_partitions_if_not_exist(self.shard_leaders().collect())
+        let Some(new_hash_ring) = self.hash_ring.add_partitions_if_not_exist(self.shard_leaders())
         else {
             return;
         };
@@ -507,11 +506,23 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         })
     }
 
-    fn shard_leaders(&self) -> impl Iterator<Item = (ReplicationId, PeerIdentifier)> {
-        self.members
+    fn shard_leaders(&self) -> Vec<(ReplicationId, PeerIdentifier)> {
+        let iter = self
+            .members
             .iter()
             .filter(|(_, peer)| peer.role() == ReplicationRole::Leader)
-            .map(|(id, peer)| (peer.replid().clone(), id.clone()))
+            .map(|(id, peer)| (peer.replid().clone(), id.clone()));
+
+        if self.replication.is_leader() {
+            // TODO incase self is leader
+            iter.chain(iter::once((
+                self.replication.replid.clone(),
+                self.replication.self_identifier(),
+            )))
+            .collect()
+        } else {
+            iter.collect()
+        }
     }
 
     fn replicas_mut(&mut self) -> impl Iterator<Item = (&mut Peer, u64)> {

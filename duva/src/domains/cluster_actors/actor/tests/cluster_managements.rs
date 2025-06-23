@@ -198,11 +198,10 @@ async fn test_shard_leaders() {
     let (_, leader3_id) = cluster_actor.test_add_peer(7003, Some(shard3_replid.clone()), true);
 
     // WHEN
-    let shard_leaders: Vec<(ReplicationId, PeerIdentifier)> =
-        cluster_actor.shard_leaders().collect();
+    let shard_leaders = cluster_actor.shard_leaders();
 
     // THEN
-    assert_eq!(shard_leaders.len(), 3);
+    assert_eq!(shard_leaders.len(), 4); // plus 1 for self leader
 
     // Verify all expected leaders are present
     let expected_leaders = vec![
@@ -216,18 +215,6 @@ async fn test_shard_leaders() {
             shard_leaders.contains(&expected_leader),
             "Expected leader {:?} not found in shard_leaders",
             expected_leader
-        );
-    }
-
-    // Verify no followers are included
-    for (_replid, peer_id) in shard_leaders {
-        let peer = cluster_actor.members.get(&peer_id).unwrap();
-        assert_eq!(
-            peer.role(),
-            ReplicationRole::Leader,
-            "Peer {} should be a leader but has role {:?}",
-            peer_id,
-            peer.role()
         );
     }
 }

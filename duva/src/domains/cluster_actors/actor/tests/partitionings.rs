@@ -391,10 +391,8 @@ async fn test_receive_batch_success_path_when_consensus_is_required() {
     let (repl_buf, _) = cluster_actor.test_add_peer(6579, None, false);
 
     let (_, sender_peer_id) = cluster_actor.test_add_peer(6567, Some(peer_replid.clone()), true);
-    cluster_actor.hash_ring = cluster_actor
-        .hash_ring
-        .add_partitions_if_not_exist(vec![(peer_replid.clone(), sender_peer_id.clone())])
-        .unwrap();
+    cluster_actor.hash_ring =
+        cluster_actor.hash_ring.set_partitions(cluster_actor.shard_leaders()).unwrap();
 
     let cache_entries = cache_entries_create_helper(&[("success_key3", "value2")]);
     let migrate_batch = migration_batch_create_helper("success_test", cache_entries.clone());
@@ -430,10 +428,8 @@ async fn test_receive_batch_success_path_when_noreplica_found() {
     let peer_replid = ReplicationId::Key("repl_id_for_other_node".to_string());
 
     let (_, sender_peer_id) = cluster_actor.test_add_peer(6567, Some(peer_replid.clone()), true);
-    cluster_actor.hash_ring = cluster_actor
-        .hash_ring
-        .add_partitions_if_not_exist(vec![(peer_replid.clone(), sender_peer_id.clone())])
-        .unwrap();
+    cluster_actor.hash_ring =
+        cluster_actor.hash_ring.add_partitions_if_not_exist(cluster_actor.shard_leaders()).unwrap();
 
     let cache_entries =
         cache_entries_create_helper(&[("success_key3", "value2"), ("success_key4", "value4")]);
@@ -456,10 +452,7 @@ async fn test_receive_batch_validation_failure_keys_not_belonging_to_node() {
     let hash_ring = HashRing::default();
     let other_node_replid = ReplicationId::Key("other_node".to_string());
     let hash_ring = hash_ring
-        .add_partitions_if_not_exist(vec![(
-            other_node_replid,
-            PeerIdentifier("127.0.0.1:5000".into()),
-        )])
+        .set_partitions(vec![(other_node_replid, PeerIdentifier("127.0.0.1:5000".into()))])
         .unwrap();
     cluster_actor.hash_ring = hash_ring;
 
