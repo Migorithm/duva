@@ -47,26 +47,55 @@ impl HashRing {
         if new_partitions.is_empty() {
             return None;
         }
+        Some(self.clone().add_partitions(new_partitions))
+    }
 
-        let mut res = self.clone();
+    /// Sets the hash ring partitions to exactly match the provided list.
+    /// This method will not respect any existing partitions that are not in the given partitions
+    ///
+    /// Returns None if the new partitions are identical to the current ones.
+    pub(crate) fn set_partitions(
+        &self,
+        partitions: Vec<(ReplicationId, PeerIdentifier)>,
+    ) -> Option<HashRing> {
+        // Create a set of new replication IDs for easy comparison
+        let new_repl_ids: std::collections::HashSet<_> =
+            partitions.iter().map(|(repl_id, _)| repl_id).collect();
 
-        // Add all new partitions at once
-        for (repl_id, leader_id) in new_partitions {
-            res.pnodes.insert(repl_id.clone(), leader_id);
+        // Check if any changes are needed
+        let current_repl_ids: std::collections::HashSet<_> = self.pnodes.keys().collect();
+
+        // If the sets are identical and all peer identifiers match, no changes needed
+        if new_repl_ids == current_repl_ids {
+            let all_unchanged = partitions
+                .iter()
+                .all(|(repl_id, peer_id)| self.pnodes.get(repl_id) == Some(peer_id));
+            if all_unchanged {
+                return None;
+            }
+        }
+        // Create a new hash ring with only the specified partitions
+        Some(HashRing::default().add_partitions(partitions))
+    }
+
+    pub(crate) fn add_partitions(
+        mut self,
+        partitions: Vec<(ReplicationId, PeerIdentifier)>,
+    ) -> HashRing {
+        // Add all specified partitions
+        for (repl_id, leader_id) in partitions {
+            self.pnodes.insert(repl_id.clone(), leader_id);
 
             let repl_id = Rc::new(repl_id);
             // Create virtual nodes for better distribution
             for i in 0..V_NODE_NUM {
                 let virtual_node_id = format!("{}-{}", repl_id, i);
                 let hash = fnv_1a_hash(&virtual_node_id);
-
-                res.vnodes.insert(hash, repl_id.clone());
+                self.vnodes.insert(hash, repl_id.clone());
             }
         }
-
-        res.update_last_modified();
-
-        Some(res)
+        self.update_last_modified();
+        self
     }
 
     /// The following method will be invoked when:
