@@ -51,6 +51,10 @@ impl Peer {
         self.state.replid == *replid
     }
 
+    pub(crate) fn is_follower(&self, replid: &ReplicationId) -> bool {
+        self.is_replica(replid) && self.state.role == ReplicationRole::Follower
+    }
+
     pub(crate) fn set_role(&mut self, role: ReplicationRole) {
         self.state.role = role;
     }

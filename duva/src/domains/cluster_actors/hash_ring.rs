@@ -58,7 +58,9 @@ impl HashRing {
             }
         }
         // Create a new hash ring with only the specified partitions
-        Some(HashRing::default().add_partitions(partitions))
+        let mut ring = HashRing::default().add_partitions(partitions);
+        ring.update_last_modified();
+        Some(ring)
     }
 
     pub(crate) fn add_partitions(
@@ -77,7 +79,6 @@ impl HashRing {
                 self.vnodes.insert(hash, repl_id.clone());
             }
         }
-        self.update_last_modified();
         self
     }
 
