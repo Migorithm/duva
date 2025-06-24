@@ -101,7 +101,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
                 self.cluster_meet(peer_addr, lazy_option, callback).await;
             },
             | ClusterReshard(sender) => {
-                self.start_rebalance(cache_manager).await;
+                let _ = self.start_rebalance(cache_manager).await;
                 let _ = sender.send(Ok(()));
             },
             | GetRole(sender) => {
@@ -124,31 +124,29 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     ) {
         use PeerMessage::*;
 
-        match peer_message {
+        let res = match peer_message {
             | ClusterHeartBeat(heartbeat) => {
-                self.receive_cluster_heartbeat(heartbeat, cache_manager).await;
+                self.receive_cluster_heartbeat(heartbeat, cache_manager).await
             },
-            | RequestVote(request_vote) => {
-                self.vote_election(request_vote).await;
-            },
-            | AckReplication(repl_res) => {
-                self.ack_replication(repl_res).await;
-            },
+            | RequestVote(request_vote) => self.vote_election(request_vote).await,
+            | AckReplication(repl_res) => self.ack_replication(repl_res).await,
             | AppendEntriesRPC(heartbeat) => {
-                self.append_entries_rpc(cache_manager, heartbeat).await;
+                self.append_entries_rpc(cache_manager, heartbeat).await
             },
             | ElectionVoteReply(request_vote_reply) => {
-                self.receive_election_vote(request_vote_reply).await;
+                self.receive_election_vote(request_vote_reply).await
             },
-            | StartRebalance => {
-                self.start_rebalance(cache_manager).await;
-            },
+            | StartRebalance => self.start_rebalance(cache_manager).await,
             | ReceiveBatch(migrate_batch) => {
-                self.receive_batch(migrate_batch, cache_manager, from).await;
+                self.receive_batch(migrate_batch, cache_manager, from).await
             },
             | MigrationBatchAck(migration_batch_ack) => {
-                self.handle_migration_ack(migration_batch_ack, cache_manager).await;
+                self.handle_migration_ack(migration_batch_ack, cache_manager).await
             },
+        };
+
+        if let Err(err) = res {
+            trace!("{}", err);
         }
     }
 
@@ -158,18 +156,12 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
         match conn_msg {
             | ConnectToServer { connect_to, callback } => {
-                self.connect_to_server(connect_to, Some(callback)).await;
+                self.connect_to_server(connect_to, Some(callback)).await
             },
-            | AcceptInboundPeer { stream } => {
-                self.accept_inbound_stream(stream);
-            },
+            | AcceptInboundPeer { stream } => self.accept_inbound_stream(stream),
 
-            | AddPeer(peer, optional_callback) => {
-                self.add_peer(peer, optional_callback).await;
-            },
-            | FollowerSetReplId(replication_id, _leader_id) => {
-                self.follower_setup(replication_id);
-            },
+            | AddPeer(peer, optional_callback) => self.add_peer(peer, optional_callback).await,
+            | FollowerSetReplId(replication_id, _leader_id) => self.follower_setup(replication_id),
         }
     }
 }

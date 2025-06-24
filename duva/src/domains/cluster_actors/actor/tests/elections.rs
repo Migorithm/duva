@@ -75,7 +75,7 @@ async fn test_vote_election_grant_vote() {
     };
 
     // WHEN
-    follower_actor.vote_election(request_vote.clone()).await;
+    follower_actor.vote_election(request_vote.clone()).await.unwrap();
 
     // THEN: Follower should grant the vote and update its state
     assert_eq!(follower_actor.replication.term, initial_term + 1);
@@ -120,7 +120,7 @@ async fn test_vote_election_deny_vote_older_log() {
     };
 
     //WHEN
-    follower_actor.vote_election(request_vote.clone()).await;
+    follower_actor.vote_election(request_vote.clone()).await.unwrap();
 
     //THEN
     assert!(matches!(
@@ -150,7 +150,7 @@ async fn test_vote_election_deny_vote_lower_candidate_term() {
         last_log_term: follower_term - 1,
     };
 
-    follower_actor.vote_election(request_vote.clone()).await;
+    follower_actor.vote_election(request_vote.clone()).await.unwrap();
 
     assert_eq!(follower_actor.replication.term, follower_term); // Term does not change
 
@@ -180,7 +180,7 @@ async fn test_receive_election_vote_candidate_wins_election() {
     let election_vote = ElectionVote { term: candidate_term, vote_granted: true };
 
     // WHEN: Candidate receives the winning vote
-    candidate_actor.receive_election_vote(election_vote).await;
+    candidate_actor.receive_election_vote(election_vote).await.unwrap();
 
     // THEN: Candidate should become Leader
     assert!(candidate_actor.replication.is_leader());
@@ -215,7 +215,7 @@ async fn test_receive_election_vote_candidate_gets_vote_not_enough_to_win() {
 
     let election_vote = ElectionVote { term: candidate_term, vote_granted: true };
 
-    candidate_actor.receive_election_vote(election_vote).await;
+    candidate_actor.receive_election_vote(election_vote).await.unwrap();
 
     assert_eq!(candidate_actor.replication.role, ReplicationRole::Follower); // Stays follower
 
