@@ -43,6 +43,9 @@ sequenceDiagram
 
         par 
             A -->> A: Delete write operation (or Snaphsot and drop logs for optimization)
+            critical 
+                A -->> A: Update hashring
+            end 
             A -->> A: Unlock pending requests
             alt Request's key is in A's range
                 A ->> A: Process request
@@ -50,9 +53,14 @@ sequenceDiagram
             else Request's key is in B's range
                 A -->> C1: (Moved) error
             end
+
+            
             A --) C1 : Notify token map update
         and
             B -->> B: Delete write operation (or Snaphsot and drop logs for optimization)
+            critical 
+                B -->> B: Update hashring
+            end 
             B -->> B: Unlock pending requests
             B -->> C2 : Notify token map update
         end
