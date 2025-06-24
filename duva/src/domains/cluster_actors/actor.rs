@@ -1064,11 +1064,9 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         let keys = cache_manager.route_keys(None).await;
         let migration_plans = self.hash_ring.create_migration_tasks(&new_ring, keys);
 
-        // Update the hash ring after creating migration plans
-        self.hash_ring = *new_ring;
-
         if migration_plans.is_empty() {
             info!("No migration tasks to schedule");
+            self.hash_ring = *new_ring;
             return;
         }
 
@@ -1174,18 +1172,6 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     ) -> anyhow::Result<()> {
         let peer = self.members.get_mut(&from).context("No Member Found")?;
 
-        // Validation against the now-updated hash ring - check if all keys belong to this node
-        let keys_to_validate: Vec<&str> =
-            migrate_batch.cache_entries.iter().map(|entry| entry.key()).collect();
-        if !self
-            .hash_ring
-            .verify_key_belongs_to_node(&keys_to_validate, &self.replication.self_identifier())
-        {
-            error!("Received batch contains keys that do not belong to this node");
-            peer.send(MigrationBatchAck::with_reject(migrate_batch.batch_id)).await?;
-            return Ok(());
-        }
-
         // If cache entries are empty, skip consensus and directly send success ack
         if migrate_batch.cache_entries.is_empty() {
             peer.send(MigrationBatchAck::with_success(migrate_batch.batch_id)).await?;
@@ -1259,6 +1245,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         tokio::spawn({
             let handler = self.self_handler.clone();
             let cache_manager = cache_manager.clone();
+
             async move {
                 if rx.await.is_ok() {
                     let _ = cache_manager.route_delete(pending_migration_batch.keys).await; // reflect state change
@@ -1282,6 +1269,10 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
                 if pending_reqs.is_empty() {
                     return;
                 }
+                if let Some(new_ring) = self.hash_ring.set_partitions(self.shard_leaders()) {
+                    self.hash_ring = new_ring;
+                }
+
                 let handler = self.self_handler.clone();
                 tokio::spawn(async move {
                     while let Some(req) = pending_reqs.pop_front() {

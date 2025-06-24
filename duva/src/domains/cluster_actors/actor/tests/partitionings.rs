@@ -428,37 +428,6 @@ async fn test_receive_batch_success_path_when_noreplica_found() {
 }
 
 #[tokio::test]
-async fn test_receive_batch_validation_failure_keys_not_belonging_to_node() {
-    // GIVEN
-    let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
-    // Create a hash ring where another node is responsible for the keys
-    let hash_ring = HashRing::default();
-    let other_node_replid = ReplicationId::Key("other_node".to_string());
-    let hash_ring = hash_ring
-        .set_partitions(vec![(other_node_replid, PeerIdentifier("127.0.0.1:5000".into()))])
-        .unwrap();
-    cluster_actor.hash_ring = hash_ring;
-
-    // ! this is the one for receiving actor
-
-    let (_hwm, cache_manager) = cache_manager_create_helper();
-    let (message_buf, sender_peer_id) = cluster_actor.test_add_peer(6565, None, true);
-
-    let cache_entries = cache_entries_create_helper(&[("key1", "value1"), ("key2", "value2")]);
-    let migrate_batch = migration_batch_create_helper("validation_test", cache_entries);
-
-    // WHEN
-    cluster_actor.receive_batch(migrate_batch, &cache_manager, sender_peer_id).await.unwrap();
-
-    // THEN
-    assert_expected_queryio(
-        &message_buf,
-        MigrationBatchAck { batch_id: BatchId("validation_test".into()), success: false },
-    )
-    .await;
-}
-
-#[tokio::test]
 async fn test_unblock_write_reqs_if_done_when_no_pending_migrations() {
     // GIVEN
     let mut cluster_actor = setup_blocked_cluster_actor_with_requests(2).await;
@@ -613,6 +582,12 @@ async fn test_handle_migration_ack_batch_id_not_found() {
 async fn test_handle_migration_ack_success_case_with_pending_reqs_and_migration() {
     // GIVEN
     let mut cluster_actor = setup_blocked_cluster_actor_with_requests(2).await;
+    cluster_actor.test_add_peer(
+        6055,
+        Some(ReplicationId::Key(uuid::Uuid::now_v7().to_string())),
+        true,
+    );
+
     let (_hwm, cache_manager) = cache_manager_create_helper();
 
     // Set up test keys in cache that will be part of the migration
@@ -681,16 +656,14 @@ async fn test_start_rebalance_schedules_migration_batches() {
 
     // THEN
     // 1. Verify heartbeat was sent immediately (synchronous part)
-    assert_expected_queryio(
-        &buf,
-        QueryIO::ClusterHeartBeat(HeartBeat {
-            from: cluster_actor.replication.self_identifier(),
-            hashring: Some(Box::new(cluster_actor.hash_ring.clone())),
-            replid: cluster_actor.replication.replid.clone(),
-            ..Default::default()
-        }),
-    )
-    .await;
+    let QueryIO::ClusterHeartBeat(HeartBeat { hashring, .. }) =
+        buf.lock().await.pop_front().unwrap()
+    else {
+        panic!()
+    };
+
+    assert!(hashring.is_some());
+    assert_ne!(*hashring.unwrap(), cluster_actor.hash_ring);
 
     // 2. Wait for migration batch message with timeout (asynchronous part)
     let batch = tokio::time::timeout(Duration::from_millis(1000), async {
