@@ -57,8 +57,8 @@ The following features have been implemented so far:
     - Follower reads with RYOW consistency 
     - Push-based topology change notification
     - Eviction Policy - LRU(default)
-    - Partitioning 
-    - Rebalancing - Eager
+    - Distributed sharding
+        - Rebalancing (eager, lazy)
 
 
 - Protocol Support
