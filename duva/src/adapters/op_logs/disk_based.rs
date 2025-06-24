@@ -1,13 +1,12 @@
-#![allow(dead_code, unused_variables)]
 use crate::domains::operation_logs::interfaces::TWriteAheadLog;
 use crate::domains::operation_logs::{WriteOperation, WriteRequest};
 use anyhow::{Context, Result};
 use bytes::Bytes;
 use regex::Regex;
-use std::io::ErrorKind;
+use std::fs::{File, OpenOptions};
+use std::io::{BufReader, BufWriter, Seek, Write};
+use std::io::{ErrorKind, Read};
 use std::path::{Path, PathBuf};
-use tokio::fs::{File, OpenOptions};
-use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt, BufReader, BufWriter};
 
 const SEGMENT_SIZE: usize = 1024 * 1024; // 1MB per segment
 
@@ -44,28 +43,26 @@ impl LookupIndex {
 }
 
 impl Segment {
-    async fn new(path: PathBuf) -> Self {
+    fn new(path: PathBuf) -> Self {
         let _file = OpenOptions::new()
             .create(true)
             .append(true)
             .read(true)
             .open(&path)
-            .await
             .context(format!("Failed to create initial segment '{}'", path.display()))
             .unwrap();
 
         Self { path, start_index: 0, end_index: 0, size: 0, lookups: Vec::new() }
     }
 
-    async fn read_operations(&self) -> Result<Vec<WriteOperation>> {
+    fn read_operations(&self) -> Result<Vec<WriteOperation>> {
         let file = OpenOptions::new()
             .read(true)
             .open(&self.path)
-            .await
             .context(format!("Failed to open segment for reading: {}", self.path.display()))?;
         let mut reader = BufReader::new(file);
         let mut buf = Vec::new();
-        reader.read_to_end(&mut buf).await?;
+        reader.read_to_end(&mut buf)?;
 
         if buf.is_empty() {
             return Ok(Vec::new()); // Return empty vec for empty files
@@ -75,16 +72,15 @@ impl Segment {
         WriteRequest::deserialize(bytes) // Assuming this returns Result<Vec<WriteOperation>>
     }
 
-    async fn from_path(path: &PathBuf) -> Result<Self> {
+    fn from_path(path: &PathBuf) -> Result<Self> {
         let file = OpenOptions::new()
             .read(true)
             .open(&path)
-            .await
             .context(format!("Failed to open segment '{}'", path.display()))?;
 
         let mut reader = BufReader::new(file);
         let mut buf = Vec::new();
-        reader.read_to_end(&mut buf).await?;
+        reader.read_to_end(&mut buf)?;
 
         // Parse the segment file to get operations and build index
         let bytes = Bytes::copy_from_slice(&buf[..]);
@@ -110,14 +106,9 @@ impl Segment {
         })
     }
 
-    async fn create_writer(&self) -> Result<BufWriter<File>> {
-        let file = OpenOptions::new().create(true).append(true).read(true).open(&self.path).await?;
+    fn create_writer(&self) -> Result<BufWriter<File>> {
+        let file = OpenOptions::new().create(true).append(true).read(true).open(&self.path)?;
         Ok(BufWriter::new(file))
-    }
-
-    // Add method to update index on append
-    fn update_index(&mut self, op_index: u64) {
-        self.lookups.push(LookupIndex::new(op_index, self.size));
     }
 
     // Add method to find byte offset for a log index
@@ -129,14 +120,14 @@ impl Segment {
     }
 
     // Add method to read operation at specific offset
-    async fn read_at_offset(&self, offset: usize) -> Result<WriteOperation> {
-        let file = OpenOptions::new().read(true).open(&self.path).await?;
+    fn read_at_offset(&self, offset: usize) -> Result<WriteOperation> {
+        let file = OpenOptions::new().read(true).open(&self.path)?;
 
         let mut reader = BufReader::new(file);
-        reader.seek(std::io::SeekFrom::Start(offset as u64)).await?;
+        reader.seek(std::io::SeekFrom::Start(offset as u64))?;
 
         let mut buf = Vec::new();
-        reader.read_to_end(&mut buf).await?;
+        reader.read_to_end(&mut buf)?;
 
         let bytes = Bytes::copy_from_slice(&buf);
         let operations = WriteRequest::deserialize(bytes)?;
@@ -154,29 +145,28 @@ impl FileOpLogs {
     /// # Errors
     ///
     /// Returns an error if the file/directory cannot be created or opened.
-    pub async fn new<P: AsRef<Path>>(path: P) -> Result<Self> {
+    pub fn new<P: AsRef<Path>>(path: P) -> Result<Self> {
         let path = path.as_ref().to_path_buf();
 
-        Self::validate_folder(&path).await?;
+        Self::validate_folder(&path)?;
 
         // Detect and sort existing segment files
-        let segment_paths = Self::detect_and_sort_existing_segments(&path).await?;
+        let segment_paths = Self::detect_and_sort_existing_segments(&path)?;
 
-        let active_segment =
-            Self::take_last_segment_otherwise_init(&path, segment_paths.clone()).await?;
+        let active_segment = Self::take_last_segment_otherwise_init(&path, segment_paths.clone())?;
 
         // Load all segments except the last one (which is the active segment)
         let mut segments = Vec::new();
         for segment_path in segment_paths.iter().take(segment_paths.len().saturating_sub(1)) {
-            let segment = Segment::from_path(segment_path).await?;
+            let segment = Segment::from_path(segment_path)?;
             segments.push(segment);
         }
 
         Ok(Self { path, active_segment, segments })
     }
 
-    async fn validate_folder(path: &PathBuf) -> Result<(), anyhow::Error> {
-        match tokio::fs::metadata(path).await {
+    fn validate_folder(path: &PathBuf) -> Result<(), anyhow::Error> {
+        match std::fs::metadata(path) {
             | Ok(metadata) => {
                 if !metadata.is_dir() {
                     return Err(anyhow::anyhow!(
@@ -186,8 +176,7 @@ impl FileOpLogs {
                 }
             },
             | Err(e) if e.kind() == ErrorKind::NotFound => {
-                tokio::fs::create_dir_all(path)
-                    .await
+                std::fs::create_dir_all(path)
                     .context(format!("Failed to create directory '{}'", path.display()))?;
             },
             | Err(e) => {
@@ -198,11 +187,9 @@ impl FileOpLogs {
         Ok(())
     }
 
-    async fn detect_and_sort_existing_segments(
-        path: &PathBuf,
-    ) -> Result<Vec<PathBuf>, anyhow::Error> {
+    fn detect_and_sort_existing_segments(path: &PathBuf) -> Result<Vec<PathBuf>, anyhow::Error> {
         // Ensure the directory exists before trying to read it
-        if !tokio::fs::try_exists(path).await? {
+        if !std::fs::exists(path)? {
             return Err(anyhow::anyhow!("Directory does not exist: {:?}", path));
         }
         // Compile regex once outside the loop for better performance
@@ -210,9 +197,9 @@ impl FileOpLogs {
 
         // Collect and process entries in one pass
         let mut segments = Vec::new();
-        let mut read_dir = tokio::fs::read_dir(path).await?;
+        let mut read_dir = std::fs::read_dir(path)?;
 
-        while let Some(entry) = read_dir.next_entry().await? {
+        while let Some(Ok(entry)) = read_dir.next() {
             let file_name = entry.file_name();
             let file_name_str = file_name.to_string_lossy();
 
@@ -231,26 +218,26 @@ impl FileOpLogs {
         Ok(segments.into_iter().map(|(_, path)| path).collect())
     }
 
-    async fn take_last_segment_otherwise_init(
+    fn take_last_segment_otherwise_init(
         path: &Path,
         segment_paths: Vec<PathBuf>,
     ) -> Result<Segment, anyhow::Error> {
         let active_segment = if segment_paths.is_empty() {
             // No segments exist — create initial segment
             let segment_path = path.join("segment_0.oplog");
-            Segment::new(segment_path).await
+            Segment::new(segment_path)
         } else {
             // Segments exist — use the last one as active
-            Segment::from_path(segment_paths.last().unwrap()).await?
+            Segment::from_path(segment_paths.last().unwrap())?
         };
         Ok(active_segment)
     }
 
-    async fn rotate_segment(&mut self) -> Result<()> {
+    fn rotate_segment(&mut self) -> Result<()> {
         // Close current segment
-        if let Ok(mut writer) = self.active_segment.create_writer().await {
-            writer.flush().await?;
-            writer.get_mut().sync_all().await?;
+        if let Ok(mut writer) = self.active_segment.create_writer() {
+            writer.flush()?;
+            writer.get_mut().sync_all()?;
         }
 
         // Add to segments list
@@ -259,7 +246,7 @@ impl FileOpLogs {
         // Create new segment
         let next_index = self.segments.len();
         let segment_path = self.path.join(format!("segment_{}.oplog", next_index));
-        let _ = OpenOptions::new().create(true).append(true).read(true).open(&segment_path).await?;
+        let _ = OpenOptions::new().create(true).append(true).read(true).open(&segment_path)?;
 
         self.active_segment = Segment {
             path: segment_path,
@@ -272,7 +259,7 @@ impl FileOpLogs {
         Ok(())
     }
 
-    async fn read_ops_from_reader(
+    fn read_ops_from_reader(
         &self,
         reader: &mut BufReader<File>,
         start_exclusive: u64,
@@ -281,7 +268,7 @@ impl FileOpLogs {
         let mut collected_ops = Vec::new();
         let mut buffer = Vec::new(); // Buffer to hold bytes for deserialization
 
-        reader.read_to_end(&mut buffer).await?;
+        reader.read_to_end(&mut buffer)?;
 
         if buffer.is_empty() {
             return Ok(collected_ops);
@@ -308,10 +295,10 @@ impl FileOpLogs {
 
 impl TWriteAheadLog for FileOpLogs {
     /// Appends a single `WriteOperation` to the file.
-    async fn append(&mut self, op: WriteOperation) -> Result<()> {
+    fn append(&mut self, op: WriteOperation) -> Result<()> {
         // Check if we need to rotate
         if self.active_segment.size >= SEGMENT_SIZE {
-            self.rotate_segment().await?;
+            self.rotate_segment()?;
         }
 
         let log_index = op.log_index;
@@ -321,10 +308,10 @@ impl TWriteAheadLog for FileOpLogs {
 
         let serialized = op.serialize();
 
-        let mut writer = self.active_segment.create_writer().await?;
-        writer.write_all(&serialized).await?;
-        writer.flush().await?;
-        writer.get_mut().sync_all().await?;
+        let mut writer = self.active_segment.create_writer()?;
+        writer.write_all(&serialized)?;
+        writer.flush()?;
+        writer.get_mut().sync_all()?;
 
         self.active_segment.size += serialized.len();
         self.active_segment.end_index = log_index;
@@ -332,14 +319,14 @@ impl TWriteAheadLog for FileOpLogs {
         Ok(())
     }
 
-    async fn append_many(&mut self, ops: Vec<WriteOperation>) -> Result<()> {
+    fn append_many(&mut self, ops: Vec<WriteOperation>) -> Result<()> {
         for op in ops {
-            self.append(op).await?;
+            self.append(op)?;
         }
         Ok(())
     }
 
-    async fn range(&self, start_exclusive: u64, end_inclusive: u64) -> Vec<WriteOperation> {
+    fn range(&self, start_exclusive: u64, end_inclusive: u64) -> Vec<WriteOperation> {
         let mut result = Vec::new();
 
         // sealed + active segments for iteration
@@ -365,14 +352,12 @@ impl TWriteAheadLog for FileOpLogs {
                 let start_byte_offset = segment.lookups[starting_idx_in_index].byte_offset;
 
                 // Open the file and seek to the calculated byte offset
-                if let Ok(file) = OpenOptions::new().read(true).open(&segment.path).await {
+                if let Ok(file) = OpenOptions::new().read(true).open(&segment.path) {
                     let mut reader = BufReader::new(file);
-                    if reader.seek(std::io::SeekFrom::Start(start_byte_offset as u64)).await.is_ok()
-                    {
+                    if reader.seek(std::io::SeekFrom::Start(start_byte_offset as u64)).is_ok() {
                         // Read operations sequentially from this point
-                        if let Ok(ops) = self
-                            .read_ops_from_reader(&mut reader, start_exclusive, end_inclusive)
-                            .await
+                        if let Ok(ops) =
+                            self.read_ops_from_reader(&mut reader, start_exclusive, end_inclusive)
                         {
                             result.extend(ops);
                         }
@@ -386,11 +371,10 @@ impl TWriteAheadLog for FileOpLogs {
                 // we should start reading from the beginning of the segment file (offset 0)
                 // if the segment also overlaps with the end_inclusive range.
                 if segment.start_index <= end_inclusive {
-                    if let Ok(file) = OpenOptions::new().read(true).open(&segment.path).await {
+                    if let Ok(file) = OpenOptions::new().read(true).open(&segment.path) {
                         let mut reader = BufReader::new(file); // Starts at offset 0
-                        if let Ok(ops) = self
-                            .read_ops_from_reader(&mut reader, start_exclusive, end_inclusive)
-                            .await
+                        if let Ok(ops) =
+                            self.read_ops_from_reader(&mut reader, start_exclusive, end_inclusive)
                         {
                             result.extend(ops);
                         }
@@ -408,20 +392,20 @@ impl TWriteAheadLog for FileOpLogs {
     }
 
     /// Replays all existing operations in the op_logs, invoking a callback for each.
-    async fn replay<F>(&mut self, mut f: F) -> Result<()>
+    fn replay<F>(&mut self, mut f: F) -> Result<()>
     where
         F: FnMut(WriteOperation) + Send,
     {
         // Replay all segments in order
         for segment in &self.segments {
-            let operations = segment.read_operations().await?;
+            let operations = segment.read_operations()?;
             for op in operations {
                 f(op);
             }
         }
 
         // Replay active segment
-        let active_operations = self.active_segment.read_operations().await?;
+        let active_operations = self.active_segment.read_operations()?;
         for op in active_operations {
             f(op);
         }
@@ -430,21 +414,21 @@ impl TWriteAheadLog for FileOpLogs {
     }
 
     /// Forces any buffered data to be written to disk.
-    async fn fsync(&mut self) -> Result<()> {
+    fn fsync(&mut self) -> Result<()> {
         // Open in append mode to get a file handle to the active segment
-        let mut file = OpenOptions::new().append(true).open(&self.active_segment.path).await?;
-        file.flush().await?;
-        file.sync_all().await?;
+        let mut file = OpenOptions::new().append(true).open(&self.active_segment.path)?;
+        file.flush()?;
+        file.sync_all()?;
 
         Ok(())
     }
 
-    async fn read_at(&self, log_index: u64) -> Option<WriteOperation> {
+    fn read_at(&self, log_index: u64) -> Option<WriteOperation> {
         // First check sealed segments
         for segment in &self.segments {
             if segment.start_index <= log_index && segment.end_index >= log_index {
                 if let Some(offset) = segment.find_offset(log_index) {
-                    return segment.read_at_offset(offset).await.ok();
+                    return segment.read_at_offset(offset).ok();
                 }
             }
         }
@@ -454,7 +438,7 @@ impl TWriteAheadLog for FileOpLogs {
             && self.active_segment.end_index >= log_index
         {
             if let Some(offset) = self.active_segment.find_offset(log_index) {
-                return self.active_segment.read_at_offset(offset).await.ok();
+                return self.active_segment.read_at_offset(offset).ok();
             }
         }
 
@@ -473,7 +457,7 @@ impl TWriteAheadLog for FileOpLogs {
         self.segments.is_empty() && self.active_segment.size == 0
     }
 
-    async fn truncate_after(&mut self, log_index: u64) {
+    fn truncate_after(&mut self, log_index: u64) {
         // Remove segments after the truncation point
         self.segments.retain(|segment| segment.end_index <= log_index);
 
@@ -485,25 +469,25 @@ impl TWriteAheadLog for FileOpLogs {
         }
     }
 
-    async fn follower_full_sync(&mut self, ops: Vec<WriteOperation>) -> Result<()> {
+    fn follower_full_sync(&mut self, ops: Vec<WriteOperation>) -> Result<()> {
         // Clear all existing segments
         for segment in &self.segments {
             if segment.path.exists() {
-                tokio::fs::remove_file(&segment.path).await?;
+                std::fs::remove_file(&segment.path)?;
             }
         }
         self.segments.clear();
 
         // Clear and reset active segment
         if self.active_segment.path.exists() {
-            tokio::fs::remove_file(&self.active_segment.path).await?;
+            std::fs::remove_file(&self.active_segment.path)?;
         }
 
         // Create new segment with a unique name to avoid conflicts
         let segment_path = self.path.join("segment_0.oplog");
         let file =
-            OpenOptions::new().create(true).write(true).truncate(true).open(&segment_path).await?;
-        file.sync_all().await?;
+            OpenOptions::new().create(true).write(true).truncate(true).open(&segment_path)?;
+        file.sync_all()?;
 
         let mut new_segment = Segment {
             path: segment_path,
@@ -514,7 +498,7 @@ impl TWriteAheadLog for FileOpLogs {
         };
 
         // Write all operations to the new segment
-        let mut writer = new_segment.create_writer().await?;
+        let mut writer = new_segment.create_writer()?;
         let mut current_offset = 0;
 
         for op in ops.into_iter() {
@@ -522,11 +506,11 @@ impl TWriteAheadLog for FileOpLogs {
             let serialized = op.serialize();
             new_segment.lookups.push(LookupIndex::new(log_index, current_offset));
             current_offset += serialized.len();
-            writer.write_all(&serialized).await?;
+            writer.write_all(&serialized)?;
         }
 
-        writer.flush().await?;
-        writer.get_mut().sync_all().await?;
+        writer.flush()?;
+        writer.get_mut().sync_all()?;
 
         // Update segment metadata
         new_segment.size = current_offset;
@@ -552,15 +536,15 @@ mod tests {
         }
     }
 
-    #[tokio::test]
-    async fn test_new_creates_oplogs() -> Result<()> {
+    #[test]
+    fn test_new_creates_oplogs() -> Result<()> {
         // GIVEN
         let dir = TempDir::new()?;
         let path = dir.path().join("local.oplog");
 
         // WHEN
         assert!(!path.exists());
-        assert!(FileOpLogs::new(&path).await.is_ok());
+        assert!(FileOpLogs::new(&path).is_ok());
 
         // THEN
         assert!(path.exists());
@@ -568,24 +552,24 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn test_append_stores_to_disk() {
+    #[test]
+    fn test_append_stores_to_disk() {
         // GIVEN
         let dir = TempDir::new().unwrap();
         let path = dir.path();
-        let mut op_logs = FileOpLogs::new(&path).await.unwrap();
+        let mut op_logs = FileOpLogs::new(&path).unwrap();
         let request =
             WriteRequest::Set { key: "foo".into(), value: "bar".into(), expires_at: None };
         let write_op = WriteOperation { request: request.clone(), log_index: 0, term: 0 };
 
         // WHEN
-        op_logs.append(write_op).await.unwrap();
+        op_logs.append(write_op).unwrap();
         drop(op_logs);
 
         // THEN
-        let mut file = tokio::fs::File::open(&path.join("segment_0.oplog")).await.unwrap();
+        let mut file = std::fs::File::open(&path.join("segment_0.oplog")).unwrap();
         let mut buf = Vec::new();
-        file.read_to_end(&mut buf).await.unwrap();
+        file.read_to_end(&mut buf).unwrap();
 
         let (encoded, _): (WriteOperation, usize) =
             bincode::decode_from_slice(&buf[1..], bincode::config::standard()).unwrap();
@@ -593,26 +577,24 @@ mod tests {
         assert_eq!(encoded.request, request);
     }
 
-    #[tokio::test]
-    async fn test_replay_multiple_operations() -> Result<()> {
+    #[test]
+    fn test_replay_multiple_operations() -> Result<()> {
         // GIVEN
         let dir = TempDir::new()?;
         let path = dir.path().join("local.oplog");
 
         // WHEN
-        let mut op_logs = FileOpLogs::new(&path).await?;
-        op_logs.append(set_helper(0, 0)).await?;
-        op_logs.append(set_helper(1, 0)).await?;
-        op_logs.append(set_helper(2, 1)).await?;
+        let mut op_logs = FileOpLogs::new(&path)?;
+        op_logs.append(set_helper(0, 0))?;
+        op_logs.append(set_helper(1, 0))?;
+        op_logs.append(set_helper(2, 1))?;
 
-        let mut op_logs = FileOpLogs::new(&path).await?;
+        let mut op_logs = FileOpLogs::new(&path)?;
         let mut ops = Vec::new();
 
-        op_logs
-            .replay(|op| {
-                ops.push(op);
-            })
-            .await?;
+        op_logs.replay(|op| {
+            ops.push(op);
+        })?;
 
         // THEN
         assert_eq!(ops.len(), 3);
@@ -623,9 +605,9 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
+    #[test]
     #[ignore = "This is desired behavior. However, currently deserialize fails if any part of the file is corrupted."]
-    async fn test_replay_partial_data() -> Result<()> {
+    fn test_replay_partial_data() -> Result<()> {
         // GIVEN
         let dir = TempDir::new()?;
         let path = dir.path().join("local.oplog");
@@ -633,26 +615,26 @@ mod tests {
         // WHEN
         // Append three ops.
         {
-            let mut op_logs = FileOpLogs::new(&path).await?;
-            op_logs.append(set_helper(0, 0)).await?;
-            op_logs.append(set_helper(1, 0)).await?;
-            op_logs.append(set_helper(2, 1)).await?;
+            let mut op_logs = FileOpLogs::new(&path)?;
+            op_logs.append(set_helper(0, 0))?;
+            op_logs.append(set_helper(1, 0))?;
+            op_logs.append(set_helper(2, 1))?;
         }
 
         // Corrupt file content by truncating to the first half.
         // We should only have one complete op.
         {
-            let mut file = OpenOptions::new().read(true).open(&path).await?;
+            let mut file = OpenOptions::new().read(true).open(&path)?;
             let mut data = Vec::new();
-            file.read_to_end(&mut data).await?;
+            file.read_to_end(&mut data)?;
 
             data.truncate(data.len() / 2);
 
-            let mut file = OpenOptions::new().write(true).truncate(true).open(&path).await?;
-            file.write_all(&data).await?;
+            let mut file = OpenOptions::new().write(true).truncate(true).open(&path)?;
+            file.write_all(&data)?;
         }
 
-        let mut op_logs = FileOpLogs::new(&path).await?;
+        let mut op_logs = FileOpLogs::new(&path)?;
         let mut ops = Vec::new();
 
         assert!(
@@ -660,7 +642,6 @@ mod tests {
                 .replay(|op| {
                     ops.push(op);
                 })
-                .await
                 .is_err()
         );
 
@@ -671,14 +652,14 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn test_new_creates_initial_segment() -> Result<()> {
+    #[test]
+    fn test_new_creates_initial_segment() -> Result<()> {
         // GIVEN
         let dir = TempDir::new()?;
         let path = dir.path();
 
         // WHEN
-        let op_logs = FileOpLogs::new(&path).await?;
+        let op_logs = FileOpLogs::new(&path)?;
 
         // THEN
 
@@ -692,21 +673,21 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn test_new_loads_existing_segment_metadata() -> Result<()> {
+    #[test]
+    fn test_new_loads_existing_segment_metadata() -> Result<()> {
         // GIVEN
         let dir = TempDir::new()?;
         let path = dir.path();
 
         // Create initial segment with some operations
         {
-            let mut op_logs = FileOpLogs::new(&path).await?;
-            op_logs.append(set_helper(10, 1)).await?;
-            op_logs.append(set_helper(11, 1)).await?;
+            let mut op_logs = FileOpLogs::new(&path)?;
+            op_logs.append(set_helper(10, 1))?;
+            op_logs.append(set_helper(11, 1))?;
         }
 
         // WHEN
-        let op_logs = FileOpLogs::new(&path).await?;
+        let op_logs = FileOpLogs::new(&path)?;
 
         // THEN
 
@@ -718,10 +699,10 @@ mod tests {
         assert!(segment.path.ends_with("segment_0.oplog"));
 
         // Verify we can read the operations
-        let file = OpenOptions::new().read(true).open(&segment.path).await?;
+        let file = OpenOptions::new().read(true).open(&segment.path)?;
         let mut reader = BufReader::new(file);
         let mut buf = Vec::new();
-        reader.read_to_end(&mut buf).await?;
+        reader.read_to_end(&mut buf)?;
         let bytes = Bytes::copy_from_slice(&buf[..]);
         let operations = WriteRequest::deserialize(bytes)?;
         assert_eq!(operations.len(), 2);
@@ -729,46 +710,42 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn test_new_handles_multiple_segments() -> Result<()> {
+    #[test]
+    fn test_new_handles_multiple_segments() -> Result<()> {
         // GIVEN
         let dir = TempDir::new()?;
         let path = dir.path();
 
         // Create multiple segments by forcing rotation
 
-        let mut op_logs = FileOpLogs::new(&path).await?;
+        let mut op_logs = FileOpLogs::new(&path)?;
         // Fill first segment
         for i in 0..100 {
-            op_logs
-                .append(WriteOperation {
-                    request: WriteRequest::Set {
-                        key: format!("key_{}", i).into(),
-                        value: format!("value_{}", i).into(),
-                        expires_at: None,
-                    },
-                    log_index: i as u64,
-                    term: 1,
-                })
-                .await?;
-        }
-        // Force rotation
-        op_logs.rotate_segment().await?;
-        // Add to new segment
-        op_logs
-            .append(WriteOperation {
+            op_logs.append(WriteOperation {
                 request: WriteRequest::Set {
-                    key: "new".into(),
-                    value: "value".into(),
+                    key: format!("key_{}", i).into(),
+                    value: format!("value_{}", i).into(),
                     expires_at: None,
                 },
-                log_index: 100,
+                log_index: i as u64,
                 term: 1,
-            })
-            .await?;
+            })?;
+        }
+        // Force rotation
+        op_logs.rotate_segment()?;
+        // Add to new segment
+        op_logs.append(WriteOperation {
+            request: WriteRequest::Set {
+                key: "new".into(),
+                value: "value".into(),
+                expires_at: None,
+            },
+            log_index: 100,
+            term: 1,
+        })?;
 
         // WHEN
-        let mut op_logs = FileOpLogs::new(&path).await?;
+        let mut op_logs = FileOpLogs::new(&path)?;
 
         // THEN
 
@@ -784,71 +761,67 @@ mod tests {
 
         // Verify we can read operations from both segments
         let mut ops = Vec::new();
-        op_logs.replay(|op| ops.push(op)).await?;
+        op_logs.replay(|op| ops.push(op))?;
         assert_eq!(ops.len(), 101);
 
         Ok(())
     }
 
-    #[tokio::test]
-    async fn test_new_handles_corrupted_segment() -> Result<()> {
+    #[test]
+    fn test_new_handles_corrupted_segment() -> Result<()> {
         // GIVEN
         let dir = TempDir::new()?;
         let path = dir.path();
 
         // Create a segment and corrupt it
-        let mut op_logs = FileOpLogs::new(&path).await?;
-        op_logs.append(set_helper(0, 1)).await?;
+        let mut op_logs = FileOpLogs::new(&path)?;
+        op_logs.append(set_helper(0, 1))?;
 
         // Corrupt the segment file
         let segment_path = path.join("segment_0.oplog");
-        let mut file = OpenOptions::new().write(true).open(&segment_path).await?;
-        file.write_all(b"corrupted data").await?;
+        let mut file = OpenOptions::new().write(true).open(&segment_path)?;
+        file.write_all(b"corrupted data")?;
 
         // WHEN/THEN
-        assert!(FileOpLogs::new(&path).await.is_err());
+        assert!(FileOpLogs::new(&path).is_err());
 
         Ok(())
     }
 
-    #[tokio::test]
-    async fn test_follower_full_sync_replaces_all_segments() -> Result<()> {
+    #[test]
+    fn test_follower_full_sync_replaces_all_segments() -> Result<()> {
         // GIVEN
         let dir = TempDir::new()?;
         let path = dir.path();
 
         // Create initial segments with some operations
-        let mut op_logs = FileOpLogs::new(&path).await?;
+        let mut op_logs = FileOpLogs::new(&path)?;
         for i in 0..100 {
             // Append 100 ops to segment_0.oplog
-            op_logs
-                .append(WriteOperation {
-                    request: WriteRequest::Set {
-                        key: format!("key_{}", i).into(),
-                        value: format!("value_{}", i).into(),
-                        expires_at: None,
-                    },
-                    log_index: i as u64,
-                    term: 1,
-                })
-                .await?;
-        }
-        // Rotate segment_0.oplog into sealed segments, create segment_1.oplog
-        op_logs.rotate_segment().await?;
-        // Append one more op to segment_1.oplog
-        op_logs
-            .append(WriteOperation {
+            op_logs.append(WriteOperation {
                 request: WriteRequest::Set {
-                    key: "new".into(),
-                    value: "value".into(),
+                    key: format!("key_{}", i).into(),
+                    value: format!("value_{}", i).into(),
                     expires_at: None,
                 },
-                log_index: 100, // Note: This index might be wrong if 0..99 filled the segment exactly.
-                // The log_index should ideally be sequential across segments.
-                // If op 99 was the last in segment_0, this should be 100.
+                log_index: i as u64,
                 term: 1,
-            })
-            .await?;
+            })?;
+        }
+        // Rotate segment_0.oplog into sealed segments, create segment_1.oplog
+        op_logs.rotate_segment()?;
+        // Append one more op to segment_1.oplog
+        op_logs.append(WriteOperation {
+            request: WriteRequest::Set {
+                key: "new".into(),
+                value: "value".into(),
+                expires_at: None,
+            },
+            log_index: 100, // Note: This index might be wrong if 0..99 filled the segment exactly.
+            // The log_index should ideally be sequential across segments.
+            // If op 99 was the last in segment_0, this should be 100.
+            term: 1,
+        })?;
 
         // Store the paths of existing segments before sync
         // We collect these mainly for informational purposes or debugging now,
@@ -868,7 +841,7 @@ mod tests {
 
         // WHEN
         let new_ops = vec![set_helper(0, 2), set_helper(1, 2)];
-        op_logs.follower_full_sync(new_ops.clone()).await?;
+        op_logs.follower_full_sync(new_ops.clone())?;
 
         // THEN
         // Verify the state of the log after sync
@@ -894,7 +867,7 @@ mod tests {
 
         // Verify log contents by replaying
         let mut ops = Vec::new();
-        op_logs.replay(|op| ops.push(op)).await?;
+        op_logs.replay(|op| ops.push(op))?;
         assert_eq!(ops.len(), 2, "Log should contain exactly 2 operations after sync");
         assert_eq!(ops[0], new_ops[0], "First replayed op should match first new op");
         assert_eq!(ops[1], new_ops[1], "Second replayed op should match second new op");
@@ -902,18 +875,18 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn test_follower_full_sync_handles_empty_ops() -> Result<()> {
+    #[test]
+    fn test_follower_full_sync_handles_empty_ops() -> Result<()> {
         // GIVEN
         let dir = TempDir::new()?;
         let path = dir.path();
 
         // Create initial segments with some operations
-        let mut op_logs = FileOpLogs::new(&path).await?;
-        op_logs.append(set_helper(0, 1)).await?;
+        let mut op_logs = FileOpLogs::new(&path)?;
+        op_logs.append(set_helper(0, 1))?;
 
         // WHEN
-        op_logs.follower_full_sync(Vec::new()).await?;
+        op_logs.follower_full_sync(Vec::new())?;
 
         // THEN
         assert_eq!(op_logs.segments.len(), 0);
@@ -922,18 +895,18 @@ mod tests {
         assert_eq!(op_logs.active_segment.size, 0);
 
         let mut ops = Vec::new();
-        op_logs.replay(|op| ops.push(op)).await?;
+        op_logs.replay(|op| ops.push(op))?;
         assert!(ops.is_empty());
 
         Ok(())
     }
 
-    #[tokio::test]
-    async fn test_follower_full_sync_handles_large_number_of_ops() -> Result<()> {
+    #[test]
+    fn test_follower_full_sync_handles_large_number_of_ops() -> Result<()> {
         // GIVEN
         let dir = TempDir::new()?;
         let path = dir.path();
-        let mut op_logs = FileOpLogs::new(&path).await?;
+        let mut op_logs = FileOpLogs::new(&path)?;
 
         // WHEN
         let new_ops: Vec<_> = (0..1000)
@@ -947,11 +920,11 @@ mod tests {
                 term: 2,
             })
             .collect();
-        op_logs.follower_full_sync(new_ops.clone()).await?;
+        op_logs.follower_full_sync(new_ops.clone())?;
 
         // THEN
         let mut ops = Vec::new();
-        op_logs.replay(|op| ops.push(op)).await?;
+        op_logs.replay(|op| ops.push(op))?;
         assert_eq!(ops.len(), 1000);
         assert_eq!(ops[0], new_ops[0]);
         assert_eq!(ops[999], new_ops[999]);
@@ -959,16 +932,16 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn test_range_empty_log() -> Result<()> {
+    #[test]
+    fn test_range_empty_log() -> Result<()> {
         let dir = TempDir::new()?;
         let path = dir.path();
-        let op_logs = FileOpLogs::new(&path).await?;
+        let op_logs = FileOpLogs::new(&path)?;
 
-        let range_result = op_logs.range(0, 10).await;
+        let range_result = op_logs.range(0, 10);
         assert!(range_result.is_empty());
 
-        let range_result = op_logs.range(10, 20).await;
+        let range_result = op_logs.range(10, 20);
         assert!(range_result.is_empty());
         Ok(())
     }
@@ -988,206 +961,206 @@ mod tests {
             .collect()
     }
 
-    #[tokio::test]
-    async fn test_range_single_segment() {
+    #[test]
+    fn test_range_single_segment() {
         let dir = TempDir::new().unwrap();
         let path = dir.path();
-        let mut op_logs = FileOpLogs::new(&path).await.unwrap();
+        let mut op_logs = FileOpLogs::new(&path).unwrap();
 
         let ops_to_append = create_ops(0, 6, 1); // Indices 0, 1, 2, 3, 4, 5
-        op_logs.append_many(ops_to_append.clone()).await.unwrap();
+        op_logs.append_many(ops_to_append.clone()).unwrap();
 
         // Range fully within the segment (1 < i <= 3) -> 2, 3
-        let result = op_logs.range(1, 3).await;
+        let result = op_logs.range(1, 3);
         assert_eq!(result.len(), 2);
         assert_eq!(result[0].log_index, 2);
         assert_eq!(result[1].log_index, 3);
 
         // Range covering start (0 < i <= 2) -> 1, 2
-        let result = op_logs.range(0, 2).await;
+        let result = op_logs.range(0, 2);
         assert_eq!(result.len(), 2);
         assert_eq!(result[0].log_index, 1);
         assert_eq!(result[1].log_index, 2);
 
         // Range covering end (3 < i <= 5) -> 4, 5
-        let result = op_logs.range(3, 5).await;
+        let result = op_logs.range(3, 5);
         assert_eq!(result.len(), 2);
         assert_eq!(result[0].log_index, 4);
         assert_eq!(result[1].log_index, 5);
 
         // Range covering entire segment (u64::MIN < i <= 5) -> 1, 2, 3, 4, 5 (if log starts at 0)
         // If log starts at 0, u64::MIN is 0, so we need i > 0.
-        let result = op_logs.range(u64::MIN, 5).await; // Should get 1, 2, 3, 4, 5
+        let result = op_logs.range(u64::MIN, 5); // Should get 1, 2, 3, 4, 5
         assert_eq!(result.len(), 5);
         assert_eq!(result[0].log_index, 1);
         assert_eq!(result[4].log_index, 5);
 
         // Range entirely before (10 < i <= 15) -> empty
-        let result = op_logs.range(10, 15).await;
+        let result = op_logs.range(10, 15);
         assert!(result.is_empty());
 
         // Range entirely after (5 < i <= 10) -> empty (since max index is 5)
-        let result = op_logs.range(5, 10).await;
+        let result = op_logs.range(5, 10);
         assert!(result.is_empty());
 
         // Range with start_exclusive equal to end_inclusive (2 < i <= 2) -> empty
-        let result = op_logs.range(2, 2).await;
+        let result = op_logs.range(2, 2);
         assert!(result.is_empty());
 
         // Range with start_exclusive + 1 == end_inclusive (2 < i <= 3) -> 3
-        let result = op_logs.range(2, 3).await;
+        let result = op_logs.range(2, 3);
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].log_index, 3);
     }
 
-    #[tokio::test]
-    async fn test_range_multiple_segments() {
+    #[test]
+    fn test_range_multiple_segments() {
         let dir = TempDir::new().unwrap();
         let path = dir.path();
-        let mut op_logs2 = FileOpLogs::new(&path).await.unwrap();
+        let mut op_logs2 = FileOpLogs::new(&path).unwrap();
 
         let ops_seg1 = create_ops(0, 10, 1); // Ops 0-9
-        op_logs2.append_many(ops_seg1.clone()).await.unwrap();
-        op_logs2.rotate_segment().await.unwrap(); // segment_0 (0-9) sealed
+        op_logs2.append_many(ops_seg1.clone()).unwrap();
+        op_logs2.rotate_segment().unwrap(); // segment_0 (0-9) sealed
 
         let ops_seg2 = create_ops(10, 10, 2); // Ops 10-19
-        op_logs2.append_many(ops_seg2.clone()).await.unwrap();
-        op_logs2.rotate_segment().await.unwrap(); // segment_1 (10-19) sealed
+        op_logs2.append_many(ops_seg2.clone()).unwrap();
+        op_logs2.rotate_segment().unwrap(); // segment_1 (10-19) sealed
 
         let ops_active = create_ops(20, 5, 3); // Ops 20-24
-        op_logs2.append_many(ops_active.clone()).await.unwrap(); // segment_2 (20-24) active
+        op_logs2.append_many(ops_active.clone()).unwrap(); // segment_2 (20-24) active
 
         println!("Segments for multi-segment test: {:?}", op_logs2.segments);
         println!("Active segment for multi-segment test: {:?}", op_logs2.active_segment);
 
         // Range across sealed segments (5 < i <= 15) -> 6..=15
-        let result = op_logs2.range(5, 15).await;
+        let result = op_logs2.range(5, 15);
         assert_eq!(result.len(), 10);
         assert_eq!(result[0].log_index, 6);
         assert_eq!(result[9].log_index, 15);
 
         // Range across sealed and active segments (18 < i <= 22) -> 19..=22
-        let result = op_logs2.range(18, 22).await;
+        let result = op_logs2.range(18, 22);
         assert_eq!(result.len(), 4);
         assert_eq!(result[0].log_index, 19);
         assert_eq!(result[3].log_index, 22);
 
         // Range covering last ops in sealed and first ops in active (9 < i <= 21) -> 10..=21
-        let result = op_logs2.range(9, 21).await;
+        let result = op_logs2.range(9, 21);
         assert_eq!(result.len(), 12);
         assert_eq!(result[0].log_index, 10);
         assert_eq!(result[11].log_index, 21);
 
         // Range covering everything (u64::MIN < i <= 24) -> 1..=24 (if log starts at 0)
-        let result = op_logs2.range(u64::MIN, 24).await;
+        let result = op_logs2.range(u64::MIN, 24);
         assert_eq!(result.len(), 24); // Indices 1 through 24 (24 ops)
         assert_eq!(result[0].log_index, 1);
         assert_eq!(result[23].log_index, 24);
 
         // Range starting mid-segment (12 < i <= 20) -> 13..=20
-        let result = op_logs2.range(12, 20).await;
+        let result = op_logs2.range(12, 20);
         assert_eq!(result.len(), 8);
         assert_eq!(result[0].log_index, 13);
         assert_eq!(result[7].log_index, 20);
 
         // Range up to the first element (u64::MIN < i <= 0) -> empty (since i must be > 0)
-        let result = op_logs2.range(u64::MIN, 0).await;
+        let result = op_logs2.range(u64::MIN, 0);
         assert!(result.is_empty());
     }
 
     // --- Tests for read_at ---
 
-    #[tokio::test]
-    async fn test_read_at_empty_log() {
+    #[test]
+    fn test_read_at_empty_log() {
         let dir = TempDir::new().unwrap();
         let path = dir.path();
-        let op_logs = FileOpLogs::new(&path).await.unwrap();
+        let op_logs = FileOpLogs::new(&path).unwrap();
 
-        let op = op_logs.read_at(0).await;
+        let op = op_logs.read_at(0);
         assert!(op.is_none());
 
-        let op = op_logs.read_at(100).await;
+        let op = op_logs.read_at(100);
         assert!(op.is_none());
     }
 
-    #[tokio::test]
-    async fn test_read_at_single_segment() {
+    #[test]
+    fn test_read_at_single_segment() {
         let dir = TempDir::new().unwrap();
         let path = dir.path();
-        let mut op_logs = FileOpLogs::new(&path).await.unwrap();
+        let mut op_logs = FileOpLogs::new(&path).unwrap();
 
         let ops_to_append = create_ops(0, 5, 1); // Indices 0-4
-        op_logs.append_many(ops_to_append.clone()).await.unwrap();
+        op_logs.append_many(ops_to_append.clone()).unwrap();
 
         // Read existing ops
-        let op0 = op_logs.read_at(0).await;
+        let op0 = op_logs.read_at(0);
         assert_eq!(op0, Some(ops_to_append[0].clone()));
 
-        let op3 = op_logs.read_at(3).await;
+        let op3 = op_logs.read_at(3);
         assert_eq!(op3, Some(ops_to_append[3].clone()));
 
-        let op4 = op_logs.read_at(4).await;
+        let op4 = op_logs.read_at(4);
         assert_eq!(op4, Some(ops_to_append[4].clone()));
 
         // Read non-existing ops
-        let op5 = op_logs.read_at(5).await;
+        let op5 = op_logs.read_at(5);
         assert!(op5.is_none());
 
-        let op100 = op_logs.read_at(100).await;
+        let op100 = op_logs.read_at(100);
         assert!(op100.is_none());
     }
 
-    #[tokio::test]
-    async fn test_read_at_multiple_segments() {
+    #[test]
+    fn test_read_at_multiple_segments() {
         let dir = TempDir::new().unwrap();
         let path = dir.path();
-        let mut op_logs = FileOpLogs::new(&path).await.unwrap();
+        let mut op_logs = FileOpLogs::new(&path).unwrap();
 
         let ops_seg1 = create_ops(0, 10, 1); // Ops 0-9
-        op_logs.append_many(ops_seg1.clone()).await.unwrap();
-        op_logs.rotate_segment().await.unwrap(); // segment_0 (0-9) sealed
+        op_logs.append_many(ops_seg1.clone()).unwrap();
+        op_logs.rotate_segment().unwrap(); // segment_0 (0-9) sealed
 
         let ops_seg2 = create_ops(10, 10, 2); // Ops 10-19
-        op_logs.append_many(ops_seg2.clone()).await.unwrap();
-        op_logs.rotate_segment().await.unwrap(); // segment_1 (10-19) sealed
+        op_logs.append_many(ops_seg2.clone()).unwrap();
+        op_logs.rotate_segment().unwrap(); // segment_1 (10-19) sealed
 
         let ops_active = create_ops(20, 5, 3); // Ops 20-24
-        op_logs.append_many(ops_active.clone()).await.unwrap(); // segment_2 (20-24) active
+        op_logs.append_many(ops_active.clone()).unwrap(); // segment_2 (20-24) active
 
         // Read from first sealed segment
-        let op_s1_5 = op_logs.read_at(5).await;
+        let op_s1_5 = op_logs.read_at(5);
         assert_eq!(op_s1_5, Some(ops_seg1[5].clone()));
 
         // Read from second sealed segment
-        let op_s2_15 = op_logs.read_at(15).await;
+        let op_s2_15 = op_logs.read_at(15);
         assert_eq!(op_s2_15, Some(ops_seg2[5].clone())); // Index 15 is the 6th op in ops_seg2 (index 5)
 
         // Read from active segment
-        let op_active_22 = op_logs.read_at(22).await;
+        let op_active_22 = op_logs.read_at(22);
         assert_eq!(op_active_22, Some(ops_active[2].clone())); // Index 22 is the 3rd op in ops_active (index 2)
 
         // Read non-existing ops
-        let op_nonexistent = op_logs.read_at(100).await;
+        let op_nonexistent = op_logs.read_at(100);
         assert!(op_nonexistent.is_none());
 
-        let op_between = op_logs.read_at(9).await; // Should find index 9 (last in seg1)
+        let op_between = op_logs.read_at(9); // Should find index 9 (last in seg1)
         assert_eq!(op_between, Some(ops_seg1[9].clone()));
-        let op_between_start = op_logs.read_at(10).await; // Should find index 10 (first in seg2)
+        let op_between_start = op_logs.read_at(10); // Should find index 10 (first in seg2)
         assert_eq!(op_between_start, Some(ops_seg2[0].clone()));
     }
 
-    #[tokio::test]
-    async fn test_index_data_accuracy() -> Result<()> {
+    #[test]
+    fn test_index_data_accuracy() -> Result<()> {
         let dir = TempDir::new()?;
         let path = dir.path();
-        let mut op_logs = FileOpLogs::new(&path).await?;
+        let mut op_logs = FileOpLogs::new(&path)?;
 
         // Write some operations
         let ops = vec![set_helper(1, 1), set_helper(2, 1)];
 
         // Append operations
         for op in ops.clone() {
-            op_logs.append(op).await?;
+            op_logs.append(op)?;
         }
 
         // Verify index data is correctly maintained
@@ -1197,8 +1170,8 @@ mod tests {
         assert!(op_logs.active_segment.lookups[1].byte_offset > 0);
 
         // Verify we can read operations using the index
-        let read_op1 = op_logs.read_at(1).await;
-        let read_op2 = op_logs.read_at(2).await;
+        let read_op1 = op_logs.read_at(1);
+        let read_op2 = op_logs.read_at(2);
 
         assert!(read_op1.is_some());
         assert!(read_op2.is_some());
@@ -1208,29 +1181,27 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn test_index_data_after_rotation() -> Result<()> {
+    #[test]
+    fn test_index_data_after_rotation() -> Result<()> {
         let dir = TempDir::new()?;
         let path = dir.path();
-        let mut op_logs = FileOpLogs::new(&path).await?;
+        let mut op_logs = FileOpLogs::new(&path)?;
 
         // Fill first segment
         for i in 0..100 {
-            op_logs
-                .append(WriteOperation {
-                    request: WriteRequest::Set {
-                        key: format!("key_{}", i).into(),
-                        value: format!("value_{}", i).into(),
-                        expires_at: None,
-                    },
-                    log_index: i as u64,
-                    term: 1,
-                })
-                .await?;
+            op_logs.append(WriteOperation {
+                request: WriteRequest::Set {
+                    key: format!("key_{}", i).into(),
+                    value: format!("value_{}", i).into(),
+                    expires_at: None,
+                },
+                log_index: i as u64,
+                term: 1,
+            })?;
         }
 
         // Force rotation
-        op_logs.rotate_segment().await?;
+        op_logs.rotate_segment()?;
 
         // Verify index data in sealed segment
         let sealed_segment = &op_logs.segments[0];
@@ -1239,17 +1210,15 @@ mod tests {
         assert!(sealed_segment.lookups[99].log_index == 99);
 
         // Add to new segment
-        op_logs
-            .append(WriteOperation {
-                request: WriteRequest::Set {
-                    key: "new".into(),
-                    value: "value".into(),
-                    expires_at: None,
-                },
-                log_index: 100,
-                term: 1,
-            })
-            .await?;
+        op_logs.append(WriteOperation {
+            request: WriteRequest::Set {
+                key: "new".into(),
+                value: "value".into(),
+                expires_at: None,
+            },
+            log_index: 100,
+            term: 1,
+        })?;
 
         // Verify index data in active segment
         assert_eq!(op_logs.active_segment.lookups.len(), 1);
@@ -1258,31 +1227,29 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn test_index_data_recovery() -> Result<()> {
+    #[test]
+    fn test_index_data_recovery() -> Result<()> {
         let dir = TempDir::new()?;
         let path = dir.path();
 
         // Create initial log with some operations
         {
-            let mut op_logs = FileOpLogs::new(&path).await?;
+            let mut op_logs = FileOpLogs::new(&path)?;
             for i in 0..50 {
-                op_logs
-                    .append(WriteOperation {
-                        request: WriteRequest::Set {
-                            key: format!("key_{}", i).into(),
-                            value: format!("value_{}", i).into(),
-                            expires_at: None,
-                        },
-                        log_index: i as u64,
-                        term: 1,
-                    })
-                    .await?;
+                op_logs.append(WriteOperation {
+                    request: WriteRequest::Set {
+                        key: format!("key_{}", i).into(),
+                        value: format!("value_{}", i).into(),
+                        expires_at: None,
+                    },
+                    log_index: i as u64,
+                    term: 1,
+                })?;
             }
         }
 
         // Reopen the log
-        let op_logs = FileOpLogs::new(&path).await?;
+        let op_logs = FileOpLogs::new(&path)?;
 
         // Verify index data was recovered correctly
         assert_eq!(op_logs.active_segment.lookups.len(), 50);
@@ -1292,7 +1259,7 @@ mod tests {
 
         // Verify we can read operations using the recovered index
         for i in 0..50 {
-            let op = op_logs.read_at(i as u64).await;
+            let op = op_logs.read_at(i as u64);
             assert!(op.is_some());
             assert_eq!(op.unwrap().log_index, i as u64);
         }
@@ -1300,31 +1267,29 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn test_index_data_after_full_sync() -> Result<()> {
+    #[test]
+    fn test_index_data_after_full_sync() -> Result<()> {
         let dir = TempDir::new()?;
         let path = dir.path();
-        let mut op_logs = FileOpLogs::new(&path).await?;
+        let mut op_logs = FileOpLogs::new(&path)?;
 
         // Create some initial operations
         for i in 0..10 {
-            op_logs
-                .append(WriteOperation {
-                    request: WriteRequest::Set {
-                        key: format!("key_{}", i).into(),
-                        value: format!("value_{}", i).into(),
-                        expires_at: None,
-                    },
-                    log_index: i as u64,
-                    term: 1,
-                })
-                .await?;
+            op_logs.append(WriteOperation {
+                request: WriteRequest::Set {
+                    key: format!("key_{}", i).into(),
+                    value: format!("value_{}", i).into(),
+                    expires_at: None,
+                },
+                log_index: i as u64,
+                term: 1,
+            })?;
         }
 
         // Perform full sync with new operations
         let new_ops = vec![set_helper(0, 2), set_helper(1, 2)];
 
-        op_logs.follower_full_sync(new_ops.clone()).await?;
+        op_logs.follower_full_sync(new_ops.clone())?;
 
         // Verify index data after full sync
         assert_eq!(op_logs.active_segment.lookups.len(), 2);
@@ -1333,8 +1298,8 @@ mod tests {
         assert!(op_logs.active_segment.lookups[1].byte_offset > 0);
 
         // Verify we can read operations using the new index
-        let read_op0 = op_logs.read_at(0).await;
-        let read_op1 = op_logs.read_at(1).await;
+        let read_op0 = op_logs.read_at(0);
+        let read_op1 = op_logs.read_at(1);
 
         assert!(read_op0.is_some());
         assert!(read_op1.is_some());

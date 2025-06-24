@@ -24,7 +24,7 @@ async fn main() -> anyhow::Result<()> {
     // ! should we support type erasure?
 
     if ENV.append_only {
-        let local_aof = FileOpLogs::new(ENV.dir.clone()).await?;
+        let local_aof = FileOpLogs::new(ENV.dir.clone())?;
         let start_up_runner = StartUpFacade::new(local_aof, topology_writer);
         start_up_runner.run().await
     } else {

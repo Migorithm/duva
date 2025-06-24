@@ -39,7 +39,7 @@ impl<T: TWriteAheadLog> ReplicatedLogs<T> {
             term: current_term,
         };
 
-        self.target.append(op).await?;
+        self.target.append(op)?;
         self.last_log_index += 1;
 
         // ! Last log term must be updated because
@@ -56,7 +56,7 @@ impl<T: TWriteAheadLog> ReplicatedLogs<T> {
         // Filter and append entries in a single operation
         self.update_metadata(&entries);
 
-        self.target.append_many(entries).await?;
+        self.target.append_many(entries)?;
 
         debug!("Received log entry with log index up to {}", self.last_log_index);
         Ok(self.last_log_index)
@@ -67,7 +67,7 @@ impl<T: TWriteAheadLog> ReplicatedLogs<T> {
         ops: Vec<WriteOperation>,
     ) -> anyhow::Result<()> {
         self.update_metadata(&ops);
-        self.target.follower_full_sync(ops).await?;
+        self.target.follower_full_sync(ops)?;
         Ok(())
     }
 
@@ -76,15 +76,15 @@ impl<T: TWriteAheadLog> ReplicatedLogs<T> {
         start_exclusive: u64,
         end_inclusive: u64,
     ) -> Vec<WriteOperation> {
-        self.target.range(start_exclusive, end_inclusive).await
+        self.target.range(start_exclusive, end_inclusive)
     }
 
     async fn from(&self, start_exclusive: u64) -> Vec<WriteOperation> {
-        self.target.range(start_exclusive, self.last_log_index).await
+        self.target.range(start_exclusive, self.last_log_index)
     }
 
     pub(crate) async fn read_at(&self, at: u64) -> Option<WriteOperation> {
-        self.target.read_at(at).await
+        self.target.read_at(at)
     }
 
     pub(crate) fn is_empty(&self) -> bool {
@@ -92,7 +92,7 @@ impl<T: TWriteAheadLog> ReplicatedLogs<T> {
     }
 
     pub(crate) async fn truncate_after(&mut self, log_index: u64) {
-        self.target.truncate_after(log_index).await;
+        self.target.truncate_after(log_index);
     }
 
     fn update_metadata(&mut self, new_entries: &[WriteOperation]) {
@@ -107,6 +107,6 @@ impl<T: TWriteAheadLog> ReplicatedLogs<T> {
     pub(crate) async fn reset(&mut self) {
         self.last_log_index = 0;
         self.last_log_term = 0;
-        self.truncate_after(0).await
+        self.truncate_after(0);
     }
 }

@@ -9,17 +9,17 @@ pub struct MemoryOpLogs {
 }
 
 impl TWriteAheadLog for MemoryOpLogs {
-    async fn append(&mut self, op: WriteOperation) -> Result<()> {
+    fn append(&mut self, op: WriteOperation) -> Result<()> {
         self.writer.push(op);
         Ok(())
     }
 
-    async fn append_many(&mut self, ops: Vec<WriteOperation>) -> Result<()> {
+    fn append_many(&mut self, ops: Vec<WriteOperation>) -> Result<()> {
         self.writer.extend(ops);
         Ok(())
     }
 
-    async fn replay<F>(&mut self, mut f: F) -> Result<()>
+    fn replay<F>(&mut self, mut f: F) -> Result<()>
     where
         F: FnMut(WriteOperation) + Send,
     {
@@ -29,16 +29,16 @@ impl TWriteAheadLog for MemoryOpLogs {
         Ok(())
     }
 
-    async fn fsync(&mut self) -> Result<()> {
+    fn fsync(&mut self) -> Result<()> {
         Ok(())
     }
 
-    async fn follower_full_sync(&mut self, ops: Vec<WriteOperation>) -> Result<()> {
+    fn follower_full_sync(&mut self, ops: Vec<WriteOperation>) -> Result<()> {
         self.writer = ops;
         Ok(())
     }
 
-    async fn range(&self, start_exclusive: u64, end_inclusive: u64) -> Vec<WriteOperation> {
+    fn range(&self, start_exclusive: u64, end_inclusive: u64) -> Vec<WriteOperation> {
         self.writer
             .iter()
             .filter(|op| start_exclusive < op.log_index && op.log_index <= end_inclusive)
@@ -46,7 +46,7 @@ impl TWriteAheadLog for MemoryOpLogs {
             .collect()
     }
 
-    async fn read_at(&self, prev_log_index: u64) -> Option<WriteOperation> {
+    fn read_at(&self, prev_log_index: u64) -> Option<WriteOperation> {
         self.writer.iter().find(|op| op.log_index == prev_log_index).cloned()
     }
 
@@ -58,7 +58,7 @@ impl TWriteAheadLog for MemoryOpLogs {
         self.writer.is_empty()
     }
 
-    async fn truncate_after(&mut self, log_index: u64) {
+    fn truncate_after(&mut self, log_index: u64) {
         self.writer.retain(|op| op.log_index <= log_index);
     }
 }
