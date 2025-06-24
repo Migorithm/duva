@@ -1172,18 +1172,6 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     ) -> anyhow::Result<()> {
         let peer = self.members.get_mut(&from).context("No Member Found")?;
 
-        // Validation against the now-updated hash ring - check if all keys belong to this node
-        let keys_to_validate: Vec<&str> =
-            migrate_batch.cache_entries.iter().map(|entry| entry.key()).collect();
-        if !self
-            .hash_ring
-            .verify_key_belongs_to_node(&keys_to_validate, &self.replication.self_identifier())
-        {
-            error!("Received batch contains keys that do not belong to this node");
-            peer.send(MigrationBatchAck::with_reject(migrate_batch.batch_id)).await?;
-            return Ok(());
-        }
-
         // If cache entries are empty, skip consensus and directly send success ack
         if migrate_batch.cache_entries.is_empty() {
             peer.send(MigrationBatchAck::with_success(migrate_batch.batch_id)).await?;
