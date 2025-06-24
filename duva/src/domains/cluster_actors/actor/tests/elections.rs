@@ -106,7 +106,6 @@ async fn test_vote_election_deny_vote_older_log() {
             term: initial_term,
             request: WriteRequest::Set { key: "k".into(), value: "v".into(), expires_at: None },
         }])
-        .await
         .unwrap(); // Follower log: idx 2, term 2
 
     let (candidate_fake_buf, candidate_id) = follower_actor.test_add_peer(8031, None, false);

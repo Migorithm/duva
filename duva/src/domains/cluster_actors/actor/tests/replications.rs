@@ -1,7 +1,7 @@
 use super::*;
 
-#[tokio::test]
-async fn logger_create_entries_from_lowest() {
+#[test]
+fn logger_create_entries_from_lowest() {
     // GIVEN
     let mut logger = ReplicatedLogs::new(MemoryOpLogs::default(), 0, 0);
 
@@ -10,7 +10,7 @@ async fn logger_create_entries_from_lowest() {
         write_operation_create_helper(2, 0, "foo2", "bar"),
         write_operation_create_helper(3, 0, "foo3", "bar"),
     ];
-    logger.follower_write_entries(test_logs.clone()).await.unwrap();
+    logger.follower_write_entries(test_logs.clone()).unwrap();
 
     // WHEN
     const LOWEST_FOLLOWER_COMMIT_INDEX: u64 = 2;
@@ -24,9 +24,9 @@ async fn logger_create_entries_from_lowest() {
     repl_state.hwm.store(LOWEST_FOLLOWER_COMMIT_INDEX, Ordering::Release);
 
     let log = &WriteRequest::Set { key: "foo4".into(), value: "bar".into(), expires_at: None };
-    logger.write_single_entry(log, repl_state.term).await.unwrap();
+    logger.write_single_entry(log, repl_state.term).unwrap();
 
-    let logs = logger.list_append_log_entries(Some(LOWEST_FOLLOWER_COMMIT_INDEX)).await;
+    let logs = logger.list_append_log_entries(Some(LOWEST_FOLLOWER_COMMIT_INDEX));
 
     // THEN
     assert_eq!(logs.len(), 2);
@@ -59,7 +59,7 @@ async fn test_generate_follower_entries() {
 
     cluster_actor.replication.hwm.store(3, Ordering::Release);
 
-    cluster_actor.logger.follower_write_entries(test_logs).await.unwrap();
+    cluster_actor.logger.follower_write_entries(test_logs).unwrap();
 
     //WHEN
     // *add lagged followers with its commit index being 1
@@ -79,7 +79,6 @@ async fn test_generate_follower_entries() {
             &WriteRequest::Set { key: "foo4".into(), value: "bar".into(), expires_at: None },
             cluster_actor.replication.term,
         )
-        .await
         .unwrap();
 
     let entries = cluster_actor.iter_follower_append_entries().await.collect::<Vec<_>>();
@@ -111,7 +110,7 @@ async fn follower_cluster_actor_replicate_log() {
     // THEN
     assert_eq!(cluster_actor.replication.hwm.load(Ordering::Relaxed), 0);
     assert_eq!(cluster_actor.logger.last_log_index, 2);
-    let logs = cluster_actor.logger.range(0, 2).await;
+    let logs = cluster_actor.logger.range(0, 2);
     assert_eq!(logs.len(), 2);
     assert_eq!(logs[0].log_index, 1);
     assert_eq!(logs[1].log_index, 2);

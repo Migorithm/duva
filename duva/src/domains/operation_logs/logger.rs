@@ -14,21 +14,22 @@ impl<T> ReplicatedLogs<T> {
 }
 
 impl<T: TWriteAheadLog> ReplicatedLogs<T> {
-    pub(crate) async fn list_append_log_entries(
+    pub(crate) fn list_append_log_entries(
         &self,
         low_watermark: Option<u64>,
     ) -> Vec<WriteOperation> {
         let current_idx = self.last_log_index;
-        if low_watermark.is_none() {
-            return self.from(current_idx).await;
-        }
-        let mut logs = Vec::with_capacity((self.last_log_index - low_watermark.unwrap()) as usize);
-        logs.extend(self.from(low_watermark.unwrap()).await);
+        let Some(low_watermark) = low_watermark else {
+            return self.from(current_idx);
+        };
+
+        let mut logs = Vec::with_capacity((self.last_log_index - low_watermark) as usize);
+        logs.extend(self.from(low_watermark));
 
         logs
     }
 
-    pub(crate) async fn write_single_entry(
+    pub(crate) fn write_single_entry(
         &mut self,
         log: &WriteRequest,
         current_term: u64,
@@ -49,7 +50,7 @@ impl<T: TWriteAheadLog> ReplicatedLogs<T> {
     }
 
     // FOLLOWER side operation
-    pub(crate) async fn follower_write_entries(
+    pub(crate) fn follower_write_entries(
         &mut self,
         entries: Vec<WriteOperation>,
     ) -> anyhow::Result<u64> {
@@ -62,28 +63,21 @@ impl<T: TWriteAheadLog> ReplicatedLogs<T> {
         Ok(self.last_log_index)
     }
 
-    pub(crate) async fn follower_full_sync(
-        &mut self,
-        ops: Vec<WriteOperation>,
-    ) -> anyhow::Result<()> {
+    pub(crate) fn follower_full_sync(&mut self, ops: Vec<WriteOperation>) -> anyhow::Result<()> {
         self.update_metadata(&ops);
         self.target.follower_full_sync(ops)?;
         Ok(())
     }
 
-    pub(crate) async fn range(
-        &self,
-        start_exclusive: u64,
-        end_inclusive: u64,
-    ) -> Vec<WriteOperation> {
+    pub(crate) fn range(&self, start_exclusive: u64, end_inclusive: u64) -> Vec<WriteOperation> {
         self.target.range(start_exclusive, end_inclusive)
     }
 
-    async fn from(&self, start_exclusive: u64) -> Vec<WriteOperation> {
+    fn from(&self, start_exclusive: u64) -> Vec<WriteOperation> {
         self.target.range(start_exclusive, self.last_log_index)
     }
 
-    pub(crate) async fn read_at(&self, at: u64) -> Option<WriteOperation> {
+    pub(crate) fn read_at(&self, at: u64) -> Option<WriteOperation> {
         self.target.read_at(at)
     }
 
@@ -91,7 +85,7 @@ impl<T: TWriteAheadLog> ReplicatedLogs<T> {
         self.target.is_empty()
     }
 
-    pub(crate) async fn truncate_after(&mut self, log_index: u64) {
+    pub(crate) fn truncate_after(&mut self, log_index: u64) {
         self.target.truncate_after(log_index);
     }
 
@@ -104,7 +98,7 @@ impl<T: TWriteAheadLog> ReplicatedLogs<T> {
         self.last_log_term = last_entry.term;
     }
 
-    pub(crate) async fn reset(&mut self) {
+    pub(crate) fn reset(&mut self) {
         self.last_log_index = 0;
         self.last_log_term = 0;
         self.truncate_after(0);

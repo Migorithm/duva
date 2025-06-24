@@ -301,8 +301,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         }
 
         // * Check if the request has already been processed
-        if let Err(err) = self.logger.write_single_entry(&req.request, self.replication.term).await
-        {
+        if let Err(err) = self.logger.write_single_entry(&req.request, self.replication.term) {
             let _ = req.callback.send(Err(anyhow::anyhow!(err)));
             return;
         };
@@ -437,7 +436,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         peer_addr: PeerIdentifier,
         callback: tokio::sync::oneshot::Sender<anyhow::Result<()>>,
     ) {
-        self.logger.reset().await;
+        self.logger.reset();
         self.replication.hwm.store(0, Ordering::Release);
         self.set_repl_id(ReplicationId::Undecided);
         self.step_down().await;
@@ -714,7 +713,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     ) -> Box<dyn Iterator<Item = (&mut Peer, HeartBeat)> + '_> {
         let lowest_watermark = self.take_low_watermark();
 
-        let append_entries = self.logger.list_append_log_entries(lowest_watermark).await;
+        let append_entries = self.logger.list_append_log_entries(lowest_watermark);
 
         let default_heartbeat: HeartBeat = self.replication.default_heartbeat(
             0,
@@ -730,7 +729,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         }
 
         // If we have entries, find the entry before the first one to use as backup
-        let backup_entry = self.logger.read_at(append_entries[0].log_index - 1).await;
+        let backup_entry = self.logger.read_at(append_entries[0].log_index - 1);
 
         let iterator = self.replicas_mut().map(move |(peer, hwm)| {
             let logs =
@@ -835,7 +834,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             return Err(anyhow::anyhow!("Fail fail to append"));
         }
 
-        let match_index = self.logger.follower_write_entries(entries).await?;
+        let match_index = self.logger.follower_write_entries(entries)?;
 
         self.send_replication_ack(&rpc.from, ReplicationAck::ack(match_index, &self.replication))
             .await;
@@ -859,12 +858,12 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
         // * Raft followers should truncate their log starting at prev_log_index + 1 and then append the new entries
         // * Just returning an error is breaking consistency
-        if let Some(prev_entry) = self.logger.read_at(prev_log_index).await {
+        if let Some(prev_entry) = self.logger.read_at(prev_log_index) {
             debug!("Previous log entry: {:?}", prev_entry);
             if prev_entry.term != prev_log_term {
                 // ! Term mismatch -> triggers log truncation
                 error!("Term mismatch: {} != {}", prev_entry.term, prev_log_term);
-                self.logger.truncate_after(prev_log_index).await;
+                self.logger.truncate_after(prev_log_index);
 
                 return Err(RejectionReason::LogInconsistency);
             }
@@ -905,7 +904,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             debug!("Received commit offset {}", leader_hwm.hwm);
 
             for log_index in (old_hwm + 1)..=leader_hwm.hwm {
-                let Some(log) = self.logger.read_at(log_index).await else {
+                let Some(log) = self.logger.read_at(log_index) else {
                     warn!("log has never been replicated!");
                     self.send_replication_ack(
                         &leader_hwm.from,
