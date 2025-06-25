@@ -6,8 +6,10 @@ use crate::domains::cluster_actors::ConnectionMessage;
 use crate::domains::cluster_actors::SchedulerMessage;
 use crate::domains::operation_logs::interfaces::TWriteAheadLog;
 use crate::domains::peers::PeerMessage;
-use crate::err;
+
+use crate::log_err;
 use crate::prelude::PeerIdentifier;
+use tracing::error;
 use tracing::{instrument, trace};
 
 impl<T: TWriteAheadLog> ClusterActor<T> {
@@ -91,7 +93,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             },
             | ReplicaOf(peer_addr, callback) => {
                 if self.replication.self_identifier() == peer_addr {
-                    let _ = callback.send(err!("invalid operation: cannot replicate to self"));
+                    let _ = callback.send(log_err!("invalid operation: cannot replicate to self"));
                     return;
                 }
                 cache_manager.drop_cache().await;
@@ -146,7 +148,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         };
 
         if let Err(err) = res {
-            trace!("{}", err);
+            error!("{}", err.to_string());
         }
     }
 
