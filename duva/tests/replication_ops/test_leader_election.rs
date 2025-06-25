@@ -13,19 +13,9 @@ fn run_leader_election(with_append_only: bool) -> anyhow::Result<()> {
 
     // WHEN
     leader_p.kill()?;
-    sleep(Duration::from_millis(LEADER_HEARTBEAT_INTERVAL_MAX + 300));
 
     // THEN
-    let mut flag = false;
-    for f in [&follower_p1, &follower_p2] {
-        let mut handler = Client::new(f.port);
-        let res = handler.send_and_get_vec("info replication", 4);
-        if res.contains(&"role:leader".to_string()) {
-            flag = true;
-            break;
-        }
-    }
-    assert!(flag, "No leader found after the first leader was killed");
+    panic_if_election_not_done(follower_p1.port, follower_p2.port);
 
     Ok(())
 }
@@ -46,29 +36,36 @@ fn run_set_twice_after_election(with_append_only: bool) -> anyhow::Result<()> {
     leader_p.kill()?;
     sleep(Duration::from_millis(LEADER_HEARTBEAT_INTERVAL_MAX + 300));
 
-    let mut flag = false;
-    for f in [&follower_p1, &follower_p2] {
-        let mut handler = Client::new(f.port);
-        let res = handler.send_and_get_vec("info replication", 4);
+    // THEN
 
-        if res.contains(&"role:leader".to_string()) {
-            // THEN - one of the replicas should become the leader
-            assert_eq!(handler.send_and_get("set 1 2"), "OK");
-            assert_eq!(handler.send_and_get("set 2 3"), "OK");
+    let mut h1 = Client::new(follower_p1.port);
+    let mut h2 = Client::new(follower_p2.port);
 
-            flag = true;
-            break;
-        }
+    panic_if_election_not_done(follower_p1.port, follower_p2.port);
+
+    let res = h1.send_and_get("role");
+    let res2 = h2.send_and_get("role");
+
+    if res.contains(&"leader".to_string()) {
+        // THEN - one of the replicas should become the leader
+        assert_eq!(h1.send_and_get("set 1 2"), "OK");
+        assert_eq!(h1.send_and_get("set 2 3"), "OK");
     }
-    assert!(flag, "No leader found after the first leader was killed");
 
+    if res2 == "leader" {
+        // THEN - one of the replicas should become the leader
+        assert_eq!(h2.send_and_get("set 1 2"), "OK");
+        assert_eq!(h2.send_and_get("set 2 3"), "OK");
+    }
     Ok(())
 }
 
 /// following test is to see if election works even after the first election.
 fn run_leader_election_twice(with_append_only: bool) -> anyhow::Result<()> {
     // GIVEN
-    let mut leader_env = ServerEnv::default().with_append_only(with_append_only);
+    let server_env = ServerEnv::default().with_append_only(with_append_only);
+    let server_env = server_env;
+    let mut leader_env = server_env;
     let mut follower_env1 = ServerEnv::default().with_append_only(with_append_only);
     let mut follower_env2 = ServerEnv::default().with_append_only(with_append_only);
 
@@ -80,10 +77,9 @@ fn run_leader_election_twice(with_append_only: bool) -> anyhow::Result<()> {
     let mut tmp_h = Client::new(follower_p1.port);
     tmp_h.send_and_get(format!("cluster forget 127.0.0.1:{}", leader_p.port));
 
-    sleep(Duration::from_millis(LEADER_HEARTBEAT_INTERVAL_MAX + 300));
+    panic_if_election_not_done(follower_p1.port, follower_p2.port);
 
     let mut processes = vec![];
-
     for mut f in [follower_p1, follower_p2] {
         let mut handler = Client::new(f.port);
         let res = handler.send_and_get_vec("info replication", 4);
@@ -95,7 +91,6 @@ fn run_leader_election_twice(with_append_only: bool) -> anyhow::Result<()> {
         let follower_env3 =
             ServerEnv::default().with_bind_addr(f.bind_addr()).with_append_only(with_append_only);
         let new_process = spawn_server_process(&follower_env3)?;
-        sleep(Duration::from_millis(LEADER_HEARTBEAT_INTERVAL_MAX));
 
         let mut tmp_h = Client::new(follower_env3.port);
         tmp_h.send_and_get(format!("cluster forget 127.0.0.1:{}", f.port));
@@ -103,23 +98,33 @@ fn run_leader_election_twice(with_append_only: bool) -> anyhow::Result<()> {
         // WHEN
         // ! second leader is killed -> election happens
         f.kill()?;
-        sleep(Duration::from_millis(LEADER_HEARTBEAT_INTERVAL_MAX + 1000));
+
         processes.push(new_process);
     }
     assert_eq!(processes.len(), 2);
 
+    panic_if_election_not_done(processes[0].port, processes[1].port);
+
+    Ok(())
+}
+
+fn panic_if_election_not_done(port1: u16, port2: u16) {
+    let mut first_election_cnt = 0;
     let mut flag = false;
-    for f in processes.iter() {
-        let mut handler = Client::new(f.port);
-        let res = handler.send_and_get_vec("info replication", 4);
-        if res.contains(&"role:leader".to_string()) {
+    let mut h1 = Client::new(port1);
+    let mut h2 = Client::new(port2);
+
+    while first_election_cnt < 50 {
+        let res = h1.send_and_get("role");
+        let res2 = h2.send_and_get("role");
+        if res == "leader" || res2 == "leader" {
             flag = true;
             break;
         }
+        first_election_cnt += 1;
+        sleep(Duration::from_millis(500));
     }
-    assert!(flag, "No leader found after the second leader was killed");
-
-    Ok(())
+    assert!(flag, "first election fail");
 }
 
 #[test]

@@ -173,7 +173,7 @@ impl HashRing {
     }
 
     pub fn get_node_id(&self, replid: &ReplicationId) -> Option<&PeerIdentifier> {
-        self.pnodes.get(&replid)
+        self.pnodes.get(replid)
     }
 
     pub(crate) fn update_repl_leader(&mut self, replid: ReplicationId, new_pnode: PeerIdentifier) {
