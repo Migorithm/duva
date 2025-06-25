@@ -13,18 +13,27 @@ fn run_leader_election(with_append_only: bool) -> anyhow::Result<()> {
 
     // WHEN
     leader_p.kill()?;
-    sleep(Duration::from_millis(LEADER_HEARTBEAT_INTERVAL_MAX + 300));
 
     // THEN
     let mut flag = false;
-    for f in [&follower_p1, &follower_p2] {
-        let mut handler = Client::new(f.port);
-        let res = handler.send_and_get_vec("info replication", 4);
-        if res.contains(&"role:leader".to_string()) {
+    let cnt = 0;
+    let mut h1 = Client::new(follower_p1.port);
+    let mut h2 = Client::new(follower_p2.port);
+
+    while cnt < 10 {
+        sleep(Duration::from_millis(500));
+        let res = h1.send_and_get("role");
+        if res.contains(&"leader".to_string()) {
+            flag = true;
+            break;
+        }
+        let res2 = h2.send_and_get("role");
+        if res2 == "leader" {
             flag = true;
             break;
         }
     }
+
     assert!(flag, "No leader found after the first leader was killed");
 
     Ok(())
@@ -46,20 +55,34 @@ fn run_set_twice_after_election(with_append_only: bool) -> anyhow::Result<()> {
     leader_p.kill()?;
     sleep(Duration::from_millis(LEADER_HEARTBEAT_INTERVAL_MAX + 300));
 
+    // THEN
     let mut flag = false;
-    for f in [&follower_p1, &follower_p2] {
-        let mut handler = Client::new(f.port);
-        let res = handler.send_and_get_vec("info replication", 4);
+    let cnt = 0;
+    let mut h1 = Client::new(follower_p1.port);
+    let mut h2 = Client::new(follower_p2.port);
 
-        if res.contains(&"role:leader".to_string()) {
-            // THEN - one of the replicas should become the leader
-            assert_eq!(handler.send_and_get("set 1 2"), "OK");
-            assert_eq!(handler.send_and_get("set 2 3"), "OK");
-
+    while cnt < 10 {
+        sleep(Duration::from_millis(500));
+        let res = h1.send_and_get("role");
+        if res.contains(&"leader".to_string()) {
             flag = true;
+
+            // THEN - one of the replicas should become the leader
+            assert_eq!(h1.send_and_get("set 1 2"), "OK");
+            assert_eq!(h1.send_and_get("set 2 3"), "OK");
+
+            break;
+        }
+        let res2 = h2.send_and_get("role");
+        if res2 == "leader" {
+            flag = true;
+            // THEN - one of the replicas should become the leader
+            assert_eq!(h2.send_and_get("set 1 2"), "OK");
+            assert_eq!(h2.send_and_get("set 2 3"), "OK");
             break;
         }
     }
+
     assert!(flag, "No leader found after the first leader was killed");
 
     Ok(())
