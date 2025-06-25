@@ -75,7 +75,7 @@ impl Segment {
     fn from_path(path: &PathBuf) -> Result<Self> {
         let file = OpenOptions::new()
             .read(true)
-            .open(&path)
+            .open(path)
             .context(format!("Failed to open segment '{}'", path.display()))?;
 
         let mut reader = BufReader::new(file);
