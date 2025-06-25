@@ -539,7 +539,11 @@ async fn test_handle_migration_ack_failure() {
     // THEN
     assert!(result.is_err());
     let err_msg = result.unwrap_err();
-    assert_eq!(err_msg.to_string(), "Migration failed for batch ID BatchId(\"failure_batch\")");
+    assert!(
+        err_msg
+            .to_string()
+            .starts_with("Migration failed for batch ID BatchId(\"failure_batch\"):")
+    );
 
     // Verify callback was called with error
     let callback_result = callback_rx.await.unwrap();

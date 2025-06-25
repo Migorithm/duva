@@ -33,7 +33,8 @@ use crate::domains::peers::command::RequestVote;
 use crate::domains::peers::connections::inbound::stream::InboundStream;
 use crate::domains::peers::connections::outbound::stream::OutboundStream;
 use crate::domains::peers::peer::PeerState;
-use crate::err;
+use crate::log_ctx;
+use crate::log_err;
 use anyhow::Context;
 use client_sessions::ClientSessions;
 use heartbeat_scheduler::HeartBeatScheduler;
@@ -149,7 +150,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     ) {
         if self.replication.self_identifier() == connect_to {
             if let Some(cb) = optional_callback {
-                let _ = cb.send(err!("Cannot connect to myself"));
+                let _ = cb.send(log_err!("Cannot connect to myself"));
             }
             return;
         }
@@ -157,7 +158,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             | Ok(stream) => stream,
             | Err(e) => {
                 if let Some(cb) = optional_callback {
-                    let _ = cb.send(err!(e));
+                    let _ = cb.send(log_err!(e));
                 }
                 return;
             },
@@ -254,7 +255,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         cache_manager: &CacheManager,
     ) -> anyhow::Result<()> {
         if self.replication.in_ban_list(&heartbeat.from) {
-            return err!("The given peer is in the ban list {}", heartbeat.from);
+            return Err(log_ctx!("The given peer is in the ban list {}", heartbeat.from));
         }
         self.apply_banlist(std::mem::take(&mut heartbeat.ban_list)).await;
         self.update_cluster_members(&heartbeat.from, heartbeat.hwm, &heartbeat.cluster_nodes).await;
@@ -286,17 +287,17 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
                 self.req_consensus(req).await;
             },
             | Ok(replid) => {
-                let _ = req.callback.send(err!("MOVED {}", replid));
+                let _ = req.callback.send(log_err!("MOVED {}", replid));
             },
             | Err(err) => {
-                let _ = req.callback.send(err!("{}", err));
+                let _ = req.callback.send(log_err!("{}", err));
             },
         }
     }
 
     async fn req_consensus(&mut self, req: ConsensusRequest) {
         if !self.replication.is_leader() {
-            let _ = req.callback.send(err!("Write given to follower"));
+            let _ = req.callback.send(log_err!("Write given to follower"));
             return;
         }
 
@@ -381,11 +382,11 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         heartbeat: HeartBeat,
     ) -> anyhow::Result<()> {
         if self.check_term_outdated(&heartbeat).await {
-            return err!(
+            return Err(log_ctx!(
                 "Term Outdated received:{} self:{}",
                 heartbeat.term,
                 self.replication.term
-            );
+            ));
         };
         self.reset_election_timeout(&heartbeat.from);
         self.maybe_update_term(heartbeat.term);
@@ -450,7 +451,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         cl_cb: tokio::sync::oneshot::Sender<anyhow::Result<()>>,
     ) {
         if !self.replication.is_leader() || self.replication.self_identifier() == peer_addr {
-            let _ = cl_cb.send(err!("wrong address or invalid state for cluster meet command"));
+            let _ = cl_cb.send(log_err!("wrong address or invalid state for cluster meet command"));
             return;
         }
 
@@ -497,8 +498,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         // TODO instead of relying on request_from, we should take the current leaders and if they don't exist in hashring, we should add them and start rebalance.
 
         if !self.replication.is_leader() {
-            error!("Follower cannot start rebalance");
-            return Ok(());
+            return Err(log_ctx!("Follower cannot start rebalance"));
         }
 
         let new_hashring = self
@@ -1134,7 +1134,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     ) {
         //  Find target peer based on replication ID
         let Some(peer_id) = self.peerid_by_replid(&target.target_repl).cloned() else {
-            let _ = callback.send(err!("Target peer not found for replication ID"));
+            let _ = callback.send(log_err!("Target peer not found for replication ID"));
             return;
         };
 
@@ -1149,13 +1149,13 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             cache_manager.route_mget(keys.clone()).await.into_iter().flatten().collect::<Vec<_>>();
 
         let Some(pending_migrations) = self.pending_migrations.as_mut() else {
-            let _ = callback.send(err!("No pending migrations active"));
+            let _ = callback.send(log_err!("No pending migrations active"));
             return;
         };
 
         // Get mutable reference to the target peer
         let Some(target_peer) = self.members.get_mut(&peer_id) else {
-            let _ = callback.send(err!("Target peer {} disappeared during migration", peer_id));
+            let _ = callback.send(log_err!("Target peer {} disappeared during migration", peer_id));
             return;
         };
 
@@ -1223,14 +1223,14 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         let pending =
             self.pending_migrations.as_mut().context("No Pending migration map available")?;
         let pending_migration_batch = pending.remove(&ack.batch_id).with_context(|| {
-            format!("Batch ID {:?} not found in pending migrations", ack.batch_id)
+            log_ctx!("Batch ID {:?} not found in pending migrations", ack.batch_id)
         })?;
 
         if !ack.success {
             let _ = pending_migration_batch
                 .callback
                 .send(Err(anyhow::anyhow!("Failed to send migration completion signal for batch")));
-            return err!("Migration failed for batch ID {:?}", ack.batch_id);
+            return Err(log_ctx!("Migration failed for batch ID {:?}", ack.batch_id));
         }
 
         // make consensus request for delete
