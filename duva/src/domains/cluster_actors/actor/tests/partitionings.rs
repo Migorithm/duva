@@ -126,7 +126,7 @@ async fn test_start_rebalance_happy_path() {
     );
 
     // WHEN
-    cluster_actor.start_rebalance(&cache_manager).await.unwrap();
+    cluster_actor.start_rebalance(&cache_manager).await;
 
     // THEN
     assert!(cluster_actor.pending_requests.is_some());
@@ -381,7 +381,7 @@ async fn test_receive_batch_success_path_when_consensus_is_required() {
     let migrate_batch = migration_batch_create_helper("success_test", cache_entries.clone());
 
     // WHEN
-    cluster_actor.receive_batch(migrate_batch, &cache_manager, sender_peer_id).await.unwrap();
+    cluster_actor.receive_batch(migrate_batch, &cache_manager, sender_peer_id).await;
 
     // THEN - verify that the log index is incremented
     assert_eq!(cluster_actor.logger.last_log_index, current_index + 1);
@@ -419,7 +419,7 @@ async fn test_receive_batch_success_path_when_noreplica_found() {
     let migrate_batch = migration_batch_create_helper("success_test", cache_entries.clone());
 
     // WHEN
-    cluster_actor.receive_batch(migrate_batch, &cache_manager, sender_peer_id).await.unwrap();
+    cluster_actor.receive_batch(migrate_batch, &cache_manager, sender_peer_id).await;
 
     // THEN - verify that the log index is incremented
     assert_eq!(cluster_actor.logger.last_log_index, current_index + 1);
@@ -534,16 +534,9 @@ async fn test_handle_migration_ack_failure() {
     let ack = MigrationBatchAck::with_reject(batch_id.clone());
 
     // WHEN
-    let result = cluster_actor.handle_migration_ack(ack, &_cache_manager).await;
+    cluster_actor.handle_migration_ack(ack, &_cache_manager).await;
 
     // THEN
-    assert!(result.is_err());
-    let err_msg = result.unwrap_err();
-    assert!(
-        err_msg
-            .to_string()
-            .starts_with("Migration failed for batch ID BatchId(\"failure_batch\"):")
-    );
 
     // Verify callback was called with error
     let callback_result = callback_rx.await.unwrap();
@@ -573,10 +566,9 @@ async fn test_handle_migration_ack_batch_id_not_found() {
     let ack = MigrationBatchAck { batch_id: non_existent_batch_id, success: true };
 
     // WHEN
-    let result = cluster_actor.handle_migration_ack(ack, &_cache_manager).await;
+    cluster_actor.handle_migration_ack(ack, &_cache_manager).await;
 
     // THEN
-    assert!(result.is_err()); // Method should return None when batch ID is not found
 
     // Verify existing batch is still there
     assert_eq!(cluster_actor.pending_migrations.as_ref().unwrap().len(), 1);
@@ -621,10 +613,9 @@ async fn test_handle_migration_ack_success_case_with_pending_reqs_and_migration(
     assert_eq!(cluster_actor.pending_migrations.as_ref().unwrap().len(), 1);
 
     // WHEN
-    let result = cluster_actor.handle_migration_ack(ack, &cache_manager).await;
+    cluster_actor.handle_migration_ack(ack, &cache_manager).await;
 
     // THEN
-    assert!(result.is_ok());
 
     // Verify callback was successful
     let callback_result = callback_rx.await.unwrap();
@@ -656,7 +647,7 @@ async fn test_start_rebalance_schedules_migration_batches() {
 
     // WHEN
     cluster_actor.self_handler = cluster_handler.clone();
-    cluster_actor.start_rebalance(&cache_manager).await.unwrap();
+    cluster_actor.start_rebalance(&cache_manager).await;
 
     // THEN
     // 1. Verify heartbeat was sent immediately (synchronous part)

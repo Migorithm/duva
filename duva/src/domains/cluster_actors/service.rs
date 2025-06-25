@@ -7,9 +7,8 @@ use crate::domains::cluster_actors::SchedulerMessage;
 use crate::domains::operation_logs::interfaces::TWriteAheadLog;
 use crate::domains::peers::PeerMessage;
 
-use crate::log_err;
 use crate::prelude::PeerIdentifier;
-use tracing::error;
+use crate::res_err;
 use tracing::{instrument, trace};
 
 impl<T: TWriteAheadLog> ClusterActor<T> {
@@ -78,14 +77,14 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             | ClusterNodes(callback) => {
                 let _ = callback.send(self.cluster_nodes());
             },
-            | ReplicationInfo(sender) => {
-                let _ = sender.send(self.replication.clone());
+            | ReplicationInfo(callback) => {
+                let _ = callback.send(self.replication.clone());
             },
-            | ForgetPeer(peer_addr, sender) => {
+            | ForgetPeer(peer_addr, callback) => {
                 if let Ok(Some(())) = self.forget_peer(peer_addr).await {
-                    let _ = sender.send(Some(()));
+                    let _ = callback.send(Some(()));
                 } else {
-                    let _ = sender.send(None);
+                    let _ = callback.send(None);
                 }
             },
             | LeaderReqConsensus(req) => {
@@ -93,7 +92,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             },
             | ReplicaOf(peer_addr, callback) => {
                 if self.replication.self_identifier() == peer_addr {
-                    let _ = callback.send(log_err!("invalid operation: cannot replicate to self"));
+                    let _ = callback.send(res_err!("invalid operation: cannot replicate to self"));
                     return;
                 }
                 cache_manager.drop_cache().await;
@@ -106,16 +105,16 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
                 let _ = self.start_rebalance(cache_manager).await;
                 let _ = sender.send(Ok(()));
             },
-            | GetRole(sender) => {
-                let _ = sender.send(self.replication.role.clone());
+            | GetRole(callback) => {
+                let _ = callback.send(self.replication.role.clone());
             },
-            | SubscribeToTopologyChange(sender) => {
-                let _ = sender.send(self.node_change_broadcast.subscribe());
+            | SubscribeToTopologyChange(callback) => {
+                let _ = callback.send(self.node_change_broadcast.subscribe());
             },
             | GetTopology(callback) => {
                 let _ = callback.send(self.get_topology());
             },
-        }
+        };
     }
 
     async fn process_peer_message(
@@ -126,7 +125,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     ) {
         use PeerMessage::*;
 
-        let res = match peer_message {
+        match peer_message {
             | ClusterHeartBeat(heartbeat) => {
                 self.receive_cluster_heartbeat(heartbeat, cache_manager).await
             },
@@ -146,10 +145,6 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
                 self.handle_migration_ack(migration_batch_ack, cache_manager).await
             },
         };
-
-        if let Err(err) = res {
-            error!("{}", err.to_string());
-        }
     }
 
     #[instrument(level = tracing::Level::DEBUG, skip(self, conn_msg))]
