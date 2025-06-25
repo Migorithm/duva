@@ -99,16 +99,6 @@ macro_rules! env_var {
 }
 
 #[macro_export]
-macro_rules! log_ctx {
-    ($msg:expr) => {{
-        ::anyhow::anyhow!(concat!($msg, ": {}:{}"), file!(), line!())
-    }};
-    ($msg:expr, $($arg:tt)*) => {{
-        ::anyhow::anyhow!(concat!($msg, ": {}:{}"), $($arg)*, file!(), line!())
-    }};
-}
-
-#[macro_export]
 macro_rules! err {
     ($msg:expr) => {{
         tracing::error!("{}: {}:{}", $msg, file!(), line!());
@@ -121,7 +111,7 @@ macro_rules! err {
 /// This macro is used to create a new error with a message and log it using tracing::error.
 /// It takes a single argument, which is the error message.
 #[macro_export]
-macro_rules! log_err {
+macro_rules! res_err {
     ($msg:expr) => {{
         crate::err!($msg);
         Err(anyhow::anyhow!($msg))
