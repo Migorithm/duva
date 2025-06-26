@@ -153,10 +153,10 @@ fn test_node_removal_redistribution() {
     // keys are accessed again
     let mut redistributed = 0;
     for (key, old_addr) in before_removal {
-        if let Some(new_node) = ring.get_node_for_key(&key) {
-            if *new_node != old_addr {
-                redistributed += 1;
-            }
+        if let Some(new_node) = ring.get_node_for_key(&key)
+            && *new_node != old_addr
+        {
+            redistributed += 1;
         }
     }
 

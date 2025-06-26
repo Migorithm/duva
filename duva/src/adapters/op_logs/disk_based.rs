@@ -427,20 +427,20 @@ impl TWriteAheadLog for FileOpLogs {
     fn read_at(&self, log_index: u64) -> Option<WriteOperation> {
         // First check sealed segments
         for segment in &self.segments {
-            if segment.start_index <= log_index && segment.end_index >= log_index {
-                if let Some(offset) = segment.find_offset(log_index) {
-                    return segment.read_at_offset(offset).ok();
-                }
+            if segment.start_index <= log_index
+                && segment.end_index >= log_index
+                && let Some(offset) = segment.find_offset(log_index)
+            {
+                return segment.read_at_offset(offset).ok();
             }
         }
 
         // Then check active segment
         if self.active_segment.start_index <= log_index
             && self.active_segment.end_index >= log_index
+            && let Some(offset) = self.active_segment.find_offset(log_index)
         {
-            if let Some(offset) = self.active_segment.find_offset(log_index) {
-                return self.active_segment.read_at_offset(offset).ok();
-            }
+            return self.active_segment.read_at_offset(offset).ok();
         }
 
         None

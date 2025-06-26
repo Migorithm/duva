@@ -200,15 +200,15 @@ impl<K: Eq + Hash + Clone + Debug, V: Debug + Clone + THasExpiry> LruCache<K, V>
             }
 
             // Update neighbors' pointers
-            if let Some(prev_idx) = node.prev {
-                if let Some(prev_node) = self.slab.get_mut(prev_idx) {
-                    prev_node.next = node.next;
-                }
+            if let Some(prev_idx) = node.prev
+                && let Some(prev_node) = self.slab.get_mut(prev_idx)
+            {
+                prev_node.next = node.next;
             }
-            if let Some(next_idx) = node.next {
-                if let Some(next_node) = self.slab.get_mut(next_idx) {
-                    next_node.prev = node.prev;
-                }
+            if let Some(next_idx) = node.next
+                && let Some(next_node) = self.slab.get_mut(next_idx)
+            {
+                next_node.prev = node.prev;
             }
 
             if node.value.has_expiry() {
@@ -227,31 +227,31 @@ impl<K: Eq + Hash + Clone + Debug, V: Debug + Clone + THasExpiry> LruCache<K, V>
             node.value = value;
             self.move_to_head(index);
         } else {
-            if self.current_size >= self.capacity {
-                if let Some(tail_idx) = self.tail {
-                    let (tail_key, prev_idx, had_expiry) = {
-                        let tail_node = self.slab.get(tail_idx).expect("Tail node not found");
-                        (tail_node.key.clone(), tail_node.prev, tail_node.value.has_expiry())
-                    };
+            if self.current_size >= self.capacity
+                && let Some(tail_idx) = self.tail
+            {
+                let (tail_key, prev_idx, had_expiry) = {
+                    let tail_node = self.slab.get(tail_idx).expect("Tail node not found");
+                    (tail_node.key.clone(), tail_node.prev, tail_node.value.has_expiry())
+                };
 
-                    self.map.remove(&tail_key);
-                    self.slab.remove(tail_idx);
+                self.map.remove(&tail_key);
+                self.slab.remove(tail_idx);
 
-                    // Decrement keys_with_expiry if the evicted node had an expiry
-                    if had_expiry {
-                        self.keys_with_expiry -= 1;
-                    }
-
-                    self.tail = prev_idx;
-                    if let Some(new_tail_idx) = self.tail {
-                        let new_tail = self.slab.get_mut(new_tail_idx).expect("New tail not found");
-                        new_tail.next = None;
-                    } else {
-                        self.head = None;
-                    }
-
-                    self.current_size -= 1;
+                // Decrement keys_with_expiry if the evicted node had an expiry
+                if had_expiry {
+                    self.keys_with_expiry -= 1;
                 }
+
+                self.tail = prev_idx;
+                if let Some(new_tail_idx) = self.tail {
+                    let new_tail = self.slab.get_mut(new_tail_idx).expect("New tail not found");
+                    new_tail.next = None;
+                } else {
+                    self.head = None;
+                }
+
+                self.current_size -= 1;
             }
 
             if value.has_expiry() {
