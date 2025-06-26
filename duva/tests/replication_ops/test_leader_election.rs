@@ -114,15 +114,34 @@ fn panic_if_election_not_done(port1: u16, port2: u16) {
     let mut h1 = Client::new(port1);
     let mut h2 = Client::new(port2);
 
+    let start = std::time::Instant::now();
     while first_election_cnt < 50 {
         let res = h1.send_and_get("role");
         let res2 = h2.send_and_get("role");
+        println!(
+            "[{}ms] Poll {}: port1={} port2={} res1={} res2={}",
+            start.elapsed().as_millis(),
+            first_election_cnt,
+            port1,
+            port2,
+            res,
+            res2
+        );
         if res == "leader" || res2 == "leader" {
             flag = true;
             break;
         }
         first_election_cnt += 1;
         sleep(Duration::from_millis(500));
+    }
+    if !flag {
+        println!(
+            "[{}ms] Leader election failed after {} attempts (ports: {}, {})",
+            start.elapsed().as_millis(),
+            first_election_cnt,
+            port1,
+            port2
+        );
     }
     assert!(flag, "first election fail");
 }
