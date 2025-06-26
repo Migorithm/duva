@@ -204,9 +204,10 @@ impl FileOpLogs {
             let file_name_str = file_name.to_string_lossy();
 
             // Since we know the regex will match, we can simplify the capture extraction
-            if let Some(captures) = re.captures(&file_name_str) {
+            if let Some(captures) = re.captures(&file_name_str)
+                && let Ok(index) = captures[1].parse::<u64>()
+            {
                 // By rule, we know this unwrap is safe
-                let index = captures[1].parse::<u64>().unwrap();
                 segments.push((index, entry.path()));
             }
         }
