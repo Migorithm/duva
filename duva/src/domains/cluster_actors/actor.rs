@@ -307,20 +307,14 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             return;
         };
 
-        if self.replicas().count() == 0 {
+        let repl_cnt = self.replicas().count();
+        if repl_cnt == 0 {
             // * If there are no replicas, we can send the response immediately
             self.replication.hwm.fetch_add(1, Ordering::Relaxed);
             req.callback.send(ConsensusClientResponse::LogIndex(self.logger.last_log_index)).ok();
             return;
         }
-
-        self.consensus_tracker.add(
-            self.logger.last_log_index,
-            req.callback,
-            self.replicas().count(),
-            req.session_req,
-        );
-
+        self.consensus_tracker.add(self.logger.last_log_index, req, repl_cnt);
         self.send_rpc_to_replicas().await;
     }
 

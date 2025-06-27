@@ -3,15 +3,12 @@ use crate::config::ENV;
 use crate::domains::QueryIO;
 use crate::domains::caches::cache_manager::CacheManager;
 use crate::domains::caches::cache_objects::CacheEntry;
-use crate::domains::cluster_actors::{
-    ClientMessage, ConsensusClientResponse, ConsensusRequest, SessionRequest,
-};
+use crate::domains::cluster_actors::{ClientMessage, ConsensusClientResponse, ConsensusRequest};
 use crate::domains::saves::actor::SaveTarget;
 use crate::prelude::PeerIdentifier;
 use crate::presentation::clients::request::ClientAction;
 use crate::presentation::clusters::communication_manager::ClusterCommunicationManager;
 use std::sync::atomic::Ordering;
-use tracing::{debug, instrument};
 
 #[derive(Clone, Debug)]
 pub(crate) struct ClientController {
