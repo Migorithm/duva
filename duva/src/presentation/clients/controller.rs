@@ -159,7 +159,6 @@ impl ClientController {
         Ok(response)
     }
 
-    #[instrument(level = tracing::Level::DEBUG , skip(self, request))]
     pub(crate) async fn make_consensus(
         &self,
         request: ClientRequest,
