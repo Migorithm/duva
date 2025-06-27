@@ -62,15 +62,12 @@ impl ClientStreamReader {
         query_ios
             .into_iter()
             .map(|query_io| {
-                let (value, session_request) = match query_io {
-                    | QueryIO::SessionRequest { request_id, value } => {
-                        let session = SessionRequest::new(request_id, self.client_id);
-                        (value, Some(session))
-                    },
-                    | _ => return Err(IoError::Custom("Unexpected command format".to_string())),
+                let QueryIO::SessionRequest { request_id, value } = query_io else {
+                    return Err(IoError::Custom("Unexpected command format".to_string()));
                 };
+                let session_request = SessionRequest::new(request_id, self.client_id);
 
-                ClientRequest::from_user_input(value, session_request)
+                ClientRequest::from_user_input(value, Some(session_request))
                     .map_err(|e| IoError::Custom(e.to_string()))
             })
             .collect()
