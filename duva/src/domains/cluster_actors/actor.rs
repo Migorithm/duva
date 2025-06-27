@@ -36,6 +36,7 @@ use crate::domains::peers::peer::PeerState;
 use crate::err;
 use crate::res_err;
 use client_sessions::ClientSessions;
+
 use heartbeat_scheduler::HeartBeatScheduler;
 
 use std::collections::HashMap;
@@ -809,13 +810,19 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     }
 
     async fn replicate_log_entries(&mut self, rpc: &mut HeartBeat) -> Result<(), RejectionReason> {
-        let entries = std::mem::take(&mut rpc.append_entries)
-            .into_iter()
-            .filter(|log| log.log_index > self.logger.last_log_index)
-            .collect::<Vec<_>>();
-
-        if entries.is_empty() {
+        if rpc.append_entries.is_empty() {
             return Ok(());
+        }
+        let mut entries = Vec::with_capacity(rpc.append_entries.len());
+        let mut session_reqs = Vec::with_capacity(rpc.append_entries.len());
+
+        for mut log in std::mem::take(&mut rpc.append_entries) {
+            if log.log_index > self.logger.last_log_index {
+                if let Some(session_req) = log.session_req.take() {
+                    session_reqs.push(session_req);
+                }
+                entries.push(log);
+            }
         }
 
         self.ensure_prev_consistency(rpc.prev_log_index, rpc.prev_log_term).await?;
@@ -826,6 +833,11 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
         self.send_replication_ack(&rpc.from, ReplicationAck::ack(match_index, &self.replication))
             .await;
+
+        // * The following is to allow for failure of leader and follower elected as new leader.
+        // Subscription request with the same session req should be treated as idempotent operation
+        session_reqs.into_iter().for_each(|req| self.client_sessions.set_response(Some(req)));
+
         Ok(())
     }
 

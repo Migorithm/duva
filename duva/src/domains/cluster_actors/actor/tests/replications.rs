@@ -169,48 +169,34 @@ async fn follower_cluster_actor_sessionless_replicate_state() {
 }
 
 #[tokio::test]
-async fn follower_cluster_actor_sessionful_replicate_state() {
+async fn replicate_with_session_requests_should_unique_to_each_client_session() {
     // GIVEN
-    let (cache_handler, mut receiver) = tokio::sync::mpsc::channel(100);
+    let (cache_handler, _) = tokio::sync::mpsc::channel(100);
     let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Follower).await;
 
+    let target_client = uuid::Uuid::now_v7();
     let session1 = SessionRequest::new(1, uuid::Uuid::now_v7());
-    let session2 = SessionRequest::new(1, uuid::Uuid::now_v7());
+    let session2 = SessionRequest::new(1, target_client);
+    // ! For the same client, hold only one request
+    let session3 = SessionRequest::new(2, target_client);
+
     let heartbeat = heartbeat_create_helper(
         0,
         0,
         vec![
             sessionful_write_operation_helper(1, 0, "foo", "bar", session1.clone()),
             sessionful_write_operation_helper(2, 0, "foo2", "bar", session2.clone()),
+            sessionful_write_operation_helper(3, 0, "foo2", "bar", session3.clone()),
         ],
     );
 
     let cache_manager = CacheManager { inboxes: vec![CacheCommandSender(cache_handler)] };
-    cluster_actor.replicate(heartbeat, &cache_manager).await;
-
-    // WHEN - commit until 2
-    let task = tokio::spawn(async move {
-        while let Some(message) = receiver.recv().await {
-            match message {
-                | CacheCommand::Set { cache_entry } => {
-                    let (key, value) = cache_entry.destructure();
-                    assert_eq!(value.value(), "bar");
-                    if key == "foo2" {
-                        break;
-                    }
-                },
-                | _ => continue,
-            }
-        }
-    });
-    let heartbeat = heartbeat_create_helper(0, 2, vec![]);
+    // WHEN
     cluster_actor.replicate(heartbeat, &cache_manager).await;
 
     // THEN
-    assert_eq!(cluster_actor.replication.hwm.load(Ordering::Relaxed), 2);
-    assert_eq!(cluster_actor.logger.last_log_index, 2);
-    // assert_eq!(cluster_actor.client_sessions.len(), 2);
-    task.await.unwrap();
+    assert_eq!(cluster_actor.logger.last_log_index, 3);
+    assert_eq!(cluster_actor.client_sessions.len(), 2);
 }
 
 #[tokio::test]
