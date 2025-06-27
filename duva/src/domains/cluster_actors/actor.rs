@@ -791,6 +791,10 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     }
 
     async fn replicate(&mut self, mut heartbeat: HeartBeat, cache_manager: &CacheManager) {
+        if self.replication.is_leader() {
+            return;
+        }
+
         // * write logs
         if self.replicate_log_entries(&mut heartbeat).await.is_err() {
             error!("Failed to replicate logs");
