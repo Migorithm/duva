@@ -41,8 +41,10 @@ impl ClientStreamReader {
                 trace!(?req, "Processing request");
 
                 let result = if req.action.consensus_required() {
-                    let (action, idx) = handler.make_consensus(req).await.unwrap();
-                    handler.handle(action, Some(idx)).await
+                    match handler.make_consensus(req).await {
+                        | Ok((action, idx)) => handler.handle(action, Some(idx)).await,
+                        | Err(err) => Err(err),
+                    }
                 } else {
                     handler.handle(req.action, None).await
                 };
