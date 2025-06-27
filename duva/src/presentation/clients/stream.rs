@@ -63,7 +63,6 @@ impl ClientStreamReader {
             .into_iter()
             .map(|query_io| {
                 let (value, session_request) = match query_io {
-                    | QueryIO::Array(value) => (value, None),
                     | QueryIO::SessionRequest { request_id, value } => {
                         let session = SessionRequest::new(request_id, self.client_id);
                         (value, Some(session))
