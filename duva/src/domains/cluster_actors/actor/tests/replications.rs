@@ -447,6 +447,7 @@ async fn req_consensus_inserts_consensus_voting() {
                     request: w_req.clone(),
                     log_index: 1,
                     term: 0,
+                    session_req: Some(session_request.clone()),
                 }],
                 ..Default::default()
             }),

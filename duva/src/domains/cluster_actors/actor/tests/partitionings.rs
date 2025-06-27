@@ -395,6 +395,7 @@ async fn test_receive_batch_success_path_when_consensus_is_required() {
                 request: WriteRequest::MSet { entries: cache_entries.clone() },
                 log_index: 1,
                 term: 0,
+                session_req: None,
             }],
             ..Default::default()
         }),

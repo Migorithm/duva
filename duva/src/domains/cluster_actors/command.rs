@@ -6,6 +6,7 @@ use crate::domains::operation_logs::WriteRequest;
 use crate::domains::peers::command::PeerCommand;
 use crate::domains::peers::peer::{Peer, PeerState};
 use crate::prelude::PeerIdentifier;
+
 use std::str::FromStr;
 use tokio::net::TcpStream;
 use uuid::Uuid;
@@ -128,13 +129,49 @@ impl FromStr for LazyOption {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SessionRequest {
     pub(crate) request_id: u64,
+
     pub(crate) client_id: Uuid,
 }
 impl SessionRequest {
     pub(crate) fn new(request_id: u64, client_id: Uuid) -> Self {
         Self { request_id, client_id }
+    }
+}
+
+impl bincode::Encode for SessionRequest {
+    fn encode<E: bincode::enc::Encoder>(
+        &self,
+        encoder: &mut E,
+    ) -> core::result::Result<(), bincode::error::EncodeError> {
+        self.request_id.encode(encoder)?;
+        self.client_id.as_bytes().encode(encoder)?;
+        Ok(())
+    }
+}
+
+impl<Context> bincode::Decode<Context> for SessionRequest {
+    fn decode<D: bincode::de::Decoder>(
+        decoder: &mut D,
+    ) -> core::result::Result<Self, bincode::error::DecodeError> {
+        let request_id = u64::decode(decoder)?;
+        let uuid_bytes: [u8; 16] = <[u8; 16]>::decode(decoder)?;
+        let client_id = Uuid::from_bytes(uuid_bytes);
+
+        Ok(SessionRequest { request_id, client_id })
+    }
+}
+
+impl<'de, Context> bincode::BorrowDecode<'de, Context> for SessionRequest {
+    fn borrow_decode<D: bincode::de::BorrowDecoder<'de>>(
+        decoder: &mut D,
+    ) -> core::result::Result<Self, bincode::error::DecodeError> {
+        let request_id = u64::borrow_decode(decoder)?;
+        let uuid_bytes: [u8; 16] = <[u8; 16]>::borrow_decode(decoder)?;
+        let client_id = Uuid::from_bytes(uuid_bytes);
+
+        Ok(SessionRequest { request_id, client_id })
     }
 }

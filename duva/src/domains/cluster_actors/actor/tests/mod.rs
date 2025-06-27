@@ -99,6 +99,7 @@ fn write_operation_create_helper(
         log_index: index_num,
         request: WriteRequest::Set { key: key.into(), value: value.into(), expires_at: None },
         term,
+        session_req: None,
     }
 }
 

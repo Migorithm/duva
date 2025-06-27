@@ -1,4 +1,6 @@
-use crate::domains::{QueryIO, caches::cache_objects::CacheEntry, deserialize};
+use crate::domains::{
+    QueryIO, caches::cache_objects::CacheEntry, cluster_actors::SessionRequest, deserialize,
+};
 use bytes::Bytes;
 
 #[derive(Debug, Clone, PartialEq, Eq, bincode::Encode, bincode::Decode)]
@@ -6,6 +8,7 @@ pub struct WriteOperation {
     pub(crate) request: WriteRequest,
     pub(crate) log_index: u64,
     pub(crate) term: u64,
+    pub(crate) session_req: Option<SessionRequest>,
 }
 
 /// Operations that appear in the Append-Only File (WAL).

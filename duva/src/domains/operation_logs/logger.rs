@@ -41,6 +41,7 @@ impl<T: TWriteAheadLog> ReplicatedLogs<T> {
             request: req.clone(),
             log_index: (self.last_log_index + 1),
             term: current_term,
+            session_req,
         };
 
         self.target.append(op)?;

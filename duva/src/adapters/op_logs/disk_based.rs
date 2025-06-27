@@ -534,6 +534,7 @@ mod tests {
             request: WriteRequest::Set { key: "foo".into(), value: "bar".into(), expires_at: None },
             log_index: index,
             term,
+            session_req: None,
         }
     }
 
@@ -561,7 +562,8 @@ mod tests {
         let mut op_logs = FileOpLogs::new(path).unwrap();
         let request =
             WriteRequest::Set { key: "foo".into(), value: "bar".into(), expires_at: None };
-        let write_op = WriteOperation { request: request.clone(), log_index: 0, term: 0 };
+        let write_op =
+            WriteOperation { request: request.clone(), log_index: 0, term: 0, session_req: None };
 
         // WHEN
         op_logs.append(write_op).unwrap();
@@ -730,6 +732,7 @@ mod tests {
                 },
                 log_index: i as u64,
                 term: 1,
+                session_req: None,
             })?;
         }
         // Force rotation
@@ -743,6 +746,7 @@ mod tests {
             },
             log_index: 100,
             term: 1,
+            session_req: None,
         })?;
 
         // WHEN
@@ -807,6 +811,7 @@ mod tests {
                 },
                 log_index: i as u64,
                 term: 1,
+                session_req: None,
             })?;
         }
         // Rotate segment_0.oplog into sealed segments, create segment_1.oplog
@@ -822,6 +827,7 @@ mod tests {
             // The log_index should ideally be sequential across segments.
             // If op 99 was the last in segment_0, this should be 100.
             term: 1,
+            session_req: None,
         })?;
 
         // Store the paths of existing segments before sync
@@ -919,6 +925,7 @@ mod tests {
                 },
                 log_index: i as u64,
                 term: 2,
+                session_req: None,
             })
             .collect();
         op_logs.follower_full_sync(new_ops.clone())?;
@@ -958,6 +965,7 @@ mod tests {
                 },
                 log_index: start_index + i as u64,
                 term,
+                session_req: None,
             })
             .collect()
     }
@@ -1198,6 +1206,7 @@ mod tests {
                 },
                 log_index: i as u64,
                 term: 1,
+                session_req: None,
             })?;
         }
 
@@ -1219,6 +1228,7 @@ mod tests {
             },
             log_index: 100,
             term: 1,
+            session_req: None,
         })?;
 
         // Verify index data in active segment
@@ -1245,6 +1255,7 @@ mod tests {
                     },
                     log_index: i as u64,
                     term: 1,
+                    session_req: None,
                 })?;
             }
         }
@@ -1284,6 +1295,7 @@ mod tests {
                 },
                 log_index: i as u64,
                 term: 1,
+                session_req: None,
             })?;
         }
 

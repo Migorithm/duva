@@ -582,6 +582,7 @@ mod test {
             request: WriteRequest::Set { key: "foo".into(), value: "bar".into(), expires_at: None },
             log_index: 1,
             term: 0,
+            session_req: None,
         });
 
         // WHEN
@@ -638,6 +639,7 @@ mod test {
                     },
                     log_index: 1,
                     term: 0,
+                    session_req: None,
                 },
                 WriteOperation {
                     request: WriteRequest::Set {
@@ -647,6 +649,7 @@ mod test {
                     },
                     log_index: 2,
                     term: 1,
+                    session_req: None,
                 },
             ],
             cluster_nodes: vec![
