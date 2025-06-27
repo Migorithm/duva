@@ -160,41 +160,27 @@ impl ClientController {
     }
 
     #[instrument(level = tracing::Level::DEBUG , skip(self, request))]
-    pub(crate) async fn maybe_consensus_then_execute(
+    pub(crate) async fn make_consensus(
         &self,
         request: ClientRequest,
-    ) -> anyhow::Result<QueryIO> {
-        let action = request.action;
-        let session = request.session_req;
+    ) -> anyhow::Result<(ClientAction, u64)> {
+        let (tx, consensus_res) = tokio::sync::oneshot::channel();
 
-        if !action.consensus_required() {
-            return self.handle(action, None).await;
-        }
+        self.cluster_communication_manager
+            .send(ClientMessage::LeaderReqConsensus(ConsensusRequest::new(
+                request.action.clone().to_write_request(),
+                tx,
+                Some(request.session_req),
+            )))
+            .await?;
 
-        let consensus_res = self.make_consensus(action.clone(), session).await?;
-        debug!("Consensus response: {:?}", consensus_res);
-        match consensus_res {
+        match consensus_res.await?? {
             | ConsensusClientResponse::AlreadyProcessed { key: keys, index } => {
                 // * Conversion! request has already been processed so we need to convert it to get
                 let action = ClientAction::MGet { keys };
-                self.handle(action, Some(index)).await
+                Ok((action, index))
             },
-            | ConsensusClientResponse::LogIndex(idx) => self.handle(action, Some(idx)).await,
+            | ConsensusClientResponse::LogIndex(idx) => Ok((request.action, idx)),
         }
-    }
-
-    async fn make_consensus(
-        &self,
-        action: ClientAction,
-        session: SessionRequest,
-    ) -> anyhow::Result<ConsensusClientResponse> {
-        // If the request doesn't require consensus, return Ok
-        let log = action.to_write_request();
-        let (tx, rx) = tokio::sync::oneshot::channel();
-        self.cluster_communication_manager
-            .send(ClientMessage::LeaderReqConsensus(ConsensusRequest::new(log, tx, Some(session))))
-            .await?;
-
-        rx.await?
     }
 }
