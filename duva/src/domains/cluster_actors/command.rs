@@ -79,13 +79,13 @@ impl From<ClientMessage> for ClusterCommand {
 #[derive(Debug)]
 pub(crate) struct ConsensusRequest {
     pub(crate) request: WriteRequest,
-    pub(crate) callback: tokio::sync::oneshot::Sender<anyhow::Result<ConsensusClientResponse>>,
+    pub(crate) callback: tokio::sync::oneshot::Sender<ConsensusClientResponse>,
     pub(crate) session_req: Option<SessionRequest>,
 }
 impl ConsensusRequest {
     pub(crate) fn new(
         request: WriteRequest,
-        callback: tokio::sync::oneshot::Sender<anyhow::Result<ConsensusClientResponse>>,
+        callback: tokio::sync::oneshot::Sender<ConsensusClientResponse>,
         session_req: Option<SessionRequest>,
     ) -> Self {
         Self { request, callback, session_req }
@@ -96,6 +96,18 @@ impl ConsensusRequest {
 pub(crate) enum ConsensusClientResponse {
     AlreadyProcessed { key: Vec<String>, index: u64 },
     LogIndex(u64),
+    Err(String),
+}
+
+impl From<String> for ConsensusClientResponse {
+    fn from(value: String) -> Self {
+        Self::Err(value)
+    }
+}
+impl From<&'static str> for ConsensusClientResponse {
+    fn from(value: &'static str) -> Self {
+        Self::Err(value.to_string())
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -61,7 +61,7 @@ impl ClientAction {
                 WriteRequest::Decr { key, delta: decrement }
             },
             | _ => {
-                debug_assert!(false, "to_write_request called on non-write action: {:?}", self);
+                debug_assert!(false, "to_write_request called on non-write action: {self:?}");
                 unreachable!(
                     "to_write_request should only be called after consensus_required() check"
                 )

@@ -273,10 +273,10 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             // mapping between early returned values to client result
 
             let key = req.request.all_keys().into_iter().map(String::from).collect();
-            let _ = req.callback.send(Ok(ConsensusClientResponse::AlreadyProcessed {
+            let _ = req.callback.send(ConsensusClientResponse::AlreadyProcessed {
                 key,
                 index: self.logger.last_log_index,
-            }));
+            });
             return;
         };
 
@@ -285,32 +285,32 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
                 self.req_consensus(req).await;
             },
             | Ok(replid) => {
-                let _ = req.callback.send(res_err!("MOVED {}", replid));
+                err!("Given keys {:?} moved to {}", req.request.all_keys(), replid);
+                let _ = req.callback.send(format!("MOVED {replid}").into());
             },
             | Err(err) => {
-                let _ = req.callback.send(res_err!("{}", err));
+                err!("{}", err);
+                let _ = req.callback.send(err.to_string().into());
             },
         }
     }
 
     async fn req_consensus(&mut self, req: ConsensusRequest) {
         if !self.replication.is_leader() {
-            let _ = req.callback.send(res_err!("Write given to follower"));
+            let _ = req.callback.send("Write given to follower".into());
             return;
         }
 
         // * Check if the request has already been processed
         if let Err(err) = self.logger.write_single_entry(&req.request, self.replication.term) {
-            let _ = req.callback.send(Err(anyhow::anyhow!(err)));
+            let _ = req.callback.send(ConsensusClientResponse::Err(err.to_string()));
             return;
         };
 
         if self.replicas().count() == 0 {
             // * If there are no replicas, we can send the response immediately
             self.replication.hwm.fetch_add(1, Ordering::Relaxed);
-            req.callback
-                .send(Ok(ConsensusClientResponse::LogIndex(self.logger.last_log_index.into())))
-                .ok();
+            req.callback.send(ConsensusClientResponse::LogIndex(self.logger.last_log_index)).ok();
             return;
         }
 
@@ -782,7 +782,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         self.replication.hwm.fetch_add(1, Ordering::Relaxed);
 
         self.client_sessions.set_response(consensus.session_req.take());
-        let _ = consensus.callback.send(Ok(ConsensusClientResponse::LogIndex(res.log_idx.into())));
+        let _ = consensus.callback.send(ConsensusClientResponse::LogIndex(res.log_idx));
     }
 
     // Follower notified the leader of its acknowledgment, then leader store match index for the given follower

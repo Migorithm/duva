@@ -173,13 +173,14 @@ impl ClientController {
             )))
             .await?;
 
-        match consensus_res.await?? {
+        match consensus_res.await? {
             | ConsensusClientResponse::AlreadyProcessed { key: keys, index } => {
                 // * Conversion! request has already been processed so we need to convert it to get
                 let action = ClientAction::MGet { keys };
                 Ok((action, index))
             },
             | ConsensusClientResponse::LogIndex(idx) => Ok((request.action, idx)),
+            | ConsensusClientResponse::Err(error_msg) => Err(anyhow::anyhow!(error_msg)),
         }
     }
 }

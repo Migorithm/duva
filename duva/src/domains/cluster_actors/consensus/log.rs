@@ -8,7 +8,7 @@ use crate::{
     make_smart_pointer,
 };
 use tokio::sync::oneshot::Sender;
-pub(crate) type ReplicationVote = Sender<anyhow::Result<ConsensusClientResponse>>;
+pub(crate) type ReplicationVote = Sender<ConsensusClientResponse>;
 
 #[derive(Default, Debug)]
 pub struct LogConsensusTracker(pub(crate) HashMap<u64, LogConsensusVoting>);
@@ -16,7 +16,7 @@ impl LogConsensusTracker {
     pub(crate) fn add(
         &mut self,
         key: u64,
-        callback: Sender<anyhow::Result<ConsensusClientResponse>>,
+        callback: Sender<ConsensusClientResponse>,
         replica_count: usize,
         session_req: Option<SessionRequest>,
     ) {
