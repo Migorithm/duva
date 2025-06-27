@@ -82,14 +82,14 @@ fn run_cluster_meet_with_migration(append_only: bool) -> anyhow::Result<()> {
     // Set keys in first cluster
     let mut client_handler1 = Client::new(env.port);
     for i in 0..500 {
-        let cmd = format!("set {} {}", i, i);
+        let cmd = format!("set {i} {i}");
         assert_eq!(client_handler1.send_and_get(&cmd), "OK");
     }
 
     // Set keys in second cluster
     let mut client_handler2 = Client::new(env3.port);
     for i in 500..1000 {
-        let cmd = format!("set {} {}", i, i);
+        let cmd = format!("set {i} {i}");
         assert_eq!(client_handler2.send_and_get(&cmd), "OK");
     }
 
@@ -108,14 +108,14 @@ fn run_cluster_meet_with_migration(append_only: bool) -> anyhow::Result<()> {
 
     // Check keys from first node
     for i in 0..1000 {
-        let cmd = format!("get {}", i);
+        let cmd = format!("get {i}");
         let res1 = client_handler1.send_and_get(&cmd);
         let res2 = client_handler2.send_and_get(&cmd);
-        if res1 == format!("{}", i) {
+        if res1 == format!("{i}") {
             keys_accessible_from_node1 += 1;
             node1_keys.push(i);
         }
-        if res2 == format!("{}", i) {
+        if res2 == format!("{i}") {
             keys_accessible_from_node2 += 1;
             node2_keys.push(i);
         }

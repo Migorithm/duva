@@ -205,7 +205,7 @@ fn test_prioritize_nodes_with_same_replid() {
 
     // Create temp file and write content
     let mut temp_file = tempfile::NamedTempFile::new().expect("Failed to create temp file");
-    write!(temp_file, "{}", file_content).expect("Failed to write to temp file");
+    write!(temp_file, "{file_content}").expect("Failed to write to temp file");
 
     // Read and prioritize nodes
     let nodes = PeerState::from_file(temp_file.path().to_str().unwrap());
@@ -218,6 +218,6 @@ fn test_prioritize_nodes_with_same_replid() {
 
     // Optionally print for debugging
     for node in nodes {
-        println!("{:?}", node);
+        println!("{node:?}");
     }
 }

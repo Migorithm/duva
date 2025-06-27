@@ -585,7 +585,7 @@ mod test {
             0x62, 0x61, 0x7A, 0x03, 0x71, 0x75, 0x78,
         ];
         let bytes_handler =
-            BytesDecoder::<HeaderReady> { data: data.as_slice().into(), state: Default::default() };
+            BytesDecoder::<HeaderReady> { data: data.as_slice(), state: Default::default() };
 
         let metadata = bytes_handler.load_metadata().unwrap();
         assert_eq!(
@@ -604,7 +604,7 @@ mod test {
             0x4E, 0xF8, 0x0F, 0x77, 0x19,
         ];
         let bytes_handler = BytesDecoder::<MetadataReady> {
-            data: data.as_slice().into(),
+            data: data.as_slice(),
             state: MetadataReady {
                 metadata: Metadata { repl_id: ReplicationId::Undecided, log_idx: 0 },
                 header: "".into(),
@@ -647,7 +647,7 @@ mod test {
             0x9C, 0xF8, 0xFB, 0x2E, 0x7F, 0xEB,
         ]);
         let bytes_handler =
-            BytesDecoder::<DecoderInit> { data: data.as_slice().into(), state: Default::default() };
+            BytesDecoder::<DecoderInit> { data: data.as_slice(), state: Default::default() };
 
         let rdb_file =
             bytes_handler.load_header().unwrap().load_metadata().unwrap().load_database().unwrap();

@@ -135,7 +135,7 @@ fn test_node_removal_redistribution() {
     // Record initial key distribution
     let mut before_removal = Vec::new();
     for i in 0..100 {
-        let key = format!("key{}", i);
+        let key = format!("key{i}");
         if let Some(node) = ring.get_node_for_key(&key) {
             before_removal.push((key, node.clone()));
         }

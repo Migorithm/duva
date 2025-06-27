@@ -479,7 +479,7 @@ mod test {
 
         // THEN
         assert_eq!(len, 7);
-        assert_eq!(value, QueryIO::SimpleString("PING".to_string().into()));
+        assert_eq!(value, QueryIO::SimpleString("PING".to_string()));
     }
 
     #[test]
@@ -614,7 +614,7 @@ mod test {
     #[test]
     fn test_heartbeat_to_binary_back_to_heartbeat() {
         // GIVEN
-        let me = PeerIdentifier::new("me".into(), 6035);
+        let me = PeerIdentifier::new("me", 6035);
         let leader = ReplicationId::Undecided;
         let banned_list = vec![
             BannedPeer { p_id: PeerIdentifier("banned1".into()), ban_time: 3553 },
@@ -771,12 +771,12 @@ mod test {
         let ring = HashRing::default()
             .set_partitions(vec![(
                 ReplicationId::Key(Uuid::now_v7().to_string()),
-                PeerIdentifier::new("127.0.1:3344".into(), 0),
+                PeerIdentifier::new("127.0.1:3344", 0),
             )])
             .unwrap();
 
         let heartbeat = HeartBeat {
-            from: PeerIdentifier::new("127.0.0.1:3344".into(), 0),
+            from: PeerIdentifier::new("127.0.0.1:3344", 0),
             term: 1,
             prev_log_index: 0,
             prev_log_term: 1,
@@ -805,8 +805,8 @@ mod test {
         assert_eq!(deserialized_ring.get_pnode_count(), ring_to_cmp.get_pnode_count());
 
         assert_eq!(deserialized_ring, ring_to_cmp);
-        assert!(ring_to_cmp.get_virtual_nodes().len() > 0);
-        assert!(deserialized_ring.get_virtual_nodes().len() > 0);
+        assert!(!ring_to_cmp.get_virtual_nodes().is_empty());
+        assert!(!deserialized_ring.get_virtual_nodes().is_empty());
     }
 
     #[test]

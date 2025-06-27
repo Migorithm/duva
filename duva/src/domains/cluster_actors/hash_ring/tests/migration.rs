@@ -66,7 +66,7 @@ async fn test_single_node_ownership_change() {
         ])
         .unwrap();
 
-    let test_keys: Vec<String> = (0..10000).map(|i| format!("test_key_{}", i)).collect();
+    let test_keys: Vec<String> = (0..10000).map(|i| format!("test_key_{i}")).collect();
 
     // Identify expected migrations
     let mut expected_migrations = HashMap::<ReplicationId, Vec<String>>::new();
@@ -101,16 +101,13 @@ async fn test_single_node_ownership_change() {
         assert_eq!(
             actual_migrations.get(to_node),
             Some(expected_keys),
-            "Keys for node {:?} do not match",
-            to_node
+            "Keys for node {to_node:?} do not match"
         );
     }
     for (to_node, actual_keys) in &actual_migrations {
         assert!(
             expected_migrations.contains_key(to_node),
-            "Unexpected migration to {} for keys {:?}",
-            to_node,
-            actual_keys
+            "Unexpected migration to {to_node} for keys {actual_keys:?}"
         );
     }
     let total_expected: usize = expected_migrations.values().map(|v| v.len()).sum();
@@ -163,7 +160,7 @@ async fn test_multiple_ownership_changes() {
             (replid4.clone(), PeerIdentifier("peer4".into())),
         ])
         .unwrap();
-    let test_keys: Vec<String> = (0..5000).map(|i| format!("test_key_{}", i)).collect();
+    let test_keys: Vec<String> = (0..5000).map(|i| format!("test_key_{i}")).collect();
 
     // Identify expected migrations
     let mut expected_migrations = HashMap::<ReplicationId, Vec<String>>::new();
@@ -198,16 +195,13 @@ async fn test_multiple_ownership_changes() {
         assert_eq!(
             actual_migrations.get(to_node),
             Some(expected_keys),
-            "Keys for node {:?} do not match",
-            to_node
+            "Keys for node {to_node:?} do not match"
         );
     }
     for (to_node, actual_keys) in &actual_migrations {
         assert!(
             expected_migrations.contains_key(to_node),
-            "Unexpected migration to {} for keys {:?}",
-            to_node,
-            actual_keys
+            "Unexpected migration to {to_node} for keys {actual_keys:?}"
         );
     }
     let total_expected: usize = expected_migrations.values().map(|v| v.len()).sum();
