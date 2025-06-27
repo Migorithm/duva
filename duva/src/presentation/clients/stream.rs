@@ -67,7 +67,7 @@ impl ClientStreamReader {
                 };
                 let session_request = SessionRequest::new(request_id, self.client_id);
 
-                ClientRequest::from_user_input(value, Some(session_request))
+                ClientRequest::from_user_input(value, session_request)
                     .map_err(|e| IoError::Custom(e.to_string()))
             })
             .collect()

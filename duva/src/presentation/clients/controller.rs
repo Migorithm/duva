@@ -3,7 +3,9 @@ use crate::config::ENV;
 use crate::domains::QueryIO;
 use crate::domains::caches::cache_manager::CacheManager;
 use crate::domains::caches::cache_objects::CacheEntry;
-use crate::domains::cluster_actors::{ClientMessage, ConsensusClientResponse, ConsensusRequest};
+use crate::domains::cluster_actors::{
+    ClientMessage, ConsensusClientResponse, ConsensusRequest, SessionRequest,
+};
 use crate::domains::saves::actor::SaveTarget;
 use crate::prelude::PeerIdentifier;
 use crate::presentation::clients::request::ClientAction;
@@ -160,38 +162,37 @@ impl ClientController {
     #[instrument(level = tracing::Level::DEBUG , skip(self, request))]
     pub(crate) async fn maybe_consensus_then_execute(
         &self,
-        mut request: ClientRequest,
+        request: ClientRequest,
     ) -> anyhow::Result<QueryIO> {
-        let consensus_res = self.maybe_consensus(&mut request).await?;
+        let action = request.action;
+        let session = request.session_req;
+
+        if !action.consensus_required() {
+            return self.handle(action, None).await;
+        }
+
+        let consensus_res = self.make_consensus(action.clone(), session).await?;
         debug!("Consensus response: {:?}", consensus_res);
         match consensus_res {
             | ConsensusClientResponse::AlreadyProcessed { key: keys, index } => {
                 // * Conversion! request has already been processed so we need to convert it to get
-                request.action = ClientAction::MGet { keys };
-                self.handle(request.action, Some(index)).await
+                let action = ClientAction::MGet { keys };
+                self.handle(action, Some(index)).await
             },
-            | ConsensusClientResponse::LogIndex(optional_idx) => {
-                self.handle(request.action, optional_idx).await
-            },
+            | ConsensusClientResponse::LogIndex(idx) => self.handle(action, Some(idx)).await,
         }
     }
 
-    async fn maybe_consensus(
+    async fn make_consensus(
         &self,
-        request: &mut ClientRequest,
+        action: ClientAction,
+        session: SessionRequest,
     ) -> anyhow::Result<ConsensusClientResponse> {
         // If the request doesn't require consensus, return Ok
-        let Some(log) = request.action.to_write_request() else {
-            return Ok(ConsensusClientResponse::LogIndex(None));
-        };
-
+        let log = action.to_write_request();
         let (tx, rx) = tokio::sync::oneshot::channel();
         self.cluster_communication_manager
-            .send(ClientMessage::LeaderReqConsensus(ConsensusRequest::new(
-                log,
-                tx,
-                request.session_req.take(),
-            )))
+            .send(ClientMessage::LeaderReqConsensus(ConsensusRequest::new(log, tx, Some(session))))
             .await?;
 
         rx.await?
