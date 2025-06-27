@@ -796,14 +796,19 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         }
 
         // * write logs
-        if self.replicate_log_entries(&mut heartbeat).await.is_err() {
-            error!("Failed to replicate logs");
+        if let Err(rej_reason) = self.replicate_log_entries(&mut heartbeat).await {
+            self.send_replication_ack(
+                &heartbeat.from,
+                ReplicationAck::reject(self.logger.last_log_index, rej_reason, &self.replication),
+            )
+            .await;
             return;
         };
+
         self.replicate_state(heartbeat, cache_manager).await;
     }
 
-    async fn replicate_log_entries(&mut self, rpc: &mut HeartBeat) -> anyhow::Result<()> {
+    async fn replicate_log_entries(&mut self, rpc: &mut HeartBeat) -> Result<(), RejectionReason> {
         let entries = std::mem::take(&mut rpc.append_entries)
             .into_iter()
             .filter(|log| log.log_index > self.logger.last_log_index)
@@ -813,16 +818,11 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             return Ok(());
         }
 
-        if let Err(e) = self.ensure_prev_consistency(rpc.prev_log_index, rpc.prev_log_term).await {
-            self.send_replication_ack(
-                &rpc.from,
-                ReplicationAck::reject(self.logger.last_log_index, e, &self.replication),
-            )
-            .await;
-            return Err(anyhow::anyhow!("Fail fail to append"));
-        }
-
-        let match_index = self.logger.follower_write_entries(entries)?;
+        self.ensure_prev_consistency(rpc.prev_log_index, rpc.prev_log_term).await?;
+        let match_index = self.logger.follower_write_entries(entries).map_err(|e| {
+            err!("{}", e);
+            RejectionReason::FailToWrite
+        })?;
 
         self.send_replication_ack(&rpc.from, ReplicationAck::ack(match_index, &self.replication))
             .await;
@@ -972,6 +972,9 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
                 info!("Log inconsistency, reverting match index");
                 //TODO we can refactor this to set match index to given log index from the follower
                 self.decrease_match_index(&repl_res.from, repl_res.log_idx);
+            },
+            | RejectionReason::FailToWrite => {
+                info!("Follower failed to write log for technical reason, resend..");
             },
         }
     }

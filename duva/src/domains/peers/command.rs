@@ -101,6 +101,7 @@ mod peer_messages {
     pub(crate) enum RejectionReason {
         ReceiverHasHigherTerm,
         LogInconsistency,
+        FailToWrite,
     }
 
     impl ReplicationAck {
