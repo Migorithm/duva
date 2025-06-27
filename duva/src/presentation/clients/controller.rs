@@ -9,7 +9,6 @@ use crate::prelude::PeerIdentifier;
 use crate::presentation::clients::request::ClientAction;
 use crate::presentation::clusters::communication_manager::ClusterCommunicationManager;
 use std::sync::atomic::Ordering;
-use tracing::{debug, instrument};
 
 #[derive(Clone, Debug)]
 pub(crate) struct ClientController {
@@ -157,43 +156,28 @@ impl ClientController {
         Ok(response)
     }
 
-    #[instrument(level = tracing::Level::DEBUG , skip(self, request))]
-    pub(crate) async fn maybe_consensus_then_execute(
+    pub(crate) async fn make_consensus(
         &self,
-        mut request: ClientRequest,
-    ) -> anyhow::Result<QueryIO> {
-        let consensus_res = self.maybe_consensus(&mut request).await?;
-        debug!("Consensus response: {:?}", consensus_res);
-        match consensus_res {
-            | ConsensusClientResponse::AlreadyProcessed { key: keys, index } => {
-                // * Conversion! request has already been processed so we need to convert it to get
-                request.action = ClientAction::MGet { keys };
-                self.handle(request.action, Some(index)).await
-            },
-            | ConsensusClientResponse::LogIndex(optional_idx) => {
-                self.handle(request.action, optional_idx).await
-            },
-        }
-    }
+        request: ClientRequest,
+    ) -> anyhow::Result<(ClientAction, u64)> {
+        let (tx, consensus_res) = tokio::sync::oneshot::channel();
 
-    async fn maybe_consensus(
-        &self,
-        request: &mut ClientRequest,
-    ) -> anyhow::Result<ConsensusClientResponse> {
-        // If the request doesn't require consensus, return Ok
-        let Some(log) = request.action.to_write_request() else {
-            return Ok(ConsensusClientResponse::LogIndex(None));
-        };
-
-        let (tx, rx) = tokio::sync::oneshot::channel();
         self.cluster_communication_manager
             .send(ClientMessage::LeaderReqConsensus(ConsensusRequest::new(
-                log,
+                request.action.clone().to_write_request(),
                 tx,
-                request.session_req.take(),
+                Some(request.session_req),
             )))
             .await?;
 
-        rx.await?
+        match consensus_res.await? {
+            | ConsensusClientResponse::AlreadyProcessed { key: keys, index } => {
+                // * Conversion! request has already been processed so we need to convert it to get
+                let action = ClientAction::MGet { keys };
+                Ok((action, index))
+            },
+            | ConsensusClientResponse::LogIndex(idx) => Ok((request.action, idx)),
+            | ConsensusClientResponse::Err(error_msg) => Err(anyhow::anyhow!(error_msg)),
+        }
     }
 }

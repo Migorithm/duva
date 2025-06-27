@@ -163,7 +163,7 @@ fn cluster_member_create_helper(
 }
 
 fn consensus_request_create_helper(
-    tx: tokio::sync::oneshot::Sender<Result<ConsensusClientResponse, anyhow::Error>>,
+    tx: tokio::sync::oneshot::Sender<ConsensusClientResponse>,
     session_req: Option<SessionRequest>,
 ) -> ConsensusRequest {
     ConsensusRequest::new(

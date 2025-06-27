@@ -89,7 +89,7 @@ impl Broker {
     // ! If request is updating action yet receive error, we need to increase the request id
     // ! otherwise, server will not be able to process the next command
     fn extract_req_id(&mut self, kind: &ClientAction, query_io: &QueryIO) -> Option<u64> {
-        if !kind.is_updating_action() {
+        if !kind.consensus_required() {
             return None;
         }
         match query_io {

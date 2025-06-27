@@ -40,47 +40,46 @@ pub enum ClientAction {
 }
 
 impl ClientAction {
-    pub fn to_write_request(&self) -> Option<WriteRequest> {
+    pub fn to_write_request(self) -> WriteRequest {
         match self {
             | ClientAction::Set { key, value } => {
-                Some(WriteRequest::Set { key: key.clone(), value: value.clone(), expires_at: None })
+                WriteRequest::Set { key, value, expires_at: None }
             },
             | ClientAction::SetWithExpiry { key, value, expiry } => {
                 let expires_at = expiry.timestamp_millis() as u64;
 
-                Some(WriteRequest::Set {
-                    key: key.clone(),
-                    value: value.clone(),
-                    expires_at: Some(expires_at),
-                })
+                WriteRequest::Set { key, value, expires_at: Some(expires_at) }
             },
-            | ClientAction::Append { key, value } => {
-                Some(WriteRequest::Append { key: key.clone(), value: value.clone() })
-            },
-            | ClientAction::Delete { keys } => Some(WriteRequest::Delete { keys: keys.clone() }),
-            | ClientAction::Incr { key } => Some(WriteRequest::Incr { key: key.clone(), delta: 1 }),
-            | ClientAction::Decr { key } => Some(WriteRequest::Decr { key: key.clone(), delta: 1 }),
+            | ClientAction::Append { key, value } => WriteRequest::Append { key, value },
+            | ClientAction::Delete { keys } => WriteRequest::Delete { keys },
+            | ClientAction::Incr { key } => WriteRequest::Incr { key, delta: 1 },
+            | ClientAction::Decr { key } => WriteRequest::Decr { key, delta: 1 },
             | ClientAction::IncrBy { key, increment } => {
-                Some(WriteRequest::Incr { key: key.clone(), delta: *increment })
+                WriteRequest::Incr { key, delta: increment }
             },
             | ClientAction::DecrBy { key, decrement } => {
-                Some(WriteRequest::Decr { key: key.clone(), delta: *decrement })
+                WriteRequest::Decr { key, delta: decrement }
             },
-            | _ => None,
+            | _ => {
+                debug_assert!(false, "to_write_request called on non-write action: {self:?}");
+                unreachable!(
+                    "to_write_request should only be called after consensus_required() check"
+                )
+            },
         }
     }
 
-    pub fn is_updating_action(&self) -> bool {
+    pub fn consensus_required(&self) -> bool {
         matches!(
             self,
             ClientAction::Set { .. }
+                | ClientAction::SetWithExpiry { .. }
                 | ClientAction::Append { .. }
                 | ClientAction::Delete { .. }
                 | ClientAction::Incr { .. }
                 | ClientAction::Decr { .. }
                 | ClientAction::IncrBy { .. }
                 | ClientAction::DecrBy { .. }
-                | ClientAction::Save
         )
     }
 }
@@ -88,13 +87,13 @@ impl ClientAction {
 #[derive(Clone, Debug)]
 pub struct ClientRequest {
     pub(crate) action: ClientAction,
-    pub(crate) session_req: Option<SessionRequest>,
+    pub(crate) session_req: SessionRequest,
 }
 
 impl ClientRequest {
     pub fn from_user_input(
         value: Vec<QueryIO>,
-        session_req: Option<SessionRequest>,
+        session_req: SessionRequest,
     ) -> anyhow::Result<Self> {
         let mut values = value.into_iter().flat_map(|v| v.unpack_single_entry::<String>());
         let command = values.next().ok_or(anyhow::anyhow!("Unexpected command format"))?;

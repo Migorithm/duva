@@ -2,25 +2,19 @@ use std::collections::HashMap;
 
 use crate::{
     domains::{
-        cluster_actors::{ConsensusClientResponse, SessionRequest},
+        cluster_actors::{ConsensusClientResponse, ConsensusRequest, SessionRequest},
         peers::identifier::PeerIdentifier,
     },
     make_smart_pointer,
 };
 use tokio::sync::oneshot::Sender;
-pub(crate) type ReplicationVote = Sender<anyhow::Result<ConsensusClientResponse>>;
+pub(crate) type ReplicationVote = Sender<ConsensusClientResponse>;
 
 #[derive(Default, Debug)]
 pub struct LogConsensusTracker(pub(crate) HashMap<u64, LogConsensusVoting>);
 impl LogConsensusTracker {
-    pub(crate) fn add(
-        &mut self,
-        key: u64,
-        callback: Sender<anyhow::Result<ConsensusClientResponse>>,
-        replica_count: usize,
-        session_req: Option<SessionRequest>,
-    ) {
-        self.insert(key, LogConsensusVoting::new(callback, replica_count, session_req));
+    pub(crate) fn add(&mut self, key: u64, req: ConsensusRequest, replica_count: usize) {
+        self.insert(key, LogConsensusVoting::new(req.callback, replica_count, req.session_req));
     }
 }
 make_smart_pointer!(LogConsensusTracker, HashMap<u64, LogConsensusVoting>);

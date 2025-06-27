@@ -40,7 +40,15 @@ impl ClientStreamReader {
             for req in requests {
                 trace!(?req, "Processing request");
 
-                let result = handler.maybe_consensus_then_execute(req).await;
+                let result = if req.action.consensus_required() {
+                    match handler.make_consensus(req).await {
+                        | Ok((action, idx)) => handler.handle(action, Some(idx)).await,
+                        | Err(err) => Err(err),
+                    }
+                } else {
+                    handler.handle(req.action, None).await
+                };
+
                 let response = match result {
                     | Ok(res) => res,
                     | Err(e) => {
@@ -62,14 +70,10 @@ impl ClientStreamReader {
         query_ios
             .into_iter()
             .map(|query_io| {
-                let (value, session_request) = match query_io {
-                    | QueryIO::Array(value) => (value, None),
-                    | QueryIO::SessionRequest { request_id, value } => {
-                        let session = SessionRequest::new(request_id, self.client_id);
-                        (value, Some(session))
-                    },
-                    | _ => return Err(IoError::Custom("Unexpected command format".to_string())),
+                let QueryIO::SessionRequest { request_id, value } = query_io else {
+                    return Err(IoError::Custom("Unexpected command format".to_string()));
                 };
+                let session_request = SessionRequest::new(request_id, self.client_id);
 
                 ClientRequest::from_user_input(value, session_request)
                     .map_err(|e| IoError::Custom(e.to_string()))
