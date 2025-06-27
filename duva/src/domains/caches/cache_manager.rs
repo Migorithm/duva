@@ -315,9 +315,8 @@ mod tests {
         let cache_manager = CacheManager::run_cache_actors(hwm);
 
         // Create many entries that should be distributed across different shards
-        let entries: Vec<CacheEntry> = (0..50)
-            .map(|i| CacheEntry::new(format!("key_{i}"), format!("value_{i}")))
-            .collect();
+        let entries: Vec<CacheEntry> =
+            (0..50).map(|i| CacheEntry::new(format!("key_{i}"), format!("value_{i}"))).collect();
 
         // WHEN: We call route_bulk_set
         cache_manager.route_mset(entries).await;

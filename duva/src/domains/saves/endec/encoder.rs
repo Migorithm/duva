@@ -345,8 +345,7 @@ mod test {
 
     #[test]
     fn test_encode_metadata() {
-        let metadata =
-            Metadata { repl_id: ReplicationId::Key("key1".to_string()), log_idx: 123 };
+        let metadata = Metadata { repl_id: ReplicationId::Key("key1".to_string()), log_idx: 123 };
         let encoded = encode_metadata(metadata).unwrap();
         let expected = vec![
             METADATA_SECTION_INDICATOR,

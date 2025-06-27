@@ -592,10 +592,7 @@ mod tests {
         assert_eq!(cache.capacity, 3);
 
         for i in 0..3 {
-            cache.put(
-                format!("key{i}"),
-                CacheValue::new(format!("value{i}")).with_expiry(expiry),
-            );
+            cache.put(format!("key{i}"), CacheValue::new(format!("value{i}")).with_expiry(expiry));
         }
         assert_eq!(cache.len(), 3);
         assert_eq!(cache.keys_with_expiry, 3);

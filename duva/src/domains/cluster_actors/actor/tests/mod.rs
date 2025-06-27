@@ -153,9 +153,7 @@ fn cluster_member_create_helper(
                 PeerState::new(
                     &format!("localhost:{port}"),
                     follower_hwm,
-                    replid
-                        .clone()
-                        .unwrap_or_else(|| ReplicationId::Key("localhost".to_string())),
+                    replid.clone().unwrap_or_else(|| ReplicationId::Key("localhost".to_string())),
                     ReplicationRole::Follower,
                 ),
                 kill_switch,
@@ -168,7 +166,6 @@ fn consensus_request_create_helper(
     tx: tokio::sync::oneshot::Sender<Result<ConsensusClientResponse, anyhow::Error>>,
     session_req: Option<SessionRequest>,
 ) -> ConsensusRequest {
-    
     ConsensusRequest::new(
         WriteRequest::Set { key: "foo".into(), value: "bar".into(), expires_at: None },
         tx,
