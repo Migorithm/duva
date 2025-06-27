@@ -70,8 +70,9 @@ impl StartUpFacade {
             ReplicationId::Undecided
         };
 
-        if let Ok(true) = path.try_exists() {
-            let snapshot = SnapshotLoader::load_from_filepath(path).unwrap();
+        if let Ok(true) = path.try_exists()
+            && let Ok(snapshot) = SnapshotLoader::load_from_filepath(path)
+        {
             return snapshot;
         }
 

@@ -10,7 +10,7 @@ fn run_keys(env: ServerEnv) -> anyhow::Result<()> {
 
     // WHEN set 500 keys with the value `bar`.
     for key in 0..num_keys_to_store {
-        h.send_and_get(format!("SET {} bar", key));
+        h.send_and_get(format!("SET {key} bar"));
     }
 
     // Fire keys command

@@ -57,7 +57,7 @@ impl CacheManager {
     ) -> Result<String> {
         let value = cache_entry.value().to_string();
         self.select_shard(cache_entry.key()).send(CacheCommand::Set { cache_entry }).await?;
-        Ok(format!("s:{}|idx:{}", value, current_idx))
+        Ok(format!("s:{value}|idx:{current_idx}"))
     }
 
     pub(crate) async fn route_mset(&self, cache_entries: Vec<CacheEntry>) {
@@ -315,9 +315,8 @@ mod tests {
         let cache_manager = CacheManager::run_cache_actors(hwm);
 
         // Create many entries that should be distributed across different shards
-        let entries: Vec<CacheEntry> = (0..50)
-            .map(|i| CacheEntry::new(format!("key_{}", i), format!("value_{}", i)))
-            .collect();
+        let entries: Vec<CacheEntry> =
+            (0..50).map(|i| CacheEntry::new(format!("key_{i}"), format!("value_{i}"))).collect();
 
         // WHEN: We call route_bulk_set
         cache_manager.route_mset(entries).await;
@@ -325,8 +324,8 @@ mod tests {
         // THEN
         // AND: All entries should be retrievable
         for i in 0..50 {
-            let key = format!("key_{}", i);
-            let expected_value = format!("value_{}", i);
+            let key = format!("key_{i}");
+            let expected_value = format!("value_{i}");
 
             let retrieved_value = cache_manager.route_get(&key).await.unwrap();
             assert_eq!(retrieved_value, Some(CacheValue::new(expected_value)));

@@ -3,7 +3,7 @@ use crate::{
         QueryIO,
         cluster_actors::replication::{ReplicationId, ReplicationRole},
     },
-    from_to, make_smart_pointer,
+    err, from_to, make_smart_pointer,
 };
 use anyhow::Context;
 
@@ -122,7 +122,7 @@ impl TryFrom<String> for HandShakeRequestEnum {
             | "psync" => Ok(HandShakeRequestEnum::Psync),
 
             | invalid_value => {
-                eprintln!("Invalid command,{}", invalid_value);
+                err!("Invalid command, {}", invalid_value);
                 Err(anyhow::anyhow!("Invalid command"))
             },
         }

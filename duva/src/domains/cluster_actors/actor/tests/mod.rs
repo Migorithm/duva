@@ -96,7 +96,7 @@ fn write_operation_create_helper(
     value: &str,
 ) -> WriteOperation {
     WriteOperation {
-        log_index: index_num.into(),
+        log_index: index_num,
         request: WriteRequest::Set { key: key.into(), value: value.into(), expires_at: None },
         term,
     }
@@ -111,7 +111,7 @@ fn heartbeat_create_helper(term: u64, hwm: u64, op_logs: Vec<WriteOperation>) ->
         append_entries: op_logs,
         ban_list: vec![],
         from: PeerIdentifier::new("localhost", 8080),
-        replid: ReplicationId::Key("localhost".to_string().into()),
+        replid: ReplicationId::Key("localhost".to_string()),
         hop_count: 0,
         cluster_nodes: vec![],
         hashring: None,
@@ -151,11 +151,9 @@ fn cluster_member_create_helper(
             Peer::new(
                 fake_b.clone(),
                 PeerState::new(
-                    &format!("localhost:{}", port),
+                    &format!("localhost:{port}"),
                     follower_hwm,
-                    replid
-                        .clone()
-                        .unwrap_or_else(|| ReplicationId::Key("localhost".to_string().into())),
+                    replid.clone().unwrap_or_else(|| ReplicationId::Key("localhost".to_string())),
                     ReplicationRole::Follower,
                 ),
                 kill_switch,
@@ -168,12 +166,11 @@ fn consensus_request_create_helper(
     tx: tokio::sync::oneshot::Sender<Result<ConsensusClientResponse, anyhow::Error>>,
     session_req: Option<SessionRequest>,
 ) -> ConsensusRequest {
-    let consensus_request = ConsensusRequest::new(
+    ConsensusRequest::new(
         WriteRequest::Set { key: "foo".into(), value: "bar".into(), expires_at: None },
         tx,
         session_req,
-    );
-    consensus_request
+    )
 }
 
 // Helper function to create cache manager with hwm
@@ -224,7 +221,7 @@ pub(crate) fn migration_batch_create_helper(
 
 // Helper function to create cache entries
 pub(crate) fn cache_entries_create_helper(keys_values: &[(&str, &str)]) -> Vec<CacheEntry> {
-    keys_values.into_iter().map(|(key, value)| CacheEntry::new(*key, *value)).collect()
+    keys_values.iter().map(|(key, value)| CacheEntry::new(*key, *value)).collect()
 }
 
 // Helper function to assert migration batch ack

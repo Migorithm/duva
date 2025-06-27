@@ -74,7 +74,7 @@ impl HashRing {
             let repl_id = Rc::new(repl_id);
             // Create virtual nodes for better distribution
             for i in 0..V_NODE_NUM {
-                let virtual_node_id = format!("{}-{}", repl_id, i);
+                let virtual_node_id = format!("{repl_id}-{i}");
                 let hash = fnv_1a_hash(&virtual_node_id);
                 self.vnodes.insert(hash, repl_id.clone());
             }
@@ -125,18 +125,18 @@ impl HashRing {
 
             if let (Some(old_owner), Some(new_owner)) =
                 (self.find_replid(token), new_ring.find_replid(token))
+                && (old_owner != new_owner)
             {
                 // If both old and new owners exist, we need to check if ownership changed
-                if old_owner != new_owner {
-                    // Node ownership changed for this partition
-                    // Need to migrate data from old node to new node
-                    let affected_keys = filter_keys_in_partition(&keys, start, end);
-                    if !affected_keys.is_empty() {
-                        migration_tasks.entry(new_owner.clone()).or_default().push(MigrationTask {
-                            task_id: (start, end),
-                            keys_to_migrate: affected_keys,
-                        });
-                    }
+
+                // Node ownership changed for this partition
+                // Need to migrate data from old node to new node
+                let affected_keys = filter_keys_in_partition(&keys, start, end);
+                if !affected_keys.is_empty() {
+                    migration_tasks.entry(new_owner.clone()).or_default().push(MigrationTask {
+                        task_id: (start, end),
+                        keys_to_migrate: affected_keys,
+                    });
                 }
             }
         }
@@ -177,11 +177,10 @@ impl HashRing {
     }
 
     pub(crate) fn update_repl_leader(&mut self, replid: ReplicationId, new_pnode: PeerIdentifier) {
-        if let Some(existing_pnode) = self.pnodes.get_mut(&replid) {
-            if existing_pnode != &new_pnode {
-                // If the physical node is changing, we need to remove the old one
-                *existing_pnode = new_pnode;
-            }
+        if let Some(existing_pnode) = self.pnodes.get_mut(&replid)
+            && existing_pnode != &new_pnode
+        {
+            *existing_pnode = new_pnode;
         }
         self.update_last_modified();
     }

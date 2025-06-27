@@ -198,7 +198,7 @@ mod test {
         let size_bytes = [encoded[1], encoded[2], encoded[3], encoded[4]];
         let decoded_size = u32::from_be_bytes(size_bytes);
 
-        println!("Size in bytes: {}", decoded_size); // Should be 30000
+        println!("Size in bytes: {decoded_size}"); // Should be 30000
 
         // Data starts from index 5
         assert_eq!(&encoded[5..], data.as_bytes());
@@ -345,8 +345,7 @@ mod test {
 
     #[test]
     fn test_encode_metadata() {
-        let metadata =
-            Metadata { repl_id: ReplicationId::Key("key1".to_string().into()), log_idx: 123 };
+        let metadata = Metadata { repl_id: ReplicationId::Key("key1".to_string()), log_idx: 123 };
         let encoded = encode_metadata(metadata).unwrap();
         let expected = vec![
             METADATA_SECTION_INDICATOR,

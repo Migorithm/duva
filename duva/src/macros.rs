@@ -103,9 +103,11 @@ macro_rules! err {
     ($msg:expr) => {{
         tracing::error!("{}: {}:{}", $msg, file!(), line!());
     }};
-    ($msg:expr, $($arg:tt)*) => {{
-        tracing::error!("{}: {}:{}", $msg, file!(), line!());
+    ($fmt:expr, $($arg:tt)*) => {{
+        let msg = format!($fmt, $($arg)*);
+        tracing::error!("{}: {}:{}", msg, file!(), line!());
     }};
+
 }
 
 /// This macro is used to create a new error with a message and log it using tracing::error.
@@ -113,11 +115,11 @@ macro_rules! err {
 #[macro_export]
 macro_rules! res_err {
     ($msg:expr) => {{
-        crate::err!($msg);
+        $crate::err!($msg);
         Err(anyhow::anyhow!($msg))
     }};
     ($msg:expr, $($arg:tt)*) => {{
-        crate::err!($msg);
+        $crate::err!($msg);
         Err(anyhow::anyhow!($msg, $($arg)*))
     }};
 }

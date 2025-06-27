@@ -46,7 +46,7 @@ async fn test_cluster_nodes() {
     );
 
     let mut temp_file = tempfile::NamedTempFile::new().expect("Failed to create temp file");
-    write!(temp_file, "{}", file_content).expect("Failed to write to temp file");
+    write!(temp_file, "{file_content}").expect("Failed to write to temp file");
     let nodes = PeerState::from_file(temp_file.path().to_str().unwrap());
 
     for value in nodes {
@@ -213,8 +213,7 @@ async fn test_shard_leaders() {
     for expected_leader in expected_leaders {
         assert!(
             shard_leaders.contains(&expected_leader),
-            "Expected leader {:?} not found in shard_leaders",
-            expected_leader
+            "Expected leader {expected_leader:?} not found in shard_leaders"
         );
     }
 }

@@ -36,7 +36,7 @@ impl TryFrom<String> for ConnectionResponse {
             },
 
             | invalid_value => {
-                eprintln!("Invalid command,{}", invalid_value);
+                eprintln!("Invalid command,{invalid_value}");
                 Err(anyhow::anyhow!("Invalid command"))
             },
         }

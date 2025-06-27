@@ -204,9 +204,10 @@ impl FileOpLogs {
             let file_name_str = file_name.to_string_lossy();
 
             // Since we know the regex will match, we can simplify the capture extraction
-            if let Some(captures) = re.captures(&file_name_str) {
+            if let Some(captures) = re.captures(&file_name_str)
+                && let Ok(index) = captures[1].parse::<u64>()
+            {
                 // By rule, we know this unwrap is safe
-                let index = captures[1].parse::<u64>().unwrap();
                 segments.push((index, entry.path()));
             }
         }
@@ -245,7 +246,7 @@ impl FileOpLogs {
 
         // Create new segment
         let next_index = self.segments.len();
-        let segment_path = self.path.join(format!("segment_{}.oplog", next_index));
+        let segment_path = self.path.join(format!("segment_{next_index}.oplog"));
         let _ = OpenOptions::new().create(true).append(true).read(true).open(&segment_path)?;
 
         self.active_segment = Segment {
@@ -426,20 +427,20 @@ impl TWriteAheadLog for FileOpLogs {
     fn read_at(&self, log_index: u64) -> Option<WriteOperation> {
         // First check sealed segments
         for segment in &self.segments {
-            if segment.start_index <= log_index && segment.end_index >= log_index {
-                if let Some(offset) = segment.find_offset(log_index) {
-                    return segment.read_at_offset(offset).ok();
-                }
+            if segment.start_index <= log_index
+                && segment.end_index >= log_index
+                && let Some(offset) = segment.find_offset(log_index)
+            {
+                return segment.read_at_offset(offset).ok();
             }
         }
 
         // Then check active segment
         if self.active_segment.start_index <= log_index
             && self.active_segment.end_index >= log_index
+            && let Some(offset) = self.active_segment.find_offset(log_index)
         {
-            if let Some(offset) = self.active_segment.find_offset(log_index) {
-                return self.active_segment.read_at_offset(offset).ok();
-            }
+            return self.active_segment.read_at_offset(offset).ok();
         }
 
         None
@@ -557,7 +558,7 @@ mod tests {
         // GIVEN
         let dir = TempDir::new().unwrap();
         let path = dir.path();
-        let mut op_logs = FileOpLogs::new(&path).unwrap();
+        let mut op_logs = FileOpLogs::new(path).unwrap();
         let request =
             WriteRequest::Set { key: "foo".into(), value: "bar".into(), expires_at: None };
         let write_op = WriteOperation { request: request.clone(), log_index: 0, term: 0 };
@@ -567,7 +568,7 @@ mod tests {
         drop(op_logs);
 
         // THEN
-        let mut file = std::fs::File::open(&path.join("segment_0.oplog")).unwrap();
+        let mut file = std::fs::File::open(path.join("segment_0.oplog")).unwrap();
         let mut buf = Vec::new();
         file.read_to_end(&mut buf).unwrap();
 
@@ -659,7 +660,7 @@ mod tests {
         let path = dir.path();
 
         // WHEN
-        let op_logs = FileOpLogs::new(&path)?;
+        let op_logs = FileOpLogs::new(path)?;
 
         // THEN
 
@@ -681,13 +682,13 @@ mod tests {
 
         // Create initial segment with some operations
         {
-            let mut op_logs = FileOpLogs::new(&path)?;
+            let mut op_logs = FileOpLogs::new(path)?;
             op_logs.append(set_helper(10, 1))?;
             op_logs.append(set_helper(11, 1))?;
         }
 
         // WHEN
-        let op_logs = FileOpLogs::new(&path)?;
+        let op_logs = FileOpLogs::new(path)?;
 
         // THEN
 
@@ -718,13 +719,13 @@ mod tests {
 
         // Create multiple segments by forcing rotation
 
-        let mut op_logs = FileOpLogs::new(&path)?;
+        let mut op_logs = FileOpLogs::new(path)?;
         // Fill first segment
         for i in 0..100 {
             op_logs.append(WriteOperation {
                 request: WriteRequest::Set {
-                    key: format!("key_{}", i).into(),
-                    value: format!("value_{}", i).into(),
+                    key: format!("key_{i}"),
+                    value: format!("value_{i}"),
                     expires_at: None,
                 },
                 log_index: i as u64,
@@ -745,7 +746,7 @@ mod tests {
         })?;
 
         // WHEN
-        let mut op_logs = FileOpLogs::new(&path)?;
+        let mut op_logs = FileOpLogs::new(path)?;
 
         // THEN
 
@@ -774,7 +775,7 @@ mod tests {
         let path = dir.path();
 
         // Create a segment and corrupt it
-        let mut op_logs = FileOpLogs::new(&path)?;
+        let mut op_logs = FileOpLogs::new(path)?;
         op_logs.append(set_helper(0, 1))?;
 
         // Corrupt the segment file
@@ -783,7 +784,7 @@ mod tests {
         file.write_all(b"corrupted data")?;
 
         // WHEN/THEN
-        assert!(FileOpLogs::new(&path).is_err());
+        assert!(FileOpLogs::new(path).is_err());
 
         Ok(())
     }
@@ -795,13 +796,13 @@ mod tests {
         let path = dir.path();
 
         // Create initial segments with some operations
-        let mut op_logs = FileOpLogs::new(&path)?;
+        let mut op_logs = FileOpLogs::new(path)?;
         for i in 0..100 {
             // Append 100 ops to segment_0.oplog
             op_logs.append(WriteOperation {
                 request: WriteRequest::Set {
-                    key: format!("key_{}", i).into(),
-                    value: format!("value_{}", i).into(),
+                    key: format!("key_{i}"),
+                    value: format!("value_{i}"),
                     expires_at: None,
                 },
                 log_index: i as u64,
@@ -837,7 +838,7 @@ mod tests {
         for path in &old_segment_paths {
             assert!(path.exists(), "File should exist before sync: {}", path.display());
         }
-        println!("Old segments before sync: {:?}", old_segment_paths);
+        println!("Old segments before sync: {old_segment_paths:?}");
 
         // WHEN
         let new_ops = vec![set_helper(0, 2), set_helper(1, 2)];
@@ -882,7 +883,7 @@ mod tests {
         let path = dir.path();
 
         // Create initial segments with some operations
-        let mut op_logs = FileOpLogs::new(&path)?;
+        let mut op_logs = FileOpLogs::new(path)?;
         op_logs.append(set_helper(0, 1))?;
 
         // WHEN
@@ -906,14 +907,14 @@ mod tests {
         // GIVEN
         let dir = TempDir::new()?;
         let path = dir.path();
-        let mut op_logs = FileOpLogs::new(&path)?;
+        let mut op_logs = FileOpLogs::new(path)?;
 
         // WHEN
         let new_ops: Vec<_> = (0..1000)
             .map(|i| WriteOperation {
                 request: WriteRequest::Set {
-                    key: format!("key_{}", i).into(),
-                    value: format!("value_{}", i).into(),
+                    key: format!("key_{i}"),
+                    value: format!("value_{i}"),
                     expires_at: None,
                 },
                 log_index: i as u64,
@@ -936,7 +937,7 @@ mod tests {
     fn test_range_empty_log() -> Result<()> {
         let dir = TempDir::new()?;
         let path = dir.path();
-        let op_logs = FileOpLogs::new(&path)?;
+        let op_logs = FileOpLogs::new(path)?;
 
         let range_result = op_logs.range(0, 10);
         assert!(range_result.is_empty());
@@ -951,8 +952,8 @@ mod tests {
         (0..count)
             .map(|i| WriteOperation {
                 request: WriteRequest::Set {
-                    key: format!("key_{}", start_index + i as u64).into(),
-                    value: format!("value_{}", start_index + i as u64).into(),
+                    key: format!("key_{}", start_index + i as u64),
+                    value: format!("value_{}", start_index + i as u64),
                     expires_at: None,
                 },
                 log_index: start_index + i as u64,
@@ -965,7 +966,7 @@ mod tests {
     fn test_range_single_segment() {
         let dir = TempDir::new().unwrap();
         let path = dir.path();
-        let mut op_logs = FileOpLogs::new(&path).unwrap();
+        let mut op_logs = FileOpLogs::new(path).unwrap();
 
         let ops_to_append = create_ops(0, 6, 1); // Indices 0, 1, 2, 3, 4, 5
         op_logs.append_many(ops_to_append.clone()).unwrap();
@@ -1017,7 +1018,7 @@ mod tests {
     fn test_range_multiple_segments() {
         let dir = TempDir::new().unwrap();
         let path = dir.path();
-        let mut op_logs2 = FileOpLogs::new(&path).unwrap();
+        let mut op_logs2 = FileOpLogs::new(path).unwrap();
 
         let ops_seg1 = create_ops(0, 10, 1); // Ops 0-9
         op_logs2.append_many(ops_seg1.clone()).unwrap();
@@ -1074,7 +1075,7 @@ mod tests {
     fn test_read_at_empty_log() {
         let dir = TempDir::new().unwrap();
         let path = dir.path();
-        let op_logs = FileOpLogs::new(&path).unwrap();
+        let op_logs = FileOpLogs::new(path).unwrap();
 
         let op = op_logs.read_at(0);
         assert!(op.is_none());
@@ -1087,7 +1088,7 @@ mod tests {
     fn test_read_at_single_segment() {
         let dir = TempDir::new().unwrap();
         let path = dir.path();
-        let mut op_logs = FileOpLogs::new(&path).unwrap();
+        let mut op_logs = FileOpLogs::new(path).unwrap();
 
         let ops_to_append = create_ops(0, 5, 1); // Indices 0-4
         op_logs.append_many(ops_to_append.clone()).unwrap();
@@ -1114,7 +1115,7 @@ mod tests {
     fn test_read_at_multiple_segments() {
         let dir = TempDir::new().unwrap();
         let path = dir.path();
-        let mut op_logs = FileOpLogs::new(&path).unwrap();
+        let mut op_logs = FileOpLogs::new(path).unwrap();
 
         let ops_seg1 = create_ops(0, 10, 1); // Ops 0-9
         op_logs.append_many(ops_seg1.clone()).unwrap();
@@ -1153,7 +1154,7 @@ mod tests {
     fn test_index_data_accuracy() -> Result<()> {
         let dir = TempDir::new()?;
         let path = dir.path();
-        let mut op_logs = FileOpLogs::new(&path)?;
+        let mut op_logs = FileOpLogs::new(path)?;
 
         // Write some operations
         let ops = vec![set_helper(1, 1), set_helper(2, 1)];
@@ -1185,14 +1186,14 @@ mod tests {
     fn test_index_data_after_rotation() -> Result<()> {
         let dir = TempDir::new()?;
         let path = dir.path();
-        let mut op_logs = FileOpLogs::new(&path)?;
+        let mut op_logs = FileOpLogs::new(path)?;
 
         // Fill first segment
         for i in 0..100 {
             op_logs.append(WriteOperation {
                 request: WriteRequest::Set {
-                    key: format!("key_{}", i).into(),
-                    value: format!("value_{}", i).into(),
+                    key: format!("key_{i}"),
+                    value: format!("value_{i}"),
                     expires_at: None,
                 },
                 log_index: i as u64,
@@ -1234,12 +1235,12 @@ mod tests {
 
         // Create initial log with some operations
         {
-            let mut op_logs = FileOpLogs::new(&path)?;
+            let mut op_logs = FileOpLogs::new(path)?;
             for i in 0..50 {
                 op_logs.append(WriteOperation {
                     request: WriteRequest::Set {
-                        key: format!("key_{}", i).into(),
-                        value: format!("value_{}", i).into(),
+                        key: format!("key_{i}"),
+                        value: format!("value_{i}"),
                         expires_at: None,
                     },
                     log_index: i as u64,
@@ -1249,7 +1250,7 @@ mod tests {
         }
 
         // Reopen the log
-        let op_logs = FileOpLogs::new(&path)?;
+        let op_logs = FileOpLogs::new(path)?;
 
         // Verify index data was recovered correctly
         assert_eq!(op_logs.active_segment.lookups.len(), 50);
@@ -1271,14 +1272,14 @@ mod tests {
     fn test_index_data_after_full_sync() -> Result<()> {
         let dir = TempDir::new()?;
         let path = dir.path();
-        let mut op_logs = FileOpLogs::new(&path)?;
+        let mut op_logs = FileOpLogs::new(path)?;
 
         // Create some initial operations
         for i in 0..10 {
             op_logs.append(WriteOperation {
                 request: WriteRequest::Set {
-                    key: format!("key_{}", i).into(),
-                    value: format!("value_{}", i).into(),
+                    key: format!("key_{i}"),
+                    value: format!("value_{i}"),
                     expires_at: None,
                 },
                 log_index: i as u64,

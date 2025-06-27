@@ -42,7 +42,7 @@ fn run_snapshot_persists_and_recovers_state(env: ServerEnv) -> anyhow::Result<()
 fn create_unique_file_name(function_name: &str) -> String {
     let timestamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
 
-    format!("test_{}_{}.rdb", function_name, timestamp)
+    format!("test_{function_name}_{timestamp}.rdb")
 }
 
 #[tokio::test]

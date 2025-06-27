@@ -78,7 +78,7 @@ impl Environment {
 
     fn parse_replicaof(replicaof: Option<String>) -> Option<PeerIdentifier> {
         replicaof
-            .and_then(|s| s.split_once(':').map(|(host, port)| format!("{}:{}", host, port).into()))
+            .and_then(|s| s.split_once(':').map(|(host, port)| format!("{host}:{port}").into()))
     }
     pub(crate) fn get_filepath(&self) -> String {
         format!("{}/{}", self.dir, self.dbfilename)

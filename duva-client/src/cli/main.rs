@@ -50,7 +50,7 @@ async fn main() -> anyhow::Result<()> {
                 controller.print_res(kind, query_io);
             },
             | Err(e) => {
-                println!("{}", e);
+                println!("{e}");
             },
         }
     }
@@ -73,6 +73,6 @@ fn clear_and_make_ascii_art() {
             .unwrap();
         let standard_font = FIGfont::standard().unwrap();
         let figure = standard_font.convert("Duva cli").unwrap();
-        println!("{}", figure);
+        println!("{figure}");
     }
 }

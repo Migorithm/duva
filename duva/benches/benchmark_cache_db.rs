@@ -54,7 +54,6 @@ fn node_ptr_move_front(front_org: &mut Option<*mut NodePtr>, node_org: *mut Node
 }
 pub fn bench_safe(c: &mut Criterion) {
     let origin: Vec<_> = (0..10000)
-        .into_iter()
         .map(|x| Rc::new(RefCell::new(NodeSafe { _value: x.to_string(), prev: None, next: None })))
         .collect();
     for (i, node) in origin.iter().enumerate() {
@@ -67,7 +66,7 @@ pub fn bench_safe(c: &mut Criterion) {
         }
     }
     let mut front = Some(Rc::downgrade(&origin[0]));
-    let ptr = origin.iter().map(|x| Rc::downgrade(x)).collect::<Vec<_>>();
+    let ptr = origin.iter().map(Rc::downgrade).collect::<Vec<_>>();
 
     c.bench_function("Bench Cache Db Safe", |b| {
         b.iter(|| {
@@ -79,7 +78,6 @@ pub fn bench_safe(c: &mut Criterion) {
 }
 pub fn bench_ptr(c: &mut Criterion) {
     let origin: Vec<_> = (0..10000)
-        .into_iter()
         .map(|x| {
             Box::pin(UnsafeCell::new(NodePtr { _value: x.to_string(), prev: None, next: None }))
         })

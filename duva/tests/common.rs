@@ -105,7 +105,7 @@ impl Drop for FileName {
         if let Some(file_name) = self.0.as_ref() {
             // remove if exists
             let _ = std::fs::remove_file(file_name);
-            let _ = std::fs::remove_file(format!("{}.oplog", file_name));
+            let _ = std::fs::remove_file(format!("{file_name}.oplog"));
         } else {
             // remove if exists
             let _ = std::fs::remove_file("dump.rdb.oplog");
@@ -373,7 +373,7 @@ impl Client {
     }
 
     pub fn terminate(&mut self) -> std::io::Result<()> {
-        let _ = self.child.kill()?;
+        self.child.kill()?;
         let _ = self.child.wait()?;
 
         Ok(())
@@ -392,14 +392,14 @@ pub fn form_cluster<const T: usize>(envs: [&mut ServerEnv; T]) -> [TestProcessCh
         unsafe { MaybeUninit::uninit().assume_init() };
 
     // Initialize the leader
-    let leader_p = spawn_server_process(&envs[0]).unwrap();
+    let leader_p = spawn_server_process(envs[0]).unwrap();
     let leader_bind_addr = leader_p.bind_addr();
     processes[0].write(leader_p);
 
     // Initialize replicas with delay between each
     for i in 1..T {
         envs[i].leader_bind_addr = Some(leader_bind_addr.clone());
-        let repl_p = spawn_server_process(&envs[i]).unwrap();
+        let repl_p = spawn_server_process(envs[i]).unwrap();
         processes[i].write(repl_p);
 
         // Small delay between replica startups to avoid connection conflicts

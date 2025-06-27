@@ -80,7 +80,7 @@ impl Hinter for DuvaHinter {
                         if ends_with_space {
                             hint_text.to_string()
                         } else {
-                            format!(" {}", hint_text)
+                            format!(" {hint_text}")
                         }
                         .as_str(),
                         "",

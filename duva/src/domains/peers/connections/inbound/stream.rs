@@ -99,8 +99,7 @@ impl InboundStream {
 
         self.w
             .write(QueryIO::SimpleString(format!(
-                "FULLRESYNC {} {} {} {}",
-                id, self_replid, self_repl_offset, self_role
+                "FULLRESYNC {id} {self_replid} {self_repl_offset} {self_role}"
             )))
             .await?;
         self.recv_ok().await?;

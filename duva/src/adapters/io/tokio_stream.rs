@@ -69,7 +69,7 @@ impl<T: AsyncReadExt + std::marker::Unpin + Sync + Send + Debug + 'static> TRead
                 | Err(e) => {
                     // Handle parsing errors
                     // You might want to log the error or handle it differently based on your use case
-                    return Err(IoError::Custom(format!("Parsing error: {:?}", e)));
+                    return Err(IoError::Custom(format!("Parsing error: {e:?}")));
                 },
             }
         }
@@ -111,8 +111,8 @@ impl From<ErrorKind> for IoError {
             | ErrorKind::BrokenPipe => IoError::BrokenPipe,
             | ErrorKind::TimedOut => IoError::TimedOut,
             | _ => {
-                eprintln!("unknown error: {:?}", value);
-                IoError::Custom(format!("unknown error: {:?}", value))
+                eprintln!("unknown error: {value:?}");
+                IoError::Custom(format!("unknown error: {value:?}"))
             },
         }
     }

@@ -140,22 +140,20 @@ impl<'a> BytesDecoder<'a, DecoderInit> {
         let header_len = HEADER_MAGIC_STRING.len() + VERSION.len();
         if self.len() < header_len {
             return Err(anyhow::Error::msg(format!(
-                "header loading: data length is less than {}",
-                header_len
+                "header loading: data length is less than {header_len}"
             )))?;
         }
 
         let header = self.take_header()?;
         let version = self.take_version()?;
 
-        Ok(BytesDecoder { data: self.data, state: HeaderReady(format!("{}{}", header, version)) })
+        Ok(BytesDecoder { data: self.data, state: HeaderReady(format!("{header}{version}")) })
     }
     fn take_header(&mut self) -> Result<String> {
         let header = self.take_string(HEADER_MAGIC_STRING.len())?;
         if header != HEADER_MAGIC_STRING {
             return Err(anyhow::Error::msg(format!(
-                "header loading: header is not {}",
-                HEADER_MAGIC_STRING
+                "header loading: header is not {HEADER_MAGIC_STRING}",
             )))?;
         }
         Ok(header)
@@ -179,7 +177,7 @@ impl<'a> BytesDecoder<'a, HeaderReady> {
                     metadata.log_idx = value.parse().context("repl-offset parse fail")?
                 },
                 | var => {
-                    println!("Unknown metadata key: {}", var);
+                    println!("Unknown metadata key: {var}");
                 },
             }
         }
@@ -587,7 +585,7 @@ mod test {
             0x62, 0x61, 0x7A, 0x03, 0x71, 0x75, 0x78,
         ];
         let bytes_handler =
-            BytesDecoder::<HeaderReady> { data: data.as_slice().into(), state: Default::default() };
+            BytesDecoder::<HeaderReady> { data: data.as_slice(), state: Default::default() };
 
         let metadata = bytes_handler.load_metadata().unwrap();
         assert_eq!(
@@ -606,7 +604,7 @@ mod test {
             0x4E, 0xF8, 0x0F, 0x77, 0x19,
         ];
         let bytes_handler = BytesDecoder::<MetadataReady> {
-            data: data.as_slice().into(),
+            data: data.as_slice(),
             state: MetadataReady {
                 metadata: Metadata { repl_id: ReplicationId::Undecided, log_idx: 0 },
                 header: "".into(),
@@ -649,7 +647,7 @@ mod test {
             0x9C, 0xF8, 0xFB, 0x2E, 0x7F, 0xEB,
         ]);
         let bytes_handler =
-            BytesDecoder::<DecoderInit> { data: data.as_slice().into(), state: Default::default() };
+            BytesDecoder::<DecoderInit> { data: data.as_slice(), state: Default::default() };
 
         let rdb_file =
             bytes_handler.load_header().unwrap().load_metadata().unwrap().load_database().unwrap();
