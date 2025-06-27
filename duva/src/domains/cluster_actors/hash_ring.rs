@@ -74,7 +74,7 @@ impl HashRing {
             let repl_id = Rc::new(repl_id);
             // Create virtual nodes for better distribution
             for i in 0..V_NODE_NUM {
-                let virtual_node_id = format!("{}-{}", repl_id, i);
+                let virtual_node_id = format!("{repl_id}-{i}");
                 let hash = fnv_1a_hash(&virtual_node_id);
                 self.vnodes.insert(hash, repl_id.clone());
             }

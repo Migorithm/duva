@@ -140,22 +140,20 @@ impl<'a> BytesDecoder<'a, DecoderInit> {
         let header_len = HEADER_MAGIC_STRING.len() + VERSION.len();
         if self.len() < header_len {
             return Err(anyhow::Error::msg(format!(
-                "header loading: data length is less than {}",
-                header_len
+                "header loading: data length is less than {header_len}"
             )))?;
         }
 
         let header = self.take_header()?;
         let version = self.take_version()?;
 
-        Ok(BytesDecoder { data: self.data, state: HeaderReady(format!("{}{}", header, version)) })
+        Ok(BytesDecoder { data: self.data, state: HeaderReady(format!("{header}{version}")) })
     }
     fn take_header(&mut self) -> Result<String> {
         let header = self.take_string(HEADER_MAGIC_STRING.len())?;
         if header != HEADER_MAGIC_STRING {
             return Err(anyhow::Error::msg(format!(
-                "header loading: header is not {}",
-                HEADER_MAGIC_STRING
+                "header loading: header is not {HEADER_MAGIC_STRING}",
             )))?;
         }
         Ok(header)
@@ -179,7 +177,7 @@ impl<'a> BytesDecoder<'a, HeaderReady> {
                     metadata.log_idx = value.parse().context("repl-offset parse fail")?
                 },
                 | var => {
-                    println!("Unknown metadata key: {}", var);
+                    println!("Unknown metadata key: {var}");
                 },
             }
         }

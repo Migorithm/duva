@@ -5,11 +5,11 @@ pub struct ServerStreamWriter(pub(crate) OwnedWriteHalf);
 impl ServerStreamWriter {
     pub async fn write_all(&mut self, buf: &[u8]) -> Result<(), String> {
         if let Err(e) = self.0.write_all(buf).await {
-            return Err(format!("Failed to send command: {}", e));
+            return Err(format!("Failed to send command: {e}"));
         }
 
         if let Err(e) = self.0.flush().await {
-            return Err(format!("Failed to flush stream: {}", e));
+            return Err(format!("Failed to flush stream: {e}"));
         }
         Ok(())
     }

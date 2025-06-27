@@ -66,7 +66,7 @@ impl Broker {
                     if let Err(e) =
                         self.to_server.send(MsgToServer::Command(cmd.as_bytes().to_vec())).await
                     {
-                        println!("Failed to send command: {}", e);
+                        println!("Failed to send command: {e}");
                     }
                     queue.push(command.input);
                 },
@@ -132,7 +132,7 @@ impl Broker {
     async fn discover_leader(&mut self) -> Result<(), IoError> {
         for node in &self.topology.connected_peers {
             tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
-            println!("Trying to connect to node: {}...", node);
+            println!("Trying to connect to node: {node}...");
 
             let auth_req = AuthRequest {
                 client_id: Some(self.client_id.to_string()),
@@ -143,7 +143,7 @@ impl Broker {
             };
 
             if auth_response.connected_to_leader {
-                println!("Connected to a new leader: {}", node);
+                println!("Connected to a new leader: {node}");
                 self.replace_stream(r, w).await;
                 self.topology = auth_response.topology;
 

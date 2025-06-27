@@ -71,7 +71,7 @@ impl QueryIO {
             | QueryIO::SimpleString(s) => {
                 let mut buffer =
                     String::with_capacity(SIMPLE_STRING_PREFIX.len_utf8() + s.len() + 2);
-                write!(&mut buffer, "{}{}\r\n", SIMPLE_STRING_PREFIX, s).unwrap();
+                write!(&mut buffer, "{SIMPLE_STRING_PREFIX}{s}\r\n").unwrap();
                 buffer.into()
             },
             | QueryIO::BulkString(s) => {
@@ -88,9 +88,9 @@ impl QueryIO {
                 let mut hex_file = String::with_capacity(file_len + file_len.to_string().len() + 2);
 
                 // * To avoid the overhead of using format! macro by creating intermediate string, use write!
-                let _ = write!(&mut hex_file, "{}{}\r\n", FILE_PREFIX, file_len);
+                let _ = write!(&mut hex_file, "{FILE_PREFIX}{file_len}\r\n");
                 f.into_iter().for_each(|byte| {
-                    let _ = write!(hex_file, "{:02x}", byte);
+                    let _ = write!(hex_file, "{byte:02x}");
                 });
 
                 hex_file.into()
@@ -110,7 +110,7 @@ impl QueryIO {
             },
             | QueryIO::SessionRequest { request_id, value } => {
                 let mut buffer = BytesMut::with_capacity(32 + 1 + value.len() * 32);
-                buffer.extend_from_slice(format!("!{}\r\n", request_id).as_bytes());
+                buffer.extend_from_slice(format!("!{request_id}\r\n").as_bytes());
                 buffer.extend_from_slice(&QueryIO::Array(value).serialize());
                 buffer.freeze()
             },

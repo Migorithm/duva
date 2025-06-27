@@ -11,7 +11,7 @@ impl SaveActor {
                     }
                 },
                 | Err(err) => {
-                    eprintln!("error while encoding: {:?}", err);
+                    eprintln!("error while encoding: {err:?}");
                     return Err(err);
                 },
             }

@@ -61,7 +61,7 @@ impl ClusterCommunicationManager {
         //cluster_stats_messages_received:1483968
         //total_cluster_links_buffer_limit_exceeded:0
         let known_node_len = self.route_get_peers().await?.len();
-        Ok(format!("cluster_known_nodes:{}", known_node_len))
+        Ok(format!("cluster_known_nodes:{known_node_len}"))
     }
 
     pub(crate) async fn route_forget_peer(

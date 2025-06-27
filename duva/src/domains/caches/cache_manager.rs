@@ -57,7 +57,7 @@ impl CacheManager {
     ) -> Result<String> {
         let value = cache_entry.value().to_string();
         self.select_shard(cache_entry.key()).send(CacheCommand::Set { cache_entry }).await?;
-        Ok(format!("s:{}|idx:{}", value, current_idx))
+        Ok(format!("s:{value}|idx:{current_idx}"))
     }
 
     pub(crate) async fn route_mset(&self, cache_entries: Vec<CacheEntry>) {

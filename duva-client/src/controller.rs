@@ -160,7 +160,7 @@ impl Display for Response {
                 }
                 let mut iter = responses.iter().peekable();
                 while let Some(response) = iter.next() {
-                    write!(f, "{}", response)?;
+                    write!(f, "{response}")?;
                     if iter.peek().is_some() {
                         writeln!(f)?; // Add newline only between items, not at the end
                     }
