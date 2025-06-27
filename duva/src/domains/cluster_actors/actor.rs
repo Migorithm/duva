@@ -271,7 +271,6 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         }
         if self.client_sessions.is_processed(&req.session_req) {
             // mapping between early returned values to client result
-
             let key = req.request.all_keys().into_iter().map(String::from).collect();
             let _ = req.callback.send(ConsensusClientResponse::AlreadyProcessed {
                 key,
@@ -302,7 +301,11 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         }
 
         // * Check if the request has already been processed
-        if let Err(err) = self.logger.write_single_entry(&req.request, self.replication.term) {
+        if let Err(err) = self.logger.write_single_entry(
+            &req.request,
+            self.replication.term,
+            req.session_req.clone(),
+        ) {
             let _ = req.callback.send(ConsensusClientResponse::Err(err.to_string()));
             return;
         };

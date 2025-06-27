@@ -24,7 +24,7 @@ fn logger_create_entries_from_lowest() {
     repl_state.hwm.store(LOWEST_FOLLOWER_COMMIT_INDEX, Ordering::Release);
 
     let log = &WriteRequest::Set { key: "foo4".into(), value: "bar".into(), expires_at: None };
-    logger.write_single_entry(log, repl_state.term).unwrap();
+    logger.write_single_entry(log, repl_state.term, None).unwrap();
 
     let logs = logger.list_append_log_entries(Some(LOWEST_FOLLOWER_COMMIT_INDEX));
 
@@ -73,11 +73,13 @@ async fn test_generate_follower_entries() {
     );
 
     // * add new log - this must create entries that are greater than 3
+
     cluster_actor
         .logger
         .write_single_entry(
             &WriteRequest::Set { key: "foo4".into(), value: "bar".into(), expires_at: None },
             cluster_actor.replication.term,
+            None,
         )
         .unwrap();
 
