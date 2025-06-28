@@ -89,7 +89,7 @@ pub(crate) fn create_peer_helper(
     (key, peer)
 }
 
-fn write_operation_create_helper(
+fn sessionless_write_operation_helper(
     index_num: u64,
     term: u64,
     key: &str,
@@ -99,6 +99,21 @@ fn write_operation_create_helper(
         log_index: index_num,
         request: WriteRequest::Set { key: key.into(), value: value.into(), expires_at: None },
         term,
+        session_req: None,
+    }
+}
+fn sessionful_write_operation_helper(
+    index_num: u64,
+    term: u64,
+    key: &str,
+    value: &str,
+    session_req: SessionRequest,
+) -> WriteOperation {
+    WriteOperation {
+        log_index: index_num,
+        request: WriteRequest::Set { key: key.into(), value: value.into(), expires_at: None },
+        term,
+        session_req: Some(session_req),
     }
 }
 

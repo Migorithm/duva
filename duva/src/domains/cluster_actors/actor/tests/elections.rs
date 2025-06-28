@@ -105,6 +105,7 @@ async fn test_vote_election_deny_vote_older_log() {
             log_index: initial_term + 2,
             term: initial_term,
             request: WriteRequest::Set { key: "k".into(), value: "v".into(), expires_at: None },
+            session_req: None,
         }])
         .unwrap(); // Follower log: idx 2, term 2
 

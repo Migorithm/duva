@@ -36,6 +36,7 @@ use crate::domains::peers::peer::PeerState;
 use crate::err;
 use crate::res_err;
 use client_sessions::ClientSessions;
+
 use heartbeat_scheduler::HeartBeatScheduler;
 
 use std::collections::HashMap;
@@ -271,7 +272,6 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         }
         if self.client_sessions.is_processed(&req.session_req) {
             // mapping between early returned values to client result
-
             let key = req.request.all_keys().into_iter().map(String::from).collect();
             let _ = req.callback.send(ConsensusClientResponse::AlreadyProcessed {
                 key,
@@ -302,7 +302,11 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         }
 
         // * Check if the request has already been processed
-        if let Err(err) = self.logger.write_single_entry(&req.request, self.replication.term) {
+        if let Err(err) = self.logger.write_single_entry(
+            &req.request,
+            self.replication.term,
+            req.session_req.clone(),
+        ) {
             let _ = req.callback.send(ConsensusClientResponse::Err(err.to_string()));
             return;
         };
@@ -788,37 +792,52 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     }
 
     async fn replicate(&mut self, mut heartbeat: HeartBeat, cache_manager: &CacheManager) {
+        if self.replication.is_leader() {
+            return;
+        }
+
         // * write logs
-        if self.replicate_log_entries(&mut heartbeat).await.is_err() {
-            error!("Failed to replicate logs");
+        if let Err(rej_reason) = self.replicate_log_entries(&mut heartbeat).await {
+            self.send_replication_ack(
+                &heartbeat.from,
+                ReplicationAck::reject(self.logger.last_log_index, rej_reason, &self.replication),
+            )
+            .await;
             return;
         };
+
         self.replicate_state(heartbeat, cache_manager).await;
     }
 
-    async fn replicate_log_entries(&mut self, rpc: &mut HeartBeat) -> anyhow::Result<()> {
-        let entries = std::mem::take(&mut rpc.append_entries)
-            .into_iter()
-            .filter(|log| log.log_index > self.logger.last_log_index)
-            .collect::<Vec<_>>();
-
-        if entries.is_empty() {
+    async fn replicate_log_entries(&mut self, rpc: &mut HeartBeat) -> Result<(), RejectionReason> {
+        if rpc.append_entries.is_empty() {
             return Ok(());
         }
+        let mut entries = Vec::with_capacity(rpc.append_entries.len());
+        let mut session_reqs = Vec::with_capacity(rpc.append_entries.len());
 
-        if let Err(e) = self.ensure_prev_consistency(rpc.prev_log_index, rpc.prev_log_term).await {
-            self.send_replication_ack(
-                &rpc.from,
-                ReplicationAck::reject(self.logger.last_log_index, e, &self.replication),
-            )
-            .await;
-            return Err(anyhow::anyhow!("Fail fail to append"));
+        for mut log in std::mem::take(&mut rpc.append_entries) {
+            if log.log_index > self.logger.last_log_index {
+                if let Some(session_req) = log.session_req.take() {
+                    session_reqs.push(session_req);
+                }
+                entries.push(log);
+            }
         }
 
-        let match_index = self.logger.follower_write_entries(entries)?;
+        self.ensure_prev_consistency(rpc.prev_log_index, rpc.prev_log_term).await?;
+        let match_index = self.logger.follower_write_entries(entries).map_err(|e| {
+            err!("{}", e);
+            RejectionReason::FailToWrite
+        })?;
 
         self.send_replication_ack(&rpc.from, ReplicationAck::ack(match_index, &self.replication))
             .await;
+
+        // * The following is to allow for failure of leader and follower elected as new leader.
+        // Subscription request with the same session req should be treated as idempotent operation
+        session_reqs.into_iter().for_each(|req| self.client_sessions.set_response(Some(req)));
+
         Ok(())
     }
 
@@ -965,6 +984,9 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
                 info!("Log inconsistency, reverting match index");
                 //TODO we can refactor this to set match index to given log index from the follower
                 self.decrease_match_index(&repl_res.from, repl_res.log_idx);
+            },
+            | RejectionReason::FailToWrite => {
+                info!("Follower failed to write log for technical reason, resend..");
             },
         }
     }

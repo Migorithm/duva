@@ -1,3 +1,5 @@
+use crate::domains::cluster_actors::SessionRequest;
+
 use super::{WriteOperation, WriteRequest, interfaces::TWriteAheadLog};
 use tracing::debug;
 
@@ -31,13 +33,15 @@ impl<T: TWriteAheadLog> ReplicatedLogs<T> {
 
     pub(crate) fn write_single_entry(
         &mut self,
-        log: &WriteRequest,
+        req: &WriteRequest,
         current_term: u64,
+        session_req: Option<SessionRequest>,
     ) -> anyhow::Result<()> {
         let op = WriteOperation {
-            request: log.clone(),
+            request: req.clone(),
             log_index: (self.last_log_index + 1),
             term: current_term,
+            session_req,
         };
 
         self.target.append(op)?;

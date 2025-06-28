@@ -6,9 +6,9 @@ fn logger_create_entries_from_lowest() {
     let mut logger = ReplicatedLogs::new(MemoryOpLogs::default(), 0, 0);
 
     let test_logs = vec![
-        write_operation_create_helper(1, 0, "foo", "bar"),
-        write_operation_create_helper(2, 0, "foo2", "bar"),
-        write_operation_create_helper(3, 0, "foo3", "bar"),
+        sessionless_write_operation_helper(1, 0, "foo", "bar"),
+        sessionless_write_operation_helper(2, 0, "foo2", "bar"),
+        sessionless_write_operation_helper(3, 0, "foo3", "bar"),
     ];
     logger.follower_write_entries(test_logs.clone()).unwrap();
 
@@ -24,7 +24,7 @@ fn logger_create_entries_from_lowest() {
     repl_state.hwm.store(LOWEST_FOLLOWER_COMMIT_INDEX, Ordering::Release);
 
     let log = &WriteRequest::Set { key: "foo4".into(), value: "bar".into(), expires_at: None };
-    logger.write_single_entry(log, repl_state.term).unwrap();
+    logger.write_single_entry(log, repl_state.term, None).unwrap();
 
     let logs = logger.list_append_log_entries(Some(LOWEST_FOLLOWER_COMMIT_INDEX));
 
@@ -52,9 +52,9 @@ async fn test_generate_follower_entries() {
     );
 
     let test_logs = vec![
-        write_operation_create_helper(1, 0, "foo", "bar"),
-        write_operation_create_helper(2, 0, "foo2", "bar"),
-        write_operation_create_helper(3, 0, "foo3", "bar"),
+        sessionless_write_operation_helper(1, 0, "foo", "bar"),
+        sessionless_write_operation_helper(2, 0, "foo2", "bar"),
+        sessionless_write_operation_helper(3, 0, "foo3", "bar"),
     ];
 
     cluster_actor.replication.hwm.store(3, Ordering::Release);
@@ -73,11 +73,13 @@ async fn test_generate_follower_entries() {
     );
 
     // * add new log - this must create entries that are greater than 3
+
     cluster_actor
         .logger
         .write_single_entry(
             &WriteRequest::Set { key: "foo4".into(), value: "bar".into(), expires_at: None },
             cluster_actor.replication.term,
+            None,
         )
         .unwrap();
 
@@ -92,14 +94,14 @@ async fn test_generate_follower_entries() {
 #[tokio::test]
 async fn follower_cluster_actor_replicate_log() {
     // GIVEN
-    let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
+    let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Follower).await;
     // WHEN - term
     let heartbeat = heartbeat_create_helper(
         0,
         0,
         vec![
-            write_operation_create_helper(1, 0, "foo", "bar"),
-            write_operation_create_helper(2, 0, "foo2", "bar"),
+            sessionless_write_operation_helper(1, 0, "foo", "bar"),
+            sessionless_write_operation_helper(2, 0, "foo2", "bar"),
         ],
     );
     let cache_manager = CacheManager {
@@ -125,17 +127,17 @@ async fn follower_cluster_actor_replicate_log() {
 }
 
 #[tokio::test]
-async fn follower_cluster_actor_replicate_state() {
+async fn follower_cluster_actor_sessionless_replicate_state() {
     // GIVEN
     let (cache_handler, mut receiver) = tokio::sync::mpsc::channel(100);
-    let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
+    let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Follower).await;
 
     let heartbeat = heartbeat_create_helper(
         0,
         0,
         vec![
-            write_operation_create_helper(1, 0, "foo", "bar"),
-            write_operation_create_helper(2, 0, "foo2", "bar"),
+            sessionless_write_operation_helper(1, 0, "foo", "bar"),
+            sessionless_write_operation_helper(2, 0, "foo2", "bar"),
         ],
     );
 
@@ -167,17 +169,48 @@ async fn follower_cluster_actor_replicate_state() {
 }
 
 #[tokio::test]
+async fn replicate_with_session_requests_should_unique_to_each_client_session() {
+    // GIVEN
+    let (cache_handler, _) = tokio::sync::mpsc::channel(100);
+    let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Follower).await;
+
+    let target_client = uuid::Uuid::now_v7();
+    let session1 = SessionRequest::new(1, uuid::Uuid::now_v7());
+    let session2 = SessionRequest::new(1, target_client);
+    // ! For the same client, hold only one request
+    let session3 = SessionRequest::new(2, target_client);
+
+    let heartbeat = heartbeat_create_helper(
+        0,
+        0,
+        vec![
+            sessionful_write_operation_helper(1, 0, "foo", "bar", session1.clone()),
+            sessionful_write_operation_helper(2, 0, "foo2", "bar", session2.clone()),
+            sessionful_write_operation_helper(3, 0, "foo2", "bar", session3.clone()),
+        ],
+    );
+
+    let cache_manager = CacheManager { inboxes: vec![CacheCommandSender(cache_handler)] };
+    // WHEN
+    cluster_actor.replicate(heartbeat, &cache_manager).await;
+
+    // THEN
+    assert_eq!(cluster_actor.logger.last_log_index, 3);
+    assert_eq!(cluster_actor.client_sessions.len(), 2);
+}
+
+#[tokio::test]
 async fn follower_cluster_actor_replicate_state_only_upto_hwm() {
     // GIVEN
-    let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
+    let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Follower).await;
 
     // Log two entries but don't commit them yet
     let heartbeat = heartbeat_create_helper(
         0,
         0, // hwm=0, nothing committed yet
         vec![
-            write_operation_create_helper(1, 0, "foo", "bar"),
-            write_operation_create_helper(2, 0, "foo2", "bar"),
+            sessionless_write_operation_helper(1, 0, "foo", "bar"),
+            sessionless_write_operation_helper(2, 0, "foo2", "bar"),
         ],
     );
 
@@ -230,13 +263,13 @@ async fn follower_cluster_actor_replicate_state_only_upto_hwm() {
 #[tokio::test]
 async fn test_apply_multiple_committed_entries() {
     // GIVEN
-    let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
+    let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Follower).await;
 
     // Add multiple entries
     let entries = vec![
-        write_operation_create_helper(1, 0, "key1", "value1"),
-        write_operation_create_helper(2, 0, "key2", "value2"),
-        write_operation_create_helper(3, 0, "key3", "value3"),
+        sessionless_write_operation_helper(1, 0, "key1", "value1"),
+        sessionless_write_operation_helper(2, 0, "key2", "value2"),
+        sessionless_write_operation_helper(3, 0, "key3", "value3"),
     ];
 
     let heartbeat = heartbeat_create_helper(1, 0, entries);
@@ -282,12 +315,12 @@ async fn test_apply_multiple_committed_entries() {
 #[tokio::test]
 async fn test_partial_commit_with_new_entries() {
     // GIVEN
-    let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
+    let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Follower).await;
 
     // First, append some entries
     let first_entries = vec![
-        write_operation_create_helper(1, 0, "key1", "value1"),
-        write_operation_create_helper(2, 0, "key2", "value2"),
+        sessionless_write_operation_helper(1, 0, "key1", "value1"),
+        sessionless_write_operation_helper(2, 0, "key2", "value2"),
     ];
 
     let first_heartbeat = heartbeat_create_helper(1, 0, first_entries);
@@ -314,7 +347,7 @@ async fn test_partial_commit_with_new_entries() {
     });
 
     // WHEN - commit partial entries and append new ones
-    let second_entries = vec![write_operation_create_helper(3, 0, "key3", "value3")];
+    let second_entries = vec![sessionless_write_operation_helper(3, 0, "key3", "value3")];
 
     let second_heartbeat = heartbeat_create_helper(1, 1, second_entries);
 
@@ -339,8 +372,8 @@ async fn follower_truncates_log_on_term_mismatch() {
     //prefill
 
     inmemory.writer.extend(vec![
-        write_operation_create_helper(2, 1, "key1", "val1"),
-        write_operation_create_helper(3, 1, "key2", "val2"),
+        sessionless_write_operation_helper(2, 1, "key1", "val1"),
+        sessionless_write_operation_helper(3, 1, "key2", "val2"),
     ]);
 
     let logger = ReplicatedLogs::new(inmemory, 3, 1);
@@ -350,8 +383,11 @@ async fn follower_truncates_log_on_term_mismatch() {
 
     // Simulate an initial log entry at index 1, term 1
     // WHEN: Leader sends an AppendEntries with prev_log_index=1, prev_log_term=2 (mismatch)
-    let mut heartbeat =
-        heartbeat_create_helper(2, 0, vec![write_operation_create_helper(4, 0, "key2", "val2")]);
+    let mut heartbeat = heartbeat_create_helper(
+        2,
+        0,
+        vec![sessionless_write_operation_helper(4, 0, "key2", "val2")],
+    );
     heartbeat.prev_log_term = 0;
     heartbeat.prev_log_index = 2;
 
@@ -369,8 +405,11 @@ async fn follower_accepts_entries_with_empty_log_and_prev_log_index_zero() {
     let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
 
     // WHEN: Leader sends entries with prev_log_index=0
-    let mut heartbeat =
-        heartbeat_create_helper(1, 0, vec![write_operation_create_helper(1, 0, "key1", "val1")]);
+    let mut heartbeat = heartbeat_create_helper(
+        1,
+        0,
+        vec![sessionless_write_operation_helper(1, 0, "key1", "val1")],
+    );
 
     let result = cluster_actor.replicate_log_entries(&mut heartbeat).await;
 
@@ -386,8 +425,11 @@ async fn follower_rejects_entries_with_empty_log_and_prev_log_index_nonzero() {
     let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
 
     // WHEN: Leader sends entries with prev_log_index=1
-    let mut heartbeat =
-        heartbeat_create_helper(1, 0, vec![write_operation_create_helper(2, 0, "key2", "val2")]);
+    let mut heartbeat = heartbeat_create_helper(
+        1,
+        0,
+        vec![sessionless_write_operation_helper(2, 0, "key2", "val2")],
+    );
     heartbeat.prev_log_index = 1;
     heartbeat.prev_log_term = 1;
 
@@ -445,6 +487,7 @@ async fn req_consensus_inserts_consensus_voting() {
                     request: w_req.clone(),
                     log_index: 1,
                     term: 0,
+                    session_req: Some(session_request.clone()),
                 }],
                 ..Default::default()
             }),
