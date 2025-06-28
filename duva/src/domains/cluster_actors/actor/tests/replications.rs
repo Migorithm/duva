@@ -169,7 +169,7 @@ async fn follower_cluster_actor_sessionless_replicate_state() {
 }
 
 #[tokio::test]
-async fn replicate_with_session_requests_should_unique_to_each_client_session() {
+async fn replicate_stores_only_latest_session_per_client() {
     // GIVEN
     let (cache_handler, _) = tokio::sync::mpsc::channel(100);
     let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Follower).await;
