@@ -20,3 +20,7 @@ figlet-rs = "0.1.5"
 name = "cli"
 path = "src/cli/main.rs"
 # cargo run -p duva-client -- --port 6000
+
+[profile.release]
+codegen-units = 1
+lto = true
