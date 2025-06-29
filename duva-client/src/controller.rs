@@ -50,13 +50,13 @@ impl<T> ClientController<T> {
             | ClusterInfo => match query_io {
                 | QueryIO::Null => Response::Null,
                 | QueryIO::SimpleString(value) => {
-                    Response::String(String::from_utf8_lossy(&value).to_string())
+                    Response::String(String::from_utf8_lossy(&value).into_owned())
                 },
                 | QueryIO::BulkString(value) => {
-                    Response::String(String::from_utf8_lossy(&value).to_string())
+                    Response::String(String::from_utf8_lossy(&value).into_owned())
                 },
                 | QueryIO::Err(value) => {
-                    Response::Error(String::from_utf8_lossy(&value).to_string())
+                    Response::Error(String::from_utf8_lossy(&value).into_owned())
                 },
                 | _err => Response::FormatError,
             },
@@ -80,7 +80,7 @@ impl<T> ClientController<T> {
                         Response::Integer(s.unwrap().parse::<i64>().unwrap())
                     },
                     | QueryIO::Err(value) => {
-                        Response::Error(String::from_utf8_lossy(&value).to_string())
+                        Response::Error(String::from_utf8_lossy(&value).into_owned())
                     },
                     | QueryIO::BulkString(value) => {
                         Response::Integer(String::from_utf8_lossy(&value).parse::<i64>().unwrap())
@@ -97,23 +97,23 @@ impl<T> ClientController<T> {
             | Set { .. } | SetWithExpiry { .. } => match query_io {
                 | QueryIO::SimpleString(_) => Response::String("OK".into()),
                 | QueryIO::Err(value) => {
-                    Response::Error(String::from_utf8_lossy(&value).to_string())
+                    Response::Error(String::from_utf8_lossy(&value).into_owned())
                 },
                 | _ => Response::FormatError,
             },
             | ClusterMeet { .. } | ClusterReshard => match query_io {
                 | QueryIO::Null => Response::String("OK".into()),
                 | QueryIO::Err(value) => {
-                    Response::Error(String::from_utf8_lossy(&value).to_string())
+                    Response::Error(String::from_utf8_lossy(&value).into_owned())
                 },
                 | _ => Response::FormatError,
             },
             | Append { .. } => match query_io {
                 | QueryIO::SimpleString(value) => {
-                    Response::String(String::from_utf8_lossy(&value).to_string())
+                    Response::String(String::from_utf8_lossy(&value).into_owned())
                 },
                 | QueryIO::Err(value) => {
-                    Response::Error(String::from_utf8_lossy(&value).to_string())
+                    Response::Error(String::from_utf8_lossy(&value).into_owned())
                 },
                 | _ => Response::FormatError,
             },
@@ -143,7 +143,7 @@ impl<T> ClientController<T> {
                     let QueryIO::BulkString(value) = item else {
                         return Response::FormatError;
                     };
-                    nodes.push(Response::String(String::from_utf8_lossy(&value).to_string()));
+                    nodes.push(Response::String(String::from_utf8_lossy(&value).into_owned()));
                 }
                 Response::Array(nodes)
             },

@@ -45,12 +45,6 @@ impl<T> BytesDecoder<'_, T> {
         Ok(data)
     }
 
-    fn take_bytes(&mut self, n: usize) -> Result<Bytes> {
-        let data = Bytes::from(self[0..n].to_vec());
-        self.skip(n);
-        Ok(data)
-    }
-
     pub fn remove_identifier(&mut self) {
         self.skip(1);
     }
@@ -83,7 +77,9 @@ impl<T> BytesDecoder<'_, T> {
             if size > self.len() {
                 return None;
             }
-            Some(self.take_bytes(size).ok()?)
+            let bytes = Bytes::from(self[0..size].to_vec());
+            self.skip(size);
+            Some(bytes)
         } else {
             // For integers, convert to string first, then to bytes
             self.integer_decode().map(Bytes::from)
