@@ -3,8 +3,10 @@ use std::fmt::Display;
 use crate::broker::Broker;
 use crate::broker::BrokerMessage;
 
+use duva::domains::caches::cache_manager::IndexedValueCodec;
 use duva::domains::query_io::QueryIO;
 use duva::prelude::anyhow;
+use duva::prelude::bytes::Bytes;
 use duva::prelude::tokio;
 use duva::prelude::tokio::sync::mpsc::Sender;
 use duva::prelude::uuid::Uuid;
@@ -58,8 +60,9 @@ impl<T> ClientController<T> {
                 let QueryIO::SimpleString(value) = query_io else {
                     return Response::FormatError;
                 };
-                match value.parse::<i64>() {
-                    | Ok(int) => Response::Integer(int),
+
+                match str::from_utf8(&value) {
+                    | Ok(int) => Response::Integer(int.to_string().into()),
                     | Err(_) => {
                         Response::Error("ERR value is not an integer or out of range".into())
                     },
@@ -68,17 +71,12 @@ impl<T> ClientController<T> {
             | Incr { .. } | Decr { .. } | Ttl { .. } | IncrBy { .. } | DecrBy { .. } => {
                 match query_io {
                     | QueryIO::SimpleString(value) => {
-                        let s: Option<&str> =
-                            value.split('|').next().unwrap_or_default().rsplit(':').next(); // format: s:value-idx:index_num
-
-                        Response::Integer(s.unwrap().parse::<i64>().unwrap())
+                        let s = String::from_utf8_lossy(&value);
+                        let s: Option<u64> = IndexedValueCodec::decode_value(s);
+                        Response::Integer(s.unwrap().to_string().into())
                     },
                     | QueryIO::Err(value) => Response::Error(value),
-
-                    | QueryIO::BulkString(value) => {
-                        Response::Integer(value.parse::<i64>().unwrap())
-                    },
-
+                    | QueryIO::BulkString(value) => Response::Integer(value),
                     | _ => Response::FormatError,
                 }
             },
@@ -99,7 +97,7 @@ impl<T> ClientController<T> {
                 | _ => Response::FormatError,
             },
             | Append { .. } => match query_io {
-                | QueryIO::SimpleString(value) => Response::String(value.to_string()),
+                | QueryIO::SimpleString(value) => Response::String(value),
                 | QueryIO::Err(value) => Response::Error(value),
                 | _ => Response::FormatError,
             },
@@ -112,7 +110,9 @@ impl<T> ClientController<T> {
                     let QueryIO::BulkString(value) = item else {
                         return Response::FormatError;
                     };
-                    keys.push(Response::String(format!("{}) \"{value}\"", i + 1)));
+                    keys.push(Response::String(
+                        format!("{}) \"{}\"", i + 1, String::from_utf8_lossy(&value)).into(),
+                    ));
                 }
                 Response::Array(keys)
             },
@@ -140,9 +140,9 @@ impl<T> ClientController<T> {
 enum Response {
     Null,
     FormatError,
-    String(String),
-    Integer(i64),
-    Error(String),
+    String(Bytes),
+    Integer(Bytes),
+    Error(Bytes),
     Array(Vec<Response>),
 }
 
@@ -151,9 +151,15 @@ impl Display for Response {
         match self {
             | Response::Null => write!(f, "(nil)"),
             | Response::FormatError => write!(f, "Unexpected response format"),
-            | Response::String(value) => write!(f, "{value}"),
-            | Response::Integer(value) => write!(f, "(integer) {value}"),
-            | Response::Error(value) => write!(f, "(error) {value}"),
+            | Response::String(value) => {
+                write!(f, "{}", String::from_utf8_lossy(value).into_owned())
+            },
+            | Response::Integer(value) => {
+                write!(f, "(integer) {}", String::from_utf8_lossy(&value).parse::<i64>().unwrap())
+            },
+            | Response::Error(value) => {
+                write!(f, "(error) {}", String::from_utf8_lossy(value).into_owned())
+            },
             | Response::Array(responses) => {
                 if responses.is_empty() {
                     return write!(f, "(empty array)");

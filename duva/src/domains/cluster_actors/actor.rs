@@ -280,6 +280,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             return;
         };
 
+        // TODO get_node_for_keys need to be revisited as currently it takes only the first key
         match self.hash_ring.get_node_for_keys(&req.request.all_keys()) {
             | Ok(replid) if replid == self.replication.replid => {
                 self.req_consensus(req).await;

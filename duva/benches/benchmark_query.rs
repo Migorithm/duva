@@ -28,12 +28,14 @@ pub fn serialize_file(c: &mut Criterion) {
 pub fn serialize_simple_string(c: &mut Criterion) {
     c.bench_function("Bench SimpleString(value is test) Serialize", |b| {
         b.iter(|| {
-            black_box(QueryIO::SimpleString(repeat_n("test", 1024).collect())).serialize();
+            black_box(QueryIO::SimpleString(repeat_n("test", 1024).collect::<String>().into()))
+                .serialize();
         })
     });
     c.bench_function("Bench SimpleString(value is 0000) Serialize", |b| {
         b.iter(|| {
-            black_box(QueryIO::SimpleString(repeat_n("0000", 1024).collect())).serialize();
+            black_box(QueryIO::SimpleString(repeat_n("0000", 1024).collect::<String>().into()))
+                .serialize();
         })
     });
 }
@@ -41,12 +43,14 @@ pub fn serialize_simple_string(c: &mut Criterion) {
 pub fn serialize_bulk_string(c: &mut Criterion) {
     c.bench_function("Bench BulkString(value is test) Serialize", |b| {
         b.iter(|| {
-            black_box(QueryIO::BulkString(repeat_n("test", 1024).collect())).serialize();
+            black_box(QueryIO::BulkString(repeat_n("test", 1024).collect::<String>().into()))
+                .serialize();
         })
     });
     c.bench_function("Bench BulkString(value is 0000) Serialize", |b| {
         b.iter(|| {
-            black_box(QueryIO::BulkString(repeat_n("0000", 1024).collect())).serialize();
+            black_box(QueryIO::BulkString(repeat_n("0000", 1024).collect::<String>().into()))
+                .serialize();
         })
     });
 }
@@ -56,8 +60,8 @@ pub fn serialize_array(c: &mut Criterion) {
         b.iter(|| {
             black_box(QueryIO::Array(
                 [
-                    QueryIO::SimpleString(repeat_n("test", 1024).collect()),
-                    QueryIO::BulkString(repeat_n("test", 1024).collect()),
+                    QueryIO::SimpleString(repeat_n("test", 1024).collect::<String>().into()),
+                    QueryIO::BulkString(repeat_n("test", 1024).collect::<String>().into()),
                     QueryIO::Null,
                     QueryIO::Null,
                     QueryIO::File(Bytes::from_iter(repeat_n(64, 1024))),

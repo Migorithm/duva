@@ -4,6 +4,7 @@ use super::command::CacheCommand;
 use crate::domains::caches::lru_cache::LruCache;
 use crate::domains::caches::read_queue::ReadQueue;
 use crate::make_smart_pointer;
+use bytes::Bytes;
 use std::sync::Arc;
 use std::sync::atomic::AtomicU64;
 use tokio::sync::mpsc::{self};
@@ -84,8 +85,12 @@ impl CacheActor {
         let val = self
             .cache
             .entry(key.clone())
-            .or_insert(CacheValue { value: "".to_string(), expiry: None });
-        val.value.push_str(value.as_str());
+            .or_insert(CacheValue { value: Bytes::from(""), expiry: None });
+
+        // Convert current value to string, append, then convert back to Bytes
+        let mut current_str = String::from_utf8_lossy(&val.value).to_string();
+        current_str.push_str(value.as_str());
+        val.value = Bytes::from(current_str);
 
         let _ = callback.send(Ok(val.value.len()));
     }
@@ -99,16 +104,17 @@ impl CacheActor {
         let val = self
             .cache
             .entry(key.clone())
-            .or_insert(CacheValue { value: "0".to_string(), expiry: None });
+            .or_insert(CacheValue { value: Bytes::from("0"), expiry: None });
 
-        let Ok(curr) = val.value.parse::<i64>() else {
+        let current_str = String::from_utf8_lossy(&val.value);
+        let Ok(curr) = current_str.parse::<i64>() else {
             let _ =
                 callback.send(Err(anyhow::anyhow!("ERR value is not an integer or out of range")));
             return;
         };
 
         let _ = callback.send(Ok(curr + delta));
-        val.value = (curr + delta).to_string();
+        val.value = Bytes::from((curr + delta).to_string());
     }
 }
 

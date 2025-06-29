@@ -10,6 +10,7 @@ use crate::domains::{
 use crate::domains::saves::endec::VERSION;
 use crate::domains::saves::snapshot::Metadata;
 use anyhow::Result;
+use bytes;
 
 impl CacheEntry {
     pub(crate) fn encode_with_key(&self) -> Result<Vec<u8>> {
@@ -23,7 +24,7 @@ impl CacheEntry {
         }
 
         result.push(STRING_VALUE_TYPE_INDICATOR);
-        result.extend_from_slice(&encode_key_value(&key, value.value())?);
+        result.extend_from_slice(&encode_key_bytes(&key, value.value())?);
 
         Ok(result)
     }
@@ -39,9 +40,15 @@ pub(crate) fn encode_header() -> Result<Vec<u8>> {
 pub(crate) fn encode_metadata(metadata: Metadata) -> Result<Vec<u8>> {
     let mut result = Vec::new();
     result.push(METADATA_SECTION_INDICATOR);
-    result.extend_from_slice(&encode_key_value("repl-id", &metadata.repl_id.to_string())?);
+    result.extend_from_slice(&encode_key_bytes(
+        "repl-id",
+        &bytes::Bytes::from(metadata.repl_id.to_string()),
+    )?);
     result.push(METADATA_SECTION_INDICATOR);
-    result.extend_from_slice(&encode_key_value("repl-offset", &metadata.log_idx.to_string())?);
+    result.extend_from_slice(&encode_key_bytes(
+        "repl-offset",
+        &bytes::Bytes::from(metadata.log_idx.to_string()),
+    )?);
     Ok(result)
 }
 pub(crate) fn encode_database_info(index: usize) -> Result<Vec<u8>> {
@@ -66,10 +73,11 @@ pub(crate) fn encode_checksum(checksum: &[u8]) -> Result<Vec<u8>> {
     result.extend_from_slice(checksum);
     Ok(result)
 }
-fn encode_key_value(key: &str, value: &str) -> Result<Vec<u8>> {
+
+fn encode_key_bytes(key: &str, value: &bytes::Bytes) -> Result<Vec<u8>> {
     let mut result = Vec::new();
     let key = encode_string(key.len(), key)?;
-    let value = encode_string(value.len(), value)?;
+    let value = encode_bytes(value.len(), value)?;
     result.extend_from_slice(&key);
     result.extend_from_slice(&value);
     Ok(result)
@@ -98,6 +106,13 @@ fn encode_string(size: usize, value: &str) -> Result<Vec<u8>> {
     let mut result = encode_size(size)?;
     // Append the data to be encoded as a string after the size.
     result.extend_from_slice(value.as_bytes());
+    Ok(result)
+}
+
+fn encode_bytes(size: usize, value: &bytes::Bytes) -> Result<Vec<u8>> {
+    let mut result = encode_size(size)?;
+    // Append the bytes directly without string conversion
+    result.extend_from_slice(value);
     Ok(result)
 }
 
@@ -375,9 +390,32 @@ mod test {
             b's',
             b'e',
             b't',
-            192,
-            123,
+            0x03,
+            b'1',
+            b'2',
+            b'3',
         ];
         assert_eq!(encoded, expected);
+    }
+
+    #[test]
+    fn test_cache_value_encode_with_binary_data() {
+        // Test with binary data that's not valid UTF-8
+        let binary_data = vec![0xFF, 0xFE, 0xFD, 0xFC, 0xFB];
+        let value = CacheEntry::new("binary_key", bytes::Bytes::from(binary_data.clone()));
+        let encoded = value.encode_with_key().unwrap();
+
+        // Decode and verify using the proper decoder
+        let mut decoder = crate::domains::saves::endec::decoder::BytesDecoder {
+            data: &encoded,
+            state: crate::domains::saves::endec::decoder::MetadataReady {
+                metadata: Metadata { repl_id: ReplicationId::Undecided, log_idx: 0 },
+                header: "".into(),
+            },
+        };
+
+        let decoded_entry = decoder.try_key_value().unwrap();
+        assert_eq!(decoded_entry.key(), "binary_key");
+        assert_eq!(decoded_entry.value().to_vec(), binary_data);
     }
 }

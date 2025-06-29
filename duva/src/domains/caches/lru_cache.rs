@@ -327,6 +327,7 @@ impl<'a, K: Eq + Hash + Debug + Clone, V: Debug + Clone + THasExpiry> VacantEntr
 mod tests {
     use super::*;
     use crate::domains::caches::cache_objects::CacheValue;
+    use bytes::Bytes;
     use chrono::Utc;
 
     impl THasExpiry for &'static str {
@@ -552,7 +553,7 @@ mod tests {
         // Insert and modify via entry
         {
             let value = cache.entry(1).or_insert(CacheValue::new("original"));
-            value.value = "modified".to_string();
+            value.value = Bytes::from("modified");
         }
 
         // Verify modification persisted
@@ -572,7 +573,7 @@ mod tests {
         // Modify first key via entry (should move to head)
         {
             let value = cache.entry(1).or_insert(CacheValue::new("unused"));
-            value.value = "one_modified".to_string();
+            value.value = Bytes::from("one_modified");
         }
 
         // Insert third key (should evict key 2, since 1 is now MRU)
