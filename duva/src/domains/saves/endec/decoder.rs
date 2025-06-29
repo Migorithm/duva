@@ -371,8 +371,8 @@ impl<T> DerefMut for BytesDecoder<'_, T> {
 mod test {
     use super::*;
 
-    fn as_str(cache_entry: &CacheEntry) -> &str {
-        cache_entry.value()
+    fn as_str(cache_entry: &CacheEntry) -> String {
+        String::from_utf8_lossy(cache_entry.value()).to_string()
     }
 
     #[test]
@@ -496,7 +496,7 @@ mod test {
 
         let key_value = bytes_handler.try_key_value().expect("Failed to extract key value expiry");
         assert_eq!(key_value.key(), "baz");
-        assert_eq!(key_value.value(), "qux");
+        assert_eq!(String::from_utf8_lossy(key_value.value()), "qux");
         assert!(key_value.expiry().is_none());
 
         assert!(bytes_handler.data.is_empty());

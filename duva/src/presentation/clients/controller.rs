@@ -67,7 +67,11 @@ impl ClientController {
                 let res = self.cache_manager.route_mget(keys).await;
                 QueryIO::Array(
                     res.into_iter()
-                        .map(|entry| entry.map(|entry| entry.value().to_string()).into())
+                        .map(|entry| {
+                            entry
+                                .map(|entry| String::from_utf8_lossy(entry.value()).to_string())
+                                .into()
+                        })
                         .collect(),
                 )
             },

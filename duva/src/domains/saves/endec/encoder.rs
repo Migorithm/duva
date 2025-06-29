@@ -23,7 +23,7 @@ impl CacheEntry {
         }
 
         result.push(STRING_VALUE_TYPE_INDICATOR);
-        result.extend_from_slice(&encode_key_value(&key, value.value())?);
+        result.extend_from_slice(&encode_key_value(&key, &String::from_utf8_lossy(value.value()))?);
 
         Ok(result)
     }

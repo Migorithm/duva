@@ -12,7 +12,7 @@ anyhow = "1.0.97"                                   # error handling
 bytes = "1.10.1"                                    # helps manage buffers
 thiserror = "2.0.12"                                # error handling
 tokio = { version = "1.44.2", features = ["full"] }
-rand = "0.9.0"                                      # async networking
+rand = { version = "0.9.0", features = ["std"] }    # async networking
 futures = "0.3.31"                                  # async networking
 memmap2 = "0.9.5"                                   # memory mapping
 chrono = "0.4.40"

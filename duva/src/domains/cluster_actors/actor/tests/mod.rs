@@ -236,7 +236,10 @@ pub(crate) fn migration_batch_create_helper(
 
 // Helper function to create cache entries
 pub(crate) fn cache_entries_create_helper(keys_values: &[(&str, &str)]) -> Vec<CacheEntry> {
-    keys_values.iter().map(|(key, value)| CacheEntry::new(*key, *value)).collect()
+    keys_values
+        .iter()
+        .map(|(key, value)| CacheEntry::new(key.to_string(), value.to_string()))
+        .collect()
 }
 
 // Helper function to assert migration batch ack
