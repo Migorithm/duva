@@ -9,6 +9,7 @@ use crate::domains::saves::endec::{
 use crate::domains::saves::snapshot::{Metadata, Snapshot, SubDatabase};
 
 use anyhow::{Context, Result};
+use bytes::Bytes;
 use chrono::{DateTime, Utc};
 use std::ops::{Deref, DerefMut};
 
@@ -44,6 +45,12 @@ impl<T> BytesDecoder<'_, T> {
         Ok(data)
     }
 
+    fn take_bytes(&mut self, n: usize) -> Result<Bytes> {
+        let data = Bytes::from(self[0..n].to_vec());
+        self.skip(n);
+        Ok(data)
+    }
+
     pub fn remove_identifier(&mut self) {
         self.skip(1);
     }
@@ -64,6 +71,25 @@ impl<T> BytesDecoder<'_, T> {
             self.integer_decode()
         }
     }
+
+    // Decode a size-encoded value and return the decoded value as bytes.
+    pub fn bytes_decode(&mut self) -> Option<Bytes> {
+        // Ensure we have at least one byte to read.
+        if self.is_empty() {
+            return None;
+        }
+
+        if let Some(size) = self.size_decode() {
+            if size > self.len() {
+                return None;
+            }
+            Some(self.take_bytes(size).ok()?)
+        } else {
+            // For integers, convert to string first, then to bytes
+            self.integer_decode().map(|s| Bytes::from(s))
+        }
+    }
+
     pub fn size_decode(&mut self) -> Option<usize> {
         if let Some(first_byte) = self.first() {
             match first_byte >> 6 {
@@ -266,7 +292,7 @@ impl BytesDecoder<'_, MetadataReady> {
         Ok(())
     }
 
-    fn try_key_value(&mut self) -> Result<CacheEntry> {
+    pub fn try_key_value(&mut self) -> Result<CacheEntry> {
         let mut expiry: Option<DateTime<Utc>> = None;
         while self.len() > 0 {
             match self[0] {
@@ -280,7 +306,7 @@ impl BytesDecoder<'_, MetadataReady> {
                 },
                 //0b11111110
                 | STRING_VALUE_TYPE_INDICATOR => {
-                    let (key, value) = self.try_extract_key_value()?;
+                    let (key, value) = self.try_extract_key_bytes()?;
                     let mut cache_value = CacheValue::new(value);
                     if let Some(expiry) = expiry {
                         cache_value = cache_value.with_expiry(expiry);
@@ -319,10 +345,10 @@ impl BytesDecoder<'_, MetadataReady> {
         Ok(StoredDuration::Milliseconds(result))
     }
 
-    pub fn try_extract_key_value(&mut self) -> Result<(String, String)> {
+    pub fn try_extract_key_bytes(&mut self) -> Result<(String, Bytes)> {
         self.remove_identifier();
         let key_data = self.string_decode().context("key decode fail")?;
-        let value_data = self.string_decode().context("value decode fail")?;
+        let value_data = self.bytes_decode().context("value decode fail")?;
 
         Ok((key_data, value_data))
     }
