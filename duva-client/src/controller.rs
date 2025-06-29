@@ -49,16 +49,22 @@ impl<T> ClientController<T> {
             | ReplicaOf { .. }
             | ClusterInfo => match query_io {
                 | QueryIO::Null => Response::Null,
-                | QueryIO::SimpleString(value) => Response::String(value),
-                | QueryIO::BulkString(value) => Response::String(value),
-                | QueryIO::Err(value) => Response::Error(value),
+                | QueryIO::SimpleString(value) => {
+                    Response::String(String::from_utf8_lossy(&value).to_string())
+                },
+                | QueryIO::BulkString(value) => {
+                    Response::String(String::from_utf8_lossy(&value).to_string())
+                },
+                | QueryIO::Err(value) => {
+                    Response::Error(String::from_utf8_lossy(&value).to_string())
+                },
                 | _err => Response::FormatError,
             },
             | Delete { .. } | Exists { .. } => {
                 let QueryIO::SimpleString(value) = query_io else {
                     return Response::FormatError;
                 };
-                match value.parse::<i64>() {
+                match String::from_utf8_lossy(&value).parse::<i64>() {
                     | Ok(int) => Response::Integer(int),
                     | Err(_) => {
                         Response::Error("ERR value is not an integer or out of range".into())
@@ -68,17 +74,17 @@ impl<T> ClientController<T> {
             | Incr { .. } | Decr { .. } | Ttl { .. } | IncrBy { .. } | DecrBy { .. } => {
                 match query_io {
                     | QueryIO::SimpleString(value) => {
+                        let s = String::from_utf8_lossy(&value);
                         let s: Option<&str> =
-                            value.split('|').next().unwrap_or_default().rsplit(':').next(); // format: s:value-idx:index_num
-
+                            s.split('|').next().unwrap_or_default().rsplit(':').next();
                         Response::Integer(s.unwrap().parse::<i64>().unwrap())
                     },
-                    | QueryIO::Err(value) => Response::Error(value),
-
-                    | QueryIO::BulkString(value) => {
-                        Response::Integer(value.parse::<i64>().unwrap())
+                    | QueryIO::Err(value) => {
+                        Response::Error(String::from_utf8_lossy(&value).to_string())
                     },
-
+                    | QueryIO::BulkString(value) => {
+                        Response::Integer(String::from_utf8_lossy(&value).parse::<i64>().unwrap())
+                    },
                     | _ => Response::FormatError,
                 }
             },
@@ -90,17 +96,25 @@ impl<T> ClientController<T> {
             },
             | Set { .. } | SetWithExpiry { .. } => match query_io {
                 | QueryIO::SimpleString(_) => Response::String("OK".into()),
-                | QueryIO::Err(value) => Response::Error(value),
+                | QueryIO::Err(value) => {
+                    Response::Error(String::from_utf8_lossy(&value).to_string())
+                },
                 | _ => Response::FormatError,
             },
             | ClusterMeet { .. } | ClusterReshard => match query_io {
                 | QueryIO::Null => Response::String("OK".into()),
-                | QueryIO::Err(value) => Response::Error(value),
+                | QueryIO::Err(value) => {
+                    Response::Error(String::from_utf8_lossy(&value).to_string())
+                },
                 | _ => Response::FormatError,
             },
             | Append { .. } => match query_io {
-                | QueryIO::SimpleString(value) => Response::String(value.to_string()),
-                | QueryIO::Err(value) => Response::Error(value),
+                | QueryIO::SimpleString(value) => {
+                    Response::String(String::from_utf8_lossy(&value).to_string())
+                },
+                | QueryIO::Err(value) => {
+                    Response::Error(String::from_utf8_lossy(&value).to_string())
+                },
                 | _ => Response::FormatError,
             },
             | Keys { .. } | MGet { .. } => {
@@ -112,7 +126,11 @@ impl<T> ClientController<T> {
                     let QueryIO::BulkString(value) = item else {
                         return Response::FormatError;
                     };
-                    keys.push(Response::String(format!("{}) \"{value}\"", i + 1)));
+                    keys.push(Response::String(format!(
+                        "{}) \"{}\"",
+                        i + 1,
+                        String::from_utf8_lossy(&value)
+                    )));
                 }
                 Response::Array(keys)
             },
@@ -125,7 +143,7 @@ impl<T> ClientController<T> {
                     let QueryIO::BulkString(value) = item else {
                         return Response::FormatError;
                     };
-                    nodes.push(Response::String(value));
+                    nodes.push(Response::String(String::from_utf8_lossy(&value).to_string()));
                 }
                 Response::Array(nodes)
             },

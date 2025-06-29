@@ -86,7 +86,7 @@ impl<T> BytesDecoder<'_, T> {
             Some(self.take_bytes(size).ok()?)
         } else {
             // For integers, convert to string first, then to bytes
-            self.integer_decode().map(|s| Bytes::from(s))
+            self.integer_decode().map(Bytes::from)
         }
     }
 

@@ -1,4 +1,5 @@
 use crate::domains::caches::cache_objects::CacheValue;
+use crate::domains::cluster_actors::replication::{ReplicationId, ReplicationRole};
 use crate::domains::cluster_actors::topology::Topology;
 use crate::domains::operation_logs::WriteOperation;
 use crate::domains::peers::command::{
@@ -40,14 +41,14 @@ macro_rules! write_array {
 pub enum QueryIO {
     #[default]
     Null,
-    SimpleString(String),
-    BulkString(String),
+    SimpleString(Bytes),
+    BulkString(Bytes),
     Array(Vec<QueryIO>),
     SessionRequest {
         request_id: u64,
         value: Vec<QueryIO>,
     },
-    Err(String),
+    Err(Bytes),
 
     // custom types
     File(Bytes),
@@ -70,16 +71,18 @@ impl QueryIO {
             | QueryIO::Null => NULL_PREFIX.to_string().into(),
             | QueryIO::SimpleString(s) => {
                 let mut buffer =
-                    String::with_capacity(SIMPLE_STRING_PREFIX.len_utf8() + s.len() + 2);
-                write!(&mut buffer, "{SIMPLE_STRING_PREFIX}{s}\r\n").unwrap();
-                buffer.into()
+                    BytesMut::with_capacity(SIMPLE_STRING_PREFIX.len_utf8() + s.len() + 2);
+                buffer.extend_from_slice(&[SIMPLE_STRING_PREFIX as u8]);
+                buffer.extend_from_slice(&s);
+                buffer.extend_from_slice(b"\r\n");
+                buffer.freeze()
             },
             | QueryIO::BulkString(s) => {
                 let mut byte_mut = BytesMut::with_capacity(1 + 1 + s.len() + 4);
                 byte_mut.extend_from_slice(BULK_STRING_PREFIX.encode_utf8(&mut [0; 4]).as_bytes());
                 byte_mut.extend_from_slice(s.len().to_string().as_bytes());
                 byte_mut.extend_from_slice(b"\r\n");
-                byte_mut.extend_from_slice(s.as_bytes());
+                byte_mut.extend_from_slice(&s);
                 byte_mut.extend_from_slice(b"\r\n");
                 byte_mut.freeze()
             },
@@ -114,7 +117,13 @@ impl QueryIO {
                 buffer.extend_from_slice(&QueryIO::Array(value).serialize());
                 buffer.freeze()
             },
-            | QueryIO::Err(e) => Bytes::from([ERR_PREFIX.to_string(), e, "\r\n".into()].concat()),
+            | QueryIO::Err(e) => {
+                let mut buffer = BytesMut::with_capacity(ERR_PREFIX.len_utf8() + e.len() + 2);
+                buffer.extend_from_slice(&[ERR_PREFIX as u8]);
+                buffer.extend_from_slice(&e);
+                buffer.extend_from_slice(b"\r\n");
+                buffer.freeze()
+            },
             | QueryIO::AppendEntriesRPC(heartbeat) => {
                 serialize_with_bincode(APPEND_ENTRY_RPC_PREFIX, &heartbeat)
             },
@@ -149,8 +158,10 @@ impl QueryIO {
         T: std::str::FromStr<Err: std::error::Error + Sync + Send + 'static>,
     {
         match self {
-            | QueryIO::BulkString(s) => Ok(String::from_utf8(s.into())?.parse::<T>()?),
-
+            | QueryIO::BulkString(s) => {
+                let string_value = String::from_utf8(s.to_vec())?;
+                Ok(string_value.parse::<T>()?)
+            },
             | _ => Err(anyhow::anyhow!("Expected command to be a bulk string")),
         }
     }
@@ -174,7 +185,7 @@ impl QueryIO {
 
 impl From<String> for QueryIO {
     fn from(value: String) -> Self {
-        QueryIO::BulkString(value)
+        QueryIO::BulkString(value.into())
     }
 }
 impl From<Vec<String>> for QueryIO {
@@ -185,17 +196,16 @@ impl From<Vec<String>> for QueryIO {
 impl From<Option<CacheValue>> for QueryIO {
     fn from(v: Option<CacheValue>) -> Self {
         match v {
-            | Some(cache_value) => {
-                QueryIO::BulkString(String::from_utf8_lossy(&cache_value.value).to_string())
-            },
+            | Some(cache_value) => QueryIO::BulkString(cache_value.value),
             | None => QueryIO::Null,
         }
     }
 }
+
 impl From<Option<String>> for QueryIO {
     fn from(v: Option<String>) -> Self {
         match v {
-            | Some(v) => QueryIO::BulkString(v),
+            | Some(v) => QueryIO::BulkString(v.into()),
             | None => QueryIO::Null,
         }
     }
@@ -251,10 +261,10 @@ pub fn deserialize(buffer: impl Into<Bytes>) -> Result<(QueryIO, usize)> {
 }
 
 // +PING\r\n
-pub(crate) fn parse_simple_string(buffer: Bytes) -> Result<(String, usize)> {
+pub(crate) fn parse_simple_string(buffer: Bytes) -> Result<(Bytes, usize)> {
     let (line, len) = read_until_crlf_exclusive(&buffer.slice(1..))
         .ok_or(anyhow::anyhow!("Invalid simple string"))?;
-    Ok((line, len + 1))
+    Ok((line.into(), len + 1))
 }
 
 fn parse_array(buffer: Bytes) -> Result<(QueryIO, usize)> {
@@ -324,17 +334,22 @@ fn parse_heartbeat(buffer: Bytes) -> Result<(HeartBeat, usize)> {
     Ok((encoded, len + 1))
 }
 
-fn parse_bulk_string(buffer: Bytes) -> Result<(String, usize)> {
-    let (line, mut len) = read_until_crlf_exclusive(&buffer.slice(1..))
+fn parse_bulk_string(buffer: Bytes) -> Result<(Bytes, usize)> {
+    let (line, len) = read_until_crlf_exclusive(&buffer.slice(1..))
         .ok_or(anyhow::anyhow!("Invalid bulk string"))?;
+    let content_len: usize = line.parse().context("Invalid bulk string length")?;
 
-    // Adjust `len` to include the initial line and calculate `bulk_str_len`
-    len += 1;
+    let content_start = len + 1;
+    let content_end = content_start + content_len;
+    if content_end + 2 > buffer.len() {
+        return Err(anyhow::anyhow!("Incomplete bulk string"));
+    }
 
-    let content_len: usize = line.parse()?;
-    let (line, total_len) = read_content_until_crlf(&buffer.slice(len..), content_len)
-        .context("Invalid BulkString format!")?;
-    Ok((line, len + total_len))
+    if &buffer[content_end..content_end + 2] != b"\r\n" {
+        return Err(anyhow::anyhow!("Invalid bulk string terminator"));
+    }
+
+    Ok((buffer.slice(content_start..content_end), content_end + 2))
 }
 
 fn parse_file(buffer: Bytes) -> Result<(Bytes, usize)> {
@@ -353,21 +368,6 @@ fn parse_file(buffer: Bytes) -> Result<(Bytes, usize)> {
         .collect::<Result<Bytes, _>>()?;
 
     Ok((file, len + content_len))
-}
-pub(super) fn read_content_until_crlf(
-    buffer: &Bytes,
-    content_len: usize,
-) -> Option<(String, usize)> {
-    if buffer.len() < content_len + 2 {
-        return None;
-    }
-    if buffer[content_len] == b'\r' && buffer[content_len + 1] == b'\n' {
-        return Some((
-            String::from_utf8_lossy(&buffer.slice(0..content_len)).to_string(),
-            content_len + 2,
-        ));
-    }
-    None
 }
 
 /// None if crlf not found.
@@ -445,6 +445,19 @@ impl From<MigrateBatch> for QueryIO {
     }
 }
 
+// Add From implementations for custom types that need to be converted to Bytes
+impl From<ReplicationId> for Bytes {
+    fn from(value: ReplicationId) -> Self {
+        value.to_string().into()
+    }
+}
+
+impl From<ReplicationRole> for Bytes {
+    fn from(value: ReplicationRole) -> Self {
+        value.to_string().into()
+    }
+}
+
 #[cfg(test)]
 mod test {
     use crate::domains::caches::cache_objects::CacheEntry;
@@ -468,7 +481,7 @@ mod test {
 
         // THEN
         assert_eq!(len, 5);
-        assert_eq!(value, "OK".to_string());
+        assert_eq!(value, Bytes::from("OK"));
     }
 
     #[test]
@@ -481,7 +494,7 @@ mod test {
 
         // THEN
         assert_eq!(len, 7);
-        assert_eq!(value, QueryIO::SimpleString("PING".to_string()));
+        assert_eq!(value, QueryIO::SimpleString(Bytes::from("PING")));
     }
 
     #[test]

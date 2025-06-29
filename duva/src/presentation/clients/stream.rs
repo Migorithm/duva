@@ -32,7 +32,7 @@ impl ClientStreamReader {
                     if err.should_break() {
                         return;
                     }
-                    let _ = sender.send(QueryIO::Err(err.to_string())).await;
+                    let _ = sender.send(QueryIO::Err(err.to_string().into())).await;
                     continue;
                 },
             };
@@ -53,7 +53,7 @@ impl ClientStreamReader {
                     | Ok(res) => res,
                     | Err(e) => {
                         error!("{:?}", e);
-                        QueryIO::Err(e.to_string())
+                        QueryIO::Err(e.to_string().into())
                     },
                 };
 

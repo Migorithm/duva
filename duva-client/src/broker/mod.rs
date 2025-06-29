@@ -94,12 +94,14 @@ impl Broker {
         }
         match query_io {
             // * Current rule: s:value-idx:index_num
-            | QueryIO::SimpleString(v) => v
-                .rsplit('|')
-                .next()
-                .and_then(|s| s.rsplit(':').next())
-                .and_then(|id| id.parse::<u64>().ok())
-                .filter(|&id| id > self.request_id),
+            | QueryIO::SimpleString(v) => {
+                let s = String::from_utf8_lossy(v);
+                s.rsplit('|')
+                    .next()
+                    .and_then(|s| s.rsplit(':').next())
+                    .and_then(|id| id.parse::<u64>().ok())
+                    .filter(|&id| id > self.request_id)
+            },
             | QueryIO::Err(_) => Some(self.request_id + 1),
             | _ => None,
         }

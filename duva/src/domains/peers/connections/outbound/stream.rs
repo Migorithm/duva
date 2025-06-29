@@ -14,6 +14,7 @@ use crate::domains::peers::peer::Peer;
 use crate::domains::peers::service::PeerListener;
 use crate::write_array;
 use anyhow::Context;
+use bytes::Bytes;
 use std::sync::atomic::Ordering;
 use tokio::net::TcpStream;
 use tokio::net::tcp::OwnedReadHalf;
@@ -90,7 +91,7 @@ impl OutboundStream {
     }
 
     async fn reply_with_ok(&mut self) -> anyhow::Result<()> {
-        self.w.write(QueryIO::SimpleString("OK".to_string())).await?;
+        self.w.write(QueryIO::SimpleString(Bytes::from("ok"))).await?;
         Ok(())
     }
 

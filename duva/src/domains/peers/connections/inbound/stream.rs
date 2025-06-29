@@ -15,6 +15,7 @@ use crate::domains::peers::identifier::PeerIdentifier;
 use crate::domains::peers::peer::Peer;
 use crate::domains::peers::peer::PeerState;
 use crate::domains::peers::service::PeerListener;
+use bytes::Bytes;
 use std::sync::atomic::Ordering;
 use tokio::net::TcpStream;
 use tokio::net::tcp::OwnedReadHalf;
@@ -78,8 +79,8 @@ impl InboundStream {
         Ok(port)
     }
 
-    async fn recv_replconf_capa(&mut self) -> anyhow::Result<Vec<(String, String)>> {
-        let mut cmd = self.extract_cmd().await?;
+    async fn recv_replconf_capa(&mut self) -> anyhow::Result<Vec<(Bytes, Bytes)>> {
+        let cmd = self.extract_cmd().await?;
         let capa_val_vec = cmd.extract_capa()?;
         self.w.write(QueryIO::SimpleString("OK".into())).await?;
         Ok(capa_val_vec)
@@ -98,9 +99,9 @@ impl InboundStream {
         );
 
         self.w
-            .write(QueryIO::SimpleString(format!(
-                "FULLRESYNC {id} {self_replid} {self_repl_offset} {self_role}"
-            )))
+            .write(QueryIO::SimpleString(
+                format!("FULLRESYNC {id} {self_replid} {self_repl_offset} {self_role}").into(),
+            ))
             .await?;
         self.recv_ok().await?;
         Ok((inbound_repl_id, offset, role))
@@ -118,7 +119,7 @@ impl InboundStream {
         let QueryIO::SimpleString(val) = query else {
             return Err(anyhow::anyhow!("Invalid query"));
         };
-        if val.to_lowercase() != "ok" {
+        if val.as_ref() != b"ok" {
             return Err(anyhow::anyhow!("Invalid response"));
         }
         Ok(())

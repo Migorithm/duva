@@ -24,11 +24,12 @@ impl ClientController {
     ) -> anyhow::Result<QueryIO> {
         let response = match cmd {
             | ClientAction::Ping => QueryIO::SimpleString("PONG".into()),
-            | ClientAction::Echo(val) => QueryIO::BulkString(val),
+            | ClientAction::Echo(val) => QueryIO::BulkString(val.into()),
             | ClientAction::Set { key, value } => QueryIO::SimpleString(
                 self.cache_manager
                     .route_set(CacheEntry::new(key, value), current_index.unwrap())
-                    .await?,
+                    .await?
+                    .into(),
             ),
             | ClientAction::SetWithExpiry { key, value, expiry } => QueryIO::SimpleString(
                 self.cache_manager
@@ -36,10 +37,11 @@ impl ClientController {
                         CacheEntry::new(key, value).with_expiry(expiry),
                         current_index.unwrap(),
                     )
-                    .await?,
+                    .await?
+                    .into(),
             ),
             | ClientAction::Append { key, value } => QueryIO::SimpleString(
-                self.cache_manager.route_append(key, value).await?.to_string(),
+                self.cache_manager.route_append(key, value).await?.to_string().into(),
             ),
             | ClientAction::Save => {
                 let file_path = ENV.get_filepath();
@@ -80,7 +82,7 @@ impl ClientController {
             },
             | ClientAction::Keys { pattern } => {
                 let res = self.cache_manager.route_keys(pattern).await;
-                QueryIO::Array(res.into_iter().map(QueryIO::BulkString).collect())
+                QueryIO::Array(res.into_iter().map(|s| QueryIO::BulkString(s.into())).collect())
             },
             | ClientAction::Config { key, value } => {
                 match (key.to_lowercase().as_str(), value.to_lowercase().as_str()) {
@@ -89,18 +91,19 @@ impl ClientController {
                     | _ => Err(anyhow::anyhow!("Invalid command"))?,
                 }
             },
-            | ClientAction::Delete { keys } => {
-                QueryIO::SimpleString(self.cache_manager.route_delete(keys).await?.to_string())
-            },
-            | ClientAction::Exists { keys } => {
-                QueryIO::SimpleString(self.cache_manager.route_exists(keys).await?.to_string())
-            },
+            | ClientAction::Delete { keys } => QueryIO::SimpleString(
+                self.cache_manager.route_delete(keys).await?.to_string().into(),
+            ),
+            | ClientAction::Exists { keys } => QueryIO::SimpleString(
+                self.cache_manager.route_exists(keys).await?.to_string().into(),
+            ),
             | ClientAction::Info => QueryIO::BulkString(
                 self.cluster_communication_manager
                     .route_get_replication_state()
                     .await?
                     .vectorize()
-                    .join("\r\n"),
+                    .join("\r\n")
+                    .into(),
             ),
             | ClientAction::ClusterInfo => {
                 self.cluster_communication_manager.route_get_cluster_info().await?.into()
@@ -117,7 +120,7 @@ impl ClientController {
                 match self.cluster_communication_manager.route_forget_peer(peer_identifier).await {
                     | Ok(true) => QueryIO::SimpleString("OK".into()),
                     | Ok(false) => QueryIO::Err("No such peer".into()),
-                    | Err(e) => QueryIO::Err(e.to_string()),
+                    | Err(e) => QueryIO::Err(e.to_string().into()),
                 }
             },
             | ClientAction::ClusterMeet(peer_identifier, option) => self
@@ -134,26 +137,34 @@ impl ClientController {
             },
             | ClientAction::Role => {
                 let role = self.cluster_communication_manager.route_get_role();
-                QueryIO::SimpleString(role.await?.to_string())
+                QueryIO::SimpleString(role.await?.to_string().into())
             },
             | ClientAction::Ttl { key } => {
-                QueryIO::SimpleString(self.cache_manager.route_ttl(key).await?)
+                QueryIO::SimpleString(self.cache_manager.route_ttl(key).await?.into())
             },
             | ClientAction::Incr { key } => QueryIO::SimpleString(
-                self.cache_manager.route_numeric_delta(key, 1, current_index.unwrap()).await?,
+                self.cache_manager
+                    .route_numeric_delta(key, 1, current_index.unwrap())
+                    .await?
+                    .into(),
             ),
             | ClientAction::Decr { key } => QueryIO::SimpleString(
-                self.cache_manager.route_numeric_delta(key, -1, current_index.unwrap()).await?,
+                self.cache_manager
+                    .route_numeric_delta(key, -1, current_index.unwrap())
+                    .await?
+                    .into(),
             ),
             | ClientAction::IncrBy { key, increment } => QueryIO::SimpleString(
                 self.cache_manager
                     .route_numeric_delta(key, increment, current_index.unwrap())
-                    .await?,
+                    .await?
+                    .into(),
             ),
             | ClientAction::DecrBy { key, decrement } => QueryIO::SimpleString(
                 self.cache_manager
                     .route_numeric_delta(key, -decrement, current_index.unwrap())
-                    .await?,
+                    .await?
+                    .into(),
             ),
         };
 

@@ -254,13 +254,14 @@ pub fn run_server_process(env: &ServerEnv) -> TestProcessChild {
 }
 
 pub fn array(arr: Vec<&str>) -> Bytes {
-    QueryIO::Array(arr.iter().map(|s| QueryIO::BulkString(s.to_string())).collect()).serialize()
+    QueryIO::Array(arr.iter().map(|s| QueryIO::BulkString(s.to_string().into())).collect())
+        .serialize()
 }
 
 pub fn session_request(request_id: u64, arr: Vec<&str>) -> Bytes {
     QueryIO::SessionRequest {
         request_id,
-        value: arr.iter().map(|s| QueryIO::BulkString(s.to_string())).collect(),
+        value: arr.iter().map(|s| QueryIO::BulkString(s.to_string().into())).collect(),
     }
     .serialize()
 }
