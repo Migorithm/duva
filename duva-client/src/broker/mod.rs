@@ -1,18 +1,19 @@
 mod input_queue;
+mod leader_connections;
 mod read_stream;
 mod write_stream;
-use std::collections::HashMap;
 
 use crate::command::Input;
 
+use crate::broker::leader_connections::LeaderConnections;
 use duva::domains::caches::cache_manager::IndexedValueCodec;
-use duva::domains::{IoError, query_io::QueryIO};
+use duva::domains::{query_io::QueryIO, IoError};
 use duva::prelude::tokio::net::TcpStream;
 use duva::prelude::tokio::sync::mpsc::Receiver;
 use duva::prelude::tokio::sync::mpsc::Sender;
 use duva::prelude::uuid::Uuid;
-use duva::prelude::{LEADER_HEARTBEAT_INTERVAL_MAX, Topology};
-use duva::prelude::{PeerIdentifier, tokio};
+use duva::prelude::{anyhow, Topology, LEADER_HEARTBEAT_INTERVAL_MAX};
+use duva::prelude::{tokio, PeerIdentifier};
 use duva::presentation::clients::request::ClientAction;
 use duva::{
     domains::TSerdeReadWrite,
@@ -26,26 +27,41 @@ use write_stream::ServerStreamWriter;
 pub struct Broker {
     pub(crate) tx: Sender<BrokerMessage>,
     pub(crate) rx: Receiver<BrokerMessage>,
-    pub(crate) to_server: Sender<MsgToServer>,
     pub(crate) client_id: Uuid,
     pub(crate) request_id: u64,
     pub(crate) topology: Topology,
-    pub(crate) leader_connections:
-        HashMap<PeerIdentifier, (ServerStreamReader, ServerStreamWriter)>,
-    pub(crate) read_kill_switch: Option<tokio::sync::oneshot::Sender<()>>,
+    pub(crate) leader_connections: LeaderConnections,
 }
 
 impl Broker {
+    pub(crate) async fn new(server_addr: &PeerIdentifier) -> anyhow::Result<Self> {
+        let (r, w, auth_response) = Broker::authenticate(&server_addr.clone(), None).await?;
+
+        let (broker_tx, rx) = tokio::sync::mpsc::channel::<BrokerMessage>(100);
+
+        Ok(Broker {
+            tx: broker_tx.clone(),
+            rx,
+            client_id: Uuid::parse_str(&auth_response.client_id)?,
+            request_id: auth_response.request_id,
+            topology: auth_response.topology,
+            leader_connections: LeaderConnections::new(
+                server_addr.clone(),
+                w.run(),
+                r.run_with_id(broker_tx.clone(), server_addr.clone()),
+            ),
+        })
+    }
     pub(crate) async fn run(mut self) {
         let mut queue = InputQueue::default();
         while let Some(msg) = self.rx.recv().await {
             match msg {
-                | BrokerMessage::FromServer(Ok(QueryIO::TopologyChange(topology))) => {
+                | BrokerMessage::FromServerWithId(_, Ok(QueryIO::TopologyChange(topology))) => {
                     self.topology = topology;
                     self.generate_leader_connections().await;
                 },
 
-                | BrokerMessage::FromServer(Ok(query_io)) => {
+                | BrokerMessage::FromServerWithId(_, Ok(query_io)) => {
                     let Some(input) = queue.pop() else {
                         continue;
                     };
@@ -58,22 +74,38 @@ impl Broker {
                         println!("Failed to send response to input callback");
                     });
                 },
-                | BrokerMessage::FromServer(Err(e)) => match e {
+                | BrokerMessage::FromServerWithId(peer_id, Err(e)) => match e {
                     | IoError::ConnectionAborted | IoError::ConnectionReset => {
-                        tokio::time::sleep(tokio::time::Duration::from_millis(
-                            LEADER_HEARTBEAT_INTERVAL_MAX,
-                        ))
-                        .await;
-                        self.discover_leader().await.unwrap();
+                        if self.leader_connections.is_main_leader(&peer_id) {
+                            // Main leader disconnected - discover new leader
+                            println!(
+                                "Main leader {} disconnected, discovering new leader",
+                                peer_id
+                            );
+                            tokio::time::sleep(tokio::time::Duration::from_millis(
+                                LEADER_HEARTBEAT_INTERVAL_MAX,
+                            ))
+                            .await;
+                            self.discover_leader().await.unwrap();
+                        } else {
+                            // Secondary leader disconnected - just remove from connections
+                            println!(
+                                "Secondary leader {} disconnected, removing from connections",
+                                peer_id
+                            );
+                            if let Some(connection) =
+                                self.leader_connections.remove_connection(&peer_id)
+                            {
+                                let _ = connection.writer.send(MsgToServer::Stop).await;
+                                let _ = connection.kill_switch.send(());
+                            }
+                        }
                     },
                     | _ => {},
                 },
                 | BrokerMessage::ToServer(command) => {
-                    let cmd = self.build_command_with_request_id(&command.command, command.args);
-                    if let Err(e) =
-                        self.to_server.send(MsgToServer::Command(cmd.as_bytes().to_vec())).await
-                    {
-                        println!("Failed to send command: {e}");
+                    if let Err(err) = self.determine_route(&command).await {
+                        println!("Failed to determine route for command: {:?}", err);
                     }
                     queue.push(command.input);
                 },
@@ -81,7 +113,7 @@ impl Broker {
         }
     }
 
-    pub fn build_command_with_request_id(&self, cmd: &str, args: Vec<String>) -> String {
+    pub fn build_command_with_request_id(&self, cmd: &str, args: &Vec<String>) -> String {
         // Build the valid RESP command
         let mut command =
             format!("!{}\r\n*{}\r\n${}\r\n{}\r\n", self.request_id, args.len() + 1, cmd.len(), cmd);
@@ -111,25 +143,33 @@ impl Broker {
     }
 
     pub(crate) async fn authenticate(
-        server_addr: &str,
+        server_addr: &PeerIdentifier,
         auth_request: Option<AuthRequest>,
     ) -> Result<(ServerStreamReader, ServerStreamWriter, AuthResponse), IoError> {
         let mut stream =
-            TcpStream::connect(server_addr).await.map_err(|_| IoError::NotConnected)?;
+            TcpStream::connect(server_addr.as_str()).await.map_err(|_| IoError::NotConnected)?;
 
-        stream.serialized_write(auth_request.unwrap_or_default()).await.unwrap(); // client_id not exist
+        stream.serialized_write(auth_request.unwrap_or_default()).await?; // client_id not exist
         let auth_response: AuthResponse = stream.deserialized_read().await?;
         let (r, w) = stream.into_split();
         Ok((ServerStreamReader(r), ServerStreamWriter(w), auth_response))
     }
 
     async fn replace_stream(&mut self, r: ServerStreamReader, w: ServerStreamWriter) {
-        if let Some(switch) = self.read_kill_switch.take() {
-            let _ = switch.send(());
+        if let Some(connection) = self.leader_connections.remove_main_connection() {
+            let _ = connection.writer.send(MsgToServer::Stop).await;
+            let _ = connection.kill_switch.send(());
         }
-        self.read_kill_switch = Some(r.run(self.tx.clone()));
-        self.to_server.send(MsgToServer::Stop).await.unwrap();
-        self.to_server = w.run();
+        let read_kill_switch =
+            r.run_with_id(self.tx.clone(), self.leader_connections.main_leader_id().clone());
+        let writer = w.run();
+        self.leader_connections
+            .add_connection(
+                self.leader_connections.main_leader_id().clone(),
+                writer,
+                read_kill_switch,
+            )
+            .unwrap();
     }
 
     // pull-based leader discovery
@@ -173,17 +213,50 @@ impl Broker {
             let Ok((r, w, auth_response)) = Self::authenticate(node, Some(auth_req)).await else {
                 continue;
             };
-            self.leader_connections.insert(node.clone(), (r, w));
+            let kill_switch = r.run_with_id(self.tx.clone(), node.clone());
+            let writer = w.run();
+            self.leader_connections.insert(node.clone(), (kill_switch, writer));
 
             if auth_response.connected_to_leader {
                 println!("Connected to leader: {}", node);
             }
         }
     }
+
+    async fn determine_route(&mut self, command: &CommandToServer) -> Result<(), IoError> {
+        match command.input.kind.clone() {
+            | ClientAction::Get { key }
+            | ClientAction::Ttl { key }
+            | ClientAction::Incr { key }
+            | ClientAction::Set { key, value: _ }
+            | ClientAction::Append { key, value: _ }
+            | ClientAction::SetWithExpiry { key, value: _, expiry: _ }
+            | ClientAction::IndexGet { key, index: _ }
+            | ClientAction::Decr { key } => self.route_command_by_key(command, key).await,
+            | ClientAction::Delete { keys }
+            | ClientAction::Exists { keys }
+            | ClientAction::MGet { keys } => self.route_command_by_keys(command, keys).await,
+            | _ => {
+                let cmd = self.build_command_with_request_id(&command.command, &command.args);
+                let Some(main_connection) =
+                    self.leader_connections.get(self.leader_connections.main_leader_id())
+                else {
+                    return Err(IoError::Custom("Main connection not available".to_string()));
+                };
+                if let Err(e) =
+                    main_connection.send(MsgToServer::Command(cmd.as_bytes().to_vec())).await
+                {
+                    println!("Failed to send command: {}", e);
+                    return Err(IoError::Custom(format!("Failed to send command: {}", e)));
+                }
+                Ok(())
+            },
+        }
+    }
 }
 
 pub enum BrokerMessage {
-    FromServer(Result<QueryIO, IoError>),
+    FromServerWithId(PeerIdentifier, Result<QueryIO, IoError>),
     ToServer(CommandToServer),
 }
 impl BrokerMessage {
