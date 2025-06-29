@@ -59,7 +59,8 @@ impl<T> ClientController<T> {
                 let QueryIO::SimpleString(value) = query_io else {
                     return Response::FormatError;
                 };
-                match String::from_utf8_lossy(&value).parse::<i64>() {
+
+                match str::from_utf8(&value).unwrap().parse::<i64>() {
                     | Ok(int) => Response::Integer(int),
                     | Err(_) => {
                         Response::Error("ERR value is not an integer or out of range".into())

@@ -518,7 +518,7 @@ mod test {
 
         let key_value = bytes_handler.try_key_value().expect("Failed to extract key value expiry");
         assert_eq!(key_value.key(), "baz");
-        assert_eq!(String::from_utf8_lossy(key_value.value()), "qux");
+        assert_eq!(key_value.value(), "qux");
         assert!(key_value.expiry().is_none());
 
         assert!(bytes_handler.data.is_empty());
