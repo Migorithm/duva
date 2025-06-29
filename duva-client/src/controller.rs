@@ -5,6 +5,7 @@ use crate::broker::BrokerMessage;
 
 use duva::domains::query_io::QueryIO;
 use duva::prelude::anyhow;
+use duva::prelude::bytes::Bytes;
 use duva::prelude::tokio;
 use duva::prelude::tokio::sync::mpsc::Sender;
 use duva::prelude::uuid::Uuid;
@@ -49,15 +50,9 @@ impl<T> ClientController<T> {
             | ReplicaOf { .. }
             | ClusterInfo => match query_io {
                 | QueryIO::Null => Response::Null,
-                | QueryIO::SimpleString(value) => {
-                    Response::String(String::from_utf8_lossy(&value).into_owned())
-                },
-                | QueryIO::BulkString(value) => {
-                    Response::String(String::from_utf8_lossy(&value).into_owned())
-                },
-                | QueryIO::Err(value) => {
-                    Response::Error(String::from_utf8_lossy(&value).into_owned())
-                },
+                | QueryIO::SimpleString(value) => Response::String(value),
+                | QueryIO::BulkString(value) => Response::String(value),
+                | QueryIO::Err(value) => Response::Error(value),
                 | _err => Response::FormatError,
             },
             | Delete { .. } | Exists { .. } => {
@@ -79,9 +74,7 @@ impl<T> ClientController<T> {
                             s.split('|').next().unwrap_or_default().rsplit(':').next();
                         Response::Integer(s.unwrap().parse::<i64>().unwrap())
                     },
-                    | QueryIO::Err(value) => {
-                        Response::Error(String::from_utf8_lossy(&value).into_owned())
-                    },
+                    | QueryIO::Err(value) => Response::Error(value),
                     | QueryIO::BulkString(value) => {
                         Response::Integer(String::from_utf8_lossy(&value).parse::<i64>().unwrap())
                     },
@@ -96,25 +89,17 @@ impl<T> ClientController<T> {
             },
             | Set { .. } | SetWithExpiry { .. } => match query_io {
                 | QueryIO::SimpleString(_) => Response::String("OK".into()),
-                | QueryIO::Err(value) => {
-                    Response::Error(String::from_utf8_lossy(&value).into_owned())
-                },
+                | QueryIO::Err(value) => Response::Error(value),
                 | _ => Response::FormatError,
             },
             | ClusterMeet { .. } | ClusterReshard => match query_io {
                 | QueryIO::Null => Response::String("OK".into()),
-                | QueryIO::Err(value) => {
-                    Response::Error(String::from_utf8_lossy(&value).into_owned())
-                },
+                | QueryIO::Err(value) => Response::Error(value),
                 | _ => Response::FormatError,
             },
             | Append { .. } => match query_io {
-                | QueryIO::SimpleString(value) => {
-                    Response::String(String::from_utf8_lossy(&value).into_owned())
-                },
-                | QueryIO::Err(value) => {
-                    Response::Error(String::from_utf8_lossy(&value).into_owned())
-                },
+                | QueryIO::SimpleString(value) => Response::String(value),
+                | QueryIO::Err(value) => Response::Error(value),
                 | _ => Response::FormatError,
             },
             | Keys { .. } | MGet { .. } => {
@@ -126,11 +111,9 @@ impl<T> ClientController<T> {
                     let QueryIO::BulkString(value) = item else {
                         return Response::FormatError;
                     };
-                    keys.push(Response::String(format!(
-                        "{}) \"{}\"",
-                        i + 1,
-                        String::from_utf8_lossy(&value)
-                    )));
+                    keys.push(Response::String(
+                        format!("{}) \"{}\"", i + 1, String::from_utf8_lossy(&value)).into(),
+                    ));
                 }
                 Response::Array(keys)
             },
@@ -143,7 +126,7 @@ impl<T> ClientController<T> {
                     let QueryIO::BulkString(value) = item else {
                         return Response::FormatError;
                     };
-                    nodes.push(Response::String(String::from_utf8_lossy(&value).into_owned()));
+                    nodes.push(Response::String(value));
                 }
                 Response::Array(nodes)
             },
@@ -158,9 +141,9 @@ impl<T> ClientController<T> {
 enum Response {
     Null,
     FormatError,
-    String(String),
+    String(Bytes),
     Integer(i64),
-    Error(String),
+    Error(Bytes),
     Array(Vec<Response>),
 }
 
@@ -169,9 +152,13 @@ impl Display for Response {
         match self {
             | Response::Null => write!(f, "(nil)"),
             | Response::FormatError => write!(f, "Unexpected response format"),
-            | Response::String(value) => write!(f, "{value}"),
+            | Response::String(value) => {
+                write!(f, "{}", String::from_utf8_lossy(value).into_owned())
+            },
             | Response::Integer(value) => write!(f, "(integer) {value}"),
-            | Response::Error(value) => write!(f, "(error) {value}"),
+            | Response::Error(value) => {
+                write!(f, "(error) {}", String::from_utf8_lossy(value).into_owned())
+            },
             | Response::Array(responses) => {
                 if responses.is_empty() {
                     return write!(f, "(empty array)");
