@@ -60,8 +60,8 @@ impl<T> ClientController<T> {
                     return Response::FormatError;
                 };
 
-                match str::from_utf8(&value).unwrap().parse::<i64>() {
-                    | Ok(int) => Response::Integer(int),
+                match str::from_utf8(&value) {
+                    | Ok(int) => Response::Integer(int.to_string().into()),
                     | Err(_) => {
                         Response::Error("ERR value is not an integer or out of range".into())
                     },
@@ -73,12 +73,10 @@ impl<T> ClientController<T> {
                         let s = String::from_utf8_lossy(&value);
                         let s: Option<&str> =
                             s.split('|').next().unwrap_or_default().rsplit(':').next();
-                        Response::Integer(s.unwrap().parse::<i64>().unwrap())
+                        Response::Integer(s.unwrap().to_string().into())
                     },
                     | QueryIO::Err(value) => Response::Error(value),
-                    | QueryIO::BulkString(value) => {
-                        Response::Integer(String::from_utf8_lossy(&value).parse::<i64>().unwrap())
-                    },
+                    | QueryIO::BulkString(value) => Response::Integer(value),
                     | _ => Response::FormatError,
                 }
             },
@@ -143,7 +141,7 @@ enum Response {
     Null,
     FormatError,
     String(Bytes),
-    Integer(i64),
+    Integer(Bytes),
     Error(Bytes),
     Array(Vec<Response>),
 }
@@ -156,7 +154,9 @@ impl Display for Response {
             | Response::String(value) => {
                 write!(f, "{}", String::from_utf8_lossy(value).into_owned())
             },
-            | Response::Integer(value) => write!(f, "(integer) {value}"),
+            | Response::Integer(value) => {
+                write!(f, "(integer) {}", String::from_utf8_lossy(&value).parse::<i64>().unwrap())
+            },
             | Response::Error(value) => {
                 write!(f, "(error) {}", String::from_utf8_lossy(value).into_owned())
             },
