@@ -13,6 +13,7 @@ use chrono::Utc;
 use futures::StreamExt;
 use futures::future::join_all;
 use futures::stream::FuturesUnordered;
+use std::fmt::Display;
 use std::sync::Arc;
 use std::sync::atomic::AtomicU64;
 use std::{hash::Hasher, iter::Zip};
@@ -57,7 +58,7 @@ impl CacheManager {
     ) -> Result<String> {
         let value = String::from_utf8_lossy(cache_entry.value()).into_owned();
         self.select_shard(cache_entry.key()).send(CacheCommand::Set { cache_entry }).await?;
-        Ok(format!("s:{value}|idx:{current_idx}"))
+        Ok(IndexedValueCodec::encode(value, current_idx))
     }
 
     pub(crate) async fn route_mset(&self, cache_entries: Vec<CacheEntry>) {
@@ -297,7 +298,28 @@ impl CacheManager {
             .send(CacheCommand::NumericDetla { key, delta: arg, callback: tx })
             .await?;
         let current = rx.await?;
-        Ok(format!("s:{}|idx:{}", current?, current_idx))
+        Ok(IndexedValueCodec::encode(current?, current_idx))
+    }
+}
+
+pub struct IndexedValueCodec;
+impl IndexedValueCodec {
+    pub fn decode_value(s: std::borrow::Cow<'_, str>) -> Option<u64> {
+        s.split('|').next().and_then(|s| s.rsplit(':').next()).and_then(|id| id.parse::<u64>().ok())
+    }
+
+    pub fn decode_index(s: std::borrow::Cow<'_, str>) -> Option<u64> {
+        s.rsplit('|')
+            .next()
+            .and_then(|s| s.rsplit(':').next())
+            .and_then(|id| id.parse::<u64>().ok())
+    }
+
+    pub fn encode<T>(value: T, idx: u64) -> String
+    where
+        T: Display,
+    {
+        format!("s:{value}|idx:{idx}")
     }
 }
 

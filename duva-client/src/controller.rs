@@ -3,6 +3,7 @@ use std::fmt::Display;
 use crate::broker::Broker;
 use crate::broker::BrokerMessage;
 
+use duva::domains::caches::cache_manager::IndexedValueCodec;
 use duva::domains::query_io::QueryIO;
 use duva::prelude::anyhow;
 use duva::prelude::bytes::Bytes;
@@ -71,8 +72,7 @@ impl<T> ClientController<T> {
                 match query_io {
                     | QueryIO::SimpleString(value) => {
                         let s = String::from_utf8_lossy(&value);
-                        let s: Option<&str> =
-                            s.split('|').next().unwrap_or_default().rsplit(':').next();
+                        let s: Option<u64> = IndexedValueCodec::decode_value(s);
                         Response::Integer(s.unwrap().to_string().into())
                     },
                     | QueryIO::Err(value) => Response::Error(value),
