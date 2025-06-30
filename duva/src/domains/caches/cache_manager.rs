@@ -56,7 +56,7 @@ impl CacheManager {
         cache_entry: CacheEntry,
         current_idx: u64,
     ) -> Result<String> {
-        let value = String::from_utf8_lossy(cache_entry.value()).into_owned();
+        let value = String::from_utf8_lossy(&cache_entry.value().as_bytes()).into_owned();
         self.select_shard(cache_entry.key()).send(CacheCommand::Set { cache_entry }).await?;
         Ok(IndexedValueCodec::encode(value, current_idx))
     }
@@ -94,7 +94,7 @@ impl CacheManager {
     pub(crate) async fn apply_log(&self, msg: WriteRequest, log_index: u64) -> Result<()> {
         match msg {
             | WriteRequest::Set { key, value, expires_at } => {
-                let mut cache_entry = CacheEntry::new(key, value);
+                let mut cache_entry = CacheEntry::new(key, value.as_str());
                 if let Some(expires_at) = expires_at {
                     cache_entry = cache_entry
                         .with_expiry(StoredDuration::Milliseconds(expires_at).to_datetime());
@@ -304,8 +304,8 @@ impl CacheManager {
 
 pub struct IndexedValueCodec;
 impl IndexedValueCodec {
-    pub fn decode_value(s: std::borrow::Cow<'_, str>) -> Option<u64> {
-        s.split('|').next().and_then(|s| s.rsplit(':').next()).and_then(|id| id.parse::<u64>().ok())
+    pub fn decode_value(s: std::borrow::Cow<'_, str>) -> Option<i64> {
+        s.split('|').next().and_then(|s| s.rsplit(':').next()).and_then(|id| id.parse::<i64>().ok())
     }
 
     pub fn decode_index(s: std::borrow::Cow<'_, str>) -> Option<u64> {
@@ -337,8 +337,9 @@ mod tests {
         let cache_manager = CacheManager::run_cache_actors(hwm);
 
         // Create many entries that should be distributed across different shards
-        let entries: Vec<CacheEntry> =
-            (0..50).map(|i| CacheEntry::new(format!("key_{i}"), format!("value_{i}"))).collect();
+        let entries: Vec<CacheEntry> = (0..50)
+            .map(|i| CacheEntry::new(format!("key_{i}"), format!("value_{i}").as_str()))
+            .collect();
 
         // WHEN: We call route_bulk_set
         cache_manager.route_mset(entries).await;
@@ -350,7 +351,7 @@ mod tests {
             let expected_value = format!("value_{i}");
 
             let retrieved_value = cache_manager.route_get(&key).await.unwrap();
-            assert_eq!(retrieved_value, Some(CacheValue::new(expected_value)));
+            assert_eq!(retrieved_value, Some(CacheValue::new(expected_value.as_str())));
         }
     }
 

@@ -196,7 +196,7 @@ impl From<Vec<String>> for QueryIO {
 impl From<Option<CacheValue>> for QueryIO {
     fn from(v: Option<CacheValue>) -> Self {
         match v {
-            | Some(cache_value) => QueryIO::BulkString(cache_value.value),
+            | Some(cache_value) => QueryIO::BulkString(cache_value.value.to_bytes()),
             | None => QueryIO::Null,
         }
     }

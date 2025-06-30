@@ -1,4 +1,4 @@
-use crate::domains::caches::cache_objects::{CacheEntry, CacheValue};
+use crate::domains::caches::cache_objects::{CacheEntry, CacheValue, ValueKind};
 use crate::domains::cluster_actors::replication::ReplicationId;
 use crate::domains::saves::endec::{
     DATABASE_SECTION_INDICATOR, DATABASE_TABLE_SIZE_INDICATOR,
@@ -303,7 +303,7 @@ impl BytesDecoder<'_, MetadataReady> {
                 //0b11111110
                 | STRING_VALUE_TYPE_INDICATOR => {
                     let (key, value) = self.try_extract_key_bytes()?;
-                    let mut cache_value = CacheValue::new(value);
+                    let mut cache_value = CacheValue::new(ValueKind::String(value));
                     if let Some(expiry) = expiry {
                         cache_value = cache_value.with_expiry(expiry);
                     }
@@ -392,10 +392,6 @@ impl<T> DerefMut for BytesDecoder<'_, T> {
 #[cfg(test)]
 mod test {
     use super::*;
-
-    fn as_str(cache_entry: &CacheEntry) -> String {
-        String::from_utf8_lossy(cache_entry.value()).to_string()
-    }
 
     #[test]
     fn test_size_decoding() {
@@ -494,11 +490,11 @@ mod test {
 
         let cache_entry = &db_section.storage[0];
         assert_eq!(cache_entry.key(), "foobar");
-        assert_eq!(cache_entry.value(), "bazqux");
+        assert_eq!(*cache_entry.value(), "bazqux");
 
         let cache_entry = &db_section.storage[1];
         assert_eq!(cache_entry.key(), "foo");
-        assert_eq!(cache_entry.value(), "bar");
+        assert_eq!(*cache_entry.value(), "bar");
         assert!(cache_entry.expiry().is_some());
         assert_eq!(
             cache_entry.expiry().unwrap(),
@@ -518,7 +514,7 @@ mod test {
 
         let key_value = bytes_handler.try_key_value().expect("Failed to extract key value expiry");
         assert_eq!(key_value.key(), "baz");
-        assert_eq!(key_value.value(), "qux");
+        assert_eq!(*key_value.value(), "qux");
         assert!(key_value.expiry().is_none());
 
         assert!(bytes_handler.data.is_empty());
@@ -540,7 +536,7 @@ mod test {
         let key_value = bytes_handler.try_key_value().unwrap();
 
         assert_eq!(key_value.key(), "baz");
-        assert_eq!(as_str(&key_value), "qux");
+        assert_eq!(*key_value.value(), "qux");
         assert!(key_value.expiry().is_some());
         assert!(bytes_handler.data.is_empty());
     }
@@ -559,7 +555,7 @@ mod test {
 
         let key_value = bytes_handler.try_key_value().unwrap();
         assert_eq!(key_value.key(), "baz");
-        assert_eq!(as_str(&key_value), "qux");
+        assert_eq!(*key_value.value(), "qux");
         assert!(key_value.expiry().is_some());
     }
 
@@ -681,11 +677,11 @@ mod test {
 
         let cache_entry = &rdb_file.database[0].storage[0];
         assert_eq!(cache_entry.key(), "foo2");
-        assert_eq!(cache_entry.value(), "bar2");
+        assert_eq!(*cache_entry.value(), "bar2");
 
         let cache_entry = &rdb_file.database[0].storage[1];
         assert_eq!(cache_entry.key(), "foo");
-        assert_eq!(cache_entry.value(), "bar");
+        assert_eq!(*cache_entry.value(), "bar");
         assert!(cache_entry.expiry().is_none());
 
         assert_eq!(rdb_file.checksum, vec![0x60, 0x82, 0x9C, 0xF8, 0xFB, 0x2E, 0x7F, 0xEB]);
