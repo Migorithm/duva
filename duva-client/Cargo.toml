@@ -6,7 +6,7 @@ edition = "2024"
 [dependencies]
 duva = { path = "../duva" }
 clap = { version = "*", features = ["derive"] }
-rustyline = { version = "15.0.0", features = [
+rustyline = { version = "16.0.0", features = [
     "rusqlite",
     "with-sqlite-history",
     "derive",
