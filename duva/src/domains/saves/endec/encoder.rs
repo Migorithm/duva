@@ -143,7 +143,7 @@ fn encode_size(size: usize) -> Result<Vec<u8>> {
 #[cfg(test)]
 mod test {
     use crate::domains::{
-        caches::cache_objects::ValueKind,
+        caches::cache_objects::TypedValue,
         cluster_actors::replication::ReplicationId,
         saves::endec::{
             StoredDuration,
@@ -405,7 +405,7 @@ mod test {
         let binary_data = vec![0xFF, 0xFE, 0xFD, 0xFC, 0xFB];
         let value = CacheEntry::new(
             "binary_key",
-            ValueKind::String(bytes::Bytes::from(binary_data.clone())),
+            TypedValue::String(bytes::Bytes::from(binary_data.clone())),
         );
         let encoded = value.encode_with_key().unwrap();
 

@@ -1,6 +1,6 @@
 use super::cache_objects::{CacheEntry, CacheValue};
 use super::command::CacheCommand;
-use crate::domains::caches::cache_objects::ValueKind;
+use crate::domains::caches::cache_objects::TypedValue;
 use crate::domains::caches::lru_cache::LruCache;
 use crate::domains::caches::read_queue::ReadQueue;
 use crate::make_smart_pointer;
@@ -87,7 +87,7 @@ impl CacheActor {
         // Convert current value to string, append, then convert back to Bytes
         let mut current_str = String::from_utf8_lossy(&val.value.as_bytes()).to_string();
         current_str.push_str(value.as_str());
-        val.value = ValueKind::String(Bytes::from(current_str));
+        val.value = TypedValue::String(Bytes::from(current_str));
 
         let _ = callback.send(Ok(val.value.as_bytes().len()));
     }
@@ -107,7 +107,7 @@ impl CacheActor {
         };
 
         let _ = callback.send(Ok(curr + delta));
-        val.value = ValueKind::String(Bytes::from((curr + delta).to_string()));
+        val.value = TypedValue::String(Bytes::from((curr + delta).to_string()));
     }
 }
 

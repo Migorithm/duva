@@ -1,4 +1,4 @@
-use crate::domains::caches::cache_objects::{CacheEntry, CacheValue, ValueKind};
+use crate::domains::caches::cache_objects::{CacheEntry, CacheValue, TypedValue};
 use crate::domains::cluster_actors::replication::ReplicationId;
 use crate::domains::saves::endec::{
     DATABASE_SECTION_INDICATOR, DATABASE_TABLE_SIZE_INDICATOR,
@@ -303,7 +303,7 @@ impl BytesDecoder<'_, MetadataReady> {
                 //0b11111110
                 | STRING_VALUE_TYPE_INDICATOR => {
                     let (key, value) = self.try_extract_key_bytes()?;
-                    let mut cache_value = CacheValue::new(ValueKind::String(value));
+                    let mut cache_value = CacheValue::new(TypedValue::String(value));
                     if let Some(expiry) = expiry {
                         cache_value = cache_value.with_expiry(expiry);
                     }

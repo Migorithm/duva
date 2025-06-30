@@ -326,7 +326,7 @@ impl<'a, K: Eq + Hash + Debug + Clone, V: Debug + Clone + THasExpiry> VacantEntr
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domains::caches::cache_objects::{CacheValue, ValueKind};
+    use crate::domains::caches::cache_objects::{CacheValue, TypedValue};
     use bytes::Bytes;
     use chrono::Utc;
 
@@ -553,7 +553,7 @@ mod tests {
         // Insert and modify via entry
         {
             let value = cache.entry(1).or_insert(CacheValue::new("original"));
-            value.value = ValueKind::String(Bytes::from("modified"));
+            value.value = TypedValue::String(Bytes::from("modified"));
         }
 
         // Verify modification persisted
@@ -573,7 +573,7 @@ mod tests {
         // Modify first key via entry (should move to head)
         {
             let value = cache.entry(1).or_insert(CacheValue::new("unused"));
-            value.value = ValueKind::String(Bytes::from("one_modified"));
+            value.value = TypedValue::String(Bytes::from("one_modified"));
         }
 
         // Insert third key (should evict key 2, since 1 is now MRU)
