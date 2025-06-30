@@ -92,7 +92,7 @@ mod test {
 
     struct S(Sender<CacheCommand>);
     impl S {
-        async fn set(&self, key: String, value: String) {
+        async fn set(&self, key: String, value: &str) {
             self.0
                 .send(CacheCommand::Set { cache_entry: CacheEntry::new(key, value) })
                 .await
@@ -135,11 +135,11 @@ mod test {
         let cache = S(cache);
 
         let key = "key".to_string();
-        let value = "value".to_string();
+        let value = "value";
         let (tx1, rx1) = oneshot::channel();
         let (tx2, rx2) = oneshot::channel();
 
-        cache.set(key.clone(), value.clone()).await;
+        cache.set(key.clone(), value).await;
         cache.index_get(key.clone(), 0, tx1).await;
         cache.index_get(key.clone(), 1, tx2).await;
 
@@ -147,7 +147,7 @@ mod test {
         let res1 = tokio::spawn(rx1);
         let res2 = tokio::spawn(rx2);
 
-        assert_eq!(res1.await.unwrap().unwrap(), Some(CacheValue::new(value.clone())));
+        assert_eq!(res1.await.unwrap().unwrap(), Some(CacheValue::new(value)));
 
         let timeout = timeout(Duration::from_millis(1000), res2);
         assert!(timeout.await.is_err());
@@ -169,8 +169,8 @@ mod test {
         let cache = S(cache);
 
         let key = "key".to_string();
-        let value = "value".to_string();
-        cache.set(key.clone(), value.clone()).await;
+        let value = "value";
+        cache.set(key.clone(), value).await;
 
         // ! Fail when hwm wasn't updated and ping was not sent
         let (fail_t, fail_r) = oneshot::channel();
@@ -204,8 +204,8 @@ mod test {
         // WHEN
         let cache = S(cache);
 
-        cache.set("key".to_string().clone(), "value".to_string().clone()).await;
-        cache.set("key1".to_string().clone(), "value1".to_string().clone()).await;
+        cache.set("key".to_string().clone(), "value").await;
+        cache.set("key1".to_string().clone(), "value1").await;
         cache.drop().await;
 
         // THEN

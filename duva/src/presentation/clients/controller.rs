@@ -27,14 +27,14 @@ impl ClientController {
             | ClientAction::Echo(val) => QueryIO::BulkString(val.into()),
             | ClientAction::Set { key, value } => QueryIO::SimpleString(
                 self.cache_manager
-                    .route_set(CacheEntry::new(key, value), current_index.unwrap())
+                    .route_set(CacheEntry::new(key, value.as_str()), current_index.unwrap())
                     .await?
                     .into(),
             ),
             | ClientAction::SetWithExpiry { key, value, expiry } => QueryIO::SimpleString(
                 self.cache_manager
                     .route_set(
-                        CacheEntry::new(key, value).with_expiry(expiry),
+                        CacheEntry::new(key, value.as_str()).with_expiry(expiry),
                         current_index.unwrap(),
                     )
                     .await?
@@ -71,7 +71,9 @@ impl ClientController {
                     res.into_iter()
                         .map(|entry| {
                             entry
-                                .map(|entry| String::from_utf8_lossy(entry.value()).to_string())
+                                .map(|entry| {
+                                    String::from_utf8_lossy(&entry.value().as_bytes()).to_string()
+                                })
                                 .into()
                         })
                         .collect(),

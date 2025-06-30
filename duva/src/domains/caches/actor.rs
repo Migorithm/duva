@@ -1,6 +1,6 @@
 use super::cache_objects::{CacheEntry, CacheValue};
 use super::command::CacheCommand;
-
+use crate::domains::caches::cache_objects::TypedValue;
 use crate::domains::caches::lru_cache::LruCache;
 use crate::domains::caches::read_queue::ReadQueue;
 use crate::make_smart_pointer;
@@ -82,17 +82,14 @@ impl CacheActor {
         value: String,
         callback: oneshot::Sender<anyhow::Result<usize>>,
     ) {
-        let val = self
-            .cache
-            .entry(key.clone())
-            .or_insert(CacheValue { value: Bytes::from(""), expiry: None });
+        let val = self.cache.entry(key.clone()).or_insert(CacheValue::new(""));
 
         // Convert current value to string, append, then convert back to Bytes
-        let mut current_str = String::from_utf8_lossy(&val.value).to_string();
+        let mut current_str = String::from_utf8_lossy(&val.value.as_bytes()).to_string();
         current_str.push_str(value.as_str());
-        val.value = Bytes::from(current_str);
+        val.value = TypedValue::String(Bytes::from(current_str));
 
-        let _ = callback.send(Ok(val.value.len()));
+        let _ = callback.send(Ok(val.value.as_bytes().len()));
     }
 
     pub(crate) fn numeric_delta(
@@ -101,20 +98,16 @@ impl CacheActor {
         delta: i64,
         callback: oneshot::Sender<anyhow::Result<i64>>,
     ) {
-        let val = self
-            .cache
-            .entry(key.clone())
-            .or_insert(CacheValue { value: Bytes::from("0"), expiry: None });
+        let val = self.cache.entry(key.clone()).or_insert(CacheValue::new("0"));
 
-        let current_str = String::from_utf8_lossy(&val.value);
-        let Ok(curr) = current_str.parse::<i64>() else {
+        let Ok(curr) = String::from_utf8_lossy(&val.value().as_bytes()).parse::<i64>() else {
             let _ =
                 callback.send(Err(anyhow::anyhow!("ERR value is not an integer or out of range")));
             return;
         };
 
         let _ = callback.send(Ok(curr + delta));
-        val.value = Bytes::from((curr + delta).to_string());
+        val.value = TypedValue::String(Bytes::from((curr + delta).to_string()));
     }
 }
 

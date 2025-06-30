@@ -150,7 +150,7 @@ async fn follower_cluster_actor_sessionless_replicate_state() {
             match message {
                 | CacheCommand::Set { cache_entry } => {
                     let (key, value) = cache_entry.destructure();
-                    assert_eq!(value.value(), "bar");
+                    assert_eq!(*value.value(), "bar");
                     if key == "foo2" {
                         break;
                     }
@@ -230,7 +230,7 @@ async fn follower_cluster_actor_replicate_state_only_upto_hwm() {
                     let (key, value) = cache_entry.destructure();
                     if key == "foo" {
                         received_foo = true;
-                        assert_eq!(value.value(), "bar");
+                        assert_eq!(*value.value(), "bar");
                     } else if key == "foo2" {
                         // This should not happen in our test
                         panic!("foo2 should not be applied yet");

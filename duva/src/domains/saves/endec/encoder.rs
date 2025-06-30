@@ -24,7 +24,7 @@ impl CacheEntry {
         }
 
         result.push(STRING_VALUE_TYPE_INDICATOR);
-        result.extend_from_slice(&encode_key_bytes(&key, value.value())?);
+        result.extend_from_slice(&encode_key_bytes(&key, &value.value().as_bytes())?);
 
         Ok(result)
     }
@@ -74,7 +74,7 @@ pub(crate) fn encode_checksum(checksum: &[u8]) -> Result<Vec<u8>> {
     Ok(result)
 }
 
-fn encode_key_bytes(key: &str, value: &bytes::Bytes) -> Result<Vec<u8>> {
+fn encode_key_bytes(key: &str, value: &[u8]) -> Result<Vec<u8>> {
     let mut result = Vec::new();
     let key = encode_string(key.len(), key)?;
     let value = encode_bytes(value.len(), value)?;
@@ -109,7 +109,7 @@ fn encode_string(size: usize, value: &str) -> Result<Vec<u8>> {
     Ok(result)
 }
 
-fn encode_bytes(size: usize, value: &bytes::Bytes) -> Result<Vec<u8>> {
+fn encode_bytes(size: usize, value: &[u8]) -> Result<Vec<u8>> {
     let mut result = encode_size(size)?;
     // Append the bytes directly without string conversion
     result.extend_from_slice(value);
@@ -143,6 +143,7 @@ fn encode_size(size: usize) -> Result<Vec<u8>> {
 #[cfg(test)]
 mod test {
     use crate::domains::{
+        caches::cache_objects::TypedValue,
         cluster_actors::replication::ReplicationId,
         saves::endec::{
             StoredDuration,
@@ -402,7 +403,10 @@ mod test {
     fn test_cache_value_encode_with_binary_data() {
         // Test with binary data that's not valid UTF-8
         let binary_data = vec![0xFF, 0xFE, 0xFD, 0xFC, 0xFB];
-        let value = CacheEntry::new("binary_key", bytes::Bytes::from(binary_data.clone()));
+        let value = CacheEntry::new(
+            "binary_key",
+            TypedValue::String(bytes::Bytes::from(binary_data.clone())),
+        );
         let encoded = value.encode_with_key().unwrap();
 
         // Decode and verify using the proper decoder
@@ -416,6 +420,6 @@ mod test {
 
         let decoded_entry = decoder.try_key_value().unwrap();
         assert_eq!(decoded_entry.key(), "binary_key");
-        assert_eq!(decoded_entry.value().to_vec(), binary_data);
+        assert_eq!(decoded_entry.value().as_bytes(), binary_data);
     }
 }

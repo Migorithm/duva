@@ -355,8 +355,8 @@ async fn test_migrate_keys_retrieves_actual_data() {
     let retrieved_value_2 = cache_manager.route_get("test_key_2").await.unwrap();
     assert!(retrieved_value_1.is_some());
     assert!(retrieved_value_2.is_some());
-    assert_eq!(retrieved_value_1.unwrap().value(), "value_1");
-    assert_eq!(retrieved_value_2.unwrap().value(), "value_2");
+    assert_eq!(*retrieved_value_1.unwrap().value(), "value_1");
+    assert_eq!(*retrieved_value_2.unwrap().value(), "value_2");
 
     // Callback should not be called since migration is not completed
     let result = tokio::time::timeout(Duration::from_millis(100), callback_rx).await;

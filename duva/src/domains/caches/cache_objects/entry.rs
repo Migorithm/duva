@@ -3,18 +3,19 @@ use bincode::{
     BorrowDecode,
     error::{DecodeError, EncodeError},
 };
-use bytes::Bytes;
 use chrono::{DateTime, Utc};
 use std::time::Duration;
 
+use crate::domains::caches::cache_objects::{CacheValue, TypedValue};
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CacheEntry {
-    key: String,
-    value: CacheValue,
+    pub(crate) key: String,
+    pub(crate) value: CacheValue,
 }
 
 impl CacheEntry {
-    pub(crate) fn new(key: impl Into<String>, value: impl Into<Bytes>) -> Self {
+    pub(crate) fn new(key: impl Into<String>, value: impl Into<TypedValue>) -> Self {
         Self { key: key.into(), value: CacheValue::new(value) }
     }
 
@@ -40,7 +41,7 @@ impl CacheEntry {
     pub(crate) fn key(&self) -> &str {
         &self.key
     }
-    pub(crate) fn value(&self) -> &Bytes {
+    pub(crate) fn value(&self) -> &TypedValue {
         self.value.value()
     }
 
@@ -61,39 +62,6 @@ impl CacheEntry {
 
     pub(crate) fn destructure(self) -> (String, CacheValue) {
         (self.key, self.value)
-    }
-}
-
-#[derive(Debug, PartialEq, Eq, Clone)]
-pub struct CacheValue {
-    pub(crate) value: Bytes,
-    pub(crate) expiry: Option<DateTime<Utc>>,
-}
-
-impl CacheValue {
-    pub(crate) fn new(value: impl Into<Bytes>) -> Self {
-        Self { value: value.into(), expiry: None }
-    }
-    pub(crate) fn with_expiry(self, expiry: DateTime<Utc>) -> Self {
-        Self { expiry: Some(expiry), ..self }
-    }
-
-    pub(crate) fn value(&self) -> &Bytes {
-        &self.value
-    }
-
-    pub(crate) fn to_cache_entry(&self, key: &str) -> CacheEntry {
-        CacheEntry { key: key.to_string(), value: self.clone() }
-    }
-}
-
-pub(crate) trait THasExpiry {
-    fn has_expiry(&self) -> bool;
-}
-
-impl THasExpiry for CacheValue {
-    fn has_expiry(&self) -> bool {
-        self.expiry.is_some()
     }
 }
 
@@ -120,37 +88,6 @@ impl<'de, Ctx> BorrowDecode<'de, Ctx> for CacheEntry {
         let key: String = BorrowDecode::borrow_decode(decoder)?;
         let value: CacheValue = BorrowDecode::borrow_decode(decoder)?;
         Ok(CacheEntry { key, value })
-    }
-}
-
-impl bincode::Encode for CacheValue {
-    fn encode<E: bincode::enc::Encoder>(&self, encoder: &mut E) -> Result<(), EncodeError> {
-        bincode::Encode::encode(&self.value.to_vec(), encoder)?;
-        let expiry_timestamp = self.expiry.map(|dt| dt.timestamp_millis());
-        bincode::Encode::encode(&expiry_timestamp, encoder)?;
-        Ok(())
-    }
-}
-
-impl<Ctx> bincode::Decode<Ctx> for CacheValue {
-    fn decode<D: bincode::de::Decoder>(decoder: &mut D) -> Result<Self, DecodeError> {
-        let value_bytes: Vec<u8> = bincode::Decode::decode(decoder)?;
-        let value = Bytes::from(value_bytes);
-        let expiry_timestamp: Option<i64> = bincode::Decode::decode(decoder)?;
-        let expiry = expiry_timestamp.map(|ts| DateTime::from_timestamp_millis(ts).unwrap());
-        Ok(CacheValue { value, expiry })
-    }
-}
-
-impl<'de, Ctx> BorrowDecode<'de, Ctx> for CacheValue {
-    fn borrow_decode<D: bincode::de::BorrowDecoder<'de>>(
-        decoder: &mut D,
-    ) -> Result<Self, DecodeError> {
-        let value_bytes: Vec<u8> = BorrowDecode::borrow_decode(decoder)?;
-        let value = Bytes::from(value_bytes);
-        let expiry_timestamp: Option<i64> = BorrowDecode::borrow_decode(decoder)?;
-        let expiry = expiry_timestamp.map(|ts| DateTime::from_timestamp_millis(ts).unwrap());
-        Ok(CacheValue { value, expiry })
     }
 }
 

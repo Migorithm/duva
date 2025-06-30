@@ -72,7 +72,7 @@ impl<T> ClientController<T> {
                 match query_io {
                     | QueryIO::SimpleString(value) => {
                         let s = String::from_utf8_lossy(&value);
-                        let s: Option<u64> = IndexedValueCodec::decode_value(s);
+                        let s: Option<i64> = IndexedValueCodec::decode_value(s);
                         Response::Integer(s.unwrap().to_string().into())
                     },
                     | QueryIO::Err(value) => Response::Error(value),
