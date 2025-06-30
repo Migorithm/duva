@@ -1,3 +1,8 @@
 [workspace]
 members = ["duva", "duva-client"]
 resolver = "2"
+
+
+[profile.release]
+codegen-units = 1
+lto = true
