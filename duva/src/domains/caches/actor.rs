@@ -82,10 +82,7 @@ impl CacheActor {
         value: String,
         callback: oneshot::Sender<anyhow::Result<usize>>,
     ) {
-        let val = self
-            .cache
-            .entry(key.clone())
-            .or_insert(CacheValue { value: Bytes::from(""), expiry: None });
+        let val = self.cache.entry(key.clone()).or_insert(CacheValue::new(Bytes::from("")));
 
         // Convert current value to string, append, then convert back to Bytes
         let mut current_str = String::from_utf8_lossy(&val.value).to_string();
@@ -101,10 +98,7 @@ impl CacheActor {
         delta: i64,
         callback: oneshot::Sender<anyhow::Result<i64>>,
     ) {
-        let val = self
-            .cache
-            .entry(key.clone())
-            .or_insert(CacheValue { value: Bytes::from("0"), expiry: None });
+        let val = self.cache.entry(key.clone()).or_insert(CacheValue::new(Bytes::from("0")));
 
         let current_str = String::from_utf8_lossy(&val.value);
         let Ok(curr) = current_str.parse::<i64>() else {
