@@ -153,6 +153,16 @@ impl Broker {
     // 2. after removed leader from topology, and connection is lost, then discover new leader from follower candidates (TopologyChange happened, no new leader in topology)
     // 3. after leader added to topology, and connection is lost, then do nothing (TopologyChange happened, new leader in topology)
     async fn discover_new_leader(&mut self, replication_id: ReplicationId) -> Result<(), IoError> {
+        // remove disconnected leader connection
+        let Some(peer_id) = self.topology.hash_ring.get_node_id(&replication_id) else {
+            return Err(IoError::Custom(format!(
+                "Failed to get peer id for replication id: {}",
+                replication_id
+            )));
+        };
+        self.leader_connections.remove_connection(peer_id).await;
+
+        // remove connections to nodes that are not in the topology anymore
         for node in self.topology.node_infos.clone() {
             if node.repl_id != replication_id.to_string() {
                 continue; // skip nodes with different replication id
@@ -160,7 +170,7 @@ impl Broker {
             if self.leader_connections.contains_key(&node.peer_id.clone().into()) {
                 continue; // skip already connected leader nodes, covers 1, 3
             }
-            if self.add_leader_connection(node).await {
+            if let Some(()) = self.add_leader_connection(node).await {
                 return Ok(());
             }
         }
@@ -180,13 +190,11 @@ impl Broker {
             }
             let _ = self.add_leader_connection(node).await;
         }
-        // remove connections to nodes that are not in the topology anymore
         self.leader_connections.remove_outdated_connections(
             self.topology.node_infos.iter().map(|n| n.peer_id.clone().into()).collect(),
-        );
+        ).await;
     }
-
-    async fn add_leader_connection(&mut self, node: NodeReplInfo) -> bool {
+    async fn add_leader_connection(&mut self, node: NodeReplInfo) -> Option<()> {
         let auth_req = AuthRequest {
             client_id: Some(self.client_id.to_string()),
             request_id: self.request_id,
@@ -194,17 +202,18 @@ impl Broker {
         let Ok((r, w, auth_response)) =
             Self::authenticate(&node.peer_id.clone().into(), Some(auth_req)).await
         else {
-            return false;
+            return None;
         };
-        if auth_response.connected_to_leader {
-            let kill_switch = r.run(self.tx.clone(), node.peer_id.clone().into());
-            let writer = w.run();
-            self.leader_connections.insert(node.peer_id.clone().into(), (kill_switch, writer));
-            println!("Added leader connection to node: {}", node.peer_id);
-            self.topology = auth_response.topology;
-            return true;
+        if !(auth_response.connected_to_leader) {
+            return None;
         }
-        false
+        let kill_switch = r.run(self.tx.clone(), node.repl_id.clone().into());
+        let writer = w.run();
+        self.leader_connections.insert(node.peer_id.clone().into(), (kill_switch, writer));
+        println!("Added leader connection to node: {}", node.peer_id);
+        self.topology = auth_response.topology;
+
+        Some(())
     }
 
     async fn determine_route(&mut self, command: &CommandToServer) -> Result<(), IoError> {
