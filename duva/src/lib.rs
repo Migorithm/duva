@@ -31,6 +31,7 @@ pub use config::ENV;
 pub mod prelude {
     pub use crate::domains::cluster_actors::actor::heartbeat_scheduler::LEADER_HEARTBEAT_INTERVAL_MAX;
     pub use crate::domains::cluster_actors::topology::Topology;
+    pub use crate::domains::cluster_actors::topology::NodeReplInfo;
     pub use crate::domains::peers::identifier::PeerIdentifier;
     pub use crate::presentation::clients::AuthRequest;
     pub use crate::presentation::clients::AuthResponse;
