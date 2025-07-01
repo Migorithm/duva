@@ -178,7 +178,8 @@ impl HashRing {
 
     pub fn get_node_id_for_key(&self, key: &str) -> Option<&PeerIdentifier> {
         let hash = fnv_1a_hash(key);
-        self.find_replid(hash).and_then(|replid| self.pnodes.get(replid))
+        println!("Hash for key '{}': {}", key, hash);
+        self.find_replid(hash).and_then(|repl_id| self.pnodes.get(repl_id))
     }
 
     pub fn get_replication_id(&self, peer_identifier: &PeerIdentifier) -> Option<ReplicationId> {
