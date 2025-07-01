@@ -473,6 +473,7 @@ mod test {
     use crate::domains::peers::command::BannedPeer;
     use crate::domains::peers::identifier::PeerIdentifier;
     use crate::domains::peers::peer::PeerState;
+    use crate::prelude::NodeReplInfo;
     use uuid::Uuid;
 
     #[test]
@@ -758,8 +759,18 @@ mod test {
     #[test]
     fn test_topology_change_serde() {
         //GIVEN
-        let connected_peers =
-            vec![PeerIdentifier::new("127.0.0.1", 6000), PeerIdentifier::new("127.0.0.1", 6001)];
+        let connected_peers = vec![
+            NodeReplInfo {
+                peer_id: "localhost:3333".into(),
+                repl_id: ReplicationId::Key(Uuid::now_v7().to_string()).to_string(),
+                repl_role: ReplicationRole::Follower.to_string(),
+            },
+            NodeReplInfo {
+                peer_id: "localhost:2222".into(),
+                repl_id: ReplicationId::Key(Uuid::now_v7().to_string()).to_string(),
+                repl_role: ReplicationRole::Follower.to_string(),
+            },
+        ];
         let hash_ring = HashRing::default();
         let node_infos = connected_peers
             .iter()
