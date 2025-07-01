@@ -3,16 +3,15 @@ use duva::{
     domains::interface::TRead,
     prelude::tokio::{self, net::tcp::OwnedReadHalf, sync::oneshot},
 };
-
-use crate::broker::BrokerMessage;
-use duva::prelude::PeerIdentifier;
+use duva::domains::cluster_actors::replication::ReplicationId;
+use crate::broker::{BrokerMessage};
 
 pub struct ServerStreamReader(pub(crate) OwnedReadHalf);
 impl ServerStreamReader {
-    pub fn run_with_id(
+    pub fn run(
         mut self,
         controller_sender: tokio::sync::mpsc::Sender<BrokerMessage>,
-        peer_id: PeerIdentifier,
+        replication_id: ReplicationId
     ) -> oneshot::Sender<()> {
         let (kill_trigger, kill_switch) = tokio::sync::oneshot::channel::<()>();
 
@@ -24,25 +23,23 @@ impl ServerStreamReader {
                     | Ok(query_ios) => {
                         for query_io in query_ios {
                             let message =
-                                BrokerMessage::FromServerWithId(peer_id.clone(), Ok(query_io));
+                                BrokerMessage::FromServer(query_io);
                             if controller_sender.send(message).await.is_err() {
                                 break;
                             }
                         }
                     },
                     | Err(IoError::ConnectionAborted) | Err(IoError::ConnectionReset) => {
-                        let message = BrokerMessage::FromServerWithId(
-                            peer_id.clone(),
-                            Err(IoError::ConnectionAborted),
+                        let message = BrokerMessage::FromServerError(
+                            replication_id.clone(),
+                            IoError::ConnectionAborted,
                         );
                         let _ = controller_sender.send(message).await;
-                        println!();
-                        println!("Connection reset or aborted for peer: {}", peer_id);
                         break;
                     },
 
                     | Err(e) => {
-                        let message = BrokerMessage::FromServerWithId(peer_id.clone(), Err(e));
+                        let message = BrokerMessage::FromServerError(replication_id.clone(), e);
                         if controller_sender.send(message).await.is_err() {
                             break;
                         }
