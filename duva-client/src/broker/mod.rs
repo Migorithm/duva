@@ -7,13 +7,15 @@ use crate::command::Input;
 
 use crate::broker::leader_connections::LeaderConnections;
 use duva::domains::caches::cache_manager::IndexedValueCodec;
-use duva::domains::{query_io::QueryIO, IoError};
+use duva::domains::cluster_actors::replication::{ReplicationId, ReplicationRole};
+use duva::domains::{IoError, query_io::QueryIO};
+use duva::prelude::anyhow::anyhow;
 use duva::prelude::tokio::net::TcpStream;
 use duva::prelude::tokio::sync::mpsc::Receiver;
 use duva::prelude::tokio::sync::mpsc::Sender;
 use duva::prelude::uuid::Uuid;
-use duva::prelude::{anyhow, Topology, LEADER_HEARTBEAT_INTERVAL_MAX};
-use duva::prelude::{tokio, PeerIdentifier};
+use duva::prelude::{LEADER_HEARTBEAT_INTERVAL_MAX, NodeReplInfo, Topology, anyhow};
+use duva::prelude::{PeerIdentifier, tokio};
 use duva::presentation::clients::request::ClientAction;
 use duva::{
     domains::TSerdeReadWrite,
@@ -39,6 +41,15 @@ impl Broker {
 
         let (broker_tx, rx) = tokio::sync::mpsc::channel::<BrokerMessage>(100);
 
+        let Some(replication_id) =
+            auth_response.topology.hash_ring.get_replication_id(&server_addr)
+        else {
+            return Err(anyhow!(
+                "Cannot connect to replica: {}, try to connect to Leader",
+                server_addr
+            ));
+        };
+
         Ok(Broker {
             tx: broker_tx.clone(),
             rx,
@@ -48,7 +59,7 @@ impl Broker {
             leader_connections: LeaderConnections::new(
                 server_addr.clone(),
                 w.run(),
-                r.run_with_id(broker_tx.clone(), server_addr.clone()),
+                r.run(broker_tx.clone(), replication_id),
             ),
         })
     }
@@ -56,12 +67,13 @@ impl Broker {
         let mut queue = InputQueue::default();
         while let Some(msg) = self.rx.recv().await {
             match msg {
-                | BrokerMessage::FromServerWithId(_, Ok(QueryIO::TopologyChange(topology))) => {
+                | BrokerMessage::FromServer(QueryIO::TopologyChange(topology)) => {
                     self.topology = topology;
-                    self.generate_leader_connections().await;
+                    self.update_leader_connections().await;
+                    println!("Topology updated: {:?}", self.topology);
                 },
 
-                | BrokerMessage::FromServerWithId(_, Ok(query_io)) => {
+                | BrokerMessage::FromServer(query_io) => {
                     let Some(input) = queue.pop() else {
                         continue;
                     };
@@ -74,38 +86,19 @@ impl Broker {
                         println!("Failed to send response to input callback");
                     });
                 },
-                | BrokerMessage::FromServerWithId(peer_id, Err(e)) => match e {
+                | BrokerMessage::FromServerError(repl_id, e) => match e {
                     | IoError::ConnectionAborted | IoError::ConnectionReset => {
-                        if self.leader_connections.is_main_leader(&peer_id) {
-                            // Main leader disconnected - discover new leader
-                            println!(
-                                "Main leader {} disconnected, discovering new leader",
-                                peer_id
-                            );
-                            tokio::time::sleep(tokio::time::Duration::from_millis(
-                                LEADER_HEARTBEAT_INTERVAL_MAX,
-                            ))
-                            .await;
-                            self.discover_leader().await.unwrap();
-                        } else {
-                            // Secondary leader disconnected - just remove from connections
-                            println!(
-                                "Secondary leader {} disconnected, removing from connections",
-                                peer_id
-                            );
-                            if let Some(connection) =
-                                self.leader_connections.remove_connection(&peer_id)
-                            {
-                                let _ = connection.writer.send(MsgToServer::Stop).await;
-                                let _ = connection.kill_switch.send(());
-                            }
-                        }
+                        tokio::time::sleep(tokio::time::Duration::from_millis(
+                            LEADER_HEARTBEAT_INTERVAL_MAX,
+                        ))
+                        .await;
+                        self.discover_new_leader(repl_id).await.unwrap();
                     },
                     | _ => {},
                 },
                 | BrokerMessage::ToServer(command) => {
                     if let Err(err) = self.determine_route(&command).await {
-                        println!("Failed to determine route for command: {:?}", err);
+                        println!("{:?}", err);
                     }
                     queue.push(command.input);
                 },
@@ -155,72 +148,63 @@ impl Broker {
         Ok((ServerStreamReader(r), ServerStreamWriter(w), auth_response))
     }
 
-    async fn replace_stream(&mut self, r: ServerStreamReader, w: ServerStreamWriter) {
-        if let Some(connection) = self.leader_connections.remove_main_connection() {
-            let _ = connection.writer.send(MsgToServer::Stop).await;
-            let _ = connection.kill_switch.send(());
-        }
-        let read_kill_switch =
-            r.run_with_id(self.tx.clone(), self.leader_connections.main_leader_id().clone());
-        let writer = w.run();
-        self.leader_connections
-            .add_connection(
-                self.leader_connections.main_leader_id().clone(),
-                writer,
-                read_kill_switch,
-            )
-            .unwrap();
-    }
-
     // pull-based leader discovery
-
-    async fn discover_leader(&mut self) -> Result<(), IoError> {
-        for node in self.topology.node_infos.iter().map(|n| n.peer_id.clone()) {
-            tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
-            println!("Trying to connect to node: {node}...");
-
-            let auth_req = AuthRequest {
-                client_id: Some(self.client_id.to_string()),
-                request_id: self.request_id,
-            };
-            let Ok((r, w, auth_response)) = Self::authenticate(&node, Some(auth_req)).await else {
-                continue;
-            };
-
-            if auth_response.connected_to_leader {
-                println!("Connected to a new leader: {node}");
-                self.replace_stream(r, w).await;
-                self.topology = auth_response.topology;
-
+    // 1. if leader connection is lost, then discover new leader from follower candidates (TopologyChange not happened, LeaderConnections not updated)
+    // 2. after removed leader from topology, and connection is lost, then discover new leader from follower candidates (TopologyChange happened, no new leader in topology)
+    // 3. after leader added to topology, and connection is lost, then do nothing (TopologyChange happened, new leader in topology)
+    async fn discover_new_leader(&mut self, replication_id: ReplicationId) -> Result<(), IoError> {
+        for node in self.topology.node_infos.clone() {
+            if node.repl_id != replication_id.to_string() {
+                continue; // skip nodes with different replication id
+            }
+            if self.leader_connections.contains_key(&node.peer_id.clone().into()) {
+                continue; // skip already connected leader nodes, covers 1, 3
+            }
+            if self.add_leader_connection(node).await {
                 return Ok(());
             }
         }
-        Err(IoError::Custom("No leader found in the cluster".to_string()))
+        Err(IoError::Custom(format!(
+            "Failed to discover new leader for replication id: {}",
+            replication_id
+        )))
     }
 
-    async fn generate_leader_connections(&mut self) {
-        for node in &self.topology.connected_peers {
-            if self.leader_connections.contains_key(node) {
-                continue;
+    async fn update_leader_connections(&mut self) {
+        for node in self.topology.node_infos.clone() {
+            if ReplicationRole::Leader != node.repl_role.clone().into() {
+                continue; // skip non-leader nodes
             }
-            tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
-            println!("Trying to connect to node: {}...", node);
-
-            let auth_req = AuthRequest {
-                client_id: Some(self.client_id.to_string()),
-                request_id: self.request_id,
-            };
-            let Ok((r, w, auth_response)) = Self::authenticate(node, Some(auth_req)).await else {
-                continue;
-            };
-            let kill_switch = r.run_with_id(self.tx.clone(), node.clone());
-            let writer = w.run();
-            self.leader_connections.insert(node.clone(), (kill_switch, writer));
-
-            if auth_response.connected_to_leader {
-                println!("Connected to leader: {}", node);
+            if self.leader_connections.contains_key(&node.peer_id.clone().into()) {
+                continue; // skip already connected nodes
             }
+            let _ = self.add_leader_connection(node).await;
         }
+        // remove connections to nodes that are not in the topology anymore
+        self.leader_connections.remove_outdated_connections(
+            self.topology.node_infos.iter().map(|n| n.peer_id.clone().into()).collect(),
+        );
+    }
+
+    async fn add_leader_connection(&mut self, node: NodeReplInfo) -> bool {
+        let auth_req = AuthRequest {
+            client_id: Some(self.client_id.to_string()),
+            request_id: self.request_id,
+        };
+        let Ok((r, w, auth_response)) =
+            Self::authenticate(&node.peer_id.clone().into(), Some(auth_req)).await
+        else {
+            return false;
+        };
+        if auth_response.connected_to_leader {
+            let kill_switch = r.run(self.tx.clone(), node.peer_id.clone().into());
+            let writer = w.run();
+            self.leader_connections.insert(node.peer_id.clone().into(), (kill_switch, writer));
+            println!("Added leader connection to node: {}", node.peer_id);
+            self.topology = auth_response.topology;
+            return true;
+        }
+        false
     }
 
     async fn determine_route(&mut self, command: &CommandToServer) -> Result<(), IoError> {
@@ -238,18 +222,10 @@ impl Broker {
             | ClientAction::MGet { keys } => self.route_command_by_keys(command, keys).await,
             | _ => {
                 let cmd = self.build_command_with_request_id(&command.command, &command.args);
-                let Some(main_connection) =
-                    self.leader_connections.get(self.leader_connections.main_leader_id())
-                else {
-                    return Err(IoError::Custom("Main connection not available".to_string()));
-                };
-                if let Err(e) =
-                    main_connection.send(MsgToServer::Command(cmd.as_bytes().to_vec())).await
-                {
-                    println!("Failed to send command: {}", e);
-                    return Err(IoError::Custom(format!("Failed to send command: {}", e)));
-                }
-                Ok(())
+                let connection = self.leader_connections.first();
+                connection.send(MsgToServer::Command(cmd.as_bytes().to_vec())).await.map_err(|e| {
+                    IoError::Custom(format!("Failed to send command: {}", e))
+                })
             },
         }
     }
@@ -309,7 +285,8 @@ impl Broker {
 }
 
 pub enum BrokerMessage {
-    FromServerWithId(PeerIdentifier, Result<QueryIO, IoError>),
+    FromServer(QueryIO),
+    FromServerError(ReplicationId, IoError),
     ToServer(CommandToServer),
 }
 impl BrokerMessage {
