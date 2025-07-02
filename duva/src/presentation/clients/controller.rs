@@ -2,7 +2,7 @@ use super::request::ClientRequest;
 use crate::config::ENV;
 use crate::domains::QueryIO;
 use crate::domains::caches::cache_manager::CacheManager;
-use crate::domains::caches::cache_objects::CacheEntry;
+use crate::domains::caches::cache_objects::{CacheEntry, CacheValue, TypedValue};
 use crate::domains::cluster_actors::{ClientMessage, ConsensusClientResponse, ConsensusRequest};
 use crate::domains::saves::actor::SaveTarget;
 use crate::prelude::PeerIdentifier;
@@ -69,12 +69,12 @@ impl ClientController {
                 let res = self.cache_manager.route_mget(keys).await;
                 QueryIO::Array(
                     res.into_iter()
-                        .map(|entry| {
-                            entry
-                                .map(|entry| {
-                                    String::from_utf8_lossy(&entry.value().as_bytes()).to_string()
-                                })
-                                .into()
+                        .map(|entry| match entry {
+                            | Some(CacheEntry {
+                                value: CacheValue { value: TypedValue::String(s), .. },
+                                ..
+                            }) => QueryIO::BulkString(s.into()),
+                            | _ => QueryIO::Null,
                         })
                         .collect(),
                 )

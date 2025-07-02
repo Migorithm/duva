@@ -5,10 +5,10 @@ use tokio::sync::{mpsc, oneshot};
 pub(crate) enum CacheCommand {
     Set { cache_entry: CacheEntry },
     Save { outbox: mpsc::Sender<SaveCommand> },
-    Get { key: String, callback: oneshot::Sender<Option<CacheValue>> },
+    Get { key: String, callback: oneshot::Sender<CacheValue> },
     Keys { pattern: Option<String>, callback: oneshot::Sender<Vec<String>> },
     Delete { key: String, callback: oneshot::Sender<bool> },
-    IndexGet { key: String, read_idx: u64, callback: oneshot::Sender<Option<CacheValue>> },
+    IndexGet { key: String, read_idx: u64, callback: oneshot::Sender<CacheValue> },
     Ping,
     Drop { callback: oneshot::Sender<()> },
     Exists { key: String, callback: oneshot::Sender<bool> },

@@ -1,4 +1,5 @@
 use crate::domains::QueryIO;
+use crate::domains::caches::cache_objects::{CacheValue, TypedValue};
 use crate::domains::cluster_actors::hash_ring::BatchId;
 use crate::domains::cluster_actors::hash_ring::{
     HashRing, MigrationTask, tests::migration_task_create_helper,
@@ -353,10 +354,9 @@ async fn test_migrate_keys_retrieves_actual_data() {
     // Verify data is still in cache (migration doesn't remove it yet)
     let retrieved_value_1 = cache_manager.route_get("test_key_1").await.unwrap();
     let retrieved_value_2 = cache_manager.route_get("test_key_2").await.unwrap();
-    assert!(retrieved_value_1.is_some());
-    assert!(retrieved_value_2.is_some());
-    assert_eq!(*retrieved_value_1.unwrap().value(), "value_1");
-    assert_eq!(*retrieved_value_2.unwrap().value(), "value_2");
+
+    assert_eq!(*retrieved_value_1.value(), "value_1");
+    assert_eq!(*retrieved_value_2.value(), "value_2");
 
     // Callback should not be called since migration is not completed
     let result = tokio::time::timeout(Duration::from_millis(100), callback_rx).await;
@@ -593,8 +593,15 @@ async fn test_handle_migration_ack_success_case_with_pending_reqs_and_migration(
     cache_manager.route_set(CacheEntry::new("migrate_key_2", "value_2"), 2).await.unwrap();
 
     // Verify keys exist before migration
-    assert!(cache_manager.route_get("migrate_key_1").await.unwrap().is_some());
-    assert!(cache_manager.route_get("migrate_key_2").await.unwrap().is_some());
+
+    assert!(matches!(
+        cache_manager.route_get("migrate_key_1").await,
+        Ok(CacheValue { value: TypedValue::String(_), .. })
+    ));
+    assert!(matches!(
+        cache_manager.route_get("migrate_key_2").await,
+        Ok(CacheValue { value: TypedValue::String(_), .. })
+    ));
 
     // Add the last pending migration with the test keys
     let (callback, callback_rx) = tokio::sync::oneshot::channel();
@@ -623,8 +630,15 @@ async fn test_handle_migration_ack_success_case_with_pending_reqs_and_migration(
     assert!(callback_result.is_ok());
 
     // Verify keys were deleted from cache after successful migration
-    assert!(cache_manager.route_get("migrate_key_1").await.unwrap().is_none());
-    assert!(cache_manager.route_get("migrate_key_2").await.unwrap().is_none());
+
+    assert!(matches!(
+        cache_manager.route_get("migrate_key_1").await,
+        Ok(CacheValue { value: TypedValue::Null, .. })
+    ));
+    assert!(matches!(
+        cache_manager.route_get("migrate_key_2").await,
+        Ok(CacheValue { value: TypedValue::Null, .. })
+    ));
 }
 
 // Verify that the start_rebalance -> maybe_update_hashring flow works.

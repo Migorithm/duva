@@ -1,4 +1,4 @@
-use crate::domains::caches::cache_objects::CacheValue;
+use crate::domains::caches::cache_objects::{CacheValue, TypedValue};
 use crate::domains::cluster_actors::replication::{ReplicationId, ReplicationRole};
 use crate::domains::cluster_actors::topology::Topology;
 use crate::domains::operation_logs::WriteOperation;
@@ -193,11 +193,15 @@ impl From<Vec<String>> for QueryIO {
         QueryIO::Array(value.into_iter().map(Into::into).collect())
     }
 }
-impl From<Option<CacheValue>> for QueryIO {
-    fn from(v: Option<CacheValue>) -> Self {
+impl From<CacheValue> for QueryIO {
+    fn from(v: CacheValue) -> Self {
         match v {
-            | Some(cache_value) => QueryIO::BulkString(cache_value.value.to_bytes()),
-            | None => QueryIO::Null,
+            | CacheValue { value: TypedValue::Null, .. } => QueryIO::Null,
+            | CacheValue { value: TypedValue::String(s), .. } => QueryIO::BulkString(s),
+            // TODO rendering full list at once is not supported yet
+            | CacheValue { value: TypedValue::List(b), .. } => {
+                panic!("List is not supported");
+            },
         }
     }
 }

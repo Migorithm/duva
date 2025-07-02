@@ -7,7 +7,7 @@ use chrono::{DateTime, Utc};
 
 use crate::domains::caches::cache_objects::{CacheEntry, THasExpiry};
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Default)]
 pub struct CacheValue {
     pub(crate) value: TypedValue,
     pub(crate) expiry: Option<DateTime<Utc>>,
@@ -30,8 +30,10 @@ impl CacheValue {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Default)]
 pub enum TypedValue {
+    #[default]
+    Null,
     String(Bytes),
     List(Vec<Bytes>),
 }
@@ -49,22 +51,15 @@ impl From<Vec<&str>> for TypedValue {
 }
 
 impl TypedValue {
-    pub fn as_bytes(&self) -> &[u8] {
+    pub fn as_bytes(&self) -> anyhow::Result<&[u8]> {
         match self {
-            | TypedValue::String(b) => b,
-            | TypedValue::List(_) => panic!("Cannot call as_bytes on List variant"),
-        }
-    }
-    pub fn to_bytes(self) -> Bytes {
-        match self {
-            | TypedValue::String(b) => b,
-            | TypedValue::List(_) => panic!("Cannot call to_bytes on List variant"),
-        }
-    }
-    pub fn as_list(&self) -> Option<&[Bytes]> {
-        match self {
-            | TypedValue::List(v) => Some(v),
-            | _ => None,
+            | TypedValue::String(b) => Ok(b.as_ref()),
+            | TypedValue::List(_) => Err(anyhow::anyhow!(
+                "WRONGTYPE Operation against a key holding the wrong kind of value"
+            )),
+            | TypedValue::Null => Err(anyhow::anyhow!(
+                "WRONGTYPE Operation against a key holding the wrong kind of value"
+            )),
         }
     }
 }
@@ -87,11 +82,13 @@ impl THasExpiry for CacheValue {
 impl bincode::Encode for CacheValue {
     fn encode<E: bincode::enc::Encoder>(&self, encoder: &mut E) -> Result<(), EncodeError> {
         let kind = match &self.value {
-            | TypedValue::String(_) => 0u8,
-            | TypedValue::List(_) => 1u8,
+            | TypedValue::Null => 0u8,
+            | TypedValue::String(_) => 1u8,
+            | TypedValue::List(_) => 2u8,
         };
         bincode::Encode::encode(&kind, encoder)?;
         match &self.value {
+            | TypedValue::Null => bincode::Encode::encode(&Vec::<u8>::new(), encoder)?,
             | TypedValue::String(b) => bincode::Encode::encode(&b.to_vec(), encoder)?,
             | TypedValue::List(list) => {
                 let vec_of_vec: Vec<Vec<u8>> = list.iter().map(|b| b.to_vec()).collect();
@@ -108,11 +105,12 @@ impl<Ctx> bincode::Decode<Ctx> for CacheValue {
     fn decode<D: bincode::de::Decoder>(decoder: &mut D) -> Result<Self, DecodeError> {
         let kind: u8 = bincode::Decode::decode(decoder)?;
         let value = match kind {
-            | 0 => {
+            | 0 => TypedValue::Null,
+            | 1 => {
                 let value_bytes: Vec<u8> = bincode::Decode::decode(decoder)?;
                 TypedValue::String(Bytes::from(value_bytes))
             },
-            | 1 => {
+            | 2 => {
                 let list: Vec<Vec<u8>> = bincode::Decode::decode(decoder)?;
                 TypedValue::List(list.into_iter().map(Bytes::from).collect())
             },
@@ -188,9 +186,8 @@ mod tests {
     }
 
     #[test]
-    #[should_panic]
-    fn test_as_bytes_panics_on_list() {
+    fn test_as_bytes_returns_err_on_list() {
         let tv = TypedValue::List(vec![Bytes::from("x")]);
-        let _ = tv.as_bytes();
+        assert!(tv.as_bytes().is_err());
     }
 }
