@@ -91,7 +91,7 @@ impl CacheActor {
     pub(crate) fn numeric_delta(&mut self, key: String, delta: i64) -> anyhow::Result<i64> {
         let val = self.cache.entry(key.clone()).or_insert(CacheValue::new("0"));
 
-        let curr = String::from_utf8_lossy(&val.value().as_bytes()?)
+        let curr = String::from_utf8_lossy(val.value().as_bytes()?)
             .parse::<i64>()
             .context("ERR value is not an integer or out of range")?;
 

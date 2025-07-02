@@ -114,7 +114,7 @@ impl<Ctx> bincode::Decode<Ctx> for CacheValue {
                 let list: Vec<Vec<u8>> = bincode::Decode::decode(decoder)?;
                 TypedValue::List(list.into_iter().map(Bytes::from).collect())
             },
-            | _ => return Err(DecodeError::Other("Unknown ValueKind variant".into())),
+            | _ => return Err(DecodeError::Other("Unknown ValueKind variant")),
         };
         let expiry_timestamp: Option<i64> = bincode::Decode::decode(decoder)?;
         let expiry = expiry_timestamp.map(|ts| DateTime::from_timestamp_millis(ts).unwrap());

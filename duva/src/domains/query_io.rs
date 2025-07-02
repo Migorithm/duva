@@ -199,7 +199,7 @@ impl From<CacheValue> for QueryIO {
             | CacheValue { value: TypedValue::Null, .. } => QueryIO::Null,
             | CacheValue { value: TypedValue::String(s), .. } => QueryIO::BulkString(s),
             // TODO rendering full list at once is not supported yet
-            | CacheValue { value: TypedValue::List(b), .. } => {
+            | CacheValue { value: TypedValue::List(_b), .. } => {
                 panic!("List is not supported");
             },
         }
