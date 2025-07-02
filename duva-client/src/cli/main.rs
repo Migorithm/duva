@@ -10,7 +10,7 @@ use duva::{
 };
 use duva_client::{
     broker::BrokerMessage,
-    command::{Input, separate_command_and_args},
+    command::{InputKind, separate_command_and_args},
     controller::ClientController,
 };
 
@@ -41,7 +41,7 @@ async fn main() -> anyhow::Result<()> {
         match extract_action(cmd, &args) {
             | Ok(input) => {
                 let (tx, rx) = oneshot::channel();
-                let input = Input::new(input, tx);
+                let input = InputKind::new(input, tx);
                 let _ = controller
                     .broker_tx
                     .send(BrokerMessage::from_command(cmd.into(), args, input))

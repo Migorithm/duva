@@ -3,7 +3,7 @@ mod leader_connections;
 mod read_stream;
 mod write_stream;
 
-use crate::command::Input;
+use crate::command::InputKind;
 
 use crate::broker::leader_connections::LeaderConnections;
 use duva::domains::caches::cache_manager::IndexedValueCodec;
@@ -70,7 +70,6 @@ impl Broker {
                 | BrokerMessage::FromServer(QueryIO::TopologyChange(topology)) => {
                     self.topology = topology;
                     self.update_leader_connections().await;
-                    println!("Topology updated: {:?}", self.topology);
                 },
 
                 | BrokerMessage::FromServer(query_io) => {
@@ -78,14 +77,37 @@ impl Broker {
                         continue;
                     };
 
-                    if let Some(index) = self.extract_req_id(&input.kind, &query_io) {
-                        self.request_id = index;
-                    };
+                    match input {
+                        | InputKind::SingleNodeInput { kind, callback } => {
+                            if let Some(index) = self.extract_req_id(&kind, &query_io) {
+                                self.request_id = index;
+                            };
 
-                    input.callback.send((input.kind, query_io)).unwrap_or_else(|_| {
-                        println!("Failed to send response to input callback");
-                    });
+                            callback.send((kind, query_io)).unwrap_or_else(|_| {
+                                println!("Failed to send response to input callback");
+                            });
+                        },
+                        | InputKind::MultipleNodesInput { kind, callback, mut results } => {
+                            results.push(query_io);
+                            if results.len() != self.leader_connections.len() {
+                                let input =
+                                    InputKind::MultipleNodesInput { kind, callback, results };
+                                queue.push(input);
+                            } else {
+                                let queries = results
+                                    .into_iter()
+                                    .reduce(|a, b| {
+                                        a.merge(b).expect("Either one of them should be array")
+                                    })
+                                    .unwrap();
+                                callback.send((kind, queries)).unwrap_or_else(|_| {
+                                    println!("Failed to send response to input callback");
+                                });
+                            }
+                        },
+                    }
                 },
+
                 | BrokerMessage::FromServerError(repl_id, e) => match e {
                     | IoError::ConnectionAborted | IoError::ConnectionReset => {
                         tokio::time::sleep(tokio::time::Duration::from_millis(
@@ -190,9 +212,11 @@ impl Broker {
             }
             let _ = self.add_leader_connection(node).await;
         }
-        self.leader_connections.remove_outdated_connections(
-            self.topology.node_infos.iter().map(|n| n.peer_id.clone().into()).collect(),
-        ).await;
+        self.leader_connections
+            .remove_outdated_connections(
+                self.topology.node_infos.iter().map(|n| n.peer_id.clone().into()).collect(),
+            )
+            .await;
     }
     async fn add_leader_connection(&mut self, node: NodeReplInfo) -> Option<()> {
         let auth_req = AuthRequest {
@@ -217,7 +241,7 @@ impl Broker {
     }
 
     async fn determine_route(&mut self, command: &CommandToServer) -> Result<(), IoError> {
-        match command.input.kind.clone() {
+        match command.input.kind().clone() {
             | ClientAction::Get { key }
             | ClientAction::Ttl { key }
             | ClientAction::Incr { key }
@@ -229,12 +253,24 @@ impl Broker {
             | ClientAction::Delete { keys }
             | ClientAction::Exists { keys }
             | ClientAction::MGet { keys } => self.route_command_by_keys(command, keys).await,
+            | ClientAction::Keys { pattern: _ } => {
+                let cmd = self.build_command_with_request_id(&command.command, &command.args);
+                for (peer_id, connection) in self.leader_connections.entries() {
+                    if let Err(e) =
+                        connection.send(MsgToServer::Command(cmd.as_bytes().to_vec())).await
+                    {
+                        return Err(IoError::Custom(format!("Failed to send command: {}", e)));
+                    }
+                }
+                Ok(())
+            },
             | _ => {
                 let cmd = self.build_command_with_request_id(&command.command, &command.args);
                 let connection = self.leader_connections.first();
-                connection.send(MsgToServer::Command(cmd.as_bytes().to_vec())).await.map_err(|e| {
-                    IoError::Custom(format!("Failed to send command: {}", e))
-                })
+                connection
+                    .send(MsgToServer::Command(cmd.as_bytes().to_vec()))
+                    .await
+                    .map_err(|e| IoError::Custom(format!("Failed to send command: {}", e)))
             },
         }
     }
@@ -299,7 +335,7 @@ pub enum BrokerMessage {
     ToServer(CommandToServer),
 }
 impl BrokerMessage {
-    pub fn from_command(command: String, args: Vec<&str>, input: Input) -> Self {
+    pub fn from_command(command: String, args: Vec<&str>, input: InputKind) -> Self {
         BrokerMessage::ToServer(CommandToServer {
             command,
             args: args.iter().map(|s| s.to_string()).collect(),
@@ -311,5 +347,5 @@ impl BrokerMessage {
 pub struct CommandToServer {
     pub command: String,
     pub args: Vec<String>,
-    pub input: Input,
+    pub input: InputKind,
 }
