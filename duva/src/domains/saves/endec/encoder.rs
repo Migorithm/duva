@@ -24,7 +24,7 @@ impl CacheEntry {
         }
 
         result.push(STRING_VALUE_TYPE_INDICATOR);
-        result.extend_from_slice(&encode_key_bytes(&key, value.value().as_str()?)?);
+        result.extend_from_slice(&encode_key_bytes(&key, value.value.as_str()?)?);
 
         Ok(result)
     }
@@ -420,6 +420,6 @@ mod test {
 
         let decoded_entry = decoder.try_key_value().unwrap();
         assert_eq!(decoded_entry.key(), "binary_key");
-        assert_eq!(decoded_entry.value().as_str().unwrap(), &binary_data);
+        assert_eq!(decoded_entry.value, binary_data.as_slice());
     }
 }
