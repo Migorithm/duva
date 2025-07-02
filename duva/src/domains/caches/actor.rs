@@ -80,18 +80,17 @@ impl CacheActor {
     pub(crate) fn append(&mut self, key: String, value: String) -> anyhow::Result<usize> {
         let val = self.cache.entry(key.clone()).or_insert(CacheValue::new(""));
 
-        let bytes = val.value.as_bytes()?;
-        let mut current_str = String::from_utf8_lossy(bytes).to_string();
+        let mut current_str = String::from_utf8_lossy(val.value.as_str()?).to_string();
         current_str.push_str(value.as_str());
         val.value = TypedValue::String(Bytes::from(current_str));
 
-        Ok(val.value.as_bytes()?.len())
+        Ok(val.value.as_str()?.len())
     }
 
     pub(crate) fn numeric_delta(&mut self, key: String, delta: i64) -> anyhow::Result<i64> {
         let val = self.cache.entry(key.clone()).or_insert(CacheValue::new("0"));
 
-        let curr = String::from_utf8_lossy(val.value().as_bytes()?)
+        let curr = String::from_utf8_lossy(val.value().as_str()?)
             .parse::<i64>()
             .context("ERR value is not an integer or out of range")?;
 

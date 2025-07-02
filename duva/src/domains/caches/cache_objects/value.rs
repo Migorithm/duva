@@ -51,9 +51,9 @@ impl From<Vec<&str>> for TypedValue {
 }
 
 impl TypedValue {
-    pub fn as_bytes(&self) -> anyhow::Result<&[u8]> {
+    pub fn as_str(&self) -> anyhow::Result<&Bytes> {
         match self {
-            | TypedValue::String(b) => Ok(b.as_ref()),
+            | TypedValue::String(b) => Ok(b),
             | TypedValue::List(_) => Err(anyhow::anyhow!(
                 "WRONGTYPE Operation against a key holding the wrong kind of value"
             )),
@@ -189,6 +189,6 @@ mod tests {
     #[test]
     fn test_as_bytes_returns_err_on_list() {
         let tv = TypedValue::List(vec![Bytes::from("x")]);
-        assert!(tv.as_bytes().is_err());
+        assert!(tv.as_str().is_err());
     }
 }
