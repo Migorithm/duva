@@ -24,7 +24,7 @@ impl CacheEntry {
         }
 
         result.push(STRING_VALUE_TYPE_INDICATOR);
-        result.extend_from_slice(&encode_key_bytes(&key, &value.value().as_bytes()?)?);
+        result.extend_from_slice(&encode_key_bytes(&key, value.value().as_bytes()?)?);
 
         Ok(result)
     }

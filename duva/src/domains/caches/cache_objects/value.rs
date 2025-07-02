@@ -132,15 +132,16 @@ impl<'de, Ctx> BorrowDecode<'de, Ctx> for CacheValue {
     ) -> Result<Self, DecodeError> {
         let kind: u8 = BorrowDecode::borrow_decode(decoder)?;
         let value = match kind {
-            | 0 => {
+            | 0 => TypedValue::Null,
+            | 1 => {
                 let value_bytes: Vec<u8> = BorrowDecode::borrow_decode(decoder)?;
                 TypedValue::String(Bytes::from(value_bytes))
             },
-            | 1 => {
+            | 2 => {
                 let list: Vec<Vec<u8>> = BorrowDecode::borrow_decode(decoder)?;
                 TypedValue::List(list.into_iter().map(Bytes::from).collect())
             },
-            | _ => return Err(DecodeError::Other("Unknown ValueKind variant".into())),
+            | _ => return Err(DecodeError::Other("Unknown ValueKind variant")),
         };
         let expiry_timestamp: Option<i64> = BorrowDecode::borrow_decode(decoder)?;
         let expiry = expiry_timestamp.map(|ts| DateTime::from_timestamp_millis(ts).unwrap());
