@@ -2,7 +2,6 @@ use super::write_stream::MsgToServer;
 use duva::prelude::PeerIdentifier;
 use duva::prelude::tokio::sync::mpsc;
 use duva::prelude::tokio::sync::oneshot;
-use duva::prelude::{anyhow, anyhow::anyhow};
 use std::collections::HashMap;
 
 pub(crate) struct LeaderConnections {
@@ -38,19 +37,6 @@ impl LeaderConnections {
         self.connections.iter().next().map(|(_, conn)| conn).expect("No connections available")
     }
 
-    pub(crate) fn add_connection(
-        &mut self,
-        leader_id: PeerIdentifier,
-        writer: mpsc::Sender<MsgToServer>,
-        kill_switch: oneshot::Sender<()>,
-    ) -> anyhow::Result<()> {
-        if self.connections.contains_key(&leader_id) {
-            return Err(anyhow!("Connection to leader {} already exists", leader_id));
-        }
-        self.connections.insert(leader_id, LeaderConnection { writer, kill_switch });
-        Ok(())
-    }
-
     pub(crate) fn contains_key(&self, leader_id: &PeerIdentifier) -> bool {
         self.connections.contains_key(leader_id)
     }
@@ -68,10 +54,7 @@ impl LeaderConnections {
         self.connections.insert(leader_id, LeaderConnection { writer, kill_switch });
     }
 
-    pub(crate) async fn remove_connection(
-        &mut self,
-        leader_id: &PeerIdentifier,
-    ) {
+    pub(crate) async fn remove_connection(&mut self, leader_id: &PeerIdentifier) {
         if let Some(connection) = self.connections.remove(leader_id) {
             println!("Removing connection to {}", leader_id);
             let _ = connection.kill_switch.send(());
@@ -101,6 +84,10 @@ impl LeaderConnections {
     #[cfg(test)]
     pub(crate) fn is_empty(&self) -> bool {
         self.connections.is_empty()
+    }
+
+    pub(crate) fn len(&self) -> usize {
+        self.connections.len()
     }
 }
 
