@@ -155,7 +155,7 @@ impl Display for Response {
                 write!(f, "{}", String::from_utf8_lossy(value).into_owned())
             },
             | Response::Integer(value) => {
-                write!(f, "(integer) {}", String::from_utf8_lossy(&value).parse::<i64>().unwrap())
+                write!(f, "(integer) {}", String::from_utf8_lossy(value).parse::<i64>().unwrap())
             },
             | Response::Error(value) => {
                 write!(f, "(error) {}", String::from_utf8_lossy(value).into_owned())

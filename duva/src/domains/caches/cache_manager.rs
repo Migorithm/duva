@@ -41,7 +41,7 @@ impl CacheManager {
         }
     }
 
-    pub(crate) async fn route_get(&self, key: impl AsRef<str>) -> Result<Option<CacheValue>> {
+    pub(crate) async fn route_get(&self, key: impl AsRef<str>) -> Result<CacheValue> {
         let (tx, rx) = tokio::sync::oneshot::channel();
         let key_ref = key.as_ref();
         self.select_shard(key_ref)
@@ -56,7 +56,7 @@ impl CacheManager {
         cache_entry: CacheEntry,
         current_idx: u64,
     ) -> Result<String> {
-        let value = String::from_utf8_lossy(&cache_entry.value().as_bytes()).into_owned();
+        let value = String::from_utf8_lossy(cache_entry.value().as_str()?).into_owned();
         self.select_shard(cache_entry.key()).send(CacheCommand::Set { cache_entry }).await?;
         Ok(IndexedValueCodec::encode(value, current_idx))
     }
@@ -231,11 +231,7 @@ impl CacheManager {
         hasher.finish() as usize % self.inboxes.len()
     }
 
-    pub(crate) async fn route_index_get(
-        &self,
-        key: String,
-        index: u64,
-    ) -> Result<Option<CacheValue>> {
+    pub(crate) async fn route_index_get(&self, key: String, index: u64) -> Result<CacheValue> {
         let (tx, rx) = tokio::sync::oneshot::channel();
         self.select_shard(&key)
             .send(CacheCommand::IndexGet { key, read_idx: index, callback: tx })
@@ -249,7 +245,7 @@ impl CacheManager {
             tokio::spawn(async move {
                 let (tx, rx) = tokio::sync::oneshot::channel();
                 shard.send(CacheCommand::Get { key: key.clone(), callback: tx }).await.ok()?;
-                let value = rx.await.ok()??;
+                let value = rx.await.ok()?;
                 Some(CacheEntry::new_with_cache_value(key, value))
             })
         });
@@ -269,7 +265,7 @@ impl CacheManager {
     }
 
     pub(crate) async fn route_ttl(&self, key: String) -> Result<String> {
-        let Ok(Some(CacheValue { expiry: Some(exp), .. })) = self.route_get(key).await else {
+        let Ok(CacheValue { expiry: Some(exp), .. }) = self.route_get(key).await else {
             return Ok("-1".to_string());
         };
 
@@ -351,7 +347,7 @@ mod tests {
             let expected_value = format!("value_{i}");
 
             let retrieved_value = cache_manager.route_get(&key).await.unwrap();
-            assert_eq!(retrieved_value, Some(CacheValue::new(expected_value.as_str())));
+            assert_eq!(retrieved_value, CacheValue::new(expected_value.as_str()));
         }
     }
 
@@ -375,11 +371,11 @@ mod tests {
 
         // AND: Entries should be retrievable with their expiry times
         let value1 = cache_manager.route_get("expire_key1").await.unwrap();
-        assert_eq!(value1.as_ref().unwrap().value, "expire_value1");
-        assert!(value1.as_ref().unwrap().expiry.is_some());
+        assert_eq!(value1.value, "expire_value1");
+        assert!(value1.expiry.is_some());
 
         let value2 = cache_manager.route_get("expire_key2").await.unwrap();
-        assert_eq!(value2.as_ref().unwrap().value, "expire_value2");
-        assert!(value2.as_ref().unwrap().expiry.is_some());
+        assert_eq!(value2.value, "expire_value2");
+        assert!(value2.expiry.is_some());
     }
 }

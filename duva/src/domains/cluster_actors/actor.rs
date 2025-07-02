@@ -1149,6 +1149,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             .flat_map(|task| task.keys_to_migrate.iter().cloned())
             .collect::<Vec<_>>();
 
+        // TODO how do we support list migrations?
         let cache_entries =
             cache_manager.route_mget(keys.clone()).await.into_iter().flatten().collect::<Vec<_>>();
 
