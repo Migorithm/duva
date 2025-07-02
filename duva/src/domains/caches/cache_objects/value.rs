@@ -5,7 +5,7 @@ use bincode::{
 use bytes::Bytes;
 use chrono::{DateTime, Utc};
 
-use crate::domains::caches::cache_objects::{CacheEntry, THasExpiry};
+use crate::domains::caches::cache_objects::THasExpiry;
 
 #[derive(Debug, PartialEq, Eq, Clone, Default)]
 pub struct CacheValue {
@@ -21,12 +21,16 @@ impl CacheValue {
         Self { expiry: Some(expiry), ..self }
     }
 
-    pub(crate) fn value(&self) -> &TypedValue {
-        &self.value
+    pub(crate) fn try_to_string(&self) -> anyhow::Result<String> {
+        Ok(String::from_utf8_lossy(self.value.as_str()?).to_string())
     }
 
-    pub(crate) fn to_cache_entry(&self, key: &str) -> CacheEntry {
-        CacheEntry { key: key.to_string(), value: self.clone() }
+    pub(crate) fn len(&self) -> usize {
+        match &self.value {
+            | TypedValue::Null => 0,
+            | TypedValue::String(b) => b.len(),
+            | TypedValue::List(list) => list.len(),
+        }
     }
 }
 
@@ -51,7 +55,7 @@ impl From<Vec<&str>> for TypedValue {
 }
 
 impl TypedValue {
-    pub fn as_str(&self) -> anyhow::Result<&Bytes> {
+    pub(crate) fn as_str(&self) -> anyhow::Result<&Bytes> {
         match self {
             | TypedValue::String(b) => Ok(b),
             | TypedValue::List(_) => Err(anyhow::anyhow!(
@@ -68,6 +72,24 @@ impl PartialEq<&str> for TypedValue {
     fn eq(&self, other: &&str) -> bool {
         match self {
             | TypedValue::String(b) => b.as_ref() == other.as_bytes(),
+            | _ => false,
+        }
+    }
+}
+
+impl PartialEq<&str> for CacheValue {
+    fn eq(&self, other: &&str) -> bool {
+        match self {
+            | CacheValue { value: TypedValue::String(s), .. } => s.as_ref() == other.as_bytes(),
+            | _ => false,
+        }
+    }
+}
+
+impl PartialEq<&[u8]> for CacheValue {
+    fn eq(&self, other: &&[u8]) -> bool {
+        match self {
+            | CacheValue { value: TypedValue::String(s), .. } => s.as_ref() == *other,
             | _ => false,
         }
     }

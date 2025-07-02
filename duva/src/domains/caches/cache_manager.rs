@@ -56,7 +56,7 @@ impl CacheManager {
         cache_entry: CacheEntry,
         current_idx: u64,
     ) -> Result<String> {
-        let value = String::from_utf8_lossy(cache_entry.value().as_str()?).into_owned();
+        let value = cache_entry.as_str()?;
         self.select_shard(cache_entry.key()).send(CacheCommand::Set { cache_entry }).await?;
         Ok(IndexedValueCodec::encode(value, current_idx))
     }
