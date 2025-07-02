@@ -12,13 +12,32 @@ pub fn separate_command_and_args(args: Vec<&str>) -> (&str, Vec<&str>) {
 }
 
 #[derive(Debug)]
-pub struct Input {
-    pub kind: ClientAction,
-    pub callback: oneshot::Sender<(ClientAction, QueryIO)>,
+pub enum InputKind {
+    SingleNodeInput {
+        kind: ClientAction,
+        callback: oneshot::Sender<(ClientAction, QueryIO)>,
+    },
+    MultipleNodesInput {
+        kind: ClientAction,
+        callback: oneshot::Sender<(ClientAction, QueryIO)>,
+        results: Vec<QueryIO>,
+    },
 }
 
-impl Input {
-    pub fn new(input: ClientAction, callback: oneshot::Sender<(ClientAction, QueryIO)>) -> Self {
-        Self { kind: input, callback }
+impl InputKind {
+    pub fn new(kind: ClientAction, callback: oneshot::Sender<(ClientAction, QueryIO)>) -> Self {
+        return match kind {
+            | ClientAction::Keys { pattern: _ } => {
+                Self::MultipleNodesInput { kind, callback, results: Vec::new() }
+            },
+            | _ => Self::SingleNodeInput { kind, callback },
+        };
+    }
+
+    pub fn kind(&self) -> &ClientAction {
+        match self {
+            | InputKind::SingleNodeInput { kind, .. } => kind,
+            | InputKind::MultipleNodesInput { kind, .. } => kind,
+        }
     }
 }

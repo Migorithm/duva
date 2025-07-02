@@ -181,6 +181,20 @@ impl QueryIO {
         }
         Ok(result)
     }
+
+    pub fn merge(self, other: Self) -> Option<Self> {
+        match (self, other) {
+            | (QueryIO::Array(mut a), QueryIO::Array(b)) => {
+                a.extend(b);
+                Some(QueryIO::Array(a))
+            },
+            | (QueryIO::Array(mut a), b) => {
+                a.push(b);
+                Some(QueryIO::Array(a))
+            },
+            | _ => None,
+        }
+    }
 }
 
 impl From<String> for QueryIO {
