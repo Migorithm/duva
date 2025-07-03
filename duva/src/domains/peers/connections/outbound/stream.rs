@@ -67,7 +67,6 @@ impl OutboundStream {
                                     "PSYNC",
                                     self.my_repl_info.replid.clone(),
                                     self.my_repl_info.hwm.load(Ordering::Acquire).to_string(),
-                                    //TODO
                                     self.my_repl_info.role.clone()
                                 )),
                                 | _ => Err(anyhow::anyhow!("Unexpected OK count")),

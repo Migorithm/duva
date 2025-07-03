@@ -485,8 +485,6 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
     #[instrument(level = tracing::Level::INFO, skip(self,cache_manager))]
     pub(crate) async fn start_rebalance(&mut self, cache_manager: &CacheManager) {
-        // TODO instead of relying on request_from, we should take the current leaders and if they don't exist in hashring, we should add them and start rebalance.
-
         if !self.replication.is_leader() {
             err!("follower cannot start rebalance");
             return;
@@ -534,7 +532,6 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             .map(|(id, peer)| (peer.replid().clone(), id.clone()));
 
         if self.replication.is_leader() {
-            // TODO incase self is leader
             iter.chain(iter::once((
                 self.replication.replid.clone(),
                 self.replication.self_identifier(),
@@ -1152,7 +1149,6 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             .flat_map(|task| task.keys_to_migrate.iter().cloned())
             .collect::<Vec<_>>();
 
-        // TODO how do we support list migrations?
         let cache_entries =
             cache_manager.route_mget(keys.clone()).await.into_iter().flatten().collect::<Vec<_>>();
 
@@ -1190,6 +1186,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         }
 
         let (tx, rx) = tokio::sync::oneshot::channel();
+
         self.req_consensus(ConsensusRequest::new(
             WriteRequest::MSet { entries: migrate_batch.cache_entries.clone() },
             tx,
@@ -1199,7 +1196,9 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
         // * If there are no replicas, we can directly apply the state
         if self.replicas().count() == 0 {
+            let _ = rx.await;
             cache_manager.route_mset(migrate_batch.cache_entries.clone()).await;
+            return;
         }
 
         // * If there are replicas, we need to wait for the consensus to be applied which should be done in the background
