@@ -109,6 +109,49 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         actor_handler
     }
 
+    fn new(
+        node_timeout: u128,
+        init_repl_state: ReplicationState,
+        heartbeat_interval_in_mills: u64,
+        topology_writer: File,
+        log_writer: T,
+    ) -> Self {
+        let (self_handler, receiver) = tokio::sync::mpsc::channel(100);
+        let heartbeat_scheduler = HeartBeatScheduler::run(
+            self_handler.clone(),
+            init_repl_state.is_leader(),
+            heartbeat_interval_in_mills,
+        );
+
+        let (tx, _) = tokio::sync::broadcast::channel::<Topology>(100);
+        let hash_ring = HashRing::default().add_partitions(vec![(
+            init_repl_state.replid.clone(),
+            init_repl_state.self_identifier(),
+        )]);
+
+        Self {
+            logger: ReplicatedLogs::new(
+                log_writer,
+                init_repl_state.hwm.load(Ordering::Acquire),
+                init_repl_state.term,
+            ),
+            heartbeat_scheduler,
+            replication: init_repl_state,
+            node_timeout,
+            receiver,
+            self_handler: ClusterCommandHandler(self_handler),
+            topology_writer,
+            node_change_broadcast: tx,
+            hash_ring,
+            members: BTreeMap::new(),
+            consensus_tracker: LogConsensusTracker::default(),
+            client_sessions: ClientSessions::default(),
+
+            pending_requests: None,
+            pending_migrations: None,
+        }
+    }
+
     #[instrument(level = tracing::Level::INFO, skip(self, peer, optional_callback),fields(peer_id = %peer.id()))]
     pub(crate) async fn add_peer(
         &mut self,
@@ -184,46 +227,6 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     pub(crate) fn set_repl_id(&mut self, replid: ReplicationId) {
         self.replication.replid = replid;
         // Update hash ring with leader's replication ID and identifier
-    }
-
-    pub(super) fn new(
-        node_timeout: u128,
-        init_repl_state: ReplicationState,
-        heartbeat_interval_in_mills: u64,
-        topology_writer: File,
-        log_writer: T,
-    ) -> Self {
-        let (self_handler, receiver) = tokio::sync::mpsc::channel(100);
-        let heartbeat_scheduler = HeartBeatScheduler::run(
-            self_handler.clone(),
-            init_repl_state.is_leader(),
-            heartbeat_interval_in_mills,
-        );
-
-        let (tx, _) = tokio::sync::broadcast::channel::<Topology>(100);
-        let hash_ring = HashRing::default().add_partitions(vec![(
-            init_repl_state.replid.clone(),
-            init_repl_state.self_identifier(),
-        )]);
-
-        Self {
-            heartbeat_scheduler,
-            replication: init_repl_state,
-            node_timeout,
-            receiver,
-            self_handler: ClusterCommandHandler(self_handler),
-            topology_writer,
-            node_change_broadcast: tx,
-            hash_ring,
-            members: BTreeMap::new(),
-            consensus_tracker: LogConsensusTracker::default(),
-            client_sessions: ClientSessions::default(),
-
-            // todo initial value setting
-            logger: ReplicatedLogs::new(log_writer, 0, 0),
-            pending_requests: None,
-            pending_migrations: None,
-        }
     }
 
     #[instrument(level = tracing::Level::DEBUG, skip(self))]
