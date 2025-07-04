@@ -184,11 +184,7 @@ impl HashRing {
 
     pub fn get_replication_id(&self, peer_identifier: &PeerIdentifier) -> Option<ReplicationId> {
         self.pnodes.iter().find_map(|(repl_id, peer_id)| {
-            if peer_id == peer_identifier {
-                Some(repl_id.clone())
-            } else {
-                None
-            }
+            if peer_id == peer_identifier { Some(repl_id.clone()) } else { None }
         })
     }
 
