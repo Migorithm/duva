@@ -1,4 +1,4 @@
-use crate::{from_to, make_smart_pointer};
+use crate::make_smart_pointer;
 
 #[derive(
     Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Hash, Default, bincode::Encode, bincode::Decode,
@@ -6,9 +6,7 @@ use crate::{from_to, make_smart_pointer};
 pub struct PeerIdentifier(pub String);
 impl PeerIdentifier {
     pub(crate) fn new(host: &str, port: u16) -> Self {
-        parse_address(host)
-            .map(|ip| Self(format!("{ip}:{port}")))
-            .unwrap_or_else(|| Self(format!("{host}:{port}")))
+        parse_address(host).map(|ip| Self(format!("{ip}:{port}"))).unwrap()
     }
 }
 
@@ -51,7 +49,12 @@ pub(crate) fn parse_address(addr: &str) -> Option<std::net::IpAddr> {
 }
 
 make_smart_pointer!(PeerIdentifier, String);
-from_to!(String, PeerIdentifier);
+
+impl From<String> for PeerIdentifier {
+    fn from(value: String) -> Self {
+        Self(value.bind_addr())
+    }
+}
 
 impl std::fmt::Display for PeerIdentifier {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
