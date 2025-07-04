@@ -1,17 +1,17 @@
+use crate::broker::BrokerMessage;
+use duva::domains::cluster_actors::replication::ReplicationId;
 use duva::{
     domains::IoError,
     domains::interface::TRead,
     prelude::tokio::{self, net::tcp::OwnedReadHalf, sync::oneshot},
 };
-use duva::domains::cluster_actors::replication::ReplicationId;
-use crate::broker::{BrokerMessage};
 
 pub struct ServerStreamReader(pub(crate) OwnedReadHalf);
 impl ServerStreamReader {
     pub fn run(
         mut self,
         controller_sender: tokio::sync::mpsc::Sender<BrokerMessage>,
-        replication_id: ReplicationId
+        replication_id: ReplicationId,
     ) -> oneshot::Sender<()> {
         let (kill_trigger, kill_switch) = tokio::sync::oneshot::channel::<()>();
 
@@ -22,8 +22,7 @@ impl ServerStreamReader {
                 match self.0.read_values().await {
                     | Ok(query_ios) => {
                         for query_io in query_ios {
-                            let message =
-                                BrokerMessage::FromServer(query_io);
+                            let message = BrokerMessage::FromServer(query_io);
                             if controller_sender.send(message).await.is_err() {
                                 break;
                             }
