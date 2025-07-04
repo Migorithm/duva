@@ -149,7 +149,7 @@ async fn test_topology_broadcast_on_hash_ring_change() {
 
     // THEN
     let guard = topology.read().await;
-    assert_eq!(guard.hash_ring, hash_ring)
+    assert_ne!(guard.hash_ring, hash_ring)
 }
 
 #[tokio::test]

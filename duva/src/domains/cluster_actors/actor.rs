@@ -1269,6 +1269,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         });
     }
 
+    // New hash ring stored at this point with the current shard leaders
     pub(crate) fn unblock_write_reqs_if_done(&mut self) {
         let migrations_done = self.pending_migrations.as_ref().is_none_or(|p| p.is_empty());
 
