@@ -1,7 +1,10 @@
 use std::sync::LazyLock;
 
 use crate::{
-    domains::{cluster_actors::replication::ReplicationRole, peers::peer::PeerState},
+    domains::{
+        cluster_actors::replication::ReplicationRole,
+        peers::{identifier::TPeerAddress, peer::PeerState},
+    },
     env_var,
     prelude::PeerIdentifier,
 };
@@ -41,7 +44,7 @@ impl Environment {
             }
         );
 
-        let replicaof = Self::parse_replicaof(replicaof);
+        let replicaof = replicaof.map(|s| PeerIdentifier(s.bind_addr().unwrap()));
         let stored_peer_states = PeerState::from_file(&tpp);
         let role = Self::determine_role(replicaof.as_ref(), &stored_peer_states);
 
@@ -76,10 +79,6 @@ impl Environment {
         OpenOptions::new().create(true).write(true).truncate(true).open(tpp).unwrap()
     }
 
-    fn parse_replicaof(replicaof: Option<String>) -> Option<PeerIdentifier> {
-        replicaof
-            .and_then(|s| s.split_once(':').map(|(host, port)| format!("{host}:{port}").into()))
-    }
     pub(crate) fn get_filepath(&self) -> String {
         format!("{}/{}", self.dir, self.dbfilename)
     }

@@ -634,11 +634,11 @@ mod test {
     #[test]
     fn test_heartbeat_to_binary_back_to_heartbeat() {
         // GIVEN
-        let me = PeerIdentifier::new("me", 6035);
+        let me = PeerIdentifier::new("127.0.0.1", 6035);
         let leader = ReplicationId::Undecided;
         let banned_list = vec![
-            BannedPeer { p_id: PeerIdentifier("banned1".into()), ban_time: 3553 },
-            BannedPeer { p_id: PeerIdentifier("banned2".into()), ban_time: 3556 },
+            BannedPeer { p_id: PeerIdentifier("localhost:28889".into()), ban_time: 3553 },
+            BannedPeer { p_id: PeerIdentifier("localhost:22888".into()), ban_time: 3556 },
         ];
         let heartbeat = HeartBeat {
             from: me.clone(),
@@ -759,7 +759,7 @@ mod test {
     fn test_topology_change_serde() {
         //GIVEN
         let connected_peers =
-            vec!["127.0.0.1:6000".to_string().into(), "127.0.0.1:6001".to_string().into()];
+            vec![PeerIdentifier::new("127.0.0.1", 6000), PeerIdentifier::new("127.0.0.1", 6001)];
         let hash_ring = HashRing::default();
         let topology = Topology::new(connected_peers, hash_ring);
         let query_io = QueryIO::TopologyChange(topology.clone());
@@ -793,12 +793,12 @@ mod test {
         let ring = HashRing::default()
             .set_partitions(vec![(
                 ReplicationId::Key(Uuid::now_v7().to_string()),
-                PeerIdentifier::new("127.0.1:3344", 0),
+                PeerIdentifier::new("127.0.0.1", 3344),
             )])
             .unwrap();
 
         let heartbeat = HeartBeat {
-            from: PeerIdentifier::new("127.0.0.1:3344", 0),
+            from: PeerIdentifier::new("127.0.0.1", 3344),
             term: 1,
             prev_log_index: 0,
             prev_log_term: 1,

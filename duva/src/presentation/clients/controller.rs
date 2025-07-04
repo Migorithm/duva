@@ -127,7 +127,7 @@ impl ClientController {
             },
             | ClientAction::ClusterMeet(peer_identifier, option) => self
                 .cluster_communication_manager
-                .route_cluster_reet(peer_identifier, option)
+                .route_cluster_meet(peer_identifier, option)
                 .await?
                 .into(),
             | ClientAction::ClusterReshard => {

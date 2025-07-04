@@ -84,7 +84,7 @@ impl ClusterCommunicationManager {
         rx.await?
     }
 
-    pub(crate) async fn route_cluster_reet(
+    pub(crate) async fn route_cluster_meet(
         &self,
         peer_identifier: PeerIdentifier,
         lazy_option: LazyOption,

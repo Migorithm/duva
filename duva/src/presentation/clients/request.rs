@@ -4,7 +4,7 @@ use crate::domains::{
     QueryIO,
     cluster_actors::{LazyOption, SessionRequest},
     operation_logs::WriteRequest,
-    peers::identifier::PeerIdentifier,
+    peers::identifier::{PeerIdentifier, TPeerAddress},
 };
 use anyhow::Context;
 use chrono::{DateTime, Utc};
@@ -216,12 +216,12 @@ pub fn extract_action(action: &str, args: &[&str]) -> anyhow::Result<ClientActio
                             "(error) ERR wrong number of arguments for 'cluster forget' command"
                         ));
                     }
-                    Ok(ClientAction::ClusterForget(args[1].to_string().into()))
+                    Ok(ClientAction::ClusterForget(PeerIdentifier(args[1].bind_addr()?)))
                 },
                 | "MEET" => {
                     if args.len() == 2 {
                         return Ok(ClientAction::ClusterMeet(
-                            args[1].to_string().into(),
+                            PeerIdentifier(args[1].bind_addr()?),
                             LazyOption::Lazy,
                         ));
                     }
@@ -231,7 +231,10 @@ pub fn extract_action(action: &str, args: &[&str]) -> anyhow::Result<ClientActio
                             "(error) ERR wrong arguments for 'cluster meet' command, expected 'lazy' or 'eager'"
                         )?;
 
-                        Ok(ClientAction::ClusterMeet(args[1].to_string().into(), lazy_option))
+                        Ok(ClientAction::ClusterMeet(
+                            PeerIdentifier(args[1].bind_addr()?),
+                            lazy_option,
+                        ))
                     } else {
                         Err(anyhow::anyhow!(
                             "(error) ERR wrong number of arguments for 'cluster meet' command"

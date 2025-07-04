@@ -79,7 +79,8 @@ impl PeerState {
         replid: ReplicationId,
         role: ReplicationRole,
     ) -> Self {
-        Self { id: id.bind_addr().into(), match_index, replid, role }
+        // TODO unwrap
+        Self { id: PeerIdentifier(id.bind_addr().unwrap()), match_index, replid, role }
     }
 
     pub(crate) fn id(&self) -> &PeerIdentifier {
@@ -101,7 +102,8 @@ impl PeerState {
         let match_index = match_index.parse().unwrap_or_default();
 
         Some(Self {
-            id: addr.bind_addr().into(),
+            // TODO unwrap
+            id: PeerIdentifier(addr.bind_addr().unwrap()),
             replid: repl_id.into(),
             match_index,
             role: role.to_string().into(),
@@ -169,7 +171,7 @@ impl PeerState {
     }
 
     pub(crate) fn is_self(&self, bind_addr: &str) -> bool {
-        self.id.bind_addr() == bind_addr
+        self.id.bind_addr().unwrap() == bind_addr
     }
 }
 
