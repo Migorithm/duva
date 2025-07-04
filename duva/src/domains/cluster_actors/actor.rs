@@ -1270,6 +1270,9 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         let migrations_done = self.pending_migrations.as_ref().is_none_or(|p| p.is_empty());
 
         if migrations_done {
+            if let Some(new_ring) = self.hash_ring.set_partitions(self.shard_leaders()) {
+                self.hash_ring = new_ring;
+            }
             let _ = self.node_change_broadcast.send(self.get_topology());
             if let Some(mut pending_reqs) = self.pending_requests.take() {
                 info!("All migrations complete, processing pending requests.");
@@ -1277,9 +1280,6 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
                 if pending_reqs.is_empty() {
                     return;
-                }
-                if let Some(new_ring) = self.hash_ring.set_partitions(self.shard_leaders()) {
-                    self.hash_ring = new_ring;
                 }
 
                 let handler = self.self_handler.clone();
