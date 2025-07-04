@@ -256,33 +256,34 @@ impl Broker {
             | ClientAction::Delete { keys }
             | ClientAction::Exists { keys }
             | ClientAction::MGet { keys } => self.route_command_by_keys(command, keys).await,
-            | ClientAction::Keys { pattern: _ } => {
-                let cmd = self.build_command_with_request_id(&command.command, &command.args);
-                for (peer_id, connection) in self.leader_connections.entries() {
-                    if let Err(e) =
-                        connection.send(MsgToServer::Command(cmd.as_bytes().to_vec())).await
-                    {
-                        return Err(IoError::Custom(format!(
-                            "Failed to send command to {}: {}",
-                            peer_id, e
-                        )));
-                    }
-                }
-                Ok(())
-            },
-            | _ => {
-                let cmd = self.build_command_with_request_id(&command.command, &command.args);
-                let Some(connection) = self.leader_connections.first() else {
-                    return Err(IoError::Custom("No connections available".to_string()));
-                };
-                connection
-                    .send(MsgToServer::Command(cmd.as_bytes().to_vec()))
-                    .await
-                    .map_err(|e| IoError::Custom(format!("Failed to send command: {}", e)))
-            },
+            | ClientAction::Keys { pattern: _ } => self.route_command_to_all(&command).await,
+            | _ => self.default_route(&command).await,
         }
     }
-
+    async fn default_route(&mut self, command: &&CommandToServer) -> Result<(), IoError> {
+        let cmd = self.build_command_with_request_id(&command.command, &command.args);
+        let Some(connection) = self.leader_connections.first() else {
+            return Err(IoError::Custom("No connections available".to_string()));
+        };
+        connection
+            .send(MsgToServer::Command(cmd.as_bytes().to_vec()))
+            .await
+            .map_err(|e| IoError::Custom(format!("Failed to send command: {}", e)))
+    }
+    async fn route_command_to_all(&mut self, command: &&CommandToServer) -> Result<(), IoError> {
+        let cmd = self.build_command_with_request_id(&command.command, &command.args);
+        for (peer_id, connection) in self.leader_connections.entries() {
+            if let Err(e) =
+                connection.send(MsgToServer::Command(cmd.as_bytes().to_vec())).await
+            {
+                return Err(IoError::Custom(format!(
+                    "Failed to send command to {}: {}",
+                    peer_id, e
+                )));
+            }
+        }
+        Ok(())
+    }
     async fn route_command_by_keys(
         &self,
         command: &CommandToServer,
