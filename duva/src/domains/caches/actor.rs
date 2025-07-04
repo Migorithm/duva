@@ -4,6 +4,7 @@ use crate::domains::caches::cache_objects::TypedValue;
 use crate::domains::caches::lru_cache::LruCache;
 use crate::domains::caches::read_queue::ReadQueue;
 use crate::make_smart_pointer;
+use anyhow::Context;
 use bytes::Bytes;
 use std::sync::Arc;
 use std::sync::atomic::AtomicU64;
@@ -52,8 +53,8 @@ impl CacheActor {
     pub(crate) fn exists(&mut self, key: String, callback: oneshot::Sender<bool>) {
         let _ = callback.send(self.cache.get(&key).is_some());
     }
-    pub(crate) fn get(&mut self, key: &str, callback: oneshot::Sender<Option<CacheValue>>) {
-        let _ = callback.send(self.cache.get(key).cloned());
+    pub(crate) fn get(&mut self, key: &str, callback: oneshot::Sender<CacheValue>) {
+        let _ = callback.send(self.cache.get(key).cloned().unwrap_or(Default::default()));
     }
 
     pub(crate) fn set(&mut self, cache_entry: CacheEntry) {
@@ -76,38 +77,26 @@ impl CacheActor {
         Ok(())
     }
 
-    pub(crate) fn append(
-        &mut self,
-        key: String,
-        value: String,
-        callback: oneshot::Sender<anyhow::Result<usize>>,
-    ) {
+    pub(crate) fn append(&mut self, key: String, value: String) -> anyhow::Result<usize> {
         let val = self.cache.entry(key.clone()).or_insert(CacheValue::new(""));
 
-        // Convert current value to string, append, then convert back to Bytes
-        let mut current_str = String::from_utf8_lossy(&val.value.as_bytes()).to_string();
+        let mut current_str = val.try_to_string()?;
         current_str.push_str(value.as_str());
         val.value = TypedValue::String(Bytes::from(current_str));
 
-        let _ = callback.send(Ok(val.value.as_bytes().len()));
+        Ok(val.len())
     }
 
-    pub(crate) fn numeric_delta(
-        &mut self,
-        key: String,
-        delta: i64,
-        callback: oneshot::Sender<anyhow::Result<i64>>,
-    ) {
+    pub(crate) fn numeric_delta(&mut self, key: String, delta: i64) -> anyhow::Result<i64> {
         let val = self.cache.entry(key.clone()).or_insert(CacheValue::new("0"));
 
-        let Ok(curr) = String::from_utf8_lossy(&val.value().as_bytes()).parse::<i64>() else {
-            let _ =
-                callback.send(Err(anyhow::anyhow!("ERR value is not an integer or out of range")));
-            return;
-        };
+        let curr = val
+            .try_to_string()?
+            .parse::<i64>()
+            .context("ERR value is not an integer or out of range")?;
 
-        let _ = callback.send(Ok(curr + delta));
         val.value = TypedValue::String(Bytes::from((curr + delta).to_string()));
+        Ok(curr + delta)
     }
 }
 

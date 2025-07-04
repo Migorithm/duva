@@ -12,7 +12,7 @@ pub struct ReadQueue {
 
 pub(crate) struct DeferredRead {
     pub(crate) key: String,
-    pub(crate) callback: Sender<Option<CacheValue>>,
+    pub(crate) callback: Sender<CacheValue>,
 }
 
 impl ReadQueue {
@@ -27,8 +27,8 @@ impl ReadQueue {
         &mut self,
         read_idx: u64,
         key: &str,
-        callback: Sender<Option<CacheValue>>,
-    ) -> Option<Sender<Option<CacheValue>>> {
+        callback: Sender<CacheValue>,
+    ) -> Option<Sender<CacheValue>> {
         let current_hwm = self.hwm.load(Ordering::Relaxed);
         if current_hwm < read_idx {
             self.push(read_idx, DeferredRead { key: key.into(), callback });

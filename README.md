@@ -334,7 +334,7 @@ sequenceDiagram
 
 
 ## Failure Detection
-The system doesn't cooridnate important decisions that rely on eventual consistency like gossip dissemination. 
+The system doesn't coordinate important decisions that rely on eventual consistency like gossip dissemination. 
 However, general information, such as node liveness can be efficiently propagated using such an algorithm.
 Duva achieves failure detection using `Gossip mechanism` which may evolve into a hybrid gossip algorithm based on `Plumtree`.
 Heartbeat frequency and timeout period before considering a node as failed are highly configurable:

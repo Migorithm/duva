@@ -128,7 +128,7 @@ impl Broker {
     }
 
     // pull-based leader discovery
-    // TODO Implement leader discovery logic
+
     async fn discover_leader(&mut self) -> Result<(), IoError> {
         for node in &self.topology.connected_peers {
             tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;

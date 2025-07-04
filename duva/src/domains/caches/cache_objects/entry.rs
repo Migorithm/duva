@@ -41,12 +41,12 @@ impl CacheEntry {
     pub(crate) fn key(&self) -> &str {
         &self.key
     }
-    pub(crate) fn value(&self) -> &TypedValue {
-        self.value.value()
-    }
 
     pub(crate) fn from_slice(chunk: &[(&String, &CacheValue)]) -> Vec<Self> {
-        chunk.iter().map(|(k, v)| v.to_cache_entry(k)).collect::<Vec<CacheEntry>>()
+        chunk
+            .iter()
+            .map(|(k, v)| CacheEntry::new_with_cache_value(k.to_string(), (*v).clone()))
+            .collect::<Vec<CacheEntry>>()
     }
 
     pub(crate) fn expire_in(&self) -> anyhow::Result<Option<Duration>> {
@@ -62,6 +62,10 @@ impl CacheEntry {
 
     pub(crate) fn destructure(self) -> (String, CacheValue) {
         (self.key, self.value)
+    }
+
+    pub(crate) fn as_str(&self) -> anyhow::Result<String> {
+        self.value.try_to_string()
     }
 }
 
@@ -151,7 +155,7 @@ mod tests {
 
         // Verify the decoded entry matches the original
         assert_eq!(decoded_entry.key(), original_entry.key());
-        assert_eq!(decoded_entry.value(), original_entry.value());
+        assert_eq!(decoded_entry.value, original_entry.value);
         assert_eq!(decoded_entry.expiry(), original_entry.expiry());
         assert_eq!(decoded_entry, original_entry);
     }
