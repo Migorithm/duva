@@ -34,7 +34,10 @@ impl OutboundStream {
         connect_to: PeerIdentifier,
         my_repl_info: ReplicationState,
     ) -> anyhow::Result<Self> {
-        let stream = TcpStream::connect(&connect_to.cluster_bind_addr()).await?;
+        let stream = TcpStream::connect(&connect_to.cluster_bind_addr())
+            .await
+            .context(format!("Failed to connect to {}", connect_to.cluster_bind_addr()))?;
+
         let (read, write) = stream.into_split();
         Ok(OutboundStream { r: read, w: write, my_repl_info, connected_node_info: None })
     }
@@ -67,6 +70,7 @@ impl OutboundStream {
                                     "PSYNC",
                                     self.my_repl_info.replid.clone(),
                                     self.my_repl_info.hwm.load(Ordering::Acquire).to_string(),
+                                    //TODO
                                     self.my_repl_info.role.clone()
                                 )),
                                 | _ => Err(anyhow::anyhow!("Unexpected OK count")),

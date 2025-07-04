@@ -6,7 +6,9 @@ use crate::{from_to, make_smart_pointer};
 pub struct PeerIdentifier(pub String);
 impl PeerIdentifier {
     pub(crate) fn new(host: &str, port: u16) -> Self {
-        Self(format!("{host}:{port}"))
+        parse_address(host)
+            .map(|ip| Self(format!("{ip}:{port}")))
+            .unwrap_or_else(|| Self(format!("{host}:{port}")))
     }
 }
 
