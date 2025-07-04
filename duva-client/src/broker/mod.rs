@@ -3,6 +3,9 @@ mod leader_connections;
 mod read_stream;
 mod write_stream;
 
+#[cfg(test)]
+mod tests;
+
 use crate::command::InputKind;
 
 use crate::broker::leader_connections::LeaderConnections;
@@ -259,14 +262,19 @@ impl Broker {
                     if let Err(e) =
                         connection.send(MsgToServer::Command(cmd.as_bytes().to_vec())).await
                     {
-                        return Err(IoError::Custom(format!("Failed to send command: {}", e)));
+                        return Err(IoError::Custom(format!(
+                            "Failed to send command to {}: {}",
+                            peer_id, e
+                        )));
                     }
                 }
                 Ok(())
             },
             | _ => {
                 let cmd = self.build_command_with_request_id(&command.command, &command.args);
-                let connection = self.leader_connections.first();
+                let Some(connection) = self.leader_connections.first() else {
+                    return Err(IoError::Custom("No connections available".to_string()));
+                };
                 connection
                     .send(MsgToServer::Command(cmd.as_bytes().to_vec()))
                     .await
