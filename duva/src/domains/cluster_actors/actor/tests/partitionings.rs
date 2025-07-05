@@ -1,10 +1,7 @@
 use crate::domains::QueryIO;
-use crate::domains::caches::cache_manager;
 use crate::domains::caches::cache_objects::{CacheValue, TypedValue};
 use crate::domains::cluster_actors::hash_ring::BatchId;
-use crate::domains::cluster_actors::hash_ring::{
-    HashRing, MigrationTask, tests::migration_task_create_helper,
-};
+use crate::domains::cluster_actors::hash_ring::{HashRing, tests::migration_task_create_helper};
 use std::collections::HashMap;
 use std::time::Duration;
 
@@ -309,7 +306,7 @@ async fn test_migrate_keys_target_peer_not_found() {
 }
 
 #[tokio::test]
-async fn test_migrate_keys_pending_migration_not_found() {
+async fn test_migrate_keys_send_migrate_batch_peer_message() {
     // GIVEN
     let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Leader).await;
     let (_hwm, cache_manager) = Helper::cache_manager();
