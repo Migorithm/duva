@@ -1195,13 +1195,6 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         ))
         .await;
 
-        // * If there are no replicas, we can directly apply the state
-        if self.replicas().count() == 0 {
-            let _ = rx.await;
-            cache_manager.route_mset(migrate_batch.cache_entries.clone()).await;
-            return;
-        }
-
         // * If there are replicas, we need to wait for the consensus to be applied which should be done in the background
         tokio::spawn({
             let handler = self.self_handler.clone();
