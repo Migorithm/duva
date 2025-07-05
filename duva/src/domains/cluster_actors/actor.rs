@@ -1097,8 +1097,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
                 // Spawn each batch as a separate task for parallel execution
                 batch_handles.push(tokio::spawn(Self::schedule_migration_in_batch(
-                    target_replid.clone(),
-                    batch_to_migrate,
+                    MigrationBatch::new(target_replid.clone(), batch_to_migrate),
                     self.self_handler.clone(),
                 )));
             }
@@ -1119,18 +1118,12 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     }
 
     async fn schedule_migration_in_batch(
-        target_replid: ReplicationId,
-        batch_to_migrate: Vec<MigrationTask>,
+        batch: MigrationBatch,
         handler: ClusterCommandHandler,
     ) -> anyhow::Result<()> {
         let (tx, rx) = tokio::sync::oneshot::channel();
-        handler
-            .send(SchedulerMessage::ScheduleMigrationBatch(
-                MigrationBatch::new(target_replid, batch_to_migrate),
-                tx.into(),
-            ))
-            .await?;
-        rx.await.unwrap_or_else(|_| Err(anyhow::anyhow!("Channel closed")))
+        handler.send(SchedulerMessage::ScheduleMigrationBatch(batch, tx.into())).await?;
+        rx.await?
     }
 
     pub(crate) async fn migrate_batch(
