@@ -1,4 +1,5 @@
 use crate::domains::QueryIO;
+use crate::domains::caches::cache_manager;
 use crate::domains::caches::cache_objects::{CacheValue, TypedValue};
 use crate::domains::cluster_actors::hash_ring::BatchId;
 use crate::domains::cluster_actors::hash_ring::{
@@ -305,6 +306,27 @@ async fn test_migrate_keys_target_peer_not_found() {
     let result = callback_rx.await.unwrap();
     assert!(result.is_err());
     assert!(result.unwrap_err().to_string().contains("Target peer not found"));
+}
+
+#[tokio::test]
+async fn test_migrate_keys_pending_migration_not_found() {
+    // GIVEN
+    let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Leader).await;
+    let (_hwm, cache_manager) = Helper::cache_manager();
+    let replid = ReplicationId::Key("wheatever".to_string());
+    let (buf, _id) = cluster_actor.test_add_peer(6909, Some(replid.clone()), true);
+
+    let batch = MigrationBatch::new(replid.clone(), vec![migration_task_create_helper(0, 5)]);
+    let (tx, _rx) = tokio::sync::oneshot::channel();
+    // WHEN
+    cluster_actor.migrate_batch(batch.clone(), &cache_manager, tx).await;
+
+    // THEN
+    assert_expected_queryio(
+        &buf,
+        QueryIO::MigrateBatch(MigrateBatch { batch_id: batch.id, cache_entries: vec![] }),
+    )
+    .await;
 }
 
 #[tokio::test]
