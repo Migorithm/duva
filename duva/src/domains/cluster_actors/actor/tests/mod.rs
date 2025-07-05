@@ -76,6 +76,25 @@ impl TRead for FakeReadWrite {
 
 pub(crate) struct Helper;
 impl Helper {
+    // Helper function to create cache manager with hwm
+    pub(crate) fn cache_manager() -> (Arc<AtomicU64>, CacheManager) {
+        let hwm = Arc::new(AtomicU64::new(0));
+        let cache_manager = CacheManager::run_cache_actors(hwm.clone());
+        (hwm, cache_manager)
+    }
+
+    pub(crate) async fn cache_manager_with_keys(
+        keys: Vec<String>,
+    ) -> (Arc<AtomicU64>, CacheManager) {
+        let hwm = Arc::new(AtomicU64::new(0));
+        let cache_manager = CacheManager::run_cache_actors(hwm.clone());
+        for key in keys.clone() {
+            cache_manager.route_set(CacheEntry::new(key, "value"), 1).await.unwrap();
+        }
+        hwm.store(keys.len() as u64, Ordering::Relaxed);
+        (hwm, cache_manager)
+    }
+
     pub(crate) fn create_peer(
         cluster_sender: ClusterCommandHandler,
         hwm: u64,
@@ -210,25 +229,6 @@ impl InterceptedReceiver {
             }
         }
     }
-}
-
-// Helper function to create cache manager with hwm
-pub(crate) fn cache_manager_create_helper() -> (Arc<AtomicU64>, CacheManager) {
-    let hwm = Arc::new(AtomicU64::new(0));
-    let cache_manager = CacheManager::run_cache_actors(hwm.clone());
-    (hwm, cache_manager)
-}
-
-pub(crate) async fn cache_manager_create_helper_with_keys(
-    keys: Vec<String>,
-) -> (Arc<AtomicU64>, CacheManager) {
-    let hwm = Arc::new(AtomicU64::new(0));
-    let cache_manager = CacheManager::run_cache_actors(hwm.clone());
-    for key in keys.clone() {
-        cache_manager.route_set(CacheEntry::new(key, "value"), 1).await.unwrap();
-    }
-    hwm.store(keys.len() as u64, Ordering::Relaxed);
-    (hwm, cache_manager)
 }
 
 // Helper function to setup blocked cluster actor with pending requests
