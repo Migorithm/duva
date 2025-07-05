@@ -9,7 +9,7 @@ use crate::domains::peers::command::RequestVote;
 async fn test_run_for_election_transitions_to_candidate_and_sends_request_votes() {
     // GIVEN: A follower actor with a couple of replica peers
 
-    let mut actor = cluster_actor_create_helper(ReplicationRole::Follower).await;
+    let mut actor = Helper::cluster_actor(ReplicationRole::Follower).await;
     let initial_term = actor.replication.term;
     let (fakebuf1, _) = actor.test_add_peer(8001, None, false);
     let (fakebuf2, _) = actor.test_add_peer(8002, None, false);
@@ -41,7 +41,7 @@ async fn test_run_for_election_transitions_to_candidate_and_sends_request_votes(
 async fn test_run_for_election_no_replicas() {
     // GIVEN: A follower actor with no replicas
 
-    let mut actor = cluster_actor_create_helper(ReplicationRole::Follower).await;
+    let mut actor = Helper::cluster_actor(ReplicationRole::Follower).await;
     let initial_term = actor.replication.term;
 
     // WHEN: The actor runs for election
@@ -61,7 +61,7 @@ async fn test_run_for_election_no_replicas() {
 #[tokio::test]
 async fn test_vote_election_grant_vote() {
     // GIVEN: A follower actor
-    let mut follower_actor = cluster_actor_create_helper(ReplicationRole::Follower).await;
+    let mut follower_actor = Helper::cluster_actor(ReplicationRole::Follower).await;
     let initial_term = follower_actor.replication.term;
 
     let (candidate_fake_buf, candidate_id) = follower_actor.test_add_peer(8011, None, false);
@@ -96,7 +96,7 @@ async fn test_vote_election_grant_vote() {
 #[tokio::test]
 async fn test_vote_election_deny_vote_older_log() {
     // GIVEN: A follower actor
-    let mut follower_actor = cluster_actor_create_helper(ReplicationRole::Follower).await;
+    let mut follower_actor = Helper::cluster_actor(ReplicationRole::Follower).await;
     let initial_term = follower_actor.replication.term;
 
     follower_actor
@@ -138,7 +138,7 @@ async fn test_vote_election_deny_vote_older_log() {
 #[tokio::test]
 async fn test_vote_election_deny_vote_lower_candidate_term() {
     let follower_term = 3;
-    let mut follower_actor = cluster_actor_create_helper(ReplicationRole::Follower).await;
+    let mut follower_actor = Helper::cluster_actor(ReplicationRole::Follower).await;
     follower_actor.replication.term = follower_term;
 
     let (candidate_fake_buf, candidate_id) = follower_actor.test_add_peer(8031, None, false);
@@ -165,7 +165,7 @@ async fn test_vote_election_deny_vote_lower_candidate_term() {
 async fn test_receive_election_vote_candidate_wins_election() {
     // GIVEN: A candidate actor needing one more vote to win (2 replicas + self = 3 total, needs 2 votes)
     let candidate_term = 3;
-    let mut candidate_actor = cluster_actor_create_helper(ReplicationRole::Follower).await;
+    let mut candidate_actor = Helper::cluster_actor(ReplicationRole::Follower).await;
 
     // Manually set up as candidate that has run for election
     candidate_actor.replication.term = candidate_term;
@@ -207,7 +207,7 @@ async fn test_receive_election_vote_candidate_wins_election() {
 #[tokio::test]
 async fn test_receive_election_vote_candidate_gets_vote_not_enough_to_win() {
     let candidate_term = 3;
-    let mut candidate_actor = cluster_actor_create_helper(ReplicationRole::Follower).await;
+    let mut candidate_actor = Helper::cluster_actor(ReplicationRole::Follower).await;
     candidate_actor.replication.term = candidate_term;
 
     candidate_actor.replication.election_state =

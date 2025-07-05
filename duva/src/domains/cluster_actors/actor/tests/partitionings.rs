@@ -13,7 +13,7 @@ use super::*;
 #[tokio::test]
 async fn test_rebalance_request_with_lazy() {
     // GIVEN
-    let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
+    let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Leader).await;
 
     // WHEN
     let request_to = PeerIdentifier("127.0.0.1:6559".into());
@@ -28,7 +28,7 @@ async fn test_rebalance_request_with_lazy() {
 #[tokio::test]
 async fn test_rebalance_request_before_member_connected() {
     // GIVEN
-    let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
+    let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Leader).await;
 
     // WHEN
     let request_to = PeerIdentifier("127.0.0.1:6559".into());
@@ -43,7 +43,7 @@ async fn test_rebalance_request_before_member_connected() {
 #[tokio::test]
 async fn test_rebalance_request_to_replica() {
     // GIVEN
-    let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
+    let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Leader).await;
 
     let (buf, _) = cluster_actor.test_add_peer(6559, None, false);
 
@@ -66,7 +66,7 @@ async fn test_rebalance_request_to_replica() {
 #[tokio::test]
 async fn test_rebalance_request_happypath() {
     // GIVEN
-    let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
+    let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Leader).await;
 
     let (buf, _) = cluster_actor.test_add_peer(
         6559,
@@ -87,7 +87,7 @@ async fn test_rebalance_request_happypath() {
 #[tokio::test]
 async fn test_start_rebalance_before_connection_is_made() {
     // GIVEN
-    let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
+    let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Leader).await;
     let (_hwm, cache_manager) = cache_manager_create_helper();
 
     // WHEN
@@ -102,7 +102,7 @@ async fn test_start_rebalance_before_connection_is_made() {
 #[tokio::test]
 async fn test_start_rebalance_only_when_replica_is_found() {
     // GIVEN
-    let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
+    let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Leader).await;
     let (_hwm, cache_manager) = cache_manager_create_helper();
     let (buf, _) = cluster_actor.test_add_peer(6559, None, false);
 
@@ -118,7 +118,7 @@ async fn test_start_rebalance_only_when_replica_is_found() {
 #[tokio::test]
 async fn test_start_rebalance_happy_path() {
     // GIVEN
-    let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
+    let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Leader).await;
     let (_hwm, cache_manager) = cache_manager_create_helper();
     let (buf, _) = cluster_actor.test_add_peer(
         6559,
@@ -147,7 +147,7 @@ async fn test_start_rebalance_happy_path() {
 #[tokio::test]
 async fn test_maybe_update_hashring_when_noplan_is_made() {
     // GIVEN
-    let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
+    let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Leader).await;
     let last_modified = cluster_actor.hash_ring.last_modified;
     tokio::time::sleep(Duration::from_millis(1)).await; // sleep to make sure last_modified is updated
 
@@ -175,7 +175,7 @@ async fn test_maybe_update_hashring_when_noplan_is_made() {
 #[tokio::test]
 async fn test_make_migration_plan_when_given_hashring_is_same() {
     // GIVEN
-    let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
+    let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Leader).await;
     let last_modified = cluster_actor.hash_ring.last_modified;
 
     // WHEN
@@ -191,7 +191,7 @@ async fn test_make_migration_plan_when_given_hashring_is_same() {
 #[tokio::test]
 async fn test_make_migration_plan_when_no_hashring_given() {
     // GIVEN
-    let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
+    let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Leader).await;
     let last_modified = cluster_actor.hash_ring.last_modified;
 
     // WHEN
@@ -305,7 +305,7 @@ async fn test_send_migrate_and_wait_callback_error() {
 #[tokio::test]
 async fn test_migrate_keys_target_peer_not_found() {
     // GIVEN
-    let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
+    let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Leader).await;
     let (_hwm, cache_manager) = cache_manager_create_helper();
 
     let tasks = MigrationBatch::new(
@@ -326,7 +326,7 @@ async fn test_migrate_keys_target_peer_not_found() {
 #[tokio::test]
 async fn test_migrate_keys_retrieves_actual_data() {
     // GIVEN
-    let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
+    let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Leader).await;
     cluster_actor.block_write_reqs();
 
     let (_hwm, cache_manager) = cache_manager_create_helper();
@@ -366,7 +366,7 @@ async fn test_migrate_keys_retrieves_actual_data() {
 #[tokio::test]
 async fn test_receive_batch_success_path_when_consensus_is_required() {
     // GIVEN
-    let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
+    let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Leader).await;
     let (_hwm, cache_manager) = cache_manager_create_helper();
     let current_index = cluster_actor.logger.last_log_index;
     let peer_replid = ReplicationId::Key("repl_id_for_other_node".to_string());
@@ -407,7 +407,7 @@ async fn test_receive_batch_success_path_when_consensus_is_required() {
 async fn test_receive_batch_success_path_when_noreplica_found() {
     // GIVEN
     let (mut cluster_actor, recv) =
-        cluster_actor_with_receiver_helper(ReplicationRole::Leader).await;
+        Helper::cluster_actor_with_receiver(ReplicationRole::Leader).await;
 
     let (_hwm, cache_manager) = cache_manager_create_helper();
     let current_index = cluster_actor.logger.last_log_index;
@@ -425,7 +425,6 @@ async fn test_receive_batch_success_path_when_noreplica_found() {
         batch_id: batch.batch_id.clone(),
         to: sender_peer_id.clone(),
     }));
-
     cluster_actor.receive_batch(batch, &cache_manager, sender_peer_id).await;
 
     // THEN - verify that the log index is incremented
@@ -476,7 +475,7 @@ async fn test_unblock_write_reqs_if_done_when_migrations_still_pending() {
 #[tokio::test]
 async fn test_unblock_write_reqs_if_done_when_not_blocked() {
     // GIVEN
-    let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
+    let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Leader).await;
     cluster_actor.pending_migrations = Some(HashMap::new());
 
     // WHEN
@@ -507,7 +506,7 @@ async fn test_unblock_write_reqs_if_done_multiple_times() {
 #[tokio::test]
 async fn test_find_target_peer_for_replication() {
     // GIVEN
-    let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
+    let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Leader).await;
     let repl_id_1 = ReplicationId::Key("repl_1".to_string());
     let repl_id_2 = ReplicationId::Key("repl_2".to_string());
 
@@ -652,7 +651,7 @@ async fn test_handle_migration_ack_success_case_with_pending_reqs_and_migration(
 #[tokio::test]
 async fn test_start_rebalance_schedules_migration_batches() {
     // GIVEN
-    let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
+    let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Leader).await;
     let (_hwm, cache_manager) = cache_manager_create_helper_with_keys(vec![
         "test_key_1".to_string(),
         "test_key_2".to_string(),
@@ -708,7 +707,7 @@ async fn test_start_rebalance_schedules_migration_batches() {
 #[tokio::test]
 async fn test_maybe_update_hashring_replica_only_updates_ring() {
     // GIVEN - Create a replica actor (not leader)
-    let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Follower).await;
+    let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Follower).await;
     let (_hwm, cache_manager) = cache_manager_create_helper_with_keys(vec![
         "replica_key_1".to_string(),
         "replica_key_2".to_string(),

@@ -74,86 +74,85 @@ impl TRead for FakeReadWrite {
     }
 }
 
-pub(crate) fn create_peer_helper(
-    cluster_sender: ClusterCommandHandler,
-    hwm: u64,
-    repl_id: &ReplicationId,
-    port: u16,
+pub(crate) struct Helper;
+impl Helper {
+    pub(crate) fn create_peer(
+        cluster_sender: ClusterCommandHandler,
+        hwm: u64,
+        repl_id: &ReplicationId,
+        port: u16,
 
-    role: ReplicationRole,
-    fake_buf: FakeReadWrite,
-) -> (PeerIdentifier, Peer) {
-    let key = PeerIdentifier::new("127.0.0.1", port);
+        role: ReplicationRole,
+        fake_buf: FakeReadWrite,
+    ) -> (PeerIdentifier, Peer) {
+        let key = PeerIdentifier::new("127.0.0.1", port);
 
-    let kill_switch = PeerListener::spawn(fake_buf.clone(), cluster_sender, key.clone());
-    let peer = Peer::new(fake_buf, PeerState::new(&key, hwm, repl_id.clone(), role), kill_switch);
-    (key, peer)
-}
-
-fn sessionless_write_operation_helper(
-    index_num: u64,
-    term: u64,
-    key: &str,
-    value: &str,
-) -> WriteOperation {
-    WriteOperation {
-        log_index: index_num,
-        request: WriteRequest::Set { key: key.into(), value: value.into(), expires_at: None },
-        term,
-        session_req: None,
+        let kill_switch = PeerListener::spawn(fake_buf.clone(), cluster_sender, key.clone());
+        let peer =
+            Peer::new(fake_buf, PeerState::new(&key, hwm, repl_id.clone(), role), kill_switch);
+        (key, peer)
     }
-}
-fn sessionful_write_operation_helper(
-    index_num: u64,
-    term: u64,
-    key: &str,
-    value: &str,
-    session_req: SessionRequest,
-) -> WriteOperation {
-    WriteOperation {
-        log_index: index_num,
-        request: WriteRequest::Set { key: key.into(), value: value.into(), expires_at: None },
-        term,
-        session_req: Some(session_req),
+
+    pub(crate) fn write(index_num: u64, term: u64, key: &str, value: &str) -> WriteOperation {
+        WriteOperation {
+            log_index: index_num,
+            request: WriteRequest::Set { key: key.into(), value: value.into(), expires_at: None },
+            term,
+            session_req: None,
+        }
     }
-}
-
-fn heartbeat_create_helper(term: u64, hwm: u64, op_logs: Vec<WriteOperation>) -> HeartBeat {
-    HeartBeat {
-        term,
-        hwm,
-        prev_log_index: if !op_logs.is_empty() { op_logs[0].log_index - 1 } else { 0 },
-        prev_log_term: 0,
-        append_entries: op_logs,
-        ban_list: vec![],
-        from: PeerIdentifier::new("localhost", 8080),
-        replid: ReplicationId::Key("localhost".to_string()),
-        hop_count: 0,
-        cluster_nodes: vec![],
-        hashring: None,
+    pub(crate) fn session_write(
+        index_num: u64,
+        term: u64,
+        key: &str,
+        value: &str,
+        session_req: SessionRequest,
+    ) -> WriteOperation {
+        WriteOperation {
+            log_index: index_num,
+            request: WriteRequest::Set { key: key.into(), value: value.into(), expires_at: None },
+            term,
+            session_req: Some(session_req),
+        }
     }
-}
 
-pub async fn cluster_actor_create_helper(role: ReplicationRole) -> ClusterActor<MemoryOpLogs> {
-    let replication =
-        ReplicationState::new(ReplicationId::Key("master".into()), role, "127.0.0.1", 8080, 0);
-    let dir = TempDir::new().unwrap();
-    let path = dir.path().join("duva.tp");
+    fn heartbeat(term: u64, hwm: u64, op_logs: Vec<WriteOperation>) -> HeartBeat {
+        HeartBeat {
+            term,
+            hwm,
+            prev_log_index: if !op_logs.is_empty() { op_logs[0].log_index - 1 } else { 0 },
+            prev_log_term: 0,
+            append_entries: op_logs,
+            ban_list: vec![],
+            from: PeerIdentifier::new("localhost", 8080),
+            replid: ReplicationId::Key("localhost".to_string()),
+            hop_count: 0,
+            cluster_nodes: vec![],
+            hashring: None,
+        }
+    }
 
-    let topology_writer =
-        OpenOptions::new().create(true).write(true).truncate(true).open(path).unwrap();
+    pub async fn cluster_actor(role: ReplicationRole) -> ClusterActor<MemoryOpLogs> {
+        let replication =
+            ReplicationState::new(ReplicationId::Key("master".into()), role, "127.0.0.1", 8080, 0);
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("duva.tp");
 
-    ClusterActor::new(100, replication, 100, topology_writer, MemoryOpLogs::default())
-}
+        let topology_writer =
+            OpenOptions::new().create(true).write(true).truncate(true).open(path).unwrap();
 
-pub async fn cluster_actor_with_receiver_helper(
-    role: ReplicationRole,
-) -> (ClusterActor<MemoryOpLogs>, InterceptedReceiver) {
-    let mut actor = cluster_actor_create_helper(role).await;
-    let (tx, rx) = channel(100);
-    let cluster_sender = ClusterCommandHandler(tx);
-    actor.self_handler = cluster_sender.clone();
-    (actor, InterceptedReceiver(rx))
+        ClusterActor::new(100, replication, 100, topology_writer, MemoryOpLogs::default())
+    }
+
+    pub async fn cluster_actor_with_receiver(
+        role: ReplicationRole,
+    ) -> (ClusterActor<MemoryOpLogs>, InterceptedReceiver) {
+        let mut actor = Self::cluster_actor(role).await;
+        let (tx, rx) = channel(100);
+        let cluster_sender = ClusterCommandHandler(tx);
+        actor.self_handler = cluster_sender.clone();
+        (actor, InterceptedReceiver(rx))
+    }
 }
 
 pub struct InterceptedReceiver(tokio::sync::mpsc::Receiver<ClusterCommand>);
@@ -234,7 +233,7 @@ pub(crate) async fn cache_manager_create_helper_with_keys(
 pub(crate) async fn setup_blocked_cluster_actor_with_requests(
     num_requests: usize,
 ) -> ClusterActor<MemoryOpLogs> {
-    let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
+    let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Leader).await;
     cluster_actor.block_write_reqs();
 
     for _ in 0..num_requests {
@@ -284,7 +283,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         is_leader: bool,
     ) -> (FakeReadWrite, PeerIdentifier) {
         let buf = FakeReadWrite::new();
-        let (id, peer) = create_peer_helper(
+        let (id, peer) = Helper::create_peer(
             self.self_handler.clone(),
             0,
             &repl_id.unwrap_or_else(|| self.replication.replid.clone()),
