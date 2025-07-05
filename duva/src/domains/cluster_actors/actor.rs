@@ -1071,6 +1071,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         if migration_plans.is_empty() {
             info!("No migration tasks to schedule");
             self.hash_ring = *new_ring;
+            let _ = self.node_change_broadcast.send(self.get_topology());
             return;
         }
 
