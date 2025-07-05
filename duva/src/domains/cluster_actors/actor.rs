@@ -16,7 +16,6 @@ use crate::domains::caches::cache_manager::CacheManager;
 use crate::domains::cluster_actors::consensus::election::ElectionVoting;
 use crate::domains::cluster_actors::hash_ring::BatchId;
 use crate::domains::cluster_actors::hash_ring::MigrationBatch;
-use crate::domains::cluster_actors::hash_ring::MigrationTask;
 use crate::domains::cluster_actors::hash_ring::PendingMigrationBatch;
 use crate::domains::cluster_actors::topology::Topology;
 use crate::domains::operation_logs::WriteRequest;
@@ -1097,8 +1096,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
                 // Spawn each batch as a separate task for parallel execution
                 batch_handles.push(tokio::spawn(Self::schedule_migration_in_batch(
-                    target_replid.clone(),
-                    batch_to_migrate,
+                    MigrationBatch::new(target_replid.clone(), batch_to_migrate),
                     self.self_handler.clone(),
                 )));
             }
@@ -1119,18 +1117,12 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     }
 
     async fn schedule_migration_in_batch(
-        target_replid: ReplicationId,
-        batch_to_migrate: Vec<MigrationTask>,
+        batch: MigrationBatch,
         handler: ClusterCommandHandler,
     ) -> anyhow::Result<()> {
         let (tx, rx) = tokio::sync::oneshot::channel();
-        handler
-            .send(SchedulerMessage::ScheduleMigrationBatch(
-                MigrationBatch::new(target_replid, batch_to_migrate),
-                tx.into(),
-            ))
-            .await?;
-        rx.await.unwrap_or_else(|_| Err(anyhow::anyhow!("Channel closed")))
+        handler.send(SchedulerMessage::ScheduleMigrationBatch(batch, tx.into())).await?;
+        rx.await?
     }
 
     pub(crate) async fn migrate_batch(
@@ -1153,13 +1145,12 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             .flat_map(|task| task.keys_to_migrate.iter().cloned())
             .collect::<Vec<_>>();
 
-        let cache_entries =
-            cache_manager.route_mget(keys.clone()).await.into_iter().flatten().collect::<Vec<_>>();
-
-        let Some(pending_migrations) = self.pending_migrations.as_mut() else {
-            let _ = callback.send(res_err!("No pending migrations active"));
-            return;
-        };
+        let cache_entries = cache_manager
+            .route_mget(keys.clone())
+            .await
+            .into_iter()
+            .filter_map(|e| e.filter(|e| !e.value.null()))
+            .collect::<Vec<_>>();
 
         // Get mutable reference to the target peer
         let Some(target_peer) = self.members.get_mut(&peer_id) else {
@@ -1167,7 +1158,9 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             return;
         };
 
-        pending_migrations.insert(target.id.clone(), PendingMigrationBatch::new(callback, keys));
+        self.pending_migrations
+            .as_mut()
+            .map(|p| p.insert(target.id.clone(), PendingMigrationBatch::new(callback, keys)));
 
         let _ = target_peer.send(MigrateBatch { batch_id: target.id, cache_entries }).await;
     }

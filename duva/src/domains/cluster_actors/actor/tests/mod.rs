@@ -225,7 +225,7 @@ impl InterceptedReceiver {
         let expected = expected.into();
         while let Some(msg) = self.0.recv().await {
             if msg == expected {
-                return;
+                break;
             }
         }
     }
