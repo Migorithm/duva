@@ -144,7 +144,7 @@ impl Helper {
         ClusterActor::new(100, replication, 100, topology_writer, MemoryOpLogs::default())
     }
 
-    pub async fn cluster_actor_with_receiver(
+    async fn cluster_actor_with_receiver(
         role: ReplicationRole,
     ) -> (ClusterActor<MemoryOpLogs>, InterceptedReceiver) {
         let mut actor = Self::cluster_actor(role).await;
@@ -152,6 +152,40 @@ impl Helper {
         let cluster_sender = ClusterCommandHandler(tx);
         actor.self_handler = cluster_sender.clone();
         (actor, InterceptedReceiver(rx))
+    }
+
+    fn cluster_member(
+        actor: &mut ClusterActor<MemoryOpLogs>,
+        fake_bufs: Vec<FakeReadWrite>,
+        cluster_sender: ClusterCommandHandler,
+        follower_hwm: u64,
+        replid: Option<ReplicationId>,
+    ) {
+        for fake_b in fake_bufs.into_iter() {
+            let port = rand::random::<u16>();
+            let key = PeerIdentifier::new("localhost", port);
+
+            let kill_switch = PeerListener::spawn(
+                ReadConnected(Box::new(fake_b.clone())),
+                cluster_sender.clone(),
+                key.clone(),
+            );
+            actor.members.insert(
+                PeerIdentifier::new("localhost", port),
+                Peer::new(
+                    fake_b.clone(),
+                    PeerState::new(
+                        &format!("localhost:{port}"),
+                        follower_hwm,
+                        replid
+                            .clone()
+                            .unwrap_or_else(|| ReplicationId::Key("localhost".to_string())),
+                        ReplicationRole::Follower,
+                    ),
+                    kill_switch,
+                ),
+            );
+        }
     }
 }
 
@@ -164,38 +198,6 @@ impl InterceptedReceiver {
                 return;
             }
         }
-    }
-}
-
-fn cluster_member_create_helper(
-    actor: &mut ClusterActor<MemoryOpLogs>,
-    fake_bufs: Vec<FakeReadWrite>,
-    cluster_sender: ClusterCommandHandler,
-    follower_hwm: u64,
-    replid: Option<ReplicationId>,
-) {
-    for fake_b in fake_bufs.into_iter() {
-        let port = rand::random::<u16>();
-        let key = PeerIdentifier::new("localhost", port);
-
-        let kill_switch = PeerListener::spawn(
-            ReadConnected(Box::new(fake_b.clone())),
-            cluster_sender.clone(),
-            key.clone(),
-        );
-        actor.members.insert(
-            PeerIdentifier::new("localhost", port),
-            Peer::new(
-                fake_b.clone(),
-                PeerState::new(
-                    &format!("localhost:{port}"),
-                    follower_hwm,
-                    replid.clone().unwrap_or_else(|| ReplicationId::Key("localhost".to_string())),
-                    ReplicationRole::Follower,
-                ),
-                kill_switch,
-            ),
-        );
     }
 }
 

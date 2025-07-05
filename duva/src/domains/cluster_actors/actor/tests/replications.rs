@@ -43,7 +43,7 @@ async fn test_generate_follower_entries() {
     let (cluster_sender, _) = tokio::sync::mpsc::channel(100);
     let follower_buffs = (0..5).map(|_| FakeReadWrite::new()).collect::<Vec<_>>();
 
-    cluster_member_create_helper(
+    Helper::cluster_member(
         &mut cluster_actor,
         follower_buffs.clone(),
         ClusterCommandHandler(cluster_sender.clone()),
@@ -64,7 +64,7 @@ async fn test_generate_follower_entries() {
     //WHEN
     // *add lagged followers with its commit index being 1
     let follower_buffs = (5..7).map(|_| FakeReadWrite::new()).collect::<Vec<_>>();
-    cluster_member_create_helper(
+    Helper::cluster_member(
         &mut cluster_actor,
         follower_buffs,
         ClusterCommandHandler(cluster_sender),
@@ -426,7 +426,7 @@ async fn req_consensus_inserts_consensus_voting() {
     let (cluster_sender, _) = tokio::sync::mpsc::channel(100);
 
     let follower_buffs = (0..5).map(|_| FakeReadWrite::new()).collect::<Vec<_>>();
-    cluster_member_create_helper(
+    Helper::cluster_member(
         &mut cluster_actor,
         follower_buffs.clone(),
         ClusterCommandHandler(cluster_sender),
@@ -510,7 +510,7 @@ async fn test_consensus_voting_deleted_when_consensus_reached() {
 
     // - add 4 followers to create quorum - so 2 votes are needed to reach consensus
     let follower_buffs = (0..4).map(|_| FakeReadWrite::new()).collect::<Vec<_>>();
-    cluster_member_create_helper(
+    Helper::cluster_member(
         &mut cluster_actor,
         follower_buffs.clone(),
         ClusterCommandHandler(cluster_sender),
@@ -557,7 +557,7 @@ async fn test_same_voter_can_vote_only_once() {
     // - add followers to create quorum
 
     let follower_buffs = (0..4).map(|_| FakeReadWrite::new()).collect::<Vec<_>>();
-    cluster_member_create_helper(
+    Helper::cluster_member(
         &mut cluster_actor,
         follower_buffs.clone(),
         ClusterCommandHandler(cluster_sender),
