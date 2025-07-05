@@ -407,25 +407,44 @@ async fn test_receive_batch_success_path_when_consensus_is_required() {
 async fn test_receive_batch_success_path_when_noreplica_found() {
     // GIVEN
     let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
+    // ! intercept the channel to receive messages
+    let (tx, mut rx) = tokio::sync::mpsc::channel(10);
+    cluster_actor.self_handler = ClusterCommandHandler(tx);
+
     let (_hwm, cache_manager) = cache_manager_create_helper();
     let current_index = cluster_actor.logger.last_log_index;
     let peer_replid = ReplicationId::Key("repl_id_for_other_node".to_string());
-
     let (_, sender_peer_id) = cluster_actor.test_add_peer(6567, Some(peer_replid.clone()), true);
     cluster_actor.hash_ring =
         cluster_actor.hash_ring.set_partitions(cluster_actor.shard_leaders()).unwrap();
 
     let cache_entries =
         cache_entries_create_helper(&[("success_key3", "value2"), ("success_key4", "value4")]);
-    let migrate_batch = migration_batch_create_helper("success_test", cache_entries.clone());
+    let batch = migration_batch_create_helper("success_test", cache_entries.clone());
 
     // WHEN
-    cluster_actor.receive_batch(migrate_batch, &cache_manager, sender_peer_id).await;
+    let task = tokio::spawn({
+        let mig_batch = batch.clone();
+        let sender_peer_id = sender_peer_id.clone();
+        async move {
+            while let Some(msg) = rx.recv().await {
+                if let ClusterCommand::Scheduler(SchedulerMessage::SendBatchAck { batch_id, to }) =
+                    msg
+                {
+                    assert_eq!(batch_id, mig_batch.batch_id);
+                    assert_eq!(to, sender_peer_id);
+                    break;
+                }
+            }
+        }
+    });
+    cluster_actor.receive_batch(batch, &cache_manager, sender_peer_id).await;
 
     // THEN - verify that the log index is incremented
     assert_eq!(cluster_actor.logger.last_log_index, current_index + 1);
     let keys = cache_manager.route_keys(None).await;
     assert_eq!(keys.len(), 2);
+    task.await.unwrap();
 }
 
 #[tokio::test]
