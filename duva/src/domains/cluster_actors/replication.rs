@@ -15,14 +15,11 @@ pub(crate) struct ReplicationState {
     pub(crate) replid: ReplicationId, // The replication ID of the master example: 8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb
     pub(crate) hwm: Arc<AtomicU64>,   // high water mark (commit idx)
     pub(crate) role: ReplicationRole,
-
     pub(crate) self_host: String,
     pub(crate) self_port: u16,
-
     // * state is shared among peers
     pub(crate) term: u64,
     pub(crate) banlist: HashSet<BannedPeer>,
-
     pub(crate) election_state: ElectionState,
 }
 
