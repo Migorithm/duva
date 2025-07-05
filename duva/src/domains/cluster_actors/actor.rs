@@ -16,7 +16,6 @@ use crate::domains::caches::cache_manager::CacheManager;
 use crate::domains::cluster_actors::consensus::election::ElectionVoting;
 use crate::domains::cluster_actors::hash_ring::BatchId;
 use crate::domains::cluster_actors::hash_ring::MigrationBatch;
-use crate::domains::cluster_actors::hash_ring::MigrationTask;
 use crate::domains::cluster_actors::hash_ring::PendingMigrationBatch;
 use crate::domains::cluster_actors::topology::Topology;
 use crate::domains::operation_logs::WriteRequest;
