@@ -306,7 +306,7 @@ async fn test_migrate_keys_target_peer_not_found() {
 }
 
 #[tokio::test]
-async fn test_migrate_keys_send_migrate_batch_peer_message() {
+async fn test_migrate_batch_send_migrate_batch_peer_message() {
     // GIVEN
     let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Leader).await;
     let (_hwm, cache_manager) = Helper::cache_manager();
