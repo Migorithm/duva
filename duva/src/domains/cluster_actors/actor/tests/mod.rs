@@ -187,6 +187,17 @@ impl Helper {
             );
         }
     }
+
+    fn consensus_request(
+        tx: tokio::sync::oneshot::Sender<ConsensusClientResponse>,
+        session_req: Option<SessionRequest>,
+    ) -> ConsensusRequest {
+        ConsensusRequest::new(
+            WriteRequest::Set { key: "foo".into(), value: "bar".into(), expires_at: None },
+            Callback(tx),
+            session_req,
+        )
+    }
 }
 
 pub struct InterceptedReceiver(tokio::sync::mpsc::Receiver<ClusterCommand>);
@@ -199,17 +210,6 @@ impl InterceptedReceiver {
             }
         }
     }
-}
-
-fn consensus_request_create_helper(
-    tx: tokio::sync::oneshot::Sender<ConsensusClientResponse>,
-    session_req: Option<SessionRequest>,
-) -> ConsensusRequest {
-    ConsensusRequest::new(
-        WriteRequest::Set { key: "foo".into(), value: "bar".into(), expires_at: None },
-        Callback(tx),
-        session_req,
-    )
 }
 
 // Helper function to create cache manager with hwm
@@ -244,7 +244,7 @@ pub(crate) async fn setup_blocked_cluster_actor_with_requests(
             .pending_requests
             .as_mut()
             .unwrap()
-            .push_back(consensus_request_create_helper(tx, None));
+            .push_back(Helper::consensus_request(tx, None));
     }
 
     cluster_actor
