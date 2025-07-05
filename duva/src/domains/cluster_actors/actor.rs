@@ -35,6 +35,8 @@ use crate::domains::peers::connections::outbound::stream::OutboundStream;
 use crate::domains::peers::peer::PeerState;
 use crate::err;
 use crate::res_err;
+use crate::types::Callback;
+use crate::types::ConnectionStream;
 use client_sessions::ClientSessions;
 
 use heartbeat_scheduler::HeartBeatScheduler;
@@ -47,7 +49,7 @@ use std::io::Seek;
 use std::io::Write;
 use std::iter;
 use std::sync::atomic::Ordering;
-use tokio::net::TcpStream;
+
 use tracing::debug;
 use tracing::error;
 use tracing::info;
@@ -156,7 +158,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     pub(crate) async fn add_peer(
         &mut self,
         peer: Peer,
-        optional_callback: Option<tokio::sync::oneshot::Sender<anyhow::Result<()>>>,
+        optional_callback: Option<Callback<anyhow::Result<()>>>,
     ) {
         let peer_id = peer.id().clone();
         self.replication.banlist.remove(&peer_id);
@@ -189,7 +191,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     pub(crate) async fn connect_to_server(
         &mut self,
         connect_to: PeerIdentifier,
-        optional_callback: Option<tokio::sync::oneshot::Sender<anyhow::Result<()>>>,
+        optional_callback: Option<Callback<anyhow::Result<()>>>,
     ) {
         if self.replication.self_identifier() == connect_to {
             if let Some(cb) = optional_callback {
@@ -214,8 +216,8 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         ));
     }
 
-    pub(crate) fn accept_inbound_stream(&mut self, peer_stream: TcpStream) {
-        let inbound_stream = InboundStream::new(peer_stream, self.replication.clone());
+    pub(crate) fn accept_inbound_stream(&mut self, peer_stream: ConnectionStream) {
+        let inbound_stream = InboundStream::new(peer_stream.0, self.replication.clone());
         tokio::spawn(inbound_stream.add_peer(self.self_handler.clone()));
     }
 
@@ -428,7 +430,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     pub(crate) async fn replicaof(
         &mut self,
         peer_addr: PeerIdentifier,
-        callback: tokio::sync::oneshot::Sender<anyhow::Result<()>>,
+        callback: Callback<anyhow::Result<()>>,
     ) {
         self.logger.reset();
         self.replication.hwm.store(0, Ordering::Release);
@@ -441,7 +443,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         &mut self,
         peer_addr: PeerIdentifier,
         lazy_option: LazyOption,
-        cl_cb: tokio::sync::oneshot::Sender<anyhow::Result<()>>,
+        cl_cb: Callback<anyhow::Result<()>>,
     ) {
         if !self.replication.is_leader() || self.replication.self_identifier() == peer_addr {
             let _ = cl_cb.send(res_err!("wrong address or invalid state for cluster meet command"));
@@ -450,7 +452,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
         // ! intercept the callback to ensure that the connection is established before sending the rebalance request
         let (res_callback, conn_awaiter) = tokio::sync::oneshot::channel();
-        self.connect_to_server(peer_addr.clone(), Some(res_callback)).await;
+        self.connect_to_server(peer_addr.clone(), Some(res_callback.into())).await;
 
         tokio::spawn(Self::register_delayed_schedule(
             self.self_handler.clone(),
@@ -1001,7 +1003,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     async fn register_delayed_schedule<C>(
         cluster_sender: ClusterCommandHandler,
         awaiter: tokio::sync::oneshot::Receiver<anyhow::Result<C>>,
-        callback: tokio::sync::oneshot::Sender<anyhow::Result<C>>,
+        callback: Callback<anyhow::Result<C>>,
         schedule_cmd: SchedulerMessage,
     ) where
         C: Send + Sync + 'static,
@@ -1125,7 +1127,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         handler
             .send(SchedulerMessage::ScheduleMigrationBatch(
                 MigrationBatch::new(target_replid, batch_to_migrate),
-                tx,
+                tx.into(),
             ))
             .await?;
         rx.await.unwrap_or_else(|_| Err(anyhow::anyhow!("Channel closed")))
@@ -1135,8 +1137,9 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         &mut self,
         target: MigrationBatch,
         cache_manager: &CacheManager,
-        callback: tokio::sync::oneshot::Sender<Result<(), anyhow::Error>>,
+        callback: impl Into<Callback<anyhow::Result<()>>>,
     ) {
+        let callback = callback.into();
         //  Find target peer based on replication ID
         let Some(peer_id) = self.peerid_by_replid(&target.target_repl).cloned() else {
             let _ = callback.send(res_err!("Target peer not found for replication ID"));

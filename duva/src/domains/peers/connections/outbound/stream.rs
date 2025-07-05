@@ -12,6 +12,7 @@ use crate::domains::peers::identifier::PeerIdentifier;
 use crate::domains::peers::identifier::TPeerAddress;
 use crate::domains::peers::peer::Peer;
 use crate::domains::peers::service::PeerListener;
+use crate::types::Callback;
 use crate::write_array;
 use anyhow::Context;
 use bytes::Bytes;
@@ -102,7 +103,7 @@ impl OutboundStream {
         mut self,
         self_port: u16,
         cluster_handler: ClusterCommandHandler,
-        optional_callback: Option<tokio::sync::oneshot::Sender<anyhow::Result<()>>>,
+        optional_callback: Option<Callback<anyhow::Result<()>>>,
     ) -> anyhow::Result<()> {
         self.make_handshake(self_port).await?;
         let connection_info =

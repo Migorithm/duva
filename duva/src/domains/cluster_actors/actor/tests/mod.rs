@@ -24,6 +24,7 @@ use crate::domains::peers::connections::connection_types::ReadConnected;
 use crate::domains::peers::connections::inbound::stream::InboundStream;
 use crate::domains::peers::peer::PeerState;
 use crate::domains::peers::service::PeerListener;
+use crate::types::Callback;
 use std::fs::OpenOptions;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
@@ -145,6 +146,28 @@ pub async fn cluster_actor_create_helper(role: ReplicationRole) -> ClusterActor<
     ClusterActor::new(100, replication, 100, topology_writer, MemoryOpLogs::default())
 }
 
+pub async fn cluster_actor_with_receiver_helper(
+    role: ReplicationRole,
+) -> (ClusterActor<MemoryOpLogs>, InterceptedReceiver) {
+    let mut actor = cluster_actor_create_helper(role).await;
+    let (tx, rx) = channel(100);
+    let cluster_sender = ClusterCommandHandler(tx);
+    actor.self_handler = cluster_sender.clone();
+    (actor, InterceptedReceiver(rx))
+}
+
+pub struct InterceptedReceiver(tokio::sync::mpsc::Receiver<ClusterCommand>);
+impl InterceptedReceiver {
+    pub async fn wait_message(mut self, expected: impl Into<ClusterCommand>) {
+        let expected = expected.into();
+        while let Some(msg) = self.0.recv().await {
+            if msg == expected {
+                return;
+            }
+        }
+    }
+}
+
 fn cluster_member_create_helper(
     actor: &mut ClusterActor<MemoryOpLogs>,
     fake_bufs: Vec<FakeReadWrite>,
@@ -183,7 +206,7 @@ fn consensus_request_create_helper(
 ) -> ConsensusRequest {
     ConsensusRequest::new(
         WriteRequest::Set { key: "foo".into(), value: "bar".into(), expires_at: None },
-        tx,
+        Callback(tx),
         session_req,
     )
 }

@@ -44,6 +44,13 @@ impl<T: TWrite> From<T> for WriteConnected {
     }
 }
 
+impl PartialEq for WriteConnected {
+    fn eq(&self, _: &Self) -> bool {
+        true
+    }
+}
+impl Eq for WriteConnected {}
+
 #[derive(Debug)]
 pub(crate) struct ReadConnected(pub(crate) Box<dyn TRead>);
 make_smart_pointer!(ReadConnected, Box<dyn TRead>);

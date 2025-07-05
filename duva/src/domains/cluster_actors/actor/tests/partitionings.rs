@@ -406,10 +406,8 @@ async fn test_receive_batch_success_path_when_consensus_is_required() {
 #[tokio::test]
 async fn test_receive_batch_success_path_when_noreplica_found() {
     // GIVEN
-    let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
-    // ! intercept the channel to receive messages
-    let (tx, mut rx) = tokio::sync::mpsc::channel(10);
-    cluster_actor.self_handler = ClusterCommandHandler(tx);
+    let (mut cluster_actor, recv) =
+        cluster_actor_with_receiver_helper(ReplicationRole::Leader).await;
 
     let (_hwm, cache_manager) = cache_manager_create_helper();
     let current_index = cluster_actor.logger.last_log_index;
@@ -423,21 +421,11 @@ async fn test_receive_batch_success_path_when_noreplica_found() {
     let batch = migration_batch_create_helper("success_test", cache_entries.clone());
 
     // WHEN
-    let task = tokio::spawn({
-        let mig_batch = batch.clone();
-        let sender_peer_id = sender_peer_id.clone();
-        async move {
-            while let Some(msg) = rx.recv().await {
-                if let ClusterCommand::Scheduler(SchedulerMessage::SendBatchAck { batch_id, to }) =
-                    msg
-                {
-                    assert_eq!(batch_id, mig_batch.batch_id);
-                    assert_eq!(to, sender_peer_id);
-                    break;
-                }
-            }
-        }
-    });
+    let task = tokio::spawn(recv.wait_message(SchedulerMessage::SendBatchAck {
+        batch_id: batch.batch_id.clone(),
+        to: sender_peer_id.clone(),
+    }));
+
     cluster_actor.receive_batch(batch, &cache_manager, sender_peer_id).await;
 
     // THEN - verify that the log index is incremented

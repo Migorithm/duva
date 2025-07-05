@@ -238,7 +238,7 @@ async fn test_add_peer_for_follower_send_heartbeat() {
     let task = tokio::spawn(async move { rx.await.unwrap() });
 
     // WHEN - add the follower peer
-    cluster_actor.add_peer(peer, Some(tx)).await;
+    cluster_actor.add_peer(peer, Some(tx.into())).await;
 
     // THEN - check if heartbeat is sent to the follower
     task.await.unwrap().unwrap();

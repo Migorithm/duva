@@ -462,7 +462,8 @@ async fn req_consensus_inserts_consensus_voting() {
     let client_id = Uuid::now_v7();
     let session_request = SessionRequest::new(1, client_id);
     let w_req = WriteRequest::Set { key: "foo".into(), value: "bar".into(), expires_at: None };
-    let consensus_request = ConsensusRequest::new(w_req.clone(), tx, Some(session_request.clone()));
+    let consensus_request =
+        ConsensusRequest::new(w_req.clone(), Callback(tx), Some(session_request.clone()));
 
     // WHEN
     cluster_actor.req_consensus(consensus_request).await;
@@ -512,11 +513,11 @@ async fn test_leader_req_consensus_early_return_when_already_processed_session_r
     tokio::spawn(cluster_actor.handle(cache_manager));
     let (tx, rx) = tokio::sync::oneshot::channel();
     handler
-        .send(ClusterCommand::Client(ClientMessage::LeaderReqConsensus(ConsensusRequest {
-            request: WriteRequest::Set { key: "foo".into(), value: "bar".into(), expires_at: None },
-            callback: tx,
-            session_req: Some(client_req),
-        })))
+        .send(ClusterCommand::Client(ClientMessage::LeaderReqConsensus(ConsensusRequest::new(
+            WriteRequest::Set { key: "foo".into(), value: "bar".into(), expires_at: None },
+            tx,
+            Some(client_req),
+        ))))
         .await
         .unwrap();
 
