@@ -6,12 +6,13 @@ use crate::domains::operation_logs::WriteRequest;
 use crate::domains::peers::command::PeerCommand;
 use crate::domains::peers::peer::{Peer, PeerState};
 use crate::prelude::PeerIdentifier;
+use crate::types::{Callback, ConnectionStream};
 
 use std::str::FromStr;
-use tokio::net::TcpStream;
+
 use uuid::Uuid;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub(crate) enum ClusterCommand {
     ConnectionReq(ConnectionMessage),
     Scheduler(SchedulerMessage),
@@ -19,13 +20,13 @@ pub(crate) enum ClusterCommand {
     Peer(PeerCommand),
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum SchedulerMessage {
     SendPeriodicHeatBeat,
     SendAppendEntriesRPC,
     StartLeaderElection,
     RebalanceRequest { request_to: PeerIdentifier, lazy_option: LazyOption },
-    ScheduleMigrationBatch(MigrationBatch, tokio::sync::oneshot::Sender<anyhow::Result<()>>),
+    ScheduleMigrationBatch(MigrationBatch, Callback<anyhow::Result<()>>),
     TryUnblockWriteReqs,
     SendBatchAck { batch_id: BatchId, to: PeerIdentifier },
 }
@@ -35,17 +36,12 @@ impl From<SchedulerMessage> for ClusterCommand {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum ConnectionMessage {
-    ConnectToServer {
-        connect_to: PeerIdentifier,
-        callback: tokio::sync::oneshot::Sender<anyhow::Result<()>>,
-    },
-    AcceptInboundPeer {
-        stream: TcpStream,
-    },
+    ConnectToServer { connect_to: PeerIdentifier, callback: Callback<anyhow::Result<()>> },
+    AcceptInboundPeer { stream: ConnectionStream },
 
-    AddPeer(Peer, Option<tokio::sync::oneshot::Sender<anyhow::Result<()>>>),
+    AddPeer(Peer, Option<Callback<anyhow::Result<()>>>),
     FollowerSetReplId(ReplicationId, PeerIdentifier),
 }
 impl From<ConnectionMessage> for ClusterCommand {
@@ -54,21 +50,19 @@ impl From<ConnectionMessage> for ClusterCommand {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum ClientMessage {
-    GetPeers(tokio::sync::oneshot::Sender<Vec<PeerIdentifier>>),
-    ReplicationInfo(tokio::sync::oneshot::Sender<ReplicationState>),
-    ForgetPeer(PeerIdentifier, tokio::sync::oneshot::Sender<Option<()>>),
-    ReplicaOf(PeerIdentifier, tokio::sync::oneshot::Sender<anyhow::Result<()>>),
+    GetPeers(Callback<Vec<PeerIdentifier>>),
+    ReplicationInfo(Callback<ReplicationState>),
+    ForgetPeer(PeerIdentifier, Callback<Option<()>>),
+    ReplicaOf(PeerIdentifier, Callback<anyhow::Result<()>>),
     LeaderReqConsensus(ConsensusRequest),
-    ClusterNodes(tokio::sync::oneshot::Sender<Vec<PeerState>>),
-    GetRole(tokio::sync::oneshot::Sender<ReplicationRole>),
-    SubscribeToTopologyChange(
-        tokio::sync::oneshot::Sender<tokio::sync::broadcast::Receiver<Topology>>,
-    ),
-    ClusterMeet(PeerIdentifier, LazyOption, tokio::sync::oneshot::Sender<anyhow::Result<()>>),
-    GetTopology(tokio::sync::oneshot::Sender<Topology>),
-    ClusterReshard(tokio::sync::oneshot::Sender<Result<(), anyhow::Error>>),
+    ClusterNodes(Callback<Vec<PeerState>>),
+    GetRole(Callback<ReplicationRole>),
+    SubscribeToTopologyChange(Callback<tokio::sync::broadcast::Receiver<Topology>>),
+    ClusterMeet(PeerIdentifier, LazyOption, Callback<anyhow::Result<()>>),
+    GetTopology(Callback<Topology>),
+    ClusterReshard(Callback<Result<(), anyhow::Error>>),
 }
 
 impl From<ClientMessage> for ClusterCommand {
@@ -77,19 +71,19 @@ impl From<ClientMessage> for ClusterCommand {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub(crate) struct ConsensusRequest {
     pub(crate) request: WriteRequest,
-    pub(crate) callback: tokio::sync::oneshot::Sender<ConsensusClientResponse>,
+    pub(crate) callback: Callback<ConsensusClientResponse>,
     pub(crate) session_req: Option<SessionRequest>,
 }
 impl ConsensusRequest {
     pub(crate) fn new(
         request: WriteRequest,
-        callback: tokio::sync::oneshot::Sender<ConsensusClientResponse>,
+        callback: impl Into<Callback<ConsensusClientResponse>>,
         session_req: Option<SessionRequest>,
     ) -> Self {
-        Self { request, callback, session_req }
+        Self { request, callback: callback.into(), session_req }
     }
 }
 

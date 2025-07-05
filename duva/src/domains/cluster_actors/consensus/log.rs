@@ -6,9 +6,9 @@ use crate::{
         peers::identifier::PeerIdentifier,
     },
     make_smart_pointer,
+    types::Callback,
 };
-use tokio::sync::oneshot::Sender;
-pub(crate) type ReplicationVote = Sender<ConsensusClientResponse>;
+pub(crate) type ReplicationVote = Callback<ConsensusClientResponse>;
 
 #[derive(Default, Debug)]
 pub struct LogConsensusTracker(pub(crate) HashMap<u64, LogConsensusVoting>);
@@ -66,8 +66,11 @@ mod tests {
         ];
 
         for (follower_count, expected_votes) in test_cases {
-            let voting =
-                LogConsensusVoting::new(tokio::sync::oneshot::channel().0, follower_count, None);
+            let voting = LogConsensusVoting::new(
+                tokio::sync::oneshot::channel().0.into(),
+                follower_count,
+                None,
+            );
             assert_eq!(voting.get_required_votes(), expected_votes);
         }
     }
@@ -77,7 +80,7 @@ mod tests {
         // Test with a large but safe number of followers
         let follower_count = 100;
         let voting =
-            LogConsensusVoting::new(tokio::sync::oneshot::channel().0, follower_count, None);
+            LogConsensusVoting::new(tokio::sync::oneshot::channel().0.into(), follower_count, None);
         let total_nodes = follower_count as u8 + 1;
         let expected_votes = (total_nodes + 1).div_ceil(2);
         assert_eq!(voting.get_required_votes(), expected_votes);

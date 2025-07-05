@@ -4,10 +4,11 @@ use crate::domains::QueryIO;
 use crate::domains::cluster_actors::replication::{ReplicationId, ReplicationRole};
 use crate::domains::{IoError, TRead};
 use crate::prelude::PeerIdentifier;
+use crate::types::Callback;
 use tokio::task::JoinHandle;
 use tokio::time::Instant;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub(crate) struct Peer {
     pub(crate) w_conn: WriteConnected,
     pub(crate) listener_kill_trigger: ListeningActorKillTrigger,
@@ -64,7 +65,7 @@ impl Peer {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, bincode::Encode, bincode::Decode)]
+#[derive(Clone, Debug, PartialEq, Eq, bincode::Encode, bincode::Decode)]
 pub struct PeerState {
     id: PeerIdentifier,
     pub(crate) match_index: u64,
@@ -176,13 +177,10 @@ impl PeerState {
 }
 
 #[derive(Debug)]
-pub(crate) struct ListeningActorKillTrigger(
-    tokio::sync::oneshot::Sender<()>,
-    JoinHandle<Box<dyn TRead>>,
-);
+pub(crate) struct ListeningActorKillTrigger(Callback<()>, JoinHandle<Box<dyn TRead>>);
 impl ListeningActorKillTrigger {
     pub(crate) fn new(
-        kill_trigger: tokio::sync::oneshot::Sender<()>,
+        kill_trigger: Callback<()>,
         listning_task: JoinHandle<Box<dyn TRead>>,
     ) -> Self {
         Self(kill_trigger, listning_task)
@@ -192,6 +190,13 @@ impl ListeningActorKillTrigger {
         self.1.await.unwrap()
     }
 }
+
+impl PartialEq for ListeningActorKillTrigger {
+    fn eq(&self, other: &Self) -> bool {
+        self.0 == other.0 && self.1.is_finished() == other.1.is_finished()
+    }
+}
+impl Eq for ListeningActorKillTrigger {}
 
 #[test]
 fn test_prioritize_nodes_with_same_replid() {

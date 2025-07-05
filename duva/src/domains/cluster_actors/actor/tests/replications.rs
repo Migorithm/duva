@@ -6,9 +6,9 @@ fn logger_create_entries_from_lowest() {
     let mut logger = ReplicatedLogs::new(MemoryOpLogs::default(), 0, 0);
 
     let test_logs = vec![
-        sessionless_write_operation_helper(1, 0, "foo", "bar"),
-        sessionless_write_operation_helper(2, 0, "foo2", "bar"),
-        sessionless_write_operation_helper(3, 0, "foo3", "bar"),
+        Helper::write(1, 0, "foo", "bar"),
+        Helper::write(2, 0, "foo2", "bar"),
+        Helper::write(3, 0, "foo3", "bar"),
     ];
     logger.follower_write_entries(test_logs.clone()).unwrap();
 
@@ -38,12 +38,12 @@ fn logger_create_entries_from_lowest() {
 #[tokio::test]
 async fn test_generate_follower_entries() {
     // GIVEN
-    let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
+    let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Leader).await;
     let replid = cluster_actor.replication.replid.clone();
     let (cluster_sender, _) = tokio::sync::mpsc::channel(100);
     let follower_buffs = (0..5).map(|_| FakeReadWrite::new()).collect::<Vec<_>>();
 
-    cluster_member_create_helper(
+    Helper::cluster_member(
         &mut cluster_actor,
         follower_buffs.clone(),
         ClusterCommandHandler(cluster_sender.clone()),
@@ -52,9 +52,9 @@ async fn test_generate_follower_entries() {
     );
 
     let test_logs = vec![
-        sessionless_write_operation_helper(1, 0, "foo", "bar"),
-        sessionless_write_operation_helper(2, 0, "foo2", "bar"),
-        sessionless_write_operation_helper(3, 0, "foo3", "bar"),
+        Helper::write(1, 0, "foo", "bar"),
+        Helper::write(2, 0, "foo2", "bar"),
+        Helper::write(3, 0, "foo3", "bar"),
     ];
 
     cluster_actor.replication.hwm.store(3, Ordering::Release);
@@ -64,7 +64,7 @@ async fn test_generate_follower_entries() {
     //WHEN
     // *add lagged followers with its commit index being 1
     let follower_buffs = (5..7).map(|_| FakeReadWrite::new()).collect::<Vec<_>>();
-    cluster_member_create_helper(
+    Helper::cluster_member(
         &mut cluster_actor,
         follower_buffs,
         ClusterCommandHandler(cluster_sender),
@@ -94,15 +94,12 @@ async fn test_generate_follower_entries() {
 #[tokio::test]
 async fn follower_cluster_actor_replicate_log() {
     // GIVEN
-    let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Follower).await;
+    let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Follower).await;
     // WHEN - term
-    let heartbeat = heartbeat_create_helper(
+    let heartbeat = Helper::heartbeat(
         0,
         0,
-        vec![
-            sessionless_write_operation_helper(1, 0, "foo", "bar"),
-            sessionless_write_operation_helper(2, 0, "foo2", "bar"),
-        ],
+        vec![Helper::write(1, 0, "foo", "bar"), Helper::write(2, 0, "foo2", "bar")],
     );
     let cache_manager = CacheManager {
         inboxes: (0..10).map(|_| CacheCommandSender(channel(10).0)).collect::<Vec<_>>(),
@@ -130,15 +127,12 @@ async fn follower_cluster_actor_replicate_log() {
 async fn follower_cluster_actor_sessionless_replicate_state() {
     // GIVEN
     let (cache_handler, mut receiver) = tokio::sync::mpsc::channel(100);
-    let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Follower).await;
+    let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Follower).await;
 
-    let heartbeat = heartbeat_create_helper(
+    let heartbeat = Helper::heartbeat(
         0,
         0,
-        vec![
-            sessionless_write_operation_helper(1, 0, "foo", "bar"),
-            sessionless_write_operation_helper(2, 0, "foo2", "bar"),
-        ],
+        vec![Helper::write(1, 0, "foo", "bar"), Helper::write(2, 0, "foo2", "bar")],
     );
 
     let cache_manager = CacheManager { inboxes: vec![CacheCommandSender(cache_handler)] };
@@ -159,7 +153,7 @@ async fn follower_cluster_actor_sessionless_replicate_state() {
             }
         }
     });
-    let heartbeat = heartbeat_create_helper(0, 2, vec![]);
+    let heartbeat = Helper::heartbeat(0, 2, vec![]);
     cluster_actor.replicate(heartbeat, &cache_manager).await;
 
     // THEN
@@ -172,7 +166,7 @@ async fn follower_cluster_actor_sessionless_replicate_state() {
 async fn replicate_stores_only_latest_session_per_client() {
     // GIVEN
     let (cache_handler, _) = tokio::sync::mpsc::channel(100);
-    let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Follower).await;
+    let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Follower).await;
 
     let target_client = uuid::Uuid::now_v7();
     let session1 = SessionRequest::new(1, uuid::Uuid::now_v7());
@@ -180,13 +174,13 @@ async fn replicate_stores_only_latest_session_per_client() {
     // ! For the same client, hold only one request
     let session3 = SessionRequest::new(2, target_client);
 
-    let heartbeat = heartbeat_create_helper(
+    let heartbeat = Helper::heartbeat(
         0,
         0,
         vec![
-            sessionful_write_operation_helper(1, 0, "foo", "bar", session1.clone()),
-            sessionful_write_operation_helper(2, 0, "foo2", "bar", session2.clone()),
-            sessionful_write_operation_helper(3, 0, "foo2", "bar", session3.clone()),
+            Helper::session_write(1, 0, "foo", "bar", session1.clone()),
+            Helper::session_write(2, 0, "foo2", "bar", session2.clone()),
+            Helper::session_write(3, 0, "foo2", "bar", session3.clone()),
         ],
     );
 
@@ -202,16 +196,13 @@ async fn replicate_stores_only_latest_session_per_client() {
 #[tokio::test]
 async fn follower_cluster_actor_replicate_state_only_upto_hwm() {
     // GIVEN
-    let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Follower).await;
+    let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Follower).await;
 
     // Log two entries but don't commit them yet
-    let heartbeat = heartbeat_create_helper(
+    let heartbeat = Helper::heartbeat(
         0,
         0, // hwm=0, nothing committed yet
-        vec![
-            sessionless_write_operation_helper(1, 0, "foo", "bar"),
-            sessionless_write_operation_helper(2, 0, "foo2", "bar"),
-        ],
+        vec![Helper::write(1, 0, "foo", "bar"), Helper::write(2, 0, "foo2", "bar")],
     );
 
     let (tx, mut rx) = tokio::sync::mpsc::channel(100);
@@ -245,7 +236,7 @@ async fn follower_cluster_actor_replicate_state_only_upto_hwm() {
 
     // Send a heartbeat with hwm=1 to commit only the first entry
     const HWM: u64 = 1;
-    let heartbeat = heartbeat_create_helper(0, HWM, vec![]);
+    let heartbeat = Helper::heartbeat(0, HWM, vec![]);
     cluster_actor.replicate(heartbeat, &cache_manager).await;
 
     // THEN
@@ -263,16 +254,16 @@ async fn follower_cluster_actor_replicate_state_only_upto_hwm() {
 #[tokio::test]
 async fn test_apply_multiple_committed_entries() {
     // GIVEN
-    let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Follower).await;
+    let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Follower).await;
 
     // Add multiple entries
     let entries = vec![
-        sessionless_write_operation_helper(1, 0, "key1", "value1"),
-        sessionless_write_operation_helper(2, 0, "key2", "value2"),
-        sessionless_write_operation_helper(3, 0, "key3", "value3"),
+        Helper::write(1, 0, "key1", "value1"),
+        Helper::write(2, 0, "key2", "value2"),
+        Helper::write(3, 0, "key3", "value3"),
     ];
 
-    let heartbeat = heartbeat_create_helper(1, 0, entries);
+    let heartbeat = Helper::heartbeat(1, 0, entries);
 
     let (tx, mut rx) = tokio::sync::mpsc::channel(100);
     let cache_manager = CacheManager { inboxes: vec![CacheCommandSender(tx)] };
@@ -297,7 +288,7 @@ async fn test_apply_multiple_committed_entries() {
     });
 
     // WHEN - commit all entries
-    let commit_heartbeat = heartbeat_create_helper(1, 3, vec![]);
+    let commit_heartbeat = Helper::heartbeat(1, 3, vec![]);
 
     cluster_actor.replicate(commit_heartbeat, &cache_manager).await;
 
@@ -315,15 +306,13 @@ async fn test_apply_multiple_committed_entries() {
 #[tokio::test]
 async fn test_partial_commit_with_new_entries() {
     // GIVEN
-    let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Follower).await;
+    let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Follower).await;
 
     // First, append some entries
-    let first_entries = vec![
-        sessionless_write_operation_helper(1, 0, "key1", "value1"),
-        sessionless_write_operation_helper(2, 0, "key2", "value2"),
-    ];
+    let first_entries =
+        vec![Helper::write(1, 0, "key1", "value1"), Helper::write(2, 0, "key2", "value2")];
 
-    let first_heartbeat = heartbeat_create_helper(1, 0, first_entries);
+    let first_heartbeat = Helper::heartbeat(1, 0, first_entries);
 
     let (tx, mut rx) = tokio::sync::mpsc::channel(100);
     let cache_manager = CacheManager { inboxes: vec![CacheCommandSender(tx)] };
@@ -347,9 +336,9 @@ async fn test_partial_commit_with_new_entries() {
     });
 
     // WHEN - commit partial entries and append new ones
-    let second_entries = vec![sessionless_write_operation_helper(3, 0, "key3", "value3")];
+    let second_entries = vec![Helper::write(3, 0, "key3", "value3")];
 
-    let second_heartbeat = heartbeat_create_helper(1, 1, second_entries);
+    let second_heartbeat = Helper::heartbeat(1, 1, second_entries);
 
     cluster_actor.replicate(second_heartbeat, &cache_manager).await;
 
@@ -371,23 +360,18 @@ async fn follower_truncates_log_on_term_mismatch() {
     let mut inmemory = MemoryOpLogs::default();
     //prefill
 
-    inmemory.writer.extend(vec![
-        sessionless_write_operation_helper(2, 1, "key1", "val1"),
-        sessionless_write_operation_helper(3, 1, "key2", "val2"),
-    ]);
+    inmemory
+        .writer
+        .extend(vec![Helper::write(2, 1, "key1", "val1"), Helper::write(3, 1, "key2", "val2")]);
 
     let logger = ReplicatedLogs::new(inmemory, 3, 1);
 
-    let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
+    let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Leader).await;
     cluster_actor.logger = logger;
 
     // Simulate an initial log entry at index 1, term 1
     // WHEN: Leader sends an AppendEntries with prev_log_index=1, prev_log_term=2 (mismatch)
-    let mut heartbeat = heartbeat_create_helper(
-        2,
-        0,
-        vec![sessionless_write_operation_helper(4, 0, "key2", "val2")],
-    );
+    let mut heartbeat = Helper::heartbeat(2, 0, vec![Helper::write(4, 0, "key2", "val2")]);
     heartbeat.prev_log_term = 0;
     heartbeat.prev_log_index = 2;
 
@@ -402,14 +386,10 @@ async fn follower_truncates_log_on_term_mismatch() {
 async fn follower_accepts_entries_with_empty_log_and_prev_log_index_zero() {
     // GIVEN: A follower with an empty log
 
-    let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
+    let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Leader).await;
 
     // WHEN: Leader sends entries with prev_log_index=0
-    let mut heartbeat = heartbeat_create_helper(
-        1,
-        0,
-        vec![sessionless_write_operation_helper(1, 0, "key1", "val1")],
-    );
+    let mut heartbeat = Helper::heartbeat(1, 0, vec![Helper::write(1, 0, "key1", "val1")]);
 
     let result = cluster_actor.replicate_log_entries(&mut heartbeat).await;
 
@@ -422,14 +402,10 @@ async fn follower_accepts_entries_with_empty_log_and_prev_log_index_zero() {
 async fn follower_rejects_entries_with_empty_log_and_prev_log_index_nonzero() {
     // GIVEN: A follower with an empty log
 
-    let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
+    let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Leader).await;
 
     // WHEN: Leader sends entries with prev_log_index=1
-    let mut heartbeat = heartbeat_create_helper(
-        1,
-        0,
-        vec![sessionless_write_operation_helper(2, 0, "key2", "val2")],
-    );
+    let mut heartbeat = Helper::heartbeat(1, 0, vec![Helper::write(2, 0, "key2", "val2")]);
     heartbeat.prev_log_index = 1;
     heartbeat.prev_log_term = 1;
 
@@ -444,13 +420,13 @@ async fn follower_rejects_entries_with_empty_log_and_prev_log_index_nonzero() {
 async fn req_consensus_inserts_consensus_voting() {
     // GIVEN
 
-    let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
+    let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Leader).await;
     let replid = cluster_actor.replication.replid.clone();
     // - add 5 followers
     let (cluster_sender, _) = tokio::sync::mpsc::channel(100);
 
     let follower_buffs = (0..5).map(|_| FakeReadWrite::new()).collect::<Vec<_>>();
-    cluster_member_create_helper(
+    Helper::cluster_member(
         &mut cluster_actor,
         follower_buffs.clone(),
         ClusterCommandHandler(cluster_sender),
@@ -462,7 +438,8 @@ async fn req_consensus_inserts_consensus_voting() {
     let client_id = Uuid::now_v7();
     let session_request = SessionRequest::new(1, client_id);
     let w_req = WriteRequest::Set { key: "foo".into(), value: "bar".into(), expires_at: None };
-    let consensus_request = ConsensusRequest::new(w_req.clone(), tx, Some(session_request.clone()));
+    let consensus_request =
+        ConsensusRequest::new(w_req.clone(), Callback(tx), Some(session_request.clone()));
 
     // WHEN
     cluster_actor.req_consensus(consensus_request).await;
@@ -499,7 +476,7 @@ async fn req_consensus_inserts_consensus_voting() {
 #[tokio::test]
 async fn test_leader_req_consensus_early_return_when_already_processed_session_req_given() {
     // GIVEN
-    let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
+    let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Leader).await;
 
     let cache_manager = CacheManager { inboxes: vec![] };
 
@@ -512,11 +489,11 @@ async fn test_leader_req_consensus_early_return_when_already_processed_session_r
     tokio::spawn(cluster_actor.handle(cache_manager));
     let (tx, rx) = tokio::sync::oneshot::channel();
     handler
-        .send(ClusterCommand::Client(ClientMessage::LeaderReqConsensus(ConsensusRequest {
-            request: WriteRequest::Set { key: "foo".into(), value: "bar".into(), expires_at: None },
-            callback: tx,
-            session_req: Some(client_req),
-        })))
+        .send(ClusterCommand::Client(ClientMessage::LeaderReqConsensus(ConsensusRequest::new(
+            WriteRequest::Set { key: "foo".into(), value: "bar".into(), expires_at: None },
+            tx,
+            Some(client_req),
+        ))))
         .await
         .unwrap();
 
@@ -527,13 +504,13 @@ async fn test_leader_req_consensus_early_return_when_already_processed_session_r
 #[tokio::test]
 async fn test_consensus_voting_deleted_when_consensus_reached() {
     // GIVEN
-    let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
+    let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Leader).await;
     let replid = cluster_actor.replication.replid.clone();
     let (cluster_sender, _) = tokio::sync::mpsc::channel(100);
 
     // - add 4 followers to create quorum - so 2 votes are needed to reach consensus
     let follower_buffs = (0..4).map(|_| FakeReadWrite::new()).collect::<Vec<_>>();
-    cluster_member_create_helper(
+    Helper::cluster_member(
         &mut cluster_actor,
         follower_buffs.clone(),
         ClusterCommandHandler(cluster_sender),
@@ -545,7 +522,7 @@ async fn test_consensus_voting_deleted_when_consensus_reached() {
     let client_id = Uuid::now_v7();
     let client_request = SessionRequest::new(3, client_id);
     let consensus_request =
-        consensus_request_create_helper(client_request_sender, Some(client_request.clone()));
+        Helper::consensus_request(client_request_sender, Some(client_request.clone()));
 
     cluster_actor.req_consensus(consensus_request).await;
 
@@ -573,14 +550,14 @@ async fn test_consensus_voting_deleted_when_consensus_reached() {
 #[tokio::test]
 async fn test_same_voter_can_vote_only_once() {
     // GIVEN
-    let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
+    let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Leader).await;
     let replid = cluster_actor.replication.replid.clone();
     let (cluster_sender, _) = tokio::sync::mpsc::channel(100);
 
     // - add followers to create quorum
 
     let follower_buffs = (0..4).map(|_| FakeReadWrite::new()).collect::<Vec<_>>();
-    cluster_member_create_helper(
+    Helper::cluster_member(
         &mut cluster_actor,
         follower_buffs.clone(),
         ClusterCommandHandler(cluster_sender),
@@ -589,7 +566,7 @@ async fn test_same_voter_can_vote_only_once() {
     );
     let (client_request_sender, _client_wait) = tokio::sync::oneshot::channel();
 
-    let consensus_request = consensus_request_create_helper(client_request_sender, None);
+    let consensus_request = Helper::consensus_request(client_request_sender, None);
 
     cluster_actor.req_consensus(consensus_request).await;
 
@@ -612,10 +589,10 @@ async fn test_same_voter_can_vote_only_once() {
 #[tokio::test]
 async fn leader_consensus_tracker_not_changed_when_followers_not_exist() {
     // GIVEN
-    let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
+    let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Leader).await;
     let (tx, _rx) = tokio::sync::oneshot::channel();
 
-    let consensus_request = consensus_request_create_helper(tx, None);
+    let consensus_request = Helper::consensus_request(tx, None);
 
     // WHEN
     cluster_actor.req_consensus(consensus_request).await;
@@ -628,7 +605,7 @@ async fn leader_consensus_tracker_not_changed_when_followers_not_exist() {
 #[tokio::test]
 async fn test_leader_req_consensus_with_pending_requests() {
     // GIVEN
-    let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
+    let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Leader).await;
 
     // Block write requests to create pending requests queue
     cluster_actor.block_write_reqs();
@@ -636,7 +613,7 @@ async fn test_leader_req_consensus_with_pending_requests() {
     assert_eq!(cluster_actor.pending_requests.as_ref().unwrap().len(), 0);
 
     let (tx, _) = tokio::sync::oneshot::channel();
-    let consensus_request = consensus_request_create_helper(tx, None);
+    let consensus_request = Helper::consensus_request(tx, None);
 
     // WHEN - send request while write requests are blocked
     cluster_actor.leader_req_consensus(consensus_request).await;
@@ -651,7 +628,7 @@ async fn test_leader_req_consensus_with_pending_requests() {
 #[tokio::test]
 async fn test_leader_req_consensus_with_processed_session() {
     // GIVEN
-    let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
+    let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Leader).await;
 
     let client_id = Uuid::now_v7();
     let session_req = SessionRequest::new(1, client_id);

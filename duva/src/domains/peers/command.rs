@@ -6,13 +6,13 @@ use crate::{
 
 pub(crate) use peer_messages::*;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub(crate) struct PeerCommand {
     pub(crate) from: PeerIdentifier,
     pub(crate) msg: PeerMessage,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub(crate) enum PeerMessage {
     AppendEntriesRPC(HeartBeat),
     ClusterHeartBeat(HeartBeat),
@@ -61,7 +61,7 @@ mod peer_messages {
         peers::peer::PeerState,
     };
 
-    #[derive(Clone, Debug, PartialEq, bincode::Encode, bincode::Decode)]
+    #[derive(Clone, Debug, PartialEq, Eq, bincode::Encode, bincode::Decode)]
     pub struct RequestVote {
         pub(crate) term: u64, // current term of the candidate. Without it, the old leader wouldn't be able to step down gracefully.
         pub(crate) candidate_id: PeerIdentifier,
@@ -83,13 +83,13 @@ mod peer_messages {
         }
     }
 
-    #[derive(Clone, Debug, PartialEq, bincode::Encode, bincode::Decode)]
+    #[derive(Clone, Debug, PartialEq, Eq, bincode::Encode, bincode::Decode)]
     pub struct ElectionVote {
         pub(crate) term: u64,
         pub(crate) vote_granted: bool,
     }
 
-    #[derive(Debug, Clone, PartialEq, bincode::Decode, bincode::Encode)]
+    #[derive(Debug, Clone, PartialEq, Eq, bincode::Decode, bincode::Encode)]
     pub struct ReplicationAck {
         pub(crate) log_idx: u64,
         pub(crate) term: u64,
@@ -97,7 +97,7 @@ mod peer_messages {
         pub(crate) from: PeerIdentifier,
     }
 
-    #[derive(Debug, Clone, PartialEq, bincode::Decode, bincode::Encode)]
+    #[derive(Debug, Clone, PartialEq, Eq, bincode::Decode, bincode::Encode)]
     pub(crate) enum RejectionReason {
         ReceiverHasHigherTerm,
         LogInconsistency,
@@ -137,7 +137,7 @@ mod peer_messages {
         }
     }
 
-    #[derive(Debug, Clone, PartialEq, bincode::Encode, bincode::Decode, Default)]
+    #[derive(Debug, Clone, PartialEq, Eq, bincode::Encode, bincode::Decode, Default)]
     pub struct HeartBeat {
         pub(crate) from: PeerIdentifier,
         pub(crate) term: u64,
@@ -189,13 +189,13 @@ mod peer_messages {
         }
     }
 
-    #[derive(Debug, Clone, PartialEq, bincode::Encode, bincode::Decode)]
+    #[derive(Debug, Clone, PartialEq, Eq, bincode::Encode, bincode::Decode)]
     pub struct MigrateBatch {
         pub(crate) batch_id: BatchId,
         pub(crate) cache_entries: Vec<CacheEntry>,
     }
 
-    #[derive(Debug, Clone, PartialEq, bincode::Encode, bincode::Decode)]
+    #[derive(Debug, Clone, PartialEq, Eq, bincode::Encode, bincode::Decode)]
     pub struct MigrationBatchAck {
         pub(crate) batch_id: BatchId,
         pub(crate) success: bool,

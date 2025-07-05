@@ -15,9 +15,11 @@ use crate::domains::peers::identifier::PeerIdentifier;
 use crate::domains::peers::peer::Peer;
 use crate::domains::peers::peer::PeerState;
 use crate::domains::peers::service::PeerListener;
+
 use bytes::Bytes;
 use std::sync::atomic::Ordering;
 use tokio::net::TcpStream;
+
 use tokio::net::tcp::OwnedReadHalf;
 use tokio::net::tcp::OwnedWriteHalf;
 

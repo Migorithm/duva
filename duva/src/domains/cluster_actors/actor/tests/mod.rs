@@ -24,6 +24,7 @@ use crate::domains::peers::connections::connection_types::ReadConnected;
 use crate::domains::peers::connections::inbound::stream::InboundStream;
 use crate::domains::peers::peer::PeerState;
 use crate::domains::peers::service::PeerListener;
+use crate::types::Callback;
 use std::fs::OpenOptions;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
@@ -73,145 +74,168 @@ impl TRead for FakeReadWrite {
     }
 }
 
-pub(crate) fn create_peer_helper(
-    cluster_sender: ClusterCommandHandler,
-    hwm: u64,
-    repl_id: &ReplicationId,
-    port: u16,
-
-    role: ReplicationRole,
-    fake_buf: FakeReadWrite,
-) -> (PeerIdentifier, Peer) {
-    let key = PeerIdentifier::new("127.0.0.1", port);
-
-    let kill_switch = PeerListener::spawn(fake_buf.clone(), cluster_sender, key.clone());
-    let peer = Peer::new(fake_buf, PeerState::new(&key, hwm, repl_id.clone(), role), kill_switch);
-    (key, peer)
-}
-
-fn sessionless_write_operation_helper(
-    index_num: u64,
-    term: u64,
-    key: &str,
-    value: &str,
-) -> WriteOperation {
-    WriteOperation {
-        log_index: index_num,
-        request: WriteRequest::Set { key: key.into(), value: value.into(), expires_at: None },
-        term,
-        session_req: None,
+pub(crate) struct Helper;
+impl Helper {
+    // Helper function to create cache manager with hwm
+    pub(crate) fn cache_manager() -> (Arc<AtomicU64>, CacheManager) {
+        let hwm = Arc::new(AtomicU64::new(0));
+        let cache_manager = CacheManager::run_cache_actors(hwm.clone());
+        (hwm, cache_manager)
     }
-}
-fn sessionful_write_operation_helper(
-    index_num: u64,
-    term: u64,
-    key: &str,
-    value: &str,
-    session_req: SessionRequest,
-) -> WriteOperation {
-    WriteOperation {
-        log_index: index_num,
-        request: WriteRequest::Set { key: key.into(), value: value.into(), expires_at: None },
-        term,
-        session_req: Some(session_req),
+
+    pub(crate) async fn cache_manager_with_keys(
+        keys: Vec<String>,
+    ) -> (Arc<AtomicU64>, CacheManager) {
+        let hwm = Arc::new(AtomicU64::new(0));
+        let cache_manager = CacheManager::run_cache_actors(hwm.clone());
+        for key in keys.clone() {
+            cache_manager.route_set(CacheEntry::new(key, "value"), 1).await.unwrap();
+        }
+        hwm.store(keys.len() as u64, Ordering::Relaxed);
+        (hwm, cache_manager)
     }
-}
 
-fn heartbeat_create_helper(term: u64, hwm: u64, op_logs: Vec<WriteOperation>) -> HeartBeat {
-    HeartBeat {
-        term,
-        hwm,
-        prev_log_index: if !op_logs.is_empty() { op_logs[0].log_index - 1 } else { 0 },
-        prev_log_term: 0,
-        append_entries: op_logs,
-        ban_list: vec![],
-        from: PeerIdentifier::new("localhost", 8080),
-        replid: ReplicationId::Key("localhost".to_string()),
-        hop_count: 0,
-        cluster_nodes: vec![],
-        hashring: None,
+    pub(crate) fn create_peer(
+        cluster_sender: ClusterCommandHandler,
+        hwm: u64,
+        repl_id: &ReplicationId,
+        port: u16,
+
+        role: ReplicationRole,
+        fake_buf: FakeReadWrite,
+    ) -> (PeerIdentifier, Peer) {
+        let key = PeerIdentifier::new("127.0.0.1", port);
+
+        let kill_switch = PeerListener::spawn(fake_buf.clone(), cluster_sender, key.clone());
+        let peer =
+            Peer::new(fake_buf, PeerState::new(&key, hwm, repl_id.clone(), role), kill_switch);
+        (key, peer)
     }
-}
 
-pub async fn cluster_actor_create_helper(role: ReplicationRole) -> ClusterActor<MemoryOpLogs> {
-    let replication =
-        ReplicationState::new(ReplicationId::Key("master".into()), role, "127.0.0.1", 8080, 0);
-    let dir = TempDir::new().unwrap();
-    let path = dir.path().join("duva.tp");
+    pub(crate) fn write(index_num: u64, term: u64, key: &str, value: &str) -> WriteOperation {
+        WriteOperation {
+            log_index: index_num,
+            request: WriteRequest::Set { key: key.into(), value: value.into(), expires_at: None },
+            term,
+            session_req: None,
+        }
+    }
+    pub(crate) fn session_write(
+        index_num: u64,
+        term: u64,
+        key: &str,
+        value: &str,
+        session_req: SessionRequest,
+    ) -> WriteOperation {
+        WriteOperation {
+            log_index: index_num,
+            request: WriteRequest::Set { key: key.into(), value: value.into(), expires_at: None },
+            term,
+            session_req: Some(session_req),
+        }
+    }
 
-    let topology_writer =
-        OpenOptions::new().create(true).write(true).truncate(true).open(path).unwrap();
+    fn heartbeat(term: u64, hwm: u64, op_logs: Vec<WriteOperation>) -> HeartBeat {
+        HeartBeat {
+            term,
+            hwm,
+            prev_log_index: if !op_logs.is_empty() { op_logs[0].log_index - 1 } else { 0 },
+            prev_log_term: 0,
+            append_entries: op_logs,
+            ban_list: vec![],
+            from: PeerIdentifier::new("localhost", 8080),
+            replid: ReplicationId::Key("localhost".to_string()),
+            hop_count: 0,
+            cluster_nodes: vec![],
+            hashring: None,
+        }
+    }
 
-    ClusterActor::new(100, replication, 100, topology_writer, MemoryOpLogs::default())
-}
+    pub async fn cluster_actor(role: ReplicationRole) -> ClusterActor<MemoryOpLogs> {
+        let replication =
+            ReplicationState::new(ReplicationId::Key("master".into()), role, "127.0.0.1", 8080, 0);
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("duva.tp");
 
-fn cluster_member_create_helper(
-    actor: &mut ClusterActor<MemoryOpLogs>,
-    fake_bufs: Vec<FakeReadWrite>,
-    cluster_sender: ClusterCommandHandler,
-    follower_hwm: u64,
-    replid: Option<ReplicationId>,
-) {
-    for fake_b in fake_bufs.into_iter() {
-        let port = rand::random::<u16>();
-        let key = PeerIdentifier::new("localhost", port);
+        let topology_writer =
+            OpenOptions::new().create(true).write(true).truncate(true).open(path).unwrap();
 
-        let kill_switch = PeerListener::spawn(
-            ReadConnected(Box::new(fake_b.clone())),
-            cluster_sender.clone(),
-            key.clone(),
-        );
-        actor.members.insert(
-            PeerIdentifier::new("localhost", port),
-            Peer::new(
-                fake_b.clone(),
-                PeerState::new(
-                    &format!("localhost:{port}"),
-                    follower_hwm,
-                    replid.clone().unwrap_or_else(|| ReplicationId::Key("localhost".to_string())),
-                    ReplicationRole::Follower,
+        ClusterActor::new(100, replication, 100, topology_writer, MemoryOpLogs::default())
+    }
+
+    async fn cluster_actor_with_receiver(
+        role: ReplicationRole,
+    ) -> (ClusterActor<MemoryOpLogs>, InterceptedReceiver) {
+        let mut actor = Self::cluster_actor(role).await;
+        let (tx, rx) = channel(100);
+        let cluster_sender = ClusterCommandHandler(tx);
+        actor.self_handler = cluster_sender.clone();
+        (actor, InterceptedReceiver(rx))
+    }
+
+    fn cluster_member(
+        actor: &mut ClusterActor<MemoryOpLogs>,
+        fake_bufs: Vec<FakeReadWrite>,
+        cluster_sender: ClusterCommandHandler,
+        follower_hwm: u64,
+        replid: Option<ReplicationId>,
+    ) {
+        for fake_b in fake_bufs.into_iter() {
+            let port = rand::random::<u16>();
+            let key = PeerIdentifier::new("localhost", port);
+
+            let kill_switch = PeerListener::spawn(
+                ReadConnected(Box::new(fake_b.clone())),
+                cluster_sender.clone(),
+                key.clone(),
+            );
+            actor.members.insert(
+                PeerIdentifier::new("localhost", port),
+                Peer::new(
+                    fake_b.clone(),
+                    PeerState::new(
+                        &format!("localhost:{port}"),
+                        follower_hwm,
+                        replid
+                            .clone()
+                            .unwrap_or_else(|| ReplicationId::Key("localhost".to_string())),
+                        ReplicationRole::Follower,
+                    ),
+                    kill_switch,
                 ),
-                kill_switch,
-            ),
-        );
+            );
+        }
+    }
+
+    fn consensus_request(
+        tx: tokio::sync::oneshot::Sender<ConsensusClientResponse>,
+        session_req: Option<SessionRequest>,
+    ) -> ConsensusRequest {
+        ConsensusRequest::new(
+            WriteRequest::Set { key: "foo".into(), value: "bar".into(), expires_at: None },
+            Callback(tx),
+            session_req,
+        )
     }
 }
 
-fn consensus_request_create_helper(
-    tx: tokio::sync::oneshot::Sender<ConsensusClientResponse>,
-    session_req: Option<SessionRequest>,
-) -> ConsensusRequest {
-    ConsensusRequest::new(
-        WriteRequest::Set { key: "foo".into(), value: "bar".into(), expires_at: None },
-        tx,
-        session_req,
-    )
-}
-
-// Helper function to create cache manager with hwm
-pub(crate) fn cache_manager_create_helper() -> (Arc<AtomicU64>, CacheManager) {
-    let hwm = Arc::new(AtomicU64::new(0));
-    let cache_manager = CacheManager::run_cache_actors(hwm.clone());
-    (hwm, cache_manager)
-}
-
-pub(crate) async fn cache_manager_create_helper_with_keys(
-    keys: Vec<String>,
-) -> (Arc<AtomicU64>, CacheManager) {
-    let hwm = Arc::new(AtomicU64::new(0));
-    let cache_manager = CacheManager::run_cache_actors(hwm.clone());
-    for key in keys.clone() {
-        cache_manager.route_set(CacheEntry::new(key, "value"), 1).await.unwrap();
+pub struct InterceptedReceiver(tokio::sync::mpsc::Receiver<ClusterCommand>);
+impl InterceptedReceiver {
+    pub async fn wait_message(mut self, expected: impl Into<ClusterCommand>) {
+        let expected = expected.into();
+        while let Some(msg) = self.0.recv().await {
+            if msg == expected {
+                return;
+            }
+        }
     }
-    hwm.store(keys.len() as u64, Ordering::Relaxed);
-    (hwm, cache_manager)
 }
 
 // Helper function to setup blocked cluster actor with pending requests
 pub(crate) async fn setup_blocked_cluster_actor_with_requests(
     num_requests: usize,
 ) -> ClusterActor<MemoryOpLogs> {
-    let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
+    let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Leader).await;
     cluster_actor.block_write_reqs();
 
     for _ in 0..num_requests {
@@ -220,7 +244,7 @@ pub(crate) async fn setup_blocked_cluster_actor_with_requests(
             .pending_requests
             .as_mut()
             .unwrap()
-            .push_back(consensus_request_create_helper(tx, None));
+            .push_back(Helper::consensus_request(tx, None));
     }
 
     cluster_actor
@@ -261,7 +285,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         is_leader: bool,
     ) -> (FakeReadWrite, PeerIdentifier) {
         let buf = FakeReadWrite::new();
-        let (id, peer) = create_peer_helper(
+        let (id, peer) = Helper::create_peer(
             self.self_handler.clone(),
             0,
             &repl_id.unwrap_or_else(|| self.replication.replid.clone()),

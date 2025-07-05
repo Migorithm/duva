@@ -7,7 +7,7 @@ async fn test_cluster_nodes() {
     use std::io::Write;
 
     // GIVEN
-    let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
+    let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Leader).await;
 
     // followers
     for port in [6379, 6380] {
@@ -57,7 +57,7 @@ async fn test_cluster_nodes() {
 #[tokio::test]
 async fn test_store_current_topology() {
     // GIVEN
-    let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
+    let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Leader).await;
     let path = "test_store_current_topology.tp";
     cluster_actor.topology_writer = std::fs::File::create(path).unwrap();
 
@@ -80,7 +80,7 @@ async fn test_store_current_topology() {
 #[tokio::test]
 async fn test_reconnection_on_gossip() {
     // GIVEN
-    let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
+    let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Leader).await;
 
     // * run listener to see if connection is attempted
     let listener = TcpListener::bind("127.0.0.1:44455").await.unwrap(); // ! Beaware that this is cluster port
@@ -118,7 +118,7 @@ async fn test_reconnection_on_gossip() {
 async fn test_topology_broadcast_on_hash_ring_change() {
     // GIVEN
     let topology = Arc::new(RwLock::new(Topology::default()));
-    let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
+    let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Leader).await;
     let replid = ReplicationId::Key("node1".into());
 
     // Setup old ring
@@ -154,7 +154,7 @@ async fn test_topology_broadcast_on_hash_ring_change() {
 
 #[tokio::test]
 async fn test_update_cluster_members_updates_fields() {
-    let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
+    let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Leader).await;
     let (_, peer_id) = cluster_actor.test_add_peer(6379, None, false);
     let initial = cluster_actor.members.get(&peer_id).unwrap();
 
@@ -180,7 +180,7 @@ async fn test_update_cluster_members_updates_fields() {
 #[tokio::test]
 async fn test_shard_leaders() {
     // GIVEN
-    let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
+    let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Leader).await;
 
     // Create different replication IDs for different shards
     let shard1_replid = ReplicationId::Key("shard1".into());
@@ -221,11 +221,11 @@ async fn test_shard_leaders() {
 #[tokio::test]
 async fn test_add_peer_for_follower_send_heartbeat() {
     // GIVEN
-    let mut cluster_actor = cluster_actor_create_helper(ReplicationRole::Leader).await;
+    let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Leader).await;
 
     // Create a follower peer
     let buf = FakeReadWrite::new();
-    let (_, peer) = create_peer_helper(
+    let (_, peer) = Helper::create_peer(
         cluster_actor.self_handler.clone(),
         0,
         &cluster_actor.replication.replid.clone(),
@@ -238,7 +238,7 @@ async fn test_add_peer_for_follower_send_heartbeat() {
     let task = tokio::spawn(async move { rx.await.unwrap() });
 
     // WHEN - add the follower peer
-    cluster_actor.add_peer(peer, Some(tx)).await;
+    cluster_actor.add_peer(peer, Some(tx.into())).await;
 
     // THEN - check if heartbeat is sent to the follower
     task.await.unwrap().unwrap();

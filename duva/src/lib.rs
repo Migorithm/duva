@@ -3,7 +3,9 @@ mod config;
 pub mod domains;
 pub mod macros;
 pub mod presentation;
+mod types;
 use anyhow::Result;
+pub use config::Environment;
 use domains::IoError;
 use domains::caches::cache_manager::CacheManager;
 use domains::cluster_actors::ClusterActor;
@@ -11,19 +13,14 @@ use domains::cluster_actors::ConnectionMessage;
 use domains::cluster_actors::replication::ReplicationId;
 use domains::cluster_actors::replication::ReplicationRole;
 use domains::cluster_actors::replication::ReplicationState;
-
-pub use config::Environment;
 use domains::operation_logs::interfaces::TWriteAheadLog;
 use domains::saves::snapshot::Snapshot;
 use domains::saves::snapshot::snapshot_loader::SnapshotLoader;
 use presentation::clients::ClientController;
 use presentation::clients::authenticate;
-
 use presentation::clusters::communication_manager::ClusterCommunicationManager;
-
 use std::fs::File;
 use tokio::net::TcpListener;
-
 use tracing::debug;
 use tracing::error;
 use tracing::info;
@@ -143,7 +140,9 @@ impl StartUpFacade {
                 | Ok((peer_stream, socket_addr)) => {
                     debug!("Accepted peer connection: {}", socket_addr);
                     if cluster_communication_manager
-                        .send(ConnectionMessage::AcceptInboundPeer { stream: peer_stream })
+                        .send(ConnectionMessage::AcceptInboundPeer {
+                            stream: types::ConnectionStream(peer_stream),
+                        })
                         .await
                         .is_err()
                     {

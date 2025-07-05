@@ -1,4 +1,4 @@
-use crate::ReplicationId;
+use crate::{ReplicationId, types::Callback};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct MigrationTask {
@@ -30,15 +30,15 @@ impl MigrationBatch {
 
 #[derive(Debug)]
 pub(crate) struct PendingMigrationBatch {
-    pub(crate) callback: tokio::sync::oneshot::Sender<anyhow::Result<()>>,
+    pub(crate) callback: Callback<anyhow::Result<()>>,
     pub(crate) keys: Vec<String>,
 }
 
 impl PendingMigrationBatch {
     pub(crate) fn new(
-        callback: tokio::sync::oneshot::Sender<anyhow::Result<()>>,
+        callback: impl Into<Callback<anyhow::Result<()>>>,
         keys: Vec<String>,
     ) -> Self {
-        Self { callback, keys }
+        Self { callback: callback.into(), keys }
     }
 }
