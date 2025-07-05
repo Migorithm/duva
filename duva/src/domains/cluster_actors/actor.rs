@@ -1071,6 +1071,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         if migration_plans.is_empty() {
             info!("No migration tasks to schedule");
             self.hash_ring = *new_ring;
+            let _ = self.node_change_broadcast.send(self.get_topology());
             return;
         }
 
@@ -1193,13 +1194,6 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             None,
         ))
         .await;
-
-        // * If there are no replicas, we can directly apply the state
-        if self.replicas().count() == 0 {
-            let _ = rx.await;
-            cache_manager.route_mset(migrate_batch.cache_entries.clone()).await;
-            return;
-        }
 
         // * If there are replicas, we need to wait for the consensus to be applied which should be done in the background
         tokio::spawn({
