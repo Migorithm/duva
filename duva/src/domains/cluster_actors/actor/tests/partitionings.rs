@@ -143,6 +143,61 @@ async fn test_start_rebalance_happy_path() {
     .await;
 }
 
+// Verify that the start_rebalance -> maybe_update_hashring flow works.
+#[tokio::test]
+async fn test_start_rebalance_schedules_migration_batches() {
+    // GIVEN
+    let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Leader).await;
+    let (_hwm, cache_manager) =
+        Helper::cache_manager_with_keys(vec!["test_key_1".to_string(), "test_key_2".to_string()])
+            .await;
+
+    // ! test_key_1 and test_key_2 are migrated to testnode_a
+    let target_repl_id = ReplicationId::Key("testnode_a".into());
+    let (buf, _leader_for_diff_shard) =
+        cluster_actor.test_add_peer(6570, Some(ReplicationId::Key("testnode_a".into())), true);
+
+    let (tx, mut rx) = tokio::sync::mpsc::channel(2);
+    let cluster_handler = ClusterCommandHandler(tx);
+
+    // WHEN
+    cluster_actor.self_handler = cluster_handler.clone();
+    cluster_actor.start_rebalance(&cache_manager).await;
+
+    // THEN
+    // 1. Verify heartbeat was sent immediately (synchronous part)
+    let QueryIO::ClusterHeartBeat(HeartBeat { hashring, .. }) =
+        buf.lock().await.pop_front().unwrap()
+    else {
+        panic!()
+    };
+
+    assert!(hashring.is_some());
+    assert_ne!(*hashring.unwrap(), cluster_actor.hash_ring);
+
+    // 2. Wait for migration batch message with timeout (asynchronous part)
+    let batch = tokio::time::timeout(Duration::from_millis(1000), async {
+        loop {
+            match rx.recv().await {
+                | Some(ClusterCommand::Scheduler(SchedulerMessage::ScheduleMigrationBatch(
+                    b,
+                    _,
+                ))) => return b,
+                | Some(_) => continue, // Skip other message types
+                | None => panic!("Channel closed without receiving ScheduleMigrationBatch"),
+            }
+        }
+    })
+    .await
+    .expect("Should receive ScheduleMigrationBatch within timeout");
+
+    assert_eq!(batch.target_repl, target_repl_id);
+    assert!(!batch.tasks.is_empty());
+
+    // 3. Verify pending_requests is set (synchronous part)
+    assert!(cluster_actor.pending_requests.is_some());
+}
+
 #[tokio::test]
 async fn test_maybe_update_hashring_when_noplan_is_made() {
     // GIVEN
@@ -542,18 +597,19 @@ async fn test_handle_migration_ack_failure() {
     );
 }
 
+// Batch ID may not be found when the migration was already completed
 #[tokio::test]
 async fn test_handle_migration_ack_batch_id_not_found() {
     // GIVEN
     let mut cluster_actor = setup_blocked_cluster_actor_with_requests(1).await;
     let (_hwm, _cache_manager) = Helper::cache_manager();
     let (callback, _callback_rx) = tokio::sync::oneshot::channel();
-    let existing_batch_id = BatchId("existing_batch".into());
+
     cluster_actor
         .pending_migrations
         .as_mut()
         .unwrap()
-        .insert(existing_batch_id, PendingMigrationBatch::new(callback, vec![]));
+        .insert(BatchId("existing_batch".into()), PendingMigrationBatch::new(callback, vec![]));
 
     let non_existent_batch_id = BatchId("non_existent_batch".into());
     let ack = MigrationBatchAck { batch_id: non_existent_batch_id, success: true };
@@ -562,9 +618,7 @@ async fn test_handle_migration_ack_batch_id_not_found() {
     cluster_actor.handle_migration_ack(ack, &_cache_manager).await;
 
     // THEN
-
-    // Verify existing batch is still there
-    assert_eq!(cluster_actor.pending_migrations.as_ref().unwrap().len(), 1);
+    assert_eq!(cluster_actor.pending_migrations.as_ref().unwrap().len(), 1); // Verify existing batch is still there
 }
 
 #[tokio::test]
@@ -631,61 +685,6 @@ async fn test_handle_migration_ack_success_case_with_pending_reqs_and_migration(
         cache_manager.route_get("migrate_key_2").await,
         Ok(CacheValue { value: TypedValue::Null, .. })
     ));
-}
-
-// Verify that the start_rebalance -> maybe_update_hashring flow works.
-#[tokio::test]
-async fn test_start_rebalance_schedules_migration_batches() {
-    // GIVEN
-    let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Leader).await;
-    let (_hwm, cache_manager) =
-        Helper::cache_manager_with_keys(vec!["test_key_1".to_string(), "test_key_2".to_string()])
-            .await;
-
-    // ! test_key_1 and test_key_2 are migrated to testnode_a
-    let target_repl_id = ReplicationId::Key("testnode_a".into());
-    let (buf, _leader_for_diff_shard) =
-        cluster_actor.test_add_peer(6570, Some(ReplicationId::Key("testnode_a".into())), true);
-
-    let (tx, mut rx) = tokio::sync::mpsc::channel(2);
-    let cluster_handler = ClusterCommandHandler(tx);
-
-    // WHEN
-    cluster_actor.self_handler = cluster_handler.clone();
-    cluster_actor.start_rebalance(&cache_manager).await;
-
-    // THEN
-    // 1. Verify heartbeat was sent immediately (synchronous part)
-    let QueryIO::ClusterHeartBeat(HeartBeat { hashring, .. }) =
-        buf.lock().await.pop_front().unwrap()
-    else {
-        panic!()
-    };
-
-    assert!(hashring.is_some());
-    assert_ne!(*hashring.unwrap(), cluster_actor.hash_ring);
-
-    // 2. Wait for migration batch message with timeout (asynchronous part)
-    let batch = tokio::time::timeout(Duration::from_millis(1000), async {
-        loop {
-            match rx.recv().await {
-                | Some(ClusterCommand::Scheduler(SchedulerMessage::ScheduleMigrationBatch(
-                    b,
-                    _,
-                ))) => return b,
-                | Some(_) => continue, // Skip other message types
-                | None => panic!("Channel closed without receiving ScheduleMigrationBatch"),
-            }
-        }
-    })
-    .await
-    .expect("Should receive ScheduleMigrationBatch within timeout");
-
-    assert_eq!(batch.target_repl, target_repl_id);
-    assert!(!batch.tasks.is_empty());
-
-    // 3. Verify pending_requests is set (synchronous part)
-    assert!(cluster_actor.pending_requests.is_some());
 }
 
 #[tokio::test]
