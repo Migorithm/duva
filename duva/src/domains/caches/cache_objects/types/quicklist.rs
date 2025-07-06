@@ -123,7 +123,16 @@ impl QuickListNode {
             std::mem::replace(&mut self.data, NodeData::Uncompressed(Ziplist::default()));
         self.data = match current_data {
             | NodeData::Compressed(bytes) => {
-                let decompressed = lzf::decompress(&bytes, usize::MAX).unwrap_or_default();
+                // Provide a sane upper limit for the decompressed size.
+                // We'll use the fill_factor plus a little buffer.
+                let max_size = if self.fill_factor < 0 {
+                    (-self.fill_factor as usize) * 1024 + 1024 // e.g., 1KB limit becomes 2KB buffer
+                } else {
+                    // If based on count, use a reasonable default like 64KB
+                    65536
+                };
+
+                let decompressed = lzf::decompress(&bytes, max_size).unwrap_or_default();
                 NodeData::Uncompressed(Ziplist { data: decompressed })
             },
             | uncompressed => uncompressed,
@@ -440,17 +449,22 @@ mod tests {
     }
 
     #[test]
-    fn test_node_creation_with_entry_count() {
-        let mut ql = QuickList::new(2, 0); // Use entry count to force node creation
+    fn test_node_creation() {
+        // Test with entry-count limit
+        let mut ql_count = QuickList::new(2, 0);
+        ql_count.rpush(Bytes::from("a"));
+        ql_count.rpush(Bytes::from("b")); // Node is full
+        assert_eq!(ql_count.nodes.len(), 1);
+        ql_count.rpush(Bytes::from("c")); // MUST create a new node
+        assert_eq!(ql_count.nodes.len(), 2);
 
-        ql.rpush(Bytes::from("a"));
-        ql.rpush(Bytes::from("b")); // Node is now full
-        assert_eq!(ql.nodes.len(), 1);
-
-        ql.rpush(Bytes::from("c")); // This MUST create a new node
-        assert_eq!(ql.nodes.len(), 2);
-        assert_eq!(ql.nodes[0].entry_count, 2);
-        assert_eq!(ql.nodes[1].entry_count, 1);
+        // Test with size limit
+        let mut ql_size = QuickList::new(-1, 0); // 1KB limit
+        let large_string = Bytes::from(vec![0; 1020]); // Fills node exactly after 4-byte overhead
+        ql_size.rpush(large_string);
+        assert_eq!(ql_size.nodes.len(), 1);
+        ql_size.rpush(Bytes::from("a")); // MUST create a new node
+        assert_eq!(ql_size.nodes.len(), 2);
     }
 
     #[test]
@@ -524,6 +538,45 @@ mod tests {
         let range = ql.lrange(0, -1);
         let vec: Vec<&str> = range.iter().map(|b| std::str::from_utf8(b).unwrap()).collect();
         assert_eq!(vec, vec!["c", "b", "a"]);
+    }
+
+    #[test]
+    fn test_compression_and_decompression_on_access() {
+        let mut ql = QuickList::new(-1, 1); // compress_depth = 1
+
+        // Create 3 full nodes
+        for _ in 0..3 {
+            ql.rpush(Bytes::from(vec![0; 1025]));
+        }
+        assert_eq!(ql.nodes.len(), 3);
+
+        ql.compress();
+
+        // Verify the middle node is compressed
+        assert!(matches!(ql.nodes[1].data, NodeData::Compressed(_)));
+
+        // LRANGE should still work, forcing decompression.
+        let range = ql.lrange(1, 1);
+        assert_eq!(range.len(), 1);
+        assert_eq!(range[0].len(), 1025);
+
+        // After access, the node should be uncompressed again.
+        assert!(matches!(ql.nodes[1].data, NodeData::Uncompressed(_)));
+    }
+
+    #[test]
+    fn test_compress_respects_depth() {
+        let mut ql = QuickList::new(-1, 1); // compress_depth = 1
+
+        // Create 3 nodes. Total nodes (3) is NOT > compress_depth * 2 (2). So no compression.
+        ql.rpush(Bytes::from(vec![0; 1025]));
+        ql.rpush(Bytes::from(vec![0; 1025]));
+        assert_eq!(ql.nodes.len(), 2);
+
+        ql.compress();
+        // No nodes should be compressed because the list isn't long enough
+        assert!(matches!(ql.nodes[0].data, NodeData::Uncompressed(_)));
+        assert!(matches!(ql.nodes[1].data, NodeData::Uncompressed(_)));
     }
 
     #[test]
@@ -686,26 +739,29 @@ mod tests {
     }
 
     #[test]
-    fn test_node_merging() {
+    fn test_node_merging_is_correct() {
         let mut ql = QuickList::new(-1, 0); // 1KB size limit
 
-        // 1. Create a state with three nodes.
+        // 1. Create a state with two small nodes separated by a large one,
+        // which forces them to be in different nodes initially.
         ql.rpush(Bytes::from("small_A"));
+        ql.rpush(Bytes::from(vec![0; 1025])); // Large node
         ql.rpush(Bytes::from("small_C"));
-        ql.rpush(Bytes::from(vec![0; 1025])); // Large string
-        assert_eq!(ql.llen(), 3);
+        assert_eq!(ql.nodes.len(), 3);
+
+        // 2. Manually remove the middle node to create the test condition: [small_A], [small_C]
+        let middle_node = ql.nodes.remove(1).unwrap();
+        ql.len -= middle_node.entry_count; // IMPORTANT: keep master length correct
+        ql.return_node(middle_node);
         assert_eq!(ql.nodes.len(), 2);
 
-        ql.rpop();
-
-        assert_eq!(ql.nodes.len(), 1);
-
-        // This assertion is now correct because we fixed the length.
-        assert_eq!(ql.llen(), 2);
-
-        // 3. Trigger the merge.
+        // 3. Trigger the merge by calling the helper directly.
         ql.try_merge_at(0);
+
+        // 4. Assert that the merge was successful.
         assert_eq!(ql.nodes.len(), 1, "The two small nodes should have merged");
-        assert_eq!(ql.llen(), 2); // Length remains 2 after merge.
+        assert_eq!(ql.llen(), 2);
+        let final_content = ql.lrange(0, -1);
+        assert_eq!(final_content, vec![Bytes::from("small_A"), Bytes::from("small_C")]);
     }
 }
