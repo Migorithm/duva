@@ -4,7 +4,7 @@ NETCAT = nc 127.0.0.1 $(p)
 k = foo
 v = bar
 tp = duva.tp
-log_level = debug
+log_level = info
 
 leader:
 	@echo '🔧 Setting up replication with leader on port $(p) and follower on port $(rp)...'
