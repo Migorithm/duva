@@ -1,11 +1,10 @@
 /// QuickList Architecture
-/// - Node-based structure: QuickList uses multiple nodes (QuickListNode) to manage large lists
-/// - Compression support: Nodes can be compressed when not actively accessed, with ziplists being the uncompressed format
-/// - Fill factor management: Each node respects size or count limits, with ziplists handling the actual data storag
+///    Node-based structure: QuickList uses multiple nodes (QuickListNode) to manage large lists
+///    Compression support: Nodes can be compressed when not actively accessed, with ziplists being the uncompressed format
+///    Fill factor management: Each node respects size or count limits, with ziplists handling the actual data storag
 use bytes::Bytes;
-use std::collections::VecDeque;
-// For a true Redis implementation, a crate like 'lzf' would be used.
 use lzf;
+use std::collections::VecDeque;
 
 use crate::make_smart_pointer;
 
@@ -20,7 +19,7 @@ impl Ziplist {
         let mut new_data = Vec::with_capacity(value.len() + 4 + self.len());
         new_data.extend_from_slice(&(value.len() as u32).to_le_bytes());
         new_data.extend_from_slice(value);
-        new_data.extend_from_slice(&self);
+        new_data.extend_from_slice(self);
         self.0 = new_data;
     }
 
@@ -84,7 +83,7 @@ impl Ziplist {
         let mut entries = Vec::new();
         let mut cursor = 0;
         while cursor < self.len() {
-            if let Ok(len_bytes) = self[cursor..cursor + 4].try_into() {
+            if let Ok(len_bytes) = self[cursor..(cursor + 4)].try_into() {
                 let len = u32::from_le_bytes(len_bytes) as usize;
                 cursor += 4;
                 if cursor + len <= self.len() {
@@ -231,21 +230,21 @@ pub struct QuickList {
 /// ```rust,text
 /// FillFactor::Count(max_entries)
 /// ```
-/// Each ziplist contains exactly max_entries records before creating a new node
-/// Example: FillFactor::Count(2) means each ziplist holds 2 records maximum
+///    Each ziplist contains exactly max_entries records before creating a new node
+///    Example: FillFactor::Count(2) means each ziplist holds 2 records maximum
 ///
 /// 2. Size-based FillFactor
 /// ```rust,text
-///FillFactor::Size(kb)
+/// FillFactor::Size(kb)
 /// ```
-/// Each ziplist contains records until it reaches the size limit
-/// The actual number varies based on record sizes
-/// Example: FillFactor::Size(1) means each ziplist can hold up to 1KB of data
+///    Each ziplist contains records until it reaches the size limit
+///    The actual number varies based on record sizes
+///    Example: FillFactor::Size(1) means each ziplist can hold up to 1KB of data
 ///
 /// 3. Typical Usage
-/// From the tests, we can see typical configurations:
-/// Small lists: 2-3 records per ziplist for testing
-/// Production: Likely larger counts (e.g., 32-64 records) or size-based limits (e.g., 8KB per ziplist)
+///    From the tests, we can see typical configurations:
+///    Small lists: 2-3 records per ziplist for testing
+///    Production: Likely larger counts (e.g., 32-64 records) or size-based limits (e.g., 8KB per ziplist)
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum FillFactor {
     Count(usize),
@@ -265,7 +264,7 @@ impl QuickList {
 
     // ## Private Helpers for Pooling and Merging
     fn get_node(&mut self) -> QuickListNode {
-        self.node_pool.pop().unwrap_or_else(|| QuickListNode::new())
+        self.node_pool.pop().unwrap_or_else(QuickListNode::new)
     }
 
     fn return_node(&mut self, mut node: QuickListNode) {
@@ -313,7 +312,7 @@ impl QuickList {
                 NodeData::Uncompressed(removed_ziplist),
             ) = (&mut current_node.data, &mut removed_node.data)
             {
-                current_ziplist.extend_from_slice(&removed_ziplist);
+                current_ziplist.extend_from_slice(removed_ziplist);
                 current_node.entry_count += removed_node.entry_count;
             }
 
