@@ -11,12 +11,6 @@ struct Ziplist(Vec<u8>);
 make_smart_pointer!(Ziplist, Vec<u8>);
 
 impl Ziplist {
-    /// Appends an entry to the end of the ziplist.
-    fn rpush(&mut self, value: &Bytes) {
-        self.extend_from_slice(&(value.len() as u32).to_le_bytes());
-        self.extend_from_slice(value);
-    }
-
     /// Efficiently prepends an entry by rebuilding the data vector once.
     fn lpush(&mut self, value: &Bytes) {
         let mut new_data = Vec::with_capacity(value.len() + 4 + self.len());
@@ -41,6 +35,12 @@ impl Ziplist {
         self.truncate(remaining_len);
 
         Some(entry_data)
+    }
+
+    /// Appends an entry to the end of the ziplist.
+    fn rpush(&mut self, value: &Bytes) {
+        self.extend_from_slice(&(value.len() as u32).to_le_bytes());
+        self.extend_from_slice(value);
     }
 
     /// Removes and returns the last entry. This remains an O(N) scan.
