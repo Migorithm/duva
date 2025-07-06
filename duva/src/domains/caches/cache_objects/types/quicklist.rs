@@ -200,22 +200,22 @@ impl QuickListNode {
     /// Pops a value from the front or back.
     fn lpop(&mut self) -> Option<Bytes> {
         self.ensure_decompressed();
-        if let NodeData::Uncompressed(ziplist) = &mut self.data {
-            let res = ziplist.lpop()?;
-            self.entry_count -= 1;
-            return Some(res);
-        }
-        None
+        let NodeData::Uncompressed(ziplist) = &mut self.data else {
+            return None;
+        };
+        let res = ziplist.lpop()?;
+        self.entry_count -= 1;
+        Some(res)
     }
 
     fn rpop(&mut self) -> Option<Bytes> {
         self.ensure_decompressed();
-        if let NodeData::Uncompressed(ziplist) = &mut self.data {
-            let res = ziplist.rpop()?;
-            self.entry_count -= 1;
-            return Some(res);
-        }
-        None
+        let NodeData::Uncompressed(ziplist) = &mut self.data else {
+            return None;
+        };
+        let res = ziplist.rpop()?;
+        self.entry_count -= 1;
+        Some(res)
     }
 }
 /// A memory-optimized list structure, similar to Redis's Quicklist.
@@ -345,36 +345,33 @@ impl QuickList {
 
     /// Pops a value from the front (left) of the list.
     pub fn lpop(&mut self) -> Option<Bytes> {
-        let val = self.nodes.front_mut()?.lpop();
-        if val.is_some() {
-            self.len -= 1;
-            if self.nodes.front().unwrap().entry_count == 0 {
-                let node = self.nodes.pop_front().unwrap();
-                self.return_node(node);
-            }
+        let val = self.nodes.front_mut()?.lpop()?;
 
-            // try to merge only if there are at least two nodes.
-            // safety guard to ensure we only attempt a merge when there are actually two nodes available to combine.
-            if self.nodes.len() >= 2 {
-                self.try_merge_at(0);
-            }
+        self.len -= 1;
+        if self.nodes.front()?.entry_count == 0 {
+            let node = self.nodes.pop_front()?;
+            self.return_node(node);
         }
-        val
+        // try to merge only if there are at least two nodes.
+        // safety guard to ensure we only attempt a merge when there are actually two nodes available to combine.
+        if self.nodes.len() >= 2 {
+            self.try_merge_at(0);
+        }
+        Some(val)
     }
     /// Pops a value from the back (right) of the list.
     pub fn rpop(&mut self) -> Option<Bytes> {
-        let val = self.nodes.back_mut()?.rpop();
-        if val.is_some() {
-            self.len -= 1;
-            if self.nodes.back().unwrap().entry_count == 0 {
-                let node = self.nodes.pop_back().unwrap();
-                self.return_node(node);
-            }
-            if self.nodes.len() >= 2 {
-                self.try_merge_at(self.nodes.len() - 2); // Attempt to merge new tail with its next (which was the old tail)
-            }
+        let val = self.nodes.back_mut()?.rpop()?;
+        self.len -= 1;
+        if self.nodes.back()?.entry_count == 0 {
+            let node = self.nodes.pop_back()?;
+            self.return_node(node);
         }
-        val
+        if self.nodes.len() >= 2 {
+            self.try_merge_at(self.nodes.len() - 2); // Attempt to merge new tail with its next (which was the old tail)
+        }
+
+        Some(val)
     }
 
     pub fn compress(&mut self) {
