@@ -361,7 +361,8 @@ async fn test_receive_batch_success_path_when_consensus_is_required() {
     cluster_actor.hash_ring =
         cluster_actor.hash_ring.set_partitions(cluster_actor.shard_leaders()).unwrap();
 
-    let cache_entries = cache_entries_create_helper(&[("success_key3", "value2")]);
+    let cache_entries = vec![CacheEntry::new("success_key3", "value2")];
+
     let batch = MigrateBatch {
         batch_id: BatchId("success_test".into()),
         cache_entries: cache_entries.clone(),
@@ -404,7 +405,8 @@ async fn test_receive_batch_success_path_when_noreplica_found() {
         cluster_actor.hash_ring.set_partitions(cluster_actor.shard_leaders()).unwrap();
 
     let cache_entries =
-        cache_entries_create_helper(&[("success_key3", "value2"), ("success_key4", "value4")]);
+        vec![CacheEntry::new("success_key3", "value2"), CacheEntry::new("success_key4", "value4")];
+
     let batch = MigrateBatch {
         batch_id: BatchId("success_test".into()),
         cache_entries: cache_entries.clone(),
