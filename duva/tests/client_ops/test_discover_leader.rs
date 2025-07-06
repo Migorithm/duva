@@ -1,17 +1,15 @@
-use std::thread::sleep;
-use std::time::Duration;
-use duva::prelude::LEADER_HEARTBEAT_INTERVAL_MAX;
-use crate::common::form_cluster;
 use crate::common::Client;
 use crate::common::ServerEnv;
+use crate::common::form_cluster;
+use duva::prelude::LEADER_HEARTBEAT_INTERVAL_MAX;
+use std::thread::sleep;
+use std::time::Duration;
 
 fn run_discover_leader(with_append_only: bool) -> anyhow::Result<()> {
     // GIVEN
     let mut leader_env = ServerEnv::default().with_append_only(with_append_only);
-    let mut follower1_env = ServerEnv::default()
-        .with_append_only(with_append_only);
-    let mut follower2_env = ServerEnv::default()
-        .with_append_only(with_append_only);
+    let mut follower1_env = ServerEnv::default().with_append_only(with_append_only);
+    let mut follower2_env = ServerEnv::default().with_append_only(with_append_only);
 
     let [mut leader_p, follower1, follower2] =
         form_cluster([&mut leader_env, &mut follower1_env, &mut follower2_env]);
