@@ -1,4 +1,5 @@
 pub(crate) mod entry;
+mod types;
 pub(crate) mod value;
 
 pub(crate) use entry::CacheEntry;
