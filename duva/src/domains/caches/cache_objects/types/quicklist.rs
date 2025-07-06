@@ -1,7 +1,7 @@
 use bytes::Bytes;
 use std::collections::VecDeque;
 // For a true Redis implementation, a crate like 'lzf' would be used.
-// use lzf;
+use lzf;
 
 #[derive(Debug, Clone, Default)]
 struct Ziplist {
@@ -24,31 +24,6 @@ impl Ziplist {
         self.data = new_data;
     }
 
-    /// Removes and returns the last entry.
-    fn rpop(&mut self) -> Option<Bytes> {
-        if self.data.is_empty() {
-            return None;
-        }
-
-        // This is complex in a real ziplist. We simulate by finding the last entry.
-        let mut cursor = 0;
-        let mut last_entry_start = 0;
-        let mut last_entry_len = 0;
-
-        while cursor < self.data.len() {
-            last_entry_start = cursor;
-            let len = u32::from_le_bytes(self.data[cursor..cursor + 4].try_into().ok()?) as usize;
-            last_entry_len = len;
-            cursor += 4 + len;
-        }
-
-        let entry_data = Bytes::copy_from_slice(
-            &self.data[last_entry_start + 4..last_entry_start + 4 + last_entry_len],
-        );
-        self.data.truncate(last_entry_start);
-        Some(entry_data)
-    }
-
     /// Removes and returns the first entry.
     fn lpop(&mut self) -> Option<Bytes> {
         if self.data.is_empty() {
@@ -58,6 +33,39 @@ impl Ziplist {
         let entry_data = Bytes::copy_from_slice(&self.data[4..4 + len]);
         self.data = self.data.split_off(4 + len);
         Some(entry_data)
+    }
+
+    /// Removes and returns the last entry.
+    fn rpop(&mut self) -> Option<Bytes> {
+        if self.data.is_empty() {
+            return None;
+        }
+        let mut cursor = 0;
+        let mut last_entry_start = 0;
+        while cursor < self.data.len() {
+            let entry_start = cursor;
+            if let Ok(len_bytes) = self.data[cursor..cursor + 4].try_into() {
+                let len = u32::from_le_bytes(len_bytes) as usize;
+                cursor += 4 + len;
+                if cursor <= self.data.len() {
+                    last_entry_start = entry_start;
+                } else {
+                    break;
+                }
+            } else {
+                break;
+            }
+        }
+        if let Ok(len_bytes) = self.data[last_entry_start..last_entry_start + 4].try_into() {
+            let len = u32::from_le_bytes(len_bytes) as usize;
+            let entry_data = Bytes::copy_from_slice(
+                &self.data[last_entry_start + 4..last_entry_start + 4 + len],
+            );
+            self.data.truncate(last_entry_start);
+            Some(entry_data)
+        } else {
+            None
+        }
     }
 
     /// Decodes the ziplist back into a vector of Bytes.
@@ -72,10 +80,10 @@ impl Ziplist {
                     entries.push(Bytes::copy_from_slice(&self.data[cursor..cursor + len]));
                     cursor += len;
                 } else {
-                    break; // Corrupted data
+                    break;
                 }
             } else {
-                break; // Not enough data for length
+                break;
             }
         }
         entries
@@ -87,11 +95,17 @@ impl Ziplist {
     }
 }
 
+#[derive(Debug)]
+enum NodeData {
+    Uncompressed(Ziplist),
+    Compressed(Vec<u8>),
+}
+
 /// Represents a single node in the QuickList, which contains a Ziplist.
 #[derive(Debug)]
 struct QuickListNode {
     /// The actual data, either uncompressed (Ziplist) or compressed.
-    data: Ziplist,
+    data: NodeData,
     /// Number of entries in the ziplist.
     entry_count: usize,
     /// Max size setting. Positive for entry count, negative for bytes.
@@ -100,64 +114,96 @@ struct QuickListNode {
 
 impl QuickListNode {
     fn new(fill_factor: isize) -> Self {
-        Self { data: Ziplist::default(), entry_count: 0, fill_factor }
+        Self { data: NodeData::Uncompressed(Ziplist::default()), entry_count: 0, fill_factor }
     }
 
-    /// Checks if a new value can be added without exceeding the fill factor.
-    fn is_full(&self, new_value_size: usize) -> bool {
+    /// Ensures the node is decompressed. Must be called before any read/write.
+    fn ensure_decompressed(&mut self) {
+        let current_data =
+            std::mem::replace(&mut self.data, NodeData::Uncompressed(Ziplist::default()));
+        self.data = match current_data {
+            | NodeData::Compressed(bytes) => {
+                let decompressed = lzf::decompress(&bytes, usize::MAX).unwrap_or_default();
+                NodeData::Uncompressed(Ziplist { data: decompressed })
+            },
+            | uncompressed => uncompressed,
+        };
+    }
+
+    /// Attempts to compress the node.
+    fn try_compress(&mut self) {
+        // Temporarily take ownership of data to work on it
+        let current_data =
+            std::mem::replace(&mut self.data, NodeData::Uncompressed(Ziplist::default()));
+        self.data = match current_data {
+            | NodeData::Uncompressed(ziplist) => {
+                if ziplist.byte_size() > 48 {
+                    // Don't compress tiny nodes
+                    let compressed = lzf::compress(&ziplist.data).unwrap_or_default();
+                    if compressed.len() < ziplist.byte_size() {
+                        NodeData::Compressed(compressed)
+                    } else {
+                        NodeData::Uncompressed(ziplist) // Not worth it
+                    }
+                } else {
+                    NodeData::Uncompressed(ziplist) // Too small
+                }
+            },
+            | compressed => compressed, // Already compressed
+        };
+    }
+    fn byte_size(&self) -> usize {
+        match &self.data {
+            | NodeData::Uncompressed(ziplist) => ziplist.byte_size(),
+            | NodeData::Compressed(bytes) => bytes.len(),
+        }
+    }
+
+    fn is_full(&mut self, new_value_size: usize) -> bool {
+        self.ensure_decompressed();
         if self.fill_factor > 0 {
-            // Check against entry count
             self.entry_count >= self.fill_factor as usize
         } else {
-            // Check against byte size. Redis uses specific negative values like -1 for 4KB, -2 for 8KB.
             let max_bytes = (-self.fill_factor) as usize * 1024;
-            self.data.byte_size() + new_value_size + 4 > max_bytes
+            self.byte_size() + new_value_size + 4 > max_bytes
         }
     }
 
     fn lpush(&mut self, value: Bytes) {
-        self.data.lpush(&value);
-        self.entry_count += 1;
+        self.ensure_decompressed();
+        if let NodeData::Uncompressed(ziplist) = &mut self.data {
+            ziplist.lpush(&value);
+            self.entry_count += 1;
+        }
     }
 
     fn rpush(&mut self, value: Bytes) {
-        self.data.push_back(&value);
-        self.entry_count += 1;
+        self.ensure_decompressed();
+        if let NodeData::Uncompressed(ziplist) = &mut self.data {
+            ziplist.push_back(&value);
+            self.entry_count += 1;
+        }
     }
 
     /// Pops a value from the front or back.
-    fn pop(&mut self, from_front: bool) -> Option<Bytes> {
-        let result = if from_front { self.data.lpop() } else { self.data.rpop() };
-
-        if result.is_some() {
+    fn lpop(&mut self) -> Option<Bytes> {
+        self.ensure_decompressed();
+        if let NodeData::Uncompressed(ziplist) = &mut self.data {
+            let res = ziplist.lpop()?;
             self.entry_count -= 1;
+            return Some(res);
         }
-        result
+        None
     }
 
-    // This split function is no longer central to the push logic,
-    // but is kept for potential future use (e.g., in ltrim or other commands).
-    fn split(&mut self) -> Self {
-        let entries = self.data.to_vec();
-        let split_at = entries.len() / 2;
-
-        let (part1, part2) = entries.split_at(split_at);
-
-        let mut new_node = Self::new(self.fill_factor);
-        for entry in part2 {
-            // Use clone() here. It's cheap and solves the lifetime issue.
-            new_node.rpush(entry.clone());
+    fn rpop(&mut self) -> Option<Bytes> {
+        self.ensure_decompressed();
+        if let NodeData::Uncompressed(ziplist) = &mut self.data {
+            let res = ziplist.rpop()?;
+            self.entry_count -= 1;
+            return Some(res);
         }
-
-        // Rebuild the current node with the remaining part
-        self.data = Ziplist::default();
-        self.entry_count = 0;
-        for entry in part1 {
-            // Use clone() here as well.
-            self.rpush(entry.clone());
-        }
-
-        new_node
+        None
     }
 }
 /// A memory-optimized list structure, similar to Redis's Quicklist.
@@ -169,17 +215,76 @@ pub struct QuickList {
     fill_factor: isize,
     /// Head/tail nodes to keep uncompressed. 0 to disable compression.
     compress_depth: usize,
+    node_pool: Vec<QuickListNode>,
 }
 
 impl QuickList {
-    /// Creates a new QuickList.
-    ///
-    /// # Arguments
-    /// * `fill_factor`: Max size of a node. If positive, it's the max entry count.
-    ///   If negative, it's the max size in KB (e.g., -2 for 8KB).
-    /// * `compress_depth`: Number of nodes at the head and tail to *exclude* from compression.
     pub fn new(fill_factor: isize, compress_depth: usize) -> Self {
-        Self { nodes: VecDeque::new(), len: 0, fill_factor, compress_depth }
+        Self {
+            nodes: VecDeque::new(),
+            len: 0,
+            fill_factor,
+            compress_depth,
+            node_pool: Vec::with_capacity(16), // Pre-allocate pool
+        }
+    }
+
+    // ## Private Helpers for Pooling and Merging
+    fn get_node(&mut self) -> QuickListNode {
+        self.node_pool.pop().unwrap_or_else(|| QuickListNode::new(self.fill_factor))
+    }
+
+    fn return_node(&mut self, mut node: QuickListNode) {
+        if self.node_pool.len() < 16 {
+            // Limit pool size
+            node.data = NodeData::Uncompressed(Ziplist::default());
+            node.entry_count = 0;
+            self.node_pool.push(node);
+        }
+    }
+
+    fn try_merge_at(&mut self, index: usize) {
+        if self.fill_factor > 0 {
+            return;
+        }
+
+        if index >= self.nodes.len() - 1 {
+            return;
+        }
+
+        let should_merge = {
+            let node = &self.nodes[index];
+            let next = &self.nodes[index + 1];
+            let max_bytes = (-self.fill_factor) as usize * 1024;
+
+            // Define a mergeable size, for example, 25% of the max node size.
+            // This check prevents merging two almost-full nodes.
+            let merge_threshold = max_bytes / 4;
+
+            (node.entry_count > 0 && next.entry_count > 0)
+                && (node.byte_size() < merge_threshold || next.byte_size() < merge_threshold)
+                && (node.byte_size() + next.byte_size() < max_bytes)
+        };
+
+        if should_merge {
+            let mut next_node = self.nodes.remove(index + 1).unwrap();
+            next_node.ensure_decompressed();
+
+            let node = &mut self.nodes[index];
+            node.ensure_decompressed();
+
+            if let NodeData::Uncompressed(ziplist) = &mut node.data
+                && let NodeData::Uncompressed(next_ziplist) = &mut next_node.data
+            {
+                ziplist.data.extend_from_slice(&next_ziplist.data);
+                node.entry_count += next_node.entry_count;
+            }
+            self.return_node(next_node);
+        }
+    }
+
+    pub fn llen(&self) -> usize {
+        self.len
     }
 
     /// Pushes a value to the front (left) of the list using a fast, iterative approach.
@@ -197,7 +302,7 @@ impl QuickList {
 
         // Case 2: The list is empty OR the head node is full.
         // In both scenarios, create a new node at the front for the new value.
-        let mut new_node = QuickListNode::new(self.fill_factor);
+        let mut new_node = self.get_node();
         new_node.lpush(value);
         self.nodes.push_front(new_node);
         self.len += 1;
@@ -218,7 +323,7 @@ impl QuickList {
 
         // Case 2: The list is empty OR the tail node is full.
         // In both scenarios, create a new node at the back for the new value.
-        let mut new_node = QuickListNode::new(self.fill_factor);
+        let mut new_node = self.get_node();
         new_node.rpush(value);
         self.nodes.push_back(new_node);
         self.len += 1;
@@ -226,39 +331,56 @@ impl QuickList {
 
     /// Pops a value from the front (left) of the list.
     pub fn lpop(&mut self) -> Option<Bytes> {
-        let val = self.nodes.front_mut()?.pop(true);
+        let val = self.nodes.front_mut()?.lpop();
         if val.is_some() {
             self.len -= 1;
             if self.nodes.front().unwrap().entry_count == 0 {
-                self.nodes.pop_front();
+                let node = self.nodes.pop_front().unwrap();
+                self.return_node(node);
+            }
+
+            // try to merge only if there are at least two nodes.
+            // safety guard to ensure we only attempt a merge when there are actually two nodes available to combine.
+            if self.nodes.len() >= 2 {
+                self.try_merge_at(0);
             }
         }
         val
     }
-
     /// Pops a value from the back (right) of the list.
     pub fn rpop(&mut self) -> Option<Bytes> {
-        let val = self.nodes.back_mut()?.pop(false);
+        let val = self.nodes.back_mut()?.rpop();
         if val.is_some() {
             self.len -= 1;
             if self.nodes.back().unwrap().entry_count == 0 {
-                self.nodes.pop_back();
+                let node = self.nodes.pop_back().unwrap();
+                self.return_node(node);
+            }
+            if self.nodes.len() >= 2 {
+                self.try_merge_at(self.nodes.len() - 2); // Attempt to merge new tail with its next (which was the old tail)
             }
         }
         val
     }
 
-    /// Returns the total number of elements in the list.
-    pub fn llen(&self) -> usize {
-        self.len
+    pub fn compress(&mut self) {
+        let node_count = self.nodes.len();
+        if self.compress_depth > 0 && node_count > self.compress_depth * 2 {
+            for i in self.compress_depth..(node_count - self.compress_depth) {
+                if let Some(node) = self.nodes.get_mut(i) {
+                    node.try_compress();
+                }
+            }
+        }
     }
 
     /// Returns a range of elements. Handles negative indices like Redis.
-    pub fn lrange(&self, start: isize, stop: isize) -> Vec<Bytes> {
+    pub fn lrange(&mut self, start: isize, stop: isize) -> Vec<Bytes> {
         if self.len == 0 {
             return vec![];
         }
 
+        // 1. Calculate absolute start and end indices
         let len = self.len as isize;
         let start = if start < 0 { (len + start).max(0) } else { start } as usize;
         let stop = if stop < 0 { (len + stop).max(0) } else { stop } as usize;
@@ -267,21 +389,31 @@ impl QuickList {
             return vec![];
         }
 
-        let mut result = Vec::new();
+        let mut result = Vec::with_capacity(stop - start + 1);
         let mut current_index = 0;
 
-        for node in &self.nodes {
+        // 2. Iterate through nodes to find the requested range
+        for node in &mut self.nodes {
+            let node_len = node.entry_count;
+            if current_index + node_len <= start {
+                // This node is before our range, skip it
+                current_index += node_len;
+                continue;
+            }
             if current_index > stop {
+                // We have passed our range, no need to check more nodes
                 break;
             }
 
-            let entries = node.data.to_vec();
-            let node_len = entries.len();
-
-            if current_index + node_len > start {
+            // 3. Decompress the node and read its entries
+            node.ensure_decompressed();
+            if let NodeData::Uncompressed(ziplist) = &node.data {
+                let entries = ziplist.to_vec();
                 for (i, entry) in entries.iter().enumerate() {
                     let overall_index = current_index + i;
                     if overall_index >= start && overall_index <= stop {
+                        // Clone the Bytes object and add it to our result.
+                        // Cloning is cheap (reference counted).
                         result.push(entry.clone());
                     }
                     if overall_index >= stop {
@@ -304,6 +436,43 @@ mod tests {
         let ql = QuickList::new(10, 2);
         assert_eq!(ql.llen(), 0);
         assert_eq!(ql.nodes.len(), 0);
+        assert_eq!(ql.fill_factor, 10);
+    }
+
+    #[test]
+    fn test_node_creation_with_entry_count() {
+        let mut ql = QuickList::new(2, 0); // Use entry count to force node creation
+
+        ql.rpush(Bytes::from("a"));
+        ql.rpush(Bytes::from("b")); // Node is now full
+        assert_eq!(ql.nodes.len(), 1);
+
+        ql.rpush(Bytes::from("c")); // This MUST create a new node
+        assert_eq!(ql.nodes.len(), 2);
+        assert_eq!(ql.nodes[0].entry_count, 2);
+        assert_eq!(ql.nodes[1].entry_count, 1);
+    }
+
+    #[test]
+    fn test_node_creation_with_size_limit() {
+        let mut ql = QuickList::new(-1, 0); // Use 1KB size limit (1024 bytes)
+
+        // Create a payload that will leave the node *almost* full.
+        // 1024 (limit) - 4 (len prefix) - 5 (space for next push: "a" + len prefix) = 1015 bytes
+        let almost_full_string = Bytes::from(vec![0; 1015]);
+        ql.rpush(almost_full_string);
+
+        assert_eq!(ql.nodes.len(), 1);
+        assert_eq!(ql.nodes[0].byte_size(), 1015 + 4); // 1019 bytes
+
+        // This next push should still fit.
+        ql.rpush(Bytes::from("a"));
+        assert_eq!(ql.nodes.len(), 1, "The node should not be full yet");
+        assert_eq!(ql.nodes[0].byte_size(), 1019 + 1 + 4); // 1024 bytes
+
+        // The node is now exactly full. Pushing another item MUST create a new node.
+        ql.rpush(Bytes::from("b"));
+        assert_eq!(ql.nodes.len(), 2, "A new node should have been created");
     }
 
     /// Tests that rpush creates a new node when the tail is full.
@@ -357,6 +526,41 @@ mod tests {
         assert_eq!(vec, vec!["c", "b", "a"]);
     }
 
+    #[test]
+    fn test_compression() {
+        let mut ql = QuickList::new(-1, 1); // 4KB nodes, compress depth of 1
+
+        // Create 3 nodes worth of data
+        for i in 0..100 {
+            let s = format!("long_string_to_ensure_compression_{}", i);
+            ql.rpush(Bytes::from(s));
+        }
+        for i in 0..100 {
+            let s = format!("long_string_to_ensure_compression_{}", i);
+            ql.rpush(Bytes::from(s));
+        }
+        for i in 0..100 {
+            let s = format!("long_string_to_ensure_compression_{}", i);
+            ql.rpush(Bytes::from(s));
+        }
+        assert!(ql.nodes.len() >= 3, "Should have at least 3 nodes to test compression");
+
+        // Compress the list
+        ql.compress();
+
+        // The middle node should be compressed, head and tail should not
+        let middle_node_index = ql.nodes.len() / 2;
+        assert!(matches!(ql.nodes[0].data, NodeData::Uncompressed(_)));
+        assert!(matches!(ql.nodes[middle_node_index].data, NodeData::Compressed(_)));
+        assert!(matches!(ql.nodes.back().unwrap().data, NodeData::Uncompressed(_)));
+
+        // Verify operations still work on a compressed list
+        assert_eq!(ql.llen(), 300);
+        let first = ql.lpop().unwrap();
+        assert_eq!(first, Bytes::from("long_string_to_ensure_compression_0"));
+        assert_eq!(ql.llen(), 299);
+    }
+
     /// Tests popping from the right, accounting for the new push logic.
     #[test]
     fn test_rpop() {
@@ -378,6 +582,29 @@ mod tests {
         assert_eq!(ql.nodes.len(), 0, "Final node should be gone");
 
         assert_eq!(ql.rpop(), None);
+    }
+
+    #[test]
+    fn test_node_pool_recycling() {
+        let mut ql = QuickList::new(2, 0);
+
+        for _ in 0..5 {
+            ql.rpush(Bytes::from("data"));
+        }
+        assert_eq!(ql.nodes.len(), 3);
+        assert_eq!(ql.node_pool.len(), 0);
+
+        for _ in 0..5 {
+            ql.lpop();
+        }
+        assert_eq!(ql.nodes.len(), 0);
+        assert_eq!(ql.node_pool.len(), 3);
+
+        for _ in 0..3 {
+            ql.rpush(Bytes::from("new data"));
+        }
+        assert_eq!(ql.nodes.len(), 2);
+        assert_eq!(ql.node_pool.len(), 1);
     }
 
     /// Tests popping from the left, accounting for the new push logic.
@@ -456,5 +683,29 @@ mod tests {
         assert_eq!(ql.rpop(), Some(Bytes::from("1")));
         assert_eq!(ql.llen(), 0);
         assert_eq!(ql.nodes.len(), 0);
+    }
+
+    #[test]
+    fn test_node_merging() {
+        let mut ql = QuickList::new(-1, 0); // 1KB size limit
+
+        // 1. Create a state with three nodes.
+        ql.rpush(Bytes::from("small_A"));
+        ql.rpush(Bytes::from("small_C"));
+        ql.rpush(Bytes::from(vec![0; 1025])); // Large string
+        assert_eq!(ql.llen(), 3);
+        assert_eq!(ql.nodes.len(), 2);
+
+        ql.rpop();
+
+        assert_eq!(ql.nodes.len(), 1);
+
+        // This assertion is now correct because we fixed the length.
+        assert_eq!(ql.llen(), 2);
+
+        // 3. Trigger the merge.
+        ql.try_merge_at(0);
+        assert_eq!(ql.nodes.len(), 1, "The two small nodes should have merged");
+        assert_eq!(ql.llen(), 2); // Length remains 2 after merge.
     }
 }

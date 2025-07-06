@@ -449,6 +449,7 @@ dependencies = [
  "chrono",
  "criterion",
  "futures",
+ "lzf",
  "memchr",
  "memmap2",
  "rand",
@@ -804,6 +805,12 @@ name = "log"
 version = "0.4.26"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "30bde2b3dc3671ae49d8e2e9f044c7c005836e7a023ee57cffa25ab82764bb9e"
+
+[[package]]
+name = "lzf"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c034ef7ca69017088f8522e6f74301232f13ba43b5640941abc4dce26f530521"
 
 [[package]]
 name = "memchr"
