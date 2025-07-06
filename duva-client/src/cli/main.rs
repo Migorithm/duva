@@ -21,7 +21,8 @@ async fn main() -> anyhow::Result<()> {
     clear_and_make_ascii_art();
 
     let cli = cli::Cli::parse();
-    let mut controller = ClientController::new(editor::create(), &cli.address()).await?;
+    let mut controller =
+        ClientController::new(editor::create(), &cli.address(), cli.is_cluster_mode()).await?;
 
     loop {
         let readline = controller.target.readline(PROMPT).unwrap_or_else(|_| std::process::exit(0));

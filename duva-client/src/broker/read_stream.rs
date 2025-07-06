@@ -1,5 +1,6 @@
 use crate::broker::BrokerMessage;
 use duva::domains::cluster_actors::replication::ReplicationId;
+use duva::prelude::PeerIdentifier;
 use duva::{
     domains::IoError,
     domains::interface::TRead,
@@ -11,7 +12,8 @@ impl ServerStreamReader {
     pub fn run(
         mut self,
         controller_sender: tokio::sync::mpsc::Sender<BrokerMessage>,
-        replication_id: ReplicationId,
+        peer_identifier: PeerIdentifier,
+        replication_id: Option<ReplicationId>,
     ) -> oneshot::Sender<()> {
         let (kill_trigger, kill_switch) = tokio::sync::oneshot::channel::<()>();
 
@@ -29,16 +31,29 @@ impl ServerStreamReader {
                         }
                     },
                     | Err(IoError::ConnectionAborted) | Err(IoError::ConnectionReset) => {
-                        let message = BrokerMessage::FromServerError(
-                            replication_id.clone(),
-                            IoError::ConnectionAborted,
-                        );
+                        let message = match &replication_id {
+                            | Some(replication_id) => BrokerMessage::FromServerErrorFromCluster(
+                                replication_id.clone(),
+                                IoError::ConnectionAborted,
+                            ),
+                            | _ => BrokerMessage::FromServerErrorFromNode(
+                                peer_identifier.clone(),
+                                IoError::ConnectionAborted,
+                            ),
+                        };
                         let _ = controller_sender.send(message).await;
                         break;
                     },
 
                     | Err(e) => {
-                        let message = BrokerMessage::FromServerError(replication_id.clone(), e);
+                        let message = match &replication_id {
+                            | Some(replication_id) => {
+                                BrokerMessage::FromServerErrorFromCluster(replication_id.clone(), e)
+                            },
+                            | _ => {
+                                BrokerMessage::FromServerErrorFromNode(peer_identifier.clone(), e)
+                            },
+                        };
                         if controller_sender.send(message).await.is_err() {
                             break;
                         }

@@ -27,3 +27,7 @@ follower:
 cli:
 	@echo '🚀 Starting client in local_test/cli...'
 	cargo run -p duva-client -- --port $(p)
+
+cli-cluster:
+	@echo '🚀 Starting client in local_test/cli...'
+	cargo run -p duva-client -- --port $(p) --cluster-mode
