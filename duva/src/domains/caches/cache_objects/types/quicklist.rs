@@ -107,12 +107,6 @@ enum NodeData {
     Compressed(Vec<u8>),
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub enum FillFactor {
-    Count(usize),
-    Size(usize), // In Kilobytes
-}
-
 /// Represents a single node in the QuickList, which contains a Ziplist.
 #[derive(Debug)]
 struct QuickListNode {
@@ -120,22 +114,20 @@ struct QuickListNode {
     data: NodeData,
     /// Number of entries in the ziplist.
     entry_count: usize,
-    /// Max size setting. Positive for entry count, negative for bytes.
-    fill_factor: FillFactor,
 }
 
 impl QuickListNode {
-    fn new(fill_factor: FillFactor) -> Self {
-        Self { data: NodeData::Uncompressed(Ziplist::default()), entry_count: 0, fill_factor }
+    fn new() -> Self {
+        Self { data: NodeData::Uncompressed(Ziplist::default()), entry_count: 0 }
     }
 
     /// Ensures the node is decompressed. Must be called before any read/write.
-    fn ensure_decompressed(&mut self) {
+    fn ensure_decompressed(&mut self, fill_factor: &FillFactor) {
         let current_data =
             std::mem::replace(&mut self.data, NodeData::Uncompressed(Ziplist::default()));
         self.data = match current_data {
             | NodeData::Compressed(bytes) => {
-                let max_size = match self.fill_factor {
+                let max_size = match fill_factor {
                     | FillFactor::Size(kb) => kb * 1024 + 1024, // Add a safety buffer
                     | FillFactor::Count(_) => 65536, // Reasonable default for count-based
                 };
@@ -176,10 +168,10 @@ impl QuickListNode {
         }
     }
 
-    fn is_full(&mut self, new_value_size: usize) -> bool {
-        self.ensure_decompressed();
-        match self.fill_factor {
-            | FillFactor::Count(max_entries) => self.entry_count >= max_entries,
+    fn is_full(&mut self, new_value_size: usize, fill_factor: &FillFactor) -> bool {
+        self.ensure_decompressed(fill_factor);
+        match fill_factor {
+            | FillFactor::Count(max_entries) => self.entry_count >= *max_entries,
             | FillFactor::Size(kb) => {
                 let max_bytes = kb * 1024;
                 self.byte_size() + new_value_size + 4 > max_bytes
@@ -187,16 +179,16 @@ impl QuickListNode {
         }
     }
 
-    fn lpush(&mut self, value: Bytes) {
-        self.ensure_decompressed();
+    fn lpush(&mut self, value: Bytes, fill_factor: &FillFactor) {
+        self.ensure_decompressed(fill_factor);
         if let NodeData::Uncompressed(ziplist) = &mut self.data {
             ziplist.lpush(&value);
             self.entry_count += 1;
         }
     }
 
-    fn rpush(&mut self, value: Bytes) {
-        self.ensure_decompressed();
+    fn rpush(&mut self, value: Bytes, fill_factor: &FillFactor) {
+        self.ensure_decompressed(fill_factor);
         if let NodeData::Uncompressed(ziplist) = &mut self.data {
             ziplist.push_back(&value);
             self.entry_count += 1;
@@ -204,8 +196,8 @@ impl QuickListNode {
     }
 
     /// Pops a value from the front or back.
-    fn lpop(&mut self) -> Option<Bytes> {
-        self.ensure_decompressed();
+    fn lpop(&mut self, fill_factor: &FillFactor) -> Option<Bytes> {
+        self.ensure_decompressed(fill_factor);
         let NodeData::Uncompressed(ziplist) = &mut self.data else {
             return None;
         };
@@ -214,8 +206,8 @@ impl QuickListNode {
         Some(res)
     }
 
-    fn rpop(&mut self) -> Option<Bytes> {
-        self.ensure_decompressed();
+    fn rpop(&mut self, fill_factor: &FillFactor) -> Option<Bytes> {
+        self.ensure_decompressed(fill_factor);
         let NodeData::Uncompressed(ziplist) = &mut self.data else {
             return None;
         };
@@ -234,6 +226,12 @@ pub struct QuickList {
     node_pool: Vec<QuickListNode>,
 }
 
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum FillFactor {
+    Count(usize),
+    Size(usize), // In Kilobytes
+}
+
 impl QuickList {
     pub fn new(fill_factor: FillFactor, compress_depth: usize) -> Self {
         Self {
@@ -247,7 +245,7 @@ impl QuickList {
 
     // ## Private Helpers for Pooling and Merging
     fn get_node(&mut self) -> QuickListNode {
-        self.node_pool.pop().unwrap_or_else(|| QuickListNode::new(self.fill_factor))
+        self.node_pool.pop().unwrap_or_else(|| QuickListNode::new())
     }
 
     fn return_node(&mut self, mut node: QuickListNode) {
@@ -283,11 +281,11 @@ impl QuickList {
         if should_merge {
             // First, remove the next node from the list.
             let mut removed_node = self.nodes.remove(index + 1).unwrap();
-            removed_node.ensure_decompressed();
+            removed_node.ensure_decompressed(&self.fill_factor);
 
             // Now, get mutable access to the current node to merge into.
             let current_node = &mut self.nodes[index];
-            current_node.ensure_decompressed();
+            current_node.ensure_decompressed(&self.fill_factor);
 
             // Use pattern matching to get the ziplists and perform the merge.
             if let (
@@ -313,8 +311,8 @@ impl QuickList {
 
         // Case 1: The head node exists and is not full.
         if let Some(head) = self.nodes.front_mut() {
-            if !head.is_full(val_size) {
-                head.lpush(value);
+            if !head.is_full(val_size, &self.fill_factor) {
+                head.lpush(value, &self.fill_factor);
                 self.len += 1;
                 return;
             }
@@ -323,7 +321,7 @@ impl QuickList {
         // Case 2: The list is empty OR the head node is full.
         // In both scenarios, create a new node at the front for the new value.
         let mut new_node = self.get_node();
-        new_node.lpush(value);
+        new_node.lpush(value, &self.fill_factor);
         self.nodes.push_front(new_node);
         self.len += 1;
     }
@@ -334,8 +332,8 @@ impl QuickList {
 
         // Case 1: The tail node exists and is not full.
         if let Some(tail) = self.nodes.back_mut() {
-            if !tail.is_full(val_size) {
-                tail.rpush(value);
+            if !tail.is_full(val_size, &self.fill_factor) {
+                tail.rpush(value, &self.fill_factor);
                 self.len += 1;
                 return;
             }
@@ -344,14 +342,14 @@ impl QuickList {
         // Case 2: The list is empty OR the tail node is full.
         // In both scenarios, create a new node at the back for the new value.
         let mut new_node = self.get_node();
-        new_node.rpush(value);
+        new_node.rpush(value, &self.fill_factor);
         self.nodes.push_back(new_node);
         self.len += 1;
     }
 
     /// Pops a value from the front (left) of the list.
     pub fn lpop(&mut self) -> Option<Bytes> {
-        let val = self.nodes.front_mut()?.lpop()?;
+        let val = self.nodes.front_mut()?.lpop(&self.fill_factor)?;
 
         self.len -= 1;
         if self.nodes.front()?.entry_count == 0 {
@@ -367,7 +365,7 @@ impl QuickList {
     }
     /// Pops a value from the back (right) of the list.
     pub fn rpop(&mut self) -> Option<Bytes> {
-        let val = self.nodes.back_mut()?.rpop()?;
+        let val = self.nodes.back_mut()?.rpop(&self.fill_factor)?;
         self.len -= 1;
         if self.nodes.back()?.entry_count == 0 {
             let node = self.nodes.pop_back()?;
@@ -423,7 +421,7 @@ impl QuickList {
             }
 
             // 3. Decompress the node and read its entries
-            node.ensure_decompressed();
+            node.ensure_decompressed(&self.fill_factor);
             if let NodeData::Uncompressed(ziplist) = &node.data {
                 let entries = ziplist.to_vec();
                 for (i, entry) in entries.iter().enumerate() {
