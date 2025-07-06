@@ -5,6 +5,7 @@ mod test_exists;
 mod test_append;
 mod test_decr;
 mod test_decrby;
+mod test_discover_leader;
 mod test_incr;
 mod test_incrby;
 mod test_keys;
