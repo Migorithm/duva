@@ -31,7 +31,13 @@ impl Ziplist {
         }
         let len = u32::from_le_bytes(self.data[0..4].try_into().ok()?) as usize;
         let entry_data = Bytes::copy_from_slice(&self.data[4..4 + len]);
-        self.data = self.data.split_off(4 + len);
+
+        // instead of self.data = self.data.split_off(4 + len);
+        let total_entry_len = 4 + len;
+        let remaining_len = self.data.len() - total_entry_len;
+        self.data.copy_within(total_entry_len.., 0); // Shift the rest of the data to the beginning of the vector 
+        self.data.truncate(remaining_len); // Drop the trailing bytes
+
         Some(entry_data)
     }
 
