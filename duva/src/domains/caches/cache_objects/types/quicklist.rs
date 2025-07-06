@@ -8,7 +8,7 @@ use std::collections::VecDeque;
 
 use crate::make_smart_pointer;
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, bincode::Decode, bincode::Encode)]
 struct Ziplist(Vec<u8>);
 
 make_smart_pointer!(Ziplist, Vec<u8>);
@@ -100,14 +100,20 @@ impl Ziplist {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq, Clone, bincode::Decode, bincode::Encode)]
 enum NodeData {
     Uncompressed(Ziplist),
     Compressed(Vec<u8>),
 }
 
+impl Default for NodeData {
+    fn default() -> Self {
+        Self::Uncompressed(Ziplist::default())
+    }
+}
+
 /// Represents a single node in the QuickList, which contains a Ziplist.
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq, Clone, Default, bincode::Decode, bincode::Encode)]
 struct QuickListNode {
     /// The actual data, either uncompressed (Ziplist) or compressed.
     data: NodeData,
@@ -216,7 +222,7 @@ impl QuickListNode {
     }
 }
 /// A memory-optimized list structure, similar to Redis's Quicklist.
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq, Clone, Default, bincode::Decode, bincode::Encode)]
 pub struct QuickList {
     nodes: VecDeque<QuickListNode>,
     len: usize,
@@ -245,10 +251,16 @@ pub struct QuickList {
 ///    From the tests, we can see typical configurations:
 ///    Small lists: 2-3 records per ziplist for testing
 ///    Production: Likely larger counts (e.g., 32-64 records) or size-based limits (e.g., 8KB per ziplist)
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, bincode::Decode, bincode::Encode)]
 pub enum FillFactor {
     Count(usize),
     Size(usize),
+}
+
+impl Default for FillFactor {
+    fn default() -> Self {
+        Self::Size(8)
+    }
 }
 
 impl QuickList {
