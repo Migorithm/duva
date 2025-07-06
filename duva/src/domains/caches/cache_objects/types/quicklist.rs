@@ -3,57 +3,59 @@ use std::collections::VecDeque;
 // For a true Redis implementation, a crate like 'lzf' would be used.
 use lzf;
 
+use crate::make_smart_pointer;
+
 #[derive(Debug, Clone, Default)]
-struct Ziplist {
-    data: Vec<u8>,
-}
+struct Ziplist(Vec<u8>);
+
+make_smart_pointer!(Ziplist, Vec<u8>);
 
 impl Ziplist {
     /// Appends an entry to the end of the ziplist.
     fn push_back(&mut self, value: &Bytes) {
-        self.data.extend_from_slice(&(value.len() as u32).to_le_bytes());
-        self.data.extend_from_slice(value);
+        self.extend_from_slice(&(value.len() as u32).to_le_bytes());
+        self.extend_from_slice(value);
     }
 
     /// Efficiently prepends an entry by rebuilding the data vector once.
     fn lpush(&mut self, value: &Bytes) {
-        let mut new_data = Vec::with_capacity(value.len() + 4 + self.data.len());
+        let mut new_data = Vec::with_capacity(value.len() + 4 + self.len());
         new_data.extend_from_slice(&(value.len() as u32).to_le_bytes());
         new_data.extend_from_slice(value);
-        new_data.extend_from_slice(&self.data);
-        self.data = new_data;
+        new_data.extend_from_slice(&self);
+        self.0 = new_data;
     }
 
     /// Removes and returns the first entry.
     fn lpop(&mut self) -> Option<Bytes> {
-        if self.data.is_empty() {
+        if self.is_empty() {
             return None;
         }
-        let len = u32::from_le_bytes(self.data[0..4].try_into().ok()?) as usize;
-        let entry_data = Bytes::copy_from_slice(&self.data[4..4 + len]);
+        let len = u32::from_le_bytes(self[0..4].try_into().ok()?) as usize;
+        let entry_data = Bytes::copy_from_slice(&self[4..4 + len]);
 
         // Removes the first entry by shifting memory in-place, avoiding re-allocation.
         let total_entry_len = 4 + len;
-        let remaining_len = self.data.len() - total_entry_len;
-        self.data.copy_within(total_entry_len.., 0);
-        self.data.truncate(remaining_len);
+        let remaining_len = self.len() - total_entry_len;
+        self.copy_within(total_entry_len.., 0);
+        self.truncate(remaining_len);
 
         Some(entry_data)
     }
 
     /// Removes and returns the last entry. This remains an O(N) scan.
     fn rpop(&mut self) -> Option<Bytes> {
-        if self.data.is_empty() {
+        if self.is_empty() {
             return None;
         }
         let mut cursor = 0;
         let mut last_entry_start = 0;
-        while cursor < self.data.len() {
+        while cursor < self.len() {
             let entry_start = cursor;
-            if let Ok(len_bytes) = self.data[cursor..cursor + 4].try_into() {
+            if let Ok(len_bytes) = self[cursor..cursor + 4].try_into() {
                 let len = u32::from_le_bytes(len_bytes) as usize;
                 cursor += 4 + len;
-                if cursor <= self.data.len() {
+                if cursor <= self.len() {
                     last_entry_start = entry_start;
                 } else {
                     break;
@@ -62,12 +64,11 @@ impl Ziplist {
                 break;
             }
         }
-        if let Ok(len_bytes) = self.data[last_entry_start..last_entry_start + 4].try_into() {
+        if let Ok(len_bytes) = self[last_entry_start..last_entry_start + 4].try_into() {
             let len = u32::from_le_bytes(len_bytes) as usize;
-            let entry_data = Bytes::copy_from_slice(
-                &self.data[last_entry_start + 4..last_entry_start + 4 + len],
-            );
-            self.data.truncate(last_entry_start);
+            let entry_data =
+                Bytes::copy_from_slice(&self[last_entry_start + 4..last_entry_start + 4 + len]);
+            self.truncate(last_entry_start);
             Some(entry_data)
         } else {
             None
@@ -78,12 +79,12 @@ impl Ziplist {
     fn to_vec(&self) -> Vec<Bytes> {
         let mut entries = Vec::new();
         let mut cursor = 0;
-        while cursor < self.data.len() {
-            if let Ok(len_bytes) = self.data[cursor..cursor + 4].try_into() {
+        while cursor < self.len() {
+            if let Ok(len_bytes) = self[cursor..cursor + 4].try_into() {
                 let len = u32::from_le_bytes(len_bytes) as usize;
                 cursor += 4;
-                if cursor + len <= self.data.len() {
-                    entries.push(Bytes::copy_from_slice(&self.data[cursor..cursor + len]));
+                if cursor + len <= self.len() {
+                    entries.push(Bytes::copy_from_slice(&self[cursor..cursor + len]));
                     cursor += len;
                 } else {
                     break;
@@ -97,7 +98,7 @@ impl Ziplist {
 
     /// Returns the total memory size of the ziplist.
     fn byte_size(&self) -> usize {
-        self.data.len()
+        self.len()
     }
 }
 
@@ -133,7 +134,7 @@ impl QuickListNode {
                 };
 
                 let decompressed = lzf::decompress(&bytes, max_size).unwrap_or_default();
-                NodeData::Uncompressed(Ziplist { data: decompressed })
+                NodeData::Uncompressed(Ziplist(decompressed))
             },
             | uncompressed => uncompressed,
         };
@@ -148,7 +149,7 @@ impl QuickListNode {
             | NodeData::Uncompressed(ziplist) => {
                 if ziplist.byte_size() > 48 {
                     // Don't compress tiny nodes
-                    let compressed = lzf::compress(&ziplist.data).unwrap_or_default();
+                    let compressed = lzf::compress(&ziplist).unwrap_or_default();
                     if compressed.len() < ziplist.byte_size() {
                         NodeData::Compressed(compressed)
                     } else {
@@ -293,7 +294,7 @@ impl QuickList {
                 NodeData::Uncompressed(removed_ziplist),
             ) = (&mut current_node.data, &mut removed_node.data)
             {
-                current_ziplist.data.extend_from_slice(&removed_ziplist.data);
+                current_ziplist.extend_from_slice(&removed_ziplist);
                 current_node.entry_count += removed_node.entry_count;
             }
 
