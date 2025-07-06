@@ -1171,13 +1171,12 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         cache_manager: &CacheManager,
         from: PeerIdentifier,
     ) {
-        let Some(peer) = self.members.get_mut(&from) else {
-            warn!("No Member Found");
-            return;
-        };
-
         // If cache entries are empty, skip consensus and directly send success ack
         if migrate_batch.cache_entries.is_empty() {
+            let Some(peer) = self.members.get_mut(&from) else {
+                warn!("No Member Found");
+                return;
+            };
             let _ = peer.send(MigrationBatchAck::with_success(migrate_batch.batch_id)).await;
             return;
         }

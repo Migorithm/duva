@@ -327,6 +327,27 @@ async fn test_migrate_batch_send_migrate_batch_peer_message() {
 }
 
 #[tokio::test]
+async fn test_receive_batch_when_empty_cache_entries() {
+    //GIVEN
+    let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Leader).await;
+    let (_hwm, cache_manager) = Helper::cache_manager();
+    let replid = ReplicationId::Key("wheatever".to_string());
+    let (buf, _id) = cluster_actor.test_add_peer(6909, Some(replid.clone()), true);
+
+    // WHEN
+    let batch = migration_batch_create_helper("empty_test", vec![]);
+    cluster_actor.receive_batch(batch.clone(), &cache_manager, _id).await;
+
+    // THEN - verify that no log index is incremented
+    assert_eq!(cluster_actor.logger.last_log_index, 0);
+    assert_expected_queryio(
+        &buf,
+        QueryIO::MigrationBatchAck(MigrationBatchAck::with_success(batch.batch_id)),
+    )
+    .await;
+}
+
+#[tokio::test]
 async fn test_receive_batch_success_path_when_consensus_is_required() {
     // GIVEN
     let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Leader).await;
