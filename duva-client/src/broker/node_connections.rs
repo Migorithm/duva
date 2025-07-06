@@ -4,16 +4,16 @@ use duva::prelude::tokio::sync::mpsc;
 use duva::prelude::tokio::sync::oneshot;
 use std::collections::HashMap;
 
-pub(crate) struct LeaderConnections {
-    connections: HashMap<PeerIdentifier, LeaderConnection>,
+pub(crate) struct NodeConnections {
+    connections: HashMap<PeerIdentifier, NodeConnection>,
 }
 
-pub(crate) struct LeaderConnection {
+pub(crate) struct NodeConnection {
     pub(crate) writer: mpsc::Sender<MsgToServer>,
     pub(crate) kill_switch: oneshot::Sender<()>,
 }
 
-impl LeaderConnection {
+impl NodeConnection {
     pub(crate) async fn send(
         &self,
         msg: MsgToServer,
@@ -22,18 +22,18 @@ impl LeaderConnection {
     }
 }
 
-impl LeaderConnections {
+impl NodeConnections {
     pub(crate) fn new(
         target_id: PeerIdentifier,
         writer: mpsc::Sender<MsgToServer>,
         kill_switch: oneshot::Sender<()>,
     ) -> Self {
         let mut connections = HashMap::new();
-        connections.insert(target_id.clone(), LeaderConnection { writer, kill_switch });
+        connections.insert(target_id.clone(), NodeConnection { writer, kill_switch });
         Self { connections }
     }
 
-    pub(crate) fn first(&self) -> Option<&LeaderConnection> {
+    pub(crate) fn first(&self) -> Option<&NodeConnection> {
         self.connections.iter().next().map(|(_, conn)| conn)
     }
 
@@ -41,7 +41,7 @@ impl LeaderConnections {
         self.connections.contains_key(leader_id)
     }
 
-    pub(crate) fn get(&self, leader_id: &PeerIdentifier) -> Option<&LeaderConnection> {
+    pub(crate) fn get(&self, leader_id: &PeerIdentifier) -> Option<&NodeConnection> {
         self.connections.get(leader_id)
     }
 
@@ -51,7 +51,7 @@ impl LeaderConnections {
         connection: (oneshot::Sender<()>, mpsc::Sender<MsgToServer>),
     ) {
         let (kill_switch, writer) = connection;
-        self.connections.insert(leader_id, LeaderConnection { writer, kill_switch });
+        self.connections.insert(leader_id, NodeConnection { writer, kill_switch });
     }
 
     pub(crate) async fn remove_connection(&mut self, leader_id: &PeerIdentifier) {
@@ -70,7 +70,7 @@ impl LeaderConnections {
         }
     }
 
-    pub(crate) fn entries(&self) -> impl Iterator<Item = (&PeerIdentifier, &LeaderConnection)> {
+    pub(crate) fn entries(&self) -> impl Iterator<Item = (&PeerIdentifier, &NodeConnection)> {
         self.connections.iter()
     }
 
@@ -96,7 +96,7 @@ mod tests {
         let peer_id = PeerIdentifier::new("localhost", 3333);
         let (tx, _rx) = mpsc::channel(10);
         let (kill_tx, _kill_rx) = oneshot::channel();
-        let mut connections = LeaderConnections::new(peer_id.clone(), tx, kill_tx);
+        let mut connections = NodeConnections::new(peer_id.clone(), tx, kill_tx);
 
         // When
         connections.remove_connection(&peer_id).await;
@@ -113,7 +113,7 @@ mod tests {
         let peer2 = PeerIdentifier::new("localhost", 4444);
         let (tx1, _rx1) = mpsc::channel(10);
         let (kill_tx1, _kill_rx1) = oneshot::channel();
-        let mut connections = LeaderConnections::new(peer1.clone(), tx1, kill_tx1);
+        let mut connections = NodeConnections::new(peer1.clone(), tx1, kill_tx1);
 
         let (tx2, _rx2) = mpsc::channel(10);
         let (kill_tx2, _kill_rx2) = oneshot::channel();
