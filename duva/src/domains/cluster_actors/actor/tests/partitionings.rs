@@ -335,7 +335,7 @@ async fn test_receive_batch_when_empty_cache_entries() {
     let (buf, _id) = cluster_actor.test_add_peer(6909, Some(replid.clone()), true);
 
     // WHEN
-    let batch = migration_batch_create_helper("empty_test", vec![]);
+    let batch = MigrateBatch { batch_id: BatchId("empty_test".into()), cache_entries: vec![] };
     cluster_actor.receive_batch(batch.clone(), &cache_manager, _id).await;
 
     // THEN - verify that no log index is incremented
@@ -362,7 +362,10 @@ async fn test_receive_batch_success_path_when_consensus_is_required() {
         cluster_actor.hash_ring.set_partitions(cluster_actor.shard_leaders()).unwrap();
 
     let cache_entries = cache_entries_create_helper(&[("success_key3", "value2")]);
-    let batch = migration_batch_create_helper("success_test", cache_entries.clone());
+    let batch = MigrateBatch {
+        batch_id: BatchId("success_test".into()),
+        cache_entries: cache_entries.clone(),
+    };
 
     // WHEN
     cluster_actor.receive_batch(batch, &cache_manager, sender_peer_id).await;
@@ -402,7 +405,10 @@ async fn test_receive_batch_success_path_when_noreplica_found() {
 
     let cache_entries =
         cache_entries_create_helper(&[("success_key3", "value2"), ("success_key4", "value4")]);
-    let batch = migration_batch_create_helper("success_test", cache_entries.clone());
+    let batch = MigrateBatch {
+        batch_id: BatchId("success_test".into()),
+        cache_entries: cache_entries.clone(),
+    };
 
     // WHEN
     let task = tokio::spawn(recv.wait_message(SchedulerMessage::SendBatchAck {
