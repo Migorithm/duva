@@ -238,7 +238,6 @@ impl Broker {
         let kill_switch = r.run(self.tx.clone(), node.repl_id.clone().into());
         let writer = w.run();
         self.leader_connections.insert(PeerIdentifier(node.peer_id.clone()), (kill_switch, writer));
-        println!("Added leader connection to node: {}", node.peer_id);
         self.topology = auth_response.topology;
 
         Some(())
@@ -329,7 +328,6 @@ impl Broker {
             ))));
         };
         let cmd = self.build_command_with_request_id(&command.command, &command.args);
-        println!("Sending command to node id {:?}", node_id);
         if let Err(e) = connection.send(MsgToServer::Command(cmd.as_bytes().to_vec())).await {
             return Some(Err(IoError::Custom(format!("Failed to send command: {}", e))));
         }
