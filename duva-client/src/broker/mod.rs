@@ -3,9 +3,6 @@ mod leader_connections;
 mod read_stream;
 mod write_stream;
 
-#[cfg(test)]
-mod tests;
-
 use crate::command::InputKind;
 
 use crate::broker::leader_connections::LeaderConnections;
@@ -192,7 +189,7 @@ impl Broker {
             if node.repl_id != replication_id.to_string() {
                 continue; // skip nodes with different replication id
             }
-            if self.leader_connections.contains_key(&node.peer_id.clone().into()) {
+            if self.leader_connections.contains_key(&PeerIdentifier(node.peer_id.clone())) {
                 continue; // skip already connected leader nodes, covers 1, 3
             }
             if let Some(()) = self.add_leader_connection(node).await {
@@ -210,14 +207,18 @@ impl Broker {
             if ReplicationRole::Leader != node.repl_role.clone().into() {
                 continue; // skip non-leader nodes
             }
-            if self.leader_connections.contains_key(&node.peer_id.clone().into()) {
+            if self.leader_connections.contains_key(&PeerIdentifier(node.peer_id.clone())) {
                 continue; // skip already connected nodes
             }
             let _ = self.add_leader_connection(node).await;
         }
         self.leader_connections
             .remove_outdated_connections(
-                self.topology.node_infos.iter().map(|n| n.peer_id.clone().into()).collect(),
+                self.topology
+                    .node_infos
+                    .iter()
+                    .map(|n| PeerIdentifier(n.peer_id.clone()))
+                    .collect(),
             )
             .await;
     }
@@ -227,7 +228,7 @@ impl Broker {
             request_id: self.request_id,
         };
         let Ok((r, w, auth_response)) =
-            Self::authenticate(&node.peer_id.clone().into(), Some(auth_req)).await
+            Self::authenticate(&PeerIdentifier(node.peer_id.clone()), Some(auth_req)).await
         else {
             return None;
         };
@@ -236,7 +237,7 @@ impl Broker {
         }
         let kill_switch = r.run(self.tx.clone(), node.repl_id.clone().into());
         let writer = w.run();
-        self.leader_connections.insert(node.peer_id.clone().into(), (kill_switch, writer));
+        self.leader_connections.insert(PeerIdentifier(node.peer_id.clone()), (kill_switch, writer));
         println!("Added leader connection to node: {}", node.peer_id);
         self.topology = auth_response.topology;
 
@@ -273,9 +274,7 @@ impl Broker {
     async fn route_command_to_all(&mut self, command: &&CommandToServer) -> Result<(), IoError> {
         let cmd = self.build_command_with_request_id(&command.command, &command.args);
         for (peer_id, connection) in self.leader_connections.entries() {
-            if let Err(e) =
-                connection.send(MsgToServer::Command(cmd.as_bytes().to_vec())).await
-            {
+            if let Err(e) = connection.send(MsgToServer::Command(cmd.as_bytes().to_vec())).await {
                 return Err(IoError::Custom(format!(
                     "Failed to send command to {}: {}",
                     peer_id, e

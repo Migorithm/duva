@@ -82,11 +82,6 @@ impl LeaderConnections {
     pub(crate) fn len(&self) -> usize {
         self.connections.len()
     }
-
-    #[cfg(test)]
-    pub(crate) fn new_test() -> Self {
-        Self { connections: HashMap::new() }
-    }
 }
 
 #[cfg(test)]
