@@ -250,19 +250,6 @@ pub(crate) async fn setup_blocked_cluster_actor_with_requests(
     cluster_actor
 }
 
-// Helper function to setup migration batch
-pub(crate) fn migration_batch_create_helper(
-    batch_id: &str,
-    cache_entries: Vec<CacheEntry>,
-) -> MigrateBatch {
-    MigrateBatch { batch_id: BatchId(batch_id.into()), cache_entries }
-}
-
-// Helper function to create cache entries
-pub(crate) fn cache_entries_create_helper(keys_values: &[(&str, &str)]) -> Vec<CacheEntry> {
-    keys_values.iter().map(|(key, value)| CacheEntry::new(key.to_string(), *value)).collect()
-}
-
 // Helper function to assert migration batch ack
 pub(crate) async fn assert_expected_queryio(
     message_buf: &FakeReadWrite,

@@ -143,6 +143,61 @@ async fn test_start_rebalance_happy_path() {
     .await;
 }
 
+// Verify that the start_rebalance -> maybe_update_hashring flow works.
+#[tokio::test]
+async fn test_start_rebalance_schedules_migration_batches() {
+    // GIVEN
+    let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Leader).await;
+    let (_hwm, cache_manager) =
+        Helper::cache_manager_with_keys(vec!["test_key_1".to_string(), "test_key_2".to_string()])
+            .await;
+
+    // ! test_key_1 and test_key_2 are migrated to testnode_a
+    let target_repl_id = ReplicationId::Key("testnode_a".into());
+    let (buf, _leader_for_diff_shard) =
+        cluster_actor.test_add_peer(6570, Some(ReplicationId::Key("testnode_a".into())), true);
+
+    let (tx, mut rx) = tokio::sync::mpsc::channel(2);
+    let cluster_handler = ClusterCommandHandler(tx);
+
+    // WHEN
+    cluster_actor.self_handler = cluster_handler.clone();
+    cluster_actor.start_rebalance(&cache_manager).await;
+
+    // THEN
+    // 1. Verify heartbeat was sent immediately (synchronous part)
+    let QueryIO::ClusterHeartBeat(HeartBeat { hashring, .. }) =
+        buf.lock().await.pop_front().unwrap()
+    else {
+        panic!()
+    };
+
+    assert!(hashring.is_some());
+    assert_ne!(*hashring.unwrap(), cluster_actor.hash_ring);
+
+    // 2. Wait for migration batch message with timeout (asynchronous part)
+    let batch = tokio::time::timeout(Duration::from_millis(1000), async {
+        loop {
+            match rx.recv().await {
+                | Some(ClusterCommand::Scheduler(SchedulerMessage::ScheduleMigrationBatch(
+                    b,
+                    _,
+                ))) => return b,
+                | Some(_) => continue, // Skip other message types
+                | None => panic!("Channel closed without receiving ScheduleMigrationBatch"),
+            }
+        }
+    })
+    .await
+    .expect("Should receive ScheduleMigrationBatch within timeout");
+
+    assert_eq!(batch.target_repl, target_repl_id);
+    assert!(!batch.tasks.is_empty());
+
+    // 3. Verify pending_requests is set (synchronous part)
+    assert!(cluster_actor.pending_requests.is_some());
+}
+
 #[tokio::test]
 async fn test_maybe_update_hashring_when_noplan_is_made() {
     // GIVEN
@@ -327,28 +382,50 @@ async fn test_migrate_batch_send_migrate_batch_peer_message() {
 }
 
 #[tokio::test]
-async fn test_receive_batch_success_path_when_consensus_is_required() {
-    // GIVEN
+async fn test_receive_batch_when_empty_cache_entries() {
+    //GIVEN
     let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Leader).await;
     let (_hwm, cache_manager) = Helper::cache_manager();
-    let current_index = cluster_actor.logger.last_log_index;
-    let peer_replid = ReplicationId::Key("repl_id_for_other_node".to_string());
-
-    let (repl_buf, _) = cluster_actor.test_add_peer(6579, None, false);
-
-    let (_, sender_peer_id) = cluster_actor.test_add_peer(6567, Some(peer_replid.clone()), true);
-    cluster_actor.hash_ring =
-        cluster_actor.hash_ring.set_partitions(cluster_actor.shard_leaders()).unwrap();
-
-    let cache_entries = cache_entries_create_helper(&[("success_key3", "value2")]);
-    let batch = migration_batch_create_helper("success_test", cache_entries.clone());
+    let replid = ReplicationId::Key("wheatever".to_string());
+    let (buf, _id) = cluster_actor.test_add_peer(6909, Some(replid.clone()), true);
 
     // WHEN
-    cluster_actor.receive_batch(batch, &cache_manager, sender_peer_id).await;
+    let batch = MigrateBatch { batch_id: BatchId("empty_test".into()), cache_entries: vec![] };
+    cluster_actor.receive_batch(batch.clone(), &cache_manager, _id).await;
+
+    // THEN - verify that no log index is incremented
+    assert_eq!(cluster_actor.logger.last_log_index, 0);
+    assert_expected_queryio(
+        &buf,
+        QueryIO::MigrationBatchAck(MigrationBatchAck::with_success(batch.batch_id)),
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn test_receive_batch_when_consensus_is_required() {
+    // GIVEN
+    let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Leader).await;
+
+    let (_hwm, cache_manager) = Helper::cache_manager();
+    let current_index = cluster_actor.logger.last_log_index;
+    let ack_to = PeerIdentifier::new("127.0.0.1", 6567);
+
+    // add replica
+    let (repl_buf, _) = cluster_actor.test_add_peer(6579, None, false);
+
+    let cache_entries = vec![CacheEntry::new("success_key3", "value2")];
+
+    let batch = MigrateBatch {
+        batch_id: BatchId("success_test".into()),
+        cache_entries: cache_entries.clone(),
+    };
+
+    // WHEN
+    cluster_actor.receive_batch(batch, &cache_manager, ack_to.clone()).await;
 
     // THEN - verify that the log index is incremented
     assert_eq!(cluster_actor.logger.last_log_index, current_index + 1);
-
     assert_expected_queryio(
         &repl_buf,
         QueryIO::AppendEntriesRPC(HeartBeat {
@@ -367,28 +444,29 @@ async fn test_receive_batch_success_path_when_consensus_is_required() {
 }
 
 #[tokio::test]
-async fn test_receive_batch_success_path_when_noreplica_found() {
+async fn test_receive_batch_when_noreplica_found() {
     // GIVEN
     let (mut cluster_actor, recv) =
         Helper::cluster_actor_with_receiver(ReplicationRole::Leader).await;
 
     let (_hwm, cache_manager) = Helper::cache_manager();
     let current_index = cluster_actor.logger.last_log_index;
-    let peer_replid = ReplicationId::Key("repl_id_for_other_node".to_string());
-    let (_, sender_peer_id) = cluster_actor.test_add_peer(6567, Some(peer_replid.clone()), true);
-    cluster_actor.hash_ring =
-        cluster_actor.hash_ring.set_partitions(cluster_actor.shard_leaders()).unwrap();
+    let ack_to = PeerIdentifier::new("127.0.0.1", 6567);
 
     let cache_entries =
-        cache_entries_create_helper(&[("success_key3", "value2"), ("success_key4", "value4")]);
-    let batch = migration_batch_create_helper("success_test", cache_entries.clone());
+        vec![CacheEntry::new("success_key3", "value2"), CacheEntry::new("success_key4", "value4")];
+
+    let batch = MigrateBatch {
+        batch_id: BatchId("success_test".into()),
+        cache_entries: cache_entries.clone(),
+    };
 
     // WHEN
     let task = tokio::spawn(recv.wait_message(SchedulerMessage::SendBatchAck {
         batch_id: batch.batch_id.clone(),
-        to: sender_peer_id.clone(),
+        to: ack_to.clone(),
     }));
-    cluster_actor.receive_batch(batch, &cache_manager, sender_peer_id).await;
+    cluster_actor.receive_batch(batch, &cache_manager, ack_to).await;
 
     // THEN - verify that the log index is incremented
     assert_eq!(cluster_actor.logger.last_log_index, current_index + 1);
@@ -519,18 +597,19 @@ async fn test_handle_migration_ack_failure() {
     );
 }
 
+// Batch ID may not be found when the migration was already completed
 #[tokio::test]
 async fn test_handle_migration_ack_batch_id_not_found() {
     // GIVEN
     let mut cluster_actor = setup_blocked_cluster_actor_with_requests(1).await;
     let (_hwm, _cache_manager) = Helper::cache_manager();
     let (callback, _callback_rx) = tokio::sync::oneshot::channel();
-    let existing_batch_id = BatchId("existing_batch".into());
+
     cluster_actor
         .pending_migrations
         .as_mut()
         .unwrap()
-        .insert(existing_batch_id, PendingMigrationBatch::new(callback, vec![]));
+        .insert(BatchId("existing_batch".into()), PendingMigrationBatch::new(callback, vec![]));
 
     let non_existent_batch_id = BatchId("non_existent_batch".into());
     let ack = MigrationBatchAck { batch_id: non_existent_batch_id, success: true };
@@ -539,9 +618,7 @@ async fn test_handle_migration_ack_batch_id_not_found() {
     cluster_actor.handle_migration_ack(ack, &_cache_manager).await;
 
     // THEN
-
-    // Verify existing batch is still there
-    assert_eq!(cluster_actor.pending_migrations.as_ref().unwrap().len(), 1);
+    assert_eq!(cluster_actor.pending_migrations.as_ref().unwrap().len(), 1); // Verify existing batch is still there
 }
 
 #[tokio::test]
@@ -608,61 +685,6 @@ async fn test_handle_migration_ack_success_case_with_pending_reqs_and_migration(
         cache_manager.route_get("migrate_key_2").await,
         Ok(CacheValue { value: TypedValue::Null, .. })
     ));
-}
-
-// Verify that the start_rebalance -> maybe_update_hashring flow works.
-#[tokio::test]
-async fn test_start_rebalance_schedules_migration_batches() {
-    // GIVEN
-    let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Leader).await;
-    let (_hwm, cache_manager) =
-        Helper::cache_manager_with_keys(vec!["test_key_1".to_string(), "test_key_2".to_string()])
-            .await;
-
-    // ! test_key_1 and test_key_2 are migrated to testnode_a
-    let target_repl_id = ReplicationId::Key("testnode_a".into());
-    let (buf, _leader_for_diff_shard) =
-        cluster_actor.test_add_peer(6570, Some(ReplicationId::Key("testnode_a".into())), true);
-
-    let (tx, mut rx) = tokio::sync::mpsc::channel(2);
-    let cluster_handler = ClusterCommandHandler(tx);
-
-    // WHEN
-    cluster_actor.self_handler = cluster_handler.clone();
-    cluster_actor.start_rebalance(&cache_manager).await;
-
-    // THEN
-    // 1. Verify heartbeat was sent immediately (synchronous part)
-    let QueryIO::ClusterHeartBeat(HeartBeat { hashring, .. }) =
-        buf.lock().await.pop_front().unwrap()
-    else {
-        panic!()
-    };
-
-    assert!(hashring.is_some());
-    assert_ne!(*hashring.unwrap(), cluster_actor.hash_ring);
-
-    // 2. Wait for migration batch message with timeout (asynchronous part)
-    let batch = tokio::time::timeout(Duration::from_millis(1000), async {
-        loop {
-            match rx.recv().await {
-                | Some(ClusterCommand::Scheduler(SchedulerMessage::ScheduleMigrationBatch(
-                    b,
-                    _,
-                ))) => return b,
-                | Some(_) => continue, // Skip other message types
-                | None => panic!("Channel closed without receiving ScheduleMigrationBatch"),
-            }
-        }
-    })
-    .await
-    .expect("Should receive ScheduleMigrationBatch within timeout");
-
-    assert_eq!(batch.target_repl, target_repl_id);
-    assert!(!batch.tasks.is_empty());
-
-    // 3. Verify pending_requests is set (synchronous part)
-    assert!(cluster_actor.pending_requests.is_some());
 }
 
 #[tokio::test]
