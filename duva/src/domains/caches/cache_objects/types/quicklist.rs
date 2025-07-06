@@ -101,6 +101,12 @@ enum NodeData {
     Compressed(Vec<u8>),
 }
 
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum FillFactor {
+    Count(usize),
+    Size(usize), // In Kilobytes
+}
+
 /// Represents a single node in the QuickList, which contains a Ziplist.
 #[derive(Debug)]
 struct QuickListNode {
@@ -109,11 +115,11 @@ struct QuickListNode {
     /// Number of entries in the ziplist.
     entry_count: usize,
     /// Max size setting. Positive for entry count, negative for bytes.
-    fill_factor: isize,
+    fill_factor: FillFactor,
 }
 
 impl QuickListNode {
-    fn new(fill_factor: isize) -> Self {
+    fn new(fill_factor: FillFactor) -> Self {
         Self { data: NodeData::Uncompressed(Ziplist::default()), entry_count: 0, fill_factor }
     }
 
@@ -123,13 +129,9 @@ impl QuickListNode {
             std::mem::replace(&mut self.data, NodeData::Uncompressed(Ziplist::default()));
         self.data = match current_data {
             | NodeData::Compressed(bytes) => {
-                // Provide a sane upper limit for the decompressed size.
-                // We'll use the fill_factor plus a little buffer.
-                let max_size = if self.fill_factor < 0 {
-                    (-self.fill_factor as usize) * 1024 + 1024 // e.g., 1KB limit becomes 2KB buffer
-                } else {
-                    // If based on count, use a reasonable default like 64KB
-                    65536
+                let max_size = match self.fill_factor {
+                    | FillFactor::Size(kb) => kb * 1024 + 1024, // Add a safety buffer
+                    | FillFactor::Count(_) => 65536, // Reasonable default for count-based
                 };
 
                 let decompressed = lzf::decompress(&bytes, max_size).unwrap_or_default();
@@ -170,11 +172,12 @@ impl QuickListNode {
 
     fn is_full(&mut self, new_value_size: usize) -> bool {
         self.ensure_decompressed();
-        if self.fill_factor > 0 {
-            self.entry_count >= self.fill_factor as usize
-        } else {
-            let max_bytes = (-self.fill_factor) as usize * 1024;
-            self.byte_size() + new_value_size + 4 > max_bytes
+        match self.fill_factor {
+            | FillFactor::Count(max_entries) => self.entry_count >= max_entries,
+            | FillFactor::Size(kb) => {
+                let max_bytes = kb * 1024;
+                self.byte_size() + new_value_size + 4 > max_bytes
+            },
         }
     }
 
@@ -221,14 +224,14 @@ pub struct QuickList {
     nodes: VecDeque<QuickListNode>,
     len: usize,
     /// Controls node size. > 0 for count, < 0 for KB size (e.g., -2 for 8KB).
-    fill_factor: isize,
+    fill_factor: FillFactor,
     /// Head/tail nodes to keep uncompressed. 0 to disable compression.
     compress_depth: usize,
     node_pool: Vec<QuickListNode>,
 }
 
 impl QuickList {
-    pub fn new(fill_factor: isize, compress_depth: usize) -> Self {
+    pub fn new(fill_factor: FillFactor, compress_depth: usize) -> Self {
         Self {
             nodes: VecDeque::new(),
             len: 0,
@@ -253,42 +256,46 @@ impl QuickList {
     }
 
     fn try_merge_at(&mut self, index: usize) {
-        if self.fill_factor > 0 {
-            return;
-        }
+        let FillFactor::Size(kb) = self.fill_factor else {
+            return; // Do not merge for count-based lists.
+        };
 
         if index >= self.nodes.len() - 1 {
             return;
         }
 
+        let max_bytes = kb * 1024;
+
         let should_merge = {
             let node = &self.nodes[index];
             let next = &self.nodes[index + 1];
-            let max_bytes = (-self.fill_factor) as usize * 1024;
-
-            // Define a mergeable size, for example, 25% of the max node size.
-            // This check prevents merging two almost-full nodes.
             let merge_threshold = max_bytes / 4;
 
             (node.entry_count > 0 && next.entry_count > 0)
                 && (node.byte_size() < merge_threshold || next.byte_size() < merge_threshold)
-                && (node.byte_size() + next.byte_size() < max_bytes)
+                && (node.byte_size() + next.byte_size()) < max_bytes
         };
 
         if should_merge {
-            let mut next_node = self.nodes.remove(index + 1).unwrap();
-            next_node.ensure_decompressed();
+            // First, remove the next node from the list.
+            let mut removed_node = self.nodes.remove(index + 1).unwrap();
+            removed_node.ensure_decompressed();
 
-            let node = &mut self.nodes[index];
-            node.ensure_decompressed();
+            // Now, get mutable access to the current node to merge into.
+            let current_node = &mut self.nodes[index];
+            current_node.ensure_decompressed();
 
-            if let NodeData::Uncompressed(ziplist) = &mut node.data
-                && let NodeData::Uncompressed(next_ziplist) = &mut next_node.data
+            // Use pattern matching to get the ziplists and perform the merge.
+            if let (
+                NodeData::Uncompressed(current_ziplist),
+                NodeData::Uncompressed(removed_ziplist),
+            ) = (&mut current_node.data, &mut removed_node.data)
             {
-                ziplist.data.extend_from_slice(&next_ziplist.data);
-                node.entry_count += next_node.entry_count;
+                current_ziplist.data.extend_from_slice(&removed_ziplist.data);
+                current_node.entry_count += removed_node.entry_count;
             }
-            self.return_node(next_node);
+
+            self.return_node(removed_node);
         }
     }
 
@@ -442,16 +449,17 @@ mod tests {
 
     #[test]
     fn test_new_quicklist() {
-        let ql = QuickList::new(10, 2);
+        let ql = QuickList::new(FillFactor::Size(10), 2);
         assert_eq!(ql.llen(), 0);
         assert_eq!(ql.nodes.len(), 0);
-        assert_eq!(ql.fill_factor, 10);
+        assert_eq!(ql.fill_factor, FillFactor::Size(10));
     }
 
     #[test]
     fn test_node_creation() {
         // Test with entry-count limit
-        let mut ql_count = QuickList::new(2, 0);
+        // CHANGED: Use the FillFactor enum
+        let mut ql_count = QuickList::new(FillFactor::Count(2), 0);
         ql_count.rpush(Bytes::from("a"));
         ql_count.rpush(Bytes::from("b")); // Node is full
         assert_eq!(ql_count.nodes.len(), 1);
@@ -459,7 +467,8 @@ mod tests {
         assert_eq!(ql_count.nodes.len(), 2);
 
         // Test with size limit
-        let mut ql_size = QuickList::new(-1, 0); // 1KB limit
+        // CHANGED: Use the FillFactor enum
+        let mut ql_size = QuickList::new(FillFactor::Size(1), 0); // 1KB limit
         let large_string = Bytes::from(vec![0; 1020]); // Fills node exactly after 4-byte overhead
         ql_size.rpush(large_string);
         assert_eq!(ql_size.nodes.len(), 1);
@@ -469,7 +478,7 @@ mod tests {
 
     #[test]
     fn test_node_creation_with_size_limit() {
-        let mut ql = QuickList::new(-1, 0); // Use 1KB size limit (1024 bytes)
+        let mut ql = QuickList::new(FillFactor::Size(1), 0); // Use 1KB size limit (1024 bytes)
 
         // Create a payload that will leave the node *almost* full.
         // 1024 (limit) - 4 (len prefix) - 5 (space for next push: "a" + len prefix) = 1015 bytes
@@ -492,7 +501,7 @@ mod tests {
     /// Tests that rpush creates a new node when the tail is full.
     #[test]
     fn test_rpush_and_node_creation() {
-        let mut ql = QuickList::new(2, 0); // Max 2 entries per node.
+        let mut ql = QuickList::new(FillFactor::Count(2), 0); // Max 2 entries per node.
 
         ql.rpush(Bytes::from("a"));
         ql.rpush(Bytes::from("b"));
@@ -518,7 +527,7 @@ mod tests {
     /// Tests that lpush creates a new node when the head is full.
     #[test]
     fn test_lpush_and_node_creation() {
-        let mut ql = QuickList::new(2, 0);
+        let mut ql = QuickList::new(FillFactor::Count(2), 0);
 
         ql.lpush(Bytes::from("a"));
         ql.lpush(Bytes::from("b")); // Node is now full with ["b", "a"]
@@ -542,7 +551,7 @@ mod tests {
 
     #[test]
     fn test_compression_and_decompression_on_access() {
-        let mut ql = QuickList::new(-1, 1); // compress_depth = 1
+        let mut ql = QuickList::new(FillFactor::Size(1), 1); // compress_depth = 1
 
         // Create 3 full nodes
         for _ in 0..3 {
@@ -566,7 +575,7 @@ mod tests {
 
     #[test]
     fn test_compress_respects_depth() {
-        let mut ql = QuickList::new(-1, 1); // compress_depth = 1
+        let mut ql = QuickList::new(FillFactor::Size(1), 1); // compress_depth = 1
 
         // Create 3 nodes. Total nodes (3) is NOT > compress_depth * 2 (2). So no compression.
         ql.rpush(Bytes::from(vec![0; 1025]));
@@ -581,7 +590,7 @@ mod tests {
 
     #[test]
     fn test_compression() {
-        let mut ql = QuickList::new(-1, 1); // 4KB nodes, compress depth of 1
+        let mut ql = QuickList::new(FillFactor::Size(1), 1); // 4KB nodes, compress depth of 1
 
         // Create 3 nodes worth of data
         for i in 0..100 {
@@ -617,7 +626,7 @@ mod tests {
     /// Tests popping from the right, accounting for the new push logic.
     #[test]
     fn test_rpop() {
-        let mut ql = QuickList::new(2, 0);
+        let mut ql = QuickList::new(FillFactor::Count(2), 0);
         ql.rpush(Bytes::from("a"));
         ql.rpush(Bytes::from("b"));
         ql.rpush(Bytes::from("c")); // State with new logic: Node["a", "b"], Node["c"]
@@ -639,7 +648,7 @@ mod tests {
 
     #[test]
     fn test_node_pool_recycling() {
-        let mut ql = QuickList::new(2, 0);
+        let mut ql = QuickList::new(FillFactor::Count(2), 0);
 
         for _ in 0..5 {
             ql.rpush(Bytes::from("data"));
@@ -663,7 +672,7 @@ mod tests {
     /// Tests popping from the left, accounting for the new push logic.
     #[test]
     fn test_lpop() {
-        let mut ql = QuickList::new(2, 0);
+        let mut ql = QuickList::new(FillFactor::Count(2), 0);
         ql.rpush(Bytes::from("a"));
         ql.rpush(Bytes::from("b"));
         ql.rpush(Bytes::from("c")); // State with new logic: Node["a", "b"], Node["c"]
@@ -685,7 +694,7 @@ mod tests {
     /// Tests lrange with the new node creation logic.
     #[test]
     fn test_lrange() {
-        let mut ql = QuickList::new(2, 0);
+        let mut ql = QuickList::new(FillFactor::Count(2), 0);
         ql.rpush(Bytes::from("a"));
         ql.rpush(Bytes::from("b")); // Node ["a", "b"]
         ql.rpush(Bytes::from("c")); // Node ["c"]
@@ -714,7 +723,7 @@ mod tests {
     /// Tests a mixed sequence of operations with the new logic.
     #[test]
     fn test_mixed_operations() {
-        let mut ql = QuickList::new(3, 0);
+        let mut ql = QuickList::new(FillFactor::Count(3), 0);
 
         ql.rpush(Bytes::from("1"));
         ql.rpush(Bytes::from("2"));
@@ -740,7 +749,7 @@ mod tests {
 
     #[test]
     fn test_node_merging_is_correct() {
-        let mut ql = QuickList::new(-1, 0); // 1KB size limit
+        let mut ql = QuickList::new(FillFactor::Size(1), 0); // 1KB size limit
 
         // 1. Create a state with two small nodes separated by a large one,
         // which forces them to be in different nodes initially.
