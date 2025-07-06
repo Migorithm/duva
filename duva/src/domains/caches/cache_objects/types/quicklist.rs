@@ -248,7 +248,7 @@ pub struct QuickList {
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum FillFactor {
     Count(usize),
-    Size(usize), // In Kilobytes
+    Size(usize),
 }
 
 impl QuickList {
