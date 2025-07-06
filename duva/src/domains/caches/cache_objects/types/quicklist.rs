@@ -1,3 +1,7 @@
+/// QuickList Architecture
+/// - Node-based structure: QuickList uses multiple nodes (QuickListNode) to manage large lists
+/// - Compression support: Nodes can be compressed when not actively accessed, with ziplists being the uncompressed format
+/// - Fill factor management: Each node respects size or count limits, with ziplists handling the actual data storag
 use bytes::Bytes;
 use std::collections::VecDeque;
 // For a true Redis implementation, a crate like 'lzf' would be used.
@@ -222,6 +226,26 @@ pub struct QuickList {
     node_pool: Vec<QuickListNode>,
 }
 
+/// How Many Records Does a Ziplist Contain?
+/// 1. Count-based FillFactor
+/// ```rust,text
+/// FillFactor::Count(max_entries)
+/// ```
+/// Each ziplist contains exactly max_entries records before creating a new node
+/// Example: FillFactor::Count(2) means each ziplist holds 2 records maximum
+///
+/// 2. Size-based FillFactor
+/// ```rust,text
+///FillFactor::Size(kb)
+/// ```
+/// Each ziplist contains records until it reaches the size limit
+/// The actual number varies based on record sizes
+/// Example: FillFactor::Size(1) means each ziplist can hold up to 1KB of data
+///
+/// 3. Typical Usage
+/// From the tests, we can see typical configurations:
+/// Small lists: 2-3 records per ziplist for testing
+/// Production: Likely larger counts (e.g., 32-64 records) or size-based limits (e.g., 8KB per ziplist)
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum FillFactor {
     Count(usize),
