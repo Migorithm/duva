@@ -12,7 +12,7 @@ make_smart_pointer!(Ziplist, Vec<u8>);
 
 impl Ziplist {
     /// Appends an entry to the end of the ziplist.
-    fn push_back(&mut self, value: &Bytes) {
+    fn rpush(&mut self, value: &Bytes) {
         self.extend_from_slice(&(value.len() as u32).to_le_bytes());
         self.extend_from_slice(value);
     }
@@ -191,7 +191,7 @@ impl QuickListNode {
     fn rpush(&mut self, value: Bytes, fill_factor: &FillFactor) {
         self.ensure_decompressed(fill_factor);
         if let NodeData::Uncompressed(ziplist) = &mut self.data {
-            ziplist.push_back(&value);
+            ziplist.rpush(&value);
             self.entry_count += 1;
         }
     }
@@ -590,7 +590,7 @@ mod tests {
 
     #[test]
     fn test_compression() {
-        let mut ql = QuickList::new(FillFactor::Size(1), 1); // 4KB nodes, compress depth of 1
+        let mut ql = QuickList::new(FillFactor::Size(1), 1);
 
         // Create 3 nodes worth of data
         for i in 0..100 {
