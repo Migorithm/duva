@@ -273,6 +273,9 @@ pub struct Client {
 
 impl Client {
     pub fn new(port: u16) -> Client {
+        Client::new_with_cluster_mode(port, false)
+    }
+    pub fn new_with_cluster_mode(port: u16, cluster_mode: bool) -> Client {
         {
             static ONCE: std::sync::Once = std::sync::Once::new();
             static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
@@ -289,6 +292,9 @@ impl Client {
         let path = current.parent().unwrap().join("target").join("debug").join("cli");
         let mut command = Command::new(path);
         command.args(["--port", &port.to_string()]);
+        if cluster_mode {
+            command.args(["--cluster-mode"]);
+        }
 
         command.env("DUVA_ENV", "test");
 
