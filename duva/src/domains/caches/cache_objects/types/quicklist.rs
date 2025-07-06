@@ -223,10 +223,8 @@ impl QuickListNode {
 pub struct QuickList {
     nodes: VecDeque<QuickListNode>,
     len: usize,
-    /// Controls node size. > 0 for count, < 0 for KB size (e.g., -2 for 8KB).
     fill_factor: FillFactor,
-    /// Head/tail nodes to keep uncompressed. 0 to disable compression.
-    compress_depth: usize,
+    compress_depth: usize, // Head-tail nodes to keep uncompressed. 0 to disable compression.
     node_pool: Vec<QuickListNode>,
 }
 
