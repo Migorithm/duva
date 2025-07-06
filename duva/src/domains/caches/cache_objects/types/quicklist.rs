@@ -95,11 +95,6 @@ impl Ziplist {
         }
         entries
     }
-
-    /// Returns the total memory size of the ziplist.
-    fn byte_size(&self) -> usize {
-        self.len()
-    }
 }
 
 #[derive(Debug)]
@@ -147,10 +142,10 @@ impl QuickListNode {
             std::mem::replace(&mut self.data, NodeData::Uncompressed(Ziplist::default()));
         self.data = match current_data {
             | NodeData::Uncompressed(ziplist) => {
-                if ziplist.byte_size() > 48 {
+                if ziplist.len() > 48 {
                     // Don't compress tiny nodes
                     let compressed = lzf::compress(&ziplist).unwrap_or_default();
-                    if compressed.len() < ziplist.byte_size() {
+                    if compressed.len() < ziplist.len() {
                         NodeData::Compressed(compressed)
                     } else {
                         NodeData::Uncompressed(ziplist) // Not worth it
@@ -164,7 +159,7 @@ impl QuickListNode {
     }
     fn byte_size(&self) -> usize {
         match &self.data {
-            | NodeData::Uncompressed(ziplist) => ziplist.byte_size(),
+            | NodeData::Uncompressed(ziplist) => ziplist.len(),
             | NodeData::Compressed(bytes) => bytes.len(),
         }
     }
