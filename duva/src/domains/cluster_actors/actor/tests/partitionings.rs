@@ -2,7 +2,6 @@ use crate::domains::QueryIO;
 use crate::domains::caches::cache_objects::{CacheValue, TypedValue};
 use crate::domains::cluster_actors::hash_ring::BatchId;
 use crate::domains::cluster_actors::hash_ring::{HashRing, tests::migration_task_create_helper};
-use crate::domains::peers::peer;
 use std::collections::HashMap;
 use std::time::Duration;
 
@@ -349,18 +348,16 @@ async fn test_receive_batch_when_empty_cache_entries() {
 }
 
 #[tokio::test]
-async fn test_receive_batch_success_path_when_consensus_is_required() {
+async fn test_receive_batch_when_consensus_is_required() {
     // GIVEN
     let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Leader).await;
+
     let (_hwm, cache_manager) = Helper::cache_manager();
     let current_index = cluster_actor.logger.last_log_index;
-    let peer_replid = ReplicationId::Key("repl_id_for_other_node".to_string());
+    let ack_to = PeerIdentifier::new("127.0.0.1", 6567);
 
+    // add replica
     let (repl_buf, _) = cluster_actor.test_add_peer(6579, None, false);
-
-    let (_, sender_peer_id) = cluster_actor.test_add_peer(6567, Some(peer_replid.clone()), true);
-    cluster_actor.hash_ring =
-        cluster_actor.hash_ring.set_partitions(cluster_actor.shard_leaders()).unwrap();
 
     let cache_entries = vec![CacheEntry::new("success_key3", "value2")];
 
@@ -370,11 +367,10 @@ async fn test_receive_batch_success_path_when_consensus_is_required() {
     };
 
     // WHEN
-    cluster_actor.receive_batch(batch, &cache_manager, sender_peer_id).await;
+    cluster_actor.receive_batch(batch, &cache_manager, ack_to.clone()).await;
 
     // THEN - verify that the log index is incremented
     assert_eq!(cluster_actor.logger.last_log_index, current_index + 1);
-
     assert_expected_queryio(
         &repl_buf,
         QueryIO::AppendEntriesRPC(HeartBeat {
