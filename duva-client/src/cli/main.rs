@@ -46,7 +46,7 @@ async fn main() -> anyhow::Result<()> {
                     .broker_tx
                     .send(BrokerMessage::from_command(cmd.into(), args, input))
                     .await;
-                let (kind, query_io) = rx.await.unwrap();
+                let (kind, query_io) = rx.await?;
                 controller.print_res(kind, query_io);
             },
             | Err(e) => {

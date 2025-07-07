@@ -37,6 +37,7 @@ pub enum ClientAction {
     ClusterMeet(PeerIdentifier, LazyOption),
     IncrBy { key: String, increment: i64 },
     DecrBy { key: String, decrement: i64 },
+    LPush { key: String, value: Vec<String> },
 }
 
 impl ClientAction {
@@ -60,6 +61,8 @@ impl ClientAction {
             | ClientAction::DecrBy { key, decrement } => {
                 WriteRequest::Decr { key, delta: decrement }
             },
+            | ClientAction::LPush { key, value } => WriteRequest::LPush { key, value },
+
             | _ => {
                 debug_assert!(false, "to_write_request called on non-write action: {self:?}");
                 unreachable!(
@@ -80,6 +83,7 @@ impl ClientAction {
                 | ClientAction::Decr { .. }
                 | ClientAction::IncrBy { .. }
                 | ClientAction::DecrBy { .. }
+                | ClientAction::LPush { .. }
         )
     }
 }
@@ -290,6 +294,13 @@ pub fn extract_action(action: &str, args: &[&str]) -> anyhow::Result<ClientActio
         | "MGET" => {
             require_non_empty_args()?;
             Ok(ClientAction::MGet { keys: args.iter().map(|s| s.to_string()).collect() })
+        },
+        | "LPUSH" => {
+            require_non_empty_args()?;
+
+            let key = args[0].to_string();
+            let values = args[1..].iter().map(|s| s.to_string()).collect();
+            Ok(ClientAction::LPush { key, value: values })
         },
         // Add other commands as needed
         | unknown_cmd => Err(anyhow::anyhow!(

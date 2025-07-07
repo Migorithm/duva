@@ -60,7 +60,6 @@ impl<T> ClientController<T> {
                 let QueryIO::SimpleString(value) = query_io else {
                     return Response::FormatError;
                 };
-
                 match str::from_utf8(&value) {
                     | Ok(int) => Response::Integer(int.to_string().into()),
                     | Err(_) => {
@@ -68,17 +67,20 @@ impl<T> ClientController<T> {
                     },
                 }
             },
-            | Incr { .. } | Decr { .. } | Ttl { .. } | IncrBy { .. } | DecrBy { .. } => {
-                match query_io {
-                    | QueryIO::SimpleString(value) => {
-                        let s = String::from_utf8_lossy(&value);
-                        let s: Option<i64> = IndexedValueCodec::decode_value(s);
-                        Response::Integer(s.unwrap().to_string().into())
-                    },
-                    | QueryIO::Err(value) => Response::Error(value),
-                    | QueryIO::BulkString(value) => Response::Integer(value),
-                    | _ => Response::FormatError,
-                }
+            | Incr { .. }
+            | Decr { .. }
+            | Ttl { .. }
+            | IncrBy { .. }
+            | DecrBy { .. }
+            | LPush { .. } => match query_io {
+                | QueryIO::SimpleString(value) => {
+                    let s = String::from_utf8_lossy(&value);
+                    let s: Option<i64> = IndexedValueCodec::decode_value(s);
+                    Response::Integer(s.unwrap().to_string().into())
+                },
+                | QueryIO::Err(value) => Response::Error(value),
+
+                | _ => Response::FormatError,
             },
             | Save => {
                 let QueryIO::Null = query_io else {

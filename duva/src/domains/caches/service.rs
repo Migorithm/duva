@@ -67,6 +67,9 @@ impl CacheActor {
                 | CacheCommand::NumericDetla { key, delta, callback } => {
                     let _ = callback.send(self.numeric_delta(key, delta));
                 },
+                | CacheCommand::LPush { key, values, callback } => {
+                    let _ = callback.send(self.lpush(key, values));
+                },
             }
         }
         Ok(self)

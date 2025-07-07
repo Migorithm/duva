@@ -1,6 +1,7 @@
 use super::cache_objects::{CacheEntry, CacheValue};
 use super::command::CacheCommand;
 use crate::domains::caches::cache_objects::TypedValue;
+use crate::domains::caches::cache_objects::value::WRONG_TYPE_ERR_MSG;
 use crate::domains::caches::lru_cache::LruCache;
 use crate::domains::caches::read_queue::ReadQueue;
 use crate::make_smart_pointer;
@@ -97,6 +98,22 @@ impl CacheActor {
 
         val.value = TypedValue::String(Bytes::from((curr + delta).to_string()));
         Ok(curr + delta)
+    }
+
+    pub(crate) fn lpush(&mut self, key: String, values: Vec<String>) -> anyhow::Result<usize> {
+        let val = self
+            .cache
+            .entry(key.clone())
+            .or_insert(CacheValue::new(TypedValue::List(Default::default())));
+
+        let TypedValue::List(ref mut list) = val.value else {
+            return Err(anyhow::anyhow!(WRONG_TYPE_ERR_MSG));
+        };
+        for v in values {
+            list.lpush(v.into());
+        }
+
+        Ok(list.llen())
     }
 }
 
