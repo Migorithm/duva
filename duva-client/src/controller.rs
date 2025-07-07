@@ -56,7 +56,7 @@ impl<T> ClientController<T> {
                 | QueryIO::Err(value) => Response::Error(value),
                 | _err => Response::FormatError,
             },
-            | Delete { .. } | Exists { .. } => {
+            | Delete { .. } | Exists { .. } | LPush { .. } => {
                 let QueryIO::SimpleString(value) = query_io else {
                     return Response::FormatError;
                 };

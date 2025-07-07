@@ -69,6 +69,10 @@ impl CacheManager {
         .await;
     }
 
+    pub(crate) async fn route_lpush(&self, key: String, value: Vec<String>, current_idx: u64) {
+        todo!()
+    }
+
     pub(crate) async fn route_save(
         &self,
         save_target: SaveTarget,
@@ -116,6 +120,7 @@ impl CacheManager {
             | WriteRequest::MSet { entries } => {
                 self.route_mset(entries).await;
             },
+            | WriteRequest::LPush { key, value } => self.route_lpush(key, value, log_index).await,
         };
 
         // * This is to wake up the cache actors to process the pending read requests

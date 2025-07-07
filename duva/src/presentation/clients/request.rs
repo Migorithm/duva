@@ -37,6 +37,7 @@ pub enum ClientAction {
     ClusterMeet(PeerIdentifier, LazyOption),
     IncrBy { key: String, increment: i64 },
     DecrBy { key: String, decrement: i64 },
+    LPush { key: String, value: Vec<String> },
 }
 
 impl ClientAction {
@@ -60,6 +61,8 @@ impl ClientAction {
             | ClientAction::DecrBy { key, decrement } => {
                 WriteRequest::Decr { key, delta: decrement }
             },
+            | ClientAction::LPush { key, value } => WriteRequest::LPush { key, value },
+
             | _ => {
                 debug_assert!(false, "to_write_request called on non-write action: {self:?}");
                 unreachable!(

@@ -168,6 +168,9 @@ impl ClientController {
                     .await?
                     .into(),
             ),
+            | ClientAction::LPush { key, value } => {
+                self.cache_manager.route_lpush(key, value, current_index.unwrap()).await.into()
+            },
         };
 
         Ok(response)
