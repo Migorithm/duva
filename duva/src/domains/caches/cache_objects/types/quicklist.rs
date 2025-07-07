@@ -122,10 +122,6 @@ struct QuickListNode {
 }
 
 impl QuickListNode {
-    fn new() -> Self {
-        Self { data: NodeData::Uncompressed(Ziplist::default()), entry_count: 0 }
-    }
-
     /// Ensures the node is decompressed. Must be called before any read/write.
     fn ensure_decompressed(&mut self, fill_factor: &FillFactor) {
         let current_data =
@@ -276,7 +272,7 @@ impl QuickList {
 
     // ## Private Helpers for Pooling and Merging
     fn get_node(&mut self) -> QuickListNode {
-        self.node_pool.pop().unwrap_or_else(QuickListNode::new)
+        self.node_pool.pop().unwrap_or_else(QuickListNode::default)
     }
 
     fn return_node(&mut self, mut node: QuickListNode) {
