@@ -1,6 +1,7 @@
 use super::cache_objects::{CacheEntry, CacheValue};
 use super::command::CacheCommand;
 use crate::domains::caches::cache_objects::TypedValue;
+use crate::domains::caches::cache_objects::value::WRONG_TYPE_ERR_MSG;
 use crate::domains::caches::lru_cache::LruCache;
 use crate::domains::caches::read_queue::ReadQueue;
 use crate::make_smart_pointer;
@@ -106,9 +107,7 @@ impl CacheActor {
             .or_insert(CacheValue::new(TypedValue::List(Default::default())));
 
         let TypedValue::List(ref mut list) = val.value else {
-            return Err(anyhow::anyhow!(
-                "WRONGTYPE Operation against a key holding the wrong kind of value"
-            ));
+            return Err(anyhow::anyhow!(WRONG_TYPE_ERR_MSG));
         };
         for v in values {
             list.lpush(v.into());

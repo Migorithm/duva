@@ -48,6 +48,9 @@ pub enum TypedValue {
     List(QuickList),
 }
 
+pub const WRONG_TYPE_ERR_MSG: &str =
+    "WRONGTYPE Operation against a key holding the wrong kind of value";
+
 impl From<&str> for TypedValue {
     fn from(s: &str) -> Self {
         TypedValue::String(Bytes::copy_from_slice(s.as_bytes()))
@@ -58,12 +61,8 @@ impl TypedValue {
     pub(crate) fn as_str(&self) -> anyhow::Result<&Bytes> {
         match self {
             | TypedValue::String(b) => Ok(b),
-            | TypedValue::List(_) => Err(anyhow::anyhow!(
-                "WRONGTYPE Operation against a key holding the wrong kind of value"
-            )),
-            | TypedValue::Null => Err(anyhow::anyhow!(
-                "WRONGTYPE Operation against a key holding the wrong kind of value"
-            )),
+            | TypedValue::List(_) => Err(anyhow::anyhow!(WRONG_TYPE_ERR_MSG)),
+            | TypedValue::Null => Err(anyhow::anyhow!(WRONG_TYPE_ERR_MSG)),
         }
     }
 }

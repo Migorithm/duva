@@ -2,6 +2,7 @@ use super::cache_objects::CacheValue;
 use crate::domains::caches::actor::CacheActor;
 use crate::domains::caches::actor::CacheCommandSender;
 use crate::domains::caches::cache_objects::CacheEntry;
+use crate::domains::caches::cache_objects::value::WRONG_TYPE_ERR_MSG;
 use crate::domains::caches::command::CacheCommand;
 use crate::domains::cluster_actors::replication::ReplicationId;
 use crate::domains::operation_logs::WriteRequest;
@@ -49,9 +50,7 @@ impl CacheManager {
             .await?;
         let res = rx.await?;
         if !res.is_string() && !res.is_null() {
-            return Err(anyhow::anyhow!(
-                "WRONGTYPE Operation against a key holding the wrong kind of value"
-            ));
+            return Err(anyhow::anyhow!(WRONG_TYPE_ERR_MSG));
         }
         Ok(res)
     }
