@@ -40,7 +40,7 @@ impl Broker {
                     self.topology = topology;
                 },
 
-                | BrokerMessage::FromServer(Ok(query_io)) => {
+                | BrokerMessage::FromServer(Ok(mut query_io)) => {
                     let Some(input) = queue.pop() else {
                         continue;
                     };

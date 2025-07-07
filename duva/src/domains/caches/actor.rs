@@ -98,6 +98,24 @@ impl CacheActor {
         val.value = TypedValue::String(Bytes::from((curr + delta).to_string()));
         Ok(curr + delta)
     }
+
+    pub(crate) fn lpush(&mut self, key: String, values: Vec<String>) -> anyhow::Result<usize> {
+        let val = self
+            .cache
+            .entry(key.clone())
+            .or_insert(CacheValue::new(TypedValue::List(Default::default())));
+
+        let TypedValue::List(ref mut list) = val.value else {
+            return Err(anyhow::anyhow!(
+                "WRONGTYPE Operation against a key holding the wrong kind of value"
+            ));
+        };
+        for v in values {
+            list.lpush(v.into());
+        }
+
+        Ok(list.llen())
+    }
 }
 
 #[derive(Clone, Debug)]

@@ -24,8 +24,11 @@ impl CacheValue {
     pub(crate) fn try_to_string(&self) -> anyhow::Result<String> {
         Ok(String::from_utf8_lossy(self.value.as_str()?).to_string())
     }
-    pub(crate) fn null(&self) -> bool {
+    pub(crate) fn is_null(&self) -> bool {
         matches!(self.value, TypedValue::Null)
+    }
+    pub(crate) fn is_string(&self) -> bool {
+        matches!(self.value, TypedValue::String(_))
     }
 
     pub(crate) fn len(&self) -> usize {

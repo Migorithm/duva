@@ -47,8 +47,13 @@ impl CacheManager {
         self.select_shard(key_ref)
             .send(CacheCommand::Get { key: key_ref.into(), callback: tx })
             .await?;
-
-        Ok(rx.await?)
+        let res = rx.await?;
+        if !res.is_string() && !res.is_null() {
+            return Err(anyhow::anyhow!(
+                "WRONGTYPE Operation against a key holding the wrong kind of value"
+            ));
+        }
+        Ok(res)
     }
 
     pub(crate) async fn route_set(
@@ -69,8 +74,18 @@ impl CacheManager {
         .await;
     }
 
-    pub(crate) async fn route_lpush(&self, key: String, value: Vec<String>, current_idx: u64) {
-        todo!()
+    pub(crate) async fn route_lpush(
+        &self,
+        key: String,
+        value: Vec<String>,
+        current_idx: u64,
+    ) -> Result<String> {
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        self.select_shard(&key)
+            .send(CacheCommand::LPush { key, values: value, callback: tx.into() })
+            .await?;
+        let current_len = rx.await??;
+        Ok(IndexedValueCodec::encode(current_len, current_idx))
     }
 
     pub(crate) async fn route_save(
@@ -120,7 +135,9 @@ impl CacheManager {
             | WriteRequest::MSet { entries } => {
                 self.route_mset(entries).await;
             },
-            | WriteRequest::LPush { key, value } => self.route_lpush(key, value, log_index).await,
+            | WriteRequest::LPush { key, value } => {
+                self.route_lpush(key, value, log_index).await?;
+            },
         };
 
         // * This is to wake up the cache actors to process the pending read requests

@@ -1149,7 +1149,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             .route_mget(keys.clone())
             .await
             .into_iter()
-            .filter_map(|e| e.filter(|e| !e.value.null()))
+            .filter_map(|e| e.filter(|e| !e.value.is_null()))
             .collect::<Vec<_>>();
 
         // Get mutable reference to the target peer

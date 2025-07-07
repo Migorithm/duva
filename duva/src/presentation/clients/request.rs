@@ -83,6 +83,7 @@ impl ClientAction {
                 | ClientAction::Decr { .. }
                 | ClientAction::IncrBy { .. }
                 | ClientAction::DecrBy { .. }
+                | ClientAction::LPush { .. }
         )
     }
 }
@@ -293,6 +294,13 @@ pub fn extract_action(action: &str, args: &[&str]) -> anyhow::Result<ClientActio
         | "MGET" => {
             require_non_empty_args()?;
             Ok(ClientAction::MGet { keys: args.iter().map(|s| s.to_string()).collect() })
+        },
+        | "LPUSH" => {
+            require_non_empty_args()?;
+
+            let key = args[0].to_string();
+            let values = args[1..].iter().map(|s| s.to_string()).collect();
+            Ok(ClientAction::LPush { key, value: values })
         },
         // Add other commands as needed
         | unknown_cmd => Err(anyhow::anyhow!(
