@@ -160,17 +160,17 @@ impl<K: Eq + Hash + Clone + Debug, V: Debug + Clone + THasExpiry> LruCache<K, V>
         self.head = Some(index);
     }
 
-    pub fn get<Q>(&mut self, key: &Q) -> Option<&V>
+    pub fn get<Q>(&mut self, key: &Q) -> Option<&mut V>
     where
         K: Borrow<Q>,
         Q: Hash + Eq + ?Sized,
     {
-        if let Some(&index) = self.map.get(key) {
-            self.move_to_head(index);
-            Some(&self.slab.get(index).expect("Node not found").value)
-        } else {
-            None
-        }
+        let Some(index) = self.map.get_mut(key) else {
+            return None;
+        };
+        let index = *index;
+        self.move_to_head(index);
+        Some(&mut self.slab.get_mut(index).expect("Node not found").value)
     }
 
     pub fn clear(&mut self) {
@@ -343,18 +343,18 @@ mod tests {
         cache.put(1, "one");
         cache.put(2, "two");
 
-        assert_eq!(cache.get(&1), Some(&"one")); // 1 is now MRU
-        assert_eq!(cache.get(&2), Some(&"two")); // 2 is now MRU (list: 2 -> 1)
+        assert_eq!(cache.get(&1), Some(&mut "one")); // 1 is now MRU
+        assert_eq!(cache.get(&2), Some(&mut "two")); // 2 is now MRU (list: 2 -> 1)
 
         cache.put(3, "three"); // Evicts 1 (LRU)
         assert_eq!(cache.get(&1), None);
-        assert_eq!(cache.get(&2), Some(&"two")); // 2 is now LRU
-        assert_eq!(cache.get(&3), Some(&"three")); // 3 is MRU (list: 3 -> 2)
+        assert_eq!(cache.get(&2), Some(&mut "two")); // 2 is now LRU
+        assert_eq!(cache.get(&3), Some(&mut "three")); // 3 is MRU (list: 3 -> 2)
 
         cache.put(4, "four"); // Evicts 2 (LRU)
         assert_eq!(cache.get(&2), None);
-        assert_eq!(cache.get(&3), Some(&"three")); // 3 is LRU
-        assert_eq!(cache.get(&4), Some(&"four")); // 4 is MRU (list: 4 -> 3)
+        assert_eq!(cache.get(&3), Some(&mut "three")); // 3 is LRU
+        assert_eq!(cache.get(&4), Some(&mut "four")); // 4 is MRU (list: 4 -> 3)
     }
 
     #[test]
@@ -363,30 +363,30 @@ mod tests {
         cache.put(1, "one");
         cache.put(2, "two");
 
-        assert_eq!(cache.get(&1), Some(&"one")); // 1 is now MRU
+        assert_eq!(cache.get(&1), Some(&mut "one")); // 1 is now MRU
 
         cache.put(2, "updated_two"); // Update value, 2 becomes MRU. List: 2 -> 1
-        assert_eq!(cache.get(&2), Some(&"updated_two")); // 2 is now MRU
-        assert_eq!(cache.get(&1), Some(&"one")); // 1 is now MRU
+        assert_eq!(cache.get(&2), Some(&mut "updated_two")); // 2 is now MRU
+        assert_eq!(cache.get(&1), Some(&mut "one")); // 1 is now MRU
 
         cache.put(3, "three"); // Evicts 2. List: 3 -> 1
         assert_eq!(cache.get(&2), None);
-        assert_eq!(cache.get(&1), Some(&"one")); // 1 is now MRU
-        assert_eq!(cache.get(&3), Some(&"three"));
+        assert_eq!(cache.get(&1), Some(&mut "one")); // 1 is now MRU
+        assert_eq!(cache.get(&3), Some(&mut "three"));
     }
 
     #[test]
     fn test_lru_capacity_one() {
         let mut cache = LruCache::new(1);
         cache.put(1, "one");
-        assert_eq!(cache.get(&1), Some(&"one"));
+        assert_eq!(cache.get(&1), Some(&mut "one"));
 
         cache.put(2, "two"); // Evicts 1
         assert_eq!(cache.get(&1), None);
-        assert_eq!(cache.get(&2), Some(&"two"));
+        assert_eq!(cache.get(&2), Some(&mut "two"));
 
         cache.put(2, "updated_two"); // Update existing
-        assert_eq!(cache.get(&2), Some(&"updated_two")); // Still "two"
+        assert_eq!(cache.get(&2), Some(&mut "updated_two")); // Still "two"
     }
 
     #[test]
@@ -412,8 +412,8 @@ mod tests {
         assert_eq!(cache.len(), 2);
 
         // Remaining keys should still be accessible
-        assert_eq!(cache.get(&1), Some(&"one"));
-        assert_eq!(cache.get(&3), Some(&"three"));
+        assert_eq!(cache.get(&1), Some(&mut "one"));
+        assert_eq!(cache.get(&3), Some(&mut "three"));
     }
 
     #[test]
@@ -514,7 +514,7 @@ mod tests {
         assert_eq!(cache.len(), 1);
 
         // Verify it was actually inserted
-        assert_eq!(cache.get(&1), Some(&"one"));
+        assert_eq!(cache.get(&1), Some(&mut "one"));
     }
 
     #[test]
@@ -528,7 +528,7 @@ mod tests {
         assert_eq!(cache.len(), 1);
 
         // Verify original value is unchanged
-        assert_eq!(cache.get(&1), Some(&"original"));
+        assert_eq!(cache.get(&1), Some(&mut "original"));
     }
 
     #[test]
@@ -557,7 +557,7 @@ mod tests {
         }
 
         // Verify modification persisted
-        assert_eq!(cache.get(&1), Some(&CacheValue::new("modified")));
+        assert_eq!(cache.get(&1), Some(&mut CacheValue::new("modified")));
     }
 
     #[test]
@@ -581,9 +581,9 @@ mod tests {
 
         // Verify state
         assert_eq!(cache.len(), 2);
-        assert_eq!(cache.get(&1), Some(&CacheValue::new("one_modified")));
+        assert_eq!(cache.get(&1), Some(&mut CacheValue::new("one_modified")));
         assert_eq!(cache.get(&2), None); // Should be evicted
-        assert_eq!(cache.get(&3), Some(&CacheValue::new("three")));
+        assert_eq!(cache.get(&3), Some(&mut CacheValue::new("three")));
     }
 
     #[test]
