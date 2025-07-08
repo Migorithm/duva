@@ -8,6 +8,7 @@ mod test_decrby;
 mod test_incr;
 mod test_incrby;
 mod test_keys;
+mod test_lpop;
 mod test_lpush;
 mod test_replication_info;
 mod test_set_get;
