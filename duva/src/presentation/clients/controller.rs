@@ -171,7 +171,10 @@ impl ClientController {
             | ClientAction::LPush { key, value } => QueryIO::SimpleString(
                 self.cache_manager.route_lpush(key, value, current_index.unwrap()).await?.into(),
             ),
-            | ClientAction::LPop { key, count } => todo!(),
+            | ClientAction::LPop { key, count } => {
+                let values = self.cache_manager.route_lpop(key, count).await?;
+                QueryIO::Array(values.into_iter().map(|v| QueryIO::BulkString(v.into())).collect())
+            },
         };
 
         Ok(response)
