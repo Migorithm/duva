@@ -70,6 +70,9 @@ impl CacheActor {
                 | CacheCommand::LPush { key, values, callback } => {
                     let _ = callback.send(self.lpush(key, values));
                 },
+                | CacheCommand::LPop { key, count, callback } => {
+                    let _ = callback.send(self.lpop(key, count));
+                },
             }
         }
         Ok(self)

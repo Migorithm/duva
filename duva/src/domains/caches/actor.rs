@@ -115,6 +115,23 @@ impl CacheActor {
 
         Ok(list.llen())
     }
+
+    pub(crate) fn lpop(&mut self, key: String, count: usize) -> Vec<String> {
+        let val = self.cache.remove(&key);
+        if let Some(CacheValue { value: TypedValue::List(mut list), .. }) = val {
+            let vals = (0..count)
+                .filter_map(|_| list.lpop()) // Convert to Iterator<Item = Bytes>
+                .map(|v| String::from_utf8(v.to_vec())) // Convert to Iterator<Item= Result<String>>
+                .flatten()
+                .collect();
+            if list.llen() != 0 {
+                self.cache.put(key, CacheValue::new(TypedValue::List(list)));
+            }
+            vals
+        } else {
+            vec![]
+        }
+    }
 }
 
 #[derive(Clone, Debug)]

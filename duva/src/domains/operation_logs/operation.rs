@@ -22,6 +22,7 @@ pub enum WriteRequest {
     Decr { key: String, delta: i64 },
     Incr { key: String, delta: i64 },
     LPush { key: String, value: Vec<String> },
+    LPop { key: String, count: usize },
 }
 
 impl WriteOperation {
@@ -58,6 +59,7 @@ impl WriteRequest {
             | WriteRequest::Delete { keys, .. } => keys.iter().map(|k| k.as_str()).collect(),
             | WriteRequest::MSet { entries } => entries.iter().map(|e| e.key()).collect(),
             | WriteRequest::LPush { key, .. } => vec![key],
+            | WriteRequest::LPop { key, .. } => vec![key],
         }
     }
 }

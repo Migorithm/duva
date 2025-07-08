@@ -87,6 +87,16 @@ impl CacheManager {
         Ok(IndexedValueCodec::encode(current_len, current_idx))
     }
 
+    pub(crate) async fn route_lpop(&self, key: String, count: usize) -> Result<Vec<String>> {
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        self.select_shard(&key)
+            .send(CacheCommand::LPop { key, count, callback: tx.into() })
+            .await?;
+
+        let pop_values = rx.await?;
+        Ok(pop_values)
+    }
+
     pub(crate) async fn route_save(
         &self,
         save_target: SaveTarget,
@@ -136,6 +146,9 @@ impl CacheManager {
             },
             | WriteRequest::LPush { key, value } => {
                 self.route_lpush(key, value, log_index).await?;
+            },
+            | WriteRequest::LPop { key, count } => {
+                self.route_lpop(key, count).await?;
             },
         };
 

@@ -99,7 +99,6 @@ impl ClientController {
             | ClientAction::Exists { keys } => QueryIO::SimpleString(
                 self.cache_manager.route_exists(keys).await?.to_string().into(),
             ),
-
             | ClientAction::Info => QueryIO::BulkString(
                 self.cluster_communication_manager
                     .route_get_replication_state()
@@ -172,6 +171,13 @@ impl ClientController {
             | ClientAction::LPush { key, value } => QueryIO::SimpleString(
                 self.cache_manager.route_lpush(key, value, current_index.unwrap()).await?.into(),
             ),
+            | ClientAction::LPop { key, count } => {
+                let values = self.cache_manager.route_lpop(key, count).await?;
+                if values.is_empty() {
+                    return Ok(QueryIO::Null);
+                }
+                QueryIO::Array(values.into_iter().map(|v| QueryIO::BulkString(v.into())).collect())
+            },
         };
 
         Ok(response)

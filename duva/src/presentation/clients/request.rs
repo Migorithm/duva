@@ -38,6 +38,7 @@ pub enum ClientAction {
     IncrBy { key: String, increment: i64 },
     DecrBy { key: String, decrement: i64 },
     LPush { key: String, value: Vec<String> },
+    LPop { key: String, count: usize },
 }
 
 impl ClientAction {
@@ -62,6 +63,7 @@ impl ClientAction {
                 WriteRequest::Decr { key, delta: decrement }
             },
             | ClientAction::LPush { key, value } => WriteRequest::LPush { key, value },
+            | ClientAction::LPop { key, count } => WriteRequest::LPop { key, count },
 
             | _ => {
                 debug_assert!(false, "to_write_request called on non-write action: {self:?}");
@@ -72,6 +74,7 @@ impl ClientAction {
         }
     }
 
+    // TODO refactor the following in a way that's merged with to_write_request?
     pub fn consensus_required(&self) -> bool {
         matches!(
             self,
@@ -84,6 +87,7 @@ impl ClientAction {
                 | ClientAction::IncrBy { .. }
                 | ClientAction::DecrBy { .. }
                 | ClientAction::LPush { .. }
+                | ClientAction::LPop { .. }
         )
     }
 }
@@ -301,6 +305,12 @@ pub fn extract_action(action: &str, args: &[&str]) -> anyhow::Result<ClientActio
             let key = args[0].to_string();
             let values = args[1..].iter().map(|s| s.to_string()).collect();
             Ok(ClientAction::LPush { key, value: values })
+        },
+        | "LPOP" => {
+            require_non_empty_args()?;
+            let key = args[0].to_string();
+            let count = args.get(1).and_then(|s| s.parse::<usize>().ok()).unwrap_or(1);
+            Ok(ClientAction::LPop { key, count })
         },
         // Add other commands as needed
         | unknown_cmd => Err(anyhow::anyhow!(

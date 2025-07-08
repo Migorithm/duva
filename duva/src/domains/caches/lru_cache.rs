@@ -165,12 +165,12 @@ impl<K: Eq + Hash + Clone + Debug, V: Debug + Clone + THasExpiry> LruCache<K, V>
         K: Borrow<Q>,
         Q: Hash + Eq + ?Sized,
     {
-        if let Some(&index) = self.map.get(key) {
-            self.move_to_head(index);
-            Some(&self.slab.get(index).expect("Node not found").value)
-        } else {
-            None
-        }
+        let Some(index) = self.map.get(key) else {
+            return None;
+        };
+        let index = *index;
+        self.move_to_head(index);
+        Some(&self.slab.get(index).expect("Node not found").value)
     }
 
     pub fn clear(&mut self) {
