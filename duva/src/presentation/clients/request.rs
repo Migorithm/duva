@@ -38,6 +38,7 @@ pub enum ClientAction {
     IncrBy { key: String, increment: i64 },
     DecrBy { key: String, decrement: i64 },
     LPush { key: String, value: Vec<String> },
+    LPop { key: String, count: usize },
 }
 
 impl ClientAction {
@@ -301,6 +302,12 @@ pub fn extract_action(action: &str, args: &[&str]) -> anyhow::Result<ClientActio
             let key = args[0].to_string();
             let values = args[1..].iter().map(|s| s.to_string()).collect();
             Ok(ClientAction::LPush { key, value: values })
+        },
+        | "LPOP" => {
+            require_non_empty_args()?;
+            let key = args[0].to_string();
+            let count = args.get(1).and_then(|s| s.parse::<usize>().ok()).unwrap_or(1);
+            Ok(ClientAction::LPop { key, count })
         },
         // Add other commands as needed
         | unknown_cmd => Err(anyhow::anyhow!(

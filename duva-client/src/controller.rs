@@ -103,7 +103,7 @@ impl<T> ClientController<T> {
                 | QueryIO::Err(value) => Response::Error(value),
                 | _ => Response::FormatError,
             },
-            | Keys { .. } | MGet { .. } => {
+            | Keys { .. } | MGet { .. } | LPop { .. } => {
                 let QueryIO::Array(value) = query_io else {
                     return Response::FormatError;
                 };
