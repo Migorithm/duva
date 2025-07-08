@@ -137,6 +137,9 @@ impl CacheManager {
             | WriteRequest::LPush { key, value } => {
                 self.route_lpush(key, value, log_index).await?;
             },
+            | WriteRequest::LPop { key, count } => {
+                self.route_lpop(key, count).await;
+            },
         };
 
         // * This is to wake up the cache actors to process the pending read requests
@@ -316,6 +319,10 @@ impl CacheManager {
             .await?;
         let current = rx.await?;
         Ok(IndexedValueCodec::encode(current?, current_idx))
+    }
+
+    async fn route_lpop(&self, key: String, count: usize) -> Vec<String> {
+        todo!()
     }
 }
 

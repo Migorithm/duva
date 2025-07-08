@@ -63,6 +63,7 @@ impl ClientAction {
                 WriteRequest::Decr { key, delta: decrement }
             },
             | ClientAction::LPush { key, value } => WriteRequest::LPush { key, value },
+            | ClientAction::LPop { key, count } => WriteRequest::LPop { key, count },
 
             | _ => {
                 debug_assert!(false, "to_write_request called on non-write action: {self:?}");
@@ -73,6 +74,7 @@ impl ClientAction {
         }
     }
 
+    // TODO refactor the following in a way that's merged with to_write_request?
     pub fn consensus_required(&self) -> bool {
         matches!(
             self,
@@ -85,6 +87,7 @@ impl ClientAction {
                 | ClientAction::IncrBy { .. }
                 | ClientAction::DecrBy { .. }
                 | ClientAction::LPush { .. }
+                | ClientAction::LPop { .. }
         )
     }
 }
