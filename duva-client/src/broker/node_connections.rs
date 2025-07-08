@@ -11,9 +11,18 @@ pub(crate) struct NodeConnections {
 pub(crate) struct NodeConnection {
     pub(crate) writer: mpsc::Sender<MsgToServer>,
     pub(crate) kill_switch: oneshot::Sender<()>,
+    pub(crate) request_id: u64,
 }
 
 impl NodeConnection {
+    pub(crate) fn new(
+        writer: mpsc::Sender<MsgToServer>,
+        kill_switch: oneshot::Sender<()>,
+        request_id: u64,
+    ) -> Self {
+        Self { writer, kill_switch, request_id }
+    }
+
     pub(crate) async fn send(
         &self,
         msg: MsgToServer,
@@ -27,9 +36,10 @@ impl NodeConnections {
         target_id: PeerIdentifier,
         writer: mpsc::Sender<MsgToServer>,
         kill_switch: oneshot::Sender<()>,
+        request_id: u64,
     ) -> Self {
         let mut connections = HashMap::new();
-        connections.insert(target_id.clone(), NodeConnection { writer, kill_switch });
+        connections.insert(target_id.clone(), NodeConnection::new(writer, kill_switch, request_id));
         Self { connections }
     }
 
@@ -45,13 +55,12 @@ impl NodeConnections {
         self.connections.get(leader_id)
     }
 
-    pub(crate) fn insert(
-        &mut self,
-        leader_id: PeerIdentifier,
-        connection: (oneshot::Sender<()>, mpsc::Sender<MsgToServer>),
-    ) {
-        let (kill_switch, writer) = connection;
-        self.connections.insert(leader_id, NodeConnection { writer, kill_switch });
+    pub(crate) fn get_request_id(&self, leader_id: &PeerIdentifier) -> Option<u64> {
+        self.connections.get(leader_id).map(|conn| conn.request_id)
+    }
+
+    pub(crate) fn insert(&mut self, leader_id: PeerIdentifier, connection: NodeConnection) {
+        self.connections.insert(leader_id, connection);
     }
 
     pub(crate) async fn remove_connection(&mut self, leader_id: &PeerIdentifier) {
@@ -96,7 +105,7 @@ mod tests {
         let peer_id = PeerIdentifier::new("localhost", 3333);
         let (tx, _rx) = mpsc::channel(10);
         let (kill_tx, _kill_rx) = oneshot::channel();
-        let mut connections = NodeConnections::new(peer_id.clone(), tx, kill_tx);
+        let mut connections = NodeConnections::new(peer_id.clone(), tx, kill_tx, 0);
 
         // When
         connections.remove_connection(&peer_id).await;
@@ -113,11 +122,11 @@ mod tests {
         let peer2 = PeerIdentifier::new("localhost", 4444);
         let (tx1, _rx1) = mpsc::channel(10);
         let (kill_tx1, _kill_rx1) = oneshot::channel();
-        let mut connections = NodeConnections::new(peer1.clone(), tx1, kill_tx1);
+        let mut connections = NodeConnections::new(peer1.clone(), tx1, kill_tx1, 0);
 
         let (tx2, _rx2) = mpsc::channel(10);
         let (kill_tx2, _kill_rx2) = oneshot::channel();
-        connections.insert(peer2.clone(), (kill_tx2, tx2));
+        connections.insert(peer2.clone(), NodeConnection::new(tx2, kill_tx2, 0));
 
         // When - peer1 is not in the topology peers, peer2 is kept
         let topology_peers = vec![peer2.clone()];
