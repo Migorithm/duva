@@ -104,9 +104,13 @@ impl<T> ClientController<T> {
                 | _ => Response::FormatError,
             },
             | Keys { .. } | MGet { .. } | LPop { .. } => {
+                if let QueryIO::Null = query_io {
+                    return Response::Null;
+                }
                 let QueryIO::Array(value) = query_io else {
                     return Response::FormatError;
                 };
+
                 let mut keys = Vec::new();
                 for (i, item) in value.into_iter().enumerate() {
                     let QueryIO::BulkString(value) = item else {

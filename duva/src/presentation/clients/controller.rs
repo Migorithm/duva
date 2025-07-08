@@ -173,6 +173,9 @@ impl ClientController {
             ),
             | ClientAction::LPop { key, count } => {
                 let values = self.cache_manager.route_lpop(key, count).await?;
+                if values.is_empty() {
+                    return Ok(QueryIO::Null);
+                }
                 QueryIO::Array(values.into_iter().map(|v| QueryIO::BulkString(v.into())).collect())
             },
         };
