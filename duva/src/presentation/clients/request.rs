@@ -315,6 +315,13 @@ pub fn extract_action(action: &str, args: &[&str]) -> anyhow::Result<ClientActio
             let count = args.get(1).and_then(|s| s.parse::<usize>().ok()).unwrap_or(1);
             Ok(ClientAction::LPop { key, count })
         },
+        | "RPUSH" => {
+            require_non_empty_args()?;
+            let key = args[0].to_string();
+            let values = args[1..].iter().map(|s| s.to_string()).collect();
+            Ok(ClientAction::RPush { key, value: values })
+        },
+
         // Add other commands as needed
         | unknown_cmd => Err(anyhow::anyhow!(
             "(error) ERR unknown command '{unknown_cmd}', with args beginning with {}",
