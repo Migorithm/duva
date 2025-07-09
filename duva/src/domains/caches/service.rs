@@ -71,10 +71,13 @@ impl CacheActor {
                     let _ = callback.send(self.lpush(key, values));
                 },
                 | CacheCommand::LPop { key, count, callback } => {
-                    let _ = callback.send(self.lpop(key, count));
+                    let _ = callback.send(self.pop(key, count, true));
                 },
                 | CacheCommand::RPush { key, values, callback } => {
                     let _ = callback.send(self.rpush(key, values));
+                },
+                | CacheCommand::RPop { key, count, callback } => {
+                    let _ = callback.send(self.pop(key, count, false));
                 },
             }
         }
