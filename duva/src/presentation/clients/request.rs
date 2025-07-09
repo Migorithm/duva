@@ -40,6 +40,7 @@ pub enum ClientAction {
     LPush { key: String, value: Vec<String> },
     LPop { key: String, count: usize },
     RPush { key: String, value: Vec<String> },
+    RPop { key: String, count: usize },
 }
 
 impl ClientAction {
@@ -66,6 +67,7 @@ impl ClientAction {
             | ClientAction::LPush { key, value } => WriteRequest::LPush { key, value },
             | ClientAction::LPop { key, count } => WriteRequest::LPop { key, count },
             | ClientAction::RPush { key, value } => WriteRequest::RPush { key, value },
+            | ClientAction::RPop { key, count } => WriteRequest::LPop { key, count },
 
             | _ => {
                 debug_assert!(false, "to_write_request called on non-write action: {self:?}");
@@ -91,6 +93,7 @@ impl ClientAction {
                 | ClientAction::LPush { .. }
                 | ClientAction::LPop { .. }
                 | ClientAction::RPush { .. }
+                | ClientAction::RPop { .. }
         )
     }
 }
@@ -302,24 +305,25 @@ pub fn extract_action(action: &str, args: &[&str]) -> anyhow::Result<ClientActio
             require_non_empty_args()?;
             Ok(ClientAction::MGet { keys: args.iter().map(|s| s.to_string()).collect() })
         },
-        | "LPUSH" => {
+        | "LPUSH" | "RPUSH" => {
             require_non_empty_args()?;
 
             let key = args[0].to_string();
             let values = args[1..].iter().map(|s| s.to_string()).collect();
-            Ok(ClientAction::LPush { key, value: values })
+            if action.to_uppercase() == "LPUSH" {
+                return Ok(ClientAction::LPush { key, value: values });
+            }
+            Ok(ClientAction::RPush { key, value: values })
         },
-        | "LPOP" => {
+        | "LPOP" | "RPOP" => {
             require_non_empty_args()?;
             let key = args[0].to_string();
             let count = args.get(1).and_then(|s| s.parse::<usize>().ok()).unwrap_or(1);
-            Ok(ClientAction::LPop { key, count })
-        },
-        | "RPUSH" => {
-            require_non_empty_args()?;
-            let key = args[0].to_string();
-            let values = args[1..].iter().map(|s| s.to_string()).collect();
-            Ok(ClientAction::RPush { key, value: values })
+
+            if action.to_uppercase() == "LPOP" {
+                return Ok(ClientAction::LPop { key, count });
+            }
+            Ok(ClientAction::RPop { key, count })
         },
 
         // Add other commands as needed

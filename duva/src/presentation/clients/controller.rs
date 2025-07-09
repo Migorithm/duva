@@ -181,6 +181,13 @@ impl ClientController {
             | ClientAction::RPush { key, value } => QueryIO::SimpleString(
                 self.cache_manager.route_rpush(key, value, current_index.unwrap()).await?.into(),
             ),
+            | ClientAction::RPop { key, count } => {
+                let values = self.cache_manager.route_rpop(key, count).await?;
+                if values.is_empty() {
+                    return Ok(QueryIO::Null);
+                }
+                QueryIO::Array(values.into_iter().map(|v| QueryIO::BulkString(v.into())).collect())
+            },
         };
 
         Ok(response)

@@ -11,6 +11,7 @@ mod test_keys;
 mod test_lpop;
 mod test_lpush;
 mod test_replication_info;
+mod test_rpop;
 mod test_rpush;
 mod test_set_get;
 mod test_snapshot_persists_and_recovers_state;
