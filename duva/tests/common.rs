@@ -279,7 +279,7 @@ impl Client {
             let lock = LOCK.lock().unwrap();
             ONCE.call_once(|| {
                 let mut command = Command::new("cargo");
-                command.args(["build", "-p", "duva-cli"]);
+                command.args(["build", "-p", "duva-client"]);
                 let mut process =
                     command.stdout(Stdio::null()).stderr(Stdio::null()).spawn().unwrap();
                 process.wait().unwrap();

@@ -15,5 +15,6 @@ pub(crate) enum CacheCommand {
     Append { key: String, value: String, callback: oneshot::Sender<anyhow::Result<usize>> },
     NumericDetla { key: String, delta: i64, callback: oneshot::Sender<anyhow::Result<i64>> },
     LPush { key: String, values: Vec<String>, callback: Callback<anyhow::Result<usize>> },
+    RPush { key: String, values: Vec<String>, callback: Callback<anyhow::Result<usize>> },
     LPop { key: String, count: usize, callback: Callback<Vec<String>> },
 }

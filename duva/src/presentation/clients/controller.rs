@@ -178,6 +178,9 @@ impl ClientController {
                 }
                 QueryIO::Array(values.into_iter().map(|v| QueryIO::BulkString(v.into())).collect())
             },
+            | ClientAction::RPush { key, value } => QueryIO::SimpleString(
+                self.cache_manager.route_rpush(key, value, current_index.unwrap()).await?.into(),
+            ),
         };
 
         Ok(response)
