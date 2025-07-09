@@ -116,6 +116,22 @@ impl CacheActor {
         Ok(list.llen())
     }
 
+    pub(crate) fn rpush(&mut self, key: String, values: Vec<String>) -> anyhow::Result<usize> {
+        let val = self
+            .cache
+            .entry(key.clone())
+            .or_insert(CacheValue::new(TypedValue::List(Default::default())));
+
+        let TypedValue::List(ref mut list) = val.value else {
+            return Err(anyhow::anyhow!(WRONG_TYPE_ERR_MSG));
+        };
+        for v in values {
+            list.rpush(v.into());
+        }
+
+        Ok(list.llen())
+    }
+
     pub(crate) fn lpop(&mut self, key: String, count: usize) -> Vec<String> {
         let val = self.cache.remove(&key);
         if let Some(CacheValue { value: TypedValue::List(mut list), .. }) = val {

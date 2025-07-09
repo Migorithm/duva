@@ -39,6 +39,7 @@ pub enum ClientAction {
     DecrBy { key: String, decrement: i64 },
     LPush { key: String, value: Vec<String> },
     LPop { key: String, count: usize },
+    RPush { key: String, value: Vec<String> },
 }
 
 impl ClientAction {
@@ -64,6 +65,7 @@ impl ClientAction {
             },
             | ClientAction::LPush { key, value } => WriteRequest::LPush { key, value },
             | ClientAction::LPop { key, count } => WriteRequest::LPop { key, count },
+            | ClientAction::RPush { key, value } => WriteRequest::RPush { key, value },
 
             | _ => {
                 debug_assert!(false, "to_write_request called on non-write action: {self:?}");
@@ -88,6 +90,7 @@ impl ClientAction {
                 | ClientAction::DecrBy { .. }
                 | ClientAction::LPush { .. }
                 | ClientAction::LPop { .. }
+                | ClientAction::RPush { .. }
         )
     }
 }

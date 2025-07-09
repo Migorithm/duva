@@ -72,7 +72,8 @@ impl<T> ClientController<T> {
             | Ttl { .. }
             | IncrBy { .. }
             | DecrBy { .. }
-            | LPush { .. } => match query_io {
+            | LPush { .. }
+            | RPush { .. } => match query_io {
                 | QueryIO::SimpleString(value) => {
                     let s = String::from_utf8_lossy(&value);
                     let s: Option<i64> = IndexedValueCodec::decode_value(s);
