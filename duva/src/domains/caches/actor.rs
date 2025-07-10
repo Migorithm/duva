@@ -148,6 +148,16 @@ impl CacheActor {
             vec![]
         }
     }
+
+    pub(crate) fn llen(&mut self, key: String) -> anyhow::Result<usize> {
+        let Some(CacheValue { value, .. }) = self.cache.get(&key) else {
+            return Ok(0);
+        };
+        match value {
+            | TypedValue::List(list) => Ok(list.llen()),
+            | _ => Err(anyhow::anyhow!(WRONG_TYPE_ERR_MSG)),
+        }
+    }
 }
 
 #[derive(Clone, Debug)]

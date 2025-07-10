@@ -188,7 +188,10 @@ impl ClientController {
                 }
                 QueryIO::Array(values.into_iter().map(|v| QueryIO::BulkString(v.into())).collect())
             },
-            | ClientAction::LLen { key } => todo!(),
+            | ClientAction::LLen { key } => {
+                let len = self.cache_manager.route_llen(key).await?;
+                QueryIO::SimpleString(len.to_string().into())
+            },
         };
 
         Ok(response)
