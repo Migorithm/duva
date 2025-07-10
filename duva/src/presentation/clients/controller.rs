@@ -188,6 +188,7 @@ impl ClientController {
                 }
                 QueryIO::Array(values.into_iter().map(|v| QueryIO::BulkString(v.into())).collect())
             },
+            | ClientAction::LLen { key } => todo!(),
         };
 
         Ok(response)

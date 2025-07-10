@@ -41,6 +41,7 @@ pub enum ClientAction {
     LPop { key: String, count: usize },
     RPush { key: String, value: Vec<String> },
     RPop { key: String, count: usize },
+    LLen { key: String },
 }
 
 impl ClientAction {
