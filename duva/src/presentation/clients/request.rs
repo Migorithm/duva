@@ -310,7 +310,13 @@ pub fn extract_action(action: &str, args: &[&str]) -> anyhow::Result<ClientActio
             require_non_empty_args()?;
 
             let key = args[0].to_string();
-            let values = args[1..].iter().map(|s| s.to_string()).collect();
+            let values: Vec<String> = args[1..].iter().map(|s| s.to_string()).collect();
+            if values.is_empty() {
+                return Err(anyhow::anyhow!(
+                    "(error) ERR wrong number of arguments for '{}' command",
+                    action.to_uppercase()
+                ));
+            }
             if action.to_uppercase() == "LPUSH" {
                 return Ok(ClientAction::LPush { key, value: values });
             }

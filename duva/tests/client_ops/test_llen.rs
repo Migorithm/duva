@@ -12,7 +12,10 @@ fn run_llen(env: ServerEnv) -> anyhow::Result<()> {
     assert_eq!(h.send_and_get(format!("LLEN x"),), "(integer) 10");
     assert_eq!(h.send_and_get(format!("LLEN y"),), "(integer) 0"); // when accessing a non-existing key
 
-    assert_eq!(h.send_and_get(format!("LLEN setkey"),), ""); // when accessing a key that is not a list
+    assert_eq!(
+        h.send_and_get(format!("LLEN setkey"),),
+        "(error) WRONGTYPE Operation against a key holding the wrong kind of value"
+    ); // when accessing a key that is not a list
 
     Ok(())
 }
