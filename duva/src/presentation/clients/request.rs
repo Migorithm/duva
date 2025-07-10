@@ -326,6 +326,10 @@ pub fn extract_action(action: &str, args: &[&str]) -> anyhow::Result<ClientActio
             }
             Ok(ClientAction::RPop { key, count })
         },
+        | "LLEN" => {
+            require_exact_args(1)?;
+            Ok(ClientAction::LLen { key: args[0].to_string() })
+        },
 
         // Add other commands as needed
         | unknown_cmd => Err(anyhow::anyhow!(
