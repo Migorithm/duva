@@ -18,4 +18,5 @@ pub(crate) enum CacheCommand {
     RPush { key: String, values: Vec<String>, callback: Callback<anyhow::Result<usize>> },
     LPop { key: String, count: usize, callback: Callback<Vec<String>> },
     RPop { key: String, count: usize, callback: Callback<Vec<String>> },
+    LLen { key: String, callback: Callback<anyhow::Result<usize>> },
 }

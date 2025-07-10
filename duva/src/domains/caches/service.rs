@@ -79,6 +79,9 @@ impl CacheActor {
                 | CacheCommand::RPop { key, count, callback } => {
                     let _ = callback.send(self.pop(key, count, false));
                 },
+                | CacheCommand::LLen { key, callback } => {
+                    let _ = callback.send(self.llen(key));
+                },
             }
         }
         Ok(self)

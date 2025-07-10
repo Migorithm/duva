@@ -357,6 +357,12 @@ impl CacheManager {
         let current = rx.await?;
         Ok(IndexedValueCodec::encode(current?, current_idx))
     }
+
+    pub(crate) async fn route_llen(&self, key: String) -> Result<usize> {
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        self.select_shard(&key).send(CacheCommand::LLen { key, callback: tx.into() }).await?;
+        rx.await?
+    }
 }
 
 pub struct IndexedValueCodec;

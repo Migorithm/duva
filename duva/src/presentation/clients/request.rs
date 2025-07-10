@@ -41,6 +41,7 @@ pub enum ClientAction {
     LPop { key: String, count: usize },
     RPush { key: String, value: Vec<String> },
     RPop { key: String, count: usize },
+    LLen { key: String },
 }
 
 impl ClientAction {
@@ -309,7 +310,13 @@ pub fn extract_action(action: &str, args: &[&str]) -> anyhow::Result<ClientActio
             require_non_empty_args()?;
 
             let key = args[0].to_string();
-            let values = args[1..].iter().map(|s| s.to_string()).collect();
+            let values: Vec<String> = args[1..].iter().map(|s| s.to_string()).collect();
+            if values.is_empty() {
+                return Err(anyhow::anyhow!(
+                    "(error) ERR wrong number of arguments for '{}' command",
+                    action.to_uppercase()
+                ));
+            }
             if action.to_uppercase() == "LPUSH" {
                 return Ok(ClientAction::LPush { key, value: values });
             }
@@ -324,6 +331,10 @@ pub fn extract_action(action: &str, args: &[&str]) -> anyhow::Result<ClientActio
                 return Ok(ClientAction::LPop { key, count });
             }
             Ok(ClientAction::RPop { key, count })
+        },
+        | "LLEN" => {
+            require_exact_args(1)?;
+            Ok(ClientAction::LLen { key: args[0].to_string() })
         },
 
         // Add other commands as needed
