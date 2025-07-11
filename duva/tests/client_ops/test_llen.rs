@@ -6,14 +6,14 @@ fn run_llen(env: ServerEnv) -> anyhow::Result<()> {
 
     let mut h = Client::new(process.port);
     h.send_and_get(format!("set setkey 1"));
-    assert_eq!(h.send_and_get(format!("lpush x 1 2 3 4 5 6 7 8 9 10"),), "(integer) 10");
+    assert_eq!(h.send_and_get(format!("lpush x 1 2 3 4 5 6 7 8 9 10")), "(integer) 10");
 
     //WHEN & ASSERT
-    assert_eq!(h.send_and_get(format!("LLEN x"),), "(integer) 10");
-    assert_eq!(h.send_and_get(format!("LLEN y"),), "(integer) 0"); // when accessing a non-existing key
+    assert_eq!(h.send_and_get(format!("LLEN x")), "(integer) 10");
+    assert_eq!(h.send_and_get(format!("LLEN y")), "(integer) 0"); // when accessing a non-existing key
 
     assert_eq!(
-        h.send_and_get(format!("LLEN setkey"),),
+        h.send_and_get(format!("LLEN setkey")),
         "(error) WRONGTYPE Operation against a key holding the wrong kind of value"
     ); // when accessing a key that is not a list
 

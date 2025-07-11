@@ -140,6 +140,7 @@ impl<T> ClientController<T> {
                 }
                 Response::Array(nodes)
             },
+            | LRange { key, start, end } => todo!(),
         }
     }
 
