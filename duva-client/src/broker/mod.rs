@@ -130,7 +130,7 @@ impl Broker {
     // pull-based leader discovery
 
     async fn discover_leader(&mut self) -> Result<(), IoError> {
-        for node in &self.topology.connected_peers {
+        for node in self.topology.node_infos.iter().map(|n| n.peer_id.clone()).into_iter() {
             tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
             println!("Trying to connect to node: {node}...");
 
@@ -138,7 +138,7 @@ impl Broker {
                 client_id: Some(self.client_id.to_string()),
                 request_id: self.request_id,
             };
-            let Ok((r, w, auth_response)) = Self::authenticate(node, Some(auth_req)).await else {
+            let Ok((r, w, auth_response)) = Self::authenticate(&node, Some(auth_req)).await else {
                 continue;
             };
 

@@ -464,16 +464,18 @@ impl From<ReplicationRole> for Bytes {
 
 #[cfg(test)]
 mod test {
+    use super::*;
     use crate::domains::caches::cache_objects::CacheEntry;
     use crate::domains::cluster_actors::hash_ring::{BatchId, HashRing};
-    use crate::domains::cluster_actors::replication::{ReplicationId, ReplicationRole};
+    use crate::domains::cluster_actors::replication::{
+        ReplicationId, ReplicationRole, ReplicationState,
+    };
+    use crate::domains::cluster_actors::topology::NodeReplInfo;
     use crate::domains::operation_logs::WriteRequest;
     use crate::domains::peers::command::BannedPeer;
     use crate::domains::peers::identifier::PeerIdentifier;
     use crate::domains::peers::peer::PeerState;
     use uuid::Uuid;
-
-    use super::*;
 
     #[test]
     fn test_deserialize_simple_string() {
@@ -761,7 +763,18 @@ mod test {
         let connected_peers =
             vec![PeerIdentifier::new("127.0.0.1", 6000), PeerIdentifier::new("127.0.0.1", 6001)];
         let hash_ring = HashRing::default();
-        let topology = Topology::new(connected_peers, hash_ring);
+        let node_infos = connected_peers
+            .iter()
+            .map(|peer| {
+                NodeReplInfo::from_peer_state(&PeerState::new(
+                    &peer,
+                    0,
+                    ReplicationId::Key(Uuid::now_v7().to_string()),
+                    ReplicationRole::Follower,
+                ))
+            })
+            .collect();
+        let topology = Topology::new(node_infos, hash_ring);
         let query_io = QueryIO::TopologyChange(topology.clone());
 
         //WHEN
