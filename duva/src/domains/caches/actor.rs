@@ -137,8 +137,7 @@ impl CacheActor {
         if let Some(CacheValue { value: TypedValue::List(mut list), .. }) = val {
             let vals = (0..count)
                 .filter_map(|_| if from_left { list.lpop() } else { list.rpop() }) // Convert to Iterator<Item = Bytes>
-                .map(|v| String::from_utf8(v.to_vec())) // Convert to Iterator<Item= Result<String>>
-                .flatten()
+                .flat_map(|v| String::from_utf8(v.to_vec())) // Convert to Iterator<Item= Result<String>>
                 .collect();
             if list.llen() != 0 {
                 self.cache.put(key, CacheValue::new(TypedValue::List(list)));
@@ -175,8 +174,7 @@ impl CacheActor {
                 Ok(list
                     .lrange(start, end)
                     .into_iter()
-                    .map(|v| String::from_utf8(v.to_vec()))
-                    .flatten()
+                    .flat_map(|v| String::from_utf8(v.to_vec()))
                     .collect())
             },
             | _ => Err(anyhow::anyhow!(WRONG_TYPE_ERR_MSG)),
