@@ -182,17 +182,17 @@ impl QueryIO {
         Ok(result)
     }
 
-    pub fn merge(self, other: Self) -> Option<Self> {
+    pub fn merge(&self, other: &QueryIO) -> QueryIO {
         match (self, other) {
             | (QueryIO::Array(mut a), QueryIO::Array(b)) => {
                 a.extend(b);
-                Some(QueryIO::Array(a))
+                QueryIO::Array(a)
             },
             | (QueryIO::Array(mut a), b) => {
-                a.push(b);
-                Some(QueryIO::Array(a))
+                a.push(b.clone());
+                QueryIO::Array(a)
             },
-            | _ => None,
+            | (a, _) => a.clone(),
         }
     }
 }
