@@ -82,6 +82,9 @@ impl CacheActor {
                 | CacheCommand::LLen { key, callback } => {
                     let _ = callback.send(self.llen(key));
                 },
+                | CacheCommand::LRange { key, start, end, callback } => {
+                    let _ = callback.send(self.lrange(key, start, end));
+                },
             }
         }
         Ok(self)

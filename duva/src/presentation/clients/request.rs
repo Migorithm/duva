@@ -42,7 +42,7 @@ pub enum ClientAction {
     RPush { key: String, value: Vec<String> },
     RPop { key: String, count: usize },
     LLen { key: String },
-    LRange { key: String, start: i32, end: i32 },
+    LRange { key: String, start: isize, end: isize },
 }
 
 impl ClientAction {
@@ -345,8 +345,8 @@ pub fn extract_action(action: &str, args: &[&str]) -> anyhow::Result<ClientActio
                 ));
             }
             let key = args[0].to_string();
-            let start = args[1].parse::<i32>().context("Invalid start index")?;
-            let end = args[2].parse::<i32>().context("Invalid end index")?;
+            let start = args[1].parse::<isize>().context("Invalid start index")?;
+            let end = args[2].parse::<isize>().context("Invalid end index")?;
             Ok(ClientAction::LRange { key, start, end })
         },
 

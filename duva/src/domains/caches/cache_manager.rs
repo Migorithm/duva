@@ -367,10 +367,14 @@ impl CacheManager {
     pub(crate) async fn route_lrange(
         &self,
         key: String,
-        start: i32,
-        end: i32,
+        start: isize,
+        end: isize,
     ) -> Result<Vec<String>> {
-        todo!()
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        self.select_shard(&key)
+            .send(CacheCommand::LRange { key, start, end, callback: tx.into() })
+            .await?;
+        rx.await?
     }
 }
 

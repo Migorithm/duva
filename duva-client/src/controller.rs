@@ -108,7 +108,7 @@ impl<T> ClientController<T> {
                 | QueryIO::Err(value) => Response::Error(value),
                 | _ => Response::FormatError,
             },
-            | Keys { .. } | MGet { .. } | LPop { .. } | RPop { .. } => {
+            | Keys { .. } | MGet { .. } | LPop { .. } | RPop { .. } | LRange { .. } => {
                 if let QueryIO::Null = query_io {
                     return Response::Null;
                 }
@@ -140,7 +140,6 @@ impl<T> ClientController<T> {
                 }
                 Response::Array(nodes)
             },
-            | LRange { key, start, end } => todo!(),
         }
     }
 
