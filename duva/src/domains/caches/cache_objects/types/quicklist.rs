@@ -272,7 +272,7 @@ impl QuickList {
 
     // ## Private Helpers for Pooling and Merging
     fn get_node(&mut self) -> QuickListNode {
-        self.node_pool.pop().unwrap_or_else(QuickListNode::default)
+        self.node_pool.pop().unwrap_or_default()
     }
 
     fn return_node(&mut self, mut node: QuickListNode) {

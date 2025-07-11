@@ -165,10 +165,7 @@ impl<K: Eq + Hash + Clone + Debug, V: Debug + Clone + THasExpiry> LruCache<K, V>
         K: Borrow<Q>,
         Q: Hash + Eq + ?Sized,
     {
-        let Some(index) = self.map.get(key) else {
-            return None;
-        };
-        let index = *index;
+        let index = *self.map.get(key)?;
         self.move_to_head(index);
         Some(&self.slab.get(index).expect("Node not found").value)
     }
@@ -178,10 +175,7 @@ impl<K: Eq + Hash + Clone + Debug, V: Debug + Clone + THasExpiry> LruCache<K, V>
         K: Borrow<Q>,
         Q: Hash + Eq + ?Sized,
     {
-        let Some(index) = self.map.get(key) else {
-            return None;
-        };
-        let index = *index;
+        let index = *self.map.get(key)?;
         self.move_to_head(index);
         Some(&mut self.slab.get_mut(index).expect("Node not found").value)
     }
