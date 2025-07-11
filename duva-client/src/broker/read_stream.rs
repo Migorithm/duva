@@ -24,7 +24,7 @@ impl ServerStreamReader {
                 match self.0.read_values().await {
                     | Ok(query_ios) => {
                         for query_io in query_ios {
-                            let message = BrokerMessage::FromServer(query_io);
+                            let message = BrokerMessage::FromServer(peer_identifier.clone(), query_io);
                             if controller_sender.send(message).await.is_err() {
                                 break;
                             }

@@ -55,8 +55,8 @@ impl NodeConnections {
         self.connections.get(leader_id)
     }
 
-    pub(crate) fn get_request_id(&self, leader_id: &PeerIdentifier) -> Option<u64> {
-        self.connections.get(leader_id).map(|conn| conn.request_id)
+    pub(crate) fn get_mut(&mut self, leader_id: &PeerIdentifier) -> Option<&mut NodeConnection> {
+        self.connections.get_mut(leader_id)
     }
 
     pub(crate) fn insert(&mut self, leader_id: PeerIdentifier, connection: NodeConnection) {
