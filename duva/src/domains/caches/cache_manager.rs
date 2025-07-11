@@ -363,6 +363,19 @@ impl CacheManager {
         self.select_shard(&key).send(CacheCommand::LLen { key, callback: tx.into() }).await?;
         rx.await?
     }
+
+    pub(crate) async fn route_lrange(
+        &self,
+        key: String,
+        start: isize,
+        end: isize,
+    ) -> Result<Vec<String>> {
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        self.select_shard(&key)
+            .send(CacheCommand::LRange { key, start, end, callback: tx.into() })
+            .await?;
+        rx.await?
+    }
 }
 
 pub struct IndexedValueCodec;

@@ -173,6 +173,19 @@ impl<K: Eq + Hash + Clone + Debug, V: Debug + Clone + THasExpiry> LruCache<K, V>
         Some(&self.slab.get(index).expect("Node not found").value)
     }
 
+    pub fn get_mut<Q>(&mut self, key: &Q) -> Option<&mut V>
+    where
+        K: Borrow<Q>,
+        Q: Hash + Eq + ?Sized,
+    {
+        let Some(index) = self.map.get(key) else {
+            return None;
+        };
+        let index = *index;
+        self.move_to_head(index);
+        Some(&mut self.slab.get_mut(index).expect("Node not found").value)
+    }
+
     pub fn clear(&mut self) {
         self.map.clear();
         self.slab = Slab::with_capacity(self.capacity);

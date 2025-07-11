@@ -192,6 +192,10 @@ impl ClientController {
                 let len = self.cache_manager.route_llen(key).await?;
                 QueryIO::SimpleString(len.to_string().into())
             },
+            | ClientAction::LRange { key, start, end } => {
+                let values = self.cache_manager.route_lrange(key, start, end).await?;
+                QueryIO::Array(values.into_iter().map(|v| QueryIO::BulkString(v.into())).collect())
+            },
         };
 
         Ok(response)

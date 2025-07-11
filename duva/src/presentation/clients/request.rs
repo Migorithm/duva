@@ -42,6 +42,7 @@ pub enum ClientAction {
     RPush { key: String, value: Vec<String> },
     RPop { key: String, count: usize },
     LLen { key: String },
+    LRange { key: String, start: isize, end: isize },
 }
 
 impl ClientAction {
@@ -335,6 +336,18 @@ pub fn extract_action(action: &str, args: &[&str]) -> anyhow::Result<ClientActio
         | "LLEN" => {
             require_exact_args(1)?;
             Ok(ClientAction::LLen { key: args[0].to_string() })
+        },
+
+        | "LRANGE" => {
+            if args.len() != 3 {
+                return Err(anyhow::anyhow!(
+                    "(error) ERR wrong number of arguments for 'lrange' command"
+                ));
+            }
+            let key = args[0].to_string();
+            let start = args[1].parse::<isize>().context("Invalid start index")?;
+            let end = args[2].parse::<isize>().context("Invalid end index")?;
+            Ok(ClientAction::LRange { key, start, end })
         },
 
         // Add other commands as needed
