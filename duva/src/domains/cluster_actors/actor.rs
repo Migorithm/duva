@@ -17,7 +17,7 @@ use crate::domains::cluster_actors::consensus::election::ElectionVoting;
 use crate::domains::cluster_actors::hash_ring::BatchId;
 use crate::domains::cluster_actors::hash_ring::MigrationBatch;
 use crate::domains::cluster_actors::hash_ring::PendingMigrationBatch;
-use crate::domains::cluster_actors::topology::Topology;
+use crate::domains::cluster_actors::topology::{NodeReplInfo, Topology};
 use crate::domains::operation_logs::WriteRequest;
 use crate::domains::operation_logs::interfaces::TWriteAheadLog;
 use crate::domains::operation_logs::logger::ReplicatedLogs;
@@ -589,7 +589,6 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     }
 
     // * Broadcasts the current topology to all connected clients
-    // TODO hashring information should be included in the broadcast so clients can update their routing tables
     fn broadcast_topology_change(&self) {
         self.node_change_broadcast.send(self.get_topology()).ok();
     }
@@ -597,9 +596,10 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     pub(crate) fn get_topology(&self) -> Topology {
         Topology::new(
             self.members
-                .keys()
-                .cloned()
-                .chain(iter::once(self.replication.self_identifier()))
+                .values()
+                .clone()
+                .map(|peer| NodeReplInfo::from_peer_state(peer.state()))
+                .chain(iter::once(NodeReplInfo::from_replication_state(&self.replication)))
                 .collect(),
             self.hash_ring.clone(),
         )

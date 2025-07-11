@@ -181,6 +181,20 @@ impl QueryIO {
         }
         Ok(result)
     }
+
+    pub fn merge(self, other: Self) -> Option<Self> {
+        match (self, other) {
+            | (QueryIO::Array(mut a), QueryIO::Array(b)) => {
+                a.extend(b);
+                Some(QueryIO::Array(a))
+            },
+            | (QueryIO::Array(mut a), b) => {
+                a.push(b);
+                Some(QueryIO::Array(a))
+            },
+            | _ => None,
+        }
+    }
 }
 
 impl From<String> for QueryIO {
@@ -471,6 +485,7 @@ mod test {
     use crate::domains::peers::command::BannedPeer;
     use crate::domains::peers::identifier::PeerIdentifier;
     use crate::domains::peers::peer::PeerState;
+    use crate::prelude::NodeReplInfo;
     use uuid::Uuid;
 
     use super::*;
@@ -758,8 +773,18 @@ mod test {
     #[test]
     fn test_topology_change_serde() {
         //GIVEN
-        let connected_peers =
-            vec![PeerIdentifier::new("127.0.0.1", 6000), PeerIdentifier::new("127.0.0.1", 6001)];
+        let connected_peers = vec![
+            NodeReplInfo {
+                peer_id: "localhost:3333".into(),
+                repl_id: ReplicationId::Key(Uuid::now_v7().to_string()).to_string(),
+                repl_role: ReplicationRole::Follower.to_string(),
+            },
+            NodeReplInfo {
+                peer_id: "localhost:2222".into(),
+                repl_id: ReplicationId::Key(Uuid::now_v7().to_string()).to_string(),
+                repl_role: ReplicationRole::Follower.to_string(),
+            },
+        ];
         let hash_ring = HashRing::default();
         let topology = Topology::new(connected_peers, hash_ring);
         let query_io = QueryIO::TopologyChange(topology.clone());
