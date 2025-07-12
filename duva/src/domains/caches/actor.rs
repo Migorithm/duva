@@ -168,14 +168,28 @@ impl CacheActor {
             return Ok(vec![]);
         };
         match value {
+            | TypedValue::List(list) => Ok(list
+                .lrange(start, end)
+                .into_iter()
+                .flat_map(|v| String::from_utf8(v.to_vec()))
+                .collect()),
+            | _ => Err(anyhow::anyhow!(WRONG_TYPE_ERR_MSG)),
+        }
+    }
+
+    pub(crate) fn ltrim(
+        &mut self,
+        key: String,
+        start: isize,
+        end: isize,
+    ) -> Result<(), anyhow::Error> {
+        let Some(CacheValue { value, .. }) = self.cache.get_mut(&key) else {
+            return Ok(());
+        };
+        match value {
             | TypedValue::List(list) => {
-                let start = if start < 0 { list.llen() as isize + start } else { start };
-                let end = if end < 0 { list.llen() as isize + end } else { end };
-                Ok(list
-                    .lrange(start, end)
-                    .into_iter()
-                    .flat_map(|v| String::from_utf8(v.to_vec()))
-                    .collect())
+                list.ltrim(start, end);
+                Ok(())
             },
             | _ => Err(anyhow::anyhow!(WRONG_TYPE_ERR_MSG)),
         }

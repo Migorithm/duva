@@ -177,6 +177,9 @@ impl CacheManager {
             | WriteRequest::RPush { key, value } => {
                 self.route_rpush(key, value, log_index).await?;
             },
+            | WriteRequest::LTrim { key, start, end } => {
+                self.route_ltrim(key, start, end, log_index).await?;
+            },
         };
 
         // * This is to wake up the cache actors to process the pending read requests
@@ -375,6 +378,22 @@ impl CacheManager {
             .send(CacheCommand::LRange { key, start, end, callback: tx.into() })
             .await?;
         rx.await?
+    }
+
+    pub(crate) async fn route_ltrim(
+        &self,
+        key: String,
+        start: isize,
+        end: isize,
+        current_idx: u64,
+    ) -> Result<String> {
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        self.select_shard(&key)
+            .send(CacheCommand::LTrim { key, start, end, callback: tx.into() })
+            .await?;
+        rx.await??;
+
+        Ok(IndexedValueCodec::encode("".to_string(), current_idx))
     }
 }
 

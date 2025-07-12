@@ -229,14 +229,14 @@ pub struct QuickList {
 
 /// How Many Records Does a Ziplist Contain?
 /// 1. Count-based FillFactor
-/// ```rust,text
+/// ```rust,ignore
 /// FillFactor::Count(max_entries)
 /// ```
 ///    Each ziplist contains exactly max_entries records before creating a new node
 ///    Example: FillFactor::Count(2) means each ziplist holds 2 records maximum
 ///
 /// 2. Size-based FillFactor
-/// ```rust,text
+/// ```rust,ignore
 /// FillFactor::Size(kb)
 /// ```
 ///    Each ziplist contains records until it reaches the size limit
@@ -466,6 +466,41 @@ impl QuickList {
             current_index += node_len;
         }
         result
+    }
+
+    pub(crate) fn ltrim(&mut self, start: isize, end: isize) {
+        // Calculate absolute start and end indices
+        let len = self.len as isize;
+        let start = if start < 0 { (len + start).max(0) } else { start } as usize;
+        let end = if end < 0 { (len + end).max(0) } else { end } as usize;
+
+        // Handle invalid ranges
+        if start > end || start >= self.len {
+            // Clear the entire list
+            self.nodes.clear();
+            self.len = 0;
+            return;
+        }
+
+        // Ensure end doesn't exceed list length
+        let end = end.min(self.len - 1);
+
+        // If the range covers the entire list, no trimming needed
+        if start == 0 && end == self.len - 1 {
+            return;
+        }
+
+        // Collect elements to keep
+        let elements_to_keep = self.lrange(start as isize, end as isize);
+
+        // Clear the current list
+        self.nodes.clear();
+        self.len = 0;
+
+        // Rebuild the list with only the kept elements
+        for element in elements_to_keep {
+            self.rpush(element);
+        }
     }
 }
 
@@ -798,5 +833,78 @@ mod tests {
         assert_eq!(ql.llen(), 2);
         let final_content = ql.lrange(0, -1);
         assert_eq!(final_content, vec![Bytes::from("small_A"), Bytes::from("small_C")]);
+    }
+
+    #[test]
+    fn test_ltrim_basic() {
+        let mut ql = QuickList::new(FillFactor::Count(2), 0);
+
+        // Create list: ["1", "2", "3"]
+        ql.rpush(Bytes::from("1"));
+        ql.rpush(Bytes::from("2"));
+        ql.rpush(Bytes::from("3"));
+        assert_eq!(ql.llen(), 3);
+
+        // Trim to keep elements from index 1 to end (should keep ["2", "3"])
+        ql.ltrim(1, -1);
+        assert_eq!(ql.llen(), 2);
+
+        let range = ql.lrange(0, -1);
+        let vec: Vec<&str> = range.iter().map(|b| std::str::from_utf8(b).unwrap()).collect();
+        assert_eq!(vec, vec!["2", "3"]);
+    }
+
+    #[test]
+    fn test_ltrim_negative_indices() {
+        let mut ql = QuickList::new(FillFactor::Count(2), 0);
+
+        // Create list: ["a", "b", "c", "d", "e"]
+        for c in ['a', 'b', 'c', 'd', 'e'] {
+            ql.rpush(Bytes::from(c.to_string()));
+        }
+        assert_eq!(ql.llen(), 5);
+
+        // Trim to keep elements from index 1 to -2 (should keep ["b", "c", "d"])
+        ql.ltrim(1, -2);
+        assert_eq!(ql.llen(), 3);
+
+        let range = ql.lrange(0, -1);
+        let vec: Vec<&str> = range.iter().map(|b| std::str::from_utf8(b).unwrap()).collect();
+        assert_eq!(vec, vec!["b", "c", "d"]);
+    }
+
+    #[test]
+    fn test_ltrim_empty_result() {
+        let mut ql = QuickList::new(FillFactor::Count(2), 0);
+
+        // Create list: ["1", "2", "3"]
+        ql.rpush(Bytes::from("1"));
+        ql.rpush(Bytes::from("2"));
+        ql.rpush(Bytes::from("3"));
+        assert_eq!(ql.llen(), 3);
+
+        // Trim with invalid range (start > end)
+        ql.ltrim(5, 1);
+        assert_eq!(ql.llen(), 0);
+        assert_eq!(ql.nodes.len(), 0);
+    }
+
+    #[test]
+    fn test_ltrim_no_change() {
+        let mut ql = QuickList::new(FillFactor::Count(2), 0);
+
+        // Create list: ["1", "2", "3"]
+        ql.rpush(Bytes::from("1"));
+        ql.rpush(Bytes::from("2"));
+        ql.rpush(Bytes::from("3"));
+        assert_eq!(ql.llen(), 3);
+
+        // Trim to keep entire list (should not change anything)
+        ql.ltrim(0, -1);
+        assert_eq!(ql.llen(), 3);
+
+        let range = ql.lrange(0, -1);
+        let vec: Vec<&str> = range.iter().map(|b| std::str::from_utf8(b).unwrap()).collect();
+        assert_eq!(vec, vec!["1", "2", "3"]);
     }
 }

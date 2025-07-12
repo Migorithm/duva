@@ -85,6 +85,9 @@ impl CacheActor {
                 | CacheCommand::LRange { key, start, end, callback } => {
                     let _ = callback.send(self.lrange(key, start, end));
                 },
+                | CacheCommand::LTrim { key, start, end, callback } => {
+                    let _ = callback.send(self.ltrim(key, start, end));
+                },
             }
         }
         Ok(self)

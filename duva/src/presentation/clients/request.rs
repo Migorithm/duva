@@ -41,6 +41,7 @@ pub enum ClientAction {
     LPop { key: String, count: usize },
     RPush { key: String, value: Vec<String> },
     RPop { key: String, count: usize },
+    LTrim { key: String, start: isize, end: isize },
     LLen { key: String },
     LRange { key: String, start: isize, end: isize },
 }
@@ -70,6 +71,7 @@ impl ClientAction {
             | ClientAction::LPop { key, count } => WriteRequest::LPop { key, count },
             | ClientAction::RPush { key, value } => WriteRequest::RPush { key, value },
             | ClientAction::RPop { key, count } => WriteRequest::LPop { key, count },
+            | ClientAction::LTrim { key, start, end } => WriteRequest::LTrim { key, start, end },
 
             | _ => {
                 debug_assert!(false, "to_write_request called on non-write action: {self:?}");
@@ -96,6 +98,7 @@ impl ClientAction {
                 | ClientAction::LPop { .. }
                 | ClientAction::RPush { .. }
                 | ClientAction::RPop { .. }
+                | ClientAction::LTrim { .. }
         )
     }
 }
@@ -332,6 +335,13 @@ pub fn extract_action(action: &str, args: &[&str]) -> anyhow::Result<ClientActio
                 return Ok(ClientAction::LPop { key, count });
             }
             Ok(ClientAction::RPop { key, count })
+        },
+        | "LTRIM" => {
+            require_exact_args(3)?;
+            let key = args[0].to_string();
+            let start = args[1].parse::<isize>().context("Invalid start index")?;
+            let end = args[2].parse::<isize>().context("Invalid end index")?;
+            Ok(ClientAction::LTrim { key, start, end })
         },
         | "LLEN" => {
             require_exact_args(1)?;
