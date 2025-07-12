@@ -188,10 +188,12 @@ impl ClientController {
                 }
                 QueryIO::Array(values.into_iter().map(|v| QueryIO::BulkString(v.into())).collect())
             },
-            | ClientAction::LTrim { key, start, end } => {
-                self.cache_manager.route_ltrim(key, start, end).await?;
-                QueryIO::SimpleString("OK".into())
-            },
+            | ClientAction::LTrim { key, start, end } => QueryIO::SimpleString(
+                self.cache_manager
+                    .route_ltrim(key, start, end, current_index.unwrap())
+                    .await?
+                    .into(),
+            ),
             | ClientAction::LLen { key } => {
                 let len = self.cache_manager.route_llen(key).await?;
                 QueryIO::SimpleString(len.to_string().into())

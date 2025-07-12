@@ -178,7 +178,7 @@ impl CacheManager {
                 self.route_rpush(key, value, log_index).await?;
             },
             | WriteRequest::LTrim { key, start, end } => {
-                self.route_ltrim(key, start, end).await?;
+                self.route_ltrim(key, start, end, log_index).await?;
             },
         };
 
@@ -380,13 +380,20 @@ impl CacheManager {
         rx.await?
     }
 
-    pub(crate) async fn route_ltrim(&self, key: String, start: isize, end: isize) -> Result<()> {
+    pub(crate) async fn route_ltrim(
+        &self,
+        key: String,
+        start: isize,
+        end: isize,
+        current_idx: u64,
+    ) -> Result<String> {
         let (tx, rx) = tokio::sync::oneshot::channel();
         self.select_shard(&key)
             .send(CacheCommand::LTrim { key, start, end, callback: tx.into() })
             .await?;
         rx.await?;
-        Ok(())
+
+        Ok(IndexedValueCodec::encode("".to_string(), current_idx))
     }
 }
 
