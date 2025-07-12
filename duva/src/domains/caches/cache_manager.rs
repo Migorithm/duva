@@ -177,6 +177,9 @@ impl CacheManager {
             | WriteRequest::RPush { key, value } => {
                 self.route_rpush(key, value, log_index).await?;
             },
+            | WriteRequest::LTrim { key, start, end } => {
+                self.route_ltrim(key, start, end).await?;
+            },
         };
 
         // * This is to wake up the cache actors to process the pending read requests

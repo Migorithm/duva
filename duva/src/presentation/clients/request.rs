@@ -71,6 +71,7 @@ impl ClientAction {
             | ClientAction::LPop { key, count } => WriteRequest::LPop { key, count },
             | ClientAction::RPush { key, value } => WriteRequest::RPush { key, value },
             | ClientAction::RPop { key, count } => WriteRequest::LPop { key, count },
+            | ClientAction::LTrim { key, start, end } => WriteRequest::LTrim { key, start, end },
 
             | _ => {
                 debug_assert!(false, "to_write_request called on non-write action: {self:?}");
@@ -97,6 +98,7 @@ impl ClientAction {
                 | ClientAction::LPop { .. }
                 | ClientAction::RPush { .. }
                 | ClientAction::RPop { .. }
+                | ClientAction::LTrim { .. }
         )
     }
 }
