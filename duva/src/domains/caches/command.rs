@@ -74,4 +74,10 @@ pub(crate) enum CacheCommand {
         end: isize,
         callback: Callback<anyhow::Result<Vec<String>>>,
     },
+    LTrim {
+        key: String,
+        start: isize,
+        end: isize,
+        callback: Callback<anyhow::Result<()>>,
+    },
 }

@@ -381,7 +381,12 @@ impl CacheManager {
     }
 
     pub(crate) async fn route_ltrim(&self, key: String, start: isize, end: isize) -> Result<()> {
-        todo!()
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        self.select_shard(&key)
+            .send(CacheCommand::LTrim { key, start, end, callback: tx.into() })
+            .await?;
+        rx.await?;
+        Ok(())
     }
 }
 
