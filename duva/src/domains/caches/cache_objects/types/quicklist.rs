@@ -229,14 +229,14 @@ pub struct QuickList {
 
 /// How Many Records Does a Ziplist Contain?
 /// 1. Count-based FillFactor
-/// ```rust,text
+/// ```rust,ignore
 /// FillFactor::Count(max_entries)
 /// ```
 ///    Each ziplist contains exactly max_entries records before creating a new node
 ///    Example: FillFactor::Count(2) means each ziplist holds 2 records maximum
 ///
 /// 2. Size-based FillFactor
-/// ```rust,text
+/// ```rust,ignore
 /// FillFactor::Size(kb)
 /// ```
 ///    Each ziplist contains records until it reaches the size limit
@@ -468,7 +468,7 @@ impl QuickList {
         result
     }
 
-    pub(crate) fn ltrim(&mut self, start: isize, end: isize) -> bool {
+    pub(crate) fn ltrim(&mut self, start: isize, end: isize) {
         // Calculate absolute start and end indices
         let len = self.len as isize;
         let start = if start < 0 { (len + start).max(0) } else { start } as usize;
@@ -479,7 +479,7 @@ impl QuickList {
             // Clear the entire list
             self.nodes.clear();
             self.len = 0;
-            return true;
+            return;
         }
 
         // Ensure end doesn't exceed list length
@@ -487,7 +487,7 @@ impl QuickList {
 
         // If the range covers the entire list, no trimming needed
         if start == 0 && end == self.len - 1 {
-            return true;
+            return;
         }
 
         // Collect elements to keep
@@ -501,8 +501,6 @@ impl QuickList {
         for element in elements_to_keep {
             self.rpush(element);
         }
-
-        true
     }
 }
 
@@ -848,7 +846,7 @@ mod tests {
         assert_eq!(ql.llen(), 3);
 
         // Trim to keep elements from index 1 to end (should keep ["2", "3"])
-        assert!(ql.ltrim(1, -1));
+        ql.ltrim(1, -1);
         assert_eq!(ql.llen(), 2);
 
         let range = ql.lrange(0, -1);
@@ -867,7 +865,7 @@ mod tests {
         assert_eq!(ql.llen(), 5);
 
         // Trim to keep elements from index 1 to -2 (should keep ["b", "c", "d"])
-        assert!(ql.ltrim(1, -2));
+        ql.ltrim(1, -2);
         assert_eq!(ql.llen(), 3);
 
         let range = ql.lrange(0, -1);
@@ -886,7 +884,7 @@ mod tests {
         assert_eq!(ql.llen(), 3);
 
         // Trim with invalid range (start > end)
-        assert!(ql.ltrim(5, 1));
+        ql.ltrim(5, 1);
         assert_eq!(ql.llen(), 0);
         assert_eq!(ql.nodes.len(), 0);
     }
@@ -902,7 +900,7 @@ mod tests {
         assert_eq!(ql.llen(), 3);
 
         // Trim to keep entire list (should not change anything)
-        assert!(ql.ltrim(0, -1));
+        ql.ltrim(0, -1);
         assert_eq!(ql.llen(), 3);
 
         let range = ql.lrange(0, -1);
