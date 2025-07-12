@@ -391,7 +391,7 @@ impl CacheManager {
         self.select_shard(&key)
             .send(CacheCommand::LTrim { key, start, end, callback: tx.into() })
             .await?;
-        rx.await?;
+        rx.await??;
 
         Ok(IndexedValueCodec::encode("".to_string(), current_idx))
     }

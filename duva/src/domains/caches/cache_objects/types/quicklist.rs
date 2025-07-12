@@ -467,6 +467,8 @@ impl QuickList {
         }
         result
     }
+
+    pub(crate) fn ltrim(&self, start: isize, end: isize) {}
 }
 
 #[cfg(test)]
