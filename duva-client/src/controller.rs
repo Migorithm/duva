@@ -93,7 +93,7 @@ impl<T> ClientController<T> {
                 };
                 Response::Null
             },
-            | Set { .. } | SetWithExpiry { .. } => match query_io {
+            | Set { .. } | SetWithExpiry { .. } | LTrim { .. } => match query_io {
                 | QueryIO::SimpleString(_) => Response::String("OK".into()),
                 | QueryIO::Err(value) => Response::Error(value),
                 | _ => Response::FormatError,

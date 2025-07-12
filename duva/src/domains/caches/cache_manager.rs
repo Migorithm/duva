@@ -376,6 +376,10 @@ impl CacheManager {
             .await?;
         rx.await?
     }
+
+    pub(crate) async fn route_ltrim(&self, key: String, start: isize, end: isize) -> Result<()> {
+        todo!()
+    }
 }
 
 pub struct IndexedValueCodec;
