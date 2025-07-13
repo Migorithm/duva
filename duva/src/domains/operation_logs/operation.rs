@@ -25,6 +25,7 @@ pub enum WriteRequest {
     LPop { key: String, count: usize },
     RPush { key: String, value: Vec<String> },
     LTrim { key: String, start: isize, end: isize },
+    LPushX { key: String, value: Vec<String> },
 }
 
 impl WriteOperation {
@@ -64,6 +65,7 @@ impl WriteRequest {
             | WriteRequest::LPop { key, .. } => vec![key],
             | WriteRequest::RPush { key, .. } => vec![key],
             | WriteRequest::LTrim { key, .. } => vec![key],
+            | WriteRequest::LPushX { key, .. } => vec![key],
         }
     }
 }

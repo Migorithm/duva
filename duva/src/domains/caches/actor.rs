@@ -115,6 +115,18 @@ impl CacheActor {
 
         Ok(list.llen())
     }
+    pub(crate) fn lpushx(&mut self, key: String, values: Vec<String>) -> usize {
+        let mut val = self.cache.get_mut(&key);
+
+        let Some(CacheValue { value: TypedValue::List(list), .. }) = val.as_mut() else {
+            return 0;
+        };
+        for v in values {
+            list.lpush(v.into());
+        }
+
+        list.llen()
+    }
 
     pub(crate) fn rpush(&mut self, key: String, values: Vec<String>) -> anyhow::Result<usize> {
         let val = self

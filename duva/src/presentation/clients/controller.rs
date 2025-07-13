@@ -171,6 +171,9 @@ impl ClientController {
             | ClientAction::LPush { key, value } => QueryIO::SimpleString(
                 self.cache_manager.route_lpush(key, value, current_index.unwrap()).await?.into(),
             ),
+            | ClientAction::LPushX { key, value } => QueryIO::SimpleString(
+                self.cache_manager.route_lpushx(key, value, current_index.unwrap()).await?.into(),
+            ),
             | ClientAction::LPop { key, count } => {
                 let values = self.cache_manager.route_lpop(key, count).await?;
                 if values.is_empty() {
@@ -181,6 +184,9 @@ impl ClientController {
             | ClientAction::RPush { key, value } => QueryIO::SimpleString(
                 self.cache_manager.route_rpush(key, value, current_index.unwrap()).await?.into(),
             ),
+
+            //TODO
+            | ClientAction::RPushX { key, value } => todo!(),
             | ClientAction::RPop { key, count } => {
                 let values = self.cache_manager.route_rpop(key, count).await?;
                 if values.is_empty() {

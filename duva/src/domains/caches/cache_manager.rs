@@ -86,6 +86,21 @@ impl CacheManager {
         let current_len = rx.await??;
         Ok(IndexedValueCodec::encode(current_len, current_idx))
     }
+    pub(crate) async fn route_lpushx(
+        &self,
+        key: String,
+        value: Vec<String>,
+        current_idx: u64,
+    ) -> Result<String> {
+        let (tx, rx) = tokio::sync::oneshot::channel();
+
+        self.select_shard(&key)
+            .send(CacheCommand::LPushX { key, values: value, callback: tx.into() })
+            .await?;
+        let current_len = rx.await?;
+
+        Ok(IndexedValueCodec::encode(current_len, current_idx))
+    }
 
     pub(crate) async fn route_lpop(&self, key: String, count: usize) -> Result<Vec<String>> {
         let (tx, rx) = tokio::sync::oneshot::channel();
@@ -179,6 +194,9 @@ impl CacheManager {
             },
             | WriteRequest::LTrim { key, start, end } => {
                 self.route_ltrim(key, start, end, log_index).await?;
+            },
+            | WriteRequest::LPushX { key, value } => {
+                self.route_lpushx(key, value, log_index).await?;
             },
         };
 
