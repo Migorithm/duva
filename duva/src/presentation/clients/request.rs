@@ -38,9 +38,12 @@ pub enum ClientAction {
     IncrBy { key: String, increment: i64 },
     DecrBy { key: String, decrement: i64 },
     LPush { key: String, value: Vec<String> },
+    LPushX { key: String, value: Vec<String> },
     LPop { key: String, count: usize },
     RPush { key: String, value: Vec<String> },
+    RPushX { key: String, value: Vec<String> },
     RPop { key: String, count: usize },
+
     LTrim { key: String, start: isize, end: isize },
     LLen { key: String },
     LRange { key: String, start: isize, end: isize },
@@ -68,8 +71,10 @@ impl ClientAction {
                 WriteRequest::Decr { key, delta: decrement }
             },
             | ClientAction::LPush { key, value } => WriteRequest::LPush { key, value },
+            | ClientAction::LPushX { key, value } => WriteRequest::LPushX { key, value },
             | ClientAction::LPop { key, count } => WriteRequest::LPop { key, count },
             | ClientAction::RPush { key, value } => WriteRequest::RPush { key, value },
+            | ClientAction::RPushX { key, value } => WriteRequest::RPush { key, value },
             | ClientAction::RPop { key, count } => WriteRequest::LPop { key, count },
             | ClientAction::LTrim { key, start, end } => WriteRequest::LTrim { key, start, end },
 
@@ -95,8 +100,10 @@ impl ClientAction {
                 | ClientAction::IncrBy { .. }
                 | ClientAction::DecrBy { .. }
                 | ClientAction::LPush { .. }
+                | ClientAction::LPushX { .. }
                 | ClientAction::LPop { .. }
                 | ClientAction::RPush { .. }
+                | ClientAction::RPushX { .. }
                 | ClientAction::RPop { .. }
                 | ClientAction::LTrim { .. }
         )
@@ -325,6 +332,21 @@ pub fn extract_action(action: &str, args: &[&str]) -> anyhow::Result<ClientActio
                 return Ok(ClientAction::LPush { key, value: values });
             }
             Ok(ClientAction::RPush { key, value: values })
+        },
+        | "LPUSHX" | "RPUSHX" => {
+            require_non_empty_args()?;
+            let key = args[0].to_string();
+            let values: Vec<String> = args[1..].iter().map(|s| s.to_string()).collect();
+            if values.is_empty() {
+                return Err(anyhow::anyhow!(
+                    "(error) ERR wrong number of arguments for '{}' command",
+                    action.to_uppercase()
+                ));
+            }
+            if action.to_uppercase() == "LPUSHX" {
+                return Ok(ClientAction::LPushX { key, value: values });
+            }
+            Ok(ClientAction::RPushX { key, value: values })
         },
         | "LPOP" | "RPOP" => {
             require_non_empty_args()?;

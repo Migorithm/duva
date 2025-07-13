@@ -49,6 +49,11 @@ pub(crate) enum CacheCommand {
         values: Vec<String>,
         callback: Callback<anyhow::Result<usize>>,
     },
+    LPushX {
+        key: String,
+        values: Vec<String>,
+        callback: Callback<usize>,
+    },
     RPush {
         key: String,
         values: Vec<String>,
