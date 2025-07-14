@@ -33,7 +33,7 @@ impl NodeReplInfo {
         }
     }
 
-    pub fn from_replication_state(replication_state: &ReplicationState) -> Self {
+    pub(crate) fn from_replication_state(replication_state: &ReplicationState) -> Self {
         Self {
             peer_id: replication_state.self_identifier(),
             repl_id: replication_state.replid.clone(),

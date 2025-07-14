@@ -42,6 +42,7 @@ impl<T> ClientController<T> {
         match kind {
             | Ping
             | Get { .. }
+            | LIndex { .. }
             | IndexGet { .. }
             | Echo { .. }
             | Config { .. }

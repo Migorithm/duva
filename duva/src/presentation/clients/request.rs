@@ -47,6 +47,7 @@ pub enum ClientAction {
     LTrim { key: String, start: isize, end: isize },
     LLen { key: String },
     LRange { key: String, start: isize, end: isize },
+    LIndex { key: String, index: isize },
 }
 
 impl ClientAction {
@@ -371,15 +372,18 @@ pub fn extract_action(action: &str, args: &[&str]) -> anyhow::Result<ClientActio
         },
 
         | "LRANGE" => {
-            if args.len() != 3 {
-                return Err(anyhow::anyhow!(
-                    "(error) ERR wrong number of arguments for 'lrange' command"
-                ));
-            }
+            require_exact_args(3)?;
             let key = args[0].to_string();
             let start = args[1].parse::<isize>().context("Invalid start index")?;
             let end = args[2].parse::<isize>().context("Invalid end index")?;
             Ok(ClientAction::LRange { key, start, end })
+        },
+        | "LINDEX" => {
+            require_exact_args(2)?;
+
+            let key = args[0].to_string();
+            let index = args[1].parse::<isize>().context("Invalid index")?;
+            Ok(ClientAction::LIndex { key, index })
         },
 
         // Add other commands as needed

@@ -467,9 +467,7 @@ mod test {
     use super::*;
     use crate::domains::caches::cache_objects::CacheEntry;
     use crate::domains::cluster_actors::hash_ring::{BatchId, HashRing};
-    use crate::domains::cluster_actors::replication::{
-        ReplicationId, ReplicationRole, ReplicationState,
-    };
+    use crate::domains::cluster_actors::replication::{ReplicationId, ReplicationRole};
     use crate::domains::cluster_actors::topology::NodeReplInfo;
     use crate::domains::operation_logs::WriteRequest;
     use crate::domains::peers::command::BannedPeer;

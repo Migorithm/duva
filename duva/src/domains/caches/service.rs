@@ -91,6 +91,9 @@ impl CacheActor {
                 | CacheCommand::LTrim { key, start, end, callback } => {
                     let _ = callback.send(self.ltrim(key, start, end));
                 },
+                | CacheCommand::LIndex { key, index, callback } => {
+                    let _ = callback.send(self.lindex(key, index));
+                },
             }
         }
         Ok(self)

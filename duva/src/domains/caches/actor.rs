@@ -206,6 +206,20 @@ impl CacheActor {
             | _ => Err(anyhow::anyhow!(WRONG_TYPE_ERR_MSG)),
         }
     }
+
+    pub(crate) fn lindex(&mut self, key: String, index: isize) -> anyhow::Result<CacheValue> {
+        let Some(CacheValue { value, .. }) = self.cache.get_mut(&key) else {
+            return Ok(CacheValue::new(TypedValue::Null));
+        };
+        match value {
+            | TypedValue::List(list) => Ok(list
+                .lindex(index)
+                .map(|v| CacheValue::new(TypedValue::String(v)))
+                .unwrap_or_default()),
+
+            | _ => Err(anyhow::anyhow!(WRONG_TYPE_ERR_MSG)),
+        }
+    }
 }
 
 #[derive(Clone, Debug)]

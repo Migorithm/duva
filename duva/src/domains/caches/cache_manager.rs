@@ -413,6 +413,15 @@ impl CacheManager {
 
         Ok(IndexedValueCodec::encode("".to_string(), current_idx))
     }
+
+    pub(crate) async fn route_lindex(&self, key: String, index: isize) -> Result<CacheValue> {
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        self.select_shard(&key)
+            .send(CacheCommand::LIndex { key, index, callback: tx.into() })
+            .await?;
+        let value = rx.await??;
+        Ok(value)
+    }
 }
 
 pub struct IndexedValueCodec;

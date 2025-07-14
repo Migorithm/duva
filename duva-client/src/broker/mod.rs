@@ -130,7 +130,7 @@ impl Broker {
     // pull-based leader discovery
 
     async fn discover_leader(&mut self) -> Result<(), IoError> {
-        for node in self.topology.node_infos.iter().map(|n| n.peer_id.clone()).into_iter() {
+        for node in self.topology.node_infos.iter().map(|n| n.peer_id.clone()) {
             tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
             println!("Trying to connect to node: {node}...");
 
