@@ -415,7 +415,12 @@ impl CacheManager {
     }
 
     pub(crate) async fn route_lindex(&self, key: String, index: isize) -> Result<CacheValue> {
-        todo!()
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        self.select_shard(&key)
+            .send(CacheCommand::LIndex { key, index, callback: tx.into() })
+            .await?;
+        let value = rx.await??;
+        Ok(value)
     }
 }
 

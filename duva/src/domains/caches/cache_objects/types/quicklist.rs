@@ -502,6 +502,43 @@ impl QuickList {
             self.rpush(element);
         }
     }
+
+    pub(crate) fn lindex(&mut self, index: isize) -> Option<Bytes> {
+        if self.len == 0 {
+            return None;
+        }
+
+        // Calculate absolute index
+        let len = self.len as isize;
+        let index = if index < 0 { (len + index).max(0) } else { index } as usize;
+
+        if index >= self.len {
+            return None; // Out of bounds
+        }
+
+        let mut current_index = 0;
+
+        // Iterate through nodes to find the requested index
+        for node in &mut self.nodes {
+            let node_len = node.entry_count;
+            if current_index + node_len <= index {
+                // This node is before our index, skip it
+                current_index += node_len;
+                continue;
+            }
+
+            // Decompress the node and read its entries
+            node.ensure_decompressed(&self.fill_factor);
+            if let NodeData::Uncompressed(ziplist) = &node.data {
+                let entries = ziplist.to_vec();
+                if let Some(entry) = entries.get(index - current_index) {
+                    return Some(entry.clone());
+                }
+            }
+            break; // No need to check further nodes
+        }
+        None
+    }
 }
 
 #[cfg(test)]

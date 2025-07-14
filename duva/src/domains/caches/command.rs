@@ -85,4 +85,9 @@ pub(crate) enum CacheCommand {
         end: isize,
         callback: Callback<anyhow::Result<()>>,
     },
+    LIndex {
+        key: String,
+        index: isize,
+        callback: Callback<anyhow::Result<CacheValue>>,
+    },
 }
