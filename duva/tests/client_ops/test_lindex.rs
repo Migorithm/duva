@@ -8,10 +8,10 @@ fn run_lindex(env: ServerEnv) -> anyhow::Result<()> {
     let res = h.send_and_get(format!("RPUSH x 1 2 3"));
     assert_eq!(res, "(integer) 3");
     //WHEN & ASSERT
-    assert_eq!(h.send_and_get(format!("LINDEX x 0 ")), "(integer) 1");
+    assert_eq!(h.send_and_get(format!("LINDEX x 0 ")), "1");
 
-    assert_eq!(h.send_and_get(format!("LINDEX x 1")), "(integer) 2");
-    assert_eq!(h.send_and_get(format!("LINDEX x -1")), "(integer) 3");
+    assert_eq!(h.send_and_get(format!("LINDEX x 1")), "2");
+    assert_eq!(h.send_and_get(format!("LINDEX x -1")), "3");
 
     Ok(())
 }

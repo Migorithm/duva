@@ -413,6 +413,10 @@ impl CacheManager {
 
         Ok(IndexedValueCodec::encode("".to_string(), current_idx))
     }
+
+    pub(crate) async fn route_lindex(&self, key: String, index: isize) -> Result<CacheValue> {
+        todo!()
+    }
 }
 
 pub struct IndexedValueCodec;

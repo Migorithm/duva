@@ -47,6 +47,7 @@ pub enum ClientAction {
     LTrim { key: String, start: isize, end: isize },
     LLen { key: String },
     LRange { key: String, start: isize, end: isize },
+    LIndex { key: String, index: isize },
 }
 
 impl ClientAction {

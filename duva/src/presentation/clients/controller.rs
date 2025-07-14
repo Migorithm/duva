@@ -184,8 +184,6 @@ impl ClientController {
             | ClientAction::RPush { key, value } => QueryIO::SimpleString(
                 self.cache_manager.route_rpush(key, value, current_index.unwrap()).await?.into(),
             ),
-
-            //TODO
             | ClientAction::RPushX { key, value } => todo!(),
             | ClientAction::RPop { key, count } => {
                 let values = self.cache_manager.route_rpop(key, count).await?;
@@ -207,6 +205,9 @@ impl ClientController {
             | ClientAction::LRange { key, start, end } => {
                 let values = self.cache_manager.route_lrange(key, start, end).await?;
                 QueryIO::Array(values.into_iter().map(|v| QueryIO::BulkString(v.into())).collect())
+            },
+            | ClientAction::LIndex { key, index } => {
+                self.cache_manager.route_lindex(key, index).await?.into()
             },
         };
 
