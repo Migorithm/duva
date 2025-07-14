@@ -3,9 +3,10 @@ mod node_connections;
 mod read_stream;
 mod write_stream;
 
-use crate::command::InputKind;
+use crate::command::{InputContext, build_command_with_request_id};
 
 use crate::broker::node_connections::NodeConnections;
+use crate::broker::write_stream::MsgToServer;
 use duva::domains::caches::cache_manager::IndexedValueCodec;
 use duva::domains::cluster_actors::replication::{ReplicationId, ReplicationRole};
 use duva::domains::{IoError, query_io::QueryIO};
@@ -22,15 +23,14 @@ use duva::{
     prelude::{AuthRequest, AuthResponse},
 };
 use input_queue::InputQueue;
+use node_connections::NodeConnection;
 use read_stream::ServerStreamReader;
-use write_stream::MsgToServer;
 use write_stream::ServerStreamWriter;
 
 pub struct Broker {
     pub(crate) tx: Sender<BrokerMessage>,
     pub(crate) rx: Receiver<BrokerMessage>,
     pub(crate) client_id: Uuid,
-    pub(crate) request_id: u64,
     pub(crate) topology: Topology,
     pub(crate) node_connections: NodeConnections,
     cluster_mode: bool,
@@ -61,12 +61,12 @@ impl Broker {
             tx: broker_tx.clone(),
             rx,
             client_id: Uuid::parse_str(&auth_response.client_id)?,
-            request_id: auth_response.request_id,
             topology: auth_response.topology,
             node_connections: NodeConnections::new(
                 server_addr.clone(),
                 w.run(),
                 r.run(broker_tx.clone(), server_addr.clone(), replication_id),
+                auth_response.request_id,
             ),
             cluster_mode,
         })
@@ -75,7 +75,7 @@ impl Broker {
         let mut queue = InputQueue::default();
         while let Some(msg) = self.rx.recv().await {
             match msg {
-                | BrokerMessage::FromServer(QueryIO::TopologyChange(topology)) => {
+                | BrokerMessage::FromServer(_, QueryIO::TopologyChange(topology)) => {
                     if !self.cluster_mode {
                         continue; // ignore topology changes in non-cluster mode
                     }
@@ -83,40 +83,32 @@ impl Broker {
                     self.update_leader_connections().await;
                 },
 
-                | BrokerMessage::FromServer(query_io) => {
-                    let Some(input) = queue.pop() else {
+                | BrokerMessage::FromServer(peer_id, query_io) => {
+                    let Some(mut context) = queue.pop() else {
                         continue;
                     };
 
-                    match input {
-                        | InputKind::SingleNodeInput { kind, callback } => {
-                            if let Some(index) = self.extract_req_id(&kind, &query_io) {
-                                self.request_id = index;
-                            };
+                    let connection = self
+                        .node_connections
+                        .get_mut(&peer_id)
+                        .expect("Node connection should exist");
 
-                            callback.send((kind, query_io)).unwrap_or_else(|_| {
-                                println!("Failed to send response to input callback");
-                            });
-                        },
-                        | InputKind::MultipleNodesInput { kind, callback, mut results } => {
-                            results.push(query_io);
-                            if results.len() != self.node_connections.len() {
-                                let input =
-                                    InputKind::MultipleNodesInput { kind, callback, results };
-                                queue.push(input);
-                            } else {
-                                let queries = results
-                                    .into_iter()
-                                    .reduce(|a, b| {
-                                        a.merge(b).expect("Either one of them should be array")
-                                    })
-                                    .unwrap();
-                                callback.send((kind, queries)).unwrap_or_else(|_| {
-                                    println!("Failed to send response to input callback");
-                                });
-                            }
-                        },
+                    if let Some(index) =
+                        self.extract_req_id(connection.request_id, &context.kind, &query_io)
+                    {
+                        connection.request_id = index;
                     }
+
+                    context.append_result(query_io);
+
+                    if !context.is_done() {
+                        continue;
+                    }
+
+                    let result = context.get_result();
+                    context.callback.send((context.kind, result)).unwrap_or_else(|_| {
+                        println!("Failed to send response to input callback");
+                    });
                 },
 
                 | BrokerMessage::FromServerErrorFromCluster(repl_id, e) => match e {
@@ -148,27 +140,22 @@ impl Broker {
                             continue;
                         }
                     }
-                    queue.push(command.input);
+                    queue.push(command.input_context);
                 },
             }
         }
-    }
-
-    pub fn build_command_with_request_id(&self, cmd: &str, args: &Vec<String>) -> String {
-        // Build the valid RESP command
-        let mut command =
-            format!("!{}\r\n*{}\r\n${}\r\n{}\r\n", self.request_id, args.len() + 1, cmd.len(), cmd);
-        for arg in args {
-            command.push_str(&format!("${}\r\n{}\r\n", arg.len(), arg));
-        }
-        command
     }
 
     // ! CONSIDER IDEMPOTENCY RULE
     // !
     // ! If request is updating action yet receive error, we need to increase the request id
     // ! otherwise, server will not be able to process the next command
-    fn extract_req_id(&mut self, kind: &ClientAction, query_io: &QueryIO) -> Option<u64> {
+    fn extract_req_id(
+        &mut self,
+        request_id: u64,
+        kind: &ClientAction,
+        query_io: &QueryIO,
+    ) -> Option<u64> {
         if !kind.consensus_required() {
             return None;
         }
@@ -176,9 +163,9 @@ impl Broker {
             // * Current rule: s:value-idx:index_num
             | QueryIO::SimpleString(v) => {
                 let s = String::from_utf8_lossy(v);
-                IndexedValueCodec::decode_index(s).filter(|&id| id > self.request_id)
+                IndexedValueCodec::decode_index(s).filter(|&id| id > request_id)
             },
-            | QueryIO::Err(_) => Some(self.request_id + 1),
+            | QueryIO::Err(_) => Some(request_id + 1),
             | _ => None,
         }
     }
@@ -212,10 +199,10 @@ impl Broker {
 
         // remove connections to nodes that are not in the topology anymore
         for node in self.topology.node_infos.clone() {
-            if node.repl_id != replication_id.to_string() {
+            if node.repl_id != replication_id {
                 continue; // skip nodes with different replication id
             }
-            if self.node_connections.contains_key(&PeerIdentifier(node.peer_id.clone())) {
+            if self.node_connections.contains_key(&node.peer_id) {
                 continue; // skip already connected leader nodes, covers 1, 3
             }
             if let Some(()) = self.add_leader_connection(node).await {
@@ -233,48 +220,40 @@ impl Broker {
             if ReplicationRole::Leader != node.repl_role.clone().into() {
                 continue; // skip non-leader nodes
             }
-            if self.node_connections.contains_key(&PeerIdentifier(node.peer_id.clone())) {
+            if self.node_connections.contains_key(&node.peer_id) {
                 continue; // skip already connected nodes
             }
             let _ = self.add_leader_connection(node).await;
         }
         self.node_connections
             .remove_outdated_connections(
-                self.topology
-                    .node_infos
-                    .iter()
-                    .map(|n| PeerIdentifier(n.peer_id.clone()))
-                    .collect(),
+                self.topology.node_infos.iter().map(|n| n.peer_id).collect(),
             )
             .await;
     }
     async fn add_leader_connection(&mut self, node: NodeReplInfo) -> Option<()> {
-        let auth_req = AuthRequest {
-            client_id: Some(self.client_id.to_string()),
-            request_id: self.request_id,
-        };
-        let Ok((r, w, auth_response)) =
-            Self::authenticate(&PeerIdentifier(node.peer_id.clone()), Some(auth_req)).await
+        let auth_req = AuthRequest { client_id: Some(self.client_id.to_string()), request_id: 0 };
+        let Ok((r, w, auth_response)) = Self::authenticate(&node.peer_id, Some(auth_req)).await
         else {
             return None;
         };
-        if !(auth_response.connected_to_leader) {
+        if !auth_response.connected_to_leader {
             return None;
         }
-        let kill_switch = r.run(
-            self.tx.clone(),
-            PeerIdentifier(node.peer_id.clone()),
-            Some(node.repl_id.clone().into()),
-        );
+        let kill_switch = r.run(self.tx.clone(), node.peer_id.clone(), Some(node.repl_id));
         let writer = w.run();
-        self.node_connections.insert(PeerIdentifier(node.peer_id.clone()), (kill_switch, writer));
+
+        self.node_connections.insert(
+            node.peer_id,
+            NodeConnection::new(writer, kill_switch, auth_response.request_id),
+        );
         self.topology = auth_response.topology;
 
         Some(())
     }
 
     async fn determine_route(&mut self, command: &CommandToServer) -> Result<(), IoError> {
-        match command.input.kind().clone() {
+        match command.input_context.kind.clone() {
             | ClientAction::Get { key }
             | ClientAction::Ttl { key }
             | ClientAction::Incr { key }
@@ -291,44 +270,15 @@ impl Broker {
         }
     }
     async fn default_route(&mut self, command: &CommandToServer) -> Result<(), IoError> {
-        let cmd = self.build_command_with_request_id(&command.command, &command.args);
         let Some(connection) = self.node_connections.first() else {
             return Err(IoError::Custom("No connections available".to_string()));
         };
+        let cmd =
+            build_command_with_request_id(&command.command, connection.request_id, &command.args);
         connection
             .send(MsgToServer::Command(cmd.as_bytes().to_vec()))
             .await
             .map_err(|e| IoError::Custom(format!("Failed to send command: {}", e)))
-    }
-    async fn route_command_to_all(&mut self, command: &&CommandToServer) -> Result<(), IoError> {
-        let cmd = self.build_command_with_request_id(&command.command, &command.args);
-        for (peer_id, connection) in self.node_connections.entries() {
-            if let Err(e) = connection.send(MsgToServer::Command(cmd.as_bytes().to_vec())).await {
-                return Err(IoError::Custom(format!(
-                    "Failed to send command to {}: {}",
-                    peer_id, e
-                )));
-            }
-        }
-        Ok(())
-    }
-    async fn route_command_by_keys(
-        &self,
-        command: &CommandToServer,
-        keys: Vec<String>,
-    ) -> Result<(), IoError> {
-        let Some(node_id) = self
-            .topology
-            .hash_ring
-            .get_node_id_for_keys(&keys.iter().map(|key| key.as_str()).collect::<Vec<&str>>())
-        else {
-            return Err(IoError::Custom(format!("Failed to get node ids from keys {:?}", keys)));
-        };
-
-        if let Some(value) = self.send_command(command, node_id).await {
-            return value;
-        }
-        Ok(())
     }
 
     async fn route_command_by_key(
@@ -357,7 +307,8 @@ impl Broker {
                 node_id
             ))));
         };
-        let cmd = self.build_command_with_request_id(&command.command, &command.args);
+        let cmd =
+            build_command_with_request_id(&command.command, connection.request_id, &command.args);
         if let Err(e) = connection.send(MsgToServer::Command(cmd.as_bytes().to_vec())).await {
             return Some(Err(IoError::Custom(format!("Failed to send command: {}", e))));
         }
@@ -366,17 +317,17 @@ impl Broker {
 }
 
 pub enum BrokerMessage {
-    FromServer(QueryIO),
+    FromServer(PeerIdentifier, QueryIO),
     FromServerErrorFromCluster(ReplicationId, IoError),
     FromServerErrorFromNode(PeerIdentifier, IoError),
     ToServer(CommandToServer),
 }
 impl BrokerMessage {
-    pub fn from_command(command: String, args: Vec<&str>, input: InputKind) -> Self {
+    pub fn from_command(command: String, args: Vec<&str>, input_context: InputContext) -> Self {
         BrokerMessage::ToServer(CommandToServer {
             command,
             args: args.iter().map(|s| s.to_string()).collect(),
-            input,
+            input_context,
         })
     }
 }
@@ -384,5 +335,5 @@ impl BrokerMessage {
 pub struct CommandToServer {
     pub command: String,
     pub args: Vec<String>,
-    pub input: InputKind,
+    pub input_context: InputContext,
 }
