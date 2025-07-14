@@ -294,11 +294,11 @@ impl QuickList {
         }
 
         let max_bytes = kb * 1024;
+        let merge_threshold = max_bytes / 4;
 
         let should_merge = {
             let node = &self.nodes[index];
             let next = &self.nodes[index + 1];
-            let merge_threshold = max_bytes / 4;
 
             (node.entry_count > 0 && next.entry_count > 0)
                 && (node.byte_size() < merge_threshold || next.byte_size() < merge_threshold)
@@ -408,10 +408,13 @@ impl QuickList {
     pub fn compress(&mut self) {
         let node_count = self.nodes.len();
         if self.compress_depth > 0 && node_count > self.compress_depth * 2 {
-            for i in self.compress_depth..(node_count - self.compress_depth) {
-                if let Some(node) = self.nodes.get_mut(i) {
-                    node.try_compress();
-                }
+            for node in self
+                .nodes
+                .iter_mut()
+                .skip(self.compress_depth)
+                .take(node_count - self.compress_depth * 2)
+            {
+                node.try_compress();
             }
         }
     }
