@@ -517,25 +517,14 @@ impl QuickList {
         }
 
         let mut current_index = 0;
-
-        // Iterate through nodes to find the requested index
         for node in &mut self.nodes {
-            let node_len = node.entry_count;
-            if current_index + node_len <= index {
-                // This node is before our index, skip it
-                current_index += node_len;
-                continue;
-            }
-
-            // Decompress the node and read its entries
-            node.ensure_decompressed(&self.fill_factor);
-            if let NodeData::Uncompressed(ziplist) = &node.data {
-                let entries = ziplist.to_vec();
-                if let Some(entry) = entries.get(index - current_index) {
-                    return Some(entry.clone());
+            if current_index + node.entry_count > index {
+                node.ensure_decompressed(&self.fill_factor);
+                if let NodeData::Uncompressed(ziplist) = &node.data {
+                    return ziplist.to_vec().get(index - current_index).cloned();
                 }
             }
-            break; // No need to check further nodes
+            current_index += node.entry_count;
         }
         None
     }
