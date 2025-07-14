@@ -10,11 +10,7 @@ pub fn separate_command_and_args(args: Vec<&str>) -> (&str, Vec<&str>) {
     let args = args.to_vec();
     (cmd, args)
 }
-pub fn build_command_with_request_id(
-    cmd: &str,
-    request_id: u64,
-    args: &Vec<String>,
-) -> String {
+pub fn build_command_with_request_id(cmd: &str, request_id: u64, args: &Vec<String>) -> String {
     // Build the valid RESP command
     let mut command =
         format!("!{}\r\n*{}\r\n${}\r\n{}\r\n", request_id, args.len() + 1, cmd.len(), cmd);
@@ -26,22 +22,18 @@ pub fn build_command_with_request_id(
 
 #[derive(Debug)]
 pub struct InputContext {
-    pub kind: ClientAction,
-    pub callback: oneshot::Sender<(ClientAction, QueryIO)>,
-    pub results: Vec<QueryIO>,
-    pub num_of_results: usize,
+    pub(crate) kind: ClientAction,
+    pub(crate) callback: oneshot::Sender<(ClientAction, QueryIO)>,
+    pub(crate) results: Vec<QueryIO>,
+    pub(crate) num_of_results: usize,
 }
 
 impl InputContext {
-    pub(crate) fn new(
-        kind: ClientAction,
-        callback: oneshot::Sender<(ClientAction, QueryIO)>,
-        num_of_results: usize,
-    ) -> Self {
+    pub fn new(kind: ClientAction, callback: oneshot::Sender<(ClientAction, QueryIO)>) -> Self {
         match kind {
             | ClientAction::Keys { pattern: _ } => {
-                Self { kind, callback, results: Vec::new(), num_of_results }
-            }
+                Self { kind, callback, results: Vec::new(), num_of_results: 0 }
+            },
             // TODO handle other cases like MSET, MGET, etc.
             | ref other_values => Self { kind, callback, results: Vec::new(), num_of_results: 1 },
         }
@@ -50,9 +42,9 @@ impl InputContext {
         match self.kind {
             | ClientAction::Keys { pattern: _ } => {
                 self.results.push(result);
-            }
+            },
             // TODO handle other cases like MSET, MGET, etc.
-            | _ => {}
+            | _ => {},
         }
     }
     pub(crate) fn is_done(&self) -> bool {

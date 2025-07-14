@@ -1,5 +1,5 @@
-use std::collections::VecDeque;
 use crate::command::InputContext;
+use std::collections::VecDeque;
 
 #[derive(Debug, Default)]
 pub struct InputQueue {

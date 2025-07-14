@@ -18,6 +18,7 @@ mod test_lrange;
 mod test_lset;
 mod test_ltrim;
 mod test_replication_info;
+mod test_route_keys;
 mod test_rpop;
 mod test_rpush;
 mod test_rpushx;
