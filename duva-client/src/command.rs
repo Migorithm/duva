@@ -10,6 +10,19 @@ pub fn separate_command_and_args(args: Vec<&str>) -> (&str, Vec<&str>) {
     let args = args.to_vec();
     (cmd, args)
 }
+pub fn build_command_with_request_id(
+    cmd: &str,
+    request_id: u64,
+    args: &Vec<String>,
+) -> String {
+    // Build the valid RESP command
+    let mut command =
+        format!("!{}\r\n*{}\r\n${}\r\n{}\r\n", request_id, args.len() + 1, cmd.len(), cmd);
+    for arg in args {
+        command.push_str(&format!("${}\r\n{}\r\n", arg.len(), arg));
+    }
+    command
+}
 
 #[derive(Debug)]
 pub struct InputContext {
@@ -28,18 +41,18 @@ impl InputContext {
         match kind {
             | ClientAction::Keys { pattern: _ } => {
                 Self { kind, callback, results: Vec::new(), num_of_results }
-            },
+            }
             // TODO handle other cases like MSET, MGET, etc.
             | ref other_values => Self { kind, callback, results: Vec::new(), num_of_results: 1 },
         }
     }
     pub(crate) fn append_result(&mut self, result: QueryIO) {
         match self.kind {
-            ClientAction::Keys { pattern: _ } => {
+            | ClientAction::Keys { pattern: _ } => {
                 self.results.push(result);
-            },
+            }
             // TODO handle other cases like MSET, MGET, etc.
-            _ => {}
+            | _ => {}
         }
     }
     pub(crate) fn is_done(&self) -> bool {
@@ -50,36 +63,5 @@ impl InputContext {
     }
     pub(crate) fn get_result(&self) -> QueryIO {
         *self.results.iter().reduce(|acc, x| &x.merge(acc))
-    }
-}
-
-#[derive(Debug)]
-pub enum InputKind {
-    SingleNodeInput {
-        kind: ClientAction,
-        callback: oneshot::Sender<(ClientAction, QueryIO)>,
-    },
-    MultipleNodesInput {
-        kind: ClientAction,
-        callback: oneshot::Sender<(ClientAction, QueryIO)>,
-        results: Vec<QueryIO>,
-    },
-}
-
-impl InputKind {
-    pub fn new(kind: ClientAction, callback: oneshot::Sender<(ClientAction, QueryIO)>) -> Self {
-        return match kind {
-            | ClientAction::Keys { pattern: _ } => {
-                Self::MultipleNodesInput { kind, callback, results: Vec::new() }
-            },
-            | _ => Self::SingleNodeInput { kind, callback },
-        };
-    }
-
-    pub fn kind(&self) -> &ClientAction {
-        match self {
-            | InputKind::SingleNodeInput { kind, .. } => kind,
-            | InputKind::MultipleNodesInput { kind, .. } => kind,
-        }
     }
 }
