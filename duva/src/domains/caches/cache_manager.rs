@@ -198,6 +198,9 @@ impl CacheManager {
             | WriteRequest::LPushX { key, value } => {
                 self.route_lpushx(key, value, log_index).await?;
             },
+            | WriteRequest::LSet { key, index, value } => {
+                self.route_lset(key, index, value, log_index).await?;
+            },
         };
 
         // * This is to wake up the cache actors to process the pending read requests
@@ -421,6 +424,21 @@ impl CacheManager {
             .await?;
         let value = rx.await??;
         Ok(value)
+    }
+
+    pub(crate) async fn route_lset(
+        &self,
+        key: String,
+        index: isize,
+        value: String,
+        current_idx: u64,
+    ) -> Result<String> {
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        self.select_shard(key.as_str())
+            .send(CacheCommand::LSet { key, index, value, callback: tx.into() })
+            .await?;
+        rx.await??;
+        Ok(IndexedValueCodec::encode("", current_idx))
     }
 }
 

@@ -90,4 +90,10 @@ pub(crate) enum CacheCommand {
         index: isize,
         callback: Callback<anyhow::Result<CacheValue>>,
     },
+    LSet {
+        key: String,
+        index: isize,
+        value: String,
+        callback: Callback<anyhow::Result<()>>,
+    },
 }

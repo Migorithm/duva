@@ -94,6 +94,9 @@ impl CacheActor {
                 | CacheCommand::LIndex { key, index, callback } => {
                     let _ = callback.send(self.lindex(key, index));
                 },
+                | CacheCommand::LSet { key, index, value, callback } => {
+                    let _ = callback.send(self.lset(key, index, value));
+                },
             }
         }
         Ok(self)
