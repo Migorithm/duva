@@ -5,10 +5,12 @@ use duva::prelude::tokio::sync::oneshot;
 use duva::prelude::{PeerIdentifier, anyhow};
 use std::collections::HashMap;
 
+#[derive(Debug)]
 pub(crate) struct NodeConnections {
     connections: HashMap<PeerIdentifier, NodeConnection>,
 }
 
+#[derive(Debug)]
 pub(crate) struct NodeConnection {
     pub(crate) writer: mpsc::Sender<MsgToServer>,
     pub(crate) kill_switch: oneshot::Sender<()>,
@@ -43,7 +45,9 @@ impl NodeConnections {
         connections.insert(target_id.clone(), NodeConnection::new(writer, kill_switch, request_id));
         Self { connections }
     }
-
+    pub(crate) fn keys(&self) -> impl Iterator<Item = &PeerIdentifier> {
+        self.connections.keys()
+    }
     pub(crate) fn contains_key(&self, leader_id: &PeerIdentifier) -> bool {
         self.connections.contains_key(leader_id)
     }

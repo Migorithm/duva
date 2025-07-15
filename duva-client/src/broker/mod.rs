@@ -4,6 +4,8 @@ mod read_stream;
 mod write_stream;
 
 use crate::command::{InputContext, build_command_with_request_id};
+use collections::HashMap;
+use std::collections;
 
 use crate::broker::node_connections::NodeConnections;
 use crate::broker::write_stream::MsgToServer;
@@ -103,6 +105,7 @@ impl Broker {
                     context.append_result(query_io);
 
                     if !context.is_done() {
+                        queue.push(context);
                         continue;
                     }
 
@@ -131,22 +134,20 @@ impl Broker {
                     | _ => {},
                 },
                 | BrokerMessage::ToServer(mut command) => {
+                    let result: Result<usize, IoError>;
                     if self.cluster_mode {
-                        match self.determine_route(&command).await {
-                            | Ok(num_of_results) => {
-                                command.input_context.num_of_results = num_of_results;
-                            },
-                            | Err(e) => {
-                                println!("Failed to determine route: {}", e);
-                                continue;
-                            },
-                        }
+                        result = self.determine_route(&command).await
                     } else {
-                        // In non-cluster mode, we send commands directly to the server
-                        if let Err(e) = self.default_route(command.command()).await {
-                            println!("Failed to send command: {}", e);
+                        result = self.default_route(command.command()).await
+                    }
+                    match result {
+                        | Ok(num_of_results) => {
+                            command.input_context.num_of_results = num_of_results;
+                        },
+                        | Err(e) => {
+                            println!("Failed to determine route: {}", e);
                             continue;
-                        }
+                        },
                     }
                     queue.push(command.input_context);
                 },
@@ -279,7 +280,7 @@ impl Broker {
         command: (String, Vec<String>),
         keys: Vec<String>,
     ) -> Result<usize, IoError> {
-        let mut node_id_to_keys = std::collections::HashMap::new();
+        let mut node_id_to_keys = HashMap::new();
         for key in keys {
             let node_id = match self.topology.hash_ring.get_node_id_for_key(key.as_ref()) {
                 | Some(id) => id,
@@ -315,16 +316,15 @@ impl Broker {
         let Some(node_id) = self.topology.hash_ring.get_node_id_for_key(key.as_ref()) else {
             return Err(IoError::Custom(format!("Failed to get node id from key {}", key)));
         };
-
         self.send_command(command, node_id).await?;
         Ok(1)
     }
 
     async fn route_command_to_all(&self, command: &CommandToServer) -> Result<usize, IoError> {
-        for node_id in self.topology.node_infos.iter().map(|n| n.peer_id.clone()) {
+        for node_id in self.node_connections.keys() {
             self.send_command(command.command(), &node_id).await?;
         }
-        Ok(self.topology.node_infos.len())
+        Ok(self.node_connections.len())
     }
 
     async fn send_command(
