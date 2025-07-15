@@ -209,6 +209,7 @@ impl ClientController {
             | ClientAction::LIndex { key, index } => {
                 self.cache_manager.route_lindex(key, index).await?.into()
             },
+            | ClientAction::LSet { key, index, value } => todo!(),
         };
 
         Ok(response)
