@@ -209,7 +209,12 @@ impl ClientController {
             | ClientAction::LIndex { key, index } => {
                 self.cache_manager.route_lindex(key, index).await?.into()
             },
-            | ClientAction::LSet { key, index, value } => todo!(),
+            | ClientAction::LSet { key, index, value } => QueryIO::SimpleString(
+                self.cache_manager
+                    .route_lset(key, index, value, current_index.unwrap())
+                    .await?
+                    .into(),
+            ),
         };
 
         Ok(response)

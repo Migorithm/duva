@@ -531,6 +531,36 @@ impl QuickList {
         }
         None
     }
+
+    pub(crate) fn lset(&mut self, index: isize, value: String) -> anyhow::Result<()> {
+        if self.len == 0 {
+            return Err(anyhow::anyhow!("List is empty"));
+        }
+
+        // Calculate absolute index
+        let len = self.len as isize;
+        let index = if index < 0 { (len + index).max(0) } else { index } as usize;
+
+        if index >= self.len {
+            return Err(anyhow::anyhow!("Index out of bounds"));
+        }
+
+        let mut current_index = 0;
+        for node in &mut self.nodes {
+            if current_index + node.entry_count > index {
+                node.ensure_decompressed(&self.fill_factor);
+                if let NodeData::Uncompressed(ziplist) = &mut node.data {
+                    let mut entries = ziplist.to_vec();
+                    if let Some(entry) = entries.get_mut(index - current_index) {
+                        *entry = Bytes::from(value.clone());
+                        return Ok(());
+                    }
+                }
+            }
+            current_index += node.entry_count;
+        }
+        Err(anyhow::anyhow!("Index not found"))
+    }
 }
 
 #[cfg(test)]

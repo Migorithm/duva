@@ -220,6 +220,19 @@ impl CacheActor {
             | _ => Err(anyhow::anyhow!(WRONG_TYPE_ERR_MSG)),
         }
     }
+
+    pub(crate) fn lset(
+        &mut self,
+        key: String,
+        index: isize,
+        value: String,
+    ) -> Result<(), anyhow::Error> {
+        let Some(CacheValue { value: TypedValue::List(list), .. }) = self.cache.get_mut(&key)
+        else {
+            return Err(anyhow::anyhow!(WRONG_TYPE_ERR_MSG));
+        };
+        list.lset(index, value)
+    }
 }
 
 #[derive(Clone, Debug)]
