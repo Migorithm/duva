@@ -8,6 +8,7 @@ use duva::{
     },
     presentation::clients::request::extract_action,
 };
+use duva_client::broker::Input;
 use duva_client::command::InputContext;
 use duva_client::{
     broker::BrokerMessage, command::separate_command_and_args, controller::ClientController,
@@ -38,12 +39,16 @@ async fn main() -> anyhow::Result<()> {
         let (cmd, args) = separate_command_and_args(args);
 
         match extract_action(cmd, &args) {
-            | Ok(input) => {
+            | Ok(action) => {
                 let (tx, rx) = oneshot::channel();
-                let input_context = InputContext::new(input, tx);
+                let input_context = InputContext::new(action, tx);
+                let input = Input {
+                    command: cmd.to_string(),
+                    args: args.iter().map(|s| s.to_string()).collect(),
+                };
                 let _ = controller
                     .broker_tx
-                    .send(BrokerMessage::from_command(cmd.into(), args, input_context))
+                    .send(BrokerMessage::from_input(input, input_context))
                     .await;
                 let (kind, query_io) = rx.await?;
                 controller.print_res(kind, query_io);

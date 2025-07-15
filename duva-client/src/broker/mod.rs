@@ -138,7 +138,7 @@ impl Broker {
                     if self.cluster_mode {
                         result = self.determine_route(&command).await
                     } else {
-                        result = self.default_route(command.command()).await
+                        result = self.default_route(&command.input).await
                     }
                     match result {
                         | Ok(num_of_results) => {
@@ -257,6 +257,7 @@ impl Broker {
     }
 
     async fn determine_route(&mut self, command: &CommandToServer) -> Result<usize, IoError> {
+        let input = &command.input;
         match command.input_context.kind.clone() {
             | ClientAction::Get { key }
             | ClientAction::Ttl { key }
@@ -265,19 +266,17 @@ impl Broker {
             | ClientAction::Append { key, value: _ }
             | ClientAction::SetWithExpiry { key, value: _, expiry: _ }
             | ClientAction::IndexGet { key, index: _ }
-            | ClientAction::Decr { key } => self.route_command_by_key(command.command(), key).await,
+            | ClientAction::Decr { key } => self.route_command_by_key(input, key).await,
             | ClientAction::Delete { keys }
             | ClientAction::Exists { keys }
-            | ClientAction::MGet { keys } => {
-                self.route_command_by_keys(command.command(), keys).await
-            },
-            | ClientAction::Keys { pattern: _ } => self.route_command_to_all(&command).await,
-            | _ => self.default_route(command.command()).await,
+            | ClientAction::MGet { keys } => self.route_command_by_keys(input, keys).await,
+            | ClientAction::Keys { pattern: _ } => self.route_command_to_all(input).await,
+            | _ => self.default_route(input).await,
         }
     }
     async fn route_command_by_keys(
         &mut self,
-        command: (String, Vec<String>),
+        input: &Input,
         keys: Vec<String>,
     ) -> Result<usize, IoError> {
         let mut node_id_to_keys = HashMap::new();
@@ -293,49 +292,49 @@ impl Broker {
 
         let num_of_results = node_id_to_keys.len();
         for (node_id, keys) in node_id_to_keys.into_iter() {
-            let command = command.0.clone();
-            self.send_command((command, keys), node_id).await?;
+            let new_input = Input { command: input.command.clone(), args: keys };
+            self.send_command_to_node(&new_input, node_id).await?;
         }
 
         Ok(num_of_results)
     }
-    async fn default_route(&mut self, command: (String, Vec<String>)) -> Result<usize, IoError> {
+    async fn default_route(&mut self, input: &Input) -> Result<usize, IoError> {
         let node_id = self
             .node_connections
             .get_first_node_id()
             .map_err(|e| IoError::Custom(format!("Failed to get first node id: {}", e)))?;
-        self.send_command(command, node_id).await?;
+        self.send_command_to_node(input, node_id).await?;
         Ok(1)
     }
 
-    async fn route_command_by_key(
-        &self,
-        command: (String, Vec<String>),
-        key: String,
-    ) -> Result<usize, IoError> {
+    async fn route_command_by_key(&self, input: &Input, key: String) -> Result<usize, IoError> {
         let Some(node_id) = self.topology.hash_ring.get_node_id_for_key(key.as_ref()) else {
             return Err(IoError::Custom(format!("Failed to get node id from key {}", key)));
         };
-        self.send_command(command, node_id).await?;
+        self.send_command_to_node(input, node_id).await?;
         Ok(1)
     }
 
-    async fn route_command_to_all(&self, command: &CommandToServer) -> Result<usize, IoError> {
+    async fn route_command_to_all(&self, input: &Input) -> Result<usize, IoError> {
         for node_id in self.node_connections.keys() {
-            self.send_command(command.command(), &node_id).await?;
+            self.send_command_to_node(input, &node_id).await?;
         }
         Ok(self.node_connections.len())
     }
 
-    async fn send_command(
+    async fn send_command_to_node(
         &self,
-        command: (String, Vec<String>),
+        input: &Input,
         node_id: &PeerIdentifier,
     ) -> Result<(), IoError> {
         let connection = self.node_connections.get(node_id).or_else(|_| {
             Err(IoError::Custom(format!("No connection found for node id: {}", node_id)))
         })?;
-        let cmd = build_command_with_request_id(&command.0, connection.request_id, &command.1);
+        let cmd = build_command_with_request_id(
+            &input.command.clone(),
+            connection.request_id,
+            &input.args,
+        );
 
         let _ = connection
             .send(MsgToServer::Command(cmd.as_bytes().to_vec()))
@@ -352,23 +351,18 @@ pub enum BrokerMessage {
     ToServer(CommandToServer),
 }
 impl BrokerMessage {
-    pub fn from_command(command: String, args: Vec<&str>, input_context: InputContext) -> Self {
-        BrokerMessage::ToServer(CommandToServer {
-            command,
-            args: args.iter().map(|s| s.to_string()).collect(),
-            input_context,
-        })
+    pub fn from_input(input: Input, input_context: InputContext) -> Self {
+        BrokerMessage::ToServer(CommandToServer { input, input_context })
     }
 }
 
 pub struct CommandToServer {
-    pub command: String,
-    pub args: Vec<String>,
+    pub input: Input,
     pub input_context: InputContext,
 }
 
-impl CommandToServer {
-    pub fn command(&self) -> (String, Vec<String>) {
-        (self.command.clone(), self.args.clone())
-    }
+#[derive(Debug, Clone)]
+pub struct Input {
+    pub command: String,
+    pub args: Vec<String>,
 }
