@@ -1,7 +1,8 @@
 use super::write_stream::MsgToServer;
-use duva::prelude::PeerIdentifier;
+use duva::prelude::anyhow::anyhow;
 use duva::prelude::tokio::sync::mpsc;
 use duva::prelude::tokio::sync::oneshot;
+use duva::prelude::{PeerIdentifier, anyhow};
 use std::collections::HashMap;
 
 pub(crate) struct NodeConnections {
@@ -43,20 +44,29 @@ impl NodeConnections {
         Self { connections }
     }
 
-    pub(crate) fn first(&self) -> Option<&NodeConnection> {
-        self.connections.iter().next().map(|(_, conn)| conn)
-    }
-
     pub(crate) fn contains_key(&self, leader_id: &PeerIdentifier) -> bool {
         self.connections.contains_key(leader_id)
     }
 
-    pub(crate) fn get(&self, leader_id: &PeerIdentifier) -> Option<&NodeConnection> {
-        self.connections.get(leader_id)
+    pub(crate) fn get_first_node_id(&self) -> anyhow::Result<&PeerIdentifier> {
+        self.connections.keys().next().ok_or_else(|| anyhow!("No connections available"))
     }
 
-    pub(crate) fn get_mut(&mut self, leader_id: &PeerIdentifier) -> Option<&mut NodeConnection> {
-        self.connections.get_mut(leader_id)
+    pub(crate) fn get(&self, leader_id: &PeerIdentifier) -> anyhow::Result<&NodeConnection> {
+        Ok(self
+            .connections
+            .get(leader_id)
+            .ok_or(anyhow!("Connection not found for leader_id: {}", leader_id))?)
+    }
+
+    pub(crate) fn get_mut(
+        &mut self,
+        leader_id: &PeerIdentifier,
+    ) -> anyhow::Result<&mut NodeConnection> {
+        Ok(self
+            .connections
+            .get_mut(leader_id)
+            .ok_or(anyhow!("Connection not found for leader_id: {}", leader_id))?)
     }
 
     pub(crate) fn insert(&mut self, leader_id: PeerIdentifier, connection: NodeConnection) {
@@ -69,7 +79,6 @@ impl NodeConnections {
             let _ = connection.writer.send(MsgToServer::Stop).await;
         }
     }
-
     pub(crate) async fn remove_outdated_connections(&mut self, node_peer_ids: Vec<PeerIdentifier>) {
         let outdated_connections =
             self.connections.extract_if(|peer_id, _| !node_peer_ids.contains(peer_id));
@@ -77,10 +86,6 @@ impl NodeConnections {
             let _ = connection.kill_switch.send(());
             let _ = connection.writer.send(MsgToServer::Stop).await;
         }
-    }
-
-    pub(crate) fn entries(&self) -> impl Iterator<Item = (&PeerIdentifier, &NodeConnection)> {
-        self.connections.iter()
     }
 
     #[cfg(test)]

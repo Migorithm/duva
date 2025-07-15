@@ -71,6 +71,7 @@ impl Broker {
             cluster_mode,
         })
     }
+
     pub(crate) async fn run(mut self) {
         let mut queue = InputQueue::default();
         while let Some(msg) = self.rx.recv().await {
@@ -94,7 +95,7 @@ impl Broker {
                         .expect("Node connection should exist");
 
                     if let Some(index) =
-                        self.extract_req_id(connection.request_id, &context.kind, &query_io)
+                        Broker::extract_req_id(connection.request_id, &context.kind, &query_io)
                     {
                         connection.request_id = index;
                     }
@@ -105,7 +106,9 @@ impl Broker {
                         continue;
                     }
 
-                    let result = context.get_result();
+                    let result = context
+                        .get_result()
+                        .unwrap_or_else(|err| QueryIO::Err(err.to_string().into()));
                     context.callback.send((context.kind, result)).unwrap_or_else(|_| {
                         println!("Failed to send response to input callback");
                     });
@@ -127,15 +130,20 @@ impl Broker {
                     },
                     | _ => {},
                 },
-                | BrokerMessage::ToServer(command) => {
+                | BrokerMessage::ToServer(mut command) => {
                     if self.cluster_mode {
-                        if let Err(e) = self.determine_route(&command).await {
-                            println!("Failed to send command: {}", e);
-                            continue;
+                        match self.determine_route(&command).await {
+                            | Ok(num_of_results) => {
+                                command.input_context.num_of_results = num_of_results;
+                            },
+                            | Err(e) => {
+                                println!("Failed to determine route: {}", e);
+                                continue;
+                            },
                         }
                     } else {
                         // In non-cluster mode, we send commands directly to the server
-                        if let Err(e) = self.default_route(&command).await {
+                        if let Err(e) = self.default_route(command.command()).await {
                             println!("Failed to send command: {}", e);
                             continue;
                         }
@@ -150,12 +158,7 @@ impl Broker {
     // !
     // ! If request is updating action yet receive error, we need to increase the request id
     // ! otherwise, server will not be able to process the next command
-    fn extract_req_id(
-        &mut self,
-        request_id: u64,
-        kind: &ClientAction,
-        query_io: &QueryIO,
-    ) -> Option<u64> {
+    fn extract_req_id(request_id: u64, kind: &ClientAction, query_io: &QueryIO) -> Option<u64> {
         if !kind.consensus_required() {
             return None;
         }
@@ -227,7 +230,7 @@ impl Broker {
         }
         self.node_connections
             .remove_outdated_connections(
-                self.topology.node_infos.iter().map(|n| n.peer_id).collect(),
+                self.topology.node_infos.iter().map(|n| n.peer_id.clone()).collect(),
             )
             .await;
     }
@@ -252,7 +255,7 @@ impl Broker {
         Some(())
     }
 
-    async fn determine_route(&mut self, command: &CommandToServer) -> Result<(), IoError> {
+    async fn determine_route(&mut self, command: &CommandToServer) -> Result<usize, IoError> {
         match command.input_context.kind.clone() {
             | ClientAction::Get { key }
             | ClientAction::Ttl { key }
@@ -261,58 +264,84 @@ impl Broker {
             | ClientAction::Append { key, value: _ }
             | ClientAction::SetWithExpiry { key, value: _, expiry: _ }
             | ClientAction::IndexGet { key, index: _ }
-            | ClientAction::Decr { key } => self.route_command_by_key(command, key).await,
+            | ClientAction::Decr { key } => self.route_command_by_key(command.command(), key).await,
             | ClientAction::Delete { keys }
             | ClientAction::Exists { keys }
-            | ClientAction::MGet { keys } => self.route_command_by_keys(command, keys).await,
+            | ClientAction::MGet { keys } => {
+                self.route_command_by_keys(command.command(), keys).await
+            },
             | ClientAction::Keys { pattern: _ } => self.route_command_to_all(&command).await,
-            | _ => self.default_route(&command).await,
+            | _ => self.default_route(command.command()).await,
         }
     }
-    async fn default_route(&mut self, command: &CommandToServer) -> Result<(), IoError> {
-        let Some(connection) = self.node_connections.first() else {
-            return Err(IoError::Custom("No connections available".to_string()));
-        };
-        let cmd =
-            build_command_with_request_id(&command.command, connection.request_id, &command.args);
-        connection
-            .send(MsgToServer::Command(cmd.as_bytes().to_vec()))
-            .await
-            .map_err(|e| IoError::Custom(format!("Failed to send command: {}", e)))
+    async fn route_command_by_keys(
+        &mut self,
+        command: (String, Vec<String>),
+        keys: Vec<String>,
+    ) -> Result<usize, IoError> {
+        let mut node_id_to_keys = std::collections::HashMap::new();
+        for key in keys {
+            let node_id = match self.topology.hash_ring.get_node_id_for_key(key.as_ref()) {
+                | Some(id) => id,
+                | None => {
+                    continue;
+                },
+            };
+            node_id_to_keys.entry(node_id).or_insert_with(Vec::new).push(key);
+        }
+
+        let num_of_results = node_id_to_keys.len();
+        for (node_id, keys) in node_id_to_keys.into_iter() {
+            let command = command.0.clone();
+            self.send_command((command, keys), node_id).await?;
+        }
+
+        Ok(num_of_results)
+    }
+    async fn default_route(&mut self, command: (String, Vec<String>)) -> Result<usize, IoError> {
+        let node_id = self
+            .node_connections
+            .get_first_node_id()
+            .map_err(|e| IoError::Custom(format!("Failed to get first node id: {}", e)))?;
+        self.send_command(command, node_id).await?;
+        Ok(1)
     }
 
     async fn route_command_by_key(
         &self,
-        command: &CommandToServer,
+        command: (String, Vec<String>),
         key: String,
-    ) -> Result<(), IoError> {
+    ) -> Result<usize, IoError> {
         let Some(node_id) = self.topology.hash_ring.get_node_id_for_key(key.as_ref()) else {
             return Err(IoError::Custom(format!("Failed to get node id from key {}", key)));
         };
 
-        if let Some(value) = self.send_command(command, node_id).await {
-            return value;
+        self.send_command(command, node_id).await?;
+        Ok(1)
+    }
+
+    async fn route_command_to_all(&self, command: &CommandToServer) -> Result<usize, IoError> {
+        for node_id in self.topology.node_infos.iter().map(|n| n.peer_id.clone()) {
+            self.send_command(command.command(), &node_id).await?;
         }
-        Ok(())
+        Ok(self.topology.node_infos.len())
     }
 
     async fn send_command(
         &self,
-        command: &CommandToServer,
+        command: (String, Vec<String>),
         node_id: &PeerIdentifier,
-    ) -> Option<Result<(), IoError>> {
-        let Some(connection) = self.node_connections.get(node_id) else {
-            return Some(Err(IoError::Custom(format!(
-                "Failed to get connections for node id {:?}",
-                node_id
-            ))));
-        };
-        let cmd =
-            build_command_with_request_id(&command.command, connection.request_id, &command.args);
-        if let Err(e) = connection.send(MsgToServer::Command(cmd.as_bytes().to_vec())).await {
-            return Some(Err(IoError::Custom(format!("Failed to send command: {}", e))));
-        }
-        None
+    ) -> Result<(), IoError> {
+        let connection = self.node_connections.get(node_id).or_else(|_| {
+            Err(IoError::Custom(format!("No connection found for node id: {}", node_id)))
+        })?;
+        let cmd = build_command_with_request_id(&command.0, connection.request_id, &command.1);
+
+        let _ = connection
+            .send(MsgToServer::Command(cmd.as_bytes().to_vec()))
+            .await
+            .map_err(|e| IoError::Custom(format!("Failed to send command: {}", e)))?;
+        Ok(())
     }
 }
 
@@ -336,4 +365,10 @@ pub struct CommandToServer {
     pub command: String,
     pub args: Vec<String>,
     pub input_context: InputContext,
+}
+
+impl CommandToServer {
+    pub fn command(&self) -> (String, Vec<String>) {
+        (self.command.clone(), self.args.clone())
+    }
 }

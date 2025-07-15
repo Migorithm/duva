@@ -5,7 +5,7 @@ use crate::domains::operation_logs::WriteOperation;
 use crate::domains::peers::command::{
     ElectionVote, HeartBeat, MigrateBatch, MigrationBatchAck, ReplicationAck, RequestVote,
 };
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, anyhow};
 use bytes::{Bytes, BytesMut};
 use std::fmt::Write;
 
@@ -182,17 +182,17 @@ impl QueryIO {
         Ok(result)
     }
 
-    pub fn merge(&self, other: &QueryIO) -> QueryIO {
+    pub fn merge(self, other: QueryIO) -> Result<QueryIO> {
         match (self, other) {
             | (QueryIO::Array(mut a), QueryIO::Array(b)) => {
                 a.extend(b);
-                QueryIO::Array(a)
+                Ok(QueryIO::Array(a))
             },
             | (QueryIO::Array(mut a), b) => {
                 a.push(b.clone());
-                QueryIO::Array(a)
+                Ok(QueryIO::Array(a))
             },
-            | (a, _) => a.clone(),
+            | _ => Err(anyhow!("Only Arrays can be merged")),
         }
     }
 }
@@ -487,7 +487,6 @@ mod test {
     use crate::domains::peers::command::BannedPeer;
     use crate::domains::peers::identifier::PeerIdentifier;
     use crate::domains::peers::peer::PeerState;
-    use crate::prelude::NodeReplInfo;
     use uuid::Uuid;
 
     #[test]
@@ -775,14 +774,14 @@ mod test {
         //GIVEN
         let connected_peers = vec![
             NodeReplInfo {
-                peer_id: "localhost:3333".into(),
-                repl_id: ReplicationId::Key(Uuid::now_v7().to_string()).to_string(),
-                repl_role: ReplicationRole::Follower.to_string(),
+                peer_id: PeerIdentifier("localhost:3333".to_string()),
+                repl_id: ReplicationId::Key(Uuid::now_v7().to_string()),
+                repl_role: ReplicationRole::Follower,
             },
             NodeReplInfo {
-                peer_id: "localhost:2222".into(),
-                repl_id: ReplicationId::Key(Uuid::now_v7().to_string()).to_string(),
-                repl_role: ReplicationRole::Follower.to_string(),
+                peer_id: PeerIdentifier("localhost:2222".to_string()),
+                repl_id: ReplicationId::Key(Uuid::now_v7().to_string()),
+                repl_role: ReplicationRole::Follower,
             },
         ];
         let hash_ring = HashRing::default();
@@ -790,7 +789,7 @@ mod test {
             .iter()
             .map(|peer| {
                 NodeReplInfo::from_peer_state(&PeerState::new(
-                    &peer,
+                    &peer.peer_id,
                     0,
                     ReplicationId::Key(Uuid::now_v7().to_string()),
                     ReplicationRole::Follower,
