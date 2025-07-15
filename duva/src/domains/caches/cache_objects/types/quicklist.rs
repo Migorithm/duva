@@ -123,7 +123,7 @@ struct QuickListNode {
 
 impl QuickListNode {
     /// Ensures the node is decompressed. Must be called before any read/write.
-    fn ensure_decompressed(&mut self, fill_factor: &FillFactor) {
+    fn ensure_decompressed(&mut self, fill_factor: &FillFactor) -> &mut Ziplist {
         let current_data =
             std::mem::replace(&mut self.data, NodeData::Uncompressed(Ziplist::default()));
         self.data = match current_data {
@@ -138,6 +138,9 @@ impl QuickListNode {
             },
             | uncompressed => uncompressed,
         };
+
+        let NodeData::Uncompressed(ziplist) = &mut self.data else { panic!() };
+        ziplist
     }
 
     /// Attempts to compress the node.
@@ -308,21 +311,13 @@ impl QuickList {
         if should_merge {
             // First, remove the next node from the list.
             let mut removed_node = self.nodes.remove(index + 1).unwrap();
-            removed_node.ensure_decompressed(&self.fill_factor);
+            let removed_ziplist = removed_node.ensure_decompressed(&self.fill_factor);
 
             // Now, get mutable access to the current node to merge into.
             let current_node = &mut self.nodes[index];
-            current_node.ensure_decompressed(&self.fill_factor);
 
-            // Use pattern matching to get the ziplists and perform the merge.
-            if let (
-                NodeData::Uncompressed(current_ziplist),
-                NodeData::Uncompressed(removed_ziplist),
-            ) = (&mut current_node.data, &mut removed_node.data)
-            {
-                current_ziplist.extend_from_slice(removed_ziplist);
-                current_node.entry_count += removed_node.entry_count;
-            }
+            current_node.ensure_decompressed(&self.fill_factor).extend_from_slice(removed_ziplist);
+            current_node.entry_count += removed_node.entry_count;
 
             self.return_node(removed_node);
         }
@@ -451,21 +446,21 @@ impl QuickList {
             }
 
             // 3. Decompress the node and read its entries
-            node.ensure_decompressed(&self.fill_factor);
-            if let NodeData::Uncompressed(ziplist) = &node.data {
-                let entries = ziplist.to_vec();
-                for (i, entry) in entries.iter().enumerate() {
-                    let overall_index = current_index + i;
-                    if overall_index >= start && overall_index <= stop {
-                        // Clone the Bytes object and add it to our result.
-                        // Cloning is cheap (reference counted).
-                        result.push(entry.clone());
-                    }
-                    if overall_index >= stop {
-                        break;
-                    }
+            let ziplist = node.ensure_decompressed(&self.fill_factor);
+
+            let entries = ziplist.to_vec();
+            for (i, entry) in entries.iter().enumerate() {
+                let overall_index = current_index + i;
+                if overall_index >= start && overall_index <= stop {
+                    // Clone the Bytes object and add it to our result.
+                    // Cloning is cheap (reference counted).
+                    result.push(entry.clone());
+                }
+                if overall_index >= stop {
+                    break;
                 }
             }
+
             current_index += node_len;
         }
         result
@@ -522,10 +517,8 @@ impl QuickList {
         let mut current_index = 0;
         for node in &mut self.nodes {
             if current_index + node.entry_count > index {
-                node.ensure_decompressed(&self.fill_factor);
-                if let NodeData::Uncompressed(ziplist) = &node.data {
-                    return ziplist.to_vec().get(index - current_index).cloned();
-                }
+                let ziplist = node.ensure_decompressed(&self.fill_factor);
+                return ziplist.to_vec().get(index - current_index).cloned();
             }
             current_index += node.entry_count;
         }
@@ -547,45 +540,44 @@ impl QuickList {
 
         // Find the node containing this index
         let mut current_index = 0;
+
         for node in &mut self.nodes {
-            if current_index + node.entry_count > abs_index {
-                let local_index = abs_index - current_index;
-
-                node.ensure_decompressed(&self.fill_factor);
-                if let NodeData::Uncompressed(ziplist) = &mut node.data {
-                    let new_bytes = Bytes::from(value);
-                    let mut cursor = 0;
-
-                    // Skip to the target entry
-                    for _ in 0..local_index {
-                        let entry_len =
-                            u32::from_le_bytes(ziplist[cursor..cursor + 4].try_into().unwrap())
-                                as usize;
-                        cursor += 4 + entry_len;
-                    }
-
-                    let old_entry_len =
-                        u32::from_le_bytes(ziplist[cursor..cursor + 4].try_into().unwrap())
-                            as usize;
-
-                    if new_bytes.len() == old_entry_len {
-                        // Same size - overwrite in place
-                        ziplist[cursor + 4..cursor + 4 + old_entry_len].copy_from_slice(&new_bytes);
-                    } else {
-                        // Different size - rebuild ziplist
-                        let mut new_ziplist =
-                            Vec::with_capacity(ziplist.len() - old_entry_len + new_bytes.len());
-                        new_ziplist.extend_from_slice(&ziplist[0..cursor]);
-                        new_ziplist.extend_from_slice(&(new_bytes.len() as u32).to_le_bytes());
-                        new_ziplist.extend_from_slice(&new_bytes);
-                        new_ziplist.extend_from_slice(&ziplist[cursor + 4 + old_entry_len..]);
-                        ziplist.0 = new_ziplist;
-                    }
-
-                    return Ok(());
-                }
+            if current_index + node.entry_count <= abs_index {
+                current_index += node.entry_count;
+                continue;
             }
-            current_index += node.entry_count;
+
+            let local_index = abs_index - current_index;
+
+            let ziplist = node.ensure_decompressed(&self.fill_factor);
+            let new_bytes = Bytes::from(value);
+            let mut cursor = 0;
+
+            // Skip to the target entry
+            for _ in 0..local_index {
+                let entry_len =
+                    u32::from_le_bytes(ziplist[cursor..cursor + 4].try_into().unwrap()) as usize;
+                cursor += 4 + entry_len;
+            }
+
+            let old_entry_len =
+                u32::from_le_bytes(ziplist[cursor..cursor + 4].try_into().unwrap()) as usize;
+
+            if new_bytes.len() == old_entry_len {
+                // Same size - overwrite in place
+                ziplist[cursor + 4..cursor + 4 + old_entry_len].copy_from_slice(&new_bytes);
+            } else {
+                // Different size - rebuild ziplist
+                let mut new_ziplist =
+                    Vec::with_capacity(ziplist.len() - old_entry_len + new_bytes.len());
+                new_ziplist.extend_from_slice(&ziplist[0..cursor]);
+                new_ziplist.extend_from_slice(&(new_bytes.len() as u32).to_le_bytes());
+                new_ziplist.extend_from_slice(&new_bytes);
+                new_ziplist.extend_from_slice(&ziplist[cursor + 4 + old_entry_len..]);
+                ziplist.0 = new_ziplist;
+            }
+
+            return Ok(());
         }
 
         Err(anyhow::anyhow!("Index not found"))
