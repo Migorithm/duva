@@ -188,9 +188,14 @@ impl QueryIO {
                 a.extend(b);
                 Ok(QueryIO::Array(a))
             },
+            | (QueryIO::Null, a) | (a, QueryIO::Null) => Ok(a),
             | (QueryIO::Array(mut a), b) => {
                 a.push(b.clone());
                 Ok(QueryIO::Array(a))
+            },
+            | (a, QueryIO::Array(mut b)) => {
+                b.push(a.clone());
+                Ok(QueryIO::Array(b))
             },
             | _ => Err(anyhow!("Only Arrays can be merged")),
         }
@@ -906,5 +911,57 @@ mod test {
         };
         assert_eq!(deserialized_migration_batch_ack.batch_id, migration_batch_ack.batch_id);
         assert_eq!(deserialized_migration_batch_ack.success, migration_batch_ack.success);
+    }
+
+    #[test]
+    fn test_merge_arrays() {
+        // GIVEN
+        let array1 =
+            QueryIO::Array(vec![QueryIO::BulkString("a".into()), QueryIO::BulkString("b".into())]);
+        let array2 =
+            QueryIO::Array(vec![QueryIO::BulkString("c".into()), QueryIO::BulkString("d".into())]);
+
+        // WHEN
+        let merged = array1.merge(array2).unwrap();
+
+        // THEN
+        assert_eq!(
+            merged,
+            QueryIO::Array(vec![
+                QueryIO::BulkString("a".into()),
+                QueryIO::BulkString("b".into()),
+                QueryIO::BulkString("c".into()),
+                QueryIO::BulkString("d".into())
+            ])
+        );
+    }
+
+    #[test]
+    fn test_merge_array_with_single_element() {
+        // GIVEN
+        let array = QueryIO::Array(vec![QueryIO::BulkString("a".into())]);
+        let single_element = QueryIO::BulkString("b".into());
+
+        // WHEN
+        let merged = array.merge(single_element).unwrap();
+
+        // THEN
+        assert_eq!(
+            merged,
+            QueryIO::Array(vec![QueryIO::BulkString("a".into()), QueryIO::BulkString("b".into())])
+        );
+    }
+
+    #[test]
+    fn test_merge_null_with_array() {
+        // GIVEN
+        let array = QueryIO::Array(vec![QueryIO::BulkString("a".into())]);
+        let null_value = QueryIO::Null;
+
+        // WHEN
+        let merged = array.clone().merge(null_value).unwrap();
+
+        // THEN
+        assert_eq!(merged, array);
     }
 }
