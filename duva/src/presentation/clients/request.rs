@@ -79,7 +79,7 @@ impl ClientAction {
             | ClientAction::RPushX { key, value } => WriteRequest::RPush { key, value },
             | ClientAction::RPop { key, count } => WriteRequest::LPop { key, count },
             | ClientAction::LTrim { key, start, end } => WriteRequest::LTrim { key, start, end },
-
+            | ClientAction::LSet { key, index, value } => WriteRequest::LSet { key, index, value },
             | _ => {
                 debug_assert!(false, "to_write_request called on non-write action: {self:?}");
                 unreachable!(
@@ -108,6 +108,7 @@ impl ClientAction {
                 | ClientAction::RPushX { .. }
                 | ClientAction::RPop { .. }
                 | ClientAction::LTrim { .. }
+                | ClientAction::LSet { .. }
         )
     }
 }
@@ -385,6 +386,13 @@ pub fn extract_action(action: &str, args: &[&str]) -> anyhow::Result<ClientActio
             let key = args[0].to_string();
             let index = args[1].parse::<isize>().context("Invalid index")?;
             Ok(ClientAction::LIndex { key, index })
+        },
+        | "LSET" => {
+            require_exact_args(3)?;
+            let key = args[0].to_string();
+            let index = args[1].parse::<isize>().context("Invalid index")?;
+            let value = args[2].to_string();
+            Ok(ClientAction::LSet { key, index, value })
         },
 
         // Add other commands as needed

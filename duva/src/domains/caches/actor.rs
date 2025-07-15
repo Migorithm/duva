@@ -225,13 +225,16 @@ impl CacheActor {
         &mut self,
         key: String,
         index: isize,
-        value: String,
+        val: String,
     ) -> Result<(), anyhow::Error> {
-        let Some(CacheValue { value: TypedValue::List(list), .. }) = self.cache.get_mut(&key)
-        else {
+        let Some(var) = self.cache.get_mut(&key) else {
+            return Err(anyhow::anyhow!("ERR no such key"));
+        };
+        let CacheValue { value: TypedValue::List(list), .. } = var else {
             return Err(anyhow::anyhow!(WRONG_TYPE_ERR_MSG));
         };
-        list.lset(index, value)
+
+        list.lset(index, val)
     }
 }
 

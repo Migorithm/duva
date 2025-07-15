@@ -537,28 +537,57 @@ impl QuickList {
             return Err(anyhow::anyhow!("List is empty"));
         }
 
-        // Calculate absolute index
+        // Convert to absolute index
         let len = self.len as isize;
-        let index = if index < 0 { (len + index).max(0) } else { index } as usize;
+        let abs_index = if index < 0 { (len + index).max(0) } else { index } as usize;
 
-        if index >= self.len {
+        if abs_index >= self.len {
             return Err(anyhow::anyhow!("Index out of bounds"));
         }
 
+        // Find the node containing this index
         let mut current_index = 0;
         for node in &mut self.nodes {
-            if current_index + node.entry_count > index {
+            if current_index + node.entry_count > abs_index {
+                let local_index = abs_index - current_index;
+
                 node.ensure_decompressed(&self.fill_factor);
                 if let NodeData::Uncompressed(ziplist) = &mut node.data {
-                    let mut entries = ziplist.to_vec();
-                    if let Some(entry) = entries.get_mut(index - current_index) {
-                        *entry = Bytes::from(value.clone());
-                        return Ok(());
+                    let new_bytes = Bytes::from(value);
+                    let mut cursor = 0;
+
+                    // Skip to the target entry
+                    for _ in 0..local_index {
+                        let entry_len =
+                            u32::from_le_bytes(ziplist[cursor..cursor + 4].try_into().unwrap())
+                                as usize;
+                        cursor += 4 + entry_len;
                     }
+
+                    let old_entry_len =
+                        u32::from_le_bytes(ziplist[cursor..cursor + 4].try_into().unwrap())
+                            as usize;
+
+                    if new_bytes.len() == old_entry_len {
+                        // Same size - overwrite in place
+                        ziplist[cursor + 4..cursor + 4 + old_entry_len].copy_from_slice(&new_bytes);
+                    } else {
+                        // Different size - rebuild ziplist
+                        let mut new_ziplist =
+                            Vec::with_capacity(ziplist.len() - old_entry_len + new_bytes.len());
+                        new_ziplist.extend_from_slice(&ziplist[0..cursor]);
+                        new_ziplist.extend_from_slice(&(new_bytes.len() as u32).to_le_bytes());
+                        new_ziplist.extend_from_slice(&new_bytes);
+                        new_ziplist.extend_from_slice(&ziplist[cursor + 4 + old_entry_len..]);
+                        ziplist.0 = new_ziplist;
+                    }
+
+                    return Ok(());
                 }
             }
             current_index += node.entry_count;
         }
+
         Err(anyhow::anyhow!("Index not found"))
     }
 }

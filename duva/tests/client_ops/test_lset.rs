@@ -6,20 +6,22 @@ fn run_lset(env: ServerEnv) -> anyhow::Result<()> {
 
     let mut h = Client::new(process.port);
     let res = h.send_and_get(format!("RPUSH test one two three"));
-    assert_eq!(res, "(integer) 5");
+    assert_eq!(res, "(integer) 3");
 
     //WHEN & ASSERT
     assert_eq!(h.send_and_get(format!("LSET test 0 four")), "OK");
     assert_eq!(h.send_and_get(format!("LSET test -2 five")), "OK");
     assert_eq!(
-        h.send_and_get(format!("LRANGE test 0 -1")),
-        "1) \"four\"\n2) \"five\"\n3) \"three\""
+        h.send_and_get_vec(format!("LRANGE test 0 -1"), 3),
+        vec!["1) \"four\"", "2) \"five\"", "3) \"three\""]
     );
 
     // ERROR CASE
+
+    assert_eq!(h.send_and_get(format!("LSET test 10 error")), "(error) Index out of bounds");
     assert_eq!(h.send_and_get(format!("LSET x 1 2")), "(error) ERR no such key");
 
-    assert_eq!(h.send_and_get(format!("SET x 1 2")), "OK");
+    assert_eq!(h.send_and_get(format!("SET x 1")), "OK");
     assert_eq!(
         h.send_and_get(format!("LSET x 0 2")),
         "(error) WRONGTYPE Operation against a key holding the wrong kind of value"
