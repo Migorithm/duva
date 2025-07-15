@@ -14,6 +14,7 @@ mod test_lpop;
 mod test_lpush;
 mod test_lpushx;
 mod test_lrange;
+mod test_lset;
 mod test_ltrim;
 mod test_replication_info;
 mod test_rpop;
