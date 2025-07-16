@@ -14,7 +14,7 @@ fn run_discover_leader(with_append_only: bool) -> anyhow::Result<()> {
     let [mut leader_p, follower1, follower2] =
         form_cluster([&mut leader_env, &mut follower1_env, &mut follower2_env]);
 
-    let mut h = Client::new_with_cluster_mode(leader_p.port, true);
+    let mut h = Client::new(leader_p.port);
 
     // generate keys
     let num_of_keys = 1000;

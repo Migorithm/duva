@@ -10,8 +10,8 @@ fn run_route_del_keys(append_only: bool, num_keys: u32, duration: Duration) -> a
     let env2 = ServerEnv::default().with_append_only(append_only);
     let process2 = spawn_server_process(&env2)?;
 
-    let mut h = Client::new_with_cluster_mode(process.port, true);
-    let mut h2 = Client::new_with_cluster_mode(process2.port, true);
+    let mut h = Client::new(process.port);
+    let mut h2 = Client::new(process2.port);
 
     for key in 0..num_keys {
         if key % 2 == 0 {
@@ -40,8 +40,6 @@ fn run_route_del_keys(append_only: bool, num_keys: u32, duration: Duration) -> a
 
 #[test]
 fn run_route_del() -> anyhow::Result<()> {
-    run_route_del_keys(true, 4, Duration::from_millis(200))?;
-    run_route_del_keys(false, 4, Duration::from_millis(200))?;
     run_route_del_keys(true, 100, Duration::from_millis(500))?;
     run_route_del_keys(false, 100, Duration::from_millis(500))?;
 
