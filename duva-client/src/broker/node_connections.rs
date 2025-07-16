@@ -92,7 +92,6 @@ impl NodeConnections {
         }
     }
 
-    #[cfg(test)]
     pub(crate) fn is_empty(&self) -> bool {
         self.connections.is_empty()
     }

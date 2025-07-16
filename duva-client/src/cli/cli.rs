@@ -9,21 +9,10 @@ pub(crate) struct Cli {
     port: u16,
     #[arg(short, long, default_value = "127.0.0.1")]
     host: String,
-    #[arg(
-        short,
-        long,
-        help = "Enable cluster mode; Accept only leader node connection",
-        default_value = "false"
-    )]
-    cluster_mode: bool,
 }
 
 impl Cli {
     pub(crate) fn address(&self) -> PeerIdentifier {
         PeerIdentifier::new(self.host.as_str(), self.port)
-    }
-
-    pub(crate) fn is_cluster_mode(&self) -> bool {
-        self.cluster_mode
     }
 }

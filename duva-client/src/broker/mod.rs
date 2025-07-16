@@ -39,26 +39,13 @@ pub struct Broker {
 }
 
 impl Broker {
-    pub(crate) async fn new(
-        server_addr: &PeerIdentifier,
-        cluster_mode: bool,
-    ) -> anyhow::Result<Self> {
+    pub(crate) async fn new(server_addr: &PeerIdentifier) -> anyhow::Result<Self> {
         let (r, w, auth_response) = Broker::authenticate(&server_addr.clone(), None).await?;
 
         let (broker_tx, rx) = tokio::sync::mpsc::channel::<BrokerMessage>(100);
 
-        let mut replication_id = None;
-        if cluster_mode {
-            let Some(repl_id) = auth_response.topology.hash_ring.get_replication_id(&server_addr)
-            else {
-                return Err(anyhow!(
-                    "Cannot connect to replica: {}, try to connect to Leader",
-                    server_addr
-                ));
-            };
-            replication_id = Some(repl_id);
-        };
-
+        let replication_id = auth_response.topology.hash_ring.get_replication_id(&server_addr);
+        let cluster_mode = replication_id.is_some();
         Ok(Broker {
             tx: broker_tx.clone(),
             rx,
@@ -193,13 +180,9 @@ impl Broker {
     // 3. after leader added to topology, and connection is lost, then do nothing (TopologyChange happened, new leader in topology)
     async fn discover_new_leader(&mut self, replication_id: ReplicationId) -> Result<(), IoError> {
         // remove disconnected leader connection
-        let Some(peer_id) = self.topology.hash_ring.get_node_id(&replication_id) else {
-            return Err(IoError::Custom(format!(
-                "Failed to get peer id for replication id: {}",
-                replication_id
-            )));
+        if let Some(peer_id) = self.topology.hash_ring.get_node_id(&replication_id) {
+            self.node_connections.remove_connection(peer_id).await;
         };
-        self.node_connections.remove_connection(peer_id).await;
 
         // remove connections to nodes that are not in the topology anymore
         for node in self.topology.node_infos.clone() {
@@ -213,10 +196,10 @@ impl Broker {
                 return Ok(());
             }
         }
-        Err(IoError::Custom(format!(
-            "Failed to discover new leader for replication id: {}",
-            replication_id
-        )))
+        if self.node_connections.is_empty() {
+            return Err(IoError::Custom("No connections available for replication id".to_string()));
+        }
+        Ok(())
     }
 
     async fn update_leader_connections(&mut self) {
@@ -291,8 +274,8 @@ impl Broker {
         }
 
         let num_of_results = node_id_to_keys.len();
-        for (node_id, keys) in node_id_to_keys.into_iter() {
-            let new_input = Input { command: input.command.clone(), args: keys };
+        for (node_id, routed_keys) in node_id_to_keys.into_iter() {
+            let new_input = Input { command: input.command.clone(), args: routed_keys };
             self.send_command_to_node(&new_input, node_id).await?;
         }
 

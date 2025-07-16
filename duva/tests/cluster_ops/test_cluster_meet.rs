@@ -129,7 +129,8 @@ fn run_cluster_meet_with_migration(append_only: bool) -> anyhow::Result<()> {
     assert!(node1_keys != (0..500).collect::<Vec<_>>());
     assert!(node2_keys != (500..1000).collect::<Vec<_>>());
     // verify that all keys are accessible from both nodes
-    assert!(dbg!(keys_accessible_from_node1 + keys_accessible_from_node2) == 1000);
+    // now it is 2000 as routing works
+    assert!(dbg!(keys_accessible_from_node1 + keys_accessible_from_node2) == 2000);
 
     Ok(())
 }

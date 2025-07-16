@@ -18,12 +18,8 @@ pub struct ClientController<T> {
 }
 
 impl<T> ClientController<T> {
-    pub async fn new(
-        editor: T,
-        server_addr: &PeerIdentifier,
-        cluster_mode: bool,
-    ) -> anyhow::Result<Self> {
-        let broker = Broker::new(server_addr, cluster_mode).await?;
+    pub async fn new(editor: T, server_addr: &PeerIdentifier) -> anyhow::Result<Self> {
+        let broker = Broker::new(server_addr).await?;
         let broker_tx = broker.tx.clone();
         tokio::spawn(broker.run());
         Ok(Self { broker_tx, target: editor })
