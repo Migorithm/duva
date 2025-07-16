@@ -44,7 +44,6 @@ pub enum ClientAction {
     RPushX { key: String, value: Vec<String> },
     RPop { key: String, count: usize },
     LSet { key: String, index: isize, value: String },
-
     LTrim { key: String, start: isize, end: isize },
     LLen { key: String },
     LRange { key: String, start: isize, end: isize },
