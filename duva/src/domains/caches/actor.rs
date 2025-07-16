@@ -143,6 +143,18 @@ impl CacheActor {
 
         Ok(list.llen())
     }
+    pub(crate) fn rpushx(&mut self, key: String, values: Vec<String>) -> usize {
+        let mut val = self.cache.get_mut(&key);
+
+        let Some(CacheValue { value: TypedValue::List(list), .. }) = val.as_mut() else {
+            return 0;
+        };
+        for v in values {
+            list.rpush(v.into());
+        }
+
+        list.llen()
+    }
 
     pub(crate) fn pop(&mut self, key: String, count: usize, from_left: bool) -> Vec<String> {
         let val = self.cache.remove(&key);

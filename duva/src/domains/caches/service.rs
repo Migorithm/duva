@@ -79,6 +79,9 @@ impl CacheActor {
                 | CacheCommand::RPush { key, values, callback } => {
                     let _ = callback.send(self.rpush(key, values));
                 },
+                | CacheCommand::RPushX { key, values, callback } => {
+                    let _ = callback.send(self.rpushx(key, values));
+                },
                 | CacheCommand::RPop { key, count, callback } => {
                     let _ = callback.send(self.pop(key, count, false));
                 },

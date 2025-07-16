@@ -125,6 +125,21 @@ impl CacheManager {
         let current_len = rx.await??;
         Ok(IndexedValueCodec::encode(current_len, unwrap))
     }
+    pub(crate) async fn route_rpushx(
+        &self,
+        key: String,
+        value: Vec<String>,
+        current_idx: u64,
+    ) -> Result<String> {
+        let (tx, rx) = tokio::sync::oneshot::channel();
+
+        self.select_shard(&key)
+            .send(CacheCommand::RPushX { key, values: value, callback: tx.into() })
+            .await?;
+        let current_len = rx.await?;
+
+        Ok(IndexedValueCodec::encode(current_len, current_idx))
+    }
 
     pub(crate) async fn route_rpop(&self, key: String, count: usize) -> Result<Vec<String>> {
         let (tx, rx) = tokio::sync::oneshot::channel();

@@ -19,6 +19,7 @@ mod test_ltrim;
 mod test_replication_info;
 mod test_rpop;
 mod test_rpush;
+mod test_rpushx;
 mod test_set_get;
 mod test_snapshot_persists_and_recovers_state;
 mod test_ttl;
