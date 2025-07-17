@@ -120,9 +120,7 @@ impl Broker {
                     | _ => {},
                 },
                 | BrokerMessage::ToServer(mut command) => {
-                    let result = self.route_command(&command).await;
-
-                    match result {
+                    match self.route_command(&command).await {
                         | Ok(num_of_results) => {
                             command.input_context.num_of_results = num_of_results;
                         },
