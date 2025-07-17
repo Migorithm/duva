@@ -12,7 +12,6 @@ use crate::broker::write_stream::MsgToServer;
 use duva::domains::caches::cache_manager::IndexedValueCodec;
 use duva::domains::cluster_actors::replication::{ReplicationId, ReplicationRole};
 use duva::domains::{IoError, query_io::QueryIO};
-use duva::prelude::anyhow::anyhow;
 use duva::prelude::tokio::net::TcpStream;
 use duva::prelude::tokio::sync::mpsc::Receiver;
 use duva::prelude::tokio::sync::mpsc::Sender;
@@ -121,12 +120,12 @@ impl Broker {
                     | _ => {},
                 },
                 | BrokerMessage::ToServer(mut command) => {
-                    let result: Result<usize, IoError>;
-                    if self.cluster_mode {
-                        result = self.determine_route(&command).await
+                    let result = if self.cluster_mode {
+                        self.determine_route(&command).await
                     } else {
-                        result = self.default_route(&command.input).await
-                    }
+                        self.default_route(&command.input).await
+                    };
+
                     match result {
                         | Ok(num_of_results) => {
                             command.input_context.num_of_results = num_of_results;
