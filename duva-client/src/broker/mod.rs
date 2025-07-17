@@ -120,7 +120,7 @@ impl Broker {
                     | _ => {},
                 },
                 | BrokerMessage::ToServer(mut command) => {
-                    let result = self.determine_route(&command).await;
+                    let result = self.route_command(&command).await;
 
                     match result {
                         | Ok(num_of_results) => {
@@ -234,7 +234,7 @@ impl Broker {
         Some(())
     }
 
-    async fn determine_route(&mut self, command: &CommandToServer) -> Result<usize, IoError> {
+    async fn route_command(&mut self, command: &CommandToServer) -> Result<usize, IoError> {
         let input = &command.input;
 
         if !self.cluster_mode {
@@ -280,6 +280,8 @@ impl Broker {
 
         Ok(num_of_results)
     }
+
+    // 'default_route' is used when given request does NOT have to be sent to a specific node
     async fn default_route(&mut self, input: &Input) -> Result<usize, IoError> {
         let node_id = self
             .node_connections
