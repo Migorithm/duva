@@ -120,11 +120,7 @@ impl Broker {
                     | _ => {},
                 },
                 | BrokerMessage::ToServer(mut command) => {
-                    let result = if self.cluster_mode {
-                        self.determine_route(&command).await
-                    } else {
-                        self.default_route(&command.input).await
-                    };
+                    let result = self.determine_route(&command).await;
 
                     match result {
                         | Ok(num_of_results) => {
@@ -240,6 +236,10 @@ impl Broker {
 
     async fn determine_route(&mut self, command: &CommandToServer) -> Result<usize, IoError> {
         let input = &command.input;
+
+        if !self.cluster_mode {
+            return self.default_route(input).await;
+        }
         match command.input_context.kind.clone() {
             | ClientAction::Get { key }
             | ClientAction::Ttl { key }
