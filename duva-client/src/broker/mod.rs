@@ -3,12 +3,10 @@ mod node_connections;
 mod read_stream;
 mod write_stream;
 
-use crate::command::{InputContext, RoutingRule, build_command_with_request_id};
-use collections::HashMap;
-use std::collections;
-
 use crate::broker::node_connections::NodeConnections;
 use crate::broker::write_stream::MsgToServer;
+use crate::command::{InputContext, RoutingRule, build_command_with_request_id};
+use collections::HashMap;
 use duva::domains::caches::cache_manager::IndexedValueCodec;
 use duva::domains::cluster_actors::replication::{ReplicationId, ReplicationRole};
 use duva::domains::{IoError, query_io::QueryIO};
@@ -23,9 +21,12 @@ use duva::{
     domains::TSerdeReadWrite,
     prelude::{AuthRequest, AuthResponse},
 };
+use futures::future::{join_all, try_join_all};
+use futures::try_join;
 use input_queue::InputQueue;
 use node_connections::NodeConnection;
 use read_stream::ServerStreamReader;
+use std::collections;
 use write_stream::ServerStreamWriter;
 
 pub struct Broker {
@@ -268,12 +269,12 @@ impl Broker {
 
         let num_of_results = node_id_to_keys.len();
 
-        // TODO apply join_all or try_join_all
-        for (node_id, routed_keys) in node_id_to_keys.into_iter() {
+        try_join_all(node_id_to_keys.iter().map(|(node_id, routed_keys)| {
             // TODO conversion shouldn't happen here or datastructure needs to be revisited
-            let new_input = Input { command: input.command.clone(), args: routed_keys };
-            self.send_command_to_node(new_input, node_id).await?;
-        }
+            let new_input = Input { command: input.command.clone(), args: routed_keys.clone() };
+            self.send_command_to_node(new_input, node_id)
+        }))
+        .await?;
 
         Ok(num_of_results)
     }
@@ -296,11 +297,13 @@ impl Broker {
         Ok(1)
     }
 
-    // TODO apply join_all or try_join_all
     async fn route_command_to_all(&self, input: Input) -> Result<usize, IoError> {
-        for node_id in self.node_connections.keys() {
-            self.send_command_to_node(input.clone(), &node_id).await?;
-        }
+        try_join_all(
+            self.node_connections
+                .keys()
+                .map(|node_id| self.send_command_to_node(input.clone(), node_id)),
+        )
+        .await?;
         Ok(self.node_connections.len())
     }
 
