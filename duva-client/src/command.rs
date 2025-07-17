@@ -42,6 +42,7 @@ impl InputContext {
         }
         false
     }
+
     pub(crate) fn get_result(&self) -> anyhow::Result<QueryIO> {
         match self.kind {
             | ClientAction::Keys { pattern: _ } | ClientAction::MGet { keys: _ } => {
@@ -75,6 +76,40 @@ impl InputContext {
                 }
                 Ok(self.results[0].clone())
             },
+        }
+    }
+}
+
+#[derive(Debug, Default)]
+pub enum RoutingRule {
+    #[default]
+    Any,
+    Single(String),
+    // TODO merge Signle and Multi
+    Multi(Vec<String>),
+    BroadCast,
+}
+impl From<&ClientAction> for RoutingRule {
+    fn from(value: &ClientAction) -> Self {
+        match value {
+            // commands that requires single-key routing
+            | ClientAction::Get { key, .. }
+            | ClientAction::Ttl { key, .. }
+            | ClientAction::Incr { key, .. }
+            | ClientAction::Set { key, .. }
+            | ClientAction::Append { key, .. }
+            | ClientAction::SetWithExpiry { key, .. }
+            | ClientAction::IndexGet { key, .. }
+            | ClientAction::Decr { key, .. } => Self::Single(key.clone()),
+
+            // commands thar require multi-key-routings
+            | ClientAction::Delete { keys }
+            | ClientAction::Exists { keys }
+            | ClientAction::MGet { keys } => Self::Multi(keys.clone()),
+
+            // broadcast
+            | ClientAction::Keys { .. } => Self::BroadCast,
+            | _ => Self::Any,
         }
     }
 }

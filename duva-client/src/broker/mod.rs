@@ -3,7 +3,7 @@ mod node_connections;
 mod read_stream;
 mod write_stream;
 
-use crate::command::{InputContext, build_command_with_request_id};
+use crate::command::{InputContext, RoutingRule, build_command_with_request_id};
 use collections::HashMap;
 use std::collections;
 
@@ -120,7 +120,7 @@ impl Broker {
                     | _ => {},
                 },
                 | BrokerMessage::ToServer(mut command) => {
-                    match self.route_command(&command).await {
+                    match self.route_command(command.input, command.routing_rule).await {
                         | Ok(num_of_results) => {
                             command.input_context.num_of_results = num_of_results;
                         },
@@ -232,55 +232,62 @@ impl Broker {
         Some(())
     }
 
-    async fn route_command(&mut self, command: &CommandToServer) -> Result<usize, IoError> {
-        let input = &command.input;
-
+    // Return error in the following scenarios:
+    // - if key is found but connection is lost/disconnected
+    async fn route_command(
+        &mut self,
+        input: Input,
+        routing_rule: RoutingRule,
+    ) -> Result<usize, IoError> {
         if !self.cluster_mode {
             return self.default_route(input).await;
         }
-        match command.input_context.kind.clone() {
-            | ClientAction::Get { key }
-            | ClientAction::Ttl { key }
-            | ClientAction::Incr { key }
-            | ClientAction::Set { key, value: _ }
-            | ClientAction::Append { key, value: _ }
-            | ClientAction::SetWithExpiry { key, value: _, expiry: _ }
-            | ClientAction::IndexGet { key, index: _ }
-            | ClientAction::Decr { key } => self.route_command_by_key(input, key).await,
-            | ClientAction::Delete { keys }
-            | ClientAction::Exists { keys }
-            | ClientAction::MGet { keys } => self.route_command_by_keys(input, keys).await,
-            | ClientAction::Keys { pattern: _ } => self.route_command_to_all(input).await,
-            | _ => self.default_route(input).await,
+        match routing_rule {
+            | RoutingRule::Any => self.default_route(input).await,
+            | RoutingRule::Single(key) => self.route_command_by_key(input, key).await,
+
+            | RoutingRule::Multi(keys) => self.route_command_by_keys(input, keys).await,
+            | RoutingRule::BroadCast => self.route_command_to_all(input).await,
         }
     }
+
+    // TODO merge route_command_by_keys with route_command_by_key
     async fn route_command_by_keys(
         &mut self,
-        input: &Input,
+        input: Input,
         keys: Vec<String>,
     ) -> Result<usize, IoError> {
         let mut node_id_to_keys = HashMap::new();
         for key in keys {
-            let node_id = match self.topology.hash_ring.get_node_id_for_key(key.as_ref()) {
-                | Some(id) => id,
-                | None => {
-                    continue;
-                },
-            };
+            let node_id = self
+                .topology
+                .hash_ring
+                .get_node_id_for_key(key.as_ref())
+                .ok_or(IoError::Custom(format!("Failed to get node id from key {}", key)))?;
+
             node_id_to_keys.entry(node_id).or_insert_with(Vec::new).push(key);
         }
 
         let num_of_results = node_id_to_keys.len();
         for (node_id, routed_keys) in node_id_to_keys.into_iter() {
+            // TODO conversion shouldn't happen here or datastructure needs to be revisited
             let new_input = Input { command: input.command.clone(), args: routed_keys };
-            self.send_command_to_node(&new_input, node_id).await?;
+            self.send_command_to_node(new_input, node_id).await?;
         }
 
         Ok(num_of_results)
     }
 
+    async fn route_command_by_key(&self, input: Input, key: String) -> Result<usize, IoError> {
+        let Some(node_id) = self.topology.hash_ring.get_node_id_for_key(key.as_ref()) else {
+            return Err(IoError::Custom(format!("Failed to get node id from key {}", key)));
+        };
+        self.send_command_to_node(input, node_id).await?;
+        Ok(1)
+    }
+
     // 'default_route' is used when given request does NOT have to be sent to a specific node
-    async fn default_route(&mut self, input: &Input) -> Result<usize, IoError> {
+    async fn default_route(&mut self, input: Input) -> Result<usize, IoError> {
         let node_id = self
             .node_connections
             .get_first_node_id()
@@ -289,34 +296,22 @@ impl Broker {
         Ok(1)
     }
 
-    async fn route_command_by_key(&self, input: &Input, key: String) -> Result<usize, IoError> {
-        let Some(node_id) = self.topology.hash_ring.get_node_id_for_key(key.as_ref()) else {
-            return Err(IoError::Custom(format!("Failed to get node id from key {}", key)));
-        };
-        self.send_command_to_node(input, node_id).await?;
-        Ok(1)
-    }
-
-    async fn route_command_to_all(&self, input: &Input) -> Result<usize, IoError> {
+    async fn route_command_to_all(&self, input: Input) -> Result<usize, IoError> {
         for node_id in self.node_connections.keys() {
-            self.send_command_to_node(input, &node_id).await?;
+            self.send_command_to_node(input.clone(), &node_id).await?;
         }
         Ok(self.node_connections.len())
     }
 
     async fn send_command_to_node(
         &self,
-        input: &Input,
+        input: Input,
         node_id: &PeerIdentifier,
     ) -> Result<(), IoError> {
         let connection = self.node_connections.get(node_id).or_else(|_| {
             Err(IoError::Custom(format!("No connection found for node id: {}", node_id)))
         })?;
-        let cmd = build_command_with_request_id(
-            &input.command.clone(),
-            connection.request_id,
-            &input.args,
-        );
+        let cmd = build_command_with_request_id(&input.command, connection.request_id, &input.args);
 
         let _ = connection
             .send(MsgToServer::Command(cmd.as_bytes().to_vec()))
@@ -334,13 +329,18 @@ pub enum BrokerMessage {
 }
 impl BrokerMessage {
     pub fn from_input(input: Input, input_context: InputContext) -> Self {
-        BrokerMessage::ToServer(CommandToServer { input, input_context })
+        BrokerMessage::ToServer(CommandToServer {
+            routing_rule: (&input_context.kind).into(),
+            input,
+            input_context,
+        })
     }
 }
 
 pub struct CommandToServer {
     pub input: Input,
     pub input_context: InputContext,
+    pub routing_rule: RoutingRule,
 }
 
 #[derive(Debug, Clone)]
