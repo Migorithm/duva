@@ -120,7 +120,24 @@ impl Broker {
                     | _ => {},
                 },
                 | BrokerMessage::ToServer(mut command) => {
-                    match self.route_command(command.input, command.routing_rule).await {
+                    let res = if !self.cluster_mode {
+                        self.default_route(command.input).await
+                    } else {
+                        match command.routing_rule {
+                            | RoutingRule::Any => self.default_route(command.input).await,
+                            | RoutingRule::Single(key) => {
+                                self.route_command_by_key(command.input, key).await
+                            },
+
+                            | RoutingRule::Multi(keys) => {
+                                self.route_command_by_keys(command.input, keys).await
+                            },
+                            | RoutingRule::BroadCast => {
+                                self.route_command_to_all(command.input).await
+                            },
+                        }
+                    };
+                    match res {
                         | Ok(num_of_results) => {
                             command.input_context.num_of_results = num_of_results;
                         },
@@ -232,25 +249,6 @@ impl Broker {
         Some(())
     }
 
-    // Return error in the following scenarios:
-    // - if key is found but connection is lost/disconnected
-    async fn route_command(
-        &mut self,
-        input: Input,
-        routing_rule: RoutingRule,
-    ) -> Result<usize, IoError> {
-        if !self.cluster_mode {
-            return self.default_route(input).await;
-        }
-        match routing_rule {
-            | RoutingRule::Any => self.default_route(input).await,
-            | RoutingRule::Single(key) => self.route_command_by_key(input, key).await,
-
-            | RoutingRule::Multi(keys) => self.route_command_by_keys(input, keys).await,
-            | RoutingRule::BroadCast => self.route_command_to_all(input).await,
-        }
-    }
-
     // TODO merge route_command_by_keys with route_command_by_key
     async fn route_command_by_keys(
         &mut self,
@@ -269,6 +267,8 @@ impl Broker {
         }
 
         let num_of_results = node_id_to_keys.len();
+
+        // TODO apply join_all or try_join_all
         for (node_id, routed_keys) in node_id_to_keys.into_iter() {
             // TODO conversion shouldn't happen here or datastructure needs to be revisited
             let new_input = Input { command: input.command.clone(), args: routed_keys };
@@ -296,6 +296,7 @@ impl Broker {
         Ok(1)
     }
 
+    // TODO apply join_all or try_join_all
     async fn route_command_to_all(&self, input: Input) -> Result<usize, IoError> {
         for node_id in self.node_connections.keys() {
             self.send_command_to_node(input.clone(), &node_id).await?;
