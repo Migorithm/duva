@@ -43,7 +43,7 @@ impl Broker {
         let (broker_tx, rx) = tokio::sync::mpsc::channel::<BrokerMessage>(100);
 
         let replication_id = auth_response.replication_id;
-        Ok(Broker {
+        let mut broker = Broker {
             tx: broker_tx.clone(),
             rx,
             client_id: Uuid::parse_str(&auth_response.client_id)?,
@@ -54,7 +54,9 @@ impl Broker {
                 r.run(broker_tx.clone(), replication_id),
                 auth_response.request_id,
             ),
-        })
+        };
+        broker.update_leader_connections().await;
+        Ok(broker)
     }
 
     pub(crate) async fn run(mut self) {
