@@ -254,14 +254,14 @@ impl Broker {
 
     async fn route_command_by_key(&self, input: Input, key: String) -> Result<usize, IoError> {
         let Some(node_id) = self.topology.hash_ring.get_node_for_key(key.as_ref()) else {
-            return Err(IoError::Custom(format!("Failed to get node id from key {}", key)));
+            return self.default_route(input).await;
         };
         self.send_command_to_node(input, node_id).await?;
         Ok(1)
     }
 
     // 'default_route' is used when given request does NOT have to be sent to a specific node
-    async fn default_route(&mut self, input: Input) -> Result<usize, IoError> {
+    async fn default_route(&self, input: Input) -> Result<usize, IoError> {
         let node_id = self
             .node_connections
             .get_first_node_id()
