@@ -12,10 +12,9 @@ impl ServerStreamReader {
     pub fn run(
         mut self,
         controller_sender: tokio::sync::mpsc::Sender<BrokerMessage>,
-        peer_identifier: PeerIdentifier,
-        replication_id: Option<ReplicationId>,
+        replication_id: ReplicationId,
     ) -> oneshot::Sender<()> {
-        let (kill_trigger, kill_switch) = tokio::sync::oneshot::channel::<()>();
+        let (kill_trigger, kill_switch) = oneshot::channel::<()>();
 
         let future = async move {
             let controller_sender = controller_sender.clone();
@@ -25,36 +24,26 @@ impl ServerStreamReader {
                     | Ok(query_ios) => {
                         for query_io in query_ios {
                             let message =
-                                BrokerMessage::FromServer(peer_identifier.clone(), query_io);
+                                BrokerMessage::FromServer(replication_id.clone(), query_io);
                             if controller_sender.send(message).await.is_err() {
                                 break;
                             }
                         }
                     },
                     | Err(IoError::ConnectionAborted) | Err(IoError::ConnectionReset) => {
-                        let message = match &replication_id {
-                            | Some(replication_id) => BrokerMessage::FromServerErrorFromCluster(
-                                replication_id.clone(),
-                                IoError::ConnectionAborted,
-                            ),
-                            | _ => BrokerMessage::FromServerErrorFromNode(
-                                peer_identifier.clone(),
-                                IoError::ConnectionAborted,
-                            ),
-                        };
+                        let message = BrokerMessage::FromServerError(
+                            replication_id.clone(),
+                            IoError::ConnectionAborted,
+                        );
                         let _ = controller_sender.send(message).await;
                         break;
                     },
 
                     | Err(e) => {
-                        let message = match &replication_id {
-                            | Some(replication_id) => {
-                                BrokerMessage::FromServerErrorFromCluster(replication_id.clone(), e)
-                            },
-                            | _ => {
-                                BrokerMessage::FromServerErrorFromNode(peer_identifier.clone(), e)
-                            },
-                        };
+                        let message = BrokerMessage::FromServerError(
+                            replication_id.clone(),
+                            IoError::ConnectionAborted,
+                        );
                         if controller_sender.send(message).await.is_err() {
                             break;
                         }

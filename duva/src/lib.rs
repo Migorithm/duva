@@ -173,9 +173,13 @@ impl StartUpFacade {
         while let Ok((stream, _)) = listener.accept().await {
             let topology = self.cluster_communication_manager.route_get_topology().await?;
 
-            let is_leader: bool = self.cluster_communication_manager.route_get_role().await?
-                == ReplicationRole::Leader;
-            let Ok((reader, writer)) = authenticate(stream, topology, is_leader).await else {
+            let replication_state =
+                self.cluster_communication_manager.route_get_replication_state().await?;
+            let is_leader = replication_state.role == ReplicationRole::Leader;
+            let replication_id = replication_state.replid.clone();
+            let Ok((reader, writer)) =
+                authenticate(stream, topology, is_leader, replication_id).await
+            else {
                 error!("Failed to authenticate client stream");
                 continue;
             };

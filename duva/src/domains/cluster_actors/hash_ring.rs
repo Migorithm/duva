@@ -166,8 +166,7 @@ impl HashRing {
             .ok_or_else(|| anyhow::anyhow!("No node found for keys: {:?}", keys))
     }
 
-    #[cfg(test)]
-    pub(crate) fn get_node_for_key(&self, key: &str) -> Option<&ReplicationId> {
+    pub fn get_node_for_key(&self, key: &str) -> Option<&ReplicationId> {
         let hash = fnv_1a_hash(key);
         self.find_replid(hash)
     }
@@ -201,6 +200,10 @@ impl HashRing {
             return None;
         };
         self.pnodes.get(&repl_id)
+    }
+
+    pub fn get_replication_ids(&self) -> Vec<ReplicationId> {
+        self.pnodes.keys().cloned().collect()
     }
 }
 
