@@ -8,7 +8,7 @@ use duva::{
     },
     presentation::clients::request::extract_action,
 };
-use duva_client::broker::Input;
+use duva_client::command::Input;
 use duva_client::command::InputContext;
 use duva_client::{
     broker::BrokerMessage, command::separate_command_and_args, controller::ClientController,

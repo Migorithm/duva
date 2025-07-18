@@ -5,7 +5,9 @@ mod write_stream;
 
 use crate::broker::node_connections::NodeConnections;
 use crate::broker::write_stream::MsgToServer;
-use crate::command::{InputContext, RoutingRule, build_command_with_request_id};
+use crate::command::{
+    CommandToServer, Input, InputContext, RoutingRule, build_command_with_request_id,
+};
 use collections::HashMap;
 use duva::domains::caches::cache_manager::IndexedValueCodec;
 use duva::domains::cluster_actors::replication::{ReplicationId, ReplicationRole};
@@ -311,16 +313,4 @@ impl BrokerMessage {
             input_context,
         })
     }
-}
-
-pub struct CommandToServer {
-    pub input: Input,
-    pub input_context: InputContext,
-    pub routing_rule: RoutingRule,
-}
-
-#[derive(Debug, Clone)]
-pub struct Input {
-    pub command: String,
-    pub args: Vec<String>,
 }

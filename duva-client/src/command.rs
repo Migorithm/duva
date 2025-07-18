@@ -4,6 +4,17 @@ use duva::{
     presentation::clients::request::ClientAction,
 };
 
+pub struct CommandToServer {
+    pub input: Input,
+    pub input_context: InputContext,
+    pub routing_rule: RoutingRule,
+}
+#[derive(Debug, Clone)]
+pub struct Input {
+    pub command: String,
+    pub args: Vec<String>,
+}
+
 pub fn separate_command_and_args(args: Vec<&str>) -> (&str, Vec<&str>) {
     // Split the input into command and arguments
     let (cmd, args) = args.split_at(1);
@@ -11,6 +22,7 @@ pub fn separate_command_and_args(args: Vec<&str>) -> (&str, Vec<&str>) {
     let args = args.to_vec();
     (cmd, args)
 }
+
 pub fn build_command_with_request_id(cmd: &str, request_id: u64, args: &Vec<String>) -> String {
     // Build the valid RESP command
     let mut command =
@@ -20,7 +32,6 @@ pub fn build_command_with_request_id(cmd: &str, request_id: u64, args: &Vec<Stri
     }
     command
 }
-
 #[derive(Debug)]
 pub struct InputContext {
     pub(crate) kind: ClientAction,
@@ -28,7 +39,6 @@ pub struct InputContext {
     pub(crate) results: Vec<QueryIO>,
     pub(crate) num_of_results: usize,
 }
-
 impl InputContext {
     pub fn new(kind: ClientAction, callback: oneshot::Sender<(ClientAction, QueryIO)>) -> Self {
         Self { kind, callback, results: Vec::new(), num_of_results: 0 }
@@ -89,6 +99,7 @@ pub enum RoutingRule {
     Multi(Vec<String>),
     BroadCast,
 }
+
 impl From<&ClientAction> for RoutingRule {
     fn from(value: &ClientAction) -> Self {
         match value {
