@@ -32,6 +32,8 @@ pub(crate) static COMMANDS: &[&str] = &[
     "cluster reshard",
     "info replication",
     "replicaof",
+    "lpush",
+    "rpush",
 ];
 
 macro_rules! new_pair {
@@ -141,6 +143,15 @@ impl Completer for DuvaHinter {
                 if !previous_words.is_empty() {
                     // Suggest "key" for these commands
                     candidates.push(new_pair!("key"));
+                }
+            },
+            | "lpush" | "rpush" => {
+                if previous_words.len() == 1 {
+                    // Suggest "key" after set
+                    candidates.push(new_pair!("key"));
+                } else if previous_words.len() > 1 {
+                    // Suggest "value" after set key
+                    candidates.push(new_pair!("value"));
                 }
             },
             | "get" | "incr" | "decr" | "ttl" => {
