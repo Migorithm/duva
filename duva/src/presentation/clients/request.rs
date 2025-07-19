@@ -112,29 +112,6 @@ impl ClientAction {
     }
 }
 
-#[derive(Clone, Debug)]
-pub struct ClientRequest {
-    pub(crate) action: ClientAction,
-    pub(crate) session_req: SessionRequest,
-}
-
-impl ClientRequest {
-    pub fn from_user_input(
-        value: Vec<QueryIO>,
-        session_req: SessionRequest,
-    ) -> anyhow::Result<Self> {
-        let mut values = value.into_iter().flat_map(|v| v.unpack_single_entry::<String>());
-        let command = values.next().ok_or(anyhow::anyhow!("Unexpected command format"))?;
-        let (command, args) = (command, values.collect::<Vec<_>>());
-
-        Ok(ClientRequest {
-            action: extract_action(&command, &args.iter().map(|s| s.as_str()).collect::<Vec<_>>())
-                .map_err(|e| anyhow::anyhow!(e))?,
-            session_req,
-        })
-    }
-}
-
 pub fn extract_action(action: &str, args: &[&str]) -> anyhow::Result<ClientAction> {
     // Check for invalid characters in command parts
     // Command-specific validation
@@ -405,4 +382,27 @@ pub fn extract_action(action: &str, args: &[&str]) -> anyhow::Result<ClientActio
 pub fn extract_expiry(expiry: &str) -> anyhow::Result<DateTime<Utc>> {
     let expiry = expiry.parse::<i64>().context("Invalid expiry")?;
     Ok(Utc::now() + chrono::Duration::milliseconds(expiry))
+}
+
+#[derive(Clone, Debug)]
+pub struct ClientRequest {
+    pub(crate) action: ClientAction,
+    pub(crate) session_req: SessionRequest,
+}
+
+impl ClientRequest {
+    pub fn from_user_input(
+        value: Vec<QueryIO>,
+        session_req: SessionRequest,
+    ) -> anyhow::Result<Self> {
+        let mut values = value.into_iter().flat_map(|v| v.unpack_single_entry::<String>());
+        let command = values.next().ok_or(anyhow::anyhow!("Unexpected command format"))?;
+        let (command, args) = (command, values.collect::<Vec<_>>());
+
+        let cli_action =
+            extract_action(&command, &args.iter().map(|s| s.as_str()).collect::<Vec<_>>())
+                .map_err(|e| anyhow::anyhow!(e))?;
+
+        Ok(ClientRequest { action: cli_action, session_req })
+    }
 }
