@@ -87,7 +87,7 @@ impl DuvaHinter {
                 continue;
             };
 
-            let hint_text = if needs_space { &format!(" {}", hint_text) } else { hint_text };
+            let hint_text = if needs_space { &format!(" {hint_text}") } else { hint_text };
             return Some(CommandHint::new(hint_text));
         }
 
