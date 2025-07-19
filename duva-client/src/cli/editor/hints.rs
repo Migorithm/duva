@@ -15,9 +15,9 @@ pub struct CommandHint {
 }
 
 impl CommandHint {
-    fn new(text: &str, complete_up_to: &str) -> Self {
-        assert!(text.starts_with(complete_up_to));
-        Self { display: text.into(), complete_up_to: complete_up_to.len() }
+    fn new(text: &str) -> Self {
+        let first = text.split_whitespace().next().unwrap_or("");
+        Self { display: text.into(), complete_up_to: first.len() + 1 }
     }
 
     fn suffix(&self, strip_chars: usize) -> Self {
@@ -83,7 +83,6 @@ impl Hinter for DuvaHinter {
                             format!(" {hint_text}")
                         }
                         .as_str(),
-                        "",
                     ));
                 }
 
@@ -96,7 +95,6 @@ impl Hinter for DuvaHinter {
                             format!(" {}", hint.hint_text)
                         }
                         .as_str(),
-                        "",
                     ));
                 }
             }
@@ -118,32 +116,32 @@ impl Hinter for DuvaHinter {
 
 pub(crate) fn default_hints() -> HashSet<CommandHint> {
     let mut set = HashSet::new();
-    set.insert(CommandHint::new("get key", "get "));
-    set.insert(CommandHint::new("set key value", "set "));
-    set.insert(CommandHint::new("set key value [px expr]", "set "));
-    set.insert(CommandHint::new("append key value", "append "));
-    set.insert(CommandHint::new("incr key", "incr "));
-    set.insert(CommandHint::new("incrby key value", "incrby "));
-    set.insert(CommandHint::new("decr key", "decr "));
-    set.insert(CommandHint::new("decrby key value", "decrby "));
-    set.insert(CommandHint::new("cluster info", "cluster "));
-    set.insert(CommandHint::new("cluster nodes", "cluster "));
-    set.insert(CommandHint::new("cluster forget node", "cluster "));
-    set.insert(CommandHint::new("cluster reshard", "cluster "));
-    set.insert(CommandHint::new("cluster meet node [lazy|eager]", "cluster "));
-    set.insert(CommandHint::new("ping", ""));
-    set.insert(CommandHint::new("keys pattern", "keys "));
-    set.insert(CommandHint::new("info [section]", ""));
-    set.insert(CommandHint::new("info replication", ""));
-    set.insert(CommandHint::new("exists key [key ...]", "exists "));
-    set.insert(CommandHint::new("mget key [key ...]", "mget "));
-    set.insert(CommandHint::new("del key [key ...]", "del "));
-    set.insert(CommandHint::new("ttl key", "ttl "));
-    set.insert(CommandHint::new("replicaof host port", "replicaof "));
-    set.insert(CommandHint::new("lpush key value [value ...]", "lpush "));
-    set.insert(CommandHint::new("lpushx key value [value ...]", "lpushx "));
-    set.insert(CommandHint::new("rpush key value [value ...]", "rpush "));
-    set.insert(CommandHint::new("rpushx key value [value ...]", "rpushx "));
+    set.insert(CommandHint::new("get key"));
+    set.insert(CommandHint::new("set key value"));
+    set.insert(CommandHint::new("set key value [px expr]"));
+    set.insert(CommandHint::new("append key value"));
+    set.insert(CommandHint::new("incr key"));
+    set.insert(CommandHint::new("incrby key value"));
+    set.insert(CommandHint::new("decr key"));
+    set.insert(CommandHint::new("decrby key value"));
+    set.insert(CommandHint::new("cluster info"));
+    set.insert(CommandHint::new("cluster nodes"));
+    set.insert(CommandHint::new("cluster forget node"));
+    set.insert(CommandHint::new("cluster reshard"));
+    set.insert(CommandHint::new("cluster meet node [lazy|eager]"));
+    set.insert(CommandHint::new("ping"));
+    set.insert(CommandHint::new("keys pattern"));
+    set.insert(CommandHint::new("info [section]"));
+    set.insert(CommandHint::new("info replication"));
+    set.insert(CommandHint::new("exists key [key ...]"));
+    set.insert(CommandHint::new("mget key [key ...]"));
+    set.insert(CommandHint::new("del key [key ...]"));
+    set.insert(CommandHint::new("ttl key"));
+    set.insert(CommandHint::new("replicaof host port"));
+    set.insert(CommandHint::new("lpush key value [value ...]"));
+    set.insert(CommandHint::new("lpushx key value [value ...]"));
+    set.insert(CommandHint::new("rpush key value [value ...]"));
+    set.insert(CommandHint::new("rpushx key value [value ...]"));
 
     set
 }
