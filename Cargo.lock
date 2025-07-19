@@ -470,6 +470,7 @@ dependencies = [
  "crossterm",
  "duva",
  "figlet-rs",
+ "futures",
  "rustyline",
 ]
 

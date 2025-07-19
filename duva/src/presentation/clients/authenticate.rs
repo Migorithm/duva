@@ -1,3 +1,4 @@
+use crate::domains::cluster_actors::replication::ReplicationId;
 use crate::{
     domains::{IoError, TSerdeReadWrite, cluster_actors::topology::Topology},
     presentation::clients::stream::{ClientStreamReader, ClientStreamWriter},
@@ -9,6 +10,7 @@ pub(crate) async fn authenticate(
     mut stream: TcpStream,
     topology: Topology,
     is_leader: bool,
+    replication_id: ReplicationId,
 ) -> Result<(ClientStreamReader, ClientStreamWriter), IoError> {
     let auth_req: AuthRequest = stream.deserialized_read().await?;
 
@@ -25,6 +27,7 @@ pub(crate) async fn authenticate(
             request_id: auth_req.request_id,
             topology,
             connected_to_leader: is_leader,
+            replication_id,
         })
         .await?;
 
@@ -47,4 +50,5 @@ pub struct AuthResponse {
     pub request_id: u64,
     pub topology: Topology,
     pub connected_to_leader: bool,
+    pub replication_id: ReplicationId,
 }

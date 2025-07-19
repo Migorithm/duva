@@ -166,14 +166,24 @@ impl HashRing {
             .ok_or_else(|| anyhow::anyhow!("No node found for keys: {:?}", keys))
     }
 
-    #[cfg(test)]
-    pub(crate) fn get_node_for_key(&self, key: &str) -> Option<&ReplicationId> {
+    pub fn get_node_for_key(&self, key: &str) -> Option<&ReplicationId> {
         let hash = fnv_1a_hash(key);
         self.find_replid(hash)
     }
 
     pub fn get_node_id(&self, replid: &ReplicationId) -> Option<&PeerIdentifier> {
         self.pnodes.get(replid)
+    }
+
+    pub fn get_node_id_for_key(&self, key: &str) -> Option<&PeerIdentifier> {
+        let hash = fnv_1a_hash(key);
+        self.find_replid(hash).and_then(|repl_id| self.pnodes.get(repl_id))
+    }
+
+    pub fn get_replication_id(&self, peer_identifier: &PeerIdentifier) -> Option<ReplicationId> {
+        self.pnodes.iter().find_map(|(repl_id, peer_id)| {
+            if peer_id == peer_identifier { Some(repl_id.clone()) } else { None }
+        })
     }
 
     pub(crate) fn update_repl_leader(&mut self, replid: ReplicationId, new_pnode: PeerIdentifier) {
@@ -183,6 +193,17 @@ impl HashRing {
             *existing_pnode = new_pnode;
         }
         self.update_last_modified();
+    }
+
+    pub fn get_node_id_for_keys(&self, keys: &[&str]) -> Option<&PeerIdentifier> {
+        let Ok(repl_id) = self.get_node_for_keys(keys) else {
+            return None;
+        };
+        self.pnodes.get(&repl_id)
+    }
+
+    pub fn get_replication_ids(&self) -> Vec<ReplicationId> {
+        self.pnodes.keys().cloned().collect()
     }
 }
 
