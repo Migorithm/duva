@@ -55,62 +55,62 @@ impl Hinter for DuvaHinter {
 
         let command = parts[0];
         let args_count = parts.len() - 1;
-        let ends_with_space = line.ends_with(" ");
 
-        if let Some(patterns) = self.dynamic_hints.get(command.to_lowercase().as_str()) {
-            for hint in patterns {
-                // Skip if we have more args than required (unless it's a repeating pattern)
-                if args_count > hint.args_required && !hint.repeat_last_arg {
-                    continue;
-                }
+        let needs_space = !line.ends_with(" ");
 
-                // For repeating patterns, show the hint after reaching minimum args
-                if hint.repeat_last_arg && args_count >= hint.args_required {
-                    let hint_text = if hint.args_required == 0 && args_count == 0 {
-                        hint.hint_text
-                    } else {
-                        // After first argument, show just the repeating part
-                        hint.hint_text
-                            .split_once(' ')
-                            .map(|(_, rest)| rest)
-                            .unwrap_or(hint.hint_text)
-                    };
-
-                    return Some(CommandHint::new(
-                        if ends_with_space {
-                            hint_text.to_string()
-                        } else {
-                            format!(" {hint_text}")
-                        }
-                        .as_str(),
-                    ));
-                }
-
-                // Original behavior for non-repeating patterns
-                if args_count == hint.args_required {
-                    return Some(CommandHint::new(
-                        if ends_with_space {
-                            hint.hint_text.to_string()
-                        } else {
-                            format!(" {}", hint.hint_text)
-                        }
-                        .as_str(),
-                    ));
-                }
-            }
+        if let Some(hint) = self.get_dynamic_hint(command, args_count, needs_space) {
+            return Some(hint);
         }
 
-        // Default behavior - try to match against full hints
-        let mut matching_hints =
-            self.default_hints
-                .iter()
-                .filter_map(|hint| {
-                    if hint.display.starts_with(line) { Some(hint.suffix(pos)) } else { None }
-                })
-                .collect::<Vec<_>>();
+        // Fall back to default hints
+        self.get_default_hint(line, pos)
+    }
+}
 
-        matching_hints.sort_by(|a, b| a.display.len().cmp(&b.display.len()));
-        matching_hints.into_iter().next()
+impl DuvaHinter {
+    fn get_dynamic_hint(
+        &self,
+        command: &str,
+        args_count: usize,
+        needs_space: bool,
+    ) -> Option<CommandHint> {
+        let patterns = self.dynamic_hints.get(command.to_lowercase().as_str())?;
+
+        for hint in patterns {
+            let hint_text = if hint.repeat_last_arg && args_count >= hint.args_required {
+                // Show repeating pattern
+                self.get_repeating_hint_text(hint, args_count)
+            } else if args_count == hint.args_required && !hint.repeat_last_arg {
+                // Show exact match
+                hint.hint_text
+            } else {
+                continue;
+            };
+
+            let hint_text = if needs_space { &format!(" {}", hint_text) } else { hint_text };
+            return Some(CommandHint::new(hint_text));
+        }
+
+        None
+    }
+
+    fn get_repeating_hint_text(&self, hint: &DynamicHint, args_count: usize) -> &str {
+        if hint.args_required == 0 && args_count == 0 {
+            hint.hint_text
+        } else {
+            hint.hint_text.split_once(' ').map(|(_, rest)| rest).unwrap_or(hint.hint_text)
+        }
+    }
+
+    fn get_default_hint(&self, line: &str, pos: usize) -> Option<CommandHint> {
+        self.default_hints
+            .iter()
+            .filter_map(
+                |hint| {
+                    if hint.display.starts_with(line) { Some(hint.suffix(pos)) } else { None }
+                },
+            )
+            .min_by_key(|hint| hint.display.len())
     }
 }
 
