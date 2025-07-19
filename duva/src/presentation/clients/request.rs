@@ -75,8 +75,8 @@ impl ClientAction {
             | ClientAction::LPushX { key, value } => WriteRequest::LPushX { key, value },
             | ClientAction::LPop { key, count } => WriteRequest::LPop { key, count },
             | ClientAction::RPush { key, value } => WriteRequest::RPush { key, value },
-            | ClientAction::RPushX { key, value } => WriteRequest::RPush { key, value },
-            | ClientAction::RPop { key, count } => WriteRequest::LPop { key, count },
+            | ClientAction::RPushX { key, value } => WriteRequest::RPushX { key, value },
+            | ClientAction::RPop { key, count } => WriteRequest::RPop { key, count },
             | ClientAction::LTrim { key, start, end } => WriteRequest::LTrim { key, start, end },
             | ClientAction::LSet { key, index, value } => WriteRequest::LSet { key, index, value },
             | _ => {

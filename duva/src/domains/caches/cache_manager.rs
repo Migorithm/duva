@@ -216,6 +216,12 @@ impl CacheManager {
             | WriteRequest::LSet { key, index, value } => {
                 self.route_lset(key, index, value, log_index).await?;
             },
+            | WriteRequest::RPop { key, count } => {
+                self.route_rpop(key, count).await?;
+            },
+            | WriteRequest::RPushX { key, value } => {
+                self.route_rpushx(key, value, log_index).await?;
+            },
         };
 
         // * This is to wake up the cache actors to process the pending read requests

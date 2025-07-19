@@ -22,10 +22,13 @@ pub enum WriteRequest {
     Decr { key: String, delta: i64 },
     Incr { key: String, delta: i64 },
     LPush { key: String, value: Vec<String> },
+    LPushX { key: String, value: Vec<String> },
     LPop { key: String, count: usize },
     RPush { key: String, value: Vec<String> },
+    RPop { key: String, count: usize },
+    RPushX { key: String, value: Vec<String> },
     LTrim { key: String, start: isize, end: isize },
-    LPushX { key: String, value: Vec<String> },
+
     LSet { key: String, index: isize, value: String },
 }
 
@@ -68,6 +71,8 @@ impl WriteRequest {
             | WriteRequest::LTrim { key, .. } => vec![key],
             | WriteRequest::LPushX { key, .. } => vec![key],
             | WriteRequest::LSet { key, .. } => vec![key],
+            | WriteRequest::RPop { key, .. } => vec![key],
+            | WriteRequest::RPushX { key, .. } => vec![key],
         }
     }
 }
