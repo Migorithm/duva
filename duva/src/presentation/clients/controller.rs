@@ -1,4 +1,3 @@
-use super::request::ClientRequest;
 use crate::config::ENV;
 use crate::domains::QueryIO;
 use crate::domains::caches::cache_manager::CacheManager;
@@ -229,8 +228,8 @@ impl ClientController {
         &self,
         session_req: SessionRequest,
         write_req: WriteRequest,
-        cli_action: ClientAction,
-    ) -> anyhow::Result<(ClientAction, u64)> {
+        cli_action: &mut ClientAction,
+    ) -> anyhow::Result<u64> {
         let (tx, consensus_res) = tokio::sync::oneshot::channel();
 
         self.cluster_communication_manager
@@ -245,9 +244,10 @@ impl ClientController {
             | ConsensusClientResponse::AlreadyProcessed { key: keys, index } => {
                 // * Conversion! request has already been processed so we need to convert it to get
                 let action = ClientAction::MGet { keys };
-                Ok((action, index))
+                *cli_action = action;
+                Ok(index)
             },
-            | ConsensusClientResponse::LogIndex(idx) => Ok((cli_action, idx)),
+            | ConsensusClientResponse::LogIndex(idx) => Ok(idx),
             | ConsensusClientResponse::Err(error_msg) => Err(anyhow::anyhow!(error_msg)),
         }
     }

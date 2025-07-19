@@ -51,64 +51,59 @@ pub enum ClientAction {
 }
 
 impl ClientAction {
-    pub fn to_write_request(self) -> WriteRequest {
-        match self {
+    pub fn to_write_request(&self) -> Option<WriteRequest> {
+        let write_req = match self {
             | ClientAction::Set { key, value } => {
-                WriteRequest::Set { key, value, expires_at: None }
+                WriteRequest::Set { key: key.clone(), value: value.clone(), expires_at: None }
             },
             | ClientAction::SetWithExpiry { key, value, expiry } => {
                 let expires_at = expiry.timestamp_millis() as u64;
-
-                WriteRequest::Set { key, value, expires_at: Some(expires_at) }
+                WriteRequest::Set {
+                    key: key.clone(),
+                    value: value.clone(),
+                    expires_at: Some(expires_at),
+                }
             },
-            | ClientAction::Append { key, value } => WriteRequest::Append { key, value },
-            | ClientAction::Delete { keys } => WriteRequest::Delete { keys },
-            | ClientAction::Incr { key } => WriteRequest::Incr { key, delta: 1 },
-            | ClientAction::Decr { key } => WriteRequest::Decr { key, delta: 1 },
+            | ClientAction::Append { key, value } => {
+                WriteRequest::Append { key: key.clone(), value: value.clone() }
+            },
+            | ClientAction::Delete { keys } => WriteRequest::Delete { keys: keys.clone() },
+            | ClientAction::Incr { key } => WriteRequest::Incr { key: key.clone(), delta: 1 },
+            | ClientAction::Decr { key } => WriteRequest::Decr { key: key.clone(), delta: 1 },
             | ClientAction::IncrBy { key, increment } => {
-                WriteRequest::Incr { key, delta: increment }
+                WriteRequest::Incr { key: key.clone(), delta: *increment }
             },
             | ClientAction::DecrBy { key, decrement } => {
-                WriteRequest::Decr { key, delta: decrement }
+                WriteRequest::Decr { key: key.clone(), delta: *decrement }
             },
-            | ClientAction::LPush { key, value } => WriteRequest::LPush { key, value },
-            | ClientAction::LPushX { key, value } => WriteRequest::LPushX { key, value },
-            | ClientAction::LPop { key, count } => WriteRequest::LPop { key, count },
-            | ClientAction::RPush { key, value } => WriteRequest::RPush { key, value },
-            | ClientAction::RPushX { key, value } => WriteRequest::RPushX { key, value },
-            | ClientAction::RPop { key, count } => WriteRequest::RPop { key, count },
-            | ClientAction::LTrim { key, start, end } => WriteRequest::LTrim { key, start, end },
-            | ClientAction::LSet { key, index, value } => WriteRequest::LSet { key, index, value },
-            | _ => {
-                debug_assert!(false, "to_write_request called on non-write action: {self:?}");
-                unreachable!(
-                    "to_write_request should only be called after consensus_required() check"
-                )
+            | ClientAction::LPush { key, value } => {
+                WriteRequest::LPush { key: key.clone(), value: value.clone() }
             },
-        }
-    }
+            | ClientAction::LPushX { key, value } => {
+                WriteRequest::LPushX { key: key.clone(), value: value.clone() }
+            },
+            | ClientAction::LPop { key, count } => {
+                WriteRequest::LPop { key: key.clone(), count: *count }
+            },
+            | ClientAction::RPush { key, value } => {
+                WriteRequest::RPush { key: key.clone(), value: value.clone() }
+            },
+            | ClientAction::RPushX { key, value } => {
+                WriteRequest::RPushX { key: key.clone(), value: value.clone() }
+            },
+            | ClientAction::RPop { key, count } => {
+                WriteRequest::RPop { key: key.clone(), count: *count }
+            },
+            | ClientAction::LTrim { key, start, end } => {
+                WriteRequest::LTrim { key: key.clone(), start: *start, end: *end }
+            },
+            | ClientAction::LSet { key, index, value } => {
+                WriteRequest::LSet { key: key.clone(), index: *index, value: value.clone() }
+            },
 
-    // TODO refactor the following in a way that's merged with to_write_request?
-    pub fn consensus_required(&self) -> bool {
-        matches!(
-            self,
-            ClientAction::Set { .. }
-                | ClientAction::SetWithExpiry { .. }
-                | ClientAction::Append { .. }
-                | ClientAction::Delete { .. }
-                | ClientAction::Incr { .. }
-                | ClientAction::Decr { .. }
-                | ClientAction::IncrBy { .. }
-                | ClientAction::DecrBy { .. }
-                | ClientAction::LPush { .. }
-                | ClientAction::LPushX { .. }
-                | ClientAction::LPop { .. }
-                | ClientAction::RPush { .. }
-                | ClientAction::RPushX { .. }
-                | ClientAction::RPop { .. }
-                | ClientAction::LTrim { .. }
-                | ClientAction::LSet { .. }
-        )
+            | _ => return None,
+        };
+        Some(write_req)
     }
 }
 
