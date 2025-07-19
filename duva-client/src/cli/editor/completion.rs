@@ -33,7 +33,9 @@ pub(crate) static COMMANDS: &[&str] = &[
     "info replication",
     "replicaof",
     "lpush",
+    "lpushx",
     "rpush",
+    "rpushx",
 ];
 
 macro_rules! new_pair {
@@ -145,7 +147,7 @@ impl Completer for DuvaHinter {
                     candidates.push(new_pair!("key"));
                 }
             },
-            | "lpush" | "rpush" => {
+            | "lpush" | "lpushx" | "rpush" | "rpushx" => {
                 if previous_words.len() == 1 {
                     // Suggest "key" after set
                     candidates.push(new_pair!("key"));
