@@ -289,6 +289,8 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
                 self.req_consensus(req).await;
             },
             | Ok(replids) => {
+                // To notify client's of what keys have been moved.
+                // ! Still, client won't know where the key has been moved. The assumption here is client SHOULD have correct hashring information.
                 let moved_keys = replids
                     .iter()
                     .filter_map(|(replid, keys)| {
