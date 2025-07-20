@@ -126,7 +126,6 @@ impl FromStr for LazyOption {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SessionRequest {
     pub(crate) request_id: u64,
-
     pub(crate) client_id: Uuid,
 }
 impl SessionRequest {

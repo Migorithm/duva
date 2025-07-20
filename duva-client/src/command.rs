@@ -37,17 +37,21 @@ pub struct InputContext {
     pub(crate) kind: ClientAction,
     pub(crate) callback: oneshot::Sender<(ClientAction, QueryIO)>,
     pub(crate) results: Vec<QueryIO>,
-    pub(crate) num_of_results: usize,
+    pub(crate) expected_result_cnt: usize,
 }
 impl InputContext {
     pub fn new(kind: ClientAction, callback: oneshot::Sender<(ClientAction, QueryIO)>) -> Self {
-        Self { kind, callback, results: Vec::new(), num_of_results: 0 }
+        Self { kind, callback, results: Vec::new(), expected_result_cnt: 0 }
     }
     pub(crate) fn append_result(&mut self, result: QueryIO) {
         self.results.push(result);
     }
+
+    pub(crate) fn set_expected_result_cnt(&mut self, cnt: usize) {
+        self.expected_result_cnt = cnt
+    }
     pub(crate) fn is_done(&self) -> bool {
-        if self.results.len() == self.num_of_results {
+        if self.results.len() == self.expected_result_cnt {
             return true;
         }
         false

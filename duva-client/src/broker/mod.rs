@@ -125,7 +125,7 @@ impl Broker {
                     };
                     match res {
                         | Ok(num_of_results) => {
-                            command.input_context.num_of_results = num_of_results;
+                            command.input_context.set_expected_result_cnt(num_of_results);
                         },
                         | Err(_e) => {
                             continue;
