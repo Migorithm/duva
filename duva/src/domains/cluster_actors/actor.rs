@@ -298,7 +298,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
                     .copied()
                     .collect::<Vec<_>>()
                     .join(" ");
-                let _ = req.callback.send(format!("MOVED {}", moved_keys).into());
+                let _ = req.callback.send(format!("MOVED {moved_keys}").into());
             },
             | Err(err) => {
                 err!("{}", err);
