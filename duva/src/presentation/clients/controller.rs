@@ -1,9 +1,11 @@
-use super::request::ClientRequest;
 use crate::config::ENV;
 use crate::domains::QueryIO;
 use crate::domains::caches::cache_manager::CacheManager;
 use crate::domains::caches::cache_objects::{CacheEntry, CacheValue, TypedValue};
-use crate::domains::cluster_actors::{ClientMessage, ConsensusClientResponse, ConsensusRequest};
+use crate::domains::cluster_actors::{
+    ClientMessage, ConsensusClientResponse, ConsensusRequest, SessionRequest,
+};
+use crate::domains::operation_logs::WriteRequest;
 use crate::domains::saves::actor::SaveTarget;
 use crate::prelude::PeerIdentifier;
 use crate::presentation::clients::request::ClientAction;
@@ -224,15 +226,17 @@ impl ClientController {
 
     pub(crate) async fn make_consensus(
         &self,
-        request: ClientRequest,
-    ) -> anyhow::Result<(ClientAction, u64)> {
+        session_req: SessionRequest,
+        write_req: WriteRequest,
+        cli_action: &mut ClientAction,
+    ) -> anyhow::Result<u64> {
         let (tx, consensus_res) = tokio::sync::oneshot::channel();
 
         self.cluster_communication_manager
             .send(ClientMessage::LeaderReqConsensus(ConsensusRequest::new(
-                request.action.clone().to_write_request(),
+                write_req,
                 tx,
-                Some(request.session_req),
+                Some(session_req),
             )))
             .await?;
 
@@ -240,9 +244,10 @@ impl ClientController {
             | ConsensusClientResponse::AlreadyProcessed { key: keys, index } => {
                 // * Conversion! request has already been processed so we need to convert it to get
                 let action = ClientAction::MGet { keys };
-                Ok((action, index))
+                *cli_action = action;
+                Ok(index)
             },
-            | ConsensusClientResponse::LogIndex(idx) => Ok((request.action, idx)),
+            | ConsensusClientResponse::LogIndex(idx) => Ok(idx),
             | ConsensusClientResponse::Err(error_msg) => Err(anyhow::anyhow!(error_msg)),
         }
     }

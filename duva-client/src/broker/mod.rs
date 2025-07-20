@@ -142,9 +142,7 @@ impl Broker {
     // ! If request is updating action yet receive error, we need to increase the request id
     // ! otherwise, server will not be able to process the next command
     fn extract_req_id(request_id: u64, kind: &ClientAction, query_io: &QueryIO) -> Option<u64> {
-        if !kind.consensus_required() {
-            return None;
-        }
+        kind.to_write_request()?;
         match query_io {
             // * Current rule: s:value-idx:index_num
             | QueryIO::SimpleString(v) => {
