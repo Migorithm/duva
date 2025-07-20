@@ -127,7 +127,7 @@ impl Broker {
                         | Ok(num_of_results) => {
                             command.input_context.num_of_results = num_of_results;
                         },
-                        | Err(e) => {
+                        | Err(_e) => {
                             continue;
                         },
                     }
@@ -192,7 +192,7 @@ impl Broker {
 
     async fn update_leader_connections(&mut self) {
         for node in self.topology.node_infos.clone() {
-            if ReplicationRole::Leader != node.repl_role.clone().into() {
+            if ReplicationRole::Leader != node.repl_role.clone() {
                 continue; // skip non-leader nodes
             }
             if self.node_connections.contains_key(&node.repl_id) {
@@ -235,7 +235,7 @@ impl Broker {
                 .topology
                 .hash_ring
                 .get_node_for_key(key.as_ref())
-                .ok_or(IoError::Custom(format!("Failed to get node id from key {}", key)))?;
+                .ok_or(IoError::Custom(format!("Failed to get node id from key {key}")))?;
 
             node_id_to_keys.entry(node_id).or_insert_with(Vec::new).push(key);
         }
@@ -265,7 +265,7 @@ impl Broker {
         let node_id = self
             .node_connections
             .get_first_node_id()
-            .map_err(|e| IoError::Custom(format!("Failed to get first node id: {}", e)))?;
+            .map_err(|e| IoError::Custom(format!("Failed to get first node id: {e}")))?;
         self.send_command_to_node(input, node_id).await?;
         Ok(1)
     }
@@ -285,15 +285,16 @@ impl Broker {
         input: Input,
         node_id: &ReplicationId,
     ) -> Result<(), IoError> {
-        let connection = self.node_connections.get(node_id).or_else(|_| {
-            Err(IoError::Custom(format!("No connection found for node id: {}", node_id)))
-        })?;
+        let connection = self
+            .node_connections
+            .get(node_id)
+            .map_err(|_| IoError::Custom(format!("No connection found for node id: {node_id}")))?;
         let cmd = build_command_with_request_id(&input.command, connection.request_id, &input.args);
 
-        let _ = connection
+        connection
             .send(MsgToServer::Command(cmd.as_bytes().to_vec()))
             .await
-            .map_err(|e| IoError::Custom(format!("Failed to send command: {}", e)))?;
+            .map_err(|e| IoError::Custom(format!("Failed to send command: {e}")))?;
         Ok(())
     }
 }

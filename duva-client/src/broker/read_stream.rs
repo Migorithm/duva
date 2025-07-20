@@ -1,6 +1,5 @@
 use crate::broker::BrokerMessage;
 use duva::domains::cluster_actors::replication::ReplicationId;
-use duva::prelude::PeerIdentifier;
 use duva::{
     domains::IoError,
     domains::interface::TRead,
@@ -39,7 +38,7 @@ impl ServerStreamReader {
                         break;
                     },
 
-                    | Err(e) => {
+                    | Err(_e) => {
                         let message = BrokerMessage::FromServerError(
                             replication_id.clone(),
                             IoError::ConnectionAborted,

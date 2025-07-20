@@ -58,9 +58,7 @@ impl InputContext {
             | ClientAction::Keys { pattern: _ } | ClientAction::MGet { keys: _ } => {
                 let init = QueryIO::Array(Vec::new());
                 let result = self.results.iter().fold(init, |acc, item| {
-                    let acc =
-                        acc.merge(item.clone()).unwrap_or_else(|_| QueryIO::Array(Vec::new()));
-                    acc
+                    acc.merge(item.clone()).unwrap_or_else(|_| QueryIO::Array(Vec::new()))
                 });
                 Ok(result)
             },

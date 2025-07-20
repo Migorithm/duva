@@ -58,20 +58,18 @@ impl NodeConnections {
     }
 
     pub(crate) fn get(&self, leader_id: &ReplicationId) -> anyhow::Result<&NodeConnection> {
-        Ok(self
-            .connections
+        self.connections
             .get(leader_id)
-            .ok_or(anyhow!("Connection not found for leader_id: {}", leader_id))?)
+            .ok_or(anyhow!("Connection not found for leader_id: {}", leader_id))
     }
 
     pub(crate) fn get_mut(
         &mut self,
         leader_id: &ReplicationId,
     ) -> anyhow::Result<&mut NodeConnection> {
-        Ok(self
-            .connections
+        self.connections
             .get_mut(leader_id)
-            .ok_or(anyhow!("Connection not found for leader_id: {}", leader_id))?)
+            .ok_or(anyhow!("Connection not found for leader_id: {}", leader_id))
     }
 
     pub(crate) fn insert(&mut self, leader_id: ReplicationId, connection: NodeConnection) {
