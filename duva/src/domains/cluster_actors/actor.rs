@@ -598,7 +598,6 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     }
 
     // * Broadcasts the current topology to all connected clients
-    // TODO hashring information should be included in the broadcast so clients can update their routing tables
     fn broadcast_topology_change(&self) {
         self.node_change_broadcast.send(self.get_topology()).ok();
     }

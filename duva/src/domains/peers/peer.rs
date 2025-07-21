@@ -75,13 +75,13 @@ pub struct PeerState {
 
 impl PeerState {
     pub(crate) fn new(
-        id: &str,
+        id: PeerIdentifier,
         match_index: u64,
         replid: ReplicationId,
         role: ReplicationRole,
     ) -> Self {
         // TODO unwrap
-        Self { id: PeerIdentifier(id.bind_addr().unwrap()), match_index, replid, role }
+        Self { id, match_index, replid, role }
     }
 
     pub(crate) fn id(&self) -> &PeerIdentifier {

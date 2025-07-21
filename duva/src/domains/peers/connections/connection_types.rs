@@ -18,18 +18,20 @@ impl ConnectedPeerInfo {
         match (my_repl_id, &self.replid) {
             // Peer is undecided - assign as replica with our replication ID
             | (_, ReplicationId::Undecided) => {
-                PeerState::new(&self.id, self.hwm, my_repl_id.clone(), self.role.clone())
+                PeerState::new(self.id.clone(), self.hwm, my_repl_id.clone(), self.role.clone())
             },
             // I am undecided - adopt peer's replication ID
             | (ReplicationId::Undecided, _) => {
-                PeerState::new(&self.id, self.hwm, self.replid.clone(), self.role.clone())
+                PeerState::new(self.id.clone(), self.hwm, self.replid.clone(), self.role.clone())
             },
             // Matching replication IDs - regular replica
             | (my_id, peer_id) if my_id == peer_id => {
-                PeerState::new(&self.id, self.hwm, self.replid.clone(), self.role.clone())
+                PeerState::new(self.id.clone(), self.hwm, self.replid.clone(), self.role.clone())
             },
             // Different replication IDs - non-data peer
-            | _ => PeerState::new(&self.id, self.hwm, self.replid.clone(), self.role.clone()),
+            | _ => {
+                PeerState::new(self.id.clone(), self.hwm, self.replid.clone(), self.role.clone())
+            },
         }
     }
 }
