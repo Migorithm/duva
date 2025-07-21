@@ -102,12 +102,12 @@ async fn test_reconnection_on_gossip() {
 
     // WHEN - try to reconnect
     cluster_actor
-        .join_peer_network_if_absent(vec![PeerState::new(
-            PeerIdentifier(format!("127.0.0.1:{}", bind_addr.port() - 10000)),
-            0,
-            cluster_actor.replication.replid.clone(),
-            ReplicationRole::Follower,
-        )])
+        .join_peer_network_if_absent(vec![PeerState {
+            id: PeerIdentifier(format!("127.0.0.1:{}", bind_addr.port() - 10000)),
+            match_index: 0,
+            replid: cluster_actor.replication.replid.clone(),
+            role: ReplicationRole::Follower,
+        }])
         .await;
 
     assert!(handle.await.is_ok());
@@ -161,12 +161,12 @@ async fn test_update_cluster_members_updates_fields() {
     let initial_last_seen = initial.last_seen;
     let initial_role = initial.state().role.clone();
 
-    let cluster_nodes = vec![PeerState::new(
-        peer_id.clone(),
-        100,
-        cluster_actor.replication.replid.clone(),
-        ReplicationRole::Leader,
-    )];
+    let cluster_nodes = vec![PeerState {
+        id: peer_id.clone(),
+        match_index: 100,
+        replid: cluster_actor.replication.replid.clone(),
+        role: ReplicationRole::Leader,
+    }];
     tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
     cluster_actor.update_cluster_members(&peer_id, 123, &cluster_nodes).await;
 
