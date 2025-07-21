@@ -672,42 +672,42 @@ mod test {
                 },
             ],
             cluster_nodes: vec![
-                PeerState::new(
-                    PeerIdentifier("127.0.0.1:30004".into()),
-                    0,
-                    ReplicationId::Key(Uuid::now_v7().to_string()),
-                    ReplicationRole::Follower,
-                ),
-                PeerState::new(
-                    PeerIdentifier("127.0.0.1:30002".into()),
-                    0,
-                    ReplicationId::Undecided,
-                    ReplicationRole::Follower,
-                ),
-                PeerState::new(
-                    PeerIdentifier("127.0.0.1:30003".into()),
-                    0,
-                    ReplicationId::Undecided,
-                    ReplicationRole::Follower,
-                ),
-                PeerState::new(
-                    PeerIdentifier("127.0.0.1:30005".into()),
-                    0,
-                    ReplicationId::Key(Uuid::now_v7().to_string()),
-                    ReplicationRole::Follower,
-                ),
-                PeerState::new(
-                    PeerIdentifier("127.0.0.1:30006".into()),
-                    0,
-                    ReplicationId::Key(Uuid::now_v7().to_string()),
-                    ReplicationRole::Follower,
-                ),
-                PeerState::new(
-                    PeerIdentifier("127.0.0.1:30001".into()),
-                    0,
-                    ReplicationId::Undecided,
-                    ReplicationRole::Follower,
-                ),
+                PeerState {
+                    id: PeerIdentifier("127.0.0.1:30004".into()),
+                    match_index: 0,
+                    replid: ReplicationId::Key(Uuid::now_v7().to_string()),
+                    role: ReplicationRole::Follower,
+                },
+                PeerState {
+                    id: PeerIdentifier("127.0.0.1:30002".into()),
+                    match_index: 0,
+                    replid: ReplicationId::Undecided,
+                    role: ReplicationRole::Follower,
+                },
+                PeerState {
+                    id: PeerIdentifier("127.0.0.1:30003".into()),
+                    match_index: 0,
+                    replid: ReplicationId::Undecided,
+                    role: ReplicationRole::Follower,
+                },
+                PeerState {
+                    id: PeerIdentifier("127.0.0.1:30005".into()),
+                    match_index: 0,
+                    replid: ReplicationId::Key(Uuid::now_v7().to_string()),
+                    role: ReplicationRole::Follower,
+                },
+                PeerState {
+                    id: PeerIdentifier("127.0.0.1:30006".into()),
+                    match_index: 0,
+                    replid: ReplicationId::Key(Uuid::now_v7().to_string()),
+                    role: ReplicationRole::Follower,
+                },
+                PeerState {
+                    id: PeerIdentifier("127.0.0.1:30001".into()),
+                    match_index: 0,
+                    replid: ReplicationId::Undecided,
+                    role: ReplicationRole::Follower,
+                },
             ],
             hashring: None,
         };
@@ -764,12 +764,12 @@ mod test {
         let node_infos = connected_peers
             .iter()
             .map(|peer| {
-                NodeReplInfo::from_peer_state(&PeerState::new(
-                    peer.clone(),
-                    0,
-                    ReplicationId::Key(Uuid::now_v7().to_string()),
-                    ReplicationRole::Follower,
-                ))
+                NodeReplInfo::from_peer_state(&{
+                    let id = peer.clone();
+                    let replid = ReplicationId::Key(Uuid::now_v7().to_string());
+                    let role = ReplicationRole::Follower;
+                    PeerState { id, match_index: 0, replid, role }
+                })
             })
             .collect();
         let topology = Topology::new(node_infos, hash_ring);

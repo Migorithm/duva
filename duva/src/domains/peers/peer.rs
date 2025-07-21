@@ -67,23 +67,13 @@ impl Peer {
 
 #[derive(Clone, Debug, PartialEq, Eq, bincode::Encode, bincode::Decode)]
 pub struct PeerState {
-    id: PeerIdentifier,
+    pub(crate) id: PeerIdentifier,
     pub(crate) match_index: u64,
     pub(crate) replid: ReplicationId,
     pub(crate) role: ReplicationRole,
 }
 
 impl PeerState {
-    pub(crate) fn new(
-        id: PeerIdentifier,
-        match_index: u64,
-        replid: ReplicationId,
-        role: ReplicationRole,
-    ) -> Self {
-        // TODO unwrap
-        Self { id, match_index, replid, role }
-    }
-
     pub(crate) fn id(&self) -> &PeerIdentifier {
         &self.id
     }

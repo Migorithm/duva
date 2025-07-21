@@ -18,19 +18,35 @@ impl ConnectedPeerInfo {
         match (my_repl_id, &self.replid) {
             // Peer is undecided - assign as replica with our replication ID
             | (_, ReplicationId::Undecided) => {
-                PeerState::new(self.id.clone(), self.hwm, my_repl_id.clone(), self.role.clone())
+                let id = self.id.clone();
+                let match_index = self.hwm;
+                let replid = my_repl_id.clone();
+                let role = self.role.clone();
+                PeerState { id, match_index, replid, role }
             },
             // I am undecided - adopt peer's replication ID
             | (ReplicationId::Undecided, _) => {
-                PeerState::new(self.id.clone(), self.hwm, self.replid.clone(), self.role.clone())
+                let id = self.id.clone();
+                let match_index = self.hwm;
+                let replid = self.replid.clone();
+                let role = self.role.clone();
+                PeerState { id, match_index, replid, role }
             },
             // Matching replication IDs - regular replica
             | (my_id, peer_id) if my_id == peer_id => {
-                PeerState::new(self.id.clone(), self.hwm, self.replid.clone(), self.role.clone())
+                let id = self.id.clone();
+                let match_index = self.hwm;
+                let replid = self.replid.clone();
+                let role = self.role.clone();
+                PeerState { id, match_index, replid, role }
             },
             // Different replication IDs - non-data peer
             | _ => {
-                PeerState::new(self.id.clone(), self.hwm, self.replid.clone(), self.role.clone())
+                let id = self.id.clone();
+                let match_index = self.hwm;
+                let replid = self.replid.clone();
+                let role = self.role.clone();
+                PeerState { id, match_index, replid, role }
             },
         }
     }

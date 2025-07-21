@@ -44,12 +44,13 @@ impl ReplicationState {
     }
 
     pub(super) fn self_info(&self) -> PeerState {
-        PeerState::new(
-            self.self_identifier(),
-            self.hwm.load(Ordering::Relaxed),
-            self.replid.clone(),
-            self.role.clone(),
-        )
+        {
+            let id = self.self_identifier();
+            let match_index = self.hwm.load(Ordering::Relaxed);
+            let replid = self.replid.clone();
+            let role = self.role.clone();
+            PeerState { id, match_index, replid, role }
+        }
     }
 
     pub(crate) fn self_identifier(&self) -> PeerIdentifier {

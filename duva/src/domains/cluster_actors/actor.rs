@@ -993,7 +993,6 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             | RejectionReason::ReceiverHasHigherTerm => self.step_down().await,
             | RejectionReason::LogInconsistency => {
                 info!("Log inconsistency, reverting match index");
-                //TODO we can refactor this to set match index to given log index from the follower
                 self.decrease_match_index(&repl_res.from, repl_res.log_idx);
             },
             | RejectionReason::FailToWrite => {
