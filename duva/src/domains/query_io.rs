@@ -673,37 +673,37 @@ mod test {
             ],
             cluster_nodes: vec![
                 PeerState::new(
-                    "127.0.0.1:30004",
+                    PeerIdentifier("127.0.0.1:30004".into()),
                     0,
                     ReplicationId::Key(Uuid::now_v7().to_string()),
                     ReplicationRole::Follower,
                 ),
                 PeerState::new(
-                    "127.0.0.1:30002",
+                    PeerIdentifier("127.0.0.1:30002".into()),
                     0,
                     ReplicationId::Undecided,
                     ReplicationRole::Follower,
                 ),
                 PeerState::new(
-                    "127.0.0.1:30003",
+                    PeerIdentifier("127.0.0.1:30003".into()),
                     0,
                     ReplicationId::Undecided,
                     ReplicationRole::Follower,
                 ),
                 PeerState::new(
-                    "127.0.0.1:30005",
+                    PeerIdentifier("127.0.0.1:30005".into()),
                     0,
                     ReplicationId::Key(Uuid::now_v7().to_string()),
                     ReplicationRole::Follower,
                 ),
                 PeerState::new(
-                    "127.0.0.1:30006",
+                    PeerIdentifier("127.0.0.1:30006".into()),
                     0,
                     ReplicationId::Key(Uuid::now_v7().to_string()),
                     ReplicationRole::Follower,
                 ),
                 PeerState::new(
-                    "127.0.0.1:30001",
+                    PeerIdentifier("127.0.0.1:30001".into()),
                     0,
                     ReplicationId::Undecided,
                     ReplicationRole::Follower,
@@ -765,7 +765,7 @@ mod test {
             .iter()
             .map(|peer| {
                 NodeReplInfo::from_peer_state(&PeerState::new(
-                    &peer,
+                    peer.clone(),
                     0,
                     ReplicationId::Key(Uuid::now_v7().to_string()),
                     ReplicationRole::Follower,

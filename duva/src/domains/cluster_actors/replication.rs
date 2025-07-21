@@ -44,10 +44,8 @@ impl ReplicationState {
     }
 
     pub(super) fn self_info(&self) -> PeerState {
-        let self_id = self.self_identifier();
-
         PeerState::new(
-            &self_id,
+            self.self_identifier(),
             self.hwm.load(Ordering::Relaxed),
             self.replid.clone(),
             self.role.clone(),
