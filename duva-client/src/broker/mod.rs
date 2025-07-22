@@ -4,6 +4,7 @@ mod write_stream;
 use crate::command::Input;
 
 use duva::domains::caches::cache_manager::IndexedValueCodec;
+use duva::domains::query_io::QueryIO::SessionRequest;
 use duva::domains::{IoError, query_io::QueryIO};
 use duva::prelude::tokio;
 use duva::prelude::tokio::net::TcpStream;
@@ -64,9 +65,14 @@ impl Broker {
                     | _ => {},
                 },
                 | BrokerMessage::ToServer(command) => {
-                    let cmd = self.build_command_with_request_id(&command.command, command.args);
-                    if let Err(e) =
-                        self.to_server.send(MsgToServer::Command(cmd.as_bytes().to_vec())).await
+                    let session_request = SessionRequest {
+                        request_id: self.request_id,
+                        client_action: command.input.kind.clone(),
+                    };
+                    if let Err(e) = self
+                        .to_server
+                        .send(MsgToServer::Command(session_request.serialize().to_vec()))
+                        .await
                     {
                         println!("Failed to send command: {e}");
                     }

@@ -1,15 +1,14 @@
 use std::str::FromStr;
 
 use crate::domains::{
-    QueryIO,
     cluster_actors::{LazyOption, SessionRequest},
     operation_logs::WriteRequest,
     peers::identifier::{PeerIdentifier, TPeerAddress},
 };
 use anyhow::Context;
-use chrono::{DateTime, Utc};
+use chrono::Utc;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq, bincode::Encode, bincode::Decode)]
 pub enum ClientAction {
     Ping,
     Echo(String),
@@ -19,7 +18,7 @@ pub enum ClientAction {
     IndexGet { key: String, index: u64 },
     Set { key: String, value: String },
     Append { key: String, value: String },
-    SetWithExpiry { key: String, value: String, expiry: DateTime<Utc> },
+    SetWithExpiry { key: String, value: String, expires_at: i64 },
     Keys { pattern: Option<String> },
     Delete { keys: Vec<String> },
     Save,
@@ -56,13 +55,10 @@ impl ClientAction {
             | ClientAction::Set { key, value } => {
                 WriteRequest::Set { key: key.clone(), value: value.clone(), expires_at: None }
             },
-            | ClientAction::SetWithExpiry { key, value, expiry } => {
-                let expires_at = expiry.timestamp_millis() as u64;
-                WriteRequest::Set {
-                    key: key.clone(),
-                    value: value.clone(),
-                    expires_at: Some(expires_at),
-                }
+            | ClientAction::SetWithExpiry { key, value, expires_at } => WriteRequest::Set {
+                key: key.clone(),
+                value: value.clone(),
+                expires_at: Some(*expires_at),
             },
             | ClientAction::Append { key, value } => {
                 WriteRequest::Append { key: key.clone(), value: value.clone() }
@@ -149,7 +145,7 @@ pub fn extract_action(action: &str, args: &[&str]) -> anyhow::Result<ClientActio
             Ok(ClientAction::SetWithExpiry {
                 key: args[0].to_string(),
                 value: args[1].to_string(),
-                expiry: extract_expiry(args[3])?,
+                expires_at: extract_expiry(args[3])?,
             })
         },
 
@@ -374,30 +370,13 @@ pub fn extract_action(action: &str, args: &[&str]) -> anyhow::Result<ClientActio
     }
 }
 
-pub fn extract_expiry(expiry: &str) -> anyhow::Result<DateTime<Utc>> {
+pub fn extract_expiry(expiry: &str) -> anyhow::Result<i64> {
     let expiry = expiry.parse::<i64>().context("Invalid expiry")?;
-    Ok(Utc::now() + chrono::Duration::milliseconds(expiry))
+    Ok((Utc::now() + chrono::Duration::milliseconds(expiry)).timestamp_millis())
 }
 
 #[derive(Clone, Debug)]
 pub struct ClientRequest {
     pub(crate) action: ClientAction,
     pub(crate) session_req: SessionRequest,
-}
-
-impl ClientRequest {
-    pub fn from_user_input(
-        value: Vec<QueryIO>,
-        session_req: SessionRequest,
-    ) -> anyhow::Result<Self> {
-        let mut values = value.into_iter().flat_map(|v| v.unpack_single_entry::<String>());
-        let command = values.next().ok_or(anyhow::anyhow!("Unexpected command format"))?;
-        let (command, args) = (command, values.collect::<Vec<_>>());
-
-        let cli_action =
-            extract_action(&command, &args.iter().map(|s| s.as_str()).collect::<Vec<_>>())
-                .map_err(|e| anyhow::anyhow!(e))?;
-
-        Ok(ClientRequest { action: cli_action, session_req })
-    }
 }

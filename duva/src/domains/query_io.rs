@@ -5,6 +5,7 @@ use crate::domains::operation_logs::WriteOperation;
 use crate::domains::peers::command::{
     ElectionVote, HeartBeat, MigrateBatch, MigrationBatchAck, ReplicationAck, RequestVote,
 };
+use crate::presentation::clients::request::ClientAction;
 use anyhow::{Context, Result};
 use bytes::{Bytes, BytesMut};
 use std::fmt::Write;
@@ -28,6 +29,7 @@ const MIGRATION_BATCH_ACK_PREFIX: char = 'M';
 
 const ERR_PREFIX: char = '-';
 const NULL_PREFIX: char = '\u{0000}';
+const CLIENT_ACTION_PREFIX: char = '%';
 pub(crate) const SERDE_CONFIG: bincode::config::Configuration = bincode::config::standard();
 
 #[macro_export]
@@ -46,7 +48,7 @@ pub enum QueryIO {
     Array(Vec<QueryIO>),
     SessionRequest {
         request_id: u64,
-        value: Vec<QueryIO>,
+        client_action: ClientAction,
     },
     Err(Bytes),
 
@@ -111,10 +113,11 @@ impl QueryIO {
                 }
                 buffer.freeze()
             },
-            | QueryIO::SessionRequest { request_id, value } => {
-                let mut buffer = BytesMut::with_capacity(32 + 1 + value.len() * 32);
+            | QueryIO::SessionRequest { request_id, client_action: action } => {
+                let value = serialize_with_bincode(CLIENT_ACTION_PREFIX, &action);
+                let mut buffer = BytesMut::with_capacity(32 + 1 + value.len());
                 buffer.extend_from_slice(format!("!{request_id}\r\n").as_bytes());
-                buffer.extend_from_slice(&QueryIO::Array(value).serialize());
+                buffer.extend_from_slice(&value);
                 buffer.freeze()
             },
             | QueryIO::Err(e) => {
@@ -302,23 +305,15 @@ fn parse_session_request(buffer: Bytes) -> Result<(QueryIO, usize)> {
     offset += count_len;
     let request_id = count_bytes.parse()?;
 
-    // ! to advance '$'
-    offset += 1;
+    let (action_byte, len): (ClientAction, usize) = parse_client_action(buffer.slice(offset..))?;
+    Ok((QueryIO::SessionRequest { request_id, client_action: action_byte }, offset + len))
+}
 
-    let (count_bytes, count_len) = read_until_crlf_exclusive(&buffer.slice(offset..))
-        .ok_or(anyhow::anyhow!("Invalid array length"))?;
-    offset += count_len;
-
-    let array_len = count_bytes.parse()?;
-
-    let mut elements = Vec::with_capacity(array_len);
-
-    for _ in 0..array_len {
-        let (element, len) = deserialize(buffer.slice(offset..))?;
-        offset += len;
-        elements.push(element);
-    }
-    Ok((QueryIO::SessionRequest { request_id, value: elements }, offset))
+fn parse_client_action(buffer: Bytes) -> Result<(ClientAction, usize)> {
+    let (action, len): (ClientAction, usize) =
+        bincode::decode_from_slice(&buffer.slice(1..), SERDE_CONFIG)
+            .map_err(|err| anyhow::anyhow!("Failed to decode client action: {:?}", err))?;
+    Ok((action, len + 1))
 }
 
 pub fn parse_custom_type<T>(buffer: Bytes) -> Result<(QueryIO, usize)>
@@ -549,21 +544,21 @@ mod test {
     #[test]
     fn test_deserialize_session_request() {
         // GIVEN
-        let buffer = Bytes::from("!30\r\n*2\r\n$5\r\nhello\r\n$5\r\nworld\r\n");
+        let buffer = Bytes::from("!30\r\n%\x06\x05hello\x05world");
 
         // WHEN
         let (value, len) = deserialize(buffer).unwrap();
 
         // THEN
-        assert_eq!(len, 31);
+        assert_eq!(len, 19);
         assert_eq!(
             value,
             QueryIO::SessionRequest {
                 request_id: 30,
-                value: vec![
-                    QueryIO::BulkString("hello".into()),
-                    QueryIO::BulkString("world".into()),
-                ]
+                client_action: ClientAction::Set {
+                    key: "hello".to_string(),
+                    value: "world".to_string(),
+                }
             }
         );
     }
@@ -572,14 +567,17 @@ mod test {
         // GIVEN
         let request = QueryIO::SessionRequest {
             request_id: 30,
-            value: vec![QueryIO::BulkString("hello".into()), QueryIO::BulkString("world".into())],
+            client_action: ClientAction::Set {
+                key: "hello".to_string(),
+                value: "world".to_string(),
+            },
         };
 
         // WHEN
         let serialized = request.serialize();
 
         // THEN
-        assert_eq!(serialized, Bytes::from("!30\r\n*2\r\n$5\r\nhello\r\n$5\r\nworld\r\n"));
+        assert_eq!(serialized, Bytes::from("!30\r\n%\x06\x05hello\x05world"));
     }
 
     #[test]
