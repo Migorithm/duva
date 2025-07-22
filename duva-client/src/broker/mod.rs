@@ -102,7 +102,11 @@ impl Broker {
                 },
 
                 | BrokerMessage::FromServerError(repl_id, e) => match e {
-                    | IoError::ConnectionAborted | IoError::ConnectionReset => {
+                    | IoError::ConnectionAborted
+                    | IoError::ConnectionReset
+                    | IoError::ConnectionRefused
+                    | IoError::NotConnected
+                    | IoError::BrokenPipe => {
                         tokio::time::sleep(tokio::time::Duration::from_millis(
                             LEADER_HEARTBEAT_INTERVAL_MAX,
                         ))
