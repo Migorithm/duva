@@ -1,7 +1,6 @@
 use std::str::FromStr;
 
 use crate::domains::{
-    QueryIO,
     cluster_actors::{LazyOption, SessionRequest},
     operation_logs::WriteRequest,
     peers::identifier::{PeerIdentifier, TPeerAddress},
@@ -9,7 +8,7 @@ use crate::domains::{
 use anyhow::Context;
 use chrono::Utc;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq, bincode::Encode, bincode::Decode)]
 pub enum ClientAction {
     Ping,
     Echo(String),
