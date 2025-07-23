@@ -332,7 +332,7 @@ impl BytesDecoder<'_, MetadataReady> {
     pub fn try_extract_expiry_time_in_milliseconds(&mut self) -> Result<StoredDuration> {
         self.remove_identifier();
         let range = 0..=7;
-        let result = u64::from_le_bytes(
+        let result = i64::from_le_bytes(
             extract_range(self, range.clone())
                 .context("Failed to extract expiry time in milliseconds")?,
         );

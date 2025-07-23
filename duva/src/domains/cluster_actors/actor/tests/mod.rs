@@ -107,8 +107,15 @@ impl Helper {
         let key = PeerIdentifier::new("127.0.0.1", port);
 
         let kill_switch = PeerListener::spawn(fake_buf.clone(), cluster_sender, key.clone());
-        let peer =
-            Peer::new(fake_buf, PeerState::new(&key, hwm, repl_id.clone(), role), kill_switch);
+        let peer = Peer::new(
+            fake_buf,
+            {
+                let id = key.clone();
+                let replid = repl_id.clone();
+                PeerState { id, match_index: hwm, replid, role }
+            },
+            kill_switch,
+        );
         (key, peer)
     }
 
@@ -193,14 +200,14 @@ impl Helper {
                 PeerIdentifier::new("localhost", port),
                 Peer::new(
                     fake_b.clone(),
-                    PeerState::new(
-                        &format!("localhost:{port}"),
-                        follower_hwm,
-                        replid
+                    {
+                        let id = PeerIdentifier(format!("localhost:{port}"));
+                        let replid = replid
                             .clone()
-                            .unwrap_or_else(|| ReplicationId::Key("localhost".to_string())),
-                        ReplicationRole::Follower,
-                    ),
+                            .unwrap_or_else(|| ReplicationId::Key("localhost".to_string()));
+                        let role = ReplicationRole::Follower;
+                        PeerState { id, match_index: follower_hwm, replid, role }
+                    },
                     kill_switch,
                 ),
             );

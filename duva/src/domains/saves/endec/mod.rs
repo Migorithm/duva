@@ -96,7 +96,7 @@ fn extract_range<const N: usize>(encoded: &[u8], range: RangeInclusive<usize>) -
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum StoredDuration {
     Seconds(u32),
-    Milliseconds(u64),
+    Milliseconds(i64),
 }
 
 impl StoredDuration {
@@ -106,7 +106,7 @@ impl StoredDuration {
                 DateTime::<Utc>::from_timestamp(*secs as i64, 0).expect("Invalid timestamp")
             },
             | StoredDuration::Milliseconds(millis) => {
-                DateTime::from_timestamp_millis(*millis as i64).expect("Invalid timestamp")
+                DateTime::from_timestamp_millis(*millis).expect("Invalid timestamp")
             },
         }
     }

@@ -258,14 +258,6 @@ pub fn array(arr: Vec<&str>) -> Bytes {
         .serialize()
 }
 
-pub fn session_request(request_id: u64, arr: Vec<&str>) -> Bytes {
-    QueryIO::SessionRequest {
-        request_id,
-        value: arr.iter().map(|s| QueryIO::BulkString(s.to_string().into())).collect(),
-    }
-    .serialize()
-}
-
 pub struct Client {
     pub child: Child,
     reader: Option<BufReader<ChildStdout>>,

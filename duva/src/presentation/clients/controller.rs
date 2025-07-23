@@ -10,6 +10,7 @@ use crate::domains::saves::actor::SaveTarget;
 use crate::prelude::PeerIdentifier;
 use crate::presentation::clients::request::ClientAction;
 use crate::presentation::clusters::communication_manager::ClusterCommunicationManager;
+use chrono::DateTime;
 use std::sync::atomic::Ordering;
 
 #[derive(Clone, Debug)]
@@ -33,10 +34,11 @@ impl ClientController {
                     .await?
                     .into(),
             ),
-            | ClientAction::SetWithExpiry { key, value, expiry } => QueryIO::SimpleString(
+            | ClientAction::SetWithExpiry { key, value, expires_at } => QueryIO::SimpleString(
                 self.cache_manager
                     .route_set(
-                        CacheEntry::new(key, value.as_str()).with_expiry(expiry),
+                        CacheEntry::new(key, value.as_str())
+                            .with_expiry(DateTime::from_timestamp_millis(expires_at).unwrap()),
                         current_index.unwrap(),
                     )
                     .await?

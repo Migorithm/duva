@@ -105,7 +105,7 @@ impl From<&'static str> for ConsensusClientResponse {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, bincode::Encode, bincode::Decode)]
 pub enum LazyOption {
     Lazy,
     Eager,

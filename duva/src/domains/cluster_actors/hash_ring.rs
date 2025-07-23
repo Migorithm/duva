@@ -158,12 +158,23 @@ impl HashRing {
         self.vnodes.len()
     }
 
-    pub(crate) fn get_node_for_keys(&self, keys: &[&str]) -> anyhow::Result<ReplicationId> {
-        // Use the first key to determine the node
-        let hash = fnv_1a_hash(keys[0]);
-        self.find_replid(hash)
-            .cloned()
-            .ok_or_else(|| anyhow::anyhow!("No node found for keys: {:?}", keys))
+    pub(crate) fn list_replids_for_keys<'a>(
+        &self,
+        keys: &[&'a str],
+    ) -> anyhow::Result<HashMap<ReplicationId, Vec<&'a str>>> {
+        let mut map: HashMap<ReplicationId, Vec<&str>> = HashMap::new();
+
+        for key in keys {
+            let hash = fnv_1a_hash(key);
+            let replid = self
+                .find_replid(hash)
+                .cloned()
+                .ok_or_else(|| anyhow::anyhow!("No node found for keys: {:?}", keys))?;
+            let v = map.entry(replid).or_default();
+            v.push(key);
+        }
+
+        Ok(map)
     }
 
     pub fn get_node_for_key(&self, key: &str) -> Option<&ReplicationId> {

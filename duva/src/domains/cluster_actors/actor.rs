@@ -284,14 +284,23 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             return;
         };
 
-        // TODO get_node_for_keys need to be revisited as currently it takes only the first key
-        match self.hash_ring.get_node_for_keys(&req.request.all_keys()) {
-            | Ok(replid) if replid == self.replication.replid => {
+        match self.hash_ring.list_replids_for_keys(&req.request.all_keys()) {
+            | Ok(replids) if replids.keys().all(|replid| *replid == self.replication.replid) => {
                 self.req_consensus(req).await;
             },
-            | Ok(replid) => {
-                err!("Given keys {:?} moved to {}", req.request.all_keys(), replid);
-                let _ = req.callback.send(format!("MOVED {replid}").into());
+            | Ok(replids) => {
+                // To notify client's of what keys have been moved.
+                // ! Still, client won't know where the key has been moved. The assumption here is client SHOULD have correct hashring information.
+                let moved_keys = replids
+                    .iter()
+                    .filter_map(|(replid, keys)| {
+                        if *replid != self.replication.replid { Some(keys.iter()) } else { None }
+                    })
+                    .flatten()
+                    .copied()
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                let _ = req.callback.send(format!("MOVED {moved_keys}").into());
             },
             | Err(err) => {
                 err!("{}", err);
@@ -984,7 +993,6 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             | RejectionReason::ReceiverHasHigherTerm => self.step_down().await,
             | RejectionReason::LogInconsistency => {
                 info!("Log inconsistency, reverting match index");
-                //TODO we can refactor this to set match index to given log index from the follower
                 self.decrease_match_index(&repl_res.from, repl_res.log_idx);
             },
             | RejectionReason::FailToWrite => {
