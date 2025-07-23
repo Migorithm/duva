@@ -6,7 +6,7 @@ mod write_stream;
 use crate::broker::node_connections::NodeConnections;
 use crate::broker::write_stream::MsgToServer;
 use crate::command::{
-    CommandToServer, Input, InputContext, RoutingRule, build_command_with_request_id,
+    CommandEntry, CommandToServer, Input, InputContext, RoutingRule, build_command_with_request_id,
 };
 use collections::HashMap;
 use duva::domains::caches::cache_manager::IndexedValueCodec;
@@ -24,6 +24,7 @@ use duva::{
     domains::TSerdeReadWrite,
     prelude::{AuthRequest, AuthResponse},
 };
+use futures::FutureExt;
 use futures::future::try_join_all;
 use input_queue::InputQueue;
 use node_connections::NodeConnection;
@@ -121,10 +122,8 @@ impl Broker {
                     let action = context.kind.clone();
                     let res = match command.routing_rule {
                         | RoutingRule::Any => self.default_route(action).await,
-                        | RoutingRule::Single(key) => self.route_command_by_key(action, key).await,
-
-                        | RoutingRule::Multi(keys) => {
-                            self.route_command_by_keys(action, keys).await
+                        | RoutingRule::Selective(entries) => {
+                            self.route_command_by_keys(action, entries).await
                         },
                         | RoutingRule::BroadCast => self.route_command_to_all(action).await,
                     };
@@ -228,56 +227,41 @@ impl Broker {
         Some(())
     }
 
-    // TODO merge route_command_by_keys with route_command_by_key
+    // 'default_route' is used when given request does NOT have to be sent to a specific node
+    async fn default_route(&self, client_action: ClientAction) -> Result<usize, IoError> {
+        self.node_connections.send_to(None, client_action).await?;
+        Ok(1)
+    }
+
     async fn route_command_by_keys(
         &mut self,
         client_action: ClientAction,
-        keys: Vec<String>,
+        entries: Vec<CommandEntry>,
     ) -> Result<usize, IoError> {
-        let mut node_id_to_keys = HashMap::new();
-        for key in keys {
-            let node_id = self
-                .topology
-                .hash_ring
-                .get_node_for_key(key.as_ref())
-                .ok_or(IoError::Custom(format!("Failed to get node id from key {key}")))?;
+        let Ok(mut node_id_to_entries) = self
+            .topology
+            .hash_ring
+            .list_replids_for_keys(&entries.iter().map(|e| e.key.as_str()).collect::<Vec<&str>>())
+        else {
+            // If routing failed, we fall back to default routing
+            return self.default_route(client_action).await;
+        };
 
-            node_id_to_keys.entry(node_id).or_insert_with(Vec::new).push(key);
-        }
+        let num_of_results = node_id_to_entries.len();
 
-        let num_of_results = node_id_to_keys.len();
-
-        try_join_all(node_id_to_keys.iter().map(|(node_id, routed_keys)| {
-            // TODO conversion shouldn't happen here or datastructure needs to be revisited
+        try_join_all(node_id_to_entries.iter().map(|(node_id, routed_keys)| {
+            let keys = routed_keys.iter().map(|key| key.to_string()).collect::<Vec<String>>();
             let new_action = match client_action {
-                | ClientAction::MGet { .. } => ClientAction::MGet { keys: routed_keys.clone() },
-                | ClientAction::Exists { .. } => ClientAction::Exists { keys: routed_keys.clone() },
-                | ClientAction::Delete { .. } => ClientAction::Delete { keys: routed_keys.clone() },
-                | _ => panic!("Unexpected action for routing by keys: {:?}", client_action),
+                | ClientAction::MGet { .. } => ClientAction::MGet { keys },
+                | ClientAction::Exists { .. } => ClientAction::Exists { keys },
+                | ClientAction::Delete { .. } => ClientAction::Delete { keys },
+                | _ => client_action.clone(),
             };
             self.node_connections.send_to(Some(node_id), new_action)
         }))
         .await?;
 
         Ok(num_of_results)
-    }
-
-    async fn route_command_by_key(
-        &self,
-        client_action: ClientAction,
-        key: String,
-    ) -> Result<usize, IoError> {
-        let Some(node_id) = self.topology.hash_ring.get_node_for_key(key.as_ref()) else {
-            return self.default_route(client_action).await;
-        };
-        self.node_connections.send_to(Some(node_id), client_action).await?;
-        Ok(1)
-    }
-
-    // 'default_route' is used when given request does NOT have to be sent to a specific node
-    async fn default_route(&self, client_action: ClientAction) -> Result<usize, IoError> {
-        self.node_connections.send_to(None, client_action).await?;
-        Ok(1)
     }
 
     async fn route_command_to_all(&self, client_action: ClientAction) -> Result<usize, IoError> {

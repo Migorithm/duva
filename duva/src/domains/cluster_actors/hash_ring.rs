@@ -158,7 +158,7 @@ impl HashRing {
         self.vnodes.len()
     }
 
-    pub(crate) fn list_replids_for_keys<'a>(
+    pub fn list_replids_for_keys<'a>(
         &self,
         keys: &[&'a str],
     ) -> anyhow::Result<HashMap<ReplicationId, Vec<&'a str>>> {

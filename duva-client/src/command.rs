@@ -92,13 +92,19 @@ impl InputContext {
     }
 }
 
+#[derive(Debug)]
+pub struct CommandEntry {
+    pub(crate) key: String,
+    value: Option<String>,
+    expires_at: Option<i64>,
+}
+
 #[derive(Debug, Default)]
 pub enum RoutingRule {
     #[default]
     Any,
-    Single(String),
     // TODO merge Signle and Multi
-    Multi(Vec<String>),
+    Selective(Vec<CommandEntry>),
     BroadCast,
 }
 
@@ -106,22 +112,45 @@ impl From<&ClientAction> for RoutingRule {
     fn from(value: &ClientAction) -> Self {
         match value {
             // commands that requires single-key routing
-            | ClientAction::Get { key, .. }
-            | ClientAction::Ttl { key, .. }
-            | ClientAction::Incr { key, .. }
-            | ClientAction::Set { key, .. }
-            | ClientAction::Append { key, .. }
-            | ClientAction::SetWithExpiry { key, .. }
-            | ClientAction::IndexGet { key, .. }
-            | ClientAction::Decr { key, .. } => Self::Single(key.clone()),
+            | ClientAction::Get { key }
+            | ClientAction::Ttl { key }
+            | ClientAction::Decr { key }
+            | ClientAction::Incr { key } => Self::Selective(vec![CommandEntry {
+                key: key.clone(),
+                value: None,
+                expires_at: None,
+            }]),
+            | ClientAction::Set { key, value } | ClientAction::Append { key, value } => {
+                Self::Selective(vec![CommandEntry {
+                    key: key.clone(),
+                    value: Some(value.clone()),
+                    expires_at: None,
+                }])
+            },
+            | ClientAction::IndexGet { key, index } => Self::Selective(vec![CommandEntry {
+                key: key.clone(),
+                value: Some(index.to_string()),
+                expires_at: None,
+            }]),
+            | ClientAction::SetWithExpiry { key, value, expires_at } => {
+                Self::Selective(vec![CommandEntry {
+                    key: key.clone(),
+                    value: Some(value.clone()),
+                    expires_at: Some(*expires_at),
+                }])
+            },
 
             // commands thar require multi-key-routings
             | ClientAction::Delete { keys }
             | ClientAction::Exists { keys }
-            | ClientAction::MGet { keys } => Self::Multi(keys.clone()),
+            | ClientAction::MGet { keys } => Self::Selective(
+                keys.iter()
+                    .map(|key| CommandEntry { key: key.clone(), value: None, expires_at: None })
+                    .collect(),
+            ),
 
             // broadcast
-            | ClientAction::Keys { .. } => Self::BroadCast,
+            | ClientAction::Keys { pattern } => Self::BroadCast,
             | _ => Self::Any,
         }
     }
