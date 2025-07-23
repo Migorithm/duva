@@ -31,23 +31,12 @@ impl ServerStreamReader {
                             }
                         }
                     },
-                    | Err(IoError::ConnectionAborted) | Err(IoError::ConnectionReset) => {
-                        let message = BrokerMessage::FromServerError(
-                            replication_id.clone(),
-                            IoError::ConnectionAborted,
-                        );
-                        let _ = controller_sender.send(message).await;
-                        break;
-                    },
-
-                    | Err(_e) => {
-                        let message = BrokerMessage::FromServerError(
-                            replication_id.clone(),
-                            IoError::ConnectionAborted,
-                        );
+                    | Err(e) => {
+                        let message = BrokerMessage::FromServerError(replication_id.clone(), e);
                         if controller_sender.send(message).await.is_err() {
                             break;
                         }
+                        break;
                     },
                 }
             }
