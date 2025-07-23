@@ -38,6 +38,7 @@ pub mod prelude {
     pub use anyhow;
     pub use bytes;
     pub use bytes::BytesMut;
+    pub use rand;
     pub use tokio;
     pub use uuid;
 }

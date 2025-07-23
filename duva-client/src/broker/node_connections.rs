@@ -6,10 +6,15 @@ use duva::domains::query_io::QueryIO;
 use duva::domains::query_io::QueryIO::SessionRequest;
 use duva::prelude::anyhow;
 use duva::prelude::anyhow::anyhow;
+use duva::prelude::rand;
+use duva::prelude::rand::Rng;
+use duva::prelude::rand::rngs::ThreadRng;
+use duva::prelude::rand::seq::IteratorRandom;
 use duva::prelude::tokio::sync::mpsc;
 use duva::prelude::tokio::sync::oneshot;
 use duva::presentation::clients::request::ClientAction;
 use std::collections::HashMap;
+use std::sync::LazyLock;
 
 #[derive(Debug)]
 pub(crate) struct NodeConnections {
@@ -109,28 +114,25 @@ impl NodeConnections {
         self.connections.len()
     }
 
+    pub(crate) async fn randomized_send(&self, client_action: ClientAction) -> Result<(), IoError> {
+        // ThreadRng internally uses thread-local storage, so the actual RNG state is reused per thread
+        let connection = self
+            .connections
+            .values()
+            .choose(&mut rand::rng())
+            .ok_or(IoError::Custom("No connections available".to_string()))?;
+        connection.send(client_action).await
+    }
+
     pub(crate) async fn send_to(
         &self,
-        node_id: Option<&ReplicationId>,
+        node_id: &ReplicationId,
         client_action: ClientAction,
     ) -> Result<(), IoError> {
-        let connection = match node_id {
-            | Some(id) => {
-                let connection = self
-                    .connections
-                    .get(id)
-                    .ok_or(IoError::Custom("No connections available".to_string()))?;
-                connection
-            },
-            | None => {
-                let connection = self
-                    .connections
-                    .iter()
-                    .next()
-                    .ok_or(IoError::Custom("No connections available".to_string()))?;
-                connection.1
-            },
-        };
+        let connection = self
+            .connections
+            .get(node_id)
+            .ok_or(IoError::Custom("No connections available".to_string()))?;
         connection.send(client_action).await
     }
 

@@ -2,10 +2,8 @@ mod input_queue;
 mod node_connections;
 mod read_stream;
 mod write_stream;
-
 use crate::broker::node_connections::NodeConnections;
 use crate::command::{CommandEntry, CommandToServer, InputContext, RoutingRule};
-use duva::domains::caches::cache_manager::IndexedValueCodec;
 use duva::domains::cluster_actors::replication::{ReplicationId, ReplicationRole};
 use duva::domains::{IoError, query_io::QueryIO};
 use duva::prelude::tokio::net::TcpStream;
@@ -103,7 +101,7 @@ impl Broker {
                     },
                     | _ => {},
                 },
-                | BrokerMessage::ToServer(mut command) => {
+                | BrokerMessage::ToServer(command) => {
                     let mut context = command.context;
                     let action = context.client_action.clone();
                     let res = match command.routing_rule {
@@ -124,23 +122,6 @@ impl Broker {
                     queue.push(context);
                 },
             }
-        }
-    }
-
-    // ! CONSIDER IDEMPOTENCY RULE
-    // !
-    // ! If request is updating action yet receive error, we need to increase the request id
-    // ! otherwise, server will not be able to process the next command
-    fn extract_req_id(request_id: u64, kind: &ClientAction, query_io: &QueryIO) -> Option<u64> {
-        kind.to_write_request()?;
-        match query_io {
-            // * Current rule: s:value-idx:index_num
-            | QueryIO::SimpleString(v) => {
-                let s = String::from_utf8_lossy(v);
-                IndexedValueCodec::decode_index(s).filter(|&id| id > request_id)
-            },
-            | QueryIO::Err(_) => Some(request_id + 1),
-            | _ => None,
         }
     }
 
@@ -218,7 +199,7 @@ impl Broker {
 
     // 'default_route' is used when given request does NOT have to be sent to a specific node
     async fn default_route(&self, client_action: ClientAction) -> Result<usize, IoError> {
-        self.node_connections.send_to(None, client_action).await?;
+        self.node_connections.randomized_send(client_action).await?;
         Ok(1)
     }
 
@@ -227,7 +208,7 @@ impl Broker {
         client_action: ClientAction,
         entries: Vec<CommandEntry>,
     ) -> Result<usize, IoError> {
-        let Ok(mut node_id_to_entries) = self
+        let Ok(node_id_to_entries) = self
             .topology
             .hash_ring
             .list_replids_for_keys(&entries.iter().map(|e| e.key.as_str()).collect::<Vec<&str>>())
@@ -246,7 +227,7 @@ impl Broker {
                 | ClientAction::Delete { .. } => ClientAction::Delete { keys },
                 | _ => client_action.clone(),
             };
-            self.node_connections.send_to(Some(node_id), new_action)
+            self.node_connections.send_to(node_id, new_action)
         }))
         .await?;
 
@@ -257,7 +238,7 @@ impl Broker {
         try_join_all(
             self.node_connections
                 .keys()
-                .map(|node_id| self.node_connections.send_to(Some(node_id), client_action.clone())),
+                .map(|node_id| self.node_connections.send_to(node_id, client_action.clone())),
         )
         .await?;
         Ok(self.node_connections.len())
