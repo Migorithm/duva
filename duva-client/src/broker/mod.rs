@@ -117,26 +117,26 @@ impl Broker {
                     | _ => {},
                 },
                 | BrokerMessage::ToServer(mut command) => {
+                    let mut context = command.input_context;
+                    let action = context.kind.clone();
                     let res = match command.routing_rule {
-                        | RoutingRule::Any => self.default_route(command.input).await,
-                        | RoutingRule::Single(key) => {
-                            self.route_command_by_key(command.input, key).await
-                        },
+                        | RoutingRule::Any => self.default_route(action).await,
+                        | RoutingRule::Single(key) => self.route_command_by_key(action, key).await,
 
                         | RoutingRule::Multi(keys) => {
-                            self.route_command_by_keys(command.input, keys).await
+                            self.route_command_by_keys(action, keys).await
                         },
-                        | RoutingRule::BroadCast => self.route_command_to_all(command.input).await,
+                        | RoutingRule::BroadCast => self.route_command_to_all(action).await,
                     };
                     match res {
                         | Ok(num_of_results) => {
-                            command.input_context.set_expected_result_cnt(num_of_results);
+                            context.set_expected_result_cnt(num_of_results);
                         },
                         | Err(_e) => {
                             continue;
                         },
                     }
-                    queue.push(command.input_context);
+                    queue.push(context);
                 },
             }
         }
@@ -231,7 +231,7 @@ impl Broker {
     // TODO merge route_command_by_keys with route_command_by_key
     async fn route_command_by_keys(
         &mut self,
-        input: Input,
+        client_action: ClientAction,
         keys: Vec<String>,
     ) -> Result<usize, IoError> {
         let mut node_id_to_keys = HashMap::new();
@@ -249,37 +249,46 @@ impl Broker {
 
         try_join_all(node_id_to_keys.iter().map(|(node_id, routed_keys)| {
             // TODO conversion shouldn't happen here or datastructure needs to be revisited
-            let new_input = Input { command: input.command.clone(), args: routed_keys.clone() };
-            self.send_command_to_node(new_input, node_id)
+            let new_action = match client_action {
+                | ClientAction::MGet { .. } => ClientAction::MGet { keys: routed_keys.clone() },
+                | ClientAction::Exists { .. } => ClientAction::Exists { keys: routed_keys.clone() },
+                | ClientAction::Delete { .. } => ClientAction::Delete { keys: routed_keys.clone() },
+                | _ => panic!("Unexpected action for routing by keys: {:?}", client_action),
+            };
+            self.send_command_to_node(new_action, node_id)
         }))
         .await?;
 
         Ok(num_of_results)
     }
 
-    async fn route_command_by_key(&self, input: Input, key: String) -> Result<usize, IoError> {
+    async fn route_command_by_key(
+        &self,
+        client_action: ClientAction,
+        key: String,
+    ) -> Result<usize, IoError> {
         let Some(node_id) = self.topology.hash_ring.get_node_for_key(key.as_ref()) else {
-            return self.default_route(input).await;
+            return self.default_route(client_action).await;
         };
-        self.send_command_to_node(input, node_id).await?;
+        self.send_command_to_node(client_action, node_id).await?;
         Ok(1)
     }
 
     // 'default_route' is used when given request does NOT have to be sent to a specific node
-    async fn default_route(&self, input: Input) -> Result<usize, IoError> {
+    async fn default_route(&self, client_action: ClientAction) -> Result<usize, IoError> {
         let node_id = self
             .node_connections
             .get_first_node_id()
             .map_err(|e| IoError::Custom(format!("Failed to get first node id: {e}")))?;
-        self.send_command_to_node(input, node_id).await?;
+        self.send_command_to_node(client_action, node_id).await?;
         Ok(1)
     }
 
-    async fn route_command_to_all(&self, input: Input) -> Result<usize, IoError> {
+    async fn route_command_to_all(&self, client_action: ClientAction) -> Result<usize, IoError> {
         try_join_all(
             self.node_connections
                 .keys()
-                .map(|node_id| self.send_command_to_node(input.clone(), node_id)),
+                .map(|node_id| self.send_command_to_node(client_action.clone(), node_id)),
         )
         .await?;
         Ok(self.node_connections.len())
@@ -287,17 +296,17 @@ impl Broker {
 
     async fn send_command_to_node(
         &self,
-        input: Input,
+        client_action: ClientAction,
         node_id: &ReplicationId,
     ) -> Result<(), IoError> {
         let connection = self
             .node_connections
             .get(node_id)
             .map_err(|_| IoError::Custom(format!("No connection found for node id: {node_id}")))?;
-        let cmd = build_command_with_request_id(&input.command, connection.request_id, &input.args);
+        let session_request = SessionRequest { request_id: connection.request_id, client_action };
 
         connection
-            .send(MsgToServer::Command(cmd.as_bytes().to_vec()))
+            .send(MsgToServer::Command(session_request.serialize().to_vec()))
             .await
             .map_err(|e| IoError::Custom(format!("Failed to send command: {e}")))?;
         Ok(())

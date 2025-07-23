@@ -186,11 +186,6 @@ impl HashRing {
         self.pnodes.get(replid)
     }
 
-    pub fn get_node_id_for_key(&self, key: &str) -> Option<&PeerIdentifier> {
-        let hash = fnv_1a_hash(key);
-        self.find_replid(hash).and_then(|repl_id| self.pnodes.get(repl_id))
-    }
-
     pub fn get_replication_id(&self, peer_identifier: &PeerIdentifier) -> Option<ReplicationId> {
         self.pnodes.iter().find_map(|(repl_id, peer_id)| {
             if peer_id == peer_identifier { Some(repl_id.clone()) } else { None }
@@ -204,13 +199,6 @@ impl HashRing {
             *existing_pnode = new_pnode;
         }
         self.update_last_modified();
-    }
-
-    pub fn get_node_id_for_keys(&self, keys: &[&str]) -> Option<&PeerIdentifier> {
-        let Ok(repl_id) = self.get_node_for_keys(keys) else {
-            return None;
-        };
-        self.pnodes.get(&repl_id)
     }
 
     pub fn get_replication_ids(&self) -> Vec<ReplicationId> {

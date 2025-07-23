@@ -5,9 +5,8 @@ use crate::domains::operation_logs::WriteOperation;
 use crate::domains::peers::command::{
     ElectionVote, HeartBeat, MigrateBatch, MigrationBatchAck, ReplicationAck, RequestVote,
 };
-use anyhow::{Context, Result, anyhow};
 use crate::presentation::clients::request::ClientAction;
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, anyhow};
 use bytes::{Bytes, BytesMut};
 use std::fmt::Write;
 
@@ -792,12 +791,12 @@ mod test {
         let node_infos = connected_peers
             .iter()
             .map(|peer| {
-                NodeReplInfo::from_peer_state(&PeerState::new(
-                    &peer.peer_id,
-                    0,
-                    ReplicationId::Key(Uuid::now_v7().to_string()),
-                    ReplicationRole::Follower,
-                ))
+                NodeReplInfo::from_peer_state(&PeerState {
+                    id: peer.peer_id.clone(),
+                    match_index: 0,
+                    replid: ReplicationId::Key(Uuid::now_v7().to_string()),
+                    role: ReplicationRole::Follower,
+                })
             })
             .collect();
         let topology = Topology::new(node_infos, hash_ring);
