@@ -68,9 +68,12 @@ impl Broker {
                         continue;
                     };
 
-                    self.node_connections
-                        .try_update_request_id(&repl_id, &context.client_action, &query_io)
-                        .unwrap();
+                    if context.client_action.to_write_request().is_some()
+                        && let Some(connection) = self.node_connections.get_mut(&repl_id)
+                    {
+                        // TODO need to decide on what to do when connection not found
+                        connection.update_request_id(&query_io);
+                    }
 
                     context.append_result(query_io);
 

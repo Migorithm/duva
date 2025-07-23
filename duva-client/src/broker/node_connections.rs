@@ -4,8 +4,7 @@ use duva::domains::caches::cache_manager::IndexedValueCodec;
 use duva::domains::cluster_actors::replication::ReplicationId;
 use duva::domains::query_io::QueryIO;
 use duva::domains::query_io::QueryIO::SessionRequest;
-use duva::prelude::anyhow;
-use duva::prelude::anyhow::anyhow;
+use duva::make_smart_pointer;
 use duva::prelude::rand;
 use duva::prelude::rand::seq::IteratorRandom;
 use duva::prelude::tokio::sync::mpsc;
@@ -15,8 +14,9 @@ use std::collections::HashMap;
 
 #[derive(Debug)]
 pub(crate) struct NodeConnections {
-    connections: HashMap<ReplicationId, NodeConnection>,
+    conns: HashMap<ReplicationId, NodeConnection>,
 }
+make_smart_pointer!(NodeConnections, HashMap<ReplicationId,NodeConnection> =>conns);
 
 #[derive(Debug)]
 pub(crate) struct NodeConnection {
@@ -37,7 +37,7 @@ impl NodeConnection {
     // !
     // ! If request is updating action yet receive error, we need to increase the request id
     // ! otherwise, server will not be able to process the next command
-    fn update_request_id(&mut self, query_io: &QueryIO) {
+    pub(crate) fn update_request_id(&mut self, query_io: &QueryIO) {
         match query_io {
             // * Current rule: s:value-idx:index_num
             | QueryIO::SimpleString(v) => {
@@ -55,7 +55,6 @@ impl NodeConnection {
 
     pub(crate) async fn send(&self, client_action: ClientAction) -> Result<(), IoError> {
         let session_request = SessionRequest { request_id: self.request_id, client_action };
-
         self.writer
             .send(MsgToServer::Command(session_request.serialize().to_vec()))
             .await
@@ -72,46 +71,28 @@ impl NodeConnections {
     ) -> Self {
         let mut connections = HashMap::new();
         connections.insert(target_id.clone(), NodeConnection::new(writer, kill_switch, request_id));
-        Self { connections }
-    }
-    pub(crate) fn keys(&self) -> impl Iterator<Item = &ReplicationId> {
-        self.connections.keys()
-    }
-    pub(crate) fn contains_key(&self, leader_id: &ReplicationId) -> bool {
-        self.connections.contains_key(leader_id)
-    }
-
-    pub(crate) fn insert(&mut self, leader_id: ReplicationId, connection: NodeConnection) {
-        self.connections.insert(leader_id, connection);
+        Self { conns: connections }
     }
 
     pub(crate) async fn remove_connection(&mut self, leader_id: &ReplicationId) {
-        if let Some(connection) = self.connections.remove(leader_id) {
+        if let Some(connection) = self.conns.remove(leader_id) {
             let _ = connection.kill_switch.send(());
             let _ = connection.writer.send(MsgToServer::Stop).await;
         }
     }
     pub(crate) async fn remove_outdated_connections(&mut self, node_repl_ids: Vec<ReplicationId>) {
         let outdated_connections =
-            self.connections.extract_if(|repl_id, _| !node_repl_ids.contains(repl_id));
+            self.conns.extract_if(|repl_id, _| !node_repl_ids.contains(repl_id));
         for (_, connection) in outdated_connections {
             let _ = connection.kill_switch.send(());
             let _ = connection.writer.send(MsgToServer::Stop).await;
         }
     }
 
-    pub(crate) fn is_empty(&self) -> bool {
-        self.connections.is_empty()
-    }
-
-    pub(crate) fn len(&self) -> usize {
-        self.connections.len()
-    }
-
     pub(crate) async fn randomized_send(&self, client_action: ClientAction) -> Result<(), IoError> {
         // ThreadRng internally uses thread-local storage, so the actual RNG state is reused per thread
         let connection = self
-            .connections
+            .conns
             .values()
             .choose(&mut rand::rng())
             .ok_or(IoError::Custom("No connections available".to_string()))?;
@@ -124,26 +105,10 @@ impl NodeConnections {
         client_action: ClientAction,
     ) -> Result<(), IoError> {
         let connection = self
-            .connections
+            .conns
             .get(node_id)
             .ok_or(IoError::Custom("No connections available".to_string()))?;
         connection.send(client_action).await
-    }
-
-    pub(crate) fn try_update_request_id(
-        &mut self,
-        repl_id: &ReplicationId,
-        kind: &ClientAction,
-        query_io: &QueryIO,
-    ) -> anyhow::Result<()> {
-        if kind.to_write_request().is_none() {
-            return Ok(());
-        }
-        let Some(connection) = self.connections.get_mut(repl_id) else {
-            return Err(anyhow!("Connection not found for replication ID: {}", repl_id));
-        };
-        connection.update_request_id(query_io);
-        Ok(())
     }
 }
 
