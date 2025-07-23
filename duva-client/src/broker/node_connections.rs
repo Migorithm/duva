@@ -1,9 +1,12 @@
 use super::write_stream::MsgToServer;
+use duva::domains::IoError;
 use duva::domains::cluster_actors::replication::ReplicationId;
+use duva::domains::query_io::QueryIO::SessionRequest;
 use duva::prelude::anyhow;
 use duva::prelude::anyhow::anyhow;
 use duva::prelude::tokio::sync::mpsc;
 use duva::prelude::tokio::sync::oneshot;
+use duva::presentation::clients::request::ClientAction;
 use std::collections::HashMap;
 
 #[derive(Debug)]
@@ -27,11 +30,13 @@ impl NodeConnection {
         Self { writer, kill_switch, request_id }
     }
 
-    pub(crate) async fn send(
-        &self,
-        msg: MsgToServer,
-    ) -> Result<(), mpsc::error::SendError<MsgToServer>> {
-        self.writer.send(msg).await
+    pub(crate) async fn send(&self, client_action: ClientAction) -> Result<(), IoError> {
+        let session_request = SessionRequest { request_id: self.request_id, client_action };
+
+        self.writer
+            .send(MsgToServer::Command(session_request.serialize().to_vec()))
+            .await
+            .map_err(|e| IoError::Custom(format!("Failed to send command: {e}")))
     }
 }
 
@@ -97,6 +102,31 @@ impl NodeConnections {
 
     pub(crate) fn len(&self) -> usize {
         self.connections.len()
+    }
+
+    pub(crate) async fn send_to(
+        &self,
+        node_id: Option<&ReplicationId>,
+        client_action: ClientAction,
+    ) -> Result<(), IoError> {
+        let connection = match node_id {
+            | Some(id) => {
+                let connection = self
+                    .connections
+                    .get(id)
+                    .ok_or(IoError::Custom("No connections available".to_string()))?;
+                connection
+            },
+            | None => {
+                let connection = self
+                    .connections
+                    .iter()
+                    .next()
+                    .ok_or(IoError::Custom("No connections available".to_string()))?;
+                connection.1
+            },
+        };
+        connection.send(client_action).await
     }
 }
 

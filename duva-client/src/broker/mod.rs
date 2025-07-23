@@ -255,7 +255,7 @@ impl Broker {
                 | ClientAction::Delete { .. } => ClientAction::Delete { keys: routed_keys.clone() },
                 | _ => panic!("Unexpected action for routing by keys: {:?}", client_action),
             };
-            self.send_command_to_node(new_action, node_id)
+            self.node_connections.send_to(Some(node_id), new_action)
         }))
         .await?;
 
@@ -270,17 +270,13 @@ impl Broker {
         let Some(node_id) = self.topology.hash_ring.get_node_for_key(key.as_ref()) else {
             return self.default_route(client_action).await;
         };
-        self.send_command_to_node(client_action, node_id).await?;
+        self.node_connections.send_to(Some(node_id), client_action).await?;
         Ok(1)
     }
 
     // 'default_route' is used when given request does NOT have to be sent to a specific node
     async fn default_route(&self, client_action: ClientAction) -> Result<usize, IoError> {
-        let node_id = self
-            .node_connections
-            .get_first_node_id()
-            .map_err(|e| IoError::Custom(format!("Failed to get first node id: {e}")))?;
-        self.send_command_to_node(client_action, node_id).await?;
+        self.node_connections.send_to(None, client_action).await?;
         Ok(1)
     }
 
@@ -288,28 +284,10 @@ impl Broker {
         try_join_all(
             self.node_connections
                 .keys()
-                .map(|node_id| self.send_command_to_node(client_action.clone(), node_id)),
+                .map(|node_id| self.node_connections.send_to(Some(node_id), client_action.clone())),
         )
         .await?;
         Ok(self.node_connections.len())
-    }
-
-    async fn send_command_to_node(
-        &self,
-        client_action: ClientAction,
-        node_id: &ReplicationId,
-    ) -> Result<(), IoError> {
-        let connection = self
-            .node_connections
-            .get(node_id)
-            .map_err(|_| IoError::Custom(format!("No connection found for node id: {node_id}")))?;
-        let session_request = SessionRequest { request_id: connection.request_id, client_action };
-
-        connection
-            .send(MsgToServer::Command(session_request.serialize().to_vec()))
-            .await
-            .map_err(|e| IoError::Custom(format!("Failed to send command: {e}")))?;
-        Ok(())
     }
 }
 
