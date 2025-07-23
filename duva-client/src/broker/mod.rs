@@ -71,18 +71,9 @@ impl Broker {
                         continue;
                     };
 
-                    let connection = self
-                        .node_connections
-                        .get_mut(&repl_id)
-                        .expect("Node connection should exist");
-
-                    if let Some(index) = Broker::extract_req_id(
-                        connection.request_id,
-                        &context.client_action,
-                        &query_io,
-                    ) {
-                        connection.request_id = index;
-                    }
+                    self.node_connections
+                        .try_update_request_id(&repl_id, &context.client_action, &query_io)
+                        .unwrap();
 
                     context.append_result(query_io);
 
@@ -185,7 +176,10 @@ impl Broker {
             }
         }
         if self.node_connections.is_empty() {
-            return Err(IoError::Custom("No connections available for replication id".to_string()));
+            return Err(IoError::Custom(format!(
+                "No connections available for replication id: {}",
+                replication_id
+            )));
         }
         Ok(())
     }

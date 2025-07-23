@@ -1,6 +1,8 @@
 use super::write_stream::MsgToServer;
 use duva::domains::IoError;
+use duva::domains::caches::cache_manager::IndexedValueCodec;
 use duva::domains::cluster_actors::replication::ReplicationId;
+use duva::domains::query_io::QueryIO;
 use duva::domains::query_io::QueryIO::SessionRequest;
 use duva::prelude::anyhow;
 use duva::prelude::anyhow::anyhow;
@@ -28,6 +30,26 @@ impl NodeConnection {
         request_id: u64,
     ) -> Self {
         Self { writer, kill_switch, request_id }
+    }
+    // ! CONSIDER IDEMPOTENCY RULE
+    // !
+    // ! If request is updating action yet receive error, we need to increase the request id
+    // ! otherwise, server will not be able to process the next command
+    fn update_request_id(&mut self, kind: &ClientAction, query_io: &QueryIO) {
+        if kind.to_write_request().is_none() {
+            return;
+        }
+        match query_io {
+            // * Current rule: s:value-idx:index_num
+            | QueryIO::SimpleString(v) => {
+                let s = String::from_utf8_lossy(v);
+                self.request_id = IndexedValueCodec::decode_index(s)
+                    .filter(|&id| id > self.request_id)
+                    .unwrap_or(self.request_id);
+            },
+            | QueryIO::Err(_) => self.request_id = self.request_id + 1,
+            | _ => {},
+        }
     }
 
     pub(crate) async fn send(&self, client_action: ClientAction) -> Result<(), IoError> {
@@ -127,6 +149,20 @@ impl NodeConnections {
             },
         };
         connection.send(client_action).await
+    }
+
+    pub(crate) fn try_update_request_id(
+        &mut self,
+        repl_id: &ReplicationId,
+        kind: &ClientAction,
+        query_io: &QueryIO,
+    ) -> anyhow::Result<()> {
+        if let Some(connection) = self.connections.get_mut(repl_id) {
+            connection.update_request_id(kind, query_io);
+            Ok(())
+        } else {
+            Err(anyhow!("Connection not found for replication ID: {}", repl_id))
+        }
     }
 }
 
