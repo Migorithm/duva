@@ -7,14 +7,11 @@ use duva::domains::query_io::QueryIO::SessionRequest;
 use duva::prelude::anyhow;
 use duva::prelude::anyhow::anyhow;
 use duva::prelude::rand;
-use duva::prelude::rand::Rng;
-use duva::prelude::rand::rngs::ThreadRng;
 use duva::prelude::rand::seq::IteratorRandom;
 use duva::prelude::tokio::sync::mpsc;
 use duva::prelude::tokio::sync::oneshot;
 use duva::presentation::clients::request::ClientAction;
 use std::collections::HashMap;
-use std::sync::LazyLock;
 
 #[derive(Debug)]
 pub(crate) struct NodeConnections {
@@ -40,10 +37,7 @@ impl NodeConnection {
     // !
     // ! If request is updating action yet receive error, we need to increase the request id
     // ! otherwise, server will not be able to process the next command
-    fn update_request_id(&mut self, kind: &ClientAction, query_io: &QueryIO) {
-        if kind.to_write_request().is_none() {
-            return;
-        }
+    fn update_request_id(&mut self, query_io: &QueryIO) {
         match query_io {
             // * Current rule: s:value-idx:index_num
             | QueryIO::SimpleString(v) => {
@@ -142,12 +136,14 @@ impl NodeConnections {
         kind: &ClientAction,
         query_io: &QueryIO,
     ) -> anyhow::Result<()> {
-        if let Some(connection) = self.connections.get_mut(repl_id) {
-            connection.update_request_id(kind, query_io);
-            Ok(())
-        } else {
-            Err(anyhow!("Connection not found for replication ID: {}", repl_id))
+        if kind.to_write_request().is_none() {
+            return Ok(());
         }
+        let Some(connection) = self.connections.get_mut(repl_id) else {
+            return Err(anyhow!("Connection not found for replication ID: {}", repl_id));
+        };
+        connection.update_request_id(query_io);
+        Ok(())
     }
 }
 
