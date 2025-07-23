@@ -9,6 +9,7 @@ use duva::domains::{IoError, query_io::QueryIO};
 use duva::prelude::tokio::net::TcpStream;
 use duva::prelude::tokio::sync::mpsc::Receiver;
 use duva::prelude::tokio::sync::mpsc::Sender;
+use duva::prelude::tokio::sync::oneshot;
 use duva::prelude::uuid::Uuid;
 use duva::prelude::{LEADER_HEARTBEAT_INTERVAL_MAX, NodeReplInfo, Topology, anyhow};
 use duva::prelude::{PeerIdentifier, tokio};
@@ -254,10 +255,14 @@ pub enum BrokerMessage {
     ToServer(CommandToServer),
 }
 impl BrokerMessage {
-    pub fn from_input(input_context: InputContext) -> Self {
+    pub fn from_input(
+        action: ClientAction,
+        callback: oneshot::Sender<(ClientAction, QueryIO)>,
+    ) -> Self {
+        let input_ctx = InputContext::new(action, callback);
         BrokerMessage::ToServer(CommandToServer {
-            routing_rule: (&input_context.client_action).into(),
-            context: input_context,
+            routing_rule: (&input_ctx.client_action).into(),
+            context: input_ctx,
         })
     }
 }

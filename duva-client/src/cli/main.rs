@@ -40,10 +40,7 @@ async fn main() -> anyhow::Result<()> {
         match extract_action(cmd, &args) {
             | Ok(action) => {
                 let (tx, rx) = oneshot::channel();
-                let _ = controller
-                    .broker_tx
-                    .send(BrokerMessage::from_input(InputContext::new(action, tx)))
-                    .await;
+                let _ = controller.broker_tx.send(BrokerMessage::from_input(action, tx)).await;
                 let (kind, query_io) = rx.await?;
                 controller.print_res(kind, query_io);
             },
