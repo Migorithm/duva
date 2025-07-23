@@ -4,14 +4,9 @@ mod read_stream;
 mod write_stream;
 
 use crate::broker::node_connections::NodeConnections;
-use crate::broker::write_stream::MsgToServer;
-use crate::command::{
-    CommandEntry, CommandToServer, Input, InputContext, RoutingRule, build_command_with_request_id,
-};
-use collections::HashMap;
+use crate::command::{CommandEntry, CommandToServer, InputContext, RoutingRule};
 use duva::domains::caches::cache_manager::IndexedValueCodec;
 use duva::domains::cluster_actors::replication::{ReplicationId, ReplicationRole};
-use duva::domains::query_io::QueryIO::SessionRequest;
 use duva::domains::{IoError, query_io::QueryIO};
 use duva::prelude::tokio::net::TcpStream;
 use duva::prelude::tokio::sync::mpsc::Receiver;
@@ -29,7 +24,6 @@ use futures::future::try_join_all;
 use input_queue::InputQueue;
 use node_connections::NodeConnection;
 use read_stream::ServerStreamReader;
-use std::collections;
 use write_stream::ServerStreamWriter;
 
 pub struct Broker {
@@ -82,9 +76,11 @@ impl Broker {
                         .get_mut(&repl_id)
                         .expect("Node connection should exist");
 
-                    if let Some(index) =
-                        Broker::extract_req_id(connection.request_id, &context.kind, &query_io)
-                    {
+                    if let Some(index) = Broker::extract_req_id(
+                        connection.request_id,
+                        &context.client_action,
+                        &query_io,
+                    ) {
                         connection.request_id = index;
                     }
 
@@ -98,7 +94,7 @@ impl Broker {
                     let result = context
                         .get_result()
                         .unwrap_or_else(|err| QueryIO::Err(err.to_string().into()));
-                    context.callback.send((context.kind, result)).unwrap_or_else(|_| {
+                    context.callback.send((context.client_action, result)).unwrap_or_else(|_| {
                         println!("Failed to send response to input callback");
                     });
                 },
@@ -118,8 +114,8 @@ impl Broker {
                     | _ => {},
                 },
                 | BrokerMessage::ToServer(mut command) => {
-                    let mut context = command.input_context;
-                    let action = context.kind.clone();
+                    let mut context = command.context;
+                    let action = context.client_action.clone();
                     let res = match command.routing_rule {
                         | RoutingRule::Any => self.default_route(action).await,
                         | RoutingRule::Selective(entries) => {
@@ -281,11 +277,10 @@ pub enum BrokerMessage {
     ToServer(CommandToServer),
 }
 impl BrokerMessage {
-    pub fn from_input(input: Input, input_context: InputContext) -> Self {
+    pub fn from_input(input_context: InputContext) -> Self {
         BrokerMessage::ToServer(CommandToServer {
-            routing_rule: (&input_context.kind).into(),
-            input,
-            input_context,
+            routing_rule: (&input_context.client_action).into(),
+            context: input_context,
         })
     }
 }

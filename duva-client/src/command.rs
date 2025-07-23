@@ -5,16 +5,9 @@ use duva::{
 };
 
 pub struct CommandToServer {
-    pub input: Input,
-    pub input_context: InputContext,
+    pub context: InputContext,
     pub routing_rule: RoutingRule,
 }
-#[derive(Debug, Clone)]
-pub struct Input {
-    pub command: String,
-    pub args: Vec<String>,
-}
-
 pub fn separate_command_and_args(args: Vec<&str>) -> (&str, Vec<&str>) {
     // Split the input into command and arguments
     let (cmd, args) = args.split_at(1);
@@ -23,25 +16,19 @@ pub fn separate_command_and_args(args: Vec<&str>) -> (&str, Vec<&str>) {
     (cmd, args)
 }
 
-pub fn build_command_with_request_id(cmd: &str, request_id: u64, args: &Vec<String>) -> String {
-    // Build the valid RESP command
-    let mut command =
-        format!("!{}\r\n*{}\r\n${}\r\n{}\r\n", request_id, args.len() + 1, cmd.len(), cmd);
-    for arg in args {
-        command.push_str(&format!("${}\r\n{}\r\n", arg.len(), arg));
-    }
-    command
-}
 #[derive(Debug)]
 pub struct InputContext {
-    pub(crate) kind: ClientAction,
+    pub(crate) client_action: ClientAction,
     pub(crate) callback: oneshot::Sender<(ClientAction, QueryIO)>,
     pub(crate) results: Vec<QueryIO>,
     pub(crate) expected_result_cnt: usize,
 }
 impl InputContext {
-    pub fn new(kind: ClientAction, callback: oneshot::Sender<(ClientAction, QueryIO)>) -> Self {
-        Self { kind, callback, results: Vec::new(), expected_result_cnt: 0 }
+    pub fn new(
+        client_action: ClientAction,
+        callback: oneshot::Sender<(ClientAction, QueryIO)>,
+    ) -> Self {
+        Self { client_action, callback, results: Vec::new(), expected_result_cnt: 0 }
     }
     pub(crate) fn append_result(&mut self, result: QueryIO) {
         self.results.push(result);
@@ -58,7 +45,7 @@ impl InputContext {
     }
 
     pub(crate) fn get_result(&self) -> anyhow::Result<QueryIO> {
-        match self.kind {
+        match self.client_action {
             | ClientAction::Keys { pattern: _ } | ClientAction::MGet { keys: _ } => {
                 let init = QueryIO::Array(Vec::new());
                 let result = self.results.iter().fold(init, |acc, item| {
