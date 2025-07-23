@@ -19,7 +19,6 @@ use duva::{
     domains::TSerdeReadWrite,
     prelude::{AuthRequest, AuthResponse},
 };
-use futures::FutureExt;
 use futures::future::try_join_all;
 use input_queue::InputQueue;
 use node_connections::NodeConnection;

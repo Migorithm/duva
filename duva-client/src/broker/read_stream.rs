@@ -1,7 +1,6 @@
 use crate::broker::BrokerMessage;
 use duva::domains::cluster_actors::replication::ReplicationId;
 use duva::{
-    domains::IoError,
     domains::interface::TRead,
     prelude::tokio::{self, net::tcp::OwnedReadHalf, sync::oneshot},
 };
