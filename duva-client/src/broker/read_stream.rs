@@ -22,9 +22,11 @@ impl ServerStreamReader {
                 match self.0.read_values().await {
                     | Ok(query_ios) => {
                         for query_io in query_ios {
-                            let message =
-                                BrokerMessage::FromServer(replication_id.clone(), query_io);
-                            if controller_sender.send(message).await.is_err() {
+                            if controller_sender
+                                .send(BrokerMessage::FromServer(replication_id.clone(), query_io))
+                                .await
+                                .is_err()
+                            {
                                 break;
                             }
                         }
