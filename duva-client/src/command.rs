@@ -137,7 +137,7 @@ impl From<&ClientAction> for RoutingRule {
             ),
 
             // broadcast
-            | ClientAction::Keys { pattern } => Self::BroadCast,
+            | ClientAction::Keys { .. } => Self::BroadCast,
             | _ => Self::Any,
         }
     }
