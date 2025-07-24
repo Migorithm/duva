@@ -38,18 +38,18 @@ impl Broker {
 
         let (broker_tx, rx) = tokio::sync::mpsc::channel::<BrokerMessage>(100);
 
-        let replication_id = auth_response.replication_id;
+        let connection = NodeConnection {
+            writer: w.run(),
+            kill_switch: r.run(broker_tx.clone(), auth_response.replication_id.clone()),
+            request_id: auth_response.request_id,
+        };
+
         let mut broker = Broker {
             tx: broker_tx.clone(),
             rx,
             client_id: Uuid::parse_str(&auth_response.client_id)?,
             topology: auth_response.topology,
-            node_connections: NodeConnections::new(
-                replication_id.clone(),
-                w.run(),
-                r.run(broker_tx.clone(), replication_id),
-                auth_response.request_id,
-            ),
+            node_connections: NodeConnections::new(auth_response.replication_id, connection),
         };
         broker.update_leader_connections().await;
         Ok(broker)
