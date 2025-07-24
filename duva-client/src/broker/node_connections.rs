@@ -26,13 +26,6 @@ pub(crate) struct NodeConnection {
 }
 
 impl NodeConnection {
-    pub(crate) fn new(
-        writer: mpsc::Sender<MsgToServer>,
-        kill_switch: oneshot::Sender<()>,
-        request_id: u64,
-    ) -> Self {
-        Self { writer, kill_switch, request_id }
-    }
     // ! CONSIDER IDEMPOTENCY RULE
     // !
     // ! If request is updating action yet receive error, we need to increase the request id
@@ -70,7 +63,7 @@ impl NodeConnections {
         request_id: u64,
     ) -> Self {
         let mut connections = HashMap::new();
-        connections.insert(target_id.clone(), NodeConnection::new(writer, kill_switch, request_id));
+        connections.insert(target_id.clone(), NodeConnection { writer, kill_switch, request_id });
         Self { conns: connections }
     }
 
@@ -145,7 +138,10 @@ mod tests {
 
         let (tx2, _rx2) = mpsc::channel(10);
         let (kill_tx2, _kill_rx2) = oneshot::channel();
-        connections.insert(repl_id2.clone(), NodeConnection::new(tx2, kill_tx2, 0));
+        connections.insert(
+            repl_id2.clone(),
+            NodeConnection { writer: tx2, kill_switch: kill_tx2, request_id: 0 },
+        );
 
         // When - peer1 is not in the topology peers, repl_id2 is kept
         let topology_peers = vec![repl_id2.clone()];

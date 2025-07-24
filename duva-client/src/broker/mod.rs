@@ -196,7 +196,7 @@ impl Broker {
 
         self.node_connections.insert(
             auth_response.replication_id,
-            NodeConnection::new(writer, kill_switch, auth_response.request_id),
+            NodeConnection { writer, kill_switch, request_id: auth_response.request_id },
         );
         Some(())
     }

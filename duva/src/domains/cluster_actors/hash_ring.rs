@@ -177,13 +177,10 @@ impl HashRing {
         Ok(map)
     }
 
+    #[cfg(test)]
     pub fn get_node_for_key(&self, key: &str) -> Option<&ReplicationId> {
         let hash = fnv_1a_hash(key);
         self.find_replid(hash)
-    }
-
-    pub fn get_node_id(&self, replid: &ReplicationId) -> Option<&PeerIdentifier> {
-        self.pnodes.get(replid)
     }
 
     pub(crate) fn update_repl_leader(&mut self, replid: ReplicationId, new_pnode: PeerIdentifier) {
