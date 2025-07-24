@@ -113,7 +113,7 @@ impl Broker {
                         | RoutingRule::Selective(entries) => {
                             self.route_command_by_keys(action, entries).await
                         },
-                        | RoutingRule::BroadCast => self.route_command_to_all(action).await,
+                        | RoutingRule::BroadCast => self.node_connections.send_all(action).await,
                     };
                     match res {
                         | Ok(num_of_results) => {
@@ -242,16 +242,6 @@ impl Broker {
         .await?;
 
         Ok(num_of_results)
-    }
-
-    async fn route_command_to_all(&self, client_action: ClientAction) -> Result<usize, IoError> {
-        try_join_all(
-            self.node_connections
-                .keys()
-                .map(|node_id| self.node_connections.send_to(node_id, client_action.clone())),
-        )
-        .await?;
-        Ok(self.node_connections.len())
     }
 }
 

@@ -11,6 +11,7 @@ use duva::prelude::tokio::sync::mpsc;
 use duva::prelude::tokio::sync::oneshot;
 use duva::presentation::clients::request::ClientAction;
 use futures::future::join_all;
+use futures::future::try_join_all;
 use std::collections::HashMap;
 
 #[derive(Debug)]
@@ -99,6 +100,12 @@ impl NodeConnections {
             .get(node_id)
             .ok_or(IoError::Custom("No connections available".to_string()))?;
         connection.send(client_action).await
+    }
+
+    pub(crate) async fn send_all(&self, client_action: ClientAction) -> Result<usize, IoError> {
+        try_join_all(self.keys().map(|node_id| self.send_to(node_id, client_action.clone())))
+            .await?;
+        Ok(self.len())
     }
 }
 
