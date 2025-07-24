@@ -10,6 +10,7 @@ use duva::prelude::rand::seq::IteratorRandom;
 use duva::prelude::tokio::sync::mpsc;
 use duva::prelude::tokio::sync::oneshot;
 use duva::presentation::clients::request::ClientAction;
+use futures::future::join_all;
 use std::collections::HashMap;
 
 #[derive(Debug)]
@@ -46,6 +47,11 @@ impl NodeConnection {
         }
     }
 
+    async fn kill(self) {
+        let _ = self.kill_switch.send(());
+        let _ = self.writer.send(MsgToServer::Stop).await;
+    }
+
     pub(crate) async fn send(&self, client_action: ClientAction) -> Result<(), IoError> {
         let session_request = SessionRequest { request_id: self.request_id, client_action };
         self.writer
@@ -69,17 +75,13 @@ impl NodeConnections {
 
     pub(crate) async fn remove_connection(&mut self, leader_id: &ReplicationId) {
         if let Some(connection) = self.conns.remove(leader_id) {
-            let _ = connection.kill_switch.send(());
-            let _ = connection.writer.send(MsgToServer::Stop).await;
+            connection.kill().await;
         }
     }
     pub(crate) async fn remove_outdated_connections(&mut self, node_repl_ids: Vec<ReplicationId>) {
         let outdated_connections =
             self.conns.extract_if(|repl_id, _| !node_repl_ids.contains(repl_id));
-        for (_, connection) in outdated_connections {
-            let _ = connection.kill_switch.send(());
-            let _ = connection.writer.send(MsgToServer::Stop).await;
-        }
+        join_all(outdated_connections.into_iter().map(|(_, connection)| connection.kill())).await;
     }
 
     pub(crate) async fn randomized_send(&self, client_action: ClientAction) -> Result<(), IoError> {
