@@ -207,6 +207,10 @@ impl Broker {
         Ok(1)
     }
 
+    // The folowing operation is for both:
+    // - single key operation
+    // - multi key operaitons
+    // When in comes to multi key operations, grouping logic needs to be considered
     async fn route_command_by_keys(
         &mut self,
         client_action: ClientAction,
@@ -224,11 +228,13 @@ impl Broker {
         let num_of_results = node_id_to_entries.len();
 
         try_join_all(node_id_to_entries.iter().map(|(node_id, routed_keys)| {
-            let keys = routed_keys.iter().map(|key| key.to_string()).collect::<Vec<String>>();
+            let grouped_keys =
+                routed_keys.iter().map(|key| key.to_string()).collect::<Vec<String>>();
+
             let new_action = match client_action {
-                | ClientAction::MGet { .. } => ClientAction::MGet { keys },
-                | ClientAction::Exists { .. } => ClientAction::Exists { keys },
-                | ClientAction::Delete { .. } => ClientAction::Delete { keys },
+                | ClientAction::MGet { .. } => ClientAction::MGet { keys: grouped_keys },
+                | ClientAction::Exists { .. } => ClientAction::Exists { keys: grouped_keys },
+                | ClientAction::Delete { .. } => ClientAction::Delete { keys: grouped_keys },
                 | _ => client_action.clone(),
             };
             self.node_connections.send_to(node_id, new_action)
