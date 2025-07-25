@@ -93,7 +93,6 @@ impl PeerState {
         let match_index = match_index.parse().unwrap_or_default();
 
         Some(Self {
-            // TODO unwrap
             id: PeerIdentifier(addr.bind_addr().unwrap()),
             replid: repl_id.into(),
             match_index,
