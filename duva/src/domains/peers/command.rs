@@ -57,7 +57,7 @@ mod peer_messages {
             hash_ring::{BatchId, HashRing},
             replication::ReplicationId,
         },
-        operation_logs::WriteOperation,
+        operation_logs::{WriteOperation, logger::ReplicatedLogs},
         peers::peer::PeerState,
     };
 
@@ -69,16 +69,12 @@ mod peer_messages {
         pub(crate) last_log_term: u64, //the term of the last log entry, used for election restrictions. If the term is low, it won't win the election.
     }
     impl RequestVote {
-        pub(crate) fn new(
-            repl: &ReplicationState,
-            last_log_index: u64,
-            last_log_term: u64,
-        ) -> Self {
+        pub(crate) fn new<T>(repl: &ReplicationState, logger: &ReplicatedLogs<T>) -> Self {
             Self {
                 term: repl.term,
                 candidate_id: repl.self_identifier(),
-                last_log_index,
-                last_log_term,
+                last_log_index: logger.last_log_index,
+                last_log_term: logger.last_log_term,
             }
         }
     }
