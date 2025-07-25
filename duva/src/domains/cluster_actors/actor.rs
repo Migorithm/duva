@@ -863,7 +863,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             if prev_log_index == 0 {
                 return Ok(()); // First entry, no previous log to check
             }
-            error!("Log is empty but leader expects an entry");
+            err!("Log is empty but leader expects an entry");
             return Err(RejectionReason::LogInconsistency); // Log empty but leader expects an entry
         }
 
@@ -873,7 +873,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             debug!("Previous log entry: {:?}", prev_entry);
             if prev_entry.term != prev_log_term {
                 // ! Term mismatch -> triggers log truncation
-                error!("Term mismatch: {} != {}", prev_entry.term, prev_log_term);
+                err!("Term mismatch: {} != {}", prev_entry.term, prev_log_term);
                 self.logger.truncate_after(prev_log_index);
 
                 return Err(RejectionReason::LogInconsistency);
@@ -888,11 +888,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         warn!("Running for election term {}", self.replication.term);
 
         self.become_candidate();
-        let request_vote = RequestVote::new(
-            &self.replication,
-            self.logger.last_log_index,
-            self.logger.last_log_index,
-        );
+        let request_vote = RequestVote::new(&self.replication, &self.logger);
 
         self.replicas_mut()
             .map(|(peer, _)| peer.send(request_vote.clone()))
