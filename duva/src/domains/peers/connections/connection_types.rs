@@ -15,40 +15,12 @@ pub(crate) struct ConnectedPeerInfo {
 
 impl ConnectedPeerInfo {
     pub(crate) fn decide_peer_state(&self, my_repl_id: &ReplicationId) -> PeerState {
-        match (my_repl_id, &self.replid) {
-            // Peer is undecided - assign as replica with our replication ID
-            | (_, ReplicationId::Undecided) => {
-                let id = self.id.clone();
-                let match_index = self.hwm;
-                let replid = my_repl_id.clone();
-                let role = self.role.clone();
-                PeerState { id, match_index, replid, role }
-            },
-            // I am undecided - adopt peer's replication ID
-            | (ReplicationId::Undecided, _) => {
-                let id = self.id.clone();
-                let match_index = self.hwm;
-                let replid = self.replid.clone();
-                let role = self.role.clone();
-                PeerState { id, match_index, replid, role }
-            },
-            // Matching replication IDs - regular replica
-            | (my_id, peer_id) if my_id == peer_id => {
-                let id = self.id.clone();
-                let match_index = self.hwm;
-                let replid = self.replid.clone();
-                let role = self.role.clone();
-                PeerState { id, match_index, replid, role }
-            },
-            // Different replication IDs - non-data peer
-            | _ => {
-                let id = self.id.clone();
-                let match_index = self.hwm;
-                let replid = self.replid.clone();
-                let role = self.role.clone();
-                PeerState { id, match_index, replid, role }
-            },
-        }
+        let replid = match (&self.replid, my_repl_id) {
+            | (ReplicationId::Undecided, _) => my_repl_id.clone(),
+            | (_, ReplicationId::Undecided) => self.replid.clone(),
+            | _ => self.replid.clone(),
+        };
+        PeerState { id: self.id.clone(), match_index: self.hwm, replid, role: self.role.clone() }
     }
 }
 
