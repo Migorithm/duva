@@ -51,7 +51,6 @@ fn run_lazy_discovery_of_leader(with_append_only: bool) -> anyhow::Result<()> {
 fn test_lazy_discovery_of_leader() -> anyhow::Result<()> {
     run_lazy_discovery_of_leader(false)?;
     run_lazy_discovery_of_leader(true)?;
-
     Ok(())
 }
 

@@ -1,17 +1,16 @@
+use crate::command::InputContext;
 use std::collections::VecDeque;
-
-use crate::command::Input;
 
 #[derive(Debug, Default)]
 pub struct InputQueue {
-    pub queue: VecDeque<Input>,
+    pub queue: VecDeque<InputContext>,
 }
 impl InputQueue {
-    pub fn push(&mut self, input: Input) {
-        self.queue.push_back(input);
+    pub fn push(&mut self, input_context: InputContext) {
+        self.queue.push_back(input_context);
     }
 
-    pub fn pop(&mut self) -> Option<Input> {
+    pub fn pop(&mut self) -> Option<InputContext> {
         self.queue.pop_front()
     }
 }
