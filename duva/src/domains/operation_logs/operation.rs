@@ -28,7 +28,6 @@ pub enum WriteRequest {
     RPop { key: String, count: usize },
     RPushX { key: String, value: Vec<String> },
     LTrim { key: String, start: isize, end: isize },
-
     LSet { key: String, index: isize, value: String },
 }
 
