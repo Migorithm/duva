@@ -189,14 +189,6 @@ impl From<String> for ReplicationRole {
         }
     }
 }
-impl From<ReplicationRole> for String {
-    fn from(value: ReplicationRole) -> Self {
-        match value {
-            | ReplicationRole::Leader => "leader".to_string(),
-            | ReplicationRole::Follower => "follower".to_string(),
-        }
-    }
-}
 
 #[test]
 fn test_cloning_replication_state() {
