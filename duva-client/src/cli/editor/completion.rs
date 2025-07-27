@@ -36,6 +36,7 @@ pub(crate) static COMMANDS: &[&str] = &[
     "lpushx",
     "rpush",
     "rpushx",
+    "llen",
 ];
 
 macro_rules! new_pair {
@@ -156,7 +157,7 @@ impl Completer for DuvaHinter {
                     candidates.push(new_pair!("value"));
                 }
             },
-            | "get" | "incr" | "decr" | "ttl" => {
+            | "get" | "incr" | "decr" | "ttl" | "llen" => {
                 if previous_words.len() == 1 {
                     // Suggest "index" after get key
                     candidates.push(new_pair!("key"));
