@@ -11,7 +11,7 @@ fn run_discover_leader(with_append_only: bool) -> anyhow::Result<()> {
     let mut follower1_env = ServerEnv::default().with_append_only(with_append_only);
     let mut follower2_env = ServerEnv::default().with_append_only(with_append_only);
 
-    let [mut leader_p, _, _] =
+    let [mut leader_p, _follower1, _follower2] =
         form_cluster([&mut leader_env, &mut follower1_env, &mut follower2_env]);
 
     let mut h = Client::new(leader_p.port);
