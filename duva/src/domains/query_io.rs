@@ -294,8 +294,8 @@ pub(crate) fn parse_simple_string(buffer: Bytes) -> Result<(Bytes, usize)> {
 }
 
 fn parse_array(buffer: Bytes) -> Result<(QueryIO, usize)> {
-    let mut offset = 0;
-    offset += 1;
+    // Skip the array type indicator (first byte)
+    let mut offset = 1;
 
     let (count_bytes, count_len) = read_until_crlf_exclusive(&buffer.slice(offset..))
         .ok_or(anyhow::anyhow!("Invalid array length"))?;
@@ -315,9 +315,8 @@ fn parse_array(buffer: Bytes) -> Result<(QueryIO, usize)> {
 }
 
 fn parse_session_request(buffer: Bytes) -> Result<(QueryIO, usize)> {
-    let mut offset = 0;
-    // ! to advance '!'
-    offset += 1;
+    // Skip the array type indicator (first byte)
+    let mut offset = 1;
 
     let (count_bytes, count_len) = read_until_crlf_exclusive(&buffer.slice(offset..))
         .ok_or(anyhow::anyhow!("Invalid array length"))?;

@@ -36,21 +36,19 @@ impl ReplicationState {
             role,
             replid,
             hwm: Arc::new(hwm.into()),
-            term: 0,
             self_host: self_host.to_string(),
             self_port,
+            term: 0,
             banlist: Default::default(),
         }
     }
 
     pub(super) fn self_info(&self) -> PeerState {
-        {
-            let id = self.self_identifier();
-            let match_index = self.hwm.load(Ordering::Relaxed);
-            let replid = self.replid.clone();
-            let role = self.role.clone();
-            PeerState { id, match_index, replid, role }
-        }
+        let id = self.self_identifier();
+        let match_index = self.hwm.load(Ordering::Relaxed);
+        let replid = self.replid.clone();
+        let role = self.role.clone();
+        PeerState { id, match_index, replid, role }
     }
 
     pub(crate) fn self_identifier(&self) -> PeerIdentifier {
@@ -84,11 +82,9 @@ impl ReplicationState {
             replid: self.replid.clone(),
             hop_count,
             ban_list: self.banlist.iter().cloned().collect(),
-            append_entries: vec![],
-            cluster_nodes: vec![],
             prev_log_index,
             prev_log_term,
-            hashring: None,
+            ..Default::default()
         }
     }
 
@@ -97,7 +93,7 @@ impl ReplicationState {
         candidate_id: &PeerIdentifier,
         election_term: u64,
     ) -> bool {
-        // If the candidate's term is less than mine → reject
+        // If the candidate's term is less than mine -> reject
         if election_term < self.term {
             return false;
         }
@@ -119,10 +115,6 @@ impl ReplicationState {
 
     pub(super) fn vote_for(&mut self, leader_id: Option<PeerIdentifier>) {
         self.election_state = ElectionState::Follower { voted_for: leader_id };
-        self.set_follower_mode();
-    }
-
-    fn set_follower_mode(&mut self) {
         self.role = ReplicationRole::Follower;
     }
 
@@ -194,14 +186,6 @@ impl From<String> for ReplicationRole {
         match value.to_lowercase().as_str() {
             | "leader" => ReplicationRole::Leader,
             | _ => ReplicationRole::Follower,
-        }
-    }
-}
-impl From<ReplicationRole> for String {
-    fn from(value: ReplicationRole) -> Self {
-        match value {
-            | ReplicationRole::Leader => "leader".to_string(),
-            | ReplicationRole::Follower => "follower".to_string(),
         }
     }
 }
