@@ -143,6 +143,7 @@ pub(crate) fn default_hints() -> HashSet<CommandHint> {
     set.insert(CommandHint::new("rpush key value [value ...]"));
     set.insert(CommandHint::new("rpushx key value [value ...]"));
     set.insert(CommandHint::new("llen key"));
+    set.insert(CommandHint::new("lset key index value"));
 
     set
 }
@@ -200,6 +201,7 @@ pub(crate) fn dynamic_hints() -> HashMap<&'static str, Vec<DynamicHint>> {
         vec![hint!("key value [value ...]", 0, repeat), hint!("[value ...]", 1, repeat)],
     );
     map.insert("llen", vec![hint!("key", 0)]);
+    map.insert("lset", vec![hint!("key", 0), hint!("index", 1), hint!("value", 2)]);
     map.insert("replicaof", vec![hint!("host port", 0), hint!("port", 1)]);
 
     map
