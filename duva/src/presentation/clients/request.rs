@@ -150,11 +150,7 @@ pub fn extract_action(action: &str, args: &[&str]) -> anyhow::Result<ClientActio
         },
 
         | "APPEND" => {
-            if args.len() != 2 {
-                return Err(anyhow::anyhow!(
-                    "(error) ERR wrong number of arguments for 'append' command"
-                ));
-            }
+            require_exact_args(2)?;
             Ok(ClientAction::Append { key: args[0].to_string(), value: args[1].to_string() })
         },
 
@@ -271,17 +267,11 @@ pub fn extract_action(action: &str, args: &[&str]) -> anyhow::Result<ClientActio
         },
         | "INCRBY" => {
             require_exact_args(2)?;
-
-            let key = args[0].to_string();
-            let increment = args[1].parse()?;
-            Ok(ClientAction::IncrBy { key, increment })
+            Ok(ClientAction::IncrBy { key: args[0].to_string(), increment: args[1].parse()? })
         },
         | "DECRBY" => {
             require_exact_args(2)?;
-
-            let key = args[0].to_string();
-            let decrement = args[1].parse()?;
-            Ok(ClientAction::DecrBy { key, decrement })
+            Ok(ClientAction::DecrBy { key: args[0].to_string(), decrement: args[1].parse()? })
         },
         | "MGET" => {
             require_non_empty_args()?;
@@ -326,14 +316,18 @@ pub fn extract_action(action: &str, args: &[&str]) -> anyhow::Result<ClientActio
             if action.to_uppercase() == "LPOP" {
                 return Ok(ClientAction::LPop { key, count });
             }
-            Ok(ClientAction::RPop { key, count })
+            Ok(ClientAction::RPop {
+                key,
+                count: args.get(1).and_then(|s| s.parse::<usize>().ok()).unwrap_or(1),
+            })
         },
         | "LTRIM" => {
             require_exact_args(3)?;
-            let key = args[0].to_string();
-            let start = args[1].parse::<isize>().context("Invalid start index")?;
-            let end = args[2].parse::<isize>().context("Invalid end index")?;
-            Ok(ClientAction::LTrim { key, start, end })
+            Ok(ClientAction::LTrim {
+                key: args[0].to_string(),
+                start: args[1].parse::<isize>()?,
+                end: args[2].parse::<isize>()?,
+            })
         },
         | "LLEN" => {
             require_exact_args(1)?;
@@ -342,24 +336,23 @@ pub fn extract_action(action: &str, args: &[&str]) -> anyhow::Result<ClientActio
 
         | "LRANGE" => {
             require_exact_args(3)?;
-            let key = args[0].to_string();
-            let start = args[1].parse::<isize>().context("Invalid start index")?;
-            let end = args[2].parse::<isize>().context("Invalid end index")?;
-            Ok(ClientAction::LRange { key, start, end })
+            Ok(ClientAction::LRange {
+                key: args[0].to_string(),
+                start: args[1].parse::<isize>()?,
+                end: args[2].parse::<isize>()?,
+            })
         },
         | "LINDEX" => {
             require_exact_args(2)?;
-
-            let key = args[0].to_string();
-            let index = args[1].parse::<isize>().context("Invalid index")?;
-            Ok(ClientAction::LIndex { key, index })
+            Ok(ClientAction::LIndex { key: args[0].to_string(), index: args[1].parse::<isize>()? })
         },
         | "LSET" => {
             require_exact_args(3)?;
-            let key = args[0].to_string();
-            let index = args[1].parse::<isize>().context("Invalid index")?;
-            let value = args[2].to_string();
-            Ok(ClientAction::LSet { key, index, value })
+            Ok(ClientAction::LSet {
+                key: args[0].to_string(),
+                index: args[1].parse::<isize>()?,
+                value: args[2].to_string(),
+            })
         },
 
         // Add other commands as needed
@@ -371,8 +364,7 @@ pub fn extract_action(action: &str, args: &[&str]) -> anyhow::Result<ClientActio
 }
 
 pub fn extract_expiry(expiry: &str) -> anyhow::Result<i64> {
-    let expiry = expiry.parse::<i64>().context("Invalid expiry")?;
-    Ok((Utc::now() + chrono::Duration::milliseconds(expiry)).timestamp_millis())
+    Ok((Utc::now() + chrono::Duration::milliseconds(expiry.parse::<i64>()?)).timestamp_millis())
 }
 
 #[derive(Clone, Debug)]
