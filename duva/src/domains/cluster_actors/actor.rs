@@ -368,23 +368,25 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             request_vote.candidate_id, request_vote.term
         );
 
-        let term = self.replication.term;
-
+        // ! vote may have been made for requester, maybe not. Therefore, we have to set the term for self
+        let vote = ElectionVote { term: self.replication.term, vote_granted: grant_vote };
         let Some(peer) = self.find_replica_mut(&request_vote.candidate_id) else {
             return;
         };
 
-        let _ = peer.send(ElectionVote { term, vote_granted: grant_vote }).await;
+        let _ = peer.send(vote).await;
     }
 
     #[instrument(level = tracing::Level::DEBUG, skip(self, repl_res), fields(peer_id = %repl_res.from))]
-    pub(crate) async fn ack_replication(&mut self, repl_res: ReplicationAck) {
+    pub(crate) async fn ack_replication(&mut self, from: PeerIdentifier, repl_res: ReplicationAck) {
+        self.update_peer_index(&repl_res.from, repl_res.log_idx);
+
         if !repl_res.is_granted() {
             info!("vote cannot be granted {:?}", repl_res.rej_reason);
-            self.handle_repl_rejection(repl_res).await;
+            self.handle_repl_rejection(repl_res.rej_reason).await;
             return;
         }
-        self.update_peer_index(&repl_res.from, repl_res.log_idx);
+
         self.track_replication_progress(repl_res);
     }
 
@@ -768,6 +770,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             .min()
     }
 
+    // TODO refactor : receive from and set it
     fn track_replication_progress(&mut self, res: ReplicationAck) {
         let Some(mut consensus) = self.consensus_tracker.remove(&res.log_idx) else {
             return;
@@ -775,10 +778,6 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
         if consensus.votable(&res.from) {
             info!("Received acks for log index num: {}", res.log_idx);
-            if let Some(peer) = self.members.get_mut(&res.from) {
-                peer.set_match_index(res.log_idx);
-                peer.last_seen = Instant::now();
-            }
             consensus.increase_vote(res.from);
         }
         if consensus.cnt < consensus.get_required_votes() {
@@ -979,26 +978,20 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             ElectionState::Candidate { voting: Some(ElectionVoting::new(replica_count)) };
     }
 
-    async fn handle_repl_rejection(&mut self, repl_res: ReplicationAck) {
-        if repl_res.is_granted() {
+    async fn handle_repl_rejection(&mut self, repl_res: Option<RejectionReason>) {
+        let Some(reason) = repl_res else {
             return;
-        }
+        };
 
-        match repl_res.rej_reason.unwrap() {
+        info!("vote cannot be granted {:?}", reason);
+        match reason {
             | RejectionReason::ReceiverHasHigherTerm => self.step_down().await,
             | RejectionReason::LogInconsistency => {
                 info!("Log inconsistency, reverting match index");
-                self.decrease_match_index(&repl_res.from, repl_res.log_idx);
             },
             | RejectionReason::FailToWrite => {
                 info!("Follower failed to write log for technical reason, resend..");
             },
-        }
-    }
-
-    fn decrease_match_index(&mut self, from: &PeerIdentifier, current_log_idx: u64) {
-        if let Some(peer) = self.members.get_mut(from) {
-            peer.set_match_index(current_log_idx);
         }
     }
 
