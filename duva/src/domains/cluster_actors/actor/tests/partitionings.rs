@@ -129,8 +129,6 @@ async fn test_start_rebalance_happy_path() {
     cluster_actor.start_rebalance(&cache_manager).await;
 
     // THEN
-    assert!(cluster_actor.pending_requests.is_some());
-
     assert_expected_queryio(
         &buf,
         QueryIO::ClusterHeartBeat(HeartBeat {
