@@ -40,7 +40,6 @@ impl From<SchedulerMessage> for ClusterCommand {
 pub enum ConnectionMessage {
     ConnectToServer { connect_to: PeerIdentifier, callback: Callback<anyhow::Result<()>> },
     AcceptInboundPeer { stream: ConnectionStream },
-
     AddPeer(Peer, Option<Callback<anyhow::Result<()>>>),
     FollowerSetReplId(ReplicationId, PeerIdentifier),
 }
