@@ -377,9 +377,9 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         let _ = peer.send(vote).await;
     }
 
-    #[instrument(level = tracing::Level::DEBUG, skip(self, repl_res), fields(peer_id = %repl_res.from))]
+    #[instrument(level = tracing::Level::DEBUG, skip(self, from,repl_res), fields(peer_id = %from))]
     pub(crate) async fn ack_replication(&mut self, from: PeerIdentifier, repl_res: ReplicationAck) {
-        self.update_peer_index(&repl_res.from, repl_res.log_idx);
+        self.update_peer_index(&from, repl_res.log_idx);
 
         if !repl_res.is_granted() {
             info!("vote cannot be granted {:?}", repl_res.rej_reason);
@@ -387,7 +387,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             return;
         }
 
-        self.track_replication_progress(repl_res);
+        self.track_replication_progress(from, repl_res);
     }
 
     #[instrument(level = tracing::Level::DEBUG, skip(self, cache_manager,heartbeat), fields(peer_id = %heartbeat.from))]
@@ -771,14 +771,14 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     }
 
     // TODO refactor : receive from and set it
-    fn track_replication_progress(&mut self, res: ReplicationAck) {
+    fn track_replication_progress(&mut self, from: PeerIdentifier, res: ReplicationAck) {
         let Some(mut consensus) = self.consensus_tracker.remove(&res.log_idx) else {
             return;
         };
 
-        if consensus.votable(&res.from) {
+        if consensus.votable(&from) {
             info!("Received acks for log index num: {}", res.log_idx);
-            consensus.increase_vote(res.from);
+            consensus.increase_vote(from);
         }
         if consensus.cnt < consensus.get_required_votes() {
             self.consensus_tracker.insert(res.log_idx, consensus);

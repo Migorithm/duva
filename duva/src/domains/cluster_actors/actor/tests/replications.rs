@@ -527,17 +527,18 @@ async fn test_consensus_voting_deleted_when_consensus_reached() {
     cluster_actor.req_consensus(consensus_request).await;
 
     // WHEN
-    let follower_res =
-        ReplicationAck { log_idx: 1, term: 0, rej_reason: None, from: PeerIdentifier("".into()) };
+    let follower_res = ReplicationAck { log_idx: 1, term: 0, rej_reason: None };
+
     // Leader already has 1 vote, so we only need 1 more votes to reach consensus
-    cluster_actor.track_replication_progress(follower_res.clone().set_from("repl1"));
+    cluster_actor
+        .track_replication_progress(PeerIdentifier("f_voter".into()), follower_res.clone());
 
     // up to this point, tracker hold the consensus
     assert_eq!(cluster_actor.consensus_tracker.len(), 1);
     assert_eq!(cluster_actor.consensus_tracker.get(&1).unwrap().voters.len(), 1);
 
     // ! Majority votes made
-    cluster_actor.track_replication_progress(follower_res.set_from("repl3"));
+    cluster_actor.track_replication_progress(PeerIdentifier("s_voter".into()), follower_res);
 
     // THEN
     assert_eq!(cluster_actor.consensus_tracker.len(), 0);
@@ -572,15 +573,11 @@ async fn test_same_voter_can_vote_only_once() {
 
     // WHEN
     assert_eq!(cluster_actor.consensus_tracker.len(), 1);
-    let follower_res = ReplicationAck {
-        log_idx: 1,
-        term: 0,
-        rej_reason: None,
-        from: PeerIdentifier("repl1".into()),
-    };
-    cluster_actor.track_replication_progress(follower_res.clone());
-    cluster_actor.track_replication_progress(follower_res.clone());
-    cluster_actor.track_replication_progress(follower_res.clone());
+    let follower_res = ReplicationAck { log_idx: 1, term: 0, rej_reason: None };
+    let from = PeerIdentifier("repl1".to_string());
+    cluster_actor.track_replication_progress(from.clone(), follower_res.clone());
+    cluster_actor.track_replication_progress(from.clone(), follower_res.clone());
+    cluster_actor.track_replication_progress(from.clone(), follower_res.clone());
 
     // THEN - no change in consensus tracker even though the same voter voted multiple times
     assert_eq!(cluster_actor.consensus_tracker.len(), 1);
