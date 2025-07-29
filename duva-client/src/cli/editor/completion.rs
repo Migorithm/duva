@@ -37,6 +37,7 @@ pub(crate) static COMMANDS: &[&str] = &[
     "rpush",
     "rpushx",
     "llen",
+    "lset",
 ];
 
 macro_rules! new_pair {
@@ -126,6 +127,16 @@ impl Completer for DuvaHinter {
                 } else if previous_words.len() == 3 {
                     // Suggest "px expr" after set key value
                     candidates.push(new_pair!("px expr"));
+                }
+            },
+
+            | "lset" => {
+                if previous_words.len() == 1 {
+                    candidates.push(new_pair!("key"));
+                } else if previous_words.len() == 2 {
+                    candidates.push(new_pair!("index"));
+                } else if previous_words.len() == 3 {
+                    candidates.push(new_pair!("value"));
                 }
             },
 

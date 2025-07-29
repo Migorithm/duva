@@ -505,8 +505,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             return;
         };
 
-        warn!("Rebalancing started! subsequent writes will be blocked until rebalance is done");
-        self.block_write_reqs();
+        warn!("Rebalancing started!");
 
         let hb = self
             .replication
