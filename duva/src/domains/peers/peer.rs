@@ -38,6 +38,7 @@ impl Peer {
     }
     pub(crate) fn set_match_index(&mut self, match_index: u64) {
         self.state.match_index = match_index;
+        self.last_seen = Instant::now();
     }
 
     pub(crate) async fn send(&mut self, io: impl Into<QueryIO> + Send) -> Result<(), IoError> {

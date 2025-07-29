@@ -130,7 +130,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
                 self.receive_cluster_heartbeat(heartbeat, cache_manager).await
             },
             | RequestVote(request_vote) => self.vote_election(request_vote).await,
-            | AckReplication(repl_res) => self.ack_replication(repl_res).await,
+            | AckReplication(repl_res) => self.ack_replication(from, repl_res).await,
             | AppendEntriesRPC(heartbeat) => {
                 self.append_entries_rpc(cache_manager, heartbeat).await
             },
