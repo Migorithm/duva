@@ -387,7 +387,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             return;
         }
 
-        self.track_replication_progress(from, repl_res);
+        self.track_replication_progress(from);
     }
 
     #[instrument(level = tracing::Level::DEBUG, skip(self, cache_manager,heartbeat), fields(peer_id = %heartbeat.from))]
@@ -770,18 +770,22 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             .min()
     }
 
-    // TODO refactor : receive from and set it
-    fn track_replication_progress(&mut self, from: PeerIdentifier, res: ReplicationAck) {
-        let Some(mut consensus) = self.consensus_tracker.remove(&res.log_idx) else {
+    fn track_replication_progress(&mut self, from: PeerIdentifier) {
+        let Some(peer) = self.find_replica_mut(&from) else {
+            return;
+        };
+        let peer_idx = peer.match_index();
+
+        let Some(mut consensus) = self.consensus_tracker.remove(&peer_idx) else {
             return;
         };
 
         if consensus.votable(&from) {
-            info!("Received acks for log index num: {}", res.log_idx);
+            info!("Received acks for log index num: {}", peer_idx);
             consensus.increase_vote(from);
         }
         if consensus.cnt < consensus.get_required_votes() {
-            self.consensus_tracker.insert(res.log_idx, consensus);
+            self.consensus_tracker.insert(peer_idx, consensus);
             return;
         }
 
@@ -789,7 +793,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         self.replication.hwm.fetch_add(1, Ordering::Relaxed);
 
         self.client_sessions.set_response(consensus.session_req.take());
-        let _ = consensus.callback.send(ConsensusClientResponse::LogIndex(res.log_idx));
+        let _ = consensus.callback.send(ConsensusClientResponse::LogIndex(peer_idx));
     }
 
     // Follower notified the leader of its acknowledgment, then leader store match index for the given follower
