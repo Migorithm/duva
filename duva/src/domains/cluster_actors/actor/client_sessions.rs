@@ -14,19 +14,15 @@ pub(crate) struct Session {
 }
 
 impl ClientSessions {
-    pub(crate) fn is_processed(&self, client_req: &Option<SessionRequest>) -> bool {
-        let Some(client_req) = client_req else {
-            return false;
-        };
-        if self.get(&client_req.client_id).is_none() {
-            return false;
+    pub(crate) fn is_processed(&self, req: &Option<SessionRequest>) -> bool {
+        if let Some(session_req) = req
+            && let Some(session) = self.get(&session_req.client_id)
+            && let Some(res) = session.processed_req_id.as_ref()
+        {
+            return *res == session_req.request_id;
         }
-        let session = self.get(&client_req.client_id).unwrap();
-        let Some(res) = session.processed_req_id.as_ref() else {
-            return false;
-        };
 
-        *res == client_req.request_id
+        false
     }
     pub(crate) fn set_response(&mut self, session_req: Option<SessionRequest>) {
         let Some(session_req) = session_req else { return };
