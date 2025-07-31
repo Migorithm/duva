@@ -204,6 +204,9 @@ pub(crate) fn dynamic_hints() -> HashMap<&'static str, Vec<DynamicHint>> {
     );
     map.insert("llen", vec![hint!("key", 0)]);
     map.insert("lset", vec![hint!("key", 0), hint!("index", 1), hint!("value", 2)]);
+
+    map.insert("lpop", vec![hint!("key", 0), hint!("count", 1)]);
+    map.insert("rpop", vec![hint!("key", 0), hint!("count", 1)]);
     map.insert("replicaof", vec![hint!("host port", 0), hint!("port", 1)]);
 
     map
