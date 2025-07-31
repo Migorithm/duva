@@ -488,8 +488,6 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
                 return;
             }
 
-            self.block_write_reqs();
-
             let peer = self.members.get_mut(&request_to).unwrap();
             let _ = peer.send(QueryIO::StartRebalance).await;
         }

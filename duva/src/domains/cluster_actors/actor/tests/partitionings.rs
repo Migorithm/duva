@@ -78,7 +78,9 @@ async fn test_rebalance_request_happypath() {
     cluster_actor.rebalance_request(request_to.clone(), lazy_o).await;
 
     // THEN
-    assert!(cluster_actor.pending_requests.is_some());
+    // At this point, the re-balance request should not block the requests
+    // requests will be blocked only if migrations needed.
+    assert!(cluster_actor.pending_requests.is_none());
     assert_expected_queryio(&buf, QueryIO::StartRebalance).await;
 }
 
