@@ -20,9 +20,8 @@ impl<T: TWriteAheadLog> ReplicatedLogs<T> {
         &self,
         low_watermark: Option<u64>,
     ) -> Vec<WriteOperation> {
-        let current_idx = self.last_log_index;
         let Some(low_watermark) = low_watermark else {
-            return self.from(current_idx);
+            return self.from(self.last_log_index);
         };
 
         let mut logs = Vec::with_capacity((self.last_log_index - low_watermark) as usize);

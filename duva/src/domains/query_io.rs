@@ -631,12 +631,7 @@ mod test {
     #[test]
     fn test_acks_to_binary_back_to_acks() {
         // GIVEN
-        let follower_res = ReplicationAck {
-            term: 0,
-            rej_reason: None,
-            log_idx: 2,
-            from: PeerIdentifier("repl1".into()),
-        };
+        let follower_res = ReplicationAck { term: 0, rej_reason: None, log_idx: 2 };
         let acks = QueryIO::Ack(follower_res);
 
         // WHEN
