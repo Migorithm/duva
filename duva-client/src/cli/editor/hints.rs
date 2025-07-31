@@ -144,6 +144,8 @@ pub(crate) fn default_hints() -> HashSet<CommandHint> {
     set.insert(CommandHint::new("rpushx key value [value ...]"));
     set.insert(CommandHint::new("llen key"));
     set.insert(CommandHint::new("lset key index value"));
+    set.insert(CommandHint::new("lpop key count"));
+    set.insert(CommandHint::new("rpop key count"));
 
     set
 }
