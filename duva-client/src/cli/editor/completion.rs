@@ -38,6 +38,8 @@ pub(crate) static COMMANDS: &[&str] = &[
     "rpushx",
     "llen",
     "lset",
+    "lpop",
+    "rpop",
 ];
 
 macro_rules! new_pair {
@@ -168,6 +170,16 @@ impl Completer for DuvaHinter {
                     candidates.push(new_pair!("value"));
                 }
             },
+            | "lpop" | "rpop" => {
+                if previous_words.len() == 1 {
+                    // Suggest "index" after get key
+                    candidates.push(new_pair!("key"));
+                } else if previous_words.len() == 2 {
+                    // Suggest "port" after replicaof host
+                    candidates.push(new_pair!("count"));
+                }
+            },
+
             | "get" | "incr" | "decr" | "ttl" | "llen" => {
                 if previous_words.len() == 1 {
                     // Suggest "index" after get key
