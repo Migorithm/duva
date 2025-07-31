@@ -39,6 +39,7 @@ use crate::types::ConnectionStream;
 use client_sessions::ClientSessions;
 
 use heartbeat_scheduler::HeartBeatScheduler;
+use tokio::sync::oneshot;
 
 use std::collections::HashMap;
 use std::collections::VecDeque;
@@ -76,6 +77,19 @@ pub struct ClusterActor<T> {
     pub(crate) hash_ring: HashRing,
     pub(crate) pending_requests: Option<VecDeque<ConsensusRequest>>,
     pub(crate) pending_migrations: Option<HashMap<BatchId, PendingMigrationBatch>>,
+    cluster_join_sync: ClusterJoinSync,
+}
+
+#[derive(Debug, Default)]
+struct ClusterJoinSync {
+    notifier: Option<Callback<()>>,
+    waiter: Option<oneshot::Receiver<()>>,
+}
+impl ClusterJoinSync {
+    fn new() -> Self {
+        let (notifier, waiter) = oneshot::channel();
+        Self { notifier: Some(notifier.into()), waiter: Some(waiter) }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -147,7 +161,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             members: BTreeMap::new(),
             consensus_tracker: LogConsensusTracker::default(),
             client_sessions: ClientSessions::default(),
-
+            cluster_join_sync: ClusterJoinSync::default(),
             pending_requests: None,
             pending_migrations: None,
         }
@@ -464,12 +478,35 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         let (res_callback, conn_awaiter) = tokio::sync::oneshot::channel();
         self.connect_to_server(peer_addr.clone(), Some(res_callback.into())).await;
 
+        if lazy_option == LazyOption::Eager {
+            self.cluster_join_sync = ClusterJoinSync::new();
+        }
+
         tokio::spawn(Self::register_delayed_schedule(
             self.self_handler.clone(),
             conn_awaiter,
             cl_cb,
             SchedulerMessage::RebalanceRequest { request_to: peer_addr, lazy_option },
         ));
+    }
+
+    async fn register_delayed_schedule<C>(
+        cluster_sender: ClusterCommandHandler,
+        completion_signal: tokio::sync::oneshot::Receiver<anyhow::Result<C>>,
+        on_completion: Callback<anyhow::Result<C>>,
+        schedule_cmd: SchedulerMessage,
+    ) where
+        C: Send + Sync + 'static,
+    {
+        let result =
+            completion_signal.await.unwrap_or_else(|_| Err(anyhow::anyhow!("Channel closed")));
+        let _ = on_completion.send(result);
+
+        // Send schedule command regardless of callback result
+        if let Err(e) = cluster_sender.send(schedule_cmd).await {
+            // Consider logging this error instead of silently ignoring
+            error!("Failed to send schedule command: {}", e);
+        }
     }
 
     pub(crate) async fn rebalance_request(
@@ -994,23 +1031,6 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             | RejectionReason::FailToWrite => {
                 info!("Follower failed to write log for technical reason, resend..");
             },
-        }
-    }
-
-    async fn register_delayed_schedule<C>(
-        cluster_sender: ClusterCommandHandler,
-        awaiter: tokio::sync::oneshot::Receiver<anyhow::Result<C>>,
-        callback: Callback<anyhow::Result<C>>,
-        schedule_cmd: SchedulerMessage,
-    ) where
-        C: Send + Sync + 'static,
-    {
-        let result = awaiter.await.unwrap_or_else(|_| Err(anyhow::anyhow!("Channel closed")));
-        let _ = callback.send(result);
-        // Send schedule command regardless of callback result
-        if let Err(e) = cluster_sender.send(schedule_cmd).await {
-            // Consider logging this error instead of silently ignoring
-            error!("Failed to send schedule command: {}", e);
         }
     }
 

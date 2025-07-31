@@ -30,6 +30,7 @@ pub enum SchedulerMessage {
     TryUnblockWriteReqs,
     SendBatchAck { batch_id: BatchId, to: PeerIdentifier },
 }
+
 impl From<SchedulerMessage> for ClusterCommand {
     fn from(msg: SchedulerMessage) -> Self {
         ClusterCommand::Scheduler(msg)
