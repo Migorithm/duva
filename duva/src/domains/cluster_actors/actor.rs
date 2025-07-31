@@ -486,6 +486,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             self.self_handler.clone(),
             conn_awaiter,
             cl_cb,
+            self.cluster_join_sync.waiter.take(),
             SchedulerMessage::RebalanceRequest { request_to: peer_addr, lazy_option },
         ));
     }
@@ -494,6 +495,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         cluster_sender: ClusterCommandHandler,
         completion_signal: tokio::sync::oneshot::Receiver<anyhow::Result<C>>,
         on_completion: Callback<anyhow::Result<C>>,
+        secondary_completion_signal: Option<oneshot::Receiver<()>>,
         schedule_cmd: SchedulerMessage,
     ) where
         C: Send + Sync + 'static,
@@ -501,6 +503,10 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         let result =
             completion_signal.await.unwrap_or_else(|_| Err(anyhow::anyhow!("Channel closed")));
         let _ = on_completion.send(result);
+
+        if let Some(sec_signal) = secondary_completion_signal {
+            let _ = sec_signal.await;
+        }
 
         // Send schedule command regardless of callback result
         if let Err(e) = cluster_sender.send(schedule_cmd).await {
