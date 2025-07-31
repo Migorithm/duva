@@ -1031,9 +1031,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
                 continue;
             }
 
-            // Found a suitable peer - connect and exit
             self.connect_to_server(node_id.clone(), None).await;
-            return;
         }
     }
 
