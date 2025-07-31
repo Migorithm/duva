@@ -48,7 +48,8 @@ use std::io::Seek;
 use std::io::Write;
 use std::iter;
 use std::sync::atomic::Ordering;
-
+use std::thread::sleep;
+use std::time::Duration;
 use tracing::debug;
 use tracing::error;
 use tracing::info;
@@ -270,6 +271,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     }
 
     pub(crate) async fn leader_req_consensus(&mut self, req: ConsensusRequest) {
+        dbg!(&self.pending_requests);
         if let Some(pending_requests) = self.pending_requests.as_mut() {
             pending_requests.push_back(req);
             return;
@@ -1005,6 +1007,8 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     ) where
         C: Send + Sync + 'static,
     {
+        // TODO - Wait until the connection is fully established before starting rebalancing
+        tokio::time::sleep(Duration::from_secs(2)).await;
         let result = awaiter.await.unwrap_or_else(|_| Err(anyhow::anyhow!("Channel closed")));
         let _ = callback.send(result);
         // Send schedule command regardless of callback result
@@ -1131,6 +1135,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     ) {
         let callback = callback.into();
         //  Find target peer based on replication ID
+        // TODO - Non-coordinating Node may not be able to find the target peer at this time.
         let Some(peer_id) = self.peerid_by_replid(&target.target_repl).cloned() else {
             let _ = callback.send(res_err!("Target peer not found for replication ID"));
             return;
