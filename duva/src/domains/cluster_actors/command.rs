@@ -10,6 +10,7 @@ use crate::types::{Callback, ConnectionStream};
 
 use std::str::FromStr;
 
+use tokio::sync::oneshot;
 use uuid::Uuid;
 
 #[derive(Debug, PartialEq, Eq)]
@@ -43,6 +44,8 @@ pub enum ConnectionMessage {
     AcceptInboundPeer { stream: ConnectionStream },
     AddPeer(Peer, Option<Callback<anyhow::Result<()>>>),
     FollowerSetReplId(ReplicationId, PeerIdentifier),
+    ActivateClusterSync(Callback<()>),
+    RequestClusterSyncAwaiter(Callback<Option<oneshot::Receiver<()>>>),
 }
 impl From<ConnectionMessage> for ClusterCommand {
     fn from(msg: ConnectionMessage) -> Self {
