@@ -31,6 +31,7 @@ use crate::domains::peers::command::ReplicationAck;
 use crate::domains::peers::command::RequestVote;
 use crate::domains::peers::connections::inbound::stream::InboundStream;
 use crate::domains::peers::connections::outbound::stream::OutboundStream;
+use crate::domains::peers::identifier::TPeerAddress;
 use crate::domains::peers::peer::PeerState;
 use crate::err;
 use crate::res_err;
@@ -39,6 +40,7 @@ use crate::types::ConnectionStream;
 use client_sessions::ClientSessions;
 
 use heartbeat_scheduler::HeartBeatScheduler;
+use tokio::net::TcpStream;
 use tokio::sync::oneshot;
 
 use std::collections::HashMap;
@@ -226,22 +228,35 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         optional_callback: Option<Callback<anyhow::Result<()>>>,
     ) {
         if self.replication.self_identifier() == connect_to {
-            if let Some(cb) = optional_callback {
-                let _ = cb.send(res_err!("Cannot connect to myself"));
-            }
+            optional_callback.map(|cb| {
+                let _ = cb.send(res_err!("Cannot connect to self"));
+            });
             return;
         }
-        let stream = match OutboundStream::new(connect_to, self.replication.clone()).await {
-            | Ok(stream) => stream,
-            | Err(e) => {
-                if let Some(cb) = optional_callback {
-                    let _ = cb.send(res_err!(e));
-                }
-                return;
-            },
+
+        let Ok(cluster_bind_addr) = connect_to.cluster_bind_addr() else {
+            optional_callback.map(|cb| {
+                let _ = cb.send(res_err!("invalid cluster bind address for {}", connect_to));
+            });
+            return;
         };
 
-        tokio::spawn(stream.add_peer(
+        let Ok(stream) = TcpStream::connect(cluster_bind_addr).await else {
+            optional_callback.map(|cb| {
+                let _ = cb.send(res_err!("Failed to connect to {}", connect_to));
+            });
+            return;
+        };
+
+        let (read, write) = stream.into_split();
+        let outbound_stream = OutboundStream {
+            r: read.into(),
+            w: write.into(),
+            my_repl_info: self.replication.clone(),
+            connected_node_info: None,
+        };
+
+        tokio::spawn(outbound_stream.add_peer(
             self.replication.self_port,
             self.self_handler.clone(),
             optional_callback,
