@@ -156,9 +156,10 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
                 self.connect_to_server(connect_to, Some(callback)).await
             },
             | AcceptInboundPeer { stream } => self.accept_inbound_stream(stream),
-
             | AddPeer(peer, optional_callback) => self.add_peer(peer, optional_callback).await,
             | FollowerSetReplId(replication_id, _leader_id) => self.follower_setup(replication_id),
+            | ActivateClusterSync(callback) => self.activate_cluster_sync(callback),
+            | RequestClusterSyncAwaiter(callback) => self.send_cluster_sync_awaiter(callback),
         }
     }
 }

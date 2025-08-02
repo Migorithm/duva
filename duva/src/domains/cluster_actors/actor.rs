@@ -39,6 +39,7 @@ use crate::types::ConnectionStream;
 use client_sessions::ClientSessions;
 
 use heartbeat_scheduler::HeartBeatScheduler;
+use tokio::sync::oneshot;
 
 use std::collections::HashMap;
 use std::collections::VecDeque;
@@ -76,6 +77,24 @@ pub struct ClusterActor<T> {
     pub(crate) hash_ring: HashRing,
     pub(crate) pending_requests: Option<VecDeque<ConsensusRequest>>,
     pub(crate) pending_migrations: Option<HashMap<BatchId, PendingMigrationBatch>>,
+    cluster_join_sync: ClusterJoinSync,
+}
+
+#[derive(Debug, Default)]
+struct ClusterJoinSync {
+    known_peers: HashMap<PeerIdentifier, bool>,
+    notifier: Option<Callback<()>>,
+    waiter: Option<oneshot::Receiver<()>>,
+}
+impl ClusterJoinSync {
+    fn new(known_peers: Vec<PeerIdentifier>) -> Self {
+        let (notifier, waiter) = oneshot::channel();
+        Self {
+            notifier: Some(notifier.into()),
+            waiter: Some(waiter),
+            known_peers: known_peers.into_iter().map(|p| (p, true)).collect(),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -147,7 +166,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             members: BTreeMap::new(),
             consensus_tracker: LogConsensusTracker::default(),
             client_sessions: ClientSessions::default(),
-
+            cluster_join_sync: ClusterJoinSync::default(),
             pending_requests: None,
             pending_migrations: None,
         }
@@ -184,6 +203,20 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         if let Some(cb) = optional_callback {
             let _ = cb.send(Ok(()));
         }
+
+        self.cluster_join_sync.known_peers.entry(peer_id).and_modify(|e| *e = true);
+        self.signal_if_peer_discovery_complete();
+    }
+
+    pub(crate) fn activate_cluster_sync(&mut self, callback: Callback<()>) {
+        self.cluster_join_sync = ClusterJoinSync::new(self.members.keys().cloned().collect());
+        let _ = callback.send(());
+    }
+    pub(crate) fn send_cluster_sync_awaiter(
+        &mut self,
+        callback: Callback<Option<oneshot::Receiver<()>>>,
+    ) {
+        let _ = callback.send(self.cluster_join_sync.waiter.take());
     }
 
     #[instrument(skip(self, optional_callback))]
@@ -449,6 +482,10 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         self.connect_to_server(peer_addr, Some(callback)).await;
     }
 
+    // ! Callback chaining is required as otherwise it will block cluster actor from consuming more messages.
+    // ! For example, trying to connect to a server requires handshakes and if it is not done in the background, actor will fail to receive the next message
+    // ! Upon completion, we also conditionally activate cluster sync - which requires communication with actor itself.
+    // ! And then finally, if cluster sync is activated wait until this node joins "cluster", not just a signgle server
     pub(crate) async fn cluster_meet(
         &mut self,
         peer_addr: PeerIdentifier,
@@ -460,16 +497,60 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             return;
         }
 
-        // ! intercept the callback to ensure that the connection is established before sending the rebalance request
         let (res_callback, conn_awaiter) = tokio::sync::oneshot::channel();
         self.connect_to_server(peer_addr.clone(), Some(res_callback.into())).await;
 
+        let (completion_sig, on_conn_completion) = tokio::sync::oneshot::channel();
+        tokio::spawn({
+            let h = self.self_handler.clone();
+            let lazy_option = lazy_option.clone();
+            async move {
+                let conn_res =
+                    conn_awaiter.await.unwrap_or_else(|_| Err(anyhow::anyhow!("Channel closed")));
+
+                if lazy_option == LazyOption::Eager {
+                    let (activation_sig, on_activation) = oneshot::channel();
+                    let _ =
+                        h.send(ConnectionMessage::ActivateClusterSync(activation_sig.into())).await;
+                    let _ = on_activation.await;
+                }
+                let _ = completion_sig.send(conn_res);
+            }
+        });
+
         tokio::spawn(Self::register_delayed_schedule(
             self.self_handler.clone(),
-            conn_awaiter,
+            on_conn_completion,
             cl_cb,
             SchedulerMessage::RebalanceRequest { request_to: peer_addr, lazy_option },
         ));
+    }
+
+    async fn register_delayed_schedule<C>(
+        cluster_sender: ClusterCommandHandler,
+        completion_awaiter: tokio::sync::oneshot::Receiver<anyhow::Result<C>>,
+        on_completion: Callback<anyhow::Result<C>>,
+
+        schedule_cmd: SchedulerMessage,
+    ) where
+        C: Send + Sync + 'static,
+    {
+        let result =
+            completion_awaiter.await.unwrap_or_else(|_| Err(anyhow::anyhow!("Channel closed")));
+        let _ = on_completion.send(result);
+
+        let (tx, cluster_sync_awaiter) = oneshot::channel();
+        let _ =
+            cluster_sender.send(ConnectionMessage::RequestClusterSyncAwaiter(Callback(tx))).await;
+        if let Some(sync_singal) = cluster_sync_awaiter.await.unwrap() {
+            let _ = sync_singal.await;
+        }
+
+        // Send schedule command regardless of callback result
+        if let Err(e) = cluster_sender.send(schedule_cmd).await {
+            // Consider logging this error instead of silently ignoring
+            error!("Failed to send schedule command: {}", e);
+        }
     }
 
     pub(crate) async fn rebalance_request(
@@ -614,6 +695,8 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     }
 
     async fn remove_peer(&mut self, peer_addr: &PeerIdentifier) -> Option<()> {
+        self.cluster_join_sync.known_peers.remove(peer_addr);
+
         if let Some(peer) = self.members.remove(peer_addr) {
             warn!("{} is being removed!", peer_addr);
             // stop the runnin process and take the connection in case topology changes are made
@@ -621,6 +704,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             self.broadcast_topology_change();
             return Some(());
         }
+
         None
     }
 
@@ -997,27 +1081,11 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         }
     }
 
-    async fn register_delayed_schedule<C>(
-        cluster_sender: ClusterCommandHandler,
-        awaiter: tokio::sync::oneshot::Receiver<anyhow::Result<C>>,
-        callback: Callback<anyhow::Result<C>>,
-        schedule_cmd: SchedulerMessage,
-    ) where
-        C: Send + Sync + 'static,
-    {
-        let result = awaiter.await.unwrap_or_else(|_| Err(anyhow::anyhow!("Channel closed")));
-        let _ = callback.send(result);
-        // Send schedule command regardless of callback result
-        if let Err(e) = cluster_sender.send(schedule_cmd).await {
-            // Consider logging this error instead of silently ignoring
-            error!("Failed to send schedule command: {}", e);
-        }
-    }
-
     async fn join_peer_network_if_absent(&mut self, cluster_nodes: Vec<PeerState>) {
         let self_id = self.replication.self_identifier();
 
         // Find the first suitable peer to connect to
+
         for node in cluster_nodes {
             let node_id = node.id();
 
@@ -1025,6 +1093,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             if node_id == &self_id || node_id >= &self_id {
                 continue;
             }
+            self.cluster_join_sync.known_peers.entry(node_id.clone()).or_insert(false);
 
             // Skip if already connected or banned
             if self.members.contains_key(node_id) || self.replication.in_ban_list(node_id) {
@@ -1032,6 +1101,19 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             }
 
             self.connect_to_server(node_id.clone(), None).await;
+        }
+
+        self.signal_if_peer_discovery_complete();
+    }
+
+    // * cluster message comes in and connection was tried. At this point, if some task is waiting for the notification, send it.
+    // Currently, this flow is meant for:
+    // - "cluster meet eager" where rebalancing should be promtly triggered if and only if cluster join is made.
+    fn signal_if_peer_discovery_complete(&mut self) {
+        if self.cluster_join_sync.known_peers.values().all(|is_known| *is_known)
+            && let Some(notifier) = self.cluster_join_sync.notifier.take()
+        {
+            let _ = notifier.send(());
         }
     }
 
