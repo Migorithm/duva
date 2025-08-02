@@ -12,7 +12,7 @@ impl ServerStreamReader {
         mut self,
         controller_sender: tokio::sync::mpsc::Sender<BrokerMessage>,
     ) -> oneshot::Sender<()> {
-        let (kill_trigger, kill_switch) = tokio::sync::oneshot::channel::<()>();
+        let (kill_trigger, kill_switch) = tokio::sync::oneshot::channel();
 
         let future = async move {
             let controller_sender = controller_sender.clone();

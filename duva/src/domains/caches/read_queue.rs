@@ -1,7 +1,8 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
-use tokio::sync::oneshot::Sender;
+
+use crate::types::Callback;
 
 use super::cache_objects::CacheValue;
 
@@ -12,7 +13,7 @@ pub struct ReadQueue {
 
 pub(crate) struct DeferredRead {
     pub(crate) key: String,
-    pub(crate) callback: Sender<CacheValue>,
+    pub(crate) callback: Callback<CacheValue>,
 }
 
 impl ReadQueue {
@@ -27,8 +28,8 @@ impl ReadQueue {
         &mut self,
         read_idx: u64,
         key: &str,
-        callback: Sender<CacheValue>,
-    ) -> Option<Sender<CacheValue>> {
+        callback: Callback<CacheValue>,
+    ) -> Option<Callback<CacheValue>> {
         let current_hwm = self.hwm.load(Ordering::Relaxed);
         if current_hwm < read_idx {
             self.push(read_idx, DeferredRead { key: key.into(), callback });
@@ -47,8 +48,8 @@ impl ReadQueue {
 #[test]
 fn test_push() {
     //GIVEN
-    let (tx1, _) = tokio::sync::oneshot::channel();
-    let (tx2, _) = tokio::sync::oneshot::channel();
+    let (tx1, _) = Callback::create();
+    let (tx2, _) = Callback::create();
     let hwm = Arc::new(AtomicU64::new(1));
     let mut rq = ReadQueue::new(hwm.clone());
 

@@ -5,12 +5,12 @@ use crate::domains::caches::cache_objects::value::WRONG_TYPE_ERR_MSG;
 use crate::domains::caches::lru_cache::LruCache;
 use crate::domains::caches::read_queue::ReadQueue;
 use crate::make_smart_pointer;
+use crate::types::Callback;
 use anyhow::Context;
 use bytes::Bytes;
 use std::sync::Arc;
 use std::sync::atomic::AtomicU64;
 use tokio::sync::mpsc::{self};
-use tokio::sync::oneshot;
 
 pub struct CacheActor {
     pub(crate) cache: LruCache<String, CacheValue>,
@@ -34,7 +34,7 @@ impl CacheActor {
         self.cache.keys_with_expiry
     }
 
-    pub(crate) fn keys(&self, pattern: Option<String>, callback: oneshot::Sender<Vec<String>>) {
+    pub(crate) fn keys(&self, pattern: Option<String>, callback: Callback<Vec<String>>) {
         let keys = self
             .cache
             .keys()
@@ -42,20 +42,20 @@ impl CacheActor {
                 if pattern.as_ref().is_none_or(|p| k.contains(p)) { Some(k.clone()) } else { None }
             })
             .collect();
-        let _ = callback.send(keys);
+        callback.send(keys);
     }
-    pub(crate) fn delete(&mut self, key: String, callback: oneshot::Sender<bool>) {
+    pub(crate) fn delete(&mut self, key: String, callback: Callback<bool>) {
         if let Some(_value) = self.cache.remove(&key) {
-            let _ = callback.send(true);
+            callback.send(true);
         } else {
-            let _ = callback.send(false);
+            callback.send(false);
         }
     }
-    pub(crate) fn exists(&mut self, key: String, callback: oneshot::Sender<bool>) {
-        let _ = callback.send(self.cache.get(&key).is_some());
+    pub(crate) fn exists(&mut self, key: String, callback: Callback<bool>) {
+        callback.send(self.cache.get(&key).is_some());
     }
-    pub(crate) fn get(&mut self, key: &str, callback: oneshot::Sender<CacheValue>) {
-        let _ = callback.send(self.cache.get(key).cloned().unwrap_or(Default::default()));
+    pub(crate) fn get(&mut self, key: &str, callback: Callback<CacheValue>) {
+        callback.send(self.cache.get(key).cloned().unwrap_or(Default::default()));
     }
 
     pub(crate) fn set(&mut self, cache_entry: CacheEntry) {
@@ -70,8 +70,8 @@ impl CacheActor {
             let key = cache_entry.key().to_string();
             async move {
                 tokio::time::sleep(expire_in).await;
-                let (tx, rx) = oneshot::channel();
-                let _ = handler.send(CacheCommand::Delete { key, callback: tx }).await;
+                let (callback, rx) = Callback::create();
+                let _ = handler.send(CacheCommand::Delete { key, callback }).await;
                 let _ = rx.await;
             }
         });

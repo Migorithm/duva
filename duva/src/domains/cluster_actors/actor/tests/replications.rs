@@ -434,12 +434,12 @@ async fn req_consensus_inserts_consensus_voting() {
         Some(replid),
     );
 
-    let (tx, _) = tokio::sync::oneshot::channel();
+    let (callback, _) = Callback::create();
     let client_id = Uuid::now_v7();
     let session_request = SessionRequest::new(1, client_id);
     let w_req = WriteRequest::Set { key: "foo".into(), value: "bar".into(), expires_at: None };
     let consensus_request =
-        ConsensusRequest::new(w_req.clone(), Callback(tx), Some(session_request.clone()));
+        ConsensusRequest::new(w_req.clone(), callback, Some(session_request.clone()));
 
     // WHEN
     cluster_actor.req_consensus(consensus_request).await;
@@ -487,7 +487,7 @@ async fn test_leader_req_consensus_early_return_when_already_processed_session_r
     cluster_actor.client_sessions.set_response(Some(client_req.clone()));
     let handler = cluster_actor.self_handler.clone();
     tokio::spawn(cluster_actor.handle(cache_manager));
-    let (tx, rx) = tokio::sync::oneshot::channel();
+    let (tx, rx) = Callback::create();
     handler
         .send(ClusterCommand::Client(ClientMessage::LeaderReqConsensus(ConsensusRequest::new(
             WriteRequest::Set { key: "foo".into(), value: "bar".into(), expires_at: None },
@@ -517,7 +517,7 @@ async fn test_consensus_voting_deleted_when_consensus_reached() {
         0,
         Some(replid),
     );
-    let (client_request_sender, client_wait) = tokio::sync::oneshot::channel();
+    let (client_request_sender, client_wait) = Callback::create();
 
     let client_id = Uuid::now_v7();
     let client_request = SessionRequest::new(3, client_id);
@@ -565,7 +565,7 @@ async fn test_same_voter_can_vote_only_once() {
         0,
         Some(replid),
     );
-    let (client_request_sender, _client_wait) = tokio::sync::oneshot::channel();
+    let (client_request_sender, _client_wait) = Callback::create();
 
     let consensus_request = Helper::consensus_request(client_request_sender, None);
 
@@ -587,7 +587,7 @@ async fn test_same_voter_can_vote_only_once() {
 async fn leader_consensus_tracker_not_changed_when_followers_not_exist() {
     // GIVEN
     let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Leader).await;
-    let (tx, _rx) = tokio::sync::oneshot::channel();
+    let (tx, _rx) = Callback::create();
 
     let consensus_request = Helper::consensus_request(tx, None);
 
@@ -609,7 +609,7 @@ async fn test_leader_req_consensus_with_pending_requests() {
 
     assert_eq!(cluster_actor.pending_requests.as_ref().unwrap().len(), 0);
 
-    let (tx, _) = tokio::sync::oneshot::channel();
+    let (tx, _) = Callback::create();
     let consensus_request = Helper::consensus_request(tx, None);
 
     // WHEN - send request while write requests are blocked
@@ -634,7 +634,7 @@ async fn test_leader_req_consensus_with_processed_session() {
     cluster_actor.client_sessions.set_response(Some(session_req.clone()));
 
     // WHEN - send request with already processed session
-    let (tx, rx) = tokio::sync::oneshot::channel();
+    let (tx, rx) = Callback::create();
     let consensus_request = ConsensusRequest::new(
         WriteRequest::Set { key: "test_key".into(), value: "test_value".into(), expires_at: None },
         tx,

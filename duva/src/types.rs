@@ -3,8 +3,14 @@ use tokio::net::TcpStream;
 #[derive(Debug)]
 pub(crate) struct Callback<T>(pub(crate) tokio::sync::oneshot::Sender<T>);
 impl<T> Callback<T> {
-    pub(crate) fn send(self, value: T) -> Result<(), T> {
-        self.0.send(value)
+    pub(crate) fn send(self, value: T) {
+        let _ = self.0.send(value);
+    }
+}
+impl<T> Callback<T> {
+    pub(crate) fn create() -> (Self, tokio::sync::oneshot::Receiver<T>) {
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        (Callback(tx), rx)
     }
 }
 

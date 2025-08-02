@@ -5,6 +5,7 @@ use crate::{
         peers::{PeerMessage, peer::ListeningActorKillTrigger},
     },
     prelude::PeerIdentifier,
+    types::Callback,
 };
 use tokio::select;
 
@@ -29,7 +30,7 @@ impl PeerListener {
         peer_id: PeerIdentifier,
     ) -> ListeningActorKillTrigger {
         let listener = Self { read_connected: read_connected.into(), cluster_handler, peer_id };
-        let (kill_trigger, kill_switch) = tokio::sync::oneshot::channel();
+        let (kill_trigger, kill_switch) = Callback::create();
         let handle = tokio::spawn(listener.listen(kill_switch));
 
         ListeningActorKillTrigger::new(kill_trigger.into(), handle)

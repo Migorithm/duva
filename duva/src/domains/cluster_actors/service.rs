@@ -9,6 +9,7 @@ use crate::domains::peers::PeerMessage;
 
 use crate::prelude::PeerIdentifier;
 use crate::res_err;
+use tokio::net::TcpStream;
 use tracing::{instrument, trace};
 
 impl<T: TWriteAheadLog> ClusterActor<T> {
@@ -72,19 +73,19 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
         match client_message {
             | GetPeers(callback) => {
-                let _ = callback.send(self.members.keys().cloned().collect::<Vec<_>>());
+                callback.send(self.members.keys().cloned().collect::<Vec<_>>());
             },
             | ClusterNodes(callback) => {
-                let _ = callback.send(self.cluster_nodes());
+                callback.send(self.cluster_nodes());
             },
             | ReplicationInfo(callback) => {
-                let _ = callback.send(self.replication.clone());
+                callback.send(self.replication.clone());
             },
             | ForgetPeer(peer_addr, callback) => {
                 if let Ok(Some(())) = self.forget_peer(peer_addr).await {
-                    let _ = callback.send(Some(()));
+                    callback.send(Some(()));
                 } else {
-                    let _ = callback.send(None);
+                    callback.send(None);
                 }
             },
             | LeaderReqConsensus(req) => {
@@ -92,27 +93,27 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             },
             | ReplicaOf(peer_addr, callback) => {
                 if self.replication.self_identifier() == peer_addr {
-                    let _ = callback.send(res_err!("invalid operation: cannot replicate to self"));
+                    callback.send(res_err!("invalid operation: cannot replicate to self"));
                     return;
                 }
                 cache_manager.drop_cache().await;
-                self.replicaof(peer_addr, callback).await;
+                self.replicaof::<TcpStream>(peer_addr, callback).await;
             },
             | ClusterMeet(peer_addr, lazy_option, callback) => {
-                self.cluster_meet(peer_addr, lazy_option, callback).await;
+                self.cluster_meet::<TcpStream>(peer_addr, lazy_option, callback).await;
             },
             | ClusterReshard(sender) => {
-                let _ = self.start_rebalance(cache_manager).await;
-                let _ = sender.send(Ok(()));
+                self.start_rebalance(cache_manager).await;
+                sender.send(Ok(()));
             },
             | GetRole(callback) => {
-                let _ = callback.send(self.replication.role.clone());
+                callback.send(self.replication.role.clone());
             },
             | SubscribeToTopologyChange(callback) => {
-                let _ = callback.send(self.node_change_broadcast.subscribe());
+                callback.send(self.node_change_broadcast.subscribe());
             },
             | GetTopology(callback) => {
-                let _ = callback.send(self.get_topology());
+                callback.send(self.get_topology());
             },
         };
     }
@@ -153,7 +154,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
         match conn_msg {
             | ConnectToServer { connect_to, callback } => {
-                self.connect_to_server(connect_to, Some(callback)).await
+                self.connect_to_server::<TcpStream>(connect_to, Some(callback)).await
             },
             | AcceptInboundPeer { stream } => self.accept_inbound_stream(stream),
             | AddPeer(peer, optional_callback) => self.add_peer(peer, optional_callback).await,

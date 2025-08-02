@@ -215,12 +215,12 @@ impl Helper {
     }
 
     fn consensus_request(
-        tx: tokio::sync::oneshot::Sender<ConsensusClientResponse>,
+        callback: Callback<ConsensusClientResponse>,
         session_req: Option<SessionRequest>,
     ) -> ConsensusRequest {
         ConsensusRequest::new(
             WriteRequest::Set { key: "foo".into(), value: "bar".into(), expires_at: None },
-            Callback(tx),
+            callback,
             session_req,
         )
     }
@@ -246,12 +246,12 @@ pub(crate) async fn setup_blocked_cluster_actor_with_requests(
     cluster_actor.block_write_reqs();
 
     for _ in 0..num_requests {
-        let (tx, _rx) = tokio::sync::oneshot::channel();
+        let (callback, _rx) = Callback::create();
         cluster_actor
             .pending_requests
             .as_mut()
             .unwrap()
-            .push_back(Helper::consensus_request(tx, None));
+            .push_back(Helper::consensus_request(callback, None));
     }
 
     cluster_actor

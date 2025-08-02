@@ -1,6 +1,6 @@
 use super::cache_objects::{CacheEntry, CacheValue};
 use crate::{domains::saves::command::SaveCommand, types::Callback};
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::mpsc;
 
 pub(crate) enum CacheCommand {
     Set {
@@ -11,38 +11,38 @@ pub(crate) enum CacheCommand {
     },
     Get {
         key: String,
-        callback: oneshot::Sender<CacheValue>,
+        callback: Callback<CacheValue>,
     },
     Keys {
         pattern: Option<String>,
-        callback: oneshot::Sender<Vec<String>>,
+        callback: Callback<Vec<String>>,
     },
     Delete {
         key: String,
-        callback: oneshot::Sender<bool>,
+        callback: Callback<bool>,
     },
     IndexGet {
         key: String,
         read_idx: u64,
-        callback: oneshot::Sender<CacheValue>,
+        callback: Callback<CacheValue>,
     },
     Ping,
     Drop {
-        callback: oneshot::Sender<()>,
+        callback: Callback<()>,
     },
     Exists {
         key: String,
-        callback: oneshot::Sender<bool>,
+        callback: Callback<bool>,
     },
     Append {
         key: String,
         value: String,
-        callback: oneshot::Sender<anyhow::Result<usize>>,
+        callback: Callback<anyhow::Result<usize>>,
     },
     NumericDetla {
         key: String,
         delta: i64,
-        callback: oneshot::Sender<anyhow::Result<i64>>,
+        callback: Callback<anyhow::Result<i64>>,
     },
     LPush {
         key: String,
