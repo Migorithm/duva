@@ -100,7 +100,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
                 self.replicaof::<TcpStream>(peer_addr, callback).await;
             },
             | ClusterMeet(peer_addr, lazy_option, callback) => {
-                self.cluster_meet(peer_addr, lazy_option, callback).await;
+                self.cluster_meet::<TcpStream>(peer_addr, lazy_option, callback).await;
             },
             | ClusterReshard(sender) => {
                 let _ = self.start_rebalance(cache_manager).await;

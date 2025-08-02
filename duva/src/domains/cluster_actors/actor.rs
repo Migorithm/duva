@@ -224,13 +224,11 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
     // TODO enable DI
     #[instrument(skip(self, optional_callback))]
-    pub(crate) async fn connect_to_server<C>(
+    pub(crate) async fn connect_to_server<C: TAsyncReadWrite>(
         &mut self,
         connect_to: PeerIdentifier,
         optional_callback: Option<Callback<anyhow::Result<()>>>,
-    ) where
-        C: TAsyncReadWrite,
-    {
+    ) {
         if self.replication.self_identifier() == connect_to {
             optional_callback.map(|cb| {
                 let _ = cb.send(res_err!("Cannot connect to self"));
@@ -315,7 +313,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         }
         self.apply_banlist(std::mem::take(&mut heartbeat.ban_list)).await;
         self.update_cluster_members(&heartbeat.from, heartbeat.hwm, &heartbeat.cluster_nodes).await;
-        self.join_peer_network_if_absent(heartbeat.cluster_nodes).await;
+        self.join_peer_network_if_absent::<TcpStream>(heartbeat.cluster_nodes).await;
         self.gossip(heartbeat.hop_count).await;
         self.maybe_update_hashring(heartbeat.hashring, cache_manager).await;
     }
@@ -504,7 +502,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     // ! For example, trying to connect to a server requires handshakes and if it is not done in the background, actor will fail to receive the next message
     // ! Upon completion, we also conditionally activate cluster sync - which requires communication with actor itself.
     // ! And then finally, if cluster sync is activated wait until this node joins "cluster", not just a signgle server
-    pub(crate) async fn cluster_meet(
+    pub(crate) async fn cluster_meet<C: TAsyncReadWrite>(
         &mut self,
         peer_addr: PeerIdentifier,
         lazy_option: LazyOption,
@@ -516,7 +514,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         }
 
         let (res_callback, conn_awaiter) = tokio::sync::oneshot::channel();
-        self.connect_to_server::<TcpStream>(peer_addr.clone(), Some(res_callback.into())).await;
+        self.connect_to_server::<C>(peer_addr.clone(), Some(res_callback.into())).await;
 
         let (completion_sig, on_conn_completion) = tokio::sync::oneshot::channel();
         tokio::spawn({
@@ -1099,7 +1097,10 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         }
     }
 
-    async fn join_peer_network_if_absent(&mut self, cluster_nodes: Vec<PeerState>) {
+    async fn join_peer_network_if_absent<C: TAsyncReadWrite>(
+        &mut self,
+        cluster_nodes: Vec<PeerState>,
+    ) {
         let self_id = self.replication.self_identifier();
 
         // Find the first suitable peer to connect to
@@ -1118,7 +1119,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
                 continue;
             }
 
-            self.connect_to_server::<TcpStream>(node_id.clone(), None).await;
+            self.connect_to_server::<C>(node_id.clone(), None).await;
         }
 
         self.signal_if_peer_discovery_complete();

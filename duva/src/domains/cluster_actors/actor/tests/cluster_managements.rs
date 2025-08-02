@@ -102,7 +102,7 @@ async fn test_reconnection_on_gossip() {
 
     // WHEN - try to reconnect
     cluster_actor
-        .join_peer_network_if_absent(vec![PeerState {
+        .join_peer_network_if_absent::<TcpStream>(vec![PeerState {
             id: PeerIdentifier(format!("127.0.0.1:{}", bind_addr.port() - 10000)),
             match_index: 0,
             replid: cluster_actor.replication.replid.clone(),
