@@ -17,6 +17,7 @@ mod test_lpushx;
 mod test_lrange;
 mod test_lset;
 mod test_ltrim;
+mod test_removed_connection;
 mod test_replication_info;
 mod test_route_del;
 mod test_route_exists;

@@ -120,6 +120,15 @@ impl Broker {
                             context.set_expected_result_cnt(num_of_results);
                         },
                         | Err(_e) => {
+                            context
+                                .callback
+                                .send((
+                                    context.client_action,
+                                    QueryIO::Err(
+                                        "Failed to route command. Try again after ttl time".into(),
+                                    ),
+                                ))
+                                .unwrap();
                             continue;
                         },
                     }
