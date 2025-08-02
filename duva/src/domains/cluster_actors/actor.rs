@@ -12,6 +12,7 @@ use super::replication::ReplicationState;
 use super::replication::time_in_secs;
 use super::*;
 use crate::domains::QueryIO;
+use crate::domains::TAsyncReadWrite;
 use crate::domains::caches::cache_manager::CacheManager;
 use crate::domains::cluster_actors::consensus::election::ElectionVoting;
 use crate::domains::cluster_actors::hash_ring::BatchId;
@@ -223,11 +224,13 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
     // TODO enable DI
     #[instrument(skip(self, optional_callback))]
-    pub(crate) async fn connect_to_server(
+    pub(crate) async fn connect_to_server<C>(
         &mut self,
         connect_to: PeerIdentifier,
         optional_callback: Option<Callback<anyhow::Result<()>>>,
-    ) {
+    ) where
+        C: TAsyncReadWrite,
+    {
         if self.replication.self_identifier() == connect_to {
             optional_callback.map(|cb| {
                 let _ = cb.send(res_err!("Cannot connect to self"));
@@ -242,17 +245,16 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             return;
         };
 
-        let Ok(stream) = TcpStream::connect(cluster_bind_addr).await else {
+        let Ok((r, w)) = C::connect(&cluster_bind_addr).await else {
             optional_callback.map(|cb| {
                 let _ = cb.send(res_err!("Failed to connect to {}", connect_to));
             });
             return;
         };
 
-        let (read, write) = stream.into_split();
         let outbound_stream = OutboundStream {
-            r: read.into(),
-            w: write.into(),
+            r,
+            w,
             my_repl_info: self.replication.clone(),
             connected_node_info: None,
         };
@@ -486,7 +488,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     }
 
     // * Forces the current node to become a replica of the given peer.
-    pub(crate) async fn replicaof(
+    pub(crate) async fn replicaof<C: TAsyncReadWrite>(
         &mut self,
         peer_addr: PeerIdentifier,
         callback: Callback<anyhow::Result<()>>,
@@ -495,7 +497,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         self.replication.hwm.store(0, Ordering::Release);
         self.set_repl_id(ReplicationId::Undecided);
         self.step_down().await;
-        self.connect_to_server(peer_addr, Some(callback)).await;
+        self.connect_to_server::<C>(peer_addr, Some(callback)).await;
     }
 
     // ! Callback chaining is required as otherwise it will block cluster actor from consuming more messages.
@@ -514,7 +516,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         }
 
         let (res_callback, conn_awaiter) = tokio::sync::oneshot::channel();
-        self.connect_to_server(peer_addr.clone(), Some(res_callback.into())).await;
+        self.connect_to_server::<TcpStream>(peer_addr.clone(), Some(res_callback.into())).await;
 
         let (completion_sig, on_conn_completion) = tokio::sync::oneshot::channel();
         tokio::spawn({
@@ -1116,7 +1118,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
                 continue;
             }
 
-            self.connect_to_server(node_id.clone(), None).await;
+            self.connect_to_server::<TcpStream>(node_id.clone(), None).await;
         }
 
         self.signal_if_peer_discovery_complete();

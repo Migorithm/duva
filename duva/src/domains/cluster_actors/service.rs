@@ -9,6 +9,7 @@ use crate::domains::peers::PeerMessage;
 
 use crate::prelude::PeerIdentifier;
 use crate::res_err;
+use tokio::net::TcpStream;
 use tracing::{instrument, trace};
 
 impl<T: TWriteAheadLog> ClusterActor<T> {
@@ -96,7 +97,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
                     return;
                 }
                 cache_manager.drop_cache().await;
-                self.replicaof(peer_addr, callback).await;
+                self.replicaof::<TcpStream>(peer_addr, callback).await;
             },
             | ClusterMeet(peer_addr, lazy_option, callback) => {
                 self.cluster_meet(peer_addr, lazy_option, callback).await;
@@ -153,7 +154,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
         match conn_msg {
             | ConnectToServer { connect_to, callback } => {
-                self.connect_to_server(connect_to, Some(callback)).await
+                self.connect_to_server::<TcpStream>(connect_to, Some(callback)).await
             },
             | AcceptInboundPeer { stream } => self.accept_inbound_stream(stream),
             | AddPeer(peer, optional_callback) => self.add_peer(peer, optional_callback).await,
