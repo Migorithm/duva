@@ -221,6 +221,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         let _ = callback.send(self.cluster_join_sync.waiter.take());
     }
 
+    // TODO enable DI
     #[instrument(skip(self, optional_callback))]
     pub(crate) async fn connect_to_server(
         &mut self,

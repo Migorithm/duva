@@ -1,11 +1,13 @@
-use crate::domains::IoError;
 use crate::domains::interface::{TRead, TSerdeReadWrite, TWrite};
+use crate::domains::peers::connections::connection_types::{ReadConnected, WriteConnected};
 use crate::domains::query_io::SERDE_CONFIG;
+use crate::domains::{IoError, TAsyncReadWrite};
 use crate::domains::{QueryIO, deserialize};
 use bytes::BytesMut;
 use std::fmt::Debug;
 use std::io::ErrorKind;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::net::TcpStream;
 
 #[async_trait::async_trait]
 impl<T: AsyncWriteExt + std::marker::Unpin + Sync + Send + Debug + 'static> TWrite for T {
@@ -98,6 +100,15 @@ where
             .map_err(|e| IoError::Custom(e.to_string()))?;
 
         Ok(auth_request)
+    }
+}
+
+impl TAsyncReadWrite for TcpStream {
+    async fn connect(connect_to: &str) -> Result<(ReadConnected, WriteConnected), IoError> {
+        let stream =
+            TcpStream::connect(connect_to).await.map_err(|e| Into::<IoError>::into(e.kind()))?;
+        let (r, w) = stream.into_split();
+        Ok((ReadConnected(Box::new(r)), WriteConnected(Box::new(w))))
     }
 }
 
