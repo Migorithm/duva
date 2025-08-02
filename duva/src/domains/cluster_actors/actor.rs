@@ -204,7 +204,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         }
 
         if let Some(cb) = optional_callback {
-            let _ = cb.send(Ok(()));
+            cb.send(Ok(()));
         }
 
         self.cluster_join_sync.known_peers.entry(peer_id).and_modify(|e| *e = true);
@@ -213,13 +213,13 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
     pub(crate) fn activate_cluster_sync(&mut self, callback: Callback<()>) {
         self.cluster_join_sync = ClusterJoinSync::new(self.members.keys().cloned().collect());
-        let _ = callback.send(());
+        callback.send(());
     }
     pub(crate) fn send_cluster_sync_awaiter(
         &mut self,
         callback: Callback<Option<oneshot::Receiver<()>>>,
     ) {
-        let _ = callback.send(self.cluster_join_sync.waiter.take());
+        callback.send(self.cluster_join_sync.waiter.take());
     }
 
     // TODO enable DI
@@ -231,21 +231,21 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     ) {
         if self.replication.self_identifier() == connect_to {
             optional_callback.map(|cb| {
-                let _ = cb.send(res_err!("Cannot connect to self"));
+                cb.send(res_err!("Cannot connect to self"));
             });
             return;
         }
 
         let Ok(cluster_bind_addr) = connect_to.cluster_bind_addr() else {
             optional_callback.map(|cb| {
-                let _ = cb.send(res_err!("invalid cluster bind address for {}", connect_to));
+                cb.send(res_err!("invalid cluster bind address for {}", connect_to));
             });
             return;
         };
 
         let Ok((r, w)) = C::connect(&cluster_bind_addr).await else {
             optional_callback.map(|cb| {
-                let _ = cb.send(res_err!("Failed to connect to {}", connect_to));
+                cb.send(res_err!("Failed to connect to {}", connect_to));
             });
             return;
         };
@@ -360,7 +360,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
     async fn req_consensus(&mut self, req: ConsensusRequest) {
         if !self.replication.is_leader() {
-            let _ = req.callback.send("Write given to follower".into());
+            req.callback.send("Write given to follower".into());
             return;
         }
 
@@ -370,7 +370,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             self.replication.term,
             req.session_req.clone(),
         ) {
-            let _ = req.callback.send(ConsensusClientResponse::Err(err.to_string()));
+            req.callback.send(ConsensusClientResponse::Err(err.to_string()));
             return;
         };
 
@@ -378,7 +378,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         if repl_cnt == 0 {
             // * If there are no replicas, we can send the response immediately
             self.replication.hwm.fetch_add(1, Ordering::Relaxed);
-            req.callback.send(ConsensusClientResponse::LogIndex(self.logger.last_log_index)).ok();
+            req.callback.send(ConsensusClientResponse::LogIndex(self.logger.last_log_index));
             return;
         }
         self.consensus_tracker.add(self.logger.last_log_index, req, repl_cnt);
@@ -509,7 +509,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         cl_cb: Callback<anyhow::Result<()>>,
     ) {
         if !self.replication.is_leader() || self.replication.self_identifier() == peer_addr {
-            let _ = cl_cb.send(res_err!("wrong address or invalid state for cluster meet command"));
+            cl_cb.send(res_err!("wrong address or invalid state for cluster meet command"));
             return;
         }
 
@@ -891,7 +891,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         self.replication.hwm.fetch_add(1, Ordering::Relaxed);
 
         self.client_sessions.set_response(consensus.session_req.take());
-        let _ = consensus.callback.send(ConsensusClientResponse::LogIndex(peer_idx));
+        consensus.callback.send(ConsensusClientResponse::LogIndex(peer_idx));
     }
 
     // Follower notified the leader of its acknowledgment, then leader store match index for the given follower
@@ -1132,7 +1132,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         if self.cluster_join_sync.known_peers.values().all(|is_known| *is_known)
             && let Some(notifier) = self.cluster_join_sync.notifier.take()
         {
-            let _ = notifier.send(());
+            notifier.send(());
         }
     }
 
@@ -1231,7 +1231,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         let callback = callback.into();
         //  Find target peer based on replication ID
         let Some(peer_id) = self.peerid_by_replid(&target.target_repl).cloned() else {
-            let _ = callback.send(res_err!("Target peer not found for replication ID"));
+            callback.send(res_err!("Target peer not found for replication ID"));
             return;
         };
 
@@ -1251,7 +1251,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
         // Get mutable reference to the target peer
         let Some(target_peer) = self.members.get_mut(&peer_id) else {
-            let _ = callback.send(res_err!("Target peer {} disappeared during migration", peer_id));
+            callback.send(res_err!("Target peer {} disappeared during migration", peer_id));
             return;
         };
 
@@ -1326,7 +1326,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         };
 
         if !ack.success {
-            let _ = pending_migration_batch
+            pending_migration_batch
                 .callback
                 .send(res_err!("Failed to send migration completion signal for batch"));
             return;
@@ -1349,7 +1349,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
                 if rx.await.is_ok() {
                     let _ = cache_manager.route_delete(pending_migration_batch.keys).await; // reflect state change
                     let _ = handler.send(SchedulerMessage::TryUnblockWriteReqs).await;
-                    let _ = pending_migration_batch.callback.send(Ok(()));
+                    pending_migration_batch.callback.send(Ok(()));
                 }
             }
         });

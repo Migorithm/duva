@@ -73,19 +73,19 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
         match client_message {
             | GetPeers(callback) => {
-                let _ = callback.send(self.members.keys().cloned().collect::<Vec<_>>());
+                callback.send(self.members.keys().cloned().collect::<Vec<_>>());
             },
             | ClusterNodes(callback) => {
-                let _ = callback.send(self.cluster_nodes());
+                callback.send(self.cluster_nodes());
             },
             | ReplicationInfo(callback) => {
-                let _ = callback.send(self.replication.clone());
+                callback.send(self.replication.clone());
             },
             | ForgetPeer(peer_addr, callback) => {
                 if let Ok(Some(())) = self.forget_peer(peer_addr).await {
-                    let _ = callback.send(Some(()));
+                    callback.send(Some(()));
                 } else {
-                    let _ = callback.send(None);
+                    callback.send(None);
                 }
             },
             | LeaderReqConsensus(req) => {
@@ -93,7 +93,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             },
             | ReplicaOf(peer_addr, callback) => {
                 if self.replication.self_identifier() == peer_addr {
-                    let _ = callback.send(res_err!("invalid operation: cannot replicate to self"));
+                    callback.send(res_err!("invalid operation: cannot replicate to self"));
                     return;
                 }
                 cache_manager.drop_cache().await;
@@ -103,17 +103,17 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
                 self.cluster_meet::<TcpStream>(peer_addr, lazy_option, callback).await;
             },
             | ClusterReshard(sender) => {
-                let _ = self.start_rebalance(cache_manager).await;
-                let _ = sender.send(Ok(()));
+                self.start_rebalance(cache_manager).await;
+                sender.send(Ok(()));
             },
             | GetRole(callback) => {
-                let _ = callback.send(self.replication.role.clone());
+                callback.send(self.replication.role.clone());
             },
             | SubscribeToTopologyChange(callback) => {
-                let _ = callback.send(self.node_change_broadcast.subscribe());
+                callback.send(self.node_change_broadcast.subscribe());
             },
             | GetTopology(callback) => {
-                let _ = callback.send(self.get_topology());
+                callback.send(self.get_topology());
             },
         };
     }
