@@ -134,6 +134,9 @@ impl Broker {
                     }
                     queue.push(context);
                 },
+                | BrokerMessage::AddNodeConnection(node_info) => {
+                    self.add_leader_connection(node_info).await;
+                },
             }
         }
     }
@@ -185,7 +188,7 @@ impl Broker {
             if self.node_connections.contains_key(&node.repl_id) {
                 continue; // skip already connected nodes
             }
-            let _ = self.add_leader_connection(node).await;
+            let _ = self.tx.send(BrokerMessage::AddNodeConnection(node)).await;
         }
         self.node_connections
             .remove_outdated_connections(self.topology.hash_ring.get_replication_ids())
@@ -258,6 +261,7 @@ pub enum BrokerMessage {
     FromServer(ReplicationId, QueryIO),
     FromServerError(ReplicationId, IoError),
     ToServer(CommandToServer),
+    AddNodeConnection(NodeReplInfo),
 }
 impl BrokerMessage {
     pub fn from_input(
