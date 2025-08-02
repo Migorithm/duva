@@ -7,6 +7,12 @@ impl<T> Callback<T> {
         let _ = self.0.send(value);
     }
 }
+impl<T> Callback<T> {
+    pub(crate) fn create() -> (Self, tokio::sync::oneshot::Receiver<T>) {
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        (Callback(tx), rx)
+    }
+}
 
 impl<T> From<tokio::sync::oneshot::Sender<T>> for Callback<T> {
     fn from(sender: tokio::sync::oneshot::Sender<T>) -> Self {

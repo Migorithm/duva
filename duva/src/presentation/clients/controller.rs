@@ -10,6 +10,7 @@ use crate::domains::saves::actor::SaveTarget;
 use crate::prelude::PeerIdentifier;
 use crate::presentation::clients::request::ClientAction;
 use crate::presentation::clusters::communication_manager::ClusterCommunicationManager;
+use crate::types::Callback;
 use chrono::DateTime;
 use std::sync::atomic::Ordering;
 
@@ -232,7 +233,7 @@ impl ClientController {
         write_req: WriteRequest,
         cli_action: &mut ClientAction,
     ) -> anyhow::Result<u64> {
-        let (tx, consensus_res) = tokio::sync::oneshot::channel();
+        let (tx, consensus_res) = Callback::create();
 
         self.cluster_communication_manager
             .send(ClientMessage::LeaderReqConsensus(ConsensusRequest::new(

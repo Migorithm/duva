@@ -83,10 +83,10 @@ pub(crate) struct ConsensusRequest {
 impl ConsensusRequest {
     pub(crate) fn new(
         request: WriteRequest,
-        callback: impl Into<Callback<ConsensusClientResponse>>,
+        callback: Callback<ConsensusClientResponse>,
         session_req: Option<SessionRequest>,
     ) -> Self {
-        Self { request, callback: callback.into(), session_req }
+        Self { request, callback, session_req }
     }
 }
 

@@ -35,6 +35,7 @@ use crate::domains::peers::connections::outbound::stream::OutboundStream;
 use crate::domains::peers::identifier::TPeerAddress;
 use crate::domains::peers::peer::PeerState;
 use crate::err;
+use crate::from_to;
 use crate::res_err;
 use crate::types::Callback;
 use crate::types::ConnectionStream;
@@ -91,9 +92,9 @@ struct ClusterJoinSync {
 }
 impl ClusterJoinSync {
     fn new(known_peers: Vec<PeerIdentifier>) -> Self {
-        let (notifier, waiter) = oneshot::channel();
+        let (notifier, waiter) = Callback::create();
         Self {
-            notifier: Some(notifier.into()),
+            notifier: Some(notifier),
             waiter: Some(waiter),
             known_peers: known_peers.into_iter().map(|p| (p, true)).collect(),
         }
@@ -110,6 +111,7 @@ impl ClusterCommandHandler {
         self.0.send(cmd.into()).await
     }
 }
+from_to!(tokio::sync::mpsc::Sender<ClusterCommand>, ClusterCommandHandler);
 
 impl<T: TWriteAheadLog> ClusterActor<T> {
     pub(crate) fn run(
@@ -141,7 +143,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     ) -> Self {
         let (self_handler, receiver) = tokio::sync::mpsc::channel(100);
         let heartbeat_scheduler = HeartBeatScheduler::run(
-            self_handler.clone(),
+            ClusterCommandHandler(self_handler.clone()),
             init_repl_state.is_leader(),
             heartbeat_interval_in_mills,
         );
@@ -326,7 +328,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         if self.client_sessions.is_processed(&req.session_req) {
             // mapping between early returned values to client result
             let key = req.request.all_keys().into_iter().map(String::from).collect();
-            let _ = req.callback.send(ConsensusClientResponse::AlreadyProcessed {
+            req.callback.send(ConsensusClientResponse::AlreadyProcessed {
                 key,
                 index: self.logger.last_log_index,
             });
@@ -349,11 +351,11 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
                     .copied()
                     .collect::<Vec<_>>()
                     .join(" ");
-                let _ = req.callback.send(format!("MOVED {moved_keys}").into());
+                req.callback.send(format!("MOVED {moved_keys}").into());
             },
             | Err(err) => {
                 err!("{}", err);
-                let _ = req.callback.send(err.to_string().into());
+                req.callback.send(err.to_string().into());
             },
         }
     }
@@ -513,10 +515,10 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             return;
         }
 
-        let (res_callback, conn_awaiter) = tokio::sync::oneshot::channel();
+        let (res_callback, conn_awaiter) = Callback::create();
         self.connect_to_server::<C>(peer_addr.clone(), Some(res_callback.into())).await;
 
-        let (completion_sig, on_conn_completion) = tokio::sync::oneshot::channel();
+        let (completion_sig, on_conn_completion) = Callback::create();
         tokio::spawn({
             let h = self.self_handler.clone();
             let lazy_option = lazy_option.clone();
@@ -525,7 +527,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
                     conn_awaiter.await.unwrap_or_else(|_| Err(anyhow::anyhow!("Channel closed")));
 
                 if lazy_option == LazyOption::Eager {
-                    let (activation_sig, on_activation) = oneshot::channel();
+                    let (activation_sig, on_activation) = Callback::create();
                     let _ =
                         h.send(ConnectionMessage::ActivateClusterSync(activation_sig.into())).await;
                     let _ = on_activation.await;
@@ -553,11 +555,10 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     {
         let result =
             completion_awaiter.await.unwrap_or_else(|_| Err(anyhow::anyhow!("Channel closed")));
-        let _ = on_completion.send(result);
+        on_completion.send(result);
 
-        let (tx, cluster_sync_awaiter) = oneshot::channel();
-        let _ =
-            cluster_sender.send(ConnectionMessage::RequestClusterSyncAwaiter(Callback(tx))).await;
+        let (callback, cluster_sync_awaiter) = Callback::create();
+        let _ = cluster_sender.send(ConnectionMessage::RequestClusterSyncAwaiter(callback)).await;
         if let Some(sync_singal) = cluster_sync_awaiter.await.unwrap() {
             let _ = sync_singal.await;
         }
@@ -1217,7 +1218,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         batch: MigrationBatch,
         handler: ClusterCommandHandler,
     ) -> anyhow::Result<()> {
-        let (tx, rx) = tokio::sync::oneshot::channel();
+        let (tx, rx) = Callback::create();
         handler.send(SchedulerMessage::ScheduleMigrationBatch(batch, tx.into())).await?;
         rx.await?
     }
@@ -1278,7 +1279,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             return;
         }
 
-        let (tx, rx) = tokio::sync::oneshot::channel();
+        let (tx, rx) = Callback::create();
 
         self.req_consensus(ConsensusRequest::new(
             WriteRequest::MSet { entries: migrate_batch.cache_entries.clone() },
@@ -1333,7 +1334,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         }
 
         // make consensus request for delete
-        let (tx, rx) = tokio::sync::oneshot::channel();
+        let (tx, rx) = Callback::create();
         let w_req = ConsensusRequest::new(
             WriteRequest::Delete { keys: pending_migration_batch.keys.clone() },
             tx,

@@ -1,6 +1,6 @@
-use crate::domains::cluster_actors::ClusterCommand;
+use crate::{domains::cluster_actors::actor::ClusterCommandHandler, types::Callback};
 use std::{ops::Range, time::Duration};
-use tokio::{select, sync::mpsc::Sender, time::interval};
+use tokio::{select, time::interval};
 use tracing::warn;
 
 use super::SchedulerMessage;
@@ -11,13 +11,13 @@ const LEADER_HEARTBEAT_INTERVAL_RANGE: Range<u64> =
 
 #[derive(Debug)]
 pub(crate) struct HeartBeatScheduler {
-    cluster_handler: Sender<ClusterCommand>,
+    cluster_handler: ClusterCommandHandler,
     controller: Option<SchedulerMode>,
 }
 
 impl HeartBeatScheduler {
     pub(crate) fn run(
-        cluster_handler: Sender<ClusterCommand>,
+        cluster_handler: ClusterCommandHandler,
         is_leader_mode: bool,
         cluster_heartbeat_interval: u64,
     ) -> Self {
@@ -37,14 +37,14 @@ impl HeartBeatScheduler {
     }
 
     pub(crate) fn send_cluster_heartbeat(self, cluster_heartbeat_interval: u64) -> Self {
-        let handler: Sender<ClusterCommand> = self.cluster_handler.clone();
+        let handler: ClusterCommandHandler = self.cluster_handler.clone();
         let mut heartbeat_interval = interval(Duration::from_millis(cluster_heartbeat_interval));
 
         tokio::spawn({
             async move {
                 loop {
                     heartbeat_interval.tick().await;
-                    let _ = handler.send(SchedulerMessage::SendPeriodicHeatBeat.into()).await;
+                    let _ = handler.send(SchedulerMessage::SendPeriodicHeatBeat).await;
                 }
             }
         });
@@ -53,9 +53,9 @@ impl HeartBeatScheduler {
 
     pub(crate) fn send_append_entries_rpc(
         heartbeat_interval: u64,
-        cluster_handler: Sender<ClusterCommand>,
-    ) -> tokio::sync::oneshot::Sender<()> {
-        let (tx, rx) = tokio::sync::oneshot::channel::<()>();
+        cluster_handler: ClusterCommandHandler,
+    ) -> Callback<()> {
+        let (tx, rx) = Callback::create();
 
         let mut itv = interval(Duration::from_millis(heartbeat_interval));
 
@@ -65,17 +65,17 @@ impl HeartBeatScheduler {
                 _ = async {
                     loop {
                         itv.tick().await;
-                        let _ = cluster_handler.send(SchedulerMessage::SendAppendEntriesRPC.into()).await;
+                        let _ = cluster_handler.send(SchedulerMessage::SendAppendEntriesRPC).await;
                     }
                 } => {},
             }
         });
 
-        tx
+        tx.into()
     }
 
     pub(crate) fn start_election_timer(
-        cluster_handler: Sender<ClusterCommand>,
+        cluster_handler: ClusterCommandHandler,
     ) -> tokio::sync::mpsc::Sender<ElectionTimeOutCommand> {
         let (tx, mut rx) = tokio::sync::mpsc::channel::<ElectionTimeOutCommand>(5);
 
@@ -90,7 +90,7 @@ impl HeartBeatScheduler {
                     },
                     _ =  tokio::time::sleep(Duration::from_millis(rand::random_range(LEADER_HEARTBEAT_INTERVAL_RANGE)))=>{
                         warn!("\x1b[33mElection timeout\x1b[0m");
-                        let _ = cluster_handler.send(SchedulerMessage::StartLeaderElection.into()).await;
+                        let _ = cluster_handler.send(SchedulerMessage::StartLeaderElection).await;
 
                     }
                 }
@@ -124,7 +124,7 @@ impl HeartBeatScheduler {
     pub(crate) async fn turn_follower_mode(&mut self) {
         let controller = match self.controller.take() {
             | Some(SchedulerMode::Leader(sender)) => {
-                let _ = sender.send(());
+                sender.send(());
                 Some(SchedulerMode::Follower(Self::start_election_timer(
                     self.cluster_handler.clone(),
                 )))
@@ -143,12 +143,14 @@ pub enum ElectionTimeOutCommand {
 
 #[derive(Debug)]
 enum SchedulerMode {
-    Leader(tokio::sync::oneshot::Sender<()>),
+    Leader(Callback<()>),
     Follower(tokio::sync::mpsc::Sender<ElectionTimeOutCommand>),
 }
 
 #[cfg(test)]
 mod tests {
+    use crate::domains::cluster_actors::ClusterCommand;
+
     use super::*;
 
     use tokio::sync::mpsc::{Receiver, channel};
@@ -156,8 +158,8 @@ mod tests {
 
     // Helper function to create a test scheduler
     async fn setup_scheduler(master_mode: bool) -> (HeartBeatScheduler, Receiver<ClusterCommand>) {
-        let (tx, rx) = channel(10);
-        let scheduler = HeartBeatScheduler::run(tx, master_mode, 200);
+        let (sender, rx) = channel(10);
+        let scheduler = HeartBeatScheduler::run(ClusterCommandHandler(sender), master_mode, 200);
         (scheduler, rx)
     }
 
@@ -213,7 +215,8 @@ mod tests {
     async fn test_leader_heartbeat_periodically() {
         let (tx, mut rx) = channel(10);
         let heartbeat_interval = 100; // 100ms
-        let stop_signal = HeartBeatScheduler::send_append_entries_rpc(heartbeat_interval, tx);
+        let stop_signal =
+            HeartBeatScheduler::send_append_entries_rpc(heartbeat_interval, tx.into());
 
         // Wait for at least 2 heartbeats
         let received = timeout(Duration::from_millis(250), async {
@@ -242,7 +245,7 @@ mod tests {
     #[tokio::test]
     async fn test_election_timeout() {
         let (tx, mut _rx) = channel(10);
-        let controller = HeartBeatScheduler::start_election_timer(tx);
+        let controller = HeartBeatScheduler::start_election_timer(tx.into());
 
         // Test stopping the election timeout
         let stop_result = timeout(Duration::from_millis(100), async {
@@ -255,7 +258,7 @@ mod tests {
 
         // Test election trigger after timeout
         let (tx2, mut rx2) = channel(10);
-        let _ = HeartBeatScheduler::start_election_timer(tx2);
+        let _ = HeartBeatScheduler::start_election_timer(tx2.into());
 
         let election_triggered =
             timeout(Duration::from_millis(LEADER_HEARTBEAT_INTERVAL * 6), async {
@@ -276,7 +279,7 @@ mod tests {
     #[tokio::test]
     async fn test_update_leader_heartbeat() {
         let (tx, _rx) = channel(10);
-        let controller = HeartBeatScheduler::start_election_timer(tx);
+        let controller = HeartBeatScheduler::start_election_timer(tx.into());
 
         // Test sending UpdateLeaderHeartBeat command
         let ping_result = timeout(Duration::from_millis(100), async {

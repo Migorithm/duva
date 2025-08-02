@@ -267,9 +267,9 @@ async fn test_send_migrate_and_wait_happypath() {
     let batch = MigrationBatch::new(target_replid.clone(), batch_to_migrate.clone());
 
     // WHEN
-    let (tx, _) = tokio::sync::oneshot::channel();
+    let (callback, _) = Callback::create();
     let task = tokio::spawn({
-        recv.wait_message(SchedulerMessage::ScheduleMigrationBatch(batch.clone(), Callback(tx)))
+        recv.wait_message(SchedulerMessage::ScheduleMigrationBatch(batch.clone(), callback))
     });
 
     let _ = ClusterActor::<MemoryOpLogs>::schedule_migration_in_batch(
@@ -325,7 +325,7 @@ async fn test_send_migrate_and_wait_callback_error() {
             };
 
             // Send error response
-            let _ = callback.send(Err(anyhow::anyhow!("Simulated migration error")));
+            callback.send(Err(anyhow::anyhow!("Simulated migration error")));
         }
     });
 
@@ -349,7 +349,7 @@ async fn test_migrate_keys_target_peer_not_found() {
         ReplicationId::Key("non_existent_peer".to_string()),
         vec![migration_task_create_helper(0, 5)],
     );
-    let (callback_tx, callback_rx) = tokio::sync::oneshot::channel();
+    let (callback_tx, callback_rx) = Callback::create();
 
     // WHEN
     cluster_actor.migrate_batch(tasks, &cache_manager, callback_tx).await;
@@ -369,7 +369,7 @@ async fn test_migrate_batch_send_migrate_batch_peer_message() {
     let (buf, _id) = cluster_actor.test_add_peer(6909, Some(replid.clone()), true);
 
     let batch = MigrationBatch::new(replid.clone(), vec![migration_task_create_helper(0, 5)]);
-    let (tx, _rx) = tokio::sync::oneshot::channel();
+    let (tx, _rx) = Callback::create();
     // WHEN
     cluster_actor.migrate_batch(batch.clone(), &cache_manager, tx).await;
 
@@ -495,7 +495,7 @@ async fn test_unblock_write_reqs_if_done_when_migrations_still_pending() {
     let mut cluster_actor = setup_blocked_cluster_actor_with_requests(1).await;
 
     // Add pending migration (simulating migration still in progress)
-    let (callback, _migration_rx) = tokio::sync::oneshot::channel();
+    let (callback, _migration_rx) = Callback::create();
     let batch_id = BatchId("test_batch".into());
     cluster_actor
         .pending_migrations
@@ -568,7 +568,7 @@ async fn test_handle_migration_ack_failure() {
     // GIVEN
     let mut cluster_actor = setup_blocked_cluster_actor_with_requests(1).await;
     let (_hwm, _cache_manager) = Helper::cache_manager();
-    let (callback, callback_rx) = tokio::sync::oneshot::channel();
+    let (callback, callback_rx) = Callback::create();
     let batch_id = BatchId("failure_batch".into());
 
     // Ensure pending_migrations is set up
@@ -603,7 +603,7 @@ async fn test_handle_migration_ack_batch_id_not_found() {
     // GIVEN
     let mut cluster_actor = setup_blocked_cluster_actor_with_requests(1).await;
     let (_hwm, _cache_manager) = Helper::cache_manager();
-    let (callback, _callback_rx) = tokio::sync::oneshot::channel();
+    let (callback, _callback_rx) = Callback::create();
 
     cluster_actor
         .pending_migrations
@@ -650,7 +650,7 @@ async fn test_handle_migration_ack_success_case_with_pending_reqs_and_migration(
     ));
 
     // Add the last pending migration with the test keys
-    let (callback, callback_rx) = tokio::sync::oneshot::channel();
+    let (callback, callback_rx) = Callback::create();
     let batch_id = BatchId("last_batch".into());
     cluster_actor
         .pending_migrations
