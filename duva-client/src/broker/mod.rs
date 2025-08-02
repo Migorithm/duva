@@ -51,7 +51,6 @@ impl Broker {
             topology: auth_response.topology,
             node_connections: NodeConnections::new(auth_response.replication_id, connection),
         };
-        broker.update_leader_connections().await;
         Ok(broker)
     }
 
