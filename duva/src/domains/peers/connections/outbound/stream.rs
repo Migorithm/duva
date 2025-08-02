@@ -4,12 +4,11 @@ use crate::domains::cluster_actors::ConnectionMessage;
 use crate::domains::cluster_actors::actor::ClusterCommandHandler;
 use crate::domains::cluster_actors::replication::ReplicationId;
 use crate::domains::cluster_actors::replication::ReplicationState;
-use crate::domains::interface::TRead;
-use crate::domains::interface::TWrite;
 use crate::domains::peers::connections::connection_types::ConnectedPeerInfo;
+use crate::domains::peers::connections::connection_types::ReadConnected;
 use crate::domains::peers::connections::connection_types::WriteConnected;
 use crate::domains::peers::identifier::PeerIdentifier;
-use crate::domains::peers::identifier::TPeerAddress;
+
 use crate::domains::peers::peer::Peer;
 use crate::domains::peers::service::PeerListener;
 use crate::types::Callback;
@@ -17,31 +16,18 @@ use crate::write_array;
 use anyhow::Context;
 use bytes::Bytes;
 use std::sync::atomic::Ordering;
-use tokio::net::TcpStream;
-use tokio::net::tcp::OwnedReadHalf;
-use tokio::net::tcp::OwnedWriteHalf;
+
 use tracing::trace;
 
 // The following is used only when the node is in follower mode
 pub(crate) struct OutboundStream {
-    r: OwnedReadHalf,
-    w: OwnedWriteHalf,
-    my_repl_info: ReplicationState,
-    connected_node_info: Option<ConnectedPeerInfo>,
+    pub(crate) r: ReadConnected,
+    pub(crate) w: WriteConnected,
+    pub(crate) my_repl_info: ReplicationState,
+    pub(crate) connected_node_info: Option<ConnectedPeerInfo>,
 }
 
 impl OutboundStream {
-    pub(crate) async fn new(
-        connect_to: PeerIdentifier,
-        my_repl_info: ReplicationState,
-    ) -> anyhow::Result<Self> {
-        let stream = TcpStream::connect(&connect_to.cluster_bind_addr()?)
-            .await
-            .context(format!("Failed to connect to {}", connect_to.cluster_bind_addr()?))?;
-
-        let (read, write) = stream.into_split();
-        Ok(OutboundStream { r: read, w: write, my_repl_info, connected_node_info: None })
-    }
     async fn make_handshake(&mut self, self_port: u16) -> anyhow::Result<()> {
         self.w.write(write_array!("PING")).await?;
         let mut ok_count = 0;
@@ -120,7 +106,7 @@ impl OutboundStream {
 
         let kill_switch =
             PeerListener::spawn(self.r, cluster_handler.clone(), peer_state.id().clone());
-        let peer = Peer::new(WriteConnected(Box::new(self.w)), peer_state, kill_switch);
+        let peer = Peer::new(self.w, peer_state, kill_switch);
 
         let _ = cluster_handler.send(ConnectionMessage::AddPeer(peer, optional_callback)).await;
         Ok(())
