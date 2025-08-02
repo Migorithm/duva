@@ -26,7 +26,6 @@ impl ClientSessions {
     }
     pub(crate) fn set_response(&mut self, session_req: Option<SessionRequest>) {
         let Some(session_req) = session_req else { return };
-
         let entry = self
             .entry(session_req.client_id)
             .or_insert(Session { last_accessed: Default::default(), processed_req_id: None });

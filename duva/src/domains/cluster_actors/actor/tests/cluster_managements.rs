@@ -89,7 +89,7 @@ async fn test_reconnection_on_gossip() {
     let mut replication_state = cluster_actor.replication.clone();
     replication_state.role = ReplicationRole::Follower;
 
-    let (tx, rx) = tokio::sync::oneshot::channel();
+    let (tx, rx) = Callback::create();
 
     // Spawn the listener task
     let handle = tokio::spawn(async move {
@@ -102,7 +102,7 @@ async fn test_reconnection_on_gossip() {
 
     // WHEN - try to reconnect
     cluster_actor
-        .join_peer_network_if_absent(vec![PeerState {
+        .join_peer_network_if_absent::<TcpStream>(vec![PeerState {
             id: PeerIdentifier(format!("127.0.0.1:{}", bind_addr.port() - 10000)),
             match_index: 0,
             replid: cluster_actor.replication.replid.clone(),
@@ -233,7 +233,7 @@ async fn test_add_peer_for_follower_send_heartbeat() {
         ReplicationRole::Follower,
         buf.clone(),
     );
-    let (tx, rx) = tokio::sync::oneshot::channel();
+    let (tx, rx) = Callback::create();
 
     let task = tokio::spawn(async move { rx.await.unwrap() });
 

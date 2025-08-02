@@ -176,7 +176,7 @@ impl ListeningActorKillTrigger {
         Self(kill_trigger, listning_task)
     }
     pub(crate) async fn kill(self) -> Box<dyn TRead> {
-        let _ = self.0.send(());
+        self.0.send(());
         self.1.await.unwrap()
     }
 }

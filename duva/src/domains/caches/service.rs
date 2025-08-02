@@ -59,46 +59,46 @@ impl CacheActor {
                 },
                 | CacheCommand::Drop { callback } => {
                     self.cache.clear();
-                    let _ = callback.send(());
+                    callback.send(());
                 },
                 | CacheCommand::Append { key, value, callback } => {
-                    let _ = callback.send(self.append(key, value));
+                    callback.send(self.append(key, value));
                 },
                 | CacheCommand::NumericDetla { key, delta, callback } => {
-                    let _ = callback.send(self.numeric_delta(key, delta));
+                    callback.send(self.numeric_delta(key, delta));
                 },
                 | CacheCommand::LPush { key, values, callback } => {
-                    let _ = callback.send(self.lpush(key, values));
+                    callback.send(self.lpush(key, values));
                 },
                 | CacheCommand::LPushX { key, values, callback } => {
-                    let _ = callback.send(self.lpushx(key, values));
+                    callback.send(self.lpushx(key, values));
                 },
                 | CacheCommand::LPop { key, count, callback } => {
-                    let _ = callback.send(self.pop(key, count, true));
+                    callback.send(self.pop(key, count, true));
                 },
                 | CacheCommand::RPush { key, values, callback } => {
-                    let _ = callback.send(self.rpush(key, values));
+                    callback.send(self.rpush(key, values));
                 },
                 | CacheCommand::RPushX { key, values, callback } => {
-                    let _ = callback.send(self.rpushx(key, values));
+                    callback.send(self.rpushx(key, values));
                 },
                 | CacheCommand::RPop { key, count, callback } => {
-                    let _ = callback.send(self.pop(key, count, false));
+                    callback.send(self.pop(key, count, false));
                 },
                 | CacheCommand::LLen { key, callback } => {
-                    let _ = callback.send(self.llen(key));
+                    callback.send(self.llen(key));
                 },
                 | CacheCommand::LRange { key, start, end, callback } => {
-                    let _ = callback.send(self.lrange(key, start, end));
+                    callback.send(self.lrange(key, start, end));
                 },
                 | CacheCommand::LTrim { key, start, end, callback } => {
-                    let _ = callback.send(self.ltrim(key, start, end));
+                    callback.send(self.ltrim(key, start, end));
                 },
                 | CacheCommand::LIndex { key, index, callback } => {
-                    let _ = callback.send(self.lindex(key, index));
+                    callback.send(self.lindex(key, index));
                 },
                 | CacheCommand::LSet { key, index, value, callback } => {
-                    let _ = callback.send(self.lset(key, index, value));
+                    callback.send(self.lset(key, index, value));
                 },
             }
         }
@@ -117,11 +117,12 @@ mod test {
     use crate::domains::caches::command::CacheCommand;
     use crate::domains::caches::lru_cache::LruCache;
     use crate::domains::caches::read_queue::ReadQueue;
+    use crate::types::Callback;
     use std::sync::Arc;
     use std::sync::atomic::AtomicU64;
     use std::time::Duration;
     use tokio::sync::mpsc::Sender;
-    use tokio::sync::oneshot;
+
     use tokio::time::timeout;
 
     struct S(Sender<CacheCommand>);
@@ -132,23 +133,18 @@ mod test {
                 .await
                 .unwrap();
         }
-        async fn get(&self, key: String, callback: oneshot::Sender<CacheValue>) {
+        async fn get(&self, key: String, callback: Callback<CacheValue>) {
             self.0.send(CacheCommand::Get { key, callback }).await.unwrap();
         }
-        async fn index_get(
-            &self,
-            key: String,
-            read_idx: u64,
-            callback: oneshot::Sender<CacheValue>,
-        ) {
+        async fn index_get(&self, key: String, read_idx: u64, callback: Callback<CacheValue>) {
             self.0.send(CacheCommand::IndexGet { key, read_idx, callback }).await.unwrap();
         }
         async fn ping(&self) {
             self.0.send(CacheCommand::Ping).await.unwrap();
         }
         async fn drop(&self) {
-            let (tx, rx) = oneshot::channel();
-            self.0.send(CacheCommand::Drop { callback: tx }).await.unwrap();
+            let (tx, rx) = Callback::create();
+            self.0.send(CacheCommand::Drop { callback: tx.into() }).await.unwrap();
             let _ = rx.await;
         }
     }
@@ -170,12 +166,12 @@ mod test {
 
         let key = "key".to_string();
         let value = "value";
-        let (tx1, rx1) = oneshot::channel();
-        let (tx2, rx2) = oneshot::channel();
+        let (tx1, rx1) = Callback::create();
+        let (tx2, rx2) = Callback::create();
 
         cache.set(key.clone(), value).await;
-        cache.index_get(key.clone(), 0, tx1).await;
-        cache.index_get(key.clone(), 1, tx2).await;
+        cache.index_get(key.clone(), 0, tx1.into()).await;
+        cache.index_get(key.clone(), 1, tx2.into()).await;
 
         // THEN
         let res1 = tokio::spawn(rx1);
@@ -207,13 +203,13 @@ mod test {
         cache.set(key.clone(), value).await;
 
         // ! Fail when hwm wasn't updated and ping was not sent
-        let (fail_t, fail_r) = oneshot::channel();
-        cache.index_get(key.clone(), 1, fail_t).await;
+        let (fail_t, fail_r) = Callback::create();
+        cache.index_get(key.clone(), 1, fail_t.into()).await;
         timeout(Duration::from_millis(1000), fail_r).await.unwrap_err();
 
         // * success when hwm was updated and ping was sent
-        let (t, r) = oneshot::channel();
-        cache.index_get(key.clone(), 1, t).await;
+        let (t, r) = Callback::create();
+        cache.index_get(key.clone(), 1, t.into()).await;
 
         let task = tokio::spawn(r);
         hwm.store(1, std::sync::atomic::Ordering::Relaxed);
@@ -243,13 +239,13 @@ mod test {
         cache.drop().await;
 
         // THEN
-        let (tx, rx) = oneshot::channel();
-        cache.get("key".to_string().clone(), tx).await;
+        let (tx, rx) = Callback::create();
+        cache.get("key".to_string().clone(), tx.into()).await;
 
         assert!(matches!(rx.await, Ok(CacheValue { value: TypedValue::Null, .. })));
 
-        let (tx, rx) = oneshot::channel();
-        cache.get("key1".to_string().clone(), tx).await;
+        let (tx, rx) = Callback::create();
+        cache.get("key1".to_string().clone(), tx.into()).await;
 
         assert!(matches!(rx.await, Ok(CacheValue { value: TypedValue::Null, .. })));
     }

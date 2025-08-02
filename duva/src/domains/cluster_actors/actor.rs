@@ -12,6 +12,7 @@ use super::replication::ReplicationState;
 use super::replication::time_in_secs;
 use super::*;
 use crate::domains::QueryIO;
+use crate::domains::TAsyncReadWrite;
 use crate::domains::caches::cache_manager::CacheManager;
 use crate::domains::cluster_actors::consensus::election::ElectionVoting;
 use crate::domains::cluster_actors::hash_ring::BatchId;
@@ -31,14 +32,18 @@ use crate::domains::peers::command::ReplicationAck;
 use crate::domains::peers::command::RequestVote;
 use crate::domains::peers::connections::inbound::stream::InboundStream;
 use crate::domains::peers::connections::outbound::stream::OutboundStream;
+use crate::domains::peers::identifier::TPeerAddress;
 use crate::domains::peers::peer::PeerState;
 use crate::err;
+use crate::from_to;
 use crate::res_err;
 use crate::types::Callback;
 use crate::types::ConnectionStream;
 use client_sessions::ClientSessions;
 
 use heartbeat_scheduler::HeartBeatScheduler;
+use tokio::net::TcpStream;
+use tokio::sync::oneshot;
 
 use std::collections::HashMap;
 use std::collections::VecDeque;
@@ -48,8 +53,7 @@ use std::io::Seek;
 use std::io::Write;
 use std::iter;
 use std::sync::atomic::Ordering;
-use std::thread::sleep;
-use std::time::Duration;
+
 use tracing::debug;
 use tracing::error;
 use tracing::info;
@@ -77,6 +81,24 @@ pub struct ClusterActor<T> {
     pub(crate) hash_ring: HashRing,
     pub(crate) pending_requests: Option<VecDeque<ConsensusRequest>>,
     pub(crate) pending_migrations: Option<HashMap<BatchId, PendingMigrationBatch>>,
+    cluster_join_sync: ClusterJoinSync,
+}
+
+#[derive(Debug, Default)]
+struct ClusterJoinSync {
+    known_peers: HashMap<PeerIdentifier, bool>,
+    notifier: Option<Callback<()>>,
+    waiter: Option<oneshot::Receiver<()>>,
+}
+impl ClusterJoinSync {
+    fn new(known_peers: Vec<PeerIdentifier>) -> Self {
+        let (notifier, waiter) = Callback::create();
+        Self {
+            notifier: Some(notifier),
+            waiter: Some(waiter),
+            known_peers: known_peers.into_iter().map(|p| (p, true)).collect(),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -89,6 +111,7 @@ impl ClusterCommandHandler {
         self.0.send(cmd.into()).await
     }
 }
+from_to!(tokio::sync::mpsc::Sender<ClusterCommand>, ClusterCommandHandler);
 
 impl<T: TWriteAheadLog> ClusterActor<T> {
     pub(crate) fn run(
@@ -120,7 +143,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     ) -> Self {
         let (self_handler, receiver) = tokio::sync::mpsc::channel(100);
         let heartbeat_scheduler = HeartBeatScheduler::run(
-            self_handler.clone(),
+            ClusterCommandHandler(self_handler.clone()),
             init_repl_state.is_leader(),
             heartbeat_interval_in_mills,
         );
@@ -148,7 +171,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             members: BTreeMap::new(),
             consensus_tracker: LogConsensusTracker::default(),
             client_sessions: ClientSessions::default(),
-
+            cluster_join_sync: ClusterJoinSync::default(),
             pending_requests: None,
             pending_migrations: None,
         }
@@ -183,33 +206,60 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         }
 
         if let Some(cb) = optional_callback {
-            let _ = cb.send(Ok(()));
+            cb.send(Ok(()));
         }
+
+        self.cluster_join_sync.known_peers.entry(peer_id).and_modify(|e| *e = true);
+        self.signal_if_peer_discovery_complete();
     }
 
+    pub(crate) fn activate_cluster_sync(&mut self, callback: Callback<()>) {
+        self.cluster_join_sync = ClusterJoinSync::new(self.members.keys().cloned().collect());
+        callback.send(());
+    }
+    pub(crate) fn send_cluster_sync_awaiter(
+        &mut self,
+        callback: Callback<Option<oneshot::Receiver<()>>>,
+    ) {
+        callback.send(self.cluster_join_sync.waiter.take());
+    }
+
+    // TODO enable DI
     #[instrument(skip(self, optional_callback))]
-    pub(crate) async fn connect_to_server(
+    pub(crate) async fn connect_to_server<C: TAsyncReadWrite>(
         &mut self,
         connect_to: PeerIdentifier,
         optional_callback: Option<Callback<anyhow::Result<()>>>,
     ) {
         if self.replication.self_identifier() == connect_to {
-            if let Some(cb) = optional_callback {
-                let _ = cb.send(res_err!("Cannot connect to myself"));
-            }
+            optional_callback.map(|cb| {
+                cb.send(res_err!("Cannot connect to self"));
+            });
             return;
         }
-        let stream = match OutboundStream::new(connect_to, self.replication.clone()).await {
-            | Ok(stream) => stream,
-            | Err(e) => {
-                if let Some(cb) = optional_callback {
-                    let _ = cb.send(res_err!(e));
-                }
-                return;
-            },
+
+        let Ok(cluster_bind_addr) = connect_to.cluster_bind_addr() else {
+            optional_callback.map(|cb| {
+                cb.send(res_err!("invalid cluster bind address for {}", connect_to));
+            });
+            return;
         };
 
-        tokio::spawn(stream.add_peer(
+        let Ok((r, w)) = C::connect(&cluster_bind_addr).await else {
+            optional_callback.map(|cb| {
+                cb.send(res_err!("Failed to connect to {}", connect_to));
+            });
+            return;
+        };
+
+        let outbound_stream = OutboundStream {
+            r,
+            w,
+            my_repl_info: self.replication.clone(),
+            connected_node_info: None,
+        };
+
+        tokio::spawn(outbound_stream.add_peer(
             self.replication.self_port,
             self.self_handler.clone(),
             optional_callback,
@@ -265,13 +315,12 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         }
         self.apply_banlist(std::mem::take(&mut heartbeat.ban_list)).await;
         self.update_cluster_members(&heartbeat.from, heartbeat.hwm, &heartbeat.cluster_nodes).await;
-        self.join_peer_network_if_absent(heartbeat.cluster_nodes).await;
+        self.join_peer_network_if_absent::<TcpStream>(heartbeat.cluster_nodes).await;
         self.gossip(heartbeat.hop_count).await;
         self.maybe_update_hashring(heartbeat.hashring, cache_manager).await;
     }
 
     pub(crate) async fn leader_req_consensus(&mut self, req: ConsensusRequest) {
-        dbg!(&self.pending_requests);
         if let Some(pending_requests) = self.pending_requests.as_mut() {
             pending_requests.push_back(req);
             return;
@@ -279,7 +328,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         if self.client_sessions.is_processed(&req.session_req) {
             // mapping between early returned values to client result
             let key = req.request.all_keys().into_iter().map(String::from).collect();
-            let _ = req.callback.send(ConsensusClientResponse::AlreadyProcessed {
+            req.callback.send(ConsensusClientResponse::AlreadyProcessed {
                 key,
                 index: self.logger.last_log_index,
             });
@@ -302,18 +351,18 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
                     .copied()
                     .collect::<Vec<_>>()
                     .join(" ");
-                let _ = req.callback.send(format!("MOVED {moved_keys}").into());
+                req.callback.send(format!("MOVED {moved_keys}").into());
             },
             | Err(err) => {
                 err!("{}", err);
-                let _ = req.callback.send(err.to_string().into());
+                req.callback.send(err.to_string().into());
             },
         }
     }
 
     async fn req_consensus(&mut self, req: ConsensusRequest) {
         if !self.replication.is_leader() {
-            let _ = req.callback.send("Write given to follower".into());
+            req.callback.send("Write given to follower".into());
             return;
         }
 
@@ -323,7 +372,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             self.replication.term,
             req.session_req.clone(),
         ) {
-            let _ = req.callback.send(ConsensusClientResponse::Err(err.to_string()));
+            req.callback.send(ConsensusClientResponse::Err(err.to_string()));
             return;
         };
 
@@ -331,7 +380,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         if repl_cnt == 0 {
             // * If there are no replicas, we can send the response immediately
             self.replication.hwm.fetch_add(1, Ordering::Relaxed);
-            req.callback.send(ConsensusClientResponse::LogIndex(self.logger.last_log_index)).ok();
+            req.callback.send(ConsensusClientResponse::LogIndex(self.logger.last_log_index));
             return;
         }
         self.consensus_tracker.add(self.logger.last_log_index, req, repl_cnt);
@@ -439,7 +488,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     }
 
     // * Forces the current node to become a replica of the given peer.
-    pub(crate) async fn replicaof(
+    pub(crate) async fn replicaof<C: TAsyncReadWrite>(
         &mut self,
         peer_addr: PeerIdentifier,
         callback: Callback<anyhow::Result<()>>,
@@ -448,30 +497,77 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         self.replication.hwm.store(0, Ordering::Release);
         self.set_repl_id(ReplicationId::Undecided);
         self.step_down().await;
-        self.connect_to_server(peer_addr, Some(callback)).await;
+        self.connect_to_server::<C>(peer_addr, Some(callback)).await;
     }
 
-    pub(crate) async fn cluster_meet(
+    // ! Callback chaining is required as otherwise it will block cluster actor from consuming more messages.
+    // ! For example, trying to connect to a server requires handshakes and if it is not done in the background, actor will fail to receive the next message
+    // ! Upon completion, we also conditionally activate cluster sync - which requires communication with actor itself.
+    // ! And then finally, if cluster sync is activated wait until this node joins "cluster", not just a signgle server
+    pub(crate) async fn cluster_meet<C: TAsyncReadWrite>(
         &mut self,
         peer_addr: PeerIdentifier,
         lazy_option: LazyOption,
         cl_cb: Callback<anyhow::Result<()>>,
     ) {
         if !self.replication.is_leader() || self.replication.self_identifier() == peer_addr {
-            let _ = cl_cb.send(res_err!("wrong address or invalid state for cluster meet command"));
+            cl_cb.send(res_err!("wrong address or invalid state for cluster meet command"));
             return;
         }
 
-        // ! intercept the callback to ensure that the connection is established before sending the rebalance request
-        let (res_callback, conn_awaiter) = tokio::sync::oneshot::channel();
-        self.connect_to_server(peer_addr.clone(), Some(res_callback.into())).await;
+        let (res_callback, conn_awaiter) = Callback::create();
+        self.connect_to_server::<C>(peer_addr.clone(), Some(res_callback.into())).await;
+
+        let (completion_sig, on_conn_completion) = Callback::create();
+        tokio::spawn({
+            let h = self.self_handler.clone();
+            let lazy_option = lazy_option.clone();
+            async move {
+                let conn_res =
+                    conn_awaiter.await.unwrap_or_else(|_| Err(anyhow::anyhow!("Channel closed")));
+
+                if lazy_option == LazyOption::Eager {
+                    let (activation_sig, on_activation) = Callback::create();
+                    let _ =
+                        h.send(ConnectionMessage::ActivateClusterSync(activation_sig.into())).await;
+                    let _ = on_activation.await;
+                }
+                let _ = completion_sig.send(conn_res);
+            }
+        });
 
         tokio::spawn(Self::register_delayed_schedule(
             self.self_handler.clone(),
-            conn_awaiter,
+            on_conn_completion,
             cl_cb,
             SchedulerMessage::RebalanceRequest { request_to: peer_addr, lazy_option },
         ));
+    }
+
+    async fn register_delayed_schedule<C>(
+        cluster_sender: ClusterCommandHandler,
+        completion_awaiter: tokio::sync::oneshot::Receiver<anyhow::Result<C>>,
+        on_completion: Callback<anyhow::Result<C>>,
+
+        schedule_cmd: SchedulerMessage,
+    ) where
+        C: Send + Sync + 'static,
+    {
+        let result =
+            completion_awaiter.await.unwrap_or_else(|_| Err(anyhow::anyhow!("Channel closed")));
+        on_completion.send(result);
+
+        let (callback, cluster_sync_awaiter) = Callback::create();
+        let _ = cluster_sender.send(ConnectionMessage::RequestClusterSyncAwaiter(callback)).await;
+        if let Some(sync_singal) = cluster_sync_awaiter.await.unwrap() {
+            let _ = sync_singal.await;
+        }
+
+        // Send schedule command regardless of callback result
+        if let Err(e) = cluster_sender.send(schedule_cmd).await {
+            // Consider logging this error instead of silently ignoring
+            error!("Failed to send schedule command: {}", e);
+        }
     }
 
     pub(crate) async fn rebalance_request(
@@ -616,6 +712,8 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     }
 
     async fn remove_peer(&mut self, peer_addr: &PeerIdentifier) -> Option<()> {
+        self.cluster_join_sync.known_peers.remove(peer_addr);
+
         if let Some(peer) = self.members.remove(peer_addr) {
             warn!("{} is being removed!", peer_addr);
             // stop the runnin process and take the connection in case topology changes are made
@@ -623,6 +721,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             self.broadcast_topology_change();
             return Some(());
         }
+
         None
     }
 
@@ -793,7 +892,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         self.replication.hwm.fetch_add(1, Ordering::Relaxed);
 
         self.client_sessions.set_response(consensus.session_req.take());
-        let _ = consensus.callback.send(ConsensusClientResponse::LogIndex(peer_idx));
+        consensus.callback.send(ConsensusClientResponse::LogIndex(peer_idx));
     }
 
     // Follower notified the leader of its acknowledgment, then leader store match index for the given follower
@@ -999,29 +1098,14 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         }
     }
 
-    async fn register_delayed_schedule<C>(
-        cluster_sender: ClusterCommandHandler,
-        awaiter: tokio::sync::oneshot::Receiver<anyhow::Result<C>>,
-        callback: Callback<anyhow::Result<C>>,
-        schedule_cmd: SchedulerMessage,
-    ) where
-        C: Send + Sync + 'static,
-    {
-        // TODO - Wait until the connection is fully established before starting rebalancing
-        tokio::time::sleep(Duration::from_secs(2)).await;
-        let result = awaiter.await.unwrap_or_else(|_| Err(anyhow::anyhow!("Channel closed")));
-        let _ = callback.send(result);
-        // Send schedule command regardless of callback result
-        if let Err(e) = cluster_sender.send(schedule_cmd).await {
-            // Consider logging this error instead of silently ignoring
-            error!("Failed to send schedule command: {}", e);
-        }
-    }
-
-    async fn join_peer_network_if_absent(&mut self, cluster_nodes: Vec<PeerState>) {
+    async fn join_peer_network_if_absent<C: TAsyncReadWrite>(
+        &mut self,
+        cluster_nodes: Vec<PeerState>,
+    ) {
         let self_id = self.replication.self_identifier();
 
         // Find the first suitable peer to connect to
+
         for node in cluster_nodes {
             let node_id = node.id();
 
@@ -1029,15 +1113,27 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             if node_id == &self_id || node_id >= &self_id {
                 continue;
             }
+            self.cluster_join_sync.known_peers.entry(node_id.clone()).or_insert(false);
 
             // Skip if already connected or banned
             if self.members.contains_key(node_id) || self.replication.in_ban_list(node_id) {
                 continue;
             }
 
-            // Found a suitable peer - connect and exit
-            self.connect_to_server(node_id.clone(), None).await;
-            return;
+            self.connect_to_server::<C>(node_id.clone(), None).await;
+        }
+
+        self.signal_if_peer_discovery_complete();
+    }
+
+    // * cluster message comes in and connection was tried. At this point, if some task is waiting for the notification, send it.
+    // Currently, this flow is meant for:
+    // - "cluster meet eager" where rebalancing should be promtly triggered if and only if cluster join is made.
+    fn signal_if_peer_discovery_complete(&mut self) {
+        if self.cluster_join_sync.known_peers.values().all(|is_known| *is_known)
+            && let Some(notifier) = self.cluster_join_sync.notifier.take()
+        {
+            notifier.send(());
         }
     }
 
@@ -1122,7 +1218,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         batch: MigrationBatch,
         handler: ClusterCommandHandler,
     ) -> anyhow::Result<()> {
-        let (tx, rx) = tokio::sync::oneshot::channel();
+        let (tx, rx) = Callback::create();
         handler.send(SchedulerMessage::ScheduleMigrationBatch(batch, tx.into())).await?;
         rx.await?
     }
@@ -1135,9 +1231,8 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     ) {
         let callback = callback.into();
         //  Find target peer based on replication ID
-        // TODO - Non-coordinating Node may not be able to find the target peer at this time.
         let Some(peer_id) = self.peerid_by_replid(&target.target_repl).cloned() else {
-            let _ = callback.send(res_err!("Target peer not found for replication ID"));
+            callback.send(res_err!("Target peer not found for replication ID"));
             return;
         };
 
@@ -1157,7 +1252,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
         // Get mutable reference to the target peer
         let Some(target_peer) = self.members.get_mut(&peer_id) else {
-            let _ = callback.send(res_err!("Target peer {} disappeared during migration", peer_id));
+            callback.send(res_err!("Target peer {} disappeared during migration", peer_id));
             return;
         };
 
@@ -1184,7 +1279,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             return;
         }
 
-        let (tx, rx) = tokio::sync::oneshot::channel();
+        let (tx, rx) = Callback::create();
 
         self.req_consensus(ConsensusRequest::new(
             WriteRequest::MSet { entries: migrate_batch.cache_entries.clone() },
@@ -1232,14 +1327,14 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         };
 
         if !ack.success {
-            let _ = pending_migration_batch
+            pending_migration_batch
                 .callback
                 .send(res_err!("Failed to send migration completion signal for batch"));
             return;
         }
 
         // make consensus request for delete
-        let (tx, rx) = tokio::sync::oneshot::channel();
+        let (tx, rx) = Callback::create();
         let w_req = ConsensusRequest::new(
             WriteRequest::Delete { keys: pending_migration_batch.keys.clone() },
             tx,
@@ -1255,7 +1350,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
                 if rx.await.is_ok() {
                     let _ = cache_manager.route_delete(pending_migration_batch.keys).await; // reflect state change
                     let _ = handler.send(SchedulerMessage::TryUnblockWriteReqs).await;
-                    let _ = pending_migration_batch.callback.send(Ok(()));
+                    pending_migration_batch.callback.send(Ok(()));
                 }
             }
         });
