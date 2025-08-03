@@ -30,6 +30,8 @@ use crate::domains::peers::command::MigrationBatchAck;
 use crate::domains::peers::command::RejectionReason;
 use crate::domains::peers::command::ReplicationAck;
 use crate::domains::peers::command::RequestVote;
+use crate::domains::peers::connections::connection_types::ReadConnected;
+use crate::domains::peers::connections::connection_types::WriteConnected;
 use crate::domains::peers::connections::inbound::stream::InboundStream;
 use crate::domains::peers::connections::outbound::stream::OutboundStream;
 use crate::domains::peers::identifier::TPeerAddress;
@@ -38,7 +40,6 @@ use crate::err;
 use crate::from_to;
 use crate::res_err;
 use crate::types::Callback;
-use crate::types::ConnectionStream;
 use client_sessions::ClientSessions;
 
 use heartbeat_scheduler::HeartBeatScheduler;
@@ -266,22 +267,20 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         ));
     }
 
-    pub(crate) fn accept_inbound_stream(&mut self, peer_stream: ConnectionStream) {
-        let stream = peer_stream.0;
-        let peer_host = stream.peer_addr().expect("Failed to get peer address");
-        let ip = peer_host.ip().to_string();
-
-        let inbound_stream = {
-            let self_repl_info = self.replication.clone();
-            let (read, write) = stream.into_split();
-            InboundStream {
-                r: read.into(),
-                w: write.into(),
-                host_ip: ip,
-                self_repl_info,
-                connected_peer_info: Default::default(),
-            }
+    pub(crate) fn accept_inbound_stream(
+        &mut self,
+        read: ReadConnected,
+        write: WriteConnected,
+        host_ip: String,
+    ) {
+        let inbound_stream = InboundStream {
+            r: read.into(),
+            w: write.into(),
+            host_ip,
+            self_repl_info: self.replication.clone(),
+            connected_peer_info: Default::default(),
         };
+
         tokio::spawn(inbound_stream.add_peer(self.self_handler.clone()));
     }
 
