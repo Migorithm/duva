@@ -267,7 +267,21 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     }
 
     pub(crate) fn accept_inbound_stream(&mut self, peer_stream: ConnectionStream) {
-        let inbound_stream = InboundStream::new(peer_stream.0, self.replication.clone());
+        let stream = peer_stream.0;
+        let peer_host = stream.peer_addr().expect("Failed to get peer address");
+        let ip = peer_host.ip().to_string();
+
+        let inbound_stream = {
+            let self_repl_info = self.replication.clone();
+            let (read, write) = stream.into_split();
+            InboundStream {
+                r: read.into(),
+                w: write.into(),
+                host_ip: ip,
+                self_repl_info,
+                connected_peer_info: Default::default(),
+            }
+        };
         tokio::spawn(inbound_stream.add_peer(self.self_handler.clone()));
     }
 
