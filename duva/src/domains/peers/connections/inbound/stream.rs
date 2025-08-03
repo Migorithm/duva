@@ -1,15 +1,13 @@
 use super::request::HandShakeRequest;
 use super::request::HandShakeRequestEnum;
-use crate::domains::IoError;
 use crate::domains::QueryIO;
 use crate::domains::cluster_actors::ConnectionMessage;
 use crate::domains::cluster_actors::actor::ClusterCommandHandler;
 use crate::domains::cluster_actors::replication::ReplicationId;
 use crate::domains::cluster_actors::replication::ReplicationRole;
 use crate::domains::cluster_actors::replication::ReplicationState;
-use crate::domains::interface::TRead;
-use crate::domains::interface::TWrite;
 use crate::domains::peers::connections::connection_types::ConnectedPeerInfo;
+use crate::domains::peers::connections::connection_types::ReadConnected;
 use crate::domains::peers::connections::connection_types::WriteConnected;
 use crate::domains::peers::identifier::PeerIdentifier;
 use crate::domains::peers::peer::Peer;
@@ -17,26 +15,20 @@ use crate::domains::peers::peer::PeerState;
 use crate::domains::peers::service::PeerListener;
 
 use bytes::Bytes;
-use std::sync::atomic::Ordering;
-use tokio::net::TcpStream;
 
-use tokio::net::tcp::OwnedReadHalf;
-use tokio::net::tcp::OwnedWriteHalf;
+use std::sync::atomic::Ordering;
 
 // The following is used only when the node is in leader mode
 #[derive(Debug)]
 pub(crate) struct InboundStream {
-    r: OwnedReadHalf,
-    w: OwnedWriteHalf,
-    self_repl_info: ReplicationState,
-    connected_peer_info: ConnectedPeerInfo,
+    pub(crate) r: ReadConnected,
+    pub(crate) w: WriteConnected,
+    pub(crate) host_ip: String,
+    pub(crate) self_repl_info: ReplicationState,
+    pub(crate) connected_peer_info: ConnectedPeerInfo,
 }
 
 impl InboundStream {
-    pub(crate) fn new(stream: TcpStream, self_repl_info: ReplicationState) -> Self {
-        let (read, write) = stream.into_split();
-        Self { r: read, w: write, self_repl_info, connected_peer_info: Default::default() }
-    }
     pub(crate) async fn recv_handshake(&mut self) -> anyhow::Result<()> {
         self.recv_ping().await?;
 
@@ -47,14 +39,10 @@ impl InboundStream {
 
         let (peer_leader_repl_id, peer_hwm, role) = self.recv_psync().await?;
 
-        let addr = self.r.peer_addr().map_err(|error| Into::<IoError>::into(error.kind()))?;
+        let id: PeerIdentifier = PeerIdentifier::new(&self.host_ip, port);
 
-        self.connected_peer_info = ConnectedPeerInfo {
-            id: PeerIdentifier::new(&addr.ip().to_string(), port),
-            replid: peer_leader_repl_id,
-            hwm: peer_hwm,
-            role,
-        };
+        self.connected_peer_info =
+            ConnectedPeerInfo { id, replid: peer_leader_repl_id, hwm: peer_hwm, role };
 
         Ok(())
     }
@@ -136,7 +124,7 @@ impl InboundStream {
         let peer_state = self.connected_peer_state();
         let kill_switch =
             PeerListener::spawn(self.r, cluster_handler.clone(), peer_state.id().clone());
-        let peer = Peer::new(WriteConnected(Box::new(self.w)), peer_state, kill_switch);
+        let peer = Peer::new(self.w, peer_state, kill_switch);
         let _ = cluster_handler.send(ConnectionMessage::AddPeer(peer, None)).await;
         Ok(())
     }
