@@ -607,7 +607,8 @@ async fn test_leader_req_consensus_with_pending_requests() {
     // Block write requests to create pending requests queue
     cluster_actor.block_write_reqs();
 
-    assert_eq!(cluster_actor.pending_requests.as_ref().unwrap().len(), 0);
+    assert_eq!(cluster_actor.pending_migrations.as_ref().unwrap().num_reqs(), 0);
+    assert_eq!(cluster_actor.pending_migrations.as_ref().unwrap().num_batches(), 0);
 
     let (tx, _) = Callback::create();
     let consensus_request = Helper::consensus_request(tx, None);
@@ -616,9 +617,8 @@ async fn test_leader_req_consensus_with_pending_requests() {
     cluster_actor.leader_req_consensus(consensus_request).await;
 
     // THEN
-    assert!(cluster_actor.pending_requests.is_some());
-    let pending_requests = cluster_actor.pending_requests.as_ref().unwrap();
-    assert_eq!(pending_requests.len(), 1);
+    assert!(cluster_actor.pending_migrations.is_some());
+    assert_eq!(cluster_actor.pending_migrations.as_ref().unwrap().num_reqs(), 1);
     assert_eq!(cluster_actor.logger.last_log_index, 0);
 }
 

@@ -25,6 +25,7 @@ use crate::domains::peers::connections::inbound::stream::InboundStream;
 use crate::domains::peers::peer::PeerState;
 use crate::domains::peers::service::PeerListener;
 use crate::types::Callback;
+use std::collections::VecDeque;
 use std::fs::OpenOptions;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
@@ -248,10 +249,10 @@ pub(crate) async fn setup_blocked_cluster_actor_with_requests(
     for _ in 0..num_requests {
         let (callback, _rx) = Callback::create();
         cluster_actor
-            .pending_requests
+            .pending_migrations
             .as_mut()
             .unwrap()
-            .push_back(Helper::consensus_request(callback, None));
+            .add_req(Helper::consensus_request(callback, None));
     }
 
     cluster_actor
