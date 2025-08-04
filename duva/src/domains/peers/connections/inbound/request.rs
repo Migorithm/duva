@@ -12,7 +12,7 @@ pub(crate) struct HandShakeRequest {
     pub(crate) command: HandShakeRequestEnum,
     pub(crate) args: QueryArguments,
 }
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct QueryArguments(pub Vec<QueryIO>);
 
 make_smart_pointer!(QueryArguments, Vec<QueryIO>);
