@@ -28,7 +28,6 @@ impl HandShakeRequest {
                     command: iter
                         .next()
                         .context("request not given")?
-                        .clone()
                         .unpack_single_entry::<String>()?
                         .try_into()?,
                     args: iter.collect::<Vec<_>>().into(),
