@@ -91,7 +91,8 @@ impl Completer for DuvaHinter {
         }
 
         macro_rules! suggest_by_pos {
-        (  [$($args:expr),+]) => {
+        (
+            [$($args:expr),+]) => {
             let suggestions = [$($args),+];
             if previous_words.len() > 0 && previous_words.len() <= suggestions.len() {
                 candidates.push(new_pair!(suggestions[previous_words.len() - 1]));
