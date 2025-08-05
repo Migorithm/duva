@@ -96,7 +96,18 @@ impl Completer for DuvaHinter {
             if previous_words.len() > 0 && previous_words.len() <= suggestions.len() {
                 candidates.push(new_pair!(suggestions[previous_words.len() - 1]));
             }
-        }
+        };
+            ([$($args:expr),+], repeat_last) => {
+            let suggestions = [$($args),+];
+            if previous_words.len() > 0 {
+                let idx = if previous_words.len() <= suggestions.len() {
+                    previous_words.len() - 1
+                } else {
+                    suggestions.len() - 1  // Keep repeating the last argument
+                };
+                candidates.push(new_pair!(suggestions[idx]));
+            }
+            };
         };
 
         let command = previous_words[0].to_lowercase();
@@ -148,19 +159,10 @@ impl Completer for DuvaHinter {
                 suggest_by_pos!(["key", "decrement"]);
             },
             | "exists" | "del" | "mget" => {
-                if !previous_words.is_empty() {
-                    // Suggest "key" for these commands
-                    candidates.push(new_pair!("key"));
-                }
+                suggest_by_pos!(["key"], repeat_last);
             },
             | "lpush" | "lpushx" | "rpush" | "rpushx" => {
-                if previous_words.len() == 1 {
-                    // Suggest "key" after set
-                    candidates.push(new_pair!("key"));
-                } else if previous_words.len() > 1 {
-                    // Suggest "value" after set key
-                    candidates.push(new_pair!("value"));
-                }
+                suggest_by_pos!(["key", "value"], repeat_last);
             },
             | "lpop" | "rpop" => {
                 suggest_by_pos!(["key", "count"]);
