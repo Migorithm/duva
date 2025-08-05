@@ -6,7 +6,6 @@ use crate::domains::cluster_actors::ConnectionMessage;
 use crate::domains::cluster_actors::SchedulerMessage;
 use crate::domains::operation_logs::interfaces::TWriteAheadLog;
 use crate::domains::peers::PeerMessage;
-
 use crate::prelude::PeerIdentifier;
 use crate::res_err;
 use tokio::net::TcpStream;
@@ -108,6 +107,9 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             },
             | GetRole(callback) => {
                 callback.send(self.replication.role.clone());
+            },
+            | GetRoles(callback) => {
+                callback.send(self.get_sorted_roles());
             },
             | SubscribeToTopologyChange(callback) => {
                 callback.send(self.node_change_broadcast.subscribe());

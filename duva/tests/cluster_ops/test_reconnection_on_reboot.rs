@@ -24,13 +24,13 @@ fn run_reconnection_on_reboot(with_append_only: bool) -> anyhow::Result<()> {
     //THEN
 
     let mut cli_to_p2 = Client::new(p2.port);
-    let p2_role = cli_to_p2.send_and_get("ROLE");
+    let p2_role = cli_to_p2.send_and_get_vec("ROLE", 2);
 
     let mut cli_to_p1 = Client::new(p1.port);
-    let p1_role = cli_to_p1.send_and_get("ROLE");
+    let p1_role = cli_to_p1.send_and_get_vec("ROLE", 2);
 
-    assert_eq!(p2_role, "follower");
-    assert_eq!(p1_role, "leader");
+    assert!(p2_role.contains(&format!("127.0.0.1:{}:{}", p2.port, "follower")));
+    assert!(p1_role.contains(&format!("127.0.0.1:{}:{}", p1.port, "leader")));
 
     // Check that the values are still there
     assert_eq!(cli_to_p2.send_and_get("GET x"), "value1");

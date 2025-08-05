@@ -143,8 +143,7 @@ impl ClientController {
                 QueryIO::SimpleString("OK".into())
             },
             | ClientAction::Role => {
-                let role = self.cluster_communication_manager.route_get_role();
-                QueryIO::SimpleString(role.await?.to_string().into())
+                self.cluster_communication_manager.route_get_roles().await?.into()
             },
             | ClientAction::Ttl { key } => {
                 QueryIO::SimpleString(self.cache_manager.route_ttl(key).await?.into())

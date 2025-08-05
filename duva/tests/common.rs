@@ -135,7 +135,8 @@ pub fn spawn_server_process(env: &ServerEnv) -> anyhow::Result<TestProcessChild>
                 continue;
             }
 
-            if role_res.is_empty() || (role_res != "leader" && role_res != "follower") {
+            if role_res.is_empty() || (role_res.contains("leader") && role_res.contains("follower"))
+            {
                 continue;
             }
 

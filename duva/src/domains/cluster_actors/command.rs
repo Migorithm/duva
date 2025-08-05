@@ -62,6 +62,7 @@ pub enum ClientMessage {
     LeaderReqConsensus(ConsensusRequest),
     ClusterNodes(Callback<Vec<PeerState>>),
     GetRole(Callback<ReplicationRole>),
+    GetRoles(Callback<Vec<(PeerIdentifier, ReplicationRole)>>),
     SubscribeToTopologyChange(Callback<tokio::sync::broadcast::Receiver<Topology>>),
     ClusterMeet(PeerIdentifier, LazyOption, Callback<anyhow::Result<()>>),
     GetTopology(Callback<Topology>),
