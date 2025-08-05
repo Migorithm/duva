@@ -143,15 +143,7 @@ impl ClientController {
                 QueryIO::SimpleString("OK".into())
             },
             | ClientAction::Role => {
-                let roles = self.cluster_communication_manager.route_get_roles().await?;
-                QueryIO::Array(
-                    roles
-                        .into_iter()
-                        .map(|(peer_id, role)| {
-                            QueryIO::BulkString(format!("{}:{}", peer_id, role).into())
-                        })
-                        .collect(),
-                )
+                self.cluster_communication_manager.route_get_roles().await?.into()
             },
             | ClientAction::Ttl { key } => {
                 QueryIO::SimpleString(self.cache_manager.route_ttl(key).await?.into())
