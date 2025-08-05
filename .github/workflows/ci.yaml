@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: ["**"]
+    branches: [ "**" ]
   pull_request:
-    branches: ["**"]
+    branches: [ "**" ]
   workflow_dispatch:
 
 env:
@@ -35,11 +35,11 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-
 
-      - name: Format check
-        run: cargo fmt --all -- --check
-
       - name: Cargo check
         run: cargo check --all-targets
+
+      - name: Format check
+        run: cargo fmt --all -- --check
 
       - name: Run tests
         run: cargo test --lib 
