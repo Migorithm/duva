@@ -167,11 +167,13 @@ impl From<String> for ReplicationId {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, bincode::Encode, bincode::Decode, Default)]
+#[derive(
+    Debug, Clone, PartialEq, Eq, bincode::Encode, bincode::Decode, Default, PartialOrd, Ord,
+)]
 pub enum ReplicationRole {
+    Leader,
     #[default]
     Follower,
-    Leader,
 }
 
 impl Display for ReplicationRole {

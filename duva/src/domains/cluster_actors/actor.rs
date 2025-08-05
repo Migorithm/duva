@@ -642,6 +642,18 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         })
     }
 
+    pub(crate) fn get_sorted_roles(&mut self) -> Vec<(PeerIdentifier, ReplicationRole)> {
+        let mut replica = self
+            .members
+            .iter()
+            .filter(|(_, peer_state)| peer_state.is_replica(&self.replication.replid))
+            .map(|(peer_id, peer_state)| (peer_id.clone(), peer_state.role().clone()))
+            .chain(iter::once((self.replication.self_identifier(), self.replication.role.clone())))
+            .collect::<Vec<_>>();
+        replica.sort_by_key(|(_, role)| role.clone());
+        replica
+    }
+
     fn shard_leaders(&self) -> Vec<(ReplicationId, PeerIdentifier)> {
         let iter = self
             .members
