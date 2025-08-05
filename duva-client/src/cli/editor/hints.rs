@@ -147,6 +147,7 @@ pub(crate) fn default_hints() -> HashSet<CommandHint> {
     set.insert(CommandHint::new("lpop key count"));
     set.insert(CommandHint::new("rpop key count"));
     set.insert(CommandHint::new("lrange key start end"));
+    set.insert(CommandHint::new("ltrim key start end"));
 
     set
 }
@@ -209,6 +210,7 @@ pub(crate) fn dynamic_hints() -> HashMap<&'static str, Vec<DynamicHint>> {
     map.insert("lpop", vec![hint!("key", 0), hint!("count", 1)]);
     map.insert("rpop", vec![hint!("key", 0), hint!("count", 1)]);
     map.insert("lrange", vec![hint!("key", 0), hint!("start", 1), hint!("end", 2)]);
+    map.insert("ltrim", vec![hint!("key", 0), hint!("start", 1), hint!("end", 2)]);
     map.insert("replicaof", vec![hint!("host port", 0), hint!("port", 1)]);
 
     map
