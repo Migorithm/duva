@@ -147,6 +147,7 @@ pub(crate) fn default_hints() -> HashSet<CommandHint> {
     set.insert(CommandHint::new("lpop key count"));
     set.insert(CommandHint::new("rpop key count"));
     set.insert(CommandHint::new("lrange key start end"));
+    set.insert(CommandHint::new("ltrim key start end"));
 
     set
 }
