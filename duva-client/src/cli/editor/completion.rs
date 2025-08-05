@@ -40,6 +40,7 @@ pub(crate) static COMMANDS: &[&str] = &[
     "lset",
     "lpop",
     "rpop",
+    "lrange",
 ];
 
 macro_rules! new_pair {
@@ -199,6 +200,15 @@ impl Completer for DuvaHinter {
                 } else if previous_words.len() == 2 {
                     // Suggest "port" after replicaof host
                     candidates.push(new_pair!("port"));
+                }
+            },
+            | "lrange" => {
+                if previous_words.len() == 1 {
+                    candidates.push(new_pair!("key"));
+                } else if previous_words.len() == 2 {
+                    candidates.push(new_pair!("start"));
+                } else if previous_words.len() == 3 {
+                    candidates.push(new_pair!("end"));
                 }
             },
             | _ => {},
