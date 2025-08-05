@@ -90,6 +90,15 @@ impl Completer for DuvaHinter {
             return Ok((start, candidates));
         }
 
+        macro_rules! suggest_by_pos {
+        (  [$($args:expr),+]) => {
+            let suggestions = [$($args),+];
+            if previous_words.len() > 0 && previous_words.len() <= suggestions.len() {
+                candidates.push(new_pair!(suggestions[previous_words.len() - 1]));
+            }
+        }
+        };
+
         let command = previous_words[0].to_lowercase();
         match command.as_str() {
             | "cluster" => {
@@ -122,41 +131,21 @@ impl Completer for DuvaHinter {
                     );
                 }
             },
+
             | "set" => {
-                if previous_words.len() == 1 {
-                    // Suggest "key" after set
-                    candidates.push(new_pair!("key"));
-                } else if previous_words.len() == 2 {
-                    // Suggest "value" after set key
-                    candidates.push(new_pair!("value"));
-                } else if previous_words.len() == 3 {
-                    // Suggest "px expr" after set key value
-                    candidates.push(new_pair!("px expr"));
-                }
+                suggest_by_pos!(["key", "value", "px expr"]);
             },
 
             | "lset" => {
-                if previous_words.len() == 1 {
-                    candidates.push(new_pair!("key"));
-                } else if previous_words.len() == 2 {
-                    candidates.push(new_pair!("index"));
-                } else if previous_words.len() == 3 {
-                    candidates.push(new_pair!("value"));
-                }
+                suggest_by_pos!(["key", "index", "value"]);
             },
 
-            | "incrby" | "decrby" => {
-                if previous_words.len() == 1 {
-                    // Suggest "key" after set
-                    candidates.push(new_pair!("key"));
-                } else if previous_words.len() == 2 {
-                    // Suggest "value" after set key
-                    if command == "incrby" {
-                        candidates.push(new_pair!("increment"));
-                    } else {
-                        candidates.push(new_pair!("decrement"));
-                    }
-                }
+            | "incrby" => {
+                suggest_by_pos!(["key", "increment"]);
+            },
+
+            | "decrby" => {
+                suggest_by_pos!(["key", "decrement"]);
             },
             | "exists" | "del" | "mget" => {
                 if !previous_words.is_empty() {
@@ -174,51 +163,20 @@ impl Completer for DuvaHinter {
                 }
             },
             | "lpop" | "rpop" => {
-                if previous_words.len() == 1 {
-                    // Suggest "index" after get key
-                    candidates.push(new_pair!("key"));
-                } else if previous_words.len() == 2 {
-                    // Suggest "port" after replicaof host
-                    candidates.push(new_pair!("count"));
-                }
+                suggest_by_pos!(["key", "count"]);
             },
 
             | "get" | "incr" | "decr" | "ttl" | "llen" => {
-                if previous_words.len() == 1 {
-                    // Suggest "index" after get key
-                    candidates.push(new_pair!("key"));
-                }
+                suggest_by_pos!(["key"]);
             },
             | "keys" => {
-                if previous_words.len() == 1 {
-                    // Suggest "pattern" after keys
-                    candidates.push(new_pair!("pattern"));
-                }
+                suggest_by_pos!(["pattern"]);
             },
             | "replicaof" => {
-                if previous_words.len() == 1 {
-                    // Suggest "host port" after replicaof
-                    candidates.push(new_pair!("host"));
-                } else if previous_words.len() == 2 {
-                    // Suggest "port" after replicaof host
-                    candidates.push(new_pair!("port"));
-                }
+                suggest_by_pos!(["host port"]);
             },
             | "lrange" | "ltrim" => {
-                if previous_words.len() == 1 {
-                    candidates.push(new_pair!("key"));
-                } else if previous_words.len() == 2 {
-                    candidates.push(new_pair!("start"));
-                } else if previous_words.len() == 3 {
-                    candidates.push(new_pair!("end"));
-                }
-            },
-            | "lindex" => {
-                if previous_words.len() == 1 {
-                    candidates.push(new_pair!("key"))
-                } else if previous_words.len() == 2 {
-                    candidates.push(new_pair!("index"));
-                }
+                suggest_by_pos!(["key", "start", "end"]);
             },
 
             | _ => {},
