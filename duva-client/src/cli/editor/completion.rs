@@ -41,6 +41,7 @@ pub(crate) static COMMANDS: &[&str] = &[
     "lpop",
     "rpop",
     "lrange",
+    "ltrim",
 ];
 
 macro_rules! new_pair {
@@ -202,7 +203,7 @@ impl Completer for DuvaHinter {
                     candidates.push(new_pair!("port"));
                 }
             },
-            | "lrange" => {
+            | "lrange" | "ltrim" => {
                 if previous_words.len() == 1 {
                     candidates.push(new_pair!("key"));
                 } else if previous_words.len() == 2 {
@@ -211,6 +212,7 @@ impl Completer for DuvaHinter {
                     candidates.push(new_pair!("end"));
                 }
             },
+
             | _ => {},
         }
 
