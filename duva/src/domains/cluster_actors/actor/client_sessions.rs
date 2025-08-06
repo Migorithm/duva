@@ -1,11 +1,10 @@
 use crate::{domains::cluster_actors::SessionRequest, make_smart_pointer};
 use chrono::{DateTime, Utc};
 use std::collections::HashMap;
-use uuid::Uuid;
 
 #[derive(Default, Debug)]
-pub(crate) struct ClientSessions(HashMap<Uuid, Session>);
-make_smart_pointer!(ClientSessions,HashMap<Uuid, Session>);
+pub(crate) struct ClientSessions(HashMap<String, Session>);
+make_smart_pointer!(ClientSessions,HashMap<String, Session>);
 
 #[derive(Default, Debug)]
 pub(crate) struct Session {
