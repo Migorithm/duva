@@ -144,10 +144,7 @@ impl HashRing {
         self.vnodes.len()
     }
 
-    pub(crate) fn list_replids_for_keys<'a>(
-        &self,
-        keys: &[&'a str],
-    ) -> anyhow::Result<HashMap<ReplicationId, Vec<&'a str>>> {
+    pub(crate) fn key_ownership<'a>(&self, keys: &[&'a str]) -> anyhow::Result<KeyOwnership<'a>> {
         let mut map: HashMap<ReplicationId, Vec<&str>> = HashMap::new();
 
         for key in keys {
@@ -160,7 +157,7 @@ impl HashRing {
             v.push(key);
         }
 
-        Ok(map)
+        Ok(KeyOwnership(map))
     }
 
     #[cfg(test)]
@@ -180,6 +177,21 @@ impl HashRing {
             *existing_pnode = new_pnode;
         }
         self.update_last_modified();
+    }
+}
+
+pub(crate) struct KeyOwnership<'a>(HashMap<ReplicationId, Vec<&'a str>>);
+impl<'a> KeyOwnership<'a> {
+    pub(crate) fn all_belongs_to(&self, target: &ReplicationId) -> bool {
+        self.0.keys().all(|replid| replid == target)
+    }
+    pub(crate) fn except(self, target: &ReplicationId) -> Vec<&'a str> {
+        self.0
+            .iter()
+            .filter_map(|(replid, keys)| if replid != target { Some(keys.iter()) } else { None })
+            .flatten()
+            .copied()
+            .collect::<Vec<_>>()
     }
 }
 

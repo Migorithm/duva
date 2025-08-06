@@ -346,22 +346,14 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             return;
         };
 
-        match self.hash_ring.list_replids_for_keys(&req.request.all_keys()) {
-            | Ok(replids) if replids.keys().all(|replid| *replid == self.replication.replid) => {
+        match self.hash_ring.key_ownership(&req.request.all_keys()) {
+            | Ok(replids) if replids.all_belongs_to(&self.replication.replid) => {
                 self.req_consensus(req).await;
             },
             | Ok(replids) => {
                 // To notify client's of what keys have been moved.
                 // ! Still, client won't know where the key has been moved. The assumption here is client SHOULD have correct hashring information.
-                let moved_keys = replids
-                    .iter()
-                    .filter_map(|(replid, keys)| {
-                        if *replid != self.replication.replid { Some(keys.iter()) } else { None }
-                    })
-                    .flatten()
-                    .copied()
-                    .collect::<Vec<_>>()
-                    .join(" ");
+                let moved_keys = replids.except(&self.replication.replid).join(" ");
                 req.callback.send(format!("MOVED {moved_keys}").into());
             },
             | Err(err) => {
