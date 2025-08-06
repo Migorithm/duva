@@ -120,17 +120,17 @@ impl HashRing {
 
         // Check each partition for ownership changes
         for (i, &token) in tokens.iter().enumerate() {
-            let prev_token = if i == 0 { tokens[tokens.len() - 1] } else { tokens[i - 1] };
-            let (start, end) = (prev_token.wrapping_add(1), token);
-
-            if let (Some(old_owner), Some(new_owner)) =
-                (self.find_replid(token), new_ring.find_replid(token))
-                && (old_owner != new_owner)
+            if let Some(old_owner) = self.find_replid(token)
+                && let Some(new_owner) = new_ring.find_replid(token)
             {
-                // If both old and new owners exist, we need to check if ownership changed
+                if old_owner == new_owner {
+                    continue;
+                }
 
                 // Node ownership changed for this partition
                 // Need to migrate data from old node to new node
+                let prev_token = if i == 0 { tokens[tokens.len() - 1] } else { tokens[i - 1] };
+                let (start, end) = (prev_token.wrapping_add(1), token);
                 let keys_to_migrate = filter_keys_in_partition(&keys, start, end);
                 if !keys_to_migrate.is_empty() {
                     migration_tasks
