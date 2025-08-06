@@ -90,8 +90,8 @@ pub struct CommandEntry {
 pub enum RoutingRule {
     #[default]
     Any,
-    // TODO merge Signle and Multi
     Selective(Vec<CommandEntry>),
+    Info,
     BroadCast,
 }
 
@@ -135,6 +135,12 @@ impl From<&ClientAction> for RoutingRule {
                     .map(|key| CommandEntry { key: key.clone(), value: None, expires_at: None })
                     .collect(),
             ),
+
+            | ClientAction::Role
+            | ClientAction::Ping
+            | ClientAction::Echo { .. }
+            | ClientAction::Config { .. }
+            | ClientAction::Info => Self::Info,
 
             // broadcast
             | ClientAction::Keys { .. } => Self::BroadCast,

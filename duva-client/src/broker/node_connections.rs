@@ -14,11 +14,75 @@ use futures::future::join_all;
 use futures::future::try_join_all;
 use std::collections::HashMap;
 
+make_smart_pointer!(NodeConnections, HashMap<ReplicationId,NodeConnection> =>conns);
+
 #[derive(Debug)]
 pub(crate) struct NodeConnections {
     conns: HashMap<ReplicationId, NodeConnection>,
+    seed_node: ReplicationId,
 }
-make_smart_pointer!(NodeConnections, HashMap<ReplicationId,NodeConnection> =>conns);
+
+impl NodeConnections {
+    pub(crate) fn new(target_id: ReplicationId, connection: NodeConnection) -> Self {
+        let mut connections = HashMap::new();
+        connections.insert(target_id.clone(), connection);
+        Self { conns: connections, seed_node: target_id }
+    }
+
+    pub(crate) fn is_seed_node(&self, repl_id: &ReplicationId) -> bool {
+        self.seed_node.clone() == repl_id.clone()
+    }
+
+    pub(crate) fn update_seed_node(&mut self) -> Result<(), IoError> {
+        self.seed_node = self.get_random_connection()?.0.clone();
+        Ok(())
+    }
+
+    pub(crate) async fn remove_connection(&mut self, leader_id: &ReplicationId) {
+        if let Some(connection) = self.conns.remove(leader_id) {
+            connection.kill().await;
+        }
+    }
+    pub(crate) async fn remove_outdated_connections(&mut self, node_repl_ids: Vec<ReplicationId>) {
+        let outdated_connections =
+            self.conns.extract_if(|repl_id, _| !node_repl_ids.contains(repl_id));
+        join_all(outdated_connections.into_iter().map(|(_, connection)| connection.kill())).await;
+    }
+
+    pub(crate) async fn randomized_send(&self, client_action: ClientAction) -> Result<(), IoError> {
+        // ThreadRng internally uses thread-local storage, so the actual RNG state is reused per thread
+        self.get_random_connection()?.1.send(client_action).await
+    }
+
+    fn get_random_connection(&self) -> Result<(&ReplicationId, &NodeConnection), IoError> {
+        self.conns
+            .iter()
+            .choose(&mut rand::rng())
+            .ok_or(IoError::Custom("No connections available".to_string()))
+    }
+
+    pub(crate) async fn send_to_seed(&self, client_action: ClientAction) -> Result<(), IoError> {
+        self.send_to(&self.seed_node, client_action).await
+    }
+
+    pub(crate) async fn send_to(
+        &self,
+        node_id: &ReplicationId,
+        client_action: ClientAction,
+    ) -> Result<(), IoError> {
+        let connection = self
+            .conns
+            .get(node_id)
+            .ok_or(IoError::Custom("No connections available".to_string()))?;
+        connection.send(client_action).await
+    }
+
+    pub(crate) async fn send_all(&self, client_action: ClientAction) -> Result<usize, IoError> {
+        try_join_all(self.keys().map(|node_id| self.send_to(node_id, client_action.clone())))
+            .await?;
+        Ok(self.len())
+    }
+}
 
 #[derive(Debug)]
 pub(crate) struct NodeConnection {
@@ -59,53 +123,6 @@ impl NodeConnection {
             .send(MsgToServer::Command(session_request.serialize().to_vec()))
             .await
             .map_err(|e| IoError::Custom(format!("Failed to send command: {e}")))
-    }
-}
-
-impl NodeConnections {
-    pub(crate) fn new(target_id: ReplicationId, connection: NodeConnection) -> Self {
-        let mut connections = HashMap::new();
-        connections.insert(target_id.clone(), connection);
-        Self { conns: connections }
-    }
-
-    pub(crate) async fn remove_connection(&mut self, leader_id: &ReplicationId) {
-        if let Some(connection) = self.conns.remove(leader_id) {
-            connection.kill().await;
-        }
-    }
-    pub(crate) async fn remove_outdated_connections(&mut self, node_repl_ids: Vec<ReplicationId>) {
-        let outdated_connections =
-            self.conns.extract_if(|repl_id, _| !node_repl_ids.contains(repl_id));
-        join_all(outdated_connections.into_iter().map(|(_, connection)| connection.kill())).await;
-    }
-
-    pub(crate) async fn randomized_send(&self, client_action: ClientAction) -> Result<(), IoError> {
-        // ThreadRng internally uses thread-local storage, so the actual RNG state is reused per thread
-        let connection = self
-            .conns
-            .values()
-            .choose(&mut rand::rng())
-            .ok_or(IoError::Custom("No connections available".to_string()))?;
-        connection.send(client_action).await
-    }
-
-    pub(crate) async fn send_to(
-        &self,
-        node_id: &ReplicationId,
-        client_action: ClientAction,
-    ) -> Result<(), IoError> {
-        let connection = self
-            .conns
-            .get(node_id)
-            .ok_or(IoError::Custom("No connections available".to_string()))?;
-        connection.send(client_action).await
-    }
-
-    pub(crate) async fn send_all(&self, client_action: ClientAction) -> Result<usize, IoError> {
-        try_join_all(self.keys().map(|node_id| self.send_to(node_id, client_action.clone())))
-            .await?;
-        Ok(self.len())
     }
 }
 

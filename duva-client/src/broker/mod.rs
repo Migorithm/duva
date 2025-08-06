@@ -44,7 +44,7 @@ impl Broker {
             request_id: auth_response.request_id,
         };
 
-        let mut broker = Broker {
+        let broker = Broker {
             tx: broker_tx.clone(),
             rx,
             client_id: Uuid::parse_str(&auth_response.client_id)?,
@@ -113,6 +113,7 @@ impl Broker {
                             self.route_command_by_keys(action, entries).await
                         },
                         | RoutingRule::BroadCast => self.node_connections.send_all(action).await,
+                        | RoutingRule::Info => self.route_info(action).await,
                     };
                     match res {
                         | Ok(num_of_results) => {
@@ -134,7 +135,7 @@ impl Broker {
                     queue.push(context);
                 },
                 | BrokerMessage::AddNodeConnection(node_info) => {
-                    self.add_leader_connection(node_info).await;
+                    self.add_node_connection(node_info).await;
                 },
             }
         }
@@ -166,9 +167,13 @@ impl Broker {
             if node.repl_id != replication_id {
                 continue; // skip nodes with different replication id
             }
-            if let Some(()) = self.add_leader_connection(node.clone()).await {
+            if let Some(()) = self.add_node_connection(node.clone()).await {
                 return Ok(());
             }
+        }
+        // if no connection found in same replication group, update seed node
+        if self.node_connections.is_seed_node(&replication_id) {
+            self.node_connections.update_seed_node()?;
         }
         if self.node_connections.is_empty() {
             return Err(IoError::Custom(format!(
@@ -193,7 +198,8 @@ impl Broker {
             .remove_outdated_connections(self.topology.hash_ring.get_replication_ids())
             .await;
     }
-    async fn add_leader_connection(&mut self, node: NodeReplInfo) -> Option<()> {
+
+    async fn add_node_connection(&mut self, node: NodeReplInfo) -> Option<()> {
         let auth_req = AuthRequest { client_id: Some(self.client_id.to_string()), request_id: 0 };
         let Ok((r, w, auth_response)) = Self::authenticate(&node.peer_id, Some(auth_req)).await
         else {
@@ -211,10 +217,14 @@ impl Broker {
         );
         Some(())
     }
-
     // 'default_route' is used when given request does NOT have to be sent to a specific node
     async fn default_route(&self, client_action: ClientAction) -> Result<usize, IoError> {
         self.node_connections.randomized_send(client_action).await?;
+        Ok(1)
+    }
+
+    async fn route_info(&self, action: ClientAction) -> Result<usize, IoError> {
+        self.node_connections.send_to_seed(action).await?;
         Ok(1)
     }
 
