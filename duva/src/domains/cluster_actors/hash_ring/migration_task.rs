@@ -4,7 +4,7 @@ use crate::{ReplicationId, domains::cluster_actors::ConsensusRequest, types::Cal
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct MigrationTask {
-    pub(crate) task_id: (u64, u64),          // (start_hash, end_hash)
+    pub(crate) range: (u64, u64),            // (start_hash, end_hash)
     pub(crate) keys_to_migrate: Vec<String>, // actual keys in this range
 }
 

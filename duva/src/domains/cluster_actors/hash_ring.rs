@@ -131,12 +131,12 @@ impl HashRing {
 
                 // Node ownership changed for this partition
                 // Need to migrate data from old node to new node
-                let affected_keys = filter_keys_in_partition(&keys, start, end);
-                if !affected_keys.is_empty() {
-                    migration_tasks.entry(new_owner.clone()).or_default().push(MigrationTask {
-                        task_id: (start, end),
-                        keys_to_migrate: affected_keys,
-                    });
+                let keys_to_migrate = filter_keys_in_partition(&keys, start, end);
+                if !keys_to_migrate.is_empty() {
+                    migration_tasks
+                        .entry(new_owner.clone())
+                        .or_default()
+                        .push(MigrationTask { range: (start, end), keys_to_migrate });
                 }
             }
         }
