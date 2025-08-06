@@ -15,10 +15,10 @@ use crate::domains::QueryIO;
 use crate::domains::TAsyncReadWrite;
 use crate::domains::caches::cache_manager::CacheManager;
 use crate::domains::cluster_actors::consensus::election::ElectionVoting;
-use crate::domains::cluster_actors::hash_ring::BatchId;
 use crate::domains::cluster_actors::hash_ring::MigrationBatch;
 use crate::domains::cluster_actors::hash_ring::PendingMigration;
 use crate::domains::cluster_actors::hash_ring::PendingMigrationBatch;
+
 use crate::domains::cluster_actors::topology::{NodeReplInfo, Topology};
 use crate::domains::operation_logs::WriteRequest;
 use crate::domains::operation_logs::interfaces::TWriteAheadLog;
@@ -346,22 +346,14 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             return;
         };
 
-        match self.hash_ring.list_replids_for_keys(&req.request.all_keys()) {
-            | Ok(replids) if replids.keys().all(|replid| *replid == self.replication.replid) => {
+        match self.hash_ring.key_ownership(&req.request.all_keys()) {
+            | Ok(replids) if replids.all_belongs_to(&self.replication.replid) => {
                 self.req_consensus(req).await;
             },
             | Ok(replids) => {
                 // To notify client's of what keys have been moved.
                 // ! Still, client won't know where the key has been moved. The assumption here is client SHOULD have correct hashring information.
-                let moved_keys = replids
-                    .iter()
-                    .filter_map(|(replid, keys)| {
-                        if *replid != self.replication.replid { Some(keys.iter()) } else { None }
-                    })
-                    .flatten()
-                    .copied()
-                    .collect::<Vec<_>>()
-                    .join(" ");
+                let moved_keys = replids.except(&self.replication.replid).join(" ");
                 req.callback.send(format!("MOVED {moved_keys}").into());
             },
             | Err(err) => {
@@ -1278,11 +1270,11 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             return;
         };
 
-        self.pending_migrations
-            .as_mut()
-            .map(|p| p.add_batch(target.id.clone(), PendingMigrationBatch::new(callback, keys)));
+        self.pending_migrations.as_mut().map(|p| {
+            p.add_batch(target.batch_id.clone(), PendingMigrationBatch::new(callback, keys))
+        });
 
-        let _ = target_peer.send(MigrateBatch { batch_id: target.id, cache_entries }).await;
+        let _ = target_peer.send(MigrateBatch { batch_id: target.batch_id, cache_entries }).await;
     }
 
     pub(crate) async fn receive_batch(
@@ -1327,7 +1319,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
                 }
                 error!(
                     "Failed to write some keys during migration for batch {}",
-                    migrate_batch.batch_id.0
+                    migrate_batch.batch_id
                 );
             }
         });
@@ -1410,7 +1402,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         }
     }
 
-    pub(crate) async fn send_batch_ack(&mut self, batch_id: BatchId, to: PeerIdentifier) {
+    pub(crate) async fn send_batch_ack(&mut self, batch_id: String, to: PeerIdentifier) {
         let Some(peer) = self.members.get_mut(&to) else {
             return;
         };

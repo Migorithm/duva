@@ -91,20 +91,6 @@ impl HashRing {
             .map(|(_, node_id)| node_id.as_ref())
     }
 
-    fn find_node(&self, hash: u64) -> Option<&PeerIdentifier> {
-        // Find the first vnode with hash >= target hash
-        self.pnodes.get(self.find_replid(hash)?)
-    }
-
-    /// Verifies that all given keys belong to the specified node according to the hash ring
-    pub(crate) fn verify_key_belongs_to_node(
-        &self,
-        keys: &[&str],
-        expected_node: &PeerIdentifier,
-    ) -> bool {
-        keys.iter().all(|key| self.find_node(fnv_1a_hash(key)) == Some(expected_node))
-    }
-
     pub(crate) fn create_migration_tasks(
         &self,
         new_ring: &HashRing,
@@ -120,23 +106,23 @@ impl HashRing {
 
         // Check each partition for ownership changes
         for (i, &token) in tokens.iter().enumerate() {
-            let prev_token = if i == 0 { tokens[tokens.len() - 1] } else { tokens[i - 1] };
-            let (start, end) = (prev_token.wrapping_add(1), token);
-
-            if let (Some(old_owner), Some(new_owner)) =
-                (self.find_replid(token), new_ring.find_replid(token))
-                && (old_owner != new_owner)
+            if let Some(old_owner) = self.find_replid(token)
+                && let Some(new_owner) = new_ring.find_replid(token)
             {
-                // If both old and new owners exist, we need to check if ownership changed
+                if old_owner == new_owner {
+                    continue;
+                }
 
                 // Node ownership changed for this partition
                 // Need to migrate data from old node to new node
-                let affected_keys = filter_keys_in_partition(&keys, start, end);
-                if !affected_keys.is_empty() {
-                    migration_tasks.entry(new_owner.clone()).or_default().push(MigrationTask {
-                        task_id: (start, end),
-                        keys_to_migrate: affected_keys,
-                    });
+                let prev_token = if i == 0 { tokens[tokens.len() - 1] } else { tokens[i - 1] };
+                let (start, end) = (prev_token.wrapping_add(1), token);
+                let keys_to_migrate = filter_keys_in_partition(&keys, start, end);
+                if !keys_to_migrate.is_empty() {
+                    migration_tasks
+                        .entry(new_owner.clone())
+                        .or_default()
+                        .push(MigrationTask { range: (start, end), keys_to_migrate });
                 }
             }
         }
@@ -158,10 +144,7 @@ impl HashRing {
         self.vnodes.len()
     }
 
-    pub(crate) fn list_replids_for_keys<'a>(
-        &self,
-        keys: &[&'a str],
-    ) -> anyhow::Result<HashMap<ReplicationId, Vec<&'a str>>> {
+    pub(crate) fn key_ownership<'a>(&self, keys: &[&'a str]) -> anyhow::Result<KeyOwnership<'a>> {
         let mut map: HashMap<ReplicationId, Vec<&str>> = HashMap::new();
 
         for key in keys {
@@ -174,7 +157,7 @@ impl HashRing {
             v.push(key);
         }
 
-        Ok(map)
+        Ok(KeyOwnership(map))
     }
 
     #[cfg(test)]
@@ -194,6 +177,21 @@ impl HashRing {
             *existing_pnode = new_pnode;
         }
         self.update_last_modified();
+    }
+}
+
+pub(crate) struct KeyOwnership<'a>(HashMap<ReplicationId, Vec<&'a str>>);
+impl<'a> KeyOwnership<'a> {
+    pub(crate) fn all_belongs_to(&self, target: &ReplicationId) -> bool {
+        self.0.keys().all(|replid| replid == target)
+    }
+    pub(crate) fn except(self, target: &ReplicationId) -> Vec<&'a str> {
+        self.0
+            .iter()
+            .filter_map(|(replid, keys)| if replid != target { Some(keys.iter()) } else { None })
+            .flatten()
+            .copied()
+            .collect::<Vec<_>>()
     }
 }
 
