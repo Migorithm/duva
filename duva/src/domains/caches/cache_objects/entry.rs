@@ -1,14 +1,10 @@
 use anyhow::Context;
-use bincode::{
-    BorrowDecode,
-    error::{DecodeError, EncodeError},
-};
 use chrono::{DateTime, Utc};
 use std::time::Duration;
 
 use crate::domains::caches::cache_objects::{CacheValue, TypedValue};
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, bincode::Encode, bincode::Decode)]
 pub struct CacheEntry {
     pub(crate) key: String,
     pub(crate) value: CacheValue,
@@ -66,32 +62,6 @@ impl CacheEntry {
 
     pub(crate) fn as_str(&self) -> anyhow::Result<String> {
         self.value.try_to_string()
-    }
-}
-
-impl bincode::Encode for CacheEntry {
-    fn encode<E: bincode::enc::Encoder>(&self, encoder: &mut E) -> Result<(), EncodeError> {
-        bincode::Encode::encode(&self.key, encoder)?;
-        bincode::Encode::encode(&self.value, encoder)?;
-        Ok(())
-    }
-}
-
-impl<Ctx> bincode::Decode<Ctx> for CacheEntry {
-    fn decode<D: bincode::de::Decoder>(decoder: &mut D) -> Result<Self, DecodeError> {
-        let key: String = bincode::Decode::decode(decoder)?;
-        let value: CacheValue = bincode::Decode::decode(decoder)?;
-        Ok(CacheEntry { key, value })
-    }
-}
-
-impl<'de, Ctx> BorrowDecode<'de, Ctx> for CacheEntry {
-    fn borrow_decode<D: bincode::de::BorrowDecoder<'de>>(
-        decoder: &mut D,
-    ) -> Result<Self, DecodeError> {
-        let key: String = BorrowDecode::borrow_decode(decoder)?;
-        let value: CacheValue = BorrowDecode::borrow_decode(decoder)?;
-        Ok(CacheEntry { key, value })
     }
 }
 
