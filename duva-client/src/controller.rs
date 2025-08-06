@@ -36,7 +36,6 @@ impl<T> ClientController<T> {
             | Config { .. }
             | Info
             | ClusterForget { .. }
-            | Role
             | ReplicaOf { .. }
             | ClusterInfo => match query_io {
                 | QueryIO::Null => Response::Null,
@@ -118,7 +117,7 @@ impl<T> ClientController<T> {
                 }
                 Response::Array(keys)
             },
-            | ClusterNodes => {
+            | Role | ClusterNodes => {
                 let QueryIO::Array(value) = query_io else {
                     return Response::FormatError;
                 };

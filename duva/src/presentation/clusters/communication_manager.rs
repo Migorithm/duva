@@ -106,6 +106,12 @@ impl ClusterCommunicationManager {
         Ok(rx.await?)
     }
 
+    pub(crate) async fn route_get_roles(&self) -> anyhow::Result<Vec<String>> {
+        let (tx, rx) = Callback::create();
+        self.send(ClientMessage::GetRoles(tx)).await?;
+        Ok(rx.await?.into_iter().map(|(id, role)| format!("{}:{}", id.0, role)).collect())
+    }
+
     pub(crate) async fn route_get_role(&self) -> anyhow::Result<ReplicationRole> {
         let (tx, rx) = Callback::create();
         self.send(ClientMessage::GetRole(tx)).await?;

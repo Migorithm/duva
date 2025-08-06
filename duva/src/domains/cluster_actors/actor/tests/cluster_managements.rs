@@ -81,7 +81,7 @@ async fn test_store_current_topology() {
 async fn test_reconnection_on_gossip() {
     // GIVEN
     let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Leader).await;
-
+    let ip = "127.0.0.1".to_string();
     // * run listener to see if connection is attempted
     let listener = TcpListener::bind("127.0.0.1:44455").await.unwrap(); // ! Beaware that this is cluster port
     let bind_addr = listener.local_addr().unwrap();
@@ -94,7 +94,15 @@ async fn test_reconnection_on_gossip() {
     // Spawn the listener task
     let handle = tokio::spawn(async move {
         let (stream, _) = listener.accept().await.unwrap();
-        let mut inbound_stream = InboundStream::new(stream, replication_state.clone());
+        let (read, write) = stream.into_split();
+        let mut inbound_stream = InboundStream {
+            r: read.into(),
+            w: write.into(),
+            host_ip: ip,
+            self_repl_info: replication_state,
+            connected_peer_info: Default::default(),
+        };
+
         if inbound_stream.recv_handshake().await.is_ok() {
             let _ = tx.send(());
         };

@@ -30,7 +30,8 @@ fn run_cluster_meet(append_only: bool) -> anyhow::Result<()> {
     while until > std::time::Instant::now() {
         let res = client_handler.send_and_get_vec("cluster info", 1);
         if res.contains(&"cluster_known_nodes:3".to_string()) {
-            assert_eq!(client_handler.send_and_get("role"), "leader");
+            let role_response = client_handler.send_and_get_vec("role", 2);
+            assert!(role_response.contains(&format!("127.0.0.1:{}:{}", env3.port, "leader")));
             success_cnt += 1;
             break;
         }
@@ -42,7 +43,8 @@ fn run_cluster_meet(append_only: bool) -> anyhow::Result<()> {
     while until > std::time::Instant::now() {
         let res = replica_handler.send_and_get_vec("cluster info", 1);
         if res.contains(&"cluster_known_nodes:3".to_string()) {
-            assert_eq!(replica_handler.send_and_get("role"), "follower");
+            let role_response = client_handler.send_and_get_vec("role", 2);
+            assert!(role_response.contains(&format!("127.0.0.1:{}:{}", env4.port, "follower")));
             success_cnt += 1;
             break;
         }

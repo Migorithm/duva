@@ -50,3 +50,10 @@ impl<T: TRead> From<T> for ReadConnected {
         Self(Box::new(value))
     }
 }
+
+impl PartialEq for ReadConnected {
+    fn eq(&self, _: &Self) -> bool {
+        true
+    }
+}
+impl Eq for ReadConnected {}

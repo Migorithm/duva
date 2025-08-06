@@ -43,16 +43,15 @@ fn run_set_twice_after_election(with_append_only: bool) -> anyhow::Result<()> {
 
     panic_if_election_not_done(follower_p1.port, follower_p2.port);
 
-    let res = h1.send_and_get("role");
-    let res2 = h2.send_and_get("role");
+    let res = h1.send_and_get_vec("role", 3);
 
-    if res.contains(&"leader".to_string()) {
+    if res.contains(&format!("127.0.0.1:{}:{}", follower_p1.port, "leader")) {
         // THEN - one of the replicas should become the leader
         assert_eq!(h1.send_and_get("set 1 2"), "OK");
         assert_eq!(h1.send_and_get("set 2 3"), "OK");
     }
 
-    if res2 == "leader" {
+    if res.contains(&format!("127.0.0.1:{}:{}", follower_p2.port, "leader")) {
         // THEN - one of the replicas should become the leader
         assert_eq!(h2.send_and_get("set 1 2"), "OK");
         assert_eq!(h2.send_and_get("set 2 3"), "OK");
@@ -112,22 +111,21 @@ fn panic_if_election_not_done(port1: u16, port2: u16) {
     let mut first_election_cnt = 0;
     let mut flag = false;
     let mut h1 = Client::new(port1);
-    let mut h2 = Client::new(port2);
 
     let start = std::time::Instant::now();
     while first_election_cnt < 50 {
-        let res = h1.send_and_get("role");
-        let res2 = h2.send_and_get("role");
+        let res = h1.send_and_get_vec("role", 2);
         println!(
-            "[{}ms] Poll {}: port1={} port2={} res1={} res2={}",
+            "[{}ms] Poll {}: port1={} port2={} res={:?}",
             start.elapsed().as_millis(),
             first_election_cnt,
             port1,
             port2,
             res,
-            res2
         );
-        if res == "leader" || res2 == "leader" {
+        if res.contains(&format!("127.0.0.1:{}:{}", port1, "leader"))
+            || res.contains(&format!("127.0.0.1:{}:{}", port2, "leader"))
+        {
             flag = true;
             break;
         }

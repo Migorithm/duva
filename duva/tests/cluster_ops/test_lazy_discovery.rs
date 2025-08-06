@@ -24,8 +24,9 @@ fn run_lazy_discovery_of_leader(with_append_only: bool) -> anyhow::Result<()> {
     assert_eq!(p1_h.send_and_get(format!("REPLICAOF 127.0.0.1 {}", &env2.port)), "OK");
 
     // THEN
-    assert_eq!(p1_h.send_and_get("role"), "follower");
-    assert_eq!(p2_h.send_and_get("role"), "leader");
+    let role_response = p1_h.send_and_get_vec("role", 2);
+    assert!(role_response.contains(&format!("127.0.0.1:{}:{}", p1.port, "follower")));
+    assert!(role_response.contains(&format!("127.0.0.1:{}:{}", env2.port, "leader")));
 
     // * Following is required to test replicaof successuflly update topology changes
     p1.terminate()?;

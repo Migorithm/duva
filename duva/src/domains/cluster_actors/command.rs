@@ -4,10 +4,10 @@ use crate::domains::cluster_actors::replication::{ReplicationId, ReplicationRole
 use crate::domains::cluster_actors::topology::Topology;
 use crate::domains::operation_logs::WriteRequest;
 use crate::domains::peers::command::PeerCommand;
+use crate::domains::peers::connections::connection_types::{ReadConnected, WriteConnected};
 use crate::domains::peers::peer::{Peer, PeerState};
 use crate::prelude::PeerIdentifier;
-use crate::types::{Callback, ConnectionStream};
-
+use crate::types::Callback;
 use std::str::FromStr;
 
 use tokio::sync::oneshot;
@@ -41,7 +41,7 @@ impl From<SchedulerMessage> for ClusterCommand {
 #[derive(Debug, PartialEq, Eq)]
 pub enum ConnectionMessage {
     ConnectToServer { connect_to: PeerIdentifier, callback: Callback<anyhow::Result<()>> },
-    AcceptInboundPeer { stream: ConnectionStream },
+    AcceptInboundPeer { read: ReadConnected, write: WriteConnected, host_ip: String },
     AddPeer(Peer, Option<Callback<anyhow::Result<()>>>),
     FollowerSetReplId(ReplicationId, PeerIdentifier),
     ActivateClusterSync(Callback<()>),
@@ -62,6 +62,7 @@ pub enum ClientMessage {
     LeaderReqConsensus(ConsensusRequest),
     ClusterNodes(Callback<Vec<PeerState>>),
     GetRole(Callback<ReplicationRole>),
+    GetRoles(Callback<Vec<(PeerIdentifier, ReplicationRole)>>),
     SubscribeToTopologyChange(Callback<tokio::sync::broadcast::Receiver<Topology>>),
     ClusterMeet(PeerIdentifier, LazyOption, Callback<anyhow::Result<()>>),
     GetTopology(Callback<Topology>),

@@ -17,6 +17,7 @@ use crate::domains::caches::cache_manager::CacheManager;
 use crate::domains::cluster_actors::consensus::election::ElectionVoting;
 use crate::domains::cluster_actors::hash_ring::BatchId;
 use crate::domains::cluster_actors::hash_ring::MigrationBatch;
+use crate::domains::cluster_actors::hash_ring::PendingMigration;
 use crate::domains::cluster_actors::hash_ring::PendingMigrationBatch;
 use crate::domains::cluster_actors::topology::{NodeReplInfo, Topology};
 use crate::domains::operation_logs::WriteRequest;
@@ -30,6 +31,8 @@ use crate::domains::peers::command::MigrationBatchAck;
 use crate::domains::peers::command::RejectionReason;
 use crate::domains::peers::command::ReplicationAck;
 use crate::domains::peers::command::RequestVote;
+use crate::domains::peers::connections::connection_types::ReadConnected;
+use crate::domains::peers::connections::connection_types::WriteConnected;
 use crate::domains::peers::connections::inbound::stream::InboundStream;
 use crate::domains::peers::connections::outbound::stream::OutboundStream;
 use crate::domains::peers::identifier::TPeerAddress;
@@ -38,15 +41,13 @@ use crate::err;
 use crate::from_to;
 use crate::res_err;
 use crate::types::Callback;
-use crate::types::ConnectionStream;
 use client_sessions::ClientSessions;
 
 use heartbeat_scheduler::HeartBeatScheduler;
+use std::collections::HashMap;
 use tokio::net::TcpStream;
 use tokio::sync::oneshot;
 
-use std::collections::HashMap;
-use std::collections::VecDeque;
 use std::fmt::Debug;
 use std::fs::File;
 use std::io::Seek;
@@ -79,8 +80,7 @@ pub struct ClusterActor<T> {
     pub(crate) client_sessions: ClientSessions,
     pub(crate) logger: ReplicatedLogs<T>,
     pub(crate) hash_ring: HashRing,
-    pub(crate) pending_requests: Option<VecDeque<ConsensusRequest>>,
-    pub(crate) pending_migrations: Option<HashMap<BatchId, PendingMigrationBatch>>,
+    pending_migrations: Option<PendingMigration>,
     cluster_join_sync: ClusterJoinSync,
 }
 
@@ -172,7 +172,6 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             consensus_tracker: LogConsensusTracker::default(),
             client_sessions: ClientSessions::default(),
             cluster_join_sync: ClusterJoinSync::default(),
-            pending_requests: None,
             pending_migrations: None,
         }
     }
@@ -266,8 +265,20 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         ));
     }
 
-    pub(crate) fn accept_inbound_stream(&mut self, peer_stream: ConnectionStream) {
-        let inbound_stream = InboundStream::new(peer_stream.0, self.replication.clone());
+    pub(crate) fn accept_inbound_stream(
+        &mut self,
+        read: ReadConnected,
+        write: WriteConnected,
+        host_ip: String,
+    ) {
+        let inbound_stream = InboundStream {
+            r: read.into(),
+            w: write.into(),
+            host_ip,
+            self_repl_info: self.replication.clone(),
+            connected_peer_info: Default::default(),
+        };
+
         tokio::spawn(inbound_stream.add_peer(self.self_handler.clone()));
     }
 
@@ -321,8 +332,8 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     }
 
     pub(crate) async fn leader_req_consensus(&mut self, req: ConsensusRequest) {
-        if let Some(pending_requests) = self.pending_requests.as_mut() {
-            pending_requests.push_back(req);
+        if let Some(pending_mig) = self.pending_migrations.as_mut() {
+            pending_mig.add_req(req);
             return;
         }
         if self.client_sessions.is_processed(&req.session_req) {
@@ -631,6 +642,18 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         })
     }
 
+    pub(crate) fn get_sorted_roles(&mut self) -> Vec<(PeerIdentifier, ReplicationRole)> {
+        let mut replica = self
+            .members
+            .iter()
+            .filter(|(_, peer_state)| peer_state.is_replica(&self.replication.replid))
+            .map(|(peer_id, peer_state)| (peer_id.clone(), peer_state.role().clone()))
+            .chain(iter::once((self.replication.self_identifier(), self.replication.role.clone())))
+            .collect::<Vec<_>>();
+        replica.sort_by_key(|(_, role)| role.clone());
+        replica
+    }
+
     fn shard_leaders(&self) -> Vec<(ReplicationId, PeerIdentifier)> {
         let iter = self
             .members
@@ -688,9 +711,8 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
     // ! BLOCK subsequent requests until rebalance is done
     fn block_write_reqs(&mut self) {
-        if self.pending_requests.is_none() {
-            self.pending_requests = Some(VecDeque::new());
-            self.pending_migrations = Some(HashMap::new());
+        if self.pending_migrations.is_none() {
+            self.pending_migrations = Some(Default::default());
         }
     }
 
@@ -1258,7 +1280,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
         self.pending_migrations
             .as_mut()
-            .map(|p| p.insert(target.id.clone(), PendingMigrationBatch::new(callback, keys)));
+            .map(|p| p.add_batch(target.id.clone(), PendingMigrationBatch::new(callback, keys)));
 
         let _ = target_peer.send(MigrateBatch { batch_id: target.id, cache_entries }).await;
     }
@@ -1321,7 +1343,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             return;
         };
 
-        let Some(pending_migration_batch) = pending.remove(&ack.batch_id) else {
+        let Some(pending_migration_batch) = pending.pop_batch(&ack.batch_id) else {
             err!("Batch ID {:?} not found in pending migrations", ack.batch_id);
             return;
         };
@@ -1358,17 +1380,17 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
     // New hash ring stored at this point with the current shard leaders
     pub(crate) fn unblock_write_reqs_if_done(&mut self) {
-        let migrations_done = self.pending_migrations.as_ref().is_none_or(|p| p.is_empty());
+        let migrations_done = self.pending_migrations.as_ref().is_none_or(|p| p.num_batches() == 0);
 
         if migrations_done {
             if let Some(new_ring) = self.hash_ring.set_partitions(self.shard_leaders()) {
                 self.hash_ring = new_ring;
             }
             let _ = self.node_change_broadcast.send(self.get_topology());
-            if let Some(mut pending_reqs) = self.pending_requests.take() {
+            if let Some(pending_mig) = self.pending_migrations.take() {
                 info!("All migrations complete, processing pending requests.");
-                self.pending_migrations = None;
 
+                let mut pending_reqs = pending_mig.pending_requests();
                 if pending_reqs.is_empty() {
                     return;
                 }

@@ -141,9 +141,13 @@ impl StartUpFacade {
             match peer_listener.accept().await {
                 | Ok((peer_stream, socket_addr)) => {
                     debug!("Accepted peer connection: {}", socket_addr);
+                    let (read, write) = peer_stream.into_split();
+                    let host_ip = socket_addr.ip().to_string();
                     if cluster_communication_manager
                         .send(ConnectionMessage::AcceptInboundPeer {
-                            stream: types::ConnectionStream(peer_stream),
+                            read: read.into(),
+                            write: write.into(),
+                            host_ip,
                         })
                         .await
                         .is_err()
