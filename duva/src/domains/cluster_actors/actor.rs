@@ -1278,11 +1278,11 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             return;
         };
 
-        self.pending_migrations
-            .as_mut()
-            .map(|p| p.add_batch(target.id.clone(), PendingMigrationBatch::new(callback, keys)));
+        self.pending_migrations.as_mut().map(|p| {
+            p.add_batch(target.batch_id.clone(), PendingMigrationBatch::new(callback, keys))
+        });
 
-        let _ = target_peer.send(MigrateBatch { batch_id: target.id, cache_entries }).await;
+        let _ = target_peer.send(MigrateBatch { batch_id: target.batch_id, cache_entries }).await;
     }
 
     pub(crate) async fn receive_batch(

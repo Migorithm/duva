@@ -376,7 +376,7 @@ async fn test_migrate_batch_send_migrate_batch_peer_message() {
     // THEN
     assert_expected_queryio(
         &buf,
-        QueryIO::MigrateBatch(MigrateBatch { batch_id: batch.id, cache_entries: vec![] }),
+        QueryIO::MigrateBatch(MigrateBatch { batch_id: batch.batch_id, cache_entries: vec![] }),
     )
     .await;
 }
