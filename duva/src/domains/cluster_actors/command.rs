@@ -1,5 +1,5 @@
 use crate::ReplicationState;
-use crate::domains::cluster_actors::hash_ring::{BatchId, MigrationBatch};
+use crate::domains::cluster_actors::hash_ring::MigrationBatch;
 use crate::domains::cluster_actors::replication::{ReplicationId, ReplicationRole};
 use crate::domains::cluster_actors::topology::Topology;
 use crate::domains::operation_logs::WriteRequest;
@@ -29,7 +29,7 @@ pub enum SchedulerMessage {
     RebalanceRequest { request_to: PeerIdentifier, lazy_option: LazyOption },
     ScheduleMigrationBatch(MigrationBatch, Callback<anyhow::Result<()>>),
     TryUnblockWriteReqs,
-    SendBatchAck { batch_id: BatchId, to: PeerIdentifier },
+    SendBatchAck { batch_id: String, to: PeerIdentifier },
 }
 
 impl From<SchedulerMessage> for ClusterCommand {

@@ -1,6 +1,6 @@
 use crate::domains::QueryIO;
 use crate::domains::caches::cache_objects::{CacheValue, TypedValue};
-use crate::domains::cluster_actors::hash_ring::BatchId;
+
 use crate::domains::cluster_actors::hash_ring::{HashRing, tests::migration_task_create_helper};
 
 use std::time::Duration;
@@ -390,7 +390,7 @@ async fn test_receive_batch_when_empty_cache_entries() {
     let (buf, _id) = cluster_actor.test_add_peer(6909, Some(replid.clone()), true);
 
     // WHEN
-    let batch = MigrateBatch { batch_id: BatchId("empty_test".into()), cache_entries: vec![] };
+    let batch = MigrateBatch { batch_id: "empty_test".into(), cache_entries: vec![] };
     cluster_actor.receive_batch(batch.clone(), &cache_manager, _id).await;
 
     // THEN - verify that no log index is incremented
@@ -416,10 +416,8 @@ async fn test_receive_batch_when_consensus_is_required() {
 
     let cache_entries = vec![CacheEntry::new("success_key3", "value2")];
 
-    let batch = MigrateBatch {
-        batch_id: BatchId("success_test".into()),
-        cache_entries: cache_entries.clone(),
-    };
+    let batch =
+        MigrateBatch { batch_id: "success_test".into(), cache_entries: cache_entries.clone() };
 
     // WHEN
     cluster_actor.receive_batch(batch, &cache_manager, ack_to.clone()).await;
@@ -456,10 +454,8 @@ async fn test_receive_batch_when_noreplica_found() {
     let cache_entries =
         vec![CacheEntry::new("success_key3", "value2"), CacheEntry::new("success_key4", "value4")];
 
-    let batch = MigrateBatch {
-        batch_id: BatchId("success_test".into()),
-        cache_entries: cache_entries.clone(),
-    };
+    let batch =
+        MigrateBatch { batch_id: "success_test".into(), cache_entries: cache_entries.clone() };
 
     // WHEN
     let task = tokio::spawn(recv.wait_message(SchedulerMessage::SendBatchAck {
@@ -495,7 +491,7 @@ async fn test_unblock_write_reqs_if_done_when_migrations_still_pending() {
 
     // Add pending migration (simulating migration still in progress)
     let (callback, _migration_rx) = Callback::create();
-    let batch_id = BatchId("test_batch".into());
+    let batch_id = "test_batch".into();
     cluster_actor
         .pending_migrations
         .as_mut()
@@ -566,7 +562,7 @@ async fn test_handle_migration_ack_failure() {
     let mut cluster_actor = setup_blocked_cluster_actor_with_requests(1).await;
     let (_hwm, _cache_manager) = Helper::cache_manager();
     let (callback, callback_rx) = Callback::create();
-    let batch_id = BatchId("failure_batch".into());
+    let batch_id = "failure_batch".to_string();
 
     // Ensure pending_migrations is set up
     assert!(cluster_actor.pending_migrations.is_some());
@@ -606,9 +602,9 @@ async fn test_handle_migration_ack_batch_id_not_found() {
         .pending_migrations
         .as_mut()
         .unwrap()
-        .add_batch(BatchId("existing_batch".into()), PendingMigrationBatch::new(callback, vec![]));
+        .add_batch("existing_batch".into(), PendingMigrationBatch::new(callback, vec![]));
 
-    let non_existent_batch_id = BatchId("non_existent_batch".into());
+    let non_existent_batch_id = "non_existent_batch".into();
     let ack = MigrationBatchAck { batch_id: non_existent_batch_id, success: true };
 
     // WHEN
@@ -648,7 +644,7 @@ async fn test_handle_migration_ack_success_case_with_pending_reqs_and_migration(
 
     // Add the last pending migration with the test keys
     let (callback, callback_rx) = Callback::create();
-    let batch_id = BatchId("last_batch".into());
+    let batch_id = "last_batch".to_string();
     cluster_actor
         .pending_migrations
         .as_mut()

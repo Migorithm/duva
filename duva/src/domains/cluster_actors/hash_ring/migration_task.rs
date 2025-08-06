@@ -14,19 +14,16 @@ impl MigrationTask {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, bincode::Encode, bincode::Decode)]
-pub(crate) struct BatchId(pub(crate) String);
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct MigrationBatch {
-    pub(crate) id: BatchId,
+    pub(crate) id: String,
     pub(crate) target_repl: ReplicationId,
     pub(crate) tasks: Vec<MigrationTask>,
 }
 
 impl MigrationBatch {
     pub(crate) fn new(target_repl: ReplicationId, tasks: Vec<MigrationTask>) -> Self {
-        Self { id: BatchId(uuid::Uuid::now_v7().to_string()), target_repl, tasks }
+        Self { id: uuid::Uuid::now_v7().to_string(), target_repl, tasks }
     }
 }
 
@@ -48,16 +45,16 @@ impl PendingMigrationBatch {
 #[derive(Debug, Default)]
 pub(crate) struct PendingMigration {
     requests: VecDeque<ConsensusRequest>,
-    batches: HashMap<BatchId, PendingMigrationBatch>,
+    batches: HashMap<String, PendingMigrationBatch>,
 }
 impl PendingMigration {
     pub(crate) fn add_req(&mut self, req: ConsensusRequest) {
         self.requests.push_back(req);
     }
-    pub(crate) fn add_batch(&mut self, id: BatchId, batch: PendingMigrationBatch) {
+    pub(crate) fn add_batch(&mut self, id: String, batch: PendingMigrationBatch) {
         self.batches.insert(id, batch);
     }
-    pub(crate) fn pop_batch(&mut self, id: &BatchId) -> Option<PendingMigrationBatch> {
+    pub(crate) fn pop_batch(&mut self, id: &String) -> Option<PendingMigrationBatch> {
         self.batches.remove(id)
     }
     pub(crate) fn pending_requests(self) -> VecDeque<ConsensusRequest> {

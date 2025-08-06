@@ -15,10 +15,10 @@ use crate::domains::QueryIO;
 use crate::domains::TAsyncReadWrite;
 use crate::domains::caches::cache_manager::CacheManager;
 use crate::domains::cluster_actors::consensus::election::ElectionVoting;
-use crate::domains::cluster_actors::hash_ring::BatchId;
 use crate::domains::cluster_actors::hash_ring::MigrationBatch;
 use crate::domains::cluster_actors::hash_ring::PendingMigration;
 use crate::domains::cluster_actors::hash_ring::PendingMigrationBatch;
+
 use crate::domains::cluster_actors::topology::{NodeReplInfo, Topology};
 use crate::domains::operation_logs::WriteRequest;
 use crate::domains::operation_logs::interfaces::TWriteAheadLog;
@@ -1327,7 +1327,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
                 }
                 error!(
                     "Failed to write some keys during migration for batch {}",
-                    migrate_batch.batch_id.0
+                    migrate_batch.batch_id
                 );
             }
         });
@@ -1410,7 +1410,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         }
     }
 
-    pub(crate) async fn send_batch_ack(&mut self, batch_id: BatchId, to: PeerIdentifier) {
+    pub(crate) async fn send_batch_ack(&mut self, batch_id: String, to: PeerIdentifier) {
         let Some(peer) = self.members.get_mut(&to) else {
             return;
         };
