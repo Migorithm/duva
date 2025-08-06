@@ -91,19 +91,6 @@ impl HashRing {
             .map(|(_, node_id)| node_id.as_ref())
     }
 
-    /// Verifies that all given keys belong to the specified node according to the hash ring
-    pub(crate) fn verify_key_belongs_to_node(
-        &self,
-        keys: &[&str],
-        expected_node: &PeerIdentifier,
-    ) -> bool {
-        keys.iter().all(|key| {
-            self.find_replid(fnv_1a_hash(key))
-                .and_then(|repl_id| self.pnodes.get(&repl_id))
-                .map_or(false, |node| node == expected_node)
-        })
-    }
-
     pub(crate) fn create_migration_tasks(
         &self,
         new_ring: &HashRing,
