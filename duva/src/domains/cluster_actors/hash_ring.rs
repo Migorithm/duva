@@ -91,18 +91,17 @@ impl HashRing {
             .map(|(_, node_id)| node_id.as_ref())
     }
 
-    fn find_node(&self, hash: u64) -> Option<&PeerIdentifier> {
-        // Find the first vnode with hash >= target hash
-        self.pnodes.get(self.find_replid(hash)?)
-    }
-
     /// Verifies that all given keys belong to the specified node according to the hash ring
     pub(crate) fn verify_key_belongs_to_node(
         &self,
         keys: &[&str],
         expected_node: &PeerIdentifier,
     ) -> bool {
-        keys.iter().all(|key| self.find_node(fnv_1a_hash(key)) == Some(expected_node))
+        keys.iter().all(|key| {
+            self.find_replid(fnv_1a_hash(key))
+                .and_then(|repl_id| self.pnodes.get(&repl_id))
+                .map_or(false, |node| node == expected_node)
+        })
     }
 
     pub(crate) fn create_migration_tasks(
