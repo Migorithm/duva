@@ -18,7 +18,7 @@ pub struct FileOpLogs {
     segments: Vec<Segment>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 struct Segment {
     path: PathBuf,
     start_index: u64,
@@ -43,17 +43,16 @@ impl LookupIndex {
 }
 
 impl Segment {
-    fn new(path: PathBuf) -> Self {
-        let file = OpenOptions::new()
+    fn new(path: PathBuf, start_index: u64, end_index: u64) -> Self {
+        let _ = OpenOptions::new()
             .create(true)
             .append(true)
             .read(true)
             .open(&path)
             .context(format!("Failed to create initial segment '{}'", path.display()))
             .unwrap();
-        file.lock().unwrap();
 
-        Self { path, start_index: 0, end_index: 0, size: 0, lookups: Vec::new() }
+        Self { path, start_index, end_index, size: 0, lookups: Vec::new() }
     }
 
     fn read_operations(&self) -> Result<Vec<WriteOperation>> {
@@ -61,7 +60,7 @@ impl Segment {
             .read(true)
             .open(&self.path)
             .context(format!("Failed to open segment for reading: {}", self.path.display()))?;
-        file.lock().unwrap();
+
         let mut reader = BufReader::new(file);
         let mut buf = Vec::new();
         reader.read_to_end(&mut buf)?;
@@ -228,7 +227,7 @@ impl FileOpLogs {
         let active_segment = if segment_paths.is_empty() {
             // No segments exist — create initial segment
             let segment_path = path.join("segment_0.oplog");
-            Segment::new(segment_path)
+            Segment::new(segment_path, 0, 0)
         } else {
             // Segments exist — use the last one as active
             Segment::from_path(segment_paths.last().unwrap())?
@@ -243,21 +242,19 @@ impl FileOpLogs {
             writer.get_mut().sync_all()?;
         }
 
-        // Add to segments list
-        self.segments.push(self.active_segment.clone());
+        let next_index = self.segments.len() + 1;
+        let segment_path = self.path.join(format!("segment_{next_index}.oplog"));
 
         // Create new segment
-        let next_index = self.segments.len();
-        let segment_path = self.path.join(format!("segment_{next_index}.oplog"));
-        let _ = OpenOptions::new().create(true).append(true).read(true).open(&segment_path)?;
+        let mut seg = Segment::new(
+            segment_path,
+            self.active_segment.end_index + 1,
+            self.active_segment.end_index,
+        );
 
-        self.active_segment = Segment {
-            path: segment_path,
-            start_index: self.active_segment.end_index + 1,
-            end_index: self.active_segment.end_index,
-            size: 0,
-            lookups: Vec::new(),
-        };
+        std::mem::swap(&mut seg, &mut self.active_segment);
+
+        self.segments.push(seg);
 
         Ok(())
     }
