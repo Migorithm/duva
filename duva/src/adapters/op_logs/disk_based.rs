@@ -44,13 +44,14 @@ impl LookupIndex {
 
 impl Segment {
     fn new(path: PathBuf) -> Self {
-        let _file = OpenOptions::new()
+        let file = OpenOptions::new()
             .create(true)
             .append(true)
             .read(true)
             .open(&path)
             .context(format!("Failed to create initial segment '{}'", path.display()))
             .unwrap();
+        file.lock().unwrap();
 
         Self { path, start_index: 0, end_index: 0, size: 0, lookups: Vec::new() }
     }
