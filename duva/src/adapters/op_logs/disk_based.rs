@@ -61,6 +61,7 @@ impl Segment {
             .read(true)
             .open(&self.path)
             .context(format!("Failed to open segment for reading: {}", self.path.display()))?;
+        file.lock().unwrap();
         let mut reader = BufReader::new(file);
         let mut buf = Vec::new();
         reader.read_to_end(&mut buf)?;
