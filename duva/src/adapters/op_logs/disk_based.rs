@@ -335,10 +335,7 @@ impl TWriteAheadLog for FileOpLogs {
     fn range(&self, start_exclusive: u64, end_inclusive: u64) -> Vec<WriteOperation> {
         let mut result = Vec::new();
 
-        // sealed + active segments for iteration
-        let all_segments = self.segments.iter();
-
-        for segment in all_segments {
+        for segment in self.segments.iter() {
             // Optimization: Check for potential overlap first
             if !(segment.end_index > start_exclusive && segment.start_index <= end_inclusive) {
                 continue;
