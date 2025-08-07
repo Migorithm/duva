@@ -53,10 +53,7 @@ mod peer_messages {
     use super::*;
     use crate::domains::{
         caches::cache_objects::CacheEntry,
-        cluster_actors::{
-            hash_ring::{BatchId, HashRing},
-            replication::ReplicationId,
-        },
+        cluster_actors::{hash_ring::HashRing, replication::ReplicationId},
         operation_logs::{WriteOperation, logger::ReplicatedLogs},
         peers::peer::PeerState,
     };
@@ -171,22 +168,22 @@ mod peer_messages {
 
     #[derive(Debug, Clone, PartialEq, Eq, bincode::Encode, bincode::Decode)]
     pub struct MigrateBatch {
-        pub(crate) batch_id: BatchId,
+        pub(crate) batch_id: String,
         pub(crate) cache_entries: Vec<CacheEntry>,
     }
 
     #[derive(Debug, Clone, PartialEq, Eq, bincode::Encode, bincode::Decode)]
     pub struct MigrationBatchAck {
-        pub(crate) batch_id: BatchId,
+        pub(crate) batch_id: String,
         pub(crate) success: bool,
     }
 
     impl MigrationBatchAck {
-        pub(crate) fn with_reject(batch_id: BatchId) -> Self {
+        pub(crate) fn with_reject(batch_id: String) -> Self {
             Self { batch_id, success: false }
         }
 
-        pub(crate) fn with_success(batch_id: BatchId) -> Self {
+        pub(crate) fn with_success(batch_id: String) -> Self {
             Self { success: true, batch_id }
         }
     }

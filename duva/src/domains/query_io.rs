@@ -479,7 +479,7 @@ impl From<ReplicationRole> for Bytes {
 mod test {
     use super::*;
     use crate::domains::caches::cache_objects::CacheEntry;
-    use crate::domains::cluster_actors::hash_ring::{BatchId, HashRing};
+    use crate::domains::cluster_actors::hash_ring::HashRing;
     use crate::domains::cluster_actors::replication::{ReplicationId, ReplicationRole};
     use crate::domains::cluster_actors::topology::NodeReplInfo;
     use crate::domains::operation_logs::WriteRequest;
@@ -867,7 +867,7 @@ mod test {
     fn test_migrate_batch_serde() {
         // GIVEN
         let migrate_batch = MigrateBatch {
-            batch_id: BatchId(Uuid::now_v7().to_string()),
+            batch_id: Uuid::now_v7().to_string(),
             cache_entries: vec![CacheEntry::new("foo", "bar")],
         };
         let query_io = QueryIO::MigrateBatch(migrate_batch.clone());
@@ -889,7 +889,7 @@ mod test {
     fn test_migration_batch_ack_serde() {
         // GIVEN
         let migration_batch_ack =
-            MigrationBatchAck { batch_id: BatchId(Uuid::now_v7().to_string()), success: true };
+            MigrationBatchAck { batch_id: Uuid::now_v7().to_string(), success: true };
         let query_io = QueryIO::MigrationBatchAck(migration_batch_ack.clone());
 
         // WHEN
