@@ -117,18 +117,19 @@ impl<T> ClientController<T> {
                 }
                 Response::Array(keys)
             },
-            | Role | ClusterNodes => {
-                let QueryIO::Array(value) = query_io else {
-                    return Response::FormatError;
-                };
-                let mut nodes = Vec::new();
-                for item in value {
-                    let QueryIO::BulkString(value) = item else {
-                        return Response::FormatError;
-                    };
-                    nodes.push(Response::String(value));
-                }
-                Response::Array(nodes)
+            | Role | ClusterNodes => match query_io {
+                | QueryIO::Array(value) => {
+                    let mut nodes = Vec::new();
+                    for item in value {
+                        let QueryIO::BulkString(value) = item else {
+                            return Response::FormatError;
+                        };
+                        nodes.push(Response::String(value));
+                    }
+                    Response::Array(nodes)
+                },
+                | QueryIO::Err(value) => Response::Error(value),
+                | _ => Response::FormatError,
             },
         }
     }
