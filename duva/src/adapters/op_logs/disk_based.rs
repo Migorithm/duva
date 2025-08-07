@@ -14,8 +14,16 @@ const SEGMENT_SIZE: usize = 1024 * 1024; // 1MB per segment
 pub struct FileOpLogs {
     /// The directory where all segment files are stored, or the file path if not using segments
     path: PathBuf,
-    active_segment: Segment,
+
     segments: Vec<Segment>,
+}
+impl FileOpLogs {
+    fn get_active_segment(&self) -> &Segment {
+        self.segments.last().unwrap()
+    }
+    fn get_mut_active_segment(&mut self) -> &mut Segment {
+        self.segments.last_mut().unwrap()
+    }
 }
 
 #[derive(Debug)]
@@ -163,7 +171,9 @@ impl FileOpLogs {
             segments.push(segment);
         }
 
-        Ok(Self { path, active_segment, segments })
+        segments.push(active_segment);
+
+        Ok(Self { path, segments })
     }
 
     fn validate_folder(path: &PathBuf) -> Result<(), anyhow::Error> {
@@ -237,23 +247,20 @@ impl FileOpLogs {
 
     fn rotate_segment(&mut self) -> Result<()> {
         // Close current segment
-        if let Ok(mut writer) = self.active_segment.create_writer() {
+        if let Ok(mut writer) = self.get_active_segment().create_writer() {
             writer.flush()?;
             writer.get_mut().sync_all()?;
         }
 
-        let next_index = self.segments.len() + 1;
+        let next_index = self.segments.len();
         let segment_path = self.path.join(format!("segment_{next_index}.oplog"));
 
         // Create new segment
-        let mut seg = Segment::new(
+        let seg = Segment::new(
             segment_path,
-            self.active_segment.end_index + 1,
-            self.active_segment.end_index,
+            self.get_active_segment().end_index + 1,
+            self.get_active_segment().end_index,
         );
-
-        std::mem::swap(&mut seg, &mut self.active_segment);
-
         self.segments.push(seg);
 
         Ok(())
@@ -297,24 +304,25 @@ impl TWriteAheadLog for FileOpLogs {
     /// Appends a single `WriteOperation` to the file.
     fn append(&mut self, op: WriteOperation) -> Result<()> {
         // Check if we need to rotate
-        if self.active_segment.size >= SEGMENT_SIZE {
+        if self.get_active_segment().size >= SEGMENT_SIZE {
             self.rotate_segment()?;
         }
 
         let log_index = op.log_index;
 
         // Update index before writing
-        self.active_segment.lookups.push(LookupIndex::new(log_index, self.active_segment.size));
+        let byte_offset = self.get_active_segment().size;
+        self.get_mut_active_segment().lookups.push(LookupIndex::new(log_index, byte_offset));
 
         let serialized = op.serialize();
 
-        let mut writer = self.active_segment.create_writer()?;
+        let mut writer = self.get_active_segment().create_writer()?;
         writer.write_all(&serialized)?;
         writer.flush()?;
         writer.get_mut().sync_all()?;
 
-        self.active_segment.size += serialized.len();
-        self.active_segment.end_index = log_index;
+        self.get_mut_active_segment().size += serialized.len();
+        self.get_mut_active_segment().end_index = log_index;
 
         Ok(())
     }
@@ -330,7 +338,7 @@ impl TWriteAheadLog for FileOpLogs {
         let mut result = Vec::new();
 
         // sealed + active segments for iteration
-        let all_segments = self.segments.iter().chain(std::iter::once(&self.active_segment));
+        let all_segments = self.segments.iter();
 
         for segment in all_segments {
             // Optimization: Check for potential overlap first
@@ -404,19 +412,13 @@ impl TWriteAheadLog for FileOpLogs {
             }
         }
 
-        // Replay active segment
-        let active_operations = self.active_segment.read_operations()?;
-        for op in active_operations {
-            f(op);
-        }
-
         Ok(())
     }
 
     /// Forces any buffered data to be written to disk.
     fn fsync(&mut self) -> Result<()> {
         // Open in append mode to get a file handle to the active segment
-        let mut file = OpenOptions::new().append(true).open(&self.active_segment.path)?;
+        let mut file = OpenOptions::new().append(true).open(&self.get_active_segment().path)?;
         file.flush()?;
         file.sync_all()?;
 
@@ -435,11 +437,11 @@ impl TWriteAheadLog for FileOpLogs {
         }
 
         // Then check active segment
-        if self.active_segment.start_index <= log_index
-            && self.active_segment.end_index >= log_index
-            && let Some(offset) = self.active_segment.find_offset(log_index)
+        if self.get_active_segment().start_index <= log_index
+            && self.get_active_segment().end_index >= log_index
+            && let Some(offset) = self.get_active_segment().find_offset(log_index)
         {
-            return self.active_segment.read_at_offset(offset).ok();
+            return self.get_active_segment().read_at_offset(offset).ok();
         }
 
         None
@@ -449,12 +451,12 @@ impl TWriteAheadLog for FileOpLogs {
         if let Some(first_segment) = self.segments.first() {
             first_segment.start_index
         } else {
-            self.active_segment.start_index
+            self.get_active_segment().start_index
         }
     }
 
     fn is_empty(&self) -> bool {
-        self.segments.is_empty() && self.active_segment.size == 0
+        self.segments.is_empty() && self.get_active_segment().size == 0
     }
 
     fn truncate_after(&mut self, log_index: u64) {
@@ -463,25 +465,21 @@ impl TWriteAheadLog for FileOpLogs {
 
         // If active segment needs truncation
 
-        if self.active_segment.start_index <= log_index && self.active_segment.end_index > log_index
+        if self.get_active_segment().start_index <= log_index
+            && self.get_active_segment().end_index > log_index
         {
             // TODO: Implement truncation of active segment
         }
     }
 
     fn follower_full_sync(&mut self, ops: Vec<WriteOperation>) -> Result<()> {
-        // Clear all existing segments
         for segment in &self.segments {
             if segment.path.exists() {
                 std::fs::remove_file(&segment.path)?;
             }
         }
-        self.segments.clear();
 
-        // Clear and reset active segment
-        if self.active_segment.path.exists() {
-            std::fs::remove_file(&self.active_segment.path)?;
-        }
+        self.segments.clear();
 
         // Create new segment with a unique name to avoid conflicts
         let segment_path = self.path.join("segment_0.oplog");
@@ -516,7 +514,7 @@ impl TWriteAheadLog for FileOpLogs {
         new_segment.size = current_offset;
 
         // Replace existing segments with the new one
-        self.active_segment = new_segment;
+        self.segments.push(new_segment);
 
         Ok(())
     }
@@ -665,7 +663,7 @@ mod tests {
 
         // THEN
 
-        let segment = op_logs.active_segment;
+        let segment = op_logs.get_active_segment();
         assert_eq!(segment.start_index, 0);
         assert_eq!(segment.end_index, 0);
         assert_eq!(segment.size, 0);
@@ -693,7 +691,7 @@ mod tests {
 
         // THEN
 
-        let segment = op_logs.active_segment;
+        let segment = op_logs.get_active_segment();
         assert_eq!(segment.start_index, 10);
         assert_eq!(segment.end_index, 11);
         assert!(segment.size > 0);
@@ -721,6 +719,7 @@ mod tests {
         // Create multiple segments by forcing rotation
 
         let mut op_logs = FileOpLogs::new(path)?;
+
         // Fill first segment
         for i in 0..100 {
             op_logs.append(WriteOperation {
@@ -734,9 +733,9 @@ mod tests {
                 session_req: None,
             })?;
         }
-        // Force rotation
+
         op_logs.rotate_segment()?;
-        // Add to new segment
+
         op_logs.append(WriteOperation {
             request: WriteRequest::Set {
                 key: "new".into(),
@@ -753,11 +752,11 @@ mod tests {
 
         // THEN
 
-        assert_eq!(op_logs.active_segment.start_index, 100);
-        assert_eq!(op_logs.active_segment.end_index, 100);
-        assert!(op_logs.active_segment.size > 0);
-        assert!(op_logs.active_segment.path.exists());
-        assert!(op_logs.active_segment.path.ends_with("segment_1.oplog"));
+        assert_eq!(op_logs.get_active_segment().start_index, 100);
+        assert_eq!(op_logs.get_active_segment().end_index, 100);
+        assert!(op_logs.get_active_segment().size > 0);
+        assert!(op_logs.get_active_segment().path.exists());
+        assert!(dbg!(&op_logs.get_active_segment().path).ends_with("segment_1.oplog"));
 
         // Verify previous segment exists
         let prev_segment_path = path.join("segment_0.oplog");
@@ -832,12 +831,7 @@ mod tests {
         // Store the paths of existing segments before sync
         // We collect these mainly for informational purposes or debugging now,
         // as the assertion checking their non-existence will be removed.
-        let old_segment_paths: Vec<_> = op_logs
-            .segments
-            .iter()
-            .map(|s| s.path.clone())
-            .chain(std::iter::once(op_logs.active_segment.path.clone()))
-            .collect();
+        let old_segment_paths: Vec<_> = op_logs.segments.iter().map(|s| s.path.clone()).collect();
 
         // Verify files exist before sync (optional, but good for confirming setup)
         for path in &old_segment_paths {
@@ -851,18 +845,23 @@ mod tests {
 
         // THEN
         // Verify the state of the log after sync
-        assert_eq!(op_logs.segments.len(), 0, "Sealed segments should be empty after sync");
+        assert_eq!(op_logs.segments.len(), 1, "Only active one");
 
         // Verify the new active segment
         assert_eq!(
-            op_logs.active_segment.start_index, 0,
+            op_logs.get_active_segment().start_index,
+            0,
             "New active segment should start at index 0"
         );
-        assert_eq!(op_logs.active_segment.end_index, 1, "New active segment should end at index 1"); // Assuming new_ops has length 2 and indices 0 and 1
-        assert!(op_logs.active_segment.size > 0, "New active segment should have data");
-        assert!(op_logs.active_segment.path.exists(), "New active segment file should exist");
+        assert_eq!(
+            op_logs.get_active_segment().end_index,
+            1,
+            "New active segment should end at index 1"
+        ); // Assuming new_ops has length 2 and indices 0 and 1
+        assert!(op_logs.get_active_segment().size > 0, "New active segment should have data");
+        assert!(op_logs.get_active_segment().path.exists(), "New active segment file should exist");
         assert!(
-            op_logs.active_segment.path.ends_with("segment_0.oplog"),
+            op_logs.get_active_segment().path.ends_with("segment_0.oplog"),
             "New active segment path should be segment_0.oplog"
         );
 
@@ -895,10 +894,10 @@ mod tests {
         op_logs.follower_full_sync(Vec::new())?;
 
         // THEN
-        assert_eq!(op_logs.segments.len(), 0);
-        assert_eq!(op_logs.active_segment.start_index, 0);
-        assert_eq!(op_logs.active_segment.end_index, 0);
-        assert_eq!(op_logs.active_segment.size, 0);
+        assert_eq!(op_logs.segments.len(), 1);
+        assert_eq!(op_logs.get_active_segment().start_index, 0);
+        assert_eq!(op_logs.get_active_segment().end_index, 0);
+        assert_eq!(op_logs.get_active_segment().size, 0);
 
         let mut ops = Vec::new();
         op_logs.replay(|op| ops.push(op))?;
@@ -1039,7 +1038,7 @@ mod tests {
         op_logs2.append_many(ops_active.clone()).unwrap(); // segment_2 (20-24) active
 
         println!("Segments for multi-segment test: {:?}", op_logs2.segments);
-        println!("Active segment for multi-segment test: {:?}", op_logs2.active_segment);
+        println!("Active segment for multi-segment test: {:?}", op_logs2.get_active_segment());
 
         // Range across sealed segments (5 < i <= 15) -> 6..=15
         let result = op_logs2.range(5, 15);
@@ -1172,10 +1171,10 @@ mod tests {
         }
 
         // Verify index data is correctly maintained
-        assert_eq!(op_logs.active_segment.lookups.len(), 2);
-        assert_eq!(op_logs.active_segment.lookups[0], LookupIndex::new(1, 0));
-        assert!(op_logs.active_segment.lookups[1].log_index == 2);
-        assert!(op_logs.active_segment.lookups[1].byte_offset > 0);
+        assert_eq!(op_logs.get_active_segment().lookups.len(), 2);
+        assert_eq!(op_logs.get_active_segment().lookups[0], LookupIndex::new(1, 0));
+        assert!(op_logs.get_active_segment().lookups[1].log_index == 2);
+        assert!(op_logs.get_active_segment().lookups[1].byte_offset > 0);
 
         // Verify we can read operations using the index
         let read_op1 = op_logs.read_at(1);
@@ -1231,8 +1230,8 @@ mod tests {
         })?;
 
         // Verify index data in active segment
-        assert_eq!(op_logs.active_segment.lookups.len(), 1);
-        assert_eq!(op_logs.active_segment.lookups[0], LookupIndex::new(100, 0));
+        assert_eq!(op_logs.get_active_segment().lookups.len(), 1);
+        assert_eq!(op_logs.get_active_segment().lookups[0], LookupIndex::new(100, 0));
 
         Ok(())
     }
@@ -1263,9 +1262,9 @@ mod tests {
         let op_logs = FileOpLogs::new(path)?;
 
         // Verify index data was recovered correctly
-        assert_eq!(op_logs.active_segment.lookups.len(), 50);
+        assert_eq!(op_logs.get_active_segment().lookups.len(), 50);
         for i in 0..50 {
-            assert_eq!(op_logs.active_segment.lookups[i].log_index, i as u64);
+            assert_eq!(op_logs.get_active_segment().lookups[i].log_index, i as u64);
         }
 
         // Verify we can read operations using the recovered index
@@ -1304,10 +1303,10 @@ mod tests {
         op_logs.follower_full_sync(new_ops.clone())?;
 
         // Verify index data after full sync
-        assert_eq!(op_logs.active_segment.lookups.len(), 2);
-        assert_eq!(op_logs.active_segment.lookups[0], LookupIndex::new(0, 0));
-        assert!(op_logs.active_segment.lookups[1].log_index == 1);
-        assert!(op_logs.active_segment.lookups[1].byte_offset > 0);
+        assert_eq!(op_logs.get_active_segment().lookups.len(), 2);
+        assert_eq!(op_logs.get_active_segment().lookups[0], LookupIndex::new(0, 0));
+        assert!(op_logs.get_active_segment().lookups[1].log_index == 1);
+        assert!(op_logs.get_active_segment().lookups[1].byte_offset > 0);
 
         // Verify we can read operations using the new index
         let read_op0 = op_logs.read_at(0);
