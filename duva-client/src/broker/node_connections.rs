@@ -44,8 +44,9 @@ impl NodeConnections {
         }
     }
     pub(crate) async fn remove_outdated_connections(&mut self, node_repl_ids: Vec<ReplicationId>) {
-        let outdated_connections =
-            self.conns.extract_if(|repl_id, _| !node_repl_ids.contains(repl_id));
+        let outdated_connections = self.conns.extract_if(|repl_id, _| {
+            !node_repl_ids.contains(repl_id) && repl_id.clone() != self.seed_node.clone()
+        });
         join_all(outdated_connections.into_iter().map(|(_, connection)| connection.kill())).await;
     }
 
@@ -168,13 +169,40 @@ mod tests {
             NodeConnection { writer: tx2, kill_switch: kill_tx2, request_id: 0 },
         );
 
-        // When - peer1 is not in the topology peers, repl_id2 is kept
-        let topology_peers = vec![repl_id2.clone()];
+        // When - peer2 is not in the topology peers, repl_id1 is kept
+        let topology_peers = vec![repl_id1.clone()];
         connections.remove_outdated_connections(topology_peers).await;
 
         // Then
         assert_eq!(connections.len(), 1);
-        assert!(!connections.contains_key(&repl_id1));
+        assert!(connections.contains_key(&repl_id1));
+        assert!(!connections.contains_key(&repl_id2));
+    }
+
+    #[tokio::test]
+    async fn test_leader_connections_remove_outdated_connections_except_seed() {
+        // Given
+        let repl_id1 = ReplicationId::Key("key1".into());
+        let repl_id2 = ReplicationId::Key("key2".into());
+        let (tx1, _rx1) = mpsc::channel(10);
+        let (kill_tx1, _kill_rx1) = oneshot::channel();
+        let conn = NodeConnection { writer: tx1, kill_switch: kill_tx1, request_id: 0 };
+        let mut connections = NodeConnections::new(repl_id1.clone(), conn);
+
+        let (tx2, _rx2) = mpsc::channel(10);
+        let (kill_tx2, _kill_rx2) = oneshot::channel();
+        connections.insert(
+            repl_id2.clone(),
+            NodeConnection { writer: tx2, kill_switch: kill_tx2, request_id: 0 },
+        );
+
+        // When - peer1 is seed, both should be kept
+        let topology_peers = vec![repl_id2.clone()];
+        connections.remove_outdated_connections(topology_peers).await;
+
+        // Then
+        assert_eq!(connections.len(), 2);
+        assert!(connections.contains_key(&repl_id1));
         assert!(connections.contains_key(&repl_id2));
     }
 }
