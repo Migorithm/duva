@@ -14,7 +14,6 @@ const SEGMENT_SIZE: usize = 1024 * 1024; // 1MB per segment
 pub struct FileOpLogs {
     /// The directory where all segment files are stored, or the file path if not using segments
     path: PathBuf,
-
     segments: Vec<Segment>,
 }
 impl FileOpLogs {
@@ -52,7 +51,7 @@ impl LookupIndex {
 
 impl Segment {
     fn new(path: PathBuf, start_index: u64, end_index: u64) -> Self {
-        let _ = OpenOptions::new()
+        let _file = OpenOptions::new()
             .create(true)
             .append(true)
             .read(true)
@@ -478,22 +477,15 @@ impl TWriteAheadLog for FileOpLogs {
                 std::fs::remove_file(&segment.path)?;
             }
         }
-
         self.segments.clear();
 
         // Create new segment with a unique name to avoid conflicts
         let segment_path = self.path.join("segment_0.oplog");
-        let file =
-            OpenOptions::new().create(true).write(true).truncate(true).open(&segment_path)?;
-        file.sync_all()?;
-
-        let mut new_segment = Segment {
-            path: segment_path,
-            start_index: ops.first().map(|op| op.log_index).unwrap_or(0),
-            end_index: ops.last().map(|op| op.log_index).unwrap_or(0),
-            size: 0,
-            lookups: Vec::new(),
-        };
+        let mut new_segment = Segment::new(
+            segment_path,
+            ops.first().map(|op| op.log_index).unwrap_or(0),
+            ops.last().map(|op| op.log_index).unwrap_or(0),
+        );
 
         // Write all operations to the new segment
         let mut writer = new_segment.create_writer()?;
