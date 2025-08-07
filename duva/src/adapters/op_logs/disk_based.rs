@@ -16,14 +16,6 @@ pub struct FileOpLogs {
     path: PathBuf,
     segments: Vec<Segment>,
 }
-impl FileOpLogs {
-    fn get_active_segment(&self) -> &Segment {
-        self.segments.last().unwrap()
-    }
-    fn get_mut_active_segment(&mut self) -> &mut Segment {
-        self.segments.last_mut().unwrap()
-    }
-}
 
 #[derive(Debug)]
 struct Segment {
@@ -145,6 +137,13 @@ impl Segment {
 }
 
 impl FileOpLogs {
+    fn get_active_segment(&self) -> &Segment {
+        self.segments.last().unwrap()
+    }
+    fn get_mut_active_segment(&mut self) -> &mut Segment {
+        self.segments.last_mut().unwrap()
+    }
+
     /// Creates a new `FileOpLogs` by opening the specified `path`.
     ///
     /// If the path is a directory, it will use segmented logs.
@@ -492,9 +491,8 @@ impl TWriteAheadLog for FileOpLogs {
         let mut current_offset = 0;
 
         for op in ops.into_iter() {
-            let log_index = op.log_index;
+            new_segment.lookups.push(LookupIndex::new(op.log_index, current_offset));
             let serialized = op.serialize();
-            new_segment.lookups.push(LookupIndex::new(log_index, current_offset));
             current_offset += serialized.len();
             writer.write_all(&serialized)?;
         }
