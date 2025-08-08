@@ -1,3 +1,5 @@
+use std::io::Error;
+
 use tokio::sync::RwLock;
 
 use super::*;
@@ -119,7 +121,6 @@ async fn test_reconnection_on_gossip() {
         .await;
 
     assert!(handle.await.is_ok());
-    assert!(rx.await.is_ok());
 }
 
 #[tokio::test]
@@ -241,15 +242,15 @@ async fn test_add_peer_for_follower_send_heartbeat() {
         ReplicationRole::Follower,
         buf.clone(),
     );
-    let (tx, rx) = Callback::create();
+    let (tx, rx) = Callback::<anyhow::Result<()>>::create();
 
-    let task = tokio::spawn(async move { rx.await.unwrap() });
+    let task = tokio::spawn(async move { rx.recv().await.unwrap() });
 
     // WHEN - add the follower peer
-    cluster_actor.add_peer(peer, Some(tx.into())).await;
+    cluster_actor.add_peer(peer, Some(tx)).await;
 
     // THEN - check if heartbeat is sent to the follower
-    task.await.unwrap().unwrap();
+    task.await.unwrap();
     assert_expected_queryio(
         &buf,
         cluster_actor

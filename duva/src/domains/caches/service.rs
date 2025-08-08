@@ -145,7 +145,7 @@ mod test {
         async fn drop(&self) {
             let (tx, rx) = Callback::create();
             self.0.send(CacheCommand::Drop { callback: tx.into() }).await.unwrap();
-            let _ = rx.await;
+            let _ = rx.recv().await;
         }
     }
 
@@ -174,10 +174,10 @@ mod test {
         cache.index_get(key.clone(), 1, tx2.into()).await;
 
         // THEN
-        let res1 = tokio::spawn(rx1);
-        let res2 = tokio::spawn(rx2);
+        let res1 = tokio::spawn(rx1.recv());
+        let res2 = tokio::spawn(rx2.recv());
 
-        assert_eq!(res1.await.unwrap().unwrap(), CacheValue::new(value));
+        assert_eq!(res1.await.unwrap(), CacheValue::new(value));
 
         let timeout = timeout(Duration::from_millis(1000), res2);
         assert!(timeout.await.is_err());
@@ -205,18 +205,18 @@ mod test {
         // ! Fail when hwm wasn't updated and ping was not sent
         let (fail_t, fail_r) = Callback::create();
         cache.index_get(key.clone(), 1, fail_t.into()).await;
-        timeout(Duration::from_millis(1000), fail_r).await.unwrap_err();
+        timeout(Duration::from_millis(1000), fail_r.recv()).await.unwrap_err();
 
         // * success when hwm was updated and ping was sent
         let (t, r) = Callback::create();
         cache.index_get(key.clone(), 1, t.into()).await;
 
-        let task = tokio::spawn(r);
+        let task = tokio::spawn(r.recv());
         hwm.store(1, std::sync::atomic::Ordering::Relaxed);
         cache.ping().await;
 
         // THEN
-        assert_eq!(task.await.unwrap().unwrap(), CacheValue::new(value));
+        assert_eq!(task.await.unwrap(), CacheValue::new(value));
     }
 
     #[tokio::test]
@@ -242,11 +242,11 @@ mod test {
         let (tx, rx) = Callback::create();
         cache.get("key".to_string().clone(), tx.into()).await;
 
-        assert!(matches!(rx.await, Ok(CacheValue { value: TypedValue::Null, .. })));
+        assert!(matches!(rx.recv().await, CacheValue { value: TypedValue::Null, .. }));
 
         let (tx, rx) = Callback::create();
         cache.get("key1".to_string().clone(), tx.into()).await;
 
-        assert!(matches!(rx.await, Ok(CacheValue { value: TypedValue::Null, .. })));
+        assert!(matches!(rx.recv().await, CacheValue { value: TypedValue::Null, .. }));
     }
 }

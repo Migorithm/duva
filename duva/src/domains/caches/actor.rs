@@ -72,7 +72,7 @@ impl CacheActor {
                 tokio::time::sleep(expire_in).await;
                 let (callback, rx) = Callback::create();
                 let _ = handler.send(CacheCommand::Delete { key, callback }).await;
-                let _ = rx.await;
+                let _ = rx.recv().await;
             }
         });
         Ok(())
