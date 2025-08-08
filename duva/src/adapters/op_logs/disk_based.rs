@@ -380,9 +380,7 @@ impl TWriteAheadLog for FileOpLogs {
                         {
                             result.extend(ops);
                         }
-                        // else: Handle error during reading ops from reader
                     }
-                    // else: Handle error opening file
                 }
             }
         }

@@ -21,14 +21,14 @@ impl ClusterCommunicationManager {
     pub(crate) async fn route_get_peers(&self) -> anyhow::Result<Vec<PeerIdentifier>> {
         let (tx, rx) = Callback::create();
         self.send(ClientMessage::GetPeers(tx)).await?;
-        let peers = rx.await?;
+        let peers = rx.recv().await;
         Ok(peers)
     }
 
     pub(crate) async fn route_get_topology(&self) -> anyhow::Result<Topology> {
         let (tx, rx) = Callback::create();
         self.send(ClientMessage::GetTopology(tx)).await?;
-        let peers = rx.await?;
+        let peers = rx.recv().await;
         Ok(peers)
     }
 
@@ -38,14 +38,14 @@ impl ClusterCommunicationManager {
     ) -> anyhow::Result<()> {
         let (tx, rx) = Callback::create();
         self.send(ConnectionMessage::ConnectToServer { connect_to, callback: tx }).await?;
-        rx.await??;
+        rx.recv().await;
         Ok(())
     }
 
     pub(crate) async fn route_get_replication_state(&self) -> anyhow::Result<ReplicationState> {
         let (tx, rx) = Callback::create();
         self.send(ClientMessage::ReplicationInfo(tx)).await?;
-        Ok(rx.await?)
+        Ok(rx.recv().await)
     }
 
     pub(crate) async fn route_get_cluster_info(&self) -> anyhow::Result<String> {
@@ -71,7 +71,7 @@ impl ClusterCommunicationManager {
     ) -> anyhow::Result<bool> {
         let (tx, rx) = Callback::create();
         self.send(ClientMessage::ForgetPeer(peer_identifier, tx)).await?;
-        let Some(_) = rx.await? else { return Ok(false) };
+        let Some(_) = rx.recv().await else { return Ok(false) };
         Ok(true)
     }
 
@@ -82,7 +82,7 @@ impl ClusterCommunicationManager {
         let (tx, rx) = Callback::create();
         let _ = self.send(ClientMessage::ReplicaOf(peer_identifier, tx)).await;
 
-        rx.await?
+        rx.recv().await
     }
 
     pub(crate) async fn route_cluster_meet(
@@ -92,30 +92,30 @@ impl ClusterCommunicationManager {
     ) -> anyhow::Result<()> {
         let (tx, rx) = Callback::create();
         let _ = self.send(ClientMessage::ClusterMeet(peer_identifier, lazy_option, tx)).await;
-        rx.await?
+        rx.recv().await
     }
     pub(crate) async fn route_cluster_reshard(&self) -> anyhow::Result<()> {
         let (tx, rx) = Callback::create();
         let _ = self.send(ClientMessage::ClusterReshard(tx)).await;
-        rx.await?
+        rx.recv().await
     }
 
     pub(crate) async fn route_cluster_nodes(&self) -> anyhow::Result<Vec<PeerState>> {
         let (tx, rx) = Callback::create();
         self.send(ClientMessage::ClusterNodes(tx)).await?;
-        Ok(rx.await?)
+        Ok(rx.recv().await)
     }
 
     pub(crate) async fn route_get_roles(&self) -> anyhow::Result<Vec<String>> {
         let (tx, rx) = Callback::create();
         self.send(ClientMessage::GetRoles(tx)).await?;
-        Ok(rx.await?.into_iter().map(|(id, role)| format!("{}:{}", id.0, role)).collect())
+        Ok(rx.recv().await.into_iter().map(|(id, role)| format!("{}:{}", id.0, role)).collect())
     }
 
     pub(crate) async fn route_get_role(&self) -> anyhow::Result<ReplicationRole> {
         let (tx, rx) = Callback::create();
         self.send(ClientMessage::GetRole(tx)).await?;
-        Ok(rx.await?)
+        Ok(rx.recv().await)
     }
 
     pub(crate) async fn route_subscribe_topology_change(
@@ -123,6 +123,6 @@ impl ClusterCommunicationManager {
     ) -> anyhow::Result<tokio::sync::broadcast::Receiver<Topology>> {
         let (tx, rx) = Callback::create();
         let _ = self.send(ClientMessage::SubscribeToTopologyChange(tx)).await;
-        Ok(rx.await?)
+        Ok(rx.recv().await)
     }
 }
