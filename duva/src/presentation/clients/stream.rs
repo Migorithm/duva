@@ -50,6 +50,7 @@ impl ClientStreamReader {
                             if sender.send(QueryIO::Err(err.to_string().into())).await.is_err() {
                                 return;
                             }
+                            continue;
                         },
                     }
                 };
