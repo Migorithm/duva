@@ -18,7 +18,7 @@ pub struct FileOpLogs {
     segments: Vec<Segment>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 struct Segment {
     path: PathBuf,
     start_index: u64,
@@ -241,21 +241,22 @@ impl FileOpLogs {
             writer.get_mut().sync_all()?;
         }
 
-        // Add to segments list
-        self.segments.push(self.active_segment.clone());
-
         // Create new segment
-        let next_index = self.segments.len();
+        let next_index = self.segments.len() + 1;
         let segment_path = self.path.join(format!("segment_{next_index}.oplog"));
         let _ = OpenOptions::new().create(true).append(true).read(true).open(&segment_path)?;
 
-        self.active_segment = Segment {
+        let mut seg = Segment {
             path: segment_path,
             start_index: self.active_segment.end_index + 1,
             end_index: self.active_segment.end_index,
             size: 0,
             lookups: Vec::new(),
         };
+
+        std::mem::swap(&mut seg, &mut self.active_segment);
+
+        self.segments.push(seg);
 
         Ok(())
     }
