@@ -259,24 +259,29 @@ async fn test_make_migration_plan_when_no_hashring_given() {
 #[tokio::test]
 async fn test_send_migrate_and_wait_happypath() {
     // GIVEN
-    let (cluster_actor, recv) = Helper::cluster_actor_with_receiver(ReplicationRole::Leader).await;
+    let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Leader).await;
 
     // Create dummy task
     let target_replid = ReplicationId::Key("my_test_key".to_string());
     let batch_to_migrate = vec![migration_task_create_helper(0, 100)];
     let batch = MigrationBatch::new(target_replid.clone(), batch_to_migrate.clone());
 
-    // WHEN
-    let (callback, _) = Callback::create();
-    let task = tokio::spawn({
-        recv.wait_message(SchedulerMessage::ScheduleMigrationBatch(batch.clone(), callback))
+    // ! spawn actor receiver in the background
+    let task = tokio::spawn(async move {
+        while let Some(ClusterCommand::Scheduler(SchedulerMessage::ScheduleMigrationBatch(_, d))) =
+            cluster_actor.receiver.recv().await
+        {
+            d.send(Ok(()));
+            break;
+        }
     });
 
-    let _ = ClusterActor::<MemoryOpLogs>::schedule_migration_in_batch(
+    ClusterActor::<MemoryOpLogs>::schedule_migration_in_batch(
         batch,
         cluster_actor.self_handler.clone(),
     )
-    .await;
+    .await
+    .unwrap();
 
     // THEN
     task.await.unwrap();
@@ -355,7 +360,7 @@ async fn test_migrate_keys_target_peer_not_found() {
     cluster_actor.migrate_batch(tasks, &cache_manager, callback_tx).await;
 
     // THEN
-    let result = callback_rx.await.unwrap();
+    let result = callback_rx.recv().await;
     assert!(result.is_err());
     assert!(result.unwrap_err().to_string().contains("Target peer not found"));
 }
@@ -580,7 +585,7 @@ async fn test_handle_migration_ack_failure() {
     // THEN
 
     // Verify callback was called with error
-    let callback_result = callback_rx.await.unwrap();
+    let callback_result = callback_rx.recv().await;
     assert!(callback_result.is_err());
     assert!(
         callback_result
@@ -664,7 +669,7 @@ async fn test_handle_migration_ack_success_case_with_pending_reqs_and_migration(
     // THEN
 
     // Verify callback was successful
-    let callback_result = callback_rx.await.unwrap();
+    let callback_result = callback_rx.recv().await;
     assert!(callback_result.is_ok());
 
     // Verify keys were deleted from cache after successful migration

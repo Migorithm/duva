@@ -30,7 +30,7 @@ impl PeerListener {
                 select! {
                     _ = listener.start() => listener.read_connected.0,
                     // If the kill switch is triggered, return the connected stream so the caller can decide what to do with it
-                    _ = kill_switch => listener.read_connected.0
+                    _ = kill_switch.recv() => listener.read_connected.0
                 }
             }
         });

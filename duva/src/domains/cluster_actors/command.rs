@@ -7,10 +7,8 @@ use crate::domains::peers::command::PeerCommand;
 use crate::domains::peers::connections::connection_types::{ReadConnected, WriteConnected};
 use crate::domains::peers::peer::{Peer, PeerState};
 use crate::prelude::PeerIdentifier;
-use crate::types::Callback;
+use crate::types::{Callback, CallbackAwaiter};
 use std::str::FromStr;
-
-use tokio::sync::oneshot;
 use uuid::Uuid;
 
 #[derive(Debug, PartialEq, Eq)]
@@ -45,7 +43,7 @@ pub enum ConnectionMessage {
     AddPeer(Peer, Option<Callback<anyhow::Result<()>>>),
     FollowerSetReplId(ReplicationId, PeerIdentifier),
     ActivateClusterSync(Callback<()>),
-    RequestClusterSyncAwaiter(Callback<Option<oneshot::Receiver<()>>>),
+    RequestClusterSyncAwaiter(Callback<Option<CallbackAwaiter<()>>>),
 }
 impl From<ConnectionMessage> for ClusterCommand {
     fn from(msg: ConnectionMessage) -> Self {

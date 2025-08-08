@@ -104,11 +104,11 @@ impl<K: Eq + Hash + Clone + Debug, V: Debug + Clone + THasExpiry> LruCache<K, V>
         self.map.keys()
     }
 
-    pub fn iter(&self) -> LruIter<K, V> {
+    pub fn iter(&self) -> LruIter<'_, K, V> {
         LruIter { cache: self, current: self.head }
     }
 
-    pub fn entry(&mut self, key: K) -> Entry<K, V> {
+    pub fn entry(&mut self, key: K) -> Entry<'_, K, V> {
         if let Some(&index) = self.map.get(&key) {
             Entry::Occupied(OccupiedEntry { cache: self, index })
         } else {

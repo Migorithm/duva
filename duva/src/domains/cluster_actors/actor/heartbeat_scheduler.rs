@@ -61,7 +61,7 @@ impl HeartBeatScheduler {
 
         tokio::spawn(async move {
             select! {
-                _ = rx => {},
+                _ = rx.recv() => {},
                 _ = async {
                     loop {
                         itv.tick().await;

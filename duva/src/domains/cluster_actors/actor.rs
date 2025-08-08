@@ -18,7 +18,6 @@ use crate::domains::cluster_actors::consensus::election::ElectionVoting;
 use crate::domains::cluster_actors::hash_ring::MigrationBatch;
 use crate::domains::cluster_actors::hash_ring::PendingMigration;
 use crate::domains::cluster_actors::hash_ring::PendingMigrationBatch;
-
 use crate::domains::cluster_actors::topology::{NodeReplInfo, Topology};
 use crate::domains::operation_logs::WriteRequest;
 use crate::domains::operation_logs::interfaces::TWriteAheadLog;
@@ -41,12 +40,12 @@ use crate::err;
 use crate::from_to;
 use crate::res_err;
 use crate::types::Callback;
+use crate::types::CallbackAwaiter;
 use client_sessions::ClientSessions;
 
 use heartbeat_scheduler::HeartBeatScheduler;
 use std::collections::HashMap;
 use tokio::net::TcpStream;
-use tokio::sync::oneshot;
 
 use std::fmt::Debug;
 use std::fs::File;
@@ -88,7 +87,7 @@ pub struct ClusterActor<T> {
 struct ClusterJoinSync {
     known_peers: HashMap<PeerIdentifier, bool>,
     notifier: Option<Callback<()>>,
-    waiter: Option<oneshot::Receiver<()>>,
+    waiter: Option<CallbackAwaiter<()>>,
 }
 impl ClusterJoinSync {
     fn new(known_peers: Vec<PeerIdentifier>) -> Self {
@@ -218,7 +217,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     }
     pub(crate) fn send_cluster_sync_awaiter(
         &mut self,
-        callback: Callback<Option<oneshot::Receiver<()>>>,
+        callback: Callback<Option<CallbackAwaiter<()>>>,
     ) {
         callback.send(self.cluster_join_sync.waiter.take());
     }
@@ -526,14 +525,13 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             let h = self.self_handler.clone();
             let lazy_option = lazy_option.clone();
             async move {
-                let conn_res =
-                    conn_awaiter.await.unwrap_or_else(|_| Err(anyhow::anyhow!("Channel closed")));
+                let conn_res = conn_awaiter.recv().await;
 
                 if lazy_option == LazyOption::Eager {
                     let (activation_sig, on_activation) = Callback::create();
                     let _ =
                         h.send(ConnectionMessage::ActivateClusterSync(activation_sig.into())).await;
-                    let _ = on_activation.await;
+                    let _ = on_activation.recv().await;
                 }
                 let _ = completion_sig.send(conn_res);
             }
@@ -549,21 +547,20 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
     async fn register_delayed_schedule<C>(
         cluster_sender: ClusterCommandHandler,
-        completion_awaiter: tokio::sync::oneshot::Receiver<anyhow::Result<C>>,
+        completion_awaiter: CallbackAwaiter<anyhow::Result<C>>,
         on_completion: Callback<anyhow::Result<C>>,
 
         schedule_cmd: SchedulerMessage,
     ) where
         C: Send + Sync + 'static,
     {
-        let result =
-            completion_awaiter.await.unwrap_or_else(|_| Err(anyhow::anyhow!("Channel closed")));
+        let result = completion_awaiter.recv().await;
         on_completion.send(result);
 
         let (callback, cluster_sync_awaiter) = Callback::create();
         let _ = cluster_sender.send(ConnectionMessage::RequestClusterSyncAwaiter(callback)).await;
-        if let Some(sync_singal) = cluster_sync_awaiter.await.unwrap() {
-            let _ = sync_singal.await;
+        if let Some(sync_singal) = cluster_sync_awaiter.recv().await {
+            let _ = sync_singal.recv().await;
         }
 
         // Send schedule command regardless of callback result
@@ -1234,7 +1231,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     ) -> anyhow::Result<()> {
         let (tx, rx) = Callback::create();
         handler.send(SchedulerMessage::ScheduleMigrationBatch(batch, tx.into())).await?;
-        rx.await?
+        rx.recv().await
     }
 
     pub(crate) async fn migrate_batch(
@@ -1307,20 +1304,14 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             let handler = self.self_handler.clone();
             let cache_manager = cache_manager.clone();
             async move {
-                if rx.await.is_ok() {
-                    let _ = cache_manager.route_mset(migrate_batch.cache_entries.clone()).await; // reflect state change
-                    let _ = handler
-                        .send(SchedulerMessage::SendBatchAck {
-                            batch_id: migrate_batch.batch_id,
-                            to: from,
-                        })
-                        .await;
-                    return;
-                }
-                error!(
-                    "Failed to write some keys during migration for batch {}",
-                    migrate_batch.batch_id
-                );
+                let _ = cache_manager.route_mset(migrate_batch.cache_entries.clone()).await; // reflect state change
+                let _ = handler
+                    .send(SchedulerMessage::SendBatchAck {
+                        batch_id: migrate_batch.batch_id,
+                        to: from,
+                    })
+                    .await;
+                return;
             }
         });
     }
@@ -1361,11 +1352,9 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             let cache_manager = cache_manager.clone();
 
             async move {
-                if rx.await.is_ok() {
-                    let _ = cache_manager.route_delete(pending_migration_batch.keys).await; // reflect state change
-                    let _ = handler.send(SchedulerMessage::TryUnblockWriteReqs).await;
-                    pending_migration_batch.callback.send(Ok(()));
-                }
+                let _ = cache_manager.route_delete(pending_migration_batch.keys).await; // reflect state change
+                let _ = handler.send(SchedulerMessage::TryUnblockWriteReqs).await;
+                pending_migration_batch.callback.send(Ok(()));
             }
         });
     }

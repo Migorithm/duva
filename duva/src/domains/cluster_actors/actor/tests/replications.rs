@@ -498,7 +498,7 @@ async fn test_leader_req_consensus_early_return_when_already_processed_session_r
         .unwrap();
 
     // THEN
-    rx.await.unwrap();
+    rx.recv().await;
 }
 
 #[tokio::test]
@@ -544,7 +544,7 @@ async fn test_consensus_voting_deleted_when_consensus_reached() {
     assert_eq!(cluster_actor.consensus_tracker.len(), 0);
     assert_eq!(cluster_actor.logger.last_log_index, 1);
 
-    client_wait.await.unwrap();
+    client_wait.recv().await;
     assert!(cluster_actor.client_sessions.is_processed(&Some(client_request))); // * session_request_is_marked_as_processed
 }
 
@@ -648,7 +648,7 @@ async fn test_leader_req_consensus_with_processed_session() {
     assert_eq!(cluster_actor.logger.last_log_index, 0);
 
     // Verify the response indicates already processed
-    let ConsensusClientResponse::AlreadyProcessed { key, index } = rx.await.unwrap() else {
+    let ConsensusClientResponse::AlreadyProcessed { key, index } = rx.recv().await else {
         panic!("Expected AlreadyProcessed response");
     };
     assert_eq!(key, vec!["test_key".to_string()]);
