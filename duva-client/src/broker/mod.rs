@@ -66,6 +66,7 @@ impl Broker {
             match msg {
                 | BrokerMessage::FromServer(_, QueryIO::TopologyChange(topology)) => {
                     self.topology = topology;
+                    self.add_leader_conns_if_not_found().await;
                     self.update_leader_connections().await;
                 },
 
@@ -191,7 +192,6 @@ impl Broker {
     }
 
     async fn update_leader_connections(&mut self) {
-        self.add_leader_conns_if_not_found().await;
         self.node_connections
             .remove_outdated_connections(self.topology.hash_ring.get_replication_ids())
             .await;
@@ -199,13 +199,11 @@ impl Broker {
 
     async fn add_leader_conns_if_not_found(&mut self) {
         for node in self.topology.node_infos.clone() {
-            if ReplicationRole::Leader != node.repl_role.clone() {
-                continue; // skip non-leader nodes
+            if ReplicationRole::Leader == node.repl_role.clone()
+                && !self.node_connections.contains_key(&node.repl_id)
+            {
+                let _ = self.tx.send(BrokerMessage::AddNodeConnection(node)).await;
             }
-            if self.node_connections.contains_key(&node.repl_id) {
-                continue; // skip already connected nodes
-            }
-            let _ = self.tx.send(BrokerMessage::AddNodeConnection(node)).await;
         }
     }
 
