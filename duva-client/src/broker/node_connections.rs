@@ -99,7 +99,7 @@ impl NodeConnection {
             },
 
             //TODO replace "self.request_id + 1" - make the call to get "current_index" from the server
-            | QueryIO::Err(_) => self.request_id = self.request_id + 1,
+            | QueryIO::Err(_) => self.request_id += 1,
             | _ => {},
         }
     }

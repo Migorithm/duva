@@ -341,7 +341,7 @@ impl TWriteAheadLog for FileOpLogs {
             }
 
             // Find the index in index_data for the first log entry >= start_exclusive + 1
-            let start_log_index_in_segment = start_exclusive.checked_add(1).unwrap_or(u64::MAX); // Avoid overflow
+            let start_log_index_in_segment = start_exclusive.saturating_add(1); // Avoid overflow
 
             // Find the position in index_data where log_index is >= start_log_index_in_segment
             // Use binary search on the sorted index_data for efficiency
@@ -372,14 +372,14 @@ impl TWriteAheadLog for FileOpLogs {
                 // If the desired start index is before or at the beginning of the segment,
                 // we should start reading from the beginning of the segment file (offset 0)
                 // if the segment also overlaps with the end_inclusive range.
-                if segment.start_index <= end_inclusive {
-                    if let Ok(file) = OpenOptions::new().read(true).open(&segment.path) {
-                        let mut reader = BufReader::new(file); // Starts at offset 0
-                        if let Ok(ops) =
-                            self.read_ops_from_reader(&mut reader, start_exclusive, end_inclusive)
-                        {
-                            result.extend(ops);
-                        }
+                if segment.start_index <= end_inclusive
+                    && let Ok(file) = OpenOptions::new().read(true).open(&segment.path)
+                {
+                    let mut reader = BufReader::new(file); // Starts at offset 0
+                    if let Ok(ops) =
+                        self.read_ops_from_reader(&mut reader, start_exclusive, end_inclusive)
+                    {
+                        result.extend(ops);
                     }
                 }
             }

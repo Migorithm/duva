@@ -44,7 +44,7 @@ impl CacheManager {
         let (callback, rx) = Callback::create();
         let key_ref = key.as_ref();
         self.select_shard(key_ref)
-            .send(CacheCommand::Get { key: key_ref.into(), callback: callback.into() })
+            .send(CacheCommand::Get { key: key_ref.into(), callback })
             .await?;
         let res = rx.recv().await;
         if !res.is_string() && !res.is_null() {
@@ -77,10 +77,8 @@ impl CacheManager {
         value: Vec<String>,
         current_idx: u64,
     ) -> Result<String> {
-        let (tx, rx) = Callback::create();
-        self.select_shard(&key)
-            .send(CacheCommand::LPush { key, values: value, callback: tx.into() })
-            .await?;
+        let (callback, rx) = Callback::create();
+        self.select_shard(&key).send(CacheCommand::LPush { key, values: value, callback }).await?;
         let current_len = rx.recv().await?;
         Ok(IndexedValueCodec::encode(current_len, current_idx))
     }
@@ -90,21 +88,17 @@ impl CacheManager {
         value: Vec<String>,
         current_idx: u64,
     ) -> Result<String> {
-        let (tx, rx) = Callback::create();
+        let (callback, rx) = Callback::create();
 
-        self.select_shard(&key)
-            .send(CacheCommand::LPushX { key, values: value, callback: tx.into() })
-            .await?;
+        self.select_shard(&key).send(CacheCommand::LPushX { key, values: value, callback }).await?;
         let current_len = rx.recv().await;
 
         Ok(IndexedValueCodec::encode(current_len, current_idx))
     }
 
     pub(crate) async fn route_lpop(&self, key: String, count: usize) -> Result<Vec<String>> {
-        let (tx, rx) = Callback::create();
-        self.select_shard(&key)
-            .send(CacheCommand::LPop { key, count, callback: tx.into() })
-            .await?;
+        let (callback, rx) = Callback::create();
+        self.select_shard(&key).send(CacheCommand::LPop { key, count, callback }).await?;
 
         let pop_values = rx.recv().await;
         Ok(pop_values)
@@ -116,10 +110,8 @@ impl CacheManager {
         value: Vec<String>,
         unwrap: u64,
     ) -> Result<String> {
-        let (tx, rx) = Callback::create();
-        self.select_shard(&key)
-            .send(CacheCommand::RPush { key, values: value, callback: tx.into() })
-            .await?;
+        let (callback, rx) = Callback::create();
+        self.select_shard(&key).send(CacheCommand::RPush { key, values: value, callback }).await?;
         let current_len = rx.recv().await?;
         Ok(IndexedValueCodec::encode(current_len, unwrap))
     }
@@ -129,21 +121,17 @@ impl CacheManager {
         value: Vec<String>,
         current_idx: u64,
     ) -> Result<String> {
-        let (tx, rx) = Callback::create();
+        let (callback, rx) = Callback::create();
 
-        self.select_shard(&key)
-            .send(CacheCommand::RPushX { key, values: value, callback: tx.into() })
-            .await?;
+        self.select_shard(&key).send(CacheCommand::RPushX { key, values: value, callback }).await?;
         let current_len = rx.recv().await;
 
         Ok(IndexedValueCodec::encode(current_len, current_idx))
     }
 
     pub(crate) async fn route_rpop(&self, key: String, count: usize) -> Result<Vec<String>> {
-        let (tx, rx) = Callback::create();
-        self.select_shard(&key)
-            .send(CacheCommand::RPop { key, count, callback: tx.into() })
-            .await?;
+        let (callback, rx) = Callback::create();
+        self.select_shard(&key).send(CacheCommand::RPop { key, count, callback }).await?;
 
         let pop_values = rx.recv().await;
         Ok(pop_values)
@@ -286,9 +274,9 @@ impl CacheManager {
     async fn send_keys_to_shard(
         shard: CacheCommandSender,
         pattern: Option<String>,
-        tx: Callback<Vec<String>>,
+        callback: Callback<Vec<String>>,
     ) -> Result<()> {
-        Ok(shard.send(CacheCommand::Keys { pattern: pattern.clone(), callback: tx.into() }).await?)
+        Ok(shard.send(CacheCommand::Keys { pattern: pattern.clone(), callback }).await?)
     }
 
     pub(crate) async fn route_delete(&self, keys: Vec<String>) -> Result<u64> {
@@ -319,9 +307,9 @@ impl CacheManager {
         func: fn(String, Callback<T>) -> CacheCommand,
     ) -> Vec<T> {
         FuturesUnordered::from_iter(keys.into_iter().map(|key| {
-            let (tx, rx) = Callback::create();
+            let (callback, rx) = Callback::create();
             async move {
-                let _ = self.select_shard(&key).send(func(key, tx.into())).await;
+                let _ = self.select_shard(&key).send(func(key, callback)).await;
                 rx.recv().await
             }
         }))
@@ -336,9 +324,9 @@ impl CacheManager {
     }
 
     pub(crate) async fn route_index_get(&self, key: String, index: u64) -> Result<CacheValue> {
-        let (tx, rx) = Callback::create();
+        let (callback, rx) = Callback::create();
         self.select_shard(&key)
-            .send(CacheCommand::IndexGet { key, read_idx: index, callback: tx.into() })
+            .send(CacheCommand::IndexGet { key, read_idx: index, callback })
             .await?;
 
         Ok(rx.recv().await)
@@ -347,11 +335,8 @@ impl CacheManager {
         let futures = keys.into_iter().map(|key| {
             let shard = self.select_shard(&key).clone();
             tokio::spawn(async move {
-                let (tx, rx) = Callback::create();
-                shard
-                    .send(CacheCommand::Get { key: key.clone(), callback: tx.into() })
-                    .await
-                    .ok()?;
+                let (callback, rx) = Callback::create();
+                shard.send(CacheCommand::Get { key: key.clone(), callback }).await.ok()?;
                 let value = rx.recv().await;
                 Some(CacheEntry::new_with_cache_value(key, value))
             })
@@ -363,8 +348,7 @@ impl CacheManager {
     pub(crate) async fn drop_cache(&self) {
         let (txs, rxs) = self.oneshot_channels();
         join_all(
-            self.chain(txs)
-                .map(|(shard, sender)| shard.send(CacheCommand::Drop { callback: sender.into() })),
+            self.chain(txs).map(|(shard, callback)| shard.send(CacheCommand::Drop { callback })),
         )
         .await;
 
@@ -383,10 +367,8 @@ impl CacheManager {
     }
 
     pub(crate) async fn route_append(&self, key: String, value: String) -> Result<usize> {
-        let (tx, rx) = Callback::create();
-        self.select_shard(key.as_str())
-            .send(CacheCommand::Append { key, value, callback: tx.into() })
-            .await?;
+        let (callback, rx) = Callback::create();
+        self.select_shard(key.as_str()).send(CacheCommand::Append { key, value, callback }).await?;
         rx.recv().await
     }
 
@@ -396,17 +378,17 @@ impl CacheManager {
         arg: i64,
         current_idx: u64,
     ) -> Result<String> {
-        let (tx, rx) = Callback::create();
+        let (callback, rx) = Callback::create();
         self.select_shard(key.as_str())
-            .send(CacheCommand::NumericDetla { key, delta: arg, callback: tx.into() })
+            .send(CacheCommand::NumericDetla { key, delta: arg, callback })
             .await?;
         let current = rx.recv().await;
         Ok(IndexedValueCodec::encode(current?, current_idx))
     }
 
     pub(crate) async fn route_llen(&self, key: String) -> Result<usize> {
-        let (tx, rx) = Callback::create();
-        self.select_shard(&key).send(CacheCommand::LLen { key, callback: tx.into() }).await?;
+        let (callback, rx) = Callback::create();
+        self.select_shard(&key).send(CacheCommand::LLen { key, callback }).await?;
         rx.recv().await
     }
 
@@ -416,10 +398,8 @@ impl CacheManager {
         start: isize,
         end: isize,
     ) -> Result<Vec<String>> {
-        let (tx, rx) = Callback::create();
-        self.select_shard(&key)
-            .send(CacheCommand::LRange { key, start, end, callback: tx.into() })
-            .await?;
+        let (callback, rx) = Callback::create();
+        self.select_shard(&key).send(CacheCommand::LRange { key, start, end, callback }).await?;
         rx.recv().await
     }
 
@@ -430,20 +410,16 @@ impl CacheManager {
         end: isize,
         current_idx: u64,
     ) -> Result<String> {
-        let (tx, rx) = Callback::create();
-        self.select_shard(&key)
-            .send(CacheCommand::LTrim { key, start, end, callback: tx.into() })
-            .await?;
+        let (callback, rx) = Callback::create();
+        self.select_shard(&key).send(CacheCommand::LTrim { key, start, end, callback }).await?;
         rx.recv().await?;
 
         Ok(IndexedValueCodec::encode("".to_string(), current_idx))
     }
 
     pub(crate) async fn route_lindex(&self, key: String, index: isize) -> Result<CacheValue> {
-        let (tx, rx) = Callback::create();
-        self.select_shard(&key)
-            .send(CacheCommand::LIndex { key, index, callback: tx.into() })
-            .await?;
+        let (callback, rx) = Callback::create();
+        self.select_shard(&key).send(CacheCommand::LIndex { key, index, callback }).await?;
         let value = rx.recv().await?;
         Ok(value)
     }
@@ -455,9 +431,9 @@ impl CacheManager {
         value: String,
         current_idx: u64,
     ) -> Result<String> {
-        let (tx, rx) = Callback::create();
+        let (callback, rx) = Callback::create();
         self.select_shard(key.as_str())
-            .send(CacheCommand::LSet { key, index, value, callback: tx.into() })
+            .send(CacheCommand::LSet { key, index, value, callback })
             .await?;
         rx.recv().await?;
         Ok(IndexedValueCodec::encode("", current_idx))

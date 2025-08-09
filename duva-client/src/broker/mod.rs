@@ -1,12 +1,10 @@
-mod input_queue;
 mod node_connections;
 mod read_stream;
 mod write_stream;
 use crate::broker::node_connections::NodeConnections;
-use crate::command::{CommandEntry, CommandToServer, InputContext, RoutingRule};
+use crate::command::{CommandEntry, CommandQueue, CommandToServer, InputContext, RoutingRule};
 use duva::domains::cluster_actors::replication::{ReplicationId, ReplicationRole};
 use duva::domains::{IoError, query_io::QueryIO};
-
 use duva::prelude::tokio::net::TcpStream;
 use duva::prelude::tokio::sync::mpsc::Receiver;
 use duva::prelude::tokio::sync::mpsc::Sender;
@@ -20,7 +18,7 @@ use duva::{
     prelude::{AuthRequest, AuthResponse},
 };
 use futures::future::try_join_all;
-use input_queue::InputQueue;
+
 use node_connections::NodeConnection;
 use read_stream::ServerStreamReader;
 use write_stream::ServerStreamWriter;
@@ -61,7 +59,7 @@ impl Broker {
     }
 
     pub(crate) async fn run(mut self) {
-        let mut queue = InputQueue::default();
+        let mut queue = CommandQueue::default();
         while let Some(msg) = self.rx.recv().await {
             match msg {
                 | BrokerMessage::FromServer(_, QueryIO::TopologyChange(topology)) => {
@@ -71,30 +69,19 @@ impl Broker {
                 },
 
                 | BrokerMessage::FromServer(repl_id, query_io) => {
-                    let Some(mut context) = queue.pop() else {
+                    let Some(context) = queue.pop() else {
                         continue;
                     };
 
-                    if context.client_action.to_write_request().is_some()
-                        && let Some(connection) = self.node_connections.get_mut(&repl_id)
-                    {
-                        // TODO need to decide on what to do when connection not found
-                        connection.update_request_id(&query_io);
+                    if context.client_action.to_write_request().is_some() {
+                        match self.node_connections.get_mut(&repl_id) {
+                            | Some(connection) => connection.update_request_id(&query_io),
+                            | None => {
+                                println!("Connection not found after write operation")
+                            },
+                        }
                     }
-
-                    context.append_result(query_io);
-
-                    if !context.is_done() {
-                        queue.push(context);
-                        continue;
-                    }
-
-                    let result = context
-                        .get_result()
-                        .unwrap_or_else(|err| QueryIO::Err(err.to_string().into()));
-                    context.callback.send((context.client_action, result)).unwrap_or_else(|_| {
-                        println!("Failed to send response to input callback");
-                    });
+                    context.finalize_or_requeue(&mut queue, query_io);
                 },
 
                 | BrokerMessage::FromServerError(repl_id, e) => match e {

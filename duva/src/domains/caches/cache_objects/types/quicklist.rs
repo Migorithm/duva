@@ -263,6 +263,7 @@ impl Default for FillFactor {
 }
 
 impl QuickList {
+    #[cfg(test)]
     pub fn new(fill_factor: FillFactor, compress_depth: usize) -> Self {
         Self {
             nodes: VecDeque::new(),
@@ -332,12 +333,12 @@ impl QuickList {
         let val_size = value.len();
 
         // Case 1: The head node exists and is not full.
-        if let Some(head) = self.nodes.front_mut() {
-            if !head.is_full(val_size, &self.fill_factor) {
-                head.lpush(value, &self.fill_factor);
-                self.len += 1;
-                return;
-            }
+        if let Some(head) = self.nodes.front_mut()
+            && !head.is_full(val_size, &self.fill_factor)
+        {
+            head.lpush(value, &self.fill_factor);
+            self.len += 1;
+            return;
         }
 
         // Case 2: The list is empty OR the head node is full.
@@ -353,12 +354,12 @@ impl QuickList {
         let val_size = value.len();
 
         // Case 1: The tail node exists and is not full.
-        if let Some(tail) = self.nodes.back_mut() {
-            if !tail.is_full(val_size, &self.fill_factor) {
-                tail.rpush(value, &self.fill_factor);
-                self.len += 1;
-                return;
-            }
+        if let Some(tail) = self.nodes.back_mut()
+            && !tail.is_full(val_size, &self.fill_factor)
+        {
+            tail.rpush(value, &self.fill_factor);
+            self.len += 1;
+            return;
         }
 
         // Case 2: The list is empty OR the tail node is full.

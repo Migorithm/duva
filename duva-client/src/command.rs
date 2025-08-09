@@ -1,8 +1,24 @@
+use std::collections::VecDeque;
+
 use duva::prelude::anyhow;
 use duva::{
     domains::query_io::QueryIO, prelude::tokio::sync::oneshot,
     presentation::clients::request::ClientAction,
 };
+
+#[derive(Debug, Default)]
+pub struct CommandQueue {
+    pub queue: VecDeque<InputContext>,
+}
+impl CommandQueue {
+    pub fn push(&mut self, input_context: InputContext) {
+        self.queue.push_back(input_context);
+    }
+
+    pub fn pop(&mut self) -> Option<InputContext> {
+        self.queue.pop_front()
+    }
+}
 
 pub struct CommandToServer {
     pub context: InputContext,
@@ -76,6 +92,20 @@ impl InputContext {
                 Ok(self.results[0].clone())
             },
         }
+    }
+
+    pub(crate) fn finalize_or_requeue(mut self, queue: &mut CommandQueue, query_io: QueryIO) {
+        self.append_result(query_io);
+
+        if !self.is_done() {
+            queue.push(self);
+            return;
+        }
+
+        let result = self.get_result().unwrap_or_else(|err| QueryIO::Err(err.to_string().into()));
+        self.callback.send((self.client_action, result)).unwrap_or_else(|_| {
+            println!("Failed to send response to input callback");
+        });
     }
 }
 
