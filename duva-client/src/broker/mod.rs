@@ -35,7 +35,7 @@ impl Broker {
     pub(crate) async fn new(server_addr: &PeerIdentifier) -> anyhow::Result<Self> {
         let (r, w, auth_response) = Broker::authenticate(&server_addr.clone(), None).await?;
 
-        let (broker_tx, rx) = tokio::sync::mpsc::channel::<BrokerMessage>(100);
+        let (broker_tx, rx) = tokio::sync::mpsc::channel::<BrokerMessage>(2000);
 
         let seed_replid = auth_response.replication_id;
         let mut connections = NodeConnections::new(seed_replid.clone());

@@ -94,7 +94,7 @@ impl ClientStreamWriter {
         mut self,
         mut topology_observer: tokio::sync::broadcast::Receiver<Topology>,
     ) -> Sender<QueryIO> {
-        let (tx, mut rx) = tokio::sync::mpsc::channel(100);
+        let (tx, mut rx) = tokio::sync::mpsc::channel(2000);
         tokio::spawn(async move {
             while let Some(data) = rx.recv().await {
                 if let Err(e) = self.write(data).await

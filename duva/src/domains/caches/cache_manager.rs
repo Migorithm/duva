@@ -143,7 +143,7 @@ impl CacheManager {
         repl_id: ReplicationId,
         current_offset: u64,
     ) -> Result<JoinHandle<Result<SaveActor>>> {
-        let (outbox, inbox) = tokio::sync::mpsc::channel(100);
+        let (outbox, inbox) = tokio::sync::mpsc::channel(2000);
         let save_actor =
             SaveActor::new(save_target, self.inboxes.len(), repl_id, current_offset).await?;
 

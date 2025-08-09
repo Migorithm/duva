@@ -15,7 +15,7 @@ impl ServerStreamWriter {
     }
 
     pub fn run(mut self) -> tokio::sync::mpsc::Sender<MsgToServer> {
-        let (tx, mut rx) = tokio::sync::mpsc::channel::<MsgToServer>(100);
+        let (tx, mut rx) = tokio::sync::mpsc::channel::<MsgToServer>(2000);
 
         tokio::spawn(async move {
             while let Some(sendable) = rx.recv().await {

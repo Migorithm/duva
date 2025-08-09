@@ -140,7 +140,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         topology_writer: File,
         log_writer: T,
     ) -> Self {
-        let (self_handler, receiver) = tokio::sync::mpsc::channel(100);
+        let (self_handler, receiver) = tokio::sync::mpsc::channel(2000);
         let heartbeat_scheduler = HeartBeatScheduler::run(
             ClusterCommandHandler(self_handler.clone()),
             init_repl_state.is_leader(),
