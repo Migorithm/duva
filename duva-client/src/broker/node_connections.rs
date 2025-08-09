@@ -1,5 +1,4 @@
 use super::write_stream::MsgToServer;
-use duva::domains::IoError;
 use duva::domains::caches::cache_manager::IndexedValueCodec;
 use duva::domains::cluster_actors::replication::ReplicationId;
 use duva::domains::query_io::QueryIO;
@@ -55,7 +54,7 @@ impl NodeConnections {
         Ok(())
     }
 
-    pub(crate) async fn send_to_seed(&self, client_action: ClientAction) -> Result<(), IoError> {
+    pub(crate) async fn send_to_seed(&self, client_action: ClientAction) -> anyhow::Result<()> {
         self.send_to(&self.seed_node, client_action).await
     }
 
@@ -63,11 +62,8 @@ impl NodeConnections {
         &self,
         node_id: &ReplicationId,
         client_action: ClientAction,
-    ) -> Result<(), IoError> {
-        let connection = self
-            .conns
-            .get(node_id)
-            .ok_or(IoError::Custom("No connections available".to_string()))?;
+    ) -> anyhow::Result<()> {
+        let connection = self.conns.get(node_id).context("No connections available")?;
         connection.send(client_action).await
     }
 
@@ -111,12 +107,12 @@ impl NodeConnection {
         let _ = self.writer.send(MsgToServer::Stop).await;
     }
 
-    pub(crate) async fn send(&self, client_action: ClientAction) -> Result<(), IoError> {
+    pub(crate) async fn send(&self, client_action: ClientAction) -> anyhow::Result<()> {
         let session_request = SessionRequest { request_id: self.request_id, client_action };
         self.writer
             .send(MsgToServer::Command(session_request.serialize().to_vec()))
             .await
-            .map_err(|e| IoError::Custom(format!("Failed to send command: {e}")))
+            .context("Failed to send commend")
     }
 }
 
