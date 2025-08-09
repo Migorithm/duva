@@ -1,5 +1,3 @@
-use std::io::Error;
-
 use tokio::sync::RwLock;
 
 use super::*;
@@ -91,7 +89,7 @@ async fn test_reconnection_on_gossip() {
     let mut replication_state = cluster_actor.replication.clone();
     replication_state.role = ReplicationRole::Follower;
 
-    let (tx, rx) = Callback::create();
+    let (tx, _rx) = Callback::create();
 
     // Spawn the listener task
     let handle = tokio::spawn(async move {

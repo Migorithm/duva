@@ -5,7 +5,7 @@ use crate::make_smart_pointer;
 )]
 pub struct PeerIdentifier(pub String);
 impl PeerIdentifier {
-    pub(crate) fn new(host: &str, port: u16) -> Self {
+    pub fn new(host: &str, port: u16) -> Self {
         parse_address(host).map(|ip| Self(format!("{ip}:{port}"))).unwrap()
     }
 }

@@ -144,6 +144,25 @@ impl HashRing {
         self.vnodes.len()
     }
 
+    pub fn list_replids_for_keys<'a>(
+        &self,
+        keys: &[&'a str],
+    ) -> anyhow::Result<HashMap<ReplicationId, Vec<&'a str>>> {
+        let mut map: HashMap<ReplicationId, Vec<&str>> = HashMap::new();
+
+        for key in keys {
+            let hash = fnv_1a_hash(key);
+            let replid = self
+                .find_replid(hash)
+                .cloned()
+                .ok_or_else(|| anyhow::anyhow!("No node found for keys: {:?}", keys))?;
+            let v = map.entry(replid).or_default();
+            v.push(key);
+        }
+
+        Ok(map)
+    }
+
     pub(crate) fn key_ownership<'a>(&self, keys: &[&'a str]) -> anyhow::Result<KeyOwnership<'a>> {
         let mut map: HashMap<ReplicationId, Vec<&str>> = HashMap::new();
 
@@ -161,13 +180,9 @@ impl HashRing {
     }
 
     #[cfg(test)]
-    pub(crate) fn get_node_for_key(&self, key: &str) -> Option<&ReplicationId> {
+    pub fn get_node_for_key(&self, key: &str) -> Option<&ReplicationId> {
         let hash = fnv_1a_hash(key);
         self.find_replid(hash)
-    }
-
-    pub fn get_node_id(&self, replid: &ReplicationId) -> Option<&PeerIdentifier> {
-        self.pnodes.get(replid)
     }
 
     pub(crate) fn update_repl_leader(&mut self, replid: ReplicationId, new_pnode: PeerIdentifier) {
@@ -177,6 +192,10 @@ impl HashRing {
             *existing_pnode = new_pnode;
         }
         self.update_last_modified();
+    }
+
+    pub fn get_replication_ids(&self) -> Vec<ReplicationId> {
+        self.pnodes.keys().cloned().collect()
     }
 }
 

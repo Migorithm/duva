@@ -97,10 +97,10 @@ impl ClientStreamWriter {
         let (tx, mut rx) = tokio::sync::mpsc::channel(100);
         tokio::spawn(async move {
             while let Some(data) = rx.recv().await {
-                if let Err(e) = self.write(data).await {
-                    if e.should_break() {
-                        break;
-                    }
+                if let Err(e) = self.write(data).await
+                    && e.should_break()
+                {
+                    break;
                 }
             }
         });

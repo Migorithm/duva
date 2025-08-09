@@ -55,7 +55,7 @@ impl HeartBeatScheduler {
         heartbeat_interval: u64,
         cluster_handler: ClusterCommandHandler,
     ) -> Callback<()> {
-        let (tx, rx) = Callback::create();
+        let (callback, rx) = Callback::create();
 
         let mut itv = interval(Duration::from_millis(heartbeat_interval));
 
@@ -71,7 +71,7 @@ impl HeartBeatScheduler {
             }
         });
 
-        tx.into()
+        callback
     }
 
     pub(crate) fn start_election_timer(

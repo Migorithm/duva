@@ -35,7 +35,7 @@ impl PeerListener {
             }
         });
 
-        ListeningActorKillTrigger::new(kill_trigger.into(), handle)
+        ListeningActorKillTrigger::new(kill_trigger, handle)
     }
 
     async fn start(&mut self) {

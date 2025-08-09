@@ -9,9 +9,7 @@ use duva::{
     presentation::clients::request::extract_action,
 };
 use duva_client::{
-    broker::BrokerMessage,
-    command::{Input, separate_command_and_args},
-    controller::ClientController,
+    broker::BrokerMessage, command::separate_command_and_args, controller::ClientController,
 };
 
 const PROMPT: &str = "duva-cli> ";
@@ -39,13 +37,9 @@ async fn main() -> anyhow::Result<()> {
         let (cmd, args) = separate_command_and_args(args);
 
         match extract_action(cmd, &args) {
-            | Ok(input) => {
+            | Ok(action) => {
                 let (tx, rx) = oneshot::channel();
-                let input = Input::new(input, tx);
-                let _ = controller
-                    .broker_tx
-                    .send(BrokerMessage::from_command(cmd.into(), args, input))
-                    .await;
+                let _ = controller.broker_tx.send(BrokerMessage::from_input(action, tx)).await;
                 let (kind, query_io) = rx.await?;
                 controller.print_res(kind, query_io);
             },

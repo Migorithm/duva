@@ -160,9 +160,7 @@ pub fn extract_action(action: &str, args: &[&str]) -> anyhow::Result<ClientActio
             } else if args.len() == 2 {
                 Ok(ClientAction::IndexGet { key: args[0].to_string(), index: args[1].parse()? })
             } else {
-                return Err(anyhow::anyhow!(
-                    "(error) ERR wrong number of arguments for 'get' command"
-                ));
+                Err(anyhow::anyhow!("(error) ERR wrong number of arguments for 'get' command"))
             }
         },
 

@@ -5,11 +5,11 @@ use crate::broker::BrokerMessage;
 
 use duva::domains::caches::cache_manager::IndexedValueCodec;
 use duva::domains::query_io::QueryIO;
+use duva::prelude::PeerIdentifier;
 use duva::prelude::anyhow;
 use duva::prelude::bytes::Bytes;
 use duva::prelude::tokio;
 use duva::prelude::tokio::sync::mpsc::Sender;
-use duva::prelude::uuid::Uuid;
 use duva::presentation::clients::request::ClientAction;
 
 pub struct ClientController<T> {
@@ -18,21 +18,9 @@ pub struct ClientController<T> {
 }
 
 impl<T> ClientController<T> {
-    pub async fn new(editor: T, server_addr: &str) -> anyhow::Result<Self> {
-        let (r, w, auth_response) = Broker::authenticate(server_addr, None).await?;
-
-        let (broker_tx, rx) = tokio::sync::mpsc::channel::<BrokerMessage>(100);
-
-        let broker = Broker {
-            tx: broker_tx.clone(),
-            rx,
-            to_server: w.run(),
-            client_id: Uuid::parse_str(&auth_response.client_id).unwrap(),
-            request_id: auth_response.request_id,
-
-            topology: auth_response.topology,
-            read_kill_switch: Some(r.run(broker_tx.clone())),
-        };
+    pub async fn new(editor: T, server_addr: &PeerIdentifier) -> anyhow::Result<Self> {
+        let broker = Broker::new(server_addr).await?;
+        let broker_tx = broker.tx.clone();
         tokio::spawn(broker.run());
         Ok(Self { broker_tx, target: editor })
     }
@@ -129,18 +117,19 @@ impl<T> ClientController<T> {
                 }
                 Response::Array(keys)
             },
-            | Role | ClusterNodes => {
-                let QueryIO::Array(value) = query_io else {
-                    return Response::FormatError;
-                };
-                let mut nodes = Vec::new();
-                for item in value {
-                    let QueryIO::BulkString(value) = item else {
-                        return Response::FormatError;
-                    };
-                    nodes.push(Response::String(value));
-                }
-                Response::Array(nodes)
+            | Role | ClusterNodes => match query_io {
+                | QueryIO::Array(value) => {
+                    let mut nodes = Vec::new();
+                    for item in value {
+                        let QueryIO::BulkString(value) = item else {
+                            return Response::FormatError;
+                        };
+                        nodes.push(Response::String(value));
+                    }
+                    Response::Array(nodes)
+                },
+                | QueryIO::Err(value) => Response::Error(value),
+                | _ => Response::FormatError,
             },
         }
     }
