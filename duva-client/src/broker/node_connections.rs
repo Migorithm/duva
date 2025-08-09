@@ -36,7 +36,7 @@ impl NodeConnections {
     }
     pub(crate) async fn remove_outdated_connections(&mut self, node_repl_ids: Vec<ReplicationId>) {
         let outdated_connections = self.conns.extract_if(|repl_id, _| {
-            !node_repl_ids.contains(repl_id) && repl_id.clone() != self.seed_node.clone()
+            !node_repl_ids.contains(repl_id) && repl_id != &self.seed_node
         });
         join_all(outdated_connections.into_iter().map(|(_, connection)| connection.kill())).await;
     }

@@ -129,6 +129,7 @@ impl Broker {
         &mut self,
         replication_id: ReplicationId,
     ) -> anyhow::Result<()> {
+        // TODO do we have to remove connection also from `self.topology.node_infos`?
         self.node_connections.remove_connection(&replication_id.clone()).await;
 
         // ! ISSUE: replica set is queried and node connection is made
