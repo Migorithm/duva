@@ -31,7 +31,7 @@ impl ServerStreamReader {
                         }
                     },
                     | Err(e) => {
-                        let message = BrokerMessage::FromServerError(replication_id.clone(), e);
+                        let message = BrokerMessage::FromServerError(replication_id, e);
                         if controller_sender.send(message).await.is_err() {
                             break;
                         }

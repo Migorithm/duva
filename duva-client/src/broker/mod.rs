@@ -171,19 +171,24 @@ impl Broker {
 
     async fn add_node_connection(&mut self, peer_id: &PeerIdentifier) -> anyhow::Result<()> {
         let auth_req = AuthRequest { client_id: Some(self.client_id.to_string()), request_id: 0 };
-        let Ok((r, w, auth_response)) = Self::authenticate(peer_id, Some(auth_req)).await else {
+        let Ok((server_stream_reader, server_stream_writer, auth_response)) =
+            Self::authenticate(peer_id, Some(auth_req)).await
+        else {
             return Err(anyhow::anyhow!("Authentication failed!"));
         };
 
         if !auth_response.is_leader_node {
             return Err(anyhow::anyhow!("Only Leader connection is allowed!"));
         }
-        let kill_switch = r.run(self.tx.clone(), auth_response.replication_id.clone());
-        let writer = w.run();
 
         self.node_connections.insert(
-            auth_response.replication_id,
-            NodeConnection { writer, kill_switch, request_id: auth_response.request_id },
+            auth_response.replication_id.clone(),
+            NodeConnection {
+                kill_switch: server_stream_reader
+                    .run(self.tx.clone(), auth_response.replication_id),
+                writer: server_stream_writer.run(),
+                request_id: auth_response.request_id,
+            },
         );
         Ok(())
     }
