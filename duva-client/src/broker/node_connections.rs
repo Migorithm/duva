@@ -5,8 +5,13 @@ use duva::domains::cluster_actors::replication::ReplicationId;
 use duva::domains::query_io::QueryIO;
 use duva::domains::query_io::QueryIO::SessionRequest;
 use duva::make_smart_pointer;
+use duva::prelude::anyhow;
+use duva::prelude::anyhow::Context;
 use duva::prelude::rand;
+use duva::prelude::rand::SeedableRng;
+use duva::prelude::rand::rngs::StdRng;
 use duva::prelude::rand::seq::IteratorRandom;
+use duva::prelude::rand::thread_rng;
 use duva::prelude::tokio::sync::mpsc;
 use duva::prelude::tokio::sync::oneshot;
 use duva::presentation::clients::request::ClientAction;
@@ -24,9 +29,7 @@ pub(crate) struct NodeConnections {
 
 impl NodeConnections {
     pub(crate) fn new(target_id: ReplicationId) -> Self {
-        let connections = HashMap::new();
-
-        Self { conns: connections, seed_node: target_id }
+        Self { conns: HashMap::new(), seed_node: target_id }
     }
 
     pub(crate) async fn remove_connection(&mut self, leader_id: &ReplicationId) {
@@ -41,16 +44,16 @@ impl NodeConnections {
         join_all(outdated_connections.into_iter().map(|(_, connection)| connection.kill())).await;
     }
 
-    pub(crate) async fn randomized_send(&self, client_action: ClientAction) -> Result<(), IoError> {
-        // ThreadRng internally uses thread-local storage, so the actual RNG state is reused per thread
-        self.get_random_connection()?.1.send(client_action).await
-    }
+    pub(crate) async fn randomized_send(&self, client_action: ClientAction) -> anyhow::Result<()> {
+        let mut rng = StdRng::from_rng(&mut rand::rng());
 
-    fn get_random_connection(&self) -> Result<(&ReplicationId, &NodeConnection), IoError> {
         self.conns
-            .iter()
-            .choose(&mut rand::rng())
-            .ok_or(IoError::Custom("No connections available".to_string()))
+            .values()
+            .choose(&mut rng)
+            .context("Connection set invalid! Random connection choice failed")?
+            .send(client_action)
+            .await?;
+        Ok(())
     }
 
     pub(crate) async fn send_to_seed(&self, client_action: ClientAction) -> Result<(), IoError> {
@@ -69,7 +72,7 @@ impl NodeConnections {
         connection.send(client_action).await
     }
 
-    pub(crate) async fn send_all(&self, client_action: ClientAction) -> Result<usize, IoError> {
+    pub(crate) async fn send_all(&self, client_action: ClientAction) -> anyhow::Result<usize> {
         try_join_all(self.keys().map(|node_id| self.send_to(node_id, client_action.clone())))
             .await?;
         Ok(self.len())

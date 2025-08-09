@@ -194,12 +194,12 @@ impl Broker {
         Ok(())
     }
 
-    async fn random_route(&self, client_action: ClientAction) -> Result<usize, IoError> {
+    async fn random_route(&self, client_action: ClientAction) -> anyhow::Result<usize> {
         self.node_connections.randomized_send(client_action).await?;
         Ok(1)
     }
 
-    async fn route_info(&self, action: ClientAction) -> Result<usize, IoError> {
+    async fn route_info(&self, action: ClientAction) -> anyhow::Result<usize> {
         self.node_connections.send_to_seed(action).await?;
         Ok(1)
     }
@@ -235,7 +235,7 @@ impl Broker {
         &self,
         client_action: ClientAction,
         entries: Vec<CommandEntry>,
-    ) -> Result<usize, IoError> {
+    ) -> anyhow::Result<usize> {
         let Ok(node_id_to_entries) = self
             .topology
             .hash_ring
