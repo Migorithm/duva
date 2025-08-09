@@ -26,7 +26,7 @@ pub(crate) async fn authenticate(
             client_id: client_id.to_string(),
             request_id: auth_req.request_id,
             topology,
-            connected_to_leader: replication_state.role == ReplicationRole::Leader,
+            is_leader_node: replication_state.role == ReplicationRole::Leader,
             replication_id: replication_state.replid.clone(),
         })
         .await?;
@@ -49,6 +49,6 @@ pub struct AuthResponse {
     pub client_id: String,
     pub request_id: u64,
     pub topology: Topology,
-    pub connected_to_leader: bool,
+    pub is_leader_node: bool,
     pub replication_id: ReplicationId,
 }

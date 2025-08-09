@@ -6,6 +6,7 @@ use crate::broker::node_connections::NodeConnections;
 use crate::command::{CommandEntry, CommandToServer, InputContext, RoutingRule};
 use duva::domains::cluster_actors::replication::{ReplicationId, ReplicationRole};
 use duva::domains::{IoError, query_io::QueryIO};
+use duva::err;
 use duva::prelude::tokio::net::TcpStream;
 use duva::prelude::tokio::sync::mpsc::Receiver;
 use duva::prelude::tokio::sync::mpsc::Sender;
@@ -169,7 +170,7 @@ impl Broker {
         self.node_connections.remove_connection(&replication_id.clone()).await;
 
         for node in self.get_replica_set(&replication_id).cloned().collect::<Vec<_>>() {
-            if let Some(()) = self.add_node_connection(&node.peer_id).await {
+            if let Ok(()) = self.add_node_connection(&node.peer_id).await {
                 return Ok(());
             }
         }
@@ -203,18 +204,19 @@ impl Broker {
             if ReplicationRole::Leader == node.repl_role.clone()
                 && !self.node_connections.contains_key(&node.repl_id)
             {
-                self.add_node_connection(&node.peer_id).await;
+                let _ = self.add_node_connection(&node.peer_id).await;
             }
         }
     }
 
-    async fn add_node_connection(&mut self, peer_id: &PeerIdentifier) -> Option<()> {
+    async fn add_node_connection(&mut self, peer_id: &PeerIdentifier) -> anyhow::Result<()> {
         let auth_req = AuthRequest { client_id: Some(self.client_id.to_string()), request_id: 0 };
         let Ok((r, w, auth_response)) = Self::authenticate(peer_id, Some(auth_req)).await else {
-            return None;
+            return Err(anyhow::anyhow!("Authentication failed!"));
         };
-        if !auth_response.connected_to_leader {
-            return None;
+
+        if !auth_response.is_leader_node {
+            return Err(anyhow::anyhow!("Only Leader connection is allowed!"));
         }
         let kill_switch = r.run(self.tx.clone(), auth_response.replication_id.clone());
         let writer = w.run();
@@ -223,7 +225,7 @@ impl Broker {
             auth_response.replication_id,
             NodeConnection { writer, kill_switch, request_id: auth_response.request_id },
         );
-        Some(())
+        Ok(())
     }
     // 'default_route' is used when given request does NOT have to be sent to a specific node
     async fn default_route(&self, client_action: ClientAction) -> Result<usize, IoError> {
