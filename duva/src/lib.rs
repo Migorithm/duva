@@ -11,7 +11,7 @@ use domains::caches::cache_manager::CacheManager;
 use domains::cluster_actors::ClusterActor;
 use domains::cluster_actors::ConnectionMessage;
 use domains::cluster_actors::replication::ReplicationId;
-use domains::cluster_actors::replication::ReplicationRole;
+
 use domains::cluster_actors::replication::ReplicationState;
 use domains::operation_logs::interfaces::TWriteAheadLog;
 use domains::saves::snapshot::Snapshot;

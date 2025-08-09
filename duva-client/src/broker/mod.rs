@@ -38,18 +38,24 @@ impl Broker {
 
         let (broker_tx, rx) = tokio::sync::mpsc::channel::<BrokerMessage>(100);
 
-        let connection = NodeConnection {
-            writer: w.run(),
-            kill_switch: r.run(broker_tx.clone(), auth_response.replication_id.clone()),
-            request_id: auth_response.request_id,
-        };
+        let seed_replid = auth_response.replication_id;
+        let mut connections = NodeConnections::new(seed_replid.clone());
+
+        connections.insert(
+            seed_replid.clone(),
+            NodeConnection {
+                writer: w.run(),
+                kill_switch: r.run(broker_tx.clone(), seed_replid.clone()),
+                request_id: auth_response.request_id,
+            },
+        );
 
         let broker = Broker {
             tx: broker_tx.clone(),
             rx,
             client_id: Uuid::parse_str(&auth_response.client_id)?,
             topology: auth_response.topology,
-            node_connections: NodeConnections::new(auth_response.replication_id, connection),
+            node_connections: connections,
         };
         Ok(broker)
     }
@@ -185,6 +191,13 @@ impl Broker {
     }
 
     async fn update_leader_connections(&mut self) {
+        self.add_leader_conns_if_not_found().await;
+        self.node_connections
+            .remove_outdated_connections(self.topology.hash_ring.get_replication_ids())
+            .await;
+    }
+
+    async fn add_leader_conns_if_not_found(&mut self) {
         for node in self.topology.node_infos.clone() {
             if ReplicationRole::Leader != node.repl_role.clone() {
                 continue; // skip non-leader nodes
@@ -194,9 +207,6 @@ impl Broker {
             }
             let _ = self.tx.send(BrokerMessage::AddNodeConnection(node)).await;
         }
-        self.node_connections
-            .remove_outdated_connections(self.topology.hash_ring.get_replication_ids())
-            .await;
     }
 
     async fn add_node_connection(&mut self, node: NodeReplInfo) -> Option<()> {

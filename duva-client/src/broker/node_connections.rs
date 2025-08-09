@@ -23,9 +23,9 @@ pub(crate) struct NodeConnections {
 }
 
 impl NodeConnections {
-    pub(crate) fn new(target_id: ReplicationId, connection: NodeConnection) -> Self {
-        let mut connections = HashMap::new();
-        connections.insert(target_id.clone(), connection);
+    pub(crate) fn new(target_id: ReplicationId) -> Self {
+        let connections = HashMap::new();
+
         Self { conns: connections, seed_node: target_id }
     }
 
@@ -139,7 +139,8 @@ mod tests {
         let repl_id = ReplicationId::Key("Some".into());
         let (tx, _rx) = mpsc::channel(10);
         let (kill_tx, _kill_rx) = oneshot::channel();
-        let mut connections = NodeConnections::new(
+        let mut connections = NodeConnections::new(repl_id.clone());
+        connections.insert(
             repl_id.clone(),
             NodeConnection { writer: tx, kill_switch: kill_tx, request_id: 0 },
         );
@@ -160,7 +161,8 @@ mod tests {
         let (tx1, _rx1) = mpsc::channel(10);
         let (kill_tx1, _kill_rx1) = oneshot::channel();
         let conn = NodeConnection { writer: tx1, kill_switch: kill_tx1, request_id: 0 };
-        let mut connections = NodeConnections::new(repl_id1.clone(), conn);
+        let mut connections = NodeConnections::new(repl_id1.clone());
+        connections.insert(repl_id1.clone(), conn);
 
         let (tx2, _rx2) = mpsc::channel(10);
         let (kill_tx2, _kill_rx2) = oneshot::channel();
@@ -187,7 +189,8 @@ mod tests {
         let (tx1, _rx1) = mpsc::channel(10);
         let (kill_tx1, _kill_rx1) = oneshot::channel();
         let conn = NodeConnection { writer: tx1, kill_switch: kill_tx1, request_id: 0 };
-        let mut connections = NodeConnections::new(repl_id1.clone(), conn);
+        let mut connections = NodeConnections::new(repl_id1.clone());
+        connections.insert(repl_id1.clone(), conn);
 
         let (tx2, _rx2) = mpsc::channel(10);
         let (kill_tx2, _kill_rx2) = oneshot::channel();
