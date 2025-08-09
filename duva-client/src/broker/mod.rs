@@ -192,8 +192,8 @@ impl Broker {
         );
         Ok(())
     }
-    // 'default_route' is used when given request does NOT have to be sent to a specific node
-    async fn default_route(&self, client_action: ClientAction) -> Result<usize, IoError> {
+
+    async fn random_route(&self, client_action: ClientAction) -> Result<usize, IoError> {
         self.node_connections.randomized_send(client_action).await?;
         Ok(1)
     }
@@ -211,7 +211,7 @@ impl Broker {
         let action = context.client_action.clone();
 
         let res = match routing_rule {
-            | RoutingRule::Any => self.default_route(action).await,
+            | RoutingRule::Any => self.random_route(action).await,
             | RoutingRule::Selective(entries) => self.route_command_by_keys(action, entries).await,
             | RoutingRule::BroadCast => self.node_connections.send_all(action).await,
             | RoutingRule::Info => self.route_info(action).await,
@@ -241,7 +241,7 @@ impl Broker {
             .list_replids_for_keys(&entries.iter().map(|e| e.key.as_str()).collect::<Vec<&str>>())
         else {
             // If routing failed, we fall back to default routing
-            return self.default_route(client_action).await;
+            return self.random_route(client_action).await;
         };
 
         let num_of_results = node_id_to_entries.len();
