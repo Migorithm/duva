@@ -67,7 +67,7 @@ impl Broker {
                 | BrokerMessage::FromServer(_, QueryIO::TopologyChange(topology)) => {
                     self.topology = topology;
                     self.add_leader_conns_if_not_found().await;
-                    self.update_leader_connections().await;
+                    self.remove_outdated_connections().await;
                 },
 
                 | BrokerMessage::FromServer(repl_id, query_io) => {
@@ -191,7 +191,7 @@ impl Broker {
         Ok(())
     }
 
-    async fn update_leader_connections(&mut self) {
+    async fn remove_outdated_connections(&mut self) {
         self.node_connections
             .remove_outdated_connections(self.topology.hash_ring.get_replication_ids())
             .await;
