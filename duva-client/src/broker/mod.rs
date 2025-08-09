@@ -107,7 +107,7 @@ impl Broker {
                             LEADER_HEARTBEAT_INTERVAL_MAX,
                         ))
                         .await;
-                        self.discover_new_leader(repl_id).await.unwrap();
+                        self.discover_new_repl_leader(repl_id).await.unwrap();
                     },
                     | _ => {},
                 },
@@ -165,30 +165,34 @@ impl Broker {
     // 1. if leader connection is lost, then discover new leader from follower candidates (TopologyChange not happened, LeaderConnections not updated)
     // 2. after removed leader from topology, and connection is lost, then discover new leader from follower candidates (TopologyChange happened, no new leader in topology)
     // 3. after leader added to topology, and connection is lost, then do nothing (TopologyChange happened, new leader in topology)
-    async fn discover_new_leader(&mut self, replication_id: ReplicationId) -> Result<(), IoError> {
-        // remove disconnected leader connection
+    async fn discover_new_repl_leader(
+        &mut self,
+        replication_id: ReplicationId,
+    ) -> Result<(), IoError> {
         self.node_connections.remove_connection(&replication_id.clone()).await;
 
-        // remove connections to nodes that are not in the topology anymore
-        for node in self.topology.node_infos.clone() {
-            if node.repl_id != replication_id {
-                continue; // skip nodes with different replication id
-            }
-            if let Some(()) = self.add_node_connection(node.clone()).await {
+        for node in self.get_replica_set(&replication_id).cloned().collect::<Vec<_>>() {
+            if let Some(()) = self.add_node_connection(node).await {
                 return Ok(());
             }
         }
+
         // if no connection found in same replication group, update seed node
         if self.node_connections.is_seed_node(&replication_id) {
             self.node_connections.update_seed_node()?;
         }
-        if self.node_connections.is_empty() {
+
+        if self.get_replica_set(&replication_id).count() < 1 {
             return Err(IoError::Custom(format!(
                 "No connections available for replication id: {}",
                 replication_id
             )));
         }
         Ok(())
+    }
+
+    fn get_replica_set(&self, replid: &ReplicationId) -> impl Iterator<Item = &NodeReplInfo> {
+        self.topology.node_infos.iter().filter(move |n| &n.repl_id == replid)
     }
 
     async fn remove_outdated_connections(&mut self) {
