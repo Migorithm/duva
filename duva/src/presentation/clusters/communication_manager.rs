@@ -3,9 +3,8 @@ use crate::types::Callback;
 use crate::{
     domains::{
         cluster_actors::{
-            ClientMessage, ConnectionMessage, LazyOption,
-            actor::ClusterCommandHandler,
-            replication::{ReplicationRole, ReplicationState},
+            ClientMessage, ConnectionMessage, LazyOption, actor::ClusterCommandHandler,
+            replication::ReplicationState,
         },
         peers::{identifier::PeerIdentifier, peer::PeerState},
     },

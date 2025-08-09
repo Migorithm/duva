@@ -1289,11 +1289,11 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             return;
         }
 
-        let (tx, rx) = Callback::create();
+        let (callback, rx) = Callback::create();
 
         self.req_consensus(ConsensusRequest::new(
             WriteRequest::MSet { entries: migrate_batch.cache_entries.clone() },
-            tx,
+            callback,
             None,
         ))
         .await;
@@ -1303,6 +1303,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             let handler = self.self_handler.clone();
             let cache_manager = cache_manager.clone();
             async move {
+                rx.recv().await;
                 let _ = cache_manager.route_mset(migrate_batch.cache_entries.clone()).await; // reflect state change
                 let _ = handler
                     .send(SchedulerMessage::SendBatchAck {
