@@ -51,14 +51,13 @@ impl Broker {
             },
         );
 
-        let broker = Broker {
-            tx: broker_tx.clone(),
+        Ok(Broker {
+            tx: broker_tx,
             rx,
             client_id: Uuid::parse_str(&auth_response.client_id)?,
             topology: auth_response.topology,
             node_connections: connections,
-        };
-        Ok(broker)
+        })
     }
 
     pub(crate) async fn run(mut self) {
