@@ -141,9 +141,6 @@ impl Broker {
                     }
                     queue.push(context);
                 },
-                | BrokerMessage::AddNodeConnection(node_info) => {
-                    self.add_node_connection(node_info).await;
-                },
             }
         }
     }
@@ -172,7 +169,7 @@ impl Broker {
         self.node_connections.remove_connection(&replication_id.clone()).await;
 
         for node in self.get_replica_set(&replication_id).cloned().collect::<Vec<_>>() {
-            if let Some(()) = self.add_node_connection(node).await {
+            if let Some(()) = self.add_node_connection(&node.peer_id).await {
                 return Ok(());
             }
         }
@@ -206,15 +203,14 @@ impl Broker {
             if ReplicationRole::Leader == node.repl_role.clone()
                 && !self.node_connections.contains_key(&node.repl_id)
             {
-                let _ = self.tx.send(BrokerMessage::AddNodeConnection(node)).await;
+                self.add_node_connection(&node.peer_id).await;
             }
         }
     }
 
-    async fn add_node_connection(&mut self, node: NodeReplInfo) -> Option<()> {
+    async fn add_node_connection(&mut self, peer_id: &PeerIdentifier) -> Option<()> {
         let auth_req = AuthRequest { client_id: Some(self.client_id.to_string()), request_id: 0 };
-        let Ok((r, w, auth_response)) = Self::authenticate(&node.peer_id, Some(auth_req)).await
-        else {
+        let Ok((r, w, auth_response)) = Self::authenticate(peer_id, Some(auth_req)).await else {
             return None;
         };
         if !auth_response.connected_to_leader {
@@ -282,7 +278,6 @@ pub enum BrokerMessage {
     FromServer(ReplicationId, QueryIO),
     FromServerError(ReplicationId, IoError),
     ToServer(CommandToServer),
-    AddNodeConnection(NodeReplInfo),
 }
 impl BrokerMessage {
     pub fn from_input(
