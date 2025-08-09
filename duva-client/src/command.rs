@@ -60,6 +60,12 @@ impl InputContext {
         false
     }
 
+    pub(crate) fn callback(self, query_io: QueryIO) {
+        self.callback.send((self.client_action, query_io)).unwrap_or_else(|_| {
+            println!("Failed to send response to input callback");
+        });
+    }
+
     pub(crate) fn get_result(&self) -> anyhow::Result<QueryIO> {
         match self.client_action {
             | ClientAction::Keys { pattern: _ } | ClientAction::MGet { keys: _ } => {
@@ -103,9 +109,7 @@ impl InputContext {
         }
 
         let result = self.get_result().unwrap_or_else(|err| QueryIO::Err(err.to_string().into()));
-        self.callback.send((self.client_action, result)).unwrap_or_else(|_| {
-            println!("Failed to send response to input callback");
-        });
+        self.callback(result);
     }
 }
 

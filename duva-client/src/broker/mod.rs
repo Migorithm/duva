@@ -99,34 +99,11 @@ impl Broker {
                     | _ => {},
                 },
                 | BrokerMessage::ToServer(command) => {
-                    let mut context = command.context;
-                    let action = context.client_action.clone();
-                    let res = match command.routing_rule {
-                        | RoutingRule::Any => self.default_route(action).await,
-                        | RoutingRule::Selective(entries) => {
-                            self.route_command_by_keys(action, entries).await
-                        },
-                        | RoutingRule::BroadCast => self.node_connections.send_all(action).await,
-                        | RoutingRule::Info => self.route_info(action).await,
+                    if let Some(context) =
+                        self.dispatch_command_to_server(command.routing_rule, command.context).await
+                    {
+                        queue.push(context);
                     };
-                    match res {
-                        | Ok(num_of_results) => {
-                            context.set_expected_result_cnt(num_of_results);
-                        },
-                        | Err(_e) => {
-                            context
-                                .callback
-                                .send((
-                                    context.client_action,
-                                    QueryIO::Err(
-                                        "Failed to route command. Try again after ttl time".into(),
-                                    ),
-                                ))
-                                .unwrap();
-                            continue;
-                        },
-                    }
-                    queue.push(context);
                 },
             }
         }
@@ -138,7 +115,6 @@ impl Broker {
     ) -> Result<(ServerStreamReader, ServerStreamWriter, AuthResponse), IoError> {
         let mut stream =
             TcpStream::connect(server_addr.as_str()).await.map_err(|_| IoError::NotConnected)?;
-
         stream.serialized_write(auth_request.unwrap_or_default()).await?; // client_id not exist
         let auth_response: AuthResponse = stream.deserialized_read().await?;
         let (r, w) = stream.into_split();
@@ -222,12 +198,35 @@ impl Broker {
         Ok(1)
     }
 
+    async fn dispatch_command_to_server(
+        &self,
+        routing_rule: RoutingRule,
+        mut context: InputContext,
+    ) -> Option<InputContext> {
+        let action = context.client_action.clone();
+
+        let res = match routing_rule {
+            | RoutingRule::Any => self.default_route(action).await,
+            | RoutingRule::Selective(entries) => self.route_command_by_keys(action, entries).await,
+            | RoutingRule::BroadCast => self.node_connections.send_all(action).await,
+            | RoutingRule::Info => self.route_info(action).await,
+        };
+
+        let Ok(num_of_results) = res else {
+            let _ = context
+                .callback(QueryIO::Err("Failed to route command. Try again after ttl time".into()));
+            return None;
+        };
+        context.set_expected_result_cnt(num_of_results);
+        Some(context)
+    }
+
     // The folowing operation is for both:
     // - single key operation
     // - multi key operaitons
     // When in comes to multi key operations, grouping logic needs to be considered
     async fn route_command_by_keys(
-        &mut self,
+        &self,
         client_action: ClientAction,
         entries: Vec<CommandEntry>,
     ) -> Result<usize, IoError> {
