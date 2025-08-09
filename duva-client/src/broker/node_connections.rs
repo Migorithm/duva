@@ -11,7 +11,6 @@ use duva::prelude::rand;
 use duva::prelude::rand::SeedableRng;
 use duva::prelude::rand::rngs::StdRng;
 use duva::prelude::rand::seq::IteratorRandom;
-use duva::prelude::rand::thread_rng;
 use duva::prelude::tokio::sync::mpsc;
 use duva::prelude::tokio::sync::oneshot;
 use duva::presentation::clients::request::ClientAction;
