@@ -29,15 +29,6 @@ impl NodeConnections {
         Self { conns: connections, seed_node: target_id }
     }
 
-    pub(crate) fn is_seed_node(&self, repl_id: &ReplicationId) -> bool {
-        self.seed_node.clone() == repl_id.clone()
-    }
-
-    pub(crate) fn update_seed_node(&mut self) -> Result<(), IoError> {
-        self.seed_node = self.get_random_connection()?.0.clone();
-        Ok(())
-    }
-
     pub(crate) async fn remove_connection(&mut self, leader_id: &ReplicationId) {
         if let Some(connection) = self.conns.remove(leader_id) {
             connection.kill().await;

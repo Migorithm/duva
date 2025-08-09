@@ -6,7 +6,7 @@ use crate::broker::node_connections::NodeConnections;
 use crate::command::{CommandEntry, CommandToServer, InputContext, RoutingRule};
 use duva::domains::cluster_actors::replication::{ReplicationId, ReplicationRole};
 use duva::domains::{IoError, query_io::QueryIO};
-use duva::err;
+
 use duva::prelude::tokio::net::TcpStream;
 use duva::prelude::tokio::sync::mpsc::Receiver;
 use duva::prelude::tokio::sync::mpsc::Sender;
@@ -166,26 +166,24 @@ impl Broker {
     async fn discover_new_repl_leader(
         &mut self,
         replication_id: ReplicationId,
-    ) -> Result<(), IoError> {
+    ) -> anyhow::Result<()> {
         self.node_connections.remove_connection(&replication_id.clone()).await;
 
+        // ! ISSUE: replica set is queried and node connection is made
+        // ! If no connection for the given replica set is not available, the user should not be able to make query, which leads to system unuvailability
+        // ! We should make, therefore, some compromize that's based on some timing assumption - within this time, if connection is not established, we will abort the connection.
+        // ! It means the following operation must be based on callback partern that's waiting for some node in the system notify the client of the event.
+
         for node in self.get_replica_set(&replication_id).cloned().collect::<Vec<_>>() {
+            // TODO probably ping and connect?
             if let Ok(()) = self.add_node_connection(&node.peer_id).await {
                 return Ok(());
             }
         }
 
-        // if no connection found in same replication group, update seed node
-        if self.node_connections.is_seed_node(&replication_id) {
-            self.node_connections.update_seed_node()?;
-        }
+        // ! operation wise, seed node is just to not confuse user. If replacement is made, it'd be even more surprising to user because without user intervention,
+        // ! system gives random result.
 
-        if self.get_replica_set(&replication_id).count() < 1 {
-            return Err(IoError::Custom(format!(
-                "No connections available for replication id: {}",
-                replication_id
-            )));
-        }
         Ok(())
     }
 
