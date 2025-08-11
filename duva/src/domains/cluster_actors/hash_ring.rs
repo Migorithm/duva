@@ -146,7 +146,7 @@ impl HashRing {
 
     pub fn list_replids_for_keys<'a>(
         &self,
-        keys: &[&'a str],
+        keys: impl Iterator<Item = &'a str>,
     ) -> anyhow::Result<HashMap<ReplicationId, Vec<&'a str>>> {
         let mut map: HashMap<ReplicationId, Vec<&str>> = HashMap::new();
 
@@ -155,7 +155,7 @@ impl HashRing {
             let replid = self
                 .find_replid(hash)
                 .cloned()
-                .ok_or_else(|| anyhow::anyhow!("No node found for keys: {:?}", keys))?;
+                .ok_or_else(|| anyhow::anyhow!("No node found for key: {:?}", key))?;
             let v = map.entry(replid).or_default();
             v.push(key);
         }
@@ -172,8 +172,7 @@ impl HashRing {
                 .find_replid(hash)
                 .cloned()
                 .ok_or_else(|| anyhow::anyhow!("No node found for keys: {:?}", keys))?;
-            let v = map.entry(replid).or_default();
-            v.push(key);
+            map.entry(replid).or_default().push(key);
         }
 
         Ok(KeyOwnership(map))

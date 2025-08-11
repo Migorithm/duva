@@ -1,8 +1,10 @@
 mod node_connections;
 mod read_stream;
 mod write_stream;
+use std::collections::HashMap;
+
 use crate::broker::node_connections::NodeConnections;
-use crate::command::{CommandEntry, CommandQueue, CommandToServer, InputContext, RoutingRule};
+use crate::command::{CommandQueue, CommandToServer, InputContext, RoutingRule};
 use duva::domains::cluster_actors::replication::{ReplicationId, ReplicationRole};
 use duva::domains::{IoError, query_io::QueryIO};
 use duva::prelude::tokio::net::TcpStream;
@@ -213,7 +215,16 @@ impl Broker {
 
         let res = match routing_rule {
             | RoutingRule::Any => self.random_route(action).await,
-            | RoutingRule::Selective(entries) => self.route_command_by_keys(action, entries).await,
+            | RoutingRule::Selective(entries) => {
+                match self
+                    .topology
+                    .hash_ring
+                    .list_replids_for_keys(entries.iter().map(|e| e.key.as_str()))
+                {
+                    | Ok(node_mappings) => self.route_command_by_keys(action, node_mappings).await,
+                    | Err(_not_found) => self.random_route(action).await,
+                }
+            },
             | RoutingRule::BroadCast => self.node_connections.send_all(action).await,
             | RoutingRule::Info => self.route_info(action).await,
         };
@@ -234,19 +245,9 @@ impl Broker {
     async fn route_command_by_keys(
         &self,
         client_action: ClientAction,
-        entries: Vec<CommandEntry>,
+        node_id_to_entries: HashMap<ReplicationId, Vec<&str>>,
     ) -> anyhow::Result<usize> {
-        let Ok(node_id_to_entries) = self
-            .topology
-            .hash_ring
-            .list_replids_for_keys(&entries.iter().map(|e| e.key.as_str()).collect::<Vec<&str>>())
-        else {
-            // If routing failed, we fall back to default routing
-            return self.random_route(client_action).await;
-        };
-
         let num_of_results = node_id_to_entries.len();
-
         try_join_all(node_id_to_entries.iter().map(|(node_id, routed_keys)| {
             let grouped_keys =
                 routed_keys.iter().map(|key| key.to_string()).collect::<Vec<String>>();
@@ -260,7 +261,6 @@ impl Broker {
             self.node_connections.send_to(node_id, new_action)
         }))
         .await?;
-
         Ok(num_of_results)
     }
 }
