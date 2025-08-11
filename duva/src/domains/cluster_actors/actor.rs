@@ -981,7 +981,6 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         // * Raft followers should truncate their log starting at prev_log_index + 1 and then append the new entries
         // * Just returning an error is breaking consistency
         if let Some(prev_entry) = self.logger.read_at(prev_log_index) {
-            debug!("Previous log entry: {:?}", prev_entry);
             if prev_entry.term != prev_log_term {
                 // ! Term mismatch -> triggers log truncation
                 err!("Term mismatch: {} != {}", prev_entry.term, prev_log_term);
