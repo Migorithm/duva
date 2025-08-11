@@ -22,12 +22,13 @@ memchr = "2.7.4"
 regex = "1.11.1"
 tracing = "0.1.41"
 tracing-subscriber = "0.3.19"
+tracing-appender = "0.2.3"
 async-trait = "0.1.88"                              # async trait support
 lzf = { version = "1.0.0" }
 
 [dev-dependencies]
 tempfile = "3.19.1"
-criterion = "0.6.0"
+criterion = "0.7.0"
 
 [[bench]]
 name = "benchmark"
