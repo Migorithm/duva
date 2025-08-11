@@ -149,20 +149,18 @@ impl HashRing {
         &self,
         keys: impl Iterator<Item = &'a str>,
     ) -> anyhow::Result<KeyOwnership<'a>> {
-        keys.into_iter()
-            .try_fold(
-                HashMap::<ReplicationId, Vec<&str>>::new(),
-                |mut map, key| -> Result<_, anyhow::Error> {
-                    let hash = fnv_1a_hash(key);
-                    let replid = self
-                        .find_replid(hash)
-                        .cloned()
-                        .ok_or_else(|| anyhow::anyhow!("No node found for key: {}", key))?;
-                    map.entry(replid).or_default().push(key);
-                    Ok(map)
-                },
-            )
-            .map(KeyOwnership)
+        let mut map: HashMap<ReplicationId, Vec<&str>> = HashMap::new();
+
+        for key in keys {
+            let hash = fnv_1a_hash(key);
+            let replid = self
+                .find_replid(hash)
+                .cloned()
+                .ok_or_else(|| anyhow::anyhow!("No node found for key: {:?}", key))?;
+            let v = map.entry(replid).or_default();
+            v.push(key);
+        }
+        Ok(KeyOwnership(map))
     }
 
     #[cfg(test)]
