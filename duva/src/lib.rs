@@ -119,7 +119,7 @@ impl StartUpFacade {
     }
 
     pub async fn run(self) -> Result<()> {
-        let _logger = setup_tracing_shared_file("./shared.log")?;
+        let _logger = setup_tracing_shared_file()?;
 
         tokio::spawn(Self::start_accepting_peer_connections(
             ENV.peer_bind_addr(),
@@ -220,9 +220,7 @@ impl StartUpFacade {
     }
 }
 
-fn setup_tracing_shared_file(
-    log_file_path: &str,
-) -> Result<tracing_appender::non_blocking::WorkerGuard> {
+fn setup_tracing_shared_file() -> Result<tracing_appender::non_blocking::WorkerGuard> {
     // Create a custom writer that uses file locking
     struct LockedFileWriter {
         file: std::fs::File,
@@ -250,7 +248,7 @@ fn setup_tracing_shared_file(
             Ok(())
         }
     }
-    let writer = LockedFileWriter::new(log_file_path)?;
+    let writer = LockedFileWriter::new("./shared.log")?;
     let (non_blocking, guard) = non_blocking(writer);
 
     let file_layer = fmt::layer()
