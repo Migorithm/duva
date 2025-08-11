@@ -9,7 +9,7 @@ pub mod actor;
 mod command;
 pub(crate) use command::*;
 pub mod consensus;
-pub(crate) mod hash_ring;
+pub mod hash_ring;
 
 pub mod replication;
 mod service;

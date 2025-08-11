@@ -140,7 +140,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         topology_writer: File,
         log_writer: T,
     ) -> Self {
-        let (self_handler, receiver) = tokio::sync::mpsc::channel(100);
+        let (self_handler, receiver) = tokio::sync::mpsc::channel(2000);
         let heartbeat_scheduler = HeartBeatScheduler::run(
             ClusterCommandHandler(self_handler.clone()),
             init_repl_state.is_leader(),
@@ -230,23 +230,23 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         optional_callback: Option<Callback<anyhow::Result<()>>>,
     ) {
         if self.replication.self_identifier() == connect_to {
-            optional_callback.map(|cb| {
+            if let Some(cb) = optional_callback {
                 cb.send(res_err!("Cannot connect to self"));
-            });
+            }
             return;
         }
 
         let Ok(cluster_bind_addr) = connect_to.cluster_bind_addr() else {
-            optional_callback.map(|cb| {
+            if let Some(cb) = optional_callback {
                 cb.send(res_err!("invalid cluster bind address for {}", connect_to));
-            });
+            }
             return;
         };
 
         let Ok((r, w)) = C::connect(&cluster_bind_addr).await else {
-            optional_callback.map(|cb| {
+            if let Some(cb) = optional_callback {
                 cb.send(res_err!("Failed to connect to {}", connect_to));
-            });
+            }
             return;
         };
 
@@ -266,13 +266,13 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
     pub(crate) fn accept_inbound_stream(
         &mut self,
-        read: ReadConnected,
-        write: WriteConnected,
+        r: ReadConnected,
+        w: WriteConnected,
         host_ip: String,
     ) {
         let inbound_stream = InboundStream {
-            r: read.into(),
-            w: write.into(),
+            r,
+            w,
             host_ip,
             self_repl_info: self.replication.clone(),
             connected_peer_info: Default::default(),
@@ -345,7 +345,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             return;
         };
 
-        match self.hash_ring.key_ownership(&req.request.all_keys()) {
+        match self.hash_ring.key_ownership(req.request.all_keys().into_iter().map(|k| k)) {
             | Ok(replids) if replids.all_belongs_to(&self.replication.replid) => {
                 self.req_consensus(req).await;
             },
@@ -518,7 +518,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         }
 
         let (res_callback, conn_awaiter) = Callback::create();
-        self.connect_to_server::<C>(peer_addr.clone(), Some(res_callback.into())).await;
+        self.connect_to_server::<C>(peer_addr.clone(), Some(res_callback)).await;
 
         let (completion_sig, on_conn_completion) = Callback::create();
         tokio::spawn({
@@ -529,11 +529,10 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
                 if lazy_option == LazyOption::Eager {
                     let (activation_sig, on_activation) = Callback::create();
-                    let _ =
-                        h.send(ConnectionMessage::ActivateClusterSync(activation_sig.into())).await;
+                    let _ = h.send(ConnectionMessage::ActivateClusterSync(activation_sig)).await;
                     let _ = on_activation.recv().await;
                 }
-                let _ = completion_sig.send(conn_res);
+                completion_sig.send(conn_res);
             }
         });
 
@@ -1230,7 +1229,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         handler: ClusterCommandHandler,
     ) -> anyhow::Result<()> {
         let (tx, rx) = Callback::create();
-        handler.send(SchedulerMessage::ScheduleMigrationBatch(batch, tx.into())).await?;
+        handler.send(SchedulerMessage::ScheduleMigrationBatch(batch, tx)).await?;
         rx.recv().await
     }
 
@@ -1267,9 +1266,9 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             return;
         };
 
-        self.pending_migrations.as_mut().map(|p| {
+        if let Some(p) = self.pending_migrations.as_mut() {
             p.add_batch(target.batch_id.clone(), PendingMigrationBatch::new(callback, keys))
-        });
+        }
 
         let _ = target_peer.send(MigrateBatch { batch_id: target.batch_id, cache_entries }).await;
     }
@@ -1290,11 +1289,11 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             return;
         }
 
-        let (tx, rx) = Callback::create();
+        let (callback, rx) = Callback::create();
 
         self.req_consensus(ConsensusRequest::new(
             WriteRequest::MSet { entries: migrate_batch.cache_entries.clone() },
-            tx,
+            callback,
             None,
         ))
         .await;
@@ -1304,6 +1303,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             let handler = self.self_handler.clone();
             let cache_manager = cache_manager.clone();
             async move {
+                rx.recv().await;
                 let _ = cache_manager.route_mset(migrate_batch.cache_entries.clone()).await; // reflect state change
                 let _ = handler
                     .send(SchedulerMessage::SendBatchAck {
@@ -1311,7 +1311,6 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
                         to: from,
                     })
                     .await;
-                return;
             }
         });
     }
@@ -1339,10 +1338,10 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         }
 
         // make consensus request for delete
-        let (tx, rx) = Callback::create();
+        let (callback, rx) = Callback::create();
         let w_req = ConsensusRequest::new(
             WriteRequest::Delete { keys: pending_migration_batch.keys.clone() },
-            tx,
+            callback,
             None,
         );
         self.req_consensus(w_req).await;
@@ -1352,6 +1351,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             let cache_manager = cache_manager.clone();
 
             async move {
+                rx.recv().await;
                 let _ = cache_manager.route_delete(pending_migration_batch.keys).await; // reflect state change
                 let _ = handler.send(SchedulerMessage::TryUnblockWriteReqs).await;
                 pending_migration_batch.callback.send(Ok(()));

@@ -1,3 +1,5 @@
+use crate::domains::cluster_actors::replication::{ReplicationId, ReplicationRole};
+use crate::presentation::clusters::communication_manager::ClusterCommunicationManager;
 use crate::{
     domains::{IoError, TSerdeReadWrite, cluster_actors::topology::Topology},
     presentation::clients::stream::{ClientStreamReader, ClientStreamWriter},
@@ -7,24 +9,20 @@ use uuid::Uuid;
 
 pub(crate) async fn authenticate(
     mut stream: TcpStream,
-    topology: Topology,
-    is_leader: bool,
-) -> Result<(ClientStreamReader, ClientStreamWriter), IoError> {
-    let auth_req: AuthRequest = stream.deserialized_read().await?;
+    cluster_manager: &ClusterCommunicationManager,
+) -> anyhow::Result<(ClientStreamReader, ClientStreamWriter)> {
+    let replication_state = cluster_manager.route_get_replication_state().await?;
 
-    let client_id = match auth_req.client_id {
-        | Some(client_id) => {
-            Uuid::parse_str(&client_id).map_err(|e| IoError::Custom(e.to_string()))?
-        },
-        | None => Uuid::now_v7(),
-    };
+    let auth_req: AuthRequest = stream.deserialized_read().await?;
+    let (client_id, request_id) = auth_req.deconstruct()?;
 
     stream
         .serialized_write(AuthResponse {
             client_id: client_id.to_string(),
-            request_id: auth_req.request_id,
-            topology,
-            connected_to_leader: is_leader,
+            request_id,
+            topology: cluster_manager.route_get_topology().await?,
+            is_leader_node: replication_state.role == ReplicationRole::Leader,
+            replication_id: replication_state.replid.clone(),
         })
         .await?;
 
@@ -41,10 +39,21 @@ pub struct AuthRequest {
     pub request_id: u64,
 }
 
+impl AuthRequest {
+    pub(crate) fn deconstruct(self) -> anyhow::Result<(String, u64)> {
+        let client_id = self.client_id.map_or_else(
+            || Ok(Uuid::now_v7()),
+            |id| Uuid::parse_str(&id).map_err(|e| IoError::Custom(e.to_string())),
+        )?;
+        Ok((client_id.to_string(), self.request_id))
+    }
+}
+
 #[derive(Debug, Clone, Default, bincode::Decode, bincode::Encode)]
 pub struct AuthResponse {
     pub client_id: String,
     pub request_id: u64,
     pub topology: Topology,
-    pub connected_to_leader: bool,
+    pub is_leader_node: bool,
+    pub replication_id: ReplicationId,
 }

@@ -168,9 +168,9 @@ async fn replicate_stores_only_latest_session_per_client() {
     let (cache_handler, _) = tokio::sync::mpsc::channel(100);
     let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Follower).await;
 
-    let target_client = uuid::Uuid::now_v7();
-    let session1 = SessionRequest::new(1, uuid::Uuid::now_v7());
-    let session2 = SessionRequest::new(1, target_client);
+    let target_client = uuid::Uuid::now_v7().to_string();
+    let session1 = SessionRequest::new(1, uuid::Uuid::now_v7().to_string());
+    let session2 = SessionRequest::new(1, target_client.clone());
     // ! For the same client, hold only one request
     let session3 = SessionRequest::new(2, target_client);
 
@@ -435,7 +435,7 @@ async fn req_consensus_inserts_consensus_voting() {
     );
 
     let (callback, _) = Callback::create();
-    let client_id = Uuid::now_v7();
+    let client_id = Uuid::now_v7().to_string();
     let session_request = SessionRequest::new(1, client_id);
     let w_req = WriteRequest::Set { key: "foo".into(), value: "bar".into(), expires_at: None };
     let consensus_request =
@@ -480,7 +480,7 @@ async fn test_leader_req_consensus_early_return_when_already_processed_session_r
 
     let cache_manager = CacheManager { inboxes: vec![] };
 
-    let client_id = Uuid::now_v7();
+    let client_id = Uuid::now_v7().to_string();
     let client_req = SessionRequest::new(1, client_id);
 
     // WHEN - session request is already processed
@@ -519,7 +519,7 @@ async fn test_consensus_voting_deleted_when_consensus_reached() {
     );
     let (client_request_sender, client_wait) = Callback::create();
 
-    let client_id = Uuid::now_v7();
+    let client_id = Uuid::now_v7().to_string();
     let client_request = SessionRequest::new(3, client_id);
     let consensus_request =
         Helper::consensus_request(client_request_sender, Some(client_request.clone()));
@@ -627,7 +627,7 @@ async fn test_leader_req_consensus_with_processed_session() {
     // GIVEN
     let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Leader).await;
 
-    let client_id = Uuid::now_v7();
+    let client_id = Uuid::now_v7().to_string();
     let session_req = SessionRequest::new(1, client_id);
 
     // Mark the session as already processed

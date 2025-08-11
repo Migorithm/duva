@@ -109,7 +109,7 @@ impl Completer for DuvaHinter {
                 candidates.push(new_pair!(suggestions[idx]));
             }
             };
-        };
+        }
 
         let command = previous_words[0].to_lowercase();
         match command.as_str() {

@@ -11,7 +11,7 @@ use domains::caches::cache_manager::CacheManager;
 use domains::cluster_actors::ClusterActor;
 use domains::cluster_actors::ConnectionMessage;
 use domains::cluster_actors::replication::ReplicationId;
-use domains::cluster_actors::replication::ReplicationRole;
+
 use domains::cluster_actors::replication::ReplicationState;
 use domains::operation_logs::interfaces::TWriteAheadLog;
 use domains::saves::snapshot::Snapshot;
@@ -30,6 +30,7 @@ use uuid::Uuid;
 pub use config::ENV;
 pub mod prelude {
     pub use crate::domains::cluster_actors::actor::heartbeat_scheduler::LEADER_HEARTBEAT_INTERVAL_MAX;
+    pub use crate::domains::cluster_actors::topology::NodeReplInfo;
     pub use crate::domains::cluster_actors::topology::Topology;
     pub use crate::domains::peers::identifier::PeerIdentifier;
     pub use crate::presentation::clients::AuthRequest;
@@ -37,6 +38,7 @@ pub mod prelude {
     pub use anyhow;
     pub use bytes;
     pub use bytes::BytesMut;
+    pub use rand;
     pub use tokio;
     pub use uuid;
 }
@@ -174,11 +176,9 @@ impl StartUpFacade {
 
         //TODO refactor: authentication should be simplified
         while let Ok((stream, _)) = listener.accept().await {
-            let topology = self.cluster_communication_manager.route_get_topology().await?;
-
-            let is_leader: bool = self.cluster_communication_manager.route_get_role().await?
-                == ReplicationRole::Leader;
-            let Ok((reader, writer)) = authenticate(stream, topology, is_leader).await else {
+            let Ok((reader, writer)) =
+                authenticate(stream, &self.cluster_communication_manager).await
+            else {
                 error!("Failed to authenticate client stream");
                 continue;
             };

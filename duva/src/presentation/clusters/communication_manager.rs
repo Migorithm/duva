@@ -3,9 +3,8 @@ use crate::types::Callback;
 use crate::{
     domains::{
         cluster_actors::{
-            ClientMessage, ConnectionMessage, LazyOption,
-            actor::ClusterCommandHandler,
-            replication::{ReplicationRole, ReplicationState},
+            ClientMessage, ConnectionMessage, LazyOption, actor::ClusterCommandHandler,
+            replication::ReplicationState,
         },
         peers::{identifier::PeerIdentifier, peer::PeerState},
     },
@@ -38,7 +37,7 @@ impl ClusterCommunicationManager {
     ) -> anyhow::Result<()> {
         let (tx, rx) = Callback::create();
         self.send(ConnectionMessage::ConnectToServer { connect_to, callback: tx }).await?;
-        rx.recv().await;
+        rx.recv().await?;
         Ok(())
     }
 
@@ -110,12 +109,6 @@ impl ClusterCommunicationManager {
         let (tx, rx) = Callback::create();
         self.send(ClientMessage::GetRoles(tx)).await?;
         Ok(rx.recv().await.into_iter().map(|(id, role)| format!("{}:{}", id.0, role)).collect())
-    }
-
-    pub(crate) async fn route_get_role(&self) -> anyhow::Result<ReplicationRole> {
-        let (tx, rx) = Callback::create();
-        self.send(ClientMessage::GetRole(tx)).await?;
-        Ok(rx.recv().await)
     }
 
     pub(crate) async fn route_subscribe_topology_change(

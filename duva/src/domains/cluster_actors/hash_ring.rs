@@ -6,6 +6,7 @@
 use crate::ReplicationId;
 use crate::prelude::PeerIdentifier;
 use std::collections::{BTreeMap, HashMap};
+use std::ops::Deref;
 use std::rc::Rc;
 mod hash_func;
 mod migration_task;
@@ -144,7 +145,10 @@ impl HashRing {
         self.vnodes.len()
     }
 
-    pub(crate) fn key_ownership<'a>(&self, keys: &[&'a str]) -> anyhow::Result<KeyOwnership<'a>> {
+    pub fn key_ownership<'a>(
+        &self,
+        keys: impl Iterator<Item = &'a str>,
+    ) -> anyhow::Result<KeyOwnership<'a>> {
         let mut map: HashMap<ReplicationId, Vec<&str>> = HashMap::new();
 
         for key in keys {
@@ -152,22 +156,17 @@ impl HashRing {
             let replid = self
                 .find_replid(hash)
                 .cloned()
-                .ok_or_else(|| anyhow::anyhow!("No node found for keys: {:?}", keys))?;
+                .ok_or_else(|| anyhow::anyhow!("No node found for key: {:?}", key))?;
             let v = map.entry(replid).or_default();
             v.push(key);
         }
-
         Ok(KeyOwnership(map))
     }
 
     #[cfg(test)]
-    pub(crate) fn get_node_for_key(&self, key: &str) -> Option<&ReplicationId> {
+    pub fn get_node_for_key(&self, key: &str) -> Option<&ReplicationId> {
         let hash = fnv_1a_hash(key);
         self.find_replid(hash)
-    }
-
-    pub fn get_node_id(&self, replid: &ReplicationId) -> Option<&PeerIdentifier> {
-        self.pnodes.get(replid)
     }
 
     pub(crate) fn update_repl_leader(&mut self, replid: ReplicationId, new_pnode: PeerIdentifier) {
@@ -178,20 +177,29 @@ impl HashRing {
         }
         self.update_last_modified();
     }
+
+    pub fn get_replication_ids(&self) -> Vec<ReplicationId> {
+        self.pnodes.keys().cloned().collect()
+    }
 }
 
-pub(crate) struct KeyOwnership<'a>(HashMap<ReplicationId, Vec<&'a str>>);
+pub struct KeyOwnership<'a>(HashMap<ReplicationId, Vec<&'a str>>);
 impl<'a> KeyOwnership<'a> {
     pub(crate) fn all_belongs_to(&self, target: &ReplicationId) -> bool {
-        self.0.keys().all(|replid| replid == target)
+        self.keys().all(|replid| replid == target)
     }
     pub(crate) fn except(self, target: &ReplicationId) -> Vec<&'a str> {
-        self.0
-            .iter()
+        self.iter()
             .filter_map(|(replid, keys)| if replid != target { Some(keys.iter()) } else { None })
             .flatten()
             .copied()
             .collect::<Vec<_>>()
+    }
+}
+impl<'a> Deref for KeyOwnership<'a> {
+    type Target = HashMap<ReplicationId, Vec<&'a str>>;
+    fn deref(&self) -> &Self::Target {
+        &self.0
     }
 }
 

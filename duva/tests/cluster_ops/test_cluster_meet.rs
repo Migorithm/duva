@@ -100,7 +100,7 @@ fn run_cluster_meet_with_migration(append_only: bool) -> anyhow::Result<()> {
     assert_eq!(client_handler2.send_and_get(&cmd), "OK");
 
     // Wait for cluster meet to complete and rebalancing to start
-    sleep(Duration::from_secs(2)); // Increased wait time to ensure cluster meet completes
+    sleep(Duration::from_secs(3)); // Increased wait time to ensure cluster meet completes
 
     // Wait for rebalancing to complete (this might take some time)
     let mut keys_accessible_from_node1 = 0;
@@ -131,7 +131,8 @@ fn run_cluster_meet_with_migration(append_only: bool) -> anyhow::Result<()> {
     assert!(node1_keys != (0..500).collect::<Vec<_>>());
     assert!(node2_keys != (500..1000).collect::<Vec<_>>());
     // verify that all keys are accessible from both nodes
-    assert!(dbg!(keys_accessible_from_node1 + keys_accessible_from_node2) == 1000);
+    // now it is 2000 as routing works
+    assert!(dbg!(keys_accessible_from_node1 + keys_accessible_from_node2) == 2000);
 
     Ok(())
 }

@@ -9,7 +9,6 @@ use crate::domains::peers::peer::{Peer, PeerState};
 use crate::prelude::PeerIdentifier;
 use crate::types::{Callback, CallbackAwaiter};
 use std::str::FromStr;
-use uuid::Uuid;
 
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum ClusterCommand {
@@ -131,7 +130,7 @@ pub struct SessionRequest {
     pub(crate) client_id: String,
 }
 impl SessionRequest {
-    pub(crate) fn new(request_id: u64, client_id: Uuid) -> Self {
-        Self { request_id, client_id: client_id.to_string() }
+    pub(crate) fn new(request_id: u64, client_id: String) -> Self {
+        Self { request_id, client_id }
     }
 }
