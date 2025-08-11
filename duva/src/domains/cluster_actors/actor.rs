@@ -345,7 +345,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             return;
         };
 
-        match self.hash_ring.key_ownership(&req.request.all_keys()) {
+        match self.hash_ring.key_ownership(req.request.all_keys().into_iter().map(|k| k)) {
             | Ok(replids) if replids.all_belongs_to(&self.replication.replid) => {
                 self.req_consensus(req).await;
             },

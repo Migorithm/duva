@@ -5,6 +5,7 @@ use std::collections::HashMap;
 
 use crate::broker::node_connections::NodeConnections;
 use crate::command::{CommandQueue, CommandToServer, InputContext, RoutingRule};
+use duva::domains::cluster_actors::hash_ring::KeyOwnership;
 use duva::domains::cluster_actors::replication::{ReplicationId, ReplicationRole};
 use duva::domains::{IoError, query_io::QueryIO};
 use duva::prelude::tokio::net::TcpStream;
@@ -216,10 +217,7 @@ impl Broker {
         let res = match routing_rule {
             | RoutingRule::Any => self.random_route(action).await,
             | RoutingRule::Selective(entries) => {
-                match self
-                    .topology
-                    .hash_ring
-                    .list_replids_for_keys(entries.iter().map(|e| e.key.as_str()))
+                match self.topology.hash_ring.key_ownership(entries.iter().map(|e| e.key.as_str()))
                 {
                     | Ok(node_mappings) => self.route_command_by_keys(action, node_mappings).await,
                     | Err(_not_found) => self.random_route(action).await,
@@ -245,7 +243,7 @@ impl Broker {
     async fn route_command_by_keys(
         &self,
         client_action: ClientAction,
-        node_id_to_entries: HashMap<ReplicationId, Vec<&str>>,
+        node_id_to_entries: KeyOwnership<'_>,
     ) -> anyhow::Result<usize> {
         let num_of_results = node_id_to_entries.len();
         try_join_all(node_id_to_entries.iter().map(|(node_id, routed_keys)| {

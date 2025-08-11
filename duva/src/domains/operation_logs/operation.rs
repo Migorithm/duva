@@ -58,20 +58,20 @@ impl WriteRequest {
     /// Returns all keys involved in the operation.
     pub(crate) fn all_keys(&self) -> Vec<&str> {
         match self {
-            | WriteRequest::Set { key, .. } => vec![key],
-            | WriteRequest::Append { key, .. } => vec![key],
-            | WriteRequest::Incr { key, .. } => vec![key],
-            | WriteRequest::Decr { key, .. } => vec![key],
+            | WriteRequest::Set { key, .. }
+            | WriteRequest::Append { key, .. }
+            | WriteRequest::Incr { key, .. }
+            | WriteRequest::Decr { key, .. }
+            | WriteRequest::LPush { key, .. }
+            | WriteRequest::LPop { key, .. }
+            | WriteRequest::RPush { key, .. }
+            | WriteRequest::LTrim { key, .. }
+            | WriteRequest::LPushX { key, .. }
+            | WriteRequest::LSet { key, .. }
+            | WriteRequest::RPop { key, .. }
+            | WriteRequest::RPushX { key, .. } => vec![key],
             | WriteRequest::Delete { keys, .. } => keys.iter().map(|k| k.as_str()).collect(),
             | WriteRequest::MSet { entries } => entries.iter().map(|e| e.key()).collect(),
-            | WriteRequest::LPush { key, .. } => vec![key],
-            | WriteRequest::LPop { key, .. } => vec![key],
-            | WriteRequest::RPush { key, .. } => vec![key],
-            | WriteRequest::LTrim { key, .. } => vec![key],
-            | WriteRequest::LPushX { key, .. } => vec![key],
-            | WriteRequest::LSet { key, .. } => vec![key],
-            | WriteRequest::RPop { key, .. } => vec![key],
-            | WriteRequest::RPushX { key, .. } => vec![key],
         }
     }
 }

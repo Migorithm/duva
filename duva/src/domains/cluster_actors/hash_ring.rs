@@ -1,11 +1,12 @@
+use crate::prelude::PeerIdentifier;
 /// A consistent hashing ring for distributing keys across nodes.
 ///
 /// The `HashRing` maps keys to physical nodes using virtual nodes to ensure
 /// even distribution. Each physical node is represented by multiple virtual
 /// nodes on the ring, determined by `vnode_num`.
-use crate::ReplicationId;
-use crate::prelude::PeerIdentifier;
+use crate::{ReplicationId, make_smart_pointer};
 use std::collections::{BTreeMap, HashMap};
+use std::ops::Deref;
 use std::rc::Rc;
 mod hash_func;
 mod migration_task;
@@ -144,38 +145,24 @@ impl HashRing {
         self.vnodes.len()
     }
 
-    pub fn list_replids_for_keys<'a>(
+    pub fn key_ownership<'a>(
         &self,
         keys: impl Iterator<Item = &'a str>,
-    ) -> anyhow::Result<HashMap<ReplicationId, Vec<&'a str>>> {
-        let mut map: HashMap<ReplicationId, Vec<&str>> = HashMap::new();
-
-        for key in keys {
-            let hash = fnv_1a_hash(key);
-            let replid = self
-                .find_replid(hash)
-                .cloned()
-                .ok_or_else(|| anyhow::anyhow!("No node found for key: {:?}", key))?;
-            let v = map.entry(replid).or_default();
-            v.push(key);
-        }
-
-        Ok(map)
-    }
-
-    pub(crate) fn key_ownership<'a>(&self, keys: &[&'a str]) -> anyhow::Result<KeyOwnership<'a>> {
-        let mut map: HashMap<ReplicationId, Vec<&str>> = HashMap::new();
-
-        for key in keys {
-            let hash = fnv_1a_hash(key);
-            let replid = self
-                .find_replid(hash)
-                .cloned()
-                .ok_or_else(|| anyhow::anyhow!("No node found for keys: {:?}", keys))?;
-            map.entry(replid).or_default().push(key);
-        }
-
-        Ok(KeyOwnership(map))
+    ) -> anyhow::Result<KeyOwnership<'a>> {
+        keys.into_iter()
+            .try_fold(
+                HashMap::<ReplicationId, Vec<&str>>::new(),
+                |mut map, key| -> Result<_, anyhow::Error> {
+                    let hash = fnv_1a_hash(key);
+                    let replid = self
+                        .find_replid(hash)
+                        .cloned()
+                        .ok_or_else(|| anyhow::anyhow!("No node found for key: {}", key))?;
+                    map.entry(replid).or_default().push(key);
+                    Ok(map)
+                },
+            )
+            .map(KeyOwnership)
     }
 
     #[cfg(test)]
@@ -198,18 +185,23 @@ impl HashRing {
     }
 }
 
-pub(crate) struct KeyOwnership<'a>(HashMap<ReplicationId, Vec<&'a str>>);
+pub struct KeyOwnership<'a>(HashMap<ReplicationId, Vec<&'a str>>);
 impl<'a> KeyOwnership<'a> {
     pub(crate) fn all_belongs_to(&self, target: &ReplicationId) -> bool {
-        self.0.keys().all(|replid| replid == target)
+        self.keys().all(|replid| replid == target)
     }
     pub(crate) fn except(self, target: &ReplicationId) -> Vec<&'a str> {
-        self.0
-            .iter()
+        self.iter()
             .filter_map(|(replid, keys)| if replid != target { Some(keys.iter()) } else { None })
             .flatten()
             .copied()
             .collect::<Vec<_>>()
+    }
+}
+impl<'a> Deref for KeyOwnership<'a> {
+    type Target = HashMap<ReplicationId, Vec<&'a str>>;
+    fn deref(&self) -> &Self::Target {
+        &self.0
     }
 }
 
