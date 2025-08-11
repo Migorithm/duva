@@ -1,10 +1,10 @@
-use crate::prelude::PeerIdentifier;
 /// A consistent hashing ring for distributing keys across nodes.
 ///
 /// The `HashRing` maps keys to physical nodes using virtual nodes to ensure
 /// even distribution. Each physical node is represented by multiple virtual
 /// nodes on the ring, determined by `vnode_num`.
-use crate::{ReplicationId, make_smart_pointer};
+use crate::ReplicationId;
+use crate::prelude::PeerIdentifier;
 use std::collections::{BTreeMap, HashMap};
 use std::ops::Deref;
 use std::rc::Rc;

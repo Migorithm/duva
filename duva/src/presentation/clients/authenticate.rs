@@ -11,21 +11,16 @@ pub(crate) async fn authenticate(
     mut stream: TcpStream,
     cluster_manager: &ClusterCommunicationManager,
 ) -> anyhow::Result<(ClientStreamReader, ClientStreamWriter)> {
-    let topology = cluster_manager.route_get_topology().await?;
     let replication_state = cluster_manager.route_get_replication_state().await?;
 
     let auth_req: AuthRequest = stream.deserialized_read().await?;
-
-    let client_id = auth_req.client_id.map_or_else(
-        || Ok(Uuid::now_v7()),
-        |id| Uuid::parse_str(&id).map_err(|e| IoError::Custom(e.to_string())),
-    )?;
+    let (client_id, request_id) = auth_req.deconstruct()?;
 
     stream
         .serialized_write(AuthResponse {
             client_id: client_id.to_string(),
-            request_id: auth_req.request_id,
-            topology,
+            request_id,
+            topology: cluster_manager.route_get_topology().await?,
             is_leader_node: replication_state.role == ReplicationRole::Leader,
             replication_id: replication_state.replid.clone(),
         })
@@ -42,6 +37,16 @@ pub(crate) async fn authenticate(
 pub struct AuthRequest {
     pub client_id: Option<String>,
     pub request_id: u64,
+}
+
+impl AuthRequest {
+    pub(crate) fn deconstruct(self) -> anyhow::Result<(String, u64)> {
+        let client_id = self.client_id.map_or_else(
+            || Ok(Uuid::now_v7()),
+            |id| Uuid::parse_str(&id).map_err(|e| IoError::Custom(e.to_string())),
+        )?;
+        Ok((client_id.to_string(), self.request_id))
+    }
 }
 
 #[derive(Debug, Clone, Default, bincode::Decode, bincode::Encode)]

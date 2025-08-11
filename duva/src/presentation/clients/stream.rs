@@ -10,11 +10,10 @@ use tokio::{
     sync::mpsc::Sender,
 };
 use tracing::{error, instrument, trace};
-use uuid::Uuid;
 
 pub struct ClientStreamReader {
     pub(crate) r: OwnedReadHalf,
-    pub(crate) client_id: Uuid,
+    pub(crate) client_id: String,
 }
 
 impl ClientStreamReader {
@@ -76,7 +75,7 @@ impl ClientStreamReader {
                 let QueryIO::SessionRequest { request_id, client_action } = query_io else {
                     return Err(IoError::Custom("Unexpected command format".to_string()));
                 };
-                let session_request = SessionRequest::new(request_id, self.client_id);
+                let session_request = SessionRequest::new(request_id, self.client_id.clone());
 
                 Ok(ClientRequest { action: client_action, session_req: session_request })
             })
