@@ -9,7 +9,7 @@ use tokio::{
     net::tcp::{OwnedReadHalf, OwnedWriteHalf},
     sync::mpsc::Sender,
 };
-use tracing::{error, instrument, trace};
+use tracing::{error, info, instrument};
 
 pub struct ClientStreamReader {
     pub(crate) r: OwnedReadHalf,
@@ -37,7 +37,7 @@ impl ClientStreamReader {
             };
 
             for mut req in requests {
-                trace!(?req, "Processing request");
+                info!(?req, "Processing request");
 
                 let mut index: Option<_> = None;
                 if let Some(write_req) = req.action.to_write_request() {

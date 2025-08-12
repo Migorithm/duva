@@ -31,3 +31,7 @@ cli:
 cli-cluster:
 	@echo '🚀 Starting client in local_test/cli...'
 	cargo run -p duva-client -- --port $(p) --cluster-mode
+
+
+sort_log:
+	jq -c '.' duva/shared.log | sort -t'"' -k4,4 duva/shared.log > shared_log_sorted.json

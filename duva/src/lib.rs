@@ -20,11 +20,26 @@ use presentation::clients::ClientController;
 use presentation::clients::authenticate;
 use presentation::clusters::communication_manager::ClusterCommunicationManager;
 use std::fs::File;
+use std::fs::OpenOptions;
+use std::io::Write;
+
+use tracing_subscriber::fmt::time::UtcTime;
+
 use tokio::net::TcpListener;
+
+use tracing_subscriber::Layer;
+
+use tracing_subscriber::util::SubscriberInitExt;
+
 use tracing::debug;
 use tracing::error;
 use tracing::info;
 use tracing::instrument;
+use tracing_appender::non_blocking;
+use tracing_subscriber::Registry;
+use tracing_subscriber::fmt;
+
+use tracing_subscriber::layer::SubscriberExt;
 use uuid::Uuid;
 
 pub use config::ENV;
@@ -104,6 +119,8 @@ impl StartUpFacade {
     }
 
     pub async fn run(self) -> Result<()> {
+        let _logger = setup_tracing_shared_file()?;
+
         tokio::spawn(Self::start_accepting_peer_connections(
             ENV.peer_bind_addr(),
             self.cluster_communication_manager.clone(),
@@ -201,4 +218,59 @@ impl StartUpFacade {
             cache_manager: self.cache_manager.clone(),
         }
     }
+}
+
+fn setup_tracing_shared_file() -> Result<tracing_appender::non_blocking::WorkerGuard> {
+    // Create a custom writer that uses file locking
+    struct LockedFileWriter {
+        file: std::fs::File,
+    }
+
+    impl LockedFileWriter {
+        fn new(path: &str) -> Result<Self, std::io::Error> {
+            let file = OpenOptions::new().create(true).append(true).open(path)?;
+            Ok(Self { file })
+        }
+    }
+
+    impl Write for LockedFileWriter {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            self.file.lock().unwrap();
+            let result = self.file.write(buf)?;
+            self.file.flush()?;
+            self.file.unlock()?; // release lock
+            Ok(result)
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            self.file.lock().unwrap();
+            self.file.flush()?;
+            self.file.unlock().unwrap();
+            Ok(())
+        }
+    }
+    let writer = LockedFileWriter::new("./shared.log")?;
+    let (non_blocking, guard) = non_blocking(writer);
+
+    let file_layer = fmt::layer()
+        .with_writer(non_blocking)
+        .with_target(true)
+        .with_line_number(true)
+        .with_file(true)
+        .with_timer(UtcTime::rfc_3339()) // nice timestamps
+        .with_ansi(true)
+        .json(); // JSON format is easier to parse from multiple processes
+
+    let console_layer = fmt::layer()
+        .with_writer(std::io::stderr)
+        .with_target(true)
+        .with_line_number(true)
+        .with_ansi(true);
+
+    Registry::default()
+        .with(file_layer.with_filter(ENV.log_level))
+        .with(console_layer.with_filter(ENV.log_level))
+        // .with(console_layer.with_filter(LevelFilter::INFO))
+        .init();
+
+    Ok(guard)
 }
