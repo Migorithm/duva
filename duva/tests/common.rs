@@ -244,6 +244,8 @@ pub fn run_server_process(env: &ServerEnv) -> TestProcessChild {
         command.args(["--dbfilename", file_name]);
     }
 
+    command.env("DUVA_ENV", "test");
+
     TestProcessChild::new(
         command
             .stdout(Stdio::null())

@@ -13,6 +13,7 @@ use crate::presentation::clusters::communication_manager::ClusterCommunicationMa
 use crate::types::Callback;
 use chrono::DateTime;
 use std::sync::atomic::Ordering;
+use tracing::info;
 
 #[derive(Clone, Debug)]
 pub(crate) struct ClientController {
@@ -222,7 +223,7 @@ impl ClientController {
                     .into(),
             ),
         };
-
+        info!("{response:?}");
         Ok(response)
     }
 

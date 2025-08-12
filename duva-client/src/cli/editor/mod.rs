@@ -12,7 +12,7 @@ pub fn create() -> Editor<DuvaHinter, SQLiteHistory> {
         .completion_type(rustyline::CompletionType::Circular)
         .build();
     let history =
-        rustyline::sqlite_history::SQLiteHistory::open(editor_conf, "duva-cli.hist").unwrap();
+        rustyline::sqlite_history::SQLiteHistory::open(&editor_conf, "duva-cli.hist").unwrap();
     let mut editor = Editor::with_history(editor_conf, history).unwrap();
     editor.set_helper(Some(DuvaHinter {
         default_hints: default_hints(),
