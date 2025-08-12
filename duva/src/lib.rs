@@ -244,14 +244,14 @@ fn setup_tracing_shared_file() -> Result<Option<tracing_appender::non_blocking::
 
         impl Write for LockedFileWriter {
             fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-                self.file.lock().unwrap();
+                self.file.lock_shared().unwrap();
                 let result = self.file.write(buf)?;
                 self.file.flush()?;
                 self.file.unlock()?; // release lock
                 Ok(result)
             }
             fn flush(&mut self) -> std::io::Result<()> {
-                self.file.lock().unwrap();
+                self.file.lock_shared().unwrap();
                 self.file.flush()?;
                 self.file.unlock().unwrap();
                 Ok(())
