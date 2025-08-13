@@ -54,11 +54,10 @@ impl From<ConnectionMessage> for ClusterCommand {
 pub enum ClientMessage {
     GetPeers(Callback<Vec<PeerIdentifier>>),
     ReplicationInfo(Callback<ReplicationState>),
-    ForgetPeer(PeerIdentifier, Callback<Option<()>>),
+    Forget(PeerIdentifier, Callback<Option<()>>),
     ReplicaOf(PeerIdentifier, Callback<anyhow::Result<()>>),
     LeaderReqConsensus(ConsensusRequest),
     ClusterNodes(Callback<Vec<PeerState>>),
-    GetRole(Callback<ReplicationRole>),
     GetRoles(Callback<Vec<(PeerIdentifier, ReplicationRole)>>),
     SubscribeToTopologyChange(Callback<tokio::sync::broadcast::Receiver<Topology>>),
     ClusterMeet(PeerIdentifier, LazyOption, Callback<anyhow::Result<()>>),

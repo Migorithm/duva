@@ -80,7 +80,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             | ReplicationInfo(callback) => {
                 callback.send(self.replication.clone());
             },
-            | ForgetPeer(peer_addr, callback) => {
+            | Forget(peer_addr, callback) => {
                 if let Ok(Some(())) = self.forget_peer(peer_addr).await {
                     callback.send(Some(()));
                 } else {
@@ -105,9 +105,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
                 self.start_rebalance(cache_manager).await;
                 sender.send(Ok(()));
             },
-            | GetRole(callback) => {
-                callback.send(self.replication.role.clone());
-            },
+
             | GetRoles(callback) => {
                 callback.send(self.get_sorted_roles());
             },

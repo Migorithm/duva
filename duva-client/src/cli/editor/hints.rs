@@ -116,6 +116,7 @@ impl DuvaHinter {
 
 pub(crate) fn default_hints() -> HashSet<CommandHint> {
     let mut set = HashSet::new();
+    set.insert(CommandHint::new("echo value"));
     set.insert(CommandHint::new("get key"));
     set.insert(CommandHint::new("set key value"));
     set.insert(CommandHint::new("set key value [px expr]"));
@@ -172,6 +173,7 @@ pub(crate) fn dynamic_hints() -> HashMap<&'static str, Vec<DynamicHint>> {
     let mut map = HashMap::new();
 
     // Command pattern definitions
+    map.insert("echo", vec![hint!("value", 0)]);
     map.insert(
         "set",
         vec![hint!("key value", 0), hint!("value", 1), hint!("[px expr]", 2), hint!("expr", 3)],
@@ -183,8 +185,10 @@ pub(crate) fn dynamic_hints() -> HashMap<&'static str, Vec<DynamicHint>> {
 
     map.insert("cluster forget", vec![hint!("node", 0)]);
     map.insert("cluster meet", vec![hint!("node [lazy|eager]", 0), hint!("[lazy|eager]", 1)]);
+
     map.insert("keys", vec![hint!("pattern", 0)]);
     map.insert("get", vec![hint!("key", 0)]);
+
     map.insert("exists", vec![hint!("key [key ...]", 0, repeat), hint!("[key ...]", 1, repeat)]);
     map.insert("del", vec![hint!("key [key ...]", 0, repeat), hint!("[key ...]", 1, repeat)]);
     map.insert("mget", vec![hint!("key [key ...]", 0, repeat), hint!("[key ...]", 1, repeat)]);
