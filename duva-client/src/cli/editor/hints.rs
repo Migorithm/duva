@@ -116,6 +116,7 @@ impl DuvaHinter {
 
 pub(crate) fn default_hints() -> HashSet<CommandHint> {
     let mut set = HashSet::new();
+    set.insert(CommandHint::new("save"));
     set.insert(CommandHint::new("echo value"));
     set.insert(CommandHint::new("get key"));
     set.insert(CommandHint::new("set key value"));

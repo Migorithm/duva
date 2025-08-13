@@ -9,6 +9,7 @@ use crate::editor::DuvaHinter;
 // This function gathers all available commands for completion
 
 pub(crate) static COMMANDS: &[&str] = &[
+    "SAVE",
     "echo",
     "get",
     "mget",
