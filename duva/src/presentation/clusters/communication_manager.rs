@@ -69,7 +69,7 @@ impl ClusterCommunicationManager {
         peer_identifier: PeerIdentifier,
     ) -> anyhow::Result<bool> {
         let (tx, rx) = Callback::create();
-        self.send(ClientMessage::ForgetPeer(peer_identifier, tx)).await?;
+        self.send(ClientMessage::Forget(peer_identifier, tx)).await?;
         let Some(_) = rx.recv().await else { return Ok(false) };
         Ok(true)
     }

@@ -9,6 +9,8 @@ use crate::editor::DuvaHinter;
 // This function gathers all available commands for completion
 
 pub(crate) static COMMANDS: &[&str] = &[
+    "SAVE",
+    "echo",
     "get",
     "mget",
     "set",
@@ -143,7 +145,9 @@ impl Completer for DuvaHinter {
                     );
                 }
             },
-
+            | "echo" => {
+                suggest_by_pos!(["value"]);
+            },
             | "set" => {
                 suggest_by_pos!(["key", "value", "px expr"]);
             },
