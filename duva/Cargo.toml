@@ -35,7 +35,6 @@ opentelemetry_sdk = { version = "0.30", features = [
     "logs",
 ] }
 opentelemetry-otlp = { version = "0.30", features = [
-    "reqwest-blocking-client",
     "http-proto",
     "trace",
     "metrics",
@@ -44,7 +43,6 @@ opentelemetry-otlp = { version = "0.30", features = [
 ] }
 opentelemetry-appender-tracing = { version = "0.30", default-features = false }
 
-opentelemetry-jaeger-propagator = { version = "0.30", default-features = false }
 
 async-trait = "0.1.88"      # async trait support
 lzf = { version = "1.0.0" }

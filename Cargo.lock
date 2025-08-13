@@ -483,7 +483,6 @@ dependencies = [
  "memmap2",
  "opentelemetry",
  "opentelemetry-appender-tracing",
- "opentelemetry-jaeger-propagator",
  "opentelemetry-otlp",
  "opentelemetry_sdk",
  "rand",
@@ -1242,15 +1241,6 @@ dependencies = [
  "http",
  "opentelemetry",
  "reqwest",
-]
-
-[[package]]
-name = "opentelemetry-jaeger-propagator"
-version = "0.30.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "090b8ec07bb2e304b529581aa1fe530d7861298c9ef549ebbf44a4a56472c539"
-dependencies = [
- "opentelemetry",
 ]
 
 [[package]]

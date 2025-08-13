@@ -257,10 +257,12 @@ fn init_logs() -> SdkLoggerProvider {
 }
 
 fn get_resource() -> Resource {
-    static PID: LazyLock<uuid::Uuid> = LazyLock::new(|| uuid::Uuid::now_v7());
+    static RESOURCE: LazyLock<Resource> = LazyLock::new(|| {
+        Resource::builder()
+            .with_service_name("my-test")
+            .with_attribute(KeyValue::new("instance_id", uuid::Uuid::now_v7().to_string()))
+            .build()
+    });
 
-    Resource::builder()
-        .with_service_name("my-test")
-        .with_attribute(KeyValue::new("instance_id", PID.to_string()))
-        .build()
+    RESOURCE.clone()
 }

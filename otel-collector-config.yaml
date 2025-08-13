@@ -20,16 +20,6 @@ exporters:
   logging:
     verbosity: detailed
 
-  # Export traces using OTLP (since jaeger exporter isn't available)
-  otlp/jaeger:
-    endpoint: http://jaeger:14268/api/traces
-    tls:
-      insecure: true
-
-  # Prometheus metrics
-  prometheus:
-    endpoint: "0.0.0.0:8889"
-
 service:
   pipelines:
     logs:
@@ -37,12 +27,3 @@ service:
       processors: [batch]
       exporters: [logging, loki]
     
-    traces:
-      receivers: [otlp]
-      processors: [batch]
-      exporters: [otlp/jaeger]
-    
-    metrics:
-      receivers: [otlp]
-      processors: [batch]
-      exporters: [prometheus]

@@ -17,7 +17,6 @@ services:
     networks:
       - observability
 
-  # Jaeger for distributed tracing
   
 
   # Loki for log aggregation
