@@ -1,0 +1,48 @@
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch:
+    timeout: 1s
+    send_batch_size: 100
+
+exporters:
+  # Export logs to Loki
+  loki:
+    endpoint: http://loki:3100/loki/api/v1/push
+
+  # Debug exporter - shows logs in collector output
+  logging:
+    verbosity: detailed
+
+  # Export traces using OTLP (since jaeger exporter isn't available)
+  otlp/jaeger:
+    endpoint: http://jaeger:14268/api/traces
+    tls:
+      insecure: true
+
+  # Prometheus metrics
+  prometheus:
+    endpoint: "0.0.0.0:8889"
+
+service:
+  pipelines:
+    logs:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [logging, loki]
+    
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlp/jaeger]
+    
+    metrics:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [prometheus]

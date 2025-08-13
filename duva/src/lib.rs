@@ -16,14 +16,23 @@ use domains::cluster_actors::replication::ReplicationState;
 use domains::operation_logs::interfaces::TWriteAheadLog;
 use domains::saves::snapshot::Snapshot;
 use domains::saves::snapshot::snapshot_loader::SnapshotLoader;
+use opentelemetry::KeyValue;
+use opentelemetry_appender_tracing::layer::OpenTelemetryTracingBridge;
+
+use opentelemetry_otlp::Protocol;
+
+use opentelemetry_otlp::WithExportConfig;
+use opentelemetry_sdk::Resource;
+use opentelemetry_sdk::logs::SdkLoggerProvider;
+
 use presentation::clients::ClientController;
 use presentation::clients::authenticate;
 use presentation::clusters::communication_manager::ClusterCommunicationManager;
 use std::fs::File;
-use std::fs::OpenOptions;
-use std::io::Write;
 
-use tracing_subscriber::fmt::time::UtcTime;
+use std::sync::LazyLock;
+use std::time::Duration;
+use tracing_subscriber::EnvFilter;
 
 use tokio::net::TcpListener;
 
@@ -35,9 +44,6 @@ use tracing::debug;
 use tracing::error;
 use tracing::info;
 use tracing::instrument;
-use tracing_appender::non_blocking;
-use tracing_subscriber::Registry;
-use tracing_subscriber::fmt;
 
 use tracing_subscriber::layer::SubscriberExt;
 use uuid::Uuid;
@@ -119,7 +125,22 @@ impl StartUpFacade {
     }
 
     pub async fn run(self) -> Result<()> {
-        let _logger = setup_tracing_shared_file()?;
+        let logger_provider = init_logs();
+        // Create a new OpenTelemetryTracingBridge using the above LoggerProvider.
+        let otel_layer = OpenTelemetryTracingBridge::new(&logger_provider);
+
+        let filter_otel = EnvFilter::new("info")
+            .add_directive("hyper=off".parse().unwrap())
+            .add_directive("tonic=off".parse().unwrap())
+            .add_directive("h2=off".parse().unwrap())
+            .add_directive("reqwest=off".parse().unwrap());
+        let otel_layer = otel_layer.with_filter(filter_otel);
+        let filter_fmt =
+            EnvFilter::new("info").add_directive("opentelemetry=info".parse().unwrap());
+
+        let fmt_layer = tracing_subscriber::fmt::layer().with_filter(filter_fmt);
+
+        tracing_subscriber::registry().with(otel_layer).with(fmt_layer).init();
 
         tokio::spawn(Self::start_accepting_peer_connections(
             ENV.peer_bind_addr(),
@@ -127,7 +148,10 @@ impl StartUpFacade {
         ));
 
         self.discover_cluster().await?;
-        self.start_receiving_client_streams().await
+        let _ = self.start_receiving_client_streams().await;
+
+        logger_provider.shutdown().unwrap();
+        Ok(())
     }
 
     async fn discover_cluster(&self) -> Result<(), anyhow::Error> {
@@ -220,58 +244,24 @@ impl StartUpFacade {
     }
 }
 
-fn setup_tracing_shared_file() -> Result<Option<tracing_appender::non_blocking::WorkerGuard>> {
-    let console_layer = fmt::layer()
-        .with_writer(std::io::stderr)
-        .with_target(true)
-        .with_line_number(true)
-        .with_ansi(true);
+fn init_logs() -> SdkLoggerProvider {
+    use opentelemetry_otlp::LogExporter;
+    let exporter = LogExporter::builder()
+        .with_http()
+        .with_endpoint("http://localhost:4318/v1/logs")
+        .with_protocol(Protocol::HttpBinary)
+        .with_timeout(Duration::from_secs(2))
+        .build()
+        .expect("Failed to create log exporter");
 
-    let subscriber = Registry::default().with(console_layer.with_filter(ENV.log_level));
+    SdkLoggerProvider::builder().with_batch_exporter(exporter).with_resource(get_resource()).build()
+}
 
-    let is_test_env = std::env::var("DUVA_ENV").unwrap_or_default() == "test";
-    if is_test_env {
-        // Create a custom writer that uses file locking
-        struct LockedFileWriter {
-            file: std::fs::File,
-        }
-        impl LockedFileWriter {
-            fn new(path: &str) -> Result<Self, std::io::Error> {
-                let file = OpenOptions::new().create(true).append(true).open(path)?;
-                Ok(Self { file })
-            }
-        }
+fn get_resource() -> Resource {
+    static PID: LazyLock<uuid::Uuid> = LazyLock::new(|| uuid::Uuid::now_v7());
 
-        impl Write for LockedFileWriter {
-            fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-                self.file.lock_shared().unwrap();
-                let result = self.file.write(buf)?;
-                self.file.flush()?;
-                self.file.unlock()?; // release lock
-                Ok(result)
-            }
-            fn flush(&mut self) -> std::io::Result<()> {
-                self.file.lock_shared().unwrap();
-                self.file.flush()?;
-                self.file.unlock().unwrap();
-                Ok(())
-            }
-        }
-        let writer = LockedFileWriter::new("./shared.log")?;
-        let (non_blocking, guard) = non_blocking(writer);
-        let file_layer = fmt::layer()
-            .with_writer(non_blocking)
-            .with_target(true)
-            .with_line_number(true)
-            .with_file(true)
-            .with_timer(UtcTime::rfc_3339()) // nice timestamps
-            .with_ansi(true)
-            .json(); // JSON format is easier to parse from multiple processes
-        subscriber.with(file_layer.with_filter(ENV.log_level)).init();
-        Ok(Some(guard))
-    } else {
-        subscriber.init();
-
-        Ok(None)
-    }
+    Resource::builder()
+        .with_service_name("my-test")
+        .with_attribute(KeyValue::new("instance_id", PID.to_string()))
+        .build()
 }
