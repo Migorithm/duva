@@ -11,25 +11,14 @@ services:
     ports:
       - "4317:4317"   # OTLP gRPC receiver
       - "4318:4318"   # OTLP HTTP receiver
-      - "8889:8889"   # Prometheus metrics
     depends_on:
-      jaeger:
-        condition: service_started
       loki:
         condition: service_started
     networks:
       - observability
 
   # Jaeger for distributed tracing
-  jaeger:
-    image: jaegertracing/all-in-one:latest
-    ports:
-      - "16686:16686"  # Jaeger UI
-      - "14268:14268"  # HTTP
-    environment:
-      - COLLECTOR_OTLP_ENABLED=true
-    networks:
-      - observability
+  
 
   # Loki for log aggregation
   loki:
@@ -57,31 +46,13 @@ services:
       - ./grafana/provisioning:/etc/grafana/provisioning
     depends_on:
       - loki
-      - jaeger
-    networks:
-      - observability
-
-  # Prometheus for metrics
-  prometheus:
-    image: prom/prometheus:latest
-    ports:
-      - "9090:9090"
-    volumes:
-      - ./prometheus.yml:/etc/prometheus/prometheus.yml
-      - prometheus-data:/prometheus
-    command:
-      - '--config.file=/etc/prometheus/prometheus.yml'
-      - '--storage.tsdb.path=/prometheus'
-      - '--web.console.libraries=/etc/prometheus/console_libraries'
-      - '--web.console.templates=/etc/prometheus/consoles'
-      - '--web.enable-lifecycle'
+    
     networks:
       - observability
 
 volumes:
   loki-data:
   grafana-data:
-  prometheus-data:
 
 networks:
   observability:

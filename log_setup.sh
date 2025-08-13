@@ -25,7 +25,7 @@ elif docker-compose logs otel-collector | grep -q "Error:"; then
     exit 1
 else
     echo "⏳ Collector is starting..."
-    sleep 10
+    sleep 3
 fi
 
 echo ""
@@ -42,8 +42,6 @@ fi
 services=(
     "http://localhost:3000:Grafana"
     "http://localhost:3100/ready:Loki"
-    "http://localhost:16686:Jaeger"
-    "http://localhost:9090:Prometheus"
 )
 
 for service in "${services[@]}"; do
@@ -57,28 +55,14 @@ for service in "${services[@]}"; do
     fi
 done
 
-echo ""
-echo "🏗️  Building Rust application..."
-cargo build
 
-if [ $? -eq 0 ]; then
-    echo "✅ Build successful!"
-    echo ""
-    echo "🎯 Ready to run your applications:"
-    echo "   ./target/debug/multi-process-logging user-service instance-1 &"
-    echo "   ./target/debug/multi-process-logging order-service instance-1 &"
-    echo ""
-    echo "🌐 Access UIs:"
-    echo "   - Grafana: http://localhost:3000 (admin/admin)"
-    echo "   - Jaeger: http://localhost:16686"
-    echo ""
-    echo "📝 View logs in Grafana:"
-    echo "   1. Go to Explore → Select Loki"
-    echo "   2. Query: {service_name=\"user-service\"}"
-    echo ""
-    echo "🛑 To stop everything:"
-    echo "   docker-compose down && pkill -f multi-process-logging"
-else
-    echo "❌ Build failed"
-    exit 1
-fi
+
+echo "🌐 Access UIs:"
+echo "   - Grafana: http://localhost:3000 (admin/admin)"
+echo ""
+echo "📝 View logs in Grafana:"
+echo "   1. Go to Explore → Select Loki"
+echo "   2. Query: {job=\"duva\"}"
+echo ""
+echo "🛑 To stop everything:"
+echo "   docker-compose down && pkill -f multi-process-logging"
