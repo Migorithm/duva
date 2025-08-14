@@ -247,7 +247,6 @@ fn init_logs() -> SdkLoggerProvider {
     use opentelemetry_otlp::LogExporter;
     let exporter = LogExporter::builder()
         .with_http()
-        .with_protocol(Protocol::Grpc)
         .with_timeout(Duration::from_secs(2))
         .build()
         .expect("Failed to create log exporter");
