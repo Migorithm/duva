@@ -23,7 +23,7 @@ const V_NODE_NUM: u16 = 256;
 pub struct HashRing {
     vnodes: BTreeMap<u64, Rc<ReplicationId>>,
     pnodes: HashMap<ReplicationId, PeerIdentifier>,
-    pub(crate) last_modified: u128,
+    pub last_modified: u128,
 }
 
 impl HashRing {

@@ -65,9 +65,7 @@ impl Broker {
         while let Some(msg) = self.rx.recv().await {
             match msg {
                 | BrokerMessage::FromServer(_, QueryIO::TopologyChange(topology)) => {
-                    self.topology = topology;
-                    self.add_leader_conns_if_not_found().await;
-                    self.remove_outdated_connections().await;
+                    self.update_topology(topology).await;
                 },
 
                 | BrokerMessage::FromServer(repl_id, query_io) => {
@@ -259,6 +257,15 @@ impl Broker {
         }))
         .await?;
         Ok(num_of_results)
+    }
+
+    async fn update_topology(&mut self, topology: Topology) {
+        //TODO topology version itself may need to be managed
+        if self.topology.hash_ring.last_modified < topology.hash_ring.last_modified {
+            self.topology = topology;
+            self.add_leader_conns_if_not_found().await;
+            self.remove_outdated_connections().await;
+        }
     }
 }
 
