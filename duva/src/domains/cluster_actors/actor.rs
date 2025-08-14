@@ -345,7 +345,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             return;
         };
 
-        match self.hash_ring.key_ownership(req.request.all_keys().into_iter().map(|k| k)) {
+        match self.hash_ring.key_ownership(req.request.all_keys().into_iter()) {
             | Ok(replids) if replids.all_belongs_to(&self.replication.replid) => {
                 self.req_consensus(req).await;
             },
@@ -980,14 +980,14 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
         // * Raft followers should truncate their log starting at prev_log_index + 1 and then append the new entries
         // * Just returning an error is breaking consistency
-        if let Some(prev_entry) = self.logger.read_at(prev_log_index) {
-            if prev_entry.term != prev_log_term {
-                // ! Term mismatch -> triggers log truncation
-                err!("Term mismatch: {} != {}", prev_entry.term, prev_log_term);
-                self.logger.truncate_after(prev_log_index);
+        if let Some(prev_entry) = self.logger.read_at(prev_log_index)
+            && prev_entry.term != prev_log_term
+        {
+            // ! Term mismatch -> triggers log truncation
+            err!("Term mismatch: {} != {}", prev_entry.term, prev_log_term);
+            self.logger.truncate_after(prev_log_index);
 
-                return Err(RejectionReason::LogInconsistency);
-            }
+            return Err(RejectionReason::LogInconsistency);
         }
 
         Ok(())
