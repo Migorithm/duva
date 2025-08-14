@@ -225,7 +225,7 @@ impl Broker {
         };
 
         let Ok(num_of_results) = res else {
-            let _ = context
+            context
                 .callback(QueryIO::Err("Failed to route command. Try again after ttl time".into()));
             return None;
         };

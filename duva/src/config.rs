@@ -22,7 +22,7 @@ pub struct Environment {
     pub ttl_mills: u128,
     pub append_only: bool,
     pub tpp: String,
-    pub log_level: tracing::level_filters::LevelFilter,
+    pub log_level: tracing::Level,
 }
 
 impl Environment {
@@ -37,7 +37,7 @@ impl Environment {
                 ttl: u128 = 60000,
                 append_only: bool = false,
                 tpp: String = "duva.tp".to_string(),
-                log_level : tracing::level_filters::LevelFilter = tracing::level_filters::LevelFilter::INFO,
+                log_level : tracing::Level = tracing::Level::INFO,
             },
             optional: {
                 replicaof

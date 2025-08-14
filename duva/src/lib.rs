@@ -18,9 +18,6 @@ use domains::saves::snapshot::Snapshot;
 use domains::saves::snapshot::snapshot_loader::SnapshotLoader;
 use opentelemetry::KeyValue;
 use opentelemetry_appender_tracing::layer::OpenTelemetryTracingBridge;
-
-use opentelemetry_otlp::Protocol;
-
 use opentelemetry_otlp::WithExportConfig;
 use opentelemetry_sdk::Resource;
 use opentelemetry_sdk::logs::SdkLoggerProvider;
@@ -129,14 +126,13 @@ impl StartUpFacade {
         // Create a new OpenTelemetryTracingBridge using the above LoggerProvider.
         let otel_layer = OpenTelemetryTracingBridge::new(&logger_provider);
 
-        let filter_otel = EnvFilter::new("info")
+        let filter_otel = EnvFilter::new(ENV.log_level.to_string())
             .add_directive("hyper=off".parse().unwrap())
             .add_directive("tonic=off".parse().unwrap())
             .add_directive("h2=off".parse().unwrap())
             .add_directive("reqwest=off".parse().unwrap());
         let otel_layer = otel_layer.with_filter(filter_otel);
-        let filter_fmt =
-            EnvFilter::new("info").add_directive("opentelemetry=info".parse().unwrap());
+        let filter_fmt = EnvFilter::new("info").add_directive("opentelemetry=off".parse().unwrap());
 
         let fmt_layer = tracing_subscriber::fmt::layer().with_filter(filter_fmt);
 
@@ -248,7 +244,6 @@ fn init_logs() -> SdkLoggerProvider {
     use opentelemetry_otlp::LogExporter;
     let exporter = LogExporter::builder()
         .with_http()
-        .with_protocol(Protocol::Grpc)
         .with_timeout(Duration::from_secs(2))
         .build()
         .expect("Failed to create log exporter");
@@ -258,7 +253,7 @@ fn init_logs() -> SdkLoggerProvider {
 
 fn get_resource() -> Resource {
     static RESOURCE: LazyLock<Resource> = LazyLock::new(|| {
-        Resource::builder()
+        Resource::builder_empty()
             .with_service_name("my-test")
             .with_attribute(KeyValue::new("instance_id", uuid::Uuid::now_v7().to_string()))
             .build()

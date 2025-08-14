@@ -8,39 +8,25 @@ edition = "2024"
 
 # DON'T EDIT THIS!
 [dependencies]
-anyhow = "1.0.97" # error handling
-bytes = "1.10.1" # helps manage buffers
-thiserror = "2.0.12" # error handling
+anyhow = "1.0.97"                                                           # error handling
+bytes = "1.10.1"                                                            # helps manage buffers
+thiserror = "2.0.12"                                                        # error handling
 tokio = { version = "1.44.2", features = ["full"] }
-rand = { version = "0.9.0", features = ["std"] } # async networking
-futures = "0.3.31" # async networking
-memmap2 = "0.9.5" # memory mapping
+rand = { version = "0.9.0", features = ["std"] }                            # async networking
+futures = "0.3.31"                                                          # async networking
+memmap2 = "0.9.5"                                                           # memory mapping
 chrono = "0.4.40"
-bincode = { version = "2.0.1" } # serialization
-uuid = { version = "1.16.0", features = ["v7"] } # unique id generation
+bincode = { version = "2.0.1" }                                             # serialization
+uuid = { version = "1.16.0", features = ["v7"] }                            # unique id generation
 memchr = "2.7.4"
 regex = "1.11.1"
 tracing = "0.1.41"
-tracing-subscriber = { version = "0.3", features = [
-    "env-filter",
-    "json",
-    "time",
-] }
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 tracing-appender = "0.2.3"
 
-opentelemetry = { version = "0.30", features = ["trace", "metrics", "logs"] }
-opentelemetry_sdk = { version = "0.30", features = [
-    "trace",
-    "metrics",
-    "logs",
-] }
-opentelemetry-otlp = { version = "0.30", features = [
-    "http-proto",
-    "trace",
-    "metrics",
-    "logs",
-    "internal-logs",
-] }
+opentelemetry = { version = "0.30", features = ["trace", "logs"] }
+opentelemetry_sdk = { version = "0.30", features = ["trace", "logs"] }
+opentelemetry-otlp = { version = "0.30", features = ["trace", "logs"] }
 opentelemetry-appender-tracing = { version = "0.30", default-features = false }
 
 
