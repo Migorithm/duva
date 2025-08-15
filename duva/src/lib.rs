@@ -241,17 +241,6 @@ impl StartUpFacade {
 }
 
 fn init_logs() -> SdkLoggerProvider {
-    use opentelemetry_otlp::LogExporter;
-    let exporter = LogExporter::builder()
-        .with_http()
-        .with_timeout(Duration::from_secs(2))
-        .build()
-        .expect("Failed to create log exporter");
-
-    SdkLoggerProvider::builder().with_batch_exporter(exporter).with_resource(get_resource()).build()
-}
-
-fn get_resource() -> Resource {
     static RESOURCE: LazyLock<Resource> = LazyLock::new(|| {
         Resource::builder_empty()
             .with_service_name("my-test")
@@ -259,5 +248,15 @@ fn get_resource() -> Resource {
             .build()
     });
 
-    RESOURCE.clone()
+    use opentelemetry_otlp::LogExporter;
+    let exporter = LogExporter::builder()
+        .with_http()
+        .with_timeout(Duration::from_secs(2))
+        .build()
+        .expect("Failed to create log exporter");
+
+    SdkLoggerProvider::builder()
+        .with_batch_exporter(exporter)
+        .with_resource(RESOURCE.clone())
+        .build()
 }
