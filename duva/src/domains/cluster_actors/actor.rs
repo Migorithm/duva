@@ -1329,13 +1329,6 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             return;
         };
 
-        if !ack.success {
-            pending_migration_batch
-                .callback
-                .send(res_err!("Failed to send migration completion signal for batch"));
-            return;
-        }
-
         // make consensus request for delete
         let (callback, rx) = Callback::create();
         let w_req = ConsensusRequest::new(

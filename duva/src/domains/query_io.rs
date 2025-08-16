@@ -888,8 +888,7 @@ mod test {
     #[test]
     fn test_migration_batch_ack_serde() {
         // GIVEN
-        let migration_batch_ack =
-            MigrationBatchAck { batch_id: Uuid::now_v7().to_string(), success: true };
+        let migration_batch_ack = MigrationBatchAck { batch_id: Uuid::now_v7().to_string() };
         let query_io = QueryIO::MigrationBatchAck(migration_batch_ack.clone());
 
         // WHEN
@@ -902,7 +901,6 @@ mod test {
             panic!("Expected a MigrationBatchAck");
         };
         assert_eq!(deserialized_migration_batch_ack.batch_id, migration_batch_ack.batch_id);
-        assert_eq!(deserialized_migration_batch_ack.success, migration_batch_ack.success);
     }
 
     #[test]

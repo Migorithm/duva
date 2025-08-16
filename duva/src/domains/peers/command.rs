@@ -175,16 +175,11 @@ mod peer_messages {
     #[derive(Debug, Clone, PartialEq, Eq, bincode::Encode, bincode::Decode)]
     pub struct MigrationBatchAck {
         pub(crate) batch_id: String,
-        pub(crate) success: bool,
     }
 
     impl MigrationBatchAck {
-        pub(crate) fn with_reject(batch_id: String) -> Self {
-            Self { batch_id, success: false }
-        }
-
         pub(crate) fn with_success(batch_id: String) -> Self {
-            Self { success: true, batch_id }
+            Self { batch_id }
         }
     }
 
