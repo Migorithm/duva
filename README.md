@@ -52,7 +52,7 @@ The following features have been implemented so far:
         - Append Only File (AOF) logging
         - <img width="1520" alt="Screenshot 2024-11-23 at 12 02 05 AM" src="https://github.com/user-attachments/assets/0d8b75f6-7a40-4854-9da2-ba98c0ecc3de">
         - Replicated log (in-memory & disk-backed)
-    - 🔄 Replica Sync (full + partial)
+    - Replica Sync (full + partial)
     - Failure detection via Gossip
     - Follower reads with RYOW consistency 
     - Push-based topology change notification
