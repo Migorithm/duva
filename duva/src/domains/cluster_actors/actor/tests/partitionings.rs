@@ -561,40 +561,6 @@ async fn test_find_target_peer_for_replication() {
     );
 }
 
-#[tokio::test]
-async fn test_handle_migration_ack_failure() {
-    // GIVEN
-    let mut cluster_actor = setup_blocked_cluster_actor_with_requests(1).await;
-    let (_hwm, _cache_manager) = Helper::cache_manager();
-    let (callback, callback_rx) = Callback::create();
-    let batch_id = "failure_batch".to_string();
-
-    // Ensure pending_migrations is set up
-    assert!(cluster_actor.pending_migrations.is_some());
-    cluster_actor
-        .pending_migrations
-        .as_mut()
-        .unwrap()
-        .add_batch(batch_id.clone(), PendingMigrationBatch::new(callback, vec![]));
-
-    let ack = MigrationBatchAck::with_reject(batch_id.clone());
-
-    // WHEN
-    cluster_actor.handle_migration_ack(ack, &_cache_manager).await;
-
-    // THEN
-
-    // Verify callback was called with error
-    let callback_result = callback_rx.recv().await;
-    assert!(callback_result.is_err());
-    assert!(
-        callback_result
-            .unwrap_err()
-            .to_string()
-            .starts_with("Failed to send migration completion signal for batch")
-    );
-}
-
 // Batch ID may not be found when the migration was already completed
 #[tokio::test]
 async fn test_handle_migration_ack_batch_id_not_found() {
@@ -610,7 +576,7 @@ async fn test_handle_migration_ack_batch_id_not_found() {
         .add_batch("existing_batch".into(), PendingMigrationBatch::new(callback, vec![]));
 
     let non_existent_batch_id = "non_existent_batch".into();
-    let ack = MigrationBatchAck { batch_id: non_existent_batch_id, success: true };
+    let ack = MigrationBatchAck { batch_id: non_existent_batch_id };
 
     // WHEN
     cluster_actor.handle_migration_ack(ack, &_cache_manager).await;
@@ -656,7 +622,7 @@ async fn test_handle_migration_ack_success_case_with_pending_reqs_and_migration(
         .unwrap()
         .add_batch(batch_id.clone(), PendingMigrationBatch::new(callback, test_keys));
 
-    let ack = MigrationBatchAck { batch_id, success: true };
+    let ack = MigrationBatchAck { batch_id };
 
     // Verify initially blocked
 
