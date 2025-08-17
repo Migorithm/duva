@@ -60,6 +60,11 @@ The following features have been implemented so far:
     - Distributed sharding
         - Rebalancing (eager, lazy)
 
+- Data Structure
+    - String
+    - Null
+    - List (QuickList)
+    
 
 - Protocol Support
     - RESP Protocol: fully supported for wire compatibility
