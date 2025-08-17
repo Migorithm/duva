@@ -60,16 +60,47 @@ The following features have been implemented so far:
     - Distributed sharding
         - Rebalancing (eager, lazy)
 
-- Data Structure
-    - String
-    - Null
-    - List (QuickList)
-    
-
 - Protocol Support
     - RESP Protocol: fully supported for wire compatibility
 
 
+## Data Structures
+Duva supports multiple data structures, each optimized for different use cases
+
+### String
+- The most basic value type.
+- Ideal for simple key-value lookups.
+
+```sh
+> SET mykey "hello"
+OK
+> GET mykey
+"hello"
+```
+
+### Null
+- Represents the absence of a value.
+
+```sh
+> GET missing_key
+(nil)
+```
+
+### List (Quicklist-based)
+- Ordered collection of values.
+- Implemented using a quicklist (a hybrid of linked list + compact arrays).
+- Supports efficient push/pop at both ends, range queries, and sequential access.
+- Perfect for queues, stacks, and ordered data streams.
+
+```sh
+> LPUSH mylist "a" "b" "c"
+(integer) 3
+
+> LRANGE mylist 0 -1
+1) "c"
+2) "b"
+3) "a"
+```
 
 ## 📑 ReplicatedLogs
 Duva includes two pluggable replicated log implementations:
