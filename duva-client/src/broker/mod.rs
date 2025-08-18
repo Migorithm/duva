@@ -160,7 +160,7 @@ impl Broker {
             .await;
     }
 
-    async fn add_leader_conns_if_not_found(&mut self) {
+    async fn add_node_conns_if_not_in_connections(&mut self) {
         for node in self.topology.node_infos.clone() {
             if ReplicationRole::Leader == node.repl_role.clone()
                 && !self.node_connections.contains_key(&node.repl_id)
@@ -263,7 +263,7 @@ impl Broker {
         //TODO topology version itself may need to be managed
         if self.topology.hash_ring.last_modified < topology.hash_ring.last_modified {
             self.topology = topology;
-            self.add_leader_conns_if_not_found().await;
+            self.add_node_conns_if_not_in_connections().await;
             self.remove_outdated_connections().await;
         }
     }
