@@ -19,7 +19,6 @@ pub struct ServerEnv {
     pub file_name: FileName,
     pub leader_bind_addr: Option<String>,
     pub hf: u128,
-    pub ttl: u128,
     pub append_only: bool,
     // Owns and cleans the directory.
     pub dir: TempDir,
@@ -36,7 +35,7 @@ impl Default for ServerEnv {
             file_name: FileName(None),
             leader_bind_addr: None,
             hf: 100,
-            ttl: 1500,
+
             append_only: false,
             dir,
             topology_path,
@@ -68,10 +67,7 @@ impl ServerEnv {
         self.hf = hf;
         self
     }
-    pub fn with_ttl(mut self, ttl: u128) -> Self {
-        self.ttl = ttl;
-        self
-    }
+
     pub fn with_topology_path(mut self, topology_path: impl AsRef<Path>) -> Self {
         self.topology_path = topology_path.as_ref().to_path_buf();
         self
@@ -225,8 +221,6 @@ pub fn run_server_process(env: &ServerEnv) -> TestProcessChild {
         &env.port.to_string(),
         "--hf",
         &env.hf.to_string(),
-        "--ttl",
-        &env.ttl.to_string(),
         "--append_only",
         &env.append_only.to_string(),
         "--dir",

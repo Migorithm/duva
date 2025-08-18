@@ -168,7 +168,7 @@ impl Helper {
         let topology_writer =
             OpenOptions::new().create(true).write(true).truncate(true).open(path).unwrap();
 
-        ClusterActor::new(100, replication, 100, topology_writer, MemoryOpLogs::default())
+        ClusterActor::new(replication, 100, topology_writer, MemoryOpLogs::default())
     }
 
     async fn cluster_actor_with_receiver(

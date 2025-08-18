@@ -66,7 +66,6 @@ mod tests;
 pub struct ClusterActor<T> {
     pub(crate) members: BTreeMap<PeerIdentifier, Peer>,
     pub(crate) replication: ReplicationState,
-    pub(crate) node_timeout: u128,
     pub(crate) consensus_tracker: LogConsensusTracker,
     pub(crate) receiver: tokio::sync::mpsc::Receiver<ClusterCommand>,
     pub(crate) self_handler: ClusterCommandHandler,
@@ -114,27 +113,20 @@ from_to!(tokio::sync::mpsc::Sender<ClusterCommand>, ClusterCommandHandler);
 
 impl<T: TWriteAheadLog> ClusterActor<T> {
     pub(crate) fn run(
-        node_timeout: u128,
         topology_writer: std::fs::File,
         heartbeat_interval: u64,
         init_replication: ReplicationState,
         cache_manager: CacheManager,
         wal: T,
     ) -> ClusterCommandHandler {
-        let cluster_actor = ClusterActor::new(
-            node_timeout,
-            init_replication,
-            heartbeat_interval,
-            topology_writer,
-            wal,
-        );
+        let cluster_actor =
+            ClusterActor::new(init_replication, heartbeat_interval, topology_writer, wal);
         let actor_handler = cluster_actor.self_handler.clone();
         tokio::spawn(cluster_actor.handle(cache_manager));
         actor_handler
     }
 
     fn new(
-        node_timeout: u128,
         init_repl_state: ReplicationState,
         heartbeat_interval_in_mills: u64,
         topology_writer: File,
@@ -161,7 +153,6 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             ),
             heartbeat_scheduler,
             replication: init_repl_state,
-            node_timeout,
             receiver,
             self_handler: ClusterCommandHandler(self_handler),
             topology_writer,
@@ -743,7 +734,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         for peer_id in self
             .members
             .iter()
-            .filter(|&(_, peer)| now.duration_since(peer.last_seen).as_millis() > self.node_timeout)
+            .filter(|&(_, peer)| peer.phi.is_dead(now))
             .map(|(id, _)| id)
             .cloned()
             .collect::<Vec<_>>()
@@ -1009,7 +1000,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
     fn reset_election_timeout(&mut self, leader_id: &PeerIdentifier) {
         if let Some(peer) = self.members.get_mut(leader_id) {
-            peer.last_seen = Instant::now();
+            peer.phi.record_heartbeat(Instant::now());
         }
         self.heartbeat_scheduler.reset_election_timeout();
         self.replication.election_state = ElectionState::Follower { voted_for: None };
@@ -1400,7 +1391,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         let now = Instant::now();
         for node in cluster_nodes.iter() {
             if let Some(peer) = self.members.get_mut(node.id()) {
-                peer.last_seen = now;
+                peer.phi.record_heartbeat(now);
                 peer.set_role(node.role.clone())
             }
         }

@@ -10,7 +10,7 @@ use crate::prelude::PeerIdentifier;
 use crate::types::{Callback, CallbackAwaiter};
 use std::str::FromStr;
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq)]
 pub(crate) enum ClusterCommand {
     ConnectionReq(ConnectionMessage),
     Scheduler(SchedulerMessage),
@@ -35,7 +35,7 @@ impl From<SchedulerMessage> for ClusterCommand {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq)]
 pub enum ConnectionMessage {
     ConnectToServer { connect_to: PeerIdentifier, callback: Callback<anyhow::Result<()>> },
     AcceptInboundPeer { read: ReadConnected, write: WriteConnected, host_ip: String },
