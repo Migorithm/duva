@@ -10,11 +10,11 @@ use crate::types::Callback;
 use tokio::task::JoinHandle;
 use tokio::time::Instant;
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq)]
 pub(crate) struct Peer {
     pub(crate) w_conn: WriteConnected,
     pub(crate) listener_kill_trigger: ListeningActorKillTrigger,
-    pub(crate) last_seen: Instant,
+    pub(crate) phi: PhiAccrualDetector,
     state: PeerState,
 }
 
@@ -24,7 +24,12 @@ impl Peer {
         state: PeerState,
         listener_kill_trigger: ListeningActorKillTrigger,
     ) -> Self {
-        Self { w_conn: w.into(), listener_kill_trigger, last_seen: Instant::now(), state }
+        Self {
+            w_conn: w.into(),
+            listener_kill_trigger,
+            phi: PhiAccrualDetector::new(Instant::now()),
+            state,
+        }
     }
     pub(crate) fn id(&self) -> &PeerIdentifier {
         &self.state.id
@@ -40,7 +45,7 @@ impl Peer {
     }
     pub(crate) fn set_match_index(&mut self, match_index: u64) {
         self.state.match_index = match_index;
-        self.last_seen = Instant::now();
+        self.phi.record_heartbeat(Instant::now());
     }
 
     pub(crate) async fn send(&mut self, io: impl Into<QueryIO> + Send) -> Result<(), IoError> {
@@ -190,6 +195,7 @@ impl PartialEq for ListeningActorKillTrigger {
 }
 impl Eq for ListeningActorKillTrigger {}
 
+#[derive(Debug, PartialEq)]
 pub(crate) struct PhiAccrualDetector {
     last_seen: Instant,
     hb_hist: VecDeque<f64>,
@@ -202,6 +208,10 @@ pub(crate) struct PhiAccrualDetector {
 const HISTORY_SIZE: usize = 256;
 
 impl PhiAccrualDetector {
+    pub(crate) fn last_seen(&self) -> Instant {
+        self.last_seen
+    }
+
     pub(crate) fn new(now: Instant) -> Self {
         PhiAccrualDetector {
             last_seen: now,
@@ -237,7 +247,7 @@ impl PhiAccrualDetector {
         }
     }
 
-    pub(crate) fn calculate_phi_at(&self, now: Instant) -> SuspicionLevel {
+    fn calculate_phi_at(&self, now: Instant) -> SuspicionLevel {
         // ! Rule of thumb: don't suspect a peer until you have a baseline of ~10 samples.
         if self.hb_hist.len() < 10 {
             return SuspicionLevel::new(0.0);
@@ -261,6 +271,10 @@ impl PhiAccrualDetector {
         //    phi = -log10(P_later)
         //    We clamp p_later to a tiny positive number to avoid log(0) which is -infinity.
         SuspicionLevel::new(-p_later.max(1e-16).log10())
+    }
+
+    pub(crate) fn is_dead(&self, now: Instant) -> bool {
+        self.calculate_phi_at(now) == SuspicionLevel::Dead
     }
 }
 
@@ -297,14 +311,14 @@ fn erf_approx(x: f64) -> f64 {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-enum SuspicionLevel {
+pub(crate) enum SuspicionLevel {
     Healthy, // Normal operation.
     Suspect, // Log a warning, increment a metric. Maybe deprioritize the node for new connections.
     Faulty, // Actively stop sending new requests to the node. Begin gracefully shedding connections
     Dead,   // Convict the node. Remove it from the cluster and trigger re-replication or failover.
 }
 impl SuspicionLevel {
-    fn new(phi_score: f64) -> Self {
+    pub(crate) fn new(phi_score: f64) -> Self {
         if phi_score > 12.0 {
             SuspicionLevel::Dead
         } else if phi_score > 8.0 {

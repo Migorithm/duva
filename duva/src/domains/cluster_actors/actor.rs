@@ -743,7 +743,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         for peer_id in self
             .members
             .iter()
-            .filter(|&(_, peer)| now.duration_since(peer.last_seen).as_millis() > self.node_timeout)
+            .filter(|&(_, peer)| peer.phi.is_dead(now))
             .map(|(id, _)| id)
             .cloned()
             .collect::<Vec<_>>()
@@ -1009,7 +1009,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
     fn reset_election_timeout(&mut self, leader_id: &PeerIdentifier) {
         if let Some(peer) = self.members.get_mut(leader_id) {
-            peer.last_seen = Instant::now();
+            peer.phi.record_heartbeat(Instant::now());
         }
         self.heartbeat_scheduler.reset_election_timeout();
         self.replication.election_state = ElectionState::Follower { voted_for: None };
@@ -1400,7 +1400,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         let now = Instant::now();
         for node in cluster_nodes.iter() {
             if let Some(peer) = self.members.get_mut(node.id()) {
-                peer.last_seen = now;
+                peer.phi.record_heartbeat(now);
                 peer.set_role(node.role.clone())
             }
         }

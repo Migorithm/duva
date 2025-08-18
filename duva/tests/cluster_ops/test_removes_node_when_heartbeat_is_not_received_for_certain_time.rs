@@ -6,8 +6,8 @@ fn run_removes_node_when_heartbeat_is_not_received_for_certain_time(
     with_append_only: bool,
 ) -> anyhow::Result<()> {
     // GIVEN
-    let mut env = ServerEnv::default().with_append_only(with_append_only);
-    let mut repl_env = ServerEnv::default().with_append_only(with_append_only);
+    let mut env = ServerEnv::default().with_append_only(with_append_only).with_hf(10);
+    let mut repl_env = ServerEnv::default().with_append_only(with_append_only).with_hf(10);
 
     let [leader_p, mut repl_p] = form_cluster([&mut env, &mut repl_env]);
 
@@ -16,7 +16,7 @@ fn run_removes_node_when_heartbeat_is_not_received_for_certain_time(
 
     // WHEN
     repl_p.kill()?;
-    sleep(Duration::from_secs(2));
+    sleep(Duration::from_secs(1));
 
     //THEN
     assert_eq!(h.send_and_get_vec("cluster info", 1), vec!["cluster_known_nodes:0"]);
