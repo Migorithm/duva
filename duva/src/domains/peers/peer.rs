@@ -190,7 +190,7 @@ impl PartialEq for ListeningActorKillTrigger {
 }
 impl Eq for ListeningActorKillTrigger {}
 
-struct LivenessChecker {
+pub(crate) struct PhiAccrualDetector {
     last_seen: Instant,
     hb_hist: VecDeque<f64>,
     mean: f64,
@@ -201,9 +201,9 @@ struct LivenessChecker {
 
 const HISTORY_SIZE: usize = 256;
 
-impl LivenessChecker {
-    fn new(now: Instant) -> Self {
-        LivenessChecker {
+impl PhiAccrualDetector {
+    pub(crate) fn new(now: Instant) -> Self {
+        PhiAccrualDetector {
             last_seen: now,
             hb_hist: VecDeque::with_capacity(HISTORY_SIZE),
             mean: 0.0,
@@ -212,7 +212,7 @@ impl LivenessChecker {
             sum_of_squares: 0.0,
         }
     }
-    fn record_heartbeat(&mut self, now: Instant) {
+    pub(crate) fn record_heartbeat(&mut self, now: Instant) {
         let interval = now.duration_since(self.last_seen).as_millis() as f64;
         self.last_seen = now;
 
@@ -237,16 +237,16 @@ impl LivenessChecker {
         }
     }
 
-    pub fn calculate_phi_at(&self, now: Instant) -> f64 {
-        // Rule of thumb: don't suspect a peer until you have a baseline of ~10 samples.
+    pub(crate) fn calculate_phi_at(&self, now: Instant) -> SuspicionLevel {
+        // ! Rule of thumb: don't suspect a peer until you have a baseline of ~10 samples.
         if self.hb_hist.len() < 10 {
-            return 0.0;
+            return SuspicionLevel::new(0.0);
         }
 
-        // 1. Get the time that has passed since the last heartbeat.
+        // * 1. Get the time that has passed since the last heartbeat.
         let time_since_last_seen = now.duration_since(self.last_seen).as_millis() as f64;
 
-        // 2. Calculate P_later, the probability of a heartbeat arriving *after* this time.
+        // * 2. Calculate P_later, the probability of a heartbeat arriving *after* this time.
         //    P_later = 1 - CDF(time_since_last_seen)
         //    We use a helper function `normal_cdf` for this.
 
@@ -260,7 +260,7 @@ impl LivenessChecker {
         // 3. The phi value is derived from this probability.
         //    phi = -log10(P_later)
         //    We clamp p_later to a tiny positive number to avoid log(0) which is -infinity.
-        -p_later.max(1e-16).log10()
+        SuspicionLevel::new(-p_later.max(1e-16).log10())
     }
 }
 
@@ -295,6 +295,28 @@ fn erf_approx(x: f64) -> f64 {
 
     sign * result
 }
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum SuspicionLevel {
+    Healthy, // Normal operation.
+    Suspect, // Log a warning, increment a metric. Maybe deprioritize the node for new connections.
+    Faulty, // Actively stop sending new requests to the node. Begin gracefully shedding connections
+    Dead,   // Convict the node. Remove it from the cluster and trigger re-replication or failover.
+}
+impl SuspicionLevel {
+    fn new(phi_score: f64) -> Self {
+        if phi_score > 12.0 {
+            SuspicionLevel::Dead
+        } else if phi_score > 8.0 {
+            SuspicionLevel::Faulty
+        } else if phi_score > 5.0 {
+            SuspicionLevel::Suspect
+        } else {
+            SuspicionLevel::Healthy
+        }
+    }
+}
+
 #[test]
 fn test_prioritize_nodes_with_same_replid() {
     use std::io::Write;
@@ -334,16 +356,16 @@ mod tests {
     #[test]
     fn test_initial_state_phi_is_zero() {
         let now = Instant::now();
-        let checker = LivenessChecker::new(now);
+        let checker = PhiAccrualDetector::new(now);
 
         // Phi should be 0 until enough samples are collected.
-        assert_eq!(checker.calculate_phi_at(now), 0.0);
+        assert_eq!(checker.calculate_phi_at(now), SuspicionLevel::Healthy);
     }
 
     #[test]
     fn test_stable_heartbeats_and_low_phi() {
         let mut now = Instant::now();
-        let mut checker = LivenessChecker::new(now);
+        let mut checker = PhiAccrualDetector::new(now);
         let interval = Duration::from_millis(100);
 
         // Record 20 heartbeats at a stable 100ms interval.
@@ -359,17 +381,17 @@ mod tests {
 
         // Immediately after a heartbeat, phi should be very low.
         let phi_immediately = checker.calculate_phi_at(now);
-        assert!(phi_immediately < 0.1, "Phi should be near zero right after a heartbeat");
+        assert_eq!(phi_immediately, SuspicionLevel::Healthy);
 
         // A short time later, phi should still be low.
         let phi_shortly_after = checker.calculate_phi_at(now + Duration::from_millis(50));
-        assert!(phi_shortly_after < 0.5, "Phi should be low shortly after a heartbeat");
+        assert_eq!(phi_shortly_after, SuspicionLevel::Healthy);
     }
 
     #[test]
     fn test_failure_detection_phi_accrues_with_significant_jitter() {
         let mut now = Instant::now();
-        let mut checker = LivenessChecker::new(now);
+        let mut checker = PhiAccrualDetector::new(now);
 
         // Establish a history with SIGNIFICANT jitter.
         // The mean is still 100ms, but the deviation is now large.
@@ -387,26 +409,22 @@ mod tests {
         // Now, test the delays against this more tolerant history.
         let failure_time_1 = now + Duration::from_millis(300);
         let phi_1 = checker.calculate_phi_at(failure_time_1);
-        println!("Phi at 300ms: {}", phi_1);
+        println!("Phi at 300ms: {:?}", phi_1);
 
         let failure_time_2 = now + Duration::from_millis(800);
         let phi_2 = checker.calculate_phi_at(failure_time_2);
-        println!("Phi at 800ms: {}", phi_2);
+        println!("Phi at 800ms: {:?}", phi_2);
 
         // With a large std_dev, a 300ms delay is suspicious but not "infinite".
         // Its phi value will be high, but well below the cap.
-        assert!(phi_1 < 15.9, "Phi for 300ms delay should not hit the cap.");
-        assert!(phi_1 > 5.0, "Phi for 300ms should still be suspicious.");
+
+        assert_eq!(phi_1, SuspicionLevel::Faulty);
 
         // An 800ms delay is still extreme enough to likely hit the cap.
-        assert!(phi_2 > 15.9, "Phi for 800ms delay should be at or near the cap.");
-
-        // CRITICAL ASSERTION: The phi value for the longer delay is now provably greater.
-        assert!(
-            phi_2 > phi_1,
-            "Phi for 800ms delay ({}) should be greater than for 300ms delay ({})",
+        assert_eq!(
             phi_2,
-            phi_1
+            SuspicionLevel::Dead,
+            "Phi for 800ms delay should be at or near the cap."
         );
     }
 
@@ -415,7 +433,7 @@ mod tests {
         let mut now = Instant::now();
 
         // --- Scenario 1: Stable Heartbeats ---
-        let mut stable_checker = LivenessChecker::new(now);
+        let mut stable_checker = PhiAccrualDetector::new(now);
         for _ in 0..20 {
             now += Duration::from_millis(100);
             stable_checker.record_heartbeat(now);
@@ -423,7 +441,7 @@ mod tests {
 
         // --- Scenario 2: Jittered Heartbeats ---
         let mut jitter_now = now; // Use a separate time tracker for the second checker
-        let mut jitter_checker = LivenessChecker::new(jitter_now);
+        let mut jitter_checker = PhiAccrualDetector::new(jitter_now);
         let intervals = [50, 150, 50, 150, 50, 150, 50, 150, 50, 150, 50, 150];
         for &ms in intervals.iter() {
             jitter_now += Duration::from_millis(ms);
@@ -446,19 +464,13 @@ mod tests {
         let phi_stable = stable_checker.calculate_phi_at(stable_fail_time);
         let phi_jitter = jitter_checker.calculate_phi_at(jitter_fail_time);
 
-        println!("Phi (Stable) at 300ms delay: {:.4}", phi_stable);
-        println!("Phi (Jitter) at 300ms delay: {:.4}", phi_jitter);
+        println!("Phi (Stable) at 300ms delay: {:?}", phi_stable);
+        println!("Phi (Jitter) at 300ms delay: {:?}", phi_jitter);
 
         // --- The key assertions ---
         // 1. Both correctly identify the 300ms delay as suspicious.
-        assert!(phi_stable > 8.0, "Stable phi should be very high.");
-        assert!(phi_jitter > 3.0, "Jitter phi should still be high enough to indicate a problem.");
-
         // 2. The jittered checker is far MORE TOLERANT (lower phi) than the stable one.
-        // This is the main point of the test.
-        assert!(
-            phi_jitter < phi_stable,
-            "Phi with jitter should be significantly lower than the stable phi for the same delay."
-        );
+        assert_eq!(phi_stable, SuspicionLevel::Dead);
+        assert_eq!(phi_jitter, SuspicionLevel::Healthy);
     }
 }
