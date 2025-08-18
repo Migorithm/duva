@@ -1,3 +1,5 @@
+use std::collections::VecDeque;
+
 use super::connections::connection_types::WriteConnected;
 use super::identifier::TPeerAddress;
 use crate::domains::QueryIO;
@@ -188,6 +190,111 @@ impl PartialEq for ListeningActorKillTrigger {
 }
 impl Eq for ListeningActorKillTrigger {}
 
+struct LivenessChecker {
+    last_seen: Instant,
+    hb_hist: VecDeque<f64>,
+    mean: f64,
+    std_dev: f64,
+    sum: f64,
+    sum_of_squares: f64,
+}
+
+const HISTORY_SIZE: usize = 256;
+
+impl LivenessChecker {
+    fn new(now: Instant) -> Self {
+        LivenessChecker {
+            last_seen: now,
+            hb_hist: VecDeque::with_capacity(HISTORY_SIZE),
+            mean: 0.0,
+            std_dev: 0.0,
+            sum: 0.0,
+            sum_of_squares: 0.0,
+        }
+    }
+    fn record_heartbeat(&mut self, now: Instant) {
+        let interval = now.duration_since(self.last_seen).as_millis() as f64;
+        self.last_seen = now;
+
+        if self.hb_hist.len() == HISTORY_SIZE {
+            if let Some(old_interval) = self.hb_hist.pop_front() {
+                self.sum -= old_interval;
+                self.sum_of_squares -= old_interval * old_interval;
+            }
+        }
+        self.hb_hist.push_back(interval);
+        self.sum += interval;
+        self.sum_of_squares += interval * interval;
+        let n = self.hb_hist.len() as f64;
+
+        if n > 0.0 {
+            self.mean = self.sum / n;
+            // Calculate variance: (sum_of_squares / n) - mean^2
+            let variance = (self.sum_of_squares / n) - (self.mean * self.mean);
+            // Due to floating point inaccuracies, variance can sometimes be a tiny negative number.
+            // Clamp at 0 before taking the square root.
+            self.std_dev = if variance > 0.0 { variance.sqrt() } else { 0.0 };
+        }
+    }
+
+    pub fn calculate_phi_at(&self, now: Instant) -> f64 {
+        // Rule of thumb: don't suspect a peer until you have a baseline of ~10 samples.
+        if self.hb_hist.len() < 10 {
+            return 0.0;
+        }
+
+        // 1. Get the time that has passed since the last heartbeat.
+        let time_since_last_seen = now.duration_since(self.last_seen).as_millis() as f64;
+
+        // 2. Calculate P_later, the probability of a heartbeat arriving *after* this time.
+        //    P_later = 1 - CDF(time_since_last_seen)
+        //    We use a helper function `normal_cdf` for this.
+
+        // A minimum standard deviation prevents instability when network jitter is very low.
+        let min_std_dev = 5.0; // e.g., 5ms
+        let std_dev = self.std_dev.max(min_std_dev);
+
+        let cdf_value = normal_cdf(time_since_last_seen, self.mean, std_dev);
+        let p_later = 1.0 - cdf_value;
+
+        // 3. The phi value is derived from this probability.
+        //    phi = -log10(P_later)
+        //    We clamp p_later to a tiny positive number to avoid log(0) which is -infinity.
+        -p_later.max(1e-16).log10()
+    }
+}
+
+/// Calculates the Cumulative Distribution Function (CDF) for a Normal distribution.
+/// This tells you the probability that a random sample is less than or equal to `x`.
+fn normal_cdf(x: f64, mean: f64, std_dev: f64) -> f64 {
+    if std_dev <= 0.0 {
+        return if x < mean { 0.0 } else { 1.0 };
+    }
+    // Standardize the variable
+    let z = (x - mean) / (std_dev * 2.0_f64.sqrt());
+    0.5 * (1.0 + erf_approx(z))
+}
+
+/// Approximates the Gaussian Error Function (erf), needed for the normal CDF.
+fn erf_approx(x: f64) -> f64 {
+    use std::f64::consts::E;
+    // Using Abramowitz and Stegun formula 7.1.26 for high accuracy
+    let p = 0.3275911;
+    let a1 = 0.254829592;
+    let a2 = -0.284496736;
+    let a3 = 1.421413741;
+    let a4 = -1.453152027;
+    let a5 = 1.061405429;
+
+    let sign = if x < 0.0 { -1.0 } else { 1.0 };
+    let x_abs = x.abs();
+
+    let t = 1.0 / (1.0 + p * x_abs);
+    let term = t * (a1 + t * (a2 + t * (a3 + t * (a4 + t * a5))));
+    let result = 1.0 - term * E.powf(-x_abs * x_abs);
+
+    sign * result
+}
 #[test]
 fn test_prioritize_nodes_with_same_replid() {
     use std::io::Write;
@@ -216,5 +323,142 @@ fn test_prioritize_nodes_with_same_replid() {
     // Optionally print for debugging
     for node in nodes {
         println!("{node:?}");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::Duration;
+
+    #[test]
+    fn test_initial_state_phi_is_zero() {
+        let now = Instant::now();
+        let checker = LivenessChecker::new(now);
+
+        // Phi should be 0 until enough samples are collected.
+        assert_eq!(checker.calculate_phi_at(now), 0.0);
+    }
+
+    #[test]
+    fn test_stable_heartbeats_and_low_phi() {
+        let mut now = Instant::now();
+        let mut checker = LivenessChecker::new(now);
+        let interval = Duration::from_millis(100);
+
+        // Record 20 heartbeats at a stable 100ms interval.
+        for _ in 0..20 {
+            now += interval;
+            checker.record_heartbeat(now);
+        }
+
+        // The mean should be exactly 100.
+        assert!((checker.mean - 100.0).abs() < 1e-9);
+        // The standard deviation should be effectively zero.
+        assert!((checker.std_dev).abs() < 1e-9);
+
+        // Immediately after a heartbeat, phi should be very low.
+        let phi_immediately = checker.calculate_phi_at(now);
+        assert!(phi_immediately < 0.1, "Phi should be near zero right after a heartbeat");
+
+        // A short time later, phi should still be low.
+        let phi_shortly_after = checker.calculate_phi_at(now + Duration::from_millis(50));
+        assert!(phi_shortly_after < 0.5, "Phi should be low shortly after a heartbeat");
+    }
+
+    #[test]
+    fn test_failure_detection_phi_accrues_with_significant_jitter() {
+        let mut now = Instant::now();
+        let mut checker = LivenessChecker::new(now);
+
+        // Establish a history with SIGNIFICANT jitter.
+        // The mean is still 100ms, but the deviation is now large.
+        let intervals = [60, 140, 110, 90, 130, 70, 50, 150, 80, 120, 100, 100, 145, 55];
+        for &ms in intervals.iter() {
+            now += Duration::from_millis(ms);
+            checker.record_heartbeat(now);
+        }
+
+        // The mean will be ~100 and std_dev will now be substantial.
+        println!("Test Setup -> Mean: {:.2}, StdDev: {:.2}", checker.mean, checker.std_dev);
+        assert!((checker.mean - 100.0).abs() < 1.0);
+        assert!(checker.std_dev > 30.0);
+
+        // Now, test the delays against this more tolerant history.
+        let failure_time_1 = now + Duration::from_millis(300);
+        let phi_1 = checker.calculate_phi_at(failure_time_1);
+        println!("Phi at 300ms: {}", phi_1);
+
+        let failure_time_2 = now + Duration::from_millis(800);
+        let phi_2 = checker.calculate_phi_at(failure_time_2);
+        println!("Phi at 800ms: {}", phi_2);
+
+        // With a large std_dev, a 300ms delay is suspicious but not "infinite".
+        // Its phi value will be high, but well below the cap.
+        assert!(phi_1 < 15.9, "Phi for 300ms delay should not hit the cap.");
+        assert!(phi_1 > 5.0, "Phi for 300ms should still be suspicious.");
+
+        // An 800ms delay is still extreme enough to likely hit the cap.
+        assert!(phi_2 > 15.9, "Phi for 800ms delay should be at or near the cap.");
+
+        // CRITICAL ASSERTION: The phi value for the longer delay is now provably greater.
+        assert!(
+            phi_2 > phi_1,
+            "Phi for 800ms delay ({}) should be greater than for 300ms delay ({})",
+            phi_2,
+            phi_1
+        );
+    }
+
+    #[test]
+    fn test_network_jitter_tolerance() {
+        let mut now = Instant::now();
+
+        // --- Scenario 1: Stable Heartbeats ---
+        let mut stable_checker = LivenessChecker::new(now);
+        for _ in 0..20 {
+            now += Duration::from_millis(100);
+            stable_checker.record_heartbeat(now);
+        }
+
+        // --- Scenario 2: Jittered Heartbeats ---
+        let mut jitter_now = now; // Use a separate time tracker for the second checker
+        let mut jitter_checker = LivenessChecker::new(jitter_now);
+        let intervals = [50, 150, 50, 150, 50, 150, 50, 150, 50, 150, 50, 150];
+        for &ms in intervals.iter() {
+            jitter_now += Duration::from_millis(ms);
+            jitter_checker.record_heartbeat(jitter_now);
+        }
+
+        // --- Verification ---
+        // Both checkers should have a mean around 100
+        assert!((stable_checker.mean - 100.0).abs() < 1e-9);
+        assert!((jitter_checker.mean - 100.0).abs() < 1e-9);
+
+        // The stable checker has near-zero std_dev, the jittered one has high std_dev
+        assert!(stable_checker.std_dev < 1e-9);
+        assert!(jitter_checker.std_dev > 49.0, "StdDev should be high due to jitter");
+
+        // Now, let's simulate a 300ms delay for both from their last seen time
+        let stable_fail_time = stable_checker.last_seen + Duration::from_millis(300);
+        let jitter_fail_time = jitter_checker.last_seen + Duration::from_millis(300);
+
+        let phi_stable = stable_checker.calculate_phi_at(stable_fail_time);
+        let phi_jitter = jitter_checker.calculate_phi_at(jitter_fail_time);
+
+        println!("Phi (Stable) at 300ms delay: {:.4}", phi_stable);
+        println!("Phi (Jitter) at 300ms delay: {:.4}", phi_jitter);
+
+        // --- The key assertions ---
+        // 1. Both correctly identify the 300ms delay as suspicious.
+        assert!(phi_stable > 8.0, "Stable phi should be very high.");
+        assert!(phi_jitter > 3.0, "Jitter phi should still be high enough to indicate a problem.");
+
+        // 2. The jittered checker is far MORE TOLERANT (lower phi) than the stable one.
+        // This is the main point of the test.
+        assert!(
+            phi_jitter < phi_stable,
+            "Phi with jitter should be significantly lower than the stable phi for the same delay."
+        );
     }
 }
