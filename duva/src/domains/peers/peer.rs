@@ -234,7 +234,6 @@ impl PhiAccrualDetector {
 
         if n > 0.0 {
             self.mean = self.sum / n;
-            // Calculate variance: (sum_of_squares / n) - mean^2
             let variance = (self.sum_of_squares / n) - (self.mean * self.mean);
             // Due to floating point inaccuracies, variance can sometimes be a tiny negative number.
             // Clamp at 0 before taking the square root.
@@ -248,24 +247,31 @@ impl PhiAccrualDetector {
             return SuspicionLevel::new(0.0);
         }
 
-        // * 1. Get the time that has passed since the last heartbeat.
-        let time_since_last_seen = now.duration_since(self.last_seen).as_millis() as f64;
-
-        // * 2. Calculate P_later, the probability of a heartbeat arriving *after* this time.
+        // * 1. Calculate P_later, the probability of a heartbeat arriving *after* this time.
         //    P_later = 1 - CDF(time_since_last_seen)
-        //    We use a helper function `normal_cdf` for this.
 
         // A minimum standard deviation prevents instability when network jitter is very low.
         let min_std_dev = 5.0; // e.g., 5ms
         let std_dev = self.std_dev.max(min_std_dev);
 
-        let cdf_value = normal_cdf(time_since_last_seen, self.mean, std_dev);
+        let cdf_value = self.normal_cumulative_distribution(now, self.mean, std_dev);
         let p_later = 1.0 - cdf_value;
 
-        // 3. The phi value is derived from this probability.
+        // 2. The phi value is derived from this probability.
         //    phi = -log10(P_later)
         //    We clamp p_later to a tiny positive number to avoid log(0) which is -infinity.
         SuspicionLevel::new(-p_later.max(1e-16).log10())
+    }
+    // This tells you the probability that a random sample is less than or equal to `x`.
+    // "What is the probability of getting a result that is 'x' or less?"
+    fn normal_cumulative_distribution(&self, now: Instant, mean: f64, std_dev: f64) -> f64 {
+        let time_since_last_seen = now.duration_since(self.last_seen).as_millis() as f64;
+        if std_dev <= 0.0 {
+            return if time_since_last_seen < mean { 0.0 } else { 1.0 };
+        }
+        // Standardize the variable
+        let z = (time_since_last_seen - mean) / (std_dev * 2.0_f64.sqrt());
+        0.5 * (1.0 + erf_approx(z))
     }
 
     pub(crate) fn is_dead(&self, now: Instant) -> bool {
@@ -276,17 +282,6 @@ impl PhiAccrualDetector {
     pub fn last_seen(&self) -> Instant {
         self.last_seen
     }
-}
-
-/// Calculates the Cumulative Distribution Function (CDF) for a Normal distribution.
-/// This tells you the probability that a random sample is less than or equal to `x`.
-fn normal_cdf(x: f64, mean: f64, std_dev: f64) -> f64 {
-    if std_dev <= 0.0 {
-        return if x < mean { 0.0 } else { 1.0 };
-    }
-    // Standardize the variable
-    let z = (x - mean) / (std_dev * 2.0_f64.sqrt());
-    0.5 * (1.0 + erf_approx(z))
 }
 
 /// Approximates the Gaussian Error Function (erf), needed for the normal CDF.
