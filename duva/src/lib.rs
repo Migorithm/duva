@@ -105,14 +105,8 @@ impl StartUpFacade {
         let cache_manager = CacheManager::run_cache_actors(replication_state.hwm.clone());
         tokio::spawn(cache_manager.clone().apply_snapshot(snapshot_info.key_values()));
 
-        let cluster_actor_handler = ClusterActor::run(
-            ENV.ttl_mills,
-            writer,
-            ENV.hf_mills,
-            replication_state,
-            cache_manager.clone(),
-            wal,
-        );
+        let cluster_actor_handler =
+            ClusterActor::run(writer, ENV.hf_mills, replication_state, cache_manager.clone(), wal);
 
         StartUpFacade {
             cluster_communication_manager: ClusterCommunicationManager(cluster_actor_handler),

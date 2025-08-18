@@ -66,7 +66,6 @@ mod tests;
 pub struct ClusterActor<T> {
     pub(crate) members: BTreeMap<PeerIdentifier, Peer>,
     pub(crate) replication: ReplicationState,
-    pub(crate) node_timeout: u128,
     pub(crate) consensus_tracker: LogConsensusTracker,
     pub(crate) receiver: tokio::sync::mpsc::Receiver<ClusterCommand>,
     pub(crate) self_handler: ClusterCommandHandler,
@@ -114,27 +113,20 @@ from_to!(tokio::sync::mpsc::Sender<ClusterCommand>, ClusterCommandHandler);
 
 impl<T: TWriteAheadLog> ClusterActor<T> {
     pub(crate) fn run(
-        node_timeout: u128,
         topology_writer: std::fs::File,
         heartbeat_interval: u64,
         init_replication: ReplicationState,
         cache_manager: CacheManager,
         wal: T,
     ) -> ClusterCommandHandler {
-        let cluster_actor = ClusterActor::new(
-            node_timeout,
-            init_replication,
-            heartbeat_interval,
-            topology_writer,
-            wal,
-        );
+        let cluster_actor =
+            ClusterActor::new(init_replication, heartbeat_interval, topology_writer, wal);
         let actor_handler = cluster_actor.self_handler.clone();
         tokio::spawn(cluster_actor.handle(cache_manager));
         actor_handler
     }
 
     fn new(
-        node_timeout: u128,
         init_repl_state: ReplicationState,
         heartbeat_interval_in_mills: u64,
         topology_writer: File,
@@ -161,7 +153,6 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             ),
             heartbeat_scheduler,
             replication: init_repl_state,
-            node_timeout,
             receiver,
             self_handler: ClusterCommandHandler(self_handler),
             topology_writer,
