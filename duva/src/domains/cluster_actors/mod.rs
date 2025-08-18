@@ -4,7 +4,7 @@ use consensus::LogConsensusTracker;
 use futures::StreamExt;
 use futures::stream::FuturesUnordered;
 use std::collections::BTreeMap;
-use tokio::time::Instant;
+use std::time::Instant;
 pub mod actor;
 mod command;
 pub(crate) use command::*;

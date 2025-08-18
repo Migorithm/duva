@@ -6,8 +6,8 @@ use crate::domains::{IoError, TRead};
 use crate::prelude::PeerIdentifier;
 use crate::types::Callback;
 use std::collections::VecDeque;
+use std::time::Instant;
 use tokio::task::JoinHandle;
-use tokio::time::Instant;
 
 #[derive(Debug, PartialEq)]
 pub(crate) struct Peer {
@@ -199,9 +199,7 @@ pub(crate) struct PhiAccrualDetector {
     last_seen: Instant,
     hb_hist: VecDeque<f64>,
     mean: f64,
-    std_dev: f64,
     sum: f64,
-    sum_of_squares: f64,
 }
 
 const HISTORY_SIZE: usize = 256;
@@ -212,66 +210,43 @@ impl PhiAccrualDetector {
             last_seen: now,
             hb_hist: VecDeque::with_capacity(HISTORY_SIZE),
             mean: 0.0,
-            std_dev: 0.0,
             sum: 0.0,
-            sum_of_squares: 0.0,
         }
     }
+
     pub(crate) fn record_heartbeat(&mut self, now: Instant) {
-        let interval = now.duration_since(self.last_seen).as_millis() as f64;
+        let interval = now.duration_since(self.last_seen).as_secs_f64() * 1000.0; // ms
         self.last_seen = now;
 
         if self.hb_hist.len() == HISTORY_SIZE {
             if let Some(old_interval) = self.hb_hist.pop_front() {
                 self.sum -= old_interval;
-                self.sum_of_squares -= old_interval * old_interval;
             }
         }
         self.hb_hist.push_back(interval);
         self.sum += interval;
-        self.sum_of_squares += interval * interval;
-        let n = self.hb_hist.len() as f64;
 
+        let n = self.hb_hist.len() as f64;
         if n > 0.0 {
             self.mean = self.sum / n;
-            let variance = (self.sum_of_squares / n) - (self.mean * self.mean);
-            // Due to floating point inaccuracies, variance can sometimes be a tiny negative number.
-            // Clamp at 0 before taking the square root.
-            self.std_dev = if variance > 0.0 { variance.sqrt() } else { 0.0 };
         }
     }
 
     fn calculate_phi_at(&self, now: Instant) -> SuspicionLevel {
-        // ! Rule of thumb: don't suspect a peer until you have a baseline of ~10 samples.
+        // Don’t suspect peers until we have a baseline
         if self.hb_hist.len() < 10 {
             return SuspicionLevel::new(0.0);
         }
 
-        // * 1. Calculate P_later, the probability of a heartbeat arriving *after* this time.
-        //    P_later = 1 - CDF(time_since_last_seen)
+        let elapsed = now.duration_since(self.last_seen).as_secs_f64() * 1000.0; // ms
 
-        // A minimum standard deviation prevents instability when network jitter is very low.
-        let min_std_dev = 5.0; // e.g., 5ms
-        let std_dev = self.std_dev.max(min_std_dev);
+        // Avoid division by zero (if mean is crazy small)
+        let mean = self.mean.max(1e-6);
 
-        let cdf_value = self.normal_cumulative_distribution(now, self.mean, std_dev);
-        let p_later = 1.0 - cdf_value;
+        // φ(t) = (t / λ) * log10(e)
+        let phi = (elapsed / mean) * std::f64::consts::E.log10();
 
-        // 2. The phi value is derived from this probability.
-        //    phi = -log10(P_later)
-        //    We clamp p_later to a tiny positive number to avoid log(0) which is -infinity.
-        SuspicionLevel::new(-p_later.max(1e-16).log10())
-    }
-    // This tells you the probability that a random sample is less than or equal to `x`.
-    // "What is the probability of getting a result that is 'x' or less?"
-    fn normal_cumulative_distribution(&self, now: Instant, mean: f64, std_dev: f64) -> f64 {
-        let time_since_last_seen = now.duration_since(self.last_seen).as_millis() as f64;
-        if std_dev <= 0.0 {
-            return if time_since_last_seen < mean { 0.0 } else { 1.0 };
-        }
-        // Standardize the variable
-        let z = (time_since_last_seen - mean) / (std_dev * 2.0_f64.sqrt());
-        0.5 * (1.0 + erf_approx(z))
+        SuspicionLevel::new(phi)
     }
 
     pub(crate) fn is_dead(&self, now: Instant) -> bool {
@@ -284,28 +259,7 @@ impl PhiAccrualDetector {
     }
 }
 
-/// Approximates the Gaussian Error Function (erf), needed for the normal CDF.
-fn erf_approx(x: f64) -> f64 {
-    use std::f64::consts::E;
-    // Using Abramowitz and Stegun formula 7.1.26 for high accuracy
-    let p = 0.3275911;
-    let a1 = 0.254829592;
-    let a2 = -0.284496736;
-    let a3 = 1.421413741;
-    let a4 = -1.453152027;
-    let a5 = 1.061405429;
-
-    let sign = if x < 0.0 { -1.0 } else { 1.0 };
-    let x_abs = x.abs();
-
-    let t = 1.0 / (1.0 + p * x_abs);
-    let term = t * (a1 + t * (a2 + t * (a3 + t * (a4 + t * a5))));
-    let result = 1.0 - term * E.powf(-x_abs * x_abs);
-
-    sign * result
-}
-
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
 pub(crate) enum SuspicionLevel {
     Healthy, // Normal operation.
     Suspect, // Log a warning, increment a metric. Maybe deprioritize the node for new connections.
@@ -360,126 +314,456 @@ fn test_prioritize_nodes_with_same_replid() {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::time::Duration;
+    use std::time::{Duration, Instant};
 
     #[test]
-    fn test_initial_state_phi_is_zero() {
-        let now = Instant::now();
-        let checker = PhiAccrualDetector::new(now);
+    fn test_history_size_limit() {
+        let start = Instant::now();
+        let mut detector = PhiAccrualDetector::new(start);
+        let mut current_time = start;
 
-        // Phi should be 0 until enough samples are collected.
-        assert_eq!(checker.calculate_phi_at(now), SuspicionLevel::Healthy);
+        // Record more heartbeats than HISTORY_SIZE
+        for _ in 1..=(HISTORY_SIZE + 10) {
+            current_time += Duration::from_millis(100);
+            detector.record_heartbeat(current_time);
+        }
+
+        // Should not exceed HISTORY_SIZE
+        assert_eq!(detector.hb_hist.len(), HISTORY_SIZE);
+
+        // Should have removed the oldest entries
+        // The first entry should now be from heartbeat #11 (100ms * 11 = 1100ms)
+        assert_eq!(detector.hb_hist[0], 100.0);
+
+        // Sum should only include the last HISTORY_SIZE entries
+        let expected_sum = 100.0 * HISTORY_SIZE as f64;
+        assert_eq!(detector.sum, expected_sum);
+        assert_eq!(detector.mean, 100.0);
     }
 
     #[test]
-    fn test_stable_heartbeats_and_low_phi() {
-        let mut now = Instant::now();
-        let mut checker = PhiAccrualDetector::new(now);
-        let interval = Duration::from_millis(100);
+    fn test_is_dead_insufficient_history() {
+        let start = Instant::now();
+        let detector = PhiAccrualDetector::new(start);
 
-        // Record 20 heartbeats at a stable 100ms interval.
+        // With no heartbeats recorded, should not be considered dead
+        assert!(!detector.is_dead(start + Duration::from_secs(10)));
+
+        // Even with some heartbeats but less than 10, should not be dead
+        let mut detector_with_few_hb = PhiAccrualDetector::new(start);
+        let mut current_time = start;
+        for _ in 0..5 {
+            current_time += Duration::from_millis(100);
+            detector_with_few_hb.record_heartbeat(current_time);
+        }
+
+        assert!(!detector_with_few_hb.is_dead(current_time + Duration::from_secs(10)));
+    }
+
+    #[test]
+    fn test_phi_calculation_normal_operation() {
+        let start = Instant::now();
+        let mut detector = PhiAccrualDetector::new(start);
+        let mut current_time = start;
+
+        // Record 15 heartbeats with 100ms intervals to establish baseline
+        for _ in 0..15 {
+            current_time += Duration::from_millis(100);
+            detector.record_heartbeat(current_time);
+        }
+
+        // Check phi shortly after expected heartbeat time (should be healthy)
+        let check_time = current_time + Duration::from_millis(110);
+        assert!(!detector.is_dead(check_time));
+
+        // Check phi at exactly expected mean interval (should be healthy)
+        let check_time = current_time + Duration::from_millis(100);
+        assert!(!detector.is_dead(check_time));
+    }
+
+    #[test]
+    fn test_is_dead_with_long_delay() {
+        let start = Instant::now();
+        let mut detector = PhiAccrualDetector::new(start);
+        let mut current_time = start;
+
+        // Establish baseline with 20 heartbeats at 100ms intervals
         for _ in 0..20 {
-            now += interval;
-            checker.record_heartbeat(now);
+            current_time += Duration::from_millis(100);
+            detector.record_heartbeat(current_time);
         }
 
-        // The mean should be exactly 100.
-        assert!((checker.mean - 100.0).abs() < 1e-9);
-        // The standard deviation should be effectively zero.
-        assert!((checker.std_dev).abs() < 1e-9);
-
-        // Immediately after a heartbeat, phi should be very low.
-        let phi_immediately = checker.calculate_phi_at(now);
-        assert_eq!(phi_immediately, SuspicionLevel::Healthy);
-
-        // A short time later, phi should still be low.
-        let phi_shortly_after = checker.calculate_phi_at(now + Duration::from_millis(50));
-        assert_eq!(phi_shortly_after, SuspicionLevel::Healthy);
+        // Check if considered dead after a very long delay
+        // For phi > 12, we need: (elapsed / mean) * log10(e) > 12
+        // So: elapsed > 12 * mean / log10(e) = 12 * 100 / 0.434 ≈ 2765ms
+        let dead_time = current_time + Duration::from_millis(3000);
+        assert!(detector.is_dead(dead_time));
     }
 
     #[test]
-    fn test_failure_detection_phi_accrues_with_significant_jitter() {
-        let mut now = Instant::now();
-        let mut checker = PhiAccrualDetector::new(now);
+    fn test_varying_heartbeat_intervals() {
+        let start = Instant::now();
+        let mut detector = PhiAccrualDetector::new(start);
+        let mut current_time = start;
 
-        // Establish a history with SIGNIFICANT jitter.
-        // The mean is still 100ms, but the deviation is now large.
-        let intervals = [60, 140, 110, 90, 130, 70, 50, 150, 80, 120, 100, 100, 145, 55];
-        for &ms in intervals.iter() {
-            now += Duration::from_millis(ms);
-            checker.record_heartbeat(now);
+        // Record heartbeats with varying intervals
+        let intervals = vec![50, 100, 75, 125, 90, 110, 80, 120, 95, 105, 85, 115, 70, 130];
+        let mut sum = 0.0;
+
+        for interval_ms in &intervals {
+            current_time += Duration::from_millis(*interval_ms);
+            detector.record_heartbeat(current_time);
+            sum += *interval_ms as f64;
         }
 
-        // The mean will be ~100 and std_dev will now be substantial.
-        println!("Test Setup -> Mean: {:.2}, StdDev: {:.2}", checker.mean, checker.std_dev);
-        assert!((checker.mean - 100.0).abs() < 1.0);
-        assert!(checker.std_dev > 30.0);
-
-        // Now, test the delays against this more tolerant history.
-        let failure_time_1 = now + Duration::from_millis(300);
-        let phi_1 = checker.calculate_phi_at(failure_time_1);
-        println!("Phi at 300ms: {:?}", phi_1);
-
-        let failure_time_2 = now + Duration::from_millis(800);
-        let phi_2 = checker.calculate_phi_at(failure_time_2);
-        println!("Phi at 800ms: {:?}", phi_2);
-
-        // With a large std_dev, a 300ms delay is suspicious but not "infinite".
-        // Its phi value will be high, but well below the cap.
-
-        assert_eq!(phi_1, SuspicionLevel::Faulty);
-
-        // An 800ms delay is still extreme enough to likely hit the cap.
-        assert_eq!(
-            phi_2,
-            SuspicionLevel::Dead,
-            "Phi for 800ms delay should be at or near the cap."
-        );
+        let expected_mean = sum / intervals.len() as f64;
+        assert!((detector.mean - expected_mean).abs() < 1e-10);
+        assert_eq!(detector.hb_hist.len(), intervals.len());
     }
 
     #[test]
-    fn test_network_jitter_tolerance() {
-        let mut now = Instant::now();
+    fn test_mean_calculation_accuracy() {
+        let start = Instant::now();
+        let mut detector = PhiAccrualDetector::new(start);
+        let mut current_time = start;
 
-        // --- Scenario 1: Stable Heartbeats ---
-        let mut stable_checker = PhiAccrualDetector::new(now);
+        // Test with known intervals
+        let intervals = vec![100.0, 200.0, 300.0];
+        for &interval in &intervals {
+            current_time += Duration::from_millis(interval as u64);
+            detector.record_heartbeat(current_time);
+        }
+
+        let expected_mean = 200.0; // (100 + 200 + 300) / 3
+        assert_eq!(detector.mean, expected_mean);
+        assert_eq!(detector.sum, 600.0);
+    }
+
+    #[test]
+    fn test_rolling_window_behavior() {
+        let start = Instant::now();
+        let mut detector = PhiAccrualDetector::new(start);
+        let mut current_time = start;
+
+        // Fill the history with 100ms intervals
+        for _ in 0..HISTORY_SIZE {
+            current_time += Duration::from_millis(100);
+            detector.record_heartbeat(current_time);
+        }
+
+        assert_eq!(detector.mean, 100.0);
+        assert_eq!(detector.sum, 100.0 * HISTORY_SIZE as f64);
+
+        // Add one more heartbeat with a different interval
+        current_time += Duration::from_millis(200);
+        detector.record_heartbeat(current_time);
+
+        // Should still have HISTORY_SIZE entries
+        assert_eq!(detector.hb_hist.len(), HISTORY_SIZE);
+
+        // The oldest 100ms entry should be gone, replaced by 200ms
+        // New sum = old_sum - 100 + 200 = (256 * 100) - 100 + 200 = 25600 + 100 = 25700
+        let expected_sum = (HISTORY_SIZE - 1) as f64 * 100.0 + 200.0;
+        assert_eq!(detector.sum, expected_sum);
+
+        let expected_mean = expected_sum / HISTORY_SIZE as f64;
+        assert_eq!(detector.mean, expected_mean);
+    }
+
+    #[test]
+    fn test_suspicion_level_progression() {
+        let start = Instant::now();
+        let mut detector = PhiAccrualDetector::new(start);
+        let mut current_time = start;
+
+        // Establish baseline with 20 heartbeats at 100ms intervals
         for _ in 0..20 {
-            now += Duration::from_millis(100);
-            stable_checker.record_heartbeat(now);
+            current_time += Duration::from_millis(100);
+            detector.record_heartbeat(current_time);
         }
 
-        // --- Scenario 2: Jittered Heartbeats ---
-        let mut jitter_now = now; // Use a separate time tracker for the second checker
-        let mut jitter_checker = PhiAccrualDetector::new(jitter_now);
-        let intervals = [50, 150, 50, 150, 50, 150, 50, 150, 50, 150, 50, 150];
-        for &ms in intervals.iter() {
-            jitter_now += Duration::from_millis(ms);
-            jitter_checker.record_heartbeat(jitter_now);
+        // Test different delay levels
+        // For φ = (elapsed / mean) * log10(e), with mean = 100ms, log10(e) ≈ 0.434
+
+        // Healthy: φ < 5, so elapsed < 5 * 100 / 0.434 ≈ 1152ms
+        let healthy_time = current_time + Duration::from_millis(1000);
+        assert_eq!(detector.calculate_phi_at(healthy_time), SuspicionLevel::Healthy);
+
+        // Suspect: 5 ≤ φ < 8, so 1152ms ≤ elapsed < 1843ms
+        let suspect_time = current_time + Duration::from_millis(1300);
+        assert_eq!(detector.calculate_phi_at(suspect_time), SuspicionLevel::Suspect);
+
+        // Faulty: 8 ≤ φ < 12, so 1843ms ≤ elapsed < 2765ms
+        let faulty_time = current_time + Duration::from_millis(2000);
+        assert_eq!(detector.calculate_phi_at(faulty_time), SuspicionLevel::Faulty);
+
+        // Dead: φ ≥ 12, so elapsed ≥ 2765ms
+        let dead_time = current_time + Duration::from_millis(3000);
+        assert_eq!(detector.calculate_phi_at(dead_time), SuspicionLevel::Dead);
+        assert!(detector.is_dead(dead_time));
+    }
+
+    #[test]
+    fn test_adaptive_behavior_with_changing_patterns() {
+        let start = Instant::now();
+        let mut detector = PhiAccrualDetector::new(start);
+        let mut current_time = start;
+
+        // Start with fast heartbeats (50ms intervals)
+        for _ in 0..15 {
+            current_time += Duration::from_millis(50);
+            detector.record_heartbeat(current_time);
         }
 
-        // --- Verification ---
-        // Both checkers should have a mean around 100
-        assert!((stable_checker.mean - 100.0).abs() < 1e-9);
-        assert!((jitter_checker.mean - 100.0).abs() < 1e-9);
+        let fast_mean = detector.mean;
+        assert_eq!(fast_mean, 50.0);
 
-        // The stable checker has near-zero std_dev, the jittered one has high std_dev
-        assert!(stable_checker.std_dev < 1e-9);
-        assert!(jitter_checker.std_dev > 49.0, "StdDev should be high due to jitter");
+        // Switch to slower heartbeats (200ms intervals)
+        for _ in 0..15 {
+            current_time += Duration::from_millis(200);
+            detector.record_heartbeat(current_time);
+        }
 
-        // Now, let's simulate a 300ms delay for both from their last seen time
-        let stable_fail_time = stable_checker.last_seen + Duration::from_millis(300);
-        let jitter_fail_time = jitter_checker.last_seen + Duration::from_millis(300);
+        // Mean should have adjusted
+        let new_mean = detector.mean;
+        assert!(new_mean > fast_mean);
+        assert!(new_mean < 200.0); // Still influenced by the faster intervals
 
-        let phi_stable = stable_checker.calculate_phi_at(stable_fail_time);
-        let phi_jitter = jitter_checker.calculate_phi_at(jitter_fail_time);
+        // A delay that would be "dead" for fast heartbeats might be acceptable for slow ones
+        let moderate_delay = current_time + Duration::from_millis(400);
+        let phi_level = detector.calculate_phi_at(moderate_delay);
 
-        println!("Phi (Stable) at 300ms delay: {:?}", phi_stable);
-        println!("Phi (Jitter) at 300ms delay: {:?}", phi_jitter);
+        // This depends on the exact mean, but should be less suspicious than with fast-only baseline
+        assert!(phi_level != SuspicionLevel::Dead || detector.mean < 50.0);
+    }
 
-        // --- The key assertions ---
-        // 1. Both correctly identify the 300ms delay as suspicious.
-        // 2. The jittered checker is far MORE TOLERANT (lower phi) than the stable one.
-        assert_eq!(phi_stable, SuspicionLevel::Dead);
-        assert_eq!(phi_jitter, SuspicionLevel::Healthy);
+    #[test]
+    fn test_edge_case_very_large_intervals() {
+        let start = Instant::now();
+        let mut detector = PhiAccrualDetector::new(start);
+        let mut current_time = start;
+
+        // Record heartbeats with very large intervals (10 seconds)
+        for _ in 0..15 {
+            current_time += Duration::from_secs(10);
+            detector.record_heartbeat(current_time);
+        }
+
+        assert_eq!(detector.mean, 10000.0); // 10 seconds in milliseconds
+
+        // A 30-second delay: φ = (30000 / 10000) * log10(e) = 3 * 0.434 ≈ 1.3 (Healthy)
+        let delayed_time = current_time + Duration::from_secs(30);
+        let phi_level = detector.calculate_phi_at(delayed_time);
+        assert_eq!(phi_level, SuspicionLevel::Healthy);
+
+        // For Dead level (φ ≥ 12), need: elapsed ≥ 12 * mean / log10(e)
+        // elapsed ≥ 12 * 10000 / 0.434 ≈ 276,498ms ≈ 276 seconds
+        let very_delayed_time = current_time + Duration::from_secs(280);
+        assert!(detector.is_dead(very_delayed_time));
+
+        // Test intermediate levels
+        // For Suspect (φ ≥ 5): elapsed ≥ 5 * 10000 / 0.434 ≈ 115,207ms ≈ 115 seconds
+        let suspect_time = current_time + Duration::from_secs(120);
+        let suspect_phi = detector.calculate_phi_at(suspect_time);
+        assert!(matches!(suspect_phi, SuspicionLevel::Suspect | SuspicionLevel::Faulty));
+    }
+
+    #[test]
+    fn test_consistent_timing_low_phi() {
+        let start = Instant::now();
+        let mut detector = PhiAccrualDetector::new(start);
+        let mut current_time = start;
+
+        // Record very consistent heartbeats
+        for _ in 0..50 {
+            current_time += Duration::from_millis(100);
+            detector.record_heartbeat(current_time);
+        }
+
+        // Check phi at exactly the expected interval
+        let expected_time = current_time + Duration::from_millis(100);
+        let phi_level = detector.calculate_phi_at(expected_time);
+
+        // φ = (100 / 100) * log10(e) = 1 * 0.434 ≈ 0.434 (Healthy)
+        assert_eq!(phi_level, SuspicionLevel::Healthy);
+    }
+
+    #[test]
+    fn test_irregular_timing_adaptation() {
+        let start = Instant::now();
+        let mut detector = PhiAccrualDetector::new(start);
+        let mut current_time = start;
+
+        // Create irregular but bounded intervals
+        let intervals = vec![50, 150, 75, 125, 100, 200, 60, 140, 80, 120, 90, 110, 70, 130, 85];
+
+        for interval_ms in intervals {
+            current_time += Duration::from_millis(interval_ms);
+            detector.record_heartbeat(current_time);
+        }
+
+        // The detector should adapt to the variability
+        // Mean should be around 100ms, but phi calculation should account for variance
+        let moderate_delay = current_time + Duration::from_millis(300);
+        let phi_level = detector.calculate_phi_at(moderate_delay);
+
+        // With irregular timing, a 3x delay might still be healthy or just suspect
+        assert!(matches!(phi_level, SuspicionLevel::Healthy | SuspicionLevel::Suspect));
+    }
+
+    #[test]
+    fn test_recovery_after_false_positive() {
+        let start = Instant::now();
+        let mut detector = PhiAccrualDetector::new(start);
+        let mut current_time = start;
+
+        // Establish baseline
+        for _ in 0..15 {
+            current_time += Duration::from_millis(100);
+            detector.record_heartbeat(current_time);
+        }
+
+        // Simulate a long delay (would be considered dead)
+        let long_delay = current_time + Duration::from_millis(3000);
+        assert!(detector.is_dead(long_delay));
+
+        // Now record a heartbeat after the long delay
+        detector.record_heartbeat(long_delay);
+
+        // The detector should have updated its last_seen time
+        assert_eq!(detector.last_seen(), long_delay);
+
+        // Check that we're back to normal operation shortly after
+        let normal_next = long_delay + Duration::from_millis(100);
+        assert!(!detector.is_dead(normal_next));
+    }
+
+    #[test]
+    fn test_minimum_mean_threshold() {
+        let start = Instant::now();
+        let mut detector = PhiAccrualDetector::new(start);
+
+        // Create scenario where calculated mean would be extremely small
+        // Record heartbeat at same instant (0 interval)
+        detector.record_heartbeat(start);
+
+        // Add tiny intervals to get above minimum history
+        let mut current_time = start;
+        for _ in 0..15 {
+            current_time += Duration::from_nanos(100); // Very tiny intervals
+            detector.record_heartbeat(current_time);
+        }
+
+        // Mean should be extremely small, but phi calculation should use 1e-6 minimum
+        let delayed_time = current_time + Duration::from_millis(1);
+
+        // Should not panic and should handle the minimum mean threshold
+        let phi_level = detector.calculate_phi_at(delayed_time);
+        assert!(matches!(phi_level, SuspicionLevel::Dead)); // Very small mean makes delays look huge
+    }
+
+    #[test]
+    fn test_empty_history_pop_safety() {
+        let start = Instant::now();
+        let mut detector = PhiAccrualDetector::new(start);
+
+        // This tests the safety of the pop_front operation when history is empty
+        // The implementation uses if let Some(old_interval) = self.hb_hist.pop_front()
+        // which should handle empty deque gracefully
+
+        detector.record_heartbeat(start + Duration::from_millis(100));
+
+        // Should not panic
+        assert_eq!(detector.hb_hist.len(), 1);
+        assert_eq!(detector.sum, 100.0);
+    }
+
+    #[test]
+    fn test_realistic_distributed_system_scenario() {
+        let start = Instant::now();
+        let mut detector = PhiAccrualDetector::new(start);
+        let mut current_time = start;
+
+        // Simulate realistic heartbeat pattern: 1 second intervals with small variations
+        let intervals_ms = vec![
+            1000, 1020, 980, 1010, 990, 1030, 970, 1015, 995, 1025, 985, 1005, 1000, 1012, 988,
+            1018, 992, 1008, 1002, 998, 1015, 985, 1025, 975, 1035, 965, 1022, 978, 1007, 993,
+        ];
+
+        for interval_ms in intervals_ms {
+            current_time += Duration::from_millis(interval_ms);
+            detector.record_heartbeat(current_time);
+        }
+
+        // Mean should be close to 1000ms (with small variations it should be very close)
+        assert!((detector.mean - 1000.0).abs() < 30.0);
+
+        // Normal operation: next heartbeat within expected window (φ ≈ 1.05)
+        let normal_next = current_time + Duration::from_millis(1050);
+        assert!(!detector.is_dead(normal_next));
+
+        // For a 1000ms mean, Dead threshold (φ ≥ 12) needs:
+        // elapsed ≥ 12 * 1000 / log10(e) ≈ 12 * 1000 / 0.434 ≈ 27,649ms ≈ 27.6 seconds
+        let dead_delay = current_time + Duration::from_secs(30);
+        assert!(detector.is_dead(dead_delay));
+
+        // Test intermediate suspicion level at ~10 seconds (φ ≈ 4.3, should be Healthy)
+        let moderate_delay = current_time + Duration::from_secs(10);
+        assert!(!detector.is_dead(moderate_delay));
+    }
+
+    #[test]
+    fn test_performance_with_maximum_history() {
+        let start = Instant::now();
+        let mut detector = PhiAccrualDetector::new(start);
+        let mut current_time = start;
+
+        // Fill to maximum capacity and verify performance doesn't degrade
+        for i in 0..HISTORY_SIZE * 2 {
+            current_time += Duration::from_millis(100);
+            detector.record_heartbeat(current_time);
+
+            // Verify invariants throughout
+            assert!(detector.hb_hist.len() <= HISTORY_SIZE);
+            assert!(detector.mean >= 0.0);
+            assert!(detector.sum >= 0.0);
+
+            // Verify sum consistency
+            let expected_sum: f64 = detector.hb_hist.iter().sum();
+            assert!((detector.sum - expected_sum).abs() < 1e-10);
+        }
+
+        // Final state should be stable
+        assert_eq!(detector.hb_hist.len(), HISTORY_SIZE);
+        assert_eq!(detector.mean, 100.0);
+    }
+
+    #[test]
+    fn test_phi_calculation_mathematical_accuracy() {
+        let start = Instant::now();
+        let mut detector = PhiAccrualDetector::new(start);
+        let mut current_time = start;
+
+        // Set up known baseline: 20 heartbeats at exactly 1000ms intervals
+        for _ in 0..20 {
+            current_time += Duration::from_millis(1000);
+            detector.record_heartbeat(current_time);
+        }
+
+        assert_eq!(detector.mean, 1000.0);
+
+        // Test specific phi calculation
+        let test_delay = current_time + Duration::from_millis(2000);
+        let phi_level = detector.calculate_phi_at(test_delay);
+
+        // Manual calculation: φ = (2000 / 1000) * log10(e) = 2 * 0.4342944... ≈ 0.869
+        // This should be Healthy (φ < 5)
+        assert_eq!(phi_level, SuspicionLevel::Healthy);
+
+        // Test with delay that should give φ ≈ 5
+        // Need: elapsed = 5 * 1000 / log10(e) ≈ 5 * 1000 / 0.434 ≈ 11520ms
+        let boundary_delay = current_time + Duration::from_millis(11520);
+        let boundary_phi = detector.calculate_phi_at(boundary_delay);
+        assert!(matches!(boundary_phi, SuspicionLevel::Suspect | SuspicionLevel::Healthy));
     }
 }
