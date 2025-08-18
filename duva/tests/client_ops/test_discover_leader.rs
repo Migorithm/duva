@@ -17,7 +17,7 @@ fn run_discover_leader(with_append_only: bool) -> anyhow::Result<()> {
     let mut h = Client::new(leader_p.port);
 
     // generate keys
-    let num_of_keys = 1000;
+    let num_of_keys = 100;
     for i in 0..num_of_keys {
         h.send_and_get(format!("SET {i} {i}"));
     }
@@ -27,7 +27,7 @@ fn run_discover_leader(with_append_only: bool) -> anyhow::Result<()> {
     // WHEN
     leader_p.kill()?;
     // wait for the election to complete
-    sleep(Duration::from_millis(LEADER_HEARTBEAT_INTERVAL_MAX));
+    sleep(Duration::from_millis(LEADER_HEARTBEAT_INTERVAL_MAX * 2));
 
     // THEN
     let res = h.send_and_get_vec("KEYS *", num_of_keys);

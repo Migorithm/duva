@@ -1,5 +1,3 @@
-use std::collections::VecDeque;
-
 use super::connections::connection_types::WriteConnected;
 use super::identifier::TPeerAddress;
 use crate::domains::QueryIO;
@@ -7,6 +5,7 @@ use crate::domains::cluster_actors::replication::{ReplicationId, ReplicationRole
 use crate::domains::{IoError, TRead};
 use crate::prelude::PeerIdentifier;
 use crate::types::Callback;
+use std::collections::VecDeque;
 use tokio::task::JoinHandle;
 use tokio::time::Instant;
 
@@ -208,10 +207,6 @@ pub(crate) struct PhiAccrualDetector {
 const HISTORY_SIZE: usize = 256;
 
 impl PhiAccrualDetector {
-    pub(crate) fn last_seen(&self) -> Instant {
-        self.last_seen
-    }
-
     pub(crate) fn new(now: Instant) -> Self {
         PhiAccrualDetector {
             last_seen: now,
@@ -275,6 +270,11 @@ impl PhiAccrualDetector {
 
     pub(crate) fn is_dead(&self, now: Instant) -> bool {
         self.calculate_phi_at(now) == SuspicionLevel::Dead
+    }
+
+    #[cfg(test)]
+    pub fn last_seen(&self) -> Instant {
+        self.last_seen
     }
 }
 
