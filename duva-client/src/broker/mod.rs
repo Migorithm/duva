@@ -48,6 +48,7 @@ impl Broker {
                 writer: w.run(),
                 kill_switch: r.run(broker_tx.clone(), seed_replid.clone()),
                 request_id: auth_response.request_id,
+                peer_identifier: server_addr.clone(),
             },
         );
 
@@ -189,6 +190,7 @@ impl Broker {
                     .run(self.tx.clone(), auth_response.replication_id),
                 writer: server_stream_writer.run(),
                 request_id: auth_response.request_id,
+                peer_identifier: peer_id.clone(),
             },
         );
         Ok(())
