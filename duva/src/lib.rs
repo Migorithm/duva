@@ -45,7 +45,10 @@ use tracing::instrument;
 use tracing_subscriber::layer::SubscriberExt;
 use uuid::Uuid;
 
+use crate::domains::TSerdeReadWrite;
+use crate::prelude::AuthRequest;
 pub use config::ENV;
+
 pub mod prelude {
     pub use crate::domains::cluster_actors::actor::heartbeat_scheduler::ELECTION_TIMEOUT_MAX;
     pub use crate::domains::cluster_actors::topology::NodeReplInfo;
@@ -206,23 +209,30 @@ impl StartUpFacade {
         let mut handles = Vec::with_capacity(100);
 
         //TODO refactor: authentication should be simplified
-        while let Ok((stream, _)) = listener.accept().await {
-            let Ok((reader, writer)) =
-                authenticate(stream, &self.cluster_communication_manager).await
-            else {
-                error!("Failed to authenticate client stream");
-                continue;
-            };
+        while let Ok((mut stream, _)) = listener.accept().await {
+            let request = stream.deserialized_read().await?;
+            match request {
+                | AuthRequest { .. } => {
+                    let Ok((reader, writer)) =
+                        authenticate(stream, &self.cluster_communication_manager, request).await
+                    else {
+                        error!("Failed to authenticate client stream");
+                        continue;
+                    };
 
-            let observer =
-                self.cluster_communication_manager.route_subscribe_topology_change().await?;
-            let write_handler = writer.run(observer);
+                    let observer = self
+                        .cluster_communication_manager
+                        .route_subscribe_topology_change()
+                        .await?;
+                    let write_handler = writer.run(observer);
 
-            handles.push(tokio::spawn(
-                reader.handle_client_stream(self.client_controller(), write_handler.clone()),
-            ));
+                    handles.push(tokio::spawn(
+                        reader
+                            .handle_client_stream(self.client_controller(), write_handler.clone()),
+                    ));
+                },
+            }
         }
-
         Ok(())
     }
 

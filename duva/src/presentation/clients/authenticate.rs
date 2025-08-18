@@ -10,10 +10,10 @@ use uuid::Uuid;
 pub(crate) async fn authenticate(
     mut stream: TcpStream,
     cluster_manager: &ClusterCommunicationManager,
+    auth_req: AuthRequest,
 ) -> anyhow::Result<(ClientStreamReader, ClientStreamWriter)> {
     let replication_state = cluster_manager.route_get_replication_state().await?;
 
-    let auth_req: AuthRequest = stream.deserialized_read().await?;
     let (client_id, request_id) = auth_req.deconstruct()?;
 
     stream
