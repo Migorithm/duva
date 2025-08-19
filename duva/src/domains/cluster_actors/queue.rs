@@ -7,7 +7,7 @@ use futures::{Stream, StreamExt};
 
 use crate::domains::cluster_actors::ClusterCommand;
 
-pub struct ClusterActorQueue;
+pub(crate) struct ClusterActorQueue;
 
 impl ClusterActorQueue {
     pub(crate) fn new(buffer: usize) -> (ClusterActorSender, ClusterActorReceiver) {

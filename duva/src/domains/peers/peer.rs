@@ -218,10 +218,10 @@ impl PhiAccrualDetector {
         let interval = now.duration_since(self.last_seen).as_secs_f64() * 1000.0; // ms
         self.last_seen = now;
 
-        if self.hb_hist.len() == HISTORY_SIZE {
-            if let Some(old_interval) = self.hb_hist.pop_front() {
-                self.sum -= old_interval;
-            }
+        if self.hb_hist.len() == HISTORY_SIZE
+            && let Some(old_interval) = self.hb_hist.pop_front()
+        {
+            self.sum -= old_interval;
         }
         self.hb_hist.push_back(interval);
         self.sum += interval;
