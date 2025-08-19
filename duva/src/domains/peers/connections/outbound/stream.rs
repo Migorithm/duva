@@ -1,7 +1,7 @@
 use super::response::ConnectionResponse;
 use crate::domains::QueryIO;
 use crate::domains::cluster_actors::ConnectionMessage;
-use crate::domains::cluster_actors::actor::ClusterCommandHandler;
+use crate::domains::cluster_actors::queue::ClusterActorSender;
 use crate::domains::cluster_actors::replication::ReplicationId;
 use crate::domains::cluster_actors::replication::ReplicationState;
 use crate::domains::peers::connections::connection_types::ConnectedPeerInfo;
@@ -87,7 +87,7 @@ impl OutboundStream {
     pub(crate) async fn add_peer(
         mut self,
         self_port: u16,
-        cluster_handler: ClusterCommandHandler,
+        cluster_handler: ClusterActorSender,
         optional_callback: Option<Callback<anyhow::Result<()>>>,
     ) -> anyhow::Result<()> {
         self.make_handshake(self_port).await?;

@@ -18,6 +18,9 @@ use crate::domains::cluster_actors::consensus::election::ElectionVoting;
 use crate::domains::cluster_actors::hash_ring::MigrationBatch;
 use crate::domains::cluster_actors::hash_ring::PendingMigration;
 use crate::domains::cluster_actors::hash_ring::PendingMigrationBatch;
+use crate::domains::cluster_actors::queue::ClusterActorQueue;
+use crate::domains::cluster_actors::queue::ClusterActorReceiver;
+use crate::domains::cluster_actors::queue::ClusterActorSender;
 use crate::domains::cluster_actors::topology::{NodeReplInfo, Topology};
 use crate::domains::operation_logs::WriteRequest;
 use crate::domains::operation_logs::interfaces::TWriteAheadLog;
@@ -37,7 +40,6 @@ use crate::domains::peers::connections::outbound::stream::OutboundStream;
 use crate::domains::peers::identifier::TPeerAddress;
 use crate::domains::peers::peer::PeerState;
 use crate::err;
-use crate::from_to;
 use crate::res_err;
 use crate::types::Callback;
 use crate::types::CallbackAwaiter;
@@ -67,8 +69,8 @@ pub struct ClusterActor<T> {
     pub(crate) members: BTreeMap<PeerIdentifier, Peer>,
     pub(crate) replication: ReplicationState,
     pub(crate) consensus_tracker: LogConsensusTracker,
-    pub(crate) receiver: tokio::sync::mpsc::Receiver<ClusterCommand>,
-    pub(crate) self_handler: ClusterCommandHandler,
+    pub(crate) receiver: ClusterActorReceiver,
+    pub(crate) self_handler: ClusterActorSender,
     pub(crate) heartbeat_scheduler: HeartBeatScheduler,
     pub(crate) topology_writer: std::fs::File,
     pub(crate) node_change_broadcast: tokio::sync::broadcast::Sender<Topology>,
@@ -99,18 +101,6 @@ impl ClusterJoinSync {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct ClusterCommandHandler(pub(super) tokio::sync::mpsc::Sender<ClusterCommand>);
-impl ClusterCommandHandler {
-    pub(crate) async fn send(
-        &self,
-        cmd: impl Into<ClusterCommand>,
-    ) -> Result<(), tokio::sync::mpsc::error::SendError<ClusterCommand>> {
-        self.0.send(cmd.into()).await
-    }
-}
-from_to!(tokio::sync::mpsc::Sender<ClusterCommand>, ClusterCommandHandler);
-
 impl<T: TWriteAheadLog> ClusterActor<T> {
     pub(crate) fn run(
         topology_writer: std::fs::File,
@@ -118,7 +108,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         init_replication: ReplicationState,
         cache_manager: CacheManager,
         wal: T,
-    ) -> ClusterCommandHandler {
+    ) -> ClusterActorSender {
         let cluster_actor =
             ClusterActor::new(init_replication, heartbeat_interval, topology_writer, wal);
         let actor_handler = cluster_actor.self_handler.clone();
@@ -132,9 +122,9 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         topology_writer: File,
         log_writer: T,
     ) -> Self {
-        let (self_handler, receiver) = tokio::sync::mpsc::channel(2000);
+        let (self_handler, receiver) = ClusterActorQueue::new(2000);
         let heartbeat_scheduler = HeartBeatScheduler::run(
-            ClusterCommandHandler(self_handler.clone()),
+            self_handler.clone(),
             init_repl_state.is_leader(),
             heartbeat_interval_in_mills,
         );
@@ -154,7 +144,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             heartbeat_scheduler,
             replication: init_repl_state,
             receiver,
-            self_handler: ClusterCommandHandler(self_handler),
+            self_handler,
             topology_writer,
             node_change_broadcast: tx,
             hash_ring,
@@ -536,7 +526,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     }
 
     async fn register_delayed_schedule<C>(
-        cluster_sender: ClusterCommandHandler,
+        cluster_sender: ClusterActorSender,
         completion_awaiter: CallbackAwaiter<anyhow::Result<C>>,
         on_completion: Callback<anyhow::Result<C>>,
 
@@ -892,6 +882,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         }
 
         // * Increase the high water mark
+        // ! Revisit this logic! hwm should be updated only after leader learns the average match index of followers
         self.replication.hwm.fetch_add(1, Ordering::Relaxed);
 
         self.client_sessions.set_response(consensus.session_req.take());
@@ -1215,7 +1206,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
     async fn schedule_migration_in_batch(
         batch: MigrationBatch,
-        handler: ClusterCommandHandler,
+        handler: ClusterActorSender,
     ) -> anyhow::Result<()> {
         let (tx, rx) = Callback::create();
         handler.send(SchedulerMessage::ScheduleMigrationBatch(batch, tx)).await?;

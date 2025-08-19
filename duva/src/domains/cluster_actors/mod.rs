@@ -7,6 +7,7 @@ use std::collections::BTreeMap;
 use std::time::Instant;
 pub mod actor;
 mod command;
+pub(crate) mod queue;
 pub(crate) use command::*;
 pub mod consensus;
 pub mod hash_ring;

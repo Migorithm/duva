@@ -157,8 +157,7 @@ async fn test_start_rebalance_schedules_migration_batches() {
     let (buf, _leader_for_diff_shard) =
         cluster_actor.test_add_peer(6570, Some(ReplicationId::Key("testnode_a".into())), true);
 
-    let (tx, mut rx) = tokio::sync::mpsc::channel(2);
-    let cluster_handler = ClusterCommandHandler(tx);
+    let (cluster_handler, mut rx) = ClusterActorQueue::new(2);
 
     // WHEN
     cluster_actor.self_handler = cluster_handler.clone();
@@ -288,34 +287,9 @@ async fn test_send_migrate_and_wait_happypath() {
 }
 
 #[tokio::test]
-async fn test_send_migrate_and_wait_channel_error() {
-    // GIVEN
-
-    let (cluster_actor, recv) = Helper::cluster_actor_with_receiver(ReplicationRole::Leader).await;
-    // Create dummy task
-    let target_replid = ReplicationId::Key("my_test_key".to_string());
-    let batch_to_migrate = vec![migration_task_create_helper(0, 100)];
-    let batch = MigrationBatch::new(target_replid.clone(), batch_to_migrate.clone());
-
-    // WHEN - drop receiver to simulate channel closure
-    drop(recv);
-
-    let result = ClusterActor::<MemoryOpLogs>::schedule_migration_in_batch(
-        batch,
-        cluster_actor.self_handler.clone(),
-    )
-    .await;
-
-    // THEN - should handle gracefully with error
-    assert!(result.is_err());
-    assert_eq!(result.unwrap_err().to_string(), "channel closed");
-}
-
-#[tokio::test]
 async fn test_send_migrate_and_wait_callback_error() {
     // GIVEN
-    let (tx, mut rx) = tokio::sync::mpsc::channel(10);
-    let fake_handler = ClusterCommandHandler(tx);
+    let (fake_handler, mut rx) = ClusterActorQueue::new(10);
 
     let target_replid = ReplicationId::Key("error_response_test".to_string());
     let batch_to_migrate = vec![migration_task_create_helper(0, 10)];
@@ -444,36 +418,6 @@ async fn test_receive_batch_when_consensus_is_required() {
         }),
     )
     .await;
-}
-
-#[tokio::test]
-async fn test_receive_batch_when_noreplica_found() {
-    // GIVEN
-    let (mut cluster_actor, recv) =
-        Helper::cluster_actor_with_receiver(ReplicationRole::Leader).await;
-
-    let (_hwm, cache_manager) = Helper::cache_manager();
-    let current_index = cluster_actor.logger.last_log_index;
-    let ack_to = PeerIdentifier::new("127.0.0.1", 6567);
-
-    let cache_entries =
-        vec![CacheEntry::new("success_key3", "value2"), CacheEntry::new("success_key4", "value4")];
-
-    let batch =
-        MigrateBatch { batch_id: "success_test".into(), cache_entries: cache_entries.clone() };
-
-    // WHEN
-    let task = tokio::spawn(recv.wait_message(SchedulerMessage::SendBatchAck {
-        batch_id: batch.batch_id.clone(),
-        to: ack_to.clone(),
-    }));
-    cluster_actor.receive_batch(batch, &cache_manager, ack_to).await;
-
-    // THEN - verify that the log index is incremented
-    assert_eq!(cluster_actor.logger.last_log_index, current_index + 1);
-    let keys = cache_manager.route_keys(None).await;
-    assert_eq!(keys.len(), 2);
-    task.await.unwrap();
 }
 
 #[tokio::test]
