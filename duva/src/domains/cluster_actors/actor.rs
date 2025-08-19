@@ -444,7 +444,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             err!("Term Outdated received:{} self:{}", heartbeat.term, self.replication.term);
             return;
         };
-        self.reset_election_timeout(&heartbeat.from);
+        self.reset_election_timeout();
         self.maybe_update_term(heartbeat.term);
         self.replicate(heartbeat, cache_manager).await;
     }
@@ -729,6 +729,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     //  remove idle peers based on ttl.
     async fn remove_idle_peers(&mut self) {
         // loop over members, if ttl is expired, remove the member
+
         let now = Instant::now();
 
         for peer_id in self
@@ -739,6 +740,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             .cloned()
             .collect::<Vec<_>>()
         {
+            warn!("dsdd");
             self.remove_peer(&peer_id).await;
         }
     }
@@ -998,10 +1000,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             .await;
     }
 
-    fn reset_election_timeout(&mut self, leader_id: &PeerIdentifier) {
-        if let Some(peer) = self.members.get_mut(leader_id) {
-            peer.phi.record_heartbeat(Instant::now());
-        }
+    fn reset_election_timeout(&mut self) {
         self.heartbeat_scheduler.reset_election_timeout();
         self.replication.election_state = ElectionState::Follower { voted_for: None };
     }
