@@ -11,17 +11,20 @@ pub struct ClusterActorQueue;
 
 impl ClusterActorQueue {
     pub(crate) fn new(buffer: usize) -> (ClusterActorSender, ClusterActorReceiver) {
-        let (low_send, low_recv) = tokio::sync::mpsc::channel(buffer);
-        let (high_send, high_recv) = tokio::sync::mpsc::channel(100);
+        let (normal_send, normal_recv) = tokio::sync::mpsc::channel(buffer);
+        let (priority_send, priority_recv) = tokio::sync::mpsc::channel(100);
 
-        (ClusterActorSender { low_send, high_send }, ClusterActorReceiver { low_recv, high_recv })
+        (
+            ClusterActorSender { normal_send, priority_send },
+            ClusterActorReceiver { normal_recv, priority_recv },
+        )
     }
 }
 
 #[derive(Debug, Clone)]
 pub(crate) struct ClusterActorSender {
-    low_send: tokio::sync::mpsc::Sender<ClusterCommand>,
-    high_send: tokio::sync::mpsc::Sender<ClusterCommand>,
+    normal_send: tokio::sync::mpsc::Sender<ClusterCommand>,
+    priority_send: tokio::sync::mpsc::Sender<ClusterCommand>,
 }
 
 impl ClusterActorSender {
@@ -33,10 +36,10 @@ impl ClusterActorSender {
 
         match command {
             | ClusterCommand::Scheduler(_) | ClusterCommand::Peer(_) => {
-                self.high_send.send(command).await
+                self.priority_send.send(command).await
             },
             | ClusterCommand::ConnectionReq(_) | ClusterCommand::Client(_) => {
-                self.low_send.send(command).await
+                self.normal_send.send(command).await
             },
         }
     }
@@ -44,8 +47,8 @@ impl ClusterActorSender {
 
 #[derive(Debug)]
 pub struct ClusterActorReceiver {
-    low_recv: tokio::sync::mpsc::Receiver<ClusterCommand>,
-    high_recv: tokio::sync::mpsc::Receiver<ClusterCommand>,
+    normal_recv: tokio::sync::mpsc::Receiver<ClusterCommand>,
+    priority_recv: tokio::sync::mpsc::Receiver<ClusterCommand>,
 }
 
 impl ClusterActorReceiver {
@@ -59,12 +62,12 @@ impl Stream for ClusterActorReceiver {
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         // Try high-priority first
-        if let Poll::Ready(msg) = Pin::new(&mut self.high_recv).poll_recv(cx) {
+        if let Poll::Ready(msg) = Pin::new(&mut self.priority_recv).poll_recv(cx) {
             return Poll::Ready(msg);
         }
 
         // Then try low-priority
-        if let Poll::Ready(msg) = Pin::new(&mut self.low_recv).poll_recv(cx) {
+        if let Poll::Ready(msg) = Pin::new(&mut self.normal_recv).poll_recv(cx) {
             return Poll::Ready(msg);
         }
 
