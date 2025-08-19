@@ -32,7 +32,7 @@ impl Environment {
                 host: String = "127.0.0.1".to_string(),
                 dir: String = ".".to_string(),
                 dbfilename: String = "dump.rdb".to_string(),
-                hf: u64 = 1000,
+                hf: u64 =1000,
                 append_only: bool = false,
                 tpp: String = "duva.tp".to_string(),
                 log_level : tracing::Level = tracing::Level::INFO,
