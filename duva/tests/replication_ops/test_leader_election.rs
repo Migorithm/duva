@@ -1,5 +1,5 @@
 use crate::common::{Client, ServerEnv, form_cluster, spawn_server_process};
-use duva::prelude::LEADER_HEARTBEAT_INTERVAL_MAX;
+use duva::prelude::ELECTION_TIMEOUT_MAX;
 use std::{thread::sleep, time::Duration};
 
 fn run_leader_election(with_append_only: bool) -> anyhow::Result<()> {
@@ -34,7 +34,7 @@ fn run_set_twice_after_election(with_append_only: bool) -> anyhow::Result<()> {
 
     // WHEN
     leader_p.kill()?;
-    sleep(Duration::from_millis(LEADER_HEARTBEAT_INTERVAL_MAX + 300));
+    sleep(Duration::from_millis(ELECTION_TIMEOUT_MAX + 300));
 
     // THEN
 
