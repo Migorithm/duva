@@ -1,6 +1,6 @@
 use crate::{
     domains::{
-        cluster_actors::actor::ClusterCommandHandler,
+        cluster_actors::queue::ClusterActorSender,
         peers::{PeerMessage, peer::ListeningActorKillTrigger},
     },
     prelude::PeerIdentifier,
@@ -13,14 +13,14 @@ use super::{command::PeerCommand, connections::connection_types::ReadConnected};
 #[derive(Debug)]
 pub(crate) struct PeerListener {
     pub(crate) read_connected: ReadConnected,
-    pub(crate) cluster_handler: ClusterCommandHandler,
+    pub(crate) cluster_handler: ClusterActorSender,
     pub(crate) peer_id: PeerIdentifier,
 }
 
 impl PeerListener {
     pub(crate) fn spawn(
         read_connected: impl Into<ReadConnected>,
-        cluster_handler: ClusterCommandHandler,
+        cluster_handler: ClusterActorSender,
         peer_id: PeerIdentifier,
     ) -> ListeningActorKillTrigger {
         let mut listener = Self { read_connected: read_connected.into(), cluster_handler, peer_id };

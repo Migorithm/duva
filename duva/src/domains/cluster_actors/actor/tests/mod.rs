@@ -3,7 +3,7 @@ mod elections;
 mod partitionings;
 mod replications;
 #[allow(unused_variables)]
-use super::actor::ClusterCommandHandler;
+use super::actor::ClusterActorSender;
 
 use super::*;
 use crate::CacheManager;
@@ -97,7 +97,7 @@ impl Helper {
     }
 
     pub(crate) fn create_peer(
-        cluster_sender: ClusterCommandHandler,
+        cluster_sender: ClusterActorSender,
         hwm: u64,
         repl_id: &ReplicationId,
         port: u16,
@@ -171,20 +171,10 @@ impl Helper {
         ClusterActor::new(replication, 100, topology_writer, MemoryOpLogs::default())
     }
 
-    async fn cluster_actor_with_receiver(
-        role: ReplicationRole,
-    ) -> (ClusterActor<MemoryOpLogs>, InterceptedReceiver) {
-        let mut actor = Self::cluster_actor(role).await;
-        let (tx, rx) = channel(100);
-        let cluster_sender = ClusterCommandHandler(tx);
-        actor.self_handler = cluster_sender.clone();
-        (actor, InterceptedReceiver(rx))
-    }
-
     fn cluster_member(
         actor: &mut ClusterActor<MemoryOpLogs>,
         fake_bufs: Vec<FakeReadWrite>,
-        cluster_sender: ClusterCommandHandler,
+        cluster_sender: ClusterActorSender,
         follower_hwm: u64,
         replid: Option<ReplicationId>,
     ) {

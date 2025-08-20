@@ -11,7 +11,7 @@ use crate::types::{Callback, CallbackAwaiter};
 use std::str::FromStr;
 
 #[derive(Debug, PartialEq)]
-pub(crate) enum ClusterCommand {
+pub enum ClusterCommand {
     ConnectionReq(ConnectionMessage),
     Scheduler(SchedulerMessage),
     Client(ClientMessage),

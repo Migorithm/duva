@@ -40,13 +40,13 @@ async fn test_generate_follower_entries() {
     // GIVEN
     let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Leader).await;
     let replid = cluster_actor.replication.replid.clone();
-    let (cluster_sender, _) = tokio::sync::mpsc::channel(100);
+    let (cluster_sender, _) = ClusterActorQueue::new(100);
     let follower_buffs = (0..5).map(|_| FakeReadWrite::new()).collect::<Vec<_>>();
 
     Helper::cluster_member(
         &mut cluster_actor,
         follower_buffs.clone(),
-        ClusterCommandHandler(cluster_sender.clone()),
+        cluster_sender.clone(),
         3,
         Some(replid.clone()),
     );
@@ -64,13 +64,7 @@ async fn test_generate_follower_entries() {
     //WHEN
     // *add lagged followers with its commit index being 1
     let follower_buffs = (5..7).map(|_| FakeReadWrite::new()).collect::<Vec<_>>();
-    Helper::cluster_member(
-        &mut cluster_actor,
-        follower_buffs,
-        ClusterCommandHandler(cluster_sender),
-        1,
-        Some(replid),
-    );
+    Helper::cluster_member(&mut cluster_actor, follower_buffs, cluster_sender, 1, Some(replid));
 
     // * add new log - this must create entries that are greater than 3
 
@@ -423,13 +417,13 @@ async fn req_consensus_inserts_consensus_voting() {
     let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Leader).await;
     let replid = cluster_actor.replication.replid.clone();
     // - add 5 followers
-    let (cluster_sender, _) = tokio::sync::mpsc::channel(100);
+    let (cluster_sender, _) = ClusterActorQueue::new(100);
 
     let follower_buffs = (0..5).map(|_| FakeReadWrite::new()).collect::<Vec<_>>();
     Helper::cluster_member(
         &mut cluster_actor,
         follower_buffs.clone(),
-        ClusterCommandHandler(cluster_sender),
+        cluster_sender,
         0,
         Some(replid),
     );
@@ -506,14 +500,14 @@ async fn test_consensus_voting_deleted_when_consensus_reached() {
     // GIVEN
     let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Leader).await;
     let replid = cluster_actor.replication.replid.clone();
-    let (cluster_sender, _) = tokio::sync::mpsc::channel(100);
+    let (cluster_sender, _) = ClusterActorQueue::new(100);
 
     // - add 4 followers to create quorum - so 2 votes are needed to reach consensus
     let follower_buffs = (0..4).map(|_| FakeReadWrite::new()).collect::<Vec<_>>();
     Helper::cluster_member(
         &mut cluster_actor,
         follower_buffs.clone(),
-        ClusterCommandHandler(cluster_sender),
+        cluster_sender,
         0,
         Some(replid),
     );
@@ -553,7 +547,7 @@ async fn test_same_voter_can_vote_only_once() {
     // GIVEN
     let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Leader).await;
     let replid = cluster_actor.replication.replid.clone();
-    let (cluster_sender, _) = tokio::sync::mpsc::channel(100);
+    let (cluster_sender, _) = ClusterActorQueue::new(100);
 
     // - add followers to create quorum
 
@@ -561,7 +555,7 @@ async fn test_same_voter_can_vote_only_once() {
     Helper::cluster_member(
         &mut cluster_actor,
         follower_buffs.clone(),
-        ClusterCommandHandler(cluster_sender),
+        cluster_sender,
         0,
         Some(replid),
     );

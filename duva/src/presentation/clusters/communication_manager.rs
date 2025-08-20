@@ -1,10 +1,10 @@
+use crate::domains::cluster_actors::queue::ClusterActorSender;
 use crate::domains::cluster_actors::topology::Topology;
 use crate::types::Callback;
 use crate::{
     domains::{
         cluster_actors::{
-            ClientMessage, ConnectionMessage, LazyOption, actor::ClusterCommandHandler,
-            replication::ReplicationState,
+            ClientMessage, ConnectionMessage, LazyOption, replication::ReplicationState,
         },
         peers::{identifier::PeerIdentifier, peer::PeerState},
     },
@@ -12,9 +12,9 @@ use crate::{
 };
 
 #[derive(Clone, Debug)]
-pub(crate) struct ClusterCommunicationManager(pub(crate) ClusterCommandHandler);
+pub(crate) struct ClusterCommunicationManager(pub(crate) ClusterActorSender);
 
-make_smart_pointer!(ClusterCommunicationManager, ClusterCommandHandler);
+make_smart_pointer!(ClusterCommunicationManager, ClusterActorSender);
 
 impl ClusterCommunicationManager {
     pub(crate) async fn route_get_peers(&self) -> anyhow::Result<Vec<PeerIdentifier>> {
