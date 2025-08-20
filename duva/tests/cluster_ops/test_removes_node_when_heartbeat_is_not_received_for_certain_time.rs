@@ -16,7 +16,7 @@ fn run_removes_node_when_heartbeat_is_not_received_for_certain_time(
 
     // WHEN
     repl_p.kill()?;
-    sleep(Duration::from_secs(1));
+    sleep(Duration::from_millis(1500));
 
     //THEN
     assert_eq!(h.send_and_get_vec("cluster info", 1), vec!["cluster_known_nodes:0"]);

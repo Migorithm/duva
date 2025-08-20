@@ -1,7 +1,7 @@
 use crate::common::Client;
 use crate::common::ServerEnv;
 use crate::common::form_cluster;
-use duva::prelude::LEADER_HEARTBEAT_INTERVAL_MAX;
+use duva::prelude::ELECTION_TIMEOUT_MAX;
 use std::thread::sleep;
 use std::time::Duration;
 
@@ -22,12 +22,12 @@ fn run_discover_leader(with_append_only: bool) -> anyhow::Result<()> {
         h.send_and_get(format!("SET {i} {i}"));
     }
     // wait until all keys are replicated
-    sleep(Duration::from_millis(LEADER_HEARTBEAT_INTERVAL_MAX));
+    sleep(Duration::from_millis(ELECTION_TIMEOUT_MAX));
 
     // WHEN
     leader_p.kill()?;
     // wait for the election to complete
-    sleep(Duration::from_millis(LEADER_HEARTBEAT_INTERVAL_MAX * 2));
+    sleep(Duration::from_millis(ELECTION_TIMEOUT_MAX * 2));
 
     // THEN
     let res = h.send_and_get_vec("KEYS *", num_of_keys);

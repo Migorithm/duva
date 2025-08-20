@@ -1,6 +1,6 @@
 use std::{thread::sleep, time::Duration};
 
-use duva::prelude::LEADER_HEARTBEAT_INTERVAL_MAX;
+use duva::prelude::ELECTION_TIMEOUT_MAX;
 
 use crate::common::{Client, ServerEnv, form_cluster};
 
@@ -18,7 +18,7 @@ fn run_set_operation_reaches_to_all_replicas(with_append_only: bool) -> anyhow::
     client_handler.send_and_get("SET foo bar");
 
     //THEN
-    sleep(Duration::from_millis(LEADER_HEARTBEAT_INTERVAL_MAX + 15));
+    sleep(Duration::from_millis(ELECTION_TIMEOUT_MAX + 15));
 
     let mut client = Client::new(repl_p.port);
     assert_eq!(client.send_and_get("GET foo"), "bar");

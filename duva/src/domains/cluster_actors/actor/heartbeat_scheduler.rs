@@ -4,10 +4,9 @@ use tokio::{select, time::interval};
 use tracing::warn;
 
 use super::SchedulerMessage;
-const LEADER_HEARTBEAT_INTERVAL: u64 = 300;
-pub const LEADER_HEARTBEAT_INTERVAL_MAX: u64 = LEADER_HEARTBEAT_INTERVAL * 5;
-const LEADER_HEARTBEAT_INTERVAL_RANGE: Range<u64> =
-    LEADER_HEARTBEAT_INTERVAL * 3..LEADER_HEARTBEAT_INTERVAL_MAX;
+const HEARTBEAT_INTERVAL: u64 = 300;
+pub const ELECTION_TIMEOUT_MAX: u64 = HEARTBEAT_INTERVAL * 5;
+const ELECTION_TIMEOUT: Range<u64> = HEARTBEAT_INTERVAL * 3..ELECTION_TIMEOUT_MAX;
 
 #[derive(Debug)]
 pub(crate) struct HeartBeatScheduler {
@@ -26,7 +25,7 @@ impl HeartBeatScheduler {
 
         let controller = if is_leader_mode {
             SchedulerMode::Leader(Self::send_append_entries_rpc(
-                LEADER_HEARTBEAT_INTERVAL,
+                HEARTBEAT_INTERVAL,
                 cluster_handler.clone(),
             ))
         } else {
@@ -89,7 +88,7 @@ impl HeartBeatScheduler {
                             ElectionTimeOutCommand::Ping => {},
                         }
                     },
-                    _ =  tokio::time::sleep(Duration::from_millis(rand::random_range(LEADER_HEARTBEAT_INTERVAL_RANGE)))=>{
+                    _ =  tokio::time::sleep(Duration::from_millis(rand::random_range(ELECTION_TIMEOUT)))=>{
                         warn!("\x1b[33mElection timeout\x1b[0m");
                         // ! Block operations at global level
                         let _ = cluster_handler.send(SchedulerMessage::StartLeaderElection).await;
@@ -113,7 +112,7 @@ impl HeartBeatScheduler {
             | Some(SchedulerMode::Follower(sender)) => {
                 let _ = sender.send(ElectionTimeOutCommand::Stop).await;
                 Some(SchedulerMode::Leader(Self::send_append_entries_rpc(
-                    LEADER_HEARTBEAT_INTERVAL,
+                    HEARTBEAT_INTERVAL,
                     self.cluster_handler.clone(),
                 )))
             },
@@ -263,11 +262,9 @@ mod tests {
         let _ = HeartBeatScheduler::start_election_timer(tx2);
 
         let election_triggered =
-            timeout(Duration::from_millis(LEADER_HEARTBEAT_INTERVAL * 6), async {
-                rx2.recv().await
-            })
-            .await
-            .expect("Timeout waiting for election");
+            timeout(Duration::from_millis(HEARTBEAT_INTERVAL * 6), async { rx2.recv().await })
+                .await
+                .expect("Timeout waiting for election");
 
         assert!(
             matches!(

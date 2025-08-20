@@ -730,7 +730,6 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             .cloned()
             .collect::<Vec<_>>()
         {
-            warn!("dsdd");
             self.remove_peer(&peer_id).await;
         }
     }

@@ -12,7 +12,7 @@ use duva::prelude::tokio::sync::mpsc::Receiver;
 use duva::prelude::tokio::sync::mpsc::Sender;
 use duva::prelude::tokio::sync::oneshot;
 use duva::prelude::uuid::Uuid;
-use duva::prelude::{LEADER_HEARTBEAT_INTERVAL_MAX, NodeReplInfo, Topology, anyhow};
+use duva::prelude::{ELECTION_TIMEOUT_MAX, NodeReplInfo, Topology, anyhow};
 use duva::prelude::{PeerIdentifier, tokio};
 use duva::presentation::clients::request::ClientAction;
 use duva::{
@@ -91,7 +91,7 @@ impl Broker {
                     | IoError::NotConnected
                     | IoError::BrokenPipe => {
                         tokio::time::sleep(tokio::time::Duration::from_millis(
-                            LEADER_HEARTBEAT_INTERVAL_MAX,
+                            ELECTION_TIMEOUT_MAX,
                         ))
                         .await;
                         self.discover_new_repl_leader(repl_id).await.unwrap();
