@@ -1014,7 +1014,9 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
                 if let Err(e) = cache_manager.apply_log(log.request, log_index).await {
                     // ! DON'T PANIC - post validation is where we just don't update state
-                    error!("failed to apply log: {e}")
+                    // ! Failure of apply_log means post_validation on the operations that involves delta change such as incr/append fail.
+                    // ! This is expected and you should let it update hwm.
+                    error!("failed to apply log: {e}, perhaps post validation failed?")
                 }
                 self.replication.hwm.store(log_index, Ordering::Release);
             }
