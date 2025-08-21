@@ -45,7 +45,7 @@ impl LogConsensusVoting {
         (total_nodes + 1).div_ceil(2)
     }
 
-    pub(crate) fn votable(&self, voter: &PeerIdentifier) -> bool {
+    pub(crate) fn is_eligible_voter(&self, voter: &PeerIdentifier) -> bool {
         !self.voters.contains(voter)
     }
 }

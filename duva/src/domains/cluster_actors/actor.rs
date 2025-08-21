@@ -312,10 +312,11 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     }
 
     pub(crate) async fn leader_req_consensus(&mut self, req: ConsensusRequest) {
-        if let Some(pending_mig) = self.pending_migrations.as_mut() {
-            pending_mig.add_req(req);
+        if !self.replication.is_leader() {
+            req.callback.send("Write given to follower".into());
             return;
         }
+
         if self.client_sessions.is_processed(&req.session_req) {
             // mapping between early returned values to client result
             let key = req.request.all_keys().into_iter().map(String::from).collect();
@@ -325,6 +326,11 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             });
             return;
         };
+
+        if let Some(pending_mig) = self.pending_migrations.as_mut() {
+            pending_mig.add_req(req);
+            return;
+        }
 
         match self.hash_ring.key_ownership(req.request.all_keys().into_iter()) {
             | Ok(replids) if replids.all_belongs_to(&self.replication.replid) => {
@@ -344,11 +350,6 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     }
 
     async fn req_consensus(&mut self, req: ConsensusRequest) {
-        if !self.replication.is_leader() {
-            req.callback.send("Write given to follower".into());
-            return;
-        }
-
         // * Check if the request has already been processed
         if let Err(err) = self.logger.write_single_entry(
             &req.request,
@@ -413,7 +414,10 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
     #[instrument(level = tracing::Level::DEBUG, skip(self, from,repl_res), fields(peer_id = %from))]
     pub(crate) async fn ack_replication(&mut self, from: PeerIdentifier, repl_res: ReplicationAck) {
-        self.update_peer_index(&from, repl_res.log_idx);
+        let Some(peer) = self.members.get_mut(&from) else {
+            return;
+        };
+        peer.set_match_index(repl_res.log_idx);
 
         if !repl_res.is_granted() {
             info!("vote cannot be granted {:?}", repl_res.rej_reason);
@@ -767,12 +771,6 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         }
     }
 
-    fn update_peer_index(&mut self, from: &PeerIdentifier, log_index: u64) {
-        if let Some(peer) = self.members.get_mut(from) {
-            peer.set_match_index(log_index);
-        }
-    }
-
     async fn send_rpc_to_replicas(&mut self) {
         self.iter_follower_append_entries()
             .await
@@ -861,22 +859,22 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             .min()
     }
 
-    fn track_replication_progress(&mut self, from: PeerIdentifier) {
-        let Some(peer) = self.find_replica_mut(&from) else {
+    fn track_replication_progress(&mut self, voter: PeerIdentifier) {
+        let Some(peer) = self.find_replica_mut(&voter) else {
             return;
         };
-        let peer_idx = peer.match_index();
+        let peer_match_idx = peer.match_index();
 
-        let Some(mut consensus) = self.consensus_tracker.remove(&peer_idx) else {
+        let Some(mut voting) = self.consensus_tracker.remove(&peer_match_idx) else {
             return;
         };
 
-        if consensus.votable(&from) {
-            info!("Received acks for log index num: {}", peer_idx);
-            consensus.increase_vote(from);
+        if voting.is_eligible_voter(&voter) {
+            info!("Received acks for log index num: {}", peer_match_idx);
+            voting.increase_vote(voter);
         }
-        if consensus.cnt < consensus.get_required_votes() {
-            self.consensus_tracker.insert(peer_idx, consensus);
+        if voting.cnt < voting.get_required_votes() {
+            self.consensus_tracker.insert(peer_match_idx, voting);
             return;
         }
 
@@ -884,8 +882,8 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         // ! Revisit this logic! hwm should be updated only after leader learns the average match index of followers
         self.replication.hwm.fetch_add(1, Ordering::Relaxed);
 
-        self.client_sessions.set_response(consensus.session_req.take());
-        consensus.callback.send(ConsensusClientResponse::LogIndex(peer_idx));
+        self.client_sessions.set_response(voting.session_req.take());
+        voting.callback.send(ConsensusClientResponse::LogIndex(peer_match_idx));
     }
 
     // Follower notified the leader of its acknowledgment, then leader store match index for the given follower
@@ -931,13 +929,12 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         }
 
         self.ensure_prev_consistency(rpc.prev_log_index, rpc.prev_log_term).await?;
-        let match_index = self.logger.follower_write_entries(entries).map_err(|e| {
+        let log_idx = self.logger.follower_write_entries(entries).map_err(|e| {
             err!("{}", e);
             RejectionReason::FailToWrite
         })?;
 
-        self.send_replication_ack(&rpc.from, ReplicationAck::ack(match_index, &self.replication))
-            .await;
+        self.send_replication_ack(&rpc.from, ReplicationAck::ack(log_idx, &self.replication)).await;
 
         // * The following is to allow for failure of leader and follower elected as new leader.
         // Subscription request with the same session req should be treated as idempotent operation
@@ -1376,11 +1373,13 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         hwm: u64,
         cluster_nodes: &[PeerState],
     ) {
-        self.update_peer_index(from, hwm);
-        let now = Instant::now();
+        if let Some(peer) = self.members.get_mut(from) {
+            peer.set_match_index(hwm);
+            peer.record_heartbeat();
+        }
+
         for node in cluster_nodes.iter() {
             if let Some(peer) = self.members.get_mut(node.id()) {
-                peer.phi.record_heartbeat(now);
                 peer.set_role(node.role.clone())
             }
         }
