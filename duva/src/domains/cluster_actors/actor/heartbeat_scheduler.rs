@@ -20,9 +20,6 @@ impl HeartBeatScheduler {
         is_leader_mode: bool,
         cluster_heartbeat_interval: u64,
     ) -> Self {
-        let jitter = rand::random::<u64>() % 100; // Add up to 100ms jitter
-        let interval = cluster_heartbeat_interval + jitter;
-
         let controller = if is_leader_mode {
             SchedulerMode::Leader(Self::send_append_entries_rpc(
                 HEARTBEAT_INTERVAL,
@@ -32,7 +29,8 @@ impl HeartBeatScheduler {
             SchedulerMode::Follower(Self::start_election_timer(cluster_handler.clone()))
         };
 
-        Self { cluster_handler, controller: Some(controller) }.send_cluster_heartbeat(interval)
+        Self { cluster_handler, controller: Some(controller) }
+            .send_cluster_heartbeat(cluster_heartbeat_interval)
     }
 
     pub(crate) fn send_cluster_heartbeat(self, cluster_heartbeat_interval: u64) -> Self {

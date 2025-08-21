@@ -44,6 +44,8 @@ impl Peer {
     }
     pub(crate) fn set_match_index(&mut self, match_index: u64) {
         self.state.match_index = match_index;
+    }
+    pub(crate) fn record_heartbeat(&mut self) {
         self.phi.record_heartbeat(Instant::now());
     }
 
@@ -251,6 +253,7 @@ impl PhiAccrualDetector {
 
     pub(crate) fn is_dead(&self, now: Instant) -> bool {
         self.calculate_phi_at(now) == SuspicionLevel::Dead
+            || self.last_seen.elapsed().as_secs() > 60
     }
 
     #[cfg(test)]
