@@ -417,7 +417,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         let Some(peer) = self.members.get_mut(&from) else {
             return;
         };
-        peer.set_match_index(repl_res.log_idx);
+        peer.set_current_log_index(repl_res.log_idx);
 
         if !repl_res.is_granted() {
             info!("vote cannot be granted {:?}", repl_res.rej_reason);
@@ -611,7 +611,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
     fn replicas(&self) -> impl Iterator<Item = (&PeerIdentifier, u64)> {
         self.members.iter().filter_map(|(id, peer)| {
-            (peer.is_replica(&self.replication.replid)).then_some((id, peer.match_index()))
+            (peer.is_replica(&self.replication.replid)).then_some((id, peer.curr_log_index()))
         })
     }
 
@@ -647,8 +647,8 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
     fn replicas_mut(&mut self) -> impl Iterator<Item = (&mut Peer, u64)> {
         self.members.values_mut().filter_map(|peer| {
-            let match_index = peer.match_index();
-            (peer.is_replica(&self.replication.replid)).then_some((peer, match_index))
+            let log_index = peer.curr_log_index();
+            (peer.is_replica(&self.replication.replid)).then_some((peer, log_index))
         })
     }
 
@@ -851,7 +851,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             .values()
             .filter_map(|peer| {
                 if peer.is_replica(&self.replication.replid) {
-                    Some(peer.match_index())
+                    Some(peer.curr_log_index())
                 } else {
                     None
                 }
@@ -863,18 +863,18 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         let Some(peer) = self.find_replica_mut(&voter) else {
             return;
         };
-        let peer_match_idx = peer.match_index();
+        let log_index = peer.curr_log_index();
 
-        let Some(mut voting) = self.consensus_tracker.remove(&peer_match_idx) else {
+        let Some(mut voting) = self.consensus_tracker.remove(&log_index) else {
             return;
         };
 
         if voting.is_eligible_voter(&voter) {
-            info!("Received acks for log index num: {}", peer_match_idx);
+            info!("Received acks for log index num: {}", log_index);
             voting.increase_vote(voter);
         }
         if voting.cnt < voting.get_required_votes() {
-            self.consensus_tracker.insert(peer_match_idx, voting);
+            self.consensus_tracker.insert(log_index, voting);
             return;
         }
 
@@ -883,7 +883,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         self.replication.hwm.fetch_add(1, Ordering::Relaxed);
 
         self.client_sessions.set_response(voting.session_req.take());
-        voting.callback.send(ConsensusClientResponse::LogIndex(peer_match_idx));
+        voting.callback.send(ConsensusClientResponse::LogIndex(log_index));
     }
 
     // Follower notified the leader of its acknowledgment, then leader store match index for the given follower
@@ -1014,7 +1014,9 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
                 if let Err(e) = cache_manager.apply_log(log.request, log_index).await {
                     // ! DON'T PANIC - post validation is where we just don't update state
-                    error!("failed to apply log: {e}")
+                    // ! Failure of apply_log means post_validation on the operations that involves delta change such as incr/append fail.
+                    // ! This is expected and you should let it update hwm.
+                    error!("failed to apply log: {e}, perhaps post validation failed?")
                 }
                 self.replication.hwm.store(log_index, Ordering::Release);
             }
@@ -1374,7 +1376,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         cluster_nodes: &[PeerState],
     ) {
         if let Some(peer) = self.members.get_mut(from) {
-            peer.set_match_index(hwm);
+            peer.set_current_log_index(hwm);
             peer.record_heartbeat();
         }
 

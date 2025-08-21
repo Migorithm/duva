@@ -46,7 +46,7 @@ impl ReplicationState {
     pub(super) fn self_info(&self) -> PeerState {
         PeerState {
             id: self.self_identifier(),
-            match_index: self.hwm.load(Ordering::Relaxed),
+            log_index: self.hwm.load(Ordering::Relaxed),
             replid: self.replid.clone(),
             role: self.role.clone(),
         }
