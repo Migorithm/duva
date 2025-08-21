@@ -1016,8 +1016,8 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
                     // ! DON'T PANIC - post validation is where we just don't update state
                     error!("failed to apply log: {e}")
                 }
+                self.replication.hwm.store(log_index, Ordering::Release);
             }
-            self.replication.hwm.store(leader_hwm.hwm, Ordering::Release);
         }
     }
 
