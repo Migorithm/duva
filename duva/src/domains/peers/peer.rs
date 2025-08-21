@@ -39,11 +39,11 @@ impl Peer {
     pub(crate) fn replid(&self) -> &ReplicationId {
         &self.state.replid
     }
-    pub(crate) fn match_index(&self) -> u64 {
-        self.state.match_index
+    pub(crate) fn curr_log_index(&self) -> u64 {
+        self.state.log_index
     }
-    pub(crate) fn set_match_index(&mut self, match_index: u64) {
-        self.state.match_index = match_index;
+    pub(crate) fn set_current_log_index(&mut self, log_index: u64) {
+        self.state.log_index = log_index;
     }
     pub(crate) fn record_heartbeat(&mut self) {
         self.phi.record_heartbeat(Instant::now());
@@ -77,7 +77,7 @@ impl Peer {
 #[derive(Clone, Debug, PartialEq, Eq, bincode::Encode, bincode::Decode)]
 pub struct PeerState {
     pub(crate) id: PeerIdentifier,
-    pub(crate) match_index: u64,
+    pub(crate) log_index: u64,
     pub(crate) replid: ReplicationId,
     pub(crate) role: ReplicationRole,
 }
@@ -93,18 +93,18 @@ impl PeerState {
             return None;
         }
 
-        let [addr, id_part, _, match_index, role] = parts[..] else {
+        let [addr, id_part, _, log_index, role] = parts[..] else {
             return None;
         };
 
         let repl_id = Self::extract_replid(id_part)?;
 
-        let match_index = match_index.parse().unwrap_or_default();
+        let log_index = log_index.parse().unwrap_or_default();
 
         Some(Self {
             id: PeerIdentifier(addr.bind_addr().unwrap()),
             replid: repl_id.into(),
-            match_index,
+            log_index,
             role: role.to_string().into(),
         })
     }
@@ -163,10 +163,10 @@ impl PeerState {
         if self.id == *peer_id {
             return format!(
                 "{} myself,{} 0 {} {}",
-                self.id, self.replid, self.match_index, self.role
+                self.id, self.replid, self.log_index, self.role
             );
         }
-        format!("{} {} 0 {} {}", self.id, self.replid, self.match_index, self.role)
+        format!("{} {} 0 {} {}", self.id, self.replid, self.log_index, self.role)
     }
 
     pub(crate) fn is_self(&self, bind_addr: &str) -> bool {
