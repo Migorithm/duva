@@ -451,12 +451,12 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         if !self.replication.election_state.can_transition_to_leader() {
             return;
         }
-
         self.become_leader().await;
 
+        // * Replica notification
         self.send_rpc_to_replicas().await;
-        // * update hash ring with the new leader
 
+        // * Cluster notification
         let msg = self
             .replication
             .default_heartbeat(0, self.logger.last_log_index, self.logger.last_log_term)
