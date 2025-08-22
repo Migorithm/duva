@@ -29,6 +29,7 @@ pub enum WriteRequest {
     RPushX { key: String, value: Vec<String> },
     LTrim { key: String, start: isize, end: isize },
     LSet { key: String, index: isize, value: String },
+    NoOp,
 }
 
 impl WriteOperation {
