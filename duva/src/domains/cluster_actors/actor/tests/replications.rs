@@ -77,7 +77,7 @@ async fn test_generate_follower_entries() {
         )
         .unwrap();
 
-    let entries = cluster_actor.iter_follower_append_entries().await.collect::<Vec<_>>();
+    let entries = cluster_actor.iter_follower_append_entries().collect::<Vec<_>>();
 
     // * for old followers must have 1 entry
     assert_eq!(entries.iter().filter(|(_, hb)| hb.append_entries.len() == 1).count(), 5);

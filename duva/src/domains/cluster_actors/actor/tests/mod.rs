@@ -217,18 +217,6 @@ impl Helper {
     }
 }
 
-pub struct InterceptedReceiver(tokio::sync::mpsc::Receiver<ClusterCommand>);
-impl InterceptedReceiver {
-    pub async fn wait_message(mut self, expected: impl Into<ClusterCommand>) {
-        let expected = expected.into();
-        while let Some(msg) = self.0.recv().await {
-            if msg == expected {
-                break;
-            }
-        }
-    }
-}
-
 // Helper function to setup blocked cluster actor with pending requests
 pub(crate) async fn setup_blocked_cluster_actor_with_requests(
     num_requests: usize,

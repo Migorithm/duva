@@ -22,6 +22,7 @@ use crate::domains::cluster_actors::queue::ClusterActorQueue;
 use crate::domains::cluster_actors::queue::ClusterActorReceiver;
 use crate::domains::cluster_actors::queue::ClusterActorSender;
 use crate::domains::cluster_actors::topology::{NodeReplInfo, Topology};
+
 use crate::domains::operation_logs::WriteRequest;
 use crate::domains::operation_logs::interfaces::TWriteAheadLog;
 use crate::domains::operation_logs::logger::ReplicatedLogs;
@@ -762,7 +763,6 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
     async fn send_rpc_to_replicas(&mut self) {
         self.iter_follower_append_entries()
-            .await
             .map(|(peer, hb)| peer.send(QueryIO::AppendEntriesRPC(hb)))
             .collect::<FuturesUnordered<_>>()
             .for_each(|_| async {})
@@ -783,13 +783,11 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     ///
     /// Returns an iterator yielding tuples of mutable peer references and their
     /// customized heartbeat messages.
-    async fn iter_follower_append_entries(
+    fn iter_follower_append_entries(
         &mut self,
     ) -> Box<dyn Iterator<Item = (&mut Peer, HeartBeat)> + '_> {
         let lowest_watermark = self.take_low_watermark();
-
         let append_entries = self.logger.list_append_log_entries(lowest_watermark);
-
         let default_heartbeat: HeartBeat = self.replication.default_heartbeat(
             0,
             self.logger.last_log_index,
@@ -807,31 +805,25 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         let backup_entry = self.logger.read_at(append_entries[0].log_index - 1);
 
         let iterator = self.replicas_mut().map(move |(peer, p_log_idx)| {
-            let logs = append_entries
+            let missing_entries = append_entries
                 .iter()
                 .filter(|op| op.log_index > p_log_idx)
                 .cloned()
                 .collect::<Vec<_>>();
 
-            // Create base heartbeat
-            let mut heart_beat = default_heartbeat.clone();
-
-            let (log_index, term) = if logs.len() == append_entries.len() {
-                // Follower needs all entries, use backup entry
-                if let Some(backup_entry) = backup_entry.as_ref() {
-                    (backup_entry.log_index, backup_entry.term)
-                } else {
-                    (0, 0)
-                }
+            let (prev_log_index, prev_log_term) = if missing_entries.len() == append_entries.len() {
+                // * For Follower that require all entries, use backup entry to return prev_log_index and prev_term if exists
+                backup_entry.as_ref().map(|entry| (entry.log_index, entry.term)).unwrap_or((0, 0))
             } else {
-                // Follower has some entries already, use the last one it has
-                let last_log = &append_entries[append_entries.len() - logs.len() - 1];
+                // * Follower has some entries already, use the last one it has
+                let last_log = &append_entries[append_entries.len() - missing_entries.len() - 1];
                 (last_log.log_index, last_log.term)
             };
 
-            heart_beat.prev_log_index = log_index;
-            heart_beat.prev_log_term = term;
-            let heart_beat = heart_beat.set_append_entries(logs);
+            let heart_beat = default_heartbeat
+                .clone()
+                .set_append_entries(missing_entries)
+                .set_prev_log(prev_log_index, prev_log_term);
             (peer, heart_beat)
         });
 
