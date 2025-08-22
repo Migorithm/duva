@@ -455,19 +455,12 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         self.become_leader().await;
 
         self.send_rpc_to_replicas().await;
-
         // * update hash ring with the new leader
-        self.hash_ring.update_repl_leader(
-            self.replication.replid.clone(),
-            self.replication.self_identifier(),
-        );
 
-        let msg = self.replication.default_heartbeat(
-            0,
-            self.logger.last_log_index,
-            self.logger.last_log_term,
-        );
-        let msg = msg.set_hashring(self.hash_ring.clone());
+        let msg = self
+            .replication
+            .default_heartbeat(0, self.logger.last_log_index, self.logger.last_log_term)
+            .set_hashring(self.hash_ring.clone());
         self.send_heartbeat(msg).await;
     }
 
@@ -1058,7 +1051,11 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         self.replication.role = ReplicationRole::Leader;
         self.replication.election_state = ElectionState::Leader;
         self.heartbeat_scheduler.turn_leader_mode().await;
-        self.logger.write_single_entry(&WriteRequest::NoOp, self.replication.term, None);
+        self.hash_ring.update_repl_leader(
+            self.replication.replid.clone(),
+            self.replication.self_identifier(),
+        );
+        let _ = self.logger.write_single_entry(&WriteRequest::NoOp, self.replication.term, None);
     }
     fn become_candidate(&mut self) {
         let replica_count = self.replicas().count() as u8;
