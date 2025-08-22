@@ -806,28 +806,31 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         // If we have entries, find the entry before the first one to use as backup
         let backup_entry = self.logger.read_at(append_entries[0].log_index - 1);
 
-        let iterator = self.replicas_mut().map(move |(peer, hwm)| {
-            let logs =
-                append_entries.iter().filter(|op| op.log_index > hwm).cloned().collect::<Vec<_>>();
+        let iterator = self.replicas_mut().map(move |(peer, p_log_idx)| {
+            let logs = append_entries
+                .iter()
+                .filter(|op| op.log_index > p_log_idx)
+                .cloned()
+                .collect::<Vec<_>>();
 
             // Create base heartbeat
             let mut heart_beat = default_heartbeat.clone();
 
-            if logs.len() == append_entries.len() {
+            let (log_index, term) = if logs.len() == append_entries.len() {
                 // Follower needs all entries, use backup entry
                 if let Some(backup_entry) = backup_entry.as_ref() {
-                    heart_beat.prev_log_index = backup_entry.log_index;
-                    heart_beat.prev_log_term = backup_entry.term;
+                    (backup_entry.log_index, backup_entry.term)
                 } else {
-                    heart_beat.prev_log_index = 0;
-                    heart_beat.prev_log_term = 0;
+                    (0, 0)
                 }
             } else {
                 // Follower has some entries already, use the last one it has
                 let last_log = &append_entries[append_entries.len() - logs.len() - 1];
-                heart_beat.prev_log_index = last_log.log_index;
-                heart_beat.prev_log_term = last_log.term;
-            }
+                (last_log.log_index, last_log.term)
+            };
+
+            heart_beat.prev_log_index = log_index;
+            heart_beat.prev_log_term = term;
             let heart_beat = heart_beat.set_append_entries(logs);
             (peer, heart_beat)
         });
