@@ -44,7 +44,7 @@ use crate::res_err;
 use crate::types::Callback;
 use crate::types::CallbackAwaiter;
 use client_sessions::ClientSessions;
-
+use futures::future::try_join_all;
 use heartbeat_scheduler::HeartBeatScheduler;
 use std::collections::HashMap;
 use tokio::net::TcpStream;
@@ -654,9 +654,8 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     }
 
     async fn send_heartbeat(&mut self, heartbeat: HeartBeat) {
-        for peer in self.members.values_mut() {
-            let _ = peer.send(heartbeat.clone()).await;
-        }
+        let futures = self.members.values_mut().map(|peer| peer.send(heartbeat.clone()));
+        let _ = try_join_all(futures).await;
     }
 
     async fn snapshot_topology(&mut self) -> anyhow::Result<()> {

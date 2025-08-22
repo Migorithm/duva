@@ -722,7 +722,7 @@ mod tests {
         let mut current_time = start;
 
         // Fill to maximum capacity and verify performance doesn't degrade
-        for i in 0..HISTORY_SIZE * 2 {
+        for _ in 0..HISTORY_SIZE * 2 {
             current_time += Duration::from_millis(100);
             detector.record_heartbeat(current_time);
 
