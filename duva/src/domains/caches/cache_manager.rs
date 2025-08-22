@@ -208,6 +208,7 @@ impl CacheManager {
             | WriteRequest::RPushX { key, value } => {
                 self.route_rpushx(key, value, log_index).await?;
             },
+            | WriteRequest::NoOp => {},
         };
 
         // * This is to wake up the cache actors to process the pending read requests

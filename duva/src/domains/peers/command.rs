@@ -118,7 +118,7 @@ mod peer_messages {
     pub struct HeartBeat {
         pub(crate) from: PeerIdentifier,
         pub(crate) term: u64,
-        pub(crate) hwm: u64,
+        pub(crate) hwm: u64, // ! This reflect current state
         pub(crate) replid: ReplicationId,
         pub(crate) hop_count: u8,
         pub(crate) ban_list: Vec<BannedPeer>,
@@ -129,14 +129,16 @@ mod peer_messages {
         pub(crate) hashring: Option<Box<HashRing>>,
     }
     impl HeartBeat {
-        pub(crate) fn set_append_entries(mut self, entries: Vec<WriteOperation>) -> Self {
-            self.append_entries = entries;
-            self
+        pub(crate) fn set_append_entries(self, append_entries: Vec<WriteOperation>) -> Self {
+            Self { append_entries, ..self }
         }
 
-        pub(crate) fn set_cluster_nodes(mut self, cluster_nodes: Vec<PeerState>) -> Self {
-            self.cluster_nodes = cluster_nodes;
-            self
+        pub(crate) fn set_prev_log(self, prev_log_index: u64, prev_log_term: u64) -> Self {
+            Self { prev_log_index, prev_log_term, ..self }
+        }
+
+        pub(crate) fn set_cluster_nodes(self, cluster_nodes: Vec<PeerState>) -> Self {
+            Self { cluster_nodes, ..self }
         }
 
         pub(crate) fn set_hashring(&self, ring: HashRing) -> Self {

@@ -22,6 +22,7 @@ use crate::domains::cluster_actors::queue::ClusterActorQueue;
 use crate::domains::cluster_actors::queue::ClusterActorReceiver;
 use crate::domains::cluster_actors::queue::ClusterActorSender;
 use crate::domains::cluster_actors::topology::{NodeReplInfo, Topology};
+
 use crate::domains::operation_logs::WriteRequest;
 use crate::domains::operation_logs::interfaces::TWriteAheadLog;
 use crate::domains::operation_logs::logger::ReplicatedLogs;
@@ -44,7 +45,7 @@ use crate::res_err;
 use crate::types::Callback;
 use crate::types::CallbackAwaiter;
 use client_sessions::ClientSessions;
-
+use futures::future::try_join_all;
 use heartbeat_scheduler::HeartBeatScheduler;
 use std::collections::HashMap;
 use tokio::net::TcpStream;
@@ -451,26 +452,16 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         if !self.replication.election_state.can_transition_to_leader() {
             return;
         }
-
         self.become_leader().await;
-        let msg = self.replication.default_heartbeat(
-            0,
-            self.logger.last_log_index,
-            self.logger.last_log_term,
-        );
 
-        self.replicas_mut()
-            .map(|(peer, _)| peer.send(QueryIO::AppendEntriesRPC(msg.clone())))
-            .collect::<FuturesUnordered<_>>()
-            .for_each(|_| async {})
-            .await;
+        // * Replica notification
+        self.send_rpc_to_replicas().await;
 
-        // * update hash ring with the new leader
-        self.hash_ring.update_repl_leader(
-            self.replication.replid.clone(),
-            self.replication.self_identifier(),
-        );
-        let msg = msg.set_hashring(self.hash_ring.clone());
+        // * Cluster notification
+        let msg = self
+            .replication
+            .default_heartbeat(0, self.logger.last_log_index, self.logger.last_log_term)
+            .set_hashring(self.hash_ring.clone());
         self.send_heartbeat(msg).await;
     }
 
@@ -664,9 +655,8 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     }
 
     async fn send_heartbeat(&mut self, heartbeat: HeartBeat) {
-        for peer in self.members.values_mut() {
-            let _ = peer.send(heartbeat.clone()).await;
-        }
+        let futures = self.members.values_mut().map(|peer| peer.send(heartbeat.clone()));
+        let _ = try_join_all(futures).await;
     }
 
     async fn snapshot_topology(&mut self) -> anyhow::Result<()> {
@@ -773,7 +763,6 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
     async fn send_rpc_to_replicas(&mut self) {
         self.iter_follower_append_entries()
-            .await
             .map(|(peer, hb)| peer.send(QueryIO::AppendEntriesRPC(hb)))
             .collect::<FuturesUnordered<_>>()
             .for_each(|_| async {})
@@ -794,13 +783,11 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     ///
     /// Returns an iterator yielding tuples of mutable peer references and their
     /// customized heartbeat messages.
-    async fn iter_follower_append_entries(
+    fn iter_follower_append_entries(
         &mut self,
     ) -> Box<dyn Iterator<Item = (&mut Peer, HeartBeat)> + '_> {
         let lowest_watermark = self.take_low_watermark();
-
         let append_entries = self.logger.list_append_log_entries(lowest_watermark);
-
         let default_heartbeat: HeartBeat = self.replication.default_heartbeat(
             0,
             self.logger.last_log_index,
@@ -817,29 +804,26 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         // If we have entries, find the entry before the first one to use as backup
         let backup_entry = self.logger.read_at(append_entries[0].log_index - 1);
 
-        let iterator = self.replicas_mut().map(move |(peer, hwm)| {
-            let logs =
-                append_entries.iter().filter(|op| op.log_index > hwm).cloned().collect::<Vec<_>>();
+        let iterator = self.replicas_mut().map(move |(peer, p_log_idx)| {
+            let missing_entries = append_entries
+                .iter()
+                .filter(|op| op.log_index > p_log_idx)
+                .cloned()
+                .collect::<Vec<_>>();
 
-            // Create base heartbeat
-            let mut heart_beat = default_heartbeat.clone();
-
-            if logs.len() == append_entries.len() {
-                // Follower needs all entries, use backup entry
-                if let Some(backup_entry) = backup_entry.as_ref() {
-                    heart_beat.prev_log_index = backup_entry.log_index;
-                    heart_beat.prev_log_term = backup_entry.term;
-                } else {
-                    heart_beat.prev_log_index = 0;
-                    heart_beat.prev_log_term = 0;
-                }
+            let (prev_log_index, prev_log_term) = if missing_entries.len() == append_entries.len() {
+                // * For Follower that require all entries, use backup entry to return prev_log_index and prev_term if exists
+                backup_entry.as_ref().map(|entry| (entry.log_index, entry.term)).unwrap_or((0, 0))
             } else {
-                // Follower has some entries already, use the last one it has
-                let last_log = &append_entries[append_entries.len() - logs.len() - 1];
-                heart_beat.prev_log_index = last_log.log_index;
-                heart_beat.prev_log_term = last_log.term;
-            }
-            let heart_beat = heart_beat.set_append_entries(logs);
+                // * Follower has some entries already, use the last one it has
+                let last_log = &append_entries[append_entries.len() - missing_entries.len() - 1];
+                (last_log.log_index, last_log.term)
+            };
+
+            let heart_beat = default_heartbeat
+                .clone()
+                .set_append_entries(missing_entries)
+                .set_prev_log(prev_log_index, prev_log_term);
             (peer, heart_beat)
         });
 
@@ -1061,6 +1045,11 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         self.replication.role = ReplicationRole::Leader;
         self.replication.election_state = ElectionState::Leader;
         self.heartbeat_scheduler.turn_leader_mode().await;
+        self.hash_ring.update_repl_leader(
+            self.replication.replid.clone(),
+            self.replication.self_identifier(),
+        );
+        let _ = self.logger.write_single_entry(&WriteRequest::NoOp, self.replication.term, None);
     }
     fn become_candidate(&mut self) {
         let replica_count = self.replicas().count() as u8;

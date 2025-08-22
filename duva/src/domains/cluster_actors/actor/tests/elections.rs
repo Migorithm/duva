@@ -189,13 +189,27 @@ async fn test_receive_election_vote_candidate_wins_election() {
 
     // THEN: Initial heartbeat should be sent to the replica
     // The receive_election_vote calls become_leader, which sends an AppendEntriesRPC
-    let hb = HeartBeat {
+    let mut hb = HeartBeat {
         term: candidate_term,
+        prev_log_index: 0,
+        prev_log_term: 0,
         from: candidate_actor.replication.self_identifier(),
         replid: candidate_actor.replication.replid.clone(),
+        append_entries: vec![WriteOperation {
+            request: WriteRequest::NoOp,
+            log_index: candidate_actor.logger.last_log_index,
+            term: candidate_actor.logger.last_log_term,
+            session_req: None,
+        }],
         ..Default::default()
     };
+
     assert_expected_queryio(&replica1_fake_buf, QueryIO::AppendEntriesRPC(hb.clone())).await;
+
+    // hb that sends to cluster
+    hb.append_entries = vec![];
+    hb.prev_log_index = 1;
+    hb.prev_log_term = 3;
 
     assert_expected_queryio(
         &replica1_fake_buf,
