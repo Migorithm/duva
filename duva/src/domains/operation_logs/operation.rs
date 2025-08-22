@@ -73,6 +73,7 @@ impl WriteRequest {
             | WriteRequest::RPushX { key, .. } => vec![key],
             | WriteRequest::Delete { keys, .. } => keys.iter().map(|k| k.as_str()).collect(),
             | WriteRequest::MSet { entries } => entries.iter().map(|e| e.key()).collect(),
+            | WriteRequest::NoOp => vec![],
         }
     }
 }
