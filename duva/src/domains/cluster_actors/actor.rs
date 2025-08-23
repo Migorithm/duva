@@ -16,7 +16,7 @@ use crate::domains::TAsyncReadWrite;
 use crate::domains::caches::cache_manager::CacheManager;
 use crate::domains::caches::cache_objects::CacheEntry;
 use crate::domains::cluster_actors::consensus::election::ElectionVoting;
-use crate::domains::cluster_actors::hash_ring::MigrationTasks;
+use crate::domains::peers::command::PendingMigrationTasks;
 
 use crate::domains::cluster_actors::hash_ring::PendingMigration;
 use crate::domains::cluster_actors::hash_ring::PendingMigrationBatch;
@@ -1194,7 +1194,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     }
 
     async fn schedule_migration_in_batch(
-        batch: MigrateBatch<MigrationTasks>,
+        batch: MigrateBatch<PendingMigrationTasks>,
         handler: ClusterActorSender,
     ) -> anyhow::Result<()> {
         let (tx, rx) = Callback::create();
@@ -1204,7 +1204,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
     pub(crate) async fn migrate_batch(
         &mut self,
-        target: MigrateBatch<MigrationTasks>,
+        target: MigrateBatch<PendingMigrationTasks>,
         cache_manager: &CacheManager,
         callback: impl Into<Callback<anyhow::Result<()>>>,
     ) {

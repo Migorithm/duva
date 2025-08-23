@@ -4,6 +4,7 @@
 /// even distribution. Each physical node is represented by multiple virtual
 /// nodes on the ring, determined by `vnode_num`.
 use crate::ReplicationId;
+use crate::domains::peers::command::MigrationTask;
 use crate::prelude::PeerIdentifier;
 use std::collections::{BTreeMap, HashMap};
 use std::ops::Deref;

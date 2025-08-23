@@ -53,10 +53,7 @@ mod peer_messages {
     use super::*;
     use crate::domains::{
         caches::cache_objects::CacheEntry,
-        cluster_actors::{
-            hash_ring::{HashRing, MigrationTask, MigrationTasks},
-            replication::ReplicationId,
-        },
+        cluster_actors::{hash_ring::HashRing, replication::ReplicationId},
         operation_logs::{WriteOperation, logger::ReplicatedLogs},
         peers::peer::PeerState,
     };
@@ -195,15 +192,34 @@ mod peer_messages {
         }
     }
 
-    impl MigrateBatch<MigrationTasks> {
+    impl MigrateBatch<PendingMigrationTasks> {
         pub(crate) fn new(target_repl: ReplicationId, tasks: Vec<MigrationTask>) -> Self {
             Self {
                 batch_id: uuid::Uuid::now_v7().to_string(),
-                data: MigrationTasks { target_repl, tasks },
+                data: PendingMigrationTasks { target_repl, tasks },
             }
         }
         pub(crate) fn target_repl_id(&self) -> &ReplicationId {
             &self.data.target_repl
         }
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    pub(crate) struct MigrationTask {
+        pub(crate) range: (u64, u64),            // (start_hash, end_hash)
+        pub(crate) keys_to_migrate: Vec<String>, // actual keys in this range
+    }
+
+    impl MigrationTask {
+        pub(crate) fn key_len(&self) -> usize {
+            self.keys_to_migrate.len()
+        }
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq)]
+
+    pub(crate) struct PendingMigrationTasks {
+        pub(crate) target_repl: ReplicationId,
+        pub(crate) tasks: Vec<MigrationTask>,
     }
 }

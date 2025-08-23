@@ -2,25 +2,6 @@ use std::collections::{HashMap, VecDeque};
 
 use crate::{ReplicationId, domains::cluster_actors::ConsensusRequest, types::Callback};
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct MigrationTask {
-    pub(crate) range: (u64, u64),            // (start_hash, end_hash)
-    pub(crate) keys_to_migrate: Vec<String>, // actual keys in this range
-}
-
-impl MigrationTask {
-    pub(crate) fn key_len(&self) -> usize {
-        self.keys_to_migrate.len()
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-
-pub(crate) struct MigrationTasks {
-    pub(crate) target_repl: ReplicationId,
-    pub(crate) tasks: Vec<MigrationTask>,
-}
-
 #[derive(Debug)]
 pub(crate) struct PendingMigrationBatch {
     pub(crate) callback: Callback<anyhow::Result<()>>,
