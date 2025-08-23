@@ -444,7 +444,7 @@ async fn test_unblock_write_reqs_if_done_when_migrations_still_pending() {
         .pending_migrations
         .as_mut()
         .unwrap()
-        .add_batch(batch_id, PendingMigrationBatch::new(callback, vec![]));
+        .add_batch(batch_id, QueuedMigrationBatch::new(callback, vec![]));
 
     // WHEN
     cluster_actor.unblock_write_reqs_if_done();
@@ -516,7 +516,7 @@ async fn test_handle_migration_ack_batch_id_not_found() {
         .pending_migrations
         .as_mut()
         .unwrap()
-        .add_batch("existing_batch".into(), PendingMigrationBatch::new(callback, vec![]));
+        .add_batch("existing_batch".into(), QueuedMigrationBatch::new(callback, vec![]));
 
     let non_existent_batch_id = "non_existent_batch".into();
     let ack = MigrateBatch { batch_id: non_existent_batch_id, data: () };
@@ -563,7 +563,7 @@ async fn test_handle_migration_ack_success_case_with_pending_reqs_and_migration(
         .pending_migrations
         .as_mut()
         .unwrap()
-        .add_batch(batch_id.clone(), PendingMigrationBatch::new(callback, test_keys));
+        .add_batch(batch_id.clone(), QueuedMigrationBatch::new(callback, test_keys));
 
     let ack = MigrateBatch::with_success(batch_id);
 

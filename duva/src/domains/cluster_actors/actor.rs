@@ -16,10 +16,10 @@ use crate::domains::TAsyncReadWrite;
 use crate::domains::caches::cache_manager::CacheManager;
 use crate::domains::caches::cache_objects::CacheEntry;
 use crate::domains::cluster_actors::consensus::election::ElectionVoting;
+use crate::domains::peers::command::InProgressMigration;
 use crate::domains::peers::command::PendingMigrationTasks;
+use crate::domains::peers::command::QueuedMigrationBatch;
 
-use crate::domains::cluster_actors::hash_ring::PendingMigration;
-use crate::domains::cluster_actors::hash_ring::PendingMigrationBatch;
 use crate::domains::cluster_actors::queue::ClusterActorQueue;
 use crate::domains::cluster_actors::queue::ClusterActorReceiver;
 use crate::domains::cluster_actors::queue::ClusterActorSender;
@@ -83,7 +83,7 @@ pub struct ClusterActor<T> {
     pub(crate) client_sessions: ClientSessions,
     pub(crate) logger: ReplicatedLogs<T>,
     pub(crate) hash_ring: HashRing,
-    pending_migrations: Option<PendingMigration>,
+    pending_migrations: Option<InProgressMigration>,
     cluster_join_sync: ClusterJoinSync,
 }
 
@@ -1237,7 +1237,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         };
 
         if let Some(p) = self.pending_migrations.as_mut() {
-            p.add_batch(target.batch_id.clone(), PendingMigrationBatch::new(callback, keys))
+            p.add_batch(target.batch_id.clone(), QueuedMigrationBatch::new(callback, keys))
         }
 
         let _ = target_peer.send(MigrateBatch::create_batch(target.batch_id, cache_entries)).await;

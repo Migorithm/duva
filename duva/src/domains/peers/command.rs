@@ -48,14 +48,20 @@ impl From<PeerCommand> for ClusterCommand {
 }
 
 mod peer_messages {
-    use std::hash::Hash;
+    use std::{
+        collections::{HashMap, VecDeque},
+        hash::Hash,
+    };
 
     use super::*;
-    use crate::domains::{
-        caches::cache_objects::CacheEntry,
-        cluster_actors::{hash_ring::HashRing, replication::ReplicationId},
-        operation_logs::{WriteOperation, logger::ReplicatedLogs},
-        peers::peer::PeerState,
+    use crate::{
+        domains::{
+            caches::cache_objects::CacheEntry,
+            cluster_actors::{ConsensusRequest, hash_ring::HashRing, replication::ReplicationId},
+            operation_logs::{WriteOperation, logger::ReplicatedLogs},
+            peers::peer::PeerState,
+        },
+        types::Callback,
     };
 
     #[derive(Clone, Debug, PartialEq, Eq, bincode::Encode, bincode::Decode)]
@@ -205,6 +211,12 @@ mod peer_messages {
     }
 
     #[derive(Debug, Clone, PartialEq, Eq)]
+    pub(crate) struct PendingMigrationTasks {
+        pub(crate) target_repl: ReplicationId,
+        pub(crate) tasks: Vec<MigrationTask>,
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq)]
     pub(crate) struct MigrationTask {
         pub(crate) range: (u64, u64),            // (start_hash, end_hash)
         pub(crate) keys_to_migrate: Vec<String>, // actual keys in this range
@@ -216,10 +228,47 @@ mod peer_messages {
         }
     }
 
-    #[derive(Debug, Clone, PartialEq, Eq)]
+    #[derive(Debug)]
+    pub(crate) struct QueuedMigrationBatch {
+        pub(crate) callback: Callback<anyhow::Result<()>>,
+        pub(crate) keys: Vec<String>,
+    }
 
-    pub(crate) struct PendingMigrationTasks {
-        pub(crate) target_repl: ReplicationId,
-        pub(crate) tasks: Vec<MigrationTask>,
+    impl QueuedMigrationBatch {
+        pub(crate) fn new(
+            callback: impl Into<Callback<anyhow::Result<()>>>,
+            keys: Vec<String>,
+        ) -> Self {
+            Self { callback: callback.into(), keys }
+        }
+    }
+
+    #[derive(Debug, Default)]
+    pub(crate) struct InProgressMigration {
+        requests: VecDeque<ConsensusRequest>,
+        batches: HashMap<String, QueuedMigrationBatch>,
+    }
+    impl InProgressMigration {
+        pub(crate) fn add_req(&mut self, req: ConsensusRequest) {
+            self.requests.push_back(req);
+        }
+        pub(crate) fn add_batch(&mut self, id: String, batch: QueuedMigrationBatch) {
+            self.batches.insert(id, batch);
+        }
+        pub(crate) fn pop_batch(&mut self, id: &String) -> Option<QueuedMigrationBatch> {
+            self.batches.remove(id)
+        }
+        pub(crate) fn pending_requests(self) -> VecDeque<ConsensusRequest> {
+            self.requests
+        }
+
+        #[cfg(test)]
+        pub(crate) fn num_reqs(&self) -> usize {
+            self.requests.len()
+        }
+
+        pub(crate) fn num_batches(&self) -> usize {
+            self.batches.len()
+        }
     }
 }
