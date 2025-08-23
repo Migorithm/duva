@@ -16,7 +16,8 @@ use crate::domains::TAsyncReadWrite;
 use crate::domains::caches::cache_manager::CacheManager;
 use crate::domains::caches::cache_objects::CacheEntry;
 use crate::domains::cluster_actors::consensus::election::ElectionVoting;
-use crate::domains::cluster_actors::hash_ring::MigrationBatch;
+use crate::domains::cluster_actors::hash_ring::MigrationTasks;
+
 use crate::domains::cluster_actors::hash_ring::PendingMigration;
 use crate::domains::cluster_actors::hash_ring::PendingMigrationBatch;
 use crate::domains::cluster_actors::queue::ClusterActorQueue;
@@ -1172,7 +1173,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
                 // Spawn each batch as a separate task for parallel execution
                 batch_handles.push(tokio::spawn(Self::schedule_migration_in_batch(
-                    MigrationBatch::new(target_replid.clone(), batch_to_migrate),
+                    MigrateBatch::new(target_replid.clone(), batch_to_migrate),
                     self.self_handler.clone(),
                 )));
             }
@@ -1193,7 +1194,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     }
 
     async fn schedule_migration_in_batch(
-        batch: MigrationBatch,
+        batch: MigrateBatch<MigrationTasks>,
         handler: ClusterActorSender,
     ) -> anyhow::Result<()> {
         let (tx, rx) = Callback::create();
@@ -1203,19 +1204,20 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
     pub(crate) async fn migrate_batch(
         &mut self,
-        target: MigrationBatch,
+        target: MigrateBatch<MigrationTasks>,
         cache_manager: &CacheManager,
         callback: impl Into<Callback<anyhow::Result<()>>>,
     ) {
         let callback = callback.into();
         //  Find target peer based on replication ID
-        let Some(peer_id) = self.peerid_by_replid(&target.target_repl).cloned() else {
+        let Some(peer_id) = self.peerid_by_replid(target.target_repl_id()).cloned() else {
             callback.send(res_err!("Target peer not found for replication ID"));
             return;
         };
 
         // Retrieve key-value data from cache
         let keys = target
+            .data
             .tasks
             .iter()
             .flat_map(|task| task.keys_to_migrate.iter().cloned())

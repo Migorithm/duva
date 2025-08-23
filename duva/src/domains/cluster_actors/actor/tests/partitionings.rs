@@ -190,8 +190,8 @@ async fn test_start_rebalance_schedules_migration_batches() {
     .await
     .expect("Should receive ScheduleMigrationBatch within timeout");
 
-    assert_eq!(batch.target_repl, target_repl_id);
-    assert!(!batch.tasks.is_empty());
+    assert_eq!(batch.target_repl_id(), &target_repl_id);
+    assert!(!batch.data.tasks.is_empty());
 
     // 3. Verify pending_requests is set (synchronous part)
     assert!(cluster_actor.pending_migrations.is_some());
@@ -263,7 +263,7 @@ async fn test_send_migrate_and_wait_happypath() {
     // Create dummy task
     let target_replid = ReplicationId::Key("my_test_key".to_string());
     let batch_to_migrate = vec![migration_task_create_helper(0, 100)];
-    let batch = MigrationBatch::new(target_replid.clone(), batch_to_migrate.clone());
+    let batch = MigrateBatch::new(target_replid.clone(), batch_to_migrate.clone());
 
     // ! spawn actor receiver in the background
     let task = tokio::spawn(async move {
@@ -293,7 +293,7 @@ async fn test_send_migrate_and_wait_callback_error() {
 
     let target_replid = ReplicationId::Key("error_response_test".to_string());
     let batch_to_migrate = vec![migration_task_create_helper(0, 10)];
-    let batch = MigrationBatch::new(target_replid.clone(), batch_to_migrate.clone());
+    let batch = MigrateBatch::new(target_replid.clone(), batch_to_migrate.clone());
     // WHEN - simulate error response from migration handler
     tokio::spawn(async move {
         while let Some(msg) = rx.recv().await {
@@ -324,7 +324,7 @@ async fn test_migrate_keys_target_peer_not_found() {
     let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Leader).await;
     let (_hwm, cache_manager) = Helper::cache_manager();
 
-    let tasks = MigrationBatch::new(
+    let tasks = MigrateBatch::new(
         ReplicationId::Key("non_existent_peer".to_string()),
         vec![migration_task_create_helper(0, 5)],
     );
@@ -347,7 +347,7 @@ async fn test_migrate_batch_send_migrate_batch_peer_message() {
     let replid = ReplicationId::Key("wheatever".to_string());
     let (buf, _id) = cluster_actor.test_add_peer(6909, Some(replid.clone()), true);
 
-    let batch = MigrationBatch::new(replid.clone(), vec![migration_task_create_helper(0, 5)]);
+    let batch = MigrateBatch::new(replid.clone(), vec![migration_task_create_helper(0, 5)]);
     let (tx, _rx) = Callback::create();
     // WHEN
     cluster_actor.migrate_batch(batch.clone(), &cache_manager, tx).await;

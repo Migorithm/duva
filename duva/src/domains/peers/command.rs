@@ -53,7 +53,10 @@ mod peer_messages {
     use super::*;
     use crate::domains::{
         caches::cache_objects::CacheEntry,
-        cluster_actors::{hash_ring::HashRing, replication::ReplicationId},
+        cluster_actors::{
+            hash_ring::{HashRing, MigrationTask, MigrationTasks},
+            replication::ReplicationId,
+        },
         operation_logs::{WriteOperation, logger::ReplicatedLogs},
         peers::peer::PeerState,
     };
@@ -189,6 +192,18 @@ mod peer_messages {
     impl MigrateBatch<Vec<CacheEntry>> {
         pub(crate) fn create_batch(batch_id: String, cache_entries: Vec<CacheEntry>) -> Self {
             Self { batch_id, data: cache_entries }
+        }
+    }
+
+    impl MigrateBatch<MigrationTasks> {
+        pub(crate) fn new(target_repl: ReplicationId, tasks: Vec<MigrationTask>) -> Self {
+            Self {
+                batch_id: uuid::Uuid::now_v7().to_string(),
+                data: MigrationTasks { target_repl, tasks },
+            }
+        }
+        pub(crate) fn target_repl_id(&self) -> &ReplicationId {
+            &self.data.target_repl
         }
     }
 }
