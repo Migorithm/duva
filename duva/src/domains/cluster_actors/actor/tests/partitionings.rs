@@ -355,7 +355,7 @@ async fn test_migrate_batch_send_migrate_batch_peer_message() {
     // THEN
     assert_expected_queryio(
         &buf,
-        QueryIO::MigrateBatch(MigrateBatch { batch_id: batch.batch_id, cache_entries: vec![] }),
+        QueryIO::MigrateBatch(MigrateBatch::create_batch(batch.batch_id, vec![])),
     )
     .await;
 }
@@ -369,14 +369,14 @@ async fn test_receive_batch_when_empty_cache_entries() {
     let (buf, _id) = cluster_actor.test_add_peer(6909, Some(replid.clone()), true);
 
     // WHEN
-    let batch = MigrateBatch { batch_id: "empty_test".into(), cache_entries: vec![] };
+    let batch = MigrateBatch::create_batch("empty_test".into(), vec![]);
     cluster_actor.receive_batch(batch.clone(), &cache_manager, _id).await;
 
     // THEN - verify that no log index is incremented
     assert_eq!(cluster_actor.logger.last_log_index, 0);
     assert_expected_queryio(
         &buf,
-        QueryIO::MigrationBatchAck(MigrationBatchAck::with_success(batch.batch_id)),
+        QueryIO::MigrationBatchAck(MigrateBatch::with_success(batch.batch_id)),
     )
     .await;
 }
@@ -395,8 +395,7 @@ async fn test_receive_batch_when_consensus_is_required() {
 
     let cache_entries = vec![CacheEntry::new("success_key3", "value2")];
 
-    let batch =
-        MigrateBatch { batch_id: "success_test".into(), cache_entries: cache_entries.clone() };
+    let batch = MigrateBatch::create_batch("success_test".into(), cache_entries.clone());
 
     // WHEN
     cluster_actor.receive_batch(batch, &cache_manager, ack_to.clone()).await;
@@ -520,7 +519,7 @@ async fn test_handle_migration_ack_batch_id_not_found() {
         .add_batch("existing_batch".into(), PendingMigrationBatch::new(callback, vec![]));
 
     let non_existent_batch_id = "non_existent_batch".into();
-    let ack = MigrationBatchAck { batch_id: non_existent_batch_id };
+    let ack = MigrateBatch { batch_id: non_existent_batch_id, data: () };
 
     // WHEN
     cluster_actor.handle_migration_ack(ack, &_cache_manager).await;
@@ -566,7 +565,7 @@ async fn test_handle_migration_ack_success_case_with_pending_reqs_and_migration(
         .unwrap()
         .add_batch(batch_id.clone(), PendingMigrationBatch::new(callback, test_keys));
 
-    let ack = MigrationBatchAck { batch_id };
+    let ack = MigrateBatch::with_success(batch_id);
 
     // Verify initially blocked
 

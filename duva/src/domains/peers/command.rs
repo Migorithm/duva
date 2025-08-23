@@ -1,6 +1,6 @@
 use crate::{
     ReplicationState,
-    domains::{QueryIO, cluster_actors::ClusterCommand},
+    domains::{QueryIO, caches::cache_objects::CacheEntry, cluster_actors::ClusterCommand},
     prelude::PeerIdentifier,
 };
 
@@ -20,8 +20,8 @@ pub(crate) enum PeerMessage {
     RequestVote(RequestVote),
     ElectionVoteReply(ElectionVote),
     StartRebalance,
-    ReceiveBatch(MigrateBatch),
-    MigrationBatchAck(MigrationBatchAck),
+    ReceiveBatch(MigrateBatch<Vec<CacheEntry>>),
+    MigrationBatchAck(MigrateBatch),
 }
 
 impl TryFrom<QueryIO> for PeerMessage {
@@ -169,25 +169,26 @@ mod peer_messages {
     }
 
     #[derive(Debug, Clone, PartialEq, Eq, bincode::Encode, bincode::Decode)]
-    pub struct MigrateBatch {
+    pub struct MigrateBatch<T = ()> {
         pub(crate) batch_id: String,
-        pub(crate) cache_entries: Vec<CacheEntry>,
+        pub(crate) data: T,
     }
 
-    #[derive(Debug, Clone, PartialEq, Eq, bincode::Encode, bincode::Decode)]
-    pub struct MigrationBatchAck {
-        pub(crate) batch_id: String,
-    }
-
-    impl MigrationBatchAck {
+    impl MigrateBatch<()> {
         pub(crate) fn with_success(batch_id: String) -> Self {
-            Self { batch_id }
+            Self { batch_id, data: () }
         }
     }
 
-    impl From<MigrationBatchAck> for QueryIO {
-        fn from(value: MigrationBatchAck) -> Self {
+    impl From<MigrateBatch> for QueryIO {
+        fn from(value: MigrateBatch) -> Self {
             QueryIO::MigrationBatchAck(value)
+        }
+    }
+
+    impl MigrateBatch<Vec<CacheEntry>> {
+        pub(crate) fn create_batch(batch_id: String, cache_entries: Vec<CacheEntry>) -> Self {
+            Self { batch_id, data: cache_entries }
         }
     }
 }

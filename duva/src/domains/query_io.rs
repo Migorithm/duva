@@ -1,9 +1,9 @@
-use crate::domains::caches::cache_objects::{CacheValue, TypedValue};
+use crate::domains::caches::cache_objects::{CacheEntry, CacheValue, TypedValue};
 use crate::domains::cluster_actors::replication::{ReplicationId, ReplicationRole};
 use crate::domains::cluster_actors::topology::Topology;
 use crate::domains::operation_logs::WriteOperation;
 use crate::domains::peers::command::{
-    ElectionVote, HeartBeat, MigrateBatch, MigrationBatchAck, ReplicationAck, RequestVote,
+    ElectionVote, HeartBeat, MigrateBatch, ReplicationAck, RequestVote,
 };
 use crate::presentation::clients::request::ClientAction;
 use anyhow::{Context, Result, anyhow};
@@ -63,8 +63,8 @@ pub enum QueryIO {
 
     TopologyChange(Topology),
     StartRebalance,
-    MigrateBatch(MigrateBatch),
-    MigrationBatchAck(MigrationBatchAck),
+    MigrateBatch(MigrateBatch<Vec<CacheEntry>>),
+    MigrationBatchAck(MigrateBatch),
 }
 
 impl QueryIO {
@@ -280,8 +280,8 @@ pub fn deserialize(buffer: impl Into<Bytes>) -> Result<(QueryIO, usize)> {
         | REQUEST_VOTE_REPLY_PREFIX => parse_custom_type::<ElectionVote>(buffer),
         | TOPOLOGY_CHANGE_PREFIX => parse_custom_type::<Topology>(buffer),
         | START_REBALANCE_PREFIX => Ok((QueryIO::StartRebalance, 1)),
-        | MIGRATE_BATCH_PREFIX => parse_custom_type::<MigrateBatch>(buffer),
-        | MIGRATION_BATCH_ACK_PREFIX => parse_custom_type::<MigrationBatchAck>(buffer),
+        | MIGRATE_BATCH_PREFIX => parse_custom_type::<MigrateBatch<Vec<CacheEntry>>>(buffer),
+        | MIGRATION_BATCH_ACK_PREFIX => parse_custom_type::<MigrateBatch>(buffer),
         | _ => Err(anyhow::anyhow!("Not a known value type {:?}", buffer)),
     }
 }
@@ -456,8 +456,8 @@ impl From<HeartBeat> for QueryIO {
         QueryIO::ClusterHeartBeat(value)
     }
 }
-impl From<MigrateBatch> for QueryIO {
-    fn from(value: MigrateBatch) -> Self {
+impl From<MigrateBatch<Vec<CacheEntry>>> for QueryIO {
+    fn from(value: MigrateBatch<Vec<CacheEntry>>) -> Self {
         QueryIO::MigrateBatch(value)
     }
 }
@@ -868,7 +868,7 @@ mod test {
         // GIVEN
         let migrate_batch = MigrateBatch {
             batch_id: Uuid::now_v7().to_string(),
-            cache_entries: vec![CacheEntry::new("foo", "bar")],
+            data: vec![CacheEntry::new("foo", "bar")],
         };
         let query_io = QueryIO::MigrateBatch(migrate_batch.clone());
 
@@ -882,13 +882,13 @@ mod test {
             panic!("Expected a MigrateBatch");
         };
         assert_eq!(deserialized_migrate_batch.batch_id, migrate_batch.batch_id);
-        assert_eq!(deserialized_migrate_batch.cache_entries, migrate_batch.cache_entries);
+        assert_eq!(deserialized_migrate_batch.data, migrate_batch.data);
     }
 
     #[test]
     fn test_migration_batch_ack_serde() {
         // GIVEN
-        let migration_batch_ack = MigrationBatchAck { batch_id: Uuid::now_v7().to_string() };
+        let migration_batch_ack = MigrateBatch::with_success(Uuid::now_v7().to_string());
         let query_io = QueryIO::MigrationBatchAck(migration_batch_ack.clone());
 
         // WHEN
