@@ -20,8 +20,8 @@ pub(crate) enum PeerMessage {
     RequestVote(RequestVote),
     ElectionVoteReply(ElectionVote),
     StartRebalance,
-    ReceiveBatch(MigrateBatch),
-    MigrationBatchAck(MigrationBatchAck),
+    ReceiveBatch(BatchEntries),
+    MigrationBatchAck(BatchId),
 }
 
 impl TryFrom<QueryIO> for PeerMessage {
@@ -48,14 +48,20 @@ impl From<PeerCommand> for ClusterCommand {
 }
 
 mod peer_messages {
-    use std::hash::Hash;
+    use std::{
+        collections::{HashMap, VecDeque},
+        hash::Hash,
+    };
 
     use super::*;
-    use crate::domains::{
-        caches::cache_objects::CacheEntry,
-        cluster_actors::{hash_ring::HashRing, replication::ReplicationId},
-        operation_logs::{WriteOperation, logger::ReplicatedLogs},
-        peers::peer::PeerState,
+    use crate::{
+        domains::{
+            caches::cache_objects::CacheEntry,
+            cluster_actors::{ConsensusRequest, hash_ring::HashRing, replication::ReplicationId},
+            operation_logs::{WriteOperation, logger::ReplicatedLogs},
+            peers::peer::PeerState,
+        },
+        types::Callback,
     };
 
     #[derive(Clone, Debug, PartialEq, Eq, bincode::Encode, bincode::Decode)]
@@ -167,27 +173,72 @@ mod peer_messages {
             &self.p_id
         }
     }
+    #[derive(Debug, Clone, PartialEq, Eq, bincode::Encode, bincode::Decode, Hash)]
+    pub struct BatchId(pub(crate) String);
 
-    #[derive(Debug, Clone, PartialEq, Eq, bincode::Encode, bincode::Decode)]
-    pub struct MigrateBatch {
-        pub(crate) batch_id: String,
-        pub(crate) cache_entries: Vec<CacheEntry>,
-    }
-
-    #[derive(Debug, Clone, PartialEq, Eq, bincode::Encode, bincode::Decode)]
-    pub struct MigrationBatchAck {
-        pub(crate) batch_id: String,
-    }
-
-    impl MigrationBatchAck {
-        pub(crate) fn with_success(batch_id: String) -> Self {
-            Self { batch_id }
+    impl From<&str> for BatchId {
+        fn from(value: &str) -> Self {
+            BatchId(value.into())
         }
     }
 
-    impl From<MigrationBatchAck> for QueryIO {
-        fn from(value: MigrationBatchAck) -> Self {
-            QueryIO::MigrationBatchAck(value)
+    #[derive(Debug, Clone, PartialEq, Eq, bincode::Encode, bincode::Decode)]
+    pub struct BatchEntries {
+        pub(crate) batch_id: BatchId,
+        pub(crate) entries: Vec<CacheEntry>,
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    pub(crate) struct PendingMigrationTask {
+        pub(crate) batch_id: BatchId,
+        pub(crate) target_repl: ReplicationId,
+        pub(crate) chunks: Vec<MigrationChunk>,
+    }
+
+    impl PendingMigrationTask {
+        pub(crate) fn new(target_repl: ReplicationId, tasks: Vec<MigrationChunk>) -> Self {
+            Self { batch_id: BatchId(uuid::Uuid::now_v7().to_string()), target_repl, chunks: tasks }
+        }
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    pub(crate) struct MigrationChunk {
+        pub(crate) range: (u64, u64),            // (start_hash, end_hash)
+        pub(crate) keys_to_migrate: Vec<String>, // actual keys in this range
+    }
+
+    #[derive(Debug)]
+    pub(crate) struct QueuedKeysToMigrate {
+        pub(crate) callback: Callback<anyhow::Result<()>>,
+        pub(crate) keys: Vec<String>,
+    }
+
+    #[derive(Debug, Default)]
+    pub(crate) struct InProgressMigration {
+        requests: VecDeque<ConsensusRequest>,
+        batches: HashMap<BatchId, QueuedKeysToMigrate>,
+    }
+    impl InProgressMigration {
+        pub(crate) fn add_req(&mut self, req: ConsensusRequest) {
+            self.requests.push_back(req);
+        }
+        pub(crate) fn store_batch(&mut self, id: BatchId, batch: QueuedKeysToMigrate) {
+            self.batches.insert(id, batch);
+        }
+        pub(crate) fn pop_batch(&mut self, id: &BatchId) -> Option<QueuedKeysToMigrate> {
+            self.batches.remove(id)
+        }
+        pub(crate) fn pending_requests(self) -> VecDeque<ConsensusRequest> {
+            self.requests
+        }
+
+        #[cfg(test)]
+        pub(crate) fn num_reqs(&self) -> usize {
+            self.requests.len()
+        }
+
+        pub(crate) fn num_batches(&self) -> usize {
+            self.batches.len()
         }
     }
 }

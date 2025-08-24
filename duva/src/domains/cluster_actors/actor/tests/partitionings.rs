@@ -1,11 +1,8 @@
+use super::*;
 use crate::domains::QueryIO;
 use crate::domains::caches::cache_objects::{CacheValue, TypedValue};
-
 use crate::domains::cluster_actors::hash_ring::{HashRing, tests::migration_task_create_helper};
-
 use std::time::Duration;
-
-use super::*;
 
 // ! When LazyOption is Lazy, rebalance request should not block
 #[tokio::test]
@@ -19,7 +16,7 @@ async fn test_rebalance_request_with_lazy() {
     cluster_actor.rebalance_request(request_to, lazy_o).await;
 
     // THEN
-    assert!(cluster_actor.pending_migrations.is_none())
+    assert!(cluster_actor.migrations_in_progress.is_none())
 }
 
 // ! when member has not been connected, ignore
@@ -34,7 +31,7 @@ async fn test_rebalance_request_before_member_connected() {
     cluster_actor.rebalance_request(request_to, lazy_o).await;
 
     // THEN
-    assert!(cluster_actor.pending_migrations.is_none())
+    assert!(cluster_actor.migrations_in_progress.is_none())
 }
 
 // ! rebalance request to replica should be ignored
@@ -51,7 +48,7 @@ async fn test_rebalance_request_to_replica() {
     cluster_actor.rebalance_request(request_to.clone(), lazy_o).await;
 
     // THEN
-    assert!(cluster_actor.pending_migrations.is_none());
+    assert!(cluster_actor.migrations_in_progress.is_none());
 
     let msg = buf.lock().await.pop_front();
     assert!(msg.is_none());
@@ -80,7 +77,7 @@ async fn test_rebalance_request_happypath() {
     // THEN
     // At this point, the re-balance request should not block the requests
     // requests will be blocked only if migrations needed.
-    assert!(cluster_actor.pending_migrations.is_none());
+    assert!(cluster_actor.migrations_in_progress.is_none());
     assert_expected_queryio(&buf, QueryIO::StartRebalance).await;
 }
 
@@ -95,7 +92,7 @@ async fn test_start_rebalance_before_connection_is_made() {
 
     // THEN
     // No pending requests should be created since the member is not connected
-    assert!(cluster_actor.pending_migrations.is_none());
+    assert!(cluster_actor.migrations_in_progress.is_none());
 }
 
 // ! Failcase
@@ -110,7 +107,7 @@ async fn test_start_rebalance_only_when_replica_is_found() {
     let _ = cluster_actor.start_rebalance(&cache_manager).await;
 
     // THEN
-    assert!(cluster_actor.pending_migrations.is_none());
+    assert!(cluster_actor.migrations_in_progress.is_none());
     let msg = buf.lock().await.pop_front();
     assert!(msg.is_none());
 }
@@ -190,11 +187,11 @@ async fn test_start_rebalance_schedules_migration_batches() {
     .await
     .expect("Should receive ScheduleMigrationBatch within timeout");
 
-    assert_eq!(batch.target_repl, target_repl_id);
-    assert!(!batch.tasks.is_empty());
+    assert_eq!(&batch.target_repl, &target_repl_id);
+    assert!(!batch.chunks.is_empty());
 
     // 3. Verify pending_requests is set (synchronous part)
-    assert!(cluster_actor.pending_migrations.is_some());
+    assert!(cluster_actor.migrations_in_progress.is_some());
 }
 
 #[tokio::test]
@@ -220,7 +217,7 @@ async fn test_maybe_update_hashring_when_noplan_is_made() {
     cluster_actor.maybe_update_hashring(Some(Box::new(hash_ring.clone())), &cache_manager).await;
 
     // THEN
-    assert!(cluster_actor.pending_migrations.is_none());
+    assert!(cluster_actor.migrations_in_progress.is_none());
     assert_eq!(cluster_actor.hash_ring, hash_ring);
     assert_ne!(cluster_actor.hash_ring.last_modified, last_modified);
 }
@@ -263,7 +260,7 @@ async fn test_send_migrate_and_wait_happypath() {
     // Create dummy task
     let target_replid = ReplicationId::Key("my_test_key".to_string());
     let batch_to_migrate = vec![migration_task_create_helper(0, 100)];
-    let batch = MigrationBatch::new(target_replid.clone(), batch_to_migrate.clone());
+    let batch = PendingMigrationTask::new(target_replid.clone(), batch_to_migrate.clone());
 
     // ! spawn actor receiver in the background
     let task = tokio::spawn(async move {
@@ -293,7 +290,7 @@ async fn test_send_migrate_and_wait_callback_error() {
 
     let target_replid = ReplicationId::Key("error_response_test".to_string());
     let batch_to_migrate = vec![migration_task_create_helper(0, 10)];
-    let batch = MigrationBatch::new(target_replid.clone(), batch_to_migrate.clone());
+    let batch = PendingMigrationTask::new(target_replid.clone(), batch_to_migrate.clone());
     // WHEN - simulate error response from migration handler
     tokio::spawn(async move {
         while let Some(msg) = rx.recv().await {
@@ -324,7 +321,7 @@ async fn test_migrate_keys_target_peer_not_found() {
     let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Leader).await;
     let (_hwm, cache_manager) = Helper::cache_manager();
 
-    let tasks = MigrationBatch::new(
+    let tasks = PendingMigrationTask::new(
         ReplicationId::Key("non_existent_peer".to_string()),
         vec![migration_task_create_helper(0, 5)],
     );
@@ -347,7 +344,7 @@ async fn test_migrate_batch_send_migrate_batch_peer_message() {
     let replid = ReplicationId::Key("wheatever".to_string());
     let (buf, _id) = cluster_actor.test_add_peer(6909, Some(replid.clone()), true);
 
-    let batch = MigrationBatch::new(replid.clone(), vec![migration_task_create_helper(0, 5)]);
+    let batch = PendingMigrationTask::new(replid.clone(), vec![migration_task_create_helper(0, 5)]);
     let (tx, _rx) = Callback::create();
     // WHEN
     cluster_actor.migrate_batch(batch.clone(), &cache_manager, tx).await;
@@ -355,7 +352,7 @@ async fn test_migrate_batch_send_migrate_batch_peer_message() {
     // THEN
     assert_expected_queryio(
         &buf,
-        QueryIO::MigrateBatch(MigrateBatch { batch_id: batch.batch_id, cache_entries: vec![] }),
+        QueryIO::MigrateBatch(BatchEntries { batch_id: batch.batch_id, entries: vec![] }),
     )
     .await;
 }
@@ -369,16 +366,12 @@ async fn test_receive_batch_when_empty_cache_entries() {
     let (buf, _id) = cluster_actor.test_add_peer(6909, Some(replid.clone()), true);
 
     // WHEN
-    let batch = MigrateBatch { batch_id: "empty_test".into(), cache_entries: vec![] };
+    let batch = BatchEntries { batch_id: "empty_test".into(), entries: vec![] };
     cluster_actor.receive_batch(batch.clone(), &cache_manager, _id).await;
 
     // THEN - verify that no log index is incremented
     assert_eq!(cluster_actor.logger.last_log_index, 0);
-    assert_expected_queryio(
-        &buf,
-        QueryIO::MigrationBatchAck(MigrationBatchAck::with_success(batch.batch_id)),
-    )
-    .await;
+    assert_expected_queryio(&buf, QueryIO::MigrationBatchAck(batch.batch_id)).await;
 }
 
 #[tokio::test]
@@ -393,10 +386,9 @@ async fn test_receive_batch_when_consensus_is_required() {
     // add replica
     let (repl_buf, _) = cluster_actor.test_add_peer(6579, None, false);
 
-    let cache_entries = vec![CacheEntry::new("success_key3", "value2")];
+    let entries = vec![CacheEntry::new("success_key3", "value2")];
 
-    let batch =
-        MigrateBatch { batch_id: "success_test".into(), cache_entries: cache_entries.clone() };
+    let batch = BatchEntries { batch_id: "success_test".into(), entries: entries.clone() };
 
     // WHEN
     cluster_actor.receive_batch(batch, &cache_manager, ack_to.clone()).await;
@@ -409,7 +401,7 @@ async fn test_receive_batch_when_consensus_is_required() {
             from: cluster_actor.replication.self_identifier(),
             replid: cluster_actor.replication.replid.clone(),
             append_entries: vec![WriteOperation {
-                request: WriteRequest::MSet { entries: cache_entries.clone() },
+                request: WriteRequest::MSet { entries: entries.clone() },
                 log_index: 1,
                 term: 0,
                 session_req: None,
@@ -424,13 +416,13 @@ async fn test_receive_batch_when_consensus_is_required() {
 async fn test_unblock_write_reqs_if_done_when_no_pending_migrations() {
     // GIVEN
     let mut cluster_actor = setup_blocked_cluster_actor_with_requests(2).await;
-    cluster_actor.pending_migrations = Some(Default::default());
+    cluster_actor.migrations_in_progress = Some(Default::default());
 
     // WHEN
     cluster_actor.unblock_write_reqs_if_done();
 
     // THEN
-    assert!(cluster_actor.pending_migrations.is_none());
+    assert!(cluster_actor.migrations_in_progress.is_none());
 }
 
 #[tokio::test]
@@ -442,39 +434,39 @@ async fn test_unblock_write_reqs_if_done_when_migrations_still_pending() {
     let (callback, _migration_rx) = Callback::create();
     let batch_id = "test_batch".into();
     cluster_actor
-        .pending_migrations
+        .migrations_in_progress
         .as_mut()
         .unwrap()
-        .add_batch(batch_id, PendingMigrationBatch::new(callback, vec![]));
+        .store_batch(batch_id, QueuedKeysToMigrate { callback, keys: vec![] });
 
     // WHEN
     cluster_actor.unblock_write_reqs_if_done();
 
     // THEN - Nothing should change - requests should remain blocked
-    assert!(cluster_actor.pending_migrations.is_some());
-    assert_eq!(cluster_actor.pending_migrations.as_ref().unwrap().num_reqs(), 1);
-    assert_eq!(cluster_actor.pending_migrations.unwrap().num_batches(), 1);
+    assert!(cluster_actor.migrations_in_progress.is_some());
+    assert_eq!(cluster_actor.migrations_in_progress.as_ref().unwrap().num_reqs(), 1);
+    assert_eq!(cluster_actor.migrations_in_progress.unwrap().num_batches(), 1);
 }
 
 #[tokio::test]
 async fn test_unblock_write_reqs_if_done_when_not_blocked() {
     // GIVEN
     let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Leader).await;
-    cluster_actor.pending_migrations = Some(Default::default());
+    cluster_actor.migrations_in_progress = Some(Default::default());
 
     // WHEN
     cluster_actor.unblock_write_reqs_if_done();
 
     // THEN - Should not crash and pending_migrations should remain as empty
 
-    assert!(cluster_actor.pending_migrations.is_none());
+    assert!(cluster_actor.migrations_in_progress.is_none());
 }
 
 #[tokio::test]
 async fn test_unblock_write_reqs_if_done_multiple_times() {
     // GIVEN
     let mut cluster_actor = setup_blocked_cluster_actor_with_requests(1).await;
-    cluster_actor.pending_migrations = Some(Default::default());
+    cluster_actor.migrations_in_progress = Some(Default::default());
 
     // WHEN - call unblock multiple times
     cluster_actor.unblock_write_reqs_if_done();
@@ -483,7 +475,7 @@ async fn test_unblock_write_reqs_if_done_multiple_times() {
 
     // THEN - Should be idempotent
 
-    assert!(cluster_actor.pending_migrations.is_none());
+    assert!(cluster_actor.migrations_in_progress.is_none());
 }
 
 #[tokio::test]
@@ -514,19 +506,18 @@ async fn test_handle_migration_ack_batch_id_not_found() {
     let (callback, _callback_rx) = Callback::create();
 
     cluster_actor
-        .pending_migrations
+        .migrations_in_progress
         .as_mut()
         .unwrap()
-        .add_batch("existing_batch".into(), PendingMigrationBatch::new(callback, vec![]));
+        .store_batch("existing_batch".into(), QueuedKeysToMigrate { callback, keys: vec![] });
 
     let non_existent_batch_id = "non_existent_batch".into();
-    let ack = MigrationBatchAck { batch_id: non_existent_batch_id };
 
     // WHEN
-    cluster_actor.handle_migration_ack(ack, &_cache_manager).await;
+    cluster_actor.handle_migration_ack(non_existent_batch_id, &_cache_manager).await;
 
     // THEN
-    assert_eq!(cluster_actor.pending_migrations.as_ref().unwrap().num_batches(), 1); // Verify existing batch is still there
+    assert_eq!(cluster_actor.migrations_in_progress.as_ref().unwrap().num_batches(), 1); // Verify existing batch is still there
 }
 
 #[tokio::test]
@@ -559,22 +550,19 @@ async fn test_handle_migration_ack_success_case_with_pending_reqs_and_migration(
 
     // Add the last pending migration with the test keys
     let (callback, callback_rx) = Callback::create();
-    let batch_id = "last_batch".to_string();
+    let batch_id = BatchId("last_batch".to_string());
     cluster_actor
-        .pending_migrations
+        .migrations_in_progress
         .as_mut()
         .unwrap()
-        .add_batch(batch_id.clone(), PendingMigrationBatch::new(callback, test_keys));
-
-    let ack = MigrationBatchAck { batch_id };
+        .store_batch(batch_id.clone(), QueuedKeysToMigrate { callback, keys: test_keys });
 
     // Verify initially blocked
-
-    assert_eq!(cluster_actor.pending_migrations.as_ref().unwrap().num_reqs(), 2);
-    assert_eq!(cluster_actor.pending_migrations.as_ref().unwrap().num_batches(), 1);
+    assert_eq!(cluster_actor.migrations_in_progress.as_ref().unwrap().num_reqs(), 2);
+    assert_eq!(cluster_actor.migrations_in_progress.as_ref().unwrap().num_batches(), 1);
 
     // WHEN
-    cluster_actor.handle_migration_ack(ack, &cache_manager).await;
+    cluster_actor.handle_migration_ack(batch_id, &cache_manager).await;
 
     // THEN
 
@@ -624,5 +612,5 @@ async fn test_maybe_update_hashring_replica_only_updates_ring() {
     assert_ne!(cluster_actor.hash_ring.last_modified, original_modified);
 
     // But no migration tasks should be initiated (no pending requests/migrations)
-    assert!(cluster_actor.pending_migrations.is_none());
+    assert!(cluster_actor.migrations_in_progress.is_none());
 }

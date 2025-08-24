@@ -15,7 +15,7 @@ async fn test_no_migration_when_rings_identical() {
     let ring = ring.set_partitions(vec![(replid_and_nodeid(6379))]).unwrap();
 
     let keys = vec!["key1".to_string(), "key2".to_string()];
-    let tasks = ring.create_migration_tasks(&ring, keys);
+    let tasks = ring.create_migration_chunks(&ring, keys);
 
     assert!(tasks.is_empty(), "Identical rings should require no migration");
 }
@@ -30,7 +30,7 @@ async fn test_empty_keys_migration_plan() {
     let new_ring = new_ring.set_partitions(vec![replid_and_nodeid(6380)]).unwrap();
 
     let empty_keys: Vec<String> = Vec::new();
-    let tasks = old_ring.create_migration_tasks(&new_ring, empty_keys);
+    let tasks = old_ring.create_migration_chunks(&new_ring, empty_keys);
 
     // Should return empty migration tasks since no keys to migrate
     assert!(tasks.is_empty(), "Empty keys should result in no migration tasks");
@@ -80,7 +80,7 @@ async fn test_single_node_ownership_change() {
     expected_migrations.values_mut().for_each(|keys| keys.sort()); // Sort for consistent comparison
 
     // Create and collect actual migration tasks
-    let migration_plans = old_ring.create_migration_tasks(&new_ring, test_keys.clone());
+    let migration_plans = old_ring.create_migration_chunks(&new_ring, test_keys.clone());
     let mut actual_migrations = HashMap::<ReplicationId, Vec<String>>::new();
     for (replid, tasks) in &migration_plans {
         actual_migrations
@@ -174,7 +174,7 @@ async fn test_multiple_ownership_changes() {
     expected_migrations.values_mut().for_each(|keys| keys.sort()); // Sort for consistent comparison
 
     // Create and collect actual migration tasks
-    let migration_plans = old_ring.create_migration_tasks(&new_ring, test_keys.clone());
+    let migration_plans = old_ring.create_migration_chunks(&new_ring, test_keys.clone());
     let mut actual_migrations = HashMap::<ReplicationId, Vec<String>>::new();
     for (replid, tasks) in &migration_plans {
         actual_migrations

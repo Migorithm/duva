@@ -4,14 +4,13 @@
 /// even distribution. Each physical node is represented by multiple virtual
 /// nodes on the ring, determined by `vnode_num`.
 use crate::ReplicationId;
+use crate::domains::peers::command::MigrationChunk;
 use crate::prelude::PeerIdentifier;
 use std::collections::{BTreeMap, HashMap};
 use std::ops::Deref;
 use std::rc::Rc;
 mod hash_func;
-mod migration_task;
 pub(crate) use hash_func::fnv_1a_hash;
-pub(crate) use migration_task::*;
 
 #[cfg(test)]
 pub(crate) mod tests;
@@ -92,12 +91,12 @@ impl HashRing {
             .map(|(_, node_id)| node_id.as_ref())
     }
 
-    pub(crate) fn create_migration_tasks(
+    pub(crate) fn create_migration_chunks(
         &self,
         new_ring: &HashRing,
         keys: Vec<String>,
-    ) -> BTreeMap<ReplicationId, Vec<MigrationTask>> {
-        let mut migration_tasks: BTreeMap<ReplicationId, Vec<MigrationTask>> = BTreeMap::new();
+    ) -> BTreeMap<ReplicationId, Vec<MigrationChunk>> {
+        let mut migration_tasks: BTreeMap<ReplicationId, Vec<MigrationChunk>> = BTreeMap::new();
 
         // Get all token positions from both rings as partition boundaries
         let mut tokens: Vec<u64> =
@@ -123,7 +122,7 @@ impl HashRing {
                     migration_tasks
                         .entry(new_owner.clone())
                         .or_default()
-                        .push(MigrationTask { range: (start, end), keys_to_migrate });
+                        .push(MigrationChunk { range: (start, end), keys_to_migrate });
                 }
             }
         }

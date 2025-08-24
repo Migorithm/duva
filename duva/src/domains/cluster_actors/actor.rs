@@ -14,10 +14,13 @@ use super::*;
 use crate::domains::QueryIO;
 use crate::domains::TAsyncReadWrite;
 use crate::domains::caches::cache_manager::CacheManager;
+
 use crate::domains::cluster_actors::consensus::election::ElectionVoting;
-use crate::domains::cluster_actors::hash_ring::MigrationBatch;
-use crate::domains::cluster_actors::hash_ring::PendingMigration;
-use crate::domains::cluster_actors::hash_ring::PendingMigrationBatch;
+use crate::domains::peers::command::BatchId;
+use crate::domains::peers::command::InProgressMigration;
+use crate::domains::peers::command::PendingMigrationTask;
+use crate::domains::peers::command::QueuedKeysToMigrate;
+
 use crate::domains::cluster_actors::queue::ClusterActorQueue;
 use crate::domains::cluster_actors::queue::ClusterActorReceiver;
 use crate::domains::cluster_actors::queue::ClusterActorSender;
@@ -29,8 +32,8 @@ use crate::domains::operation_logs::logger::ReplicatedLogs;
 use crate::domains::peers::command::BannedPeer;
 use crate::domains::peers::command::ElectionVote;
 use crate::domains::peers::command::HeartBeat;
-use crate::domains::peers::command::MigrateBatch;
-use crate::domains::peers::command::MigrationBatchAck;
+
+use crate::domains::peers::command::BatchEntries;
 use crate::domains::peers::command::RejectionReason;
 use crate::domains::peers::command::ReplicationAck;
 use crate::domains::peers::command::RequestVote;
@@ -81,7 +84,7 @@ pub struct ClusterActor<T> {
     pub(crate) client_sessions: ClientSessions,
     pub(crate) logger: ReplicatedLogs<T>,
     pub(crate) hash_ring: HashRing,
-    pending_migrations: Option<PendingMigration>,
+    migrations_in_progress: Option<InProgressMigration>,
     cluster_join_sync: ClusterJoinSync,
 }
 
@@ -153,7 +156,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             consensus_tracker: LogConsensusTracker::default(),
             client_sessions: ClientSessions::default(),
             cluster_join_sync: ClusterJoinSync::default(),
-            pending_migrations: None,
+            migrations_in_progress: None,
         }
     }
 
@@ -328,7 +331,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             return;
         };
 
-        if let Some(pending_mig) = self.pending_migrations.as_mut() {
+        if let Some(pending_mig) = self.migrations_in_progress.as_mut() {
             pending_mig.add_req(req);
             return;
         }
@@ -674,8 +677,8 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
     // ! BLOCK subsequent requests until rebalance is done
     fn block_write_reqs(&mut self) {
-        if self.pending_migrations.is_none() {
-            self.pending_migrations = Some(Default::default());
+        if self.migrations_in_progress.is_none() {
+            self.migrations_in_progress = Some(Default::default());
         }
     }
 
@@ -1142,28 +1145,28 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         // Leader-only migration coordination logic below
         // Keep the old ring to compare with new ring for migration planning
         let keys = cache_manager.route_keys(None).await;
-        let migration_plans = self.hash_ring.create_migration_tasks(&new_ring, keys);
+        let chunks_map = self.hash_ring.create_migration_chunks(&new_ring, keys);
 
-        if migration_plans.is_empty() {
-            info!("No migration tasks to schedule");
+        if chunks_map.is_empty() {
+            info!("No migration chunks to schedule");
             self.hash_ring = *new_ring;
             let _ = self.node_change_broadcast.send(self.get_topology());
             return;
         }
 
-        info!("Leader scheduling {} migration plan(s)", migration_plans.len());
+        info!("Scheduling {} migration chunks(s)", chunks_map.len());
         self.block_write_reqs();
 
         let batch_handles = FuturesUnordered::new();
-        for (target_replid, mut migration_tasks) in migration_plans {
-            while !migration_tasks.is_empty() {
+        for (target_replid, mut migration_chunks) in chunks_map {
+            while !migration_chunks.is_empty() {
                 let mut num = 0;
                 let mut batch_to_migrate = Vec::new();
 
                 // Create a batch of tasks up to a certain size.
-                while let Some(task) = migration_tasks.pop() {
-                    num += task.key_len();
-                    batch_to_migrate.push(task);
+                while let Some(chunk) = migration_chunks.pop() {
+                    num += chunk.keys_to_migrate.len();
+                    batch_to_migrate.push(chunk);
                     if num > 100 {
                         break;
                     }
@@ -1171,7 +1174,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
                 // Spawn each batch as a separate task for parallel execution
                 batch_handles.push(tokio::spawn(Self::schedule_migration_in_batch(
-                    MigrationBatch::new(target_replid.clone(), batch_to_migrate),
+                    PendingMigrationTask::new(target_replid.clone(), batch_to_migrate),
                     self.self_handler.clone(),
                 )));
             }
@@ -1192,7 +1195,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     }
 
     async fn schedule_migration_in_batch(
-        batch: MigrationBatch,
+        batch: PendingMigrationTask,
         handler: ClusterActorSender,
     ) -> anyhow::Result<()> {
         let (tx, rx) = Callback::create();
@@ -1202,25 +1205,25 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
     pub(crate) async fn migrate_batch(
         &mut self,
-        target: MigrationBatch,
+        pending_task: PendingMigrationTask,
         cache_manager: &CacheManager,
         callback: impl Into<Callback<anyhow::Result<()>>>,
     ) {
         let callback = callback.into();
         //  Find target peer based on replication ID
-        let Some(peer_id) = self.peerid_by_replid(&target.target_repl).cloned() else {
+        let Some(peer_id) = self.peerid_by_replid(&pending_task.target_repl).cloned() else {
             callback.send(res_err!("Target peer not found for replication ID"));
             return;
         };
 
         // Retrieve key-value data from cache
-        let keys = target
-            .tasks
+        let keys = pending_task
+            .chunks
             .iter()
             .flat_map(|task| task.keys_to_migrate.iter().cloned())
             .collect::<Vec<_>>();
 
-        let cache_entries = cache_manager
+        let entries = cache_manager
             .route_mget(keys.clone())
             .await
             .into_iter()
@@ -1233,33 +1236,33 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             return;
         };
 
-        if let Some(p) = self.pending_migrations.as_mut() {
-            p.add_batch(target.batch_id.clone(), PendingMigrationBatch::new(callback, keys))
+        if let Some(p) = self.migrations_in_progress.as_mut() {
+            p.store_batch(pending_task.batch_id.clone(), QueuedKeysToMigrate { callback, keys })
         }
 
-        let _ = target_peer.send(MigrateBatch { batch_id: target.batch_id, cache_entries }).await;
+        let _ = target_peer.send(BatchEntries { batch_id: pending_task.batch_id, entries }).await;
     }
 
     pub(crate) async fn receive_batch(
         &mut self,
-        migrate_batch: MigrateBatch,
+        migrate_batch: BatchEntries,
         cache_manager: &CacheManager,
         from: PeerIdentifier,
     ) {
         // If cache entries are empty, skip consensus and directly send success ack
-        if migrate_batch.cache_entries.is_empty() {
+        if migrate_batch.entries.is_empty() {
             let Some(peer) = self.members.get_mut(&from) else {
                 warn!("No Member Found");
                 return;
             };
-            let _ = peer.send(MigrationBatchAck::with_success(migrate_batch.batch_id)).await;
+            let _ = peer.send(QueryIO::MigrationBatchAck(migrate_batch.batch_id)).await;
             return;
         }
 
         let (callback, rx) = Callback::create();
 
         self.req_consensus(ConsensusRequest::new(
-            WriteRequest::MSet { entries: migrate_batch.cache_entries.clone() },
+            WriteRequest::MSet { entries: migrate_batch.entries.clone() },
             callback,
             None,
         ))
@@ -1271,7 +1274,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             let cache_manager = cache_manager.clone();
             async move {
                 rx.recv().await;
-                let _ = cache_manager.route_mset(migrate_batch.cache_entries.clone()).await; // reflect state change
+                let _ = cache_manager.route_mset(migrate_batch.entries.clone()).await; // reflect state change
                 let _ = handler
                     .send(SchedulerMessage::SendBatchAck {
                         batch_id: migrate_batch.batch_id,
@@ -1284,16 +1287,16 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
     pub(crate) async fn handle_migration_ack(
         &mut self,
-        ack: MigrationBatchAck,
+        batch_id: BatchId,
         cache_manager: &CacheManager,
     ) {
-        let Some(pending) = self.pending_migrations.as_mut() else {
+        let Some(pending) = self.migrations_in_progress.as_mut() else {
             warn!("No Pending migration map available");
             return;
         };
 
-        let Some(pending_migration_batch) = pending.pop_batch(&ack.batch_id) else {
-            err!("Batch ID {:?} not found in pending migrations", ack.batch_id);
+        let Some(pending_migration_batch) = pending.pop_batch(&batch_id) else {
+            err!("Batch ID {:?} not found in pending migrations", batch_id);
             return;
         };
 
@@ -1321,14 +1324,15 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
     // New hash ring stored at this point with the current shard leaders
     pub(crate) fn unblock_write_reqs_if_done(&mut self) {
-        let migrations_done = self.pending_migrations.as_ref().is_none_or(|p| p.num_batches() == 0);
+        let migrations_done =
+            self.migrations_in_progress.as_ref().is_none_or(|p| p.num_batches() == 0);
 
         if migrations_done {
             if let Some(new_ring) = self.hash_ring.set_partitions(self.shard_leaders()) {
                 self.hash_ring = new_ring;
             }
             let _ = self.node_change_broadcast.send(self.get_topology());
-            if let Some(pending_mig) = self.pending_migrations.take() {
+            if let Some(pending_mig) = self.migrations_in_progress.take() {
                 info!("All migrations complete, processing pending requests.");
 
                 let mut pending_reqs = pending_mig.pending_requests();
@@ -1351,11 +1355,11 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         }
     }
 
-    pub(crate) async fn send_batch_ack(&mut self, batch_id: String, to: PeerIdentifier) {
+    pub(crate) async fn send_batch_ack(&mut self, batch_id: BatchId, to: PeerIdentifier) {
         let Some(peer) = self.members.get_mut(&to) else {
             return;
         };
-        let _ = peer.send(MigrationBatchAck::with_success(batch_id)).await;
+        let _ = peer.send(QueryIO::MigrationBatchAck(batch_id)).await;
     }
 
     async fn update_cluster_members(

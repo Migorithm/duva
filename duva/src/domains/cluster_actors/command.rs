@@ -1,9 +1,9 @@
 use crate::ReplicationState;
-use crate::domains::cluster_actors::hash_ring::MigrationBatch;
+
 use crate::domains::cluster_actors::replication::{ReplicationId, ReplicationRole};
 use crate::domains::cluster_actors::topology::Topology;
 use crate::domains::operation_logs::WriteRequest;
-use crate::domains::peers::command::PeerCommand;
+use crate::domains::peers::command::{BatchId, PeerCommand, PendingMigrationTask};
 use crate::domains::peers::connections::connection_types::{ReadConnected, WriteConnected};
 use crate::domains::peers::peer::{Peer, PeerState};
 use crate::prelude::PeerIdentifier;
@@ -24,9 +24,9 @@ pub enum SchedulerMessage {
     SendAppendEntriesRPC,
     StartLeaderElection,
     RebalanceRequest { request_to: PeerIdentifier, lazy_option: LazyOption },
-    ScheduleMigrationBatch(MigrationBatch, Callback<anyhow::Result<()>>),
+    ScheduleMigrationBatch(PendingMigrationTask, Callback<anyhow::Result<()>>),
     TryUnblockWriteReqs,
-    SendBatchAck { batch_id: String, to: PeerIdentifier },
+    SendBatchAck { batch_id: BatchId, to: PeerIdentifier },
 }
 
 impl From<SchedulerMessage> for ClusterCommand {

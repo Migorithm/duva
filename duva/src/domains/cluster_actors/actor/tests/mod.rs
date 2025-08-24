@@ -18,8 +18,8 @@ use crate::domains::cluster_actors::replication::ReplicationRole;
 use crate::domains::operation_logs::WriteOperation;
 use crate::domains::operation_logs::WriteRequest;
 use crate::domains::operation_logs::logger::ReplicatedLogs;
+use crate::domains::peers::command::HeartBeat;
 use crate::domains::peers::command::ReplicationAck;
-use crate::domains::peers::command::{HeartBeat, MigrateBatch};
 use crate::domains::peers::connections::connection_types::ReadConnected;
 use crate::domains::peers::connections::inbound::stream::InboundStream;
 use crate::domains::peers::peer::PeerState;
@@ -227,7 +227,7 @@ pub(crate) async fn setup_blocked_cluster_actor_with_requests(
     for _ in 0..num_requests {
         let (callback, _rx) = Callback::create();
         cluster_actor
-            .pending_migrations
+            .migrations_in_progress
             .as_mut()
             .unwrap()
             .add_req(Helper::consensus_request(callback, None));
