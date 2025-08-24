@@ -1,11 +1,8 @@
+use super::*;
 use crate::domains::QueryIO;
 use crate::domains::caches::cache_objects::{CacheValue, TypedValue};
-
 use crate::domains::cluster_actors::hash_ring::{HashRing, tests::migration_task_create_helper};
-
 use std::time::Duration;
-
-use super::*;
 
 // ! When LazyOption is Lazy, rebalance request should not block
 #[tokio::test]
@@ -440,7 +437,7 @@ async fn test_unblock_write_reqs_if_done_when_migrations_still_pending() {
         .pending_migrations
         .as_mut()
         .unwrap()
-        .add_batch(batch_id, QueuedMigrationBatch::new(callback, vec![]));
+        .add_batch(batch_id, QueuedMigrationBatch { callback, keys: vec![] });
 
     // WHEN
     cluster_actor.unblock_write_reqs_if_done();
@@ -512,7 +509,7 @@ async fn test_handle_migration_ack_batch_id_not_found() {
         .pending_migrations
         .as_mut()
         .unwrap()
-        .add_batch("existing_batch".into(), QueuedMigrationBatch::new(callback, vec![]));
+        .add_batch("existing_batch".into(), QueuedMigrationBatch { callback, keys: vec![] });
 
     let non_existent_batch_id = "non_existent_batch".into();
 
@@ -558,7 +555,7 @@ async fn test_handle_migration_ack_success_case_with_pending_reqs_and_migration(
         .pending_migrations
         .as_mut()
         .unwrap()
-        .add_batch(batch_id.clone(), QueuedMigrationBatch::new(callback, test_keys));
+        .add_batch(batch_id.clone(), QueuedMigrationBatch { callback, keys: test_keys });
 
     // Verify initially blocked
     assert_eq!(cluster_actor.pending_migrations.as_ref().unwrap().num_reqs(), 2);

@@ -228,15 +228,6 @@ mod peer_messages {
         pub(crate) keys: Vec<String>,
     }
 
-    impl QueuedMigrationBatch {
-        pub(crate) fn new(
-            callback: impl Into<Callback<anyhow::Result<()>>>,
-            keys: Vec<String>,
-        ) -> Self {
-            Self { callback: callback.into(), keys }
-        }
-    }
-
     #[derive(Debug, Default)]
     pub(crate) struct InProgressMigration {
         requests: VecDeque<ConsensusRequest>,

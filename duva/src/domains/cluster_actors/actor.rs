@@ -1237,7 +1237,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         };
 
         if let Some(p) = self.pending_migrations.as_mut() {
-            p.add_batch(target.batch_id.clone(), QueuedMigrationBatch::new(callback, keys))
+            p.add_batch(target.batch_id.clone(), QueuedMigrationBatch { callback, keys })
         }
 
         let _ = target_peer.send(BatchEntries::create_batch(target.batch_id, cache_entries)).await;
