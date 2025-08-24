@@ -191,7 +191,7 @@ async fn test_start_rebalance_schedules_migration_batches() {
     .expect("Should receive ScheduleMigrationBatch within timeout");
 
     assert_eq!(batch.target_repl_id(), &target_repl_id);
-    assert!(!batch.data.chunks.is_empty());
+    assert!(!batch.chunks.is_empty());
 
     // 3. Verify pending_requests is set (synchronous part)
     assert!(cluster_actor.pending_migrations.is_some());
@@ -263,7 +263,7 @@ async fn test_send_migrate_and_wait_happypath() {
     // Create dummy task
     let target_replid = ReplicationId::Key("my_test_key".to_string());
     let batch_to_migrate = vec![migration_task_create_helper(0, 100)];
-    let batch = MigrateBatch::new(target_replid.clone(), batch_to_migrate.clone());
+    let batch = PendingMigrationTask::new(target_replid.clone(), batch_to_migrate.clone());
 
     // ! spawn actor receiver in the background
     let task = tokio::spawn(async move {
@@ -293,7 +293,7 @@ async fn test_send_migrate_and_wait_callback_error() {
 
     let target_replid = ReplicationId::Key("error_response_test".to_string());
     let batch_to_migrate = vec![migration_task_create_helper(0, 10)];
-    let batch = MigrateBatch::new(target_replid.clone(), batch_to_migrate.clone());
+    let batch = PendingMigrationTask::new(target_replid.clone(), batch_to_migrate.clone());
     // WHEN - simulate error response from migration handler
     tokio::spawn(async move {
         while let Some(msg) = rx.recv().await {
@@ -324,7 +324,7 @@ async fn test_migrate_keys_target_peer_not_found() {
     let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Leader).await;
     let (_hwm, cache_manager) = Helper::cache_manager();
 
-    let tasks = MigrateBatch::new(
+    let tasks = PendingMigrationTask::new(
         ReplicationId::Key("non_existent_peer".to_string()),
         vec![migration_task_create_helper(0, 5)],
     );
@@ -347,7 +347,7 @@ async fn test_migrate_batch_send_migrate_batch_peer_message() {
     let replid = ReplicationId::Key("wheatever".to_string());
     let (buf, _id) = cluster_actor.test_add_peer(6909, Some(replid.clone()), true);
 
-    let batch = MigrateBatch::new(replid.clone(), vec![migration_task_create_helper(0, 5)]);
+    let batch = PendingMigrationTask::new(replid.clone(), vec![migration_task_create_helper(0, 5)]);
     let (tx, _rx) = Callback::create();
     // WHEN
     cluster_actor.migrate_batch(batch.clone(), &cache_manager, tx).await;
@@ -355,7 +355,7 @@ async fn test_migrate_batch_send_migrate_batch_peer_message() {
     // THEN
     assert_expected_queryio(
         &buf,
-        QueryIO::MigrateBatch(MigrateBatch::create_batch(batch.batch_id, vec![])),
+        QueryIO::MigrateBatch(BatchEntries::create_batch(batch.batch_id, vec![])),
     )
     .await;
 }
@@ -369,7 +369,7 @@ async fn test_receive_batch_when_empty_cache_entries() {
     let (buf, _id) = cluster_actor.test_add_peer(6909, Some(replid.clone()), true);
 
     // WHEN
-    let batch = MigrateBatch::create_batch("empty_test".into(), vec![]);
+    let batch = BatchEntries::create_batch("empty_test".into(), vec![]);
     cluster_actor.receive_batch(batch.clone(), &cache_manager, _id).await;
 
     // THEN - verify that no log index is incremented
@@ -391,7 +391,7 @@ async fn test_receive_batch_when_consensus_is_required() {
 
     let cache_entries = vec![CacheEntry::new("success_key3", "value2")];
 
-    let batch = MigrateBatch::create_batch("success_test".into(), cache_entries.clone());
+    let batch = BatchEntries::create_batch("success_test".into(), cache_entries.clone());
 
     // WHEN
     cluster_actor.receive_batch(batch, &cache_manager, ack_to.clone()).await;

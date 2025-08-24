@@ -14,7 +14,7 @@ use super::*;
 use crate::domains::QueryIO;
 use crate::domains::TAsyncReadWrite;
 use crate::domains::caches::cache_manager::CacheManager;
-use crate::domains::caches::cache_objects::CacheEntry;
+
 use crate::domains::cluster_actors::consensus::election::ElectionVoting;
 use crate::domains::peers::command::BatchId;
 use crate::domains::peers::command::InProgressMigration;
@@ -33,7 +33,7 @@ use crate::domains::peers::command::BannedPeer;
 use crate::domains::peers::command::ElectionVote;
 use crate::domains::peers::command::HeartBeat;
 
-use crate::domains::peers::command::MigrateBatch;
+use crate::domains::peers::command::BatchEntries;
 use crate::domains::peers::command::RejectionReason;
 use crate::domains::peers::command::ReplicationAck;
 use crate::domains::peers::command::RequestVote;
@@ -1174,7 +1174,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
                 // Spawn each batch as a separate task for parallel execution
                 batch_handles.push(tokio::spawn(Self::schedule_migration_in_batch(
-                    MigrateBatch::new(target_replid.clone(), batch_to_migrate),
+                    PendingMigrationTask::new(target_replid.clone(), batch_to_migrate),
                     self.self_handler.clone(),
                 )));
             }
@@ -1195,7 +1195,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     }
 
     async fn schedule_migration_in_batch(
-        batch: MigrateBatch<PendingMigrationTask>,
+        batch: PendingMigrationTask,
         handler: ClusterActorSender,
     ) -> anyhow::Result<()> {
         let (tx, rx) = Callback::create();
@@ -1205,7 +1205,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
     pub(crate) async fn migrate_batch(
         &mut self,
-        target: MigrateBatch<PendingMigrationTask>,
+        target: PendingMigrationTask,
         cache_manager: &CacheManager,
         callback: impl Into<Callback<anyhow::Result<()>>>,
     ) {
@@ -1218,7 +1218,6 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
         // Retrieve key-value data from cache
         let keys = target
-            .data
             .chunks
             .iter()
             .flat_map(|task| task.keys_to_migrate.iter().cloned())
@@ -1241,12 +1240,12 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             p.add_batch(target.batch_id.clone(), QueuedMigrationBatch::new(callback, keys))
         }
 
-        let _ = target_peer.send(MigrateBatch::create_batch(target.batch_id, cache_entries)).await;
+        let _ = target_peer.send(BatchEntries::create_batch(target.batch_id, cache_entries)).await;
     }
 
     pub(crate) async fn receive_batch(
         &mut self,
-        migrate_batch: MigrateBatch<Vec<CacheEntry>>,
+        migrate_batch: BatchEntries,
         cache_manager: &CacheManager,
         from: PeerIdentifier,
     ) {

@@ -1,9 +1,9 @@
-use crate::domains::caches::cache_objects::{CacheEntry, CacheValue, TypedValue};
+use crate::domains::caches::cache_objects::{CacheValue, TypedValue};
 use crate::domains::cluster_actors::replication::{ReplicationId, ReplicationRole};
 use crate::domains::cluster_actors::topology::Topology;
 use crate::domains::operation_logs::WriteOperation;
 use crate::domains::peers::command::{
-    BatchId, ElectionVote, HeartBeat, MigrateBatch, ReplicationAck, RequestVote,
+    BatchEntries, BatchId, ElectionVote, HeartBeat, ReplicationAck, RequestVote,
 };
 use crate::presentation::clients::request::ClientAction;
 use anyhow::{Context, Result, anyhow};
@@ -63,7 +63,7 @@ pub enum QueryIO {
 
     TopologyChange(Topology),
     StartRebalance,
-    MigrateBatch(MigrateBatch<Vec<CacheEntry>>),
+    MigrateBatch(BatchEntries),
     MigrationBatchAck(BatchId),
 }
 
@@ -280,7 +280,7 @@ pub fn deserialize(buffer: impl Into<Bytes>) -> Result<(QueryIO, usize)> {
         | REQUEST_VOTE_REPLY_PREFIX => parse_custom_type::<ElectionVote>(buffer),
         | TOPOLOGY_CHANGE_PREFIX => parse_custom_type::<Topology>(buffer),
         | START_REBALANCE_PREFIX => Ok((QueryIO::StartRebalance, 1)),
-        | MIGRATE_BATCH_PREFIX => parse_custom_type::<MigrateBatch<Vec<CacheEntry>>>(buffer),
+        | MIGRATE_BATCH_PREFIX => parse_custom_type::<BatchEntries>(buffer),
         | MIGRATION_BATCH_ACK_PREFIX => parse_custom_type::<BatchId>(buffer),
 
         | _ => Err(anyhow::anyhow!("Not a known value type {:?}", buffer)),
@@ -457,8 +457,8 @@ impl From<HeartBeat> for QueryIO {
         QueryIO::ClusterHeartBeat(value)
     }
 }
-impl From<MigrateBatch<Vec<CacheEntry>>> for QueryIO {
-    fn from(value: MigrateBatch<Vec<CacheEntry>>) -> Self {
+impl From<BatchEntries> for QueryIO {
+    fn from(value: BatchEntries) -> Self {
         QueryIO::MigrateBatch(value)
     }
 }
@@ -872,7 +872,7 @@ mod test {
     #[test]
     fn test_migrate_batch_serde() {
         // GIVEN
-        let migrate_batch = MigrateBatch::create_batch(
+        let migrate_batch = BatchEntries::create_batch(
             BatchId(Uuid::now_v7().to_string()),
             vec![CacheEntry::new("foo", "bar")],
         );

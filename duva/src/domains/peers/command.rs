@@ -1,6 +1,6 @@
 use crate::{
     ReplicationState,
-    domains::{QueryIO, caches::cache_objects::CacheEntry, cluster_actors::ClusterCommand},
+    domains::{QueryIO, cluster_actors::ClusterCommand},
     prelude::PeerIdentifier,
 };
 
@@ -20,7 +20,7 @@ pub(crate) enum PeerMessage {
     RequestVote(RequestVote),
     ElectionVoteReply(ElectionVote),
     StartRebalance,
-    ReceiveBatch(MigrateBatch<Vec<CacheEntry>>),
+    ReceiveBatch(BatchEntries),
     MigrationBatchAck(BatchId),
 }
 
@@ -183,33 +183,31 @@ mod peer_messages {
     }
 
     #[derive(Debug, Clone, PartialEq, Eq, bincode::Encode, bincode::Decode)]
-    pub struct MigrateBatch<T = ()> {
+    pub struct BatchEntries {
         pub(crate) batch_id: BatchId,
-        pub(crate) data: T,
+        pub(crate) data: Vec<CacheEntry>,
     }
 
-    impl MigrateBatch<Vec<CacheEntry>> {
+    impl BatchEntries {
         pub(crate) fn create_batch(batch_id: BatchId, cache_entries: Vec<CacheEntry>) -> Self {
             Self { batch_id, data: cache_entries }
         }
     }
 
-    impl MigrateBatch<PendingMigrationTask> {
-        pub(crate) fn new(target_repl: ReplicationId, tasks: Vec<MigrationChunk>) -> Self {
-            Self {
-                batch_id: BatchId(uuid::Uuid::now_v7().to_string()),
-                data: PendingMigrationTask { target_repl, chunks: tasks },
-            }
-        }
-        pub(crate) fn target_repl_id(&self) -> &ReplicationId {
-            &self.data.target_repl
-        }
-    }
-
     #[derive(Debug, Clone, PartialEq, Eq)]
     pub(crate) struct PendingMigrationTask {
+        pub(crate) batch_id: BatchId,
         pub(crate) target_repl: ReplicationId,
         pub(crate) chunks: Vec<MigrationChunk>,
+    }
+
+    impl PendingMigrationTask {
+        pub(crate) fn new(target_repl: ReplicationId, tasks: Vec<MigrationChunk>) -> Self {
+            Self { batch_id: BatchId(uuid::Uuid::now_v7().to_string()), target_repl, chunks: tasks }
+        }
+        pub(crate) fn target_repl_id(&self) -> &ReplicationId {
+            &self.target_repl
+        }
     }
 
     #[derive(Debug, Clone, PartialEq, Eq)]
