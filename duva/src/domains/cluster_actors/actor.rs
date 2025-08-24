@@ -16,6 +16,7 @@ use crate::domains::TAsyncReadWrite;
 use crate::domains::caches::cache_manager::CacheManager;
 use crate::domains::caches::cache_objects::CacheEntry;
 use crate::domains::cluster_actors::consensus::election::ElectionVoting;
+use crate::domains::peers::command::BatchId;
 use crate::domains::peers::command::InProgressMigration;
 use crate::domains::peers::command::PendingMigrationTask;
 use crate::domains::peers::command::QueuedMigrationBatch;
@@ -1255,7 +1256,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
                 warn!("No Member Found");
                 return;
             };
-            let _ = peer.send(MigrateBatch::with_success(migrate_batch.batch_id)).await;
+            let _ = peer.send(QueryIO::MigrationBatchAck(migrate_batch.batch_id)).await;
             return;
         }
 
@@ -1287,7 +1288,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
     pub(crate) async fn handle_migration_ack(
         &mut self,
-        ack: MigrateBatch,
+        batch_id: BatchId,
         cache_manager: &CacheManager,
     ) {
         let Some(pending) = self.pending_migrations.as_mut() else {
@@ -1295,8 +1296,8 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             return;
         };
 
-        let Some(pending_migration_batch) = pending.pop_batch(&ack.batch_id) else {
-            err!("Batch ID {:?} not found in pending migrations", ack.batch_id);
+        let Some(pending_migration_batch) = pending.pop_batch(&batch_id) else {
+            err!("Batch ID {:?} not found in pending migrations", batch_id);
             return;
         };
 
@@ -1354,11 +1355,11 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         }
     }
 
-    pub(crate) async fn send_batch_ack(&mut self, batch_id: String, to: PeerIdentifier) {
+    pub(crate) async fn send_batch_ack(&mut self, batch_id: BatchId, to: PeerIdentifier) {
         let Some(peer) = self.members.get_mut(&to) else {
             return;
         };
-        let _ = peer.send(MigrateBatch::with_success(batch_id)).await;
+        let _ = peer.send(QueryIO::MigrationBatchAck(batch_id)).await;
     }
 
     async fn update_cluster_members(

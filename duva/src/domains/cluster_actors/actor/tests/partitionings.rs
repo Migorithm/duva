@@ -374,11 +374,7 @@ async fn test_receive_batch_when_empty_cache_entries() {
 
     // THEN - verify that no log index is incremented
     assert_eq!(cluster_actor.logger.last_log_index, 0);
-    assert_expected_queryio(
-        &buf,
-        QueryIO::MigrationBatchAck(MigrateBatch::with_success(batch.batch_id)),
-    )
-    .await;
+    assert_expected_queryio(&buf, QueryIO::MigrationBatchAck(batch.batch_id)).await;
 }
 
 #[tokio::test]
@@ -519,10 +515,9 @@ async fn test_handle_migration_ack_batch_id_not_found() {
         .add_batch("existing_batch".into(), QueuedMigrationBatch::new(callback, vec![]));
 
     let non_existent_batch_id = "non_existent_batch".into();
-    let ack = MigrateBatch { batch_id: non_existent_batch_id, data: () };
 
     // WHEN
-    cluster_actor.handle_migration_ack(ack, &_cache_manager).await;
+    cluster_actor.handle_migration_ack(non_existent_batch_id, &_cache_manager).await;
 
     // THEN
     assert_eq!(cluster_actor.pending_migrations.as_ref().unwrap().num_batches(), 1); // Verify existing batch is still there
@@ -558,22 +553,19 @@ async fn test_handle_migration_ack_success_case_with_pending_reqs_and_migration(
 
     // Add the last pending migration with the test keys
     let (callback, callback_rx) = Callback::create();
-    let batch_id = "last_batch".to_string();
+    let batch_id = BatchId("last_batch".to_string());
     cluster_actor
         .pending_migrations
         .as_mut()
         .unwrap()
         .add_batch(batch_id.clone(), QueuedMigrationBatch::new(callback, test_keys));
 
-    let ack = MigrateBatch::with_success(batch_id);
-
     // Verify initially blocked
-
     assert_eq!(cluster_actor.pending_migrations.as_ref().unwrap().num_reqs(), 2);
     assert_eq!(cluster_actor.pending_migrations.as_ref().unwrap().num_batches(), 1);
 
     // WHEN
-    cluster_actor.handle_migration_ack(ack, &cache_manager).await;
+    cluster_actor.handle_migration_ack(batch_id, &cache_manager).await;
 
     // THEN
 

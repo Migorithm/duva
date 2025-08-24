@@ -21,7 +21,7 @@ pub(crate) enum PeerMessage {
     ElectionVoteReply(ElectionVote),
     StartRebalance,
     ReceiveBatch(MigrateBatch<Vec<CacheEntry>>),
-    MigrationBatchAck(MigrateBatch),
+    MigrationBatchAck(BatchId),
 }
 
 impl TryFrom<QueryIO> for PeerMessage {
@@ -173,27 +173,23 @@ mod peer_messages {
             &self.p_id
         }
     }
+    #[derive(Debug, Clone, PartialEq, Eq, bincode::Encode, bincode::Decode, Hash)]
+    pub struct BatchId(pub(crate) String);
+
+    impl From<&str> for BatchId {
+        fn from(value: &str) -> Self {
+            BatchId(value.into())
+        }
+    }
 
     #[derive(Debug, Clone, PartialEq, Eq, bincode::Encode, bincode::Decode)]
     pub struct MigrateBatch<T = ()> {
-        pub(crate) batch_id: String,
+        pub(crate) batch_id: BatchId,
         pub(crate) data: T,
     }
 
-    impl MigrateBatch<()> {
-        pub(crate) fn with_success(batch_id: String) -> Self {
-            Self { batch_id, data: () }
-        }
-    }
-
-    impl From<MigrateBatch> for QueryIO {
-        fn from(value: MigrateBatch) -> Self {
-            QueryIO::MigrationBatchAck(value)
-        }
-    }
-
     impl MigrateBatch<Vec<CacheEntry>> {
-        pub(crate) fn create_batch(batch_id: String, cache_entries: Vec<CacheEntry>) -> Self {
+        pub(crate) fn create_batch(batch_id: BatchId, cache_entries: Vec<CacheEntry>) -> Self {
             Self { batch_id, data: cache_entries }
         }
     }
@@ -201,7 +197,7 @@ mod peer_messages {
     impl MigrateBatch<PendingMigrationTask> {
         pub(crate) fn new(target_repl: ReplicationId, tasks: Vec<MigrationChunk>) -> Self {
             Self {
-                batch_id: uuid::Uuid::now_v7().to_string(),
+                batch_id: BatchId(uuid::Uuid::now_v7().to_string()),
                 data: PendingMigrationTask { target_repl, chunks: tasks },
             }
         }
@@ -246,16 +242,16 @@ mod peer_messages {
     #[derive(Debug, Default)]
     pub(crate) struct InProgressMigration {
         requests: VecDeque<ConsensusRequest>,
-        batches: HashMap<String, QueuedMigrationBatch>,
+        batches: HashMap<BatchId, QueuedMigrationBatch>,
     }
     impl InProgressMigration {
         pub(crate) fn add_req(&mut self, req: ConsensusRequest) {
             self.requests.push_back(req);
         }
-        pub(crate) fn add_batch(&mut self, id: String, batch: QueuedMigrationBatch) {
+        pub(crate) fn add_batch(&mut self, id: BatchId, batch: QueuedMigrationBatch) {
             self.batches.insert(id, batch);
         }
-        pub(crate) fn pop_batch(&mut self, id: &String) -> Option<QueuedMigrationBatch> {
+        pub(crate) fn pop_batch(&mut self, id: &BatchId) -> Option<QueuedMigrationBatch> {
             self.batches.remove(id)
         }
         pub(crate) fn pending_requests(self) -> VecDeque<ConsensusRequest> {
