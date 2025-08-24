@@ -658,8 +658,12 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     }
 
     async fn send_heartbeat(&mut self, heartbeat: HeartBeat) {
-        let futures = self.members.values_mut().map(|peer| peer.send(heartbeat.clone()));
-        let _ = try_join_all(futures).await;
+        self.members
+            .values_mut()
+            .map(|peer| peer.send(heartbeat.clone()))
+            .collect::<FuturesUnordered<_>>()
+            .for_each(|_| async {})
+            .await;
     }
 
     async fn snapshot_topology(&mut self) -> anyhow::Result<()> {
