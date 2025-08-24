@@ -1145,28 +1145,28 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         // Leader-only migration coordination logic below
         // Keep the old ring to compare with new ring for migration planning
         let keys = cache_manager.route_keys(None).await;
-        let migration_plans = self.hash_ring.create_migration_tasks(&new_ring, keys);
+        let chunks_map = self.hash_ring.create_migration_chunks(&new_ring, keys);
 
-        if migration_plans.is_empty() {
-            info!("No migration tasks to schedule");
+        if chunks_map.is_empty() {
+            info!("No migration chunks to schedule");
             self.hash_ring = *new_ring;
             let _ = self.node_change_broadcast.send(self.get_topology());
             return;
         }
 
-        info!("Leader scheduling {} migration plan(s)", migration_plans.len());
+        info!("Scheduling {} migration chunks(s)", chunks_map.len());
         self.block_write_reqs();
 
         let batch_handles = FuturesUnordered::new();
-        for (target_replid, mut migration_tasks) in migration_plans {
-            while !migration_tasks.is_empty() {
+        for (target_replid, mut migration_chunks) in chunks_map {
+            while !migration_chunks.is_empty() {
                 let mut num = 0;
                 let mut batch_to_migrate = Vec::new();
 
                 // Create a batch of tasks up to a certain size.
-                while let Some(task) = migration_tasks.pop() {
-                    num += task.key_len();
-                    batch_to_migrate.push(task);
+                while let Some(chunk) = migration_chunks.pop() {
+                    num += chunk.keys_to_migrate.len();
+                    batch_to_migrate.push(chunk);
                     if num > 100 {
                         break;
                     }

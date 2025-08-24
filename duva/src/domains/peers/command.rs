@@ -216,12 +216,6 @@ mod peer_messages {
         pub(crate) keys_to_migrate: Vec<String>, // actual keys in this range
     }
 
-    impl MigrationChunk {
-        pub(crate) fn key_len(&self) -> usize {
-            self.keys_to_migrate.len()
-        }
-    }
-
     #[derive(Debug)]
     pub(crate) struct QueuedMigrationBatch {
         pub(crate) callback: Callback<anyhow::Result<()>>,
