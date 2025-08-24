@@ -48,7 +48,7 @@ use crate::res_err;
 use crate::types::Callback;
 use crate::types::CallbackAwaiter;
 use client_sessions::ClientSessions;
-use futures::future::try_join_all;
+
 use heartbeat_scheduler::HeartBeatScheduler;
 use std::collections::HashMap;
 use tokio::net::TcpStream;
@@ -455,6 +455,8 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         if !self.replication.election_state.can_transition_to_leader() {
             return;
         }
+
+        info!("\x1b[32m{} elected as new leader\x1b[0m", self.replication.self_identifier());
         self.become_leader().await;
 
         // * Replica notification
@@ -840,13 +842,8 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     fn take_low_watermark(&self) -> Option<u64> {
         self.members
             .values()
-            .filter_map(|peer| {
-                if peer.is_replica(&self.replication.replid) {
-                    Some(peer.curr_log_index())
-                } else {
-                    None
-                }
-            })
+            .filter(|peer| peer.is_replica(&self.replication.replid))
+            .map(|peer| peer.curr_log_index())
             .min()
     }
 
@@ -879,10 +876,14 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
     // Follower notified the leader of its acknowledgment, then leader store match index for the given follower
     async fn send_replication_ack(&mut self, send_to: &PeerIdentifier, ack: ReplicationAck) {
-        let Some(leader) = self.members.get_mut(send_to) else {
-            return;
-        };
-        let _ = leader.send(ack).await;
+        if let Some(leader) = self.members.get_mut(send_to) {
+            if let Err(e) = leader.send(ack).await {
+                // Log the error or handle it appropriately
+                tracing::warn!("Failed to send replication ack to {}: {}", send_to, e);
+            }
+        } else {
+            tracing::warn!("Attempted to send replication ack to unknown peer: {}", send_to);
+        }
     }
 
     async fn replicate(&mut self, mut heartbeat: HeartBeat, cache_manager: &CacheManager) {
@@ -966,8 +967,6 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
     #[instrument(level = tracing::Level::INFO, skip(self))]
     pub(crate) async fn run_for_election(&mut self) {
-        warn!("Running for election term {}", self.replication.term);
-
         self.become_candidate();
         let request_vote = RequestVote::new(&self.replication, &self.logger);
 
@@ -986,8 +985,6 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     async fn replicate_state(&mut self, leader_hwm: HeartBeat, cache_manager: &CacheManager) {
         let old_hwm = self.replication.hwm.load(Ordering::Acquire);
         if leader_hwm.hwm > old_hwm {
-            debug!("Received commit offset {}", leader_hwm.hwm);
-
             for log_index in (old_hwm + 1)..=leader_hwm.hwm {
                 let Some(log) = self.logger.read_at(log_index) else {
                     warn!("log has never been replicated!");
@@ -1047,8 +1044,6 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     }
 
     async fn become_leader(&mut self) {
-        info!("\x1b[32mElection succeeded\x1b[0m");
-
         self.replication.role = ReplicationRole::Leader;
         self.replication.election_state = ElectionState::Leader;
         self.heartbeat_scheduler.turn_leader_mode().await;
@@ -1059,10 +1054,10 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         let _ = self.logger.write_single_entry(&WriteRequest::NoOp, self.replication.term, None);
     }
     fn become_candidate(&mut self) {
-        let replica_count = self.replicas().count() as u8;
         self.replication.term += 1;
-        self.replication.election_state =
-            ElectionState::Candidate { voting: Some(ElectionVoting::new(replica_count)) };
+        self.replication.election_state = ElectionState::Candidate {
+            voting: Some(ElectionVoting::new(self.replicas().count() as u8)),
+        };
     }
 
     async fn handle_repl_rejection(&mut self, repl_res: Option<RejectionReason>) {
