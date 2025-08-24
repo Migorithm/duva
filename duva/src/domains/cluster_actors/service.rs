@@ -9,6 +9,7 @@ use crate::domains::peers::PeerMessage;
 use crate::prelude::PeerIdentifier;
 use crate::res_err;
 use tokio::net::TcpStream;
+use tracing::warn;
 use tracing::{instrument, trace};
 
 impl<T: TWriteAheadLog> ClusterActor<T> {
@@ -49,6 +50,12 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
                 self.send_rpc().await;
             },
             | StartLeaderElection => {
+                warn!(
+                    "{} Running for election term {}",
+                    self.replication.self_identifier(),
+                    self.replication.term
+                );
+
                 self.run_for_election().await;
             },
             | RebalanceRequest { request_to, lazy_option } => {
