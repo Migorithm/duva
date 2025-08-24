@@ -198,11 +198,11 @@ mod peer_messages {
         }
     }
 
-    impl MigrateBatch<PendingMigrationTasks> {
+    impl MigrateBatch<PendingMigrationTask> {
         pub(crate) fn new(target_repl: ReplicationId, tasks: Vec<MigrationChunk>) -> Self {
             Self {
                 batch_id: uuid::Uuid::now_v7().to_string(),
-                data: PendingMigrationTasks { target_repl, chunks: tasks },
+                data: PendingMigrationTask { target_repl, chunks: tasks },
             }
         }
         pub(crate) fn target_repl_id(&self) -> &ReplicationId {
@@ -211,7 +211,7 @@ mod peer_messages {
     }
 
     #[derive(Debug, Clone, PartialEq, Eq)]
-    pub(crate) struct PendingMigrationTasks {
+    pub(crate) struct PendingMigrationTask {
         pub(crate) target_repl: ReplicationId,
         pub(crate) chunks: Vec<MigrationChunk>,
     }
