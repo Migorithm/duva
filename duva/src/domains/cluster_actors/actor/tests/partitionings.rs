@@ -191,7 +191,7 @@ async fn test_start_rebalance_schedules_migration_batches() {
     .expect("Should receive ScheduleMigrationBatch within timeout");
 
     assert_eq!(batch.target_repl_id(), &target_repl_id);
-    assert!(!batch.data.tasks.is_empty());
+    assert!(!batch.data.chunks.is_empty());
 
     // 3. Verify pending_requests is set (synchronous part)
     assert!(cluster_actor.pending_migrations.is_some());

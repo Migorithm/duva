@@ -1218,7 +1218,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         // Retrieve key-value data from cache
         let keys = target
             .data
-            .tasks
+            .chunks
             .iter()
             .flat_map(|task| task.keys_to_migrate.iter().cloned())
             .collect::<Vec<_>>();

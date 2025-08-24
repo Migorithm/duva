@@ -1,14 +1,14 @@
 use crate::{
     ReplicationId,
-    domains::cluster_actors::hash_ring::{HashRing, MigrationTask},
+    domains::cluster_actors::hash_ring::{HashRing, MigrationChunk},
     prelude::PeerIdentifier,
 };
 use std::{collections::HashSet, thread::sleep, time::Duration};
 mod add_and_remove;
 mod migration;
 
-pub(crate) fn migration_task_create_helper(start_hash: u64, end_hash: u64) -> MigrationTask {
-    MigrationTask {
+pub(crate) fn migration_task_create_helper(start_hash: u64, end_hash: u64) -> MigrationChunk {
+    MigrationChunk {
         range: (start_hash, end_hash),
         keys_to_migrate: (start_hash..end_hash).map(|i| format!("key_{i}")).collect(),
     }
