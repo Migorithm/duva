@@ -188,12 +188,6 @@ mod peer_messages {
         pub(crate) entries: Vec<CacheEntry>,
     }
 
-    impl BatchEntries {
-        pub(crate) fn create_batch(batch_id: BatchId, entries: Vec<CacheEntry>) -> Self {
-            Self { batch_id, entries }
-        }
-    }
-
     #[derive(Debug, Clone, PartialEq, Eq)]
     pub(crate) struct PendingMigrationTask {
         pub(crate) batch_id: BatchId,
@@ -204,9 +198,6 @@ mod peer_messages {
     impl PendingMigrationTask {
         pub(crate) fn new(target_repl: ReplicationId, tasks: Vec<MigrationChunk>) -> Self {
             Self { batch_id: BatchId(uuid::Uuid::now_v7().to_string()), target_repl, chunks: tasks }
-        }
-        pub(crate) fn target_repl_id(&self) -> &ReplicationId {
-            &self.target_repl
         }
     }
 

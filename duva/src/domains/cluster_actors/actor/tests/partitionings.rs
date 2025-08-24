@@ -187,7 +187,7 @@ async fn test_start_rebalance_schedules_migration_batches() {
     .await
     .expect("Should receive ScheduleMigrationBatch within timeout");
 
-    assert_eq!(batch.target_repl_id(), &target_repl_id);
+    assert_eq!(&batch.target_repl, &target_repl_id);
     assert!(!batch.chunks.is_empty());
 
     // 3. Verify pending_requests is set (synchronous part)
@@ -352,7 +352,7 @@ async fn test_migrate_batch_send_migrate_batch_peer_message() {
     // THEN
     assert_expected_queryio(
         &buf,
-        QueryIO::MigrateBatch(BatchEntries::create_batch(batch.batch_id, vec![])),
+        QueryIO::MigrateBatch(BatchEntries { batch_id: batch.batch_id, entries: vec![] }),
     )
     .await;
 }
@@ -366,7 +366,7 @@ async fn test_receive_batch_when_empty_cache_entries() {
     let (buf, _id) = cluster_actor.test_add_peer(6909, Some(replid.clone()), true);
 
     // WHEN
-    let batch = BatchEntries::create_batch("empty_test".into(), vec![]);
+    let batch = BatchEntries { batch_id: "empty_test".into(), entries: vec![] };
     cluster_actor.receive_batch(batch.clone(), &cache_manager, _id).await;
 
     // THEN - verify that no log index is incremented
@@ -386,9 +386,9 @@ async fn test_receive_batch_when_consensus_is_required() {
     // add replica
     let (repl_buf, _) = cluster_actor.test_add_peer(6579, None, false);
 
-    let cache_entries = vec![CacheEntry::new("success_key3", "value2")];
+    let entries = vec![CacheEntry::new("success_key3", "value2")];
 
-    let batch = BatchEntries::create_batch("success_test".into(), cache_entries.clone());
+    let batch = BatchEntries { batch_id: "success_test".into(), entries: entries.clone() };
 
     // WHEN
     cluster_actor.receive_batch(batch, &cache_manager, ack_to.clone()).await;
@@ -401,7 +401,7 @@ async fn test_receive_batch_when_consensus_is_required() {
             from: cluster_actor.replication.self_identifier(),
             replid: cluster_actor.replication.replid.clone(),
             append_entries: vec![WriteOperation {
-                request: WriteRequest::MSet { entries: cache_entries.clone() },
+                request: WriteRequest::MSet { entries: entries.clone() },
                 log_index: 1,
                 term: 0,
                 session_req: None,

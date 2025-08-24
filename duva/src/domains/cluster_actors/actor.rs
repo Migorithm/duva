@@ -1205,25 +1205,25 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
     pub(crate) async fn migrate_batch(
         &mut self,
-        target: PendingMigrationTask,
+        pending_task: PendingMigrationTask,
         cache_manager: &CacheManager,
         callback: impl Into<Callback<anyhow::Result<()>>>,
     ) {
         let callback = callback.into();
         //  Find target peer based on replication ID
-        let Some(peer_id) = self.peerid_by_replid(target.target_repl_id()).cloned() else {
+        let Some(peer_id) = self.peerid_by_replid(&pending_task.target_repl).cloned() else {
             callback.send(res_err!("Target peer not found for replication ID"));
             return;
         };
 
         // Retrieve key-value data from cache
-        let keys = target
+        let keys = pending_task
             .chunks
             .iter()
             .flat_map(|task| task.keys_to_migrate.iter().cloned())
             .collect::<Vec<_>>();
 
-        let cache_entries = cache_manager
+        let entries = cache_manager
             .route_mget(keys.clone())
             .await
             .into_iter()
@@ -1237,10 +1237,10 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         };
 
         if let Some(p) = self.migrations_in_progress.as_mut() {
-            p.store_batch(target.batch_id.clone(), QueuedKeysToMigrate { callback, keys })
+            p.store_batch(pending_task.batch_id.clone(), QueuedKeysToMigrate { callback, keys })
         }
 
-        let _ = target_peer.send(BatchEntries::create_batch(target.batch_id, cache_entries)).await;
+        let _ = target_peer.send(BatchEntries { batch_id: pending_task.batch_id, entries }).await;
     }
 
     pub(crate) async fn receive_batch(

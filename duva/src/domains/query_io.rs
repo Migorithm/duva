@@ -872,10 +872,10 @@ mod test {
     #[test]
     fn test_migrate_batch_serde() {
         // GIVEN
-        let migrate_batch = BatchEntries::create_batch(
-            BatchId(Uuid::now_v7().to_string()),
-            vec![CacheEntry::new("foo", "bar")],
-        );
+        let migrate_batch = BatchEntries {
+            batch_id: BatchId(Uuid::now_v7().to_string()),
+            entries: vec![CacheEntry::new("foo", "bar")],
+        };
         let query_io = QueryIO::MigrateBatch(migrate_batch.clone());
 
         // WHEN
