@@ -1250,7 +1250,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         from: PeerIdentifier,
     ) {
         // If cache entries are empty, skip consensus and directly send success ack
-        if migrate_batch.data.is_empty() {
+        if migrate_batch.entries.is_empty() {
             let Some(peer) = self.members.get_mut(&from) else {
                 warn!("No Member Found");
                 return;
@@ -1262,7 +1262,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         let (callback, rx) = Callback::create();
 
         self.req_consensus(ConsensusRequest::new(
-            WriteRequest::MSet { entries: migrate_batch.data.clone() },
+            WriteRequest::MSet { entries: migrate_batch.entries.clone() },
             callback,
             None,
         ))
@@ -1274,7 +1274,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             let cache_manager = cache_manager.clone();
             async move {
                 rx.recv().await;
-                let _ = cache_manager.route_mset(migrate_batch.data.clone()).await; // reflect state change
+                let _ = cache_manager.route_mset(migrate_batch.entries.clone()).await; // reflect state change
                 let _ = handler
                     .send(SchedulerMessage::SendBatchAck {
                         batch_id: migrate_batch.batch_id,

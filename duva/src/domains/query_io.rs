@@ -888,7 +888,7 @@ mod test {
             panic!("Expected a MigrateBatch");
         };
         assert_eq!(deserialized_migrate_batch.batch_id, migrate_batch.batch_id);
-        assert_eq!(deserialized_migrate_batch.data, migrate_batch.data);
+        assert_eq!(deserialized_migrate_batch.entries, migrate_batch.entries);
     }
 
     #[test]

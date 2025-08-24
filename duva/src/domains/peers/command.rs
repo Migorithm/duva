@@ -185,12 +185,12 @@ mod peer_messages {
     #[derive(Debug, Clone, PartialEq, Eq, bincode::Encode, bincode::Decode)]
     pub struct BatchEntries {
         pub(crate) batch_id: BatchId,
-        pub(crate) data: Vec<CacheEntry>,
+        pub(crate) entries: Vec<CacheEntry>,
     }
 
     impl BatchEntries {
-        pub(crate) fn create_batch(batch_id: BatchId, cache_entries: Vec<CacheEntry>) -> Self {
-            Self { batch_id, data: cache_entries }
+        pub(crate) fn create_batch(batch_id: BatchId, entries: Vec<CacheEntry>) -> Self {
+            Self { batch_id, entries }
         }
     }
 
