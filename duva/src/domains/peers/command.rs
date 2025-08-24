@@ -217,7 +217,7 @@ mod peer_messages {
     }
 
     #[derive(Debug)]
-    pub(crate) struct QueuedMigrationBatch {
+    pub(crate) struct QueuedKeysToMigrate {
         pub(crate) callback: Callback<anyhow::Result<()>>,
         pub(crate) keys: Vec<String>,
     }
@@ -225,16 +225,16 @@ mod peer_messages {
     #[derive(Debug, Default)]
     pub(crate) struct InProgressMigration {
         requests: VecDeque<ConsensusRequest>,
-        batches: HashMap<BatchId, QueuedMigrationBatch>,
+        batches: HashMap<BatchId, QueuedKeysToMigrate>,
     }
     impl InProgressMigration {
         pub(crate) fn add_req(&mut self, req: ConsensusRequest) {
             self.requests.push_back(req);
         }
-        pub(crate) fn add_batch(&mut self, id: BatchId, batch: QueuedMigrationBatch) {
+        pub(crate) fn store_batch(&mut self, id: BatchId, batch: QueuedKeysToMigrate) {
             self.batches.insert(id, batch);
         }
-        pub(crate) fn pop_batch(&mut self, id: &BatchId) -> Option<QueuedMigrationBatch> {
+        pub(crate) fn pop_batch(&mut self, id: &BatchId) -> Option<QueuedKeysToMigrate> {
             self.batches.remove(id)
         }
         pub(crate) fn pending_requests(self) -> VecDeque<ConsensusRequest> {

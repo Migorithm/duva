@@ -19,7 +19,7 @@ use crate::domains::cluster_actors::consensus::election::ElectionVoting;
 use crate::domains::peers::command::BatchId;
 use crate::domains::peers::command::InProgressMigration;
 use crate::domains::peers::command::PendingMigrationTask;
-use crate::domains::peers::command::QueuedMigrationBatch;
+use crate::domains::peers::command::QueuedKeysToMigrate;
 
 use crate::domains::cluster_actors::queue::ClusterActorQueue;
 use crate::domains::cluster_actors::queue::ClusterActorReceiver;
@@ -84,7 +84,7 @@ pub struct ClusterActor<T> {
     pub(crate) client_sessions: ClientSessions,
     pub(crate) logger: ReplicatedLogs<T>,
     pub(crate) hash_ring: HashRing,
-    pending_migrations: Option<InProgressMigration>,
+    migrations_in_progress: Option<InProgressMigration>,
     cluster_join_sync: ClusterJoinSync,
 }
 
@@ -156,7 +156,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             consensus_tracker: LogConsensusTracker::default(),
             client_sessions: ClientSessions::default(),
             cluster_join_sync: ClusterJoinSync::default(),
-            pending_migrations: None,
+            migrations_in_progress: None,
         }
     }
 
@@ -331,7 +331,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             return;
         };
 
-        if let Some(pending_mig) = self.pending_migrations.as_mut() {
+        if let Some(pending_mig) = self.migrations_in_progress.as_mut() {
             pending_mig.add_req(req);
             return;
         }
@@ -677,8 +677,8 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
     // ! BLOCK subsequent requests until rebalance is done
     fn block_write_reqs(&mut self) {
-        if self.pending_migrations.is_none() {
-            self.pending_migrations = Some(Default::default());
+        if self.migrations_in_progress.is_none() {
+            self.migrations_in_progress = Some(Default::default());
         }
     }
 
@@ -1236,8 +1236,8 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             return;
         };
 
-        if let Some(p) = self.pending_migrations.as_mut() {
-            p.add_batch(target.batch_id.clone(), QueuedMigrationBatch { callback, keys })
+        if let Some(p) = self.migrations_in_progress.as_mut() {
+            p.store_batch(target.batch_id.clone(), QueuedKeysToMigrate { callback, keys })
         }
 
         let _ = target_peer.send(BatchEntries::create_batch(target.batch_id, cache_entries)).await;
@@ -1290,7 +1290,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         batch_id: BatchId,
         cache_manager: &CacheManager,
     ) {
-        let Some(pending) = self.pending_migrations.as_mut() else {
+        let Some(pending) = self.migrations_in_progress.as_mut() else {
             warn!("No Pending migration map available");
             return;
         };
@@ -1324,14 +1324,15 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
     // New hash ring stored at this point with the current shard leaders
     pub(crate) fn unblock_write_reqs_if_done(&mut self) {
-        let migrations_done = self.pending_migrations.as_ref().is_none_or(|p| p.num_batches() == 0);
+        let migrations_done =
+            self.migrations_in_progress.as_ref().is_none_or(|p| p.num_batches() == 0);
 
         if migrations_done {
             if let Some(new_ring) = self.hash_ring.set_partitions(self.shard_leaders()) {
                 self.hash_ring = new_ring;
             }
             let _ = self.node_change_broadcast.send(self.get_topology());
-            if let Some(pending_mig) = self.pending_migrations.take() {
+            if let Some(pending_mig) = self.migrations_in_progress.take() {
                 info!("All migrations complete, processing pending requests.");
 
                 let mut pending_reqs = pending_mig.pending_requests();
