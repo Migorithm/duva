@@ -86,7 +86,7 @@ async fn test_reconnection_on_gossip() {
     let listener = TcpListener::bind("127.0.0.1:44455").await.unwrap(); // ! Beaware that this is cluster port
     let bind_addr = listener.local_addr().unwrap();
 
-    let mut replication_state = cluster_actor.replication.clone();
+    let mut replication_state = cluster_actor.replication.info();
     replication_state.role = ReplicationRole::Follower;
 
     let (tx, _rx) = Callback::create();
@@ -255,8 +255,8 @@ async fn test_add_peer_for_follower_send_heartbeat() {
             .replication
             .default_heartbeat(
                 0,
-                cluster_actor.logger.last_log_index,
-                cluster_actor.logger.last_log_term,
+                cluster_actor.replication.logger.last_log_index,
+                cluster_actor.replication.logger.last_log_term,
             )
             .set_hashring(cluster_actor.hash_ring.clone()),
     )

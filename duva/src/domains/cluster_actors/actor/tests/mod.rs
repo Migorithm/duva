@@ -160,15 +160,21 @@ impl Helper {
     }
 
     pub async fn cluster_actor(role: ReplicationRole) -> ClusterActor<MemoryOpLogs> {
-        let replication =
-            ReplicationState::new(ReplicationId::Key("master".into()), role, "127.0.0.1", 8080, 0);
         let dir = TempDir::new().unwrap();
         let path = dir.path().join("duva.tp");
 
         let topology_writer =
             OpenOptions::new().create(true).write(true).truncate(true).open(path).unwrap();
 
-        ClusterActor::new(replication, 100, topology_writer, MemoryOpLogs::default())
+        let replication = ReplicationState::new(
+            ReplicationId::Key("master".into()),
+            role,
+            "127.0.0.1",
+            8080,
+            0,
+            ReplicatedLogs::new(MemoryOpLogs::default(), 0, 0),
+        );
+        ClusterActor::new(replication, 100, topology_writer)
     }
 
     fn cluster_member(

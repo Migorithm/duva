@@ -8,6 +8,7 @@ pub(crate) struct ReplicatedLogs<T> {
     pub(crate) target: T,
     pub(crate) last_log_index: u64,
     pub(crate) last_log_term: u64,
+    // save hwm!
 }
 impl<T> ReplicatedLogs<T> {
     pub fn new(target: T, last_log_index: u64, last_log_term: u64) -> Self {

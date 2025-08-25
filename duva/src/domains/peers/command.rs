@@ -57,7 +57,11 @@ mod peer_messages {
     use crate::{
         domains::{
             caches::cache_objects::CacheEntry,
-            cluster_actors::{ConsensusRequest, hash_ring::HashRing, replication::ReplicationId},
+            cluster_actors::{
+                ConsensusRequest,
+                hash_ring::HashRing,
+                replication::{ReplicationId, ReplicationInfo},
+            },
             operation_logs::{WriteOperation, logger::ReplicatedLogs},
             peers::peer::PeerState,
         },
@@ -72,7 +76,7 @@ mod peer_messages {
         pub(crate) last_log_term: u64, //the term of the last log entry, used for election restrictions. If the term is low, it won't win the election.
     }
     impl RequestVote {
-        pub(crate) fn new<T>(repl: &ReplicationState, logger: &ReplicatedLogs<T>) -> Self {
+        pub(crate) fn new<T>(repl: ReplicationInfo, logger: &ReplicatedLogs<T>) -> Self {
             Self {
                 term: repl.term,
                 candidate_id: repl.self_identifier(),
@@ -103,16 +107,12 @@ mod peer_messages {
     }
 
     impl ReplicationAck {
-        pub(crate) fn ack(log_idx: u64, repl_state: &ReplicationState) -> Self {
-            Self { log_idx, term: repl_state.term, rej_reason: None }
+        pub(crate) fn ack(log_idx: u64, curr_term: u64) -> Self {
+            Self { log_idx, term: curr_term, rej_reason: None }
         }
 
-        pub(crate) fn reject(
-            log_idx: u64,
-            reason: RejectionReason,
-            repl_state: &ReplicationState,
-        ) -> Self {
-            Self { log_idx, term: repl_state.term, rej_reason: Some(reason) }
+        pub(crate) fn reject(log_idx: u64, reason: RejectionReason, curr_term: u64) -> Self {
+            Self { log_idx, term: curr_term, rej_reason: Some(reason) }
         }
 
         pub(crate) fn is_granted(&self) -> bool {

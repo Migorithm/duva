@@ -1,4 +1,6 @@
 use super::consensus::election::ElectionState;
+use crate::adapters::op_logs::memory_based::MemoryOpLogs;
+use crate::domains::operation_logs::logger::ReplicatedLogs;
 use crate::domains::peers::command::BannedPeer;
 use crate::domains::peers::command::HeartBeat;
 use crate::domains::peers::identifier::PeerIdentifier;
@@ -10,8 +12,8 @@ use std::sync::Arc;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
 
-#[derive(Debug, Clone)]
-pub(crate) struct ReplicationState {
+#[derive(Debug)]
+pub(crate) struct ReplicationState<T> {
     pub(crate) replid: ReplicationId, // The replication ID of the master example: 8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb
     pub(crate) hwm: Arc<AtomicU64>,   // high water mark (commit idx)
     pub(crate) role: ReplicationRole,
@@ -21,17 +23,20 @@ pub(crate) struct ReplicationState {
     pub(crate) term: u64,
     pub(crate) banlist: HashSet<BannedPeer>,
     pub(crate) election_state: ElectionState,
+
+    pub(crate) logger: ReplicatedLogs<T>,
 }
 
-impl ReplicationState {
+impl<T> ReplicationState<T> {
     pub(crate) fn new(
         replid: ReplicationId,
         role: ReplicationRole,
         self_host: &str,
         self_port: u16,
         hwm: u64,
+        logger: ReplicatedLogs<T>,
     ) -> Self {
-        ReplicationState {
+        Self {
             election_state: ElectionState::new(&role),
             role,
             replid,
@@ -40,6 +45,18 @@ impl ReplicationState {
             self_port,
             term: 0,
             banlist: Default::default(),
+            logger,
+        }
+    }
+
+    pub(crate) fn info(&self) -> ReplicationInfo {
+        ReplicationInfo {
+            replid: self.replid.clone(),
+            hwm: self.hwm.clone(),
+            role: self.role.clone(),
+            self_host: self.self_host.clone(),
+            self_port: self.self_port,
+            term: self.term,
         }
     }
 
@@ -54,15 +71,6 @@ impl ReplicationState {
 
     pub(crate) fn self_identifier(&self) -> PeerIdentifier {
         PeerIdentifier::new(&self.self_host, self.self_port)
-    }
-
-    pub(crate) fn vectorize(self) -> Vec<String> {
-        vec![
-            format!("role:{}", self.role),
-            format!("leader_repl_id:{}", self.replid),
-            format!("high_watermark:{}", self.hwm.load(Ordering::Relaxed)),
-            format!("self_identifier:{}", self.self_identifier()),
-        ]
     }
 
     pub(super) fn in_ban_list(&self, peer_identifier: &PeerIdentifier) -> bool {
@@ -193,6 +201,30 @@ impl From<String> for ReplicationRole {
     }
 }
 
+#[derive(Debug)]
+pub struct ReplicationInfo {
+    pub(crate) replid: ReplicationId,
+    pub(crate) hwm: Arc<AtomicU64>,
+    pub(crate) role: ReplicationRole,
+    pub(crate) self_host: String,
+    pub(crate) self_port: u16,
+    pub(crate) term: u64,
+}
+impl ReplicationInfo {
+    pub(crate) fn self_identifier(&self) -> PeerIdentifier {
+        PeerIdentifier::new(&self.self_host, self.self_port)
+    }
+
+    pub(crate) fn vectorize(self) -> Vec<String> {
+        vec![
+            format!("role:{}", self.role),
+            format!("leader_repl_id:{}", self.replid),
+            format!("high_watermark:{}", self.hwm.load(Ordering::Relaxed)),
+            format!("self_identifier:{}", self.self_identifier()),
+        ]
+    }
+}
+
 #[test]
 fn test_cloning_replication_state() {
     //GIVEN
@@ -202,12 +234,13 @@ fn test_cloning_replication_state() {
         "ads",
         1231,
         0,
+        ReplicatedLogs::new(MemoryOpLogs { writer: vec![] }, 0, 0),
     );
-    let cloned = replication_state.clone();
+    let cloned = replication_state.hwm.clone();
 
     //WHEN
     replication_state.hwm.store(5, Ordering::Release);
 
     //THEN
-    assert_eq!(cloned.hwm.load(Ordering::Relaxed), 5);
+    assert_eq!(cloned.load(Ordering::Relaxed), 5);
 }

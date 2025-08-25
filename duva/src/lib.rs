@@ -46,6 +46,8 @@ use tracing_subscriber::layer::SubscriberExt;
 use uuid::Uuid;
 
 pub use config::ENV;
+
+use crate::domains::operation_logs::logger::ReplicatedLogs;
 pub mod prelude {
     pub use crate::domains::cluster_actors::actor::heartbeat_scheduler::ELECTION_TIMEOUT_MAX;
     pub use crate::domains::cluster_actors::topology::NodeReplInfo;
@@ -100,13 +102,19 @@ impl StartUpFacade {
         let snapshot_info = Self::initialize_with_snapshot();
         let (r_id, hwm) = snapshot_info.extract_replication_info();
 
-        let replication_state =
-            ReplicationState::new(r_id, ENV.role.clone(), &ENV.host, ENV.port, hwm);
+        let replication_state = ReplicationState::new(
+            r_id,
+            ENV.role.clone(),
+            &ENV.host,
+            ENV.port,
+            hwm,
+            ReplicatedLogs::new(wal, hwm, 0),
+        );
         let cache_manager = CacheManager::run_cache_actors(replication_state.hwm.clone());
         tokio::spawn(cache_manager.clone().apply_snapshot(snapshot_info.key_values()));
 
         let cluster_actor_handler =
-            ClusterActor::run(writer, ENV.hf_mills, replication_state, cache_manager.clone(), wal);
+            ClusterActor::run(writer, ENV.hf_mills, replication_state, cache_manager.clone());
 
         StartUpFacade {
             cluster_communication_manager: ClusterCommunicationManager(cluster_actor_handler),

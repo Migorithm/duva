@@ -1,6 +1,8 @@
 use crate::ReplicationState;
 
-use crate::domains::cluster_actors::replication::{ReplicationId, ReplicationRole};
+use crate::domains::cluster_actors::replication::{
+    ReplicationId, ReplicationInfo, ReplicationRole,
+};
 use crate::domains::cluster_actors::topology::Topology;
 use crate::domains::operation_logs::WriteRequest;
 use crate::domains::peers::command::{BatchId, PeerCommand, PendingMigrationTask};
@@ -53,7 +55,7 @@ impl From<ConnectionMessage> for ClusterCommand {
 #[derive(Debug, PartialEq, Eq)]
 pub enum ClientMessage {
     GetPeers(Callback<Vec<PeerIdentifier>>),
-    ReplicationInfo(Callback<ReplicationState>),
+    ReplicationInfo(Callback<ReplicationInfo>),
     Forget(PeerIdentifier, Callback<Option<()>>),
     ReplicaOf(PeerIdentifier, Callback<anyhow::Result<()>>),
     LeaderReqConsensus(ConsensusRequest),
