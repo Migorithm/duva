@@ -96,10 +96,10 @@ where
         let mut buffer = BytesMut::with_capacity(512);
         self.read_bytes(&mut buffer).await?;
 
-        let (auth_request, _) = bincode::decode_from_slice(&buffer, SERDE_CONFIG)
+        let (request, _) = bincode::decode_from_slice(&buffer, SERDE_CONFIG)
             .map_err(|e| IoError::Custom(e.to_string()))?;
 
-        Ok(auth_request)
+        Ok(request)
     }
 }
 

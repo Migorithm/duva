@@ -1,8 +1,12 @@
+use std::sync::atomic::AtomicBool;
+
 use tracing::warn;
 
 use crate::domains::{
     cluster_actors::replication::ReplicationRole, peers::identifier::PeerIdentifier,
 };
+
+pub static REQUESTS_BLOCKED_BY_ELECTION: AtomicBool = AtomicBool::new(false);
 
 #[derive(Debug, Clone)]
 pub(crate) enum ElectionState {

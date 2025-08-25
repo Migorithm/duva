@@ -10,10 +10,26 @@ use uuid::Uuid;
 pub(crate) async fn authenticate(
     mut stream: TcpStream,
     cluster_manager: &ClusterCommunicationManager,
+    auth_req: AuthRequest,
 ) -> anyhow::Result<(ClientStreamReader, ClientStreamWriter)> {
     let replication_state = cluster_manager.route_get_replication_state().await?;
 
-    let auth_req: AuthRequest = stream.deserialized_read().await?;
+    // if the request is not new authentication but the client is already authenticated
+    // if
+    if auth_req.client_id.is_some() && replication_state.role == ReplicationRole::Follower {
+        stream
+            .serialized_write(AuthResponse {
+                is_leader_node: false,
+                client_id: Default::default(),
+                request_id: Default::default(),
+                topology: Default::default(),
+                replication_id: Default::default(),
+            })
+            .await?;
+
+        return Err(anyhow::anyhow!("Follower node cannot authenticate"));
+    }
+
     let (client_id, request_id) = auth_req.deconstruct()?;
 
     stream
