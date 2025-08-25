@@ -15,7 +15,7 @@ pub(crate) async fn authenticate(
     let replication_state = cluster_manager.route_get_replication_state().await?;
 
     // if the request is not new authentication but the client is already authenticated
-    // if 
+    // if
     if auth_req.client_id.is_some() && replication_state.role == ReplicationRole::Follower {
         stream
             .serialized_write(AuthResponse {

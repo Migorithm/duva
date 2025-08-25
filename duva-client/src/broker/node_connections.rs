@@ -4,6 +4,7 @@ use duva::domains::cluster_actors::replication::ReplicationId;
 use duva::domains::query_io::QueryIO;
 use duva::domains::query_io::QueryIO::SessionRequest;
 use duva::make_smart_pointer;
+use duva::prelude::PeerIdentifier;
 use duva::prelude::anyhow;
 use duva::prelude::anyhow::Context;
 use duva::prelude::rand;
@@ -12,7 +13,6 @@ use duva::prelude::rand::rngs::StdRng;
 use duva::prelude::rand::seq::IteratorRandom;
 use duva::prelude::tokio::sync::mpsc;
 use duva::prelude::tokio::sync::oneshot;
-use duva::prelude::PeerIdentifier;
 use duva::presentation::clients::request::ClientAction;
 use futures::future::join_all;
 use futures::future::try_join_all;
@@ -31,7 +31,10 @@ impl NodeConnections {
         Self { conns: HashMap::new(), seed_node: target_id }
     }
 
-    pub(crate) async fn remove_connection(&mut self, leader_id: &ReplicationId) -> Option<PeerIdentifier> {
+    pub(crate) async fn remove_connection(
+        &mut self,
+        leader_id: &ReplicationId,
+    ) -> Option<PeerIdentifier> {
         if let Some(connection) = self.conns.remove(leader_id) {
             let peer_identifier = connection.peer_identifier.clone();
             connection.kill().await;
@@ -83,7 +86,7 @@ pub(crate) struct NodeConnection {
     pub(crate) writer: mpsc::Sender<MsgToServer>,
     pub(crate) kill_switch: oneshot::Sender<()>,
     pub(crate) request_id: u64,
-    pub(crate) peer_identifier: PeerIdentifier
+    pub(crate) peer_identifier: PeerIdentifier,
 }
 
 impl NodeConnection {
@@ -136,7 +139,12 @@ mod tests {
         let mut connections = NodeConnections::new(repl_id.clone());
         connections.insert(
             repl_id.clone(),
-            NodeConnection { writer: tx, kill_switch: kill_tx, request_id: 0, peer_identifier: PeerIdentifier::default() },
+            NodeConnection {
+                writer: tx,
+                kill_switch: kill_tx,
+                request_id: 0,
+                peer_identifier: PeerIdentifier::default(),
+            },
         );
 
         // When
@@ -154,7 +162,12 @@ mod tests {
         let repl_id2 = ReplicationId::Key("key2".into());
         let (tx1, _rx1) = mpsc::channel(10);
         let (kill_tx1, _kill_rx1) = oneshot::channel();
-        let conn = NodeConnection { writer: tx1, kill_switch: kill_tx1, request_id: 0, peer_identifier: PeerIdentifier::default() };
+        let conn = NodeConnection {
+            writer: tx1,
+            kill_switch: kill_tx1,
+            request_id: 0,
+            peer_identifier: PeerIdentifier::default(),
+        };
         let mut connections = NodeConnections::new(repl_id1.clone());
         connections.insert(repl_id1.clone(), conn);
 
@@ -162,7 +175,12 @@ mod tests {
         let (kill_tx2, _kill_rx2) = oneshot::channel();
         connections.insert(
             repl_id2.clone(),
-            NodeConnection { writer: tx2, kill_switch: kill_tx2, request_id: 0, peer_identifier: PeerIdentifier::default() },
+            NodeConnection {
+                writer: tx2,
+                kill_switch: kill_tx2,
+                request_id: 0,
+                peer_identifier: PeerIdentifier::default(),
+            },
         );
 
         // When - peer2 is not in the topology peers, repl_id1 is kept
@@ -182,7 +200,12 @@ mod tests {
         let repl_id2 = ReplicationId::Key("key2".into());
         let (tx1, _rx1) = mpsc::channel(10);
         let (kill_tx1, _kill_rx1) = oneshot::channel();
-        let conn = NodeConnection { writer: tx1, kill_switch: kill_tx1, request_id: 0, peer_identifier: PeerIdentifier::default() };
+        let conn = NodeConnection {
+            writer: tx1,
+            kill_switch: kill_tx1,
+            request_id: 0,
+            peer_identifier: PeerIdentifier::default(),
+        };
         let mut connections = NodeConnections::new(repl_id1.clone());
         connections.insert(repl_id1.clone(), conn);
 
@@ -190,7 +213,12 @@ mod tests {
         let (kill_tx2, _kill_rx2) = oneshot::channel();
         connections.insert(
             repl_id2.clone(),
-            NodeConnection { writer: tx2, kill_switch: kill_tx2, request_id: 0, peer_identifier: PeerIdentifier::default() },
+            NodeConnection {
+                writer: tx2,
+                kill_switch: kill_tx2,
+                request_id: 0,
+                peer_identifier: PeerIdentifier::default(),
+            },
         );
 
         // When - peer1 is seed, both should be kept

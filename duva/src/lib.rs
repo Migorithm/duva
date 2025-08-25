@@ -41,9 +41,9 @@ use uuid::Uuid;
 
 use crate::domains::TSerdeReadWrite;
 use crate::domains::cluster_actors::consensus::election::REQUESTS_BLOCKED_BY_ELECTION;
+use crate::domains::operation_logs::logger::ReplicatedLogs;
 use crate::prelude::AuthRequest;
 pub use config::ENV;
-use crate::domains::operation_logs::logger::ReplicatedLogs;
 pub mod prelude {
     pub use crate::domains::cluster_actors::actor::heartbeat_scheduler::ELECTION_TIMEOUT_MAX;
     pub use crate::domains::cluster_actors::topology::NodeReplInfo;
