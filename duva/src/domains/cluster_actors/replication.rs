@@ -33,7 +33,6 @@ impl<T> ReplicationState<T> {
         role: ReplicationRole,
         self_host: &str,
         self_port: u16,
-
         logger: ReplicatedLogs<T>,
     ) -> Self {
         Self {
