@@ -4,9 +4,7 @@ use crate::domains::cluster_actors::topology::Topology;
 use crate::types::Callback;
 use crate::{
     domains::{
-        cluster_actors::{
-            ClientMessage, ConnectionMessage, LazyOption, replication::ReplicationState,
-        },
+        cluster_actors::{ClientMessage, ConnectionMessage, LazyOption},
         peers::{identifier::PeerIdentifier, peer::PeerState},
     },
     make_smart_pointer,

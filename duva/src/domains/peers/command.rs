@@ -1,5 +1,4 @@
 use crate::{
-    ReplicationState,
     domains::{QueryIO, cluster_actors::ClusterCommand},
     prelude::PeerIdentifier,
 };

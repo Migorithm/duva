@@ -1,5 +1,3 @@
-use crate::ReplicationState;
-
 use crate::domains::cluster_actors::replication::{
     ReplicationId, ReplicationInfo, ReplicationRole,
 };

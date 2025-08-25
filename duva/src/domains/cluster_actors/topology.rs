@@ -1,6 +1,6 @@
 use crate::domains::cluster_actors::hash_ring::HashRing;
 use crate::domains::cluster_actors::replication::{
-    ReplicationId, ReplicationInfo, ReplicationRole, ReplicationState,
+    ReplicationId, ReplicationInfo, ReplicationRole,
 };
 use crate::domains::peers::peer::PeerState;
 use crate::prelude::PeerIdentifier;

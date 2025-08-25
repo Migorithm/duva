@@ -1,5 +1,5 @@
 use super::consensus::election::ElectionState;
-use crate::adapters::op_logs::memory_based::MemoryOpLogs;
+
 use crate::domains::operation_logs::logger::ReplicatedLogs;
 use crate::domains::peers::command::BannedPeer;
 use crate::domains::peers::command::HeartBeat;
@@ -227,6 +227,8 @@ impl ReplicationInfo {
 
 #[test]
 fn test_cloning_replication_state() {
+    use crate::adapters::op_logs::memory_based::MemoryOpLogs;
+
     //GIVEN
     let replication_state = ReplicationState::new(
         ReplicationId::Key("dsd".into()),
