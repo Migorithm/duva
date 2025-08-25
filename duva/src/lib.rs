@@ -11,7 +11,6 @@ use domains::caches::cache_manager::CacheManager;
 use domains::cluster_actors::ClusterActor;
 use domains::cluster_actors::ConnectionMessage;
 use domains::cluster_actors::replication::ReplicationId;
-
 use domains::cluster_actors::replication::ReplicationState;
 use domains::operation_logs::interfaces::TWriteAheadLog;
 use domains::saves::snapshot::Snapshot;
@@ -21,27 +20,21 @@ use opentelemetry_appender_tracing::layer::OpenTelemetryTracingBridge;
 use opentelemetry_otlp::WithExportConfig;
 use opentelemetry_sdk::Resource;
 use opentelemetry_sdk::logs::SdkLoggerProvider;
-
 use presentation::clients::ClientController;
 use presentation::clients::authenticate;
 use presentation::clusters::communication_manager::ClusterCommunicationManager;
 use std::fs::File;
-
 use std::sync::LazyLock;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
-use tracing_subscriber::EnvFilter;
-
 use tokio::net::TcpListener;
-
-use tracing_subscriber::Layer;
-
-use tracing_subscriber::util::SubscriberInitExt;
-
 use tracing::debug;
 use tracing::error;
 use tracing::info;
 use tracing::instrument;
+use tracing_subscriber::EnvFilter;
+use tracing_subscriber::Layer;
+use tracing_subscriber::util::SubscriberInitExt;
 
 use tracing_subscriber::layer::SubscriberExt;
 use uuid::Uuid;
@@ -50,7 +43,7 @@ use crate::domains::TSerdeReadWrite;
 use crate::domains::cluster_actors::consensus::election::REQUESTS_BLOCKED_BY_ELECTION;
 use crate::prelude::AuthRequest;
 pub use config::ENV;
-
+use crate::domains::operation_logs::logger::ReplicatedLogs;
 pub mod prelude {
     pub use crate::domains::cluster_actors::actor::heartbeat_scheduler::ELECTION_TIMEOUT_MAX;
     pub use crate::domains::cluster_actors::topology::NodeReplInfo;
@@ -105,13 +98,18 @@ impl StartUpFacade {
         let snapshot_info = Self::initialize_with_snapshot();
         let (r_id, hwm) = snapshot_info.extract_replication_info();
 
-        let replication_state =
-            ReplicationState::new(r_id, ENV.role.clone(), &ENV.host, ENV.port, hwm);
-        let cache_manager = CacheManager::run_cache_actors(replication_state.hwm.clone());
+        let replication_state = ReplicationState::new(
+            r_id,
+            ENV.role.clone(),
+            &ENV.host,
+            ENV.port,
+            ReplicatedLogs::new(wal, hwm, 0),
+        );
+        let cache_manager = CacheManager::run_cache_actors(replication_state.logger.hwm.clone());
         tokio::spawn(cache_manager.clone().apply_snapshot(snapshot_info.key_values()));
 
         let cluster_actor_handler =
-            ClusterActor::run(writer, ENV.hf_mills, replication_state, cache_manager.clone(), wal);
+            ClusterActor::run(writer, ENV.hf_mills, replication_state, cache_manager.clone());
 
         StartUpFacade {
             cluster_communication_manager: ClusterCommunicationManager(cluster_actor_handler),

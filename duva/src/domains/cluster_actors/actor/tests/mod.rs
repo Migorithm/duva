@@ -4,7 +4,6 @@ mod partitionings;
 mod replications;
 #[allow(unused_variables)]
 use super::actor::ClusterActorSender;
-
 use super::*;
 use crate::CacheManager;
 use crate::ReplicationId;
@@ -25,24 +24,22 @@ use crate::domains::peers::connections::inbound::stream::InboundStream;
 use crate::domains::peers::peer::PeerState;
 use crate::domains::peers::service::PeerListener;
 use crate::types::Callback;
-use std::collections::VecDeque;
-use std::fs::OpenOptions;
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::Duration;
-use tempfile::TempDir;
-use tokio::net::TcpListener;
-use tokio::sync::mpsc::channel;
-use uuid::Uuid;
-
-use std::sync::Arc;
-
 use crate::{
     domains::{IoError, TRead, TWrite},
     make_smart_pointer,
 };
-
 use bytes::BytesMut;
+use std::collections::VecDeque;
+use std::fs::OpenOptions;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::Duration;
+use tempfile::TempDir;
+use tokio::net::TcpListener;
 use tokio::sync::Mutex;
+use tokio::sync::mpsc::channel;
+use uuid::Uuid;
+
 #[derive(Debug, Clone)]
 pub struct FakeReadWrite(Arc<Mutex<VecDeque<QueryIO>>>);
 make_smart_pointer!(FakeReadWrite, Arc<Mutex<VecDeque<QueryIO>>>);
@@ -113,7 +110,7 @@ impl Helper {
             {
                 let id = key.clone();
                 let replid = repl_id.clone();
-                PeerState { id, log_index: hwm, replid, role }
+                PeerState { id, hwm, replid, role }
             },
             kill_switch,
         );
@@ -160,15 +157,20 @@ impl Helper {
     }
 
     pub async fn cluster_actor(role: ReplicationRole) -> ClusterActor<MemoryOpLogs> {
-        let replication =
-            ReplicationState::new(ReplicationId::Key("master".into()), role, "127.0.0.1", 8080, 0);
         let dir = TempDir::new().unwrap();
         let path = dir.path().join("duva.tp");
 
         let topology_writer =
             OpenOptions::new().create(true).write(true).truncate(true).open(path).unwrap();
 
-        ClusterActor::new(replication, 100, topology_writer, MemoryOpLogs::default())
+        let replication = ReplicationState::new(
+            ReplicationId::Key("master".into()),
+            role,
+            "127.0.0.1",
+            8080,
+            ReplicatedLogs::new(MemoryOpLogs::default(), 0, 0),
+        );
+        ClusterActor::new(replication, 100, topology_writer)
     }
 
     fn cluster_member(
@@ -197,7 +199,7 @@ impl Helper {
                             .clone()
                             .unwrap_or_else(|| ReplicationId::Key("localhost".to_string()));
                         let role = ReplicationRole::Follower;
-                        PeerState { id, log_index: follower_hwm, replid, role }
+                        PeerState { id, hwm: follower_hwm, replid, role }
                     },
                     kill_switch,
                 ),

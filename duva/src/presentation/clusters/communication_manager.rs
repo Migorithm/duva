@@ -1,11 +1,10 @@
 use crate::domains::cluster_actors::queue::ClusterActorSender;
+use crate::domains::cluster_actors::replication::ReplicationInfo;
 use crate::domains::cluster_actors::topology::Topology;
 use crate::types::Callback;
 use crate::{
     domains::{
-        cluster_actors::{
-            ClientMessage, ConnectionMessage, LazyOption, replication::ReplicationState,
-        },
+        cluster_actors::{ClientMessage, ConnectionMessage, LazyOption},
         peers::{identifier::PeerIdentifier, peer::PeerState},
     },
     make_smart_pointer,
@@ -41,7 +40,7 @@ impl ClusterCommunicationManager {
         Ok(())
     }
 
-    pub(crate) async fn route_get_replication_state(&self) -> anyhow::Result<ReplicationState> {
+    pub(crate) async fn route_get_replication_state(&self) -> anyhow::Result<ReplicationInfo> {
         let (tx, rx) = Callback::create();
         self.send(ClientMessage::ReplicationInfo(tx)).await?;
         Ok(rx.recv().await)

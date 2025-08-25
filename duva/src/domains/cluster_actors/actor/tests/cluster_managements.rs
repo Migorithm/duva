@@ -63,7 +63,7 @@ async fn test_store_current_topology() {
 
     let repl_id = cluster_actor.replication.replid.clone();
     let self_id = cluster_actor.replication.self_identifier();
-    let hwm = cluster_actor.replication.hwm.load(Ordering::Relaxed);
+    let hwm = cluster_actor.replication.logger.hwm.load(Ordering::Relaxed);
 
     // WHEN
     cluster_actor.snapshot_topology().await.unwrap();
@@ -86,7 +86,7 @@ async fn test_reconnection_on_gossip() {
     let listener = TcpListener::bind("127.0.0.1:44455").await.unwrap(); // ! Beaware that this is cluster port
     let bind_addr = listener.local_addr().unwrap();
 
-    let mut replication_state = cluster_actor.replication.clone();
+    let mut replication_state = cluster_actor.replication.info();
     replication_state.role = ReplicationRole::Follower;
 
     let (tx, _rx) = Callback::create();
@@ -112,7 +112,7 @@ async fn test_reconnection_on_gossip() {
     cluster_actor
         .join_peer_network_if_absent::<TcpStream>(vec![PeerState {
             id: PeerIdentifier(format!("127.0.0.1:{}", bind_addr.port() - 10000)),
-            log_index: 0,
+            hwm: 0,
             replid: cluster_actor.replication.replid.clone(),
             role: ReplicationRole::Follower,
         }])
@@ -170,7 +170,7 @@ async fn test_update_cluster_members_updates_fields() {
 
     let cluster_nodes = vec![PeerState {
         id: peer_id.clone(),
-        log_index: 100,
+        hwm: 100,
         replid: cluster_actor.replication.replid.clone(),
         role: ReplicationRole::Leader,
     }];
@@ -253,11 +253,7 @@ async fn test_add_peer_for_follower_send_heartbeat() {
         &buf,
         cluster_actor
             .replication
-            .default_heartbeat(
-                0,
-                cluster_actor.logger.last_log_index,
-                cluster_actor.logger.last_log_term,
-            )
+            .default_heartbeat(0)
             .set_hashring(cluster_actor.hash_ring.clone()),
     )
     .await;

@@ -3,7 +3,8 @@ use crate::domains::QueryIO;
 use crate::domains::cluster_actors::ConnectionMessage;
 use crate::domains::cluster_actors::queue::ClusterActorSender;
 use crate::domains::cluster_actors::replication::ReplicationId;
-use crate::domains::cluster_actors::replication::ReplicationState;
+use crate::domains::cluster_actors::replication::ReplicationInfo;
+
 use crate::domains::peers::connections::connection_types::ConnectedPeerInfo;
 use crate::domains::peers::connections::connection_types::ReadConnected;
 use crate::domains::peers::connections::connection_types::WriteConnected;
@@ -23,7 +24,7 @@ use tracing::trace;
 pub(crate) struct OutboundStream {
     pub(crate) r: ReadConnected,
     pub(crate) w: WriteConnected,
-    pub(crate) my_repl_info: ReplicationState,
+    pub(crate) my_repl_info: ReplicationInfo,
     pub(crate) connected_node_info: Option<ConnectedPeerInfo>,
 }
 
