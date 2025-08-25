@@ -28,6 +28,7 @@ use presentation::clusters::communication_manager::ClusterCommunicationManager;
 use std::fs::File;
 
 use std::sync::LazyLock;
+use std::sync::atomic::Ordering;
 use std::time::Duration;
 use tracing_subscriber::EnvFilter;
 
@@ -46,6 +47,7 @@ use tracing_subscriber::layer::SubscriberExt;
 use uuid::Uuid;
 
 use crate::domains::TSerdeReadWrite;
+use crate::domains::cluster_actors::consensus::election::REQUESTS_BLOCKED_BY_ELECTION;
 use crate::prelude::AuthRequest;
 pub use config::ENV;
 
@@ -211,6 +213,9 @@ impl StartUpFacade {
         //TODO refactor: authentication should be simplified
         while let Ok((mut stream, _)) = listener.accept().await {
             let request = stream.deserialized_read().await?;
+            while REQUESTS_BLOCKED_BY_ELECTION.load(Ordering::Acquire) {
+                tokio::time::sleep(Duration::from_millis(100)).await;
+            }
             match request {
                 | AuthRequest { .. } => {
                     let Ok((reader, writer)) =

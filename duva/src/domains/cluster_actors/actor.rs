@@ -14,6 +14,7 @@ use super::*;
 use crate::domains::QueryIO;
 use crate::domains::TAsyncReadWrite;
 use crate::domains::caches::cache_manager::CacheManager;
+use crate::domains::cluster_actors::consensus::election::REQUESTS_BLOCKED_BY_ELECTION;
 
 use crate::domains::cluster_actors::consensus::election::ElectionVoting;
 use crate::domains::peers::command::BatchId;
@@ -60,7 +61,6 @@ use std::io::Write;
 use std::iter;
 use std::sync::atomic::Ordering;
 
-use tracing::debug;
 use tracing::error;
 use tracing::info;
 use tracing::instrument;
@@ -445,6 +445,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         self.reset_election_timeout();
         self.maybe_update_term(heartbeat.term);
         self.replicate(heartbeat, cache_manager).await;
+        REQUESTS_BLOCKED_BY_ELECTION.store(false, Ordering::Release);
     }
 
     #[instrument(level = tracing::Level::DEBUG, skip(self, election_vote))]
@@ -1052,6 +1053,8 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             self.replication.self_identifier(),
         );
         let _ = self.logger.write_single_entry(&WriteRequest::NoOp, self.replication.term, None);
+        // * Release requests blocked by election
+        REQUESTS_BLOCKED_BY_ELECTION.store(false, Ordering::Release);
     }
     fn become_candidate(&mut self) {
         self.replication.term += 1;

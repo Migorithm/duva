@@ -1,5 +1,10 @@
-use crate::{domains::cluster_actors::actor::ClusterActorSender, types::Callback};
-use std::{ops::Range, time::Duration};
+use crate::{
+    domains::cluster_actors::{
+        actor::ClusterActorSender, consensus::election::REQUESTS_BLOCKED_BY_ELECTION,
+    },
+    types::Callback,
+};
+use std::{ops::Range, sync::atomic::Ordering, time::Duration};
 use tokio::{select, time::interval};
 use tracing::warn;
 
@@ -89,6 +94,7 @@ impl HeartBeatScheduler {
                     _ =  tokio::time::sleep(Duration::from_millis(rand::random_range(ELECTION_TIMEOUT)))=>{
                         warn!("\x1b[33mElection timeout\x1b[0m");
                         // ! Block operations at global level
+                        REQUESTS_BLOCKED_BY_ELECTION.store(true, Ordering::Release);
                         let _ = cluster_handler.send(SchedulerMessage::StartLeaderElection).await;
 
                     }
