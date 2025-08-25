@@ -13,8 +13,8 @@ pub(crate) struct ReplicatedLogs<T> {
     pub(crate) hwm: Arc<AtomicU64>, // high water mark (commit idx)
 }
 impl<T> ReplicatedLogs<T> {
-    pub fn new(target: T, last_log_index: u64, last_log_term: u64, hwm: u64) -> Self {
-        Self { target, last_log_index, last_log_term, hwm: Arc::new(hwm.into()) }
+    pub fn new(target: T, last_log_index: u64, last_log_term: u64) -> Self {
+        Self { target, last_log_index, last_log_term, hwm: Arc::new(last_log_index.into()) }
     }
 }
 

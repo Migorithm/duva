@@ -11,7 +11,6 @@ use domains::caches::cache_manager::CacheManager;
 use domains::cluster_actors::ClusterActor;
 use domains::cluster_actors::ConnectionMessage;
 use domains::cluster_actors::replication::ReplicationId;
-
 use domains::cluster_actors::replication::ReplicationState;
 use domains::operation_logs::interfaces::TWriteAheadLog;
 use domains::saves::snapshot::Snapshot;
@@ -21,26 +20,20 @@ use opentelemetry_appender_tracing::layer::OpenTelemetryTracingBridge;
 use opentelemetry_otlp::WithExportConfig;
 use opentelemetry_sdk::Resource;
 use opentelemetry_sdk::logs::SdkLoggerProvider;
-
 use presentation::clients::ClientController;
 use presentation::clients::authenticate;
 use presentation::clusters::communication_manager::ClusterCommunicationManager;
 use std::fs::File;
-
 use std::sync::LazyLock;
 use std::time::Duration;
-use tracing_subscriber::EnvFilter;
-
 use tokio::net::TcpListener;
-
-use tracing_subscriber::Layer;
-
-use tracing_subscriber::util::SubscriberInitExt;
-
 use tracing::debug;
 use tracing::error;
 use tracing::info;
 use tracing::instrument;
+use tracing_subscriber::EnvFilter;
+use tracing_subscriber::Layer;
+use tracing_subscriber::util::SubscriberInitExt;
 
 use tracing_subscriber::layer::SubscriberExt;
 use uuid::Uuid;
@@ -107,7 +100,7 @@ impl StartUpFacade {
             ENV.role.clone(),
             &ENV.host,
             ENV.port,
-            ReplicatedLogs::new(wal, hwm, 0, hwm),
+            ReplicatedLogs::new(wal, hwm, 0),
         );
         let cache_manager = CacheManager::run_cache_actors(replication_state.logger.hwm.clone());
         tokio::spawn(cache_manager.clone().apply_snapshot(snapshot_info.key_values()));

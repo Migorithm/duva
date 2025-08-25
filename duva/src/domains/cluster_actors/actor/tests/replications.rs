@@ -3,7 +3,7 @@ use super::*;
 #[test]
 fn logger_create_entries_from_lowest() {
     // GIVEN
-    let mut logger = ReplicatedLogs::new(MemoryOpLogs::default(), 0, 0, 0);
+    let mut logger = ReplicatedLogs::new(MemoryOpLogs::default(), 0, 0);
 
     let test_logs = vec![
         Helper::write(1, 0, "foo", "bar"),
@@ -359,7 +359,7 @@ async fn follower_truncates_log_on_term_mismatch() {
         .writer
         .extend(vec![Helper::write(2, 1, "key1", "val1"), Helper::write(3, 1, "key2", "val2")]);
 
-    let logger = ReplicatedLogs::new(inmemory, 3, 1, 0);
+    let logger = ReplicatedLogs::new(inmemory, 3, 1);
 
     let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Leader).await;
     cluster_actor.replication.logger = logger;

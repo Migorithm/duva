@@ -171,7 +171,7 @@ impl Helper {
             role,
             "127.0.0.1",
             8080,
-            ReplicatedLogs::new(MemoryOpLogs::default(), 0, 0, 0),
+            ReplicatedLogs::new(MemoryOpLogs::default(), 0, 0),
         );
         ClusterActor::new(replication, 100, topology_writer)
     }

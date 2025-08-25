@@ -234,7 +234,7 @@ fn test_cloning_replication_state() {
         ReplicationRole::Leader,
         "ads",
         1231,
-        ReplicatedLogs::new(MemoryOpLogs { writer: vec![] }, 0, 0, 0),
+        ReplicatedLogs::new(MemoryOpLogs { writer: vec![] }, 0, 0),
     );
     let cloned = replication_state.logger.hwm.clone();
 
