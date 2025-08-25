@@ -107,10 +107,9 @@ impl StartUpFacade {
             ENV.role.clone(),
             &ENV.host,
             ENV.port,
-            hwm,
-            ReplicatedLogs::new(wal, hwm, 0),
+            ReplicatedLogs::new(wal, hwm, 0, hwm),
         );
-        let cache_manager = CacheManager::run_cache_actors(replication_state.hwm.clone());
+        let cache_manager = CacheManager::run_cache_actors(replication_state.logger.hwm.clone());
         tokio::spawn(cache_manager.clone().apply_snapshot(snapshot_info.key_values()));
 
         let cluster_actor_handler =

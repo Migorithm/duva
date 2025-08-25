@@ -366,7 +366,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         let repl_cnt = self.replicas().count();
         if repl_cnt == 0 {
             // * If there are no replicas, we can send the response immediately
-            self.replication.hwm.fetch_add(1, Ordering::Relaxed);
+            self.replication.logger.hwm.fetch_add(1, Ordering::Relaxed);
             req.callback
                 .send(ConsensusClientResponse::LogIndex(self.replication.logger.last_log_index));
             return;
@@ -481,7 +481,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         callback: Callback<anyhow::Result<()>>,
     ) {
         self.replication.logger.reset();
-        self.replication.hwm.store(0, Ordering::Release);
+        self.replication.logger.hwm.store(0, Ordering::Release);
         self.set_repl_id(ReplicationId::Undecided);
         self.step_down().await;
         self.connect_to_server::<C>(peer_addr, Some(callback)).await;
@@ -876,7 +876,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
         // * Increase the high water mark
         // ! Revisit this logic! hwm should be updated only after leader learns the average match index of followers
-        self.replication.hwm.fetch_add(1, Ordering::Relaxed);
+        self.replication.logger.hwm.fetch_add(1, Ordering::Relaxed);
 
         self.client_sessions.set_response(voting.session_req.take());
         voting.callback.send(ConsensusClientResponse::LogIndex(log_index));
@@ -996,7 +996,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     }
 
     async fn replicate_state(&mut self, leader_hwm: HeartBeat, cache_manager: &CacheManager) {
-        let old_hwm = self.replication.hwm.load(Ordering::Acquire);
+        let old_hwm = self.replication.logger.hwm.load(Ordering::Acquire);
         if leader_hwm.hwm > old_hwm {
             for log_index in (old_hwm + 1)..=leader_hwm.hwm {
                 let Some(log) = self.replication.logger.read_at(log_index) else {
@@ -1019,7 +1019,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
                     // ! This is expected and you should let it update hwm.
                     error!("failed to apply log: {e}, perhaps post validation failed?")
                 }
-                self.replication.hwm.store(log_index, Ordering::Release);
+                self.replication.logger.hwm.store(log_index, Ordering::Release);
             }
         }
     }

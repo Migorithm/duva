@@ -113,7 +113,7 @@ impl Helper {
             {
                 let id = key.clone();
                 let replid = repl_id.clone();
-                PeerState { id, log_index: hwm, replid, role }
+                PeerState { id, hwm, replid, role }
             },
             kill_switch,
         );
@@ -171,8 +171,7 @@ impl Helper {
             role,
             "127.0.0.1",
             8080,
-            0,
-            ReplicatedLogs::new(MemoryOpLogs::default(), 0, 0),
+            ReplicatedLogs::new(MemoryOpLogs::default(), 0, 0, 0),
         );
         ClusterActor::new(replication, 100, topology_writer)
     }
@@ -203,7 +202,7 @@ impl Helper {
                             .clone()
                             .unwrap_or_else(|| ReplicationId::Key("localhost".to_string()));
                         let role = ReplicationRole::Follower;
-                        PeerState { id, log_index: follower_hwm, replid, role }
+                        PeerState { id, hwm: follower_hwm, replid, role }
                     },
                     kill_switch,
                 ),

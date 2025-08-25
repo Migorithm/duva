@@ -3,7 +3,7 @@ use super::*;
 #[test]
 fn logger_create_entries_from_lowest() {
     // GIVEN
-    let mut logger = ReplicatedLogs::new(MemoryOpLogs::default(), 0, 0);
+    let mut logger = ReplicatedLogs::new(MemoryOpLogs::default(), 0, 0, 0);
 
     let test_logs = vec![
         Helper::write(1, 0, "foo", "bar"),
@@ -19,10 +19,9 @@ fn logger_create_entries_from_lowest() {
         ReplicationRole::Leader,
         "localhost",
         8080,
-        0,
         logger,
     );
-    repl_state.hwm.store(LOWEST_FOLLOWER_COMMIT_INDEX, Ordering::Release);
+    repl_state.logger.hwm.store(LOWEST_FOLLOWER_COMMIT_INDEX, Ordering::Release);
 
     let log = &WriteRequest::Set { key: "foo4".into(), value: "bar".into(), expires_at: None };
     repl_state.logger.write_single_entry(log, repl_state.term, None).unwrap();
@@ -58,7 +57,7 @@ async fn test_generate_follower_entries() {
         Helper::write(3, 0, "foo3", "bar"),
     ];
 
-    cluster_actor.replication.hwm.store(3, Ordering::Release);
+    cluster_actor.replication.logger.hwm.store(3, Ordering::Release);
 
     cluster_actor.replication.logger.follower_write_entries(test_logs).unwrap();
 
@@ -103,7 +102,7 @@ async fn follower_cluster_actor_replicate_log() {
     cluster_actor.replicate(heartbeat, &cache_manager).await;
 
     // THEN
-    assert_eq!(cluster_actor.replication.hwm.load(Ordering::Relaxed), 0);
+    assert_eq!(cluster_actor.replication.logger.hwm.load(Ordering::Relaxed), 0);
     assert_eq!(cluster_actor.replication.logger.last_log_index, 2);
     let logs = cluster_actor.replication.logger.range(0, 2);
     assert_eq!(logs.len(), 2);
@@ -153,7 +152,7 @@ async fn follower_cluster_actor_sessionless_replicate_state() {
     cluster_actor.replicate(heartbeat, &cache_manager).await;
 
     // THEN
-    assert_eq!(cluster_actor.replication.hwm.load(Ordering::Relaxed), 2);
+    assert_eq!(cluster_actor.replication.logger.hwm.load(Ordering::Relaxed), 2);
     assert_eq!(cluster_actor.replication.logger.last_log_index, 2);
     task.await.unwrap();
 }
@@ -243,7 +242,7 @@ async fn follower_cluster_actor_replicate_state_only_upto_hwm() {
     task.abort();
 
     // Verify state
-    assert_eq!(cluster_actor.replication.hwm.load(Ordering::Relaxed), 1);
+    assert_eq!(cluster_actor.replication.logger.hwm.load(Ordering::Relaxed), 1);
     assert_eq!(cluster_actor.replication.logger.last_log_index, 2);
 }
 
@@ -296,7 +295,7 @@ async fn test_apply_multiple_committed_entries() {
         .expect("Task failed");
 
     assert_eq!(applied_keys, vec!["key1", "key2", "key3"]);
-    assert_eq!(cluster_actor.replication.hwm.load(Ordering::Relaxed), 3);
+    assert_eq!(cluster_actor.replication.logger.hwm.load(Ordering::Relaxed), 3);
 }
 
 #[tokio::test]
@@ -346,7 +345,7 @@ async fn test_partial_commit_with_new_entries() {
         .expect("Task failed");
 
     assert_eq!(applied_keys, vec!["key1"]);
-    assert_eq!(cluster_actor.replication.hwm.load(Ordering::Relaxed), 1);
+    assert_eq!(cluster_actor.replication.logger.hwm.load(Ordering::Relaxed), 1);
     assert_eq!(cluster_actor.replication.logger.last_log_index, 3); // All entries are in the log
 }
 
@@ -360,7 +359,7 @@ async fn follower_truncates_log_on_term_mismatch() {
         .writer
         .extend(vec![Helper::write(2, 1, "key1", "val1"), Helper::write(3, 1, "key2", "val2")]);
 
-    let logger = ReplicatedLogs::new(inmemory, 3, 1);
+    let logger = ReplicatedLogs::new(inmemory, 3, 1, 0);
 
     let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Leader).await;
     cluster_actor.replication.logger = logger;
