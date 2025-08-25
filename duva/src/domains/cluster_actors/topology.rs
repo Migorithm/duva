@@ -1,6 +1,6 @@
 use crate::domains::cluster_actors::hash_ring::HashRing;
 use crate::domains::cluster_actors::replication::{
-    ReplicationId, ReplicationRole, ReplicationState,
+    ReplicationId, ReplicationInfo, ReplicationRole,
 };
 use crate::domains::peers::peer::PeerState;
 use crate::prelude::PeerIdentifier;
@@ -33,9 +33,9 @@ impl NodeReplInfo {
         }
     }
 
-    pub(crate) fn from_replication_state(replication_state: &ReplicationState) -> Self {
+    pub(crate) fn from_replication_state(replication_state: ReplicationInfo) -> Self {
         Self {
-            peer_id: replication_state.self_identifier(),
+            peer_id: PeerIdentifier::new(&replication_state.self_host, replication_state.self_port),
             repl_id: replication_state.replid.clone(),
             repl_role: replication_state.role.clone(),
         }

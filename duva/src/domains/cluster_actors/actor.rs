@@ -14,26 +14,22 @@ use super::*;
 use crate::domains::QueryIO;
 use crate::domains::TAsyncReadWrite;
 use crate::domains::caches::cache_manager::CacheManager;
-
 use crate::domains::cluster_actors::consensus::election::ElectionVoting;
-use crate::domains::peers::command::BatchId;
-use crate::domains::peers::command::InProgressMigration;
-use crate::domains::peers::command::PendingMigrationTask;
-use crate::domains::peers::command::QueuedKeysToMigrate;
-
 use crate::domains::cluster_actors::queue::ClusterActorQueue;
 use crate::domains::cluster_actors::queue::ClusterActorReceiver;
 use crate::domains::cluster_actors::queue::ClusterActorSender;
 use crate::domains::cluster_actors::topology::{NodeReplInfo, Topology};
-
 use crate::domains::operation_logs::WriteRequest;
 use crate::domains::operation_logs::interfaces::TWriteAheadLog;
 use crate::domains::operation_logs::logger::ReplicatedLogs;
 use crate::domains::peers::command::BannedPeer;
+use crate::domains::peers::command::BatchEntries;
+use crate::domains::peers::command::BatchId;
 use crate::domains::peers::command::ElectionVote;
 use crate::domains::peers::command::HeartBeat;
-
-use crate::domains::peers::command::BatchEntries;
+use crate::domains::peers::command::InProgressMigration;
+use crate::domains::peers::command::PendingMigrationTask;
+use crate::domains::peers::command::QueuedKeysToMigrate;
 use crate::domains::peers::command::RejectionReason;
 use crate::domains::peers::command::ReplicationAck;
 use crate::domains::peers::command::RequestVote;
@@ -48,19 +44,15 @@ use crate::res_err;
 use crate::types::Callback;
 use crate::types::CallbackAwaiter;
 use client_sessions::ClientSessions;
-
 use heartbeat_scheduler::HeartBeatScheduler;
 use std::collections::HashMap;
-use tokio::net::TcpStream;
-
 use std::fmt::Debug;
 use std::fs::File;
 use std::io::Seek;
 use std::io::Write;
 use std::iter;
 use std::sync::atomic::Ordering;
-
-use tracing::debug;
+use tokio::net::TcpStream;
 use tracing::error;
 use tracing::info;
 use tracing::instrument;
@@ -71,7 +63,7 @@ mod tests;
 #[derive(Debug)]
 pub struct ClusterActor<T> {
     pub(crate) members: BTreeMap<PeerIdentifier, Peer>,
-    pub(crate) replication: ReplicationState,
+    pub(crate) replication: ReplicationState<T>,
     pub(crate) consensus_tracker: LogConsensusTracker,
     pub(crate) receiver: ClusterActorReceiver,
     pub(crate) self_handler: ClusterActorSender,
@@ -82,7 +74,7 @@ pub struct ClusterActor<T> {
     // * Pending requests are used to store requests that are received while the actor is in the process of election/cluster rebalancing.
     // * These requests will be processed once the actor is back to a stable state.
     pub(crate) client_sessions: ClientSessions,
-    pub(crate) logger: ReplicatedLogs<T>,
+
     pub(crate) hash_ring: HashRing,
     migrations_in_progress: Option<InProgressMigration>,
     cluster_join_sync: ClusterJoinSync,
@@ -109,22 +101,23 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     pub(crate) fn run(
         topology_writer: std::fs::File,
         heartbeat_interval: u64,
-        init_replication: ReplicationState,
+        init_repl_state: ReplicationState<T>,
         cache_manager: CacheManager,
-        wal: T,
     ) -> ClusterActorSender {
-        let cluster_actor =
-            ClusterActor::new(init_replication, heartbeat_interval, topology_writer, wal);
+        let cluster_actor = ClusterActor::new(init_repl_state, heartbeat_interval, topology_writer);
         let actor_handler = cluster_actor.self_handler.clone();
         tokio::spawn(cluster_actor.handle(cache_manager));
         actor_handler
     }
 
+    fn logger(&self) -> &ReplicatedLogs<T> {
+        &self.replication.logger
+    }
+
     fn new(
-        init_repl_state: ReplicationState,
+        init_repl_state: ReplicationState<T>,
         heartbeat_interval_in_mills: u64,
         topology_writer: File,
-        log_writer: T,
     ) -> Self {
         let (self_handler, receiver) = ClusterActorQueue::new(2000);
         let heartbeat_scheduler = HeartBeatScheduler::run(
@@ -140,11 +133,6 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         )]);
 
         Self {
-            logger: ReplicatedLogs::new(
-                log_writer,
-                init_repl_state.hwm.load(Ordering::Acquire),
-                init_repl_state.term,
-            ),
             heartbeat_scheduler,
             replication: init_repl_state,
             receiver,
@@ -181,10 +169,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         let peer = self.members.get_mut(&peer_id).unwrap();
         if peer.is_follower(&self.replication.replid) && self.replication.is_leader() {
             info!("Sending heartbeat to newly added follower: {}", peer_id);
-            let hb = self
-                .replication
-                .default_heartbeat(0, self.logger.last_log_index, self.logger.last_log_term)
-                .set_hashring(self.hash_ring.clone());
+            let hb = self.replication.default_heartbeat(0).set_hashring(self.hash_ring.clone());
             let _ = peer.send(hb).await;
         }
 
@@ -238,7 +223,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         let outbound_stream = OutboundStream {
             r,
             w,
-            my_repl_info: self.replication.clone(),
+            my_repl_info: self.replication.info(),
             connected_node_info: None,
         };
 
@@ -259,7 +244,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             r,
             w,
             host_ip,
-            self_repl_info: self.replication.clone(),
+            self_repl_info: self.replication.info(),
             connected_peer_info: Default::default(),
         };
 
@@ -281,10 +266,8 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         self.remove_idle_peers().await;
 
         let hop_count = Self::hop_count(FANOUT, self.members.len());
-        let hb = self
-            .replication
-            .default_heartbeat(hop_count, self.logger.last_log_index, self.logger.last_log_term)
-            .set_cluster_nodes(self.cluster_nodes());
+        let hb =
+            self.replication.default_heartbeat(hop_count).set_cluster_nodes(self.cluster_nodes());
         self.send_heartbeat(hb).await;
     }
 
@@ -326,7 +309,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             let key = req.request.all_keys().into_iter().map(String::from).collect();
             req.callback.send(ConsensusClientResponse::AlreadyProcessed {
                 key,
-                index: self.logger.last_log_index,
+                index: self.logger().last_log_index,
             });
             return;
         };
@@ -355,7 +338,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
     async fn req_consensus(&mut self, req: ConsensusRequest) {
         // * Check if the request has already been processed
-        if let Err(err) = self.logger.write_single_entry(
+        if let Err(err) = self.replication.logger.write_single_entry(
             &req.request,
             self.replication.term,
             req.session_req.clone(),
@@ -367,12 +350,16 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         let repl_cnt = self.replicas().count();
         if repl_cnt == 0 {
             // * If there are no replicas, we can send the response immediately
-            self.replication.hwm.fetch_add(1, Ordering::Relaxed);
-            req.callback.send(ConsensusClientResponse::LogIndex(self.logger.last_log_index));
+            self.increase_hwm();
+            req.callback.send(ConsensusClientResponse::LogIndex(self.logger().last_log_index));
             return;
         }
-        self.consensus_tracker.add(self.logger.last_log_index, req, repl_cnt);
+        self.consensus_tracker.add(self.logger().last_log_index, req, repl_cnt);
         self.send_rpc_to_replicas().await;
+    }
+
+    fn increase_hwm(&mut self) {
+        self.replication.logger.hwm.fetch_add(1, Ordering::Relaxed);
     }
 
     #[instrument(level = tracing::Level::DEBUG, skip(self))]
@@ -396,7 +383,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             return;
         };
 
-        let grant_vote = self.logger.last_log_index <= request_vote.last_log_index
+        let grant_vote = self.logger().last_log_index <= request_vote.last_log_index
             && self.replication.become_follower_if_term_higher_and_votable(
                 &request_vote.candidate_id,
                 request_vote.term,
@@ -463,10 +450,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         self.send_rpc_to_replicas().await;
 
         // * Cluster notification
-        let msg = self
-            .replication
-            .default_heartbeat(0, self.logger.last_log_index, self.logger.last_log_term)
-            .set_hashring(self.hash_ring.clone());
+        let msg = self.replication.default_heartbeat(0).set_hashring(self.hash_ring.clone());
         self.send_heartbeat(msg).await;
     }
 
@@ -476,8 +460,8 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         peer_addr: PeerIdentifier,
         callback: Callback<anyhow::Result<()>>,
     ) {
-        self.logger.reset();
-        self.replication.hwm.store(0, Ordering::Release);
+        self.replication.logger.reset();
+        self.replication.logger.hwm.store(0, Ordering::Release);
         self.set_repl_id(ReplicationId::Undecided);
         self.step_down().await;
         self.connect_to_server::<C>(peer_addr, Some(callback)).await;
@@ -587,11 +571,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
         let hb = self
             .replication
-            .default_heartbeat(
-                Self::hop_count(FANOUT, self.members.len()),
-                self.logger.last_log_index,
-                self.logger.last_log_term,
-            )
+            .default_heartbeat(Self::hop_count(FANOUT, self.members.len()))
             .set_hashring(new_hashring.clone());
 
         self.send_heartbeat(hb).await;
@@ -699,7 +679,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
                 .values()
                 .clone()
                 .map(|peer| NodeReplInfo::from_peer_state(peer.state()))
-                .chain(iter::once(NodeReplInfo::from_replication_state(&self.replication)))
+                .chain(iter::once(NodeReplInfo::from_replication_state(self.replication.info())))
                 .collect(),
             self.hash_ring.clone(),
         )
@@ -744,10 +724,8 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         };
         hop_count -= 1;
 
-        let hb = self
-            .replication
-            .default_heartbeat(hop_count, self.logger.last_log_index, self.logger.last_log_term)
-            .set_cluster_nodes(self.cluster_nodes());
+        let hb =
+            self.replication.default_heartbeat(hop_count).set_cluster_nodes(self.cluster_nodes());
         self.send_heartbeat(hb).await;
     }
 
@@ -796,12 +774,8 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         &mut self,
     ) -> Box<dyn Iterator<Item = (&mut Peer, HeartBeat)> + '_> {
         let lowest_watermark = self.take_low_watermark();
-        let append_entries = self.logger.list_append_log_entries(lowest_watermark);
-        let default_heartbeat: HeartBeat = self.replication.default_heartbeat(
-            0,
-            self.logger.last_log_index,
-            self.logger.last_log_term,
-        );
+        let append_entries = self.replication.logger.list_append_log_entries(lowest_watermark);
+        let default_heartbeat: HeartBeat = self.replication.default_heartbeat(0);
 
         // Handle empty entries case
         if append_entries.is_empty() {
@@ -811,7 +785,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         }
 
         // If we have entries, find the entry before the first one to use as backup
-        let backup_entry = self.logger.read_at(append_entries[0].log_index - 1);
+        let backup_entry = self.replication.logger.read_at(append_entries[0].log_index - 1);
 
         let iterator = self.replicas_mut().map(move |(peer, p_log_idx)| {
             let missing_entries = append_entries
@@ -868,7 +842,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
         // * Increase the high water mark
         // ! Revisit this logic! hwm should be updated only after leader learns the average match index of followers
-        self.replication.hwm.fetch_add(1, Ordering::Relaxed);
+        self.increase_hwm();
 
         self.client_sessions.set_response(voting.session_req.take());
         voting.callback.send(ConsensusClientResponse::LogIndex(log_index));
@@ -895,7 +869,11 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         if let Err(rej_reason) = self.replicate_log_entries(&mut heartbeat).await {
             self.send_replication_ack(
                 &heartbeat.from,
-                ReplicationAck::reject(self.logger.last_log_index, rej_reason, &self.replication),
+                ReplicationAck::reject(
+                    self.logger().last_log_index,
+                    rej_reason,
+                    self.replication.term,
+                ),
             )
             .await;
             return;
@@ -912,7 +890,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         let mut session_reqs = Vec::with_capacity(rpc.append_entries.len());
 
         for mut log in std::mem::take(&mut rpc.append_entries) {
-            if log.log_index > self.logger.last_log_index {
+            if log.log_index > self.logger().last_log_index {
                 if let Some(session_req) = log.session_req.take() {
                     session_reqs.push(session_req);
                 }
@@ -921,12 +899,13 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         }
 
         self.ensure_prev_consistency(rpc.prev_log_index, rpc.prev_log_term).await?;
-        let log_idx = self.logger.follower_write_entries(entries).map_err(|e| {
+        let log_idx = self.replication.logger.follower_write_entries(entries).map_err(|e| {
             err!("{}", e);
             RejectionReason::FailToWrite
         })?;
 
-        self.send_replication_ack(&rpc.from, ReplicationAck::ack(log_idx, &self.replication)).await;
+        self.send_replication_ack(&rpc.from, ReplicationAck::ack(log_idx, self.replication.term))
+            .await;
 
         // * The following is to allow for failure of leader and follower elected as new leader.
         // Subscription request with the same session req should be treated as idempotent operation
@@ -942,7 +921,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         prev_log_term: u64,
     ) -> Result<(), RejectionReason> {
         // Case: Empty log
-        if self.logger.is_empty() {
+        if self.replication.logger.is_empty() {
             if prev_log_index == 0 {
                 return Ok(()); // First entry, no previous log to check
             }
@@ -952,12 +931,12 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
         // * Raft followers should truncate their log starting at prev_log_index + 1 and then append the new entries
         // * Just returning an error is breaking consistency
-        if let Some(prev_entry) = self.logger.read_at(prev_log_index)
+        if let Some(prev_entry) = self.replication.logger.read_at(prev_log_index)
             && prev_entry.term != prev_log_term
         {
             // ! Term mismatch -> triggers log truncation
             err!("Term mismatch: {} != {}", prev_entry.term, prev_log_term);
-            self.logger.truncate_after(prev_log_index);
+            self.replication.logger.truncate_after(prev_log_index);
 
             return Err(RejectionReason::LogInconsistency);
         }
@@ -968,7 +947,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     #[instrument(level = tracing::Level::INFO, skip(self))]
     pub(crate) async fn run_for_election(&mut self) {
         self.become_candidate();
-        let request_vote = RequestVote::new(&self.replication, &self.logger);
+        let request_vote = RequestVote::new(self.replication.info(), &self.replication.logger);
 
         self.replicas_mut()
             .map(|(peer, _)| peer.send(request_vote.clone()))
@@ -983,17 +962,17 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     }
 
     async fn replicate_state(&mut self, leader_hwm: HeartBeat, cache_manager: &CacheManager) {
-        let old_hwm = self.replication.hwm.load(Ordering::Acquire);
+        let old_hwm = self.replication.logger.hwm.load(Ordering::Acquire);
         if leader_hwm.hwm > old_hwm {
             for log_index in (old_hwm + 1)..=leader_hwm.hwm {
-                let Some(log) = self.logger.read_at(log_index) else {
+                let Some(log) = self.replication.logger.read_at(log_index) else {
                     warn!("log has never been replicated!");
                     self.send_replication_ack(
                         &leader_hwm.from,
                         ReplicationAck::reject(
-                            self.logger.last_log_index,
+                            self.logger().last_log_index,
                             RejectionReason::LogInconsistency,
-                            &self.replication,
+                            self.replication.term,
                         ),
                     )
                     .await;
@@ -1006,7 +985,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
                     // ! This is expected and you should let it update hwm.
                     error!("failed to apply log: {e}, perhaps post validation failed?")
                 }
-                self.replication.hwm.store(log_index, Ordering::Release);
+                self.replication.logger.hwm.store(log_index, Ordering::Release);
             }
         }
     }
@@ -1024,9 +1003,9 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             self.send_replication_ack(
                 &heartbeat.from,
                 ReplicationAck::reject(
-                    self.logger.last_log_index,
+                    self.logger().last_log_index,
                     RejectionReason::ReceiverHasHigherTerm,
-                    &self.replication,
+                    self.replication.term,
                 ),
             )
             .await;
@@ -1051,7 +1030,11 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             self.replication.replid.clone(),
             self.replication.self_identifier(),
         );
-        let _ = self.logger.write_single_entry(&WriteRequest::NoOp, self.replication.term, None);
+        let _ = self.replication.logger.write_single_entry(
+            &WriteRequest::NoOp,
+            self.replication.term,
+            None,
+        );
     }
     fn become_candidate(&mut self) {
         self.replication.term += 1;

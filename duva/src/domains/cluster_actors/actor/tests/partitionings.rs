@@ -370,7 +370,7 @@ async fn test_receive_batch_when_empty_cache_entries() {
     cluster_actor.receive_batch(batch.clone(), &cache_manager, _id).await;
 
     // THEN - verify that no log index is incremented
-    assert_eq!(cluster_actor.logger.last_log_index, 0);
+    assert_eq!(cluster_actor.replication.logger.last_log_index, 0);
     assert_expected_queryio(&buf, QueryIO::MigrationBatchAck(batch.batch_id)).await;
 }
 
@@ -380,7 +380,7 @@ async fn test_receive_batch_when_consensus_is_required() {
     let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Leader).await;
 
     let (_hwm, cache_manager) = Helper::cache_manager();
-    let current_index = cluster_actor.logger.last_log_index;
+    let current_index = cluster_actor.replication.logger.last_log_index;
     let ack_to = PeerIdentifier::new("127.0.0.1", 6567);
 
     // add replica
@@ -394,7 +394,7 @@ async fn test_receive_batch_when_consensus_is_required() {
     cluster_actor.receive_batch(batch, &cache_manager, ack_to.clone()).await;
 
     // THEN - verify that the log index is incremented
-    assert_eq!(cluster_actor.logger.last_log_index, current_index + 1);
+    assert_eq!(cluster_actor.replication.logger.last_log_index, current_index + 1);
     assert_expected_queryio(
         &repl_buf,
         QueryIO::AppendEntriesRPC(HeartBeat {
