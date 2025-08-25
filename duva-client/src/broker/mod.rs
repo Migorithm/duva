@@ -130,19 +130,19 @@ impl Broker {
         &mut self,
         replication_id: ReplicationId,
     ) -> anyhow::Result<()> {
-        // TODO do we have to remove connection also from `self.topology.node_infos`?
-        self.node_connections.remove_connection(&replication_id.clone()).await;
+        let removed_peer_id =
+            self.node_connections.remove_connection(&replication_id.clone()).await.unwrap();
 
         // ! ISSUE: replica set is queried and node connection is made
         // ! If no connection for the given replica set is not available, the user should not be able to make query, which leads to system unuvailability
         // ! We should make, therefore, some compromize that's based on some timing assumption - within this time, if connection is not established, we will abort the connection.
         // ! It means the following operation must be based on callback partern that's waiting for some node in the system notify the client of the event.
 
-        for node in self.get_replica_set(&replication_id).cloned().collect::<Vec<_>>() {
-            // TODO probably ping and connect?
-            if let Ok(()) = self.add_node_connection(&node.peer_id).await {
-                return Ok(());
-            }
+        let followers =
+            self.get_follower_set(&replication_id, removed_peer_id).cloned().collect::<Vec<_>>();
+
+        for follower in followers {
+            let _ = self.add_node_connection(&follower.peer_id).await;
         }
 
         // ! operation wise, seed node is just to not confuse user. If replacement is made, it'd be even more surprising to user because without user intervention,
@@ -151,8 +151,16 @@ impl Broker {
         Ok(())
     }
 
-    fn get_replica_set(&self, replid: &ReplicationId) -> impl Iterator<Item = &NodeReplInfo> {
-        self.topology.node_infos.iter().filter(move |n| &n.repl_id == replid)
+    fn get_follower_set(
+        &self,
+        replid: &ReplicationId,
+        removed_peer_id: PeerIdentifier,
+    ) -> impl Iterator<Item = &NodeReplInfo> {
+        self.topology
+            .node_infos
+            .iter()
+            .filter(move |n| &n.peer_id != &removed_peer_id)
+            .filter(move |n| &n.repl_id == replid)
     }
 
     async fn remove_outdated_connections(&mut self) {
