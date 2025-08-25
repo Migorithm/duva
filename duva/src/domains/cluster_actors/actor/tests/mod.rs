@@ -4,7 +4,6 @@ mod partitionings;
 mod replications;
 #[allow(unused_variables)]
 use super::actor::ClusterActorSender;
-
 use super::*;
 use crate::CacheManager;
 use crate::ReplicationId;
@@ -25,24 +24,22 @@ use crate::domains::peers::connections::inbound::stream::InboundStream;
 use crate::domains::peers::peer::PeerState;
 use crate::domains::peers::service::PeerListener;
 use crate::types::Callback;
-use std::collections::VecDeque;
-use std::fs::OpenOptions;
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::Duration;
-use tempfile::TempDir;
-use tokio::net::TcpListener;
-use tokio::sync::mpsc::channel;
-use uuid::Uuid;
-
-use std::sync::Arc;
-
 use crate::{
     domains::{IoError, TRead, TWrite},
     make_smart_pointer,
 };
-
 use bytes::BytesMut;
+use std::collections::VecDeque;
+use std::fs::OpenOptions;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::Duration;
+use tempfile::TempDir;
+use tokio::net::TcpListener;
 use tokio::sync::Mutex;
+use tokio::sync::mpsc::channel;
+use uuid::Uuid;
+
 #[derive(Debug, Clone)]
 pub struct FakeReadWrite(Arc<Mutex<VecDeque<QueryIO>>>);
 make_smart_pointer!(FakeReadWrite, Arc<Mutex<VecDeque<QueryIO>>>);

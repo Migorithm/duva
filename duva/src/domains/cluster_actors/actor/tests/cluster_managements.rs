@@ -253,11 +253,7 @@ async fn test_add_peer_for_follower_send_heartbeat() {
         &buf,
         cluster_actor
             .replication
-            .default_heartbeat(
-                0,
-                cluster_actor.replication.logger.last_log_index,
-                cluster_actor.replication.logger.last_log_term,
-            )
+            .default_heartbeat(0)
             .set_hashring(cluster_actor.hash_ring.clone()),
     )
     .await;

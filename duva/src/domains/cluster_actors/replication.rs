@@ -77,12 +77,7 @@ impl<T> ReplicationState<T> {
         self.banlist.get(peer_identifier).is_some_and(|node| current_time - node.ban_time < 60)
     }
 
-    pub(super) fn default_heartbeat(
-        &self,
-        hop_count: u8,
-        prev_log_index: u64,
-        prev_log_term: u64,
-    ) -> HeartBeat {
+    pub(super) fn default_heartbeat(&self, hop_count: u8) -> HeartBeat {
         HeartBeat {
             from: self.self_identifier(),
             term: self.term,
@@ -90,8 +85,8 @@ impl<T> ReplicationState<T> {
             replid: self.replid.clone(),
             hop_count,
             ban_list: self.banlist.iter().cloned().collect(),
-            prev_log_index,
-            prev_log_term,
+            prev_log_index: self.logger.last_log_index,
+            prev_log_term: self.logger.last_log_term,
             ..Default::default()
         }
     }
