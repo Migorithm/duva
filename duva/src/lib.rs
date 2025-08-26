@@ -25,6 +25,7 @@ use presentation::clients::authenticate;
 use presentation::clusters::communication_manager::ClusterCommunicationManager;
 use std::fs::File;
 use std::sync::LazyLock;
+use std::sync::atomic::Ordering;
 use std::time::Duration;
 use tokio::net::TcpListener;
 use tracing::debug;
@@ -38,16 +39,18 @@ use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::layer::SubscriberExt;
 use uuid::Uuid;
 
-pub use config::ENV;
-
+use crate::domains::TSerdeReadWrite;
+use crate::domains::cluster_actors::consensus::election::REQUESTS_BLOCKED_BY_ELECTION;
 use crate::domains::operation_logs::logger::ReplicatedLogs;
+use crate::prelude::ConnectionRequest;
+pub use config::ENV;
 pub mod prelude {
     pub use crate::domains::cluster_actors::actor::heartbeat_scheduler::ELECTION_TIMEOUT_MAX;
     pub use crate::domains::cluster_actors::topology::NodeReplInfo;
     pub use crate::domains::cluster_actors::topology::Topology;
     pub use crate::domains::peers::identifier::PeerIdentifier;
-    pub use crate::presentation::clients::AuthRequest;
-    pub use crate::presentation::clients::AuthResponse;
+    pub use crate::presentation::clients::ConnectionRequest;
+    pub use crate::presentation::clients::ConnectionResponse;
     pub use anyhow;
     pub use bytes;
     pub use bytes::BytesMut;
@@ -138,7 +141,7 @@ impl StartUpFacade {
         ));
 
         self.discover_cluster().await?;
-        let _ = self.start_receiving_client_streams().await;
+        let _ = self.start_accepting_client_streams().await;
 
         logger_provider.shutdown().unwrap();
         Ok(())
@@ -197,32 +200,39 @@ impl StartUpFacade {
         }
     }
 
-    /// Run while loop accepting stream and if the sentinel is received, abort the tasks
-
     #[instrument(level = tracing::Level::DEBUG, skip(self))]
-    async fn start_receiving_client_streams(self) -> anyhow::Result<()> {
+    async fn start_accepting_client_streams(self) -> anyhow::Result<()> {
         let listener = TcpListener::bind(ENV.bind_addr()).await?;
         info!("start listening on {}", ENV.bind_addr());
-        let mut handles = Vec::with_capacity(100);
 
         //TODO refactor: authentication should be simplified
-        while let Ok((stream, _)) = listener.accept().await {
-            let Ok((reader, writer)) =
-                authenticate(stream, &self.cluster_communication_manager).await
-            else {
-                error!("Failed to authenticate client stream");
-                continue;
-            };
+        while let Ok((mut stream, _)) = listener.accept().await {
+            let request = stream.deserialized_read().await?;
+            while REQUESTS_BLOCKED_BY_ELECTION.load(Ordering::Acquire) {
+                tokio::time::sleep(Duration::from_millis(100)).await;
+            }
+            match request {
+                | ConnectionRequest { .. } => {
+                    let Ok((reader, writer)) =
+                        authenticate(stream, &self.cluster_communication_manager, request).await
+                    else {
+                        error!("Failed to authenticate client stream");
+                        continue;
+                    };
 
-            let observer =
-                self.cluster_communication_manager.route_subscribe_topology_change().await?;
-            let write_handler = writer.run(observer);
+                    let observer = self
+                        .cluster_communication_manager
+                        .route_subscribe_topology_change()
+                        .await?;
+                    let write_handler = writer.run(observer);
 
-            handles.push(tokio::spawn(
-                reader.handle_client_stream(self.client_controller(), write_handler.clone()),
-            ));
+                    tokio::spawn(
+                        reader
+                            .handle_client_stream(self.client_controller(), write_handler.clone()),
+                    );
+                },
+            }
         }
-
         Ok(())
     }
 

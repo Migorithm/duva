@@ -1,7 +1,6 @@
 mod node_connections;
 mod read_stream;
 mod write_stream;
-
 use crate::broker::node_connections::NodeConnections;
 use crate::command::{CommandQueue, CommandToServer, InputContext, RoutingRule};
 use duva::domains::cluster_actors::hash_ring::KeyOwnership;
@@ -17,7 +16,7 @@ use duva::prelude::{PeerIdentifier, tokio};
 use duva::presentation::clients::request::ClientAction;
 use duva::{
     domains::TSerdeReadWrite,
-    prelude::{AuthRequest, AuthResponse},
+    prelude::{ConnectionRequest, ConnectionResponse},
 };
 use futures::future::try_join_all;
 
@@ -48,6 +47,7 @@ impl Broker {
                 writer: w.run(),
                 kill_switch: r.run(broker_tx.clone(), seed_replid.clone()),
                 request_id: auth_response.request_id,
+                peer_identifier: server_addr.clone(),
             },
         );
 
@@ -111,12 +111,12 @@ impl Broker {
 
     pub(crate) async fn authenticate(
         server_addr: &PeerIdentifier,
-        auth_request: Option<AuthRequest>,
-    ) -> Result<(ServerStreamReader, ServerStreamWriter, AuthResponse), IoError> {
+        auth_request: Option<ConnectionRequest>,
+    ) -> Result<(ServerStreamReader, ServerStreamWriter, ConnectionResponse), IoError> {
         let mut stream =
             TcpStream::connect(server_addr.as_str()).await.map_err(|_| IoError::NotConnected)?;
         stream.serialized_write(auth_request.unwrap_or_default()).await?; // client_id not exist
-        let auth_response: AuthResponse = stream.deserialized_read().await?;
+        let auth_response: ConnectionResponse = stream.deserialized_read().await?;
         let (r, w) = stream.into_split();
         Ok((ServerStreamReader(r), ServerStreamWriter(w), auth_response))
     }
@@ -129,19 +129,20 @@ impl Broker {
         &mut self,
         replication_id: ReplicationId,
     ) -> anyhow::Result<()> {
-        // TODO do we have to remove connection also from `self.topology.node_infos`?
-        self.node_connections.remove_connection(&replication_id.clone()).await;
+        let removed_peer_id =
+            self.node_connections.remove_connection(&replication_id.clone()).await?;
 
         // ! ISSUE: replica set is queried and node connection is made
         // ! If no connection for the given replica set is not available, the user should not be able to make query, which leads to system unuvailability
         // ! We should make, therefore, some compromize that's based on some timing assumption - within this time, if connection is not established, we will abort the connection.
         // ! It means the following operation must be based on callback partern that's waiting for some node in the system notify the client of the event.
 
-        for node in self.get_replica_set(&replication_id).cloned().collect::<Vec<_>>() {
-            // TODO probably ping and connect?
-            if let Ok(()) = self.add_node_connection(&node.peer_id).await {
-                return Ok(());
-            }
+        let followers =
+            self.get_follower_set(&replication_id, &removed_peer_id).cloned().collect::<Vec<_>>();
+
+        // TODO Potential improvement - idea could be where "multiplex" until anyone of them show positive for being a leader
+        for follower in followers {
+            let _ = self.add_node_connection(&follower.peer_id).await;
         }
 
         // ! operation wise, seed node is just to not confuse user. If replacement is made, it'd be even more surprising to user because without user intervention,
@@ -150,8 +151,15 @@ impl Broker {
         Ok(())
     }
 
-    fn get_replica_set(&self, replid: &ReplicationId) -> impl Iterator<Item = &NodeReplInfo> {
-        self.topology.node_infos.iter().filter(move |n| &n.repl_id == replid)
+    fn get_follower_set(
+        &self,
+        replid: &ReplicationId,
+        removed_peer_id: &PeerIdentifier,
+    ) -> impl Iterator<Item = &NodeReplInfo> {
+        self.topology
+            .node_infos
+            .iter()
+            .filter(|n| n.peer_id != *removed_peer_id && n.repl_id == *replid)
     }
 
     async fn remove_outdated_connections(&mut self) {
@@ -171,7 +179,8 @@ impl Broker {
     }
 
     async fn add_node_connection(&mut self, peer_id: &PeerIdentifier) -> anyhow::Result<()> {
-        let auth_req = AuthRequest { client_id: Some(self.client_id.to_string()), request_id: 0 };
+        let auth_req =
+            ConnectionRequest { client_id: Some(self.client_id.to_string()), request_id: 0 };
         let Ok((server_stream_reader, server_stream_writer, auth_response)) =
             Self::authenticate(peer_id, Some(auth_req)).await
         else {
@@ -189,6 +198,7 @@ impl Broker {
                     .run(self.tx.clone(), auth_response.replication_id),
                 writer: server_stream_writer.run(),
                 request_id: auth_response.request_id,
+                peer_identifier: peer_id.clone(),
             },
         );
         Ok(())

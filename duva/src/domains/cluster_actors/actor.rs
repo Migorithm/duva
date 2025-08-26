@@ -15,6 +15,7 @@ use crate::domains::QueryIO;
 use crate::domains::TAsyncReadWrite;
 use crate::domains::caches::cache_manager::CacheManager;
 use crate::domains::cluster_actors::consensus::election::ElectionVoting;
+use crate::domains::cluster_actors::consensus::election::REQUESTS_BLOCKED_BY_ELECTION;
 use crate::domains::cluster_actors::queue::ClusterActorQueue;
 use crate::domains::cluster_actors::queue::ClusterActorReceiver;
 use crate::domains::cluster_actors::queue::ClusterActorSender;
@@ -382,6 +383,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         if self.find_replica_mut(&request_vote.candidate_id).is_none() {
             return;
         };
+        REQUESTS_BLOCKED_BY_ELECTION.store(true, Ordering::Relaxed);
 
         let grant_vote = self.logger().last_log_index <= request_vote.last_log_index
             && self.replication.become_follower_if_term_higher_and_votable(
@@ -432,6 +434,9 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         self.reset_election_timeout();
         self.maybe_update_term(heartbeat.term);
         self.replicate(heartbeat, cache_manager).await;
+
+        // TODO Replace the following with watcher
+        REQUESTS_BLOCKED_BY_ELECTION.store(false, Ordering::Relaxed);
     }
 
     #[instrument(level = tracing::Level::DEBUG, skip(self, election_vote))]
@@ -1035,8 +1040,10 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             self.replication.term,
             None,
         );
+        REQUESTS_BLOCKED_BY_ELECTION.store(false, Ordering::Relaxed);
     }
     fn become_candidate(&mut self) {
+        REQUESTS_BLOCKED_BY_ELECTION.store(true, Ordering::Relaxed);
         self.replication.term += 1;
         self.replication.election_state = ElectionState::Candidate {
             voting: Some(ElectionVoting::new(self.replicas().count() as u8)),
