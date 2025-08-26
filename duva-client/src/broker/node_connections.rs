@@ -149,7 +149,7 @@ mod tests {
         );
 
         // When
-        connections.remove_connection(&repl_id).await;
+        connections.remove_connection(&repl_id).await.unwrap();
 
         // Then
         assert!(connections.is_empty());

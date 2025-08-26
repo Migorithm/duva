@@ -200,13 +200,10 @@ impl StartUpFacade {
         }
     }
 
-    /// Run while loop accepting stream and if the sentinel is received, abort the tasks
-
     #[instrument(level = tracing::Level::DEBUG, skip(self))]
     async fn start_accepting_client_streams(self) -> anyhow::Result<()> {
         let listener = TcpListener::bind(ENV.bind_addr()).await?;
         info!("start listening on {}", ENV.bind_addr());
-        let mut handles = Vec::with_capacity(100);
 
         //TODO refactor: authentication should be simplified
         while let Ok((mut stream, _)) = listener.accept().await {
@@ -229,10 +226,10 @@ impl StartUpFacade {
                         .await?;
                     let write_handler = writer.run(observer);
 
-                    handles.push(tokio::spawn(
+                    tokio::spawn(
                         reader
                             .handle_client_stream(self.client_controller(), write_handler.clone()),
-                    ));
+                    );
                 },
             }
         }

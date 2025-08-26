@@ -1,10 +1,5 @@
-use crate::{
-    domains::cluster_actors::{
-        actor::ClusterActorSender, consensus::election::REQUESTS_BLOCKED_BY_ELECTION,
-    },
-    types::Callback,
-};
-use std::{ops::Range, sync::atomic::Ordering, time::Duration};
+use crate::{domains::cluster_actors::actor::ClusterActorSender, types::Callback};
+use std::{ops::Range, time::Duration};
 use tokio::{select, time::interval};
 use tracing::warn;
 

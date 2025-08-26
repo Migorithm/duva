@@ -1,13 +1,11 @@
 mod node_connections;
 mod read_stream;
 mod write_stream;
-
 use crate::broker::node_connections::NodeConnections;
 use crate::command::{CommandQueue, CommandToServer, InputContext, RoutingRule};
 use duva::domains::cluster_actors::hash_ring::KeyOwnership;
 use duva::domains::cluster_actors::replication::{ReplicationId, ReplicationRole};
 use duva::domains::{IoError, query_io::QueryIO};
-use duva::prelude::anyhow::Context;
 use duva::prelude::tokio::net::TcpStream;
 use duva::prelude::tokio::sync::mpsc::Receiver;
 use duva::prelude::tokio::sync::mpsc::Sender;
@@ -142,6 +140,7 @@ impl Broker {
         let followers =
             self.get_follower_set(&replication_id, &removed_peer_id).cloned().collect::<Vec<_>>();
 
+        // TODO Potential improvement - idea could be where "multiplex" until anyone of them show positive for being a leader
         for follower in followers {
             let _ = self.add_node_connection(&follower.peer_id).await;
         }
