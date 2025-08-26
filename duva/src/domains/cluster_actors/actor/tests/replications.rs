@@ -21,7 +21,7 @@ fn logger_create_entries_from_lowest() {
         8080,
         logger,
     );
-    repl_state.logger.hwm.store(LOWEST_FOLLOWER_COMMIT_INDEX, Ordering::Release);
+    repl_state.logger.con_idx.store(LOWEST_FOLLOWER_COMMIT_INDEX, Ordering::Release);
 
     let log = &WriteRequest::Set { key: "foo4".into(), value: "bar".into(), expires_at: None };
     repl_state.logger.write_single_entry(log, repl_state.term, None).unwrap();
@@ -57,7 +57,7 @@ async fn test_generate_follower_entries() {
         Helper::write(3, 0, "foo3", "bar"),
     ];
 
-    cluster_actor.replication.logger.hwm.store(3, Ordering::Release);
+    cluster_actor.replication.logger.con_idx.store(3, Ordering::Release);
 
     cluster_actor.replication.logger.follower_write_entries(test_logs).unwrap();
 
@@ -102,7 +102,7 @@ async fn follower_cluster_actor_replicate_log() {
     cluster_actor.replicate(heartbeat, &cache_manager).await;
 
     // THEN
-    assert_eq!(cluster_actor.replication.logger.hwm.load(Ordering::Relaxed), 0);
+    assert_eq!(cluster_actor.replication.logger.con_idx.load(Ordering::Relaxed), 0);
     assert_eq!(cluster_actor.replication.logger.last_log_index, 2);
     let logs = cluster_actor.replication.logger.range(0, 2);
     assert_eq!(logs.len(), 2);
@@ -152,7 +152,7 @@ async fn follower_cluster_actor_sessionless_replicate_state() {
     cluster_actor.replicate(heartbeat, &cache_manager).await;
 
     // THEN
-    assert_eq!(cluster_actor.replication.logger.hwm.load(Ordering::Relaxed), 2);
+    assert_eq!(cluster_actor.replication.logger.con_idx.load(Ordering::Relaxed), 2);
     assert_eq!(cluster_actor.replication.logger.last_log_index, 2);
     task.await.unwrap();
 }
@@ -189,14 +189,14 @@ async fn replicate_stores_only_latest_session_per_client() {
 }
 
 #[tokio::test]
-async fn follower_cluster_actor_replicate_state_only_upto_hwm() {
+async fn follower_cluster_actor_replicate_state_only_upto_con_idx() {
     // GIVEN
     let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Follower).await;
 
     // Log two entries but don't commit them yet
     let heartbeat = Helper::heartbeat(
         0,
-        0, // hwm=0, nothing committed yet
+        0, // con_idx=0, nothing committed yet
         vec![Helper::write(1, 0, "foo", "bar"), Helper::write(2, 0, "foo2", "bar")],
     );
 
@@ -229,9 +229,9 @@ async fn follower_cluster_actor_replicate_state_only_upto_hwm() {
         received_foo
     });
 
-    // Send a heartbeat with hwm=1 to commit only the first entry
-    const HWM: u64 = 1;
-    let heartbeat = Helper::heartbeat(0, HWM, vec![]);
+    // Send a heartbeat with con_idx=1 to commit only the first entry
+    const CON_IDX: u64 = 1;
+    let heartbeat = Helper::heartbeat(0, CON_IDX, vec![]);
     cluster_actor.replicate(heartbeat, &cache_manager).await;
 
     // THEN
@@ -242,7 +242,7 @@ async fn follower_cluster_actor_replicate_state_only_upto_hwm() {
     task.abort();
 
     // Verify state
-    assert_eq!(cluster_actor.replication.logger.hwm.load(Ordering::Relaxed), 1);
+    assert_eq!(cluster_actor.replication.logger.con_idx.load(Ordering::Relaxed), 1);
     assert_eq!(cluster_actor.replication.logger.last_log_index, 2);
 }
 
@@ -295,7 +295,7 @@ async fn test_apply_multiple_committed_entries() {
         .expect("Task failed");
 
     assert_eq!(applied_keys, vec!["key1", "key2", "key3"]);
-    assert_eq!(cluster_actor.replication.logger.hwm.load(Ordering::Relaxed), 3);
+    assert_eq!(cluster_actor.replication.logger.con_idx.load(Ordering::Relaxed), 3);
 }
 
 #[tokio::test]
@@ -345,7 +345,7 @@ async fn test_partial_commit_with_new_entries() {
         .expect("Task failed");
 
     assert_eq!(applied_keys, vec!["key1"]);
-    assert_eq!(cluster_actor.replication.logger.hwm.load(Ordering::Relaxed), 1);
+    assert_eq!(cluster_actor.replication.logger.con_idx.load(Ordering::Relaxed), 1);
     assert_eq!(cluster_actor.replication.logger.last_log_index, 3); // All entries are in the log
 }
 

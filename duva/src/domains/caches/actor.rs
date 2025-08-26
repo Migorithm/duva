@@ -18,11 +18,11 @@ pub struct CacheActor {
 }
 
 impl CacheActor {
-    pub(crate) fn run(hwm: Arc<AtomicU64>) -> CacheCommandSender {
+    pub(crate) fn run(con_idx: Arc<AtomicU64>) -> CacheCommandSender {
         let (tx, cache_actor_inbox) = mpsc::channel(2000);
         tokio::spawn(
             Self { cache: LruCache::new(1000), self_handler: CacheCommandSender(tx.clone()) }
-                .handle(cache_actor_inbox, ReadQueue::new(hwm)),
+                .handle(cache_actor_inbox, ReadQueue::new(con_idx)),
         );
         CacheCommandSender(tx)
     }

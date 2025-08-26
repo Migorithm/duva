@@ -1,10 +1,9 @@
-use std::collections::VecDeque;
-
 use duva::prelude::anyhow;
 use duva::{
     domains::query_io::QueryIO, prelude::tokio::sync::oneshot,
     presentation::clients::request::ClientAction,
 };
+use std::collections::VecDeque;
 
 #[derive(Debug, Default)]
 pub struct CommandQueue {

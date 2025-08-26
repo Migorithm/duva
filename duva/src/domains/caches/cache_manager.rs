@@ -31,11 +31,11 @@ pub(crate) struct CacheManager {
 }
 
 impl CacheManager {
-    pub(crate) fn run_cache_actors(hwm: Arc<AtomicU64>) -> CacheManager {
+    pub(crate) fn run_cache_actors(con_idx: Arc<AtomicU64>) -> CacheManager {
         const NUM_OF_PERSISTENCE: usize = 10;
         CacheManager {
             inboxes: (0..NUM_OF_PERSISTENCE)
-                .map(|_| CacheActor::run(hwm.clone()))
+                .map(|_| CacheActor::run(con_idx.clone()))
                 .collect::<Vec<_>>(),
         }
     }
@@ -472,8 +472,8 @@ mod tests {
     #[tokio::test]
     async fn test_route_bulk_set_distribution_across_shards() {
         // GIVEN: A CacheManager with cache actors
-        let hwm = Arc::new(AtomicU64::new(0));
-        let cache_manager = CacheManager::run_cache_actors(hwm);
+        let con_idx = Arc::new(AtomicU64::new(0));
+        let cache_manager = CacheManager::run_cache_actors(con_idx);
 
         // Create many entries that should be distributed across different shards
         let entries: Vec<CacheEntry> = (0..50)
@@ -497,8 +497,8 @@ mod tests {
     #[tokio::test]
     async fn test_route_bulk_set_with_expiry() {
         // GIVEN: A CacheManager with cache actors
-        let hwm = Arc::new(AtomicU64::new(0));
-        let cache_manager = CacheManager::run_cache_actors(hwm);
+        let con_idx = Arc::new(AtomicU64::new(0));
+        let cache_manager = CacheManager::run_cache_actors(con_idx);
 
         // Create entries with expiry times
         let future_time = Utc::now() + chrono::Duration::seconds(10);

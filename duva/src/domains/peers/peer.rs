@@ -40,10 +40,10 @@ impl Peer {
         &self.state.replid
     }
     pub(crate) fn curr_log_index(&self) -> u64 {
-        self.state.hwm
+        self.state.con_idx
     }
     pub(crate) fn set_current_log_index(&mut self, log_index: u64) {
-        self.state.hwm = log_index;
+        self.state.con_idx = log_index;
     }
     pub(crate) fn record_heartbeat(&mut self) {
         self.phi.record_heartbeat(Instant::now());
@@ -77,7 +77,7 @@ impl Peer {
 #[derive(Clone, Debug, PartialEq, Eq, bincode::Encode, bincode::Decode)]
 pub struct PeerState {
     pub(crate) id: PeerIdentifier,
-    pub(crate) hwm: u64,
+    pub(crate) con_idx: u64,
     pub(crate) replid: ReplicationId,
     pub(crate) role: ReplicationRole,
 }
@@ -104,7 +104,7 @@ impl PeerState {
         Some(Self {
             id: PeerIdentifier(addr.bind_addr().unwrap()),
             replid: repl_id.into(),
-            hwm: log_index,
+            con_idx: log_index,
             role: role.to_string().into(),
         })
     }
@@ -161,9 +161,9 @@ impl PeerState {
 
     pub(crate) fn format(&self, peer_id: &PeerIdentifier) -> String {
         if self.id == *peer_id {
-            return format!("{} myself,{} 0 {} {}", self.id, self.replid, self.hwm, self.role);
+            return format!("{} myself,{} 0 {} {}", self.id, self.replid, self.con_idx, self.role);
         }
-        format!("{} {} 0 {} {}", self.id, self.replid, self.hwm, self.role)
+        format!("{} {} 0 {} {}", self.id, self.replid, self.con_idx, self.role)
     }
 
     pub(crate) fn is_self(&self, bind_addr: &str) -> bool {

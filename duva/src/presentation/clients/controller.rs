@@ -64,7 +64,7 @@ impl ClientController {
                     .route_save(
                         SaveTarget::File(file),
                         repl_info.replid,
-                        repl_info.hwm.load(Ordering::Acquire),
+                        repl_info.con_idx.load(Ordering::Acquire),
                     )
                     .await?;
 

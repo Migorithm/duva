@@ -662,7 +662,7 @@ mod test {
             term: 1,
             prev_log_index: 0,
             prev_log_term: 1,
-            hwm: 5,
+            con_idx: 5,
             replid: leader.clone(),
             hop_count: 2,
             ban_list: banned_list,
@@ -691,37 +691,37 @@ mod test {
             cluster_nodes: vec![
                 PeerState {
                     id: PeerIdentifier("127.0.0.1:30004".into()),
-                    hwm: 0,
+                    con_idx: 0,
                     replid: ReplicationId::Key(Uuid::now_v7().to_string()),
                     role: ReplicationRole::Follower,
                 },
                 PeerState {
                     id: PeerIdentifier("127.0.0.1:30002".into()),
-                    hwm: 0,
+                    con_idx: 0,
                     replid: ReplicationId::Undecided,
                     role: ReplicationRole::Follower,
                 },
                 PeerState {
                     id: PeerIdentifier("127.0.0.1:30003".into()),
-                    hwm: 0,
+                    con_idx: 0,
                     replid: ReplicationId::Undecided,
                     role: ReplicationRole::Follower,
                 },
                 PeerState {
                     id: PeerIdentifier("127.0.0.1:30005".into()),
-                    hwm: 0,
+                    con_idx: 0,
                     replid: ReplicationId::Key(Uuid::now_v7().to_string()),
                     role: ReplicationRole::Follower,
                 },
                 PeerState {
                     id: PeerIdentifier("127.0.0.1:30006".into()),
-                    hwm: 0,
+                    con_idx: 0,
                     replid: ReplicationId::Key(Uuid::now_v7().to_string()),
                     role: ReplicationRole::Follower,
                 },
                 PeerState {
                     id: PeerIdentifier("127.0.0.1:30001".into()),
-                    hwm: 0,
+                    con_idx: 0,
                     replid: ReplicationId::Undecided,
                     role: ReplicationRole::Follower,
                 },
@@ -793,7 +793,7 @@ mod test {
             .map(|peer| {
                 NodeReplInfo::from_peer_state(&PeerState {
                     id: peer.peer_id.clone(),
-                    hwm: 0,
+                    con_idx: 0,
                     replid: ReplicationId::Key(Uuid::now_v7().to_string()),
                     role: ReplicationRole::Follower,
                 })
@@ -840,7 +840,7 @@ mod test {
             term: 1,
             prev_log_index: 0,
             prev_log_term: 1,
-            hwm: 5,
+            con_idx: 5,
             replid: ReplicationId::Key(Uuid::now_v7().to_string()),
             hop_count: 2,
             ban_list: vec![],
