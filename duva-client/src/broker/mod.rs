@@ -140,7 +140,7 @@ impl Broker {
         // ! It means the following operation must be based on callback partern that's waiting for some node in the system notify the client of the event.
 
         let followers =
-            self.get_follower_set(&replication_id, removed_peer_id).cloned().collect::<Vec<_>>();
+            self.get_follower_set(&replication_id, &removed_peer_id).cloned().collect::<Vec<_>>();
 
         for follower in followers {
             let _ = self.add_node_connection(&follower.peer_id).await;
@@ -155,13 +155,13 @@ impl Broker {
     fn get_follower_set(
         &self,
         replid: &ReplicationId,
-        removed_peer_id: PeerIdentifier,
+        removed_peer_id: &PeerIdentifier,
     ) -> impl Iterator<Item = &NodeReplInfo> {
         self.topology
             .node_infos
             .iter()
-            .filter(move |n| &n.peer_id != &removed_peer_id)
-            .filter(move |n| &n.repl_id == replid)
+            .filter(|n| n.peer_id != *removed_peer_id)
+            .filter(|n| n.repl_id == *replid)
     }
 
     async fn remove_outdated_connections(&mut self) {
