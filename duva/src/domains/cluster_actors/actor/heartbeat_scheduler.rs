@@ -93,8 +93,6 @@ impl HeartBeatScheduler {
                     },
                     _ =  tokio::time::sleep(Duration::from_millis(rand::random_range(ELECTION_TIMEOUT)))=>{
                         warn!("\x1b[33mElection timeout\x1b[0m");
-                        // ! Block operations at global level
-                        REQUESTS_BLOCKED_BY_ELECTION.store(true, Ordering::Release);
                         let _ = cluster_handler.send(SchedulerMessage::StartLeaderElection).await;
 
                     }
