@@ -49,8 +49,8 @@ pub mod prelude {
     pub use crate::domains::cluster_actors::topology::NodeReplInfo;
     pub use crate::domains::cluster_actors::topology::Topology;
     pub use crate::domains::peers::identifier::PeerIdentifier;
-    pub use crate::presentation::clients::AuthResponse;
     pub use crate::presentation::clients::ConnectionRequest;
+    pub use crate::presentation::clients::ConnectionResponse;
     pub use anyhow;
     pub use bytes;
     pub use bytes::BytesMut;

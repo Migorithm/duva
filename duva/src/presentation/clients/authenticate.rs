@@ -17,7 +17,7 @@ pub(crate) async fn authenticate(
     // if the request is not new authentication but the client is already authenticated
     if auth_req.client_id.is_some() && replication_state.role == ReplicationRole::Follower {
         stream
-            .serialized_write(AuthResponse {
+            .serialized_write(ConnectionResponse {
                 is_leader_node: false,
                 client_id: Default::default(),
                 request_id: Default::default(),
@@ -32,7 +32,7 @@ pub(crate) async fn authenticate(
     let (client_id, request_id) = auth_req.deconstruct()?;
 
     stream
-        .serialized_write(AuthResponse {
+        .serialized_write(ConnectionResponse {
             client_id: client_id.to_string(),
             request_id,
             topology: cluster_manager.route_get_topology().await?,
@@ -66,7 +66,7 @@ impl ConnectionRequest {
 }
 
 #[derive(Debug, Clone, Default, bincode::Decode, bincode::Encode)]
-pub struct AuthResponse {
+pub struct ConnectionResponse {
     pub client_id: String,
     pub request_id: u64,
     pub topology: Topology,
