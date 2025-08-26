@@ -160,8 +160,7 @@ impl Broker {
         self.topology
             .node_infos
             .iter()
-            .filter(|n| n.peer_id != *removed_peer_id)
-            .filter(|n| n.repl_id == *replid)
+            .filter(|n| n.peer_id != *removed_peer_id && n.repl_id == *replid)
     }
 
     async fn remove_outdated_connections(&mut self) {
