@@ -18,7 +18,7 @@ use duva::prelude::{PeerIdentifier, tokio};
 use duva::presentation::clients::request::ClientAction;
 use duva::{
     domains::TSerdeReadWrite,
-    prelude::{AuthRequest, AuthResponse},
+    prelude::{ConnectionRequest, AuthResponse},
 };
 use futures::future::try_join_all;
 
@@ -113,7 +113,7 @@ impl Broker {
 
     pub(crate) async fn authenticate(
         server_addr: &PeerIdentifier,
-        auth_request: Option<AuthRequest>,
+        auth_request: Option<ConnectionRequest>,
     ) -> Result<(ServerStreamReader, ServerStreamWriter, AuthResponse), IoError> {
         let mut stream =
             TcpStream::connect(server_addr.as_str()).await.map_err(|_| IoError::NotConnected)?;
@@ -181,7 +181,7 @@ impl Broker {
     }
 
     async fn add_node_connection(&mut self, peer_id: &PeerIdentifier) -> anyhow::Result<()> {
-        let auth_req = AuthRequest { client_id: Some(self.client_id.to_string()), request_id: 0 };
+        let auth_req = ConnectionRequest { client_id: Some(self.client_id.to_string()), request_id: 0 };
         let Ok((server_stream_reader, server_stream_writer, auth_response)) =
             Self::authenticate(peer_id, Some(auth_req)).await
         else {
