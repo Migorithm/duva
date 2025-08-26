@@ -48,6 +48,7 @@ pub(crate) async fn authenticate(
     Ok((reader, sender))
 }
 
+// TODO make the following enum and make it explicit about why it wants to connect
 #[derive(Debug, Clone, PartialEq, Eq, Default, bincode::Decode, bincode::Encode)]
 pub struct ConnectionRequest {
     pub client_id: Option<String>,
