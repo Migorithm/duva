@@ -7,6 +7,7 @@ use crate::command::{CommandQueue, CommandToServer, InputContext, RoutingRule};
 use duva::domains::cluster_actors::hash_ring::KeyOwnership;
 use duva::domains::cluster_actors::replication::{ReplicationId, ReplicationRole};
 use duva::domains::{IoError, query_io::QueryIO};
+use duva::prelude::anyhow::Context;
 use duva::prelude::tokio::net::TcpStream;
 use duva::prelude::tokio::sync::mpsc::Receiver;
 use duva::prelude::tokio::sync::mpsc::Sender;
@@ -131,7 +132,7 @@ impl Broker {
         replication_id: ReplicationId,
     ) -> anyhow::Result<()> {
         let removed_peer_id =
-            self.node_connections.remove_connection(&replication_id.clone()).await.unwrap();
+            self.node_connections.remove_connection(&replication_id.clone()).await?;
 
         // ! ISSUE: replica set is queried and node connection is made
         // ! If no connection for the given replica set is not available, the user should not be able to make query, which leads to system unuvailability

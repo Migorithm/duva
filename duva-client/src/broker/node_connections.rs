@@ -34,13 +34,14 @@ impl NodeConnections {
     pub(crate) async fn remove_connection(
         &mut self,
         leader_id: &ReplicationId,
-    ) -> Option<PeerIdentifier> {
-        if let Some(connection) = self.conns.remove(leader_id) {
-            let peer_identifier = connection.peer_identifier.clone();
-            connection.kill().await;
-            return Some(peer_identifier);
-        }
-        None
+    ) -> anyhow::Result<PeerIdentifier> {
+        let Some(connection) = self.conns.remove(leader_id) else {
+            anyhow::bail!("Must be able to find connection {}", file!());
+        };
+
+        let peer_identifier = connection.peer_identifier.clone();
+        connection.kill().await;
+        Ok(peer_identifier)
     }
     pub(crate) async fn remove_outdated_connections(&mut self, node_repl_ids: Vec<ReplicationId>) {
         let outdated_connections = self.conns.extract_if(|repl_id, _| {
