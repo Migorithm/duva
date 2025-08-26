@@ -293,7 +293,8 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             return;
         }
         self.apply_banlist(std::mem::take(&mut heartbeat.ban_list)).await;
-        self.update_cluster_members(&heartbeat.from, heartbeat.hwm, &heartbeat.cluster_nodes).await;
+        self.update_cluster_members(&heartbeat.from, heartbeat.con_idx, &heartbeat.cluster_nodes)
+            .await;
         self.join_peer_network_if_absent::<TcpStream>(heartbeat.cluster_nodes).await;
         self.gossip(heartbeat.hop_count).await;
         self.maybe_update_hashring(heartbeat.hashring, cache_manager).await;
@@ -351,7 +352,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         let repl_cnt = self.replicas().count();
         if repl_cnt == 0 {
             // * If there are no replicas, we can send the response immediately
-            self.increase_hwm();
+            self.increase_con_idx();
             req.callback.send(ConsensusClientResponse::LogIndex(self.logger().last_log_index));
             return;
         }
@@ -359,8 +360,8 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         self.send_rpc_to_replicas().await;
     }
 
-    fn increase_hwm(&mut self) {
-        self.replication.logger.hwm.fetch_add(1, Ordering::Relaxed);
+    fn increase_con_idx(&mut self) {
+        self.replication.logger.con_idx.fetch_add(1, Ordering::Relaxed);
     }
 
     #[instrument(level = tracing::Level::DEBUG, skip(self))]
@@ -466,7 +467,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         callback: Callback<anyhow::Result<()>>,
     ) {
         self.replication.logger.reset();
-        self.replication.logger.hwm.store(0, Ordering::Release);
+        self.replication.logger.con_idx.store(0, Ordering::Release);
         self.set_repl_id(ReplicationId::Undecided);
         self.step_down().await;
         self.connect_to_server::<C>(peer_addr, Some(callback)).await;
@@ -846,8 +847,8 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         }
 
         // * Increase the high water mark
-        // ! Revisit this logic! hwm should be updated only after leader learns the average match index of followers
-        self.increase_hwm();
+        // ! Revisit this logic! con_idx should be updated only after leader learns the average match index of followers
+        self.increase_con_idx();
 
         self.client_sessions.set_response(voting.session_req.take());
         voting.callback.send(ConsensusClientResponse::LogIndex(log_index));
@@ -966,14 +967,14 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         self.replication.election_state = ElectionState::Follower { voted_for: None };
     }
 
-    async fn replicate_state(&mut self, leader_hwm: HeartBeat, cache_manager: &CacheManager) {
-        let old_hwm = self.replication.logger.hwm.load(Ordering::Acquire);
-        if leader_hwm.hwm > old_hwm {
-            for log_index in (old_hwm + 1)..=leader_hwm.hwm {
+    async fn replicate_state(&mut self, leader_con_idx: HeartBeat, cache_manager: &CacheManager) {
+        let old_con_idx = self.replication.logger.con_idx.load(Ordering::Acquire);
+        if leader_con_idx.con_idx > old_con_idx {
+            for log_index in (old_con_idx + 1)..=leader_con_idx.con_idx {
                 let Some(log) = self.replication.logger.read_at(log_index) else {
                     warn!("log has never been replicated!");
                     self.send_replication_ack(
-                        &leader_hwm.from,
+                        &leader_con_idx.from,
                         ReplicationAck::reject(
                             self.logger().last_log_index,
                             RejectionReason::LogInconsistency,
@@ -987,10 +988,10 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
                 if let Err(e) = cache_manager.apply_log(log.request, log_index).await {
                     // ! DON'T PANIC - post validation is where we just don't update state
                     // ! Failure of apply_log means post_validation on the operations that involves delta change such as incr/append fail.
-                    // ! This is expected and you should let it update hwm.
+                    // ! This is expected and you should let it update con_idx.
                     error!("failed to apply log: {e}, perhaps post validation failed?")
                 }
-                self.replication.logger.hwm.store(log_index, Ordering::Release);
+                self.replication.logger.con_idx.store(log_index, Ordering::Release);
             }
         }
     }
@@ -1354,11 +1355,11 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     async fn update_cluster_members(
         &mut self,
         from: &PeerIdentifier,
-        hwm: u64,
+        con_idx: u64,
         cluster_nodes: &[PeerState],
     ) {
         if let Some(peer) = self.members.get_mut(from) {
-            peer.set_current_log_index(hwm);
+            peer.set_current_log_index(con_idx);
             peer.record_heartbeat();
         }
 

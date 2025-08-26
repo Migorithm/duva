@@ -180,7 +180,7 @@ sequenceDiagram
     L ->> F: Replicate
     L ->> SF: Replicate
     
-    L ->> L: Create Snapshot (until hwm 5)
+    L ->> L: Create Snapshot (until consensus_index 5)
     L ->> F: Create Snapshot 
     L ->> SF : Create Snapshot
 
@@ -191,8 +191,8 @@ sequenceDiagram
     L ->> L: append entry * 3
     L ->> F: Replicate
 
-    SF ->> L: Connect (replid: leader_repl_id, hwm:5, term: 1)
-    L ->> SF: Receive Snapshot (hwm: 5)
+    SF ->> L: Connect (replid: leader_repl_id, consensus_index:5, term: 1)
+    L ->> SF: Receive Snapshot (consensus_index: 5)
 ```
 
 
@@ -282,16 +282,16 @@ sequenceDiagram
     participant L as Leader
     participant F as Follower
 
-    note over L,F : X:1<br>hwm:1
+    note over L,F : X:1<br>consensus_index:1
 
     C->>L: write(X,5)
-    note over L : X:5<br>hwm:2
-    note over F : X:1<br>hwm:1
-    L->>C: hwm:2
-    C->>F: read(X,hwm=2)
-    F--)F: wait for latest hwm
-    L->>F: write(X,5,hwm=2)
-    note over F : X:5<br>hwm:2
+    note over L : X:5<br>consensus_index:2
+    note over F : X:1<br>consensus_index:1
+    L->>C: consensus_index:2
+    C->>F: read(X,consensus_index=2)
+    F--)F: wait for latest consensus_index
+    L->>F: write(X,5,consensus_index=2)
+    note over F : X:5<br>consensus_index:2
     F->>C: X:5
 ```
 

@@ -9,8 +9,8 @@ sequenceDiagram
 
     Migo ->> C: x=1
     C ->>C : log(x=1, index=1, term=1)
-    C ->> A : Heartbeat with log (hwm=0) 
-    C ->> B : Heartbeat with log (hwm=0)
+    C ->> A : Heartbeat with log (consensus_index=0) 
+    C ->> B : Heartbeat with log (consensus_index=0)
     
     A ->> C : Ack(index 1)
     # Q: Apply then update high water mark?
@@ -26,8 +26,8 @@ sequenceDiagram
     B ->> C : Ack(index 1) - ignored
     
     and C sends heartbeat
-    C ->> B : heartbeat (hwm=1)
-    C ->> A : heartbeat (hwm=1)
+    C ->> B : heartbeat (consensus_index=1)
+    C ->> A : heartbeat (consensus_index=1)
     end
 
     A ->> A : commit log index 1

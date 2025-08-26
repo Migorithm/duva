@@ -10,11 +10,11 @@ pub(crate) struct ReplicatedLogs<T> {
     pub(crate) target: T,
     pub(crate) last_log_index: u64,
     pub(crate) last_log_term: u64,
-    pub(crate) hwm: Arc<AtomicU64>, // high water mark (commit idx)
+    pub(crate) con_idx: Arc<AtomicU64>, // high water mark (commit idx)
 }
 impl<T> ReplicatedLogs<T> {
     pub fn new(target: T, last_log_index: u64, last_log_term: u64) -> Self {
-        Self { target, last_log_index, last_log_term, hwm: Arc::new(last_log_index.into()) }
+        Self { target, last_log_index, last_log_term, con_idx: Arc::new(last_log_index.into()) }
     }
 }
 

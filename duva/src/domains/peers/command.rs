@@ -123,7 +123,7 @@ mod peer_messages {
     pub struct HeartBeat {
         pub(crate) from: PeerIdentifier,
         pub(crate) term: u64,
-        pub(crate) hwm: u64, // ! This reflect current state
+        pub(crate) con_idx: u64, // ! This reflect current state
         pub(crate) replid: ReplicationId,
         pub(crate) hop_count: u8,
         pub(crate) ban_list: Vec<BannedPeer>,

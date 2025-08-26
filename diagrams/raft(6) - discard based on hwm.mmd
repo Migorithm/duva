@@ -9,15 +9,15 @@ sequenceDiagram
 
     C ->> A : logX (term=1)
     C ->> A : logX+1 (term=1)
-    C ->> A : hwm = X-1
+    C ->> A : consensus_index = X-1
 
     C --x B : connection issue
 
-    A ->> A : update hwm(X-1)
+    A ->> A : update consensus_index(X-1)
     A ->> A : commit log(X-1)
     A ->> C : Ack(index X)
 
-    C ->> C : Quorum achieved, update hwm(X)
+    C ->> C : Quorum achieved, update consensus_index(X)
     C ->> C : apply logX(term=1)
     Migo ->> C : Request X+2
     C ->> C : logX+2(term=1)
@@ -25,9 +25,9 @@ sequenceDiagram
     C --x C : crash
     end
 
-    Note over A,C : <NodeA><br>term1<br>hwm X-1<br>log X-1, X, X+1
-    Note over A,C : <NodeB><br>term1<br>hwm -<br>log X-1
-    Note over A,C : <NodeC><br>term1<br>hwm X<br>log X-1, X, X+1, X+2
+    Note over A,C : <NodeA><br>term1<br>consensus_index X-1<br>log X-1, X, X+1
+    Note over A,C : <NodeB><br>term1<br>consensus_index -<br>log X-1
+    Note over A,C : <NodeC><br>term1<br>consensus_index X<br>log X-1, X, X+1, X+2
 
     A --> B : elect leader
     A --> A : elected (term=2)
@@ -44,9 +44,9 @@ sequenceDiagram
     B ->> B : Overwrite + add logs
     B ->> A : acks(X-1, X, X+1)
 
-    A ->> A : update hwm = X+1
+    A ->> A : update consensus_index = X+1
     A ->> A : apply X, X+1
-    A ->> B : hwm = X+1
+    A ->> B : consensus_index = X+1
     B ->> B : apply X-1, X, X+1
     
 
@@ -55,16 +55,16 @@ sequenceDiagram
     end
 
     
-    Note over A,C : <NodeA><br>term2<br>hwm X+1<br>log X-1, X, X+1
-    Note over A,C : <NodeB><br>term2<br>hwm X+1<br>log X-1, X, X+1
-    Note over A,C : <NodeC><br>term1<br>hwm X<br>log X-1, X, X+1, X+2
+    Note over A,C : <NodeA><br>term2<br>consensus_index X+1<br>log X-1, X, X+1
+    Note over A,C : <NodeB><br>term2<br>consensus_index X+1<br>log X-1, X, X+1
+    Note over A,C : <NodeC><br>term1<br>consensus_index X<br>log X-1, X, X+1, X+2
 
 
     C ->> A : send log X+2
     A --) C : ERROR gen :2
     C ->> C : Step down as follower
     rect rgb(134, 35, 44) 
-    Note right of C: Discard logs with index > current hwm
+    Note right of C: Discard logs with index > current consensus_index
     C ->> C : discard X+1, X+2
     end
     A ->> C : send logs X+1 

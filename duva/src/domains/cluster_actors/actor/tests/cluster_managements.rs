@@ -63,7 +63,7 @@ async fn test_store_current_topology() {
 
     let repl_id = cluster_actor.replication.replid.clone();
     let self_id = cluster_actor.replication.self_identifier();
-    let hwm = cluster_actor.replication.logger.hwm.load(Ordering::Relaxed);
+    let con_idx = cluster_actor.replication.logger.con_idx.load(Ordering::Relaxed);
 
     // WHEN
     cluster_actor.snapshot_topology().await.unwrap();
@@ -71,7 +71,7 @@ async fn test_store_current_topology() {
     // THEN
     let topology = tokio::fs::read_to_string(path).await.unwrap();
     let expected_topology =
-        format!("{} myself,{} 0 {} {}", self_id, repl_id, hwm, ReplicationRole::Leader);
+        format!("{} myself,{} 0 {} {}", self_id, repl_id, con_idx, ReplicationRole::Leader);
     assert_eq!(topology, expected_topology);
 
     tokio::fs::remove_file(path).await.unwrap();
@@ -112,7 +112,7 @@ async fn test_reconnection_on_gossip() {
     cluster_actor
         .join_peer_network_if_absent::<TcpStream>(vec![PeerState {
             id: PeerIdentifier(format!("127.0.0.1:{}", bind_addr.port() - 10000)),
-            hwm: 0,
+            con_idx: 0,
             replid: cluster_actor.replication.replid.clone(),
             role: ReplicationRole::Follower,
         }])
@@ -170,7 +170,7 @@ async fn test_update_cluster_members_updates_fields() {
 
     let cluster_nodes = vec![PeerState {
         id: peer_id.clone(),
-        hwm: 100,
+        con_idx: 100,
         replid: cluster_actor.replication.replid.clone(),
         role: ReplicationRole::Leader,
     }];

@@ -35,7 +35,7 @@ impl OutboundStream {
         let mut connection_info = ConnectedPeerInfo {
             id: Default::default(),
             replid: Default::default(),
-            hwm: Default::default(),
+            con_idx: Default::default(),
             role: Default::default(),
         };
 
@@ -57,7 +57,7 @@ impl OutboundStream {
                                 | 2 => Ok(write_array!(
                                     "PSYNC",
                                     self.my_repl_info.replid.clone(),
-                                    self.my_repl_info.hwm.load(Ordering::Acquire).to_string(),
+                                    self.my_repl_info.con_idx.load(Ordering::Acquire).to_string(),
                                     self.my_repl_info.role.clone()
                                 )),
                                 | _ => Err(anyhow::anyhow!("Unexpected OK count")),
@@ -67,7 +67,7 @@ impl OutboundStream {
                     },
                     | ConnectionResponse::FullResync { id, repl_id, offset, role } => {
                         connection_info.replid = ReplicationId::Key(repl_id);
-                        connection_info.hwm = offset;
+                        connection_info.con_idx = offset;
                         connection_info.id = PeerIdentifier(id);
                         connection_info.role = role;
                         self.connected_node_info = Some(connection_info);

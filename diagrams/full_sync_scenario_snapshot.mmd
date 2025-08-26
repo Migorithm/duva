@@ -5,6 +5,6 @@ sequenceDiagram
     participant L as Leader
     participant F as Follower
     L ->> L: append entry * 5
-    L ->> L: Snapshot (until hwm 5)
-    F ->> L: Connect (replid:?, hwm:0)
-    L ->> F: Send Full Sync (Snapshot with hwm 5)
+    L ->> L: Snapshot (until consensus_index 5)
+    F ->> L: Connect (replid:?, consensus_index:0)
+    L ->> F: Send Full Sync (Snapshot with consensus_index 5)

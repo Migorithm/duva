@@ -38,12 +38,12 @@ impl InboundStream {
         // TODO find use of capa?
         let _capa_val_vec = self.recv_replconf_capa().await?;
 
-        let (peer_leader_repl_id, peer_hwm, role) = self.recv_psync().await?;
+        let (peer_leader_repl_id, peer_con_idx, role) = self.recv_psync().await?;
 
         let id: PeerIdentifier = PeerIdentifier::new(&self.host_ip, port);
 
         self.connected_peer_info =
-            ConnectedPeerInfo { id, replid: peer_leader_repl_id, hwm: peer_hwm, role };
+            ConnectedPeerInfo { id, replid: peer_leader_repl_id, con_idx: peer_con_idx, role };
 
         Ok(())
     }
@@ -85,7 +85,7 @@ impl InboundStream {
         let (id, self_replid, self_repl_offset, self_role) = (
             self.self_repl_info.self_identifier(),
             self.self_repl_info.replid.clone(),
-            self.self_repl_info.hwm.load(Ordering::Relaxed),
+            self.self_repl_info.con_idx.load(Ordering::Relaxed),
             self.self_repl_info.role.clone(),
         );
 

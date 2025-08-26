@@ -85,7 +85,7 @@ async fn test_rebalance_request_happypath() {
 async fn test_start_rebalance_before_connection_is_made() {
     // GIVEN
     let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Leader).await;
-    let (_hwm, cache_manager) = Helper::cache_manager();
+    let (_con_idx, cache_manager) = Helper::cache_manager();
 
     // WHEN
     let _ = cluster_actor.start_rebalance(&cache_manager).await;
@@ -100,7 +100,7 @@ async fn test_start_rebalance_before_connection_is_made() {
 async fn test_start_rebalance_only_when_replica_is_found() {
     // GIVEN
     let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Leader).await;
-    let (_hwm, cache_manager) = Helper::cache_manager();
+    let (_con_idx, cache_manager) = Helper::cache_manager();
     let (buf, _) = cluster_actor.test_add_peer(6559, None, false);
 
     // WHEN
@@ -116,7 +116,7 @@ async fn test_start_rebalance_only_when_replica_is_found() {
 async fn test_start_rebalance_happy_path() {
     // GIVEN
     let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Leader).await;
-    let (_hwm, cache_manager) = Helper::cache_manager();
+    let (_con_idx, cache_manager) = Helper::cache_manager();
     let (buf, _) = cluster_actor.test_add_peer(
         6559,
         Some(ReplicationId::Key(uuid::Uuid::now_v7().to_string())),
@@ -145,7 +145,7 @@ async fn test_start_rebalance_happy_path() {
 async fn test_start_rebalance_schedules_migration_batches() {
     // GIVEN
     let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Leader).await;
-    let (_hwm, cache_manager) =
+    let (_con_idx, cache_manager) =
         Helper::cache_manager_with_keys(vec!["test_key_1".to_string(), "test_key_2".to_string()])
             .await;
 
@@ -213,7 +213,7 @@ async fn test_maybe_update_hashring_when_noplan_is_made() {
         .unwrap();
 
     // WHEN
-    let (_hwm, cache_manager) = Helper::cache_manager();
+    let (_con_idx, cache_manager) = Helper::cache_manager();
     cluster_actor.maybe_update_hashring(Some(Box::new(hash_ring.clone())), &cache_manager).await;
 
     // THEN
@@ -229,7 +229,7 @@ async fn test_make_migration_plan_when_given_hashring_is_same() {
     let last_modified = cluster_actor.hash_ring.last_modified;
 
     // WHEN
-    let (_hwm, cache_manager) = Helper::cache_manager();
+    let (_con_idx, cache_manager) = Helper::cache_manager();
     cluster_actor
         .maybe_update_hashring(Some(Box::new(cluster_actor.hash_ring.clone())), &cache_manager)
         .await;
@@ -245,7 +245,7 @@ async fn test_make_migration_plan_when_no_hashring_given() {
     let last_modified = cluster_actor.hash_ring.last_modified;
 
     // WHEN
-    let (_hwm, cache_manager) = Helper::cache_manager();
+    let (_con_idx, cache_manager) = Helper::cache_manager();
     cluster_actor.maybe_update_hashring(None, &cache_manager).await;
 
     // THEN
@@ -319,7 +319,7 @@ async fn test_send_migrate_and_wait_callback_error() {
 async fn test_migrate_keys_target_peer_not_found() {
     // GIVEN
     let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Leader).await;
-    let (_hwm, cache_manager) = Helper::cache_manager();
+    let (_con_idx, cache_manager) = Helper::cache_manager();
 
     let tasks = PendingMigrationTask::new(
         ReplicationId::Key("non_existent_peer".to_string()),
@@ -340,7 +340,7 @@ async fn test_migrate_keys_target_peer_not_found() {
 async fn test_migrate_batch_send_migrate_batch_peer_message() {
     // GIVEN
     let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Leader).await;
-    let (_hwm, cache_manager) = Helper::cache_manager();
+    let (_con_idx, cache_manager) = Helper::cache_manager();
     let replid = ReplicationId::Key("wheatever".to_string());
     let (buf, _id) = cluster_actor.test_add_peer(6909, Some(replid.clone()), true);
 
@@ -361,7 +361,7 @@ async fn test_migrate_batch_send_migrate_batch_peer_message() {
 async fn test_receive_batch_when_empty_cache_entries() {
     //GIVEN
     let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Leader).await;
-    let (_hwm, cache_manager) = Helper::cache_manager();
+    let (_con_idx, cache_manager) = Helper::cache_manager();
     let replid = ReplicationId::Key("wheatever".to_string());
     let (buf, _id) = cluster_actor.test_add_peer(6909, Some(replid.clone()), true);
 
@@ -379,7 +379,7 @@ async fn test_receive_batch_when_consensus_is_required() {
     // GIVEN
     let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Leader).await;
 
-    let (_hwm, cache_manager) = Helper::cache_manager();
+    let (_con_idx, cache_manager) = Helper::cache_manager();
     let current_index = cluster_actor.replication.logger.last_log_index;
     let ack_to = PeerIdentifier::new("127.0.0.1", 6567);
 
@@ -502,7 +502,7 @@ async fn test_find_target_peer_for_replication() {
 async fn test_handle_migration_ack_batch_id_not_found() {
     // GIVEN
     let mut cluster_actor = setup_blocked_cluster_actor_with_requests(1).await;
-    let (_hwm, _cache_manager) = Helper::cache_manager();
+    let (_con_idx, _cache_manager) = Helper::cache_manager();
     let (callback, _callback_rx) = Callback::create();
 
     cluster_actor
@@ -530,7 +530,7 @@ async fn test_handle_migration_ack_success_case_with_pending_reqs_and_migration(
         true,
     );
 
-    let (_hwm, cache_manager) = Helper::cache_manager();
+    let (_con_idx, cache_manager) = Helper::cache_manager();
 
     // Set up test keys in cache that will be part of the migration
     let test_keys = vec!["migrate_key_1".to_string(), "migrate_key_2".to_string()];
@@ -586,7 +586,7 @@ async fn test_handle_migration_ack_success_case_with_pending_reqs_and_migration(
 async fn test_maybe_update_hashring_replica_only_updates_ring() {
     // GIVEN - Create a replica actor (not leader)
     let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Follower).await;
-    let (_hwm, cache_manager) = Helper::cache_manager_with_keys(vec![
+    let (_con_idx, cache_manager) = Helper::cache_manager_with_keys(vec![
         "replica_key_1".to_string(),
         "replica_key_2".to_string(),
     ])

@@ -50,7 +50,7 @@ impl<T> ReplicationState<T> {
     pub(crate) fn info(&self) -> ReplicationInfo {
         ReplicationInfo {
             replid: self.replid.clone(),
-            hwm: self.logger.hwm.clone(),
+            con_idx: self.logger.con_idx.clone(),
             role: self.role.clone(),
             self_host: self.self_host.clone(),
             self_port: self.self_port,
@@ -61,7 +61,7 @@ impl<T> ReplicationState<T> {
     pub(super) fn self_info(&self) -> PeerState {
         PeerState {
             id: self.self_identifier(),
-            hwm: self.logger.hwm.load(Ordering::Relaxed),
+            con_idx: self.logger.con_idx.load(Ordering::Relaxed),
             replid: self.replid.clone(),
             role: self.role.clone(),
         }
@@ -80,7 +80,7 @@ impl<T> ReplicationState<T> {
         HeartBeat {
             from: self.self_identifier(),
             term: self.term,
-            hwm: self.logger.hwm.load(Ordering::Relaxed),
+            con_idx: self.logger.con_idx.load(Ordering::Relaxed),
             replid: self.replid.clone(),
             hop_count,
             ban_list: self.banlist.iter().cloned().collect(),
@@ -197,7 +197,7 @@ impl From<String> for ReplicationRole {
 #[derive(Debug)]
 pub struct ReplicationInfo {
     pub(crate) replid: ReplicationId,
-    pub(crate) hwm: Arc<AtomicU64>,
+    pub(crate) con_idx: Arc<AtomicU64>,
     pub(crate) role: ReplicationRole,
     pub(crate) self_host: String,
     pub(crate) self_port: u16,
@@ -212,7 +212,7 @@ impl ReplicationInfo {
         vec![
             format!("role:{}", self.role),
             format!("leader_repl_id:{}", self.replid),
-            format!("high_watermark:{}", self.hwm.load(Ordering::Relaxed)),
+            format!("high_watermark:{}", self.con_idx.load(Ordering::Relaxed)),
             format!("self_identifier:{}", self.self_identifier()),
         ]
     }
@@ -230,10 +230,10 @@ fn test_cloning_replication_state() {
         1231,
         ReplicatedLogs::new(MemoryOpLogs { writer: vec![] }, 0, 0),
     );
-    let cloned = replication_state.logger.hwm.clone();
+    let cloned = replication_state.logger.con_idx.clone();
 
     //WHEN
-    replication_state.logger.hwm.store(5, Ordering::Release);
+    replication_state.logger.con_idx.store(5, Ordering::Release);
 
     //THEN
     assert_eq!(cloned.load(Ordering::Relaxed), 5);

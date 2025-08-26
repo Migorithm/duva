@@ -153,13 +153,13 @@ mod test {
     async fn test_index_get_put_in_rq() {
         // GIVEN
         let (cache, rx) = tokio::sync::mpsc::channel(100);
-        let hwm: Arc<AtomicU64> = Arc::new(0.into());
+        let con_idx: Arc<AtomicU64> = Arc::new(0.into());
         tokio::spawn(
             CacheActor {
                 cache: LruCache::new(1000),
                 self_handler: CacheCommandSender(cache.clone()),
             }
-            .handle(rx, ReadQueue::new(hwm.clone())),
+            .handle(rx, ReadQueue::new(con_idx.clone())),
         );
         // WHEN
         let cache = S(cache);
@@ -184,16 +184,16 @@ mod test {
     }
 
     #[tokio::test]
-    async fn test_index_get_returns_successfully_when_ping_is_made_after_hwm_update() {
+    async fn test_index_get_returns_successfully_when_ping_is_made_after_con_idx_update() {
         // GIVEN
         let (cache, rx) = tokio::sync::mpsc::channel(100);
-        let hwm: Arc<AtomicU64> = Arc::new(0.into());
+        let con_idx: Arc<AtomicU64> = Arc::new(0.into());
         tokio::spawn(
             CacheActor {
                 cache: LruCache::new(1000),
                 self_handler: CacheCommandSender(cache.clone()),
             }
-            .handle(rx, ReadQueue::new(hwm.clone())),
+            .handle(rx, ReadQueue::new(con_idx.clone())),
         );
 
         let cache = S(cache);
@@ -202,17 +202,17 @@ mod test {
         let value = "value";
         cache.set(key.clone(), value).await;
 
-        // ! Fail when hwm wasn't updated and ping was not sent
+        // ! Fail when con_idx wasn't updated and ping was not sent
         let (fail_t, fail_r) = Callback::create();
         cache.index_get(key.clone(), 1, fail_t.into()).await;
         timeout(Duration::from_millis(1000), fail_r.recv()).await.unwrap_err();
 
-        // * success when hwm was updated and ping was sent
+        // * success when con_idx was updated and ping was sent
         let (t, r) = Callback::create();
         cache.index_get(key.clone(), 1, t.into()).await;
 
         let task = tokio::spawn(r.recv());
-        hwm.store(1, std::sync::atomic::Ordering::Relaxed);
+        con_idx.store(1, std::sync::atomic::Ordering::Relaxed);
         cache.ping().await;
 
         // THEN
@@ -223,13 +223,13 @@ mod test {
     async fn test_drop_cache() {
         // GIVEN
         let (cache, rx) = tokio::sync::mpsc::channel(100);
-        let hwm: Arc<AtomicU64> = Arc::new(0.into());
+        let con_idx: Arc<AtomicU64> = Arc::new(0.into());
         tokio::spawn(
             CacheActor {
                 cache: LruCache::new(1000),
                 self_handler: CacheCommandSender(cache.clone()),
             }
-            .handle(rx, ReadQueue::new(hwm.clone())),
+            .handle(rx, ReadQueue::new(con_idx.clone())),
         );
         // WHEN
         let cache = S(cache);

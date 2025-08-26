@@ -18,9 +18,9 @@ sequenceDiagram
     break
         SF --> SF: Second Follower Crashed
     end
-    L ->> L: Create Snapshot (until hwm 5)
+    L ->> L: Create Snapshot (until consensus_index 5)
     L ->> L: append entry * 3
     L ->> F: Replicate
 
-    SF ->> L: Connect (replid: leader_repl_id, hwm:0)
+    SF ->> L: Connect (replid: leader_repl_id, consensus_index:0)
     L ->> SF: Sync with Raft (No Full sync)

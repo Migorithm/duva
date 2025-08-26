@@ -96,16 +96,17 @@ impl StartUpFacade {
 
     pub fn new(wal: impl TWriteAheadLog, writer: File) -> Self {
         let snapshot_info = Self::initialize_with_snapshot();
-        let (r_id, hwm) = snapshot_info.extract_replication_info();
+        let (r_id, con_idx) = snapshot_info.extract_replication_info();
 
         let replication_state = ReplicationState::new(
             r_id,
             ENV.role.clone(),
             &ENV.host,
             ENV.port,
-            ReplicatedLogs::new(wal, hwm, 0),
+            ReplicatedLogs::new(wal, con_idx, 0),
         );
-        let cache_manager = CacheManager::run_cache_actors(replication_state.logger.hwm.clone());
+        let cache_manager =
+            CacheManager::run_cache_actors(replication_state.logger.con_idx.clone());
         tokio::spawn(cache_manager.clone().apply_snapshot(snapshot_info.key_values()));
 
         let cluster_actor_handler =
