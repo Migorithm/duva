@@ -20,7 +20,7 @@ use crate::domains::cluster_actors::queue::ClusterActorQueue;
 use crate::domains::cluster_actors::queue::ClusterActorReceiver;
 use crate::domains::cluster_actors::queue::ClusterActorSender;
 use crate::domains::cluster_actors::topology::{NodeReplInfo, Topology};
-use crate::domains::operation_logs::WriteRequest;
+use crate::domains::operation_logs::LogEntry;
 use crate::domains::operation_logs::interfaces::TWriteAheadLog;
 use crate::domains::operation_logs::logger::ReplicatedLogs;
 use crate::domains::peers::command::BannedPeer;
@@ -849,8 +849,8 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         // * Increase the high water mark
         // ! Revisit this logic! con_idx should be updated only after leader learns the average match index of followers
         self.increase_con_idx();
-
         self.client_sessions.set_response(voting.session_req.take());
+
         voting.callback.send(ConsensusClientResponse::LogIndex(log_index));
     }
 
@@ -1037,7 +1037,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             self.replication.self_identifier(),
         );
         let _ = self.replication.logger.write_single_entry(
-            &WriteRequest::NoOp,
+            &LogEntry::NoOp,
             self.replication.term,
             None,
         );
@@ -1252,7 +1252,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         let (callback, rx) = Callback::create();
 
         self.req_consensus(ConsensusRequest::new(
-            WriteRequest::MSet { entries: migrate_batch.entries.clone() },
+            LogEntry::MSet { entries: migrate_batch.entries.clone() },
             callback,
             None,
         ))
@@ -1293,7 +1293,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         // make consensus request for delete
         let (callback, rx) = Callback::create();
         let w_req = ConsensusRequest::new(
-            WriteRequest::Delete { keys: pending_migration_batch.keys.clone() },
+            LogEntry::Delete { keys: pending_migration_batch.keys.clone() },
             callback,
             None,
         );

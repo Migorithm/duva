@@ -1,3 +1,4 @@
+use duva::domains::operation_logs::operation::LogEntry;
 use duva::prelude::anyhow;
 use duva::{
     domains::query_io::QueryIO, prelude::tokio::sync::oneshot,
@@ -74,7 +75,8 @@ impl InputContext {
                 });
                 Ok(result)
             },
-            | ClientAction::Exists { keys: _ } | ClientAction::Delete { keys: _ } => {
+            | ClientAction::Exists { keys: _ }
+            | ClientAction::WriteRequest(LogEntry::Delete { keys: _ }) => {
                 let mut count = 0;
                 for result in &self.results {
                     let QueryIO::SimpleString(byte) = result else {
@@ -132,36 +134,45 @@ impl From<&ClientAction> for RoutingRule {
     fn from(value: &ClientAction) -> Self {
         match value {
             // commands that requires single-key routing
-            | ClientAction::Get { key }
-            | ClientAction::Ttl { key }
-            | ClientAction::Decr { key }
-            | ClientAction::Incr { key } => Self::Selective(vec![CommandEntry {
+            | ClientAction::Get { key } | ClientAction::Ttl { key } => {
+                Self::Selective(vec![CommandEntry {
+                    key: key.clone(),
+                    value: None,
+                    expires_at: None,
+                }])
+            },
+
+            | ClientAction::IndexGet { key, index } => Self::Selective(vec![CommandEntry {
                 key: key.clone(),
-                value: None,
+                value: Some(index.to_string()),
                 expires_at: None,
             }]),
-            | ClientAction::Set { key, value } | ClientAction::Append { key, value } => {
+
+            | ClientAction::WriteRequest(LogEntry::Append { key, value }) => {
                 Self::Selective(vec![CommandEntry {
                     key: key.clone(),
                     value: Some(value.clone()),
                     expires_at: None,
                 }])
             },
-            | ClientAction::IndexGet { key, index } => Self::Selective(vec![CommandEntry {
-                key: key.clone(),
-                value: Some(index.to_string()),
-                expires_at: None,
-            }]),
-            | ClientAction::SetWithExpiry { key, value, expires_at } => {
+            | ClientAction::WriteRequest(LogEntry::DecrBy { key, delta: value })
+            | ClientAction::WriteRequest(LogEntry::IncrBy { key, delta: value }) => {
+                Self::Selective(vec![CommandEntry {
+                    key: key.clone(),
+                    value: Some(value.to_string()),
+                    expires_at: None,
+                }])
+            },
+            | ClientAction::WriteRequest(LogEntry::Set { key, value, expires_at }) => {
                 Self::Selective(vec![CommandEntry {
                     key: key.clone(),
                     value: Some(value.clone()),
-                    expires_at: Some(*expires_at),
+                    expires_at: *expires_at,
                 }])
             },
 
             // commands thar require multi-key-routings
-            | ClientAction::Delete { keys }
+            | ClientAction::WriteRequest(LogEntry::Delete { keys })
             | ClientAction::Exists { keys }
             | ClientAction::MGet { keys } => Self::Selective(
                 keys.iter()

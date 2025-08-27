@@ -23,7 +23,7 @@ fn logger_create_entries_from_lowest() {
     );
     repl_state.logger.con_idx.store(LOWEST_FOLLOWER_COMMIT_INDEX, Ordering::Release);
 
-    let log = &WriteRequest::Set { key: "foo4".into(), value: "bar".into(), expires_at: None };
+    let log = &LogEntry::Set { key: "foo4".into(), value: "bar".into(), expires_at: None };
     repl_state.logger.write_single_entry(log, repl_state.term, None).unwrap();
 
     let logs = repl_state.logger.list_append_log_entries(Some(LOWEST_FOLLOWER_COMMIT_INDEX));
@@ -72,7 +72,7 @@ async fn test_generate_follower_entries() {
         .replication
         .logger
         .write_single_entry(
-            &WriteRequest::Set { key: "foo4".into(), value: "bar".into(), expires_at: None },
+            &LogEntry::Set { key: "foo4".into(), value: "bar".into(), expires_at: None },
             cluster_actor.replication.term,
             None,
         )
@@ -110,11 +110,11 @@ async fn follower_cluster_actor_replicate_log() {
     assert_eq!(logs[1].log_index, 2);
     assert_eq!(
         logs[0].request,
-        WriteRequest::Set { key: "foo".into(), value: "bar".into(), expires_at: None }
+        LogEntry::Set { key: "foo".into(), value: "bar".into(), expires_at: None }
     );
     assert_eq!(
         logs[1].request,
-        WriteRequest::Set { key: "foo2".into(), value: "bar".into(), expires_at: None }
+        LogEntry::Set { key: "foo2".into(), value: "bar".into(), expires_at: None }
     );
 }
 
@@ -432,7 +432,7 @@ async fn req_consensus_inserts_consensus_voting() {
     let (callback, _) = Callback::create();
     let client_id = Uuid::now_v7().to_string();
     let session_request = SessionRequest::new(1, client_id);
-    let w_req = WriteRequest::Set { key: "foo".into(), value: "bar".into(), expires_at: None };
+    let w_req = LogEntry::Set { key: "foo".into(), value: "bar".into(), expires_at: None };
     let consensus_request =
         ConsensusRequest::new(w_req.clone(), callback, Some(session_request.clone()));
 
@@ -485,7 +485,7 @@ async fn test_leader_req_consensus_early_return_when_already_processed_session_r
     let (tx, rx) = Callback::create();
     handler
         .send(ClusterCommand::Client(ClientMessage::LeaderReqConsensus(ConsensusRequest::new(
-            WriteRequest::Set { key: "foo".into(), value: "bar".into(), expires_at: None },
+            LogEntry::Set { key: "foo".into(), value: "bar".into(), expires_at: None },
             tx,
             Some(client_req),
         ))))
@@ -631,7 +631,7 @@ async fn test_leader_req_consensus_with_processed_session() {
     // WHEN - send request with already processed session
     let (tx, rx) = Callback::create();
     let consensus_request = ConsensusRequest::new(
-        WriteRequest::Set { key: "test_key".into(), value: "test_value".into(), expires_at: None },
+        LogEntry::Set { key: "test_key".into(), value: "test_value".into(), expires_at: None },
         tx,
         Some(session_req),
     );

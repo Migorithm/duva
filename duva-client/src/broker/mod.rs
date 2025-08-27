@@ -5,6 +5,7 @@ use crate::broker::node_connections::NodeConnections;
 use crate::command::{CommandQueue, CommandToServer, InputContext, RoutingRule};
 use duva::domains::cluster_actors::hash_ring::KeyOwnership;
 use duva::domains::cluster_actors::replication::{ReplicationId, ReplicationRole};
+use duva::domains::operation_logs::operation::LogEntry;
 use duva::domains::{IoError, query_io::QueryIO};
 use duva::prelude::tokio::net::TcpStream;
 use duva::prelude::tokio::sync::mpsc::Receiver;
@@ -73,7 +74,7 @@ impl Broker {
                         continue;
                     };
 
-                    if context.client_action.to_write_request().is_some() {
+                    if context.client_action.is_write_request() {
                         match self.node_connections.get_mut(&repl_id) {
                             | Some(connection) => connection.update_request_id(&query_io),
                             | None => {
@@ -260,7 +261,9 @@ impl Broker {
             let new_action = match client_action {
                 | ClientAction::MGet { .. } => ClientAction::MGet { keys: grouped_keys },
                 | ClientAction::Exists { .. } => ClientAction::Exists { keys: grouped_keys },
-                | ClientAction::Delete { .. } => ClientAction::Delete { keys: grouped_keys },
+                | ClientAction::WriteRequest(LogEntry::Delete { .. }) => {
+                    LogEntry::Delete { keys: grouped_keys }.into()
+                },
                 | _ => client_action.clone(),
             };
             self.node_connections.send_to(node_id, new_action)

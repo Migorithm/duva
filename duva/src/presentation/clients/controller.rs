@@ -5,7 +5,7 @@ use crate::domains::caches::cache_objects::{CacheEntry, CacheValue, TypedValue};
 use crate::domains::cluster_actors::{
     ClientMessage, ConsensusClientResponse, ConsensusRequest, SessionRequest,
 };
-use crate::domains::operation_logs::WriteRequest;
+use crate::domains::operation_logs::LogEntry;
 use crate::domains::saves::actor::SaveTarget;
 use crate::prelude::PeerIdentifier;
 use crate::presentation::clients::request::ClientAction;
@@ -28,27 +28,98 @@ impl ClientController {
         current_index: Option<u64>,
     ) -> anyhow::Result<QueryIO> {
         let response = match cmd {
+            | ClientAction::WriteRequest(write_req) => match write_req {
+                | LogEntry::Set { key, value, expires_at } => {
+                    let mut entry = CacheEntry::new(key, value.as_str());
+                    if let Some(expires_at) = expires_at {
+                        entry =
+                            entry.with_expiry(DateTime::from_timestamp_millis(expires_at).unwrap())
+                    }
+                    QueryIO::SimpleString(
+                        self.cache_manager.route_set(entry, current_index.unwrap()).await?.into(),
+                    )
+                },
+
+                | LogEntry::Append { key, value } => QueryIO::SimpleString(
+                    self.cache_manager.route_append(key, value).await?.to_string().into(),
+                ),
+                | LogEntry::Delete { keys } => QueryIO::SimpleString(
+                    self.cache_manager.route_delete(keys).await?.to_string().into(),
+                ),
+
+                | LogEntry::IncrBy { key, delta: value } => QueryIO::SimpleString(
+                    self.cache_manager
+                        .route_numeric_delta(key, value, current_index.unwrap())
+                        .await?
+                        .into(),
+                ),
+                | LogEntry::DecrBy { key, delta: value } => QueryIO::SimpleString(
+                    self.cache_manager
+                        .route_numeric_delta(key, -value, current_index.unwrap())
+                        .await?
+                        .into(),
+                ),
+                | LogEntry::LPush { key, value } => QueryIO::SimpleString(
+                    self.cache_manager
+                        .route_lpush(key, value, current_index.unwrap())
+                        .await?
+                        .into(),
+                ),
+                | LogEntry::LPushX { key, value } => QueryIO::SimpleString(
+                    self.cache_manager
+                        .route_lpushx(key, value, current_index.unwrap())
+                        .await?
+                        .into(),
+                ),
+                | LogEntry::LPop { key, count } => {
+                    let values = self.cache_manager.route_lpop(key, count).await?;
+                    if values.is_empty() {
+                        return Ok(QueryIO::Null);
+                    }
+                    QueryIO::Array(
+                        values.into_iter().map(|v| QueryIO::BulkString(v.into())).collect(),
+                    )
+                },
+                | LogEntry::RPush { key, value } => QueryIO::SimpleString(
+                    self.cache_manager
+                        .route_rpush(key, value, current_index.unwrap())
+                        .await?
+                        .into(),
+                ),
+                | LogEntry::RPushX { key, value } => QueryIO::SimpleString(
+                    self.cache_manager
+                        .route_rpushx(key, value, current_index.unwrap())
+                        .await?
+                        .into(),
+                ),
+                | LogEntry::RPop { key, count } => {
+                    let values = self.cache_manager.route_rpop(key, count).await?;
+                    if values.is_empty() {
+                        return Ok(QueryIO::Null);
+                    }
+                    QueryIO::Array(
+                        values.into_iter().map(|v| QueryIO::BulkString(v.into())).collect(),
+                    )
+                },
+                | LogEntry::LTrim { key, start, end } => QueryIO::SimpleString(
+                    self.cache_manager
+                        .route_ltrim(key, start, end, current_index.unwrap())
+                        .await?
+                        .into(),
+                ),
+                | LogEntry::LSet { key, index, value } => QueryIO::SimpleString(
+                    self.cache_manager
+                        .route_lset(key, index, value, current_index.unwrap())
+                        .await?
+                        .into(),
+                ),
+
+                | _ => unreachable!(),
+            },
+
             | ClientAction::Ping => QueryIO::SimpleString("PONG".into()),
             | ClientAction::Echo(val) => QueryIO::BulkString(val.into()),
-            | ClientAction::Set { key, value } => QueryIO::SimpleString(
-                self.cache_manager
-                    .route_set(CacheEntry::new(key, value.as_str()), current_index.unwrap())
-                    .await?
-                    .into(),
-            ),
-            | ClientAction::SetWithExpiry { key, value, expires_at } => QueryIO::SimpleString(
-                self.cache_manager
-                    .route_set(
-                        CacheEntry::new(key, value.as_str())
-                            .with_expiry(DateTime::from_timestamp_millis(expires_at).unwrap()),
-                        current_index.unwrap(),
-                    )
-                    .await?
-                    .into(),
-            ),
-            | ClientAction::Append { key, value } => QueryIO::SimpleString(
-                self.cache_manager.route_append(key, value).await?.to_string().into(),
-            ),
+
             | ClientAction::Save => {
                 let file_path = ENV.get_filepath();
                 let file = tokio::fs::OpenOptions::new()
@@ -99,9 +170,7 @@ impl ClientController {
                     | _ => Err(anyhow::anyhow!("Invalid command"))?,
                 }
             },
-            | ClientAction::Delete { keys } => QueryIO::SimpleString(
-                self.cache_manager.route_delete(keys).await?.to_string().into(),
-            ),
+
             | ClientAction::Exists { keys } => QueryIO::SimpleString(
                 self.cache_manager.route_exists(keys).await?.to_string().into(),
             ),
@@ -149,62 +218,7 @@ impl ClientController {
             | ClientAction::Ttl { key } => {
                 QueryIO::SimpleString(self.cache_manager.route_ttl(key).await?.into())
             },
-            | ClientAction::Incr { key } => QueryIO::SimpleString(
-                self.cache_manager
-                    .route_numeric_delta(key, 1, current_index.unwrap())
-                    .await?
-                    .into(),
-            ),
-            | ClientAction::Decr { key } => QueryIO::SimpleString(
-                self.cache_manager
-                    .route_numeric_delta(key, -1, current_index.unwrap())
-                    .await?
-                    .into(),
-            ),
-            | ClientAction::IncrBy { key, increment } => QueryIO::SimpleString(
-                self.cache_manager
-                    .route_numeric_delta(key, increment, current_index.unwrap())
-                    .await?
-                    .into(),
-            ),
-            | ClientAction::DecrBy { key, decrement } => QueryIO::SimpleString(
-                self.cache_manager
-                    .route_numeric_delta(key, -decrement, current_index.unwrap())
-                    .await?
-                    .into(),
-            ),
-            | ClientAction::LPush { key, value } => QueryIO::SimpleString(
-                self.cache_manager.route_lpush(key, value, current_index.unwrap()).await?.into(),
-            ),
-            | ClientAction::LPushX { key, value } => QueryIO::SimpleString(
-                self.cache_manager.route_lpushx(key, value, current_index.unwrap()).await?.into(),
-            ),
-            | ClientAction::LPop { key, count } => {
-                let values = self.cache_manager.route_lpop(key, count).await?;
-                if values.is_empty() {
-                    return Ok(QueryIO::Null);
-                }
-                QueryIO::Array(values.into_iter().map(|v| QueryIO::BulkString(v.into())).collect())
-            },
-            | ClientAction::RPush { key, value } => QueryIO::SimpleString(
-                self.cache_manager.route_rpush(key, value, current_index.unwrap()).await?.into(),
-            ),
-            | ClientAction::RPushX { key, value } => QueryIO::SimpleString(
-                self.cache_manager.route_rpushx(key, value, current_index.unwrap()).await?.into(),
-            ),
-            | ClientAction::RPop { key, count } => {
-                let values = self.cache_manager.route_rpop(key, count).await?;
-                if values.is_empty() {
-                    return Ok(QueryIO::Null);
-                }
-                QueryIO::Array(values.into_iter().map(|v| QueryIO::BulkString(v.into())).collect())
-            },
-            | ClientAction::LTrim { key, start, end } => QueryIO::SimpleString(
-                self.cache_manager
-                    .route_ltrim(key, start, end, current_index.unwrap())
-                    .await?
-                    .into(),
-            ),
+
             | ClientAction::LLen { key } => {
                 let len = self.cache_manager.route_llen(key).await?;
                 QueryIO::SimpleString(len.to_string().into())
@@ -216,12 +230,6 @@ impl ClientController {
             | ClientAction::LIndex { key, index } => {
                 self.cache_manager.route_lindex(key, index).await?.into()
             },
-            | ClientAction::LSet { key, index, value } => QueryIO::SimpleString(
-                self.cache_manager
-                    .route_lset(key, index, value, current_index.unwrap())
-                    .await?
-                    .into(),
-            ),
         };
         info!("{response:?}");
         Ok(response)
@@ -230,11 +238,11 @@ impl ClientController {
     pub(crate) async fn make_consensus(
         &self,
         session_req: SessionRequest,
-        write_req: WriteRequest,
         cli_action: &mut ClientAction,
     ) -> anyhow::Result<u64> {
-        let (tx, consensus_res) = Callback::create();
+        let write_req = cli_action.to_write_request();
 
+        let (tx, consensus_res) = Callback::create();
         self.cluster_communication_manager
             .send(ClientMessage::LeaderReqConsensus(ConsensusRequest::new(
                 write_req,

@@ -5,7 +5,7 @@ use crate::domains::caches::cache_objects::CacheEntry;
 use crate::domains::caches::cache_objects::value::WRONG_TYPE_ERR_MSG;
 use crate::domains::caches::command::CacheCommand;
 use crate::domains::cluster_actors::replication::ReplicationId;
-use crate::domains::operation_logs::WriteRequest;
+use crate::domains::operation_logs::LogEntry;
 use crate::domains::saves::actor::SaveActor;
 use crate::domains::saves::actor::SaveTarget;
 use crate::domains::saves::endec::StoredDuration;
@@ -159,9 +159,9 @@ impl CacheManager {
         Ok(tokio::spawn(save_actor.run(inbox)))
     }
 
-    pub(crate) async fn apply_log(&self, msg: WriteRequest, log_index: u64) -> Result<()> {
+    pub(crate) async fn apply_log(&self, msg: LogEntry, log_index: u64) -> Result<()> {
         match msg {
-            | WriteRequest::Set { key, value, expires_at } => {
+            | LogEntry::Set { key, value, expires_at } => {
                 let mut cache_entry = CacheEntry::new(key, value.as_str());
                 if let Some(expires_at) = expires_at {
                     cache_entry = cache_entry
@@ -169,46 +169,46 @@ impl CacheManager {
                 }
                 self.route_set(cache_entry, log_index).await?;
             },
-            | WriteRequest::Delete { keys } => {
+            | LogEntry::Delete { keys } => {
                 self.route_delete(keys).await?;
             },
-            | WriteRequest::Append { key, value } => {
+            | LogEntry::Append { key, value } => {
                 self.route_append(key, value).await?;
             },
-            | WriteRequest::Decr { key, delta } => {
+            | LogEntry::DecrBy { key, delta } => {
                 self.route_numeric_delta(key, -delta, log_index).await?;
             },
-            | WriteRequest::Incr { key, delta } => {
+            | LogEntry::IncrBy { key, delta } => {
                 self.route_numeric_delta(key, delta, log_index).await?;
             },
-            | WriteRequest::MSet { entries } => {
+            | LogEntry::MSet { entries } => {
                 self.route_mset(entries).await;
             },
-            | WriteRequest::LPush { key, value } => {
+            | LogEntry::LPush { key, value } => {
                 self.route_lpush(key, value, log_index).await?;
             },
-            | WriteRequest::LPop { key, count } => {
+            | LogEntry::LPop { key, count } => {
                 self.route_lpop(key, count).await?;
             },
-            | WriteRequest::RPush { key, value } => {
+            | LogEntry::RPush { key, value } => {
                 self.route_rpush(key, value, log_index).await?;
             },
-            | WriteRequest::LTrim { key, start, end } => {
+            | LogEntry::LTrim { key, start, end } => {
                 self.route_ltrim(key, start, end, log_index).await?;
             },
-            | WriteRequest::LPushX { key, value } => {
+            | LogEntry::LPushX { key, value } => {
                 self.route_lpushx(key, value, log_index).await?;
             },
-            | WriteRequest::LSet { key, index, value } => {
+            | LogEntry::LSet { key, index, value } => {
                 self.route_lset(key, index, value, log_index).await?;
             },
-            | WriteRequest::RPop { key, count } => {
+            | LogEntry::RPop { key, count } => {
                 self.route_rpop(key, count).await?;
             },
-            | WriteRequest::RPushX { key, value } => {
+            | LogEntry::RPushX { key, value } => {
                 self.route_rpushx(key, value, log_index).await?;
             },
-            | WriteRequest::NoOp => {},
+            | LogEntry::NoOp => {},
         };
 
         // * This is to wake up the cache actors to process the pending read requests

@@ -4,6 +4,7 @@ use crate::broker::Broker;
 use crate::broker::BrokerMessage;
 
 use duva::domains::caches::cache_manager::IndexedValueCodec;
+use duva::domains::operation_logs::operation::LogEntry;
 use duva::domains::query_io::QueryIO;
 use duva::prelude::PeerIdentifier;
 use duva::prelude::anyhow;
@@ -44,7 +45,7 @@ impl<T> ClientController<T> {
                 | QueryIO::Err(value) => Response::Error(value),
                 | _err => Response::FormatError,
             },
-            | Delete { .. } | Exists { .. } | LLen { .. } => {
+            | WriteRequest(LogEntry::Delete { .. }) | Exists { .. } | LLen { .. } => {
                 if let QueryIO::Err(value) = query_io {
                     return Response::Error(value);
                 }
@@ -59,15 +60,14 @@ impl<T> ClientController<T> {
                     },
                 }
             },
-            | Incr { .. }
-            | Decr { .. }
+
             | Ttl { .. }
-            | IncrBy { .. }
-            | DecrBy { .. }
-            | LPush { .. }
-            | RPush { .. }
-            | LPushX { .. }
-            | RPushX { .. } => match query_io {
+            | WriteRequest(LogEntry::IncrBy { .. })
+            | WriteRequest(LogEntry::DecrBy { .. })
+            | WriteRequest(LogEntry::LPush { .. })
+            | WriteRequest(LogEntry::RPush { .. })
+            | WriteRequest(LogEntry::LPushX { .. })
+            | WriteRequest(LogEntry::RPushX { .. }) => match query_io {
                 | QueryIO::SimpleString(value) => {
                     let s = String::from_utf8_lossy(&value);
                     let s: Option<i64> = IndexedValueCodec::decode_value(s);
@@ -83,7 +83,9 @@ impl<T> ClientController<T> {
                 };
                 Response::Null
             },
-            | Set { .. } | SetWithExpiry { .. } | LTrim { .. } | LSet { .. } => match query_io {
+            | WriteRequest(LogEntry::Set { .. })
+            | WriteRequest(LogEntry::LTrim { .. })
+            | WriteRequest(LogEntry::LSet { .. }) => match query_io {
                 | QueryIO::SimpleString(_) => Response::String("OK".into()),
                 | QueryIO::Err(value) => Response::Error(value),
                 | _ => Response::FormatError,
@@ -93,12 +95,16 @@ impl<T> ClientController<T> {
                 | QueryIO::Err(value) => Response::Error(value),
                 | _ => Response::FormatError,
             },
-            | Append { .. } => match query_io {
+            | WriteRequest(LogEntry::Append { .. }) => match query_io {
                 | QueryIO::SimpleString(value) => Response::String(value),
                 | QueryIO::Err(value) => Response::Error(value),
                 | _ => Response::FormatError,
             },
-            | Keys { .. } | MGet { .. } | LPop { .. } | RPop { .. } | LRange { .. } => {
+            | WriteRequest(LogEntry::LPop { .. })
+            | WriteRequest(LogEntry::RPop { .. })
+            | Keys { .. }
+            | MGet { .. }
+            | LRange { .. } => {
                 if let QueryIO::Null = query_io {
                     return Response::Null;
                 }
@@ -131,6 +137,9 @@ impl<T> ClientController<T> {
                 | QueryIO::Err(value) => Response::Error(value),
                 | _ => Response::FormatError,
             },
+
+            | ClientAction::WriteRequest(LogEntry::MSet { .. }) => unimplemented!(),
+            | ClientAction::WriteRequest(LogEntry::NoOp) => unreachable!(),
         }
     }
 

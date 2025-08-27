@@ -488,7 +488,7 @@ mod test {
     use crate::domains::cluster_actors::hash_ring::HashRing;
     use crate::domains::cluster_actors::replication::{ReplicationId, ReplicationRole};
     use crate::domains::cluster_actors::topology::NodeReplInfo;
-    use crate::domains::operation_logs::WriteRequest;
+    use crate::domains::operation_logs::LogEntry;
     use crate::domains::peers::command::BannedPeer;
     use crate::domains::peers::identifier::PeerIdentifier;
     use crate::domains::peers::peer::PeerState;
@@ -568,21 +568,23 @@ mod test {
     #[test]
     fn test_deserialize_session_request() {
         // GIVEN
-        let buffer = Bytes::from("!30\r\n%\x06\x05hello\x05world");
+        let buffer = Bytes::from("!30\r\n%\x15\0\x05hello\x05world\0");
 
         // WHEN
         let (value, len) = deserialize(buffer).unwrap();
 
         // THEN
-        assert_eq!(len, 19);
+        assert_eq!(len, 21);
         assert_eq!(
             value,
             QueryIO::SessionRequest {
                 request_id: 30,
-                client_action: ClientAction::Set {
+                client_action: LogEntry::Set {
                     key: "hello".to_string(),
                     value: "world".to_string(),
+                    expires_at: None
                 }
+                .into()
             }
         );
     }
@@ -591,17 +593,19 @@ mod test {
         // GIVEN
         let request = QueryIO::SessionRequest {
             request_id: 30,
-            client_action: ClientAction::Set {
+            client_action: LogEntry::Set {
                 key: "hello".to_string(),
                 value: "world".to_string(),
-            },
+                expires_at: None,
+            }
+            .into(),
         };
 
         // WHEN
         let serialized = request.serialize();
 
         // THEN
-        assert_eq!(serialized, Bytes::from("!30\r\n%\x06\x05hello\x05world"));
+        assert_eq!(serialized, Bytes::from("!30\r\n%\x15\0\x05hello\x05world\0"));
     }
 
     #[test]
@@ -620,7 +624,7 @@ mod test {
     fn test_write_operation_to_binary_back_to_itself() {
         // GIVEN
         let op = QueryIO::WriteOperation(WriteOperation {
-            request: WriteRequest::Set { key: "foo".into(), value: "bar".into(), expires_at: None },
+            request: LogEntry::Set { key: "foo".into(), value: "bar".into(), expires_at: None },
             log_index: 1,
             term: 0,
             session_req: None,
@@ -668,7 +672,7 @@ mod test {
             ban_list: banned_list,
             append_entries: vec![
                 WriteOperation {
-                    request: WriteRequest::Set {
+                    request: LogEntry::Set {
                         key: "foo".into(),
                         value: "bar".into(),
                         expires_at: None,
@@ -678,7 +682,7 @@ mod test {
                     session_req: None,
                 },
                 WriteOperation {
-                    request: WriteRequest::Set {
+                    request: LogEntry::Set {
                         key: "foo".into(),
                         value: "bar".into(),
                         expires_at: Some(323232),
