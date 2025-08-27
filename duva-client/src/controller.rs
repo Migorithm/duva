@@ -59,8 +59,7 @@ impl<T> ClientController<T> {
                     },
                 }
             },
-            | Incr { .. }
-            | Decr { .. }
+
             | Ttl { .. }
             | IncrBy { .. }
             | DecrBy { .. }

@@ -132,14 +132,13 @@ impl From<&ClientAction> for RoutingRule {
     fn from(value: &ClientAction) -> Self {
         match value {
             // commands that requires single-key routing
-            | ClientAction::Get { key }
-            | ClientAction::Ttl { key }
-            | ClientAction::Decr { key }
-            | ClientAction::Incr { key } => Self::Selective(vec![CommandEntry {
-                key: key.clone(),
-                value: None,
-                expires_at: None,
-            }]),
+            | ClientAction::Get { key } | ClientAction::Ttl { key } => {
+                Self::Selective(vec![CommandEntry {
+                    key: key.clone(),
+                    value: None,
+                    expires_at: None,
+                }])
+            },
             | ClientAction::Set { key, value } | ClientAction::Append { key, value } => {
                 Self::Selective(vec![CommandEntry {
                     key: key.clone(),
@@ -152,6 +151,13 @@ impl From<&ClientAction> for RoutingRule {
                 value: Some(index.to_string()),
                 expires_at: None,
             }]),
+            | ClientAction::DecrBy { key, value } | ClientAction::IncrBy { key, value } => {
+                Self::Selective(vec![CommandEntry {
+                    key: key.clone(),
+                    value: Some(value.to_string()),
+                    expires_at: None,
+                }])
+            },
             | ClientAction::SetWithExpiry { key, value, expires_at } => {
                 Self::Selective(vec![CommandEntry {
                     key: key.clone(),

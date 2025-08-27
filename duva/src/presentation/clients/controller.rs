@@ -149,27 +149,16 @@ impl ClientController {
             | ClientAction::Ttl { key } => {
                 QueryIO::SimpleString(self.cache_manager.route_ttl(key).await?.into())
             },
-            | ClientAction::Incr { key } => QueryIO::SimpleString(
+
+            | ClientAction::IncrBy { key, value } => QueryIO::SimpleString(
                 self.cache_manager
-                    .route_numeric_delta(key, 1, current_index.unwrap())
+                    .route_numeric_delta(key, value, current_index.unwrap())
                     .await?
                     .into(),
             ),
-            | ClientAction::Decr { key } => QueryIO::SimpleString(
+            | ClientAction::DecrBy { key, value } => QueryIO::SimpleString(
                 self.cache_manager
-                    .route_numeric_delta(key, -1, current_index.unwrap())
-                    .await?
-                    .into(),
-            ),
-            | ClientAction::IncrBy { key, increment } => QueryIO::SimpleString(
-                self.cache_manager
-                    .route_numeric_delta(key, increment, current_index.unwrap())
-                    .await?
-                    .into(),
-            ),
-            | ClientAction::DecrBy { key, decrement } => QueryIO::SimpleString(
-                self.cache_manager
-                    .route_numeric_delta(key, -decrement, current_index.unwrap())
+                    .route_numeric_delta(key, -value, current_index.unwrap())
                     .await?
                     .into(),
             ),

@@ -30,12 +30,10 @@ pub enum ClientAction {
     ReplicaOf(PeerIdentifier),
     Exists { keys: Vec<String> },
     Role,
-    Incr { key: String },
-    Decr { key: String },
     Ttl { key: String },
     ClusterMeet(PeerIdentifier, LazyOption),
-    IncrBy { key: String, increment: i64 },
-    DecrBy { key: String, decrement: i64 },
+    IncrBy { key: String, value: i64 },
+    DecrBy { key: String, value: i64 },
     LPush { key: String, value: Vec<String> },
     LPushX { key: String, value: Vec<String> },
     LPop { key: String, count: usize },
@@ -64,12 +62,10 @@ impl ClientAction {
                 WriteRequest::Append { key: key.clone(), value: value.clone() }
             },
             | ClientAction::Delete { keys } => WriteRequest::Delete { keys: keys.clone() },
-            | ClientAction::Incr { key } => WriteRequest::Incr { key: key.clone(), delta: 1 },
-            | ClientAction::Decr { key } => WriteRequest::Decr { key: key.clone(), delta: 1 },
-            | ClientAction::IncrBy { key, increment } => {
+            | ClientAction::IncrBy { key, value: increment } => {
                 WriteRequest::Incr { key: key.clone(), delta: *increment }
             },
-            | ClientAction::DecrBy { key, decrement } => {
+            | ClientAction::DecrBy { key, value: decrement } => {
                 WriteRequest::Decr { key: key.clone(), delta: *decrement }
             },
             | ClientAction::LPush { key, value } => {
@@ -253,11 +249,11 @@ pub fn extract_action(action: &str, args: &[&str]) -> anyhow::Result<ClientActio
         },
         | "INCR" => {
             require_exact_args(1)?;
-            Ok(ClientAction::Incr { key: args[0].to_string() })
+            Ok(ClientAction::IncrBy { key: args[0].to_string(), value: 1 })
         },
         | "DECR" => {
             require_exact_args(1)?;
-            Ok(ClientAction::Decr { key: args[0].to_string() })
+            Ok(ClientAction::DecrBy { key: args[0].to_string(), value: 1 })
         },
         | "TTL" => {
             require_exact_args(1)?;
@@ -265,11 +261,11 @@ pub fn extract_action(action: &str, args: &[&str]) -> anyhow::Result<ClientActio
         },
         | "INCRBY" => {
             require_exact_args(2)?;
-            Ok(ClientAction::IncrBy { key: args[0].to_string(), increment: args[1].parse()? })
+            Ok(ClientAction::IncrBy { key: args[0].to_string(), value: args[1].parse()? })
         },
         | "DECRBY" => {
             require_exact_args(2)?;
-            Ok(ClientAction::DecrBy { key: args[0].to_string(), decrement: args[1].parse()? })
+            Ok(ClientAction::DecrBy { key: args[0].to_string(), value: args[1].parse()? })
         },
         | "MGET" => {
             require_non_empty_args()?;
