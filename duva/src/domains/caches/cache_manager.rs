@@ -175,10 +175,10 @@ impl CacheManager {
             | WriteRequest::Append { key, value } => {
                 self.route_append(key, value).await?;
             },
-            | WriteRequest::Decr { key, delta } => {
+            | WriteRequest::DecrBy { key, delta } => {
                 self.route_numeric_delta(key, -delta, log_index).await?;
             },
-            | WriteRequest::Incr { key, delta } => {
+            | WriteRequest::IncrBy { key, delta } => {
                 self.route_numeric_delta(key, delta, log_index).await?;
             },
             | WriteRequest::MSet { entries } => {

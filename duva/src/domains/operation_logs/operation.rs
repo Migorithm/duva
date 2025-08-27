@@ -19,8 +19,8 @@ pub enum WriteRequest {
     MSet { entries: Vec<CacheEntry> },
     Delete { keys: Vec<String> },
     Append { key: String, value: String },
-    Decr { key: String, delta: i64 },
-    Incr { key: String, delta: i64 },
+    DecrBy { key: String, delta: i64 },
+    IncrBy { key: String, delta: i64 },
     LPush { key: String, value: Vec<String> },
     LPushX { key: String, value: Vec<String> },
     LPop { key: String, count: usize },
@@ -61,8 +61,8 @@ impl WriteRequest {
         match self {
             | WriteRequest::Set { key, .. }
             | WriteRequest::Append { key, .. }
-            | WriteRequest::Incr { key, .. }
-            | WriteRequest::Decr { key, .. }
+            | WriteRequest::IncrBy { key, .. }
+            | WriteRequest::DecrBy { key, .. }
             | WriteRequest::LPush { key, .. }
             | WriteRequest::LPop { key, .. }
             | WriteRequest::RPush { key, .. }

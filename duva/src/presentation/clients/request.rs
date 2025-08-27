@@ -32,8 +32,8 @@ pub enum ClientAction {
     Role,
     Ttl { key: String },
     ClusterMeet(PeerIdentifier, LazyOption),
-    IncrBy { key: String, value: i64 },
-    DecrBy { key: String, value: i64 },
+    IncrBy { key: String, delta: i64 },
+    DecrBy { key: String, delta: i64 },
     LPush { key: String, value: Vec<String> },
     LPushX { key: String, value: Vec<String> },
     LPop { key: String, count: usize },
@@ -62,11 +62,11 @@ impl ClientAction {
                 WriteRequest::Append { key: key.clone(), value: value.clone() }
             },
             | ClientAction::Delete { keys } => WriteRequest::Delete { keys: keys.clone() },
-            | ClientAction::IncrBy { key, value: increment } => {
-                WriteRequest::Incr { key: key.clone(), delta: *increment }
+            | ClientAction::IncrBy { key, delta } => {
+                WriteRequest::IncrBy { key: key.clone(), delta: *delta }
             },
-            | ClientAction::DecrBy { key, value: decrement } => {
-                WriteRequest::Decr { key: key.clone(), delta: *decrement }
+            | ClientAction::DecrBy { key, delta } => {
+                WriteRequest::DecrBy { key: key.clone(), delta: *delta }
             },
             | ClientAction::LPush { key, value } => {
                 WriteRequest::LPush { key: key.clone(), value: value.clone() }
@@ -249,11 +249,11 @@ pub fn extract_action(action: &str, args: &[&str]) -> anyhow::Result<ClientActio
         },
         | "INCR" => {
             require_exact_args(1)?;
-            Ok(ClientAction::IncrBy { key: args[0].to_string(), value: 1 })
+            Ok(ClientAction::IncrBy { key: args[0].to_string(), delta: 1 })
         },
         | "DECR" => {
             require_exact_args(1)?;
-            Ok(ClientAction::DecrBy { key: args[0].to_string(), value: 1 })
+            Ok(ClientAction::DecrBy { key: args[0].to_string(), delta: 1 })
         },
         | "TTL" => {
             require_exact_args(1)?;
@@ -261,11 +261,11 @@ pub fn extract_action(action: &str, args: &[&str]) -> anyhow::Result<ClientActio
         },
         | "INCRBY" => {
             require_exact_args(2)?;
-            Ok(ClientAction::IncrBy { key: args[0].to_string(), value: args[1].parse()? })
+            Ok(ClientAction::IncrBy { key: args[0].to_string(), delta: args[1].parse()? })
         },
         | "DECRBY" => {
             require_exact_args(2)?;
-            Ok(ClientAction::DecrBy { key: args[0].to_string(), value: args[1].parse()? })
+            Ok(ClientAction::DecrBy { key: args[0].to_string(), delta: args[1].parse()? })
         },
         | "MGET" => {
             require_non_empty_args()?;

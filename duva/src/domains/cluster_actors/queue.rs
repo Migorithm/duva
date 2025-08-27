@@ -13,7 +13,6 @@ impl ClusterActorQueue {
     pub(crate) fn new(buffer: usize) -> (ClusterActorSender, ClusterActorReceiver) {
         let (normal_send, normal_recv) = tokio::sync::mpsc::channel(buffer);
         let (priority_send, priority_recv) = tokio::sync::mpsc::channel(100);
-
         (
             ClusterActorSender { normal_send, priority_send },
             ClusterActorReceiver { normal_recv, priority_recv },

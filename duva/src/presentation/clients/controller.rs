@@ -150,13 +150,13 @@ impl ClientController {
                 QueryIO::SimpleString(self.cache_manager.route_ttl(key).await?.into())
             },
 
-            | ClientAction::IncrBy { key, value } => QueryIO::SimpleString(
+            | ClientAction::IncrBy { key, delta: value } => QueryIO::SimpleString(
                 self.cache_manager
                     .route_numeric_delta(key, value, current_index.unwrap())
                     .await?
                     .into(),
             ),
-            | ClientAction::DecrBy { key, value } => QueryIO::SimpleString(
+            | ClientAction::DecrBy { key, delta: value } => QueryIO::SimpleString(
                 self.cache_manager
                     .route_numeric_delta(key, -value, current_index.unwrap())
                     .await?
