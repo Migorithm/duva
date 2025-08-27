@@ -40,9 +40,8 @@ impl ClientStreamReader {
                 info!(?req, "Processing request");
 
                 let mut index: Option<_> = None;
-                if let Some(write_req) = req.action.to_write_request() {
-                    match handler.make_consensus(req.session_req, write_req, &mut req.action).await
-                    {
+                if req.action.is_write_request() {
+                    match handler.make_consensus(req.session_req, &mut req.action).await {
                         | Ok(idx) => index = Some(idx),
                         | Err(err) => {
                             error!("Failure on write request {err}");

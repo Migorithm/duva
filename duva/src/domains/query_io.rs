@@ -568,22 +568,23 @@ mod test {
     #[test]
     fn test_deserialize_session_request() {
         // GIVEN
-        let buffer = Bytes::from("!30\r\n%\x07\x05hello\x05world\0");
+        let buffer = Bytes::from("!30\r\n%\x15\0\x05hello\x05world\0");
 
         // WHEN
         let (value, len) = deserialize(buffer).unwrap();
 
         // THEN
-        assert_eq!(len, 20);
+        assert_eq!(len, 21);
         assert_eq!(
             value,
             QueryIO::SessionRequest {
                 request_id: 30,
-                client_action: ClientAction::Set {
+                client_action: LogEntry::Set {
                     key: "hello".to_string(),
                     value: "world".to_string(),
                     expires_at: None
                 }
+                .into()
             }
         );
     }
@@ -592,18 +593,19 @@ mod test {
         // GIVEN
         let request = QueryIO::SessionRequest {
             request_id: 30,
-            client_action: ClientAction::Set {
+            client_action: LogEntry::Set {
                 key: "hello".to_string(),
                 value: "world".to_string(),
                 expires_at: None,
-            },
+            }
+            .into(),
         };
 
         // WHEN
         let serialized = request.serialize();
 
         // THEN
-        assert_eq!(serialized, Bytes::from("!30\r\n%\x07\x05hello\x05world\0"));
+        assert_eq!(serialized, Bytes::from("!30\r\n%\x15\0\x05hello\x05world\0"));
     }
 
     #[test]
