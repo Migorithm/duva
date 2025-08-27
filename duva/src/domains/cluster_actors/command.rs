@@ -2,7 +2,7 @@ use crate::domains::cluster_actors::replication::{
     ReplicationId, ReplicationInfo, ReplicationRole,
 };
 use crate::domains::cluster_actors::topology::Topology;
-use crate::domains::operation_logs::WriteRequest;
+use crate::domains::operation_logs::LogEntry;
 use crate::domains::peers::command::{BatchId, PeerCommand, PendingMigrationTask};
 use crate::domains::peers::connections::connection_types::{ReadConnected, WriteConnected};
 use crate::domains::peers::peer::{Peer, PeerState};
@@ -73,13 +73,13 @@ impl From<ClientMessage> for ClusterCommand {
 
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct ConsensusRequest {
-    pub(crate) request: WriteRequest,
+    pub(crate) request: LogEntry,
     pub(crate) callback: Callback<ConsensusClientResponse>,
     pub(crate) session_req: Option<SessionRequest>,
 }
 impl ConsensusRequest {
     pub(crate) fn new(
-        request: WriteRequest,
+        request: LogEntry,
         callback: Callback<ConsensusClientResponse>,
         session_req: Option<SessionRequest>,
     ) -> Self {

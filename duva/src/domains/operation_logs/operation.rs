@@ -5,7 +5,7 @@ use bytes::Bytes;
 
 #[derive(Debug, Clone, PartialEq, Eq, bincode::Encode, bincode::Decode)]
 pub struct WriteOperation {
-    pub(crate) request: WriteRequest,
+    pub(crate) request: LogEntry,
     pub(crate) log_index: u64,
     pub(crate) term: u64,
     pub(crate) session_req: Option<SessionRequest>,
@@ -14,7 +14,7 @@ pub struct WriteOperation {
 /// Operations that appear in the Append-Only File (WAL).
 /// Client request is converted to WriteOperation and then it turns into WriteOp when it gets offset
 #[derive(Debug, Clone, PartialEq, Eq, bincode::Encode, bincode::Decode)]
-pub enum WriteRequest {
+pub enum LogEntry {
     Set { key: String, value: String, expires_at: Option<i64> },
     MSet { entries: Vec<CacheEntry> },
     Delete { keys: Vec<String> },
@@ -38,7 +38,7 @@ impl WriteOperation {
     }
 }
 
-impl WriteRequest {
+impl LogEntry {
     /// Deserialize `WriteOperation`s from the given bytes.
     pub(crate) fn deserialize(bytes: impl Into<Bytes>) -> anyhow::Result<Vec<WriteOperation>> {
         let mut ops: Vec<WriteOperation> = Vec::new();
@@ -59,21 +59,21 @@ impl WriteRequest {
     /// Returns all keys involved in the operation.
     pub(crate) fn all_keys(&self) -> Vec<&str> {
         match self {
-            | WriteRequest::Set { key, .. }
-            | WriteRequest::Append { key, .. }
-            | WriteRequest::IncrBy { key, .. }
-            | WriteRequest::DecrBy { key, .. }
-            | WriteRequest::LPush { key, .. }
-            | WriteRequest::LPop { key, .. }
-            | WriteRequest::RPush { key, .. }
-            | WriteRequest::LTrim { key, .. }
-            | WriteRequest::LPushX { key, .. }
-            | WriteRequest::LSet { key, .. }
-            | WriteRequest::RPop { key, .. }
-            | WriteRequest::RPushX { key, .. } => vec![key],
-            | WriteRequest::Delete { keys, .. } => keys.iter().map(|k| k.as_str()).collect(),
-            | WriteRequest::MSet { entries } => entries.iter().map(|e| e.key()).collect(),
-            | WriteRequest::NoOp => vec![],
+            | LogEntry::Set { key, .. }
+            | LogEntry::Append { key, .. }
+            | LogEntry::IncrBy { key, .. }
+            | LogEntry::DecrBy { key, .. }
+            | LogEntry::LPush { key, .. }
+            | LogEntry::LPop { key, .. }
+            | LogEntry::RPush { key, .. }
+            | LogEntry::LTrim { key, .. }
+            | LogEntry::LPushX { key, .. }
+            | LogEntry::LSet { key, .. }
+            | LogEntry::RPop { key, .. }
+            | LogEntry::RPushX { key, .. } => vec![key],
+            | LogEntry::Delete { keys, .. } => keys.iter().map(|k| k.as_str()).collect(),
+            | LogEntry::MSet { entries } => entries.iter().map(|e| e.key()).collect(),
+            | LogEntry::NoOp => vec![],
         }
     }
 }

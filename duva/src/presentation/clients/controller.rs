@@ -5,7 +5,7 @@ use crate::domains::caches::cache_objects::{CacheEntry, CacheValue, TypedValue};
 use crate::domains::cluster_actors::{
     ClientMessage, ConsensusClientResponse, ConsensusRequest, SessionRequest,
 };
-use crate::domains::operation_logs::WriteRequest;
+use crate::domains::operation_logs::LogEntry;
 use crate::domains::saves::actor::SaveTarget;
 use crate::prelude::PeerIdentifier;
 use crate::presentation::clients::request::ClientAction;
@@ -213,7 +213,7 @@ impl ClientController {
     pub(crate) async fn make_consensus(
         &self,
         session_req: SessionRequest,
-        write_req: WriteRequest,
+        write_req: LogEntry,
         cli_action: &mut ClientAction,
     ) -> anyhow::Result<u64> {
         let (tx, consensus_res) = Callback::create();

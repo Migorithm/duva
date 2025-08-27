@@ -15,7 +15,7 @@ use crate::domains::caches::cache_objects::CacheEntry;
 use crate::domains::caches::command::CacheCommand;
 use crate::domains::cluster_actors::replication::ReplicationRole;
 use crate::domains::operation_logs::WriteOperation;
-use crate::domains::operation_logs::WriteRequest;
+use crate::domains::operation_logs::LogEntry;
 use crate::domains::operation_logs::logger::ReplicatedLogs;
 use crate::domains::peers::command::HeartBeat;
 use crate::domains::peers::command::ReplicationAck;
@@ -120,7 +120,7 @@ impl Helper {
     pub(crate) fn write(index_num: u64, term: u64, key: &str, value: &str) -> WriteOperation {
         WriteOperation {
             log_index: index_num,
-            request: WriteRequest::Set { key: key.into(), value: value.into(), expires_at: None },
+            request: LogEntry::Set { key: key.into(), value: value.into(), expires_at: None },
             term,
             session_req: None,
         }
@@ -134,7 +134,7 @@ impl Helper {
     ) -> WriteOperation {
         WriteOperation {
             log_index: index_num,
-            request: WriteRequest::Set { key: key.into(), value: value.into(), expires_at: None },
+            request: LogEntry::Set { key: key.into(), value: value.into(), expires_at: None },
             term,
             session_req: Some(session_req),
         }
@@ -212,7 +212,7 @@ impl Helper {
         session_req: Option<SessionRequest>,
     ) -> ConsensusRequest {
         ConsensusRequest::new(
-            WriteRequest::Set { key: "foo".into(), value: "bar".into(), expires_at: None },
+            LogEntry::Set { key: "foo".into(), value: "bar".into(), expires_at: None },
             callback,
             session_req,
         )

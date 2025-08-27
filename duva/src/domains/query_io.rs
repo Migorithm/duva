@@ -488,7 +488,7 @@ mod test {
     use crate::domains::cluster_actors::hash_ring::HashRing;
     use crate::domains::cluster_actors::replication::{ReplicationId, ReplicationRole};
     use crate::domains::cluster_actors::topology::NodeReplInfo;
-    use crate::domains::operation_logs::WriteRequest;
+    use crate::domains::operation_logs::LogEntry;
     use crate::domains::peers::command::BannedPeer;
     use crate::domains::peers::identifier::PeerIdentifier;
     use crate::domains::peers::peer::PeerState;
@@ -622,7 +622,7 @@ mod test {
     fn test_write_operation_to_binary_back_to_itself() {
         // GIVEN
         let op = QueryIO::WriteOperation(WriteOperation {
-            request: WriteRequest::Set { key: "foo".into(), value: "bar".into(), expires_at: None },
+            request: LogEntry::Set { key: "foo".into(), value: "bar".into(), expires_at: None },
             log_index: 1,
             term: 0,
             session_req: None,
@@ -670,7 +670,7 @@ mod test {
             ban_list: banned_list,
             append_entries: vec![
                 WriteOperation {
-                    request: WriteRequest::Set {
+                    request: LogEntry::Set {
                         key: "foo".into(),
                         value: "bar".into(),
                         expires_at: None,
@@ -680,7 +680,7 @@ mod test {
                     session_req: None,
                 },
                 WriteOperation {
-                    request: WriteRequest::Set {
+                    request: LogEntry::Set {
                         key: "foo".into(),
                         value: "bar".into(),
                         expires_at: Some(323232),

@@ -1,5 +1,5 @@
 use crate::domains::operation_logs::interfaces::TWriteAheadLog;
-use crate::domains::operation_logs::{WriteOperation, WriteRequest};
+use crate::domains::operation_logs::{WriteOperation, LogEntry};
 use anyhow::{Context, Result};
 use bytes::Bytes;
 use regex::Regex;
@@ -69,7 +69,7 @@ impl Segment {
         }
 
         let bytes = Bytes::copy_from_slice(&buf[..]);
-        WriteRequest::deserialize(bytes) // Assuming this returns Result<Vec<WriteOperation>>
+        LogEntry::deserialize(bytes) // Assuming this returns Result<Vec<WriteOperation>>
     }
 
     fn from_path(path: &PathBuf) -> Result<Self> {
@@ -84,7 +84,7 @@ impl Segment {
 
         // Parse the segment file to get operations and build index
         let bytes = Bytes::copy_from_slice(&buf[..]);
-        let operations = WriteRequest::deserialize(bytes)?;
+        let operations = LogEntry::deserialize(bytes)?;
 
         let mut current_offset = 0;
         let mut index_data = Vec::new();
@@ -130,7 +130,7 @@ impl Segment {
         reader.read_to_end(&mut buf)?;
 
         let bytes = Bytes::copy_from_slice(&buf);
-        let operations = WriteRequest::deserialize(bytes)?;
+        let operations = LogEntry::deserialize(bytes)?;
 
         operations.into_iter().next().ok_or_else(|| anyhow::anyhow!("No operation found at offset"))
     }
@@ -278,7 +278,7 @@ impl FileOpLogs {
 
         let bytes = Bytes::copy_from_slice(&buffer);
         // Assuming deserialize can handle a buffer with multiple concatenated operations
-        let operations_in_buffer = WriteRequest::deserialize(bytes)?;
+        let operations_in_buffer = LogEntry::deserialize(bytes)?;
 
         for op in operations_in_buffer {
             if op.log_index > end_inclusive {
@@ -530,7 +530,7 @@ mod tests {
 
     fn set_helper(index: u64, term: u64) -> WriteOperation {
         WriteOperation {
-            request: WriteRequest::Set { key: "foo".into(), value: "bar".into(), expires_at: None },
+            request: LogEntry::Set { key: "foo".into(), value: "bar".into(), expires_at: None },
             log_index: index,
             term,
             session_req: None,
@@ -560,7 +560,7 @@ mod tests {
         let path = dir.path();
         let mut op_logs = FileOpLogs::new(path).unwrap();
         let request =
-            WriteRequest::Set { key: "foo".into(), value: "bar".into(), expires_at: None };
+            LogEntry::Set { key: "foo".into(), value: "bar".into(), expires_at: None };
         let write_op =
             WriteOperation { request: request.clone(), log_index: 0, term: 0, session_req: None };
 
@@ -706,7 +706,7 @@ mod tests {
         let mut buf = Vec::new();
         reader.read_to_end(&mut buf)?;
         let bytes = Bytes::copy_from_slice(&buf[..]);
-        let operations = WriteRequest::deserialize(bytes)?;
+        let operations = LogEntry::deserialize(bytes)?;
         assert_eq!(operations.len(), 2);
 
         Ok(())
@@ -724,7 +724,7 @@ mod tests {
         // Fill first segment
         for i in 0..100 {
             op_logs.append(WriteOperation {
-                request: WriteRequest::Set {
+                request: LogEntry::Set {
                     key: format!("key_{i}"),
                     value: format!("value_{i}"),
                     expires_at: None,
@@ -738,7 +738,7 @@ mod tests {
         op_logs.rotate_segment()?;
         // Add to new segment
         op_logs.append(WriteOperation {
-            request: WriteRequest::Set {
+            request: LogEntry::Set {
                 key: "new".into(),
                 value: "value".into(),
                 expires_at: None,
@@ -803,7 +803,7 @@ mod tests {
         for i in 0..100 {
             // Append 100 ops to segment_0.oplog
             op_logs.append(WriteOperation {
-                request: WriteRequest::Set {
+                request: LogEntry::Set {
                     key: format!("key_{i}"),
                     value: format!("value_{i}"),
                     expires_at: None,
@@ -817,7 +817,7 @@ mod tests {
         op_logs.rotate_segment()?;
         // Append one more op to segment_1.oplog
         op_logs.append(WriteOperation {
-            request: WriteRequest::Set {
+            request: LogEntry::Set {
                 key: "new".into(),
                 value: "value".into(),
                 expires_at: None,
@@ -917,7 +917,7 @@ mod tests {
         // WHEN
         let new_ops: Vec<_> = (0..1000)
             .map(|i| WriteOperation {
-                request: WriteRequest::Set {
+                request: LogEntry::Set {
                     key: format!("key_{i}"),
                     value: format!("value_{i}"),
                     expires_at: None,
@@ -957,7 +957,7 @@ mod tests {
     fn create_ops(start_index: u64, count: usize, term: u64) -> Vec<WriteOperation> {
         (0..count)
             .map(|i| WriteOperation {
-                request: WriteRequest::Set {
+                request: LogEntry::Set {
                     key: format!("key_{}", start_index + i as u64),
                     value: format!("value_{}", start_index + i as u64),
                     expires_at: None,
@@ -1198,7 +1198,7 @@ mod tests {
         // Fill first segment
         for i in 0..100 {
             op_logs.append(WriteOperation {
-                request: WriteRequest::Set {
+                request: LogEntry::Set {
                     key: format!("key_{i}"),
                     value: format!("value_{i}"),
                     expires_at: None,
@@ -1220,7 +1220,7 @@ mod tests {
 
         // Add to new segment
         op_logs.append(WriteOperation {
-            request: WriteRequest::Set {
+            request: LogEntry::Set {
                 key: "new".into(),
                 value: "value".into(),
                 expires_at: None,
@@ -1247,7 +1247,7 @@ mod tests {
             let mut op_logs = FileOpLogs::new(path)?;
             for i in 0..50 {
                 op_logs.append(WriteOperation {
-                    request: WriteRequest::Set {
+                    request: LogEntry::Set {
                         key: format!("key_{i}"),
                         value: format!("value_{i}"),
                         expires_at: None,
@@ -1287,7 +1287,7 @@ mod tests {
         // Create some initial operations
         for i in 0..10 {
             op_logs.append(WriteOperation {
-                request: WriteRequest::Set {
+                request: LogEntry::Set {
                     key: format!("key_{i}"),
                     value: format!("value_{i}"),
                     expires_at: None,

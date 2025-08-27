@@ -2,7 +2,7 @@ use std::sync::{Arc, atomic::AtomicU64};
 
 use crate::domains::cluster_actors::SessionRequest;
 
-use super::{WriteOperation, WriteRequest, interfaces::TWriteAheadLog};
+use super::{WriteOperation, LogEntry, interfaces::TWriteAheadLog};
 use tracing::debug;
 
 #[derive(Debug)]
@@ -35,7 +35,7 @@ impl<T: TWriteAheadLog> ReplicatedLogs<T> {
 
     pub(crate) fn write_single_entry(
         &mut self,
-        req: &WriteRequest,
+        req: &LogEntry,
         current_term: u64,
         session_req: Option<SessionRequest>,
     ) -> anyhow::Result<()> {

@@ -2,7 +2,7 @@ use std::str::FromStr;
 
 use crate::domains::{
     cluster_actors::{LazyOption, SessionRequest},
-    operation_logs::WriteRequest,
+    operation_logs::LogEntry,
     peers::identifier::{PeerIdentifier, TPeerAddress},
 };
 use anyhow::Context;
@@ -47,47 +47,45 @@ pub enum ClientAction {
 }
 
 impl ClientAction {
-    pub fn to_write_request(&self) -> Option<WriteRequest> {
+    pub fn to_write_request(&self) -> Option<LogEntry> {
         let write_req = match self {
-            | ClientAction::Set { key, value, expires_at: expired_at } => WriteRequest::Set {
-                key: key.clone(),
-                value: value.clone(),
-                expires_at: *expired_at,
+            | ClientAction::Set { key, value, expires_at: expired_at } => {
+                LogEntry::Set { key: key.clone(), value: value.clone(), expires_at: *expired_at }
             },
 
             | ClientAction::Append { key, value } => {
-                WriteRequest::Append { key: key.clone(), value: value.clone() }
+                LogEntry::Append { key: key.clone(), value: value.clone() }
             },
-            | ClientAction::Delete { keys } => WriteRequest::Delete { keys: keys.clone() },
+            | ClientAction::Delete { keys } => LogEntry::Delete { keys: keys.clone() },
             | ClientAction::IncrBy { key, delta } => {
-                WriteRequest::IncrBy { key: key.clone(), delta: *delta }
+                LogEntry::IncrBy { key: key.clone(), delta: *delta }
             },
             | ClientAction::DecrBy { key, delta } => {
-                WriteRequest::DecrBy { key: key.clone(), delta: *delta }
+                LogEntry::DecrBy { key: key.clone(), delta: *delta }
             },
             | ClientAction::LPush { key, value } => {
-                WriteRequest::LPush { key: key.clone(), value: value.clone() }
+                LogEntry::LPush { key: key.clone(), value: value.clone() }
             },
             | ClientAction::LPushX { key, value } => {
-                WriteRequest::LPushX { key: key.clone(), value: value.clone() }
+                LogEntry::LPushX { key: key.clone(), value: value.clone() }
             },
             | ClientAction::LPop { key, count } => {
-                WriteRequest::LPop { key: key.clone(), count: *count }
+                LogEntry::LPop { key: key.clone(), count: *count }
             },
             | ClientAction::RPush { key, value } => {
-                WriteRequest::RPush { key: key.clone(), value: value.clone() }
+                LogEntry::RPush { key: key.clone(), value: value.clone() }
             },
             | ClientAction::RPushX { key, value } => {
-                WriteRequest::RPushX { key: key.clone(), value: value.clone() }
+                LogEntry::RPushX { key: key.clone(), value: value.clone() }
             },
             | ClientAction::RPop { key, count } => {
-                WriteRequest::RPop { key: key.clone(), count: *count }
+                LogEntry::RPop { key: key.clone(), count: *count }
             },
             | ClientAction::LTrim { key, start, end } => {
-                WriteRequest::LTrim { key: key.clone(), start: *start, end: *end }
+                LogEntry::LTrim { key: key.clone(), start: *start, end: *end }
             },
             | ClientAction::LSet { key, index, value } => {
-                WriteRequest::LSet { key: key.clone(), index: *index, value: value.clone() }
+                LogEntry::LSet { key: key.clone(), index: *index, value: value.clone() }
             },
 
             | _ => return None,
