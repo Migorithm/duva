@@ -252,9 +252,8 @@ pub fn extract_action(action: &str, args: &[&str]) -> anyhow::Result<ClientActio
                         ClientAction::ClusterMeet(
                             PeerIdentifier(args[1].bind_addr()?),
                             LazyOption::Lazy,
-                        );
-                    }
-                    if args.len() == 3 {
+                        )
+                    } else if args.len() == 3 {
                         // args[2].parse()? should be either lazy or eager
                         let lazy_option:LazyOption =FromStr::from_str(args[2]).context(
                             "(error) ERR wrong arguments for 'cluster meet' command, expected 'lazy' or 'eager'"
