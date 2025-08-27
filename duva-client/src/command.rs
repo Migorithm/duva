@@ -139,13 +139,11 @@ impl From<&ClientAction> for RoutingRule {
                     expires_at: None,
                 }])
             },
-            | ClientAction::Set { key, value } | ClientAction::Append { key, value } => {
-                Self::Selective(vec![CommandEntry {
-                    key: key.clone(),
-                    value: Some(value.clone()),
-                    expires_at: None,
-                }])
-            },
+            | ClientAction::Append { key, value } => Self::Selective(vec![CommandEntry {
+                key: key.clone(),
+                value: Some(value.clone()),
+                expires_at: None,
+            }]),
             | ClientAction::IndexGet { key, index } => Self::Selective(vec![CommandEntry {
                 key: key.clone(),
                 value: Some(index.to_string()),
@@ -157,13 +155,11 @@ impl From<&ClientAction> for RoutingRule {
                 value: Some(value.to_string()),
                 expires_at: None,
             }]),
-            | ClientAction::SetWithExpiry { key, value, expires_at } => {
-                Self::Selective(vec![CommandEntry {
-                    key: key.clone(),
-                    value: Some(value.clone()),
-                    expires_at: Some(*expires_at),
-                }])
-            },
+            | ClientAction::Set { key, value, expires_at } => Self::Selective(vec![CommandEntry {
+                key: key.clone(),
+                value: Some(value.clone()),
+                expires_at: *expires_at,
+            }]),
 
             // commands thar require multi-key-routings
             | ClientAction::Delete { keys }

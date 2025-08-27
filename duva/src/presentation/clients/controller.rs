@@ -30,22 +30,16 @@ impl ClientController {
         let response = match cmd {
             | ClientAction::Ping => QueryIO::SimpleString("PONG".into()),
             | ClientAction::Echo(val) => QueryIO::BulkString(val.into()),
-            | ClientAction::Set { key, value } => QueryIO::SimpleString(
-                self.cache_manager
-                    .route_set(CacheEntry::new(key, value.as_str()), current_index.unwrap())
-                    .await?
-                    .into(),
-            ),
-            | ClientAction::SetWithExpiry { key, value, expires_at } => QueryIO::SimpleString(
-                self.cache_manager
-                    .route_set(
-                        CacheEntry::new(key, value.as_str())
-                            .with_expiry(DateTime::from_timestamp_millis(expires_at).unwrap()),
-                        current_index.unwrap(),
-                    )
-                    .await?
-                    .into(),
-            ),
+            | ClientAction::Set { key, value, expires_at } => {
+                let mut entry = CacheEntry::new(key, value.as_str());
+                if let Some(expires_at) = expires_at {
+                    entry = entry.with_expiry(DateTime::from_timestamp_millis(expires_at).unwrap())
+                }
+                QueryIO::SimpleString(
+                    self.cache_manager.route_set(entry, current_index.unwrap()).await?.into(),
+                )
+            },
+
             | ClientAction::Append { key, value } => QueryIO::SimpleString(
                 self.cache_manager.route_append(key, value).await?.to_string().into(),
             ),

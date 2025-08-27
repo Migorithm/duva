@@ -16,9 +16,8 @@ pub enum ClientAction {
     Get { key: String },
     MGet { keys: Vec<String> },
     IndexGet { key: String, index: u64 },
-    Set { key: String, value: String },
     Append { key: String, value: String },
-    SetWithExpiry { key: String, value: String, expires_at: i64 },
+    Set { key: String, value: String, expires_at: Option<i64> },
     Keys { pattern: Option<String> },
     Delete { keys: Vec<String> },
     Save,
@@ -50,14 +49,12 @@ pub enum ClientAction {
 impl ClientAction {
     pub fn to_write_request(&self) -> Option<WriteRequest> {
         let write_req = match self {
-            | ClientAction::Set { key, value } => {
-                WriteRequest::Set { key: key.clone(), value: value.clone(), expires_at: None }
-            },
-            | ClientAction::SetWithExpiry { key, value, expires_at } => WriteRequest::Set {
+            | ClientAction::Set { key, value, expires_at: expired_at } => WriteRequest::Set {
                 key: key.clone(),
                 value: value.clone(),
-                expires_at: Some(*expires_at),
+                expires_at: *expired_at,
             },
+
             | ClientAction::Append { key, value } => {
                 WriteRequest::Append { key: key.clone(), value: value.clone() }
             },
@@ -136,12 +133,13 @@ pub fn extract_action(action: &str, args: &[&str]) -> anyhow::Result<ClientActio
                 return Ok(ClientAction::Set {
                     key: args[0].to_string(),
                     value: args[1].to_string(),
+                    expires_at: None,
                 });
             }
-            Ok(ClientAction::SetWithExpiry {
+            Ok(ClientAction::Set {
                 key: args[0].to_string(),
                 value: args[1].to_string(),
-                expires_at: extract_expiry(args[3])?,
+                expires_at: Some(extract_expiry(args[3])?),
             })
         },
 
