@@ -27,9 +27,12 @@ impl ClientController {
         cmd: ClientAction,
         current_index: Option<u64>,
     ) -> anyhow::Result<QueryIO> {
+        use LogEntry::*;
+        use NonMutatingAction::*;
+
         let response = match cmd {
             | ClientAction::Mutating(write_req) => match write_req {
-                | LogEntry::Set { key, value, expires_at } => {
+                | Set { key, value, expires_at } => {
                     let mut entry = CacheEntry::new(key, value.as_str());
                     if let Some(expires_at) = expires_at {
                         entry =
@@ -40,38 +43,38 @@ impl ClientController {
                     )
                 },
 
-                | LogEntry::Append { key, value } => QueryIO::SimpleString(
+                | Append { key, value } => QueryIO::SimpleString(
                     self.cache_manager.route_append(key, value).await?.to_string().into(),
                 ),
-                | LogEntry::Delete { keys } => QueryIO::SimpleString(
+                | Delete { keys } => QueryIO::SimpleString(
                     self.cache_manager.route_delete(keys).await?.to_string().into(),
                 ),
 
-                | LogEntry::IncrBy { key, delta: value } => QueryIO::SimpleString(
+                | IncrBy { key, delta: value } => QueryIO::SimpleString(
                     self.cache_manager
                         .route_numeric_delta(key, value, current_index.unwrap())
                         .await?
                         .into(),
                 ),
-                | LogEntry::DecrBy { key, delta: value } => QueryIO::SimpleString(
+                | DecrBy { key, delta: value } => QueryIO::SimpleString(
                     self.cache_manager
                         .route_numeric_delta(key, -value, current_index.unwrap())
                         .await?
                         .into(),
                 ),
-                | LogEntry::LPush { key, value } => QueryIO::SimpleString(
+                | LPush { key, value } => QueryIO::SimpleString(
                     self.cache_manager
                         .route_lpush(key, value, current_index.unwrap())
                         .await?
                         .into(),
                 ),
-                | LogEntry::LPushX { key, value } => QueryIO::SimpleString(
+                | LPushX { key, value } => QueryIO::SimpleString(
                     self.cache_manager
                         .route_lpushx(key, value, current_index.unwrap())
                         .await?
                         .into(),
                 ),
-                | LogEntry::LPop { key, count } => {
+                | LPop { key, count } => {
                     let values = self.cache_manager.route_lpop(key, count).await?;
                     if values.is_empty() {
                         return Ok(QueryIO::Null);
@@ -80,19 +83,19 @@ impl ClientController {
                         values.into_iter().map(|v| QueryIO::BulkString(v.into())).collect(),
                     )
                 },
-                | LogEntry::RPush { key, value } => QueryIO::SimpleString(
+                | RPush { key, value } => QueryIO::SimpleString(
                     self.cache_manager
                         .route_rpush(key, value, current_index.unwrap())
                         .await?
                         .into(),
                 ),
-                | LogEntry::RPushX { key, value } => QueryIO::SimpleString(
+                | RPushX { key, value } => QueryIO::SimpleString(
                     self.cache_manager
                         .route_rpushx(key, value, current_index.unwrap())
                         .await?
                         .into(),
                 ),
-                | LogEntry::RPop { key, count } => {
+                | RPop { key, count } => {
                     let values = self.cache_manager.route_rpop(key, count).await?;
                     if values.is_empty() {
                         return Ok(QueryIO::Null);
@@ -101,13 +104,13 @@ impl ClientController {
                         values.into_iter().map(|v| QueryIO::BulkString(v.into())).collect(),
                     )
                 },
-                | LogEntry::LTrim { key, start, end } => QueryIO::SimpleString(
+                | LTrim { key, start, end } => QueryIO::SimpleString(
                     self.cache_manager
                         .route_ltrim(key, start, end, current_index.unwrap())
                         .await?
                         .into(),
                 ),
-                | LogEntry::LSet { key, index, value } => QueryIO::SimpleString(
+                | LSet { key, index, value } => QueryIO::SimpleString(
                     self.cache_manager
                         .route_lset(key, index, value, current_index.unwrap())
                         .await?
@@ -118,10 +121,10 @@ impl ClientController {
             },
 
             | ClientAction::NonMutating(non_mutating) => match non_mutating {
-                | NonMutatingAction::Ping => QueryIO::SimpleString("PONG".into()),
-                | NonMutatingAction::Echo(val) => QueryIO::BulkString(val.into()),
+                | Ping => QueryIO::SimpleString("PONG".into()),
+                | Echo(val) => QueryIO::BulkString(val.into()),
 
-                | NonMutatingAction::Save => {
+                | Save => {
                     let file_path = ENV.get_filepath();
                     let file = tokio::fs::OpenOptions::new()
                         .write(true)
@@ -142,8 +145,8 @@ impl ClientController {
 
                     QueryIO::Null
                 },
-                | NonMutatingAction::Get { key } => self.cache_manager.route_get(key).await?.into(),
-                | NonMutatingAction::MGet { keys } => {
+                | Get { key } => self.cache_manager.route_get(key).await?.into(),
+                | MGet { keys } => {
                     let res = self.cache_manager.route_mget(keys).await;
                     QueryIO::Array(
                         res.into_iter()
@@ -157,14 +160,14 @@ impl ClientController {
                             .collect(),
                     )
                 },
-                | NonMutatingAction::IndexGet { key, index } => {
+                | IndexGet { key, index } => {
                     self.cache_manager.route_index_get(key, index).await?.into()
                 },
-                | NonMutatingAction::Keys { pattern } => {
+                | Keys { pattern } => {
                     let res = self.cache_manager.route_keys(pattern).await;
                     QueryIO::Array(res.into_iter().map(|s| QueryIO::BulkString(s.into())).collect())
                 },
-                | NonMutatingAction::Config { key, value } => {
+                | Config { key, value } => {
                     match (key.to_lowercase().as_str(), value.to_lowercase().as_str()) {
                         | ("get", "dir") => format!("dir {}", ENV.dir).into(),
                         | ("get", "dbfilename") => ENV.dbfilename.clone().into(),
@@ -172,10 +175,10 @@ impl ClientController {
                     }
                 },
 
-                | NonMutatingAction::Exists { keys } => QueryIO::SimpleString(
+                | Exists { keys } => QueryIO::SimpleString(
                     self.cache_manager.route_exists(keys).await?.to_string().into(),
                 ),
-                | NonMutatingAction::Info => QueryIO::BulkString(
+                | Info => QueryIO::BulkString(
                     self.cluster_communication_manager
                         .route_get_replication_state()
                         .await?
@@ -183,10 +186,10 @@ impl ClientController {
                         .join("\r\n")
                         .into(),
                 ),
-                | NonMutatingAction::ClusterInfo => {
+                | ClusterInfo => {
                     self.cluster_communication_manager.route_get_cluster_info().await?.into()
                 },
-                | NonMutatingAction::ClusterNodes => self
+                | ClusterNodes => self
                     .cluster_communication_manager
                     .route_cluster_nodes()
                     .await?
@@ -194,7 +197,7 @@ impl ClientController {
                     .map(|peer| peer.format(&PeerIdentifier::new(&ENV.host, ENV.port)))
                     .collect::<Vec<_>>()
                     .into(),
-                | NonMutatingAction::ClusterForget(peer_identifier) => {
+                | ClusterForget(peer_identifier) => {
                     match self
                         .cluster_communication_manager
                         .route_forget_peer(peer_identifier)
@@ -205,38 +208,36 @@ impl ClientController {
                         | Err(e) => QueryIO::Err(e.to_string().into()),
                     }
                 },
-                | NonMutatingAction::ClusterMeet(peer_identifier, option) => self
+                | ClusterMeet(peer_identifier, option) => self
                     .cluster_communication_manager
                     .route_cluster_meet(peer_identifier, option)
                     .await?
                     .into(),
-                | NonMutatingAction::ClusterReshard => {
+                | ClusterReshard => {
                     self.cluster_communication_manager.route_cluster_reshard().await?.into()
                 },
-                | NonMutatingAction::ReplicaOf(peer_identifier) => {
+                | ReplicaOf(peer_identifier) => {
                     self.cluster_communication_manager
                         .route_replicaof(peer_identifier.clone())
                         .await?;
                     QueryIO::SimpleString("OK".into())
                 },
-                | NonMutatingAction::Role => {
-                    self.cluster_communication_manager.route_get_roles().await?.into()
-                },
-                | NonMutatingAction::Ttl { key } => {
+                | Role => self.cluster_communication_manager.route_get_roles().await?.into(),
+                | Ttl { key } => {
                     QueryIO::SimpleString(self.cache_manager.route_ttl(key).await?.into())
                 },
 
-                | NonMutatingAction::LLen { key } => {
+                | LLen { key } => {
                     let len = self.cache_manager.route_llen(key).await?;
                     QueryIO::SimpleString(len.to_string().into())
                 },
-                | NonMutatingAction::LRange { key, start, end } => {
+                | LRange { key, start, end } => {
                     let values = self.cache_manager.route_lrange(key, start, end).await?;
                     QueryIO::Array(
                         values.into_iter().map(|v| QueryIO::BulkString(v.into())).collect(),
                     )
                 },
-                | NonMutatingAction::LIndex { key, index } => {
+                | LIndex { key, index } => {
                     self.cache_manager.route_lindex(key, index).await?.into()
                 },
             },
