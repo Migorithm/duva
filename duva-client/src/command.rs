@@ -68,17 +68,17 @@ impl InputContext {
     }
 
     pub(crate) fn get_result(&self) -> anyhow::Result<QueryIO> {
+        use NonMutatingAction::*;
+
         match self.client_action {
-            | ClientAction::NonMutating(
-                NonMutatingAction::Keys { pattern: _ } | NonMutatingAction::MGet { keys: _ },
-            ) => {
+            | ClientAction::NonMutating(Keys { pattern: _ } | MGet { keys: _ }) => {
                 let init = QueryIO::Array(Vec::new());
                 let result = self.results.iter().fold(init, |acc, item| {
                     acc.merge(item.clone()).unwrap_or_else(|_| QueryIO::Array(Vec::new()))
                 });
                 Ok(result)
             },
-            | ClientAction::NonMutating(NonMutatingAction::Exists { keys: _ })
+            | ClientAction::NonMutating(Exists { keys: _ })
             | ClientAction::Mutating(LogEntry::Delete { keys: _ }) => {
                 let mut count = 0;
                 for result in &self.results {
