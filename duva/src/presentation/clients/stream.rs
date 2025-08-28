@@ -5,6 +5,7 @@ use crate::domains::{
     cluster_actors::SessionRequest,
     interface::{TRead, TWrite},
 };
+use crate::presentation::clients::request::ClientAction;
 use tokio::{
     net::tcp::{OwnedReadHalf, OwnedWriteHalf},
     sync::mpsc::Sender,
@@ -40,7 +41,7 @@ impl ClientStreamReader {
                 info!(?req, "Processing request");
 
                 let mut index: Option<_> = None;
-                if req.action.is_write_request() {
+                if matches!(req.action, ClientAction::Mutating(..)) {
                     match handler.make_consensus(req.session_req, &mut req.action).await {
                         | Ok(idx) => index = Some(idx),
                         | Err(err) => {

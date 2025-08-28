@@ -58,22 +58,24 @@ impl LogEntry {
 
     /// Returns all keys involved in the operation.
     pub(crate) fn all_keys(&self) -> Vec<&str> {
+        use LogEntry::*;
+
         match self {
-            | LogEntry::Set { key, .. }
-            | LogEntry::Append { key, .. }
-            | LogEntry::IncrBy { key, .. }
-            | LogEntry::DecrBy { key, .. }
-            | LogEntry::LPush { key, .. }
-            | LogEntry::LPop { key, .. }
-            | LogEntry::RPush { key, .. }
-            | LogEntry::LTrim { key, .. }
-            | LogEntry::LPushX { key, .. }
-            | LogEntry::LSet { key, .. }
-            | LogEntry::RPop { key, .. }
-            | LogEntry::RPushX { key, .. } => vec![key],
-            | LogEntry::Delete { keys, .. } => keys.iter().map(|k| k.as_str()).collect(),
-            | LogEntry::MSet { entries } => entries.iter().map(|e| e.key()).collect(),
-            | LogEntry::NoOp => vec![],
+            | Set { key, .. }
+            | Append { key, .. }
+            | IncrBy { key, .. }
+            | DecrBy { key, .. }
+            | LPush { key, .. }
+            | LPop { key, .. }
+            | RPush { key, .. }
+            | LTrim { key, .. }
+            | LPushX { key, .. }
+            | LSet { key, .. }
+            | RPop { key, .. }
+            | RPushX { key, .. } => vec![key],
+            | Delete { keys, .. } => keys.iter().map(|k| k.as_str()).collect(),
+            | MSet { entries } => entries.iter().map(|e| e.key()).collect(),
+            | NoOp => vec![],
         }
     }
 }

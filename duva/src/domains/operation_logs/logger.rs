@@ -2,7 +2,7 @@ use std::sync::{Arc, atomic::AtomicU64};
 
 use crate::domains::cluster_actors::SessionRequest;
 
-use super::{WriteOperation, LogEntry, interfaces::TWriteAheadLog};
+use super::{LogEntry, WriteOperation, interfaces::TWriteAheadLog};
 use tracing::debug;
 
 #[derive(Debug)]

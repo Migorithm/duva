@@ -14,7 +14,7 @@ use duva::prelude::tokio::sync::oneshot;
 use duva::prelude::uuid::Uuid;
 use duva::prelude::{ELECTION_TIMEOUT_MAX, NodeReplInfo, Topology, anyhow};
 use duva::prelude::{PeerIdentifier, tokio};
-use duva::presentation::clients::request::ClientAction;
+use duva::presentation::clients::request::{ClientAction, NonMutatingAction};
 use duva::{
     domains::TSerdeReadWrite,
     prelude::{ConnectionRequest, ConnectionResponse},
@@ -74,7 +74,7 @@ impl Broker {
                         continue;
                     };
 
-                    if context.client_action.is_write_request() {
+                    if matches!(context.client_action, ClientAction::Mutating(..)) {
                         match self.node_connections.get_mut(&repl_id) {
                             | Some(connection) => connection.update_request_id(&query_io),
                             | None => {
@@ -259,9 +259,13 @@ impl Broker {
                 routed_keys.iter().map(|key| key.to_string()).collect::<Vec<String>>();
 
             let new_action = match client_action {
-                | ClientAction::MGet { .. } => ClientAction::MGet { keys: grouped_keys },
-                | ClientAction::Exists { .. } => ClientAction::Exists { keys: grouped_keys },
-                | ClientAction::WriteRequest(LogEntry::Delete { .. }) => {
+                | ClientAction::NonMutating(NonMutatingAction::MGet { .. }) => {
+                    NonMutatingAction::MGet { keys: grouped_keys }.into()
+                },
+                | ClientAction::NonMutating(NonMutatingAction::Exists { .. }) => {
+                    NonMutatingAction::Exists { keys: grouped_keys }.into()
+                },
+                | ClientAction::Mutating(LogEntry::Delete { .. }) => {
                     LogEntry::Delete { keys: grouped_keys }.into()
                 },
                 | _ => client_action.clone(),

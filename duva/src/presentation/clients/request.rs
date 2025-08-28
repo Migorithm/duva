@@ -9,6 +9,12 @@ use std::str::FromStr;
 
 #[derive(Clone, Debug, PartialEq, Eq, bincode::Encode, bincode::Decode)]
 pub enum ClientAction {
+    NonMutating(NonMutatingAction),
+    Mutating(LogEntry),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, bincode::Encode, bincode::Decode)]
+pub enum NonMutatingAction {
     Ping,
     Echo(String),
     Config { key: String, value: String },
@@ -30,15 +36,16 @@ pub enum ClientAction {
     LLen { key: String },
     LRange { key: String, start: isize, end: isize },
     LIndex { key: String, index: isize },
-    WriteRequest(LogEntry),
+}
+impl From<NonMutatingAction> for ClientAction {
+    fn from(value: NonMutatingAction) -> Self {
+        Self::NonMutating(value)
+    }
 }
 
 impl ClientAction {
-    pub fn is_write_request(&self) -> bool {
-        matches!(self, ClientAction::WriteRequest(..))
-    }
     pub fn to_write_request(&self) -> LogEntry {
-        if let Self::WriteRequest(log_entry) = self {
+        if let Self::Mutating(log_entry) = self {
             return log_entry.clone();
         }
         //TODO will revisit
@@ -48,7 +55,7 @@ impl ClientAction {
 
 impl From<LogEntry> for ClientAction {
     fn from(value: LogEntry) -> Self {
-        Self::WriteRequest(value)
+        Self::Mutating(value)
     }
 }
 
@@ -196,9 +203,10 @@ pub fn extract_action(action: &str, args: &[&str]) -> anyhow::Result<ClientActio
 
         | "GET" => {
             if args.len() == 1 {
-                ClientAction::Get { key: args[0].to_string() }
+                NonMutatingAction::Get { key: args[0].to_string() }.into()
             } else if args.len() == 2 {
-                ClientAction::IndexGet { key: args[0].to_string(), index: args[1].parse()? }
+                NonMutatingAction::IndexGet { key: args[0].to_string(), index: args[1].parse()? }
+                    .into()
             } else {
                 return Err(anyhow::anyhow!(
                     "(error) ERR wrong number of arguments for 'get' command"
@@ -210,63 +218,68 @@ pub fn extract_action(action: &str, args: &[&str]) -> anyhow::Result<ClientActio
             require_exact_args(1)?;
 
             if args[0] == "*" {
-                ClientAction::Keys { pattern: None }
+                NonMutatingAction::Keys { pattern: None }.into()
             } else {
-                ClientAction::Keys { pattern: Some(args[0].to_string()) }
+                NonMutatingAction::Keys { pattern: Some(args[0].to_string()) }.into()
             }
         },
 
         | "EXISTS" => {
             require_non_empty_args()?;
-            ClientAction::Exists { keys: args.iter().map(|s| s.to_string()).collect() }
+            NonMutatingAction::Exists { keys: args.iter().map(|s| s.to_string()).collect() }.into()
         },
 
         | "PING" => {
             require_exact_args(0)?;
-            ClientAction::Ping
+            NonMutatingAction::Ping.into()
         },
         | "ECHO" => {
             require_exact_args(1)?;
-            ClientAction::Echo(args[0].to_string())
+            NonMutatingAction::Echo(args[0].to_string()).into()
         },
         | "INFO" => {
             require_non_empty_args()?;
-            ClientAction::Info
+            NonMutatingAction::Info.into()
         },
 
         | "CLUSTER" => {
             require_non_empty_args()?;
             match args[0].to_uppercase().as_str() {
-                | "NODES" => ClientAction::ClusterNodes,
-                | "INFO" => ClientAction::ClusterInfo,
+                | "NODES" => NonMutatingAction::ClusterNodes.into(),
+                | "INFO" => NonMutatingAction::ClusterInfo.into(),
                 | "FORGET" => {
                     if args.len() != 2 {
                         return Err(anyhow::anyhow!(
                             "(error) ERR wrong number of arguments for 'cluster forget' command"
                         ));
                     }
-                    ClientAction::ClusterForget(PeerIdentifier(args[1].bind_addr()?))
+                    NonMutatingAction::ClusterForget(PeerIdentifier(args[1].bind_addr()?)).into()
                 },
                 | "MEET" => {
                     if args.len() == 2 {
-                        ClientAction::ClusterMeet(
+                        NonMutatingAction::ClusterMeet(
                             PeerIdentifier(args[1].bind_addr()?),
                             LazyOption::Lazy,
                         )
+                        .into()
                     } else if args.len() == 3 {
                         // args[2].parse()? should be either lazy or eager
                         let lazy_option:LazyOption =FromStr::from_str(args[2]).context(
                             "(error) ERR wrong arguments for 'cluster meet' command, expected 'lazy' or 'eager'"
                         )?;
 
-                        ClientAction::ClusterMeet(PeerIdentifier(args[1].bind_addr()?), lazy_option)
+                        NonMutatingAction::ClusterMeet(
+                            PeerIdentifier(args[1].bind_addr()?),
+                            lazy_option,
+                        )
+                        .into()
                     } else {
                         return Err(anyhow::anyhow!(
                             "(error) ERR wrong number of arguments for 'cluster meet' command"
                         ));
                     }
                 },
-                | "RESHARD" => ClientAction::ClusterReshard,
+                | "RESHARD" => NonMutatingAction::ClusterReshard.into(),
                 | _ => {
                     return Err(anyhow::anyhow!("(error) ERR unknown subcommand"));
                 },
@@ -274,47 +287,50 @@ pub fn extract_action(action: &str, args: &[&str]) -> anyhow::Result<ClientActio
         },
         | "REPLICAOF" => {
             require_exact_args(2)?;
-            ClientAction::ReplicaOf(PeerIdentifier::new(args[0], args[1].parse()?))
+            NonMutatingAction::ReplicaOf(PeerIdentifier::new(args[0], args[1].parse()?)).into()
         },
         | "ROLE" => {
             require_exact_args(0)?;
-            ClientAction::Role
+            NonMutatingAction::Role.into()
         },
         | "CONFIG" => {
             require_exact_args(2)?;
-            ClientAction::Config { key: args[0].to_string(), value: args[1].to_string() }
+            NonMutatingAction::Config { key: args[0].to_string(), value: args[1].to_string() }
+                .into()
         },
         | "SAVE" => {
             require_exact_args(0)?;
-            ClientAction::Save
+            NonMutatingAction::Save.into()
         },
 
         | "TTL" => {
             require_exact_args(1)?;
-            ClientAction::Ttl { key: args[0].to_string() }
+            NonMutatingAction::Ttl { key: args[0].to_string() }.into()
         },
 
         | "MGET" => {
             require_non_empty_args()?;
-            ClientAction::MGet { keys: args.iter().map(|s| s.to_string()).collect() }
+            NonMutatingAction::MGet { keys: args.iter().map(|s| s.to_string()).collect() }.into()
         },
 
         | "LLEN" => {
             require_exact_args(1)?;
-            ClientAction::LLen { key: args[0].to_string() }
+            NonMutatingAction::LLen { key: args[0].to_string() }.into()
         },
 
         | "LRANGE" => {
             require_exact_args(3)?;
-            ClientAction::LRange {
+            NonMutatingAction::LRange {
                 key: args[0].to_string(),
                 start: args[1].parse::<isize>()?,
                 end: args[2].parse::<isize>()?,
             }
+            .into()
         },
         | "LINDEX" => {
             require_exact_args(2)?;
-            ClientAction::LIndex { key: args[0].to_string(), index: args[1].parse::<isize>()? }
+            NonMutatingAction::LIndex { key: args[0].to_string(), index: args[1].parse::<isize>()? }
+                .into()
         },
 
         // Add other commands as needed

@@ -1,5 +1,5 @@
 use crate::domains::operation_logs::interfaces::TWriteAheadLog;
-use crate::domains::operation_logs::{WriteOperation, LogEntry};
+use crate::domains::operation_logs::{LogEntry, WriteOperation};
 use anyhow::{Context, Result};
 use bytes::Bytes;
 use regex::Regex;
@@ -559,8 +559,7 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let path = dir.path();
         let mut op_logs = FileOpLogs::new(path).unwrap();
-        let request =
-            LogEntry::Set { key: "foo".into(), value: "bar".into(), expires_at: None };
+        let request = LogEntry::Set { key: "foo".into(), value: "bar".into(), expires_at: None };
         let write_op =
             WriteOperation { request: request.clone(), log_index: 0, term: 0, session_req: None };
 
@@ -738,11 +737,7 @@ mod tests {
         op_logs.rotate_segment()?;
         // Add to new segment
         op_logs.append(WriteOperation {
-            request: LogEntry::Set {
-                key: "new".into(),
-                value: "value".into(),
-                expires_at: None,
-            },
+            request: LogEntry::Set { key: "new".into(), value: "value".into(), expires_at: None },
             log_index: 100,
             term: 1,
             session_req: None,
@@ -817,11 +812,7 @@ mod tests {
         op_logs.rotate_segment()?;
         // Append one more op to segment_1.oplog
         op_logs.append(WriteOperation {
-            request: LogEntry::Set {
-                key: "new".into(),
-                value: "value".into(),
-                expires_at: None,
-            },
+            request: LogEntry::Set { key: "new".into(), value: "value".into(), expires_at: None },
             log_index: 100, // Note: This index might be wrong if 0..99 filled the segment exactly.
             // The log_index should ideally be sequential across segments.
             // If op 99 was the last in segment_0, this should be 100.
@@ -1220,11 +1211,7 @@ mod tests {
 
         // Add to new segment
         op_logs.append(WriteOperation {
-            request: LogEntry::Set {
-                key: "new".into(),
-                value: "value".into(),
-                expires_at: None,
-            },
+            request: LogEntry::Set { key: "new".into(), value: "value".into(), expires_at: None },
             log_index: 100,
             term: 1,
             session_req: None,
