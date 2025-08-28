@@ -23,7 +23,7 @@ pub(crate) struct ClientController {
 }
 
 impl ClientController {
-    pub(crate) async fn handle_non_mutating_request(
+    pub(crate) async fn handle_non_mutating(
         &self,
         non_mutating: NonMutatingAction,
     ) -> anyhow::Result<QueryIO> {
@@ -142,7 +142,7 @@ impl ClientController {
         Ok(response)
     }
 
-    pub(crate) async fn handle_mutating_request(
+    pub(crate) async fn handle_mutating(
         &self,
         session_req: SessionRequest,
         write_req: LogEntry,

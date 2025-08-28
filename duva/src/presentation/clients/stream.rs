@@ -42,10 +42,10 @@ impl ClientStreamReader {
 
                 let result = match req.action {
                     | ClientAction::NonMutating(non_mutating_action) => {
-                        handler.handle_non_mutating_request(non_mutating_action).await
+                        handler.handle_non_mutating(non_mutating_action).await
                     },
                     | ClientAction::Mutating(log_entry) => {
-                        handler.handle_mutating_request(req.session_req, log_entry).await
+                        handler.handle_mutating(req.session_req, log_entry).await
                     },
                 };
 
