@@ -34,9 +34,6 @@ pub enum ClientAction {
 }
 
 impl ClientAction {
-    pub fn is_write_request(&self) -> bool {
-        matches!(self, ClientAction::WriteRequest(..))
-    }
     pub fn to_write_request(&self) -> LogEntry {
         if let Self::WriteRequest(log_entry) = self {
             return log_entry.clone();

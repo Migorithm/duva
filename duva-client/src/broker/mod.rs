@@ -74,7 +74,7 @@ impl Broker {
                         continue;
                     };
 
-                    if context.client_action.is_write_request() {
+                    if matches!(context.client_action, ClientAction::WriteRequest(..)) {
                         match self.node_connections.get_mut(&repl_id) {
                             | Some(connection) => connection.update_request_id(&query_io),
                             | None => {
