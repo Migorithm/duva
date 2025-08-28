@@ -568,7 +568,7 @@ mod test {
     #[test]
     fn test_deserialize_session_request() {
         // GIVEN
-        let buffer = Bytes::from("!30\r\n%\x15\0\x05hello\x05world\0");
+        let buffer = Bytes::from("!30\r\n%\x01\0\x05hello\x05world\0");
 
         // WHEN
         let (value, len) = deserialize(buffer).unwrap();
@@ -605,7 +605,7 @@ mod test {
         let serialized = request.serialize();
 
         // THEN
-        assert_eq!(serialized, Bytes::from("!30\r\n%\x15\0\x05hello\x05world\0"));
+        assert_eq!(serialized, Bytes::from("!30\r\n%\x01\0\x05hello\x05world\0"));
     }
 
     #[test]

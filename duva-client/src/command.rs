@@ -1,5 +1,6 @@
 use duva::domains::operation_logs::operation::LogEntry;
 use duva::prelude::anyhow;
+use duva::presentation::clients::request::NonMutatingAction;
 use duva::{
     domains::query_io::QueryIO, prelude::tokio::sync::oneshot,
     presentation::clients::request::ClientAction,
@@ -68,14 +69,15 @@ impl InputContext {
 
     pub(crate) fn get_result(&self) -> anyhow::Result<QueryIO> {
         match self.client_action {
-            | ClientAction::Keys { pattern: _ } | ClientAction::MGet { keys: _ } => {
+            | ClientAction::NonMutating(NonMutatingAction::Keys { pattern: _ })
+            | ClientAction::NonMutating(NonMutatingAction::MGet { keys: _ }) => {
                 let init = QueryIO::Array(Vec::new());
                 let result = self.results.iter().fold(init, |acc, item| {
                     acc.merge(item.clone()).unwrap_or_else(|_| QueryIO::Array(Vec::new()))
                 });
                 Ok(result)
             },
-            | ClientAction::Exists { keys: _ }
+            | ClientAction::NonMutating(NonMutatingAction::Exists { keys: _ })
             | ClientAction::Mutating(LogEntry::Delete { keys: _ }) => {
                 let mut count = 0;
                 for result in &self.results {
@@ -134,19 +136,21 @@ impl From<&ClientAction> for RoutingRule {
     fn from(value: &ClientAction) -> Self {
         match value {
             // commands that requires single-key routing
-            | ClientAction::Get { key } | ClientAction::Ttl { key } => {
+            | ClientAction::NonMutating(
+                NonMutatingAction::Get { key } | NonMutatingAction::Ttl { key },
+            ) => Self::Selective(vec![CommandEntry {
+                key: key.clone(),
+                value: None,
+                expires_at: None,
+            }]),
+
+            | ClientAction::NonMutating(NonMutatingAction::IndexGet { key, index }) => {
                 Self::Selective(vec![CommandEntry {
                     key: key.clone(),
-                    value: None,
+                    value: Some(index.to_string()),
                     expires_at: None,
                 }])
             },
-
-            | ClientAction::IndexGet { key, index } => Self::Selective(vec![CommandEntry {
-                key: key.clone(),
-                value: Some(index.to_string()),
-                expires_at: None,
-            }]),
 
             | ClientAction::Mutating(LogEntry::Append { key, value }) => {
                 Self::Selective(vec![CommandEntry {
@@ -173,21 +177,21 @@ impl From<&ClientAction> for RoutingRule {
 
             // commands thar require multi-key-routings
             | ClientAction::Mutating(LogEntry::Delete { keys })
-            | ClientAction::Exists { keys }
-            | ClientAction::MGet { keys } => Self::Selective(
+            | ClientAction::NonMutating(NonMutatingAction::Exists { keys })
+            | ClientAction::NonMutating(NonMutatingAction::MGet { keys }) => Self::Selective(
                 keys.iter()
                     .map(|key| CommandEntry { key: key.clone(), value: None, expires_at: None })
                     .collect(),
             ),
 
-            | ClientAction::Role
-            | ClientAction::Ping
-            | ClientAction::Echo { .. }
-            | ClientAction::Config { .. }
-            | ClientAction::Info => Self::Info,
+            | ClientAction::NonMutating(NonMutatingAction::Role)
+            | ClientAction::NonMutating(NonMutatingAction::Ping)
+            | ClientAction::NonMutating(NonMutatingAction::Echo { .. })
+            | ClientAction::NonMutating(NonMutatingAction::Config { .. })
+            | ClientAction::NonMutating(NonMutatingAction::Info) => Self::Info,
 
             // broadcast
-            | ClientAction::Keys { .. } => Self::BroadCast,
+            | ClientAction::NonMutating(NonMutatingAction::Keys { .. }) => Self::BroadCast,
             | _ => Self::Any,
         }
     }

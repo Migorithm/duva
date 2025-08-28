@@ -12,6 +12,7 @@ use duva::prelude::bytes::Bytes;
 use duva::prelude::tokio;
 use duva::prelude::tokio::sync::mpsc::Sender;
 use duva::presentation::clients::request::ClientAction;
+use duva::presentation::clients::request::NonMutatingAction;
 
 pub struct ClientController<T> {
     pub broker_tx: Sender<BrokerMessage>,
@@ -28,24 +29,28 @@ impl<T> ClientController<T> {
 
     fn render_return(&self, kind: ClientAction, query_io: QueryIO) -> Response {
         use ClientAction::*;
+        use NonMutatingAction::*;
+
         match kind {
-            | Ping
-            | Get { .. }
-            | LIndex { .. }
-            | IndexGet { .. }
-            | Echo { .. }
-            | Config { .. }
-            | Info
-            | ClusterForget { .. }
-            | ReplicaOf { .. }
-            | ClusterInfo => match query_io {
+            | NonMutating(
+                Ping
+                | Get { .. }
+                | LIndex { .. }
+                | IndexGet { .. }
+                | Echo { .. }
+                | Config { .. }
+                | Info
+                | ClusterForget { .. }
+                | ReplicaOf { .. }
+                | ClusterInfo,
+            ) => match query_io {
                 | QueryIO::Null => Response::Null,
                 | QueryIO::SimpleString(value) => Response::String(value),
                 | QueryIO::BulkString(value) => Response::String(value),
                 | QueryIO::Err(value) => Response::Error(value),
                 | _err => Response::FormatError,
             },
-            | Mutating(LogEntry::Delete { .. }) | Exists { .. } | LLen { .. } => {
+            | Mutating(LogEntry::Delete { .. }) | NonMutating(Exists { .. } | LLen { .. }) => {
                 if let QueryIO::Err(value) = query_io {
                     return Response::Error(value);
                 }
@@ -61,13 +66,15 @@ impl<T> ClientController<T> {
                 }
             },
 
-            | Ttl { .. }
-            | Mutating(LogEntry::IncrBy { .. })
-            | Mutating(LogEntry::DecrBy { .. })
-            | Mutating(LogEntry::LPush { .. })
-            | Mutating(LogEntry::RPush { .. })
-            | Mutating(LogEntry::LPushX { .. })
-            | Mutating(LogEntry::RPushX { .. }) => match query_io {
+            | NonMutating(Ttl { .. })
+            | Mutating(
+                LogEntry::IncrBy { .. }
+                | LogEntry::DecrBy { .. }
+                | LogEntry::LPush { .. }
+                | LogEntry::RPush { .. }
+                | LogEntry::LPushX { .. }
+                | LogEntry::RPushX { .. },
+            ) => match query_io {
                 | QueryIO::SimpleString(value) => {
                     let s = String::from_utf8_lossy(&value);
                     let s: Option<i64> = IndexedValueCodec::decode_value(s);
@@ -77,20 +84,20 @@ impl<T> ClientController<T> {
 
                 | _ => Response::FormatError,
             },
-            | Save => {
+            | NonMutating(Save) => {
                 let QueryIO::Null = query_io else {
                     return Response::FormatError;
                 };
                 Response::Null
             },
-            | Mutating(LogEntry::Set { .. })
-            | Mutating(LogEntry::LTrim { .. })
-            | Mutating(LogEntry::LSet { .. }) => match query_io {
-                | QueryIO::SimpleString(_) => Response::String("OK".into()),
-                | QueryIO::Err(value) => Response::Error(value),
-                | _ => Response::FormatError,
+            | Mutating(LogEntry::Set { .. } | LogEntry::LTrim { .. } | LogEntry::LSet { .. }) => {
+                match query_io {
+                    | QueryIO::SimpleString(_) => Response::String("OK".into()),
+                    | QueryIO::Err(value) => Response::Error(value),
+                    | _ => Response::FormatError,
+                }
             },
-            | ClusterMeet { .. } | ClusterReshard => match query_io {
+            | NonMutating(ClusterMeet { .. } | ClusterReshard) => match query_io {
                 | QueryIO::Null => Response::String("OK".into()),
                 | QueryIO::Err(value) => Response::Error(value),
                 | _ => Response::FormatError,
@@ -100,11 +107,8 @@ impl<T> ClientController<T> {
                 | QueryIO::Err(value) => Response::Error(value),
                 | _ => Response::FormatError,
             },
-            | Mutating(LogEntry::LPop { .. })
-            | Mutating(LogEntry::RPop { .. })
-            | Keys { .. }
-            | MGet { .. }
-            | LRange { .. } => {
+            | Mutating(LogEntry::LPop { .. } | LogEntry::RPop { .. })
+            | NonMutating(Keys { .. } | MGet { .. } | LRange { .. }) => {
                 if let QueryIO::Null = query_io {
                     return Response::Null;
                 }
@@ -123,7 +127,7 @@ impl<T> ClientController<T> {
                 }
                 Response::Array(keys)
             },
-            | Role | ClusterNodes => match query_io {
+            | NonMutating(Role | ClusterNodes) => match query_io {
                 | QueryIO::Array(value) => {
                     let mut nodes = Vec::new();
                     for item in value {
