@@ -37,24 +37,18 @@ impl ClientStreamReader {
                 },
             };
 
-            for mut req in requests {
+            for req in requests {
                 info!(?req, "Processing request");
 
-                let mut index: Option<_> = None;
-                if matches!(req.action, ClientAction::Mutating(..)) {
-                    match handler.make_consensus(req.session_req, &mut req.action).await {
-                        | Ok(idx) => index = Some(idx),
-                        | Err(err) => {
-                            error!("Failure on write request {err}");
-                            if sender.send(QueryIO::Err(err.to_string().into())).await.is_err() {
-                                return;
-                            }
-                            continue;
-                        },
-                    }
+                let result = match req.action {
+                    | ClientAction::NonMutating(non_mutating_action) => {
+                        handler.handle_non_mutating_request(non_mutating_action).await
+                    },
+                    | ClientAction::Mutating(log_entry) => {
+                        handler.handle_mutating_request(req.session_req, log_entry).await
+                    },
                 };
 
-                let result = handler.handle(req.action, index).await;
                 let response = result.unwrap_or_else(|e| {
                     error!("failure on state change / query {e}");
                     QueryIO::Err(e.to_string().into())

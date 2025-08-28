@@ -43,16 +43,6 @@ impl From<NonMutatingAction> for ClientAction {
     }
 }
 
-impl ClientAction {
-    pub fn to_write_request(&self) -> LogEntry {
-        if let Self::Mutating(log_entry) = self {
-            return log_entry.clone();
-        }
-        //TODO will revisit
-        panic!()
-    }
-}
-
 impl From<LogEntry> for ClientAction {
     fn from(value: LogEntry) -> Self {
         Self::Mutating(value)
