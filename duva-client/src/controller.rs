@@ -45,7 +45,7 @@ impl<T> ClientController<T> {
                 | QueryIO::Err(value) => Response::Error(value),
                 | _err => Response::FormatError,
             },
-            | WriteRequest(LogEntry::Delete { .. }) | Exists { .. } | LLen { .. } => {
+            | Mutating(LogEntry::Delete { .. }) | Exists { .. } | LLen { .. } => {
                 if let QueryIO::Err(value) = query_io {
                     return Response::Error(value);
                 }
@@ -62,12 +62,12 @@ impl<T> ClientController<T> {
             },
 
             | Ttl { .. }
-            | WriteRequest(LogEntry::IncrBy { .. })
-            | WriteRequest(LogEntry::DecrBy { .. })
-            | WriteRequest(LogEntry::LPush { .. })
-            | WriteRequest(LogEntry::RPush { .. })
-            | WriteRequest(LogEntry::LPushX { .. })
-            | WriteRequest(LogEntry::RPushX { .. }) => match query_io {
+            | Mutating(LogEntry::IncrBy { .. })
+            | Mutating(LogEntry::DecrBy { .. })
+            | Mutating(LogEntry::LPush { .. })
+            | Mutating(LogEntry::RPush { .. })
+            | Mutating(LogEntry::LPushX { .. })
+            | Mutating(LogEntry::RPushX { .. }) => match query_io {
                 | QueryIO::SimpleString(value) => {
                     let s = String::from_utf8_lossy(&value);
                     let s: Option<i64> = IndexedValueCodec::decode_value(s);
@@ -83,9 +83,9 @@ impl<T> ClientController<T> {
                 };
                 Response::Null
             },
-            | WriteRequest(LogEntry::Set { .. })
-            | WriteRequest(LogEntry::LTrim { .. })
-            | WriteRequest(LogEntry::LSet { .. }) => match query_io {
+            | Mutating(LogEntry::Set { .. })
+            | Mutating(LogEntry::LTrim { .. })
+            | Mutating(LogEntry::LSet { .. }) => match query_io {
                 | QueryIO::SimpleString(_) => Response::String("OK".into()),
                 | QueryIO::Err(value) => Response::Error(value),
                 | _ => Response::FormatError,
@@ -95,13 +95,13 @@ impl<T> ClientController<T> {
                 | QueryIO::Err(value) => Response::Error(value),
                 | _ => Response::FormatError,
             },
-            | WriteRequest(LogEntry::Append { .. }) => match query_io {
+            | Mutating(LogEntry::Append { .. }) => match query_io {
                 | QueryIO::SimpleString(value) => Response::String(value),
                 | QueryIO::Err(value) => Response::Error(value),
                 | _ => Response::FormatError,
             },
-            | WriteRequest(LogEntry::LPop { .. })
-            | WriteRequest(LogEntry::RPop { .. })
+            | Mutating(LogEntry::LPop { .. })
+            | Mutating(LogEntry::RPop { .. })
             | Keys { .. }
             | MGet { .. }
             | LRange { .. } => {
@@ -138,8 +138,8 @@ impl<T> ClientController<T> {
                 | _ => Response::FormatError,
             },
 
-            | ClientAction::WriteRequest(LogEntry::MSet { .. }) => unimplemented!(),
-            | ClientAction::WriteRequest(LogEntry::NoOp) => unreachable!(),
+            | ClientAction::Mutating(LogEntry::MSet { .. }) => unimplemented!(),
+            | ClientAction::Mutating(LogEntry::NoOp) => unreachable!(),
         }
     }
 

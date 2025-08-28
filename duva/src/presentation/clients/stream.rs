@@ -41,7 +41,7 @@ impl ClientStreamReader {
                 info!(?req, "Processing request");
 
                 let mut index: Option<_> = None;
-                if matches!(req.action, ClientAction::WriteRequest(..)) {
+                if matches!(req.action, ClientAction::Mutating(..)) {
                     match handler.make_consensus(req.session_req, &mut req.action).await {
                         | Ok(idx) => index = Some(idx),
                         | Err(err) => {

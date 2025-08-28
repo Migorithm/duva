@@ -74,7 +74,7 @@ impl Broker {
                         continue;
                     };
 
-                    if matches!(context.client_action, ClientAction::WriteRequest(..)) {
+                    if matches!(context.client_action, ClientAction::Mutating(..)) {
                         match self.node_connections.get_mut(&repl_id) {
                             | Some(connection) => connection.update_request_id(&query_io),
                             | None => {
@@ -261,7 +261,7 @@ impl Broker {
             let new_action = match client_action {
                 | ClientAction::MGet { .. } => ClientAction::MGet { keys: grouped_keys },
                 | ClientAction::Exists { .. } => ClientAction::Exists { keys: grouped_keys },
-                | ClientAction::WriteRequest(LogEntry::Delete { .. }) => {
+                | ClientAction::Mutating(LogEntry::Delete { .. }) => {
                     LogEntry::Delete { keys: grouped_keys }.into()
                 },
                 | _ => client_action.clone(),

@@ -30,12 +30,12 @@ pub enum ClientAction {
     LLen { key: String },
     LRange { key: String, start: isize, end: isize },
     LIndex { key: String, index: isize },
-    WriteRequest(LogEntry),
+    Mutating(LogEntry),
 }
 
 impl ClientAction {
     pub fn to_write_request(&self) -> LogEntry {
-        if let Self::WriteRequest(log_entry) = self {
+        if let Self::Mutating(log_entry) = self {
             return log_entry.clone();
         }
         //TODO will revisit
@@ -45,7 +45,7 @@ impl ClientAction {
 
 impl From<LogEntry> for ClientAction {
     fn from(value: LogEntry) -> Self {
-        Self::WriteRequest(value)
+        Self::Mutating(value)
     }
 }
 

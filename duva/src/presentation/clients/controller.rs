@@ -28,7 +28,7 @@ impl ClientController {
         current_index: Option<u64>,
     ) -> anyhow::Result<QueryIO> {
         let response = match cmd {
-            | ClientAction::WriteRequest(write_req) => match write_req {
+            | ClientAction::Mutating(write_req) => match write_req {
                 | LogEntry::Set { key, value, expires_at } => {
                     let mut entry = CacheEntry::new(key, value.as_str());
                     if let Some(expires_at) = expires_at {
