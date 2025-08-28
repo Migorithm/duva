@@ -153,7 +153,7 @@ impl ClientController {
         let (tx, consensus_res) = Callback::create();
         self.cluster_communication_manager
             .send(ClientMessage::LeaderReqConsensus(ConsensusRequest::new(
-                write_req.clone(),
+                write_req.clone(), //TODO let cache actor decide the return. No need for copy over here.
                 tx,
                 Some(session_req),
             )))
@@ -163,7 +163,7 @@ impl ClientController {
             | ConsensusClientResponse::AlreadyProcessed { key: keys, index } => {
                 // * Conversion! request has already been processed so we need to convert it to get
                 //TODO revisit required. When it has been already processed, just route this to reader controller
-                let action = NonMutatingAction::MGet { keys };
+                let _action = NonMutatingAction::MGet { keys };
                 Ok(index)
             },
             | ConsensusClientResponse::LogIndex(idx) => Ok(idx),
