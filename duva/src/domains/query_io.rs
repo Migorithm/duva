@@ -48,7 +48,7 @@ pub enum QueryIO {
     Array(Vec<QueryIO>),
     SessionRequest {
         request_id: u64,
-        client_action: ClientAction,
+        action: ClientAction,
     },
     Err(Bytes),
 
@@ -113,7 +113,7 @@ impl QueryIO {
                 }
                 buffer.freeze()
             },
-            | QueryIO::SessionRequest { request_id, client_action: action } => {
+            | QueryIO::SessionRequest { request_id, action } => {
                 let value = serialize_with_bincode(CLIENT_ACTION_PREFIX, &action);
                 let mut buffer = BytesMut::with_capacity(32 + 1 + value.len());
                 buffer.extend_from_slice(format!("!{request_id}\r\n").as_bytes());
@@ -325,7 +325,7 @@ fn parse_session_request(buffer: Bytes) -> Result<(QueryIO, usize)> {
     let request_id = count_bytes.parse()?;
 
     let (action_byte, len): (ClientAction, usize) = parse_client_action(buffer.slice(offset..))?;
-    Ok((QueryIO::SessionRequest { request_id, client_action: action_byte }, offset + len))
+    Ok((QueryIO::SessionRequest { request_id, action: action_byte }, offset + len))
 }
 
 fn parse_client_action(buffer: Bytes) -> Result<(ClientAction, usize)> {
@@ -579,7 +579,7 @@ mod test {
             value,
             QueryIO::SessionRequest {
                 request_id: 30,
-                client_action: LogEntry::Set {
+                action: LogEntry::Set {
                     key: "hello".to_string(),
                     value: "world".to_string(),
                     expires_at: None
@@ -593,7 +593,7 @@ mod test {
         // GIVEN
         let request = QueryIO::SessionRequest {
             request_id: 30,
-            client_action: LogEntry::Set {
+            action: LogEntry::Set {
                 key: "hello".to_string(),
                 value: "world".to_string(),
                 expires_at: None,
