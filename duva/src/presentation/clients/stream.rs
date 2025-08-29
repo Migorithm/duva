@@ -47,7 +47,6 @@ impl ClientStreamReader {
                 })
             });
 
-            // * process
             for req in requests {
                 match req {
                     | Err(err) => {
@@ -57,6 +56,7 @@ impl ClientStreamReader {
                     | Ok(ClientRequest { action, session_req }) => {
                         info!(?action, "Processing request");
 
+                        // * processing part
                         let result = match action {
                             | ClientAction::NonMutating(non_mutating_action) => {
                                 handler.handle_non_mutating(non_mutating_action).await
