@@ -25,6 +25,7 @@ impl ClientStreamReader {
         sender: Sender<QueryIO>,
     ) {
         loop {
+            // * extract queries
             let query_ios = self.r.read_values().await;
             if let Err(err) = query_ios {
                 error!("{}", err);
@@ -35,39 +36,44 @@ impl ClientStreamReader {
                 continue;
             }
 
+            // * map client request
             let requests = query_ios.unwrap().into_iter().map(|query_io| {
-                let QueryIO::SessionRequest { request_id, client_action } = query_io else {
+                let QueryIO::SessionRequest { request_id, action } = query_io else {
                     return Err("Unexpected command format".to_string());
                 };
-                let session_request = SessionRequest::new(request_id, self.client_id.clone());
-
-                Ok(ClientRequest { action: client_action, session_req: session_request })
+                Ok(ClientRequest {
+                    action,
+                    session_req: SessionRequest::new(request_id, self.client_id.clone()),
+                })
             });
 
+            // * process
             for req in requests {
-                if req.is_err() {
-                    let _ = sender.send(QueryIO::Err(req.unwrap_err().to_string().into())).await;
-                    break;
-                }
-                let valid_req = req.unwrap();
-
-                info!(?valid_req, "Processing request");
-
-                let result = match valid_req.action {
-                    | ClientAction::NonMutating(non_mutating_action) => {
-                        handler.handle_non_mutating(non_mutating_action).await
+                match req {
+                    | Err(err) => {
+                        let _ = sender.send(QueryIO::Err(err.into())).await;
+                        break;
                     },
-                    | ClientAction::Mutating(log_entry) => {
-                        handler.handle_mutating(valid_req.session_req, log_entry).await
-                    },
-                };
+                    | Ok(ClientRequest { action, session_req }) => {
+                        info!(?action, "Processing request");
 
-                let response = result.unwrap_or_else(|e| {
-                    error!("failure on state change / query {e}");
-                    QueryIO::Err(e.to_string().into())
-                });
-                if sender.send(response).await.is_err() {
-                    return;
+                        let result = match action {
+                            | ClientAction::NonMutating(non_mutating_action) => {
+                                handler.handle_non_mutating(non_mutating_action).await
+                            },
+                            | ClientAction::Mutating(log_entry) => {
+                                handler.handle_mutating(session_req, log_entry).await
+                            },
+                        };
+
+                        let response = result.unwrap_or_else(|e| {
+                            error!("failure on state change / query {e}");
+                            QueryIO::Err(e.to_string().into())
+                        });
+                        if sender.send(response).await.is_err() {
+                            return;
+                        }
+                    },
                 }
             }
         }

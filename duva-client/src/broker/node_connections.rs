@@ -117,7 +117,7 @@ impl NodeConnection {
     }
 
     pub(crate) async fn send(&self, client_action: ClientAction) -> anyhow::Result<()> {
-        let session_request = SessionRequest { request_id: self.request_id, client_action };
+        let session_request = SessionRequest { request_id: self.request_id, action: client_action };
         self.writer
             .send(MsgToServer::Command(session_request.serialize().to_vec()))
             .await
