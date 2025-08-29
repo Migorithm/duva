@@ -25,27 +25,40 @@ impl ClientStreamReader {
         sender: Sender<QueryIO>,
     ) {
         loop {
-            let requests = match self.extract_query().await {
-                | Ok(requests) => requests,
-                | Err(err) => {
-                    error!("{}", err);
-                    if err.should_break() {
-                        return;
-                    }
-                    let _ = sender.send(QueryIO::Err(err.to_string().into())).await;
-                    continue;
-                },
-            };
+            let query_ios = self.r.read_values().await;
+            if let Err(err) = query_ios {
+                error!("{}", err);
+                if err.should_break() {
+                    return;
+                }
+                let _ = sender.send(QueryIO::Err(err.to_string().into())).await;
+                continue;
+            }
+
+            let requests = query_ios.unwrap().into_iter().map(|query_io| {
+                let QueryIO::SessionRequest { request_id, client_action } = query_io else {
+                    return Err("Unexpected command format".to_string());
+                };
+                let session_request = SessionRequest::new(request_id, self.client_id.clone());
+
+                Ok(ClientRequest { action: client_action, session_req: session_request })
+            });
 
             for req in requests {
-                info!(?req, "Processing request");
+                if req.is_err() {
+                    let _ = sender.send(QueryIO::Err(req.unwrap_err().to_string().into())).await;
+                    break;
+                }
+                let valid_req = req.unwrap();
 
-                let result = match req.action {
+                info!(?valid_req, "Processing request");
+
+                let result = match valid_req.action {
                     | ClientAction::NonMutating(non_mutating_action) => {
                         handler.handle_non_mutating(non_mutating_action).await
                     },
                     | ClientAction::Mutating(log_entry) => {
-                        handler.handle_mutating(req.session_req, log_entry).await
+                        handler.handle_mutating(valid_req.session_req, log_entry).await
                     },
                 };
 
@@ -58,22 +71,6 @@ impl ClientStreamReader {
                 }
             }
         }
-    }
-
-    pub(crate) async fn extract_query(&mut self) -> Result<Vec<ClientRequest>, IoError> {
-        let query_ios = self.r.read_values().await?;
-
-        query_ios
-            .into_iter()
-            .map(|query_io| {
-                let QueryIO::SessionRequest { request_id, client_action } = query_io else {
-                    return Err(IoError::Custom("Unexpected command format".to_string()));
-                };
-                let session_request = SessionRequest::new(request_id, self.client_id.clone());
-
-                Ok(ClientRequest { action: client_action, session_req: session_request })
-            })
-            .collect()
     }
 }
 
