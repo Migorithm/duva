@@ -108,12 +108,12 @@ impl CacheManager {
         &self,
         key: String,
         value: Vec<String>,
-        unwrap: u64,
+        current_index: u64,
     ) -> Result<String> {
         let (callback, rx) = Callback::create();
         self.select_shard(&key).send(CacheCommand::RPush { key, values: value, callback }).await?;
         let current_len = rx.recv().await?;
-        Ok(IndexedValueCodec::encode(current_len, unwrap))
+        Ok(IndexedValueCodec::encode(current_len, current_index))
     }
     pub(crate) async fn route_rpushx(
         &self,
