@@ -128,35 +128,32 @@ Duva includes two pluggable replicated log implementations:
 sequenceDiagram
     actor C as Client
     Box Server
-        participant Listener
-        participant Stream as ClientStream
-
-        participant CL as ClusterActor
-        participant CA as CacheActor
+    participant Listener
+    participant Stream as ClientStream
+    participant CL as ClusterActor
+    participant CA as CacheActor
     end
-    
     loop wait for connection
         activate Listener
         C ->> Listener: Connect
         Listener --) Stream : Create
         deactivate Listener
     end
-
     loop 
         Stream --)+ Stream: wait & receive request
-        rect rgb(108, 161, 166)    
-
-            alt Write Request
-                Stream -->> CL: route request
-                CL -->> Stream: return response
-            end
+        alt Write Request
+            Stream -->> CL: route request
+            activate CL
+            CL -->> CL : Register callback, wait for concensus
+            CL -->> CL : Consensus reached
+            deactivate CL
+            CL -->> CA : pass request
+        else read request
             Stream -->> CA: route request
-            CA -->> Stream: return respons
-            Stream -->> C: return response
         end
+        CA -->> Stream: return respons
+        Stream -->> C: return response
     end
-
-
 ```
 
 
