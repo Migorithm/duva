@@ -1,16 +1,12 @@
 sequenceDiagram
     actor C as Client
-
-
     Box Server
     participant Listener
     participant Stream as ClientStream
-
     participant CL as ClusterActor
     participant CA as CacheActor
     
     end
-    
     
     loop wait for connection
         activate Listener
@@ -33,7 +29,6 @@ sequenceDiagram
         end
         CA -->> Stream: return respons
         Stream -->> C: return response
-    
     end
 
     
