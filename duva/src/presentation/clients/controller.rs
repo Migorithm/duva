@@ -11,8 +11,6 @@ use crate::prelude::PeerIdentifier;
 use crate::presentation::clients::request::NonMutatingAction;
 use crate::presentation::clusters::communication_manager::ClusterCommunicationManager;
 use crate::types::Callback;
-
-use chrono::DateTime;
 use std::sync::atomic::Ordering;
 use tracing::info;
 
@@ -148,7 +146,7 @@ impl ClientController {
         write_req: LogEntry,
     ) -> anyhow::Result<QueryIO> {
         // * Consensus / Persisting logs
-        let (tx, consensus_res) = Callback::create();
+        let (tx, res) = Callback::create();
         self.cluster_communication_manager
             .send(ClientMessage::LeaderReqConsensus(ConsensusRequest::new(
                 write_req.clone(), //TODO let cache actor decide the return. No need for copy over here.
@@ -157,7 +155,7 @@ impl ClientController {
             )))
             .await?;
 
-        let current_index = match consensus_res.recv().await {
+        let current_index = match res.recv().await {
             | ConsensusClientResponse::AlreadyProcessed { key: keys, index } => {
                 // * Conversion! request has already been processed so we need to convert it to get
                 //TODO revisit required. When it has been already processed, just route this to reader controller
