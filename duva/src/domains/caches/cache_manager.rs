@@ -42,6 +42,22 @@ impl CacheManager {
         }
     }
 
+    fn chain<T>(
+        &self,
+        senders: Vec<Callback<T>>,
+    ) -> Zip<std::slice::Iter<'_, CacheCommandSender>, std::vec::IntoIter<Callback<T>>> {
+        self.inboxes.iter().zip(senders)
+    }
+
+    // stateless function to send keys
+    async fn send_keys_to_shard(
+        shard: CacheCommandSender,
+        pattern: Option<String>,
+        callback: Callback<Vec<String>>,
+    ) -> Result<()> {
+        Ok(shard.send(CacheCommand::Keys { pattern: pattern.clone(), callback }).await?)
+    }
+
     pub(crate) async fn route_get(&self, key: impl AsRef<str>) -> Result<CacheValue> {
         let (callback, rx) = Callback::create();
         let key_ref = key.as_ref();
@@ -284,22 +300,6 @@ impl CacheManager {
             .unzip()
     }
 
-    fn chain<T>(
-        &self,
-        senders: Vec<Callback<T>>,
-    ) -> Zip<std::slice::Iter<'_, CacheCommandSender>, std::vec::IntoIter<Callback<T>>> {
-        self.inboxes.iter().zip(senders)
-    }
-
-    // stateless function to send keys
-    async fn send_keys_to_shard(
-        shard: CacheCommandSender,
-        pattern: Option<String>,
-        callback: Callback<Vec<String>>,
-    ) -> Result<()> {
-        Ok(shard.send(CacheCommand::Keys { pattern: pattern.clone(), callback }).await?)
-    }
-
     pub(crate) async fn route_delete(&self, keys: Vec<String>) -> Result<u64> {
         let closure = |key, callback| -> CacheCommand { CacheCommand::Delete { key, callback } };
         // Create futures for all delete operations at once
@@ -317,7 +317,7 @@ impl CacheManager {
         Ok(found as u64)
     }
 
-    pub(crate) fn select_shard(&self, key: &str) -> &CacheCommandSender {
+    fn select_shard(&self, key: &str) -> &CacheCommandSender {
         let shard_key = self.take_shard_key_from_str(key);
         &self.inboxes[shard_key]
     }
@@ -393,12 +393,7 @@ impl CacheManager {
         rx.recv().await
     }
 
-    pub(crate) async fn route_numeric_delta(
-        &self,
-        key: String,
-        arg: i64,
-        current_idx: u64,
-    ) -> Result<String> {
+    async fn route_numeric_delta(&self, key: String, arg: i64, current_idx: u64) -> Result<String> {
         let (callback, rx) = Callback::create();
         self.select_shard(key.as_str())
             .send(CacheCommand::NumericDetla { key, delta: arg, callback })
@@ -424,7 +419,7 @@ impl CacheManager {
         rx.recv().await
     }
 
-    pub(crate) async fn route_ltrim(
+    async fn route_ltrim(
         &self,
         key: String,
         start: isize,
@@ -445,7 +440,7 @@ impl CacheManager {
         Ok(value)
     }
 
-    pub(crate) async fn route_lset(
+    async fn route_lset(
         &self,
         key: String,
         index: isize,
