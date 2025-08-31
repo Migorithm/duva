@@ -132,13 +132,16 @@ sequenceDiagram
     participant Stream as ClientStream
     participant CL as ClusterActor
     participant CA as CacheActor
+    
     end
+    
     loop wait for connection
         activate Listener
         C ->> Listener: Connect
         Listener --) Stream : Create
         deactivate Listener
     end
+
     loop 
         Stream --)+ Stream: wait & receive request
         alt Write Request
@@ -147,13 +150,13 @@ sequenceDiagram
             CL -->> CL : Register callback, wait for concensus
             CL -->> CL : Consensus reached
             deactivate CL
-            CL -->> CA : pass request
-        else read request
-            Stream -->> CA: route request
+            CL -->> Stream : log index
         end
+        Stream -->> CA: route request
         CA -->> Stream: return respons
         Stream -->> C: return response
     end
+
 ```
 
 
