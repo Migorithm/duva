@@ -169,6 +169,6 @@ impl ClientController {
         }?;
 
         // * State change
-        self.cache_manager.route_log_entry(write_req, current_index).await
+        self.cache_manager.apply_log(write_req, current_index).await
     }
 }

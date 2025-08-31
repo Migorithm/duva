@@ -9,7 +9,7 @@ use crate::domains::cluster_actors::replication::ReplicationId;
 use crate::domains::operation_logs::LogEntry;
 use crate::domains::saves::actor::SaveActor;
 use crate::domains::saves::actor::SaveTarget;
-use crate::domains::saves::endec::StoredDuration;
+
 use crate::types::Callback;
 use anyhow::Result;
 use chrono::DateTime;
@@ -55,7 +55,7 @@ impl CacheManager {
         Ok(res)
     }
 
-    pub(crate) async fn route_log_entry(
+    pub(crate) async fn apply_log(
         &self,
         log_entry: LogEntry,
         current_index: u64,
@@ -115,8 +115,11 @@ impl CacheManager {
                 self.route_lset(key, index, value, current_index).await?.into(),
             ),
 
-            | MSet { entries } => todo!(),
-            | NoOp => todo!(),
+            | MSet { entries } => {
+                self.route_mset(entries).await;
+                QueryIO::SimpleString(IndexedValueCodec::encode("", current_index).into())
+            },
+            | NoOp => QueryIO::Null,
         };
 
         Ok(res)
@@ -140,7 +143,7 @@ impl CacheManager {
         .await;
     }
 
-    pub(crate) async fn route_lpush(
+    async fn route_lpush(
         &self,
         key: String,
         value: Vec<String>,
@@ -151,7 +154,7 @@ impl CacheManager {
         let current_len = rx.recv().await?;
         Ok(IndexedValueCodec::encode(current_len, current_idx))
     }
-    pub(crate) async fn route_lpushx(
+    async fn route_lpushx(
         &self,
         key: String,
         value: Vec<String>,
@@ -165,7 +168,7 @@ impl CacheManager {
         Ok(IndexedValueCodec::encode(current_len, current_idx))
     }
 
-    pub(crate) async fn route_lpop(&self, key: String, count: usize) -> Result<Vec<String>> {
+    async fn route_lpop(&self, key: String, count: usize) -> Result<Vec<String>> {
         let (callback, rx) = Callback::create();
         self.select_shard(&key).send(CacheCommand::LPop { key, count, callback }).await?;
 
@@ -173,7 +176,7 @@ impl CacheManager {
         Ok(pop_values)
     }
 
-    pub(crate) async fn route_rpush(
+    async fn route_rpush(
         &self,
         key: String,
         value: Vec<String>,
@@ -184,7 +187,7 @@ impl CacheManager {
         let current_len = rx.recv().await?;
         Ok(IndexedValueCodec::encode(current_len, current_index))
     }
-    pub(crate) async fn route_rpushx(
+    async fn route_rpushx(
         &self,
         key: String,
         value: Vec<String>,
@@ -198,7 +201,7 @@ impl CacheManager {
         Ok(IndexedValueCodec::encode(current_len, current_idx))
     }
 
-    pub(crate) async fn route_rpop(&self, key: String, count: usize) -> Result<Vec<String>> {
+    async fn route_rpop(&self, key: String, count: usize) -> Result<Vec<String>> {
         let (callback, rx) = Callback::create();
         self.select_shard(&key).send(CacheCommand::RPop { key, count, callback }).await?;
 
@@ -228,65 +231,13 @@ impl CacheManager {
         Ok(tokio::spawn(save_actor.run(inbox)))
     }
 
-    pub(crate) async fn apply_log(&self, msg: LogEntry, log_index: u64) -> Result<()> {
-        match msg {
-            | LogEntry::Set { key, value, expires_at } => {
-                let mut cache_entry = CacheEntry::new(key, value.as_str());
-                if let Some(expires_at) = expires_at {
-                    cache_entry = cache_entry
-                        .with_expiry(StoredDuration::Milliseconds(expires_at).to_datetime());
-                }
-                self.route_set(cache_entry, log_index).await?;
-            },
-            | LogEntry::Delete { keys } => {
-                self.route_delete(keys).await?;
-            },
-            | LogEntry::Append { key, value } => {
-                self.route_append(key, value).await?;
-            },
-            | LogEntry::DecrBy { key, delta } => {
-                self.route_numeric_delta(key, -delta, log_index).await?;
-            },
-            | LogEntry::IncrBy { key, delta } => {
-                self.route_numeric_delta(key, delta, log_index).await?;
-            },
-            | LogEntry::MSet { entries } => {
-                self.route_mset(entries).await;
-            },
-            | LogEntry::LPush { key, value } => {
-                self.route_lpush(key, value, log_index).await?;
-            },
-            | LogEntry::LPop { key, count } => {
-                self.route_lpop(key, count).await?;
-            },
-            | LogEntry::RPush { key, value } => {
-                self.route_rpush(key, value, log_index).await?;
-            },
-            | LogEntry::LTrim { key, start, end } => {
-                self.route_ltrim(key, start, end, log_index).await?;
-            },
-            | LogEntry::LPushX { key, value } => {
-                self.route_lpushx(key, value, log_index).await?;
-            },
-            | LogEntry::LSet { key, index, value } => {
-                self.route_lset(key, index, value, log_index).await?;
-            },
-            | LogEntry::RPop { key, count } => {
-                self.route_rpop(key, count).await?;
-            },
-            | LogEntry::RPushX { key, value } => {
-                self.route_rpushx(key, value, log_index).await?;
-            },
-            | LogEntry::NoOp => {},
-        };
-
-        // * This is to wake up the cache actors to process the pending read requests
-        self.pings().await;
-
-        Ok(())
-    }
-    async fn pings(&self) {
-        join_all(self.inboxes.iter().map(|shard| shard.send(CacheCommand::Ping))).await;
+    pub(crate) async fn pings(&self) {
+        self.inboxes
+            .iter()
+            .map(|shard| shard.send(CacheCommand::Ping))
+            .collect::<FuturesUnordered<_>>()
+            .for_each(|_| async {})
+            .await;
     }
 
     pub(crate) async fn route_keys(&self, pattern: Option<String>) -> Vec<String> {
