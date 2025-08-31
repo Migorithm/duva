@@ -147,8 +147,6 @@ impl ClientController {
         session_req: SessionRequest,
         write_req: LogEntry,
     ) -> anyhow::Result<QueryIO> {
-        use LogEntry::*;
-
         // * Consensus / Persisting logs
         let (tx, consensus_res) = Callback::create();
         self.cluster_communication_manager
@@ -171,65 +169,6 @@ impl ClientController {
         }?;
 
         // * State change
-        let res = match write_req {
-            | Set { key, value, expires_at } => {
-                let mut entry = CacheEntry::new(key, value.as_str());
-                if let Some(expires_at) = expires_at {
-                    entry = entry.with_expiry(DateTime::from_timestamp_millis(expires_at).unwrap())
-                }
-                QueryIO::SimpleString(
-                    self.cache_manager.route_set(entry, current_index).await?.into(),
-                )
-            },
-            | Append { key, value } => QueryIO::SimpleString(
-                self.cache_manager.route_append(key, value).await?.to_string().into(),
-            ),
-            | Delete { keys } => QueryIO::SimpleString(
-                self.cache_manager.route_delete(keys).await?.to_string().into(),
-            ),
-            | IncrBy { key, delta: value } => QueryIO::SimpleString(
-                self.cache_manager.route_numeric_delta(key, value, current_index).await?.into(),
-            ),
-            | DecrBy { key, delta: value } => QueryIO::SimpleString(
-                self.cache_manager.route_numeric_delta(key, -value, current_index).await?.into(),
-            ),
-            | LPush { key, value } => QueryIO::SimpleString(
-                self.cache_manager.route_lpush(key, value, current_index).await?.into(),
-            ),
-            | LPushX { key, value } => QueryIO::SimpleString(
-                self.cache_manager.route_lpushx(key, value, current_index).await?.into(),
-            ),
-            | LPop { key, count } => {
-                let values = self.cache_manager.route_lpop(key, count).await?;
-                if values.is_empty() {
-                    return Ok(QueryIO::Null);
-                }
-                QueryIO::Array(values.into_iter().map(|v| QueryIO::BulkString(v.into())).collect())
-            },
-            | RPush { key, value } => QueryIO::SimpleString(
-                self.cache_manager.route_rpush(key, value, current_index).await?.into(),
-            ),
-            | RPushX { key, value } => QueryIO::SimpleString(
-                self.cache_manager.route_rpushx(key, value, current_index).await?.into(),
-            ),
-            | RPop { key, count } => {
-                let values = self.cache_manager.route_rpop(key, count).await?;
-                if values.is_empty() {
-                    return Ok(QueryIO::Null);
-                }
-                QueryIO::Array(values.into_iter().map(|v| QueryIO::BulkString(v.into())).collect())
-            },
-            | LTrim { key, start, end } => QueryIO::SimpleString(
-                self.cache_manager.route_ltrim(key, start, end, current_index).await?.into(),
-            ),
-            | LSet { key, index, value } => QueryIO::SimpleString(
-                self.cache_manager.route_lset(key, index, value, current_index).await?.into(),
-            ),
-
-            | MSet { entries } => todo!(),
-            | NoOp => todo!(),
-        };
-
-        Ok(res)
+        self.cache_manager.route_log_entry(write_req, current_index).await
     }
 }

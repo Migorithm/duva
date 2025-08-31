@@ -1,4 +1,5 @@
 use super::cache_objects::CacheValue;
+use crate::domains::QueryIO;
 use crate::domains::caches::actor::CacheActor;
 use crate::domains::caches::actor::CacheCommandSender;
 use crate::domains::caches::cache_objects::CacheEntry;
@@ -11,6 +12,7 @@ use crate::domains::saves::actor::SaveTarget;
 use crate::domains::saves::endec::StoredDuration;
 use crate::types::Callback;
 use anyhow::Result;
+use chrono::DateTime;
 use chrono::Utc;
 use futures::StreamExt;
 use futures::future::join_all;
@@ -50,6 +52,73 @@ impl CacheManager {
         if !res.is_string() && !res.is_null() {
             return Err(anyhow::anyhow!(WRONG_TYPE_ERR_MSG));
         }
+        Ok(res)
+    }
+
+    pub(crate) async fn route_log_entry(
+        &self,
+        log_entry: LogEntry,
+        current_index: u64,
+    ) -> Result<QueryIO> {
+        use LogEntry::*;
+
+        let res = match log_entry {
+            | Set { key, value, expires_at } => {
+                let mut entry = CacheEntry::new(key, value.as_str());
+                if let Some(expires_at) = expires_at {
+                    entry = entry.with_expiry(DateTime::from_timestamp_millis(expires_at).unwrap())
+                }
+                QueryIO::SimpleString(self.route_set(entry, current_index).await?.into())
+            },
+            | Append { key, value } => {
+                QueryIO::SimpleString(self.route_append(key, value).await?.to_string().into())
+            },
+            | Delete { keys } => {
+                QueryIO::SimpleString(self.route_delete(keys).await?.to_string().into())
+            },
+            | IncrBy { key, delta: value } => QueryIO::SimpleString(
+                self.route_numeric_delta(key, value, current_index).await?.into(),
+            ),
+            | DecrBy { key, delta: value } => QueryIO::SimpleString(
+                self.route_numeric_delta(key, -value, current_index).await?.into(),
+            ),
+            | LPush { key, value } => {
+                QueryIO::SimpleString(self.route_lpush(key, value, current_index).await?.into())
+            },
+            | LPushX { key, value } => {
+                QueryIO::SimpleString(self.route_lpushx(key, value, current_index).await?.into())
+            },
+            | LPop { key, count } => {
+                let values = self.route_lpop(key, count).await?;
+                if values.is_empty() {
+                    return Ok(QueryIO::Null);
+                }
+                QueryIO::Array(values.into_iter().map(|v| QueryIO::BulkString(v.into())).collect())
+            },
+            | RPush { key, value } => {
+                QueryIO::SimpleString(self.route_rpush(key, value, current_index).await?.into())
+            },
+            | RPushX { key, value } => {
+                QueryIO::SimpleString(self.route_rpushx(key, value, current_index).await?.into())
+            },
+            | RPop { key, count } => {
+                let values = self.route_rpop(key, count).await?;
+                if values.is_empty() {
+                    return Ok(QueryIO::Null);
+                }
+                QueryIO::Array(values.into_iter().map(|v| QueryIO::BulkString(v.into())).collect())
+            },
+            | LTrim { key, start, end } => QueryIO::SimpleString(
+                self.route_ltrim(key, start, end, current_index).await?.into(),
+            ),
+            | LSet { key, index, value } => QueryIO::SimpleString(
+                self.route_lset(key, index, value, current_index).await?.into(),
+            ),
+
+            | MSet { entries } => todo!(),
+            | NoOp => todo!(),
+        };
+
         Ok(res)
     }
 
