@@ -990,8 +990,9 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
                     // ! Failure of apply_log means post_validation on the operations that involves delta change such as incr/append fail.
                     // ! This is expected and you should let it update con_idx.
                     error!("failed to apply log: {e}, perhaps post validation failed?")
+                } else {
+                    cache_manager.pings().await;
                 };
-                cache_manager.pings().await;
 
                 self.replication.logger.con_idx.store(log_index, Ordering::Release);
             }
