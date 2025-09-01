@@ -500,6 +500,10 @@ async fn test_leader_req_consensus_early_return_when_already_processed_session_r
 async fn test_consensus_voting_deleted_when_consensus_reached() {
     // GIVEN
     let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Leader).await;
+    let (tx, _rx) = tokio::sync::mpsc::channel(100);
+    let cache_manager = CacheManager { inboxes: vec![CacheCommandSender(tx)] };
+    cluster_actor.cache_manager = cache_manager.clone();
+
     let replid = cluster_actor.replication.replid.clone();
     let (cluster_sender, _) = ClusterActorQueue::new(100);
 
@@ -546,7 +550,11 @@ async fn test_consensus_voting_deleted_when_consensus_reached() {
 #[tokio::test]
 async fn test_same_voter_can_vote_only_once() {
     // GIVEN
+    let (tx, _rx) = tokio::sync::mpsc::channel(100);
+    let cache_manager = CacheManager { inboxes: vec![CacheCommandSender(tx)] };
     let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Leader).await;
+    cluster_actor.cache_manager = cache_manager.clone();
+
     let replid = cluster_actor.replication.replid.clone();
     let (cluster_sender, _) = ClusterActorQueue::new(100);
 
@@ -582,6 +590,9 @@ async fn test_same_voter_can_vote_only_once() {
 async fn leader_consensus_tracker_not_changed_when_followers_not_exist() {
     // GIVEN
     let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Leader).await;
+    let (tx, _rx) = tokio::sync::mpsc::channel(100);
+    let cache_manager = CacheManager { inboxes: vec![CacheCommandSender(tx)] };
+    cluster_actor.cache_manager = cache_manager.clone();
     let (tx, _rx) = Callback::create();
 
     let consensus_request = Helper::consensus_request(tx, None);

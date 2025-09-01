@@ -335,6 +335,13 @@ async fn test_migrate_keys_target_peer_not_found() {
 async fn test_migrate_batch_send_migrate_batch_peer_message() {
     // GIVEN
     let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Leader).await;
+
+    let cache_manager = CacheManager {
+        inboxes: (0..10).map(|_| CacheCommandSender(channel(10).0)).collect::<Vec<_>>(),
+    };
+
+    cluster_actor.cache_manager = cache_manager.clone();
+
     let replid = ReplicationId::Key("wheatever".to_string());
     let (buf, _id) = cluster_actor.test_add_peer(6909, Some(replid.clone()), true);
 
