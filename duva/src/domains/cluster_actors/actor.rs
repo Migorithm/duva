@@ -308,10 +308,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         if self.client_sessions.is_processed(&req.session_req) {
             // mapping between early returned values to client result
             let key = req.request.all_keys().into_iter().map(String::from).collect();
-            req.callback.send(ConsensusClientResponse::AlreadyProcessed {
-                key,
-                index: self.logger().last_log_index,
-            });
+            req.callback.send(ConsensusClientResponse::AlreadyProcessed { key });
             return;
         };
 

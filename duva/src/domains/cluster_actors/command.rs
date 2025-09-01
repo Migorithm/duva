@@ -90,7 +90,7 @@ impl ConsensusRequest {
 
 #[derive(Debug)]
 pub(crate) enum ConsensusClientResponse {
-    AlreadyProcessed { key: Vec<String>, index: u64 },
+    AlreadyProcessed { key: Vec<String> },
     Err(String),
     Result(anyhow::Result<QueryIO>),
 }
