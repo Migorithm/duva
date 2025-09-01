@@ -144,9 +144,9 @@ async fn test_start_rebalance_happy_path() {
 async fn test_start_rebalance_schedules_migration_batches() {
     // GIVEN
     let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Leader).await;
-    // let (_con_idx, cache_manager) =
-    //     Helper::cache_manager_with_keys(vec!["test_key_1".to_string(), "test_key_2".to_string()])
-    //         .await;
+    let (_con_idx, cache_manager) =
+        Helper::cache_manager_with_keys(vec!["test_key_1".to_string(), "test_key_2".to_string()])
+            .await;
 
     // ! test_key_1 and test_key_2 are migrated to testnode_a
     let target_repl_id = ReplicationId::Key("testnode_a".into());
@@ -154,6 +154,7 @@ async fn test_start_rebalance_schedules_migration_batches() {
         cluster_actor.test_add_peer(6570, Some(ReplicationId::Key("testnode_a".into())), true);
 
     let (cluster_handler, mut rx) = ClusterActorQueue::new(2);
+    cluster_actor.cache_manager = cache_manager.clone();
 
     // WHEN
     cluster_actor.self_handler = cluster_handler.clone();
