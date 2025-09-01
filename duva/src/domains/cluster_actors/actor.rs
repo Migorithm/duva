@@ -71,11 +71,11 @@ pub struct ClusterActor<T> {
     pub(crate) heartbeat_scheduler: HeartBeatScheduler,
     pub(crate) topology_writer: std::fs::File,
     pub(crate) node_change_broadcast: tokio::sync::broadcast::Sender<Topology>,
+    pub(crate) cache_manager: CacheManager,
 
     // * Pending requests are used to store requests that are received while the actor is in the process of election/cluster rebalancing.
     // * These requests will be processed once the actor is back to a stable state.
     pub(crate) client_sessions: ClientSessions,
-
     pub(crate) hash_ring: HashRing,
     migrations_in_progress: Option<InProgressMigration>,
     cluster_join_sync: ClusterJoinSync,
@@ -105,9 +105,10 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         init_repl_state: ReplicationState<T>,
         cache_manager: CacheManager,
     ) -> ClusterActorSender {
-        let cluster_actor = ClusterActor::new(init_repl_state, heartbeat_interval, topology_writer);
+        let cluster_actor =
+            ClusterActor::new(init_repl_state, heartbeat_interval, topology_writer, cache_manager);
         let actor_handler = cluster_actor.self_handler.clone();
-        tokio::spawn(cluster_actor.handle(cache_manager));
+        tokio::spawn(cluster_actor.handle());
         actor_handler
     }
 
@@ -119,6 +120,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         init_repl_state: ReplicationState<T>,
         heartbeat_interval_in_mills: u64,
         topology_writer: File,
+        cache_manager: CacheManager,
     ) -> Self {
         let (self_handler, receiver) = ClusterActorQueue::new(2000);
         let heartbeat_scheduler = HeartBeatScheduler::run(
@@ -146,6 +148,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             client_sessions: ClientSessions::default(),
             cluster_join_sync: ClusterJoinSync::default(),
             migrations_in_progress: None,
+            cache_manager,
         }
     }
 
@@ -282,12 +285,8 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         Ok(res)
     }
 
-    #[instrument(level = tracing::Level::DEBUG, skip(self, heartbeat,cache_manager), fields(peer_id = %heartbeat.from))]
-    pub(crate) async fn receive_cluster_heartbeat(
-        &mut self,
-        mut heartbeat: HeartBeat,
-        cache_manager: &CacheManager,
-    ) {
+    #[instrument(level = tracing::Level::DEBUG, skip(self, heartbeat), fields(peer_id = %heartbeat.from))]
+    pub(crate) async fn receive_cluster_heartbeat(&mut self, mut heartbeat: HeartBeat) {
         if self.replication.in_ban_list(&heartbeat.from) {
             err!("The given peer is in the ban list {}", heartbeat.from);
             return;
@@ -297,7 +296,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             .await;
         self.join_peer_network_if_absent::<TcpStream>(heartbeat.cluster_nodes).await;
         self.gossip(heartbeat.hop_count).await;
-        self.maybe_update_hashring(heartbeat.hashring, cache_manager).await;
+        self.maybe_update_hashring(heartbeat.hashring).await;
     }
 
     pub(crate) async fn leader_req_consensus(&mut self, req: ConsensusRequest) {
@@ -309,10 +308,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         if self.client_sessions.is_processed(&req.session_req) {
             // mapping between early returned values to client result
             let key = req.request.all_keys().into_iter().map(String::from).collect();
-            req.callback.send(ConsensusClientResponse::AlreadyProcessed {
-                key,
-                index: self.logger().last_log_index,
-            });
+            req.callback.send(ConsensusClientResponse::AlreadyProcessed { key });
             return;
         };
 
@@ -353,7 +349,9 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         if repl_cnt == 0 {
             // * If there are no replicas, we can send the response immediately
             self.increase_con_idx();
-            req.callback.send(ConsensusClientResponse::LogIndex(self.logger().last_log_index));
+            req.callback.send(ConsensusClientResponse::Result(
+                self.cache_manager.apply_log(req.request, self.logger().last_log_index).await,
+            ));
             return;
         }
         self.consensus_tracker.add(self.logger().last_log_index, req, repl_cnt);
@@ -419,22 +417,18 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             return;
         }
 
-        self.track_replication_progress(from);
+        self.track_replication_progress(from).await;
     }
 
-    #[instrument(level = tracing::Level::DEBUG, skip(self, cache_manager,heartbeat), fields(peer_id = %heartbeat.from))]
-    pub(crate) async fn append_entries_rpc(
-        &mut self,
-        cache_manager: &CacheManager,
-        heartbeat: HeartBeat,
-    ) {
+    #[instrument(level = tracing::Level::DEBUG, skip(self, heartbeat), fields(peer_id = %heartbeat.from))]
+    pub(crate) async fn append_entries_rpc(&mut self, heartbeat: HeartBeat) {
         if self.check_term_outdated(&heartbeat).await {
             err!("Term Outdated received:{} self:{}", heartbeat.term, self.replication.term);
             return;
         };
         self.reset_election_timeout();
         self.maybe_update_term(heartbeat.term);
-        self.replicate(heartbeat, cache_manager).await;
+        self.replicate(heartbeat).await;
 
         // TODO Replace the following with watcher
         REQUESTS_BLOCKED_BY_ELECTION.store(false, Ordering::Relaxed);
@@ -466,6 +460,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         peer_addr: PeerIdentifier,
         callback: Callback<anyhow::Result<()>>,
     ) {
+        self.cache_manager.drop_cache().await;
         self.replication.logger.reset();
         self.replication.logger.con_idx.store(0, Ordering::Release);
         self.set_repl_id(ReplicationId::Undecided);
@@ -561,8 +556,8 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         }
     }
 
-    #[instrument(level = tracing::Level::INFO, skip(self,cache_manager))]
-    pub(crate) async fn start_rebalance(&mut self, cache_manager: &CacheManager) {
+    #[instrument(level = tracing::Level::INFO, skip(self))]
+    pub(crate) async fn start_rebalance(&mut self) {
         if !self.replication.is_leader() {
             err!("follower cannot start rebalance");
             return;
@@ -581,7 +576,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             .set_hashring(new_hashring.clone());
 
         self.send_heartbeat(hb).await;
-        self.maybe_update_hashring(Some(Box::new(new_hashring)), cache_manager).await;
+        self.maybe_update_hashring(Some(Box::new(new_hashring))).await;
     }
 
     fn hop_count(fanout: usize, node_count: usize) -> u8 {
@@ -827,7 +822,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             .min()
     }
 
-    fn track_replication_progress(&mut self, voter: PeerIdentifier) {
+    async fn track_replication_progress(&mut self, voter: PeerIdentifier) {
         let Some(peer) = self.find_replica_mut(&voter) else {
             return;
         };
@@ -851,7 +846,11 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         self.increase_con_idx();
         self.client_sessions.set_response(voting.session_req.take());
 
-        voting.callback.send(ConsensusClientResponse::LogIndex(log_index));
+        //TODO refactor
+        let log_entry = self.logger().read_at(log_index).unwrap();
+        voting.callback.send(ConsensusClientResponse::Result(
+            self.cache_manager.apply_log(log_entry.request, log_index).await,
+        ));
     }
 
     // Follower notified the leader of its acknowledgment, then leader store match index for the given follower
@@ -866,7 +865,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         }
     }
 
-    async fn replicate(&mut self, mut heartbeat: HeartBeat, cache_manager: &CacheManager) {
+    async fn replicate(&mut self, mut heartbeat: HeartBeat) {
         if self.replication.is_leader() {
             return;
         }
@@ -885,7 +884,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             return;
         };
 
-        self.replicate_state(heartbeat, cache_manager).await;
+        self.replicate_state(heartbeat).await;
     }
 
     async fn replicate_log_entries(&mut self, rpc: &mut HeartBeat) -> Result<(), RejectionReason> {
@@ -967,7 +966,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         self.replication.election_state = ElectionState::Follower { voted_for: None };
     }
 
-    async fn replicate_state(&mut self, leader_con_idx: HeartBeat, cache_manager: &CacheManager) {
+    async fn replicate_state(&mut self, leader_con_idx: HeartBeat) {
         let old_con_idx = self.replication.logger.con_idx.load(Ordering::Acquire);
         if leader_con_idx.con_idx > old_con_idx {
             for log_index in (old_con_idx + 1)..=leader_con_idx.con_idx {
@@ -985,13 +984,13 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
                     return;
                 };
 
-                if let Err(e) = cache_manager.apply_log(log.request, log_index).await {
+                if let Err(e) = self.cache_manager.apply_log(log.request, log_index).await {
                     // ! DON'T PANIC - post validation is where we just don't update state
                     // ! Failure of apply_log means post_validation on the operations that involves delta change such as incr/append fail.
                     // ! This is expected and you should let it update con_idx.
                     error!("failed to apply log: {e}, perhaps post validation failed?")
                 } else {
-                    cache_manager.pings().await;
+                    self.cache_manager.pings().await;
                 };
 
                 self.replication.logger.con_idx.store(log_index, Ordering::Release);
@@ -1111,11 +1110,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     }
 
     // * If the hashring is valid, make a plan to migrate data for each paritition
-    async fn maybe_update_hashring(
-        &mut self,
-        hashring: Option<Box<HashRing>>,
-        cache_manager: &CacheManager,
-    ) {
+    async fn maybe_update_hashring(&mut self, hashring: Option<Box<HashRing>>) {
         let Some(new_ring) = hashring else {
             return;
         };
@@ -1137,7 +1132,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
 
         // Leader-only migration coordination logic below
         // Keep the old ring to compare with new ring for migration planning
-        let keys = cache_manager.route_keys(None).await;
+        let keys = self.cache_manager.route_keys(None).await;
         let chunks_map = self.hash_ring.create_migration_chunks(&new_ring, keys);
 
         if chunks_map.is_empty() {
@@ -1199,7 +1194,6 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     pub(crate) async fn migrate_batch(
         &mut self,
         pending_task: PendingMigrationTask,
-        cache_manager: &CacheManager,
         callback: impl Into<Callback<anyhow::Result<()>>>,
     ) {
         let callback = callback.into();
@@ -1216,7 +1210,8 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
             .flat_map(|task| task.keys_to_migrate.iter().cloned())
             .collect::<Vec<_>>();
 
-        let entries = cache_manager
+        let entries = self
+            .cache_manager
             .route_mget(keys.clone())
             .await
             .into_iter()
@@ -1239,7 +1234,6 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
     pub(crate) async fn receive_batch(
         &mut self,
         migrate_batch: BatchEntries,
-        cache_manager: &CacheManager,
         from: PeerIdentifier,
     ) {
         // If cache entries are empty, skip consensus and directly send success ack
@@ -1264,7 +1258,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         // * If there are replicas, we need to wait for the consensus to be applied which should be done in the background
         tokio::spawn({
             let handler = self.self_handler.clone();
-            let cache_manager = cache_manager.clone();
+            let cache_manager = self.cache_manager.clone();
             async move {
                 rx.recv().await;
                 let _ = cache_manager.route_mset(migrate_batch.entries.clone()).await; // reflect state change
@@ -1278,11 +1272,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         });
     }
 
-    pub(crate) async fn handle_migration_ack(
-        &mut self,
-        batch_id: BatchId,
-        cache_manager: &CacheManager,
-    ) {
+    pub(crate) async fn handle_migration_ack(&mut self, batch_id: BatchId) {
         let Some(pending) = self.migrations_in_progress.as_mut() else {
             warn!("No Pending migration map available");
             return;
@@ -1304,7 +1294,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         // ! background synchronization is required.
         tokio::spawn({
             let handler = self.self_handler.clone();
-            let cache_manager = cache_manager.clone();
+            let cache_manager = self.cache_manager.clone();
 
             async move {
                 rx.recv().await;

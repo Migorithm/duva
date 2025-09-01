@@ -23,11 +23,14 @@ sequenceDiagram
             CL -->> CL : Register callback, wait for concensus
             CL -->> CL : Consensus reached
             deactivate CL
-            CL -->> Stream : log index
-        end
+            CL -->> CA : route request
+            CA -->> CL: return response
+            CL -->> Stream: return response
+        else  Read Request
         Stream -->> CA: route request
-        CA -->> Stream: return respons
+        CA -->> Stream: return response
         Stream -->> C: return response
+        end
     end
 
     

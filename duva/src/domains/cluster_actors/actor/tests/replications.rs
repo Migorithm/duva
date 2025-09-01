@@ -96,10 +96,8 @@ async fn follower_cluster_actor_replicate_log() {
         0,
         vec![Helper::write(1, 0, "foo", "bar"), Helper::write(2, 0, "foo2", "bar")],
     );
-    let cache_manager = CacheManager {
-        inboxes: (0..10).map(|_| CacheCommandSender(channel(10).0)).collect::<Vec<_>>(),
-    };
-    cluster_actor.replicate(heartbeat, &cache_manager).await;
+
+    cluster_actor.replicate(heartbeat).await;
 
     // THEN
     assert_eq!(cluster_actor.replication.logger.con_idx.load(Ordering::Relaxed), 0);
@@ -131,7 +129,8 @@ async fn follower_cluster_actor_sessionless_replicate_state() {
     );
 
     let cache_manager = CacheManager { inboxes: vec![CacheCommandSender(cache_handler)] };
-    cluster_actor.replicate(heartbeat, &cache_manager).await;
+    cluster_actor.cache_manager = cache_manager.clone();
+    cluster_actor.replicate(heartbeat).await;
 
     // WHEN - commit until 2
     let task = tokio::spawn(async move {
@@ -149,7 +148,7 @@ async fn follower_cluster_actor_sessionless_replicate_state() {
         }
     });
     let heartbeat = Helper::heartbeat(0, 2, vec![]);
-    cluster_actor.replicate(heartbeat, &cache_manager).await;
+    cluster_actor.replicate(heartbeat).await;
 
     // THEN
     assert_eq!(cluster_actor.replication.logger.con_idx.load(Ordering::Relaxed), 2);
@@ -160,7 +159,7 @@ async fn follower_cluster_actor_sessionless_replicate_state() {
 #[tokio::test]
 async fn replicate_stores_only_latest_session_per_client() {
     // GIVEN
-    let (cache_handler, _) = tokio::sync::mpsc::channel(100);
+
     let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Follower).await;
 
     let target_client = uuid::Uuid::now_v7().to_string();
@@ -179,9 +178,8 @@ async fn replicate_stores_only_latest_session_per_client() {
         ],
     );
 
-    let cache_manager = CacheManager { inboxes: vec![CacheCommandSender(cache_handler)] };
     // WHEN
-    cluster_actor.replicate(heartbeat, &cache_manager).await;
+    cluster_actor.replicate(heartbeat).await;
 
     // THEN
     assert_eq!(cluster_actor.replication.logger.last_log_index, 3);
@@ -202,9 +200,10 @@ async fn follower_cluster_actor_replicate_state_only_upto_con_idx() {
 
     let (tx, mut rx) = tokio::sync::mpsc::channel(100);
     let cache_manager = CacheManager { inboxes: vec![CacheCommandSender(tx)] };
+    cluster_actor.cache_manager = cache_manager.clone();
 
     // This just appends the entries to the log but doesn't commit them
-    cluster_actor.replicate(heartbeat, &cache_manager).await;
+    cluster_actor.replicate(heartbeat).await;
 
     // WHEN - commit only up to index 1
     let task = tokio::spawn(async move {
@@ -232,7 +231,7 @@ async fn follower_cluster_actor_replicate_state_only_upto_con_idx() {
     // Send a heartbeat with con_idx=1 to commit only the first entry
     const CON_IDX: u64 = 1;
     let heartbeat = Helper::heartbeat(0, CON_IDX, vec![]);
-    cluster_actor.replicate(heartbeat, &cache_manager).await;
+    cluster_actor.replicate(heartbeat).await;
 
     // THEN
     // Give the task a chance to process the message
@@ -264,7 +263,8 @@ async fn test_apply_multiple_committed_entries() {
     let cache_manager = CacheManager { inboxes: vec![CacheCommandSender(tx)] };
 
     // First append entries but don't commit
-    cluster_actor.replicate(heartbeat, &cache_manager).await;
+    cluster_actor.cache_manager = cache_manager.clone();
+    cluster_actor.replicate(heartbeat).await;
 
     // Create a task to monitor applied entries
     let monitor_task = tokio::spawn(async move {
@@ -282,10 +282,11 @@ async fn test_apply_multiple_committed_entries() {
         applied_keys
     });
 
+    cluster_actor.cache_manager = cache_manager.clone();
+
     // WHEN - commit all entries
     let commit_heartbeat = Helper::heartbeat(1, 3, vec![]);
-
-    cluster_actor.replicate(commit_heartbeat, &cache_manager).await;
+    cluster_actor.replicate(commit_heartbeat).await;
 
     // THEN
     // Verify that all entries were committed and applied in order
@@ -312,7 +313,8 @@ async fn test_partial_commit_with_new_entries() {
     let (tx, mut rx) = tokio::sync::mpsc::channel(100);
     let cache_manager = CacheManager { inboxes: vec![CacheCommandSender(tx)] };
 
-    cluster_actor.replicate(first_heartbeat, &cache_manager).await;
+    cluster_actor.cache_manager = cache_manager.clone();
+    cluster_actor.replicate(first_heartbeat).await;
 
     // Create a task to monitor applied entries
     let monitor_task = tokio::spawn(async move {
@@ -335,7 +337,7 @@ async fn test_partial_commit_with_new_entries() {
 
     let second_heartbeat = Helper::heartbeat(1, 1, second_entries);
 
-    cluster_actor.replicate(second_heartbeat, &cache_manager).await;
+    cluster_actor.replicate(second_heartbeat).await;
 
     // THEN
     // Verify that only key1 was applied
@@ -473,15 +475,13 @@ async fn test_leader_req_consensus_early_return_when_already_processed_session_r
     // GIVEN
     let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Leader).await;
 
-    let cache_manager = CacheManager { inboxes: vec![] };
-
     let client_id = Uuid::now_v7().to_string();
     let client_req = SessionRequest::new(1, client_id);
 
     // WHEN - session request is already processed
     cluster_actor.client_sessions.set_response(Some(client_req.clone()));
     let handler = cluster_actor.self_handler.clone();
-    tokio::spawn(cluster_actor.handle(cache_manager));
+    tokio::spawn(cluster_actor.handle());
     let (tx, rx) = Callback::create();
     handler
         .send(ClusterCommand::Client(ClientMessage::LeaderReqConsensus(ConsensusRequest::new(
@@ -500,6 +500,10 @@ async fn test_leader_req_consensus_early_return_when_already_processed_session_r
 async fn test_consensus_voting_deleted_when_consensus_reached() {
     // GIVEN
     let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Leader).await;
+    let (tx, _rx) = tokio::sync::mpsc::channel(100);
+    let cache_manager = CacheManager { inboxes: vec![CacheCommandSender(tx)] };
+    cluster_actor.cache_manager = cache_manager.clone();
+
     let replid = cluster_actor.replication.replid.clone();
     let (cluster_sender, _) = ClusterActorQueue::new(100);
 
@@ -546,7 +550,11 @@ async fn test_consensus_voting_deleted_when_consensus_reached() {
 #[tokio::test]
 async fn test_same_voter_can_vote_only_once() {
     // GIVEN
+    let (tx, _rx) = tokio::sync::mpsc::channel(100);
+    let cache_manager = CacheManager { inboxes: vec![CacheCommandSender(tx)] };
     let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Leader).await;
+    cluster_actor.cache_manager = cache_manager.clone();
+
     let replid = cluster_actor.replication.replid.clone();
     let (cluster_sender, _) = ClusterActorQueue::new(100);
 
@@ -582,6 +590,9 @@ async fn test_same_voter_can_vote_only_once() {
 async fn leader_consensus_tracker_not_changed_when_followers_not_exist() {
     // GIVEN
     let mut cluster_actor = Helper::cluster_actor(ReplicationRole::Leader).await;
+    let (tx, _rx) = tokio::sync::mpsc::channel(100);
+    let cache_manager = CacheManager { inboxes: vec![CacheCommandSender(tx)] };
+    cluster_actor.cache_manager = cache_manager.clone();
     let (tx, _rx) = Callback::create();
 
     let consensus_request = Helper::consensus_request(tx, None);
@@ -643,9 +654,8 @@ async fn test_leader_req_consensus_with_processed_session() {
     assert_eq!(cluster_actor.replication.logger.last_log_index, 0);
 
     // Verify the response indicates already processed
-    let ConsensusClientResponse::AlreadyProcessed { key, index } = rx.recv().await else {
+    let ConsensusClientResponse::AlreadyProcessed { key } = rx.recv().await else {
         panic!("Expected AlreadyProcessed response");
     };
     assert_eq!(key, vec!["test_key".to_string()]);
-    assert_eq!(index, 0);
 }

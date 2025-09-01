@@ -1,4 +1,3 @@
-use crate::domains::caches::cache_manager::CacheManager;
 use crate::domains::cluster_actors::ClientMessage;
 use crate::domains::cluster_actors::ClusterActor;
 use crate::domains::cluster_actors::ClusterCommand;
@@ -13,19 +12,18 @@ use tracing::warn;
 use tracing::{instrument, trace};
 
 impl<T: TWriteAheadLog> ClusterActor<T> {
-    pub(super) async fn handle(mut self, cache_manager: CacheManager) -> anyhow::Result<Self> {
+    pub(super) async fn handle(mut self) -> anyhow::Result<Self> {
         while let Some(command) = self.receiver.recv().await {
             trace!(?command, "Cluster command received");
             match command {
                 | ClusterCommand::Scheduler(msg) => {
-                    self.process_scheduler_message(msg, &cache_manager).await;
+                    self.process_scheduler_message(msg).await;
                 },
                 | ClusterCommand::Client(client_message) => {
-                    self.process_client_message(&cache_manager, client_message).await
+                    self.process_client_message(client_message).await
                 },
                 | ClusterCommand::Peer(peer_message) => {
-                    self.process_peer_message(&cache_manager, peer_message.msg, peer_message.from)
-                        .await;
+                    self.process_peer_message(peer_message.msg, peer_message.from).await;
                 },
                 | ClusterCommand::ConnectionReq(conn_msg) => {
                     self.process_connection_message(conn_msg).await;
@@ -36,11 +34,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         Ok(self)
     }
 
-    async fn process_scheduler_message(
-        &mut self,
-        msg: SchedulerMessage,
-        cache_manager: &CacheManager,
-    ) {
+    async fn process_scheduler_message(&mut self, msg: SchedulerMessage) {
         use SchedulerMessage::*;
         match msg {
             | SendPeriodicHeatBeat => {
@@ -62,19 +56,15 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
                 self.rebalance_request(request_to, lazy_option).await;
             },
             | ScheduleMigrationBatch(tasks, callback) => {
-                self.migrate_batch(tasks, cache_manager, callback).await;
+                self.migrate_batch(tasks, callback).await;
             },
             | TryUnblockWriteReqs => self.unblock_write_reqs_if_done(),
             | SendBatchAck { batch_id, to } => self.send_batch_ack(batch_id, to).await,
         }
     }
 
-    #[instrument(level = tracing::Level::DEBUG, skip(self, cache_manager,client_message))]
-    async fn process_client_message(
-        &mut self,
-        cache_manager: &CacheManager,
-        client_message: ClientMessage,
-    ) {
+    #[instrument(level = tracing::Level::DEBUG, skip(self, client_message))]
+    async fn process_client_message(&mut self, client_message: ClientMessage) {
         use ClientMessage::*;
 
         match client_message {
@@ -102,14 +92,14 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
                     callback.send(res_err!("invalid operation: cannot replicate to self"));
                     return;
                 }
-                cache_manager.drop_cache().await;
+
                 self.replicaof::<TcpStream>(peer_addr, callback).await;
             },
             | ClusterMeet(peer_addr, lazy_option, callback) => {
                 self.cluster_meet::<TcpStream>(peer_addr, lazy_option, callback).await;
             },
             | ClusterReshard(sender) => {
-                self.start_rebalance(cache_manager).await;
+                self.start_rebalance().await;
                 sender.send(Ok(()));
             },
 
@@ -125,32 +115,21 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         };
     }
 
-    async fn process_peer_message(
-        &mut self,
-        cache_manager: &CacheManager,
-        peer_message: PeerMessage,
-        from: PeerIdentifier,
-    ) {
+    async fn process_peer_message(&mut self, peer_message: PeerMessage, from: PeerIdentifier) {
         use PeerMessage::*;
 
         match peer_message {
-            | ClusterHeartBeat(heartbeat) => {
-                self.receive_cluster_heartbeat(heartbeat, cache_manager).await
-            },
+            | ClusterHeartBeat(heartbeat) => self.receive_cluster_heartbeat(heartbeat).await,
             | RequestVote(request_vote) => self.vote_election(request_vote).await,
             | AckReplication(repl_res) => self.ack_replication(from, repl_res).await,
-            | AppendEntriesRPC(heartbeat) => {
-                self.append_entries_rpc(cache_manager, heartbeat).await
-            },
+            | AppendEntriesRPC(heartbeat) => self.append_entries_rpc(heartbeat).await,
             | ElectionVoteReply(request_vote_reply) => {
                 self.receive_election_vote(request_vote_reply).await
             },
-            | StartRebalance => self.start_rebalance(cache_manager).await,
-            | ReceiveBatch(migrate_batch) => {
-                self.receive_batch(migrate_batch, cache_manager, from).await
-            },
+            | StartRebalance => self.start_rebalance().await,
+            | ReceiveBatch(migrate_batch) => self.receive_batch(migrate_batch, from).await,
             | MigrationBatchAck(migration_batch_ack) => {
-                self.handle_migration_ack(migration_batch_ack, cache_manager).await
+                self.handle_migration_ack(migration_batch_ack).await
             },
         };
     }

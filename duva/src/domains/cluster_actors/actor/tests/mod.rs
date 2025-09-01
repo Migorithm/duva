@@ -170,7 +170,8 @@ impl Helper {
             8080,
             ReplicatedLogs::new(MemoryOpLogs::default(), 0, 0),
         );
-        ClusterActor::new(replication, 100, topology_writer)
+        let cache_manager = CacheManager { inboxes: vec![] };
+        ClusterActor::new(replication, 100, topology_writer, cache_manager)
     }
 
     fn cluster_member(
