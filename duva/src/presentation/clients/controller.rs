@@ -162,7 +162,7 @@ impl ClientController {
                 let _action = NonMutatingAction::MGet { keys };
                 self.handle_non_mutating(_action).await
             },
-            | ConsensusClientResponse::Result(result) => Ok(result),
+            | ConsensusClientResponse::Result(result) => result,
             | ConsensusClientResponse::Err(error_msg) => Err(anyhow::anyhow!(error_msg)),
         }?;
 

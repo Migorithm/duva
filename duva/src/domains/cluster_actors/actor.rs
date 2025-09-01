@@ -352,12 +352,8 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         if repl_cnt == 0 {
             // * If there are no replicas, we can send the response immediately
             self.increase_con_idx();
-
             req.callback.send(ConsensusClientResponse::Result(
-                self.cache_manager
-                    .apply_log(req.request, self.logger().last_log_index)
-                    .await
-                    .unwrap(),
+                self.cache_manager.apply_log(req.request, self.logger().last_log_index).await,
             ));
             return;
         }
@@ -856,7 +852,7 @@ impl<T: TWriteAheadLog> ClusterActor<T> {
         //TODO refactor
         let log_entry = self.logger().read_at(log_index).unwrap();
         voting.callback.send(ConsensusClientResponse::Result(
-            self.cache_manager.apply_log(log_entry.request, log_index).await.unwrap(),
+            self.cache_manager.apply_log(log_entry.request, log_index).await,
         ));
     }
 
