@@ -42,15 +42,15 @@ use uuid::Uuid;
 use crate::domains::TSerdeReadWrite;
 use crate::domains::cluster_actors::consensus::election::REQUESTS_BLOCKED_BY_ELECTION;
 use crate::domains::operation_logs::logger::ReplicatedLogs;
-use crate::prelude::ConnectionRequest;
+use crate::presentation::clients::ConnectionRequest;
 pub use config::ENV;
 pub mod prelude {
     pub use crate::domains::cluster_actors::actor::heartbeat_scheduler::ELECTION_TIMEOUT_MAX;
     pub use crate::domains::cluster_actors::topology::NodeReplInfo;
     pub use crate::domains::cluster_actors::topology::Topology;
     pub use crate::domains::peers::identifier::PeerIdentifier;
-    pub use crate::presentation::clients::ConnectionRequest;
     pub use crate::presentation::clients::ConnectionResponse;
+    pub use crate::presentation::clients::RequestBody;
     pub use anyhow;
     pub use bytes;
     pub use bytes::BytesMut;
@@ -207,31 +207,26 @@ impl StartUpFacade {
 
         //TODO refactor: authentication should be simplified
         while let Ok((mut stream, _)) = listener.accept().await {
-            let request = stream.deserialized_read().await?;
+            let request: ConnectionRequest = stream.deserialized_read().await?;
             while REQUESTS_BLOCKED_BY_ELECTION.load(Ordering::Acquire) {
                 tokio::time::sleep(Duration::from_millis(100)).await;
             }
-            match request {
-                | ConnectionRequest { .. } => {
-                    let Ok((reader, writer)) =
-                        authenticate(stream, &self.cluster_communication_manager, request).await
-                    else {
-                        error!("Failed to authenticate client stream");
+            let (reader, writer) =
+                match authenticate(stream, &self.cluster_communication_manager, request).await {
+                    | Ok((reader, writer)) => (reader, writer),
+                    | Err(e) => {
+                        error!("Failed to authenticate client stream: {}", e);
                         continue;
-                    };
+                    },
+                };
 
-                    let observer = self
-                        .cluster_communication_manager
-                        .route_subscribe_topology_change()
-                        .await?;
-                    let write_handler = writer.run(observer);
+            let observer =
+                self.cluster_communication_manager.route_subscribe_topology_change().await?;
+            let write_handler = writer.run(observer);
 
-                    tokio::spawn(
-                        reader
-                            .handle_client_stream(self.client_controller(), write_handler.clone()),
-                    );
-                },
-            }
+            tokio::spawn(
+                reader.handle_client_stream(self.client_controller(), write_handler.clone()),
+            );
         }
         Ok(())
     }
